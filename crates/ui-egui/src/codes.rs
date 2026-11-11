@@ -2,7 +2,7 @@
 //! which is about drafting), and the rules themselves, the code's until the project changes one. A rule changed is
 //! marked, with the code's own number beside it; nothing is ever refused for breaking one.
 
-use bimcraft_core::codes::{self, ORDER};
+use bimcraft_core::codes::{self, GENERIC, ORDER};
 use bimcraft_core::model::Model;
 use egui::{Align, Color32, ComboBox, Context, DragValue, Grid, Id as UiId, Layout, RichText, ScrollArea, Ui, WidgetInfo, WidgetType};
 use serde_json::{Map, Value, json};
@@ -55,8 +55,8 @@ fn choices(key: &str) -> &'static [(&'static str, &'static str)] {
     }
 }
 
-fn rules_of(code: &str) -> Map<String, Value> {
-    let rules = &codes::code(code).unwrap_or_else(codes::generic).stairs;
+fn rules_of(m: &Model, code: &str) -> Map<String, Value> {
+    let rules = &m.code(code).unwrap_or(codes::generic()).stairs;
     match serde_json::to_value(rules) {
         Ok(Value::Object(o)) => o,
         _ => Map::new(),
@@ -68,6 +68,10 @@ pub(crate) struct CodesDialog {
     pub(crate) selected: String,
     pub(crate) rules: Map<String, Value>,
     pub(crate) tab: usize,
+    /// The name the rules would be saved under, as a code of the project's own.
+    pub(crate) name: String,
+    /// What went wrong, said inside the dialog.
+    pub(crate) error: String,
 }
 
 impl CodesDialog {
@@ -76,7 +80,7 @@ impl CodesDialog {
             Ok(Value::Object(o)) => o,
             _ => Map::new(),
         };
-        CodesDialog { selected: m.building_code().code.clone(), rules, tab: 1 }
+        CodesDialog { selected: m.building_code().code.clone(), rules, tab: 1, name: String::new(), error: String::new() }
     }
 }
 
@@ -91,10 +95,9 @@ fn said(key: &str, v: &Value) -> String {
     }
 }
 
-/// A stair's findings, as its Properties' popup lists them: the code, then each rule broken with what the stair
-/// has, what the rule asks, and what would bring it inside.
+/// A stair's findings, as the window its Properties' sign opens lists them: the code, then each rule broken with what
+/// the stair has, what the rule asks, and what would bring it inside.
 pub(crate) fn findings(ui: &mut Ui, m: &Model, list: &Value) {
-    ui.set_max_width(360.0);
     ui.label(RichText::new(t(&m.building_code().name)).strong());
     ui.label(RichText::new(t("The stair is built as drawn. These rules it is outside of:")).color(pal().muted));
     for f in list.as_array().into_iter().flatten() {
@@ -150,8 +153,17 @@ fn overview_tab(ui: &mut Ui, code: &codes::BuildingCode) {
     );
 }
 
-fn stairs_tab(ui: &mut Ui, d: &mut CodesDialog) {
-    let own = rules_of(&d.selected);
+/// Whether the rules in the dialog are no longer its code's: a code of the user's own making, until saved.
+fn custom(m: &Model, d: &CodesDialog) -> bool {
+    let own = rules_of(m, &d.selected);
+    ORDER.iter().any(|k| match (d.rules.get(*k), own.get(*k)) {
+        (Some(a), Some(b)) => a != b && (a.as_f64().is_none() || a.as_f64() != b.as_f64()),
+        (a, b) => a != b,
+    })
+}
+
+fn stairs_tab(ui: &mut Ui, m: &Model, d: &mut CodesDialog) {
+    let own = rules_of(m, &d.selected);
     let mut group = "";
     Grid::new("building-code-stairs").striped(true).num_columns(3).min_col_width(150.0).show(ui, |ui| {
         for (key, of, label) in LABELS {
@@ -214,10 +226,87 @@ fn stairs_tab(ui: &mut Ui, d: &mut CodesDialog) {
 }
 
 impl BimApp {
+    /// The window a stair's sign in Properties opens: the rules it is outside of. It closes when the stair is inside them
+    /// all, or gone.
+    pub(crate) fn findings_window(&mut self, ctx: &Context) {
+        let Some(id) = self.code_findings else { return };
+        let m = self.session.model.clone();
+        let list = match m.elements.get(id) {
+            Some(bimcraft_core::model::Element::Stair(st)) => serde_json::to_value(codes::stair_findings(&m, st)).unwrap_or(Value::Null),
+            _ => Value::Null,
+        };
+        if list.as_array().is_none_or(Vec::is_empty) {
+            self.code_findings = None;
+            return;
+        }
+        let mut close = false;
+        let r = Modal::new(UiId::new("stair-code-findings"), t("Building Code Check")).width(420.0).show(ctx, |ui| {
+            popup::body(ui, |ui| {
+                ScrollArea::vertical().max_height(360.0).show(ui, |ui| findings(ui, &m, &list));
+            });
+            popup::footer(ui, |ui| {
+                ui.horizontal(|ui| {
+                    if ui.button(t("Building Codes…")).on_hover_text(t("Open the project's building code and its rules")).clicked() {
+                        self.codes_dialog = Some(CodesDialog::new(&m));
+                        close = true;
+                    }
+                    ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
+                        close |= ui.button(t("Close")).clicked();
+                    });
+                });
+            });
+        });
+        if close || r.should_close() {
+            self.code_findings = None;
+        }
+    }
+
+    /// A building code read from the XML file at `path`, kept as one of the project's own and shown in the dialog.
+    pub(crate) fn import_code(&mut self, path: &std::path::Path) {
+        let reply =
+            self.run("building_code_import", json!({"path": path.to_string_lossy()})).ok_or_else(|| std::mem::take(&mut self.status.text));
+        let m = &self.session.model;
+        let mut d = self.codes_dialog.take().unwrap_or_else(|| CodesDialog::new(m));
+        match reply {
+            Ok(v) => {
+                d.selected = v["code"].as_str().unwrap_or(GENERIC).to_string();
+                d.rules = rules_of(m, &d.selected);
+                let left: Vec<&str> = v["left_out"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
+                d.error = if left.is_empty() {
+                    String::new()
+                } else {
+                    tf("Left out of the file, unknown to this version: {}", &[&left.join(", ")])
+                };
+            }
+            Err(e) => d.error = e,
+        }
+        self.codes_dialog = Some(d);
+    }
+
+    /// The rules the dialog shows, written as an XML file at `path`: worked out on a copy of the project, so that what is
+    /// not applied yet is exported as shown and the project stays as it is.
+    pub(crate) fn export_code(&mut self, path: &std::path::Path, code: &str, rules: &Map<String, Value>, name: &str) {
+        let mut scratch = bimcraft_core::engine::Session::new();
+        *scratch.model_mut() = (*self.session.model).clone();
+        let mut p = json!({"path": path.to_string_lossy()});
+        if !name.is_empty() {
+            p["name"] = json!(name);
+        }
+        let reply = scratch
+            .execute("building_code", &json!({"set": code, "stairs": rules}))
+            .and_then(|_| scratch.execute("building_code_export", &p));
+        if let Some(d) = self.codes_dialog.as_mut() {
+            d.error = reply.err().unwrap_or_default();
+        }
+    }
+
     /// The Building Codes modal dialog.
     pub(crate) fn codes_window(&mut self, ctx: &Context) {
         let Some(mut d) = self.codes_dialog.take() else { return };
         let (mut ok, mut apply, mut cancel) = (false, false, false);
+        let (mut save, mut delete, mut import, mut export) = (false, false, false, false);
+        let m = self.session.model.clone();
+        let m = &m;
 
         let r = Modal::new(UiId::new("building-codes-dialog"), t("Building Codes")).width(760.0).show(ctx, |ui| {
             popup::body(ui, |ui| {
@@ -230,18 +319,45 @@ impl BimApp {
                     ui.label(RichText::new(t("Building Code:")).strong());
                     let was = d.selected.clone();
                     let name = |c: &codes::BuildingCode| if c.region.is_empty() { t(&c.name).to_string() } else { format!("{} ({})", t(&c.name), c.region) };
-                    let now = codes::code(&d.selected).map_or_else(String::new, name);
+                    let changed = custom(m, &d);
+                    let base = m.code(&d.selected).map_or_else(String::new, |c| t(&c.name).to_string());
+                    // Rules changed are no longer the code's: Custom, until saved under a name.
+                    let now = if changed { tf("Custom (based on {})", &[&base]) } else { m.code(&d.selected).map_or_else(String::new, name) };
                     let c = ComboBox::from_id_salt("building-code-selector").selected_text(now).width(320.0).show_ui(ui, |ui| {
-                        for c in codes::codes() {
-                            ui.selectable_value(&mut d.selected, c.code.clone(), name(c));
+                        for c in codes::codes().iter().chain(&m.building_codes) {
+                            if ui.selectable_label(!changed && d.selected == c.code, name(c)).clicked() {
+                                d.selected = c.code.clone();
+                                d.rules = rules_of(m, &d.selected);
+                            }
                         }
                     });
                     c.response.widget_info(|| WidgetInfo::labeled(WidgetType::ComboBox, true, t("Building Code")));
-                    // Another code brings its own rules.
                     if d.selected != was {
-                        d.rules = rules_of(&d.selected);
+                        d.error.clear();
+                    }
+                    if changed {
+                        ui.label(RichText::new(t("Custom")).color(OUTSIDE).strong());
                     }
                 });
+                ui.horizontal(|ui| {
+                    import = ui.button(t("Import…")).on_hover_text(t("Read a building code from an XML file, as one of the project's own")).clicked();
+                    export = ui.button(t("Export…")).on_hover_text(t("Write these rules as an XML file, to hand to another project or office")).clicked();
+                    if m.building_codes.iter().any(|c| c.code == d.selected) && !custom(m, &d) {
+                        delete = ui.button(t("Delete")).on_hover_text(t("Take this code of the project's own away; a project held to it keeps its rules")).clicked();
+                    }
+                });
+                // A custom code is saved under a name of the user's own, and is then a code like the others.
+                if custom(m, &d) {
+                    ui.horizontal(|ui| {
+                        let l = ui.label(t("Save as:"));
+                        ui.add(egui::TextEdit::singleline(&mut d.name).desired_width(240.0).hint_text(t("A name of your own"))).labelled_by(l.id);
+                        save = ui.add_enabled(!d.name.trim().is_empty(), egui::Button::new(t("Save Code"))).clicked();
+                        ui.label(RichText::new(t("Unsaved, the rules are still the project's when applied.")).color(pal().muted).small());
+                    });
+                }
+                if !d.error.is_empty() {
+                    ui.label(RichText::new(&d.error).color(pal().error));
+                }
                 ui.add_space(8.0);
                 ui.horizontal(|ui| {
                     for (i, label) in TABS.iter().enumerate() {
@@ -251,15 +367,15 @@ impl BimApp {
                     }
                 });
                 ui.separator();
-                ScrollArea::vertical().max_height(380.0).show(ui, |ui| match d.tab {
-                    0 => overview_tab(ui, codes::code(&d.selected).unwrap_or_else(codes::generic)),
-                    _ => stairs_tab(ui, &mut d),
+                ScrollArea::vertical().max_height(320.0).show(ui, |ui| match d.tab {
+                    0 => overview_tab(ui, m.code(&d.selected).unwrap_or(codes::generic())),
+                    _ => stairs_tab(ui, m, &mut d),
                 });
             });
             popup::footer(ui, |ui| {
                 ui.horizontal(|ui| {
                     if ui.button(t("Reset to the Code's Rules")).clicked() {
-                        d.rules = rules_of(&d.selected);
+                        d.rules = rules_of(m, &d.selected);
                     }
                     ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
                         apply = ui.button(t("Apply")).clicked();
@@ -270,8 +386,41 @@ impl BimApp {
             });
         });
 
-        // What can't be rules (a range upside down) is refused with what to fix, and the dialog stays.
-        let done = if ok || apply { self.run("building_code", json!({"set": d.selected, "stairs": d.rules})).is_some() } else { true };
+        // What can't be rules (a range upside down) is refused with what to fix, said in the dialog, which stays.
+        let tried = |app: &mut BimApp, d: &mut CodesDialog, command: &str, p: Value| {
+            let reply = app.run(command, p);
+            d.error = if reply.is_none() { std::mem::take(&mut app.status.text) } else { String::new() };
+            reply
+        };
+        let mut done = true;
+        if save {
+            let p = json!({"set": d.selected, "stairs": d.rules, "save": d.name.trim()});
+            if let Some(v) = tried(self, &mut d, "building_code", p) {
+                d.selected = v["code"].as_str().unwrap_or(GENERIC).to_string();
+                d.rules = rules_of(&self.session.model, &d.selected);
+                d.name.clear();
+            }
+        } else if delete {
+            let p = json!({"delete": d.selected});
+            if let Some(v) = tried(self, &mut d, "building_code", p) {
+                d.selected = v["code"].as_str().unwrap_or(GENERIC).to_string();
+                d.rules = v["stairs"].as_object().cloned().unwrap_or_default();
+            }
+        } else if ok || apply {
+            let p = json!({"set": d.selected, "stairs": d.rules});
+            done = tried(self, &mut d, "building_code", p).is_some();
+        }
+        if import {
+            let dialog = rfd::AsyncFileDialog::new().add_filter(t("Building codes"), &["xml", "XML"]);
+            self.ask_file(ctx, dialog, false, |app, path| app.import_code(&path));
+        }
+        if export {
+            // What the dialog shows, under the name typed, else its code's: from a copy of the project, which stays as it is.
+            let (code, rules, name) = (d.selected.clone(), d.rules.clone(), d.name.trim().to_string());
+            let file = format!("{}.xml", if name.is_empty() { code.as_str() } else { name.as_str() }.replace(['/', '\\'], "-"));
+            let dialog = rfd::AsyncFileDialog::new().add_filter(t("Building codes"), &["xml"]).set_file_name(file);
+            self.ask_file(ctx, dialog, true, move |app, path| app.export_code(&path, &code, &rules, &name));
+        }
         if !((ok && done) || cancel || r.should_close()) {
             self.codes_dialog = Some(d);
         }

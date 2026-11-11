@@ -793,6 +793,8 @@ pub struct BimApp {
     standards_dialog: Option<standards::StandardsDialog>,
     /// Manage > Building Codes, while open.
     codes_dialog: Option<codes::CodesDialog>,
+    /// The stair whose findings against the building code are shown in a window.
+    code_findings: Option<Id>,
     /// The plugins of the user's folder, the tabs they put on the ribbon, and the Plugins window while it is open.
     pub(crate) plugins: bimcraft_plugin::Plugins,
     pub(crate) plugin_tabs: Vec<bimcraft_plugin::RibbonTab>,
@@ -1438,6 +1440,7 @@ impl BimApp {
             mode_width: 0.0,
             standards_dialog: None,
             codes_dialog: None,
+            code_findings: None,
             plugins: bimcraft_plugin::Plugins::empty(),
             plugin_tabs: Vec::new(),
             plugins_dialog: false,
@@ -5331,6 +5334,7 @@ impl BimApp {
         self.dimension_text_window(ctx);
         self.standards_window(ctx);
         self.codes_window(ctx);
+        self.findings_window(ctx);
         self.electrical_window(ctx);
         self.options_window(ctx);
         self.purge_window(ctx);

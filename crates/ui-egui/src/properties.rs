@@ -1568,6 +1568,8 @@ impl BimApp {
         let mut crop = None;
         // An element a link was clicked for: the selection.
         let mut select = None;
+        // A stair's sign clicked: the rules it is outside of, in a window of their own.
+        let mut findings = false;
         let units = model.units;
         // A note on a sheet sits in paper mm.
         let paper = matches!(model.elements.get(id), Some(Element::Text(n)) if model.sheet(n.view).is_some());
@@ -1598,13 +1600,19 @@ impl BimApp {
                     let name = ui.label(label);
                     match kind {
                         // A stair outside its building code: how many rules, and a click lists them.
-                        Shown if key == "code_check" && v["code_findings"].as_array().is_some_and(|f| !f.is_empty()) => {
-                            let n = v["code_findings"].as_array().map_or(0, Vec::len);
+                        Shown
+                            if key == "code_check"
+                                && ids.len() == 1
+                                && first["code_findings"].as_array().is_some_and(|f| !f.is_empty()) =>
+                        {
+                            let n = first["code_findings"].as_array().map_or(0, Vec::len);
                             let said = if n == 1 { t("Outside 1 rule").to_string() } else { tf("Outside {} rules", &[&n.to_string()]) };
                             let r = ui
                                 .add(Button::new(RichText::new(said).color(crate::codes::OUTSIDE)).small())
                                 .on_hover_text(t("Click to see which rules, and what would bring the stair inside them"));
-                            Popup::menu(&r).width(360.0).show(|ui| crate::codes::findings(ui, &self.session.model, &v["code_findings"]));
+                            if r.clicked() {
+                                findings = true;
+                            }
                         }
                         Shown => {
                             let said = text(val);
@@ -1759,6 +1767,9 @@ impl BimApp {
         // A view's crop: on to all it shows, or off.
         if let (Some(on), &[view]) = (crop, ids) {
             self.run("crop", if on { json!({"view": view}) } else { json!({"view": view, "region": null}) });
+        }
+        if findings {
+            self.code_findings = Some(id);
         }
         match change {
             Some((key, Ok(val))) => {

@@ -133,6 +133,8 @@ already avoids two of Revit's faults: it cannot fail to build, and it follows it
   rule; DIN counts risers and not millimetres of rise), and the code's note says which.
 - **A landing is due by rise or by risers, whichever the code has**: both are data, and the first one reached asks for
   the landing.
+- **A code changed is Custom, and can be kept.** Once a rule differs from the code's, the dialog says Custom; the rules
+  can be saved under a name of the project's own, picked again like any code, and exported and imported as XML.
 - **Winders are always drawable.** The walk line is worked out for every code: at a fixed distance from the narrow side
   where the code says so (the IBC's 12 inches, Japan's 300 mm), along the middle otherwise. Where a code does not allow
   winders (NBR, on an accessible route or an emergency stair), they are drawn all the same and reported as against the
@@ -150,7 +152,7 @@ Levels; Convert, Edit Sketch, Flip, Railing).
 
 | # | Step | What it adds | Revit | State |
 |---|---|---|---|---|
-| 1 | Building codes | `data/building-codes.json` (generic, NBR, IBC, DIN, Japan), the project's code and its own rules (`building_code`, Manage > Building Codes), a new stair starting with them, `landings: "auto"`, `stair_check`, and the sign in a stair's Properties with a popup listing each rule broken. | Its calculation rules only warn; here the code is data, and the project's to change | Done. The numbers are unchecked; headroom, nosing, uniformity and railing heights are stored and not yet checked |
+| 1 | Building codes | `data/building-codes.json` (generic, NBR, IBC, DIN, Japan), the project's code and its own rules (`building_code`, Manage > Building Codes), a new stair starting with them, `landings: "auto"`, `stair_check`, and the sign in a stair's Properties with a popup listing each rule broken. A project's own codes: its rules saved under a name (`building_code {save}`; the dialog says Custom once a rule is changed, and saves it), handed on as XML (`building_code_export`, `building_code_import`). | Its calculation rules only warn; here the code is data, and the project's to change | Done. The numbers are unchecked; headroom, nosing, uniformity and railing heights are stored and not yet checked |
 | 2 | Winders, basic | A turn of 90 or 180 made of `winders` treads fanned round its inside corner, checked on the code's walk line; the Stair tool's Winders option. | L-shape and U-shape winder runs | Done. Point winders only: the narrow end is always reported where a code has a least depth there |
 | 3 | Location line | `line` (left, centre, right) and `offset`: the line the stair is drawn by, which stays when the width changes; in the Options Bar and Properties. | Location Line (Run: Left, Center, Right; Exterior Support: Left, Right) and Offset | Done for the run's lines. The exterior support's lines come with stair types (step 9) |
 | 4 | Landings of their own | A landing's `length`, prefilled from the code's landing rule in the tool and by `"auto"`. | Automatic Landing; the Landing component | Done for the depth. Still to come: every landing of a stair drawn in the tool following the code (the tool makes one), a landing's own outline (sketch), and Automatic Landing switched off (runs drawn apart, joined later) |

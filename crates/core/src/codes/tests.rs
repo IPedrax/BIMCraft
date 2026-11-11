@@ -257,3 +257,67 @@ fn a_turn_winds_and_a_code_without_winders_says_so_and_still_builds_it() {
     }
     assert!(s.execute("ramp", &json!({"start": [0, 0], "angle": 0, "landings": [{"at": 500, "turn": 90, "winders": 3}]})).is_err());
 }
+
+#[test]
+fn a_project_saves_its_rules_as_a_code_of_its_own_and_hands_it_on_as_xml() {
+    let mut s = Session::new();
+    run(&mut s, "building_code", json!({"set": "nbr", "stairs": {"width_min": 1100, "winders": true}}));
+    let r = run(&mut s, "building_code", json!({"save": "São Paulo IT 11"}));
+    assert_eq!((r["code"].as_str(), r["custom"].as_bool(), r["based_on"].as_str()), (Some("São Paulo IT 11"), Some(true), Some("nbr")));
+    assert_eq!(r["changed"], json!([]), "they are the code's own rules now");
+    assert_eq!(r["stairs"]["width_min"], 1100.0);
+    assert_eq!(r["all"].as_array().map(Vec::len), Some(6));
+    assert_eq!(s.model.stair_rules, None);
+
+    // Another code and back; a file keeps it.
+    run(&mut s, "building_code", json!({"set": "din"}));
+    let r = run(&mut s, "building_code", json!({"set": "São Paulo IT 11"}));
+    assert_eq!(r["stairs"]["width_min"], 1100.0);
+    let (back, left_out) = Model::read(&s.model.to_json().unwrap()).unwrap();
+    assert!(left_out.is_empty(), "{left_out:?}");
+    assert_eq!(back.stair_rules().width_min, 1100.0);
+
+    // Out as XML, and into another project.
+    let dir = std::env::temp_dir().join(format!("bimcraft-codes-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("it11.xml").to_string_lossy().to_string();
+    run(&mut s, "building_code_export", json!({"path": path}));
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(text.contains("<rule name=\"width_min\" value=\"1100.0\"/>") && text.contains("name=\"São Paulo IT 11\""), "{text}");
+    let mut other = Session::new();
+    let r = run(&mut other, "building_code_import", json!({"path": path, "set": true}));
+    assert_eq!((r["code"].as_str(), r["left_out"].as_array().map(Vec::len)), (Some("São Paulo IT 11"), Some(0)));
+    assert_eq!(other.model.stair_rules(), s.model.stair_rules());
+    assert_eq!(other.model.building_code().based_on, "nbr");
+
+    // One written by hand: what it leaves out is the generic code's, what it has that we don't know is said.
+    let hand = dir.join("hand.xml").to_string_lossy().to_string();
+    std::fs::write(&hand, "<building-code name='A &amp; B'><stairs><rule name='riser_max' value='170'/><rule name='colour' value='1'/></stairs><extra/></building-code>").unwrap();
+    let r = run(&mut other, "building_code_import", json!({"path": hand}));
+    assert_eq!(r["code"], "A & B");
+    assert_eq!(r["left_out"], json!(["rule `colour`", "<extra>"]));
+    let own = other.model.code("A & B").unwrap();
+    assert_eq!((own.stairs.riser_max, own.stairs.going), (170.0, 280.0));
+    assert_eq!(other.model.building_code().code, "São Paulo IT 11", "not set: the project stays as it was");
+
+    // A code BIMCraft has, exported as it is, needs a name of the project's own to come back.
+    run(&mut other, "building_code_export", json!({"path": hand, "code": "ibc"}));
+    assert!(other.execute("building_code_import", &json!({"path": hand})).unwrap_err().contains("name"));
+    run(&mut other, "building_code_import", json!({"path": hand, "name": "IBC, ours"}));
+    assert_eq!(other.model.code("IBC, ours").unwrap().stairs.riser_max, 177.8);
+
+    // Taken away while the project is held to it: the rules stay, as its own, under the code it was based on.
+    let r = run(&mut s, "building_code", json!({"delete": "São Paulo IT 11"}));
+    assert_eq!((r["code"].as_str(), r["stairs"]["width_min"].as_f64()), (Some("nbr"), Some(1100.0)));
+    assert_eq!(r["changed"], json!(["width_min", "winders"]));
+    for p in [json!({"save": "nbr"}), json!({"save": ""}), json!({"save": "x".repeat(65)}), json!({"delete": "nbr"}), json!({"save": 5})] {
+        assert!(s.execute("building_code", &p).is_err(), "{p}");
+    }
+    for bad in
+        ["", "<building-code", "<stairs/>", "<building-code name='x'><stairs><rule name='riser_min' value='900'/></stairs></building-code>"]
+    {
+        std::fs::write(&hand, bad).unwrap();
+        assert!(s.execute("building_code_import", &json!({"path": hand})).is_err(), "{bad}");
+    }
+    std::fs::remove_dir_all(&dir).ok();
+}

@@ -1657,12 +1657,32 @@ other_files(
          landing is due at whichever comes first); `landing_rule` (`width`, `fixed` or `step`) and `landing_length`; `winders` \
          (allowed or not), `walk_line` (`centre` or `narrow_side`), `walk_line_offset`, `winder_going_min`, `winder_narrow_min`; \
          `nosing_max`; `open_risers`; `uniformity`; `handrail_min`, `handrail_max`; `guard_min`. `reset` takes the project's own \
-         rules away, back to its code's. Nothing is refused for breaking a rule: `stair_check` reports it. The reply gives the \
+         rules away, back to its code's. `save`: \"name\" keeps the rules in force as a code of the project's own under that name \
+         (in place of one of that name), and holds the project to it; `set` takes such a name too, and `delete`: \"name\" takes \
+         one away (a project held to it keeps its rules). Nothing is refused for breaking a rule: `stair_check` reports it. The reply gives the \
          `code`, its `name`, `references` and `note`, the rules in force (`stairs`), which of them the project `changed`, and `all` \
          the codes. The codes' numbers were typed from memory of the documents named and are unchecked",
         building_code,
     )
     .menu("Manage > Building Codes"),
+    other(
+        "building_code_export",
+        "Export Building Code",
+        "{path, code?, name?} writes a building code as an XML file, to hand to another project or office: the project's, with \
+         the rules it changed, or the one `code` names; `name` is what the file calls it (a code BIMCraft has needs another name \
+         to be read back). A <rule name value/> for each rule, mm",
+        building_code_export,
+    ),
+    edit(
+        "building_code_import",
+        "Import Building Code",
+        &[],
+        "{path, name?, set?: bool} reads a building code from an XML file `building_code_export` wrote (or one written by hand: \
+         <building-code name=\"…\"><stairs><rule name=\"riser_max\" value=\"180\"/>…</stairs></building-code>) and keeps it as one of \
+         the project's own, under the file's name or `name`, in place of one of that name; a rule the file leaves out is the generic \
+         code's, and what it holds that this version doesn't know is listed as `left_out`. `set` holds the project to it",
+        building_code_import,
+    ),
     other(
         "stair_check",
         "Check Stairs",
@@ -13357,14 +13377,21 @@ fn standard(s: &mut Session, p: &Value) -> R {
 fn building_code(s: &mut Session, p: &Value) -> R {
     use crate::codes;
     let c = "building_code";
-    only(c, p, &["set", "keep_rules", "stairs", "reset"])?;
-    let names: Vec<&str> = codes::codes().iter().map(|k| k.code.as_str()).collect();
+    only(c, p, &["set", "keep_rules", "stairs", "reset", "save", "delete"])?;
+    let names: Vec<String> = codes::codes().iter().chain(&s.model.building_codes).map(|k| k.code.clone()).collect();
     let set = match p.get("set") {
         v if absent(v) => None,
-        Some(Value::String(t)) if names.contains(&t.as_str()) => Some(t.clone()),
+        Some(Value::String(t)) if names.contains(t) => Some(t.clone()),
         Some(v) => return Err(bad(c, format!("`set` is one of {}, not {v}", names.join(", ")))),
         None => None,
     };
+    let save = string(c, p, "save")?.map(|n| codes::own_name(&n).map_err(|e| bad(c, e))).transpose()?;
+    let delete = string(c, p, "delete")?;
+    if let Some(d) = &delete
+        && !s.model.building_codes.iter().any(|k| k.code == *d)
+    {
+        return Err(bad(c, format!("`delete` takes one of the project's own codes away, and `{d}` is none of them")));
+    }
     let (keep, reset) = (flag(c, p, "keep_rules")?, flag(c, p, "reset")?);
     let patch = match p.get("stairs") {
         v if absent(v) => None,
@@ -13379,7 +13406,7 @@ fn building_code(s: &mut Session, p: &Value) -> R {
     let mut own = if reset || (set.is_some() && !keep) { None } else { s.model.stair_rules.clone() };
     let code = set.clone().or_else(|| s.model.building_code.clone());
     if let Some(patch) = patch {
-        let base = own.as_ref().unwrap_or(&code.as_deref().and_then(codes::code).unwrap_or_else(codes::generic).stairs);
+        let base = own.as_ref().unwrap_or(&code.as_deref().and_then(|k| s.model.code(k)).unwrap_or(codes::generic()).stairs);
         let Ok(Value::Object(mut all)) = serde_json::to_value(base) else { return Err(bad(c, "the rules could not be read")) };
         for (k, v) in patch {
             if !codes::ORDER.contains(&k.as_str()) {
@@ -13391,14 +13418,50 @@ fn building_code(s: &mut Session, p: &Value) -> R {
         rules.check().map_err(|e| bad(c, e))?;
         own = Some(rules);
     }
+    let mut code = code;
+    let mut kept = s.model.building_codes.clone();
+    // The rules in force, saved as a code of the project's own, which it is then held to.
+    if let Some(name) = save {
+        let from = code.as_deref().and_then(|k| s.model.code(k)).unwrap_or(codes::generic());
+        let based_on = if from.based_on.is_empty() { from.code.clone() } else { from.based_on.clone() };
+        let new = codes::BuildingCode {
+            code: name.clone(),
+            name: name.clone(),
+            region: from.region.clone(),
+            references: from.references.clone(),
+            note: format!("The project's own, based on {}.", codes::code(&based_on).map_or(based_on.as_str(), |k| k.name.as_str())),
+            based_on,
+            stairs: own.take().unwrap_or_else(|| from.stairs.clone()),
+        };
+        kept.retain(|k| k.code != name);
+        kept.push(new);
+        code = Some(name);
+    }
+    // One taken away: a project held to it keeps its rules, as its own, under the code it was based on.
+    if let Some(name) = delete
+        && let Some(i) = kept.iter().position(|k| k.code == name)
+    {
+        let gone = kept.remove(i);
+        if code.as_deref() == Some(name.as_str()) {
+            own = own.or(Some(gone.stairs));
+            code = codes::code(&gone.based_on).map(|k| k.code.clone());
+        }
+    }
     // Rules that are the code's own are not the project's.
-    if own.as_ref() == Some(&code.as_deref().and_then(codes::code).unwrap_or_else(codes::generic).stairs) {
+    let its = code
+        .as_deref()
+        .and_then(|k| kept.iter().find(|o| o.code == k).or_else(|| codes::code(k)))
+        .unwrap_or(codes::generic())
+        .stairs
+        .clone();
+    if own.as_ref() == Some(&its) {
         own = None;
     }
-    if own != s.model.stair_rules || code != s.model.building_code {
+    if own != s.model.stair_rules || code != s.model.building_code || kept != s.model.building_codes {
         let m = s.model_mut();
         m.stair_rules = own;
         m.building_code = code;
+        m.building_codes = kept;
     }
     let m = &s.model;
     let code = m.building_code();
@@ -13410,10 +13473,60 @@ fn building_code(s: &mut Session, p: &Value) -> R {
         "note": code.note,
         "stairs": m.stair_rules(),
         "changed": m.stair_rules().changed(&code.stairs),
-        "all": codes::codes().iter().map(|k| json!({
-            "code": k.code, "name": k.name, "region": k.region, "references": k.references, "note": k.note,
+        "custom": m.building_codes.iter().any(|k| k.code == code.code),
+        "based_on": code.based_on,
+        "all": codes::codes().iter().map(|k| (k, false)).chain(m.building_codes.iter().map(|k| (k, true))).map(|(k, own)| json!({
+            "code": k.code, "name": k.name, "region": k.region, "references": k.references, "note": k.note, "custom": own,
         })).collect::<Vec<_>>(),
     }))
+}
+
+/// `building_code_export`: the code the project is held to, with the rules it changed, or one named, as an XML file.
+fn building_code_export(s: &mut Session, p: &Value) -> R {
+    use crate::codes;
+    let c = "building_code_export";
+    only(c, p, &["path", "code", "name"])?;
+    let path = string(c, p, "path")?.ok_or_else(|| bad(c, "`path` is the XML file to write"))?;
+    let m = &s.model;
+    let mut code = match string(c, p, "code")? {
+        Some(k) => m.code(&k).cloned().ok_or_else(|| bad(c, format!("no building code `{k}`")))?,
+        // The project's, as it is held to it: with the rules it changed.
+        None => codes::BuildingCode { stairs: m.stair_rules().clone(), ..m.building_code().clone() },
+    };
+    if let Some(name) = string(c, p, "name")? {
+        code.name = codes::own_name(&name).map_err(|e| bad(c, e))?;
+    }
+    if code.based_on.is_empty() {
+        code.based_on = code.code.clone();
+    }
+    std::fs::write(&path, code.to_xml()).map_err(|e| bad(c, format!("{path}: {e}")))?;
+    Ok(json!({"path": path, "name": code.name, "based_on": code.based_on}))
+}
+
+/// `building_code_import`: a code read from an XML file, kept as one of the project's own.
+fn building_code_import(s: &mut Session, p: &Value) -> R {
+    use crate::codes;
+    let c = "building_code_import";
+    only(c, p, &["path", "name", "set"])?;
+    let path = string(c, p, "path")?.ok_or_else(|| bad(c, "`path` is the XML file to read"))?;
+    let set = flag(c, p, "set")?;
+    let size = std::fs::metadata(&path).map_err(|e| bad(c, format!("{path}: {e}")))?.len();
+    if size > codes::MAX_XML as u64 {
+        return Err(bad(c, format!("{path}: larger than a building code's file (1 MB)")));
+    }
+    let text = std::fs::read_to_string(&path).map_err(|e| bad(c, format!("{path}: {e}")))?;
+    // A file named after a code BIMCraft has (one exported as it was) comes in under another name.
+    let renamed = string(c, p, "name")?;
+    let (code, left_out) = codes::BuildingCode::from_xml(&text, renamed.as_deref()).map_err(|e| bad(c, format!("{path}: {e}")))?;
+    let name = code.code.clone();
+    let m = s.model_mut();
+    m.building_codes.retain(|k| k.code != name);
+    m.building_codes.push(code);
+    if set {
+        m.building_code = Some(name.clone());
+        m.stair_rules = None;
+    }
+    Ok(json!({"code": name, "left_out": left_out, "set": set}))
 }
 
 fn stair_check(s: &mut Session, p: &Value) -> R {

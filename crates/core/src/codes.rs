@@ -211,18 +211,196 @@ pub const ORDER: [&str; 25] = [
 ];
 
 /// A building code, an entry of `data/building-codes.json`.
-#[derive(Clone, Debug, PartialEq, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct BuildingCode {
-    /// What `building_code {set}` takes, and a project file holds.
+    /// What `building_code {set}` takes, and a project file holds. One of a project's own is called by its name.
     pub code: String,
     pub name: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub region: String,
     /// The documents its numbers are from.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub references: Vec<String>,
     /// What an entry leaves out of its code, and which of its numbers are forgiving.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub note: String,
+    /// The code one of a project's own started from, by what it is called.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub based_on: String,
     pub stairs: StairRules,
+}
+
+/// The most building codes a project keeps of its own, the longest name of one, and the largest file one is read from.
+pub const MAX_OWN: usize = 100;
+pub const MAX_NAME: usize = 64;
+pub const MAX_XML: usize = 1 << 20;
+
+/// What a name for a project's own code must be: something, 64 characters at most, on one line, and not what BIMCraft
+/// calls one of its own. The name, trimmed.
+pub fn own_name(name: &str) -> Result<String, String> {
+    let name = name.trim();
+    if name.is_empty() || name.chars().count() > MAX_NAME || name.chars().any(char::is_control) {
+        return Err(format!("a building code's name is 1 to {MAX_NAME} characters on one line"));
+    }
+    if codes().iter().any(|c| c.code.eq_ignore_ascii_case(name) || c.name.eq_ignore_ascii_case(name)) {
+        return Err(format!("`{name}` is a building code BIMCraft has: give the project's own another name"));
+    }
+    Ok(name.to_string())
+}
+
+impl BuildingCode {
+    /// One of a project's own: a name that can be, texts of a size, rules that can be.
+    pub fn check(&self) -> Result<(), String> {
+        if own_name(&self.code)? != self.code {
+            return Err(format!("the building code `{}` has spaces round its name", self.code));
+        }
+        let long = |t: &str| t.chars().count() > 2000;
+        if long(&self.name)
+            || long(&self.region)
+            || long(&self.note)
+            || long(&self.based_on)
+            || self.references.len() > 50
+            || self.references.iter().any(|r| long(r))
+        {
+            return Err(format!("the building code `{}` has a text over 2000 characters, or more than 50 references", self.code));
+        }
+        self.stairs.check().map_err(|e| format!("the building code `{}`: {e}", self.code))
+    }
+
+    /// As a file to hand to another project: XML, a `rule` for each of its rules.
+    pub fn to_xml(&self) -> String {
+        let esc = |t: &str| t.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;");
+        let mut out = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
+        out.push_str(&format!(
+            "<building-code format=\"1\" name=\"{}\" region=\"{}\" based-on=\"{}\">\n",
+            esc(&self.name),
+            esc(&self.region),
+            esc(&self.based_on)
+        ));
+        if !self.note.is_empty() {
+            out.push_str(&format!("  <note>{}</note>\n", esc(&self.note)));
+        }
+        for r in &self.references {
+            out.push_str(&format!("  <reference>{}</reference>\n", esc(r)));
+        }
+        out.push_str("  <!-- Lengths in millimetres. A rule left out is read as the generic code's. -->\n  <stairs>\n");
+        if let Ok(serde_json::Value::Object(rules)) = serde_json::to_value(&self.stairs) {
+            for key in ORDER {
+                let said = match rules.get(key) {
+                    Some(serde_json::Value::String(t)) => esc(t),
+                    Some(v) => v.to_string(),
+                    None => continue,
+                };
+                out.push_str(&format!("    <rule name=\"{key}\" value=\"{said}\"/>\n"));
+            }
+        }
+        out.push_str("  </stairs>\n</building-code>\n");
+        out
+    }
+
+    /// A code read from such a file, and what the file holds that this version doesn't know. A rule the file leaves out
+    /// is the generic code's; the code is called by its name, or by `name`.
+    pub fn from_xml(text: &str, name: Option<&str>) -> Result<(BuildingCode, Vec<String>), String> {
+        if text.len() > MAX_XML {
+            return Err("the file is larger than a building code's (1 MB)".into());
+        }
+        let unesc =
+            |t: &str| t.replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&apos;", "'").replace("&amp;", "&");
+        let Ok(serde_json::Value::Object(mut rules)) = serde_json::to_value(&generic().stairs) else {
+            return Err("the rules could not be read".into());
+        };
+        let mut code = BuildingCode {
+            code: String::new(),
+            name: String::new(),
+            region: String::new(),
+            references: Vec::new(),
+            note: String::new(),
+            based_on: String::new(),
+            stairs: generic().stairs.clone(),
+        };
+        let (mut left_out, mut root, mut rest) = (Vec::new(), false, text);
+        while let Some(open) = rest.find('<') {
+            let after = rest.get(open + 1..).unwrap_or("");
+            // A declaration or a comment: past it.
+            let skip = if after.starts_with("!--") {
+                Some("-->")
+            } else if after.starts_with('?') {
+                Some("?>")
+            } else {
+                None
+            };
+            if let Some(end) = skip {
+                rest = after.find(end).and_then(|i| after.get(i + end.len()..)).unwrap_or("");
+                continue;
+            }
+            let Some(close) = after.find('>') else { return Err("a tag of the file never closes".into()) };
+            let tag = after.get(..close).unwrap_or("").trim_end_matches('/').trim();
+            rest = after.get(close + 1..).unwrap_or("");
+            if tag.starts_with('/') {
+                continue;
+            }
+            let (name, attrs) = tag.split_once(char::is_whitespace).unwrap_or((tag, ""));
+            // name="value" pairs, in either quote.
+            let mut pairs: Vec<(String, String)> = Vec::new();
+            let mut a = attrs.trim_start();
+            while let Some((key, value)) = a.split_once('=') {
+                let value = value.trim_start();
+                let Some(q) = value.chars().next().filter(|q| *q == '"' || *q == '\'') else { break };
+                let Some(end) = value.get(1..).and_then(|v| v.find(q)) else { break };
+                pairs.push((key.trim().to_string(), unesc(value.get(1..=end).unwrap_or(""))));
+                a = value.get(end + 2..).unwrap_or("").trim_start();
+                if pairs.len() > 64 {
+                    break;
+                }
+            }
+            let attr = |key: &str| pairs.iter().find(|(k, _)| k == key).map(|(_, v)| v.clone());
+            let text = || unesc(rest.split('<').next().unwrap_or("").trim());
+            match name {
+                "building-code" => {
+                    root = true;
+                    code.name = attr("name").unwrap_or_default();
+                    code.region = attr("region").unwrap_or_default();
+                    code.based_on = attr("based-on").unwrap_or_default();
+                }
+                "note" => code.note = text(),
+                "reference" if code.references.len() < 50 => code.references.push(text()),
+                "stairs" => {}
+                "rule" => {
+                    let (key, value) = (attr("name").unwrap_or_default(), attr("value").unwrap_or_default());
+                    if !ORDER.contains(&key.as_str()) {
+                        left_out.push(format!("rule `{key}`"));
+                        continue;
+                    }
+                    let v = match value.trim() {
+                        "true" => serde_json::Value::Bool(true),
+                        "false" => serde_json::Value::Bool(false),
+                        t => match t.parse::<f64>() {
+                            Ok(x) if x.is_finite() && x.fract() == 0.0 && (0.0..1e9).contains(&x) && key == "flight_risers_max" => {
+                                serde_json::json!(x as u64)
+                            }
+                            Ok(x) if x.is_finite() => serde_json::json!(x),
+                            _ => serde_json::Value::String(t.to_string()),
+                        },
+                    };
+                    rules.insert(key, v);
+                }
+                other => {
+                    if left_out.len() < 50 {
+                        left_out.push(format!("<{}>", other.chars().take(40).collect::<String>()));
+                    }
+                }
+            }
+        }
+        if !root {
+            return Err("the file is no building code: it has no <building-code>".into());
+        }
+        code.code = own_name(name.unwrap_or(&code.name)).map_err(|e| format!("{e} (`name` gives it one)"))?;
+        code.name = code.code.clone();
+        code.stairs = serde_json::from_value(serde_json::Value::Object(rules)).map_err(|e| format!("a rule of the file: {e}"))?;
+        code.check()?;
+        Ok((code, left_out))
+    }
 }
 
 #[derive(Deserialize)]
@@ -238,6 +416,7 @@ fn fallback() -> BuildingCode {
         region: String::new(),
         references: Vec::new(),
         note: String::new(),
+        based_on: String::new(),
         stairs: StairRules {
             riser: 180.0,
             going: 280.0,

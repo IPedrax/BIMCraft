@@ -179,7 +179,11 @@ wind instead (`winders` treads fanned round the turn's inside corner, `stairs::w
 Japan; the numbers typed from memory and unchecked) is the rules its stairs are held to: `building_code` names one and changes
 any rule of it for the project (`Model::building_code`, `Model::stair_rules`), a new stair starts with its riser, going and
 landing length, `landings: "auto"` places the landings due, and `stair_check` (and `code_check`, `code_findings` on a stair)
-lists what a stair is outside of, with the number and the fix. Nothing is ever refused for breaking a rule: winders under a
+lists what a stair is outside of, with the number and the fix. A project keeps codes of its own too
+(`Model::building_codes`, found with BIMCraft's by `Model::code`): `building_code {save}` keeps the rules in force under a name,
+and `building_code_export` and `building_code_import` hand one on as XML (`BuildingCode::to_xml`, `from_xml`: a `<rule name
+value/>` each, a rule left out being the generic code's, what the file has that we don't know listed as `left_out`).
+Nothing is ever refused for breaking a rule: winders under a
 code without them are built and reported. The desktop's is Manage > Building Codes (`ui-egui/src/codes.rs`), apart from
 Technical Standards, which is about drafting. Where stairs are going, and why: [an advanced stair
 tool](../stair-tool-plan.md). `modify` merges into fields that are objects (JSON Merge Patch), so `{"view_range": {"cut": 1500}}` keeps the rest; an element's own field can't be

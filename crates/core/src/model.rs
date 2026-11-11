@@ -2925,6 +2925,9 @@ pub struct Model {
     /// Its own rules for stairs and railings, once it changed any of its code's ([`Model::stair_rules`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub stair_rules: Option<crate::codes::StairRules>,
+    /// Building codes of the project's own, saved under names it gave them (`building_code {save}`), or read from a file.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub building_codes: Vec<crate::codes::BuildingCode>,
     /// The pens each model category draws in, cut and in projection (Manage > Object Styles), by category: only those it
     /// has set apart from what a project starts with ([`Model::object_style`]).
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -3017,8 +3020,13 @@ impl Model {
 
     /// The building code its stairs and railings are held to: the one it chose, else the generic one, as is one this
     /// BIMCraft doesn't know.
-    pub fn building_code(&self) -> &'static crate::codes::BuildingCode {
-        self.building_code.as_deref().and_then(crate::codes::code).unwrap_or_else(crate::codes::generic)
+    pub fn building_code(&self) -> &crate::codes::BuildingCode {
+        self.building_code.as_deref().and_then(|c| self.code(c)).unwrap_or(crate::codes::generic())
+    }
+
+    /// A building code by what it is called: one of the project's own, else one BIMCraft has.
+    pub fn code(&self, name: &str) -> Option<&crate::codes::BuildingCode> {
+        self.building_codes.iter().find(|c| c.code == name).or_else(|| crate::codes::code(name))
     }
 
     /// The rules its stairs and railings are held to: its own, else its building code's.
@@ -3070,6 +3078,7 @@ impl Model {
             standard,
             building_code: None,
             stair_rules: None,
+            building_codes: Vec::new(),
             object_styles: BTreeMap::new(),
             line_patterns: lines::patterns(language),
             line_styles: lines::styles(language),
@@ -6148,6 +6157,15 @@ impl Model {
         if self.building_code.as_ref().is_some_and(|c| c.chars().count() > 64) {
             return Err("the building code's name is 64 characters at most".into());
         }
+        if self.building_codes.len() > crate::codes::MAX_OWN {
+            return Err(format!("more than {} building codes of the project's own", crate::codes::MAX_OWN));
+        }
+        for (i, c) in self.building_codes.iter().enumerate() {
+            c.check()?;
+            if self.building_codes.iter().take(i).any(|o| o.code == c.code) {
+                return Err(format!("two building codes of the project's own are called `{}`", c.code));
+            }
+        }
         for (c, style) in &self.object_styles {
             crate::styles::known(c)?;
             style.check(c)?;
@@ -7525,6 +7543,7 @@ impl Model {
             standard,
             building_code,
             stair_rules,
+            building_codes,
             object_styles,
             line_patterns,
             line_styles,
@@ -7568,6 +7587,7 @@ impl Model {
             && *standard == o.standard
             && *building_code == o.building_code
             && *stair_rules == o.stair_rules
+            && *building_codes == o.building_codes
             && *object_styles == o.object_styles
             && *line_patterns == o.line_patterns
             && *line_styles == o.line_styles
