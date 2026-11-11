@@ -73,9 +73,9 @@ const PANEL_PROPERTIES: u64 = 59;
 const PANEL_DEFINES: u64 = 60;
 const WALLED: u64 = 61;
 const WALLED_DEFINES: u64 = 62;
-const DISTRIBUTION: u64 = 61;
-const DISTRIBUTION_MEMBERS: u64 = 62;
 const DISTRIBUTION_SERVES: u64 = 63;
+const DISTRIBUTION: u64 = 71;
+const DISTRIBUTION_MEMBERS: u64 = 72;
 
 /// The property set an element's values of the project's parameters go in.
 pub const PARAMETERS: &str = "Project Parameters";
@@ -1779,6 +1779,21 @@ mod tests {
         assert_eq!(a, guid(7, 5, 12));
         let all: BTreeSet<String> = (0..2000).flat_map(|id| [guid(7, 5, id), guid(7, 6, id), guid(8, 5, id)]).collect();
         assert_eq!(all.len(), 6000);
+    }
+
+    #[test]
+    fn every_role_a_global_id_plays_has_a_number_of_its_own() {
+        // Two roles of one number give two things written for one element (a wall's property set and a distribution
+        // system keyed to the same number) one GlobalId, which a reader takes for one object.
+        let mut seen: BTreeMap<u64, &str> = BTreeMap::new();
+        for line in include_str!("ifc.rs").lines() {
+            let Some((name, value)) = line.strip_prefix("const ").and_then(|rest| rest.split_once(": u64 = ")) else { continue };
+            let n: u64 = value.trim_end_matches(';').parse().unwrap_or_else(|_| panic!("{line}"));
+            if let Some(other) = seen.insert(n, name) {
+                panic!("{other} and {name} are both role {n}: give the newer one a number no role has");
+            }
+        }
+        assert!(seen.len() > 40, "the roles are read from the source: {seen:?}");
     }
 
     #[test]
