@@ -223,7 +223,7 @@ pub struct Drawing {
     /// what is sized already (a view's lines on a sheet).
     pub pens: Vec<Option<Pen>>,
     regions: regions::Layers,
-    /// What it could not draw as asked, in English (a fill pattern too dense for the view): for a front end to say.
+    /// What it could not draw as asked, in English (a fill pattern too dense, or unsupported lettering): for a front end to say.
     pub notes: Vec<String>,
     /// What the pens draw in this view, mm on paper: the project's line weights at its scale.
     pub(crate) weights: Weights,
@@ -447,6 +447,18 @@ impl Drawing {
     /// `text` centred on `(x, y)` px, capitals `height` px tall, turned `angle` radians clockwise
     /// on screen (y runs down).
     pub(crate) fn text_turned(&mut self, text: &str, (x, y): (f32, f32), height: f32, angle: f32, color: Rgb) {
+        // Only this lettering path substitutes '?' directly. Notes have their own font fallback.
+        for ch in text.chars() {
+            if self.notes.len() >= 32 {
+                break;
+            }
+            if !font::has(ch) {
+                let note = format!("Drawing lettering has no glyph for U+{:04X}; drawn as a question mark (?)", ch as u32);
+                if !self.notes.contains(&note) {
+                    self.notes.push(note);
+                }
+            }
+        }
         let (s, c) = angle.sin_cos();
         let w = font::width(text, height);
         let part = std::mem::replace(&mut self.part, Part::Text);

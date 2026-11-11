@@ -1670,7 +1670,7 @@ other_files(
          30° up), fitted; in perspective (see `perspective`) through its lens, and with `eye_elevation` from an eye that high \
          (mm) looking at the same point, as a PNG (pngBase64), or written to a path: .png, .svg for a plan, .pdf for a sheet. A plan, section, \
          elevation or sheet that could not draw something as asked (a fill pattern too dense for the view, more ink behind \
-         a region than is kept above it) says so in the reply's `notes`",
+         a region than is kept above it, or unsupported drawing lettering replaced with a question mark) says so in the reply's `notes`",
         render_view,
         Files::Conditional,
     ),

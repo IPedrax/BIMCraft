@@ -186,6 +186,11 @@ at most `MAX_LINEWORK` (2,000) edges, ends within `MAX_COORD`, and a line style 
 lines along all its edges in one pass (`render::linework`: the cost is the prims plus the edges, not a pass over every prim for
 each edge). A line style a view's linework uses can't be deleted, and an element's entries go with it.
 
+Drawing labels (for example grid heads) use `font.rs`'s single-stroke capitals, including leaning prime and double-prime
+marks and the ellipsis. Unsupported characters retain the question-mark fallback; `Drawing::notes` and the `render`
+reply's `notes` name their Unicode code points once per drawing, up to the drawing's 32 diagnostic entries. Text notes
+use the separate font fallback below, so a character outside the drawing lettering does not by itself warn for a note.
+
 Text notes and text types (`text.rs`). A `Note` is drawn in one view, as a detail line is, and is of a text type
 (`Model::text_types`, library entries of `Kind::TextType`, so a file names a note's type by GUID and `rename_entry` follows a
 rename): Revit's font, size (its capitals' height on paper, mm), bold, italic, underline, width factor, colour, and a border
