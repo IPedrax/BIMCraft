@@ -103,10 +103,10 @@ already avoids two of Revit's faults: it cannot fail to build, and it follows it
 2. **A path and rules, not a sketch.** The stair is a baseline (lines and arcs), a side, a direction, and the turnings
    on it. Risers come from the rules, so there is no riser line to draw wrong. A landing may carry an outline of its own
    (`sketch.rs`), and that is the only sketch.
-3. **Rules are data, by standard.** A rule set (`data/stair-rules.json`, as `load-points.json`): riser and going
-   ranges, the step rule and its range, pitch, minimum width, most risers in a flight, a landing's least length, where
-   the walk line lies and the least going there and at the narrow end, headroom. A project picks one; a stair type may
-   tighten it.
+3. **Rules are data, by building code.** A code is an entry of `data/building-codes.json` (as `load-points.json`):
+   riser and going ranges, the step rule's range, minimum width, when a landing is due, a landing's least length, where
+   the walk line lies and the least going there and at the narrow end, headroom, handrails. A project picks one
+   (Manage > Building Codes, the `building_code` command) and may change any rule of it.
 4. **The solver answers, the user chooses.** `stair_solve` reads a start, an end or a room's outline and the rise, and
    returns the stairs that fit the rules, least change first, each as the params `stair` would take. It builds nothing
    (as `timber_framing` reads and never builds), so an agent or the desktop can preview and pick.
@@ -121,6 +121,23 @@ already avoids two of Revit's faults: it cannot fail to build, and it follows it
 9. **One place for parameters.** A stair type (a library entry, with an id and a GUID) holds structure, tread, riser and
    nosing; the instance holds the path and what is locked.
 
+## Decided (2026-11-11)
+
+- **Building codes are not technical standards.** Technical Standards is about drafting (pens, sheets, dimensions). The
+  rules of stairs and railings are a project's **building code**, a menu and a command of its own, with a "Stairs &
+  Railings" tab; other parts of a building may get tabs there later.
+- **The code prefills, the user decides.** Choosing a code fills the rules and what a new stair starts with. Every rule
+  can be changed (a state's fire brigade, a city), and one that is changed is marked with the code's own number beside
+  it. A stair outside the rules is built, and a sign on it says where it is outside.
+- **Where a code gives no number, a forgiving one stands in**, one that asks nothing in practice (the IBC has no step
+  rule; DIN counts risers and not millimetres of rise), and the code's note says which.
+- **A landing is due by rise or by risers, whichever the code has**: both are data, and the first one reached asks for
+  the landing.
+- **Winders are always drawable.** The walk line is worked out for every code: at a fixed distance from the narrow side
+  where the code says so (the IBC's 12 inches, Japan's 300 mm), along the middle otherwise. Where a code does not allow
+  winders (NBR, on an accessible route or an emergency stair), they are drawn all the same and reported as against the
+  code. A tool is never taken away because one code forbids what it makes.
+
 ## Pieces
 
 Each keeps old files reading (a step in `Model::migrate` and a `FORMAT` bump where an older version would misread), adds
@@ -128,7 +145,7 @@ its payloads to the hostile sweep, and is looked at as [looking at results](area
 
 | # | Piece | What it adds | Tested through |
 |---|---|---|---|
-| 1 | Rules and `stair_check` | `data/stair-rules.json` and a first rule set; the command reads a stair and lists what it breaks, with the number and the fix. No change to the model. | The command's JSON on stairs that break each rule |
+| 1 | Building codes and `stair_check` (in progress) | `data/building-codes.json` (generic, NBR, IBC, DIN, Japan), the project's code and its own rules (`building_code`, Manage > Building Codes), a new stair starting with them, `landings: "auto"`, `stair_check` listing what a stair breaks with the number and the fix, and the sign in a stair's Properties. | The commands' JSON on stairs that break each rule; the dialog |
 | 2 | Stair types | A library entry: monolithic, stringers, carriage or cantilevered; tread and riser thickness, nosing, open risers; materials. 3D, sections and IFC draw them. | Pixels of a section; `IfcStairFlight` and `IfcMember` in the STEP file |
 | 3 | The path | Runs of their own widths, turnings at any angle, a landing's depth and outline of its own, the stair to a side of its baseline, drawn up or down. Today's `landings` migrate to it. | Layout rings; a file of format N read as N+1 |
 | 4 | Winders | A turning that winds: equal goings on the walk line, the least going at the narrow end, balanced into the flights by a chosen construction. | Goings measured on the walk line and at the narrow end |
@@ -146,12 +163,11 @@ warn, and the plan symbol).
 
 ## Open questions
 
-- **Which rule sets first.** NBR 9050/9077 fits the project's other Brazilian standards; IBC and DIN 18065 are the ones
-  the forums argue from. The numbers remembered (unchecked): IBC riser at most 178 mm, going at least 279 mm, headroom
-  2032 mm; DIN 18065 step rule 2R + G between 590 and 650 mm; NBR 9050 between 630 and 650 mm with risers 160 to 180 mm.
+- **The codes' numbers are unchecked.** NBR 9050/9077, the IBC, DIN 18065 and Japan's Building Standards Law are in
+  the data, typed from memory, one row each (the general occupancy). Someone with the texts must check them, and say
+  whether a code needs a row for each occupancy (a dwelling, a school).
 - **Is a stair's structure its type's, or may a flight differ?** Archicad allows it and its users report trouble with
   mixed structures; this plan says the type's.
-- **Does a broken rule ever refuse?** This plan says never; a project could ask for it.
 - **Ramps** share `chain` today. They take the path (piece 3) and the plan symbol with the stair; rules of their own later.
 
 ## Sources
