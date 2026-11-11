@@ -436,7 +436,7 @@ msgstr "Filter hinzufügen:"
 msgid "Add the Fields the Texts Name"
 msgstr ""
 
-#: crates/ui-egui/src/editor.rs:1130
+#: crates/ui-egui/src/editor.rs:1131
 msgid "Add to Favorites"
 msgstr "Zu Favoriten hinzufügen"
 
@@ -696,7 +696,7 @@ msgstr "Gilt für alle Ansichten; fängt am aktivierten Hauptraster oder Unterra
 
 #: crates/ui-egui/src/background_grid.rs:112
 #: crates/ui-egui/src/display.rs:80
-#: crates/ui-egui/src/editor.rs:1134
+#: crates/ui-egui/src/editor.rs:1135
 #: crates/ui-egui/src/electrical.rs:501
 #: crates/ui-egui/src/graphics.rs:390
 #: crates/ui-egui/src/linestyles.rs:306
@@ -743,7 +743,7 @@ msgstr "Architektur"
 msgid "Area"
 msgstr "Fläche"
 
-#: crates/core/src/family.rs:2071
+#: crates/core/src/family.rs:2077
 msgid "Arm Width"
 msgstr "Armbreite"
 
@@ -802,11 +802,11 @@ msgstr "Zugeordnetes Geschoss"
 msgid "At least {} characters"
 msgstr ""
 
-#: crates/core/src/model.rs:2712
+#: crates/core/src/model.rs:2751
 msgid "At wall centre line"
 msgstr "An Wandmittellinie"
 
-#: crates/core/src/model.rs:2713
+#: crates/core/src/model.rs:2752
 msgid "At wall finish"
 msgstr "An Wandoberfläche"
 
@@ -872,8 +872,8 @@ msgstr "Azimut (°)"
 msgid "BIMCraft couldn't start"
 msgstr "BIMCraft konnte nicht starten"
 
-#: crates/ui-egui/src/editor.rs:1140
-#: crates/ui-egui/src/editor.rs:1170
+#: crates/ui-egui/src/editor.rs:1141
+#: crates/ui-egui/src/editor.rs:1171
 #: crates/ui-egui/src/lib.rs:4500
 msgid "BIMCraft family"
 msgstr "BIMCraft-Familie"
@@ -979,7 +979,7 @@ msgstr "Stäbe"
 msgid "Base"
 msgstr "Basis"
 
-#: crates/core/src/family.rs:2115
+#: crates/core/src/family.rs:2121
 msgid "Base Cabinet"
 msgstr "Unterschrank"
 
@@ -1007,7 +1007,7 @@ msgstr "Basislinie"
 msgid "Baseline Spacing"
 msgstr "Basislinienabstand"
 
-#: crates/core/src/family.rs:2169
+#: crates/core/src/family.rs:2175
 msgid "Bathtub"
 msgstr "Badewanne"
 
@@ -1019,7 +1019,7 @@ msgstr "Träger"
 msgid "Beam (BM): click its start and its end; a chain of clicks makes a beam for each step"
 msgstr "Träger (BM): Anfang und Ende anklicken; eine Klickkette erzeugt je Schritt einen Träger"
 
-#: crates/core/src/family.rs:2056
+#: crates/core/src/family.rs:2062
 msgid "Bed"
 msgstr "Bett"
 
@@ -1100,7 +1100,7 @@ msgstr "Begrenzungslinie: Grundriss des Dachs im Geschoss darüber und darin lie
 msgid "Boundary Line: sketch the shaft opening's outline"
 msgstr "Begrenzungslinie: Umriss des Schachtdurchbruchs skizzieren"
 
-#: crates/core/src/model.rs:3019
+#: crates/core/src/model.rs:3058
 msgid "Brick"
 msgstr "Ziegel"
 
@@ -1191,7 +1191,7 @@ msgstr "Kamera: den Augpunkt anklicken, dann das Ziel: eine perspektivische 3D-A
 #: crates/ui-egui/src/clouds.rs:87
 #: crates/ui-egui/src/dimtypes.rs:319
 #: crates/ui-egui/src/display.rs:81
-#: crates/ui-egui/src/editor.rs:1133
+#: crates/ui-egui/src/editor.rs:1134
 #: crates/ui-egui/src/electrical.rs:502
 #: crates/ui-egui/src/filter.rs:115
 #: crates/ui-egui/src/graphics.rs:391
@@ -1238,7 +1238,7 @@ msgstr "Fangeinrichtung & Ableitung"
 msgid "Card: {}"
 msgstr "Karte: {}"
 
-#: crates/core/src/family.rs:2354
+#: crates/core/src/family.rs:2360
 msgid "Casement Window"
 msgstr "Drehflügelfenster"
 
@@ -1333,7 +1333,7 @@ msgstr "Mittelpunkt"
 msgid "Centre Lines"
 msgstr "Mittellinien"
 
-#: crates/core/src/model.rs:3027
+#: crates/core/src/model.rs:3066
 msgid "Ceramic tile"
 msgstr "Keramikfliese"
 
@@ -1343,7 +1343,7 @@ msgstr "Keramikfliese"
 msgid "Chain"
 msgstr "Kette"
 
-#: crates/core/src/family.rs:2041
+#: crates/core/src/family.rs:2047
 msgid "Chair"
 msgstr "Stuhl"
 
@@ -2053,11 +2053,11 @@ msgstr "Berechnungshöhe"
 msgid "Conceptual Mass"
 msgstr "Konzeptioneller Volumenkörper"
 
-#: crates/core/src/family.rs:1980
+#: crates/core/src/family.rs:1986
 msgid "Concrete"
 msgstr "Beton"
 
-#: crates/core/src/model.rs:3021
+#: crates/core/src/model.rs:3060
 msgid "Concrete block"
 msgstr "Betonblock"
 
@@ -2077,7 +2077,7 @@ msgstr "Leerrohr (CN): Anfang und Ende anklicken; eine Kette von Klicks erzeugt 
 msgid "Configure national and international technical drawing standards (NBR, ISO, ANSI, EU). Adapting the program applies standard line weights, sheet formats, object styles, and dimensioning conventions."
 msgstr "Nationale und internationale Zeichnungsnormen konfigurieren (NBR, ISO, ANSI, EU). Beim Anwenden setzt das Programm genormte Linienstärken, Planformate, Objektstile und Bemaßungskonventionen."
 
-#: crates/ui-egui/src/editor.rs:1077
+#: crates/ui-egui/src/editor.rs:1078
 msgid "Connectors"
 msgstr ""
 
@@ -2147,7 +2147,7 @@ msgstr "{} IFC GlobalIds kopiert."
 msgid "Copied {} rows, tab-separated."
 msgstr "{} Zeilen kopiert, tabgetrennt."
 
-#: crates/core/src/model.rs:3035
+#: crates/core/src/model.rs:3074
 msgid "Copper"
 msgstr "Kupfer"
 
@@ -2188,15 +2188,15 @@ msgstr "Bericht kopieren"
 msgid "Copy its ID, GUID and IFC GlobalId"
 msgstr "ID, GUID und IFC GlobalId kopieren"
 
-#: crates/core/src/model.rs:390
+#: crates/core/src/model.rs:391
 msgid "Core Centreline"
 msgstr "Kern-Mittellinie"
 
-#: crates/core/src/model.rs:393
+#: crates/core/src/model.rs:394
 msgid "Core Face: Exterior"
 msgstr "Kernfläche: Außen"
 
-#: crates/core/src/model.rs:394
+#: crates/core/src/model.rs:395
 msgid "Core Face: Interior"
 msgstr "Kernfläche: Innen"
 
@@ -2392,7 +2392,7 @@ msgstr "Schnittebene"
 msgid "Cylinder"
 msgstr "Zylinder"
 
-#: crates/core/src/render.rs:3655
+#: crates/core/src/render.rs:3698
 msgid "DN"
 msgstr "DN"
 
@@ -2558,7 +2558,7 @@ msgstr "Abbruch"
 msgid "Dependent"
 msgstr "Abhängig"
 
-#: crates/core/src/family.rs:1978
+#: crates/core/src/family.rs:1984
 #: crates/ui-egui/src/properties.rs:450
 #: crates/ui-egui/src/properties.rs:451
 msgid "Depth"
@@ -2582,7 +2582,7 @@ msgstr "Entwurfsoptionen"
 msgid "Design Options (DO): sets of options for a part of the design, and the one new elements are made in"
 msgstr "Entwurfsoptionen (DO): Optionssätze für einen Teil des Entwurfs und die Option, in der neue Elemente erstellt werden"
 
-#: crates/core/src/family.rs:2087
+#: crates/core/src/family.rs:2093
 msgid "Desk"
 msgstr "Schreibtisch"
 
@@ -2810,15 +2810,15 @@ msgstr "Punkt"
 msgid "Dotted"
 msgstr "Gepunktet"
 
-#: crates/core/src/family.rs:2263
+#: crates/core/src/family.rs:2269
 msgid "Double Door"
 msgstr "Zweiflügelige Tür"
 
-#: crates/core/src/model.rs:2543
+#: crates/core/src/model.rs:2558
 msgid "Double Sliding"
 msgstr "Doppelt schiebend"
 
-#: crates/core/src/model.rs:2541
+#: crates/core/src/model.rs:2556
 msgid "Double Swing"
 msgstr "Doppelt aufschlagend"
 
@@ -2856,7 +2856,7 @@ msgstr "Lädt die Aktualisierung herunter und prüft sie; BIMCraft schließt dan
 msgid "Drafting"
 msgstr "Zeichnen"
 
-#: crates/ui-egui/src/editor.rs:1109
+#: crates/ui-egui/src/editor.rs:1110
 msgid "Drag the picture to turn it."
 msgstr "Bild ziehen, um es zu drehen."
 
@@ -2963,7 +2963,7 @@ msgstr "Erdungselektrode (EG): ein Stab, der vom Geschoss aus dort eingetrieben 
 msgid "Earthing Electrodes"
 msgstr "Erdungselektroden"
 
-#: crates/core/src/model.rs:1908
+#: crates/core/src/model.rs:1909
 msgid "East"
 msgstr "Osten"
 
@@ -3247,7 +3247,7 @@ msgstr "Augenhöhe"
 msgid "Eye Height:"
 msgstr "Augenhöhe:"
 
-#: crates/core/src/family.rs:1980
+#: crates/core/src/family.rs:1986
 msgid "Fabric"
 msgstr "Gewebe"
 
@@ -3467,11 +3467,11 @@ msgstr "Bearbeitungsmodus abschließen"
 msgid "Finish Edit Mode: the lines, closed into loops, become the outline and its holes"
 msgstr "Bearbeitungsmodus abschließen: die zu Ringen geschlossenen Linien werden zum Umriss und seinen Öffnungen"
 
-#: crates/core/src/model.rs:391
+#: crates/core/src/model.rs:392
 msgid "Finish Face: Exterior"
 msgstr "Oberfläche: Außen"
 
-#: crates/core/src/model.rs:392
+#: crates/core/src/model.rs:393
 msgid "Finish Face: Interior"
 msgstr "Oberfläche: Innen"
 
@@ -3487,11 +3487,11 @@ msgstr "Zuerst die Skizze abschließen oder abbrechen: die Linien eines Musters 
 msgid "Fit"
 msgstr ""
 
-#: crates/core/src/model.rs:2545
+#: crates/core/src/model.rs:2560
 msgid "Fixed"
 msgstr "Fest"
 
-#: crates/core/src/family.rs:2331
+#: crates/core/src/family.rs:2337
 msgid "Fixed Window"
 msgstr "Feststehendes Fenster"
 
@@ -3610,7 +3610,7 @@ msgstr ""
 msgid "Folder for new projects"
 msgstr "Ordner für neue Projekte"
 
-#: crates/core/src/model.rs:2544
+#: crates/core/src/model.rs:2559
 msgid "Folding"
 msgstr "Falt-"
 
@@ -3686,7 +3686,7 @@ msgstr "Körper sichtbar"
 msgid "Form Void"
 msgstr "Körperaussparung"
 
-#: crates/ui-egui/src/editor.rs:1075
+#: crates/ui-egui/src/editor.rs:1076
 msgid "Forms"
 msgstr "Volumenkörper"
 
@@ -3699,15 +3699,15 @@ msgstr "Formel"
 msgid "Foundation"
 msgstr "Fundament"
 
-#: crates/core/src/family.rs:2203
+#: crates/core/src/family.rs:2209
 msgid "Frame Depth"
 msgstr "Rahmentiefe"
 
-#: crates/core/src/family.rs:2205
+#: crates/core/src/family.rs:2211
 msgid "Frame Material"
 msgstr "Rahmenmaterial"
 
-#: crates/core/src/family.rs:2203
+#: crates/core/src/family.rs:2209
 msgid "Frame Width"
 msgstr "Rahmenbreite"
 
@@ -3788,7 +3788,7 @@ msgstr ""
 msgid "Give an API key in the Assistant settings, or set {} in the environment."
 msgstr ""
 
-#: crates/core/src/family.rs:2205
+#: crates/core/src/family.rs:2211
 msgid "Glass"
 msgstr "Glas"
 
@@ -3865,7 +3865,7 @@ msgstr "Gruppe"
 msgid "Group:"
 msgstr "Gruppe:"
 
-#: crates/core/src/model.rs:3026
+#: crates/core/src/model.rs:3065
 msgid "Gypsum board"
 msgstr "Gipskartonplatte"
 
@@ -3884,7 +3884,7 @@ msgstr "Halb"
 msgid "Halftone"
 msgstr "Halbton"
 
-#: crates/core/src/family.rs:2049
+#: crates/core/src/family.rs:2055
 msgid "Headboard Height"
 msgstr "Höhe Kopfteil"
 
@@ -4370,11 +4370,11 @@ msgstr "Bezugslinie"
 msgid "Leader/Border Offset"
 msgstr "Versatz Bezugslinie/Rahmen"
 
-#: crates/core/src/family.rs:2205
+#: crates/core/src/family.rs:2211
 msgid "Leaf Material"
 msgstr "Flügelmaterial"
 
-#: crates/core/src/family.rs:2203
+#: crates/core/src/family.rs:2209
 msgid "Leaf Thickness"
 msgstr "Flügeldicke"
 
@@ -4400,7 +4400,7 @@ msgstr ""
 msgid "Left out: {}"
 msgstr "Ausgelassen: {}"
 
-#: crates/core/src/family.rs:1979
+#: crates/core/src/family.rs:1985
 msgid "Leg Width"
 msgstr "Schenkelbreite"
 
@@ -4412,7 +4412,7 @@ msgstr "Legenden"
 msgid "Legends are coming in a later version."
 msgstr "Legenden folgen in einer späteren Version."
 
-#: crates/core/src/family.rs:1978
+#: crates/core/src/family.rs:1984
 #: crates/ui-egui/src/linestyles/creator.rs:136
 msgid "Length"
 msgstr "Länge"
@@ -4675,7 +4675,7 @@ msgstr "Familie laden"
 msgid "Load Family: a family saved as a .json file, BIMCraft's own"
 msgstr "Familie laden: eine als .json-Datei gespeicherte Familie, BIMCraft-eigen"
 
-#: crates/ui-egui/src/editor.rs:1128
+#: crates/ui-egui/src/editor.rs:1129
 msgid "Load Family…"
 msgstr "Familie laden…"
 
@@ -4791,7 +4791,7 @@ msgstr "Verwalten"
 msgid "Manage Presets…"
 msgstr "Voreinstellungen verwalten…"
 
-#: crates/core/src/model.rs:1515
+#: crates/core/src/model.rs:1516
 msgid "Mark"
 msgstr "Markierung"
 
@@ -4923,7 +4923,7 @@ msgstr "Netz in Tiefenrichtung"
 msgid "Mesh along width"
 msgstr "Netz in Breitenrichtung"
 
-#: crates/core/src/family.rs:2205
+#: crates/core/src/family.rs:2211
 msgid "Metal"
 msgstr "Metall"
 
@@ -5107,11 +5107,11 @@ msgstr "NBR 17068: 2 bis 3 mm Überstand"
 msgid "NBR 6492: Target in plan (±0.00), equilateral triangle in section"
 msgstr "NBR 6492: Zielmarke im Plan (±0.00), gleichseitiges Dreieck im Schnitt"
 
-#: crates/core/src/render.rs:2895
+#: crates/core/src/render.rs:2908
 msgid "NOT ENCLOSED"
 msgstr "NICHT UMSCHLOSSEN"
 
-#: crates/core/src/model.rs:1516
+#: crates/core/src/model.rs:1517
 #: crates/ui-egui/src/cad.rs:85
 #: crates/ui-egui/src/clouds.rs:59
 #: crates/ui-egui/src/electrical.rs:298
@@ -5337,7 +5337,7 @@ msgstr "Nominelle Texthöhe:"
 msgid "None"
 msgstr "Keine"
 
-#: crates/core/src/model.rs:1906
+#: crates/core/src/model.rs:1907
 msgid "North"
 msgstr "Norden"
 
@@ -5428,7 +5428,7 @@ msgstr "Nummer"
 #: crates/ui-egui/src/clouds.rs:88
 #: crates/ui-egui/src/dimtypes.rs:318
 #: crates/ui-egui/src/display.rs:82
-#: crates/ui-egui/src/editor.rs:1132
+#: crates/ui-egui/src/editor.rs:1133
 #: crates/ui-egui/src/electrical.rs:503
 #: crates/ui-egui/src/filter.rs:116
 #: crates/ui-egui/src/graphics.rs:392
@@ -5739,7 +5739,7 @@ msgstr "Parameterwert"
 msgid "Parameter:"
 msgstr "Parameter:"
 
-#: crates/ui-egui/src/editor.rs:1073
+#: crates/ui-egui/src/editor.rs:1074
 msgid "Parameters"
 msgstr "Parameter"
 
@@ -5864,7 +5864,7 @@ msgstr "Phase abgebrochen"
 msgid "Phase Filter"
 msgstr "Phasenfilter"
 
-#: crates/core/src/ifc.rs:1676
+#: crates/core/src/ifc.rs:1678
 msgid "Phase Filters"
 msgstr "Phasenfilter"
 
@@ -6396,7 +6396,7 @@ msgstr ""
 msgid "Polyline: one line through every point clicked; Enter finishes it, the first point again closes it"
 msgstr "Polylinie: eine Linie durch jeden angeklickten Punkt; Enter schließt sie ab, der erste Punkt erneut schließt sie"
 
-#: crates/core/src/family.rs:1980
+#: crates/core/src/family.rs:1986
 msgid "Porcelain"
 msgstr "Porzellan"
 
@@ -6446,17 +6446,17 @@ msgstr "Voreinstellung: Name"
 msgid "Presets"
 msgstr "Voreinstellungen"
 
-#: crates/ui-egui/src/editor.rs:1099
+#: crates/ui-egui/src/editor.rs:1100
 #: crates/ui-egui/src/graphics.rs:1432
 #: crates/ui-egui/src/linestyles/creator.rs:104
 msgid "Preview"
 msgstr "Vorschau"
 
-#: crates/ui-egui/src/editor.rs:1114
+#: crates/ui-egui/src/editor.rs:1115
 msgid "Preview Type"
 msgstr "Vorschautyp"
 
-#: crates/ui-egui/src/editor.rs:1113
+#: crates/ui-egui/src/editor.rs:1114
 msgid "Previewing"
 msgstr "Vorschau aktiv"
 
@@ -6595,7 +6595,7 @@ msgstr "Eine Ansicht auf diesen Plan legen: eine, die noch auf keinem Plan liegt
 msgid "Quadrant"
 msgstr "Quadrant"
 
-#: crates/core/src/render.rs:2895
+#: crates/core/src/render.rs:2908
 msgid "REDUNDANT"
 msgstr "REDUNDANT"
 
@@ -7014,6 +7014,10 @@ msgstr "Steigungshöhe"
 msgid "Risers"
 msgstr "Steigungen"
 
+#: crates/core/src/model.rs:2562
+msgid "Roller"
+msgstr ""
+
 #: crates/core/src/commands.rs:707
 msgid "Roof"
 msgstr "Dach"
@@ -7038,7 +7042,7 @@ msgstr "Dach über Fläche (RB): ein Dach auf den oberen Flächen der ausgewähl
 msgid "Roof by Footprint: click inside the walls to roof them, on the level above"
 msgstr "Dach über Grundriss: innerhalb der Wände anklicken, um sie im Geschoss darüber zu überdachen"
 
-#: crates/core/src/model.rs:3028
+#: crates/core/src/model.rs:3067
 msgid "Roof tiles"
 msgstr "Dachziegel"
 
@@ -7157,7 +7161,7 @@ msgstr "Speichern"
 msgid "Save As…"
 msgstr "Speichern unter…"
 
-#: crates/ui-egui/src/editor.rs:1129
+#: crates/ui-egui/src/editor.rs:1130
 msgid "Save Family…"
 msgstr "Familie speichern…"
 
@@ -7194,7 +7198,7 @@ msgstr ""
 msgid "Save to Favorites"
 msgstr "Zu Favoriten hinzufügen"
 
-#: crates/ui-egui/src/editor.rs:1179
+#: crates/ui-egui/src/editor.rs:1180
 #: crates/ui-egui/src/properties.rs:2397
 msgid "Saved {} to your Favorites"
 msgstr "{} zu den Favoriten hinzugefügt"
@@ -7253,7 +7257,7 @@ msgstr "Tabellen/Mengen (alle)"
 msgid "Scope"
 msgstr ""
 
-#: crates/core/src/model.rs:3024
+#: crates/core/src/model.rs:3063
 msgid "Screed"
 msgstr "Estrich"
 
@@ -7271,7 +7275,7 @@ msgstr "Projektbrowser durchsuchen"
 msgid "Search…"
 msgstr "Suchen…"
 
-#: crates/core/src/family.rs:1979
+#: crates/core/src/family.rs:1985
 msgid "Seat Height"
 msgstr "Sitzhöhe"
 
@@ -7294,6 +7298,10 @@ msgstr "Schnittkasten: 3D-Ansicht auf einen Kasten zuschneiden; jede Fläche üb
 #: crates/ui-egui/src/lib.rs:2987
 msgid "Section: {}"
 msgstr "Schnitt: {}"
+
+#: crates/core/src/model.rs:2561
+msgid "Sectional"
+msgstr ""
 
 #: crates/ui-egui/src/browser.rs:466
 msgid "Sections (Building Section)"
@@ -7625,7 +7633,7 @@ msgstr "Brüstungshöhe"
 msgid "Simple Lines"
 msgstr "Einfache Linien"
 
-#: crates/core/src/family.rs:2241
+#: crates/core/src/family.rs:2247
 msgid "Single Door"
 msgstr "Einzeltür"
 
@@ -7675,15 +7683,15 @@ msgstr "Diese Version überspringen"
 msgid "Sky"
 msgstr "Himmel"
 
-#: crates/core/src/model.rs:2542
+#: crates/core/src/model.rs:2557
 msgid "Sliding"
 msgstr "Schiebe-"
 
-#: crates/core/src/family.rs:2290
+#: crates/core/src/family.rs:2296
 msgid "Sliding Door"
 msgstr "Schiebetür"
 
-#: crates/core/src/family.rs:2385
+#: crates/core/src/family.rs:2391
 msgid "Sliding Window"
 msgstr "Schiebefenster"
 
@@ -7779,7 +7787,7 @@ msgstr "Fänge aus (nächster Punkt)"
 msgid "Snaps: what a picked point sticks to (ends, middles, crossings, centres, perpendiculars), and the angles it steps by; SE, SM, SI, SC, SP and SN take one alone for the next point, SO none"
 msgstr "Fänge: woran ein gewählter Punkt haftet (Enden, Mitten, Kreuzungen, Mittelpunkte, Senkrechte) und die Winkelschritte; SE, SM, SI, SC, SP und SN gelten einzeln für den nächsten Punkt, SO für keinen"
 
-#: crates/core/src/family.rs:2073
+#: crates/core/src/family.rs:2079
 msgid "Sofa"
 msgstr "Sofa"
 
@@ -7816,7 +7824,7 @@ msgstr "Sortieren/Gruppieren"
 msgid "Source code on GitHub"
 msgstr "Quellcode auf GitHub"
 
-#: crates/core/src/model.rs:1907
+#: crates/core/src/model.rs:1908
 msgid "South"
 msgstr "Süden"
 
@@ -8070,7 +8078,7 @@ msgstr "Oberflächentransparenz"
 msgid "Surface, {}°"
 msgstr "Fläche, {}°"
 
-#: crates/core/src/model.rs:2540
+#: crates/core/src/model.rs:2555
 msgid "Swing"
 msgstr "Aufschlagrichtung"
 
@@ -8114,7 +8122,7 @@ msgstr "Symbol bis"
 msgid "Symbol Visible"
 msgstr "Symbol sichtbar"
 
-#: crates/ui-egui/src/editor.rs:1076
+#: crates/ui-egui/src/editor.rs:1077
 #: crates/ui-egui/src/mep.rs:189
 msgid "Symbols"
 msgstr "Symbole"
@@ -8166,7 +8174,7 @@ msgstr "System {} Leiter"
 msgid "Tab with {}"
 msgstr "Registerkarte mit {}"
 
-#: crates/core/src/family.rs:2020
+#: crates/core/src/family.rs:2026
 msgid "Table"
 msgstr "Tabelle"
 
@@ -8574,7 +8582,7 @@ msgstr "Wärmeschutz"
 msgid "These patterns to a PAT file, but the solid ones"
 msgstr "Diese Muster in eine PAT-Datei, aber nicht die Volltonmuster"
 
-#: crates/core/src/family.rs:1979
+#: crates/core/src/family.rs:1985
 #: crates/ui-egui/src/properties.rs:452
 #: crates/ui-egui/src/properties.rs:453
 #: crates/ui-egui/src/properties.rs:787
@@ -8687,7 +8695,7 @@ msgstr "Fliesengröße"
 msgid "Tile Width"
 msgstr "Fliesenbreite"
 
-#: crates/core/src/family.rs:1980
+#: crates/core/src/family.rs:1986
 msgid "Timber"
 msgstr "Holz"
 
@@ -8849,7 +8857,7 @@ msgstr "Die Wand um ihre {} drehen: {}"
 msgid "Two {} are called {}."
 msgstr "{}: Der Name {} ist doppelt vergeben."
 
-#: crates/core/src/model.rs:1517
+#: crates/core/src/model.rs:1518
 #: crates/ui-egui/src/editor.rs:684
 #: crates/ui-egui/src/editor.rs:690
 #: crates/ui-egui/src/properties.rs:3258
@@ -8914,11 +8922,11 @@ msgstr "Notiz eingeben: Umschalt+Enter erzwingt einen Zeilenumbruch, Enter oder 
 msgid "Type:"
 msgstr "Typ:"
 
-#: crates/ui-egui/src/editor.rs:1074
+#: crates/ui-egui/src/editor.rs:1075
 msgid "Types"
 msgstr "Typen"
 
-#: crates/core/src/render.rs:3655
+#: crates/core/src/render.rs:3698
 msgid "UP"
 msgstr "OBEN"
 
@@ -9284,7 +9292,7 @@ msgstr "Volumen"
 msgid "Volume (m³)"
 msgstr "Volumen (m³)"
 
-#: crates/core/src/family.rs:2129
+#: crates/core/src/family.rs:2135
 msgid "WC"
 msgstr "WC"
 
@@ -9296,7 +9304,7 @@ msgstr "Wand"
 msgid "Wall (WA): each click builds a wall; Enter or Esc ends the chain"
 msgstr "Wand (WA): jeder Klick erzeugt eine Wand; Enter oder Esc beendet die Kette"
 
-#: crates/core/src/model.rs:389
+#: crates/core/src/model.rs:390
 msgid "Wall Centreline"
 msgstr "Wandachse"
 
@@ -9336,11 +9344,11 @@ msgstr "Wandumriss"
 msgid "Walls' Outline: the outline the level's walls enclose, along their centre lines, as sketch lines to edit"
 msgstr "Wandumriss: der Umriss, den die Wände des Geschosses umschließen, entlang ihrer Mittellinien, als Skizzenlinien zum Bearbeiten"
 
-#: crates/core/src/family.rs:2101
+#: crates/core/src/family.rs:2107
 msgid "Wardrobe"
 msgstr "Schrank"
 
-#: crates/core/src/family.rs:2148
+#: crates/core/src/family.rs:2154
 msgid "Washbasin"
 msgstr "Waschbecken"
 
@@ -9352,7 +9360,7 @@ msgstr "Welle"
 msgid "Weight"
 msgstr "Gewicht"
 
-#: crates/core/src/model.rs:1909
+#: crates/core/src/model.rs:1910
 msgid "West"
 msgstr "Westen"
 
@@ -9555,7 +9563,7 @@ msgstr "Arbeitsebene rechtwinklig zur {}-Achse"
 msgid "Working…"
 msgstr ""
 
-#: crates/core/src/family.rs:2113
+#: crates/core/src/family.rs:2119
 msgid "Worktop"
 msgstr "Arbeitsplatte"
 
