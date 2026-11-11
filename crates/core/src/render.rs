@@ -3500,13 +3500,12 @@ fn fit_by(extent: impl Fn(f64) -> [P2; 2], width: u32, height: u32, n: f64) -> V
 /// A door or window the cut plane at height `cut` passes through: a gap in the wall, jambs, and
 /// a leaf with its swing, or glass.
 fn opening(d: &mut Drawing, m: &Model, e: &Element, o: &Opening, w: &Wall, cut: f64, shown: bool) {
-    let Some(t) = m.opening_type(e) else { return };
-    let bottom = m.own_base(w) + o.sill;
-    if !(bottom <= cut && cut < bottom + t.height) {
+    let Some(h) = walls::hole(m, w, e, o) else { return };
+    if !(h.bottom <= cut && cut < h.top) {
         return;
     }
     let (axis, (ext, int)) = (Axis::of(w), walls::faces(m, w));
-    let (s0, s1) = (o.offset - t.width / 2.0, o.offset + t.width / 2.0);
+    let (s0, s1) = (h.s0, h.s1);
     // Clear a little past the faces too, where the outlines' outer halves are; along an arc, an arc.
     let past = 3.0 / d.view.scale;
     let gap: Vec<P2> = axis.points(s0, s1, int - past).into_iter().chain(axis.points(s1, s0, ext + past)).collect();

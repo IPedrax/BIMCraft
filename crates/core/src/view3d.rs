@@ -997,15 +997,16 @@ fn solids_in_with(
                             cut: false,
                         });
                     }
-                } else if let (Some(t), Some(w)) = (m.opening_type(e), m.wall(o.host)) {
+                } else if let Some(w) = m.wall(o.host)
+                    && let Some(h) = walls::hole(m, w, e, o)
+                {
                     let color = if matches!(e, Element::Door(_)) { DOOR } else { GLASS };
                     let tex = if matches!(e, Element::Door(_)) { 0 } else { skin(m, m.language.word("Glass")) & !TEXTURE };
-                    let z = m.own_base(w) + o.sill;
                     let axis = Axis::of(w);
                     let u = axis.tangent(o.offset);
                     let frame = Frame { o: axis.at(o.offset, walls::centre(m, w)), u, n: u.perp() };
-                    let a = (-t.width / 2.0, t.width / 2.0);
-                    out.push(Solid::Box { owner: id, color, tex, frame, a, c: (-25.0, 25.0), z: (z, z + t.height) });
+                    let a = (h.s0 - o.offset, h.s1 - o.offset);
+                    out.push(Solid::Box { owner: id, color, tex, frame, a, c: (-25.0, 25.0), z: (h.bottom, h.top) });
                 }
             }
             _ => {}
