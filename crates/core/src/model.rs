@@ -4210,6 +4210,16 @@ impl Model {
         })
     }
 
+    /// Whether this door has one swinging leaf. A door without a declared operation swings by default,
+    /// as it does in IFC. Read the chosen family or project type without building its geometry.
+    pub fn single_swing_door(&self, family: Option<&str>, type_name: &str) -> bool {
+        let operation = match family {
+            Some(name) => self.families.get(name).filter(|f| f.category == crate::family::Category::Door).map(|f| f.operation),
+            None => self.types.door.get(type_name).map(|t| t.operation),
+        };
+        matches!(operation, Some(None | Some(Operation::Swing)))
+    }
+
     /// The type of a door or window.
     pub fn opening_type(&self, e: &Element) -> Option<OpeningType> {
         self.opening_dims(e).ok()

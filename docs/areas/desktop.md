@@ -127,7 +127,9 @@ What a view hides or reveals for now (Temporary Hide/Isolate, Reveal Hidden Elem
 project's: the plan, the section and the 3D view draw `BimApp::view_model`, a copy of the model whose view graphics went through the `graphics`
 command on a scratch `Session`, made once for each model and each setting. A tool that needs the view's real model (select all, commands)
 still reads `session.model`. The Door and Window tools preview with `opening_of`, which the `door` and `window` commands insert too, so a
-sketch is the element the click makes (`render::sketch`). A selected door or window shows two temporary dimensions from its middle
+sketch is the element the click makes (`render::sketch`). When placing a single-swing door in plan, Space swaps its hinge jamb
+and moving the pointer across the wall centre swaps its facing. With one such door selected, Space steps through the four Opens
+pictures in Inspector order; each press is one `modify` and one Undo step. A selected door or window shows two temporary dimensions from its middle
 to the faces of the walls meeting its wall either side of it, or to its wall's ends where none does (`Model::opening_span`), as Revit's
 measure to wall faces; typing one counts from that face. Placed or dragged alone within `SNAP` px of the middle between those faces, a
 door or window lands on it (`Model::centred`): the click sends that `offset`, the drag slides by what reaches it.
