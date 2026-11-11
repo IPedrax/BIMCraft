@@ -217,7 +217,7 @@ msgstr ""
 msgid "API key:"
 msgstr ""
 
-#: crates/core/src/sheet.rs:330
+#: crates/core/src/sheet.rs:429
 msgid "AS INDICATED"
 msgstr ""
 
@@ -506,7 +506,7 @@ msgstr "接闪器 (AT)：在屋顶上单击处放置接闪器；按空格键旋�
 msgid "Air Terminals"
 msgstr "接闪器"
 
-#: crates/core/src/commands.rs:1193
+#: crates/core/src/commands.rs:1194
 #: crates/ui-egui/src/editor.rs:960
 #: crates/ui-egui/src/lib.rs:376
 #: crates/ui-egui/src/sketch.rs:709
@@ -1180,7 +1180,7 @@ msgstr "计算值…"
 msgid "Came in: {}"
 msgstr "已导入：{}"
 
-#: crates/core/src/commands.rs:1775
+#: crates/core/src/commands.rs:1776
 #: crates/ui-egui/src/camera.rs:38
 #: crates/ui-egui/src/lib.rs:4064
 #: crates/ui-egui/src/properties.rs:266
@@ -2042,7 +2042,7 @@ msgstr "紧凑"
 msgid "Comparison"
 msgstr "比较"
 
-#: crates/core/src/commands.rs:1153
+#: crates/core/src/commands.rs:1154
 msgid "Component"
 msgstr "构件"
 
@@ -2156,7 +2156,7 @@ msgstr "已复制 {} 行，以制表符分隔。"
 msgid "Copper"
 msgstr "铜"
 
-#: crates/core/src/commands.rs:1223
+#: crates/core/src/commands.rs:1224
 #: crates/ui-egui/src/inquiry.rs:176
 #: crates/ui-egui/src/lib.rs:4793
 #: crates/ui-egui/src/lib.rs:4843
@@ -2559,7 +2559,7 @@ msgstr "已拆除"
 msgid "Demolition"
 msgstr "拆除"
 
-#: crates/core/src/commands.rs:9975
+#: crates/core/src/commands.rs:9976
 msgid "Dependent"
 msgstr "相关"
 
@@ -2705,7 +2705,7 @@ msgstr "尺寸标注文字"
 msgid "Dimension Text Placement:"
 msgstr "尺寸文字对齐:"
 
-#: crates/core/src/commands.rs:1205
+#: crates/core/src/commands.rs:1206
 msgid "Dimension Value"
 msgstr "尺寸标注值"
 
@@ -3081,7 +3081,7 @@ msgstr "电气设置"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "电气设置：电路和配电箱所引用的电压、配电系统和导线类型；截面积单位为 mm²"
 
-#: crates/core/src/commands.rs:2173
+#: crates/core/src/commands.rs:2174
 msgid "Elements"
 msgstr "图元"
 
@@ -3376,7 +3376,7 @@ msgstr "填充区域 (FR)：在此视图中绘制以图案填充的区域"
 msgid "Filled region"
 msgstr "填充区域"
 
-#: crates/core/src/commands.rs:1292
+#: crates/core/src/commands.rs:1293
 msgid "Fillet Arc"
 msgstr "圆角弧"
 
@@ -4833,7 +4833,7 @@ msgstr "体量楼层 (MF)：在所选体量穿过的每个标高处创建一个�
 msgid "Massing"
 msgstr "体量建模"
 
-#: crates/core/src/commands.rs:1185
+#: crates/core/src/commands.rs:1186
 msgid "Match Properties"
 msgstr "匹配属性"
 
@@ -4894,7 +4894,7 @@ msgstr "最大值"
 msgid "Maximum Riser Height"
 msgstr "最大踢面高度"
 
-#: crates/core/src/commands.rs:1885
+#: crates/core/src/commands.rs:1886
 msgid "Measure"
 msgstr "测量"
 
@@ -5049,7 +5049,7 @@ msgstr "修改墙"
 msgid "Mounting Height"
 msgstr "安装高度"
 
-#: crates/core/src/commands.rs:1215
+#: crates/core/src/commands.rs:1216
 msgid "Move"
 msgstr "移动"
 
@@ -7100,7 +7100,7 @@ msgstr "房间分隔：像墙一样限定房间的线，用于分割开放空间
 msgid "Rose"
 msgstr "玫瑰"
 
-#: crates/core/src/commands.rs:1230
+#: crates/core/src/commands.rs:1231
 msgid "Rotate"
 msgstr "旋转"
 
@@ -7120,11 +7120,11 @@ msgstr "圆形"
 msgid "Runs the plugin's command"
 msgstr ""
 
-#: crates/core/src/sheet.rs:319
+#: crates/core/src/sheet.rs:418
 msgid "SCALE"
 msgstr "比例"
 
-#: crates/core/src/sheet.rs:321
+#: crates/core/src/sheet.rs:420
 msgid "SCALE AS INDICATED"
 msgstr "比例如图所示"
 
@@ -7224,7 +7224,7 @@ msgstr "比例：此视图所代表的图纸，为模型的 1 : n；其注释和
 msgid "Scan"
 msgstr "扫描"
 
-#: crates/core/src/commands.rs:1679
+#: crates/core/src/commands.rs:1680
 msgid "Schedule"
 msgstr "明细表"
 
@@ -7862,7 +7862,7 @@ msgstr "通过点的样条曲线：单击它经过的点；按 Enter 完成"
 msgid "Spline: click its control points; Enter finishes it"
 msgstr "样条曲线：单击其控制点；按 Enter 完成"
 
-#: crates/core/src/commands.rs:1272
+#: crates/core/src/commands.rs:1273
 msgid "Split"
 msgstr "拆分"
 
@@ -8835,7 +8835,7 @@ msgstr "修剪/延伸单个图元"
 msgid "Trim/Extend Single Element: pick the line to trim or extend to, then the line to change, on the part to keep"
 msgstr "修剪/延伸单个图元：拾取边界线，然后在要保留的部分上拾取要更改的线"
 
-#: crates/core/src/commands.rs:1246
+#: crates/core/src/commands.rs:1247
 #: crates/ui-egui/src/sketch.rs:712
 #: crates/ui-egui/src/sketch.rs:964
 msgid "Trim/Extend to Corner"
@@ -9023,7 +9023,7 @@ msgstr ""
 msgid "Unlock alignment"
 msgstr "解锁对齐"
 
-#: crates/core/src/commands.rs:10116
+#: crates/core/src/commands.rs:10117
 msgid "Unnamed"
 msgstr "未命名"
 
