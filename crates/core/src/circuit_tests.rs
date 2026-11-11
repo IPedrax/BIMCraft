@@ -564,6 +564,55 @@ fn what_a_file_says_that_the_project_cannot_hold_is_left_out_with_why_and_the_re
     assert_eq!(t.model.check(), Ok(()));
 }
 
+/// The STEP ids of the entities `name` of `file`.
+fn step_ids(file: &str, name: &str) -> Vec<u64> {
+    entities(file, name).iter().map(|l| l.trim_start_matches('#').split('=').next().unwrap().parse().unwrap()).collect()
+}
+
+/// `file` with a set `called` of `props` junk properties, from STEP id `base` on, put on `on` and on `ghosts` ids the
+/// file doesn't have.
+fn with_junk_set(file: &str, called: &str, base: u64, props: u64, on: &[u64], ghosts: u64) -> String {
+    let mut extra = String::new();
+    for k in 0..props {
+        extra.push_str(&format!("#{}=IFCPROPERTYSINGLEVALUE('Junk{k}',$,IFCINTEGER({k}),$);\n", base + k));
+    }
+    let set = base + props;
+    let listed: Vec<String> = (0..props).map(|k| format!("#{}", base + k)).collect();
+    extra.push_str(&format!("#{set}=IFCPROPERTYSET('0ccccccccccccccccccc{}',$,'{called}',$,({}));\n", base % 97, listed.join(",")));
+    let mut named: Vec<String> = on.iter().map(|id| format!("#{id}")).collect();
+    named.extend((0..ghosts).map(|k| format!("#{}", base * 10 + k)));
+    extra.push_str(&format!(
+        "#{}=IFCRELDEFINESBYPROPERTIES('0dddddddddddddddddddd{}',$,$,$,({}),#{set});\n",
+        set + 1,
+        base % 7,
+        named.join(",")
+    ));
+    let at = file.rfind("ENDSEC;").unwrap();
+    format!("{}{extra}{}", &file[..at], &file[at..])
+}
+
+#[test]
+fn a_circuit_or_device_set_on_many_products_is_read_once_however_many_the_file_names() {
+    // A small hostile file: a BIMCraft_Circuit set and a BIMCraft_Connector set of many properties each, related to the
+    // circuit, the luminaires and many ids the file doesn't have. Read once for each product, each would be held as
+    // many times as there are products, more than memory holds; read once, the file opens and the circuit comes back.
+    let (mut s, _, _, c) = wired();
+    let file = written(&mut s, "junk");
+    let circuit = step_ids(&file, "IFCDISTRIBUTIONCIRCUIT");
+    let lamps = step_ids(&file, "IFCLIGHTFIXTURE");
+    assert_eq!((circuit.len(), lamps.len()), (1, 3));
+    let junk = with_junk_set(&file, crate::ifc::CIRCUIT_SET, 800_000, 50_000, &circuit, 100_000);
+    let junk = with_junk_set(&junk, crate::ifc::CONNECTOR_SET, 900_000, 50_000, &lamps, 100_000);
+    assert!(junk.len() < 12 << 20, "a small file: {} bytes", junk.len());
+    let (t, r) = read(&junk, "junk");
+    let there = t.model.elements.id(s.model.guid(c)).expect("the circuit came back");
+    let (a, z) = (element_json(&s.model, c), element_json(&t.model, there));
+    for k in ["name", "number", "rating_a", "poles", "demand_factor", "installed_va"] {
+        assert_eq!(a[k], z[k], "{k}: {r}");
+    }
+    assert_eq!(t.model.check(), Ok(()));
+}
+
 #[test]
 fn a_devices_connector_comes_back_from_ifc_with_the_load_of_its_type_in_each_pole() {
     let mut s = Session::new();

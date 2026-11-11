@@ -177,6 +177,16 @@ impl<'a> PropertySets<'a> {
         PropertySets { sets, on }
     }
 
+    /// Whether `product` has any of the sets.
+    fn has(&self, product: u64) -> bool {
+        self.on.contains_key(&product)
+    }
+
+    /// The products of the file that have one of the sets.
+    fn products(&self) -> impl Iterator<Item = u64> + '_ {
+        self.on.keys().copied()
+    }
+
     /// What the sets on `product` say of `name`: the property of that name of the first of them that has one.
     fn said(&self, product: u64, name: &str) -> Option<&'a Entity> {
         self.on.get(&product)?.iter().find_map(|k| self.sets.get(*k)?.get(name).copied())
@@ -2800,7 +2810,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
     // gets a connector of it, its type's load a parameter of the type. A device another tool wrote has no such set, and no connector.
     #[derive(Clone)]
     struct Draw {
-        system: String,
+        system: &'static str,
         poles: u8,
         voltage: f64,
         power_factor: f64,
@@ -2809,26 +2819,18 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
     }
     let mut draws: HashMap<u64, Draw> = HashMap::new();
     {
-        let mut by_product: HashMap<u64, Vec<&crate::step::Entity>> = HashMap::new();
-        for rel in named(&["IFCRELDEFINESBYPROPERTIES"]).into_iter().filter_map(e) {
-            let Some(set) = reference(rel.args.get(5)).and_then(e).filter(|x| {
-                x.name == "IFCPROPERTYSET"
-                    && matches!(text(x.args.get(2)), Some("Pset_ElectricalDeviceCommon") | Some(crate::ifc::CONNECTOR_SET))
-            }) else {
-                continue;
-            };
-            let props: Vec<&crate::step::Entity> = refs(set.args.get(4)).into_iter().filter_map(e).collect();
-            for product in refs(rel.args.get(4)) {
-                by_product.entry(product).or_default().extend(props.iter().copied());
-            }
-        }
-        for (product, props) in by_product {
-            let find = |name: &str| props.iter().find(|p| text(p.args.first()) == Some(name));
+        // Each set read once, whatever the products it is on: the first of a name among a product's sets is what it says.
+        let sets =
+            PropertySets::read(&r, &named(&["IFCRELDEFINESBYPROPERTIES"]), &["Pset_ElectricalDeviceCommon", crate::ifc::CONNECTOR_SET]);
+        for product in sets.products() {
+            let find = |name: &str| sets.said(product, name);
             let value = |name: &str| find(name).and_then(|p| p.args.get(2));
             // A property with a bounded value says its own in the set point.
             let voltage = find("RatedVoltage")
                 .and_then(|p| if p.name == "IFCPROPERTYBOUNDEDVALUE" { real(p.args.get(5)) } else { real(p.args.get(2)) });
-            let (Some(system), Some(poles), Some(voltage)) = (text(value("System")), real(value("NumberOfPoles")), voltage) else {
+            // The systems BIMCraft writes: any other is no connector of its.
+            let system = text(value("System")).and_then(|s| ["power-balanced", "power-unbalanced", "switch"].into_iter().find(|k| *k == s));
+            let (Some(system), Some(poles), Some(voltage)) = (system, real(value("NumberOfPoles")), voltage) else {
                 continue;
             };
             let by_phase: Vec<f64> = (1..=3).map_while(|k| real(value(&format!("LoadVAPhase{k}")))).collect();
@@ -2838,7 +2840,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
             draws.insert(
                 product,
                 Draw {
-                    system: system.to_string(),
+                    system,
                     poles: poles as u8,
                     voltage,
                     power_factor: real(value("PowerFactor")).unwrap_or(1.0),
@@ -2983,7 +2985,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
                 });
             }
             if let Some(c) = &connector {
-                let (kind, system) = match c.system.as_str() {
+                let (kind, system) = match c.system {
                     "power-balanced" => (ConnectorKind::Power, ConnectorSystem::PowerBalanced),
                     "power-unbalanced" => (ConnectorKind::Power, ConnectorSystem::PowerUnbalanced),
                     _ => (ConnectorKind::Switch, ConnectorSystem::Switch),
@@ -3139,31 +3141,23 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
     // project cannot hold of the rest (a wire type it lacks, a voltage, a device its board does not take) is left out with the rule.
     {
         use crate::electrical::{Circuit, Wires};
-        let mut sets: HashMap<u64, Vec<&crate::step::Entity>> = HashMap::new();
-        for rel in named(&["IFCRELDEFINESBYPROPERTIES"]).into_iter().filter_map(e) {
-            let Some(set) = reference(rel.args.get(5))
-                .and_then(e)
-                .filter(|x| x.name == "IFCPROPERTYSET" && text(x.args.get(2)) == Some(crate::ifc::CIRCUIT_SET))
-            else {
-                continue;
-            };
-            let props: Vec<&crate::step::Entity> = refs(set.args.get(4)).into_iter().filter_map(e).collect();
-            for product in refs(rel.args.get(4)) {
-                sets.insert(product, props.clone());
-            }
-        }
+        let sets = PropertySets::read(&r, &named(&["IFCRELDEFINESBYPROPERTIES"]), &[crate::ifc::CIRCUIT_SET]);
         let by_global: HashMap<&str, u64> =
             ids.iter().filter_map(|id| Some((text(e(*id)?.args.first())?, *id))).filter(|(g, _)| g.len() == 22).collect();
+        // The members of each group, found once: asking every product's group for each circuit would take the circuits
+        // times the products.
+        let mut members: HashMap<u64, Vec<u64>> = HashMap::new();
+        for (member, group) in &l.group {
+            members.entry(*group).or_default().push(*member);
+        }
         for step in named(&["IFCDISTRIBUTIONCIRCUIT"]) {
             seen.insert(step);
             let at = who(step);
-            let Some(props) = sets.get(&step) else {
+            if !sets.has(step) {
                 skipped.push(format!("{at}: it has no {} set, so BIMCraft cannot tell which board it is on", crate::ifc::CIRCUIT_SET));
                 continue;
-            };
-            let said = |name: &str| {
-                props.iter().find(|p| p.name == "IFCPROPERTYSINGLEVALUE" && text(p.args.first()) == Some(name)).and_then(|p| p.args.get(2))
-            };
+            }
+            let said = |name: &str| sets.said(step, name).filter(|p| p.name == "IFCPROPERTYSINGLEVALUE").and_then(|p| p.args.get(2));
             let Some(board) = text(said("Panel"))
                 .and_then(|gid| by_global.get(gid))
                 .and_then(|st| origin.get(st))
@@ -3194,11 +3188,11 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
                 skipped.push(format!("{at}: wire type `{t}`: the project has no such wire type, so the circuit has no wires"));
                 wires = None;
             }
-            let mut devices: Vec<Id> = l
-                .group
-                .iter()
-                .filter(|(_, g)| **g == step)
-                .filter_map(|(member, _)| origin.get(member).copied())
+            let mut devices: Vec<Id> = members
+                .get(&step)
+                .into_iter()
+                .flatten()
+                .filter_map(|member| origin.get(member).copied())
                 .filter(|d| matches!(m.elements.get(*d), Some(Element::Component(_))))
                 .collect();
             devices.sort_unstable();
