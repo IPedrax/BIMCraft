@@ -41,10 +41,12 @@ pub fn all() -> Vec<Tool> {
         Tool {
             name: "query_elements",
             about: "Elements with their six-digit id and their guid, their fields and derived values (wall length and height, room area, door position). \
-                    Filter by category and level; page with limit and offset.",
+                    Filter by category, level, and a field of the category's schedule; page with limit and offset.",
             schema: json!({"type": "object", "properties": {
                 "category": {"type": "string", "description": "such as wall, door, window, room, floor"},
                 "level": {"type": "string", "description": "a level's name"},
+                "field": {"type": "string", "description": "a field the category's schedule has: Type, Mark, a project parameter"},
+                "value": {"type": ["string", "number", "boolean"], "description": "the value the field holds: text, a number (mm, m² for an area), true or false; \"\" for text with none"},
                 "limit": {"type": "integer", "description": "at most this many (50 by default, 200 at most)"},
                 "offset": {"type": "integer", "description": "skip this many"},
             }}),
@@ -116,7 +118,7 @@ pub fn run(session: &mut Session, call: &Call, access: Access) -> Result<Value, 
         "inspect_model" => exec(session, "inspect", json!({}), access),
         "query_elements" => {
             let mut params = serde_json::Map::new();
-            for key in ["category", "level", "offset"] {
+            for key in ["category", "level", "field", "value", "offset"] {
                 if let Some(v) = args.get(key).filter(|v| !v.is_null()) {
                     params.insert(key.into(), v.clone());
                 }

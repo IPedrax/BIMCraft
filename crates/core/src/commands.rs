@@ -2171,9 +2171,11 @@ other_files(
     other(
         "elements",
         ui_msg!("Elements"),
-        "{category?, level?, limit?, offset?} elements with their `id` (six digits, what commands take) and `guid` (made once, \
+        "{category?, level?, field?, value?, limit?, offset?} elements with their `id` (six digits, what commands take) and `guid` (made once, \
          never changed), fields and derived values (length, height, area_m2…); what an element points at (its level, host, \
-         view…) it holds by GUID. Wherever a command takes an element, its id or its GUID will do",
+         view…) it holds by GUID. Wherever a command takes an element, its id or its GUID will do. `field` is one its category's \
+         schedule has (`Type`, `Mark`, a project parameter), and `value` what it holds: text in any case, a number (mm, m² for \
+         an area), yes or no, or `\"\"` for text holding none; without `value`, those holding one (a yes or no reads no when unset)",
         elements,
     ),
 ];
@@ -14277,20 +14279,106 @@ fn inspect(s: &mut Session, p: &Value) -> R {
     Ok(out)
 }
 
+/// `v` as a number: one, or a number written as text (`"300"`, `"2.5"`).
+fn number(v: &Value) -> Option<f64> {
+    match v {
+        Value::Number(n) => n.as_f64(),
+        Value::String(s) => s.trim().parse().ok(),
+        _ => None,
+    }
+}
+
+/// Whether `v` is a value a field holding `kind` can hold: text, a number, or yes or no.
+fn value_fits(kind: schedule::Kind, v: &Value) -> bool {
+    match (kind, v) {
+        (schedule::Kind::Text, Value::String(s)) => s.chars().count() <= MAX_TEXT,
+        (schedule::Kind::YesNo, Value::Bool(_)) => true,
+        (schedule::Kind::Text | schedule::Kind::YesNo, _) => false,
+        (_, v) => number(v).is_some_and(|x| x.is_finite() && x.abs() <= MAX_COORD),
+    }
+}
+
+/// Whether a field holding `held` is the value `wanted`, as a schedule compares them: text in any
+/// case, numbers (or numbers written as text) equal, yes or no.
+fn holds(kind: schedule::Kind, held: &Value, wanted: &Value) -> bool {
+    match (kind, wanted) {
+        (schedule::Kind::Text, Value::String(s)) => held.as_str().is_some_and(|h| h.to_lowercase() == s.to_lowercase()),
+        (schedule::Kind::YesNo, Value::Bool(b)) => held.as_bool() == Some(*b),
+        (schedule::Kind::Text | schedule::Kind::YesNo, _) => false,
+        _ => number(held).zip(number(wanted)).is_some_and(|(a, b)| a == b),
+    }
+}
+
 fn elements(s: &mut Session, p: &Value) -> R {
     let c = "elements";
     let m = &s.model;
     let cat = string(c, p, "category")?.map(|k| category(&k));
     let level = if absent(p.get("level")) { None } else { Some(level_param(c, m, p, "level")?) };
     let (limit, offset) = (count_opt(c, p, "limit", 500)?, count_opt(c, p, "offset", 0)?);
+    // A field of a schedule of the category, and the value it holds.
+    let field = string(c, p, "field")?.map(|f| f.trim().to_string()).filter(|f| !f.is_empty());
+    let value = match p.get("value") {
+        None | Some(Value::Null) => None,
+        Some(v @ (Value::String(_) | Value::Number(_) | Value::Bool(_))) => Some(v.clone()),
+        Some(v) => return Err(bad(c, format!("`value` is a value as a field holds it, not {v}"))),
+    };
+    if value.is_some() && field.is_none() {
+        return Err(bad(c, "`value` needs a `field`: the field whose value it is"));
+    }
+    let kinds: Option<(String, BTreeMap<String, schedule::Kind>)> = match &field {
+        None => None,
+        Some(name) => {
+            let mut kinds = BTreeMap::new();
+            if let Some(k) = &cat {
+                match schedule::fields(m, k).into_iter().find(|(n, _)| n == name) {
+                    Some((_, kind)) => {
+                        kinds.insert(k.clone(), kind);
+                    }
+                    None => return Err(bad(c, format!("a {k} has no field `{name}`"))),
+                }
+            } else {
+                for k in schedule::all_categories() {
+                    if let Some((_, kind)) = schedule::fields(m, k).into_iter().find(|(n, _)| n == name) {
+                        kinds.insert(k.to_string(), kind);
+                    }
+                }
+                if kinds.is_empty() {
+                    return Err(bad(c, format!("no category has a field `{name}`")));
+                }
+            }
+            Some((name.clone(), kinds))
+        }
+    };
+    if let (Some((name, kinds)), Some(v)) = (&kinds, &value)
+        && !kinds.values().any(|k| value_fits(*k, v))
+    {
+        let mut kind_names: Vec<&str> = kinds.values().map(|k| schedule::holding(*k)).collect();
+        kind_names.sort_unstable();
+        kind_names.dedup();
+        return Err(bad(c, format!("`{name}` holds {}, and `value` must be one: {v}", kind_names.join(" or "))));
+    }
+    let rooms = crate::rooms::Rooms::new(m);
     let hits: Vec<Id> = m
         .elements
         .iter()
         .filter(|(_, e)| cat.as_deref().is_none_or(|k| e.category() == k))
         .filter(|(_, e)| level.is_none_or(|l| m.level_of(e) == Some(l)))
+        .filter(|(id, e)| match &kinds {
+            None => true,
+            Some((name, kinds)) => kinds.get(e.category()).is_some_and(|kind| {
+                let held = schedule::field_value_with(m, **id, name, &rooms);
+                let empty = held.as_ref().is_none_or(|(_, v)| v.is_null() || v.as_str() == Some(""));
+                match &value {
+                    None => !empty,
+                    Some(wanted) => match &held {
+                        Some((_, v)) => holds(*kind, v, wanted),
+                        None => wanted.as_str() == Some(""),
+                    },
+                }
+            }),
+        })
         .map(|(id, _)| *id)
         .collect();
-    let rooms = crate::rooms::Rooms::new(m);
     let page: Vec<Value> = hits.iter().skip(offset).take(limit).map(|id| element_json_with(m, *id, &rooms)).collect();
     Ok(json!({"count": hits.len(), "returned": page.len(), "elements": page}))
 }
