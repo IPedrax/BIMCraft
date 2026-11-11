@@ -13,7 +13,8 @@ sets paper size. Every plan, section and elevation has a scale: one with none of
 1 : 100 or 1/8" = 1'-0" (`Units::default_scale`, `Graphics::scale_n`, `graphics::scale_of`), and `scale` refuses null. A viewport
 placed with no scale takes the view's, and follows it when the view's scale changes (`sheet::follow_scale`); one placed
 at a scale of its own (`place` with `scale`, or `modify`) keeps that one (`Viewport::follow_scale`, written only when off,
-and Properties' Follow View Scale switches it). An unscaled 3D view instead takes the finest offered project scale from the
+FORMAT 18, and Properties' Follow View Scale switches it); `follow_scale: true` gives it its view's scale at once, whatever
+`scale` the same `modify` gives. An unscaled 3D view instead takes the finest offered project scale from the
 default up at which `sheet::spot` finds it and its title a place in the sheet's room, clear of the views there and the title
 block, or in the title block's drawing area (`sheet::default_scale`); if none fits, it takes the coarsest offered scale and may
 still extend off the sheet, which `place`'s `warning` says. Explicit viewport scales, assigned view/template scales and explicit

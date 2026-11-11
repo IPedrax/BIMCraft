@@ -943,7 +943,7 @@ other_files(
          spot clear of the other views, their titles and the title block, or in the title block's drawing area; right of all \
          views when full); a view goes on one sheet. Returns {id, at, scale}, and a `warning` when the view or its title reaches \
          past the paper. Told a scale of its own, the viewport keeps it whatever the view's later changes, until \
-         `modify {follow_scale: true}`. A schedule (Room Schedule, Door Schedule…) or the 3D view ({3D}, seen from `azimuth` \
+         `modify {follow_scale: true}`, which gives it the view's scale again, whatever `scale` comes with it. A schedule (Room Schedule, Door Schedule…) or the 3D view ({3D}, seen from `azimuth` \
          and `elevation` degrees) comes to be as it's first placed",
         place,
     ),
@@ -11498,12 +11498,13 @@ fn modify(s: &mut Session, p: &Value) -> R {
             n.runs = crate::text::remap(&old.text, &n.text, &old.runs);
         }
         if let (Element::Viewport(old), Element::Viewport(new)) = (e, &mut e2) {
-            // A viewport given a scale of its own keeps it: its view's scale no longer moves it.
-            if new.scale != old.scale {
-                new.follow_scale = false;
-            } else if new.follow_scale && !old.follow_scale && !fields.contains_key("scale") {
-                // Told to follow again, it takes its view's scale now, not at the view's next change.
+            if new.follow_scale && (!old.follow_scale || fields.get("follow_scale") == Some(&Value::Bool(true))) {
+                // Told to follow (again), it takes its view's scale now, not at the view's next change, whatever `scale` is
+                // given with it.
                 new.scale = graphics::scale_of(m, new.view);
+            } else if new.scale != old.scale {
+                // A viewport given a scale of its own keeps it: its view's scale no longer moves it.
+                new.follow_scale = false;
             }
         }
         graphics::check_followed(m, e, &e2).map_err(|err| bad(c, format!("element {id}: {err}")))?;

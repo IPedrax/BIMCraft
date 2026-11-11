@@ -714,6 +714,15 @@ mod tests {
         assert_eq!(paper(&s, section), size(&s.model, s.model.elements.id(kept.view).unwrap(), 50.0).unwrap());
         let sheet = s.model.sheet_numbered("A102").unwrap();
         assert_eq!(title_values(&s.model, sheet).get("SCALE").map(String::as_str), Some("1 : 50"));
+        // Given a scale and told to follow in the same step, it follows: it takes its view's scale, not the one given.
+        s.execute("modify", &serde_json::json!({"id": section, "scale": 10, "follow_scale": true})).unwrap();
+        let (_, now) = vp(&s, "Section 1");
+        assert_eq!((now.scale, now.follow_scale), (20.0, true));
+        s.execute("scale", &serde_json::json!({"view": "Section 1", "scale": 25})).unwrap();
+        assert_eq!(vp(&s, "Section 1").1.scale, 25.0, "and follows it from then on");
+        // Given a scale alone, it keeps it.
+        s.execute("modify", &serde_json::json!({"id": section, "scale": 10})).unwrap();
+        assert_eq!((vp(&s, "Section 1").1.scale, vp(&s, "Section 1").1.follow_scale), (10.0, false));
     }
 
     #[test]

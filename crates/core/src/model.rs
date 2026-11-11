@@ -76,11 +76,12 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// kind `title-block`; one may give the paper rectangle views are placed in by default, `drawing_area`, and draw the sheet's
 /// border itself, `template_border`) and its values of their fields (`title_values`), and a sheet may name one (`title_block`)
 /// and hold its values of its fields (`fields`), or name `none` to have no title block at all (no border, title box or folding
-/// marks); a wall or a run may refuse to join its neighbours (`join: false`, written only then); and a dimension may measure to
-/// the line across a column, square to its angle (`across`). Nothing in a file of 17 changes, but a build that reads up to 17
-/// would answer such a connector or dimension with a serde error ("unknown variant", "missing field `system`"), would leave the
-/// title blocks out as fields it doesn't know, drawing every sheet with the built-in title box, and would silently drop
-/// `join: false` and join the element again, not say "saved by a newer BIMCraft". 17: a schedule may list several categories
+/// marks); a viewport may keep a scale of its own as its view's changes (`follow_scale: false`, written only then); a wall or a
+/// run may refuse to join its neighbours (`join: false`, written only then); and a dimension may measure to the line across a
+/// column, square to its angle (`across`). Nothing in a file of 17 changes, but a build that reads up to 17 would answer such
+/// a connector or dimension with a serde error ("unknown variant", "missing field `system`"), would leave the title blocks and
+/// a viewport's `follow_scale` out as fields it doesn't know, drawing every sheet with the built-in title box, and would
+/// silently drop `join: false` and join the element again, not say "saved by a newer BIMCraft". 17: a schedule may list several categories
 /// (`multicategory`, with `categories`) and a project's language may be Italian (`it`); nothing in a file of 16 changes, but a
 /// build that reads up to 16 would refuse either on opening (no schedule of that category, an unknown variant), not say
 /// "saved by a newer BIMCraft". 16: a 3D view may hold dimensions (the
@@ -2010,7 +2011,8 @@ pub struct Viewport {
     pub at: P2,
     pub scale: f64,
     /// Whether it takes its view's scale as that changes, as a viewport placed without one does; one placed at a
-    /// scale of its own (`place` with `scale`) keeps it, and `scale` leaves it where it is. Written only when off.
+    /// scale of its own (`place` with `scale`) keeps it, and `scale` leaves it where it is. Written only when off, one of
+    /// FORMAT 18's.
     #[serde(default = "yes", skip_serializing_if = "is_yes")]
     pub follow_scale: bool,
 }
@@ -3533,10 +3535,12 @@ impl Model {
         // read as dimensions of nothing) has no step: a file of 15 holds none.
         // 16 to 17 (multi-category schedules, Italian as a project's language) has none either: a file of 16 holds neither.
         // 17 to 18 (pipe, data and earthing connectors, a connector's place; title blocks of the project's own, with a drawing
-        // area and a border of their own, their fields' values, and sheets with none; walls and runs that refuse to join; a
-        // dimension to the line across a column) has none either: a file of 17's connectors are a power or a switch one, each
-        // with its system, which 18 reads as they were; a file of 17 holds no title blocks, its sheets keeping the built-in one,
-        // no `join`, which reads as joining, as it always did, and none of its dimensions measures `across`.
+        // area and a border of their own, their fields' values, and sheets with none; viewports that keep a scale of their own;
+        // walls and runs that refuse to join; a dimension to the line across a column) has none either: a file of 17's
+        // connectors are a power or a switch one, each with its system, which 18 reads as they were; a file of 17 holds no title
+        // blocks, its sheets keeping the built-in one, no `follow_scale`, so its viewports follow their views' scales from then
+        // on, as one placed without a scale does, no `join`, which reads as joining, as it always did, and none of its
+        // dimensions measures `across`.
         self.format = FORMAT;
     }
 
