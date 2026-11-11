@@ -1186,6 +1186,22 @@ other_files(
         match_properties,
     ),
     edit(
+        "pin",
+        ui_msg!("Pin"),
+        &["PR"],
+        "{ids: [id,…]} pins elements where they are: `move`, `rotate`, `mirror`, `align`, `delete`, `flip`, `split`, \
+         `corner`, `trim_extend`, `fillet`, `offset` with `copy` false and the detail line tools refuse them until `unpin`. \
+         A pinned element is marked `pinned` in `elements` and kept in the file. Returns {pinned: [ids]}",
+        pin,
+    ),
+    edit(
+        "unpin",
+        ui_msg!("Unpin"),
+        &["UP"],
+        "{ids: [id,…]} unpins elements that `pin` pinned, so they can be moved, drawn or deleted again; returns {unpinned: [ids]}",
+        unpin,
+    ),
+    edit(
         "align",
         ui_msg!("Align"),
         &["AL"],
@@ -2576,6 +2592,9 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
     | Element::StructuralColumn(Column { room_bounding, .. }) = e
     {
         extra.insert("room_bounding".into(), json!(room_bounding));
+    }
+    if m.is_pinned(id) {
+        extra.insert("pinned".into(), json!(true));
     }
     // Its type's and its family's GUIDs, beside their names.
     e.clone().lib_refs_mut(&mut |kind, name| {
@@ -7412,6 +7431,11 @@ fn flip(s: &mut Session, p: &Value) -> R {
     if let Some(id) = ids.iter().find(|id| m.wall(**id).is_none()) {
         return Err(bad(c, format!("{} {id} isn't a wall", m.elements.get(id).map_or("element", Element::category))));
     }
+    // A flipped wall's doors and windows turn round with it: a pinned one stops it.
+    let guids: BTreeSet<Guid> = ids.iter().map(|id| m.guid(*id)).collect();
+    let mut blocked = ids.clone();
+    blocked.extend(hosted_openings(m, &guids));
+    refuse_pinned(c, m, &blocked, "flip")?;
     let m = s.model_mut();
     let lengths: BTreeMap<Guid, f64> = ids.iter().filter_map(|id| Some((m.guid(*id), Axis::of(m.wall(*id)?).length()))).collect();
     for (id, e) in m.elements.iter_mut() {
@@ -9249,6 +9273,9 @@ fn edit_boundary(s: &mut Session, p: &Value) -> R {
     let m = &s.model;
     let id = id_opt(c, p, "id")?.ok_or_else(|| bad(c, "`id`, the floor, ceiling, roof or shaft to edit, is required"))?;
     let e = m.elements.get(id).cloned().ok_or_else(|| bad(c, format!("no element {id}")))?;
+    if let Some(lid) = m.elements.id(id) {
+        refuse_pinned(c, m, &[lid], "change")?;
+    }
     if let Element::Roof(Roof { extrusion: Some(_), .. }) = e {
         return Err(bad(c, format!("{id} is an extrusion roof: change its profile, `modify` its `extrusion`")));
     }
@@ -11330,6 +11357,61 @@ fn layered(
     }
 }
 
+/// The fields that put an element where it is, which `modify` does not change on a pinned element: the desktop's
+/// temporary dimensions, level and shape grips and sketch boundaries all go through it. A new placing field goes here.
+const PLACED_BY: &[&str] = &[
+    "start",
+    "end",
+    "at",
+    "point",
+    "offset",
+    "elevation",
+    "extent",
+    "location",
+    "arc",
+    "angle",
+    "mirrored",
+    "host",
+    "refs",
+    "arrow",
+    "gables",
+    "slope",
+    "boundary",
+    "sketch",
+    "crop",
+    "region",
+    "view",
+    "sheet",
+    "work_plane",
+    "section_box",
+    "pattern_origin",
+    "pattern_angle",
+    "join",
+    "attach_top",
+    "attach_base",
+    "base_offset",
+    "top_offset",
+    "limit_offset",
+    "upper_limit",
+    "flip_facing",
+    "flip_hand",
+    "level",
+    "top_level",
+    "view_range",
+    "graphics",
+    "scale",
+    "detail",
+    "style",
+    "visual_style",
+    "depth",
+    "curve",
+    "path",
+    "leader",
+    "justification",
+    "extrusion",
+    "parent",
+];
+
 fn modify(s: &mut Session, p: &Value) -> R {
     let c = "modify";
     let fields = p.as_object().ok_or_else(|| bad(c, "params must be {id | ids, …fields}"))?;
@@ -11342,6 +11424,14 @@ fn modify(s: &mut Session, p: &Value) -> R {
         ids.iter().copied().filter(|id| m.elements.get(*id).is_some_and(|e| e.category() == "stripfooting")).collect();
     let mut following: Vec<(Id, Element)> = Vec::new();
     for &id in &ids {
+        if m.is_pinned(id)
+            && let Some(k) = fields.keys().find(|k| PLACED_BY.contains(&k.as_str()))
+        {
+            return Err(bad(
+                c,
+                format!("{} {id} is pinned: `unpin` it first to change `{k}`", m.elements.get(id).map_or("element", Element::category)),
+            ));
+        }
         let e = m.elements.get(id).ok_or_else(|| bad(c, format!("no element {id}")))?;
         let mut v = serde_json::to_value(e).map_err(|e| bad(c, e))?;
         let obj = v.as_object_mut().ok_or_else(|| bad(c, format!("element {id} can't be edited")))?;
@@ -11463,6 +11553,29 @@ fn match_properties(s: &mut Session, p: &Value) -> R {
     fields["ids"] = json!(matched);
     modify(s, &fields)?;
     Ok(json!({"modified": matched, "skipped": skipped}))
+}
+
+fn pin(s: &mut Session, p: &Value) -> R {
+    let c = "pin";
+    let ids = ids_param(c, &s.model, p)?;
+    let added: Vec<Guid> = ids.iter().filter(|id| !s.model.is_pinned(**id)).map(|id| s.model.guid(*id)).collect();
+    if !added.is_empty() {
+        s.model_mut().pinned.extend(added);
+    }
+    Ok(json!({"pinned": ids}))
+}
+
+fn unpin(s: &mut Session, p: &Value) -> R {
+    let c = "unpin";
+    let ids = ids_param(c, &s.model, p)?;
+    let removed: Vec<Guid> = ids.iter().filter(|id| s.model.is_pinned(**id)).map(|id| s.model.guid(*id)).collect();
+    if !removed.is_empty() {
+        let m = s.model_mut();
+        for g in removed {
+            m.pinned.remove(&g);
+        }
+    }
+    Ok(json!({"unpinned": ids}))
 }
 
 /// `patch` merged into `into`, as JSON Merge Patch (RFC 7386) does: objects merge key by key, a
@@ -11761,6 +11874,34 @@ fn host_line(was: P2, candidates: impl IntoIterator<Item = Id>, line_of: impl Fn
     candidates.into_iter().filter_map(line_of).find(|&(a, b)| geom::dist_to_segment(was, a, b) <= TOL)
 }
 
+/// The doors and windows whose host is one of `hosts`: what a wall carries when it moves or turns round.
+fn hosted_openings(m: &Model, hosts: &BTreeSet<Guid>) -> Vec<Id> {
+    m.elements
+        .iter()
+        .filter_map(|(&id, e)| match e {
+            Element::Door(o) | Element::Window(o) if hosts.contains(&o.host) => Some(id),
+            _ => None,
+        })
+        .collect()
+}
+
+/// An error naming the pinned elements among `ids`, which command `c` would `verb`; a command that changes where an
+/// element is calls this before it touches the model.
+fn refuse_pinned(c: &str, m: &Model, ids: &[Id], verb: &str) -> Result<(), String> {
+    let mut pinned: Vec<Id> = ids.iter().copied().filter(|id| m.is_pinned(*id)).collect();
+    pinned.sort_unstable();
+    pinned.dedup();
+    let name = |id: Id| format!("{} {id}", m.elements.get(id).map_or("element", Element::category));
+    match pinned.as_slice() {
+        [] => Ok(()),
+        [one] => Err(bad(c, format!("{} is pinned: `unpin` it first to {verb} it", name(*one)))),
+        many => Err(bad(
+            c,
+            format!("{} are pinned: `unpin` them first to {verb} them", many.iter().map(|id| name(*id)).collect::<Vec<_>>().join(", ")),
+        )),
+    }
+}
+
 /// Take elements by `mo`, keeping walls joined: walls joined to a taken wall stretch to stay
 /// joined, and doors and windows in walls that changed keep their place or go with their wall.
 /// With `end` (`Some(true)` the start, `Some(false)` the end), only that end of one wall or one run goes.
@@ -11771,6 +11912,12 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
     let f = mo.map;
     let moving: BTreeSet<Id> = ids.iter().copied().collect();
     let moving_guids: BTreeSet<Guid> = ids.iter().map(|id| m.guid(*id)).collect();
+    // A wall carries its doors and windows, or shifts them when its start moves: a pinned one stops the wall too.
+    let mut blocked = ids.to_vec();
+    if end != Some(false) {
+        blocked.extend(hosted_openings(m, &moving_guids));
+    }
+    refuse_pinned(c, m, &blocked, "move")?;
     let heads = tag_heads(m, ids, mo);
     // Doors and windows of walls taken whole ride along.
     let carried = |host: Guid| moving_guids.contains(&host) && end.is_none();
@@ -11981,6 +12128,9 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
             }
         }
         if n != *w {
+            if m.is_pinned(id) {
+                return refuse_pinned(c, m, &[id], "move");
+            }
             walls.insert(id, n);
         }
     }
@@ -12008,6 +12158,9 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
             }
             None => crate::glue::mapped(&before, f),
         };
+        if m.is_pinned(fid) && before != after {
+            return refuse_pinned(c, m, &[fid], "move");
+        }
         taken.insert(fid, (before.clone(), after.clone()));
         glued.push((fid, before, after));
         glued_ids.insert(fid);
@@ -12108,10 +12261,13 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
                     }
                 }
             }
-            if n != *r
-                && let Some(moved_run) = Element::of_run(category, n)
-            {
-                others.push((id, moved_run));
+            if n != *r {
+                if m.is_pinned(id) {
+                    return refuse_pinned(c, m, &[id], "move");
+                }
+                if let Some(moved_run) = Element::of_run(category, n) {
+                    others.push((id, moved_run));
+                }
             }
         }
     }
@@ -12484,6 +12640,7 @@ fn corner(s: &mut Session, p: &Value) -> R {
     let c = "corner";
     let ids = ids_param(c, &s.model, p)?;
     let m = &s.model;
+    refuse_pinned(c, m, &ids, "trim")?;
     let [a, b] = ids.as_slice() else { return Err(bad(c, "`ids` takes two walls")) };
     if let (Some(Element::DetailLine(la)), Some(Element::DetailLine(lb))) = (m.elements.get(*a), m.elements.get(*b)) {
         if la.view != lb.view {
@@ -12535,6 +12692,9 @@ fn split(s: &mut Session, p: &Value) -> R {
     let c = "split";
     let m = &s.model;
     let id = id_opt(c, p, "id")?.ok_or_else(|| bad(c, "`id`, a wall or a detail line, is required"))?;
+    if let Some(lid) = m.elements.id(id) {
+        refuse_pinned(c, m, &[lid], "split")?;
+    }
     if let Some(lid) = m.elements.id(id)
         && let Some(Element::DetailLine(l)) = m.elements.get(lid)
     {
@@ -12615,6 +12775,7 @@ fn join_polyline(s: &mut Session, p: &Value) -> R {
     let c = "join_polyline";
     let m = &s.model;
     let ids = ids_param(c, m, p)?;
+    refuse_pinned(c, m, &ids, "join")?;
     if ids.len() < 2 {
         return Err(bad(c, "give two detail lines or more to join"));
     }
@@ -12669,6 +12830,9 @@ fn offset(s: &mut Session, p: &Value) -> R {
         .ok_or_else(|| bad(c, format!("a {} can't be offset by {d} mm (it would turn inside out, or fold over itself)", l.curve.kind())))?
         .map(micron);
     let copy = absent(p.get("copy")) || flag(c, p, "copy")?;
+    if !copy {
+        refuse_pinned(c, m, &[id], "offset")?;
+    }
     let m = s.model_mut();
     let out = DetailLine { curve, ..l };
     if copy {
@@ -12699,6 +12863,7 @@ fn trim_extend(s: &mut Session, p: &Value) -> R {
         .ok_or_else(|| bad(c, "`boundary`, a line to trim or extend to, is required"))?;
     let edge = crate::draw::element_curve(m, boundary).ok_or_else(|| bad(c, format!("{boundary} has no line to trim or extend to")))?;
     let ids = ids_param(c, m, p)?;
+    refuse_pinned(c, m, &ids, "trim")?;
     let keep = points(c, p, "keep")?;
     if keep.len() != ids.len() {
         return Err(bad(c, format!("`keep` gives a point on each line to keep: {} for {} lines", keep.len(), ids.len())));
@@ -12752,6 +12917,7 @@ fn fillet(s: &mut Session, p: &Value) -> R {
     let c = "fillet";
     let m = &s.model;
     let ids = ids_param(c, m, p)?;
+    refuse_pinned(c, m, &ids, "round")?;
     let &[a, b] = ids.as_slice() else { return Err(bad(c, "`ids` is two detail lines")) };
     // Two straight walls: cut back, and an arc wall like the first between them.
     if let (Some(wa), Some(wb)) = (m.wall(a).cloned(), m.wall(b).cloned()) {
@@ -12830,6 +12996,7 @@ fn line_of(c: &str, m: &Model, p: &Value) -> Result<(Id, DetailLine), String> {
 fn vertex(s: &mut Session, p: &Value) -> R {
     let c = "vertex";
     let (id, l) = line_of(c, &s.model, p)?;
+    refuse_pinned(c, &s.model, &[id], "change")?;
     let at = point_req(c, p, "at")?;
     let delete = flag(c, p, "delete")?;
     // Near the line, as Split asks, or the vertex nearest: not a point across the drawing.
@@ -12854,6 +13021,7 @@ fn vertex(s: &mut Session, p: &Value) -> R {
 fn convert_spline(s: &mut Session, p: &Value) -> R {
     let c = "convert_spline";
     let (id, l) = line_of(c, &s.model, p)?;
+    refuse_pinned(c, &s.model, &[id], "convert")?;
     let curve = l.curve.converted().ok_or_else(|| bad(c, format!("detail line {id} is a {}, not a spline", l.curve.kind())))?;
     let kind = curve.kind();
     let curve = rounded(curve);
@@ -12866,6 +13034,7 @@ fn explode(s: &mut Session, p: &Value) -> R {
     let m = &s.model;
     let id = id_opt(c, p, "id")?.ok_or_else(|| bad(c, "`id`, a detail line, is required"))?;
     let lid = m.elements.id(id).ok_or_else(|| bad(c, "there's no such element"))?;
+    refuse_pinned(c, m, &[lid], "explode")?;
     let Some(Element::DetailLine(l)) = m.elements.get(lid).cloned() else { return Err(bad(c, format!("{lid} is not a detail line"))) };
     let parts = crate::curves::explode(&l.curve);
     if parts.len() < 2 {
@@ -13083,6 +13252,9 @@ fn delete_indexed(s: &mut Session, p: &Value) -> R {
             kept.push((id, d));
         }
     }
+    // What goes takes what is pinned with it: refuse, rather than delete what was locked.
+    let pinned: Vec<Id> = gone.iter().filter(|g| m.pinned.contains(*g)).filter_map(|g| m.elements.id(*g)).collect();
+    refuse_pinned("delete", m, &pinned, "delete")?;
     let mut deleted: Vec<Id> = gone.iter().filter_map(|g| m.elements.id(*g)).collect();
     deleted.sort_unstable();
     let ties: BTreeSet<Id> = gone
@@ -13110,6 +13282,7 @@ fn delete_indexed(s: &mut Session, p: &Value) -> R {
         })
         .collect();
     let m = s.model_mut();
+    m.pinned.retain(|g| !gone.contains(g));
     for id in &gone {
         m.elements.remove(id);
     }
@@ -13201,8 +13374,11 @@ fn delete_from_scratch(s: &mut Session, p: &Value) -> R {
             }
         }
     }
+    let pinned: Vec<Id> = gone.iter().filter(|g| m.pinned.contains(*g)).filter_map(|g| m.elements.id(*g)).collect();
+    refuse_pinned(c, m, &pinned, "delete")?;
     let deleted: Vec<Id> = m.elements.with_guids().filter(|(_, g, _)| gone.contains(g)).map(|(id, ..)| id).collect();
     let m = s.model_mut();
+    m.pinned.retain(|g| !gone.contains(g));
     // A 3D view whose work plane's level goes sketches on the lowest level again.
     for e in m.elements.values_mut() {
         if let Element::View3D(v) = e

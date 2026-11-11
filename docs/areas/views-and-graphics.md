@@ -241,7 +241,8 @@ rasterize, 8 ms on a busy machine), so a view at the cap of them can take a minu
 `Model::read` leaves out of them what this build doesn't know, as it does for any element
 (`/detail_groups/<name>/members/<i>/element/...`). Deleting a line style that a filled region or a group's member is drawn in
 is refused with the region's or the group's name. On the desktop, Annotate > Detail has Detail Group, Repeating Detail and
-Create Group, and the right-click menu has Create Group and Ungroup.
+Create Group, and the right-click menu has Create Group, Ungroup, Pin and Unpin: a pinned element stays where it is, and
+`move`, `rotate`, `mirror`, `align`, `delete` and the drawing tools refuse it until it is unpinned (`pin`, `unpin`).
 
 A project with any of this (line styles and patterns, fill patterns, region types, detail lines, regions, groups, repeating
 details, sketches) needs file format 6, and every file is saved as 6 now, with or without any of it: a build that reads up to 5

@@ -581,6 +581,7 @@ for a headless server that opens the file and then only reads it.
 | `favorite` | | `action?` (`list`, `save`, `load`, `delete`), `kind?` (`material` or `family`), `name?`, `as?`, `replace?`, `path?`: the favorites kept for every project in a file of the user's own; a material is kept with its picture, a family with the materials it's made of |
 | `flip` | | `ids`: turns walls round about their location lines, their exterior side to the other side; their doors and windows stay where they are |
 | `modify` | | `id` (or `ids`, several in one step) and the fields to change; into a field that is an object, such as a level's `view_range` (`top`, `cut`, `bottom`, `depth`), they merge |
+| `pin`, `unpin` | PR, UP | `ids`: keep elements where they are, so `move`, `rotate`, `mirror`, `align`, `delete` and the drawing tools refuse them, until they are unpinned; a pinned element is marked `pinned` in `elements` |
 | `move` | MV | `ids`, `by`; `end` to move one end of a wall |
 | `copy` | CO | `ids`, `by` |
 | `rotate` | RO | `ids`, `about`, `angle` in degrees, `copy?` |
