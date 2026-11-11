@@ -82,6 +82,21 @@ request wakes the window (`Context::request_repaint`, from the context the first
 most; ten seconds, in all, to say the first line whole (a byte now and then does not count), and what is not a request, a web page's
 HTTP say, is answered with an error and closed. A test (`tests/control.rs`) plays the agent on a real connection while the harness runs frames.
 
+A connected agent can read the current desktop context with the MCP tool `desktop_context` (no arguments), or the authenticated
+bridge request `{"token": T, "op": "context"}`. The window answers on its UI thread with `project` (the project name), `selection`
+(an array of `{id, guid, category}` for selected elements still present), and `active_view` (`{kind, name, id, guid}`). View kinds are
+`plan`, `ceiling`, `3d`, `section`, `elevation`, `sheet` and `schedule`; a default view or built-in schedule with no model element has
+null `id` and `guid`. A plan's ID identifies its actual level or plan view, including a dependent view, rather than its parent.
+Selection belongs to the project and can remain selected while navigating to another view. Clearing or deleting it returns `[]`.
+Home reports `selection: []` and `active_view: null`; a view removed before the next frame's cleanup also reports null.
+During replacement of the project between frames, context returns an error asking the agent to retry after the window catches up,
+rather than resolving old selected IDs against the new model. New/Open through the window clear the old context. A snapshot is
+current when answered: agents should request it again after the user selects or navigates. It does not change selection, navigate,
+edit the model, add an undo step, or access files, and is available through both window and connection read-only settings.
+This is desktop state, not a model command or a field saved in `.bimcraft`: headless MCP returns an explicit error explaining
+`--connect`. Without a listening window the existing connection error applies; an older window without this bridge operation
+reports unknown op. The active view is within the connected window, independent of which operating-system window has focus.
+
 File > Settings > Agents opens the same port without `--control`: Let agents work on this project, and its Port (0 for any free one),
 both kept in `settings.json` (`agents`), so the window opens it again at its next start once `--control` has had its say
 (`listen_as_kept`), with the same bridge file and the same rules. Unticked, the port is closed: a `Control` dropped stops listening
@@ -112,7 +127,9 @@ What a view hides or reveals for now (Temporary Hide/Isolate, Reveal Hidden Elem
 project's: the plan, the section and the 3D view draw `BimApp::view_model`, a copy of the model whose view graphics went through the `graphics`
 command on a scratch `Session`, made once for each model and each setting. A tool that needs the view's real model (select all, commands)
 still reads `session.model`. The Door and Window tools preview with `opening_of`, which the `door` and `window` commands insert too, so a
-sketch is the element the click makes (`render::sketch`). A selected door or window shows two temporary dimensions from its middle
+sketch is the element the click makes (`render::sketch`). When placing a single-swing door in plan, Space swaps its hinge jamb
+and moving the pointer across the wall centre swaps its facing. With one such door selected, Space steps through the four Opens
+pictures in Inspector order; each press is one `modify` and one Undo step. A selected door or window shows two temporary dimensions from its middle
 to the faces of the walls meeting its wall either side of it, or to its wall's ends where none does (`Model::opening_span`), as Revit's
 measure to wall faces; typing one counts from that face. Placed or dragged alone within `SNAP` px of the middle between those faces, a
 door or window lands on it (`Model::centred`): the click sends that `offset`, the drag slides by what reaches it.

@@ -38,6 +38,66 @@ fn has(d: &Drawing, id: Id) -> bool {
     d.owners.contains(&Some(id))
 }
 
+/// The PNG returned to a CLI or MCP caller, rather than a drawing made directly by the renderer.
+fn picture(reply: &Value) -> tiny_skia::Pixmap {
+    let bytes = crate::texture::unbase64(reply["pngBase64"].as_str().unwrap()).unwrap();
+    tiny_skia::Pixmap::decode_png(&bytes).unwrap()
+}
+
+/// Cut-wall pixels above the title area, so antialiased lettering cannot count as wall poché.
+fn cut_pixels(pm: &tiny_skia::Pixmap) -> usize {
+    pm.pixels()[..(pm.width() * (pm.height() - 60)) as usize].iter().filter(|p| (p.red(), p.green(), p.blue()) == (168, 168, 168)).count()
+}
+
+#[test]
+fn render_command_uses_the_duplicated_plans_graphics_by_name_and_id() {
+    let mut s = Session::new();
+    run(&mut s, "wall", json!({"points": [[0,0],[8000,0],[8000,6000],[0,6000]], "closed": true}));
+    let copy = id(&run(&mut s, "duplicate_view", json!({"view": "Level 1", "name": "No walls"})));
+    run(&mut s, "graphics", json!({"view": "No walls", "hide": ["wall"]}));
+    let parent = run(&mut s, "render", json!({"view": "Level 1", "width": 400, "height": 300}));
+    let parent_picture = picture(&parent);
+    assert!(cut_pixels(&parent_picture) > 1000, "the ordinary level plan must cut its walls");
+    assert_eq!(parent["view"], "Level 1");
+    for view in [json!("No walls"), json!(copy), json!(s.model.guid(copy))] {
+        let reply = run(&mut s, "render", json!({"view": view, "width": 400, "height": 300}));
+        assert_eq!(cut_pixels(&picture(&reply)), 0, "the duplicate selected by {view} must hide its walls");
+        assert_eq!(reply["view"], "No walls");
+        assert_eq!(reply["kind"], "plan");
+    }
+    let after = run(&mut s, "render", json!({"view": "Level 1", "width": 400, "height": 300}));
+    assert_eq!(picture(&after).data(), parent_picture.data(), "rendering the duplicate leaves its parent unchanged");
+}
+
+#[test]
+fn render_command_uses_the_duplicated_plans_crop_in_the_written_png() {
+    let mut s = Session::new();
+    run(&mut s, "wall", json!({"points": [[0,0],[8000,0],[8000,6000],[0,6000]], "closed": true}));
+    run(&mut s, "duplicate_view", json!({"view": "Level 1", "name": "Interior"}));
+    run(&mut s, "crop", json!({"view": "Interior", "region": [[1000,1000],[3000,2000]]}));
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("interior.png");
+    let reply = run(&mut s, "render", json!({"view": "Interior", "path": path, "width": 400, "height": 300}));
+    let image = tiny_skia::Pixmap::load_png(&path).unwrap();
+    assert_eq!(cut_pixels(&image), 0, "the interior crop excludes all four walls");
+    assert_eq!(reply["view"], "Interior");
+    let parent = run(&mut s, "render", json!({"view": "Level 1", "width": 400, "height": 300}));
+    assert!(cut_pixels(&picture(&parent)) > 1000, "the parent's crop is unchanged");
+}
+
+#[test]
+fn render_command_uses_the_duplicated_plans_view_range() {
+    let mut s = Session::new();
+    run(&mut s, "wall", json!({"points": [[0,0],[4000,0]], "height": 900}));
+    let copy = id(&run(&mut s, "duplicate_view", json!({"view": "Level 1", "name": "Low cut"})));
+    run(&mut s, "modify", json!({"id": copy, "view_range": {"cut": 500}}));
+    let parent = run(&mut s, "render", json!({"view": "Level 1", "width": 400, "height": 300}));
+    assert_eq!(cut_pixels(&picture(&parent)), 0, "the low wall is below the parent's cut");
+    let reply = run(&mut s, "render", json!({"view": copy, "width": 400, "height": 300}));
+    assert!(cut_pixels(&picture(&reply)) > 1000, "the duplicate's lower cut must cut the low wall");
+    assert_eq!(reply["view"], "Low cut");
+}
+
 #[test]
 fn a_duplicate_is_a_plan_view_of_the_same_level_named_after_it_and_numbered() {
     let mut s = house();
