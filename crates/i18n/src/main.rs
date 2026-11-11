@@ -14,7 +14,7 @@ fn run(root: &Path, action: &str) -> Result<(), String> {
         match action {
             "extract" | "update" => fs::write(&path, &rendered).map_err(|e| e.to_string())?,
             "check" => {
-                if fs::read_to_string(&path).map_err(|e| e.to_string())? != rendered {
+                if !catalog::up_to_date(&fs::read_to_string(&path).map_err(|e| e.to_string())?, &rendered) {
                     return Err(format!("{} is out of date; run cargo i18n update", path.display()));
                 }
             }
