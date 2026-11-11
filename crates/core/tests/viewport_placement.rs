@@ -245,8 +245,7 @@ mod tests {
     fn automatic_views_clear_the_title_block_of_the_projects_own_the_sheet_names() {
         // Taller and wider than the built-in box: the views keep clear of all of it, not of the built-in box's room.
         let mut s = with_title_block(json!({"name":"Tall","width":200,"height":200}));
-        let ids: Vec<Id> =
-            (1..=6).map(|n| place_on(&mut s, "A102", &format!("Drawing {n}"), 50.0)["id"].as_u64().unwrap()).collect();
+        let ids: Vec<Id> = (1..=6).map(|n| place_on(&mut s, "A102", &format!("Drawing {n}"), 50.0)["id"].as_u64().unwrap()).collect();
         let d = sheet::draw(&s.model, s.model.sheet_numbered("A102").unwrap()).unwrap();
         // ISO A3: the border's bottom right corner at (410, 10); the title block 200 mm square up and left of it.
         let title = px(&d, [210.0, 10.0, 410.0, 210.0]);
@@ -269,8 +268,7 @@ mod tests {
     fn automatic_views_pack_inside_the_title_blocks_drawing_area() {
         let area = [30.0, 150.0, 400.0, 280.0];
         let mut s = with_title_block(json!({"name":"Area","drawing_area":[[area[0], area[1]], [area[2], area[3]]]}));
-        let ids: Vec<Id> =
-            (1..=6).map(|n| place_on(&mut s, "A102", &format!("Drawing {n}"), 50.0)["id"].as_u64().unwrap()).collect();
+        let ids: Vec<Id> = (1..=6).map(|n| place_on(&mut s, "A102", &format!("Drawing {n}"), 50.0)["id"].as_u64().unwrap()).collect();
         let d = sheet::draw(&s.model, s.model.sheet_numbered("A102").unwrap()).unwrap();
         let inside = px(&d, area);
         for (i, id) in ids.iter().enumerate() {
