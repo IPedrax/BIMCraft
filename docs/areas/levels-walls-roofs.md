@@ -171,7 +171,17 @@ are, and `Model::ceiling_slabs` what's left. A shaft cuts each floor,
 ceiling and roof its span reaches into over its outline, all the way through (`Model::less_shafts`). A stair or a ramp
 is runs and landings laid out from its start (`stairs::stair`, `stairs::ramp`): a landing after `at` risers (a ramp's, `at`
 mm up), as deep as the runs are wide, the next run turning by its `turn`; a railing on one follows its walk line moved out to
-its side (`stairs::railing`), so it goes wherever its host goes. Where stairs are going, and why: [an advanced stair
+its side (`stairs::railing`), so it goes wherever its host goes. A stair's `start` is on its location line
+(`line`: its left edge, its middle or its right edge, and `offset` from it; `Stair::foot` is the middle of its first riser), so
+the line stays when the width changes. A landing has a `length` of its own (0: as deep as the stair is wide), and a turn may
+wind instead (`winders` treads fanned round the turn's inside corner, `stairs::wind`; they are `Layout::pads` too, the last
+`Layout::winders` of a turn's). A project's **building code** (`codes.rs`, `data/building-codes.json`: generic, NBR, IBC, DIN,
+Japan; the numbers typed from memory and unchecked) is the rules its stairs are held to: `building_code` names one and changes
+any rule of it for the project (`Model::building_code`, `Model::stair_rules`), a new stair starts with its riser, going and
+landing length, `landings: "auto"` places the landings due, and `stair_check` (and `code_check`, `code_findings` on a stair)
+lists what a stair is outside of, with the number and the fix. Nothing is ever refused for breaking a rule: winders under a
+code without them are built and reported. The desktop's is Manage > Building Codes (`ui-egui/src/codes.rs`), apart from
+Technical Standards, which is about drafting. Where stairs are going, and why: [an advanced stair
 tool](../stair-tool-plan.md). `modify` merges into fields that are objects (JSON Merge Patch), so `{"view_range": {"cut": 1500}}` keeps the rest; an element's own field can't be
 called `category`, the tag every element carries.
 

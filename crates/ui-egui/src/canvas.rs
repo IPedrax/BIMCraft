@@ -10,7 +10,7 @@ use std::sync::{Arc, Weak};
 use bimcraft_core::geom::{self, P2};
 use bimcraft_core::model::{
     Clearance, Column, Component, DEFAULT_HEIGHT, DimKind, Dimension, Element, Extrusion, Floor, Id, Landing, Line, MAX_COORD, Mass, Model,
-    RISER, Ramp, Reference, Roof, Section, Spot, Stair, TOL, TREAD, Tag, Wall,
+    Ramp, Reference, Roof, Section, Spot, Stair, TOL, Tag, Wall,
 };
 use bimcraft_core::render::{self, Drawing, Prim, Rgb, View};
 use bimcraft_core::snap::{self, Found, Kind, Reach};
@@ -2623,7 +2623,7 @@ impl BimApp {
             let (top_level, height) = (top["top_level"].as_u64().map(|t| m.guid(t)), top["height"].as_f64().unwrap_or(0.0));
             let (bottom, top) = m.span(level, 0.0, top_level, height);
             let up = (run * slope / 100.0 * 1000.0).round() / 1000.0;
-            let landings = if top - bottom - up > 1.0 { vec![Landing { at: up, turn }] } else { Vec::new() };
+            let landings = if top - bottom - up > 1.0 { vec![Landing { at: up, turn, ..Landing::default() }] } else { Vec::new() };
             let done = done(&landings);
             Ok((
                 Element::Ramp(Ramp {
@@ -2641,6 +2641,7 @@ impl BimApp {
             ))
         } else {
             let width = m.units.parse(&self.stair_width).ok_or_else(|| tf("stair: `{}` is not a width", &[&self.stair_width]))?;
+            let rules = m.stair_rules();
             let mut st = Stair {
                 params: Default::default(),
                 level: m.guid(level),
@@ -2649,15 +2650,24 @@ impl BimApp {
                 start,
                 angle,
                 width,
-                riser: RISER,
-                tread: TREAD,
+                riser: rules.riser,
+                tread: rules.going,
                 landings: Vec::new(),
+                line: self.stair_line,
+                offset: m.units.parse(&self.stair_offset).unwrap_or(0.0),
             };
-            let (n, _, _) = m.flight(&st);
-            // As many risers as the run clicked holds, a tread between each two.
-            let first = ((run / TREAD).round() + 1.0).max(2.0);
-            if f64::from(n) - first >= 2.0 {
-                st.landings.push(Landing { at: first, turn });
+            let (n, each, _) = m.flight(&st);
+            // A landing as long as the building code asks.
+            let length = rules.landing_length_for(width, each, rules.going);
+            // As many risers as the run clicked holds, a tread between each two, and no more than the project's building
+            // code lets a flight hold before a landing is due.
+            let first = ((run / rules.going).round() + 1.0).max(2.0).min(f64::from(rules.flight_risers(each)));
+            // A turn winds when the Options Bar asks for winders, and there are risers enough for them.
+            let winders = if turn == 0.0 { 0 } else { self.stair_winders.min(30) };
+            if f64::from(n) - first - f64::from(winders.saturating_sub(1)) >= 2.0 {
+                st.landings.push(Landing { at: first, turn, winders, length: if winders > 0 { 0.0 } else { length } });
+            } else if f64::from(n) - first >= 2.0 {
+                st.landings.push(Landing { at: first, turn, winders: 0, length });
             }
             let done = done(&st.landings);
             Ok((Element::Stair(st), done))

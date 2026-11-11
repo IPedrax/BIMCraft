@@ -138,28 +138,35 @@ already avoids two of Revit's faults: it cannot fail to build, and it follows it
   winders (NBR, on an accessible route or an emergency stair), they are drawn all the same and reported as against the
   code. A tool is never taken away because one code forbids what it makes.
 
-## Pieces
+## Roadmap
 
-Each keeps old files reading (a step in `Model::migrate` and a `FORMAT` bump where an older version would misread), adds
-its payloads to the hostile sweep, and is looked at as [looking at results](areas/looking-at-results.md) says.
+Each step ends in something to test in the app, keeps old files reading (a step in `Model::migrate` and a `FORMAT` bump
+where an older version would misread), adds its payloads to the hostile sweep, and is looked at as
+[looking at results](areas/looking-at-results.md) says. This table is kept up to date as the work goes: the state of
+each step, and what was left out of it. "Revit" names what its Stair tool has that the step answers (Modify | Create
+Stair: Run, Landing and Support components; the run shapes straight, full-step spiral, centre-ends spiral, L-shape winder,
+U-shape winder and sketch; Location Line, Offset, Actual Run Width and Automatic Landing in the Options Bar; Connect
+Levels; Convert, Edit Sketch, Flip, Railing).
 
-| # | Piece | What it adds | Tested through |
-|---|---|---|---|
-| 1 | Building codes and `stair_check` (in progress) | `data/building-codes.json` (generic, NBR, IBC, DIN, Japan), the project's code and its own rules (`building_code`, Manage > Building Codes), a new stair starting with them, `landings: "auto"`, `stair_check` listing what a stair breaks with the number and the fix, and the sign in a stair's Properties. | The commands' JSON on stairs that break each rule; the dialog |
-| 2 | Stair types | A library entry: monolithic, stringers, carriage or cantilevered; tread and riser thickness, nosing, open risers; materials. 3D, sections and IFC draw them. | Pixels of a section; `IfcStairFlight` and `IfcMember` in the STEP file |
-| 3 | The path | Runs of their own widths, turnings at any angle, a landing's depth and outline of its own, the stair to a side of its baseline, drawn up or down. Today's `landings` migrate to it. | Layout rings; a file of format N read as N+1 |
-| 4 | Winders | A turning that winds: equal goings on the walk line, the least going at the narrow end, balanced into the flights by a chosen construction. | Goings measured on the walk line and at the narrow end |
-| 5 | Curved runs | Arcs in the baseline: curved flights, spirals round a post, length along arc or chord as the rules say. | The same measurements on an arc |
-| 6 | `stair_solve` and locks | The solver and the locked numbers. | Every answer passes `stair_check`; least change first |
-| 7 | Multistorey | `top_level` several levels up, each storey its own flights; a landing at each floor. | Unequal levels; a level moved |
-| 8 | The plan symbol | Break mark on the slope, above and below, the level above, arrows, numbering, per type. | Pixels of plans of both levels |
-| 9 | Headroom and the opening | The volume, clashes in `stair_check`, `opening: true` cutting the floor above. | A beam in the volume; the floor's hole |
-| 10 | Railings | Balusters by tread or by spacing that stay whole across slope changes, rails continuous over landings, both sides and the well of a multistorey stair. | Baluster positions; no part outside its panel |
-| 11 | The desktop tool | Draw the baseline with the stair shown live and its findings beside it; grips for ends, turnings and widths; the solver's answers as a list to pick from. | egui_kittest: clicks at model points |
-| 12 | IFC both ways | `IfcStair` of `IfcStairFlight`, landings and railings with `Pset_StairFlightCommon`; import keeps a stair a stair. | IfcOpenShell |
-
-Pieces 1 and 8 are worth doing first: they change no file format and answer the two loudest complaints (rules that only
-warn, and the plan symbol).
+| # | Step | What it adds | Revit | State |
+|---|---|---|---|---|
+| 1 | Building codes | `data/building-codes.json` (generic, NBR, IBC, DIN, Japan), the project's code and its own rules (`building_code`, Manage > Building Codes), a new stair starting with them, `landings: "auto"`, `stair_check`, and the sign in a stair's Properties with a popup listing each rule broken. | Its calculation rules only warn; here the code is data, and the project's to change | Done. The numbers are unchecked; headroom, nosing, uniformity and railing heights are stored and not yet checked |
+| 2 | Winders, basic | A turn of 90 or 180 made of `winders` treads fanned round its inside corner, checked on the code's walk line; the Stair tool's Winders option. | L-shape and U-shape winder runs | Done. Point winders only: the narrow end is always reported where a code has a least depth there |
+| 3 | Location line | `line` (left, centre, right) and `offset`: the line the stair is drawn by, which stays when the width changes; in the Options Bar and Properties. | Location Line (Run: Left, Center, Right; Exterior Support: Left, Right) and Offset | Done for the run's lines. The exterior support's lines come with stair types (step 9) |
+| 4 | Landings of their own | A landing's `length`, prefilled from the code's landing rule in the tool and by `"auto"`. | Automatic Landing; the Landing component | Done for the depth. Still to come: every landing of a stair drawn in the tool following the code (the tool makes one), a landing's own outline (sketch), and Automatic Landing switched off (runs drawn apart, joined later) |
+| 5 | Editing a placed stair | Properties for landings and winders, grips for the ends, the turns, the width and a landing's depth, the findings live while dragging, Flip (the way it climbs). | Editing a stair's components in its edit mode; Flip | |
+| 6 | Balanced winders | Winders run into the flights so the narrow end holds the code's least; a choice of construction; the walk line an arc in plan; railings following it. | The winder run's Minimum Width at Inside Walkline and number of winders | |
+| 7 | The path | Runs of their own widths, turns at any angle, runs drawn one by one (a click each), up or down. Changes the file's format, with a migration. | Run by run creation; Actual Run Width per run | |
+| 8 | Curved and spiral | Arc runs, a spiral round a post by full steps or by centre and ends, goings on the walk line. | Full-step spiral and centre-ends spiral | |
+| 9 | Stair types and supports | A library entry: monolithic, stringers (closed or open), carriage, cantilevered; tread and riser thickness, nosing, open risers, materials; structure apart from finish; the support's own lines as location lines. | Assembled, cast-in-place and precast stairs; the Support component; Edit Type | |
+| 10 | Sketched parts | A run's or a landing's outline drawn by hand, and a made part converted to a sketch. | Create Sketch, Convert, Edit Sketch | |
+| 11 | Solver and locks | `stair_solve`: lock what matters, get the stairs that fit the code, least change first. | Desired Number of Risers, and nothing more | |
+| 12 | Multistorey | One stair across several levels, following them when they move, a landing at each floor. **Storeys of different heights**: each storey has its own count of risers and riser height inside the code, the going kept the same where it can be; the flights of a taller storey are longer or gain a landing, and `stair_check` reports a storey that cannot be made inside the rules, and how much two storeys' risers differ (the code's uniformity is within a flight, and a project may ask it between storeys). | Multistory Stairs > Connect Levels, which groups storeys of equal height and gives a stair of its own to one that differs | |
+| 13 | The plan symbol | Break mark on the slope, above and below per floor, arrows, tread numbers, per type. | Cut marks, stair paths and tread numbers, each an annotation of its own there | |
+| 14 | Headroom and the opening | The headroom volume checked against floors and beams; the opening in the floor above cut from it. | None: a shaft is drawn by hand | |
+| 15 | Railings | Balusters by tread or by spacing that stay whole across slope changes, rails continuous over landings and winders, heights from the code, both sides and the well. | Railing on Treads or Stringer | |
+| 16 | IFC both ways | `IfcStair` of `IfcStairFlight`, landings, winder treads and railings with `Pset_StairFlightCommon`; import keeps a stair a stair. | IFC export of stairs | |
+| 17 | Finish | The codes' numbers checked against the documents, the dialog in the project's units, translations. | | |
 
 ## Open questions
 

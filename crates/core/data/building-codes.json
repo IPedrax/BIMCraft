@@ -1,0 +1,105 @@
+{
+ "about": "Building codes, one entry each, read by `building_code` and `stair_check` (codes.rs). A project names one and starts with its rules, which it may change (a state's or a city's own rules); nothing built is ever refused for breaking one, only reported. A country's code is added as a new entry, never as code. UNCHECKED: the numbers were typed from memory of the documents named, not from their text, and each code tells occupancies apart where an entry holds one row (the general one); check a number against a copy before relying on it. Where a code gives no number, the entry holds a forgiving one that asks nothing in practice, and `note` says which. Millimetres. `stairs`: `riser` and `going` are what a new stair starts with; `riser_min`..`riser_max` and `going_min`..`going_max` their ranges; `step_min`..`step_max` the range of 2 risers + 1 going; `width_min` the least clear width; `headroom` the least height over the walk line; a landing is due when a flight would rise more than `flight_rise_max` or hold more than `flight_risers_max` risers, whichever comes first; `landing_rule` says how long a landing must be: `width` the stair's width, `landing_length` being enough; `fixed` `landing_length`; `step` a going and one step (2 risers + 1 going), and `landing_length` at least. `winders` whether winding treads are allowed; `walk_line` where their going is measured: `centre` along the middle, `narrow_side` at `walk_line_offset` from the narrow side; `winder_going_min` the least going there and `winder_narrow_min` the least at the narrow end. `nosing_max` the most a tread overhangs; `open_risers` whether risers may be open; `uniformity` the most two risers or goings of a flight may differ; `handrail_min`..`handrail_max` a handrail's height over the nosings; `guard_min` a guard's least height.",
+ "codes": [
+  {
+   "code": "generic",
+   "name": "No building code",
+   "region": "",
+   "references": [],
+   "note": "No code's numbers: wide ranges round common practice, so a stair is reported only when it is far from any stair one would build.",
+   "stairs": {
+    "riser": 180, "going": 280,
+    "riser_min": 100, "riser_max": 220,
+    "going_min": 210, "going_max": 400,
+    "step_min": 550, "step_max": 700,
+    "width_min": 800, "headroom": 2000,
+    "flight_rise_max": 4000, "flight_risers_max": 22,
+    "landing_rule": "width", "landing_length": 1200,
+    "winders": true, "walk_line": "centre", "walk_line_offset": 300,
+    "winder_going_min": 210, "winder_narrow_min": 100,
+    "nosing_max": 40, "open_risers": true, "uniformity": 10,
+    "handrail_min": 800, "handrail_max": 1100, "guard_min": 900
+   }
+  },
+  {
+   "code": "nbr",
+   "name": "ABNT NBR 9050 and NBR 9077",
+   "region": "Brasil",
+   "references": ["ABNT NBR 9050:2020 (acessibilidade), 6.8 escadas", "ABNT NBR 9077:2001 (saídas de emergência), 4.7 escadas"],
+   "note": "A state's fire brigade often rules instead of NBR 9077 (São Paulo's IT 11, for one): change the rules to its numbers. Winders are not allowed on an accessible route or an emergency stair, so they are reported; the walk line and its goings are forgiving numbers, and so are the most risers in a flight and the uniformity. The handrail range holds NBR 9050's two rails, at 700 and 920.",
+   "stairs": {
+    "riser": 180, "going": 280,
+    "riser_min": 160, "riser_max": 180,
+    "going_min": 280, "going_max": 320,
+    "step_min": 630, "step_max": 650,
+    "width_min": 1200, "headroom": 2100,
+    "flight_rise_max": 3200, "flight_risers_max": 20,
+    "landing_rule": "fixed", "landing_length": 1200,
+    "winders": false, "walk_line": "narrow_side", "walk_line_offset": 550,
+    "winder_going_min": 280, "winder_narrow_min": 150,
+    "nosing_max": 15, "open_risers": false, "uniformity": 5,
+    "handrail_min": 700, "handrail_max": 920, "guard_min": 1050
+   }
+  },
+  {
+   "code": "ibc",
+   "name": "International Building Code",
+   "region": "United States",
+   "references": ["IBC 2021, section 1011 (stairways)", "IBC 2021, sections 1014 (handrails) and 1015 (guards)"],
+   "note": "The general row; inside a dwelling the IBC and the IRC allow a riser of 7 3/4 in and a going of 10 in. The IBC has no step rule and counts no risers in a flight: `step_min`, `step_max`, `going_max` and `flight_risers_max` are forgiving numbers. Winders are allowed inside dwellings only. Inches, written in millimetres.",
+   "stairs": {
+    "riser": 177.8, "going": 279.4,
+    "riser_min": 101.6, "riser_max": 177.8,
+    "going_min": 279.4, "going_max": 400,
+    "step_min": 480, "step_max": 760,
+    "width_min": 1117.6, "headroom": 2032,
+    "flight_rise_max": 3657.6, "flight_risers_max": 36,
+    "landing_rule": "width", "landing_length": 1219.2,
+    "winders": true, "walk_line": "narrow_side", "walk_line_offset": 304.8,
+    "winder_going_min": 279.4, "winder_narrow_min": 254,
+    "nosing_max": 31.75, "open_risers": false, "uniformity": 9.525,
+    "handrail_min": 863.6, "handrail_max": 965.2, "guard_min": 1066.8
+   }
+  },
+  {
+   "code": "din",
+   "name": "DIN 18065",
+   "region": "Deutschland",
+   "references": ["DIN 18065:2020-08, Gebäudetreppen (buildings in general)"],
+   "note": "The row for buildings in general; a house of up to two dwellings may have a width of 800, a riser of 200 and a going from 230. The European Union has no stair code of its own: each country has one, and this is Germany's. DIN counts risers, 18 in a flight at most, so `flight_rise_max` is a forgiving number, and so is `nosing_max`.",
+   "stairs": {
+    "riser": 180, "going": 270,
+    "riser_min": 140, "riser_max": 190,
+    "going_min": 260, "going_max": 370,
+    "step_min": 590, "step_max": 650,
+    "width_min": 1000, "headroom": 2000,
+    "flight_rise_max": 4000, "flight_risers_max": 18,
+    "landing_rule": "step", "landing_length": 0,
+    "winders": true, "walk_line": "centre", "walk_line_offset": 300,
+    "winder_going_min": 260, "winder_narrow_min": 100,
+    "nosing_max": 50, "open_risers": true, "uniformity": 5,
+    "handrail_min": 800, "handrail_max": 1150, "guard_min": 900
+   }
+  },
+  {
+   "code": "jis",
+   "name": "Building Standards Law of Japan",
+   "region": "Japan",
+   "references": ["Building Standards Law Enforcement Order, articles 23 to 25 (stairs, landings, handrails)"],
+   "note": "The row for buildings not otherwise listed; schools, theatres and large shops have stricter rows, a dwelling a looser one. A winder's going is measured 300 from its narrow end. The order gives no riser minimum, going maximum, step rule, headroom, riser count or uniformity: those are forgiving numbers.",
+   "stairs": {
+    "riser": 180, "going": 260,
+    "riser_min": 100, "riser_max": 220,
+    "going_min": 210, "going_max": 400,
+    "step_min": 550, "step_max": 650,
+    "width_min": 750, "headroom": 2000,
+    "flight_rise_max": 4000, "flight_risers_max": 40,
+    "landing_rule": "fixed", "landing_length": 1200,
+    "winders": true, "walk_line": "narrow_side", "walk_line_offset": 300,
+    "winder_going_min": 210, "winder_narrow_min": 100,
+    "nosing_max": 40, "open_risers": true, "uniformity": 10,
+    "handrail_min": 750, "handrail_max": 1100, "guard_min": 1100
+   }
+  }
+ ]
+}

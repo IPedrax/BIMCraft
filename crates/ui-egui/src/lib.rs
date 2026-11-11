@@ -16,6 +16,7 @@ mod cad;
 mod camera;
 mod canvas;
 mod clouds;
+mod codes;
 mod context;
 pub mod control;
 mod dialog;
@@ -586,6 +587,11 @@ pub struct BimApp {
     /// Extrusion tool's profile, a shed's rather than a gable's; the Dormer tool's width and height,
     /// and whether its front has a window.
     stair_width: String,
+    /// The Stair tool's winders: how many treads a turn is made of, none for a landing.
+    stair_winders: u32,
+    /// The Stair tool's location line, the line of the stair the clicks are on, and how far the stair stands from it.
+    stair_line: bimcraft_core::model::StairLine,
+    stair_offset: String,
     roof_slope: String,
     /// The scale being typed in the view control bar's Scale menu.
     scale_text: String,
@@ -785,6 +791,8 @@ pub struct BimApp {
     mode_width: f32,
     /// Manage > Technical Standards, while open.
     standards_dialog: Option<standards::StandardsDialog>,
+    /// Manage > Building Codes, while open.
+    codes_dialog: Option<codes::CodesDialog>,
     /// The plugins of the user's folder, the tabs they put on the ribbon, and the Plugins window while it is open.
     pub(crate) plugins: bimcraft_plugin::Plugins,
     pub(crate) plugin_tabs: Vec<bimcraft_plugin::RibbonTab>,
@@ -1307,6 +1315,9 @@ impl BimApp {
             footing_thickness: units.length(400.0),
             footing_top: units.length(0.0),
             stair_width: units.length(STAIR_WIDTH),
+            stair_winders: 0,
+            stair_line: Default::default(),
+            stair_offset: units.length(0.0),
             roof_slope: "30".into(),
             scale_text: String::new(),
             roof_overhang: units.length(500.0),
@@ -1426,6 +1437,7 @@ impl BimApp {
             sketch: None,
             mode_width: 0.0,
             standards_dialog: None,
+            codes_dialog: None,
             plugins: bimcraft_plugin::Plugins::empty(),
             plugin_tabs: Vec::new(),
             plugins_dialog: false,
@@ -1850,6 +1862,7 @@ impl BimApp {
                 &mut self.wall_height,
                 &mut self.column_height,
                 &mut self.stair_width,
+                &mut self.stair_offset,
                 &mut self.roof_overhang,
                 &mut self.offset,
                 &mut self.ceiling_height,
@@ -4195,6 +4208,13 @@ impl BimApp {
             if big_button(ui, Icon::Settings, "Technical Standards", self.standards_dialog.is_some(), &tip).clicked() {
                 self.standards_dialog = Some(standards::StandardsDialog::new(&self.session.model));
             }
+            let tip = tf(
+                "Building Codes: the rules stairs and railings are held to (NBR, IBC, DIN, JIS), which the project may change; now {}",
+                &[t(&self.session.model.building_code().name)],
+            );
+            if big_button(ui, Icon::Stair, "Building Codes", self.codes_dialog.is_some(), &tip).clicked() {
+                self.codes_dialog = Some(codes::CodesDialog::new(&self.session.model));
+            }
             let tip = msg!(
                 "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
             );
@@ -4704,9 +4724,35 @@ impl BimApp {
                     self.elevation_base(ui);
                 }
                 Tool::Stair(_) => {
+                    use bimcraft_core::model::StairLine;
+                    let lines = [(StairLine::Left, "Run: Left"), (StairLine::Centre, "Run: Center"), (StairLine::Right, "Run: Right")];
+                    let l = ui.label(t("Location Line:"));
+                    let now = lines.iter().find(|(k, _)| *k == self.stair_line).map_or("", |(_, s)| s);
+                    ComboBox::from_id_salt("stair-location-line")
+                        .selected_text(t(now))
+                        .show_ui(ui, |ui| {
+                            for (k, s) in lines {
+                                ui.selectable_value(&mut self.stair_line, k, t(s));
+                            }
+                        })
+                        .response
+                        .labelled_by(l.id)
+                        .on_hover_text(t("The line of the stair the clicks are on: it stays where it is when the width changes"));
+                    let l = ui.label(t("Offset:"));
+                    let hint = self.session.model.units.name();
+                    ui.add(TextEdit::singleline(&mut self.stair_offset).desired_width(56.0).hint_text(hint)).labelled_by(l.id);
                     let l = ui.label(t("Width:"));
                     let hint = self.session.model.units.name();
                     ui.add(TextEdit::singleline(&mut self.stair_width).desired_width(64.0).hint_text(hint)).labelled_by(l.id);
+                    let l = ui.label(t("Winders:"));
+                    let tip = t("How many winder treads a turn is made of; 0 turns on a landing");
+                    ui.add(egui::DragValue::new(&mut self.stair_winders).range(0..=30)).labelled_by(l.id).on_hover_text(tip);
+                    if self.stair_winders > 0 && !self.session.model.stair_rules().winders {
+                        let code = t(&self.session.model.building_code().name).to_string();
+                        ui.label(RichText::new(tf("Against {}", &[&code])).color(codes::OUTSIDE)).on_hover_text(t(
+                            "This building code does not allow winders. The stair is still built, and marked outside the rules.",
+                        ));
+                    }
                     ui.checkbox(&mut self.railings, t("Railings"));
                 }
                 Tool::Ramp(_) => {
@@ -5284,6 +5330,7 @@ impl BimApp {
         self.dimension_type_window(ctx);
         self.dimension_text_window(ctx);
         self.standards_window(ctx);
+        self.codes_window(ctx);
         self.electrical_window(ctx);
         self.options_window(ctx);
         self.purge_window(ctx);

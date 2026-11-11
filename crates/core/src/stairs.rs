@@ -44,37 +44,81 @@ pub struct Layout {
     pub pads: Vec<Pad>,
     pub walk: Vec<(P2, f64)>,
     pub width: f64,
+    /// How many of `pads` are winder treads, not landings.
+    pub winders: usize,
 }
 
 /// Runs of `(length, heights, risers)` from `start` toward `angle` degrees, `width` wide, and a
 /// landing after each but the last, as deep as they're wide, the next run going on as `turns` say:
-/// straight on (0), left or right (90, -90), or back beside it, to its left or right (180, -180).
-fn chain(start: P2, angle: f64, width: f64, runs: Vec<(f64, (f64, f64), u32)>, turns: &[f64]) -> Layout {
+/// straight on (0), left or right (90, -90), or back beside it, to its left or right (180, -180). A turn of
+/// `(turn, winders)` with winders has no landing: that many treads fanned round its inside corner, `each` apart
+/// in height, the first where the landing would be.
+fn chain(start: P2, angle: f64, width: f64, runs: Vec<(f64, (f64, f64), u32)>, turns: &[(f64, u32, f64)], each: f64) -> Layout {
     let (mut at, mut u) = (start, heading(angle));
-    let mut out = Layout { runs: Vec::new(), pads: Vec::new(), walk: Vec::new(), width };
+    let mut out = Layout { runs: Vec::new(), pads: Vec::new(), walk: Vec::new(), width, winders: 0 };
     for (i, (length, z, risers)) in runs.into_iter().enumerate() {
         let run = Run { start: at, u, length, z, risers };
         out.walk.extend([(run.start, z.0), (run.end(), z.1)]);
         out.runs.push(run);
-        let Some(&turn) = turns.get(i) else { break };
+        let Some(&(turn, winders, deep)) = turns.get(i) else { break };
         let (e, n, w) = (run.end(), u.perp(), width);
+        // How deep the landing is: as the stair is wide unless it says, and no less where the next run leaves its side.
+        let d = if winders > 0 || deep <= 0.0 {
+            w
+        } else if turn.abs() == 90.0 {
+            deep.max(w)
+        } else {
+            deep
+        };
         // Across the landing from the run's right edge to its left, and how far it reaches past the
         // run: to the next run's far edge, beside it when it turns back.
         let side = n * if turn > 0.0 { 1.0 } else { -1.0 };
         let (ring, via, next, dir) = if turn == 0.0 {
-            (vec![e - n * (w / 2.0), e - n * (w / 2.0) + u * w, e + n * (w / 2.0) + u * w, e + n * (w / 2.0)], vec![], e + u * w, u)
+            (vec![e - n * (w / 2.0), e - n * (w / 2.0) + u * d, e + n * (w / 2.0) + u * d, e + n * (w / 2.0)], vec![], e + u * d, u)
         } else if turn.abs() == 90.0 {
-            let ring = vec![e - n * (w / 2.0), e - n * (w / 2.0) + u * w, e + n * (w / 2.0) + u * w, e + n * (w / 2.0)];
-            (ring, vec![e + u * (w / 2.0)], e + u * (w / 2.0) + side * (w / 2.0), side)
+            let ring = vec![e - n * (w / 2.0), e - n * (w / 2.0) + u * d, e + n * (w / 2.0) + u * d, e + n * (w / 2.0)];
+            (ring, vec![e + u * (d - w / 2.0)], e + u * (d - w / 2.0) + side * (w / 2.0), side)
         } else {
-            let ring = vec![e - side * (w / 2.0), e - side * (w / 2.0) + u * w, e + side * (1.5 * w) + u * w, e + side * (1.5 * w)];
-            (ring, vec![e + u * (w / 2.0), e + u * (w / 2.0) + side * w], e + side * w, u * -1.0)
+            let ring = vec![e - side * (w / 2.0), e - side * (w / 2.0) + u * d, e + side * (1.5 * w) + u * d, e + side * (1.5 * w)];
+            (ring, vec![e + u * (d / 2.0), e + u * (d / 2.0) + side * w], e + side * w, u * -1.0)
         };
-        out.pads.push(Pad { ring: ccw(ring), z: z.1 });
-        out.walk.extend(via.into_iter().map(|p| (p, z.1)));
+        if winders > 0 && turn != 0.0 {
+            let rings = wind(e + side * (w / 2.0), side, u, w, turn.abs(), winders);
+            out.pads.extend(rings.into_iter().enumerate().map(|(k, ring)| Pad { ring: ccw(ring), z: z.1 + k as f64 * each }));
+            out.winders += winders as usize;
+            // The walk line climbs through the turn.
+            let (parts, top) = (via.len() as f64 + 1.0, f64::from(winders - 1) * each);
+            out.walk.extend(via.into_iter().enumerate().map(|(k, p)| (p, z.1 + top * (k as f64 + 1.0) / parts)));
+        } else {
+            out.pads.push(Pad { ring: ccw(ring), z: z.1 });
+            out.walk.extend(via.into_iter().map(|p| (p, z.1)));
+        }
         (at, u) = (next, dir);
     }
     out
+}
+
+/// The treads of a turn that winds: `count` of them fanned in equal angles round the turn's inside corner `p`,
+/// through `sweep` degrees (90 or 180), filling the landing's place: `w` deep along `u`, and `w` out from `p` away
+/// from `side` (and toward it too, when the stair turns back).
+fn wind(p: P2, side: P2, u: P2, w: f64, sweep: f64, count: u32) -> Vec<Vec<P2>> {
+    let at = |x: f64, y: f64| p + side * x + u * y;
+    // Where the ray at `deg` from the first run's end line meets the landing's edge.
+    let hit = |deg: f64| {
+        let (s, c) = deg.to_radians().sin_cos();
+        let t = (w / c.abs().max(1e-12)).min(w / s.abs().max(1e-12));
+        at(-c * t, s * t)
+    };
+    let corners = [(45.0, at(-w, w)), (135.0, at(w, w))];
+    (0..count)
+        .map(|k| {
+            let (a, b) = (sweep * f64::from(k) / f64::from(count), sweep * f64::from(k + 1) / f64::from(count));
+            let mut ring = vec![p, hit(a)];
+            ring.extend(corners.iter().filter(|(deg, _)| *deg > a + 1e-9 && *deg < b - 1e-9).map(|(_, c)| *c));
+            ring.push(hit(b));
+            ring
+        })
+        .collect()
 }
 
 fn ccw(ring: Vec<P2>) -> Vec<P2> {
@@ -85,22 +129,27 @@ fn ccw(ring: Vec<P2>) -> Vec<P2> {
 pub fn stair(m: &Model, st: &Stair) -> Layout {
     let (n, each, _) = m.flight(st);
     let base = m.elevation(st.level);
-    let mut breaks: Vec<u32> = vec![0];
-    breaks.extend(st.landings.iter().map(|l| (l.at.max(0.0).min(f64::from(n))) as u32));
-    breaks.push(n);
-    let runs = breaks
-        .windows(2)
-        .filter_map(|w| match *w {
-            [a, b] => Some((
+    // Each run from the riser it starts at to the one that climbs off it; winders climb some between two runs.
+    let mut spans: Vec<(u32, u32)> = Vec::new();
+    let mut from = 0u32;
+    for l in &st.landings {
+        let to = (l.at.max(0.0).min(f64::from(n))) as u32;
+        spans.push((from, to));
+        from = to.saturating_add(l.wound()).min(n);
+    }
+    spans.push((from, n));
+    let runs = spans
+        .into_iter()
+        .map(|(a, b)| {
+            (
                 f64::from(b.saturating_sub(a).saturating_sub(1)) * st.tread,
-                (base + f64::from(a) * each, base + f64::from(b) * each),
+                (base + f64::from(a) * each, base + f64::from(b.max(a)) * each),
                 b.saturating_sub(a),
-            )),
-            _ => None,
+            )
         })
         .collect();
-    let turns: Vec<f64> = st.landings.iter().map(|l| l.turn).collect();
-    chain(st.start, st.angle, st.width, runs, &turns)
+    let turns: Vec<(f64, u32, f64)> = st.landings.iter().map(|l| (l.turn, l.winders, l.length)).collect();
+    chain(st.foot(), st.angle, st.width, runs, &turns, each)
 }
 
 /// A ramp's runs: its rise split at its landings' heights, each run as long as its slope makes it.
@@ -117,8 +166,8 @@ pub fn ramp(m: &Model, r: &Ramp) -> Layout {
             _ => None,
         })
         .collect();
-    let turns: Vec<f64> = r.landings.iter().map(|l| l.turn).collect();
-    chain(r.start, r.angle, r.width, runs, &turns)
+    let turns: Vec<(f64, u32, f64)> = r.landings.iter().map(|l| (l.turn, 0, l.length)).collect();
+    chain(r.start, r.angle, r.width, runs, &turns, 0.0)
 }
 
 /// Element `e`'s layout, a stair's or a ramp's.
@@ -217,14 +266,14 @@ mod tests {
     fn landings_turn_the_next_run_square_or_back() {
         let runs = vec![(1000.0, (0.0, 500.0), 0), (1000.0, (500.0, 1000.0), 0)];
         let near = |a: P2, b: P2| a.dist(b) < 1e-9;
-        let l = chain(P2(0.0, 0.0), 90.0, 1000.0, runs.clone(), &[-90.0]);
+        let l = chain(P2(0.0, 0.0), 90.0, 1000.0, runs.clone(), &[(-90.0, 0, 0.0)], 0.0);
         // North, then a metre square landing, then east from its middle.
         assert!(near(l.runs[1].start, P2(500.0, 1500.0)) && near(l.runs[1].u, P2(1.0, 0.0)), "{:?}", l.runs[1]);
         assert!((geom::area(&l.pads[0].ring) - 1e6).abs() < 1e-6);
-        let back = chain(P2(0.0, 0.0), 90.0, 1000.0, runs.clone(), &[180.0]);
+        let back = chain(P2(0.0, 0.0), 90.0, 1000.0, runs.clone(), &[(180.0, 0, 0.0)], 0.0);
         assert!(near(back.runs[1].start, P2(-1000.0, 1000.0)) && near(back.runs[1].u, P2(0.0, -1.0)), "{:?}", back.runs[1]);
         assert!((geom::area(&back.pads[0].ring) - 2e6).abs() < 1e-6, "across both runs");
-        let on = chain(P2(0.0, 0.0), 90.0, 1000.0, runs, &[0.0]);
+        let on = chain(P2(0.0, 0.0), 90.0, 1000.0, runs, &[(0.0, 0, 0.0)], 0.0);
         assert!(near(on.runs[1].start, P2(0.0, 2000.0)));
         assert_eq!(on.walk.len(), 4);
     }

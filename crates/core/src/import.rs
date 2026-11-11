@@ -2824,7 +2824,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
             .filter_map(|w| match w {
                 [a, b] => {
                     below += a.3;
-                    Some(Landing { at: f64::from(below), turn: turn_between((a.0, a.1, a.5), (b.0, b.1)) })
+                    Some(Landing { at: f64::from(below), turn: turn_between((a.0, a.1, a.5), (b.0, b.1)), ..Landing::default() })
                 }
                 _ => None,
             })
@@ -2845,6 +2845,8 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
             riser: climb / f64::from(risers),
             tread: (tread(&first) * 1000.0).round() / 1000.0,
             landings,
+            line: Default::default(),
+            offset: 0.0,
         };
         let sid = m.insert(Element::Stair(stair));
         from.insert(sid, who(id));
@@ -2883,7 +2885,11 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
         let landings = fl
             .windows(2)
             .filter_map(|w| match w {
-                [a, b] => Some(Landing { at: (up(a) * 1000.0).round() / 1000.0, turn: turn_between((a.0, a.1, a.3), (b.0, b.1)) }),
+                [a, b] => Some(Landing {
+                    at: (up(a) * 1000.0).round() / 1000.0,
+                    turn: turn_between((a.0, a.1, a.3), (b.0, b.1)),
+                    ..Landing::default()
+                }),
                 _ => None,
             })
             .collect();

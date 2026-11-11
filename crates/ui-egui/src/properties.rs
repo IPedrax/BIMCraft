@@ -318,11 +318,19 @@ fn rows(category: &str) -> &'static [Row] {
             ("Constraints", "level", "Base Level", Level),
             ("Constraints", "top_level", "Top Level", TopLevel),
             ("Constraints", "height", "Unconnected Height", Height),
+            (
+                "Constraints",
+                "line",
+                msg!("Location Line"),
+                Choice(&[("left", "Run: Left"), ("centre", "Run: Center"), ("right", "Run: Right")]),
+            ),
+            ("Constraints", "offset", msg!("Location Line Offset"), Length),
             ("Dimensions", "width", msg!("Actual Run Width"), Length),
             ("Dimensions", "riser", msg!("Maximum Riser Height"), Length),
             ("Dimensions", "tread", msg!("Actual Tread Depth"), Length),
             ("Dimensions", "risers", msg!("Actual Number of Risers"), Shown),
             ("Dimensions", "riser_height", msg!("Actual Riser Height"), LengthShown),
+            ("Dimensions", "code_check", msg!("Building Code"), Shown),
             ("Other", "start", "Start", Point),
         ],
         "ramp" => &[
@@ -1589,6 +1597,15 @@ impl BimApp {
                     let label = t(label);
                     let name = ui.label(label);
                     match kind {
+                        // A stair outside its building code: how many rules, and a click lists them.
+                        Shown if key == "code_check" && v["code_findings"].as_array().is_some_and(|f| !f.is_empty()) => {
+                            let n = v["code_findings"].as_array().map_or(0, Vec::len);
+                            let said = if n == 1 { t("Outside 1 rule").to_string() } else { tf("Outside {} rules", &[&n.to_string()]) };
+                            let r = ui
+                                .add(Button::new(RichText::new(said).color(crate::codes::OUTSIDE)).small())
+                                .on_hover_text(t("Click to see which rules, and what would bring the stair inside them"));
+                            Popup::menu(&r).width(360.0).show(|ui| crate::codes::findings(ui, &self.session.model, &v["code_findings"]));
+                        }
                         Shown => {
                             let said = text(val);
                             ui.label(RichText::new(t(&said)).color(pal().muted));
