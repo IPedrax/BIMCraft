@@ -3,7 +3,7 @@
 //! through get a heavy outline and grey poché, and below it a thin one (faint past the view
 //! range's bottom); doors a leaf and swing, windows glass lines, stairs their risers up to the cut
 //! line and a walk line, roofs their ridge and hips (dashed overhead, below the view range's top),
-//! rooms a tag, grids a dashed line with a bubble at each end, dimensions witness lines and ticks
+//! rooms a tag, grids a long dash and a dot with a bubble at each end, dimensions witness lines and ticks
 //! (an arc for an angle, an arrow for a radius), door and window tags their mark in a box, text
 //! notes their lines, spot elevations a triangle and their height, sections their line and head,
 //! elevations a marker, sloped floors their slope arrow, shafts their outline and a cross; all of
@@ -223,7 +223,7 @@ pub struct Drawing {
     /// what is sized already (a view's lines on a sheet).
     pub pens: Vec<Option<Pen>>,
     regions: regions::Layers,
-    /// What it could not draw as asked, in English (a fill pattern too dense for the view): for a front end to say.
+    /// What it could not draw as asked, in English (a fill pattern too dense, or unsupported lettering): for a front end to say.
     pub notes: Vec<String>,
     /// What the pens draw in this view, mm on paper: the project's line weights at its scale.
     pub(crate) weights: Weights,
@@ -447,6 +447,18 @@ impl Drawing {
     /// `text` centred on `(x, y)` px, capitals `height` px tall, turned `angle` radians clockwise
     /// on screen (y runs down).
     pub(crate) fn text_turned(&mut self, text: &str, (x, y): (f32, f32), height: f32, angle: f32, color: Rgb) {
+        // Only this lettering path substitutes '?' directly. Notes have their own font fallback.
+        for ch in text.chars() {
+            if self.notes.len() >= 32 {
+                break;
+            }
+            if !font::has(ch) {
+                let note = format!("Drawing lettering has no glyph for U+{:04X}; drawn as a question mark (?)", ch as u32);
+                if !self.notes.contains(&note) {
+                    self.notes.push(note);
+                }
+            }
+        }
         let (s, c) = angle.sin_cos();
         let w = font::width(text, height);
         let part = std::mem::replace(&mut self.part, Part::Text);
@@ -3488,13 +3500,12 @@ fn fit_by(extent: impl Fn(f64) -> [P2; 2], width: u32, height: u32, n: f64) -> V
 /// A door or window the cut plane at height `cut` passes through: a gap in the wall, jambs, and
 /// a leaf with its swing, or glass.
 fn opening(d: &mut Drawing, m: &Model, e: &Element, o: &Opening, w: &Wall, cut: f64, shown: bool) {
-    let Some(t) = m.opening_type(e) else { return };
-    let bottom = m.own_base(w) + o.sill;
-    if !(bottom <= cut && cut < bottom + t.height) {
+    let Some(h) = walls::hole(m, w, e, o) else { return };
+    if !(h.bottom <= cut && cut < h.top) {
         return;
     }
     let (axis, (ext, int)) = (Axis::of(w), walls::faces(m, w));
-    let (s0, s1) = (o.offset - t.width / 2.0, o.offset + t.width / 2.0);
+    let (s0, s1) = (h.s0, h.s1);
     // Clear a little past the faces too, where the outlines' outer halves are; along an arc, an arc.
     let past = 3.0 / d.view.scale;
     let gap: Vec<P2> = axis.points(s0, s1, int - past).into_iter().chain(axis.points(s1, s0, ext + past)).collect();
@@ -4295,10 +4306,12 @@ fn elevation_mark(d: &mut Drawing, v: &Section) {
     d.grow(from, c);
 }
 
-/// A grid line, dashed, with a bubble holding its name beyond each end.
+/// A grid line drawn as a long dash and a dot, with a bubble holding its name beyond each end.
 fn grid(d: &mut Drawing, start: P2, end: P2, name: &str) {
     let (a, b) = (d.view.px(start), d.view.px(end));
-    d.stroke(vec![a, b], Pen::PROJECTION, GRID, Some(vec![14.0, 4.0]), false);
+    // ISO 128-23 draws an axis as a long dash and a dot; a plain dash reads as a hidden edge. The dot
+    // is 2 px because egui's kept canvas loses a 1 px one while a view moves (`retained.rs`).
+    d.stroke(vec![a, b], Pen::PROJECTION, GRID, Some(vec![14.0, 3.0, 2.0, 3.0]), false);
     let len = (b.0 - a.0).hypot(b.1 - a.1).max(1e-3);
     let dir = ((b.0 - a.0) / len, (b.1 - a.1) / len);
     for ((x, y), k) in [(a, -BUBBLE), (b, BUBBLE)] {
@@ -4952,6 +4965,24 @@ mod tests {
                 .pick(f64::from(p.0), f64::from(p.1)),
             Some(100_002)
         );
+    }
+
+    #[test]
+    fn a_plan_draws_a_grid_as_a_technical_drawing_draws_an_axis() {
+        let s = house();
+        let d = plan(&s.model, 100000, 800, 600);
+        let dash = d
+            .prims
+            .iter()
+            .zip(&d.owners)
+            .find_map(|(p, o)| match p {
+                Prim::Line { dash: Some(dash), .. } if *o == Some(100009) => Some(dash.clone()),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("grid 1's line"));
+        // ISO 128-23 draws an axis as a long dash and a dot, never a plain dash, which reads as a hidden edge.
+        assert_eq!(dash.len(), 4, "a long dash, a gap, a dot, a gap: {dash:?}");
+        assert!(dash[2] < dash[0] / 4.0, "the dot is a dot, not a third dash: {dash:?}");
     }
 
     #[test]

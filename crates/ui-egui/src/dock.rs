@@ -30,10 +30,12 @@ pub enum Palette {
     Browser,
     /// BIMCraft's tools, in place of the ribbon: Rev, which has the ribbon, never shows it.
     Tools,
+    /// The chat with a model that manages the project (`assistant.rs`): closed until the user opens it.
+    Assistant,
 }
 
 impl Palette {
-    pub const ALL: [Palette; 3] = [Palette::Properties, Palette::Browser, Palette::Tools];
+    pub const ALL: [Palette; 4] = [Palette::Properties, Palette::Browser, Palette::Tools, Palette::Assistant];
 
     /// Its name: what its tab says (in the interface's language) and what the settings file keeps it as.
     pub fn name(self) -> &'static str {
@@ -41,6 +43,7 @@ impl Palette {
             Palette::Properties => "Properties",
             Palette::Browser => msg!("Project Browser"),
             Palette::Tools => msg!("Tools"),
+            Palette::Assistant => msg!("Assistant"),
         }
     }
 
@@ -330,7 +333,13 @@ impl Docking {
         match (on, self.shown(p)) {
             (true, false) => {
                 let side = self.home.get(&p).copied().unwrap_or(Side::Left);
-                self.put(p, Target::Side(side));
+                // A chat wants height: the Assistant opens as a tab of the Project Browser's stack, unless it was last put on another side.
+                match self.docked(Palette::Browser) {
+                    Some(b) if p == Palette::Assistant && self.home.get(&p).is_none_or(|s| *s == b) => {
+                        self.put(p, Target::With(Palette::Browser))
+                    }
+                    _ => self.put(p, Target::Side(side)),
+                }
             }
             (false, true) => self.take(p),
             _ => {}
@@ -406,7 +415,8 @@ impl Docking {
         }
         let closed: BTreeSet<Palette> = v["closed"].as_array().into_iter().flatten().filter_map(|n| Palette::named(n.as_str()?)).collect();
         for p in Palette::ALL {
-            if !d.shown(p) && !closed.contains(&p) {
+            // The Assistant opens when the user asks: a file from before it was added leaves it closed.
+            if !d.shown(p) && !closed.contains(&p) && p != Palette::Assistant {
                 // First on the left: the Tools palette, which a file from before it holds nothing of, stands where it would have.
                 d.put(p, Target::Side(Side::Left));
                 d.left.rotate_right(1);
@@ -614,7 +624,7 @@ impl BimApp {
     /// A palette's title: the Project Browser's names the project, as Revit's does.
     fn palette_title(&self, p: Palette) -> String {
         match p {
-            Palette::Properties | Palette::Tools => t(p.label()).to_string(),
+            Palette::Properties | Palette::Tools | Palette::Assistant => t(p.label()).to_string(),
             Palette::Browser => format!("{} · {}", t(p.label()), self.session.model.name),
         }
     }
@@ -629,6 +639,7 @@ impl BimApp {
             }
             Palette::Browser => self.browser_palette(ui),
             Palette::Tools => self.tool_column(ui),
+            Palette::Assistant => self.assistant_palette(ui),
         }
     }
 
