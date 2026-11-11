@@ -264,10 +264,13 @@ command rolls back. Creating a `beam` or `structural_column` with a missing cata
 project types take precedence. A catalogue beam defaults to Metal. Editing dimensions/plates clears a catalogue designation
 when it no longer describes the section. `shape: rectangle` removes a profile.
 
-Plans cut columns as their actual sections, including hollow interiors. Sections and 3D sweep their plates and root fillets;
-sloped members retain the existing upright-end drawing convention. Fillets are circular arcs approximated by four chords per
-quarter in native drawings/meshes; circular hollow sections use 24 sides. RHS sections have sharp corners. This is geometric
-section support, not a steel connection, fabrication, structural sizing or code-compliance model.
+Plans cut columns as their actual sections, including hollow interiors. Sections and 3D sweep their plates and root fillets.
+Where a steel beam joins another run, each plate and fillet runs on and is cut by the planes its mitred outline is cut by
+(`runs::joined_cap`, `Geom::swept`), so its flanges meet the other beam's on the outline the plan fills, as a rectangular
+beam's prism does; an end that joins nothing, and a sloped member, which never joins, stays upright. Fillets are circular
+arcs approximated by four chords per quarter in native drawings/meshes; circular hollow sections use 24 sides. RHS sections
+have sharp corners. This is geometric section support, not a steel connection, fabrication, structural sizing or
+code-compliance model.
 
 Schedules expose `Profile`, `Section Area` (cm²), `Weight per Metre` (kg/m) and `Weight` (kg). Mass assumes steel density
 7850 kg/m³ for every profiled member; it does not infer density from an assigned material. Areas and quantities use analytical

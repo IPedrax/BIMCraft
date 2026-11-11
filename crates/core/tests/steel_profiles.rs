@@ -203,7 +203,7 @@ mod sloped_hollow_bounds {
             let t = s.model.run_type(e).unwrap();
             let g = s.model.run_geom(e).unwrap();
             let points: Vec<_> = g
-                .swept(&t.profile.as_ref().unwrap().pieces(t.width, t.depth))
+                .swept(&t.profile.as_ref().unwrap().pieces(t.width, t.depth), [None, None])
                 .into_iter()
                 .flat_map(|piece| match piece {
                     Swept::Mesh(tris, _) => tris.into_iter().flatten().collect::<Vec<_>>(),
@@ -274,5 +274,28 @@ mod sloped_hollow_bounds {
             std::fs::write(directory.join("sloped-chs-deferred.png"), a.png().unwrap()).unwrap();
             std::fs::write(directory.join("sloped-chs-section.png"), render::section_png(&s.model, section, expected).unwrap()).unwrap();
         }
+    }
+
+    #[test]
+    fn a_joined_steel_tubes_deferred_box_takes_in_its_mitre() {
+        // Two flat CHS 200s at a corner mitre into an elbow whose outer corner, at (-100, -100), lies in neither tube's box
+        // of its line. A section along x + y = -110 passes both boxes by and cuts only the elbow: deferred, the tubes must
+        // still be found there, looking either way.
+        let mut s = Session::new();
+        s.execute("type", &json!({"category": "beam", "name": "Tube", "width": 200, "shape": "CHS", "thickness": 10})).unwrap();
+        s.execute("beam", &json!({"points": [[3000, 0], [0, 0], [0, 3000]], "type": "Tube", "justify": "centre"})).unwrap();
+        let mut shown = false;
+        for (start, end) in [([-1000, 890], [890, -1000]), ([890, -1000], [-1000, 890])] {
+            let section = s.execute("section", &json!({"start": start, "end": end})).unwrap()["id"].as_u64().unwrap();
+            let (full, deferred) = (SectionWork::new(&s.model), SectionWork::new_deferred(&s.model));
+            assert_eq!(deferred.preparation_stats().deferred_runs, 2, "both tubes take the deferred path");
+            let view = render::section_fit_with(&s.model, &full, section, 1600, 1200);
+            assert_eq!(render::section_fit_with(&s.model, &deferred, section, 1600, 1200), view);
+            let a = render::section_picture_with(&s.model, &deferred, section, view, &[]).unwrap();
+            let b = render::section_picture_with(&s.model, &full, section, view, &[]).unwrap();
+            assert_eq!(a.rgba, b.rgba, "the deferred section shows what the full one does");
+            shown |= (0..view.height).any(|y| (0..view.width).any(|x| b.pick(f64::from(x), f64::from(y)).is_some()));
+        }
+        assert!(shown, "a section through the corner cuts the elbow");
     }
 }

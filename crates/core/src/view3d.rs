@@ -800,16 +800,22 @@ pub(crate) fn solids_and_extremes_deferred(m: &Model, cancelled: &(dyn Fn() -> b
 }
 
 /// The box of a round run, whose tube is the most a work would hold and whose place alone says where it is: most are hidden,
-/// and made only for a view that needs them. None for what isn't one, or has no finite box: made now.
+/// and made only for a view that needs them. None for what isn't one, or has no finite box: made now. A steel tube (a CHS)
+/// that may join runs on past its ends to the planes that cut it (`runs::joined_cap`), never farther than the widest arm
+/// there is wide: its box takes the widest type of its category in plan round it.
 fn lazy_run_box(m: &Model, id: Id, e: &Element) -> Option<[P3; 2]> {
-    e.run()?;
-    if !m.run_geom(e)?.round {
+    let r = e.run()?;
+    let g = m.run_geom(e)?;
+    if !g.round {
         return None;
     }
-    match crate::bounds::primitive(m, id) {
-        crate::bounds::Bounds::Box(reach) => Some(reach),
-        _ => None,
-    }
+    let crate::bounds::Bounds::Box([lo, hi]) = crate::bounds::primitive(m, id) else { return None };
+    let joins = r.join && crate::runs::joinable(&g) && m.run_type(e).is_some_and(|t| t.profile.is_some());
+    let past = match m.types.runs.get(e.category()) {
+        Some(types) if joins => types.values().map(|t| t.width).filter(|w| w.is_finite()).fold(0.0, f64::max),
+        _ => 0.0,
+    };
+    Some([[lo[0] - past, lo[1] - past, lo[2]], [hi[0] + past, hi[1] + past, hi[2]]])
 }
 
 /// The solids of an element whose preparation was deferred: a round run reads no wall, and a component no wall index.
@@ -877,12 +883,16 @@ fn solids_in_with(
             }
             // A rectangular run is a prism of its outline — mitred where it joins, as the plan fills it — which a
             // section cuts; a round one a tube, its ends cut by the same planes, shown beyond its line; a steel
-            // section, its pieces swept along it, which a section cuts.
+            // section, its pieces swept along it and cut by those planes too, which a section cuts.
             crate::model::run_arm!(_) => {
                 if let (Some(t), Some(g)) = (m.run_type(e), m.run_geom(e)) {
                     let color = m.materials.get(&t.material).map_or(STRUCTURE, |x| Rgb(x.color[0], x.color[1], x.color[2]));
                     let tex = skin(m, &t.material);
-                    let swept = t.profile.as_ref().map(|p| g.swept(&p.pieces(t.width, t.depth))).unwrap_or_default();
+                    // A steel section's pieces end where its outline does: cut by the planes of its joints.
+                    let swept = t.profile.as_ref().map_or_else(Vec::new, |p| {
+                        let [start, end] = [false, true].map(|at_end| crate::runs::joined_cap(m, id, at_end, &g, index));
+                        g.swept(&p.pieces(t.width, t.depth), [start.as_deref(), end.as_deref()])
+                    });
                     if !swept.is_empty() {
                         for piece in swept {
                             out.push(match piece {
