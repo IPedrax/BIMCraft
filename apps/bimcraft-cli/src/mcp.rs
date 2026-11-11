@@ -49,6 +49,13 @@ enum Backend {
 }
 
 impl Backend {
+    fn desktop_context(&mut self) -> Result<Value, String> {
+        match self {
+            Backend::Own(_) => Err(bimcraft_core::bridge::NO_CONTEXT.into()),
+            Backend::Window(w) => w.ask(json!({"op": "context"})),
+        }
+    }
+
     fn execute(&mut self, command: &str, params: &Value) -> Result<Value, String> {
         match self {
             Backend::Own(s) => s.execute(command, params),
@@ -119,6 +126,8 @@ fn tool_error(e: &str) -> Value {
 
 fn tools() -> Value {
     json!([
+        {"name": "desktop_context", "description": "Read the connected desktop's current selection (element IDs, GUIDs and categories) and active view (kind, name, ID and GUID). Empty selection is []; Home has no active view (null). Built-in views without model elements have null IDs/GUIDs. Read-only; requires mcp --connect and never changes selection or navigation.",
+         "inputSchema": {"type": "object", "properties": {}, "additionalProperties": false}, "annotations": {"readOnlyHint": true}},
         {"name": "execute", "description": "Run any BIMCraft command with JSON params, e.g. wall {points: [[0,0],[5000,0]]}, door {at: [2500, 0]}, \
             room {point: [x, y], name}, modify {id, …fields}, delete {ids}, undo. list_commands shows them all with their parameters.",
          "inputSchema": {"type": "object", "properties": {"command": {"type": "string"}, "params": {"type": "object"}}, "required": ["command"]}},
@@ -237,7 +246,7 @@ impl Server {
                 let mut instructions = match self.backend {
                     Backend::Own(_) => INSTRUCTIONS.to_string(),
                     Backend::Window(_) => format!(
-                        "{INSTRUCTIONS} You are attached to the window the user has open: what you make is in their project, to see and to undo. new_model and open are not available; the user starts and opens projects in the window."
+                        "{INSTRUCTIONS} You are attached to the window the user has open: what you make is in their project, to see and to undo. new_model and open are not available; the user starts and opens projects in the window. Use desktop_context to read their current selection and active view; request it again after they select or navigate."
                     ),
                 };
                 if self.reads_only() {
@@ -280,6 +289,12 @@ impl Server {
         }
         let b = &mut self.backend;
         let result = match name {
+            "desktop_context" => {
+                if args.as_object().is_some_and(|o| !o.is_empty()) {
+                    return Err((INVALID_PARAMS, "`desktop_context` takes no arguments".into()));
+                }
+                b.desktop_context()
+            }
             "execute" => {
                 let params = args.get("params").cloned().unwrap_or_else(|| json!({}));
                 b.execute(args["command"].as_str().unwrap_or_default(), &params)
@@ -383,6 +398,18 @@ mod tests {
         let content = &r["result"]["content"][0];
         assert_ne!(r["result"]["isError"], json!(true), "{name} failed: {content}");
         if content["type"] == "text" { serde_json::from_str(content["text"].as_str().unwrap()).unwrap() } else { content.clone() }
+    }
+
+    #[test]
+    fn desktop_context_is_discoverable_and_headless_sessions_report_why_it_is_unavailable() {
+        let mut s = Server::new();
+        let list = call(&mut s, 1, "tools/list", json!({}));
+        assert!(list["result"]["tools"].as_array().unwrap().iter().any(|t| t["name"] == "desktop_context"));
+        let reply = call(&mut s, 2, "tools/call", json!({"name": "desktop_context", "arguments": {}}));
+        assert_eq!(reply["result"]["isError"], true);
+        assert_eq!(reply["result"]["content"][0]["text"], bimcraft_core::bridge::NO_CONTEXT);
+        let bad = call(&mut s, 3, "tools/call", json!({"name": "desktop_context", "arguments": {"selection": [100002]}}));
+        assert_eq!(bad["error"]["code"], INVALID_PARAMS);
     }
 
     #[test]
