@@ -353,14 +353,14 @@ fn an_arcs_radius_takes_a_label_and_its_centre_a_dimension() {
 #[test]
 fn a_file_keeps_its_angles_and_a_command_names_a_lines_end_by_its_id() {
     let s = rig();
-    const { assert!(crate::model::FORMAT >= 28) };
+    const { assert!(crate::model::FORMAT >= 18) };
     let text = s.model.to_json().unwrap();
     let (back, left_out) = Model::read(&text).unwrap();
     assert!(left_out.is_empty(), "{left_out:?}");
     assert_eq!(back.families["Rig"].dimensions, s.model.families["Rig"].dimensions);
-    // A file of 26 holds none of them: read and written as it was.
+    // A file of 17 holds none of them: read and written as it was.
     let mut v: Value = serde_json::from_str(&text).unwrap();
-    v["format"] = json!(26);
+    v["format"] = json!(17);
     v["families"]["Rig"]["dimensions"] = json!([]);
     let (old, left_out) = Model::read(&v.to_string()).unwrap();
     assert!(left_out.is_empty() && old.families["Rig"].dimensions.is_empty());

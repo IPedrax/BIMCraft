@@ -763,7 +763,7 @@ pub struct Form {
     /// (Revit's Extrusion Start and End); a revolve turns in it. Ref. Level unless said.
     #[serde(default)]
     pub host: PlaneRef,
-    /// Its profile's lines and arcs, and a revolve's axis line ([`sketch`]): in place of a file of 23's `profile`,
+    /// Its profile's lines and arcs, and a revolve's axis line ([`sketch`]): in place of a file of 17's `profile`,
     /// `circle` and `axis`, which are read as such lines.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub sketch: Vec<sketch::FormLine>,

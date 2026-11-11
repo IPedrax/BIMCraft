@@ -2630,14 +2630,8 @@ fn hostile_params_never_panic_or_break_the_model() {
             json!({"name": "F", "types": {"A": {}}, "nested": "x", "nested_instances": [{"family": 5}], "nested_instance": {"id": u64::MAX}}),
         ]
     };
-    let hostile: Vec<Value> = hostile
-        .into_iter()
-        .chain(detailing.into_iter().map(|(_, p)| p))
-        .chain(slopes)
-        .chain(offsets)
-        .chain(grips)
-        .chain(nested)
-        .collect();
+    let hostile: Vec<Value> =
+        hostile.into_iter().chain(detailing.into_iter().map(|(_, p)| p)).chain(slopes).chain(offsets).chain(grips).chain(nested).collect();
     // Each command against each value, on a copy of the same session; the commands shared out between the cores.
     let cmds: Vec<_> = commands().iter().filter(|c| !matches!(c.id, "open" | "save")).collect();
     let threads = std::thread::available_parallelism().map_or(4, |n| n.get());

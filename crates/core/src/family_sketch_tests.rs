@@ -24,7 +24,7 @@ fn err(s: &mut Session, id: &str, p: Value) -> String {
     }
 }
 
-/// The forms of the families of 23 the golden file was written from, as a file of 23 holds them.
+/// The forms of the families the golden file was written from, as a file of 17 holds them.
 fn legacy_forms() -> Value {
     json!([
         {"profile": [[0, 0], ["Width", 0], ["Width", "Width / 2"], [0, "Width / 2"]], "to": 300, "material": "Concrete"},
@@ -118,11 +118,11 @@ fn golden() -> Value {
     serde_json::from_str(include_str!("../testdata/family_format23.golden.json")).unwrap()
 }
 
-/// The legacy project as a file of 23 holds it: its forms as profiles, circles and axes.
+/// The legacy project as a file of 17 holds it: its forms as profiles, circles and axes.
 fn file_of_23() -> String {
     let s = legacy_project();
     let mut file: Value = serde_json::from_str(&s.model.to_json().unwrap()).unwrap();
-    file["format"] = json!(23);
+    file["format"] = json!(17);
     file["families"]["Legacy"]["forms"] = legacy_forms();
     file["families"]["Turned"]["forms"] = turned_forms();
     file.to_string()

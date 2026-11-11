@@ -363,7 +363,7 @@ Remove Constraints. `constraints::align` is Align. Deleting a plane or a form ta
 it (`forget_reference`; one left with a single reference goes). The `family` command takes `dimensions`, `dimension` (added,
 or patched by id or GUID) and `delete_dimension`, and reads a type's solve with `solve`. A dimension measuring to what the
 family hasn't is refused, unless `invalid_dimensions: "delete"` (T14's Delete Dimension(s)); a file opened leaves it out and
-lists it in `left_out` (`Model::read`). FORMAT 25 (24 is F5's; 26 is F7b's, below).
+lists it in `left_out` (`Model::read`). FORMAT 18.
 
 In the family document (`editor/dimensions.rs`), Create > Dimension > Aligned Dimension (DI) picks reference planes (by the
 view's drawing) and extrusion ends seen edge on (`constraints::end_faces`), parallel to the first, and a click on nothing
@@ -381,7 +381,7 @@ Properties and the Options Bar's Depth. A reload whose family has dimensions mea
 Dimensions first: Delete Dimension(s) or Cancel, and nothing passes it over. Angular dimensions and reference lines that turn
 are F7c's (below).
 
-F7b, FORMAT 26: sketch lines locked. A dimension may also measure to a straight line of a form's sketch, `{"form": guid,
+F7b, FORMAT 18: sketch lines locked. A dimension may also measure to a straight line of a form's sketch, `{"form": guid,
 "line": guid}` (the plane through it square to the form's plane: Revit's sketch line seen edge on), to a line's end or a
 circle's centre, `{"form", "line", "point": "start" | "end" | "centre"}` (measured along the dimension's other references, so
 one of them must face a way), and to a reference line's face, `{"line": guid, "face": …}` (fixed but for moving with the plane
@@ -412,7 +412,7 @@ Align's offered padlock too. Edit Extrusion opens the sketch as the type preview
 (`sketch::kept` against the lines shown). Every line gets a GUID of its own at Finish, a new form its GUID at once, so a lock or
 a dimension can name them before the family is loaded.
 
-F7c, FORMAT 28 (27 is nested families', T6): angles, turning reference lines and arcs. `kind: "angular"` measures the angles
+F7c, FORMAT 18: angles, turning reference lines and arcs. `kind: "angular"` measures the angles
 between 2 to `MAX_DIM_REFS` lines seen as lines in its view: reference planes seen edge on (their traces), reference lines
 (`{"line": guid, "face": …}`, any face: the line's way counts) and straight sketch lines on a plane seen flat. Segment *i* is the
 angle from reference *i* to *i + 1*, in degrees; the sector is the one `at` lies in as drawn (each line's half on `at`'s side of
@@ -450,7 +450,7 @@ of what it measures. Radial and Diameter also pick an arc by its edge within its
 centre is picked as a circle's. Turning a reference line with the mouse is F7d's pivot and its rotate grip (below), with
 T18's line grips.
 
-F7d, FORMAT 30 (29 is F6's, on its own branch): pivots (`family/constraints/pivot.rs`). A reference line or a reference plane
+F7d, FORMAT 18: pivots (`family/constraints/pivot.rs`). A reference line or a reference plane
 may carry a `pivot` (`Pivot`), one each: it keeps a point of its element (`at`: `start`, `end` or `{"along": mm}`; a plane's
 along the line it is drawn as) on a point (`to`, `PivotPoint`: where two planes holding the pivot's axis cross, a reference
 line's end, a point of a sketch, or a fixed point), and turns about it; the axis is the normal of what a line is drawn on
@@ -480,7 +480,7 @@ names takes the pivot off (`forget_pivots`); a file's pivot naming what the fami
 45° snapped to it, stopped at the limits) as `Edit::Parameter`, or as `Edit::PivotAngle` with no parameter; a formula's
 parameter refuses. A pivoted plane can't be dragged square to itself. `drag_line_end` is T18's end grip. `pivot_marks` and
 `pivot_targets` are what a view draws and snaps to. The `family` command patches `pivot` through `ref_line` and `ref_plane`
-(`null` takes it off) and `solve` lists each plane's ends. FORMAT 30: a build of 28 would leave `pivot` out of the file.
+(`null` takes it off) and `solve` lists each plane's ends. FORMAT 18: a build that reads up to 17 would leave `pivot` out of the file.
 
 In the family document (`editor/pivot.rs`), a click on a reference line selects it ("Modify | Reference Lines", Delete,
 over a plane's trace beneath it). Rotation > Pivot, on a selected line or plane of the family's own, waits for a click: the
@@ -551,11 +551,11 @@ plans and elevations show its test placement and nothing more (no selection, no 
 
 ## Sketches of forms
 
-F5, FORMAT 24. A form's profile is its `sketch` (`family/sketch.rs`): lines (`start`, `end`), arcs (`turn` degrees
+F5, FORMAT 18. A form's profile is its `sketch` (`family/sketch.rs`): lines (`start`, `end`), arcs (`turn` degrees
 counter-clockwise from start to end) and whole circles (`centre`, `radius`) in its host plane's own axes, each number a number or a
 formula, each line a part of the family (an id and a GUID, `parts_now`'s "sketch line", kept by place when a form is given again,
 `Form::keep_lines`) so F7 can dimension and lock it. A revolve's axis is a line of its sketch with `axis: true`, one at most. The
-shorthands from before, `profile` (corners in turn), `circle` and `axis`, are read as such lines (`FormIn`), by a file of 23 or a
+shorthands from before, `profile` (corners in turn), `circle` and `axis`, are read as such lines (`FormIn`), by a file of 17 or a
 command, and never written; a `form` patch giving one replaces what it stands for. Built (`Form::loops`), a sketch that is one
 loop of straight lines in order, or one circle, is built as a profile always was (the same triangles and IFC:
 `family_sketch_tests` against `testdata/family_format23.golden.json`, which the build of 23 wrote); any other is solved as the
@@ -863,7 +863,7 @@ their groups, each with Revit's "=" (`Field::Nested`, `NestedRows`). The Project
 and their types, with Edit Family and Delete on the right-click. Edit Family (also on the instance's contextual tab) opens the
 nested family's own document over the host's (`BimApp::family_hosts`): its Load into Project and Load into Project and Close load
 it back into the host, asking Family Already Exists in the family's words; Close Family goes back without loading. The project is
-untouched until the host is loaded. A nested instance is moved by its Properties; dragging it in a view is T6b's. FORMAT 27
+untouched until the host is loaded. A nested instance is moved by its Properties; dragging it in a view is T6b's. FORMAT 18
 says an older build would leave both fields out of a file.
 
 ## Reloading a family
