@@ -14,6 +14,9 @@ A level is also its plan: its view range (`Model::plan_range`)
 cuts 1200 mm above it unless set, and its crop region bounds what the plan shows. Rooms find their walls at 1200 mm whatever
 a plan cuts (`Model::bounding`). In a section or an elevation, points run along its line from its start, and up; on a sheet,
 they're paper mm from its bottom left corner; notes and spot elevations live in those terms in their view.
+A door or window placed `at` a point searches walls cut by the specified `level`'s plan. With no `level` (or `null`), it
+searches levels from the lowest at or above elevation 0 upwards, then from the highest below 0 downwards, using the first
+plan that cuts a wall there. A supplied `level` searches only that plan; an explicit `wall` remains authoritative.
 A wall's `start` and `end` are on its location line: its centre line unless `location` says otherwise (`walls::faces`).
 Its exterior is to the left of start to end, as in Revit, so walls drawn clockwise face out; a compound type lists its
 layers from the exterior in, and a floor, roof or ceiling type from the top down (IFC import turns a wall round, or a slab's
