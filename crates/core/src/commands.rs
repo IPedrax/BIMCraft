@@ -7787,7 +7787,7 @@ const PANEL_SCHEDULE_EDITS: &[&str] = &["circuit", "description", "breaker", "ph
 
 fn panel_schedule(s: &mut Session, p: &Value) -> R {
     use crate::electrical;
-    use crate::panel_schedule::{self as ps, PanelSchedule};
+    use crate::panel_schedule::PanelSchedule;
     let c = "panel_schedule";
     let mut keys = vec!["id", "panel"];
     keys.extend(PANEL_SCHEDULE_OPTIONS);
@@ -7966,7 +7966,6 @@ fn panel_schedule(s: &mut Session, p: &Value) -> R {
         }
     }
     circuit_of_model(s, &q)?;
-    let _ = ps::TEMPLATES;
     panel_schedule_json(&s.model, id)
 }
 
