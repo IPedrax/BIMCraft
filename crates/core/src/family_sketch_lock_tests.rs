@@ -289,13 +289,14 @@ fn a_command_names_a_sketch_line_by_its_ids_and_what_isnt_one_is_refused() {
     arc["name"] = json!("Arc");
     let e = s.execute("family", &arc).unwrap_err().to_string();
     assert!(e.contains("an arc; a dimension measures to a straight line"), "{e}");
-    // A form drawn on a reference line's face is measured once lines turn.
+    // A form drawn on a reference line's face is measured (F7c): this one's sketch turned a quarter, so its lines lie across
+    // the planes they are locked to.
     let mut on_line = the_slab();
     on_line["name"] = json!("OnLine");
     on_line["ref_lines"] = json!([{"guid": "55555555-5555-4555-8555-000000000001", "start": [0, -2000, 0], "end": [0, 2000, 0]}]);
     on_line["forms"][0]["host"] = json!({"line": "55555555-5555-4555-8555-000000000001", "face": "horizontal"});
     let e = s.execute("family", &on_line).unwrap_err().to_string();
-    assert!(e.contains("F7c"), "{e}");
+    assert!(e.contains("aren't parallel"), "{e}");
 }
 
 #[test]
@@ -339,7 +340,7 @@ fn a_file_keeps_its_sketch_dimensions_and_a_copy_of_the_family_measures_its_own_
     assert!(
         text.contains(&format!("\"format\": {}", crate::model::FORMAT)) || text.contains(&format!("\"format\":{}", crate::model::FORMAT))
     );
-    const { assert!(crate::model::FORMAT >= 26) };
+    const { assert!(crate::model::FORMAT >= 28) };
     let (back, left_out) = Model::read(&text).unwrap();
     assert!(left_out.is_empty(), "{left_out:?}");
     assert_eq!(back.families["Slab"].dimensions, s.model.families["Slab"].dimensions);

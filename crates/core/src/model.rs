@@ -95,7 +95,10 @@ pub const MAX_SLOPE: f64 = 75.0;
 ///   axis one of them; its `profile`, `circle` and `axis` are read as such lines and no longer written.
 /// - Constraints (F7): a family's `dimensions`, with labels, locks, EQ and Align's locks, solved as a type flexes. They may
 ///   measure to its forms' sketch lines, their ends, circles' and arcs' centres, and to its reference lines' faces, starts and
-///   ends and the forms drawn on them, and measure a circle's or an arc's radius or diameter.
+///   ends and the forms drawn on them; measure a circle's or an arc's radius or diameter; and be angular, between reference
+///   lines, reference planes and straight sketch lines, the reference lines turning and moving with them.
+/// - Pivots (F7d): a reference line or a reference plane may carry a `pivot`, a point it is pinned to and turns about, its
+///   swing an Angle parameter or a number of its own, within limits.
 /// - Nested families (T6a): a family may nest families (`nested`, each its whole definition) and place their instances
 ///   (`nested_instances`).
 /// - Subcategories: a view's graphics, a view template and the object styles may name `dooropening` and `windowopening`
@@ -3319,6 +3322,10 @@ impl Model {
             if p.reporting {
                 return Err(format!("{who}: `{k}` is a reporting parameter: its dimension says what it is, and nothing sets it"));
             }
+            // A pivot's swing within its limits (F7d).
+            if let crate::family::Val::Number(n) = crate::family::read(p, v).map_err(|e| format!("{who}: {e}"))? {
+                f.pivot_value_ok(k, n).map_err(|e| format!("{who}: {e}"))?;
+            }
             if let crate::family::Val::Text(m) = crate::family::read(p, v).map_err(|e| format!("{who}: {e}"))?
                 && p.kind == crate::family::Kind::Material
                 && !m.is_empty()
@@ -3584,6 +3591,17 @@ impl Model {
                 f.dimensions.remove(*i);
                 left_out.push(format!("/families/{}/dimensions/{i}", crate::lenient::escaped(name)));
             }
+            // A pivot pinned to, or measured from, what the family hasn't: left out too (F7d).
+            for g in f.dangling_pivots() {
+                if let Some(i) = f.lines.iter().position(|l| l.guid == g) {
+                    f.lines[i].pivot = None;
+                    left_out.push(format!("/families/{}/lines/{i}/pivot", crate::lenient::escaped(name)));
+                }
+                if let Some(i) = f.planes.iter().position(|p| p.guid == g) {
+                    f.planes[i].pivot = None;
+                    left_out.push(format!("/families/{}/planes/{i}/pivot", crate::lenient::escaped(name)));
+                }
+            }
         }
         Ok((m, left_out))
     }
@@ -3663,8 +3681,8 @@ impl Model {
         // "left_right"` in its `world` host, the name the Family Editor's first adaptive points gave their work plane; it
         // still reads as the datum plane of the same frame (`Host::World`'s `plane_or_datum`), so nothing moves.
         // The rest needs nothing of a file of 17, which holds none of it: an adaptive family and a component's adaptive
-        // frames, a family's dimensions, labels, locks and Align's locks, nested families, a family parameter's group, shared GUID and
-        // reporting (each defaults to what a file of 17 means: grouped by its kind, the family's own, set), Doors > Opening
+        // frames, a family's dimensions of every kind, labels, locks and Align's locks, pivots, nested families, a family
+        // parameter's group, shared GUID and reporting (each defaults to what a file of 17 means: grouped by its kind, the family's own, set), Doors > Opening
         // and Windows > Opening, and the project's reference planes and components hosted on them or on faces (a hosted
         // component's `at` and `offset` are worked out from its host whatever the file says).
         if self.format < 18 {

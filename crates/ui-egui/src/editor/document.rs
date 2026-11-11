@@ -249,8 +249,14 @@ fn context(ed: &FamilyEditor) -> Option<&'static str> {
         if ed.selected_dimension().is_some() {
             return Some(msg!("Modify | Dimensions"));
         }
+        if ed.editing_2d() && ed.views.pivoting.is_some() {
+            return Some(msg!("Modify | Pivot"));
+        }
         if ed.selected_plane().is_some() {
             return Some(msg!("Modify | Reference Planes"));
+        }
+        if ed.selected_line().is_some() {
+            return Some(msg!("Modify | Reference Lines"));
         }
         return ed.selected_form().map(|_| msg!("Modify | Form"));
     }
@@ -435,19 +441,28 @@ impl BimApp {
                         {
                             ed.dimension_tool();
                         }
-                        // A circle of a sketch, its radius or its diameter (F7b).
+                        // The angles between lines that cross (F7c); a circle or an arc of a sketch, its radius or its diameter
+                        // (F7b).
                         for (kind, icon, label, tip) in [
+                            (
+                                bimcraft_core::family::DimKind::Angular,
+                                Icon::Angular,
+                                msg!("Angular"),
+                                msg!(
+                                    "Angular Dimension: pick reference lines, reference planes or lines of forms that cross, then click where its arc goes"
+                                ),
+                            ),
                             (
                                 bimcraft_core::family::DimKind::Radial,
                                 Icon::Radial,
                                 msg!("Radial"),
-                                msg!("Radial Dimension: pick a circle of a form's sketch, then click where it goes"),
+                                msg!("Radial Dimension: pick a circle or an arc of a form's sketch, then click where it goes"),
                             ),
                             (
                                 bimcraft_core::family::DimKind::Diameter,
                                 Icon::Diameter,
                                 msg!("Diameter"),
-                                msg!("Diameter Dimension: pick a circle of a form's sketch, then click where it goes"),
+                                msg!("Diameter Dimension: pick a circle or an arc of a form's sketch, then click where it goes"),
                             ),
                         ] {
                             let lit = on && ed.views.dim_kind == kind;
@@ -567,10 +582,12 @@ impl BimApp {
                     let plane = ed.selected_plane().filter(|g| ed.planes.iter().any(|p| p.guid == *g && !p.datum()));
                     let dim = ed.selected_dimension();
                     let nested = ed.selected_nested();
+                    let line = ed.selected_line();
                     if ui
-                        .add_enabled_ui(some || form.is_some() || plane.is_some() || dim.is_some() || nested.is_some(), |ui| {
-                            big_button(ui, Icon::Delete, "Delete", false, tip)
-                        })
+                        .add_enabled_ui(
+                            some || form.is_some() || plane.is_some() || dim.is_some() || nested.is_some() || line.is_some(),
+                            |ui| big_button(ui, Icon::Delete, "Delete", false, tip),
+                        )
                         .inner
                         .clicked()
                     {
@@ -579,6 +596,10 @@ impl BimApp {
                             ed.select_nested(None);
                         } else if let Some(g) = dim {
                             ed.delete_dimension(g);
+                        } else if let Some(g) = line {
+                            if let Err(e) = ed.delete_line(g) {
+                                self.status = Status { text: e, error: true };
+                            }
                         } else if let Some(g) = plane {
                             if let Err(e) = ed.delete_plane(g) {
                                 self.status = Status { text: e, error: true };
@@ -600,6 +621,27 @@ impl BimApp {
                 if tab == DocTab::Context {
                     if let Some(i) = ed.selected_nested() {
                         self.nested_mode_panel(ui, ed, i);
+                    }
+                    // F7d: a reference line or a plane of the family's own turns about a point it is pinned to.
+                    if ed.editing_2d() && ed.pivot_candidate().is_some() {
+                        ribbon::panel(ui, msg!("Rotation"), |ui| {
+                            let tip = msg!(
+                                "Pivot: click the point it turns about (where two planes cross, a line's end, a point of a sketch, or anywhere); its Swing Angle turns it"
+                            );
+                            if big_button(ui, Icon::Rotate, msg!("Pivot"), ed.views.pivoting.is_some(), tip).clicked() {
+                                ed.pivot_tool();
+                            }
+                            let pivoted = ed.pivot_candidate().filter(|g| ed.draft_pivot(*g).is_some());
+                            let tip = msg!("Remove Pivot: it stops turning and stays where it is drawn");
+                            if ui
+                                .add_enabled_ui(pivoted.is_some(), |ui| big_button(ui, Icon::Delete, msg!("Remove Pivot"), false, tip))
+                                .inner
+                                .clicked()
+                                && let Some(g) = pivoted
+                            {
+                                ed.remove_pivot(g);
+                            }
+                        });
                     }
                     if let Some(i) = ed.selected_form() {
                         self.form_work_plane_panel(ui, ed, i);
@@ -752,7 +794,18 @@ impl BimApp {
         let category = category_label(ed.category);
         let selected = ed.modeller.selection.clone();
         let params = ed.parameter_kinds();
-        // A reference plane selected in a plan or an elevation: its name.
+        // A reference line selected (F7d): its pivot.
+        if let Some(g) = ed.selected_line() {
+            let i = ed.lines.iter().position(|l| l.guid == g).unwrap_or_default();
+            selector(ui, Icon::Line, &tf("Reference Line {}", &[&(i + 1).to_string()]));
+            ui.add_space(6.0);
+            if let Some(e) = ed.pivot_properties(ui, g, self.session.model.units) {
+                self.status = Status { text: e, error: true };
+            }
+            self.family_editor = Some(ed);
+            return;
+        }
+        // A reference plane selected in a plan or an elevation: its name, and its pivot (F7d).
         if let Some(g) = ed.selected_plane() {
             selector(ui, Icon::Line, t("Reference Plane"));
             ui.add_space(6.0);
@@ -767,6 +820,9 @@ impl BimApp {
                     }
                     ui.end_row();
                 });
+                if !datum && let Some(e) = ed.pivot_properties(ui, g, self.session.model.units) {
+                    self.status = Status { text: e, error: true };
+                }
             }
             self.family_editor = Some(ed);
             return;
@@ -1180,8 +1236,11 @@ impl BimApp {
                 msg!("Click a reference plane or a datum for the work plane. Esc goes back to the dialog.")
             }
             (Some(_), false) if ed.views.drawing.is_some() => msg!("Click two points: a reference plane through them."),
+            (Some(_), false) if ed.views.dimensioning.is_some() && ed.views.dim_kind == bimcraft_core::family::DimKind::Angular => {
+                msg!("Click lines that cross (reference lines, reference planes, lines of forms), then click where the dimension goes.")
+            }
             (Some(_), false) if ed.views.dimensioning.is_some() && ed.views.dim_kind != bimcraft_core::family::DimKind::Aligned => {
-                msg!("Click a circle, then click where the dimension goes.")
+                msg!("Click a circle or an arc, then click where the dimension goes.")
             }
             (Some(_), false) if ed.views.dimensioning.is_some() => {
                 msg!("Click parallel reference planes, extrusion ends or lines of forms, then click where the dimension goes.")
@@ -1189,9 +1248,12 @@ impl BimApp {
             (Some(_), false) if ed.views.aligning.as_ref().is_some_and(Option::is_none) => msg!("Click the reference to align to."),
             (Some(_), false) if ed.views.aligning.is_some() => msg!("Click what moves onto it."),
             (Some(_), false) if ed.placing.is_some() => msg!("Click where the component goes, on the view's work plane."),
-            (Some(_), false) => {
-                msg!("Click a form, a nested instance, a reference plane or a dimension to select it; drag a selected plane to move it.")
+            (Some(_), false) if ed.views.pivoting.is_some() => {
+                msg!("Click the point it turns about: where two planes cross, a line's end, a point of a sketch, or anywhere.")
             }
+            (Some(_), false) => msg!(
+                "Click a form, a nested instance, a reference plane, a reference line or a dimension to select it; drag a selected plane to move it, a grip to turn or stretch."
+            ),
             (None, true) => adaptive_view::prompt(&ed.modeller),
             (None, false) => msg!("Drag the picture to turn it."),
         })
@@ -1250,7 +1312,7 @@ impl BimApp {
         // Escape lets a selected form go, though a button clicked has the keyboard (the window's own Escape does it otherwise).
         if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
             // The plane being drawn first, then the tool, then the selection.
-            if ed.stop_picking() {
+            if ed.stop_picking() || ed.views.pivoting.take().is_some() {
             } else if let Some(refs) = ed.views.dimensioning.as_mut() {
                 if refs.is_empty() {
                     ed.views.dimensioning = None;
@@ -1264,7 +1326,7 @@ impl BimApp {
                 ed.views.dim = None;
             } else if let Some(first) = ed.views.drawing {
                 ed.views.drawing = first.map(|_| None);
-            } else if ed.views.plane.take().is_none() {
+            } else if ed.views.plane.take().is_none() && ed.views.line.take().is_none() {
                 ed.let_form_go();
             }
         }

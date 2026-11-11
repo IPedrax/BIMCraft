@@ -1259,7 +1259,14 @@ other_files(
          until another takes it) is kept but doesn't move the origin yet. `ref_lines` are reference lines drawn on a `host` \
          (lying on it), each with four planes a form may be drawn on: `horizontal` (its host's, through it), `vertical` \
          (square to that through it), `start` and `end` (square to it at each end), their origin its start (`end`'s its \
-         end). Give a new plane or line a `guid` of your own to host forms on it in the same command; a plane or line a \
+         end). A line or a plane may carry a `pivot` (F7d; `ref_line`/`ref_plane` patch it, `null` takes it off): it keeps \
+         one point of it (`at`: `start`, `end` or `{\"along\": mm}`, a plane's along the line it is drawn as) on a point \
+         (`to`: `{\"planes\": [g, g]}` where two planes holding its axis cross, `{\"line\": g, \"point\": \"start\"|\"end\"}`, \
+         `{\"form\": g, \"line\": g, \"point\": …}` a sketch's point, or `{\"fixed\": [x, y, z]}`) and turns about it, its axis the \
+         normal of what a line is drawn on, a plane's `up`; its swing, degrees counter-clockwise from `from` (`drawn`, the \
+         default, `{\"plane\": g}` or `{\"line\": g}`), is the Angle parameter `parameter`, else its own `angle` (which an angular \
+         dimension may set instead), within `min` and `max` if given (a value past them is refused, naming them). What is drawn \
+         on a pivoted line or plane, nested instances too, turns with it. Give a new plane or line a `guid` of your own to host forms on it in the same command; a plane or line a \
          form or line is drawn on can't be deleted, and the datums can't be moved, changed or deleted. With an \
          `axis`, a line in that plane, the profile is turned about it instead, `from` to `to` degrees (up to 360, right-handed \
          from the axis' first point toward its second; it can't cross the axis): a pipe, a bowl, a lamp shade. A form's profile is its \
@@ -11579,7 +11586,9 @@ fn family(s: &mut Session, p: &Value) -> R {
             .planes
             .iter()
             .filter(|q| !q.datum())
-            .map(|q| json!({"guid": q.guid, "id": q.id, "name": q.name, "offset": crate::view3d::dot(q.start, q.frame().z)}))
+            .map(|q| {
+                json!({"guid": q.guid, "id": q.id, "name": q.name, "offset": crate::view3d::dot(q.start, q.frame().z), "start": q.start, "end": q.end})
+            })
             .collect();
         // Each form's ends and its sketch's lines, worked out for the type.
         let forms: Vec<Value> = flexed
@@ -11602,10 +11611,12 @@ fn family(s: &mut Session, p: &Value) -> R {
                 json!({"guid": x.guid, "id": x.id, "from": x.from, "to": x.to, "sketch": sketch})
             })
             .collect();
+        // Each reference line where the type has it: turned and moved by its constraints (F7c).
+        let lines: Vec<Value> = flexed.lines.iter().map(|l| json!({"guid": l.guid, "id": l.id, "start": l.start, "end": l.end})).collect();
         let lengths = f.measured(&values).map_err(|e| bad(c, e))?;
         let dims: Vec<Value> =
             f.dimensions.iter().zip(lengths).map(|(d, l)| json!({"guid": d.guid, "id": d.id, "label": d.label, "lengths": l})).collect();
-        return Ok(json!({"name": name, "type": type_name, "planes": planes, "forms": forms, "dimensions": dims}));
+        return Ok(json!({"name": name, "type": type_name, "planes": planes, "lines": lines, "forms": forms, "dimensions": dims}));
     }
     if !keys.iter().any(|k| p.get(*k).is_some_and(|v| !v.is_null())) {
         let f = s.model.families.get(&name).ok_or_else(|| bad(c, format!("there's no family `{name}`")))?;
@@ -11729,9 +11740,10 @@ fn family(s: &mut Session, p: &Value) -> R {
         for v in list {
             let at = part_at(c, &mut f.forms, v, "form", &name)?;
             let gone = f.forms.remove(at);
-            // The dimensions measuring to it lose it, as Revit's do.
+            // The dimensions measuring to it lose it, as Revit's do; a pivot pinned to its sketch goes (F7d).
             if !gone.guid.is_nil() {
                 patches.dimensions_dropped += f.forget_reference(gone.guid);
+                f.forget_pivots(gone.guid);
             }
             patches.forms_deleted.push(gone.id);
         }
@@ -11785,6 +11797,8 @@ fn family(s: &mut Session, p: &Value) -> R {
                         let at = part_at(c, &mut f.lines, v, "ref_line", &name)?;
                         f.lines.remove(at).guid
                     };
+                    // A pivot pinned to it, or measured from it, goes with it (F7d).
+                    f.forget_pivots(gone);
                     let what = if planes { "plane" } else { "line" };
                     let on = f.hosted_on(gone);
                     if !on.is_empty() {

@@ -50,6 +50,8 @@ mod face_void_tests;
 pub mod falls;
 pub mod family;
 #[cfg(test)]
+mod family_angle_tests;
+#[cfg(test)]
 mod family_constraint_tests;
 #[cfg(test)]
 mod family_nested_tests;
@@ -57,6 +59,8 @@ mod family_nested_tests;
 mod family_options_tests;
 #[cfg(test)]
 mod family_parameter_tests;
+#[cfg(test)]
+mod family_pivot_tests;
 #[cfg(test)]
 mod family_plane_tests;
 #[cfg(test)]

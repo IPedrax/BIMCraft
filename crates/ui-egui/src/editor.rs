@@ -9,6 +9,7 @@ pub(crate) mod exists;
 mod extrusion;
 mod nested;
 pub(crate) mod options;
+mod pivot;
 pub(crate) mod sketch;
 mod temp_hide;
 mod types_dialog;
@@ -637,6 +638,9 @@ impl FamilyEditor {
         let (params, values) = (self.parameter_kinds(), self.values());
         let (done, new) = if matches!(a.field, Field::Nested(_)) {
             let mut rows = nested::NestedRows { instances: &mut self.nested_instances };
+            associate(ctx, &mut a, &mut rows, &params, &values)
+        } else if matches!(a.field, Field::Pivot) {
+            let mut rows = pivot::PivotRows { lines: &mut self.lines, planes: &mut self.planes };
             associate(ctx, &mut a, &mut rows, &params, &values)
         } else if matches!(a.field, Field::Form(_) | Field::Symbol(_)) {
             let mut rows = association::Rows { forms: &mut self.forms, symbols: &mut self.symbols };

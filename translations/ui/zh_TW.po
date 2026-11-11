@@ -8,249 +8,518 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: crates/ui-egui/src/editor/document.rs:1187
-msgid "Click a form, a nested instance, a reference plane or a dimension to select it; drag a selected plane to move it."
+#: crates/ui-egui/src/editor/extrusion.rs:125
+msgid "A dimension sets it: unlock it to change it here."
+msgstr "由尺寸標注確定：解鎖該尺寸標注後才能在此處修改。"
+
+#: crates/ui-egui/src/editor/options.rs:90
+msgid "A door or a window stands in its wall: it can't be work plane-based."
+msgstr "門或窗位於其所在的牆中：不能基於工作平面。"
+
+#: crates/ui-egui/src/editor/sketch.rs:1064
+msgid "Align (AL): pick a reference, then a line of the sketch that moves onto it; its padlock locks them"
+msgstr "對齊 (AL)：拾取參照，再拾取要移到其上的草圖線；其鎖可將二者鎖定"
+
+#: crates/ui-egui/src/editor/document.rs:534
+msgid "Align (AL): pick a reference, then what moves onto it; its padlock locks them"
+msgstr "對齊 (AL)：拾取參照，再拾取要移到其上的對象；其鎖可將二者鎖定"
+
+#: crates/ui-egui/src/editor/document.rs:431
+msgid "Aligned Dimension (DI): pick parallel reference planes, extrusion ends or lines of forms, then click where it goes"
+msgstr "對齊尺寸標注 (DI)：拾取平行的參照平面、拉伸端面或形狀的線，然後單擊放置位置"
+
+#: crates/ui-egui/src/editor/options.rs:17
+msgid "Always Vertical"
+msgstr "總是垂直"
+
+#: crates/ui-egui/src/editor/document.rs:452
+msgid "Angular Dimension: pick reference lines, reference planes or lines of forms that cross, then click where its arc goes"
+msgstr "角度尺寸標注：拾取相交的參照線、參照平面或形狀的線，然後單擊其圓弧的放置位置"
+
+#: crates/ui-egui/src/editor/options.rs:156
+msgid "By its category, sections cut it."
+msgstr "按其類別，剖面剖切它。"
+
+#: crates/ui-egui/src/editor/options.rs:156
+msgid "By its category, sections don't cut it."
+msgstr "按其類別，剖面不剖切它。"
+
+#: crates/ui-egui/src/editor/document.rs:1237
+msgid "Click a circle or an arc, then click where the dimension goes."
+msgstr "單擊一個圓或圓弧，然後單擊尺寸標注的放置位置。"
+
+#: crates/ui-egui/src/editor/document.rs:1249
+msgid "Click a form, a nested instance, a reference plane, a reference line or a dimension to select it; drag a selected plane to move it, a grip to turn or stretch."
 msgstr ""
 
-#: crates/ui-egui/src/editor/document.rs:1185
+#: crates/ui-egui/src/editor/document.rs:1227
+msgid "Click a reference line: the work plane it was sketched in. Esc goes back to the dialog."
+msgstr "單擊參照線：使用繪製它時所在的工作平面。按 Esc 返回對話框。"
+
+#: crates/ui-egui/src/editor/document.rs:1230
+msgid "Click a reference plane or a datum for the work plane. Esc goes back to the dialog."
+msgstr "單擊參照平面或基準作為工作平面。按 Esc 返回對話框。"
+
+#: crates/ui-egui/src/workplane.rs:577
+msgid "Click a wall, a beam, a pipe or another element drawn along a line: its level is the work plane. Esc goes back to the dialog."
+msgstr "單擊牆、梁、管道或其他沿線繪製的圖元：其標高即為工作平面。按 Esc 返回對話框。"
+
+#: crates/ui-egui/src/editor/document.rs:1234
+msgid "Click lines that cross (reference lines, reference planes, lines of forms), then click where the dimension goes."
+msgstr "單擊相交的線（參照線、參照平面、形狀的線），然後單擊尺寸標注的放置位置。"
+
+#: crates/ui-egui/src/editor/document.rs:1240
+msgid "Click parallel reference planes, extrusion ends or lines of forms, then click where the dimension goes."
+msgstr "單擊平行的參照平面、拉伸端面或形狀的線，然後單擊尺寸標注的放置位置。"
+
+#: crates/ui-egui/src/editor/document.rs:1219
+msgid "Click the line of the sketch that moves onto it; its padlock locks them."
+msgstr "單擊要移到其上的草圖線；其鎖可將二者鎖定。"
+
+#: crates/ui-egui/src/editor/document.rs:1246
+msgid "Click the point it turns about: where two planes cross, a line's end, a point of a sketch, or anywhere."
+msgstr ""
+
+#: crates/ui-egui/src/editor/document.rs:1242
+msgid "Click the reference to align to."
+msgstr "單擊要對齊到的參照。"
+
+#: crates/ui-egui/src/editor/document.rs:1218
+msgid "Click the reference to align to: a reference plane, a reference line or a line."
+msgstr "單擊要對齊到的參照：參照平面、參照線或線。"
+
+#: crates/ui-egui/src/editor/document.rs:1243
+msgid "Click what moves onto it."
+msgstr "單擊要移到其上的對象。"
+
+#: crates/ui-egui/src/editor/document.rs:1244
 msgid "Click where the component goes, on the view's work plane."
-msgstr ""
+msgstr "在視圖的工作平面上單擊構件的放置位置。"
 
-#: crates/ui-egui/src/editor/document.rs:403
+#: crates/ui-egui/src/editor/document.rs:409
 msgid "Component (CM): an instance of a family loaded into this one, placed by a click in a plan or an elevation"
-msgstr ""
+msgstr "構件 (CM)：載入到此族中的族的實例，在平面或立面中單擊放置"
+
+#: crates/ui-egui/src/editor/dimensions.rs:29
+msgid "Constraints are not satisfied"
+msgstr "不滿足約束"
+
+#: crates/ui-egui/src/editor/dimensions.rs:27
+msgid "Create Parameter…"
+msgstr "創建參數…"
+
+#: crates/ui-egui/src/editor/work_plane.rs:193
+#: crates/ui-egui/src/workplane.rs:252
+msgid "Current Work Plane"
+msgstr "目前工作平面"
+
+#: crates/ui-egui/src/editor/options.rs:18
+msgid "Cut with Voids When Loaded"
+msgstr "載入時剪切的空心"
+
+#: crates/ui-egui/src/editor/options.rs:25
+msgid "Default Elevation"
+msgstr "預設高程"
+
+#: crates/ui-egui/src/editor/exists.rs:497
+msgid "Delete Dimension(s)"
+msgstr "刪除尺寸標注"
+
+#: crates/ui-egui/src/editor/document.rs:465
+msgid "Diameter Dimension: pick a circle or an arc of a form's sketch, then click where it goes"
+msgstr "直徑尺寸標注：拾取形狀草圖中的圓或圓弧，然後單擊放置位置"
+
+#: crates/ui-egui/src/editor/exists.rs:395
+msgid "Dimensions of the family you are loading can't be kept: {}"
+msgstr "無法保留您正在載入的族的尺寸標注：{}"
+
+#: crates/ui-egui/src/editor/work_plane.rs:205
+#: crates/ui-egui/src/workplane.rs:269
+msgid "Dissociate"
+msgstr "取消關聯"
+
+#: crates/ui-egui/src/workplane.rs:266
+msgid "Dissociate: a component stays on its host, which it moves with"
+msgstr "取消關聯：構件始終位於其主體上，並隨主體移動"
+
+#: crates/ui-egui/src/editor/work_plane.rs:204
+msgid "Dissociate: a family's work plane is always one of its planes or lines, which forms are drawn on"
+msgstr "取消關聯：族的工作平面始終是其某個平面或線，形狀繪製在其上"
+
+#: crates/ui-egui/src/workplane.rs:264
+msgid "Dissociate: only a work plane on a reference plane follows it; this one follows nothing"
+msgstr "取消關聯：只有位於參照平面上的工作平面才會跟隨該參照平面；此工作平面不跟隨任何對象"
+
+#: crates/ui-egui/src/workplane.rs:262
+msgid "Dissociate: the work plane left where its reference plane is now, no longer following it"
+msgstr "取消關聯：工作平面留在其參照平面目前所在位置，不再跟隨它"
+
+#: crates/ui-egui/src/editor/dimensions.rs:295
+#: crates/ui-egui/src/editor/dimensions.rs:388
+msgid "EQ"
+msgstr "EQ"
 
 #: crates/ui-egui/src/editor/nested.rs:363
 msgid "Edit Family: the nested family opens over this one; its Load into Project loads it back here"
-msgstr ""
+msgstr "編輯族：巢狀族在此族之上開啟；其“載入到項目”會將其載回此處"
+
+#: crates/ui-egui/src/lib.rs:4632
+msgid "Edit Work Plane: the components onto a level, a reference plane or a face picked (the Work Plane dialog), keeping their Offset from Host"
+msgstr "編輯工作平面：將構件移到標高、參照平面或拾取的面上（“工作平面”對話框），保持其“主體中的偏移”"
+
+#: crates/ui-egui/src/editor/extrusion.rs:248
+msgid "Edit Work Plane: the form onto another of the family's planes, moving with it (the Work Plane dialog)"
+msgstr "編輯工作平面：將形狀移到族的另一個平面上，並隨其移動（“工作平面”對話框）"
+
+#: crates/ui-egui/src/editor/options.rs:21
+msgid "Enable Cutting in Views"
+msgstr "在視圖中啟用剖切"
+
+#: crates/ui-egui/src/editor/document.rs:1442
+msgid "Family Category"
+msgstr "族類別"
+
+#: crates/ui-egui/src/editor/document.rs:1457
+msgid "Family Parameters"
+msgstr "族參數"
 
 #: crates/ui-egui/src/editor/nested.rs:86
 msgid "Instances of {} are placed in the family: delete them first."
+msgstr "族中已放置 {} 的實例：請先刪除它們。"
+
+#: crates/ui-egui/src/editor/exists.rs:496
+msgid "Invalid Dimensions"
+msgstr "無效尺寸標注"
+
+#: crates/ui-egui/src/editor/pivot.rs:167
+msgid "It is no longer there."
 msgstr ""
 
-#: crates/ui-egui/src/editor/document.rs:472
+#: crates/ui-egui/src/editor/document.rs:487
 msgid "Load Family: a family file loaded into this family, to place with Component"
-msgstr ""
+msgstr "載入族：將族檔案載入到此族中，以便用“構件”放置"
 
-#: crates/ui-egui/src/editor/document.rs:638
+#: crates/ui-egui/src/editor/document.rs:680
 msgid "Load into Project and Close: the family it is nested in takes it, and it closes"
+msgstr "載入到項目並關閉：其所巢狀的族接收它，然後它關閉"
+
+#: crates/ui-egui/src/editor/document.rs:672
+msgid "Load into Project: the family it is nested in takes it as it is here, and it stays open"
+msgstr "載入到項目：其所巢狀的族按此處的狀態接收它，它保持開啟"
+
+#: crates/ui-egui/src/editor/types_dialog.rs:23
+msgid "Lock: the dimensions this parameter labels keep its value when planes are dragged"
+msgstr "鎖定：拖動平面時，此參數所標記的尺寸標注保持其值"
+
+#: crates/ui-egui/src/editor/pivot.rs:329
+msgid "Maximum Angle"
 msgstr ""
 
-#: crates/ui-egui/src/editor/document.rs:630
-msgid "Load into Project: the family it is nested in takes it as it is here, and it stays open"
+#: crates/ui-egui/src/editor/pivot.rs:329
+msgid "Minimum Angle"
 msgstr ""
+
+#: crates/ui-egui/src/editor/document.rs:247
+msgid "Modify | Align"
+msgstr "修改 | 對齊"
+
+#: crates/ui-egui/src/editor/document.rs:250
+msgid "Modify | Dimensions"
+msgstr "修改 | 尺寸標注"
 
 #: crates/ui-egui/src/editor/document.rs:241
 msgid "Modify | Nested Instance"
+msgstr "修改 | 巢狀實例"
+
+#: crates/ui-egui/src/editor/document.rs:253
+msgid "Modify | Pivot"
 msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:238
 msgid "Modify | Place Component"
+msgstr "修改 | 放置構件"
+
+#: crates/ui-egui/src/editor/document.rs:244
+msgid "Modify | Place Dimensions"
+msgstr "修改 | 放置尺寸標注"
+
+#: crates/ui-egui/src/editor/document.rs:259
+msgid "Modify | Reference Lines"
 msgstr ""
+
+#: crates/ui-egui/src/editor/options.rs:23
+msgid "OmniClass Number"
+msgstr "OmniClass 編號"
+
+#: crates/ui-egui/src/editor/options.rs:24
+msgid "OmniClass Title"
+msgstr "OmniClass 標題"
+
+#: crates/ui-egui/src/editor/dimensions.rs:1041
+msgid "Only a dimension of one segment takes a label."
+msgstr "只有單段尺寸標注才能添加標籤。"
+
+#: crates/ui-egui/src/editor/types_dialog.rs:24
+msgid "Only a parameter that labels a dimension, and that no formula works out, can be locked."
+msgstr "只有標記了尺寸標注且不由公式計算的參數才能鎖定。"
+
+#: crates/ui-egui/src/editor/work_plane.rs:288
+msgid "Open View"
+msgstr "開啟視圖"
+
+#: crates/ui-egui/src/editor/views.rs:858
+msgid "Pick a circle or an arc, then click where the dimension goes."
+msgstr "拾取一個圓或圓弧，然後單擊尺寸標注的放置位置。"
+
+#: crates/ui-egui/src/editor/work_plane.rs:227
+#: crates/ui-egui/src/workplane.rs:299
+msgid "Pick a line and use the work plane it was sketched in"
+msgstr "拾取一條線並使用繪製該線所在的工作平面"
+
+#: crates/ui-egui/src/editor/views.rs:865
+msgid "Pick a line that crosses the one before."
+msgstr "拾取與前一條線相交的線。"
+
+#: crates/ui-egui/src/workplane.rs:578
+msgid "Pick a line: a wall, a beam, a pipe or another element drawn along a line."
+msgstr "拾取一條線：牆、梁、管道或其他沿線繪製的圖元。"
+
+#: crates/ui-egui/src/workplane.rs:301
+msgid "Pick a line: after OK, click a wall, a beam, a pipe or another element drawn along a line; its level is taken"
+msgstr "拾取一條線：單擊“確定”後，單擊牆、梁、管道或其他沿線繪製的圖元；將採用其標高"
+
+#: crates/ui-egui/src/editor/work_plane.rs:159
+msgid "Pick a line: click a reference line in the view."
+msgstr "拾取一條線：在視圖中單擊參照線。"
+
+#: crates/ui-egui/src/editor/work_plane.rs:227
+#: crates/ui-egui/src/workplane.rs:294
+msgid "Pick a plane"
+msgstr "拾取一個平面"
+
+#: crates/ui-egui/src/editor/views.rs:891
+msgid "Pick a plane or a line too: points alone face no way to measure along."
+msgstr "還需拾取一個平面或一條線：僅有點無法確定測量方向。"
+
+#: crates/ui-egui/src/workplane.rs:579
+msgid "Pick a plane: a component goes on a face of a wall, a floor, a ceiling or a roof."
+msgstr "拾取一個平面：構件放置在牆、樓板、天花板或屋頂的面上。"
+
+#: crates/ui-egui/src/workplane.rs:295
+msgid "Pick a plane: after OK, click a face of the model in the 3D view, a wall's or a roof's"
+msgstr "拾取一個平面：單擊“確定”後，在3D視圖中單擊模型的一個面，如牆或屋頂的面"
+
+#: crates/ui-egui/src/editor/work_plane.rs:161
+msgid "Pick a plane: click a reference plane or a datum in the view."
+msgstr "拾取一個平面：在視圖中單擊參照平面或基準。"
+
+#: crates/ui-egui/src/editor/views.rs:881
+msgid "Pick a reference parallel to the first."
+msgstr "拾取與第一個參照平行的參照。"
+
+#: crates/ui-egui/src/editor/sketch.rs:812
+msgid "Pick a reference plane, a reference line or a line, then a line of the sketch."
+msgstr "拾取參照平面、參照線或線，再拾取一條草圖線。"
+
+#: crates/ui-egui/src/editor/views.rs:903
+msgid "Pick a reference plane, an extrusion's end or a line of a form."
+msgstr "拾取參照平面、拉伸的端面或形狀的線。"
+
+#: crates/ui-egui/src/editor/sketch.rs:817
+msgid "Pick a straight line of the sketch: it moves onto the reference."
+msgstr "拾取一條草圖直線：它將移到參照上。"
+
+#: crates/ui-egui/src/editor/views.rs:874
+msgid "Pick lines that cross, then click where the dimension goes."
+msgstr "拾取相交的線，然後單擊尺寸標注的放置位置。"
+
+#: crates/ui-egui/src/workplane.rs:307
+msgid "Pick three points: after OK, click three points on the model, each snapping to a corner near the pointer"
+msgstr "拾取三個點：單擊“確定”後，在模型上單擊三個點，每個點捕捉到指標附近的角點"
+
+#: crates/ui-egui/src/editor/views.rs:893
+msgid "Pick two references or more, then click where the dimension goes."
+msgstr "拾取兩個或更多參照，然後單擊尺寸標注的放置位置。"
+
+#: crates/ui-egui/src/editor/work_plane.rs:308
+msgid "Pick works in a plan or an elevation, where the family's planes and lines are drawn"
+msgstr "拾取僅在平面或立面視圖中可用，族的平面和線繪製在其中"
+
+#: crates/ui-egui/src/editor/document.rs:631
+msgid "Pivot"
+msgstr ""
+
+#: crates/ui-egui/src/editor/pivot.rs:282
+#: crates/ui-egui/src/editor/pivot.rs:302
+msgid "Pivot Point"
+msgstr ""
+
+#: crates/ui-egui/src/editor/document.rs:629
+msgid "Pivot: click the point it turns about (where two planes cross, a line's end, a point of a sketch, or anywhere); its Swing Angle turns it"
+msgstr ""
+
+#: crates/ui-egui/src/editor/pivot.rs:270
+msgid "Point of a sketch"
+msgstr ""
+
+#: crates/ui-egui/src/editor/document.rs:459
+msgid "Radial Dimension: pick a circle or an arc of a form's sketch, then click where it goes"
+msgstr "徑向尺寸標注：拾取形狀草圖中的圓或圓弧，然後單擊放置位置"
+
+#: crates/ui-egui/src/editor/document.rs:800
+#: crates/ui-egui/src/editor/pivot.rs:264
+msgid "Reference Line {}"
+msgstr ""
+
+#: crates/ui-egui/src/editor/dimensions.rs:903
+msgid "Remove Constraints"
+msgstr "刪除約束"
+
+#: crates/ui-egui/src/editor/document.rs:637
+msgid "Remove Pivot"
+msgstr ""
+
+#: crates/ui-egui/src/editor/document.rs:635
+msgid "Remove Pivot: it stops turning and stays where it is drawn"
+msgstr ""
+
+#: crates/ui-egui/src/editor/options.rs:20
+msgid "Room Calculation Point"
+msgstr "房間計算點"
+
+#: crates/ui-egui/src/editor/document.rs:627
+msgid "Rotation"
+msgstr ""
+
+#: crates/ui-egui/src/workplane.rs:177
+msgid "Set Work Plane: the plane the 3D view sketches on, by name or picked on the model, with an offset; its patch in the view sets it too"
+msgstr "設置工作平面：3D視圖繪製所在的平面，按名稱指定或在模型上拾取，可帶偏移；也可通過視圖中的平面片設置"
+
+#: crates/ui-egui/src/editor/sketch.rs:1077
+msgid "Set: the plane the sketch is drawn on, by name or picked in the view (the Work Plane dialog); its lines go with it"
+msgstr "設置：繪製草圖所在的平面，按名稱指定或在視圖中拾取（“工作平面”對話框）；草圖線隨之移動"
+
+#: crates/ui-egui/src/editor/document.rs:1607
+msgid "Set: the view's work plane, by name or picked in the view (the Work Plane dialog)"
+msgstr "設置：視圖的工作平面，按名稱指定或在視圖中拾取（“工作平面”對話框）"
+
+#: crates/ui-egui/src/editor/options.rs:19
+msgid "Shared"
+msgstr "共用"
+
+#: crates/ui-egui/src/workplane.rs:260
+msgid "Show: the work plane drawn as a grid in the 3D view, on or off"
+msgstr "顯示：在3D視圖中以網格顯示工作平面，開或關"
+
+#: crates/ui-egui/src/editor/work_plane.rs:202
+msgid "Show: the work plane tinted in the view, on or off"
+msgstr "顯示：在視圖中以著色顯示工作平面，開或關"
+
+#: crates/ui-egui/src/editor/work_plane.rs:208
+#: crates/ui-egui/src/workplane.rs:275
+msgid "Specify a new Work Plane"
+msgstr "指定新的工作平面"
+
+#: crates/ui-egui/src/workplane.rs:239
+msgid "Surface, {}"
+msgstr "表面，{}"
+
+#: crates/ui-egui/src/editor/pivot.rs:305
+msgid "Swing Angle"
+msgstr ""
+
+#: crates/ui-egui/src/editor/dimensions.rs:24
+msgid "The dimension is over-constrained"
+msgstr "尺寸標注已被過度約束"
 
 #: crates/ui-egui/src/editor/exists.rs:190
 msgid "The family it was nested in is closed."
-msgstr ""
+msgstr "其所巢狀的族已關閉。"
 
 #: crates/ui-egui/src/editor/exists.rs:365
 msgid "The family {} you are loading is already in this family, defined differently. What would you like to do?"
-msgstr ""
+msgstr "您正在載入的族 {} 已存在於此族中，但定義不同。您想要執行什麼操作？"
 
 #: crates/ui-egui/src/editor/exists.rs:381
 msgid "The shared family {} nested in the family you are loading is already in this family. Which version should it use?"
-msgstr ""
+msgstr "巢狀於您正在載入的族中的共用族 {} 已存在於此族中。應使用哪個版本？"
 
 #: crates/ui-egui/src/editor/exists.rs:494
 msgid "Use this family's version"
+msgstr "使用此族中的版本"
+
+#: crates/ui-egui/src/editor/options.rs:16
+msgid "Work Plane-Based"
+msgstr "基於工作平面"
+
+#: crates/ui-egui/src/workplane.rs:167
+msgid "Work Plane: what the 3D view sketches on: a level, a reference plane, a surface of the model or three points, each with an offset"
+msgstr "工作平面：3D視圖繪製所在的對象：標高、參照平面、模型表面或三個點，均可帶偏移"
+
+#: crates/ui-egui/src/editor/options.rs:100
+msgid "Z"
+msgstr "Z"
+
+#: crates/ui-egui/src/editor/pivot.rs:346
+msgid "`{}` isn't an angle"
+msgstr ""
+
+#: crates/ui-egui/src/editor/dimensions.rs:981
+msgid "a parameter needs a name"
+msgstr "參數需要名稱"
+
+#: crates/ui-egui/src/editor/pivot.rs:205
+msgid "the line can't go while {} is drawn on it"
+msgstr ""
+
+#: crates/ui-egui/src/editor/dimensions.rs:984
+msgid "there's a parameter `{}` already"
+msgstr "已存在參數 `{}`"
+
+#: apps/bimcraft/src/startup.rs:143
+msgid ""
+"{}\n"
+"\n"
+"The details are in {}."
+msgstr ""
+"{}\n"
+"\n"
+"詳細信息見 {}。"
+
+#: crates/ui-egui/src/editor/pivot.rs:267
+msgid "{} / {}"
 msgstr ""
 
 #: crates/ui-egui/src/editor/nested.rs:78
 msgid "{} can't be loaded into itself, nor into a family it nests"
+msgstr "{} 不能載入到自身中，也不能載入到巢狀於其中的族中"
+
+#: crates/ui-egui/src/editor/work_plane.rs:273
+msgid "{} isn't parallel to this view. Open a view that shows it flat:"
+msgstr "{} 與此視圖不平行。請開啟一個正對顯示它的視圖："
+
+#: crates/ui-egui/src/editor/pivot.rs:268
+msgid "{}: End"
 msgstr ""
 
-#: crates/ui-egui/src/editor/sketch.rs:1064
-msgid "Align (AL): pick a reference, then a line of the sketch that moves onto it; its padlock locks them"
-msgstr ""
-
-#: crates/ui-egui/src/editor/document.rs:416
-msgid "Aligned Dimension (DI): pick parallel reference planes, extrusion ends or lines of forms, then click where it goes"
+#: crates/ui-egui/src/editor/pivot.rs:269
+msgid "{}: Start"
 msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:1140
 msgid "Click a circle, then click where the dimension goes."
 msgstr ""
 
-#: crates/ui-egui/src/editor/document.rs:1133
-msgid "Click a reference line: the work plane it was sketched in. Esc goes back to the dialog."
-msgstr ""
-
-#: crates/ui-egui/src/editor/document.rs:1136
-msgid "Click a reference plane or a datum for the work plane. Esc goes back to the dialog."
-msgstr ""
-
-#: crates/ui-egui/src/workplane.rs:577
-msgid "Click a wall, a beam, a pipe or another element drawn along a line: its level is the work plane. Esc goes back to the dialog."
-msgstr ""
-
-#: crates/ui-egui/src/editor/document.rs:1143
-msgid "Click parallel reference planes, extrusion ends or lines of forms, then click where the dimension goes."
-msgstr ""
-
-#: crates/ui-egui/src/editor/document.rs:1125
-msgid "Click the line of the sketch that moves onto it; its padlock locks them."
-msgstr ""
-
-#: crates/ui-egui/src/editor/document.rs:1124
-msgid "Click the reference to align to: a reference plane, a reference line or a line."
-msgstr ""
-
-#: crates/ui-egui/src/editor/work_plane.rs:193
-#: crates/ui-egui/src/workplane.rs:252
-msgid "Current Work Plane"
-msgstr ""
-
 #: crates/ui-egui/src/editor/document.rs:441
 msgid "Diameter Dimension: pick a circle of a form's sketch, then click where it goes"
-msgstr ""
-
-#: crates/ui-egui/src/editor/work_plane.rs:205
-#: crates/ui-egui/src/workplane.rs:269
-msgid "Dissociate"
-msgstr ""
-
-#: crates/ui-egui/src/workplane.rs:266
-msgid "Dissociate: a component stays on its host, which it moves with"
-msgstr ""
-
-#: crates/ui-egui/src/editor/work_plane.rs:204
-msgid "Dissociate: a family's work plane is always one of its planes or lines, which forms are drawn on"
-msgstr ""
-
-#: crates/ui-egui/src/workplane.rs:264
-msgid "Dissociate: only a work plane on a reference plane follows it; this one follows nothing"
-msgstr ""
-
-#: crates/ui-egui/src/workplane.rs:262
-msgid "Dissociate: the work plane left where its reference plane is now, no longer following it"
-msgstr ""
-
-#: crates/ui-egui/src/lib.rs:4404
-msgid "Edit Work Plane: the components onto a level, a reference plane or a face picked (the Work Plane dialog), keeping their Offset from Host"
-msgstr ""
-
-#: crates/ui-egui/src/editor/extrusion.rs:244
-msgid "Edit Work Plane: the form onto another of the family's planes, moving with it (the Work Plane dialog)"
-msgstr ""
-
-#: crates/ui-egui/src/editor/work_plane.rs:288
-msgid "Open View"
 msgstr ""
 
 #: crates/ui-egui/src/editor/views.rs:709
 msgid "Pick a circle, then click where the dimension goes."
 msgstr ""
 
-#: crates/ui-egui/src/editor/work_plane.rs:227
-#: crates/ui-egui/src/workplane.rs:299
-msgid "Pick a line and use the work plane it was sketched in"
-msgstr ""
-
-#: crates/ui-egui/src/workplane.rs:578
-msgid "Pick a line: a wall, a beam, a pipe or another element drawn along a line."
-msgstr ""
-
-#: crates/ui-egui/src/workplane.rs:301
-msgid "Pick a line: after OK, click a wall, a beam, a pipe or another element drawn along a line; its level is taken"
-msgstr ""
-
-#: crates/ui-egui/src/editor/work_plane.rs:159
-msgid "Pick a line: click a reference line in the view."
-msgstr ""
-
-#: crates/ui-egui/src/editor/work_plane.rs:227
-#: crates/ui-egui/src/workplane.rs:294
-msgid "Pick a plane"
-msgstr ""
-
-#: crates/ui-egui/src/editor/views.rs:726
-msgid "Pick a plane or a line too: points alone face no way to measure along."
-msgstr ""
-
-#: crates/ui-egui/src/workplane.rs:579
-msgid "Pick a plane: a component goes on a face of a wall, a floor, a ceiling or a roof."
-msgstr ""
-
-#: crates/ui-egui/src/workplane.rs:295
-msgid "Pick a plane: after OK, click a face of the model in the 3D view, a wall's or a roof's"
-msgstr ""
-
-#: crates/ui-egui/src/editor/work_plane.rs:161
-msgid "Pick a plane: click a reference plane or a datum in the view."
-msgstr ""
-
-#: crates/ui-egui/src/editor/sketch.rs:812
-msgid "Pick a reference plane, a reference line or a line, then a line of the sketch."
-msgstr ""
-
-#: crates/ui-egui/src/editor/views.rs:738
-msgid "Pick a reference plane, an extrusion's end or a line of a form."
-msgstr ""
-
-#: crates/ui-egui/src/editor/sketch.rs:817
-msgid "Pick a straight line of the sketch: it moves onto the reference."
-msgstr ""
-
-#: crates/ui-egui/src/workplane.rs:307
-msgid "Pick three points: after OK, click three points on the model, each snapping to a corner near the pointer"
-msgstr ""
-
-#: crates/ui-egui/src/editor/work_plane.rs:308
-msgid "Pick works in a plan or an elevation, where the family's planes and lines are drawn"
-msgstr ""
-
 #: crates/ui-egui/src/editor/document.rs:435
 msgid "Radial Dimension: pick a circle of a form's sketch, then click where it goes"
-msgstr ""
-
-#: crates/ui-egui/src/workplane.rs:177
-msgid "Set Work Plane: the plane the 3D view sketches on, by name or picked on the model, with an offset; its patch in the view sets it too"
-msgstr ""
-
-#: crates/ui-egui/src/editor/sketch.rs:1077
-msgid "Set: the plane the sketch is drawn on, by name or picked in the view (the Work Plane dialog); its lines go with it"
-msgstr ""
-
-#: crates/ui-egui/src/editor/document.rs:1506
-msgid "Set: the view's work plane, by name or picked in the view (the Work Plane dialog)"
-msgstr ""
-
-#: crates/ui-egui/src/workplane.rs:260
-msgid "Show: the work plane drawn as a grid in the 3D view, on or off"
-msgstr ""
-
-#: crates/ui-egui/src/editor/work_plane.rs:202
-msgid "Show: the work plane tinted in the view, on or off"
-msgstr ""
-
-#: crates/ui-egui/src/editor/work_plane.rs:208
-#: crates/ui-egui/src/workplane.rs:275
-msgid "Specify a new Work Plane"
-msgstr ""
-
-#: crates/ui-egui/src/workplane.rs:239
-msgid "Surface, {}"
-msgstr ""
-
-#: crates/ui-egui/src/workplane.rs:167
-msgid "Work Plane: what the 3D view sketches on: a level, a reference plane, a surface of the model or three points, each with an offset"
-msgstr ""
-
-#: crates/ui-egui/src/editor/work_plane.rs:273
-msgid "{} isn't parallel to this view. Open a view that shows it flat:"
-msgstr ""
-
-#: crates/ui-egui/src/editor/extrusion.rs:115
-msgid "A dimension sets it: unlock it to change it here."
 msgstr ""
 
 #: crates/ui-egui/src/editor/sketch.rs:388
@@ -260,10 +529,6 @@ msgstr "來自檔案的網格沒有可編輯的草圖。"
 #: crates/ui-egui/src/editor/sketch.rs:470
 msgid "A revolve needs an axis line: draw one with Axis Line."
 msgstr "旋轉需要一條軸線：請用「軸線」繪製。"
-
-#: crates/ui-egui/src/editor/document.rs:480
-msgid "Align (AL): pick a reference, then what moves onto it; its padlock locks them"
-msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:411
 msgid "Aligned Dimension (DI): pick parallel reference planes or extrusion ends, then click where it goes"
@@ -313,10 +578,6 @@ msgstr ""
 msgid "Click the points of the shape; Finish Edit Mode when the lines close into loops."
 msgstr "單擊形狀的各點；線閉合成環後完成編輯模式。"
 
-#: crates/ui-egui/src/editor/document.rs:1100
-msgid "Click the reference to align to."
-msgstr ""
-
 #: crates/ui-egui/src/editor/sketch.rs:776
 msgid "Click two lines that meet: they are rounded by an arc of the Options Bar's radius."
 msgstr "單擊兩條相交的線：以選項欄所設半徑的圓弧對其進行圓角。"
@@ -329,33 +590,9 @@ msgstr "單擊兩點：建立通過這兩點的參照平面。"
 msgid "Click two points: the axis the profile turns about."
 msgstr "單擊兩點：輪廓繞其旋轉的軸。"
 
-#: crates/ui-egui/src/editor/document.rs:1101
-msgid "Click what moves onto it."
-msgstr ""
-
-#: crates/ui-egui/src/editor/dimensions.rs:26
-msgid "Constraints are not satisfied"
-msgstr ""
-
-#: crates/ui-egui/src/editor/dimensions.rs:24
-msgid "Create Parameter…"
-msgstr ""
-
 #: crates/ui-egui/src/editor/sketch.rs:887
 msgid "Delete (DE): the lines picked"
 msgstr "刪除 (DE)：所拾取的線"
-
-#: crates/ui-egui/src/editor/exists.rs:357
-msgid "Delete Dimension(s)"
-msgstr ""
-
-#: crates/ui-egui/src/editor/exists.rs:280
-msgid "Dimensions of the family you are loading can't be kept: {}"
-msgstr ""
-
-#: crates/ui-egui/src/editor/dimensions.rs:165
-msgid "EQ"
-msgstr ""
 
 #: crates/ui-egui/src/editor/sketch.rs:923
 msgid "Edit Extrusion"
@@ -390,21 +627,9 @@ msgstr "完成編輯模式：閉合成環的線成為形狀"
 msgid "Go To View"
 msgstr "轉到視圖"
 
-#: crates/ui-egui/src/editor/exists.rs:356
-msgid "Invalid Dimensions"
-msgstr ""
-
-#: crates/ui-egui/src/editor/types_dialog.rs:23
-msgid "Lock: the dimensions this parameter labels keep its value when planes are dragged"
-msgstr ""
-
 #: crates/ui-egui/src/editor/sketch.rs:883
 msgid "Modify (MD): pick lines of the sketch, and drag their ends"
 msgstr "修改 (MD)：拾取草圖線並拖動其端點"
-
-#: crates/ui-egui/src/editor/document.rs:240
-msgid "Modify | Align"
-msgstr ""
 
 #: crates/ui-egui/src/sketch.rs:95
 msgid "Modify | Create Extrusion"
@@ -422,10 +647,6 @@ msgstr "修改 | 創建空心拉伸"
 msgid "Modify | Create Void Revolve"
 msgstr "修改 | 創建空心旋轉"
 
-#: crates/ui-egui/src/editor/document.rs:243
-msgid "Modify | Dimensions"
-msgstr ""
-
 #: crates/ui-egui/src/sketch.rs:99
 msgid "Modify | Edit Extrusion"
 msgstr "修改 | 編輯拉伸"
@@ -434,10 +655,6 @@ msgstr "修改 | 編輯拉伸"
 msgid "Modify | Edit Revolve"
 msgstr "修改 | 編輯旋轉"
 
-#: crates/ui-egui/src/editor/document.rs:237
-msgid "Modify | Place Dimensions"
-msgstr ""
-
 #: crates/ui-egui/src/editor/document.rs:234
 msgid "Modify | Place Reference Plane"
 msgstr "修改 | 放置參照平面"
@@ -445,18 +662,6 @@ msgstr "修改 | 放置參照平面"
 #: crates/ui-egui/src/editor/document.rs:246
 msgid "Modify | Reference Planes"
 msgstr "修改 | 參照平面"
-
-#: crates/ui-egui/src/editor/dimensions.rs:616
-msgid "Only a dimension of one segment takes a label."
-msgstr ""
-
-#: crates/ui-egui/src/editor/types_dialog.rs:24
-msgid "Only a parameter that labels a dimension, and that no formula works out, can be locked."
-msgstr ""
-
-#: crates/ui-egui/src/editor/views.rs:516
-msgid "Pick a reference parallel to the first."
-msgstr ""
 
 #: crates/ui-egui/src/editor/views.rs:498
 msgid "Pick a reference plane or a datum in the view."
@@ -471,17 +676,9 @@ msgstr ""
 msgid "Pick a reference plane, a reference line or a form's edge in the view."
 msgstr "在視圖中拾取參照平面、參照線或形狀的邊。"
 
-#: crates/ui-egui/src/editor/views.rs:525
-msgid "Pick two references or more, then click where the dimension goes."
-msgstr ""
-
 #: crates/ui-egui/src/editor/document.rs:400
 msgid "Reference Plane (RP): a plane drawn by two clicks in a plan or an elevation"
 msgstr "參照平面 (RP)：在平面或立面中單擊兩次繪製的平面"
-
-#: crates/ui-egui/src/editor/dimensions.rs:481
-msgid "Remove Constraints"
-msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:370
 msgid "Revolve: sketch a profile and an axis line on the work plane, turned about the axis"
@@ -504,10 +701,6 @@ msgstr "起始角度"
 #: crates/ui-egui/src/editor/sketch.rs:265
 msgid "That runs square to the work plane: it has no line on it to pick."
 msgstr "該對象與工作平面垂直：在工作平面上沒有可拾取的線。"
-
-#: crates/ui-egui/src/editor/dimensions.rs:21
-msgid "The dimension is over-constrained"
-msgstr ""
 
 #: crates/ui-egui/src/editor/sketch.rs:471
 msgid "The profile crosses the axis line: draw it to one side of the axis."
@@ -548,10 +741,6 @@ msgstr "空心旋轉"
 msgid "a datum stays: it can't be deleted"
 msgstr "基準保留：無法刪除"
 
-#: crates/ui-egui/src/editor/dimensions.rs:559
-msgid "a parameter needs a name"
-msgstr ""
-
 #: crates/ui-egui/src/editor/sketch.rs:386
 msgid "the form is gone"
 msgstr "形狀已不存在"
@@ -560,10 +749,6 @@ msgstr "形狀已不存在"
 msgid "the plane can't go while {} is drawn on it"
 msgstr "平面上繪有 {}，無法刪除該平面"
 
-#: crates/ui-egui/src/editor/dimensions.rs:562
-msgid "there's a parameter `{}` already"
-msgstr ""
-
 #: crates/ui-egui/src/editor/sketch.rs:335
 msgid "{} can't be worked out"
 msgstr "無法計算 {}"
@@ -571,16 +756,6 @@ msgstr "無法計算 {}"
 #: crates/ui-egui/src/editor.rs:1082
 msgid "{} lines and arcs, drawn in sketch mode"
 msgstr "{} 條線和圓弧，在草圖模式中繪製"
-
-#: apps/bimcraft/src/startup.rs:143
-msgid ""
-"{}\n"
-"\n"
-"The details are in {}."
-msgstr ""
-"{}\n"
-"\n"
-"詳細信息見 {}。"
 
 #: crates/ui-egui/src/lib.rs:463
 msgid " Left out: {}{}."
@@ -711,10 +886,6 @@ msgstr "從上一點出發的方向會吸附到該角度的整數倍（相對於
 #: crates/ui-egui/src/editor/types_dialog.rs:199
 msgid "A door or a window needs lengths named Width and Height; its formulas can read Wall Thickness, the wall's."
 msgstr "門或窗需要名為 Width 和 Height 的長度參數；其公式可以讀取 Wall Thickness（牆的厚度）。"
-
-#: crates/ui-egui/src/editor/options.rs:90
-msgid "A door or a window stands in its wall: it can't be work plane-based."
-msgstr ""
 
 #: crates/ui-egui/src/editor/types_dialog.rs:625
 msgid "A family type parameter needs the category of the families whose types it picks."
@@ -1211,10 +1382,6 @@ msgstr ""
 
 #: crates/ui-egui/src/adaptive_editor.rs:269
 msgid "Always"
-msgstr ""
-
-#: crates/ui-egui/src/editor/options.rs:17
-msgid "Always Vertical"
 msgstr ""
 
 #: crates/ui-egui/src/electrical.rs:444
@@ -1765,14 +1932,6 @@ msgstr "按類別"
 #: crates/ui-egui/src/graphics.rs:910
 msgid "By View"
 msgstr "按視圖"
-
-#: crates/ui-egui/src/editor/options.rs:156
-msgid "By its category, sections cut it."
-msgstr ""
-
-#: crates/ui-egui/src/editor/options.rs:156
-msgid "By its category, sections don't cut it."
-msgstr ""
 
 #: crates/core/src/library.rs:77
 msgid "CAD drawing"
@@ -3078,10 +3237,6 @@ msgstr "剖切筆號"
 msgid "Cut Plane"
 msgstr "剖切面"
 
-#: crates/ui-egui/src/editor/options.rs:18
-msgid "Cut with Voids When Loaded"
-msgstr ""
-
 #: crates/ui-egui/src/editor.rs:170
 msgid "Cylinder"
 msgstr "圓柱體"
@@ -3145,10 +3300,6 @@ msgstr ""
 #: crates/ui-egui/src/lib.rs:3372
 msgid "Default 3D View"
 msgstr "預設3D視圖"
-
-#: crates/ui-egui/src/editor/options.rs:25
-msgid "Default Elevation"
-msgstr ""
 
 #: crates/ui-egui/src/standards.rs:55
 msgid "Default Sheet Size:"
@@ -3823,10 +3974,6 @@ msgstr "橢圓：單擊中心、一條軸的端點，然後單擊另一條軸到
 msgid "Enable"
 msgstr ""
 
-#: crates/ui-egui/src/editor/options.rs:21
-msgid "Enable Cutting in Views"
-msgstr ""
-
 #: crates/ui-egui/src/properties.rs:152 crates/ui-egui/src/reinforce.rs:93
 #: crates/ui-egui/src/titleblocks.rs:276
 msgid "End"
@@ -3991,10 +4138,6 @@ msgstr "族"
 msgid "Family Already Exists"
 msgstr "族已存在"
 
-#: crates/ui-egui/src/editor/document.rs:1111
-msgid "Family Category"
-msgstr ""
-
 #: crates/ui-egui/src/editor/document.rs:535
 #: crates/ui-egui/src/editor/document.rs:1038
 msgid "Family Category and Parameters"
@@ -4007,10 +4150,6 @@ msgstr ""
 #: crates/ui-egui/src/editor/document.rs:504
 msgid "Family Editor"
 msgstr "族編輯器"
-
-#: crates/ui-egui/src/editor/document.rs:1126
-msgid "Family Parameters"
-msgstr ""
 
 #: crates/ui-egui/src/editor.rs:225
 msgid "Family Type"
@@ -6412,14 +6551,6 @@ msgstr ""
 msgid "Offsets from the plan's level."
 msgstr "相對於平面標高的偏移。"
 
-#: crates/ui-egui/src/editor/options.rs:23
-msgid "OmniClass Number"
-msgstr ""
-
-#: crates/ui-egui/src/editor/options.rs:24
-msgid "OmniClass Title"
-msgstr ""
-
 #: crates/ui-egui/src/draw.rs:1134
 msgid "Only a polyline or a spline takes a vertex, and a line keeps its two ends."
 msgstr "只有多段線和樣條曲線可以添加頂點，直線保留其兩個端點。"
@@ -8101,10 +8232,6 @@ msgstr "房間面積計算：測量房間面積的位置；目前為{}"
 msgid "Room Bounding"
 msgstr "房間邊界"
 
-#: crates/ui-egui/src/editor/options.rs:20
-msgid "Room Calculation Point"
-msgstr ""
-
 #: crates/core/src/schedule.rs:212
 msgid "Room Name"
 msgstr ""
@@ -8553,10 +8680,6 @@ msgstr ""
 
 #: crates/ui-egui/src/adaptive_editor.rs:603
 msgid "Shape Handle Point (Adaptive)"
-msgstr ""
-
-#: crates/ui-egui/src/editor/options.rs:19
-msgid "Shared"
 msgstr ""
 
 #: crates/ui-egui/src/editor/exists.rs:314
@@ -10704,10 +10827,6 @@ msgstr "尺寸界線延伸量:"
 msgid "Work Plane"
 msgstr "工作平面"
 
-#: crates/ui-egui/src/editor/options.rs:16
-msgid "Work Plane-Based"
-msgstr ""
-
 #: crates/ui-egui/src/workplane.rs:151
 msgid "Work Plane: what the 3D view sketches on: a level, a surface of the model or three points, each with an offset"
 msgstr "工作平面：3D視圖在其上繪製草圖的平面，可以是標高、模型的表面或三個點，每種都可帶偏移"
@@ -10773,10 +10892,6 @@ msgstr ""
 #: crates/ui-egui/src/settings.rs:568
 msgid "Your text colour was too close to the panels: it is made darker or lighter to read at 4.5:1"
 msgstr "您的文字顏色與面板過於接近：已調深或調淺，使對比度達到 4.5:1"
-
-#: crates/ui-egui/src/editor/options.rs:100
-msgid "Z"
-msgstr ""
 
 #: crates/ui-egui/src/properties.rs:327
 msgid "Z Justification"
@@ -12351,6 +12466,10 @@ msgstr "右"
 msgctxt "side"
 msgid "Top"
 msgstr "上"
+
+#: crates/ui-egui/src/editor/document.rs:1199
+#~ msgid "Click a form, a nested instance, a reference plane or a dimension to select it; drag a selected plane to move it."
+#~ msgstr "單擊形狀、巢狀實例、參照平面或尺寸標注以選擇它；拖動所選平面可移動它。"
 
 #: crates/ui-egui/src/editor.rs:983
 #~ msgid "A blank value is the family's own, as the Parameters tab has it."

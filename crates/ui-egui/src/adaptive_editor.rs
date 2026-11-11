@@ -315,6 +315,8 @@ pub(crate) enum Field {
     /// A row of a nested instance (T6a): its place among the family's nested instances the `id`, a parameter's name after a
     /// `/` for a row of its nested family's parameters.
     Nested(NestedSlot),
+    /// A pivot's Swing Angle (F7d), its line's or plane's GUID the `id`.
+    Pivot,
 }
 
 /// Which row of a nested instance "=" ties: where it stands, whether it shows, one of its family's parameters.

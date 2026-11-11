@@ -309,8 +309,8 @@ correcting placed components' `at` so they stay put) is not done yet: the flag i
 
 A family's `lines` are its reference lines (T18), each `start` to `end` drawn on a `host` it lies on, with four planes: its
 host's through it (`horizontal`), square to that through it (`vertical`), and square to it at each end (`start`, `end`), their
-origin the line's start (`end`'s its end), so what is drawn on one will turn with it once the angle that turns a line exists
-(F7c, with angular dimensions). A line may be drawn on an earlier line's plane, never a later one's.
+origin the line's start (`end`'s its end), so what is drawn on one turns with it when its constraints turn it (F7c, below).
+A line may be drawn on an earlier line's plane, never a later one's.
 
 A form's `host` is a `PlaneRef`, `{"plane": guid}` or `{"line": guid, "face": …}`, Ref. Level when none: its profile is
 drawn in the host's axes and `from` and `to` run along its normal (Revit's Extrusion Start and End); a revolve turns in it
@@ -379,7 +379,7 @@ refusal, like Family Types' values a type can't hold, asks "Constraints are not 
 labels, locks and EQ taken off, and what was being done done) or Cancel. An extrusion end a dimension sets is greyed in its
 Properties and the Options Bar's Depth. A reload whose family has dimensions measuring to nothing (`exists.rs`) asks Invalid
 Dimensions first: Delete Dimension(s) or Cancel, and nothing passes it over. Angular dimensions and reference lines that turn
-are F7c.
+are F7c's (below).
 
 F7b, FORMAT 26: sketch lines locked. A dimension may also measure to a straight line of a form's sketch, `{"form": guid,
 "line": guid}` (the plane through it square to the form's plane: Revit's sketch line seen edge on), to a line's end or a
@@ -393,8 +393,8 @@ where the other rows hold it already (two ends held never read as over-constrain
 extrusion ends, so lines follow planes. `moved` writes the solved points and radii as numbers in the flexed copy; a coordinate no
 row touches keeps its formula. A line's direction is the type's, so `check` checks each type's (`check_dimensions_for`). A form
 given again (`forms`, `form`) keeps the dimensions of the lines that keep their GUIDs, and those of the lines gone go
-(`forget_lines_gone`, `deleted_dimensions`); copies follow the sketch lines' new GUIDs. Arcs follow their ends: an arc's
-radius and centre wait for F7c's non-linear solve. `solve` lists each form's sketch for the type. The conservative bounds of a
+(`forget_lines_gone`, `deleted_dimensions`); copies follow the sketch lines' new GUIDs. An arc follows its ends unless its
+radius or centre is measured (F7c). `solve` lists each form's sketch for the type. The conservative bounds of a
 constrained family are its flexed one's.
 
 In the family document, Aligned Dimension and Align also pick a form's straight sketch line where the view sees it edge on (any
@@ -411,6 +411,87 @@ form's inside, slid along it as little as keeps it off every line drawn and ever
 Align's offered padlock too. Edit Extrusion opens the sketch as the type previewed flexes it, and a line that comes back there keeps its formulas
 (`sketch::kept` against the lines shown). Every line gets a GUID of its own at Finish, a new form its GUID at once, so a lock or
 a dimension can name them before the family is loaded.
+
+F7c, FORMAT 28 (27 is nested families', T6): angles, turning reference lines and arcs. `kind: "angular"` measures the angles
+between 2 to `MAX_DIM_REFS` lines seen as lines in its view: reference planes seen edge on (their traces), reference lines
+(`{"line": guid, "face": …}`, any face: the line's way counts) and straight sketch lines on a plane seen flat. Segment *i* is the
+angle from reference *i* to *i + 1*, in degrees; the sector is the one `at` lies in as drawn (each line's half on `at`'s side of
+where the first two cross, `ray_signs`), kept for every type, so the angle reads continuously as the lines turn. A label is an
+Angle parameter (0 ≤ value < `MAX_ANGLE`, 180), a lock keeps the angle (`Lock.length` in degrees), EQ keeps a fan's angles
+equal (three lines or more); no Align lock. Neighbours parallel as drawn are refused. A dimension may measure to a reference
+line's end, `{"line": guid, "point": "start" | "end"}`, along its other references (the rig's start is held where two planes
+cross by two Align locks to it); radial and diameter dimensions take an arc, and `{"form", "line", "point": "centre"}` an arc's
+centre; and forms drawn on a reference line's face are measured like any other (F7b's refusal is gone). A reference line a
+constraint measures becomes four unknowns in the axes of what it is drawn on: its start, its angle and its length (a line not
+measured follows what it is drawn on, rigidly, as forms and lines on its faces follow it); an arc whose radius or centre is
+measured, its turn beside its end vertices. Lines give way like planes; vertices, ends and turns before them. An aligned
+dimension to a turning line's face measures the face through its start and adds a soft row keeping the line's angle, left out
+where an angle sets it.
+
+The solve (`solve_with`) writes every row as its linearisation at the point reached (`Ad`, forward-mode derivatives, as a `Lin`),
+so a linear row is the row itself. With no line or arc unknown and no angle between sketch lines it is F7a's single least-norm
+solve, untouched. Otherwise it is Gauss-Newton on the least change: each step holds the rows linearised where it has got to
+with the least weighted change from the drawn point (`solve_rows(x₀, …, rows(x_k))`), halved back (at most `MAX_HALVINGS`)
+until the residual falls, and goes on until the rows hold and the step comes to nothing, at most `MAX_STEPS`; what is drawn
+(each segment's way, each angle's sector) is read once at the drawn point (`Memo`). Over-constraint is the rank test on the first
+step, at the drawn point; a step away from it leaves a row that lost rank to the residual. What doesn't settle, or would give
+a line no length, an arc a straight or whole turn, says "Constraints are not satisfied: they can't all hold for these values",
+naming the dimensions. Deterministic: fixed orders, step and halving counts, no hashing, every type from the drawn point.
+`moved` puts each solved line in its host's flexed axes (to 1e-9 mm) and carries lines drawn on a moved or turned line with
+it; `edits` gives a drag or Align `LineEnds` and `Turn`; `measured` reads angles in degrees (reporting Angle parameters
+report); `solve` lists the lines. `marks` takes the drawn family too, for the sector.
+
+In the family document, Create > Dimension > Angular picks lines that cross the one before (`dimensions::line_at`,
+`crosses_last`, through `constraints::view_way`), then a click on nothing places the arc, following the pointer until then. Its
+mark is the core's: an arc between each two lines at `at`'s distance from where they cross, arrows at its ends, a short witness
+across it on each line, each angle level just outside the middle of its arc; selected, a padlock inside each arc and the EQ
+toggle past a string's first end. The Options Bar's Label lists Angle parameters for it, and Create Parameter… makes an Angle
+of what it measures. Radial and Diameter also pick an arc by its edge within its sweep (`constraints::Round`), and an arc's
+centre is picked as a circle's. Turning a reference line with the mouse is F7d's pivot and its rotate grip (below), with
+T18's line grips.
+
+F7d, FORMAT 30 (29 is F6's, on its own branch): pivots (`family/constraints/pivot.rs`). A reference line or a reference plane
+may carry a `pivot` (`Pivot`), one each: it keeps a point of its element (`at`: `start`, `end` or `{"along": mm}`; a plane's
+along the line it is drawn as) on a point (`to`, `PivotPoint`: where two planes holding the pivot's axis cross, a reference
+line's end, a point of a sketch, or a fixed point), and turns about it; the axis is the normal of what a line is drawn on
+(a line on Center (Front/Back) is a horizontal hinge, a sash) or a plane's `up`. Its swing, counter-clockwise about the axis
+from `from` (the element as drawn, a reference plane's trace, a reference line), is the Angle parameter `parameter` (type or
+instance, a formula's or not, never a reporting one), else its own `angle`; `min` and `max` bound it (±360 without them).
+Revit's door swing is a line, two Align locks, an angular dimension and a label; here it is a line and a pivot with a Swing
+Angle, and limits Revit hasn't. In the solve (`Problem::pivot_rows`) a pivoted line is F7c's four unknowns and its pivot two
+rows (the point at `at`, the drawn distance along it so a turn keeps its length, on the pivot point, across the axis) and
+a swing row; a pivoted plane is one unknown, its turn (`Unknown::PlaneTurn`), its axes the drawn ones turned about the axis
+through `at` and carried across the axis onto the pivot point (`Problem::plane_frame_ad`), so forms, lines and nested
+instances drawn on it turn with it rigidly, as the flexed copy keeps (`RefPlane::turned`, never in a file). The pivot point
+is read where the solve has got to (a label that moves a crossing's plane moves the hinge) and never moved by the pivot. The
+swing row is hard for a parameter and soft for the pivot's own angle, so an angular dimension may set a pivoted element's
+angle instead (F7c's angular dimensions work on it unchanged). An aligned dimension to a turning plane measures each
+reference's distance from it along its normal as it turns (`turned_stations`), a sketch line in it kept parallel to it, so a
+form Align-locked to a pivoted plane follows it. Rows name their pivot, so over-constraint says "reference line 1's pivot is
+over-constrained: dimension 1, 2 hold what it holds already" (its start Align-locked to the crossing besides), and a pivot's
+parameter beside an angle label on the same line is refused the same way. A flexed copy solved again (drags, Align, marks)
+reads "as drawn" through `Pivot::turned`. `Family::check_pivots` refuses a pivot on a datum or a plane that defines the
+origin, on itself, on planes that don't hold its axis or never cross, limits past ±360 or past one another, its own angle
+past them, a parameter that isn't an Angle, and a cycle (a pivot reading, through its point, its reference or its line's
+host, what turns with it); `check_pivot_values` a type's value past the limits and `Model::check` a component's ("`Swing
+Angle` is 120°; reference line 1's pivot turns from 0° to 90°"). Deleting a plane, a line, a form or a sketch line a pivot
+names takes the pivot off (`forget_pivots`); a file's pivot naming what the family hasn't is left out (`dangling_pivots`).
+`drag_pivot` is the rotate grip: toward a point it gives the swing (whole degrees, within 5° of 0, a limit or a multiple of
+45° snapped to it, stopped at the limits) as `Edit::Parameter`, or as `Edit::PivotAngle` with no parameter; a formula's
+parameter refuses. A pivoted plane can't be dragged square to itself. `drag_line_end` is T18's end grip. `pivot_marks` and
+`pivot_targets` are what a view draws and snaps to. The `family` command patches `pivot` through `ref_line` and `ref_plane`
+(`null` takes it off) and `solve` lists each plane's ends. FORMAT 30: a build of 28 would leave `pivot` out of the file.
+
+In the family document (`editor/pivot.rs`), a click on a reference line selects it ("Modify | Reference Lines", Delete,
+over a plane's trace beneath it). Rotation > Pivot, on a selected line or plane of the family's own, waits for a click: the
+point within reach where two planes' traces cross, a line's end or a sketch's point, else the click's own point; the element's
+start or end within reach, else the point along it, is what it holds. Every pivot draws a small circle with a cross; a limited
+one its swing range as a thin dashed arc, always (it is the door's swing symbol, worth seeing unselected; an unlimited one
+draws none, a whole circle being noise); the selected element its rotate grip at its far end with an arrow, its swing beside
+it while it is dragged. Properties' Constraints show the Pivot Point, the Swing Angle with "=" (Associate Family Parameter,
+`Field::Pivot`; untied, the pivot keeps the angle it came to), Minimum Angle and Maximum Angle (blank: none), each refused
+with the core's words; Rotation > Remove Pivot takes it off. An unpivoted line selected shows a square grip at each end.
+Out of scope: a pivoted plane dragged square to itself, the grip in {3D}, a reporting parameter reading a swing (F7e).
 
 ## The family's views
 
@@ -430,7 +511,7 @@ An elevation is a section's picture and drawing (`section_picture`, `section_ove
 The planes are drawn with the rules in [views and graphics](views-and-graphics.md#reference-planes-in-views). The family's reference
 lines (`Family.lines`) are drawn over each plan and elevation as the view sees them, solid in the planes' green and the thinnest
 pen, as Revit's: true length where their plane is square to the view, foreshortened where it isn't, nothing for one seen end on
-(`render::reference_lines`). They are owned by nothing in the drawing, so a click doesn't select one there yet. Views are drawn on
+(`render::reference_lines`). They are owned by nothing in the drawing; a click selects one where a view draws it (`Staged::line_at`, F7d). Views are drawn on
 the interface's thread, being one family, and kept until what they show changes (`editor/views.rs`).
 
 In a family that isn't adaptive, a click selects a form (`views::form_at`: the one nearest the eye there, highest in plan; its
@@ -768,8 +849,10 @@ unanswered), `family` overwrites the target's with the family's, its values too.
 across the target: after one changes in the project, every family of the project that nests it, at any depth, takes the same
 (`Family::replace_shared`). A shared nested instance is built into its host as any other: its own element in the project
 (Tab-select, schedules, tags, IFC aggregated into its host) is T6b's. A nested family's type chosen by a family type parameter
-is T24's; a door's leaf on a hinge line turned by an angular label is T26's (F7c), though an instance's `angle` may already
-read an instance parameter (`Swing Angle`).
+is T24's. A door's leaf on a hinge (T26) is a nested instance on a pivoted line's face or on a pivoted plane, placed on its
+host's flexed frame, so it turns with the pivot (F7d, *Dimensions and constraints*): `family_pivot_tests` swings a nested leaf
+by an instance `Swing Angle` and finds it, and the door's IFC body, as drawn by hand at 45°. An instance's `angle` may also
+read an instance parameter.
 
 In the family document (`editor/nested.rs`): Insert > Load Family loads a family file into the family, asking Family Already
 Exists and Shared Family Already Loaded against its nested families (`exists.rs`'s `After::Nest`); Create > Component (CM) places

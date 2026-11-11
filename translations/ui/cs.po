@@ -8,249 +8,518 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: crates/ui-egui/src/editor/document.rs:1187
-msgid "Click a form, a nested instance, a reference plane or a dimension to select it; drag a selected plane to move it."
+#: crates/ui-egui/src/editor/extrusion.rs:125
+msgid "A dimension sets it: unlock it to change it here."
+msgstr "Hodnotu určuje kóta: chcete-li ji zde změnit, kótu odemkněte."
+
+#: crates/ui-egui/src/editor/options.rs:90
+msgid "A door or a window stands in its wall: it can't be work plane-based."
+msgstr "Dveře nebo okno stojí ve své stěně: nemohou být založeny na pracovní rovině."
+
+#: crates/ui-egui/src/editor/sketch.rs:1064
+msgid "Align (AL): pick a reference, then a line of the sketch that moves onto it; its padlock locks them"
+msgstr "Zarovnat (AL): vyberte referenci, potom čáru skici, která se k ní přesune; její zámek je spojí"
+
+#: crates/ui-egui/src/editor/document.rs:534
+msgid "Align (AL): pick a reference, then what moves onto it; its padlock locks them"
+msgstr "Zarovnat (AL): vyberte referenci, potom prvek, který se k ní přesune; její zámek je spojí"
+
+#: crates/ui-egui/src/editor/document.rs:431
+msgid "Aligned Dimension (DI): pick parallel reference planes, extrusion ends or lines of forms, then click where it goes"
+msgstr "Zarovnaná kóta (DI): vyberte rovnoběžné referenční roviny, konce vysunutí nebo čáry tvarů a potom klikněte do místa kóty"
+
+#: crates/ui-egui/src/editor/options.rs:17
+msgid "Always Vertical"
+msgstr "Vždy svisle"
+
+#: crates/ui-egui/src/editor/document.rs:452
+msgid "Angular Dimension: pick reference lines, reference planes or lines of forms that cross, then click where its arc goes"
+msgstr "Úhlová kóta: vyberte protínající se referenční čáry, referenční roviny nebo čáry tvarů a potom klikněte do místa jejího oblouku"
+
+#: crates/ui-egui/src/editor/options.rs:156
+msgid "By its category, sections cut it."
+msgstr "Podle své kategorie ji řezy protínají."
+
+#: crates/ui-egui/src/editor/options.rs:156
+msgid "By its category, sections don't cut it."
+msgstr "Podle své kategorie ji řezy neprotínají."
+
+#: crates/ui-egui/src/editor/document.rs:1237
+msgid "Click a circle or an arc, then click where the dimension goes."
+msgstr "Klikněte na kružnici nebo oblouk a potom do místa kóty."
+
+#: crates/ui-egui/src/editor/document.rs:1249
+msgid "Click a form, a nested instance, a reference plane, a reference line or a dimension to select it; drag a selected plane to move it, a grip to turn or stretch."
 msgstr ""
 
-#: crates/ui-egui/src/editor/document.rs:1185
+#: crates/ui-egui/src/editor/document.rs:1227
+msgid "Click a reference line: the work plane it was sketched in. Esc goes back to the dialog."
+msgstr "Klikněte na referenční čáru: použije se pracovní rovina, ve které byla načrtnuta. Klávesa Esc vrátí do dialogu."
+
+#: crates/ui-egui/src/editor/document.rs:1230
+msgid "Click a reference plane or a datum for the work plane. Esc goes back to the dialog."
+msgstr "Klikněte na referenční rovinu nebo základní prvek pro pracovní rovinu. Klávesa Esc vrátí do dialogu."
+
+#: crates/ui-egui/src/workplane.rs:577
+msgid "Click a wall, a beam, a pipe or another element drawn along a line: its level is the work plane. Esc goes back to the dialog."
+msgstr "Klikněte na stěnu, průvlak, potrubí nebo jiný prvek kreslený podél čáry: jeho podlaží bude pracovní rovinou. Klávesa Esc vrátí do dialogu."
+
+#: crates/ui-egui/src/editor/document.rs:1234
+msgid "Click lines that cross (reference lines, reference planes, lines of forms), then click where the dimension goes."
+msgstr "Klikněte na protínající se čáry (referenční čáry, referenční roviny, čáry tvarů) a potom do místa kóty."
+
+#: crates/ui-egui/src/editor/document.rs:1240
+msgid "Click parallel reference planes, extrusion ends or lines of forms, then click where the dimension goes."
+msgstr "Klikněte na rovnoběžné referenční roviny, konce vysunutí nebo čáry tvarů a potom do místa kóty."
+
+#: crates/ui-egui/src/editor/document.rs:1219
+msgid "Click the line of the sketch that moves onto it; its padlock locks them."
+msgstr "Klikněte na čáru skici, která se k ní přesune; její zámek je spojí."
+
+#: crates/ui-egui/src/editor/document.rs:1246
+msgid "Click the point it turns about: where two planes cross, a line's end, a point of a sketch, or anywhere."
+msgstr ""
+
+#: crates/ui-egui/src/editor/document.rs:1242
+msgid "Click the reference to align to."
+msgstr "Klikněte na referenci, ke které se zarovná."
+
+#: crates/ui-egui/src/editor/document.rs:1218
+msgid "Click the reference to align to: a reference plane, a reference line or a line."
+msgstr "Klikněte na referenci, ke které se zarovná: referenční rovinu, referenční čáru nebo čáru."
+
+#: crates/ui-egui/src/editor/document.rs:1243
+msgid "Click what moves onto it."
+msgstr "Klikněte na prvek, který se k ní přesune."
+
+#: crates/ui-egui/src/editor/document.rs:1244
 msgid "Click where the component goes, on the view's work plane."
-msgstr ""
+msgstr "Klikněte na místo, kam se komponenta umístí, na pracovní rovině pohledu."
 
-#: crates/ui-egui/src/editor/document.rs:403
+#: crates/ui-egui/src/editor/document.rs:409
 msgid "Component (CM): an instance of a family loaded into this one, placed by a click in a plan or an elevation"
-msgstr ""
+msgstr "Komponenta (CM): instance rodiny načtené do této rodiny, umístěná kliknutím v půdorysu nebo pohledu"
+
+#: crates/ui-egui/src/editor/dimensions.rs:29
+msgid "Constraints are not satisfied"
+msgstr "Vazby nejsou splněny"
+
+#: crates/ui-egui/src/editor/dimensions.rs:27
+msgid "Create Parameter…"
+msgstr "Vytvořit parametr…"
+
+#: crates/ui-egui/src/editor/work_plane.rs:193
+#: crates/ui-egui/src/workplane.rs:252
+msgid "Current Work Plane"
+msgstr "Aktuální pracovní rovina"
+
+#: crates/ui-egui/src/editor/options.rs:18
+msgid "Cut with Voids When Loaded"
+msgstr "Při načtení oříznout vybráními"
+
+#: crates/ui-egui/src/editor/options.rs:25
+msgid "Default Elevation"
+msgstr "Výchozí výška"
+
+#: crates/ui-egui/src/editor/exists.rs:497
+msgid "Delete Dimension(s)"
+msgstr "Odstranit kóty"
+
+#: crates/ui-egui/src/editor/document.rs:465
+msgid "Diameter Dimension: pick a circle or an arc of a form's sketch, then click where it goes"
+msgstr "Kóta průměru: vyberte kružnici nebo oblouk skici tvaru a potom klikněte do místa kóty"
+
+#: crates/ui-egui/src/editor/exists.rs:395
+msgid "Dimensions of the family you are loading can't be kept: {}"
+msgstr "Kóty rodiny, kterou načítáte, nelze zachovat: {}"
+
+#: crates/ui-egui/src/editor/work_plane.rs:205
+#: crates/ui-egui/src/workplane.rs:269
+msgid "Dissociate"
+msgstr "Zrušit přidružení"
+
+#: crates/ui-egui/src/workplane.rs:266
+msgid "Dissociate: a component stays on its host, which it moves with"
+msgstr "Zrušit přidružení: komponenta zůstává na svém hostiteli, se kterým se pohybuje"
+
+#: crates/ui-egui/src/editor/work_plane.rs:204
+msgid "Dissociate: a family's work plane is always one of its planes or lines, which forms are drawn on"
+msgstr "Zrušit přidružení: pracovní rovina rodiny je vždy jednou z jejích rovin nebo čar, na kterých se kreslí tvary"
+
+#: crates/ui-egui/src/workplane.rs:264
+msgid "Dissociate: only a work plane on a reference plane follows it; this one follows nothing"
+msgstr "Zrušit přidružení: referenční rovinu sleduje jen pracovní rovina, která na ní leží; tato nesleduje nic"
+
+#: crates/ui-egui/src/workplane.rs:262
+msgid "Dissociate: the work plane left where its reference plane is now, no longer following it"
+msgstr "Zrušit přidružení: pracovní rovina zůstane tam, kde je nyní její referenční rovina, a přestane ji sledovat"
+
+#: crates/ui-egui/src/editor/dimensions.rs:295
+#: crates/ui-egui/src/editor/dimensions.rs:388
+msgid "EQ"
+msgstr "EQ"
 
 #: crates/ui-egui/src/editor/nested.rs:363
 msgid "Edit Family: the nested family opens over this one; its Load into Project loads it back here"
-msgstr ""
+msgstr "Upravit rodinu: vnořená rodina se otevře nad touto; její Načíst do projektu ji načte zpět sem"
+
+#: crates/ui-egui/src/lib.rs:4632
+msgid "Edit Work Plane: the components onto a level, a reference plane or a face picked (the Work Plane dialog), keeping their Offset from Host"
+msgstr "Upravit pracovní rovinu: přesunutí komponent na podlaží, referenční rovinu nebo vybranou plochu (dialog Pracovní rovina) se zachováním jejich Odsazení od hostitele"
+
+#: crates/ui-egui/src/editor/extrusion.rs:248
+msgid "Edit Work Plane: the form onto another of the family's planes, moving with it (the Work Plane dialog)"
+msgstr "Upravit pracovní rovinu: přesunutí tvaru na jinou rovinu rodiny, se kterou se pak pohybuje (dialog Pracovní rovina)"
+
+#: crates/ui-egui/src/editor/options.rs:21
+msgid "Enable Cutting in Views"
+msgstr "Povolit řez v pohledech"
+
+#: crates/ui-egui/src/editor/document.rs:1442
+msgid "Family Category"
+msgstr "Kategorie rodiny"
+
+#: crates/ui-egui/src/editor/document.rs:1457
+msgid "Family Parameters"
+msgstr "Parametry rodiny"
 
 #: crates/ui-egui/src/editor/nested.rs:86
 msgid "Instances of {} are placed in the family: delete them first."
+msgstr "V rodině jsou umístěny instance {}: nejprve je odstraňte."
+
+#: crates/ui-egui/src/editor/exists.rs:496
+msgid "Invalid Dimensions"
+msgstr "Neplatné kóty"
+
+#: crates/ui-egui/src/editor/pivot.rs:167
+msgid "It is no longer there."
 msgstr ""
 
-#: crates/ui-egui/src/editor/document.rs:472
+#: crates/ui-egui/src/editor/document.rs:487
 msgid "Load Family: a family file loaded into this family, to place with Component"
-msgstr ""
+msgstr "Načíst rodinu: soubor rodiny načtený do této rodiny k umístění nástrojem Komponenta"
 
-#: crates/ui-egui/src/editor/document.rs:638
+#: crates/ui-egui/src/editor/document.rs:680
 msgid "Load into Project and Close: the family it is nested in takes it, and it closes"
+msgstr "Načíst do projektu a zavřít: převezme ji rodina, do které je vnořena, a tato rodina se zavře"
+
+#: crates/ui-egui/src/editor/document.rs:672
+msgid "Load into Project: the family it is nested in takes it as it is here, and it stays open"
+msgstr "Načíst do projektu: rodina, do které je vnořena, ji převezme tak, jak je zde, a tato rodina zůstane otevřená"
+
+#: crates/ui-egui/src/editor/types_dialog.rs:23
+msgid "Lock: the dimensions this parameter labels keep its value when planes are dragged"
+msgstr "Zamknout: kóty s popiskem tohoto parametru si při tažení rovin zachovají jeho hodnotu"
+
+#: crates/ui-egui/src/editor/pivot.rs:329
+msgid "Maximum Angle"
 msgstr ""
 
-#: crates/ui-egui/src/editor/document.rs:630
-msgid "Load into Project: the family it is nested in takes it as it is here, and it stays open"
+#: crates/ui-egui/src/editor/pivot.rs:329
+msgid "Minimum Angle"
 msgstr ""
+
+#: crates/ui-egui/src/editor/document.rs:247
+msgid "Modify | Align"
+msgstr "Upravit | Zarovnat"
+
+#: crates/ui-egui/src/editor/document.rs:250
+msgid "Modify | Dimensions"
+msgstr "Upravit | Kóty"
 
 #: crates/ui-egui/src/editor/document.rs:241
 msgid "Modify | Nested Instance"
+msgstr "Upravit | Vnořená instance"
+
+#: crates/ui-egui/src/editor/document.rs:253
+msgid "Modify | Pivot"
 msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:238
 msgid "Modify | Place Component"
+msgstr "Upravit | Umístit komponentu"
+
+#: crates/ui-egui/src/editor/document.rs:244
+msgid "Modify | Place Dimensions"
+msgstr "Upravit | Umístit kóty"
+
+#: crates/ui-egui/src/editor/document.rs:259
+msgid "Modify | Reference Lines"
 msgstr ""
+
+#: crates/ui-egui/src/editor/options.rs:23
+msgid "OmniClass Number"
+msgstr "Číslo OmniClass"
+
+#: crates/ui-egui/src/editor/options.rs:24
+msgid "OmniClass Title"
+msgstr "Název OmniClass"
+
+#: crates/ui-egui/src/editor/dimensions.rs:1041
+msgid "Only a dimension of one segment takes a label."
+msgstr "Popisek lze přiřadit jen kótě s jedním segmentem."
+
+#: crates/ui-egui/src/editor/types_dialog.rs:24
+msgid "Only a parameter that labels a dimension, and that no formula works out, can be locked."
+msgstr "Zamknout lze jen parametr, který je popiskem kóty a jehož hodnotu nepočítá žádný vzorec."
+
+#: crates/ui-egui/src/editor/work_plane.rs:288
+msgid "Open View"
+msgstr "Otevřít pohled"
+
+#: crates/ui-egui/src/editor/views.rs:858
+msgid "Pick a circle or an arc, then click where the dimension goes."
+msgstr "Vyberte kružnici nebo oblouk a potom klikněte do místa kóty."
+
+#: crates/ui-egui/src/editor/work_plane.rs:227
+#: crates/ui-egui/src/workplane.rs:299
+msgid "Pick a line and use the work plane it was sketched in"
+msgstr "Vybrat čáru a použít pracovní rovinu, ve které byla načrtnuta"
+
+#: crates/ui-egui/src/editor/views.rs:865
+msgid "Pick a line that crosses the one before."
+msgstr "Vyberte čáru, která protíná předchozí."
+
+#: crates/ui-egui/src/workplane.rs:578
+msgid "Pick a line: a wall, a beam, a pipe or another element drawn along a line."
+msgstr "Vybrat čáru: stěna, průvlak, potrubí nebo jiný prvek kreslený podél čáry."
+
+#: crates/ui-egui/src/workplane.rs:301
+msgid "Pick a line: after OK, click a wall, a beam, a pipe or another element drawn along a line; its level is taken"
+msgstr "Vybrat čáru: po OK klikněte na stěnu, průvlak, potrubí nebo jiný prvek kreslený podél čáry; převezme se jeho podlaží"
+
+#: crates/ui-egui/src/editor/work_plane.rs:159
+msgid "Pick a line: click a reference line in the view."
+msgstr "Vybrat čáru: klikněte v pohledu na referenční čáru."
+
+#: crates/ui-egui/src/editor/work_plane.rs:227
+#: crates/ui-egui/src/workplane.rs:294
+msgid "Pick a plane"
+msgstr "Vybrat rovinu"
+
+#: crates/ui-egui/src/editor/views.rs:891
+msgid "Pick a plane or a line too: points alone face no way to measure along."
+msgstr "Vyberte také rovinu nebo čáru: samotné body neurčují směr, ve kterém měřit."
+
+#: crates/ui-egui/src/workplane.rs:579
+msgid "Pick a plane: a component goes on a face of a wall, a floor, a ceiling or a roof."
+msgstr "Vybrat rovinu: komponenta se umístí na plochu stěny, podlahy, podhledu nebo střechy."
+
+#: crates/ui-egui/src/workplane.rs:295
+msgid "Pick a plane: after OK, click a face of the model in the 3D view, a wall's or a roof's"
+msgstr "Vybrat rovinu: po OK klikněte ve 3D pohledu na plochu modelu, např. stěny nebo střechy"
+
+#: crates/ui-egui/src/editor/work_plane.rs:161
+msgid "Pick a plane: click a reference plane or a datum in the view."
+msgstr "Vybrat rovinu: klikněte v pohledu na referenční rovinu nebo základní prvek."
+
+#: crates/ui-egui/src/editor/views.rs:881
+msgid "Pick a reference parallel to the first."
+msgstr "Vyberte referenci rovnoběžnou s první."
+
+#: crates/ui-egui/src/editor/sketch.rs:812
+msgid "Pick a reference plane, a reference line or a line, then a line of the sketch."
+msgstr "Vyberte referenční rovinu, referenční čáru nebo čáru a potom čáru skici."
+
+#: crates/ui-egui/src/editor/views.rs:903
+msgid "Pick a reference plane, an extrusion's end or a line of a form."
+msgstr "Vyberte referenční rovinu, konec vysunutí nebo čáru tvaru."
+
+#: crates/ui-egui/src/editor/sketch.rs:817
+msgid "Pick a straight line of the sketch: it moves onto the reference."
+msgstr "Vyberte přímou čáru skici: přesune se k referenci."
+
+#: crates/ui-egui/src/editor/views.rs:874
+msgid "Pick lines that cross, then click where the dimension goes."
+msgstr "Vyberte protínající se čáry a potom klikněte do místa kóty."
+
+#: crates/ui-egui/src/workplane.rs:307
+msgid "Pick three points: after OK, click three points on the model, each snapping to a corner near the pointer"
+msgstr "Vybrat tři body: po OK klikněte na tři body modelu, každý se přichytí k rohu poblíž ukazatele"
+
+#: crates/ui-egui/src/editor/views.rs:893
+msgid "Pick two references or more, then click where the dimension goes."
+msgstr "Vyberte dvě nebo více referencí a potom klikněte na místo kóty."
+
+#: crates/ui-egui/src/editor/work_plane.rs:308
+msgid "Pick works in a plan or an elevation, where the family's planes and lines are drawn"
+msgstr "Výběr funguje v půdorysu nebo pohledu, kde jsou nakresleny roviny a čáry rodiny"
+
+#: crates/ui-egui/src/editor/document.rs:631
+msgid "Pivot"
+msgstr ""
+
+#: crates/ui-egui/src/editor/pivot.rs:282
+#: crates/ui-egui/src/editor/pivot.rs:302
+msgid "Pivot Point"
+msgstr ""
+
+#: crates/ui-egui/src/editor/document.rs:629
+msgid "Pivot: click the point it turns about (where two planes cross, a line's end, a point of a sketch, or anywhere); its Swing Angle turns it"
+msgstr ""
+
+#: crates/ui-egui/src/editor/pivot.rs:270
+msgid "Point of a sketch"
+msgstr ""
+
+#: crates/ui-egui/src/editor/document.rs:459
+msgid "Radial Dimension: pick a circle or an arc of a form's sketch, then click where it goes"
+msgstr "Radiální kóta: vyberte kružnici nebo oblouk skici tvaru a potom klikněte do místa kóty"
+
+#: crates/ui-egui/src/editor/document.rs:800
+#: crates/ui-egui/src/editor/pivot.rs:264
+msgid "Reference Line {}"
+msgstr ""
+
+#: crates/ui-egui/src/editor/dimensions.rs:903
+msgid "Remove Constraints"
+msgstr "Odebrat vazby"
+
+#: crates/ui-egui/src/editor/document.rs:637
+msgid "Remove Pivot"
+msgstr ""
+
+#: crates/ui-egui/src/editor/document.rs:635
+msgid "Remove Pivot: it stops turning and stays where it is drawn"
+msgstr ""
+
+#: crates/ui-egui/src/editor/options.rs:20
+msgid "Room Calculation Point"
+msgstr "Bod výpočtu místnosti"
+
+#: crates/ui-egui/src/editor/document.rs:627
+msgid "Rotation"
+msgstr ""
+
+#: crates/ui-egui/src/workplane.rs:177
+msgid "Set Work Plane: the plane the 3D view sketches on, by name or picked on the model, with an offset; its patch in the view sets it too"
+msgstr "Nastavit pracovní rovinu: rovina, na které se ve 3D pohledu kreslí, podle názvu nebo vybraná na modelu, s odsazením; nastavit ji lze i její ploškou v pohledu"
+
+#: crates/ui-egui/src/editor/sketch.rs:1077
+msgid "Set: the plane the sketch is drawn on, by name or picked in the view (the Work Plane dialog); its lines go with it"
+msgstr "Nastavit: rovina, na které se skica kreslí, podle názvu nebo vybraná v pohledu (dialog Pracovní rovina); její čáry se přesunou s ní"
+
+#: crates/ui-egui/src/editor/document.rs:1607
+msgid "Set: the view's work plane, by name or picked in the view (the Work Plane dialog)"
+msgstr "Nastavit: pracovní rovina pohledu, podle názvu nebo vybraná v pohledu (dialog Pracovní rovina)"
+
+#: crates/ui-egui/src/editor/options.rs:19
+msgid "Shared"
+msgstr "Sdílená"
+
+#: crates/ui-egui/src/workplane.rs:260
+msgid "Show: the work plane drawn as a grid in the 3D view, on or off"
+msgstr "Zobrazit: pracovní rovina vykreslená jako mřížka ve 3D pohledu, zapnuto nebo vypnuto"
+
+#: crates/ui-egui/src/editor/work_plane.rs:202
+msgid "Show: the work plane tinted in the view, on or off"
+msgstr "Zobrazit: pracovní rovina barevně zvýrazněná v pohledu, zapnuto nebo vypnuto"
+
+#: crates/ui-egui/src/editor/work_plane.rs:208
+#: crates/ui-egui/src/workplane.rs:275
+msgid "Specify a new Work Plane"
+msgstr "Zadat novou pracovní rovinu"
+
+#: crates/ui-egui/src/workplane.rs:239
+msgid "Surface, {}"
+msgstr "Povrch, {}"
+
+#: crates/ui-egui/src/editor/pivot.rs:305
+msgid "Swing Angle"
+msgstr ""
+
+#: crates/ui-egui/src/editor/dimensions.rs:24
+msgid "The dimension is over-constrained"
+msgstr "Kóta je přeurčená"
 
 #: crates/ui-egui/src/editor/exists.rs:190
 msgid "The family it was nested in is closed."
-msgstr ""
+msgstr "Rodina, do které byla vnořena, je zavřená."
 
 #: crates/ui-egui/src/editor/exists.rs:365
 msgid "The family {} you are loading is already in this family, defined differently. What would you like to do?"
-msgstr ""
+msgstr "Rodina {}, kterou načítáte, už v této rodině existuje, ale je definována jinak. Co chcete udělat?"
 
 #: crates/ui-egui/src/editor/exists.rs:381
 msgid "The shared family {} nested in the family you are loading is already in this family. Which version should it use?"
-msgstr ""
+msgstr "Sdílená rodina {} vnořená do rodiny, kterou načítáte, je již v této rodině. Kterou verzi má použít?"
 
 #: crates/ui-egui/src/editor/exists.rs:494
 msgid "Use this family's version"
+msgstr "Použít verzi této rodiny"
+
+#: crates/ui-egui/src/editor/options.rs:16
+msgid "Work Plane-Based"
+msgstr "Založeno na pracovní rovině"
+
+#: crates/ui-egui/src/workplane.rs:167
+msgid "Work Plane: what the 3D view sketches on: a level, a reference plane, a surface of the model or three points, each with an offset"
+msgstr "Pracovní rovina: to, na čem se ve 3D pohledu kreslí: podlaží, referenční rovina, povrch modelu nebo tři body, vždy s odsazením"
+
+#: crates/ui-egui/src/editor/options.rs:100
+msgid "Z"
+msgstr "Z"
+
+#: crates/ui-egui/src/editor/pivot.rs:346
+msgid "`{}` isn't an angle"
+msgstr ""
+
+#: crates/ui-egui/src/editor/dimensions.rs:981
+msgid "a parameter needs a name"
+msgstr "parametr musí mít název"
+
+#: crates/ui-egui/src/editor/pivot.rs:205
+msgid "the line can't go while {} is drawn on it"
+msgstr ""
+
+#: crates/ui-egui/src/editor/dimensions.rs:984
+msgid "there's a parameter `{}` already"
+msgstr "parametr `{}` již existuje"
+
+#: apps/bimcraft/src/startup.rs:143
+msgid ""
+"{}\n"
+"\n"
+"The details are in {}."
+msgstr ""
+"{}\n"
+"\n"
+"Podrobnosti naleznete v {}."
+
+#: crates/ui-egui/src/editor/pivot.rs:267
+msgid "{} / {}"
 msgstr ""
 
 #: crates/ui-egui/src/editor/nested.rs:78
 msgid "{} can't be loaded into itself, nor into a family it nests"
+msgstr "{} nelze načíst do sebe sama ani do rodiny, která je do ní vnořena"
+
+#: crates/ui-egui/src/editor/work_plane.rs:273
+msgid "{} isn't parallel to this view. Open a view that shows it flat:"
+msgstr "Prvek {} není rovnoběžný s tímto pohledem. Otevřete pohled, který jej zobrazuje bez zkreslení:"
+
+#: crates/ui-egui/src/editor/pivot.rs:268
+msgid "{}: End"
 msgstr ""
 
-#: crates/ui-egui/src/editor/sketch.rs:1064
-msgid "Align (AL): pick a reference, then a line of the sketch that moves onto it; its padlock locks them"
-msgstr ""
-
-#: crates/ui-egui/src/editor/document.rs:416
-msgid "Aligned Dimension (DI): pick parallel reference planes, extrusion ends or lines of forms, then click where it goes"
+#: crates/ui-egui/src/editor/pivot.rs:269
+msgid "{}: Start"
 msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:1140
 msgid "Click a circle, then click where the dimension goes."
 msgstr ""
 
-#: crates/ui-egui/src/editor/document.rs:1133
-msgid "Click a reference line: the work plane it was sketched in. Esc goes back to the dialog."
-msgstr ""
-
-#: crates/ui-egui/src/editor/document.rs:1136
-msgid "Click a reference plane or a datum for the work plane. Esc goes back to the dialog."
-msgstr ""
-
-#: crates/ui-egui/src/workplane.rs:577
-msgid "Click a wall, a beam, a pipe or another element drawn along a line: its level is the work plane. Esc goes back to the dialog."
-msgstr ""
-
-#: crates/ui-egui/src/editor/document.rs:1143
-msgid "Click parallel reference planes, extrusion ends or lines of forms, then click where the dimension goes."
-msgstr ""
-
-#: crates/ui-egui/src/editor/document.rs:1125
-msgid "Click the line of the sketch that moves onto it; its padlock locks them."
-msgstr ""
-
-#: crates/ui-egui/src/editor/document.rs:1124
-msgid "Click the reference to align to: a reference plane, a reference line or a line."
-msgstr ""
-
-#: crates/ui-egui/src/editor/work_plane.rs:193
-#: crates/ui-egui/src/workplane.rs:252
-msgid "Current Work Plane"
-msgstr ""
-
 #: crates/ui-egui/src/editor/document.rs:441
 msgid "Diameter Dimension: pick a circle of a form's sketch, then click where it goes"
-msgstr ""
-
-#: crates/ui-egui/src/editor/work_plane.rs:205
-#: crates/ui-egui/src/workplane.rs:269
-msgid "Dissociate"
-msgstr ""
-
-#: crates/ui-egui/src/workplane.rs:266
-msgid "Dissociate: a component stays on its host, which it moves with"
-msgstr ""
-
-#: crates/ui-egui/src/editor/work_plane.rs:204
-msgid "Dissociate: a family's work plane is always one of its planes or lines, which forms are drawn on"
-msgstr ""
-
-#: crates/ui-egui/src/workplane.rs:264
-msgid "Dissociate: only a work plane on a reference plane follows it; this one follows nothing"
-msgstr ""
-
-#: crates/ui-egui/src/workplane.rs:262
-msgid "Dissociate: the work plane left where its reference plane is now, no longer following it"
-msgstr ""
-
-#: crates/ui-egui/src/lib.rs:4404
-msgid "Edit Work Plane: the components onto a level, a reference plane or a face picked (the Work Plane dialog), keeping their Offset from Host"
-msgstr ""
-
-#: crates/ui-egui/src/editor/extrusion.rs:244
-msgid "Edit Work Plane: the form onto another of the family's planes, moving with it (the Work Plane dialog)"
-msgstr ""
-
-#: crates/ui-egui/src/editor/work_plane.rs:288
-msgid "Open View"
 msgstr ""
 
 #: crates/ui-egui/src/editor/views.rs:709
 msgid "Pick a circle, then click where the dimension goes."
 msgstr ""
 
-#: crates/ui-egui/src/editor/work_plane.rs:227
-#: crates/ui-egui/src/workplane.rs:299
-msgid "Pick a line and use the work plane it was sketched in"
-msgstr ""
-
-#: crates/ui-egui/src/workplane.rs:578
-msgid "Pick a line: a wall, a beam, a pipe or another element drawn along a line."
-msgstr ""
-
-#: crates/ui-egui/src/workplane.rs:301
-msgid "Pick a line: after OK, click a wall, a beam, a pipe or another element drawn along a line; its level is taken"
-msgstr ""
-
-#: crates/ui-egui/src/editor/work_plane.rs:159
-msgid "Pick a line: click a reference line in the view."
-msgstr ""
-
-#: crates/ui-egui/src/editor/work_plane.rs:227
-#: crates/ui-egui/src/workplane.rs:294
-msgid "Pick a plane"
-msgstr ""
-
-#: crates/ui-egui/src/editor/views.rs:726
-msgid "Pick a plane or a line too: points alone face no way to measure along."
-msgstr ""
-
-#: crates/ui-egui/src/workplane.rs:579
-msgid "Pick a plane: a component goes on a face of a wall, a floor, a ceiling or a roof."
-msgstr ""
-
-#: crates/ui-egui/src/workplane.rs:295
-msgid "Pick a plane: after OK, click a face of the model in the 3D view, a wall's or a roof's"
-msgstr ""
-
-#: crates/ui-egui/src/editor/work_plane.rs:161
-msgid "Pick a plane: click a reference plane or a datum in the view."
-msgstr ""
-
-#: crates/ui-egui/src/editor/sketch.rs:812
-msgid "Pick a reference plane, a reference line or a line, then a line of the sketch."
-msgstr ""
-
-#: crates/ui-egui/src/editor/views.rs:738
-msgid "Pick a reference plane, an extrusion's end or a line of a form."
-msgstr ""
-
-#: crates/ui-egui/src/editor/sketch.rs:817
-msgid "Pick a straight line of the sketch: it moves onto the reference."
-msgstr ""
-
-#: crates/ui-egui/src/workplane.rs:307
-msgid "Pick three points: after OK, click three points on the model, each snapping to a corner near the pointer"
-msgstr ""
-
-#: crates/ui-egui/src/editor/work_plane.rs:308
-msgid "Pick works in a plan or an elevation, where the family's planes and lines are drawn"
-msgstr ""
-
 #: crates/ui-egui/src/editor/document.rs:435
 msgid "Radial Dimension: pick a circle of a form's sketch, then click where it goes"
-msgstr ""
-
-#: crates/ui-egui/src/workplane.rs:177
-msgid "Set Work Plane: the plane the 3D view sketches on, by name or picked on the model, with an offset; its patch in the view sets it too"
-msgstr ""
-
-#: crates/ui-egui/src/editor/sketch.rs:1077
-msgid "Set: the plane the sketch is drawn on, by name or picked in the view (the Work Plane dialog); its lines go with it"
-msgstr ""
-
-#: crates/ui-egui/src/editor/document.rs:1506
-msgid "Set: the view's work plane, by name or picked in the view (the Work Plane dialog)"
-msgstr ""
-
-#: crates/ui-egui/src/workplane.rs:260
-msgid "Show: the work plane drawn as a grid in the 3D view, on or off"
-msgstr ""
-
-#: crates/ui-egui/src/editor/work_plane.rs:202
-msgid "Show: the work plane tinted in the view, on or off"
-msgstr ""
-
-#: crates/ui-egui/src/editor/work_plane.rs:208
-#: crates/ui-egui/src/workplane.rs:275
-msgid "Specify a new Work Plane"
-msgstr ""
-
-#: crates/ui-egui/src/workplane.rs:239
-msgid "Surface, {}"
-msgstr ""
-
-#: crates/ui-egui/src/workplane.rs:167
-msgid "Work Plane: what the 3D view sketches on: a level, a reference plane, a surface of the model or three points, each with an offset"
-msgstr ""
-
-#: crates/ui-egui/src/editor/work_plane.rs:273
-msgid "{} isn't parallel to this view. Open a view that shows it flat:"
-msgstr ""
-
-#: crates/ui-egui/src/editor/extrusion.rs:115
-msgid "A dimension sets it: unlock it to change it here."
 msgstr ""
 
 #: crates/ui-egui/src/editor/sketch.rs:388
@@ -260,10 +529,6 @@ msgstr "Síť ze souboru nemá skicu, kterou by bylo možné upravit."
 #: crates/ui-egui/src/editor/sketch.rs:470
 msgid "A revolve needs an axis line: draw one with Axis Line."
 msgstr "Rotace vyžaduje čáru osy: nakreslete ji nástrojem Čára osy."
-
-#: crates/ui-egui/src/editor/document.rs:480
-msgid "Align (AL): pick a reference, then what moves onto it; its padlock locks them"
-msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:411
 msgid "Aligned Dimension (DI): pick parallel reference planes or extrusion ends, then click where it goes"
@@ -313,10 +578,6 @@ msgstr ""
 msgid "Click the points of the shape; Finish Edit Mode when the lines close into loops."
 msgstr "Klikněte na body tvaru; po uzavření čar do smyček zvolte Dokončit režim úprav."
 
-#: crates/ui-egui/src/editor/document.rs:1100
-msgid "Click the reference to align to."
-msgstr ""
-
 #: crates/ui-egui/src/editor/sketch.rs:776
 msgid "Click two lines that meet: they are rounded by an arc of the Options Bar's radius."
 msgstr "Klikněte na dvě čáry, které se stýkají: zaoblí se obloukem s poloměrem z panelu Možnosti."
@@ -329,33 +590,9 @@ msgstr "Klikněte na dva body: vytvoří se jimi procházející referenční ro
 msgid "Click two points: the axis the profile turns about."
 msgstr "Klikněte na dva body: osa, kolem které se profil otáčí."
 
-#: crates/ui-egui/src/editor/document.rs:1101
-msgid "Click what moves onto it."
-msgstr ""
-
-#: crates/ui-egui/src/editor/dimensions.rs:26
-msgid "Constraints are not satisfied"
-msgstr ""
-
-#: crates/ui-egui/src/editor/dimensions.rs:24
-msgid "Create Parameter…"
-msgstr ""
-
 #: crates/ui-egui/src/editor/sketch.rs:887
 msgid "Delete (DE): the lines picked"
 msgstr "Odstranit (DE): vybrané čáry"
-
-#: crates/ui-egui/src/editor/exists.rs:357
-msgid "Delete Dimension(s)"
-msgstr ""
-
-#: crates/ui-egui/src/editor/exists.rs:280
-msgid "Dimensions of the family you are loading can't be kept: {}"
-msgstr ""
-
-#: crates/ui-egui/src/editor/dimensions.rs:165
-msgid "EQ"
-msgstr ""
 
 #: crates/ui-egui/src/editor/sketch.rs:923
 msgid "Edit Extrusion"
@@ -390,21 +627,9 @@ msgstr "Dokončit režim úprav: čáry uzavřené do smyček vytvoří tvar"
 msgid "Go To View"
 msgstr "Přejít na pohled"
 
-#: crates/ui-egui/src/editor/exists.rs:356
-msgid "Invalid Dimensions"
-msgstr ""
-
-#: crates/ui-egui/src/editor/types_dialog.rs:23
-msgid "Lock: the dimensions this parameter labels keep its value when planes are dragged"
-msgstr ""
-
 #: crates/ui-egui/src/editor/sketch.rs:883
 msgid "Modify (MD): pick lines of the sketch, and drag their ends"
 msgstr "Upravit (MD): vyberte čáry skici a táhněte jejich konce"
-
-#: crates/ui-egui/src/editor/document.rs:240
-msgid "Modify | Align"
-msgstr ""
 
 #: crates/ui-egui/src/sketch.rs:95
 msgid "Modify | Create Extrusion"
@@ -422,10 +647,6 @@ msgstr "Upravit | Vytvořit vybrání vysunutím"
 msgid "Modify | Create Void Revolve"
 msgstr "Upravit | Vytvořit vybrání rotací"
 
-#: crates/ui-egui/src/editor/document.rs:243
-msgid "Modify | Dimensions"
-msgstr ""
-
 #: crates/ui-egui/src/sketch.rs:99
 msgid "Modify | Edit Extrusion"
 msgstr "Upravit | Upravit vysunutí"
@@ -434,10 +655,6 @@ msgstr "Upravit | Upravit vysunutí"
 msgid "Modify | Edit Revolve"
 msgstr "Upravit | Upravit rotaci"
 
-#: crates/ui-egui/src/editor/document.rs:237
-msgid "Modify | Place Dimensions"
-msgstr ""
-
 #: crates/ui-egui/src/editor/document.rs:234
 msgid "Modify | Place Reference Plane"
 msgstr "Upravit | Umístit referenční rovinu"
@@ -445,18 +662,6 @@ msgstr "Upravit | Umístit referenční rovinu"
 #: crates/ui-egui/src/editor/document.rs:246
 msgid "Modify | Reference Planes"
 msgstr "Upravit | Referenční roviny"
-
-#: crates/ui-egui/src/editor/dimensions.rs:616
-msgid "Only a dimension of one segment takes a label."
-msgstr ""
-
-#: crates/ui-egui/src/editor/types_dialog.rs:24
-msgid "Only a parameter that labels a dimension, and that no formula works out, can be locked."
-msgstr ""
-
-#: crates/ui-egui/src/editor/views.rs:516
-msgid "Pick a reference parallel to the first."
-msgstr ""
 
 #: crates/ui-egui/src/editor/views.rs:498
 msgid "Pick a reference plane or a datum in the view."
@@ -471,17 +676,9 @@ msgstr ""
 msgid "Pick a reference plane, a reference line or a form's edge in the view."
 msgstr "Vyberte v pohledu referenční rovinu, referenční čáru nebo hranu tvaru."
 
-#: crates/ui-egui/src/editor/views.rs:525
-msgid "Pick two references or more, then click where the dimension goes."
-msgstr ""
-
 #: crates/ui-egui/src/editor/document.rs:400
 msgid "Reference Plane (RP): a plane drawn by two clicks in a plan or an elevation"
 msgstr "Referenční rovina (RP): rovina nakreslená dvěma kliknutími v půdorysu nebo pohledu"
-
-#: crates/ui-egui/src/editor/dimensions.rs:481
-msgid "Remove Constraints"
-msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:370
 msgid "Revolve: sketch a profile and an axis line on the work plane, turned about the axis"
@@ -504,10 +701,6 @@ msgstr "Počáteční úhel"
 #: crates/ui-egui/src/editor/sketch.rs:265
 msgid "That runs square to the work plane: it has no line on it to pick."
 msgstr "Tento prvek je kolmý k pracovní rovině: nemá na ní žádnou čáru, kterou by bylo možné vybrat."
-
-#: crates/ui-egui/src/editor/dimensions.rs:21
-msgid "The dimension is over-constrained"
-msgstr ""
 
 #: crates/ui-egui/src/editor/sketch.rs:471
 msgid "The profile crosses the axis line: draw it to one side of the axis."
@@ -548,10 +741,6 @@ msgstr "Vybrání rotací"
 msgid "a datum stays: it can't be deleted"
 msgstr "základní prvek zůstává: nelze jej odstranit"
 
-#: crates/ui-egui/src/editor/dimensions.rs:559
-msgid "a parameter needs a name"
-msgstr ""
-
 #: crates/ui-egui/src/editor/sketch.rs:386
 msgid "the form is gone"
 msgstr "tvar již neexistuje"
@@ -560,10 +749,6 @@ msgstr "tvar již neexistuje"
 msgid "the plane can't go while {} is drawn on it"
 msgstr "rovinu nelze odstranit, dokud je na ní nakresleno {}"
 
-#: crates/ui-egui/src/editor/dimensions.rs:562
-msgid "there's a parameter `{}` already"
-msgstr ""
-
 #: crates/ui-egui/src/editor/sketch.rs:335
 msgid "{} can't be worked out"
 msgstr "{} nelze vypočítat"
@@ -571,16 +756,6 @@ msgstr "{} nelze vypočítat"
 #: crates/ui-egui/src/editor.rs:1082
 msgid "{} lines and arcs, drawn in sketch mode"
 msgstr "{} čar a oblouků nakreslených v režimu skici"
-
-#: apps/bimcraft/src/startup.rs:143
-msgid ""
-"{}\n"
-"\n"
-"The details are in {}."
-msgstr ""
-"{}\n"
-"\n"
-"Podrobnosti naleznete v {}."
 
 #: crates/ui-egui/src/lib.rs:463
 msgid " Left out: {}{}."
@@ -711,10 +886,6 @@ msgstr "Směr od posledního bodu se přichytává k násobkům tohoto úhlu od 
 #: crates/ui-egui/src/editor/types_dialog.rs:199
 msgid "A door or a window needs lengths named Width and Height; its formulas can read Wall Thickness, the wall's."
 msgstr "Dveře nebo okno vyžadují délky s názvy Šířka a Výška; jejich vzorce mohou číst Tloušťku stěny dané stěny."
-
-#: crates/ui-egui/src/editor/options.rs:90
-msgid "A door or a window stands in its wall: it can't be work plane-based."
-msgstr ""
 
 #: crates/ui-egui/src/editor/types_dialog.rs:625
 msgid "A family type parameter needs the category of the families whose types it picks."
@@ -1211,10 +1382,6 @@ msgstr ""
 
 #: crates/ui-egui/src/adaptive_editor.rs:269
 msgid "Always"
-msgstr ""
-
-#: crates/ui-egui/src/editor/options.rs:17
-msgid "Always Vertical"
 msgstr ""
 
 #: crates/ui-egui/src/electrical.rs:444
@@ -1765,14 +1932,6 @@ msgstr "Podle kategorie"
 #: crates/ui-egui/src/graphics.rs:910
 msgid "By View"
 msgstr "Podle pohledu"
-
-#: crates/ui-egui/src/editor/options.rs:156
-msgid "By its category, sections cut it."
-msgstr ""
-
-#: crates/ui-egui/src/editor/options.rs:156
-msgid "By its category, sections don't cut it."
-msgstr ""
 
 #: crates/core/src/library.rs:77
 msgid "CAD drawing"
@@ -3078,10 +3237,6 @@ msgstr "Pero řezu"
 msgid "Cut Plane"
 msgstr "Rovina řezu"
 
-#: crates/ui-egui/src/editor/options.rs:18
-msgid "Cut with Voids When Loaded"
-msgstr ""
-
 #: crates/ui-egui/src/editor.rs:170
 msgid "Cylinder"
 msgstr "Válec"
@@ -3145,10 +3300,6 @@ msgstr ""
 #: crates/ui-egui/src/lib.rs:3372
 msgid "Default 3D View"
 msgstr "Výchozí 3D pohled"
-
-#: crates/ui-egui/src/editor/options.rs:25
-msgid "Default Elevation"
-msgstr ""
 
 #: crates/ui-egui/src/standards.rs:55
 msgid "Default Sheet Size:"
@@ -3823,10 +3974,6 @@ msgstr "Elipsa: klikněte na střed, konec jedné poloosy a poté na dosah druh�
 msgid "Enable"
 msgstr ""
 
-#: crates/ui-egui/src/editor/options.rs:21
-msgid "Enable Cutting in Views"
-msgstr ""
-
 #: crates/ui-egui/src/properties.rs:152 crates/ui-egui/src/reinforce.rs:93
 #: crates/ui-egui/src/titleblocks.rs:276
 msgid "End"
@@ -3991,10 +4138,6 @@ msgstr "Rodina"
 msgid "Family Already Exists"
 msgstr "Rodina již existuje"
 
-#: crates/ui-egui/src/editor/document.rs:1111
-msgid "Family Category"
-msgstr ""
-
 #: crates/ui-egui/src/editor/document.rs:535
 #: crates/ui-egui/src/editor/document.rs:1038
 msgid "Family Category and Parameters"
@@ -4007,10 +4150,6 @@ msgstr ""
 #: crates/ui-egui/src/editor/document.rs:504
 msgid "Family Editor"
 msgstr "Editor rodin"
-
-#: crates/ui-egui/src/editor/document.rs:1126
-msgid "Family Parameters"
-msgstr ""
 
 #: crates/ui-egui/src/editor.rs:225
 msgid "Family Type"
@@ -6412,14 +6551,6 @@ msgstr ""
 msgid "Offsets from the plan's level."
 msgstr "Odsazení od podlaží půdorysu."
 
-#: crates/ui-egui/src/editor/options.rs:23
-msgid "OmniClass Number"
-msgstr ""
-
-#: crates/ui-egui/src/editor/options.rs:24
-msgid "OmniClass Title"
-msgstr ""
-
 #: crates/ui-egui/src/draw.rs:1134
 msgid "Only a polyline or a spline takes a vertex, and a line keeps its two ends."
 msgstr "Vrchol lze přidat pouze ke křivce nebo splajnu; úsečka si zachovává své dva konce."
@@ -8101,10 +8232,6 @@ msgstr "Výpočet plochy místností: kde se plochy místností měří; nyní {
 msgid "Room Bounding"
 msgstr "Ohraničení místnosti"
 
-#: crates/ui-egui/src/editor/options.rs:20
-msgid "Room Calculation Point"
-msgstr ""
-
 #: crates/core/src/schedule.rs:212
 msgid "Room Name"
 msgstr ""
@@ -8553,10 +8680,6 @@ msgstr ""
 
 #: crates/ui-egui/src/adaptive_editor.rs:603
 msgid "Shape Handle Point (Adaptive)"
-msgstr ""
-
-#: crates/ui-egui/src/editor/options.rs:19
-msgid "Shared"
 msgstr ""
 
 #: crates/ui-egui/src/editor/exists.rs:314
@@ -10704,10 +10827,6 @@ msgstr "Přesah vynášecí čáry:"
 msgid "Work Plane"
 msgstr "Pracovní rovina"
 
-#: crates/ui-egui/src/editor/options.rs:16
-msgid "Work Plane-Based"
-msgstr ""
-
 #: crates/ui-egui/src/workplane.rs:151
 msgid "Work Plane: what the 3D view sketches on: a level, a surface of the model or three points, each with an offset"
 msgstr "Pracovní rovina: rovina, na které se ve 3D pohledu načrtává – podlaží, povrch modelu nebo tři body, vždy s odsazením"
@@ -10773,10 +10892,6 @@ msgstr ""
 #: crates/ui-egui/src/settings.rs:568
 msgid "Your text colour was too close to the panels: it is made darker or lighter to read at 4.5:1"
 msgstr "Barva textu byla příliš blízká barvě panelů: je ztmavena nebo zesvětlena, aby byla čitelná při kontrastu 4,5:1"
-
-#: crates/ui-egui/src/editor/options.rs:100
-msgid "Z"
-msgstr ""
 
 #: crates/ui-egui/src/properties.rs:327
 msgid "Z Justification"
@@ -12351,6 +12466,10 @@ msgstr "Pravý"
 msgctxt "side"
 msgid "Top"
 msgstr "Horní"
+
+#: crates/ui-egui/src/editor/document.rs:1199
+#~ msgid "Click a form, a nested instance, a reference plane or a dimension to select it; drag a selected plane to move it."
+#~ msgstr "Klikněte na tvar, vnořenou instanci, referenční rovinu nebo kótu a vyberte ji; vybranou rovinu přesunete tažením."
 
 #: crates/ui-egui/src/editor.rs:983
 #~ msgid "A blank value is the family's own, as the Parameters tab has it."

@@ -70,6 +70,16 @@ pub(crate) struct Views {
     pub(crate) status: Option<String>,
     /// Where on screen the view was last shown.
     pane: Option<Rect>,
+    /// The reference line selected, by GUID (F7d).
+    pub(crate) line: Option<Guid>,
+    /// Pivot, on: the line or plane the next click pins.
+    pub(crate) pivoting: Option<Guid>,
+    /// A grip being dragged, and where the pointer was (the view's mm).
+    pub(super) grip: Option<(super::pivot::Grip, P2)>,
+    /// Where the selected element's grips were last shown on screen.
+    pub(crate) grips_shown: Vec<(super::pivot::Grip, egui::Pos2)>,
+    /// What is typed in a pivot's rows of Properties: its element, its angle, its minimum and its maximum.
+    pub(crate) pivot_text: Option<(Guid, String, String, String)>,
 }
 
 /// A view drawn: what it was drawn of, its scratch model, its frame and drawing (to pick in) and its picture.
@@ -471,22 +481,29 @@ impl FamilyEditor {
             return problem;
         }
         let values = self.values();
-        let family = self.family().ok();
+        let drawn = self.family().ok();
         // The family as the type previewed flexes it: where its dimensions put its planes and what is drawn on them.
-        let family: Option<Family> = family.map(|f| f.flexed(&values).map(std::borrow::Cow::into_owned).unwrap_or_else(|_| f.clone()));
+        let family: Option<Family> =
+            drawn.as_ref().map(|f| f.flexed(&values).map(std::borrow::Cow::into_owned).unwrap_or_else(|_| f.clone()));
         let on_screen = dims::screen_of(view, pane.min);
         let pick_plane = |p: egui::Pos2| -> Option<Guid> {
             let (x, y) = (p.x - pane.min.x, p.y - pane.min.y);
             c.drawing.pick_all((x, y), 6.0).into_iter().find_map(|id| c.staged.plane_of(id))
         };
         let kind = self.views.dim_kind;
-        let radial = kind != bimcraft_core::family::DimKind::Aligned;
+        let radial = kind.is_round();
+        let angular = kind == bimcraft_core::family::DimKind::Angular;
         let circles = radial && self.views.dimensioning.is_some();
+        let crossing = angular && self.views.dimensioning.is_some();
         let reference_at = |p: egui::Pos2| -> Option<DimRef> {
             let f = family.as_ref()?;
             if circles {
-                // Radial and Diameter Dimension pick a circle by its edge.
-                return dims::circle_at(f, &values, &c.staged, which, p, &on_screen).map(|(r, ..)| r);
+                // Radial and Diameter Dimension pick a circle or an arc by its edge.
+                return dims::circle_at(f, &values, &c.staged, which, p, &on_screen).map(|c| c.r);
+            }
+            if crossing {
+                // Angular Dimension picks lines.
+                return dims::line_at(f, &values, &c.staged, which, pick_plane(p), p, &on_screen);
             }
             dims::reference_at(f, &values, &c.staged, which, pick_plane(p), p, &on_screen)
         };
@@ -494,6 +511,13 @@ impl FamilyEditor {
         let placing = match (&self.views.dimensioning, response.hover_pos(), family.as_ref()) {
             (Some(refs), Some(h), Some(f)) if radial && refs.len() == 1 => {
                 Some(dims::new_dimension(f, &values, &c.staged, which, refs, at_view(h), kind))
+            }
+            (Some(refs), Some(h), Some(f)) if !refs.is_empty() && angular => {
+                let mut refs = refs.clone();
+                if let Some(r) = reference_at(h).filter(|r| !refs.contains(r) && dims::crosses_last(f, &values, which, &refs, r)) {
+                    refs.push(r);
+                }
+                (refs.len() >= 2).then(|| dims::new_dimension(f, &values, &c.staged, which, &refs, at_view(h), kind))
             }
             (Some(refs), Some(h), Some(f)) if !refs.is_empty() && !radial => {
                 let mut refs = refs.clone();
@@ -505,8 +529,17 @@ impl FamilyEditor {
             }
             _ => None,
         };
-        let marks = match family.as_ref() {
-            Some(f) if editable => dims::marks_of(f, &values, &c.staged, which, placing),
+        let marks = match (drawn.as_ref(), family.as_ref()) {
+            (Some(d), Some(f)) if editable => dims::marks_of(d, f, &values, &c.staged, which, placing),
+            _ => Vec::new(),
+        };
+        // Pivots (F7d): their marks, and the selected element's grips.
+        let pivots = match family.as_ref() {
+            Some(f) if editable => bimcraft_core::family::constraints::pivot_marks(f, &values, &c.staged, which),
+            _ => Vec::new(),
+        };
+        let grips = match family.as_ref() {
+            Some(f) if editable => self.grips(&pivots, f, &c.staged, which, &on_screen),
             _ => Vec::new(),
         };
         let selected_dim = self.selected_dimension();
@@ -515,18 +548,23 @@ impl FamilyEditor {
         // one Align offers too (the last).
         let mut lines = drawn_lines(&c.drawing, pane.min);
         for m in marks.iter().filter(|m| !m.alignment) {
-            if let (Some(a), Some(b)) = (m.points.first(), m.points.last()) {
+            if m.kind == bimcraft_core::family::DimKind::Angular {
+                // Where its lines cross out to its arc, along each.
+                if let Some(v) = m.points.first() {
+                    lines.extend(m.points.iter().skip(1).map(|p| [on_screen(*v), on_screen(*p)]));
+                }
+            } else if let (Some(a), Some(b)) = (m.points.first(), m.points.last()) {
                 lines.push([on_screen(*a), on_screen(*b)]);
             }
         }
         let offer = self.views.align_lock.filter(|(.., w)| *w == which).and_then(|(reference, target, at, _)| {
-            let f = family.as_ref()?;
+            let (d, f) = (drawn.as_ref()?, family.as_ref()?);
             let lock = FamilyDimension {
                 refs: vec![reference, target],
                 alignment: true,
                 ..dims::new_dimension(f, &values, &c.staged, which, &[], at, Default::default())
             };
-            dims::marks_of(f, &values, &c.staged, which, Some(lock)).pop()
+            dims::marks_of(d, f, &values, &c.staged, which, Some(lock)).pop()
         });
         let mut pending: Vec<(&dims::DimMark, Vec<DimRef>)> = marks
             .iter()
@@ -571,6 +609,17 @@ impl FamilyEditor {
         };
         if let Some(f) = family.as_ref() {
             for r in &picked_refs {
+                // A plane by the strokes its trace is drawn with, short of its name.
+                let strokes = match r {
+                    DimRef::Plane(g) => plane_strokes(&c.drawing, &c.staged, *g, pane.min),
+                    _ => Vec::new(),
+                };
+                if !strokes.is_empty() {
+                    for s in strokes {
+                        painter.line_segment(s, Stroke::new(2.5, PICKED));
+                    }
+                    continue;
+                }
                 match dims::drawn_as(f, &values, &c.staged, which, r) {
                     // A point (a circle's centre): a ring round it.
                     Some((a, b)) if a == b => {
@@ -581,13 +630,31 @@ impl FamilyEditor {
                     }
                     None => {}
                 }
-                // A circle picked by Radial or Diameter Dimension: the circle itself.
+                // A circle or an arc picked by Radial or Diameter Dimension: the circle or the arc itself.
                 if radial
-                    && let Some((_, centre, radius)) =
-                        bimcraft_core::family::constraints::sketch_circles(f, &values, &c.staged, which).into_iter().find(|(x, ..)| x == r)
+                    && let Some(round) =
+                        bimcraft_core::family::constraints::sketch_circles(f, &values, &c.staged, which).into_iter().find(|x| x.r == *r)
                 {
-                    let rim = screen(P2(centre.0 + radius, centre.1));
-                    painter.circle_stroke(screen(centre), (rim - screen(centre)).length(), Stroke::new(2.5, PICKED));
+                    let (centre, radius) = (round.centre, round.radius);
+                    match round.arc {
+                        None => {
+                            let rim = screen(P2(centre.0 + radius, centre.1));
+                            painter.circle_stroke(screen(centre), (rim - screen(centre)).length(), Stroke::new(2.5, PICKED));
+                        }
+                        Some([a, m, b]) => {
+                            let angle = |q: P2| (q.1 - centre.1).atan2(q.0 - centre.0);
+                            let tau = std::f64::consts::TAU;
+                            let (to_m, to_b) = ((angle(m) - angle(a)).rem_euclid(tau), (angle(b) - angle(a)).rem_euclid(tau));
+                            let sweep = if to_m <= to_b { to_b } else { to_b - tau };
+                            let pts: Vec<egui::Pos2> = (0..=48)
+                                .map(|k| {
+                                    let t = angle(a) + sweep * f64::from(k) / 48.0;
+                                    screen(P2(centre.0 + radius * t.cos(), centre.1 + radius * t.sin()))
+                                })
+                                .collect();
+                            painter.add(egui::Shape::line(pts, Stroke::new(2.5, PICKED)));
+                        }
+                    }
                 }
             }
         }
@@ -614,8 +681,43 @@ impl FamilyEditor {
                 family.as_ref().and_then(|f| f.planes.iter().find(|p| p.guid == g)).or_else(|| self.planes.iter().find(|p| p.guid == g))?;
             plane_trace(&c.staged, which, &p.frame()).map(|(a, b)| (screen(a), screen(b)))
         };
-        if editable && let Some((a, b)) = self.selected_plane().and_then(trace) {
-            painter.line_segment([a, b], Stroke::new(2.5, PICKED));
+        if editable && let Some(g) = self.selected_plane() {
+            let strokes = plane_strokes(&c.drawing, &c.staged, g, pane.min);
+            if strokes.is_empty() {
+                if let Some((a, b)) = trace(g) {
+                    painter.line_segment([a, b], Stroke::new(2.5, PICKED));
+                }
+            } else {
+                for s in strokes {
+                    painter.line_segment(s, Stroke::new(2.5, PICKED));
+                }
+            }
+        }
+        // The reference line selected, its pivots' marks and its grips (F7d).
+        if editable
+            && let (Some(g), Some(f)) = (self.selected_line(), family.as_ref())
+            && let Some(l) = f.lines.iter().find(|l| l.guid == g)
+        {
+            let (a, b) = (c.staged.to_view(which, l.start), c.staged.to_view(which, l.end));
+            painter.line_segment([screen(a), screen(b)], Stroke::new(2.5, PICKED));
+        }
+        let chosen = self.selected_line().or_else(|| self.selected_plane());
+        let turning = match self.views.grip {
+            Some((super::pivot::Grip::Rotate(g), _)) => Some(g),
+            _ => None,
+        };
+        super::pivot::paint(&painter, &pivots, &on_screen, chosen, turning);
+        let ends: Vec<(super::pivot::Grip, egui::Pos2)> =
+            grips.iter().filter(|(g, _)| matches!(g, super::pivot::Grip::End(..))).copied().collect();
+        super::pivot::paint_ends(&painter, &ends);
+        self.views.grips_shown = grips.clone();
+        // Pivot, on: the point the click would pin it to, ringed.
+        if self.views.pivoting.is_some()
+            && let (Some(h), Some(f)) = (response.hover_pos(), family.as_ref())
+        {
+            let targets = bimcraft_core::family::constraints::pivot_targets(f, &values, &c.staged, which);
+            let (_, p) = super::pivot::target(&c.staged, which, &targets, at_view(h), &on_screen);
+            painter.circle_stroke(screen(c.staged.to_view(which, p)), 7.0, Stroke::new(2.0, PICKED));
         }
         // Work Plane > Show: the plane tinted, all over where the view looks straight at it, along its trace where across it.
         if editable
@@ -670,6 +772,30 @@ impl FamilyEditor {
             self.views.end_drag = Some((end, to, n));
         }
         let mut select: Option<(Option<usize>, Option<Guid>)> = None;
+        let mut select_line: Option<Option<Guid>> = None;
+        let mut pin: Option<(Guid, (bimcraft_core::family::PivotPoint, bimcraft_core::family::PivotAt))> = None;
+        let mut grip_moved: Option<super::pivot::GripMove> = None;
+        // A grip pressed (F7d): the rotate grip, or a line's end; the drag is the grip's.
+        if editable
+            && response.drag_started_by(PointerButton::Primary)
+            && let Some(p) = ui.input(|i| i.pointer.press_origin())
+            && let Some((grip, _)) = grips.iter().find(|(_, at)| at.distance(p) <= super::pivot::REACH)
+        {
+            self.views.grip = Some((*grip, at_view(p)));
+        }
+        if let Some((grip, last)) = self.views.grip
+            && response.dragged_by(PointerButton::Primary)
+            && let Some(now) = response.interact_pointer_pos().map(at_view)
+            && now != last
+        {
+            grip_moved = Some(match grip {
+                super::pivot::Grip::Rotate(g) => super::pivot::GripMove::Rotate(g, c.staged.from_view(which, now)),
+                super::pivot::Grip::End(g, spot) => {
+                    super::pivot::GripMove::End(g, spot, c.staged.vector(which, P2(now.0 - last.0, now.1 - last.1)))
+                }
+            });
+            self.views.grip = Some((grip, now));
+        }
         let mut select_nested: Option<usize> = None;
         let mut place_at: Option<(PlaneRef, (f64, f64), f64)> = None;
         let mut moved: Option<(Guid, [f64; 3])> = None;
@@ -695,6 +821,13 @@ impl FamilyEditor {
                 // Pick a line: the reference line within the reach a plane's trace has.
                 let line = c.staged.line_at(which, q, 6.0 / view.scale.max(1e-9));
                 picked_work_plane = Some((pick_plane(p), line));
+            } else if let Some(g) = self.views.pivoting {
+                // Pivot: the point the element is pinned to.
+                self.views.pivoting = None;
+                pin = family
+                    .as_ref()
+                    .and_then(|f| super::pivot::picked(f, &values, &c.staged, which, g, q, &on_screen, view.scale))
+                    .map(|x| (g, x));
             } else if let Some(first) = self.views.drawing {
                 match first {
                     None => self.views.drawing = Some(Some(q)),
@@ -722,7 +855,23 @@ impl FamilyEditor {
                         new_dim = Some(dims::new_dimension(f, &values, &c.staged, which, refs, q, kind));
                         refs.clear();
                     }
-                    _ => problem = Some(t("Pick a circle, then click where the dimension goes.").to_string()),
+                    _ => problem = Some(t("Pick a circle or an arc, then click where the dimension goes.").to_string()),
+                }
+            } else if let Some(refs) = self.views.dimensioning.as_mut().filter(|_| angular) {
+                // Angular Dimension: lines one after another, each crossing the one before; a click on nothing places it.
+                match (reference_at(p), family.as_ref()) {
+                    (Some(r), Some(f)) => {
+                        if !dims::crosses_last(f, &values, which, refs, &r) {
+                            problem = Some(t("Pick a line that crosses the one before.").to_string());
+                        } else if !refs.contains(&r) {
+                            refs.push(r);
+                        }
+                    }
+                    (None, Some(f)) if refs.len() >= 2 => {
+                        new_dim = Some(dims::new_dimension(f, &values, &c.staged, which, refs, q, kind));
+                        refs.clear();
+                    }
+                    _ => problem = Some(t("Pick lines that cross, then click where the dimension goes.").to_string()),
                 }
             } else if let Some(refs) = self.views.dimensioning.as_mut() {
                 // Aligned Dimension: references one after another, parallel to the first; a click on nothing places it.
@@ -766,13 +915,20 @@ impl FamilyEditor {
             } else if let Some(i) = family.as_ref().and_then(|f| fv::nested_at(f, &values, &c.staged, which, q)) {
                 select_nested = Some(i);
             } else {
-                let plane = pick_plane(p);
+                // A reference line where the view draws it (F7d): over the planes' traces and the forms, as it is drawn.
+                let line = c
+                    .staged
+                    .line_at(which, q, 6.0 / view.scale.max(1e-9))
+                    .and_then(|i| family.as_ref().and_then(|f| f.lines.get(i)).map(|l| l.guid));
+                let plane = if line.is_some() { None } else { pick_plane(p) };
                 let form = family.as_ref().and_then(|f| fv::form_at(f, &values, &c.staged, which, q));
-                select = Some(match (plane, form) {
-                    (Some(g), _) => (None, Some(g)),
-                    (None, Some(i)) => (Some(i), None),
-                    (None, None) => (None, None),
+                select = Some(match (plane, line, form) {
+                    (Some(g), _, _) => (None, Some(g)),
+                    (None, Some(_), _) => (None, None),
+                    (None, None, Some(i)) => (Some(i), None),
+                    (None, None, None) => (None, None),
                 });
+                select_line = Some(line);
             }
         }
         // A plane of the family's own, selected, dragged square to itself.
@@ -780,6 +936,7 @@ impl FamilyEditor {
             && self.views.drawing.is_none()
             && self.views.picking.is_none()
             && self.views.end_drag.is_none()
+            && self.views.grip.is_none()
             && response.dragged_by(PointerButton::Primary)
         {
             let now = response.interact_pointer_pos().map(at_view);
@@ -787,7 +944,8 @@ impl FamilyEditor {
             if response.drag_started()
                 && let Some(p) = ui.input(|i| i.pointer.press_origin())
             {
-                let own = self.selected_plane().filter(|g| self.planes.iter().any(|q| q.guid == *g && !q.datum()));
+                // A plane its pivot holds turns by its grip, never slides (F7d).
+                let own = self.selected_plane().filter(|g| self.planes.iter().any(|q| q.guid == *g && !q.datum() && q.pivot.is_none()));
                 self.views.drag = own.filter(|g| pick_plane(p) == Some(*g)).map(|_| at_view(p));
             }
             if let (Some(from), Some(to), Some(g)) = (self.views.drag, now, self.selected_plane()) {
@@ -798,6 +956,7 @@ impl FamilyEditor {
         if response.drag_stopped() {
             self.views.drag = None;
             self.views.end_drag = None;
+            self.views.grip = None;
         }
         self.zoom_and_pan(ui, &response, which, view.scale);
         if let Some((end, d)) = end_moved
@@ -852,11 +1011,22 @@ impl FamilyEditor {
         if let Some(i) = select_nested {
             self.select_nested(Some(i));
         }
+        if let Some(m) = grip_moved
+            && let Some(e) = self.drag_grip(m)
+        {
+            problem = Some(e);
+        }
+        if let Some((g, (to, at))) = pin
+            && let Err(e) = self.set_pivot(g, to, at)
+        {
+            problem = Some(e);
+        }
         if let Some((form, plane)) = select {
             self.nested_sel = None;
             self.views.dim = None;
             self.form = form;
             self.views.plane = plane;
+            self.views.line = select_line.flatten();
             if let Some(i) = form {
                 self.tab = Tab::Forms;
                 self.document.reveal = Some(i);
@@ -897,6 +1067,8 @@ impl FamilyEditor {
                 defines_origin: false,
                 subcategory: None,
                 level: false,
+                pivot: None,
+                turned: None,
             });
             self.views.plane = Some(guid);
             self.form = None;
@@ -977,6 +1149,21 @@ pub(super) fn drawn_lines(d: &Drawing, min: egui::Pos2) -> Vec<[egui::Pos2; 2]> 
             if *closed && let (Some(a), Some(b)) = (pts.last(), pts.first()) {
                 out.push([at(a), at(b)]);
             }
+        }
+    }
+    out
+}
+
+/// The strokes the view's drawing draws plane `g`'s trace with, on screen: what highlights it, short of its name as the trace
+/// is (none where the drawing hasn't it).
+pub(super) fn plane_strokes(d: &Drawing, st: &Staged, g: Guid, min: egui::Pos2) -> Vec<[egui::Pos2; 2]> {
+    let at = |p: &(f32, f32)| min + vec2(p.0, p.1);
+    let mut out = Vec::new();
+    for (prim, owner) in d.prims.iter().zip(&d.owners) {
+        if owner.and_then(|o| st.plane_of(o)) == Some(g)
+            && let bimcraft_core::render::Prim::Line { pts, .. } = prim
+        {
+            out.extend(pts.windows(2).map(|w| [at(&w[0]), at(&w[1])]));
         }
     }
     out
