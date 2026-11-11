@@ -40,7 +40,7 @@ msgstr "Cihla"
 msgid "Brick 225 x 75"
 msgstr "Cihla 225 x 75"
 
-#: crates/core/src/commands.rs:4259
+#: crates/core/src/commands.rs:4282
 msgid "Camera"
 msgstr "Kamera"
 
@@ -116,7 +116,7 @@ msgstr "Čerchovaná"
 msgid "Data Outlet"
 msgstr "Datová zásuvka"
 
-#: crates/core/src/commands.rs:9975
+#: crates/core/src/commands.rs:10100
 msgid "Dependent"
 msgstr "Závislý"
 
@@ -192,8 +192,8 @@ msgstr "Elektroinstalace – osvětlení"
 msgid "Electrical Power"
 msgstr "Elektroinstalace – napájení"
 
-#: crates/core/src/commands.rs:9759
-#: crates/core/src/commands.rs:12324
+#: crates/core/src/commands.rs:9884
+#: crates/core/src/commands.rs:12449
 msgid "Elevation"
 msgstr "Pohled"
 
@@ -310,7 +310,7 @@ msgstr "Šířka nohy"
 msgid "Length"
 msgstr "Délka"
 
-#: crates/core/src/commands.rs:6477
+#: crates/core/src/commands.rs:6602
 #: crates/core/src/model.rs:3165
 msgid "Level"
 msgstr "Podlaží"
@@ -335,7 +335,7 @@ msgstr "Označení"
 msgid "Masking"
 msgstr "Maskovací"
 
-#: crates/core/src/commands.rs:7738
+#: crates/core/src/commands.rs:7863
 msgid "Mass"
 msgstr "Objem"
 
@@ -423,7 +423,7 @@ msgstr "Omítka"
 msgid "Porcelain"
 msgstr "Porcelán"
 
-#: crates/core/src/commands.rs:2945
+#: crates/core/src/commands.rs:2968
 msgid "Project"
 msgstr "Projekt"
 
@@ -451,7 +451,7 @@ msgstr "Počet stupňů"
 msgid "Roof tiles"
 msgstr "Střešní tašky"
 
-#: crates/core/src/commands.rs:7963
+#: crates/core/src/commands.rs:8088
 msgid "Room"
 msgstr "Místnost"
 
@@ -487,8 +487,8 @@ msgstr "Potěr"
 msgid "Seat Height"
 msgstr "Výška sedáku"
 
-#: crates/core/src/commands.rs:9736
-#: crates/core/src/commands.rs:12323
+#: crates/core/src/commands.rs:9861
+#: crates/core/src/commands.rs:12448
 msgid "Section"
 msgstr "Řez"
 
@@ -612,7 +612,7 @@ msgstr "NAHORU"
 msgid "Unbounded Height"
 msgstr "Neohraničená výška"
 
-#: crates/core/src/commands.rs:10116
+#: crates/core/src/commands.rs:10241
 msgid "Unnamed"
 msgstr "Nepojmenovaný"
 

@@ -2554,7 +2554,7 @@ msgstr "Abgebrochen"
 msgid "Demolition"
 msgstr "Abbruch"
 
-#: crates/core/src/commands.rs:9975
+#: crates/core/src/commands.rs:10100
 msgid "Dependent"
 msgstr "Abhängig"
 
@@ -3076,7 +3076,7 @@ msgstr "Elektroeinstellungen"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "Elektroeinstellungen: die Spannungen, Verteilungssysteme und Leitungstypen, auf die sich Stromkreise und Verteiler beziehen; Querschnitte in mm²"
 
-#: crates/core/src/commands.rs:2173
+#: crates/core/src/commands.rs:2196
 msgid "Elements"
 msgstr "Elemente"
 
@@ -9014,7 +9014,7 @@ msgstr ""
 msgid "Unlock alignment"
 msgstr "Ausrichtung entsperren"
 
-#: crates/core/src/commands.rs:10116
+#: crates/core/src/commands.rs:10241
 msgid "Unnamed"
 msgstr "Unbenannt"
 
