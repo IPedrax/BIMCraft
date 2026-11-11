@@ -505,6 +505,50 @@ fn modify_changes_fields_and_refuses_typos() {
     assert_eq!(w["elements"][0]["height"], 2500.0);
 }
 
+#[test]
+fn elements_finds_what_holds_a_fields_value() {
+    let mut s = Session::new();
+    let walls = house(&mut s);
+    run(&mut s, "type", json!({"category": "wall", "name": "Thick", "thickness": 300}));
+    run(&mut s, "modify", json!({"ids": [walls[1], walls[3]], "type": "Thick"}));
+    run(&mut s, "parameter", json!({"name": "Fire Rating", "categories": ["wall"], "kind": "text"}));
+    run(&mut s, "modify", json!({"ids": [walls[0]], "params": {"Fire Rating": "2 h"}}));
+    let found = |s: &mut Session, p: Value| -> Vec<u64> {
+        run(s, "elements", p)["elements"].as_array().unwrap().iter().map(|e| e["id"].as_u64().unwrap()).collect()
+    };
+    // A type's value, in any case, with a category or without one.
+    assert_eq!(found(&mut s, json!({"category": "wall", "field": "Type", "value": "Thick"})), [walls[1], walls[3]]);
+    assert_eq!(found(&mut s, json!({"category": "wall", "field": "Type", "value": "thick"})), [walls[1], walls[3]]);
+    assert_eq!(found(&mut s, json!({"field": "Type", "value": "Thick"})), [walls[1], walls[3]]);
+    // A sheet's number: a category no schedule is of, still with a field.
+    let sheet = run(&mut s, "sheet", json!({}))["id"].as_u64().unwrap();
+    assert!(found(&mut s, json!({"field": "Number", "value": "A101"})).contains(&sheet));
+    // A project parameter's value; the field alone, those holding one; `""`, those holding none.
+    assert_eq!(found(&mut s, json!({"category": "wall", "field": "Fire Rating", "value": "2 h"})), [walls[0]]);
+    assert_eq!(found(&mut s, json!({"category": "wall", "field": "Fire Rating"})), [walls[0]]);
+    assert_eq!(found(&mut s, json!({"category": "wall", "field": "Fire Rating", "value": ""})), [walls[1], walls[2], walls[3]]);
+    // A length as a number, or a number written as text.
+    assert_eq!(found(&mut s, json!({"category": "wall", "field": "Thickness", "value": 300})), [walls[1], walls[3]]);
+    assert_eq!(found(&mut s, json!({"category": "wall", "field": "Thickness", "value": "300.0"})), [walls[1], walls[3]]);
+    // A number is in millimetres, whatever the project shows.
+    run(&mut s, "units", json!({"length": "ft"}));
+    assert_eq!(found(&mut s, json!({"category": "wall", "field": "Thickness", "value": 300})), [walls[1], walls[3]]);
+    // Yes or no; unset, a yes or no parameter holds no.
+    run(&mut s, "parameter", json!({"name": "Load Bearing", "categories": ["wall"], "kind": "yesno"}));
+    run(&mut s, "modify", json!({"ids": [walls[2]], "params": {"Load Bearing": true}}));
+    assert_eq!(found(&mut s, json!({"category": "wall", "field": "Load Bearing", "value": true})), [walls[2]]);
+    assert_eq!(found(&mut s, json!({"category": "wall", "field": "Load Bearing", "value": false})), [walls[0], walls[1], walls[3]]);
+    // A value needs a field, a field is one the category has, and a value is a value.
+    let e = s.execute("elements", &json!({"value": "Thick"})).unwrap_err();
+    assert!(e.contains("field"), "{e}");
+    let e = s.execute("elements", &json!({"category": "door", "field": "Fire Rating"})).unwrap_err();
+    assert!(e.contains("Fire Rating"), "{e}");
+    let e = s.execute("elements", &json!({"field": "Nonsense"})).unwrap_err();
+    assert!(e.contains("Nonsense"), "{e}");
+    let e = s.execute("elements", &json!({"field": "Type", "value": true})).unwrap_err();
+    assert!(e.contains("value"), "{e}");
+}
+
 /// A wall's ends, as `elements` shows them.
 fn ends(s: &mut Session, id: u64) -> (Value, Value) {
     let w = run(s, "elements", json!({"category": "wall"}));
@@ -2036,6 +2080,8 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!([]),
         json!("x"),
         json!({"points": "x"}),
+        json!({"field": 5, "value": true}),
+        json!({"field": "Type", "value": ["Thick"]}),
         json!({"points": [[0, 0]]}),
         json!({"points": [[0, 0, 0], [1000, 0, 0]], "diameter": 12, "count": 1000, "step": [1e9, 1e9, 1e9]}),
         json!({"points": [[0, 0, 0], [1000, 0, 0]], "diameter": f64::MAX, "count": 1e300}),

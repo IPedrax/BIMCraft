@@ -14,6 +14,9 @@ A level is also its plan: its view range (`Model::plan_range`)
 cuts 1200 mm above it unless set, and its crop region bounds what the plan shows. Rooms find their walls at 1200 mm whatever
 a plan cuts (`Model::bounding`). In a section or an elevation, points run along its line from its start, and up; on a sheet,
 they're paper mm from its bottom left corner; notes and spot elevations live in those terms in their view.
+A door or window placed `at` a point searches walls cut by the specified `level`'s plan. With no `level` (or `null`), it
+searches levels from the lowest at or above elevation 0 upwards, then from the highest below 0 downwards, using the first
+plan that cuts a wall there. A supplied `level` searches only that plan; an explicit `wall` remains authoritative.
 A wall's `start` and `end` are on its location line: its centre line unless `location` says otherwise (`walls::faces`).
 Its exterior is to the left of start to end, as in Revit, so walls drawn clockwise face out; a compound type lists its
 layers from the exterior in, and a floor, roof or ceiling type from the top down (IFC import turns a wall round, or a slab's
@@ -43,7 +46,10 @@ Room areas are measured at the walls' centre
 lines, run on or back to meet at joins (`walls::centre_line`). A room separator (`roomseparator`, made by `room_separator` a line per segment) bounds rooms as a wall's centre line
 would and nothing else: it is no edge of a floor, a ceiling or a roof (`Model::bounding_lines` takes it, `wall_lines` and
 `face_lines` don't; an end drawn to a wall's face runs on to its centre line there, so the line splits rooms measured at
-the centre lines too), it is drawn in plan only, and it goes to IFC as an `IfcVirtualElement` of `ObjectType` `RoomSeparation`
+the centre lines too; a parallel continuation touching a straight wall's end cap joins across that cap to the centre line without
+moving or tilting the drawn separator, while a gap or a line along a wall's side is left open; curved walls retain the
+crossing rule, without the parallel-cap connection), it is drawn in plan only,
+and it goes to IFC as an `IfcVirtualElement` of `ObjectType` `RoomSeparation`
 with an `Axis` polyline on its storey, which the import reads back. The desktop's Room Separator, beside Room, lays one a
 click from the point before until Esc. A room's height is Revit's: from `base_offset` over its level up to `limit_offset` over
 its Upper Limit, `top_level` (none: Not Bounded, the offset then over its own level). A new room reaches 300 mm under the
@@ -97,10 +103,21 @@ wall opens it at the opening as ever; one cutting over the wall's top cuts neith
 from above (`walls::notches`). IFC writes the opening's void at its full height (a boolean takes off only what is in the wall)
 and the door or window at its own size, and the wall's net quantities take off only the part of each opening in the wall; the
 IFC import brings such an opening in, and leaves out with a note naming the file's wall one whose sill is at or over its top.
+When `door` or `window` explicitly names a `level` different from its host wall's level, placement starts at that level's
+elevation (a window adds its supplied or type/family default sill). The command converts that absolute elevation to the
+native `Opening::sill`, which remains relative to `Model::own_base` of the host; previews use the same builder. For example,
+a level at 3400 mm and a window sill of 900 mm give a window at 4300 mm even in a wall starting at ground level.
+With no requested level, or with the host's own level requested, placement keeps its host-base-relative meaning, including
+raised wall base offsets. A supplied level is validated even with an explicit `wall`. Existing host-fit checks and rollback
+still refuse a sill below the host base or at/above its top. This is a placement conversion, with no native format change;
+moving a level later does not rehost an existing opening.
 A roof by footprint is the straight skeleton of its outline and its `courtyards` (`skeleton::faces`: the outline
 counter-clockwise, the courtyards clockwise, the roof to the left of every edge): each edge moves in at speed 1, a gable's at
 0, and its slope rises from it, reaching the roof's base `overhang` in from its eaves; a courtyard's edges number on after
 the outline's, and every ring keeps its numbers whichever way round it runs, so `gables` stay put through a mirror.
+At creation, an explicit `boundary` or `sketch` is the wall line: `overhang` (0 by default) moves the eaves outward and
+into each courtyard, preserving edge numbers and sketch slopes. A ring that collapses is refused. The stored boundary
+and Edit Boundary are the resulting eaves, so finishing an unchanged sketch does not apply the overhang again.
 `Roof::slopes` (file format 15) gives each edge a slope of its own, in degrees, numbered as `gables` are: 0 is the roof's `slope`,
 and an empty list, every edge. `Model::roof_faces` then moves an edge in at the run over the rise of its slope, scaled so the
 shallowest moves at 1 (every edge at one slope still moves at exactly 1), so edges of different slopes reach the same height

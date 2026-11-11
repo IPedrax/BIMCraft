@@ -32,7 +32,8 @@ one place, and leave `Mass Face`, `{mass, face}`: an edge number (numbered from 
 for a floor or a roof. A wall stands plumb, so only on a face whose top edge is right over its bottom edge (`massing::plumb`); a floor
 and a roof lie on the top outline. `update_by_face` (UF; Revit's Update to Face has no default shortcut) rebuilds the geometry of the
 ones asked for, a mass's, or all of them (`massing::follow`: a wall's ends, level, offset and height or top level; a floor's or roof's
-boundary, level and offset; the type, a roof's slope and the rest stay) and refuses the lot, naming each, when a face is gone. A mass
+boundary, level and offset; a roof's eaves keep its overhang past the mass's top outline; the type, a roof's slope and the rest stay)
+and refuses the lot, naming each, when a face is gone or too small for a roof's overhang. A failed update changes no element or undo step. A mass
 mirrored in place runs its outline round the other way, so `relocate` renumbers the faces its walls hold (`massing::mirrored`). Nothing
 else ties them to the mass, and IFC carries no mark: what comes back from a file is ordinary. `commands::category` reads `mass` and
 `masses` as `mass` (it trims every trailing `s`, which would make `ma`). IFC writes a mass as an `IFCBUILDINGELEMENTPROXY` of object type
