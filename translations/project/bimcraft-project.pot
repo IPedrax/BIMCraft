@@ -3,7 +3,7 @@
 msgid ""
 msgstr "Project-Id-Version: BIMCraft\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\n"
 
-#: crates/core/src/sheet.rs:291
+#: crates/core/src/sheet.rs:304
 msgid "AS INDICATED"
 msgstr ""
 
@@ -40,7 +40,7 @@ msgstr ""
 msgid "Brick 225 x 75"
 msgstr ""
 
-#: crates/core/src/commands.rs:4219
+#: crates/core/src/commands.rs:4259
 msgid "Camera"
 msgstr ""
 
@@ -56,7 +56,7 @@ msgstr ""
 msgid "Ceiling Luminaire"
 msgstr ""
 
-#: crates/core/src/render.rs:3052
+#: crates/core/src/render.rs:3064
 msgid "Ceiling Plan"
 msgstr ""
 
@@ -88,7 +88,7 @@ msgstr ""
 msgid "Copper"
 msgstr ""
 
-#: crates/core/src/commands.rs:1220
+#: crates/core/src/commands.rs:1223
 msgid "Copy"
 msgstr ""
 
@@ -100,7 +100,7 @@ msgstr ""
 msgid "Crosshatch"
 msgstr ""
 
-#: crates/core/src/render.rs:3644
+#: crates/core/src/render.rs:3655
 msgid "DN"
 msgstr ""
 
@@ -116,7 +116,7 @@ msgstr ""
 msgid "Data Outlet"
 msgstr ""
 
-#: crates/core/src/commands.rs:9897
+#: crates/core/src/commands.rs:9975
 msgid "Dependent"
 msgstr ""
 
@@ -192,8 +192,8 @@ msgstr ""
 msgid "Electrical Power"
 msgstr ""
 
-#: crates/core/src/commands.rs:9681
-#: crates/core/src/commands.rs:12246
+#: crates/core/src/commands.rs:9759
+#: crates/core/src/commands.rs:12324
 msgid "Elevation"
 msgstr ""
 
@@ -246,7 +246,7 @@ msgid "Gate Valve"
 msgstr ""
 
 #: crates/core/src/family.rs:2205
-#: crates/core/src/view3d.rs:1002
+#: crates/core/src/view3d.rs:1004
 msgid "Glass"
 msgstr ""
 
@@ -286,7 +286,7 @@ msgstr ""
 msgid "Inspection Box"
 msgstr ""
 
-#: crates/core/src/import.rs:1364
+#: crates/core/src/import.rs:1438
 msgid "Insulation"
 msgstr ""
 
@@ -310,7 +310,7 @@ msgstr ""
 msgid "Length"
 msgstr ""
 
-#: crates/core/src/commands.rs:6430
+#: crates/core/src/commands.rs:6477
 #: crates/core/src/model.rs:3165
 msgid "Level"
 msgstr ""
@@ -335,7 +335,7 @@ msgstr ""
 msgid "Masking"
 msgstr ""
 
-#: crates/core/src/commands.rs:7689
+#: crates/core/src/commands.rs:7738
 msgid "Mass"
 msgstr ""
 
@@ -347,7 +347,7 @@ msgstr ""
 msgid "Medium Lines"
 msgstr ""
 
-#: crates/core/src/import.rs:1367
+#: crates/core/src/import.rs:1441
 msgid "Membrane"
 msgstr ""
 
@@ -359,7 +359,7 @@ msgstr ""
 msgid "Mounting Height"
 msgstr ""
 
-#: crates/core/src/render.rs:2883
+#: crates/core/src/render.rs:2895
 msgid "NOT ENCLOSED"
 msgstr ""
 
@@ -371,7 +371,7 @@ msgstr ""
 msgid "New Construction"
 msgstr ""
 
-#: crates/core/src/schedule.rs:1191
+#: crates/core/src/schedule.rs:1205
 msgid "No"
 msgstr ""
 
@@ -423,11 +423,11 @@ msgstr ""
 msgid "Porcelain"
 msgstr ""
 
-#: crates/core/src/commands.rs:2906
+#: crates/core/src/commands.rs:2945
 msgid "Project"
 msgstr ""
 
-#: crates/core/src/render.rs:2883
+#: crates/core/src/render.rs:2895
 msgid "REDUNDANT"
 msgstr ""
 
@@ -451,7 +451,7 @@ msgstr ""
 msgid "Roof tiles"
 msgstr ""
 
-#: crates/core/src/commands.rs:7914
+#: crates/core/src/commands.rs:7963
 msgid "Room"
 msgstr ""
 
@@ -467,11 +467,11 @@ msgstr ""
 msgid "Room Schedule"
 msgstr ""
 
-#: crates/core/src/sheet.rs:280
+#: crates/core/src/sheet.rs:293
 msgid "SCALE"
 msgstr ""
 
-#: crates/core/src/sheet.rs:282
+#: crates/core/src/sheet.rs:295
 msgid "SCALE AS INDICATED"
 msgstr ""
 
@@ -487,8 +487,8 @@ msgstr ""
 msgid "Seat Height"
 msgstr ""
 
-#: crates/core/src/commands.rs:9658
-#: crates/core/src/commands.rs:12245
+#: crates/core/src/commands.rs:9736
+#: crates/core/src/commands.rs:12323
 msgid "Section"
 msgstr ""
 
@@ -592,7 +592,7 @@ msgstr ""
 msgid "Timber"
 msgstr ""
 
-#: crates/core/src/sheet.rs:219
+#: crates/core/src/sheet.rs:232
 msgid "Total"
 msgstr ""
 
@@ -604,7 +604,7 @@ msgstr ""
 msgid "Type"
 msgstr ""
 
-#: crates/core/src/render.rs:3644
+#: crates/core/src/render.rs:3655
 msgid "UP"
 msgstr ""
 
@@ -612,7 +612,7 @@ msgstr ""
 msgid "Unbounded Height"
 msgstr ""
 
-#: crates/core/src/commands.rs:10038
+#: crates/core/src/commands.rs:10116
 msgid "Unnamed"
 msgstr ""
 
@@ -672,7 +672,7 @@ msgstr ""
 msgid "Worktop"
 msgstr ""
 
-#: crates/core/src/schedule.rs:1191
+#: crates/core/src/schedule.rs:1205
 msgid "Yes"
 msgstr ""
 
