@@ -140,6 +140,71 @@ fn places_are_known_by_a_name() {
     assert_eq!(Kind::parse("lamp"), None);
 }
 
+#[test]
+fn every_rule_of_every_standard_names_its_source() {
+    let sets = rule_sets();
+    assert!(!sets.is_empty(), "data/dr-check.json did not load");
+    for set in sets {
+        let n = &set.standard;
+        assert!(!n.trim().is_empty() && !set.source.trim().is_empty(), "{n}: no source");
+        assert!(!set.not_covered.trim().is_empty(), "{n}: says nothing of what it leaves out");
+        assert!(set.max_residual_ma.is_finite() && set.max_residual_ma > 0.0, "{n}: max_residual_ma");
+        if let Some(a) = set.max_outlet_a {
+            assert!(a.is_finite() && a > 0.0, "{n}: max_outlet_a");
+            assert!(!set.max_outlet_source.trim().is_empty(), "{n}: max_outlet_a names no source");
+        }
+        assert!(!set.it_exempt || !set.it_source.trim().is_empty(), "{n}: it_exempt names no source");
+        assert!(!set.rules.is_empty(), "{n}: no rules");
+        for r in &set.rules {
+            assert!(!r.reason.trim().is_empty() && !r.says.trim().is_empty(), "{n}: a rule says nothing");
+            assert!(!r.source.trim().is_empty(), "{n} {}: names no source", r.reason);
+            for k in &r.places {
+                assert!(PLACES.contains(&k.as_str()), "{n} {}: no place `{k}`", r.reason);
+            }
+            for k in &r.kinds {
+                assert!(KINDS.contains(&k.as_str()), "{n} {}: no kind `{k}`", r.reason);
+            }
+            assert!(r.lights_from_mm.is_none_or(|h| h.is_finite() && h > 0.0), "{n} {}", r.reason);
+        }
+    }
+    assert!(rule_set(DEFAULT).is_some(), "the default `{DEFAULT}` is not in the data");
+    assert_eq!(default_set().max_residual_ma, 30.0);
+}
+
+#[test]
+fn each_reason_comes_with_its_source() {
+    let c = circuit(vec![point(Place::External, Kind::Outlet), point(Place::Kitchen, Kind::Lighting)]);
+    let r = check(&c, true);
+    assert_eq!(r.sources.len(), r.reasons.len());
+    assert!(r.sources[0].contains("5.1.3.2.2 b)") && r.sources[1].contains("5.1.3.2.2 d)"), "{:?}", r.sources);
+}
+
+#[test]
+fn the_same_check_takes_another_standard_s_rules() {
+    // Made-up rules, not any standard's: what the check does comes of the rows alone. Every outlet up to 20 A anywhere, every
+    // point of a bath, nothing exempt, 10 mA.
+    let set: RuleSet = serde_json::from_str(
+        r#"{"standard": "Example", "source": "a test", "max_residual_ma": 10, "max_outlet_a": 20, "max_outlet_source": "t",
+            "rules": [
+              {"reason": "bath", "says": "a bath", "places": ["bath"], "source": "t1"},
+              {"reason": "outlet", "says": "any outlet", "kinds": ["outlet"], "source": "t2"}
+            ],
+            "not_covered": "t"}"#,
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
+    let mut p = point(Place::Dry, Kind::Outlet);
+    assert!(set.check(&circuit(vec![p.clone()]), true).required, "a bedroom's outlet");
+    p.rating = Some(25.0);
+    assert!(!set.check(&circuit(vec![p]), true).required, "above its 20 A");
+    assert!(!set.check(&circuit(vec![point(Place::Kitchen, Kind::Lighting)]), true).required, "no wet rooms here");
+    let mut c = circuit(vec![point(Place::Bath, Kind::Lighting)]);
+    c.it_continuity = true;
+    c.residual = Some(30.0);
+    let v = set.check(&c, true);
+    assert!(v.required && !v.exempt && v.ok == Some(false), "{v:?}");
+    assert_eq!(v.sources, vec!["t1".to_string()]);
+}
+
 mod command {
     use crate::engine::Session;
     use serde_json::{Value, json};
@@ -168,6 +233,9 @@ mod command {
         assert_eq!(r["missing"], json!(["C3 kitchen"]));
         assert_eq!(r["max_residual_ma"], 30.0);
         assert!(r["not_covered"].as_str().is_some_and(|n| n.contains("volume")), "{r}");
+        assert_eq!(r["standard"], "NBR 5410:2004");
+        assert!(r["standard_source"].as_str().is_some_and(|t| t.contains("5.1.3.2.2") && t.contains("IEC 60364")), "{r}");
+        assert!(c[2]["sources"][0].as_str().is_some_and(|t| t.contains("5.1.3.2.2 d)")), "{r}");
         assert_eq!(crate::engine::find("dr_check").map(|c| c.undoable), Some(false));
     }
 
@@ -204,6 +272,8 @@ mod command {
             json!({"circuits": [{"name": "A", "points": [ok.clone()], "units": 1}]}),
             json!({"building": "castle", "circuits": [{"name": "A", "points": [ok.clone()]}]}),
             json!({"circuits": [{"name": "A", "points": [ok.clone()]}], "units": 1}),
+            json!({"standard": "NEC 2023", "circuits": [{"name": "A", "points": [ok.clone()]}]}),
+            json!({"standard": 5410, "circuits": [{"name": "A", "points": [ok.clone()]}]}),
         ] {
             assert!(s.execute("dr_check", &p).is_err(), "{p}");
         }

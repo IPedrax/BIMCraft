@@ -609,6 +609,33 @@ fn a_tool_acts_on_what_lay_under_the_press_not_under_where_the_hand_let_go() {
 }
 
 #[test]
+fn upper_plan_opening_preview_and_placement_use_the_upper_level() {
+    let mut h = app(r#"level {"name":"Upper","elevation":3400}
+wall {"points":[[0,0],[8000,0],[8000,6000],[0,6000]],"closed":true,"height":7200}"#);
+    // The first browser entry is the floor plan; use its accessible action even below the palette's fold.
+    h.get_all_by_label("Upper").min_by(|a, b| a.rect().top().total_cmp(&b.rect().top())).unwrap().click_accesskit();
+    h.run();
+    let upper = find(&h, |e| matches!(e, Element::Level(l) if l.name == "Upper"));
+    assert_eq!(h.state().sheet, Sheet::Plan(upper));
+    for (name, point, expected) in [("Window", P2(4000.0, 0.0), 4300.0), ("Door", P2(8000.0, 3000.0), 3400.0)] {
+        tool(&mut h, name);
+        assert_eq!(h.state().sheet, Sheet::Plan(upper));
+        let s = &h.state().session;
+        let preview = bimcraft_core::opening_of(&s.model, &json!({"at":[point.0,point.1],"level":"Upper"}), name == "Door").unwrap();
+        let (Element::Door(o) | Element::Window(o)) = preview else { panic!("not an opening") };
+        assert_eq!(s.model.opening_frame(&o).unwrap().2, expected, "preview {name}");
+        click(&mut h, point);
+        assert!(!h.state().status.error, "{}", h.state().status.text);
+        let id = ids(&h, &name.to_lowercase())[0];
+        let (Element::Door(o) | Element::Window(o)) = h.state().session.model.elements.get(id).unwrap() else { panic!("not an opening") };
+        assert_eq!(h.state().session.model.opening_frame(o).unwrap().2, expected, "placed {name}");
+        key(&mut h, Key::Escape);
+        click(&mut h, point);
+        assert!(h.state().selection.contains(&id), "placed opening can be picked on Upper");
+    }
+}
+
+#[test]
 fn doors_and_windows_go_into_the_wall_clicked() {
     let mut h = app(BOX);
     let bottom = ids(&h, "wall")[0];
@@ -2724,6 +2751,48 @@ fn a_plans_view_range_is_in_its_properties() {
     key(&mut h, Key::Backspace);
     key(&mut h, Key::Enter);
     assert_eq!(field(&h, 100000, "view_range")["top"], Value::Null);
+}
+
+#[test]
+fn place_view_menu_keeps_long_view_titles_separate_on_the_sheet() {
+    let names = ["A".repeat(80), "B".repeat(80)];
+    let script = format!(
+        r#"wall {{"points":[[0,0],[1000,0],[1000,1000],[0,1000]],"closed":true}}
+        crop {{"view":"Level 1","region":[[0,0],[1000,1000]]}}
+        duplicate_view {{"view":"Level 1","name":"{}"}}
+        duplicate_view {{"view":"Level 1","name":"{}"}}"#,
+        names[0], names[1]
+    );
+    let mut h = app(&script);
+    press(&mut h, "View");
+    press(&mut h, "Sheet");
+    for name in &names {
+        press(&mut h, "View");
+        press(&mut h, "Place View");
+        press(&mut h, &format!("Floor Plan: {name}"));
+    }
+    let viewports = ids(&h, "viewport");
+    assert_eq!(viewports.len(), 2);
+    let Sheet::Paper(id) = h.state().sheet else { panic!("placing a view must keep the sheet open") };
+    let d = bimcraft_core::sheet::draw(&h.state().session.model, id).unwrap();
+    let bounds: Vec<_> = viewports
+        .iter()
+        .map(|id| {
+            d.prims
+                .iter()
+                .zip(&d.owners)
+                .filter(|(_, owner)| **owner == Some(*id))
+                .flat_map(|(prim, _)| prim.points())
+                .fold([f32::INFINITY, f32::INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY], |b, (x, y)| {
+                    [b[0].min(x), b[1].min(y), b[2].max(x), b[3].max(y)]
+                })
+        })
+        .collect();
+    let (a, b) = (bounds[0], bounds[1]);
+    assert!(
+        a[2] < b[0] || b[2] < a[0] || a[3] < b[1] || b[3] < a[1],
+        "the sheet opened through Place View must show separate titles: {a:?}, {b:?}"
+    );
 }
 
 #[test]
@@ -5926,6 +5995,7 @@ fn the_massing_tab_makes_floors_walls_a_floor_and_a_roof_from_the_selected_mass(
 }
 
 mod align;
+mod assistant;
 mod autosave;
 mod browser;
 mod cad;
@@ -6826,3 +6896,4 @@ fn room_area_computation_is_set_from_manage_and_undone() {
 }
 
 mod background_grid;
+mod sheet_fit;

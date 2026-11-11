@@ -13,10 +13,18 @@ sets paper size. Every plan, section and elevation has a scale: one with none of
 1 : 100 or 1/8" = 1'-0" (`Units::default_scale`, `Graphics::scale_n`, `graphics::scale_of`), and `scale` refuses null. A viewport
 placed with no scale takes the view's, and follows it when the view's scale changes (`sheet::follow_scale`); one placed
 at a scale of its own (`place` with `scale`, or `modify`) keeps that one (`Viewport::follow_scale`, written only when off,
-and Properties' Follow View Scale switches it). The units name the scales and list the ones offered (`Units::scale`, `scales`,
+and Properties' Follow View Scale switches it). An unscaled 3D view instead takes the finest offered project scale from the
+default up at which `sheet::spot` finds it and its title a place in the sheet's room, clear of the views there and the title
+block, or in the title block's drawing area (`sheet::default_scale`); if none fits, it takes the coarsest offered scale and may
+still extend off the sheet, which `place`'s `warning` says. Explicit viewport scales, assigned view/template scales and explicit
+positions are preserved. `place` returns the chosen `scale` with its id and position. The units name the scales and list the ones offered (`Units::scale`, `scales`,
 `parse_scale`): metric 1 : n; in inches or feet the architect's (12" = 1'-0" to 1/32" = 1'-0") and the engineer's (1" = 10'-0" to
 1" = 200'-0"), and 1 : n for any other. The Scale menu, Properties, templates and sheets' titles name them so, and a scale is typed
 as n, 1 : n, or two lengths (`1/4" = 1'-0"`).
+
+The built-in sheet title block fits each complete project name, sheet name, scale and sheet number within its own cell,
+with 4 mm clear at either side. Long values shrink uniformly; short values keep their usual lettering size and alignment.
+The full values remain in the project file. The desktop, rendered sheet images and PDF share this lettering.
 
 Background grids are view-owned graphics (`Graphics::background_grid`), controlled by a view template through the
 `background_grid` group. `graphics` and `template` accept a grid patch (spacing in millimetres, divisions, rotation, two
@@ -187,6 +195,11 @@ drawn (`render::edges_at` lists the edges drawn). A view's linework is checked (
 at most `MAX_LINEWORK` (2,000) edges, ends within `MAX_COORD`, and a line style the project has. The drawing splits an element's
 lines along all its edges in one pass (`render::linework`: the cost is the prims plus the edges, not a pass over every prim for
 each edge). A line style a view's linework uses can't be deleted, and an element's entries go with it.
+
+Drawing labels (for example grid heads) use `font.rs`'s single-stroke capitals, including leaning prime and double-prime
+marks and the ellipsis. Unsupported characters retain the question-mark fallback; `Drawing::notes` and the `render`
+reply's `notes` name their Unicode code points once per drawing, up to the drawing's 32 diagnostic entries. Text notes
+use the separate font fallback below, so a character outside the drawing lettering does not by itself warn for a note.
 
 Text notes and text types (`text.rs`). A `Note` is drawn in one view, as a detail line is, and is of a text type
 (`Model::text_types`, library entries of `Kind::TextType`, so a file names a note's type by GUID and `rename_entry` follows a
@@ -720,7 +733,7 @@ the picture shows under them (`dims3d::pick`).
 ## Title blocks
 
 A sheet is drawn with the built-in title box unless it names a title block of the project's own (`Sheet::title_block`, a library
-entry of kind `title-block`, held by GUID in a file like any other name; FORMAT 19). A title block (`titleblock.rs`) is a box, `width`
+entry of kind `title-block`, held by GUID in a file like any other name; FORMAT 18). A title block (`titleblock.rs`) is a box, `width`
 by `height` mm, that stands in the sheet's bottom right corner inside the border, where the built-in one stands, with lines (in pens),
 solid fills (a logo) and lettering, all in mm on paper from its own bottom left corner; the border and NBR 17067's folding marks are
 drawn as before, and a view placed by default goes above its height (`sheet::spot`). Lettering may name fields as `{KEY}`: a field the
@@ -732,12 +745,28 @@ definition, and a value given to one (DATE, to issue on) is said instead. A key 
 shows on the sheet. `titleblock::values` works them out, `sheet::title_values` with the sheet's scale, and `elements` gives a sheet's
 as `title_values`, with the keys that are its own to give as `sheet_fields`.
 
+A definition may set `drawing_area: [[left,bottom],[right,top]]` in millimetres from the paper's bottom left. Each sheet using it
+must contain the rectangle, and views placed by default go inside it, the first in its middle. A view whose frame and title are
+larger than the area is refused, saying both sizes. Explicit centers and existing viewports keep their
+positions. Set `template_border: true` for a frame drawn by the template's own lines; standard fold marks still print.
+Both options are under Size in the title-block editor, and FORMAT 18 holds them; a definition without them keeps the standard
+border and placement.
+
+`place` without `at` (`sheet::spot`) keeps the complete view and its title, rule and scale (`footprint`) clear of other viewports
+and inside the sheet's room (`Room`): the title block's drawing area when it gives one, else the border 5 mm in, of the active
+technical standard's margins, clear of the title block the sheet names (the project's, the built-in one, or nothing for a sheet
+with none). It keeps the room's middle for the first view when it fits, then tries beside or below existing views and the room's
+corners. Long titles reserve their actual lettering width; schedules keep their title inside their table. When no candidate fits,
+placement continues right of the other views, off the paper without stacking them. Give `at` to choose a position yourself;
+existing viewports are not rearranged. Whenever a view or its title reaches past the paper, by hand or for want of room,
+`place` still places it and says so in its reply's `warning` (`sheet::off_paper`).
+
 A sheet may also have no title block at all: `sheet {"title_block": "none"}` (`titleblock::NONE`, in any case, or `false`; `true` or
 `""` is the built-in one), for one drawn on the sheet itself. It leaves out the border, the title box and its lettering and the folding
 marks, not viewports, their titles, schedules, text notes or detail lines. Properties > Title Block offers None beside Built-in and
 the project's own (`modify` with `title_block`); `elements` always reports it, `""` for the built-in one, which the file leaves out.
-The desktop and exports share `sheet::draw`. Paper size and automatic viewport placement stay the same, including the room above
-the built-in title box. A frame not drawn can't be picked; viewport and annotation picking are unchanged, and Properties shows the
+The desktop and exports share `sheet::draw`. Paper size stays the same, and automatic viewport placement keeps no room for a
+title box: the first view goes in the middle of the border. A frame not drawn can't be picked; viewport and annotation picking are unchanged, and Properties shows the
 sheet when nothing is selected. No title block of the project's may be called `none` (`TitleBlock::check`), and none is no library
 entry, so renaming and Purge Unused pass it by. A file of 17 holds no `none`, so its sheets keep the built-in title box; FORMAT 18,
 shared with the title blocks, keeps a build that reads up to 17 from printing the frame again on a sheet with none.

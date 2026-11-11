@@ -73,10 +73,11 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// The version of the project file this build writes, and the newest it reads. 18: a family's connector may be a `pipe`,
 /// `data` or `earthing` one, with no `system` (a pipe's `domain`, `flow`, `size`), and any may have a place (`at`, `direction`);
 /// the starter fixtures and fittings have them; a project may hold title blocks of its own (`title_blocks`, library entries of
-/// kind `title-block`) and its values of their fields (`title_values`), and a sheet may name one (`title_block`) and hold its
-/// values of its fields (`fields`), or name `none` to have no title block at all (no border, title box or folding marks); a
-/// wall or a run may refuse to join its neighbours (`join: false`, written only then); and a dimension may measure to the line
-/// across a column, square to its angle (`across`). Nothing in a file of 17 changes, but a build that reads up to 17 would
+/// kind `title-block`; one may give the paper rectangle views are placed in by default, `drawing_area`, and draw the sheet's
+/// border itself, `template_border`) and its values of their fields (`title_values`), and a sheet may name one (`title_block`)
+/// and hold its values of its fields (`fields`), or name `none` to have no title block at all (no border, title box or folding
+/// marks); a wall or a run may refuse to join its neighbours (`join: false`, written only then); and a dimension may measure to
+/// the line across a column, square to its angle (`across`). Nothing in a file of 17 changes, but a build that reads up to 17 would
 /// answer such a connector or dimension with a serde error ("unknown variant", "missing field `system`"), would leave the
 /// title blocks out as fields it doesn't know, drawing every sheet with the built-in title box, and would silently drop
 /// `join: false` and join the element again, not say "saved by a newer BIMCraft". 17: a schedule may list several categories
@@ -3531,9 +3532,9 @@ impl Model {
         // 15 to 16 (dimensions in 3D views, a category 15 doesn't know and would refuse; the locks Align leaves, which 15 would
         // read as dimensions of nothing) has no step: a file of 15 holds none.
         // 16 to 17 (multi-category schedules, Italian as a project's language) has none either: a file of 16 holds neither.
-        // 17 to 18 (pipe, data and earthing connectors, a connector's place; title blocks of the project's own, their fields'
-        // values, and sheets with none; walls and runs that refuse to join; a dimension to the line across a column) has none
-        // either: a file of 17's connectors are a power or a switch one, each with its system, which 18 reads as they were; a
+        // 17 to 18 (pipe, data and earthing connectors, a connector's place; title blocks of the project's own, with a drawing
+        // area and a border of their own, their fields' values, and sheets with none; walls and runs that refuse to join; a
+        // dimension to the line across a column) has none either: a file of 17's connectors are a power or a switch one, each with its system, which 18 reads as they were; a
         // file of 17 holds no title blocks, its sheets keeping the built-in one, no `join`, which reads as joining, as it always
         // did, and none of its dimensions measures `across`.
         self.format = FORMAT;
@@ -3718,8 +3719,8 @@ impl Model {
         )
     }
 
-    /// What a level stretches over without an extent of its own: every solid and grid in plan,
-    /// [`LEVEL_PAST`] past them (10 m each way of the origin in an empty project).
+    /// What a level stretches over without an extent of its own: every solid, grid and CAD drawing in plan,
+    /// [`LEVEL_PAST`] past them. Scans count only when those are absent (10 m each way of the origin in an empty project).
     pub fn model_extent(&self) -> [P2; 2] {
         self.model_extent_of(crate::view3d::solids(self).iter().flat_map(|s| s.corners()).map(|p| P2(p[0], p[1])))
     }
@@ -3727,18 +3728,24 @@ impl Model {
     /// [`Model::model_extent`], of `corners`, in plan: those of [`crate::view3d::solids`] of this model, or the points
     /// that may be farthest among them.
     pub(crate) fn model_extent_of(&self, corners: impl Iterator<Item = P2>) -> [P2; 2] {
-        // The grids, scans and drawings, in the order of their ids, from the lookup.
+        // The grids and drawings, in the order of their ids, from the lookup.
         let lookup = self.lookup();
-        let others: BTreeSet<Id> = lookup.grids().chain(lookup.rare("pointcloud")).chain(lookup.rare("cadimport")).collect();
-        let pts = corners.chain(others.into_iter().flat_map(|id| match self.elements.get(id) {
+        let others: BTreeSet<Id> = lookup.grids().chain(lookup.rare("cadimport")).collect();
+        let mut pts = corners.chain(others.into_iter().flat_map(|id| match self.elements.get(id) {
             Some(Element::Grid(g)) => vec![g.start, g.end],
-            Some(Element::PointCloud(_)) => self.cloud_box(id).map_or(Vec::new(), |(lo, hi)| vec![P2(lo[0], lo[1]), P2(hi[0], hi[1])]),
             Some(Element::CadImport(_)) => self.cad_box(id).map_or(Vec::new(), |b| b.to_vec()),
             _ => Vec::new(),
         }));
+        // A site survey must not stretch a building's levels; a scan-only project still fits its scans.
+        let first = pts.next();
+        let scans = lookup
+            .rare("pointcloud")
+            .filter(|_| first.is_none())
+            .filter_map(|id| self.cloud_box(id))
+            .flat_map(|(lo, hi)| [P2(lo[0], lo[1]), P2(hi[0], hi[1])]);
         // Folded as they come, the first the start: no list of every corner of every mesh.
         let mut bounds: Option<(P2, P2)> = None;
-        for q in pts {
+        for q in first.into_iter().chain(pts).chain(scans) {
             bounds = Some(match bounds {
                 None => (q, q),
                 Some((lo, hi)) => (P2(lo.0.min(q.0), lo.1.min(q.1)), P2(hi.0.max(q.0), hi.1.max(q.1))),
@@ -4206,6 +4213,16 @@ impl Model {
             sill: number(crate::family::SILL).unwrap_or(if is_door { 0.0 } else { 900.0 }),
             operation: f.operation,
         })
+    }
+
+    /// Whether this door has one swinging leaf. A door without a declared operation swings by default,
+    /// as it does in IFC. Read the chosen family or project type without building its geometry.
+    pub fn single_swing_door(&self, family: Option<&str>, type_name: &str) -> bool {
+        let operation = match family {
+            Some(name) => self.families.get(name).filter(|f| f.category == crate::family::Category::Door).map(|f| f.operation),
+            None => self.types.door.get(type_name).map(|t| t.operation),
+        };
+        matches!(operation, Some(None | Some(Operation::Swing)))
     }
 
     /// The type of a door or window.
@@ -5782,7 +5799,7 @@ impl Model {
 
     /// What bounds the rooms of `level`: the centre lines of its walls, arcs as chords, and its room separation lines. A
     /// separation line drawn to a wall's face, as one drawn on a plan usually is, runs on to the wall's centre line, so it
-    /// splits rooms measured there too.
+    /// splits rooms measured there too. A parallel continuation at a straight wall's end joins across its cap instead.
     pub fn bounding_lines(&self, level: impl Key) -> Vec<(P2, P2)> {
         self.bounding_lines_in(level, Some(&walls::Index::new(self)))
     }
@@ -5790,14 +5807,26 @@ impl Model {
     /// [`Model::bounding_lines`], the walls' joins found through `index`, or among every wall without one.
     pub(crate) fn bounding_lines_in(&self, level: impl Key, index: Option<&walls::Index>) -> Vec<(P2, P2)> {
         let walls = self.wall_segments(&level, index, true);
-        let mut lines: Vec<(P2, P2)> = walls.iter().map(|&(a, b, _)| (a, b)).collect();
-        lines.extend(self.separators(level).into_iter().map(|(a, b)| (to_centre(b, a, &walls), to_centre(a, b, &walls))));
+        let mut lines: Vec<(P2, P2)> = walls.iter().map(|s| (s.start, s.end)).collect();
+        for (a, b) in self.separators(level) {
+            let (start, end) = (to_centre(b, a, &walls), to_centre(a, b, &walls));
+            lines.push((start, end));
+            for (from, drawn, extended) in [(b, a, start), (a, b, end)] {
+                // Keep crossing extensions as before. A parallel end gets a short cap connection, so the separator
+                // stays on its drawn line instead of tilting the whole room boundary towards the wall's centre.
+                if drawn == extended
+                    && let Some(centre) = parallel_wall_end(from, drawn, &walls)
+                {
+                    lines.push((drawn, centre));
+                }
+            }
+        }
         lines
     }
 
     /// Centre lines of the walls that bound the rooms of `level`, arcs as chords.
     pub fn wall_lines(&self, level: impl Key) -> Vec<(P2, P2)> {
-        self.wall_segments(&level, Some(&walls::Index::new(self)), false).into_iter().map(|(a, b, _)| (a, b)).collect()
+        self.wall_segments(&level, Some(&walls::Index::new(self)), false).into_iter().map(|s| (s.start, s.end)).collect()
     }
 
     /// The walls that bound the rooms of `level` (with `rooms`, those whose Room Bounding is on), by id.
@@ -5811,14 +5840,28 @@ impl Model {
         candidates.filter(move |&id| self.wall(id).is_some_and(|w| self.bounding(w, level) && (!rooms || w.room_bounding)))
     }
 
-    /// The segments of [`Model::wall_lines`], each with half its wall's thickness.
+    /// The segments of [`Model::wall_lines`], each with half its wall's thickness and its eligible straight-wall end caps.
     /// With `rooms`, of the walls whose Room Bounding is on.
-    fn wall_segments(&self, level: &impl Key, index: Option<&walls::Index>, rooms: bool) -> Vec<(P2, P2, f64)> {
+    fn wall_segments(&self, level: &impl Key, index: Option<&walls::Index>, rooms: bool) -> Vec<WallSegment> {
         self.bounding_walls(level, rooms)
-            .filter_map(|id| Some((id, self.thickness(self.wall(id)?) / 2.0)))
-            .flat_map(|(id, half)| {
+            .filter_map(|id| {
+                let wall = self.wall(id)?;
+                Some((id, self.thickness(wall) / 2.0, wall.arc == 0.0))
+            })
+            .flat_map(|(id, half, straight)| {
                 let line = walls::centre_line_in(self, id, index);
-                line.windows(2).filter_map(|s| s.first().zip(s.get(1)).map(|(a, b)| (*a, *b, half))).collect::<Vec<_>>()
+                line.windows(2)
+                    .enumerate()
+                    .filter_map(|(i, s)| {
+                        s.first().zip(s.get(1)).map(|(a, b)| WallSegment {
+                            start: *a,
+                            end: *b,
+                            half,
+                            // A curved wall's chord direction is not its actual end-cap tangent.
+                            caps: [straight && i == 0, straight && i + 2 == line.len()],
+                        })
+                    })
+                    .collect::<Vec<_>>()
             })
             .collect()
     }
@@ -7306,6 +7349,14 @@ impl Model {
                         sh.size
                     ));
                 };
+                if let Some([_, hi]) = self.title_blocks.get(&sh.title_block).and_then(|tb| tb.drawing_area)
+                    && (hi.0 > width || hi.1 > height)
+                {
+                    return Err(format!(
+                        "{who}: title block `{}` drawing area extends outside {width} × {height} mm paper on sheet {}",
+                        sh.title_block, sh.number
+                    ));
+                }
                 // The title block is drawn its standard's size in the bottom right corner, inside the border: paper
                 // smaller than that would squeeze it until the sheet's name runs over its number. A sheet with none has
                 // nothing there to squeeze.
@@ -7895,28 +7946,70 @@ struct OpeningSpan {
     id: Id,
 }
 
+/// A room-bounding wall's centreline segment. Only straight walls have eligible parallel-connection caps.
+struct WallSegment {
+    start: P2,
+    end: P2,
+    half: f64,
+    caps: [bool; 2],
+}
+
 /// Where the line from `from` through `end` reaches the centre line of a wall that `end` lies inside (within half the wall's
 /// thickness of that line), carrying on the way it points; `end` itself when it lies in no wall or is on a centre line already.
-fn to_centre(from: P2, end: P2, walls: &[(P2, P2, f64)]) -> P2 {
+fn to_centre(from: P2, end: P2, walls: &[WallSegment]) -> P2 {
     let way = (end - from).unit();
     if !way.is_finite() {
         return end;
     }
     walls
         .iter()
-        .filter(|&&(a, b, half)| half > 0.0 && geom::dist_to_segment(end, a, b) <= half + TOL)
-        .filter_map(|&(a, b, half)| {
+        .filter(|s| s.half > 0.0 && geom::dist_to_segment(end, s.start, s.end) <= s.half + TOL)
+        .filter_map(|s| {
             // Far enough to cross a wall met at a slant, short of the wall beyond it.
-            let reach = 4.0 * half + TOL;
-            geom::crossing(end, end + way * reach, a, b).map(|t| t * reach)
+            let reach = 4.0 * s.half + TOL;
+            geom::crossing(end, end + way * reach, s.start, s.end).map(|t| t * reach)
         })
         .min_by(f64::total_cmp)
         .map_or(end, |d| end + way * d)
 }
 
+/// A parallel separator continuing a straight wall's end can meet its cap without ever crossing its centre line.
+/// Join only there, within the wall's thickness: never along its side, across a gap, or pointing back over the wall.
+fn parallel_wall_end(from: P2, end: P2, walls: &[WallSegment]) -> Option<P2> {
+    let way = (end - from).unit();
+    walls
+        .iter()
+        .filter(|s| s.half > 0.0 && (s.end - s.start).unit().cross(way).abs() <= 1e-9)
+        .flat_map(|s| [(s.start, s.end, s.half, s.caps[0]), (s.end, s.start, s.half, s.caps[1])])
+        .filter(|&(cap, other, half, actual_cap)| {
+            let inward = (other - cap).unit();
+            actual_cap && inward.dot(way) > 0.0 && (end - cap).dot(inward).abs() <= TOL && end.dist(cap) <= half + TOL
+        })
+        .map(|(cap, _, _, _)| cap)
+        .filter(|cap| end.dist(*cap) > TOL)
+        .min_by(|a, b| end.dist(*a).total_cmp(&end.dist(*b)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_parallel_separator_does_not_treat_internal_arc_chord_ends_as_wall_caps() {
+        let mut m = Model::new("Arc cap control");
+        let level = m.guid(100000);
+        let id = m.insert(wall(level, P2(0.0, 0.0), P2(8000.0, 0.0)));
+        if let Some(Element::Wall(w)) = m.elements.get_mut(id) {
+            w.arc = 90.0;
+        }
+        let segments = m.wall_segments(&level, None, true);
+        assert!(segments.len() > 3);
+        let s = &segments[1];
+        let (a, b, half) = (s.start, s.end, s.half);
+        let way = (b - a).unit();
+        let end = b + way.perp() * half;
+        assert_eq!(parallel_wall_end(end + way * 1000.0, end, &segments), None);
+    }
 
     fn wall(level: Guid, a: P2, b: P2) -> Element {
         Element::Wall(Wall {
