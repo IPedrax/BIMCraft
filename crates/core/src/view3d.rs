@@ -1985,10 +1985,19 @@ impl Scene {
         self.fit_in(azimuth, elevation, width, height, &Look::default())
     }
 
-    /// A view of what `look` shows of the model, fitted into the picture.
+    /// A view of what `look` shows of the model, fitted into the picture: built geometry and its levels,
+    /// with scans included only when no built geometry is shown.
     pub fn fit_in(&self, azimuth: f64, elevation: f64, width: u32, height: u32, look: &Look) -> Camera {
         let cam = Camera { azimuth, elevation, scale: 1.0, target: [0.0; 3], width, height, lens: None };
         self.fit_from(cam, look)
+    }
+
+    fn fitting_points<'a>(&'a self, look: &'a Look) -> impl Iterator<Item = P3> + 'a {
+        let built = self.tris.iter().any(|t| look.shows(t.owner));
+        let solids = self.tris.iter().filter(|t| look.shows(t.owner)).flat_map(|t| t.p);
+        let levels = self.levels.iter().filter(|(id, ..)| look.shows(*id)).flat_map(|(.., c)| *c);
+        let scans = self.scans.iter().filter(move |s| !built && look.shows(s.owner)).flat_map(|s| s.corners);
+        solids.chain(levels).chain(scans)
     }
 
     /// What `look` shows of the model, fitted into `cam`'s picture from where it looks and through its lens: in perspective,
@@ -1999,10 +2008,7 @@ impl Scene {
         let cam = Camera { lens: Some(lens), ..fitted };
         let Some(f) = cam.focal() else { return cam };
         // All of it within a ball round the target, and the ball within the narrower side of the picture.
-        let solids = self.tris.iter().filter(|t| look.shows(t.owner)).flat_map(|t| t.p);
-        let levels = self.levels.iter().filter(|(id, ..)| look.shows(*id)).flat_map(|(.., c)| *c);
-        let scans = self.scans.iter().filter(|s| look.shows(s.owner)).flat_map(|s| s.corners);
-        let reach = solids.chain(levels).chain(scans).map(|p| dot(sub(p, cam.target), sub(p, cam.target)).sqrt()).fold(0.0, f64::max);
+        let reach = self.fitting_points(look).map(|p| dot(sub(p, cam.target), sub(p, cam.target)).sqrt()).fold(0.0, f64::max);
         let half = (f64::from(cam.width.min(cam.height)) / 2.0 - MARGIN).max(1.0);
         let d = reach.max(1000.0) / (half / f).atan().sin().max(1e-9);
         Camera { scale: (f / d).clamp(1e-6, 50.0), ..cam }
@@ -2012,10 +2018,7 @@ impl Scene {
         let (width, height) = (cam.width, cam.height);
         let mut cam = Camera { elevation: cam.elevation.clamp(-89.0, 89.0), scale: 1.0, target: [0.0; 3], ..cam };
         let room = |px: u32| (f64::from(px) - 2.0 * MARGIN).max(1.0);
-        let solids = self.tris.iter().filter(|t| look.shows(t.owner)).flat_map(|t| t.p);
-        let levels = self.levels.iter().filter(|(id, ..)| look.shows(*id)).flat_map(|(.., c)| *c);
-        let scans = self.scans.iter().filter(|s| look.shows(s.owner)).flat_map(|s| s.corners);
-        let mut pts: Vec<P3> = solids.chain(levels).chain(scans).collect();
+        let mut pts: Vec<P3> = self.fitting_points(look).collect();
         let Some((target, w, h)) = extent(&cam, &pts) else {
             cam.scale = room(width).min(room(height)) / 10_000.0;
             return cam;

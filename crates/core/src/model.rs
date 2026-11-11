@@ -3714,8 +3714,8 @@ impl Model {
         )
     }
 
-    /// What a level stretches over without an extent of its own: every solid and grid in plan,
-    /// [`LEVEL_PAST`] past them (10 m each way of the origin in an empty project).
+    /// What a level stretches over without an extent of its own: every solid, grid and CAD drawing in plan,
+    /// [`LEVEL_PAST`] past them. Scans count only when those are absent (10 m each way of the origin in an empty project).
     pub fn model_extent(&self) -> [P2; 2] {
         self.model_extent_of(crate::view3d::solids(self).iter().flat_map(|s| s.corners()).map(|p| P2(p[0], p[1])))
     }
@@ -3723,18 +3723,24 @@ impl Model {
     /// [`Model::model_extent`], of `corners`, in plan: those of [`crate::view3d::solids`] of this model, or the points
     /// that may be farthest among them.
     pub(crate) fn model_extent_of(&self, corners: impl Iterator<Item = P2>) -> [P2; 2] {
-        // The grids, scans and drawings, in the order of their ids, from the lookup.
+        // The grids and drawings, in the order of their ids, from the lookup.
         let lookup = self.lookup();
-        let others: BTreeSet<Id> = lookup.grids().chain(lookup.rare("pointcloud")).chain(lookup.rare("cadimport")).collect();
-        let pts = corners.chain(others.into_iter().flat_map(|id| match self.elements.get(id) {
+        let others: BTreeSet<Id> = lookup.grids().chain(lookup.rare("cadimport")).collect();
+        let mut pts = corners.chain(others.into_iter().flat_map(|id| match self.elements.get(id) {
             Some(Element::Grid(g)) => vec![g.start, g.end],
-            Some(Element::PointCloud(_)) => self.cloud_box(id).map_or(Vec::new(), |(lo, hi)| vec![P2(lo[0], lo[1]), P2(hi[0], hi[1])]),
             Some(Element::CadImport(_)) => self.cad_box(id).map_or(Vec::new(), |b| b.to_vec()),
             _ => Vec::new(),
         }));
+        // A site survey must not stretch a building's levels; a scan-only project still fits its scans.
+        let first = pts.next();
+        let scans = lookup
+            .rare("pointcloud")
+            .filter(|_| first.is_none())
+            .filter_map(|id| self.cloud_box(id))
+            .flat_map(|(lo, hi)| [P2(lo[0], lo[1]), P2(hi[0], hi[1])]);
         // Folded as they come, the first the start: no list of every corner of every mesh.
         let mut bounds: Option<(P2, P2)> = None;
-        for q in pts {
+        for q in first.into_iter().chain(pts).chain(scans) {
             bounds = Some(match bounds {
                 None => (q, q),
                 Some((lo, hi)) => (P2(lo.0.min(q.0), lo.1.min(q.1)), P2(hi.0.max(q.0), hi.1.max(q.1))),
