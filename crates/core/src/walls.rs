@@ -12,7 +12,7 @@ mod index;
 pub(crate) use index::{Index, reach};
 
 use crate::geom::{self, P2};
-use crate::model::{Element, Function, Guid, Id, Layer, Location, Model, TOL, Wall};
+use crate::model::{Element, Function, Guid, Id, Layer, Location, Model, Opening, TOL, Wall};
 
 /// A wall's location line, from its start to its end: straight, or an arc.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -684,19 +684,36 @@ pub fn heights(m: &Model, w: &Wall) -> (f64, f64) {
     (lo, hi)
 }
 
+/// A door's or a window's hole in its host wall, in the wall's own frame: `s0..s1` along its axis,
+/// its centre line at 0, and `bottom..top` above z 0, its base plus the opening's sill.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Hole {
+    pub s0: f64,
+    pub s1: f64,
+    pub bottom: f64,
+    pub top: f64,
+}
+
+/// The hole `o` cuts in wall `w`: its type's width either side of its offset and its height above its
+/// sill. Which jamb a leaf is hinged on, and which way it opens, is the opening's, not the hole's.
+pub fn hole(m: &Model, w: &Wall, e: &Element, o: &Opening) -> Option<Hole> {
+    let t = m.opening_type(e)?;
+    let bottom = m.own_base(w) + o.sill;
+    Some(Hole { s0: o.offset - t.width / 2.0, s1: o.offset + t.width / 2.0, bottom, top: bottom + t.height })
+}
+
 /// The sides of the notches wall `id`'s doors and windows cut where they rise past its top, as Revit lets them: a line across
 /// the wall from face to face at each jamb whose head reaches the top there, which a plan seeing the wall from above draws.
 pub fn notches(m: &Model, id: Id) -> Vec<[P2; 2]> {
     let Some(w) = m.wall(id) else { return Vec::new() };
     let guid = m.guid(id);
-    let (axis, (ext, int), base) = (Axis::of(w), faces(m, w), m.own_base(w));
+    let (axis, (ext, int)) = (Axis::of(w), faces(m, w));
     let mut out = Vec::new();
     for e in m.lookup().referrers(&guid).filter_map(|k| m.elements.get(k)) {
         let (Element::Door(o) | Element::Window(o)) = e else { continue };
-        let Some(t) = m.opening_type(e).filter(|_| o.host == guid) else { continue };
-        let head = base + o.sill + t.height;
-        for s in [o.offset - t.width / 2.0, o.offset + t.width / 2.0] {
-            if head >= top_at(m, w, s) - 1e-6 {
+        let Some(h) = hole(m, w, e, o).filter(|_| o.host == guid) else { continue };
+        for s in [h.s0, h.s1] {
+            if h.top >= top_at(m, w, s) - 1e-6 {
                 out.push([axis.at(s, int), axis.at(s, ext)]);
             }
         }
@@ -727,7 +744,6 @@ pub(crate) fn prisms_in(m: &Model, id: Id, openings: bool, index: Option<&Index>
     let axis = Axis::of(w);
     let (ext, int) = faces(m, w);
     let len = axis.length();
-    let z0 = m.own_base(w);
     // The openings: along the wall, and up it.
     let candidates: Box<dyn Iterator<Item = &Element> + '_> = if !openings {
         Box::new(std::iter::empty())
@@ -737,17 +753,14 @@ pub(crate) fn prisms_in(m: &Model, id: Id, openings: bool, index: Option<&Index>
             None => Box::new(m.elements.values()),
         }
     };
-    let holes: Vec<((f64, f64), (f64, f64))> = candidates
+    let holes: Vec<Hole> = candidates
         .filter_map(|e| match e {
-            Element::Door(o) | Element::Window(o) if o.host == guid => {
-                let t = m.opening_type(e)?;
-                Some(((o.offset - t.width / 2.0, o.offset + t.width / 2.0), (z0 + o.sill, z0 + o.sill + t.height)))
-            }
+            Element::Door(o) | Element::Window(o) if o.host == guid => hole(m, w, e, o),
             _ => None,
         })
         .collect();
     let mut cuts = axis.stations(0.0, len);
-    cuts.extend(holes.iter().flat_map(|((s0, s1), _)| [*s0, *s1]).filter(|s| *s > 0.0 && *s < len));
+    cuts.extend(holes.iter().flat_map(|h| [h.s0, h.s1]).filter(|s| *s > 0.0 && *s < len));
     cuts.sort_by(f64::total_cmp);
     cuts.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
     let (start, end) = (cap_in(m, id, false, index), cap_in(m, id, true, index));
@@ -760,7 +773,7 @@ pub(crate) fn prisms_in(m: &Model, id: Id, openings: bool, index: Option<&Index>
         ring.extend(if b >= len { end.clone() } else { vec![axis.at(b, ext), axis.at(b, int)] });
         // Up from its base to its top, past the openings over its middle.
         let mid = (a + b) / 2.0;
-        let mut gaps: Vec<(f64, f64)> = holes.iter().filter(|((s0, s1), _)| *s0 <= mid && mid <= *s1).map(|(_, z)| *z).collect();
+        let mut gaps: Vec<(f64, f64)> = holes.iter().filter(|h| h.s0 <= mid && mid <= h.s1).map(|h| (h.bottom, h.top)).collect();
         gaps.sort_by(|x, y| x.0.total_cmp(&y.0));
         let flat = |z: f64| Bound { regions: Vec::new(), own: z };
         let mut floors: Vec<Bound> = vec![base.clone()];
@@ -951,5 +964,25 @@ mod tests {
         assert_eq!(whole.len(), 2);
         let tan = 30f64.to_radians().tan();
         assert!(whole.iter().all(|p| (p.top.at(P2(8000.0, 3000.0)) - (3000.0 + 3100.0 * tan)).abs() < 1e-6));
+    }
+
+    #[test]
+    fn an_openings_hole_is_its_type_in_its_hosts_frame() {
+        // A wall 6000 long whose base is 500 above its level, a 900 x 2100 door, and a 1200 x 1500
+        // window with its sill 900 up.
+        let s = session(
+            r#"wall {"points": [[0,0],[6000,0]], "base_offset": 500}
+               door {"wall": 100002, "offset": 2000}
+               window {"wall": 100002, "offset": 4500}"#,
+        );
+        let m = &s.model;
+        let w = m.wall(100002).unwrap_or_else(|| panic!("no wall"));
+        let at = |id: Id| {
+            let e = m.elements.get(id).unwrap_or_else(|| panic!("no element {id}"));
+            let (Element::Door(o) | Element::Window(o)) = e else { panic!("{id} isn't an opening") };
+            hole(m, w, e, o).unwrap_or_else(|| panic!("no hole for {id}"))
+        };
+        assert_eq!(at(100003), Hole { s0: 1550.0, s1: 2450.0, bottom: 500.0, top: 2600.0 });
+        assert_eq!(at(100004), Hole { s0: 3900.0, s1: 5100.0, bottom: 1400.0, top: 2900.0 });
     }
 }

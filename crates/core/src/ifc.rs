@@ -71,9 +71,11 @@ const TYPE_MATERIALS: u64 = 57;
 const USAGE_MATERIALS: u64 = 58;
 const PANEL_PROPERTIES: u64 = 59;
 const PANEL_DEFINES: u64 = 60;
-const DISTRIBUTION: u64 = 61;
-const DISTRIBUTION_MEMBERS: u64 = 62;
+const WALLED: u64 = 61;
+const WALLED_DEFINES: u64 = 62;
 const DISTRIBUTION_SERVES: u64 = 63;
+const DISTRIBUTION: u64 = 71;
+const DISTRIBUTION_MEMBERS: u64 = 72;
 
 /// The property set an element's values of the project's parameters go in.
 pub const PARAMETERS: &str = "Project Parameters";
@@ -89,6 +91,10 @@ pub const PANEL: &str = "BIMCraft_Panel";
 /// The property set a lofted mass records how its footprint and its top outline pair up in, corner for corner (the body is
 /// a closed face set that doesn't say): `Loft`, JSON `{bottom, top}`.
 pub const LOFT: &str = "BIMCraft_Mass";
+
+/// A wall's authored location line (`Location`), and the GlobalIds of the roof or floor its top and base follow
+/// (`AttachTop`, `AttachBase`). Its Axis representation lies on that location line.
+pub const WALL: &str = "BIMCraft_Wall";
 
 /// The object type a room separation line's virtual element carries, which the import reads it back by.
 pub const SEPARATION: &str = "RoomSeparation";
@@ -897,6 +903,14 @@ pub fn export(m: &Model) -> String {
                     s(&wl.type_name)
                 ));
                 contained.entry(wl.level).or_default().push(ent);
+                let mut props = vec![w.text_property("Location", None, wl.location.name())];
+                for (name, to) in [("AttachTop", wl.attach_top), ("AttachBase", wl.attach_base)] {
+                    if let Some(to) = to.and_then(|g| m.elements.id(g)) {
+                        let global = w.guid(ELEMENT, to);
+                        props.push(w.add(format!("IFCPROPERTYSINGLEVALUE({},$,IFCIDENTIFIER({global}),$)", s(name))));
+                    }
+                }
+                w.define(ent, WALL, &props, (WALLED, WALLED_DEFINES), id);
                 products.insert(id, ent);
                 placed.insert(id, (ent, at));
                 w.typed("IFCWALLTYPE", ".STANDARD.", &wl.type_name, ent);
@@ -1310,7 +1324,8 @@ pub fn export(m: &Model) -> String {
                     s(&format!("Bar {}", rb.diameter)),
                     s(&rb.grade),
                     real(rb.diameter),
-                    real(area),
+                    // In the file's square metres, to twelve places: a bar's section is a ten-thousandth of one.
+                    ratio(area / 1e6),
                     real(crate::rebar::length(&rb.path))
                 ));
                 bars.push((rb.level, rb.host.and_then(|h| m.elements.id(h)), ent));

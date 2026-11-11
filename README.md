@@ -447,7 +447,7 @@ or to any MCP client's configuration:
 | `script {text, atomic?, dry_run?}` | Several commands, one per line; `atomic`: all or nothing, one undo step; `dry_run`: what it would do, nothing kept |
 | `list_commands {filter?}` | The catalog, with parameters and shortcuts |
 | `inspect_model` | Levels, counts, types, warnings and undo history |
-| `query_elements {category?, level?}` | Elements with derived values: wall length and height, room area, door position |
+| `query_elements {category?, level?, field?, value?}` | Elements with derived values: wall length and height, room area, door position; a field's value finds what holds it |
 | `schedule {name?, category?, fields?, filters?, sort?, grouped?}` | A schedule's columns, rows and totals; a new one, or one changed, as the command makes it |
 | `render {view?, ceiling?, width?, height?, azimuth?, elevation?}` | A level's floor plan (or reflected ceiling plan), a section or elevation by name, a sheet by number, or with `view: "{3D}"` the 3D view, as a PNG the agent can look at |
 | `new_model`, `open`, `save` | Projects; `open` imports `.ifc` files, `save` to `.ifc`, `.svg` or `.png` exports |
