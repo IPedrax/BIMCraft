@@ -17,6 +17,14 @@ on:
 permissions:
   contents: write
 
+# The secret a user's saved API key is scrambled with (crates/assistant/src/seal.rs) is built into the program, and comes from this
+# repository secret, so its text is not in the source (`gh secret set BIMCRAFT_KEY_SECRET`). Every job that compiles has it; the Flatpak
+# and Arch jobs only repackage the Linux tarball. A release whose build has none (the secret missing, or empty) fails its tests here,
+# rather than sealing keys with the public development key.
+env:
+  BIMCRAFT_KEY_SECRET: ${{ secrets.BIMCRAFT_KEY_SECRET }}
+  BIMCRAFT_REQUIRE_KEY_SECRET: "1"
+
 jobs:
   windows:
     name: Windows installer
@@ -26,6 +34,13 @@ jobs:
 
       - name: Rust
         run: rustup update stable && rustup default stable
+
+      # As in ci.yml: the plugin tests load the guest SDK's sample module, which is not in the repository, and fail in CI
+      # without it.
+      - name: Sample plugin
+        run: |
+          rustup target add wasm32-unknown-unknown
+          cargo build --manifest-path crates/plugin/tests/sample-plugin/Cargo.toml --target wasm32-unknown-unknown --release
 
       - name: Test
         run: cargo test --workspace
@@ -118,6 +133,13 @@ jobs:
 
       - name: Rust
         run: rustup update stable && rustup default stable
+
+      # As in ci.yml: the plugin tests load the guest SDK's sample module, which is not in the repository, and fail in CI
+      # without it.
+      - name: Sample plugin
+        run: |
+          rustup target add wasm32-unknown-unknown
+          cargo build --manifest-path crates/plugin/tests/sample-plugin/Cargo.toml --target wasm32-unknown-unknown --release
 
       - name: Test
         run: cargo test --workspace
@@ -277,6 +299,13 @@ jobs:
         run: |
           rustup update stable && rustup default stable
           rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
+      # As in ci.yml: the plugin tests load the guest SDK's sample module, which is not in the repository, and fail in CI
+      # without it.
+      - name: Sample plugin
+        run: |
+          rustup target add wasm32-unknown-unknown
+          cargo build --manifest-path crates/plugin/tests/sample-plugin/Cargo.toml --target wasm32-unknown-unknown --release
 
       - name: Test
         run: cargo test --workspace

@@ -32,11 +32,19 @@ pub struct Rooms<'a> {
     plans: RefCell<HashMap<(Guid, bool), Rc<Plan>>>,
     /// Each level's rooms, in order of id.
     placed: RefCell<HashMap<Guid, Placed<'a>>>,
+    /// Each room's boundary at the walls' centre lines, once found: what [`Rooms::room_at`] asks of every room of a level.
+    centre: RefCell<HashMap<Id, Option<Region>>>,
 }
 
 impl<'a> Rooms<'a> {
     pub fn new(m: &'a Model) -> Self {
-        Rooms { m, index: OnceCell::new(), plans: RefCell::new(HashMap::new()), placed: RefCell::new(HashMap::new()) }
+        Rooms {
+            m,
+            index: OnceCell::new(),
+            plans: RefCell::new(HashMap::new()),
+            placed: RefCell::new(HashMap::new()),
+            centre: RefCell::new(HashMap::new()),
+        }
     }
 
     fn plan(&self, level: Guid, at: RoomArea) -> Rc<Plan> {
@@ -111,6 +119,24 @@ impl<'a> Rooms<'a> {
         }
         let g = geom::region_in(&plan.faces, r.point, TOL).ok_or(Unbound::NotEnclosed)?;
         self.before(r, &g).map_or(Ok(g), |id| Err(Unbound::Shared(id)))
+    }
+
+    /// The room on `level` that point `p` stands in, as Revit's Room parameter of a family instance: the first, in order of id,
+    /// whose boundary at the walls' centre lines holds it. The centre lines, whatever the project measures rooms at, so a device
+    /// on a wall's face (an outlet, a switch) is in the room on that side and not in the wall; `None` outside every room.
+    pub fn room_at(&self, level: Guid, p: P2) -> Option<Id> {
+        let rooms = self.placed(level);
+        rooms.iter().find(|(id, r)| self.centre_of(*id, r).is_some_and(|g| region_holds(&g, p))).map(|(id, _)| *id)
+    }
+
+    /// Room `r`'s (of id `id`) boundary at the walls' centre lines, found once.
+    fn centre_of(&self, id: Id, r: &Room) -> Option<Region> {
+        if let Some(g) = self.centre.borrow().get(&id) {
+            return g.clone();
+        }
+        let g = self.region_at(r, RoomArea::Centre);
+        self.centre.borrow_mut().insert(id, g.clone());
+        g
     }
 
     /// The room on `r`'s level placed before it (of a lower id; any, for a room not in the model) whose point lies in `g`
