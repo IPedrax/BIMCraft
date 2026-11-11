@@ -364,7 +364,7 @@ impl ConnectorKind {
 }
 
 /// What a pipe connector carries: cold or hot water, waste (sewage), vent, storm water or gas.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Domain {
     Cold,

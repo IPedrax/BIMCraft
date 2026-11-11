@@ -9,6 +9,7 @@ use crate::popup::Modal;
 
 use bimcraft_i18n::msg;
 
+mod assistant;
 mod background_grid;
 mod browser;
 mod cad;
@@ -74,6 +75,7 @@ mod templates;
 #[cfg(test)]
 mod tests;
 mod titlebar;
+mod titleblocks;
 mod triad;
 mod typeprops;
 mod updates;
@@ -81,9 +83,10 @@ mod view_worker;
 pub mod window;
 mod workplane;
 
+use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 
 use bimcraft_core::dims::Placing as DimMode;
 use bimcraft_core::engine::{self, Session};
@@ -363,7 +366,7 @@ type Buttons<'a> = &'a [(Icon, &'a str, &'a str, Option<Tool>, bool)];
 
 /// The desktop's own two-letter shortcuts, which [`BimApp::shortcut`] takes before the commands'
 /// aliases, and what Keyboard Shortcuts (KS) calls them.
-const SHORTCUTS: [(&str, &str); 54] = [
+const SHORTCUTS: [(&str, &str); 56] = [
     ("3D", "3D View"),
     ("MD", "Modify"),
     ("SB", "Floor: Structural"),
@@ -416,8 +419,11 @@ const SHORTCUTS: [(&str, &str); 54] = [
     ("HL", "Hidden Line"),
     ("SD", "Shaded"),
     ("KS", "Keyboard Shortcuts"),
+    ("AI", msg!("Assistant")),
     ("BX", "Section Box"),
     ("GD", "Graphic Display Options"),
+    // Revit has none for its title blocks; no command or tool takes TB.
+    ("TB", "Title Blocks"),
 ];
 
 /// Every two-letter shortcut and what it does: the desktop's own, then the commands' aliases.
@@ -456,6 +462,9 @@ fn import_note(file: &str, reply: &Value) -> String {
     }
     text
 }
+
+/// Elements' JSON (`element_json`) by id, and the model it was found in.
+type KeptJson = (Weak<Model>, HashMap<Id, Arc<Value>>);
 
 pub struct BimApp {
     pub session: Session,
@@ -526,6 +535,9 @@ pub struct BimApp {
     /// The category the Properties palette's filter narrows a selection of several to, and the selection it was picked for: a new
     /// selection drops it (`BimApp::palette_ids`).
     palette_filter: Option<(&'static str, Vec<Id>)>,
+    /// What `element_json` says of the elements the palette has shown, of the model it was found in (`BimApp::elements_json`):
+    /// the palette reads it every frame, and a component's room costs its level's room boundaries.
+    palette_json: RefCell<Option<KeptJson>>,
     /// File > Settings, while open, at its page; the settings file, when the app was given one, and what it holds; the
     /// theme it asks for, put in force on the next frame.
     settings_page: Option<settings::Page>,
@@ -761,6 +773,8 @@ pub struct BimApp {
     object_styles_dialog: Option<objectstyles::ObjectStylesDialog>,
     /// Manage > Line Styles, while open.
     line_styles_dialog: Option<linestyles::LineStylesDialog>,
+    /// View > Title Blocks, while open.
+    title_blocks_dialog: Option<titleblocks::TitleBlocksDialog>,
     fill_patterns_dialog: Option<fillpatterns::FillPatternsDialog>,
     /// Sketch mode: the lines of an outline being drawn, until Finish or Cancel.
     pub sketch: Option<sketch::Sketch>,
@@ -802,6 +816,8 @@ pub struct BimApp {
     /// The family and type the Component tool places, as picked, and how far it's turned, degrees.
     component: Option<(String, String)>,
     component_angle: f64,
+    /// Hinge hand for this run of the Door tool. Facing follows the pointer.
+    door_flip_hand: bool,
     /// The Properties palette's folded groups.
     collapsed: BTreeSet<&'static str>,
     /// Where views show, last frame.
@@ -817,6 +833,8 @@ pub struct BimApp {
     styled: bool,
     /// The updater, which the desktop app attaches: a window starts without one, and so never phones home.
     pub updates: Option<bimcraft_update::Updater>,
+    /// The Assistant palette's: the user's provider, model and key, and the chat, which the desktop app gives a network (`assistant::State::attach`): a window starts without one.
+    pub assistant: assistant::State,
     /// The 3D mouse's reader, which the desktop app attaches: a window starts without one, so a test never opens a device.
     pub space_mouse: Option<spacemouse::SpaceMouse>,
     /// The reader of Revit files, which the desktop app attaches (`bimcraft-rvt` is Apache-2.0 only, so this crate never depends on
@@ -1137,6 +1155,9 @@ fn step_name(st: &engine::Step) -> String {
         [(c, n)] => Some(lang::category(c, *n > 1)),
         _ => None,
     };
+    if let Some(asked) = assistant::step_label(&st.label) {
+        return asked;
+    }
     let named = match (st.made.as_slice(), st.removed.as_slice()) {
         (made, []) if !made.is_empty() => one(made).map(|c| tf("Create {}", &[&c])),
         ([], removed) if !removed.is_empty() => one(removed).map(|c| tf("Delete {}", &[&c])),
@@ -1251,6 +1272,7 @@ impl BimApp {
             canvas_colour: None,
             text_colour: None,
             palette_filter: None,
+            palette_json: RefCell::new(None),
             ribbon_peek: false,
             scan_contrast: footer::HIGH_CONTRAST,
             background_grid_dialog: None,
@@ -1401,6 +1423,7 @@ impl BimApp {
             line_weights_dialog: None,
             object_styles_dialog: None,
             line_styles_dialog: None,
+            title_blocks_dialog: None,
             fill_patterns_dialog: None,
             sketch: None,
             mode_width: 0.0,
@@ -1423,6 +1446,7 @@ impl BimApp {
             new_schedule: None,
             component: None,
             component_angle: 0.0,
+            door_flip_hand: false,
             collapsed: BTreeSet::new(),
             view_rect: Rect::ZERO,
             pane: Rect::ZERO,
@@ -1432,6 +1456,7 @@ impl BimApp {
             title: String::new(),
             styled: false,
             updates: None,
+            assistant: assistant::State::default(),
             space_mouse: None,
             revit: None,
             control: None,
@@ -1633,6 +1658,8 @@ impl BimApp {
             self.reopened();
             self.autosave_document();
         }
+        // After that check: a reply that came as the project was replaced is not for the new one (`State::project_replaced`).
+        self.poll_assistant(&ctx);
         self.tidy();
         self.poll_updates(&ctx);
         self.poll_revit(&ctx);
@@ -1997,6 +2024,13 @@ impl BimApp {
         if pressed(Modifiers::NONE, Key::Delete) {
             self.delete();
         }
+        // consume_key also matches Alt/Shift and key repeats. Only an unmodified downstroke
+        // changes a door, so holding Space cannot fill the Undo history.
+        let plain_space =
+            |e: &Event| matches!(e, Event::Key { key: Key::Space, pressed: true, repeat: false, modifiers: Modifiers::NONE, .. });
+        if matches!(self.tool, Tool::Door | Tool::Modify) && ctx.input(|i| i.events.iter().any(plain_space)) && self.door_space() {
+            pressed(Modifiers::NONE, Key::Space);
+        }
         if self.tool == Tool::Modify && pressed(Modifiers::NONE, Key::Space) {
             self.flip();
         }
@@ -2009,7 +2043,8 @@ impl BimApp {
         if matches!(self.tool, Tool::Component | Tool::Fixture(_)) && pressed(Modifiers::NONE, Key::Space) {
             self.component_angle = (self.component_angle + 90.0) % 360.0;
         }
-        if pressed(Modifiers::NONE, Key::F8) || pressed(Modifiers::NONE, Key::F11) {
+        // F8 is the one function key for the guides. F11 is free: the system may use it for full screen.
+        if pressed(Modifiers::NONE, Key::F8) {
             self.toggle_alignment_guides();
         }
         let typed: String = ctx.input(|i| {
@@ -2084,6 +2119,10 @@ impl BimApp {
                 self.toggle_browser();
                 return true;
             }
+            "AI" => {
+                self.toggle_assistant();
+                return true;
+            }
             "SA" => {
                 self.select_all_instances();
                 return true;
@@ -2153,6 +2192,10 @@ impl BimApp {
             }
             "GD" => {
                 self.open_display();
+                return true;
+            }
+            "TB" => {
+                self.open_title_blocks(None);
                 return true;
             }
             "EU" | "UE" => {
@@ -2385,8 +2428,10 @@ impl BimApp {
     /// component's type being its family's.
     fn select_all_instances(&mut self) {
         let m = Arc::clone(&self.session.model);
+        // One look at every element the view shows: a component's room is found among its level's rooms once.
+        let rooms = bimcraft_core::rooms::Rooms::new(&m);
         let type_of = |id: &Id| {
-            let e = element_json(&m, *id);
+            let e = bimcraft_core::element_json_with(&m, *id, &rooms);
             e["type"].is_string().then(|| [e["category"].clone(), e["family"].clone(), e["type"].clone()])
         };
         let types: Vec<[Value; 3]> = self.selection.iter().filter_map(type_of).collect();
@@ -2539,6 +2584,7 @@ impl BimApp {
             self.measured = None;
         }
         self.snap_once = None;
+        self.door_flip_hand = false;
         self.tool = tool;
         // Floor sketches its outline at once, as Revit's does (Walls' Outline puts the walls' in the sketch).
         if self.tool == Tool::Floor
@@ -2641,6 +2687,32 @@ impl BimApp {
             &[id] if matches!(self.session.model.elements.get(id), Some(Element::Floor(_))) => Some(id),
             _ => None,
         }
+    }
+
+    /// While placing a swinging door Space changes only its pending hand. With one selected,
+    /// step through the four Opens tiles in order with the same instance edit as a tile click.
+    fn door_space(&mut self) -> bool {
+        let m = &self.session.model;
+        match self.tool {
+            Tool::Door if self.plan_level().is_some() => {
+                let (family, ty) = self.opening_pick("door");
+                if !ty.as_deref().is_some_and(|t| m.single_swing_door(family.as_deref(), t)) {
+                    return false;
+                }
+                self.door_flip_hand = !self.door_flip_hand;
+            }
+            Tool::Modify if self.sketch.is_none() => {
+                let &[id] = self.selection.as_slice() else { return false };
+                let Some(Element::Door(o)) = m.elements.get(id) else { return false };
+                if !m.single_swing_door(o.family.as_deref(), &o.type_name) {
+                    return false;
+                }
+                // Hand alternates every step; facing changes when hand wraps back to as placed.
+                self.run("modify", json!({"id": id, "flip_hand": !o.flip_hand, "flip_facing": o.flip_facing ^ o.flip_hand}));
+            }
+            _ => return false,
+        }
+        true
     }
 
     /// The selected walls turned round about their location lines: Revit's flip arrows, or Space.
@@ -3103,6 +3175,9 @@ impl BimApp {
         (fresh.settings_path, fresh.settings_kept) = (self.settings_path.take(), self.settings_kept.take());
         fresh.window = std::mem::take(&mut self.window);
         (fresh.updates, fresh.revit) = (self.updates.take(), self.revit.take());
+        // The assistant's network and the user's choices are the window's, not the project's: its conversation ends with the project.
+        fresh.assistant = std::mem::take(&mut self.assistant);
+        fresh.assistant.project_replaced();
         // The 3D mouse's reader runs for the window, not the project: without it the cap would move nothing once a project is open.
         fresh.space_mouse = self.space_mouse.take();
         fresh.control = self.control.take();
@@ -4013,6 +4088,10 @@ impl BimApp {
                 && let Some(id) = self.run("sheet", json!({})).and_then(|made| made["id"].as_u64())
             {
                 self.open_sheet(Sheet::Paper(id));
+            }
+            let tip = msg!("Title Blocks (TB): your own, read from a DXF or typed, with fields each sheet or the whole project fills in");
+            if big_button(ui, Icon::Sheet, "Title Blocks", self.title_blocks_dialog.is_some(), tip).clicked() {
+                self.open_title_blocks(None);
             }
             let sheet = match self.sheet {
                 Sheet::Paper(id) => Some(id),
@@ -5236,6 +5315,7 @@ impl BimApp {
         self.line_weights_window(ctx);
         self.object_styles_window(ctx);
         self.line_styles_window(ctx);
+        self.title_blocks_window(ctx);
         self.fill_patterns_window(ctx);
         self.text_type_window(ctx);
         self.dimension_type_window(ctx);

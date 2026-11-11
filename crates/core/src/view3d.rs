@@ -873,16 +873,24 @@ fn solids_in_with(
             Element::StructuralColumn(col) | Element::Footing(col) => {
                 out.push(slab(id, STRUCTURE, &m.column_outline(e), m.span(col.level, col.base_offset, col.top_level, col.height)))
             }
-            // A rectangular run is a sloped prism, which a section cuts; a round one a tube, shown beyond its line.
+            // A rectangular run is a prism of its outline — mitred where it joins, as the plan fills it — which a
+            // section cuts; a round one a tube, its ends cut by the same planes, shown beyond its line.
             crate::model::run_arm!(_) => {
                 if let (Some(t), Some(g)) = (m.run_type(e), m.run_geom(e)) {
                     let color = m.materials.get(&t.material).map_or(STRUCTURE, |x| Rgb(x.color[0], x.color[1], x.color[2]));
                     let tex = skin(m, &t.material);
                     if g.round {
                         let (tris, caps) = g.tube();
+                        let cuts: Vec<_> = [false, true]
+                            .into_iter()
+                            .filter_map(|at_end| crate::runs::end_cuts(m, id, at_end, &g, index))
+                            .flatten()
+                            .collect();
+                        let (tris, caps) = if cuts.is_empty() { (tris, caps) } else { crate::runs::clip_tube(tris, caps, &cuts) };
                         out.push(Solid::Mesh { owner: id, color, tex, tris, caps, round: true, cut: true });
                     } else {
-                        let (ring, bottom, top) = g.prism();
+                        let (_, bottom, top) = g.prism();
+                        let ring = crate::runs::outline_in(m, id, index);
                         out.push(Solid::Prism { owner: id, color, tex, ring, bottom, top, curve: None });
                     }
                 }
@@ -990,15 +998,16 @@ fn solids_in_with(
                             cut: false,
                         });
                     }
-                } else if let (Some(t), Some(w)) = (m.opening_type(e), m.wall(o.host)) {
+                } else if let Some(w) = m.wall(o.host)
+                    && let Some(h) = walls::hole(m, w, e, o)
+                {
                     let color = if matches!(e, Element::Door(_)) { DOOR } else { GLASS };
                     let tex = if matches!(e, Element::Door(_)) { 0 } else { skin(m, m.language.word("Glass")) & !TEXTURE };
-                    let z = m.own_base(w) + o.sill;
                     let axis = Axis::of(w);
                     let u = axis.tangent(o.offset);
                     let frame = Frame { o: axis.at(o.offset, walls::centre(m, w)), u, n: u.perp() };
-                    let a = (-t.width / 2.0, t.width / 2.0);
-                    out.push(Solid::Box { owner: id, color, tex, frame, a, c: (-25.0, 25.0), z: (z, z + t.height) });
+                    let a = (h.s0 - o.offset, h.s1 - o.offset);
+                    out.push(Solid::Box { owner: id, color, tex, frame, a, c: (-25.0, 25.0), z: (h.bottom, h.top) });
                 }
             }
             _ => {}
@@ -1978,10 +1987,19 @@ impl Scene {
         self.fit_in(azimuth, elevation, width, height, &Look::default())
     }
 
-    /// A view of what `look` shows of the model, fitted into the picture.
+    /// A view of what `look` shows of the model, fitted into the picture: built geometry and its levels,
+    /// with scans included only when no built geometry is shown.
     pub fn fit_in(&self, azimuth: f64, elevation: f64, width: u32, height: u32, look: &Look) -> Camera {
         let cam = Camera { azimuth, elevation, scale: 1.0, target: [0.0; 3], width, height, lens: None };
         self.fit_from(cam, look)
+    }
+
+    fn fitting_points<'a>(&'a self, look: &'a Look) -> impl Iterator<Item = P3> + 'a {
+        let built = self.tris.iter().any(|t| look.shows(t.owner));
+        let solids = self.tris.iter().filter(|t| look.shows(t.owner)).flat_map(|t| t.p);
+        let levels = self.levels.iter().filter(|(id, ..)| look.shows(*id)).flat_map(|(.., c)| *c);
+        let scans = self.scans.iter().filter(move |s| !built && look.shows(s.owner)).flat_map(|s| s.corners);
+        solids.chain(levels).chain(scans)
     }
 
     /// What `look` shows of the model, fitted into `cam`'s picture from where it looks and through its lens: in perspective,
@@ -1992,10 +2010,7 @@ impl Scene {
         let cam = Camera { lens: Some(lens), ..fitted };
         let Some(f) = cam.focal() else { return cam };
         // All of it within a ball round the target, and the ball within the narrower side of the picture.
-        let solids = self.tris.iter().filter(|t| look.shows(t.owner)).flat_map(|t| t.p);
-        let levels = self.levels.iter().filter(|(id, ..)| look.shows(*id)).flat_map(|(.., c)| *c);
-        let scans = self.scans.iter().filter(|s| look.shows(s.owner)).flat_map(|s| s.corners);
-        let reach = solids.chain(levels).chain(scans).map(|p| dot(sub(p, cam.target), sub(p, cam.target)).sqrt()).fold(0.0, f64::max);
+        let reach = self.fitting_points(look).map(|p| dot(sub(p, cam.target), sub(p, cam.target)).sqrt()).fold(0.0, f64::max);
         let half = (f64::from(cam.width.min(cam.height)) / 2.0 - MARGIN).max(1.0);
         let d = reach.max(1000.0) / (half / f).atan().sin().max(1e-9);
         Camera { scale: (f / d).clamp(1e-6, 50.0), ..cam }
@@ -2005,10 +2020,7 @@ impl Scene {
         let (width, height) = (cam.width, cam.height);
         let mut cam = Camera { elevation: cam.elevation.clamp(-89.0, 89.0), scale: 1.0, target: [0.0; 3], ..cam };
         let room = |px: u32| (f64::from(px) - 2.0 * MARGIN).max(1.0);
-        let solids = self.tris.iter().filter(|t| look.shows(t.owner)).flat_map(|t| t.p);
-        let levels = self.levels.iter().filter(|(id, ..)| look.shows(*id)).flat_map(|(.., c)| *c);
-        let scans = self.scans.iter().filter(|s| look.shows(s.owner)).flat_map(|s| s.corners);
-        let mut pts: Vec<P3> = solids.chain(levels).chain(scans).collect();
+        let mut pts: Vec<P3> = self.fitting_points(look).collect();
         let Some((target, w, h)) = extent(&cam, &pts) else {
             cam.scale = room(width).min(room(height)) / 10_000.0;
             return cam;

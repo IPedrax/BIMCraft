@@ -92,6 +92,9 @@ fn known(c: char) -> Option<Glyph> {
         '²' => &[&[(2, 11), (3, 12), (5, 12), (6, 11), (6, 10), (2, 7), (6, 7)]],
         '°' => &[&[(3, 12), (5, 12), (6, 11), (6, 9), (5, 8), (3, 8), (2, 9), (2, 11), (3, 12)]],
         '±' => &[&[(4, 5), (4, 11)], &[(1, 8), (7, 8)], &[(1, 2), (7, 2)]],
+        // The ordinals (nº, 1ª): a small raised o or a, underlined, as Portuguese and Spanish write them.
+        'º' => &[&[(3, 12), (5, 12), (6, 11), (6, 9), (5, 8), (3, 8), (2, 9), (2, 11), (3, 12)], &[(2, 6), (6, 6)]],
+        'ª' => &[&[(6, 8), (6, 11), (5, 12), (3, 12), (2, 11), (2, 9), (3, 8), (6, 8)], &[(2, 6), (6, 6)]],
         // Cyrillic: the capitals the Latin alphabet shares are its strokes.
         'А' => glyph('A'),
         'В' => glyph('B'),
@@ -145,6 +148,14 @@ fn known(c: char) -> Option<Glyph> {
         '–' | '—' => &[&[(0, 6), (8, 6)]],
         '‘' | '’' => &[&[(4, 12), (4, 9)]],
         '“' | '”' | '„' => &[&[(3, 12), (3, 9)], &[(5, 12), (5, 9)]],
+        // Primes lean, distinct from the upright apostrophe and quotation mark.
+        '′' => &[&[(5, 12), (3, 8)]],
+        '″' => &[&[(3, 12), (1, 8)], &[(7, 12), (5, 8)]],
+        '…' => &[
+            &[(0, 0), (1, 0), (1, 1), (0, 1), (0, 0)],
+            &[(3, 0), (4, 0), (4, 1), (3, 1), (3, 0)],
+            &[(6, 0), (7, 0), (7, 1), (6, 1), (6, 0)],
+        ],
         _ => return None,
     })
 }
@@ -252,10 +263,33 @@ mod tests {
     use super::*;
 
     #[test]
+    fn engineering_primes_lean_at_the_top_and_ellipsis_has_three_baseline_dots() {
+        for (mark, lines) in [("′", 1), ("″", 2)] {
+            let strokes = strokes(mark, 0.0, 0.0, 12.0);
+            assert!(mark.chars().all(has));
+            assert_eq!(strokes.len(), lines);
+            for stroke in strokes {
+                assert!(stroke.iter().all(|&(x, y)| (0.0..=8.0).contains(&x) && (-12.0..=-8.0).contains(&y)));
+                assert!(stroke[0].0 > stroke[1].0 && stroke[0].1 < stroke[1].1, "a prime leans, unlike an apostrophe");
+            }
+        }
+        let dots = strokes("…", 0.0, 0.0, 12.0);
+        assert!(has('…'));
+        assert_eq!(dots.len(), 3);
+        assert!(dots.iter().flatten().all(|&(x, y)| (0.0..=8.0).contains(&x) && (-1.0..=0.0).contains(&y)));
+    }
+
+    #[test]
     fn lower_case_is_drawn_as_capitals_and_unknown_characters_as_a_question_mark() {
         assert_eq!(strokes("living", 0.0, 0.0, 12.0), strokes("LIVING", 0.0, 0.0, 12.0));
         assert_eq!(strokes("ω", 0.0, 0.0, 12.0), strokes("?", 0.0, 0.0, 12.0));
         assert!(strokes(" ", 0.0, 0.0, 12.0).is_empty());
+    }
+
+    #[test]
+    fn ordinals_are_drawn_not_asked_about() {
+        assert!(has('º') && has('ª'));
+        assert_ne!(strokes("º", 0.0, 0.0, 12.0), strokes("?", 0.0, 0.0, 12.0));
     }
 
     #[test]

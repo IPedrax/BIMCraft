@@ -34,6 +34,8 @@ pub mod dps;
 pub mod dr;
 pub mod drainage;
 pub mod draw;
+#[cfg(test)]
+mod dry_run_tests;
 pub mod dxf;
 #[cfg(test)]
 mod eberick_tests;
@@ -51,6 +53,9 @@ pub mod geom;
 #[cfg(test)]
 mod georef_tests;
 pub mod gltf;
+pub mod glue;
+#[cfg(test)]
+mod glue_tests;
 pub mod graphics;
 pub mod groups;
 pub mod hydrant;
@@ -76,6 +81,7 @@ pub mod loads;
 pub mod massing;
 pub mod model;
 pub mod nbr5410;
+pub mod network;
 #[cfg(test)]
 mod openings_past_top_tests;
 #[cfg(test)]
@@ -85,6 +91,7 @@ pub mod pat;
 pub mod pdf;
 pub mod pen;
 pub mod phasing;
+pub mod plumbing;
 #[cfg(test)]
 mod read_only_tests;
 pub mod rebar;
@@ -105,7 +112,11 @@ mod room_bounds_tests;
 mod room_freeze_tests;
 #[cfg(test)]
 mod room_height_tests;
+#[cfg(test)]
+mod room_of_tests;
 pub mod rooms;
+#[cfg(test)]
+mod run_join_tests;
 pub mod runs;
 pub mod sample;
 pub mod schedule;
@@ -127,6 +138,10 @@ pub mod styles;
 pub mod symbol_set;
 pub mod text;
 pub mod texture;
+mod timber;
+pub mod titleblock;
+#[cfg(test)]
+mod titleblock_tests;
 pub mod triad;
 pub mod triangulation;
 pub mod units;
@@ -140,7 +155,9 @@ pub mod workplane;
 mod workplane_tests;
 pub mod xlsx;
 
-pub use commands::{command_of, element_json, floor_outline, opening_of, roof_footprint, run_category_of, runs_of, stood_of};
+pub use commands::{
+    command_of, element_json, element_json_with, floor_outline, opening_of, roof_footprint, run_category_of, runs_of, stood_of,
+};
 
 #[cfg(test)]
 mod connector_tests;
@@ -152,6 +169,8 @@ mod dimension_tests;
 mod line_tests;
 #[cfg(test)]
 mod mep_tests;
+#[cfg(test)]
+mod network_tests;
 #[cfg(test)]
 mod plan_view_tests;
 #[cfg(test)]

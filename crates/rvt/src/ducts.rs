@@ -84,6 +84,7 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
                     offset,
                     end_offset: (end != offset).then_some(end),
                     justify: Justify::Centre,
+                    join: true,
                     system: String::new(),
                     params: Default::default(),
                 })
