@@ -5,7 +5,8 @@
 //! the profile, the layout, interface language, ribbon, palettes, the
 //! window's size, the background autosave interval, the colour High Contrast Point Clouds draws scans in, whether plans show the
 //! origin marker and their view's name in the corner, the shortcuts the user made, and the control port
-//! for agents (whether the window opens it, on which port, and whether agents may edit the project or only read it).
+//! for agents (whether the window opens it, on which port, and whether agents may edit the project or only read it), and the
+//! assistant's provider, model and, only if the user asks, key (scrambled, or encrypted under a passphrase: never as typed).
 //! The pages for what is still to come (performance and graphics) show what they will hold, greyed out.
 
 use crate::popup::Modal;
@@ -18,7 +19,10 @@ use std::path::{Path, PathBuf};
 use egui::{Align, Color32, ComboBox, Context, Id as UiId, Layout, RichText, ScrollArea, ThemePreference, Ui, vec2};
 use serde_json::{Value, json};
 
+use bimcraft_assistant::{Provider, model_ok, seal};
+
 use crate::BimApp;
+use crate::assistant::Secret;
 use crate::dock::{Docking, Palette};
 use crate::lang::{Lang, t, tf};
 use crate::presets::{Preset, Scale, hidden_from_json, presets_from_json};
@@ -125,6 +129,10 @@ pub struct Settings {
     pub agents_listen: bool,
     pub agents_port: u16,
     pub agents_edit: bool,
+    /// The Assistant's provider and model, and the key if the user asked for it to be kept: scrambled or under a passphrase (`seal`), never as typed.
+    pub assistant_provider: Provider,
+    pub assistant_model: String,
+    pub assistant_sealed: Option<String>,
 }
 
 impl Settings {
@@ -160,6 +168,8 @@ impl Settings {
             "shortcuts": self.shortcuts,
             "system_title_bar": self.system_title_bar,
             "agents": {"listen": self.agents_listen, "port": self.agents_port, "edit": self.agents_edit},
+            // The key, only when the user asked for it to be kept, and then only sealed.
+            "assistant": {"provider": self.assistant_provider.key(), "model": self.assistant_model, "key_sealed": self.assistant_sealed},
         })
     }
 
@@ -206,6 +216,13 @@ impl Settings {
             agents_listen: v["agents"]["listen"].as_bool().unwrap_or(base.agents_listen),
             agents_port: v["agents"]["port"].as_u64().and_then(|p| u16::try_from(p).ok()).unwrap_or(base.agents_port),
             agents_edit: v["agents"]["edit"].as_bool().unwrap_or(base.agents_edit),
+            assistant_provider: v["assistant"]["provider"].as_str().and_then(Provider::from_key).unwrap_or(base.assistant_provider),
+            assistant_model: v["assistant"]["model"].as_str().filter(|m| model_ok(m)).map_or(base.assistant_model, str::to_string),
+            // A text that is no sealed key (a damaged file, a hand's edit, the plain key an earlier build kept) is none.
+            assistant_sealed: match v["assistant"].get("key_sealed") {
+                None => base.assistant_sealed,
+                Some(sealed) => sealed.as_str().filter(|s| seal::well_formed(s)).map(str::to_string),
+            },
         }
     }
 }
@@ -262,11 +279,13 @@ pub enum Page {
     Graphics,
     Files,
     Agents,
+    Assistant,
     Updates,
 }
 
 impl Page {
-    pub const ALL: [Page; 6] = [Page::Interface, Page::Performance, Page::Graphics, Page::Files, Page::Agents, Page::Updates];
+    pub const ALL: [Page; 7] =
+        [Page::Interface, Page::Performance, Page::Graphics, Page::Files, Page::Agents, Page::Assistant, Page::Updates];
 
     pub fn name(self) -> &'static str {
         match self {
@@ -275,6 +294,7 @@ impl Page {
             Page::Graphics => "Graphics",
             Page::Files => msg!("Files"),
             Page::Agents => msg!("Agents"),
+            Page::Assistant => msg!("Assistant"),
             Page::Updates => msg!("Updates"),
         }
     }
@@ -316,6 +336,19 @@ impl BimApp {
         self.custom_shortcuts = kept.shortcuts.clone();
         self.system_title_bar = kept.system_title_bar;
         (self.agents.listen, self.agents.port, self.agents.edit) = (kept.agents_listen, kept.agents_port, kept.agents_edit);
+        let a = &mut self.assistant;
+        (a.provider, a.model, a.sealed) = (kept.assistant_provider, kept.assistant_model.clone(), kept.assistant_sealed.clone());
+        // A saved key is opened for the session, unless it is under a passphrase: then it stays locked until the user types it. One this build
+        // cannot open (another kind of build saved it, or the file was changed) is forgotten, and the user types it again.
+        (a.protect, a.key_saved) = (false, false);
+        match a.sealed.as_deref() {
+            Some(sealed) if seal::needs_passphrase(sealed) => (a.remember, a.protect) = (true, true),
+            Some(sealed) => match seal::open(sealed) {
+                Ok(key) => (a.key, a.remember, a.key_saved) = (Secret(key), true, true),
+                Err(_) => (a.sealed, a.remember) = (None, false),
+            },
+            None => a.remember = false,
+        }
         self.settings_kept = Some(kept);
         self.settings_path = Some(path);
     }
@@ -354,6 +387,9 @@ impl BimApp {
             agents_listen: self.agents.listen,
             agents_port: self.agents.port,
             agents_edit: self.agents.edit,
+            assistant_provider: self.assistant.provider,
+            assistant_model: self.assistant.model.clone(),
+            assistant_sealed: self.assistant.sealed.clone(),
         }
     }
 
@@ -398,6 +434,7 @@ impl BimApp {
                             Page::Graphics => self.graphics_page(ui),
                             Page::Files => self.files_page(ui),
                             Page::Agents => self.agents_page(ui),
+                            Page::Assistant => self.assistant_page(ui),
                             Page::Updates => self.updates_page(ui),
                         });
                     });
@@ -736,7 +773,7 @@ impl BimApp {
 }
 
 /// A group's heading on a page.
-fn heading(ui: &mut Ui, text: &str) {
+pub(crate) fn heading(ui: &mut Ui, text: &str) {
     ui.add_space(6.0);
     ui.label(RichText::new(t(text)).strong());
 }
