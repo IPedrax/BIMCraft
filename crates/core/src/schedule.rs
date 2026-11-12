@@ -498,6 +498,11 @@ const OWN: &[(&str, usize, &[Own])] = &[
             ("Work Plane", Kind::Text, From::Key("work_plane")),
             ("Offset from Host", Kind::Length, From::Key("offset_from_host")),
             ("Host", Kind::Number, From::Ref("host_element")),
+            // A distribution board's, by the names of Revit's parameters.
+            ("Distribution System", Kind::Text, From::Key("distribution_system")),
+            ("Mains", Kind::Number, From::Key("mains")),
+            ("Max #1 Pole Breakers", Kind::Number, From::Key("slots")),
+            ("Supply From", Kind::Number, From::Ref("supply_from")),
         ],
     ),
     (

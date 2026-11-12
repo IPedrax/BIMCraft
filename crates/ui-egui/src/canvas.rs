@@ -4062,6 +4062,7 @@ impl BimApp {
                         mirrored: false,
                         params: Default::default(),
                         host: None,
+                        panel: None,
                     };
                     let e = Element::Component(c);
                     sketched(&e);

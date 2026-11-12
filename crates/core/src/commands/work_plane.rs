@@ -185,6 +185,7 @@ pub(super) fn component(s: &mut Session, p: &Value) -> R {
                 mirrored,
                 params,
                 host: Some(hosted),
+                panel: None,
             }
         }
         Some(Given::Face(element, face)) => {
@@ -207,6 +208,7 @@ pub(super) fn component(s: &mut Session, p: &Value) -> R {
                 mirrored,
                 params,
                 host: Some(hosted),
+                panel: None,
             }
         }
         given => {
@@ -217,7 +219,7 @@ pub(super) fn component(s: &mut Session, p: &Value) -> R {
             // A family placed on its level, given no height, stands at its Default Elevation; a work plane-based one on its plane,
             // and an adaptive one (`Model::placed_by_points`) where its points put it, as Revit places it by its points alone.
             let at = point_req(c, p, "at")?;
-            let mut comp = Component { adaptive, family, type_name, level, at, angle, offset: 0.0, mirrored, params, host: None };
+            let mut comp = Component { adaptive, family, type_name, level, at, angle, offset: 0.0, mirrored, params, host: None, panel: None };
             comp.offset = match offset {
                 Some(o) => o,
                 None if f.work_plane_based || m.placed_by_points(&comp) => 0.0,

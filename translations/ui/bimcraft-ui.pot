@@ -13247,3 +13247,31 @@ msgstr ""
 #: crates/ui-egui/src/lib.rs:4059
 msgid "Elevation: click a wall, a line or a slab's edge to look at, the project's or a link's"
 msgstr ""
+
+#: crates/ui-egui/src/properties.rs:1937
+msgid "Distribution System"
+msgstr ""
+
+#: crates/ui-egui/src/properties.rs:1943 crates/ui-egui/src/properties.rs:1950
+msgid "Mains"
+msgstr ""
+
+#: crates/ui-egui/src/properties.rs:1955 crates/ui-egui/src/properties.rs:1963
+msgid "Max #1 Pole Breakers"
+msgstr ""
+
+#: crates/ui-egui/src/properties.rs:1975
+msgid "Supplies"
+msgstr ""
+
+#: crates/ui-egui/src/properties.rs:1968
+msgid "Supply From"
+msgstr ""
+
+#: crates/ui-egui/src/properties.rs:1950
+msgid "{}: `{}` is not a number of amperes"
+msgstr ""
+
+#: crates/ui-egui/src/properties.rs:1963
+msgid "{}: `{}` is not a whole number"
+msgstr ""

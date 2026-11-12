@@ -85,15 +85,17 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// may measure to the line across a column, square to its angle (`across`); a door's type or family may open as a gate
 /// (`operation`: `sectional` or `roller`); a project may hold property lines (the `propertyline` category, a row of
 /// `graphics::MODEL` that views' graphics and Object Styles may name); it may pin elements where they are (`pinned`, their
-/// GUIDs); an elevation may keep the line it looks at (`reference`) and stand its mark apart from its line (`mark`); and a
-/// project's language may be Polish (`pl`). Nothing in a file of 17 changes, but a build that reads up to 17 would answer
-/// such a connector, dimension, operation or property line, or Polish, with a serde error ("unknown variant", "missing
-/// field `system`") and graphics or a style of `propertyline` as a category it doesn't have, would leave the title blocks
-/// and a viewport's `follow_scale` out as fields it doesn't know, drawing every sheet with the built-in title box, and
-/// would silently drop `join: false` and join the element again, and the pins, letting what was pinned move, and would drop
-/// an elevation's reference and mark, drawing the mark back on its line, not say "saved by a newer BIMCraft". 18 also holds
-/// the Family Editor's families and what places them in a project, which a build that reads up to 17 would leave out as
-/// fields it doesn't know, drawing a family without them or failing to build it and losing them on saving, or refuse on
+/// GUIDs); an elevation may keep the line it looks at (`reference`) and stand its mark apart from its line (`mark`); a
+/// project's language may be Polish (`pl`); and a distribution board may hold its electrical data (a component's `panel`:
+/// its distribution system, mains, slots and the board that supplies it). Nothing in a file of 17 changes, but a build that
+/// reads up to 17 would answer such a connector, dimension, operation or property line, or Polish, with a serde error
+/// ("unknown variant", "missing field `system`") and graphics or a style of `propertyline` as a category it doesn't have,
+/// would leave the title blocks and a viewport's `follow_scale` out as fields it doesn't know, drawing every sheet with the
+/// built-in title box, and would silently drop `join: false` and join the element again, and the pins, letting what was
+/// pinned move, and would drop an elevation's reference and mark, drawing the mark back on its line, and would leave a
+/// board's `panel` out as a field it doesn't know, its supply tree with it, not say "saved by a newer BIMCraft". 18 also
+/// holds the Family Editor's families and what places them in a project, which a build that reads up to 17 would leave out
+/// as fields it doesn't know, drawing a family without them or failing to build it and losing them on saving, or refuse on
 /// opening ("unknown variant", "isn't a category views draw"), not say "saved by a newer BIMCraft"; a file of 17 is brought
 /// up to 18 by [`Model::migrate`]:
 ///
@@ -1695,6 +1697,9 @@ pub struct Component {
     /// `at` and `offset` are worked out from (`crate::hosting`). None, it is on `level`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub host: Option<Hosted>,
+    /// A distribution board's electrical data: its distribution system, its mains and slots and the board that supplies it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub panel: Option<crate::electrical::Panel>,
 }
 
 /// A stair from `level` up to `top_level` (or `height` mm), climbing from the middle of its first
@@ -2172,6 +2177,11 @@ macro_rules! visit_refs {
             Element::Component(c) => {
                 f(& $($m)? c.level);
                 if let Some(Hosted { host: HostRef::Plane(g) | HostRef::Face { element: g, .. }, .. }) = & $($m)? c.host { f(g) }
+                if let Some(p) = & $($m)? c.panel
+                    && let Some(g) = & $($m)? p.supply_from
+                {
+                    f(g)
+                }
             }
             Element::Railing(r) => {
                 f(& $($m)? r.level);
@@ -3778,13 +3788,14 @@ impl Model {
         // 17 to 18 (pipe, data and earthing connectors, a connector's place; title blocks of the project's own, with a
         // drawing area and a border of their own, their fields' values, and sheets with none; viewports that keep a scale
         // of their own; walls and runs that refuse to join; a dimension to the line across a column; sectional and roller
-        // doors; property lines; pinned elements; an elevation's reference and mark; Polish as a project's language) has
-        // none either: a file of 17's connectors are a power or a switch one, each with its system, which 18 reads as they
-        // were; a file of 17 holds no title blocks, its sheets keeping the built-in one, no `follow_scale`, so its
-        // viewports follow their views' scales from then on, as one placed without a scale does, no `join`, which reads as
-        // joining, as it always did, none of its dimensions measures `across`, none of its operations is a gate's, it holds
-        // no property line and names no `propertyline` in its graphics or styles, nothing in it is pinned, its elevations
-        // have no reference and their marks on their lines, and its language isn't Polish.
+        // doors; property lines; pinned elements; an elevation's reference and mark; Polish as a project's language; a
+        // distribution board's `panel`) has none either: a file of 17's connectors are a power or a switch one, each with
+        // its system, which 18 reads as they were; a file of 17 holds no title blocks, its sheets keeping the built-in one,
+        // no `follow_scale`, so its viewports follow their views' scales from then on, as one placed without a scale does,
+        // no `join`, which reads as joining, as it always did, none of its dimensions measures `across`, none of its
+        // operations is a gate's, it holds no property line and names no `propertyline` in its graphics or styles, nothing
+        // in it is pinned, its elevations have no reference and their marks on their lines, its language isn't Polish, and
+        // none of its components has a `panel`.
         // The Family Editor's part of 18, and what places its families, takes
         // one step, in this order (it leaves the rest of 18 alone: title blocks, `join` and `across` aren't a family's, and a
         // connector's `at` is in the family's axes, which the datums are whatever plane `defines_origin`, and it has no `host`
@@ -7592,6 +7603,7 @@ impl Model {
                     let names: Vec<&str> = self.families.keys().map(String::as_str).collect();
                     format!("{who}: family `{}` doesn't exist (there are: {})", c.family, names.join(", "))
                 })?;
+                crate::electrical::check_panel(self, id, c)?;
                 if f.category.hosted() {
                     return Err(format!(
                         "{who}: family `{}` is a door's or a window's: it stands in a wall, placed with `door` or `window`",

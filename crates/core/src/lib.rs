@@ -220,6 +220,8 @@ mod mep_tests;
 #[cfg(test)]
 mod network_tests;
 #[cfg(test)]
+mod panel_tests;
+#[cfg(test)]
 mod plan_view_tests;
 #[cfg(test)]
 mod purge_tests;
