@@ -123,3 +123,28 @@ model's own coordinates and drawings don't move with it.
   `Model::check` does for a file.
 - **The file**: an older BIMCraft leaves `georeference` out of a project and opens the rest (`lenient`), so it took no `FORMAT`
   step. The desktop doesn't show it yet.
+
+## Property sets and classification
+
+What another program says of an element in its property sets and classification references comes in as project parameters, and
+goes back out where it came from (#223).
+
+- **A set's name** (`ProjectParameter::sets`): each single value of a property set comes in as the parameter named for its
+  property, which remembers, for each category, the set its values came in. Export writes a category's values in that set; one
+  that names the element's own `Pset_*Common` goes in the one the export writes for it (with `LoadBearing` and `Status`), so an
+  element never has two sets of a name. A category's values of a name come in one set, the first; the same property in another set
+  on the same category is left out and listed. What the export writes itself (`ifc::own_property`: a common set's `LoadBearing`
+  and `Status`, a device's poles, power factor and voltage) is the export's, and a set BIMCraft reads into fields of its own
+  (`BIMCraft_*`, `RoomSeparation`, `Project Parameters`) isn't a parameter's (`ifc::foreign_set`). A property renamed to be a
+  parameter's name (`Cargas (G2)`) goes to `Project Parameters`, since it couldn't go back by its own.
+- **A type's sets** (`HasPropertySets` of the type object): its occurrences' values, unless they hold their own of the name.
+- **Classification** (`ProjectParameter::classification`): an `IfcRelAssociatesClassification` to an
+  `IfcClassificationReference` gives each related element (a type's occurrences, unless they have their own) the reference's
+  code (IFC4's `Identification`, IFC2x3's `ItemReference`, else its name) as a text parameter named for the system, the
+  `IfcClassification` at the top of the references (its name and edition). Export writes an `IfcClassification` for each such
+  parameter and a reference for each code, associated with the elements holding it. The reference's own name and the system's
+  source and location aren't kept yet.
+- **The command** `parameter` takes `sets` (a category's set, `null` back to `Project Parameters`) and `classification`
+  (`{system, edition?}`, or `null`); `Model::check` holds both to what IFC can write.
+- **The file**: an older BIMCraft leaves `sets` and `classification` out (`lenient`), and the values stay as plain parameters,
+  so it took no `FORMAT` step. Other kinds of property (enumerated, bounded, list, table, complex) are not read yet.

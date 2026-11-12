@@ -134,6 +134,8 @@ pub mod pen;
 pub mod phasing;
 pub mod plumbing;
 #[cfg(test)]
+mod pset_tests;
+#[cfg(test)]
 mod raised_wall_room_tests;
 #[cfg(test)]
 mod read_only_tests;

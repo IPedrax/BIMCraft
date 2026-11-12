@@ -2797,6 +2797,25 @@ pub struct ProjectParameter {
     #[serde(default)]
     pub kind: ParameterKind,
     pub categories: Vec<String>,
+    /// The property set an IFC export writes each category's values in, by category: the set they came in from another
+    /// program. A category it doesn't name writes them in the project's own, `Project Parameters`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub sets: BTreeMap<String, String>,
+    /// A classification system's codes, which IFC holds as classification references rather than properties: a text
+    /// parameter whose value is an element's code in the system.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub classification: Option<Classification>,
+}
+
+/// A classification system, as IFC's `IfcClassification` names it: Uniclass, OmniClass, a national table.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Classification {
+    /// Its name.
+    pub system: String,
+    /// Its edition, where the file says.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub edition: Option<String>,
 }
 
 /// The most project parameters a project holds.
@@ -2839,6 +2858,42 @@ impl ProjectParameter {
             ParameterKind::Number | ParameterKind::Length => v.as_f64().is_some_and(|x| x.is_finite() && x.abs() <= MAX_COORD),
             ParameterKind::YesNo => v.is_boolean(),
         }
+    }
+
+    /// Whether what it says of IFC is what a file can hold: a set for each of its categories at most, named as no set
+    /// BIMCraft reads into fields of its own; a classification, a text parameter's in no set, with a system named.
+    fn check_ifc(&self) -> Result<(), String> {
+        let named = |what: &str, v: &str| -> Result<(), String> {
+            if v.trim().is_empty() || v.trim() != v {
+                return Err(format!("{what} needs a name, without spaces round it"));
+            }
+            if v.chars().count() > MAX_TEXT {
+                return Err(format!("{what} is longer than {MAX_TEXT} characters"));
+            }
+            Ok(())
+        };
+        for (c, set) in &self.sets {
+            if !self.categories.contains(c) {
+                return Err(format!("it has a set for {c}s, which it isn't for"));
+            }
+            named(&format!("the set for {c}s"), set)?;
+            if !crate::ifc::foreign_set(set) {
+                return Err(format!("BIMCraft reads `{set}` into fields of its own; put {c}s' values in another set"));
+            }
+        }
+        if let Some(cl) = &self.classification {
+            if self.kind != ParameterKind::Text {
+                return Err("a classification's codes are text".into());
+            }
+            if !self.sets.is_empty() {
+                return Err("a classification's codes go in IFC as references, not in a property set".into());
+            }
+            named("its classification system", &cl.system)?;
+            if let Some(e) = &cl.edition {
+                named("its classification's edition", e)?;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -6708,6 +6763,7 @@ impl Model {
             {
                 return Err(format!("{who}: family `{f}` has a parameter of that name; name it otherwise"));
             }
+            p.check_ifc().map_err(|e| format!("{who}: {e}"))?;
         }
         graphics::check_project(self)?;
         phasing::check_project(self)?;

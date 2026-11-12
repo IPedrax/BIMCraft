@@ -1217,10 +1217,13 @@ other_files(
         "Project Parameters",
         &[],
         "{name, kind?: text|number|length|yesno, categories?: [wall|floor|ceiling|roof|door|window|room|column|component|stair|\
-         ramp|railing|mass, …], rename?, delete?: true} a project parameter, as Revit's Manage > Project Parameters makes one: a value \
+         ramp|railing|mass, …], sets?: {category: property set name|null}, classification?: {system, edition?}|null, rename?, \
+         delete?: true} a project parameter, as Revit's Manage > Project Parameters makes one: a value \
          of its kind each element of its categories may have of its own, set with `modify {id, params: {name: value}}` (lengths \
          in mm, yes or no as true or false). Off a category, that category's elements lose their values of it; deleted, every \
-         element does; renamed, they follow it. `inspect` lists them",
+         element does; renamed, they follow it. `sets` names the IFC property set a category's values go in (an import keeps \
+         the one they came in; none: `Project Parameters`); `classification` makes a text parameter a classification \
+         system's codes, which IFC holds as classification references. `inspect` lists them",
         parameter,
     )
     .menu("Manage > Project Parameters"),
@@ -11937,7 +11940,31 @@ fn parameter(s: &mut Session, p: &Value) -> R {
             return Err(e);
         }
         clear(m, &name, &gone);
+        param.sets.retain(|k, _| list.contains(k));
         param.categories = list;
+    }
+    if let Some(v) = p.get("sets").filter(|v| !v.is_null()) {
+        let map = v
+            .as_object()
+            .filter(|o| o.len() <= PARAMETER_CATEGORIES.len())
+            .ok_or_else(|| bad(c, format!("`sets` maps a category to the property set its values go in, not {v}")))?;
+        for (k, set) in map {
+            match set {
+                Value::Null => {
+                    param.sets.remove(&category(k));
+                }
+                Value::String(n) => {
+                    param.sets.insert(category(k), n.clone());
+                }
+                _ => return Err(bad(c, format!("`sets`: {k}'s set is a name, or null, not {set}"))),
+            }
+        }
+    }
+    if let Some(v) = p.get("classification") {
+        param.classification = match v {
+            Value::Null => None,
+            v => Some(serde_json::from_value(v.clone()).map_err(|e| bad(c, format!("`classification` is {{system, edition?}}: {e}")))?),
+        };
     }
     let name = match string(c, p, "rename")? {
         Some(to) => {
