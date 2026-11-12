@@ -222,8 +222,16 @@ pub fn stage(mut m: Model, family: &Family, values: &BTreeMap<String, Val>, show
         let (a, b) = corners.iter().map(|c| c.dot(r)).fold((f64::INFINITY, f64::NEG_INFINITY), |(a, b), t| (a.min(t), b.max(t)));
         let start = l * back + r * a;
         let end = l * back + r * b;
-        let section =
-            Section { name: side.name().into(), start, end, depth: None, crop: None, reference: None, mark: None, graphics: crate::graphics::Graphics::default() };
+        let section = Section {
+            name: side.name().into(),
+            start,
+            end,
+            depth: None,
+            crop: None,
+            reference: None,
+            mark: None,
+            graphics: crate::graphics::Graphics::default(),
+        };
         elevations.push((side, m.insert(Element::Elevation(section)), start));
     }
     let lines = family.lines.iter().map(|l| (l.start, l.end)).collect();

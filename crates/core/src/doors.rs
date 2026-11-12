@@ -1,8 +1,8 @@
 //! Generated closed equipment for project-owned industrial door types. Authored families keep their own geometry.
 //! Pieces are the existing family representation, shared by plans, sections, 3D and IFC; Operation remains in the model.
 use crate::family::{Frame, Piece, sweep};
-use crate::geom::Region;
 use crate::geom::P2;
+use crate::geom::Region;
 use crate::model::Operation;
 
 pub(crate) fn pieces(operation: Operation, width: f64, height: f64, face: f64, material: &str) -> Result<Vec<Piece>, String> {
