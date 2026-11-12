@@ -205,6 +205,29 @@ fn a_point_knows_how_far_it_stands_from_the_nearest_wall_centre_line_or_grid_eac
 }
 
 #[test]
+fn a_straight_wall_knows_how_far_the_nearest_parallel_wall_or_grid_stands_on_each_side() {
+    let mut s = Session::new();
+    // Walls 100002 (south, running east), 100003 (east), 100004 (north) and 100005 (west).
+    house(&mut s);
+    let reach = |s: &Session, id: u64| {
+        s.model.wall_clearances(id).map(|c| c.map(|c| (c.distance, s.model.elements.id(c.to.id).unwrap(), c.toward)))
+    };
+    // Its left, then its right: the north wall 6000 to the left of the south one, nothing to its right.
+    assert_eq!(reach(&s, 100002), [Some((6000.0, 100004, P2(0.0, 1.0))), None]);
+    // A wall between them is each one's nearest; the crossing east and west walls are no parallel ones.
+    let mid = run(&mut s, "wall", json!({"points": [[0, 2500], [8000, 2500]], "type": "Interior - 100mm"}))["ids"][0].as_u64().unwrap();
+    assert_eq!(reach(&s, 100002)[0], Some((2500.0, mid, P2(0.0, 1.0))));
+    assert_eq!(reach(&s, mid), [Some((3500.0, 100004, P2(0.0, 1.0))), Some((2500.0, 100002, P2(0.0, -1.0)))]);
+    // A grid nearer than the wall takes its place; one beside it, past its ends, is passed over.
+    let g = run(&mut s, "grid", json!({"start": [-500, 1000], "end": [8500, 1000]}))["id"].as_u64().unwrap();
+    run(&mut s, "grid", json!({"start": [9000, 2000], "end": [12000, 2000]}));
+    assert_eq!(reach(&s, mid)[1], Some((1500.0, g, P2(0.0, -1.0))));
+    // A curved wall has none.
+    let arc = run(&mut s, "wall", json!({"points": [[2000, 4000], [6000, 4000]], "arc": 90}))["ids"][0].as_u64().unwrap();
+    assert_eq!(reach(&s, arc), [None, None]);
+}
+
+#[test]
 fn a_door_stands_between_the_faces_of_the_walls_that_meet_its_wall() {
     use crate::model::Element;
     let mut s = Session::new();

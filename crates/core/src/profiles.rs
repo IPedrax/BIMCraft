@@ -1,10 +1,11 @@
 //! Steel sections: the shape a structural column's or a beam's type may have besides a plain rectangle or circle, and a
 //! small catalogue of the common European ones by name.
 //!
-//! A type keeps its `width` (across: an I's flange, a channel's flange, an angle's horizontal leg) and `depth` (an I's or a
-//! channel's height, an angle's vertical leg); a [`Profile`] adds the shape and its plate thicknesses. Its coordinates are
-//! those of IFC's parameterized profiles: x across the width, y along the depth, the origin in the middle of the box round
-//! it. The outline (a plan's cut of a column) rounds its root fillets; the pieces (what the 3D view and sections build) are
+//! A type keeps its `width` (across: an I's flange, a channel's flange, a T's flange, an angle's horizontal leg) and `depth`
+//! (an I's, a channel's or a T's height, an angle's vertical leg); a [`Profile`] adds the shape and its plate thicknesses. Its
+//! coordinates are those of IFC's parameterized profiles: x across the width, y along the depth, the origin in the middle of
+//! the box round it; one `turned` is turned half round in that plane, as IFC turns a profile by its own axes (a T's flange
+//! below: an inverted T, a foundation beam's). The outline (a plan's cut of a column) rounds its root fillets; the pieces (what the 3D view and sections build) are
 //! rectangles and convex polygons whose union is the section, so a section's cut of a beam is exact.
 //!
 //! The catalogue's dimensions are those of the public standard tables (EN 10365: IPE, HE A, HE B): depth, width, web and
@@ -33,6 +34,8 @@ pub enum Shape {
     U,
     /// An angle: two legs at a corner.
     L,
+    /// A T: a flange on top and a web down from its middle (turned, an inverted T).
+    T,
     /// A rectangular (or square) hollow section, a tube.
     Rhs,
     /// A circular hollow section, a pipe.
@@ -40,12 +43,13 @@ pub enum Shape {
 }
 
 impl Shape {
-    /// The shape a word names: I (or H), U (or C, channel), L (angle), RHS (SHS, tube) or CHS (pipe), in any case.
+    /// The shape a word names: I (or H), U (or C, channel), L (angle), T (tee), RHS (SHS, tube) or CHS (pipe), in any case.
     pub fn parse(s: &str) -> Option<Shape> {
         match s.trim().to_lowercase().as_str() {
             "i" | "h" => Some(Shape::I),
             "u" | "c" | "channel" => Some(Shape::U),
             "l" | "angle" => Some(Shape::L),
+            "t" | "tee" => Some(Shape::T),
             "rhs" | "shs" | "tube" => Some(Shape::Rhs),
             "chs" | "pipe" => Some(Shape::Chs),
             _ => None,
@@ -58,6 +62,7 @@ impl Shape {
             Shape::I => "I",
             Shape::U => "U",
             Shape::L => "L",
+            Shape::T => "T",
             Shape::Rhs => "RHS",
             Shape::Chs => "CHS",
         }
@@ -69,8 +74,8 @@ fn is_zero(x: &f64) -> bool {
 }
 
 /// A type's section, besides its width and depth: its shape, the name it has in a catalogue (`IPE 300`), and its plates: an
-/// I's or a channel's `web` and `flange` thickness, an angle's or a hollow section's wall `thickness`, and the `radius` of
-/// the fillets where an I's, a channel's or an angle's plates meet.
+/// I's, a channel's or a T's `web` and `flange` thickness, an angle's or a hollow section's wall `thickness`, and the `radius`
+/// of the fillets where an I's, a channel's, a T's or an angle's plates meet; `turned`, turned half round in its plane.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Profile {
@@ -85,6 +90,8 @@ pub struct Profile {
     pub thickness: f64,
     #[serde(default, skip_serializing_if = "is_zero")]
     pub radius: f64,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub turned: bool,
 }
 
 /// A piece of a section: a rectangle from its lower left corner to its upper right, or a convex polygon, counter-clockwise.
@@ -171,18 +178,23 @@ fn circle(r: f64) -> Vec<P2> {
 pub(crate) struct GeometryKey {
     shape: Shape,
     plates: [u64; 4],
+    turned: bool,
 }
 
 impl GeometryKey {
     pub(crate) fn profile(self) -> Profile {
         let [web, flange, thickness, radius] = self.plates.map(f64::from_bits);
-        Profile { shape: self.shape, name: String::new(), web, flange, thickness, radius }
+        Profile { shape: self.shape, name: String::new(), web, flange, thickness, radius, turned: self.turned }
     }
 }
 
 impl Profile {
     pub(crate) fn geometry_key(&self) -> GeometryKey {
-        GeometryKey { shape: self.shape, plates: [self.web, self.flange, self.thickness, self.radius].map(f64::to_bits) }
+        GeometryKey {
+            shape: self.shape,
+            plates: [self.web, self.flange, self.thickness, self.radius].map(f64::to_bits),
+            turned: self.turned,
+        }
     }
 
     /// Lateral perimeter, mm, including the inner surface of hollow sections.
@@ -193,6 +205,7 @@ impl Profile {
             Shape::I => 4.0 * width + 2.0 * depth - 2.0 * self.web - 4.0 * rounded_corner,
             Shape::U => 4.0 * width + 2.0 * depth - 2.0 * self.web - 2.0 * rounded_corner,
             Shape::L => 2.0 * (width + depth) - rounded_corner,
+            Shape::T => 2.0 * (width + depth) - 2.0 * rounded_corner,
             Shape::Rhs => 4.0 * (width + depth - 2.0 * self.thickness),
             Shape::Chs => std::f64::consts::PI * (2.0 * width - 2.0 * self.thickness),
         }
@@ -239,6 +252,20 @@ impl Profile {
                 let t = self.thickness;
                 vec![p(-hw, -hd, 0.0), p(hw, -hd, 0.0), p(hw, -hd + t, 0.0), p(-hw + t, -hd + t, r), p(-hw + t, hd, 0.0), p(-hw, hd, 0.0)]
             }
+            // The flange along the top, the web down from its middle.
+            Shape::T => {
+                let (t, f) = (self.web / 2.0, self.flange);
+                vec![
+                    p(-t, -hd, 0.0),
+                    p(t, -hd, 0.0),
+                    p(t, hd - f, r),
+                    p(hw, hd - f, 0.0),
+                    p(hw, hd, 0.0),
+                    p(-hw, hd, 0.0),
+                    p(-hw, hd - f, 0.0),
+                    p(-t, hd - f, r),
+                ]
+            }
             Shape::Rhs | Shape::Chs => Vec::new(),
         }
     }
@@ -247,7 +274,7 @@ impl Profile {
     pub fn rings(&self, width: f64, depth: f64) -> Vec<Vec<P2>> {
         let (hw, hd, t) = (width / 2.0, depth / 2.0, self.thickness);
         let rect = |x: f64, y: f64| vec![P2(-x, -y), P2(x, -y), P2(x, y), P2(-x, y)];
-        match self.shape {
+        let rings = match self.shape {
             Shape::Rhs => {
                 let mut inner = rect(hw - t, hd - t);
                 inner.reverse();
@@ -259,7 +286,13 @@ impl Profile {
                 vec![circle(hw), inner]
             }
             _ => vec![rounded(&self.corners(width, depth))],
-        }
+        };
+        rings.into_iter().map(|r| r.into_iter().map(|q| self.turn(q)).collect()).collect()
+    }
+
+    /// Point `q` of the section as it stands: turned half round about its middle when it is `turned`.
+    fn turn(&self, q: P2) -> P2 {
+        if self.turned { P2(-q.0, -q.1) } else { q }
     }
 
     /// Whether it has a hole: a tube or a pipe.
@@ -284,6 +317,10 @@ impl Profile {
                 let t = self.thickness;
                 vec![rect(-hw, -hd, -hw + t, hd), rect(-hw + t, -hd, hw, -hd + t)]
             }
+            Shape::T => {
+                let (t, f) = (self.web / 2.0, self.flange);
+                vec![rect(-hw, hd - f, hw, hd), rect(-t, -hd, t, hd - f)]
+            }
             Shape::Rhs => {
                 let t = self.thickness;
                 vec![
@@ -304,7 +341,16 @@ impl Profile {
             }
         };
         out.extend(fans(&self.corners(width, depth)));
-        out
+        if !self.turned {
+            return out;
+        }
+        out.into_iter()
+            .map(|piece| match piece {
+                // Turned half round, a rectangle's lower left corner is its upper right one, turned.
+                Piece::Rect(lo, hi) => Piece::Rect(self.turn(hi), self.turn(lo)),
+                Piece::Convex(pts) => Piece::Convex(pts.into_iter().map(|q| self.turn(q)).collect()),
+            })
+            .collect()
     }
 
     /// Its cross-section's area, mm², with its fillets.
@@ -315,6 +361,7 @@ impl Profile {
             Shape::I => 2.0 * b * self.flange + (h - 2.0 * self.flange) * self.web + 4.0 * fillet,
             Shape::U => 2.0 * b * self.flange + (h - 2.0 * self.flange) * self.web + 2.0 * fillet,
             Shape::L => self.thickness * (b + h - self.thickness) + fillet,
+            Shape::T => b * self.flange + (h - self.flange) * self.web + 2.0 * fillet,
             Shape::Rhs => b * h - (b - 2.0 * self.thickness) * (h - 2.0 * self.thickness),
             Shape::Chs => std::f64::consts::FRAC_PI_4 * (b * b - (b - 2.0 * self.thickness).powi(2)),
         }
@@ -352,6 +399,12 @@ impl Profile {
             Shape::L => {
                 need("thickness", self.thickness)?;
                 fits(self.thickness + r < small, format!("its legs ({} mm thick) and fillet don't fit in it", self.thickness))
+            }
+            Shape::T => {
+                need("web", self.web)?;
+                need("flange", self.flange)?;
+                fits(self.web + 2.0 * r < width, format!("its web ({} mm) and fillets don't fit in its width ({width} mm)", self.web))?;
+                fits(self.flange + r < depth, format!("its flange ({} mm) and fillets don't fit in its depth ({depth} mm)", self.flange))
             }
             Shape::Rhs | Shape::Chs => {
                 need("thickness", self.thickness)?;
@@ -447,7 +500,7 @@ pub fn catalogue(name: &str) -> Option<(f64, f64, Profile)> {
     SERIES.iter().find_map(|(prefix, rows)| {
         let size: u32 = key.strip_prefix(prefix)?.parse().ok()?;
         let &(_, h, b, web, flange, radius) = rows.iter().find(|r| r.0 == size)?;
-        let profile = Profile { shape: Shape::I, name: format!("{prefix} {size}"), web, flange, thickness: 0.0, radius };
+        let profile = Profile { shape: Shape::I, name: format!("{prefix} {size}"), web, flange, thickness: 0.0, radius, turned: false };
         Some((b, h, profile))
     })
 }
@@ -489,11 +542,41 @@ mod tests {
     #[test]
     fn every_shapes_outline_and_pieces_cover_its_area() {
         let shapes = [
-            (Profile { shape: Shape::I, name: String::new(), web: 7.1, flange: 10.7, thickness: 0.0, radius: 15.0 }, 150.0, 300.0),
-            (Profile { shape: Shape::U, name: String::new(), web: 7.0, flange: 11.0, thickness: 0.0, radius: 13.0 }, 90.0, 200.0),
-            (Profile { shape: Shape::L, name: String::new(), web: 0.0, flange: 0.0, thickness: 10.0, radius: 12.0 }, 100.0, 150.0),
-            (Profile { shape: Shape::Rhs, name: String::new(), web: 0.0, flange: 0.0, thickness: 8.0, radius: 0.0 }, 200.0, 100.0),
-            (Profile { shape: Shape::Chs, name: String::new(), web: 0.0, flange: 0.0, thickness: 6.0, radius: 0.0 }, 168.3, 168.3),
+            (
+                Profile { shape: Shape::I, name: String::new(), web: 7.1, flange: 10.7, thickness: 0.0, radius: 15.0, turned: false },
+                150.0,
+                300.0,
+            ),
+            (
+                Profile { shape: Shape::U, name: String::new(), web: 7.0, flange: 11.0, thickness: 0.0, radius: 13.0, turned: false },
+                90.0,
+                200.0,
+            ),
+            (
+                Profile { shape: Shape::L, name: String::new(), web: 0.0, flange: 0.0, thickness: 10.0, radius: 12.0, turned: false },
+                100.0,
+                150.0,
+            ),
+            (
+                Profile { shape: Shape::Rhs, name: String::new(), web: 0.0, flange: 0.0, thickness: 8.0, radius: 0.0, turned: false },
+                200.0,
+                100.0,
+            ),
+            (
+                Profile { shape: Shape::Chs, name: String::new(), web: 0.0, flange: 0.0, thickness: 6.0, radius: 0.0, turned: false },
+                168.3,
+                168.3,
+            ),
+            (
+                Profile { shape: Shape::T, name: String::new(), web: 400.0, flange: 500.0, thickness: 0.0, radius: 50.0, turned: false },
+                1500.0,
+                1000.0,
+            ),
+            (
+                Profile { shape: Shape::T, name: String::new(), web: 400.0, flange: 500.0, thickness: 0.0, radius: 50.0, turned: true },
+                1500.0,
+                1000.0,
+            ),
         ];
         for (p, w, d) in shapes {
             let exact = p.area(w, d);
@@ -507,19 +590,25 @@ mod tests {
             for q in p.rings(w, d).iter().flatten() {
                 assert!(q.0.abs() <= w / 2.0 + 1e-9 && q.1.abs() <= d / 2.0 + 1e-9, "{:?}", p.shape);
             }
+            // A T's flange is on top, a turned one's below.
+            if p.shape == Shape::T {
+                let flange = p.pieces(w, d).into_iter().find(|q| matches!(q, Piece::Rect(lo, hi) if hi.0 - lo.0 == w));
+                let Some(Piece::Rect(lo, hi)) = flange else { panic!("no flange") };
+                assert_eq!(if p.turned { lo.1 } else { hi.1 }, if p.turned { -d / 2.0 } else { d / 2.0 }, "{lo:?} {hi:?}");
+            }
         }
     }
 
     #[test]
     fn a_profile_whose_plates_dont_fit_is_refused() {
-        let i = |web, flange, radius| Profile { shape: Shape::I, name: String::new(), web, flange, thickness: 0.0, radius };
+        let i = |web, flange, radius| Profile { shape: Shape::I, name: String::new(), web, flange, thickness: 0.0, radius, turned: false };
         assert!(i(7.0, 10.0, 15.0).check("t", 150.0, 300.0, false).is_ok());
         assert!(i(0.0, 10.0, 0.0).check("t", 150.0, 300.0, false).unwrap_err().contains("web"));
         assert!(i(160.0, 10.0, 0.0).check("t", 150.0, 300.0, false).unwrap_err().contains("width"));
         assert!(i(7.0, 150.0, 0.0).check("t", 150.0, 300.0, false).unwrap_err().contains("depth"));
         assert!(i(7.0, 10.0, f64::NAN).check("t", 150.0, 300.0, false).is_err());
         assert!(i(7.0, 10.0, 0.0).check("t", 150.0, 300.0, true).unwrap_err().contains("round"));
-        let chs = Profile { shape: Shape::Chs, name: String::new(), web: 0.0, flange: 0.0, thickness: 90.0, radius: 0.0 };
+        let chs = Profile { shape: Shape::Chs, name: String::new(), web: 0.0, flange: 0.0, thickness: 90.0, radius: 0.0, turned: false };
         assert!(chs.check("t", 168.3, 168.3, true).unwrap_err().contains("hole"));
     }
 }
