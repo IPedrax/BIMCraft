@@ -72,7 +72,10 @@ pub const CEILING_CUT: f64 = 2300.0;
 pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
-/// The version of the project file this build writes, and the newest it reads. 18: a beam's or a structural column's type may
+/// The version of the project file this build writes, and the newest it reads. 19: a schedule may be of sheets, the
+/// sheet list (`of: "sheet"`, as the Room or Level Schedule is); nothing in a file of 18 changes, but a build that reads
+/// up to 18 holds `sheet` as a category schedules aren't of, and would draw its sheet list with no columns, not say
+/// "saved by a newer BIMCraft". 18: a beam's or a structural column's type may
 /// have a steel section (`profile`), which a build that reads up to 17 would leave out as a field it doesn't know, drawing and
 /// scheduling the member as the solid rectangle or circle round its section; a family's connector may be a `pipe`,
 /// `data` or `earthing` one, with no `system` (a pipe's `domain`, `flow`, `size`), and any may have a place (`at`, `direction`);
@@ -169,7 +172,7 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 2: the library has ids and GUIDs too
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
-pub const FORMAT: u32 = 18;
+pub const FORMAT: u32 = 19;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -1417,7 +1420,7 @@ pub struct Spot {
 #[serde(deny_unknown_fields)]
 pub struct Link {
     pub name: String,
-    /// The `.bimcraft` or `.ifc` it reads, as it was given: a relative one is relative to this project's file.
+    /// The `.bimc` (or earlier `.bimcraft`) or `.ifc` it reads, as it was given: a relative one is relative to this project's file.
     pub path: String,
     /// Where its origin stands in this project, and how far it is turned about it, degrees. Its levels stand at their own
     /// elevations.
@@ -3908,6 +3911,7 @@ impl Model {
         //    type whose void was clear of the solids and cut the wall with the old rule cuts it no more. That is the
         //    conservative side: the wall keeps the opening's rectangle, as 17 drew it, and one value per
         //    void can't hold both outcomes.
+        // 18 to 19 (a schedule of sheets, the sheet list) has no step either: a file of 18 holds none.
         // The rest needs nothing of a file of 17, which holds none of it: an adaptive family and a component's
         // adaptive frames, a family parameter's group, shared GUID and reporting (each defaults to what a file of 17 means:
         // grouped by its kind, the family's own, set), Doors > Opening and Windows > Opening, the project's reference planes

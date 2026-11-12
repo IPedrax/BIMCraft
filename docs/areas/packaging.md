@@ -9,6 +9,11 @@ Moved from the root `CLAUDE.md`, word for word: the root keeps the rules and the
   and actionlint on the workflow, run the Linux one through, and install the deb in a clean container. The app id is
   `io.github.ipedrax.bimcraft` everywhere (`APP_ID`, the desktop file, AppStream, the Flatpak, the bundle); the icons come
   from `packaging/icons.sh`.
+- File types are registered by every package, and a new extension goes in all of them (`bimcraft_core::files` names them): a
+  project is `application/x-bimcraft` (the globs `*.bimc`, `*.bimt`, `*.bimb` and the old `*.bimcraft` in the MIME XML, the
+  `BIMCraft.Project` ProgId's extensions in `bimcraft.wxs`, the `io.github.ipedrax.bimcraft.project` type's in `Info.plist.in`) and a
+  family is `application/x-bimcraft-family` (`*.bimf`, `BIMCraft.Family`, `io.github.ipedrax.bimcraft.family`). An old extension stays
+  registered while files of it are about; the desktop file, the AppStream `<provides>` and the Flatpak install the same MIME XML.
 - A release needs the repository secret `BIMCRAFT_KEY_SECRET` (`gh secret set BIMCRAFT_KEY_SECRET`, a long random value): the assistant's saved
   key is scrambled under it, built in when BIMCraft is compiled. `release.yml` hands it to every job that compiles and sets
   `BIMCRAFT_REQUIRE_KEY_SECRET`, so a release whose secret is missing or empty fails its tests ([the assistant](assistant.md)). Change it and

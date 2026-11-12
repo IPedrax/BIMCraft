@@ -295,6 +295,22 @@ fn area3(f: &[P3]) -> f64 {
     dot(newell(f), newell(f)).sqrt() / 2.0
 }
 
+/// How thick a closed body is, plumb, on average over its outline in plan less its holes: what it holds over that area.
+/// Zero when it holds nothing or has no area.
+fn mean_depth(faces: &[Vec<P3>], outer: &[P2], holes: &[Vec<P2>]) -> f64 {
+    // The divergence theorem: each face fanned into triangles, each with the origin a tetrahedron, signed by how it turns.
+    let six: f64 = faces
+        .iter()
+        .filter_map(|f| {
+            let first = *f.first()?;
+            Some(f.windows(2).skip(1).map(|w| dot(first, cross(w[0], w[1]))).sum::<f64>())
+        })
+        .sum();
+    let area = geom::area(outer).abs() - holes.iter().map(|h| geom::area(h).abs()).sum::<f64>();
+    let depth = (six / 6.0).abs() / area;
+    if depth.is_finite() && area > 0.0 { depth } else { 0.0 }
+}
+
 /// A ring and its copy `up` from it, as faces turned out.
 fn prism(out: &mut Vec<Vec<P3>>, mut bottom: Vec<P3>, up: P3) {
     // Counter-clockwise round `up`, so its faces turn out whichever way its profile ran.
@@ -1881,19 +1897,22 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
         _ => P2(0.0, 0.0),
     };
     let r = Reader::new(&file, mm, rad, shift);
-    // What an element is made of: its layers, when they add up to how thick it is, and so how thick.
+    // What an element is made of: its layers, when they add up to how thick it is, and so how thick. None when that comes to
+    // no thickness at all (a body measured flat, or layers of nothing): no type can be made of it, so the element comes in as
+    // a generic component of its class with the body it has (left unseen for them), never the file left unread.
     let made_of = |id: u64, t: f64| {
         let layers = layers_of(&r, &l, id, t);
-        (if layers.is_empty() { t } else { layers.iter().map(|l| l.thickness).sum() }, layers)
+        let t = if layers.is_empty() { t } else { layers.iter().map(|l| l.thickness).sum() };
+        (t.is_finite() && t > 0.0).then_some((t, layers))
     };
     // A slab's from the top down: the other way round where its usage stacks them up from its bottom.
     let top_down = |id: u64, t: f64| {
-        let (t, mut layers) = made_of(id, t);
+        let (t, mut layers) = made_of(id, t)?;
         let up = r.get(id).is_some_and(|x| r.frame(x).z[2] >= 0.0);
         if stacked_up(&r, &l, id) == Some(up) {
             layers.reverse();
         }
-        (t, layers)
+        Some((t, layers))
     };
     let e = |id: u64| r.get(id);
     let named = |names: &[&str]| -> Vec<u64> {
@@ -2086,7 +2105,10 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
             };
             let t = ((r1 - r0) * 100.0).round() / 100.0;
             let base = label(id).unwrap_or_else(|| format!("Imported - {}mm", num(t)));
-            let (t, layers) = made_of(id, t);
+            let Some((t, layers)) = made_of(id, t) else {
+                seen.remove(&id);
+                continue;
+            };
             let type_name = kind(
                 &mut m.types.wall,
                 &base,
@@ -2141,7 +2163,10 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
         let t = (c1 - c0) * 100.0;
         let t = t.round() / 100.0;
         let base = label(id).unwrap_or_else(|| format!("Imported - {}mm", num(t)));
-        let (t, layers) = made_of(id, t);
+        let Some((t, layers)) = made_of(id, t) else {
+            seen.remove(&id);
+            continue;
+        };
         let type_name = kind(
             &mut m.types.wall,
             &base,
@@ -2246,13 +2271,17 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
             continue;
         };
         // A top of several planes: a level floor at its highest point, its shape's points under it and its creases.
+        // One that measures no thickness so is read as a level or sloped one, below.
         if let Some(ShapedTop { high, region: geom::Region { outer, holes }, points, creases, depth, corners, level_under }) =
-            shaped_top(&faces)
+            shaped_top(&faces).filter(|sh| top_down(id, (sh.depth * 100.0).round() / 100.0).is_some())
         {
             let flat = |p: P2| micron(r.flat([p.0, p.1, 0.0]));
             let t = (depth * 100.0).round() / 100.0;
             let base = label(id).unwrap_or_else(|| format!("Imported - {}mm", num(t)));
-            let (t, mut layers) = top_down(id, t);
+            let Some((t, mut layers)) = top_down(id, t) else {
+                seen.remove(&id);
+                continue;
+            };
             guess_variable(&mut layers, level_under);
             let type_name = kind(
                 &mut m.types.floor,
@@ -2312,9 +2341,15 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
             let reach = ring.iter().map(|q| (*q - tail).dot(u)).fold(0.0, f64::max);
             [flat(tail), flat(tail + u * reach)]
         });
+        // Its underside's largest face above its top's (a slab stepped or recessed under): as thick, plumb, as it holds over
+        // its outline, on average.
+        let rise = if rise > 0.0 { rise } else { mean_depth(&faces, &ring, &holes) };
         let t = ((rise * tan.atan().cos()) * 100.0).round() / 100.0;
         let base = label(id).unwrap_or_else(|| format!("Imported - {}mm", num(t)));
-        let (t, layers) = top_down(id, t);
+        let Some((t, layers)) = top_down(id, t) else {
+            seen.remove(&id);
+            continue;
+        };
         let type_name = kind(
             &mut m.types.floor,
             &base,
@@ -2360,7 +2395,10 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
         };
         let t = ((z1 - z0) * 100.0).round() / 100.0;
         let base = label(id).unwrap_or_else(|| format!("Imported - {}mm", num(t)));
-        let (t, layers) = top_down(id, t);
+        let Some((t, layers)) = top_down(id, t) else {
+            seen.remove(&id);
+            continue;
+        };
         let type_name = kind(
             &mut m.types.ceiling,
             &base,
@@ -2398,7 +2436,8 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
         seen.insert(id);
         let read = roof_from(&r, &faces, &voided(id));
         // A flat roof whose top isn't one plane (MOD-16): shaped, unless its footprint and pitch make that top already.
-        if let Some(sh) = shaped_top(&faces) {
+        // One that measures no thickness by its shape is read as the others are.
+        if let Some(sh) = shaped_top(&faces).filter(|sh| top_down(id, (sh.depth * 100.0).round() / 100.0).is_some()) {
             // An extruded one is read by its profile, as before.
             let pitched_fits = read.as_ref().is_ok_and(|rd| rd.extrusion.is_some())
                 || read.as_ref().is_ok_and(|rd| {
@@ -2428,7 +2467,10 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
                 let flat = |p: P2| micron(r.flat([p.0, p.1, 0.0]));
                 let t = (depth * 100.0).round() / 100.0;
                 let base = label(id).unwrap_or_else(|| format!("Imported - {}mm", num(t)));
-                let (t, mut layers) = top_down(id, t);
+                let Some((t, mut layers)) = top_down(id, t) else {
+                    seen.remove(&id);
+                    continue;
+                };
                 guess_variable(&mut layers, level_under);
                 let type_name = kind(
                     &mut m.types.roof,
@@ -2485,7 +2527,10 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
         match read {
             Ok(rd) => {
                 let base = label(id).unwrap_or_else(|| format!("Imported - {}mm", num(rd.t)));
-                let (t, layers) = top_down(id, rd.t);
+                let Some((t, layers)) = top_down(id, rd.t) else {
+                    seen.remove(&id);
+                    continue;
+                };
                 let type_name = kind(
                     &mut m.types.roof,
                     &base,
@@ -5165,6 +5210,37 @@ ENDSEC;END-ISO-10303-21;",
             layers.iter().map(|l| (l.function, l.thickness)).collect::<Vec<_>>(),
             [(Function::Finish, 150.0), (Function::Membrane, 0.0), (Function::Structure, 50.0)]
         );
+    }
+
+    #[test]
+    fn a_slab_that_measures_no_thickness_comes_in_as_a_generic_slab_and_the_file_opens() {
+        // Half a millimetre thick, of layers that add up to nothing: no floor type can be made of it, so it comes in as a
+        // component that remembers it's a slab, with its body.
+        let file = layered(&holed("#35=IFCSLAB('f',$,'Slab',$,$,#6,#34,$,.FLOOR.);", 35), 35, "AXIS3", 0.0)
+            .replace("#32=IFCEXTRUDEDAREASOLID(#30,$,#31,200.)", "#32=IFCEXTRUDEDAREASOLID(#30,$,#31,0.5)")
+            .replace("IFCMATERIALLAYER(#80,150.", "IFCMATERIALLAYER(#80,0.")
+            .replace("IFCMATERIALLAYER(#81,50.", "IFCMATERIALLAYER(#81,0.");
+        let i = ifc(file.as_bytes(), "x").unwrap();
+        i.model.check().unwrap();
+        assert!(only(&i.model, "floor").is_empty());
+        assert_eq!(only(&i.model, "component").len(), 1);
+        assert!(i.model.families.values().any(|f| f.ifc.as_ref().is_some_and(|c| c.class == "IFCSLAB")));
+    }
+
+    #[test]
+    fn a_slab_stepped_under_is_as_thick_as_it_holds_over_its_outline() {
+        let rect = |x0: f64, x1: f64, z: f64| vec![[x0, 0.0, z], [x1, 0.0, z], [x1, 4000.0, z], [x0, 4000.0, z]];
+        let outline = |x1: f64| vec![P2(0.0, 0.0), P2(x1, 0.0), P2(x1, 4000.0), P2(0.0, 4000.0)];
+        let mut faces = Vec::new();
+        prism(&mut faces, rect(0.0, 6000.0, 0.0), [0.0, 0.0, 200.0]);
+        assert!((mean_depth(&faces, &outline(6000.0), &[]) - 200.0).abs() < 1e-6);
+        // 60 thick over two thirds of it, 300 over the rest: 140 on average.
+        let mut faces = Vec::new();
+        prism(&mut faces, rect(0.0, 4000.0, 0.0), [0.0, 0.0, 60.0]);
+        prism(&mut faces, rect(4000.0, 6000.0, -240.0), [0.0, 0.0, 300.0]);
+        assert!((mean_depth(&faces, &outline(6000.0), &[]) - 140.0).abs() < 1e-6);
+        // Nothing to hold it over: no depth.
+        assert_eq!(mean_depth(&faces, &[], &[]), 0.0);
     }
 
     #[test]

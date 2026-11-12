@@ -811,6 +811,8 @@ fn the_browser_opens_level_plans_and_schedules() {
     for label in ["Views (all)", "Floor Plans", "Schedules/Quantities (all)"] {
         assert!(h.query_by_label(label).is_some(), "{label}");
     }
+    // The sheet list every project has, with the other six.
+    assert!(h.query_by_label("Sheet List").is_some(), "Sheet List");
     // Its floor plan, over its ceiling plan.
     topmost(&mut h, "Level 2");
     assert_eq!(h.state().sheet, Sheet::Plan(100001));
@@ -1150,6 +1152,26 @@ fn file_export_writes_the_plan_on_screen_as_dxf_and_leaves_the_project_unsaved_a
     // A window built without the DWG writer (as the tests' is) says to save as DXF.
     assert!(!h.state_mut().save_to(&dir.join("upper.dwg")));
     assert!(h.state().status.text.contains(".dxf"), "{}", h.state().status.text);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
+fn import_3d_model_brings_an_objs_objects_in_on_the_plans_level_selected_and_says_what_came_in() {
+    let mut h = app("");
+    let dir = std::env::temp_dir().join(format!("bimcraft-ui-mesh-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let obj = "o Table\nv 0 0 0\nv 1 0 0\nv 1 0 1\nv 0 0 1\nv 0 0.75 0\nf 1 2 3 4\nf 1 2 5\no Lamp\nv 2 0 0\nv 2.2 0 0\nv 2 1.5 0\nf 6 7 8\nl 1 2\n";
+    std::fs::write(dir.join("room.obj"), obj).unwrap();
+    press(&mut h, "Insert");
+    assert!(h.query_by_label("Import 3D Model").is_some(), "Insert > Import lists it");
+    h.state_mut().import_mesh_path(dir.join("room.obj"));
+    h.run();
+    let st = h.state();
+    assert_eq!(st.selection.len(), 2, "{}", st.status.text);
+    assert!(st.session.model.families.contains_key("Table") && st.session.model.families.contains_key("Lamp"));
+    assert!(st.status.text.contains("2 objects") && st.status.text.contains("1 lines and points"), "{}", st.status.text);
+    // One undo step.
+    assert_eq!(st.session.history().last().copied(), Some("Import Mesh"));
     let _ = std::fs::remove_dir_all(&dir);
 }
 
@@ -4093,7 +4115,7 @@ fn a_schedule_of_the_projects_own_is_deleted_from_the_browser_and_its_tab_closes
     assert_eq!(ids(&h, "schedule").len(), before - 1, "deleted");
     assert!(!h.state().session.model.elements.contains_key(sc), "it is the one deleted");
     assert_ne!(h.state().sheet, Sheet::Table(sc), "its tab is closed");
-    // The six every project has have no Delete.
+    // The seven every project has have no Delete.
     h.get_by_label("Room Schedule").scroll_to_me();
     h.run();
     let pos = h.get_by_label("Room Schedule").rect().center();
@@ -6238,6 +6260,7 @@ mod dock;
 mod draw;
 mod electrical;
 mod family_formulas;
+mod file_extensions;
 mod fills;
 mod filter;
 mod fonts;
@@ -6969,6 +6992,37 @@ fn a_selected_levels_plane_has_a_grip_on_each_edge_in_3d_that_drags_it() {
     assert!((extent[1][0].as_f64().unwrap() - 9000.0).abs() <= 10.0, "{extent}");
     assert_eq!((extent[0].clone(), extent[1][1].clone()), (json!([0.0, 0.0]), json!(6000.0)));
     assert_eq!(h.state().orbit.camera, before, "the grip took the drag, not the camera");
+}
+
+#[test]
+fn run_script_tries_a_script_then_runs_it_as_one_undo_step_and_never_touches_a_file() {
+    let mut h = app(BOX);
+    let walls = ids(&h, "wall").len();
+    // Manage grew past what a narrower window shows of it: wide enough for its last panel.
+    h.set_size(vec2(2200.0, 900.0));
+    press(&mut h, "Manage");
+    press(&mut h, "Run Script");
+    let field = "Commands, one a line (id {json params}; # starts a comment):";
+    let script = "# two walls\nwall {\"points\": [[20000, 0], [24000, 0]]}\nwall {\"points\": [[20000, 3000], [24000, 3000]]}";
+    type_into(&mut h, field, script);
+    // Try: what it would make, and nothing made.
+    press(&mut h, "Try");
+    assert!(h.query_by_label("Would make 2, change 0 and remove 0 elements.").is_some());
+    assert_eq!(ids(&h, "wall").len(), walls);
+    // Run: made, as one undo step, and the dialog closes.
+    press(&mut h, "Run");
+    assert_eq!(ids(&h, "wall").len(), walls + 2);
+    assert!(h.state().run_script.is_none());
+    assert!(!h.state().status.error && h.state().status.text.starts_with("Ran 2 lines as one undo step."), "{}", h.state().status.text);
+    assert_eq!(h.state().session.history().last().copied(), Some("Script"));
+    // A line that would write a file is refused before anything runs, and the dialog says which.
+    press(&mut h, "Run Script");
+    type_into(&mut h, field, "wall {\"points\": [[30000, 0], [34000, 0]]}\nsave {\"path\": \"/tmp/x.bimcraft\"}");
+    press(&mut h, "Run");
+    assert_eq!(ids(&h, "wall").len(), walls + 2);
+    assert!(h.state().run_script.as_ref().is_some_and(|d| d.said().is_some_and(|(s, error)| error && s.contains("line 2"))));
+    press(&mut h, "Close");
+    assert!(h.state().run_script.is_none());
 }
 
 #[test]
