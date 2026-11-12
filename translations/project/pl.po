@@ -132,7 +132,7 @@ msgstr "Gniazdo teleinformatyczne"
 msgid "Demand Factor"
 msgstr ""
 
-#: crates/core/src/commands.rs:11559
+#: crates/core/src/commands.rs:11562
 msgid "Dependent"
 msgstr "Zależny"
 
@@ -217,9 +217,9 @@ msgstr "Instalacja oświetleniowa"
 msgid "Electrical Power"
 msgstr "Instalacja elektryczna – zasilanie"
 
-#: crates/core/src/commands.rs:11306
-#: crates/core/src/commands.rs:11321
-#: crates/core/src/commands.rs:15525
+#: crates/core/src/commands.rs:11309
+#: crates/core/src/commands.rs:11324
+#: crates/core/src/commands.rs:15528
 msgid "Elevation"
 msgstr "Widok elewacji"
 
@@ -386,7 +386,7 @@ msgstr "Oznaczenie"
 msgid "Masking"
 msgstr "Maskowanie"
 
-#: crates/core/src/commands.rs:9059
+#: crates/core/src/commands.rs:9062
 msgid "Mass"
 msgstr "Bryła"
 
@@ -402,7 +402,7 @@ msgstr "Linie średnie"
 msgid "Membrane"
 msgstr "Membrana"
 
-#: crates/core/src/commands.rs:14228
+#: crates/core/src/commands.rs:14231
 #: crates/core/src/family.rs:3338
 #: crates/core/src/model.rs:4658
 msgid "Metal"
@@ -502,7 +502,7 @@ msgstr ""
 msgid "Project"
 msgstr "Projekt"
 
-#: crates/core/src/commands.rs:7936
+#: crates/core/src/commands.rs:7939
 msgid "Property Line"
 msgstr ""
 
@@ -534,7 +534,7 @@ msgstr ""
 msgid "Roof tiles"
 msgstr "Dachówki"
 
-#: crates/core/src/commands.rs:9284
+#: crates/core/src/commands.rs:9287
 msgid "Room"
 msgstr "Pomieszczenie"
 
@@ -570,8 +570,8 @@ msgstr "Jastrych"
 msgid "Seat Height"
 msgstr "Wysokość siedziska"
 
-#: crates/core/src/commands.rs:11241
-#: crates/core/src/commands.rs:15524
+#: crates/core/src/commands.rs:11244
+#: crates/core/src/commands.rs:15527
 msgid "Section"
 msgstr "Przekrój"
 
@@ -729,7 +729,7 @@ msgstr "Wysokość nieograniczona"
 msgid "Unclassified"
 msgstr ""
 
-#: crates/core/src/commands.rs:11730
+#: crates/core/src/commands.rs:11733
 msgid "Unnamed"
 msgstr "Bez nazwy"
 

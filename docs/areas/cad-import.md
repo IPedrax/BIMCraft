@@ -12,7 +12,7 @@ images and PDFs as underlays are still to come.
 sections. From the header it takes `$INSUNITS` (the drawing's unit, `Dxf::unit` and `Dxf::scale`, mm to each of its units),
 `$ACADVER` and `$LTSCALE`; from the tables its layers (colour, off when the colour is negative, frozen by flag, linetype, line
 weight) and its linetypes' dash patterns; from the blocks section the blocks; and from the entities section what model space
-draws (an entity with code 67 set is paper space's, and left out). Entities come in as a short list of `Shape`s, in the
+draws (an entity with code 67 set is paper space's, and left out, unless model space draws nothing: then the sheet laid out in paper space comes in instead, from ENTITIES or else the `*Paper_Space` block, in paper units with paper space's extents, `Dxf::paper` says so and the reply's `notes` too). Entities come in as a short list of `Shape`s, in the
 drawing's own units: LINE, LWPOLYLINE and POLYLINE (bulges become arcs; a 3D mesh or polyface is left out), CIRCLE, ARC,
 ELLIPSE (as a polyline), SPLINE (its fit points, else its control points), POINT, TEXT and MTEXT (its formatting codes taken
 out, aligned as the file says), SOLID and TRACE, and HATCH (its boundary loops, solid or patterned; a patterned one is drawn as a
