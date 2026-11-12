@@ -4,6 +4,7 @@
 
 use bimcraft_core::codes::{self, GENERIC, ORDER};
 use bimcraft_core::model::Model;
+use bimcraft_core::units::Units;
 use egui::{Align, Color32, ComboBox, Context, DragValue, Grid, Id as UiId, Layout, RichText, ScrollArea, Ui, WidgetInfo, WidgetType};
 use serde_json::{Map, Value, json};
 
@@ -84,13 +85,18 @@ impl CodesDialog {
     }
 }
 
+/// A length as the project writes its lengths; in millimetres, to the hundredth, since a code's inch is 25.4.
+fn length(units: Units, mm: f64) -> String {
+    if units == Units::Millimetres { format!("{} mm", (mm * 100.0).round() / 100.0) } else { units.with_unit(mm) }
+}
+
 /// How a rule's value reads.
-fn said(key: &str, v: &Value) -> String {
+fn said(units: Units, key: &str, v: &Value) -> String {
     match v {
         Value::Bool(b) => t(if *b { "Yes" } else { "No" }).to_string(),
         Value::String(s) => choices(key).iter().find(|(k, _)| k == s).map_or_else(|| s.clone(), |(_, label)| t(label).to_string()),
         Value::Number(n) if key == "flight_risers_max" => n.to_string(),
-        Value::Number(n) => format!("{} mm", n.as_f64().unwrap_or(0.0)),
+        Value::Number(n) => length(units, n.as_f64().unwrap_or(0.0)),
         _ => String::new(),
     }
 }
@@ -107,14 +113,14 @@ pub(crate) fn findings(ui: &mut Ui, m: &Model, list: &Value) {
         ui.label(RichText::new(t(label)).color(OUTSIDE).strong());
         // What the stair has and what the rule asks; a yes or no rule has no numbers.
         if rule != "winders" {
-            let unit = if rule == "flight_risers_max" { "" } else { " mm" };
             let (has, asks) = (f["value"].as_f64().unwrap_or(0.0), f["limit"].as_f64().unwrap_or(0.0));
+            let shown = |x: f64| if rule == "flight_risers_max" { x.to_string() } else { length(m.units, x) };
             Grid::new(("finding", rule)).num_columns(2).show(ui, |ui| {
                 ui.label(RichText::new(t("The stair:")).color(pal().muted));
-                ui.label(format!("{has}{unit}"));
+                ui.label(shown(has));
                 ui.end_row();
                 ui.label(RichText::new(t("The rule:")).color(pal().muted));
-                ui.label(format!("{asks}{unit}"));
+                ui.label(shown(asks));
                 ui.end_row();
             });
         }
@@ -164,6 +170,7 @@ fn custom(m: &Model, d: &CodesDialog) -> bool {
 
 fn stairs_tab(ui: &mut Ui, m: &Model, d: &mut CodesDialog) {
     let own = rules_of(m, &d.selected);
+    let units = m.units;
     let mut group = "";
     Grid::new("building-code-stairs").striped(true).num_columns(3).min_col_width(150.0).show(ui, |ui| {
         for (key, of, label) in LABELS {
@@ -200,7 +207,14 @@ fn stairs_tab(ui: &mut Ui, m: &Model, d: &mut CodesDialog) {
                 }
                 Value::Number(n) => {
                     let mut x = n.as_f64().unwrap_or(0.0);
-                    let r = ui.add(DragValue::new(&mut x).range(0.0..=100_000.0).speed(1.0).max_decimals(2).suffix(" mm"));
+                    // In the project's units, typed as its lengths are.
+                    let r = ui.add(
+                        DragValue::new(&mut x)
+                            .range(0.0..=100_000.0)
+                            .speed(1.0)
+                            .custom_formatter(|v, _| length(units, v))
+                            .custom_parser(|typed| units.parse(typed.trim().trim_end_matches("mm").trim())),
+                    );
                     r.widget_info(|| WidgetInfo::labeled(WidgetType::DragValue, true, t(label)));
                     *v = json!(x);
                 }
@@ -210,7 +224,7 @@ fn stairs_tab(ui: &mut Ui, m: &Model, d: &mut CodesDialog) {
             match (d.rules.get(key), own.get(key)) {
                 (Some(now), Some(code)) if now != code && now.as_f64() != code.as_f64().or(Some(f64::NAN)) => {
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new(tf("Changed: the code says {}", &[&said(key, code)])).color(OUTSIDE));
+                        ui.label(RichText::new(tf("Changed: the code says {}", &[&said(units, key, code)])).color(OUTSIDE));
                         if ui.small_button(t("Reset")).clicked() {
                             d.rules.insert(key.to_string(), code.clone());
                         }

@@ -358,3 +358,19 @@ fn the_stair_tool_draws_a_stair_by_hand_and_a_made_stair_becomes_a_sketch() {
     let x = riser[0][0].as_f64().unwrap().max(riser[1][0].as_f64().unwrap());
     assert!((x - 7000.0).abs() < 30.0, "{riser}");
 }
+
+#[test]
+fn the_building_codes_dialog_writes_lengths_in_the_project_s_units() {
+    let mut h = app(BOX);
+    h.state_mut().run("units", json!({"length": "m"})).unwrap();
+    h.state_mut().run("building_code", json!({"set": "ibc"})).unwrap();
+    h.run();
+    press(&mut h, "Manage");
+    press(&mut h, "Building Codes");
+    // A rule changed: the code's own number beside it, seven inches as the project writes a length.
+    h.state_mut().codes_dialog.as_mut().unwrap().rules.insert("riser_max".into(), json!(200.0));
+    h.run();
+    let code = bimcraft_core::units::Units::Metres.with_unit(177.8);
+    assert!(code.ends_with(" m"), "{code}");
+    assert!(h.query_by_label(&format!("Changed: the code says {code}")).is_some(), "{code}");
+}
