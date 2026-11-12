@@ -9,13 +9,18 @@
 //! keeps its colour as a true colour, its weight on paper as the nearest standard line weight, and its dashes as a
 //! linetype in model millimetres; a fill is a solid hatch. Lettering is drawn as the lines our own font draws, as the PDF
 //! does; a picture can't be written and is left out, counted.
+//!
+//! An imported CAD drawing the view shows is written from its own entities, not from what the view draws of it: each on
+//! its own layer, its text as TEXT, so a DWG brought in goes back out with the layers and lettering it came with.
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
+use crate::dxf::{Horizontal, Shape, Vertical};
 use crate::geom::P2;
 use crate::graphics;
-use crate::model::Model;
+use crate::graphics::Look;
+use crate::model::{Element, Model};
 use crate::render::{Drawing, Part, Prim, Rgb};
 
 /// The standard line weights a DXF may give an entity, hundredths of a millimetre.
@@ -112,12 +117,141 @@ impl W {
 
 /// A primitive as written: its layer, colour, weight, linetype and points in model millimetres.
 enum Out {
-    Line { layer: String, color: Rgb, weight: u16, linetype: Option<String>, pts: Vec<P2>, closed: bool },
-    Fill { layer: String, color: Rgb, rings: Vec<Vec<P2>> },
+    Line {
+        layer: String,
+        color: Rgb,
+        weight: u16,
+        linetype: Option<String>,
+        pts: Vec<P2>,
+        closed: bool,
+    },
+    Fill {
+        layer: String,
+        color: Rgb,
+        rings: Vec<Vec<P2>>,
+    },
+    /// One line of an imported drawing's lettering: `height` mm, `angle` degrees, `h` and `v` its DXF justification.
+    Text {
+        layer: String,
+        color: Rgb,
+        at: P2,
+        height: f64,
+        angle: f64,
+        text: String,
+        h: u8,
+        v: u8,
+    },
+}
+
+/// `pts` without a point that repeats the one before it; none when fewer than `least` are left, a line or a ring of no
+/// length or area, which a reader takes as an empty entity.
+fn distinct(pts: Vec<P2>, least: usize) -> Option<Vec<P2>> {
+    let mut out: Vec<P2> = Vec::with_capacity(pts.len());
+    for p in pts {
+        if out.last().is_none_or(|q| (q.0 - p.0).abs() > 1e-6 || (q.1 - p.1).abs() > 1e-6) {
+            out.push(p);
+        }
+    }
+    while out.len() > 1 && out.first().zip(out.last()).is_some_and(|(a, b)| (a.0 - b.0).abs() <= 1e-6 && (a.1 - b.1).abs() <= 1e-6) {
+        out.pop();
+    }
+    (out.len() >= least).then_some(out)
+}
+
+/// A layer name a DXF takes: the drawing's own, unless it is empty or holds a character a layer's name can't.
+fn layer_name(name: &str) -> String {
+    let clean: String = name.chars().filter(|c| !c.is_control() && !"<>/\\\":;?*|=`".contains(*c)).take(255).collect();
+    if clean.trim().is_empty() { "cadimport".into() } else { clean }
+}
+
+/// `text` as a DXF string of a 2004 file: what isn't ASCII as `\U+XXXX`, controls dropped.
+fn dxf_text(text: &str) -> String {
+    let mut out = String::new();
+    for c in text.chars().filter(|c| !c.is_control()).take(1000) {
+        match u32::from(c) {
+            0x20..=0x7e => out.push(c),
+            n if n <= 0xffff => {
+                let _ = write!(out, "\\U+{n:04X}");
+            }
+            _ => out.push('?'),
+        }
+    }
+    out
+}
+
+/// The imported drawings `d` shows, with the layers of each its view hides, written from their own entities.
+fn cad_entities(m: &Model, d: &Drawing, look: &Look, dashes: &mut Vec<Vec<f64>>) -> Vec<Out> {
+    let per_paper_mm = d.paper_px().max(f32::EPSILON);
+    let mut shown: Vec<crate::ids::Id> =
+        d.owners.iter().flatten().copied().filter(|id| matches!(m.elements.get(id), Some(Element::CadImport(_)))).collect();
+    shown.sort();
+    shown.dedup();
+    let mut out = Vec::new();
+    for id in shown {
+        let Some(Element::CadImport(ci)) = m.elements.get(id) else { continue };
+        let Some(cad) = m.cads.get(&ci.cad) else { continue };
+        let place = crate::model::cad_place(ci);
+        let in_view = look.hidden_layers(&ci.cad);
+        for ent in &cad.dxf().entities {
+            if !cad.shows(ent, &ci.hidden) || in_view.is_some_and(|l| l.contains(&ent.layer)) {
+                continue;
+            }
+            let layer = layer_name(&ent.layer);
+            let color = cad.color(ent, ci.colors).unwrap_or(Rgb(0, 0, 0));
+            match &ent.shape {
+                Shape::Text { at, height, angle, text, align, .. } => {
+                    let height = height * ci.scale;
+                    if !(height.is_finite() && height > 0.0) || text.trim().is_empty() {
+                        continue;
+                    }
+                    let h = match align.h {
+                        Horizontal::Left => 0,
+                        Horizontal::Center => 1,
+                        Horizontal::Right => 2,
+                    };
+                    let v = match align.v {
+                        Vertical::Baseline => 0,
+                        Vertical::Bottom => 1,
+                        Vertical::Middle => 2,
+                        Vertical::Top => 3,
+                    };
+                    out.push(Out::Text { layer, color, at: place(*at), height, angle: angle + ci.angle, text: dxf_text(text), h, v });
+                }
+                Shape::Point(_) => {}
+                Shape::Fill { rings, solid } => {
+                    let rings: Vec<Vec<P2>> = rings.iter().filter_map(|r| distinct(r.iter().map(|p| place(*p)).collect(), 3)).collect();
+                    if rings.is_empty() {
+                        continue;
+                    }
+                    // A patterned hatch is drawn as the view draws it: filled pale.
+                    let pale = |v: u8| v + (255 - v) / 4 * 3;
+                    let color = if *solid { color } else { Rgb(pale(color.0), pale(color.1), pale(color.2)) };
+                    out.push(Out::Fill { layer, color, rings });
+                }
+                shape => {
+                    let linetype =
+                        cad.dash(ent).map(|[a, b]| [a * ci.scale, b * ci.scale]).filter(|[a, b]| *a > 0.0 && *b > 0.0).map(|[a, b]| {
+                            let pattern = vec![(a * 100.0).round() / 100.0, (b * 100.0).round() / 100.0];
+                            let n = dashes.iter().position(|d| *d == pattern).unwrap_or_else(|| {
+                                dashes.push(pattern);
+                                dashes.len() - 1
+                            });
+                            format!("BIM_DASH_{}", n + 1)
+                        });
+                    let weight = lineweight(f64::from(d.width(cad.pen(ent)) / per_paper_mm));
+                    for (pts, closed) in crate::cad::paths(shape) {
+                        let Some(pts) = distinct(pts.iter().map(|p| place(*p)).collect(), 2) else { continue };
+                        out.push(Out::Line { layer: layer.clone(), color, weight, linetype: linetype.clone(), pts, closed });
+                    }
+                }
+            }
+        }
+    }
+    out
 }
 
 /// `d`, a view of `m`, as a DXF in model millimetres.
-pub fn write(m: &Model, d: &Drawing) -> Written {
+pub fn write(m: &Model, d: &Drawing, look: &Look) -> Written {
     let mm = |p: &(f32, f32)| d.view.mm(*p);
     let per_paper_mm = d.paper_px().max(f32::EPSILON);
     let scale = d.view.scale.max(f64::EPSILON);
@@ -127,13 +261,14 @@ pub fn write(m: &Model, d: &Drawing) -> Written {
     let mut dashes: Vec<Vec<f64>> = Vec::new();
     let mut out: Vec<Out> = Vec::new();
     for (i, prim) in d.prims.iter().enumerate() {
+        // An imported drawing is written from its own entities, below.
+        if d.owners.get(i).copied().flatten().is_some_and(|id| matches!(m.elements.get(id), Some(Element::CadImport(_)))) {
+            continue;
+        }
         let layer = layer_of(m, d, i);
         match prim {
             Prim::Line { pts, width, color, dash, closed } => {
-                let pts: Vec<P2> = pts.iter().map(mm).collect();
-                if pts.len() < 2 {
-                    continue;
-                }
+                let Some(pts) = distinct(pts.iter().map(mm).collect(), 2) else { continue };
                 let linetype = dash.as_ref().filter(|d| d.len() >= 2).map(|px| {
                     let pattern: Vec<f64> = px.iter().map(|v| (f64::from(*v) / scale * 100.0).round() / 100.0).collect();
                     let n = dashes.iter().position(|d| *d == pattern).unwrap_or_else(|| {
@@ -147,7 +282,7 @@ pub fn write(m: &Model, d: &Drawing) -> Written {
                 out.push(Out::Line { layer, color: *color, weight, linetype, pts, closed: *closed });
             }
             Prim::Fill { rings, color } => {
-                let rings: Vec<Vec<P2>> = rings.iter().map(|r| r.iter().map(mm).collect::<Vec<P2>>()).filter(|r| r.len() >= 3).collect();
+                let rings: Vec<Vec<P2>> = rings.iter().filter_map(|r| distinct(r.iter().map(mm).collect(), 3)).collect();
                 if rings.is_empty() {
                     continue;
                 }
@@ -157,9 +292,17 @@ pub fn write(m: &Model, d: &Drawing) -> Written {
             Prim::Image { .. } => *left_out.entry("pictures".into()).or_default() += 1,
         }
     }
+    for o in cad_entities(m, d, look, &mut dashes) {
+        let (Out::Line { layer, color, .. } | Out::Fill { layer, color, .. } | Out::Text { layer, color, .. }) = &o;
+        if layer != "0" {
+            layers.entry(layer.clone()).or_insert(*color);
+        }
+        out.push(o);
+    }
     let all = out.iter().flat_map(|o| match o {
         Out::Line { pts, .. } => pts.clone(),
         Out::Fill { rings, .. } => rings.iter().flatten().copied().collect(),
+        Out::Text { at, .. } => vec![*at],
     });
     let (lo, hi) = all.fold((P2(f64::MAX, f64::MAX), P2(f64::MIN, f64::MIN)), |(lo, hi), p| {
         (P2(lo.0.min(p.0), lo.1.min(p.1)), P2(hi.0.max(p.0), hi.1.max(p.1)))
@@ -390,6 +533,23 @@ pub fn write(m: &Model, d: &Drawing) -> Written {
                 w.g(75, 0);
                 w.g(76, 1);
                 w.g(98, 0);
+            }
+            Out::Text { layer, color, at, height, angle, text, h, v } => {
+                entity(&mut w, "TEXT", layer, *color);
+                w.g(100, "AcDbText");
+                w.p3(10, *at);
+                w.f(40, *height);
+                w.g(1, text);
+                w.f(50, *angle);
+                w.g(7, "Standard");
+                if *h != 0 || *v != 0 {
+                    w.g(72, h);
+                    w.p3(11, *at);
+                }
+                w.g(100, "AcDbText");
+                if *v != 0 {
+                    w.g(73, v);
+                }
             }
         }
     }

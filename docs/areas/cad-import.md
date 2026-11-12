@@ -110,7 +110,11 @@ in (`wall`, `door`, `dooropening`), what the view cuts on `<category>-cut`, patt
 `<category>-text` (a text note's on `text`), and what no element draws (the level's name) on `annotation`. A line is an
 LWPOLYLINE in its true colour, with the standard line weight nearest its width on paper (`dxf_out::lineweight`) and its dashes as
 a linetype in model millimetres (`BIM_DASH_n`); a fill is a solid HATCH, its first ring the outline and the rest holes. Lettering
-is our own font's strokes, as in the PDF; a picture can't be written and is counted in `left_out`. The reply names the layers and
+is our own font's strokes, as in the PDF; a picture can't be written and is counted in `left_out`. An imported drawing the plan
+shows is written from its own entities, not from what the plan draws of it: each on its own layer (less the layers the import or
+the view hides), placed, turned and scaled as it is placed, its lettering as TEXT (what isn't ASCII as `\U+XXXX`), its hatches
+filled as the plan fills them, so a DWG brought in goes back out with its layers and text. A line or a ring of no length is left
+out, as readers take it for an empty entity. The reply names the layers and
 counts the entities. The tests read the file back with the reader above (`dxf_out_tests.rs`), and the sample house's plan was
 checked with ezdxf's audit (no errors) and through acadrust's DWG writer and reader (every entity back).
 

@@ -3755,7 +3755,7 @@ fn save(s: &mut Session, p: &Value) -> R {
         };
         let level = level_param(c, &s.model, p, "view")?;
         let seen = crate::link::seen(&s.model);
-        let out = crate::dxf_out::write(&seen, &render::plan(&seen, level, 1600, 1000));
+        let out = crate::dxf_out::write(&seen, &render::plan(&seen, level, 1600, 1000), &crate::graphics::Look::of(&seen, level));
         let bytes = match &writer {
             Some(w) => w(&out.text).map_err(|e| bad(c, e))?,
             None => out.text.into_bytes(),

@@ -27,19 +27,19 @@ fn dir(test: &str) -> PathBuf {
 }
 
 /// A file in this test's folder, written.
-fn file(test: &str, name: &str, text: &str) -> String {
+pub(crate) fn file(test: &str, name: &str, text: &str) -> String {
     let path = dir(test).join(name);
     std::fs::write(&path, text).unwrap();
     path.to_string_lossy().into_owned()
 }
 
 /// Pairs as a DXF writes them: a code line, then its value.
-fn pairs(list: &[(i32, &str)]) -> String {
+pub(crate) fn pairs(list: &[(i32, &str)]) -> String {
     list.iter().map(|(c, v)| format!("{c}\n{v}\n")).collect()
 }
 
 /// A DXF of `units` ($INSUNITS) with these layers (name, colour, off) and entities.
-fn dxf(units: &str, layers: &[(&str, &str, bool)], entities: &str) -> String {
+pub(crate) fn dxf(units: &str, layers: &[(&str, &str, bool)], entities: &str) -> String {
     let header = pairs(&[(9, "$INSUNITS"), (70, units)]);
     let mut table = pairs(&[(0, "TABLE"), (2, "LAYER")]);
     for (name, color, off) in layers {
@@ -52,7 +52,7 @@ fn dxf(units: &str, layers: &[(&str, &str, bool)], entities: &str) -> String {
     )
 }
 
-fn line(layer: &str, a: (f64, f64), b: (f64, f64)) -> String {
+pub(crate) fn line(layer: &str, a: (f64, f64), b: (f64, f64)) -> String {
     let (ax, ay, bx, by) = (a.0.to_string(), a.1.to_string(), b.0.to_string(), b.1.to_string());
     pairs(&[(0, "LINE"), (8, layer), (10, &ax), (20, &ay), (11, &bx), (21, &by)])
 }

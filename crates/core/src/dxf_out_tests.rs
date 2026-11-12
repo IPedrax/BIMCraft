@@ -103,3 +103,46 @@ fn a_dwg_needs_the_apps_writer_and_without_one_the_reply_says_to_save_as_dxf() {
     assert_eq!(run(&mut s, "save", json!({"path": file}))["format"], "DWG");
     assert!(std::fs::read_to_string(&file).unwrap().starts_with("DWG of "));
 }
+
+#[test]
+fn an_imported_drawing_goes_out_on_its_own_layers_with_its_text_as_text_and_no_empty_lines() {
+    use crate::cad_tests::{dxf, file, line, pairs};
+    let walls: String = [((0.0, 0.0), (10.0, 0.0)), ((10.0, 0.0), (10.0, 6.0)), ((10.0, 6.0), (0.0, 6.0)), ((0.0, 6.0), (0.0, 0.0))]
+        .iter()
+        .map(|(a, b)| line("WALLS", *a, *b))
+        .collect();
+    // A line of no length, which a reader takes as an empty entity, and a layer that's off.
+    let empty = line("WALLS", (3.0, 3.0), (3.0, 3.0));
+    let furn = line("FURN", (1.0, 1.0), (2.0, 1.0));
+    let note = pairs(&[(0, "TEXT"), (8, "NOTES"), (10, "1"), (20, "5"), (40, "0.25"), (1, "Cozinha é aqui")]);
+    let text = dxf("6", &[("WALLS", "1", false), ("FURN", "3", true), ("NOTES", "7", false)], &(walls + &empty + &furn + &note));
+    let mut s = Session::new();
+    run(&mut s, "import_cad", json!({"path": file("dxf-out", "ground floor.dxf", &text)}));
+    let out = path("imported", "plan.dxf");
+    let reply = run(&mut s, "save", json!({"path": out}));
+    let layers: Vec<&str> = reply["layers"].as_array().unwrap().iter().filter_map(Value::as_str).collect();
+    assert!(layers.contains(&"WALLS") && layers.contains(&"NOTES"), "the drawing's own layers: {layers:?}");
+    assert!(!layers.iter().any(|l| l.starts_with("cadimport") || *l == "FURN"), "none of the import's own, nor one that's off: {layers:?}");
+
+    let d = dxf::read_text(&std::fs::read_to_string(&out).unwrap()).unwrap();
+    assert!(d.left_out.is_empty(), "{:?}", d.left_out);
+    let on = |layer: &str| d.entities.iter().filter(|e| e.layer == layer).collect::<Vec<_>>();
+    // Metres placed in millimetres, the drawing's middle on the origin; the line of no length left out.
+    let walls = on("WALLS");
+    assert_eq!(walls.len(), 4, "{walls:?}");
+    let b = dxf::union(walls.iter().map(|e| e.shape.bounds())).unwrap();
+    let near = |a: f64, b: f64| (a - b).abs() < 0.01;
+    assert!(near(b[0].0, -5000.0) && near(b[0].1, -3000.0) && near(b[1].0, 5000.0) && near(b[1].1, 3000.0), "{b:?}");
+    // The note is one TEXT, where it was and as tall, its accent kept.
+    let notes = on("NOTES");
+    assert_eq!(notes.len(), 1, "lettering as text, not the lines of our font: {notes:?}");
+    let Shape::Text { at, height, text, .. } = &notes[0].shape else { panic!("a TEXT: {:?}", notes[0]) };
+    assert!(near(at.0, -4000.0) && near(at.1, 2000.0) && near(*height, 250.0), "{at:?} {height}");
+    assert_eq!(text, "Cozinha é aqui");
+    // Nothing anywhere is an empty line.
+    for e in &d.entities {
+        if let Shape::Polyline { pts, .. } = &e.shape {
+            assert!(pts.windows(2).any(|w| w[0] != w[1]), "{e:?}");
+        }
+    }
+}
