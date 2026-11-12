@@ -6,9 +6,11 @@ name: CI
 
 on:
   pull_request:
-  # Pushes to main as well: they go in without a pull request, and a Windows or macOS break shouldn't wait for a tag.
+  # Pushes to main as well: they go in without a pull request, and a Windows or macOS break shouldn't wait for a tag. And pushes to
+  # IPedrax-Test/** branches: work in progress is checked here on all three systems, so a session needn't build and test it all
+  # on the maintainer's own machine before it reaches main.
   push:
-    branches: [main]
+    branches: [main, 'IPedrax-Test/**']
   workflow_dispatch:
 
 permissions:
@@ -47,7 +49,12 @@ jobs:
         shell: bash
         run: rustup update stable && rustup default stable && rustup component add rustfmt clippy
 
-      # shortcut: no build cache, so each run builds egui and wgpu from scratch (about 15 minutes); add actions/cache when that hurts.
+      # The dependencies' builds, kept between runs (egui and wgpu from scratch take about 15 minutes). Only main saves the cache, so
+      # branch runs reuse it without filling the repository's 10 GB of caches with a copy each.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
       - name: Format
         if: runner.os == 'Linux'
         run: cargo fmt --check
@@ -81,6 +88,10 @@ jobs:
 
       - name: Rust
         run: rustup update stable && rustup default stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - uses: actions/setup-python@v5
         with:
