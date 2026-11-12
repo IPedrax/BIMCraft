@@ -94,6 +94,7 @@ use std::sync::{Arc, Weak};
 
 use bimcraft_core::dims::Placing as DimMode;
 use bimcraft_core::engine::{self, Session};
+use bimcraft_core::files;
 use bimcraft_core::geom::P2;
 use bimcraft_core::model::{CEILING_HEIGHT, DimKind, Element, Id, Justify, Location, Model, RAMP_WIDTH, Reference, RoomArea, STAIR_WIDTH};
 use bimcraft_core::snap::{Kind as Snap, Snaps};
@@ -3252,7 +3253,7 @@ impl BimApp {
 
     // ---------- files ----------
 
-    /// Save the project (`.bimcraft`, or any other name) or export by extension: `.ifc`, the 3D scene as `.glb`, or the
+    /// Save the project (`.bimc`, or any other name) or export by extension: `.ifc`, the 3D scene as `.glb`, or the
     /// view on screen as `.png` (a plan or the 3D view) or `.svg` (a plan). Whether it worked; the
     /// warning box says why not.
     pub fn save_to(&mut self, path: &Path) -> bool {
@@ -3299,7 +3300,7 @@ impl BimApp {
 
     fn save_as(&mut self, ctx: &Context, then: Option<Pending>) {
         let later = ctx.clone();
-        self.ask_path(ctx, msg!("BIMCraft project"), "bimcraft", move |app, p| {
+        self.ask_path(ctx, msg!("BIMCraft project"), &files::SAVED, move |app, p| {
             if app.save_to(&p)
                 && let Some(then) = then
             {
@@ -3309,25 +3310,32 @@ impl BimApp {
     }
 
     fn export(&mut self, ctx: &Context, what: &str, ext: &str) {
-        self.ask_path(ctx, what, ext, |app, p| {
+        self.ask_path(ctx, what, &[ext], |app, p| {
             app.save_to(&p);
         });
     }
 
-    /// Asks, in the system's file dialog, where to save, and calls `then` with the path, ending in `.ext`, in a later frame.
-    fn ask_path(&mut self, ctx: &Context, what: &str, ext: &str, then: impl FnOnce(&mut BimApp, PathBuf) + 'static) {
-        let name = format!("{}.{ext}", self.session.model.name.replace(['/', '\\'], "-"));
-        let ext = ext.to_string();
-        let dialog = rfd::AsyncFileDialog::new().add_filter(t(what), &[&ext]).set_file_name(name);
-        self.ask_file(ctx, dialog, true, move |app, p| {
-            then(app, if p.extension().is_some_and(|e| e.eq_ignore_ascii_case(&ext)) { p } else { p.with_extension(&ext) });
-        });
+    /// Asks, in the system's file dialog, where to save, and calls `then` with the path in a later frame: the first of `exts` is
+    /// what it offers and what a path with none of them gets.
+    fn ask_path(&mut self, ctx: &Context, what: &str, exts: &[&str], then: impl FnOnce(&mut BimApp, PathBuf) + 'static) {
+        let name = files::file_name(&self.session.model.name, exts.first().copied().unwrap_or_default());
+        let exts: Vec<String> = exts.iter().map(|e| e.to_string()).collect();
+        let dialog = rfd::AsyncFileDialog::new().add_filter(t(what), &exts).set_file_name(name);
+        self.ask_file(ctx, dialog, true, move |app, p| then(app, files::named(p, &exts)));
     }
 
     /// Open a project, or import an IFC file and say what came in and what was left out.
     pub(crate) fn open_path(&mut self, path: &Path) -> bool {
         if revit::is_revit(path) {
             return self.open_revit(path);
+        }
+        // A family opens in its own document, the project left as it is.
+        if files::is_family(path) {
+            self.open_family_file(path);
+            if self.home.shown {
+                self.family_from_start_page();
+            }
+            return self.active_family().is_some();
         }
         let Some(reply) = self.run("open", json!({"path": path.to_string_lossy()})) else {
             self.forget_recent_if_gone(path);
@@ -3437,7 +3445,12 @@ impl BimApp {
             && let Some(path) = self.opens.pop()
         {
             self.opens.clear();
-            self.guard(Pending::OpenPath(path), ctx);
+            // A family replaces nothing, so there is nothing to ask about first.
+            if files::is_family(&path) {
+                self.open_path(&path);
+            } else {
+                self.guard(Pending::OpenPath(path), ctx);
+            }
         }
     }
 

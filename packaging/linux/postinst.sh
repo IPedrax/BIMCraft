@@ -1,6 +1,6 @@
 #!/bin/sh
 # deb and rpm post-install and post-remove: refresh the desktop, MIME and icon caches, so the menu
-# entry, .bimcraft and .ifc files and the icon show up. Each tool is optional; a missing one is skipped.
+# entry, BIMCraft projects and families (.bimc, .bimf and the rest) and .ifc files and the icon show up. Each tool is optional; a missing one is skipped.
 if command -v update-desktop-database >/dev/null 2>&1; then
   update-desktop-database -q /usr/share/applications || true
 fi

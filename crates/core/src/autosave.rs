@@ -9,12 +9,23 @@ use std::sync::{Arc, Weak, mpsc};
 use crate::engine::Session;
 use crate::model::Model;
 
-pub const SUFFIX: &str = ".autosave.bimcraft";
+pub const SUFFIX: &str = ".bimb";
+/// What backups were called before the short names; one left by an older version is still found and recovered.
+pub const OLD_SUFFIX: &str = ".autosave.bimcraft";
 
 /// Append, rather than replace, the extension so differently named projects cannot collide.
 pub fn backup_path(project: &Path) -> PathBuf {
+    suffixed(project, SUFFIX)
+}
+
+/// Where an older version kept `project`'s backup.
+pub fn old_backup_path(project: &Path) -> PathBuf {
+    suffixed(project, OLD_SUFFIX)
+}
+
+fn suffixed(project: &Path, suffix: &str) -> PathBuf {
     let mut name = project.as_os_str().to_owned();
-    name.push(SUFFIX);
+    name.push(suffix);
     PathBuf::from(name)
 }
 
@@ -175,9 +186,10 @@ fn lease(path: &Path, leases: &mut BTreeMap<PathBuf, File>) -> Result<(), String
 fn discover(temp: &Path, project: Option<PathBuf>, leases: &mut BTreeMap<PathBuf, File>) -> Result<Vec<Backup>, String> {
     let mut found = Vec::new();
     if let Some(project) = project {
-        let path = backup_path(&project);
-        if path.try_exists().map_err(|e| e.to_string())? && lease(&path, leases).is_ok() {
-            found.push(Backup { path, project: Some(project) });
+        for path in [backup_path(&project), old_backup_path(&project)] {
+            if path.try_exists().map_err(|e| e.to_string())? && lease(&path, leases).is_ok() {
+                found.push(Backup { path, project: Some(project.clone()) });
+            }
         }
         return Ok(found);
     }
@@ -188,7 +200,7 @@ fn discover(temp: &Path, project: Option<PathBuf>, leases: &mut BTreeMap<PathBuf
     };
     for entry in entries.flatten() {
         let path = entry.path();
-        if path.file_name().is_some_and(|n| n.to_string_lossy().ends_with(SUFFIX))
+        if path.file_name().is_some_and(|n| [SUFFIX, OLD_SUFFIX].iter().any(|s| n.to_string_lossy().ends_with(s)))
             && entry.file_type().is_ok_and(|t| t.is_file())
             && lease(&path, leases).is_ok()
         {

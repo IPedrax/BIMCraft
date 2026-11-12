@@ -9,9 +9,9 @@ Generate another size with `highrise {"storeys": 40}` (1–80).
 
 ```sh
 cargo run --release -p bimcraft -- --highrise
-cargo run --release -p bimcraft-cli -- run --highrise --save dist/highrise.bimcraft
+cargo run --release -p bimcraft-cli -- run --highrise --save dist/highrise.bimc
 # Equivalently, use the small version-controlled script:
-cargo run --release -p bimcraft-cli -- run --script samples/highrise.txt --save dist/highrise.bimcraft
+cargo run --release -p bimcraft-cli -- run --script samples/highrise.txt --save dist/highrise.bimc
 ```
 
 ## Repeatable measurements
