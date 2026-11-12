@@ -592,6 +592,8 @@ pub fn flipped(m: &Model, st: &Stair) -> Option<Stair> {
 pub enum Grip {
     /// An end of a riser of a stair drawn by hand: which riser, and whether its right end.
     Riser(usize, bool),
+    /// The centre a spiral winds about: dragged, its first riser stays and its radius follows.
+    Centre,
     Foot,
     Top,
     Turn(usize),
@@ -609,6 +611,10 @@ pub fn grips(m: &Model, st: &Stair) -> Vec<(Grip, P2)> {
             st.sketch.iter().enumerate().flat_map(|(i, s)| [(Grip::Riser(i, false), s.riser[0]), (Grip::Riser(i, true), s.riser[1])]),
         );
         return out;
+    }
+    // A spiral: its foot moves it, its centre sets its radius.
+    if let Some(sp) = st.spiral {
+        return vec![(Grip::Foot, st.start), (Grip::Centre, st.foot() + heading(st.angle).perp() * sp.radius)];
     }
     let l = first(m, st);
     let mut out = vec![(Grip::Foot, st.start)];
@@ -677,6 +683,24 @@ pub fn dragged(m: &Model, st: &Stair, grip: Grip, to: P2) -> Stair {
     }
     match grip {
         Grip::Riser(..) => {}
+        // The centre goes where it is put: the first riser stays, pointing at it, and the radius is how far it is, no
+        // nearer than half the stair's width.
+        Grip::Centre => {
+            let Some(sp) = st.spiral else { return out };
+            let foot = st.foot();
+            let d = to - foot;
+            if d.length() < 1.0 {
+                return out;
+            }
+            let (side, d) = (if sp.radius < 0.0 { -1.0 } else { 1.0 }, d.unit());
+            // The way it climbs from its first riser: square to the line to its centre, the centre on its own side.
+            let way = P2(d.1, -d.0) * side;
+            out.angle = whole(way.1.atan2(way.0).to_degrees());
+            out.spiral = Some(crate::model::Spiral { radius: side * whole((to - foot).length().max(st.width / 2.0)), sweep: sp.sweep });
+            // Its location line is where it was: the first riser's middle does not move.
+            let off = out.foot() - out.start;
+            out.start = P2(whole(foot.0 - off.0), whole(foot.1 - off.1));
+        }
         Grip::Foot => out.start = P2(whole(to.0), whole(to.1)),
         Grip::Top => {
             let Some(top) = l.runs.last().map(Run::end) else { return out };

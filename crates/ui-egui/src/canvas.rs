@@ -3836,6 +3836,17 @@ impl BimApp {
                     if let Some(text) = first.filter(|_| with.len() == 2) {
                         label(cursor, text);
                     }
+                    // What the project's building code would say of the stair as it would be made: under the cursor.
+                    if let Element::Stair(st) = &e {
+                        let outside = bimcraft_core::codes::stair_findings(m, st);
+                        let named: Vec<&str> = outside.iter().take(3).map(|f| crate::codes::rule_label(f.rule)).collect();
+                        let (said, color) = match outside.len() {
+                            0 => (t("Inside the rules").to_string(), pal().muted),
+                            1 => (format!("{}: {}", t("Outside 1 rule"), named.join(", ")), crate::codes::OUTSIDE),
+                            n => (format!("{}: {}", tf("Outside {} rules", &[&n.to_string()]), named.join(", ")), crate::codes::OUTSIDE),
+                        };
+                        p.text(cursor + vec2(14.0, 10.0), Align2::LEFT_TOP, said, FontId::proportional(11.5), color);
+                    }
                 }
                 return;
             }

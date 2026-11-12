@@ -47,6 +47,11 @@ const LABELS: [(&str, &str, &str); 25] = [
     ("guard_min", "Railings", "Minimum Guard Height"),
 ];
 
+/// What a rule is called, in the interface's language.
+pub(crate) fn rule_label(rule: &str) -> &str {
+    LABELS.iter().find(|(k, _, _)| *k == rule).map_or(rule, |(_, _, l)| t(l))
+}
+
 /// What a rule that is a choice may be, as the core names each and as it is shown.
 fn choices(key: &str) -> &'static [(&'static str, &'static str)] {
     match key {

@@ -890,3 +890,23 @@ fn a_run_after_a_landing_takes_a_width_of_its_own() {
         assert!(s.execute("stair", &json!({"start": [0, 0], "angle": 90, "landings": bad})).is_err(), "{bad}");
     }
 }
+
+#[test]
+fn a_spiral_s_centre_dragged_sets_its_radius_and_keeps_its_first_riser() {
+    use crate::geom::P2;
+    use crate::stairs::{Grip, dragged, grips};
+    let mut s = Session::new();
+    let id =
+        run(&mut s, "stair", json!({"start": [1500, 0], "angle": 90, "width": 1000, "spiral": {"radius": 1500}}))["id"].as_u64().unwrap();
+    let st = stair_of(&s, id);
+    let m = &s.model;
+    let all = grips(m, &st);
+    assert_eq!(all.len(), 2);
+    assert!(all[1].1.dist(P2(0.0, 0.0)) < 1e-6, "its centre, to its left: {:?}", all[1]);
+    // The centre dragged to the south of its foot, 2000 away: it starts where it did, going west now, still turning left.
+    let wider = dragged(m, &st, Grip::Centre, P2(1500.0, -2000.0));
+    assert_eq!((wider.start, wider.spiral.map(|sp| sp.radius)), (P2(1500.0, 0.0), Some(2000.0)));
+    assert!((wider.angle - 180.0).abs() < 1e-6 || (wider.angle + 180.0).abs() < 1e-6, "west, the centre to its left: {}", wider.angle);
+    // No nearer than half its width.
+    assert_eq!(dragged(m, &st, Grip::Centre, P2(1400.0, 0.0)).spiral.map(|sp| sp.radius), Some(500.0));
+}
