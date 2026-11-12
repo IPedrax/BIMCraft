@@ -79,6 +79,9 @@ mod family_sketch_tests;
 #[cfg(test)]
 mod family_visibility_tests;
 pub mod favorites;
+#[cfg(test)]
+mod file_extension_tests;
+pub mod files;
 pub mod fills;
 mod fixtures;
 mod font;

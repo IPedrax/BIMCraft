@@ -109,7 +109,7 @@ pub static ALL: &[Command] = &[
 other_files(
         "open",
         "Open",
-        "{path} a .bimcraft project (under 256 MiB), or an .ifc (under 512 MiB) read into a new one (its `elements` by \
+        "{path} a .bimc project (a .bimt file too, and the .bimcraft of earlier versions; under 256 MiB), or an .ifc (under 512 MiB) read into a new one (its `elements` by \
          category, `generic` the components of IFC classes BIMCraft has no element for, `skipped` what was left out and why)",
         open,
         Files::Read,
@@ -145,7 +145,7 @@ other_files(
         "insert",
         "Insert from File",
         &[],
-        "{path, ids?: [id, …]} elements of another project (.bimcraft or .ifc) brought into this one: those `ids` names \
+        "{path, ids?: [id, …]} elements of another project (.bimc, .bimcraft or .ifc) brought into this one: those `ids` names \
          (their ids there), else all of them, and what they point at that this project hasn't (a level they stand on is \
          this project's of the same name, where it has one). Each keeps its id unless this project has that id, and its GUID \
          unless this project has that GUID: then it's a copy, with a GUID of its own (the same file inserted into itself is \
@@ -160,7 +160,7 @@ other_files(
         "link",
         "Link Model",
         &["LK"],
-        "{path, name?, at?: [x, y], angle?: degrees} another project (.bimcraft or .ifc) shown in this one as a reference that \
+        "{path, name?, at?: [x, y], angle?: degrees} another project (.bimc, .bimcraft or .ifc) shown in this one as a reference that \
          can't be edited, as Revit's Link Revit: its walls, floors, roofs, columns, stairs and the rest of what it builds are \
          drawn in the plans, sections and 3D views, halftone, and snapped to; nothing of it is selected, scheduled, checked or \
          exported. It stands with its origin at `at` (default [0, 0]) turned `angle` about it; its levels stand at their own \
@@ -181,7 +181,7 @@ other_files(
     other_files(
         "save",
         "Save",
-        "{path?} .bimcraft saves the project (Save As with a path); .ifc exports IFC4; .glb exports the default 3D view's scene as \
+        "{path?} .bimc saves the project (Save As with a path), as does .bimt (a template); .ifc exports IFC4; .glb exports the default 3D view's scene as \
          glTF 2.0 (metres, y up, a node for each element named by its id, GUID and category in `extras`; returns `elements` and \
          `triangles`); .svg or .png exports the lowest level's plan; .pdf prints every sheet, a page each",
         save,
@@ -1289,7 +1289,7 @@ other_files(
          shared_nested?: {name: project|family}, nest?: {path | definition, name?, overwrite?, shared_nested?}, nested?: [{name, family}], \
          delete_nested?: [names], nested_instances?: [...], nested_instance?: {id | guid?, family, type, host?, at?: [x, y], offset?, \
          angle?, visible?, visibility?, params?: {name: number | formula}}, delete_nested_instance?: [ids or GUIDs]} a family of \
-         the project's, BIMCraft's own parametric component: created, changed, read, or loaded from the .json file at `path` (a \
+         the project's, BIMCraft's own parametric component: created, changed, read, or loaded from the .bimf file (or the .json of earlier versions) at `path` (a \
          family as `inspect` shows it, with its `name`). Without `name` it lists the project's families, each its category and \
          how many types, forms and symbols it has; with only a `name` it reads one — its definition, each of its types' \
          parameter values worked out, and `warnings` — and changes nothing: no undo step, no file. `dry_run` reads a change the \

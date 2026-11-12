@@ -1403,7 +1403,7 @@ pub struct Spot {
 #[serde(deny_unknown_fields)]
 pub struct Link {
     pub name: String,
-    /// The `.bimcraft` or `.ifc` it reads, as it was given: a relative one is relative to this project's file.
+    /// The `.bimc` (or earlier `.bimcraft`) or `.ifc` it reads, as it was given: a relative one is relative to this project's file.
     pub path: String,
     /// Where its origin stands in this project, and how far it is turned about it, degrees. Its levels stand at their own
     /// elevations.
