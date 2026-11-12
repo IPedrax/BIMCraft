@@ -12960,6 +12960,14 @@ msgctxt "category-plural"
 msgid "Property Lines"
 msgstr ""
 
+#: crates/core/src/schedule.rs:212
+msgid "Section Area"
+msgstr ""
+
+#: crates/core/src/schedule.rs:213
+msgid "Weight per Metre"
+msgstr ""
+
 #: crates/ui-egui/src/lib.rs:3433
 #~ msgid "Click a point the arc passes through: it sets the radius. Esc cancels."
 #~ msgstr "單擊圓弧經過的一點：由此確定半徑。按 Esc 取消。"

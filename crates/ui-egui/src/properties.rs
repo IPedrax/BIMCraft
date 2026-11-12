@@ -2212,6 +2212,20 @@ impl BimApp {
                     // A duplicate is round, and made of a material, as the type it copies is.
                     let types = serde_json::to_value(&model.types).unwrap_or_default();
                     let from = type_json(&types, d.category, &d.name);
+                    // A structural duplicate carries its section, including a catalogue designation
+                    // only while the dimensions still match. The command validates resized plates.
+                    if let Some(profile) = from["profile"].as_object() {
+                        let same_size = ["width", "depth"].iter().all(|key| p[*key] == from[*key]);
+                        if same_size && let Some(name) = profile.get("name").and_then(Value::as_str).filter(|n| !n.is_empty()) {
+                            p["profile"] = json!(name);
+                        } else {
+                            for key in ["shape", "web", "flange", "thickness", "radius"] {
+                                if let Some(value) = profile.get(key) {
+                                    p[key] = value.clone();
+                                }
+                            }
+                        }
+                    }
                     if d.shape.is_none() {
                         for key in ["round", "material"] {
                             if !from[key].is_null() {

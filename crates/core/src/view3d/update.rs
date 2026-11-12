@@ -373,7 +373,7 @@ fn copy_of(
         }
         _ => {
             let (t, g) = (m.run_type(e)?, m.run_geom(e)?);
-            if !g.round {
+            if !g.round || t.profile.is_some() {
                 return None;
             }
             let key = ShapeKey::Tube(t.material.clone());

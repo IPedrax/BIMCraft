@@ -85,7 +85,7 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
                     types,
                     &name,
                     |t| (t.width - width).abs() < 0.05 && (t.depth - depth).abs() < 0.05 && !t.round,
-                    ColumnType { width, depth, round: false },
+                    ColumnType { width, depth, round: false, profile: None },
                 );
                 Ok((
                     Column {

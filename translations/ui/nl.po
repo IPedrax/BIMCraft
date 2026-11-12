@@ -12961,6 +12961,14 @@ msgctxt "category-plural"
 msgid "Property Lines"
 msgstr ""
 
+#: crates/core/src/schedule.rs:212
+msgid "Section Area"
+msgstr ""
+
+#: crates/core/src/schedule.rs:213
+msgid "Weight per Metre"
+msgstr ""
+
 #: crates/ui-egui/src/fillpatterns.rs:634
 #~ msgid "A pattern of the file replaces the one of its name in this list; else it is left out"
 #~ msgstr "Een patroon uit het bestand vervangt het patroon met dezelfde naam in deze lijst; anders wordt het weggelaten"

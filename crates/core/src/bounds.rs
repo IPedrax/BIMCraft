@@ -31,8 +31,8 @@ pub struct Stats {
 enum Shape {
     Other,
     Missing,
-    Column { dimensions: [u64; 2], round: bool },
-    Run { dimensions: [u64; 2], round: bool },
+    Column { dimensions: [u64; 2], round: bool, profile: Option<crate::profiles::GeometryKey> },
+    Run { dimensions: [u64; 2], round: bool, profile: Option<crate::profiles::GeometryKey> },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -50,13 +50,18 @@ impl Key {
         let Some(e) = m.elements.get(id) else { return key };
         if let Some(c) = e.column() {
             key.levels = [m.elements.revision(c.level), c.top_level.and_then(|id| m.elements.revision(id))];
-            key.shape = m
-                .column_type(e)
-                .map_or(Shape::Missing, |t| Shape::Column { dimensions: [t.width.to_bits(), t.depth.to_bits()], round: t.round });
+            key.shape = m.column_type(e).map_or(Shape::Missing, |t| Shape::Column {
+                dimensions: [t.width.to_bits(), t.depth.to_bits()],
+                round: t.round,
+                profile: t.profile.as_ref().map(|p| p.geometry_key()),
+            });
         } else if let Some(r) = e.run() {
             key.levels[0] = m.elements.revision(r.level);
-            key.shape =
-                m.run_type(e).map_or(Shape::Missing, |t| Shape::Run { dimensions: [t.width.to_bits(), t.depth.to_bits()], round: t.round });
+            key.shape = m.run_type(e).map_or(Shape::Missing, |t| Shape::Run {
+                dimensions: [t.width.to_bits(), t.depth.to_bits()],
+                round: t.round,
+                profile: t.profile.as_ref().map(|p| p.geometry_key()),
+            });
         } else if let crate::model::Element::Component(c) = e {
             key.levels[0] = m.elements.revision(c.level);
             key.adaptive = c.adaptive.as_ref().map(|a| {
@@ -197,7 +202,8 @@ pub(crate) fn primitive(m: &Model, id: Id) -> Bounds {
         if g.width <= 0.0 || g.depth <= 0.0 {
             return Bounds::Unknown;
         }
-        if g.round {
+        // Steel sections have upright ends, enclosed by prism(); plain round runs use tube().
+        if g.round && m.run_type(e).is_some_and(|t| t.profile.is_none()) {
             // The exact same basis as tube(), but bound all angles without triangles.
             let d = crate::view3d::unit(crate::view3d::sub(g.b, g.a));
             let u = if g.vertical() { [1.0, 0.0, 0.0] } else { crate::view3d::unit([-d[1], d[0], 0.0]) };
@@ -279,7 +285,7 @@ mod tests {
         let level = m.guid(100000);
         let id = 200000;
         for round in [false, true] {
-            m.types.column.insert("Probe".into(), ColumnType { width: 600.0, depth: 250.0, round });
+            m.types.column.insert("Probe".into(), ColumnType { width: 600.0, depth: 250.0, round, profile: None });
             for angle in [0.0, 17.0, 90.0, -225.0] {
                 for at in [P2(0.0, 0.0), P2(1e9, -1e9)] {
                     m.elements.insert(
@@ -303,7 +309,7 @@ mod tests {
                 .runs
                 .entry("pipe".into())
                 .or_default()
-                .insert("Probe".into(), RunType { width: 400.0, depth: 180.0, round, material: String::new() });
+                .insert("Probe".into(), RunType { width: 400.0, depth: 180.0, round, material: String::new(), profile: None });
             for end in [P2(1000.0, 0.0), P2(-1000.0, 370.0), P2(0.0, 0.0), P2(0.5, 0.0), P2(1.01, 0.0)] {
                 for end_offset in [Some(10000.0), Some(-400.0), None] {
                     for justify in [Justify::Centre, Justify::Top, Justify::Bottom] {

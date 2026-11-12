@@ -13020,6 +13020,14 @@ msgctxt "category-plural"
 msgid "Property Lines"
 msgstr ""
 
+#: crates/core/src/schedule.rs:212
+msgid "Section Area"
+msgstr ""
+
+#: crates/core/src/schedule.rs:213
+msgid "Weight per Metre"
+msgstr ""
+
 #: crates/ui-egui/src/fillpatterns.rs:634
 #~ msgid "A pattern of the file replaces the one of its name in this list; else it is left out"
 #~ msgstr "Un motivo del file sostituisce quello con lo stesso nome in questo elenco; altrimenti viene escluso"

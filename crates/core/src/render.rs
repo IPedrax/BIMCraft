@@ -1236,7 +1236,11 @@ pub fn sketch(m: &Model, view: View, id: Id, e: &Element) -> Drawing {
         Element::Spot(sp) => spot_mark(&mut d, view.px(sp.at), m.spot_value(sp), m.units),
         Element::Section(v) => section_mark(&mut d, v),
         Element::Elevation(v) => elevation_mark(&mut d, v),
-        Element::Column(_) | Element::StructuralColumn(_) | Element::Footing(_) => d.line(&m.column_outline(e), Pen::HEAVY, INK, true),
+        Element::Column(_) | Element::StructuralColumn(_) | Element::Footing(_) => {
+            for ring in std::iter::once(m.column_outline(e)).chain(m.column_holes(e)) {
+                d.line(&ring, Pen::HEAVY, INK, true);
+            }
+        }
         crate::model::run_arm!(_) => {
             if let Some(g) = m.run_geom(e) {
                 // What is already in the model joins as the plan draws it; an element a tool previews before
@@ -3180,25 +3184,43 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
     let (under, own): (Vec<_>, Vec<_>) = outlines.iter().partition(|(id, _)| crate::link::is_linked(*id));
     for (group, owner) in [(under, Some(crate::link::UNION)), (own, None)] {
         d.owner = owner;
-        for (color, rings) in cut_unions(&look, group.into_iter().map(|(id, o)| (*id, o.clone()))) {
+        for (color, rings) in cut_unions(
+            &look,
+            group
+                .into_iter()
+                .filter(|(id, _)| m.elements.get(*id).is_none_or(|e| m.column_holes(e).is_empty()))
+                .map(|(id, o)| (*id, o.clone())),
+        ) {
             d.fill(&rings, color);
         }
     }
     // One fill per wall or column: in one even-odd fill, overlapping walls would cancel out.
     for (id, o) in &outlines {
         d.owner = Some(*id);
-        let rings = std::slice::from_ref(o);
+        let rings: Vec<_> = std::iter::once(o.clone()).chain(m.elements.get(*id).map(|e| m.column_holes(e)).unwrap_or_default()).collect();
+        // `fill` unions same-winding pieces. Subtract holes before filling so the
+        // visible material and the pickable material remain the same.
+        let pieces = rings.iter().skip(1).fold(vec![o.clone()], |pieces, hole| walls::minus(&pieces, hole));
         if pattern_style(&d, true).is_some() {
-            d.fill(rings, PAPER);
-            override_patterns(&mut d, m, rings, true, (P2(0.0, 0.0), 0.0));
+            d.fill(&pieces, PAPER);
+            override_patterns(&mut d, m, &rings, true, (P2(0.0, 0.0), 0.0));
         } else {
-            d.fill(rings, POCHE);
+            d.fill(&pieces, POCHE);
         }
     }
     for (id, runs) in cut_edges(&outlines, 1.0 / d.view.scale) {
         d.owner = Some(id);
         for run in runs {
             ink_cut(&mut d, &run);
+        }
+    }
+    for (id, _) in &outlines {
+        let holes = m.elements.get(*id).map(|e| m.column_holes(e)).unwrap_or_default();
+        if !holes.is_empty() {
+            d.owner = Some(*id);
+            for hole in &holes {
+                d.line(hole, Pen::HEAVY, INK, true);
+            }
         }
     }
     // A compound wall's layers: each its material's cut pattern where it's wide enough to hold it,

@@ -244,23 +244,40 @@ struct Step {
 
 /// A member's section as its type gives it: `width` and `depth` in mm (a round section is `width` across, so its depth is
 /// its width), kept as bits so a section can key a map.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
 struct Section {
     width: u64,
     depth: u64,
     round: bool,
+    profile: Option<(crate::profiles::GeometryKey, String)>,
+}
+
+impl std::fmt::Debug for Section {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut out = f.debug_struct("Section");
+        out.field("width", &self.width).field("depth", &self.depth).field("round", &self.round);
+        if let Some(profile) = &self.profile {
+            out.field("profile", profile);
+        }
+        out.finish()
+    }
 }
 
 impl Section {
     fn new(width: f64, depth: f64, round: bool) -> Section {
-        Section { width: width.to_bits(), depth: if round { width } else { depth }.to_bits(), round }
+        Section { width: width.to_bits(), depth: if round { width } else { depth }.to_bits(), round, profile: None }
     }
 
-    fn width(self) -> f64 {
+    fn with_profile(mut self, profile: Option<&crate::model::Profile>) -> Self {
+        self.profile = profile.map(|p| (p.geometry_key(), p.name.clone()));
+        self
+    }
+
+    fn width(&self) -> f64 {
         f64::from_bits(self.width)
     }
 
-    fn depth(self) -> f64 {
+    fn depth(&self) -> f64 {
         f64::from_bits(self.depth)
     }
 }
@@ -549,7 +566,9 @@ impl Step {
         if let Some(&written) = self.sections.get(&section) {
             return written;
         }
-        let profile = if section.round {
+        let profile = if let Some((key, name)) = &section.profile {
+            self.section(&key.profile(), name, (section.width(), section.depth()))
+        } else if section.round {
             let c = self.point(P2(0.0, 0.0));
             let centre = self.add(format!("IFCAXIS2PLACEMENT2D(#{c},$)"));
             self.add(format!("IFCCIRCLEPROFILEDEF(.AREA.,$,#{centre},{})", real(section.width() / 2.0)))
@@ -558,6 +577,28 @@ impl Step {
         };
         self.sections.insert(section, profile);
         profile
+    }
+
+    /// A steel section `width` by `depth` as IFC's parameterized profile of its shape, named `name`, centred on the box round
+    /// it, as BIMCraft's are.
+    fn section(&mut self, p: &crate::model::Profile, name: &str, (width, depth): (f64, f64)) -> u64 {
+        use crate::profiles::Shape;
+        let c = self.point(P2(0.0, 0.0));
+        let at = self.add(format!("IFCAXIS2PLACEMENT2D(#{c},$)"));
+        let name = if name.is_empty() { "$".to_string() } else { s(name) };
+        let radius = if p.radius > 0.0 { real(p.radius) } else { "$".into() };
+        let (w, d) = (real(width), real(depth));
+        self.add(match p.shape {
+            Shape::I => {
+                format!("IFCISHAPEPROFILEDEF(.AREA.,{name},#{at},{w},{d},{},{},{radius},$,$)", real(p.web), real(p.flange))
+            }
+            Shape::U => {
+                format!("IFCUSHAPEPROFILEDEF(.AREA.,{name},#{at},{d},{w},{},{},{radius},$,$)", real(p.web), real(p.flange))
+            }
+            Shape::L => format!("IFCLSHAPEPROFILEDEF(.AREA.,{name},#{at},{d},{w},{},{radius},$,$)", real(p.thickness)),
+            Shape::Rhs => format!("IFCRECTANGLEHOLLOWPROFILEDEF(.AREA.,{name},#{at},{w},{d},{},$,$)", real(p.thickness)),
+            Shape::Chs => format!("IFCCIRCLEHOLLOWPROFILEDEF(.AREA.,{name},#{at},{},{})", real(width / 2.0), real(p.thickness)),
+        })
     }
 
     /// A profile around `outer`, less `holes`.
@@ -767,8 +808,16 @@ fn perimeter(ring: &[P2]) -> f64 {
 /// perimeter by length, without the two ends, as IFC 4.3 defines it for these sets. IFC gives the gross surface (with the
 /// ends) only when the outer surface and the section can't be given apart, so it isn't written: a reader adds two sections.
 /// Nothing is subtracted from it, so it has no net values: nothing is taken off where a beam meets a column or a slab yet.
-fn member_quantities(width: f64, depth: f64, round: bool, length: f64) -> Vec<(&'static str, &'static str, f64)> {
-    let (area, perimeter) = if round {
+fn member_quantities(
+    width: f64,
+    depth: f64,
+    round: bool,
+    length: f64,
+    profile: Option<&crate::model::Profile>,
+) -> Vec<(&'static str, &'static str, f64)> {
+    let (area, perimeter) = if let Some(p) = profile {
+        (p.area(width, depth), p.perimeter(width, depth))
+    } else if round {
         (std::f64::consts::PI * width * width / 4.0, std::f64::consts::PI * width)
     } else {
         (width * depth, 2.0 * (width + depth))
@@ -1220,8 +1269,8 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool) -> String {
                 let (bottom, top) = m.span(col.level, col.base_offset, col.top_level, col.height);
                 let at = w.place(Some(storey), (col.at.0, col.at.1, col.base_offset), Some(heading(col.angle)));
                 // Its section is its type's, which the type's material profile set holds too.
-                let section = Section::new(t.width, t.depth, t.round);
-                let profile = w.section_profile(section);
+                let section = Section::new(t.width, t.depth, t.round).with_profile(t.profile.as_ref());
+                let profile = w.section_profile(section.clone());
                 let shape = w.body(profile, 0.0, top - bottom, &[]);
                 let (class, kind) =
                     if matches!(e, Element::Footing(_)) { ("IFCFOOTING", ".PAD_FOOTING.") } else { ("IFCCOLUMN", ".COLUMN.") };
@@ -1253,7 +1302,7 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool) -> String {
                     w.quantities(ent, "Qto_FootingBaseQuantities", &values, id);
                 } else {
                     w.typed_member("IFCCOLUMNTYPE", ".COLUMN.", &col.type_name, (section, String::new()), 5, ent);
-                    let values = member_quantities(t.width, t.depth, t.round, top - bottom);
+                    let values = member_quantities(t.width, t.depth, t.round, top - bottom, t.profile.as_ref());
                     w.quantities(ent, "Qto_ColumnBaseQuantities", &values, id);
                 }
             }
@@ -1269,9 +1318,9 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool) -> String {
                 // Placed at the start of its centre line; its section's x across it, level, its y up.
                 let at = w.place(Some(storey), (g.a[0], g.a[1], g.a[2] - m.elevation(r.level)), None);
                 // A beam's section is its type's, which the type's material profile set holds too.
-                let section = Section::new(g.width, g.depth, g.round);
+                let section = Section::new(g.width, g.depth, g.round).with_profile(t.profile.as_ref());
                 let profile = if matches!(e, Element::Beam(_)) {
-                    w.section_profile(section)
+                    w.section_profile(section.clone())
                 } else if g.round {
                     let c = w.point(P2(0.0, 0.0));
                     let centre = w.add(format!("IFCAXIS2PLACEMENT2D(#{c},$)"));
@@ -1297,7 +1346,7 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool) -> String {
                         // Placed by the line its heights are on, the top, the middle or the bottom of its section.
                         let cardinal = cardinal_point(r.justify, g.vertical());
                         w.typed_member("IFCBEAMTYPE", ".BEAM.", &r.type_name, (section, t.material.clone()), cardinal, ent);
-                        let values = member_quantities(g.width, g.depth, g.round, g.length());
+                        let values = member_quantities(g.width, g.depth, g.round, g.length(), t.profile.as_ref());
                         w.quantities(ent, "Qto_BeamBaseQuantities", &values, id);
                     }
                     Element::StripFooting(_) => {

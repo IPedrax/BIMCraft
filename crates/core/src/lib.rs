@@ -227,3 +227,7 @@ mod structure_tests;
 mod tests;
 #[cfg(test)]
 mod text_tests;
+
+#[cfg(test)]
+mod profile_tests;
+pub mod profiles;

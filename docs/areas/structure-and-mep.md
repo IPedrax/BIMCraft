@@ -253,3 +253,33 @@ Each member and clear bay has a `key` scoped to the returned wall and layer GUID
 into the layer along `depth_axis`, and up. Repeating the query creates no project elements or Undo steps.
 A bay key names its vertical region and adjacent members. A placement whose bay disappears on a new query
 keeps its last intended position for conflict review. Outlet and niche placement are exercised as test consumers.
+
+## Steel sections
+
+`profiles.rs` gives beam and structural-column types an optional `profile`. The public `type` command accepts a catalogue
+name (`profile: "IPE 300"`; IPE 80–600, HEA/HEB 100–600), or `shape` I/H, U, L, RHS/SHS, CHS and plate dimensions in mm.
+I/U use `width`, `depth`, `web`, `flange`, and optional root `radius`; L uses `width`, `depth`, `thickness`, optional root
+`radius`; RHS uses `width`, `depth`, `thickness`; CHS uses `width` (diameter) and `thickness`. Plates must fit, or the
+command rolls back. Creating a `beam` or `structural_column` with a missing catalogue-named `type` adds it first; existing
+project types take precedence. A catalogue beam defaults to Metal. Editing dimensions/plates clears a catalogue designation
+when it no longer describes the section. `shape: rectangle` removes a profile.
+
+Plans cut columns as their actual sections, including hollow interiors. Sections and 3D sweep their plates and root fillets.
+Where a steel beam joins another run, each plate and fillet runs on and is cut by the planes its mitred outline is cut by
+(`runs::joined_cap`, `Geom::swept`), so its flanges meet the other beam's on the outline the plan fills, as a rectangular
+beam's prism does; an end that joins nothing, and a sloped member, which never joins, stays upright. Fillets are circular
+arcs approximated by four chords per quarter in native drawings/meshes; circular hollow sections use 24 sides. RHS sections
+have sharp corners. This is geometric section support, not a steel connection, fabrication, structural sizing or
+code-compliance model.
+
+Schedules expose `Profile`, `Section Area` (cm²), `Weight per Metre` (kg/m) and `Weight` (kg). Mass assumes steel density
+7850 kg/m³ for every profiled member; it does not infer density from an assigned material. Areas and quantities use analytical
+plate/fillet/ring areas. IFC writes the corresponding I/U/L/rectangle-hollow/circle-hollow profile shared by the body and the
+existing type material profile set. Existing cardinal points and quantity conventions remain: length, cross-section area,
+lateral surface area (including hollow interiors), gross volume, without inventing net deductions or adding end faces.
+Native files use format 18: a reader of 17 or before rejects them before lenient field removal, preventing a steel section
+from becoming its solid bounding rectangle/circle. Older files (format 17 and before) migrate without data conversion: absent
+profiles keep their original plain sections. GUID references and prior migrations stay unchanged. Existing desktop Edit Type dimensions and Duplicate retain the
+section; the CLI/MCP `type` command is the entry point for profile authoring. IFC section recognition currently reads direct
+parameterized extruded Body representations; mapped or otherwise unsupported representations retain the existing import
+fallback. Columns retain steel metadata when IFC marks them load-bearing.

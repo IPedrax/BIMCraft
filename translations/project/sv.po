@@ -699,3 +699,15 @@ msgstr ""
 #: crates/core/src/commands.rs:7022
 msgid "Property Line"
 msgstr ""
+
+#: crates/core/src/schedule.rs:211
+msgid "Profile"
+msgstr ""
+
+#: crates/core/src/schedule.rs:212
+msgid "Section Area"
+msgstr ""
+
+#: crates/core/src/schedule.rs:213
+msgid "Weight per Metre"
+msgstr ""

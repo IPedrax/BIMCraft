@@ -26,6 +26,7 @@ use crate::language::Language;
 pub use crate::lines::DetailLine;
 use crate::lines::{self, LinePattern, LineStyle};
 use crate::phasing::{self, OptionSet, PhaseFilter, Status};
+pub use crate::profiles::Profile;
 use crate::shared::Shared;
 use crate::texture::{Kind, MAX_IMAGES, Picture, Texture};
 use crate::units::Units;
@@ -71,7 +72,9 @@ pub const CEILING_CUT: f64 = 2300.0;
 pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
-/// The version of the project file this build writes, and the newest it reads. 18: a family's connector may be a `pipe`,
+/// The version of the project file this build writes, and the newest it reads. 18: a beam's or a structural column's type may
+/// have a steel section (`profile`), which a build that reads up to 17 would leave out as a field it doesn't know, drawing and
+/// scheduling the member as the solid rectangle or circle round its section; a family's connector may be a `pipe`,
 /// `data` or `earthing` one, with no `system` (a pipe's `domain`, `flow`, `size`), and any may have a place (`at`, `direction`);
 /// the starter fixtures and fittings have them; a project may hold title blocks of its own (`title_blocks`, library entries of
 /// kind `title-block`) and its values of their fields (`title_values`), and a sheet may name one (`title_block`) and hold its
@@ -2522,18 +2525,21 @@ pub struct CeilingType {
     pub layers: Vec<Layer>,
 }
 
-/// A column type: `width` by `depth`, or round, `width` across.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+/// A column type: `width` by `depth`, or round, `width` across. A structural column's may have a steel section in that
+/// box (`profiles.rs`), its width along the column's angle.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ColumnType {
     pub width: f64,
     pub depth: f64,
     #[serde(default)]
     pub round: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile: Option<Profile>,
 }
 
 /// A run's type: a section `width` across by `depth` deep, or round, `width` across; made of `material` (one of the
-/// library's, or none).
+/// library's, or none). A beam's may have a steel section in that box (`profiles.rs`), its x across and its y up.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RunType {
@@ -2543,6 +2549,8 @@ pub struct RunType {
     pub round: bool,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub material: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile: Option<Profile>,
 }
 
 /// The categories whose elements are runs, as `Element::run` returns them.
@@ -3174,20 +3182,21 @@ impl Model {
         for (n, w, h, s) in [("Fixed 1200 x 1500", 1200.0, 1500.0, 900.0), ("Fixed 600 x 900", 600.0, 900.0, 1100.0)] {
             m.types.window.insert(n.into(), OpeningType { width: w, height: h, sill: s, operation: None });
         }
-        m.types.column.insert("Rectangular 400 x 400".into(), ColumnType { width: 400.0, depth: 400.0, round: false });
-        m.types.column.insert("Round 300".into(), ColumnType { width: 300.0, depth: 300.0, round: true });
+        m.types.column.insert("Rectangular 400 x 400".into(), ColumnType { width: 400.0, depth: 400.0, round: false, profile: None });
+        m.types.column.insert("Round 300".into(), ColumnType { width: 300.0, depth: 300.0, round: true, profile: None });
         // The structure's: concrete columns, footings, beams and strip footings.
         for (n, w, d, round) in [
             ("Concrete 300 x 300", 300.0, 300.0, false),
             ("Concrete 200 x 500", 200.0, 500.0, false),
             ("Concrete Round 400", 400.0, 400.0, true),
         ] {
-            m.types.structural_column.insert(n.into(), ColumnType { width: w, depth: d, round });
+            m.types.structural_column.insert(n.into(), ColumnType { width: w, depth: d, round, profile: None });
         }
         for (n, w) in [("Footing 1200 x 1200", 1200.0), ("Footing 1500 x 1500", 1500.0)] {
-            m.types.footing.insert(n.into(), ColumnType { width: w, depth: w, round: false });
+            m.types.footing.insert(n.into(), ColumnType { width: w, depth: w, round: false, profile: None });
         }
-        let run = |width, depth, round, material: &str| RunType { width, depth, round, material: language.word(material).into() };
+        let run =
+            |width, depth, round, material: &str| RunType { width, depth, round, material: language.word(material).into(), profile: None };
         let beams = [
             ("Beam 200 x 500", run(200.0, 500.0, false, "Concrete")),
             ("Beam 150 x 400", run(150.0, 400.0, false, "Concrete")),
@@ -3739,6 +3748,8 @@ impl Model {
         // 15 to 16 (dimensions in 3D views, a category 15 doesn't know and would refuse; the locks Align leaves, which 15 would
         // read as dimensions of nothing) has no step: a file of 15 holds none.
         // 16 to 17 (multi-category schedules, Italian as a project's language) has none either: a file of 16 holds neither.
+        // 17 to 18, for a type's steel section (`profile`), has none either: a file of 17 holds none, its types keeping the
+        // plain rectangle or circle they had.
         // 17 to 18 (pipe, data and earthing connectors, a connector's place; title blocks of the project's own, their fields'
         // values, and sheets with none; walls and runs that refuse to join; a dimension to the line across a column; sectional
         // and roller doors; property lines) has none either: a file of 17's connectors are a power or a switch one, each with
@@ -5338,14 +5349,40 @@ impl Model {
     }
 
     /// A column's outline in plan (a structural column's, a footing's): its rectangle turned to its angle, or a round one's
-    /// 24-sided polygon. Nothing for another element, or an unknown type.
+    /// 24-sided polygon, or a steel section's outer edge. Nothing for another element, or an unknown type.
     pub fn column_outline(&self, e: &Element) -> Vec<P2> {
         let (Some(col), Some(t)) = (e.column(), self.column_type(e)) else { return Vec::new() };
+        if let Some(p) = &t.profile {
+            return p.rings(t.width, t.depth).into_iter().next().map(|r| self.column_placed(col, &r)).unwrap_or_default();
+        }
         if t.round {
             return (0..24).map(|i| col.at + heading(f64::from(i) * 15.0) * (t.width / 2.0)).collect();
         }
         let (u, w, d) = (heading(col.angle), t.width / 2.0, t.depth / 2.0);
         [(-w, -d), (w, -d), (w, d), (-w, d)].into_iter().map(|(a, c)| col.at + u * a + u.perp() * c).collect()
+    }
+
+    /// A steel column's hole in plan (a tube's, a pipe's): none for another.
+    pub fn column_holes(&self, e: &Element) -> Vec<Vec<P2>> {
+        let (Some(col), Some(t)) = (e.column(), self.column_type(e)) else { return Vec::new() };
+        let Some(p) = &t.profile else { return Vec::new() };
+        p.rings(t.width, t.depth).iter().skip(1).map(|r| self.column_placed(col, r)).collect()
+    }
+
+    /// What a column's solid is made of in plan, each piece a prism up its height: its outline, or a hollow section's pieces
+    /// round its hole.
+    pub fn column_pieces(&self, e: &Element) -> Vec<Vec<P2>> {
+        let (Some(col), Some(t)) = (e.column(), self.column_type(e)) else { return Vec::new() };
+        match &t.profile {
+            Some(p) if p.hollow() => p.pieces(t.width, t.depth).iter().map(|q| self.column_placed(col, &q.ring())).collect(),
+            _ => vec![self.column_outline(e)],
+        }
+    }
+
+    /// A column's section's points, x along its angle and y square to it, placed round where it stands.
+    fn column_placed(&self, col: &Column, pts: &[P2]) -> Vec<P2> {
+        let u = heading(col.angle);
+        pts.iter().map(|q| col.at + u * q.0 + u.perp() * q.1).collect()
     }
 
     /// Sheet `id`.
@@ -6636,6 +6673,12 @@ impl Model {
             for (n, t) in types {
                 size(&format!("{cat} type `{n}` width"), t.width)?;
                 size(&format!("{cat} type `{n}` depth"), t.depth)?;
+                if let Some(p) = &t.profile {
+                    if cat != "structural column" {
+                        return Err(format!("{cat} type `{n}`: a steel section is a structural column's or a beam's, not a {cat}'s"));
+                    }
+                    p.check(&format!("{cat} type `{n}`"), t.width, t.depth, t.round)?;
+                }
             }
         }
         for (cat, types) in &self.types.runs {
@@ -6648,6 +6691,12 @@ impl Model {
                 size(&format!("{who} depth"), t.depth)?;
                 if t.round && t.depth != t.width {
                     return Err(format!("{who}: a round section is as deep as it is wide ({} mm), not {} mm", t.width, t.depth));
+                }
+                if let Some(p) = &t.profile {
+                    if cat != "beam" {
+                        return Err(format!("{who}: a steel section is a structural column's or a beam's, not a {cat}'s"));
+                    }
+                    p.check(&who, t.width, t.depth, t.round)?;
                 }
                 text(&who, "material", &t.material)?;
                 if !t.material.is_empty() && !self.materials.contains_key(&t.material) {

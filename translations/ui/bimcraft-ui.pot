@@ -13199,3 +13199,11 @@ msgstr ""
 msgctxt "category-plural"
 msgid "Property Lines"
 msgstr ""
+
+#: crates/core/src/schedule.rs:212
+msgid "Section Area"
+msgstr ""
+
+#: crates/core/src/schedule.rs:213
+msgid "Weight per Metre"
+msgstr ""

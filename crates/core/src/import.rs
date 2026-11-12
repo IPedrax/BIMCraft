@@ -1056,6 +1056,52 @@ impl<'a> Reader<'a> {
         self.chosen(product).into_iter().find_map(|item| unread.get(&item).copied())
     }
 
+    /// The steel section a product's body sweeps, if it is one IFC names by its plates (an I, a channel, an angle, a tube, a
+    /// pipe): the section, its width and depth, and the direction its x runs in, in model coordinates.
+    fn section(&self, product: &Entity) -> Option<(crate::model::Profile, f64, f64, P3)> {
+        use crate::profiles::Shape;
+        let f = self.frame(product);
+        let (_, items) = self.reps(product).into_iter().find(|(i, _)| i.eq_ignore_ascii_case("Body"))?;
+        let solid = items.iter().filter_map(|i| self.get(*i)).find(|e| e.name == "IFCEXTRUDEDAREASOLID")?;
+        let p = self.at(solid.args.first())?;
+        let a = |i: usize| p.args.get(i);
+        let len = |i: usize| self.len(a(i)).filter(|x| x.is_finite() && *x >= 0.0);
+        let size = |x: f64| (x * 1000.0).round() / 1000.0;
+        let plate = |i: usize| len(i).map_or(0.0, size);
+        let name = text(a(1)).map(clip).unwrap_or_default();
+        let bare = |shape| crate::model::Profile { shape, name: name.clone(), web: 0.0, flange: 0.0, thickness: 0.0, radius: 0.0 };
+        let (profile, width, depth) = match p.name.as_str() {
+            "IFCISHAPEPROFILEDEF" => {
+                (crate::model::Profile { web: plate(5), flange: plate(6), radius: plate(7), ..bare(Shape::I) }, len(3)?, len(4)?)
+            }
+            "IFCUSHAPEPROFILEDEF" => {
+                (crate::model::Profile { web: plate(5), flange: plate(6), radius: plate(7), ..bare(Shape::U) }, len(4)?, len(3)?)
+            }
+            "IFCLSHAPEPROFILEDEF" => {
+                (crate::model::Profile { thickness: plate(5), radius: plate(6), ..bare(Shape::L) }, len(4).unwrap_or(len(3)?), len(3)?)
+            }
+            "IFCRECTANGLEHOLLOWPROFILEDEF" => (crate::model::Profile { thickness: plate(5), ..bare(Shape::Rhs) }, len(3)?, len(4)?),
+            "IFCCIRCLEHOLLOWPROFILEDEF" => {
+                (crate::model::Profile { thickness: plate(4), ..bare(Shape::Chs) }, 2.0 * len(3)?, 2.0 * len(3)?)
+            }
+            _ => return None,
+        };
+        let (width, depth) = (size(width), size(depth));
+        // Named only as a section of the catalogue, while it is that section (a file names its others for their types).
+        let mut profile = profile;
+        let catalogued = crate::profiles::catalogue(&profile.name).is_some_and(|(w, d, c)| {
+            (w, d, c.shape, c.web, c.flange, c.radius) == (width, depth, profile.shape, profile.web, profile.flange, profile.radius)
+        });
+        if catalogued {
+            profile.name = crate::profiles::catalogue(&profile.name).map(|(.., c)| c.name).unwrap_or_default();
+        } else {
+            profile.name.clear();
+        }
+        profile.check("", width, depth, profile.shape == Shape::Chs).ok()?;
+        let x = f.then(self.axes(reference(solid.args.get(1)))).then(self.axes(reference(a(2)))).x;
+        Some((profile, width, depth, x))
+    }
+
     /// The line a product's body sweeps along: its points in the world and the radius of the section, mm. A disk swept along
     /// a line, also through the map of an `IfcMappedItem`, or a circle extruded straight. A body of several such of one
     /// radius, each starting where the last ended, is one line bent between them, as BIMCraft writes a bar; any other is no
@@ -2571,7 +2617,12 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
                 }
             }
         }
-        let (u, v) = (along.1, along.1.perp());
+        // A steel section says which way its width runs.
+        let steel = r.section(c);
+        let (u, v) = match &steel {
+            Some((_, _, _, x)) if P2(x[0], x[1]).length() > 0.5 => (P2(x[0], x[1]).unit(), P2(x[0], x[1]).unit().perp()),
+            _ => (along.1, along.1.perp()),
+        };
         let plan: Vec<P2> = faces.iter().flatten().map(|p| r.flat(*p)).collect();
         let (Some((a0, a1)), Some((b0, b1))) = (span(plan.iter().map(|p| p.dot(u))), span(plan.iter().map(|p| p.dot(v)))) else { continue };
         let at = u * ((a0 + a1) / 2.0) + v * ((b0 + b1) / 2.0);
@@ -2580,20 +2631,23 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
         let corners: HashSet<(i64, i64)> = plan.iter().map(|p| ((p.0 * 2.0).round() as i64, (p.1 * 2.0).round() as i64)).collect();
         let round = corners.len() >= 12 && radii.is_some_and(|(lo, hi)| hi > 0.0 && (hi - lo) / hi < 0.03);
         let size = |x: f64| (x * 100.0).round() / 100.0;
-        let (w, d) = if round {
-            (size(2.0 * radii.map_or(0.0, |r| r.1)), size(2.0 * radii.map_or(0.0, |r| r.1)))
-        } else {
-            (size(a1 - a0), size(b1 - b0))
+        let (w, d) = match &steel {
+            Some((_, w, d, _)) => (*w, *d),
+            None if round => (size(2.0 * radii.map_or(0.0, |r| r.1)), size(2.0 * radii.map_or(0.0, |r| r.1))),
+            None => (size(a1 - a0), size(b1 - b0)),
         };
+        let structural = bearing.contains(&id);
+        let footing = c.name == "IFCFOOTING";
+        // A section is a structural column's.
+        let profile = steel.map(|(p, ..)| p).filter(|_| structural && !footing);
+        let round = profile.as_ref().map_or(round, |p| p.shape == crate::profiles::Shape::Chs);
         if w <= 0.0 || d <= 0.0 {
             leave(&mut skipped, &mut seen, id, "it has no section BIMCraft can read");
             continue;
         }
         let base = label(id)
             .unwrap_or_else(|| if round { format!("Imported Round {}", num(w)) } else { format!("Imported {} x {}", num(w), num(d)) });
-        let same = |k: &ColumnType| k.round == round && (k.width - w).abs() < 0.05 && (k.depth - d).abs() < 0.05;
-        let footing = c.name == "IFCFOOTING";
-        let structural = bearing.contains(&id);
+        let same = |k: &ColumnType| k.round == round && (k.width - w).abs() < 0.05 && (k.depth - d).abs() < 0.05 && k.profile == profile;
         let make: fn(Column) -> Element = if footing {
             Element::Footing
         } else if structural {
@@ -2608,10 +2662,10 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
         } else {
             &mut m.types.column
         };
-        let type_name = kind(types, &base, same, ColumnType { width: w, depth: d, round });
+        let type_name = kind(types, &base, same, ColumnType { width: w, depth: d, round, profile: profile.clone() });
         let level = level_for(id, z0);
         let (top_level, height) = if footing { (None, z1 - z0) } else { topped(level, z0, z1) };
-        let angle = if round { 0.0 } else { (u.1.atan2(u.0).to_degrees() * 1e6).round() / 1e6 };
+        let angle = if round && profile.is_none() { 0.0 } else { (u.1.atan2(u.0).to_degrees() * 1e6).round() / 1e6 };
         let column = Column {
             room_bounding: true,
             params: Default::default(),
@@ -2687,10 +2741,16 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
         // Made of a material the library has, by name: the file gives it directly, or by a material profile set (as BIMCraft
         // writes a beam's, on its type and its usage).
         let material = element_material(&r, &l, id).filter(|n| m.materials.contains_key(n.as_str())).unwrap_or_default();
-        let same =
-            |k: &RunType| k.round == found.round && (k.width - w).abs() < 0.05 && (k.depth - d).abs() < 0.05 && k.material == material;
+        let profile = r.section(b).filter(|(_, sw, sd, _)| category == "beam" && (sw - w).abs() < 0.05 && (sd - d).abs() < 0.05);
+        let (w, d) = profile.as_ref().map_or((w, d), |(_, sw, sd, _)| (*sw, *sd));
+        let profile = profile.map(|(p, ..)| p);
+        let round = profile.as_ref().map_or(found.round, |p| p.shape == crate::profiles::Shape::Chs);
+        let same = |k: &RunType| {
+            k.round == round && (k.width - w).abs() < 0.05 && (k.depth - d).abs() < 0.05 && k.material == material && k.profile == profile
+        };
         let types = m.types.runs.entry(category.to_string()).or_default();
-        let type_name = kind(types, &base, same, RunType { width: w, depth: d, round: found.round, material: material.clone() });
+        let type_name =
+            kind(types, &base, same, RunType { width: w, depth: d, round, material: material.clone(), profile: profile.clone() });
         let height = |z: f64| ((z - elevation(level)) * 1000.0).round() / 1000.0 + 0.0;
         // The body is the centre line; the justification BIMCraft wrote puts the heights back on the line they were typed at.
         let justify = run_props.get(&id).and_then(|(j, _)| *j).unwrap_or(Justify::Centre);
