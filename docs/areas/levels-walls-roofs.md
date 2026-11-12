@@ -67,7 +67,9 @@ of many rooms; moved, rotated or mirrored, its boundary goes with it, and only a
 rooms while their Room Bounding is on (`Wall::room_bounding`, `Column::room_bounding`, on unless set; `Model::room_bounding`,
 `bounding_columns`, `room_lines`): a column's outline either way rooms are measured, a free one an island. A wall with it off
 still bounds floors and roofs picked by their walls. Walls and columns bound a level's rooms where its
-Computation Height (`Level::computation_height`, 1200 mm unless set) cuts them; room separation lines bound them whatever
+Computation Height (`Level::computation_height`, 1200 mm unless set) cuts them. Their room-boundary joins use only walls
+that bound rooms at that height too, so a raised wall cannot change the room below it; physical wall joins still use
+walls that overlap in height. Room separation lines bound them whatever
 it is. Two rooms can't share a space (`Model::room_bound`, `Unbound`): the one placed first (the lower id) keeps it, the
 other is unbounded, and `room` and `inspect` warn. A room can be placed where nothing encloses it: unbounded, it covers a
 `UNBOUNDED_ROOM` square round its point (`Model::room_outline`), as Revit's. A plan labels it NOT ENCLOSED, or REDUNDANT where another
@@ -85,9 +87,18 @@ Volume Computations) room areas are measured at the walls' faces instead (`face_
 takes that outline, and its `Qto_SpaceBaseQuantities` give both whichever is set: `GrossFloorArea` and `GrossPerimeter` at
 the centre lines, `NetFloorArea` and `NetPerimeter` at the faces, `Height` (the room's Unbounded Height) and `GrossVolume` and `NetVolume`. Walls, slabs, doors and windows
 carry theirs too (`ifc::wall_quantities`): a wall its `Length` on its axis, `Width`, `Height` and side and volume, gross and less the
-doors and windows in it (each cut to its height; joins aside), or only `Length` and `Width` when attached, as its height then varies;
-a level slab its `Width` (depth), `Perimeter` and area and volume less its openings, a sloped one only its `Width`; a door or window
-its `Width`, `Height`, `Perimeter` and `Area`. An attached top or base follows the roof's or floor's plane
+doors and windows in it (each cut to its height; joins aside). An attached wall omits `Height`, as it varies; its gross/net
+volumes integrate the same clipped prisms as its geometry (including joins), and its side areas are those volumes over its thickness
+(none for a wall of a type the project lacks, which is 0 thick);
+a level slab its `Width` (depth), `Perimeter` and area and volume less its openings, a sloped or shaped one its `Width` and volumes; a door or window
+its `Width`, `Height`, `Perimeter` and `Area`. Ceilings carry `Qto_CoveringBaseQuantities`: their thickness (`Width`),
+`GrossArea` and `NetArea` less their openings and intersecting shafts. Roofs carry `Qto_RoofBaseQuantities`: `GrossArea`
+and `NetArea` along their planes (including shaped tops), and `ProjectedArea` in plan. Gross and projected areas exclude
+courtyards, net also openings and intersecting shafts; extruded and joined roofs measure their actual faces. A roof whose faces
+can't be found (`Model::roof_faces` fails: a gable edge its footprint doesn't have) writes no area quantities, rather than zeros.
+Pad and strip footings carry `Qto_FootingBaseQuantities`: `Length`, `Width`, `Height`, `GrossVolume` and `NetVolume`
+(equal until geometry cuts are supported); a strip also gives its `CrossSectionArea`. Lengths are mm, areas m² and volumes m³.
+An attached top or base follows the roof's or floor's plane
 over each part of the wall (a roof's slopes each over its own part of the plan); a mirrored wall runs back the other way.
 A wall's top is `Model::own_top`, and 3D, sections, plans, IFC and what a wall is attached to all read it there (`walls::heights`
 takes it, or what the wall is attached to): its `top_level`'s elevation plus its `top_offset` (file format 15, Revit's Top Offset,

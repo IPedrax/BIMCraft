@@ -718,7 +718,7 @@ fn a_project_whose_run_type_is_round_and_not_as_deep_as_it_is_wide_is_refused() 
     let s = Session::new();
     let mut m = (*s.model).clone();
     assert_eq!(m.check(), Ok(()));
-    let t = crate::model::RunType { width: 100.0, depth: 200.0, round: true, material: String::new() };
+    let t = crate::model::RunType { width: 100.0, depth: 200.0, round: true, material: String::new(), profile: None };
     m.types.runs.entry("beam".into()).or_default().insert("Odd".into(), t);
     assert!(m.check().unwrap_err().contains("round section"), "{:?}", m.check());
     // Or of a category that has no runs, or a material the library hasn't.

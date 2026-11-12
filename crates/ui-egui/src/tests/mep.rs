@@ -261,7 +261,7 @@ const FIXTURE_TOOLS: &[FixtureTool] = &[
         button: "Patch Panel",
         key: "patchpanel",
         context: "Modify | Place Patch Panel",
-        letters: "PN",
+        letters: "PB",
         listed: "Patch Panel: 48 ports",
         not_listed: "Rack: 600 x 1000",
         first: "Patch Panel",
@@ -768,4 +768,240 @@ fn an_older_components_override_is_the_rows_of_the_family_categories_in_rev() {
 #[test]
 fn an_older_components_override_is_the_rows_of_the_family_categories_in_bimcraft() {
     an_older_components_override_is_the_rows_of_the_family_categories(bimcraft(FIXTURES_PLAN));
+}
+
+/// A distribution board placed by command, and selected.
+fn board_selected(h: &mut Harness<BimApp>, at: [i32; 2]) -> Id {
+    let r = h.state_mut().session.execute("component", &json!({"family": "Distribution Board", "type": "12 circuits", "at": at}));
+    let id = r.expect("a board")["id"].as_u64().expect("its id");
+    h.state_mut().selection = vec![id];
+    h.run();
+    id
+}
+
+fn panel_of(h: &Harness<BimApp>, id: Id) -> Option<bimcraft_core::electrical::Panel> {
+    match h.state().session.model.elements.get(id) {
+        Some(Element::Component(c)) => c.panel.clone(),
+        _ => None,
+    }
+}
+
+#[test]
+fn a_distribution_boards_electrical_data_is_set_in_its_properties_and_undone() {
+    let mut h = app(BOX);
+    let main = board_selected(&mut h, [1000, 1000]);
+    let sub = board_selected(&mut h, [3000, 1000]);
+    assert!(h.query_by_label("Distribution System").is_some(), "the group is there for a board");
+    let steps = h.state().session.history().len();
+    choose(&mut h, "Distribution System", "230/400 V");
+    type_role(&mut h, Role::TextInput, "Mains", "63");
+    type_role(&mut h, Role::TextInput, "Max #1 Pole Breakers", "24");
+    let p = panel_of(&h, sub).expect("it has data now");
+    assert_eq!((p.distribution.as_deref(), p.mains, p.slots), (Some("230/400 V"), Some(63.0), Some(24)));
+    assert_eq!(h.state().session.history().len(), steps + 3, "a step for each edit");
+    // Supply From lists the other boards, by id and type.
+    choose(&mut h, "Supply From", &format!("{main} 12 circuits"));
+    assert_eq!(panel_of(&h, sub).unwrap().supply_from, Some(h.state().session.model.guid(main)));
+    // The one it feeds says so.
+    h.state_mut().selection = vec![main];
+    h.run();
+    assert!(h.query_by_label(&sub.to_string()).is_some(), "Supplies lists the board it feeds");
+    // Undone, a step at a time.
+    h.state_mut().selection = vec![sub];
+    h.run();
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    h.run();
+    assert_eq!(panel_of(&h, sub).unwrap().supply_from, None);
+    // A field emptied takes the value away; one that is no number is said, and changes nothing.
+    type_role(&mut h, Role::TextInput, "Mains", "");
+    assert_eq!(panel_of(&h, sub).unwrap().mains, None);
+    type_role(&mut h, Role::TextInput, "Mains", "lots");
+    assert!(h.state().status.error, "{}", h.state().status.text);
+    assert_eq!(panel_of(&h, sub).unwrap().mains, None);
+}
+
+#[test]
+fn only_a_distribution_board_has_the_electrical_group() {
+    let mut h = app(BOX);
+    let r = h.state_mut().session.execute("component", &json!({"family": "Ceiling Luminaire", "at": [1000, 1000]}));
+    h.state_mut().selection = vec![r.expect("a luminaire")["id"].as_u64().expect("its id")];
+    h.run();
+    assert!(h.query_by_label("Distribution System").is_none());
+}
+
+/// A board on 127/220 V and `n` luminaires (127 V, 12 VA), by command; the board and the luminaires selected.
+fn board_and_lamps(h: &mut Harness<BimApp>, n: i32) -> (Id, Vec<Id>) {
+    let board = board_selected(h, [1000, 1000]);
+    let s = &mut h.state_mut().session;
+    s.execute("panel", &json!({"id": board, "distribution": "127/220 V", "mains": 63, "slots": 24})).expect("the board's system");
+    let lamps: Vec<Id> = (0..n)
+        .map(|i| {
+            let r = s.execute("component", &json!({"family": "Ceiling Luminaire", "at": [1000 + 1000 * i, 2000]}));
+            r.expect("a luminaire")["id"].as_u64().expect("its id")
+        })
+        .collect();
+    h.state_mut().selection = std::iter::once(board).chain(lamps.iter().copied()).collect();
+    h.run();
+    (board, lamps)
+}
+
+fn circuit_of(h: &Harness<BimApp>, id: Id) -> Option<bimcraft_core::electrical::Circuit> {
+    match h.state().session.model.elements.get(id) {
+        Some(Element::Circuit(c)) => Some(c.clone()),
+        _ => None,
+    }
+}
+
+#[test]
+fn create_circuit_puts_the_selected_devices_on_the_selected_board_and_selects_it() {
+    let mut h = app(BOX);
+    let (board, lamps) = board_and_lamps(&mut h, 3);
+    from_tab(&mut h, "Electrical", "Create Circuit");
+    let made = h.state().selection.clone();
+    let [id] = made[..] else { panic!("the circuit is selected: {made:?}") };
+    let c = circuit_of(&h, id).expect("a circuit");
+    let m = &h.state().session.model;
+    assert_eq!(c.panel, m.guid(board));
+    assert_eq!(c.devices, lamps.iter().map(|l| m.guid(*l)).collect::<Vec<_>>());
+    assert_eq!((c.number, c.poles), (1, 1));
+    // Its palette shows what it loads, and the group is the circuit's.
+    assert!(h.query_by_label("Circuit Number").is_some());
+    assert!(h.query_by_label("Distribution System").is_none());
+    // Undone, it is gone.
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    h.run();
+    assert!(circuit_of(&h, id).is_none());
+}
+
+#[test]
+fn create_circuit_says_what_is_missing_and_makes_nothing() {
+    let mut h = app(BOX);
+    // The tab first: a selected board's palette has a group of the same name.
+    press(&mut h, "Electrical");
+    let board = board_selected(&mut h, [1000, 1000]);
+    press(&mut h, "Create Circuit");
+    assert!(h.state().status.error, "a board with no devices: {}", h.state().status.text);
+    let r = h.state_mut().session.execute("component", &json!({"family": "Ceiling Luminaire", "at": [1000, 2000]}));
+    h.state_mut().selection = vec![r.expect("a luminaire")["id"].as_u64().expect("its id")];
+    h.run();
+    press(&mut h, "Create Circuit");
+    assert!(h.state().status.error, "devices with no board: {}", h.state().status.text);
+    let n = h.state().session.model.elements.iter().filter(|(_, e)| matches!(e, Element::Circuit(_))).count();
+    assert_eq!((n, board > 0), (0, true));
+}
+
+#[test]
+fn a_circuits_properties_edit_it_through_the_circuit_command_and_say_what_it_loads() {
+    let mut h = app(BOX);
+    let (_, lamps) = board_and_lamps(&mut h, 2);
+    from_tab(&mut h, "Electrical", "Create Circuit");
+    let id = h.state().selection[0];
+    // Two 12 VA luminaires at 127 V.
+    assert!(h.query_by_label("24 VA").is_some(), "its load is shown");
+    type_role(&mut h, Role::TextInput, "Circuit Number", "7");
+    type_role(&mut h, Role::TextInput, "Rating", "10");
+    type_role(&mut h, Role::TextInput, "Name", "Sala");
+    let c = circuit_of(&h, id).expect("a circuit");
+    assert_eq!((c.number, c.rating_a, c.name.as_str()), (7, 10.0, "Sala"));
+    assert_eq!(c.devices.len(), lamps.len());
+    // A number it is not is said, and changes nothing.
+    type_role(&mut h, Role::TextInput, "Rating", "lots");
+    assert!(h.state().status.error, "{}", h.state().status.text);
+    assert_eq!(circuit_of(&h, id).map(|c| c.rating_a), Some(10.0));
+    // A value the core refuses is said too, and the circuit stays.
+    type_role(&mut h, Role::TextInput, "Number of Poles", "2");
+    assert!(h.state().status.error, "two poles against one-pole luminaires: {}", h.state().status.text);
+    assert_eq!(circuit_of(&h, id).map(|c| c.poles), Some(1));
+}
+
+/// A board on 127/220 V with a circuit of two luminaires, selected, and its panel schedule made by the command.
+fn board_with_a_circuit(h: &mut Harness<BimApp>) -> (Id, Id, Id) {
+    let (board, lamps) = board_and_lamps(h, 2);
+    let s = &mut h.state_mut().session;
+    let circuit = s.execute("circuit", &json!({"devices": lamps, "panel": board})).expect("a circuit")["id"].as_u64().expect("its id");
+    let view =
+        s.execute("panel_schedule", &json!({"panel": board, "name": "QD-1"})).expect("a panel schedule")["id"].as_u64().expect("its id");
+    h.state_mut().selection = vec![board];
+    h.run();
+    (board, circuit, view)
+}
+
+#[test]
+fn electrical_panel_schedule_makes_the_selected_boards_schedule_and_opens_it() {
+    let mut h = app(BOX);
+    press(&mut h, "Electrical");
+    let board = board_selected(&mut h, [1000, 1000]);
+    press(&mut h, "Panel Schedule");
+    let [view] = ids(&h, "panelschedule")[..] else { panic!("one panel schedule: {:?}", ids(&h, "panelschedule")) };
+    assert_eq!(h.state().sheet, Sheet::Table(view), "it is open");
+    assert_eq!(field(&h, view, "panel_id"), json!(board));
+    // Its bar and its summary are there.
+    for label in ["Mark as Spare", "Mark as Space", "Load Summary by Phase", "Load Summary by Classification"] {
+        assert!(h.query_by_label(label).is_some(), "{label}");
+    }
+    // Nothing selected that is a board is said, and makes nothing.
+    h.state_mut().selection.clear();
+    h.run();
+    h.state_mut().sheet = Sheet::Plan(100000);
+    h.run();
+    press(&mut h, "Panel Schedule");
+    assert!(h.state().status.error, "{}", h.state().status.text);
+    assert_eq!(ids(&h, "panelschedule").len(), 1);
+}
+
+#[test]
+fn a_panel_schedule_is_in_the_browser_and_place_view_puts_it_on_a_sheet() {
+    let mut h = app_at(BOX, 0.05);
+    let (_, _, view) = board_with_a_circuit(&mut h);
+    assert!(h.query_by_label("QD-1").is_some(), "the project browser lists it");
+    assert!(h.query_by_label("Panel Schedules").is_some());
+    press(&mut h, "View");
+    press(&mut h, "Sheet");
+    press(&mut h, "View");
+    press(&mut h, "Place View");
+    press(&mut h, "Panel Schedule: QD-1");
+    let [vp] = ids(&h, "viewport")[..] else { panic!("one viewport") };
+    assert_eq!(field(&h, vp, "view"), json!(view));
+    // Placed, it is no longer offered; a double click on it opens it.
+    press(&mut h, "View");
+    press(&mut h, "Place View");
+    assert!(h.query_by_label("Panel Schedule: QD-1").is_none());
+    key(&mut h, Key::Escape);
+    let at = field(&h, vp, "at");
+    double_click(&mut h, P2(at[0].as_f64().unwrap(), at[1].as_f64().unwrap()));
+    assert_eq!(h.state().sheet, Sheet::Table(view));
+}
+
+#[test]
+fn the_panel_schedule_edits_its_circuits_in_place_and_marks_slots_as_spares_and_spaces() {
+    let mut h = app(BOX);
+    let (board, circuit, view) = board_with_a_circuit(&mut h);
+    h.state_mut().open_sheet(Sheet::Table(view));
+    h.run();
+    // A cell typed in changes the circuit and the totals.
+    type_role(&mut h, Role::TextInput, "Description", "Iluminação");
+    type_role(&mut h, Role::TextInput, "Trip", "10");
+    let c = circuit_of(&h, circuit).expect("a circuit");
+    assert_eq!((c.name.as_str(), c.rating_a), ("Iluminação", 10.0));
+    type_role(&mut h, Role::TextInput, "Trip", "lots");
+    assert!(h.state().status.error, "{}", h.state().status.text);
+    assert_eq!(circuit_of(&h, circuit).map(|c| c.rating_a), Some(10.0));
+    // A slot picked is marked a spare, then a space again.
+    press(&mut h, "5");
+    press(&mut h, "Mark as Spare");
+    let spare = h.state().session.model.elements.iter().find_map(|(i, e)| matches!(e, Element::Circuit(c) if c.number == 5).then_some(*i));
+    let spare = spare.expect("a spare on slot 5");
+    assert!(circuit_of(&h, spare).is_some_and(|c| c.devices.is_empty()));
+    press(&mut h, "Mark as Space");
+    assert!(circuit_of(&h, spare).is_none(), "a space has no breaker");
+    // A circuit is moved to a phase by the bar: slot 3 is on B.
+    h.state_mut().panel_slot = Some(1);
+    h.run();
+    press(&mut h, "Phase B");
+    assert_eq!(circuit_of(&h, circuit).map(|c| c.number), Some(3));
+    assert_eq!(h.state().session.model.panel_feeds(board).len(), 0);
+    // Undone like any edit.
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    h.run();
+    assert_eq!(circuit_of(&h, circuit).map(|c| c.number), Some(1));
 }

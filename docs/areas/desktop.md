@@ -9,7 +9,7 @@ bottom, or floating windows), apart from its drawing, so tests and the settings 
 `Palette` and its body in `palette_body`. A view's tab floats it in a window (`BimApp::floating`; `views` are the tabs and
 `front` the one the views' area shows): the active view (`BimApp::sheet`) takes the tools, any other on screen draws through
 `view_pane` as it is, with the canvas `at_rest` and `passive` set so it takes no clicks, and a click makes it active. Widget
-ids inside a view are per view (`push_id`), so two views on screen never clash. The start page is `start.rs` (`BimApp::home`; the desktop's `main` shows it when given no file, the quick access bar's Home and Ctrl+D bring it back over a project and go back to it, `BimApp::toggle_home`, and `Home::over` says there is one behind it): its tiles' pictures are drawn on a thread (`start::picture`, a `.bimcraft` file's 3D view) and a test waits for them with `Home::settled`. Its Sample Project button (`Pending::Sample`, `BimApp::open_sample`) builds the sample house, `bimcraft_core::sample::SAMPLE`, as a project with no file, so Save asks where to put it; it goes through `guard` like New and Open, and the script's steps are not undo steps, as with `--sample`. File > Settings is `settings.rs`, the user's
+ids inside a view are per view (`push_id`), so two views on screen never clash. The start page is `start.rs` (`BimApp::home`; the desktop's `main` shows it when given no file, the quick access bar's Home and Ctrl+D bring it back over a project and go back to it, `BimApp::toggle_home`, and `Home::over` says there is one behind it): its tiles' pictures are drawn on a thread (`start::picture`, a `.bimcraft` file's 3D view) and a test waits for them with `Home::settled`. Its Sample Project button (`Pending::Sample`, `BimApp::open_sample`) builds the sample house, `bimcraft_core::sample::SAMPLE`, as a project with no file, so Save asks where to put it; it goes through `guard` like New and Open, and the script's steps are not undo steps, as with `--sample`. Its Families group (New Family, its categories dropped down, and Open Family…) opens a family document over the page ([families](families.md)). File > Settings is `settings.rs`, the user's
 `settings.json` beside the favorites (`BimApp::use_settings`, which the desktop's `main` calls; tests never write it unless
 they hand it a file): what it keeps is `Settings`, written when it changes, between drags; a setting still to come goes on
 its page greyed out (`later`).
@@ -390,17 +390,27 @@ Align, which lines up with what a plan shows, says so. A view edge-on to the pla
 Work planes in 3D (`workplane.rs`; the core's in [views and graphics](views-and-graphics.md)). The plane has a patch of its own in
 the view, as ArchiCAD's: a small square of it (`work_plane_ring`, the same size on screen at any zoom), by the model's south-west corner
 on a level plane and about the point it was set through on another, lit with the plane's name under the cursor, that a click in Modify
-opens the dialog from; so do the 3D view's right-click menu (Set Work Plane…, `Action::WorkPlane`) and the Architecture tab's Set, in
-its Datum panel. The 3D view's control bar has Work Plane, a `footer::menu_button` showing the plane (a level's name, `Surface, 90°` or
-`Three points, 14°`, and `+ offset` when moved), which opens its dialog (`workplane::Draft`). It sets the plane three ways (`By`): Pick
-from list, a level; Pick a surface, with Pick Surface; Pick three points, with Pick Points; and one Offset for each, along the plane's
-normal (up from a level, out from a surface). Nothing is typed but the offset. A pick closes the dialog while it's made (`Picking`) and
-brings it back with what it took, Esc going back without it: Pick Surface lights the face under the pointer (`Scene::face_at`, the
-element's triangles in the plane of the one hit) and a click takes it, a point of it and the way it faces; Pick Points takes three
-clicks, each snapping to the corner seen nearest the pointer within the snap's reach (`Scene::corner_near`, a square marking it, as a
-dimension's ends snap in plan), else the surface's point there (a circle), the points taken drawn as dots (`workplane::aim`,
-`draw_aim`). OK runs `work_plane`; what it refuses is said in the dialog. The plane is drawn as a grid over as much of it as the model
-spans while the dialog is up and while a new outline is sketched on it (`workplane::draw_plane`, along the plane's own axes). Floor,
+opens the dialog from (where a wall in front hides it, the click is the wall's); so do the 3D view's right-click menu (Set Work Plane…, `Action::WorkPlane`) and the Architecture tab's Set, in
+its Datum panel. The 3D view's control bar has Work Plane, a `footer::menu_button` showing the plane (`Level : Level 1`, `Reference
+Plane : Ramp`, `Surface, 90°` or `Three points, 14°`, and `+ offset` when moved), which opens Revit's Work Plane dialog (T12,
+`workplane::Draft`, a `popup::Modal`). Current Work Plane names it (a surface by the way it faces), with Show (`BimApp::show_work_plane`:
+the plane drawn in the 3D view whether or not the dialog is up) and Dissociate (enabled only for a work plane on a reference
+plane: `work_plane {dissociate}`, leaving it where the plane is now). Specify a new Work Plane takes it four ways (`By`): Name, a level or
+a named reference plane of the project (`workplane::choices`); Pick a plane, a face of the model; Pick a line and use the work plane it
+was sketched in, a wall, a beam, a pipe or another element drawn along a line, whose level is taken (`workplane::sketched_in`); Pick
+three points (BIMCraft's own); and one Offset for each, along the plane's normal (up from a level, out from a surface). As Revit's, OK
+by name runs `work_plane` at once; OK with a Pick closes the dialog while the pick is made (`Picking`) and the click sets the plane
+(the third, for points), Esc going back to the dialog: Pick a plane and Pick a line light the face under the pointer (`Scene::face_at`,
+the element's triangles in the plane of the one hit); Pick three points snaps each click to the corner seen nearest the pointer within
+the snap's reach (`Scene::corner_near`, a square marking it, as a dimension's ends snap in plan), else the surface's point there (a
+circle), the points taken drawn as dots (`workplane::aim`, `draw_aim`). What `work_plane` refuses is said in the dialog, which comes
+back. The plane is drawn tinted, with a grid (`workplane::grid_step`) and its outline, over as much of it as the model spans and 2 m
+round while the dialog is up, while Show is on and while a new outline is sketched on it, as a family's {3D} draws its own
+(`workplane::plane_mark`). The plane and the patch are drawn into the picture, not over it (`workplane::marks`, core
+`view3d::PlaneMark`): depth tested on the processor (`Image::draw_marks`, laid over the picture as shown, so a change of the marks
+alone, the patch lit or Show turned on, lays them again without drawing the model) and on the card (`gpu.wgsl`'s `fs_marks`, a pass
+over the picture reading the opaque depth): what stands in front of the plane hides it, what is behind it is seen through its
+tint, and a face it lies on (a level's floor top) doesn't hide it, as a surface must be nearer by half a pixel's worth to. Floor,
 Ceiling, Roof and Shaft picked in the 3D view sketch a new one on the work plane at once (`set_tool`, `sketch_on_work_plane`):
 `Sketch::surface` holds the plane, `sketch_surface` gives it to `sketch3d.rs`, and Finish makes it on the level below the plane
 (`workplane::host`), as high above it as the plane is. Each of the four lies level, so on a plane that doesn't (`workplane::is_level`:
@@ -507,8 +517,11 @@ The ribbon's panels (`ribbon.rs`). A panel's name, under its tools, is a button 
 (`ribbon::list`) draws the same tools again as rows: `ribbon::listing` turns `big_button` and `small_button` into `list_row`. A tab too
 wide for the window makes room from the right, on the last frame's widths (`ribbon::tab`, `ribbon::fits`): a panel hands its last tools
 over to its list (`ribbon::handed_over`: counted, not drawn), and when one tool left isn't room enough it folds to one button that lists
-them all, and the panel before it is asked; what still doesn't fit scrolls sideways. A tool that drops a list of choices down (Project
-Units, Schedules, Duplicate View, New Family...) goes through `ribbon::choices`, never `Popup::menu` on its own button: egui keeps one
+them all, and the panel before it is asked; what still doesn't fit scrolls sideways. A panel drawn with `ribbon::yielding` is asked
+first and hands over all but its first tool at most (the family document's Model and Datum, whose last tools are greyed, not in
+BIMCraft yet); one drawn with `ribbon::kept` is asked last, once every other has folded (the family document's Family Editor, Load
+into Project). Once every panel has made what room it can, `ribbon::tab` asks no frame more. A tool that drops a list of choices down (Project
+Units, Schedules, Duplicate View...) goes through `ribbon::choices`, never `Popup::menu` on its own button: egui keeps one
 popup open, so a popup of a row's own closes the panel's list that holds the row, and with it itself. In a list the choices are a
 submenu of the row; a request to open them at once (UN) opens the panel's list when the tool has no button, and waits for a tab's second
 frame, since its first lays out every tool (`a_tool_with_choices_of_its_own_opens_them_from_a_panels_list`).

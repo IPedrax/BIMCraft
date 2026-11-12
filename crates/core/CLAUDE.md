@@ -57,7 +57,7 @@ changes. A copy is a new element: a new id and a new GUID. IFC writes the GUID a
 | Masses and what they make | [masses](../../docs/areas/massing.md) |
 | Families, forms, materials, textures, paint, favorites | [families](../../docs/areas/families.md) |
 | Beams, columns, footings, pipes, conduits, fixtures | [structure and MEP](../../docs/areas/structure-and-mep.md), [disciplines](../../docs/disciplines.md) |
-| IFC export or import | [looking at the result](../../docs/areas/looking-at-results.md): the IfcOpenShell checks |
+| IFC export or import | [looking at the result](../../docs/areas/looking-at-results.md): the IfcOpenShell checks; [grid exchange](../../docs/areas/ifc-exchange.md) |
 | Autosave and recovery | [autosave](../../docs/autosave.md) |
 
 ## Testing
@@ -127,7 +127,9 @@ compared with its retained full-scan implementation in unit tests; avoid mutable
 `bounds::BoundsCache` offers lazy column/footing, straight-run and supported component bounds under a configurable
 byte budget (16 MiB by default), including conservative tree-root/node charges. It checks the requested element,
 its levels and used type dimensions without holding a model snapshot or old library data. Components also check
-a weak family-map identity; narrowing this to individual family definitions is pending. `Family::conservative_bounds`
+a weak family-map identity and their own adaptive frames; narrowing this to individual family definitions is pending.
+An adaptive family has no envelope (`Family::conservative_bounds` is unknown): a component of one is boxed by what
+its points make it build. `Family::conservative_bounds`
 handles swept profiles and imported meshes without triangulation. Voids and revolved forms currently return unknown.
 `Unknown` means a query must retain the object; only `Empty` means the id is absent. These conservative boxes must
 not replace exact framing extrema. Hosted geometry, spatial discovery and renderer integration remain further work.

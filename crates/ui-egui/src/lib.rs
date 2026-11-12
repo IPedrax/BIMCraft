@@ -9,6 +9,9 @@ use crate::popup::Modal;
 
 use bimcraft_i18n::msg;
 
+mod adaptive_editor;
+mod adaptive_place;
+mod adaptive_view;
 mod assistant;
 mod background_grid;
 mod browser;
@@ -45,6 +48,7 @@ mod minimap;
 mod notes;
 mod objectstyles;
 mod orbit;
+mod panelsched;
 mod paper;
 mod phasing;
 mod plugins;
@@ -128,6 +132,8 @@ pub enum Sheet {
     Schedule(&'static str),
     /// Another schedule of the project's, by id.
     Table(Id),
+    /// A view of an open family document: its {3D} (none), or a plan or an elevation (`editor/tabs.rs`).
+    Family(editor::tabs::DocId, Option<bimcraft_core::family::views::Which>),
 }
 
 /// What clicks on the plan do.
@@ -146,6 +152,8 @@ pub enum Tool {
     Level,
     /// The grid's start, once clicked.
     Grid(Option<P2>),
+    /// A reference plane's start, once clicked: two clicks draw an upright plane through them.
+    ReferencePlane(Option<P2>),
     /// Move the selection: its base point, once clicked.
     Move(Option<P2>),
     /// Copy the selection: its base point, once clicked.
@@ -745,8 +753,21 @@ pub struct BimApp {
     family_dialog: Option<properties::FamilyDialog>,
     /// The Favorites window, while it's open; where the favorites file is, when the app was told (else the usual place).
     favorites_dialog: Option<favorites::FavoritesDialog>,
-    /// The Family Editor, while it's open.
-    family_editor: Option<editor::FamilyEditor>,
+    /// The family documents open, each a tab or more beside the project's (`editor/tabs.rs`), and the next one's id.
+    families: Vec<editor::tabs::FamilyDoc>,
+    next_doc: u32,
+    /// A family document being closed, asked about first while it has unsaved changes.
+    doc_closing: Option<editor::tabs::Closing>,
+    /// File > New, Open, Close or quitting, its family documents closed: the project's question next.
+    after_documents: Option<Pending>,
+    /// File > New > Family…'s dialog, while it is open: the category picked.
+    pub(crate) new_family_dialog: Option<bimcraft_core::family::Category>,
+    /// The family document was opened from the start page with no project behind it: closed, the start page comes back.
+    pub(crate) family_from_home: bool,
+    /// A family being loaded into the project, waiting on "Family Already Exists" (`editor::exists`).
+    family_loading: Option<editor::exists::Loading>,
+    /// What the last family load decided: how the project's family was overwritten, and its shared nested families.
+    pub(crate) family_decided: Option<editor::exists::Decided>,
     favorites_path: Option<std::path::PathBuf>,
     /// The files File > Open Recent lists, and where they are kept (see [`BimApp::keep_recent_in`]; none until the app is told).
     recent: recent::Recent,
@@ -767,6 +788,8 @@ pub struct BimApp {
     /// Structure > Reinforce, while open, and what was typed in it for each kind of host.
     reinforce_dialog: Option<reinforce::ReinforceDialog>,
     reinforce_kept: BTreeMap<reinforce::Form, BTreeMap<&'static str, String>>,
+    /// The slot picked in the panel schedule on screen.
+    panel_slot: Option<u32>,
     /// Manage > Line Weights, while open.
     line_weights_dialog: Option<lineweights::LineWeightsDialog>,
     /// Manage > Object Styles, while open.
@@ -805,6 +828,8 @@ pub struct BimApp {
     select_by_id: Option<inquiry::SelectById>,
     /// The Work Plane dialog's draft, while it's open or picking its points in the 3D view.
     work_plane: Option<workplane::Draft>,
+    /// The Work Plane dialog's Show (T12): the 3D view's work plane drawn as a grid whether or not it is being set.
+    pub(crate) show_work_plane: bool,
     ids_of_selection: Option<inquiry::IdsOfSelection>,
     selection_filter: Option<filter::SelectionFilter>,
     /// What was last put on the clipboard.
@@ -818,6 +843,18 @@ pub struct BimApp {
     component_angle: f64,
     /// Hinge hand for this run of the Door tool. Facing follows the pointer.
     door_flip_hand: bool,
+    /// An adaptive component's points clicked so far, in the project, before the last one places it.
+    pub(crate) adaptive_clicks: Vec<[f64; 3]>,
+    /// An adaptive instance's grip being dragged in a plan: the instance, and its point's number.
+    pub(crate) adaptive_grip: Option<(Id, u32)>,
+    /// The Component tool's Placement Plane for a work plane-based family: a reference plane of the project, by GUID; none,
+    /// the view's level.
+    placement_plane: Option<bimcraft_core::ids::Guid>,
+    /// The Component tool's Place on Face for a work plane-based family: a click places it on the face under it (in plan a
+    /// floor's or a roof's top, in a ceiling plan a ceiling's underside, in the 3D view any face that hosts).
+    pub(crate) place_on_face: bool,
+    /// The Component tool's Rotate after placement: each component placed is selected and Rotate starts about its point.
+    rotate_after: bool,
     /// The Properties palette's folded groups.
     collapsed: BTreeSet<&'static str>,
     /// Where views show, last frame.
@@ -998,7 +1035,7 @@ fn ribbon_button(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str, 
 }
 
 /// A small ribbon button: an icon alone, as in Revit's Modify panel; its name in its tooltip.
-fn small_button(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str) -> Response {
+pub(crate) fn small_button(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str) -> Response {
     if ribbon::left_out(label) {
         return ui.allocate_response(egui::Vec2::ZERO, Sense::hover());
     }
@@ -1168,15 +1205,16 @@ fn step_name(st: &engine::Step) -> String {
 
 /// A tab, of the ribbon or of a view. Contextual tabs are green, as Revit's are.
 fn tab_button(ui: &mut Ui, label: &str, active: bool, contextual: bool) -> Response {
-    tab_button_with(ui, label, active, contextual, Sense::click(), 0.0)
+    tab_button_with(ui, label, active, contextual, Sense::click(), (0.0, 0.0))
 }
 
 /// A tab that senses what `sense` says (a view's drags too), `room` px wider on its right for what's drawn in it (a view's ×).
-fn tab_button_with(ui: &mut Ui, label: &str, active: bool, contextual: bool, sense: Sense, room: f32) -> Response {
+/// `room`: points kept clear left of the label (an icon's) and right of it (a close button's).
+fn tab_button_with(ui: &mut Ui, label: &str, active: bool, contextual: bool, sense: Sense, (lead, room): (f32, f32)) -> Response {
     let label = t(label);
     let font = if active { style::semibold(13.0) } else { FontId::proportional(13.0) };
     let size = ui.painter().layout_no_wrap(label.to_string(), font.clone(), pal().text).size();
-    let (rect, r) = ui.allocate_exact_size(vec2(size.x + 24.0 + room, 24.0), sense);
+    let (rect, r) = ui.allocate_exact_size(vec2(size.x + 24.0 + lead + room, 24.0), sense);
     r.widget_info(|| WidgetInfo::selected(WidgetType::Button, true, active, label));
     // A pill: the open tab in the accent's soft tint, a contextual one solid green when open and tinted green when not.
     let (fill, stroke, ink) = match (contextual, active, r.hovered()) {
@@ -1192,7 +1230,7 @@ fn tab_button_with(ui: &mut Ui, label: &str, active: bool, contextual: bool, sen
     if r.has_focus() {
         p.rect_stroke(rect, radius, style::focus_ring(), StrokeKind::Inside);
     }
-    p.text(rect.center() - vec2(room / 2.0, 0.0), Align2::CENTER_CENTER, label, font, ink);
+    p.text(rect.center() + vec2((lead - room) / 2.0, 0.0), Align2::CENTER_CENTER, label, font, ink);
     r
 }
 
@@ -1405,7 +1443,14 @@ impl BimApp {
             materials_dialog: None,
             family_dialog: None,
             favorites_dialog: None,
-            family_editor: None,
+            families: Vec::new(),
+            next_doc: 1,
+            doc_closing: None,
+            after_documents: None,
+            new_family_dialog: None,
+            family_from_home: false,
+            family_loading: None,
+            family_decided: None,
             favorites_path: None,
             recent: recent::Recent::default(),
             recent_path: None,
@@ -1420,6 +1465,7 @@ impl BimApp {
             display_dialog: None,
             reinforce_dialog: None,
             reinforce_kept: BTreeMap::new(),
+            panel_slot: None,
             line_weights_dialog: None,
             object_styles_dialog: None,
             line_styles_dialog: None,
@@ -1439,6 +1485,7 @@ impl BimApp {
             purge_dialog: None,
             select_by_id: None,
             work_plane: None,
+            show_work_plane: false,
             ids_of_selection: None,
             selection_filter: None,
             copied: None,
@@ -1447,6 +1494,11 @@ impl BimApp {
             component: None,
             component_angle: 0.0,
             door_flip_hand: false,
+            adaptive_clicks: Vec::new(),
+            adaptive_grip: None,
+            placement_plane: None,
+            place_on_face: false,
+            rotate_after: false,
             collapsed: BTreeSet::new(),
             view_rect: Rect::ZERO,
             pane: Rect::ZERO,
@@ -1532,6 +1584,7 @@ impl BimApp {
             Tool::RoomSeparator(_) => Some(msg!("Place Room Separation")),
             Tool::Level => Some(msg!("Place Level")),
             Tool::Grid(_) => Some(msg!("Place Grid")),
+            Tool::ReferencePlane(_) => Some(msg!("Place Reference Plane")),
             Tool::Dimension(..) | Tool::Angular(_) | Tool::Round(..) => Some(msg!("Place Dimensions")),
             Tool::Text => Some(msg!("Place Text")),
             Tool::DetailGroup => Some(msg!("Place Detail Group")),
@@ -1565,10 +1618,22 @@ impl BimApp {
             return Some(format!("{} | {}", t("Modify"), t(what)));
         }
         let m = &self.session.model;
-        let categories: BTreeSet<&str> = self.selection.iter().filter_map(|id| m.elements.get(id)).map(|e| e.category()).collect();
+        // A component goes by its family's category, as Revit's Modify | Furniture.
+        let categories: BTreeSet<String> = self
+            .selection
+            .iter()
+            .filter_map(|id| m.elements.get(id))
+            .map(|e| {
+                match e {
+                    Element::Component(c) => m.families.get(&c.family).map(|f| editor::category_label(f.category)),
+                    _ => None,
+                }
+                .unwrap_or_else(|| lang::category(e.category(), true))
+            })
+            .collect();
         match categories.len() {
             0 => None,
-            1 => categories.first().map(|c| format!("{} | {}", t("Modify"), lang::category(c, true))),
+            1 => categories.first().map(|c| format!("{} | {}", t("Modify"), c)),
             _ => Some(format!("{} | {}", t("Modify"), t("Multi-Select"))),
         }
     }
@@ -1595,8 +1660,10 @@ impl BimApp {
             },
             Sheet::Table(id) => match self.session.model.elements.get(id) {
                 Some(Element::Schedule(sc)) => sc.name.clone(),
+                Some(Element::PanelSchedule(ps)) => ps.name.clone(),
                 _ => "Schedule".into(),
             },
+            Sheet::Family(..) => self.family_tab_name(sheet),
         }
     }
 
@@ -1609,7 +1676,11 @@ impl BimApp {
             Sheet::Section(id) if matches!(self.session.model.elements.get(id), Some(Element::Elevation(_))) => "Elevation",
             Sheet::Section(_) => "Section",
             Sheet::Paper(_) => "Sheet",
+            Sheet::Table(id) if matches!(self.session.model.elements.get(id), Some(Element::PanelSchedule(_))) => "Panel Schedule",
             Sheet::Schedule(_) | Sheet::Table(_) => "Schedule",
+            Sheet::Family(id, view) => {
+                return self.family_of(id).map(|ed| format!("{} - {}", ed.title(), editor::views::view_title(view))).unwrap_or_default();
+            }
         };
         format!("{}: {}", t(kind), self.view_name(sheet))
     }
@@ -1666,23 +1737,33 @@ impl BimApp {
         self.poll_plugins(&ctx);
         self.poll_autosave(&ctx);
         self.keys(&ctx);
+        self.family_keys(&ctx);
         self.os_requests(&ctx);
         self.dialog_answered();
         self.watch_window(&ctx);
         let view = self.view_title(self.sheet);
-        let title = format!("{}{} · {view} · BIMCraft", self.session.model.name, if self.dirty() { "*" } else { "" });
+        let title = match self.family_title() {
+            Some(family) => format!("{family} · BIMCraft"),
+            None => format!("{}{} · {view} · BIMCraft", self.session.model.name, if self.dirty() { "*" } else { "" }),
+        };
         if title != self.title {
             ctx.send_viewport_cmd(ViewportCommand::Title(title.clone()));
             self.title = title;
         }
-        if ctx.input(|i| i.viewport().close_requested()) && !self.closing && (self.installing() || self.dirty()) {
+        let documents = self.families.iter().any(|d| d.ed.as_ref().is_some_and(editor::FamilyEditor::unsaved));
+        if ctx.input(|i| i.viewport().close_requested()) && !self.closing && (self.installing() || self.dirty() || documents) {
             ctx.send_viewport_cmd(ViewportCommand::CancelClose);
-            // An update being put in place holds the window: it closes it when it's in.
+            // An update being put in place holds the window: it closes it when it's in. The family documents are asked about
+            // first.
             if !self.installing() {
-                self.pending = Some(Pending::Close);
+                if documents {
+                    self.pending_after_documents(Pending::Close);
+                } else {
+                    self.pending = Some(Pending::Close);
+                }
             }
         }
-        if ctx.input(|i| i.viewport().close_requested()) && !self.dirty() && !self.installing() {
+        if ctx.input(|i| i.viewport().close_requested()) && !self.dirty() && !self.installing() && !documents {
             self.retire_autosave();
         }
         if self.home.shown {
@@ -1715,11 +1796,18 @@ impl BimApp {
                 titlebar::caption_buttons(ui, bar);
             }
         });
-        // The ribbon is Rev's: BIMCraft's tools are a palette (`Palette::Tools`), which Rev never shows.
+        // The ribbon is Rev's: BIMCraft's tools are a palette (`Palette::Tools`), which Rev never shows. A family document (an
+        // adaptive family open) has a ribbon, palettes and a view of its own, as Revit's family editor, in either profile.
+        let family = self.family_doc();
         if style::rev() {
             self.docking.show(dock::Palette::Tools, false);
+        }
+        if style::rev() || family {
             let card = style::card([true, true, true, false]);
-            Panel::top("ribbon").frame(card).show_separator_line(false).show(ui, |ui| self.ribbon(ui));
+            Panel::top("ribbon")
+                .frame(card)
+                .show_separator_line(false)
+                .show(ui, |ui| if family { self.family_ribbon(ui) } else { self.ribbon(ui) });
         }
         if self.has_update_banner() {
             Panel::top("update").frame(Frame::NONE).show_separator_line(false).show(ui, |ui| self.update_banner(ui));
@@ -1728,6 +1816,10 @@ impl BimApp {
         Panel::bottom("status").frame(status).show_separator_line(false).show(ui, |ui| self.status_bar(ui));
         self.docks(ui);
         CentralPanel::default().frame(Frame::NONE).show(ui, |ui| {
+            if family {
+                self.family_central(ui);
+                return;
+            }
             let g = style::gap().max(4);
             let front = self.front;
             // A schedule's table keeps its rows clear of the tabs.
@@ -1823,6 +1915,8 @@ impl BimApp {
             Sheet::Section(id) => self.section_view(ui, id),
             Sheet::Paper(id) => self.paper_view(ui, id),
             Sheet::Schedule(_) | Sheet::Table(_) => self.schedule(ui),
+            // A family document's views are its own (`family_central`).
+            Sheet::Family(..) => {}
         }
         if floating {
             self.view_control_bar(ui);
@@ -1871,12 +1965,14 @@ impl BimApp {
         let m = &self.session.model;
         self.selection.retain(|id| m.elements.contains_key(id));
         self.active_option = self.active_option.take().filter(|o| bimcraft_core::phasing::option_exists(m, o));
+        let docs: Vec<editor::tabs::DocId> = self.families.iter().map(|d| d.id).collect();
         let exists = |s: &Sheet| match s {
+            Sheet::Family(id, _) => docs.contains(id),
             Sheet::Plan(key) | Sheet::Ceiling(key) => m.plan_level(*key).is_some(),
             Sheet::Section(id) => m.section(*id).is_some(),
             Sheet::Paper(id) => m.sheet(*id).is_some(),
             Sheet::View3D | Sheet::Schedule(_) => true,
-            Sheet::Table(id) => matches!(m.elements.get(id), Some(Element::Schedule(_))),
+            Sheet::Table(id) => matches!(m.elements.get(id), Some(Element::Schedule(_) | Element::PanelSchedule(_))),
         };
         self.views.retain(exists);
         self.floating.retain(|f| exists(&f.sheet));
@@ -1903,25 +1999,15 @@ impl BimApp {
         }
     }
 
-    fn keys(&mut self, ctx: &Context) {
-        // A note being written takes the keys, but for a field's that has them; another tool finishes it.
-        if self.note_edit.is_some() {
-            if !matches!(self.tool, Tool::Text | Tool::Modify) {
-                self.finish_note();
-            } else if !ctx.egui_wants_keyboard_input() && self.text_type_dialog.is_none() {
-                self.note_keys(ctx);
-                return;
-            }
-        }
-        // A dialog takes the keys while it's open.
-        if self.type_dialog.is_some()
+    /// Whether a dialog, Find or a menu has the keys: the window's shortcuts wait.
+    pub(crate) fn keys_taken(&self, ctx: &Context) -> bool {
+        self.type_dialog.is_some()
             || self.text_type_dialog.is_some()
             || self.dimension_type_dialog.is_some()
             || self.dimension_text_dialog.is_some()
             || self.materials_dialog.is_some()
             || self.family_dialog.is_some()
             || self.favorites_dialog.is_some()
-            || self.family_editor.is_some()
             || self.parameters_dialog.is_some()
             || self.schedule_dialog.is_some()
             || self.vg_dialog.is_some()
@@ -1954,7 +2040,20 @@ impl BimApp {
             || self.report_open()
             // An open menu takes the keys: Esc closes it, not the tool.
             || egui::Popup::is_any_open(ctx)
-        {
+    }
+
+    fn keys(&mut self, ctx: &Context) {
+        // A note being written takes the keys, but for a field's that has them; another tool finishes it.
+        if self.note_edit.is_some() {
+            if !matches!(self.tool, Tool::Text | Tool::Modify) {
+                self.finish_note();
+            } else if !ctx.egui_wants_keyboard_input() && self.text_type_dialog.is_none() {
+                self.note_keys(ctx);
+                return;
+            }
+        }
+        // A dialog takes the keys while it's open, and a family document's tab has its own (`family_keys`).
+        if self.keys_taken(ctx) || self.active_family().is_some() {
             return;
         }
         let pressed = |m: Modifiers, k: Key| ctx.input_mut(|i| i.consume_key(m, k));
@@ -2256,6 +2355,7 @@ impl BimApp {
                 Some("room_separator") => Tool::RoomSeparator(None),
                 Some("level") => Tool::Level,
                 Some("grid") => Tool::Grid(None),
+                Some("reference_plane") => Tool::ReferencePlane(None),
                 Some("move") => Tool::Move(None),
                 Some("copy") => Tool::Copy(None),
                 Some("rotate") => Tool::Rotate { centre: P2(0.0, 0.0), start: None, place: false },
@@ -2311,6 +2411,14 @@ impl BimApp {
                 }
                 Some("delete") => {
                     self.delete();
+                    return true;
+                }
+                Some("pin") => {
+                    self.set_pinned(true);
+                    return true;
+                }
+                Some("unpin") => {
+                    self.set_pinned(false);
                     return true;
                 }
                 Some("fillet") => {
@@ -2389,6 +2497,7 @@ impl BimApp {
             Some(Element::RoomSeparator(_)) => Tool::RoomSeparator(None),
             Some(Element::Level(_)) => Tool::Level,
             Some(Element::Grid(_)) => Tool::Grid(None),
+            Some(Element::RefPlane(_)) => Tool::ReferencePlane(None),
             Some(Element::Dimension(d)) => match d.kind {
                 DimKind::Aligned => Tool::Dimension(DimMode::Aligned, Vec::new()),
                 DimKind::Linear if d.orient == Some(bimcraft_core::model::Orient::Vertical) => {
@@ -2497,7 +2606,7 @@ impl BimApp {
                 let look = bimcraft_core::graphics::Look::of_3d(&m);
                 m.elements.keys().copied().filter(|id| look.shows(*id)).collect()
             }
-            Sheet::Paper(_) | Sheet::Schedule(_) | Sheet::Table(_) => BTreeSet::new(),
+            Sheet::Paper(_) | Sheet::Schedule(_) | Sheet::Table(_) | Sheet::Family(..) => BTreeSet::new(),
         }
     }
 
@@ -2508,6 +2617,7 @@ impl BimApp {
     }
 
     fn set_tool(&mut self, mut tool: Tool) {
+        self.adaptive_clicks.clear();
         // Trim/Extend to Corner with two lines or walls selected (or picked, sketching) joins them at once, keeping the
         // parts toward their middles; with any other selection it asks for the picks.
         if tool == Tool::Trim(None) && self.corner_selected() {
@@ -2760,6 +2870,7 @@ impl BimApp {
             Tool::Wall(chain) => chain.last().copied(),
             Tool::Run(_, start) => *start,
             Tool::Grid(start)
+            | Tool::ReferencePlane(start)
             | Tool::RoomSeparator(start)
             | Tool::Move(start)
             | Tool::Copy(start)
@@ -2789,6 +2900,12 @@ impl BimApp {
     /// Escape: dismiss the error, drop the chain being drawn, else leave the tool, else clear the
     /// selection.
     fn escape(&mut self) {
+        // A form selected in a family document goes first.
+        if let Some(ed) = self.active_family_mut()
+            && ed.let_form_go()
+        {
+            return;
+        }
         // Pick in View goes back to its dialog.
         if self.stop_work_plane_pick() {
             return;
@@ -2799,11 +2916,18 @@ impl BimApp {
         if self.snap_once.take().is_some() {
             return;
         }
+        // An adaptive instance's points clicked go next, leaving the tool.
+        if !self.adaptive_clicks.is_empty() {
+            self.adaptive_clicks.clear();
+            self.status = Status::default();
+            return;
+        }
         self.clear_typed();
         self.status = Status::default();
         self.tool = match std::mem::replace(&mut self.tool, Tool::Modify) {
             Tool::Wall(chain) if !chain.is_empty() => Tool::Wall(Vec::new()),
             Tool::Grid(Some(_)) => Tool::Grid(None),
+            Tool::ReferencePlane(Some(_)) => Tool::ReferencePlane(None),
             Tool::RoomSeparator(Some(_)) => Tool::RoomSeparator(None),
             Tool::Run(c, Some(_)) => Tool::Run(c, None),
             Tool::Mirror { draw, start: Some(_) } => Tool::Mirror { draw, start: None },
@@ -2878,7 +3002,14 @@ impl BimApp {
                     self.orbit.camera = Some(c.zoom(factor, (f64::from(c.width) / 2.0, f64::from(c.height) / 2.0)));
                 }
             }
-            Sheet::Schedule(_) | Sheet::Table(_) => {}
+            Sheet::Family(_, None) => {
+                if let Some(o) = self.active_family_mut().map(|ed| &mut ed.orbit)
+                    && let Some(c) = o.camera
+                {
+                    o.camera = Some(c.zoom(factor, (f64::from(c.width) / 2.0, f64::from(c.height) / 2.0)));
+                }
+            }
+            Sheet::Schedule(_) | Sheet::Table(_) | Sheet::Family(..) => {}
         }
     }
 
@@ -2886,7 +3017,12 @@ impl BimApp {
         match self.sheet {
             Sheet::Plan(id) | Sheet::Ceiling(id) | Sheet::Section(id) | Sheet::Paper(id) => self.canvas.fit(id),
             Sheet::View3D => self.fit3d(),
-            Sheet::Schedule(_) | Sheet::Table(_) => {}
+            Sheet::Family(_, None) => {
+                if let Some(ed) = self.active_family_mut() {
+                    ed.orbit.fit();
+                }
+            }
+            Sheet::Schedule(_) | Sheet::Table(_) | Sheet::Family(..) => {}
         }
     }
 
@@ -2908,6 +3044,19 @@ impl BimApp {
 
     /// Open a view in a tab, or bring its tab forward.
     fn open_sheet(&mut self, sheet: Sheet) {
+        // A family document's view: its tab after the document's others (after the project's and the documents' before it),
+        // and the document showing it. The project's tool, selection and views are left as they are.
+        if let Sheet::Family(id, view) = sheet {
+            if !self.views.contains(&sheet) {
+                let at = self.views.iter().position(|s| matches!(s, Sheet::Family(d, _) if *d > id)).unwrap_or(self.views.len());
+                self.views.insert(at, sheet);
+            }
+            (self.sheet, self.front) = (sheet, sheet);
+            if let Some(ed) = self.family_of_mut(id) {
+                ed.views.shown = view;
+            }
+            return;
+        }
         if !matches!(sheet, Sheet::Section(_)) {
             self.cut.suspend();
         }
@@ -2945,7 +3094,7 @@ impl BimApp {
         }
         match &mut self.tool {
             Tool::Wall(chain) => chain.clear(),
-            Tool::Grid(start) | Tool::RoomSeparator(start) | Tool::Run(_, start) => *start = None,
+            Tool::Grid(start) | Tool::ReferencePlane(start) | Tool::RoomSeparator(start) | Tool::Run(_, start) => *start = None,
             Tool::Dimension(_, refs) | Tool::Angular(refs) => refs.clear(),
             Tool::Round(_, picked) => picked.clear(),
             Tool::Section(start) | Tool::Shaft(start) | Tool::Measure(start) | Tool::Camera(start) => *start = None,
@@ -2994,7 +3143,8 @@ impl BimApp {
             (None, _) => (json!(name), tf("Schedule: {}", &[t(name)]), *name),
         });
         let made = self.schedules().into_iter().map(|(id, name)| (json!(id), tf("Schedule: {}", &[name]), name));
-        let others = std::iter::once((json!("{3D}"), t("3D View: {3D}").to_string(), "{3D}")).chain(builtin).chain(made);
+        let boards = self.panel_schedules().into_iter().map(|(id, name)| (json!(id), tf("Panel Schedule: {}", &[name]), name));
+        let others = std::iter::once((json!("{3D}"), t("3D View: {3D}").to_string(), "{3D}")).chain(builtin).chain(made).chain(boards);
         plans.chain(cuts).chain(others).filter(|(_, _, name)| !placed.contains(name)).map(|(v, label, _)| (v, label)).collect()
     }
 
@@ -3015,6 +3165,10 @@ impl BimApp {
 
     /// Close a view's tab; the last one stays open.
     fn close_view(&mut self, sheet: Sheet) {
+        if matches!(sheet, Sheet::Family(..)) {
+            self.close_family_tab(sheet);
+            return;
+        }
         if self.floats(sheet) {
             self.floating.retain(|f| f.sheet != sheet);
             if self.sheet == sheet {
@@ -3022,7 +3176,8 @@ impl BimApp {
             }
             return;
         }
-        if self.views.len() < 2 {
+        // The project keeps a tab of its own.
+        if self.views.iter().filter(|v| !matches!(v, Sheet::Family(..))).count() < 2 {
             return;
         }
         self.views.retain(|v| *v != sheet);
@@ -3052,7 +3207,7 @@ impl BimApp {
                         (p["azimuth"], p["elevation"]) = (json!(c.azimuth), json!(c.elevation));
                     }
                 }
-                (Sheet::Schedule(_) | Sheet::Table(_), _) => {}
+                (Sheet::Schedule(_) | Sheet::Table(_) | Sheet::Family(..), _) => {}
             }
             return self.run("render", p).is_some();
         }
@@ -3226,6 +3381,11 @@ impl BimApp {
 
     /// Do `p` now, or first ask about unsaved changes.
     fn guard(&mut self, p: Pending, ctx: &Context) {
+        // The family documents first, each asked about while it has unsaved changes; then the project.
+        if !self.families.is_empty() {
+            self.pending_after_documents(p);
+            return;
+        }
         if self.dirty() { self.pending = Some(p) } else { self.proceed(p, ctx) }
     }
 
@@ -3278,20 +3438,39 @@ impl BimApp {
                 if icon_button(ui, Icon::Open, "Open").clicked() {
                     self.guard(Pending::Open, &ctx);
                 }
+                // On a family tab, the family document's Save, as Revit saves the active document: never the project.
                 if icon_button(ui, Icon::Save, "Save").clicked() {
-                    self.save(&ctx, None);
+                    if self.active_family().is_some() {
+                        self.family_save(false);
+                    } else {
+                        self.save(&ctx, None);
+                    }
                 }
                 ui.separator();
                 ui.spacing_mut().item_spacing.x = 0.0;
+                // A family document's Undo and Redo are its own: the project's steps are not offered while it is open.
+                let family = self.family_doc();
                 if icon_button(ui, Icon::Undo, "Undo").clicked() {
-                    self.run("undo", json!({}));
+                    if family {
+                        self.family_undo();
+                    } else {
+                        self.run("undo", json!({}));
+                    }
                 }
-                self.steps_list(ui, false);
+                if !family {
+                    self.steps_list(ui, false);
+                }
                 ui.add_space(4.0);
                 if icon_button(ui, Icon::Redo, "Redo").clicked() {
-                    self.run("redo", json!({}));
+                    if family {
+                        self.family_redo();
+                    } else {
+                        self.run("redo", json!({}));
+                    }
                 }
-                self.steps_list(ui, true);
+                if !family {
+                    self.steps_list(ui, true);
+                }
                 ui.spacing_mut().item_spacing.x = 8.0;
                 ui.separator();
                 if icon_button(ui, Icon::View3D, "Default 3D View").clicked() {
@@ -3324,7 +3503,7 @@ impl BimApp {
         let right = at.left() - gap;
         let left = row.right() + gap;
         let mut title = egui::text::LayoutJob::simple_singleline(
-            format!("{} · {view}", self.session.model.name),
+            self.family_title().unwrap_or_else(|| format!("{} · {view}", self.session.model.name)),
             FontId::proportional(12.5),
             pal().app_bar_muted,
         );
@@ -3609,18 +3788,40 @@ impl BimApp {
             .clicked()
         };
         let cmd = |k: Key| Some(KeyboardShortcut::new(Modifiers::COMMAND, k));
-        if item(ui, "New", cmd(Key::N)) {
-            self.guard(Pending::New, ctx);
-        }
-        if item(ui, msg!("Open…"), cmd(Key::O)) {
-            self.guard(Pending::Open, ctx);
-        }
+        // As Revit's: New and Open, each of a project or a family.
+        SubMenuButton::new(t("New")).ui(ui, |ui| {
+            if item(ui, msg!("Project"), cmd(Key::N)) {
+                self.guard(Pending::New, ctx);
+            }
+            if item(ui, msg!("Family…"), None) {
+                self.new_family_dialog = Some(bimcraft_core::family::Category::Generic);
+            }
+        });
+        SubMenuButton::new(t("Open")).ui(ui, |ui| {
+            if item(ui, msg!("Project…"), cmd(Key::O)) {
+                self.guard(Pending::Open, ctx);
+            }
+            if item(ui, msg!("Family…"), None) {
+                self.open_family(ctx);
+            }
+        });
         self.recent_menu(ui, ctx);
-        if item(ui, "Save", cmd(Key::S)) {
-            self.save(ctx, None);
-        }
-        if item(ui, msg!("Save As…"), Some(KeyboardShortcut::new(Modifiers::COMMAND | Modifiers::SHIFT, Key::S))) {
-            self.save_as(ctx, None);
+        // On a family tab, Save and Save As are the family document's, and say so: the project is never saved from there.
+        let save_as = Some(KeyboardShortcut::new(Modifiers::COMMAND | Modifiers::SHIFT, Key::S));
+        if self.active_family().is_some() {
+            if item(ui, msg!("Save Family"), cmd(Key::S)) {
+                self.family_save(false);
+            }
+            if item(ui, msg!("Save Family As…"), save_as) {
+                self.family_save(true);
+            }
+        } else {
+            if item(ui, "Save", cmd(Key::S)) {
+                self.save(ctx, None);
+            }
+            if item(ui, msg!("Save As…"), save_as) {
+                self.save_as(ctx, None);
+            }
         }
         if !self.autosave.candidates.is_empty() && item(ui, msg!("Recover Autosave…"), None) {
             self.autosave.show_recovery = true;
@@ -3833,7 +4034,7 @@ impl BimApp {
                 ),
             ],
         );
-        // Datum, and the Work Plane's Set beside its levels and grids.
+        // Datum, and the Work Plane's Set and Ref Plane beside its levels and grids, as Revit's Work Plane panel has them.
         let datum: Tools = &[
             (Icon::Level, "Level", msg!("Level (LL): a new level at an elevation"), Tool::Level),
             (Icon::Grid, "Grid", msg!("Grid (GR): click its two ends"), Tool::Grid(None)),
@@ -3846,6 +4047,11 @@ impl BimApp {
                 }
             }
             self.work_plane_set(ui);
+            let plane = Tool::ReferencePlane(None);
+            let tip = msg!("Reference Plane (RP): click its two ends; work plane-based components are placed on it and move with it");
+            if big_button(ui, Icon::RefPlane, msg!("Ref Plane"), structure::same_tool(&self.tool, &plane), tip).clicked() {
+                self.set_tool(plane);
+            }
         });
     }
 
@@ -4056,7 +4262,7 @@ impl BimApp {
             if big_button(ui, Icon::Section, "Section", matches!(self.tool, Tool::Section(_)), tip).clicked() {
                 self.set_tool(Tool::Section(None));
             }
-            let tip = msg!("Elevation: click beside the building, on the side to look at");
+            let tip = msg!("Elevation: click a wall, a line or a slab's edge to look at, the project's or a link's");
             if big_button(ui, Icon::Elevation, "Elevation", self.tool == Tool::Elevation, tip).clicked() {
                 self.set_tool(Tool::Elevation);
             }
@@ -4075,7 +4281,8 @@ impl BimApp {
                         self.open_sheet(Sheet::Schedule(cat));
                     }
                 }
-                let made: Vec<(Id, String)> = self.schedules().into_iter().map(|(id, n)| (id, n.to_string())).collect();
+                let made: Vec<(Id, String)> =
+                    self.schedules().into_iter().chain(self.panel_schedules()).map(|(id, n)| (id, n.to_string())).collect();
                 for (id, name) in made {
                     if ui.button(name).clicked() {
                         self.open_sheet(Sheet::Table(id));
@@ -4296,24 +4503,6 @@ impl BimApp {
                 self.link_dialog = true;
             }
         });
-        panel(ui, "Family Editor", |ui| {
-            let tip = msg!("New Family: start a family of your own, of a category, to edit its parameters, types and forms");
-            let r = big_button(ui, Icon::FamilyEditor, "New Family", false, tip);
-            ribbon::choices(ui, &r, false, |ui| {
-                for c in editor::CATEGORIES {
-                    if ui.button(editor::category_label(c)).clicked() {
-                        self.new_family(c);
-                    }
-                }
-            });
-            let tip = msg!("Edit Family: the family of what is selected, or of the component being placed");
-            let family = self.family_in_hand();
-            if ui.add_enabled_ui(family.is_some(), |ui| big_button(ui, Icon::FamilyEditor, "Edit Family", false, tip)).inner.clicked()
-                && let Some(f) = family
-            {
-                self.edit_family(&f);
-            }
-        });
         panel(ui, msg!("Inquiry"), |ui| {
             let tip = msg!("Select by ID: select elements by their IDs, GUIDs or IFC GlobalIds, as many as you paste, and show them");
             if big_button(ui, Icon::SelectById, "Select by ID", self.select_by_id.is_some(), tip).clicked() {
@@ -4492,22 +4681,6 @@ impl BimApp {
             Tool::DetailLine(_) => self.draw_panel(ui, draw::Target::Detail),
             _ => {}
         }
-        // Placing a component: Revit's Mode panel, which loads a family from a file.
-        if matches!(self.tool, Tool::Component | Tool::Fixture(_)) {
-            panel(ui, msg!("Mode"), |ui| {
-                let tip = msg!("Load Family: a family saved as a .json file, BIMCraft's own");
-                if big_button(ui, Icon::LoadFamily, "Load Family", false, tip).clicked() {
-                    let dialog = rfd::AsyncFileDialog::new().add_filter(t("BIMCraft family"), &["json"]);
-                    self.ask_file(ui.ctx(), dialog, false, |app, path| {
-                        if let Some(r) = app.run("family", json!({"path": path.to_string_lossy()})) {
-                            let name = r["name"].as_str().unwrap_or_default().to_string();
-                            let first = r["family"]["types"].as_object().and_then(|t| t.keys().next().cloned()).unwrap_or_default();
-                            app.component = Some((name, first));
-                        }
-                    });
-                }
-            });
-        }
         // Detail lines selected, or sketch lines picked: Join into Polyline and Explode Polyline.
         let picked = self.sketch.as_ref().map(|sk| sk.picked.len());
         if (self.lines_selected() && self.tool == Tool::Modify) || (picked.is_some() && self.tool == Tool::Modify) {
@@ -4540,6 +4713,18 @@ impl BimApp {
                     .clicked()
                 {
                     self.run("modify", json!({"ids": walls, "attach_top": null, "attach_base": null}));
+                }
+            });
+        }
+        // Work plane-based components selected: Revit's Work Plane panel, Edit Work Plane (T12).
+        let hosted = self.work_plane_components();
+        if !hosted.is_empty() && self.tool == Tool::Modify {
+            panel(ui, msg!("Work Plane"), |ui| {
+                let tip = msg!(
+                    "Edit Work Plane: the components onto a level, a reference plane or a face picked (the Work Plane dialog), keeping their Offset from Host"
+                );
+                if big_button(ui, Icon::WorkPlane, msg!("Edit Work Plane"), self.work_plane.is_some(), tip).clicked() {
+                    self.open_component_work_plane(hosted.clone());
                 }
             });
         }
@@ -4612,6 +4797,22 @@ impl BimApp {
     /// The Options Bar, while there's something on it (a contextual tab's name, a tool's options): a card floating over the
     /// view's top left, so the view never moves when it comes and goes, and taking the clicks that land on it.
     fn options_bar(&mut self, ctx: &Context) {
+        if self.family_doc() {
+            if !self.family_has_options() {
+                self.options_rect = Rect::NOTHING;
+                return;
+            }
+            let g = f32::from(style::gap());
+            let view = self.view_rect;
+            let top = view.top().max(self.tabs_foot - g + 4.0);
+            let frame = style::card([false; 4]).inner_margin(Margin::symmetric(10, 3));
+            let shown = Area::new(UiId::new("family-options-bar"))
+                .order(Order::Middle)
+                .fixed_pos(pos2(view.left() + g, top + g))
+                .show(ctx, |ui| frame.show(ui, |ui| self.family_options(ui)).inner);
+            self.options_rect = if shown.inner { shown.response.rect } else { Rect::NOTHING };
+            return;
+        }
         if self.context().is_none() && matches!(self.tool, Tool::Modify) && self.note_edit.is_none() {
             self.options_rect = Rect::NOTHING;
             return;
@@ -4830,9 +5031,120 @@ impl BimApp {
                     }
                 }
                 Tool::Offset => self.offset_options(ui),
+                Tool::Component => self.component_options(ui),
                 _ => {}
             }
         });
+    }
+
+    /// The reference planes of the project a work plane-based family may be placed on, by name (unnamed ones by id).
+    fn placement_planes(&self) -> Vec<(bimcraft_core::ids::Guid, String)> {
+        let m = &self.session.model;
+        m.rare("refplane")
+            .into_iter()
+            .filter_map(|id| match m.elements.get(id) {
+                Some(bimcraft_core::model::Element::RefPlane(p)) => {
+                    let name = if p.name.is_empty() { id.to_string() } else { p.name.clone() };
+                    Some((m.guid(id), format!("{} : {name}", t("Reference Plane"))))
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// Whether the family the Component tool places is work plane-based.
+    fn placing_on_work_plane(&self) -> bool {
+        self.placing().is_some_and(|(f, _)| self.session.model.families.get(&f).is_some_and(|f| f.work_plane_based))
+    }
+
+    /// The Component tool's Options Bar, for a work plane-based family: Place on Work Plane, its Placement Plane (the view's
+    /// level or a reference plane of the project) and Rotate after placement.
+    fn component_options(&mut self, ui: &mut Ui) {
+        if !self.placing_on_work_plane() {
+            ui.checkbox(&mut self.rotate_after, t("Rotate after placement"));
+            return;
+        }
+        if ui.selectable_label(!self.place_on_face, t("Place on Work Plane")).clicked() {
+            self.place_on_face = false;
+        }
+        if ui.selectable_label(self.place_on_face, t("Place on Face")).clicked() {
+            self.place_on_face = true;
+        }
+        if self.place_on_face {
+            ui.checkbox(&mut self.rotate_after, t("Rotate after placement"));
+            return;
+        }
+        let level = self.plan_level().and_then(|l| self.session.model.level(l).map(|l| l.name.clone())).unwrap_or_default();
+        let on_level = format!("{} : {level}", t("Level"));
+        let planes = self.placement_planes();
+        let now = self.placement_plane.and_then(|g| planes.iter().find(|(p, _)| *p == g)).map_or(on_level.clone(), |(_, n)| n.clone());
+        let names: Vec<String> = std::iter::once(on_level).chain(planes.iter().map(|(_, n)| n.clone())).collect();
+        let l = ui.label(t("Placement Plane:"));
+        if let Some(n) = properties::combo(ui, (0, "placement-plane"), l.id, &now, &names) {
+            self.placement_plane = planes.iter().find(|(_, name)| *name == n).map(|(g, _)| *g);
+        }
+        ui.checkbox(&mut self.rotate_after, t("Rotate after placement"));
+    }
+
+    /// A component placed with `params` (and its Placement Plane, for a work plane-based family placed in plan at height
+    /// `z`): with Rotate after placement, it is selected and Rotate starts about its point.
+    pub(crate) fn place_component(&mut self, mut params: Value, z: f64) {
+        if self.placing_on_work_plane() && self.place_on_face {
+            // On the face under the point: a ceiling plan's ceiling, a plan's floor or roof.
+            let at = params["at"].as_array().and_then(|a| Some(P2(a.first()?.as_f64()?, a.get(1)?.as_f64()?)));
+            let ceiling = matches!(self.sheet, Sheet::Ceiling(_));
+            let found = self.plan_level().zip(at).and_then(|(l, q)| self.session.model.face_in_plan(l, q, ceiling));
+            let Some((id, face)) = found else {
+                let text =
+                    if ceiling { t("There's no ceiling here to place it on.") } else { t("There's no floor or roof here to place it on.") };
+                self.status = Status { text: text.into(), error: true };
+                return;
+            };
+            params["host"] = json!({"face": {"element": id, "face": face.name()}});
+            if let Some(o) = params.as_object_mut() {
+                o.remove("offset");
+                o.remove("level");
+            }
+            self.place_made(params);
+            return;
+        }
+        if self.placing_on_work_plane()
+            && let Some(g) = self.placement_plane.filter(|g| self.placement_planes().iter().any(|(p, _)| p == g))
+        {
+            // On the plane: a plan point taken straight onto it; an upright plane's, along its normal from the view's height.
+            let upright = matches!(self.session.model.elements.get(g), Some(bimcraft_core::model::Element::RefPlane(p)) if p.upright());
+            if upright && let Some([x, y]) = params["at"].as_array().map(|a| [a[0].clone(), a[1].clone()]) {
+                params["at"] = json!([x, y, z]);
+            }
+            params["host"] = json!({"plane": g});
+            if let Some(o) = params.as_object_mut() {
+                o.remove("offset");
+            }
+        }
+        self.place_made(params);
+    }
+
+    /// Place on Face in the 3D view: the component on face `face` of element `id`, at point `at` there.
+    pub(crate) fn place_component_on_face(&mut self, id: Id, face: bimcraft_core::model::FaceRole, at: [f64; 3]) {
+        let Some((family, ty)) = self.placing() else { return };
+        let params = json!({"family": family, "type": ty, "at": at.map(|v| (v * 1e3).round() / 1e3 + 0.0),
+                            "angle": self.component_angle, "host": {"face": {"element": id, "face": face.name()}}});
+        self.place_made(params);
+    }
+
+    /// `component` run with `params`; with Rotate after placement, what it made is selected and Rotate starts about it.
+    fn place_made(&mut self, params: Value) {
+        let at = params["at"].as_array().and_then(|a| Some(P2(a.first()?.as_f64()?, a.get(1)?.as_f64()?)));
+        let Some(made) = self.run("component", params) else { return };
+        if self.rotate_after
+            && let (Some(id), Some(at)) = (made["id"].as_u64(), at)
+        {
+            self.selection = vec![id];
+            self.set_tool(Tool::Rotate { centre: at, start: None, place: false });
+            if let Tool::Rotate { centre, .. } = &mut self.tool {
+                *centre = at;
+            }
+        }
     }
 
     /// Offset's Options Bar: the distance, and Copy.
@@ -4905,6 +5217,9 @@ impl BimApp {
 
     /// What the tool wants next, in the status bar as Revit puts it.
     fn prompt(&self) -> &'static str {
+        if let Some(hint) = self.family_prompt() {
+            return hint;
+        }
         if let Some(hint) = self.sketch_prompt() {
             return hint;
         }
@@ -4968,6 +5283,8 @@ impl BimApp {
             Tool::Level => "Type the new level's elevation in the Options Bar, then Create.",
             Tool::Grid(None) => msg!("Click to enter the grid's start point."),
             Tool::Grid(Some(_)) => msg!("Click to enter the grid's end point."),
+            Tool::ReferencePlane(None) => msg!("Click to enter the reference plane's start point."),
+            Tool::ReferencePlane(Some(_)) => msg!("Click to enter the reference plane's end point."),
             Tool::Move(None) | Tool::Copy(None) => msg!("Click a base point to measure from."),
             Tool::Move(Some(_)) => msg!("Click where the base point goes, or type a distance and press Enter. Esc cancels."),
             Tool::Copy(Some(_)) => msg!("Click where the copy's base point goes, or type a distance and press Enter. Esc cancels."),
@@ -5023,7 +5340,7 @@ impl BimApp {
             Tool::SpotSlope => msg!("Click a floor or a roof: the spot slope reads how steeply its top falls there, and which way."),
             Tool::Section(None) => msg!("Click the section's start: it looks to the left of the line you draw."),
             Tool::Section(Some(_)) => msg!("Click the section's end."),
-            Tool::Elevation => msg!("Click beside the building: the elevation looks at the side you click by."),
+            Tool::Elevation => msg!("Click a straight wall, a line or a slab's edge for the elevation to look at."),
             Tool::Camera(None) => msg!("Click where the camera's eye stands: it looks at the point you click next."),
             Tool::Camera(Some(_)) => msg!("Click what the camera looks at; its eye and target heights are the Options Bar's."),
             Tool::Column => msg!("Click to place a column, as high as the Options Bar says."),
@@ -5100,7 +5417,9 @@ impl BimApp {
                 if let Some(note) = self.snap_note() {
                     ui.label(RichText::new(note).color(pal().accent_ink));
                 }
-                if self.dirty() {
+                // The active document's: an open family's draft, else the project.
+                let unsaved = self.active_family().map_or_else(|| self.dirty(), |ed| ed.unsaved());
+                if unsaved {
                     ui.label(RichText::new(t("Unsaved changes")).color(pal().muted));
                 }
                 self.option_selector(ui);
@@ -5153,18 +5472,44 @@ impl BimApp {
     fn view_tabs(&mut self, ui: &mut Ui) {
         self.tab_rects.clear();
         let mut closed = None;
+        // A family opened from the start page with no project behind it: the blank project's tabs aren't shown, until something
+        // is loaded into it.
+        let alone = self.family_from_home && !self.families.is_empty() && !self.dirty();
         let bar = ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 0.0;
-            for sheet in self.views.clone() {
+            for sheet in self.views.clone().into_iter().filter(|s| !alone || matches!(s, Sheet::Family(..))) {
                 // A ceiling plan's tab says so: its level's plan has the level's name too.
                 let name = if matches!(sheet, Sheet::Ceiling(_)) { self.view_title(sheet) } else { self.view_name(sheet) };
+                // A family document's tabs: the family's icon, the document named over it; they neither float nor tile, and the
+                // last of a document closes it.
+                let family = match sheet {
+                    Sheet::Family(id, _) => Some(self.family_of(id).map(|ed| ed.title().to_string()).unwrap_or_default()),
+                    _ => None,
+                };
                 let many = self.views.len() > 1;
-                let r = tab_button_with(ui, &name, sheet == self.front, false, Sense::click_and_drag(), if many { 18.0 } else { 0.0 });
+                let sense = if family.is_some() { Sense::click() } else { Sense::click_and_drag() };
+                let lead = if family.is_some() { 18.0 } else { 0.0 };
+                let r = tab_button_with(ui, &name, sheet == self.front, false, sense, (lead, if many { 18.0 } else { 0.0 }));
+                let r = match &family {
+                    Some(doc) => {
+                        let icon = Rect::from_center_size(pos2(r.rect.left() + 14.0, r.rect.center().y), vec2(14.0, 14.0));
+                        icons::paint(
+                            ui.painter(),
+                            Icon::FamilyEditor,
+                            icon,
+                            if sheet == self.front { pal().accent_ink } else { pal().icon },
+                        );
+                        r.on_hover_text(tf("Family document: {}", &[doc]))
+                    }
+                    None => r,
+                };
                 self.tab_rects.push((sheet, r.rect));
                 // The × is part of the tab, at its right end.
                 if many {
                     let x = Rect::from_center_size(pos2(r.rect.right() - 16.0, r.rect.center().y), vec2(16.0, 16.0));
-                    let label = tf("Close {}", &[&name]);
+                    // A family document's last tab closes the document: Close Family, as its × said before it had tabs.
+                    let last = matches!(sheet, Sheet::Family(id, _) if self.doc_tabs(id).len() == 1);
+                    let label = if last { t(msg!("Close Family")).to_string() } else { tf("Close {}", &[&name]) };
                     let c = ui.interact(x, ui.id().with(("close view", sheet)), Sense::click());
                     c.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, &label));
                     if c.hovered() {
@@ -5186,7 +5531,7 @@ impl BimApp {
                     self.dragging = Some(dock::Drag::View(sheet));
                 }
                 r.context_menu(|ui| {
-                    if ui.add_enabled(many, egui::Button::new(t("Float"))).clicked() {
+                    if ui.add_enabled(many && family.is_none(), egui::Button::new(t("Float"))).clicked() {
                         let at = self.view_rect.left_top() + vec2(60.0, 60.0);
                         self.float_view(sheet, at);
                     }
@@ -5219,6 +5564,9 @@ impl BimApp {
 
     /// The schedule on screen as a table: its headings, its rows, its totals under a rule.
     fn schedule(&mut self, ui: &mut Ui) {
+        if let Some(id) = self.showing_panel_schedule() {
+            return self.panel_schedule_view(ui, id);
+        }
         let Some((_, sc)) = self.shown_schedule() else { return };
         // The right-click menu, on the schedule and on each of its cells.
         let groups = self.context_items();
@@ -5302,6 +5650,14 @@ impl BimApp {
         self.materials_window(ctx);
         self.favorites_window(ctx);
         self.family_editor_window(ctx);
+        self.sync_family_tab();
+        self.closing_window(ctx);
+        if let Some(p) = self.after_documents.take() {
+            self.guard(p, ctx);
+        }
+        self.new_family_window(ctx);
+        self.family_load_dialog(ctx);
+        self.family_closed_from_home();
         self.snaps_window(ctx);
         self.parameters_window(ctx);
         self.new_schedule_window(ctx);
@@ -5410,7 +5766,8 @@ impl eframe::App for BimApp {
     /// rather than moving the keyboard between widgets.
     fn raw_input_hook(&mut self, ctx: &Context, raw: &mut egui::RawInput) {
         self.pace(&mut raw.events);
-        if self.canvas.hovering() && !ctx.egui_wants_keyboard_input() {
+        // The family document's views take Tab themselves (F10c), the project's canvas being out of sight.
+        if self.canvas.hovering() && self.active_family().is_none() && !ctx.egui_wants_keyboard_input() {
             self.tab_cycle |= raw.events.iter().any(|e| matches!(e, Event::Key { key: Key::Tab, pressed: true, .. }));
             raw.events.retain(|e| !matches!(e, Event::Key { key: Key::Tab, .. }));
         }

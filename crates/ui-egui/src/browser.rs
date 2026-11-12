@@ -492,6 +492,12 @@ impl BimApp {
                 .into_iter()
                 .map(|(id, name)| self.view_leaf(name, Sheet::Table(id)).with_menu(vec![("Delete", Act::Delete(vec![id]))])),
         );
+        // The panel schedules of the distribution boards.
+        let panels = self.panel_schedules();
+        if !panels.is_empty() {
+            let leaves = panels.into_iter().map(|(id, name)| self.view_leaf(name, Sheet::Table(id))).collect();
+            kids.push(Node::group(t("Panel Schedules"), true, leaves));
+        }
         Node::group(t("Schedules/Quantities (all)"), true, kids)
     }
 

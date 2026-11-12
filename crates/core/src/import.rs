@@ -17,7 +17,9 @@ use std::f64::consts::PI;
 use std::sync::Arc;
 
 use crate::commands::{micron, next_number, tidy};
-use crate::family::{Category, Expr, Family, Form, IfcClass, MAX_TRIANGLES, Parameter};
+use crate::family::{
+    Category, Connector, ConnectorKind, ConnectorSystem, Expr, Family, Flow, Form, IfcClass, Load, MAX_TRIANGLES, Parameter,
+};
 use crate::geom::{self, P2};
 use crate::library::Kind;
 use crate::model::{
@@ -133,6 +135,62 @@ fn list(v: Option<&V>) -> &[V] {
 
 fn refs(v: Option<&V>) -> Vec<u64> {
     list(v).iter().filter_map(|x| reference(Some(x))).collect()
+}
+
+/// The property sets of some names on a file's products, each set read once: its properties by name (the first of each
+/// name), and for each product of the file the sets on it, in the order the file relates them, each once. A set on many
+/// products, or related by many relations, is held once, and a product the file doesn't have is passed over, so what this
+/// holds grows with the file and never with its products times a set's properties, which a small hostile file could make
+/// as many as memory holds.
+struct PropertySets<'a> {
+    sets: Vec<HashMap<&'a str, &'a Entity>>,
+    on: HashMap<u64, Vec<usize>>,
+}
+
+impl<'a> PropertySets<'a> {
+    /// The sets called one of `called` that the relations `rels` (`IfcRelDefinesByProperties`) put on products.
+    fn read(r: &Reader<'a>, rels: &[u64], called: &[&str]) -> Self {
+        let (mut sets, mut index, mut on, mut paired) =
+            (Vec::new(), HashMap::<u64, usize>::new(), HashMap::<u64, Vec<usize>>::new(), HashSet::<(u64, usize)>::new());
+        for rel in rels.iter().filter_map(|id| r.get(*id)) {
+            let Some(at) = reference(rel.args.get(5)) else { continue };
+            let Some(set) = r.get(at).filter(|x| x.name == "IFCPROPERTYSET" && text(x.args.get(2)).is_some_and(|n| called.contains(&n)))
+            else {
+                continue;
+            };
+            let k = *index.entry(at).or_insert_with(|| {
+                let mut props = HashMap::new();
+                for p in refs(set.args.get(4)).into_iter().filter_map(|id| r.get(id)) {
+                    if let Some(name) = text(p.args.first()) {
+                        props.entry(name).or_insert(p);
+                    }
+                }
+                sets.push(props);
+                sets.len() - 1
+            });
+            for product in refs(rel.args.get(4)) {
+                if r.get(product).is_some() && paired.insert((product, k)) {
+                    on.entry(product).or_default().push(k);
+                }
+            }
+        }
+        PropertySets { sets, on }
+    }
+
+    /// Whether `product` has any of the sets.
+    fn has(&self, product: u64) -> bool {
+        self.on.contains_key(&product)
+    }
+
+    /// The products of the file that have one of the sets.
+    fn products(&self) -> impl Iterator<Item = u64> + '_ {
+        self.on.keys().copied()
+    }
+
+    /// What the sets on `product` say of `name`: the property of that name of the first of them that has one.
+    fn said(&self, product: u64, name: &str) -> Option<&'a Entity> {
+        self.on.get(&product)?.iter().find_map(|k| self.sets.get(*k)?.get(name).copied())
+    }
 }
 
 fn enumeration(v: Option<&V>) -> Option<&str> {
@@ -1065,6 +1123,52 @@ impl<'a> Reader<'a> {
         self.chosen(product).into_iter().find_map(|item| unread.get(&item).copied())
     }
 
+    /// The steel section a product's body sweeps, if it is one IFC names by its plates (an I, a channel, an angle, a tube, a
+    /// pipe): the section, its width and depth, and the direction its x runs in, in model coordinates.
+    fn section(&self, product: &Entity) -> Option<(crate::model::Profile, f64, f64, P3)> {
+        use crate::profiles::Shape;
+        let f = self.frame(product);
+        let (_, items) = self.reps(product).into_iter().find(|(i, _)| i.eq_ignore_ascii_case("Body"))?;
+        let solid = items.iter().filter_map(|i| self.get(*i)).find(|e| e.name == "IFCEXTRUDEDAREASOLID")?;
+        let p = self.at(solid.args.first())?;
+        let a = |i: usize| p.args.get(i);
+        let len = |i: usize| self.len(a(i)).filter(|x| x.is_finite() && *x >= 0.0);
+        let size = |x: f64| (x * 1000.0).round() / 1000.0;
+        let plate = |i: usize| len(i).map_or(0.0, size);
+        let name = text(a(1)).map(clip).unwrap_or_default();
+        let bare = |shape| crate::model::Profile { shape, name: name.clone(), web: 0.0, flange: 0.0, thickness: 0.0, radius: 0.0 };
+        let (profile, width, depth) = match p.name.as_str() {
+            "IFCISHAPEPROFILEDEF" => {
+                (crate::model::Profile { web: plate(5), flange: plate(6), radius: plate(7), ..bare(Shape::I) }, len(3)?, len(4)?)
+            }
+            "IFCUSHAPEPROFILEDEF" => {
+                (crate::model::Profile { web: plate(5), flange: plate(6), radius: plate(7), ..bare(Shape::U) }, len(4)?, len(3)?)
+            }
+            "IFCLSHAPEPROFILEDEF" => {
+                (crate::model::Profile { thickness: plate(5), radius: plate(6), ..bare(Shape::L) }, len(4).unwrap_or(len(3)?), len(3)?)
+            }
+            "IFCRECTANGLEHOLLOWPROFILEDEF" => (crate::model::Profile { thickness: plate(5), ..bare(Shape::Rhs) }, len(3)?, len(4)?),
+            "IFCCIRCLEHOLLOWPROFILEDEF" => {
+                (crate::model::Profile { thickness: plate(4), ..bare(Shape::Chs) }, 2.0 * len(3)?, 2.0 * len(3)?)
+            }
+            _ => return None,
+        };
+        let (width, depth) = (size(width), size(depth));
+        // Named only as a section of the catalogue, while it is that section (a file names its others for their types).
+        let mut profile = profile;
+        let catalogued = crate::profiles::catalogue(&profile.name).is_some_and(|(w, d, c)| {
+            (w, d, c.shape, c.web, c.flange, c.radius) == (width, depth, profile.shape, profile.web, profile.flange, profile.radius)
+        });
+        if catalogued {
+            profile.name = crate::profiles::catalogue(&profile.name).map(|(.., c)| c.name).unwrap_or_default();
+        } else {
+            profile.name.clear();
+        }
+        profile.check("", width, depth, profile.shape == Shape::Chs).ok()?;
+        let x = f.then(self.axes(reference(solid.args.get(1)))).then(self.axes(reference(a(2)))).x;
+        Some((profile, width, depth, x))
+    }
+
     /// The line a product's body sweeps along: its points in the world and the radius of the section, mm. A disk swept along
     /// a line, also through the map of an `IfcMappedItem`, or a circle extruded straight. A body of several such of one
     /// radius, each starting where the last ended, is one line bent between them, as BIMCraft writes a bar; any other is no
@@ -1886,6 +1990,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
     let mut from: HashMap<Id, String> = HashMap::new();
     // The first element made of each in the file, which takes its GlobalId for its GUID.
     let mut origin: HashMap<u64, Id> = HashMap::new();
+    let mut plot_guids: HashMap<Id, u128> = HashMap::new();
     // The elements made of each in the file.
     let mut elements_from: HashMap<u64, Vec<Id>> = HashMap::new();
 
@@ -2579,7 +2684,12 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
                 }
             }
         }
-        let (u, v) = (along.1, along.1.perp());
+        // A steel section says which way its width runs.
+        let steel = r.section(c);
+        let (u, v) = match &steel {
+            Some((_, _, _, x)) if P2(x[0], x[1]).length() > 0.5 => (P2(x[0], x[1]).unit(), P2(x[0], x[1]).unit().perp()),
+            _ => (along.1, along.1.perp()),
+        };
         let plan: Vec<P2> = faces.iter().flatten().map(|p| r.flat(*p)).collect();
         let (Some((a0, a1)), Some((b0, b1))) = (span(plan.iter().map(|p| p.dot(u))), span(plan.iter().map(|p| p.dot(v)))) else { continue };
         let at = u * ((a0 + a1) / 2.0) + v * ((b0 + b1) / 2.0);
@@ -2588,20 +2698,23 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
         let corners: HashSet<(i64, i64)> = plan.iter().map(|p| ((p.0 * 2.0).round() as i64, (p.1 * 2.0).round() as i64)).collect();
         let round = corners.len() >= 12 && radii.is_some_and(|(lo, hi)| hi > 0.0 && (hi - lo) / hi < 0.03);
         let size = |x: f64| (x * 100.0).round() / 100.0;
-        let (w, d) = if round {
-            (size(2.0 * radii.map_or(0.0, |r| r.1)), size(2.0 * radii.map_or(0.0, |r| r.1)))
-        } else {
-            (size(a1 - a0), size(b1 - b0))
+        let (w, d) = match &steel {
+            Some((_, w, d, _)) => (*w, *d),
+            None if round => (size(2.0 * radii.map_or(0.0, |r| r.1)), size(2.0 * radii.map_or(0.0, |r| r.1))),
+            None => (size(a1 - a0), size(b1 - b0)),
         };
+        let structural = bearing.contains(&id);
+        let footing = c.name == "IFCFOOTING";
+        // A section is a structural column's.
+        let profile = steel.map(|(p, ..)| p).filter(|_| structural && !footing);
+        let round = profile.as_ref().map_or(round, |p| p.shape == crate::profiles::Shape::Chs);
         if w <= 0.0 || d <= 0.0 {
             leave(&mut skipped, &mut seen, id, "it has no section BIMCraft can read");
             continue;
         }
         let base = label(id)
             .unwrap_or_else(|| if round { format!("Imported Round {}", num(w)) } else { format!("Imported {} x {}", num(w), num(d)) });
-        let same = |k: &ColumnType| k.round == round && (k.width - w).abs() < 0.05 && (k.depth - d).abs() < 0.05;
-        let footing = c.name == "IFCFOOTING";
-        let structural = bearing.contains(&id);
+        let same = |k: &ColumnType| k.round == round && (k.width - w).abs() < 0.05 && (k.depth - d).abs() < 0.05 && k.profile == profile;
         let make: fn(Column) -> Element = if footing {
             Element::Footing
         } else if structural {
@@ -2616,10 +2729,10 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
         } else {
             &mut m.types.column
         };
-        let type_name = kind(types, &base, same, ColumnType { width: w, depth: d, round });
+        let type_name = kind(types, &base, same, ColumnType { width: w, depth: d, round, profile: profile.clone() });
         let level = level_for(id, z0);
         let (top_level, height) = if footing { (None, z1 - z0) } else { topped(level, z0, z1) };
-        let angle = if round { 0.0 } else { (u.1.atan2(u.0).to_degrees() * 1e6).round() / 1e6 };
+        let angle = if round && profile.is_none() { 0.0 } else { (u.1.atan2(u.0).to_degrees() * 1e6).round() / 1e6 };
         let column = Column {
             room_bounding: true,
             params: Default::default(),
@@ -2695,10 +2808,16 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
         // Made of a material the library has, by name: the file gives it directly, or by a material profile set (as BIMCraft
         // writes a beam's, on its type and its usage).
         let material = element_material(&r, &l, id).filter(|n| m.materials.contains_key(n.as_str())).unwrap_or_default();
-        let same =
-            |k: &RunType| k.round == found.round && (k.width - w).abs() < 0.05 && (k.depth - d).abs() < 0.05 && k.material == material;
+        let profile = r.section(b).filter(|(_, sw, sd, _)| category == "beam" && (sw - w).abs() < 0.05 && (sd - d).abs() < 0.05);
+        let (w, d) = profile.as_ref().map_or((w, d), |(_, sw, sd, _)| (*sw, *sd));
+        let profile = profile.map(|(p, ..)| p);
+        let round = profile.as_ref().map_or(found.round, |p| p.shape == crate::profiles::Shape::Chs);
+        let same = |k: &RunType| {
+            k.round == round && (k.width - w).abs() < 0.05 && (k.depth - d).abs() < 0.05 && k.material == material && k.profile == profile
+        };
         let types = m.types.runs.entry(category.to_string()).or_default();
-        let type_name = kind(types, &base, same, RunType { width: w, depth: d, round: found.round, material: material.clone() });
+        let type_name =
+            kind(types, &base, same, RunType { width: w, depth: d, round, material: material.clone(), profile: profile.clone() });
         let height = |z: f64| ((z - elevation(level)) * 1000.0).round() / 1000.0 + 0.0;
         // The body is the centre line; the justification BIMCraft wrote puts the heights back on the line they were typed at.
         let justify = run_props.get(&id).and_then(|(j, _)| *j).unwrap_or(Justify::Centre);
@@ -2751,9 +2870,55 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
         // Which fixture or fitting it is, from the first of its products' predefined types that names one.
         kind: Option<&'static str>,
         types: Vec<(String, Vec<Form>, u64)>,
+        /// What the product of each type drew, where BIMCraft wrote its connector: the same order as `types`.
+        draws: Vec<Option<Draw>>,
         named: HashMap<String, Vec<usize>>,
         names: HashSet<String>,
         forms: usize,
+    }
+    // What a device's connector says, as BIMCraft writes it (`Pset_ElectricalDeviceCommon` and `BIMCraft_Connector`): a family
+    // gets a connector of it, its type's load a parameter of the type. A device another tool wrote has no such set, and no connector.
+    #[derive(Clone)]
+    struct Draw {
+        system: &'static str,
+        poles: u8,
+        voltage: f64,
+        power_factor: f64,
+        classification: String,
+        by_phase: Vec<f64>,
+    }
+    let mut draws: HashMap<u64, Draw> = HashMap::new();
+    {
+        // Each set read once, whatever the products it is on: the first of a name among a product's sets is what it says.
+        let sets =
+            PropertySets::read(&r, &named(&["IFCRELDEFINESBYPROPERTIES"]), &["Pset_ElectricalDeviceCommon", crate::ifc::CONNECTOR_SET]);
+        for product in sets.products() {
+            let find = |name: &str| sets.said(product, name);
+            let value = |name: &str| find(name).and_then(|p| p.args.get(2));
+            // A property with a bounded value says its own in the set point.
+            let voltage = find("RatedVoltage")
+                .and_then(|p| if p.name == "IFCPROPERTYBOUNDEDVALUE" { real(p.args.get(5)) } else { real(p.args.get(2)) });
+            // The systems BIMCraft writes: any other is no connector of its.
+            let system = text(value("System")).and_then(|s| ["power-balanced", "power-unbalanced", "switch"].into_iter().find(|k| *k == s));
+            let (Some(system), Some(poles), Some(voltage)) = (system, real(value("NumberOfPoles")), voltage) else {
+                continue;
+            };
+            let by_phase: Vec<f64> = (1..=3).map_while(|k| real(value(&format!("LoadVAPhase{k}")))).collect();
+            if !(1.0..=3.0).contains(&poles) || !(system == "switch" || by_phase.len() == poles as usize) {
+                continue;
+            }
+            draws.insert(
+                product,
+                Draw {
+                    system,
+                    poles: poles as u8,
+                    voltage,
+                    power_factor: real(value("PowerFactor")).unwrap_or(1.0),
+                    classification: text(value("Classification")).map(clip).unwrap_or_default(),
+                    by_phase,
+                },
+            );
+        }
     }
     // A product to place: it, its family and type, whether mirrored, where, its angle and its height.
     type Placed = (u64, String, String, bool, P2, f64, f64);
@@ -2848,6 +3013,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
                 fam.names.insert(t.clone());
                 fam.named.entry(base.clone()).or_default().push(fam.types.len());
                 fam.types.push((t.clone(), forms, key));
+                fam.draws.push(draws.get(&id).cloned());
                 (t, false)
             }
         };
@@ -2866,15 +3032,74 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
                   origin: &mut HashMap<u64, Id>,
                   elements_from: &mut HashMap<u64, Vec<Id>>| {
         let mut families: BTreeMap<String, Family> = BTreeMap::new();
-        for (name, Made { category, ifc, kind, types, .. }) in made {
+        for (name, Made { category, ifc, kind, types, draws, .. }) in made {
             // Several types: each its own forms, shown by a parameter only its type sets.
             let several = types.len() > 1;
             let mut family = Family { category, ifc, kind: kind.map(String::from), ..Family::default() };
             if several {
                 family.parameters.push(Parameter { name: "Variant".into(), kind: crate::family::Kind::Number, ..Parameter::default() });
             }
+            // Its connector: the first type's, with the load of each type a parameter of it, as the starter families do.
+            let connector = draws.iter().flatten().next().cloned();
+            let load_names: Vec<String> = match &connector {
+                Some(c) if c.system == "power-unbalanced" => (1..=c.by_phase.len()).map(|k| format!("Load L{k}")).collect(),
+                Some(c) if c.system == "power-balanced" => vec!["Load".to_string()],
+                _ => Vec::new(),
+            };
+            for n in &load_names {
+                family.parameters.push(Parameter {
+                    name: n.clone(),
+                    kind: crate::family::Kind::Number,
+                    value: serde_json::json!(0),
+                    ..Parameter::default()
+                });
+            }
+            if let Some(c) = &connector {
+                let (kind, system) = match c.system {
+                    "power-balanced" => (ConnectorKind::Power, ConnectorSystem::PowerBalanced),
+                    "power-unbalanced" => (ConnectorKind::Power, ConnectorSystem::PowerUnbalanced),
+                    _ => (ConnectorKind::Switch, ConnectorSystem::Switch),
+                };
+                let load_va = match (system, load_names.as_slice()) {
+                    (ConnectorSystem::PowerUnbalanced, names) => Load::PerPhase(names.iter().map(|n| Expr::Formula(n.clone())).collect()),
+                    (ConnectorSystem::PowerBalanced, [n]) => Load::One(Expr::Formula(n.clone())),
+                    _ => Load::One(Expr::default()),
+                };
+                family.connectors.push(Connector {
+                    id: 0,
+                    guid: Guid::default(),
+                    name: String::new(),
+                    kind,
+                    system: Some(system),
+                    domain: None,
+                    flow: Flow::Both,
+                    at: None,
+                    direction: None,
+                    size: None,
+                    poles: c.poles,
+                    voltage: Expr::Number(c.voltage),
+                    load_va,
+                    power_factor: Expr::Number(c.power_factor),
+                    classification: c.classification.clone(),
+                });
+            }
             for (k, (t, forms, _)) in (1..).zip(types) {
-                let set = if several { BTreeMap::from([("Variant".to_string(), serde_json::json!(k))]) } else { BTreeMap::new() };
+                let mut set: BTreeMap<String, serde_json::Value> = BTreeMap::new();
+                if several {
+                    set.insert("Variant".to_string(), serde_json::json!(k));
+                }
+                if let Some(Some(d)) = draws.get(k - 1) {
+                    match load_names.as_slice() {
+                        [one] => {
+                            set.insert(one.clone(), serde_json::json!(d.by_phase.iter().sum::<f64>()));
+                        }
+                        many => {
+                            for (n, va) in many.iter().zip(&d.by_phase) {
+                                set.insert(n.clone(), serde_json::json!(va));
+                            }
+                        }
+                    }
+                }
                 family.types.insert(t, set);
                 family
                     .forms
@@ -2892,7 +3117,19 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
             }
             let level = level_for(id, z);
             let offset = ((z - elevation(level)) * 1000.0).round() / 1000.0 + 0.0;
-            let c = Component { family, type_name, level, at: micron(at), angle, offset, mirrored, params: BTreeMap::new() };
+            let c = Component {
+                adaptive: None,
+                family,
+                type_name,
+                level,
+                at: micron(at),
+                angle,
+                offset,
+                mirrored,
+                params: BTreeMap::new(),
+                host: None,
+                panel: None,
+            };
             let cid = m.insert(Element::Component(c));
             from.insert(cid, who(id));
             origin.entry(id).or_insert(cid);
@@ -2921,6 +3158,144 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
     // The families of the file's, which a generic one takes no name of.
     let of_file: HashSet<String> = made.keys().cloned().collect();
     settle(made, placed, &mut m, &mut skipped, &mut seen, &mut from, &mut origin, &mut elements_from);
+
+    // A distribution board's data: what BIMCraft's property set says of it, else the IfcDistributionSystem it is assigned to for
+    // its system; the board that supplies it by the GlobalId it names, which is that board's GUID. What the project cannot hold is
+    // left out, with why, and the board stays.
+    {
+        use crate::electrical::{MAX_MAINS, MAX_SLOTS, Panel};
+        let sets = PropertySets::read(&r, &named(&["IFCRELDEFINESBYPROPERTIES"]), &[crate::ifc::PANEL]);
+        let by_global: HashMap<&str, u64> =
+            ids.iter().filter_map(|id| Some((text(e(*id)?.args.first())?, *id))).filter(|(g, _)| g.len() == 22).collect();
+        let boards: Vec<(u64, Id)> = elements_from
+            .iter()
+            .flat_map(|(product, made)| made.iter().map(move |cid| (*product, *cid)))
+            .filter(|(_, cid)| crate::electrical::board(&m, *cid).is_some())
+            .collect();
+        let mut boards = boards;
+        boards.sort_by_key(|(_, cid)| *cid);
+        for (product, cid) in &boards {
+            let said = |name: &str| sets.said(*product, name).filter(|p| p.name == "IFCPROPERTYSINGLEVALUE").and_then(|p| p.args.get(2));
+            let at = from.get(cid).cloned().unwrap_or_default();
+            let mut data = Panel {
+                mains: real(said("Mains")).filter(|a| *a > 0.0 && *a <= MAX_MAINS),
+                slots: real(said("Slots")).filter(|n| n.fract() == 0.0 && *n >= 1.0 && *n <= f64::from(MAX_SLOTS)).map(|n| n as u32),
+                ..Panel::default()
+            };
+            let assigned =
+                l.group.get(product).and_then(|g| e(*g)).filter(|g| g.name == "IFCDISTRIBUTIONSYSTEM").and_then(|g| text(g.args.get(2)));
+            if let Some(name) = text(said("DistributionSystem")).or(assigned).map(clip) {
+                if m.distribution_systems.contains_key(&name) {
+                    data.distribution = Some(name);
+                } else {
+                    skipped.push(format!("{at}: distribution system `{name}`: the project has no such system"));
+                }
+            }
+            if let Some(gid) = text(said("SupplyFrom")) {
+                match by_global.get(gid).and_then(|step| origin.get(step)).filter(|up| crate::electrical::board(&m, **up).is_some()) {
+                    Some(up) => data.supply_from = Some(Guid::of_id(*up)),
+                    None => skipped.push(format!("{at}: supply from {gid}: the file has no such board")),
+                }
+            }
+            if let Some(Element::Component(c)) = m.elements.get_mut(*cid) {
+                c.panel = Some(data).filter(|d| !d.is_empty());
+            }
+        }
+        // A supply that comes back to the board it feeds is broken at the first board of it, so that the rest of the tree stays.
+        for (_, cid) in &boards {
+            if crate::electrical::supply_loop(&m, *cid).is_some() {
+                if let Some(Element::Component(c)) = m.elements.get_mut(*cid)
+                    && let Some(p) = &mut c.panel
+                {
+                    p.supply_from = None;
+                    c.panel = Some(std::mem::take(p)).filter(|d| !d.is_empty());
+                }
+                skipped.push(format!(
+                    "{}: its supply comes back to it: a board is never supplied from one it feeds",
+                    from.get(cid).cloned().unwrap_or_default()
+                ));
+            }
+        }
+    }
+
+    // Circuits: an IfcDistributionCircuit with BIMCraft's property set, its devices the members of its group and its board the
+    // one whose GlobalId the set names (a board's GUID). One that names no board the file has is left out, with why; what the
+    // project cannot hold of the rest (a wire type it lacks, a voltage, a device its board does not take) is left out with the rule.
+    {
+        use crate::electrical::{Circuit, Wires};
+        let sets = PropertySets::read(&r, &named(&["IFCRELDEFINESBYPROPERTIES"]), &[crate::ifc::CIRCUIT_SET]);
+        let by_global: HashMap<&str, u64> =
+            ids.iter().filter_map(|id| Some((text(e(*id)?.args.first())?, *id))).filter(|(g, _)| g.len() == 22).collect();
+        // The members of each group, found once: asking every product's group for each circuit would take the circuits
+        // times the products.
+        let mut members: HashMap<u64, Vec<u64>> = HashMap::new();
+        for (member, group) in &l.group {
+            members.entry(*group).or_default().push(*member);
+        }
+        for step in named(&["IFCDISTRIBUTIONCIRCUIT"]) {
+            seen.insert(step);
+            let at = who(step);
+            if !sets.has(step) {
+                skipped.push(format!("{at}: it has no {} set, so BIMCraft cannot tell which board it is on", crate::ifc::CIRCUIT_SET));
+                continue;
+            }
+            let said = |name: &str| sets.said(step, name).filter(|p| p.name == "IFCPROPERTYSINGLEVALUE").and_then(|p| p.args.get(2));
+            let Some(board) = text(said("Panel"))
+                .and_then(|gid| by_global.get(gid))
+                .and_then(|st| origin.get(st))
+                .copied()
+                .filter(|b| crate::electrical::board(&m, *b).is_some())
+            else {
+                skipped.push(format!("{at}: the file has no distribution board for it"));
+                continue;
+            };
+            let (Some(number), Some(rating), Some(poles)) = (real(said("Number")), real(said("Rating")), real(said("Poles"))) else {
+                skipped.push(format!("{at}: its set lacks the number, the rating or the poles"));
+                continue;
+            };
+            let voltage = text(said("Voltage")).map(clip).filter(|v| m.voltages.contains_key(v));
+            if let Some(v) = text(said("Voltage")).map(clip).filter(|v| !m.voltages.contains_key(v)) {
+                skipped.push(format!("{at}: voltage `{v}`: the project has no such voltage"));
+            }
+            let mut wires: Option<Wires> = text(said("Wires")).and_then(|j| serde_json::from_str(j).ok());
+            let unknown: Option<String> = wires.as_ref().and_then(|w| {
+                [Some(&w.hot), w.neutral.as_ref(), w.ground.as_ref()]
+                    .into_iter()
+                    .flatten()
+                    .map(|x| &x.wire_type)
+                    .find(|t| !m.wire_types.contains_key(*t))
+                    .cloned()
+            });
+            if let Some(t) = unknown {
+                skipped.push(format!("{at}: wire type `{t}`: the project has no such wire type, so the circuit has no wires"));
+                wires = None;
+            }
+            let mut devices: Vec<Id> = members
+                .get(&step)
+                .into_iter()
+                .flatten()
+                .filter_map(|member| origin.get(member).copied())
+                .filter(|d| matches!(m.elements.get(*d), Some(Element::Component(_))))
+                .collect();
+            devices.sort_unstable();
+            let circuit = Circuit {
+                // By id until the elements are given the GUIDs the file names: `resolve` swaps them then.
+                panel: Guid::of_id(board),
+                number: number as u32,
+                name: text(e(step).and_then(|x| x.args.get(2))).map(clip).unwrap_or_default(),
+                rating_a: rating,
+                poles: poles as u8,
+                voltage,
+                classification: text(said("Classification")).map(clip).unwrap_or_default(),
+                demand_factor: real(said("DemandFactor")).unwrap_or(1.0),
+                devices: devices.iter().map(|d| Guid::of_id(*d)).collect(),
+                wires,
+            };
+            let cid = m.insert(Element::Circuit(circuit));
+            from.insert(cid, at);
+            origin.entry(step).or_insert(cid);
+        }
+    }
 
     // Stairs: each flight measured from its treads, a landing between each two and the way the next
     // one turns there. The railings among a stair's parts come in along it.
@@ -3230,15 +3605,25 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
         let typed = l.typed.get(&id).and_then(|t| e(*t));
         let operated = enumeration(o.args.get(11))
             .filter(|_| is_door)
+            .map(|op| (op, text(o.args.get(12))))
             .or_else(|| {
                 typed.filter(|_| is_door).and_then(|t| match t.name.as_str() {
-                    "IFCDOORTYPE" => enumeration(t.args.get(10)),
-                    "IFCDOORSTYLE" => enumeration(t.args.get(8)),
+                    "IFCDOORTYPE" => enumeration(t.args.get(10)).map(|op| (op, text(t.args.get(12)))),
+                    "IFCDOORSTYLE" => enumeration(t.args.get(8)).map(|op| (op, None)),
                     _ => None,
                 })
             })
-            .and_then(crate::model::Operation::from_ifc_door);
+            .and_then(|(op, user)| crate::model::Operation::from_ifc_door_with_user(op, user));
         let operation = operated.map(|(op, _)| op);
+        // Industrial equipment stands off one face. Recover its facing from the actual body rather than relocating it
+        // to the other side when the opening itself (which is symmetric) is read back.
+        let flip_facing = operation.is_some_and(crate::model::Operation::industrial)
+            && m.wall(host).is_some_and(|w| {
+                let axis = crate::walls::Axis::of(w);
+                let at = axis.at((s0 + s1) / 2.0, crate::walls::centre(&m, w));
+                let normal = axis.tangent((s0 + s1) / 2.0).perp();
+                span(r.body(o).iter().flatten().map(|p| (r.flat(*p) - at).dot(normal))).is_some_and(|(lo, hi)| lo + hi < 0.0)
+            });
         let same = |k: &OpeningType| (k.width - width).abs() < 0.05 && (k.height - height).abs() < 0.05 && k.operation == operation;
         let new = OpeningType { width, height, sill: if is_door { 0.0 } else { sill }, operation };
         let types = if is_door { &mut m.types.door } else { &mut m.types.window };
@@ -3258,7 +3643,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
             offset: micron(P2((s0 + s1) / 2.0, 0.0)).0,
             sill,
             mark,
-            flip_facing: false,
+            flip_facing,
             flip_hand,
         };
         let oid = m.insert(if is_door { Element::Door(op) } else { Element::Window(op) });
@@ -3312,13 +3697,99 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
         seen.insert(id);
     }
 
+    // Site footprint curves: only explicitly closed, horizontal curves are property boundaries.
+    // Apply the site's placement and the reader's units/origin translation, as for other products.
+    for site in named(&["IFCSITE"]) {
+        let Some(x) = e(site) else { continue };
+        let reps = r.reps(x);
+        let curve_count: usize = reps.iter().filter(|(kind, _)| kind.eq_ignore_ascii_case("FootPrint")).map(|(_, items)| items.len()).sum();
+        // Borrow only the three recognized arrays (Names, Guids, Levels). A shared set may target many sites;
+        // never clone arbitrary property bags or their reference/value lists for each target.
+        let mut metadata: [Option<&[V]>; 3] = [None; 3];
+        for set in named(&["IFCRELDEFINESBYPROPERTIES"])
+            .into_iter()
+            .filter_map(e)
+            .filter(|rel| list(rel.args.get(4)).iter().any(|v| reference(Some(v)) == Some(site)))
+            .filter_map(|rel| {
+                reference(rel.args.get(5))
+                    .and_then(e)
+                    .filter(|set| set.name == "IFCPROPERTYSET" && text(set.args.get(2)) == Some(crate::ifc::PROPERTY_LINES))
+            })
+        {
+            for p in list(set.args.get(4)).iter().filter_map(|v| reference(Some(v))).filter_map(e) {
+                if p.name != "IFCPROPERTYLISTVALUE" {
+                    continue;
+                }
+                let key = match text(p.args.first()) {
+                    Some("Names") => 0,
+                    Some("Guids") => 1,
+                    Some("Levels") => 2,
+                    _ => continue,
+                };
+                if let Some(V::List(values)) = p.args.get(2)
+                    && values.len() == curve_count
+                {
+                    metadata[key] = Some(values);
+                }
+            }
+        }
+        let value = |key: usize, k: usize| metadata[key].and_then(|values| values.get(k)).and_then(|v| text(Some(v)));
+        let f = r.frame(x);
+        let curves = reps.into_iter().filter(|(kind, _)| kind.eq_ignore_ascii_case("FootPrint")).flat_map(|(_, items)| items);
+        for (k, item) in curves.enumerate() {
+            let Some(pts) = r.curve(Some(item), 0) else {
+                skipped.push(format!("{}: footprint curve {}: unsupported curve", who(site), k + 1));
+                continue;
+            };
+            let world: Vec<P3> = pts.into_iter().map(|p| f.at(p)).collect();
+            let closed = world.first().zip(world.last()).is_some_and(|(a, b)| dot(sub(*a, *b), sub(*a, *b)).sqrt() <= TOL);
+            let horizontal = world.first().is_some_and(|a| world.iter().all(|p| (p[2] - a[2]).abs() <= TOL));
+            let mut points: Vec<P2> = world.into_iter().map(|p| micron(r.flat(p))).collect();
+            if closed {
+                points.pop();
+            }
+            let reason = if !closed || !horizontal {
+                Some("not a closed horizontal boundary".to_string())
+            } else if !(3..=MAX_POINTS).contains(&points.len()) {
+                Some("boundary point count out of range".to_string())
+            } else {
+                crate::site::check("site footprint", &points).err()
+            };
+            if let Some(reason) = reason {
+                skipped.push(format!("{}: footprint curve {}: {reason}", who(site), k + 1));
+                continue;
+            }
+            let name = value(0, k).filter(|v| !v.trim().is_empty()).map(clip).unwrap_or_else(|| format!("Property Line {}", k + 1));
+            let level = value(2, k)
+                .and_then(Guid::parse)
+                .and_then(|guid| {
+                    storeys.iter().find_map(|(sid, _, _)| {
+                        (e(*sid).and_then(|x| text(x.args.first())).and_then(crate::ifc::expand) == Some(guid.as_u128()))
+                            .then(|| level_of.get(sid).copied())
+                            .flatten()
+                    })
+                })
+                .or_else(|| levels.first().map(|(id, _)| *id))
+                .map(Guid::of_id)
+                .unwrap_or_default();
+            let pid = m.insert(Element::PropertyLine(crate::model::PropertyLine { name, level, points }));
+            if let Some(guid) = value(1, k).and_then(Guid::parse).filter(|g| g.pending().is_none()) {
+                plot_guids.insert(pid, guid.as_u128());
+            }
+            from.insert(pid, who(site));
+            elements_from.entry(site).or_default().push(pid);
+        }
+    }
+
     // Grids: each axis a grid line.
     let mut grid_names = BTreeSet::new();
     for id in named(&["IFCGRID"]) {
         let Some(g) = e(id) else { continue };
         let f = r.frame(g);
         seen.insert(id);
-        for axis in [7, 8, 9].into_iter().flat_map(|i| refs(g.args.get(i))).filter_map(&e) {
+        // Read shared references kindly, once per grid: another grid may place that same axis somewhere else.
+        let mut axes_seen = BTreeSet::new();
+        for axis in [7, 8, 9].into_iter().flat_map(|i| refs(g.args.get(i))).filter(|a| axes_seen.insert(*a)).filter_map(&e) {
             let Some(pts) = r.curve(reference(axis.args.get(1)), 0) else { continue };
             let (Some(p), Some(q)) = (pts.first(), pts.last()) else { continue };
             let (mut start, mut end) = (micron(r.flat(f.at(*p))), micron(r.flat(f.at(*q))));
@@ -3331,6 +3802,22 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
             origin.entry(id).or_insert(gid);
             elements_from.entry(id).or_default().push(gid);
         }
+    }
+    // A single real axis cannot satisfy IfcGrid's U/V cardinalities. BIMCraft writes it as a truthful curve annotation.
+    for id in named(&["IFCANNOTATION"]) {
+        let Some(g) = e(id).filter(|g| text(g.args.get(4)) == Some(crate::ifc::GRID_AXIS)) else { continue };
+        seen.insert(id);
+        let Some(pts) = r.axis(g) else {
+            leave(&mut skipped, &mut seen, id, "its grid annotation has no axis");
+            continue;
+        };
+        let (Some(p), Some(q)) = (pts.first(), pts.last()) else { continue };
+        let (start, end) = (micron(r.flat(*p)), micron(r.flat(*q)));
+        let tag = text(g.args.get(2)).map_or_else(|| next_number(grid_names.iter().map(String::as_str)), String::from);
+        let gid = m.insert(Element::Grid(Grid { name: fresh(&mut grid_names, &tag), start, end }));
+        from.insert(gid, who(id));
+        origin.insert(id, gid);
+        elements_from.entry(id).or_default().push(gid);
     }
 
     // What else in the building has a body: a component of a generic family that remembers the IFC class it came in as, with its
@@ -3697,6 +4184,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
     // Each element's GUID is the GlobalId of what it was made of, where that's one; what points at an element points at it.
     let mut globals: HashMap<Id, u128> =
         origin.iter().filter_map(|(step, id)| Some((*id, crate::ifc::expand(text(e(*step)?.args.first())?)?))).collect();
+    globals.extend(plot_guids);
     // The rest, GUIDs the file makes: the same file reads the same every time.
     for id in m.elements.keys() {
         globals.entry(*id).or_insert_with(|| Guid::seeded(seed, *id).as_u128());

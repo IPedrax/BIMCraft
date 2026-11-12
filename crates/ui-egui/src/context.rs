@@ -25,6 +25,8 @@ pub(crate) enum Action {
     ZoomOut,
     /// The 3D view's default orientation.
     HomeView,
+    /// The Family Editor on the family of what is selected.
+    EditFamily,
     EditType,
     SelectAllInstances,
     HideElement,
@@ -42,6 +44,9 @@ pub(crate) enum Action {
     /// The selected walls' and runs' joins refused (Revit's Disallow Join), or taken up again.
     DisallowJoin,
     AllowJoin,
+    /// The selected elements pinned where they are, or unpinned.
+    Pin,
+    Unpin,
 }
 
 impl Action {
@@ -55,6 +60,7 @@ impl Action {
             Action::ZoomIn => "Zoom In",
             Action::ZoomOut => "Zoom Out",
             Action::HomeView => "Home View",
+            Action::EditFamily => "Edit Family",
             Action::EditType => "Edit Type",
             Action::SelectAllInstances => msg!("Select All Instances"),
             Action::HideElement => "Hide Element",
@@ -68,6 +74,8 @@ impl Action {
             Action::WorkPlane => msg!("Set Work Plane…"),
             Action::DisallowJoin => msg!("Disallow Join"),
             Action::AllowJoin => msg!("Allow Join"),
+            Action::Pin => msg!("Pin"),
+            Action::Unpin => msg!("Unpin"),
         }
     }
 
@@ -83,6 +91,8 @@ impl Action {
             Action::CreateGroup => Some("GP"),
             Action::Ungroup => Some("UG"),
             Action::Delete => Some("Del"),
+            Action::Pin => Some("PN"),
+            Action::Unpin => Some("UP"),
             _ => None,
         }
     }
@@ -144,11 +154,21 @@ impl BimApp {
             if camera {
                 groups.push(vec![Item::new(Action::OpenView, true), Item::new(Action::Delete, true)]);
             } else {
-                groups.push(vec![
+                // A family instance selected: its family, as Revit offers it.
+                let family = self.selection.iter().any(|id| m.elements.get(id).is_some_and(|e| e.family().is_some()));
+                let mut edits = Vec::new();
+                if family {
+                    edits.push(Item::new(Action::EditFamily, true));
+                }
+                edits.extend([
                     Item::new(Action::EditType, self.type_subject().is_some()),
                     Item::new(Action::SelectAllInstances, true),
                     Item::new(Action::Delete, true),
                 ]);
+                groups.push(edits);
+                // What is pinned stays where it is until it is unpinned.
+                let pinned: Vec<bool> = self.selection.iter().map(|id| m.is_pinned(*id)).collect();
+                groups.push(vec![Item::new(Action::Pin, pinned.iter().any(|p| !*p)), Item::new(Action::Unpin, pinned.iter().any(|p| *p))]);
                 // Detail lines, regions and notes group; a group comes apart.
                 let groupable = self.selection.iter().all(|id| m.elements.get(*id).is_some_and(bimcraft_core::groups::holds));
                 if groupable || self.group_selected() {
@@ -191,7 +211,7 @@ impl BimApp {
                 groups.push(vec![Item::new(Action::WorkPlane, self.sketch.is_none())]);
                 groups.push([vec![Item::new(Action::HomeView, true)], zoom].concat());
             }
-            Sheet::Schedule(_) | Sheet::Table(_) => {}
+            Sheet::Schedule(_) | Sheet::Table(_) | Sheet::Family(..) => {}
         }
         groups
     }
@@ -206,6 +226,11 @@ impl BimApp {
             Action::ZoomIn => self.zoom_view(1.25),
             Action::ZoomOut => self.zoom_view(0.8),
             Action::HomeView => self.home3d(),
+            Action::EditFamily => {
+                if let Some(f) = self.family_in_hand() {
+                    self.edit_family(&f);
+                }
+            }
             Action::EditType => self.edit_type(),
             Action::SelectAllInstances => self.select_all_instances(),
             Action::HideElement => self.hide_selection(false),
@@ -227,6 +252,17 @@ impl BimApp {
             }
             Action::DisallowJoin => self.set_joins(false),
             Action::AllowJoin => self.set_joins(true),
+            Action::Pin => self.set_pinned(true),
+            Action::Unpin => self.set_pinned(false),
+        }
+    }
+
+    /// Pin every selected element, or unpin them, as one command; those already as asked are left.
+    pub(crate) fn set_pinned(&mut self, pinned: bool) {
+        let ids: Vec<bimcraft_core::model::Id> =
+            self.selection.iter().copied().filter(|id| self.session.model.is_pinned(*id) != pinned).collect();
+        if !ids.is_empty() {
+            self.run(if pinned { "pin" } else { "unpin" }, serde_json::json!({"ids": ids}));
         }
     }
 

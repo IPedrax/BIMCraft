@@ -119,19 +119,24 @@ fn box_family(category: Category) -> Family {
         category,
         parameters: ["Width", "Depth", "Height"]
             .into_iter()
-            .map(|name| Parameter { name: name.to_string(), kind: Kind::Length, instance: true, value: 100.0.into(), formula: None })
+            .map(|name| Parameter {
+                name: name.to_string(),
+                kind: Kind::Length,
+                instance: true,
+                value: 100.0.into(),
+                ..Parameter::default()
+            })
             .collect(),
         types: BTreeMap::from([("Imported".to_string(), BTreeMap::new())]),
-        forms: vec![Form {
-            profile: vec![
+        forms: vec![{
+            let mut form = Form { from: Expr::Number(0.0), to: formula("Height"), ..Default::default() };
+            form.set_corners(&[
                 [formula("-(Width) / 2"), formula("-(Depth) / 2")],
                 [formula("Width / 2"), formula("-(Depth) / 2")],
                 [formula("Width / 2"), formula("Depth / 2")],
                 [formula("-(Width) / 2"), formula("Depth / 2")],
-            ],
-            from: Expr::Number(0.0),
-            to: formula("Height"),
-            ..Default::default()
+            ]);
+            form
         }],
         ..Default::default()
     }
@@ -221,6 +226,9 @@ fn boxes(
                 offset: micron(mm(r.bbox[2]) - mm(elevation)),
                 mirrored: false,
                 params,
+                adaptive: None,
+                host: None,
+                panel: None,
             })
         })();
         match made {

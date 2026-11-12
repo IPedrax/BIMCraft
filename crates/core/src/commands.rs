@@ -23,11 +23,11 @@ use crate::lines::{DetailLine, LineStyle};
 use crate::massing;
 use crate::model::{
     CEILING_HEIGHT, CadImport, Ceiling, CeilingType, Column, ColumnType, Component, DEFAULT_HEIGHT, DimKind, Dimension, Dimension3D,
-    Element, End, Extrusion, Face, Facing, Floor, FloorType, Grid, Guid, Id, Key, Landing, Layer, Level, Line, Location, MAX_COORD,
-    MAX_POINTS, MAX_SLOPE, MAX_TEXT, Mass, Model, Note, Opening, OpeningType, Orient, PARAMETER_CATEGORIES, ParameterKind, Pattern,
-    Perspective, PlanView, PointCloud, ProjectParameter, RAMP_SLOPE, RAMP_WIDTH, RISER, Railing, RailingType, Ramp, Rebar, Ref3, Reference,
-    Roof, RoofType, Room, RoomArea, RoomSeparator, STAIR_WIDTH, Schedule, Section, SectionBox, Shaft, Sheet, Side, Spot, Stair, TOL, TREAD,
-    Tag, Unbound, View3D, Viewport, Wall, WallType, heading, paper,
+    Element, End, Extrusion, Face, Facing, Floor, FloorType, Grid, Guid, HostRef, Hosted, Id, Key, Landing, Layer, Level, Line, Location,
+    MAX_COORD, MAX_POINTS, MAX_SLOPE, MAX_TEXT, Mass, Model, Note, Opening, OpeningType, Orient, PARAMETER_CATEGORIES, ParameterKind,
+    Pattern, Perspective, PlanView, PointCloud, ProjectParameter, PropertyLine, RAMP_SLOPE, RAMP_WIDTH, RISER, Railing, RailingType, Ramp,
+    Rebar, Ref3, Reference, Roof, RoofType, Room, RoomArea, RoomSeparator, STAIR_WIDTH, Schedule, Section, SectionBox, Shaft, Sheet, Side,
+    Spot, Stair, TOL, TREAD, Tag, Unbound, View3D, Viewport, Wall, WallType, heading, paper,
 };
 use crate::paint;
 use crate::phasing;
@@ -39,6 +39,8 @@ use crate::units::Units;
 use crate::walls::{self, Axis, stacked};
 use crate::workplane::{Surface, WorkPlane};
 use crate::{pdf, render, schedule, sheet, snap, stairs, view3d};
+
+mod work_plane;
 
 type R = Result<Value, String>;
 
@@ -69,6 +71,33 @@ const fn other_files(id: &'static str, label: &'static str, params: &'static str
 }
 
 pub static ALL: &[Command] = &[
+    other(
+        "adaptive_capture",
+        "Capture Adaptive Context",
+        "{sources:[{id,host:{type:frame,point}|{type:face|edge|vertex,...}}]} ordered project references captured as full world frames, with persistent source identities; a snapshot, not a live constraint",
+        adaptive_capture,
+    ),
+    edit(
+        "adaptive_place",
+        "Place Adaptive Instances",
+        &[],
+        "{family,type?,placements:[{adaptive:{frames,context?,bindings?},at?:[x,y],level?,angle?,offset?,params?}]} batch placement, up to 1000 instances, in one undo step. The frames are the project's (as adaptive_capture gives them): each instance builds on them wherever it stands, holding them in its own axes; `at` defaults to the first frame's point",
+        adaptive_place,
+    ),
+    edit(
+        "adaptive_move",
+        "Move Adaptive Point",
+        &[],
+        "{id, number, to: [x,y,z]} adaptive point `number` of adaptive component `id` moved to project point `to`, its axes kept: \
+         what dragging its grip does",
+        adaptive_move,
+    ),
+    other(
+        "adaptive_evaluate",
+        "Evaluate Adaptive Placement",
+        "{id} evaluate an adaptive component, returning exact local placement, ordered dependencies, valid geometry and diagnostics for replay",
+        adaptive_evaluate,
+    ),
     other(
         "new",
         "New",
@@ -170,6 +199,31 @@ other_files(
     )
     .menu("Architecture > Level"),
     edit("grid", ui_msg!("Grid"), &["GR"], "{start: [x,y], end: [x,y], name?} names follow the last grid: 1, 2… or A, B…", grid).menu("Architecture > Grid"),
+    edit(
+        "reference_plane",
+        ui_msg!("Reference Plane"),
+        &["RP"],
+        "{start, end, up?: [x,y,z], name?, level?} a reference plane of the project: drawn along the line from `start` to `end` \
+         ([x, y] on `level`, the lowest by default, or [x, y, z]), its other direction `up` (the vertical by default, so a line \
+         drawn in plan makes an upright plane; tilt `up` for a sloped one). Work plane-based components are placed on it \
+         (`component` `host`) and move with it; deleting it deletes them. A name is one plane's",
+        work_plane::reference_plane,
+    )
+    .menu("Architecture > Reference Plane"),
+    edit(
+        "edit_work_plane",
+        "Edit Work Plane",
+        &[],
+        "{ids, host: {level: name|id} | {plane: name|id|GUID} | {face: {element: id|GUID, face}}} puts components on a level \
+         (at their plan point, on it), a reference plane of the project or a face of a wall, a floor, a ceiling or a roof \
+         (taken onto it; one from another plane or face keeps its Offset from Host). \
+         {family, form | ref_line: id|GUID, host: {plane: name|id|GUID} | {line, face} | a name as the Work Plane dialog \
+         lists it (`Reference Line 1 : Vertical`), keep?, dry_run?} puts a family's form \
+         or reference line on another of its planes: it moves with the plane, as Revit's Edit Work Plane, keeping its profile \
+         and start and end in the new plane's axes; with `keep` it stays where it is, which only a plane parallel to its old \
+         one allows (a reference line, only one it already lies on)",
+        work_plane::edit_work_plane,
+    ),
     edit_files(
         "point_cloud",
         "Point Cloud",
@@ -465,6 +519,18 @@ other_files(
     )
     .menu("Architecture > Room"),
     edit(
+        "property_line",
+        ui_msg!("Property Line"),
+        &[],
+        "{points: [[x,y],…], name?, level?} a named closed property boundary (mm), on the lowest level unless given. \
+         A repeated closing point is accepted. The outline must be simple, without crossings, spikes or repeated corners. \
+         Plans draw a dash-dot boundary with its name and area. `elements` gives area_m2, perimeter_m and segments \
+         (length in mm, bearing in survey quadrants, azimuth clockwise from north: the map's, turned by the georeference's \
+         `rotation`; without one, the project's +y). Schedules list name, area and perimeter. \
+         IFC writes closed curves in the site's FootPrint. Returns id, name, area_m2",
+        property_line,
+    ),
+    edit(
         "room_separator",
         "Room Separator",
         &[],
@@ -520,6 +586,36 @@ other_files(
         reinforcement_preset,
     ),
     edit(
+        "demand_factors",
+        "Demand Factors",
+        &[],
+        "{class?, factor?, delete?: true} the project's demand factors by classification: the share (above 0 up to 1) of the load of the \
+         circuits of a `class` (lighting, receptacle…, as their devices' connectors name it) that counts in a board's demand load and \
+         its panel schedule, on top of each circuit's own `demand_factor`. A class with none counts whole. Without `class`, lists them",
+        demand_factors,
+    ),
+    edit(
+        "panel_schedule",
+        "Panel Schedule",
+        &[],
+        concat!(
+            "{panel: id, name?, template?: branch|list, show_spare?, show_space?, phase_columns?, scale?, notes?} makes the panel schedule \
+             (quadro de cargas) of a distribution board: a view that goes on a sheet with `place` and prints with it, listed in the Project \
+             Browser and by `inspect`. It has the board's header (system, voltage, phases, mains, level), a row for each of its slots (`Max \
+             #1 Pole Breakers`; a circuit takes the slots `number`, `number`+2… for as many poles, each on a phase, A B C repeating every two \
+             slots), a spare (a breaker with no device) and a space (a slot no circuit takes) drawn differently, the load by classification \
+             (the project's `demand_factors` applied) and by phase (the phases add up to the board's load, the current of a phase its \
+             demand over the phase voltage), and `notes`. `template` is the branch panel's two columns or a list; `show_spare` and \
+             `show_space` (true) show the rows; `phase_columns` (true) a column for each phase; `scale` (1) how large it comes out. ",
+            "{id, ...the same} changes it; {id} alone returns what it says. Edited in the view: {id, circuit: id, description?, breaker?, \
+             phase?: A|B|C, demand_factor?, slot?} changes the circuit (`description` its name, `breaker` its rating, `phase` moves it to the \
+             first free slots that start on that phase, `slot` to that number) and the totals follow; {id, slot, mark: spare|space, poles?} \
+             makes a slot a spare (a breaker with no device) or a space (an empty breaker taken away); one with devices on it is refused. \
+             A refusal changes nothing"
+        ),
+        panel_schedule,
+    ),
+    edit(
         "voltage",
         "Voltage Definitions",
         &[],
@@ -549,6 +645,17 @@ other_files(
          carries in amperes, with a `label` for how its standard names it (12 AWG). Giving `sizes` replaces the table. `note` says where the \
          ampacities come from. Without `name`, lists them",
         wire_type,
+    ),
+    edit(
+        "panel",
+        "Panel",
+        &[],
+        "{id?, distribution?, mains?, slots?, supply_from?} the electrical data of a distribution board, an equipment component: \
+         `distribution` one of the project's distribution systems (`distribution_system` lists them), `mains` the main breaker in \
+         amperes, `slots` how many single-pole breakers it takes (Max #1 Pole Breakers) and `supply_from` the board that supplies it, \
+         by id or GUID: boards make a tree, and a supply loop is refused. What isn't given stays; \"\" takes one away. Without `id`, \
+         lists the boards with what each feeds. A board's `12 circuits`, `24 circuits` and `36 circuits` are its size, not its slots",
+        panel,
     ),
     edit(
         "column",
@@ -885,9 +992,15 @@ other_files(
         "elevation",
         "Elevation",
         &[],
-        "{facing?: north|south|east|west, at?: [x,y], start?, end?, depth?, name?} an elevation view of the building's side \
-         `facing` (North shows the north side, looking south), from 3 m out, or through `at`; with `at` alone, of the side it's \
-         on; with `start` and `end`, along that line, looking to its left; with none, the four not there yet",
+        "{on?: id, reference?: [[x,y],[x,y]], facing?: north|south|east|west, at?: [x,y], start?, end?, depth?, name?} an \
+         elevation view. With `on` (a wall, a line, a floor's, roof's or ceiling's edge, a grid or any element with a straight \
+         edge, the project's or a link's by the id its view gives it) and `at`, it looks square at that element's straight edge \
+         nearest `at` (a wall's centre line) from `at`'s side of it: its mark stands at `at`, or 1.5 m out from the edge when \
+         `at` is on it (within a metre). `reference` gives the line itself instead of `on`. That line is kept in the \
+         elevation as `reference`, a line of its own and no tie to the element: moved to the line's other side the elevation \
+         turns round to look at it still, and `modify` with `reference` null lets it go. Without those, of the building's \
+         side `facing` (North shows the north side, looking south), from 3 m out, or through `at`; with `at` alone, of the \
+         side it's on; with `start` and `end`, along that line, looking to its left; with none, the four not there yet",
         elevation,
     ),
     edit(
@@ -908,10 +1021,10 @@ other_files(
         "title_block",
         "Title Blocks",
         &[],
-        "{name?, like?, rename?, delete?: true, path?, units?: auto|mm|cm|m|in|ft, width?, height?, font?, lines?, fills?, \
+        "{name?, like?, rename?, delete?: true, path?, units?: auto|mm|cm|m|in|ft, width?, height?, font?, drawing_area?, template_border?, lines?, fills?, \
          texts?, fields?} a title block of the project's own, as Revit's title block families with labels, which a sheet names to be \
          drawn with it in its bottom right corner, inside the border, in place of the built-in title box. Without `name`, the \
-         project's title blocks, its title fields' values and the automatic fields. All lengths are mm on paper from the title \
+         project's title blocks, its title fields' values and the automatic fields. drawing_area [[left,bottom],[right,top]] is in sheet mm for automatic placement; template_border:true omits the standard frame and keeps fold marks. Other lengths are mm on paper from the title \
          block's bottom left corner: `width` and `height` its box; `font` what letters its texts (Arial unless told; any the system has); `lines` [{points: [[x, y], …], closed?, pen?: 0 to 16 (1)}]; \
          `fills` [{rings: [[[x, y], …], …]}], filled through (a logo); `texts` [{at: [x, y] on the baseline, text, size?: \
          capitals mm (2.5), angle?: degrees, align?: left|center|right, width_factor?: 0.1 to 10 (1), color?: [r, g, b]}]. A text may name fields as `{KEY}`: the automatic ones \
@@ -937,10 +1050,14 @@ other_files(
         "Place View",
         &[],
         "{sheet: number or id, view: a level's, section's, elevation's, schedule's or 3D view's name or id, at?: [x, y], \
-         scale?, azimuth?, elevation?} puts the view on the sheet at 1 : `scale` (by default the view's own, see `scale`, 1 : 100 when it has none of its own; a schedule keeps its size), \
-         its middle `at` mm from the paper's bottom left corner (by default right of the views there, or in the middle); a \
-         view goes on one sheet. A schedule (Room Schedule, Door Schedule…) or the 3D view ({3D}, seen from `azimuth` and \
-         `elevation` degrees) comes to be as it's first placed",
+         scale?, azimuth?, elevation?} puts the view on the sheet at 1 : `scale` (by default the view's own, see `scale`; an \
+         unscaled 3D view uses the finest offered project scale from the default up that fits the sheet's room, or the coarsest \
+         if none fits; a schedule keeps its size), its middle `at` mm from the paper's bottom left corner (by default in a free \
+         spot clear of the other views, their titles and the title block, or in the title block's drawing area; right of all \
+         views when full); a view goes on one sheet. Returns {id, at, scale}, and a `warning` when the view or its title reaches \
+         past the paper. Told a scale of its own, the viewport keeps it whatever the view's later changes, until \
+         `modify {follow_scale: true}`, which gives it the view's scale again, whatever `scale` comes with it. A schedule (Room Schedule, Door Schedule…) or the 3D view ({3D}, seen from `azimuth` \
+         and `elevation` degrees) comes to be as it's first placed",
         place,
     ),
     edit(
@@ -973,8 +1090,9 @@ other_files(
         "{view, scale?: 1 | … | 100000} a plan's, section's or elevation's scale, 1 : `scale`: the paper the view stands for, \
          1 mm of paper being `scale` mm of the model. Its annotation (lettering, grid bubbles, tags, dimension ticks…) and its \
          line weights (pens) are that paper's, so a screen shows them as the paper would at its zoom. Every view has one: \
-         1 : 100 until it is given another, and null is refused. A view placed on a sheet takes it for the viewport's scale. \
-         Without `scale` it only says what the view has",
+         1 : 100 until it is given another, and null is refused. A view placed on a sheet takes it for the viewport's scale, and \
+         the viewports of it there follow when it changes, unless one was placed at a scale of its own. Without `scale` it \
+         only says what the view has",
         view_scale,
     ),
     edit(
@@ -983,8 +1101,10 @@ other_files(
         &[],
         "{view, detail?: coarse | medium | fine} how much a plan, a section or an elevation draws of what it cuts: coarse, one \
          poché and openings as their gaps; medium, compound layers with the lines between them and an opening's leaf, swing and \
-         glass; fine (the default), the layers' patterns and a floor's surface pattern too. Without `detail` it only says what \
-         the view has",
+         glass; fine (the default), the layers' patterns and a floor's surface pattern too. A family's forms and symbols with \
+         Visibility Settings (`family` `visibility`) are drawn only at the levels they tick, in every view. A 3D view (`{3D}` \
+         for the default one, made when its level first changes) has a detail level too, which only those settings read. \
+         Without `detail` it only says what the view has",
         view_detail,
     ),
     edit(
@@ -1003,9 +1123,14 @@ other_files(
         &[],
         "{category: wall|floor|ceiling|door|window|column|structuralcolumn|footing|roof|railing|beam|stripfooting|pipe|duct|conduit|\
          cabletray|wire|downconductor|groundconductor|cable, name, thickness? | width?, height?, sill?, operation? | width?, depth?, round?, \
-         material? | height?, spacing?} creates the type, or changes it everywhere it's used. A column's, a structural column's or \
+         material?, profile?, shape?, web?, flange?, radius? | height?, spacing?} creates the type, or changes it everywhere it's used. A column's, a structural column's or \
          a footing's type is a `width` by `depth`, or `round` (`width` across); a run's (a beam's, a pipe's, a cable tray's…) too, \
-         made of a `material` of the library. A wall type may have `layers` [{function?: structure|\
+         made of a `material` of the library. Steel beam/structural-column types accept `profile` (IPE 80-600, HEA/HEB 100-600, \
+         e.g. IPE 300) or `shape` I/H, U, L, RHS/SHS or CHS plus `width`, `depth` and plates. I/U take `web`, `flange`, \
+         `radius`; L takes `thickness`, `radius`; RHS/CHS take `thickness` (CHS width is its diameter). `shape: rectangle` \
+         removes the profile. Beam/structural-column creation auto-adds a catalogue type when its given name is absent. \
+         Catalogue beams default to Metal. Schedules expose Profile, Section Area (cm²), Weight per Metre (kg/m), Weight (kg; \
+         assumes steel at 7850 kg/m³). A wall type may have `layers` [{function?: structure|\
          substrate|thermal|membrane|finish, material?, thickness}, …] from its exterior side in: it's as thick as they are, \
          its core from its first structure layer to its last, and a new `thickness` goes to its structure. A ceiling type may \
          have `grid`: its square tiles' width, mm, which reflected ceiling plans draw (0, none); a railing type, `height` (its \
@@ -1048,6 +1173,35 @@ other_files(
     )
     .menu("Manage > Favorites"),
     edit(
+        "shared_parameters",
+        "Shared Parameters",
+        &[],
+        "{path, action?: list|create|add_group|add|load|export, group?, name?, guid?, kind?: length|number|integer|angle|area|\
+         volume|yesno|material|text|url|familytype, of?: category, description?, visible?, modifiable?, family?, instance?, \
+         under?: constraints|construction|dimensions|graphics|identity-data|materials-and-finishes|text|visibility|electrical|\
+         mechanical|plumbing|structural|data|other, replace?} a shared parameters file, as Revit's Manage > Shared Parameters \
+         keeps one: a plain-text file of the user's own at `path` (given on every call; it is never part of the project), in \
+         Revit's tab-separated layout (versions 2 and 1 read, 2 written), listing groups and in them parameters, each a GUID, a \
+         name, a data type, a description, whether it is `visible` and whether the user may change it (`modifiable`). `list` \
+         (the default) reads it: its `version`, its groups (`id`, `name`) and each one's `parameters` (`guid`, `name`, `kind` — \
+         null for a data type BIMCraft has no kind for, which is listed and kept but can't be loaded — `datatype` as written, `of` \
+         for a family type, `description`, `visible`, `modifiable`, the `line` it is on, and the project's `families` holding \
+         it). `create` writes an empty file (refused over one there unless `replace`). `add_group` adds a `group`, named. `add` \
+         adds parameter `name` of `kind` to an existing `group`, with a new GUID unless `guid` is given, a family type with `of`, \
+         `description` one line, `visible` and `modifiable` true unless false. `load` adds a parameter of the file, by `name` or \
+         `guid`, to `family`, as Revit's Add Parameter > Shared Parameter does: its GUID becomes the parameter's `shared`, its \
+         name and kind are the file's (and can't be changed in the family), `instance` and `under` (the heading it is listed \
+         under; none, its kind's) are the caller's, and a family type whose category the file can't say takes `of`; refused \
+         where the family has a parameter of that name, or the project shares that GUID under another name or kind, or that \
+         name as another GUID. `export` writes `family`'s shared parameters (none named, every family's) into the file, \
+         creating it if there is none, new ones under `group` (by default the family's name, else `Exported Parameters`): what \
+         the file has by that GUID is kept as the file says it, and one the file holds as another name or kind, or a name it \
+         holds as another GUID, is refused naming its line. A file that isn't one is refused naming its line, and is never \
+         written over; files are capped at 4 MiB and 100,000 lines. Only `load` changes the project, one undo step",
+        shared_parameters,
+    )
+    .menu("Manage > Shared Parameters"),
+    edit(
         "paint",
         "Paint",
         &["PT"],
@@ -1077,18 +1231,49 @@ other_files(
         "Load Family",
         &[],
         "{name?, category?: furniture|casework|plumbing|lighting|generic|door|window, parameters?: [{name, kind?: length|number|\
-         angle|yesno|material, instance?, value?, formula?}], types?: {type: {parameter: value}}, forms?: [{plane?: xy|xz|yz, \
-         profile?: [[a, b], …], circle?: {centre: [a, b], radius}, axis?: [[a, b], [a, b]], from?, to, material?, visible?, \
-         void?}], symbols?: [{line?: [[x, y], …] | arc?: {centre: [x, y], radius, from?, to} | text?: {at: [x, y], height, value, align?: left|center|right} | dot?: {centre: [x, y], radius}, visible?}], form?: {id | guid, …a \
+         integer|angle|area|volume|yesno|material|text|url|familytype, instance?, value?, formula?, group?: constraints|\
+         construction|dimensions|graphics|identity-data|materials-and-finishes|text|visibility|electrical|mechanical|plumbing|\
+         structural|data|other, shared?: guid, reporting?, of?: category}], parameter?: {name, rename?, …a parameter's \
+         fields}, delete_parameter?: [name, …], types?: {type: {parameter: value}}, forms?: [{host?: {plane: guid} | {line: guid, face: \
+         horizontal|vertical|start|end}, plane?: xy|xz|yz, sketch?: [{start: [a, b], end: [a, b], turn?, axis?} | {centre: [a, b], radius}, …], \
+         profile?: [[a, b], …], circle?: {centre: [a, b], radius}, axis?: [[a, b], [a, b]], from?, to, material?, visible?, visibility?, \
+         void?, top?: [sketch lines] (a Blend: `sketch` its base at `from`, `top` its top at `to`, each one closed loop in the \
+         host plane's axes), sweep?: {profile: [sketch lines], end?: [sketch lines]} (a Sweep: `sketch` is its path, a chain of \
+         lines and arcs, open or closed, or one circle, and `profile` its profile drawn square to the path, x to the right \
+         looking along it and y the host's normal; with `end`, a Swept Blend: a path of one line or arc, `profile` at its start \
+         and `end` at its end, one loop each), twist?: n (a Blend's top or a Swept Blend's end profile paired from its vertex n \
+         on: Edit Vertices' Twist)}], symbols?: [{line?: [[x, y], …] | arc?: {centre: [x, y], radius, from?, to} | text?: {at: [x, y], height, value, align?: left|center|right} | dot?: {centre: [x, y], radius}, visible?, visibility?: {coarse?, medium?, fine?}}], form?: {id | guid, …a \
          form's fields}, symbol?: {id | guid, …a symbol's fields}, delete_form?: [id | guid, …], delete_symbol?: [id | guid, …], \
-         operation?: swing|double-swing|sliding|double-sliding|folding|fixed (a door's or window's, for IFC and schedules), \
+         ref_planes?: [{guid?, name?, start: [x, y, z], end: [x, y, z], up: [x, y, z], reference?: not_a_reference|strong|weak|\
+         left|center_left_right|right|front|center_front_back|back|bottom|center_elevation|top, defines_origin?, subcategory?}], \
+         ref_plane?: {id | guid, …a plane's fields}, delete_ref_plane?: [id | guid, …], ref_lines?: [{guid?, start: [x, y, z], \
+         end: [x, y, z], host?: {plane: guid} | {line: guid, face}, reference?, subcategory?}], ref_line?: {id | guid, …}, \
+         delete_ref_line?: [id | guid, …], dimensions?: [{guid?, view?: plan|ceiling|front|back|left|right, refs: [{plane: guid} | \
+         {form: guid, end: start|end} | {form: guid, line: guid} | {form: guid, line: guid, point: start|end|centre} | \
+         {line: guid, face: horizontal|vertical|start|end}, …], at: [x, y, z], kind?: aligned|radial|diameter, label?: parameter, \
+         locked?: [{segment, length}], equal?, alignment?}], \
+         dimension?: {id | guid, …a dimension's fields} (none: one added), delete_dimension?: [id | guid, …], \
+         invalid_dimensions?: delete, solve?: type, \
+         operation?: swing|double-swing|sliding|double-sliding|folding|fixed|sectional|roller (a door's or window's, for IFC and schedules), \
          kind?: which fixture or fitting it is, for IFC's predefined type (plumbing: wc|lav|sink|laundry|shower|bath|bidet|urinal; \
          drain: floor_drain|floor_waste|roof_drain; pipefitting: bend|tee|cross|transition|coupling; \"\" clears it), \
          ifc?: {class, predefined?, object_type?} | null (the IFC class a generic family's components go out as, which one \
          opened from IFC remembers: `IFCPLATE`, `CURTAIN_PANEL`; one IFC4 lacks goes out as a proxy that names it), \
          connectors?: [{kind: power|switch|pipe|data|earthing, name?, system?: power-balanced|power-unbalanced|switch, \
          domain?: cold|hot|waste|vent|storm|gas, flow?: in|out|both, at?: [x, y, z], direction?: [x, y, z], size?, poles?: 1-3, \
-         voltage?, load_va?, power_factor?, classification?}], rename?, delete?: true, dry_run?, path?, save?} a family of \
+         voltage?, load_va?, power_factor?, classification?}], adaptive?: {nodes, preview?} | null, options?: {work_plane_based?, always_vertical?, cut_with_voids_when_loaded?, \
+         shared?, room_calculation_point?: [x, y, z] | null, cut_in_views?: true|false|null, omniclass?: {number, title?} | \
+         null} (Revit's Family Category and Parameters: each given merged over what it has, `null` back to its default; \
+         `room_calculation_point` is a point in its own axes, mm, numbers or formulas over its length parameters, whose room a \
+         component is in (else its insertion point's: `elements` says `room`, IFC references it in that space beside its storey); `cut_in_views` \
+         overrides whether sections cut its forms, which by default its category says; `omniclass` is a number of digits and \
+         dots (`23.30.20.17`) and a title, which IFC writes as a classification reference on its type; work_plane_based (off), \
+         always_vertical (on) and cut_with_voids_when_loaded (off) are kept for later and change nothing yet; shared (off) makes it a \
+         shared nested family (below); \
+         a reply's `options` has them all), rename?, delete?: true, dry_run?, path?, definition?, save?, overwrite?: no|version|version_and_values, \
+         shared_nested?: {name: project|family}, nest?: {path | definition, name?, overwrite?, shared_nested?}, nested?: [{name, family}], \
+         delete_nested?: [names], nested_instances?: [...], nested_instance?: {id | guid?, family, type, host?, at?: [x, y], offset?, \
+         angle?, visible?, visibility?, params?: {name: number | formula}}, delete_nested_instance?: [ids or GUIDs]} a family of \
          the project's, BIMCraft's own parametric component: created, changed, read, or loaded from the .json file at `path` (a \
          family as `inspect` shows it, with its `name`). Without `name` it lists the project's families, each its category and \
          how many types, forms and symbols it has; with only a `name` it reads one — its definition, each of its types' \
@@ -1097,12 +1282,86 @@ other_files(
          and symbols replaced, patched and deleted by id, the `rename`) instead of doing it; a change that's refused comes back \
          as an error, as it would without it. `form` merges its fields over the one form of that `id` or `guid` (a `null` takes \
          a field away; its place, its id and its GUID stay), `delete_form` takes those forms away; `symbol` and `delete_symbol` \
-         do the same for symbols — where `forms` and `symbols` still replace whole lists. Every reply carries `warnings`: what's \
+         do the same for symbols — where `forms` and `symbols` still replace whole lists. `visibility` is Revit's Visibility \
+         Settings, drawing only (IFC, schedules and `visible` are untouched; it ANDs with `visible`): {plan?, front_back?, \
+         left_right?, coarse?, medium?, fine?, only_when_cut?}, each true by default but `only_when_cut`; `plan` is plans and \
+         ceiling plans, cut or not; `front_back` sections and elevations looking along the family's y axis, `left_right` along \
+         its x (the nearer axis); a 3D view reads only the detail levels; `only_when_cut` draws it only where a plan's cut plane \
+         or a section's line passes through it. A symbol takes only the detail levels (none: medium and fine), and a nested \
+         instance's are ANDed with its family's own. A void keeps cutting whatever they say. A door's leaf `{plan: false}` with \
+         a symbolic swing shows the swing in plan in place of the leaf. A form patch merges `visibility` whole (`null` takes it \
+         away). `parameter` edits the one parameter \
+         named (or adds it), as Revit's Edit Parameter: its fields merged over it (`null` takes one away), `rename` keeping its \
+         GUID with every formula, form, label and component value following it, and `instance` switched with what its types \
+         and components hold moved onto them, not lost (to instance, each component takes its type's value; to type, each type \
+         takes what its components agree on, refused where they don't). `delete_parameter` takes parameters away, with their \
+         values, refused while a formula, form or label names one. A parameter's `kind`: lengths in mm, areas in mm² and \
+         volumes in mm³ (schedules and labels show m² and m³), an `integer` whole (its formula rounds), `text` and `url` words \
+         that no formula reads or works out, `familytype` a type of a family of category `of`, for nested families, holding no \
+         value yet. `group` is the heading it is listed under (by default its kind's: Dimensions for lengths, areas, volumes and \
+         angles, Materials and Finishes for materials, else Other). `shared` makes it a shared parameter, by a GUID that is one \
+         name and one kind across the project's families (its name and kind can't change while shared); without it, it is the \
+         family's own. `reporting`, a length or an angle, reads a dimension and drives none: no formula, type or component sets \
+         it: a dimension labelled with it measures it, and formulas read what it measures (no label may be worked out from one). \
+         `dimensions` are Revit's family dimensions (F7): each between two or more parallel references (its planes, the datums, an \
+         extrusion's `start` or `end` face, a straight line of a form's sketch, `{form, line}`: the plane through it square to \
+         the form's plane, a reference line's face), in order along the way it measures, drawn in `view` (which must see them \
+         edge on) with its line through `at`; a line's end or a circle's centre (`point`) is measured along the others. A \
+         `radial` or `diameter` one measures one circle of a sketch, seen flat in its view. A line or a form is named by its \
+         GUID or its id. A `label` (one segment, a length parameter) makes the segment that parameter's value in \
+         every type; `locked` keeps a segment at a length (a labelled one's lock stops dragging from changing it); `equal` keeps \
+         its segments equal (EQ); `alignment` is Align's lock, two references, its segment locked at 0. Flexing a type solves \
+         them: the planes, extrusion ends and sketch points they measure to take the least change from where they are drawn \
+         that holds them all (a datum or a plane that defines the origin stays; a sketch's lines that meet stay joined), and \
+         what is drawn on a plane moves with it; a constraint that \
+         adds nothing to the others is refused as over-constrained, naming them, and a labelled length of 0 or less is refused \
+         for its type. Deleting a plane, a form or a sketch line (a form given \
+         again without it) takes it out of the dimensions measuring to it (a dimension left with one reference goes: \
+         `deleted_dimensions`). A dimension measuring to what the family hasn't is refused, unless \
+         `invalid_dimensions` is `delete` (a reload's Delete Dimension(s)); a file opened leaves it out. `solve` reads, for a \
+         type, where its planes, forms' ends and sketches' lines go and each dimension's lengths, and changes nothing. Every reply carries `warnings`: what's \
          worth knowing and doesn't stop the change (a void cutting no solid, a form outside the opening or thicker than its \
-         wall, a door's or window's plan with no symbols). Its forms are profiles drawn in its own axes (x along a component's \
-         angle, y to its left, z up from its base) and swept: `xy` up from `from` to `to`, `xz` along y, `yz` along x. With an \
+         wall, a door's or window's plan with no symbols). `definition` is a family as such a file holds it, given in place of `path` and loaded as the file would be (read strictly). On `path` or `definition`, `overwrite` chooses `no` (keep the project family), \
+         `version` (replace the definition, retaining compatible values) or `version_and_values` (also use incoming values). \
+         Omitted: legacy merge. Project-only types and instance overrides stay; incoming formulas replace the old ones. \
+         Nested families (T6a): `nest` loads a family (a file or a definition) into this one, carried whole inside it; one it \
+         nests already defined otherwise is refused unless `overwrite` says version or version_and_values. A nested instance places \
+         one of its types on a plane of this family (`host`, by GUID or by name as the Work Plane dialog names it; Ref. Level when \
+         none) at `at` in that plane's axes, `offset` along its normal and turned `angle` degrees about it; `params` sets its \
+         parameters by numbers or formulas over this family's (Associate Family Parameter: `{\"W\": \"Width\"}`; a material or text \
+         parameter names one of this family's of its kind, or holds the words), and its geometry is built into this family's own \
+         (plans, 3D, IFC). No family nests itself, at any depth; nesting stops at 5 levels, 32 families, 256 instances. A nested \
+         family whose option `shared` is on is loaded into the project with the family that nests it: one the project has \
+         otherwise is kept (`shared_nested`: project, the default) or overwritten (`family`); a dry run lists them in \
+         `shared_conflicts`, and one shared family is one definition across the project's families. Its forms are profiles drawn in its own axes (x along a component's \
+         angle, y to its left, z up from its base): each is drawn on its `host`, a plane of the family, in that plane's own \
+         axes, and swept along its normal from `from` to `to`. Every family has three datums, pinned, with the same GUIDs in \
+         every family: Ref. Level (9e3c0a10-1f0b-4d8c-8a5e-0000000000a1, its xy, normal +z), Center (Front/Back) \
+         (…00a2, its xz: x along +x, y up, normal -y) and Center (Left/Right) (…00a3, its yz: x along +y, y up, normal +x); \
+         no host is Ref. Level. `plane` is the old shorthand for them, read as it always was: `xy` up, `xz` along +y (stored \
+         on Center (Front/Back) with `from` and `to` negated), `yz` along x. `ref_planes` adds planes of its own: the line \
+         `start` to `end` it is drawn as and `up`, its other direction (normal (end - start) × up; its axes x along the line, y \
+         up made square to it, its origin the point of it nearest the family's origin); names are unique, each of left \
+         through top is one plane's or line's, and `defines_origin` (one plane square to each of x, y and z; the datums \
+         until another takes it) is kept but doesn't move the origin yet. `ref_lines` are reference lines drawn on a `host` \
+         (lying on it), each with four planes a form may be drawn on: `horizontal` (its host's, through it), `vertical` \
+         (square to that through it), `start` and `end` (square to it at each end), their origin its start (`end`'s its \
+         end). A line or a plane may carry a `pivot` (F7d; `ref_line`/`ref_plane` patch it, `null` takes it off): it keeps \
+         one point of it (`at`: `start`, `end` or `{\"along\": mm}`, a plane's along the line it is drawn as) on a point \
+         (`to`: `{\"planes\": [g, g]}` where two planes holding its axis cross, `{\"line\": g, \"point\": \"start\"|\"end\"}`, \
+         `{\"form\": g, \"line\": g, \"point\": …}` a sketch's point, or `{\"fixed\": [x, y, z]}`) and turns about it, its axis the \
+         normal of what a line is drawn on, a plane's `up`; its swing, degrees counter-clockwise from `from` (`drawn`, the \
+         default, `{\"plane\": g}` or `{\"line\": g}`), is the Angle parameter `parameter`, else its own `angle` (which an angular \
+         dimension may set instead), within `min` and `max` if given (a value past them is refused, naming them). What is drawn \
+         on a pivoted line or plane, nested instances too, turns with it. Give a new plane or line a `guid` of your own to host forms on it in the same command; a plane or line a \
+         form or line is drawn on can't be deleted, and the datums can't be moved, changed or deleted. With an \
          `axis`, a line in that plane, the profile is turned about it instead, `from` to `to` degrees (up to 360, right-handed \
-         from the axis' first point toward its second; it can't cross the axis): a pipe, a bowl, a lamp shade. A `void` is no \
+         from the axis' first point toward its second; it can't cross the axis): a pipe, a bowl, a lamp shade. A form's profile is its \
+         `sketch`, as Revit's Create Extrusion draws it: lines (`start` to `end`), arcs (`turn` degrees counter-clockwise from \
+         start to end; negative, clockwise) and whole circles (`centre`, `radius`), in any order, each number a number or a \
+         formula, joined end to end into loops: a loop inside another is a hole, several loops make one form of several solids; \
+         lines that don't close, cross or overlap are refused, named. A revolve's axis is a line of its sketch with `axis: \
+         true`, one at most. `profile` (corners in turn), `circle` and `axis` are shorthands, read as such lines. A `void` is no \
          solid: it cuts the solid forms listed before it that it passes through, a hole, a notch, a sink's bowl, and is never \
          seen itself (forms listed after it are whole). A `door` or `window` family stands in a wall, placed with `door` or \
          `window` and a `family`: its forms are drawn in the opening's axes (x along the wall from the middle of the opening, y \
@@ -1155,11 +1414,24 @@ other_files(
         "component",
         ui_msg!("Component"),
         &["CM"],
-        "{family, type?, at: [x,y], level?, angle?, offset?, mirrored?, params?: {parameter: value}} a family's type placed, its \
-         first by default: at a point on a level, turned `angle` degrees counter-clockwise, `offset` mm up from the level, and \
+        "{family, type?, at: [x,y], level?, angle?, offset?, mirrored?, params?: {parameter: value}, adaptive?: {frames: {number: {origin,x,y,z}}, context?}, host?: {level: name|id} | \
+         {plane: name|id|GUID} | {face: {element: id|GUID, face: exterior|interior|top|bottom}}} a family's type placed, its first by default: at a point on a level, turned `angle` degrees \
+         counter-clockwise, `offset` mm up from the level (none: its family's Default Elevation, unless work plane-based), and \
          with `mirrored` flipped across its own x axis; `params` sets its instance parameters (`modify` merges into them, a null \
-         taking one back to the family's)",
-        component,
+         taking one back to the family's). A work plane-based family may go on a reference plane (`host` `plane`, Place on Work \
+         Plane): `at` [x, y] is taken straight onto the plane, [x, y, z] along its normal (an upright plane needs it), `offset` \
+         is its Offset from Host along the normal, `level` its Schedule Level (by default the highest level at or below it); \
+         it follows the plane when the plane moves, upright or, its family not Always Vertical, tilted with the plane (a plane \
+         turned about the vertical turns it too). Or on a face (Place on Face): a wall's `exterior` or `interior` side, `at` \
+         [x, y, z] taken to its nearest point there; a floor's, a ceiling's or a roof's `top` or `bottom`, `at` [x, y] taken \
+         straight onto it (a roof's slope or a shaped floor's plane under it); it follows the face when its host moves, turns, \
+         or changes slope, thickness or type, goes with a floor, a ceiling or a roof moved or copied, and is deleted with its \
+         host; one its face no longer reaches stays on the face's plane, with a warning. Always Vertical keeps it plumb on \
+         every face; else it stands out along the face's normal (hanging from an underside), and on a wall's side `angle` \
+         turns it from the face's level direction, so it turns with the wall. An \
+         adaptive family's component is placed by its points (`adaptive`, else the family's test placement) and takes no `host` \
+         plane",
+        work_plane::component,
     )
     .menu("Architecture > Component"),
     edit(
@@ -1192,6 +1464,22 @@ other_files(
         match_properties,
     ),
     edit(
+        "pin",
+        ui_msg!("Pin"),
+        &["PN"],
+        "{ids: [id,…]} pins elements where they are: `move`, `rotate`, `mirror`, `align`, `delete`, `flip`, `split`, \
+         `corner`, `trim_extend`, `fillet`, `offset` with `copy` false and the detail line tools refuse them until `unpin`. \
+         A pinned element is marked `pinned` in `elements` and kept in the file. Returns {pinned: [ids]}",
+        pin,
+    ),
+    edit(
+        "unpin",
+        ui_msg!("Unpin"),
+        &["UP"],
+        "{ids: [id,…]} unpins elements that `pin` pinned, so they can be moved, drawn or deleted again; returns {unpinned: [ids]}",
+        unpin,
+    ),
+    edit(
         "align",
         ui_msg!("Align"),
         &["AL"],
@@ -1218,7 +1506,10 @@ other_files(
         ui_msg!("Move"),
         &["MV"],
         "{ids: [id,…], by: [dx, dy], end?: start|end} moves elements in plan; walls joined to a moved wall stretch to stay \
-         joined, and doors and windows slide along their walls. With `end`, only that end of one wall or one run moves",
+         joined, and doors and windows slide along their walls. With `end`, only that end of one wall or one run moves. One \
+         section or elevation takes `end` as the part its grips in plan move: `line` (the line it starts at, the way it \
+         looks), `start` or `end` (an end along the line, while it is cropped), `far` (its far clip, changing `depth`) and, \
+         an elevation, `mark` (its mark alone, anywhere: past its reference it turns round and its line comes over)",
         move_elements,
     ),
     edit(
@@ -1583,7 +1874,8 @@ other_files(
          them. A category given keeps the pen it isn't given. The rest of an element's lines keep their own: a compound \
          wall's layers, a door's jambs, a stair's walk line. `reset` goes back to what a project starts with (cut pen 10 and \
          seen pen 4; a door's and a window's cut 6, a railing seen 6, a mass 4 both). Without either, it says each model \
-         category's, `own` whether the project has set it apart",
+         category's, `own` whether the project has set it apart. A door's and a window's subcategory `dooropening` and \
+         `windowopening` (the swing, the opening lines) are rows too, drawing in their category's pens until given their own",
         object_styles,
     )
     .menu("Manage > Object Styles"),
@@ -1719,7 +2011,8 @@ other_files(
          In a 3D view rooms are hidden unless shown (`show: [rooms]`), every new 3D view so; shown, each is a \
          see-through solid. Subcategories are hidden and shown as categories are, and go with their category: under rooms, `roomreference` (the \
          cross at each room's point, hidden unless shown, as Revit's Rooms > Reference) and `roomseparator` (room separation \
-         lines). An \
+         lines); under doors and windows, `dooropening` and `windowopening` (a door's swing, a window's opening lines: the \
+         family symbols that name the subcategory `Opening`). An \
          override is {hidden?, projection?: style, cut?: style, halftone?, transparency?}, a style {color?, weight? (a pen, \
          0 to 16: 0 a hairline, the thinnest line the screen or printer draws at any scale; 1 to 16 widths on paper from 0.10 to \
          4 mm, 4 being 0.18 mm and 10 0.35 mm, a cut wall's outline), dash? (solid, dashed, dotted), fill?, foreground?, background?}, a colour [r, g, b] or \"#rrggbb\". \
@@ -1798,8 +2091,12 @@ other_files(
          along its normal (up, for a level; 0 unless given), and may lie at any angle, upright too: what a tool may sketch on \
          it is up to the tool (a floor, a ceiling, a roof and a shaft need a level plane, and stand on the highest level at or \
          below it). Given only `offset`, the plane as it is is moved by that instead. Given nothing, it's the lowest level \
-         again, as it is until set. A level deleted takes its work plane with it. Says the plane: a point of it (`origin`), its \
-         `normal`, its height at the origin where it isn't upright (`z`) and its `slope` in degrees from level",
+         again, as it is until set. A level deleted takes its work plane with it. As the Work Plane dialog's Name: `name` \
+         (`Level : Level 2`, `Reference Plane : Ramp`, or a level's or a named reference plane's own name), or `ref_plane` (a \
+         reference plane of the project by name, id or GUID): on a reference plane the work plane follows it, moved and turned \
+         with it; `dissociate: true` leaves it where the plane is now and no longer following (as does deleting the plane). \
+         Says the plane: its `name` as the dialog's Current Work Plane says it, its `level` or `ref_plane` (ids), a point of \
+         it (`origin`), its `normal`, its height at the origin where it isn't upright (`z`) and its `slope` in degrees from level",
         work_plane,
     ),
     edit(
@@ -1894,10 +2191,22 @@ other_files(
         menu: None,
         files: Files::None,
     },
-    other(
+    edit(
         "circuit",
-        "Size a Circuit",
-        "{load, apparent?, demand?, power_factor?, phases?: FN|FF|3F|3FN, system?: 127/220|220/380|230/400, use?: lighting|power, length?, \
+        "Circuit",
+        &[],
+        concat!(
+            "Two commands in one id. (1) A circuit of the model: {devices: [ids], panel: id, name?, number?, rating?, poles?, voltage?, \
+             classification?, demand_factor?, wires?} makes one: the devices (components of a family with a power connector, each in one \
+             circuit) on a distribution board, behind a breaker of `rating` amperes (a standard one for the load unless given) and `poles` \
+             (the devices'), at the `voltage` its board's system supplies (a voltage of the project; unset, the system's line-to-neutral \
+             for one pole, line-to-line for more), `number` on the board (the next free unless given), `classification` (its devices'), \
+             `demand_factor` (above 0 up to 1, 1) and `wires` {hot: {wire_type, section}, neutral?, ground?} (sections of the wire type's \
+             table, in mm²). {id, ...} changes one, merging fields; {id, add?: [ids], remove?: [ids]} its devices; {id, delete: true} \
+             takes it away; {list: true} or {panel: id} lists the circuits, all or a board's, each with its devices, installed and \
+             demand VA, current and the load of each pole. A device draws at its connector's voltage, within the band of the circuit's \
+             voltage, on as many poles as the circuit has, and a refusal names both voltages. Circuits are not copied. (2) The sizing: ",
+            "{load, apparent?, demand?, power_factor?, phases?: FN|FF|3F|3FN, system?: 127/220|220/380|230/400, use?: lighting|power, length?, \
          method?, insulation?: pvc|epr, conductor?: flexible|rigid, ambient?, grouped?, bundle?, spacing?, soil?, section?, breaker?, \
          drop_limit?, reduced_neutral?} one electrical circuit sized as NBR 5410:2004 asks, for copper: `load` in W (or VA with \
          `apparent`), `demand` (0 to 1, 1) and `power_factor` (over 0 to 1, 1; a first value, not a claim about the load), `phases` \
@@ -1910,6 +2219,7 @@ other_files(
          I_B ≤ I_n ≤ I_Z (which gives I_2 = 1.45 I_n ≤ 1.45 I_Z for the breakers of NBR NM 60898) with the drop within `drop_limit` (4 %), the current the section carries, the drop, \
          the conductors (phases, neutral, protective), the factors, and what the chosen section and breaker give. It changes nothing; \
          aluminium, trays, several layers, short circuit and harmonics are not checked. It has no shortcut: Revit has no tool for it",
+        ),
         circuit,
     ),
     other(
@@ -2027,6 +2337,29 @@ other_files(
          Not covered: the further rules for the volumes of a bathroom and for swimming pools (`not_covered`). It has no shortcut: \
          Revit has no tool for it. It changes nothing",
         dr_check,
+    ),
+    other(
+        "bath_volumes",
+        "Check Bathroom Volumes",
+        "{fixture: {outline?: [[x, y], …], shower?: [x, y], floor?, rim?}, things: [{name?, kind, at: [x, y, z], ip?, class?, supply?, voltage?, rcd?, serving?}], public?, standard?} \
+         which of the volumes around a bathtub or a shower each thing stands in, and whether it may stand there, as NBR 5410:2004 \
+         item 9.1 asks. The numbers are data (`data/bath-volumes.json`, one rule set for each standard, every volume and every thing \
+         it allows naming its source): `standard` names the set, `NBR 5410:2004` the default and only one so far. `fixture` is the \
+         tub, tray or recess in plan (`outline`, mm) or the outlet of a shower with no tray (`shower`), `floor` the level one stands on \
+         (mm, 0 by default) and `rim` the tub's rim above it (mm, 0 by default). Volume 0 is the inside up to the rim (none for a shower \
+         with no tray); 1 over it up to 2.25 m (0.6 m round a shower with no tray); 2 out 0.60 m more, up to 3 m, so over volume 1 \
+         too; 3 out 2.40 m more, up to 2.25 m. A thing's `kind` is outlet, switch (any device that protects, isolates or controls), \
+         box (a junction box; `serving` when it connects only equipment of these volumes), luminaire, heater (a water heater) or \
+         equipment; `ip` the second digit of its IP code, `class` I, II or III, `supply` mains (the default), selv (with `voltage`, V) \
+         or separation (its own separating transformer), `rcd` the residual-current device that protects it, mA. Each comes back \
+         with its `volume` (null outside them all), the least `ip_min` there (IPX7, 4, 3 and 1; IPX5 in volumes 2 and 3 of a \
+         `public` bathroom), `allowed`, `ok` (allowed, with an IP known and enough), `why` and `sources`; `failing` names the \
+         things that are not `ok`. In volume 0 only SELV up to 12 V; no outlet or switch in volumes 0 to 2 (a switch at SELV \
+         excepted); a heater of class I or II in volume 1 and 2, a luminaire of class II in volume 2; an outlet in volume 3 by \
+         separation, SELV or a residual-current device of 30 mA at most. The volumes are measured straight: the walls and \
+         partitions they go around are not seen (`not_covered`), so what stands behind one is taken as inside. It has no \
+         shortcut: Revit has no tool for it. It changes nothing",
+        bath_volumes,
     ),
     other(
         "dps_check",
@@ -2175,7 +2508,8 @@ other_files(
         "elements",
         ui_msg!("Elements"),
         "{category?, level?, field?, value?, limit?, offset?} elements with their `id` (six digits, what commands take) and `guid` (made once, \
-         never changed), fields and derived values (length, height, area_m2…); what an element points at (its level, host, \
+         never changed), fields and derived values (length, height, area_m2…; a component's `room`, the GUID of the room \
+         its family's room calculation point, else its insertion point, is in); what an element points at (its level, host, \
          view…) it holds by GUID. Wherever a command takes an element, its id or its GUID will do. `field` is one its category's \
          schedule has (`Type`, `Mark`, a project parameter), and `value` what it holds: text in any case, a number (mm, m² for \
          an area), yes or no, or `\"\"` for text holding none; without `value`, those holding one (a yes or no reads no when unset)",
@@ -2619,6 +2953,13 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
     {
         extra.insert("room_bounding".into(), json!(room_bounding));
     }
+    // Its family's OmniClass number and title, where it has one.
+    if let Some(o) = e.family().and_then(|(f, _)| m.families.get(f)).and_then(|f| f.omniclass.as_ref()) {
+        extra.insert("omniclass".into(), json!(o));
+    }
+    if m.is_pinned(id) {
+        extra.insert("pinned".into(), json!(true));
+    }
     // Its type's and its family's GUIDs, beside their names.
     e.clone().lib_refs_mut(&mut |kind, name| {
         let key = match kind {
@@ -2630,14 +2971,38 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
             extra.insert(key.into(), json!(g));
         }
     });
-    // The room a component stands in, as Revit's Room parameter: by GUID, with its number and name for schedules and tags.
+    // The room a component is in, as Revit's Room parameter (`Rooms::component`: its family's room calculation point, else its
+    // insertion point, in a room's volume): by GUID, with its number and name for schedules and tags; left out outside every room.
     if let Element::Component(c) = e
-        && let Some(id) = rooms.room_at(c.level, c.at)
+        && let Some(id) = rooms.component(c)
         && let Some(Element::Room(r)) = m.elements.get(id)
     {
         extra.insert("room".into(), json!(m.guid(id)));
         extra.insert("room_number".into(), json!(r.number));
         extra.insert("room_name".into(), json!(r.name));
+    }
+    // What a board's circuits load: worked out from them, never saved.
+    if let Some(t) = crate::electrical::board_totals(m, id) {
+        extra.insert("installed_va".into(), json!(t.installed_va));
+        extra.insert("demand_va".into(), json!(t.demand_va));
+        if let Some(a) = t.current_a {
+            extra.insert("current_a".into(), json!(a));
+        }
+    }
+    // A distribution board's data, by the names of Revit's parameters, which schedules and agents read it by.
+    if let Element::Component(Component { panel: Some(p), .. }) = e {
+        if let Some(d) = &p.distribution {
+            extra.insert("distribution_system".into(), json!(d));
+        }
+        if let Some(a) = p.mains {
+            extra.insert("mains".into(), json!(a));
+        }
+        if let Some(n) = p.slots {
+            extra.insert("slots".into(), json!(n));
+        }
+        if let Some(g) = p.supply_from {
+            extra.insert("supply_from".into(), json!(g));
+        }
     }
     match e {
         Element::CadImport(ci) => {
@@ -2653,6 +3018,19 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
             if let Some(b) = m.cad_box(id) {
                 extra.insert("extents".into(), json!(b));
             }
+        }
+        Element::PropertyLine(pl) => {
+            extra.insert("area_m2".into(), json!(m2(geom::area(&pl.points).abs())));
+            extra.insert("perimeter_m".into(), json!((geom::perimeter(&pl.points) / 10.0).round() / 100.0));
+            // From north on the map, where the project lies on one turned.
+            let rotation = m.georeference.as_ref().map_or(0.0, |g| g.rotation);
+            let segments: Vec<Value> = geom::ring_edges(&pl.points)
+                .map(|(a, b)| {
+                    let (bearing, azimuth) = crate::site::bearing(a, b, rotation);
+                    json!({"from": a, "to": b, "length": hundredth(a.dist(b)), "bearing": bearing, "azimuth": azimuth})
+                })
+                .collect();
+            extra.insert("segments".into(), json!(segments));
         }
         Element::RoomSeparator(rs) => {
             extra.insert("length".into(), json!(hundredth(rs.start.dist(rs.end))));
@@ -2718,6 +3096,13 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
             let base = m.elevation(cp.level) + cp.offset;
             let top = m.component_pieces(cp).iter().map(|p| p.top).fold(base, f64::max);
             extra.insert("height".into(), json!(hundredth(top - base)));
+            // Its work plane, as Properties shows it, and its Offset from Host: on a level, its height over it.
+            extra.insert("work_plane".into(), json!(m.work_plane_name(cp)));
+            extra.insert("offset_from_host".into(), json!(cp.host.map_or(cp.offset, |h| h.offset)));
+            // What it is hosted on, a face's element or a reference plane (Revit's Host); none on a level.
+            if let Some(h) = cp.host {
+                extra.insert("host_element".into(), json!(h.host.guid()));
+            }
         }
         Element::Column(col) | Element::StructuralColumn(col) | Element::Footing(col) => {
             let (bottom, top) = m.span(col.level, col.base_offset, col.top_level, col.height);
@@ -2726,6 +3111,9 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
                 extra.insert("width".into(), json!(t.width));
                 extra.insert("depth".into(), json!(t.depth));
                 extra.insert("round".into(), json!(t.round));
+                if let Some(pr) = &t.profile {
+                    steel_take_off(&mut extra, pr, (t.width, t.depth), top - bottom);
+                }
             }
         }
         // Its section, how long it runs along its axis, and the heights of its centre line's ends.
@@ -2736,6 +3124,9 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
                 extra.insert("round".into(), json!(t.round));
                 extra.insert("length".into(), json!(hundredth(g.length())));
                 extra.insert("axis".into(), json!([g.a, g.b].map(|p| p.map(hundredth))));
+                if let Some(pr) = &t.profile {
+                    steel_take_off(&mut extra, pr, (t.width, t.depth), g.length());
+                }
             }
         }
         Element::Stair(st) => {
@@ -2790,6 +3181,7 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
         Element::Viewport(v) => {
             extra.insert("title".into(), json!(m.view_name(v.view)));
             extra.insert("size".into(), json!(sheet::size(m, v.view, v.scale)));
+            extra.insert("follow_scale".into(), json!(v.follow_scale));
         }
         Element::Section(v) | Element::Elevation(v) => {
             let l = v.looking();
@@ -2896,7 +3288,29 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
         Element::Dimension3D(d) => {
             extra.insert("length".into(), json!(hundredth(crate::dims3d::length(d))));
         }
-        Element::Grid(_) | Element::Schedule(_) | Element::View3D(_) | Element::PlanView(_) => {}
+        Element::Circuit(c) => {
+            extra.insert("panel_id".into(), json!(m.elements.id(c.panel)));
+            extra.insert("device_ids".into(), json!(c.devices.iter().filter_map(|g| m.elements.id(*g)).collect::<Vec<Id>>()));
+            extra.insert("level".into(), json!(m.level_of(e)));
+            extra.insert("demand_factor".into(), json!(c.demand_factor));
+            if let Ok((name, v)) = crate::electrical::circuit_voltage(m, c) {
+                extra.insert("voltage_name".into(), json!(name));
+                extra.insert("voltage_v".into(), json!(v.nominal));
+            }
+            if let Some(t) = crate::electrical::circuit_totals(m, c) {
+                extra.insert("installed_va".into(), json!(t.installed_va));
+                extra.insert("demand_va".into(), json!(t.demand_va));
+                extra.insert("current_a".into(), json!(t.current_a));
+                extra.insert("pole_va".into(), json!(t.pole_va));
+            }
+        }
+        Element::PanelSchedule(ps) => {
+            if let Some(b) = m.elements.id(ps.panel) {
+                extra.insert("panel_id".into(), json!(b));
+                extra.insert("slots".into(), json!(crate::electrical::slot_count(m, b)));
+            }
+        }
+        Element::Grid(_) | Element::RefPlane(_) | Element::Schedule(_) | Element::View3D(_) | Element::PlanView(_) => {}
     }
     let mut v = serde_json::to_value(e).unwrap_or_default();
     if let Some(o) = v.as_object_mut() {
@@ -3046,6 +3460,12 @@ fn open_file(s: &mut Session, p: &Value) -> R {
     let name = m.name.clone();
     s.reset(m, Some(path.clone()));
     let mut reply = json!({"path": path, "name": name});
+    // A formula saying a name its family lacks, which this BIMCraft refuses a command making: the file opens, saying so.
+    let warnings: Vec<String> =
+        s.model.families.iter().flat_map(|(n, f)| f.unknown_names().into_iter().map(move |w| format!("family `{n}`: {w}"))).collect();
+    if !warnings.is_empty() {
+        reply["warnings"] = json!(warnings);
+    }
     if !renamed.is_empty() {
         reply["renamed"] = json!(renamed);
     }
@@ -4273,7 +4693,7 @@ fn camera(s: &mut Session, p: &Value) -> R {
 
 fn work_plane(s: &mut Session, p: &Value) -> R {
     let c = "work_plane";
-    only(c, p, &["view", "level", "offset", "points", "surface"])?;
+    only(c, p, &["view", "level", "offset", "points", "surface", "name", "ref_plane", "dissociate"])?;
     let m = &s.model;
     let default = absent(p.get("view"))
         || matches!(p.get("view"), Some(Value::String(n)) if n.eq_ignore_ascii_case("{3D}") || n.eq_ignore_ascii_case("3D"));
@@ -4303,9 +4723,50 @@ fn work_plane(s: &mut Session, p: &Value) -> R {
         None => None,
     };
     let level = if absent(p.get("level")) { None } else { Some(level_param(c, m, p, "level")?) };
-    let given = WorkPlane { level, offset: offset.unwrap_or(0.0), points, surface };
-    let plane = if level.is_some() || points.is_some() || surface.is_some() {
-        Some(given)
+    // By name, as the Work Plane dialog's Name lists them; a reference plane of the project by name, id or GUID.
+    let named = string(c, p, "name")?.map(|n| crate::workplane::by_name(m, &n).map_err(|e| bad(c, e))).transpose()?;
+    let ref_plane = match p.get("ref_plane") {
+        v if absent(v) => None,
+        Some(v) => {
+            let id = match v {
+                Value::String(n) if Guid::parse(n).is_none() => m
+                    .rare("refplane")
+                    .into_iter()
+                    .find(|id| matches!(m.elements.get(*id), Some(Element::RefPlane(rp)) if rp.name == *n))
+                    .ok_or_else(|| bad(c, format!("no reference plane named `{n}`")))?,
+                v => element_id(c, m, v)?,
+            };
+            match m.elements.get(id) {
+                Some(Element::RefPlane(_)) => Some(m.guid(id)),
+                Some(e) => return Err(bad(c, format!("`ref_plane`: {} {id} isn't a reference plane", e.category()))),
+                None => return Err(bad(c, format!("no element {id}"))),
+            }
+        }
+        None => None,
+    };
+    let dissociate = flag(c, p, "dissociate")?;
+    let given = [level.is_some(), points.is_some(), surface.is_some(), named.is_some(), ref_plane.is_some()];
+    if given.iter().filter(|g| **g).count() > 1 {
+        return Err(bad(c, "give only one of `level`, `points`, `surface`, `name` and `ref_plane`: a work plane is on one of them"));
+    }
+    if dissociate && given.iter().any(|g| *g) {
+        return Err(bad(c, "`dissociate` keeps the work plane where it is: give it without a new plane"));
+    }
+    let plane = if dissociate {
+        let now = m.work_plane(view);
+        let Some(wp) = now.dissociated(m) else {
+            return Err(bad(
+                c,
+                format!("the work plane, {}, follows no reference plane: there's nothing to dissociate it from", now.name(m)),
+            ));
+        };
+        Some(WorkPlane { offset: offset.unwrap_or(wp.offset), ..wp })
+    } else if let Some(wp) = named {
+        Some(WorkPlane { offset: offset.unwrap_or(0.0), ..wp })
+    } else if let Some(g) = ref_plane {
+        Some(WorkPlane { ref_plane: Some(g), offset: offset.unwrap_or(0.0), ..WorkPlane::default() })
+    } else if level.is_some() || points.is_some() || surface.is_some() {
+        Some(WorkPlane { level, offset: offset.unwrap_or(0.0), points: points.map(Box::new), surface, ref_plane: None })
     } else {
         offset.map(|offset| WorkPlane { offset, ..m.work_plane(view) })
     };
@@ -4317,12 +4778,15 @@ fn work_plane(s: &mut Session, p: &Value) -> R {
     if let Some(Element::View3D(v3)) = s.model_mut().elements.get_mut(v) {
         v3.work_plane = plane;
     }
+    // On a reference plane, its snapshot where it is now, as after every command.
+    s.model_mut().settle_work_planes();
     let wp = s.model.work_plane(Some(v));
     let level = wp.level.and_then(|g| s.model.elements.id(g));
+    let ref_plane = wp.ref_plane.and_then(|g| s.model.elements.id(g));
     let z = resolved.over_plan().map(|p| p.z);
     Ok(json!({
-        "view": v, "level": level, "offset": wp.offset, "points": wp.points, "surface": wp.surface,
-        "origin": resolved.origin, "normal": resolved.normal, "z": z, "slope": resolved.slope(),
+        "view": v, "name": wp.name(&s.model), "level": level, "ref_plane": ref_plane, "offset": wp.offset, "points": wp.points,
+        "surface": wp.surface, "origin": resolved.origin, "normal": resolved.normal, "z": z, "slope": resolved.slope(),
     }))
 }
 
@@ -4921,32 +5385,236 @@ fn choice<'a>(c: &str, p: &'a Value, key: &str, names: &[&str], default: &'a str
     }
 }
 
-fn circuit(_: &mut Session, p: &Value) -> R {
+/// The keys of `circuit` as the sizing of NBR 5410 takes them.
+const SIZING_KEYS: &[&str] = &[
+    "load",
+    "apparent",
+    "demand",
+    "power_factor",
+    "phases",
+    "system",
+    "use",
+    "length",
+    "method",
+    "insulation",
+    "conductor",
+    "ambient",
+    "grouped",
+    "bundle",
+    "spacing",
+    "soil",
+    "section",
+    "breaker",
+    "drop_limit",
+    "reduced_neutral",
+];
+
+/// The keys of `circuit` as a circuit of the model takes them.
+const CIRCUIT_KEYS: &[&str] = &[
+    "devices",
+    "panel",
+    "id",
+    "add",
+    "remove",
+    "name",
+    "number",
+    "rating",
+    "poles",
+    "voltage",
+    "classification",
+    "demand_factor",
+    "wires",
+    "delete",
+    "list",
+];
+
+/// `circuit`: a circuit of the model when it is given any of that circuit's keys, the NBR 5410 sizing otherwise (and when it is
+/// given none, which is what it always did); the keys of both are refused.
+fn circuit(s: &mut Session, p: &Value) -> R {
+    let c = "circuit";
+    let found = |list: &[&str]| -> Vec<String> {
+        p.as_object().map(|o| o.keys().filter(|k| list.contains(&k.as_str())).map(|k| format!("`{k}`")).collect()).unwrap_or_default()
+    };
+    let (own, sizing) = (found(CIRCUIT_KEYS), found(SIZING_KEYS));
+    match (own.is_empty(), sizing.is_empty()) {
+        (false, false) => Err(bad(
+            c,
+            format!(
+                "{} belong to a circuit of the model (devices, panel…) and {} to the sizing of one (load, section…): give one or the other",
+                own.join(", "),
+                sizing.join(", ")
+            ),
+        )),
+        (false, true) => circuit_of_model(s, p),
+        _ => circuit_size(s, p),
+    }
+}
+
+/// The elements `key` of `p` lists, each by id or GUID, if it is given.
+fn element_list(c: &str, m: &Model, p: &Value, key: &str) -> Result<Option<Vec<Id>>, String> {
+    use crate::electrical::MAX_DEVICES;
+    match p.get(key) {
+        v if absent(v) => Ok(None),
+        Some(Value::Array(a)) if a.len() <= MAX_DEVICES => a.iter().map(|v| element_id(c, m, v)).collect::<Result<_, _>>().map(Some),
+        Some(Value::Array(_)) => Err(bad(c, format!("`{key}` lists more than {MAX_DEVICES} elements"))),
+        Some(v) => Err(bad(c, format!("`{key}` must be a list of element ids, got {v}"))),
+        None => Ok(None),
+    }
+}
+
+/// A circuit of the model: made, changed, its devices added or taken out, taken away, or listed.
+fn circuit_of_model(s: &mut Session, p: &Value) -> R {
+    use crate::electrical::{self, Circuit, Wires};
+    let c = "circuit";
+    only(c, p, CIRCUIT_KEYS)?;
+    let m = &s.model;
+    let given = |k: &str| p.get(k).is_some_and(|v| !v.is_null());
+    let id = match p.get("id") {
+        v if absent(v) => None,
+        Some(v) => Some(element_id(c, m, v)?),
+        None => None,
+    };
+    if let Some(id) = id
+        && !matches!(m.elements.get(id), Some(Element::Circuit(_)))
+    {
+        return Err(bad(c, format!("element {id} is not a circuit")));
+    }
+    let panel = match p.get("panel") {
+        v if absent(v) => None,
+        Some(v) => {
+            let pid = element_id(c, m, v)?;
+            electrical::board(m, pid).ok_or_else(|| bad(c, format!("element {pid} is not a distribution board")))?;
+            Some(pid)
+        }
+        None => None,
+    };
+    // Listing: every circuit, or those of one board.
+    if flag(c, p, "list")? || (id.is_none() && panel.is_some() && CIRCUIT_KEYS.iter().filter(|k| given(k)).all(|k| *k == "panel")) {
+        let guid = panel.map(|b| m.guid(b));
+        let all: Vec<Value> = m
+            .elements
+            .iter()
+            .filter(|(_, e)| matches!(e, Element::Circuit(x) if guid.is_none_or(|g| x.panel == g)))
+            .map(|(i, _)| element_json(m, *i))
+            .collect();
+        return Ok(json!({"circuits": all}));
+    }
+    if flag(c, p, "delete")? {
+        let id = id.ok_or_else(|| bad(c, "`id` is required: the circuit to delete"))?;
+        s.model_mut().elements.remove(id);
+        return Ok(json!({"deleted": id}));
+    }
+    // What it is asked to be.
+    let name = string(c, p, "name")?;
+    let classification = string(c, p, "classification")?;
+    let rating = amount(c, p, "rating", "amperes")?;
+    let demand = amount(c, p, "demand_factor", "a share of its load")?;
+    let poles = small(c, p, "poles")?;
+    let number = match p.get("number") {
+        v if absent(v) => None,
+        Some(v) => Some(
+            v.as_u64().and_then(|n| u32::try_from(n).ok()).ok_or_else(|| bad(c, format!("`number` must be a whole number, got {v}")))?,
+        ),
+        None => None,
+    };
+    let voltage = clearable(c, p, "voltage")?;
+    let wires: Option<Option<Wires>> =
+        match p.get("wires") {
+            v if absent(v) => None,
+            Some(Value::String(t)) if t.trim().is_empty() => Some(None),
+            Some(v) => Some(Some(serde_json::from_value(v.clone()).map_err(|e| {
+                bad(c, format!("`wires` must be {{hot: {{wire_type, section}}, neutral?, ground?}} (sections in mm²): {e}"))
+            })?)),
+            None => None,
+        };
+    let (devices, add, remove) = (element_list(c, m, p, "devices")?, element_list(c, m, p, "add")?, element_list(c, m, p, "remove")?);
+    // Changed.
+    if let Some(id) = id {
+        let Some(Element::Circuit(old)) = m.elements.get(id) else { return Err(bad(c, format!("element {id} is not a circuit"))) };
+        let mut x: Circuit = old.clone();
+        if let Some(b) = panel {
+            x.panel = m.guid(b);
+        }
+        if let Some(list) = &devices {
+            x.devices = list.iter().map(|i| m.guid(*i)).collect();
+        }
+        for r in remove.iter().flatten() {
+            let g = m.guid(*r);
+            let before = x.devices.len();
+            x.devices.retain(|d| *d != g);
+            if x.devices.len() == before {
+                return Err(bad(c, format!("device {r} isn't in circuit {id}")));
+            }
+        }
+        x.devices.extend(add.iter().flatten().map(|i| m.guid(*i)));
+        if let Some(n) = name {
+            x.name = n;
+        }
+        if let Some(k) = classification {
+            x.classification = k;
+        }
+        if let Some(a) = rating {
+            x.rating_a = a;
+        }
+        if let Some(d) = demand {
+            x.demand_factor = d;
+        }
+        if let Some(n) = poles {
+            x.poles = n;
+        }
+        if let Some(n) = number {
+            x.number = n;
+        }
+        if let Some(v) = voltage {
+            x.voltage = v;
+        }
+        if let Some(w) = wires {
+            x.wires = w;
+        }
+        s.model_mut().elements.insert(id, Element::Circuit(x));
+        return Ok(json!({"id": id, "circuit": element_json(&s.model, id)}));
+    }
+    // Made.
+    let Some(pid) = panel else { return Err(bad(c, "`panel` is required: the distribution board the circuit is on")) };
+    let devices = devices.ok_or_else(|| bad(c, "`devices` [id, …] is required: what the circuit holds (an empty list makes a spare)"))?;
+    if add.is_some() || remove.is_some() {
+        return Err(bad(c, "`add` and `remove` change a circuit that is there: give its `id`"));
+    }
+    let powers: Vec<crate::family::ConnectorValues> = devices.iter().filter_map(|i| electrical::device_power(m, *i).ok()).collect();
+    let poles = poles.or_else(|| powers.first().map(|p| p.poles)).unwrap_or(1);
+    let mut x = Circuit {
+        panel: m.guid(pid),
+        // The first slots it fits in; with none left, past the last, which `Model::check` refuses by saying the board is full.
+        number: number.or_else(|| electrical::free_number(m, pid, poles, None, None)).unwrap_or_else(|| {
+            electrical::occupied(m, pid).keys().next_back().map_or(1, |last| last.saturating_add(1)).min(electrical::MAX_NUMBER)
+        }),
+        name: name.unwrap_or_default(),
+        rating_a: rating.unwrap_or(16.0),
+        poles,
+        voltage: voltage.flatten(),
+        classification: classification
+            .unwrap_or_else(|| powers.iter().map(|p| p.classification.clone()).find(|k| !k.is_empty()).unwrap_or_default()),
+        demand_factor: demand.unwrap_or(1.0),
+        devices: devices.iter().map(|i| m.guid(*i)).collect(),
+        wires: wires.flatten(),
+    };
+    // A breaker for the load, the next standard one up, when none is asked for.
+    if rating.is_none()
+        && let Some(t) = electrical::circuit_totals(m, &x)
+        && t.installed_va > 0.0
+    {
+        let need = t.current_a.max(10.0);
+        x.rating_a = crate::nbr5410::BREAKERS.iter().copied().find(|b| *b >= need).unwrap_or(16.0);
+    }
+    let id = s.model_mut().insert(Element::Circuit(x));
+    Ok(json!({"id": id, "circuit": element_json(&s.model, id)}))
+}
+
+fn circuit_size(_: &mut Session, p: &Value) -> R {
     use crate::nbr5410::{self as e, Circuit, Insulation, Phases, Use};
     let c = "circuit";
     let o = p.as_object().ok_or_else(|| bad(c, "params must be an object"))?;
-    const KEYS: &[&str] = &[
-        "load",
-        "apparent",
-        "demand",
-        "power_factor",
-        "phases",
-        "system",
-        "use",
-        "length",
-        "method",
-        "insulation",
-        "conductor",
-        "ambient",
-        "grouped",
-        "bundle",
-        "spacing",
-        "soil",
-        "section",
-        "breaker",
-        "drop_limit",
-        "reduced_neutral",
-    ];
+    const KEYS: &[&str] = SIZING_KEYS;
     if let Some(key) = o.keys().find(|k| !KEYS.contains(&k.as_str())) {
         return Err(bad(c, format!("unknown parameter `{key}`")));
     }
@@ -5936,7 +6604,7 @@ fn drawn_points(m: &Model, rooms: &crate::rooms::Rooms) -> (Option<PerRoom>, Opt
             continue;
         }
         let by = by.get_or_insert_with(BTreeMap::new);
-        if let Some(room) = rooms.room_at(c.level, c.at) {
+        if let Some(room) = rooms.component(c) {
             *by.entry(room).or_insert(0) += 1;
         }
     }
@@ -6027,6 +6695,108 @@ fn dr_check(_: &mut Session, p: &Value) -> R {
         "max_residual_ma": set.max_residual_ma,
         "max_outlet_a": set.max_outlet_a,
         "building": if residential { "residential" } else { "other" },
+        "not_covered": set.not_covered,
+    }))
+}
+
+fn bath_volumes(_: &mut Session, p: &Value) -> R {
+    use crate::bath::{self, Bath, CLASSES, Fixture, KINDS, SUPPLIES, Thing};
+    let c = "bath_volumes";
+    if !p.is_object() {
+        return Err(bad(c, "params must be an object"));
+    }
+    only(c, p, &["fixture", "things", "public", "standard"])?;
+    let public = flag(c, p, "public")?;
+    let names: Vec<&str> = bath::rule_sets().iter().map(|r| r.standard.as_str()).collect();
+    let standard = choice(c, p, "standard", &names, bath::DEFAULT)?;
+    let set = bath::rule_set(standard).ok_or_else(|| bad(c, format!("no rules for `{standard}` in data/bath-volumes.json")))?;
+    let f = p.get("fixture").filter(|v| v.is_object()).ok_or_else(|| bad(c, "`fixture` {outline | shower, floor?, rim?} is required"))?;
+    let at = |e: String| format!("fixture: {e}");
+    only(c, f, &["outline", "shower", "floor", "rim"]).map_err(at)?;
+    let fixture = match (f.get("outline").filter(|v| !v.is_null()), point_opt(c, f, "shower").map_err(at)?) {
+        (Some(_), None) => {
+            let ring = points(c, f, "outline").map_err(at)?;
+            if ring.len() < 3 || geom::area(&ring).abs() < 1.0 {
+                return Err(bad(c, "fixture: `outline` needs 3 points or more around an area"));
+            }
+            Fixture::Outline(ring)
+        }
+        (None, Some(s)) => Fixture::Shower(s),
+        _ => return Err(bad(c, "fixture: give `outline` (a tub, tray or recess) or `shower` (a shower with no tray), one of them")),
+    };
+    let floor = within(c, f, "floor", 0.0, -MAX_COORD, MAX_COORD).map_err(at)?;
+    let rim = within(c, f, "rim", 0.0, 0.0, 10_000.0).map_err(at)?;
+    let b = Bath { fixture, floor, rim };
+    let list = match p.get("things") {
+        Some(Value::Array(a)) if !a.is_empty() && a.len() <= 5000 => a,
+        _ => return Err(bad(c, "`things` is a list of 1 to 5000 things, each {kind, at: [x, y, z]}")),
+    };
+    const KEYS: &[&str] = &["name", "kind", "at", "ip", "class", "supply", "voltage", "rcd", "serving"];
+    let mut out = Vec::new();
+    let mut failing = Vec::new();
+    for (i, item) in list.iter().enumerate() {
+        let at = |e: String| format!("things[{i}]: {e}");
+        let o = item.as_object().ok_or_else(|| bad(c, format!("things[{i}] must be an object")))?;
+        if let Some(k) = o.keys().find(|k| !KEYS.contains(&k.as_str())) {
+            return Err(bad(c, format!("things[{i}]: unknown parameter `{k}`")));
+        }
+        let name = string(c, item, "name").map_err(at)?.unwrap_or_else(|| format!("#{}", i + 1));
+        if name.chars().count() > MAX_TEXT {
+            return Err(bad(c, format!("things[{i}]: `name` is longer than {MAX_TEXT} characters")));
+        }
+        let kind = choice(c, item, "kind", KINDS, "").map_err(at)?;
+        if kind.is_empty() {
+            return Err(bad(c, at(format!("`kind` ({}) is required", KINDS.join(", ")))));
+        }
+        let point = item.get("at").and_then(point3).ok_or_else(|| bad(c, at("`at` [x, y, z] in mm is required".into())))?;
+        let ip = match item.get("ip").filter(|v| !v.is_null()) {
+            None => None,
+            Some(v) => Some(
+                v.as_u64().filter(|n| *n <= 8).ok_or_else(|| bad(c, at(format!("`ip` is the IP code's second digit, 0 to 8, got {v}"))))?
+                    as u8,
+            ),
+        };
+        let class = choice(c, item, "class", CLASSES, "").map_err(at)?;
+        let supply = choice(c, item, "supply", SUPPLIES, "mains").map_err(at)?;
+        let optional = |key: &str, hi: f64| -> Result<Option<f64>, String> {
+            match item.get(key).filter(|v| !v.is_null()) {
+                None => Ok(None),
+                Some(_) => within(c, item, key, 0.0, 0.0, hi).map(Some).map_err(at),
+            }
+        };
+        let thing = Thing {
+            at: point,
+            kind: kind.to_string(),
+            ip,
+            class: (!class.is_empty()).then(|| class.to_string()),
+            supply: supply.to_string(),
+            voltage: optional("voltage", 1.0e6)?,
+            rcd: optional("rcd", 1.0e6)?,
+            serving: flag(c, item, "serving").map_err(at)?,
+        };
+        let v = set.check(&b, &thing, public);
+        let ok = v.allowed && (v.volume.is_none() || v.ip_ok == Some(true));
+        if !ok {
+            failing.push(name.clone());
+        }
+        out.push(json!({
+            "name": name,
+            "kind": kind,
+            "volume": v.volume,
+            "ip_min": v.ip_min,
+            "ip_ok": v.ip_ok,
+            "allowed": v.allowed,
+            "ok": ok,
+            "why": v.why,
+            "sources": v.sources,
+        }));
+    }
+    Ok(json!({
+        "standard": set.standard,
+        "standard_source": set.source,
+        "things": out,
+        "failing": failing,
+        "public": public,
         "not_covered": set.not_covered,
     }))
 }
@@ -6985,6 +7755,35 @@ fn grid(s: &mut Session, p: &Value) -> R {
     Ok(json!({"id": id, "name": name}))
 }
 
+fn property_line(s: &mut Session, p: &Value) -> R {
+    let c = "property_line";
+    only(c, p, &["points", "name", "level"])?;
+    let m = &s.model;
+    let level = level_param(c, m, p, "level")?;
+    let mut pts = points(c, p, "points")?;
+    if pts.len() > 3 && pts.first() == pts.last() {
+        pts.pop();
+    }
+    let name = match string(c, p, "name")? {
+        Some(n) => n,
+        None => {
+            let word = m.language.word(bimcraft_i18n::msg!("Property Line"));
+            let taken: BTreeSet<&str> = m
+                .elements
+                .values()
+                .filter_map(|e| match e {
+                    Element::PropertyLine(pl) => Some(pl.name.as_str()),
+                    _ => None,
+                })
+                .collect();
+            (1..).map(|k| format!("{word} {k}")).find(|n| !taken.contains(n.as_str())).unwrap_or_default()
+        }
+    };
+    let area = m2(geom::area(&pts).abs());
+    let id = s.model_mut().insert(Element::PropertyLine(PropertyLine { name: name.clone(), level, points: pts }));
+    Ok(json!({"id": id, "name": name, "area_m2": area}))
+}
+
 fn room_separator(s: &mut Session, p: &Value) -> R {
     let c = "room_separator";
     let mut pts = points(c, p, "points")?;
@@ -7131,6 +7930,9 @@ fn reinforce_host(s: &mut Session, p: &Value) -> R {
     let weight: f64 = made.iter().flat_map(|(_, _, _, bars)| bars).map(|b| rebar::weight_kg(b.diameter, rebar::length(&b.path))).sum();
     let m = s.model_mut();
     for i in &old {
+        // A pinned bar the rule made goes as the others do, and its pin with it: the bars in its place are new elements.
+        let g = m.guid(*i);
+        m.pinned.remove(&g);
         m.elements.remove(*i);
     }
     let mut ids: Vec<Id> = Vec::new();
@@ -7285,9 +8087,15 @@ fn distribution_system(s: &mut Session, p: &Value) -> R {
     };
     let m = s.model_mut();
     if flag(c, p, "delete")? {
-        if m.distribution_systems.remove(&name).is_none() {
+        if !m.distribution_systems.contains_key(&name) {
             return Err(bad(c, format!("there's no distribution system `{name}`")));
         }
+        let boards = m.panels_in(&name);
+        if let Some(first) = boards.first() {
+            let more = if boards.len() > 1 { format!(" and {} more", boards.len() - 1) } else { String::new() };
+            return Err(bad(c, format!("distribution system `{name}` is the one board {first}{more} is on: change that first")));
+        }
+        m.distribution_systems.remove(&name);
         return Ok(json!({"deleted": name}));
     }
     let was = m.distribution_systems.get(&name).cloned();
@@ -7388,6 +8196,336 @@ fn wire_type(s: &mut Session, p: &Value) -> R {
     Ok(json!({"name": name, "wire_type": w}))
 }
 
+/// What a command is asked to do with a value that may be unset: leave it, take it away (`""`) or set it.
+enum Change<T> {
+    Keep,
+    Clear,
+    Set(T),
+}
+
+impl<T> Change<T> {
+    fn apply(self, to: &mut Option<T>) {
+        match self {
+            Change::Keep => {}
+            Change::Clear => *to = None,
+            Change::Set(v) => *to = Some(v),
+        }
+    }
+}
+
+/// `key` of `p` as a [`Change`]: not given, `""`, or what `parse` makes of it (`what`, said when it makes nothing).
+fn change<T>(c: &str, p: &Value, key: &str, what: &str, parse: impl FnOnce(&Value) -> Option<T>) -> Result<Change<T>, String> {
+    match p.get(key) {
+        v if absent(v) => Ok(Change::Keep),
+        Some(Value::String(t)) if t.trim().is_empty() => Ok(Change::Clear),
+        Some(v) => parse(v).map(Change::Set).ok_or_else(|| bad(c, format!("`{key}` must be {what}, or \"\" to take it away, got {v}"))),
+        None => Ok(Change::Keep),
+    }
+}
+
+/// `demand_factors`: the share of the load of the circuits of a classification that counts.
+fn demand_factors(s: &mut Session, p: &Value) -> R {
+    const MAX_CLASSES: usize = 256;
+    let c = "demand_factors";
+    only(c, p, &["class", "factor", "delete"])?;
+    let Some(class) = name_param(c, p, "class")? else {
+        return Ok(json!({"demand_factors": s.model.demand_factors}));
+    };
+    let m = s.model_mut();
+    if flag(c, p, "delete")? {
+        if m.demand_factors.remove(&class).is_none() {
+            return Err(bad(c, format!("there's no demand factor for `{class}`")));
+        }
+        return Ok(json!({"deleted": class}));
+    }
+    let was = m.demand_factors.get(&class).copied();
+    let factor = amount(c, p, "factor", "a share of the load")?
+        .or(was)
+        .ok_or_else(|| bad(c, "`factor` (above 0 up to 1) is required for a class that has none"))?;
+    if !m.demand_factors.contains_key(&class) && m.demand_factors.len() >= MAX_CLASSES {
+        return Err(bad(c, format!("the project holds demand factors for up to {MAX_CLASSES} classes")));
+    }
+    m.demand_factors.insert(class.clone(), factor);
+    Ok(json!({"class": class, "factor": factor}))
+}
+
+/// What a panel schedule says, as the commands return it.
+fn panel_schedule_json(m: &Model, id: Id) -> R {
+    use crate::panel_schedule as ps;
+    let Some(Element::PanelSchedule(v)) = m.elements.get(id) else {
+        return Err(format!("panel_schedule: element {id} is not a panel schedule"));
+    };
+    let l = ps::layout(m, v).map_err(|e| format!("panel_schedule: {e}"))?;
+    let kind = |k: ps::Kind| match k {
+        ps::Kind::Circuit => "circuit",
+        ps::Kind::Continues => "continues",
+        ps::Kind::Spare => "spare",
+        ps::Kind::Space => "space",
+    };
+    let rows: Vec<Value> =
+        l.rows.iter().map(|r| json!({"slot": r.slot, "kind": kind(r.kind), "circuit": r.circuit, "cells": r.cells})).collect();
+    let s = &l.summary;
+    Ok(json!({
+        "id": id,
+        "name": v.name,
+        "panel": m.elements.id(v.panel),
+        "template": v.template,
+        "header": l.header,
+        "columns": l.columns,
+        "rows": rows,
+        "summary": {
+            "classes": s.classes.iter().map(|k| json!({"class": k.class, "installed_va": k.installed_va, "factor": k.factor, "demand_va": k.demand_va})).collect::<Vec<_>>(),
+            "phases": s.phases.iter().map(|k| json!({"phase": k.phase.to_string(), "installed_va": k.installed_va, "demand_va": k.demand_va, "current_a": k.current_a})).collect::<Vec<_>>(),
+            "installed_va": s.installed_va,
+            "demand_va": s.demand_va,
+            "current_a": s.current_a,
+        },
+        "notes": l.notes,
+    }))
+}
+
+const PANEL_SCHEDULE_OPTIONS: &[&str] = &["name", "template", "show_spare", "show_space", "phase_columns", "scale", "notes"];
+const PANEL_SCHEDULE_EDITS: &[&str] = &["circuit", "description", "breaker", "phase", "demand_factor", "slot", "mark", "poles"];
+
+fn panel_schedule(s: &mut Session, p: &Value) -> R {
+    use crate::electrical;
+    use crate::panel_schedule::PanelSchedule;
+    let c = "panel_schedule";
+    let mut keys = vec!["id", "panel"];
+    keys.extend(PANEL_SCHEDULE_OPTIONS);
+    keys.extend(PANEL_SCHEDULE_EDITS);
+    only(c, p, &keys)?;
+    let given = |k: &str| !absent(p.get(k));
+    let m = &s.model;
+    // The options it is asked to have.
+    let optional_flag = |key: &str| -> Result<Option<bool>, String> {
+        match p.get(key) {
+            v if absent(v) => Ok(None),
+            Some(Value::Bool(b)) => Ok(Some(*b)),
+            Some(v) => Err(bad(c, format!("`{key}` must be true or false, got {v}"))),
+            None => Ok(None),
+        }
+    };
+    let (name, template, notes) = (name_param(c, p, "name")?, string(c, p, "template")?, string(c, p, "notes")?);
+    let (spare, space, phases, scale) = (
+        optional_flag("show_spare")?,
+        optional_flag("show_space")?,
+        optional_flag("phase_columns")?,
+        amount(c, p, "scale", "times its size")?,
+    );
+    let apply = |v: &mut PanelSchedule| {
+        if let Some(n) = &name {
+            v.name = n.clone();
+        }
+        if let Some(t) = &template {
+            v.template = t.trim().to_lowercase();
+        }
+        if let Some(b) = spare {
+            v.show_spare = b;
+        }
+        if let Some(b) = space {
+            v.show_space = b;
+        }
+        if let Some(b) = phases {
+            v.phase_columns = b;
+        }
+        if let Some(x) = scale {
+            v.scale = x;
+        }
+        if let Some(n) = &notes {
+            v.notes = n.clone();
+        }
+    };
+    let Some(idv) = p.get("id").filter(|v| !v.is_null()) else {
+        // Made.
+        if PANEL_SCHEDULE_EDITS.iter().any(|k| given(k)) {
+            return Err(bad(
+                c,
+                "`circuit`, `slot` and the keys that change a circuit need the `id` of the panel schedule they are edited in",
+            ));
+        }
+        let board = match p.get("panel") {
+            v if absent(v) => return Err(bad(c, "`panel` (a distribution board) is required, or the `id` of a panel schedule")),
+            Some(v) => element_id(c, m, v)?,
+            None => return Err(bad(c, "`panel` is required")),
+        };
+        electrical::board(m, board).ok_or_else(|| bad(c, format!("element {board} is not a distribution board")))?;
+        let mut v = PanelSchedule::new(String::new(), m.guid(board));
+        apply(&mut v);
+        if name.is_none() {
+            v.name = m.free_view_name(&format!("Panel Schedule {board}"), false);
+        }
+        let id = s.model_mut().insert(Element::PanelSchedule(v));
+        return panel_schedule_json(&s.model, id);
+    };
+    let id = element_id(c, m, idv)?;
+    let Some(Element::PanelSchedule(old)) = m.elements.get(id) else { return Err(bad(c, format!("element {id} is not a panel schedule"))) };
+    let board = m.elements.id(old.panel).ok_or_else(|| bad(c, "its board is gone"))?;
+    let editing = PANEL_SCHEDULE_EDITS.iter().any(|k| given(k));
+    let options = PANEL_SCHEDULE_OPTIONS.iter().any(|k| given(k)) || given("panel");
+    if editing && options {
+        return Err(bad(c, "change the schedule's options, or edit a circuit in it, in separate calls"));
+    }
+    if options {
+        let mut v = old.clone();
+        if let Some(b) = p.get("panel").filter(|v| !v.is_null()) {
+            let nb = element_id(c, m, b)?;
+            electrical::board(m, nb).ok_or_else(|| bad(c, format!("element {nb} is not a distribution board")))?;
+            v.panel = m.guid(nb);
+        }
+        apply(&mut v);
+        s.model_mut().elements.insert(id, Element::PanelSchedule(v));
+        return panel_schedule_json(&s.model, id);
+    }
+    if !editing {
+        return panel_schedule_json(m, id);
+    }
+    // A slot made a spare or a space.
+    if given("mark") {
+        let slot = match p.get("slot") {
+            Some(v) => v.as_u64().and_then(|n| u32::try_from(n).ok()).filter(|n| *n >= 1),
+            None => None,
+        }
+        .ok_or_else(|| bad(c, "`slot` (a whole number from 1) is required to mark"))?;
+        let by_slot = electrical::occupied(m, board);
+        let held = by_slot.get(&slot).copied();
+        let holds_devices = |cid: Id| matches!(m.elements.get(cid), Some(Element::Circuit(x)) if !x.devices.is_empty());
+        match (p.get("mark").and_then(Value::as_str), held) {
+            (Some("spare"), None) => {
+                let mut q = json!({"panel": board, "devices": [], "number": slot});
+                if let Some(n) = small(c, p, "poles")? {
+                    q["poles"] = json!(n);
+                }
+                circuit_of_model(s, &q)?;
+            }
+            (Some("spare"), Some(cid)) if !holds_devices(cid) => {}
+            (Some("space"), None) => {}
+            (Some("space"), Some(cid)) if !holds_devices(cid) => {
+                s.model_mut().elements.remove(cid);
+            }
+            (Some("spare" | "space"), Some(cid)) => {
+                return Err(bad(
+                    c,
+                    format!(
+                        "slot {slot} is circuit {cid}'s, which holds devices: take them out first (`circuit` `remove`), or move the circuit"
+                    ),
+                ));
+            }
+            _ => return Err(bad(c, "`mark` is `spare` or `space`")),
+        }
+        return panel_schedule_json(&s.model, id);
+    }
+    // A circuit edited in the view.
+    if given("poles") {
+        return Err(bad(c, "`poles` only goes with `mark: spare`; change a circuit's poles with `circuit`"));
+    }
+    let target = match p.get("circuit") {
+        v if absent(v) => return Err(bad(c, "`circuit` (the circuit to edit) is required")),
+        Some(v) => element_id(c, m, v)?,
+        None => return Err(bad(c, "`circuit` is required")),
+    };
+    let Some(Element::Circuit(x)) = m.elements.get(target) else { return Err(bad(c, format!("element {target} is not a circuit"))) };
+    if x.panel != old.panel {
+        return Err(bad(c, format!("circuit {target} is not on board {board}")));
+    }
+    let mut q = json!({"id": target});
+    for (from, to) in [("description", "name"), ("breaker", "rating"), ("demand_factor", "demand_factor")] {
+        if let Some(v) = p.get(from).filter(|v| !v.is_null()) {
+            q[to] = v.clone();
+        }
+    }
+    if given("slot") && given("phase") {
+        return Err(bad(c, "give a `slot` or a `phase`, not both: a phase picks the slot"));
+    }
+    if let Some(v) = p.get("slot").filter(|v| !v.is_null()) {
+        q["number"] = v.clone();
+    }
+    if let Some(v) = p.get("phase").filter(|v| !v.is_null()) {
+        let phases =
+            electrical::board_phases(m, board).ok_or_else(|| bad(c, format!("board {board} has no distribution system, so no phases")))?;
+        let letter = v.as_str().map(|t| t.trim().to_uppercase());
+        let want = (0..phases).find(|k| letter.as_deref() == Some(electrical::phase_letter(*k).to_string().as_str())).ok_or_else(|| {
+            bad(
+                c,
+                format!(
+                    "`phase` is one of {}, not {v}",
+                    (0..phases).map(|k| electrical::phase_letter(k).to_string()).collect::<Vec<_>>().join(", ")
+                ),
+            )
+        })?;
+        if electrical::slot_phase(x.number, phases) != want {
+            let n = electrical::free_number(m, board, x.poles, Some(want), Some(target)).ok_or_else(|| {
+                bad(
+                    c,
+                    format!(
+                        "board {board} has no free slots for a circuit of {} pole(s) that start on phase {}",
+                        x.poles,
+                        electrical::phase_letter(want)
+                    ),
+                )
+            })?;
+            q["number"] = json!(n);
+        }
+    }
+    circuit_of_model(s, &q)?;
+    panel_schedule_json(&s.model, id)
+}
+
+fn panel(s: &mut Session, p: &Value) -> R {
+    use crate::electrical;
+    let c = "panel";
+    only(c, p, &["id", "distribution", "mains", "slots", "supply_from"])?;
+    let m = &s.model;
+    let Some(given) = p.get("id").filter(|v| !absent(Some(v))) else {
+        if p.as_object().is_some_and(|o| !o.is_empty()) {
+            return Err(bad(c, "`id` is required: the board to change (give none to list the boards)"));
+        }
+        let boards: Vec<Value> =
+            m.elements.iter().filter_map(|(id, _)| electrical::board(m, *id)).map(|(id, _)| board_json(m, id)).collect();
+        return Ok(json!({"panels": boards}));
+    };
+    let id = serde_json::from_value::<Guid>(given.clone())
+        .ok()
+        .and_then(|g| m.elements.id(g))
+        .ok_or_else(|| bad(c, format!("no element {given}")))?;
+    let Some((_, board)) = electrical::board(m, id) else {
+        let what = match m.elements.get(id) {
+            Some(Element::Component(comp)) => comp.family.clone(),
+            Some(e) => e.category().to_string(),
+            None => String::new(),
+        };
+        return Err(bad(c, format!("element {id} is a {what}, not electrical equipment: `panel` is for distribution boards")));
+    };
+    let mut data = board.panel.clone().unwrap_or_default();
+    change(c, p, "distribution", "the name of a distribution system", |v| v.as_str().map(|t| t.trim().to_string()))?
+        .apply(&mut data.distribution);
+    change(c, p, "mains", "amperes", |v| v.as_f64().filter(|x| x.is_finite()))?.apply(&mut data.mains);
+    change(c, p, "slots", "a whole number of breakers", |v| v.as_u64().and_then(|n| u32::try_from(n).ok()))?.apply(&mut data.slots);
+    change(c, p, "supply_from", "the id or GUID of a board", |v| {
+        serde_json::from_value::<Guid>(v.clone()).ok().and_then(|g| m.elements.id(g)).map(|i| m.guid(i))
+    })?
+    .apply(&mut data.supply_from);
+    if let Some(Element::Component(comp)) = s.model_mut().elements.get_mut(id) {
+        comp.panel = Some(data.clone()).filter(|d| !d.is_empty());
+    }
+    Ok(board_json(&s.model, id))
+}
+
+/// A distribution board as `panel` says it: its data, the board that supplies it by id, and the boards it feeds.
+fn board_json(m: &Model, id: Id) -> Value {
+    let Some((_, comp)) = crate::electrical::board(m, id) else { return Value::Null };
+    let data = comp.panel.clone().unwrap_or_default();
+    let totals = crate::electrical::board_totals(m, id);
+    json!({
+        "id": id, "family": comp.family, "type": comp.type_name,
+        "distribution": data.distribution, "mains": data.mains, "slots": data.slots,
+        "supply_from": data.supply_from.and_then(|g| m.elements.id(g)), "feeds": m.panel_feeds(id),
+        "circuits": crate::electrical::circuits_of(m, id),
+        "installed_va": totals.as_ref().map(|t| t.installed_va), "demand_va": totals.as_ref().map(|t| t.demand_va),
+        "current_a": totals.as_ref().and_then(|t| t.current_a),
+    })
+}
+
 fn wall(s: &mut Session, p: &Value) -> R {
     let c = "wall";
     let mut pts = points(c, p, "points")?;
@@ -7462,6 +8600,11 @@ fn flip(s: &mut Session, p: &Value) -> R {
     if let Some(id) = ids.iter().find(|id| m.wall(**id).is_none()) {
         return Err(bad(c, format!("{} {id} isn't a wall", m.elements.get(id).map_or("element", Element::category))));
     }
+    // A flipped wall's doors and windows turn round with it: a pinned one stops it.
+    let guids: BTreeSet<Guid> = ids.iter().map(|id| m.guid(*id)).collect();
+    let mut blocked = ids.clone();
+    blocked.extend(hosted_openings(m, &guids));
+    refuse_pinned(c, m, &blocked, "flip")?;
     let m = s.model_mut();
     let lengths: BTreeMap<Guid, f64> = ids.iter().filter_map(|id| Some((m.guid(*id), Axis::of(m.wall(*id)?).length()))).collect();
     for (id, e) in m.elements.iter_mut() {
@@ -7473,6 +8616,15 @@ fn flip(s: &mut Session, p: &Value) -> R {
             Element::Door(o) | Element::Window(o) if lengths.contains_key(&o.host) => {
                 o.offset = lengths.get(&o.host).copied().unwrap_or_default() - o.offset;
                 (o.flip_facing, o.flip_hand) = (!o.flip_facing, !o.flip_hand);
+            }
+            // On a side of the flipped wall: the same face, which is now its other side, as far from its other end.
+            Element::Component(cp) => {
+                if let Some(Hosted { host: HostRef::Face { element, face }, uv, .. }) = &mut cp.host
+                    && let Some(length) = lengths.get(element)
+                {
+                    uv[0] = length - uv[0];
+                    *face = face.other_side();
+                }
             }
             _ => {}
         }
@@ -8700,6 +9852,7 @@ fn column(s: &mut Session, p: &Value) -> R {
 }
 
 fn structural_column(s: &mut Session, p: &Value) -> R {
+    from_catalogue(s, p, "structuralcolumn");
     let e = stood_of(&s.model, p, "structuralcolumn")?;
     Ok(json!({"id": s.model_mut().insert(e)}))
 }
@@ -8793,10 +9946,48 @@ fn cabling(s: &mut Session, p: &Value) -> R {
 }
 
 fn chain(s: &mut Session, p: &Value, category: &str) -> R {
+    from_catalogue(s, p, category);
     let made = runs_of(&s.model, p, category)?;
     let m = s.model_mut();
     let ids: Vec<Id> = made.into_iter().map(|e| m.insert(e)).collect();
     Ok(json!({"ids": ids}))
+}
+
+/// A steel member's take-off for its JSON (and so its schedule): its section's name, its area (cm²), its weight per metre
+/// (kg/m, in steel) and its weight (kg) over `length` mm.
+fn steel_take_off(extra: &mut Map<String, Value>, p: &crate::model::Profile, (width, depth): (f64, f64), length: f64) {
+    let name = if p.name.is_empty() {
+        let size = |x: f64| format!("{}", hundredth(x));
+        format!("{} {} x {}", p.shape.word(), size(depth), size(width))
+    } else {
+        p.name.clone()
+    };
+    let area = p.area(width, depth);
+    let per_metre = area * 1e-6 * crate::profiles::STEEL_DENSITY;
+    extra.insert("profile".into(), json!(name));
+    extra.insert("section_area_cm2".into(), json!(hundredth(area / 100.0)));
+    extra.insert("weight_kg_m".into(), json!(hundredth(per_metre)));
+    extra.insert("weight_kg".into(), json!(hundredth(per_metre * length / 1000.0)));
+}
+
+/// A structural column's or a beam's `type` that the project hasn't got and the catalogue has (`IPE 300`): made, under the
+/// name it was given, before the elements of it are (a beam's in the library's steel). The command rolls it back with them.
+fn from_catalogue(s: &mut Session, p: &Value, category: &str) {
+    let Some(name) = p.get("type").and_then(Value::as_str) else { return };
+    let has = match category {
+        "structuralcolumn" => s.model.types.structural_column.contains_key(name),
+        "beam" => s.model.types.runs.get("beam").is_some_and(|t| t.contains_key(name)),
+        _ => return,
+    };
+    let Some((width, depth, profile)) = crate::profiles::catalogue(name).filter(|_| !has) else { return };
+    let m = s.model_mut();
+    if category == "beam" {
+        let material = steel_material(&m.language, &m.materials).unwrap_or_default();
+        let t = crate::model::RunType { width, depth, round: false, material, profile: Some(profile) };
+        m.types.runs.entry("beam".into()).or_default().insert(name.to_string(), t);
+    } else {
+        m.types.structural_column.insert(name.to_string(), ColumnType { width, depth, round: false, profile: Some(profile) });
+    }
 }
 
 /// The run category a command makes, if it makes runs (`pipe`, `cable_tray`): `command_of`'s other way.
@@ -9319,6 +10510,9 @@ fn edit_boundary(s: &mut Session, p: &Value) -> R {
     let m = &s.model;
     let id = id_opt(c, p, "id")?.ok_or_else(|| bad(c, "`id`, the floor, ceiling, roof or shaft to edit, is required"))?;
     let e = m.elements.get(id).cloned().ok_or_else(|| bad(c, format!("no element {id}")))?;
+    if let Some(lid) = m.elements.id(id) {
+        refuse_pinned(c, m, &[lid], "change")?;
+    }
     if let Element::Roof(Roof { extrusion: Some(_), .. }) = e {
         return Err(bad(c, format!("{id} is an extrusion roof: change its profile, `modify` its `extrusion`")));
     }
@@ -9744,6 +10938,8 @@ fn section(s: &mut Session, p: &Value) -> R {
         end,
         depth,
         crop: None,
+        reference: None,
+        mark: None,
         graphics: Graphics::default(),
     }));
     Ok(json!({"id": id, "name": name}))
@@ -9758,6 +10954,61 @@ fn elevation(s: &mut Session, p: &Value) -> R {
         None => None,
     };
     let nothing = || bad(c, "there are no walls or floors to look at; draw some, or give `start` and `end`");
+    // The line it looks at: an element's edge, or one given.
+    let reference = match (p.get("on").filter(|v| !v.is_null()), p.get("reference").filter(|v| !v.is_null())) {
+        (Some(_), Some(_)) => return Err(bad(c, "give `on` or `reference`, not both")),
+        (None, None) => None,
+        (on, given) => {
+            let at = at.ok_or_else(|| bad(c, "`at` [x, y] is required with `on` or `reference`: the side to look from"))?;
+            let line = match (on, given) {
+                (Some(on), _) => {
+                    let g = serde_json::from_value::<Guid>(on.clone())
+                        .map_err(|_| bad(c, format!("`on` is an element's id or GUID, not {on}")))?;
+                    // The project's element, or a link's, in the model the views draw.
+                    let seen = if s.model.elements.id(g).is_some() { Arc::clone(&s.model) } else { crate::link::seen(&s.model) };
+                    let id = seen.elements.id(g).ok_or_else(|| bad(c, format!("there is no element {on}")))?;
+                    let e = seen.elements.get(id).ok_or_else(|| bad(c, format!("there is no element {on}")))?;
+                    crate::elevation::reference(&seen, id, at).ok_or_else(|| {
+                        bad(
+                            c,
+                            format!("{} {id} has no straight edge to look at; pick a straight wall, a line or a slab's edge", e.category()),
+                        )
+                    })?
+                }
+                (None, Some(v)) => match v.as_array().map(Vec::as_slice) {
+                    Some([a, b]) => point(a).zip(point(b)),
+                    _ => None,
+                }
+                .ok_or_else(|| bad(c, format!("`reference` is a line [[x, y], [x, y]] in mm, got {v}")))?,
+                (None, None) => return Err(bad(c, "give `on` or `reference`")),
+            };
+            if line.0.dist(line.1) <= TOL {
+                return Err(bad(c, "`reference` has no length: give a line to look at"));
+            }
+            let line = (micron(line.0), micron(line.1));
+            Some((line, crate::elevation::place(line, at)))
+        }
+    };
+    if let Some((line, mid)) = reference {
+        if facing.is_some() || p.get("start").is_some_and(|v| !v.is_null()) || p.get("end").is_some_and(|v| !v.is_null()) {
+            return Err(bad(c, "an elevation on a reference looks square at it: leave out `facing`, `start` and `end`"));
+        }
+        let (start, end) =
+            crate::elevation::new_line(line, mid).ok_or_else(|| bad(c, "`at` is on the reference; give a point beside it"))?;
+        let name = name.unwrap_or_else(|| m.free_view_name(m.language.word("Elevation"), true));
+        let v = Section {
+            name: name.clone(),
+            start: micron(start),
+            end: micron(end),
+            depth,
+            crop: None,
+            reference: Some([line.0, line.1]),
+            mark: None,
+            graphics: Graphics::default(),
+        };
+        let id = s.model_mut().insert(Element::Elevation(v));
+        return Ok(json!({"id": id, "name": name, "at": mid, "reference": [line.0, line.1]}));
+    }
     let lines: Vec<(String, P2, P2)> = match (point_opt(c, p, "start")?, point_opt(c, p, "end")?) {
         (Some(a), Some(b)) => vec![(name.unwrap_or_else(|| m.free_view_name(m.language.word("Elevation"), true)), a, b)],
         (None, None) => {
@@ -9788,7 +11039,16 @@ fn elevation(s: &mut Session, p: &Value) -> R {
         .into_iter()
         .map(|(name, start, end)| {
             (
-                m.insert(Element::Elevation(Section { name: name.clone(), start, end, depth, crop: None, graphics: Graphics::default() })),
+                m.insert(Element::Elevation(Section {
+                    name: name.clone(),
+                    start,
+                    end,
+                    depth,
+                    crop: None,
+                    reference: None,
+                    mark: None,
+                    graphics: Graphics::default(),
+                })),
                 name,
             )
         })
@@ -9852,27 +11112,40 @@ fn crop(s: &mut Session, p: &Value) -> R {
                 None => v.crop = Some(render::section_heights(m, view)),
             }
             let crop = v.crop;
-            let m = s.model_mut();
-            let guid = m.guid(view);
-            if let Some(Element::Section(old) | Element::Elevation(old)) = m.elements.get_mut(view) {
-                *old = v;
+            // An elevation's mark stays where it stands while its line changes under it.
+            if (shift != 0.0 || region.is_some_and(|r| r.is_some()))
+                && let Some(Element::Elevation(old)) = m.elements.get(view)
+            {
+                v.mark = Some(micron(crate::elevation::mark(old)));
             }
-            // What's noted in the view keeps its spot over the model.
-            for e in m.elements.values_mut() {
-                match e {
-                    Element::Text(n) if n.view == guid => {
-                        n.at.0 -= shift;
-                        if let Some(l) = &mut n.leader {
-                            l.0 -= shift;
-                        }
-                    }
-                    Element::Spot(sp) if sp.view == guid => sp.at.0 -= shift,
-                    _ => {}
-                }
-            }
+            view_line(s.model_mut(), view, v, shift);
             Ok(json!({"view": view, "crop": crop}))
         }
         _ => Err(bad(c, format!("{} isn't a plan, a section or an elevation; only those crop", view_title(m, view)))),
+    }
+}
+
+/// Section or elevation `view` becomes `v`, its start having moved `shift` mm along its line: what's noted in the view
+/// keeps its spot over the model.
+fn view_line(m: &mut Model, view: Id, v: Section, shift: f64) {
+    let guid = m.guid(view);
+    if let Some(Element::Section(old) | Element::Elevation(old)) = m.elements.get_mut(view) {
+        *old = v;
+    }
+    if shift == 0.0 {
+        return;
+    }
+    for e in m.elements.values_mut() {
+        match e {
+            Element::Text(n) if n.view == guid => {
+                n.at.0 -= shift;
+                if let Some(l) = &mut n.leader {
+                    l.0 -= shift;
+                }
+            }
+            Element::Spot(sp) if sp.view == guid => sp.at.0 -= shift,
+            _ => {}
+        }
     }
 }
 
@@ -10042,6 +11315,11 @@ fn view_scale(s: &mut Session, p: &Value) -> R {
     if let Some(scale) = scale_param(c, p)? {
         own_to_set(c, &s.model, view, Group::Scale, "scale")?;
         change_graphics(s, view, |g| g.scale = Some(scale));
+        // Its viewports on sheets follow, when one has their scale to take: a view that already has this
+        // scale leaves the model as it was, and is no undo step.
+        if sheet::follows_scale(&s.model, view, scale) {
+            sheet::follow_scale(s.model_mut(), view, scale);
+        }
     }
     let m = &s.model;
     let now = graphics::scale_of(m, view);
@@ -10080,6 +11358,31 @@ fn visual_style(s: &mut Session, p: &Value) -> R {
 
 fn view_detail(s: &mut Session, p: &Value) -> R {
     let c = "detail";
+    // A 3D view's (F8: which of a family's forms it draws): `{3D}` is the default 3D view, made when its level first changes.
+    let three_d = match p.get("view") {
+        Some(Value::String(n)) if n.eq_ignore_ascii_case("{3D}") || n.eq_ignore_ascii_case("3D") => Some(s.model.default_3d()),
+        Some(_) => view_param(c, &s.model, p, false).ok().filter(|v| matches!(s.model.elements.get(v), Some(Element::View3D(_)))).map(Some),
+        None => None,
+    };
+    if let Some(view) = three_d {
+        let level = detail_param(c, p)?;
+        if let (Some(_), Some(v)) = (level, view) {
+            own_to_set(c, &s.model, v, Group::Detail, "detail level")?;
+        }
+        let has = |view: Option<Id>, m: &Model| {
+            view.and_then(|v| graphics::graphics_of(m, v)).map_or_else(Default::default, |g| g.resolved(m).detail)
+        };
+        let view = match (level, view) {
+            (Some(level), view) if level != has(view, &s.model) => {
+                let v = view.unwrap_or_else(|| s.model_mut().insert(Element::View3D(View3D::default_view())));
+                change_graphics(s, v, |g| g.detail = level);
+                Some(v)
+            }
+            (_, view) => view,
+        };
+        let m = &s.model;
+        return Ok(json!({"view": view, "name": view.and_then(|v| m.view_name(v)), "detail": has(view, m)}));
+    }
     let view = scaled_view(c, &s.model, p)?;
     if let Some(level) = detail_param(c, p)? {
         own_to_set(c, &s.model, view, Group::Detail, "detail level")?;
@@ -10192,7 +11495,27 @@ fn title_values(s: &mut Session, p: &Value) -> R {
 fn title_block(s: &mut Session, p: &Value) -> R {
     use crate::titleblock::{self, TitleBlock};
     let c = "title_block";
-    only(c, p, &["name", "like", "rename", "delete", "path", "units", "width", "height", "font", "lines", "fills", "texts", "fields"])?;
+    only(
+        c,
+        p,
+        &[
+            "name",
+            "like",
+            "rename",
+            "delete",
+            "path",
+            "units",
+            "width",
+            "height",
+            "font",
+            "drawing_area",
+            "template_border",
+            "lines",
+            "fills",
+            "texts",
+            "fields",
+        ],
+    )?;
     let Some(name) = name_param(c, p, "name")? else {
         let auto: Map<String, Value> = titleblock::AUTO.iter().map(|(k, what)| ((*k).to_string(), json!(what))).collect();
         return Ok(json!({"title_blocks": s.model.title_blocks, "values": s.model.title_values, "auto": auto}));
@@ -10237,7 +11560,7 @@ fn title_block(s: &mut Session, p: &Value) -> R {
         }
         // The fields it had keep their labels, whose and defaults where the drawing still names them.
         let fields = read.fields.iter().map(|f| t.field(&f.key).cloned().unwrap_or_else(|| f.clone())).collect();
-        t = TitleBlock { fields, ..read };
+        t = TitleBlock { fields, drawing_area: t.drawing_area, template_border: t.template_border, ..read };
         left_out = out;
     } else if p.get("units").is_some() {
         return Err(bad(c, "`units` is the unit of the DXF `path` names"));
@@ -10245,7 +11568,7 @@ fn title_block(s: &mut Session, p: &Value) -> R {
     // What's given goes over it, read as a file reads one: a key it hasn't is an error.
     let mut v = serde_json::to_value(&t).map_err(|e| bad(c, e))?;
     if let Some(o) = v.as_object_mut() {
-        for key in ["width", "height", "font", "lines", "fills", "texts", "fields"] {
+        for key in ["width", "height", "font", "drawing_area", "template_border", "lines", "fills", "texts", "fields"] {
             match p.get(key) {
                 None => {}
                 Some(Value::Null) => {
@@ -10331,12 +11654,23 @@ fn place(s: &mut Session, p: &Value) -> R {
             .ok_or_else(|| bad(c, format!("`view`: {v} is not a plan, a section, an elevation, a schedule or a 3D view")))?,
         None => return Err(bad(c, "`view`, a level's, section's, elevation's, schedule's or 3D view's name or id, is required")),
     };
-    // The view's own scale, unless told another; 1 : 100 for a view with none.
-    let scale = scale.unwrap_or_else(|| graphics::scale_of(&s.model, view));
-    let at = at.unwrap_or_else(|| sheet::spot(&s.model, sheet, view, scale));
+    // The view's own scale, unless told another; an unscaled 3D view's, one that fits the paper.
+    let own = scale.is_none();
+    let scale = scale.unwrap_or_else(|| sheet::default_scale(&s.model, sheet, view));
+    let at = match at {
+        Some(at) => at,
+        None => sheet::automatic_center(&s.model, sheet, view, scale).map_err(|why| bad(c, why))?,
+    };
+    // Off the paper, by hand or for want of room on it, it goes there all the same, and the reply says so.
+    let warning = sheet::off_paper(&s.model, sheet, view, scale, at);
     let (sheet, view) = (s.model.guid(sheet), s.model.guid(view));
-    let id = s.model_mut().insert(Element::Viewport(Viewport { sheet, view, at, scale }));
-    Ok(json!({"id": id, "at": at}))
+    // Told another, it keeps that one: only a viewport at its view's scale follows the view.
+    let id = s.model_mut().insert(Element::Viewport(Viewport { sheet, view, at, scale, follow_scale: own }));
+    let mut out = json!({"id": id, "at": at, "scale": scale});
+    if let Some(w) = warning {
+        out["warning"] = json!(w);
+    }
+    Ok(out)
 }
 
 fn material(s: &mut Session, p: &Value) -> R {
@@ -10684,6 +12018,445 @@ struct Patches {
     symbols_replaced: usize,
     symbols_patched: Vec<Id>,
     symbols_deleted: Vec<Id>,
+    planes_replaced: usize,
+    planes_patched: Vec<Id>,
+    planes_deleted: Vec<String>,
+    lines_replaced: usize,
+    lines_patched: Vec<Id>,
+    lines_deleted: Vec<String>,
+    dimensions_replaced: usize,
+    dimensions_patched: Vec<Id>,
+    dimensions_deleted: Vec<Id>,
+    /// Dimensions taken away with what they measured to, or for measuring to nothing (`invalid_dimensions`).
+    dimensions_dropped: usize,
+    /// Parameters `parameter` renamed, from and to.
+    params_renamed: Vec<(String, String)>,
+    /// What changes the components of the family: values moved onto them or off them, renamed, taken away.
+    component_ops: Vec<ComponentOp>,
+    /// Nested families loaded (by name), taken away; nested instances replaced (how many), patched, added, deleted.
+    nested_loaded: Vec<String>,
+    nested_deleted: Vec<String>,
+    instances_replaced: usize,
+    instances_patched: Vec<Id>,
+    instances_added: usize,
+    instances_deleted: Vec<Id>,
+    /// The shared nested families a load asked about (the target had them otherwise).
+    shared_asked: Vec<String>,
+}
+
+/// A change to one component's (or family door's or window's) own values, which an edit of its family's parameters makes.
+enum ComponentOp {
+    Set(Id, String, Value),
+    Remove(Id, String),
+    Rename(Id, String, String),
+}
+
+impl ComponentOp {
+    fn apply(&self, m: &mut Model) {
+        let id = match self {
+            ComponentOp::Set(id, ..) | ComponentOp::Remove(id, _) | ComponentOp::Rename(id, ..) => *id,
+        };
+        let Some(ps) = m.elements.get_mut(id).and_then(Element::params_mut) else { return };
+        match self {
+            ComponentOp::Set(_, k, v) => {
+                ps.insert(k.clone(), v.clone());
+            }
+            ComponentOp::Remove(_, k) => {
+                ps.remove(k);
+            }
+            ComponentOp::Rename(_, from, to) => {
+                if let Some(v) = ps.remove(from) {
+                    ps.insert(to.clone(), v);
+                }
+            }
+        }
+    }
+}
+
+/// An element of a family: its id, its type and its own values.
+type FamilyUser<'a> = (Id, &'a str, Option<&'a BTreeMap<String, Value>>);
+
+/// Each element of family `family`, with its type and its own values.
+fn family_users<'a>(m: &'a Model, family: &str) -> Vec<FamilyUser<'a>> {
+    m.elements.iter().filter_map(|(id, e)| e.family().filter(|(f, _)| *f == family).map(|(_, t)| (*id, t, e.params()))).collect()
+}
+
+/// One parameter of family `f` (`family` in `m`) edited as Revit's Edit Parameter does, or added: `patch` merged over what
+/// it holds (`null` taking a field away), then renamed (`rename`, keeping its GUID, every formula and reference following
+/// it) and switched between type and instance with what its types and components hold moved, not lost: type to instance,
+/// each component takes its type's value (a type with none placed loses it); instance to type, each type takes the value
+/// its components agree on, refused where they don't. A shared parameter's name and kind are its definition's.
+fn patch_parameter(
+    c: &str,
+    family: &str,
+    f: &mut crate::family::Family,
+    m: &Model,
+    patch: &Value,
+    patches: &mut Patches,
+) -> Result<(), String> {
+    let Value::Object(map) = patch else {
+        return Err(bad(c, format!("`parameter` must be {{name, …the parameter's fields}}, not {patch}")));
+    };
+    let name = map.get("name").and_then(Value::as_str).map(str::trim).filter(|n| !n.is_empty());
+    let name = name.ok_or_else(|| bad(c, "`parameter` needs the parameter's `name`"))?.to_string();
+    let mut fields = map.clone();
+    fields.remove("name");
+    let rename = match fields.remove("rename") {
+        None | Some(Value::Null) => None,
+        Some(Value::String(to)) if !to.trim().is_empty() => Some(to.trim().to_string()),
+        Some(v) => return Err(bad(c, format!("`parameter`: `rename` is the parameter's new name, not {v}"))),
+    };
+    if let Some(g) = fields.get("group").filter(|g| !g.is_null())
+        && serde_json::from_value::<crate::family::Group>(g.clone()).is_err()
+    {
+        let groups: Vec<String> = crate::family::Group::ALL.iter().map(|g| json!(g).as_str().unwrap_or_default().to_string()).collect();
+        return Err(bad(c, format!("parameter `{name}`: `group` is one of {}, not {g}", groups.join(", "))));
+    }
+    let at = f.parameters.iter().position(|q| q.name == name);
+    let was = at.and_then(|i| f.parameters.get(i).cloned());
+    let mut whole = match &was {
+        Some(q) => serde_json::to_value(q).map_err(|e| bad(c, e))?,
+        None => json!({}),
+    };
+    merge(&mut whole, &Value::Object(fields));
+    whole["name"] = json!(name);
+    let now: crate::family::Parameter =
+        serde_json::from_value(whole).map_err(|e| bad(c, format!("parameter `{name}` of family \"{family}\": {e}")))?;
+    if let Some(q) = &was
+        && q.shared.is_some()
+        && q.shared == now.shared
+    {
+        if q.kind != now.kind {
+            return Err(bad(
+                c,
+                format!("parameter `{name}` is shared: its kind is its shared definition's; take `shared` off to change it"),
+            ));
+        }
+        if rename.is_some() {
+            return Err(bad(
+                c,
+                format!("parameter `{name}` is shared: its name is its shared definition's; take `shared` off to rename it"),
+            ));
+        }
+    }
+    let switched = was.as_ref().is_some_and(|q| q.instance != now.instance);
+    match at {
+        Some(i) => f.parameters[i] = now.clone(),
+        None => f.parameters.push(now.clone()),
+    }
+    let users = family_users(m, family);
+    if switched && now.instance {
+        // Type to instance: each component takes its type's value as its own, unless it holds one.
+        for (id, ty, own) in &users {
+            if own.is_some_and(|o| o.contains_key(&name)) {
+                continue;
+            }
+            if let Some(v) = f.types.get(*ty).and_then(|t| t.get(&name)) {
+                patches.component_ops.push(ComponentOp::Set(*id, name.clone(), v.clone()));
+            }
+        }
+        f.types.values_mut().for_each(|t| {
+            t.remove(&name);
+        });
+    } else if switched {
+        // Instance to type: each type takes what its components hold, the family's value where they hold none of their own.
+        let default = was.as_ref().map(|q| q.value.clone()).unwrap_or_default();
+        let read = |v: &Value| crate::family::read(&now, v).map_err(|e| bad(c, e));
+        let mut by_type: BTreeMap<&str, Vec<(Id, Value)>> = BTreeMap::new();
+        for (id, ty, own) in &users {
+            let v = own.and_then(|o| o.get(&name)).cloned().unwrap_or_else(|| default.clone());
+            by_type.entry(ty).or_default().push((*id, v));
+        }
+        for (ty, held) in by_type {
+            let Some((_, first)) = held.first() else { continue };
+            let first_val = read(first)?;
+            let mut said = Vec::new();
+            for (_, v) in &held {
+                let x = read(v)?;
+                if !said.contains(&x) {
+                    said.push(x);
+                }
+            }
+            if said.len() > 1 {
+                let ids: Vec<String> = held.iter().map(|(id, _)| id.to_string()).collect();
+                let vals: Vec<String> = said
+                    .iter()
+                    .map(|v| match v {
+                        crate::family::Val::Number(x) => x.to_string(),
+                        crate::family::Val::Text(t) => format!("`{t}`"),
+                    })
+                    .collect();
+                return Err(bad(
+                    c,
+                    format!(
+                        "parameter `{name}`: components {} of type `{ty}` hold {}; make them agree, or put them in types of their \
+                         own, before it is a type parameter",
+                        ids.join(", "),
+                        vals.join(" and ")
+                    ),
+                ));
+            }
+            if first_val != read(&default)?
+                && let Some(t) = f.types.get_mut(ty)
+            {
+                t.insert(name.clone(), first.clone());
+            }
+        }
+        for (id, _, own) in &users {
+            if own.is_some_and(|o| o.contains_key(&name)) {
+                patches.component_ops.push(ComponentOp::Remove(*id, name.clone()));
+            }
+        }
+    }
+    // Given a formula, it is worked out from then on, as Revit's is: what its types and its components held of it goes.
+    if now.driven().is_some() {
+        f.types.values_mut().for_each(|t| {
+            t.remove(&name);
+        });
+        patches.component_ops.retain(|op| !matches!(op, ComponentOp::Set(_, n, _) | ComponentOp::Remove(_, n) if *n == name));
+        for (id, _, own) in &users {
+            if own.is_some_and(|o| o.contains_key(&name)) {
+                patches.component_ops.push(ComponentOp::Remove(*id, name.clone()));
+            }
+        }
+    }
+    if let Some(to) = rename
+        && to != name
+    {
+        if f.parameters.iter().any(|q| q.name == to) {
+            return Err(bad(c, format!("family \"{family}\" has a parameter `{to}` already")));
+        }
+        f.rename_parameter(&name, &to);
+        for (id, _, _) in &users {
+            patches.component_ops.push(ComponentOp::Rename(*id, name.clone(), to.clone()));
+        }
+        patches.params_renamed.push((name, to));
+    }
+    Ok(())
+}
+
+/// Parameter `name` of family `f` taken away, with its types' and its components' values of it; what still names it is
+/// [`crate::family::Family::problems`]'s to refuse.
+fn delete_parameter(
+    c: &str,
+    family: &str,
+    f: &mut crate::family::Family,
+    m: &Model,
+    name: &Value,
+    patches: &mut Patches,
+) -> Result<(), String> {
+    let Some(name) = name.as_str() else {
+        return Err(bad(c, format!("`delete_parameter` lists parameters' names, not {name}")));
+    };
+    let Some(at) = f.parameters.iter().position(|q| q.name == name) else {
+        return Err(bad(c, format!("family \"{family}\" has no parameter `{name}` to delete")));
+    };
+    f.parameters.remove(at);
+    f.types.values_mut().for_each(|t| {
+        t.remove(name);
+    });
+    for (id, _, own) in family_users(m, family) {
+        if own.is_some_and(|o| o.contains_key(name)) {
+            patches.component_ops.push(ComponentOp::Remove(id, name.to_string()));
+        }
+    }
+    Ok(())
+}
+
+/// A family to load from `v`: `{path}` (a family file) or `{definition}` (a family as a file holds it), read strictly; and
+/// the name it gives itself (`name`, else the file's, else the file's stem).
+fn family_source(c: &str, v: &Value) -> Result<(crate::family::Family, Option<String>), String> {
+    let path = v.get("path").filter(|x| !x.is_null());
+    let definition = v.get("definition").filter(|x| !x.is_null());
+    let (mut fields, stem) = match (path, definition) {
+        (Some(_), Some(_)) => return Err(bad(c, "`path` or `definition`, not both: the family loaded comes from one")),
+        (Some(path), None) => {
+            let path = PathBuf::from(path.as_str().ok_or_else(|| bad(c, "`path` is a file's path"))?);
+            let size = std::fs::metadata(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?.len();
+            if size >= MAX_FILE {
+                return Err(bad(c, format!("{} is too large ({size} bytes)", path.display())));
+            }
+            let text = std::fs::read_to_string(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+            let loaded: Value = serde_json::from_str(&text).map_err(|e| bad(c, format!("{} is not a family: {e}", path.display())))?;
+            let Value::Object(fields) = loaded else {
+                return Err(bad(c, format!("{} is not a family: it isn't an object", path.display())));
+            };
+            (fields, path.file_stem().map(|s| s.to_string_lossy().into_owned()))
+        }
+        (None, Some(Value::Object(fields))) => (fields.clone(), None),
+        (None, Some(_)) => return Err(bad(c, "`definition` is a family as a family file holds it, an object")),
+        (None, None) => return Err(bad(c, "the family to load: its `path` or its `definition`")),
+    };
+    let own = fields.remove("name").and_then(|n| n.as_str().map(str::to_string));
+    let family = serde_json::from_value(Value::Object(fields)).map_err(|e| bad(c, format!("the family loaded: {e}")))?;
+    let name = v.get("name").and_then(Value::as_str).map(str::to_string).or(own).or(stem);
+    Ok((family, name))
+}
+
+/// The answers to "Shared Family Already Loaded" a command gives: `{name: "project" | "family"}`.
+fn shared_answers(c: &str, v: Option<&Value>) -> Result<BTreeMap<String, crate::family::Keep>, String> {
+    match v {
+        None | Some(Value::Null) => Ok(BTreeMap::new()),
+        Some(v) => serde_json::from_value(v.clone())
+            .map_err(|e| bad(c, format!("`shared_nested` is {{name: \"project\" | \"family\"}}, a shared nested family's version: {e}"))),
+    }
+}
+
+/// Family `f`'s nested families and instances, as `p` asks: a family loaded into it (`nest`), the whole lists replaced
+/// (`nested`, `nested_instances`), an instance patched or added (`nested_instance`), some taken away (`delete_nested`,
+/// `delete_nested_instance`). `name` is the family's own, which it can't nest.
+fn nested_edits(c: &str, name: &str, f: &mut crate::family::Family, p: &Value, patches: &mut Patches) -> Result<(), String> {
+    let field = |key: &str, e: serde_json::Error| bad(c, format!("`{key}`: {e}"));
+    if let Some(v) = p.get("nested").filter(|v| !v.is_null()) {
+        let mut list: Vec<crate::family::NestedFamily> = serde_json::from_value(v.clone()).map_err(|e| field("nested", e))?;
+        crate::library::keep_parts(&mut f.nested, &mut list);
+        f.nested = list;
+    }
+    if let Some(v) = p.get("nest").filter(|v| !v.is_null()) {
+        if !v.is_object() {
+            return Err(bad(c, "`nest` is {path | definition, name?, overwrite?, shared_nested?}: a family loaded into this one"));
+        }
+        let (incoming, given) = family_source(c, v)?;
+        let nested_name = given.map(|n| n.trim().to_string()).filter(|n| !n.is_empty());
+        let nested_name = nested_name.ok_or_else(|| bad(c, "`nest` needs the nested family's `name`"))?;
+        if nested_name == name || incoming.nests(name) {
+            return Err(bad(c, format!("`{nested_name}`: a family can't be loaded into itself, nor into a family it nests")));
+        }
+        let overwrite = match v.get("overwrite").and_then(Value::as_str) {
+            None => None,
+            Some("version") => Some(true),
+            Some("version_and_values") => Some(false),
+            Some("no") => {
+                if f.nested_family(&nested_name).is_some() {
+                    return Ok(());
+                }
+                None
+            }
+            Some(o) => return Err(bad(c, format!("`nest`'s `overwrite` is no, version or version_and_values, not `{o}`"))),
+        };
+        let answers = shared_answers(c, v.get("shared_nested"))?;
+        let done = crate::family::nested::nest_into(&mut f.nested, &nested_name, incoming, overwrite, &answers).map_err(|e| bad(c, e))?;
+        patches.shared_asked.extend(done.shared_asked);
+        patches.nested_loaded.extend(done.shared_added);
+        if !done.unchanged {
+            patches.nested_loaded.push(nested_name);
+        }
+    }
+    // A host given by its name, as the Work Plane dialog names it, is that plane.
+    let named_host = |f: &crate::family::Family, v: &mut Value| -> Result<(), String> {
+        if let Some(Value::String(h)) = v.get("host") {
+            let found = f.plane_set().by_name(h).ok_or_else(|| bad(c, format!("there's no plane `{h}` to place on")))?;
+            v["host"] = serde_json::to_value(found).map_err(|e| bad(c, e))?;
+        }
+        Ok(())
+    };
+    if let Some(Value::Array(list)) = p.get("nested_instances") {
+        let mut list = list.clone();
+        for v in &mut list {
+            named_host(f, v)?;
+        }
+        let mut given: Vec<crate::family::NestedInstance> =
+            serde_json::from_value(Value::Array(list)).map_err(|e| field("nested_instances", e))?;
+        crate::library::keep_parts(&mut f.nested_instances, &mut given);
+        patches.instances_replaced = given.len();
+        f.nested_instances = given;
+    } else if let Some(v) = p.get("nested_instances").filter(|v| !v.is_null()) {
+        return Err(bad(c, format!("`nested_instances` is a list of nested instances, not {v}")));
+    }
+    if let Some(v) = p.get("nested_instance").filter(|v| !v.is_null()) {
+        let mut v = v.clone();
+        named_host(f, &mut v)?;
+        if v.get("id").is_none() && v.get("guid").is_none() {
+            let inst: crate::family::NestedInstance = serde_json::from_value(v).map_err(|e| field("nested_instance", e))?;
+            f.nested_instances.push(inst);
+            patches.instances_added += 1;
+        } else {
+            patches.instances_patched.push(patch_part(c, name, &mut f.nested_instances, &v, "nested_instance")?);
+        }
+    }
+    match p.get("delete_nested_instance") {
+        None | Some(Value::Null) => {}
+        Some(Value::Array(list)) => {
+            for v in list {
+                patches.instances_deleted.push(take_part(c, name, &mut f.nested_instances, v, "nested_instance")?);
+            }
+        }
+        Some(v) => return Err(bad(c, format!("`delete_nested_instance` is a list of ids or GUIDs, not {v}"))),
+    }
+    match p.get("delete_nested") {
+        None | Some(Value::Null) => {}
+        Some(Value::Array(list)) => {
+            for v in list {
+                let gone = v.as_str().ok_or_else(|| bad(c, format!("`delete_nested` is a list of nested families' names, not {v}")))?;
+                let at = f.nested.iter().position(|n| n.name == gone).ok_or_else(|| bad(c, format!("it nests no family `{gone}`")))?;
+                let users: Vec<String> =
+                    f.nested_instances.iter().enumerate().filter(|(_, n)| n.family == gone).map(|(i, _)| (i + 1).to_string()).collect();
+                if !users.is_empty() {
+                    return Err(bad(c, format!("nested instances {} place `{gone}`; delete them first", users.join(", "))));
+                }
+                f.nested.remove(at);
+                patches.nested_deleted.push(gone.to_string());
+            }
+        }
+        Some(v) => return Err(bad(c, format!("`delete_nested` is a list of nested families' names, not {v}"))),
+    }
+    Ok(())
+}
+
+/// Explicit reloads retain part identities and project-only types. Instance overrides stay on their elements.
+pub(crate) fn family_reload(mut incoming: crate::family::Family, old: &crate::family::Family, keep_values: bool) -> crate::family::Family {
+    let compatible = |p: &crate::family::Parameter| {
+        old.parameters.iter().find(|q| {
+            q.name == p.name
+                && q.kind == p.kind
+                && q.instance == p.instance
+                && q.shared == p.shared
+                && !q.reporting
+                && !p.reporting
+                && q.of == p.of
+                && q.formula.is_none()
+                && p.formula.is_none()
+        })
+    };
+    // Keep incoming defaults on new types before replacing the family's defaults.
+    if keep_values {
+        for (name, values) in &mut incoming.types {
+            if !old.types.contains_key(name) {
+                for p in incoming.parameters.iter().filter(|p| !p.instance && !p.reporting && p.formula.is_none()) {
+                    values.entry(p.name.clone()).or_insert_with(|| p.value.clone());
+                }
+            }
+        }
+    }
+    for (name, values) in &old.types {
+        let only_in_project = !incoming.types.contains_key(name);
+        let target = incoming.types.entry(name.clone()).or_default();
+        if keep_values || only_in_project {
+            for p in incoming.parameters.iter().filter(|p| !p.instance) {
+                if let Some(q) = compatible(p) {
+                    target.insert(p.name.clone(), values.get(&p.name).unwrap_or(&q.value).clone());
+                }
+            }
+        }
+    }
+    if keep_values {
+        for p in &mut incoming.parameters {
+            if let Some(q) = compatible(p) {
+                p.value.clone_from(&q.value);
+            }
+        }
+    }
+    let mut old = old.clone();
+    crate::library::keep_parts(&mut old.forms, &mut incoming.forms);
+    old.forms.iter().zip(incoming.forms.iter_mut()).for_each(|(o, n)| n.keep_lines(o));
+    crate::library::keep_parts(&mut old.symbols, &mut incoming.symbols);
+    crate::library::keep_parts(&mut old.connectors, &mut incoming.connectors);
+    crate::library::keep_parts(&mut old.planes, &mut incoming.planes);
+    crate::library::keep_parts(&mut old.lines, &mut incoming.lines);
+    crate::library::keep_parts(&mut old.dimensions, &mut incoming.dimensions);
+    crate::library::keep_parts(&mut old.nested, &mut incoming.nested);
+    crate::library::keep_parts(&mut old.nested_instances, &mut incoming.nested_instances);
+    incoming
 }
 
 /// A project's families: read one (`family {name}` alone costs no undo step), change one, make one
@@ -10692,28 +12465,122 @@ struct Patches {
 /// refuse is never put in it: every error it has comes back at once, its warnings with them.
 fn family(s: &mut Session, p: &Value) -> R {
     let c = "family";
-    // From a file: its fields under the name given, else its own, else the file's.
+    let overwrite = match p.get("overwrite") {
+        None => None,
+        Some(Value::String(v)) if matches!(v.as_str(), "no" | "version" | "version_and_values") => Some(v.clone()),
+        Some(_) => return Err(bad(c, "`overwrite` must be no, version, or version_and_values")),
+    };
+    let definition = p.get("definition").filter(|v| !v.is_null());
+    let path = string(c, p, "path")?;
+    if path.is_some() && definition.is_some() {
+        return Err(bad(c, "`path` or `definition`, not both: the family loaded comes from one"));
+    }
+    if overwrite.is_some() && path.is_none() && definition.is_none() {
+        return Err(bad(c, "`overwrite` is only for loading a family with `path` or `definition`"));
+    }
+    // The answers to "Shared Family Already Loaded" (`shared_nested`), the caller's as `overwrite` is; `shared` is the family's
+    // own option.
+    let answers = shared_answers(c, p.get("shared_nested"))?;
+    // From a file, or a definition as a file holds it: its fields under the name given, else its own, else the file's.
     let mut p = p.clone();
-    if let Some(path) = string(c, &p, "path")? {
-        let path = PathBuf::from(path);
-        let size = std::fs::metadata(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?.len();
-        if size >= MAX_FILE {
-            return Err(bad(c, format!("{} is too large ({size} bytes)", path.display())));
+    let loaded = match (path, definition) {
+        (Some(path), _) => {
+            let path = PathBuf::from(path);
+            let size = std::fs::metadata(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?.len();
+            if size >= MAX_FILE {
+                return Err(bad(c, format!("{} is too large ({size} bytes)", path.display())));
+            }
+            let text = std::fs::read_to_string(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+            let loaded: Value = serde_json::from_str(&text).map_err(|e| bad(c, format!("{} is not a family: {e}", path.display())))?;
+            let Value::Object(fields) = loaded else {
+                return Err(bad(c, format!("{} is not a family: it isn't an object", path.display())));
+            };
+            let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+            Some((fields, json!(stem)))
         }
-        let text = std::fs::read_to_string(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
-        let loaded: Value = serde_json::from_str(&text).map_err(|e| bad(c, format!("{} is not a family: {e}", path.display())))?;
-        let Value::Object(mut fields) = loaded else {
-            return Err(bad(c, format!("{} is not a family: it isn't an object", path.display())));
-        };
-        let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
-        let name = p.get("name").filter(|v| !v.is_null()).cloned().or_else(|| fields.remove("name")).unwrap_or(json!(stem));
+        // A command's own definition is read strictly, as any command's params are: a misspelled field is an error.
+        (None, Some(definition)) => {
+            let Value::Object(mut fields) = definition.clone() else {
+                return Err(bad(c, "`definition` is a family as a family file holds it, an object"));
+            };
+            let own = fields.remove("name");
+            serde_json::from_value::<crate::family::Family>(Value::Object(fields.clone()))
+                .map_err(|e| bad(c, format!("`definition`: {e}")))?;
+            if let Some(own) = own {
+                fields.insert("name".into(), own);
+            }
+            Some((fields, Value::Null))
+        }
+        (None, None) => None,
+    };
+    let loading = loaded.is_some();
+    if let Some((mut fields, stem)) = loaded {
+        let name = p.get("name").filter(|v| !v.is_null()).cloned().or_else(|| fields.remove("name")).unwrap_or(stem);
+        if !name.as_str().is_some_and(|n| !n.trim().is_empty()) {
+            return Err(bad(c, "`name` must be a nonempty family name"));
+        }
         // Only the family it holds: what a file says to rename or delete isn't for it to say.
-        let mut family: Map<String, Value> =
-            ["category", "kind", "ifc", "parameters", "types", "forms", "symbols", "operation", "connectors"]
-                .into_iter()
-                .filter_map(|k| fields.remove(k).map(|v| (k.to_string(), v)))
-                .collect();
+        let mut family: Map<String, Value> = [
+            "category",
+            "kind",
+            "ifc",
+            "parameters",
+            "types",
+            "forms",
+            "symbols",
+            "operation",
+            "connectors",
+            "adaptive",
+            "planes",
+            "lines",
+            "dimensions",
+            "nested",
+            "nested_instances",
+        ]
+        .into_iter()
+        .filter_map(|k| fields.remove(k).map(|v| (k.to_string(), v)))
+        .collect();
+        // Keep file fields canonical until its replacement policy has built the incoming definition.
+        for key in crate::family::OPTION_KEYS {
+            if let Some(value) = fields.remove(key) {
+                family.insert(key.into(), value);
+            }
+        }
+        if let Some(policy) = &overwrite {
+            let name =
+                name.as_str().map(str::trim).filter(|n| !n.is_empty()).ok_or_else(|| bad(c, "`name` must be a nonempty family name"))?;
+            if let Some(old) = s.model.families.get(name) {
+                let incoming =
+                    if policy == "no" { old.clone() } else { serde_json::from_value(Value::Object(family)).map_err(|e| bad(c, e))? };
+                if policy == "no" || incoming == *old {
+                    let (_, warnings) = old.problems(&|m| s.model.materials.contains_key(m));
+                    let mut reply = family_reply(name, old, &warnings);
+                    reply["overwritten"] = json!(false);
+                    if flag(c, &p, "dry_run")? {
+                        reply["dry_run"] = json!(true);
+                        reply["ok"] = json!(true);
+                        reply["changes"] = family_changes(Some(old), old, &Patches::default(), None);
+                    }
+                    return Ok(reply);
+                }
+                let reloaded = family_reload(incoming, old, policy == "version");
+                family = serde_json::from_value(serde_json::to_value(reloaded).map_err(|e| bad(c, e))?).map_err(|e| bad(c, e))?;
+            }
+        }
+        // A file holds the definition's names; translate only after applying its reload policy.
+        if let Some(options) = crate::family::Family::options_from_fields(&mut family) {
+            family.insert("options".into(), options);
+        }
+        for (field, command) in [("planes", "ref_planes"), ("lines", "ref_lines")] {
+            if let Some(value) = family.remove(field) {
+                family.insert(command.into(), value);
+            }
+        }
         family.insert("name".into(), name);
+        // How a dimension that measures to nothing is dealt with is the caller's, not the file's.
+        if let Some(v) = p.get("invalid_dimensions") {
+            family.insert("invalid_dimensions".into(), v.clone());
+        }
         // `dry_run` is the caller's, not the file's: a dry run of a file loads nothing.
         if let Some(dry) = p.get("dry_run") {
             family.insert("dry_run".into(), dry.clone());
@@ -10787,11 +12654,74 @@ fn family(s: &mut Session, p: &Value) -> R {
         "symbol",
         "delete_form",
         "delete_symbol",
+        "parameter",
+        "delete_parameter",
+        "ref_planes",
+        "ref_lines",
+        "ref_plane",
+        "ref_line",
+        "delete_ref_plane",
+        "delete_ref_line",
+        "options",
+        "dimensions",
+        "dimension",
+        "delete_dimension",
+        "nested",
+        "nested_instances",
+        "nest",
+        "nested_instance",
+        "delete_nested",
+        "delete_nested_instance",
     ];
+    // Its dimensions solved for a type, which changes nothing: where its planes go, and each dimension's lengths.
+    if let Some(type_name) = string(c, &p, "solve")? {
+        let f = s.model.families.get(&name).ok_or_else(|| bad(c, format!("there's no family `{name}`")))?;
+        let values = f.values(&type_name, &BTreeMap::new()).map_err(|e| bad(c, e))?;
+        let flexed = f.flexed(&values).map_err(|e| bad(c, e))?;
+        let planes: Vec<Value> = flexed
+            .planes
+            .iter()
+            .filter(|q| !q.datum())
+            .map(|q| {
+                json!({"guid": q.guid, "id": q.id, "name": q.name, "offset": crate::view3d::dot(q.start, q.frame().z), "start": q.start, "end": q.end})
+            })
+            .collect();
+        // Each form's ends and its sketch's lines, worked out for the type.
+        let forms: Vec<Value> = flexed
+            .forms
+            .iter()
+            .map(|x| {
+                let sketch: Vec<Value> = x
+                    .plane_lines()
+                    .filter_map(|l| {
+                        let drawn = l.curve(&mut |e| crate::family::worth(e, &values)).ok()?;
+                        Some(match drawn.curve {
+                            crate::curves::Curve::Circle { centre, radius } => {
+                                json!({"guid": l.guid, "id": l.id, "centre": [centre.0, centre.1], "radius": radius})
+                            }
+                            c => json!({"guid": l.guid, "id": l.id, "start": [c.start().0, c.start().1], "end": [c.end().0, c.end().1]}),
+                        })
+                    })
+                    .collect();
+                json!({"guid": x.guid, "id": x.id, "from": x.from, "to": x.to, "sketch": sketch})
+            })
+            .collect();
+        // Each reference line where the type has it: turned and moved by its constraints (F7c).
+        let lines: Vec<Value> = flexed.lines.iter().map(|l| json!({"guid": l.guid, "id": l.id, "start": l.start, "end": l.end})).collect();
+        let lengths = f.measured(&values).map_err(|e| bad(c, e))?;
+        let dims: Vec<Value> =
+            f.dimensions.iter().zip(lengths).map(|(d, l)| json!({"guid": d.guid, "id": d.id, "label": d.label, "lengths": l})).collect();
+        return Ok(json!({"name": name, "type": type_name, "planes": planes, "lines": lines, "forms": forms, "dimensions": dims}));
+    }
     if !keys.iter().any(|k| p.get(*k).is_some_and(|v| !v.is_null())) {
         let f = s.model.families.get(&name).ok_or_else(|| bad(c, format!("there's no family `{name}`")))?;
         let (_, warnings) = f.problems(&|m| s.model.materials.contains_key(m));
         let mut reply = family_reply(&name, f, &warnings);
+        // What a file from before may hold and a change to it refuses until it is mended.
+        let errors = f.unknown_names();
+        if !errors.is_empty() {
+            reply["errors"] = json!(errors);
+        }
         if dry {
             reply["dry_run"] = json!(true);
             reply["ok"] = json!(true);
@@ -10800,7 +12730,7 @@ fn family(s: &mut Session, p: &Value) -> R {
         return Ok(reply);
     }
     let was = s.model.families.get(&name).cloned();
-    let mut f = was.clone().unwrap_or_default();
+    let mut f = if overwrite.is_some() { Default::default() } else { was.clone().unwrap_or_default() };
     let field = |key: &str, e: serde_json::Error| bad(c, format!("`{key}`: {e}"));
     let mut patches = Patches::default();
     if let Some(v) = p.get("category").filter(|v| !v.is_null()) {
@@ -10808,6 +12738,22 @@ fn family(s: &mut Session, p: &Value) -> R {
     }
     if let Some(v) = p.get("parameters").filter(|v| !v.is_null()) {
         f.parameters = serde_json::from_value(v.clone()).map_err(|e| field("parameters", e))?;
+    }
+    // One parameter edited, renamed or switched between type and instance, and parameters taken away.
+    if let Some(v) = p.get("parameter").filter(|v| !v.is_null()) {
+        patch_parameter(c, &name, &mut f, &s.model, v, &mut patches)?;
+    }
+    match p.get("delete_parameter") {
+        None | Some(Value::Null) => {}
+        Some(Value::Array(list)) => {
+            for v in list {
+                delete_parameter(c, &name, &mut f, &s.model, v, &mut patches)?;
+            }
+        }
+        Some(v) => return Err(bad(c, format!("`delete_parameter` is a list of parameters' names, not {v}"))),
+    }
+    // The names elements hold something else under, whichever way a parameter came by its name.
+    if ["parameters", "parameter"].iter().any(|k| p.get(*k).is_some_and(|v| !v.is_null())) {
         if let Some(q) = f.parameters.iter().find(|q| paint::reserved(&q.name)) {
             return Err(bad(c, format!("parameter `{}`: an element holds its paint under that name; name it otherwise", q.name)));
         }
@@ -10821,9 +12767,45 @@ fn family(s: &mut Session, p: &Value) -> R {
             ));
         }
     }
+    if let Some(v) = p.get("adaptive") {
+        f.adaptive = serde_json::from_value(v.clone()).map_err(|e| field("adaptive", e))?;
+    }
+    // Its reference planes and lines, before the forms that may be drawn on them: whole lists replaced (the datums, pinned,
+    // stay first and as they are) or one patched by its id or GUID.
+    if let Some(v) = p.get("ref_planes").filter(|v| !v.is_null()) {
+        let given: Vec<crate::family::RefPlane> = serde_json::from_value(v.clone()).map_err(|e| field("ref_planes", e))?;
+        let mut own = Vec::new();
+        for plane in given {
+            if !plane.datum() {
+                own.push(plane);
+            } else if !plane.as_datum() {
+                return Err(bad(c, format!("`ref_planes`: {} is a datum, pinned: it can't be moved or changed", plane.name)));
+            }
+        }
+        crate::library::keep_parts(f.planes.get_mut(3..).unwrap_or_default(), &mut own);
+        patches.planes_replaced = own.len();
+        f.planes.truncate(3);
+        f.planes.extend(own);
+    }
+    if let Some(v) = p.get("ref_plane").filter(|v| !v.is_null()) {
+        not_datum(c, v.get("guid").or_else(|| v.get("id")))?;
+        patches.planes_patched.push(patch_part(c, &name, f.planes.get_mut(3..).unwrap_or_default(), v, "ref_plane")?);
+    }
+    if let Some(v) = p.get("ref_lines").filter(|v| !v.is_null()) {
+        let mut lines: Vec<crate::family::RefLine> = serde_json::from_value(v.clone()).map_err(|e| field("ref_lines", e))?;
+        crate::library::keep_parts(&mut f.lines, &mut lines);
+        patches.lines_replaced = lines.len();
+        f.lines = lines;
+    }
+    if let Some(v) = p.get("ref_line").filter(|v| !v.is_null()) {
+        patches.lines_patched.push(patch_part(c, &name, &mut f.lines, v, "ref_line")?);
+    }
+    // The forms as they were: a sketch line a form no longer has takes its dimensions with it (F7b).
+    let forms_were = f.forms.clone();
     if let Some(v) = p.get("forms").filter(|v| !v.is_null()) {
         let mut forms: Vec<crate::family::Form> = serde_json::from_value(v.clone()).map_err(|e| field("forms", e))?;
         crate::library::keep_parts(&mut f.forms, &mut forms);
+        f.forms.iter().zip(forms.iter_mut()).for_each(|(o, n)| n.keep_lines(o));
         patches.forms_replaced = forms.len();
         f.forms = forms;
     }
@@ -10837,19 +12819,134 @@ fn family(s: &mut Session, p: &Value) -> R {
     // what that one holds, a `null` taking one away, its place and its id and GUID kept. Whole lists,
     // `forms` and `symbols`, replace as they always have; these only touch the one they name.
     if let Some(v) = p.get("form").filter(|v| !v.is_null()) {
-        patches.forms_patched.push(patch_part(c, &name, &mut f.forms, v, "form")?);
+        let before = f.forms.clone();
+        let id = patch_part(c, &name, &mut f.forms, v, "form")?;
+        // Its sketch's lines given again (its corners, its axis) keep their ids and GUIDs by place.
+        if let (Some(old), Some(new)) = (before.iter().find(|x| x.id == id), f.forms.iter_mut().find(|x| x.id == id)) {
+            new.keep_lines(old);
+        }
+        patches.forms_patched.push(id);
     }
     if let Some(v) = p.get("symbol").filter(|v| !v.is_null()) {
         patches.symbols_patched.push(patch_part(c, &name, &mut f.symbols, v, "symbol")?);
     }
+    patches.dimensions_dropped += f.forget_lines_gone(&forms_were);
     if let Some(list) = p.get("delete_form").and_then(Value::as_array) {
         for v in list {
-            patches.forms_deleted.push(take_part(c, &name, &mut f.forms, v, "form")?);
+            let at = part_at(c, &mut f.forms, v, "form", &name)?;
+            let gone = f.forms.remove(at);
+            // The dimensions measuring to it lose it, as Revit's do; a pivot pinned to its sketch goes (F7d).
+            if !gone.guid.is_nil() {
+                patches.dimensions_dropped += f.forget_reference(gone.guid);
+                f.forget_pivots(gone.guid);
+            }
+            patches.forms_deleted.push(gone.id);
         }
+    }
+    // Its dimensions: the whole list replaced, one patched by its id or GUID (one given neither is added), some taken away.
+    if let Some(v) = p.get("dimensions").filter(|v| !v.is_null()) {
+        let mut dims: Vec<crate::family::FamilyDimension> = serde_json::from_value(v.clone()).map_err(|e| field("dimensions", e))?;
+        crate::library::keep_parts(&mut f.dimensions, &mut dims);
+        patches.dimensions_replaced = dims.len();
+        f.dimensions = dims;
+    }
+    if let Some(v) = p.get("dimension").filter(|v| !v.is_null()) {
+        if v.get("id").is_none() && v.get("guid").is_none() {
+            let d: crate::family::FamilyDimension = serde_json::from_value(v.clone()).map_err(|e| field("dimension", e))?;
+            f.dimensions.push(d);
+        } else {
+            patches.dimensions_patched.push(patch_part(c, &name, &mut f.dimensions, v, "dimension")?);
+        }
+    }
+    match p.get("delete_dimension") {
+        None | Some(Value::Null) => {}
+        Some(Value::Array(list)) => {
+            for v in list {
+                patches.dimensions_deleted.push(take_part(c, &name, &mut f.dimensions, v, "dimension")?);
+            }
+        }
+        Some(v) => return Err(bad(c, format!("`delete_dimension` is a list of ids or GUIDs, not {v}"))),
     }
     if let Some(list) = p.get("delete_symbol").and_then(Value::as_array) {
         for v in list {
             patches.symbols_deleted.push(take_part(c, &name, &mut f.symbols, v, "symbol")?);
+        }
+    }
+    // Its nested families and instances, before the planes go, so one command can move an instance off a plane first.
+    nested_edits(c, &name, &mut f, &p, &mut patches)?;
+    // A plane or a line taken away, refused while a form or a line is drawn on it; after the forms, so one command can move
+    // them off it first.
+    for (key, planes) in [("delete_ref_line", false), ("delete_ref_plane", true)] {
+        match p.get(key) {
+            None | Some(Value::Null) => {}
+            Some(Value::Array(list)) => {
+                for v in list {
+                    let gone = if planes {
+                        not_datum(c, Some(v))?;
+                        let at = part_at(c, f.planes.get_mut(3..).unwrap_or_default(), v, "ref_plane", &name)? + 3;
+                        let gone = f.planes.remove(at).guid;
+                        // The dimensions measuring to it lose it, as Revit's do.
+                        patches.dimensions_dropped += f.forget_reference(gone);
+                        gone
+                    } else {
+                        let at = part_at(c, &mut f.lines, v, "ref_line", &name)?;
+                        f.lines.remove(at).guid
+                    };
+                    // A pivot pinned to it, or measured from it, goes with it (F7d).
+                    f.forget_pivots(gone);
+                    let what = if planes { "plane" } else { "line" };
+                    let on = f.hosted_on(gone);
+                    if !on.is_empty() {
+                        return Err(bad(c, format!("{what} {} hosts {}; move them to another plane first", shown(v), on.join(", "))));
+                    }
+                    if planes {
+                        patches.planes_deleted.push(shown(v));
+                    } else {
+                        patches.lines_deleted.push(shown(v));
+                    }
+                }
+            }
+            Some(v) => return Err(bad(c, format!("`{key}` is a list of ids or GUIDs, not {v}"))),
+        }
+    }
+    // Hosts named by id are given by GUID; which plane defines the origin in each direction settled.
+    f.resolve_hosts();
+    f.settle_planes();
+    // A dimension that measures to what the family hasn't: refused, unless the caller says to delete it (T14's Delete
+    // Dimension(s)); a reload can't leave one behind unasked.
+    let dangling = f.dangling_dimensions();
+    // A sweep's profile lies square to its path, in a plane of its own: not measured yet (F6d), and said so.
+    let profile_lines: Vec<crate::ids::Guid> =
+        f.forms.iter().flat_map(|x| x.sweep.iter().flat_map(|s| s.profile.iter().chain(&s.end)).map(|l| l.guid)).collect();
+    for i in &dangling {
+        let on_profile = f.dimensions[*i].refs.iter().any(|r| match *r {
+            crate::family::DimRef::Sketch(_, l) | crate::family::DimRef::Point(_, l, _) => profile_lines.contains(&l),
+            _ => false,
+        });
+        if on_profile {
+            return Err(bad(c, format!("dimension {}: a sweep's profile line isn't measured or locked yet: dimension its path", i + 1)));
+        }
+    }
+    if !dangling.is_empty() {
+        match string(c, &p, "invalid_dimensions")?.as_deref() {
+            Some("delete") => {
+                for i in dangling.iter().rev() {
+                    f.dimensions.remove(*i);
+                }
+                patches.dimensions_dropped += dangling.len();
+            }
+            None => {
+                let named: Vec<String> = dangling.iter().map(|i| (i + 1).to_string()).collect();
+                return Err(bad(
+                    c,
+                    format!(
+                        "dimension {} {}: delete them (`invalid_dimensions`: \"delete\") or give the family back what they measure",
+                        named.join(", "),
+                        crate::family::constraints::INVALID_DIMENSIONS
+                    ),
+                ));
+            }
+            Some(other) => return Err(bad(c, format!("`invalid_dimensions` is \"delete\", not `{other}`"))),
         }
     }
     if let Some(v) = p.get("connectors").filter(|v| !v.is_null()) {
@@ -10873,6 +12970,10 @@ fn family(s: &mut Session, p: &Value) -> R {
             let class: crate::family::IfcClass = serde_json::from_value(v.clone()).map_err(|e| field("ifc", e))?;
             f.ifc = Some(class.written());
         }
+    }
+    // Its options, each given merged over what it holds; `null` takes one back to its default.
+    if let Some(v) = p.get("options").filter(|v| !v.is_null()) {
+        f.merge_options(v).map_err(|e| bad(c, e))?;
     }
     if let Some(v) = p.get("types").filter(|v| !v.is_null()) {
         let mut types = serde_json::to_value(&f.types).map_err(|e| bad(c, e))?;
@@ -10903,14 +13004,42 @@ fn family(s: &mut Session, p: &Value) -> R {
         said.extend(warnings.iter().map(|w| format!("family `{to}`: warning: {w}")));
         return Err(said.join("\n"));
     }
+    // A family loaded into the project (or given its nested families) brings its shared nested families: one the project hasn't is added, one it has
+    // otherwise is kept or overwritten as `shared` answers (kept unasked). Every family of the project that nests a shared
+    // family changed then takes the same definition of it.
+    let mut shared_takes: Vec<(String, crate::family::Family)> = Vec::new();
+    let bringing = ["nested", "nest"].iter().any(|k| p.get(*k).is_some_and(|v| !v.is_null()));
+    if loading || bringing {
+        let project = &s.model.families;
+        let has = |n: &str| if n == to { None } else { project.get(n).cloned() };
+        let (takes, asked) = crate::family::nested::reconcile_shared(&mut f, &to, &has, &answers);
+        shared_takes = takes;
+        patches.shared_asked.extend(asked);
+    }
+    if f.shared {
+        shared_takes.push((to.clone(), f.clone()));
+    }
     if dry {
+        if overwrite.is_some() {
+            let mut preview = (*s.model).clone();
+            preview.families.insert(to.clone(), f.clone());
+            preview.sync_library();
+            preview.check().map_err(|e| bad(c, e))?;
+        }
         let mut reply = family_reply(&to, &f, &warnings);
         reply["dry_run"] = json!(true);
         reply["ok"] = json!(true);
         reply["changes"] = family_changes(was.as_ref(), &f, &patches, rename.as_deref());
+        reply["shared_conflicts"] = json!(patches.shared_asked);
         return Ok(reply);
     }
     let m = s.model_mut();
+    for (from, to) in &patches.params_renamed {
+        m.library.renamed(&LibKind::FamilyParameter, &format!("{name}: {from}"), &format!("{name}: {to}"));
+    }
+    for op in &patches.component_ops {
+        op.apply(m);
+    }
     if let Some(to) = rename {
         m.families.remove(&name);
         m.library.family_renamed(&name, &to);
@@ -10923,7 +13052,16 @@ fn family(s: &mut Session, p: &Value) -> R {
         }
     }
     m.families.insert(to.clone(), f.clone());
-    Ok(json!({"name": to, "family": f, "warnings": warnings}))
+    for (shared, definition) in &shared_takes {
+        if *shared != to {
+            m.families.insert(shared.clone(), definition.clone());
+        }
+        for family in m.families.values_mut() {
+            family.replace_shared(shared, definition);
+        }
+    }
+    Ok(json!({"name": to, "family": f, "options": f.options_json(), "warnings": warnings, "deleted_dimensions": patches.dimensions_dropped,
+        "shared_conflicts": patches.shared_asked, "shared_loaded": shared_takes.iter().map(|(n, _)| n).collect::<Vec<_>>()}))
 }
 
 /// A family as `family` reads it: what it is, each of its types' parameters worked out (formulas and
@@ -10935,7 +13073,7 @@ fn family_reply(name: &str, f: &crate::family::Family, warnings: &[String]) -> V
         .filter_map(|t| f.values_in(t, &BTreeMap::new(), crate::family::DEFAULT_WALL).ok().map(|v| (t.clone(), v)))
         .map(|(t, v)| (t, Value::Object(v.iter().map(|(k, v)| (k.clone(), val(v))).collect())))
         .collect::<Map<String, Value>>();
-    json!({"name": name, "family": f, "values": Value::Object(values), "warnings": warnings})
+    json!({"name": name, "family": f, "options": f.options_json(), "values": Value::Object(values), "warnings": warnings})
 }
 
 /// A parameter's value worked out, as JSON: a number, or a material's name.
@@ -10973,7 +13111,16 @@ fn family_changes(was: Option<&crate::family::Family>, now: &crate::family::Fami
         "types": types,
         "forms": {"replaced": patches.forms_replaced, "patched": patches.forms_patched, "deleted": patches.forms_deleted},
         "symbols": {"replaced": patches.symbols_replaced, "patched": patches.symbols_patched, "deleted": patches.symbols_deleted},
+        "ref_planes": {"replaced": patches.planes_replaced, "patched": patches.planes_patched, "deleted": patches.planes_deleted},
+        "ref_lines": {"replaced": patches.lines_replaced, "patched": patches.lines_patched, "deleted": patches.lines_deleted},
+        "dimensions": {"replaced": patches.dimensions_replaced, "patched": patches.dimensions_patched, "deleted": patches.dimensions_deleted, "dropped": patches.dimensions_dropped},
         "rename": rename,
+        "parameters_renamed": patches.params_renamed.iter().map(|(a, b)| json!({"from": a, "to": b})).collect::<Vec<_>>(),
+        "component_values_changed": patches.component_ops.len(),
+        "options": now.options_changed(was),
+        "nested": {"loaded": patches.nested_loaded, "deleted": patches.nested_deleted},
+        "nested_instances": {"replaced": patches.instances_replaced, "patched": patches.instances_patched,
+            "added": patches.instances_added, "deleted": patches.instances_deleted},
         "deleted": false,
     })
 }
@@ -10999,6 +13146,21 @@ where
     if let Some(map) = patch.as_object_mut() {
         map.remove("id");
         map.remove("guid");
+    }
+    // A form given the `plane` shorthand is drawn on that datum, whatever host it had.
+    if patch.get("plane").is_some_and(|v| !v.is_null())
+        && let Some(map) = whole.as_object_mut()
+    {
+        map.remove("host");
+    }
+    // A form's sketch given again, in whole or by a shorthand (its `profile`, `circle` or `axis`): what it replaces goes.
+    if let Some(Value::Array(lines)) = whole.get_mut("sketch") {
+        let given = |k: &str| patch.get(k).is_some();
+        let (all, profile, axis) = (given("sketch"), given("profile") || given("circle"), given("axis"));
+        lines.retain(|l| {
+            let is_axis = l.get("axis").and_then(Value::as_bool) == Some(true);
+            !(all || (is_axis && axis) || (!is_axis && profile))
+        });
     }
     merge(&mut whole, &patch);
     parts[at] = serde_json::from_value(whole).map_err(|e| bad(c, format!("{what} {} of family \"{family}\": {e}", shown(key))))?;
@@ -11033,6 +13195,15 @@ fn part_at<T: crate::library::HasPart>(c: &str, parts: &mut [T], key: &Value, wh
         .ok_or_else(|| bad(c, format!("{what} {} is not of family \"{family}\"", shown(key))))
 }
 
+/// Refused where `key` names one of the datums every family holds, which are pinned.
+fn not_datum(c: &str, key: Option<&Value>) -> Result<(), String> {
+    let g = key.and_then(|k| serde_json::from_value::<Guid>(k.clone()).ok());
+    match crate::family::datums().into_iter().find(|d| Some(d.guid) == g) {
+        Some(d) => Err(bad(c, format!("{} is a datum, pinned: it can't be moved, changed or deleted", d.name))),
+        None => Ok(()),
+    }
+}
+
 /// What a form or a symbol was named by, in a message: the id, or the GUID, as it was given.
 fn shown(key: &Value) -> String {
     match key {
@@ -11065,40 +13236,335 @@ fn symbol_set(s: &mut Session, p: &Value) -> R {
     Ok(json!({"set": set, "loaded": loaded, "kept": kept}))
 }
 
-fn component(s: &mut Session, p: &Value) -> R {
-    let c = "component";
-    let m = &s.model;
-    let family = string(c, p, "family")?.ok_or_else(|| bad(c, "`family` is required; `inspect` lists the families"))?;
-    let f = m.families.get(&family).ok_or_else(|| {
-        let names: Vec<&str> = m.families.keys().map(String::as_str).collect();
-        bad(c, format!("family `{family}` doesn't exist (there are: {})", names.join(", ")))
-    })?;
-    let type_name = match string(c, p, "type")? {
-        Some(t) => t,
-        None => f.types.keys().next().cloned().ok_or_else(|| bad(c, format!("family `{family}` has no type")))?,
-    };
-    let params = match p.get("params") {
-        Some(Value::Object(o)) => o.iter().filter(|(_, v)| !v.is_null()).map(|(k, v)| (k.clone(), v.clone())).collect(),
-        v if absent(v) => BTreeMap::new(),
-        v => return Err(bad(c, format!("`params` is {{parameter: value}}, not {}", v.unwrap_or(&Value::Null)))),
-    };
-    let comp = Component {
-        family,
-        type_name,
-        level: level_param(c, m, p, "level")?,
-        at: point_req(c, p, "at")?,
-        angle: num(c, p, "angle")?.unwrap_or(0.0),
-        offset: num(c, p, "offset")?.unwrap_or(0.0),
-        mirrored: flag(c, p, "mirrored")?,
-        params,
-    };
-    let id = s.model_mut().insert(Element::Component(comp));
-    Ok(json!({"id": id}))
-}
-
 /// The project's pictures, each its name and its size in pixels.
 fn images(m: &Model) -> Value {
     Value::Object(m.images.iter().map(|(id, p)| (id.clone(), json!({"name": p.name(), "size": [p.size().0, p.size().1]}))).collect())
+}
+
+/// A shared parameters file at `path` (`shared_parameters.rs`): read and listed, made, given a group or a parameter, a parameter
+/// of it added to a family, or a family's shared parameters written to it. Only adding one to a family changes the project.
+fn shared_parameters(s: &mut Session, p: &Value) -> R {
+    use crate::shared_parameters::{Definition, SharedFile};
+    let c = "shared_parameters";
+    const KEYS: &[&str] = &[
+        "path",
+        "action",
+        "group",
+        "name",
+        "guid",
+        "kind",
+        "of",
+        "description",
+        "visible",
+        "modifiable",
+        "family",
+        "instance",
+        "under",
+        "replace",
+    ];
+    only(c, p, KEYS)?;
+    let path = PathBuf::from(string(c, p, "path")?.ok_or_else(|| bad(c, "`path` is required: the shared parameters file"))?);
+    let action = string(c, p, "action")?.unwrap_or_else(|| "list".into());
+    let read = |path: &Path| SharedFile::read(path).map_err(|e| bad(c, e));
+    let guid_param = || -> Result<Option<Guid>, String> {
+        match string(c, p, "guid")? {
+            None => Ok(None),
+            Some(g) => Guid::parse(&g)
+                .filter(|g| g.pending().is_none() && !g.is_nil())
+                .map(Some)
+                .ok_or_else(|| bad(c, format!("`guid` is a GUID, xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx, not `{g}`"))),
+        }
+    };
+    let category = || -> Result<Option<crate::family::Category>, String> {
+        match p.get("of") {
+            v if absent(v) => Ok(None),
+            Some(v) => serde_json::from_value(v.clone()).map(Some).map_err(|_| bad(c, format!("`of` is a family category, not {v}"))),
+            None => Ok(None),
+        }
+    };
+    // Which families of the project share each GUID.
+    let holders = |m: &Model, g: Guid| -> Vec<String> {
+        m.families.iter().filter(|(_, f)| f.parameters.iter().any(|q| q.shared == Some(g))).map(|(n, _)| n.clone()).collect()
+    };
+    match action.as_str() {
+        "list" => {
+            let file = read(&path)?;
+            let groups: Vec<Value> = file
+                .groups
+                .iter()
+                .map(|g| {
+                    let parameters: Vec<Value> = file
+                        .parameters
+                        .iter()
+                        .filter(|q| q.group == g.id)
+                        .map(|q| {
+                            let (kind, of) = q.kind().map_or((Value::Null, Value::Null), |(k, of)| (json!(k), json!(of)));
+                            let mut v = json!({"guid": q.guid, "name": q.name, "kind": kind, "datatype": q.datatype,
+                                "description": q.description, "visible": q.visible, "modifiable": q.modifiable, "line": q.line,
+                                "families": holders(&s.model, q.guid)});
+                            if !of.is_null() {
+                                v["of"] = of;
+                            }
+                            v
+                        })
+                        .collect();
+                    json!({"id": g.id, "name": g.name, "parameters": parameters})
+                })
+                .collect();
+            Ok(json!({"path": path, "version": file.version, "groups": groups}))
+        }
+        "create" => {
+            if path.exists() && !flag(c, p, "replace")? {
+                return Err(bad(c, format!("{} is there already: `replace` it, or add to it", path.display())));
+            }
+            SharedFile::default().write(&path).map_err(|e| bad(c, e))?;
+            Ok(json!({"created": path}))
+        }
+        "add_group" => {
+            let group = string(c, p, "group")?.ok_or_else(|| bad(c, "`group` is required: the new group's name"))?;
+            let mut file = read(&path)?;
+            let id = file.add_group(&group).map_err(|e| bad(c, e))?;
+            file.write(&path).map_err(|e| bad(c, e))?;
+            Ok(json!({"group": group, "id": id, "path": path}))
+        }
+        "add" => {
+            let group = string(c, p, "group")?.ok_or_else(|| bad(c, "`group` is required: the file's group it goes in"))?;
+            let name = string(c, p, "name")?.ok_or_else(|| bad(c, "`name` is required: the parameter's"))?;
+            let kind: crate::family::Kind = match p.get("kind") {
+                v if absent(v) => return Err(bad(c, "`kind` is required: what the parameter holds")),
+                Some(v) => serde_json::from_value(v.clone()).map_err(|_| bad(c, format!("`kind` is none BIMCraft has: {v}")))?,
+                None => return Err(bad(c, "`kind` is required")),
+            };
+            let of = category()?;
+            if of.is_some() && kind != crate::family::Kind::FamilyType {
+                return Err(bad(c, "`of` is for a family type parameter; leave it out"));
+            }
+            let description = string(c, p, "description")?.unwrap_or_default();
+            let flag_or = |key: &str| match p.get(key) {
+                v if absent(v) => Ok(true),
+                Some(Value::Bool(b)) => Ok(*b),
+                Some(v) => Err(bad(c, format!("`{key}` must be true or false, got {v}"))),
+                None => Ok(true),
+            };
+            let (visible, modifiable) = (flag_or("visible")?, flag_or("modifiable")?);
+            let guid = guid_param()?.unwrap_or_else(Guid::new);
+            let (datatype, data_category) = crate::shared_parameters::datatype(kind, of).map_err(|e| bad(c, format!("`{name}`: {e}")))?;
+            let mut file = read(&path)?;
+            let g = file
+                .group(&group)
+                .map(|g| g.id)
+                .ok_or_else(|| bad(c, format!("the file has no group `{group}`: make it with `add_group`")))?;
+            let def = Definition {
+                guid,
+                name: name.clone(),
+                datatype,
+                category: data_category,
+                group: g,
+                visible,
+                description,
+                modifiable,
+                hide_when_no_value: false,
+                line: 0,
+            };
+            file.add(def).map_err(|e| bad(c, e))?;
+            file.write(&path).map_err(|e| bad(c, e))?;
+            Ok(json!({"name": name, "guid": guid, "group": group, "kind": kind, "path": path}))
+        }
+        "load" => {
+            let to = string(c, p, "family")?.ok_or_else(|| bad(c, "`family` is required: the family it goes into"))?;
+            let guid = guid_param()?;
+            let name = string(c, p, "name")?;
+            let instance = flag(c, p, "instance")?;
+            let under = match p.get("under") {
+                v if absent(v) => None,
+                Some(v) => Some(serde_json::from_value::<crate::family::Group>(v.clone()).map_err(|_| {
+                    let groups: Vec<String> =
+                        crate::family::Group::ALL.iter().map(|g| json!(g).as_str().unwrap_or_default().to_string()).collect();
+                    bad(c, format!("`under` is one of {}, not {v}", groups.join(", ")))
+                })?),
+                None => None,
+            };
+            let of = category()?;
+            let file = read(&path)?;
+            let def = match (guid, &name) {
+                (Some(g), _) => {
+                    file.parameters.iter().find(|q| q.guid == g).ok_or_else(|| bad(c, format!("the file has no parameter {g}")))?
+                }
+                (None, Some(n)) => {
+                    let named: Vec<&Definition> = file.parameters.iter().filter(|q| q.name == *n).collect();
+                    match named.as_slice() {
+                        [one] => *one,
+                        [] => return Err(bad(c, format!("the file has no parameter `{n}`"))),
+                        many => {
+                            let guids: Vec<String> = many.iter().map(|q| format!("{} (line {})", q.guid, q.line)).collect();
+                            return Err(bad(
+                                c,
+                                format!("the file has `{n}` {} times: give its `guid`, one of {}", many.len(), guids.join(", ")),
+                            ));
+                        }
+                    }
+                }
+                (None, None) => return Err(bad(c, "`name` or `guid` is required: the file's parameter to load")),
+            };
+            let (kind, file_of) = def.kind().map_err(|e| bad(c, e))?;
+            let of = match (kind, file_of, of) {
+                (crate::family::Kind::FamilyType, Some(f), _) => Some(f),
+                (crate::family::Kind::FamilyType, None, Some(o)) => Some(o),
+                (crate::family::Kind::FamilyType, None, None) => {
+                    return Err(bad(
+                        c,
+                        format!(
+                            "{}shared parameter `{}` is a family type of a category the file doesn't say one BIMCraft knows (`{}`): \
+                             give `of`",
+                            def.at(),
+                            def.name,
+                            def.category
+                        ),
+                    ));
+                }
+                (_, _, Some(_)) => return Err(bad(c, format!("`of` is for a family type parameter; `{}` is {}", def.name, kind.said()))),
+                _ => None,
+            };
+            let f = s.model.families.get(&to).ok_or_else(|| bad(c, format!("there's no family `{to}`")))?;
+            let said = format!("shared parameter `{}` ({}, line {} of {})", def.name, def.guid, def.line, path.display());
+            if let Some(q) = f.parameters.iter().find(|q| q.name == def.name || q.shared == Some(def.guid)) {
+                return Err(bad(
+                    c,
+                    match q.shared {
+                        Some(g) if g == def.guid => format!("family `{to}` has {said} already, as `{}`", q.name),
+                        _ => format!("family `{to}` has a parameter `{}` already; {said} can't be added beside it", q.name),
+                    },
+                ));
+            }
+            // What the project holds already: one GUID is one name and one kind, one name one GUID.
+            for (n, other) in s.model.families.iter() {
+                for q in other.parameters.iter() {
+                    let Some(g) = q.shared else { continue };
+                    if g == def.guid && q.name != def.name {
+                        return Err(bad(
+                            c,
+                            format!("{said}: family `{n}` shares {g} as `{}`; one GUID is one name across the project", q.name),
+                        ));
+                    }
+                    if g == def.guid && q.kind != kind {
+                        return Err(bad(
+                            c,
+                            format!(
+                                "{said} is {}: family `{n}` shares {g} as {}; one GUID is one kind across the project",
+                                kind.said(),
+                                q.kind.said()
+                            ),
+                        ));
+                    }
+                    if g != def.guid && q.name == def.name {
+                        return Err(bad(
+                            c,
+                            format!("{said}: family `{n}` shares `{}` as {g}; one name is one GUID across the project", q.name),
+                        ));
+                    }
+                }
+            }
+            let mut parameter = json!({"name": def.name, "kind": kind, "shared": def.guid, "instance": instance});
+            if let Some(g) = under {
+                parameter["group"] = json!(g);
+            }
+            if let Some(o) = of {
+                parameter["of"] = json!(o);
+            }
+            let (name, guid) = (def.name.clone(), def.guid);
+            let r = family(s, &json!({"name": to, "parameter": parameter}))?;
+            Ok(json!({"family": to, "parameter": name, "guid": guid, "kind": kind, "instance": instance, "warnings": r["warnings"]}))
+        }
+        "export" => {
+            let named = string(c, p, "family")?;
+            let shared: Vec<(String, crate::family::Parameter)> = match &named {
+                Some(n) => {
+                    let f = s.model.families.get(n).ok_or_else(|| bad(c, format!("there's no family `{n}`")))?;
+                    f.parameters.iter().filter(|q| q.shared.is_some()).map(|q| (n.clone(), q.clone())).collect()
+                }
+                None => s
+                    .model
+                    .families
+                    .iter()
+                    .flat_map(|(n, f)| f.parameters.iter().filter(|q| q.shared.is_some()).map(move |q| (n.clone(), q.clone())))
+                    .collect(),
+            };
+            if shared.is_empty() {
+                let whose = named.as_ref().map_or("the project's families have".to_string(), |n| format!("family `{n}` has"));
+                return Err(bad(c, format!("{whose} no shared parameters to export")));
+            }
+            let group = string(c, p, "group")?.unwrap_or_else(|| named.clone().unwrap_or_else(|| "Exported Parameters".into()));
+            let mut file = if path.exists() { read(&path)? } else { SharedFile::default() };
+            let (mut added, mut kept) = (Vec::new(), Vec::new());
+            let mut group_id = file.group(&group).map(|g| g.id);
+            for (fam, q) in &shared {
+                let Some(g) = q.shared else { continue };
+                if added.contains(&q.name) {
+                    continue;
+                }
+                if let Some(d) = file.parameters.iter().find(|d| d.guid == g) {
+                    let same = d.name == q.name && d.kind().is_ok_and(|(k, _)| k == q.kind);
+                    if !same {
+                        return Err(bad(
+                            c,
+                            format!(
+                                "{}the file holds {g} as `{}` ({}), which family `{fam}` holds as `{}` ({}): one GUID is one name and one kind",
+                                d.at(),
+                                d.name,
+                                d.datatype,
+                                q.name,
+                                q.kind.said()
+                            ),
+                        ));
+                    }
+                    kept.push(q.name.clone());
+                    continue;
+                }
+                if let Some(d) = file.parameters.iter().find(|d| d.name == q.name) {
+                    return Err(bad(
+                        c,
+                        format!(
+                            "{}the file holds `{}` as {}, which family `{fam}` shares as {g}: one name is one GUID",
+                            d.at(),
+                            d.name,
+                            d.guid
+                        ),
+                    ));
+                }
+                let (datatype, data_category) = crate::shared_parameters::datatype(q.kind, q.of)
+                    .map_err(|e| bad(c, format!("family `{fam}`: parameter `{}`: {e}", q.name)))?;
+                let id = match group_id {
+                    Some(id) => id,
+                    None => {
+                        let id = file.add_group(&group).map_err(|e| bad(c, e))?;
+                        group_id = Some(id);
+                        id
+                    }
+                };
+                file.add(Definition {
+                    guid: g,
+                    name: q.name.clone(),
+                    datatype,
+                    category: data_category,
+                    group: id,
+                    visible: true,
+                    description: String::new(),
+                    modifiable: true,
+                    hide_when_no_value: false,
+                    line: 0,
+                })
+                .map_err(|e| bad(c, format!("family `{fam}`: {e}")))?;
+                added.push(q.name.clone());
+            }
+            kept.sort();
+            kept.dedup();
+            if !added.is_empty() || !path.exists() {
+                file.write(&path).map_err(|e| bad(c, e))?;
+            }
+            Ok(json!({"path": path, "group": group, "added": added, "kept": kept}))
+        }
+        other => Err(bad(c, format!("`action` is list, create, add_group, add, load or export, not `{other}`"))),
+    }
 }
 
 fn favorite(s: &mut Session, p: &Value) -> R {
@@ -11285,6 +13751,11 @@ fn edit_type(s: &mut Session, p: &Value) -> R {
     let cat = category(&string(c, p, "category")?.ok_or_else(|| bad(c, "`category` is required: wall, floor, ceiling, door or window"))?);
     let name = string(c, p, "name")?.filter(|n| !n.trim().is_empty()).ok_or_else(|| bad(c, "`name` is required"))?;
     let (thickness, width, height, sill) = (num(c, p, "thickness")?, num(c, p, "width")?, num(c, p, "height")?, num(c, p, "sill")?);
+    if !matches!(cat.as_str(), "structuralcolumn" | "beam")
+        && ["profile", "shape", "web", "flange", "radius"].iter().any(|key| !absent(p.get(key)))
+    {
+        return Err(bad(c, "a steel section is for a structural column's or a beam's type"));
+    }
     let need = |what: &str| bad(c, format!("a new {cat} type needs `{what}`"));
     let m = s.model_mut();
     let t = match cat.as_str() {
@@ -11324,13 +13795,19 @@ fn edit_type(s: &mut Session, p: &Value) -> R {
                 _ => &mut m.types.column,
             };
             let old = types.get(&name).cloned();
+            let section = steel(c, p, &cat, old.as_ref().and_then(|t| t.profile.as_ref()))?;
+            let (width, depth) = section.size(width, num(c, p, "depth")?);
             let width = width.or(old.as_ref().map(|t| t.width)).ok_or_else(|| need("width"))?;
-            let round = match p.get("round") {
-                v if absent(v) => old.as_ref().is_some_and(|t| t.round),
-                _ => flag(c, p, "round")?,
+            let round = match section.round() {
+                Some(r) => r,
+                None => match p.get("round") {
+                    v if absent(v) => old.as_ref().is_some_and(|t| t.round),
+                    _ => flag(c, p, "round")?,
+                },
             };
-            let depth = if round { width } else { num(c, p, "depth")?.or(old.as_ref().map(|t| t.depth)).unwrap_or(width) };
-            let t = ColumnType { width, depth, round };
+            let depth = if round { width } else { depth.or(old.as_ref().map(|t| t.depth)).unwrap_or(width) };
+            let profile = section.profile(old.as_ref().map(|t| (t.width, t.depth)), (width, depth));
+            let t = ColumnType { width, depth, round, profile };
             types.insert(name.clone(), t.clone());
             json!(t)
         }
@@ -11338,14 +13815,22 @@ fn edit_type(s: &mut Session, p: &Value) -> R {
         run if crate::model::RUN_CATEGORIES.contains(&run) => {
             let types = m.types.runs.entry(cat.clone()).or_default();
             let old = types.get(&name).cloned();
+            let section = steel(c, p, &cat, old.as_ref().and_then(|t| t.profile.as_ref()))?;
+            let (width, depth) = section.size(width, num(c, p, "depth")?);
             let width = width.or(old.as_ref().map(|t| t.width)).ok_or_else(|| need("width"))?;
-            let round = match p.get("round") {
-                v if absent(v) => old.as_ref().is_some_and(|t| t.round),
-                _ => flag(c, p, "round")?,
+            let round = match section.round() {
+                Some(r) => r,
+                None => match p.get("round") {
+                    v if absent(v) => old.as_ref().is_some_and(|t| t.round),
+                    _ => flag(c, p, "round")?,
+                },
             };
-            let depth = if round { width } else { num(c, p, "depth")?.or(old.as_ref().map(|t| t.depth)).ok_or_else(|| need("depth"))? };
-            let material = string(c, p, "material")?.or(old.map(|t| t.material)).unwrap_or_default();
-            let t = crate::model::RunType { width, depth, round, material };
+            let depth = if round { width } else { depth.or(old.as_ref().map(|t| t.depth)).ok_or_else(|| need("depth"))? };
+            // A section from the catalogue is steel unless it says.
+            let steel_by_default = matches!(section, Steel::Catalogue(..)).then(|| steel_material(&m.language, &m.materials));
+            let profile = section.profile(old.as_ref().map(|t| (t.width, t.depth)), (width, depth));
+            let material = string(c, p, "material")?.or(old.map(|t| t.material)).or(steel_by_default.flatten()).unwrap_or_default();
+            let t = crate::model::RunType { width, depth, round, material, profile };
             types.insert(name.clone(), t.clone());
             json!(t)
         }
@@ -11382,6 +13867,137 @@ fn edit_type(s: &mut Session, p: &Value) -> R {
         }
     };
     Ok(json!({"category": cat, "name": name, "type": t}))
+}
+
+/// What `type`'s params say of a structural type's steel section (`profiles.rs`).
+enum Steel {
+    /// Nothing but, perhaps, plates: it keeps the section it has, those plates changed.
+    Unsaid(Option<crate::model::Profile>),
+    /// `shape: rectangle`: none, a plain rectangle (or round).
+    Plain(bool),
+    /// `profile`: one of the catalogue's, its width and depth with it.
+    Catalogue(f64, f64, crate::model::Profile),
+    /// `shape` and its plates.
+    Shape(crate::model::Profile),
+}
+
+impl Steel {
+    /// The width and depth the type takes: the catalogue's, else those given.
+    fn size(&self, width: Option<f64>, depth: Option<f64>) -> (Option<f64>, Option<f64>) {
+        match self {
+            Steel::Catalogue(w, d, _) => (Some(*w), Some(*d)),
+            _ => (width, depth),
+        }
+    }
+
+    /// Whether the section makes the type round (a pipe) or not; none when it says nothing.
+    fn round(&self) -> Option<bool> {
+        match self {
+            Steel::Unsaid(_) => None,
+            Steel::Plain(round) => Some(*round),
+            Steel::Catalogue(..) => Some(false),
+            Steel::Shape(p) => Some(p.shape == crate::profiles::Shape::Chs),
+        }
+    }
+
+    /// The type's section once its size is `now` (it was `was`): a catalogue's name stays only while its size does.
+    fn profile(self, was: Option<(f64, f64)>, now: (f64, f64)) -> Option<crate::model::Profile> {
+        match self {
+            Steel::Unsaid(Some(mut p)) => {
+                if was != Some(now) {
+                    p.name.clear();
+                }
+                Some(p)
+            }
+            Steel::Unsaid(None) | Steel::Plain(_) => None,
+            Steel::Catalogue(_, _, p) | Steel::Shape(p) => Some(p),
+        }
+    }
+}
+
+/// The library's steel, `Metal` in the project's language, if it has it: what a section of the catalogue is made of.
+fn steel_material(language: &Language, materials: &BTreeMap<String, crate::model::Material>) -> Option<String> {
+    Some(language.word("Metal").to_string()).filter(|x| materials.contains_key(x))
+}
+
+/// A structural column's or a beam's steel section from `type`'s params, over the one it has (`old`): `profile` names one of
+/// the catalogue's, `shape` makes one with its plates (`web`, `flange`, `thickness`, `radius`), `shape: rectangle` takes it
+/// away; plates alone change the one it has.
+fn steel(c: &str, p: &Value, cat: &str, old: Option<&crate::model::Profile>) -> Result<Steel, String> {
+    use crate::profiles::{Shape, catalogue};
+    let plates = ["web", "flange", "thickness", "radius"];
+    let said = |k: &str| !absent(p.get(k));
+    if !matches!(cat, "structuralcolumn" | "beam") {
+        if said("profile") || said("shape") {
+            return Err(bad(
+                c,
+                format!("a steel section (`profile`, `shape`) is for a structural column's or a beam's type, not a {cat}'s"),
+            ));
+        }
+        return Ok(Steel::Unsaid(None));
+    }
+    let plate = |k: &str| -> Result<Option<f64>, String> {
+        match num(c, p, k)? {
+            Some(x) if x < 0.0 => Err(bad(c, format!("`{k}` must be a length of 0 or more, got {x}"))),
+            x => Ok(x),
+        }
+    };
+    if let Some(name) = string(c, p, "profile")? {
+        if said("shape") || plates.iter().any(|k| said(k)) {
+            return Err(bad(c, "`profile` names a section of the catalogue: give it alone, or `shape` and its plates"));
+        }
+        let (w, d, profile) = catalogue(&name).ok_or_else(|| {
+            bad(
+                c,
+                format!("`{name}` isn't in the catalogue (IPE 80 to 600, HEA and HEB 100 to 600); give `shape` and its plates to make it"),
+            )
+        })?;
+        return Ok(Steel::Catalogue(w, d, profile));
+    }
+    let shape = match string(c, p, "shape")? {
+        None => None,
+        Some(w) if matches!(w.trim().to_lowercase().as_str(), "rectangle" | "rectangular" | "none" | "round") => {
+            if let Some(k) = plates.iter().find(|k| said(k)) {
+                return Err(bad(c, format!("a {w} section has no `{k}`; give `shape` I, U, L, RHS or CHS")));
+            }
+            return Ok(Steel::Plain(w.trim().eq_ignore_ascii_case("round")));
+        }
+        Some(w) => Some(Shape::parse(&w).ok_or_else(|| bad(c, format!("`shape` is I, U, L, RHS, CHS or rectangle, not `{w}`")))?),
+    };
+    let base = match (shape, old) {
+        (Some(shape), _) => crate::model::Profile { shape, name: String::new(), web: 0.0, flange: 0.0, thickness: 0.0, radius: 0.0 },
+        (None, Some(o)) => o.clone(),
+        (None, None) => {
+            if let Some(k) = plates.iter().find(|k| said(k)) {
+                return Err(bad(c, format!("`{k}` is a steel section's: give `shape` (I, U, L, RHS or CHS) or `profile`")));
+            }
+            return Ok(Steel::Unsaid(None));
+        }
+    };
+    let takes: &[&str] = match base.shape {
+        Shape::I | Shape::U => &["web", "flange", "radius"],
+        Shape::L => &["thickness", "radius"],
+        Shape::Rhs | Shape::Chs => &["thickness"],
+    };
+    if let Some(k) = plates.iter().find(|k| said(k) && !takes.contains(k)) {
+        let list: Vec<String> = takes.iter().map(|t| format!("`{t}`")).collect();
+        return Err(bad(c, format!("a {} section takes {}, not `{k}`", base.shape.word(), list.join(", "))));
+    }
+    let changed = plates.iter().any(|k| said(k));
+    let mut profile = base;
+    profile.web = plate("web")?.unwrap_or(profile.web);
+    profile.flange = plate("flange")?.unwrap_or(profile.flange);
+    profile.thickness = plate("thickness")?.unwrap_or(profile.thickness);
+    profile.radius = plate("radius")?.unwrap_or(profile.radius);
+    Ok(match shape {
+        Some(_) => Steel::Shape(profile),
+        None => {
+            if changed {
+                profile.name.clear();
+            }
+            Steel::Unsaid(Some(profile))
+        }
+    })
 }
 
 /// A layered type's thickness and layers from `type`'s params, over the one named that way already
@@ -11435,6 +14051,61 @@ fn layered(
     }
 }
 
+/// The fields that put an element where it is, which `modify` does not change on a pinned element: the desktop's
+/// temporary dimensions, level and shape grips and sketch boundaries all go through it. A new placing field goes here.
+const PLACED_BY: &[&str] = &[
+    "start",
+    "end",
+    "at",
+    "point",
+    "offset",
+    "elevation",
+    "extent",
+    "location",
+    "arc",
+    "angle",
+    "mirrored",
+    "host",
+    "refs",
+    "arrow",
+    "gables",
+    "slope",
+    "boundary",
+    "sketch",
+    "crop",
+    "region",
+    "view",
+    "sheet",
+    "work_plane",
+    "section_box",
+    "pattern_origin",
+    "pattern_angle",
+    "join",
+    "attach_top",
+    "attach_base",
+    "base_offset",
+    "top_offset",
+    "limit_offset",
+    "upper_limit",
+    "flip_facing",
+    "flip_hand",
+    "level",
+    "top_level",
+    "view_range",
+    "graphics",
+    "scale",
+    "detail",
+    "style",
+    "visual_style",
+    "depth",
+    "curve",
+    "path",
+    "leader",
+    "justification",
+    "extrusion",
+    "parent",
+];
+
 fn modify(s: &mut Session, p: &Value) -> R {
     let c = "modify";
     let fields = p.as_object().ok_or_else(|| bad(c, "params must be {id | ids, …fields}"))?;
@@ -11447,12 +14118,30 @@ fn modify(s: &mut Session, p: &Value) -> R {
         ids.iter().copied().filter(|id| m.elements.get(*id).is_some_and(|e| e.category() == "stripfooting")).collect();
     let mut following: Vec<(Id, Element)> = Vec::new();
     for &id in &ids {
+        if m.is_pinned(id)
+            && let Some(k) = fields.keys().find(|k| PLACED_BY.contains(&k.as_str()))
+        {
+            return Err(bad(
+                c,
+                format!("{} {id} is pinned: `unpin` it first to change `{k}`", m.elements.get(id).map_or("element", Element::category)),
+            ));
+        }
         let e = m.elements.get(id).ok_or_else(|| bad(c, format!("no element {id}")))?;
         let mut v = serde_json::to_value(e).map_err(|e| bad(c, e))?;
         let obj = v.as_object_mut().ok_or_else(|| bad(c, format!("element {id} can't be edited")))?;
         for (k, val) in fields {
             let val = match k.as_str() {
                 "id" | "ids" => continue,
+                // A component's Offset from Host: its host's offset on a plane, else its height over its level. Its Work Plane
+                // is what it is on, said, changed with `edit_work_plane`.
+                "offset_from_host" if matches!(e, Element::Component(_)) => {
+                    match obj.get_mut("host").and_then(Value::as_object_mut) {
+                        Some(host) => host.insert("offset".into(), val.clone()),
+                        None => obj.insert("offset".into(), val.clone()),
+                    };
+                    continue;
+                }
+                "work_plane" if matches!(e, Element::Component(_)) && json!(m.work_plane_name_of(e)) == *val => continue,
                 "category" if obj.get("category") == Some(val) => continue,
                 "category" => return Err(bad(c, "`category` can't change; delete the element and create another")),
                 "level" | "top_level" if val.is_string() => json!(level_param(c, m, p, k)?),
@@ -11481,6 +14170,16 @@ fn modify(s: &mut Session, p: &Value) -> R {
             && !fields.contains_key("runs")
         {
             n.runs = crate::text::remap(&old.text, &n.text, &old.runs);
+        }
+        if let (Element::Viewport(old), Element::Viewport(new)) = (e, &mut e2) {
+            if new.follow_scale && (!old.follow_scale || fields.get("follow_scale") == Some(&Value::Bool(true))) {
+                // Told to follow (again), it takes its view's scale now, not at the view's next change, whatever `scale` is
+                // given with it.
+                new.scale = graphics::scale_of(m, new.view);
+            } else if new.scale != old.scale {
+                // A viewport given a scale of its own keeps it: its view's scale no longer moves it.
+                new.follow_scale = false;
+            }
         }
         graphics::check_followed(m, e, &e2).map_err(|err| bad(c, format!("element {id}: {err}")))?;
         // A strip footing glued to the wall keeps its top on the wall's base: raised or lowered along its level
@@ -11570,6 +14269,29 @@ fn match_properties(s: &mut Session, p: &Value) -> R {
     Ok(json!({"modified": matched, "skipped": skipped}))
 }
 
+fn pin(s: &mut Session, p: &Value) -> R {
+    let c = "pin";
+    let ids = ids_param(c, &s.model, p)?;
+    let added: Vec<Guid> = ids.iter().filter(|id| !s.model.is_pinned(**id)).map(|id| s.model.guid(*id)).collect();
+    if !added.is_empty() {
+        s.model_mut().pinned.extend(added);
+    }
+    Ok(json!({"pinned": ids}))
+}
+
+fn unpin(s: &mut Session, p: &Value) -> R {
+    let c = "unpin";
+    let ids = ids_param(c, &s.model, p)?;
+    let removed: Vec<Guid> = ids.iter().filter(|id| s.model.is_pinned(**id)).map(|id| s.model.guid(*id)).collect();
+    if !removed.is_empty() {
+        let m = s.model_mut();
+        for g in removed {
+            m.pinned.remove(&g);
+        }
+    }
+    Ok(json!({"unpinned": ids}))
+}
+
 /// `patch` merged into `into`, as JSON Merge Patch (RFC 7386) does: objects merge key by key, a
 /// null removes its key, anything else replaces what was there.
 fn merge(into: &mut Value, patch: &Value) {
@@ -11626,7 +14348,7 @@ pub(crate) fn transform(c: &str, m: &Model, mut e: Element, id: Id, mo: &Motion,
     match &mut e {
         Element::Level(_) => return Err(bad(c, format!("level {id} has no place in plan; change its elevation, or add a level"))),
         Element::Sheet(_) => return Err(bad(c, format!("sheet {id} has no place in plan; move the views on it"))),
-        Element::Schedule(_) | Element::PlanView(_) => {
+        Element::Schedule(_) | Element::PanelSchedule(_) | Element::PlanView(_) => {
             return Err(bad(c, format!("{category} {id} has no place in plan; move its viewport on its sheet")));
         }
         // A camera view has a place in plan: its mark. The camera goes as a whole (the plan point of its eye and its
@@ -11719,7 +14441,21 @@ pub(crate) fn transform(c: &str, m: &Model, mut e: Element, id: Id, mo: &Motion,
         // A mirror image runs back the other way, so its exterior side is the mirror image of the old one.
         Element::Wall(w) => (w.start, w.end) = if mo.mirror { (f(w.end), f(w.start)) } else { (f(w.start), f(w.end)) },
         Element::Grid(g) => (g.start, g.end) = (f(g.start), f(g.end)),
+        // Its line goes as a grid's, each end keeping its height; its `up` turns with it (a mirror image's too).
+        Element::RefPlane(rp) => {
+            let lift = |p: [f64; 3]| {
+                let q = f(P2(p[0], p[1]));
+                [q.0, q.1, p[2]]
+            };
+            // A direction, taken a long way out so the micron a point is kept to costs it nothing.
+            const FAR: f64 = 1e6;
+            let o = f(P2(0.0, 0.0));
+            let up = f(P2(rp.up[0] * FAR, rp.up[1] * FAR));
+            rp.up = [(up.0 - o.0) / FAR, (up.1 - o.1) / FAR, rp.up[2]];
+            (rp.start, rp.end) = (lift(rp.start), lift(rp.end));
+        }
         Element::RoomSeparator(rs) => (rs.start, rs.end) = (f(rs.start), f(rs.end)),
+        Element::PropertyLine(pl) => pl.points.iter_mut().for_each(|q| *q = f(*q)),
         Element::Rebar(rb) => {
             for q in &mut rb.path {
                 let moved = f(P2(q[0], q[1]));
@@ -11788,12 +14524,21 @@ pub(crate) fn transform(c: &str, m: &Model, mut e: Element, id: Id, mo: &Motion,
         }
         // A tag's place hangs on its door or window's: see `relocate` and `duplicate`.
         Element::Tag(_) => {}
+        // A circuit has no place: it follows its board and its devices.
+        Element::Circuit(_) => {}
         Element::Section(v) | Element::Elevation(v) => {
-            (v.start, v.end) = (f(v.start), f(v.end));
+            (v.start, v.end, v.mark) = (f(v.start), f(v.end), v.mark.map(|q| micron(f(q))));
             // A mirror image of it looks the mirrored way round: to the left of its line again.
             if mo.mirror {
                 std::mem::swap(&mut v.start, &mut v.end);
             }
+            // The line an elevation looks at goes with it when it is carried along with other things; taken on its own
+            // (or with other marks), the line stays and it looks at it from where it comes to stand.
+            let marks = |id: &Id| matches!(m.elements.get(*id), Some(Element::Section(_) | Element::Elevation(_)));
+            if !with.iter().all(marks) {
+                v.reference = v.reference.map(|[a, b]| [micron(f(a)), micron(f(b))]);
+            }
+            crate::elevation::settle(v);
         }
     }
     Ok(e)
@@ -11866,6 +14611,70 @@ fn host_line(was: P2, candidates: impl IntoIterator<Item = Id>, line_of: impl Fn
     candidates.into_iter().filter_map(line_of).find(|&(a, b)| geom::dist_to_segment(was, a, b) <= TOL)
 }
 
+/// The components on the faces of elements `ids` (Place on Face): those on a floor's, a ceiling's or a roof's, which a
+/// command taking their host whole takes too; and those on a wall's side, which their wall takes by itself.
+fn face_hosted(m: &Model, ids: &[Id]) -> (Vec<Id>, Vec<Id>) {
+    let lookup = m.lookup();
+    let (mut slabs, mut sides) = (Vec::new(), Vec::new());
+    for &id in ids {
+        let Some(e) = m.elements.get(id) else { continue };
+        if !matches!(e.category(), "wall" | "floor" | "ceiling" | "roof") {
+            continue;
+        }
+        let g = m.guid(id);
+        for r in lookup.referrers(&g) {
+            if let Some(Element::Component(cp)) = m.elements.get(r)
+                && let Some(Hosted { host: HostRef::Face { element, .. }, .. }) = cp.host
+                && element == g
+            {
+                if e.category() == "wall" { sides.push(r) } else { slabs.push(r) }
+            }
+        }
+    }
+    (slabs, sides)
+}
+
+/// Component `e`, on a wall's side, as it is once its wall is mirrored, which runs back the other way: as far from the
+/// wall's other end, turned the other way on the face and mirrored.
+fn side_mirrored(m: &Model, e: &Element) -> Option<Element> {
+    let Element::Component(cp) = e else { return None };
+    let mut cp = cp.clone();
+    let h = cp.host.as_mut()?;
+    let length = Axis::of(m.wall(h.host.guid())?).length();
+    h.uv[0] = length - h.uv[0];
+    cp.angle = 180.0 - cp.angle + 0.0;
+    cp.mirrored = !cp.mirrored;
+    Some(Element::Component(cp))
+}
+
+/// The doors and windows whose host is one of `hosts`: what a wall carries when it moves or turns round.
+fn hosted_openings(m: &Model, hosts: &BTreeSet<Guid>) -> Vec<Id> {
+    m.elements
+        .iter()
+        .filter_map(|(&id, e)| match e {
+            Element::Door(o) | Element::Window(o) if hosts.contains(&o.host) => Some(id),
+            _ => None,
+        })
+        .collect()
+}
+
+/// An error naming the pinned elements among `ids`, which command `c` would `verb`; a command that changes where an
+/// element is calls this before it touches the model.
+fn refuse_pinned(c: &str, m: &Model, ids: &[Id], verb: &str) -> Result<(), String> {
+    let mut pinned: Vec<Id> = ids.iter().copied().filter(|id| m.is_pinned(*id)).collect();
+    pinned.sort_unstable();
+    pinned.dedup();
+    let name = |id: Id| format!("{} {id}", m.elements.get(id).map_or("element", Element::category));
+    match pinned.as_slice() {
+        [] => Ok(()),
+        [one] => Err(bad(c, format!("{} is pinned: `unpin` it first to {verb} it", name(*one)))),
+        many => Err(bad(
+            c,
+            format!("{} are pinned: `unpin` them first to {verb} them", many.iter().map(|id| name(*id)).collect::<Vec<_>>().join(", ")),
+        )),
+    }
+}
+
 /// Take elements by `mo`, keeping walls joined: walls joined to a taken wall stretch to stay
 /// joined, and doors and windows in walls that changed keep their place or go with their wall.
 /// With `end` (`Some(true)` the start, `Some(false)` the end), only that end of one wall or one run goes.
@@ -11873,9 +14682,29 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
     let m = &s.model;
     // The walls, and what points at each: found among those, not every element.
     let lookup = m.lookup();
+    // What is on a face of a floor, a ceiling or a roof taken whole goes with it, as Revit's hosted elements do; what is
+    // on a wall's side keeps its place along it, so the wall takes it (mirrored, from its other end).
+    let (carried_faces, on_sides) = face_hosted(m, ids);
+    let ids: Vec<Id> = if end.is_none() {
+        ids.iter().copied().filter(|id| !on_sides.contains(id)).chain(carried_faces.into_iter().filter(|id| !ids.contains(id))).collect()
+    } else {
+        ids.to_vec()
+    };
+    let ids = ids.as_slice();
+    let sides: Vec<(Id, Element)> = if end.is_none() && mo.mirror {
+        on_sides.iter().filter_map(|id| Some((*id, side_mirrored(m, m.elements.get(*id)?)?))).collect()
+    } else {
+        Vec::new()
+    };
     let f = mo.map;
     let moving: BTreeSet<Id> = ids.iter().copied().collect();
     let moving_guids: BTreeSet<Guid> = ids.iter().map(|id| m.guid(*id)).collect();
+    // A wall carries its doors and windows, or shifts them when its start moves: a pinned one stops the wall too.
+    let mut blocked = ids.to_vec();
+    if end != Some(false) {
+        blocked.extend(hosted_openings(m, &moving_guids));
+    }
+    refuse_pinned(c, m, &blocked, "move")?;
     let heads = tag_heads(m, ids, mo);
     // Doors and windows of walls taken whole ride along.
     let carried = |host: Guid| moving_guids.contains(&host) && end.is_none();
@@ -12086,6 +14915,9 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
             }
         }
         if n != *w {
+            if m.is_pinned(id) {
+                return refuse_pinned(c, m, &[id], "move");
+            }
             walls.insert(id, n);
         }
     }
@@ -12113,6 +14945,9 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
             }
             None => crate::glue::mapped(&before, f),
         };
+        if m.is_pinned(fid) && before != after {
+            return refuse_pinned(c, m, &[fid], "move");
+        }
         taken.insert(fid, (before.clone(), after.clone()));
         glued.push((fid, before, after));
         glued_ids.insert(fid);
@@ -12213,10 +15048,13 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
                     }
                 }
             }
-            if n != *r
-                && let Some(moved_run) = Element::of_run(category, n)
-            {
-                others.push((id, moved_run));
+            if n != *r {
+                if m.is_pinned(id) {
+                    return refuse_pinned(c, m, &[id], "move");
+                }
+                if let Some(moved_run) = Element::of_run(category, n) {
+                    others.push((id, moved_run));
+                }
             }
         }
     }
@@ -12256,6 +15094,9 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
     let mut flipped = Vec::new();
     for (id, w) in walls {
         m.elements.insert(id, Element::Wall(w));
+    }
+    for (id, e) in sides {
+        m.elements.insert(id, e);
     }
     for (id, e) in others {
         if mo.mirror && matches!(e, Element::Mass(_)) {
@@ -12302,6 +15143,13 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
 /// Copied dimensions and tags go onto the copies of what they measure and name, where there are.
 fn duplicate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion) -> R {
     let m = &s.model;
+    // A circuit is of its devices and its board, which a copy of them is not on: copy those, and make a circuit of the copies.
+    let kept: Vec<Id> =
+        ids.iter().copied().filter(|id| !matches!(m.elements.get(id), Some(Element::Circuit(_) | Element::PanelSchedule(_)))).collect();
+    if kept.is_empty() && !ids.is_empty() {
+        return Err(bad(c, "a circuit is not copied: copy its devices, and make a circuit of the copies with `circuit`"));
+    }
+    let ids = kept.as_slice();
     let copying: BTreeSet<Id> = ids.iter().copied().collect();
     let copying_guids: BTreeSet<Guid> = ids.iter().map(|id| m.guid(*id)).collect();
     let heads: BTreeMap<Id, P2> = tag_heads(m, ids, mo).into_iter().collect();
@@ -12313,6 +15161,8 @@ fn duplicate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion) -> R {
             // A copied wall brings its doors and windows, a stair or a ramp its railings; see below.
             Element::Door(o) | Element::Window(o) if copying_guids.contains(&o.host) => {}
             Element::Railing(Railing { host: Some(h), .. }) if copying_guids.contains(&h) => {}
+            Element::Component(cp)
+                if cp.host.is_some_and(|h| matches!(h.host, HostRef::Face { .. }) && copying_guids.contains(&h.host.guid())) => {}
             e @ (Element::Dimension(_) | Element::Tag(_) | Element::Spot(_)) => notes.push((id, e)),
             e => copies.push((id, e)),
         }
@@ -12339,11 +15189,22 @@ fn duplicate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion) -> R {
             (id, e)
         })
         .collect();
+    // What is on the faces of copied hosts: a copy on the copy, taken as its host is (on a floor's, a ceiling's or a roof's),
+    // or at its place along the copied wall's side.
+    let (slabs, sides) = face_hosted(m, ids);
+    let mut on_faces: Vec<(Id, Element)> = Vec::new();
+    for id in slabs {
+        on_faces.push((id, transformed(c, m, id, mo, &copying)?));
+    }
+    for id in sides {
+        let Some(e) = m.elements.get(id) else { continue };
+        on_faces.push((id, if mo.mirror { side_mirrored(m, e).unwrap_or_else(|| e.clone()) } else { e.clone() }));
+    }
     let m = s.model_mut();
     let mut made = Vec::new();
     // Each copied element's copy.
     let mut hosts = BTreeMap::new();
-    for (from, mut e) in copies.into_iter().chain(hosted) {
+    for (from, mut e) in copies.into_iter().chain(hosted).chain(on_faces) {
         let door = matches!(e, Element::Door(_));
         match &mut e {
             Element::Grid(g) => g.name = next_grid_name(m),
@@ -12356,6 +15217,22 @@ fn duplicate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion) -> R {
                 }))
             }
             Element::Railing(r) => r.host = r.host.map(|h| hosts.get(&h).copied().unwrap_or(h)),
+            // On the copy of its host's face, where its place there puts it.
+            Element::Component(cp)
+                if cp.host.is_some_and(|h| matches!(h.host, HostRef::Face { .. }) && hosts.contains_key(&h.host.guid())) =>
+            {
+                if let Some(h) = &mut cp.host {
+                    let g = h.host.guid_mut();
+                    *g = hosts.get(g).copied().unwrap_or(*g);
+                }
+                // On a wall's side its place along the copy puts it; on a floor's, a ceiling's or a roof's it went with it.
+                if let Some(h) = cp.host
+                    && m.wall(h.host.guid()).is_some()
+                    && let Some((at, offset)) = m.hosted_at(&h, cp.level)
+                {
+                    (cp.at, cp.offset) = (at, offset);
+                }
+            }
             Element::Door(o) | Element::Window(o) => {
                 o.host = hosts.get(&o.host).copied().unwrap_or(o.host);
                 o.mark = next_number(m.elements.values().filter_map(|e| match e {
@@ -12526,14 +15403,29 @@ fn move_elements(s: &mut Session, p: &Value) -> R {
     let ids = ids_param(c, &s.model, p)?;
     let by = point_req(c, p, "by")?;
     // Moving one end: `Some(true)` the start, `Some(false)` the end.
-    let end = match string(c, p, "end")?.as_deref() {
+    let end = match string(c, p, "end")? {
         None => None,
-        Some("start") => Some(true),
-        Some("end") => Some(false),
-        Some(other) => return Err(bad(c, format!("`end` is `start` or `end`, not `{other}`"))),
+        Some(name) => {
+            // A part of a section or an elevation, as its grips in plan move it.
+            if let [one] = ids.as_slice()
+                && let Some(e @ (Element::Section(v) | Element::Elevation(v))) = s.model.elements.get(*one)
+            {
+                let part = crate::elevation::Part::named(&name)
+                    .ok_or_else(|| bad(c, format!("`end` of a section or an elevation is mark, line, start, end or far, not `{name}`")))?;
+                let moved = crate::elevation::dragged(v, matches!(e, Element::Elevation(_)), part, by).map_err(|e| bad(c, e))?;
+                let shift = (moved.start - v.start).dot((v.end - v.start).unit());
+                view_line(s.model_mut(), *one, moved, shift);
+                return Ok(json!({"moved": ids, "end": name}));
+            }
+            match name.as_str() {
+                "start" => Some(true),
+                "end" => Some(false),
+                other => return Err(bad(c, format!("`end` is `start` or `end`, not `{other}`"))),
+            }
+        }
     };
     if end.is_some() && !matches!(ids.as_slice(), [one] if s.model.wall(*one).is_some() || s.model.run_of(*one).is_some()) {
-        return Err(bad(c, "`end` moves an end of one wall or one run; give `ids` one wall or one run"));
+        return Err(bad(c, "`end` moves an end of one wall or one run, or a part of one section or elevation; give `ids` one of those"));
     }
     relocate(c, s, &ids, &Motion { map: &|q| q + by, slide: Some(by), mirror: false }, end)?;
     Ok(json!({"moved": ids}))
@@ -12589,6 +15481,7 @@ fn corner(s: &mut Session, p: &Value) -> R {
     let c = "corner";
     let ids = ids_param(c, &s.model, p)?;
     let m = &s.model;
+    refuse_pinned(c, m, &ids, "trim")?;
     let [a, b] = ids.as_slice() else { return Err(bad(c, "`ids` takes two walls")) };
     if let (Some(Element::DetailLine(la)), Some(Element::DetailLine(lb))) = (m.elements.get(*a), m.elements.get(*b)) {
         if la.view != lb.view {
@@ -12640,6 +15533,9 @@ fn split(s: &mut Session, p: &Value) -> R {
     let c = "split";
     let m = &s.model;
     let id = id_opt(c, p, "id")?.ok_or_else(|| bad(c, "`id`, a wall or a detail line, is required"))?;
+    if let Some(lid) = m.elements.id(id) {
+        refuse_pinned(c, m, &[lid], "split")?;
+    }
     if let Some(lid) = m.elements.id(id)
         && let Some(Element::DetailLine(l)) = m.elements.get(lid)
     {
@@ -12720,6 +15616,7 @@ fn join_polyline(s: &mut Session, p: &Value) -> R {
     let c = "join_polyline";
     let m = &s.model;
     let ids = ids_param(c, m, p)?;
+    refuse_pinned(c, m, &ids, "join")?;
     if ids.len() < 2 {
         return Err(bad(c, "give two detail lines or more to join"));
     }
@@ -12774,6 +15671,9 @@ fn offset(s: &mut Session, p: &Value) -> R {
         .ok_or_else(|| bad(c, format!("a {} can't be offset by {d} mm (it would turn inside out, or fold over itself)", l.curve.kind())))?
         .map(micron);
     let copy = absent(p.get("copy")) || flag(c, p, "copy")?;
+    if !copy {
+        refuse_pinned(c, m, &[id], "offset")?;
+    }
     let m = s.model_mut();
     let out = DetailLine { curve, ..l };
     if copy {
@@ -12804,6 +15704,7 @@ fn trim_extend(s: &mut Session, p: &Value) -> R {
         .ok_or_else(|| bad(c, "`boundary`, a line to trim or extend to, is required"))?;
     let edge = crate::draw::element_curve(m, boundary).ok_or_else(|| bad(c, format!("{boundary} has no line to trim or extend to")))?;
     let ids = ids_param(c, m, p)?;
+    refuse_pinned(c, m, &ids, "trim")?;
     let keep = points(c, p, "keep")?;
     if keep.len() != ids.len() {
         return Err(bad(c, format!("`keep` gives a point on each line to keep: {} for {} lines", keep.len(), ids.len())));
@@ -12857,6 +15758,7 @@ fn fillet(s: &mut Session, p: &Value) -> R {
     let c = "fillet";
     let m = &s.model;
     let ids = ids_param(c, m, p)?;
+    refuse_pinned(c, m, &ids, "round")?;
     let &[a, b] = ids.as_slice() else { return Err(bad(c, "`ids` is two detail lines")) };
     // Two straight walls: cut back, and an arc wall like the first between them.
     if let (Some(wa), Some(wb)) = (m.wall(a).cloned(), m.wall(b).cloned()) {
@@ -12935,6 +15837,7 @@ fn line_of(c: &str, m: &Model, p: &Value) -> Result<(Id, DetailLine), String> {
 fn vertex(s: &mut Session, p: &Value) -> R {
     let c = "vertex";
     let (id, l) = line_of(c, &s.model, p)?;
+    refuse_pinned(c, &s.model, &[id], "change")?;
     let at = point_req(c, p, "at")?;
     let delete = flag(c, p, "delete")?;
     // Near the line, as Split asks, or the vertex nearest: not a point across the drawing.
@@ -12959,6 +15862,7 @@ fn vertex(s: &mut Session, p: &Value) -> R {
 fn convert_spline(s: &mut Session, p: &Value) -> R {
     let c = "convert_spline";
     let (id, l) = line_of(c, &s.model, p)?;
+    refuse_pinned(c, &s.model, &[id], "convert")?;
     let curve = l.curve.converted().ok_or_else(|| bad(c, format!("detail line {id} is a {}, not a spline", l.curve.kind())))?;
     let kind = curve.kind();
     let curve = rounded(curve);
@@ -12971,6 +15875,7 @@ fn explode(s: &mut Session, p: &Value) -> R {
     let m = &s.model;
     let id = id_opt(c, p, "id")?.ok_or_else(|| bad(c, "`id`, a detail line, is required"))?;
     let lid = m.elements.id(id).ok_or_else(|| bad(c, "there's no such element"))?;
+    refuse_pinned(c, m, &[lid], "explode")?;
     let Some(Element::DetailLine(l)) = m.elements.get(lid).cloned() else { return Err(bad(c, format!("{lid} is not a detail line"))) };
     let parts = crate::curves::explode(&l.curve);
     if parts.len() < 2 {
@@ -13145,6 +16050,7 @@ fn delete_indexed(s: &mut Session, p: &Value) -> R {
                 Some(Element::Door(o) | Element::Window(o)) => gone.contains(&o.host),
                 Some(Element::Railing(r)) => r.host.is_some_and(|h| gone.contains(&h)),
                 Some(Element::Rebar(rb)) => rb.host.is_some_and(|h| gone.contains(&h)),
+                Some(Element::Component(cp)) => cp.host.is_some_and(|h| gone.contains(&h.host.guid())),
                 Some(Element::PlanView(v)) => gone.contains(&v.level) || v.parent.is_some_and(|p| gone.contains(&p)),
                 Some(Element::Tag(t)) => gone.contains(&t.host) || t.view.is_some_and(|v| gone.contains(&v)),
                 Some(Element::Dimension(d)) => d.view.is_some_and(|v| gone.contains(&v)),
@@ -13157,6 +16063,10 @@ fn delete_indexed(s: &mut Session, p: &Value) -> R {
                 Some(Element::RepeatingDetail(r)) => gone.contains(&r.view),
                 Some(Element::Spot(sp)) => gone.contains(&sp.view) || sp.host.is_some_and(|h| gone.contains(&h)),
                 Some(Element::CadImport(ci)) => ci.view.is_some_and(|v| gone.contains(&v)),
+                // A board takes its circuits.
+                Some(Element::Circuit(x)) => gone.contains(&x.panel),
+                // And its panel schedules.
+                Some(Element::PanelSchedule(v)) => gone.contains(&v.panel),
                 _ => false,
             };
             if hosted {
@@ -13188,6 +16098,9 @@ fn delete_indexed(s: &mut Session, p: &Value) -> R {
             kept.push((id, d));
         }
     }
+    // What goes takes what is pinned with it: refuse, rather than delete what was locked.
+    let pinned: Vec<Id> = gone.iter().filter(|g| m.pinned.contains(*g)).filter_map(|g| m.elements.id(*g)).collect();
+    refuse_pinned("delete", m, &pinned, "delete")?;
     let mut deleted: Vec<Id> = gone.iter().filter_map(|g| m.elements.id(*g)).collect();
     deleted.sort_unstable();
     let ties: BTreeSet<Id> = gone
@@ -13198,6 +16111,10 @@ fn delete_indexed(s: &mut Session, p: &Value) -> R {
             Some(Element::Roof(r)) => r.join.is_some_and(|g| gone.contains(&g)),
             // A 3D view whose work plane's level goes sketches on the lowest level again.
             Some(Element::View3D(v)) => v.work_plane.as_ref().is_some_and(|wp| wp.level.is_some_and(|l| gone.contains(&l))),
+            // A board supplied by one that goes is left without a supply.
+            Some(Element::Component(c)) => c.panel.as_ref().and_then(|p| p.supply_from).is_some_and(|up| gone.contains(&up)),
+            // A circuit loses the devices that go, and stays, a spare, when none is left.
+            Some(Element::Circuit(x)) => x.devices.iter().any(|d| gone.contains(d)),
             _ => false,
         })
         .collect();
@@ -13215,6 +16132,7 @@ fn delete_indexed(s: &mut Session, p: &Value) -> R {
         })
         .collect();
     let m = s.model_mut();
+    m.pinned.retain(|g| !gone.contains(g));
     for id in &gone {
         m.elements.remove(id);
     }
@@ -13242,6 +16160,14 @@ fn delete_indexed(s: &mut Session, p: &Value) -> R {
             Some(Element::View3D(v)) if v.work_plane.as_ref().is_some_and(|wp| wp.level.is_some_and(|l| gone.contains(&l))) => {
                 v.work_plane = None
             }
+            Some(Element::Component(c)) => {
+                if let Some(p) = &mut c.panel
+                    && p.supply_from.is_some_and(|up| gone.contains(&up))
+                {
+                    p.supply_from = None;
+                }
+            }
+            Some(Element::Circuit(x)) => x.devices.retain(|d| !gone.contains(d)),
             _ => {}
         }
     }
@@ -13265,6 +16191,11 @@ fn delete_from_scratch(s: &mut Session, p: &Value) -> R {
                         Element::Door(o) | Element::Window(o) => gone.contains(&o.host),
                         Element::Railing(r) => r.host.is_some_and(|h| gone.contains(&h)),
                         Element::Rebar(rb) => rb.host.is_some_and(|h| gone.contains(&h)),
+                        Element::Component(cp) => cp.host.is_some_and(|h| gone.contains(&h.host.guid())),
+                        // A circuit hangs on its board.
+                        Element::Circuit(x) => gone.contains(&x.panel),
+                        // A panel schedule hangs on its board, as its viewports hang on it.
+                        Element::PanelSchedule(v) => gone.contains(&v.panel),
                         // A plan view goes with its level and its parent; what is annotated in a view goes with it.
                         Element::PlanView(v) => gone.contains(&v.level) || v.parent.is_some_and(|p| gone.contains(&p)),
                         Element::Tag(t) => gone.contains(&t.host) || t.view.is_some_and(|v| gone.contains(&v)),
@@ -13306,8 +16237,37 @@ fn delete_from_scratch(s: &mut Session, p: &Value) -> R {
             }
         }
     }
+    let pinned: Vec<Id> = gone.iter().filter(|g| m.pinned.contains(*g)).filter_map(|g| m.elements.id(*g)).collect();
+    refuse_pinned(c, m, &pinned, "delete")?;
+    // A circuit loses the devices that go, and stays, a spare, when none is left.
+    let mut emptied = Vec::new();
+    for (id, guid, e) in m.elements.with_guids() {
+        if let Element::Circuit(x) = e
+            && !gone.contains(&guid)
+            && x.devices.iter().any(|d| gone.contains(d))
+        {
+            let mut x = x.clone();
+            x.devices.retain(|d| !gone.contains(d));
+            emptied.push((id, x));
+        }
+    }
+    // A board that was supplied by one that goes is left without a supply, with the rest of its data.
+    let mut unfed = Vec::new();
+    for (id, guid, e) in m.elements.with_guids() {
+        if let Element::Component(c) = e
+            && !gone.contains(&guid)
+            && c.panel.as_ref().and_then(|p| p.supply_from).is_some_and(|up| gone.contains(&up))
+        {
+            let mut c = c.clone();
+            if let Some(p) = &mut c.panel {
+                p.supply_from = None;
+            }
+            unfed.push((id, c));
+        }
+    }
     let deleted: Vec<Id> = m.elements.with_guids().filter(|(_, g, _)| gone.contains(g)).map(|(id, ..)| id).collect();
     let m = s.model_mut();
+    m.pinned.retain(|g| !gone.contains(g));
     // A 3D view whose work plane's level goes sketches on the lowest level again.
     for e in m.elements.values_mut() {
         if let Element::View3D(v) = e
@@ -13318,6 +16278,12 @@ fn delete_from_scratch(s: &mut Session, p: &Value) -> R {
     }
     for id in &gone {
         m.elements.remove(id);
+    }
+    for (id, c) in unfed {
+        m.elements.insert(id, Element::Component(c));
+    }
+    for (id, x) in emptied {
+        m.elements.insert(id, Element::Circuit(x));
     }
     // What was made from a mass that goes is ordinary from then on.
     massing::forget_from_scratch(m, &gone);
@@ -14244,9 +17210,11 @@ fn object_styles(s: &mut Session, p: &Value) -> R {
     let m = &s.model;
     let all: Vec<Value> = crate::graphics::MODEL
         .iter()
+        .copied()
+        .chain(crate::styles::model_subs())
         .map(|cat| {
             let st = m.object_style(cat);
-            json!({"category": cat, "projection": st.projection, "cut": st.cut, "own": m.object_styles.contains_key(*cat)})
+            json!({"category": cat, "projection": st.projection, "cut": st.cut, "own": m.object_styles.contains_key(cat)})
         })
         .collect();
     Ok(json!({"categories": all}))
@@ -14265,10 +17233,15 @@ fn inspect(s: &mut Session, p: &Value) -> R {
     }
     let levels: Vec<Value> = m.levels().iter().map(|(id, l)| json!({"id": id, "name": l.name, "elevation": l.elevation})).collect();
     let warnings = m.warnings();
+    let circuits: Vec<Value> =
+        m.elements.iter().filter(|(_, e)| matches!(e, Element::Circuit(_))).map(|(id, _)| element_json(m, *id)).collect();
+    let panel_schedules: Vec<Value> =
+        m.elements.iter().filter(|(_, e)| matches!(e, Element::PanelSchedule(_))).map(|(id, _)| element_json(m, *id)).collect();
     let mut out = json!({
         "name": m.name, "units": "mm", "project_units": m.units.name(), "room_area": m.room_area.name(), "language": m.language.code(), "standard": m.standard().code(), "path": s.path, "levels": levels,
         "counts": counts,
         "warnings": warnings,
+        "circuits": circuits, "demand_factors": m.demand_factors, "panel_schedules": panel_schedules,
         "history": s.history(),
     });
     if brief {
@@ -14408,4 +17381,100 @@ fn elements(s: &mut Session, p: &Value) -> R {
         .collect();
     let page: Vec<Value> = hits.iter().skip(offset).take(limit).map(|id| element_json_with(m, *id, &rooms)).collect();
     Ok(json!({"count": hits.len(), "returned": page.len(), "elements": page}))
+}
+
+fn adaptive_evaluate(s: &mut Session, p: &Value) -> R {
+    let id = element_id("adaptive_evaluate", &s.model, p.get("id").ok_or("adaptive_evaluate: id required")?)?;
+    let Some(Element::Component(c)) = s.model.elements.get(id) else { return Err("adaptive_evaluate: id must name a component".into()) };
+    let report = s.model.component_adaptive_evaluation(c)?;
+    Ok(
+        json!({"family":s.model.families[&c.family],"definition":s.model.families[&c.family].adaptive,"placement":report.placement,"parameters":c.params,"type":c.type_name,"evaluation":report}),
+    )
+}
+
+fn adaptive_capture(s: &mut Session, p: &Value) -> R {
+    let sources = p.get("sources").and_then(Value::as_array).ok_or("adaptive_capture: sources array required")?;
+    if sources.is_empty() || sources.len() > 1024 {
+        return Err("adaptive_capture: expected 1 to 1024 ordered sources".into());
+    }
+    let mut placement =
+        crate::adaptive::Placement { context: "Captured project host frames (world coordinates)".into(), ..Default::default() };
+    for (index, source) in sources.iter().enumerate() {
+        let id = element_id("adaptive_capture", &s.model, source.get("id").ok_or("adaptive_capture: source id required")?)?;
+        let Some(Element::Component(c)) = s.model.elements.get(id) else {
+            return Err(format!("adaptive_capture: {id} is not a component"));
+        };
+        let host: crate::adaptive::Host =
+            serde_json::from_value(source.get("host").cloned().ok_or("adaptive_capture: explicit host required")?)
+                .map_err(|e| e.to_string())?;
+        let local = s.model.component_adaptive_evaluation(c)?.host_frame(&host)?;
+        let frame = local.from_local(s.model.component_axes(c)?, c.mirrored)?;
+        let number = index as u32 + 1;
+        placement.frames.insert(number, frame);
+        placement.bindings.insert(number, crate::adaptive::ContextHost { component: s.model.guid(id), host });
+    }
+    Ok(json!(placement))
+}
+fn adaptive_move(s: &mut Session, p: &Value) -> R {
+    let c = "adaptive_move";
+    let id = element_id(c, &s.model, p.get("id").ok_or("adaptive_move: id required")?)?;
+    let number = p
+        .get("number")
+        .and_then(Value::as_u64)
+        .and_then(|n| u32::try_from(n).ok())
+        .filter(|n| *n > 0)
+        .ok_or("adaptive_move: number, an adaptive point's (1, 2, …), required")?;
+    let to: [f64; 3] = serde_json::from_value(p.get("to").cloned().unwrap_or(Value::Null)).map_err(|_| bad(c, "`to` is [x, y, z]"))?;
+    let Some(Element::Component(comp)) = s.model.elements.get(id) else { return Err(bad(c, format!("{id} is not a component"))) };
+    let placement = s.model.adaptive_placement(comp).ok_or_else(|| bad(c, format!("{id} is not of an adaptive family")))?;
+    let (axes, mirrored) = (s.model.component_axes(comp)?, comp.mirrored);
+    let local = placement.frames.get(&number).ok_or_else(|| bad(c, format!("{id} has no adaptive point {number}")))?;
+    let world = crate::adaptive::Frame { origin: to, ..local.from_local(axes, mirrored)? };
+    let mut next = placement;
+    next.frames.insert(number, world.into_local(axes, mirrored).map_err(|e| bad(c, e))?);
+    if let Some(Element::Component(comp)) = s.model_mut().elements.get_mut(id) {
+        comp.adaptive = Some(next);
+    }
+    Ok(json!({"id": id}))
+}
+
+fn adaptive_place(s: &mut Session, p: &Value) -> R {
+    let placements = p.get("placements").and_then(Value::as_array).ok_or("adaptive_place: placements array required")?;
+    if placements.is_empty() || placements.len() > 1000 {
+        return Err("adaptive_place: expected 1 to 1000 placements".into());
+    }
+    let family = string("adaptive_place", p, "family")?.ok_or("adaptive_place: family required")?;
+    if s.model.families.get(&family).and_then(|f| f.adaptive.as_ref()).is_none() {
+        return Err("adaptive_place: family must be adaptive".into());
+    }
+    let mut ids = Vec::new();
+    for placement in placements {
+        let mut args = placement.clone();
+        if !args.is_object() {
+            return Err("adaptive_place: each placement is an object".into());
+        }
+        args["family"] = json!(family);
+        if let Some(t) = p.get("type") {
+            args["type"] = t.clone();
+        }
+        let world: crate::adaptive::Placement = match args.get("adaptive") {
+            Some(v) if !v.is_null() => serde_json::from_value(v.clone()).map_err(|e| format!("adaptive_place: adaptive: {e}"))?,
+            _ => return Err("adaptive_place: each instance needs explicit adaptive frames".into()),
+        };
+        let Some(first) = world.frames.values().next() else { return Err("adaptive_place: adaptive frames are empty".into()) };
+        if args.get("at").is_none_or(Value::is_null) {
+            args["at"] = json!([first.origin[0], first.origin[1]]);
+        }
+        let id = work_plane::component(s, &args)?["id"].clone();
+        let Some(Element::Component(c)) = id.as_u64().and_then(|n| s.model.elements.get(n)) else {
+            return Err("adaptive_place: the instance was not made".into());
+        };
+        // The frames are the project's, as `adaptive_capture` gives them: the instance holds them in its own axes.
+        let local = world.into_local(s.model.component_axes(c)?, c.mirrored).map_err(|e| format!("adaptive_place: {e}"))?;
+        if let Some(Element::Component(c)) = id.as_u64().and_then(|n| s.model_mut().elements.get_mut(n)) {
+            c.adaptive = Some(local);
+        }
+        ids.push(id);
+    }
+    Ok(json!({"ids":ids}))
 }

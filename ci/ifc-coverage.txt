@@ -70,3 +70,21 @@ beam {"points": [[0,9500],[6000,9500]], "offset": 3000, "type": "B 150x600", "ju
 beam {"points": [[0,10000],[6000,10000]], "offset": 3000, "type": "B 150x600"}
 beam {"points": [[0,10500],[6000,10500]], "offset": 3000, "end_offset": 3500, "type": "Steel Tube 150", "justify": "centre"}
 beam {"points": [[0,11000],[6000,11000]], "offset": 3000, "type": "B 120x300"}
+# Native grids: parallel and reversed U axes plus an oblique V axis. Last, so the ids above stay put.
+grid {"name": "U1", "start": [-500,100], "end": [2500,4100]}
+grid {"name": "U2", "start": [3500,4100], "end": [500,100]}
+grid {"name": "V", "start": [0,2000], "end": [4000,-1000]}
+# Property boundaries are site FootPrint curves, with area and native identity metadata; no terrain dependency.
+property_line {"name":"Synthetic survey plot","points":[[-2000,-8000],[8000,-8000],[8000,16000],[-2000,16000]]}
+
+# Steel profiles: shared type sections and true material areas, including holes and root fillets.
+beam {"points":[[0,13000],[6000,13000]],"type":"IPE 300","offset":3000}
+structural_column {"at":[0,14000],"type":"HEB 300","height":3000}
+type {"category":"beam","name":"Channel steel","shape":"U","width":80,"depth":200,"web":6,"flange":11,"radius":13}
+beam {"points":[[0,15000],[6000,15000]],"type":"Channel steel","offset":3000}
+type {"category":"beam","name":"Angle steel","shape":"L","width":100,"depth":150,"thickness":10,"radius":12}
+beam {"points":[[0,16000],[6000,16000]],"type":"Angle steel","offset":3000}
+type {"category":"structuralcolumn","name":"RHS steel","shape":"RHS","width":200,"depth":100,"thickness":8}
+structural_column {"at":[3000,14000],"type":"RHS steel","height":3000}
+type {"category":"beam","name":"CHS steel","shape":"CHS","width":168.3,"thickness":6}
+beam {"points":[[0,17000],[6000,17000]],"type":"CHS steel","offset":3000,"end_offset":4000}

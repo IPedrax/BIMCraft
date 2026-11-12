@@ -180,7 +180,7 @@ pub(super) fn foreground(d: &mut Drawing, m: &Model, rings: &[Vec<P2>]) {
             .iter()
             .map(|ink| {
                 let pen = ink.pen.map(|p| {
-                    let st = style_of(m, ink.owner);
+                    let st = style_of(m, ink.owner, None);
                     if p == BY_CATEGORY { if ink.part == Part::Cut { st.cut } else { st.projection } } else { p }
                 });
                 match (&ink.prim, pen) {

@@ -25,7 +25,7 @@ use crate::style::pal;
 use crate::{BimApp, Sheet, Status, small_button};
 
 /// What Revit draws round a view that is hiding or isolating for now.
-const FRAME: Color32 = Color32::from_rgb(0, 190, 220);
+pub(crate) const FRAME: Color32 = Color32::from_rgb(0, 190, 220);
 
 /// What a view hides or reveals for now.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -101,7 +101,7 @@ fn shadowed(base: &Arc<Model>, sheet: Sheet, three_d: Option<Id>, temp: &Temp) -
         }
         Sheet::Section(s) => (json!(s), Some(s)),
         Sheet::View3D => (three_d.map_or_else(|| json!("{3D}"), |id| json!(id)), three_d.or_else(|| base.default_3d())),
-        Sheet::Paper(_) | Sheet::Schedule(_) | Sheet::Table(_) => return Ok(Arc::clone(base)),
+        Sheet::Paper(_) | Sheet::Schedule(_) | Sheet::Table(_) | Sheet::Family(..) => return Ok(Arc::clone(base)),
     };
     let drawn = |id: &Id| base.elements.get(id).is_some_and(|e| graphics::drawn(e.category()));
     let mut p = json!({
@@ -378,6 +378,18 @@ impl BimApp {
                                 ui.separator();
                                 if ui.button(t("Graphic Display Options...")).clicked() {
                                     self.open_display();
+                                }
+                            });
+                            // F8: a 3D view's Detail Level, which a family's forms with Visibility Settings read.
+                            let detail = self.graphics_shown().detail;
+                            let tip = msg!("Detail Level: the family forms the 3D view draws, as their Visibility Settings say");
+                            let r = menu_button(ui, "Detail Level", detail.name(), tip, self.controlled_by(Group::Detail).as_deref());
+                            Popup::menu(&r).show(|ui| {
+                                for d in Detail::ALL {
+                                    if ui.selectable_label(detail == d, t(d.name())).clicked() {
+                                        let view = self.active_3d().map_or_else(|| json!("{3D}"), |id| json!(id));
+                                        self.run("detail", json!({"view": view, "detail": d.name()}));
+                                    }
                                 }
                             });
                             self.work_plane_button(ui);

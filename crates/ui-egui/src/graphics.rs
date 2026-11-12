@@ -191,7 +191,7 @@ impl BimApp {
             }
             Sheet::Section(id) => Some(json!(id)),
             Sheet::View3D => Some(self.active_3d().map_or_else(|| json!("{3D}"), |id| json!(id))),
-            Sheet::Paper(_) | Sheet::Schedule(_) | Sheet::Table(_) => None,
+            Sheet::Paper(_) | Sheet::Schedule(_) | Sheet::Table(_) | Sheet::Family(..) => None,
         }
     }
 
@@ -588,6 +588,16 @@ impl BimApp {
                 ui.add_enabled_ui(note.is_none(), |ui| {
                     if let Some(v) = style_combo(ui, "visual-style", label.id, shown.style) {
                         set = Some(("visual_style", json!({"view": view, "style": v.name()})));
+                    }
+                });
+                ui.end_row();
+                // F8: the family forms the 3D view draws, as their Visibility Settings say.
+                let note = controlled(Group::Detail);
+                let label = ui.label(t("Detail Level"));
+                let label = if let Some(n) = &note { label.on_hover_text(n) } else { label };
+                ui.add_enabled_ui(note.is_none(), |ui| {
+                    if let Some(level) = detail_combo(ui, "detail-level-3d", label.id, shown.detail) {
+                        set = Some(("detail", json!({"view": view, "detail": level.name()})));
                     }
                 });
                 ui.end_row();

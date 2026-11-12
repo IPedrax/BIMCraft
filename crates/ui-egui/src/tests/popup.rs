@@ -111,3 +111,121 @@ fn a_click_beside_an_open_dialog_leaves_it_open_and_only_its_buttons_and_corner_
     press(&mut h, "Cancel");
     assert!(h.state().vg_dialog.is_none());
 }
+
+/// The family `Box` open as a document, `w` by `h`.
+fn family_box(w: f32, height: f32) -> Harness<'static, BimApp> {
+    let mut h = app(
+        r#"family {"name": "Box", "category": "furniture", "parameters": [{"name": "Width", "value": 1000}], "types": {"A": {}}, "forms": [{"profile": [[0, 0], ["Width", 0], ["Width", 1000], [0, 1000]], "to": 500}]}"#,
+    );
+    h.set_size(vec2(w, height));
+    h.state_mut().edit_family("Box");
+    h.run();
+    h
+}
+
+/// The open dialog `id`'s height over `frames` frames, each frame's.
+fn heights(h: &mut Harness<BimApp>, id: egui::Id, frames: usize) -> Vec<f32> {
+    (0..frames)
+        .map(|_| {
+            h.step();
+            h.ctx.memory(|m| m.area_rect(id)).expect("open dialog").height()
+        })
+        .collect()
+}
+
+fn family_dialog(h: &mut Harness<BimApp>, which: crate::editor::DocDialog) -> egui::Id {
+    h.state_mut().active_family_mut().unwrap().dialog = Some(which);
+    egui::Id::new(("family-dialog", which as u8))
+}
+
+/// The widget named `label` furthest right: the dialog's, over the Properties palette's on the left.
+fn right(h: &Harness<BimApp>, label: &str) -> egui::Rect {
+    h.get_all_by_label(label).map(|n| n.rect()).max_by(|a, b| a.center().x.total_cmp(&b.center().x)).unwrap()
+}
+
+/// Whether the dialog's height settles at once (from the frame after its sizing pass) and stays.
+fn settles(h: &mut Harness<BimApp>, id: egui::Id) -> f32 {
+    let seen = heights(h, id, 6);
+    assert!(seen[1..].windows(2).all(|w| (w[0] - w[1]).abs() < 0.5), "it keeps its size: {seen:?}");
+    seen[5]
+}
+
+#[test]
+fn family_dialogs_are_as_tall_as_what_they_hold_and_stay_so() {
+    use crate::editor::DocDialog;
+    // Each dialog's last widget before its buttons.
+    for (which, last) in [(DocDialog::Category, "Default Elevation"), (DocDialog::Types, "Descending")] {
+        let mut h = family_box(1600.0, 1000.0);
+        let id = family_dialog(&mut h, which);
+        let height = settles(&mut h, id);
+        let r = h.ctx.memory(|m| m.area_rect(id)).unwrap();
+        let (end, ok) = (right(&h, last), right(&h, "OK"));
+        assert!(ok.top() - end.bottom() < 40.0, "{which:?}: no blank band over the buttons: {end:?} then {ok:?}");
+        assert!(r.bottom() - ok.bottom() < 25.0, "{which:?}: the buttons at its bottom: {ok:?} in {r:?}");
+        assert!(height < 1000.0 - 100.0, "{which:?}: well short of the window: {height}");
+    }
+}
+
+#[test]
+fn a_dialog_shrinks_again_when_what_it_holds_does() {
+    let mut h = family_box(1600.0, 1000.0);
+    let id = family_dialog(&mut h, crate::editor::DocDialog::Category);
+    let base = settles(&mut h, id);
+    // Room Calculation Point's three rows come and go.
+    let tick = |h: &mut Harness<BimApp>| {
+        let at = right(h, "Room Calculation Point").center();
+        h.get_all_by_label("Room Calculation Point").find(|n| n.rect().center() == at).unwrap().click();
+        h.run();
+    };
+    tick(&mut h);
+    let taller = settles(&mut h, id);
+    assert!(taller > base + 50.0, "{base} -> {taller}");
+    tick(&mut h);
+    assert!((settles(&mut h, id) - base).abs() < 1.0, "back to its height");
+    // A filter narrowing the category list to one.
+    let at = right(&h, "Filter").center();
+    h.get_all_by_label("Filter").find(|n| n.rect().center() == at).unwrap().focus();
+    h.run();
+    h.get_all_by_label("Filter").find(|n| n.rect().center() == at).unwrap().type_text("door");
+    h.run();
+    let narrowed = settles(&mut h, id);
+    assert!(narrowed < base - 60.0, "{base} -> {narrowed}");
+}
+
+#[test]
+fn a_long_dialog_is_capped_at_the_window_and_scrolls_with_its_buttons_in_reach() {
+    let mut h = family_box(1400.0, 480.0);
+    let id = family_dialog(&mut h, crate::editor::DocDialog::Category);
+    let height = settles(&mut h, id);
+    let r = h.ctx.memory(|m| m.area_rect(id)).unwrap();
+    assert!(height <= 480.0 - 8.0 && r.top() >= 4.0 && r.bottom() <= 476.0, "within the window, a margin round it: {r:?}");
+    let ok = right(&h, "OK");
+    assert!(r.contains_rect(ok) && ok.bottom() <= 480.0, "its buttons in reach: {ok:?} in {r:?}");
+    assert!(right(&h, "Default Elevation").top() > ok.top(), "the rest of the form is below, scrolled to");
+}
+
+#[test]
+fn every_dialog_keeps_its_size_from_frame_to_frame_with_its_buttons_at_the_bottom() {
+    use crate::editor::DocDialog;
+    let check = |h: &mut Harness<BimApp>, id: egui::Id, name: &str| {
+        settles(h, id);
+        let r = h.ctx.memory(|m| m.area_rect(id)).unwrap();
+        let bottom =
+            h.get_all_by_role(Role::Button).map(|n| n.rect()).filter(|b| r.contains_rect(*b)).map(|b| b.bottom()).fold(0.0, f32::max);
+        assert!(r.bottom() - bottom < 25.0, "{name}: buttons at the bottom of {r:?}, lowest at {bottom}");
+    };
+    let mut h = app(BOX);
+    shortcut(&mut h, "VG");
+    check(&mut h, egui::Id::new("visibility-graphics"), "Visibility/Graphics");
+    let mut h = app(BOX);
+    let wall = ids(&h, "wall")[0];
+    h.state_mut().selection = vec![wall];
+    h.state_mut().edit_type();
+    h.run();
+    check(&mut h, egui::Id::new("type-properties"), "Type Properties");
+    for which in [DocDialog::Category, DocDialog::Types] {
+        let mut h = family_box(1600.0, 1000.0);
+        let id = family_dialog(&mut h, which);
+        check(&mut h, id, &format!("{which:?}"));
+    }
+}

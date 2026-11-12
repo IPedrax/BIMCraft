@@ -207,6 +207,12 @@ const COUNT: Own = (msg!("Count"), Kind::Number, From::Count);
 const PHASE_CREATED: Own = ("Phase Created", Kind::Text, From::Param);
 const PHASE_DEMOLISHED: Own = ("Phase Demolished", Kind::Text, From::Param);
 const DESIGN_OPTION: Own = ("Design Option", Kind::Text, From::Param);
+// A steel member's take-off: its section's name, its area (cm²), its weight per metre (kg/m) and its weight (kg).
+const PROFILE: Own = (msg!("Profile"), Kind::Text, From::Key("profile"));
+const SECTION_AREA: Own = (msg!("Section Area"), Kind::Number, From::Key("section_area_cm2"));
+const WEIGHT_PER_METRE: Own = (msg!("Weight per Metre"), Kind::Number, From::Key("weight_kg_m"));
+const WEIGHT: Own = (msg!("Weight"), Kind::Number, From::Key("weight_kg"));
+
 /// The room a component stands in (`room_number`, `room_name` in its JSON), as Revit's Room: Number and Room: Name.
 const ROOM_NUMBER: Own = (msg!("Room Number"), Kind::Text, From::Key("room_number"));
 const ROOM_NAME: Own = (msg!("Room Name"), Kind::Text, From::Key("room_name"));
@@ -244,6 +250,7 @@ const SHARED: (&str, usize, &[Own]) = (
 /// Each category's own fields, and how many of them, from the first, its schedule shows unless it
 /// chooses.
 const OWN: &[(&str, usize, &[Own])] = &[
+    ("propertyline", 4, &[NAME, LEVEL, AREA, (msg!("Perimeter"), Kind::Length, From::Metres("perimeter_m")), COUNT]),
     (
         "room",
         5,
@@ -332,7 +339,26 @@ const OWN: &[(&str, usize, &[Own])] = &[
             DESIGN_OPTION,
         ],
     ),
-    ("structuralcolumn", 6, &[ID, TYPE, LEVEL, WIDTH, DEPTH, HEIGHT, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION]),
+    (
+        "structuralcolumn",
+        6,
+        &[
+            ID,
+            TYPE,
+            LEVEL,
+            WIDTH,
+            DEPTH,
+            HEIGHT,
+            COUNT,
+            PHASE_CREATED,
+            PHASE_DEMOLISHED,
+            DESIGN_OPTION,
+            PROFILE,
+            SECTION_AREA,
+            WEIGHT_PER_METRE,
+            WEIGHT,
+        ],
+    ),
     (
         "footing",
         6,
@@ -349,7 +375,27 @@ const OWN: &[(&str, usize, &[Own])] = &[
             DESIGN_OPTION,
         ],
     ),
-    ("beam", 6, &[ID, TYPE, LEVEL, LENGTH, WIDTH, DEPTH, SYSTEM, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION]),
+    (
+        "beam",
+        6,
+        &[
+            ID,
+            TYPE,
+            LEVEL,
+            LENGTH,
+            WIDTH,
+            DEPTH,
+            SYSTEM,
+            COUNT,
+            PHASE_CREATED,
+            PHASE_DEMOLISHED,
+            DESIGN_OPTION,
+            PROFILE,
+            SECTION_AREA,
+            WEIGHT_PER_METRE,
+            WEIGHT,
+        ],
+    ),
     (
         "rebar",
         7,
@@ -434,7 +480,48 @@ const OWN: &[(&str, usize, &[Own])] = &[
             DESIGN_OPTION,
         ],
     ),
-    ("component", 4, &[FAMILY, TYPE, LEVEL, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION, ROOM_NUMBER, ROOM_NAME]),
+    (
+        "circuit",
+        6,
+        &[
+            ("Number", Kind::Number, From::Key("number")),
+            NAME,
+            ("Panel", Kind::Number, From::Ref("panel")),
+            ("Rating", Kind::Number, From::Key("rating_a")),
+            ("Poles", Kind::Number, From::Key("poles")),
+            ("Load", Kind::Number, From::Key("installed_va")),
+            ("Demand Load", Kind::Number, From::Key("demand_va")),
+            ("Current", Kind::Number, From::Key("current_a")),
+            ("Voltage", Kind::Number, From::Key("voltage_v")),
+            ("Classification", Kind::Text, From::Key("classification")),
+            COUNT,
+        ],
+    ),
+    (
+        "component",
+        4,
+        &[
+            FAMILY,
+            TYPE,
+            LEVEL,
+            COUNT,
+            PHASE_CREATED,
+            PHASE_DEMOLISHED,
+            DESIGN_OPTION,
+            ROOM_NUMBER,
+            ROOM_NAME,
+            // Its height over its level (its Schedule Level, for one on a plane), what it is on, and how far off that.
+            ("Elevation from Level", Kind::Length, From::Key("offset")),
+            ("Work Plane", Kind::Text, From::Key("work_plane")),
+            ("Offset from Host", Kind::Length, From::Key("offset_from_host")),
+            ("Host", Kind::Number, From::Ref("host_element")),
+            // A distribution board's, by the names of Revit's parameters.
+            ("Distribution System", Kind::Text, From::Key("distribution_system")),
+            ("Mains", Kind::Number, From::Key("mains")),
+            ("Max #1 Pole Breakers", Kind::Number, From::Key("slots")),
+            ("Supply From", Kind::Number, From::Ref("supply_from")),
+        ],
+    ),
     (
         "stair",
         7,
@@ -528,7 +615,7 @@ pub fn all_categories() -> Vec<&'static str> {
 
 /// The categories a multi-category schedule lists where it names none: what's built, not rooms, levels and masses.
 pub fn built() -> Vec<&'static str> {
-    categories().into_iter().filter(|c| !matches!(*c, "room" | "level" | "mass" | "massfloor")).collect()
+    categories().into_iter().filter(|c| !matches!(*c, "room" | "level" | "mass" | "massfloor" | "propertyline")).collect()
 }
 
 /// The categories multi-category schedule `sc` lists, as elements name theirs.
@@ -576,9 +663,10 @@ pub fn fields(m: &Model, cat: &str) -> Vec<(String, Kind)> {
                 &p.name,
                 match p.kind {
                     family::Kind::Length => Kind::Length,
-                    family::Kind::Number | family::Kind::Angle => Kind::Number,
+                    family::Kind::Number | family::Kind::Angle | family::Kind::Integer | family::Kind::Volume => Kind::Number,
+                    family::Kind::Area => Kind::Area,
                     family::Kind::YesNo => Kind::YesNo,
-                    family::Kind::Material => Kind::Text,
+                    family::Kind::Material | family::Kind::Text | family::Kind::Url | family::Kind::FamilyType => Kind::Text,
                 },
             );
         }
@@ -947,7 +1035,10 @@ impl Row<'_> {
             let v = j.get("values").and_then(|v| v.get(name)).cloned().unwrap_or(Value::Null);
             return match (p.kind, v.as_f64()) {
                 (family::Kind::YesNo, Some(x)) => Value::Bool(x != 0.0),
-                (family::Kind::Material, _) if v.as_str() == Some("") => Value::Null,
+                // A family's areas and volumes are in mm² and mm³; schedules show m² and m³.
+                (family::Kind::Area, Some(x)) => serde_json::json!(fine(x / 1e6)),
+                (family::Kind::Volume, Some(x)) => serde_json::json!(fine(x / 1e9)),
+                (k, _) if k.text() && v.as_str() == Some("") => Value::Null,
                 _ => v,
             };
         }

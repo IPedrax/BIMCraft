@@ -187,7 +187,7 @@ fn door_space_and_pointer_choose_the_leaf_shown_before_and_after_a_click() {
         let model = &h.state().session.model;
         let (hinge, tip) = leaf(1.0, -1.0);
         assert!(model.opening_marks(&model.elements[&door]).iter().any(|mark| matches!(mark,
-            bimcraft_core::family::Mark::Line(p) if p.len() == 2 && p[0].dist(hinge) < 1.0 && p[1].dist(tip) < 1.0)));
+            (bimcraft_core::family::Mark::Line(p), _) if p.len() == 2 && p[0].dist(hinge) < 1.0 && p[1].dist(tip) < 1.0)));
     }
 }
 

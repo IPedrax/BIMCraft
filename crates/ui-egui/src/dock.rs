@@ -625,7 +625,10 @@ impl BimApp {
     fn palette_title(&self, p: Palette) -> String {
         match p {
             Palette::Properties | Palette::Tools | Palette::Assistant => t(p.label()).to_string(),
-            Palette::Browser => format!("{} · {}", t(p.label()), self.session.model.name),
+            Palette::Browser => match self.active_family() {
+                Some(ed) => format!("{} · {}", t(p.label()), ed.title()),
+                _ => format!("{} · {}", t(p.label()), self.session.model.name),
+            },
         }
     }
 
@@ -634,9 +637,13 @@ impl BimApp {
         // No wider than the palette: what is wider is cut, never pushes the card past its side (off the window, docked right).
         let scroll = egui::ScrollArea::vertical().auto_shrink([false, false]).min_scrolled_height(0.0).max_width(ui.available_width());
         match p {
+            Palette::Properties if self.family_doc() => {
+                scroll.id_salt("family-properties").show(ui, |ui| Frame::new().inner_margin(8.0).show(ui, |ui| self.family_properties(ui)));
+            }
             Palette::Properties => {
                 scroll.id_salt("properties").show(ui, |ui| Frame::new().inner_margin(8.0).show(ui, |ui| self.properties(ui)));
             }
+            Palette::Browser if self.family_doc() => self.family_browser(ui),
             Palette::Browser => self.browser_palette(ui),
             Palette::Tools => self.tool_column(ui),
             Palette::Assistant => self.assistant_palette(ui),

@@ -235,7 +235,7 @@ pub(crate) fn arm(m: &Model, id: Id, w: &Wall, at_end: bool, mine: bool) -> Arm 
 /// The walls at wall `id`'s start (or `at_end`, its end), round the node counter-clockwise, its own
 /// among them: those ending there, and a wall it ends on, both ways from where it does. Whether it
 /// ends on one, too.
-fn arms(m: &Model, id: Id, at_end: bool, index: Option<&Index>) -> (Vec<Arm>, bool) {
+fn arms(m: &Model, id: Id, at_end: bool, index: Option<&Index>, keep: &impl Fn(&Wall) -> bool) -> (Vec<Arm>, bool) {
     let Some(w) = m.wall(id) else { return (Vec::new(), false) };
     let node = if at_end { w.end } else { w.start };
     let mut arms = vec![arm(m, id, w, at_end, true)];
@@ -260,7 +260,7 @@ fn arms(m: &Model, id: Id, at_end: bool, index: Option<&Index>) -> (Vec<Arm>, bo
     // Where they meet is asked first: whether they overlap in height takes both walls' heights, under any roof or floor
     // they're attached to.
     for (other, o) in candidates {
-        if other == id {
+        if other == id || !keep(o) {
             continue;
         }
         if o.start.dist(node) <= TOL {
@@ -300,7 +300,7 @@ pub fn cap(m: &Model, id: Id, at_end: bool) -> Vec<P2> {
 }
 
 fn cap_in(m: &Model, id: Id, at_end: bool, index: Option<&Index>) -> Vec<P2> {
-    end_geometry(m, id, at_end, index).outline
+    end_geometry(m, id, at_end, index, &|_| true).outline
 }
 
 #[derive(Default)]
@@ -315,9 +315,10 @@ impl WallEnd {
     }
 }
 
-fn end_geometry(m: &Model, id: Id, at_end: bool, index: Option<&Index>) -> WallEnd {
+/// [`cap`] and how a compound corner shares it, joined only to walls `keep` keeps.
+fn end_geometry(m: &Model, id: Id, at_end: bool, index: Option<&Index>, keep: &impl Fn(&Wall) -> bool) -> WallEnd {
     let Some(w) = m.wall(id) else { return WallEnd::default() };
-    let (arms, through) = arms(m, id, at_end, index);
+    let (arms, through) = arms(m, id, at_end, index, keep);
     let n = arms.len();
     let Some(i) = arms.iter().position(|a| a.id == id) else { return WallEnd::default() };
     let (prev, me, next) = (&arms[(i + n - 1) % n], &arms[i], &arms[(i + 1) % n]);
@@ -351,11 +352,16 @@ pub fn centre_line(m: &Model, id: Id) -> Vec<P2> {
 
 /// [`centre_line`], its joins found through `index` when there is one.
 pub(crate) fn centre_line_in(m: &Model, id: Id, index: Option<&Index>) -> Vec<P2> {
+    centre_line_filtered(m, id, index, &|_| true)
+}
+
+/// A centre line joined only to walls kept by the caller, such as those bounding a level at its computation height.
+pub(crate) fn centre_line_filtered(m: &Model, id: Id, index: Option<&Index>, keep: &impl Fn(&Wall) -> bool) -> Vec<P2> {
     let Some(w) = m.wall(id) else { return Vec::new() };
     let axis = Axis::of(w);
     let mut line = axis.points(0.0, axis.length(), centre(m, w));
     for at_end in [false, true] {
-        let (arms, _) = arms(m, id, at_end, index);
+        let (arms, _) = arms(m, id, at_end, index, keep);
         let Some(me) = arms.iter().find(|a| a.id == id) else { continue };
         let reach = 2.0 * arms.iter().map(|a| a.thick).fold(1.0, f64::max);
         let crossing = arms
@@ -377,6 +383,11 @@ pub fn outline(m: &Model, id: Id) -> Vec<P2> {
 }
 
 pub(crate) fn outline_in(m: &Model, id: Id, index: Option<&Index>) -> Vec<P2> {
+    outline_filtered(m, id, index, &|_| true)
+}
+
+/// An outline whose caps join only walls kept by the caller; physical wall geometry still uses every overlapping wall.
+pub(crate) fn outline_filtered(m: &Model, id: Id, index: Option<&Index>, keep: &impl Fn(&Wall) -> bool) -> Vec<P2> {
     let Some(w) = m.wall(id) else { return Vec::new() };
     let axis = Axis::of(w);
     let (ext, int) = faces(m, w);
@@ -385,9 +396,9 @@ pub(crate) fn outline_in(m: &Model, id: Id, index: Option<&Index>) -> Vec<P2> {
         let n = pts.len();
         pts.into_iter().skip(1).take(n.saturating_sub(2))
     };
-    let mut ring = cap_in(m, id, false, index);
+    let mut ring = end_geometry(m, id, false, index, keep).outline;
     ring.extend(between(axis.points(0.0, len, ext)));
-    ring.extend(cap_in(m, id, true, index));
+    ring.extend(end_geometry(m, id, true, index, keep).outline);
     ring.extend(between(axis.points(len, 0.0, int)));
     ring.dedup_by(|a, b| a.dist(*b) < 1e-6);
     ring
@@ -459,7 +470,7 @@ pub(crate) fn layer_geometry(m: &Model, id: Id, index: Option<&Index>) -> LayerG
     let Some(w) = m.wall(id) else { return LayerGeometry::default() };
     let axis = Axis::of(w);
     let len = axis.length();
-    let ends = [end_geometry(m, id, false, index), end_geometry(m, id, true, index)];
+    let ends = [end_geometry(m, id, false, index, &|_| true), end_geometry(m, id, true, index, &|_| true)];
     let lines = boundaries(m, w)
         .into_iter()
         .enumerate()
@@ -733,29 +744,56 @@ pub struct Prism {
 
 /// Wall `id` as prisms: its outline cut across where its doors and windows start and end (with
 /// `openings`) and along an arc into short straight pieces, each piece from its base up to its
-/// top less the openings over it, cut where what it's attached to changes plane.
+/// top less the openings over it, cut where what it's attached to changes plane. An opening whose family cuts its wall
+/// with voids of its own ([`host_voids_in`]) leaves no rectangle: the voids cut what is left, as the 3D view's solids do.
 pub fn prisms(m: &Model, id: Id, openings: bool) -> Vec<Prism> {
     prisms_in(m, id, openings, None)
 }
 
 pub(crate) fn prisms_in(m: &Model, id: Id, openings: bool, index: Option<&Index>) -> Vec<Prism> {
+    prisms_holed(m, id, openings, true, index)
+}
+
+/// [`prisms_in`], every opening its rectangle, voids or none: what stands where cutting by the voids fails.
+pub(crate) fn prisms_rect_in(m: &Model, id: Id, index: Option<&Index>) -> Vec<Prism> {
+    prisms_holed(m, id, true, false, index)
+}
+
+/// The doors and windows in wall `id`, or the openings `index` lists in it.
+fn openings_of<'a>(m: &'a Model, id: Id, index: Option<&'a Index>) -> Box<dyn Iterator<Item = &'a Element> + 'a> {
+    let guid = m.guid(id);
+    match index {
+        Some(index) => Box::new(index.openings(guid).iter().filter_map(|id| m.elements.get(*id))),
+        None => Box::new(m.elements.values().filter(move |e| matches!(e, Element::Door(o) | Element::Window(o) if o.host == guid))),
+    }
+}
+
+/// The voids wall `id`'s doors and windows cut it with, in the model's axes ([`Model::opening_voids`]): those of the
+/// openings whose families have their own, which cut the wall in their shape in place of a rectangle; and those of the
+/// components on its faces ([`Model::hosted_voids`]).
+pub(crate) fn host_voids_in(m: &Model, id: Id, index: Option<&Index>) -> Vec<Vec<[crate::view3d::P3; 3]>> {
+    let mut out: Vec<_> = openings_of(m, id, index).flat_map(|e| m.opening_voids(e)).collect();
+    out.extend(m.hosted_voids(id).into_iter().flat_map(|(_, v)| v));
+    out
+}
+
+fn prisms_holed(m: &Model, id: Id, openings: bool, voided: bool, index: Option<&Index>) -> Vec<Prism> {
     let Some(w) = m.wall(id) else { return Vec::new() };
     let guid = m.guid(id);
     let axis = Axis::of(w);
     let (ext, int) = faces(m, w);
     let len = axis.length();
-    // The openings: along the wall, and up it.
-    let candidates: Box<dyn Iterator<Item = &Element> + '_> = if !openings {
-        Box::new(std::iter::empty())
-    } else {
-        match index {
-            Some(index) => Box::new(index.openings(guid).iter().filter_map(|id| m.elements.get(*id))),
-            None => Box::new(m.elements.values()),
-        }
-    };
+    // The openings: along the wall, and up it; one whose voids cut the wall leaves its rectangle to them.
+    let candidates: Box<dyn Iterator<Item = &Element> + '_> =
+        if !openings { Box::new(std::iter::empty()) } else { openings_of(m, id, index) };
     let holes: Vec<Hole> = candidates
         .filter_map(|e| match e {
-            Element::Door(o) | Element::Window(o) if o.host == guid => hole(m, w, e, o),
+            Element::Door(o) | Element::Window(o) if o.host == guid => {
+                if voided && !m.opening_voids_local(e).is_empty() {
+                    return None;
+                }
+                hole(m, w, e, o)
+            }
             _ => None,
         })
         .collect();

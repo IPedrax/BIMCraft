@@ -326,6 +326,9 @@ pub struct Canvas {
     crop_drag: Option<(Id, usize)>,
     /// A selected wall's end being dragged: the wall, and whether it's its start.
     grip: Option<(Id, bool)>,
+    /// A part of the selected section or elevation being dragged in plan: the view, the part (its line, an end, its far
+    /// clip) and the model point it was taken at.
+    view_grip: Option<(Id, bimcraft_core::elevation::Part, P2)>,
     /// A selected level's end being dragged in a section or an elevation: the level, and whether
     /// it's its far end.
     level_grip: Option<(Id, bool)>,
@@ -360,6 +363,7 @@ impl Default for Canvas {
             cycle: 0,
             crop_drag: None,
             grip: None,
+            view_grip: None,
             level_grip: None,
             press: None,
             lifted: None,
@@ -569,7 +573,7 @@ fn convex(r: &[(f32, f32)]) -> bool {
     turns.iter().all(|t| *t > 0.0) || turns.iter().all(|t| *t < 0.0)
 }
 
-fn pos(origin: Pos2, (x, y): (f32, f32)) -> Pos2 {
+pub(crate) fn pos(origin: Pos2, (x, y): (f32, f32)) -> Pos2 {
     origin + vec2(x, y)
 }
 
@@ -1123,6 +1127,7 @@ fn degrees(a: f64) -> String {
 fn start_of(tool: &Tool) -> &[P2] {
     match tool {
         Tool::Grid(start)
+        | Tool::ReferencePlane(start)
         | Tool::RoomSeparator(start)
         | Tool::Move(start)
         | Tool::Copy(start)
@@ -1384,87 +1389,16 @@ impl BimApp {
     /// A snap's guide, dashed through the point it runs from and on past the snapped one; its
     /// marker, by what it snapped to; and its name.
     fn show_snap(&self, sc: &Scene, f: &Found) {
-        let (p, at) = (sc.p, sc.screen(f.at));
-        let (stroke, thin) = (Stroke::new(2.0, pal().accent), Stroke::new(1.0, pal().accent));
-        if let Some(g) = f.guide {
-            let a = sc.screen(g.from);
-            if a.distance(at) > 1.0 {
-                // Back to the point it runs from, but no further than a screen's width: past that it
-                // can't be seen, and a point far off would make a dash for every 10 px.
-                let u = (at - a).normalized();
-                let back = a.distance(at).min(4000.0) + 24.0;
-                p.extend(Shape::dashed_line(&[at - u * back, at + u * 28.0], thin, 6.0, 4.0));
+        // And of which element, by its id, as Select by ID finds it.
+        let name = match f.source.and_then(|id| Some((id, sc.m.elements.get(id)?))) {
+            Some((id, e)) => {
+                let of = crate::lang::category(e.category(), false);
+                // TRANSLATORS: what a point snapped to, then the category and id of its element: "Endpoint of Wall 100231".
+                tf("{} of {} {}", &[t(f.kind.name()), &of, &id.to_string()])
             }
-        }
-        match f.kind {
-            Kind::Endpoint => {
-                p.rect_stroke(Rect::from_center_size(at, vec2(11.0, 11.0)), 0.0, stroke, StrokeKind::Middle);
-            }
-            Kind::Midpoint => {
-                p.add(Shape::closed_line(vec![at + vec2(0.0, -6.0), at + vec2(6.0, 5.0), at + vec2(-6.0, 5.0)], stroke));
-            }
-            Kind::Intersection => {
-                p.line_segment([at + vec2(-6.0, -6.0), at + vec2(6.0, 6.0)], stroke);
-                p.line_segment([at + vec2(-6.0, 6.0), at + vec2(6.0, -6.0)], stroke);
-            }
-            Kind::Centre => {
-                p.circle_stroke(at, 6.0, stroke);
-            }
-            // A right angle's foot: a line, and one standing square on it.
-            Kind::Perpendicular => {
-                p.line_segment([at + vec2(-7.0, 5.0), at + vec2(7.0, 5.0)], stroke);
-                p.line_segment([at + vec2(0.0, 5.0), at + vec2(0.0, -6.0)], stroke);
-            }
-            Kind::Nearest => {
-                p.add(Shape::closed_line(
-                    vec![at + vec2(0.0, -6.0), at + vec2(6.0, 0.0), at + vec2(0.0, 6.0), at + vec2(-6.0, 0.0)],
-                    stroke,
-                ));
-            }
-            // A scan's point: a cross, upright, round a dot.
-            Kind::Point => {
-                p.line_segment([at + vec2(-7.0, 0.0), at + vec2(7.0, 0.0)], stroke);
-                p.line_segment([at + vec2(0.0, -7.0), at + vec2(0.0, 7.0)], stroke);
-                p.circle_filled(at, 2.5, pal().accent);
-            }
-            // A quarter of a round, its corner on the point.
-            Kind::Quadrant => {
-                let arc: Vec<Pos2> = (0..=8)
-                    .map(|k| f32::from(k as u8) * std::f32::consts::FRAC_PI_2 / 8.0)
-                    .map(|a| at + vec2(-9.0 + 12.0 * a.cos(), 6.0 - 12.0 * a.sin()))
-                    .collect();
-                p.add(Shape::line(arc, stroke));
-                p.line_segment([at + vec2(-9.0, 6.0), at + vec2(3.0, 6.0)], stroke);
-                p.line_segment([at + vec2(-9.0, 6.0), at + vec2(-9.0, -6.0)], stroke);
-            }
-            // A round, and the line touching it on top.
-            Kind::Tangent => {
-                p.circle_stroke(at + vec2(0.0, 5.0), 5.0, stroke);
-                p.line_segment([at + vec2(-8.0, 0.0), at + vec2(8.0, 0.0)], stroke);
-            }
-            Kind::Anchor => {
-                p.circle_stroke(at, 6.0, stroke);
-                p.circle_filled(at, 2.0, pal().accent);
-            }
-            Kind::Angle => {
-                p.circle_filled(at, 3.0, pal().accent);
-            }
-            Kind::Free => {
-                p.rect_stroke(Rect::from_center_size(at, vec2(8.0, 8.0)), 0.0, stroke, StrokeKind::Middle);
-            }
-        }
-        if !matches!(f.kind, Kind::Free | Kind::Angle) {
-            // And of which element, by its id, as Select by ID finds it.
-            let name = match f.source.and_then(|id| Some((id, sc.m.elements.get(id)?))) {
-                Some((id, e)) => {
-                    let of = crate::lang::category(e.category(), false);
-                    // TRANSLATORS: what a point snapped to, then the category and id of its element: "Endpoint of Wall 100231".
-                    tf("{} of {} {}", &[t(f.kind.name()), &of, &id.to_string()])
-                }
-                None => t(f.kind.name()).to_string(),
-            };
-            tag(p, at + vec2(12.0, 14.0), Align2::LEFT_TOP, name);
-        }
+            None => t(f.kind.name()).to_string(),
+        };
+        snap_mark(sc.p, sc.screen(f.at), f.guide.map(|g| sc.screen(g.from)), f.kind, name);
     }
 
     /// The plan `key` names, filling `ui`: a level's own, or a plan view of one. What is built is on the plan's level; what is
@@ -1575,6 +1509,10 @@ impl BimApp {
             Tool::Round(DimKind::ArcLength, picked) => picked.first().and_then(|arc| {
                 d.pick_all(q, PICK).into_iter().find(|id| bimcraft_core::dims::arc_point(&model, arc, *id, view.mm(q), near).is_some())
             }),
+            // What an elevation would look at: a straight wall, a line, a slab's edge, the project's or a link's.
+            Tool::Elevation => {
+                d.pick_all(q, PICK).into_iter().find(|id| bimcraft_core::elevation::reference(&model, *id, view.mm(q)).is_some())
+            }
             // What a spot elevation would read.
             Tool::Spot => model.spot_host(level, view.mm(q)),
             // The floor or roof a spot slope would read.
@@ -1605,6 +1543,8 @@ impl BimApp {
         self.canvas.found.set(None);
         self.grip_drag(ui, &response, rect, &view, level);
         self.line_grip_drag(ui, &response, rect, &view, level);
+        self.adaptive_grip_drag(ui, &response, rect, &view, level);
+        self.view_grip_drag(ui, &response, rect, &view);
         let dragged = self.shape_grip_drag(ui, &response, rect, &view, level) || dragged;
         // A drag from an element moves the selection; from empty floor, it draws a selection box.
         if response.drag_started_by(PointerButton::Primary)
@@ -1613,7 +1553,9 @@ impl BimApp {
             && !writing
             && self.canvas.crop_drag.is_none()
             && self.canvas.grip.is_none()
+            && self.canvas.view_grip.is_none()
             && self.drawing.grip.is_none()
+            && self.adaptive_grip.is_none()
             && let Some(o) = ui.input(|i| i.pointer.press_origin())
         {
             let o = (o.x - rect.min.x, o.y - rect.min.y);
@@ -1635,7 +1577,13 @@ impl BimApp {
                 Drag::Move(from) => {
                     let by = self.dragged(&model, &view, from, view.mm(q));
                     if by.length() > 0.0 {
-                        self.run("move", json!({"ids": self.selection, "by": point(by)}));
+                        // An elevation taken alone is taken by its mark, which goes apart from its line.
+                        match self.selection.as_slice() {
+                            &[id] if matches!(model.elements.get(id), Some(Element::Elevation(_))) => {
+                                self.run("move", json!({"ids": [id], "by": point(by), "end": "mark"}))
+                            }
+                            _ => self.run("move", json!({"ids": self.selection, "by": point(by)})),
+                        };
                     }
                 }
                 Drag::Box(from) => self.pick_up(d.in_box(from, q, q.0 < from.0), click_modifiers(ui)),
@@ -1760,8 +1708,25 @@ impl BimApp {
         }
         match (self.canvas.drag, local) {
             (Some(Drag::Move(from)), Some(q)) => {
-                let (a, b) = (view.px(from), view.px(from + self.dragged(&model, &view, from, view.mm(q))));
-                ghost(&p, d.place, &d, &self.selection, &|q| q + vec2(b.0 - a.0, b.1 - a.1));
+                let by = self.dragged(&model, &view, from, view.mm(q));
+                let (a, b) = (view.px(from), view.px(from + by));
+                // An elevation dragged alone: its mark as it will stand, turned round past the line it looks at.
+                let turned = match self.selection.as_slice() {
+                    &[id] => match model.elements.get(id) {
+                        Some(Element::Elevation(e)) => bimcraft_core::elevation::dragged(e, true, bimcraft_core::elevation::Part::Mark, by)
+                            .ok()
+                            .map(Element::Elevation),
+                        _ => None,
+                    },
+                    _ => None,
+                };
+                match turned {
+                    Some(e) => {
+                        let id = model.next_id;
+                        ghost(&p, Place::at(p.clip_rect().min), &render::sketch(&model, view, id, &e), &[id], &|pt| pt);
+                    }
+                    None => ghost(&p, d.place, &d, &self.selection, &|q| q + vec2(b.0 - a.0, b.1 - a.1)),
+                }
             }
             (Some(Drag::Box(from)), Some(q)) => p.extend(box_shapes(rect, from, q)),
             _ => {}
@@ -1791,6 +1756,8 @@ impl BimApp {
             }
         }
         self.grip_overlay(ui, &model, &view, rect, level, &d, d.place);
+        self.adaptive_overlay(ui, rect, &view);
+        self.view_extent_overlay(ui, &model, &view, rect);
         // Where the cursor snaps is worked out only while a grip is held to it.
         let cursor = self
             .drawing
@@ -2056,9 +2023,17 @@ impl BimApp {
                 self.run("room", json!({"point": point(round(v.mm(at))), "level": level}));
             }
             Tool::Level => {}
-            Tool::Elevation => {
-                self.run("elevation", json!({"at": point(round(v.mm(at)))}));
-            }
+            Tool::Elevation => match hovered {
+                Some(id) => {
+                    self.run("elevation", json!({"on": id, "at": point(round(v.mm(at)))}));
+                }
+                None => {
+                    self.status = Status {
+                        text: t("Click a straight wall, a line or a slab's edge for the elevation to look at.").into(),
+                        error: false,
+                    }
+                }
+            },
             Tool::Wall(_) if self.shape() == draw::Shape::Fillet => {
                 let picked = hovered.filter(|id| m.wall(*id).is_some());
                 self.fillet_pick(picked.map(draw::Picked::Element), v.mm(at));
@@ -2082,6 +2057,7 @@ impl BimApp {
             }
             Tool::Wall(_)
             | Tool::Grid(_)
+            | Tool::ReferencePlane(_)
             | Tool::RoomSeparator(_)
             | Tool::Move(_)
             | Tool::Copy(_)
@@ -2091,6 +2067,7 @@ impl BimApp {
                 let chain: Vec<P2> = match &self.tool {
                     Tool::Wall(chain) => chain.clone(),
                     Tool::Grid(start)
+                    | Tool::ReferencePlane(start)
                     | Tool::RoomSeparator(start)
                     | Tool::Move(start)
                     | Tool::Copy(start)
@@ -2330,11 +2307,14 @@ impl BimApp {
                 }
             }
             Tool::Component | Tool::Fixture(_) => {
-                if let Some((family, ty)) = self.placing() {
+                if self.adaptive_count().is_some() {
+                    self.adaptive_click(m, level, v, at);
+                } else if let Some((family, ty)) = self.placing() {
                     let at = self.snap_point(m, level, v, at, &[], false);
-                    self.run(
-                        "component",
+                    let z = m.elevation(level);
+                    self.place_component(
                         json!({"family": family, "type": ty, "at": point(at), "level": level, "angle": self.component_angle}),
+                        z,
                     );
                 }
             }
@@ -2918,6 +2898,14 @@ impl BimApp {
                 }
                 Some(a) => *start = Some(a),
             },
+            // An upright plane through the two points, on the plan's level.
+            Tool::ReferencePlane(start) => match start.take() {
+                None => *start = Some(p),
+                Some(a) if a.dist(p) > TOL => {
+                    self.run("reference_plane", json!({"start": point(a), "end": point(p), "level": level}));
+                }
+                Some(a) => *start = Some(a),
+            },
             Tool::Section(start) => match start.take() {
                 None => *start = Some(p),
                 Some(a) if a.dist(p) > TOL => {
@@ -3049,6 +3037,110 @@ impl BimApp {
             }
         }
         Some(p)
+    }
+
+    /// The section or elevation selected alone, with Modify: the one whose extent a plan shows, with its grips. With it,
+    /// whether it is an elevation.
+    fn view_gripped(&self) -> Option<(Id, Section, bool)> {
+        match (self.selection.as_slice(), &self.tool) {
+            (&[id], Tool::Modify) => match self.session.model.elements.get(id)? {
+                Element::Section(v) => Some((id, v.clone(), false)),
+                Element::Elevation(v) => Some((id, v.clone(), true)),
+                _ => None,
+            },
+            _ => None,
+        }
+    }
+
+    /// A drag from a grip of the selected section or elevation moves that part: an end of its line along it (while the
+    /// view is cropped), its far clip to and from it; from an elevation's line, the line the way it looks, its mark staying.
+    /// On release, `move` with the part as its `end`.
+    fn view_grip_drag(&mut self, ui: &Ui, response: &Response, rect: Rect, view: &View) {
+        use bimcraft_core::elevation::{self, Part};
+        let Some((id, v, is_elevation)) = self.view_gripped() else {
+            self.canvas.view_grip = None;
+            return;
+        };
+        let at = |p: P2| pos(rect.min, view.px(p));
+        if response.drag_started_by(PointerButton::Primary)
+            && self.canvas.crop_drag.is_none()
+            && let Some(o) = ui.input(|i| i.pointer.press_origin())
+        {
+            let near = |p: P2| at(p).distance(o);
+            let from = view.mm((o.x - rect.min.x, o.y - rect.min.y));
+            let grip = elevation::grips(&v).into_iter().filter(|(_, p)| near(*p) <= 9.0).min_by(|a, b| near(a.1).total_cmp(&near(b.1)));
+            // An elevation's line is taken anywhere along it, off its mark.
+            let on_line = || {
+                let (a, b) = (at(v.start), at(v.end));
+                let (ab, ao) = (b - a, o - a);
+                let t = (ao.dot(ab) / ab.length_sq().max(1e-6)).clamp(0.0, 1.0);
+                is_elevation && (a + ab * t).distance(o) <= 5.0 && near(elevation::mark(&v)) > 18.0
+            };
+            if let Some((part, _)) = grip {
+                self.canvas.view_grip = Some((id, part, from));
+            } else if on_line() {
+                self.canvas.view_grip = Some((id, Part::Line, from));
+            }
+        }
+        let Some((held, part, from)) = self.canvas.view_grip else { return };
+        if held != id {
+            self.canvas.view_grip = None;
+            return;
+        }
+        if response.drag_stopped() {
+            self.canvas.view_grip = None;
+            if !self.canvas.quick()
+                && let Some(q) = ui.input(|i| i.pointer.latest_pos())
+            {
+                let by = view.mm((q.x - rect.min.x, q.y - rect.min.y)) - from;
+                if by.length() > 1e-6 {
+                    self.run("move", json!({"ids": [id], "by": point(by), "end": part.name()}));
+                }
+            }
+        }
+    }
+
+    /// The selected section's or elevation's extent in plan, as Revit shows it: the line the view starts at; with a far
+    /// clip, the line it sees as far as and the sides between them; a round grip at each end of the line while the view
+    /// is cropped, and a pair of arrows on the far clip. A part being dragged shows where it would come to.
+    fn view_extent_overlay(&self, ui: &Ui, m: &Model, view: &View, rect: Rect) {
+        use bimcraft_core::elevation;
+        let Some((id, v, is_elevation)) = self.view_gripped() else { return };
+        if m.section(id).is_none() {
+            return;
+        }
+        let v = match (self.canvas.view_grip, ui.input(|i| i.pointer.latest_pos())) {
+            (Some((held, part, from)), Some(q)) if held == id => {
+                let by = view.mm((q.x - rect.min.x, q.y - rect.min.y)) - from;
+                elevation::dragged(&v, is_elevation, part, by).unwrap_or(v)
+            }
+            _ => v,
+        };
+        let p = ui.painter_at(rect);
+        let at = |q: P2| pos(rect.min, view.px(q));
+        let blue = canvas_pal().accent;
+        let (a, b) = (at(v.start), at(v.end));
+        // The line it starts at: long dashes with a dot between, as a cut line is drawn.
+        p.extend(Shape::dashed_line_with_offset(&[a, b], Stroke::new(1.5, blue), &[12.0, 2.0], &[4.0, 4.0], 0.0));
+        if let Some((fa, fb)) = elevation::far(&v) {
+            let faint = Stroke::new(1.0, blue.gamma_multiply(0.7));
+            p.extend(Shape::dashed_line(&[a, at(fa), at(fb), b], faint, 5.0, 4.0));
+        }
+        for (part, g) in elevation::grips(&v) {
+            let c = at(g);
+            if part == elevation::Part::Far {
+                // Two arrows, to and from the view's line.
+                let l = v.looking();
+                let (n, t) = (vec2(l.0 as f32, -l.1 as f32), vec2(-l.1 as f32, -l.0 as f32));
+                for k in [1.0, -1.0] {
+                    let tip = c + n * (9.0 * k);
+                    let base = c + n * (1.5 * k);
+                    p.add(Shape::convex_polygon(vec![tip, base + t * 4.5, base - t * 4.5], blue, Stroke::new(1.0, pal().surface)));
+                }
+            } else {
+                p.circle(c, 4.5, blue.gamma_multiply(0.75), Stroke::new(1.0, blue));
+            }
+        }
     }
 
     /// The wall or run selected alone, with Modify: the one whose ends are grips.
@@ -3687,6 +3779,7 @@ impl BimApp {
                 return;
             }
             Tool::Grid(_)
+            | Tool::ReferencePlane(_)
             | Tool::RoomSeparator(_)
             | Tool::Run(_, None)
             | Tool::Move(_)
@@ -3733,17 +3826,31 @@ impl BimApp {
                     end,
                     depth: None,
                     crop: None,
+                    reference: None,
+                    mark: None,
                     graphics: Default::default(),
                 }));
                 return;
             }
             Tool::Elevation => {
                 let at = round(v.mm(q));
-                if let Some(f) = m.facing_from(at)
-                    && let Some((start, end)) = m.elevation_line(f, Some(at))
+                if let Some(line) = hovered.and_then(|id| bimcraft_core::elevation::reference(m, id, at))
+                    && let Some((start, end)) = bimcraft_core::elevation::new_line(line, bimcraft_core::elevation::place(line, at))
                 {
-                    let name = m.free_view_name(f.name(), false);
-                    sketched(&Element::Elevation(Section { name, start, end, depth: None, crop: None, graphics: Default::default() }));
+                    let name = m.free_view_name(m.language.word("Elevation"), true);
+                    let reference = Some([line.0, line.1]);
+                    // The edge it would look at, and the mark where it would stand.
+                    p.line_segment([sc.screen(line.0), sc.screen(line.1)], stroke);
+                    sketched(&Element::Elevation(Section {
+                        name,
+                        start,
+                        end,
+                        depth: None,
+                        crop: None,
+                        reference,
+                        mark: None,
+                        graphics: Default::default(),
+                    }));
                 }
                 return;
             }
@@ -3938,10 +4045,14 @@ impl BimApp {
                 return;
             }
             Tool::Component | Tool::Fixture(_) => {
-                if let Some((family, type_name)) = self.placing() {
+                // An adaptive instance shows only the points clicked for it (`adaptive_overlay`), until its last places it.
+                if self.adaptive_count().is_none()
+                    && let Some((family, type_name)) = self.placing()
+                {
                     let at = self.found(sc, q, &[], false);
                     let angle = self.component_angle;
                     let c = Component {
+                        adaptive: None,
                         family,
                         type_name,
                         level: m.guid(level),
@@ -3950,6 +4061,8 @@ impl BimApp {
                         offset: 0.0,
                         mirrored: false,
                         params: Default::default(),
+                        host: None,
+                        panel: None,
                     };
                     let e = Element::Component(c);
                     sketched(&e);
@@ -4256,5 +4369,77 @@ impl BimApp {
                 self.shape_label_rects.push(r);
             }
         }
+    }
+}
+
+/// A snap's marker at `at` on screen, by what it snapped to (`kind`), its guide dashed from `from` (the point it runs from,
+/// on screen) on past it, and `name` beside it: the plan's and a family's sketch's alike.
+pub(crate) fn snap_mark(p: &Painter, at: Pos2, from: Option<Pos2>, kind: Kind, name: String) {
+    let (stroke, thin) = (Stroke::new(2.0, pal().accent), Stroke::new(1.0, pal().accent));
+    if let Some(a) = from
+        && a.distance(at) > 1.0
+    {
+        // Back to the point it runs from, but no further than a screen's width: past that it can't be seen, and a point far
+        // off would make a dash for every 10 px.
+        let u = (at - a).normalized();
+        let back = a.distance(at).min(4000.0) + 24.0;
+        p.extend(Shape::dashed_line(&[at - u * back, at + u * 28.0], thin, 6.0, 4.0));
+    }
+    match kind {
+        Kind::Endpoint => {
+            p.rect_stroke(Rect::from_center_size(at, vec2(11.0, 11.0)), 0.0, stroke, StrokeKind::Middle);
+        }
+        Kind::Midpoint => {
+            p.add(Shape::closed_line(vec![at + vec2(0.0, -6.0), at + vec2(6.0, 5.0), at + vec2(-6.0, 5.0)], stroke));
+        }
+        Kind::Intersection => {
+            p.line_segment([at + vec2(-6.0, -6.0), at + vec2(6.0, 6.0)], stroke);
+            p.line_segment([at + vec2(-6.0, 6.0), at + vec2(6.0, -6.0)], stroke);
+        }
+        Kind::Centre => {
+            p.circle_stroke(at, 6.0, stroke);
+        }
+        // A right angle's foot: a line, and one standing square on it.
+        Kind::Perpendicular => {
+            p.line_segment([at + vec2(-7.0, 5.0), at + vec2(7.0, 5.0)], stroke);
+            p.line_segment([at + vec2(0.0, 5.0), at + vec2(0.0, -6.0)], stroke);
+        }
+        Kind::Nearest => {
+            p.add(Shape::closed_line(vec![at + vec2(0.0, -6.0), at + vec2(6.0, 0.0), at + vec2(0.0, 6.0), at + vec2(-6.0, 0.0)], stroke));
+        }
+        // A scan's point: a cross, upright, round a dot.
+        Kind::Point => {
+            p.line_segment([at + vec2(-7.0, 0.0), at + vec2(7.0, 0.0)], stroke);
+            p.line_segment([at + vec2(0.0, -7.0), at + vec2(0.0, 7.0)], stroke);
+            p.circle_filled(at, 2.5, pal().accent);
+        }
+        // A quarter of a round, its corner on the point.
+        Kind::Quadrant => {
+            let arc: Vec<Pos2> = (0..=8)
+                .map(|k| f32::from(k as u8) * std::f32::consts::FRAC_PI_2 / 8.0)
+                .map(|a| at + vec2(-9.0 + 12.0 * a.cos(), 6.0 - 12.0 * a.sin()))
+                .collect();
+            p.add(Shape::line(arc, stroke));
+            p.line_segment([at + vec2(-9.0, 6.0), at + vec2(3.0, 6.0)], stroke);
+            p.line_segment([at + vec2(-9.0, 6.0), at + vec2(-9.0, -6.0)], stroke);
+        }
+        // A round, and the line touching it on top.
+        Kind::Tangent => {
+            p.circle_stroke(at + vec2(0.0, 5.0), 5.0, stroke);
+            p.line_segment([at + vec2(-8.0, 0.0), at + vec2(8.0, 0.0)], stroke);
+        }
+        Kind::Anchor => {
+            p.circle_stroke(at, 6.0, stroke);
+            p.circle_filled(at, 2.0, pal().accent);
+        }
+        Kind::Angle => {
+            p.circle_filled(at, 3.0, pal().accent);
+        }
+        Kind::Free => {
+            p.rect_stroke(Rect::from_center_size(at, vec2(8.0, 8.0)), 0.0, stroke, StrokeKind::Middle);
+        }
+    }
+    if !matches!(kind, Kind::Free | Kind::Angle) {
+        tag(p, at + vec2(12.0, 14.0), Align2::LEFT_TOP, name);
     }
 }
