@@ -1176,7 +1176,7 @@ fn solids_in_with(
                                     Solid::Prism { owner: id, color, tex, ring, bottom, top, curve: None }
                                 }
                                 crate::runs::Swept::Mesh(tris, caps) => {
-                                    Solid::Mesh { owner: id, color, tex, tris, caps, round: false, cut: true }
+                                    Solid::Mesh { owner: id, color, tex, tris, caps, round: false, cut: true, vis: 0 }
                                 }
                             });
                         }
