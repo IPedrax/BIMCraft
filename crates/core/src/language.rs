@@ -72,10 +72,7 @@ impl Language {
     }
 
     /// Of one thing in each language, English first, this language's.
-    pub fn of<T>(
-        self,
-        [english, portuguese, spanish, swedish, czech, french, german, dutch, italian, polish, vietnamese]: [T; 11],
-    ) -> T {
+    pub fn of<T>(self, [english, portuguese, spanish, swedish, czech, french, german, dutch, italian, polish, vietnamese]: [T; 11]) -> T {
         match self {
             Language::English => english,
             Language::Portuguese => portuguese,
