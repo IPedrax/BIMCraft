@@ -136,6 +136,11 @@ door or window lands on it (`Model::centred`): the click sends that `offset`, th
 A selected column or component, and the Column and Component tools' sketches, show up to four: how far it stands from the nearest wall centre
 line or grid east, north, west and south (`Model::clearances`, which finds them in the core; `standing_dimensions` draws them); a typed one runs
 `move` by the difference along that way.
+A selected straight wall shows, besides its length, how far its centre line stands from the nearest parallel wall centre line or grid on
+each side, square to it from its middle (`Model::wall_clearances`; `wall_dimensions` draws them a little along it): a typed one moves the
+wall by the difference, the walls joined to it stretching (`move`).
+The Text tool's Leader (Options Bar) makes the first click the point the note's leader reaches and the next the note's top left corner,
+in a plan, a section or on a sheet (`write_note`); Esc between them forgets the first.
 
 Align (AL) highlights the exact edge or axis under the cursor before either pick, leaving the selected reference as an
 extended dashed line. It searches the candidates under the pointer for a usable line rather than letting annotation mask
