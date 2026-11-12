@@ -3236,7 +3236,7 @@ msgstr "Zbourané"
 msgid "Demolition"
 msgstr "Demolice"
 
-#: crates/core/src/commands.rs:11578
+#: crates/core/src/commands.rs:11598
 msgid "Dependent"
 msgstr "Závislý"
 
@@ -8595,7 +8595,7 @@ msgid "Properties over the Project Browser, on the left, as at first"
 msgstr "Vlastnosti nad Prohlížečem projektu, vlevo, jako ve výchozím nastavení"
 
 #: crates/core/src/commands.rs:550
-#: crates/core/src/commands.rs:7955
+#: crates/core/src/commands.rs:7975
 msgid "Property Line"
 msgstr ""
 
@@ -11788,7 +11788,7 @@ msgstr ""
 msgid "Unlock alignment"
 msgstr "Odemknout zarovnání"
 
-#: crates/core/src/commands.rs:11749
+#: crates/core/src/commands.rs:11769
 msgid "Unnamed"
 msgstr "Nepojmenovaný"
 

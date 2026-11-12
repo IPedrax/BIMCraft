@@ -3405,6 +3405,21 @@ mod max_file_tests {
     }
 }
 
+/// What `save` writes a project under: what `open` reads, [`MAX_FILE`]; a test sets it lower ([`SAVE_LIMIT`]).
+fn save_limit() -> u64 {
+    #[cfg(test)]
+    if let Some(most) = SAVE_LIMIT.with(std::cell::Cell::get) {
+        return most;
+    }
+    MAX_FILE
+}
+
+#[cfg(test)]
+thread_local! {
+    /// A lower limit for `save`, so a test needn't build a project of 256 MiB.
+    pub(crate) static SAVE_LIMIT: std::cell::Cell<Option<u64>> = const { std::cell::Cell::new(None) };
+}
+
 fn ext(p: &Path) -> String {
     p.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase()
 }
@@ -3775,6 +3790,11 @@ fn save(s: &mut Session, p: &Value) -> R {
         return Ok(json!({"path": path, "format": format}));
     }
     let text = s.model.to_json().map_err(|e| bad(c, e))?;
+    // A file `open` would refuse isn't written: saved, it could not be opened again.
+    let most = save_limit();
+    if text.len() as u64 >= most {
+        return Err(bad(c, format!("the project would be {} bytes, and `open` takes one under {most}; it isn't saved", text.len())));
+    }
     crate::autosave::atomic_write(&path, &text).map_err(|e| bad(c, e))?;
     s.path = Some(path.clone());
     Ok(json!({"path": path, "format": "bimcraft"}))

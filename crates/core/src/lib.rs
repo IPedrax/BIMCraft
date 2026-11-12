@@ -116,6 +116,7 @@ mod ifc_member_tests;
 pub mod import;
 pub mod inquiry;
 pub mod insert;
+pub mod json_text;
 pub mod language;
 pub mod lenient;
 pub mod library;
@@ -142,6 +143,8 @@ pub mod pdf;
 pub mod pen;
 pub mod phasing;
 pub mod plumbing;
+#[cfg(test)]
+mod project_file_tests;
 #[cfg(test)]
 mod pset_tests;
 #[cfg(test)]

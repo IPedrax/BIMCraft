@@ -1647,7 +1647,8 @@ impl Model {
             }
         });
         m.rekey_params(&|n| lib.guid(&Kind::Parameter, n).map(|g| g.to_string()));
-        serde_json::to_string_pretty(&m).map_err(|e| e.to_string())
+        // Laid out a line a key, but a list of numbers on one line: a meshed model's file is a quarter of the size.
+        serde_json::to_string(&m).map(|t| crate::json_text::pretty(&t)).map_err(|e| e.to_string())
     }
 
     /// What a file's GUIDs name, named again, and what has no id and GUID given them: what [`Model::to_json`] did, undone.
