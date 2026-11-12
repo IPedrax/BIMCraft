@@ -11,15 +11,15 @@ msgstr " 未導入：{}{}。"
 msgid " Moved {}, {} mm to bring it near the origin."
 msgstr " 已移動 {}（{} 毫米），使其靠近原點。"
 
-#: crates/ui-egui/src/shortcuts.rs:1746
+#: crates/ui-egui/src/shortcuts.rs:1734
 msgid "\"{}\" is already assigned to \"{}\""
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:1115
+#: crates/ui-egui/src/shortcuts.rs:1109
 msgid "\"{}\" is reserved by the application"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:1087
+#: crates/ui-egui/src/shortcuts.rs:1081
 msgid "\"{}\" needs a modifier or a second key"
 msgstr ""
 
@@ -156,7 +156,7 @@ msgstr "BIMCraft 項目、IFC 或 Revit 檔案。"
 msgid "A chat is kept for each saved project, on this computer, beside settings.json (never in the project). A picture sent in it is not kept."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:2881
+#: crates/ui-egui/src/shortcuts.rs:2869
 msgid "A chord such as Ctrl+D, or two keys such as WA. Esc cancels; Backspace clears."
 msgstr ""
 
@@ -204,7 +204,7 @@ msgstr "過濾器在“視圖”>“過濾器”中創建"
 msgid "A form made of a mesh has no faces Align can take: pick a reference plane, an extrusion's end or a line of a form."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:1118
+#: crates/ui-egui/src/shortcuts.rs:1112
 msgid "A letter or digit needs a modifier or a second key"
 msgstr ""
 
@@ -232,8 +232,8 @@ msgstr "閉合輪廓至少需要三條線：請單擊起點以外的點。"
 msgid "A mesh from a file has no sketch to edit."
 msgstr "來自檔案的網格沒有可編輯的草圖。"
 
-#: crates/ui-egui/src/shortcuts.rs:1050
-#: crates/ui-egui/src/shortcuts.rs:1084
+#: crates/ui-egui/src/shortcuts.rs:1044
+#: crates/ui-egui/src/shortcuts.rs:1078
 msgid "A modifier alone is not a binding"
 msgstr ""
 
@@ -367,7 +367,7 @@ msgstr "接受主選項"
 msgid "Accept Primary: the primary option's elements stay in the model; the others' elements and the set go"
 msgstr "接受主選項：主選項的圖元保留在模型中；其他選項的圖元及選項集被刪除"
 
-#: crates/ui-egui/src/shortcuts.rs:2589
+#: crates/ui-egui/src/shortcuts.rs:2577
 msgid "Actions"
 msgstr ""
 
@@ -507,7 +507,7 @@ msgstr "添加電壓"
 msgid "Add Wire Type"
 msgstr "添加導線類型"
 
-#: crates/ui-egui/src/shortcuts.rs:2705
+#: crates/ui-egui/src/shortcuts.rs:2693
 msgid "Add a binding"
 msgstr ""
 
@@ -540,7 +540,7 @@ msgstr ""
 msgid "Add to Project"
 msgstr "添加到項目"
 
-#: crates/ui-egui/src/shortcuts.rs:2962
+#: crates/ui-egui/src/shortcuts.rs:2950
 msgid "Add to the current set"
 msgstr ""
 
@@ -600,7 +600,7 @@ msgstr ""
 msgid "Air Terminal"
 msgstr "接閃器"
 
-#: crates/ui-egui/src/mep.rs:95
+#: crates/ui-egui/src/mep.rs:89
 msgid "Air Terminal (AT): a captor, where you click on the roof; Space turns it"
 msgstr "接閃器 (AT)：在屋頂上單擊處放置接閃器；按空格鍵旋轉"
 
@@ -687,8 +687,8 @@ msgstr "對齊參考線已開啟"
 msgid "All"
 msgstr "全部"
 
-#: crates/ui-egui/src/shortcuts.rs:2433
-#: crates/ui-egui/src/shortcuts.rs:2435
+#: crates/ui-egui/src/shortcuts.rs:2421
+#: crates/ui-egui/src/shortcuts.rs:2423
 msgid "All categories"
 msgstr ""
 
@@ -765,8 +765,8 @@ msgstr ""
 msgid "An agent can work on this project: bimcraft-cli mcp --connect {}"
 msgstr "智能體可以在此項目上工作：bimcraft-cli mcp --connect {}"
 
-#: crates/ui-egui/src/shortcuts.rs:1019
-#: crates/ui-egui/src/shortcuts.rs:1026
+#: crates/ui-egui/src/shortcuts.rs:1013
+#: crates/ui-egui/src/shortcuts.rs:1020
 msgid "An empty binding"
 msgstr ""
 
@@ -875,7 +875,7 @@ msgstr "適用於所有視圖；捕捉到活動視圖中已啟用的主網格或
 #: crates/ui-egui/src/lineweights.rs:150
 #: crates/ui-egui/src/objectstyles.rs:89
 #: crates/ui-egui/src/properties.rs:653
-#: crates/ui-egui/src/shortcuts.rs:2762
+#: crates/ui-egui/src/shortcuts.rs:2750
 #: crates/ui-egui/src/standards.rs:333
 #: crates/ui-egui/src/titleblocks.rs:652
 #: crates/ui-egui/src/typeprops.rs:309
@@ -887,7 +887,7 @@ msgstr "應用"
 msgid "Apply Hide/Isolate to View"
 msgstr "將隱藏/隔離應用到視圖"
 
-#: crates/ui-egui/src/shortcuts.rs:2976
+#: crates/ui-egui/src/shortcuts.rs:2964
 msgid "Apply Import"
 msgstr ""
 
@@ -895,7 +895,7 @@ msgstr ""
 msgid "Apply Overrides"
 msgstr "應用替換"
 
-#: crates/ui-egui/src/shortcuts.rs:2456
+#: crates/ui-egui/src/shortcuts.rs:2444
 msgid "Apply Profile"
 msgstr ""
 
@@ -971,7 +971,7 @@ msgstr "如有未儲存的更改，會先詢問是否儲存，然後關閉 BIMCr
 msgid "Assign View Template"
 msgstr "指定視圖樣板"
 
-#: crates/ui-egui/src/shortcuts.rs:2756
+#: crates/ui-egui/src/shortcuts.rs:2744
 msgid "Assigned {} of {}"
 msgstr ""
 
@@ -1416,7 +1416,7 @@ msgstr "CAD 圖紙（DWG、DXF）"
 msgid "Cable Tray"
 msgstr "電纜橋架"
 
-#: crates/ui-egui/src/mep.rs:235
+#: crates/ui-egui/src/mep.rs:223
 msgid "Cable Tray (CT): click its start and its end; a chain of clicks makes a tray for each step"
 msgstr "電纜橋架 (CT)：單擊起點和終點；連續單擊可為每一段創建一段橋架"
 
@@ -1424,7 +1424,7 @@ msgstr "電纜橋架 (CT)：單擊起點和終點；連續單擊可為每一段�
 msgid "Cabling"
 msgstr "布線"
 
-#: crates/ui-egui/src/mep.rs:272
+#: crates/ui-egui/src/mep.rs:260
 msgid "Cabling (CB): click its start and its end; a chain of clicks makes a cable for each step"
 msgstr "布線 (CB)：單擊起點和終點；連續單擊可為每一段創建一根電纜"
 
@@ -1485,11 +1485,11 @@ msgstr "相機：單擊視點所在位置，再單擊其注視的目標：由該
 #: crates/ui-egui/src/properties.rs:3518
 #: crates/ui-egui/src/purge.rs:77
 #: crates/ui-egui/src/reinforce.rs:536
-#: crates/ui-egui/src/shortcuts.rs:2505
-#: crates/ui-egui/src/shortcuts.rs:2765
-#: crates/ui-egui/src/shortcuts.rs:2912
-#: crates/ui-egui/src/shortcuts.rs:2918
-#: crates/ui-egui/src/shortcuts.rs:3003
+#: crates/ui-egui/src/shortcuts.rs:2493
+#: crates/ui-egui/src/shortcuts.rs:2753
+#: crates/ui-egui/src/shortcuts.rs:2900
+#: crates/ui-egui/src/shortcuts.rs:2906
+#: crates/ui-egui/src/shortcuts.rs:2991
 #: crates/ui-egui/src/standards.rs:334
 #: crates/ui-egui/src/templates.rs:757
 #: crates/ui-egui/src/titleblocks.rs:653
@@ -1516,7 +1516,7 @@ msgstr "取消線型圖案"
 msgid "Canvas colour"
 msgstr "畫布顏色"
 
-#: crates/ui-egui/src/mep.rs:283
+#: crates/ui-egui/src/mep.rs:271
 msgid "Capture & Descent"
 msgstr "接閃和引下"
 
@@ -1553,7 +1553,7 @@ msgstr "未替換的類別按對像樣式的設定繪製。"
 #: crates/ui-egui/src/editor/document.rs:1917
 #: crates/ui-egui/src/objectstyles.rs:65
 #: crates/ui-egui/src/properties.rs:2296
-#: crates/ui-egui/src/shortcuts.rs:2556
+#: crates/ui-egui/src/shortcuts.rs:2544
 #: crates/ui-egui/src/standards.rs:193
 msgid "Category"
 msgstr "類別"
@@ -2410,7 +2410,7 @@ msgstr ""
 #: crates/ui-egui/src/revit.rs:261
 #: crates/ui-egui/src/script.rs:105
 #: crates/ui-egui/src/settings.rs:473
-#: crates/ui-egui/src/shortcuts.rs:2768
+#: crates/ui-egui/src/shortcuts.rs:2756
 msgid "Close"
 msgstr "關閉"
 
@@ -2496,7 +2496,7 @@ msgstr "合併：此階段中創建、拆除和顯示的內容歸入相鄰階段
 msgid "Coming in a later version"
 msgstr "將在後續版本中推出"
 
-#: crates/ui-egui/src/shortcuts.rs:2545
+#: crates/ui-egui/src/shortcuts.rs:2533
 msgid "Command"
 msgstr ""
 
@@ -2545,11 +2545,11 @@ msgstr "混凝土砌塊"
 msgid "Conduit"
 msgstr "線管"
 
-#: crates/ui-egui/src/mep.rs:225
+#: crates/ui-egui/src/mep.rs:213
 msgid "Conduit & Wire"
 msgstr "線管和導線"
 
-#: crates/ui-egui/src/mep.rs:229
+#: crates/ui-egui/src/mep.rs:217
 msgid "Conduit (CN): click its start and its end; a chain of clicks makes a conduit for each step"
 msgstr "線管 (CN)：單擊起點和終點；連續單擊可為每一段創建一根線管"
 
@@ -2771,12 +2771,12 @@ msgstr "核心面：內部"
 msgid "Could not fit the 3D view: {}"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:2491
+#: crates/ui-egui/src/shortcuts.rs:2479
 msgid "Could not open the file: {}"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:3069
-#: crates/ui-egui/src/shortcuts.rs:3084
+#: crates/ui-egui/src/shortcuts.rs:3057
+#: crates/ui-egui/src/shortcuts.rs:3072
 msgid "Could not write the file: {}"
 msgstr ""
 
@@ -2844,11 +2844,11 @@ msgstr "創建"
 msgid "Create Ceiling Boundary"
 msgstr "創建天花板邊界"
 
-#: crates/ui-egui/src/mep.rs:209
+#: crates/ui-egui/src/mep.rs:197
 msgid "Create Circuit"
 msgstr ""
 
-#: crates/ui-egui/src/mep.rs:208
+#: crates/ui-egui/src/mep.rs:196
 msgid "Create Circuit: the selected devices on the selected distribution board, behind one breaker"
 msgstr ""
 
@@ -3055,7 +3055,7 @@ msgstr "數據連接件：數據線纜與族的連接處"
 msgid "Data Outlet"
 msgstr "數據插座"
 
-#: crates/ui-egui/src/mep.rs:122
+#: crates/ui-egui/src/mep.rs:116
 msgid "Data Outlet (DT): a data point, where you click on the wall; Space turns it"
 msgstr "數據插座 (DT)：在牆上單擊處放置數據點；按空格鍵旋轉"
 
@@ -3323,11 +3323,11 @@ msgstr "詳圖線"
 msgid "Detail Line (DL): each click makes a line from the one before, in the Options Bar's line style; the Draw panel has the other shapes"
 msgstr "詳圖線 (DL)：每次單擊都從上一點畫一條線，使用選項欄中的線樣式；繪製面板中有其他形狀"
 
-#: crates/ui-egui/src/mep.rs:75
+#: crates/ui-egui/src/mep.rs:69
 msgid "Device"
 msgstr "設備"
 
-#: crates/ui-egui/src/mep.rs:77
+#: crates/ui-egui/src/mep.rs:71
 msgid "Device (DV): an outlet or a switch, where you click on the wall; Space turns it"
 msgstr "設備 (DV)：在牆上單擊處放置插座或開關；按空格鍵旋轉"
 
@@ -3454,11 +3454,11 @@ msgid "Disallow Join"
 msgstr ""
 
 #: crates/ui-egui/src/autosave.rs:306
-#: crates/ui-egui/src/shortcuts.rs:2516
+#: crates/ui-egui/src/shortcuts.rs:2504
 msgid "Discard"
 msgstr "放棄"
 
-#: crates/ui-egui/src/shortcuts.rs:2514
+#: crates/ui-egui/src/shortcuts.rs:2502
 msgid "Discard the changes made here?"
 msgstr ""
 
@@ -3603,7 +3603,7 @@ msgstr "下移"
 msgid "Down Conductor"
 msgstr "引下線"
 
-#: crates/ui-egui/src/mep.rs:287
+#: crates/ui-egui/src/mep.rs:275
 msgid "Down Conductor (DC): click its start and its end; the same point twice and two heights stand it up a wall"
 msgstr "引下線 (DC)：單擊起點和終點；在同一點單擊兩次並給出兩個高度，可使其沿牆豎立"
 
@@ -3710,7 +3710,7 @@ msgid "Each pen's width on paper, mm, in views at each scale: a view between two
 msgstr "每支筆在各比例視圖中於圖紙上的寬度（毫米）：介於兩個比例之間的視圖取較近的一個。筆 0 始終是髮絲線。"
 
 #: crates/ui-egui/src/electrical.rs:350
-#: crates/ui-egui/src/mep.rs:292
+#: crates/ui-egui/src/mep.rs:280
 msgid "Earthing"
 msgstr "接地"
 
@@ -3718,7 +3718,7 @@ msgstr "接地"
 msgid "Earthing Conductor"
 msgstr "接地線"
 
-#: crates/ui-egui/src/mep.rs:296
+#: crates/ui-egui/src/mep.rs:284
 msgid "Earthing Conductor (GC): click its start and its end; a chain of clicks makes the ring or the mesh, under the level"
 msgstr "接地線 (GC)：單擊起點和終點；連續單擊可形成標高下方的接地環或接地網"
 
@@ -3734,7 +3734,7 @@ msgstr "接地連接件：接地線與族的連接處"
 msgid "Earthing Electrode"
 msgstr "接地極"
 
-#: crates/ui-egui/src/mep.rs:104
+#: crates/ui-egui/src/mep.rs:98
 msgid "Earthing Electrode (EG): a rod driven down from the level, where you click; Space turns it"
 msgstr "接地極 (EG)：在單擊處自標高向下打入接地棒；按空格鍵旋轉"
 
@@ -3944,7 +3944,7 @@ msgstr ""
 msgid "Electrical Equipment"
 msgstr "電氣設備"
 
-#: crates/ui-egui/src/mep.rs:68
+#: crates/ui-egui/src/mep.rs:62
 msgid "Electrical Equipment (EE): a distribution board, where you click on the wall; Space turns it"
 msgstr "電氣設備 (EE)：在牆上單擊處放置配電箱；按空格鍵旋轉"
 
@@ -4152,11 +4152,11 @@ msgstr "導出"
 msgid "Export..."
 msgstr "導出..."
 
-#: crates/ui-egui/src/shortcuts.rs:3066
+#: crates/ui-egui/src/shortcuts.rs:3054
 msgid "Exported."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:2468
+#: crates/ui-egui/src/shortcuts.rs:2456
 msgid "Export…"
 msgstr ""
 
@@ -4953,7 +4953,7 @@ msgstr "高度："
 msgid "Held by Dimensions"
 msgstr "受尺寸標注約束"
 
-#: crates/ui-egui/src/shortcuts.rs:2471
+#: crates/ui-egui/src/shortcuts.rs:2459
 msgid "Help (Markdown)…"
 msgstr ""
 
@@ -5165,7 +5165,7 @@ msgstr ""
 msgid "Import units"
 msgstr "導入單位"
 
-#: crates/ui-egui/src/shortcuts.rs:2954
+#: crates/ui-egui/src/shortcuts.rs:2942
 msgid "Import {}"
 msgstr ""
 
@@ -5181,7 +5181,7 @@ msgstr "導入：檔案中的圖案會替換此列表中的同名圖案；不勾
 msgid "Imported Categories"
 msgstr "導入的類別"
 
-#: crates/ui-egui/src/shortcuts.rs:2995
+#: crates/ui-egui/src/shortcuts.rs:2983
 msgid "Imported {} bindings ({} skipped)."
 msgstr ""
 
@@ -5189,11 +5189,11 @@ msgstr ""
 msgid "Imported {}: {}."
 msgstr "已導入 {}：{}。"
 
-#: crates/ui-egui/src/shortcuts.rs:2999
+#: crates/ui-egui/src/shortcuts.rs:2987
 msgid "Imported; the old profile is in {}."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:2465
+#: crates/ui-egui/src/shortcuts.rs:2453
 msgid "Import…"
 msgstr ""
 
@@ -5255,7 +5255,7 @@ msgstr "插入構造層"
 msgid "Inspection Box"
 msgstr "檢查井"
 
-#: crates/ui-egui/src/mep.rs:113
+#: crates/ui-egui/src/mep.rs:107
 msgid "Inspection Box (IB): over an electrode, flush with the level, where you click; Space turns it"
 msgstr "檢查井 (IB)：在單擊處、接地極上方，與標高齊平；按空格鍵旋轉"
 
@@ -5414,7 +5414,7 @@ msgstr ""
 msgid "Justification:"
 msgstr "對正："
 
-#: crates/ui-egui/src/shortcuts.rs:2519
+#: crates/ui-egui/src/shortcuts.rs:2507
 msgid "Keep Editing"
 msgstr ""
 
@@ -5434,11 +5434,11 @@ msgstr ""
 msgid "Key"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:2567
+#: crates/ui-egui/src/shortcuts.rs:2555
 msgid "Key combinations"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:2422
+#: crates/ui-egui/src/shortcuts.rs:2410
 msgid "Keyboard Shortcuts"
 msgstr "鍵盤快速鍵"
 
@@ -5446,7 +5446,7 @@ msgstr "鍵盤快速鍵"
 msgid "Keyboard Shortcuts (KS): customize, edit, and load shortcut keys"
 msgstr "快速鍵 (KS)：自定義、編輯和載入快速鍵"
 
-#: crates/ui-egui/src/shortcuts.rs:2148
+#: crates/ui-egui/src/shortcuts.rs:2136
 msgid "Keyboard shortcuts applied."
 msgstr ""
 
@@ -5616,11 +5616,11 @@ msgstr "淺色"
 msgid "Lighting"
 msgstr "照明"
 
-#: crates/ui-egui/src/mep.rs:84
+#: crates/ui-egui/src/mep.rs:78
 msgid "Lighting Fixture"
 msgstr "照明設備"
 
-#: crates/ui-egui/src/mep.rs:86
+#: crates/ui-egui/src/mep.rs:80
 msgid "Lighting Fixture (LF): a luminaire, where you click, hung from the slab; Space turns it"
 msgstr "照明設備 (LF)：在單擊處放置吊掛於樓板的燈具；按空格鍵旋轉"
 
@@ -5821,11 +5821,11 @@ msgstr "正在監聽 127.0.0.1，連接埠 {}：智能體使用 bimcraft-cli mcp
 msgid "Load"
 msgstr "負載"
 
-#: crates/ui-egui/src/mep.rs:221
+#: crates/ui-egui/src/mep.rs:209
 msgid "Load AREI Symbols"
 msgstr "載入 AREI 符號"
 
-#: crates/ui-egui/src/mep.rs:219
+#: crates/ui-egui/src/mep.rs:207
 msgid "Load AREI Symbols: the Belgian AREI/RGIE's plan symbols (Table 2.23) as families, named in the project's language; loading them again changes nothing"
 msgstr "載入 AREI 符號：比利時 AREI/RGIE 的平面符號（表 2.23），以族的形式載入，並以項目的語言命名；重複載入不會產生任何變化"
 
@@ -6056,11 +6056,11 @@ msgstr ""
 msgid "Mark as Spare"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:3081
+#: crates/ui-egui/src/shortcuts.rs:3069
 msgid "Markdown help written."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:3054
+#: crates/ui-egui/src/shortcuts.rs:3042
 msgid "Markdown is a help file; use Help (Markdown)… to write it."
 msgstr ""
 
@@ -6904,15 +6904,15 @@ msgstr "無界限"
 msgid "Not Displayed"
 msgstr "不顯示"
 
-#: crates/ui-egui/src/shortcuts.rs:1710
+#: crates/ui-egui/src/shortcuts.rs:1698
 msgid "Not a binding: \"{}\""
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:1024
+#: crates/ui-egui/src/shortcuts.rs:1018
 msgid "Not a key: \"{}\""
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:1791
+#: crates/ui-egui/src/shortcuts.rs:1779
 msgid "Not a shortcuts file"
 msgstr ""
 
@@ -7198,7 +7198,7 @@ msgstr "開啟預設3D視圖"
 msgid "Open the last project at startup"
 msgstr "啟動時開啟上次的項目"
 
-#: crates/ui-egui/src/shortcuts.rs:2487
+#: crates/ui-egui/src/shortcuts.rs:2475
 msgid "Open the saved file"
 msgstr ""
 
@@ -7304,7 +7304,7 @@ msgstr "插座"
 msgid "Outlets"
 msgstr "插座"
 
-#: crates/ui-egui/src/mep.rs:251
+#: crates/ui-egui/src/mep.rs:239
 msgid "Outlets & Equipment"
 msgstr "插座和設備"
 
@@ -7379,11 +7379,11 @@ msgstr "面板"
 msgid "Panel"
 msgstr ""
 
-#: crates/ui-egui/src/mep.rs:213
+#: crates/ui-egui/src/mep.rs:201
 msgid "Panel Schedule"
 msgstr ""
 
-#: crates/ui-egui/src/mep.rs:212
+#: crates/ui-egui/src/mep.rs:200
 msgid "Panel Schedule: the load schedule of the selected distribution board, a view that goes on a sheet"
 msgstr ""
 
@@ -7463,7 +7463,7 @@ msgstr ""
 msgid "Patch Panel"
 msgstr "配線架"
 
-#: crates/ui-egui/src/mep.rs:149
+#: crates/ui-egui/src/mep.rs:143
 msgid "Patch Panel (PB): a panel on the wall, where you click; Space turns it"
 msgstr "配線架 (PB)：在單擊處放置牆上的配線架；按空格鍵旋轉"
 
@@ -7905,15 +7905,15 @@ msgstr ""
 msgid "Pipe"
 msgstr "管道"
 
-#: crates/ui-egui/src/mep.rs:310
+#: crates/ui-egui/src/mep.rs:298
 msgid "Pipe (PI): click its start and its end; a chain of clicks makes a pipe for each step"
 msgstr "管道 (PI)：單擊起點和終點；連續單擊可為每一段創建一根管道"
 
-#: crates/ui-egui/src/mep.rs:57
+#: crates/ui-egui/src/mep.rs:51
 msgid "Pipe Accessory"
 msgstr "管路附件"
 
-#: crates/ui-egui/src/mep.rs:59
+#: crates/ui-egui/src/mep.rs:53
 msgid "Pipe Accessory (PA): a valve, where you click on a pipe's height; Space turns it"
 msgstr "管路附件 (PA)：在單擊處、管道的高度放置閥門；按空格鍵旋轉"
 
@@ -7925,11 +7925,11 @@ msgstr "管道連接件"
 msgid "Pipe Connector: where a pipe meets the family, its domain, flow and size"
 msgstr "管道連接件：管道與族的連接處，及其域、流向和尺寸"
 
-#: crates/ui-egui/src/mep.rs:48
+#: crates/ui-egui/src/mep.rs:42
 msgid "Pipe Fitting"
 msgstr "管件"
 
-#: crates/ui-egui/src/mep.rs:50
+#: crates/ui-egui/src/mep.rs:44
 msgid "Pipe Fitting (PF): an elbow or a tee, where you click on a pipe's height; Space turns it"
 msgstr "管件 (PF)：在單擊處、管道的高度放置彎頭或三通；按空格鍵旋轉"
 
@@ -7946,7 +7946,7 @@ msgstr "樞軸點"
 msgid "Pivot: click the point it turns about (where two planes cross, a line's end, a point of a sketch, or anywhere); its Swing Angle turns it"
 msgstr "樞軸：單擊其旋轉所繞的點（兩個平面的交點、線的端點、草圖中的點，或任意位置）；由其擺動角度使其旋轉"
 
-#: crates/ui-egui/src/mep.rs:94
+#: crates/ui-egui/src/mep.rs:88
 msgid "Place Air Terminal"
 msgstr "放置接閃器"
 
@@ -7984,7 +7984,7 @@ msgstr "放置構件"
 msgid "Place Conduit"
 msgstr "放置線管"
 
-#: crates/ui-egui/src/mep.rs:121
+#: crates/ui-egui/src/mep.rs:115
 msgid "Place Data Outlet"
 msgstr "放置數據插座"
 
@@ -7996,7 +7996,7 @@ msgstr "放置詳圖組"
 msgid "Place Detail Lines"
 msgstr "放置詳圖線"
 
-#: crates/ui-egui/src/mep.rs:76
+#: crates/ui-egui/src/mep.rs:70
 msgid "Place Device"
 msgstr "放置設備"
 
@@ -8020,11 +8020,11 @@ msgstr "放置風管"
 msgid "Place Earthing Conductor"
 msgstr "放置接地線"
 
-#: crates/ui-egui/src/mep.rs:103
+#: crates/ui-egui/src/mep.rs:97
 msgid "Place Earthing Electrode"
 msgstr "放置接地極"
 
-#: crates/ui-egui/src/mep.rs:67
+#: crates/ui-egui/src/mep.rs:61
 msgid "Place Electrical Equipment"
 msgstr "放置電氣設備"
 
@@ -8032,7 +8032,7 @@ msgstr "放置電氣設備"
 msgid "Place Grid"
 msgstr "放置軸網"
 
-#: crates/ui-egui/src/mep.rs:112
+#: crates/ui-egui/src/mep.rs:106
 msgid "Place Inspection Box"
 msgstr "放置檢查井"
 
@@ -8056,11 +8056,11 @@ msgstr "放置獨立基礎"
 msgid "Place Level"
 msgstr "放置標高"
 
-#: crates/ui-egui/src/mep.rs:85
+#: crates/ui-egui/src/mep.rs:79
 msgid "Place Lighting Fixture"
 msgstr "放置照明設備"
 
-#: crates/ui-egui/src/mep.rs:148
+#: crates/ui-egui/src/mep.rs:142
 msgid "Place Patch Panel"
 msgstr "放置配線架"
 
@@ -8068,19 +8068,19 @@ msgstr "放置配線架"
 msgid "Place Pipe"
 msgstr "放置管道"
 
-#: crates/ui-egui/src/mep.rs:58
+#: crates/ui-egui/src/mep.rs:52
 msgid "Place Pipe Accessory"
 msgstr "放置管路附件"
 
-#: crates/ui-egui/src/mep.rs:49
+#: crates/ui-egui/src/mep.rs:43
 msgid "Place Pipe Fitting"
 msgstr "放置管件"
 
-#: crates/ui-egui/src/mep.rs:40
+#: crates/ui-egui/src/mep.rs:34
 msgid "Place Plumbing Fixture"
 msgstr "放置衛浴裝置"
 
-#: crates/ui-egui/src/mep.rs:139
+#: crates/ui-egui/src/mep.rs:133
 msgid "Place Rack"
 msgstr "放置機架"
 
@@ -8116,7 +8116,7 @@ msgstr "放置文字"
 msgid "Place View"
 msgstr "放置視圖"
 
-#: crates/ui-egui/src/mep.rs:130
+#: crates/ui-egui/src/mep.rs:124
 msgid "Place Voice Outlet"
 msgstr "放置語音插座"
 
@@ -8213,15 +8213,15 @@ msgstr ""
 msgid "Plumbing"
 msgstr "衛浴"
 
-#: crates/ui-egui/src/mep.rs:306
+#: crates/ui-egui/src/mep.rs:294
 msgid "Plumbing & Piping"
 msgstr "衛浴和管道"
 
-#: crates/ui-egui/src/mep.rs:39
+#: crates/ui-egui/src/mep.rs:33
 msgid "Plumbing Fixture"
 msgstr "衛浴裝置"
 
-#: crates/ui-egui/src/mep.rs:41
+#: crates/ui-egui/src/mep.rs:35
 msgid "Plumbing Fixture (PX): a basin, a WC, a sink, a shower or a drain, where you click; Space turns it"
 msgstr "衛浴裝置 (PX)：在單擊處放置洗手盆、坐便器、水槽、淋浴或地漏；按空格鍵旋轉"
 
@@ -8354,7 +8354,7 @@ msgstr "模板：名稱"
 msgid "Presets"
 msgstr "模板"
 
-#: crates/ui-egui/src/shortcuts.rs:2880
+#: crates/ui-egui/src/shortcuts.rs:2868
 msgid "Press a combination…"
 msgstr ""
 
@@ -8374,7 +8374,7 @@ msgstr "主選項（{}）"
 #: crates/core/src/schedule.rs:212
 #: crates/ui-egui/src/editor/extrusion.rs:200
 #: crates/ui-egui/src/settings.rs:532
-#: crates/ui-egui/src/shortcuts.rs:2450
+#: crates/ui-egui/src/shortcuts.rs:2438
 msgid "Profile"
 msgstr "輪廓"
 
@@ -8398,7 +8398,7 @@ msgstr "輪廓 2"
 msgid "Profile 2: sketch the profile at the path's end, square to it"
 msgstr "輪廓 2：在路徑終點處繪製輪廓，與路徑垂直"
 
-#: crates/ui-egui/src/shortcuts.rs:2459
+#: crates/ui-egui/src/shortcuts.rs:2447
 msgid "Profile “{}” applied to the pending set."
 msgstr ""
 
@@ -8553,7 +8553,7 @@ msgstr ""
 msgid "Rack"
 msgstr "機架"
 
-#: crates/ui-egui/src/mep.rs:140
+#: crates/ui-egui/src/mep.rs:134
 msgid "Rack (RK): a floor rack, where you click; Space turns it"
 msgstr "機架 (RK)：在單擊處放置落地機架；按空格鍵旋轉"
 
@@ -8815,7 +8815,7 @@ msgstr ""
 msgid "Remove"
 msgstr "移除"
 
-#: crates/ui-egui/src/shortcuts.rs:2728
+#: crates/ui-egui/src/shortcuts.rs:2716
 msgid "Remove All"
 msgstr ""
 
@@ -8919,7 +8919,7 @@ msgstr "重複詳圖"
 msgid "Repeating Detail: click its start and end; the group on the Options Bar repeats along it every spacing"
 msgstr "重複詳圖：單擊起點和終點；選項欄中的組沿其按間距重複"
 
-#: crates/ui-egui/src/shortcuts.rs:2904
+#: crates/ui-egui/src/shortcuts.rs:2892
 msgid "Replace"
 msgstr ""
 
@@ -8931,7 +8931,7 @@ msgstr "以文字替換"
 msgid "Replace With Text:"
 msgstr "以文字替換："
 
-#: crates/ui-egui/src/shortcuts.rs:2961
+#: crates/ui-egui/src/shortcuts.rs:2949
 msgid "Replace everything"
 msgstr ""
 
@@ -8956,15 +8956,15 @@ msgstr ""
 msgid "Reporting Parameter"
 msgstr "報告參數"
 
-#: crates/ui-egui/src/shortcuts.rs:1681
+#: crates/ui-egui/src/shortcuts.rs:1669
 msgid "Reserved key: \"{}\""
 msgstr ""
 
 #: crates/ui-egui/src/graphics.rs:1318
 #: crates/ui-egui/src/lineweights.rs:146
 #: crates/ui-egui/src/objectstyles.rs:82
-#: crates/ui-egui/src/shortcuts.rs:2501
-#: crates/ui-egui/src/shortcuts.rs:2725
+#: crates/ui-egui/src/shortcuts.rs:2489
+#: crates/ui-egui/src/shortcuts.rs:2713
 msgid "Reset"
 msgstr "重設"
 
@@ -8972,7 +8972,7 @@ msgstr "重設"
 msgid "Reset Accent"
 msgstr "重設強調色"
 
-#: crates/ui-egui/src/shortcuts.rs:2474
+#: crates/ui-egui/src/shortcuts.rs:2462
 msgid "Reset All"
 msgstr ""
 
@@ -9033,7 +9033,7 @@ msgstr "重啟並安裝"
 msgid "Restore Down"
 msgstr "向下還原"
 
-#: crates/ui-egui/src/shortcuts.rs:2499
+#: crates/ui-egui/src/shortcuts.rs:2487
 msgid "Return every action to the starting profile?"
 msgstr ""
 
@@ -9065,7 +9065,7 @@ msgstr "修訂雲線：圍繞更改處的雲線，屬於選項欄中的修訂；
 msgid "Revision:"
 msgstr "修訂："
 
-#: crates/ui-egui/src/shortcuts.rs:3058
+#: crates/ui-egui/src/shortcuts.rs:3046
 msgid "Revit XML import is supported; export it from Revit."
 msgstr ""
 
@@ -9456,7 +9456,7 @@ msgstr "搜索項目瀏覽器"
 #: crates/ui-egui/src/browser.rs:264
 #: crates/ui-egui/src/editor/document.rs:1708
 #: crates/ui-egui/src/editor/types_dialog.rs:197
-#: crates/ui-egui/src/shortcuts.rs:2426
+#: crates/ui-egui/src/shortcuts.rs:2414
 msgid "Search…"
 msgstr "搜索…"
 
@@ -9591,7 +9591,7 @@ msgstr "請選擇同一類元素：全是梁、全是柱、全是基礎或全是
 msgid "Select fill pattern lines then press Enter"
 msgstr "選擇填充圖案的線，然後按 Enter"
 
-#: crates/ui-egui/src/mep.rs:191
+#: crates/ui-egui/src/mep.rs:179
 msgid "Select one distribution board and the devices on its circuit."
 msgstr ""
 
@@ -9603,7 +9603,7 @@ msgstr ""
 msgid "Select the detail lines the pattern is made of, then press Enter."
 msgstr "選擇構成圖案的詳圖線，然後按 Enter。"
 
-#: crates/ui-egui/src/mep.rs:195
+#: crates/ui-egui/src/mep.rs:183
 msgid "Select the devices of the circuit along with its board."
 msgstr ""
 
@@ -10153,7 +10153,7 @@ msgstr "按名稱對每個組中的參數排序，從 Z 到 A"
 msgid "Sorting/Grouping"
 msgstr "排序/成組"
 
-#: crates/ui-egui/src/shortcuts.rs:2578
+#: crates/ui-egui/src/shortcuts.rs:2566
 msgid "Source"
 msgstr ""
 
@@ -10552,7 +10552,7 @@ msgid "Symbolic Line: a line or an arc the family's plans draw, not part of its 
 msgstr "符號線：族的平面中繪製的線或弧，不屬於其形狀（如門的開啟線）"
 
 #: crates/ui-egui/src/editor/document.rs:1129
-#: crates/ui-egui/src/mep.rs:217
+#: crates/ui-egui/src/mep.rs:205
 msgid "Symbols"
 msgstr "符號"
 
@@ -10820,7 +10820,7 @@ msgstr "模板數量已達保留上限：請先刪除一個"
 msgid "That is the reference: pick what moves onto it."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:3027
+#: crates/ui-egui/src/shortcuts.rs:3015
 msgid "That is too big to be a shortcuts file."
 msgstr "這個檔案太大，不是快速鍵檔案。"
 
@@ -10898,15 +10898,15 @@ msgstr "您正在載入的族 {} 已存在於此族中，但定義不同。您�
 msgid "The family {} you are loading is already in this project, defined differently. What would you like to do?"
 msgstr "您正在載入的族 {} 已存在於此項目中，但定義不同。您想要執行什麼操作？"
 
-#: crates/ui-egui/src/shortcuts.rs:3038
+#: crates/ui-egui/src/shortcuts.rs:3026
 msgid "The file has no usable bindings."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:1750
+#: crates/ui-egui/src/shortcuts.rs:1738
 msgid "The file has too many bindings"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:1654
+#: crates/ui-egui/src/shortcuts.rs:1642
 msgid "The file has too many lines"
 msgstr ""
 
@@ -11179,7 +11179,7 @@ msgstr "此副本沒有可用於繪製3D視圖的顯卡"
 msgid "This end is tied to a parameter or worked out by a formula: change it in Family Types."
 msgstr "此端點關聯到參數或由公式計算：請在「族類型」中修改。"
 
-#: crates/ui-egui/src/shortcuts.rs:3021
+#: crates/ui-egui/src/shortcuts.rs:3009
 msgid "This is a help file to read. Use .bks, .txt or .json to import."
 msgstr ""
 
@@ -11642,20 +11642,20 @@ msgstr "單位"
 msgid "Units Format"
 msgstr "單位格式"
 
-#: crates/ui-egui/src/shortcuts.rs:1675
-#: crates/ui-egui/src/shortcuts.rs:1731
-#: crates/ui-egui/src/shortcuts.rs:1733
-#: crates/ui-egui/src/shortcuts.rs:1766
+#: crates/ui-egui/src/shortcuts.rs:1663
+#: crates/ui-egui/src/shortcuts.rs:1719
+#: crates/ui-egui/src/shortcuts.rs:1721
+#: crates/ui-egui/src/shortcuts.rs:1754
 msgid "Unknown action: \"{}\""
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:1038
-#: crates/ui-egui/src/shortcuts.rs:1067
-#: crates/ui-egui/src/shortcuts.rs:1072
+#: crates/ui-egui/src/shortcuts.rs:1032
+#: crates/ui-egui/src/shortcuts.rs:1061
+#: crates/ui-egui/src/shortcuts.rs:1066
 msgid "Unknown key: \"{}\""
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:1034
+#: crates/ui-egui/src/shortcuts.rs:1028
 msgid "Unknown modifier: \"{}\""
 msgstr ""
 
@@ -11784,7 +11784,7 @@ msgstr "可變"
 msgid "Version {}"
 msgstr "版本 {}"
 
-#: crates/ui-egui/src/shortcuts.rs:1695
+#: crates/ui-egui/src/shortcuts.rs:1683
 msgid "Version {} is not supported"
 msgstr ""
 
@@ -11947,7 +11947,7 @@ msgstr "視覺樣式：3D視圖繪製表面的方式：著色、隱藏線（WF�
 msgid "Voice Outlet"
 msgstr "語音插座"
 
-#: crates/ui-egui/src/mep.rs:131
+#: crates/ui-egui/src/mep.rs:125
 msgid "Voice Outlet (VO): a telephone point, where you click on the wall; Space turns it"
 msgstr "語音插座 (VO)：在牆上單擊處放置電話點；按空格鍵旋轉"
 
@@ -12237,7 +12237,7 @@ msgstr "視窗"
 msgid "Wire"
 msgstr "導線"
 
-#: crates/ui-egui/src/mep.rs:241
+#: crates/ui-egui/src/mep.rs:229
 msgid "Wire (EW): click its start and its end; a chain of clicks makes a wire for each step"
 msgstr "導線 (EW)：單擊起點和終點；連續單擊可為每一段創建一根導線"
 
@@ -13047,7 +13047,7 @@ msgstr "{}已存在：請用以 .pat 結尾的名稱儲存以替換它。"
 msgid "{} at x {}, y {}"
 msgstr "{} 位於 x {}，y {}"
 
-#: crates/ui-egui/src/shortcuts.rs:2956
+#: crates/ui-egui/src/shortcuts.rs:2944
 msgid "{} bindings read; {} errors."
 msgstr ""
 
@@ -13304,11 +13304,11 @@ msgstr "{}：{}"
 msgid "{}; and {} more"
 msgstr "{}；另有 {} 處"
 
-#: crates/ui-egui/src/shortcuts.rs:2944
+#: crates/ui-egui/src/shortcuts.rs:2932
 msgid "“{}” assigned to “{}”."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:2898
+#: crates/ui-egui/src/shortcuts.rs:2886
 msgid "“{}” is already assigned to “{}”."
 msgstr ""
 
@@ -13380,7 +13380,7 @@ msgstr "• 特粗線 (0.70 mm — 筆 12)：被剖切的突出鋼筋混凝土�
 msgid "• Wide / Heavy (0.50 mm — 0.70 mm): Cut walls and structural sections."
 msgstr "• 粗線 (0.50 mm — 0.70 mm)：被剖切的牆體與結構剖面。"
 
-#: crates/ui-egui/src/shortcuts.rs:2973
+#: crates/ui-egui/src/shortcuts.rs:2961
 msgid "…and {} more"
 msgstr ""
 

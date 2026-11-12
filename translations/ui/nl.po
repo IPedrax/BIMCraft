@@ -11,15 +11,15 @@ msgstr " Weggelaten: {}{}."
 msgid " Moved {}, {} mm to bring it near the origin."
 msgstr "{}, {} mm verplaatst om het dicht bij de oorsprong te brengen."
 
-#: crates/ui-egui/src/shortcuts.rs:1746
+#: crates/ui-egui/src/shortcuts.rs:1734
 msgid "\"{}\" is already assigned to \"{}\""
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:1115
+#: crates/ui-egui/src/shortcuts.rs:1109
 msgid "\"{}\" is reserved by the application"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:1087
+#: crates/ui-egui/src/shortcuts.rs:1081
 msgid "\"{}\" needs a modifier or a second key"
 msgstr ""
 
@@ -156,7 +156,7 @@ msgstr "Een BIMCraft-project, een IFC- of een Revit-bestand."
 msgid "A chat is kept for each saved project, on this computer, beside settings.json (never in the project). A picture sent in it is not kept."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:2881
+#: crates/ui-egui/src/shortcuts.rs:2869
 msgid "A chord such as Ctrl+D, or two keys such as WA. Esc cancels; Backspace clears."
 msgstr ""
 
@@ -204,7 +204,7 @@ msgstr "Een filter maak je in Weergave > Filters"
 msgid "A form made of a mesh has no faces Align can take: pick a reference plane, an extrusion's end or a line of a form."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:1118
+#: crates/ui-egui/src/shortcuts.rs:1112
 msgid "A letter or digit needs a modifier or a second key"
 msgstr ""
 
@@ -232,8 +232,8 @@ msgstr "Een lus heeft drie lijnen nodig: klik op een punt dat niet het beginpunt
 msgid "A mesh from a file has no sketch to edit."
 msgstr "Een mesh uit een bestand heeft geen schets om te bewerken."
 
-#: crates/ui-egui/src/shortcuts.rs:1050
-#: crates/ui-egui/src/shortcuts.rs:1084
+#: crates/ui-egui/src/shortcuts.rs:1044
+#: crates/ui-egui/src/shortcuts.rs:1078
 msgid "A modifier alone is not a binding"
 msgstr ""
 
@@ -367,7 +367,7 @@ msgstr "Primaire elementen behouden"
 msgid "Accept Primary: the primary option's elements stay in the model; the others' elements and the set go"
 msgstr "Primaire elementen behouden: de elementen van de primaire optie blijven in het model; de andere elementen en de verzameling verdwijnen"
 
-#: crates/ui-egui/src/shortcuts.rs:2589
+#: crates/ui-egui/src/shortcuts.rs:2577
 msgid "Actions"
 msgstr ""
 
@@ -507,7 +507,7 @@ msgstr "Spanning toevoegen"
 msgid "Add Wire Type"
 msgstr "Draadtype toevoegen"
 
-#: crates/ui-egui/src/shortcuts.rs:2705
+#: crates/ui-egui/src/shortcuts.rs:2693
 msgid "Add a binding"
 msgstr ""
 
@@ -540,7 +540,7 @@ msgstr ""
 msgid "Add to Project"
 msgstr "Aan het project toevoegen"
 
-#: crates/ui-egui/src/shortcuts.rs:2962
+#: crates/ui-egui/src/shortcuts.rs:2950
 msgid "Add to the current set"
 msgstr ""
 
@@ -600,7 +600,7 @@ msgstr ""
 msgid "Air Terminal"
 msgstr "Luchtuitlaat"
 
-#: crates/ui-egui/src/mep.rs:95
+#: crates/ui-egui/src/mep.rs:89
 msgid "Air Terminal (AT): a captor, where you click on the roof; Space turns it"
 msgstr "Vangstaaf (AT): een opvangpunt, waar je op het dak klikt; met de spatiebalk draai je het"
 
@@ -687,8 +687,8 @@ msgstr "Uitlijnhulplijnen aan"
 msgid "All"
 msgstr "Alle"
 
-#: crates/ui-egui/src/shortcuts.rs:2433
-#: crates/ui-egui/src/shortcuts.rs:2435
+#: crates/ui-egui/src/shortcuts.rs:2421
+#: crates/ui-egui/src/shortcuts.rs:2423
 msgid "All categories"
 msgstr ""
 
@@ -765,8 +765,8 @@ msgstr ""
 msgid "An agent can work on this project: bimcraft-cli mcp --connect {}"
 msgstr "Een agent kan aan dit project werken: bimcraft-cli mcp --connect {}"
 
-#: crates/ui-egui/src/shortcuts.rs:1019
-#: crates/ui-egui/src/shortcuts.rs:1026
+#: crates/ui-egui/src/shortcuts.rs:1013
+#: crates/ui-egui/src/shortcuts.rs:1020
 msgid "An empty binding"
 msgstr ""
 
@@ -875,7 +875,7 @@ msgstr "Geldt voor alle weergaven; snapt op het ingeschakelde hoofdraster of sub
 #: crates/ui-egui/src/lineweights.rs:150
 #: crates/ui-egui/src/objectstyles.rs:89
 #: crates/ui-egui/src/properties.rs:653
-#: crates/ui-egui/src/shortcuts.rs:2762
+#: crates/ui-egui/src/shortcuts.rs:2750
 #: crates/ui-egui/src/standards.rs:333
 #: crates/ui-egui/src/titleblocks.rs:652
 #: crates/ui-egui/src/typeprops.rs:309
@@ -887,7 +887,7 @@ msgstr "Toepassen"
 msgid "Apply Hide/Isolate to View"
 msgstr "Verbergen/isoleren op de weergave toepassen"
 
-#: crates/ui-egui/src/shortcuts.rs:2976
+#: crates/ui-egui/src/shortcuts.rs:2964
 msgid "Apply Import"
 msgstr ""
 
@@ -895,7 +895,7 @@ msgstr ""
 msgid "Apply Overrides"
 msgstr "Overschrijvingen toepassen"
 
-#: crates/ui-egui/src/shortcuts.rs:2456
+#: crates/ui-egui/src/shortcuts.rs:2444
 msgid "Apply Profile"
 msgstr ""
 
@@ -971,7 +971,7 @@ msgstr "Vraagt eerst om op te slaan als er niet-opgeslagen wijzigingen zijn, slu
 msgid "Assign View Template"
 msgstr "Weergavesjabloon toewijzen"
 
-#: crates/ui-egui/src/shortcuts.rs:2756
+#: crates/ui-egui/src/shortcuts.rs:2744
 msgid "Assigned {} of {}"
 msgstr ""
 
@@ -1416,7 +1416,7 @@ msgstr "CAD-tekeningen (DWG, DXF)"
 msgid "Cable Tray"
 msgstr "Kabelgoot"
 
-#: crates/ui-egui/src/mep.rs:235
+#: crates/ui-egui/src/mep.rs:223
 msgid "Cable Tray (CT): click its start and its end; a chain of clicks makes a tray for each step"
 msgstr "Kabelgoot (CT): klik op het begin en het einde; een reeks klikken maakt een goot voor elke stap"
 
@@ -1424,7 +1424,7 @@ msgstr "Kabelgoot (CT): klik op het begin en het einde; een reeks klikken maakt 
 msgid "Cabling"
 msgstr "Bekabeling"
 
-#: crates/ui-egui/src/mep.rs:272
+#: crates/ui-egui/src/mep.rs:260
 msgid "Cabling (CB): click its start and its end; a chain of clicks makes a cable for each step"
 msgstr "Bekabeling (CB): klik op het begin en het einde; een reeks klikken maakt een kabel voor elke stap"
 
@@ -1485,11 +1485,11 @@ msgstr "Camera: klik waar het oog staat en dan waar het naar kijkt: een 3D-weerg
 #: crates/ui-egui/src/properties.rs:3518
 #: crates/ui-egui/src/purge.rs:77
 #: crates/ui-egui/src/reinforce.rs:536
-#: crates/ui-egui/src/shortcuts.rs:2505
-#: crates/ui-egui/src/shortcuts.rs:2765
-#: crates/ui-egui/src/shortcuts.rs:2912
-#: crates/ui-egui/src/shortcuts.rs:2918
-#: crates/ui-egui/src/shortcuts.rs:3003
+#: crates/ui-egui/src/shortcuts.rs:2493
+#: crates/ui-egui/src/shortcuts.rs:2753
+#: crates/ui-egui/src/shortcuts.rs:2900
+#: crates/ui-egui/src/shortcuts.rs:2906
+#: crates/ui-egui/src/shortcuts.rs:2991
 #: crates/ui-egui/src/standards.rs:334
 #: crates/ui-egui/src/templates.rs:757
 #: crates/ui-egui/src/titleblocks.rs:653
@@ -1516,7 +1516,7 @@ msgstr "Patroon annuleren"
 msgid "Canvas colour"
 msgstr "Kleur van de tekenruimte"
 
-#: crates/ui-egui/src/mep.rs:283
+#: crates/ui-egui/src/mep.rs:271
 msgid "Capture & Descent"
 msgstr "Opvang en afleiding"
 
@@ -1553,7 +1553,7 @@ msgstr "Categorieën zonder overschrijving worden getekend zoals de objectstijle
 #: crates/ui-egui/src/editor/document.rs:1917
 #: crates/ui-egui/src/objectstyles.rs:65
 #: crates/ui-egui/src/properties.rs:2296
-#: crates/ui-egui/src/shortcuts.rs:2556
+#: crates/ui-egui/src/shortcuts.rs:2544
 #: crates/ui-egui/src/standards.rs:193
 msgid "Category"
 msgstr "Categorie"
@@ -2410,7 +2410,7 @@ msgstr ""
 #: crates/ui-egui/src/revit.rs:261
 #: crates/ui-egui/src/script.rs:105
 #: crates/ui-egui/src/settings.rs:473
-#: crates/ui-egui/src/shortcuts.rs:2768
+#: crates/ui-egui/src/shortcuts.rs:2756
 msgid "Close"
 msgstr "Sluiten"
 
@@ -2496,7 +2496,7 @@ msgstr "Samenvoegen: wat in deze fase gemaakt, gesloopt en getoond werd gaat naa
 msgid "Coming in a later version"
 msgstr "Wordt geïmplementeerd in een latere versie"
 
-#: crates/ui-egui/src/shortcuts.rs:2545
+#: crates/ui-egui/src/shortcuts.rs:2533
 msgid "Command"
 msgstr ""
 
@@ -2545,11 +2545,11 @@ msgstr "Betonblok"
 msgid "Conduit"
 msgstr "Buis"
 
-#: crates/ui-egui/src/mep.rs:225
+#: crates/ui-egui/src/mep.rs:213
 msgid "Conduit & Wire"
 msgstr "Buis en draad"
 
-#: crates/ui-egui/src/mep.rs:229
+#: crates/ui-egui/src/mep.rs:217
 msgid "Conduit (CN): click its start and its end; a chain of clicks makes a conduit for each step"
 msgstr "Buis (CN): klik op het begin en het einde; een reeks klikken maakt een buis voor elke stap"
 
@@ -2771,12 +2771,12 @@ msgstr "Kernvlak: binnenkant"
 msgid "Could not fit the 3D view: {}"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:2491
+#: crates/ui-egui/src/shortcuts.rs:2479
 msgid "Could not open the file: {}"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:3069
-#: crates/ui-egui/src/shortcuts.rs:3084
+#: crates/ui-egui/src/shortcuts.rs:3057
+#: crates/ui-egui/src/shortcuts.rs:3072
 msgid "Could not write the file: {}"
 msgstr ""
 
@@ -2844,11 +2844,11 @@ msgstr "Maken"
 msgid "Create Ceiling Boundary"
 msgstr "Plafondrand maken"
 
-#: crates/ui-egui/src/mep.rs:209
+#: crates/ui-egui/src/mep.rs:197
 msgid "Create Circuit"
 msgstr ""
 
-#: crates/ui-egui/src/mep.rs:208
+#: crates/ui-egui/src/mep.rs:196
 msgid "Create Circuit: the selected devices on the selected distribution board, behind one breaker"
 msgstr ""
 
@@ -3055,7 +3055,7 @@ msgstr "Dataconnector: waar een datakabel op de familie aansluit"
 msgid "Data Outlet"
 msgstr "Data-aansluiting"
 
-#: crates/ui-egui/src/mep.rs:122
+#: crates/ui-egui/src/mep.rs:116
 msgid "Data Outlet (DT): a data point, where you click on the wall; Space turns it"
 msgstr "Data-aansluiting (DT): een datapunt, waar je op de muur klikt; met de spatiebalk draai je het"
 
@@ -3323,11 +3323,11 @@ msgstr "Detaillijn"
 msgid "Detail Line (DL): each click makes a line from the one before, in the Options Bar's line style; the Draw panel has the other shapes"
 msgstr "Detaillijn (DL): elke klik maakt een lijn vanaf de vorige, in de lijnstijl van de optiebalk; het paneel Tekenen heeft de andere vormen"
 
-#: crates/ui-egui/src/mep.rs:75
+#: crates/ui-egui/src/mep.rs:69
 msgid "Device"
 msgstr "Toestel"
 
-#: crates/ui-egui/src/mep.rs:77
+#: crates/ui-egui/src/mep.rs:71
 msgid "Device (DV): an outlet or a switch, where you click on the wall; Space turns it"
 msgstr "Toestel (DV): een contactdoos of een schakelaar, waar je op de muur klikt; met de spatiebalk draai je het"
 
@@ -3454,11 +3454,11 @@ msgid "Disallow Join"
 msgstr ""
 
 #: crates/ui-egui/src/autosave.rs:306
-#: crates/ui-egui/src/shortcuts.rs:2516
+#: crates/ui-egui/src/shortcuts.rs:2504
 msgid "Discard"
 msgstr "Verwerpen"
 
-#: crates/ui-egui/src/shortcuts.rs:2514
+#: crates/ui-egui/src/shortcuts.rs:2502
 msgid "Discard the changes made here?"
 msgstr ""
 
@@ -3603,7 +3603,7 @@ msgstr "Omlaag"
 msgid "Down Conductor"
 msgstr "Afleiding"
 
-#: crates/ui-egui/src/mep.rs:287
+#: crates/ui-egui/src/mep.rs:275
 msgid "Down Conductor (DC): click its start and its end; the same point twice and two heights stand it up a wall"
 msgstr "Afleiding (DC): klik op het begin en het einde; hetzelfde punt tweemaal en twee hoogten zetten ze rechtop langs een muur"
 
@@ -3710,7 +3710,7 @@ msgid "Each pen's width on paper, mm, in views at each scale: a view between two
 msgstr "De breedte van elke pen op papier, mm, in weergaven op elke schaal: een weergave tussen twee schalen neemt die van de dichtstbijzijnde. Pen 0 is altijd een haarlijn."
 
 #: crates/ui-egui/src/electrical.rs:350
-#: crates/ui-egui/src/mep.rs:292
+#: crates/ui-egui/src/mep.rs:280
 msgid "Earthing"
 msgstr "Aarding"
 
@@ -3718,7 +3718,7 @@ msgstr "Aarding"
 msgid "Earthing Conductor"
 msgstr "Aardingsgeleider"
 
-#: crates/ui-egui/src/mep.rs:296
+#: crates/ui-egui/src/mep.rs:284
 msgid "Earthing Conductor (GC): click its start and its end; a chain of clicks makes the ring or the mesh, under the level"
 msgstr "Aardingsgeleider (GC): klik op het begin en het einde; een reeks klikken maakt de ring of het net, onder het niveau"
 
@@ -3734,7 +3734,7 @@ msgstr "Aardingsconnector: waar een aardingsgeleider op de familie aansluit"
 msgid "Earthing Electrode"
 msgstr "Aardingselektrode"
 
-#: crates/ui-egui/src/mep.rs:104
+#: crates/ui-egui/src/mep.rs:98
 msgid "Earthing Electrode (EG): a rod driven down from the level, where you click; Space turns it"
 msgstr "Aardingselektrode (EG): een staaf in de grond geslagen vanaf het niveau, waar je klikt; met de spatiebalk draai je ze"
 
@@ -3944,7 +3944,7 @@ msgstr ""
 msgid "Electrical Equipment"
 msgstr "Elektrische uitrusting"
 
-#: crates/ui-egui/src/mep.rs:68
+#: crates/ui-egui/src/mep.rs:62
 msgid "Electrical Equipment (EE): a distribution board, where you click on the wall; Space turns it"
 msgstr "Elektrische uitrusting (EE): een verdeelbord, waar je op de muur klikt; met de spatiebalk draai je het"
 
@@ -4152,11 +4152,11 @@ msgstr "Exporteren"
 msgid "Export..."
 msgstr "Exporteren..."
 
-#: crates/ui-egui/src/shortcuts.rs:3066
+#: crates/ui-egui/src/shortcuts.rs:3054
 msgid "Exported."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:2468
+#: crates/ui-egui/src/shortcuts.rs:2456
 msgid "Export…"
 msgstr ""
 
@@ -4953,7 +4953,7 @@ msgstr "Hoogte:"
 msgid "Held by Dimensions"
 msgstr "Vastgehouden door maatlijnen"
 
-#: crates/ui-egui/src/shortcuts.rs:2471
+#: crates/ui-egui/src/shortcuts.rs:2459
 msgid "Help (Markdown)…"
 msgstr ""
 
@@ -5165,7 +5165,7 @@ msgstr ""
 msgid "Import units"
 msgstr "Importeenheden"
 
-#: crates/ui-egui/src/shortcuts.rs:2954
+#: crates/ui-egui/src/shortcuts.rs:2942
 msgid "Import {}"
 msgstr ""
 
@@ -5181,7 +5181,7 @@ msgstr "Importeren: een patroon uit het bestand vervangt het patroon met dezelfd
 msgid "Imported Categories"
 msgstr "Geïmporteerde categorieën"
 
-#: crates/ui-egui/src/shortcuts.rs:2995
+#: crates/ui-egui/src/shortcuts.rs:2983
 msgid "Imported {} bindings ({} skipped)."
 msgstr ""
 
@@ -5189,11 +5189,11 @@ msgstr ""
 msgid "Imported {}: {}."
 msgstr "{} geïmporteerd: {}."
 
-#: crates/ui-egui/src/shortcuts.rs:2999
+#: crates/ui-egui/src/shortcuts.rs:2987
 msgid "Imported; the old profile is in {}."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:2465
+#: crates/ui-egui/src/shortcuts.rs:2453
 msgid "Import…"
 msgstr ""
 
@@ -5255,7 +5255,7 @@ msgstr "Laag invoegen"
 msgid "Inspection Box"
 msgstr "Controleput"
 
-#: crates/ui-egui/src/mep.rs:113
+#: crates/ui-egui/src/mep.rs:107
 msgid "Inspection Box (IB): over an electrode, flush with the level, where you click; Space turns it"
 msgstr "Controleput (IB): boven een elektrode, gelijk met het niveau, waar je klikt; met de spatiebalk draai je ze"
 
@@ -5414,7 +5414,7 @@ msgstr ""
 msgid "Justification:"
 msgstr "Uitlijning:"
 
-#: crates/ui-egui/src/shortcuts.rs:2519
+#: crates/ui-egui/src/shortcuts.rs:2507
 msgid "Keep Editing"
 msgstr ""
 
@@ -5434,11 +5434,11 @@ msgstr ""
 msgid "Key"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:2567
+#: crates/ui-egui/src/shortcuts.rs:2555
 msgid "Key combinations"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:2422
+#: crates/ui-egui/src/shortcuts.rs:2410
 msgid "Keyboard Shortcuts"
 msgstr "Sneltoetsen"
 
@@ -5446,7 +5446,7 @@ msgstr "Sneltoetsen"
 msgid "Keyboard Shortcuts (KS): customize, edit, and load shortcut keys"
 msgstr "Sneltoetsen (KS): sneltoetsen aanpassen, bewerken en laden"
 
-#: crates/ui-egui/src/shortcuts.rs:2148
+#: crates/ui-egui/src/shortcuts.rs:2136
 msgid "Keyboard shortcuts applied."
 msgstr ""
 
@@ -5616,11 +5616,11 @@ msgstr "Licht"
 msgid "Lighting"
 msgstr "Verlichting"
 
-#: crates/ui-egui/src/mep.rs:84
+#: crates/ui-egui/src/mep.rs:78
 msgid "Lighting Fixture"
 msgstr "Lichtarmatuur"
 
-#: crates/ui-egui/src/mep.rs:86
+#: crates/ui-egui/src/mep.rs:80
 msgid "Lighting Fixture (LF): a luminaire, where you click, hung from the slab; Space turns it"
 msgstr "Lichtarmatuur (LF): een armatuur, waar je klikt, opgehangen aan de plaat; met de spatiebalk draai je het"
 
@@ -5821,11 +5821,11 @@ msgstr "Luistert op 127.0.0.1, poort {}: agents verbinden met bimcraft-cli mcp -
 msgid "Load"
 msgstr "Belasting"
 
-#: crates/ui-egui/src/mep.rs:221
+#: crates/ui-egui/src/mep.rs:209
 msgid "Load AREI Symbols"
 msgstr "AREI-symbolen laden"
 
-#: crates/ui-egui/src/mep.rs:219
+#: crates/ui-egui/src/mep.rs:207
 msgid "Load AREI Symbols: the Belgian AREI/RGIE's plan symbols (Table 2.23) as families, named in the project's language; loading them again changes nothing"
 msgstr "AREI-symbolen laden: de symbolen voor plattegronden van het Belgische AREI/RGIE (tabel 2.23) als families, benoemd in de taal van het project; ze opnieuw laden verandert niets"
 
@@ -6056,11 +6056,11 @@ msgstr ""
 msgid "Mark as Spare"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:3081
+#: crates/ui-egui/src/shortcuts.rs:3069
 msgid "Markdown help written."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:3054
+#: crates/ui-egui/src/shortcuts.rs:3042
 msgid "Markdown is a help file; use Help (Markdown)… to write it."
 msgstr ""
 
@@ -6904,15 +6904,15 @@ msgstr "Onbegrensd"
 msgid "Not Displayed"
 msgstr "Niet weergegeven"
 
-#: crates/ui-egui/src/shortcuts.rs:1710
+#: crates/ui-egui/src/shortcuts.rs:1698
 msgid "Not a binding: \"{}\""
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:1024
+#: crates/ui-egui/src/shortcuts.rs:1018
 msgid "Not a key: \"{}\""
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:1791
+#: crates/ui-egui/src/shortcuts.rs:1779
 msgid "Not a shortcuts file"
 msgstr ""
 
@@ -7198,7 +7198,7 @@ msgstr "De standaard 3D-weergave openen"
 msgid "Open the last project at startup"
 msgstr "Bij het opstarten het laatste project openen"
 
-#: crates/ui-egui/src/shortcuts.rs:2487
+#: crates/ui-egui/src/shortcuts.rs:2475
 msgid "Open the saved file"
 msgstr ""
 
@@ -7304,7 +7304,7 @@ msgstr "Contactdoos"
 msgid "Outlets"
 msgstr "Contactdozen"
 
-#: crates/ui-egui/src/mep.rs:251
+#: crates/ui-egui/src/mep.rs:239
 msgid "Outlets & Equipment"
 msgstr "Contactdozen en uitrusting"
 
@@ -7379,11 +7379,11 @@ msgstr "Paletten"
 msgid "Panel"
 msgstr ""
 
-#: crates/ui-egui/src/mep.rs:213
+#: crates/ui-egui/src/mep.rs:201
 msgid "Panel Schedule"
 msgstr ""
 
-#: crates/ui-egui/src/mep.rs:212
+#: crates/ui-egui/src/mep.rs:200
 msgid "Panel Schedule: the load schedule of the selected distribution board, a view that goes on a sheet"
 msgstr ""
 
@@ -7463,7 +7463,7 @@ msgstr ""
 msgid "Patch Panel"
 msgstr "Patchpaneel"
 
-#: crates/ui-egui/src/mep.rs:149
+#: crates/ui-egui/src/mep.rs:143
 msgid "Patch Panel (PB): a panel on the wall, where you click; Space turns it"
 msgstr "Patchpaneel (PB): een paneel op de muur, waar je klikt; met de spatiebalk draai je het"
 
@@ -7905,15 +7905,15 @@ msgstr ""
 msgid "Pipe"
 msgstr "Leiding"
 
-#: crates/ui-egui/src/mep.rs:310
+#: crates/ui-egui/src/mep.rs:298
 msgid "Pipe (PI): click its start and its end; a chain of clicks makes a pipe for each step"
 msgstr "Leiding (PI): klik op het begin en het einde; een reeks klikken maakt een leiding voor elke stap"
 
-#: crates/ui-egui/src/mep.rs:57
+#: crates/ui-egui/src/mep.rs:51
 msgid "Pipe Accessory"
 msgstr "Leidingtoebehoren"
 
-#: crates/ui-egui/src/mep.rs:59
+#: crates/ui-egui/src/mep.rs:53
 msgid "Pipe Accessory (PA): a valve, where you click on a pipe's height; Space turns it"
 msgstr "Leidingtoebehoren (PA): een afsluiter, waar je klikt op de hoogte van een leiding; met de spatiebalk draai je het"
 
@@ -7925,11 +7925,11 @@ msgstr "Leidingconnector"
 msgid "Pipe Connector: where a pipe meets the family, its domain, flow and size"
 msgstr "Leidingconnector: waar een leiding op de familie aansluit, het domein, de stroming en de grootte"
 
-#: crates/ui-egui/src/mep.rs:48
+#: crates/ui-egui/src/mep.rs:42
 msgid "Pipe Fitting"
 msgstr "Leidingfitting"
 
-#: crates/ui-egui/src/mep.rs:50
+#: crates/ui-egui/src/mep.rs:44
 msgid "Pipe Fitting (PF): an elbow or a tee, where you click on a pipe's height; Space turns it"
 msgstr "Leidingfitting (PF): een bocht of een T-stuk, waar je klikt op de hoogte van een leiding; met de spatiebalk draai je het"
 
@@ -7946,7 +7946,7 @@ msgstr "Draaipunt"
 msgid "Pivot: click the point it turns about (where two planes cross, a line's end, a point of a sketch, or anywhere); its Swing Angle turns it"
 msgstr "Scharnier: klik op het punt waar het om draait (waar twee vlakken kruisen, het uiteinde van een lijn, een punt van een schets, of waar dan ook); de zwenkhoek draait het"
 
-#: crates/ui-egui/src/mep.rs:94
+#: crates/ui-egui/src/mep.rs:88
 msgid "Place Air Terminal"
 msgstr "Vangstaaf plaatsen"
 
@@ -7984,7 +7984,7 @@ msgstr "Onderdeel plaatsen"
 msgid "Place Conduit"
 msgstr "Buis plaatsen"
 
-#: crates/ui-egui/src/mep.rs:121
+#: crates/ui-egui/src/mep.rs:115
 msgid "Place Data Outlet"
 msgstr "Data-aansluiting plaatsen"
 
@@ -7996,7 +7996,7 @@ msgstr "Detailgroep plaatsen"
 msgid "Place Detail Lines"
 msgstr "Detaillijnen plaatsen"
 
-#: crates/ui-egui/src/mep.rs:76
+#: crates/ui-egui/src/mep.rs:70
 msgid "Place Device"
 msgstr "Toestel plaatsen"
 
@@ -8020,11 +8020,11 @@ msgstr "Luchtkanaal plaatsen"
 msgid "Place Earthing Conductor"
 msgstr "Aardingsgeleider plaatsen"
 
-#: crates/ui-egui/src/mep.rs:103
+#: crates/ui-egui/src/mep.rs:97
 msgid "Place Earthing Electrode"
 msgstr "Aardingselektrode plaatsen"
 
-#: crates/ui-egui/src/mep.rs:67
+#: crates/ui-egui/src/mep.rs:61
 msgid "Place Electrical Equipment"
 msgstr "Elektrische uitrusting plaatsen"
 
@@ -8032,7 +8032,7 @@ msgstr "Elektrische uitrusting plaatsen"
 msgid "Place Grid"
 msgstr "Raster plaatsen"
 
-#: crates/ui-egui/src/mep.rs:112
+#: crates/ui-egui/src/mep.rs:106
 msgid "Place Inspection Box"
 msgstr "Controleput plaatsen"
 
@@ -8056,11 +8056,11 @@ msgstr "Voetfundering plaatsen"
 msgid "Place Level"
 msgstr "Niveau plaatsen"
 
-#: crates/ui-egui/src/mep.rs:85
+#: crates/ui-egui/src/mep.rs:79
 msgid "Place Lighting Fixture"
 msgstr "Lichtarmatuur plaatsen"
 
-#: crates/ui-egui/src/mep.rs:148
+#: crates/ui-egui/src/mep.rs:142
 msgid "Place Patch Panel"
 msgstr "Patchpaneel plaatsen"
 
@@ -8068,19 +8068,19 @@ msgstr "Patchpaneel plaatsen"
 msgid "Place Pipe"
 msgstr "Leiding plaatsen"
 
-#: crates/ui-egui/src/mep.rs:58
+#: crates/ui-egui/src/mep.rs:52
 msgid "Place Pipe Accessory"
 msgstr "Leidingtoebehoren plaatsen"
 
-#: crates/ui-egui/src/mep.rs:49
+#: crates/ui-egui/src/mep.rs:43
 msgid "Place Pipe Fitting"
 msgstr "Leidingfitting plaatsen"
 
-#: crates/ui-egui/src/mep.rs:40
+#: crates/ui-egui/src/mep.rs:34
 msgid "Place Plumbing Fixture"
 msgstr "Sanitair toestel plaatsen"
 
-#: crates/ui-egui/src/mep.rs:139
+#: crates/ui-egui/src/mep.rs:133
 msgid "Place Rack"
 msgstr "Rack plaatsen"
 
@@ -8116,7 +8116,7 @@ msgstr "Tekst plaatsen"
 msgid "Place View"
 msgstr "Weergave plaatsen"
 
-#: crates/ui-egui/src/mep.rs:130
+#: crates/ui-egui/src/mep.rs:124
 msgid "Place Voice Outlet"
 msgstr "Telefoonaansluiting plaatsen"
 
@@ -8213,15 +8213,15 @@ msgstr ""
 msgid "Plumbing"
 msgstr "Sanitair"
 
-#: crates/ui-egui/src/mep.rs:306
+#: crates/ui-egui/src/mep.rs:294
 msgid "Plumbing & Piping"
 msgstr "Sanitair en leidingwerk"
 
-#: crates/ui-egui/src/mep.rs:39
+#: crates/ui-egui/src/mep.rs:33
 msgid "Plumbing Fixture"
 msgstr "Sanitair toestel"
 
-#: crates/ui-egui/src/mep.rs:41
+#: crates/ui-egui/src/mep.rs:35
 msgid "Plumbing Fixture (PX): a basin, a WC, a sink, a shower or a drain, where you click; Space turns it"
 msgstr "Sanitair toestel (PX): een wastafel, een WC, een spoelbak, een douche of een afvoer, waar je klikt; met de spatiebalk draai je het"
 
@@ -8354,7 +8354,7 @@ msgstr "Voorinstelling: naam"
 msgid "Presets"
 msgstr "Voorinstellingen"
 
-#: crates/ui-egui/src/shortcuts.rs:2880
+#: crates/ui-egui/src/shortcuts.rs:2868
 msgid "Press a combination…"
 msgstr ""
 
@@ -8374,7 +8374,7 @@ msgstr "Primair ({})"
 #: crates/core/src/schedule.rs:212
 #: crates/ui-egui/src/editor/extrusion.rs:200
 #: crates/ui-egui/src/settings.rs:532
-#: crates/ui-egui/src/shortcuts.rs:2450
+#: crates/ui-egui/src/shortcuts.rs:2438
 msgid "Profile"
 msgstr "Profiel"
 
@@ -8398,7 +8398,7 @@ msgstr "Profiel 2"
 msgid "Profile 2: sketch the profile at the path's end, square to it"
 msgstr "Profiel 2: schets het profiel aan het einde van het pad, haaks erop"
 
-#: crates/ui-egui/src/shortcuts.rs:2459
+#: crates/ui-egui/src/shortcuts.rs:2447
 msgid "Profile “{}” applied to the pending set."
 msgstr ""
 
@@ -8553,7 +8553,7 @@ msgstr ""
 msgid "Rack"
 msgstr "Rack"
 
-#: crates/ui-egui/src/mep.rs:140
+#: crates/ui-egui/src/mep.rs:134
 msgid "Rack (RK): a floor rack, where you click; Space turns it"
 msgstr "Rack (RK): een vloerrack, waar je klikt; met de spatiebalk draai je het"
 
@@ -8815,7 +8815,7 @@ msgstr ""
 msgid "Remove"
 msgstr "Verwijderen"
 
-#: crates/ui-egui/src/shortcuts.rs:2728
+#: crates/ui-egui/src/shortcuts.rs:2716
 msgid "Remove All"
 msgstr ""
 
@@ -8919,7 +8919,7 @@ msgstr "Herhaald detail"
 msgid "Repeating Detail: click its start and end; the group on the Options Bar repeats along it every spacing"
 msgstr "Herhaald detail: klik op het begin en het einde; de groep in de optiebalk herhaalt zich ertussen om de afstand"
 
-#: crates/ui-egui/src/shortcuts.rs:2904
+#: crates/ui-egui/src/shortcuts.rs:2892
 msgid "Replace"
 msgstr ""
 
@@ -8931,7 +8931,7 @@ msgstr "Vervangen door tekst"
 msgid "Replace With Text:"
 msgstr "Vervangen door tekst:"
 
-#: crates/ui-egui/src/shortcuts.rs:2961
+#: crates/ui-egui/src/shortcuts.rs:2949
 msgid "Replace everything"
 msgstr ""
 
@@ -8956,15 +8956,15 @@ msgstr ""
 msgid "Reporting Parameter"
 msgstr "Rapportageparameter"
 
-#: crates/ui-egui/src/shortcuts.rs:1681
+#: crates/ui-egui/src/shortcuts.rs:1669
 msgid "Reserved key: \"{}\""
 msgstr ""
 
 #: crates/ui-egui/src/graphics.rs:1318
 #: crates/ui-egui/src/lineweights.rs:146
 #: crates/ui-egui/src/objectstyles.rs:82
-#: crates/ui-egui/src/shortcuts.rs:2501
-#: crates/ui-egui/src/shortcuts.rs:2725
+#: crates/ui-egui/src/shortcuts.rs:2489
+#: crates/ui-egui/src/shortcuts.rs:2713
 msgid "Reset"
 msgstr "Herstellen"
 
@@ -8972,7 +8972,7 @@ msgstr "Herstellen"
 msgid "Reset Accent"
 msgstr "Accent herstellen"
 
-#: crates/ui-egui/src/shortcuts.rs:2474
+#: crates/ui-egui/src/shortcuts.rs:2462
 msgid "Reset All"
 msgstr ""
 
@@ -9033,7 +9033,7 @@ msgstr "Herstarten en installeren"
 msgid "Restore Down"
 msgstr "Verkleinen"
 
-#: crates/ui-egui/src/shortcuts.rs:2499
+#: crates/ui-egui/src/shortcuts.rs:2487
 msgid "Return every action to the starting profile?"
 msgstr ""
 
@@ -9065,7 +9065,7 @@ msgstr "Revisiewolk: een wolk rond wat veranderd is, van de revisie in de optieb
 msgid "Revision:"
 msgstr "Revisie:"
 
-#: crates/ui-egui/src/shortcuts.rs:3058
+#: crates/ui-egui/src/shortcuts.rs:3046
 msgid "Revit XML import is supported; export it from Revit."
 msgstr ""
 
@@ -9456,7 +9456,7 @@ msgstr "De Projectbrowser doorzoeken"
 #: crates/ui-egui/src/browser.rs:264
 #: crates/ui-egui/src/editor/document.rs:1708
 #: crates/ui-egui/src/editor/types_dialog.rs:197
-#: crates/ui-egui/src/shortcuts.rs:2426
+#: crates/ui-egui/src/shortcuts.rs:2414
 msgid "Search…"
 msgstr "Zoeken…"
 
@@ -9591,7 +9591,7 @@ msgstr "Selecteer elementen van één soort: alle balken, alle kolommen, alle fu
 msgid "Select fill pattern lines then press Enter"
 msgstr "Selecteer de lijnen van het vulpatroon en druk dan op Enter"
 
-#: crates/ui-egui/src/mep.rs:191
+#: crates/ui-egui/src/mep.rs:179
 msgid "Select one distribution board and the devices on its circuit."
 msgstr ""
 
@@ -9603,7 +9603,7 @@ msgstr ""
 msgid "Select the detail lines the pattern is made of, then press Enter."
 msgstr "Selecteer de detaillijnen waaruit het patroon bestaat en druk dan op Enter."
 
-#: crates/ui-egui/src/mep.rs:195
+#: crates/ui-egui/src/mep.rs:183
 msgid "Select the devices of the circuit along with its board."
 msgstr ""
 
@@ -10153,7 +10153,7 @@ msgstr "De parameters van elke groep op naam sorteren, van Z tot A"
 msgid "Sorting/Grouping"
 msgstr "Sorteren/groeperen"
 
-#: crates/ui-egui/src/shortcuts.rs:2578
+#: crates/ui-egui/src/shortcuts.rs:2566
 msgid "Source"
 msgstr ""
 
@@ -10552,7 +10552,7 @@ msgid "Symbolic Line: a line or an arc the family's plans draw, not part of its 
 msgstr "Symbolische lijn: een lijn of een boog die de plattegronden van de familie tekenen, geen deel van haar vormen (de draairichting van een deur)"
 
 #: crates/ui-egui/src/editor/document.rs:1129
-#: crates/ui-egui/src/mep.rs:217
+#: crates/ui-egui/src/mep.rs:205
 msgid "Symbols"
 msgstr "Symbolen"
 
@@ -10820,7 +10820,7 @@ msgstr "Dit is het maximum aantal bewaarde voorinstellingen: verwijder er eerst 
 msgid "That is the reference: pick what moves onto it."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:3027
+#: crates/ui-egui/src/shortcuts.rs:3015
 msgid "That is too big to be a shortcuts file."
 msgstr "Dat is te groot voor een sneltoetsenbestand."
 
@@ -10898,15 +10898,15 @@ msgstr "De familie {} die je laadt, staat al in deze familie, maar is anders ged
 msgid "The family {} you are loading is already in this project, defined differently. What would you like to do?"
 msgstr "De familie {} die je laadt, staat al in dit project, maar is anders gedefinieerd. Wat wil je doen?"
 
-#: crates/ui-egui/src/shortcuts.rs:3038
+#: crates/ui-egui/src/shortcuts.rs:3026
 msgid "The file has no usable bindings."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:1750
+#: crates/ui-egui/src/shortcuts.rs:1738
 msgid "The file has too many bindings"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:1654
+#: crates/ui-egui/src/shortcuts.rs:1642
 msgid "The file has too many lines"
 msgstr ""
 
@@ -11179,7 +11179,7 @@ msgstr "Deze kopie heeft geen grafische kaart waarop ze de 3D-weergave kan teken
 msgid "This end is tied to a parameter or worked out by a formula: change it in Family Types."
 msgstr "Dit einde is gekoppeld aan een parameter of wordt berekend met een formule: wijzig het in Familietypen."
 
-#: crates/ui-egui/src/shortcuts.rs:3021
+#: crates/ui-egui/src/shortcuts.rs:3009
 msgid "This is a help file to read. Use .bks, .txt or .json to import."
 msgstr ""
 
@@ -11642,20 +11642,20 @@ msgstr "Eenheden"
 msgid "Units Format"
 msgstr "Eenhedenformaat"
 
-#: crates/ui-egui/src/shortcuts.rs:1675
-#: crates/ui-egui/src/shortcuts.rs:1731
-#: crates/ui-egui/src/shortcuts.rs:1733
-#: crates/ui-egui/src/shortcuts.rs:1766
+#: crates/ui-egui/src/shortcuts.rs:1663
+#: crates/ui-egui/src/shortcuts.rs:1719
+#: crates/ui-egui/src/shortcuts.rs:1721
+#: crates/ui-egui/src/shortcuts.rs:1754
 msgid "Unknown action: \"{}\""
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:1038
-#: crates/ui-egui/src/shortcuts.rs:1067
-#: crates/ui-egui/src/shortcuts.rs:1072
+#: crates/ui-egui/src/shortcuts.rs:1032
+#: crates/ui-egui/src/shortcuts.rs:1061
+#: crates/ui-egui/src/shortcuts.rs:1066
 msgid "Unknown key: \"{}\""
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:1034
+#: crates/ui-egui/src/shortcuts.rs:1028
 msgid "Unknown modifier: \"{}\""
 msgstr ""
 
@@ -11784,7 +11784,7 @@ msgstr "Variabel"
 msgid "Version {}"
 msgstr "Versie {}"
 
-#: crates/ui-egui/src/shortcuts.rs:1695
+#: crates/ui-egui/src/shortcuts.rs:1683
 msgid "Version {} is not supported"
 msgstr ""
 
@@ -11947,7 +11947,7 @@ msgstr "Visuele stijl: hoe de 3D-weergave oppervlakken tekent: Gearceerd, Verbor
 msgid "Voice Outlet"
 msgstr "Telefoonaansluiting"
 
-#: crates/ui-egui/src/mep.rs:131
+#: crates/ui-egui/src/mep.rs:125
 msgid "Voice Outlet (VO): a telephone point, where you click on the wall; Space turns it"
 msgstr "Telefoonaansluiting (VO): een telefoonpunt, waar je op de muur klikt; met de spatiebalk draai je het"
 
@@ -12237,7 +12237,7 @@ msgstr "Ramen"
 msgid "Wire"
 msgstr "Draad"
 
-#: crates/ui-egui/src/mep.rs:241
+#: crates/ui-egui/src/mep.rs:229
 msgid "Wire (EW): click its start and its end; a chain of clicks makes a wire for each step"
 msgstr "Draad (EW): klik op het begin en het einde; een reeks klikken maakt een draad voor elke stap"
 
@@ -13047,7 +13047,7 @@ msgstr "{} bestaat al: sla op onder een naam die op .pat eindigt om te vervangen
 msgid "{} at x {}, y {}"
 msgstr "{} bij x {}, y {}"
 
-#: crates/ui-egui/src/shortcuts.rs:2956
+#: crates/ui-egui/src/shortcuts.rs:2944
 msgid "{} bindings read; {} errors."
 msgstr ""
 
@@ -13304,11 +13304,11 @@ msgstr "{}: {}"
 msgid "{}; and {} more"
 msgstr "{}; en nog {}"
 
-#: crates/ui-egui/src/shortcuts.rs:2944
+#: crates/ui-egui/src/shortcuts.rs:2932
 msgid "“{}” assigned to “{}”."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:2898
+#: crates/ui-egui/src/shortcuts.rs:2886
 msgid "“{}” is already assigned to “{}”."
 msgstr ""
 
@@ -13380,7 +13380,7 @@ msgstr "• Zeer dikke lijn (0,70 mm — pen 12): opvallende gesneden dragende k
 msgid "• Wide / Heavy (0.50 mm — 0.70 mm): Cut walls and structural sections."
 msgstr "• Breed / zwaar (0,50 mm — 0,70 mm): gesneden muren en dragende doorsneden."
 
-#: crates/ui-egui/src/shortcuts.rs:2973
+#: crates/ui-egui/src/shortcuts.rs:2961
 msgid "…and {} more"
 msgstr ""
 
