@@ -572,6 +572,39 @@ fn elements_finds_what_holds_a_fields_value() {
     assert!(e.contains("value"), "{e}");
 }
 
+#[test]
+fn elements_finds_what_stands_in_a_room() {
+    let mut s = Session::new();
+    let walls = house(&mut s);
+    // A partition splits the house: Living west, Kitchen east.
+    run(&mut s, "wall", json!({"points": [[4000, 0], [4000, 6000]], "type": "Interior - 100mm"}));
+    let living = run(&mut s, "room", json!({"point": [2000, 3000], "name": "Living"}))["id"].as_u64().unwrap();
+    let kitchen = run(&mut s, "room", json!({"point": [6000, 3000], "name": "Kitchen"}))["id"].as_u64().unwrap();
+    let here = run(&mut s, "component", json!({"family": "Outlet", "at": [1000, 1000]}))["id"].as_u64().unwrap();
+    let there = run(&mut s, "component", json!({"family": "Outlet", "at": [7000, 1000]}))["id"].as_u64().unwrap();
+    // On Level 2, over the room but not in its volume; and a door in its wall, which is no component.
+    run(&mut s, "component", json!({"family": "Outlet", "at": [1000, 1000], "level": "Level 2"}));
+    run(&mut s, "door", json!({"at": [2000, 0]}));
+    let found = |s: &mut Session, p: Value| -> Vec<u64> {
+        run(s, "elements", p)["elements"].as_array().unwrap().iter().map(|e| e["id"].as_u64().unwrap()).collect()
+    };
+    // By the room's id or its GUID, the components its volume holds, and the other room's not.
+    assert_eq!(found(&mut s, json!({"room": living})), [here]);
+    let guid = element(&mut s, living)["guid"].clone();
+    assert_eq!(found(&mut s, json!({"room": guid})), [here]);
+    assert_eq!(found(&mut s, json!({"room": kitchen})), [there]);
+    // With a category, and one that has nothing in it.
+    assert_eq!(found(&mut s, json!({"category": "component", "room": living})), [here]);
+    assert!(found(&mut s, json!({"category": "door", "room": living})).is_empty());
+    // The element's own `room` is the one asked for.
+    assert_eq!(element(&mut s, here)["room"], guid);
+    // A room that is no element, or an element that is no room, is refused.
+    let e = s.execute("elements", &json!({"room": "nonsense"})).unwrap_err();
+    assert!(e.contains("nonsense"), "{e}");
+    let e = s.execute("elements", &json!({"room": walls[0]})).unwrap_err();
+    assert!(e.contains("must name a room") && e.contains(&walls[0].to_string()), "{e}");
+}
+
 /// A wall's ends, as `elements` shows them.
 fn ends(s: &mut Session, id: u64) -> (Value, Value) {
     let w = run(s, "elements", json!({"category": "wall"}));
@@ -2189,6 +2222,9 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"points": "x"}),
         json!({"field": 5, "value": true}),
         json!({"field": "Type", "value": ["Thick"]}),
+        json!({"room": "nonsense"}),
+        json!({"room": [0]}),
+        json!({"room": 999999}),
         json!({"points": [[0, 0]]}),
         json!({"points": [[0, 0, 0], [1000, 0, 0]], "diameter": 12, "count": 1000, "step": [1e9, 1e9, 1e9]}),
         json!({"points": [[0, 0, 0], [1000, 0, 0]], "diameter": f64::MAX, "count": 1e300}),
