@@ -77,6 +77,13 @@ const FACE_OPENING: u64 = 63;
 const FACE_VOIDS: u64 = 64;
 const GRID: u64 = 73;
 const GRID_CONTAINS: u64 = 74;
+const PLOT_PROPERTIES: u64 = 75;
+const PLOT_DEFINES: u64 = 76;
+const PLOT_NAMES: u64 = 77;
+const PLOT_NAMES_DEFINES: u64 = 78;
+
+/// Site footprint metadata in curve order: Names, Guids and Levels (native GUIDs).
+pub const PROPERTY_LINES: &str = "BIMCraft_PropertyLines";
 
 /// The property set an element's values of the project's parameters go in.
 pub const PARAMETERS: &str = "Project Parameters";
@@ -914,7 +921,52 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool) -> String {
     let units = w.add(format!("IFCUNITASSIGNMENT(({}))", refs(&units)));
     let project = w.add(format!("IFCPROJECT({},$,{},$,$,$,$,(#{ctx}),#{units})", w.guid(PROJECT, 0), s(&m.name)));
     let site_at = w.place(None, (0.0, 0.0, 0.0), None);
-    let site = w.add(format!("IFCSITE({},$,'Site',$,$,#{site_at},$,$,.ELEMENT.,$,$,$,$,$)", w.guid(SITE, 0)));
+    // Plot boundaries are curves, not solids. Their coordinates are site-local XY; their plan level is metadata.
+    let plots: Vec<(Id, &crate::model::PropertyLine)> = m
+        .elements
+        .iter()
+        .filter_map(|(id, e)| match e {
+            Element::PropertyLine(pl) => Some((*id, pl)),
+            _ => None,
+        })
+        .collect();
+    let footprint = if plots.is_empty() {
+        "$".to_string()
+    } else {
+        let plan = w.add(format!("IFCGEOMETRICREPRESENTATIONSUBCONTEXT('FootPrint','Model',*,*,*,*,#{ctx},$,.PLAN_VIEW.,$)"));
+        let curves: Vec<u64> = plots
+            .iter()
+            .map(|(_, pl)| {
+                let points: Vec<u64> = pl.points.iter().chain(pl.points.first()).map(|p| w.point(*p)).collect();
+                w.add(format!("IFCPOLYLINE(({}))", refs(&points)))
+            })
+            .collect();
+        let rep = w.add(format!("IFCSHAPEREPRESENTATION(#{plan},'FootPrint','Curve2D',({}))", refs(&curves)));
+        format!("#{}", w.add(format!("IFCPRODUCTDEFINITIONSHAPE($,$,(#{rep}))")))
+    };
+    let site = w.add(format!("IFCSITE({},$,'Site',$,$,#{site_at},{footprint},$,.ELEMENT.,$,$,$,$,$)", w.guid(SITE, 0)));
+    if !plots.is_empty() {
+        let total = plots.iter().map(|(_, pl)| geom::area(&pl.points).abs()).sum::<f64>() / 1e6;
+        let area = w.add(format!("IFCPROPERTYSINGLEVALUE('TotalArea',$,IFCAREAMEASURE({}),$)", real(total)));
+        w.define(site, "Pset_SiteCommon", &[area], (PLOT_PROPERTIES, PLOT_DEFINES), 0);
+        let mut metadata = Vec::new();
+        for key in ["Names", "Guids", "Levels"] {
+            let values: Vec<String> = plots
+                .iter()
+                .map(|(id, pl)| {
+                    let value = match key {
+                        "Names" => pl.name.clone(),
+                        "Guids" => m.guid(*id).to_string(),
+                        _ => pl.level.to_string(),
+                    };
+                    let kind = if key == "Names" { "IFCTEXT" } else { "IFCLABEL" };
+                    format!("{kind}({})", s(&value))
+                })
+                .collect();
+            metadata.push(w.add(format!("IFCPROPERTYLISTVALUE({},$,({}),$)", s(key), values.join(","))));
+        }
+        w.define(site, PROPERTY_LINES, &metadata, (PLOT_NAMES, PLOT_NAMES_DEFINES), 0);
+    }
     let building_at = w.place(Some(site_at), (0.0, 0.0, 0.0), None);
     let building = w.add(format!("IFCBUILDING({},$,{},$,$,#{building_at},$,$,.ELEMENT.,$,$,$)", w.guid(BUILDING, 0), s(&m.name)));
     w.add(format!("IFCRELAGGREGATES({},$,$,$,#{project},(#{site}))", w.guid(AGGREGATES, PROJECT)));

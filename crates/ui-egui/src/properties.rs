@@ -219,6 +219,12 @@ fn rows(category: &str) -> &'static [Row] {
             ("Dimensions", "computation_height", msg!("Computation Height"), Length),
             ("Identity Data", "name", "Name", Text),
         ],
+        "propertyline" => &[
+            ("Constraints", "level", "Level", Level),
+            ("Identity Data", "name", "Name", Text),
+            ("Dimensions", "points", msg!("Boundary"), Outline),
+            ("Dimensions", "area_m2", "Area", AreaShown),
+        ],
         "grid" => &[("Identity Data", "name", "Name", Text), ("Other", "start", "Start", Point), ("Other", "end", "End", Point)],
         "dimension" => &[
             ("Dimensions", "values", "Value", Values),

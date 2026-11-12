@@ -77,10 +77,12 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// kind `title-block`) and its values of their fields (`title_values`), and a sheet may name one (`title_block`) and hold its
 /// values of its fields (`fields`), or name `none` to have no title block at all (no border, title box or folding marks); a
 /// wall or a run may refuse to join its neighbours (`join: false`, written only then); a dimension may measure to the line
-/// across a column, square to its angle (`across`); and a door's type or family may open as a gate (`operation`: `sectional`
-/// or `roller`). Nothing in a file of 17 changes, but a build that reads up to 17 would answer such a connector, dimension
-/// or operation with a serde error ("unknown variant", "missing field `system`"), would leave the title blocks out as fields
-/// it doesn't know, drawing every sheet with the built-in title box, and would silently drop `join: false` and join the
+/// across a column, square to its angle (`across`); a door's type or family may open as a gate (`operation`: `sectional` or
+/// `roller`); and a project may hold property lines (the `propertyline` category, a row of `graphics::MODEL` that views'
+/// graphics and Object Styles may name). Nothing in a file of 17 changes, but a build that reads up to 17 would answer such
+/// a connector, dimension, operation or property line with a serde error ("unknown variant", "missing field `system`") and
+/// graphics or a style of `propertyline` as a category it doesn't have, would leave the title blocks out as fields it
+/// doesn't know, drawing every sheet with the built-in title box, and would silently drop `join: false` and join the
 /// element again, not say "saved by a newer BIMCraft". 18 also holds the Family Editor's families and
 /// what places them in a project, which a build that reads up to 17 would leave out as fields it doesn't know, drawing a
 /// family without them or failing to build it and losing them on saving, or refuse on opening ("unknown variant", "isn't a
@@ -254,6 +256,16 @@ pub struct RoomSeparator {
     pub level: Guid,
     pub start: P2,
     pub end: P2,
+}
+
+/// A named, simple closed property boundary in a level's plan. Points exclude the repeated closing corner.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PropertyLine {
+    #[serde(default)]
+    pub name: String,
+    pub level: Guid,
+    pub points: Vec<P2>,
 }
 
 /// A reinforcing bar: a round bar of `diameter` mm bent along `path` (mm: x east, y north, z over `level`), of steel `grade`. It
@@ -2163,6 +2175,7 @@ macro_rules! visit_refs {
                 if let Some(g) = & $($m)? ci.view { f(g) }
             }
             Element::RoomSeparator(rs) => f(& $($m)? rs.level),
+            Element::PropertyLine(pl) => f(& $($m)? pl.level),
             Element::Rebar(rb) => {
                 f(& $($m)? rb.level);
                 if let Some(g) = & $($m)? rb.host { f(g) }
@@ -2190,6 +2203,7 @@ pub enum Element {
     /// A room separation line: it bounds rooms and builds nothing.
     #[serde(rename = "roomseparator")]
     RoomSeparator(RoomSeparator),
+    PropertyLine(PropertyLine),
     Dimension(Dimension),
     /// A dimension in a 3D view, between points or edges of the model.
     Dimension3D(Dimension3D),
@@ -2436,6 +2450,7 @@ impl Element {
             Element::Window(_) => "window",
             Element::Room(_) => "room",
             Element::RoomSeparator(_) => "roomseparator",
+            Element::PropertyLine(_) => "propertyline",
             Element::Rebar(_) => "rebar",
             Element::Dimension(_) => "dimension",
             Element::Dimension3D(_) => "dimension3d",
@@ -3726,9 +3741,10 @@ impl Model {
         // 16 to 17 (multi-category schedules, Italian as a project's language) has none either: a file of 16 holds neither.
         // 17 to 18 (pipe, data and earthing connectors, a connector's place; title blocks of the project's own, their fields'
         // values, and sheets with none; walls and runs that refuse to join; a dimension to the line across a column; sectional
-        // and roller doors) has none either: a file of 17's connectors are a power or a switch one, each with its system, which
-        // 18 reads as they were; a file of 17 holds no title blocks, its sheets keeping the built-in one, no `join`, which reads
-        // as joining, as it always did, none of its dimensions measures `across`, and none of its operations is a gate's.
+        // and roller doors; property lines) has none either: a file of 17's connectors are a power or a switch one, each with
+        // its system, which 18 reads as they were; a file of 17 holds no title blocks, its sheets keeping the built-in one, no
+        // `join`, which reads as joining, as it always did, none of its dimensions measures `across`, none of its operations is
+        // a gate's, and it holds no property line and names no `propertyline` in its graphics or styles.
         // The Family Editor's part of 18, and what places its families, takes
         // one step, in this order (it leaves the rest of 18 alone: title blocks, `join` and `across` aren't a family's, and a
         // connector's `at` is in the family's axes, which the datums are whatever plane `defines_origin`, and it has no `host`
@@ -4603,6 +4619,7 @@ impl Model {
             Element::Mass(ms) => Some(ms.level),
             Element::Room(r) => Some(r.level),
             Element::RoomSeparator(rs) => Some(rs.level),
+            Element::PropertyLine(pl) => Some(pl.level),
             Element::Rebar(rb) => Some(rb.level),
             Element::Dimension(d) => Some(d.level),
             Element::Column(c) | Element::StructuralColumn(c) | Element::Footing(c) => Some(c.level),
@@ -5488,6 +5505,7 @@ impl Model {
             Element::Column(c) | Element::StructuralColumn(c) | Element::Footing(c) => Some(c.at),
             Element::Component(c) => Some(c.at),
             Element::Room(r) => Some(r.point),
+            Element::PropertyLine(pl) => Some(geom::centroid(&pl.points)),
             run_arm!(r) => middle(r.start, r.end),
             Element::Stair(s) => Some(s.start),
             Element::Ramp(r) => Some(r.start),
@@ -6898,6 +6916,15 @@ impl Model {
                 if !grid_names.insert(g.name.as_str()) {
                     return Err(format!("{who}: another grid is already named `{}`", g.name));
                 }
+            }
+            Element::PropertyLine(pl) => {
+                level_ok(pl.level)?;
+                boundary(&who, &pl.points)?;
+                text(&who, "name", &pl.name)?;
+                if pl.name.trim().is_empty() {
+                    return Err(format!("{who}: a property line needs a name"));
+                }
+                crate::site::check(&who, &pl.points)?;
             }
             Element::RoomSeparator(rs) => {
                 level_ok(rs.level)?;

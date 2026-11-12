@@ -168,6 +168,7 @@ pub mod shared;
 mod shared_parameter_tests;
 pub mod shared_parameters;
 pub mod sheet;
+pub mod site;
 pub mod skeleton;
 pub mod sketch;
 pub mod snap;

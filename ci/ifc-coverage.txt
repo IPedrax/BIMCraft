@@ -74,3 +74,5 @@ beam {"points": [[0,11000],[6000,11000]], "offset": 3000, "type": "B 120x300"}
 grid {"name": "U1", "start": [-500,100], "end": [2500,4100]}
 grid {"name": "U2", "start": [3500,4100], "end": [500,100]}
 grid {"name": "V", "start": [0,2000], "end": [4000,-1000]}
+# Property boundaries are site FootPrint curves, with area and native identity metadata; no terrain dependency.
+property_line {"name":"Synthetic survey plot","points":[[-2000,-8000],[8000,-8000],[8000,16000],[-2000,16000]]}

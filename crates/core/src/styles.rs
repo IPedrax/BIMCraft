@@ -30,6 +30,7 @@ pub struct ObjectStyle {
 /// as where it's seen, [`Pen::PROJECTION`] both.
 pub fn default_of(category: &str) -> ObjectStyle {
     match category {
+        "propertyline" => ObjectStyle { projection: Pen::MEDIUM, cut: Pen::MEDIUM },
         "mass" => ObjectStyle { projection: Pen::PROJECTION, cut: Pen::PROJECTION },
         "door" | "window" => ObjectStyle { projection: Pen::PROJECTION, cut: Pen::MEDIUM },
         "railing" => ObjectStyle { projection: Pen::MEDIUM, cut: Pen::CUT },

@@ -13181,3 +13181,21 @@ msgstr ""
 #: crates/core/src/model.rs:2561
 msgid "Sectional"
 msgstr ""
+
+#: crates/ui-egui/src/properties.rs:215
+msgid "Boundary"
+msgstr ""
+
+#: crates/core/src/commands.rs:469 crates/core/src/commands.rs:7022
+msgid "Property Line"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:290
+msgctxt "category"
+msgid "Property Line"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:290
+msgctxt "category-plural"
+msgid "Property Lines"
+msgstr ""

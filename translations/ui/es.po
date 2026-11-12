@@ -12942,6 +12942,24 @@ msgstr ""
 msgid "Sectional"
 msgstr ""
 
+#: crates/ui-egui/src/properties.rs:215
+msgid "Boundary"
+msgstr ""
+
+#: crates/core/src/commands.rs:469 crates/core/src/commands.rs:7022
+msgid "Property Line"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:290
+msgctxt "category"
+msgid "Property Line"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:290
+msgctxt "category-plural"
+msgid "Property Lines"
+msgstr ""
+
 #: crates/ui-egui/src/lib.rs:3433
 #~ msgid "Click a point the arc passes through: it sets the radius. Esc cancels."
 #~ msgstr "Haz clic en un punto por el que pasa el arco: define el radio. Esc cancela."

@@ -12944,6 +12944,24 @@ msgstr ""
 msgid "Sectional"
 msgstr ""
 
+#: crates/ui-egui/src/properties.rs:215
+msgid "Boundary"
+msgstr ""
+
+#: crates/core/src/commands.rs:469 crates/core/src/commands.rs:7022
+msgid "Property Line"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:290
+msgctxt "category"
+msgid "Property Line"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:290
+msgctxt "category-plural"
+msgid "Property Lines"
+msgstr ""
+
 #: crates/ui-egui/src/lib.rs:4503
 #~ msgid "Click to select. Drag to orbit (or Shift and the middle button), the middle button pans, the wheel zooms."
 #~ msgstr "Nhấp để chọn. Kéo để xoay quanh (hoặc Shift và nút giữa), nút giữa để kéo, con lăn để thu phóng."

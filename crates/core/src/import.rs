@@ -1877,6 +1877,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
     let mut from: HashMap<Id, String> = HashMap::new();
     // The first element made of each in the file, which takes its GlobalId for its GUID.
     let mut origin: HashMap<u64, Id> = HashMap::new();
+    let mut plot_guids: HashMap<Id, u128> = HashMap::new();
     // The elements made of each in the file.
     let mut elements_from: HashMap<u64, Vec<Id>> = HashMap::new();
 
@@ -3324,6 +3325,90 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
         seen.insert(id);
     }
 
+    // Site footprint curves: only explicitly closed, horizontal curves are property boundaries.
+    // Apply the site's placement and the reader's units/origin translation, as for other products.
+    for site in named(&["IFCSITE"]) {
+        let Some(x) = e(site) else { continue };
+        let reps = r.reps(x);
+        let curve_count: usize = reps.iter().filter(|(kind, _)| kind.eq_ignore_ascii_case("FootPrint")).map(|(_, items)| items.len()).sum();
+        // Borrow only the three recognized arrays (Names, Guids, Levels). A shared set may target many sites;
+        // never clone arbitrary property bags or their reference/value lists for each target.
+        let mut metadata: [Option<&[V]>; 3] = [None; 3];
+        for set in named(&["IFCRELDEFINESBYPROPERTIES"])
+            .into_iter()
+            .filter_map(e)
+            .filter(|rel| list(rel.args.get(4)).iter().any(|v| reference(Some(v)) == Some(site)))
+            .filter_map(|rel| {
+                reference(rel.args.get(5))
+                    .and_then(e)
+                    .filter(|set| set.name == "IFCPROPERTYSET" && text(set.args.get(2)) == Some(crate::ifc::PROPERTY_LINES))
+            })
+        {
+            for p in list(set.args.get(4)).iter().filter_map(|v| reference(Some(v))).filter_map(e) {
+                if p.name != "IFCPROPERTYLISTVALUE" {
+                    continue;
+                }
+                let key = match text(p.args.first()) {
+                    Some("Names") => 0,
+                    Some("Guids") => 1,
+                    Some("Levels") => 2,
+                    _ => continue,
+                };
+                if let Some(V::List(values)) = p.args.get(2)
+                    && values.len() == curve_count
+                {
+                    metadata[key] = Some(values);
+                }
+            }
+        }
+        let value = |key: usize, k: usize| metadata[key].and_then(|values| values.get(k)).and_then(|v| text(Some(v)));
+        let f = r.frame(x);
+        let curves = reps.into_iter().filter(|(kind, _)| kind.eq_ignore_ascii_case("FootPrint")).flat_map(|(_, items)| items);
+        for (k, item) in curves.enumerate() {
+            let Some(pts) = r.curve(Some(item), 0) else {
+                skipped.push(format!("{}: footprint curve {}: unsupported curve", who(site), k + 1));
+                continue;
+            };
+            let world: Vec<P3> = pts.into_iter().map(|p| f.at(p)).collect();
+            let closed = world.first().zip(world.last()).is_some_and(|(a, b)| dot(sub(*a, *b), sub(*a, *b)).sqrt() <= TOL);
+            let horizontal = world.first().is_some_and(|a| world.iter().all(|p| (p[2] - a[2]).abs() <= TOL));
+            let mut points: Vec<P2> = world.into_iter().map(|p| micron(r.flat(p))).collect();
+            if closed {
+                points.pop();
+            }
+            let reason = if !closed || !horizontal {
+                Some("not a closed horizontal boundary".to_string())
+            } else if !(3..=MAX_POINTS).contains(&points.len()) {
+                Some("boundary point count out of range".to_string())
+            } else {
+                crate::site::check("site footprint", &points).err()
+            };
+            if let Some(reason) = reason {
+                skipped.push(format!("{}: footprint curve {}: {reason}", who(site), k + 1));
+                continue;
+            }
+            let name = value(0, k).filter(|v| !v.trim().is_empty()).map(clip).unwrap_or_else(|| format!("Property Line {}", k + 1));
+            let level = value(2, k)
+                .and_then(Guid::parse)
+                .and_then(|guid| {
+                    storeys.iter().find_map(|(sid, _, _)| {
+                        (e(*sid).and_then(|x| text(x.args.first())).and_then(crate::ifc::expand) == Some(guid.as_u128()))
+                            .then(|| level_of.get(sid).copied())
+                            .flatten()
+                    })
+                })
+                .or_else(|| levels.first().map(|(id, _)| *id))
+                .map(Guid::of_id)
+                .unwrap_or_default();
+            let pid = m.insert(Element::PropertyLine(crate::model::PropertyLine { name, level, points }));
+            if let Some(guid) = value(1, k).and_then(Guid::parse).filter(|g| g.pending().is_none()) {
+                plot_guids.insert(pid, guid.as_u128());
+            }
+            from.insert(pid, who(site));
+            elements_from.entry(site).or_default().push(pid);
+        }
+    }
+
     // Grids: each axis a grid line.
     let mut grid_names = BTreeSet::new();
     for id in named(&["IFCGRID"]) {
@@ -3642,6 +3727,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
     // Each element's GUID is the GlobalId of what it was made of, where that's one; what points at an element points at it.
     let mut globals: HashMap<Id, u128> =
         origin.iter().filter_map(|(step, id)| Some((*id, crate::ifc::expand(text(e(*step)?.args.first())?)?))).collect();
+    globals.extend(plot_guids);
     // The rest, GUIDs the file makes: the same file reads the same every time.
     for id in m.elements.keys() {
         globals.entry(*id).or_insert_with(|| Guid::seeded(seed, *id).as_u128());

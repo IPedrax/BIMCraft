@@ -696,3 +696,7 @@ msgstr ""
 #: crates/core/src/model.rs:2561
 msgid "Sectional"
 msgstr ""
+
+#: crates/core/src/commands.rs:7022
+msgid "Property Line"
+msgstr ""

@@ -25,7 +25,7 @@ use crate::model::{
     CEILING_HEIGHT, CadImport, Ceiling, CeilingType, Column, ColumnType, Component, DEFAULT_HEIGHT, DimKind, Dimension, Dimension3D,
     Element, End, Extrusion, Face, Facing, Floor, FloorType, Grid, Guid, HostRef, Hosted, Id, Key, Landing, Layer, Level, Line, Location,
     MAX_COORD, MAX_POINTS, MAX_SLOPE, MAX_TEXT, Mass, Model, Note, Opening, OpeningType, Orient, PARAMETER_CATEGORIES, ParameterKind,
-    Pattern, Perspective, PlanView, PointCloud, ProjectParameter, RAMP_SLOPE, RAMP_WIDTH, RISER, Railing, RailingType, Ramp, Rebar, Ref3,
+    Pattern, Perspective, PlanView, PointCloud, ProjectParameter, PropertyLine, RAMP_SLOPE, RAMP_WIDTH, RISER, Railing, RailingType, Ramp, Rebar, Ref3,
     Reference, Roof, RoofType, Room, RoomArea, RoomSeparator, STAIR_WIDTH, Schedule, Section, SectionBox, Shaft, Sheet, Side, Spot, Stair,
     TOL, TREAD, Tag, Unbound, View3D, Viewport, Wall, WallType, heading, paper,
 };
@@ -518,6 +518,18 @@ other_files(
         room,
     )
     .menu("Architecture > Room"),
+    edit(
+        "property_line",
+        ui_msg!("Property Line"),
+        &[],
+        "{points: [[x,y],…], name?, level?} a named closed property boundary (mm), on the lowest level unless given. \
+         A repeated closing point is accepted. The outline must be simple, without crossings, spikes or repeated corners. \
+         Plans draw a dash-dot boundary with its name and area. `elements` gives area_m2, perimeter_m and segments \
+         (length in mm, bearing in survey quadrants, azimuth clockwise from north: the map's, turned by the georeference's \
+         `rotation`; without one, the project's +y). Schedules list name, area and perimeter. \
+         IFC writes closed curves in the site's FootPrint. Returns id, name, area_m2",
+        property_line,
+    ),
     edit(
         "room_separator",
         "Room Separator",
@@ -2865,6 +2877,19 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
             if let Some(b) = m.cad_box(id) {
                 extra.insert("extents".into(), json!(b));
             }
+        }
+        Element::PropertyLine(pl) => {
+            extra.insert("area_m2".into(), json!(m2(geom::area(&pl.points).abs())));
+            extra.insert("perimeter_m".into(), json!((geom::perimeter(&pl.points) / 10.0).round() / 100.0));
+            // From north on the map, where the project lies on one turned.
+            let rotation = m.georeference.as_ref().map_or(0.0, |g| g.rotation);
+            let segments: Vec<Value> = geom::ring_edges(&pl.points)
+                .map(|(a, b)| {
+                    let (bearing, azimuth) = crate::site::bearing(a, b, rotation);
+                    json!({"from": a, "to": b, "length": hundredth(a.dist(b)), "bearing": bearing, "azimuth": azimuth})
+                })
+                .collect();
+            extra.insert("segments".into(), json!(segments));
         }
         Element::RoomSeparator(rs) => {
             extra.insert("length".into(), json!(hundredth(rs.start.dist(rs.end))));
@@ -7252,6 +7277,35 @@ fn grid(s: &mut Session, p: &Value) -> R {
     };
     let id = s.model_mut().insert(Element::Grid(Grid { name: name.clone(), start, end }));
     Ok(json!({"id": id, "name": name}))
+}
+
+fn property_line(s: &mut Session, p: &Value) -> R {
+    let c = "property_line";
+    only(c, p, &["points", "name", "level"])?;
+    let m = &s.model;
+    let level = level_param(c, m, p, "level")?;
+    let mut pts = points(c, p, "points")?;
+    if pts.len() > 3 && pts.first() == pts.last() {
+        pts.pop();
+    }
+    let name = match string(c, p, "name")? {
+        Some(n) => n,
+        None => {
+            let word = m.language.word(bimcraft_i18n::msg!("Property Line"));
+            let taken: BTreeSet<&str> = m
+                .elements
+                .values()
+                .filter_map(|e| match e {
+                    Element::PropertyLine(pl) => Some(pl.name.as_str()),
+                    _ => None,
+                })
+                .collect();
+            (1..).map(|k| format!("{word} {k}")).find(|n| !taken.contains(n.as_str())).unwrap_or_default()
+        }
+    };
+    let area = m2(geom::area(&pts).abs());
+    let id = s.model_mut().insert(Element::PropertyLine(PropertyLine { name: name.clone(), level, points: pts }));
+    Ok(json!({"id": id, "name": name, "area_m2": area}))
 }
 
 fn room_separator(s: &mut Session, p: &Value) -> R {
@@ -13154,6 +13208,7 @@ pub(crate) fn transform(c: &str, m: &Model, mut e: Element, id: Id, mo: &Motion,
             (rp.start, rp.end) = (lift(rp.start), lift(rp.end));
         }
         Element::RoomSeparator(rs) => (rs.start, rs.end) = (f(rs.start), f(rs.end)),
+        Element::PropertyLine(pl) => pl.points.iter_mut().for_each(|q| *q = f(*q)),
         Element::Rebar(rb) => {
             for q in &mut rb.path {
                 let moved = f(P2(q[0], q[1]));
