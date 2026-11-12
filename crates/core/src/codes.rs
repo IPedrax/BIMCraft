@@ -910,7 +910,7 @@ pub fn solve(m: &Model, st: &Stair, locks: Locks) -> Vec<Proposal> {
                 sets.insert(0, balanced);
             }
         }
-        if !locks.landings && st.spiral.is_none() {
+        if !locks.landings && st.spiral.is_none() && st.path.is_empty() {
             let most = f64::from(rules.flight_risers(riser));
             let mut more = Vec::new();
             let mut from = 0.0;

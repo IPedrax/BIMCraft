@@ -40,7 +40,7 @@ impl BimApp {
         // A width, a run's end and a landing's edge follow the cursor itself; the foot and the top land on what is there.
         let to = match grip {
             // The foot goes where it is put; the top is aimed from the foot, with its angle guides.
-            Grip::Foot | Grip::Riser(..) | Grip::Centre => self.snap(m, level, v, q, &[], square).at,
+            Grip::Foot | Grip::Riser(..) | Grip::Centre | Grip::Vertex(_) => self.snap(m, level, v, q, &[], square).at,
             Grip::Top => self.snap(m, level, v, q, &[st.start], square).at,
             _ => v.mm(q),
         };
@@ -76,11 +76,15 @@ impl BimApp {
                 self.snap_once = None;
                 if after != st {
                     let p = match grip {
+                        // One drawn along a path: its points, where it starts and how wide it is.
+                        _ if !after.path.is_empty() => {
+                            json!({"id": id, "start": [after.start.0, after.start.1], "angle": after.angle, "path": after.path, "width": after.width})
+                        }
                         // One drawn by hand: its risers, and where it starts with them.
                         _ if !after.sketch.is_empty() => {
                             json!({"id": id, "start": [after.start.0, after.start.1], "angle": after.angle, "sketch": after.sketch})
                         }
-                        Grip::Riser(..) => return,
+                        Grip::Riser(..) | Grip::Vertex(_) => return,
                         Grip::Centre => {
                             json!({"id": id, "start": [after.start.0, after.start.1], "angle": after.angle, "spiral": after.spiral})
                         }
@@ -117,6 +121,10 @@ impl BimApp {
             let what = match grip {
                 Grip::Riser(i, _) => tf("Riser {}", &[&(i + 1).to_string()]),
                 Grip::Centre => m.units.with_unit(shown.spiral.map_or(0.0, |sp| sp.radius.abs())),
+                Grip::Vertex(i) => {
+                    let from = if i == 0 { shown.start } else { shown.path.get(i - 1).map_or(shown.start, |s| s.to) };
+                    m.units.with_unit(shown.path.get(i).map_or(0.0, |s| s.to.dist(from)))
+                }
                 Grip::Foot => m.units.with_unit(st.start.dist(shown.start)),
                 Grip::Top => format!("{:.1}°", shown.angle),
                 Grip::Width(_) => m.units.with_unit(shown.width),

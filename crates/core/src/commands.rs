@@ -670,7 +670,7 @@ other_files(
         ui_msg!("Stair"),
         &[],
         "{start: [x,y], end?: [x,y] | angle?, level?, top_level?, height?, width?, riser?, tread?, landings?: [{at, turn?, winders?, balance?, length?, width?}, …], \
-         line?, offset?, spiral?, sketch?, type?, multistorey?, railings?} a stair from the middle of its first riser at `start`, climbing toward `end` (or `angle` degrees) up to the next level: \
+         line?, offset?, path?, spiral?, sketch?, type?, multistorey?, railings?} a stair from the middle of its first riser at `start`, climbing toward `end` (or `angle` degrees) up to the next level: \
          as many risers as keep each at most `riser` mm, treads `tread` deep (the project's building code's, 180 and 280 with \
          none: `building_code`), `width` wide (1000). One straight \
          run, as long as that makes it (`landings`: \"auto\" gives it the landings its code says are due, straight on); or with landings (each as deep as the stair is wide) after `at` risers, the next run \
@@ -690,6 +690,12 @@ other_files(
          `type` names its stair type (`type` with category stair: `waist` for a slab under its steps, a monolithic stair; \
          else `tread_thickness`, `riser_thickness`, `nosing`, and `stringer_width` by `stringer_depth` for stringers down its \
          sides); with none it is solid down to its level. \
+         With `path`: [{to: [x,y], landing?, arc?, winders?}, …] the stair is drawn along a line from `start`, segment after \
+         segment: each on `to` a point, a flight of steps or with `landing` a landing as long as the segment, straight or with \
+         `arc` an arc turning through that many degrees (left, or with a minus right). A flight has a tread every `tread` of its \
+         length; the last flight has the risers left over, however long it is drawn, and what is drawn past the top is left \
+         out. Where two flights meet at a corner, the corner is a landing, or with `winders` on the second, winders. A stair \
+         with a `path` has no `landings`: its location line (`line`, `offset`) is the path. \
          With `sketch`: [{riser: [[x,y],[x,y]], outline?: [[x,y],…]}, …] the stair is drawn by hand and needs no `start`: each \
          riser a line from its left end to its right, from the first up, as many risers as are drawn; the tread after a riser \
          is the ground between it and the next, or its `outline` (a landing round a corner). `stair_check` measures what is drawn. \
@@ -9000,6 +9006,18 @@ fn stair(s: &mut Session, p: &Value) -> R {
             (start, climb(c, p, start)?)
         }
     };
+    // Drawn along a path, it climbs the way its first segment goes.
+    let path: Vec<crate::model::PathSeg> = match p.get("path") {
+        v if absent(v) => Vec::new(),
+        Some(v @ Value::Array(a)) if a.len() <= 200 => {
+            serde_json::from_value(v.clone()).map_err(|e| bad(c, format!("`path` is [{{to: [x,y], landing?, arc?, winders?}}, …]: {e}")))?
+        }
+        _ => return Err(bad(c, "`path` is a list of at most 200 segments [{to: [x,y], landing?, arc?, winders?}, …]")),
+    };
+    let angle = match path.first() {
+        Some(first) if first.to.dist(start) > 1e-6 => degrees((first.to - start).1.atan2((first.to - start).0).to_degrees()),
+        _ => angle,
+    };
     let level = level_param(c, m, p, "level")?;
     let (top_level, height) = top_param(c, m, p, level)?;
     let dim = |key: &str, default: f64| num(c, p, key).map(|v| v.unwrap_or(default));
@@ -9024,6 +9042,7 @@ fn stair(s: &mut Session, p: &Value) -> R {
         },
         offset: dim("offset", 0.0)?,
         multistorey: flag(c, p, "multistorey")?,
+        path,
         sketch,
         spiral: match p.get("spiral") {
             v if absent(v) => None,
@@ -11775,6 +11794,13 @@ pub(crate) fn transform(c: &str, m: &Model, mut e: Element, id: Id, mo: &Motion,
         // A mirror image turns the other way at its landings.
         Element::Stair(st) => {
             (st.start, st.angle) = turned(f, st.start, st.angle);
+            // One drawn along a path goes with it, point by point; a mirror image's arcs and corners turn the other way.
+            for seg in &mut st.path {
+                seg.to = f(seg.to);
+                if mo.mirror {
+                    seg.arc = -seg.arc + 0.0;
+                }
+            }
             // One drawn by hand goes with it, riser by riser.
             for step in &mut st.sketch {
                 step.riser = [f(step.riser[0]), f(step.riser[1])];
@@ -13668,6 +13694,7 @@ fn stair_sketch(s: &mut Session, p: &Value) -> R {
         .map(|s| crate::model::SketchStep { riser: s.riser.map(micron), outline: s.outline.into_iter().map(micron).collect() })
         .collect();
     made.landings.clear();
+    made.path.clear();
     (made.line, made.offset) = (Default::default(), 0.0);
     if let [a, b, ..] = made.sketch.as_slice() {
         let way = b.mid() - a.mid();

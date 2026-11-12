@@ -2246,17 +2246,21 @@ fn stairs_start_where_clicked_and_climb_toward_the_second_click() {
 }
 
 #[test]
-fn a_stair_run_ends_where_clicked_and_the_next_turns_toward_the_third_click() {
+fn a_stair_run_ends_where_clicked_and_the_next_goes_on_from_the_corner() {
     let mut h = app(BOX);
     tool(&mut h, "Stair");
     press(&mut h, "Railings");
-    // 7 treads north: 8 risers, 9 to go; then to the right of the landing.
+    // 7 treads north; then east, short of its top: the corner is a landing, and the stair waits.
     click(&mut h, P2(1000.0, 1000.0));
     click(&mut h, P2(1000.0, 2960.0));
-    assert!(ids(&h, "stair").is_empty(), "risers are left: the next run waits");
-    click(&mut h, P2(3000.0, 3500.0));
+    assert!(ids(&h, "stair").is_empty(), "risers are left: the next flight waits");
+    click(&mut h, P2(3000.0, 2960.0));
+    assert!(ids(&h, "stair").is_empty(), "risers are left still");
+    // On east, past its top: done.
+    click(&mut h, P2(7900.0, 2960.0));
     let st = ids(&h, "stair");
-    assert_eq!((st.len(), field(&h, st[0], "landings")), (1, json!([{"at": 8.0, "turn": -90.0}])));
+    assert_eq!(st.len(), 1);
+    assert_eq!(field(&h, st[0], "path").as_array().map(Vec::len), Some(3));
     assert!(ids(&h, "railing").is_empty(), "Railings off");
 }
 

@@ -910,3 +910,87 @@ fn a_spiral_s_centre_dragged_sets_its_radius_and_keeps_its_first_riser() {
     // No nearer than half its width.
     assert_eq!(dragged(m, &st, Grip::Centre, P2(1400.0, 0.0)).spiral.map(|sp| sp.radius), Some(500.0));
 }
+
+#[test]
+fn a_stair_is_drawn_along_a_path_of_flights_and_landings() {
+    use crate::geom::P2;
+    let mut s = Session::new();
+    // North 5 treads, a landing east 2500 long, then south to the top: two flights 2500 apart, a U with a well.
+    let p = json!({"start": [0, 0], "width": 1000, "path": [
+        {"to": [0, 1900]},
+        {"to": [2500, 1900], "landing": true},
+        {"to": [2500, -5000]}
+    ]});
+    let id = run(&mut s, "stair", p)["id"].as_u64().unwrap();
+    let st = stair_of(&s, id);
+    assert_eq!(st.angle, 90.0);
+    let l = crate::stairs::stair(&s.model, &st);
+    // The first flight stops half the width short of the corner: 1400 of it, 5 treads, 6 risers; the second has the 11 left.
+    assert_eq!(l.runs.iter().map(|r| r.risers).collect::<Vec<_>>(), [6, 11]);
+    let near = |a: P2, b: P2| a.dist(b) < 1e-6;
+    assert!(near(l.runs[0].end(), P2(0.0, 1400.0)) && near(l.runs[1].start, P2(2500.0, 1400.0)), "{:?}", l.runs);
+    assert!(near(l.runs[1].u, P2(0.0, -1.0)));
+    // One landing between them, round both corners: 3500 long at the stair's width, 1000.
+    assert_eq!((l.pads.len(), l.turns.clone()), (1, vec![1]));
+    assert!((crate::geom::area(&l.pads[0].ring) - (3500.0 * 1000.0)).abs() < 1.0, "{}", crate::geom::area(&l.pads[0].ring));
+    let each = 3000.0 / 17.0;
+    assert!((l.pads[0].z - 6.0 * each).abs() < 1e-6 && (l.walk.last().unwrap().1 - 3000.0).abs() < 1e-6);
+    assert!(!crate::stairs::path_full(&s.model, &st) || l.runs[1].length <= 6400.0);
+    assert_eq!(broken(&mut s, id), Vec::<String>::new());
+
+    // Two flights meeting at a corner with no landing drawn: the corner is the landing; with winders asked, winders.
+    let corner = json!({"start": [10000, 0], "width": 1000, "path": [{"to": [10000, 2000]}, {"to": [16000, 2000]}]});
+    let id = run(&mut s, "stair", corner.clone())["id"].as_u64().unwrap();
+    let l = crate::stairs::stair(&s.model, &stair_of(&s, id));
+    assert_eq!((l.runs[0].risers, l.pads.len(), l.pads[0].tread), (6, 1, false));
+    assert!(
+        (crate::geom::area(&l.pads[0].ring) - (1000.0 * 1000.0 + 100.0 * 1000.0)).abs() < 1.0,
+        "the corner and the 100 the flight left: {}",
+        crate::geom::area(&l.pads[0].ring)
+    );
+    let mut wound = corner;
+    wound["path"][1]["winders"] = json!(3);
+    let id = run(&mut s, "stair", wound)["id"].as_u64().unwrap();
+    let l = crate::stairs::stair(&s.model, &stair_of(&s, id));
+    assert_eq!((l.winders, l.runs.iter().map(|r| r.risers).sum::<u32>()), (3, 17 - 2));
+
+    // Drawn past its top, the path is cut where the risers run out; a straight path of two clicks is one flight.
+    let long = json!({"start": [20000, 0], "path": [{"to": [20000, 3000]}, {"to": [23000, 3000], "landing": true}, {"to": [23000, 9000]}, {"to": [30000, 9000]}]});
+    let id = run(&mut s, "stair", long)["id"].as_u64().unwrap();
+    let l = crate::stairs::stair(&s.model, &stair_of(&s, id));
+    assert_eq!(l.runs.iter().map(|r| r.risers).sum::<u32>(), 17);
+    assert!(crate::stairs::path_full(&s.model, &stair_of(&s, id)));
+    let id =
+        run(&mut s, "stair", json!({"start": [30000, 0], "path": [{"to": [30000, 1000]}, {"to": [30000, 2000]}]}))["id"].as_u64().unwrap();
+    let l = crate::stairs::stair(&s.model, &stair_of(&s, id));
+    assert_eq!((l.runs.len(), l.runs[0].risers, l.pads.len()), (1, 17, 0));
+
+    // Round an arc: a quarter turn to the left of radius 2000, ring-shaped treads; then flipped and moved as any stair.
+    let id = run(&mut s, "stair", json!({"start": [40000, 0], "width": 1000, "path": [{"to": [38000, 2000], "arc": 90}]}))["id"]
+        .as_u64()
+        .unwrap();
+    let l = crate::stairs::stair(&s.model, &stair_of(&s, id));
+    assert_eq!((l.runs.len(), l.pads.len()), (0, 16));
+    let centre = P2(38000.0, 0.0);
+    assert!(
+        l.pads.iter().flat_map(|p| &p.ring).all(|q| (1499.0..=2501.0).contains(&q.dist(centre))),
+        "between 1500 and 2500 from its centre"
+    );
+    run(&mut s, "move", json!({"ids": [id], "by": [0, 500]}));
+    assert_eq!(stair_of(&s, id).path[0].to, P2(38000.0, 2500.0));
+    run(&mut s, "flip", json!({"ids": [id]}));
+    let back = stair_of(&s, id);
+    assert_eq!((back.start, back.path[0].to, back.path[0].arc), (P2(38000.0, 2500.0), P2(40000.0, 500.0), -90.0));
+
+    for bad in [
+        json!([{"to": [0, 0]}]),
+        json!([{"to": [0, 1000], "landing": true}]),
+        json!([{"to": [0, 1000], "arc": 350}]),
+        json!([{"to": [0, 1000], "landing": true, "winders": 3}, {"to": [0, 2000]}]),
+        json!([{"to": [0, 1e300]}]),
+        json!("x"),
+    ] {
+        assert!(s.execute("stair", &json!({"start": [0, 0], "path": bad})).is_err(), "{bad}");
+    }
+    assert!(s.execute("stair", &json!({"start": [0, 0], "path": [{"to": [0, 2000]}], "landings": [{"at": 4, "turn": 0}]})).is_err());
+}

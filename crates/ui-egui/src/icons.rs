@@ -174,6 +174,7 @@ icon_names! {
     Circumscribed,
     CentreArc,
     TangentArc,
+    Landing,
     Fillet,
     Spline,
     FitSpline,
@@ -851,6 +852,10 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.line(&[(3.0, 3.0), (8.0, 3.0), (14.0, 9.0), (21.0, 9.0)]);
             g.line(&[(3.0, 9.0), (8.0, 9.0), (14.0, 15.0), (21.0, 15.0)]);
             g.line(&[(3.0, 15.0), (8.0, 15.0), (14.0, 21.0), (21.0, 21.0)]);
+        }
+        Icon::Landing => {
+            g.closed(&[(3.0, 20.0), (3.0, 17.0), (6.0, 17.0), (6.0, 13.0), (17.0, 13.0), (17.0, 9.0), (21.0, 9.0), (21.0, 20.0)]);
+            g.line(&[(8.0, 10.0), (15.0, 10.0)]);
         }
         Icon::Stair => {
             g.closed(&[

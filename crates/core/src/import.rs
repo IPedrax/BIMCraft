@@ -2850,6 +2850,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
             offset: 0.0,
             spiral: None,
             sketch: Vec::new(),
+            path: Vec::new(),
             multistorey: false,
         };
         let sid = m.insert(Element::Stair(stair));

@@ -590,20 +590,18 @@ pub struct BimApp {
     stair_width: String,
     /// The Stair tool's winders: how many treads a turn is made of, none for a landing.
     stair_winders: u32,
-    /// How many treads of the flight on each side the tool's winders are balanced into.
-    stair_balance: u32,
-    /// The Stair tool turning by any angle, and drawing run after run.
-    stair_free: bool,
-    stair_chain: bool,
+    /// How the Stair tool draws: along a line, straight or in arcs; a spiral about a centre; or riser by riser.
+    stair_shape: StairShape,
+    /// Whether the segment the Stair tool draws next is a landing, not a flight of steps.
+    stair_landing: bool,
+    /// What each segment drawn so far is: a landing, an arc.
+    stair_kinds: Vec<(bool, bool)>,
     /// The Stair tool's top (none: the level above), its height when unconnected, and whether it stands on every level on
     /// the way.
     stair_top: Option<Option<Id>>,
     stair_height: String,
     stair_multistorey: bool,
-    /// The Stair tool drawing by hand: each two clicks a riser, Enter the stair.
-    stair_draw: bool,
-    /// The Stair tool making a spiral, and which way it winds.
-    stair_spiral: bool,
+    /// Which way the Stair tool's spiral winds.
     stair_clockwise: bool,
     /// The Stair tool's location line, the line of the stair the clicks are on, and how far the stair stands from it.
     stair_line: bimcraft_core::model::StairLine,
@@ -900,6 +898,19 @@ fn height_options(ui: &mut Ui, m: &Model, level: Id, top: &mut Option<Option<Id>
     if now.is_none() {
         ui.add(TextEdit::singleline(height).desired_width(64.0).hint_text(m.units.name())).labelled_by(label.id);
     }
+}
+
+/// How the Stair tool draws a stair.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum StairShape {
+    /// Along a line, the stretch to the next click straight.
+    Straight,
+    /// Along a line, the stretch to the next click an arc leaving the one before smoothly.
+    Arc,
+    /// About a centre.
+    Spiral,
+    /// Riser by riser.
+    Risers,
 }
 
 /// The params for the top an Options Bar set from the plan of `level`: up to a level, or
@@ -1334,11 +1345,9 @@ impl BimApp {
             footing_top: units.length(0.0),
             stair_width: units.length(STAIR_WIDTH),
             stair_winders: 0,
-            stair_balance: 0,
-            stair_free: false,
-            stair_chain: false,
-            stair_draw: false,
-            stair_spiral: false,
+            stair_shape: StairShape::Straight,
+            stair_landing: false,
+            stair_kinds: Vec::new(),
             stair_clockwise: false,
             stair_top: None,
             stair_height: units.length(bimcraft_core::model::DEFAULT_HEIGHT),
@@ -2048,7 +2057,8 @@ impl BimApp {
             match (&self.tool, self.typed_length.is_empty() && self.drawing.other.is_empty()) {
                 _ if self.picking_pattern_lines() => self.finish_pattern_lines(),
                 (Tool::Railing(_), true) => self.finish_railing(level),
-                (Tool::Stair(_), true) if self.stair_draw => self.finish_stair_sketch(level),
+                (Tool::Stair(_), true) if self.stair_shape == StairShape::Risers => self.finish_stair_sketch(level),
+                (Tool::Stair(_), true) if self.stair_shape != StairShape::Spiral => self.finish_stair_path(level),
                 (Tool::Mass(_), true) => self.finish_mass(level),
                 (Tool::DetailLine(_), true) => self.finish_detail_line(level),
                 (Tool::SketchLine(_), true) if self.shape().open_ended() => self.finish_open_shape(),
@@ -4545,6 +4555,55 @@ impl BimApp {
                 self.vertex_buttons(ui);
             });
         }
+        // The Stair tool: how its line is drawn, and whether the next stretch of it is steps or a landing.
+        if matches!(self.tool, Tool::Stair(_)) {
+            panel(ui, msg!("Draw"), |ui| {
+                let shapes = [
+                    (StairShape::Straight, Icon::Line, "Straight", msg!("Straight: the stair follows a straight line to the next click")),
+                    (
+                        StairShape::Arc,
+                        Icon::TangentArc,
+                        "Arc",
+                        msg!("Arc: the stair follows an arc to the next click, leaving the stretch before it smoothly"),
+                    ),
+                    (
+                        StairShape::Spiral,
+                        Icon::Circle,
+                        "Spiral",
+                        msg!("Spiral: click the centre, then where the stair starts; it winds about the centre"),
+                    ),
+                    (
+                        StairShape::Risers,
+                        Icon::Stair,
+                        "By Risers",
+                        msg!("By Risers: draw the stair by hand, two clicks a riser, the left end first; Enter makes it"),
+                    ),
+                ];
+                for (shape, icon, label, tip) in shapes {
+                    if big_button(ui, icon, label, self.stair_shape == shape, tip).clicked() && self.stair_shape != shape {
+                        // A line goes on from straight to arc; a spiral or a stair by risers starts again.
+                        let line = |s: StairShape| matches!(s, StairShape::Straight | StairShape::Arc);
+                        if !(line(shape) && line(self.stair_shape)) {
+                            self.tool = Tool::Stair(Vec::new());
+                            self.stair_kinds.clear();
+                        }
+                        self.stair_shape = shape;
+                    }
+                }
+            });
+            if matches!(self.stair_shape, StairShape::Straight | StairShape::Arc) {
+                panel(ui, msg!("Segment"), |ui| {
+                    let tip = msg!("Steps: the next stretch drawn is a flight of steps");
+                    if big_button(ui, Icon::Stair, "Steps", !self.stair_landing, tip).clicked() {
+                        self.stair_landing = false;
+                    }
+                    let tip = msg!("Landing: the next stretch drawn is a landing, as long as it is drawn");
+                    if big_button(ui, Icon::Landing, "Landing", self.stair_landing, tip).clicked() {
+                        self.stair_landing = true;
+                    }
+                });
+            }
+        }
         // Stairs selected: which way they climb, and what their building code says of them.
         let stairs = self.selected_stairs();
         if !stairs.is_empty() && self.tool == Tool::Modify {
@@ -4828,36 +4887,17 @@ impl BimApp {
                     let hint = self.session.model.units.name();
                     ui.add(TextEdit::singleline(&mut self.stair_width).desired_width(64.0).hint_text(hint)).labelled_by(l.id);
                     let l = ui.label(t("Winders:"));
-                    let tip = t("How many winder treads a turn is made of; 0 turns on a landing");
+                    let tip = t("How many winder treads go round a corner where two flights meet with no landing drawn; 0 makes the corner a landing");
                     ui.add(egui::DragValue::new(&mut self.stair_winders).range(0..=30)).labelled_by(l.id).on_hover_text(tip);
-                    if self.stair_winders > 0 {
-                        let l = ui.label(t("Balance:"));
-                        let tip = t("How many treads of the flight on each side the winders run into, so that none comes to a point; 0 fans them round the corner");
-                        ui.add(egui::DragValue::new(&mut self.stair_balance).range(0..=30)).labelled_by(l.id).on_hover_text(tip);
-                    }
                     if self.stair_winders > 0 && !self.session.model.stair_rules().winders {
                         let code = t(&self.session.model.building_code().name).to_string();
                         ui.label(RichText::new(tf("Against {}", &[&code])).color(codes::OUTSIDE)).on_hover_text(t(
                             "This building code does not allow winders. The stair is still built, and marked outside the rules.",
                         ));
                     }
-                    if ui
-                        .checkbox(&mut self.stair_draw, t("Sketch"))
-                        .on_hover_text(t("Draw the stair by hand: click the two ends of each riser, the left end first, going up; Enter makes it"))
-                        .changed()
-                    {
-                        self.tool = Tool::Stair(Vec::new());
-                    }
-                    ui.checkbox(&mut self.stair_spiral, t("Spiral"))
-                        .on_hover_text(t("A spiral stair: click its centre, then the middle of its first riser"));
-                    if self.stair_spiral {
+                    if self.stair_shape == StairShape::Spiral {
                         ui.checkbox(&mut self.stair_clockwise, t("Clockwise"));
                     }
-                    ui.checkbox(&mut self.stair_free, t("Any Angle"))
-                        .on_hover_text(t("The next run turns by the angle clicked, not only square or back; near square, it is square"));
-                    ui.checkbox(&mut self.stair_chain, t("Chain")).on_hover_text(t(
-                        "Run after run: each click after the first run turns the next run and ends it; a run clicked to its top takes the risers left",
-                    ));
                     ui.checkbox(&mut self.railings, t("Railings"));
                 }
                 Tool::Ramp(_) => {
@@ -5143,15 +5183,28 @@ impl BimApp {
             Tool::Column => msg!("Click to place a column, as high as the Options Bar says."),
             Tool::Run(..) | Tool::Stand(_) => structure::hint(&self.tool).unwrap_or_default(),
             Tool::Component | Tool::Fixture(_) => msg!("Click where the component goes; Space turns it a quarter turn."),
-            Tool::Stair(pts) if self.stair_draw && pts.len() % 2 == 0 => {
+            Tool::Stair(pts) if self.stair_shape == StairShape::Risers && pts.len() % 2 == 0 => {
                 msg!("Click the left end of the next riser, going up. Enter makes the stair of the risers drawn; Esc cancels.")
             }
-            Tool::Stair(_) if self.stair_draw => msg!("Click the right end of this riser."),
-            Tool::Stair(pts) if pts.is_empty() && self.stair_spiral => msg!("Click the centre the spiral stair winds about."),
-            Tool::Stair(_) if self.stair_spiral => msg!("Click where it starts: the middle of its first riser. Esc cancels."),
-            Tool::Stair(pts) if pts.is_empty() => msg!("Click where the stair starts: the middle of its first riser."),
-            Tool::Stair(pts) if pts.len() == 1 => {
-                msg!("Click where its run ends: past its last riser, one run to the level above; short of it, a landing. Esc cancels.")
+            Tool::Stair(_) if self.stair_shape == StairShape::Risers => msg!("Click the right end of this riser."),
+            Tool::Stair(pts) if pts.is_empty() && self.stair_shape == StairShape::Spiral => {
+                msg!("Click the centre the spiral stair winds about.")
+            }
+            Tool::Stair(_) if self.stair_shape == StairShape::Spiral => {
+                msg!("Click where it starts: the middle of its first riser. Esc cancels.")
+            }
+            Tool::Stair(pts) if pts.is_empty() => {
+                msg!("Click where the stair starts. It is drawn along the line you click, a flight or a landing at a time.")
+            }
+            Tool::Stair(_) if self.stair_landing => {
+                msg!(
+                    "Click where this landing ends. Steps, in the ribbon, goes on with a flight; a double click or Enter finishes the stair."
+                )
+            }
+            Tool::Stair(_) => {
+                msg!(
+                    "Click where this flight ends: past the top, the stair is done. Landing, in the ribbon, draws a landing next; a double click or Enter finishes."
+                )
             }
             Tool::Ramp(pts) if pts.is_empty() => msg!("Click where the ramp starts: the middle of its foot."),
             Tool::Ramp(pts) if pts.len() == 1 => {
@@ -5159,12 +5212,7 @@ impl BimApp {
                     "Click where its run ends: past its top, one run, as high as the Options Bar says; short of it, a landing. Esc cancels."
                 )
             }
-            Tool::Stair(_) if self.stair_chain => {
-                msg!(
-                    "Click where the next run ends: which way it turns from the landing, and how far it goes. Past its top, it takes the risers left."
-                )
-            }
-            Tool::Stair(_) | Tool::Ramp(_) => {
+            Tool::Ramp(_) => {
                 msg!("Click which way the next run goes from the landing: on, left, right, or back beside it.")
             }
             Tool::Railing(pts) if pts.is_empty() => msg!("Click a stair or a ramp for a railing down each side, or the start of a path."),

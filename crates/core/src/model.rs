@@ -1660,6 +1660,11 @@ pub struct Stair {
     /// A spiral: the stair winds about a centre, every tread a winder, and has no landings.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub spiral: Option<Spiral>,
+    /// A stair drawn along a line: from `start`, segment after segment, each a flight of steps or a landing, straight
+    /// or an arc. Such a stair has no `landings` of the other kind: its landings are the segments drawn as them, and
+    /// the corners where its flights meet.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub path: Vec<PathSeg>,
     /// A stair drawn by hand: each riser a line of its own, from its first riser up, and the tread after it the ground
     /// between it and the next (or an outline of its own). Such a stair has no landings: a landing is a deep tread.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -1710,6 +1715,21 @@ pub struct Spiral {
     pub radius: f64,
     #[serde(default, skip_serializing_if = "is_zero")]
     pub sweep: f64,
+}
+
+/// A segment of the line a stair is drawn along: on to the point `to`; a flight of steps, or with `landing` a landing;
+/// straight, or with `arc` an arc turning through that many degrees (to the left, or with a minus to the right). Where
+/// it is a flight met at a corner by the flight before it, `winders` treads go round that corner in place of a landing.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PathSeg {
+    pub to: P2,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub landing: bool,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub arc: f64,
+    #[serde(default, skip_serializing_if = "no_winders")]
+    pub winders: u32,
 }
 
 /// A step of a stair drawn by hand: its `riser`, a line from its left end to its right end looking up the stair, and
@@ -7428,6 +7448,39 @@ impl Model {
                     }
                     if st.multistorey {
                         return Err(format!("{who}: a spiral stair is not multistorey yet; give each storey its own"));
+                    }
+                }
+                if !st.path.is_empty() {
+                    if st.path.len() > 200 {
+                        return Err(format!("{who}: a stair's path has 200 segments at most, not {}", st.path.len()));
+                    }
+                    if !st.landings.is_empty() || st.spiral.is_some() || !st.sketch.is_empty() {
+                        return Err(format!(
+                            "{who}: a stair drawn along a `path` has no `landings`, `spiral` or `sketch`: its landings are segments of the path"
+                        ));
+                    }
+                    if st.path.iter().all(|s| s.landing) {
+                        return Err(format!("{who}: a stair's path has a flight of steps in it, not landings alone"));
+                    }
+                    let mut from = st.start;
+                    for (i, seg) in st.path.iter().enumerate() {
+                        point(&who, seg.to)?;
+                        coord(&format!("{who} path arc"), seg.arc)?;
+                        if seg.to.dist(from) < 1.0 {
+                            return Err(format!("{who}: segment {} of its path goes nowhere; each goes on to another point", i + 1));
+                        }
+                        if seg.arc.abs() > 340.0 || (seg.arc != 0.0 && seg.arc.abs() < 1.0) {
+                            return Err(format!(
+                                "{who}: an arc of its path turns through 1 to 340 degrees, or 0 for a straight segment, not {}",
+                                seg.arc
+                            ));
+                        }
+                        if seg.winders > 30 || (seg.winders > 0 && seg.landing) {
+                            return Err(format!(
+                                "{who}: `winders` (30 at most) go round the corner where a flight meets the flight before it, not on a landing"
+                            ));
+                        }
+                        from = seg.to;
                     }
                 }
                 if !st.sketch.is_empty() {

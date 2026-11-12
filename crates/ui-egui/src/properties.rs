@@ -1845,6 +1845,10 @@ impl BimApp {
     fn stair_turns(&mut self, ui: &mut Ui, model: &Model, id: Id) {
         use bimcraft_core::model::Landing;
         let Some(Element::Stair(st)) = model.elements.get(id) else { return };
+        // A stair drawn along a path, by hand or as a spiral has its landings in what was drawn.
+        if !st.path.is_empty() || !st.sketch.is_empty() || st.spiral.is_some() {
+            return;
+        }
         let group = msg!("Landings and Turns");
         let open = !self.collapsed.contains(group);
         if group_header(ui, t(group), open) && !self.collapsed.remove(group) {
@@ -1992,13 +1996,18 @@ impl BimApp {
                     changed = true;
                 }
             }
-            if wide_button(ui, t("By the Code"))
-                .on_hover_text(t("The landings the building code says are due, straight on, in place of these"))
+            // The landings the building code still asks of it, with the ones it has kept where they are.
+            if wide_button(ui, t("Add Landings Due"))
+                .on_hover_text(t(
+                    "Adds the landings the building code asks where a flight is too long; the landings it has stay as they are",
+                ))
                 .clicked()
             {
-                let length = rules.landing_length_for(st.width, each, st.tread);
-                landings = rules.landings(n, each).into_iter().map(|l| Landing { length, ..l }).collect();
-                changed = true;
+                let locks = bimcraft_core::codes::Locks { risers: true, tread: true, width: true, landings: false };
+                match bimcraft_core::codes::solve(model, st, locks).into_iter().find(|p| p.landings.len() > landings.len()) {
+                    Some(p) => (landings, changed) = (p.landings, true),
+                    None => failed = Some(t("No landing is due: every flight is within what the building code allows.").to_string()),
+                }
             }
             ui.end_row();
         });

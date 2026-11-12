@@ -1702,6 +1702,15 @@ impl BimApp {
         if response.double_clicked() && !dragged && !writing && self.finishable() {
             self.finish_open_shape();
         }
+        // And a stair drawn along a line: the stair of what is drawn so far.
+        if response.double_clicked()
+            && !dragged
+            && !writing
+            && matches!(self.stair_shape, crate::StairShape::Straight | crate::StairShape::Arc)
+            && matches!(&self.tool, Tool::Stair(pts) if pts.len() >= 2)
+        {
+            self.finish_stair_path(level);
+        }
 
         let p = ui.painter_at(rect);
         p.rect_filled(rect, 0.0, color(render::PAPER));
@@ -2352,9 +2361,16 @@ impl BimApp {
                 if pts.last().is_some_and(|l| l.dist(p) <= TOL) {
                     return;
                 }
+                // What the stretch to this click is: steps or a landing, straight or an arc.
+                if !ramp {
+                    self.stair_kinds.truncate(pts.len().saturating_sub(1));
+                    if !pts.is_empty() {
+                        self.stair_kinds.push((self.stair_landing, self.stair_shape == crate::StairShape::Arc));
+                    }
+                }
                 pts.push(p);
                 // Drawn by hand, each click is an end of a riser: Enter makes the stair.
-                if !ramp && self.stair_draw {
+                if !ramp && self.stair_shape == crate::StairShape::Risers {
                     self.tool = Tool::Stair(pts);
                     return;
                 }
@@ -2615,13 +2631,10 @@ impl BimApp {
         let (u, run) = ((end - start).unit(), start.dist(end));
         let angle = (u.1.atan2(u.0).to_degrees() * 1e9).round() / 1e9;
         // Ahead of the landing, beside it, or back behind it, to its left or right.
-        let free = self.stair_free && !ramp;
         let turn = pts.get(2).map_or(0.0, |&p| {
             let d = p - end;
             let a = d.dot(u.perp()).atan2(d.dot(u)).to_degrees();
-            if free {
-                turn_toward(a)
-            } else if a.abs() < 45.0 {
+            if a.abs() < 45.0 {
                 0.0
             } else if a.abs() < 135.0 {
                 90f64.copysign(a)
@@ -2674,12 +2687,13 @@ impl BimApp {
                 offset: m.units.parse(&self.stair_offset).unwrap_or(0.0),
                 spiral: None,
                 sketch: Vec::new(),
+                path: Vec::new(),
                 multistorey: false,
             };
             // Multistorey where it climbs past a level on the way.
             st.multistorey = self.stair_multistorey && m.storeys(&Stair { multistorey: true, ..st.clone() }).len() > 1;
             // Drawn by hand: each two points a riser, its left end and its right, going up.
-            if self.stair_draw {
+            if self.stair_shape == crate::StairShape::Risers {
                 st.sketch = (pts.as_chunks::<2>().0.iter())
                     .filter(|[a, b]| a.dist(*b) >= 1.0)
                     .map(|[a, b]| bimcraft_core::model::SketchStep { riser: [*a, *b], outline: Vec::new() })
@@ -2692,7 +2706,7 @@ impl BimApp {
             }
             // A spiral: the first click is its centre, the second the middle of its first riser; it winds counter-clockwise
             // from there, or clockwise as the Options Bar says, with treads of the code's depth on its middle line.
-            if self.stair_spiral {
+            if self.stair_shape == crate::StairShape::Spiral {
                 let (out, radius) = ((end - start).unit(), start.dist(end));
                 let way = if self.stair_clockwise { out.perp() * -1.0 } else { out.perp() };
                 st.start = end;
@@ -2707,108 +2721,62 @@ impl BimApp {
                 st.spiral = Some(bimcraft_core::model::Spiral { radius: if self.stair_clockwise { -radius } else { radius }, sweep: 0.0 });
                 return Ok((Element::Stair(st), true));
             }
-            let (n, each, _) = m.flight(&st);
-            // A landing as long as the building code asks.
-            let length = rules.landing_length_for(width, each, rules.going);
-            if self.stair_chain {
-                return Ok(self.stair_chain(m, st, pts, length));
-            }
-            // As many risers as the run clicked holds, a tread between each two, and no more than the project's building
-            // code lets a flight hold before a landing is due.
-            let first = ((run / rules.going).round() + 1.0).max(2.0).min(f64::from(rules.flight_risers(each)));
-            // A turn winds when the Options Bar asks for winders, balanced into the flights as it says, where there are
-            // risers enough: else fanned round the corner, else a landing.
-            let winders = if turn == 0.0 { 0 } else { self.stair_winders.min(30) };
-            let balance = if winders == 0 { 0 } else { self.stair_balance.min(30) };
-            let fits = |winders: u32, balance: u32| {
-                let into = f64::from(balance);
-                first - into >= 2.0 && f64::from(n) - first - f64::from(winders.saturating_sub(1)) - into >= 2.0
-            };
-            if winders > 0 && fits(winders, balance) {
-                st.landings.push(Landing { at: first, turn, winders, balance, ..Landing::default() });
-            } else if winders > 0 && fits(winders, 0) {
-                st.landings.push(Landing { at: first, turn, winders, ..Landing::default() });
-            } else if f64::from(n) - first >= 2.0 {
-                st.landings.push(Landing { at: first, turn, length, ..Landing::default() });
-            }
-            // The run after the turn takes the rest of the risers, with the landings the building code says are due on the
-            // way, straight on.
-            if let Some(turned) = st.landings.last().copied() {
-                let from = turned.at + f64::from(turned.wound()) + f64::from(turned.balance);
-                let (rest, most) = (f64::from(n) - from, f64::from(rules.flight_risers(each)));
-                let flights = (rest / most).ceil().clamp(1.0, 50.0);
-                for i in 1..(flights as u32) {
-                    let at = from + (rest * f64::from(i) / flights).round();
-                    let last = st.landings.last().map_or(0.0, |l| l.at);
-                    if at >= last + 2.0 && at <= f64::from(n) - 2.0 {
-                        st.landings.push(Landing { at, length, ..Landing::default() });
-                    }
+            // Along the line clicked: each stretch a flight or a landing, straight or an arc that leaves the one before it
+            // smoothly. Winders, where the Options Bar asks, round a corner where a flight meets the flight before it.
+            let mut way: Option<P2> = None;
+            for (i, ends) in pts.windows(2).enumerate() {
+                let &[a, b] = ends else { continue };
+                if a.dist(b) < 1.0 {
+                    continue;
                 }
+                let (landing, curved) =
+                    self.stair_kinds.get(i).copied().unwrap_or((self.stair_landing, self.stair_shape == crate::StairShape::Arc));
+                let chord = (b - a).unit();
+                // An arc turns through twice the angle from the way it leaves to its chord.
+                let arc = match way {
+                    Some(from) if curved => {
+                        let turn = 2.0 * (from.0 * chord.1 - from.1 * chord.0).atan2(from.dot(chord)).to_degrees();
+                        if (1.0..=340.0).contains(&turn.abs()) { (turn * 1000.0).round() / 1000.0 } else { 0.0 }
+                    }
+                    _ => 0.0,
+                };
+                let after_flight = st.path.last().is_some_and(|s| !s.landing);
+                let winders = if !landing && after_flight && arc == 0.0 { self.stair_winders.min(30) } else { 0 };
+                st.path.push(bimcraft_core::model::PathSeg { to: b, landing, arc, winders });
+                // The way it goes on from there: along the chord, or round the arc.
+                let (s, c) = arc.to_radians().sin_cos();
+                way = Some(match way {
+                    Some(from) if arc != 0.0 => P2(from.0 * c - from.1 * s, from.0 * s + from.1 * c),
+                    _ => chord,
+                });
             }
-            let done = done(&st.landings);
+            let Some(first) = st.path.first() else { return Err(t("click where its first stretch ends").into()) };
+            let along = first.to - st.start;
+            st.angle = (along.1.atan2(along.0).to_degrees() * 1e9).round() / 1e9;
+            // Done when its flights, as drawn, hold all its risers.
+            let done = st.path.last().is_some_and(|s| !s.landing) && bimcraft_core::stairs::path_full(m, &st);
             Ok((Element::Stair(st), done))
         }
     }
 
-    /// The Stair tool with Chain on: run after run. The second click ends the first run; each click after it says which
-    /// way the next run turns from the landing and where that run ends, and the stair is done when a run is clicked to
-    /// its top (or past it), which takes the risers left. Each run is as long as its click and no longer than the
-    /// building code lets a flight be.
-    fn stair_chain(&self, m: &Model, mut st: Stair, pts: &[P2], length: f64) -> (Element, bool) {
-        let rules = m.stair_rules();
-        let (n, each, _) = m.flight(&st);
-        let (n, most) = (f64::from(n), f64::from(rules.flight_risers(each)));
-        let risers = |run: f64| ((run / st.tread.max(1.0)).round() + 1.0).clamp(2.0, most.max(2.0));
-        let (mut from, mut want) = (0.0, pts.first().zip(pts.get(1)).map_or(2.0, |(a, b)| risers(a.dist(*b))));
-        let mut next = 2;
-        loop {
-            // The run takes what is left when a landing after it would leave the next one a riser.
-            if n - from - want < 2.0 {
-                return (Element::Stair(st), true);
-            }
-            let at = from + want;
-            st.landings.push(Landing { at, length, ..Landing::default() });
-            let Some(&p) = pts.get(next) else { return (Element::Stair(st), false) };
-            // Which way from the end of the run as it is laid out.
-            let l = bimcraft_core::stairs::stair(m, &st);
-            let Some(run) = l.runs.len().checked_sub(2).and_then(|i| l.runs.get(i)) else { return (Element::Stair(st), true) };
-            let d = p - run.end();
-            let a = d.dot(run.u.perp()).atan2(d.dot(run.u)).to_degrees();
-            let turn = if self.stair_free {
-                turn_toward(a)
-            } else if a.abs() < 45.0 {
-                0.0
-            } else if a.abs() < 135.0 {
-                90f64.copysign(a)
-            } else {
-                180f64.copysign(a)
-            };
-            // On winders, balanced as the Options Bar says, where the risers on both sides allow.
-            let winders = if turn == 0.0 { 0 } else { self.stair_winders.min(30) };
-            let balance = if winders == 0 { 0 } else { self.stair_balance.min(30) };
-            let fits = |winders: u32, balance: u32| {
-                let into = f64::from(balance);
-                want - into >= 2.0 && n - at - f64::from(winders.saturating_sub(1)) - into >= 2.0
-            };
-            let turned = if winders > 0 && fits(winders, balance) {
-                Landing { at, turn, winders, balance, ..Landing::default() }
-            } else if winders > 0 && fits(winders, 0) {
-                Landing { at, turn, winders, ..Landing::default() }
-            } else {
-                Landing { at, turn, length, ..Landing::default() }
-            };
-            if let Some(last) = st.landings.last_mut() {
-                *last = turned;
-            }
-            // And how long the run after it is: to the click, along the way it goes.
-            from = at + f64::from(turned.wound()) + f64::from(turned.balance);
-            let l = bimcraft_core::stairs::stair(m, &st);
-            want = l.runs.last().map_or(2.0, |run| risers((p - run.start).dot(run.u)));
-            next += 1;
-            if next > 60 {
-                return (Element::Stair(st), true);
-            }
+    /// A double click or Enter while the Stair tool draws along a line: the stair of what is drawn, its last flight taking
+    /// the risers left.
+    pub(crate) fn finish_stair_path(&mut self, level: Id) {
+        let Tool::Stair(pts) = &mut self.tool else { return };
+        if pts.len() < 2 {
+            return;
         }
+        let pts = std::mem::take(pts);
+        let m = std::sync::Arc::clone(&self.session.model);
+        match self.flight(&m, level, &pts, false) {
+            Ok((e, _)) => {
+                let mut params = serde_json::to_value(&e).unwrap_or_default();
+                params["railings"] = json!(self.railings);
+                self.run("stair", params);
+            }
+            Err(e) => self.status = Status { text: e, error: true },
+        }
+        self.stair_kinds.clear();
     }
 
     /// The Stair tool's Enter while it draws by hand: the stair of the risers clicked.
@@ -4421,20 +4389,4 @@ impl BimApp {
             }
         }
     }
-}
-
-/// The turn a click `a` degrees off the run makes with Any Angle on: straight on, square or back when it is near one of
-/// them, else the angle itself in whole degrees, as far as a landing can turn (135).
-fn turn_toward(a: f64) -> f64 {
-    let size = a.abs();
-    let turn = if size < 10.0 {
-        0.0
-    } else if (size - 90.0).abs() < 10.0 {
-        90.0
-    } else if size > 157.0 {
-        180.0
-    } else {
-        size.round().clamp(5.0, 135.0)
-    };
-    if turn == 0.0 { 0.0 } else { turn.copysign(a) }
 }
