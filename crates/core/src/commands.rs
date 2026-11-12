@@ -2006,13 +2006,13 @@ other_files(
         "{name?, category?, categories?, fields?, filters?, sort?, grouped?, path?} a schedule view, as Revit's View > Schedules makes one, \
          and its table: columns, rows, the `elements` each row lists, and totals (and a .csv file with a path, or an .xlsx workbook for a path ending .xlsx). A new one needs `name` and `category`: rooms, \
          doors, windows, walls, floors, ceilings, roofs, columns, structural columns, footings, beams, strip footings, components, \
-         stairs, ramps, railings or levels, or `multicategory`, as Revit's Multi-Category Schedule: a row for each element of \
-         `categories` ([\"walls\", \"doors\"…]; none, every built one but rooms, levels and masses), with the fields they share \
+         stairs, ramps, railings, levels or sheets, or `multicategory`, as Revit's Multi-Category Schedule: a row for each element of \
+         `categories` ([\"walls\", \"doors\"…]; none, every built one but rooms, levels, masses and sheets), with the fields they share \
          (Category, Family, Type, Level, Count, Width, Height, Length, Thickness, Area: a wall's length by its height, a door's \
          width by its height; Material: its type's structure layer's, a run's type's, a family's), each empty where its \
          category has none; `category` \
          alone reads its own (Room Schedule, Door Schedule, Window Schedule, Wall Schedule, Floor Schedule, Level Schedule, \
-         each the project's once changed). `fields`: its columns, in order, each a field's name (`available` lists them: its \
+         Sheet List, each the project's once changed). `fields`: its columns, in order, each a field's name (`available` lists them: its \
          category's own, Count, project parameters, a component's family's parameters) or {name, formula?, kind?: \
          number|length|area|yesno, heading?, total?}; with a formula, a calculated field worked out from the row's other \
          fields as a family's formulas are (lengths in mm, areas in m²; `Area * 120`); `total` sums it in a totals row. \
