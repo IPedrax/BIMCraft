@@ -86,11 +86,11 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// (`operation`: `sectional` or `roller`); a project may hold property lines (the `propertyline` category, a row of
 /// `graphics::MODEL` that views' graphics and Object Styles may name); it may pin elements where they are (`pinned`, their
 /// GUIDs); an elevation may keep the line it looks at (`reference`) and stand its mark apart from its line (`mark`); a
-/// project's language may be Polish (`pl`); a distribution board may hold its electrical data (a component's `panel`: its
+/// project's language may be Polish (`pl`) or Vietnamese (`vi`); a distribution board may hold its electrical data (a component's `panel`: its
 /// distribution system, mains, slots and the board that supplies it); and a project may hold circuits (the `circuit`
 /// category, each on its board's slots from its `number`), panel schedules (`panelschedule`) and demand factors by
 /// classification (`demand_factors`). Nothing in a file of 17 changes, but a build that reads up to 17 would answer such a
-/// connector, dimension, operation, property line, circuit or panel schedule, or Polish, with a serde error ("unknown
+/// connector, dimension, operation, property line, circuit or panel schedule, or Polish or Vietnamese, with a serde error ("unknown
 /// variant", "missing field `system`") and graphics or a style of `propertyline` as a category it doesn't have, would leave
 /// the title blocks and a viewport's `follow_scale` out as fields it doesn't know, drawing every sheet with the built-in
 /// title box, and would silently drop `join: false` and join the element again, and the pins, letting what was pinned move,
@@ -3808,14 +3808,14 @@ impl Model {
         // 17 to 18 (pipe, data and earthing connectors, a connector's place; title blocks of the project's own, with a
         // drawing area and a border of their own, their fields' values, and sheets with none; viewports that keep a scale
         // of their own; walls and runs that refuse to join; a dimension to the line across a column; sectional and roller
-        // doors; property lines; pinned elements; an elevation's reference and mark; Polish as a project's language; a
+        // doors; property lines; pinned elements; an elevation's reference and mark; Polish or Vietnamese as a project's language; a
         // distribution board's `panel`; circuits, panel schedules and `demand_factors`) has none either: a file of 17's
         // connectors are a power or a switch one, each with its system, which 18 reads as they were; a file of 17 holds no
         // title blocks, its sheets keeping the built-in one, no `follow_scale`, so its viewports follow their views' scales
         // from then on, as one placed without a scale does, no `join`, which reads as joining, as it always did, none of
         // its dimensions measures `across`, none of its operations is a gate's, it holds no property line and names no
         // `propertyline` in its graphics or styles, nothing in it is pinned, its elevations have no reference and their
-        // marks on their lines, its language isn't Polish, none of its components has a `panel`, and it has no circuits,
+        // marks on their lines, its language isn't Polish or Vietnamese, none of its components has a `panel`, and it has no circuits,
         // panel schedules or `demand_factors`.
         // The Family Editor's part of 18, and what places its families, takes
         // one step, in this order (it leaves the rest of 18 alone: title blocks, `join` and `across` aren't a family's, and a
