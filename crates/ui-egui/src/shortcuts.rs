@@ -841,12 +841,6 @@ pub fn resolve_action(desc: &str) -> Option<ActionId> {
     registry().resolve(desc)
 }
 
-/// Whether `k` is a two-character sequence the old dialog would have taken.
-#[cfg(test)]
-pub(crate) fn is_key(k: &str) -> bool {
-    k.len() == 2 && k.chars().all(|c| c.is_ascii_alphanumeric())
-}
-
 /// The Cyrillic letters the Russian layout puts on the US punctuation keys and letters, keyed by
 /// the letter: `в` is the physical `D`, `а` the physical `F`, and so on.
 const CYRILLIC: &[(char, Key)] = &[
@@ -1149,12 +1143,6 @@ pub fn system_warning(c: KeyChord) -> Option<&'static str> {
         return Some("Some function keys are taken by the system or the window manager");
     }
     None
-}
-
-/// Whether a binding names a letter or digit alone, which sequences need to keep.
-#[cfg(test)]
-fn bare_letter(b: Binding) -> bool {
-    matches!(b, Binding::Chord(c) if modifier_count(c) == 0 && is_sequence_key(c.key))
 }
 
 /// A profile's bindings, as action ids to canonical strings.
