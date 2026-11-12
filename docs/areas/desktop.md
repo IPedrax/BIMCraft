@@ -531,17 +531,22 @@ popup open, so a popup of a row's own closes the panel's list that holds the row
 submenu of the row; a request to open them at once (UN) opens the panel's list when the tool has no button, and waits for a tab's second
 frame, since its first lays out every tool (`a_tool_with_choices_of_its_own_opens_them_from_a_panels_list`).
 
-Keyboard Shortcuts. Manage > Shortcuts (or KS) opens `shortcuts_window` (`shortcuts.rs`): every shortcut by what it does, from `shortcuts()`
-(`SHORTCUTS`, the fixtures' letters, the commands' aliases), with Add, Edit and Load File. A shortcut is two letters or digits, all that `typed` holds,
-and a custom one is tried before the defaults. Each name in `ACTIONS` is a tool or command the window runs (`execute_shortcut_action`), and a key never
-carries Revit's name for a tool BIMCraft lacks (Sun Settings, Detail and Model Line, Split Face, Brace, Beam System, Reference Plane, the duct tools): it waits
-for the tool. Load File reads JSON (`{"WA": "Wall"}`), Revit's `<Shortcut CommandName=… Shortcuts="WA#W1">` lines, or `KEY - Name` lines, up to 64 KiB;
-a description is an action only by its whole name in one of the interface's languages (`resolve_action`), and a key that is not two characters, names no action or
-is another action's is skipped and counted in the message. Custom shortcuts are kept in `settings.json` (`shortcuts`: key to the action's English name, as `Settings::shortcuts`), written when one is added, edited or loaded and
-read into `BimApp::custom_shortcuts` at startup (`use_settings`), so they last past the window; Restore Defaults is kept too, as an empty object, and New and Open keep them.
-`Settings::from_json` keeps only what the dialog could have made (a key of two letters or digits, in upper case whatever its case in the file, and a name in `ACTIONS`),
-at most `MAX_SHORTCUTS`; a value that isn't an object leaves what the window had. Tests: `tests/shortcuts_kept.rs`. Match Properties (MA) is the `match_properties`
+Keyboard Shortcuts. Manage > Shortcuts (or KS, or Ctrl+Shift+K) opens `shortcuts_window` (`shortcuts.rs`): every action in the registry
+(`ui_actions` plus `engine::commands()`, and the old names kept as legacy actions), with the bindings it has. A binding is a chord
+(`Ctrl+D`, `Ctrl+Shift+D`, `F8`) or a two-key sequence (`WA`, `MV`); an action may have several, and the dialog's chips add, edit and remove them.
+Chords and sequences are read from `Event::Key`'s `physical_key`, never from `Event::Text`, so `Ctrl+D` and `Ctrl+В` are the same key and
+`WA` works on a Russian layout; modifiers match exactly (`matches_exact`), so `Ctrl+Shift+D` never runs `Ctrl+D`. The registry's actions have stable ids
+(`cmd.move`, `ui.file.save_as`, `legacy.…`) and are saved in `settings.json` as `Settings::shortcuts` (`version`, `profile`, `bindings`), a full effective
+set, so a default the user deleted does not creep back. Controls: All, Assigned, Without keys and Changed; category and profile; Import (`bks`, `txt`, `json`, Revit XML),
+Export (`txt`/`json`), Help (Markdown) and Reset All. The text format is `action = binding`, one line per binding, `#` comments; the same parser reads the old
+`{"WA": "Wall"}` JSON, `<Shortcut … Shortcuts="WA#W1"/>` and `WA - Wall` / `WA = Wall` lines. Import has a preview with line-numbered errors and conflicts,
+replace and merge modes, and writes `shortcuts.bak` beside the settings before applying; Markdown is a read-only cheat sheet and is refused on import.
+The BIMCraft profile keeps the Revit-style sequences and adds chords; Home is `Ctrl+D`, `Ctrl+U` is free, and the guides are
+`F8` only. A text field keeps its letters but allows Save, Save As, Open, New, Find and Settings; dialogs and menus keep all global bindings away.
+`BimApp::keys` checks bindings before the tool's contextual keys, and a binding that finds nothing to run reports it in the status bar rather than falling through.
+Tests: `tests/shortcuts_kept.rs` and the unit tests in `shortcuts.rs`. Match Properties (MA) is the `match_properties`
 command; with one element selected the window remembers its type for the next one drawn, with several it gives the others of the first's category its type.
+The user-facing format, the ЙЦУКЕН table and the migration are described in [`shortcuts.md`](shortcuts.md).
 
 Annotation dialogs and draw tools. Manage > Annotation Settings lists Line Weights, Line Styles, Line Patterns (Line Styles on its
 Patterns tab) and Fill Patterns. Fill Patterns (`fillpatterns.rs`, also Edit Type of a filled region) and Line Styles

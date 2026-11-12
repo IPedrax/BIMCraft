@@ -24,6 +24,8 @@ and MCP server, and milestone 2, the egui desktop app, are done. What works and 
   adds a step to `Model::migrate`.
 - **Validate in one place.** Commands build elements; `Model::check` validates the whole model after each command and the
   engine rolls back when it fails. New rules go there, with an error that says what to fix.
+- **Documentation is English.** Files under `docs/`, `README.md`, and other `.md` documentation are written in English; keep
+  Russian only where the user explicitly asks for it.
 - **Clean-room.** Never copy Autodesk content: no families (`.rfa`), templates, icons, help text, or anything from inside
   `.rvt` files; a reader may read a user's file, it never bundles or extracts assets for the project. Formats come from
   public specifications (IFC4 is ISO 16739). A format with no public specification (Revit's `.rvt` and `.rfa`) may be read
