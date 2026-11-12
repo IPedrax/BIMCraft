@@ -344,13 +344,36 @@ impl RefLine {
     }
 }
 
-impl Family {
-    /// The axes of the plane `host` names: a plane of its own, or a face of one of its reference lines.
+/// A family's reference planes and lines, borrowed: what the plane a [`PlaneRef`] names is worked out from, apart from the
+/// family (the Family Editor keeps them beside the adaptive definition it edits). The datums are in every family, so planes
+/// that list none still know them: `Planes::default()` has the three datums and nothing else.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Planes<'a> {
+    pub planes: &'a [RefPlane],
+    pub lines: &'a [RefLine],
+}
+
+/// What the Work Plane and Placement Plane lists call a datum, as Revit's do.
+fn datum_label(guid: Guid) -> Option<&'static str> {
+    match guid {
+        REF_LEVEL => Some("Level : Ref. Level"),
+        CENTER_FRONT_BACK => Some("Reference Plane : Center (Front/Back)"),
+        CENTER_LEFT_RIGHT => Some("Reference Plane : Center (Left/Right)"),
+        _ => None,
+    }
+}
+
+impl<'a> Planes<'a> {
+    /// The axes of the plane `host` names: a plane of the family's (a datum whether listed or not), or a face of one of its
+    /// reference lines.
     pub fn frame(&self, host: &PlaneRef) -> Result<Frame, String> {
         match *host {
-            PlaneRef::Plane(g) => {
-                self.planes.iter().find(|p| p.guid == g).map(RefPlane::frame).ok_or_else(|| format!("{host} isn't one of its planes"))
-            }
+            PlaneRef::Plane(g) => match self.planes.iter().find(|p| p.guid == g) {
+                Some(p) => Ok(p.frame()),
+                None => {
+                    datums().into_iter().find(|d| d.guid == g).map(|d| d.frame()).ok_or_else(|| format!("{host} isn't one of its planes"))
+                }
+            },
             PlaneRef::Line(g, face) => {
                 let i = self.lines.iter().position(|l| l.guid == g).ok_or_else(|| format!("{host}: there's no such line of it"))?;
                 self.line_frame(i, MAX_LINES).map(|(line, on)| line.frame(face, &on))
@@ -359,7 +382,7 @@ impl Family {
     }
 
     /// Line `i` and the axes of the plane it is drawn on, followed through the lines it is drawn on at most `depth` deep.
-    fn line_frame(&self, i: usize, depth: usize) -> Result<(&RefLine, Frame), String> {
+    fn line_frame(&self, i: usize, depth: usize) -> Result<(&'a RefLine, Frame), String> {
         let line = self.lines.get(i).ok_or("no such line")?;
         let on = match line.host {
             PlaneRef::Line(g, face) => {
@@ -379,6 +402,45 @@ impl Family {
         Ok((line, on))
     }
 
+    /// The planes something may be drawn on, as Revit's Work Plane and Placement Plane list them: the datums first, named as
+    /// Revit names them (`Level : Ref. Level`, `Reference Plane : Center (Front/Back)`, …), then each named plane of the
+    /// family's own (`Reference Plane : name`; an unnamed one is not listed, as in Revit), then each reference line's four
+    /// planes (`Reference Line 1 : Horizontal`). English: a front end translates them.
+    pub fn listed(&self) -> Vec<(PlaneRef, String)> {
+        let mut out: Vec<(PlaneRef, String)> =
+            DATUMS.iter().filter_map(|g| datum_label(*g).map(|l| (PlaneRef::Plane(*g), l.to_string()))).collect();
+        out.extend(
+            self.planes
+                .iter()
+                .filter(|p| !p.datum() && !p.name.is_empty())
+                .map(|p| (PlaneRef::Plane(p.guid), format!("Reference Plane : {}", p.name))),
+        );
+        for (i, l) in self.lines.iter().enumerate() {
+            for (face, name) in [(Face::Horizontal, "Horizontal"), (Face::Vertical, "Vertical"), (Face::Start, "Start"), (Face::End, "End")]
+            {
+                out.push((PlaneRef::Line(l.guid, face), format!("Reference Line {} : {name}", i + 1)));
+            }
+        }
+        out
+    }
+}
+
+impl Family {
+    /// Its planes and lines, borrowed, to work out the frame of a plane they name.
+    pub fn plane_set(&self) -> Planes<'_> {
+        Planes { planes: &self.planes, lines: &self.lines }
+    }
+
+    /// The axes of the plane `host` names: a plane of its own, or a face of one of its reference lines.
+    pub fn frame(&self, host: &PlaneRef) -> Result<Frame, String> {
+        self.plane_set().frame(host)
+    }
+
+    /// Line `i` and the axes of the plane it is drawn on, followed through the lines it is drawn on at most `depth` deep.
+    fn line_frame(&self, i: usize, depth: usize) -> Result<(&RefLine, Frame), String> {
+        self.plane_set().line_frame(i, depth)
+    }
+
     /// Its datums first and as they are, and which plane defines the origin in each direction settled: a datum, unless a
     /// plane of its own takes it.
     pub fn settle_planes(&mut self) {
@@ -388,11 +450,12 @@ impl Family {
         settle_origin(&mut self.planes);
     }
 
-    /// Its forms and lines drawn on the plane or line `guid`: `form 2`, `line 1`.
+    /// Its forms, lines and adaptive points drawn on the plane or line `guid`: `form 2`, `line 1`, ``adaptive point `p3` ``.
     pub fn hosted_on(&self, guid: Guid) -> Vec<String> {
         let forms = self.forms.iter().enumerate().filter(|(_, f)| f.host.guid() == guid).map(|(i, _)| format!("form {}", i + 1));
         let lines = self.lines.iter().enumerate().filter(|(_, l)| l.host.guid() == guid).map(|(i, _)| format!("line {}", i + 1));
-        forms.chain(lines).collect()
+        let points = self.adaptive.iter().flat_map(|d| d.drawn_on(guid)).map(|id| format!("adaptive point `{id}`"));
+        forms.chain(lines).chain(points).collect()
     }
 
     /// What is drawn on a plane or a line given another GUID (`planes` and `lines`: from, to) drawn on it still.
@@ -409,6 +472,7 @@ impl Family {
         };
         self.forms.iter_mut().for_each(|f| follow(&mut f.host));
         self.lines.iter_mut().for_each(|l| follow(&mut l.host));
+        self.adaptive.iter_mut().for_each(|d| d.work_planes_mut(&mut |h| follow(h)));
     }
 
     /// Each host given as an id (as a command may) given as the GUID of the plane or line of that id.
@@ -426,6 +490,7 @@ impl Family {
         };
         self.forms.iter_mut().for_each(|f| resolve(&mut f.host));
         self.lines.iter_mut().for_each(|l| resolve(&mut l.host));
+        self.adaptive.iter_mut().for_each(|d| d.work_planes_mut(&mut |h| resolve(h)));
     }
 
     /// Whether its planes and lines are sound: its datums first and pinned; each plane drawable, named once, a level only
@@ -498,6 +563,13 @@ impl Family {
             let off = |p: P3| dot(sub(p, on.origin), on.z).abs() > ON_PLANE + 1e-9 * dot(p, p).sqrt();
             if off(l.start) || off(l.end) {
                 return Err(format!("{who}: it doesn't lie on {}, which it is drawn on", l.host));
+            }
+        }
+        // An adaptive point keeps the plane it was drawn on as its Work Plane: one of the family's.
+        if let Some(d) = &self.adaptive {
+            for (id, plane) in d.work_plane_refs() {
+                self.frame(&plane)
+                    .map_err(|e| format!("adaptive point `{id}`: its work plane, {e}; draw it on one of the family's planes"))?;
             }
         }
         Ok(())

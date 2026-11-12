@@ -9,6 +9,9 @@ use crate::popup::Modal;
 
 use bimcraft_i18n::msg;
 
+mod adaptive_editor;
+mod adaptive_place;
+mod adaptive_view;
 mod assistant;
 mod background_grid;
 mod browser;
@@ -820,6 +823,10 @@ pub struct BimApp {
     component_angle: f64,
     /// Hinge hand for this run of the Door tool. Facing follows the pointer.
     door_flip_hand: bool,
+    /// An adaptive component's points clicked so far, in the project, before the last one places it.
+    pub(crate) adaptive_clicks: Vec<[f64; 3]>,
+    /// An adaptive instance's grip being dragged in a plan: the instance, and its point's number.
+    pub(crate) adaptive_grip: Option<(Id, u32)>,
     /// The Component tool's Placement Plane for a work plane-based family: a reference plane of the project, by GUID; none,
     /// the view's level.
     placement_plane: Option<bimcraft_core::ids::Guid>,
@@ -1005,7 +1012,7 @@ fn ribbon_button(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str, 
 }
 
 /// A small ribbon button: an icon alone, as in Revit's Modify panel; its name in its tooltip.
-fn small_button(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str) -> Response {
+pub(crate) fn small_button(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str) -> Response {
     if ribbon::left_out(label) {
         return ui.allocate_response(egui::Vec2::ZERO, Sense::hover());
     }
@@ -1454,6 +1461,8 @@ impl BimApp {
             component: None,
             component_angle: 0.0,
             door_flip_hand: false,
+            adaptive_clicks: Vec::new(),
+            adaptive_grip: None,
             placement_plane: None,
             rotate_after: false,
             collapsed: BTreeSet::new(),
@@ -1680,7 +1689,10 @@ impl BimApp {
         self.dialog_answered();
         self.watch_window(&ctx);
         let view = self.view_title(self.sheet);
-        let title = format!("{}{} · {view} · BIMCraft", self.session.model.name, if self.dirty() { "*" } else { "" });
+        let title = match self.family_title() {
+            Some(family) => format!("{family} · BIMCraft"),
+            None => format!("{}{} · {view} · BIMCraft", self.session.model.name, if self.dirty() { "*" } else { "" }),
+        };
         if title != self.title {
             ctx.send_viewport_cmd(ViewportCommand::Title(title.clone()));
             self.title = title;
@@ -1725,11 +1737,18 @@ impl BimApp {
                 titlebar::caption_buttons(ui, bar);
             }
         });
-        // The ribbon is Rev's: BIMCraft's tools are a palette (`Palette::Tools`), which Rev never shows.
+        // The ribbon is Rev's: BIMCraft's tools are a palette (`Palette::Tools`), which Rev never shows. A family document (an
+        // adaptive family open) has a ribbon, palettes and a view of its own, as Revit's family editor, in either profile.
+        let family = self.family_doc();
         if style::rev() {
             self.docking.show(dock::Palette::Tools, false);
+        }
+        if style::rev() || family {
             let card = style::card([true, true, true, false]);
-            Panel::top("ribbon").frame(card).show_separator_line(false).show(ui, |ui| self.ribbon(ui));
+            Panel::top("ribbon")
+                .frame(card)
+                .show_separator_line(false)
+                .show(ui, |ui| if family { self.family_ribbon(ui) } else { self.ribbon(ui) });
         }
         if self.has_update_banner() {
             Panel::top("update").frame(Frame::NONE).show_separator_line(false).show(ui, |ui| self.update_banner(ui));
@@ -1738,6 +1757,10 @@ impl BimApp {
         Panel::bottom("status").frame(status).show_separator_line(false).show(ui, |ui| self.status_bar(ui));
         self.docks(ui);
         CentralPanel::default().frame(Frame::NONE).show(ui, |ui| {
+            if family {
+                self.family_central(ui);
+                return;
+            }
             let g = style::gap().max(4);
             let front = self.front;
             // A schedule's table keeps its rows clear of the tabs.
@@ -2520,6 +2543,7 @@ impl BimApp {
     }
 
     fn set_tool(&mut self, mut tool: Tool) {
+        self.adaptive_clicks.clear();
         // Trim/Extend to Corner with two lines or walls selected (or picked, sketching) joins them at once, keeping the
         // parts toward their middles; with any other selection it asks for the picks.
         if tool == Tool::Trim(None) && self.corner_selected() {
@@ -2810,6 +2834,12 @@ impl BimApp {
         self.ribbon_peek = false;
         // A snap override waiting for its point goes first, leaving what's being drawn.
         if self.snap_once.take().is_some() {
+            return;
+        }
+        // An adaptive instance's points clicked go next, leaving the tool.
+        if !self.adaptive_clicks.is_empty() {
+            self.adaptive_clicks.clear();
+            self.status = Status::default();
             return;
         }
         self.clear_typed();
@@ -3298,11 +3328,15 @@ impl BimApp {
                 ui.separator();
                 ui.spacing_mut().item_spacing.x = 0.0;
                 if icon_button(ui, Icon::Undo, "Undo").clicked() {
-                    self.run("undo", json!({}));
+                    if self.family_doc() {
+                        self.family_undo();
+                    } else {
+                        self.run("undo", json!({}));
+                    }
                 }
                 self.steps_list(ui, false);
                 ui.add_space(4.0);
-                if icon_button(ui, Icon::Redo, "Redo").clicked() {
+                if icon_button(ui, Icon::Redo, "Redo").clicked() && !self.family_doc() {
                     self.run("redo", json!({}));
                 }
                 self.steps_list(ui, true);
@@ -3338,7 +3372,7 @@ impl BimApp {
         let right = at.left() - gap;
         let left = row.right() + gap;
         let mut title = egui::text::LayoutJob::simple_singleline(
-            format!("{} · {view}", self.session.model.name),
+            self.family_title().unwrap_or_else(|| format!("{} · {view}", self.session.model.name)),
             FontId::proportional(12.5),
             pal().app_bar_muted,
         );
@@ -4626,6 +4660,22 @@ impl BimApp {
     /// The Options Bar, while there's something on it (a contextual tab's name, a tool's options): a card floating over the
     /// view's top left, so the view never moves when it comes and goes, and taking the clicks that land on it.
     fn options_bar(&mut self, ctx: &Context) {
+        if self.family_doc() {
+            if !self.family_has_options() {
+                self.options_rect = Rect::NOTHING;
+                return;
+            }
+            let g = f32::from(style::gap());
+            let view = self.view_rect;
+            let top = view.top().max(self.tabs_foot - g + 4.0);
+            let frame = style::card([false; 4]).inner_margin(Margin::symmetric(10, 3));
+            let shown = Area::new(UiId::new("family-options-bar"))
+                .order(Order::Middle)
+                .fixed_pos(pos2(view.left() + g, top + g))
+                .show(ctx, |ui| frame.show(ui, |ui| self.family_options(ui)).inner);
+            self.options_rect = if shown.inner { shown.response.rect } else { Rect::NOTHING };
+            return;
+        }
         if self.context().is_none() && matches!(self.tool, Tool::Modify) && self.note_edit.is_none() {
             self.options_rect = Rect::NOTHING;
             return;
@@ -4989,6 +5039,9 @@ impl BimApp {
 
     /// What the tool wants next, in the status bar as Revit puts it.
     fn prompt(&self) -> &'static str {
+        if let Some(hint) = self.family_prompt() {
+            return hint;
+        }
         if let Some(hint) = self.sketch_prompt() {
             return hint;
         }

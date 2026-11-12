@@ -178,13 +178,16 @@ impl Model {
     /// that isn't level and its family isn't Always Vertical: then it tilts with the plane, by the least turn that takes
     /// the vertical to the plane's normal, so on a level plane both are the same and `angle` still turns it about its own z.
     ///
-    /// Adaptive components (the adaptive branch's `Component.adaptive`) take their frame from their own placement points:
-    /// when they merge, this returns that frame before anything here is worked out, and `Model::check` refuses a `host` on
-    /// one, so no work plane ever overrides it.
+    /// An adaptive component ([`Model::placed_by_points`]) takes its place from its own points, which are held in these
+    /// upright axes (`Model::component_axes`): it is always placed upright, whatever `host` it might carry, which
+    /// `Model::check` refuses on one anyway, so no work plane ever tilts it.
     pub fn component_placement(&self, c: &Component) -> Placement {
         let (sin, cos) = c.angle.to_radians().sin_cos();
         let origin = [c.at.0, c.at.1, self.elevation(c.level) + c.offset];
         let upright = Placement { origin, axes: [[cos, sin, 0.0], [-sin, cos, 0.0], [0.0, 0.0, 1.0]], upright: true };
+        if self.placed_by_points(c) {
+            return upright;
+        }
         let Some(h) = c.host else { return upright };
         if self.families.get(&c.family).is_none_or(|f| f.always_vertical) {
             return upright;
@@ -195,6 +198,12 @@ impl Model {
             return upright;
         }
         Placement { origin, axes: upright.axes.map(|a| tilted(a, n)), upright: false }
+    }
+
+    /// Whether component `c` takes its place from its adaptive points: it has frames of its own (`adaptive`), or its family
+    /// is adaptive and it stands on the family's test placement. Such a component has no work plane but its level.
+    pub fn placed_by_points(&self, c: &Component) -> bool {
+        c.adaptive.is_some() || self.families.get(&c.family).is_some_and(|f| f.adaptive.is_some())
     }
 
     /// The insertion point of a component hosted on `frame` at `uv`, `offset` off it along its normal.
@@ -285,6 +294,10 @@ impl Model {
         for id in candidates {
             let Some(Element::Component(c)) = self.elements.get(id) else { continue };
             let Some(h) = c.host else { continue };
+            // An adaptive component is where its points put it: no host moves it.
+            if self.placed_by_points(c) {
+                continue;
+            }
             let Some(frame) = self.host_frame(&h.host) else { continue };
             let prev = before.map(|b| match b.elements.get(id) {
                 Some(Element::Component(p)) => Some(p),

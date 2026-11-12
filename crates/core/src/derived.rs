@@ -114,7 +114,7 @@ fn banding(elements: &Elements, e: &Element) -> Option<(Group, f64, f64)> {
         if c.host.is_some() {
             return None;
         }
-        let params = serde_json::to_string(&c.params).unwrap_or_default();
+        let params = serde_json::to_string(&(&c.params, &c.adaptive)).unwrap_or_default();
         let group = Group::Component { family: c.family.clone(), type_name: c.type_name.clone(), mirrored: c.mirrored, params };
         let base = elevation_in(elements, c.level) + c.offset;
         return Some((group, base, base));
