@@ -322,3 +322,39 @@ fn the_code_check_window_cuts_the_floor_over_a_stair_open() {
     assert_eq!(ids(&h, "shaft").len(), shafts + 1);
     assert!(h.query_by_label("Building Code Check").is_none(), "with its headroom, it is inside the rules");
 }
+
+#[test]
+fn the_stair_tool_draws_a_stair_by_hand_and_a_made_stair_becomes_a_sketch() {
+    let mut h = app(BOX);
+    tool(&mut h, "Stair");
+    press(&mut h, "Railings");
+    press(&mut h, "Sketch");
+    // Four risers, each its left end and its right, going north and widening.
+    for (i, half) in [500.0, 550.0, 650.0, 800.0].into_iter().enumerate() {
+        let y = 1000.0 + 300.0 * i as f64;
+        click(&mut h, P2(3000.0 - half, y));
+        click(&mut h, P2(3000.0 + half, y));
+    }
+    assert!(ids(&h, "stair").is_empty(), "Enter makes it");
+    h.key_press(Key::Enter);
+    h.run();
+    let st = ids(&h, "stair");
+    assert_eq!(st.len(), 1);
+    let sketch = field(&h, st[0], "sketch");
+    assert_eq!(sketch.as_array().map(Vec::len), Some(4));
+    assert_eq!(field(&h, st[0], "risers"), json!(4));
+
+    // A stair made by runs, converted from the ribbon; then a riser's end dragged.
+    press(&mut h, "Sketch");
+    let made = h.state_mut().run("stair", json!({"start": [6000, 1000], "angle": 90, "width": 1000})).unwrap()["id"].as_u64().unwrap();
+    h.state_mut().tool = Tool::Modify;
+    h.run();
+    click(&mut h, P2(6000.0, 1420.0));
+    assert_eq!(h.state().selection, [made]);
+    press(&mut h, "Convert to Sketch");
+    assert_eq!(field(&h, made, "sketch").as_array().map(Vec::len), Some(17));
+    drag(&mut h, P2(6500.0, 1560.0), P2(7000.0, 1560.0));
+    let riser = &field(&h, made, "sketch")[2]["riser"];
+    let x = riser[0][0].as_f64().unwrap().max(riser[1][0].as_f64().unwrap());
+    assert!((x - 7000.0).abs() < 30.0, "{riser}");
+}

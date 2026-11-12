@@ -670,7 +670,7 @@ other_files(
         ui_msg!("Stair"),
         &[],
         "{start: [x,y], end?: [x,y] | angle?, level?, top_level?, height?, width?, riser?, tread?, landings?: [{at, turn?, winders?, balance?, length?}, …], \
-         line?, offset?, spiral?, type?, multistorey?, railings?} a stair from the middle of its first riser at `start`, climbing toward `end` (or `angle` degrees) up to the next level: \
+         line?, offset?, spiral?, sketch?, type?, multistorey?, railings?} a stair from the middle of its first riser at `start`, climbing toward `end` (or `angle` degrees) up to the next level: \
          as many risers as keep each at most `riser` mm, treads `tread` deep (the project's building code's, 180 and 280 with \
          none: `building_code`), `width` wide (1000). One straight \
          run, as long as that makes it (`landings`: \"auto\" gives it the landings its code says are due, straight on); or with landings (each as deep as the stair is wide) after `at` risers, the next run \
@@ -689,6 +689,9 @@ other_files(
          `type` names its stair type (`type` with category stair: `waist` for a slab under its steps, a monolithic stair; \
          else `tread_thickness`, `riser_thickness`, `nosing`, and `stringer_width` by `stringer_depth` for stringers down its \
          sides); with none it is solid down to its level. \
+         With `sketch`: [{riser: [[x,y],[x,y]], outline?: [[x,y],…]}, …] the stair is drawn by hand and needs no `start`: each \
+         riser a line from its left end to its right, from the first up, as many risers as are drawn; the tread after a riser \
+         is the ground between it and the next, or its `outline` (a landing round a corner). `stair_check` measures what is drawn. \
          `multistorey`: with a `top_level` several levels up, it is the stair of its first storey and stands again on each \
          level on the way, each storey with the risers its own height asks and the landings after the same share of them; \
          `stair_check` says how far the storeys' risers differ. \
@@ -1695,6 +1698,15 @@ other_files(
          the project's own, under the file's name or `name`, in place of one of that name; a rule the file leaves out is the generic \
          code's, and what it holds that this version doesn't know is listed as `left_out`. `set` holds the project to it",
         building_code_import,
+    ),
+    edit(
+        "stair_sketch",
+        "Convert Stair to Sketch",
+        &[],
+        "{id} makes stair `id`, made by its runs, landings and winders, a stair drawn by hand: a `sketch` of its risers, each a \
+         line where it is, the landings and winders the outlines of the treads after them. It looks as it did; from then on any \
+         riser is moved by its ends (`modify` with `sketch`), and it has no `landings`. A spiral is not converted yet",
+        stair_sketch,
     ),
     edit(
         "stair_opening",
@@ -8967,8 +8979,23 @@ fn landings_param(c: &str, p: &Value) -> Result<Vec<Landing>, String> {
 fn stair(s: &mut Session, p: &Value) -> R {
     let c = "stair";
     let m = &s.model;
-    let start = point_req(c, p, "start")?;
-    let angle = climb(c, p, start)?;
+    // Drawn by hand, it starts where its first riser is and goes toward its second.
+    let sketch: Vec<crate::model::SketchStep> = match p.get("sketch") {
+        v if absent(v) => Vec::new(),
+        Some(v @ Value::Array(a)) if a.len() <= 1000 => serde_json::from_value(v.clone())
+            .map_err(|e| bad(c, format!("`sketch` is [{{riser: [[x,y],[x,y]], outline?: [[x,y],…]}}, …]: {e}")))?,
+        _ => return Err(bad(c, "`sketch` is a list of at most 1000 steps [{riser: [[x,y],[x,y]], outline?}, …]")),
+    };
+    let (start, angle) = match sketch.as_slice() {
+        [a, b, ..] => {
+            let way = b.mid() - a.mid();
+            (micron(a.mid()), degrees(way.1.atan2(way.0).to_degrees()))
+        }
+        _ => {
+            let start = point_req(c, p, "start")?;
+            (start, climb(c, p, start)?)
+        }
+    };
     let level = level_param(c, m, p, "level")?;
     let (top_level, height) = top_param(c, m, p, level)?;
     let dim = |key: &str, default: f64| num(c, p, key).map(|v| v.unwrap_or(default));
@@ -8993,6 +9020,7 @@ fn stair(s: &mut Session, p: &Value) -> R {
         },
         offset: dim("offset", 0.0)?,
         multistorey: flag(c, p, "multistorey")?,
+        sketch,
         spiral: match p.get("spiral") {
             v if absent(v) => None,
             Some(v) => Some(serde_json::from_value(v.clone()).map_err(|e| bad(c, format!("`spiral` is {{radius, sweep?}}: {e}")))?),
@@ -11743,6 +11771,14 @@ pub(crate) fn transform(c: &str, m: &Model, mut e: Element, id: Id, mo: &Motion,
         // A mirror image turns the other way at its landings.
         Element::Stair(st) => {
             (st.start, st.angle) = turned(f, st.start, st.angle);
+            // One drawn by hand goes with it, riser by riser.
+            for step in &mut st.sketch {
+                step.riser = [f(step.riser[0]), f(step.riser[1])];
+                step.outline = step.outline.iter().map(|q| f(*q)).collect();
+                if mo.mirror {
+                    step.riser.swap(0, 1);
+                }
+            }
             // And stands to the other side of its line.
             if mo.mirror {
                 st.landings.iter_mut().for_each(|l| l.turn = -l.turn + 0.0);
@@ -13607,6 +13643,37 @@ fn building_code_import(s: &mut Session, p: &Value) -> R {
         m.stair_rules = None;
     }
     Ok(json!({"code": name, "left_out": left_out, "set": set}))
+}
+
+/// `stair_sketch`: a stair made by its runs and turns becomes one drawn by hand, every riser a line of its own.
+fn stair_sketch(s: &mut Session, p: &Value) -> R {
+    let c = "stair_sketch";
+    only(c, p, &["id"])?;
+    let m = &s.model;
+    let id = id_opt(c, p, "id")?.and_then(|g| m.elements.id(g)).ok_or_else(|| bad(c, "`id`, a stair, is required"))?;
+    let Some(Element::Stair(st)) = m.elements.get(id) else { return Err(bad(c, format!("{id} is not a stair"))) };
+    if !st.sketch.is_empty() {
+        return Err(bad(c, format!("stair {id} is drawn by hand already")));
+    }
+    let Some(steps) = stairs::as_sketch(m, st) else {
+        return Err(bad(c, format!("stair {id} can't be made a sketch: a spiral is not converted yet")));
+    };
+    let mut made = st.clone();
+    made.sketch = steps
+        .into_iter()
+        .map(|s| crate::model::SketchStep { riser: s.riser.map(micron), outline: s.outline.into_iter().map(micron).collect() })
+        .collect();
+    made.landings.clear();
+    (made.line, made.offset) = (Default::default(), 0.0);
+    if let [a, b, ..] = made.sketch.as_slice() {
+        let way = b.mid() - a.mid();
+        (made.start, made.angle) = (micron(a.mid()), degrees(way.1.atan2(way.0).to_degrees()));
+    }
+    let risers = made.sketch.len();
+    if let Some(Element::Stair(old)) = s.model_mut().elements.get_mut(id) {
+        *old = made;
+    }
+    Ok(json!({"id": id, "risers": risers}))
 }
 
 /// `stair_opening`: the floors over a stair cut open where they leave less than the headroom.

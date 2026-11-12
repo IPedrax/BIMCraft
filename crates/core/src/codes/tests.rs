@@ -741,3 +741,91 @@ fn a_floor_over_a_stair_is_reported_and_cut_open_where_the_headroom_is_short() {
     assert_eq!(broken(&mut s, l), Vec::<String>::new());
     assert!(s.execute("stair_opening", &json!({"id": floor})).is_err());
 }
+
+#[test]
+fn a_stair_is_drawn_by_hand_riser_by_riser_and_a_made_one_becomes_one() {
+    use crate::geom::P2;
+    use crate::stairs::{Grip, dragged, grips};
+    let mut s = Session::new();
+    // Six risers fanning out: 900 wide at the foot, 1500 at the top, 300 apart on the middle line.
+    let steps: Vec<Value> = (0..6)
+        .map(|i| {
+            let (y, half) = (300.0 * f64::from(i), 450.0 + 60.0 * f64::from(i));
+            json!({"riser": [[-half, y], [half, y]]})
+        })
+        .collect();
+    let id = run(&mut s, "stair", json!({"sketch": steps, "height": 1050}))["id"].as_u64().unwrap();
+    let st = stair_of(&s, id);
+    assert_eq!((st.start, st.angle), (P2(0.0, 0.0), 90.0));
+    let (n, each, length) = s.model.flight(&st);
+    assert_eq!((n, each, length), (6, 175.0, 1500.0));
+    let l = crate::stairs::stair(&s.model, &st);
+    assert_eq!((l.runs.len(), l.pads.len()), (0, 5));
+    assert!((l.pads[0].z - 175.0).abs() < 1e-9 && (l.pads[4].z - 875.0).abs() < 1e-9);
+    assert!((crate::geom::area(&l.pads[0].ring) - 300.0 * (900.0 + 1020.0) / 2.0).abs() < 1e-6);
+    assert_eq!(l.walk.last().unwrap().1, 1050.0);
+    // Measured as drawn: 300 on the middle line and 900 at its narrowest, under NBR's 1200.
+    run(&mut s, "building_code", json!({"set": "nbr"}));
+    assert_eq!(broken(&mut s, id), ["width_min"]);
+    run(&mut s, "building_code", json!({"set": "generic"}));
+    assert_eq!(broken(&mut s, id), Vec::<String>::new());
+
+    // An end of a riser dragged, the treads on both sides of it follow; its foot dragged, all of it.
+    let m = &s.model;
+    assert_eq!(grips(m, &st).len(), 1 + 12);
+    let wide = dragged(m, &st, Grip::Riser(2, true), P2(900.0, 600.0));
+    assert_eq!(wide.sketch[2].riser[1], P2(900.0, 600.0));
+    let moved = dragged(m, &st, Grip::Foot, P2(1000.0, 500.0));
+    assert_eq!((moved.start, moved.sketch[5].riser[0]), (P2(1000.0, 500.0), P2(1000.0 - 750.0, 2000.0)));
+    // Moved and flipped as any stair is.
+    run(&mut s, "move", json!({"ids": [id], "by": [100, 0]}));
+    assert_eq!(stair_of(&s, id).sketch[0].riser[0], P2(-350.0, 0.0));
+    run(&mut s, "flip", json!({"ids": [id]}));
+    let back = stair_of(&s, id);
+    assert_eq!((back.sketch[0].riser, back.angle), ([P2(850.0, 1500.0), P2(-650.0, 1500.0)], -90.0));
+
+    // A stair made by runs, a landing and winders becomes one drawn by hand, and stands as it did.
+    let p = json!({"start": [5000, 0], "angle": 90, "width": 1000, "landings": [{"at": 5, "turn": 90, "winders": 3, "balance": 1}, {"at": 13, "turn": -90}]});
+    let made = run(&mut s, "stair", p)["id"].as_u64().unwrap();
+    let ground = |s: &Session| {
+        let l = crate::stairs::stair(&s.model, &stair_of(s, made));
+        let mut all: Vec<(i64, i64)> = l
+            .runs
+            .iter()
+            .flat_map(|r| {
+                let n = r.u.perp() * 500.0;
+                (0..r.risers).flat_map(move |k| {
+                    let at = r.start + r.u * (f64::from(k) * 280.0);
+                    [at + n, at - n]
+                })
+            })
+            .chain(l.pads.iter().flat_map(|p| p.ring.clone()))
+            .map(|q| ((q.0 * 10.0).round() as i64, (q.1 * 10.0).round() as i64))
+            .collect();
+        all.sort_unstable();
+        all.dedup();
+        (all, l.walk.last().unwrap().1)
+    };
+    let before = ground(&s);
+    let r = run(&mut s, "stair_sketch", json!({"id": made}));
+    assert_eq!(r["risers"], 17);
+    let after = stair_of(&s, made);
+    assert!(after.landings.is_empty() && after.sketch.len() == 17);
+    assert_eq!(ground(&s), before, "every riser and every corner where it was");
+    assert!(s.execute("stair_sketch", &json!({"id": made})).unwrap_err().contains("already"));
+
+    for bad in [
+        json!([{"riser": [[0, 0], [1000, 0]]}]),
+        json!([{"riser": [[0, 0], [0, 0]]}, {"riser": [[0, 300], [1000, 300]]}]),
+        json!([{"riser": [[0, 0], [1000, 0]], "outline": [[0, 0], [1, 1]]}, {"riser": [[0, 300], [1000, 300]]}]),
+        json!([{"riser": [[0, 0], [1e300, 0]]}, {"riser": [[0, 300], [1000, 300]]}]),
+        json!("x"),
+    ] {
+        assert!(s.execute("stair", &json!({"sketch": bad})).is_err(), "{bad}");
+    }
+    assert!(s.execute("stair", &json!({"sketch": steps_of(2), "landings": [{"at": 1, "turn": 0}]})).is_err());
+}
+
+fn steps_of(n: u32) -> Value {
+    json!((0..n).map(|i| json!({"riser": [[0, 300 * i], [1000, 300 * i]]})).collect::<Vec<_>>())
+}

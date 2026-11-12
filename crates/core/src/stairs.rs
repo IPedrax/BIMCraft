@@ -48,6 +48,8 @@ pub struct Layout {
     pub width: f64,
     /// How many of `pads` are winder treads, not landings.
     pub winders: usize,
+    /// How many of `pads` each turn between two runs has, in order: one for a landing, its treads for one that winds.
+    pub turns: Vec<usize>,
 }
 
 /// Runs of `(length, heights, risers)` from `start` toward `angle` degrees, `width` wide, and a
@@ -57,7 +59,7 @@ pub struct Layout {
 /// in height, the first where the landing would be.
 fn chain(start: P2, angle: f64, width: f64, runs: Vec<(f64, (f64, f64), u32)>, turns: &[Turn], each: f64) -> Layout {
     let (mut at, mut u) = (start, heading(angle));
-    let mut out = Layout { runs: Vec::new(), pads: Vec::new(), walk: Vec::new(), width, winders: 0 };
+    let mut out = Layout { runs: Vec::new(), pads: Vec::new(), walk: Vec::new(), width, winders: 0, turns: Vec::new() };
     for (i, (length, z, risers)) in runs.into_iter().enumerate() {
         let run = Run { start: at, u, length, z, risers };
         out.walk.extend([(run.start, z.0), (run.end(), z.1)]);
@@ -98,6 +100,7 @@ fn chain(start: P2, angle: f64, width: f64, runs: Vec<(f64, (f64, f64), u32)>, t
             let rings =
                 balanced(p, side, u, w, turn.abs(), winders, into, balance).unwrap_or_else(|| wind(p, side, u, w, turn.abs(), winders));
             out.winders += rings.len();
+            out.turns.push(rings.len());
             // The walk line climbs through the turn: on into it, round the inside corner at the stair's middle, and on out.
             let top = (rings.len() as f64 - 1.0) * each;
             out.pads.extend(rings.into_iter().enumerate().map(|(k, ring)| Pad { ring: ccw(ring), z: z.1 + k as f64 * each, tread: true }));
@@ -116,6 +119,7 @@ fn chain(start: P2, angle: f64, width: f64, runs: Vec<(f64, (f64, f64), u32)>, t
             (at, u) = (next + dir * into, dir);
             continue;
         } else {
+            out.turns.push(1);
             out.pads.push(Pad { ring: ccw(ring), z: z.1, tread: false });
             out.walk.extend(via.into_iter().map(|p| (p, z.1)));
         }
@@ -292,6 +296,66 @@ fn ccw(ring: Vec<P2>) -> Vec<P2> {
     if geom::area(&ring) < 0.0 { ring.into_iter().rev().collect() } else { ring }
 }
 
+/// A stair drawn by hand: no runs, a tread after each riser but the last, each a riser above the one before: its own
+/// outline, or the ground between its riser and the next; the walk line through the middles of the risers.
+fn sketched(st: &Stair, each: f64, base: f64) -> Layout {
+    let mut out = Layout { runs: Vec::new(), pads: Vec::new(), walk: Vec::new(), width: st.width, winders: 0, turns: Vec::new() };
+    for (i, pair) in st.sketch.windows(2).enumerate() {
+        let [a, b] = pair else { continue };
+        let ring = if a.outline.len() >= 3 { a.outline.clone() } else { vec![a.riser[0], a.riser[1], b.riser[1], b.riser[0]] };
+        out.pads.push(Pad { ring: ccw(ring), z: base + (i as f64 + 1.0) * each, tread: true });
+    }
+    out.winders = out.pads.len();
+    let (n, rise) = (st.sketch.len(), st.sketch.len() as f64 * each);
+    out.walk =
+        st.sketch.iter().enumerate().map(|(i, s)| (s.mid(), base + if n > 1 { rise * i as f64 / (n as f64 - 1.0) } else { 0.0 })).collect();
+    out
+}
+
+/// A stair made by its runs and turns, as one drawn by hand: a riser for each of its risers, where it is, and the
+/// outline of each landing and winder as the tread after the riser before it. None for a spiral, and for a stair
+/// that is one already.
+pub fn as_sketch(m: &Model, st: &Stair) -> Option<Vec<crate::model::SketchStep>> {
+    use crate::model::SketchStep;
+    if st.spiral.is_some() || !st.sketch.is_empty() {
+        return None;
+    }
+    let l = first(m, st);
+    let half = st.width / 2.0;
+    let mut steps: Vec<SketchStep> = Vec::new();
+    let mut pads = l.pads.iter();
+    for (i, run) in l.runs.iter().enumerate() {
+        let n = run.u.perp();
+        for k in 0..run.risers {
+            let at = run.start + run.u * (f64::from(k) * st.tread);
+            steps.push(SketchStep { riser: [at + n * half, at - n * half], outline: Vec::new() });
+        }
+        // The turn after it: the first of its pads is the tread after the run's last riser; each one after it starts at
+        // the edge it shares with the one before.
+        let count = l.turns.get(i).copied().unwrap_or(0);
+        let mut before: Option<&Pad> = None;
+        for pad in pads.by_ref().take(count) {
+            if let Some(prev) = before {
+                let shared: Vec<P2> = pad.ring.iter().copied().filter(|q| prev.ring.iter().any(|o| o.dist(*q) < 1e-6)).collect();
+                let (&p, &q) = (shared.first()?, shared.get(1)?);
+                let last = steps.last()?;
+                // Its left end is the one nearer the left end of the riser before.
+                let riser = if p.dist(last.riser[0]) + q.dist(last.riser[1]) <= q.dist(last.riser[0]) + p.dist(last.riser[1]) {
+                    [p, q]
+                } else {
+                    [q, p]
+                };
+                steps.push(SketchStep { riser, outline: Vec::new() });
+            }
+            if let Some(last) = steps.last_mut() {
+                last.outline = pad.ring.clone();
+            }
+            before = Some(pad);
+        }
+    }
+    (steps.len() >= 2).then_some(steps)
+}
+
 /// The angle each tread of spiral `sp` turns through, in radians, on a stair of `n` risers.
 pub fn spiral_step(st: &Stair, sp: crate::model::Spiral, n: u32) -> f64 {
     let treads = f64::from(n.saturating_sub(1)).max(1.0);
@@ -301,7 +365,7 @@ pub fn spiral_step(st: &Stair, sp: crate::model::Spiral, n: u32) -> f64 {
 /// A spiral stair: no runs, a tread for each riser but the last, each a piece of the ring about its centre, a riser
 /// above the one before; the walk line round its middle.
 fn spiral(st: &Stair, sp: crate::model::Spiral, n: u32, each: f64, base: f64) -> Layout {
-    let mut out = Layout { runs: Vec::new(), pads: Vec::new(), walk: Vec::new(), width: st.width, winders: 0 };
+    let mut out = Layout { runs: Vec::new(), pads: Vec::new(), walk: Vec::new(), width: st.width, winders: 0, turns: Vec::new() };
     let (foot, side, r) = (st.foot(), if sp.radius < 0.0 { -1.0 } else { 1.0 }, sp.radius.abs());
     let centre = foot + heading(st.angle).perp() * (side * r);
     let out0 = (foot - centre).unit();
@@ -347,6 +411,7 @@ pub fn stair(m: &Model, st: &Stair) -> Layout {
         out.pads.extend(l.pads);
         out.walk.extend(l.walk);
         out.winders += l.winders;
+        out.turns.extend(l.turns);
     }
     out
 }
@@ -387,6 +452,9 @@ pub fn storeys(m: &Model, st: &Stair) -> Vec<(crate::model::Guid, Layout)> {
 
 /// A stair's layout over one storey: `n` risers each `each` high from `base`, with `landings`.
 fn laid(st: &Stair, landings: &[crate::model::Landing], n: u32, each: f64, base: f64) -> Layout {
+    if !st.sketch.is_empty() {
+        return sketched(st, each, base);
+    }
     if let Some(sp) = st.spiral {
         return spiral(st, sp, n, each, base);
     }
@@ -421,6 +489,23 @@ fn laid(st: &Stair, landings: &[crate::model::Landing], n: u32, each: f64, base:
 /// the other order, its top where its foot was. None for a stair with no run.
 pub fn flipped(m: &Model, st: &Stair) -> Option<Stair> {
     let (n, _, _) = m.flight(st);
+    if !st.sketch.is_empty() {
+        // Its risers the other way round, each with its ends swapped; a tread's outline goes to the riser now before it.
+        let mut out = st.clone();
+        let count = st.sketch.len();
+        out.sketch = (0..count)
+            .filter_map(|j| {
+                let old = st.sketch.get(count - 1 - j)?;
+                let outline = count.checked_sub(2 + j).and_then(|k| st.sketch.get(k)).map(|s| s.outline.clone()).unwrap_or_default();
+                Some(crate::model::SketchStep { riser: [old.riser[1], old.riser[0]], outline })
+            })
+            .collect();
+        if let [a, b, ..] = out.sketch.as_slice() {
+            let way = b.mid() - a.mid();
+            (out.start, out.angle) = (a.mid(), (way.1.atan2(way.0).to_degrees() * 1e9).round() / 1e9);
+        }
+        return Some(out);
+    }
     let l = first(m, st);
     if let Some(sp) = st.spiral {
         // From its top round the other way: the centre on its other side.
@@ -470,6 +555,8 @@ pub fn flipped(m: &Model, st: &Stair) -> Option<Stair> {
 /// (the landing's length).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Grip {
+    /// An end of a riser of a stair drawn by hand: which riser, and whether its right end.
+    Riser(usize, bool),
     Foot,
     Top,
     Turn(usize),
@@ -480,6 +567,14 @@ pub enum Grip {
 /// Where each of a stair's grips is, in plan.
 pub fn grips(m: &Model, st: &Stair) -> Vec<(Grip, P2)> {
     use crate::model::StairLine;
+    // A stair drawn by hand: its first riser's middle moves it all, and every end of every riser is its own.
+    if !st.sketch.is_empty() {
+        let mut out = vec![(Grip::Foot, st.sketch.first().map_or(st.start, |s| s.mid()))];
+        out.extend(
+            st.sketch.iter().enumerate().flat_map(|(i, s)| [(Grip::Riser(i, false), s.riser[0]), (Grip::Riser(i, true), s.riser[1])]),
+        );
+        return out;
+    }
     let l = first(m, st);
     let mut out = vec![(Grip::Foot, st.start)];
     let Some(first) = l.runs.first() else { return out };
@@ -513,7 +608,40 @@ pub fn dragged(m: &Model, st: &Stair, grip: Grip, to: P2) -> Stair {
     let mut out = st.clone();
     let l = first(m, st);
     let whole = |x: f64| (x * 1000.0).round() / 1000.0 + 0.0;
+    if !st.sketch.is_empty() {
+        match grip {
+            // All of it, by as far as its first riser's middle goes.
+            Grip::Foot => {
+                let by = to - st.sketch.first().map_or(st.start, |s| s.mid());
+                let moved = |q: P2| P2(whole(q.0 + by.0), whole(q.1 + by.1));
+                for step in &mut out.sketch {
+                    step.riser = [moved(step.riser[0]), moved(step.riser[1])];
+                    step.outline = step.outline.iter().map(|q| moved(*q)).collect();
+                }
+            }
+            // A riser's end, and with it the corner of the outlines that stood there.
+            Grip::Riser(i, right) => {
+                let Some(was) = st.sketch.get(i).map(|s| s.riser[usize::from(right)]) else { return out };
+                let to = P2(whole(to.0), whole(to.1));
+                for step in &mut out.sketch {
+                    for q in step.riser.iter_mut().chain(step.outline.iter_mut()) {
+                        if q.dist(was) < 1e-6 {
+                            *q = to;
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+        // It starts where its first riser is, toward its second.
+        if let [a, b, ..] = out.sketch.as_slice() {
+            let way = b.mid() - a.mid();
+            (out.start, out.angle) = (a.mid(), whole(way.1.atan2(way.0).to_degrees()));
+        }
+        return out;
+    }
     match grip {
+        Grip::Riser(..) => {}
         Grip::Foot => out.start = P2(whole(to.0), whole(to.1)),
         Grip::Top => {
             let Some(top) = l.runs.last().map(Run::end) else { return out };

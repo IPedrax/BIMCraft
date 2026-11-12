@@ -2353,6 +2353,11 @@ impl BimApp {
                     return;
                 }
                 pts.push(p);
+                // Drawn by hand, each click is an end of a riser: Enter makes the stair.
+                if !ramp && self.stair_draw {
+                    self.tool = Tool::Stair(pts);
+                    return;
+                }
                 let next = match (pts.len(), self.flight(m, level, &pts, ramp)) {
                     (1, _) | (_, Ok((_, false))) => pts,
                     (_, Ok((e, true))) => {
@@ -2668,10 +2673,23 @@ impl BimApp {
                 line: self.stair_line,
                 offset: m.units.parse(&self.stair_offset).unwrap_or(0.0),
                 spiral: None,
+                sketch: Vec::new(),
                 multistorey: false,
             };
             // Multistorey where it climbs past a level on the way.
             st.multistorey = self.stair_multistorey && m.storeys(&Stair { multistorey: true, ..st.clone() }).len() > 1;
+            // Drawn by hand: each two points a riser, its left end and its right, going up.
+            if self.stair_draw {
+                st.sketch = (pts.as_chunks::<2>().0.iter())
+                    .filter(|[a, b]| a.dist(*b) >= 1.0)
+                    .map(|[a, b]| bimcraft_core::model::SketchStep { riser: [*a, *b], outline: Vec::new() })
+                    .collect();
+                let [a, b, ..] = st.sketch.as_slice() else { return Err(t("click the two ends of each riser, two risers or more").into()) };
+                let way = b.mid() - a.mid();
+                (st.start, st.angle) = (a.mid(), (way.1.atan2(way.0).to_degrees() * 1e9).round() / 1e9);
+                (st.line, st.offset) = (Default::default(), 0.0);
+                return Ok((Element::Stair(st), false));
+            }
             // A spiral: the first click is its centre, the second the middle of its first riser; it winds counter-clockwise
             // from there, or clockwise as the Options Bar says, with treads of the code's depth on its middle line.
             if self.stair_spiral {
@@ -2790,6 +2808,21 @@ impl BimApp {
             if next > 60 {
                 return (Element::Stair(st), true);
             }
+        }
+    }
+
+    /// The Stair tool's Enter while it draws by hand: the stair of the risers clicked.
+    pub(crate) fn finish_stair_sketch(&mut self, level: Id) {
+        let Tool::Stair(pts) = &mut self.tool else { return };
+        let pts = std::mem::take(pts);
+        let m = std::sync::Arc::clone(&self.session.model);
+        match self.flight(&m, level, &pts, false) {
+            Ok((e, _)) => {
+                let mut params = serde_json::to_value(&e).unwrap_or_default();
+                params["railings"] = json!(false);
+                self.run("stair", params);
+            }
+            Err(e) => self.status = Status { text: e, error: true },
         }
     }
 

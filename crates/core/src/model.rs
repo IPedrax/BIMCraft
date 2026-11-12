@@ -1660,6 +1660,10 @@ pub struct Stair {
     /// A spiral: the stair winds about a centre, every tread a winder, and has no landings.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub spiral: Option<Spiral>,
+    /// A stair drawn by hand: each riser a line of its own, from its first riser up, and the tread after it the ground
+    /// between it and the next (or an outline of its own). Such a stair has no landings: a landing is a deep tread.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sketch: Vec<SketchStep>,
     /// Multistorey: it is the stair of its first storey, and stands again on every level it passes on its way to
     /// its top level, each storey with the risers its own height asks.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -1702,6 +1706,24 @@ pub struct Spiral {
     pub radius: f64,
     #[serde(default, skip_serializing_if = "is_zero")]
     pub sweep: f64,
+}
+
+/// A step of a stair drawn by hand: its `riser`, a line from its left end to its right end looking up the stair, and
+/// the `outline` of the tread after it, when that is not just the ground between it and the next riser (a landing
+/// round a corner).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SketchStep {
+    pub riser: [P2; 2],
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub outline: Vec<P2>,
+}
+
+impl SketchStep {
+    /// The middle of its riser.
+    pub fn mid(&self) -> P2 {
+        (self.riser[0] + self.riser[1]) * 0.5
+    }
 }
 
 /// The line a stair is drawn by, which stays where it is when the stair's width changes: its left edge, its middle or
@@ -4540,6 +4562,12 @@ impl Model {
 
     /// A stair's flight over a storey `rise` high: its risers, how high each is, and how long its runs are together.
     pub fn flight_of(&self, st: &Stair, rise: f64) -> (u32, f64, f64) {
+        // A stair drawn by hand has the risers drawn, its length from each to the next.
+        if !st.sketch.is_empty() {
+            let n = u32::try_from(st.sketch.len()).unwrap_or(u32::MAX);
+            let length: f64 = st.sketch.windows(2).map(|w| w.first().zip(w.get(1)).map_or(0.0, |(a, b)| a.mid().dist(b.mid()))).sum();
+            return (n, rise / f64::from(n), length);
+        }
         // Not a number, or less than one, is none.
         let n = (rise / st.riser - 1e-9).ceil().clamp(0.0, 1e6) as u32;
         let each = if n > 0 { rise / f64::from(n) } else { 0.0 };
@@ -7396,6 +7424,29 @@ impl Model {
                     }
                     if st.multistorey {
                         return Err(format!("{who}: a spiral stair is not multistorey yet; give each storey its own"));
+                    }
+                }
+                if !st.sketch.is_empty() {
+                    if !(2..=1000).contains(&st.sketch.len()) {
+                        return Err(format!("{who}: a stair drawn by hand has 2 to 1000 risers, not {}", st.sketch.len()));
+                    }
+                    if !st.landings.is_empty() || st.spiral.is_some() {
+                        return Err(format!(
+                            "{who}: a stair drawn by hand has no `landings` and no `spiral`: a landing is a deep tread of it"
+                        ));
+                    }
+                    for (i, step) in st.sketch.iter().enumerate() {
+                        point(&who, step.riser[0])?;
+                        point(&who, step.riser[1])?;
+                        if step.riser[0].dist(step.riser[1]) < 1.0 {
+                            return Err(format!("{who}: riser {} is a point; a riser is a line from its left end to its right", i + 1));
+                        }
+                        if step.outline.len() > 64 || (1..3).contains(&step.outline.len()) {
+                            return Err(format!("{who}: the outline of tread {} has 3 to 64 corners, or none", i + 1));
+                        }
+                        for q in &step.outline {
+                            point(&who, *q)?;
+                        }
                     }
                 }
                 if st.multistorey && st.top_level.is_none() {

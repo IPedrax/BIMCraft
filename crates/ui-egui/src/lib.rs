@@ -600,6 +600,8 @@ pub struct BimApp {
     stair_top: Option<Option<Id>>,
     stair_height: String,
     stair_multistorey: bool,
+    /// The Stair tool drawing by hand: each two clicks a riser, Enter the stair.
+    stair_draw: bool,
     /// The Stair tool making a spiral, and which way it winds.
     stair_spiral: bool,
     stair_clockwise: bool,
@@ -1335,6 +1337,7 @@ impl BimApp {
             stair_balance: 0,
             stair_free: false,
             stair_chain: false,
+            stair_draw: false,
             stair_spiral: false,
             stair_clockwise: false,
             stair_top: None,
@@ -2045,6 +2048,7 @@ impl BimApp {
             match (&self.tool, self.typed_length.is_empty() && self.drawing.other.is_empty()) {
                 _ if self.picking_pattern_lines() => self.finish_pattern_lines(),
                 (Tool::Railing(_), true) => self.finish_railing(level),
+                (Tool::Stair(_), true) if self.stair_draw => self.finish_stair_sketch(level),
                 (Tool::Mass(_), true) => self.finish_mass(level),
                 (Tool::DetailLine(_), true) => self.finish_detail_line(level),
                 (Tool::SketchLine(_), true) if self.shape().open_ended() => self.finish_open_shape(),
@@ -4549,6 +4553,13 @@ impl BimApp {
                 if big_button(ui, Icon::Flip, "Flip", false, tip).clicked() {
                     self.flip();
                 }
+                let tip = msg!("Convert to Sketch: every riser becomes a line of its own, to drag by its ends");
+                if let [id] = stairs.as_slice()
+                    && matches!(self.session.model.elements.get(*id), Some(Element::Stair(st)) if st.sketch.is_empty() && st.spiral.is_none())
+                    && big_button(ui, Icon::Stair, "Convert to Sketch", false, tip).clicked()
+                {
+                    self.run("stair_sketch", json!({"id": id}));
+                }
                 let tip = msg!("Check: the rules of the project's building code this stair is outside of");
                 if let [id] = stairs.as_slice()
                     && big_button(ui, Icon::Stair, "Code Check", self.code_findings.is_some(), tip).clicked()
@@ -4829,6 +4840,13 @@ impl BimApp {
                         ui.label(RichText::new(tf("Against {}", &[&code])).color(codes::OUTSIDE)).on_hover_text(t(
                             "This building code does not allow winders. The stair is still built, and marked outside the rules.",
                         ));
+                    }
+                    if ui
+                        .checkbox(&mut self.stair_draw, t("Sketch"))
+                        .on_hover_text(t("Draw the stair by hand: click the two ends of each riser, the left end first, going up; Enter makes it"))
+                        .changed()
+                    {
+                        self.tool = Tool::Stair(Vec::new());
                     }
                     ui.checkbox(&mut self.stair_spiral, t("Spiral"))
                         .on_hover_text(t("A spiral stair: click its centre, then the middle of its first riser"));
@@ -5125,6 +5143,10 @@ impl BimApp {
             Tool::Column => msg!("Click to place a column, as high as the Options Bar says."),
             Tool::Run(..) | Tool::Stand(_) => structure::hint(&self.tool).unwrap_or_default(),
             Tool::Component | Tool::Fixture(_) => msg!("Click where the component goes; Space turns it a quarter turn."),
+            Tool::Stair(pts) if self.stair_draw && pts.len() % 2 == 0 => {
+                msg!("Click the left end of the next riser, going up. Enter makes the stair of the risers drawn; Esc cancels.")
+            }
+            Tool::Stair(_) if self.stair_draw => msg!("Click the right end of this riser."),
             Tool::Stair(pts) if pts.is_empty() && self.stair_spiral => msg!("Click the centre the spiral stair winds about."),
             Tool::Stair(_) if self.stair_spiral => msg!("Click where it starts: the middle of its first riser. Esc cancels."),
             Tool::Stair(pts) if pts.is_empty() => msg!("Click where the stair starts: the middle of its first riser."),

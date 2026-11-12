@@ -492,6 +492,15 @@ pub fn stair_findings(m: &Model, st: &Stair) -> Vec<Finding> {
     if n == 0 {
         return out;
     }
+    // One drawn by hand is measured as drawn: its shallowest tread on the line through its risers' middles, and its
+    // narrowest riser.
+    let drawn = !st.sketch.is_empty();
+    let going = if drawn {
+        st.sketch.windows(2).map(|w| w.first().zip(w.get(1)).map_or(0.0, |(a, b)| a.mid().dist(b.mid()))).fold(f64::INFINITY, f64::min)
+    } else {
+        st.tread
+    };
+    let width = if drawn { st.sketch.iter().map(|s| s.riser[0].dist(s.riser[1])).fold(f64::INFINITY, f64::min) } else { st.width };
     let mut range = |rule_min: &'static str, rule_max: &'static str, what: &str, v: f64, min: f64, max: f64, fix: (&str, &str)| {
         if v < min - EPS {
             out.push(Finding {
@@ -518,30 +527,22 @@ pub fn stair_findings(m: &Model, st: &Stair) -> Vec<Finding> {
         rules.riser_max,
         ("give it fewer risers (a higher `riser`)", "lower its `riser`, for more risers"),
     );
-    range(
-        "going_min",
-        "going_max",
-        "each going",
-        st.tread,
-        rules.going_min,
-        rules.going_max,
-        ("deepen its `tread`", "shorten its `tread`"),
-    );
+    range("going_min", "going_max", "each going", going, rules.going_min, rules.going_max, ("deepen its `tread`", "shorten its `tread`"));
     range(
         "step_min",
         "step_max",
         "two risers and a going",
-        2.0 * riser + st.tread,
+        2.0 * riser + going,
         rules.step_min,
         rules.step_max,
         ("deepen its `tread`, or give it fewer risers", "shorten its `tread`, or give it more risers"),
     );
-    if st.width < rules.width_min - EPS {
+    if width < rules.width_min - EPS {
         out.push(Finding {
             rule: "width_min",
-            value: mm(st.width),
+            value: mm(width),
             limit: rules.width_min,
-            message: format!("it is {} mm wide, under the least, {} mm: widen it", mm(st.width), rules.width_min),
+            message: format!("it is {} mm wide, under the least, {} mm: widen it", mm(width), rules.width_min),
         });
     }
     // A floor standing over its steps with less than the headroom between them, and not cut open there.
@@ -593,6 +594,22 @@ pub fn stair_findings(m: &Model, st: &Stair) -> Vec<Finding> {
                 rules.uniformity
             ),
         });
+    }
+    // One drawn by hand is one flight.
+    if !st.sketch.is_empty() {
+        let rise = f64::from(n) * riser;
+        if rise > rules.flight_rise_max + EPS {
+            out.push(Finding {
+                rule: "flight_rise_max",
+                value: mm(rise),
+                limit: rules.flight_rise_max,
+                message: format!(
+                    "it rises {} mm with no landing, and one is due every {} mm at most: draw a tread as deep as a landing",
+                    mm(rise),
+                    rules.flight_rise_max
+                ),
+            });
+        }
     }
     // A spiral is one flight, and every tread of it a winder.
     if let Some(sp) = st.spiral {
@@ -821,7 +838,8 @@ fn runs_hold(n: u32, landings: &[Landing]) -> bool {
 pub fn solve(m: &Model, st: &Stair, locks: Locks) -> Vec<Proposal> {
     let rules = m.stair_rules();
     let (n0, each0, _) = m.flight(st);
-    if n0 == 0 {
+    // One drawn by hand is as it was drawn: there is nothing to count again.
+    if n0 == 0 || !st.sketch.is_empty() {
         return Vec::new();
     }
     let rise = f64::from(n0) * each0;

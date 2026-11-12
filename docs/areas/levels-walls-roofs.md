@@ -180,7 +180,8 @@ wind instead (`winders` treads fanned round the turn's inside corner, `stairs::w
 turn's steps are equal along the walk line and the inside string (`stairs::balanced`), so none comes to a point. A `multistorey` stair with a top level several levels up is the stair of its first storey (`Model::flight`, `stairs::first`)
 standing again on each level on the way (`Model::storeys`, `stairs::storeys`; `stairs::stair` is all of them), each storey with
 its own count of risers. A stair's type (`Model::types.stair`, `StairType`; none for a stair solid to its level) is what it is built of: `stairs::parts`
-gives its solids, a slab of the type's `waist` under the steps or treads, risers and stringers standing free. A stair with a `spiral` (`radius` to its middle line, signed for the side its centre is on, and `sweep`) has no runs: its
+gives its solids, a slab of the type's `waist` under the steps or treads, risers and stringers standing free. A stair with a `sketch` is drawn by hand: a line for each riser and no runs (`stairs::sketched`), each tread the ground to the
+next riser or its own outline; `stair_sketch` (`stairs::as_sketch`) makes one of a stair made by runs and turns. A stair with a `spiral` (`radius` to its middle line, signed for the side its centre is on, and `sweep`) has no runs: its
 treads are pieces of a ring (`stairs::spiral`), all of them `Layout::pads`. A project's **building code** (`codes.rs`, `data/building-codes.json`: generic, NBR, IBC, DIN,
 Japan; the numbers typed from memory and unchecked) is the rules its stairs are held to: `building_code` names one and changes
 any rule of it for the project (`Model::building_code`, `Model::stair_rules`), a new stair starts with its riser, going and

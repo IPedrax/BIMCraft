@@ -40,7 +40,7 @@ impl BimApp {
         // A width, a run's end and a landing's edge follow the cursor itself; the foot and the top land on what is there.
         let to = match grip {
             // The foot goes where it is put; the top is aimed from the foot, with its angle guides.
-            Grip::Foot => self.snap(m, level, v, q, &[], square).at,
+            Grip::Foot | Grip::Riser(..) => self.snap(m, level, v, q, &[], square).at,
             Grip::Top => self.snap(m, level, v, q, &[st.start], square).at,
             _ => v.mm(q),
         };
@@ -76,6 +76,11 @@ impl BimApp {
                 self.snap_once = None;
                 if after != st {
                     let p = match grip {
+                        // One drawn by hand: its risers, and where it starts with them.
+                        _ if !after.sketch.is_empty() => {
+                            json!({"id": id, "start": [after.start.0, after.start.1], "angle": after.angle, "sketch": after.sketch})
+                        }
+                        Grip::Riser(..) => return,
                         Grip::Foot => json!({"id": id, "start": [after.start.0, after.start.1]}),
                         Grip::Top => json!({"id": id, "angle": after.angle}),
                         Grip::Width(_) => json!({"id": id, "width": after.width}),
@@ -107,6 +112,7 @@ impl BimApp {
             // What the drag is changing, and what the code would say of the stair.
             let (n, _, _) = m.flight(&shown);
             let what = match grip {
+                Grip::Riser(i, _) => tf("Riser {}", &[&(i + 1).to_string()]),
                 Grip::Foot => m.units.with_unit(st.start.dist(shown.start)),
                 Grip::Top => format!("{:.1}°", shown.angle),
                 Grip::Width(_) => m.units.with_unit(shown.width),
