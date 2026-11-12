@@ -113,6 +113,10 @@ back and replies with what it would make, change and remove and the warnings the
 undo history are as they were. It only reads, so it answers where agents may only read too, and a line that names a file or
 would save, undo, redo or replace the project is refused, as is a `favorite` other than `list`: saving or deleting one writes the
 user's favorites file, outside the project, even with no `path` given.
+Manage > Macros > Run Script (`script.rs`) is the same for the user: a script typed or pasted in a dialog, one command a line as
+the command line and agents write them. Try is that dry run, said in a line (`script::summary`) with the project untouched; Run takes
+the dry run first, so it refuses what it would refuse, and then runs the script as one undo step, `Script` (`Session::script_atomic`),
+all or nothing, and the status box says what it did.
 
 The interface's language is `lang::Lang`: a project's language, or Simplified Chinese (issue 38), which only the window speaks
 (a drawing's lettering, `font.rs`, is drawn in code and has no hanzi, so a project is never in Chinese and `Lang::project()` gives
