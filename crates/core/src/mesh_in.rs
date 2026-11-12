@@ -520,14 +520,16 @@ impl Gltf<'_> {
         let count = usize::try_from(acc["count"].as_u64()?).ok()?;
         let view = &self.doc["bufferViews"][usize::try_from(acc["bufferView"].as_u64()?).ok()?];
         let buffer = self.buffers.get(usize::try_from(view["buffer"].as_u64()?).ok()?)?.as_deref()?;
-        let start = usize::try_from(view["byteOffset"].as_u64().unwrap_or(0) + acc["byteOffset"].as_u64().unwrap_or(0)).ok()?;
+        // Every offset and length is the file's: added and multiplied checked, so one past what a number holds is no element.
+        let start = usize::try_from(view["byteOffset"].as_u64().unwrap_or(0).checked_add(acc["byteOffset"].as_u64().unwrap_or(0))?).ok()?;
         let size = width * components;
         let stride = usize::try_from(view["byteStride"].as_u64().unwrap_or(size as u64)).ok()?.max(size);
-        let end = usize::try_from(view["byteOffset"].as_u64().unwrap_or(0) + view["byteLength"].as_u64()?).ok()?;
+        let end = usize::try_from(view["byteOffset"].as_u64().unwrap_or(0).checked_add(view["byteLength"].as_u64()?)?).ok()?;
         let view_bytes = buffer.get(..end.min(buffer.len()))?;
         let mut out = Vec::with_capacity(count.min(MAX_VERTICES));
         for i in 0..count {
-            out.push(view_bytes.get(start + i * stride..start + i * stride + size)?);
+            let at = i.checked_mul(stride)?.checked_add(start)?;
+            out.push(view_bytes.get(at..at.checked_add(size)?)?);
         }
         Some((out, kind))
     }

@@ -189,6 +189,13 @@ fn a_compressed_gltf_is_refused_with_why_and_hostile_bytes_never_panic() {
         bad[i] ^= 0xFF;
         let _ = gltf(&bad, |_| None);
     }
+    // Offsets, lengths and strides as large as JSON holds: left out, not added past what a number holds.
+    for (view, key, v) in [(0, "byteOffset", u64::MAX), (0, "byteLength", u64::MAX), (0, "byteStride", u64::MAX), (1, "byteOffset", u64::MAX - 8)] {
+        let (mut doc, bin) = triangle_gltf(json!({"mesh": 0}), None);
+        doc["bufferViews"][view][key] = json!(v);
+        doc["accessors"][view]["byteOffset"] = json!(16);
+        let _ = gltf(&glb(&doc, &bin), |_| None);
+    }
     // A node holding itself is read once, not for ever.
     let (mut doc, bin) = triangle_gltf(json!({"mesh": 0, "children": [0]}), None);
     doc["scenes"] = json!([{"nodes": [0]}]);
