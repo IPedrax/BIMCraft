@@ -565,7 +565,7 @@ impl BimApp {
 fn browser_menu(ui: &mut Ui, entries: &[(&'static str, Act)], act: &mut Option<Act>) {
     for (label, item) in entries {
         if let Act::Instances(params) = item {
-            if let Some(scope) = crate::context::instances_menu(ui, true) {
+            if let Some(scope) = crate::context::instances_menu(ui, true, false) {
                 *act = Some(Act::SelectInstances(params.clone(), scope));
             }
         } else if ui.button(t(label)).clicked() {
