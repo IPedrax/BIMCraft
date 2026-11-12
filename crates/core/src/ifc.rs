@@ -634,11 +634,12 @@ impl Step {
     }
 
     /// A steel section `width` by `depth` as IFC's parameterized profile of its shape, named `name`, centred on the box round
-    /// it, as BIMCraft's are.
+    /// it, as BIMCraft's are; a turned one's axes turned half round.
     fn section(&mut self, p: &crate::model::Profile, name: &str, (width, depth): (f64, f64)) -> u64 {
         use crate::profiles::Shape;
         let c = self.point(P2(0.0, 0.0));
-        let at = self.add(format!("IFCAXIS2PLACEMENT2D(#{c},$)"));
+        let x = if p.turned { format!("#{}", self.add("IFCDIRECTION((-1.,0.))")) } else { "$".into() };
+        let at = self.add(format!("IFCAXIS2PLACEMENT2D(#{c},{x})"));
         let name = if name.is_empty() { "$".to_string() } else { s(name) };
         let radius = if p.radius > 0.0 { real(p.radius) } else { "$".into() };
         let (w, d) = (real(width), real(depth));
@@ -650,6 +651,9 @@ impl Step {
                 format!("IFCUSHAPEPROFILEDEF(.AREA.,{name},#{at},{d},{w},{},{},{radius},$,$)", real(p.web), real(p.flange))
             }
             Shape::L => format!("IFCLSHAPEPROFILEDEF(.AREA.,{name},#{at},{d},{w},{},{radius},$,$)", real(p.thickness)),
+            Shape::T => {
+                format!("IFCTSHAPEPROFILEDEF(.AREA.,{name},#{at},{d},{w},{},{},{radius},$,$,$,$)", real(p.web), real(p.flange))
+            }
             Shape::Rhs => format!("IFCRECTANGLEHOLLOWPROFILEDEF(.AREA.,{name},#{at},{w},{d},{},$,$)", real(p.thickness)),
             Shape::Chs => format!("IFCCIRCLEHOLLOWPROFILEDEF(.AREA.,{name},#{at},{},{})", real(width / 2.0), real(p.thickness)),
         })

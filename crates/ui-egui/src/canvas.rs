@@ -946,6 +946,30 @@ pub(crate) fn opening_dimensions(p: &Painter, m: &Model, v: &View, o: &bimcraft_
         .collect()
 }
 
+/// A straight wall's temporary dimensions to the nearest parallel wall or grid on its left and its right
+/// (`Model::wall_clearances`), drawn on `p` square to it a little along it from its middle: which side, where its number
+/// goes, its text and the clearance. None for a curved wall, a side with no such line, or a span too short to draw.
+pub(crate) fn wall_dimensions(p: &Painter, m: &Model, v: &View, id: Id) -> Vec<(usize, Pos2, String, Clearance)> {
+    let Some(w) = m.wall(id) else { return Vec::new() };
+    let origin = p.clip_rect().min;
+    let screen = |q: P2| pos(origin, v.px(q));
+    let along = screen(w.end) - screen(w.start);
+    if along.length() < 24.0 {
+        return Vec::new();
+    }
+    let side = along / along.length();
+    m.wall_clearances(id)
+        .into_iter()
+        .enumerate()
+        .filter_map(|(n, c)| Some((n, c?)))
+        .filter(|(_, c)| screen(c.from).distance(screen(c.from + c.toward * c.distance)) >= 24.0)
+        .map(|(n, c)| {
+            let (a, b) = (screen(c.from), screen(c.from + c.toward * c.distance));
+            (n, dimension_line(p, a, b, side, 36.0), m.units.length(c.distance), c)
+        })
+        .collect()
+}
+
 /// A column's or component's temporary dimensions, drawn on `p` beside it: how far it stands from the nearest wall centre
 /// line or grid east, north, west and south (`Model::clearances`), each as which of the four, where its number goes, its
 /// text and the clearance. None for any other element, and for a way with no line or a span too short to draw.
@@ -2918,14 +2942,31 @@ impl BimApp {
     /// The Text tool's click: a note saying what the Options Bar says, its top left at `at` in
     /// view `view` (a plan's level, a section, an elevation or a sheet).
     pub(crate) fn write_note(&mut self, view: Id, at: P2) {
+        // With Leader, the first click is the point the leader reaches, the next where the note goes.
+        let leader = match self.note_arrow.take() {
+            Some((v, arrow)) if self.note_leader && v == view => Some(arrow),
+            _ if self.note_leader => {
+                self.note_arrow = Some((view, at));
+                self.status = Status { text: t("Click where the note goes: its top left corner.").into(), error: false };
+                return;
+            }
+            _ => None,
+        };
         // Typed in the Options Bar, it goes straight there; else it is written on the canvas.
         if self.note_text.trim().is_empty() {
             self.start_note(view, at);
+            if let Some(e) = &mut self.note_edit {
+                e.note.leader = leader;
+            }
             return;
         }
         // `\n` typed in the bar breaks the line.
         let text = self.note_text.replace("\\n", "\n");
-        self.run("text", json!({"text": text, "at": point(at), "view": view}));
+        let mut p = json!({"text": text, "at": point(at), "view": view});
+        if let Some(arrow) = leader {
+            p["leader"] = point(arrow);
+        }
+        self.run("text", p);
     }
 
     /// Rotate the selection about `centre` by `angle` degrees, counter-clockwise; with Copy, a
@@ -4051,6 +4092,21 @@ impl BimApp {
                 None => {}
             }
         }
+        // To the nearest parallel wall or grid either side: a length typed there moves the wall square to itself.
+        for (n, middle, text, c) in wall_dimensions(&p, m, v, id) {
+            let size = p.layout_no_wrap(text.clone(), FontId::proportional(12.0), pal().accent).size() + vec2(10.0, 4.0);
+            let Some(typed) = self.dimension_number(ui, Rect::from_center_size(middle, size), (id, n + 1), &text) else { continue };
+            match typed.map(|t| (m.units.parse(&t), t)) {
+                Some((Some(len), _)) if len > 0.0 => {
+                    let by = c.toward * (c.distance - len);
+                    if by.length() > 1e-6 {
+                        self.run("move", json!({"ids": [id], "by": point(by)}));
+                    }
+                }
+                Some((_, typed)) => self.status = Status { text: tf("`{}` is not a length", &[typed.trim()]), error: true },
+                None => {}
+            }
+        }
     }
 
     /// The listening dimensions of a shape being drawn, with the cursor at `next`: a rectangle's width and height by
@@ -4483,6 +4539,7 @@ impl BimApp {
                 let text = self.note_text.replace("\\n", "\n");
                 let mut n = crate::notes::NoteEdit::new(m, key, round(v.mm(q)), self.note_type()).note;
                 n.text = text;
+                n.leader = self.note_arrow.filter(|(view, _)| *view == key).map(|(_, arrow)| arrow);
                 sketched(&Element::Text(n));
                 return;
             }

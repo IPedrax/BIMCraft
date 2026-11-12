@@ -1145,8 +1145,9 @@ other_files(
          material?, profile?, shape?, web?, flange?, radius? | height?, spacing?} creates the type, or changes it everywhere it's used. A column's, a structural column's or \
          a footing's type is a `width` by `depth`, or `round` (`width` across); a run's (a beam's, a pipe's, a cable tray's…) too, \
          made of a `material` of the library. Steel beam/structural-column types accept `profile` (IPE 80-600, HEA/HEB 100-600, \
-         e.g. IPE 300) or `shape` I/H, U, L, RHS/SHS or CHS plus `width`, `depth` and plates. I/U take `web`, `flange`, \
-         `radius`; L takes `thickness`, `radius`; RHS/CHS take `thickness` (CHS width is its diameter). `shape: rectangle` \
+         e.g. IPE 300) or `shape` I/H, U, L, T, RHS/SHS or CHS plus `width`, `depth` and plates. I/U/T take `web`, `flange`, \
+         `radius`; L takes `thickness`, `radius`; RHS/CHS take `thickness` (CHS width is its diameter); `turned: true` turns \
+         a section half round in its plane (a T's flange below, an inverted T). `shape: rectangle` \
          removes the profile. Beam/structural-column creation auto-adds a catalogue type when its given name is absent. \
          Catalogue beams default to Metal. Schedules expose Profile, Section Area (cm²), Weight per Metre (kg/m), Weight (kg; \
          assumes steel at 7850 kg/m³). A wall type may have `layers` [{function?: structure|\
@@ -14113,17 +14114,17 @@ fn steel_material(language: &Language, materials: &BTreeMap<String, crate::model
 }
 
 /// A structural column's or a beam's steel section from `type`'s params, over the one it has (`old`): `profile` names one of
-/// the catalogue's, `shape` makes one with its plates (`web`, `flange`, `thickness`, `radius`), `shape: rectangle` takes it
-/// away; plates alone change the one it has.
+/// the catalogue's, `shape` makes one with its plates (`web`, `flange`, `thickness`, `radius`) and whether it is `turned`,
+/// `shape: rectangle` takes it away; plates and `turned` alone change the one it has.
 fn steel(c: &str, p: &Value, cat: &str, old: Option<&crate::model::Profile>) -> Result<Steel, String> {
     use crate::profiles::{Shape, catalogue};
     let plates = ["web", "flange", "thickness", "radius"];
     let said = |k: &str| !absent(p.get(k));
     if !matches!(cat, "structuralcolumn" | "beam") {
-        if said("profile") || said("shape") {
+        if said("profile") || said("shape") || said("turned") {
             return Err(bad(
                 c,
-                format!("a steel section (`profile`, `shape`) is for a structural column's or a beam's type, not a {cat}'s"),
+                format!("a steel section (`profile`, `shape`, `turned`) is for a structural column's or a beam's type, not a {cat}'s"),
             ));
         }
         return Ok(Steel::Unsaid(None));
@@ -14135,7 +14136,7 @@ fn steel(c: &str, p: &Value, cat: &str, old: Option<&crate::model::Profile>) -> 
         }
     };
     if let Some(name) = string(c, p, "profile")? {
-        if said("shape") || plates.iter().any(|k| said(k)) {
+        if said("shape") || said("turned") || plates.iter().any(|k| said(k)) {
             return Err(bad(c, "`profile` names a section of the catalogue: give it alone, or `shape` and its plates"));
         }
         let (w, d, profile) = catalogue(&name).ok_or_else(|| {
@@ -14149,25 +14150,27 @@ fn steel(c: &str, p: &Value, cat: &str, old: Option<&crate::model::Profile>) -> 
     let shape = match string(c, p, "shape")? {
         None => None,
         Some(w) if matches!(w.trim().to_lowercase().as_str(), "rectangle" | "rectangular" | "none" | "round") => {
-            if let Some(k) = plates.iter().find(|k| said(k)) {
-                return Err(bad(c, format!("a {w} section has no `{k}`; give `shape` I, U, L, RHS or CHS")));
+            if let Some(k) = plates.iter().chain(&["turned"]).find(|k| said(k)) {
+                return Err(bad(c, format!("a {w} section has no `{k}`; give `shape` I, U, L, T, RHS or CHS")));
             }
             return Ok(Steel::Plain(w.trim().eq_ignore_ascii_case("round")));
         }
-        Some(w) => Some(Shape::parse(&w).ok_or_else(|| bad(c, format!("`shape` is I, U, L, RHS, CHS or rectangle, not `{w}`")))?),
+        Some(w) => Some(Shape::parse(&w).ok_or_else(|| bad(c, format!("`shape` is I, U, L, T, RHS, CHS or rectangle, not `{w}`")))?),
     };
     let base = match (shape, old) {
-        (Some(shape), _) => crate::model::Profile { shape, name: String::new(), web: 0.0, flange: 0.0, thickness: 0.0, radius: 0.0 },
+        (Some(shape), _) => {
+            crate::model::Profile { shape, name: String::new(), web: 0.0, flange: 0.0, thickness: 0.0, radius: 0.0, turned: false }
+        }
         (None, Some(o)) => o.clone(),
         (None, None) => {
-            if let Some(k) = plates.iter().find(|k| said(k)) {
-                return Err(bad(c, format!("`{k}` is a steel section's: give `shape` (I, U, L, RHS or CHS) or `profile`")));
+            if let Some(k) = plates.iter().chain(&["turned"]).find(|k| said(k)) {
+                return Err(bad(c, format!("`{k}` is a steel section's: give `shape` (I, U, L, T, RHS or CHS) or `profile`")));
             }
             return Ok(Steel::Unsaid(None));
         }
     };
     let takes: &[&str] = match base.shape {
-        Shape::I | Shape::U => &["web", "flange", "radius"],
+        Shape::I | Shape::U | Shape::T => &["web", "flange", "radius"],
         Shape::L => &["thickness", "radius"],
         Shape::Rhs | Shape::Chs => &["thickness"],
     };
@@ -14181,6 +14184,9 @@ fn steel(c: &str, p: &Value, cat: &str, old: Option<&crate::model::Profile>) -> 
     profile.flange = plate("flange")?.unwrap_or(profile.flange);
     profile.thickness = plate("thickness")?.unwrap_or(profile.thickness);
     profile.radius = plate("radius")?.unwrap_or(profile.radius);
+    if said("turned") {
+        profile.turned = flag(c, p, "turned")?;
+    }
     Ok(match shape {
         Some(_) => Steel::Shape(profile),
         None => {

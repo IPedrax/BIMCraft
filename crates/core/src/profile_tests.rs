@@ -1,5 +1,5 @@
 //! Steel sections for structural columns and beams, through the commands every front end drives: I sections from the
-//! catalogue by name, parametric I, U, L and hollow sections; their cuts in plans and sections, their solids in 3D, their
+//! catalogue by name, parametric I, U, L, T and hollow sections; their cuts in plans and sections, their solids in 3D, their
 //! schedules' weights, their IFC profiles and what comes back from IFC.
 
 use serde_json::{Value, json};
@@ -168,6 +168,27 @@ fn a_section_cuts_a_steel_beam_as_its_i() {
 }
 
 #[test]
+fn a_section_cuts_a_t_with_its_flange_on_top_and_one_turned_over_with_it_below() {
+    let mut s = Session::new();
+    let t = json!({"category": "beam", "name": "T", "shape": "T", "width": 1500, "depth": 1000, "web": 400, "flange": 500});
+    run(&mut s, "type", t.clone());
+    let mut turned = t;
+    (turned["name"], turned["turned"]) = (json!("Inverted T"), json!(true));
+    run(&mut s, "type", turned);
+    // Both hung under 3000, 1000 deep; the section sees the T 1000 along it and the inverted T 3000 along.
+    made(&mut s, "beam", json!({"points": [[0, -1000], [6000, -1000]], "type": "T", "offset": 3000}));
+    made(&mut s, "beam", json!({"points": [[0, 1000], [6000, 1000]], "type": "Inverted T", "offset": 3000}));
+    let section = made(&mut s, "section", json!({"start": [3000, -2000], "end": [3000, 2000]}));
+    let d = render::section(&s.model, section, View { scale: 0.1, cx: 2000.0, cy: 2500.0, width: 600, height: 300 });
+    assert_ne!(pixel(&d, P2(400.0, 2750.0)), PAPER, "the T's flange, on top");
+    assert_ne!(pixel(&d, P2(1000.0, 2250.0)), PAPER, "the T's web");
+    assert_eq!(pixel(&d, P2(400.0, 2250.0)), PAPER, "beside the T's web");
+    assert_ne!(pixel(&d, P2(2400.0, 2250.0)), PAPER, "the inverted T's flange, below");
+    assert_ne!(pixel(&d, P2(3000.0, 2750.0)), PAPER, "the inverted T's web");
+    assert_eq!(pixel(&d, P2(2400.0, 2750.0)), PAPER, "beside the inverted T's web");
+}
+
+#[test]
 fn a_sloped_steel_beam_in_3d_is_its_section_swept_along_it() {
     let mut s = Session::new();
     // 3000 along, 4000 up: 5000 long, sloping at cos θ = 0.6.
@@ -331,6 +352,12 @@ fn steel_sections_come_back_from_ifc() {
     run(&mut s, "type", json!({"category": "structuralcolumn", "name": "RHS", "shape": "RHS", "width": 200, "depth": 100, "thickness": 8}));
     run(&mut s, "type", json!({"category": "structuralcolumn", "name": "CHS", "shape": "CHS", "width": 168.3, "thickness": 6}));
     made(&mut s, "beam", json!({"points": [[0, 4000], [6000, 4000]], "type": "UPE 200", "offset": 3000, "end_offset": 3500}));
+    run(
+        &mut s,
+        "type",
+        json!({"category": "beam", "name": "Inverted T", "shape": "T", "width": 1500, "depth": 1000, "web": 400, "flange": 500, "turned": true}),
+    );
+    made(&mut s, "beam", json!({"points": [[0, 8000], [6000, 8000]], "type": "Inverted T"}));
     // Square, its flanges along 30°; and one whose depth runs east.
     made(&mut s, "structural_column", json!({"at": [0, 0], "type": "HEB 300", "angle": 30}));
     made(&mut s, "structural_column", json!({"at": [3000, 0], "type": "IPE 550", "angle": 90}));
@@ -376,8 +403,54 @@ fn hostile_sections_are_refused_without_a_panic_or_a_broken_model() {
         json!({"category": "beam", "name": "H", "shape": "CHS", "width": 100, "thickness": 0}),
         json!({"category": "beam", "name": "H", "shape": "L", "width": 100, "depth": 100, "thickness": 100}),
         json!({"category": "beam", "name": "H", "shape": ["I"]}),
+        json!({"category": "beam", "name": "H", "shape": "T", "width": 100, "depth": 200, "web": 100, "flange": 10}),
+        json!({"category": "beam", "name": "H", "shape": "T", "width": 100, "depth": 200, "web": 10, "flange": 200}),
+        json!({"category": "beam", "name": "H", "shape": "T", "width": 100, "depth": 200, "web": 10, "flange": 10, "turned": "yes"}),
+        json!({"category": "beam", "name": "H", "shape": "T", "width": 100, "depth": 200, "web": 10, "flange": 10, "thickness": 5}),
     ] {
         fails(&mut s, "type", p);
     }
     assert!(s.model.check().is_ok());
+}
+
+/// A foundation beam as a structural program writes an inverted T (#298): IFC's T, its flange on top, turned half round in
+/// its plane by the profile's own axes, in metres. Written by hand; no one's project is in the tests.
+const INVERTED_T: &str = "ISO-10303-21;HEADER;FILE_SCHEMA(('IFC4'));ENDSEC;DATA;
+#1=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);
+#2=IFCUNITASSIGNMENT((#1));
+#3=IFCPROJECT('p',$,'Foundations',$,$,$,$,$,#2);
+#4=IFCCARTESIANPOINT((0.,0.,0.));
+#5=IFCAXIS2PLACEMENT3D(#4,$,$);
+#6=IFCLOCALPLACEMENT($,#5);
+#7=IFCBUILDINGSTOREY('s',$,'Level 0',$,$,#6,$,$,.ELEMENT.,0.);
+#8=IFCRELCONTAINEDINSPATIALSTRUCTURE('r',$,$,$,(#30),#7);
+#10=IFCCARTESIANPOINT((0.,0.));
+#11=IFCDIRECTION((-1.,0.));
+#12=IFCAXIS2PLACEMENT2D(#10,#11);
+#13=IFCTSHAPEPROFILEDEF(.AREA.,'T',#12,1.,1.5,0.4,0.5,$,$,$,$,$);
+#14=IFCCARTESIANPOINT((0.,0.5,0.));
+#15=IFCDIRECTION((0.,0.,-1.));
+#16=IFCDIRECTION((1.,0.,0.));
+#17=IFCAXIS2PLACEMENT3D(#14,#15,#16);
+#18=IFCEXTRUDEDAREASOLID(#13,#17,#15,6.);
+#19=IFCSHAPEREPRESENTATION($,'Body','SweptSolid',(#18));
+#20=IFCPRODUCTDEFINITIONSHAPE($,$,(#19));
+#21=IFCCARTESIANPOINT((2.,0.,0.));
+#22=IFCDIRECTION((0.,1.,0.));
+#23=IFCAXIS2PLACEMENT3D(#21,#22,#16);
+#24=IFCLOCALPLACEMENT($,#23);
+#30=IFCBEAM('b',$,'731',$,$,#24,#20,$,$);
+ENDSEC;END-ISO-10303-21;";
+
+#[test]
+fn an_inverted_t_foundation_beam_comes_from_ifc_as_a_t_turned_over() {
+    let i = crate::import::ifc(INVERTED_T.as_bytes(), "x").unwrap();
+    i.model.check().unwrap();
+    assert!(i.skipped.is_empty(), "{:?}", i.skipped);
+    let beams: Vec<_> = i.model.elements.iter().filter(|(_, e)| e.category() == "beam").collect();
+    assert_eq!(beams.len(), 1);
+    let t = beams.first().and_then(|(_, e)| i.model.run_type(e)).unwrap();
+    let p = t.profile.clone().expect("a T section, not a rectangle");
+    assert_eq!((p.shape, p.turned, t.width, t.depth), (crate::profiles::Shape::T, true, 1500.0, 1000.0));
+    assert_eq!((p.web, p.flange), (400.0, 500.0));
 }

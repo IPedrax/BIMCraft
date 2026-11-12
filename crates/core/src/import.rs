@@ -1123,8 +1123,9 @@ impl<'a> Reader<'a> {
         self.chosen(product).into_iter().find_map(|item| unread.get(&item).copied())
     }
 
-    /// The steel section a product's body sweeps, if it is one IFC names by its plates (an I, a channel, an angle, a tube, a
-    /// pipe): the section, its width and depth, and the direction its x runs in, in model coordinates.
+    /// The steel section a product's body sweeps, if it is one IFC names by its plates (an I, a channel, an angle, a T, a tube,
+    /// a pipe): the section, its width and depth, and the direction its x runs in, in model coordinates. One whose y points
+    /// down (an inverted T, as a foundation beam is drawn) is `turned`.
     fn section(&self, product: &Entity) -> Option<(crate::model::Profile, f64, f64, P3)> {
         use crate::profiles::Shape;
         let f = self.frame(product);
@@ -1136,7 +1137,8 @@ impl<'a> Reader<'a> {
         let size = |x: f64| (x * 1000.0).round() / 1000.0;
         let plate = |i: usize| len(i).map_or(0.0, size);
         let name = text(a(1)).map(clip).unwrap_or_default();
-        let bare = |shape| crate::model::Profile { shape, name: name.clone(), web: 0.0, flange: 0.0, thickness: 0.0, radius: 0.0 };
+        let bare =
+            |shape| crate::model::Profile { shape, name: name.clone(), web: 0.0, flange: 0.0, thickness: 0.0, radius: 0.0, turned: false };
         let (profile, width, depth) = match p.name.as_str() {
             "IFCISHAPEPROFILEDEF" => {
                 (crate::model::Profile { web: plate(5), flange: plate(6), radius: plate(7), ..bare(Shape::I) }, len(3)?, len(4)?)
@@ -1146,6 +1148,10 @@ impl<'a> Reader<'a> {
             }
             "IFCLSHAPEPROFILEDEF" => {
                 (crate::model::Profile { thickness: plate(5), radius: plate(6), ..bare(Shape::L) }, len(4).unwrap_or(len(3)?), len(3)?)
+            }
+            // Depth, flange width, web and flange thickness, root radius: its flange on top.
+            "IFCTSHAPEPROFILEDEF" => {
+                (crate::model::Profile { web: plate(5), flange: plate(6), radius: plate(7), ..bare(Shape::T) }, len(4)?, len(3)?)
             }
             "IFCRECTANGLEHOLLOWPROFILEDEF" => (crate::model::Profile { thickness: plate(5), ..bare(Shape::Rhs) }, len(3)?, len(4)?),
             "IFCCIRCLEHOLLOWPROFILEDEF" => {
@@ -1165,8 +1171,9 @@ impl<'a> Reader<'a> {
             profile.name.clear();
         }
         profile.check("", width, depth, profile.shape == Shape::Chs).ok()?;
-        let x = f.then(self.axes(reference(solid.args.get(1)))).then(self.axes(reference(a(2)))).x;
-        Some((profile, width, depth, x))
+        let axes = f.then(self.axes(reference(solid.args.get(1)))).then(self.axes(reference(a(2))));
+        profile.turned = axes.y[2] < -0.5;
+        Some((profile, width, depth, axes.x))
     }
 
     /// The line a product's body sweeps along: its points in the world and the radius of the section, mm. A disk swept along
