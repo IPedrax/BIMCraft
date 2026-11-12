@@ -26,9 +26,9 @@ still consumes CPU and memory in proportion to model size. This does not impleme
 
 ## Files and lifecycle
 
-- A saved project `house.bimcraft` uses `house.bimcraft.autosave.bimcraft` in the same directory. No numbered history is
+- A saved project `house.bimc` uses `house.bimc.bimb` in the same directory (a backup an earlier version left, `house.bimcraft.autosave.bimcraft`, is found and offered as well, and once recovered and saved it goes like any other). No numbered history is
   accumulated. An in-progress replacement cannot truncate the previous complete recovery copy.
-- Untitled work uses `<system temp>/bimcraft-autosave/untitled-<GUID>.autosave.bimcraft`. The name is unique per document.
+- Untitled work uses `<system temp>/bimcraft-autosave/untitled-<GUID>.bimb` (or an earlier version's `.autosave.bimcraft`). The name is unique per document.
   On first Save, its temporary snapshot is removed and subsequent snapshots go beside the saved project. The operating
   system may clear its temporary directory, so untitled recovery cannot promise survival of a reboot or system cleanup.
 - A small adjacent `.lock` file holds an OS file lock for each claimed backup. Another live window's copies are skipped;
