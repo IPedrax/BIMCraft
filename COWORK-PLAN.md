@@ -1,7 +1,7 @@
 # Co-Work: live co-editing of one project
 
-Planned on 2026-11-12 against `origin/main` at 733dd127, and revised the same day with the user's answers. Slice 1 is built
-(the engine's side and the interface's funnel); what it does is in [docs/areas/cowork.md](docs/areas/cowork.md).
+Planned on 2026-11-12 against `origin/main` at 733dd127, and revised the same day with the user's answers. Slices 1 and 2 are
+built (the engine's side, the interface's funnel and the transport); what they do is in [docs/areas/cowork.md](docs/areas/cowork.md).
 
 Sizes follow DISCUSSIONS-PLAN.md: S is a day or two, M about a week, L more.
 
@@ -43,7 +43,8 @@ Still recommendations, which the rest of the plan assumes:
    host reads a byte of what the guest sent. The 80 bits are what make that safe: with a 6-digit code, someone in the middle
    could try every code offline against one captured message, so a short code would need a PAKE (`spake2`, a new dependency).
    The alternative to writing the Noise pattern ourselves is the `snow` crate, which brings several new crates
-   (`curve25519-dalek` among them). The plan uses `snow` only as a dev-dependency, to prove ours interoperates with it.
+   (`curve25519-dalek` among them). Ours is held instead to cacophony's published test vector for this protocol, byte for byte,
+   with fixed keys through `ring`'s test randomness, so it needs no new crate at all.
    About "the port code": a port number alone is no secret, so the code takes its place. On the LAN the code alone is enough,
    because discovery finds the host that holds it. From outside, the guest types the host's address and port with the code.
    Slice 2.
@@ -106,7 +107,7 @@ as the bridge's lines are. Snapshots are deflated (`flate2`, already in the work
 | guest | `ai_key` | this guest's key changed: there now, gone, locked; and whether it may be lent |
 | host | `ai_request` | a reference, provider, model and the conversation, for the guest whose key pays for the turn |
 | guest | `ai_reply` | the reference, and the provider's reply or an error |
-| host | `ping` | every 5 seconds, so a guest can tell a host that vanished from one that's quiet |
+| both | `ping` | after 5 seconds of saying nothing, so silence means a broken line, either way |
 | guest | `bye` | leaving |
 | host | `ended` | the session is over, and why: the host closed the window, ended the session, opened another project, or kicked this guest |
 
@@ -267,7 +268,8 @@ Guests have the code, but everything they send is still hostile, and so is every
   `commands.rs`, 256 MB).
 - Floats are checked finite and within `model::MAX_COORD`; a selection holds at most 10,000 GUIDs; a name is at most 40
   characters with no control characters; a chat message is at most the assistant's `MAX_TEXT` (8,000 characters).
-- A guest is limited to 50 commands a second, and the host handles at most `PER_FRAME` requests a pass, as for agents.
+- A guest may send at most 100 messages a second of any kind (presence, at 15 a second, included); past it, it is dropped. The
+  host's window handles at most `PER_FRAME` requests a pass, as for agents.
 - After 5 failed handshakes, an address waits 30 seconds. A connection that sends nothing whole within 10 seconds of opening
   is dropped, as the control port's `FIRST_LINE` does.
 - A guest's command goes through `Session::execute`, which already survives hostile params (`catch_unwind`, rollback, the
@@ -294,7 +296,7 @@ Guests have the code, but everything they send is still hostile, and so is every
 | a 3D camera's eye | `view3d::Camera::eye` |
 | the AI loop, its tools, its caps, the network behind a trait | `crates/assistant`: `Chat`, `tools::run`, `net::Net`, `testing::Fake` |
 
-No new runtime dependency. `snow` only as a dev-dependency of `crates/cowork`.
+No new dependency, at run time or in the tests.
 
 ## Slices
 
@@ -318,14 +320,14 @@ Each slice ships alone, starts with its failing tests, and passes the three chec
     redo. A type change of Ana's conflicts with a later type change of Bo's.
   - The grep test on the UI's sources.
 
-### 2. The transport, `crates/cowork` (M)
+### 2. The transport, `crates/cowork` (M): built
 
 - New crate, depended on only by the desktop (`crates/ui-egui`, `apps/bimcraft`): the TCP listener (0.0.0.0 by default) and
   connector, the Noise handshake on `ring`, frames, join codes, the `op` messages, the host's relay of presence, `ping`, caps
   and rate limits, UDP discovery. It carries JSON and knows nothing of egui.
 - Tests first, all on this machine's address:
   - The code's format round-trips and refuses typos; a wrong code fails the handshake and says so; a tampered or replayed frame
-    ends the connection; ours interoperates with `snow`.
+    ends the connection; the handshake matches cacophony's published vector for the protocol.
   - One host and two guests over loopback join, send a command, receive the delta before the `done`, relay presence, leave and
     are kicked; a ninth guest is turned away; 5 wrong codes lock an address out.
   - Dropping the host sends `ended` to both guests; a host whose socket dies with no `ended` is reported lost after the

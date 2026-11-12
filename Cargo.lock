@@ -510,6 +510,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "bimcraft-cowork"
+version = "0.11.0"
+dependencies = [
+ "ring",
+ "serde_json",
+]
+
+[[package]]
 name = "bimcraft-dwg"
 version = "0.11.0"
 dependencies = [

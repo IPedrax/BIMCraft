@@ -45,7 +45,36 @@ through `exec`, and the dialogs that ran several commands as one step (Visibilit
 Settings, Draw's runs) go through `exec_batch`. `tests/cowork.rs` reads the interface's sources and fails on any other
 `self.session.execute`, `transaction` or `script`. It is where a guest's commands will go to the host.
 
+## Built: the transport (slice 2)
+
+`crates/cowork` (`bimcraft-cowork`; its rules for agents are in [its notes](../../crates/cowork/CLAUDE.md)). Nothing uses it yet:
+the desktop wires it in slice 3.
+
+- **The code** (`Code`): 80 random bits, written `7KQ2-M9XD-4TPA-R3HC` in Crockford's base 32, read back in any case, with or
+  without dashes, and with O, I and L taken for 0, 1 and 1. It never goes on the wire. `Code::tag` is 32 bits of HMAC-SHA256
+  under it, which the host says on the LAN so a guest who typed only the code finds the host holding it.
+- **The handshake** is Noise `NNpsk0_25519_ChaChaPoly_SHA256` on `ring`, with the code's key as the pre-shared key: a wrong code
+  fails the host's check of the guest's first message, and each connection has keys of its own. It matches cacophony's published
+  vector for that protocol byte for byte. After it, every frame is sealed with a counter as its nonce, so a changed, dropped,
+  reordered or replayed frame ends the connection.
+- **A host** (`Host::start`) listens where it is told (0.0.0.0 and the session port by default; anything beyond that, such as
+  forwarding a port, is the user's), lets in a guest with the right code and the same version, at most eight, and hands the
+  window `HostEvent`s: `Joined` (the guest's number, its name made safe, its colour by join order, its hello), `Message` and
+  `Left` (with why: it left, was kicked, fell silent, flooded, broke the line). The window sends with `send` and `broadcast`, and
+  `kick`s. Presence is relayed to the other guests by the guest's own thread, with `from` added, so it never waits for the
+  window. Dropping the host says `ended` ("the host closed the session") to every guest and waits until that is out; `end` says
+  a reason of the window's.
+- **A guest** (`Guest::join`) does the handshake, says the window's hello and waits for the welcome, or returns why not: the
+  code, the version, a full session, a host that didn't answer. Then `GuestEvent`s: `Message`, `Ended` (the host said so, and
+  why) and `Lost` (the host went without a word).
+- **Both sides ping** after 5 seconds of saying nothing and take 15 seconds of hearing nothing as a broken line. A guest that
+  floods (more than 100 messages in a second), sends what isn't a message or stops taking what it is sent is dropped; an address
+  that gets the code wrong five times waits 30 seconds.
+- **Discovery** (`discover`): a guest sends a small "who hosts?" UDP datagram to the targets it is given (the window will give
+  the LAN's broadcast address and the discovery port), and each visible host answers with its name, its project's, its version,
+  its session port and its code's tag. Nothing secret goes either way, and an answer that isn't one is passed over. A host whose
+  discovery port is taken still hosts, out of sight (`Host::discovery_port` is none).
+
 ## Not built yet
 
-The transport (`crates/cowork`), hosting and joining in the desktop, presence, and the shared AI chat: slices 2 to 5 of the
-plan.
+Hosting and joining in the desktop, presence, and the shared AI chat: slices 3 to 5 of the plan.

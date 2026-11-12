@@ -1,0 +1,16 @@
+[package]
+name = "bimcraft-cowork"
+description = "BIMCraft's Co-Work transport: a host's window and its guests over TCP, encrypted under the join code, and finding hosts on the LAN"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+serde_json = { workspace = true }
+# X25519, ChaCha20-Poly1305, SHA-256 and HMAC for the Noise handshake, and the system's random numbers: the updater's and the
+# assistant's ring.
+ring = { workspace = true }
