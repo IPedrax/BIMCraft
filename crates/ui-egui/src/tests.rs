@@ -6223,6 +6223,7 @@ mod cad;
 mod chinese;
 mod clouds;
 mod control;
+mod cowork;
 mod dialog;
 mod dimensions;
 mod dims3d;

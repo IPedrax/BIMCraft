@@ -8124,9 +8124,21 @@ impl Model {
         self.elements.changed_since(&before.elements)
     }
 
+    /// What changed from `before` to this model, exactly: the elements that differ (made, changed, removed, or given another GUID),
+    /// and whether anything but the elements and the ids still to give did. Where [`Model::changed_since`] can only say
+    /// "everything", every element is compared: a person's undo needs the exact list (`Session::undo_own`).
+    pub fn diff(&self, before: &Model) -> (BTreeSet<Id>, bool) {
+        let candidates: BTreeSet<Id> = match self.elements.changed_since(&before.elements) {
+            Changed::Ids(ids) => ids,
+            Changed::All => self.elements.keys().chain(before.elements.keys()).copied().collect(),
+        };
+        let differ = |id: &Id| self.elements.get(*id) != before.elements.get(*id) || self.elements.guid(*id) != before.elements.guid(*id);
+        (candidates.into_iter().filter(differ).collect(), !self.same_settings(before))
+    }
+
     /// Whether everything but the elements and the ids still to give is the same in both. Every field is named, so a new
     /// one must say how it compares.
-    fn same_settings(&self, o: &Model) -> bool {
+    pub(crate) fn same_settings(&self, o: &Model) -> bool {
         let Model {
             format,
             name,

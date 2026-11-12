@@ -1561,12 +1561,9 @@ impl BimApp {
 
     /// Run a command; when it fails, say why.
     fn run(&mut self, id: &str, params: Value) -> Option<Value> {
-        self.made_in();
-        match self.session.execute(id, &params) {
+        match self.exec(id, &params) {
             Ok(v) => {
                 self.status = Status::default();
-                // The core renames and drops the option with its set.
-                self.active_option = self.session.option.clone();
                 Some(v)
             }
             Err(e) => {
@@ -1574,6 +1571,24 @@ impl BimApp {
                 None
             }
         }
+    }
+
+    /// Run a command on the project, in the view's phase and option: the one way the interface changes it, so that a Co-Work
+    /// guest's commands can go to the host (COWORK-PLAN.md). A test reads the sources for any other.
+    pub(crate) fn exec(&mut self, id: &str, params: &Value) -> Result<Value, String> {
+        self.made_in();
+        let result = self.session.execute(id, params);
+        // The core renames and drops the option with its set.
+        self.active_option = self.session.option.clone();
+        result
+    }
+
+    /// Several commands as one undo step named `label`, all or nothing: what each gave, or the error.
+    pub(crate) fn exec_batch(&mut self, label: &str, commands: &[(&str, Value)]) -> Result<Vec<Value>, String> {
+        self.made_in();
+        let result = self.session.transaction(label, |s| commands.iter().map(|(c, p)| s.execute(c, p)).collect());
+        self.active_option = self.session.option.clone();
+        result
     }
 
     /// The contextual tab's name while a tool is on or something is selected.

@@ -109,8 +109,18 @@ pub struct Step {
     pub label: String,
     pub made: Vec<(&'static str, usize)>,
     pub removed: Vec<(&'static str, usize)>,
+    /// Who made it, in a Co-Work session ([`Session::author`]); none outside one.
+    pub by: Option<String>,
     /// Whether the model the step goes back to passed [`Model::check`]: going back to it needs no check.
     checked: bool,
+    /// Its number in the session, which stays its own as the history moves.
+    n: u64,
+    /// The step this one took back, when it is a person's own undo or redo ([`Session::undo_own`]).
+    undoes: Option<u64>,
+    /// Whether it is an undo (and so what a redo takes back), rather than an edit or a redo.
+    inverse: bool,
+    /// Whether a later step of its author's took it back.
+    undone: bool,
 }
 
 impl Step {
@@ -135,7 +145,7 @@ impl Step {
         } else {
             Vec::new()
         };
-        Step { label: label.to_string(), made, removed, checked: false }
+        Step { label: label.to_string(), made, removed, by: None, checked: false, n: 0, undoes: None, inverse: false, undone: false }
     }
 }
 
@@ -176,6 +186,15 @@ pub struct Session {
     /// What reads it (inspect, schedules, render, exports to new files, the sheets to PDF) answers; a copy saved as another file
     /// leaves the session with its own.
     pub read_only: Option<&'static str>,
+    /// Who the commands run now are for, in a Co-Work session: the host's name, or a guest's while their command runs. Each step
+    /// says who made it ([`Step::by`]), and `undo` and `redo` take back only the author's own ([`Session::undo_own`]). None outside a
+    /// session.
+    pub author: Option<String>,
+    /// Whether a Co-Work guest's command is running ([`crate::cowork::run_for_guest`]): then no command may read or write a file, so a
+    /// guest never reaches the host's disk.
+    pub(crate) no_files: bool,
+    /// How many steps were made, which numbers them.
+    steps_made: u64,
     /// Whether a dry run is under way ([`Session::script_dry_run`]): then each command is looked at as it is about to run, with
     /// the params it is given, and one that would touch a file or the history is refused ([`dry_run_refuses`]).
     dry_run: bool,
@@ -248,6 +267,9 @@ impl Session {
             dwg: None,
             external: Vec::new(),
             read_only: None,
+            author: None,
+            no_files: false,
+            steps_made: 0,
             dry_run: false,
             verified: None,
         }
@@ -346,6 +368,13 @@ impl Session {
         if let Some(what) = dry_run_refuses(cmd, params).filter(|_| self.dry_run) {
             return Err(format!(
                 "`{}` would {what}, and a dry run touches no file and keeps the history: run the script without `dry_run`",
+                cmd.id
+            ));
+        }
+        if self.no_files && (touches_files(cmd, params).is_some() || file_key(params).is_some()) {
+            return Err(format!(
+                "`{}` would read or write a file on the host's machine, which a Co-Work guest never does: the host opens, imports \
+                 and saves",
                 cmd.id
             ));
         }
@@ -513,7 +542,7 @@ impl Session {
             Ok(v) => {
                 self.verified = Some(Arc::clone(&self.model));
                 if cmd.undoable && !Arc::ptr_eq(&before, &self.model) {
-                    let step = Step { checked: verified, ..Step::new(cmd.label, &before, &self.model) };
+                    let step = self.stamped(Step { checked: verified, ..Step::new(cmd.label, &before, &self.model) });
                     self.undo.push((step, before));
                     if self.undo.len() > UNDO_LIMIT {
                         self.undo.remove(0);
@@ -690,7 +719,8 @@ impl Session {
                 if self.undo.is_empty() {
                     self.redo = redo;
                 } else {
-                    undo.push((Step { checked, ..Step::new(label, &before, &self.model) }, before));
+                    let step = self.stamped(Step { checked, ..Step::new(label, &before, &self.model) });
+                    undo.push((step, before));
                     if undo.len() > UNDO_LIMIT {
                         undo.remove(0);
                     }
@@ -711,8 +741,14 @@ impl Session {
         let mut steps = self.undo.drain(at..);
         let Some((first, before)) = steps.next() else { return };
         drop(steps);
-        let step = Step { checked: first.checked, ..Step::new(to, &before, &self.model) };
+        let step = Step { checked: first.checked, by: first.by, ..self.stamped(Step::new(to, &before, &self.model)) };
         self.undo.push((step, before));
+    }
+
+    /// `step` numbered, and by the session's author.
+    fn stamped(&mut self, step: Step) -> Step {
+        self.steps_made += 1;
+        Step { by: self.author.clone(), n: self.steps_made, ..step }
     }
 
     /// What elements from id `first` on, which a command just made, are made in: the session's phase
@@ -773,6 +809,129 @@ impl Session {
             self.verified = Some(Arc::clone(&self.model));
         }
         Ok(json!({ key: label, "count": count }))
+    }
+
+    /// Undo (or with `redo`, redo) `count` of `by`'s own steps, all or nothing: what `undo` and `redo` do in a Co-Work session, where
+    /// each person takes back their own edits wherever they are in the history. A step is taken back by a new step on top, which
+    /// puts what it changed (its elements, and the project's settings if it changed them) as they were before it. That is refused,
+    /// and nothing changes, when any of it is no longer as the step left it, since someone else changed it after; the error says
+    /// who and what. It is refused too when the model it leaves fails [`Model::check`] (Bo's door in Ana's wall, which her undo
+    /// would take away), and then names whose steps came after.
+    pub(crate) fn undo_own(&mut self, by: &str, redo: bool, count: usize) -> Result<Value, String> {
+        if count == 0 {
+            return Err("`count` must be 1 or more".into());
+        }
+        let kept = (Arc::clone(&self.model), self.verified.clone(), self.undo.clone(), self.steps_made);
+        let mut label = String::new();
+        for _ in 0..count {
+            match self.own_step(by, redo) {
+                Ok(l) => label = l,
+                Err(e) => {
+                    (self.model, self.verified, self.undo, self.steps_made) = kept;
+                    return Err(e);
+                }
+            }
+        }
+        self.redo.clear();
+        Ok(json!({ if redo { "redone" } else { "undone" }: label, "count": count }))
+    }
+
+    /// One of [`Session::undo_own`]'s steps; the new step's label.
+    fn own_step(&mut self, by: &str, redo: bool) -> Result<String, String> {
+        let what = if redo { "redo" } else { "undo" };
+        let standing = |st: &Step| st.by.as_deref() == Some(by) && !st.undone;
+        // Undo takes their last edit still standing (an edit or a redo); redo their last undo still standing, unless an edit of
+        // theirs came after it.
+        let at = if redo {
+            let edited = self.undo.iter().rposition(|(st, _)| st.by.as_deref() == Some(by) && st.undoes.is_none());
+            self.undo.iter().rposition(|(st, _)| standing(st) && st.inverse).filter(|at| edited.is_none_or(|e| e < *at))
+        } else {
+            self.undo.iter().rposition(|(st, _)| standing(st) && !st.inverse)
+        };
+        let at = at.ok_or_else(|| format!("nothing of yours to {what}"))?;
+        let now = Arc::clone(&self.model);
+        let before = Arc::clone(&self.undo[at].1);
+        let after = self.undo.get(at + 1).map_or_else(|| Arc::clone(&now), |(_, m)| Arc::clone(m));
+        let step = &self.undo[at].0;
+        let base = step.label.strip_prefix("Undo ").or_else(|| step.label.strip_prefix("Redo ")).unwrap_or(&step.label).to_string();
+        let (ids, settings) = after.diff(&before);
+        // What it changed, as it left it.
+        let moved: Vec<Id> = ids
+            .iter()
+            .copied()
+            .filter(|id| now.elements.get(*id) != after.elements.get(*id) || now.elements.guid(*id) != after.elements.guid(*id))
+            .collect();
+        let resettled = settings && !now.same_settings(&after);
+        if !moved.is_empty() || resettled {
+            return Err(self.whose(at, &format!("can't {what} your {base}"), &moved, resettled, &now, &after));
+        }
+        let mut m = (*now).clone();
+        if settings {
+            let mut back = (*before).clone();
+            (back.elements, back.next_id) = (m.elements.clone(), m.next_id);
+            // What is worked out from the elements is worked out again.
+            back.derived = Default::default();
+            m = back;
+        }
+        for &id in &ids {
+            match (before.elements.get(id), before.elements.guid(id)) {
+                (Some(e), Some(g)) => m.elements.insert_as(id, g, e.clone())?,
+                _ => {
+                    m.elements.remove(id);
+                }
+            }
+        }
+        if let Err(e) = m.check_changed(&now) {
+            let after_it: Vec<String> = self.undo[at + 1..]
+                .iter()
+                .filter(|(st, _)| st.by.as_deref() != Some(by))
+                .map(|(st, _)| format!("{}'s {}", st.by.as_deref().unwrap_or("someone"), st.label))
+                .take(3)
+                .collect();
+            let after_it = if after_it.is_empty() { String::new() } else { format!(" (after it: {})", after_it.join(", ")) };
+            return Err(format!("can't {what} your {base}: {e}{after_it}"));
+        }
+        let label = format!("{} {base}", if redo { "Redo" } else { "Undo" });
+        let (n, inverse) = (step.n, !step.inverse);
+        self.undo[at].0.undone = true;
+        let checked = self.verified.as_ref().is_some_and(|v| Arc::ptr_eq(v, &now));
+        let step = Step { by: Some(by.into()), undoes: Some(n), inverse, checked, ..self.stamped(Step::new(&label, &now, &m)) };
+        self.undo.push((step, now));
+        if self.undo.len() > UNDO_LIMIT {
+            self.undo.remove(0);
+        }
+        // Checked: the command that called this goes straight on, as after a step back.
+        self.model = Arc::new(m);
+        self.verified = Some(Arc::clone(&self.model));
+        Ok(label)
+    }
+
+    /// Why a person's undo of step `at` is refused, `head` first: who last changed what it changed (`moved`, or the settings
+    /// when `settings`), by the steps after it.
+    fn whose(&self, at: usize, head: &str, moved: &[Id], settings: bool, now: &Model, after: &Model) -> String {
+        let things = |ids: &[Id]| {
+            let named: Vec<String> = ids
+                .iter()
+                .take(5)
+                .map(|id| format!("{} {id}", now.elements.get(*id).or_else(|| after.elements.get(*id)).map_or("element", |e| e.category())))
+                .collect();
+            named.join(", ")
+        };
+        for j in (at + 1..self.undo.len()).rev() {
+            let (st, before_j) = &self.undo[j];
+            let after_j = self.undo.get(j + 1).map_or(now, |(_, m)| &**m);
+            let (ids_j, settings_j) = after_j.diff(before_j);
+            let hit: Vec<Id> = moved.iter().copied().filter(|id| ids_j.contains(id)).collect();
+            let who = st.by.as_deref().unwrap_or("someone");
+            if !hit.is_empty() {
+                return format!("{head}: {who} changed {} after it ({who}'s {})", things(&hit), st.label);
+            }
+            if settings && settings_j {
+                return format!("{head}: {who} changed the project's settings after it ({who}'s {})", st.label);
+            }
+        }
+        let what = if moved.is_empty() { "the project's settings".to_string() } else { things(moved) };
+        format!("{head}: {what} changed after it")
     }
 }
 
@@ -987,13 +1146,18 @@ fn dry_run_refuses(cmd: &Command, params: &Value) -> Option<String> {
     if matches!(cmd.id, "save" | "autosave" | "undo" | "redo") {
         return Some(format!("{} the project", if cmd.id == "autosave" { "save" } else { cmd.id }));
     }
-    if let Some(key) = ["path", "save"].into_iter().find(|key| params.get(key).is_some_and(|v| !v.is_null())) {
+    if let Some(key) = file_key(params) {
         return Some(format!("name a file (`{key}`)"));
     }
     touches_files(cmd, params).map(|files| match files {
         Files::Read => "read a file".to_string(),
         _ => "write a file".to_string(),
     })
+}
+
+/// The key of `params` that names a file, whatever the command: `path` or `save`.
+fn file_key(params: &Value) -> Option<&'static str> {
+    ["path", "save"].into_iter().find(|key| params.get(key).is_some_and(|v| !v.is_null()))
 }
 
 struct Kept {
