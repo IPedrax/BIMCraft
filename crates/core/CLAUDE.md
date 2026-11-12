@@ -15,6 +15,12 @@ is in the root `CLAUDE.md`; the write-ups by area are in `docs/areas/`, which th
   would have made, changed and removed).
 - **A new kind of element** is a variant of `Element` and its arms in the places that match on it (`category`, `params`,
   `level_of`, `element_json`, copy and delete, IFC, import, the schedules' `OWN` table): the compiler lists them.
+- **Scripts can reference results**: `@name = command {params}` names a line; later whole-string values `@name`, `$last`,
+  `$-2` use an earlier result's `id`, or a path such as `@walls.ids.0` reads a field. `engine::script_line` reads the same
+  syntax for execution and control-port preflight. Expand parameters before calling `execute`, keeping validation,
+  plugin permissions and read-only checks there. `tests/script_references.rs` covers public session and bridge flows.
+  Expansion charges 128 bytes per value plus UTF-8 string/key bytes against 16 MiB per line before cloning, and limits
+  depth to 128, including external replies. Keep reference diagnostics bounded; never print an entire earlier reply.
 - **References hold GUIDs**, never ids (`ids.rs`, the root rules); library entries are named in memory and held by GUID in a file. The detail is in *Ids and GUIDs* below.
 - **A change to what a file holds** that an older version would misread (not just a field it can do without) bumps `FORMAT` and
   adds its step to `Model::migrate`. `Model::read` leaves out what this version doesn't know (`lenient.rs` walks a file as the

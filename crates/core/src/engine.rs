@@ -584,22 +584,30 @@ impl Session {
         kept.keep(self).map_err(|()| format!("that would change the project, {READ_ONLY}: {how}")).and(result)
     }
 
-    /// Run a script: one command per line, `id` or `id {json params}`; `#` starts a comment.
+    /// Run a script: one command per line, `id` or `id {json params}`; `#` starts a comment. A line may be named,
+    /// `@name = id {json params}`, and a later line's params point at what an earlier one returned ([`refer`]): `@name`,
+    /// `$last` (the line before), `$-2` (the one before that), each its reply's `id`, or a field of it, `@name.ids.0`.
     /// Stops at the first failing line, naming it; the lines before it stay done.
     pub fn script(&mut self, text: &str) -> Result<Vec<Value>, String> {
         let mut out = Vec::new();
+        // Each name, the line it names: its place in `out` and its line number.
+        let mut names: Vec<(&str, usize, usize)> = Vec::new();
         for (n, line) in text.lines().enumerate() {
-            let line = line.trim();
-            if line.is_empty() || line.starts_with('#') {
-                continue;
+            let at = |e: String| format!("line {}: {e}", n + 1);
+            let Some(ScriptLine { name, command: id, params: rest }) = script_line(line).map_err(at)? else { continue };
+            if let Some(&(_, _, first)) = names.iter().find(|(m, _, _)| Some(*m) == name) {
+                return Err(at(format!("`@{}` already names line {first}", reference_text(name.unwrap_or_default()))));
             }
-            let (id, rest) = line.split_once(char::is_whitespace).unwrap_or((line, ""));
             let params = if rest.trim().is_empty() {
                 json!({})
             } else {
-                serde_json::from_str(rest).map_err(|e| format!("line {}: bad JSON after `{id}`: {e}", n + 1))?
+                serde_json::from_str(rest).map_err(|e| at(format!("bad JSON after `{id}`: {e}")))?
             };
+            let params = refer(&params, &out, &names).map_err(|e| format!("line {} ({id}): {e}", n + 1))?;
             out.push(self.execute(id, &params).map_err(|e| format!("line {} ({id}): {e}", n + 1))?);
+            if let Some(name) = name {
+                names.push((name, out.len() - 1, n + 1));
+            }
         }
         Ok(out)
     }
@@ -766,6 +774,206 @@ impl Session {
         }
         Ok(json!({ key: label, "count": count }))
     }
+}
+
+/// A script's line, read.
+pub struct ScriptLine<'a> {
+    /// The name it is given, `@name = `.
+    pub name: Option<&'a str>,
+    pub command: &'a str,
+    /// The text of its params, JSON, or nothing.
+    pub params: &'a str,
+}
+
+/// A script's line read; none for a blank line or a comment.
+pub fn script_line(line: &str) -> Result<Option<ScriptLine<'_>>, String> {
+    let line = line.trim();
+    if line.is_empty() || line.starts_with('#') {
+        return Ok(None);
+    }
+    let (name, command) = match line.strip_prefix('@') {
+        Some(named) => {
+            let (name, command) = named.split_once('=').ok_or("a named line is `@name = command {params}`: the `=` is missing")?;
+            let name = name.trim();
+            if !is_name(name) {
+                return Err(format!("`@{}` isn't a line's name: one is letters, digits, `_` and `-`", reference_text(name)));
+            }
+            (Some(name), command.trim())
+        }
+        None => (None, line),
+    };
+    if command.is_empty() {
+        return Err("no command after the line's name".into());
+    }
+    let (command, params) = command.split_once(char::is_whitespace).unwrap_or((command, ""));
+    Ok(Some(ScriptLine { name, command, params }))
+}
+
+fn is_name(s: &str) -> bool {
+    !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+}
+
+/// `params` with each string that is a reference put as what it points at, in what the script's lines before returned
+/// (`done`, `names` their names: place in `done`, line number). A reference is a whole string: `@name`, `$last` or `$-n`,
+/// standing for that reply's `id`, or followed by a path into the reply, `.key` or `.index` (`@walls.ids.0`). A string that
+/// begins `@@` or `$$` is itself without the first character; any other string is itself.
+fn refer(params: &Value, done: &[Value], names: &[(&str, usize, usize)]) -> Result<Value, String> {
+    expand(params, done, names, &mut ScriptBudget { remaining: SCRIPT_EXPANSION_LIMIT }, 1)
+}
+
+// A conservative accounting limit for each expanded line: 128 bytes per JSON value plus string/key
+// bytes. Charge a whole selected subtree before cloning it, so repeated small references cannot
+// amplify an earlier reply without bound. The depth limit also applies to replies from external
+// commands, which need not have passed serde_json's input depth limit.
+const SCRIPT_EXPANSION_LIMIT: usize = 16 << 20;
+const SCRIPT_DEPTH_LIMIT: usize = 128;
+
+struct ScriptBudget {
+    remaining: usize,
+}
+
+impl ScriptBudget {
+    fn take(&mut self, bytes: usize) -> Result<(), String> {
+        self.remaining = self
+            .remaining
+            .checked_sub(bytes)
+            .ok_or_else(|| format!("expanded parameters exceed the {SCRIPT_EXPANSION_LIMIT} byte script expansion budget"))?;
+        Ok(())
+    }
+
+    fn enter(&mut self, depth: usize) -> Result<(), String> {
+        if depth > SCRIPT_DEPTH_LIMIT {
+            return Err(format!("expanded parameters exceed the script depth limit of {SCRIPT_DEPTH_LIMIT}"));
+        }
+        self.take(128)
+    }
+
+    fn value(&mut self, value: &Value, depth: usize) -> Result<(), String> {
+        self.enter(depth)?;
+        match value {
+            Value::String(s) => self.take(s.len())?,
+            Value::Array(a) => {
+                for value in a {
+                    self.value(value, depth + 1)?;
+                }
+            }
+            Value::Object(o) => {
+                for (key, value) in o {
+                    self.take(key.len())?;
+                    self.value(value, depth + 1)?;
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+}
+
+/// Keep reference diagnostics independent of the size of an earlier reply or a hostile field name.
+fn reference_text(text: &str) -> String {
+    let mut chars = text.chars();
+    let mut out: String = chars.by_ref().take(80).collect();
+    if chars.next().is_some() {
+        out.push_str("...");
+    }
+    out
+}
+
+fn expand(
+    params: &Value,
+    done: &[Value],
+    names: &[(&str, usize, usize)],
+    budget: &mut ScriptBudget,
+    depth: usize,
+) -> Result<Value, String> {
+    Ok(match params {
+        Value::String(s) if s.starts_with("@@") || s.starts_with("$$") => {
+            budget.enter(depth)?;
+            budget.take(s.len() - 1)?;
+            Value::String(s[1..].to_string())
+        }
+        Value::String(s) => {
+            let reference = reference_text(s);
+            let (head, path) = s.split_once('.').map_or((s.as_str(), None), |(head, path)| (head, Some(path)));
+            let target = if let Some(name) = head.strip_prefix('@').filter(|n| is_name(n)) {
+                let (_, i, line) = names
+                    .iter()
+                    .rev()
+                    .find(|(m, _, _)| *m == name)
+                    .ok_or_else(|| format!("`{reference}`: no line before it is named @{}", reference_text(name)))?;
+                Some((*i, format!("line {line}")))
+            } else {
+                let back = match head {
+                    "$last" => Some(1),
+                    _ => match head.strip_prefix("$-") {
+                        Some(n) => Some(
+                            n.parse::<usize>()
+                                .ok()
+                                .filter(|n| *n > 0)
+                                .ok_or_else(|| format!("`{reference}`: a relative reference needs a positive command count, as `$-2`"))?,
+                        ),
+                        None => None,
+                    },
+                };
+                match back {
+                    Some(b) => {
+                        let i = done.len().checked_sub(b).ok_or_else(|| format!("`{reference}`: lines run before it: {}", done.len()))?;
+                        Some((i, format!("the line {b} back")))
+                    }
+                    None => None,
+                }
+            };
+            match target {
+                None => {
+                    budget.value(params, depth)?;
+                    params.clone()
+                }
+                Some((i, which)) => {
+                    let mut v = done.get(i).ok_or_else(|| format!("`{reference}`: {which} returned nothing"))?;
+                    if path.is_none() {
+                        let id = v.get("id").ok_or_else(|| {
+                            format!("`{reference}`: {which} returned no `id`; name a field of its reply, as `@name.ids.0`")
+                        })?;
+                        budget.value(id, depth)?;
+                        id.clone()
+                    } else {
+                        for key in path.unwrap_or_default().split('.') {
+                            if key.is_empty() {
+                                return Err(format!("`{reference}`: a reference path has an empty field"));
+                            }
+                            v = match v {
+                                Value::Array(a) => key.parse::<usize>().ok().and_then(|k| a.get(k)),
+                                _ => v.get(key),
+                            }
+                            .ok_or_else(|| format!("`{reference}`: what {which} returned has no `{}`", reference_text(key)))?;
+                        }
+                        budget.value(v, depth)?;
+                        v.clone()
+                    }
+                }
+            }
+        }
+        Value::Array(a) => {
+            budget.enter(depth)?;
+            Value::Array(a.iter().map(|x| expand(x, done, names, budget, depth + 1)).collect::<Result<_, _>>()?)
+        }
+        Value::Object(o) => {
+            budget.enter(depth)?;
+            Value::Object(
+                o.iter()
+                    .map(|(k, x)| {
+                        budget.take(k.len())?;
+                        let value = expand(x, done, names, budget, depth + 1)?;
+                        Ok((k.clone(), value))
+                    })
+                    .collect::<Result<_, String>>()?,
+            )
+        }
+        _ => {
+            budget.value(params, depth)?;
+            params.clone()
+        }
+    })
 }
 
 /// What a session that may only read keeps through a command: its project, its history, its file, the phase and option it makes

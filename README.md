@@ -330,6 +330,24 @@ and the warnings the model would have, and the project and its history stay as t
 refuses a line that names one or would save, undo, redo or replace the project, and a `favorite` that does more than list the
 user's favorites, which are kept in a file of their own; it only reads, so a read-only agent may use it.
 
+Name a line with `@name = command {params}` to use its result later in the same script:
+
+```text
+@walls = wall {"points": [[0,0],[8000,0],[8000,6000]]}
+door {"wall": "@walls.ids.1", "offset": 3000}
+modify {"id": "$last", "mark": "Entry"}
+```
+
+`"@name"` and `"$last"` stand for the earlier result's `id`; `"$-2"` uses the second earlier command's result.
+An explicit path reads a field or array item, as `"@walls.ids.1"` above or `"$last.id"`. Comments and blank lines do not
+count as results. Names use ASCII letters, digits, `_` and `-`, and cannot be repeated within a script. A reference must
+be a whole string value (including inside arrays and objects); strings are not interpolated. Double a leading `@` or `$`
+to write it literally, as `"@@home"` or `"$$last"`. An unknown name, missing field or invalid relative count stops the script
+at that line. Results and names are local to one script, including one CLI `--script` or `--cmd` argument.
+Each line's expanded parameters have a 16 MiB accounting budget: 128 bytes per JSON value plus UTF-8 string and object-key
+bytes, checked before copying referenced values. Expanded nesting is limited to 128 levels, including values returned by
+plugin commands. These limits allow the existing 10,000-element ID lists; an over-budget line fails before its command runs.
+
 ```sh
 bimcraft-cli run --script house.txt --save house.ifc
 bimcraft-cli convert building.ifc building.bimcraft   # an IFC file from Revit or any BIM tool, as a project

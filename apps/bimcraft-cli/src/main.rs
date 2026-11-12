@@ -19,6 +19,7 @@ const USAGE: &str = "USAGE:
       Open FILE (a .bimcraft project, or an .ifc or Revit .rvt file to import) or start empty, then in order: build the sample house, run
       commands and scripts (one `ID {json}` per line), save. --save writes by extension:
       .bimcraft (the project), .ifc (IFC4), .glb (the 3D view's scene as glTF), .svg or .png (the lowest level's plan).
+      Scripts may name a line `@name = ID {json}`; later values use `@name`, `$last`, `$-2` or a field such as `@walls.ids.0`.
       --highrise builds an original 20-storey performance sample (about 10,000 elements).
   bimcraft-cli info FILE         levels, element counts, types and warnings of a project or an IFC file; of a Revit .rvt or
                                  .rfa file, its release, last save, levels and element counts by category
@@ -271,6 +272,33 @@ mod tests {
         let missing = McpArgs { connect: None, read_only: true, file: Some(dir.join("gone.bimcraft").to_string_lossy().into_owned()) };
         assert!(mcp_server(missing).is_err());
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn script_result_references_create_save_and_reopen_a_hosted_door() {
+        let base = std::env::temp_dir().join(format!("bimcraft-cli-script-references-{}", std::process::id()));
+        std::fs::create_dir_all(&base).unwrap();
+        let script = base.join("references.txt");
+        let project = base.join("references.bimcraft");
+        std::fs::write(
+            &script,
+            r#"@walls = wall {"points":[[0,0],[8000,0],[8000,6000]]}
+door {"wall":"@walls.ids.1","offset":3000}
+modify {"id":"$last","mark":"Entry"}"#,
+        )
+        .unwrap();
+        let out = cli_out(&["run", "--script", &script.to_string_lossy(), "--save", &project.to_string_lossy()]).unwrap();
+        let results: Vec<Value> = out.lines().map(|line| serde_json::from_str(line).unwrap()).collect();
+        let host = results[0]["ids"][1].as_u64().unwrap();
+        let query = cli_out(&["run", &project.to_string_lossy(), "--cmd", "elements {\"category\":\"doors\"}"]).unwrap();
+        let doors: Value = serde_json::from_str(query.lines().last().unwrap()).unwrap();
+        assert_eq!(doors["count"], 1);
+        assert_eq!(doors["elements"][0]["mark"], "Entry");
+        let mut reopened = Session::new();
+        reopened.execute("open", &json!({"path":project})).unwrap();
+        let guid: bimcraft_core::model::Guid = serde_json::from_value(doors["elements"][0]["host"].clone()).unwrap();
+        assert!(reopened.model.same(guid, host), "the saved door still belongs to the referenced wall");
+        std::fs::remove_dir_all(&base).unwrap();
     }
 
     #[test]
