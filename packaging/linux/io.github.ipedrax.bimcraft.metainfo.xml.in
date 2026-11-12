@@ -52,6 +52,7 @@
     <binary>bimcraft</binary>
     <binary>bimcraft-cli</binary>
     <mediatype>application/x-bimcraft</mediatype>
+    <mediatype>application/x-bimcraft-family</mediatype>
     <mediatype>application/x-ifc</mediatype>
   </provides>
   <content_rating type="oars-1.1"/>

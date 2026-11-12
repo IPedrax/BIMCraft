@@ -9,7 +9,7 @@ bottom, or floating windows), apart from its drawing, so tests and the settings 
 `Palette` and its body in `palette_body`. A view's tab floats it in a window (`BimApp::floating`; `views` are the tabs and
 `front` the one the views' area shows): the active view (`BimApp::sheet`) takes the tools, any other on screen draws through
 `view_pane` as it is, with the canvas `at_rest` and `passive` set so it takes no clicks, and a click makes it active. Widget
-ids inside a view are per view (`push_id`), so two views on screen never clash. The start page is `start.rs` (`BimApp::home`; the desktop's `main` shows it when given no file, the quick access bar's Home and Ctrl+D bring it back over a project and go back to it, `BimApp::toggle_home`, and `Home::over` says there is one behind it): its tiles' pictures are drawn on a thread (`start::picture`, a `.bimcraft` file's 3D view) and a test waits for them with `Home::settled`. Its Sample Project button (`Pending::Sample`, `BimApp::open_sample`) builds the sample house, `bimcraft_core::sample::SAMPLE`, as a project with no file, so Save asks where to put it; it goes through `guard` like New and Open, and the script's steps are not undo steps, as with `--sample`. Its Families group (New Family, its categories dropped down, and Open Family…) opens a family document over the page ([families](families.md)). File > Settings is `settings.rs`, the user's
+ids inside a view are per view (`push_id`), so two views on screen never clash. The start page is `start.rs` (`BimApp::home`; the desktop's `main` shows it when given no file, the quick access bar's Home and Ctrl+D bring it back over a project and go back to it, `BimApp::toggle_home`, and `Home::over` says there is one behind it): its tiles' pictures are drawn on a thread (`start::picture`, a project file's 3D view) and a test waits for them with `Home::settled`. Its Sample Project button (`Pending::Sample`, `BimApp::open_sample`) builds the sample house, `bimcraft_core::sample::SAMPLE`, as a project with no file, so Save asks where to put it; it goes through `guard` like New and Open, and the script's steps are not undo steps, as with `--sample`. Its Families group (New Family, its categories dropped down, and Open Family…) opens a family document over the page ([families](families.md)). File > Settings is `settings.rs`, the user's
 `settings.json` beside the favorites (`BimApp::use_settings`, which the desktop's `main` calls; tests never write it unless
 they hand it a file): what it keeps is `Settings`, written when it changes, between drags; a setting still to come goes on
 its page greyed out (`later`).
@@ -93,7 +93,7 @@ During replacement of the project between frames, context returns an error askin
 rather than resolving old selected IDs against the new model. New/Open through the window clear the old context. A snapshot is
 current when answered: agents should request it again after the user selects or navigates. It does not change selection, navigate,
 edit the model, add an undo step, or access files, and is available through both window and connection read-only settings.
-This is desktop state, not a model command or a field saved in `.bimcraft`: headless MCP returns an explicit error explaining
+This is desktop state, not a model command or a field saved in the project file: headless MCP returns an explicit error explaining
 `--connect`. Without a listening window the existing connection error applies; an older window without this bridge operation
 reports unknown op. The active view is within the connected window, independent of which operating-system window has focus.
 
@@ -113,6 +113,10 @@ back and replies with what it would make, change and remove and the warnings the
 undo history are as they were. It only reads, so it answers where agents may only read too, and a line that names a file or
 would save, undo, redo or replace the project is refused, as is a `favorite` other than `list`: saving or deleting one writes the
 user's favorites file, outside the project, even with no `path` given.
+Manage > Macros > Run Script (`script.rs`) is the same for the user: a script typed or pasted in a dialog, one command a line as
+the command line and agents write them. Try is that dry run, said in a line (`script::summary`) with the project untouched; Run takes
+the dry run first, so it refuses what it would refuse, and then runs the script as one undo step, `Script` (`Session::script_atomic`),
+all or nothing, and the status box says what it did.
 
 The interface's language is `lang::Lang`: a project's language, or Simplified Chinese (issue 38), which only the window speaks
 (a drawing's lettering, `font.rs`, is drawn in code and has no hanzi, so a project is never in Chinese and `Lang::project()` gives
@@ -452,7 +456,7 @@ Filter. While something is selected, every tab's Select panel has Filter, and th
 (`filter.rs`): Revit's Filter, the selection counted by category, each checked to keep or cleared to leave out, with Check All,
 Check None and the total kept; OK keeps what is checked selected. Its Filter by list goes further: any parameter every selected
 element has, which `selection::common` finds (the schedules' fields their categories share, Category first, Count left out; what
-schedules aren't of, lines, regions, text, tags, grids, views and sheets, has its fields in `schedule::MORE`: a line's Line Style), and
+schedules aren't of, lines, regions, text, tags, grids and views, has its fields in `schedule::MORE`: a line's Line Style), and
 the list becomes that parameter's values (`selection::groups`, as schedules show them, numbers by value, `(none)` last), to keep or
 leave out the same way. The `filter_selection` command gives agents the same: the groups, the shared fields, and with `keep`, the ids kept.
 

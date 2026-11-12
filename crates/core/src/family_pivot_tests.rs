@@ -303,7 +303,7 @@ fn a_file_keeps_its_pivots_and_a_file_of_28_reads_unchanged() {
     assert!(
         text.contains(&format!("\"format\": {}", crate::model::FORMAT)) || text.contains(&format!("\"format\":{}", crate::model::FORMAT))
     );
-    assert_eq!(crate::model::FORMAT, 18);
+    assert_eq!(crate::model::FORMAT, 19);
     let (back, left_out) = Model::read(&text).unwrap();
     assert!(left_out.is_empty(), "{left_out:?}");
     assert_eq!(back.families["Swing"].lines, s.model.families["Swing"].lines);

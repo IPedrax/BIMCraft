@@ -1,5 +1,5 @@
 use super::*;
-use bimcraft_core::autosave::backup_path;
+use bimcraft_core::autosave::{backup_path, old_backup_path};
 use std::time::{Duration, Instant};
 
 fn enable(h: &mut Harness<BimApp>, root: &std::path::Path) {
@@ -252,4 +252,50 @@ fn a_project_put_in_the_sessions_place_gets_a_copy_of_its_own_and_the_old_one_st
     due(&mut h);
     until(&mut h, |h| !h.state().autosave.busy && !old.exists());
     assert!(fresh.exists());
+}
+
+#[test]
+fn a_backup_an_earlier_version_left_is_offered_recovered_and_gone_once_saved() {
+    // Before the short names a backup was `house.bimcraft.autosave.bimcraft`; one left by a crash still counts.
+    let dir = tempfile::tempdir().unwrap();
+    let project = dir.path().join("house.bimcraft");
+    let backup = old_backup_path(&project);
+    let mut s = Session::new();
+    s.execute("save", &json!({"path": project})).unwrap();
+    s.execute("wall", &json!({"points": [[0,0],[4000,0]]})).unwrap();
+    s.execute("autosave", &json!({"path": backup})).unwrap();
+    let original = std::fs::read(&project).unwrap();
+    let mut h = app("");
+    enable(&mut h, &dir.path().join("temp"));
+    assert!(h.state_mut().open_path(&project));
+    until(&mut h, |h| h.query_by_label("Recover").is_some());
+    press(&mut h, "Recover");
+    assert_eq!(walls(&h).len(), 1);
+    assert!(h.state().dirty());
+    assert_eq!(h.state().session.path.as_ref(), Some(&project));
+    assert_eq!(std::fs::read(&project).unwrap(), original, "recovering opens it as unsaved work, the original untouched");
+    assert!(h.state_mut().save_to(&project));
+    until(&mut h, |_| !backup.exists());
+    // The project now has the new name's backup, not the old.
+    h.state_mut().session.execute("wall", &json!({"points": [[0,1000],[4000,1000]]})).unwrap();
+    due(&mut h);
+    until(&mut h, |h| !h.state().autosave.busy);
+    assert!(backup_path(&project).exists() && !backup.exists());
+}
+
+#[test]
+fn untitled_backups_of_either_name_are_offered_at_startup() {
+    let dir = tempfile::tempdir().unwrap();
+    let old = old_backup_path(&dir.path().join("untitled-before"));
+    let mut s = Session::new();
+    s.execute("wall", &json!({"points": [[0,0],[4000,0]]})).unwrap();
+    s.execute("autosave", &json!({"path": old})).unwrap();
+    let mut h = app("");
+    enable(&mut h, dir.path());
+    until(&mut h, |h| h.query_by_label("Recover").is_some());
+    press(&mut h, "Recover");
+    assert_eq!(walls(&h).len(), 1);
+    assert!(h.state().dirty() && h.state().session.path.is_none());
+    assert!(h.state_mut().save_to(&dir.path().join("recovered.bimc")));
+    until(&mut h, |_| !old.exists());
 }

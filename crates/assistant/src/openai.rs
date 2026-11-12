@@ -7,7 +7,7 @@
 use serde_json::{Value, json};
 
 use crate::net::Request;
-use crate::{Call, Msg, Reply, SYSTEM, api_error, clip, json_body, tools};
+use crate::{Call, Msg, Reply, SYSTEM, Usage, api_error, clip, count, json_body, tools, user_parts};
 
 const URL: &str = "https://api.openai.com/v1/responses";
 
@@ -15,7 +15,13 @@ pub fn request(model: &str, key: &str, history: &[Msg]) -> Request {
     let mut input: Vec<Value> = Vec::new();
     for m in history {
         match m {
-            Msg::User(text) => input.push(json!({"role": "user", "content": text})),
+            Msg::User(text, files) if files.is_empty() => input.push(json!({"role": "user", "content": text})),
+            Msg::User(text, files) => input.push(json!({"role": "user", "content": user_parts(
+                text,
+                files,
+                |t| json!({"type": "input_text", "text": t}),
+                |mime, b64| json!({"type": "input_image", "image_url": format!("data:{mime};base64,{b64}")}),
+            )})),
             // With nothing stored, a reasoning item without its encrypted content names an item OpenAI no longer has.
             Msg::Assistant(reply) => input.extend(
                 reply
@@ -38,7 +44,7 @@ pub fn request(model: &str, key: &str, history: &[Msg]) -> Request {
         .collect();
     let body = json!({
         "model": model, "store": false, "instructions": SYSTEM, "input": input, "tools": tools,
-        "include": ["reasoning.encrypted_content"],
+        "include": ["reasoning.encrypted_content"], "reasoning": {"summary": "auto"},
     });
     Request { url: URL.into(), headers: vec![("Authorization".into(), format!("Bearer {key}"))], body: body.to_string() }
 }
@@ -50,7 +56,7 @@ pub fn parse(status: u16, body: &str) -> Result<Reply, String> {
     }
     let v = json_body(WHO, body)?;
     let items = v["output"].as_array().ok_or_else(|| format!("{WHO} sent a reply with no output ({})", clip(body.trim(), 80)))?;
-    let (mut text, mut calls) = (String::new(), Vec::new());
+    let (mut text, mut thinking, mut calls) = (String::new(), String::new(), Vec::new());
     for item in items {
         match item["type"].as_str() {
             Some("message") => {
@@ -64,6 +70,16 @@ pub fn parse(status: u16, body: &str) -> Result<Reply, String> {
                             ));
                         }
                         _ => {}
+                    }
+                }
+            }
+            Some("reasoning") => {
+                for part in item["summary"].as_array().into_iter().flatten() {
+                    if let Some(t) = part["text"].as_str() {
+                        if !thinking.is_empty() {
+                            thinking.push_str("\n\n");
+                        }
+                        thinking.push_str(t);
                     }
                 }
             }
@@ -93,5 +109,6 @@ pub fn parse(status: u16, body: &str) -> Result<Reply, String> {
         Some("completed") | None => {}
         Some(other) => return Err(format!("{WHO} answered with status {other}")),
     }
-    Ok(Reply { text, calls, raw: v["output"].clone() })
+    let usage = Usage { input: count(&v["usage"]["input_tokens"]), output: count(&v["usage"]["output_tokens"]) };
+    Ok(Reply { thinking, text, calls, raw: v["output"].clone(), usage })
 }

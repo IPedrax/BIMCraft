@@ -473,7 +473,7 @@ impl BimApp {
         Node::group(t("Views (all)"), true, kids)
     }
 
-    /// Schedules/Quantities (all): the six every project has, then the project's own.
+    /// Schedules/Quantities (all): the seven every project has, then the project's own.
     fn schedules_node(&self) -> Node {
         let m = &self.session.model;
         let mut kids: Vec<Node> = SCHEDULES
@@ -486,7 +486,7 @@ impl BimApp {
                 self.view_leaf(&name, Sheet::Schedule(cat))
             })
             .collect();
-        // The project's own have a right-click Delete; the six every project has stay.
+        // The project's own have a right-click Delete; the seven every project has stay.
         kids.extend(
             self.schedules()
                 .into_iter()

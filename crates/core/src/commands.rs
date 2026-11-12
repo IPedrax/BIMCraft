@@ -109,7 +109,7 @@ pub static ALL: &[Command] = &[
 other_files(
         "open",
         "Open",
-        "{path} a .bimcraft project (under 256 MiB), or an .ifc (under 512 MiB) read into a new one (its `elements` by \
+        "{path} a .bimc project (a .bimt file too, and the .bimcraft of earlier versions; under 256 MiB), or an .ifc (under 512 MiB) read into a new one (its `elements` by \
          category, `generic` the components of IFC classes BIMCraft has no element for, `skipped` what was left out and why)",
         open,
         Files::Read,
@@ -145,7 +145,7 @@ other_files(
         "insert",
         "Insert from File",
         &[],
-        "{path, ids?: [id, …]} elements of another project (.bimcraft or .ifc) brought into this one: those `ids` names \
+        "{path, ids?: [id, …]} elements of another project (.bimc, .bimcraft or .ifc) brought into this one: those `ids` names \
          (their ids there), else all of them, and what they point at that this project hasn't (a level they stand on is \
          this project's of the same name, where it has one). Each keeps its id unless this project has that id, and its GUID \
          unless this project has that GUID: then it's a copy, with a GUID of its own (the same file inserted into itself is \
@@ -160,7 +160,7 @@ other_files(
         "link",
         "Link Model",
         &["LK"],
-        "{path, name?, at?: [x, y], angle?: degrees} another project (.bimcraft or .ifc) shown in this one as a reference that \
+        "{path, name?, at?: [x, y], angle?: degrees} another project (.bimc, .bimcraft or .ifc) shown in this one as a reference that \
          can't be edited, as Revit's Link Revit: its walls, floors, roofs, columns, stairs and the rest of what it builds are \
          drawn in the plans, sections and 3D views, halftone, and snapped to; nothing of it is selected, scheduled, checked or \
          exported. It stands with its origin at `at` (default [0, 0]) turned `angle` about it; its levels stand at their own \
@@ -181,7 +181,7 @@ other_files(
     other_files(
         "save",
         "Save",
-        "{path?} .bimcraft saves the project (Save As with a path); .ifc exports IFC4; .glb exports the default 3D view's scene as \
+        "{path?} .bimc saves the project (Save As with a path), as does .bimt (a template); .ifc exports IFC4; .glb exports the default 3D view's scene as \
          glTF 2.0 (metres, y up, a node for each element named by its id, GUID and category in `extras`; returns `elements` and \
          `triangles`); .svg or .png exports the lowest level's plan; .pdf prints every sheet, a page each",
         save,
@@ -236,6 +236,21 @@ other_files(
          where its file's coordinates put it; `offset` raises its middle over the level, `angle` turns it. Returns its id, the \
          scan's name, the points kept and read, and where its middle was in the file",
         point_cloud,
+        Files::Read,
+    ),
+    edit_files(
+        "import_mesh",
+        "Import Mesh",
+        &[],
+        "{path, level?, at?: [x, y], units?, up?} brings in the 3D objects of an OBJ (with the MTL library it names) or a glTF \
+         2.0 (`.gltf` with its buffers, or `.glb`): each object of the file (an OBJ's `o` or `g`, a glTF's node with a mesh) a \
+         Generic Model family of its name, made of its triangles grouped by material, and placed where the file has it, on \
+         `level` (the lowest by default) with the file's origin on `at` (the project's origin unless given). `units` of an \
+         OBJ: mm, cm, m (the default), in or ft; `up`, the axis its file stands on: y (the default, as most programs write \
+         OBJ) or z. A glTF is in metres with y up, as its specification says. The file's materials come in with their \
+         colours and opacity, where the project has none of their name. Returns `components` and `families` made and what was \
+         `left_out` (lines and points, textures, a compressed mesh, an object past what a family may hold)",
+        import_mesh,
         Files::Read,
     ),
     edit_files(
@@ -1290,7 +1305,7 @@ other_files(
          shared_nested?: {name: project|family}, nest?: {path | definition, name?, overwrite?, shared_nested?}, nested?: [{name, family}], \
          delete_nested?: [names], nested_instances?: [...], nested_instance?: {id | guid?, family, type, host?, at?: [x, y], offset?, \
          angle?, visible?, visibility?, params?: {name: number | formula}}, delete_nested_instance?: [ids or GUIDs]} a family of \
-         the project's, BIMCraft's own parametric component: created, changed, read, or loaded from the .json file at `path` (a \
+         the project's, BIMCraft's own parametric component: created, changed, read, or loaded from the .bimf file (or the .json of earlier versions) at `path` (a \
          family as `inspect` shows it, with its `name`). Without `name` it lists the project's families, each its category and \
          how many types, forms and symbols it has; with only a `name` it reads one — its definition, each of its types' \
          parameter values worked out, and `warnings` — and changes nothing: no undo step, no file. `dry_run` reads a change the \
@@ -2006,13 +2021,13 @@ other_files(
         "{name?, category?, categories?, fields?, filters?, sort?, grouped?, path?} a schedule view, as Revit's View > Schedules makes one, \
          and its table: columns, rows, the `elements` each row lists, and totals (and a .csv file with a path, or an .xlsx workbook for a path ending .xlsx). A new one needs `name` and `category`: rooms, \
          doors, windows, walls, floors, ceilings, roofs, columns, structural columns, footings, beams, strip footings, components, \
-         stairs, ramps, railings or levels, or `multicategory`, as Revit's Multi-Category Schedule: a row for each element of \
-         `categories` ([\"walls\", \"doors\"…]; none, every built one but rooms, levels and masses), with the fields they share \
+         stairs, ramps, railings, levels or sheets, or `multicategory`, as Revit's Multi-Category Schedule: a row for each element of \
+         `categories` ([\"walls\", \"doors\"…]; none, every built one but rooms, levels, masses and sheets), with the fields they share \
          (Category, Family, Type, Level, Count, Width, Height, Length, Thickness, Area: a wall's length by its height, a door's \
          width by its height; Material: its type's structure layer's, a run's type's, a family's), each empty where its \
          category has none; `category` \
          alone reads its own (Room Schedule, Door Schedule, Window Schedule, Wall Schedule, Floor Schedule, Level Schedule, \
-         each the project's once changed). `fields`: its columns, in order, each a field's name (`available` lists them: its \
+         Sheet List, each the project's once changed). `fields`: its columns, in order, each a field's name (`available` lists them: its \
          category's own, Count, project parameters, a component's family's parameters) or {name, formula?, kind?: \
          number|length|area|yesno, heading?, total?}; with a formula, a calculated field worked out from the row's other \
          fields as a family's formulas are (lengths in mm, areas in m²; `Area * 120`); `total` sums it in a totals row. \
@@ -7521,6 +7536,127 @@ fn off_layers(cad: &Cad) -> BTreeSet<String> {
 }
 
 /// A DXF drawing brought in, or one the project holds placed again, as an element: Revit's Import CAD (and Link CAD).
+fn import_mesh(s: &mut Session, p: &Value) -> R {
+    use crate::family::{Category, Family, Form, MAX_FORMS};
+    let c = "import_mesh";
+    let path = PathBuf::from(string(c, p, "path")?.ok_or_else(|| bad(c, "`path` is required: an .obj, .gltf or .glb file"))?);
+    let level = level_param(c, &s.model, p, "level")?;
+    let at = point_opt(c, p, "at")?.unwrap_or(P2(0.0, 0.0));
+    let format = ext(&path);
+    let beside = |name: &str| -> Option<Vec<u8>> {
+        // Only a file beside it or under it: a name that climbs out (`..`) or is absolute is not read.
+        let rel = Path::new(name);
+        let ok = rel.components().all(|c| matches!(c, std::path::Component::Normal(_) | std::path::Component::CurDir));
+        let dir = path.parent()?;
+        if !ok {
+            return None;
+        }
+        let f = dir.join(rel);
+        (std::fs::metadata(&f).ok()?.len() <= crate::mesh_in::MAX_BYTES as u64).then(|| std::fs::read(f).ok()).flatten()
+    };
+    let size = std::fs::metadata(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?.len();
+    if size > crate::mesh_in::MAX_BYTES as u64 {
+        return Err(bad(c, format!("{} is larger than {} MB", path.display(), crate::mesh_in::MAX_BYTES >> 20)));
+    }
+    let bytes = std::fs::read(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+    let read = match format.as_str() {
+        "obj" => {
+            let mm = match string(c, p, "units")? {
+                None => 1000.0,
+                Some(u) => crate::cloud::unit(&u).ok_or_else(|| bad(c, format!("`units` is one of mm, cm, m, in, ft, not {u}")))?,
+            };
+            let up_is_y = match string(c, p, "up")?.as_deref() {
+                None | Some("y") => true,
+                Some("z") => false,
+                Some(other) => return Err(bad(c, format!("`up` is y or z, not {other}"))),
+            };
+            let text = String::from_utf8_lossy(&bytes);
+            crate::mesh_in::obj(&text, mm, up_is_y, |lib| beside(lib).map(|b| String::from_utf8_lossy(&b).into_owned()))
+        }
+        "gltf" | "glb" => {
+            if !absent(p.get("units")) || !absent(p.get("up")) {
+                return Err(bad(c, "a glTF is in metres with y up, as its specification says: give no `units` or `up`"));
+            }
+            crate::mesh_in::gltf(&bytes, beside)
+        }
+        other => return Err(bad(c, format!("bring in an .obj, .gltf or .glb, not `.{other}`"))),
+    }
+    .map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+    let mut left_out: BTreeMap<String, usize> = read.left_out.clone();
+    if read.objects.is_empty() {
+        let why = if left_out.is_empty() { String::new() } else { format!(" (left out: {left_out:?})") };
+        return Err(bad(c, format!("{} has no triangles to bring in{why}", path.display())));
+    }
+    let m = Arc::make_mut(&mut s.model);
+    let known: std::collections::HashSet<String> = m.materials.keys().cloned().collect();
+    let mut colours: BTreeMap<String, [u8; 4]> = BTreeMap::new();
+    let (mut families, mut components) = (Vec::new(), Vec::new());
+    for o in read.objects {
+        let pts = o.parts.iter().flat_map(|p| p.tris.iter().flatten());
+        let (lo, hi) = pts.fold(([f64::MAX; 3], [f64::MIN; 3]), |(lo, hi), q| {
+            ([lo[0].min(q[0]), lo[1].min(q[1]), lo[2].min(q[2])], [hi[0].max(q[0]), hi[1].max(q[1]), hi[2].max(q[2])])
+        });
+        // The family stands on its base, its middle on its origin; the component puts it back where the file has it.
+        let origin =
+            [((lo[0] + hi[0]) / 2.0 * 1e3).round() / 1e3, ((lo[1] + hi[1]) / 2.0 * 1e3).round() / 1e3, (lo[2] * 1e3).round() / 1e3];
+        if o.parts.len() > MAX_FORMS {
+            *left_out.entry(format!("objects of more than {MAX_FORMS} materials")).or_default() += 1;
+            continue;
+        }
+        let forms: Vec<Form> = o
+            .parts
+            .iter()
+            .map(|part| {
+                let material = if part.material.name == "Default" { String::new() } else { part.material.name.clone() };
+                if let (false, Some(rgba)) = (material.is_empty(), part.material.rgba) {
+                    colours.entry(material.clone()).or_insert(rgba);
+                }
+                let local = |q: &[f64; 3]| [q[0] - origin[0], q[1] - origin[1], q[2] - origin[2]].map(|v| (v * 1e3).round() / 1e3 + 0.0);
+                let mesh: Vec<[[f64; 3]; 3]> = part.tris.iter().map(|t| [local(&t[0]), local(&t[1]), local(&t[2])]).collect();
+                Form { mesh: Arc::new(mesh), material, ..Form::default() }
+            })
+            .collect();
+        let stem = if o.name.trim().is_empty() { "Imported".to_string() } else { o.name.clone() };
+        let name = (1..=1000)
+            .map(|n| if n == 1 { stem.clone() } else { format!("{} ({n})", stem.chars().take(MAX_TEXT - 8).collect::<String>()) })
+            .find(|n| !m.families.contains_key(n))
+            .ok_or_else(|| bad(c, format!("the project has too many families named `{stem}`")))?;
+        let mut family = Family { category: Category::Generic, forms, ..Family::default() };
+        family.types.insert("Imported".into(), BTreeMap::new());
+        if let Err(why) = family.check(&|_| true) {
+            *left_out.entry(format!("objects whose family can't be made ({why})")).or_default() += 1;
+            continue;
+        }
+        m.families.insert(name.clone(), family);
+        let id = m.insert(Element::Component(Component {
+            adaptive: None,
+            family: name.clone(),
+            type_name: "Imported".into(),
+            level,
+            at: P2(at.0 + origin[0], at.1 + origin[1]),
+            angle: 0.0,
+            offset: origin[2],
+            mirrored: false,
+            params: BTreeMap::new(),
+            host: None,
+            panel: None,
+        }));
+        families.push(name);
+        components.push(id);
+    }
+    if components.is_empty() {
+        return Err(bad(c, format!("nothing of {} could come in: {left_out:?}", path.display())));
+    }
+    m.adopt_materials();
+    for (name, [r, g, b, a]) in colours.into_iter().filter(|(n, _)| !known.contains(n)) {
+        if let Some(x) = m.materials.get_mut(&name) {
+            x.color = [r, g, b];
+            x.transparency = (100 - u16::from(a) * 100 / 255) as u8;
+        }
+    }
+    Ok(json!({"components": components, "families": families, "left_out": left_out}))
+}
+
 fn import_cad(s: &mut Session, p: &Value) -> R {
     let c = "import_cad";
     let m = &s.model;

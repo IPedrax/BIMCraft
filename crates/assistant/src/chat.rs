@@ -3,15 +3,21 @@
 //! run on the window's session, as a command from a button does. Each batch of tool calls is one transaction named
 //! [`LABEL`], and when the turn ends the batches merge into one undo step, `Assistant: <what the user asked>`.
 
+use std::fs;
+use std::path::Path;
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, TryRecvError, channel};
 
 use bimcraft_core::bridge::Access;
 use bimcraft_core::engine::Session;
 
+use crate::attach::{self, Attachment};
 use crate::net::Net;
-use crate::tools::{self, to_text};
-use crate::{Call, Done, LABEL, MAX_CALLS, MAX_HISTORY, MAX_ROUNDS, MAX_TEXT, Msg, Provider, Reply, clip, complete, key_ok, model_ok};
+use crate::tools::{self, TODO, Todo, to_text};
+use crate::{
+    Call, Done, LABEL, MAX_CALLS, MAX_FILES_TOTAL, MAX_HISTORY, MAX_ROUNDS, MAX_TEXT, Msg, Provider, Reply, Usage, clip, complete, key_ok,
+    model_ok,
+};
 
 /// How many lines of the log are kept.
 const MAX_LOG: usize = 500;
@@ -20,6 +26,10 @@ const MAX_LOG: usize = 500;
 #[derive(Clone, Debug, PartialEq)]
 pub enum Line {
     You(String),
+    /// The names of the files that went with the message just above.
+    Files(Vec<String>),
+    /// What the model said of its reasoning, apart from its answer.
+    Thinks(String),
     Says(String),
     /// A tool the model ran: its name, its arguments and what came back, both cut short for the eye.
     Used {
@@ -50,6 +60,15 @@ pub struct Chat {
     pub wake: Arc<dyn Fn() + Send + Sync>,
     flight: Option<Receiver<Result<Reply, String>>>,
     turn: Option<Turn>,
+    /// The model's checklist, as it last wrote it: the palette shows it while the turn runs.
+    pub todos: Vec<Todo>,
+    /// Files picked for the next message, copied into `stage`.
+    pub attached: Vec<Attachment>,
+    /// The temporary folder those copies are in: made when the first file is picked, removed when the chat is cleared or dropped.
+    stage: Option<tempfile::TempDir>,
+    staged: usize,
+    /// Tokens the provider has counted since the window last took them ([`Chat::take_usage`]).
+    unreported: Usage,
 }
 
 impl Chat {
@@ -63,7 +82,53 @@ impl Chat {
             wake: Arc::new(|| {}),
             flight: None,
             turn: None,
+            todos: Vec::new(),
+            attached: Vec::new(),
+            stage: None,
+            staged: 0,
+            unreported: Usage::default(),
         }
+    }
+
+    /// The tokens counted since the last call, which the window adds to what it keeps for the project.
+    pub fn take_usage(&mut self) -> Usage {
+        std::mem::take(&mut self.unreported)
+    }
+
+    /// Copies a file the user picked into the chat's temporary folder, to go with the next message. Refused, with a note, when it is
+    /// not text or a picture, is too big, or is one too many.
+    pub fn attach(&mut self, from: &Path) {
+        let held = self.attached.len();
+        let dir = match &self.stage {
+            Some(dir) => Ok(dir.path().to_path_buf()),
+            None => tempfile::Builder::new()
+                .prefix("bimcraft-assistant-")
+                .tempdir()
+                .map(|d| (d.path().to_path_buf(), self.stage = Some(d)).0)
+                .map_err(|e| format!("could not make a temporary folder for the file: {e}")),
+        };
+        self.staged += 1;
+        match dir.and_then(|dir| attach::stage(from, &dir, self.staged, held)) {
+            Ok(a) => self.attached.push(a),
+            Err(e) => self.note(e),
+        }
+    }
+
+    /// Takes the picked file `i` off the next message and deletes its copy.
+    pub fn detach(&mut self, i: usize) {
+        if i < self.attached.len() {
+            let _ = fs::remove_file(self.attached.remove(i).path);
+        }
+    }
+
+    /// Where the copies of the files picked are, while there are any.
+    pub fn stage_dir(&self) -> Option<&Path> {
+        self.stage.as_ref().map(tempfile::TempDir::path)
+    }
+
+    /// Forgets the files: the folder and every copy in it go.
+    fn drop_files(&mut self) {
+        (self.attached, self.stage, self.staged) = (Vec::new(), None, 0);
     }
 
     /// Whether a message is being worked on.
@@ -76,6 +141,8 @@ impl Chat {
         if !self.busy() {
             self.log.clear();
             self.history.clear();
+            self.todos.clear();
+            self.drop_files();
         }
     }
 
@@ -102,8 +169,24 @@ impl Chat {
         if self.history.iter().map(Msg::size).sum::<usize>() + text.len() > MAX_HISTORY {
             return self.note("This conversation is too long to send again: clear the chat and start a new one.");
         }
+        let mut files = Vec::with_capacity(self.attached.len());
+        for a in &self.attached {
+            match a.load() {
+                Ok(f) => files.push(f),
+                Err(e) => return self.note(e),
+            }
+        }
+        let sent: usize = self.history.iter().map(Msg::file_bytes).sum::<usize>() + files.iter().map(|f| f.len()).sum::<usize>();
+        if sent > MAX_FILES_TOTAL {
+            return self.note("The files in this conversation are more than can be sent again: clear the chat, or send fewer.");
+        }
         self.log.push(Line::You(text.into()));
-        self.history.push(Msg::User(text.into()));
+        if !files.is_empty() {
+            self.log.push(Line::Files(files.iter().map(|f| f.name.clone()).collect()));
+        }
+        self.attached.clear();
+        self.todos.clear();
+        self.history.push(Msg::User(text.into(), files));
         let label = format!("{LABEL}: {}", clip(&text.split_whitespace().collect::<Vec<_>>().join(" "), 40));
         self.turn = Some(Turn { label, key: key.into(), rounds: 0 });
         if let Err(e) = self.launch() {
@@ -153,6 +236,10 @@ impl Chat {
                 return true;
             }
         };
+        self.unreported.add(reply.usage);
+        if !reply.thinking.trim().is_empty() {
+            self.log.push(Line::Thinks(clip(reply.thinking.trim(), 20_000)));
+        }
         if !reply.text.trim().is_empty() {
             self.log.push(Line::Says(reply.text.trim().into()));
         }
@@ -164,6 +251,11 @@ impl Chat {
         }
         let done = batch(session, &calls, access);
         for (call, d) in calls.iter().zip(&done) {
+            // The checklist is drawn as a list, not as a call in the log; one that was refused is shown, so the user sees why it is not.
+            if call.name == TODO && !d.error {
+                self.todos = tools::todos(&call.args).unwrap_or_default();
+                continue;
+            }
             self.log.push(Line::Used {
                 name: call.name.clone(),
                 args: clip(&call.args.to_string(), 300),
@@ -195,6 +287,9 @@ impl Chat {
         (self.flight, self.turn) = (None, None);
         self.log.clear();
         self.history.clear();
+        self.todos.clear();
+        self.drop_files();
+        self.unreported = Usage::default();
     }
 
     /// Ends the turn: its batches become one undo step.

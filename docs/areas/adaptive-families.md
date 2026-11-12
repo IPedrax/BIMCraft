@@ -53,7 +53,7 @@ point, the view's buttons by label).
 
 `samples/adaptive-panel.json` (the project's Load Family, then Edit Family; a family document's Insert > Load Family nests it, T6a) is a ready panel with four adaptive points on the family's axes (two raised), a warped
 extrusion, a reference line and a point hosted on it; `bimcraft-cli run --script
-samples/adaptive-panel.txt --save panel.bimcraft` places two instances of it, the second flexing one frame and its Thickness.
+samples/adaptive-panel.txt --save panel.bimc` places two instances of it, the second flexing one frame and its Thickness.
 
 ## Modelling as in Revit
 
