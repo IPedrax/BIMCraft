@@ -16,6 +16,7 @@ The native Revit 2027.3 (27.3.0.28) observation in [#273](https://github.com/IPe
 
 ```sh
 cargo test --locked -p bimcraft-ui-egui --lib pick_walls_closes_a_floor
+cargo test --locked -p bimcraft-ui-egui --lib floor_core_picks_can_be_trimmed
 cargo test --locked -p bimcraft-core --test compound_corner
 ```
 
@@ -23,7 +24,7 @@ cargo test --locked -p bimcraft-core --test compound_corner
 
 | Boundary | Lower left → upper right (mm) | Solved area (m²) |
 | --- | --- | ---: |
-| Actual floor from four desktop test picks | (0, 0) → (8000, 6000) | 48.0000 |
+| Desktop Location Line picks | (0, 0) → (8000, 6000) | 48.0000 |
 | Joined exterior core faces, 70 mm out | (−70, −70) → (8070, 6070) | 49.9796 |
 | Joined interior core faces, 90 mm in | (90, 90) → (7910, 5910) | 45.5124 |
 
@@ -42,8 +43,14 @@ With H through, the material seam runs from (−60, −80) to (60, −80). The s
 
 The #273 butt requires two sufficiently long, straight, centre-location walls with matching vertical extents, fixed finish/structure/finish stacks and matching finishes on corresponding sides. Attachments, a nearby opening or another arm can change the cap. See the [wall-geometry limits](areas/levels-walls-roofs.md). Existing dimension references expose the wall centre, finish faces and ends. The automatic `floor {}` outline traces wall centre lines. Neither identifies an individually picked core face.
 
-## Next slice for review
+## Try it on the rectangle
 
-Record native picks on these fixtures with the core option on and off, both sides and a nonzero offset. Check the default side, flip, butt-order change and ordinary cap before deciding where automatic trim/extend applies. For the first implementation, limit automatic corners to two selected straight walls sharing an unambiguous square endpoint. Use `walls::faces`, `walls::depth` and `Axis::at` to locate the chosen reference from the wall's actual location line. Apply the edge offset there, intersect adjacent references with `geom::line_intersection`, and pass the resulting sketch through the existing Finish command. The eligible zero-offset turns from #273 give independent checks. Its stepped cap, filled bands and optional seam describe wall solids.
+1. Open the [rectangle fixture](../samples/floor-pick-walls.txt) as a project with `bimcraft-cli run --script samples/floor-pick-walls.txt --save rectangle.bimcraft`.
+2. In plan, start Floor, then Pick Walls. The options bar defaults to Location Line. Choose **Core Face: Exterior** or **Core Face: Interior** and click each of the four walls. You can change the reference between picks. Edit Boundary on an existing floor offers the same choices.
+3. Pick **Trim/Extend to Corner** and click two adjacent sketch lines near their middles, on the parts to keep. Repeat at the other three corners, then **Finish Edit Mode**. The clockwise fixture gives the exterior and interior footprints above. The desktop regression checks all four vertices, one model undo step at Finish, Undo/Redo and the saved and reopened boundary.
 
-The implementation should expose the same reference calculation to the desktop and semantic commands. Verify sketch undo/cancel, one model history step at Finish, Undo/Redo, reopen and plan/IFC footprint on the rectangle. Curves, oblique and branching junctions, disallowed joins, walls of different elevations, collapsed offsets, holes, chain selection and persistent wall association need separate cases. `depth` spans the first through last Structure layer and falls back to the whole thickness when there is none. Floor-pick behavior for multiple or missing Structure layers needs review. A general wall-join solver or a new floor file format is unnecessary to test this premise.
+Scripts and MCP can request the same untrimmed sketch line with `sketch {"wall":100002,"face":"exterior-core"}`, substituting the picked wall's id or GUID. Use `interior-core` for the other face. Omitting `face` follows the authored location line, including its arc. The result's `line` is a standard sketch line. A core pick needs a straight wall type with one structural layer. Unsupported picks report an error. Moving a wall after Finish leaves the drawn floor boundary in place.
+
+## Open native comparison
+
+Measure the Revit 2027.3 compound L with core on and off, both sides, both butt orders and a nonzero edge offset. These cases inform a later automatic trim/extend decision. The draft uses explicit face selection, manual corner trims and zero edge offset. Curved core faces, absent or multiple structural layers and persistent wall associations remain open.

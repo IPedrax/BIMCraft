@@ -40,7 +40,7 @@ msgstr "Brique"
 msgid "Brick 225 x 75"
 msgstr "Brique 225 x 75"
 
-#: crates/core/src/commands.rs:4727
+#: crates/core/src/commands.rs:4729
 msgid "Camera"
 msgstr "Caméra"
 
@@ -99,7 +99,7 @@ msgstr ""
 msgid "Copper"
 msgstr "Cuivre"
 
-#: crates/core/src/commands.rs:1562
+#: crates/core/src/commands.rs:1564
 msgid "Copy"
 msgstr "Copie"
 
@@ -132,7 +132,7 @@ msgstr "Prise de données"
 msgid "Demand Factor"
 msgstr ""
 
-#: crates/core/src/commands.rs:11559
+#: crates/core/src/commands.rs:11572
 msgid "Dependent"
 msgstr "Dépendant"
 
@@ -217,9 +217,9 @@ msgstr "Éclairage électrique"
 msgid "Electrical Power"
 msgstr "Alimentation électrique"
 
-#: crates/core/src/commands.rs:11306
-#: crates/core/src/commands.rs:11321
-#: crates/core/src/commands.rs:15525
+#: crates/core/src/commands.rs:11319
+#: crates/core/src/commands.rs:11334
+#: crates/core/src/commands.rs:15538
 msgid "Elevation"
 msgstr "Élévation"
 
@@ -345,7 +345,7 @@ msgstr "Largeur du pied"
 msgid "Length"
 msgstr "Longueur"
 
-#: crates/core/src/commands.rs:7295
+#: crates/core/src/commands.rs:7297
 #: crates/core/src/model.rs:3409
 msgid "Level"
 msgstr "Niveau"
@@ -386,7 +386,7 @@ msgstr "Repère"
 msgid "Masking"
 msgstr "Masque"
 
-#: crates/core/src/commands.rs:9059
+#: crates/core/src/commands.rs:9061
 msgid "Mass"
 msgstr "Volume"
 
@@ -402,7 +402,7 @@ msgstr "Lignes moyennes"
 msgid "Membrane"
 msgstr "Membrane"
 
-#: crates/core/src/commands.rs:14228
+#: crates/core/src/commands.rs:14241
 #: crates/core/src/family.rs:3338
 #: crates/core/src/model.rs:4658
 msgid "Metal"
@@ -498,11 +498,11 @@ msgstr "Porcelaine"
 msgid "Profile"
 msgstr ""
 
-#: crates/core/src/commands.rs:3407
+#: crates/core/src/commands.rs:3409
 msgid "Project"
 msgstr "Projet"
 
-#: crates/core/src/commands.rs:7936
+#: crates/core/src/commands.rs:7938
 msgid "Property Line"
 msgstr ""
 
@@ -534,7 +534,7 @@ msgstr ""
 msgid "Roof tiles"
 msgstr "Tuiles"
 
-#: crates/core/src/commands.rs:9284
+#: crates/core/src/commands.rs:9286
 msgid "Room"
 msgstr "Pièce"
 
@@ -570,8 +570,8 @@ msgstr "Chape"
 msgid "Seat Height"
 msgstr "Hauteur assise"
 
-#: crates/core/src/commands.rs:11241
-#: crates/core/src/commands.rs:15524
+#: crates/core/src/commands.rs:11254
+#: crates/core/src/commands.rs:15537
 msgid "Section"
 msgstr "Coupe"
 
@@ -729,7 +729,7 @@ msgstr "Hauteur non délimitée"
 msgid "Unclassified"
 msgstr ""
 
-#: crates/core/src/commands.rs:11730
+#: crates/core/src/commands.rs:11743
 msgid "Unnamed"
 msgstr "Sans nom"
 

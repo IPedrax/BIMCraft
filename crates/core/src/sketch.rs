@@ -15,10 +15,32 @@ use serde::{Deserialize, Serialize};
 use crate::curves::Curve;
 use crate::geom::{self, P2, Region};
 use crate::ids::{Guid, Id};
-use crate::model::{Element, MAX_COORD, MAX_POINTS, Model, TOL};
+use crate::model::{Element, Function, Location, MAX_COORD, MAX_POINTS, Model, TOL, Wall};
+use crate::walls::{self, Axis};
 
 /// A straight line, from one end to the other.
 pub type Line = [P2; 2];
+
+/// A Pick Walls sketch line, at the authored end stations. The sketch's trim tools can join it to its neighbours.
+pub fn picked_wall(m: &Model, w: &Wall, face: Option<Location>) -> Result<SketchLine, &'static str> {
+    let axis = Axis::of(w);
+    let Some(face) = face else {
+        return Ok(if w.arc == 0.0 {
+            SketchLine::new(w.start, w.end)
+        } else {
+            SketchLine::arc(w.start, w.end, axis.at(axis.length() / 2.0, 0.0))
+        });
+    };
+    if !matches!(face, Location::ExteriorCore | Location::InteriorCore) {
+        return Err("Pick an exterior or interior core face, or omit the face for the wall's location line.");
+    }
+    let ty = m.types.wall.get(&w.type_name).ok_or("Wall type is missing.")?;
+    if w.arc != 0.0 || ty.layers.iter().filter(|l| l.function == Function::Structure).count() != 1 {
+        return Err(bimcraft_i18n::ui_msg!("Pick a straight wall with one structural layer, or select Location Line."));
+    }
+    let off = walls::faces(m, w).0 - walls::depth(ty.thickness, &ty.layers, face);
+    Ok(SketchLine::new(axis.at(0.0, off), axis.at(axis.length(), off)))
+}
 
 /// A sketch line: any [`Curve`], a line, an arc, a polyline, a circle, an ellipse or a spline. Its id and GUID are its
 /// own, given when what it draws is made or edited and kept while it stays in the sketch. In a file and a command it is

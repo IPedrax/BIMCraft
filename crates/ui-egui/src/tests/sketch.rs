@@ -224,6 +224,60 @@ fn pick_walls_closes_a_floor_on_the_authored_location_lines() {
 }
 
 #[test]
+fn floor_core_picks_can_be_trimmed_and_finished_on_either_face() {
+    for (face, inset, area) in [("Core Face: Exterior", -70., 49.98), ("Core Face: Interior", 90., 45.51)] {
+        let mut h = app(include_str!("../../../../samples/floor-pick-walls.txt"));
+        press(&mut h, "Floor");
+        press(&mut h, "Pick Walls");
+        press(&mut h, face);
+        for p in [P2(4000., 25.), P2(7975., 3000.), P2(4000., 5975.), P2(25., 3000.)] {
+            click(&mut h, p);
+        }
+        assert_eq!(lines(&h).len(), 4);
+        assert!(line_of(&h, P2(0., inset), P2(8000., inset)).is_some());
+        press(&mut h, "Trim/Extend to Corner");
+        let midpoints = [P2(4000., inset), P2(8000. - inset, 3000.), P2(4000., 6000. - inset), P2(inset, 3000.)];
+        for i in 0..4 {
+            click(&mut h, midpoints[i]);
+            click(&mut h, midpoints[(i + 1) % 4]);
+        }
+        let steps = h.state().session.history().len();
+        press(&mut h, "Finish Edit Mode");
+        let floors = ids(&h, "floor");
+        assert_eq!(floors.len(), 1, "{}", h.state().status.text);
+        assert_eq!(field(&h, floors[0], "area_m2"), json!(area));
+        assert_eq!(h.state().session.history().len(), steps + 1);
+        let boundary = field(&h, floors[0], "boundary");
+        let points = boundary.as_array().unwrap();
+        assert_eq!(points.len(), 4);
+        for x in [inset, 8000. - inset] {
+            for y in [inset, 6000. - inset] {
+                assert!(points.contains(&json!([x, y])), "{boundary}");
+            }
+        }
+        h.state_mut().session.execute("undo", &json!({})).unwrap();
+        assert!(ids(&h, "floor").is_empty());
+        h.state_mut().session.execute("redo", &json!({})).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("floor.bimcraft");
+        h.state_mut().session.execute("save", &json!({"path":path})).unwrap();
+        h.state_mut().session.execute("open", &json!({"path":path})).unwrap();
+        assert_eq!(field(&h, floors[0], "boundary"), boundary);
+    }
+}
+
+#[test]
+fn the_tools_palette_offers_the_same_floor_pick_references() {
+    let mut h = bimcraft(include_str!("../../../../samples/floor-pick-walls.txt"));
+    tool(&mut h, "Floor");
+    h.get_by_label("Pick Walls").click_accesskit();
+    h.run();
+    press(&mut h, "Core Face: Exterior");
+    click(&mut h, P2(4000., 25.));
+    assert!(line_of(&h, P2(0., -70.), P2(8000., -70.)).is_some());
+}
+
+#[test]
 fn a_line_snaps_to_the_middle_of_a_sketch_line() {
     let mut h = app(BOX);
     press(&mut h, "Floor");

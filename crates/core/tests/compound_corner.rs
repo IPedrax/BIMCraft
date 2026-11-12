@@ -230,6 +230,38 @@ mod tests {
     }
 
     #[test]
+    fn sketch_returns_the_picked_wall_face_without_editing_the_model() {
+        use serde_json::json;
+        let (mut s, h, _) = fixture(CORNER);
+        let steps = s.history().len();
+        for (face, y) in [("exterior-core", 80.), ("interior-core", -80.)] {
+            let reply = s.execute("sketch", &json!({"wall":h,"face":face})).unwrap();
+            let line: SketchLine = serde_json::from_value(reply["line"].clone()).unwrap();
+            assert_eq!((line.start(), line.end()), (P2(-4000., y), P2(0., y)));
+        }
+        assert_eq!(s.history().len(), steps);
+        s.execute("flip", &json!({"id":h})).unwrap();
+        let reply = s.execute("sketch", &json!({"wall":h,"face":"exterior-core"})).unwrap();
+        let line: SketchLine = serde_json::from_value(reply["line"].clone()).unwrap();
+        assert_eq!((line.start(), line.end()), (P2(0., -80.), P2(-4000., -80.)));
+        assert!(s.execute("sketch", &json!({"wall":h,"face":"west"})).is_err());
+        assert!(s.execute("sketch", &json!({"wall":h,"lines":[]})).is_err());
+        assert!(s.execute("sketch", &json!({"face":"exterior-core"})).is_err());
+        let generic = s.execute("wall", &json!({"points":[[0,2000],[4000,2000]]})).unwrap()["ids"][0].clone();
+        assert!(s.execute("sketch", &json!({"wall":generic,"face":"interior-core"})).is_err());
+        assert!(s.execute("sketch", &json!({"wall":generic})).is_ok());
+        let curved = s.execute("wall", &json!({"type":"H","points":[[0,4000],[4000,4000]],"arc":30})).unwrap()["ids"][0].clone();
+        assert!(s.execute("sketch", &json!({"wall":curved,"face":"exterior-core"})).is_err());
+        let arc: SketchLine = serde_json::from_value(s.execute("sketch", &json!({"wall":curved})).unwrap()["line"].clone()).unwrap();
+        assert_eq!(arc.curve.kind(), "arc");
+        let at_finish =
+            s.execute("wall", &json!({"type":"H","points":[[0,8000],[4000,8000]],"location":"exterior-finish"})).unwrap()["ids"][0].clone();
+        let reply = s.execute("sketch", &json!({"wall":at_finish,"face":"exterior-core"})).unwrap();
+        let line: SketchLine = serde_json::from_value(reply["line"].clone()).unwrap();
+        assert_eq!((line.start(), line.end()), (P2(0., 7980.), P2(4000., 7980.)));
+    }
+
+    #[test]
     fn floor_core_turns_on_the_compound_l() {
         // Change only a finish material to make the same geometry take the ordinary cap.
         let ordinary = CORNER.replacen(r#""material":"Inner plaster""#, r#""material":"Outer render""#, 1);

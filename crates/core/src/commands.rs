@@ -367,7 +367,9 @@ other_files(
          A sketch is solved as the straight pieces its lines are drawn with (an arc, a circle or a curve is cut into chords, \
          a circle into up to 8,193): past 200,000 of them, or when they lie so close together that telling which cross \
          takes more than six million steps, it is refused at once. `sketch` on floor, ceiling, roof and shaft, and \
-         edit_boundary, take the same lines for one outline and its holes",
+         edit_boundary, take the same lines for one outline and its holes. Alternatively {wall: id, face?: exterior-core | \
+         interior-core} returns one sketch `line` along a straight wall's selected core face (one structural layer), or along \
+         its authored location line (straight or curved) when face is omitted. Trim/extend its ends when closing a loop.",
         sketch_lines,
     ),
     edit(
@@ -10772,8 +10774,19 @@ fn rings(c: &str, p: &Value, key: &str) -> Result<Option<Vec<Vec<P2>>>, String> 
     Ok(Some(given.into_iter().map(ring).collect()))
 }
 
-fn sketch_lines(_: &mut Session, p: &Value) -> R {
+fn sketch_lines(s: &mut Session, p: &Value) -> R {
     let c = "sketch";
+    if let Some(id) = id_opt(c, p, "wall")? {
+        if !absent(p.get("lines")) {
+            return Err(bad(c, "give a wall to pick or lines to solve, one at a time"));
+        }
+        let face = shaped::<Location>(c, p, "face", "exterior-core or interior-core")?;
+        let wall = s.model.wall(id).ok_or_else(|| bad(c, format!("{id} isn't a wall")))?;
+        return Ok(json!({"line": sketch::picked_wall(&s.model, wall, face).map_err(|e| bad(c, e))?}));
+    }
+    if !absent(p.get("face")) {
+        return Err(bad(c, "a face needs the wall to pick"));
+    }
     let lines = sketch_param(c, p, "lines", &[])?.ok_or_else(|| bad(c, "`lines` [[[x,y],[x,y]],…] is required"))?;
     let profile = sketch::solve(&lines)
         .map_err(|e| bad(c, format!("the lines don't make closed loops: {}", sketch::say(&e, &sketch::namer(&lines)))))?;
