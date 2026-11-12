@@ -53,6 +53,14 @@ Scripts and MCP can request the same untrimmed sketch line with `sketch {"wall":
 
 ## Native floor comparison
 
-On the masonry-through L in Revit 2027.3, picking the return joined the two floor sketch lines immediately. With the exterior side picked and zero edge offset, the corner relative to the wall-axis intersection was (+60, +80) mm with the core option enabled and (+100, +100) mm with it cleared. Flipping the connected core-off picks moved both lines.
+Revit 2027.3 (27.3.0.28) produced the same floor corners with masonry through and concrete through. Coordinates in the table are millimetres relative to the wall-axis intersection.
 
-The BIMCraft Rust draft uses explicit face selection, manual corner trims and zero edge offset. Curved core faces, absent or multiple structural layers, persistent wall associations and automatic corner joining remain open.
+| Native floor pick | Exterior | Interior |
+| --- | --- | --- |
+| Core on, zero edge offset, both join orders | (+60, +80) | (−60, −80) |
+| Core off, zero edge offset, both join orders | (+100, +100) | (−100, −100) |
+| Core on, +25 mm edge offset, masonry through | (+85, +105) | (−85, −105) |
+
+Picking the second wall trimmed or extended both lines immediately, including when the walls were picked in reverse order. One Flip click moved both connected lines. In six disposable models, the picked curve IDs and coordinates survived Finish, save and reopen. A later wall move needs a separate association test.
+
+The BIMCraft Rust draft uses explicit face selection, manual corner trims and zero edge offset. Location Line follows the authored line. Native core-off picks in this case lie on the finish faces. Automatic joining on the second pick, flipping connected lines together, finish-face selection, numeric edge offset, curved or ambiguous core faces and persistent wall association remain open.
