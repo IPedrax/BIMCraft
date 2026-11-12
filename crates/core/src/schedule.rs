@@ -114,13 +114,14 @@ pub struct Table {
 
 /// The schedules every project has, as views: each one's category, and its name. Each is the
 /// project's own once it's placed on a sheet or changed.
-pub const VIEWS: [(&str, &str); 6] = [
+pub const VIEWS: [(&str, &str); 7] = [
     ("room", msg!("Room Schedule")),
     ("door", msg!("Door Schedule")),
     ("window", msg!("Window Schedule")),
     ("wall", msg!("Wall Schedule")),
     ("floor", msg!("Floor Schedule")),
     ("level", msg!("Level Schedule")),
+    ("sheet", msg!("Sheet List")),
 ];
 
 /// One of the schedules every project has, by its name (in any of the languages, in any case) or,
@@ -584,9 +585,10 @@ const OWN: &[(&str, usize, &[Own])] = &[
         &[("Mass", Kind::Text, From::Key("mass")), LEVEL, AREA, ("Perimeter", Kind::Length, From::Metres("perimeter_m")), VOLUME, COUNT],
     ),
     ("level", 2, &[("Elevation", Kind::Length, From::Key("elevation")), NAME, COUNT]),
+    ("sheet", 2, &[("Number", Kind::Text, From::Key("number")), NAME]),
 ];
 
-/// The fields of what schedules aren't of: annotation, views and sheets, what Filter on a selection goes by
+/// The fields of what schedules aren't of: annotation and views, what Filter on a selection goes by
 /// (`selection::common`) and a tag may show. Each one's count is 0: no schedule shows them.
 const MORE: &[(&str, usize, &[Own])] = &[
     ("line", 0, &[("Line Style", Kind::Text, From::Key("style")), LENGTH]),
@@ -599,7 +601,6 @@ const MORE: &[(&str, usize, &[Own])] = &[
     ("grid", 0, &[NAME]),
     ("section", 0, &[NAME]),
     ("elevation", 0, &[NAME]),
-    ("sheet", 0, &[("Number", Kind::Text, From::Key("number")), NAME]),
     ("viewport", 0, &[(ui_msg!("Title"), Kind::Text, From::Key("title"))]),
 ];
 
@@ -613,9 +614,10 @@ pub fn all_categories() -> Vec<&'static str> {
     categories().into_iter().chain(MORE.iter().map(|(c, _, _)| *c)).collect()
 }
 
-/// The categories a multi-category schedule lists where it names none: what's built, not rooms, levels and masses.
+/// The categories a multi-category schedule lists where it names none: what's built, not rooms, levels, masses
+/// and sheets.
 pub fn built() -> Vec<&'static str> {
-    categories().into_iter().filter(|c| !matches!(*c, "room" | "level" | "mass" | "massfloor" | "propertyline")).collect()
+    categories().into_iter().filter(|c| !matches!(*c, "room" | "level" | "mass" | "massfloor" | "propertyline" | "sheet")).collect()
 }
 
 /// The categories multi-category schedule `sc` lists, as elements name theirs.
@@ -739,8 +741,12 @@ pub fn check(m: &Model, sc: &Schedule) -> Result<(), String> {
     if sc.categories.len() > MAX_FIELDS {
         return Err(format!("it lists {} categories; a schedule lists up to {MAX_FIELDS}", sc.categories.len()));
     }
-    if let Some(c) = sc.categories.iter().find(|c| !categories().contains(&category(c).as_str()) || category(c) == "massfloor") {
-        let there: Vec<&str> = categories().into_iter().filter(|c| *c != "massfloor").collect();
+    if let Some(c) = sc
+        .categories
+        .iter()
+        .find(|c| !categories().contains(&category(c).as_str()) || matches!(category(c).as_str(), "massfloor" | "sheet"))
+    {
+        let there: Vec<&str> = categories().into_iter().filter(|c| !matches!(*c, "massfloor" | "sheet")).collect();
         return Err(format!("`{c}` isn't a category a multi-category schedule lists; there are: {}", there.join(", ")));
     }
     if let Some((of, name)) = builtin(Some(&sc.name), None).filter(|(of, _)| *of != cat) {

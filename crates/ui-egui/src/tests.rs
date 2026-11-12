@@ -811,6 +811,8 @@ fn the_browser_opens_level_plans_and_schedules() {
     for label in ["Views (all)", "Floor Plans", "Schedules/Quantities (all)"] {
         assert!(h.query_by_label(label).is_some(), "{label}");
     }
+    // The sheet list every project has, with the other six.
+    assert!(h.query_by_label("Sheet List").is_some(), "Sheet List");
     // Its floor plan, over its ceiling plan.
     topmost(&mut h, "Level 2");
     assert_eq!(h.state().sheet, Sheet::Plan(100001));
@@ -4084,7 +4086,7 @@ fn a_schedule_of_the_projects_own_is_deleted_from_the_browser_and_its_tab_closes
     assert_eq!(ids(&h, "schedule").len(), before - 1, "deleted");
     assert!(!h.state().session.model.elements.contains_key(sc), "it is the one deleted");
     assert_ne!(h.state().sheet, Sheet::Table(sc), "its tab is closed");
-    // The six every project has have no Delete.
+    // The seven every project has have no Delete.
     h.get_by_label("Room Schedule").scroll_to_me();
     h.run();
     let pos = h.get_by_label("Room Schedule").rect().center();

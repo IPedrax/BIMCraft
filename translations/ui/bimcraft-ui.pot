@@ -865,8 +865,8 @@ msgstr ""
 msgid "Architecture"
 msgstr ""
 
-#: crates/core/src/schedule.rs:194
-#: crates/core/src/schedule.rs:239
+#: crates/core/src/schedule.rs:195
+#: crates/core/src/schedule.rs:240
 #: crates/ui-egui/src/editor.rs:268
 msgid "Area"
 msgstr ""
@@ -940,11 +940,11 @@ msgstr ""
 msgid "At least {} characters"
 msgstr ""
 
-#: crates/core/src/model.rs:2942
+#: crates/core/src/model.rs:2945
 msgid "At wall centre line"
 msgstr ""
 
-#: crates/core/src/model.rs:2943
+#: crates/core/src/model.rs:2946
 msgid "At wall finish"
 msgstr ""
 
@@ -1279,7 +1279,7 @@ msgstr ""
 msgid "Branch Panel"
 msgstr ""
 
-#: crates/core/src/model.rs:3259
+#: crates/core/src/model.rs:3262
 msgid "Brick"
 msgstr ""
 
@@ -1464,7 +1464,7 @@ msgstr ""
 msgid "Categories not overridden are drawn as Object Styles sets them."
 msgstr ""
 
-#: crates/core/src/schedule.rs:230
+#: crates/core/src/schedule.rs:231
 #: crates/ui-egui/src/editor/document.rs:1917
 #: crates/ui-egui/src/objectstyles.rs:65
 #: crates/ui-egui/src/properties.rs:2296
@@ -1558,7 +1558,7 @@ msgstr ""
 msgid "Centre Lines"
 msgstr ""
 
-#: crates/core/src/model.rs:3267
+#: crates/core/src/model.rs:3270
 msgid "Ceramic tile"
 msgstr ""
 
@@ -2446,7 +2446,7 @@ msgstr ""
 msgid "Concrete"
 msgstr ""
 
-#: crates/core/src/model.rs:3261
+#: crates/core/src/model.rs:3264
 msgid "Concrete block"
 msgstr ""
 
@@ -2613,7 +2613,7 @@ msgstr ""
 msgid "Copied {} rows, tab-separated."
 msgstr ""
 
-#: crates/core/src/model.rs:3275
+#: crates/core/src/model.rs:3278
 msgid "Copper"
 msgstr ""
 
@@ -2663,15 +2663,15 @@ msgstr ""
 msgid "Copy: click the point to copy from."
 msgstr ""
 
-#: crates/core/src/model.rs:452
+#: crates/core/src/model.rs:455
 msgid "Core Centreline"
 msgstr ""
 
-#: crates/core/src/model.rs:455
+#: crates/core/src/model.rs:458
 msgid "Core Face: Exterior"
 msgstr ""
 
-#: crates/core/src/model.rs:456
+#: crates/core/src/model.rs:459
 msgid "Core Face: Interior"
 msgstr ""
 
@@ -2712,7 +2712,7 @@ msgstr ""
 msgid "Couldn't save the setting: {}"
 msgstr ""
 
-#: crates/core/src/schedule.rs:206
+#: crates/core/src/schedule.rs:207
 #: crates/ui-egui/src/filter.rs:84
 #: crates/ui-egui/src/linestyles/creator.rs:178
 #: crates/ui-egui/src/reinforce.rs:50
@@ -3469,11 +3469,11 @@ msgstr ""
 msgid "Double Door"
 msgstr ""
 
-#: crates/core/src/model.rs:2694
+#: crates/core/src/model.rs:2697
 msgid "Double Sliding"
 msgstr ""
 
-#: crates/core/src/model.rs:2692
+#: crates/core/src/model.rs:2695
 msgid "Double Swing"
 msgstr ""
 
@@ -3629,7 +3629,7 @@ msgstr ""
 msgid "Earthing Electrodes"
 msgstr ""
 
-#: crates/core/src/model.rs:2004
+#: crates/core/src/model.rs:2007
 msgid "East"
 msgstr ""
 
@@ -4101,7 +4101,7 @@ msgstr ""
 msgid "Families of parallel lines: drafting ones mm on paper, the same at any scale; model ones mm in the building."
 msgstr ""
 
-#: crates/core/src/schedule.rs:192
+#: crates/core/src/schedule.rs:193
 #: crates/ui-egui/src/editor/document.rs:569
 msgid "Family"
 msgstr ""
@@ -4354,7 +4354,11 @@ msgstr ""
 msgid "Fine"
 msgstr ""
 
+<<<<<<< HEAD
 #: crates/core/src/import.rs:1575
+=======
+#: crates/core/src/import.rs:1559
+>>>>>>> refs/pr/392
 #: crates/ui-egui/src/notes.rs:451
 #: crates/ui-egui/src/properties.rs:742
 msgid "Finish"
@@ -4377,11 +4381,11 @@ msgstr ""
 msgid "Finish Edit Mode: the lines, closed into loops, become the outline and its holes"
 msgstr ""
 
-#: crates/core/src/model.rs:453
+#: crates/core/src/model.rs:456
 msgid "Finish Face: Exterior"
 msgstr ""
 
-#: crates/core/src/model.rs:454
+#: crates/core/src/model.rs:457
 msgid "Finish Face: Interior"
 msgstr ""
 
@@ -4402,7 +4406,7 @@ msgstr ""
 msgid "Fit"
 msgstr ""
 
-#: crates/core/src/model.rs:2696
+#: crates/core/src/model.rs:2699
 msgid "Fixed"
 msgstr ""
 
@@ -4531,7 +4535,7 @@ msgstr ""
 msgid "Folder for new projects"
 msgstr ""
 
-#: crates/core/src/model.rs:2695
+#: crates/core/src/model.rs:2698
 msgid "Folding"
 msgstr ""
 
@@ -4765,7 +4769,7 @@ msgstr ""
 msgid "Grids start at 0, 0 in each view and rotate together."
 msgstr ""
 
-#: crates/core/src/schedule.rs:573
+#: crates/core/src/schedule.rs:574
 msgid "Gross Floor Area"
 msgstr ""
 
@@ -4781,7 +4785,7 @@ msgstr ""
 msgid "Group:"
 msgstr ""
 
-#: crates/core/src/model.rs:3266
+#: crates/core/src/model.rs:3269
 msgid "Gypsum board"
 msgstr ""
 
@@ -5142,7 +5146,11 @@ msgstr ""
 msgid "Instances of {} are placed in the family: delete them first."
 msgstr ""
 
+<<<<<<< HEAD
 #: crates/core/src/import.rs:1574
+=======
+#: crates/core/src/import.rs:1558
+>>>>>>> refs/pr/392
 #: crates/ui-egui/src/draw.rs:664
 msgid "Insulation"
 msgstr ""
@@ -5881,7 +5889,7 @@ msgstr ""
 msgid "Manage Presets…"
 msgstr ""
 
-#: crates/core/src/model.rs:1591
+#: crates/core/src/model.rs:1594
 msgid "Mark"
 msgstr ""
 
@@ -5938,7 +5946,7 @@ msgstr ""
 msgid "Matched properties: applied type '{}' to {} element(s)"
 msgstr ""
 
-#: crates/core/src/schedule.rs:240
+#: crates/core/src/schedule.rs:241
 #: crates/ui-egui/src/adaptive_editor.rs:494
 #: crates/ui-egui/src/adaptive_editor.rs:555
 #: crates/ui-egui/src/editor/extrusion.rs:224
@@ -6025,7 +6033,11 @@ msgstr ""
 msgid "Medium Lines"
 msgstr ""
 
+<<<<<<< HEAD
 #: crates/core/src/import.rs:1577
+=======
+#: crates/core/src/import.rs:1561
+>>>>>>> refs/pr/392
 #: crates/ui-egui/src/properties.rs:741
 msgid "Membrane"
 msgstr ""
@@ -6452,7 +6464,7 @@ msgstr ""
 msgid "NOT ENCLOSED"
 msgstr ""
 
-#: crates/core/src/model.rs:1592
+#: crates/core/src/model.rs:1595
 #: crates/ui-egui/src/adaptive_editor.rs:665
 #: crates/ui-egui/src/adaptive_editor.rs:804
 #: crates/ui-egui/src/cad.rs:85
@@ -6605,7 +6617,7 @@ msgstr ""
 msgid "New {}"
 msgstr ""
 
-#: crates/core/src/schedule.rs:1296
+#: crates/core/src/schedule.rs:1302
 msgid "No"
 msgstr ""
 
@@ -6721,7 +6733,7 @@ msgstr ""
 msgid "Normalized Segment Length"
 msgstr ""
 
-#: crates/core/src/model.rs:2002
+#: crates/core/src/model.rs:2005
 msgid "North"
 msgstr ""
 
@@ -6818,7 +6830,7 @@ msgstr ""
 msgid "Nothing yet."
 msgstr ""
 
-#: crates/core/src/schedule.rs:258
+#: crates/core/src/schedule.rs:259
 #: crates/ui-egui/src/adaptive_editor.rs:627
 msgid "Number"
 msgstr ""
@@ -6895,7 +6907,7 @@ msgstr ""
 msgid "Off: no agent can reach this window"
 msgstr ""
 
-#: crates/core/src/schedule.rs:201
+#: crates/core/src/schedule.rs:202
 #: crates/ui-egui/src/editor/nested.rs:296
 #: crates/ui-egui/src/editor/sketch.rs:1345
 #: crates/ui-egui/src/linestyles/creator.rs:76
@@ -7050,7 +7062,7 @@ msgstr ""
 msgid "Open…"
 msgstr ""
 
-#: crates/core/src/schedule.rs:203
+#: crates/core/src/schedule.rs:204
 #: crates/ui-egui/src/editor/document.rs:1730
 msgid "Operation"
 msgstr ""
@@ -7346,8 +7358,8 @@ msgstr ""
 msgid "Performance"
 msgstr ""
 
-#: crates/core/src/schedule.rs:253
-#: crates/core/src/schedule.rs:262
+#: crates/core/src/schedule.rs:254
+#: crates/core/src/schedule.rs:263
 msgid "Perimeter"
 msgstr ""
 
@@ -7983,7 +7995,7 @@ msgstr ""
 msgid "Plan"
 msgstr ""
 
-#: crates/core/src/schedule.rs:318
+#: crates/core/src/schedule.rs:319
 msgid "Plan Area"
 msgstr ""
 
@@ -8176,7 +8188,7 @@ msgstr ""
 msgid "Primary ({})"
 msgstr ""
 
-#: crates/core/src/schedule.rs:211
+#: crates/core/src/schedule.rs:212
 #: crates/ui-egui/src/editor/extrusion.rs:200
 #: crates/ui-egui/src/settings.rs:503
 msgid "Profile"
@@ -8867,15 +8879,15 @@ msgstr ""
 msgid "Right"
 msgstr ""
 
-#: crates/core/src/schedule.rs:534
+#: crates/core/src/schedule.rs:535
 msgid "Riser Height"
 msgstr ""
 
-#: crates/core/src/schedule.rs:533
+#: crates/core/src/schedule.rs:534
 msgid "Risers"
 msgstr ""
 
-#: crates/core/src/model.rs:2698
+#: crates/core/src/model.rs:2701
 msgid "Roller"
 msgstr ""
 
@@ -8903,7 +8915,7 @@ msgstr ""
 msgid "Roof by Footprint: click inside the walls to roof them, on the level above"
 msgstr ""
 
-#: crates/core/src/model.rs:3268
+#: crates/core/src/model.rs:3271
 msgid "Roof tiles"
 msgstr ""
 
@@ -8940,11 +8952,11 @@ msgstr ""
 msgid "Room Calculation Point"
 msgstr ""
 
-#: crates/core/src/schedule.rs:218
+#: crates/core/src/schedule.rs:219
 msgid "Room Name"
 msgstr ""
 
-#: crates/core/src/schedule.rs:217
+#: crates/core/src/schedule.rs:218
 msgid "Room Number"
 msgstr ""
 
@@ -9183,7 +9195,7 @@ msgstr ""
 msgid "Scope"
 msgstr ""
 
-#: crates/core/src/model.rs:3264
+#: crates/core/src/model.rs:3267
 msgid "Screed"
 msgstr ""
 
@@ -9224,7 +9236,7 @@ msgstr ""
 msgid "Section (CR): click its start, then its end; it looks to the left of the line"
 msgstr ""
 
-#: crates/core/src/schedule.rs:212
+#: crates/core/src/schedule.rs:213
 msgid "Section Area"
 msgstr ""
 
@@ -9240,7 +9252,7 @@ msgstr ""
 msgid "Section: {}"
 msgstr ""
 
-#: crates/core/src/model.rs:2697
+#: crates/core/src/model.rs:2700
 msgid "Sectional"
 msgstr ""
 
@@ -9482,6 +9494,10 @@ msgstr ""
 msgid "Sheet Composition"
 msgstr ""
 
+#: crates/core/src/schedule.rs:124
+msgid "Sheet List"
+msgstr ""
+
 #: crates/ui-egui/src/properties.rs:292
 #: crates/ui-egui/src/titleblocks.rs:606
 msgid "Sheet Name"
@@ -9667,8 +9683,13 @@ msgstr ""
 msgid "Silhouettes"
 msgstr ""
 
+<<<<<<< HEAD
 #: crates/core/src/schedule.rs:280
 #: crates/ui-egui/src/editor.rs:1559
+=======
+#: crates/core/src/schedule.rs:281
+#: crates/ui-egui/src/editor.rs:1558
+>>>>>>> refs/pr/392
 msgid "Sill"
 msgstr ""
 
@@ -9751,7 +9772,7 @@ msgstr ""
 msgid "Sky"
 msgstr ""
 
-#: crates/core/src/model.rs:2693
+#: crates/core/src/model.rs:2696
 msgid "Sliding"
 msgstr ""
 
@@ -9763,7 +9784,7 @@ msgstr ""
 msgid "Sliding Window"
 msgstr ""
 
-#: crates/core/src/schedule.rs:317
+#: crates/core/src/schedule.rs:318
 #: crates/ui-egui/src/properties.rs:1330
 #: crates/ui-egui/src/properties.rs:1392
 #: crates/ui-egui/src/reinforce.rs:111
@@ -9920,7 +9941,7 @@ msgstr ""
 msgid "Source code on GitHub"
 msgstr ""
 
-#: crates/core/src/model.rs:2003
+#: crates/core/src/model.rs:2006
 msgid "South"
 msgstr ""
 
@@ -10116,7 +10137,7 @@ msgid "Straight"
 msgstr ""
 
 #: crates/core/src/family.rs:360
-#: crates/core/src/schedule.rs:303
+#: crates/core/src/schedule.rs:304
 msgid "Structural"
 msgstr ""
 
@@ -10170,7 +10191,11 @@ msgstr ""
 msgid "Subgrid pen"
 msgstr ""
 
+<<<<<<< HEAD
 #: crates/core/src/import.rs:1576
+=======
+#: crates/core/src/import.rs:1560
+>>>>>>> refs/pr/392
 #: crates/ui-egui/src/properties.rs:739
 msgid "Substrate"
 msgstr ""
@@ -10233,7 +10258,7 @@ msgstr ""
 msgid "Swept Blend: a path of one line or arc, and a profile at each end, blended along it"
 msgstr ""
 
-#: crates/core/src/model.rs:2691
+#: crates/core/src/model.rs:2694
 msgid "Swing"
 msgstr ""
 
@@ -10315,7 +10340,7 @@ msgstr ""
 msgid "Symbols"
 msgstr ""
 
-#: crates/core/src/schedule.rs:200
+#: crates/core/src/schedule.rs:201
 #: crates/ui-egui/src/editor/connectors.rs:229
 #: crates/ui-egui/src/editor/connectors.rs:236
 msgid "System"
@@ -11001,7 +11026,7 @@ msgstr ""
 msgid "Timber"
 msgstr ""
 
-#: crates/core/src/schedule.rs:603
+#: crates/core/src/schedule.rs:604
 msgid "Title"
 msgstr ""
 
@@ -11116,7 +11141,7 @@ msgstr ""
 msgid "Transparent"
 msgstr ""
 
-#: crates/core/src/schedule.rs:535
+#: crates/core/src/schedule.rs:536
 msgid "Tread"
 msgstr ""
 
@@ -11197,7 +11222,7 @@ msgstr ""
 msgid "Two {} are called {}."
 msgstr ""
 
-#: crates/core/src/model.rs:1593
+#: crates/core/src/model.rs:1596
 #: crates/ui-egui/src/adaptive_editor.rs:724
 #: crates/ui-egui/src/editor/dimensions.rs:1010
 #: crates/ui-egui/src/editor/nested.rs:273
@@ -11277,7 +11302,7 @@ msgstr ""
 msgid "URL"
 msgstr ""
 
-#: crates/core/src/schedule.rs:264
+#: crates/core/src/schedule.rs:265
 #: crates/ui-egui/src/properties.rs:177
 msgid "Unbounded Height"
 msgstr ""
@@ -11730,7 +11755,7 @@ msgstr ""
 msgid "Voltages"
 msgstr ""
 
-#: crates/core/src/schedule.rs:219
+#: crates/core/src/schedule.rs:220
 #: crates/ui-egui/src/editor.rs:269
 msgid "Volume"
 msgstr ""
@@ -11751,7 +11776,7 @@ msgstr ""
 msgid "Wall (WA): each click builds a wall; Enter or Esc ends the chain"
 msgstr ""
 
-#: crates/core/src/model.rs:451
+#: crates/core/src/model.rs:454
 msgid "Wall Centreline"
 msgstr ""
 
@@ -11807,16 +11832,16 @@ msgstr ""
 msgid "Wave"
 msgstr ""
 
-#: crates/core/src/schedule.rs:214
-#: crates/core/src/schedule.rs:409
+#: crates/core/src/schedule.rs:215
+#: crates/core/src/schedule.rs:410
 msgid "Weight"
 msgstr ""
 
-#: crates/core/src/schedule.rs:213
+#: crates/core/src/schedule.rs:214
 msgid "Weight per Metre"
 msgstr ""
 
-#: crates/core/src/model.rs:2005
+#: crates/core/src/model.rs:2008
 msgid "West"
 msgstr ""
 
@@ -12065,7 +12090,7 @@ msgstr ""
 msgid "Y axis"
 msgstr ""
 
-#: crates/core/src/schedule.rs:1296
+#: crates/core/src/schedule.rs:1302
 msgid "Yes"
 msgstr ""
 
@@ -12720,7 +12745,7 @@ msgstr ""
 msgid "{} (primary)"
 msgstr ""
 
-#: crates/core/src/schedule.rs:1286
+#: crates/core/src/schedule.rs:1292
 msgid "{} ({})"
 msgstr ""
 

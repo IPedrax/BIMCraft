@@ -367,7 +367,7 @@ pub enum OsEvent {
 }
 
 /// The schedules: the category `schedule` takes, and the view's name.
-pub(crate) const SCHEDULES: [(&str, &str); 6] = schedule::VIEWS;
+pub(crate) const SCHEDULES: [(&str, &str); 7] = schedule::VIEWS;
 
 /// Ribbon buttons that pick tools: icon, label, tooltip, tool.
 type Tools<'a> = &'a [(Icon, &'a str, &'a str, Tool)];

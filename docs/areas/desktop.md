@@ -456,7 +456,7 @@ Filter. While something is selected, every tab's Select panel has Filter, and th
 (`filter.rs`): Revit's Filter, the selection counted by category, each checked to keep or cleared to leave out, with Check All,
 Check None and the total kept; OK keeps what is checked selected. Its Filter by list goes further: any parameter every selected
 element has, which `selection::common` finds (the schedules' fields their categories share, Category first, Count left out; what
-schedules aren't of, lines, regions, text, tags, grids, views and sheets, has its fields in `schedule::MORE`: a line's Line Style), and
+schedules aren't of, lines, regions, text, tags, grids and views, has its fields in `schedule::MORE`: a line's Line Style), and
 the list becomes that parameter's values (`selection::groups`, as schedules show them, numbers by value, `(none)` last), to keep or
 leave out the same way. The `filter_selection` command gives agents the same: the groups, the shared fields, and with `keep`, the ids kept.
 
