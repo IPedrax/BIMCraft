@@ -71,12 +71,19 @@ pub const CEILING_CUT: f64 = 2300.0;
 pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
-/// The version of the project file this build writes, and the newest it reads. 19: the Family Editor, and what places its
-/// families in a project. A build that reads up to 18 would leave most of it out as fields it doesn't know (a family's planes,
-/// sketches, dimensions, nested families, pivots and settings, a component's host), drawing a family without them or failing
-/// to build it, and losing them on saving, and refuse the rest on opening ("unknown variant", "isn't a category views draw"),
-/// not say "saved by a newer BIMCraft". A file of 18 or older is brought up to 19 by one step of [`Model::migrate`], after
-/// 18's, which needs none. What 19 adds:
+/// The version of the project file this build writes, and the newest it reads. 18: a family's connector may be a `pipe`,
+/// `data` or `earthing` one, with no `system` (a pipe's `domain`, `flow`, `size`), and any may have a place (`at`, `direction`);
+/// the starter fixtures and fittings have them; a project may hold title blocks of its own (`title_blocks`, library entries of
+/// kind `title-block`) and its values of their fields (`title_values`), and a sheet may name one (`title_block`) and hold its
+/// values of its fields (`fields`), or name `none` to have no title block at all (no border, title box or folding marks); a
+/// wall or a run may refuse to join its neighbours (`join: false`, written only then); and a dimension may measure to the line
+/// across a column, square to its angle (`across`). Nothing in a file of 17 changes, but a build that reads up to 17 would
+/// answer such a connector or dimension with a serde error ("unknown variant", "missing field `system`"), would leave the
+/// title blocks out as fields it doesn't know, drawing every sheet with the built-in title box, and would silently drop
+/// `join: false` and join the element again, not say "saved by a newer BIMCraft". 18 also holds the Family Editor's families and
+/// what places them in a project, which a build that reads up to 17 would leave out as fields it doesn't know, drawing a
+/// family without them or failing to build it and losing them on saving, or refuse on opening ("unknown variant", "isn't a
+/// category views draw"), not say "saved by a newer BIMCraft"; a file of 17 is brought up to 18 by [`Model::migrate`]:
 ///
 /// - Family parameters: text, whole numbers, areas, volumes, URLs and family types, grouped (`group`), shared (`shared`, a
 ///   GUID) or reporting (`reporting`); a family type parameter names its category (`of`).
@@ -108,16 +115,7 @@ pub const MAX_SLOPE: f64 = 75.0;
 ///   hosted on one (`host`), its `at` and `offset` following the plane and its family's axes tilted with it, or on a face of a
 ///   wall, a floor, a ceiling or a roof (`host` `{"face": {"element", "face"}}`, Place on Face), its `uv` that face's own.
 ///
-/// 18: a family's connector may be a `pipe`,
-/// `data` or `earthing` one, with no `system` (a pipe's `domain`, `flow`, `size`), and any may have a place (`at`, `direction`);
-/// the starter fixtures and fittings have them; a project may hold title blocks of its own (`title_blocks`, library entries of
-/// kind `title-block`) and its values of their fields (`title_values`), and a sheet may name one (`title_block`) and hold its
-/// values of its fields (`fields`), or name `none` to have no title block at all (no border, title box or folding marks); a
-/// wall or a run may refuse to join its neighbours (`join: false`, written only then); and a dimension may measure to the line
-/// across a column, square to its angle (`across`). Nothing in a file of 17 changes, but a build that reads up to 17 would
-/// answer such a connector or dimension with a serde error ("unknown variant", "missing field `system`"), would leave the
-/// title blocks out as fields it doesn't know, drawing every sheet with the built-in title box, and would silently drop
-/// `join: false` and join the element again, not say "saved by a newer BIMCraft". 17: a schedule may list several categories
+/// 17: a schedule may list several categories
 /// (`multicategory`, with `categories`) and a project's language may be Italian (`it`); nothing in a file of 16 changes, but a
 /// build that reads up to 16 would refuse either on opening (no schedule of that category, an unknown variant), not say
 /// "saved by a newer BIMCraft". 16: a 3D view may hold dimensions (the
@@ -155,7 +153,7 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 2: the library has ids and GUIDs too
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
-pub const FORMAT: u32 = 19;
+pub const FORMAT: u32 = 18;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -3691,10 +3689,10 @@ impl Model {
         // values, and sheets with none; walls and runs that refuse to join; a dimension to the line across a column) has none
         // either: a file of 17's connectors are a power or a switch one, each with its system, which 18 reads as they were; a
         // file of 17 holds no title blocks, its sheets keeping the built-in one, no `join`, which reads as joining, as it always
-        // did, and none of its dimensions measures `across`.
-        // 18 to 19 (the Family Editor, and what places its families): one step, in this order, for a file of 17 or 18 alike
-        // (this step leaves 18's changes alone: title blocks, `join` and `across` aren't a family's, and a connector's `at` is in
-        // the family's axes, which the datums are whatever plane `defines_origin`, and it has no `host` that 1 below would move).
+        // did, and none of its dimensions measures `across`. The Family Editor's part of 18, and what places its families, takes
+        // one step, in this order (it leaves the rest of 18 alone: title blocks, `join` and `across` aren't a family's, and a
+        // connector's `at` is in the family's axes, which the datums are whatever plane `defines_origin`, and it has no `host`
+        // that 1 below would move).
         // 1. A form's `plane` becomes its `host`, a datum: `xy` Ref. Level and `yz` Center (Left/Right) as they were; `xz`
         //    Center (Front/Back), its `from` and `to` negated and swapped (a formula wrapped as `-(…)`), since it swept along
         //    +y and the datum's normal is -y, a revolve's angles as they were. Its `profile`, `circle` and `axis` become lines
@@ -3703,16 +3701,17 @@ impl Model {
         //    and a family read without its datums is given them (`Family::planes`).
         // 2. Every family's datums are put first and its origin settled, whatever the file held (`Family::settle_planes`).
         // 3. A door's or a window's void cuts its wall wherever it reaches into it, whatever its place in the family's list,
-        //    unless its `cuts` says `forms`. Before 19, only one that cut none of the solid forms listed before it cut the
+        //    unless its `cuts` says `forms`. Before, only one that cut none of the solid forms listed before it cut the
         //    wall, in its own shape in place of the opening's rectangle (a rule only unreleased builds of the Family Editor
-        //    had: upstream's 17 and 18 cut the wall with the opening's rectangle alone, and a file of either reads by it). Each void that rule didn't cut the wall with, though it reaches into it, says `forms`
+        //    had: 17 cut the wall with the opening's rectangle alone, and a file of 17 reads by it). Each void that rule didn't
+        //    cut the wall with, though it reaches into it, says `forms`
         //    (`Family::pin_cuts`), so it cuts what it did. It runs after 2, as it did, the family flexed on its settled planes.
         //    A limit: one `cuts` is a void's for every type, and the old rule decided type by type. A void that overlapped a
         //    solid in any type, or by the default of an instance parameter that moves it, says `forms` for all of them, so a
         //    type whose void was clear of the solids and cut the wall with the old rule cuts it no more. That is the
-        //    conservative side: the wall keeps the opening's rectangle, as upstream's 17 and 18 drew it, and one value per
+        //    conservative side: the wall keeps the opening's rectangle, as 17 drew it, and one value per
         //    void can't hold both outcomes.
-        // The rest of 19 needs nothing of a file of 17 or 18, which holds none of it: an adaptive family and a component's
+        // The rest needs nothing of a file of 17, which holds none of it: an adaptive family and a component's
         // adaptive frames, a family parameter's group, shared GUID and reporting (each defaults to what a file of 17 means:
         // grouped by its kind, the family's own, set), Doors > Opening and Windows > Opening, the project's reference planes
         // and components hosted on them or on faces (a hosted component's `at` and `offset` are worked out from its host
@@ -3720,8 +3719,8 @@ impl Model {
         // or 18 is an extrusion or a revolve, built as it was), pivots, and Visibility Settings (a part without them draws as it
         // did, `family::visibility`). An adaptive point's `"datum": "level" | "front_back" | "left_right"`, the name the
         // Family Editor's first adaptive points gave their work plane, is still read as the datum plane of the same frame
-        // (`Host::World`'s `plane_or_datum`); a file of 17 or 18 holds no adaptive family, so it takes no part in this step.
-        if self.format < 19 {
+        // (`Host::World`'s `plane_or_datum`); a file of 17 holds no adaptive family, so it takes no part in this step.
+        if self.format < 18 {
             self.families.values_mut().for_each(crate::family::Family::settle_planes);
             self.families.values_mut().for_each(crate::family::Family::pin_cuts);
         }

@@ -401,8 +401,7 @@ A shared parameters file (`shared_parameters.rs`, the `shared_parameters` comman
 file of the user's own, outside any project or family, as Revit keeps one: groups, and in them parameters, each a GUID, a name,
 a data type, a description, whether it is visible and whether the user may change it. The command takes the file's `path` on
 every call (Revit keeps it per user, never in the project; an agent says which file it means, and a front end remembers its
-own), and only `load` changes the project. The layout is Revit's tab-separated one, from what Autodesk documents publicly
-in the Revit API guide's [Definition File](https://help.autodesk.com/cloudhelp/2015/ENU/Revit-API/files/GUID-9C7F6E02-05C2-4F72-8108-60F2175FB9E3.htm) page and what such files commonly hold: `#` comments, a `*META`/`*GROUP`/`*PARAM` header naming the columns of the `META`/`GROUP`/`PARAM` lines after
+own), and only `load` changes the project. The layout is the tab-separated one such files commonly hold: `#` comments, a `*META`/`*GROUP`/`*PARAM` header naming the columns of the `META`/`GROUP`/`PARAM` lines after
 it, read by column name so version 1 (no `DESCRIPTION`, `USERMODIFIABLE`) and version 2 (with them and `HIDEWHENNOVALUE`) both
 read, and a column this version doesn't know passed over; a reader must be at least `MINVERSION`, so a file asking for more
 than 2 is refused. It is written as version 2, UTF-8 with a byte order mark and Windows line ends, groups and their

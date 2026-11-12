@@ -1766,7 +1766,7 @@ fn warnings_are_collected_not_stopped_at_the_first() {
 }
 
 /// What a family is in a file: its own fields, no more and no less, and a project written here read
-/// back whole (ТЗ-003 §6.8). FORMAT 19 grew its `planes` (the datums, always written), a form's `host`, and its `sketch`
+/// back whole (ТЗ-003 §6.8). FORMAT 18 grew its `planes` (the datums, always written), a form's `host`, and its `sketch`
 /// in place of its `profile`.
 #[test]
 fn a_family_is_saved_with_the_fields_it_has_always_had() {
@@ -6143,22 +6143,21 @@ fn a_file_from_before_guids_opens_with_guids_and_six_digit_ids() {
 }
 
 #[test]
-fn a_file_of_the_family_editors_unreleased_formats_20_to_32_is_refused_as_newer() {
-    // The Family Editor took the format from 17 to 32 a step at a time before it was released, and then became one step.
-    // Upstream's 18 (connectors with a place) came first, so that step is 18 to 19. Nothing of 20 to 32 was released, so
-    // this build reads none of them: each is refused as any newer file is. 18 and 19 are read as upstream's 18 and as this
-    // 19: a file an unreleased build wrote with either number can't be told from them.
+fn a_file_of_the_family_editors_unreleased_formats_19_to_32_is_refused_as_newer() {
+    // The Family Editor took the format from 17 to 32 a step at a time before it was released, and then became part of 18,
+    // which every change since 0.11 shares. Nothing of 19 to 32 was released, so this build reads none of them: each is
+    // refused as any newer file is.
     use crate::model::{FORMAT, Model};
-    assert_eq!(FORMAT, 19);
+    assert_eq!(FORMAT, 18);
     let mut s = Session::new();
     house(&mut s);
     let v = serde_json::to_value(&*s.model).unwrap();
-    for old in 20..=32 {
+    for old in 19..=32 {
         let mut was = v.clone();
         was["format"] = json!(old);
         let e = Model::read(&was.to_string()).unwrap_err();
         assert!(
-            e.contains("saved by a newer BIMCraft") && e.contains(&format!("file format {old}")) && e.contains("reads up to 19"),
+            e.contains("saved by a newer BIMCraft") && e.contains(&format!("file format {old}")) && e.contains("reads up to 18"),
             "{old}: {e}"
         );
     }

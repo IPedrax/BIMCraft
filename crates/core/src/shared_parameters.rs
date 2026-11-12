@@ -3,10 +3,9 @@
 //! it is shown and whether the user may change it. A family's parameter shared by that GUID (`Parameter::shared`) is the same
 //! parameter in every family and project that holds it.
 //!
-//! The layout is Revit's, as Autodesk documents it publicly in the Revit API guide's page "Definition File"
-//! (<https://help.autodesk.com/cloudhelp/2015/ENU/Revit-API/files/GUID-9C7F6E02-05C2-4F72-8108-60F2175FB9E3.htm>) and as
-//! such files are commonly seen: tab-separated lines, `#` a comment, a header line starting with `*` naming the columns of
-//! the lines of its kind after it (`*META`, `*GROUP`, `*PARAM`), and the lines themselves (`META`, `GROUP`, `PARAM`).
+//! The layout is the one such files are commonly seen with: tab-separated lines, `#` a comment, a header line starting with
+//! `*` naming the columns of the lines of its kind after it (`*META`, `*GROUP`, `*PARAM`), and the lines themselves (`META`,
+//! `GROUP`, `PARAM`).
 //! Version 2 adds `DESCRIPTION` and `USERMODIFIABLE` (and later `HIDEWHENNOVALUE`) to version 1's columns; columns are read
 //! by their header's names, so either reads, and a column this version doesn't know is passed over. A file is hostile: its
 //! size, its lines and its fields are capped, its numbers are whole and in range, its GUIDs are GUIDs, and what isn't one

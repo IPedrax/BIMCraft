@@ -23,7 +23,7 @@ jobs:
   check:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.runner }}
-    # Windows builds and tests the slowest: about 55 minutes before its desktop tests start, which run their GPU ones on one thread.
+    # Windows builds and tests the slowest: about 55 minutes before its desktop tests start.
     timeout-minutes: ${{ matrix.timeout }}
     strategy:
       fail-fast: false
@@ -68,20 +68,7 @@ jobs:
           cargo build --manifest-path crates/plugin/tests/sample-plugin/Cargo.toml --target wasm32-unknown-unknown --release
 
       - name: Test
-        if: runner.os != 'Windows'
         run: cargo test --workspace
-
-      # Concurrent headless GPU adapters can crash the Windows driver (0xc0000005).
-      # Keep all tests; only GPU and retained UI tests run serially on Windows.
-      - name: Test (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          cargo test --workspace --exclude bimcraft-ui-egui
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          cargo test -p bimcraft-ui-egui -- --skip gpu:: --skip retained::
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          cargo test -p bimcraft-ui-egui -- gpu:: retained:: --test-threads=1
 
   # What CLAUDE.md asks after touching ifc.rs: IfcOpenShell validates what BIMCraft writes, with the EXPRESS rules, and builds every
   # product's shape. The sample house, and ci/ifc-coverage.txt for what the sample doesn't reach (structure, runs, masses, phases).
