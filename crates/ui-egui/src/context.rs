@@ -18,14 +18,15 @@ pub(crate) enum InstanceScope {
     Project,
 }
 
-/// Shared submenu for canvas selections and Project Browser types.
-pub(crate) fn instances_menu(ui: &mut egui::Ui, enabled: bool) -> Option<InstanceScope> {
+/// Shared submenu for canvas selections and Project Browser types. `shortcut` shows SA beside Visible in View: the key acts on
+/// the canvas's selection, so a browser type's menu leaves it out.
+pub(crate) fn instances_menu(ui: &mut egui::Ui, enabled: bool, shortcut: bool) -> Option<InstanceScope> {
     let mut chosen = None;
     ui.add_enabled_ui(enabled, |ui| {
         ui.menu_button(t(msg!("Select All Instances")), |ui| {
             for (scope, label) in [(InstanceScope::View, msg!("Visible in View")), (InstanceScope::Project, msg!("In Entire Project"))] {
                 let mut button = Button::new(t(label));
-                if scope == InstanceScope::View {
+                if shortcut && scope == InstanceScope::View {
                     button = button.shortcut_text("SA");
                 }
                 if ui.add(button).clicked() {
@@ -154,7 +155,7 @@ pub(crate) fn menu(response: &Response, groups: &[Vec<Item>], chosen: &mut Optio
             }
             for item in group {
                 if item.action == Action::SelectAllInstances {
-                    if let Some(scope) = instances_menu(ui, item.enabled) {
+                    if let Some(scope) = instances_menu(ui, item.enabled, true) {
                         *chosen = Some(Action::SelectInstances(scope));
                     }
                     continue;
