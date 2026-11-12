@@ -572,6 +572,53 @@ fn elements_finds_what_holds_a_fields_value() {
     assert!(e.contains("value"), "{e}");
 }
 
+#[test]
+fn elements_finds_what_is_hosted_in_an_element() {
+    let mut s = Session::new();
+    let walls = house(&mut s);
+    let door = run(&mut s, "door", json!({"at": [2000, 30]}))["id"].as_u64().unwrap();
+    let window = run(&mut s, "window", json!({"at": [8000, 3000]}))["id"].as_u64().unwrap();
+    let found = |s: &mut Session, p: Value| -> Vec<u64> {
+        run(s, "elements", p)["elements"].as_array().unwrap().iter().map(|e| e["id"].as_u64().unwrap()).collect()
+    };
+    // A door's or a window's wall, by the wall's id or its GUID; a wall with nothing hosted in it has none.
+    assert_eq!(found(&mut s, json!({"host": walls[0]})), [door]);
+    let wall = element(&mut s, walls[1])["guid"].clone();
+    assert_eq!(found(&mut s, json!({"category": "window", "host": wall})), [window]);
+    assert!(found(&mut s, json!({"host": walls[2]})).is_empty());
+    // A component on a wall's face; one on a level is hosted in nothing.
+    run(
+        &mut s,
+        "family",
+        json!({"name": "Lamp", "category": "generic", "types": {"A": {}}, "options": {"work_plane_based": true},
+               "forms": [{"profile": [[-100, -100], [100, -100], [100, 100], [-100, 100]], "to": 50}]}),
+    );
+    let face = json!({"face": {"element": walls[3], "face": "interior"}});
+    let on_face = run(&mut s, "component", json!({"family": "Lamp", "host": face, "at": [0, 3000, 1000]}))["id"].as_u64().unwrap();
+    run(&mut s, "component", json!({"family": "Lamp", "at": [4000, 3000]}));
+    assert_eq!(found(&mut s, json!({"host": walls[3]})), [on_face]);
+    // On a reference plane, too.
+    let plane = run(&mut s, "reference_plane", json!({"start": [0, 5000], "end": [4000, 5000]}))["id"].as_u64().unwrap();
+    let on_plane =
+        run(&mut s, "component", json!({"family": "Lamp", "host": {"plane": plane}, "at": [2000, 5000, 0]}))["id"].as_u64().unwrap();
+    assert_eq!(found(&mut s, json!({"host": plane})), [on_plane]);
+    // A reinforcing bar in a beam, and a railing along a stair.
+    let beam = run(&mut s, "beam", json!({"points": [[0, 0], [6000, 0]]}))["ids"][0].as_u64().unwrap();
+    let bar = run(&mut s, "rebar", json!({"host": beam, "points": [[50, 0, -450], [5950, 0, -450]], "diameter": 12.5}))["ids"][0]
+        .as_u64()
+        .unwrap();
+    assert_eq!(found(&mut s, json!({"host": beam})), [bar]);
+    let stair = run(&mut s, "stair", json!({"start": [1000, 1000], "end": [1000, 2000]}))["id"].as_u64().unwrap();
+    let rails: Vec<u64> =
+        run(&mut s, "railing", json!({"host": stair}))["ids"].as_array().unwrap().iter().map(|v| v.as_u64().unwrap()).collect();
+    assert_eq!(found(&mut s, json!({"category": "railing", "host": stair})), rails);
+    // A host that is no element, or not one at all, is refused.
+    let e = s.execute("elements", &json!({"host": "nonsense"})).unwrap_err();
+    assert!(e.contains("nonsense"), "{e}");
+    let e = s.execute("elements", &json!({"host": 999999})).unwrap_err();
+    assert!(e.contains("999999"), "{e}");
+}
+
 /// A wall's ends, as `elements` shows them.
 fn ends(s: &mut Session, id: u64) -> (Value, Value) {
     let w = run(s, "elements", json!({"category": "wall"}));
@@ -2189,6 +2236,9 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"points": "x"}),
         json!({"field": 5, "value": true}),
         json!({"field": "Type", "value": ["Thick"]}),
+        json!({"host": "nonsense"}),
+        json!({"host": [0]}),
+        json!({"host": 999999}),
         json!({"points": [[0, 0]]}),
         json!({"points": [[0, 0, 0], [1000, 0, 0]], "diameter": 12, "count": 1000, "step": [1e9, 1e9, 1e9]}),
         json!({"points": [[0, 0, 0], [1000, 0, 0]], "diameter": f64::MAX, "count": 1e300}),

@@ -4092,6 +4092,20 @@ impl Model {
         self.elements.get(k)?.run()
     }
 
+    /// The element that `id` is hosted in or on: a door's or a window's wall, a component's face's element or its reference
+    /// plane, a reinforcing bar's beam, column, footing or floor, a railing's stair or ramp. None for one that stands on its
+    /// level or on nothing.
+    pub fn host_of(&self, id: impl Key) -> Option<Id> {
+        let host = match self.elements.get(id)? {
+            Element::Door(o) | Element::Window(o) => o.host,
+            Element::Component(c) => c.host.map(|h| h.host.guid())?,
+            Element::Rebar(rb) => rb.host?,
+            Element::Railing(r) => r.host?,
+            _ => return None,
+        };
+        self.elements.id(host)
+    }
+
     /// The rectangle level `id` stretches over in plan, south-west corner then north-east: its
     /// extent, else [`Model::model_extent`].
     pub fn level_extent(&self, id: impl Key) -> Option<[P2; 2]> {

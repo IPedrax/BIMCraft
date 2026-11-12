@@ -2537,12 +2537,15 @@ other_files(
     other(
         "elements",
         ui_msg!("Elements"),
-        "{category?, level?, field?, value?, limit?, offset?} elements with their `id` (six digits, what commands take) and `guid` (made once, \
+        "{category?, level?, field?, value?, host?, limit?, offset?} elements with their `id` (six digits, what commands take) and `guid` (made once, \
          never changed), fields and derived values (length, height, area_m2…; a component's `room`, the GUID of the room \
          its family's room calculation point, else its insertion point, is in); what an element points at (its level, host, \
          view…) it holds by GUID. Wherever a command takes an element, its id or its GUID will do. `field` is one its category's \
          schedule has (`Type`, `Mark`, a project parameter), and `value` what it holds: text in any case, a number (mm, m² for \
-         an area), yes or no, or `\"\"` for text holding none; without `value`, those holding one (a yes or no reads no when unset)",
+         an area), yes or no, or `\"\"` for text holding none; without `value`, those holding one (a yes or no reads no when unset). \
+         `host` is an element (id or GUID) whose hosted elements to list: the doors and windows in a wall, a component on a \
+         wall's, floor's, ceiling's or roof's face or on a reference plane, the reinforcing bars in a beam, column, footing or \
+         floor, a railing along a stair or a ramp",
         elements,
     ),
 ];
@@ -17895,6 +17898,12 @@ fn elements(s: &mut Session, p: &Value) -> R {
     let m = &s.model;
     let cat = string(c, p, "category")?.map(|k| category(&k));
     let level = if absent(p.get("level")) { None } else { Some(level_param(c, m, p, "level")?) };
+    // The element whose hosted elements are wanted: what a door, a window, a component, a bar or a railing says is its host.
+    let host = match p.get("host") {
+        v if absent(v) => None,
+        Some(v) => Some(element_id(c, m, v)?),
+        None => None,
+    };
     let (limit, offset) = (count_opt(c, p, "limit", 500)?, count_opt(c, p, "offset", 0)?);
     // A field of a schedule of the category, and the value it holds.
     let field = string(c, p, "field")?.map(|f| f.trim().to_string()).filter(|f| !f.is_empty());
@@ -17944,6 +17953,7 @@ fn elements(s: &mut Session, p: &Value) -> R {
         .iter()
         .filter(|(_, e)| cat.as_deref().is_none_or(|k| e.category() == k))
         .filter(|(_, e)| level.is_none_or(|l| m.level_of(e) == Some(l)))
+        .filter(|(id, _)| host.is_none_or(|h| m.host_of(*id) == Some(h)))
         .filter(|(id, e)| match &kinds {
             None => true,
             Some((name, kinds)) => kinds.get(e.category()).is_some_and(|kind| {

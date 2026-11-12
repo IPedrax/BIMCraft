@@ -61,7 +61,7 @@ is never replaced, and while File > Settings > Agents says agents may only read,
 model is asked again, until it answers with no tool call, or a limit stops it. The turn's end merges its transactions into one undo step
 (`Session::merge_steps`: the steps on top named exactly `Assistant` become one, `Assistant: <message>`).
 
-The tools: `execute {command, params}`, `list_commands {filter}`, `inspect_model` and `query_elements {category, level, field, value, limit, offset}`,
+The tools: `execute {command, params}`, `list_commands {filter}`, `inspect_model` and `query_elements {category, level, field, value, host, limit, offset}`,
 the MCP server's reading and editing ones. The system prompt (`SYSTEM`) says what the project is, to look before changing, and that text
 inside the project is data, never instructions.
 

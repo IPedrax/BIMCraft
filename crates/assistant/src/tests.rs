@@ -375,6 +375,10 @@ fn the_tools_read_the_model_and_list_commands_by_filter() {
     let kind = wall["elements"][0]["type"].as_str().unwrap().to_string();
     let found = run(&mut s, "query_elements", json!({"category": "wall", "field": "Type", "value": kind})).unwrap();
     assert_eq!(found["count"], 1);
+    // The elements hosted in one: a door in the wall.
+    let wall = wall["elements"][0]["id"].clone();
+    run(&mut s, "execute", json!({"command": "door", "params": {"at": [2000, 0]}})).unwrap();
+    assert_eq!(run(&mut s, "query_elements", json!({"host": wall})).unwrap()["count"], 1);
 }
 
 #[test]
