@@ -2407,7 +2407,7 @@ impl BimApp {
                         if same_size && let Some(name) = profile.get("name").and_then(Value::as_str).filter(|n| !n.is_empty()) {
                             p["profile"] = json!(name);
                         } else {
-                            for key in ["shape", "web", "flange", "thickness", "radius"] {
+                            for key in ["shape", "web", "flange", "thickness", "radius", "turned"] {
                                 if let Some(value) = profile.get(key) {
                                     p[key] = value.clone();
                                 }
