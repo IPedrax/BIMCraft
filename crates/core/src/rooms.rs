@@ -32,8 +32,8 @@ pub struct Rooms<'a> {
     plans: RefCell<HashMap<(Guid, bool), Rc<Plan>>>,
     /// Each level's rooms, in order of id.
     placed: RefCell<HashMap<Guid, Placed<'a>>>,
-    /// Each room's boundary at the walls' centre lines, once found: what [`Rooms::room_at`] asks of every room of a level.
-    centre: RefCell<HashMap<Id, Option<Region>>>,
+    /// Each room's boundary at its walls' centre lines, found once: what [`Rooms::room_at`] asks of many points.
+    regions: RefCell<HashMap<Id, Option<Rc<Region>>>>,
 }
 
 impl<'a> Rooms<'a> {
@@ -43,7 +43,7 @@ impl<'a> Rooms<'a> {
             index: OnceCell::new(),
             plans: RefCell::new(HashMap::new()),
             placed: RefCell::new(HashMap::new()),
-            centre: RefCell::new(HashMap::new()),
+            regions: RefCell::new(HashMap::new()),
         }
     }
 
@@ -59,7 +59,10 @@ impl<'a> Rooms<'a> {
             None => Some(self.index.get_or_init(|| Index::new(m))),
         };
         let walls: Vec<(Id, Vec<P2>)> = match at {
-            RoomArea::Finish => m.bounding_walls(&level, true).map(|id| (id, walls::outline_in(m, id, index))).collect(),
+            RoomArea::Finish => m
+                .bounding_walls(&level, true)
+                .map(|id| (id, walls::outline_filtered(m, id, index, &|w| m.room_bounding(w, level))))
+                .collect(),
             RoomArea::Centre => Vec::new(),
         };
         let lines = match at {
@@ -118,24 +121,6 @@ impl<'a> Rooms<'a> {
         self.before(r, &g).map_or(Ok(g), |id| Err(Unbound::Shared(id)))
     }
 
-    /// The room on `level` that point `p` stands in, as Revit's Room parameter of a family instance: the first, in order of id,
-    /// whose boundary at the walls' centre lines holds it. The centre lines, whatever the project measures rooms at, so a device
-    /// on a wall's face (an outlet, a switch) is in the room on that side and not in the wall; `None` outside every room.
-    pub fn room_at(&self, level: Guid, p: P2) -> Option<Id> {
-        let rooms = self.placed(level);
-        rooms.iter().find(|(id, r)| self.centre_of(*id, r).is_some_and(|g| region_holds(&g, p))).map(|(id, _)| *id)
-    }
-
-    /// Room `r`'s (of id `id`) boundary at the walls' centre lines, found once.
-    fn centre_of(&self, id: Id, r: &Room) -> Option<Region> {
-        if let Some(g) = self.centre.borrow().get(&id) {
-            return g.clone();
-        }
-        let g = self.region_at(r, RoomArea::Centre);
-        self.centre.borrow_mut().insert(id, g.clone());
-        g
-    }
-
     /// The room on `r`'s level placed before it (of a lower id; any, for a room not in the model) whose point lies in `g`
     /// ([`Model::room_before`]).
     pub fn before(&self, r: &Room, g: &Region) -> Option<Id> {
@@ -147,6 +132,41 @@ impl<'a> Rooms<'a> {
             .take_while(|(id, _)| me.is_none_or(|me| *id < me))
             .find(|(_, o)| m.same(o.level, r.level) && region_holds(g, o.point))
             .map(|(id, _)| *id)
+    }
+
+    /// The room on `level` whose boundary at its walls' centre lines holds `point`, the first by id; none where no enclosed
+    /// room does. Which room a point is in doesn't follow where the project measures rooms' areas, as in Revit: a point inside
+    /// a wall is in the room on its side of the wall's centre line, so a device on a wall's face counts in that room.
+    pub fn room_at(&self, level: Guid, point: P2) -> Option<Id> {
+        let rooms = self.placed(level);
+        rooms.iter().find(|(id, r)| self.cached_region(*id, r).is_some_and(|g| region_holds(&g, point))).map(|(id, _)| *id)
+    }
+
+    /// The room on `level` whose volume holds `point`, the first by id: its boundary in plan, as [`Rooms::room_at`], and its
+    /// height from its bottom up to its top ([`Model::room_span`]), each end included.
+    pub fn room_holding(&self, level: Guid, [x, y, z]: [f64; 3]) -> Option<Id> {
+        let rooms = self.placed(level);
+        let within = |r: &Room| {
+            let (bottom, top) = self.m.room_span(r);
+            bottom - TOL <= z && z <= top + TOL
+        };
+        rooms.iter().find(|(id, r)| within(r) && self.cached_region(*id, r).is_some_and(|g| region_holds(&g, P2(x, y)))).map(|(id, _)| *id)
+    }
+
+    /// The room component `c` is in: the one on its level whose volume holds its family's room calculation point, placed
+    /// where it stands ([`Model::component_room_point`]); its insertion point's where its family has none. A point over a
+    /// room's top or under its bottom (a ceiling luminaire hung above it, a component raised to a mezzanine) is not in it.
+    pub fn component(&self, c: &crate::model::Component) -> Option<Id> {
+        self.room_holding(c.level, self.m.component_room_point(c))
+    }
+
+    fn cached_region(&self, id: Id, r: &Room) -> Option<Rc<Region>> {
+        if let Some(g) = self.regions.borrow().get(&id) {
+            return g.clone();
+        }
+        let g = self.region_at(r, RoomArea::Centre).map(Rc::new);
+        self.regions.borrow_mut().insert(id, g.clone());
+        g
     }
 
     /// The rooms on `level`, in order of id: what points at it, from the lookup when it is made, else among every element.
@@ -205,7 +225,7 @@ mod tests {
                 .elements
                 .iter()
                 .filter(|(_, e)| matches!(e, Element::Wall(w) if m.room_bounding(w, r.level)))
-                .any(|(id, _)| geom::contains(&walls::outline_in(m, *id, None), r.point));
+                .any(|(id, _)| geom::contains(&walls::outline_filtered(m, *id, None, &|w| m.room_bounding(w, r.level)), r.point));
             if inside {
                 return Err(Unbound::NotEnclosed);
             }

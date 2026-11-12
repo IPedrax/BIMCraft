@@ -116,7 +116,7 @@ impl BimApp {
         let (level, editing) = match sk.of {
             Of::Edit(id) => (m.elements.get(id).and_then(|e| m.level_of(e)).and_then(|g| m.elements.id(g)), Some(id)),
             Of::Floor(level) | Of::Ceiling(level) | Of::Roof(level) | Of::Shaft(level) => (Some(level), None),
-            Of::Region { .. } => (None, None),
+            Of::Region { .. } | Of::Form { .. } => (None, None),
         };
         let Some(level) = level else { return raw };
         let reach = Reach { point: plane.mm(SNAP), line: plane.mm(f64::from(PICK)) };

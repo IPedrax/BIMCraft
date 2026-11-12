@@ -55,7 +55,11 @@ depth buffer, so what is nearer hides a scan and a scan hides what is behind it,
 it. A point's pixel holds its scan's slot after the triangles', so it picks, box-selects and tints as its element; it has no
 face to paint and draws no edge. Points are not lit: they keep the scan's colours, grey (`cloud::GREY`) for a scan with none,
 or the colour the view's projection fill gives. A picture draws at most `DRAWN` points, an even share of each scan's past
-that, as Revit's density does. The view fits round its scans, and a level's plane reaches past them (`Model::model_extent`).
+that, as Revit's density does. Automatic 3D framing (parallel and perspective) fits the visible built geometry and its levels;
+scans contribute only when no built geometry is shown. A level's default plane reaches past the model's solids, grids and CAD
+drawings (`Model::model_extent`), falling back to scans when those are absent. Uncropped sections span these level extents,
+so a distant site survey does not shrink the building's default views. Explicit cameras, level extents and crops keep their
+own framing; section boxes still enclose scans when fitted with `section_box`.
 A 3D view's section box keeps a scan's points inside it and no others, so its floors and ceilings can be cut away to show the walls to
 model against ([views and graphics](views-and-graphics.md)); in a plan the view range does it, or the box itself when the plan follows it. Views hide and override point clouds by element or by the category `pointcloud` (`graphics::SCANS`, apart from `MODEL`:
 Revit has a tab of its own for them in Visibility/Graphics, and Object Styles no row). The graphics card draws them as the

@@ -119,19 +119,24 @@ fn box_family(category: Category) -> Family {
         category,
         parameters: ["Width", "Depth", "Height"]
             .into_iter()
-            .map(|name| Parameter { name: name.to_string(), kind: Kind::Length, instance: true, value: 100.0.into(), formula: None })
+            .map(|name| Parameter {
+                name: name.to_string(),
+                kind: Kind::Length,
+                instance: true,
+                value: 100.0.into(),
+                ..Parameter::default()
+            })
             .collect(),
         types: BTreeMap::from([("Imported".to_string(), BTreeMap::new())]),
-        forms: vec![Form {
-            profile: vec![
+        forms: vec![{
+            let mut form = Form { from: Expr::Number(0.0), to: formula("Height"), ..Default::default() };
+            form.set_corners(&[
                 [formula("-(Width) / 2"), formula("-(Depth) / 2")],
                 [formula("Width / 2"), formula("-(Depth) / 2")],
                 [formula("Width / 2"), formula("Depth / 2")],
                 [formula("-(Width) / 2"), formula("Depth / 2")],
-            ],
-            from: Expr::Number(0.0),
-            to: formula("Height"),
-            ..Default::default()
+            ]);
+            form
         }],
         ..Default::default()
     }
@@ -184,6 +189,17 @@ fn boxes(
         )
     };
     for r in f.of_category(category) {
+        // A model group is no body, and terrain's box is a solid block over the site: neither is a box of anything.
+        if f.tags.group == Some(r.class_tag) {
+            cx.left_out(label, r.id, "it is a model group (class ElementGroup): its members come in on their own, and its box is no body");
+            continue;
+        }
+        if f.tags.terrain.contains(&Some(r.class_tag)) {
+            let why =
+                "it is terrain (class Toposolid or SiteSurface): its surface is not read, and its box would be a solid block over the site";
+            cx.left_out(label, r.id, why);
+            continue;
+        }
         if known.is_some_and(|k| k.contains(&boxed(&r.bbox))) {
             let why =
                 "its box is that of an element of a category the reader knows: it is taken as that element's companion, not a second body";
@@ -221,6 +237,9 @@ fn boxes(
                 offset: micron(mm(r.bbox[2]) - mm(elevation)),
                 mirrored: false,
                 params,
+                adaptive: None,
+                host: None,
+                panel: None,
             })
         })();
         match made {

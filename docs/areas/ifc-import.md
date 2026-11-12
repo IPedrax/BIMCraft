@@ -33,6 +33,10 @@ rest that BIMCraft builds:
   pole) and one that won't triangulate leave the whole B-rep out, saying which.
 - **B-spline curves** (`IfcBSplineCurveWithKnots`, rational or not) as 12 points a knot span, the control points of a curve
   of degree 1, wherever a curve is read: profiles, directrices, edges. One whose knots don't fit its control points is none.
+- **Reinforcing bars** (`IfcReinforcingBar`): a bar of one radius whose body is a disk swept along a polyline, a disk behind
+  an `IfcMappedItem`, or a circle extruded straight, each piece starting where the last ended, is one line. Disks of several
+  radii, disks that do not meet end to end, and a body of several separate bars make no one line: the bar is left out, and
+  the import's `skipped` messages say so.
 
 An item builds at most `shapes::MAX_FACES` (a family mesh's `MAX_TRIANGLES`) faces; past them it builds none. A curved face
 takes at most `MAX_ROUND` points round it and `MAX_INSIDE` inside. Why an item built nothing, or less than it holds, is
@@ -83,6 +87,20 @@ class where it hasn't ([families](families.md)); a class is never forced into an
   discipline tabs, `lenient` and the translations; worth doing when BIMCraft has tools for those systems, not as an import's
   side effect.
 
+## Authored wall location and attachments
+
+BIMCraft exports a `BIMCraft_Wall` property set on each wall. `Location` names its native location line; the IFC Axis
+representation lies on that line. `AttachTop` and `AttachBase`, when present, are the GlobalIds of the roof or floor the
+wall follows. Reopening keeps those choices and the drawn endpoints, without extending them to nearby walls. A recognized
+location with no attachment property means unattached, so geometric roof inference does not add a link.
+
+Walls without a recognized location still come in from the body's centre line and retain the existing join and roof
+inference. A missing axis, or a layer usage that reverses it, also keeps the generic centre-line reconstruction. Attachment
+targets must have come in as roofs or floors; missing or other-kind targets are ignored. The axis is read through the file's
+placements and length units, so the metadata does not introduce a second coordinate system. Other native wall constraints
+(such as height and top offsets) continue to be inferred from geometry; this set does not preserve all native parameters.
+The native project schema and file format are unchanged.
+
 ## Georeference
 
 Where a project lies on a map is `Model::georeference` (`model::Georeference`): a projected coordinate reference system by its
@@ -105,3 +123,28 @@ model's own coordinates and drawings don't move with it.
   `Model::check` does for a file.
 - **The file**: an older BIMCraft leaves `georeference` out of a project and opens the rest (`lenient`), so it took no `FORMAT`
   step. The desktop doesn't show it yet.
+
+## Property sets and classification
+
+What another program says of an element in its property sets and classification references comes in as project parameters, and
+goes back out where it came from (#223).
+
+- **A set's name** (`ProjectParameter::sets`): each single value of a property set comes in as the parameter named for its
+  property, which remembers, for each category, the set its values came in. Export writes a category's values in that set; one
+  that names the element's own `Pset_*Common` goes in the one the export writes for it (with `LoadBearing` and `Status`), so an
+  element never has two sets of a name. A category's values of a name come in one set, the first; the same property in another set
+  on the same category is left out and listed. What the export writes itself (`ifc::own_property`: a common set's `LoadBearing`
+  and `Status`, a device's poles, power factor and voltage) is the export's, and a set BIMCraft reads into fields of its own
+  (`BIMCraft_*`, `RoomSeparation`, `Project Parameters`) isn't a parameter's (`ifc::foreign_set`). A property renamed to be a
+  parameter's name (`Cargas (G2)`) goes to `Project Parameters`, since it couldn't go back by its own.
+- **A type's sets** (`HasPropertySets` of the type object): its occurrences' values, unless they hold their own of the name.
+- **Classification** (`ProjectParameter::classification`): an `IfcRelAssociatesClassification` to an
+  `IfcClassificationReference` gives each related element (a type's occurrences, unless they have their own) the reference's
+  code (IFC4's `Identification`, IFC2x3's `ItemReference`, else its name) as a text parameter named for the system, the
+  `IfcClassification` at the top of the references (its name and edition). Export writes an `IfcClassification` for each such
+  parameter and a reference for each code, associated with the elements holding it. The reference's own name and the system's
+  source and location aren't kept yet.
+- **The command** `parameter` takes `sets` (a category's set, `null` back to `Project Parameters`) and `classification`
+  (`{system, edition?}`, or `null`); `Model::check` holds both to what IFC can write.
+- **The file**: an older BIMCraft leaves `sets` and `classification` out (`lenient`), and the values stay as plain parameters,
+  so it took no `FORMAT` step. Other kinds of property (enumerated, bounded, list, table, complex) are not read yet.

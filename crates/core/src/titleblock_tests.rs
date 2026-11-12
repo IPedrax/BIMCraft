@@ -388,3 +388,78 @@ fn a_fill_with_islands_is_drawn_as_lettering_is_so_every_canvas_leaves_them_empt
     assert_eq!(parts[0], crate::render::Part::Text, "a band and its island fill by the non-zero rule");
     assert_ne!(parts[1], crate::render::Part::Text, "a plain fill stays as it was");
 }
+
+#[test]
+fn automatic_frames_fit_the_drawing_area_and_template_edits_keep_placed_views() {
+    let mut s = Session::new();
+    run(&mut s, "title_block", json!({"name":"Frame","height":533.4,"drawing_area":[[30,60],[830,452]]}));
+    run(&mut s, "sheet", json!({"number":"D","size":"ANSI D","title_block":"Frame"}));
+    let place = json!({"sheet":"D","view":"Level 1","scale":96});
+    assert_eq!(run(&mut s, "place", place)["at"], json!([430.0, 256.0]));
+    let original = s.model.on_sheet(sheet_id(&s, "D"));
+    let center = |s: &Session| match s.model.elements.get(original[0]).unwrap() {
+        Element::Viewport(v) => v.at,
+        _ => panic!("expected a viewport"),
+    };
+    let invalid = json!({"name":"Frame","drawing_area":[[0,0],[865,559]]});
+    assert!(s.execute("title_block", &invalid).unwrap_err().contains("outside"));
+    run(&mut s, "title_block", json!({"name":"Frame","drawing_area":[[5,5],[10,10]]}));
+    assert_eq!(center(&s), P2(430.0, 256.0));
+    let mut second = json!({"sheet":"D","view":"Level 2","scale":96});
+    assert!(s.execute("place", &second).unwrap_err().contains("viewport frame"));
+    assert_eq!(s.model.on_sheet(sheet_id(&s, "D")), original);
+    second["at"] = json!([15, 20]);
+    assert_eq!(run(&mut s, "place", second)["at"], json!([15.0, 20.0]));
+    assert!(s.execute("title_block", &json!({"name":"Frame","drawing_area":[[20,5],[10,10]]})).unwrap_err().contains("ordered"));
+    // No paper is larger than the largest a sheet may have: a title block no sheet could name is refused as it is made.
+    let past = json!({"name":"Other","drawing_area":[[0,0],[1e300,1e300]]});
+    assert!(s.execute("title_block", &past).unwrap_err().contains("ordered"));
+}
+
+#[test]
+fn a_template_reopens_with_its_paper_layout_and_checks_each_sheet_using_it() {
+    let mut s = Session::new();
+    let layout = json!({"name":"Frame","drawing_area":[[25,40],[600,360]],"template_border":true});
+    run(&mut s, "title_block", layout);
+    run(&mut s, "sheet", json!({"number":"C","size":"650 x 400","title_block":"Frame"}));
+    assert!(s.execute("sheet", &json!({"number":"Small","size":"A3","title_block":"Frame"})).unwrap_err().contains("outside"));
+    run(&mut s, "place", json!({"sheet":"C","view":"Level 1","at":[80,85]}));
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("frame.bimcraft");
+    run(&mut s, "save", json!({"path":path}));
+    let mut reopened = Session::new();
+    run(&mut reopened, "open", json!({"path":path}));
+    assert_eq!(reopened.model.title_blocks["Frame"], s.model.title_blocks["Frame"]);
+    let placed = reopened.model.on_sheet(sheet_id(&reopened, "C"));
+    assert!(matches!(reopened.model.elements.get(placed[0]), Some(Element::Viewport(v)) if v.at == P2(80.0, 85.0)));
+}
+
+#[test]
+fn template_frame_removes_only_the_printed_border_on_a_folded_sheet() {
+    let mut s = Session::new();
+    run(&mut s, "standard", json!({"set":"nbr"}));
+    run(&mut s, "title_block", json!({"name":"Frame","texts":[],"lines":[]}));
+    run(&mut s, "sheet", json!({"number":"A","size":"A3","title_block":"Frame"}));
+    let id = sheet_id(&s, "A");
+    let before = sheet::draw(&s.model, id).unwrap();
+    run(&mut s, "title_block", json!({"name":"Frame","template_border":true}));
+    let after = sheet::draw(&s.model, id).unwrap();
+    assert_eq!(before.prims.len(), after.prims.len() + 1);
+    assert_eq!(after.prims.len(), 2, "top and bottom fold marks");
+}
+
+#[test]
+fn editor_preview_includes_the_frame_outside_the_nominal_title_block() {
+    let mut s = Session::new();
+    run(
+        &mut s,
+        "title_block",
+        json!({"name":"Wide","width":120.0,"height":80.0,"template_border":true,
+        "lines":[{"points":[[-6.0,-2.0],[122.0,-2.0],[122.0,82.0],[-6.0,82.0]],"closed":true}]}),
+    );
+    let d = crate::titleblock::preview(&s.model, &s.model.title_blocks["Wide"], &Default::default());
+    for p in [P2(-6.0, -2.0), P2(122.0, 82.0)] {
+        let (x, y) = d.view.px(p);
+        assert!(x >= 9.9 && y >= 9.9 && x <= d.view.width as f32 - 9.9 && y <= d.view.height as f32 - 9.9);
+    }
+}

@@ -12,7 +12,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Arc;
 
 use bimcraft_core::element_json_with;
-use bimcraft_core::family::{Kind as Holds, Val};
+use bimcraft_core::family::{Group, Kind as Holds, Val};
 use bimcraft_core::model::{Element, Function, Guid, Id, Layer, Location, Model, PARAMETER_CATEGORIES, ParameterKind, Pattern};
 use bimcraft_core::rooms::Rooms;
 use bimcraft_core::schedule::{self, Field, Filter, Op, Sort};
@@ -124,6 +124,16 @@ fn nested(key: &str, val: Value) -> Value {
     key.rsplit('.').fold(val, |v, k| json!({ k: v }))
 }
 
+/// The rows only a work plane-based family's components show, and the one only the others' do: as Revit's, both show their
+/// height over their level as Elevation from Level.
+const WORK_PLANE_ROWS: [&str; 3] = ["Schedule Level", "Work Plane", "Offset from Host"];
+const LEVEL_ROWS: [&str; 1] = ["Level"];
+
+/// Whether row `label` shows for components that are (`based`) or aren't of work plane-based families.
+fn work_plane_row(label: &str, based: bool) -> bool {
+    if based { !LEVEL_ROWS.contains(&label) } else { !WORK_PLANE_ROWS.contains(&label) }
+}
+
 fn rows(category: &str) -> &'static [Row] {
     match category {
         "wall" => &[
@@ -209,6 +219,12 @@ fn rows(category: &str) -> &'static [Row] {
             ("Dimensions", "computation_height", msg!("Computation Height"), Length),
             ("Identity Data", "name", "Name", Text),
         ],
+        "propertyline" => &[
+            ("Constraints", "level", "Level", Level),
+            ("Identity Data", "name", "Name", Text),
+            ("Dimensions", "points", msg!("Boundary"), Outline),
+            ("Dimensions", "area_m2", "Area", AreaShown),
+        ],
         "grid" => &[("Identity Data", "name", "Name", Text), ("Other", "start", "Start", Point), ("Other", "end", "End", Point)],
         "dimension" => &[
             ("Dimensions", "values", "Value", Values),
@@ -279,11 +295,18 @@ fn rows(category: &str) -> &'static [Row] {
         "viewport" => &[
             ("Identity Data", "title", "View Name", Shown),
             ("Graphics", "scale", msg!("View Scale (1 : n)"), Number),
+            ("Graphics", "follow_scale", msg!("Follow View Scale"), Flag),
             ("Other", "at", "Location", PaperPoint),
         ],
+        // As Revit's: a work plane-based family's level is its Schedule Level, its height over it its Elevation from Level
+        // (read only on a plane, which it follows), then what it is on and how far off it; another's, its Level and its
+        // Elevation from Level (`work_plane_row`).
         "component" => &[
             ("Constraints", "level", "Level", Level),
-            ("Constraints", "offset", "Height Offset From Level", Length),
+            ("Constraints", "level", msg!("Schedule Level"), Level),
+            ("Constraints", "offset", msg!("Elevation from Level"), Length),
+            ("Constraints", "work_plane", "Work Plane", Shown),
+            ("Constraints", "offset_from_host", msg!("Offset from Host"), Length),
             ("Other", "at", "Location", Point),
             ("Other", "angle", "Rotation (°)", Number),
         ],
@@ -480,7 +503,7 @@ fn icon(category: &str) -> Icon {
         "duct" => Icon::CableTray,
         "conduit" => Icon::Conduit,
         "cabletray" => Icon::CableTray,
-        "wire" => Icon::Wire,
+        "wire" | "circuit" => Icon::Wire,
         "downconductor" => Icon::DownConductor,
         "groundconductor" => Icon::GroundConductor,
         "cable" => Icon::Cabling,
@@ -893,7 +916,8 @@ impl BimApp {
             ([], _, Sheet::Plan(level)) => Subject::Plan(level),
             ([], _, Sheet::Ceiling(_)) => Subject::CeilingPlan,
             ([], _, Sheet::View3D) => Subject::View3D,
-            ([], _, Sheet::Schedule(_) | Sheet::Table(_)) => Subject::Schedule,
+            // A family document's Properties are its own (`family_properties`).
+            ([], _, Sheet::Schedule(_) | Sheet::Table(_) | Sheet::Family(..)) => Subject::Schedule,
         }
     }
 
@@ -1101,6 +1125,8 @@ impl BimApp {
                 self.ties(ui, &model, id);
             }
             self.component_parameters(ui, &model, &ids);
+            self.panel_parameters(ui, &model, &ids);
+            self.circuit_parameters(ui, &model, &ids);
             self.project_parameters(ui, &model, &ids);
             self.sheet_title_block(ui, &model, &ids);
             self.element_phasing(ui, &model, &ids);
@@ -1536,7 +1562,7 @@ impl BimApp {
         let v: serde_json::Map<String, Value> = rows
             .iter()
             .map(|r| (r.1, r.3))
-            .chain([("top_level", Shown), ("enclosed", Shown)])
+            .chain([("top_level", Shown), ("enclosed", Shown), ("host", Shown)])
             .map(|(k, kind)| {
                 let one = field_of(&first, k, kind);
                 let shared = all.iter().all(|e| field_of(e, k, kind) == one);
@@ -1548,6 +1574,11 @@ impl BimApp {
         // What an element points at is in its JSON as a GUID, or as an id for the one beside it.
         let id_of = |v: &Value| v.as_u64().or_else(|| v.as_str().and_then(Guid::parse).and_then(|g| model.elements.id(g)));
         let level_name = |v: &Value| id_of(v).and_then(|l| model.level(l)).map_or_else(String::new, |l| l.name.clone());
+        // Components all of work plane-based families show where they are on their work planes.
+        let based = ids.iter().all(|id| match model.elements.get(*id) {
+            Some(Element::Component(c)) => model.families.get(&c.family).is_some_and(|f| f.work_plane_based),
+            _ => false,
+        });
         let mut groups: Vec<&'static str> = Vec::new();
         for (g, ..) in rows {
             if !groups.contains(g) {
@@ -1573,6 +1604,9 @@ impl BimApp {
             }
             grid(ui, ("properties", id, group), |ui| {
                 for &(_, key, label, kind) in rows.iter().filter(|r| r.0 == group) {
+                    if !work_plane_row(label, based) {
+                        continue;
+                    }
                     let val = &v[key];
                     // A length one element hasn't got (a straight wall's radius): no row.
                     if ids.len() == 1 && matches!(kind, LengthShown | LengthIf) && val.is_null() {
@@ -1583,12 +1617,19 @@ impl BimApp {
                     }
                     let kind = match kind {
                         Height if !v["top_level"].is_null() => LengthShown,
+                        Length if key == "offset" && !v["host"].is_null() => LengthShown,
                         Point if paper => PaperPoint,
                         kind => kind,
                     };
                     let label = t(label);
                     let name = ui.label(label);
                     match kind {
+                        // A component's Work Plane, `Level : Level 1`: what it is on in the interface's words, its name as it is.
+                        Shown if key == "work_plane" => {
+                            let said = text(val);
+                            let said = said.split_once(" : ").map_or(said.clone(), |(what, name)| format!("{} : {name}", t(what)));
+                            ui.label(RichText::new(said).color(pal().muted));
+                        }
                         Shown => {
                             let said = text(val);
                             ui.label(RichText::new(t(&said)).color(pal().muted));
@@ -1841,12 +1882,9 @@ impl BimApp {
         };
         let (units, materials): (Units, Vec<String>) = (model.units, model.materials.keys().cloned().collect());
         let mut change: Option<(String, Result<Value, String>)> = None;
-        for (group, kinds) in [
-            ("Dimensions", &[Holds::Length, Holds::Number, Holds::Angle][..]),
-            (msg!("Materials and Finishes"), &[Holds::Material][..]),
-            ("Other", &[Holds::YesNo][..]),
-        ] {
-            let params: Vec<_> = f.parameters.iter().filter(|p| p.instance && kinds.contains(&p.kind)).collect();
+        for g in Group::ALL {
+            let group = g.label();
+            let params: Vec<_> = f.parameters.iter().filter(|p| p.instance && p.group() == g).collect();
             if params.is_empty() {
                 continue;
             }
@@ -1864,8 +1902,18 @@ impl BimApp {
                         let name = ui.label(&p.name);
                         let kind = if p.kind == Holds::Length { Length } else { Number };
                         match p.kind {
-                            _ if p.formula.is_some() => {
+                            // What a formula works out, or a reporting parameter reads: shown, not typed.
+                            _ if p.formula.is_some() || p.reporting => {
                                 ui.label(RichText::new(shown(kind, &val, units)).color(pal().muted));
+                            }
+                            Holds::FamilyType => {
+                                ui.label(RichText::new(val.as_str().unwrap_or_default()).color(pal().muted));
+                            }
+                            Holds::Text | Holds::Url => {
+                                if let Some(typed) = self.field(ui, id, &p.name, val.as_str().unwrap_or_default().to_string(), name.id, "")
+                                {
+                                    change = Some((p.name.clone(), Ok(json!(typed))));
+                                }
                             }
                             Holds::YesNo => {
                                 let mut on = val.as_f64().is_some_and(|x| x != 0.0);
@@ -1880,7 +1928,7 @@ impl BimApp {
                                     change = Some((p.name.clone(), Ok(json!(m))));
                                 }
                             }
-                            Holds::Length | Holds::Number | Holds::Angle => {
+                            Holds::Length | Holds::Number | Holds::Angle | Holds::Integer | Holds::Area | Holds::Volume => {
                                 if let Some(typed) = self.field(ui, id, &p.name, shown(kind, &val, units), name.id, "") {
                                     change = Some((p.name.clone(), parse(kind, &typed, units)));
                                 }
@@ -1897,6 +1945,191 @@ impl BimApp {
             }
             Some((key, Err(e))) => self.status = Status { text: format!("{key}: {e}"), error: true },
             None => {}
+        }
+    }
+
+    /// A distribution board's electrical data, in a group of its own: its distribution system, its mains and the single-pole
+    /// breakers it takes, the board that supplies it and the ones it feeds. An edit goes through `panel`; a field emptied takes
+    /// its value away.
+    fn panel_parameters(&mut self, ui: &mut Ui, model: &Model, ids: &[Id]) {
+        let [id] = ids else { return };
+        let Some((id, board)) = bimcraft_core::electrical::board(model, *id) else { return };
+        let data = board.panel.clone().unwrap_or_default();
+        let group = "Electrical";
+        let open = !self.collapsed.contains(group);
+        if group_header(ui, t(group), open) && !self.collapsed.remove(group) {
+            self.collapsed.insert(group);
+        }
+        if !open {
+            return;
+        }
+        const NONE: &str = "—";
+        let systems: Vec<String> = std::iter::once(NONE.to_string()).chain(model.distribution_systems.keys().cloned()).collect();
+        // The other boards, each by what names it: its id and its type.
+        let boards: Vec<(Id, String)> = model
+            .elements
+            .iter()
+            .filter_map(|(i, _)| bimcraft_core::electrical::board(model, *i))
+            .filter(|(i, _)| *i != id)
+            .map(|(i, c)| (i, format!("{i} {}", c.type_name)))
+            .collect();
+        let upstream = data.supply_from.and_then(|g| model.elements.id(g));
+        let supplier = upstream.and_then(|u| boards.iter().find(|(i, _)| *i == u)).map_or_else(|| NONE.to_string(), |(_, n)| n.clone());
+        let supplies: Vec<String> = std::iter::once(NONE.to_string()).chain(boards.iter().map(|(_, n)| n.clone())).collect();
+        let feeds: Vec<String> = model.panel_feeds(id).iter().map(Id::to_string).collect();
+        let mut change: Option<(&str, Value)> = None;
+        Frame::new().inner_margin(Margin { left: 8, right: 0, top: 2, bottom: 6 }).show(ui, |ui| {
+            let half = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0;
+            Grid::new(("panel-parameters", id)).num_columns(2).striped(true).min_col_width(half).max_col_width(half).show(ui, |ui| {
+                let label = ui.label(t("Distribution System"));
+                let now = data.distribution.clone().unwrap_or_else(|| NONE.to_string());
+                if let Some(picked) = combo(ui, (id, "distribution"), label.id, &now, &systems) {
+                    change = Some(("distribution", json!(if picked == NONE { String::new() } else { picked })));
+                }
+                ui.end_row();
+                let label = ui.label(t("Mains"));
+                let now = data.mains.map_or_else(String::new, |a| format!("{a}"));
+                if let Some(typed) = self.field(ui, id, "mains", now, label.id, "A") {
+                    match typed.trim().replace(',', ".").parse::<f64>() {
+                        _ if typed.trim().is_empty() => change = Some(("mains", json!(""))),
+                        Ok(a) => change = Some(("mains", json!(a))),
+                        Err(_) => {
+                            self.status = Status { text: tf("{}: `{}` is not a number of amperes", &[t("Mains"), &typed]), error: true }
+                        }
+                    }
+                }
+                ui.end_row();
+                let label = ui.label(t("Max #1 Pole Breakers"));
+                let now = data.slots.map_or_else(String::new, |n| n.to_string());
+                if let Some(typed) = self.field(ui, id, "slots", now, label.id, "") {
+                    match typed.trim().parse::<u32>() {
+                        _ if typed.trim().is_empty() => change = Some(("slots", json!(""))),
+                        Ok(n) => change = Some(("slots", json!(n))),
+                        Err(_) => {
+                            self.status =
+                                Status { text: tf("{}: `{}` is not a whole number", &[t("Max #1 Pole Breakers"), &typed]), error: true }
+                        }
+                    }
+                }
+                ui.end_row();
+                let label = ui.label(t("Supply From"));
+                if let Some(picked) = combo(ui, (id, "supply_from"), label.id, &supplier, &supplies) {
+                    let id_of = boards.iter().find(|(_, n)| *n == picked).map(|(i, _)| json!(i));
+                    change = Some(("supply_from", id_of.unwrap_or_else(|| json!(""))));
+                }
+                ui.end_row();
+                if !feeds.is_empty() {
+                    ui.label(t("Supplies"));
+                    ui.label(feeds.join(", "));
+                    ui.end_row();
+                }
+            });
+        });
+        if let Some((key, value)) = change {
+            self.run("panel", json!({"id": id, key: value}));
+        }
+    }
+
+    /// A selected circuit's parameters, edited through `circuit`: its number, breaker, poles, voltage and demand factor, with what
+    /// it loads (worked out from its devices) shown.
+    fn circuit_parameters(&mut self, ui: &mut Ui, model: &Model, ids: &[Id]) {
+        let [id] = ids else { return };
+        let Some(Element::Circuit(c)) = model.elements.get(id) else { return };
+        let group = "Electrical";
+        let open = !self.collapsed.contains(group);
+        if group_header(ui, t(group), open) && !self.collapsed.remove(group) {
+            self.collapsed.insert(group);
+        }
+        if !open {
+            return;
+        }
+        const NONE: &str = "—";
+        let id = *id;
+        let panel = model.elements.id(c.panel);
+        let board = panel.map_or_else(String::new, |b| b.to_string());
+        let there: Vec<String> = panel
+            .and_then(|b| bimcraft_core::electrical::board(model, b))
+            .and_then(|(_, b)| b.panel.as_ref()?.distribution.as_ref().and_then(|n| model.distribution_systems.get(n)))
+            .map(|s| s.voltage_names().cloned().collect())
+            .unwrap_or_default();
+        let voltages: Vec<String> = std::iter::once(NONE.to_string()).chain(there).collect();
+        let totals = bimcraft_core::electrical::circuit_totals(model, c);
+        let load = totals.as_ref().map_or_else(String::new, |x| format!("{} VA", text(&json!(x.installed_va))));
+        let current = totals.as_ref().map_or_else(String::new, |x| format!("{} A", text(&json!(x.current_a))));
+        let devices: Vec<String> = c.devices.iter().filter_map(|g| model.elements.id(*g)).map(|d| d.to_string()).collect();
+        let mut change: Option<(&str, Value)> = None;
+        Frame::new().inner_margin(Margin { left: 8, right: 0, top: 2, bottom: 6 }).show(ui, |ui| {
+            let half = (ui.available_width() - ui.spacing().item_spacing.x) / 2.0;
+            Grid::new(("circuit-parameters", id)).num_columns(2).striped(true).min_col_width(half).max_col_width(half).show(ui, |ui| {
+                let label = ui.label(t("Circuit Number"));
+                if let Some(typed) = self.field(ui, id, "number", c.number.to_string(), label.id, "") {
+                    match typed.trim().parse::<u32>() {
+                        Ok(n) => change = Some(("number", json!(n))),
+                        Err(_) => {
+                            self.status = Status { text: tf("{}: `{}` is not a whole number", &[t("Circuit Number"), &typed]), error: true }
+                        }
+                    }
+                }
+                ui.end_row();
+                let label = ui.label(t("Name"));
+                if let Some(typed) = self.field(ui, id, "name", c.name.clone(), label.id, "") {
+                    change = Some(("name", json!(typed.trim())));
+                }
+                ui.end_row();
+                let label = ui.label(t("Rating"));
+                if let Some(typed) = self.field(ui, id, "rating", text(&json!(c.rating_a)), label.id, "A") {
+                    match number(&typed.replace(',', ".")) {
+                        Some(a) => change = Some(("rating", json!(a))),
+                        None => {
+                            self.status = Status { text: tf("{}: `{}` is not a number of amperes", &[t("Rating"), &typed]), error: true }
+                        }
+                    }
+                }
+                ui.end_row();
+                let label = ui.label(t("Number of Poles"));
+                if let Some(typed) = self.field(ui, id, "poles", c.poles.to_string(), label.id, "") {
+                    match typed.trim().parse::<u8>() {
+                        Ok(n) => change = Some(("poles", json!(n))),
+                        Err(_) => {
+                            self.status =
+                                Status { text: tf("{}: `{}` is not a whole number", &[t("Number of Poles"), &typed]), error: true }
+                        }
+                    }
+                }
+                ui.end_row();
+                let label = ui.label(t("Voltage"));
+                let now = c.voltage.clone().unwrap_or_else(|| NONE.to_string());
+                if let Some(picked) = combo(ui, (id, "voltage"), label.id, &now, &voltages) {
+                    change = Some(("voltage", json!(if picked == NONE { String::new() } else { picked })));
+                }
+                ui.end_row();
+                let label = ui.label(t("Classification"));
+                if let Some(typed) = self.field(ui, id, "classification", c.classification.clone(), label.id, "") {
+                    change = Some(("classification", json!(typed.trim())));
+                }
+                ui.end_row();
+                let label = ui.label(t("Demand Factor"));
+                if let Some(typed) = self.field(ui, id, "demand_factor", text(&json!(c.demand_factor)), label.id, "") {
+                    match number(&typed.replace(',', ".")) {
+                        Some(f) => change = Some(("demand_factor", json!(f))),
+                        None => self.status = Status { text: tf("{}: `{}` is not a number", &[t("Demand Factor"), &typed]), error: true },
+                    }
+                }
+                ui.end_row();
+                for (name, value) in [
+                    (t("Panel"), board),
+                    (t("Load"), load),
+                    (t("Current"), current),
+                    (t("Devices"), if devices.is_empty() { t("None").to_string() } else { devices.join(", ") }),
+                ] {
+                    ui.label(name);
+                    ui.label(value);
+                    ui.end_row();
+                }
+            });
+        });
+        if let Some((key, value)) = change {
+            self.run("circuit", json!({"id": id, key: value}));
         }
     }
 
@@ -2167,6 +2400,20 @@ impl BimApp {
                     // A duplicate is round, and made of a material, as the type it copies is.
                     let types = serde_json::to_value(&model.types).unwrap_or_default();
                     let from = type_json(&types, d.category, &d.name);
+                    // A structural duplicate carries its section, including a catalogue designation
+                    // only while the dimensions still match. The command validates resized plates.
+                    if let Some(profile) = from["profile"].as_object() {
+                        let same_size = ["width", "depth"].iter().all(|key| p[*key] == from[*key]);
+                        if same_size && let Some(name) = profile.get("name").and_then(Value::as_str).filter(|n| !n.is_empty()) {
+                            p["profile"] = json!(name);
+                        } else {
+                            for key in ["shape", "web", "flange", "thickness", "radius", "turned"] {
+                                if let Some(value) = profile.get(key) {
+                                    p[key] = value.clone();
+                                }
+                            }
+                        }
+                    }
                     if d.shape.is_none() {
                         for key in ["round", "material"] {
                             if !from[key].is_null() {
@@ -2514,7 +2761,7 @@ pub(crate) struct FamilyDialog {
     /// The components that were on the type when the dialog opened; OK puts them on the type shown.
     elements: Vec<Id>,
     /// Each type parameter: its name, what it holds, as typed, and whether a formula works it out.
-    fields: Vec<(String, Holds, String, bool)>,
+    fields: Vec<(String, Holds, String, bool, Group)>,
     /// A new name being typed, for a duplicate or a rename.
     naming: Naming,
     /// What stopped OK, Apply, Duplicate or Rename.
@@ -2535,7 +2782,11 @@ impl FamilyDialog {
                     Some(Val::Text(t)) => t.clone(),
                     None => String::new(),
                 };
-                f.parameters.iter().filter(|p| !p.instance).map(|p| (p.name.clone(), p.kind, typed(p), p.formula.is_some())).collect()
+                f.parameters
+                    .iter()
+                    .filter(|p| !p.instance)
+                    .map(|p| (p.name.clone(), p.kind, typed(p), p.formula.is_some() || p.reporting, p.group()))
+                    .collect()
             })
             .unwrap_or_default();
         FamilyDialog { family, name, elements, fields, naming: Naming::None, error: None }
@@ -2550,12 +2801,14 @@ impl FamilyDialog {
     /// aren't what they hold.
     fn params(&self, name: &str, units: Units) -> Result<Value, String> {
         let mut set = serde_json::Map::new();
-        for (key, kind, typed, _) in self.fields.iter().filter(|f| !f.3) {
+        for (key, kind, typed, ..) in self.fields.iter().filter(|f| !f.3 && f.1 != Holds::FamilyType) {
             let v = match kind {
                 Holds::Length => json!(units.parse(typed).ok_or_else(|| tf("{}: `{}` is not a length", &[key, typed]))?),
-                Holds::Number | Holds::Angle => json!(number(typed).ok_or_else(|| tf("{}: `{}` is not a number", &[key, typed]))?),
+                Holds::Number | Holds::Angle | Holds::Integer | Holds::Area | Holds::Volume => {
+                    json!(number(typed).ok_or_else(|| tf("{}: `{}` is not a number", &[key, typed]))?)
+                }
                 Holds::YesNo => json!(typed == "1"),
-                Holds::Material => json!(typed),
+                Holds::Material | Holds::Text | Holds::Url | Holds::FamilyType => json!(typed),
             };
             set.insert(key.clone(), v);
         }
@@ -2575,23 +2828,12 @@ impl BimApp {
             crate::popup::body(ui, |ui| {
                 asked = typeprops::head(ui, "family-type", &d.family, &names, &d.name, &mut d.naming, true);
                 let below = typeprops::foot_height(ui, d.error.is_some());
-                // Each parameter under the group Revit gives what it holds: lengths and angles are dimensions.
-                let group = |kind: &Holds| match kind {
-                    Holds::Length | Holds::Angle => "Dimensions",
-                    Holds::Material => msg!("Materials and Finishes"),
-                    Holds::Number | Holds::YesNo => "Other",
-                };
-                let mut groups: Vec<&str> = Vec::new();
-                for (_, kind, ..) in &d.fields {
-                    if !groups.contains(&group(kind)) {
-                        groups.push(group(kind));
-                    }
-                }
-                groups.sort_by_key(|g| ["Materials and Finishes", "Dimensions", "Other"].iter().position(|x| x == g));
+                // Each parameter under its group: its own, else the one its kind goes under.
+                let groups: Vec<Group> = Group::ALL.into_iter().filter(|g| d.fields.iter().any(|f| f.4 == *g)).collect();
                 typeprops::table(ui, "family-type", below, |tb| {
                     for g in groups {
-                        tb.group(g);
-                        for (key, kind, typed, computed) in d.fields.iter_mut().filter(|f| group(&f.1) == g) {
+                        tb.group(g.label());
+                        for (key, kind, typed, computed, _) in d.fields.iter_mut().filter(|f| f.4 == g) {
                             match kind {
                                 // What a formula works out, shown as Revit greys it.
                                 _ if *computed => tb.shown(key, typed),
@@ -2603,7 +2845,10 @@ impl BimApp {
                                 Holds::Material => tb.pick(key, typed, &materials),
                                 Holds::Length => tb.text(key, typed, model.units.name()),
                                 Holds::Angle => tb.text(key, typed, "°"),
-                                Holds::Number => tb.text(key, typed, ""),
+                                Holds::Area => tb.text(key, typed, "mm²"),
+                                Holds::Volume => tb.text(key, typed, "mm³"),
+                                Holds::FamilyType => tb.shown(key, typed),
+                                Holds::Number | Holds::Integer | Holds::Text | Holds::Url => tb.text(key, typed, ""),
                             }
                         }
                     }

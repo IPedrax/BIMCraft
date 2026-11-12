@@ -59,6 +59,9 @@ fn element_lines(m: &Model, e: &Element) -> Vec<Line> {
             out.extend(axes(c.at, c.angle, 100.0));
             out
         }
+        // An upright one, its line; one that isn't upright has no line in plan.
+        Element::RefPlane(p) if p.upright() => vec![(P2(p.start[0], p.start[1]), P2(p.end[0], p.end[1]))],
+        Element::RefPlane(_) => Vec::new(),
         Element::Floor(f) => std::iter::once(&f.boundary).chain(&f.openings).flat_map(|r| path(r, true)).collect(),
         Element::Ceiling(c) => std::iter::once(&c.boundary).chain(&c.openings).flat_map(|r| path(r, true)).collect(),
         Element::Roof(r) => {
@@ -77,6 +80,7 @@ fn element_lines(m: &Model, e: &Element) -> Vec<Line> {
         }),
         Element::Railing(r) => path(&crate::stairs::railing(m, r).iter().map(|(p, _)| *p).collect::<Vec<_>>(), false),
         Element::RoomSeparator(r) => vec![(r.start, r.end)],
+        Element::PropertyLine(pl) => geom::ring_edges(&pl.points).collect(),
         Element::Section(s) | Element::Elevation(s) => vec![(s.start, s.end)],
         Element::Text(n) => axes(n.at, n.angle, m.text_types.get(&n.type_name).map_or(crate::model::NOTE_SIZE, |t| t.size)),
         Element::PointCloud(p) => axes(p.at, p.angle, 100.0),
@@ -107,9 +111,10 @@ fn element_lines(m: &Model, e: &Element) -> Vec<Line> {
         | Element::Sheet(_)
         | Element::Viewport(_)
         | Element::Schedule(_)
+        | Element::PanelSchedule(_)
         | Element::View3D(_)
         | Element::PlanView(_) => Vec::new(),
-        Element::Room(_) | Element::Spot(_) | Element::Tag(_) | Element::Rebar(_) => Vec::new(),
+        Element::Room(_) | Element::Spot(_) | Element::Tag(_) | Element::Rebar(_) | Element::Circuit(_) => Vec::new(),
     }
 }
 
@@ -132,7 +137,7 @@ pub fn sketch_lines(
         return Err("align: pick a different sketch line to align".into());
     }
     let before = lines.get(target).ok_or_else(|| "align: the sketch line no longer exists".to_string())?;
-    let placement = Placement::new(reference, line)?;
+    let placement = Placement::onto(reference, line)?;
     let moved = before.map(|q| placement.map(q));
     let junctions = [(before.start(), moved.start()), (before.end(), moved.end())];
     let mut out = lines.to_vec();
@@ -183,6 +188,22 @@ impl Placement {
         let about = (line.0 + line.1) * 0.5;
         let n = u.perp();
         Ok(Self { about, angle, by: n * (reference.0 - about).dot(n) })
+    }
+
+    /// The Family Editor's Align of a line that turns: about where it crosses the reference when it reaches it there, else
+    /// about its end nearer the crossing, then slid square onto the reference. Already parallel, it only slides.
+    pub(crate) fn onto(reference: Line, line: Line) -> Result<Self, String> {
+        let mut p = Self::new(reference, line)?;
+        let (u, v) = ((reference.1 - reference.0).unit(), line.1 - line.0);
+        let across = v.cross(u);
+        if across.abs() > 1e-12 {
+            // Along the line from its start to the reference's line, as a share of its length.
+            let s = (reference.0 - line.0).cross(u) / across;
+            p.about = line.0 + v * s.clamp(0.0, 1.0);
+            let n = u.perp();
+            p.by = n * (reference.0 - p.about).dot(n);
+        }
+        Ok(p)
     }
 
     pub(crate) fn map(&self, q: P2) -> P2 {

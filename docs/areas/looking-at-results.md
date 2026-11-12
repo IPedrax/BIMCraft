@@ -61,4 +61,4 @@ Moved from the root `CLAUDE.md`, word for word: the root keeps the rules and the
   write that building with coverings, a curtain wall's parts, terrain and the like, save it back and compare each product's
   class, predefined type, type object and box with IfcOpenShell (`ifcopenshell.util.element.get_type`, `geom.create_shape`). After touching how phases and design options
   cross (`ifc::PHASING`), do it with a phased sample too: `run --sample --script phased.txt --save p.ifc`, `convert p.ifc
-  p.bimcraft`, and compare `phases`, `phase_filters`, `phase_overrides`, `option_sets` and each element's `params` with the project's.
+  p.bimc`, and compare `phases`, `phase_filters`, `phase_overrides`, `option_sets` and each element's `params` with the project's.

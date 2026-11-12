@@ -24,13 +24,16 @@ pub(crate) enum Fit {
 }
 
 /// A panel as the last frame drew it: its name, how wide it is with every tool shown and as it was drawn, how many tools it
-/// has.
+/// has, whether it is kept whole ([`kept`]), the others making room before it, and whether it makes room first
+/// ([`yielding`]).
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct Seen {
     name: String,
     natural: f32,
     drawn: f32,
     tools: usize,
+    kept: bool,
+    yields: bool,
 }
 
 thread_local! {
@@ -59,6 +62,10 @@ thread_local! {
     static LAID: Cell<(f32, f32, f32)> = const { Cell::new((0.0, 0.0, 0.0)) };
     /// A tool's choices were asked for (a shortcut's) while it has no button, being handed over or folded: its panel opens its list.
     static OPEN_LIST: Cell<bool> = const { Cell::new(false) };
+    /// Whether the panel drawn next is kept whole while others make room ([`kept`]).
+    static KEEP: Cell<bool> = const { Cell::new(false) };
+    /// Whether the panel drawn next makes room before the others ([`yielding`]).
+    static YIELD: Cell<bool> = const { Cell::new(false) };
     /// Whether the tab being drawn has been drawn before, so its panels' fit (which tools show) is known: its first frame lays out
     /// every tool, whatever the room.
     static FITTED: Cell<bool> = const { Cell::new(true) };
@@ -168,8 +175,12 @@ pub(crate) fn tab(ui: &mut Ui, key: Id, room: f32, add: impl FnOnce(&mut Ui)) {
     // Still over though fitted (a first frame lays out every tool): another frame, asking more of the panels, until it fits or all
     // there is to ask is asked.
     let over = if fitted { (drawn - (room - SLACK)).max(0.0) } else { 0.0 };
+    // Nothing more to ask once the panels make all the room they can (a kept panel folded last, a yielding one keeping its
+    // first tool): what is still over then scrolls, and no frame more changes it.
+    let asked = FITS.with(|f| f.borrow().clone());
+    let exhausted = asked == fits(&seen, whole.max(1.0) * 4.0 + room, room - SLACK);
     let missed = (missed + over).min(whole);
-    if over > 0.0 && missed < whole {
+    if over > 0.0 && missed < whole && !exhausted {
         ui.ctx().request_repaint();
     }
     ui.ctx().data_mut(|d| d.insert_temp(key, (seen, whole, missed, room)));
@@ -187,15 +198,35 @@ pub(crate) fn push_right(ui: &mut Ui, width: f32) {
 }
 
 /// How the panels `seen` fit, for a tab `whole` wide with every tool shown, in `room`: from the last panel back, each hands
-/// over as few tools as make it fit, or, with one left not enough, folds and the next is asked.
+/// over as few tools as make it fit, or, with one left not enough, folds and the next is asked. Yielding panels are asked
+/// first, and hand over all but their first tool at most; kept panels last, once every other has folded.
 pub(crate) fn fits(seen: &[Seen], whole: f32, room: f32) -> Vec<(String, Fit)> {
     let mut over = whole - room;
     let mut fits = Vec::new();
-    for p in seen.iter().rev() {
+    let rank = |p: &Seen| {
+        if p.yields {
+            0
+        } else if p.kept {
+            2
+        } else {
+            1
+        }
+    };
+    let order = (0..3).flat_map(|k| seen.iter().rev().filter(move |p| rank(p) == k));
+    for p in order {
         if over <= 0.0 {
             break;
         }
         let each = if p.tools > 0 { p.natural / p.tools as f32 } else { 0.0 };
+        // A yielding panel hands over what it can and keeps its first tool: it never folds, and the rest is the others'.
+        if p.yields {
+            let k = (1..p.tools).rev().find(|k| (p.tools - k) as f32 * each >= over).unwrap_or(1);
+            if k < p.tools {
+                over -= (p.tools - k) as f32 * each;
+                fits.push((p.name.clone(), Fit::Show(k)));
+            }
+            continue;
+        }
         if let Some(k) = (1..p.tools).rev().find(|k| (p.tools - k) as f32 * each >= over) {
             fits.push((p.name.clone(), Fit::Show(k)));
             break;
@@ -208,8 +239,26 @@ pub(crate) fn fits(seen: &[Seen], whole: f32, room: f32) -> Vec<(String, Fit)> {
     fits
 }
 
+/// A ribbon panel kept whole while the tab makes room: every other panel hands its tools over or folds first, whatever its
+/// place, as the Family Editor panel (Load into Project) stays in sight in a family's narrow window. It gives way only when
+/// the others, all folded, still leave it no room.
+pub(crate) fn kept(ui: &mut Ui, title: &str, add: impl FnMut(&mut Ui)) {
+    KEEP.with(|k| k.set(true));
+    panel(ui, title, add);
+    KEEP.with(|k| k.set(false));
+}
+
+/// A ribbon panel that makes room before the others when the tab is too wide, whatever its place: one whose last tools are
+/// greyed, not in BIMCraft yet (the family's Model Text and Level), which cost nothing to hand over to its list.
+pub(crate) fn yielding(ui: &mut Ui, title: &str, add: impl FnMut(&mut Ui)) {
+    YIELD.with(|k| k.set(true));
+    panel(ui, title, add);
+    YIELD.with(|k| k.set(false));
+}
+
 /// A ribbon panel: its tools over its name, which lists them; or, folded, one button that does.
 pub(crate) fn panel(ui: &mut Ui, title: &str, mut add: impl FnMut(&mut Ui)) {
+    let (kept, yields) = (KEEP.with(Cell::take), YIELD.with(Cell::take));
     // A panel the project's scale leaves out: not drawn, on the ribbon or in the Tools palette.
     if scale_hides(title) {
         return;
@@ -277,7 +326,7 @@ pub(crate) fn panel(ui: &mut Ui, title: &str, mut add: impl FnMut(&mut Ui)) {
         }
         Some(_) => ui.ctx().data(|d| d.get_temp::<f32>(id)).unwrap_or(drawn),
     };
-    SEEN.with(|s| s.borrow_mut().push(Seen { name: title.to_string(), natural, drawn, tools }));
+    SEEN.with(|s| s.borrow_mut().push(Seen { name: title.to_string(), natural, drawn, tools, kept, yields }));
     // A hairline between panels, short of the card's edges.
     let (rule, _) = ui.allocate_exact_size(vec2(RULE, ui.available_height().max(70.0)), Sense::hover());
     ui.painter().vline(rule.center().x, rule.y_range().shrink(4.0), Stroke::new(1.0, pal().border));
@@ -356,7 +405,10 @@ mod tests {
     use super::*;
 
     fn panels(list: &[(f32, usize)]) -> Vec<Seen> {
-        list.iter().enumerate().map(|(i, &(w, n))| Seen { name: format!("p{i}"), natural: w, drawn: w, tools: n }).collect()
+        list.iter()
+            .enumerate()
+            .map(|(i, &(w, n))| Seen { name: format!("p{i}"), natural: w, drawn: w, tools: n, kept: false, yields: false })
+            .collect()
     }
 
     fn fit(list: &[(f32, usize)], room: f32) -> Vec<(String, Fit)> {
@@ -378,5 +430,31 @@ mod tests {
         assert_eq!(fit(&[(200.0, 4), (150.0, 3)], 250.0), [("p1".into(), Fit::Fold), ("p0".into(), Fit::Show(3))]);
         // A panel of one tool, no wider than a folded one, is passed over.
         assert_eq!(fit(&[(200.0, 4), (60.0, 1)], 200.0), [("p0".into(), Fit::Show(2))]);
+    }
+
+    #[test]
+    fn a_kept_panel_last_on_its_tab_stays_whole_while_the_ones_before_it_make_room() {
+        let list = [(200.0, 4), (150.0, 3), (160.0, 2)];
+        let whole = list.iter().map(|(w, _)| w + RULE).sum();
+        let mut seen = panels(&list);
+        seen[2].kept = true;
+        // 537 wide in 480: the middle one hands two tools over (50 each), the kept last one is whole.
+        assert_eq!(fits(&seen, whole, 480.0), [("p1".into(), Fit::Show(1))]);
+        // In 330: the middle one folds and the first hands over the rest it must; the kept one still whole.
+        assert_eq!(fits(&seen, whole, 330.0), [("p1".into(), Fit::Fold), ("p0".into(), Fit::Show(1))]);
+        // With no room even then, it gives way last.
+        assert!(fits(&seen, whole, 150.0).iter().any(|(n, _)| n == "p2"));
+    }
+
+    #[test]
+    fn a_yielding_panel_hands_its_tools_over_before_the_ones_after_it() {
+        let list = [(200.0, 4), (150.0, 3), (160.0, 2)];
+        let whole = list.iter().map(|(w, _)| w + RULE).sum();
+        let mut seen = panels(&list);
+        seen[0].yields = true;
+        // 537 wide in 480: the first one, yielding, hands one tool over (50 each); the others are left alone.
+        assert_eq!(fits(&seen, whole, 480.0), [("p0".into(), Fit::Show(2))]);
+        // In 330 (207 over): it keeps its first tool (150 made), and the last panel makes the rest.
+        assert_eq!(fits(&seen, whole, 330.0), [("p0".into(), Fit::Show(1)), ("p2".into(), Fit::Show(1))]);
     }
 }

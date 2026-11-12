@@ -25,9 +25,11 @@ use crate::{BimApp, Status};
 /// Reads a Revit project into a model, or says why not. It runs on a thread of its own, and may take minutes on a big file.
 pub type Importer = Arc<dyn Fn(&Path) -> Result<Imported, String> + Send + Sync>;
 
-/// The extensions File > Open offers: `.revcraft` is a project saved before the name changed, and `.rvt` is there only with a reader.
+/// The extensions File > Open offers: a project's every name (`.bimcraft` and `.revcraft` are from before the short ones), `.ifc`,
+/// and `.rvt` only with a reader.
 pub fn open_extensions(revit: bool) -> Vec<&'static str> {
-    let mut extensions = vec!["bimcraft", "revcraft", "ifc"];
+    let mut extensions = bimcraft_core::files::PROJECTS.to_vec();
+    extensions.push("ifc");
     if revit {
         extensions.push("rvt");
     }
@@ -174,7 +176,7 @@ impl BimApp {
         }
     }
 
-    /// A Revit project that came in is the project now: new, unsaved (saving asks for a `.bimcraft` name) and in no list of recent files.
+    /// A Revit project that came in is the project now: new, unsaved (saving asks for a `.bimc` name) and in no list of recent files.
     fn install_revit(&mut self, file: &str, imported: Imported) {
         let elements = imported.model.elements.len();
         let left = imported.skipped.iter().filter_map(|n| count_left_out(n)).sum::<usize>();

@@ -84,8 +84,8 @@ The goal is the editing tools a working architect reaches for every hour.
 |---|---|
 | Arrays, linear and radial, optionally kept as a group | M |
 | Groups (model groups) with group types, edit group, and exclude a member | L |
-| Pin and unpin; a selection filter; match type properties | S |
-| Locked and equal dimension constraints: done (`constraints.rs`: padlocks and EQ on aligned and linear dimensions, kept after every command); left: dimensions bound to parameters (labels) | M |
+| Pin and unpin: done (`pin` and `unpin`, PN and UP, keep elements where they are, and the commands that place, draw or delete them refuse them, `modify`'s placing fields included); a selection filter (`selection.rs`) and match type properties (`match_properties`, MA): done | S |
+| Locked and equal dimension constraints: done (`constraints.rs`: padlocks and EQ on aligned and linear dimensions, kept after every command); dimensions bound to parameters (labels): done in the Family Editor | M |
 | Copy to the clipboard, and paste aligned to the same place, to selected levels or to the current view | M |
 | Join and cut geometry (wall to floor, column to wall cleanups in plan and section) | M |
 | Wall openings (rectangular cuts) and wall profile editing (an elevation sketch) | M |
@@ -118,7 +118,7 @@ The goal is a printable, coordinated drawing set.
 | Area plans, area schemes (gross, rentable) and colour-fill legends by parameter | L |
 | Plan regions (a local view range) and depth cueing in elevations | M |
 | Revisions and a revision schedule on title blocks (revision clouds: done, as a detail line drawn as scallops, with its revision as a label that `elements` lists; nothing else reads it) | M |
-| Editable title blocks: done (title blocks of the project's own, typed in View > Title Blocks or read from a DXF, with fields a sheet or the whole project fills in, and automatic ones: `titleblock.rs`); left: view titles under viewports as types, a sheet list | M |
+| Editable title blocks: done (title blocks of the project's own, typed in View > Title Blocks or read from a DXF, with fields a sheet or the whole project fills in, and automatic ones: `titleblock.rs`, and a sheet list, the project's sheets by their numbers: `schedule::VIEWS`); left: view titles under viewports as types | M |
 | Viewports as windows onto their views (activate one to work through it, crop it, viewport types), and Object Styles' annotation categories, subcategories, colours and patterns. Paper space, Line Weights and Object Styles (each model category's pens, cut and seen) are in: every view has a scale (named in feet and inches as architects and engineers do), lines are pens 1 to 16 whose widths the project's Line Weights give by scale, and 0 a hairline at any scale | M |
 | Print dialog: sheets to PDF or a printer, sizes, ranges, colour or monochrome | S |
 | The rest of Revit's view control bar: Show/Hide Crop Region and Crop View buttons, Sun Path and Shadows, Temporary View Properties, a visual style for plans and sections and a detail level for the 3D view (scale, detail level, visual style, Temporary Hide/Isolate and Reveal Hidden Elements are done, and view templates control the first three) | M |
@@ -129,23 +129,26 @@ an area plan and the revision history) prints from BIMCraft alone.
 
 ### 0.8: Families and content, the rest
 
-Revolves, voids, doors and windows as families and a text-based Family Editor are done. What is left is the graphical half
-and the content.
+The Family Editor is done: a family document for every family with its own views, reference planes and lines, sketch mode,
+the constraint solver, nested families and visibility settings (see [docs/areas/families.md](docs/areas/families.md)). What is
+left is mostly content.
 
 | Item | Size |
 |---|---|
-| Family editor sketch mode: reference planes, sketches drawn on screen, sweeps along a path and blends (revolve and void forms are done) | XL |
-| 2D sketch constraint solver (dimensions bound to parameters, equal, aligned, locked) | L |
-| Hosted families on floors, ceilings and faces, with cuts in the host (doors and windows host on walls today) | L |
-| Nested and shared families; type catalogs (CSV) | M |
-| Visibility per view direction and detail level for a family's forms and symbols | M |
-| Sections that cut family forms (they show them beyond the cut today) | S |
+| Family editor sketch mode: done (sketches drawn on screen, extrusions, blends, revolves, sweeps and swept blends and their voids; reference planes and lines drawn in the family's views; a work plane per form; Pick Lines with Lock); left: 3D sweep paths and constraints on a sweep's profile | XL |
+| 2D sketch constraint solver: done (dimensions labelled with parameters, EQ, Align and padlocks, angular dimensions, pivots) | L |
+| Hosted families on floors, ceilings and faces: Place on Face (T16) done, on the sides of walls and the tops and bottoms of floors, ceilings and roofs; their voids cut the host (T16b) | L |
+| Nested and shared families: done; left: type catalogs (CSV), arrays of nested instances, a Family Type parameter choosing a nested type | M |
+| Shared parameters file (Manage > Shared Parameters): done in the core (`shared_parameters` command: Revit's tab-separated layout read and written, parameters loaded into families by GUID and exported from them); left: the desktop dialog, and shared parameters as project parameters and in schedules by GUID | S |
+| Visibility per view direction and detail level for a family's forms and symbols: done | M |
+| Sections that cut family forms: done for doors, windows, casework, generic models, equipment, racks and pipe fittings and accessories (poché in the form's own shape, holes left open); furniture and fixtures are shown beyond the cut, as in Revit; left: a form's material's cut pattern in place of poché | S |
 | A starter content library: original, openly licensed (CC0 or CC-BY) doors, windows, furniture, casework, fixtures and profiles (32 families ship today: furniture, casework, doors, windows, and the Plumbing, Electrical, SPDA and Data tabs' fixtures) | L (ongoing) |
 | A curated GitHub repository of openly licensed families, browsed, previewed and loaded from inside BIMCraft (search, categories, thumbnails, versions). Clean-room content only, checked before it's accepted; the download goes through the same rules as the updater (capped, digest-checked, never run) | M |
 | Material roughness for the 3D view (textures are done; materials' surface and cut patterns as the project's fill patterns: done) | M |
 
 **Exit criteria**: a user draws a parametric window in the family editor, places it, flexes its types, and it schedules
-and exports to IFC correctly.
+and exports to IFC correctly. Met: `crates/ui-egui/src/tests/family_exit.rs` does it through the desktop UI, and
+`ci/family-window.txt` does it in CI's IFC job.
 
 ### 0.9: Interoperability
 
@@ -156,7 +159,7 @@ The goal is that BIMCraft fits into a mixed-software office.
 | ~~DXF import (as a link or underlay in a view)~~ and DXF export of views and sheets | L | Import done: `import_cad`, `cad_layers`, `reload_cad` and `cad_query`, Insert > Import CAD and Link CAD, Visibility/Graphics' Imported Categories ([docs/areas/cad-import.md](docs/areas/cad-import.md)). Export, exploding an import into detail lines, and images and PDFs as underlays are still to come. DWG comes in through acadrust (MPL-2.0, unmodified; section 6). Use the public DXF reference |
 | Revit `.rvt` reader, in three parts, all done: the container, metadata and element inventory (`bimcraft-cli info`); the elements into the model (levels, walls, floors, ceilings, doors, windows, columns, rooms and roofs, through `run`, `convert` and the MCP `open`); File > Open in the desktop (a thread of its own, a report of what was left out) | L | Read only under the fence in [docs/rvt-provenance.md](docs/rvt-provenance.md); `crates/rvt`, Apache-2.0 only. IFC stays the way out. Left in the import: curtain walls, sloped floors and roofs by footprint, roofs by extrusion that are not a straight-line profile, a column's section shape, stairs and railings, groups, door swings, the join lists, and names for the categories `info` prints as bare ids (no table of Autodesk's `BuiltInCategory` values to check against a file was found). The desktop cannot cancel an import in flight |
 | ~~Linked models: other `.bimcraft` and IFC files as references, positioned shared or origin to origin~~ | L | Done, origin to origin: `link` and `reload`, Manage > Link Model, a Linked Models group in the Project Browser. Shared coordinates, links in sections' cut poché by category, a link's own view overrides, hiding or unloading one in a view, and nested links are still to come (issue #36) |
-| IFC export completeness: the rest of `Pset_*Common` (`LoadBearing` and a phased project's `Status` are written), `Qto_*BaseQuantities` of the rest (spaces, walls, slabs, doors and windows have theirs), space boundaries, classification references, an IFC4x3 option | L | Keep validating with IfcOpenShell |
+| IFC export completeness: the rest of `Pset_*Common` (`LoadBearing` and a phased project's `Status` are written), `Qto_*BaseQuantities` of the rest (spaces, walls, slabs, doors and windows have theirs), space boundaries, classification references (a family's OmniClass number is written on its type), an IFC4x3 option | L | Keep validating with IfcOpenShell |
 | glTF 2.0 and OBJ export (for visualisation and the web) | M | |
 | gbXML export (rooms and spaces, surfaces, openings) for energy tools | M | |
 | BCF 3.0 import and export: issues with viewpoints, opened in views | M | |

@@ -1,0 +1,70 @@
+{
+ "about": "The volumes around a bathtub or a shower and what may stand in each, one rule set for each standard, read by `bath_volumes` (bath.rs). Each volume and each thing it allows names its source, the standard's item; a test fails on one that does not. The numbers are the standard's, the words are ours. A country's set is added as a new entry, never as code. A point is in the first volume whose reach and height hold it: `reach_mm` is how far the volume goes out, in plan, from the edge of the tub or tray (0 is its inside), `shower_reach_mm` the same from the outlet of a shower with no tray (no such volume when absent), and `top_mm` how high it goes above the floor one stands on (`to_rim` instead: up to the tub's rim). `ip` is the least second digit of the IP code (`ip_public` in a public bathroom); `selv_max_v` asks everything in the volume to be fed at safety extra-low voltage up to that many volts. `allows` lists what may stand there: `kinds` (outlet, switch, box, luminaire, heater, equipment), and, where given, the `classes` it must be of (I, II, III), `any_of` the protections it must have one of (selv, separation, rcd: a residual-current device up to `max_rcd_ma`) and `serving` for a box that connects only equipment of these volumes. A kind no row allows may not stand there.",
+ "rule_sets": [
+  {
+   "standard": "NBR 5410:2004",
+   "source": "ABNT NBR 5410:2004 (corrected version 2008), item 9.1, places with a bathtub or a shower (Figures 16 to 18). Equivalents: IEC 60364-7-701 and BS 7671 section 701 answer the same question, but their present editions draw zones 0 to 2 only, with other reaches, so they would be a set of their own rows; the US NEC (410.10(D), 406.9(C)) keeps luminaires and receptacles out of a space over the tub or shower instead.",
+   "max_rcd_ma": 30,
+   "volumes": [
+    {
+     "name": "0",
+     "reach_mm": 0,
+     "to_rim": true,
+     "ip": 7,
+     "ip_public": 7,
+     "selv_max_v": 12,
+     "source": "NBR 5410:2004, 9.1.2.1 a) (the inside of the tub, tray or recess), 9.1.3.1.1 (SELV up to 12 V only, its source outside) and 9.1.4.1 (IPX7)",
+     "allows": [
+      {"kinds": ["box"], "serving": true, "source": "NBR 5410:2004, 9.1.4.2.4"},
+      {"kinds": ["luminaire", "heater", "equipment"], "any_of": ["selv"], "source": "NBR 5410:2004, 9.1.4.4 (SELV equipment as 9.1.3.1.1 asks is left out of 9.1.4.4.1)"}
+     ]
+    },
+    {
+     "name": "1",
+     "reach_mm": 0,
+     "shower_reach_mm": 600,
+     "top_mm": 2250,
+     "ip": 4,
+     "ip_public": 4,
+     "source": "NBR 5410:2004, 9.1.2.1 b) (over volume 0 to the vertical face around the tub or tray, or 0.6 m around a shower with no tray, up to 2.25 m) and 9.1.4.1 (IPX4)",
+     "allows": [
+      {"kinds": ["box"], "serving": true, "source": "NBR 5410:2004, 9.1.4.2.4"},
+      {"kinds": ["heater"], "classes": ["I", "II"], "source": "NBR 5410:2004, 9.1.4.4.2"},
+      {"kinds": ["luminaire", "heater", "equipment"], "any_of": ["selv"], "source": "NBR 5410:2004, 9.1.4.4 (SELV equipment left out)"},
+      {"kinds": ["switch"], "any_of": ["selv"], "source": "NBR 5410:2004, 9.1.4.3.1 and its note (controls at SELV)"}
+     ]
+    },
+    {
+     "name": "2",
+     "reach_mm": 600,
+     "shower_reach_mm": 1200,
+     "top_mm": 3000,
+     "ip": 3,
+     "ip_public": 5,
+     "source": "NBR 5410:2004, 9.1.2.1 c) (0.60 m out from volume 1, from the floor up to 3 m, so over volume 1 too) and 9.1.4.1 (IPX3, IPX5 in a public bathroom)",
+     "allows": [
+      {"kinds": ["box"], "serving": true, "source": "NBR 5410:2004, 9.1.4.2.4"},
+      {"kinds": ["luminaire"], "classes": ["II"], "source": "NBR 5410:2004, 9.1.4.4.3"},
+      {"kinds": ["heater"], "classes": ["I", "II"], "source": "NBR 5410:2004, 9.1.4.4.3"},
+      {"kinds": ["luminaire", "heater", "equipment"], "any_of": ["selv"], "source": "NBR 5410:2004, 9.1.4.4 (SELV equipment left out)"},
+      {"kinds": ["switch"], "any_of": ["selv"], "source": "NBR 5410:2004, 9.1.4.3.1 and its note (controls at SELV)"}
+     ]
+    },
+    {
+     "name": "3",
+     "reach_mm": 3000,
+     "shower_reach_mm": 3600,
+     "top_mm": 2250,
+     "ip": 1,
+     "ip_public": 5,
+     "source": "NBR 5410:2004, 9.1.2.1 d) (2.40 m out from volume 2, from the floor up to 2.25 m) and 9.1.4.1 (IPX1, IPX5 in a public bathroom)",
+     "allows": [
+      {"kinds": ["outlet"], "any_of": ["separation", "selv", "rcd"], "source": "NBR 5410:2004, 9.1.4.3.2 a) to c)"},
+      {"kinds": ["switch", "box", "luminaire", "heater", "equipment"], "source": "NBR 5410:2004, 9.1.4.3 and 9.1.4.4 (no further limit in volume 3)"}
+     ]
+    }
+   ],
+   "not_covered": "fixed walls and partitions, which the volumes go around (note 1 of 9.1.2.1: here the reach is measured straight, so what stands behind one is taken as inside, on the safe side); the space under a tub or tray (note 2); the 0.60 m around the door of a prefabricated shower cabin (9.1.4.3.3); the wiring (9.1.4.2.1 to 9.1.4.2.3); the supplementary equipotential bonding (9.1.3.1.2); and the circuits' own residual-current device, which dr_check asks"
+  }
+ ]
+}

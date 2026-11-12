@@ -233,12 +233,12 @@ fn a_floor_is_sketched_in_the_3d_view_on_a_level_face_picked_for_the_work_plane(
     let mut h = app(&script);
     press(&mut h, "Default 3D View");
     press(&mut h, "Work Plane");
-    pick(&mut h, Role::RadioButton, "Pick a surface");
-    press(&mut h, "Pick Surface");
-    // The floor's top, a level face, where the view sees it over the south wall.
+    pick(&mut h, Role::RadioButton, "Pick a plane");
+    press(&mut h, "OK");
+    // The floor's top, a level face, where the view sees it over the south wall: the click sets it.
     let at = h.state().screen3([3000.0, 4500.0, 500.0]);
     click_at(&mut h, at);
-    press(&mut h, "OK");
+    assert!(h.state().work_plane.is_none(), "set by the click: {}", h.state().status.text);
     tool(&mut h, "Floor");
     assert!(matches!(h.state().sketch.as_ref().map(|s| s.of), Some(crate::sketch::Of::Floor(_))), "{}", h.state().status.text);
     press(&mut h, "Rectangle");

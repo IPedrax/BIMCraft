@@ -30,6 +30,7 @@ pub struct ObjectStyle {
 /// as where it's seen, [`Pen::PROJECTION`] both.
 pub fn default_of(category: &str) -> ObjectStyle {
     match category {
+        "propertyline" => ObjectStyle { projection: Pen::MEDIUM, cut: Pen::MEDIUM },
         "mass" => ObjectStyle { projection: Pen::PROJECTION, cut: Pen::PROJECTION },
         "door" | "window" => ObjectStyle { projection: Pen::PROJECTION, cut: Pen::MEDIUM },
         "railing" => ObjectStyle { projection: Pen::MEDIUM, cut: Pen::CUT },
@@ -52,12 +53,14 @@ impl ObjectStyle {
 /// An error saying what to fix, unless `category` is one Object Styles has: a model category views draw, or `component`, which
 /// stands for every family category that has none of its own.
 pub fn known(category: &str) -> Result<(), String> {
-    if MODEL.contains(&category) || category == COMPONENT {
+    if MODEL.contains(&category) || category == COMPONENT || model_sub(category).is_some() {
         Ok(())
     } else {
         Err(format!(
-            "`{category}` isn't a model category; Object Styles has: {} (and `{COMPONENT}`, for every family category)",
-            MODEL.join(", ")
+            "`{category}` isn't a model category; Object Styles has: {} (and `{COMPONENT}`, for every family category, and the \
+             subcategories {})",
+            MODEL.join(", "),
+            model_subs().collect::<Vec<_>>().join(", ")
         ))
     }
 }
@@ -65,10 +68,28 @@ pub fn known(category: &str) -> Result<(), String> {
 /// What `category` draws in when `styles` hold nothing of its own: for a family category, what `component` says of them all
 /// (a project from before the rows were split holds only that), else what a category starts with.
 pub fn inherited(styles: &BTreeMap<String, ObjectStyle>, category: &str) -> ObjectStyle {
+    // A subcategory draws in its category's pens until it has its own.
+    if let Some(sub) = model_sub(category) {
+        return styles.get(sub.parent).copied().unwrap_or_else(|| inherited(styles, sub.parent));
+    }
     match styles.get(COMPONENT) {
         Some(all) if COMPONENTS.contains(&category) => *all,
         _ => default_of(category),
     }
+}
+
+/// The categories whose subcategories Object Styles has rows for, each drawing in its category's pens until it has its own:
+/// a door's and a window's (Doors > Opening). Rooms' are left as they were, Room Separation Lines a kind of element of its own.
+const STYLED_SUBS: [&str; 2] = ["door", "window"];
+
+/// The subcategory `key` is, when Object Styles has a row for it ([`STYLED_SUBS`]).
+pub fn model_sub(key: &str) -> Option<&'static crate::graphics::Sub> {
+    crate::graphics::sub(key).filter(|s| STYLED_SUBS.contains(&s.parent))
+}
+
+/// The keys of the subcategories Object Styles has rows for, in order.
+pub fn model_subs() -> impl Iterator<Item = &'static str> {
+    crate::graphics::SUBCATEGORIES.iter().filter(|s| STYLED_SUBS.contains(&s.parent)).map(|s| s.key)
 }
 
 impl Model {
@@ -105,7 +126,7 @@ mod tests {
         let mut s = Session::new();
         // Asking says each model category's, and changes nothing.
         let r = s.execute("object_styles", &json!({})).unwrap();
-        assert_eq!(r["categories"].as_array().map(Vec::len), Some(MODEL.len()));
+        assert_eq!(r["categories"].as_array().map(Vec::len), Some(MODEL.len() + model_subs().count()));
         assert_eq!(r["categories"][0], json!({"category": "wall", "projection": 4, "cut": 10, "own": false}));
         assert!(s.history().is_empty());
         // Given, by category, a pen or both, in one undo step.

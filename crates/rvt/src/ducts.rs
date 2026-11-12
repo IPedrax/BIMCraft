@@ -72,7 +72,7 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
                     types,
                     &name,
                     |t| (t.width - width).abs() < 0.05 && (t.depth - depth).abs() < 0.05 && t.round == round,
-                    RunType { width, depth, round, material: String::new() },
+                    RunType { width, depth, round, material: String::new(), profile: None },
                 );
                 let offset = micron(mm(a[2]) - mm(elevation));
                 let end = micron(mm(b[2]) - mm(elevation));

@@ -31,8 +31,8 @@ pub struct Stats {
 enum Shape {
     Other,
     Missing,
-    Column { dimensions: [u64; 2], round: bool },
-    Run { dimensions: [u64; 2], round: bool },
+    Column { dimensions: [u64; 2], round: bool, profile: Option<crate::profiles::GeometryKey> },
+    Run { dimensions: [u64; 2], round: bool, profile: Option<crate::profiles::GeometryKey> },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -40,23 +40,36 @@ pub(crate) struct Key {
     own: Option<Revision>,
     levels: [Option<Revision>; 2],
     shape: Shape,
+    /// A component's own adaptive frames, hashed: its box follows its points, as the other component caches key on them.
+    adaptive: Option<u64>,
 }
 
 impl Key {
     pub(crate) fn of(m: &Model, id: Id) -> Self {
-        let mut key = Self { own: m.elements.revision(id), levels: [None; 2], shape: Shape::Other };
+        let mut key = Self { own: m.elements.revision(id), levels: [None; 2], shape: Shape::Other, adaptive: None };
         let Some(e) = m.elements.get(id) else { return key };
         if let Some(c) = e.column() {
             key.levels = [m.elements.revision(c.level), c.top_level.and_then(|id| m.elements.revision(id))];
-            key.shape = m
-                .column_type(e)
-                .map_or(Shape::Missing, |t| Shape::Column { dimensions: [t.width.to_bits(), t.depth.to_bits()], round: t.round });
+            key.shape = m.column_type(e).map_or(Shape::Missing, |t| Shape::Column {
+                dimensions: [t.width.to_bits(), t.depth.to_bits()],
+                round: t.round,
+                profile: t.profile.as_ref().map(|p| p.geometry_key()),
+            });
         } else if let Some(r) = e.run() {
             key.levels[0] = m.elements.revision(r.level);
-            key.shape =
-                m.run_type(e).map_or(Shape::Missing, |t| Shape::Run { dimensions: [t.width.to_bits(), t.depth.to_bits()], round: t.round });
+            key.shape = m.run_type(e).map_or(Shape::Missing, |t| Shape::Run {
+                dimensions: [t.width.to_bits(), t.depth.to_bits()],
+                round: t.round,
+                profile: t.profile.as_ref().map(|p| p.geometry_key()),
+            });
         } else if let crate::model::Element::Component(c) = e {
             key.levels[0] = m.elements.revision(c.level);
+            key.adaptive = c.adaptive.as_ref().map(|a| {
+                use std::hash::{Hash, Hasher};
+                let mut h = std::collections::hash_map::DefaultHasher::new();
+                serde_json::to_string(a).unwrap_or_default().hash(&mut h);
+                h.finish()
+            });
         }
         key
     }
@@ -189,7 +202,8 @@ pub(crate) fn primitive(m: &Model, id: Id) -> Bounds {
         if g.width <= 0.0 || g.depth <= 0.0 {
             return Bounds::Unknown;
         }
-        if g.round {
+        // Steel sections have upright ends, enclosed by prism(); plain round runs use tube().
+        if g.round && m.run_type(e).is_some_and(|t| t.profile.is_none()) {
             // The exact same basis as tube(), but bound all angles without triangles.
             let d = crate::view3d::unit(crate::view3d::sub(g.b, g.a));
             let u = if g.vertical() { [1.0, 0.0, 0.0] } else { crate::view3d::unit([-d[1], d[0], 0.0]) };
@@ -204,21 +218,28 @@ pub(crate) fn primitive(m: &Model, id: Id) -> Bounds {
     }
     if let crate::model::Element::Component(c) = e {
         let Some(family) = m.families.get(&c.family) else { return Bounds::Unknown };
-        let Some(bounds) = family.values(&c.type_name, &c.params).ok().and_then(|values| family.conservative_bounds(&values)) else {
-            return Bounds::Unknown;
+        let Ok(values) = family.values(&c.type_name, &c.params) else { return Bounds::Unknown };
+        // An adaptive family's geometry is where its instance's points put it: the box of what it builds there.
+        let local = match family.adaptive {
+            Some(_) => family.pieces_at(&values, c.adaptive.as_ref()).ok().and_then(|pieces| {
+                match padded(pieces.iter().flat_map(|p| p.tris.iter().flatten().copied())) {
+                    Bounds::Box(b) => Some(b),
+                    _ => None,
+                }
+            }),
+            None => family.conservative_bounds(&values),
         };
+        let Some(bounds) = local else { return Bounds::Unknown };
         return place_component(m, c, bounds);
     }
     Bounds::Unknown
 }
 
 pub(crate) fn place_component(m: &Model, c: &crate::model::Component, bounds: [P3; 2]) -> Bounds {
-    let (sin, cos) = c.angle.to_radians().sin_cos();
-    let base = m.elevation(c.level) + c.offset;
+    let placed = m.component_placement(c);
     padded((0..8).map(|k| {
         let [x, y, z] = [bounds[k & 1][0], bounds[(k >> 1) & 1][1], bounds[(k >> 2) & 1][2]];
-        let y = if c.mirrored { -y } else { y };
-        [c.at.0 + x * cos - y * sin, c.at.1 + x * sin + y * cos, base + z]
+        placed.place([x, if c.mirrored { -y } else { y }, z])
     }))
 }
 
@@ -264,7 +285,7 @@ mod tests {
         let level = m.guid(100000);
         let id = 200000;
         for round in [false, true] {
-            m.types.column.insert("Probe".into(), ColumnType { width: 600.0, depth: 250.0, round });
+            m.types.column.insert("Probe".into(), ColumnType { width: 600.0, depth: 250.0, round, profile: None });
             for angle in [0.0, 17.0, 90.0, -225.0] {
                 for at in [P2(0.0, 0.0), P2(1e9, -1e9)] {
                     m.elements.insert(
@@ -288,7 +309,7 @@ mod tests {
                 .runs
                 .entry("pipe".into())
                 .or_default()
-                .insert("Probe".into(), RunType { width: 400.0, depth: 180.0, round, material: String::new() });
+                .insert("Probe".into(), RunType { width: 400.0, depth: 180.0, round, material: String::new(), profile: None });
             for end in [P2(1000.0, 0.0), P2(-1000.0, 370.0), P2(0.0, 0.0), P2(0.5, 0.0), P2(1.01, 0.0)] {
                 for end_offset in [Some(10000.0), Some(-400.0), None] {
                     for justify in [Justify::Centre, Justify::Top, Justify::Bottom] {

@@ -1,4 +1,4 @@
-//! The interface's language: English, as the code writes it, Brazilian Portuguese, Spanish, Czech, French, German, Dutch,
+//! The interface's language: English, as the code writes it, Brazilian Portuguese, Spanish, Polish, Czech, French, German, Dutch,
 //! Italian, Vietnamese or Simplified Chinese. What
 //! the window shows goes through [`t`], English being its own key; the widget helpers translate
 //! their labels and tips, so most call sites pass English and read it back translated. What a
@@ -9,8 +9,8 @@
 //! in it. Chinese interface translations, including schedule headings, live in `translations/ui/zh.po`, one entry for each of
 //! the interface's messages: an entry it lacks shows in English. The window draws hanzi with a system font (`font.rs`).
 //!
-//! Vietnamese is the window's alone too, its catalog `translations/ui/vi.po`: the window's own fonts have its letters, but a
-//! project is not in it, so new projects are named in English.
+//! Vietnamese is a project's language too: the window's catalog is `translations/ui/vi.po`, the drawings'
+//! `translations/project/vi.po`, and the window's own fonts and a drawing's lettering both have its letters.
 
 use bimcraft_i18n::msg;
 
@@ -47,6 +47,7 @@ pub enum Lang {
     English,
     Portuguese,
     Spanish,
+    Polish,
     Czech,
     French,
     German,
@@ -58,10 +59,11 @@ pub enum Lang {
 }
 
 impl Lang {
-    pub const ALL: [Lang; 11] = [
+    pub const ALL: [Lang; 12] = [
         Lang::English,
         Lang::Portuguese,
         Lang::Spanish,
+        Lang::Polish,
         Lang::Czech,
         Lang::French,
         Lang::German,
@@ -77,25 +79,25 @@ impl Lang {
         matches!(self, Lang::Chinese | Lang::TraditionalChinese)
     }
 
-    /// The project language that goes with it, which new projects are named in: Vietnamese and Chinese, either kind, have
-    /// none, so English.
+    /// The project language that goes with it, which new projects are named in: Chinese, either kind, has none, so English.
     pub fn project(self) -> Language {
         match self {
-            Lang::English | Lang::Vietnamese | Lang::Chinese | Lang::TraditionalChinese => Language::English,
+            Lang::English | Lang::Chinese | Lang::TraditionalChinese => Language::English,
             Lang::Portuguese => Language::Portuguese,
             Lang::Spanish => Language::Spanish,
+            Lang::Polish => Language::Polish,
             Lang::Czech => Language::Czech,
             Lang::French => Language::French,
             Lang::German => Language::German,
             Lang::Dutch => Language::Dutch,
             Lang::Italian => Language::Italian,
+            Lang::Vietnamese => Language::Vietnamese,
         }
     }
 
-    /// Its code in the settings file: en, pt, es, vi, zh, zh_TW (also the name of its catalog).
+    /// Its code in the settings file: en, pt, es, pl, vi, zh, zh_TW (also the name of its catalog).
     pub fn code(self) -> &'static str {
         match self {
-            Lang::Vietnamese => "vi",
             Lang::Chinese => "zh",
             Lang::TraditionalChinese => "zh_TW",
             other => other.project().code(),
@@ -109,7 +111,6 @@ impl Lang {
             Lang::Chinese => "Chinese (Simplified)",
             Lang::TraditionalChinese if get() == Lang::TraditionalChinese => "繁體中文",
             Lang::TraditionalChinese => "Chinese (Traditional)",
-            Lang::Vietnamese => "Tiếng Việt",
             other => other.project().label(),
         }
     }
@@ -136,11 +137,13 @@ impl From<Language> for Lang {
             Language::English | Language::Swedish => Lang::English,
             Language::Portuguese => Lang::Portuguese,
             Language::Spanish => Lang::Spanish,
+            Language::Polish => Lang::Polish,
             Language::Czech => Lang::Czech,
             Language::French => Lang::French,
             Language::German => Lang::German,
             Language::Dutch => Lang::Dutch,
             Language::Italian => Lang::Italian,
+            Language::Vietnamese => Lang::Vietnamese,
         }
     }
 }
@@ -287,6 +290,7 @@ pub fn category(category: &str, several: bool) -> String {
         "massfloor" => (msg!("category", "Mass Floor"), msg!("category-plural", "Mass Floors")),
         "ramp" => (msg!("category", "Ramp"), msg!("category-plural", "Ramps")),
         "railing" => (msg!("category", "Railing"), msg!("category-plural", "Railings")),
+        "propertyline" => (msg!("category", "Property Line"), msg!("category-plural", "Property Lines")),
         "roomseparator" => (msg!("category", "Room Separator"), msg!("category-plural", "Room Separators")),
         "beam" => (msg!("category", "Beam"), msg!("category-plural", "Beams")),
         "structuralcolumn" => (msg!("category", "Structural Column"), msg!("category-plural", "Structural Columns")),
@@ -309,6 +313,7 @@ pub fn category(category: &str, several: bool) -> String {
         "pointcloud" => (msg!("category", "Point Cloud"), msg!("category-plural", "Point Clouds")),
         "cadimport" => (msg!("category", "CAD Import"), msg!("category-plural", "CAD Imports")),
         "multicategory" => (msg!("category", "Multi-Category"), msg!("category-plural", "Multi-Category")),
+        "circuit" => (msg!("category", "Circuit"), msg!("category-plural", "Circuits")),
         other => return other.to_string(),
     };
     let (context, english) = if several { ("category-plural", many) } else { ("category", one) };
@@ -335,6 +340,11 @@ mod tests {
         set(Lang::Spanish);
         assert_eq!((t("Wall Schedule"), t("Save changes to {}?")), ("Tabla de muros", "¿Guardar los cambios en {}?"));
         assert_eq!((category("room", true), category("viewport", false)), ("Habitaciones".to_string(), "Vista en plano".to_string()));
+        set(Lang::Polish);
+        assert_eq!(
+            (t("Wall Schedule"), t("Architecture"), category("wall", true), category("level", false)),
+            ("Zestawienie ścian", "Architektura", "Ściany".to_string(), "Poziom".to_string())
+        );
         set(Lang::English);
     }
 
@@ -371,7 +381,7 @@ mod tests {
     }
 
     #[test]
-    fn vietnamese_has_its_own_words_and_names_projects_in_english() {
+    fn vietnamese_has_its_own_words_and_names_projects_in_vietnamese() {
         set(Lang::Vietnamese);
         assert_eq!((t("File"), t("Copy"), t("Wall Schedule")), ("Tệp", "Sao chép", "Bảng thống kê tường"));
         assert_eq!(tf("Save changes to {}?", &["house"]), "Lưu các thay đổi vào house?");
@@ -379,8 +389,9 @@ mod tests {
         set(Lang::English);
         assert_eq!(
             (Lang::Vietnamese.code(), Lang::Vietnamese.label(), Lang::Vietnamese.project()),
-            ("vi", "Tiếng Việt", Language::English)
+            ("vi", "Tiếng Việt", Language::Vietnamese)
         );
+        assert_eq!(Lang::from(Language::Vietnamese), Lang::Vietnamese);
         for code in ["vi", "vi-VN", "vi_VN.UTF-8", "VI", "vietnamese", "Tiếng Việt"] {
             assert_eq!(Lang::from_code(code), Some(Lang::Vietnamese), "{code}");
         }
@@ -410,7 +421,7 @@ mod tests {
             assert_eq!(Lang::from_code(code), Some(Lang::TraditionalChinese), "{code}");
         }
         assert_eq!(
-            ["pt-BR", "es_419.UTF-8", "nl-BE", "nl_NL.UTF-8", "en-US", "de", ""].map(Lang::from_code),
+            ["pt-BR", "es_419.UTF-8", "nl-BE", "nl_NL.UTF-8", "en-US", "de", "pl", "pl-PL", ""].map(Lang::from_code),
             [
                 Some(Lang::Portuguese),
                 Some(Lang::Spanish),
@@ -418,6 +429,8 @@ mod tests {
                 Some(Lang::Dutch),
                 Some(Lang::English),
                 Some(Lang::German),
+                Some(Lang::Polish),
+                Some(Lang::Polish),
                 None
             ]
         );
@@ -426,6 +439,7 @@ mod tests {
         assert_eq!((Lang::TraditionalChinese.code(), Lang::TraditionalChinese.project()), ("zh_TW", Language::English));
         assert_eq!((Lang::Dutch.code(), Lang::Dutch.label(), Lang::Dutch.project()), ("nl", "Nederlands", Language::Dutch));
         assert_eq!((Lang::Italian.code(), Lang::Italian.label(), Lang::Italian.project()), ("it", "Italiano", Language::Italian));
+        assert_eq!((Lang::Polish.code(), Lang::Polish.label(), Lang::Polish.project()), ("pl", "Polski", Language::Polish));
         assert_eq!(Lang::ALL.map(|l| Lang::from_code(l.code())), Lang::ALL.map(Some));
     }
 }

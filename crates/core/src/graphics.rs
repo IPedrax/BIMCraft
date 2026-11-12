@@ -27,7 +27,7 @@ mod fill_tests;
 /// The categories a plan, a section or a 3D view draws, and so may hide and override: those of the
 /// model, then those of the annotation. A family component is of its family's category (see [`COMPONENTS`]); `component`, which
 /// names them all, is no row of its own (see [`COMPONENT`]).
-pub const MODEL: [&str; 45] = [
+pub const MODEL: [&str; 46] = [
     "wall",
     "floor",
     "ceiling",
@@ -37,6 +37,7 @@ pub const MODEL: [&str; 45] = [
     "window",
     "room",
     "roomseparator",
+    "propertyline",
     "column",
     "structuralcolumn",
     "footing",
@@ -100,7 +101,8 @@ pub const COMPONENTS: [&str; 18] = [
     "patchpanel",
     "rack",
 ];
-pub const ANNOTATION: [&str; 10] = ["dimension", "tag", "text", "line", "region", "spot", "grid", "level", "section", "elevation"];
+pub const ANNOTATION: [&str; 11] =
+    ["dimension", "tag", "text", "line", "region", "spot", "grid", "level", "section", "elevation", "circuit"];
 /// The point clouds, which views hide and override as Revit's Visibility/Graphics does on a tab of their own: not a model
 /// category, so Object Styles has no row for them.
 pub const SCANS: [&str; 1] = ["pointcloud"];
@@ -125,6 +127,10 @@ pub struct Sub {
 pub const SUBCATEGORIES: &[Sub] = &[
     Sub { key: "roomreference", parent: "room", name: ui_msg!("Reference"), off: true },
     Sub { key: "roomseparator", parent: "room", name: ui_msg!("Room Separation Lines"), off: false },
+    // A door's swing and a window's opening lines: the family symbols that name it (`subcategory: "Opening"`), and a door
+    // of the project's own type's swing.
+    Sub { key: "dooropening", parent: "door", name: ui_msg!("Opening"), off: false },
+    Sub { key: "windowopening", parent: "window", name: ui_msg!("Opening"), off: false },
 ];
 
 /// The subcategory `key` is, if it is one.
@@ -213,7 +219,7 @@ pub const MAX_LINEWORK: usize = 2000;
 /// How much a view draws of what it cuts. Coarse: the cut in one poché, an opening only its gap and jambs. Medium: a
 /// compound element's layers, each a fill with a line between, and an opening's leaf, swing and glass. Fine: the layers'
 /// patterns too, and a floor's surface pattern.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Detail {
     Coarse,
@@ -1036,11 +1042,16 @@ pub struct Look {
     /// The layers of each CAD drawing it hides, by the drawing's name.
     layers: BTreeMap<String, BTreeSet<String>>,
     paint: BTreeMap<Id, Override>,
+    /// How element `id`'s lines in subcategory `key` are drawn where the view says so of that subcategory: its row's override
+    /// over its category's, under the filters and the element's own.
+    sub_paint: BTreeMap<(Id, &'static str), Override>,
     style: VisualStyle,
     /// The section box a 3D view is cut to, its min and max corners, while it's on.
     section: Option<([f64; 3], [f64; 3])>,
     /// A 3D view's Graphic Display Options: its edges, silhouettes and ambient shadows.
     display: crate::view3d::DisplayOptions,
+    /// How it looks at a family's forms and at what detail, which their Visibility Settings read (F8).
+    forms: crate::family::visibility::FormView,
 }
 
 /// `c` halfway to the paper.
@@ -1072,7 +1083,30 @@ impl Look {
             Some(Element::View3D(v)) => v.display,
             _ => Default::default(),
         };
-        Look { section: m.section_box(view), display, ..look }
+        use crate::family::visibility::Seen;
+        let seen = match m.elements.get(m.plan_source(view)) {
+            Some(Element::Level(_) | Element::PlanView(_)) => Seen::Plan,
+            Some(Element::Section(v) | Element::Elevation(v)) => Seen::Along(v.looking()),
+            _ => Seen::ThreeD,
+        };
+        let forms = crate::family::visibility::FormView { seen, ..look.forms };
+        Look { section: m.section_box(view), display, forms, ..look }
+    }
+
+    /// How it looks at a family's forms, and at what detail (F8).
+    pub fn forms(&self) -> crate::family::visibility::FormView {
+        self.forms
+    }
+
+    /// This look seeing forms as `forms` says instead.
+    pub fn with_forms(self, forms: crate::family::visibility::FormView) -> Look {
+        Look { forms, ..self }
+    }
+
+    /// Whether it draws a triangle or a solid whose Visibility Settings are packed as `vis`
+    /// ([`crate::family::visibility::packed`]): in projection, or (`cut`) as a section's poché.
+    pub fn forms_show(&self, vis: u32, cut: bool) -> bool {
+        vis == 0 || self.forms.shows(vis, cut)
     }
 
     /// How a 3D view draws its edges and shadows: its Graphic Display Options.
@@ -1101,7 +1135,8 @@ impl Look {
     /// (a room's area) makes redraws slow.
     pub fn with(m: &Model, own: &Graphics) -> Look {
         let g = own.resolved(m);
-        let mut look = Look { style: g.style, layers: own.layers.clone(), ..Look::default() };
+        let forms = crate::family::visibility::FormView { detail: g.detail, ..Default::default() };
+        let mut look = Look { style: g.style, layers: own.layers.clone(), forms, ..Look::default() };
         // Nothing to look for: no graphics of its own, and nothing in the project phased or in an option.
         let linked = m.elements.keys().next_back().is_some_and(|id| crate::link::is_linked(*id));
         if own.draws_as_is() && !linked && !crate::phasing::any(m) && m.rare("mass").is_empty() {
@@ -1154,14 +1189,29 @@ impl Look {
             } else {
                 base.clone()
             };
-            let mut over = g.categories.get(cat).map_or(all.clone(), |c| c.over(&all));
-            for (a, picked) in applied.iter().rev().filter(|(_, picked)| picked.contains(&id)) {
-                let _ = picked;
-                over = a.over.over(&over);
+            let own = m.elements.guid(id).and_then(|k| g.elements.get(&k));
+            // Each filter's from the last to the first, then the element's own, over `under`.
+            let layered = |under: Override| {
+                let mut over = under;
+                for (a, _) in applied.iter().rev().filter(|(_, picked)| picked.contains(&id)) {
+                    over = a.over.over(&over);
+                }
+                if let Some(own) = own {
+                    over = own.over(&over);
+                }
+                over
+            };
+            let category = g.categories.get(cat).map_or(all.clone(), |c| c.over(&all));
+            // A subcategory's row, over its category's: what its lines are drawn with where it says something.
+            for s in subcategories(cat) {
+                if let Some(row) = g.categories.get(s.key) {
+                    let o = layered(row.over(&category));
+                    if !o.is_empty() {
+                        look.sub_paint.insert((id, s.key), o);
+                    }
+                }
             }
-            if let Some(own) = m.elements.guid(id).and_then(|k| g.elements.get(&k)) {
-                over = own.over(&over);
-            }
+            let over = layered(category);
             // A subcategory's elements go with their category, hidden.
             if over.hidden || sub(cat).is_some_and(|s| g.hides(s.parent)) {
                 look.hidden.insert(id);
@@ -1229,11 +1279,14 @@ impl Look {
     /// `d` with its primitives drawn as the view says: the colours, weights and dashes of each
     /// element's lines in projection and cut, its fills, lighter in halftone.
     pub fn dress(&self, d: &mut Drawing) {
-        if self.paint.is_empty() {
+        if self.paint.is_empty() && self.sub_paint.is_empty() {
             return;
         }
-        for (((prim, owner), part), pen) in d.prims.iter_mut().zip(&d.owners).zip(&d.parts).zip(d.pens.iter_mut()) {
-            let Some(over) = owner.and_then(|id| self.paint.get(&id)) else { continue };
+        let subs = &d.subs;
+        for (i, (((prim, owner), part), pen)) in d.prims.iter_mut().zip(&d.owners).zip(&d.parts).zip(d.pens.iter_mut()).enumerate() {
+            let sub = subs.get(i).copied().flatten();
+            let of_sub = owner.zip(sub).and_then(|k| self.sub_paint.get(&k));
+            let Some(over) = of_sub.or_else(|| owner.and_then(|id| self.paint.get(&id))) else { continue };
             let style = if *part == Part::Cut { &over.cut } else { &over.projection };
             match prim {
                 Prim::Line { color, dash, .. } => {

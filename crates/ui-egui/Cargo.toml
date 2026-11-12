@@ -15,6 +15,7 @@ bimcraft-i18n = { workspace = true }
 bimcraft-core = { workspace = true }
 bimcraft-plugin = { workspace = true }
 bimcraft-update = { workspace = true }
+bimcraft-assistant = { workspace = true }
 serde_json = { workspace = true }
 egui = { workspace = true }
 eframe = { workspace = true }
@@ -30,8 +31,11 @@ hidapi = { version = "2.6.7", default-features = false, features = ["windows-nat
 
 [dev-dependencies]
 tempfile = { workspace = true }
-egui_kittest = { workspace = true }
+# `wgpu` lets a test render the window to a picture (looking at the result); `image` names the picture's type.
+egui_kittest = { workspace = true, features = ["wgpu"] }
+image = { version = "0.25", default-features = false }
 bimcraft-update = { workspace = true, features = ["testing"] }
+bimcraft-assistant = { workspace = true, features = ["testing"] }
 
 [build-dependencies]
 bimcraft-i18n = { workspace = true, features = ["catalog"] }

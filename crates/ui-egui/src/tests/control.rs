@@ -376,3 +376,168 @@ fn the_settings_file_keeps_the_agents_port_and_a_window_opens_the_port_it_keeps(
     assert!(bimcraft_core::bridge::read_entry(&bridge).is_none(), "the window's bridge file goes with it");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn a_connected_agent_reads_the_users_current_selection_and_active_view() {
+    let (mut h, _file) = controlled("context");
+    click(&mut h, P2(4000.0, 0.0));
+    assert_eq!(h.state().selection.len(), 1, "the user picked a wall on the canvas");
+    let selected = h.state().selection[0];
+    let line = request(&h, json!({"op": "context"}));
+    let replies = ask(&mut h, vec![line]);
+    assert!(replies[0]["ok"].is_object(), "context must be available to the connected agent: {:?}", replies[0]);
+    assert_eq!(replies[0]["ok"]["selection"][0]["id"], json!(selected));
+    assert_eq!(replies[0]["ok"]["active_view"]["kind"], "plan");
+    assert_eq!(replies[0]["ok"]["selection"][0]["guid"], json!(h.state().session.model.guid(selected)));
+    assert_eq!(replies[0]["ok"]["selection"][0]["category"], "wall");
+    assert_eq!(replies[0]["ok"]["active_view"]["name"], "Level 1");
+    // Navigation is the user's: the connected agent must see the newly active view.
+    browse(&mut h, "Room Schedule");
+    let line = request(&h, json!({"op": "context", "read_only": true}));
+    let replies = ask(&mut h, vec![line]);
+    assert_eq!(replies[0]["ok"]["active_view"]["kind"], "schedule");
+    assert_eq!(replies[0]["ok"]["active_view"]["name"], "Room Schedule");
+    assert_eq!(replies[0]["ok"]["selection"][0]["id"], json!(selected));
+}
+
+#[test]
+fn desktop_context_follows_clearing_deletion_and_the_users_new_project() {
+    let (mut h, _file) = controlled("context-lifecycle");
+    click(&mut h, P2(4000.0, 0.0));
+    let selected = h.state().selection[0];
+    click(&mut h, P2(4000.0, 3000.0));
+    let line = request(&h, json!({"op": "context"}));
+    assert_eq!(ask(&mut h, vec![line])[0]["ok"]["selection"], json!([]));
+    click(&mut h, P2(4000.0, 0.0));
+    let lines = vec![
+        request(&h, json!({"op": "execute", "command": "delete", "params": {"ids": [selected]}})),
+        request(&h, json!({"op": "context"})),
+    ];
+    let replies = ask(&mut h, lines);
+    assert!(replies[0]["ok"].is_object(), "{replies:?}");
+    assert_eq!(replies[1]["ok"]["selection"], json!([]));
+    click(&mut h, P2(8000.0, 3000.0));
+    assert!(!h.state().selection.is_empty());
+    // File > New > Project: New is a list of Project and Family.
+    new_project(&mut h);
+    press(&mut h, "Don't Save");
+    let line = request(&h, json!({"op": "context"}));
+    let replies = ask(&mut h, vec![line]);
+    assert_eq!(replies[0]["ok"]["selection"], json!([]));
+    assert_eq!(replies[0]["ok"]["active_view"]["name"], "Level 1");
+    assert!(walls(&h).is_empty());
+}
+
+#[test]
+fn desktop_context_is_read_only_and_home_has_no_active_view() {
+    let (mut h, _file) = controlled("context-home");
+    click(&mut h, P2(4000.0, 0.0));
+    h.state_mut().agents.edit = false;
+    let kept = Arc::clone(&h.state().session.model);
+    let history: Vec<String> = h.state().session.history().iter().map(|s| s.to_string()).collect();
+    let line = request(&h, json!({"op": "context", "read_only": true}));
+    assert_eq!(ask(&mut h, vec![line])[0]["ok"]["selection"].as_array().unwrap().len(), 1);
+    assert!(Arc::ptr_eq(&kept, &h.state().session.model));
+    assert_eq!(h.state().session.history(), history);
+    h.state_mut().show_start_page();
+    h.run();
+    let line = request(&h, json!({"op": "context"}));
+    let reply = ask(&mut h, vec![line]);
+    assert!(reply[0]["ok"].is_object(), "{reply:?}");
+    assert!(reply[0]["ok"]["active_view"].is_null());
+    assert_eq!(reply[0]["ok"]["selection"], json!([]));
+}
+
+#[test]
+fn desktop_context_does_not_disclose_selection_or_view_without_the_token() {
+    let (mut h, _file) = controlled("context-auth");
+    click(&mut h, P2(4000.0, 0.0));
+    assert_eq!(h.state().selection.len(), 1);
+    for line in [json!({"op": "context"}), json!({"op": "context", "token": "incorrect"})] {
+        let replies = ask(&mut h, vec![line.to_string()]);
+        assert_eq!(replies.len(), 1);
+        assert!(replies[0]["error"].as_str().unwrap().contains("token"));
+        assert!(replies[0].get("ok").is_none());
+        assert!(replies[0].get("selection").is_none());
+        assert!(replies[0].get("active_view").is_none());
+    }
+}
+
+#[test]
+fn desktop_context_waits_for_model_replacement_and_omits_deleted_elements_before_tidy() {
+    use std::sync::atomic::AtomicBool;
+    use std::sync::mpsc::channel;
+    let mut h = app(BOX);
+    click(&mut h, P2(4000.0, 0.0));
+    let selected = h.state().selection[0];
+    let (control, tx) = Control::detached();
+    h.state_mut().use_control(control);
+    h.state_mut().session.execute("delete", &json!({"ids": [selected]})).unwrap();
+    let (reply, answer) = channel();
+    tx.send(crate::control::Asked { request: bimcraft_core::bridge::Request::Context, reply, abandoned: Arc::new(AtomicBool::new(false)) })
+        .unwrap();
+    h.step();
+    let reply: Value = serde_json::from_str(&answer.recv().unwrap()).unwrap();
+    assert_eq!(reply["ok"]["selection"], json!([]));
+    // An embedder may replace the session between frames. Its IDs may be reused in the new model.
+    click(&mut h, P2(8000.0, 3000.0));
+    assert!(!h.state().selection.is_empty());
+    h.state_mut().session.execute("new", &json!({"name": "Fresh"})).unwrap();
+    let (reply, answer) = channel();
+    tx.send(crate::control::Asked { request: bimcraft_core::bridge::Request::Context, reply, abandoned: Arc::new(AtomicBool::new(false)) })
+        .unwrap();
+    h.step();
+    let reply: Value = serde_json::from_str(&answer.recv().unwrap()).unwrap();
+    assert!(reply["error"].as_str().unwrap().contains("switching projects"));
+    let (reply, answer) = channel();
+    tx.send(crate::control::Asked { request: bimcraft_core::bridge::Request::Context, reply, abandoned: Arc::new(AtomicBool::new(false)) })
+        .unwrap();
+    h.step();
+    let reply: Value = serde_json::from_str(&answer.recv().unwrap()).unwrap();
+    assert_eq!(reply["ok"]["project"], "Fresh");
+    assert_eq!(reply["ok"]["selection"], json!([]));
+    assert_eq!(reply["ok"]["active_view"]["name"], "Level 1");
+}
+
+#[test]
+fn desktop_context_identifies_ceiling_3d_sections_sheets_and_dependent_plan_views() {
+    let (mut h, _file) = controlled("context-views");
+    let section =
+        h.state_mut().session.execute("section", &json!({"start": [0,3000], "end": [8000,3000], "name": "Synthetic Cut"})).unwrap()["id"]
+            .as_u64()
+            .unwrap();
+    let elevation =
+        h.state_mut().session.execute("elevation", &json!({"facing": "north", "name": "Synthetic North"})).unwrap()["id"].as_u64().unwrap();
+    let sheet = h.state_mut().session.execute("sheet", &json!({"number": "A101", "name": "Synthetic"})).unwrap()["id"].as_u64().unwrap();
+    let dependent = h
+        .state_mut()
+        .session
+        .execute("duplicate_view", &json!({"view": "Level 1", "mode": "dependent", "name": "Synthetic Dependent"}))
+        .unwrap()["id"]
+        .as_u64()
+        .unwrap();
+    h.run();
+    // The same window controls and view tabs are rendered for each kind; context names the actual active view.
+    for (view, kind, name) in [
+        (Sheet::Ceiling(100000), "ceiling", "Level 1"),
+        (Sheet::View3D, "3d", "{3D}"),
+        (Sheet::Section(section), "section", "Synthetic Cut"),
+        (Sheet::Section(elevation), "elevation", "Synthetic North"),
+        (Sheet::Paper(sheet), "sheet", "A101 - Synthetic"),
+        (Sheet::Plan(dependent), "plan", "Synthetic Dependent"),
+    ] {
+        h.state_mut().open_sheet(view);
+        h.run();
+        let line = request(&h, json!({"op": "context"}));
+        let replies = ask(&mut h, vec![line]);
+        let context = &replies[0]["ok"]["active_view"];
+        assert_eq!(context["kind"], kind, "{replies:?}");
+        assert_eq!(context["name"], name, "{replies:?}");
+        let id = match view {
+            Sheet::Ceiling(id) | Sheet::Section(id) | Sheet::Paper(id) | Sheet::Plan(id) => Some(id),
+            _ => h.state().active_3d(),
+        };
+        assert_eq!(context["id"], json!(id));
+        assert_eq!(context["guid"], json!(id.map(|id| h.state().session.model.guid(id))));
+    }
+}

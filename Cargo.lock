@@ -456,6 +456,7 @@ checksum = "ac07cdecf99051d9a5238b80f35af32cdeba5b336e55d957b318b50137e18da5"
 name = "bimcraft"
 version = "0.11.0"
 dependencies = [
+ "bimcraft-assistant",
  "bimcraft-core",
  "bimcraft-dwg",
  "bimcraft-i18n",
@@ -467,6 +468,17 @@ dependencies = [
  "fmv-macos-events",
  "rfd",
  "serde_json",
+]
+
+[[package]]
+name = "bimcraft-assistant"
+version = "0.11.0"
+dependencies = [
+ "bimcraft-core",
+ "ring",
+ "serde_json",
+ "tempfile",
+ "ureq",
 ]
 
 [[package]]
@@ -548,6 +560,7 @@ dependencies = [
 name = "bimcraft-ui-egui"
 version = "0.11.0"
 dependencies = [
+ "bimcraft-assistant",
  "bimcraft-core",
  "bimcraft-i18n",
  "bimcraft-plugin",
@@ -557,6 +570,7 @@ dependencies = [
  "egui",
  "egui_kittest",
  "hidapi",
+ "image",
  "pollster 1.0.1",
  "rayon",
  "rfd",
@@ -1098,11 +1112,16 @@ version = "0.36.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5eb3f3effb2726fee23449293e67acbf6cc6ce35525b1722bd5743bb348114d5"
 dependencies = [
+ "eframe",
  "egui",
+ "egui-wgpu",
+ "image",
  "kittest",
  "log",
+ "pollster 1.0.1",
  "serde",
  "toml",
+ "wgpu",
 ]
 
 [[package]]
