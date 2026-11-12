@@ -86,6 +86,17 @@ fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
+/// Sends to the guests from any thread, as [`Host::send`] does: the assistant's, whose turn runs on a guest's key.
+#[derive(Clone)]
+pub struct Mailer(Arc<Shared>);
+
+impl Mailer {
+    pub fn send(&self, peer: u32, msg: &Value) -> bool {
+        let peers = lock(&self.0.peers);
+        peers.iter().find(|p| p.person.id == peer).is_some_and(|p| Shared::queue(p, Out::of(msg)))
+    }
+}
+
 impl Shared {
     fn event(&self, e: HostEvent) {
         let _ = self.events.send(e);
@@ -212,8 +223,12 @@ impl Host {
 
     /// Sends `msg` to one guest; false when it isn't there, or isn't keeping up (then it is hung up on).
     pub fn send(&self, peer: u32, msg: &Value) -> bool {
-        let peers = lock(&self.shared.peers);
-        peers.iter().find(|p| p.person.id == peer).is_some_and(|p| Shared::queue(p, Out::of(msg)))
+        self.mailer().send(peer, msg)
+    }
+
+    /// What sends to a guest from another thread than the window's.
+    pub fn mailer(&self) -> Mailer {
+        Mailer(Arc::clone(&self.shared))
     }
 
     /// Sends `msg` to every guest but `except`.

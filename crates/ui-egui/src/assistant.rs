@@ -26,6 +26,8 @@ use crate::style::pal;
 
 /// What the palette and a refused send say of a key that is saved under a passphrase and not yet opened.
 const LOCKED: &str = msg!("The saved API key is locked: unlock it in the Assistant settings.");
+/// What `agreed` holds once the user has read where a Co-Work session's messages go.
+const SESSION: &str = "cowork";
 
 /// How many projects' token counts are kept apart.
 pub const MAX_PROJECTS: usize = 100;
@@ -116,7 +118,7 @@ impl State {
     }
 
     /// The key a send uses: the environment's, else the typed one.
-    fn key(&self) -> String {
+    pub(crate) fn key(&self) -> String {
         self.env_key().unwrap_or_else(|| self.key.0.trim().to_string())
     }
 
@@ -275,7 +277,7 @@ impl State {
     }
 
     /// Adds tokens the provider counted to the project's. A hundred projects are told apart; the rest count together as one not yet saved.
-    fn add_usage(&mut self, project: String, used: Usage) {
+    pub(crate) fn add_usage(&mut self, project: String, used: Usage) {
         let key = if self.usage.len() >= MAX_PROJECTS && !self.usage.contains_key(&project) { String::new() } else { project };
         self.usage.entry(key).or_default().add(used);
     }
@@ -287,6 +289,11 @@ impl State {
             sum.add(*u);
         }
         sum
+    }
+
+    /// The user has read, once, where a Co-Work session's messages go.
+    pub(crate) fn agree_session(&mut self) {
+        self.agreed.insert(SESSION);
     }
 
     /// Whether the chat is working on a message.
@@ -316,7 +323,7 @@ impl BimApp {
         }
         self.made_in();
         // The assistant is an agent as the control port's are: a window that lets agents only read lets it only read.
-        let access = if self.agents.edit { Access::Edit } else { Access::Read };
+        let access = if self.agents.edit && !self.cowork_ai.reads_only { Access::Edit } else { Access::Read };
         let Some(chat) = self.assistant.chat.as_mut() else { return };
         let changed = chat.poll(&mut self.session, access);
         let used = chat.take_usage();
@@ -389,12 +396,19 @@ impl BimApp {
             }
         }
         let a = &self.assistant;
-        let summary = format!("{} · {}", a.provider.name(), a.model);
-        let no_key = (a.env_key().is_none() && !key_ok(a.key.0.trim()))
+        // In a Co-Work session the chat is the host's: a guest's palette shows it as the host sent it, and says whose key it runs on.
+        let (shown, session) = (self.cowork_ai.shown.as_ref(), self.cowork.is_some());
+        let on = &self.cowork_ai.on;
+        let summary = match shown.map_or(on, |s| &s.on) {
+            on if session && !on.is_empty() => on.clone(),
+            _ => format!("{} · {}", a.provider.name(), a.model),
+        };
+        let no_key = (!session && a.env_key().is_none() && !key_ok(a.key.0.trim()))
             .then(|| if a.locked() { t(LOCKED) } else { t("No API key yet. Add one in the Assistant settings.") }.to_string());
         // Sticking to the bottom is for a conversation under way: before it, the palette shows its top.
-        let talking = !a.log().is_empty();
-        let busy = a.busy();
+        let talking = !shown.map_or(a.log(), |s| s.log.as_slice()).is_empty();
+        let busy = shown.map_or(a.busy(), |s| s.busy);
+        let guest = self.guest();
         ScrollArea::vertical().id_salt("assistant").auto_shrink([false, false]).stick_to_bottom(talking).show(ui, |ui| {
             Frame::new().inner_margin(8.0).show(ui, |ui| {
                 ui.set_width(ui.available_width());
@@ -403,7 +417,7 @@ impl BimApp {
                     if ui.small_button(t("Assistant settings")).clicked() {
                         self.settings_page = Some(Page::Assistant);
                     }
-                    if ui.add_enabled(!busy, egui::Button::new(t("New chat")).small()).clicked()
+                    if ui.add_enabled(!busy && !guest, egui::Button::new(t("New chat")).small()).clicked()
                         && let Some(chat) = self.assistant.chat.as_mut()
                     {
                         chat.clear();
@@ -413,11 +427,14 @@ impl BimApp {
                     ui.label(RichText::new(note).small().color(pal().muted));
                 }
                 ui.separator();
-                for (i, line) in self.assistant.log().iter().enumerate() {
+                let shown = self.cowork_ai.shown.as_ref();
+                for (i, line) in shown.map_or(self.assistant.log(), |s| s.log.as_slice()).iter().enumerate() {
                     log_line(ui, i, line);
                 }
-                if let Some(chat) = &self.assistant.chat {
-                    checklist(ui, &chat.todos);
+                match (shown, &self.assistant.chat) {
+                    (Some(s), _) => checklist(ui, &s.todos),
+                    (None, Some(chat)) => checklist(ui, &chat.todos),
+                    (None, None) => {}
                 }
                 if busy {
                     // Not a spinner: the reply wakes the window, so nothing needs a frame after frame meanwhile.
@@ -498,9 +515,16 @@ impl BimApp {
     /// The agreement said once, then the box the user writes in: a frame holding the files picked, the text, and a row with Attach,
     /// the keys and Send (Stop while a message is worked on). Enter sends and Shift+Enter starts a new line, as in Claude Code.
     fn assistant_input(&mut self, ui: &mut Ui) {
-        let busy = self.assistant.busy();
-        let agreed = self.assistant.agreed.contains(self.assistant.provider.key());
-        if !agreed {
+        let busy = self.cowork_ai.shown.as_ref().map_or(self.assistant.busy(), |s| s.busy);
+        let session = self.cowork.is_some();
+        let agreed = self.assistant.agreed.contains(if session { SESSION } else { self.assistant.provider.key() });
+        if !agreed && session {
+            ui.label(
+                RichText::new(t("In this Co-Work session your messages, and what the assistant reads of the project, go to the provider of the key each turn runs on: yours when you have one, else one lent to you. The palette says whose."))
+                    .small()
+                    .color(pal().muted),
+            );
+        } else if !agreed {
             ui.label(
                 RichText::new(tf(
                     "Your messages, and what the assistant reads of this project (its levels, elements, schedules), are sent to {}. Nothing is sent until you send a message.",
@@ -564,8 +588,15 @@ impl BimApp {
                 });
             });
         });
-        if stop && let Some(chat) = self.assistant.chat.as_mut() {
-            chat.stop(&mut self.session);
+        if stop {
+            match &self.cowork {
+                Some(crate::cowork::Live::Guest(j)) => j.stop_chat(),
+                _ => {
+                    if let Some(chat) = self.assistant.chat.as_mut() {
+                        chat.stop(&mut self.session);
+                    }
+                }
+            }
         }
         if attach {
             let ctx = ui.ctx().clone();
@@ -591,6 +622,9 @@ impl BimApp {
 
     /// Sends what is in the box: the agreement is the Send of the first time, and the model and provider are the palette's.
     fn send_assistant(&mut self, ctx: &Context) {
+        if self.cowork.is_some() {
+            return self.send_in_session(ctx);
+        }
         let a = &mut self.assistant;
         let key = a.key();
         let locked = a.locked() && a.env_key().is_none();

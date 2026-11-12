@@ -33,7 +33,7 @@ mod tests;
 pub use code::Code;
 pub use discovery::{Found, discover};
 pub use guest::{Guest, GuestEvent};
-pub use host::{Host, HostConfig, HostEvent, Person};
+pub use host::{Host, HostConfig, HostEvent, Mailer, Person};
 
 use std::time::Duration;
 

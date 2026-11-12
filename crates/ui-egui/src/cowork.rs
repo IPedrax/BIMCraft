@@ -26,8 +26,11 @@ use serde_json::{Value, json};
 
 use crate::lang::{t, tf};
 use crate::popup::Modal;
+
+mod chat;
 use crate::style::pal;
 use crate::{BimApp, Sheet};
+pub use chat::{Ai, Lending};
 
 /// What a guest's copy says when something would change it in this window: the host makes every change.
 pub(crate) const GUEST: &str = "it is the host's project in a Co-Work session: the host makes every change, and a guest's go to the host";
@@ -47,6 +50,10 @@ pub struct Prefs {
     pub visible: bool,
     /// Whether guests may edit, or only look.
     pub edit: bool,
+    /// Whether the host's AI key answers guests who have none.
+    pub lend_key: bool,
+    /// Whether, as a guest, this window's key answers others who have none.
+    pub lending: Lending,
 }
 
 impl Default for Prefs {
@@ -58,13 +65,16 @@ impl Default for Prefs {
             port: PORT,
             visible: true,
             edit: true,
+            lend_key: true,
+            lending: Lending::Ask,
         }
     }
 }
 
 impl Prefs {
     pub fn to_json(&self) -> Value {
-        json!({"name": self.name, "addr": self.addr, "port": self.port, "visible": self.visible, "edit": self.edit})
+        let (lend_key, lending) = (self.lend_key, self.lending.key());
+        json!({"name": self.name, "addr": self.addr, "port": self.port, "visible": self.visible, "edit": self.edit, "lend_key": lend_key, "lending": lending})
     }
 
     pub fn from_json(v: &Value, base: Prefs) -> Prefs {
@@ -74,6 +84,8 @@ impl Prefs {
             port: v["port"].as_u64().and_then(|p| u16::try_from(p).ok()).unwrap_or(base.port),
             visible: v["visible"].as_bool().unwrap_or(base.visible),
             edit: v["edit"].as_bool().unwrap_or(base.edit),
+            lend_key: v["lend_key"].as_bool().unwrap_or(base.lend_key),
+            lending: v["lending"].as_str().and_then(Lending::from_key).unwrap_or(base.lending),
         }
     }
 }
@@ -132,7 +144,11 @@ impl BimApp {
         let said = match &mut self.cowork {
             Some(Live::Host(h)) => h.pump(&mut self.session),
             Some(Live::Guest(j)) => j.pump(&mut self.session),
-            None => return,
+            None => {
+                // The chat of a session over is gone with it.
+                self.cowork_ai = Ai::default();
+                return;
+            }
         };
         for happened in said {
             let (text, error) = match happened {
@@ -142,6 +158,31 @@ impl BimApp {
                 Happened::Edited(by, ids) => {
                     let colour = others_of(&self.cowork).and_then(|o| o.get(&by)).map_or(0, |o| o.colour);
                     self.cowork_seen.flashes.push((Instant::now(), colour, ids));
+                    continue;
+                }
+                Happened::ChatSay { peer, name, text, files } => {
+                    let taken = match bimcraft_assistant::wire::files_from(&files) {
+                        Some(files) => self.chat_on_host(ctx, peer, &name, &text, files),
+                        None => Err(t("The files with that message weren't ones the assistant takes").to_string()),
+                    };
+                    if let (Err(why), Some(Live::Host(h))) = (taken, &self.cowork) {
+                        h.refuse(peer, &why);
+                    }
+                    continue;
+                }
+                Happened::ChatStop(name) => {
+                    if let Some(chat) = self.assistant.chat.as_mut().filter(|c| c.busy()) {
+                        chat.stop(&mut self.session);
+                        self.status = crate::Status { text: tf("{} stopped the assistant", &[&name]), error: false };
+                    }
+                    continue;
+                }
+                Happened::Chat(state) => {
+                    self.chat_happened(&state);
+                    continue;
+                }
+                Happened::AiRequest { reference, own, provider, model, history } => {
+                    self.lend_for(reference, own, &provider, model, history);
                     continue;
                 }
                 Happened::Over(why) => {
@@ -157,6 +198,7 @@ impl BimApp {
             };
             self.status = crate::Status { text, error };
         }
+        self.pump_chat(ctx);
         let seen = &mut self.cowork_seen;
         seen.flashes.retain(|(at, ..)| at.elapsed() < FLASH);
         if !seen.flashes.is_empty() {
@@ -464,6 +506,8 @@ impl BimApp {
                         if ui.checkbox(&mut h.edit, t("Guests may edit")).changed() {
                             self.cowork_prefs.edit = h.edit;
                         }
+                        ui.checkbox(&mut self.cowork_prefs.lend_key, t("Guests without an AI key may use mine"))
+                            .on_hover_text(t("Whoever has a key of their own always uses it. Off, one who has none uses a key a guest lends"));
                         ui.add_space(6.0);
                         let people = h.people();
                         if people.is_empty() {
@@ -588,6 +632,15 @@ impl BimApp {
         ));
         ui.checkbox(&mut p.edit, t("Guests may edit"))
             .on_hover_text(t("Off, guests only look: they see the project and the others, and change nothing"));
+        ui.add_space(6.0);
+        ui.label(t("The shared AI chat: whoever has an AI key of their own uses it; one who has none is lent one."));
+        ui.checkbox(&mut p.lend_key, t("Guests without an AI key may use mine"));
+        ui.horizontal(|ui| {
+            ui.label(t("As a guest, lend my AI key to those without one:"));
+            for l in Lending::ALL {
+                ui.radio_value(&mut p.lending, l, t(l.label()));
+            }
+        });
     }
 }
 

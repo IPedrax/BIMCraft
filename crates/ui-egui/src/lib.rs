@@ -911,6 +911,8 @@ pub struct BimApp {
     cowork_dialog: Option<cowork::Dialog>,
     /// What the window keeps of the others in the session and of where it is itself.
     cowork_seen: cowork::Seen,
+    /// The session's shared AI chat, as this window takes part in it.
+    cowork_ai: cowork::Ai,
     /// The Revit file being read, on a thread of its own.
     revit_job: Option<revit::Job>,
     /// Files to open at the next frame: the command line's, and what the system asked for while a Revit file was being read.
@@ -1557,6 +1559,7 @@ impl BimApp {
             cowork_prefs: cowork::Prefs::default(),
             cowork_dialog: None,
             cowork_seen: cowork::Seen::default(),
+            cowork_ai: cowork::Ai::default(),
             revit_job: None,
             opens: Vec::new(),
             dialog: None,
@@ -3466,6 +3469,7 @@ impl BimApp {
         fresh.agents = std::mem::take(&mut self.agents);
         fresh.cowork_prefs = std::mem::take(&mut self.cowork_prefs);
         fresh.cowork = fresh.cowork_kept(self.cowork.take());
+        fresh.cowork_ai = std::mem::take(&mut self.cowork_ai);
         fresh.opens = std::mem::take(&mut self.opens);
         (fresh.recent, fresh.recent_path) = (std::mem::take(&mut self.recent), self.recent_path.take());
         fresh.autosave = std::mem::take(&mut self.autosave);
@@ -5869,6 +5873,7 @@ impl BimApp {
         self.options_window(ctx);
         self.purge_window(ctx);
         self.cowork_window(ctx);
+        self.lend_window(ctx);
         if std::mem::take(&mut self.link_dialog) {
             self.link_model_dialog(ctx);
         }

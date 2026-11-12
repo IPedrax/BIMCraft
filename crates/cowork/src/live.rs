@@ -2,11 +2,17 @@
 //! them) and a guest's ([`Joined`]: its copy, kept the host's model; what reads runs on it, what edits goes to the host). A window
 //! calls `pump` once a pass and lets these do the rest, so the desktop and the tests drive the same thing. Each also keeps the
 //! others in the session ([`Other`]: their name, colour and [`Presence`]) and sends its own window's presence (`present`).
+//!
+//! The assistant's chat is the host's: a guest's message comes to it as [`Happened::ChatSay`], the window sends everyone the chat as
+//! it is ([`Hosting::chat`], JSON the desktop builds), and a turn that runs on a guest's key asks that guest's window through a
+//! [`Lend`], which waits on the assistant's thread while the guest's machine makes the request with its own key. No key is ever sent:
+//! a guest says only that it has one, for which provider and model, and whether it lends it ([`AiKey`]).
 
 use std::collections::BTreeMap;
 use std::io;
 use std::net::SocketAddr;
-use std::sync::Arc;
+use std::sync::mpsc::{Sender, channel};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
 use bimcraft_core::cowork::{self, Delta, Place, Presence};
@@ -14,7 +20,7 @@ use bimcraft_core::engine::Session;
 use bimcraft_core::model::{Id, Model};
 use serde_json::{Value, json};
 
-use crate::{Code, Guest, GuestEvent, Host, HostConfig, HostEvent, MAX_NAME, Timing, Wake};
+use crate::{Code, Guest, GuestEvent, Host, HostConfig, HostEvent, MAX_NAME, Mailer, Timing, Wake};
 
 /// The version a guest must share with its host.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -25,6 +31,8 @@ const MAX_BATCH: usize = 10_000;
 const MAX_LABEL: usize = 100;
 /// The longest error from the host a guest keeps, in characters.
 const MAX_ERROR: usize = 2_000;
+/// How long a turn on a guest's key waits for that guest's window: its owner may be asked first, and the provider may take a while.
+pub const LENT_WAIT: Duration = Duration::from_secs(300);
 
 /// What happened that the window says.
 #[derive(Clone, Debug, PartialEq)]
@@ -38,6 +46,92 @@ pub enum Happened {
     Failed(String),
     /// Someone else changed these elements: the window lights them in their colour for a moment.
     Edited(u32, Vec<Id>),
+    /// The host's window: a guest's message for the assistant, with its files as the guest sent them (to read strictly).
+    ChatSay {
+        peer: u32,
+        name: String,
+        text: String,
+        files: Value,
+    },
+    /// The host's window: a guest stopped the assistant's turn.
+    ChatStop(String),
+    /// A guest's window: the chat as the host's window sent it (JSON that window builds).
+    Chat(Value),
+    /// A guest's window: the host asks for a request on this window's key, for a message of its own (`own`) or another's; the
+    /// window answers with [`Joined::ai_reply`].
+    AiRequest {
+        reference: u64,
+        own: bool,
+        provider: String,
+        model: String,
+        history: Value,
+    },
+}
+
+/// A guest's AI key as it tells the host, which never has the key itself: the provider and model it is for, and whether it pays for
+/// others' messages (its owner said Always, or Ask and hasn't said no).
+#[derive(Clone, Debug, PartialEq)]
+pub struct AiKey {
+    pub provider: String,
+    pub model: String,
+    pub lends: bool,
+}
+
+/// Whose key pays for a message of `sender`'s (0, the host): the sender's own when it has one; for one who has none, a key lent to
+/// it: the host's (0) while the host lends it (`own_keys` false), else the first guest in join order who lends. None when nobody can.
+pub fn payer(sender: u32, host_key: bool, own_keys: bool, keys: &BTreeMap<u32, AiKey>) -> Option<u32> {
+    let has = if sender == 0 { host_key } else { keys.contains_key(&sender) };
+    if has {
+        return Some(sender);
+    }
+    if host_key && !own_keys {
+        return Some(0);
+    }
+    keys.iter().find(|(_, k)| k.lends).map(|(id, _)| *id)
+}
+
+/// The requests asked of guests' windows that are waiting for an answer, by reference: whose they are and where the answer goes.
+#[derive(Default)]
+struct Asks {
+    next: u64,
+    waiting: BTreeMap<u64, (u32, Sender<Result<Value, String>>)>,
+}
+
+fn lock(asks: &Mutex<Asks>) -> std::sync::MutexGuard<'_, Asks> {
+    asks.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// A guest's key, lent for one turn: [`Lend::ask`] runs on the assistant's thread.
+#[derive(Clone)]
+pub struct Lend {
+    mailer: Mailer,
+    asks: Arc<Mutex<Asks>>,
+    peer: u32,
+    name: String,
+    own: bool,
+}
+
+impl Lend {
+    /// The guest's window makes the request with its key (`provider`, `model` and the conversation, `history`) and the provider's
+    /// reply comes back, or why not: it refused, left, or took longer than [`LENT_WAIT`].
+    pub fn ask(&self, provider: &str, model: &str, history: Value) -> Result<Value, String> {
+        let (tx, rx) = channel();
+        let reference = {
+            let mut asks = lock(&self.asks);
+            asks.next += 1;
+            let n = asks.next;
+            asks.waiting.insert(n, (self.peer, tx));
+            n
+        };
+        let msg = json!({"op": "ai_request", "ref": reference, "own": self.own, "provider": provider, "model": model, "history": history});
+        let got = if self.mailer.send(self.peer, &msg) {
+            rx.recv_timeout(LENT_WAIT).unwrap_or_else(|_| Err(format!("{} didn't answer in time: ask again", self.name)))
+        } else {
+            Err(format!("{} left: ask again", self.name))
+        };
+        lock(&self.asks).waiting.remove(&reference);
+        got
+    }
 }
 
 /// Someone else in the session, as this window sees them: the host is number 0, the guests their numbers in join order.
@@ -78,6 +172,10 @@ pub struct Hosting {
     seq: u64,
     /// The project hosted, by its uid.
     project: u64,
+    /// The guests' AI keys, as they told them, and the chat as the window last sent it (a newcomer has it at once).
+    keys: BTreeMap<u32, AiKey>,
+    chat: Value,
+    asks: Arc<Mutex<Asks>>,
 }
 
 impl Hosting {
@@ -88,7 +186,8 @@ impl Hosting {
         session.author = Some(name.clone());
         let project = session.model.uid;
         let sent = Arc::clone(&session.model);
-        Ok(Hosting { host, name, edit: true, people: BTreeMap::new(), mine: None, sent, seq: 0, project })
+        let (keys, chat, asks) = (BTreeMap::new(), Value::Null, Arc::default());
+        Ok(Hosting { host, name, edit: true, people: BTreeMap::new(), mine: None, sent, seq: 0, project, keys, chat, asks })
     }
 
     pub fn host(&self) -> &Host {
@@ -124,6 +223,28 @@ impl Hosting {
 
     pub fn kick(&self, peer: u32, why: &str) {
         self.host.kick(peer, why);
+    }
+
+    /// The guests' AI keys, by number, as they said (join order).
+    pub fn keys(&self) -> &BTreeMap<u32, AiKey> {
+        &self.keys
+    }
+
+    /// Sends everyone the chat as it is now (JSON the window builds), and keeps it for whoever joins next.
+    pub fn chat(&mut self, state: Value) {
+        self.host.broadcast(&json!({"op": "chat", "state": state}), None);
+        self.chat = state;
+    }
+
+    /// Tells guest `peer` its message to the assistant wasn't taken, and why.
+    pub fn refuse(&self, peer: u32, why: &str) {
+        self.host.send(peer, &json!({"op": "chat_refused", "why": why}));
+    }
+
+    /// Guest `peer`'s key for one turn, for a message of its own (`own`) or someone else's.
+    pub fn lend(&self, peer: u32, own: bool) -> Lend {
+        let name = self.people.get(&peer).map_or_else(|| "the guest".into(), |o| o.name.clone());
+        Lend { mailer: self.host.mailer(), asks: Arc::clone(&self.asks), peer, name, own }
     }
 
     /// Ends the session, telling the guests `why`; the session's steps are nobody's again.
@@ -165,10 +286,20 @@ impl Hosting {
                     for (id, p) in seen.chain(self.mine.as_ref().map(|p| (0, p))) {
                         self.host.send(peer, &json!({"op": "presence", "from": id, "presence": p}));
                     }
+                    if !self.chat.is_null() {
+                        self.host.send(peer, &json!({"op": "chat", "state": self.chat}));
+                    }
                     said.push(Happened::Joined(name));
                 }
                 HostEvent::Left { peer, why } => {
+                    self.keys.remove(&peer);
                     if let Some(o) = self.people.remove(&peer) {
+                        // A turn on this guest's key can't go on.
+                        for (who, tx) in lock(&self.asks).waiting.values() {
+                            if *who == peer {
+                                let _ = tx.send(Err(format!("{} left: ask again", o.name)));
+                            }
+                        }
                         self.send_people();
                         said.push(Happened::Left(o.name, why));
                     }
@@ -239,7 +370,35 @@ impl Hosting {
                 }
                 return;
             }
-            // The chat is the next slice's.
+            Some("chat_say") => {
+                if let Some(text) = msg["text"].as_str() {
+                    said.push(Happened::ChatSay { peer, name, text: text.into(), files: msg["files"].clone() });
+                }
+                return;
+            }
+            Some("chat_stop") => return said.push(Happened::ChatStop(name)),
+            Some("ai_key") => {
+                match (text(&msg["provider"]), text(&msg["model"])) {
+                    (Some(provider), Some(model)) => {
+                        self.keys.insert(peer, AiKey { provider, model, lends: msg["lends"] == json!(true) });
+                    }
+                    _ => {
+                        self.keys.remove(&peer);
+                    }
+                }
+                return;
+            }
+            Some("ai_reply") => {
+                let reference = msg["ref"].as_u64().unwrap_or(0);
+                // Only the guest that was asked answers.
+                if let Some((_, tx)) = lock(&self.asks).waiting.get(&reference).filter(|(who, _)| *who == peer) {
+                    let _ = tx.send(match msg["error"].as_str() {
+                        Some(e) => Err(e.chars().take(MAX_ERROR).collect()),
+                        None => Ok(msg["reply"].clone()),
+                    });
+                }
+                return;
+            }
             _ => return,
         };
         self.flush(session, peer, said);
@@ -298,6 +457,10 @@ pub struct Joined {
     asked: u64,
     /// Why the session is over, once it is.
     over: Option<String>,
+    /// This window's AI key as last told.
+    key: Option<AiKey>,
+    /// What else the host said that the window hears at its next pass.
+    said: Vec<Happened>,
 }
 
 impl Joined {
@@ -329,6 +492,8 @@ impl Joined {
             resyncing: false,
             asked: 0,
             over: None,
+            key: None,
+            said: Vec::new(),
         };
         Ok((joined, model))
     }
@@ -357,6 +522,39 @@ impl Joined {
         if self.mine.as_ref() != Some(&p) && self.guest.send(&json!({"op": "presence", "presence": p})) {
             self.mine = Some(p);
         }
+    }
+
+    /// Sends a message for the assistant, with its files (JSON the window builds).
+    pub fn say(&self, text: &str, files: Value) -> bool {
+        self.guest.send(&json!({"op": "chat_say", "text": text, "files": files}))
+    }
+
+    /// Stops the assistant's turn.
+    pub fn stop_chat(&self) {
+        self.guest.send(&json!({"op": "chat_stop"}));
+    }
+
+    /// Tells the host this window's AI key, when it changed: none, or which provider and model it is for and whether it lends it.
+    pub fn ai_key(&mut self, key: Option<AiKey>) {
+        if self.key == key {
+            return;
+        }
+        let msg = match &key {
+            Some(k) => json!({"op": "ai_key", "provider": k.provider, "model": k.model, "lends": k.lends}),
+            None => json!({"op": "ai_key"}),
+        };
+        if self.guest.send(&msg) {
+            self.key = key;
+        }
+    }
+
+    /// The answer to the host's [`Happened::AiRequest`]: the provider's reply, or why there is none.
+    pub fn ai_reply(&self, reference: u64, result: Result<Value, String>) {
+        let msg = match result {
+            Ok(reply) => json!({"op": "ai_reply", "ref": reference, "reply": reply}),
+            Err(e) => json!({"op": "ai_reply", "ref": reference, "error": e}),
+        };
+        self.guest.send(&msg);
     }
 
     /// Runs a command as the window's [`Session::execute`] would: on the copy when it only reads, on the host's model when it
@@ -429,7 +627,8 @@ impl Joined {
             }
         }
         let edited = self.edited.drain(..).map(|(by, ids)| Happened::Edited(by, ids));
-        edited.chain(self.over.iter().map(|why| Happened::Over(why.clone()))).collect()
+        let said = edited.chain(self.said.drain(..)).collect::<Vec<_>>();
+        said.into_iter().chain(self.over.iter().map(|why| Happened::Over(why.clone()))).collect()
     }
 
     /// One message of the host's: a delta taken in, in order, or the whole model asked for again when one is missing or doesn't
@@ -489,6 +688,17 @@ impl Joined {
                 let from = m["from"].as_u64().and_then(|n| u32::try_from(n).ok());
                 if let (Some(p), Some(o)) = (presence(&m["presence"]), from.and_then(|f| self.others.get_mut(&f))) {
                     o.presence = p;
+                }
+            }
+            Some("chat") => self.said.push(Happened::Chat(m["state"].clone())),
+            Some("chat_refused") => {
+                let why = m["why"].as_str().unwrap_or("the assistant didn't take the message");
+                self.said.push(Happened::Failed(why.chars().take(MAX_ERROR).collect()));
+            }
+            Some("ai_request") => {
+                if let (Some(reference), Some(provider), Some(model)) = (m["ref"].as_u64(), text(&m["provider"]), text(&m["model"])) {
+                    let (own, history) = (m["own"] == json!(true), m["history"].clone());
+                    self.said.push(Happened::AiRequest { reference, own, provider, model, history });
                 }
             }
             _ => {}

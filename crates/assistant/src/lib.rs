@@ -20,11 +20,14 @@ pub mod net;
 pub mod openai;
 pub mod saved;
 pub mod seal;
+#[cfg(test)]
+mod shared_tests;
 #[cfg(any(test, feature = "testing"))]
 pub mod testing;
 #[cfg(test)]
 mod tests;
 pub mod tools;
+pub mod wire;
 
 pub use attach::{Attached, Attachment, Body};
 pub use chat::{Chat, Line};

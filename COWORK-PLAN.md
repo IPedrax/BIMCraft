@@ -14,9 +14,9 @@ Sizes follow DISCUSSIONS-PLAN.md: S is a day or two, M about a week, L more.
   user's to set up, and the app doesn't try.
 - It works like Google's editors: you see the others live. Their mouse on a 2D view, their camera moving in 3D, what they
   select, and their edits as they make them.
-- Everyone in the session shares one AI chat. By default it runs on the host's API key, and the host can switch guests to their
-  own keys instead. When the key in use isn't there, it runs on the key of the first person to join who has one, then the next,
-  in join order. A guest is asked once before the session spends on their key.
+- Everyone in the session shares one AI chat. Whoever has an API key of their own uses it; one who has none is lent one: the
+  host's by default (the host can turn that off), else the key of the first guest to join who lends theirs, then the next, in
+  join order. A guest is asked once before the session spends on their key for someone else.
 - Undo takes back your own edits only. It fails when someone else edited the same thing after you, and says who.
 - A minimised host keeps answering. A host that closes tells every guest it disconnected.
 
@@ -24,8 +24,9 @@ Sizes follow DISCUSSIONS-PLAN.md: S is a day or two, M about a week, L more.
 
 Confirmed by the user on 2026-11-12:
 
-- **The AI key.** The host chooses whether guests' messages run on the host's key (the default) or on their own. A guest is
-  asked once per session before their key pays for anyone else's message. Slice 5.
+- **The AI key.** Whoever has a key uses their own; a lent key is only for those who have none (the user, 2026-11-12, during
+  slice 5). The host chooses whether it lends its key to guests without one (the default). A guest is asked once per session
+  before their key pays for anyone else's message. Slice 5.
 - **Undo** takes back your own last edit wherever it sits in the history, and fails, naming who, when someone changed the same
   element or the same project setting after it. Slices 1 and 3.
 - **A minimised host keeps answering; a host that closes says so.** Slice 3.

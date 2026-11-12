@@ -302,3 +302,97 @@ fn everyone_sees_where_the_others_are_and_who_changed_what_in_their_colours() {
     drop(di);
     pump_until(&mut cy, &mut sc, |c| c.others().len() == 2);
 }
+
+#[test]
+fn whoever_has_a_key_pays_with_it_and_a_lent_one_is_for_those_who_have_none() {
+    use crate::live::{AiKey, payer};
+    use std::collections::BTreeMap;
+    let key = |lends| AiKey { provider: "anthropic".into(), model: "m".into(), lends };
+    let keys = BTreeMap::from([(1, key(false)), (2, key(true)), (4, key(true))]);
+    for own_keys in [false, true] {
+        assert_eq!(payer(1, true, own_keys, &keys), Some(1), "a guest with a key pays with it");
+        assert_eq!(payer(0, true, own_keys, &keys), Some(0));
+    }
+    // One without: the host's while the host lends it, else the first guest in join order who lends.
+    assert_eq!(payer(3, true, false, &keys), Some(0));
+    assert_eq!(payer(3, true, true, &keys), Some(2));
+    assert_eq!(payer(3, false, false, &keys), Some(2));
+    assert_eq!(payer(0, false, false, &keys), Some(2), "the host without a key too");
+    // The first lender left: the next.
+    assert_eq!(payer(3, false, false, &BTreeMap::from([(1, key(false)), (4, key(true))])), Some(4));
+    assert_eq!(payer(3, false, false, &BTreeMap::from([(1, key(false))])), None, "nobody lends");
+}
+
+/// Pumps `who` until it hears something `pick` takes.
+fn hear<T>(who: &mut Joined, s: &mut Session, pick: impl Fn(&Happened) -> Option<T>) -> T {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        if let Some(t) = who.pump(s).iter().find_map(&pick) {
+            return t;
+        }
+        assert!(Instant::now() < deadline, "never heard it");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
+
+#[test]
+fn the_chat_is_the_hosts_and_a_turn_on_a_guests_key_asks_that_guests_window() {
+    use crate::live::AiKey;
+    let host = Host::start();
+    let (mut bo, mut sb) = join(&host, "Bo");
+    let bo_id = host.on(|_, h| h.as_ref().unwrap().people()[0].0);
+    bo.ai_key(Some(AiKey { provider: "openai".into(), model: "gpt".into(), lends: true }));
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while host.on(|_, h| h.as_ref().unwrap().keys().len()) == 0 {
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert_eq!(host.on(move |_, h| h.as_ref().unwrap().keys()[&bo_id].clone()).model, "gpt", "what the host has: never the key");
+    // The chat as the host's window sends it, to everyone, and to whoever comes later at once.
+    let state = json!({"log": [{"t": "you", "text": "hello"}], "busy": false});
+    let sent = state.clone();
+    host.on(move |_, h| h.as_mut().unwrap().chat(sent));
+    let chat = |h: &Happened| match h {
+        Happened::Chat(s) => Some(s.clone()),
+        _ => None,
+    };
+    assert_eq!(hear(&mut bo, &mut sb, chat), state);
+    let (mut cy, mut sc) = join(&host, "Cy");
+    assert_eq!(hear(&mut cy, &mut sc, chat), state);
+    // Bo's message comes to the host's window, and a refusal back to him.
+    bo.say("draw a wall", json!([]));
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !host
+        .said
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|h| matches!(h, Happened::ChatSay { peer, name, text, .. } if *peer == bo_id && name == "Bo" && text == "draw a wall"))
+    {
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    host.on(move |_, h| h.as_ref().unwrap().refuse(bo_id, "the assistant is still answering Ana"));
+    hear(&mut bo, &mut sb, |h| matches!(h, Happened::Failed(w) if w.contains("still answering")).then_some(()));
+    // A turn on Bo's key: the assistant's thread waits while Bo's window answers.
+    let lend = host.on(move |_, h| h.as_ref().unwrap().lend(bo_id, false));
+    let asking = std::thread::spawn({
+        let lend = lend.clone();
+        move || lend.ask("openai", "gpt", json!([{"t": "user", "text": "hi", "files": []}]))
+    });
+    let (reference, history) = hear(&mut bo, &mut sb, |h| match h {
+        Happened::AiRequest { reference, own: false, provider, model, history } if provider == "openai" && model == "gpt" => {
+            Some((*reference, history.clone()))
+        }
+        _ => None,
+    });
+    assert_eq!(history[0]["text"], "hi");
+    bo.ai_reply(reference, Ok(json!({"t": "assistant", "text": "hello"})));
+    assert_eq!(asking.join().unwrap().unwrap()["text"], "hello");
+    // Bo leaves while a turn waits on him: it ends, saying so.
+    let asking = std::thread::spawn(move || lend.ask("openai", "gpt", json!([])));
+    hear(&mut bo, &mut sb, |h| matches!(h, Happened::AiRequest { .. }).then_some(()));
+    drop(bo);
+    let got = asking.join().unwrap();
+    assert_eq!(got, Err("Bo left: ask again".into()));
+}

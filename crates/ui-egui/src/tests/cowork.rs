@@ -72,7 +72,8 @@ fn quick() -> Timing {
 /// A window that hosts as Ana, on this machine's address, out of sight of the network.
 fn host_window() -> Harness<'static, BimApp> {
     let mut h = app(BOX);
-    h.state_mut().cowork_prefs = Prefs { name: "Ana".into(), addr: "127.0.0.1".into(), port: 0, visible: false, edit: true };
+    h.state_mut().cowork_prefs =
+        Prefs { name: "Ana".into(), addr: "127.0.0.1".into(), port: 0, visible: false, edit: true, ..Prefs::default() };
     shortcut(&mut h, "CW");
     press(&mut h, "Start Co-Work");
     h
@@ -446,4 +447,134 @@ fn a_window_says_where_it_is_and_a_3d_view_boxes_what_the_others_selected() {
     assert!(h.state().my_presence().camera.is_some(), "the camera goes with a 3D view");
     drop(tx);
     thread.join().unwrap();
+}
+
+const KEY: &str = "sk-test-0123456789abcdef";
+
+/// A provider's answer as Anthropic writes it.
+fn anthropic(content: serde_json::Value, stop: &str) -> String {
+    json!({"type": "message", "role": "assistant", "content": content, "stop_reason": stop}).to_string()
+}
+
+/// The window's assistant on a fake network, with `key` (none: no key) and no environment's.
+fn with_assistant(h: &mut Harness<BimApp>, net: bimcraft_assistant::testing::Fake, key: &str) -> Arc<bimcraft_assistant::testing::Fake> {
+    let net = Arc::new(net);
+    let a = &mut h.state_mut().assistant;
+    a.attach(net.clone());
+    a.env = |_| None;
+    a.key = crate::assistant::Secret(key.into());
+    net
+}
+
+#[test]
+fn a_guests_message_runs_in_the_hosts_chat_as_the_guests_on_the_hosts_key() {
+    let mut h = host_window();
+    let wall = json!({"command": "wall", "params": {"points": [[0, 9000], [5000, 9000]]}});
+    let net = bimcraft_assistant::testing::Fake::default()
+        .reply(200, anthropic(json!([{"type": "tool_use", "id": "t1", "name": "execute", "input": wall}]), "tool_use"))
+        .reply(200, anthropic(json!([{"type": "text", "text": "Drew the wall."}]), "end_turn"));
+    let net = with_assistant(&mut h, net, KEY);
+    let (addr, code) = hosted(&h);
+    let n = wall_count(&h.state().session.model);
+    // Bo has no key: he is lent the host's, and sees the chat as the host's window sends it.
+    let bo = std::thread::spawn(move || {
+        let (mut bo, model) = Joined::join(addr, &code, "Bo", Arc::new(|| {})).unwrap();
+        let mut copy = bimcraft_core::engine::Session::new();
+        copy.adopt(model);
+        bo.say("draw a wall", json!([]));
+        let until = Instant::now() + Duration::from_secs(20);
+        loop {
+            for said in bo.pump(&mut copy) {
+                if let Happened::Chat(state) = said
+                    && state["log"].to_string().contains("Drew the wall.")
+                {
+                    return state;
+                }
+            }
+            assert!(Instant::now() < until, "Bo never saw the answer");
+            std::thread::sleep(Duration::from_millis(3));
+        }
+    });
+    frames_until(&mut h, |_| bo.is_finished());
+    let state = bo.join().unwrap();
+    assert!(state["on"].as_str().unwrap().contains("on Ana's key"), "{state}");
+    assert_eq!(state["log"][0], json!({"t": "you", "text": "draw a wall"}));
+    assert_eq!(net.seen().len(), 2, "the host's key made both requests");
+    assert_eq!(wall_count(&h.state().session.model), n + 1);
+    let top = h.state().session.steps(false)[0];
+    assert_eq!((top.label.as_str(), top.by.as_deref()), ("Assistant (Bo): draw a wall", Some("Bo")), "Bo's to undo");
+}
+
+#[test]
+fn a_guests_window_lends_its_key_once_its_owner_says_yes_and_the_key_stays_there() {
+    let ((info, info_rx), (got, got_rx)) = (channel(), channel());
+    // Ana hosts with no window and no key: Bo's window lends his, for a message of someone else's.
+    let ana = std::thread::spawn(move || {
+        let mut s = bimcraft_core::engine::Session::new();
+        s.script(BOX).unwrap();
+        let config = HostConfig {
+            addr: SocketAddr::from((Ipv4Addr::LOCALHOST, 0)),
+            version: VERSION.into(),
+            name: "Ana".into(),
+            project: "Box".into(),
+            discovery: None,
+            timing: Timing::default(),
+            wake: Arc::new(|| {}),
+        };
+        let mut hosting = Hosting::start(config, &mut s).unwrap();
+        info.send((hosting.host().port(), hosting.host().code().clone())).unwrap();
+        let mut asking = None;
+        let until = Instant::now() + Duration::from_secs(30);
+        loop {
+            hosting.pump(&mut s);
+            if asking.is_none()
+                && let Some((&id, k)) = hosting.keys().iter().next()
+            {
+                assert!(k.lends, "Bo said Ask: he lends until he says no");
+                let (lend, provider, model) = (hosting.lend(id, false), k.provider.clone(), k.model.clone());
+                asking =
+                    Some(std::thread::spawn(move || lend.ask(&provider, &model, json!([{"t": "user", "text": "hello", "files": []}]))));
+            }
+            if asking.as_ref().is_some_and(std::thread::JoinHandle::is_finished) || Instant::now() > until {
+                let _ = got.send(asking.take().map(|a| a.join().unwrap()));
+                hosting.end(&mut s, "done");
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(3));
+        }
+    });
+    let (port, code) = info_rx.recv().unwrap();
+    let mut h = app("");
+    h.state_mut().cowork_prefs.name = "Bo".into();
+    let said = json!({"type": "message", "role": "assistant", "content": [{"type": "text", "text": "Hi from Bo's key."}],
+        "stop_reason": "end_turn", "usage": {"input_tokens": 12, "output_tokens": 3}});
+    let net = bimcraft_assistant::testing::Fake::default().reply(200, said.to_string());
+    let net = with_assistant(&mut h, net, KEY);
+    shortcut(&mut h, "CW");
+    {
+        let d = h.state_mut().cowork_dialog.as_mut().unwrap();
+        (d.code, d.address) = (code.to_string(), format!("127.0.0.1:{port}"));
+    }
+    h.run();
+    press(&mut h, "Join");
+    frames_until(&mut h, |h| h.state().guest());
+    h.state_mut().cowork_dialog = None;
+    // Asked once, before his key pays for someone else's message.
+    frames_until(&mut h, |h| h.state().cowork_ai.waiting.is_some());
+    h.run();
+    assert!(net.seen().is_empty(), "nothing is sent before he says yes");
+    press(&mut h, "Lend it");
+    let reply = loop {
+        h.step();
+        if let Ok(r) = got_rx.try_recv() {
+            break r;
+        }
+        std::thread::sleep(Duration::from_millis(3));
+    };
+    ana.join().unwrap();
+    assert_eq!(reply.unwrap().unwrap()["text"], "Hi from Bo's key.");
+    let sent = net.seen();
+    assert_eq!(sent.len(), 1, "his window made the request");
+    assert!(sent[0].body.contains("hello") && sent[0].headers.iter().any(|(_, v)| v.contains(KEY)), "the conversation, on his key");
+    assert!(!h.state().assistant.usage.is_empty(), "the tokens count where the key is");
 }

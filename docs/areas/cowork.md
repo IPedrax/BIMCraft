@@ -131,9 +131,34 @@ the desktop wires it in slice 3.
     view themselves, which the window says;
   - in Properties, "Ana has this selected" in Ana's colour, over an element someone else has selected too.
 
+## Built: the shared AI chat (slice 5)
+
+- **The chat is the host's.** Its conversation and its tools run in the host's window, on the host's session, as they do outside
+  a session. A guest's message comes as `chat_say` (`Happened::ChatSay`), with its files in the form `bimcraft_assistant::wire`
+  writes (pictures and all, read strictly), and runs as `Chat::send_shared`: its edits are the guest's (the session's author is
+  swapped while a reply's calls run), and its undo step is `Assistant (Bo): <message>`, Bo's to undo. A guest who may only look
+  has a turn that only reads. Anyone may stop a turn (`chat_stop`); only the host starts a new chat. A message sent while a turn
+  runs is refused, and the guest's window says so.
+- **Everyone sees it.** After each change (the chat's revision, or whether it is busy) the host's window sends the whole of it,
+  the log, the checklist and whose key it runs on, as `chat` (`Hosting::chat`), and keeps it for whoever joins next. A guest's
+  palette shows that (`cowork::Ai::shown`), not a chat of its own, and sends what is typed to the host.
+- **Who pays** (`live::payer`, a pure function): whoever has a key uses their own; one who has none is lent one, the host's
+  while the host lends it (Settings > Co-Work and the session's dialog: Guests without an AI key may use mine, on by default),
+  else the first guest in join order who lends; nobody, and the sender is told to set a key. A guest tells the host only that it
+  has a key, for which provider and model, and whether it lends it (`ai_key`, `AiKey`), never the key.
+- **The key stays home.** A turn on a guest's key asks that guest's window for each reply (`Lend::ask` on the assistant's
+  thread, `ai_request` and `ai_reply`, through a `Mailer` the host's threads share); that window makes the request with its own
+  key (`bimcraft_assistant::complete`, on a thread), at most `MAX_LENT` a minute, and counts the tokens. A guest who leaves ends
+  the turn: "Bo left: ask again".
+- **Asked once.** Before a guest's key pays for someone else's message, its owner is asked, once a session ("Lend your AI
+  key?"); Settings > Co-Work keeps a standing answer (Ask me first, Always, Never). Their own messages on their own key need no
+  ask, only the palette's notice of where a session's messages go.
+- **Across keys.** A provider's reasoning is valid only where it was made, so a turn on another key or provider than the last
+  starts the model afresh, with what was said before told as text in the message (`chat::fold`), and the log keeps all of it.
+
 ## Not built yet
 
-The shared AI chat (slice 5). Also not yet: others' pointers on a section or a sheet (a presence has them only on plans), a
+Others' pointers on a section or a sheet (a presence has them only on plans), a
 guest's Undo list (the shared history's labels), the elements of a refused undo lit in the other person's colour (the error
 names them, but the window doesn't read it), the host asked before it quits while others are in, guests importing files of
 their own, and Manage > Run Script for a guest (it runs on the read-only copy, which refuses its edits).
