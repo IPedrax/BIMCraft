@@ -711,3 +711,92 @@ msgstr ""
 #: crates/core/src/schedule.rs:213
 msgid "Weight per Metre"
 msgstr ""
+
+#: crates/core/src/panel_schedule.rs:268 crates/core/src/panel_schedule.rs:276
+#: crates/core/src/panel_schedule.rs:380
+msgid "Classification"
+msgstr ""
+
+#: crates/core/src/panel_schedule.rs:380 crates/core/src/panel_schedule.rs:391
+msgid "Connected Load (VA)"
+msgstr ""
+
+#: crates/core/src/panel_schedule.rs:273 crates/core/src/panel_schedule.rs:380
+msgid "Demand Factor"
+msgstr ""
+
+#: crates/core/src/panel_schedule.rs:267 crates/core/src/panel_schedule.rs:276
+msgid "Description"
+msgstr ""
+
+#: crates/core/src/panel_schedule.rs:352
+msgid "Distribution System"
+msgstr ""
+
+#: crates/core/src/panel_schedule.rs:391
+msgid "Estimated Current (A)"
+msgstr ""
+
+#: crates/core/src/panel_schedule.rs:380 crates/core/src/panel_schedule.rs:391
+msgid "Estimated Demand (VA)"
+msgstr ""
+
+#: crates/core/src/panel_schedule.rs:407
+msgid "Load Summary by Classification"
+msgstr ""
+
+#: crates/core/src/panel_schedule.rs:407
+msgid "Load Summary by Phase"
+msgstr ""
+
+#: crates/core/src/panel_schedule.rs:370
+msgid "Location"
+msgstr ""
+
+#: crates/core/src/panel_schedule.rs:368
+msgid "Mains"
+msgstr ""
+
+#: crates/core/src/panel_schedule.rs:351
+msgid "Panel"
+msgstr ""
+
+#: crates/core/src/panel_schedule.rs:391
+msgid "Phase"
+msgstr ""
+
+#: crates/core/src/panel_schedule.rs:367
+msgid "Phases"
+msgstr ""
+
+#: crates/core/src/panel_schedule.rs:269 crates/core/src/panel_schedule.rs:276
+msgid "Poles"
+msgstr ""
+
+#: crates/core/src/panel_schedule.rs:266 crates/core/src/panel_schedule.rs:276
+msgid "Slot"
+msgstr ""
+
+#: crates/core/src/panel_schedule.rs:305
+msgid "Space"
+msgstr ""
+
+#: crates/core/src/panel_schedule.rs:328
+msgid "Spare"
+msgstr ""
+
+#: crates/core/src/panel_schedule.rs:271 crates/core/src/panel_schedule.rs:276
+msgid "Trip"
+msgstr ""
+
+#: crates/core/src/panel_schedule.rs:383
+msgid "Unclassified"
+msgstr ""
+
+#: crates/core/src/panel_schedule.rs:272
+msgid "VA"
+msgstr ""
+
+#: crates/core/src/panel_schedule.rs:270 crates/core/src/panel_schedule.rs:354
+msgid "Voltage"
+msgstr ""

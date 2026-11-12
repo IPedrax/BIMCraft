@@ -115,6 +115,7 @@ One line per module: what it owns. Read its file and, for the areas it names, th
 - `drainage.rs`: the `drain_size` and `vent_size` commands, sanitary drains and vents by NBR 8160's tables.
 - `network.rs`: the `network` command, the pipe network worked out from pipes' ends and pipe connectors, never stored (nodes, edges, open ends, warnings).
 - `conduit.rs`: the `conduit_fill` command, a conduit's fill by NBR 5410 (makers' catalogues in `conduit/tables.rs`).
+- `panel_schedule.rs`, `sheet/panel.rs`: panel schedules, drawn on sheets.
 - `electrical.rs`: the electrical settings: voltages, distribution systems, wire types, panels and circuits (the `voltage`, `distribution_system`, `wire_type`, `panel` and `circuit` commands; starter set in `data/electrical.json`; [structure and MEP](docs/areas/structure-and-mep.md)).
 - `nbr5410.rs`: the `circuit` command's sizing by NBR 5410 (tables in `nbr5410/tables.rs`; [structure and MEP](docs/areas/structure-and-mep.md)).
 - `timber.rs`: the `timber_framing` command, a straight isolated wall's studs, plates and clear bays round one window, read and never built ([structure and MEP](docs/areas/structure-and-mep.md)).

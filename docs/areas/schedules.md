@@ -2,6 +2,8 @@
 
 Moved from the root `CLAUDE.md`, word for word: the root keeps the rules and the map, and this file is read when the area is touched.
 
+(A distribution board's panel schedule is not one of these: it is a view of its own, `panel_schedule.rs`, in [structure and MEP](structure-and-mep.md).)
+
 A project parameter (`Model::parameters`) is a value each element of its categories may hold in its `params`, of its kind;
 a component's `params` hold its family's instance values too, so a parameter for components can't take a family
 parameter's name, nor any category's own field's (`schedule::own_field`). A schedule's fields are its category's own

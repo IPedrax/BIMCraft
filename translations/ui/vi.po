@@ -13088,6 +13088,126 @@ msgctxt "category-plural"
 msgid "Circuits"
 msgstr ""
 
+#: crates/ui-egui/src/panelsched.rs:223
+msgid "Branch Panel"
+msgstr ""
+
+#: crates/core/src/panel_schedule.rs:380 crates/core/src/panel_schedule.rs:391
+msgid "Connected Load (VA)"
+msgstr ""
+
+#: crates/core/src/panel_schedule.rs:267 crates/core/src/panel_schedule.rs:276
+msgid "Description"
+msgstr ""
+
+#: crates/core/src/panel_schedule.rs:391
+msgid "Estimated Current (A)"
+msgstr ""
+
+#: crates/core/src/panel_schedule.rs:380 crates/core/src/panel_schedule.rs:391
+msgid "Estimated Demand (VA)"
+msgstr ""
+
+#: crates/ui-egui/src/panelsched.rs:224
+msgid "List"
+msgstr ""
+
+#: crates/core/src/panel_schedule.rs:407
+msgid "Load Summary by Classification"
+msgstr ""
+
+#: crates/core/src/panel_schedule.rs:407
+msgid "Load Summary by Phase"
+msgstr ""
+
+#: crates/ui-egui/src/panelsched.rs:98
+msgid "Mark as Space"
+msgstr ""
+
+#: crates/ui-egui/src/panelsched.rs:94
+msgid "Mark as Spare"
+msgstr ""
+
+#: crates/ui-egui/src/panelsched.rs:202
+msgid "Notes"
+msgstr ""
+
+#: crates/ui-egui/src/mep.rs:211
+msgid "Panel Schedule"
+msgstr ""
+
+#: crates/ui-egui/src/mep.rs:210
+msgid "Panel Schedule: the load schedule of the selected distribution board, a view that goes on a sheet"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:3003
+msgid "Panel Schedule: {}"
+msgstr ""
+
+#: crates/ui-egui/src/browser.rs:499
+msgid "Panel Schedules"
+msgstr ""
+
+#: crates/ui-egui/src/panelsched.rs:87
+msgid "Phase Columns"
+msgstr ""
+
+#: crates/ui-egui/src/panelsched.rs:104
+msgid "Phase {}"
+msgstr ""
+
+#: crates/ui-egui/src/panelsched.rs:92
+msgid "Pick a slot"
+msgstr ""
+
+#: crates/core/src/panel_schedule.rs:269 crates/core/src/panel_schedule.rs:276
+msgid "Poles"
+msgstr ""
+
+#: crates/ui-egui/src/panelsched.rs:45
+msgid "Select one distribution board to make its panel schedule."
+msgstr ""
+
+#: crates/ui-egui/src/panelsched.rs:86
+msgid "Show Spaces"
+msgstr ""
+
+#: crates/ui-egui/src/panelsched.rs:85
+msgid "Show Spares"
+msgstr ""
+
+#: crates/core/src/panel_schedule.rs:266 crates/core/src/panel_schedule.rs:276
+msgid "Slot"
+msgstr ""
+
+#: crates/ui-egui/src/panelsched.rs:91
+msgid "Slot {}"
+msgstr ""
+
+#: crates/core/src/panel_schedule.rs:305
+msgid "Space"
+msgstr ""
+
+#: crates/core/src/panel_schedule.rs:328
+msgid "Spare"
+msgstr ""
+
+#: crates/ui-egui/src/panelsched.rs:72
+msgid "Template"
+msgstr ""
+
+#: crates/core/src/panel_schedule.rs:271 crates/core/src/panel_schedule.rs:276
+msgid "Trip"
+msgstr ""
+
+#: crates/core/src/panel_schedule.rs:383
+msgid "Unclassified"
+msgstr ""
+
+#: crates/core/src/panel_schedule.rs:272
+msgid "VA"
+msgstr ""
+
 #: crates/ui-egui/src/lib.rs:4503
 #~ msgid "Click to select. Drag to orbit (or Shift and the middle button), the middle button pans, the wheel zooms."
 #~ msgstr "Nhấp để chọn. Kéo để xoay quanh (hoặc Shift và nút giữa), nút giữa để kéo, con lăn để thu phóng."

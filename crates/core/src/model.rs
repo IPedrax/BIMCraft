@@ -88,16 +88,18 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// GUIDs); an elevation may keep the line it looks at (`reference`) and stand its mark apart from its line (`mark`); a
 /// project's language may be Polish (`pl`); a distribution board may hold its electrical data (a component's `panel`: its
 /// distribution system, mains, slots and the board that supplies it); and a project may hold circuits (the `circuit`
-/// category). Nothing in a file of 17 changes, but a build that reads up to 17 would answer such a connector, dimension,
-/// operation, property line or circuit, or Polish, with a serde error ("unknown variant", "missing field `system`") and
-/// graphics or a style of `propertyline` as a category it doesn't have, would leave the title blocks and a viewport's
-/// `follow_scale` out as fields it doesn't know, drawing every sheet with the built-in title box, and would silently drop
-/// `join: false` and join the element again, and the pins, letting what was pinned move, and would drop an elevation's
-/// reference and mark, drawing the mark back on its line, and would leave a board's `panel` out as a field it doesn't know,
-/// its supply tree with it, not say "saved by a newer BIMCraft". 18 also holds the Family Editor's families and what places
-/// them in a project, which a build that reads up to 17 would leave out as fields it doesn't know, drawing a family without
-/// them or failing to build it and losing them on saving, or refuse on opening ("unknown variant", "isn't a category views
-/// draw"), not say "saved by a newer BIMCraft"; a file of 17 is brought up to 18 by [`Model::migrate`]:
+/// category, each on its board's slots from its `number`), panel schedules (`panelschedule`) and demand factors by
+/// classification (`demand_factors`). Nothing in a file of 17 changes, but a build that reads up to 17 would answer such a
+/// connector, dimension, operation, property line, circuit or panel schedule, or Polish, with a serde error ("unknown
+/// variant", "missing field `system`") and graphics or a style of `propertyline` as a category it doesn't have, would leave
+/// the title blocks and a viewport's `follow_scale` out as fields it doesn't know, drawing every sheet with the built-in
+/// title box, and would silently drop `join: false` and join the element again, and the pins, letting what was pinned move,
+/// and would drop an elevation's reference and mark, drawing the mark back on its line, and would leave a board's `panel`
+/// and the `demand_factors` out as fields it doesn't know, a board's supply tree with them, not say "saved by a newer
+/// BIMCraft". 18 also holds the Family Editor's families and what places them in a project, which a build that reads up to
+/// 17 would leave out as fields it doesn't know, drawing a family without them or failing to build it and losing them on
+/// saving, or refuse on opening ("unknown variant", "isn't a category views draw"), not say "saved by a newer BIMCraft"; a
+/// file of 17 is brought up to 18 by [`Model::migrate`]:
 ///
 /// - Family parameters: text, whole numbers, areas, volumes, URLs and family types, grouped (`group`), shared (`shared`, a
 ///   GUID) or reporting (`reporting`); a family type parameter names its category (`of`).
@@ -2130,6 +2132,7 @@ macro_rules! visit_refs {
                     }
                 }
             }
+            Element::PanelSchedule(ps) => f(& $($m)? ps.panel),
             Element::Grid(_) | Element::RefPlane(_) | Element::Sheet(_) | Element::Schedule(_) | Element::Link(_) => {}
             Element::PlanView(v) => {
                 f(& $($m)? v.level);
@@ -2295,6 +2298,8 @@ pub enum Element {
     CadImport(CadImport),
     /// An electrical circuit: devices on a distribution board, behind one breaker.
     Circuit(crate::electrical::Circuit),
+    /// A distribution board's load schedule, a view of its own.
+    PanelSchedule(crate::panel_schedule::PanelSchedule),
 }
 
 impl Element {
@@ -2495,6 +2500,7 @@ impl Element {
             Element::Dimension3D(_) => "dimension3d",
             Element::Tag(_) => "tag",
             Element::Circuit(_) => "circuit",
+            Element::PanelSchedule(_) => "panelschedule",
             Element::Section(_) => "section",
             Element::Elevation(_) => "elevation",
             Element::Sheet(_) => "sheet",
@@ -3069,6 +3075,10 @@ pub struct Model {
     /// FORMAT 18's: a build that reads up to 17 would leave it out of a file and let them move.
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub pinned: BTreeSet<Guid>,
+    /// The factor that counts of the load of the circuits of a classification (above 0 up to 1), applied in a board's totals and
+    /// its panel schedule on top of each circuit's own; a classification with none counts whole.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub demand_factors: BTreeMap<String, f64>,
     pub elements: Elements,
     /// The ids and GUIDs of the library: its types, materials, pictures, families, parameters, view filters and
     /// templates, phases, phase filters and design options.
@@ -3169,6 +3179,7 @@ impl Model {
             distribution_systems: crate::electrical::distribution_systems(),
             wire_types: crate::electrical::wire_types(),
             georeference: None,
+            demand_factors: BTreeMap::new(),
             elements: Elements::new(),
             library: crate::library::Library::default(),
             loaded: BTreeMap::new(),
@@ -3798,13 +3809,14 @@ impl Model {
         // drawing area and a border of their own, their fields' values, and sheets with none; viewports that keep a scale
         // of their own; walls and runs that refuse to join; a dimension to the line across a column; sectional and roller
         // doors; property lines; pinned elements; an elevation's reference and mark; Polish as a project's language; a
-        // distribution board's `panel`; circuits) has none either: a file of 17's connectors are a power or a switch one,
-        // each with its system, which 18 reads as they were; a file of 17 holds no title blocks, its sheets keeping the
-        // built-in one, no `follow_scale`, so its viewports follow their views' scales from then on, as one placed without
-        // a scale does, no `join`, which reads as joining, as it always did, none of its dimensions measures `across`, none
-        // of its operations is a gate's, it holds no property line and names no `propertyline` in its graphics or styles,
-        // nothing in it is pinned, its elevations have no reference and their marks on their lines, its language isn't
-        // Polish, none of its components has a `panel`, and it has no circuits.
+        // distribution board's `panel`; circuits, panel schedules and `demand_factors`) has none either: a file of 17's
+        // connectors are a power or a switch one, each with its system, which 18 reads as they were; a file of 17 holds no
+        // title blocks, its sheets keeping the built-in one, no `follow_scale`, so its viewports follow their views' scales
+        // from then on, as one placed without a scale does, no `join`, which reads as joining, as it always did, none of
+        // its dimensions measures `across`, none of its operations is a gate's, it holds no property line and names no
+        // `propertyline` in its graphics or styles, nothing in it is pinned, its elevations have no reference and their
+        // marks on their lines, its language isn't Polish, none of its components has a `panel`, and it has no circuits,
+        // panel schedules or `demand_factors`.
         // The Family Editor's part of 18, and what places its families, takes
         // one step, in this order (it leaves the rest of 18 alone: title blocks, `join` and `across` aren't a family's, and a
         // connector's `at` is in the family's axes, which the datums are whatever plane `defines_origin`, and it has no `host`
@@ -4716,6 +4728,7 @@ impl Model {
             | Element::Sheet(_)
             | Element::Viewport(_)
             | Element::Schedule(_)
+            | Element::PanelSchedule(_)
             | Element::Link(_)
             | Element::Dimension3D(_)
             | Element::View3D(_) => None,
@@ -5488,6 +5501,7 @@ impl Model {
             Some(Element::Level(l)) => Some(&l.name),
             Some(Element::Section(v) | Element::Elevation(v)) => Some(&v.name),
             Some(Element::Schedule(sc)) => Some(&sc.name),
+            Some(Element::PanelSchedule(ps)) => Some(&ps.name),
             Some(Element::View3D(v)) => Some(&v.name),
             Some(Element::PlanView(v)) => Some(&v.name),
             _ => None,
@@ -5498,7 +5512,7 @@ impl Model {
     pub fn views(&self) -> BTreeSet<Id> {
         let lookup = self.lookup();
         let mut ids: BTreeSet<Id> = lookup.levels().collect();
-        for cat in ["planview", "section", "elevation", "schedule", "view3d"] {
+        for cat in ["planview", "section", "elevation", "schedule", "panelschedule", "view3d"] {
             ids.extend(lookup.rare(cat));
         }
         ids
@@ -6818,6 +6832,7 @@ impl Model {
         // Circuits are held to each other, their boards and their devices, so all of them are checked, as `check` does before
         // the elements.
         crate::electrical::check_circuits(self)?;
+        crate::electrical::check_demand_factors(self)?;
         let shared = |e: &Element| {
             matches!(
                 e,
@@ -7004,6 +7019,12 @@ impl Model {
             }
             // Its rules are held between circuits, boards and devices, in one place: `electrical::check_circuits`.
             Element::Circuit(_) => {}
+            Element::PanelSchedule(ps) => {
+                crate::panel_schedule::check(self, &who, ps)?;
+                if !view_names.insert(ps.name.as_str()) {
+                    return Err(format!("{who}: another view is already named `{}`", ps.name));
+                }
+            }
             Element::Level(l) => {
                 text(&who, "name", &l.name)?;
                 coord(&format!("{who} elevation"), l.elevation)?;
@@ -8053,6 +8074,7 @@ impl Model {
             wire_types,
             georeference,
             pinned,
+            demand_factors,
             elements: _,
             library,
             loaded,
@@ -8095,6 +8117,7 @@ impl Model {
             && *wire_types == o.wire_types
             && *georeference == o.georeference
             && *pinned == o.pinned
+            && *demand_factors == o.demand_factors
             && *library == o.library
             && loaded.len() == o.loaded.len()
             && loaded.iter().zip(&o.loaded).all(|((a, x), (b, y))| a == b && Arc::ptr_eq(x, y))
