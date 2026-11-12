@@ -20,8 +20,23 @@ impl FamilyEditor {
         self.form.filter(|i| *i < self.forms.len())
     }
 
+    /// Form `i` selected, as a click on it selects it.
+    pub(crate) fn select_form_at(&mut self, i: usize) {
+        self.form = Some(i);
+    }
+
+    /// Form `i` selected, as a click on it selects it.
+    #[cfg(test)]
+    pub(crate) fn select_form(&mut self, i: usize) {
+        self.select_form_at(i);
+    }
+
     /// Escape: the form selected let go. Whether there was one.
     pub(crate) fn let_form_go(&mut self) -> bool {
+        // Component placing, then a nested instance selected, go first.
+        if self.placing.take().is_some() || self.nested_sel.take().is_some() {
+            return true;
+        }
         self.selected_form().is_some() && self.form.take().is_some()
     }
 
@@ -33,7 +48,13 @@ impl FamilyEditor {
 
     /// `command` run on form `i` in a private session holding the draft's family (`params` given the family's name and the
     /// form's GUID there), and the form taken back from it, keeping the id and GUID the draft gave it.
-    fn through(&mut self, base: &Arc<Model>, i: usize, command: &str, params: impl FnOnce(&str, Value) -> Value) -> Result<(), String> {
+    pub(super) fn through(
+        &mut self,
+        base: &Arc<Model>,
+        i: usize,
+        command: &str,
+        params: impl FnOnce(&str, Value) -> Value,
+    ) -> Result<(), String> {
         let p = self.command(base)?;
         let mut s = Session::new();
         s.model = Arc::clone(base);
@@ -89,13 +110,21 @@ fn number_row(
     text: &mut String,
     values: &BTreeMap<String, Val>,
     links: &mut association::Controls,
-    row: (Field, usize),
+    (row, driven): ((Field, usize), Option<f64>),
 ) {
     let l = ui.label(t(label));
     let w = width(ui);
     let show = move |x: f64| units.map_or_else(|| number_text(x), |u| u.length(x));
     let free = text.trim().parse::<f64>().is_ok_and(f64::is_finite);
     ui.horizontal(|ui| {
+        // Set by a dimension it is locked or measured to (F7): what that comes to, greyed.
+        if let Some(x) = driven {
+            let mut shown = show(x);
+            ui.add_enabled(false, TextEdit::singleline(&mut shown).desired_width(w))
+                .labelled_by(l.id)
+                .on_disabled_hover_text(t("A dimension sets it: unlock it to change it here."));
+            return;
+        }
         if free {
             let shown = worth(&text_expr(text), values).map(show).unwrap_or_default();
             let parse = move |s: &str| match units {
@@ -126,6 +155,7 @@ impl BimApp {
         let (values, params) = (ed.values(), ed.parameter_kinds());
         let mut links = association::Controls::new(ed);
         let host = host_label(ed.plane_set(), &ed.forms[i].host);
+        let [from, to] = ed.driven_ends(i);
         let Some(f) = ed.forms.get_mut(i) else { return };
         let (mut visible, mut void) = (false, None);
         group(ui, msg!("Constraints"), |ui| {
@@ -136,12 +166,12 @@ impl BimApp {
                 return;
             }
             let (end, start, u) = if f.revolve {
-                (msg!("To (degrees)"), msg!("From (degrees)"), None)
+                (msg!("End Angle"), msg!("Start Angle"), None)
             } else {
                 (msg!("Extrusion End"), msg!("Extrusion Start"), Some(units))
             };
-            number_row(ui, u, end, &mut f.to, &values, &mut links, (Field::Form(Slot::To), i));
-            number_row(ui, u, start, &mut f.from, &values, &mut links, (Field::Form(Slot::From), i));
+            number_row(ui, u, end, &mut f.to, &values, &mut links, ((Field::Form(Slot::To), i), to));
+            number_row(ui, u, start, &mut f.from, &values, &mut links, ((Field::Form(Slot::From), i), from));
             ui.label(t("Work Plane"));
             ui.label(&host);
             ui.end_row();
@@ -209,43 +239,30 @@ impl BimApp {
         }
     }
 
-    /// Revit's Work Plane panel on a selected form's contextual tab: Edit Work Plane, dropping down the family's planes
-    /// (`Planes::listed`); the one picked runs `edit_work_plane`, so the form moves with its plane. Revit's Work Plane dialog is
-    /// T12's.
+    /// Revit's Work Plane panel on a selected form's contextual tab: Edit Work Plane opens the Work Plane dialog for the form
+    /// (T12); the plane it takes runs `edit_work_plane`, so the form moves with its plane.
     pub(super) fn form_work_plane_panel(&mut self, ui: &mut Ui, ed: &mut FamilyEditor, i: usize) {
         let Some(f) = ed.forms.get(i) else { return };
-        let (current, mesh) = (f.host, f.mesh());
-        let planes = ed.plane_set().listed();
-        let mut picked = None;
+        let mesh = f.mesh();
         ribbon::panel(ui, msg!("Work Plane"), |ui| {
-            let tip = msg!("Edit Work Plane: the form onto another of the family's planes, moving with it");
+            let tip = msg!("Edit Work Plane: the form onto another of the family's planes, moving with it (the Work Plane dialog)");
             let r = ui.add_enabled_ui(!mesh, |ui| crate::big_button(ui, Icon::PickFaces, msg!("Edit Work Plane"), false, tip)).inner;
-            ribbon::choices(ui, &r, false, |ui| {
-                for (host, label) in &planes {
-                    if ui.selectable_label(*host == current, t(label)).clicked() {
-                        picked = Some(*host);
-                        ui.close();
-                    }
-                }
-            });
-        });
-        if let Some(host) = picked.filter(|h| *h != current) {
-            let base = Arc::clone(&self.session.model);
-            let call = |name: &str, guid: Value| json!({"family": name, "form": guid, "host": host});
-            if let Err(e) = ed.through(&base, i, "edit_work_plane", call) {
-                self.status = Status { text: e, error: true };
+            if r.clicked() {
+                ed.open_work_plane_dialog(super::work_plane::Target::Form(i));
             }
-        }
+        });
     }
 }
 
 /// The Options Bar's Depth of a selected extrusion: its End less its Start, in the project's units. Typed, Start stays and
 /// End moves; End tied to a parameter or worked out by a formula, it is shown greyed and takes no typing.
-pub(super) fn depth(ui: &mut Ui, units: Units, f: &mut FormText, values: &BTreeMap<String, Val>) {
+pub(super) fn depth(ui: &mut Ui, units: Units, f: &mut FormText, values: &BTreeMap<String, Val>, driven: [Option<f64>; 2]) {
     let l = ui.label(t("Depth"));
-    let (from, to) = (worth(&text_expr(&f.from), values), worth(&text_expr(&f.to), values));
+    let from = driven[0].or_else(|| worth(&text_expr(&f.from), values));
+    let to = driven[1].or_else(|| worth(&text_expr(&f.to), values));
     let shown = from.zip(to).map(|(a, b)| units.length(b - a)).unwrap_or_else(|| "?".into());
-    let free = f.to.trim().parse::<f64>().is_ok_and(f64::is_finite);
+    // An end a dimension sets takes no typing here.
+    let free = f.to.trim().parse::<f64>().is_ok_and(f64::is_finite) && driven.iter().all(Option::is_none);
     match from {
         Some(start) if free => {
             if let Some(d) = typed(ui, UiId::new("family-options-depth"), l.id, shown, 90.0, |s| units.parse(s)) {

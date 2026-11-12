@@ -312,6 +312,22 @@ pub(crate) enum Field {
     Form(Slot),
     /// A row of a symbol of a family's own, its place among the family's symbols the `id`.
     Symbol(Slot),
+    /// A row of a nested instance (T6a): its place among the family's nested instances the `id`, a parameter's name after a
+    /// `/` for a row of its nested family's parameters.
+    Nested(NestedSlot),
+    /// A pivot's Swing Angle (F7d), its line's or plane's GUID the `id`.
+    Pivot,
+}
+
+/// Which row of a nested instance "=" ties: where it stands, whether it shows, one of its family's parameters.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum NestedSlot {
+    X,
+    Y,
+    Offset,
+    Angle,
+    Visible,
+    Param,
 }
 
 /// Which row of a family's own form or symbol "=" ties: its numbers, whether it shows, what it is made of.

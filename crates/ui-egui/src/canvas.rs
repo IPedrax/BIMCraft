@@ -1385,87 +1385,16 @@ impl BimApp {
     /// A snap's guide, dashed through the point it runs from and on past the snapped one; its
     /// marker, by what it snapped to; and its name.
     fn show_snap(&self, sc: &Scene, f: &Found) {
-        let (p, at) = (sc.p, sc.screen(f.at));
-        let (stroke, thin) = (Stroke::new(2.0, pal().accent), Stroke::new(1.0, pal().accent));
-        if let Some(g) = f.guide {
-            let a = sc.screen(g.from);
-            if a.distance(at) > 1.0 {
-                // Back to the point it runs from, but no further than a screen's width: past that it
-                // can't be seen, and a point far off would make a dash for every 10 px.
-                let u = (at - a).normalized();
-                let back = a.distance(at).min(4000.0) + 24.0;
-                p.extend(Shape::dashed_line(&[at - u * back, at + u * 28.0], thin, 6.0, 4.0));
+        // And of which element, by its id, as Select by ID finds it.
+        let name = match f.source.and_then(|id| Some((id, sc.m.elements.get(id)?))) {
+            Some((id, e)) => {
+                let of = crate::lang::category(e.category(), false);
+                // TRANSLATORS: what a point snapped to, then the category and id of its element: "Endpoint of Wall 100231".
+                tf("{} of {} {}", &[t(f.kind.name()), &of, &id.to_string()])
             }
-        }
-        match f.kind {
-            Kind::Endpoint => {
-                p.rect_stroke(Rect::from_center_size(at, vec2(11.0, 11.0)), 0.0, stroke, StrokeKind::Middle);
-            }
-            Kind::Midpoint => {
-                p.add(Shape::closed_line(vec![at + vec2(0.0, -6.0), at + vec2(6.0, 5.0), at + vec2(-6.0, 5.0)], stroke));
-            }
-            Kind::Intersection => {
-                p.line_segment([at + vec2(-6.0, -6.0), at + vec2(6.0, 6.0)], stroke);
-                p.line_segment([at + vec2(-6.0, 6.0), at + vec2(6.0, -6.0)], stroke);
-            }
-            Kind::Centre => {
-                p.circle_stroke(at, 6.0, stroke);
-            }
-            // A right angle's foot: a line, and one standing square on it.
-            Kind::Perpendicular => {
-                p.line_segment([at + vec2(-7.0, 5.0), at + vec2(7.0, 5.0)], stroke);
-                p.line_segment([at + vec2(0.0, 5.0), at + vec2(0.0, -6.0)], stroke);
-            }
-            Kind::Nearest => {
-                p.add(Shape::closed_line(
-                    vec![at + vec2(0.0, -6.0), at + vec2(6.0, 0.0), at + vec2(0.0, 6.0), at + vec2(-6.0, 0.0)],
-                    stroke,
-                ));
-            }
-            // A scan's point: a cross, upright, round a dot.
-            Kind::Point => {
-                p.line_segment([at + vec2(-7.0, 0.0), at + vec2(7.0, 0.0)], stroke);
-                p.line_segment([at + vec2(0.0, -7.0), at + vec2(0.0, 7.0)], stroke);
-                p.circle_filled(at, 2.5, pal().accent);
-            }
-            // A quarter of a round, its corner on the point.
-            Kind::Quadrant => {
-                let arc: Vec<Pos2> = (0..=8)
-                    .map(|k| f32::from(k as u8) * std::f32::consts::FRAC_PI_2 / 8.0)
-                    .map(|a| at + vec2(-9.0 + 12.0 * a.cos(), 6.0 - 12.0 * a.sin()))
-                    .collect();
-                p.add(Shape::line(arc, stroke));
-                p.line_segment([at + vec2(-9.0, 6.0), at + vec2(3.0, 6.0)], stroke);
-                p.line_segment([at + vec2(-9.0, 6.0), at + vec2(-9.0, -6.0)], stroke);
-            }
-            // A round, and the line touching it on top.
-            Kind::Tangent => {
-                p.circle_stroke(at + vec2(0.0, 5.0), 5.0, stroke);
-                p.line_segment([at + vec2(-8.0, 0.0), at + vec2(8.0, 0.0)], stroke);
-            }
-            Kind::Anchor => {
-                p.circle_stroke(at, 6.0, stroke);
-                p.circle_filled(at, 2.0, pal().accent);
-            }
-            Kind::Angle => {
-                p.circle_filled(at, 3.0, pal().accent);
-            }
-            Kind::Free => {
-                p.rect_stroke(Rect::from_center_size(at, vec2(8.0, 8.0)), 0.0, stroke, StrokeKind::Middle);
-            }
-        }
-        if !matches!(f.kind, Kind::Free | Kind::Angle) {
-            // And of which element, by its id, as Select by ID finds it.
-            let name = match f.source.and_then(|id| Some((id, sc.m.elements.get(id)?))) {
-                Some((id, e)) => {
-                    let of = crate::lang::category(e.category(), false);
-                    // TRANSLATORS: what a point snapped to, then the category and id of its element: "Endpoint of Wall 100231".
-                    tf("{} of {} {}", &[t(f.kind.name()), &of, &id.to_string()])
-                }
-                None => t(f.kind.name()).to_string(),
-            };
-            tag(p, at + vec2(12.0, 14.0), Align2::LEFT_TOP, name);
-        }
+            None => t(f.kind.name()).to_string(),
+        };
+        snap_mark(sc.p, sc.screen(f.at), f.guide.map(|g| sc.screen(g.from)), f.kind, name);
     }
 
     /// The plan `key` names, filling `ui`: a level's own, or a plan view of one. What is built is on the plan's level; what is
@@ -4279,5 +4208,77 @@ impl BimApp {
                 self.shape_label_rects.push(r);
             }
         }
+    }
+}
+
+/// A snap's marker at `at` on screen, by what it snapped to (`kind`), its guide dashed from `from` (the point it runs from,
+/// on screen) on past it, and `name` beside it: the plan's and a family's sketch's alike.
+pub(crate) fn snap_mark(p: &Painter, at: Pos2, from: Option<Pos2>, kind: Kind, name: String) {
+    let (stroke, thin) = (Stroke::new(2.0, pal().accent), Stroke::new(1.0, pal().accent));
+    if let Some(a) = from
+        && a.distance(at) > 1.0
+    {
+        // Back to the point it runs from, but no further than a screen's width: past that it can't be seen, and a point far
+        // off would make a dash for every 10 px.
+        let u = (at - a).normalized();
+        let back = a.distance(at).min(4000.0) + 24.0;
+        p.extend(Shape::dashed_line(&[at - u * back, at + u * 28.0], thin, 6.0, 4.0));
+    }
+    match kind {
+        Kind::Endpoint => {
+            p.rect_stroke(Rect::from_center_size(at, vec2(11.0, 11.0)), 0.0, stroke, StrokeKind::Middle);
+        }
+        Kind::Midpoint => {
+            p.add(Shape::closed_line(vec![at + vec2(0.0, -6.0), at + vec2(6.0, 5.0), at + vec2(-6.0, 5.0)], stroke));
+        }
+        Kind::Intersection => {
+            p.line_segment([at + vec2(-6.0, -6.0), at + vec2(6.0, 6.0)], stroke);
+            p.line_segment([at + vec2(-6.0, 6.0), at + vec2(6.0, -6.0)], stroke);
+        }
+        Kind::Centre => {
+            p.circle_stroke(at, 6.0, stroke);
+        }
+        // A right angle's foot: a line, and one standing square on it.
+        Kind::Perpendicular => {
+            p.line_segment([at + vec2(-7.0, 5.0), at + vec2(7.0, 5.0)], stroke);
+            p.line_segment([at + vec2(0.0, 5.0), at + vec2(0.0, -6.0)], stroke);
+        }
+        Kind::Nearest => {
+            p.add(Shape::closed_line(vec![at + vec2(0.0, -6.0), at + vec2(6.0, 0.0), at + vec2(0.0, 6.0), at + vec2(-6.0, 0.0)], stroke));
+        }
+        // A scan's point: a cross, upright, round a dot.
+        Kind::Point => {
+            p.line_segment([at + vec2(-7.0, 0.0), at + vec2(7.0, 0.0)], stroke);
+            p.line_segment([at + vec2(0.0, -7.0), at + vec2(0.0, 7.0)], stroke);
+            p.circle_filled(at, 2.5, pal().accent);
+        }
+        // A quarter of a round, its corner on the point.
+        Kind::Quadrant => {
+            let arc: Vec<Pos2> = (0..=8)
+                .map(|k| f32::from(k as u8) * std::f32::consts::FRAC_PI_2 / 8.0)
+                .map(|a| at + vec2(-9.0 + 12.0 * a.cos(), 6.0 - 12.0 * a.sin()))
+                .collect();
+            p.add(Shape::line(arc, stroke));
+            p.line_segment([at + vec2(-9.0, 6.0), at + vec2(3.0, 6.0)], stroke);
+            p.line_segment([at + vec2(-9.0, 6.0), at + vec2(-9.0, -6.0)], stroke);
+        }
+        // A round, and the line touching it on top.
+        Kind::Tangent => {
+            p.circle_stroke(at + vec2(0.0, 5.0), 5.0, stroke);
+            p.line_segment([at + vec2(-8.0, 0.0), at + vec2(8.0, 0.0)], stroke);
+        }
+        Kind::Anchor => {
+            p.circle_stroke(at, 6.0, stroke);
+            p.circle_filled(at, 2.0, pal().accent);
+        }
+        Kind::Angle => {
+            p.circle_filled(at, 3.0, pal().accent);
+        }
+        Kind::Free => {
+            p.rect_stroke(Rect::from_center_size(at, vec2(8.0, 8.0)), 0.0, stroke, StrokeKind::Middle);
+        }
+    }
+    if !matches!(kind, Kind::Free | Kind::Angle) {
+        tag(p, at + vec2(12.0, 14.0), Align2::LEFT_TOP, name);
     }
 }

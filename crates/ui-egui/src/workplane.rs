@@ -1,21 +1,24 @@
-//! The 3D view's work plane (`bimcraft_core::workplane`): the view control bar's Work Plane button names it and opens a dialog
-//! that sets it three ways, each with an offset along its normal: a level picked from the list, a surface picked on the model
-//! (a wall's face: the face under the pointer lights up), or three points picked on it, each snapping to a corner seen near
-//! the pointer as a dimension's ends do in plan. A pick closes the dialog while it's made and brings it back with what was
-//! picked. The plane may lie at any angle; the Floor, Ceiling, Roof and Shaft tools picked in the 3D view sketch a new one on
-//! it at once (`sketch3d.rs`) when it lies level, and say it must otherwise. The plane is drawn as a grid while it's being set
-//! or sketched on. As in ArchiCAD, it has a patch of its own in the view, a small square of it (by the model's south-west
-//! corner for a level one, where it was picked for another), that a click in Modify opens the dialog from; the right-click
-//! menu and the Architecture tab's Datum > Set do too.
+//! The 3D view's work plane (`bimcraft_core::workplane`): the view control bar's Work Plane button names it and opens Revit's
+//! Work Plane dialog (T12). Current Work Plane names it (`Level : Level 1`, `Reference Plane : Ramp`, a surface or three
+//! points and how steep), with Show (its grid drawn in the 3D view while on) and Dissociate (a work plane on a reference
+//! plane left where it is, no longer following it). Specify a new Work Plane: Name, a level or a named reference plane of the
+//! project; Pick a plane, a face of the model (a wall's: the face under the pointer lights up); Pick a line, a wall, a beam or
+//! another element drawn along a line, whose level is taken; or Pick three points (BIMCraft's own), each snapping to a corner
+//! seen near the pointer as a dimension's ends do in plan; each with an offset along its normal. As Revit's, OK with a Pick
+//! closes the dialog and the click (the third, for points) sets the plane; Escape brings the dialog back. The plane may lie
+//! at any angle; the Floor, Ceiling, Roof and Shaft tools picked in the 3D view sketch a new one on it at once
+//! (`sketch3d.rs`) when it lies level, and say it must otherwise. The plane is drawn as a grid while it's being set or
+//! sketched on, or Show is on. As in ArchiCAD, it has a patch of its own in the view, a small square of it (by the model's
+//! south-west corner for a level one, where it was set for another), that a click in Modify opens the dialog from; the
+//! right-click menu and the Architecture tab's Datum > Set do too.
 
 use bimcraft_i18n::msg;
 
 use bimcraft_core::geom::P2;
 use bimcraft_core::graphics::Look;
-use bimcraft_core::model::Id;
 use bimcraft_core::view3d::{Camera, Face, P3, Scene};
 use bimcraft_core::workplane::{self, Frame, Surface};
-use egui::{Align, Context, Id as UiId, Layout, Modal, Painter, Pos2, Rect, RichText, Stroke, TextEdit, Ui, vec2};
+use egui::{Align, Context, Id as UiId, Layout, Painter, Pos2, Rect, RichText, Stroke, TextEdit, Ui, vec2};
 use serde_json::json;
 
 use crate::lang::{t, tf};
@@ -23,22 +26,25 @@ use crate::sketch::Of;
 use crate::style::pal;
 use crate::{BimApp, Sheet, Status, Tool};
 
-/// How the Work Plane dialog sets the plane.
+/// How the Work Plane dialog's Specify a new Work Plane takes it.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum By {
-    /// A level, picked from the list.
+    /// A level or a named reference plane, by name.
     #[default]
-    Level,
-    /// A surface picked on the model.
-    Surface,
+    Name,
+    /// A face picked on the model.
+    Plane,
+    /// An element drawn along a line picked on the model: its level.
+    Line,
     /// Three points picked on it.
     Points,
 }
 
-/// What Pick in View is taking on the model while the dialog makes way.
+/// What a pick is taking on the model while the dialog makes way.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Picking {
     Surface,
+    Line,
     /// The points clicked so far.
     Points(Vec<P3>),
 }
@@ -47,15 +53,24 @@ pub enum Picking {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Draft {
     pub by: By,
-    pub level: Id,
+    /// What Name has chosen, as `workplane::choices` labels it.
+    pub name: String,
     pub offset: String,
-    /// The surface and the points picked, as last picked (or as the plane was set).
-    pub surface: Option<Surface>,
-    pub points: Option<[P3; 3]>,
     /// While a pick is made on the model; the dialog is closed meanwhile.
     pub picking: Option<Picking>,
     /// Why OK was refused.
     pub error: Option<String>,
+    /// Edit Work Plane: the components it puts on another plane (`edit_work_plane`); none, the 3D view's work plane.
+    pub components: Vec<bimcraft_core::model::Id>,
+}
+
+/// What the dialog took for the plane: a name chosen, a level (Pick a line), a face picked (its point and way, and its
+/// element), or three points.
+enum Took {
+    Name(String),
+    Level(bimcraft_core::model::Id),
+    Surface(Surface, bimcraft_core::model::Id),
+    Points([P3; 3]),
 }
 
 /// What a click would pick for the work plane where the pointer is: a face, or a point (a corner's, when it snapped to one).
@@ -72,7 +87,7 @@ const PATCH: f64 = 30.0;
 /// corner seen within the snap's reach, else the point of the surface there.
 pub(crate) fn aim(scene: &Scene, cam: &Camera, at: (f64, f64), picking: &Picking, look: &Look, ppp: f32) -> Option<Aim> {
     match picking {
-        Picking::Surface => scene.face_at(cam, at, look).map(Aim::Face),
+        Picking::Surface | Picking::Line => scene.face_at(cam, at, look).map(Aim::Face),
         Picking::Points(_) => match scene.corner_near(cam, at, crate::canvas::SNAP * f64::from(ppp), look) {
             Some(corner) => Some(Aim::Point(corner, true)),
             None => scene.face_at(cam, at, look).map(|f| Aim::Point(f.at.map(f64::round), false)),
@@ -106,10 +121,10 @@ impl BimApp {
         let m = &self.session.model;
         let wp = m.work_plane(m.default_3d());
         let slope = || format!("{:.0}", wp.slope(m));
-        let name = match wp.level.and_then(|g| m.level(g)) {
-            Some(l) => l.name.clone(),
-            None if wp.surface.is_some() => tf("Surface, {}°", &[&slope()]),
-            None => tf("Three points, {}°", &[&slope()]),
+        let name = match (&wp.level, &wp.ref_plane, &wp.surface) {
+            (Some(_), ..) | (_, Some(_), _) => wp.name(m),
+            (None, None, Some(_)) => tf("Surface, {}°", &[&slope()]),
+            _ => tf("Three points, {}°", &[&slope()]),
         };
         if wp.offset == 0.0 { name } else { format!("{name} + {}", m.units.length(wp.offset)) }
     }
@@ -148,7 +163,9 @@ impl BimApp {
 
     /// The view control bar's Work Plane: what the 3D view sketches on; a click opens the dialog that sets it.
     pub(crate) fn work_plane_button(&mut self, ui: &mut Ui) {
-        let tip = msg!("Work Plane: what the 3D view sketches on: a level, a surface of the model or three points, each with an offset");
+        let tip = msg!(
+            "Work Plane: what the 3D view sketches on: a level, a reference plane, a surface of the model or three points, each with an offset"
+        );
         if crate::footer::menu_button(ui, "Work Plane", &self.work_plane_name(), tip, None).clicked() {
             self.open_work_plane();
         }
@@ -157,7 +174,7 @@ impl BimApp {
     /// The Architecture tab's Set (in its Datum panel): the Work Plane dialog, in the 3D view (which it opens).
     pub(crate) fn work_plane_set(&mut self, ui: &mut Ui) {
         let tip = msg!(
-            "Set Work Plane: the plane the 3D view sketches on, a level, a surface or three points, with an offset; its patch in the view sets it too"
+            "Set Work Plane: the plane the 3D view sketches on, by name or picked on the model, with an offset; its patch in the view sets it too"
         );
         if crate::big_button(ui, crate::icons::Icon::WorkPlane, msg!("Set"), self.work_plane.is_some(), tip).clicked() {
             if self.sheet != Sheet::View3D {
@@ -171,96 +188,167 @@ impl BimApp {
     pub(crate) fn open_work_plane(&mut self) {
         let m = &self.session.model;
         let wp = m.work_plane(m.default_3d());
-        let lowest = m.levels().first().map_or(0, |(id, _)| *id);
-        let by = match (&wp.surface, &wp.points) {
-            (Some(_), _) => By::Surface,
-            (None, Some(_)) => By::Points,
-            _ => By::Level,
+        let choices = workplane::choices(m);
+        let current = wp.name(m);
+        let by = match (&wp.surface, &wp.points, &wp.ref_plane) {
+            (_, _, Some(_)) => By::Name,
+            (Some(_), _, _) => By::Plane,
+            (None, Some(_), _) => By::Points,
+            _ => By::Name,
         };
-        self.work_plane = Some(Draft {
-            by,
-            level: wp.level.and_then(|g| m.elements.id(g)).unwrap_or(lowest),
-            offset: m.units.length(wp.offset),
-            surface: wp.surface,
-            points: wp.points,
-            picking: None,
-            error: None,
-        });
+        let name = choices.iter().find(|(_, l)| *l == current).or(choices.first()).map(|(_, l)| l.clone()).unwrap_or_default();
+        self.work_plane = Some(Draft { by, name, offset: m.units.length(wp.offset), picking: None, error: None, components: Vec::new() });
+    }
+
+    /// The selection's components that Edit Work Plane can put on another plane: each of a work plane-based family placed by
+    /// its insertion point (not an adaptive one); none unless the whole selection is.
+    pub(crate) fn work_plane_components(&self) -> Vec<bimcraft_core::model::Id> {
+        let m = &self.session.model;
+        let ok = |id: &bimcraft_core::model::Id| match m.elements.get(*id) {
+            Some(bimcraft_core::model::Element::Component(c)) => {
+                m.families.get(&c.family).is_some_and(|f| f.work_plane_based) && !m.placed_by_points(c)
+            }
+            _ => false,
+        };
+        if !self.selection.is_empty() && self.selection.iter().all(ok) { self.selection.clone() } else { Vec::new() }
+    }
+
+    /// Edit Work Plane on the components `ids` (their contextual tab's Work Plane panel): the Work Plane dialog, naming the
+    /// first one's, which puts them on a level, a named reference plane or a face picked (`edit_work_plane`).
+    pub(crate) fn open_component_work_plane(&mut self, ids: Vec<bimcraft_core::model::Id>) {
+        let m = &self.session.model;
+        let Some(first) = ids.first().and_then(|id| m.elements.get(*id)) else { return };
+        let current = m.work_plane_name_of(first);
+        let choices = workplane::choices(m);
+        let name = choices.iter().find(|(_, l)| *l == current).or(choices.first()).map(|(_, l)| l.clone()).unwrap_or_default();
+        self.work_plane = Some(Draft { name, offset: String::new(), components: ids, ..Draft::default() });
     }
 
     /// The Work Plane dialog, while it's open and not picking.
     pub(crate) fn work_plane_window(&mut self, ctx: &Context) {
         let m = std::sync::Arc::clone(&self.session.model);
+        let wp = m.work_plane(m.default_3d());
+        let components = self.work_plane.as_ref().map(|d| d.components.clone()).unwrap_or_default();
+        // A surface said by which way it faces, the rest as the control bar's button says it; a component's, as its
+        // Properties' Work Plane does.
+        let current = match (&wp.surface, &wp.ref_plane, &wp.level) {
+            _ if !components.is_empty() => {
+                components.first().and_then(|id| m.elements.get(*id)).map(|e| m.work_plane_name_of(e)).unwrap_or_default()
+            }
+            (Some(sf), None, None) => {
+                let name = tf("Surface, {}", &[&facing(sf.normal)]);
+                if wp.offset == 0.0 { name } else { format!("{name} + {}", m.units.length(wp.offset)) }
+            }
+            _ => self.work_plane_name(),
+        };
+        let follows = wp.ref_plane.is_some() && components.is_empty();
+        let view = components.is_empty();
+        let show_on = self.show_work_plane;
         let Some(d) = self.work_plane.as_mut().filter(|d| d.picking.is_none()) else { return };
-        let (mut ok, mut close, mut pick) = (false, false, None);
-        let r = Modal::new(UiId::new("work-plane")).show(ctx, |ui| {
-            ui.set_width(420.0);
-            ui.label(RichText::new(t("Work Plane")).heading());
-            ui.label(t("What the 3D view sketches on."));
-            ui.add_space(6.0);
-            ui.radio_value(&mut d.by, By::Level, t("Pick from list"));
-            ui.add_enabled_ui(d.by == By::Level, |ui| {
+        let choices = workplane::choices(&m);
+        let (mut ok, mut close, mut show, mut dissociate) = (false, false, false, false);
+        let r = crate::popup::Modal::new(UiId::new("work-plane"), t("Work Plane")).width(480.0).show(ctx, |ui| {
+            crate::popup::body(ui, |ui| {
+                ui.label(RichText::new(t("Current Work Plane")).strong());
                 ui.horizontal(|ui| {
-                    ui.add_space(20.0);
-                    let label = ui.label(t("Level"));
-                    let shown = m.level(d.level).map(|l| l.name.clone()).unwrap_or_default();
-                    egui::ComboBox::from_id_salt("work-plane-level")
-                        .selected_text(shown)
-                        .show_ui(ui, |ui| {
-                            for (id, l) in m.levels() {
-                                ui.selectable_value(&mut d.level, id, &l.name);
+                    ui.add_space(12.0);
+                    let l = ui.label(t("Name:"));
+                    ui.label(RichText::new(&current).strong()).labelled_by(l.id);
+                });
+                ui.horizontal(|ui| {
+                    ui.add_space(12.0);
+                    let tip = msg!("Show: the work plane drawn as a grid in the 3D view, on or off");
+                    show = ui.add(egui::Button::new(t("Show")).selected(show_on)).on_hover_text(t(tip)).clicked();
+                    let tip = msg!("Dissociate: the work plane left where its reference plane is now, no longer following it");
+                    let off = if view {
+                        msg!("Dissociate: only a work plane on a reference plane follows it; this one follows nothing")
+                    } else {
+                        msg!("Dissociate: a component stays on its host, which it moves with")
+                    };
+                    dissociate = ui
+                        .add_enabled(follows, egui::Button::new(t("Dissociate")))
+                        .on_hover_text(t(tip))
+                        .on_disabled_hover_text(t(off))
+                        .clicked();
+                });
+                ui.add_space(8.0);
+                ui.label(RichText::new(t("Specify a new Work Plane")).strong());
+                ui.horizontal(|ui| {
+                    ui.add_space(12.0);
+                    ui.radio_value(&mut d.by, By::Name, t("Name"));
+                    let mut picked = None;
+                    egui::ComboBox::from_id_salt("work-plane-name").selected_text(d.name.clone()).width(300.0).show_ui(ui, |ui| {
+                        for (_, label) in &choices {
+                            if ui.selectable_label(d.name == *label, label).clicked() {
+                                picked = Some(label.clone());
                             }
-                        })
-                        .response
-                        .labelled_by(label.id);
+                        }
+                    });
+                    if let Some(n) = picked {
+                        (d.name, d.by) = (n, By::Name);
+                    }
+                });
+                for (by, label, tip) in [
+                    (
+                        By::Plane,
+                        msg!("Pick a plane"),
+                        msg!("Pick a plane: after OK, click a face of the model in the 3D view, a wall's or a roof's"),
+                    ),
+                    (
+                        By::Line,
+                        msg!("Pick a line and use the work plane it was sketched in"),
+                        msg!(
+                            "Pick a line: after OK, click a wall, a beam, a pipe or another element drawn along a line; its level is taken"
+                        ),
+                    ),
+                    (
+                        By::Points,
+                        msg!("Pick three points"),
+                        msg!("Pick three points: after OK, click three points on the model, each snapping to a corner near the pointer"),
+                    ),
+                ] {
+                    // A component goes on a level, a reference plane or a face: no plane through three points.
+                    if by == By::Points && !view {
+                        continue;
+                    }
+                    ui.horizontal(|ui| {
+                        ui.add_space(12.0);
+                        ui.radio_value(&mut d.by, by, t(label)).on_hover_text(t(tip));
+                    });
+                }
+                ui.add_space(6.0);
+                // A component keeps its Offset from Host.
+                if view {
+                    ui.horizontal(|ui| {
+                        ui.add_space(12.0);
+                        let label = ui.label(t("Offset"));
+                        ui.add(TextEdit::singleline(&mut d.offset).desired_width(90.0)).labelled_by(label.id);
+                        ui.label(t("along its normal: up from a level, out from a surface"));
+                    });
+                }
+                if let Some(e) = &d.error {
+                    ui.add_space(4.0);
+                    ui.colored_label(pal().error, e);
+                }
+            });
+            crate::popup::footer(ui, |ui| {
+                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    close = ui.button(t("Cancel")).clicked();
+                    ok = ui.button(t("OK")).clicked();
                 });
             });
-            ui.radio_value(&mut d.by, By::Surface, t("Pick a surface"));
-            ui.horizontal(|ui| {
-                ui.add_space(20.0);
-                let tip = msg!("Pick Surface: click a face of the model in the 3D view, a wall's or a roof's; the dialog comes back with it");
-                if ui.button(t("Pick Surface")).on_hover_text(t(tip)).clicked() {
-                    pick = Some(Picking::Surface);
-                }
-                let said = d.surface.map(|s| facing(s.normal));
-                ui.label(said.unwrap_or_else(|| t("none picked yet").into()));
-            });
-            ui.radio_value(&mut d.by, By::Points, t("Pick three points"));
-            ui.horizontal(|ui| {
-                ui.add_space(20.0);
-                let tip = msg!(
-                    "Pick Points: click three points on the model in the 3D view, each snapping to a corner near the pointer; the dialog comes back with them"
-                );
-                if ui.button(t("Pick Points")).on_hover_text(t(tip)).clicked() {
-                    pick = Some(Picking::Points(Vec::new()));
-                }
-                let said = d.points.and_then(|p| workplane::through(&p).ok()).map(|f| tf("{}° from level", &[&format!("{:.0}", f.slope())]));
-                ui.label(said.unwrap_or_else(|| t("none picked yet").into()));
-            });
-            ui.add_space(6.0);
-            ui.horizontal(|ui| {
-                let label = ui.label(t("Offset"));
-                ui.add(TextEdit::singleline(&mut d.offset).desired_width(90.0)).labelled_by(label.id);
-                ui.label(t("along its normal: up from a level, out from a surface"));
-            });
-            if let Some(e) = &d.error {
-                ui.add_space(4.0);
-                ui.colored_label(pal().error, e);
-            }
-            ui.add_space(8.0);
-            ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
-                close = ui.button(t("Cancel")).clicked();
-                ok = ui.button(t("OK")).clicked();
-            });
         });
-        if let Some(picking) = pick {
-            let first = if picking == Picking::Surface { PICK_SURFACE } else { PICK_FIRST };
-            d.by = if picking == Picking::Surface { By::Surface } else { By::Points };
-            d.picking = Some(picking);
-            if self.sheet != Sheet::View3D {
-                self.open_sheet(Sheet::View3D);
+        if show {
+            self.show_work_plane = !self.show_work_plane;
+        }
+        if dissociate {
+            let refused = match self.run("work_plane", json!({"dissociate": true})) {
+                Some(_) => None,
+                None => Some(std::mem::take(&mut self.status).text),
+            };
+            if let Some(d) = &mut self.work_plane {
+                d.error = refused;
             }
-            self.status = Status { text: t(first).into(), error: false };
         } else if ok {
             self.apply_work_plane();
         } else if close || r.should_close() {
@@ -268,55 +356,132 @@ impl BimApp {
         }
     }
 
-    /// OK: the plane set as the dialog says; or what's wrong said in it.
+    /// The offset typed, in mm: none typed, 0.
+    fn typed_offset(&self) -> Result<f64, String> {
+        let Some(d) = &self.work_plane else { return Ok(0.0) };
+        if d.offset.trim().is_empty() {
+            return Ok(0.0);
+        }
+        self.session.model.units.parse(&d.offset).ok_or_else(|| tf("`{}` is not a length", &[d.offset.trim()]))
+    }
+
+    /// OK: by name, the plane set at once; with a Pick, the dialog makes way for the clicks, which set it. What's wrong is
+    /// said in the dialog.
     fn apply_work_plane(&mut self) {
         let Some(d) = &self.work_plane else { return };
-        let units = self.session.model.units;
-        let offset = if d.offset.trim().is_empty() {
-            Ok(0.0)
+        let (by, name) = (d.by, d.name.clone());
+        if let Err(e) = self.typed_offset() {
+            if let Some(d) = &mut self.work_plane {
+                d.error = Some(e);
+            }
+            return;
+        }
+        let picking = match by {
+            By::Name => return self.take(Took::Name(name)),
+            By::Plane => Picking::Surface,
+            By::Line => Picking::Line,
+            By::Points => Picking::Points(Vec::new()),
+        };
+        let first = match picking {
+            Picking::Surface => PICK_SURFACE,
+            Picking::Line => PICK_LINE,
+            Picking::Points(_) => PICK_FIRST,
+        };
+        if let Some(d) = &mut self.work_plane {
+            d.picking = Some(picking);
+            d.error = None;
+        }
+        if self.sheet != Sheet::View3D {
+            self.open_sheet(Sheet::View3D);
+        }
+        self.status = Status { text: t(first).into(), error: false };
+    }
+
+    /// What the dialog took, set: the 3D view's work plane (`work_plane`, with the offset typed), or the components' (Edit
+    /// Work Plane, `edit_work_plane`). The dialog closes when it's taken, and comes back with the reason when it isn't.
+    fn take(&mut self, took: Took) {
+        let offset = self.typed_offset().unwrap_or(0.0);
+        let components = self.work_plane.as_ref().map(|d| d.components.clone()).unwrap_or_default();
+        let (command, params) = if components.is_empty() {
+            let params = match took {
+                Took::Name(n) => json!({"name": n, "offset": offset}),
+                Took::Level(l) => json!({"level": l, "offset": offset}),
+                Took::Surface(s, _) => json!({"surface": s, "offset": offset}),
+                Took::Points(p) => json!({"points": p, "offset": offset}),
+            };
+            ("work_plane", params)
         } else {
-            units.parse(&d.offset).ok_or_else(|| tf("`{}` is not a length", &[d.offset.trim()]))
+            let m = &self.session.model;
+            let host = match took {
+                Took::Name(n) => workplane::by_name(m, &n).map(|wp| match (wp.ref_plane, wp.level.and_then(|g| m.elements.id(g))) {
+                    (Some(g), _) => json!({"plane": g}),
+                    (None, l) => json!({"level": l}),
+                }),
+                Took::Level(l) => Ok(json!({"level": l})),
+                Took::Surface(s, owner) => match m.face_role(owner, s.point, s.normal) {
+                    Some(role) => Ok(json!({"face": {"element": owner, "face": role.name()}})),
+                    None => {
+                        self.status = Status { text: t(NOT_A_FACE).into(), error: true };
+                        return;
+                    }
+                },
+                Took::Points(_) => return,
+            };
+            match host {
+                Ok(host) => ("edit_work_plane", json!({"ids": components, "host": host})),
+                Err(e) => {
+                    if let Some(d) = &mut self.work_plane {
+                        (d.picking, d.error) = (None, Some(e));
+                    }
+                    return;
+                }
+            }
         };
-        let params = offset.and_then(|offset| match d.by {
-            By::Level => Ok(json!({"level": d.level, "offset": offset})),
-            By::Surface => d.surface.map(|s| json!({"surface": s, "offset": offset})).ok_or_else(|| t(NO_SURFACE).to_string()),
-            By::Points => d.points.map(|p| json!({"points": p, "offset": offset})).ok_or_else(|| t(NO_POINTS).to_string()),
-        });
-        let refused = match params {
-            Err(e) => Some(e),
-            Ok(p) => match self.run("work_plane", p) {
-                Some(_) => None,
-                None => Some(std::mem::take(&mut self.status).text),
-            },
-        };
-        match refused {
-            None => {
+        match self.run(command, params) {
+            Some(_) => {
                 self.work_plane = None;
                 self.status = Status::default();
             }
-            Some(e) => {
+            None => {
+                let e = std::mem::take(&mut self.status).text;
                 if let Some(d) = &mut self.work_plane {
+                    d.picking = None;
                     d.error = Some(e);
                 }
             }
         }
     }
 
-    /// A click while Pick in View picks, with what it aimed at (none where nothing of the model is under it): the surface,
-    /// or the points gathered, and with the third the dialog back with them in it.
+    /// A click while a Pick waits, with what it aimed at (none where nothing of the model is under it): the face, the line's
+    /// level, or the points gathered; the plane set with the offset typed once it has what it needs.
     pub(crate) fn work_plane_pick(&mut self, aimed: Option<Aim>) {
-        let Some(d) = &mut self.work_plane else { return };
-        let Some(picking) = &mut d.picking else { return };
+        if self.work_plane_picking().is_none() {
+            return;
+        }
         let Some(aimed) = aimed else {
             self.status = Status { text: t("Click on the model: a point of its surface.").into(), error: true };
             return;
         };
-        match (picking, aimed) {
-            (Picking::Surface, Aim::Face(face)) => d.surface = Some(Surface { point: face.at.map(f64::round), normal: face.normal }),
+        let Some(d) = &mut self.work_plane else { return };
+        let Some(picking) = &mut d.picking else { return };
+        let took = match (picking, aimed) {
+            (Picking::Surface, Aim::Face(face)) => {
+                Took::Surface(Surface { point: face.at.map(f64::round), normal: face.normal }, face.owner)
+            }
+            (Picking::Line, Aim::Face(face)) => {
+                let m = &self.session.model;
+                match workplane::sketched_in(m, face.owner).and_then(|wp| wp.level).and_then(|g| m.elements.id(g)) {
+                    Some(level) => Took::Level(level),
+                    None => {
+                        self.status = Status { text: t(NOT_A_LINE).into(), error: true };
+                        return;
+                    }
+                }
+            }
             (Picking::Points(picked), Aim::Point(at, _)) => {
                 picked.push(at);
                 if let [a, b, c] = picked[..] {
-                    d.points = Some([a, b, c]);
+                    Took::Points([a, b, c])
                 } else {
                     let next = if picked.len() == 1 { PICK_SECOND } else { PICK_THIRD };
                     self.status = Status { text: t(next).into(), error: false };
@@ -324,10 +489,8 @@ impl BimApp {
                 }
             }
             _ => return,
-        }
-        d.picking = None;
-        d.error = None;
-        self.status = Status::default();
+        };
+        self.take(took);
     }
 
     /// What Pick in View is taking, while it picks.
@@ -410,8 +573,10 @@ const PICK_FIRST: &str =
     msg!("Click the work plane's first point on the model; it snaps to a corner near the pointer. Esc goes back to the dialog.");
 const PICK_SECOND: &str = msg!("Click the work plane's second point.");
 const PICK_THIRD: &str = msg!("Click the work plane's third point.");
-const NO_SURFACE: &str = msg!("Pick a surface first: Pick Surface, then a click on a face of the model.");
-const NO_POINTS: &str = msg!("Pick three points first: Pick Points, then three clicks on the model.");
+const PICK_LINE: &str =
+    msg!("Click a wall, a beam, a pipe or another element drawn along a line: its level is the work plane. Esc goes back to the dialog.");
+const NOT_A_LINE: &str = msg!("Pick a line: a wall, a beam, a pipe or another element drawn along a line.");
+const NOT_A_FACE: &str = msg!("Pick a plane: a component goes on a face of a wall, a floor, a ceiling or a roof.");
 const LEVEL_ONLY: &str = msg!(
     "The work plane must be horizontal: a floor, a ceiling, a roof or a shaft is sketched on a level plane. Set the Work Plane (the 3D view's control bar) on a level, a level surface or three points at one height."
 );

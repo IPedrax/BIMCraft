@@ -2448,6 +2448,7 @@ fn section_base_cancellable(
         plane_name_px(&mut d, [(pa, short), (pb, short_a)], &rp.name, &mut lettered);
     }
     d.owner = None;
+    cut_traces(&mut d, &lettered);
     if cancelled() {
         return None;
     }
@@ -2495,7 +2496,8 @@ const NAME_STEPS: usize = 3;
 /// its trace, its box a hair off the line just inside an end: by the first end, on one side then the other, then by the
 /// other end, then a name's extent and a gap further in, [`NAME_STEPS`] times. The first place clear of the other names and
 /// of the other planes' traces inside the picture is taken (else the first clear of the names inside it, else the first
-/// clear of them; else where it goes alone). So a name always touches its own plane's line, never stands
+/// clear of them; else where it goes alone). Where a trace runs on under a name (its own beyond its end, in an elevation
+/// whose traces reach the frame), [`cut_traces`] stops it short of the name. So a name always touches its own plane's line, never stands
 /// where it could be read as another's, and a plane alone is named as it always was.
 fn plane_name_px(d: &mut Drawing, ends: [((f32, f32), (f32, f32)); 2], name: &str, lettered: &mut Lettered) {
     if name.is_empty() {
@@ -2551,6 +2553,81 @@ fn plane_name_px(d: &mut Drawing, ends: [((f32, f32), (f32, f32)); 2], name: &st
     };
     lettered.boxes.push(r);
     d.text(name, at, h, REFERENCE_PLANE);
+}
+
+/// Every reference plane's trace of `d` cut where a name `lettered` lies on it, a gap round the name: a trace stops short of
+/// its own name, as Revit's runs up to it, and passes under no other plane's.
+fn cut_traces(d: &mut Drawing, lettered: &Lettered) {
+    if lettered.boxes.is_empty() {
+        return;
+    }
+    // A gap round the name, however small the view letters it.
+    let gap = d.px(3.0).max(4.0);
+    let boxes: Vec<[f32; 4]> = lettered.boxes.iter().map(|r| [r[0] - gap, r[1] - gap, r[2] + gap, r[3] + gap]).collect();
+    for i in 0..d.prims.len() {
+        let Prim::Line { pts, dash: Some(_), color, .. } = &d.prims[i] else { continue };
+        if *color != REFERENCE_PLANE || pts.len() != 2 || d.parts.get(i) == Some(&Part::Text) {
+            continue;
+        }
+        let (a, b) = (pts[0], pts[1]);
+        // The parts of the line, 0 to 1 along it, inside each box.
+        let mut out: Vec<(f32, f32)> = Vec::new();
+        for r in &boxes {
+            let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+            let (mut t0, mut t1) = (0.0f32, 1.0f32);
+            let mut hit = true;
+            for (p, q) in [(-dx, a.0 - r[0]), (dx, r[2] - a.0), (-dy, a.1 - r[1]), (dy, r[3] - a.1)] {
+                if p == 0.0 {
+                    if q < 0.0 {
+                        hit = false;
+                    }
+                } else if p < 0.0 {
+                    t0 = t0.max(q / p);
+                } else {
+                    t1 = t1.min(q / p);
+                }
+            }
+            if hit && t0 < t1 {
+                out.push((t0, t1));
+            }
+        }
+        if out.is_empty() {
+            continue;
+        }
+        out.sort_by(|x, y| x.0.total_cmp(&y.0));
+        let mut keep: Vec<(f32, f32)> = Vec::new();
+        let mut from = 0.0f32;
+        for (t0, t1) in out {
+            if t0 > from {
+                keep.push((from, t0));
+            }
+            from = from.max(t1);
+        }
+        if from < 1.0 {
+            keep.push((from, 1.0));
+        }
+        let at = |t: f32| (a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t);
+        // A stub left between a name and the frame's edge goes too: the trace ends at its name.
+        let least = d.px(16.0).max(12.0);
+        let mut pieces =
+            keep.into_iter().filter(|(t0, t1)| (t1 - t0) * (b.0 - a.0).hypot(b.1 - a.1) > least).map(|(t0, t1)| vec![at(t0), at(t1)]);
+        let Some(first) = pieces.next() else { continue };
+        let rest: Vec<Vec<(f32, f32)>> = pieces.collect();
+        let template = d.prims[i].clone();
+        if let Prim::Line { pts, .. } = &mut d.prims[i] {
+            *pts = first;
+        }
+        let (owner, part, pen, sub) = (d.owners[i], d.parts[i], d.pens.get(i).copied().flatten(), d.subs.get(i).copied().flatten());
+        for piece in rest {
+            let Prim::Line { width, color, dash, closed, .. } = template.clone() else { continue };
+            d.subs.resize(d.prims.len(), None);
+            d.subs.push(sub);
+            d.prims.push(Prim::Line { pts: piece, width, color, dash, closed });
+            d.owners.push(owner);
+            d.parts.push(part);
+            d.pens.push(pen);
+        }
+    }
 }
 
 fn section_finish(m: &Model, id: Id, d: Drawing) -> Drawing {

@@ -81,11 +81,18 @@ pub struct RefPlane {
     /// Whether it is a level, not a reference plane: only Ref. Level is.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub level: bool,
+    /// What it turns about (F7d): a point it is pinned to, its axis its `up`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pivot: Option<super::Pivot>,
+    /// Its axes where a pivot has turned it, in a flexed copy only (never in a file): what is drawn on it turns with it
+    /// rigidly, where its axes worked out from its line would slide along it.
+    #[serde(skip)]
+    pub turned: Option<Frame>,
 }
 
 /// One of a reference line's four planes: `horizontal`, the plane it is drawn on, through it; `vertical`, square to that
 /// through it; `start` and `end`, square to it at each end.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Face {
     #[default]
@@ -183,6 +190,9 @@ pub struct RefLine {
     pub reference: Reference,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub subcategory: Option<String>,
+    /// What it turns about (F7d): a point it is pinned to, its axis the normal of what it is drawn on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pivot: Option<super::Pivot>,
 }
 
 /// A plane's own axes in the family's: a point `p` of a profile drawn on it, `t` along its normal, is
@@ -211,6 +221,12 @@ impl Frame {
     /// The direction `p` of the profile's plane, in the family's axes.
     pub fn dir(&self, p: P2) -> P3 {
         std::array::from_fn(|k| self.x[k] * p.0 + self.y[k] * p.1)
+    }
+
+    /// Where point `p` of the family is in its own axes: along x and y, and how far along its normal.
+    pub fn local(&self, p: P3) -> (P2, f64) {
+        let d = sub(p, self.origin);
+        (P2(dot(d, self.x), dot(d, self.y)), dot(d, self.z))
     }
 
     /// Whether x, y and the normal turn as the family's x, y and z do: a mirrored frame's triangles turn the other way.
@@ -243,6 +259,8 @@ pub fn datums() -> Vec<RefPlane> {
         defines_origin: true,
         subcategory: None,
         level,
+        pivot: None,
+        turned: None,
     };
     vec![
         datum(REF_LEVEL, "Ref. Level", [1000.0, 0.0, 0.0], [0.0, 1000.0, 0.0], Reference::Bottom, true),
@@ -288,6 +306,9 @@ impl RefPlane {
             CENTER_FRONT_BACK => return Frame::FRONT_BACK,
             CENTER_LEFT_RIGHT => return Frame::LEFT_RIGHT,
             _ => {}
+        }
+        if let Some(f) = self.turned {
+            return f;
         }
         let x = unit(sub(self.end, self.start));
         let y = unit(sub(self.up, mul(x, dot(self.up, x))));
@@ -425,6 +446,19 @@ impl<'a> Planes<'a> {
     }
 }
 
+impl Planes<'_> {
+    /// The plane named `name`, as the Work Plane dialog's Name lists it (`Reference Plane : Left`, `Reference Line 1 :
+    /// Vertical`, `Level : Ref. Level`), or a plane's own name (`Left`, `Ref. Level`).
+    pub fn by_name(&self, name: &str) -> Option<PlaneRef> {
+        let name = name.trim();
+        let listed = self.listed();
+        listed.iter().find(|(_, l)| l == name).map(|(r, _)| *r).or_else(|| {
+            let own = self.planes.iter().find(|p| !p.name.is_empty() && p.name == name).map(|p| PlaneRef::Plane(p.guid));
+            own.or_else(|| datums().into_iter().find(|d| d.name == name).map(|d| PlaneRef::Plane(d.guid)))
+        })
+    }
+}
+
 impl Family {
     /// Its planes and lines, borrowed, to work out the frame of a plane they name.
     pub fn plane_set(&self) -> Planes<'_> {
@@ -455,7 +489,7 @@ impl Family {
         let forms = self.forms.iter().enumerate().filter(|(_, f)| f.host.guid() == guid).map(|(i, _)| format!("form {}", i + 1));
         let lines = self.lines.iter().enumerate().filter(|(_, l)| l.host.guid() == guid).map(|(i, _)| format!("line {}", i + 1));
         let points = self.adaptive.iter().flat_map(|d| d.drawn_on(guid)).map(|id| format!("adaptive point `{id}`"));
-        forms.chain(lines).chain(points).collect()
+        forms.chain(lines).chain(points).chain(self.nested_on(guid)).collect()
     }
 
     /// What is drawn on a plane or a line given another GUID (`planes` and `lines`: from, to) drawn on it still.
@@ -472,7 +506,10 @@ impl Family {
         };
         self.forms.iter_mut().for_each(|f| follow(&mut f.host));
         self.lines.iter_mut().for_each(|l| follow(&mut l.host));
+        self.nested_instances.iter_mut().for_each(|n| follow(&mut n.host));
         self.adaptive.iter_mut().for_each(|d| d.work_planes_mut(&mut |h| follow(h)));
+        let moved: Vec<(Guid, Guid)> = planes.iter().chain(lines).copied().collect();
+        self.resolve_dimension_refs(&moved);
     }
 
     /// Each host given as an id (as a command may) given as the GUID of the plane or line of that id.
@@ -490,7 +527,9 @@ impl Family {
         };
         self.forms.iter_mut().for_each(|f| resolve(&mut f.host));
         self.lines.iter_mut().for_each(|l| resolve(&mut l.host));
+        self.nested_instances.iter_mut().for_each(|n| resolve(&mut n.host));
         self.adaptive.iter_mut().for_each(|d| d.work_planes_mut(&mut |h| resolve(h)));
+        self.resolve_dimension_refs(&[]);
     }
 
     /// Whether its planes and lines are sound: its datums first and pinned; each plane drawable, named once, a level only

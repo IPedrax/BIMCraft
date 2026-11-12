@@ -5,8 +5,9 @@
 //! or one that would load unchanged, asks nothing.
 //!
 //! A load asks its questions in turn (`Question`): the family's own first, then each shared family nested in it that the
-//! project already has ("Shared Family Already Loaded"). Nested families (T6) don't exist yet, so nothing finds the second
-//! kind: `document::State::shared_nested` (`FamilyEditor::set_shared_nested`) is where T6 puts them, and until then only a test does.
+//! project already has ("Shared Family Already Loaded"), as the core's dry run finds them (`shared_conflicts`); the answers
+//! go into the command (`shared_nested`). Loading into a family (T6a: Insert > Load Family in a family document, or Load into
+//! Project from a nested family's document opened by Edit Family) asks the same, against that family's nested families.
 use super::*;
 use std::collections::VecDeque;
 use std::path::Path;
@@ -18,6 +19,9 @@ pub(crate) enum Question {
     Exists(String),
     /// A shared family nested in the one loaded is in the project already: keep the project's, or take the family's.
     SharedNested(String),
+    /// Dimensions of the family loaded measure to references it no longer has (T14): delete them, or don't load it. What the
+    /// `family` command said of them.
+    InvalidDimensions(String),
 }
 
 /// How a family already in the project is overwritten, as the `family` command's `overwrite` names it.
@@ -54,6 +58,11 @@ pub(crate) enum After {
     Document { close: bool, place: bool, apply_placement: bool },
     /// From Load Family: the Component tool takes the family.
     Component,
+    /// Insert > Load Family in a family document: the family goes into the open document (T6a).
+    Nest,
+    /// Load into Project from a nested family's document: it goes into the document under it, which it closes back to with
+    /// `close`.
+    IntoHost { close: bool },
 }
 
 /// A load waiting for its answers.
@@ -66,10 +75,12 @@ pub(crate) struct Loading {
     questions: VecDeque<Question>,
     decided: Decided,
     after: After,
+    /// The family loaded into a family (`After::Nest`, `After::IntoHost`), in place of a command.
+    nest: Option<Family>,
 }
 
 /// What a load decided: the project's family overwritten how (none: not asked), and each shared nested family's version.
-/// The last load's is kept (`BimApp::family_decided`), for the `family` command to take the nested ones once T6 gives it them.
+/// The last load's is kept (`BimApp::family_decided`).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Decided {
     pub(crate) name: String,
@@ -77,24 +88,25 @@ pub(crate) struct Decided {
     pub(crate) shared: Vec<(String, Shared)>,
 }
 
-/// The family document's shared nested families the project already has, defined otherwise. T6 works them out from the
-/// family's nested families; until then they are what was put in `shared_nested`.
-fn shared_nested(ed: &FamilyEditor) -> Vec<String> {
-    ed.document.shared_nested.clone()
+impl Decided {
+    /// The answers about shared nested families, as the core takes them.
+    fn answers(&self) -> BTreeMap<String, bimcraft_core::family::Keep> {
+        use bimcraft_core::family::Keep;
+        self.shared.iter().map(|(n, s)| (n.clone(), if *s == Shared::Project { Keep::Project } else { Keep::Family })).collect()
+    }
 }
 
 impl BimApp {
     /// A load of family `name`: `source` loads it as the file or definition has it (`{"path"}` or `{"definition", "name"}`),
     /// `legacy` is the command a load runs when the project hasn't the family or the family document was renamed. Whether
     /// the project's would stay as it is (`same`, else the core's dry run says so) decides whether it is asked about.
-    fn plan_family_load(&mut self, name: &str, source: Value, legacy: Value, same: bool, nested: Vec<String>, after: After) -> Loading {
+    fn plan_family_load(&mut self, name: &str, source: Value, legacy: Value, same: bool, after: After) -> Loading {
         let exists = self.session.model.families.contains_key(name);
         let same = exists && (same || self.loads_unchanged(&source));
         let mut questions = VecDeque::new();
         if exists && !same {
             questions.push_back(Question::Exists(name.to_string()));
         }
-        questions.extend(nested.into_iter().map(Question::SharedNested));
         let command = if !exists {
             Some(legacy)
         } else if same {
@@ -102,7 +114,113 @@ impl BimApp {
         } else {
             Some(source)
         };
-        Loading { name: name.to_string(), command, questions, decided: Decided { name: name.to_string(), ..Decided::default() }, after }
+        if let Some(c) = &command {
+            questions.extend(self.shared_conflicts(c, exists).into_iter().map(Question::SharedNested));
+        }
+        // Dimensions measuring to what the family hasn't: asked first, an error that can't be passed over (T14).
+        if let Some(c) = &command
+            && let Some(said) = self.invalid_dimensions(c, exists)
+        {
+            questions.push_front(Question::InvalidDimensions(said));
+        }
+        Loading {
+            name: name.to_string(),
+            command,
+            questions,
+            decided: Decided { name: name.to_string(), ..Decided::default() },
+            after,
+            nest: None,
+        }
+    }
+
+    /// The shared families nested in what `command` loads that the project has otherwise: the core's dry run says them, as a
+    /// reload (`overwrite`) where the project has the family.
+    fn shared_conflicts(&mut self, command: &Value, exists: bool) -> Vec<String> {
+        let mut probe = command.clone();
+        probe["dry_run"] = json!(true);
+        if exists && probe.get("overwrite").is_none() && (probe.get("path").is_some() || probe.get("definition").is_some()) {
+            probe["overwrite"] = json!("version");
+        }
+        match self.session.execute("family", &probe) {
+            Ok(r) => r["shared_conflicts"].as_array().into_iter().flatten().filter_map(|v| v.as_str().map(String::from)).collect(),
+            Err(_) => Vec::new(),
+        }
+    }
+
+    /// Family `family`, named `name`, loaded into a family: the open document (`After::Nest`) or, from a nested family's
+    /// document, the one under it (`After::IntoHost`); asking first when that family nests one of the name defined otherwise,
+    /// or a shared family `family` nests otherwise.
+    pub(super) fn nest_family(&mut self, name: String, family: Family, after: After) {
+        let target = match after {
+            After::IntoHost { .. } => self.family_hosts.last(),
+            _ => self.family_editor.as_ref(),
+        };
+        let Some(target) = target else { return };
+        let (exists, shared) = target.nest_conflicts(&name, &family);
+        let mut questions: VecDeque<Question> = shared.into_iter().map(Question::SharedNested).collect();
+        if exists {
+            questions.push_front(Question::Exists(name.clone()));
+        }
+        let mut loading = Loading {
+            name: name.clone(),
+            command: None,
+            questions,
+            decided: Decided { name, ..Decided::default() },
+            after,
+            nest: Some(family),
+        };
+        if loading.questions.is_empty() {
+            self.end_family_load(loading);
+        } else {
+            loading.decided.overwrite = None;
+            self.family_loading = Some(loading);
+        }
+    }
+
+    /// A load into a family answered: the family loaded into the document `ed` (the open one, or the one under it), as
+    /// answered. Whether it went in; a refusal is said in the document it came from.
+    fn finish_nest(&mut self, ed: &mut FamilyEditor, loading: &mut Loading, into_host: bool) -> bool {
+        let Some(family) = loading.nest.take() else { return false };
+        let overwrite = loading.decided.overwrite.map(|o| o == Overwrite::Version);
+        let answers = loading.decided.answers();
+        let name = loading.name.clone();
+        let done = if into_host {
+            match self.family_hosts.last_mut() {
+                Some(host) => host.nest(&name, family, overwrite, &answers),
+                None => Err(t("The family it was nested in is closed.").to_string()),
+            }
+        } else {
+            ed.nest(&name, family, overwrite, &answers)
+        };
+        self.family_decided = Some(std::mem::take(&mut loading.decided));
+        match done {
+            Ok(_) => {
+                ed.document.refused = None;
+                if into_host {
+                    ed.original = Some(name);
+                    ed.saved_as(ed.draft());
+                }
+                true
+            }
+            Err(e) => {
+                ed.document.refused = Some(e);
+                false
+            }
+        }
+    }
+
+    /// What the `family` command says of `command`'s dimensions measuring to references the family hasn't, if it says so: its
+    /// dry run, as a reload (`overwrite`) where the project has the family.
+    fn invalid_dimensions(&mut self, command: &Value, exists: bool) -> Option<String> {
+        let mut probe = command.clone();
+        probe["dry_run"] = json!(true);
+        if exists && probe.get("overwrite").is_none() && (probe.get("path").is_some() || probe.get("definition").is_some()) {
+            probe["overwrite"] = json!("version");
+        }
+        match self.session.execute("family", &probe) {
+            Err(e) if e.contains(bimcraft_core::family::constraints::INVALID_DIMENSIONS) => Some(e),
+            _ => None,
+        }
     }
 
     /// Whether loading `source` over the project's family would change nothing: the core's dry run says it wasn't overwritten.
@@ -134,17 +252,18 @@ impl BimApp {
         let renamed = ed.original.as_deref().is_some_and(|was| was != name);
         // The family as the document would open it from the project: the same draft, so loading it changes nothing.
         let same = base.families.get(&name).and_then(|f| FamilyEditor::of(&name, f).family().ok()).is_some_and(|f| f == family);
-        let nested = shared_nested(ed);
         let mut loading = if renamed {
+            let questions = self.shared_conflicts(&legacy, true).into_iter().map(Question::SharedNested).collect();
             Loading {
                 name: name.clone(),
                 command: Some(legacy),
-                questions: nested.into_iter().map(Question::SharedNested).collect(),
+                questions,
                 decided: Decided { name, ..Decided::default() },
                 after,
+                nest: None,
             }
         } else {
-            self.plan_family_load(&name, json!({"definition": definition, "name": name}), legacy, same, nested, after)
+            self.plan_family_load(&name, json!({"definition": definition, "name": name}), legacy, same, after)
         };
         ed.document.refused = None;
         if loading.questions.is_empty() {
@@ -159,15 +278,23 @@ impl BimApp {
     pub(crate) fn load_family_file(&mut self, path: &Path) {
         let source = json!({"path": path.to_string_lossy()});
         // The name it loads under, as the command works it out; a file that isn't a family says so as the load would.
-        let name = match self.session.execute("family", &json!({"path": path.to_string_lossy(), "dry_run": true})) {
+        // A file whose dimensions measure to nothing loads under its name all the same, once they are deleted: asked below.
+        let named = self.session.execute("family", &json!({"path": path.to_string_lossy(), "dry_run": true})).or_else(|e| {
+            if e.contains(bimcraft_core::family::constraints::INVALID_DIMENSIONS) {
+                self.session.execute("family", &json!({"path": path.to_string_lossy(), "dry_run": true, "invalid_dimensions": "delete"}))
+            } else {
+                Err(e)
+            }
+        });
+        let name = match named {
             Ok(r) => r["name"].as_str().unwrap_or_default().to_string(),
             Err(text) => {
                 self.status = Status { text, error: true };
                 return;
             }
         };
-        // A file holds no nested families yet: T6 asks about its shared ones here too.
-        let loading = self.plan_family_load(&name, source.clone(), source, false, Vec::new(), After::Component);
+        // Its shared nested families the project has otherwise are asked about too.
+        let loading = self.plan_family_load(&name, source.clone(), source, false, After::Component);
         if loading.questions.is_empty() {
             self.finish_component_load(loading);
         } else {
@@ -182,7 +309,9 @@ impl BimApp {
             Some(p) => self.run("family", p).is_some(),
         };
         self.family_decided = Some(std::mem::take(&mut loading.decided));
-        let After::Document { close, place, apply_placement } = loading.after else { return };
+        let After::Document { close, place, apply_placement } = loading.after else {
+            return;
+        };
         if !made {
             // Said in the document; the box over the view's corner would lie on its buttons. Kept apart from what the
             // preview says, which is worked out again every frame, so drawing it never hides this.
@@ -228,14 +357,31 @@ impl BimApp {
             self.end_family_load(loading);
             return;
         };
-        let (title, text, choices): (&str, String, [&str; 2]) = match &question {
+        let into_family = loading.nest.is_some();
+        let (title, text, choices): (&str, String, Vec<&str>) = match &question {
+            Question::Exists(name) if into_family => (
+                t(EXISTS),
+                tf(
+                    "The family {} you are loading is already in this family, defined differently. What would you like to do?",
+                    &[name.as_str()],
+                ),
+                vec![OVERWRITE, OVERWRITE_VALUES],
+            ),
             Question::Exists(name) => (
                 t(EXISTS),
                 tf(
                     "The family {} you are loading is already in this project, defined differently. What would you like to do?",
                     &[name.as_str()],
                 ),
-                [OVERWRITE, OVERWRITE_VALUES],
+                vec![OVERWRITE, OVERWRITE_VALUES],
+            ),
+            Question::SharedNested(name) if into_family => (
+                t(SHARED),
+                tf(
+                    "The shared family {} nested in the family you are loading is already in this family. Which version should it use?",
+                    &[name.as_str()],
+                ),
+                vec![KEEP_HOST, TAKE_FAMILY],
             ),
             Question::SharedNested(name) => (
                 t(SHARED),
@@ -243,8 +389,11 @@ impl BimApp {
                     "The shared family {} nested in this family is already loaded in the project. Which version should the project use?",
                     &[name.as_str()],
                 ),
-                [KEEP_PROJECT, TAKE_FAMILY],
+                vec![KEEP_PROJECT, TAKE_FAMILY],
             ),
+            Question::InvalidDimensions(said) => {
+                (t(INVALID), tf("Dimensions of the family you are loading can't be kept: {}", &[said.as_str()]), vec![DELETE_DIMENSIONS])
+            }
         };
         let (mut chosen, mut cancel) = (None, false);
         let r = Modal::new(UiId::new("family-already-exists"), title).width(520.0).show(ctx, |ui| {
@@ -281,7 +430,18 @@ impl BimApp {
                     p["overwrite"] = json!(how.name());
                 }
             }
-            Question::SharedNested(name) => loading.decided.shared.push((name, if i == 0 { Shared::Project } else { Shared::Family })),
+            Question::SharedNested(name) => {
+                let keep = if i == 0 { Shared::Project } else { Shared::Family };
+                if let Some(p) = loading.command.as_mut() {
+                    p["shared_nested"][&name] = json!(if keep == Shared::Project { "project" } else { "family" });
+                }
+                loading.decided.shared.push((name, keep));
+            }
+            Question::InvalidDimensions(_) => {
+                if let Some(p) = loading.command.as_mut() {
+                    p["invalid_dimensions"] = json!("delete");
+                }
+            }
         }
         if loading.questions.is_empty() {
             self.end_family_load(loading);
@@ -295,6 +455,24 @@ impl BimApp {
     fn end_family_load(&mut self, mut loading: Loading) {
         match loading.after {
             After::Component => self.finish_component_load(loading),
+            After::Nest => {
+                let Some(mut ed) = self.family_editor.take() else { return };
+                self.finish_nest(&mut ed, &mut loading, false);
+                self.family_editor = Some(ed);
+            }
+            After::IntoHost { close } => {
+                let Some(mut ed) = self.family_editor.take() else { return };
+                let made = self.finish_nest(&mut ed, &mut loading, true);
+                // Load into Project and Close: back to the family it was nested in.
+                if made
+                    && close
+                    && let Some(host) = self.family_hosts.pop()
+                {
+                    self.family_editor = Some(host);
+                } else {
+                    self.family_editor = Some(ed);
+                }
+            }
             After::Document { .. } => {
                 // Closed meanwhile, the document has nothing to load.
                 let Some(mut ed) = self.family_editor.take() else { return };
@@ -313,4 +491,7 @@ const OVERWRITE: &str = msg!("Overwrite the existing version");
 const OVERWRITE_VALUES: &str = msg!("Overwrite the existing version and its parameter values");
 const SHARED: &str = msg!("Shared Family Already Loaded");
 const KEEP_PROJECT: &str = msg!("Use the project's version");
+const KEEP_HOST: &str = msg!("Use this family's version");
 const TAKE_FAMILY: &str = msg!("Overwrite it with the version in this family");
+const INVALID: &str = msg!("Invalid Dimensions");
+const DELETE_DIMENSIONS: &str = msg!("Delete Dimension(s)");

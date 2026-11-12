@@ -3,13 +3,18 @@
 //! Every change to the project is a `family` command, so it's checked, and undone, like any other.
 
 mod association;
+pub(crate) mod dimensions;
 pub(crate) mod document;
 pub(crate) mod exists;
 mod extrusion;
+mod nested;
 pub(crate) mod options;
+mod pivot;
+pub(crate) mod sketch;
 mod temp_hide;
 mod types_dialog;
 pub(crate) mod views;
+pub(crate) mod work_plane;
 
 use crate::popup::Modal;
 
@@ -93,11 +98,13 @@ fn text_profile(s: &str) -> Result<Vec<[Expr; 2]>, String> {
         .collect()
 }
 
-/// What a form is drawn from: the corners of a profile, or a circle.
+/// What a form is drawn from: the corners of a profile, or a circle, as typed; or a sketch of other lines, arcs or loops,
+/// drawn in sketch mode (`editor/sketch.rs`).
 #[derive(Clone, Copy, PartialEq)]
 enum Shape {
     Profile,
     Circle,
+    Sketch,
 }
 
 /// A form as typed.
@@ -126,20 +133,31 @@ struct FormText {
 static TAGS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
 impl FormText {
+    /// Form `f` as typed again, keeping the tag `tag` it is known by while the document is open.
+    pub(crate) fn again(f: &Form, tag: u64) -> FormText {
+        FormText { tag, ..FormText::of(f) }
+    }
+
     fn of(f: &Form) -> FormText {
-        let axis = f
-            .axis
-            .as_ref()
-            .map_or_else(Default::default, |[a, b]| [expr_text(&a[0]), expr_text(&a[1]), expr_text(&b[0]), expr_text(&b[1])]);
+        let axis =
+            f.axis().map_or_else(Default::default, |[a, b]| [expr_text(&a[0]), expr_text(&a[1]), expr_text(&b[0]), expr_text(&b[1])]);
+        let round = f.circle();
         let circle =
-            f.circle.as_ref().map_or_else(Default::default, |c| [expr_text(&c.centre[0]), expr_text(&c.centre[1]), expr_text(&c.radius)]);
+            round.as_ref().map_or_else(Default::default, |c| [expr_text(&c.centre[0]), expr_text(&c.centre[1]), expr_text(&c.radius)]);
+        let corners = f.corners();
+        let shape = match (&round, &corners) {
+            (Some(_), _) => Shape::Circle,
+            (None, Some(_)) => Shape::Profile,
+            (None, None) if f.boundary().next().is_none() => Shape::Profile,
+            (None, None) => Shape::Sketch,
+        };
         FormText {
             original: f.clone(),
-            shape: if f.circle.is_some() { Shape::Circle } else { Shape::Profile },
+            shape,
             host: f.host,
-            profile: profile_text(&f.profile),
+            profile: corners.as_deref().map(profile_text).unwrap_or_default(),
             circle,
-            revolve: f.axis.is_some(),
+            revolve: f.revolves(),
             axis,
             from: expr_text(&f.from),
             to: expr_text(&f.to),
@@ -168,8 +186,8 @@ impl FormText {
             (true, _, _) => t("Mesh"),
             (_, Shape::Circle, true) => t("Revolved Circle"),
             (_, Shape::Circle, false) => t("Cylinder"),
-            (_, Shape::Profile, true) => t("Revolve"),
-            (_, Shape::Profile, false) => t("Extrusion"),
+            (_, Shape::Profile | Shape::Sketch, true) => t("Revolve"),
+            (_, Shape::Profile | Shape::Sketch, false) => t("Extrusion"),
         };
         if self.void { format!("{what} ({})", t("void")) } else { what.to_string() }
     }
@@ -183,16 +201,23 @@ impl FormText {
             return Ok(f);
         }
         (f.host, f.from, f.to) = (self.host, text_expr(&self.from), text_expr(&self.to));
-        (f.profile, f.circle) = (Vec::new(), None);
+        // The typed corners or circle: the sketch's lines again, each keeping its id and GUID by place.
         match self.shape {
-            Shape::Profile => f.profile = text_profile(&self.profile)?,
+            Shape::Profile => f.set_corners(&text_profile(&self.profile)?),
             Shape::Circle => {
-                f.circle =
-                    Some(Circle { centre: [text_expr(&self.circle[0]), text_expr(&self.circle[1])], radius: text_expr(&self.circle[2]) });
+                f.set_circle(&Circle {
+                    centre: [text_expr(&self.circle[0]), text_expr(&self.circle[1])],
+                    radius: text_expr(&self.circle[2]),
+                });
             }
+            Shape::Sketch => {}
         }
         let a = &self.axis;
-        f.axis = self.revolve.then(|| [[text_expr(&a[0]), text_expr(&a[1])], [text_expr(&a[2]), text_expr(&a[3])]]);
+        let axis = self.revolve.then(|| [[text_expr(&a[0]), text_expr(&a[1])], [text_expr(&a[2]), text_expr(&a[3])]]);
+        // Unchanged, the axis line stays as it is (its formulas, where sketch mode put it).
+        if axis != f.axis() {
+            f.set_axis(axis.as_ref());
+        }
         Ok(f)
     }
 }
@@ -394,9 +419,8 @@ impl SymbolText {
 pub(crate) struct Preview {
     key: u64,
     pub(crate) tile: TextureHandle,
-    #[cfg(test)]
+    /// The camera it was taken through and its size: what a sketch in {3D} is drawn and clicked through.
     pub(crate) cam: bimcraft_core::view3d::Camera,
-    #[cfg(test)]
     pub(crate) size: [u32; 2],
 }
 
@@ -440,6 +464,8 @@ pub(crate) struct FamilyEditor {
     /// Its reference planes and lines, as the family has them: the editor has no tab for them yet, and keeps them as they are.
     pub(crate) planes: Vec<RefPlane>,
     pub(crate) lines: Vec<RefLine>,
+    /// Its dimensions (F7): drawn, labelled, locked and taken away in its plans and elevations.
+    pub(crate) dimensions: Vec<bimcraft_core::family::FamilyDimension>,
     /// Which fixture or fitting it is, as the family has it: set with the `family` command, kept as it is here.
     kind: Option<String>,
     /// The IFC class a generic family from IFC remembers: set with the `family` command or by the import, kept as it is here.
@@ -475,6 +501,21 @@ pub(crate) struct FamilyEditor {
     form: Option<usize>,
     /// Its plans and elevations (`views.rs`): which one shows, and what each keeps for the session.
     pub(crate) views: views::Views,
+    /// A form being sketched (F5, `editor/sketch.rs`): no part of the draft until Finish.
+    pub(crate) sketch: Option<Box<sketch::FormSketch>>,
+    /// What a sketch snaps to, as Manage > Snaps says: the window's, given each frame.
+    pub(crate) snaps: bimcraft_core::snap::Snaps,
+    /// The families loaded into it and their instances placed in it (T6a, `nested.rs`), as the family holds them.
+    pub(crate) nested: Vec<bimcraft_core::family::NestedFamily>,
+    pub(crate) nested_instances: Vec<bimcraft_core::family::NestedInstance>,
+    /// The nested instance selected.
+    nested_sel: Option<usize>,
+    /// Create > Component, on: the nested family and type a click places.
+    pub(crate) placing: Option<(String, String)>,
+    /// Opened by Edit Family on a family nested in the document under it: its loads go into that one, not the project.
+    pub(crate) into_host: bool,
+    /// Edit Family asked for on this nested family, done after the frame.
+    pub(crate) open_nested: Option<String>,
 }
 
 /// The tabs of a family document's ribbon, as Revit's family editor has them.
@@ -559,6 +600,7 @@ impl FamilyEditor {
             connectors: f.connectors.clone(),
             planes: f.planes.clone(),
             lines: f.lines.clone(),
+            dimensions: f.dimensions.clone(),
             kind: f.kind.clone(),
             ifc: f.ifc.clone(),
             operation: f.operation,
@@ -577,6 +619,14 @@ impl FamilyEditor {
             source: None,
             form: None,
             views: Default::default(),
+            sketch: None,
+            snaps: Default::default(),
+            nested: f.nested.clone(),
+            nested_instances: f.nested_instances.clone(),
+            nested_sel: None,
+            placing: None,
+            into_host: false,
+            open_nested: None,
         }
     }
 
@@ -586,7 +636,13 @@ impl FamilyEditor {
         use crate::adaptive_editor::{Field, associate};
         let Some(mut a) = self.associating.take() else { return };
         let (params, values) = (self.parameter_kinds(), self.values());
-        let (done, new) = if matches!(a.field, Field::Form(_) | Field::Symbol(_)) {
+        let (done, new) = if matches!(a.field, Field::Nested(_)) {
+            let mut rows = nested::NestedRows { instances: &mut self.nested_instances };
+            associate(ctx, &mut a, &mut rows, &params, &values)
+        } else if matches!(a.field, Field::Pivot) {
+            let mut rows = pivot::PivotRows { lines: &mut self.lines, planes: &mut self.planes };
+            associate(ctx, &mut a, &mut rows, &params, &values)
+        } else if matches!(a.field, Field::Form(_) | Field::Symbol(_)) {
             let mut rows = association::Rows { forms: &mut self.forms, symbols: &mut self.symbols };
             associate(ctx, &mut a, &mut rows, &params, &values)
         } else if let Some(d) = self.adaptive.as_mut() {
@@ -710,6 +766,9 @@ impl FamilyEditor {
             adaptive: self.adaptive.clone(),
             planes: self.planes.clone(),
             lines: self.lines.clone(),
+            dimensions: self.dimensions.clone(),
+            nested: self.nested.clone(),
+            nested_instances: self.nested_instances.clone(),
             ..Family::default()
         };
         self.options.apply(&mut family);
@@ -845,16 +904,7 @@ impl FamilyEditor {
             let pixels = image.rgba.as_chunks::<4>().0.iter().map(|p| Color32::from_rgb(p[0], p[1], p[2])).collect();
             let picture = ColorImage { size: [w as usize, h as usize], pixels, source_size: Default::default() };
             let tile = ctx.load_texture("family-preview", picture, TextureOptions::LINEAR);
-            #[cfg(test)]
-            let shown = (cam, [w, h]);
-            Ok(Some(Preview {
-                key,
-                tile,
-                #[cfg(test)]
-                cam: shown.0,
-                #[cfg(test)]
-                size: shown.1,
-            }))
+            Ok(Some(Preview { key, tile, cam, size: [w, h] }))
         });
         match result {
             Ok(Some(drawn)) => (self.preview, self.problem) = (Some(drawn), None),
@@ -1046,15 +1096,22 @@ fn form_fields(
                 });
             ui.end_row();
             ui.label(t("Shape"));
-            ComboBox::from_id_salt(("fe-shape", i))
-                .selected_text(if f.shape == Shape::Profile { t("Profile") } else { t("Circle") })
-                .width(110.0)
-                .show_ui(ui, |ui| {
-                    ui.selectable_value(&mut f.shape, Shape::Profile, t("Profile"));
-                    ui.selectable_value(&mut f.shape, Shape::Circle, t("Circle"));
-                });
+            let named = match f.shape {
+                Shape::Profile => t("Profile"),
+                Shape::Circle => t("Circle"),
+                Shape::Sketch => t("Sketch"),
+            };
+            ComboBox::from_id_salt(("fe-shape", i)).selected_text(named).width(110.0).show_ui(ui, |ui| {
+                ui.selectable_value(&mut f.shape, Shape::Profile, t("Profile"));
+                ui.selectable_value(&mut f.shape, Shape::Circle, t("Circle"));
+            });
             ui.end_row();
-            if f.shape == Shape::Profile {
+            if f.shape == Shape::Sketch {
+                // Lines, arcs or loops the corners can't say: sketch mode draws them (Edit Extrusion).
+                ui.label(t("Sketch"));
+                let n = f.original.boundary().count().to_string();
+                ui.label(RichText::new(tf("{} lines and arcs, drawn in sketch mode", &[&n])).color(pal().muted));
+            } else if f.shape == Shape::Profile {
                 ui.label(t("Corners"));
                 let r = ui.add(TextEdit::multiline(&mut f.profile).desired_rows(4).desired_width(300.0).id_salt(("fe-profile", i)));
                 r.widget_info(|| WidgetInfo::labeled(WidgetType::TextEdit, true, format!("{} {n}", t("Form Corners"))));
@@ -1088,7 +1145,7 @@ fn form_fields(
                 });
                 ui.end_row();
             }
-            ui.label(if f.revolve { t("From (degrees)") } else { t("From") });
+            ui.label(if f.revolve { t("Start Angle") } else { t("From") });
             links.field(
                 ui,
                 format!("{} {n}", t("Form From")),
@@ -1098,7 +1155,7 @@ fn form_fields(
                 (Field::Form(Slot::From), i),
             );
             ui.end_row();
-            ui.label(if f.revolve { t("To (degrees)") } else { t("To") });
+            ui.label(if f.revolve { t("End Angle") } else { t("To") });
             links.field(
                 ui,
                 format!("{} {n}", t("Form To")),
@@ -1317,9 +1374,10 @@ fn symbols_tab(ed: &mut FamilyEditor, ui: &mut Ui) {
                     );
                     ui.end_row();
                     if y.part == Part::Arc {
-                        for (label, what, text) in
-                            [("From (degrees)", msg!("Symbol From"), &mut y.from), ("To (degrees)", msg!("Symbol To"), &mut y.to)]
-                        {
+                        for (label, what, text) in [
+                            (msg!("From (degrees)"), msg!("Symbol From"), &mut y.from),
+                            (msg!("To (degrees)"), msg!("Symbol To"), &mut y.to),
+                        ] {
                             ui.label(t(label));
                             links.field(
                                 ui,
@@ -1422,12 +1480,15 @@ impl BimApp {
                 editor.tab = Tab::Adaptive;
             }
             self.family_editor = Some(editor);
+            // A document opened anew has no family under it.
+            self.family_hosts.clear();
         }
     }
 
     /// Open the Family Editor on a new family of `category`.
     pub(crate) fn new_family(&mut self, category: Category) {
         self.family_editor = Some(FamilyEditor::blank(category));
+        self.family_hosts.clear();
     }
 
     /// The family the selection is of, else the one the Component tool places.
@@ -1477,6 +1538,11 @@ impl BimApp {
     /// which never touches the project), then closing it on Close Family, or on Load into Project and Close when the family
     /// went in. It stays open otherwise.
     fn family_asked(&mut self, ctx: &Context, mut ed: FamilyEditor, ask: Asked) {
+        // Edit Family on a nested family: its document over this one, which waits under it.
+        if let Some(name) = ed.open_nested.take() {
+            self.open_nested_family(ed, &name);
+            return;
+        }
         let base = Arc::clone(&self.session.model);
         let Asked { capture: capture_context, place: place_adaptive, apply_placement, apply, ok, cancel, save, favorite, load, .. } = ask;
         let capture_sources = self.capture_sources();
@@ -1493,15 +1559,11 @@ impl BimApp {
         }
         if load {
             let dialog = rfd::AsyncFileDialog::new().add_filter(t("BIMCraft family"), &["json"]);
-            self.ask_file(ctx, dialog, false, |app, path| match read_family_file(&path) {
-                Ok((name, f)) => {
-                    // Closed meanwhile, the editor has nothing to load into.
-                    if let Some(open) = app.family_editor.as_mut() {
-                        *open = FamilyEditor::of(&name, &f);
-                        open.original = None;
-                    }
+            // Loaded into this family (T6a), as Revit's Insert > Load Family in a family; closed meanwhile, nothing to load into.
+            self.ask_file(ctx, dialog, false, |app, path| {
+                if app.family_editor.is_some() {
+                    app.nest_family_file(&path);
                 }
-                Err(text) => app.status = Status { text, error: true },
             });
         }
         // Save and Favorites use a private Session: neither implicitly loads the draft into the project.
@@ -1546,12 +1608,31 @@ impl BimApp {
         }
         // Made the project's: Load into Project does it, and so does placing the test frames, which places the family's. A
         // family the project has otherwise asks first (`exists`); Load into Project and Close closes once it went in.
+        if !cancel && ed.into_host && (apply || ok) {
+            // A nested family's document loads into the family under it, asking as a load into the project does.
+            let family = ed.family();
+            match family {
+                Ok(family) => {
+                    let name = ed.name.trim().to_string();
+                    self.family_editor = Some(ed);
+                    self.nest_family(name, family, exists::After::IntoHost { close: ok });
+                }
+                Err(e) => {
+                    ed.document.refused = Some(e);
+                    self.family_editor = Some(ed);
+                }
+            }
+            return;
+        }
         if !cancel && (apply || ok || place_adaptive || apply_placement) {
             self.load_draft(&mut ed, exists::After::Document { close: ok, place: place_adaptive, apply_placement });
         }
         let closed = cancel || std::mem::take(&mut ed.document.loaded_to_close);
         if !closed {
             self.family_editor = Some(ed);
+        } else if ed.into_host {
+            // Closed, a nested family's document goes back to the family under it.
+            self.family_editor = self.family_hosts.pop();
         }
     }
 }
@@ -1720,12 +1801,17 @@ mod tests {
         let mut text = FormText::blank();
         (text.revolve, text.host, text.to) = (true, PlaneRef::Plane(CENTER_FRONT_BACK), "360".into());
         let f = text.form().unwrap();
-        assert!(f.axis.is_some() && f.host == PlaneRef::Plane(CENTER_FRONT_BACK) && f.to == Expr::Number(360.0) && f.profile.len() == 4);
+        assert!(
+            f.axis().is_some()
+                && f.host == PlaneRef::Plane(CENTER_FRONT_BACK)
+                && f.to == Expr::Number(360.0)
+                && f.corners().map(|c| c.len()) == Some(4)
+        );
         assert_eq!(FormText::of(&f).describe(), "Revolve");
         text.shape = Shape::Circle;
         text.circle = ["0".into(), "0".into(), "R".into()];
         let f = text.form().unwrap();
-        assert!(f.profile.is_empty() && f.circle.as_ref().is_some_and(|c| c.radius == Expr::Formula("R".into())));
+        assert!(f.corners().is_none() && f.circle().is_some_and(|c| c.radius == Expr::Formula("R".into())));
     }
 
     #[test]

@@ -1696,7 +1696,7 @@ fn patching_one_form_keeps_every_other_guid() {
     // A field given as null is taken away; the ones left alone are as they were.
     run(&mut s, "family", json!({"name": "Shelf", "form": {"id": before[2].0, "material": null}}));
     assert_eq!(s.model.families["Shelf"].forms[2].material, "");
-    assert_eq!(s.model.families["Shelf"].forms[2].circle.as_ref().map(|c| c.radius.clone()), Some(crate::family::Expr::Number(25.0)));
+    assert_eq!(s.model.families["Shelf"].forms[2].circle().as_ref().map(|c| c.radius.clone()), Some(crate::family::Expr::Number(25.0)));
     // One taken away: the others keep their ids and GUIDs, and close up over its place.
     run(&mut s, "family", json!({"name": "Shelf", "delete_form": [before[0].0]}));
     let left: Vec<(u64, String)> = parts(&mut s).into_iter().map(|(id, guid, _)| (id, guid)).collect();
@@ -1766,7 +1766,8 @@ fn warnings_are_collected_not_stopped_at_the_first() {
 }
 
 /// What a family is in a file: its own fields, no more and no less, and a project written here read
-/// back whole (ТЗ-003 §6.8). FORMAT 18 grew its `planes` (the datums, always written) and a form's `host`.
+/// back whole (ТЗ-003 §6.8). FORMAT 18 grew its `planes` (the datums, always written), a form's `host`, and its
+/// `sketch`, in place of its `profile`.
 #[test]
 fn a_family_is_saved_with_the_fields_it_has_always_had() {
     let mut s = Session::new();
@@ -1778,7 +1779,7 @@ fn a_family_is_saved_with_the_fields_it_has_always_had() {
         keys
     }
     assert_eq!(keys(&f), ["category", "forms", "parameters", "planes", "types"], "`symbols` and `operation` are only there when they are");
-    assert_eq!(keys(&f["forms"][0]), ["from", "guid", "host", "id", "material", "profile", "to"], "every other field is unset");
+    assert_eq!(keys(&f["forms"][0]), ["from", "guid", "host", "id", "material", "sketch", "to"], "every other field is unset");
     let path = temp("family-format.bimcraft");
     run(&mut s, "save", json!({"path": path}));
     let mut back = Session::new();
@@ -2111,6 +2112,11 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"start": [0, 0], "end": [0, 0]}),
         json!({"level": "nowhere"}),
         json!({"system": 5, "level": [], "tolerance": 1e300}),
+        json!({"name": "Level : nowhere", "offset": 1e300}),
+        json!({"name": 5, "ref_plane": [], "dissociate": "x"}),
+        json!({"ref_plane": 100002, "dissociate": true}),
+        json!({"dissociate": true, "offset": -1e300}),
+        json!({"family": "Generic", "form": 1, "host": "Reference Line 99 : Vertical"}),
         json!({"path": 5}),
         json!({"path": "/nonexistent/scan.las", "units": "furlong", "spacing": -1}),
         json!({"cloud": "nope", "origin": "file", "at": [1e300, 0]}),
@@ -2295,6 +2301,26 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"name": "F", "types": {"A": {}}, "options": {"room_calculation_point": [f64::MAX, "1e300 * 1e300", "Nope"], "omniclass": {"number": "1".repeat(10_000), "title": "\u{0}"}, "cut_in_views": 5}}),
         json!({"name": "F", "types": {"A": {}}, "options": {"work_plane_based": "x", "always_vertical": [], "shared": {}, "cut_with_voids_when_loaded": null, "room_calculation_point": [[], {}, null]}}),
         json!({"name": "F", "types": {"A": {}}, "options": {"omniclass": {"number": "23..", "title": "x".repeat(100_000)}, "nope": true}}),
+        // F7a: dimensions, labels, locks and EQ, solved for every type.
+        json!({"name": "F", "parameters": [{"name": "W", "value": 1e300}], "types": {"A": {}, "B": {"W": -5}}, "ref_planes": [{"guid": "1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8", "start": [5, 0, 0], "end": [5, 1, 0], "up": [0, 0, 1]}], "dimensions": [{"refs": [{"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a3"}, {"plane": "1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8"}], "at": [0, 0, 0], "label": "W", "locked": [{"segment": 0, "length": f64::MAX}], "equal": true}]}),
+        json!({"name": "F", "types": {"A": {}}, "dimensions": [{"refs": [{"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a3"}, {"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a3"}], "at": [1e300, 0, 0], "alignment": true, "view": "front"}], "dimension": {"refs": [{"form": 5, "end": "end"}, {"plane": 5}], "at": [0, 0, 0]}, "delete_dimension": [5, "x"], "invalid_dimensions": "delete"}),
+        json!({"name": "F", "types": {"A": {}}, "forms": [{"guid": "1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f9", "mesh": [[[0, 0, 0], [1, 0, 0], [0, 1, 0]]]}], "dimensions": [{"refs": [{"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a1"}, {"form": "1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f9", "end": "start"}], "at": [0, 0, 0], "locked": [{"segment": 0, "length": 0}], "alignment": true, "view": "front"}], "solve": "A"}),
+        // F7c: angular dimensions, reference lines turned and moved, their ends, arcs' radii and centres, forms on a line's face;
+        // angles past 180, NaN and huge, a rig that can't close (non-convergent), a fan of 64, and lines drawn on lines.
+        json!({"name": "F", "parameters": [{"name": "A", "kind": "angle", "value": 1e300}, {"name": "L", "kind": "length", "value": 10}], "types": {"A": {}, "B": {"A": 179.9999999}, "C": {"A": -1e-300}, "D": {"A": 90, "L": 1e300}}, "ref_lines": [{"guid": "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f809", "start": [0, 0, 0], "end": [1000, 1e-9, 0]}, {"guid": "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f80a", "host": {"line": "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f809", "face": "vertical"}, "start": [10, 0, 0], "end": [10, 0, 500]}], "forms": [{"guid": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f800", "host": {"line": "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f809", "face": "vertical"}, "sketch": [{"guid": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f801", "start": [0, 0], "end": [100, 0], "turn": 359.9999}, {"guid": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f802", "start": [100, 0], "end": [0, 0]}], "to": "L"}], "dimensions": [{"kind": "angular", "refs": [{"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a2"}, {"line": "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f809", "face": "vertical"}], "at": [500, 100, 0], "label": "A", "locked": [{"segment": 0, "length": 1e300}]}, {"refs": [{"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a3"}, {"line": "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f809", "point": "end"}], "at": [0, 0, 0], "locked": [{"segment": 0, "length": 1000}]}, {"refs": [{"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a3"}, {"line": "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f809", "point": "centre"}], "at": [0, 0, 0]}, {"kind": "radial", "refs": [{"form": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f800", "line": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f801"}], "at": [0, 0, 0], "label": "L"}, {"view": "front", "refs": [{"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a1"}, {"form": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f800", "line": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f801", "point": "centre"}], "at": [0, 0, 0], "label": "L"}, {"kind": "angular", "refs": [{"line": "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f80a", "face": "vertical"}, {"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a1"}], "at": [1e300, 0, 0], "equal": true, "alignment": true}], "solve": "D"}),
+        json!({"name": "F", "parameters": [{"name": "A", "kind": "angle", "value": 30}], "types": {"A": {"A": 90}}, "ref_lines": (0..64).map(|k| json!({"guid": format!("2c3d4e5f-6071-4b82-9ca3-{:012x}", k + 1), "start": [0, 0, 0], "end": [1000.0 * (0.01 * f64::from(k) + 0.1).cos(), 1000.0 * (0.01 * f64::from(k) + 0.1).sin(), 0]})).collect::<Vec<_>>(), "dimensions": [{"kind": "angular", "refs": (0..64).map(|k| json!({"line": format!("2c3d4e5f-6071-4b82-9ca3-{:012x}", k + 1), "face": "vertical"})).collect::<Vec<_>>(), "at": [900, 400, 0], "equal": true}, {"kind": "angular", "refs": [{"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a2"}, {"line": "2c3d4e5f-6071-4b82-9ca3-000000000040", "face": "vertical"}], "at": [900, 100, 0], "label": "A"}, {"refs": [{"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a2"}, {"line": "2c3d4e5f-6071-4b82-9ca3-000000000001", "point": "end"}], "at": [0, 0, 0], "locked": [{"segment": 0, "length": 1e-9}]}], "solve": "A"}),
+        // F7d: pivots on themselves, in a cycle, on planes that don't cross or are gone, limits past one another, huge and
+        // non-finite-like angles, planes pivoting on each other's crossings, a pivoted plane dragged and aligned.
+        json!({"name": "F", "parameters": [{"name": "A", "kind": "angle", "value": 1e300}], "types": {"A": {}, "B": {"A": -1e300}, "C": {"A": 359.999999}}, "ref_lines": [{"guid": "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f809", "start": [0, 0, 0], "end": [1000, 0, 0], "pivot": {"to": {"line": "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f809", "point": "end"}, "parameter": "A", "min": 1e300, "max": -1e300}}]}),
+        json!({"name": "F", "types": {"A": {}}, "ref_lines": [{"guid": "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f809", "start": [0, 0, 0], "end": [1000, 0, 0], "pivot": {"to": {"line": "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f80a", "point": "end"}, "angle": 1e300}}, {"guid": "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f80a", "start": [0, 100, 0], "end": [1000, 100, 0], "pivot": {"to": {"line": "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f809", "point": "start"}, "angle": -1e-300, "min": 5, "max": 4}}]}),
+        json!({"name": "F", "types": {"A": {}}, "ref_planes": [{"guid": "1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8", "start": [0, -1000, 0], "end": [0, 1000, 0], "up": [0, 0, 1], "pivot": {"to": {"planes": ["1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f7", "9e3c0a10-1f0b-4d8c-8a5e-0000000000a2"]}, "angle": 90}}, {"guid": "1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f7", "start": [-1000, 5, 0], "end": [1000, 5, 0], "up": [0, 0, 1], "pivot": {"to": {"planes": ["1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8", "9e3c0a10-1f0b-4d8c-8a5e-0000000000a3"]}, "angle": 45}}], "dimensions": [{"refs": [{"plane": "1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8"}, {"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a3"}], "at": [0, 0, 0], "label": "Nope", "locked": [{"segment": 0, "length": 1e300}]}]}),
+        json!({"name": "F", "types": {"A": {}}, "ref_planes": [{"guid": "1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8", "start": [0, -1000, 0], "end": [0, 1000, 0], "up": [0, 0, 1]}], "ref_lines": [{"guid": "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f809", "start": [0, 0, 0], "end": [1000, 0, 0], "pivot": {"to": {"planes": ["1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8", "1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8"]}, "at": {"along": 1e300}, "from": {"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a1"}}}], "delete_ref_plane": ["1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8"]}),
+        json!({"name": "F", "types": {"A": {}}, "ref_lines": [{"guid": "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f809", "start": [0, 0, 0], "end": [1e-9, 0, 0], "pivot": {"to": {"fixed": [1e300, -1e300, 0]}, "at": "end", "from": {"line": "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f809"}}}, {"guid": "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f80a", "host": {"line": "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f809", "face": "vertical"}, "start": [0, 0, 0], "end": [0, 0, 500], "pivot": {"to": {"planes": ["9e3c0a10-1f0b-4d8c-8a5e-0000000000a1", "9e3c0a10-1f0b-4d8c-8a5e-0000000000a2"]}, "angle": 720}}], "solve": "A"}),
+        json!({"name": "F", "parameters": [{"name": "A", "kind": "angle", "value": 30}], "types": {"A": {}}, "ref_planes": [{"guid": "1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8", "start": [0, 0, 0], "end": [1000, 0, 0], "up": [0, 0, 1], "pivot": {"to": {"fixed": [0, 0, 0]}, "parameter": "A", "from": {"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a2"}}}, {"guid": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a1", "start": [0, 0, 0], "end": [1, 0, 0], "up": [0, 1, 0], "pivot": {"to": {"fixed": [0, 0, 0]}}}], "dimensions": [{"refs": [{"plane": "1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8"}, {"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a2"}], "at": [0, 0, 0], "locked": [{"segment": 0, "length": 0}], "alignment": true}, {"view": "plan", "kind": "angular", "refs": [{"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a3"}, {"plane": "1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8"}], "at": [300, 300, 0], "label": "A"}], "ref_plane": {"id": 999999, "pivot": {"to": {"planes": []}}}}),
+        // F7b: dimensions to sketch lines, their points, circles and reference lines' faces.
+        json!({"name": "F", "parameters": [{"name": "W", "value": 1e300}, {"name": "R", "value": -1}], "types": {"A": {}, "B": {"W": 1e-300, "R": 1e300}}, "ref_planes": [{"guid": "1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8", "start": [5, 0, 0], "end": [5, 1, 0], "up": [0, 0, 1]}], "forms": [{"guid": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f800", "sketch": [{"guid": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f801", "start": [0, 0], "end": ["W", 0]}, {"guid": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f802", "start": ["W", 0], "end": [0, "W"], "turn": 1e300}, {"guid": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f803", "start": [0, "W"], "end": [0, 0]}, {"guid": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f804", "centre": [f64::MAX, 0], "radius": "R"}], "to": 1}], "dimensions": [{"refs": [{"plane": "1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8"}, {"form": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f800", "line": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f803"}], "at": [0, 0, 0], "label": "W"}, {"refs": [{"form": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f800", "line": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f804"}], "kind": "diameter", "at": [0, 0, 0], "label": "R", "equal": true}, {"refs": [{"form": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f800", "line": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f802", "point": "centre"}, {"form": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f800", "line": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f801", "point": "start"}], "at": [0, 0, 0], "locked": [{"segment": 0, "length": 0}]}], "solve": "B"}),
+        json!({"name": "F", "types": {"A": {}}, "ref_lines": [{"guid": "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f809", "start": [0, 0, 0], "end": [0, 1e9, 0]}], "forms": [{"guid": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f800", "host": {"line": "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f809", "face": "vertical"}, "sketch": [{"guid": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f801", "start": [0, 0], "end": [0, 0]}, {"start": [0, 0], "end": [1, 0], "axis": true}], "to": 1}], "dimensions": [{"refs": [{"line": "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f809", "face": "end"}, {"form": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f800", "line": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f801"}, {"form": 5, "line": 7}, {"line": 9, "face": "start"}, {"form": "x", "line": "y", "point": "middle"}], "kind": "radial", "at": [0, 0, 0]}], "invalid_dimensions": "delete"}),
+        json!({"name": "F", "types": {"A": {}}, "forms": [{"guid": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f800", "sketch": (0..1000).map(|k| json!({"start": [k, 0], "end": [k + 1, 0]})).collect::<Vec<_>>(), "to": 1}], "dimensions": (0..64).map(|k| json!({"refs": [{"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a3"}, {"form": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f800", "line": k}], "at": [0, 0, 0], "alignment": true, "locked": [{"segment": 0, "length": 0}]})).collect::<Vec<_>>(), "form": {"guid": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f800", "sketch": [{"centre": [0, 0], "radius": 1}]}}),
         json!({"name": "F", "types": {"A": {}}, "parameters": [{"name": "W", "value": 1e300}], "options": {"room_calculation_point": ["W * W", "-W", "if(W > 0, W, 0)"], "omniclass": null, "cut_in_views": true}}),
         json!({"name": "F", "options": "x"}),
         json!({"name": "F", "options": [null, 1]}),
@@ -2574,8 +2600,38 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"id": footing, "join": null}),
         json!({"id": 100002, "join": "no"}),
     ];
+    // Nested families (T6a): deep, cyclic, a family nesting itself, huge counts, hostile places and associations.
+    let nested = {
+        let leaf = json!({"types": {"A": {}}, "parameters": [{"name": "W", "value": 10}], "forms": [{"profile": [[0, 0], ["W", 0], ["W", 1], [0, 1]], "to": 1}]});
+        let mut deep = leaf.clone();
+        for k in 0..12 {
+            deep = json!({"types": {"A": {}}, "nested": [{"name": format!("N{k}"), "family": deep}], "nested_instances": [{"family": format!("N{k}"), "type": "A"}]});
+        }
+        let many: Vec<Value> = (0..300).map(|i| json!({"family": "L", "type": "A", "at": [i, 0]})).collect();
+        let wide: Vec<Value> = (0..256).map(|i| json!({"family": "L", "type": "A", "at": [i, 0]})).collect();
+        let fan = json!({"types": {"A": {}}, "nested": [{"name": "L", "family": leaf}], "nested_instances": wide});
+        let fans: Vec<Value> = (0..256).map(|i| json!({"family": "Fan", "type": "A", "at": [0, i]})).collect();
+        vec![
+            json!({"name": "F", "types": {"A": {}}, "nested": [{"name": "D", "family": deep}]}),
+            json!({"name": "F", "types": {"A": {}}, "nested": [{"name": "F", "family": leaf}]}),
+            json!({"name": "F", "nest": {"definition": {"name": "F", "types": {"A": {}}}}}),
+            json!({"name": "F", "types": {"A": {}}, "nested": [{"name": "B", "family": {"types": {"A": {}}, "nested": [{"name": "F", "family": leaf}]}}]}),
+            json!({"name": "F", "types": {"A": {}}, "nested": [{"name": "L", "family": leaf}, {"name": "L", "family": leaf}]}),
+            json!({"name": "F", "types": {"A": {}}, "nested": [{"name": "L", "family": leaf}], "nested_instances": many}),
+            json!({"name": "F", "types": {"A": {}}, "nested": [{"name": "Fan", "family": fan}], "nested_instances": fans}),
+            json!({"name": "F", "types": {"A": {}}, "nested": [{"name": "L", "family": leaf}],
+                   "nested_instances": [{"family": "L", "type": "A", "at": [1e300, "W / 0"], "offset": f64::MAX, "angle": "1e308 * 10",
+                   "params": {"W": "Nope", "X": 1}, "visible": "x", "host": {"plane": "1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8"}}]}),
+            json!({"name": "F", "types": {"A": {}}, "nested": [{"name": "L", "family": leaf}],
+                   "nested_instance": {"family": "L", "type": "A", "host": "Reference Plane : nowhere", "params": {"W": 1e300}}}),
+            json!({"name": "F", "types": {"A": {}}, "nested": [{"name": "", "family": leaf}], "delete_nested": ["L", 5], "delete_nested_instance": "x"}),
+            json!({"name": "F", "types": {"A": {}}, "nest": {"path": "/nonexistent/x.json", "definition": {}, "overwrite": "maybe", "shared_nested": 5}}),
+            json!({"definition": {"name": "S", "types": {"A": {}}, "nested": [{"name": "L", "family": {"shared": true, "types": {"A": {}}}}]}, "shared_nested": {"L": "neither"}}),
+            json!({"name": "F", "types": {"A": {}}, "nested": "x", "nested_instances": [{"family": 5}], "nested_instance": {"id": u64::MAX}}),
+        ]
+    };
     let hostile: Vec<Value> =
-        hostile.into_iter().chain(detailing.into_iter().map(|(_, p)| p)).chain(slopes).chain(offsets).chain(grips).collect();
+        hostile.into_iter().chain(detailing.into_iter().map(|(_, p)| p)).chain(slopes).chain(offsets).chain(grips).chain(nested).collect();
     // Each command against each value, on a copy of the same session; the commands shared out between the cores.
     let cmds: Vec<_> = commands().iter().filter(|c| !matches!(c.id, "open" | "save")).collect();
     let threads = std::thread::available_parallelism().map_or(4, |n| n.get());
@@ -2659,6 +2715,27 @@ fn hostile_params_never_panic_or_break_the_model() {
     let many: Vec<Value> = (0..100_000).map(|_| json!({"kind": "switch", "system": "switch"})).collect();
     let mut s = base.clone();
     assert!(s.execute("family", &json!({"name": "Hostile", "types": {"A": {}}, "connectors": many})).is_err());
+    assert_eq!(s.model.check(), Ok(()));
+    // A form's sketch (F5): each field of an arc of it given every hostile value, a revolve's axis line too; and far more lines
+    // than a sketch may hold.
+    for field in ["start", "end", "turn", "centre", "radius", "axis", "id", "guid"] {
+        for v in &values {
+            let mut arc = json!({"start": [100, 0], "end": [0, 0], "turn": 90});
+            arc[field] = v.clone();
+            let sketch = json!([{"start": [0, 0], "end": [100, 0]}, arc, {"start": [200, 0], "end": [200, 10], "axis": true}]);
+            let p = json!({"name": "Hostile", "types": {"A": {}}, "forms": [{"sketch": sketch, "to": 90}]});
+            let mut s = base.clone();
+            let made = s.execute("family", &p).is_ok();
+            assert_eq!(s.model.check(), Ok(()), "family {p} left a broken model");
+            if made {
+                let _ = s.execute("component", &json!({"family": "Hostile", "at": [500, 500]}));
+                draw_plans(&s.model);
+            }
+        }
+    }
+    let many: Vec<Value> = (0..20_000).map(|k| json!({"start": [k, 0], "end": [k + 1, 0]})).collect();
+    let mut s = base.clone();
+    assert!(s.execute("family", &json!({"name": "Hostile", "types": {"A": {}}, "forms": [{"sketch": many, "to": 1}]})).is_err());
     assert_eq!(s.model.check(), Ok(()));
 }
 

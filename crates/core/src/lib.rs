@@ -50,13 +50,25 @@ mod face_void_tests;
 pub mod falls;
 pub mod family;
 #[cfg(test)]
+mod family_angle_tests;
+#[cfg(test)]
+mod family_constraint_tests;
+#[cfg(test)]
+mod family_nested_tests;
+#[cfg(test)]
 mod family_options_tests;
 #[cfg(test)]
 mod family_parameter_tests;
 #[cfg(test)]
+mod family_pivot_tests;
+#[cfg(test)]
 mod family_plane_tests;
 #[cfg(test)]
 mod family_section_tests;
+#[cfg(test)]
+mod family_sketch_lock_tests;
+#[cfg(test)]
+mod family_sketch_tests;
 pub mod favorites;
 pub mod fills;
 mod fixtures;
@@ -172,6 +184,8 @@ pub mod view3d;
 mod wall_top_offset_tests;
 pub mod walls;
 pub mod water;
+#[cfg(test)]
+mod work_plane_dialog_tests;
 #[cfg(test)]
 mod work_plane_tests;
 pub mod workplane;

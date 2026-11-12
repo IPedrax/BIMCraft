@@ -90,15 +90,17 @@ a project only through the `favorite` command (`load` never overwrites without `
 docked Properties and Project Browser, and a 3D view: an adaptive family's modelling view and tools
 ([adaptive families](adaptive-families.md)), another's 3D preview. For a family that isn't adaptive, Forms and Symbols are
 edited in Properties (whose Adaptive tab makes it adaptive); Family Types and Family Category and Parameters open dialogs
-(Apply, OK, and Cancel putting back what the dialog began from). Form creation tools that need sketch workflows remain
-disabled placeholders. Undo and Redo are the document's own (`Draft`), and never undo the project.
+(Apply, OK, and Cancel putting back what the dialog began from). Extrusion, Revolve and Void Forms sketch forms (F5, below);
+Blend, Sweep and Swept Blend (F6) remain disabled placeholders. Undo and Redo are the document's own (`Draft`), and never undo the project.
 Family Types is Revit's (`editor/types_dialog.rs`): Type name, a drop-down of the types with New Type (a name asked, the type
 shown copied), Rename Type and Delete Type (refused for the last, saying why); Search parameters (by name, case aside); one table,
 Parameter, Value, Formula and Lock, under the groups' headings in `Group::ALL`'s order (the Properties palette's), each folding.
 A type parameter's Value is the type shown's own (else the family's), an instance parameter's, marked "(default)", the family's;
 a row a formula drives is greyed with what it comes to; words and reporting parameters take no formula. Apply and OK are refused,
-with T9's words, while a parameter's formula doesn't read (`formula_refusal`). Lock is a disabled tick until locked labelled
-dimensions (F7). Under the table: New and Edit Parameter (Parameter Properties: family or shared, picked from a shared parameters
+with T9's words, while a parameter's formula doesn't read (`formula_refusal`). Lock (T21) locks every dimension the parameter
+labels (their first segment's padlock), so a drag in a view can't change its value; it is greyed for a parameter that labels
+no dimension or that a formula works out. Apply and OK are refused, as "Constraints are not satisfied" (*Dimensions and
+constraints*), for a value a type's dimensions can't hold. Under the table: New and Edit Parameter (Parameter Properties: family or shared, picked from a shared parameters
 file by path; name, Type or Instance, reporting, kind, a family type's category, the group), Edit's rename walking the draft as
 `Family::rename_parameter` does; Delete Parameter, the `family` command's `delete_parameter` on a private session holding the
 draft, so it is refused with the command's reason while a formula or a form uses it; Move Up and Move Down within a group and
@@ -115,11 +117,11 @@ Modify lets it go) shows its own Properties in place of the family's tabs, as Re
 Constraints (Extrusion End and Start in the project's units, each with `=`, a revolve's angles instead; the Work Plane, read-only,
 named as `Planes::listed` names it), Graphics (Visible with `=`; Visibility/Graphics Overrides is F8's and shows greyed), Materials
 and Finishes (Material with `=`) and Identity Data (Solid/Void). A value tied to a parameter or worked out by a formula is greyed. The
-contextual tab is "Modify | Form", with Delete and Edit Work Plane, which drops down the family's planes; the Options Bar shows
+contextual tab is "Modify | Form", with Delete and Edit Work Plane, which opens the Work Plane dialog for the form (T12, below); the Options Bar shows
 Depth (End less Start: typed, Start stays and End moves; greyed while End is tied). Edits go to the draft and its history. Solid/Void
 and Edit Work Plane run `family` (its `form` patch) and `edit_work_plane` on a private session holding the draft, as Save Family
 does, and take the form back with the id and GUID it had: the form moves with the plane. Sketch mode (Edit Extrusion, Finish and
-Cancel Edit Mode, Create Extrusion's Depth while sketching) is F5's, Revit's Work Plane dialog T12's, Visibility Settings F8's;
+Cancel Edit Mode, Create Extrusion's Depth while sketching) is F5's (below), Visibility Settings F8's;
 the 3D preview does not highlight the form selected.
 
 Expression-valued form and symbol properties (their numbers, Visible and a form's Material) offer `=` (`editor/association.rs`),
@@ -166,15 +168,16 @@ otherwise; its formula rounds half away from zero), an angle, an `area` (mm²) o
 lengths in mm needs no conversion (`Width * Depth` is an area), schedules and `{label}` text showing them in m² and m³;
 yes or no; or words: a material, `text`, a `url` (`MAX_URL`, one line) or a `familytype`. Words take no formula and no formula
 reads them (`Kind::text`; `family/validate.rs` refuses the formula, a material still where it is worked out). A family type
-parameter names the category of the families whose types it picks (`of`) and holds no value until nested families exist.
+parameter names the category of the families whose types it picks (`of`) and holds no value until T24 (a nested family's type chosen by it).
 `group` is the heading it is listed under (`Group`, 14 of them); none, its kind's (`Parameter::group`: Dimensions for lengths,
 areas, volumes and angles, Materials and Finishes for materials, else Other). `shared` is a shared parameter's GUID, the
 same wherever it is used and distinct from the parameter's library-entry GUID (which is per project and per family): two
 families' parameters of one shared GUID are one name and one kind, and one name shared is one GUID
 (`Model::check_shared_parameters`); without it, it is the family's own. Schedules list every family parameter by name either
 way, as they always have. A `reporting` parameter, a length or an angle, reads a dimension and never drives one: no formula,
-type or component sets it (`Parameter::check_own`, `Family::check`, `Model::family_values_ok`) and, until labelled dimensions
-exist, it holds its `value`, with a warning saying so. Discipline is implied by the kind (all Common), so there is no field.
+type or component sets it (`Parameter::check_own`, `Family::check`, `Model::family_values_ok`): a dimension labelled with it
+measures it (`Family::values_in` works its formulas out again over what it measures), and one no dimension is labelled with
+holds its `value`, with a warning saying so. No label may be worked out from a reporting parameter a dimension measures. Discipline is implied by the kind (all Common), so there is no field.
 
 `family {parameter: {name, rename?, …}}` is Edit Parameter: the fields merged over the one named (added if there's none), a
 shared parameter's name and kind kept. `rename` goes through `Family::rename_parameter`, the one place that walks every part
@@ -306,8 +309,8 @@ correcting placed components' `at` so they stay put) is not done yet: the flag i
 
 A family's `lines` are its reference lines (T18), each `start` to `end` drawn on a `host` it lies on, with four planes: its
 host's through it (`horizontal`), square to that through it (`vertical`), and square to it at each end (`start`, `end`), their
-origin the line's start (`end`'s its end), so what is drawn on one will turn with it once the angle that turns a line exists
-(F7, with dimensions and labels). A line may be drawn on an earlier line's plane, never a later one's.
+origin the line's start (`end`'s its end), so what is drawn on one turns with it when its constraints turn it (F7c, below).
+A line may be drawn on an earlier line's plane, never a later one's.
 
 A form's `host` is a `PlaneRef`, `{"plane": guid}` or `{"line": guid, "face": …}`, Ref. Level when none: its profile is
 drawn in the host's axes and `from` and `to` run along its normal (Revit's Extrusion Start and End); a revolve turns in it
@@ -330,6 +333,166 @@ or a reference line's face, and keeps it as its Work Plane by `PlaneRef`; the th
 before are the datum planes, read from an older file by name ([adaptive families](adaptive-families.md)). `Family::hosted_on`,
 `rehost` and `resolve_hosts` follow its points as they follow forms and lines.
 
+## Dimensions and constraints
+
+F7a (`family/constraints.rs`). A family's `dimensions` are Revit's family dimensions, each a part (id and GUID, `HasPart`): an
+aligned dimension between two or more parallel references, `{"plane": guid}` (a datum or one of its own) or `{"form": guid,
+"end": "start" | "end"}` (an extrusion's Extrusion Start or End face, its host a plane), in order along the way it measures,
+drawn in one of its views (`view`: plan, ceiling, front, back, left, right; the references must be seen edge on there) with its
+line through `at`. `label` (a dimension of one segment, a length parameter) makes that segment the parameter's value in every
+type; `locked` (Revit's padlock) keeps a segment at a length (a labelled one's lock is Family Types' Lock: it stops a drag
+from changing the parameter); `equal` keeps every segment one length (EQ); `alignment` is the lock Align leaves, two references,
+one segment locked at 0, drawn as a padlock and never printed. `Family::check_dimensions` refuses what can't be (a reference
+it hasn't, references not parallel or not seen edge on, a label that isn't a length or is on a string, a lock past the last
+segment), and caps them (`MAX_DIMENSIONS`, `MAX_DIM_REFS`).
+
+Flexing a type solves them (`Family::solve`, `Family::flexed`): the unknowns are the offsets along their own normals of the
+planes a constraint measures to (a datum or a plane that defines the origin stays) and the extrusion ends one measures to;
+each label, lock, EQ and Align lock is a linear row with coefficients that never depend on the values; and the solution is
+the least change from where they are drawn that holds every row (an extrusion's end gives way first, `END_GIVES`), each
+connected group of unknowns on its own, by modified Gram-Schmidt in a fixed order, so it is deterministic. A row that adds
+nothing to those before it is refused for every type as over-constrained, naming the dimensions it repeats; a family accepted
+solves for any values but a labelled length of 0 or less (refused for its type, "Constraints are not satisfied"). The work is
+capped (`Meter`, shared by the types of one check). Nothing solved is stored: `pieces_at`, `shapes`, the voids and the check
+build `flexed`, a copy with the planes moved (the reference lines and forms drawn on them with them) and the ends the
+constraints set given as numbers, so a type's geometry depends on its values only, never on the type flexed before it, and a
+family with no constraint is built as it was, borrowed. `Family::drag_plane` is a plane dragged in a view, from where the type
+has it: a labelled dimension measuring to it (unlocked, its parameter no formula's) takes the new length; else the constraints
+move what they hold with it, or refuse ("Constraints are not satisfied", the dimensions that hold it); `remove_constraints` is
+Remove Constraints. `constraints::align` is Align. Deleting a plane or a form takes it out of the dimensions that measure to
+it (`forget_reference`; one left with a single reference goes). The `family` command takes `dimensions`, `dimension` (added,
+or patched by id or GUID) and `delete_dimension`, and reads a type's solve with `solve`. A dimension measuring to what the
+family hasn't is refused, unless `invalid_dimensions: "delete"` (T14's Delete Dimension(s)); a file opened leaves it out and
+lists it in `left_out` (`Model::read`). FORMAT 18.
+
+In the family document (`editor/dimensions.rs`), Create > Dimension > Aligned Dimension (DI) picks reference planes (by the
+view's drawing) and extrusion ends seen edge on (`constraints::end_faces`), parallel to the first, and a click on nothing
+places the string (its line through the click); a dimension being placed follows the pointer. The marks are the core's
+(`constraints::marks`), painted over the view's picture: its line, ticks, each segment's length (or EQ, or `Label = length`),
+read up the page. A click on one selects it ("Modify | Dimensions"): a padlock under each segment locks it at its length or
+unlocks it, the EQ toggle over a string turns equality on or off, and the Options Bar's Label gives it `<None>`, a length
+parameter or Create Parameter… (Parameter Properties: name, Type or Instance, reporting). A label, lock or EQ that adds
+nothing to the constraints is refused, "The dimension is over-constrained" (T19). Delete takes it away. Align (AL, Modify)
+picks a reference then what moves onto it (a plane, or an extrusion's end); a padlock waits beside it, and a click on it locks
+them; an Align lock's padlock unlocks it when clicked. A plane its dimensions hold is dragged through them (`drag_plane`); a
+refusal, like Family Types' values a type can't hold, asks "Constraints are not satisfied" with Remove Constraints (their
+labels, locks and EQ taken off, and what was being done done) or Cancel. An extrusion end a dimension sets is greyed in its
+Properties and the Options Bar's Depth. A reload whose family has dimensions measuring to nothing (`exists.rs`) asks Invalid
+Dimensions first: Delete Dimension(s) or Cancel, and nothing passes it over. Angular dimensions and reference lines that turn
+are F7c's (below).
+
+F7b, FORMAT 18: sketch lines locked. A dimension may also measure to a straight line of a form's sketch, `{"form": guid,
+"line": guid}` (the plane through it square to the form's plane: Revit's sketch line seen edge on), to a line's end or a
+circle's centre, `{"form", "line", "point": "start" | "end" | "centre"}` (measured along the dimension's other references, so
+one of them must face a way), and to a reference line's face, `{"line": guid, "face": …}` (fixed but for moving with the plane
+it is drawn on). A command may name the form and the line by their ids. `kind: "radial" | "diameter"` measures one circle of
+a sketch seen flat in the view, with a label or a lock. Flexing adds the sketches' vertices as unknowns (the ends of lines that
+meet within `TOL` one vertex, an axis line's and a circle's centre their own; `Layout`), each circle's radius, and the host
+plane's offset where a point is measured off it; a line's place is its start's, and a soft row keeps it parallel, left out
+where the other rows hold it already (two ends held never read as over-constrained). Vertices and radii give way like
+extrusion ends, so lines follow planes. `moved` writes the solved points and radii as numbers in the flexed copy; a coordinate no
+row touches keeps its formula. A line's direction is the type's, so `check` checks each type's (`check_dimensions_for`). A form
+given again (`forms`, `form`) keeps the dimensions of the lines that keep their GUIDs, and those of the lines gone go
+(`forget_lines_gone`, `deleted_dimensions`); copies follow the sketch lines' new GUIDs. An arc follows its ends unless its
+radius or centre is measured (F7c). `solve` lists each form's sketch for the type. The conservative bounds of a
+constrained family are its flexed one's.
+
+In the family document, Aligned Dimension and Align also pick a form's straight sketch line where the view sees it edge on (any
+line of a sketch on a plane seen flat; an extrusion's side where its line runs the way the view looks, as Revit's extrusion
+face), a circle's centre and a reference line (the face the view sees edge on): `constraints::sketch_faces`, `sketch_circles`,
+`line_faces`. Create > Dimension's Radial and Diameter pick a circle by its edge, then where the dimension goes; its mark is a
+leader with an arrow and `R`/`⌀` (or `Label = length`) level beyond it. Align on a finished form's line moves it, the lines
+joined to it stretching, through the constraints (refused where they hold it), and leaves Align's padlock. While a form is
+sketched (Modify > Align or AL in a plan or an elevation), Align takes a plane, a reference line or another line, then a line of
+the sketch, moved with `align::sketch_lines`; its open padlock locks them, and the padlocks of the form's locks show beside their
+lines, a click unlocking one. They are written at Finish (a refusal by the constraints keeps sketch mode open) and dropped by
+Cancel. An Align padlock, on a finished form and while sketching, sits beside the line it locks, a few pixels off it to the side away from the
+form's inside, slid along it as little as keeps it off every line drawn and every other padlock (`dimensions::padlock_spot`);
+Align's offered padlock too. Edit Extrusion opens the sketch as the type previewed flexes it, and a line that comes back there keeps its formulas
+(`sketch::kept` against the lines shown). Every line gets a GUID of its own at Finish, a new form its GUID at once, so a lock or
+a dimension can name them before the family is loaded.
+
+F7c, FORMAT 18: angles, turning reference lines and arcs. `kind: "angular"` measures the angles
+between 2 to `MAX_DIM_REFS` lines seen as lines in its view: reference planes seen edge on (their traces), reference lines
+(`{"line": guid, "face": …}`, any face: the line's way counts) and straight sketch lines on a plane seen flat. Segment *i* is the
+angle from reference *i* to *i + 1*, in degrees; the sector is the one `at` lies in as drawn (each line's half on `at`'s side of
+where the first two cross, `ray_signs`), kept for every type, so the angle reads continuously as the lines turn. A label is an
+Angle parameter (0 ≤ value < `MAX_ANGLE`, 180), a lock keeps the angle (`Lock.length` in degrees), EQ keeps a fan's angles
+equal (three lines or more); no Align lock. Neighbours parallel as drawn are refused. A dimension may measure to a reference
+line's end, `{"line": guid, "point": "start" | "end"}`, along its other references (the rig's start is held where two planes
+cross by two Align locks to it); radial and diameter dimensions take an arc, and `{"form", "line", "point": "centre"}` an arc's
+centre; and forms drawn on a reference line's face are measured like any other (F7b's refusal is gone). A reference line a
+constraint measures becomes four unknowns in the axes of what it is drawn on: its start, its angle and its length (a line not
+measured follows what it is drawn on, rigidly, as forms and lines on its faces follow it); an arc whose radius or centre is
+measured, its turn beside its end vertices. Lines give way like planes; vertices, ends and turns before them. An aligned
+dimension to a turning line's face measures the face through its start and adds a soft row keeping the line's angle, left out
+where an angle sets it.
+
+The solve (`solve_with`) writes every row as its linearisation at the point reached (`Ad`, forward-mode derivatives, as a `Lin`),
+so a linear row is the row itself. With no line or arc unknown and no angle between sketch lines it is F7a's single least-norm
+solve, untouched. Otherwise it is Gauss-Newton on the least change: each step holds the rows linearised where it has got to
+with the least weighted change from the drawn point (`solve_rows(x₀, …, rows(x_k))`), halved back (at most `MAX_HALVINGS`)
+until the residual falls, and goes on until the rows hold and the step comes to nothing, at most `MAX_STEPS`; what is drawn
+(each segment's way, each angle's sector) is read once at the drawn point (`Memo`). Over-constraint is the rank test on the first
+step, at the drawn point; a step away from it leaves a row that lost rank to the residual. What doesn't settle, or would give
+a line no length, an arc a straight or whole turn, says "Constraints are not satisfied: they can't all hold for these values",
+naming the dimensions. Deterministic: fixed orders, step and halving counts, no hashing, every type from the drawn point.
+`moved` puts each solved line in its host's flexed axes (to 1e-9 mm) and carries lines drawn on a moved or turned line with
+it; `edits` gives a drag or Align `LineEnds` and `Turn`; `measured` reads angles in degrees (reporting Angle parameters
+report); `solve` lists the lines. `marks` takes the drawn family too, for the sector.
+
+In the family document, Create > Dimension > Angular picks lines that cross the one before (`dimensions::line_at`,
+`crosses_last`, through `constraints::view_way`), then a click on nothing places the arc, following the pointer until then. Its
+mark is the core's: an arc between each two lines at `at`'s distance from where they cross, arrows at its ends, a short witness
+across it on each line, each angle level just outside the middle of its arc; selected, a padlock inside each arc and the EQ
+toggle past a string's first end. The Options Bar's Label lists Angle parameters for it, and Create Parameter… makes an Angle
+of what it measures. Radial and Diameter also pick an arc by its edge within its sweep (`constraints::Round`), and an arc's
+centre is picked as a circle's. Turning a reference line with the mouse is F7d's pivot and its rotate grip (below), with
+T18's line grips.
+
+F7d, FORMAT 18: pivots (`family/constraints/pivot.rs`). A reference line or a reference plane
+may carry a `pivot` (`Pivot`), one each: it keeps a point of its element (`at`: `start`, `end` or `{"along": mm}`; a plane's
+along the line it is drawn as) on a point (`to`, `PivotPoint`: where two planes holding the pivot's axis cross, a reference
+line's end, a point of a sketch, or a fixed point), and turns about it; the axis is the normal of what a line is drawn on
+(a line on Center (Front/Back) is a horizontal hinge, a sash) or a plane's `up`. Its swing, counter-clockwise about the axis
+from `from` (the element as drawn, a reference plane's trace, a reference line), is the Angle parameter `parameter` (type or
+instance, a formula's or not, never a reporting one), else its own `angle`; `min` and `max` bound it (±360 without them).
+Revit's door swing is a line, two Align locks, an angular dimension and a label; here it is a line and a pivot with a Swing
+Angle, and limits Revit hasn't. In the solve (`Problem::pivot_rows`) a pivoted line is F7c's four unknowns and its pivot two
+rows (the point at `at`, the drawn distance along it so a turn keeps its length, on the pivot point, across the axis) and
+a swing row; a pivoted plane is one unknown, its turn (`Unknown::PlaneTurn`), its axes the drawn ones turned about the axis
+through `at` and carried across the axis onto the pivot point (`Problem::plane_frame_ad`), so forms, lines and nested
+instances drawn on it turn with it rigidly, as the flexed copy keeps (`RefPlane::turned`, never in a file). The pivot point
+is read where the solve has got to (a label that moves a crossing's plane moves the hinge) and never moved by the pivot. The
+swing row is hard for a parameter and soft for the pivot's own angle, so an angular dimension may set a pivoted element's
+angle instead (F7c's angular dimensions work on it unchanged). An aligned dimension to a turning plane measures each
+reference's distance from it along its normal as it turns (`turned_stations`), a sketch line in it kept parallel to it, so a
+form Align-locked to a pivoted plane follows it. Rows name their pivot, so over-constraint says "reference line 1's pivot is
+over-constrained: dimension 1, 2 hold what it holds already" (its start Align-locked to the crossing besides), and a pivot's
+parameter beside an angle label on the same line is refused the same way. A flexed copy solved again (drags, Align, marks)
+reads "as drawn" through `Pivot::turned`. `Family::check_pivots` refuses a pivot on a datum or a plane that defines the
+origin, on itself, on planes that don't hold its axis or never cross, limits past ±360 or past one another, its own angle
+past them, a parameter that isn't an Angle, and a cycle (a pivot reading, through its point, its reference or its line's
+host, what turns with it); `check_pivot_values` a type's value past the limits and `Model::check` a component's ("`Swing
+Angle` is 120°; reference line 1's pivot turns from 0° to 90°"). Deleting a plane, a line, a form or a sketch line a pivot
+names takes the pivot off (`forget_pivots`); a file's pivot naming what the family hasn't is left out (`dangling_pivots`).
+`drag_pivot` is the rotate grip: toward a point it gives the swing (whole degrees, within 5° of 0, a limit or a multiple of
+45° snapped to it, stopped at the limits) as `Edit::Parameter`, or as `Edit::PivotAngle` with no parameter; a formula's
+parameter refuses. A pivoted plane can't be dragged square to itself. `drag_line_end` is T18's end grip. `pivot_marks` and
+`pivot_targets` are what a view draws and snaps to. The `family` command patches `pivot` through `ref_line` and `ref_plane`
+(`null` takes it off) and `solve` lists each plane's ends. FORMAT 18: a build that reads up to 17 would leave `pivot` out of the file.
+
+In the family document (`editor/pivot.rs`), a click on a reference line selects it ("Modify | Reference Lines", Delete,
+over a plane's trace beneath it). Rotation > Pivot, on a selected line or plane of the family's own, waits for a click: the
+point within reach where two planes' traces cross, a line's end or a sketch's point, else the click's own point; the element's
+start or end within reach, else the point along it, is what it holds. Every pivot draws a small circle with a cross; a limited
+one its swing range as a thin dashed arc, always (it is the door's swing symbol, worth seeing unselected; an unlimited one
+draws none, a whole circle being noise); the selected element its rotate grip at its far end with an arrow, its swing beside
+it while it is dragged. Properties' Constraints show the Pivot Point, the Swing Angle with "=" (Associate Family Parameter,
+`Field::Pivot`; untied, the pivot keeps the angle it came to), Minimum Angle and Maximum Angle (blank: none), each refused
+with the core's words; Rotation > Remove Pivot takes it off. An unpivoted line selected shows a square grip at each end.
+Out of scope: a pivoted plane dragged square to itself, the grip in {3D}, a reporting parameter reading a swing (F7e).
+
 ## The family's views
 
 F4: the family document's Project Browser opens the Ref. Level floor and ceiling plans and the four elevations, Back, Front, Left
@@ -348,7 +511,7 @@ An elevation is a section's picture and drawing (`section_picture`, `section_ove
 The planes are drawn with the rules in [views and graphics](views-and-graphics.md#reference-planes-in-views). The family's reference
 lines (`Family.lines`) are drawn over each plan and elevation as the view sees them, solid in the planes' green and the thinnest
 pen, as Revit's: true length where their plane is square to the view, foreshortened where it isn't, nothing for one seen end on
-(`render::reference_lines`). They are owned by nothing in the drawing, so a click doesn't select one there yet. Views are drawn on
+(`render::reference_lines`). They are owned by nothing in the drawing; a click selects one where a view draws it (`Staged::line_at`, F7d). Views are drawn on
 the interface's thread, being one family, and kept until what they show changes (`editor/views.rs`).
 
 In a family that isn't adaptive, a click selects a form (`views::form_at`: the one nearest the eye there, highest in plan; its
@@ -358,20 +521,76 @@ selected plane's trace drawn heavier. A plane of the family's own, selected, mov
 Reference Plane (RP, the Create tab's Datum) draws one by two clicks: in plan upright (`up` the vertical), in an elevation
 `up` the way it looks, so its normal lies in the elevation's plane (`views::new_plane`); it has no name, is Weak, and is a step
 of the document's history (`Draft` keeps the planes). Work Plane on the Create tab: each view has its own work plane for the
-session (Ref. Level in plan, the Center plane an elevation faces), which Set picks from the family's planes as A4's list names
-them, or by a click on one (Pick; the Work Plane dialog is T12's); Show tints it, all over where the view looks straight at it,
-along its trace where across it. {3D} has a work plane of its own too (Ref. Level until Set, from the list alone): Show draws it
+session (Ref. Level in plan, the Center plane an elevation faces), which Set sets through Revit's Work Plane dialog (T12, below); Show
+tints it, all over where the view looks straight at it, along its trace where across it. {3D} has a work plane of its own too (Ref.
+Level until Set, by name alone): Show draws it
 into its picture over the patch the project's 3D view lays its work plane on (`workplane::patch`), what the family takes up and
 300 mm round: tinted as the plans tint it, with its outline and a grid through the family's origin whose step leaves about 5 to 20
 lines across it (10, 50, 100, 500 or 1000 mm, `workplane::grid_step`), depth tested against the picture
 (`view3d::Image::draw_plane`), so a form in front of the plane hides it and one behind it is seen through its tint.
-An adaptive family's modelling view keeps its own Work Plane panel and Show. While Preview Visibility is off, the solid forms the type hides are a second component of a
+An adaptive family's modelling view keeps its own Work Plane panel and Show. An elevation is framed on what it shows as a project's
+is (`render::section_extent`), so its levels' names past their lines' ends aren't cut at the picture's edge.
+
+The Work Plane dialog (T12, `editor/work_plane.rs`), as Revit's: Current Work Plane names the plane as `Planes::listed` does, with Show
+(the ribbon's toggle) and Dissociate, greyed (a family's work plane is always one of its planes or lines, which forms are drawn on).
+Specify a new Work Plane: Name, the family's planes as `Planes::listed` lists them; Pick a plane, a reference plane's or a datum's
+trace; Pick a line and use the work plane it was sketched in, a reference line as the view draws it (`Staged::line_at`), whose host is
+taken. The two Picks need a plan or an elevation, where planes and lines are drawn; in {3D} they are greyed. OK with a Pick closes the
+dialog and the next click picks (the status bar says what to click; a click on nothing waits on); Escape brings the dialog back. The
+view's work plane is set where the view shows the plane flat (`Which::faces`; {3D} takes any); else Go To View asks, listing the views
+that do (`views::flat_views`: the two plans for a level plane, Front and Back or Left and Right for an upright one square to them) and
+{3D}; Open View (or a double click) shows the one chosen with the plane set there, Cancel sets nothing. So a trace picked in a plan or
+an elevation, always edge-on there, goes through Go To View, as in Revit. From a form's Edit Work Plane the dialog runs
+`edit_work_plane` through the draft, as before, and the form moves with its plane; nothing is asked. While Preview Visibility is off, the solid forms the type hides are a second component of a
 family of their own in the scratch model, drawn halftone, as {3D} ghosts them (not for a door or a window, whose wall holds one
 opening); on, they are left out. Temporary Hide/Isolate leaves a form hidden for now out of every view; a selected plane can be
 hidden (HH), isolated or hidden with every plane (HC). It keeps **one state for the whole family document**, every view showing
 what it hides, a deliberate limit: Revit keeps it per view, and Apply Hide/Isolate to View stays greyed. An adaptive family's
 plans and elevations show its test placement and nothing more (no selection, no Reference Plane, no drag); its tools stay in
 {3D}, its modelling view. None of this is a field of the family or a step of FORMAT: what a view keeps is the session's.
+
+## Sketches of forms
+
+F5, FORMAT 18. A form's profile is its `sketch` (`family/sketch.rs`): lines (`start`, `end`), arcs (`turn` degrees
+counter-clockwise from start to end) and whole circles (`centre`, `radius`) in its host plane's own axes, each number a number or a
+formula, each line a part of the family (an id and a GUID, `parts_now`'s "sketch line", kept by place when a form is given again,
+`Form::keep_lines`) so F7 can dimension and lock it. A revolve's axis is a line of its sketch with `axis: true`, one at most. The
+shorthands from before, `profile` (corners in turn), `circle` and `axis`, are read as such lines (`FormIn`), by a file of 17 or a
+command, and never written; a `form` patch giving one replaces what it stands for. Built (`Form::loops`), a sketch that is one
+loop of straight lines in order, or one circle, is built as a profile always was (the same triangles and IFC:
+`family_sketch_tests` against `testdata/family_format23.golden.json`, which the build of 23 wrote); any other is solved as the
+project's sketches are (`sketch::solve`: every problem named, each line by its id), arcs cut into chords 32 to a turn: an outline
+counter-clockwise with its holes clockwise, an island an outline again, several loops one form of several solids. A loop with holes
+is capped by the constrained triangulation (`triangulation::constrained`), every ring gets its sides, and a revolve turns them all.
+Only a lone circle is `round` in plan. `edit_work_plane`'s `keep` maps the sketch's points, a mirroring plane turning its arcs the
+other way; `rename_parameter` and `every_formula` reach its formulas; the conservative bounds box an arc by its circle.
+
+In the family document (`editor/sketch.rs`), Create > Extrusion or Revolve, or Void Forms > Void Extrusion or Void Revolve, sketch
+on the view's work plane: "Modify | Create Extrusion" and the like, its Mode (Finish and Cancel Edit Mode), Draw (Boundary Line
+and, for a revolve, Axis Line; Line, Rectangle, the polygons, Circle, the three arcs, Fillet Arc and, in a plan or an elevation,
+Pick Lines: in a plan or an elevation a plane's or reference line's trace, or another form's edge; in {3D} another form's edge
+(`snap::creases`), a reference line or the line a reference plane was drawn as, which {3D} draws while sketching, seen square on to
+the work plane, an edge square to it refused with a message; no spline or ellipse), Modify (pick, Delete, a picked line's end
+dragged) and Work Plane (Set, the Work Plane dialog for the sketch: the plane taken, its lines go with it in the plane's own
+axes; Show). The pointer snaps as a project's view snaps (`snap::among`, the same switches, guides, order and
+markers, `canvas::snap_mark`) to the reference planes' traces across the work plane, where they cross, the other forms' edges
+and their ends seen on it, the reference lines and the sketch's own lines (`Family::sketch_targets`). Chain, on the Options Bar
+for Line and the chained arcs, is kept for the session: off, each starts afresh. A plan or an elevation that doesn't see the work plane flat asks Go To View, offering
+those that do and {3D}: the Work Plane dialog's one Go To View (`FamilyEditor::on_work_plane`, `work_plane::Then`), the sketch
+beginning in the view opened; {3D} draws on the plane where the pointer shows it. The lines are the project's sketch's
+(`sketch::Sketch`, with its local Ctrl+Z), in the plane's axes. The Options Bar has Depth (End less Start), Sides, Radius and
+Offset; Properties the Start and End (a revolve's Start Angle and End Angle, as a selected one's Properties and the Forms tab
+name them), Material and Solid/Void. Finish checks the lines as the core does
+(`family::sketch::finish_check`): open loops, crossing or overlapping lines, a revolve with no axis or a profile across it are
+refused, said in the project's words with the lines shown red, the draft left as it was; then each type is built with the form,
+and a fault of this form refuses it too. On success the form is in the draft, one step of its history, and selected. Cancel leaves
+the draft (and so its Unsaved mark) as it was. A selected form's contextual tab has Edit Extrusion or Edit Revolve, as a double click on a form in a plan, an elevation or {3D}
+(`views::form_at_3d`) does: its lines worked
+out for the type shown, in the view shown if it sees the plane flat, else {3D}; a line that keeps its GUID and comes to where it
+was keeps its formulas (`family::sketch::kept`), one moved holds numbers. A selected extrusion's Start and End show shape handles
+in a plan or an elevation that sees its plane edge-on; dragged, they move along the normal, a step of the history; an end tied to a
+parameter or a formula is greyed and a drag on it is refused, saying why. The Forms tab keeps the typed corners, circle and axis as
+an advanced view; a sketch they can't say shows as "Sketch" with its count of lines.
 
 ## Family options
 
@@ -399,8 +618,8 @@ family is on a plane is refused by the project on Load into Project, said in the
   when `component` is given no `offset` (Revit's Default Elevation); finite and within `MAX_COORD`. A component placed keeps
   its offset, so changing it moves nothing. An adaptive one (`Model::placed_by_points`, by `component` or `adaptive_place`)
   never takes it: Revit places it by its points alone.
-- `cut_with_voids_when_loaded` (off) and `shared` (off) are stored only: a project's voids cutting a component and nested
-  families will read them.
+- `cut_with_voids_when_loaded` (off) is stored only: a project's voids cutting a component will read it (T23).
+- `shared` (off) makes the family a shared nested family when another nests it (*Nested families*, below).
 - `cut_in_views`: none, a section cuts the family's forms as its category says (`Category::cut`); `true` or `false`
   overrides that. `Family::cuts_in_views` is the one place that decides, for a component's solids in the 3D scene
   (`view3d.rs`), the components a section cuts (`render.rs`) and a family door's or window's forms, which their category
@@ -431,7 +650,8 @@ the plane, as Revit's does: a form keeps its profile and its `from` and `to` in 
 from the old plane's axes to the new one's), and what is drawn on the line's planes follows. With `keep` it stays where it is:
 a form only on a plane parallel to its old one (facing either way), its profile mapped and its depth moved by the distance
 between the planes (negated and swapped facing the other way; a formula is kept and wrapped, `(…) + d`); a line only on a
-plane it already lies on. A mesh form has no work plane to change.
+plane it already lies on. A mesh form has no work plane to change. `host` may also be a name, as the Work Plane dialog lists it
+(`"Reference Line 1 : Vertical"`, `"Reference Plane : Left"`) or a plane's own (`Planes::by_name`).
 
 The project has reference planes (`hosting.rs`, `ReferencePlane`, category `refplane`): drawn by `reference_plane {start,
 end, up?, name?, level?}` as a family's are, along a line with an `up` (the vertical by default, so a line drawn in plan makes
@@ -473,10 +693,15 @@ The desktop's Component tool, placing a work plane-based family, shows Place on 
 level, or a reference plane of the project) on its Options Bar, and for any family Rotate after placement, which selects what
 it placed and starts Rotate about its point. Properties shows a work plane-based family's component's Schedule Level,
 Elevation from Level (read only on a plane), Work Plane and Offset from Host; another's, as Revit's level-based ones, its
-Level and Elevation from Level (the same `offset`). The Reference Plane tool (`Tool::ReferencePlane`: RP, the `reference_plane`
+Level and Elevation from Level (the same `offset`). Selected work plane-based components (not adaptive ones) have Revit's
+Work Plane panel on their contextual tab: Edit Work Plane opens the Work Plane dialog (T12) on them, naming the first one's plane,
+and runs `edit_work_plane {ids, host}`: Name puts them on a level or a named reference plane, Pick a plane on the face of a wall,
+a floor, a ceiling or a roof clicked in the 3D view (`Model::face_role`), Pick a line on the level of a line clicked; their
+Offset from Host is kept, and there is no Pick three points, Offset or Dissociate for them. The Reference Plane tool (`Tool::ReferencePlane`: RP, the `reference_plane`
 command's alias, as Revit's; Architecture > Datum's Ref Plane, beside Set, where Revit's Work Plane panel has it; Find or
-Create Similar) draws an upright plane through two clicks in plan. Picking a sloped plane in plan, drawing
-planes in sections and the Work Plane dialog (T12) are not here.
+Create Similar) draws an upright plane through two clicks in plan. A 3D view's work plane may be a reference plane of the
+project, which it then follows (T12, [views and graphics](views-and-graphics.md)). Picking a sloped plane in plan and drawing
+planes in sections are not here.
 
 ### Place on Face
 
@@ -582,6 +807,65 @@ the language of the family names; as given none, a French project gets the Frenc
 and every other language the English.
 
 
+## Nested families
+
+T6a (`family/nested.rs`). A family may nest families, as Revit's Insert > Load Family in the Family Editor does: `nested` holds
+each one's name and whole definition (`NestedFamily`), carried inside the host, so a family file and a project's family hold what
+they nest. `nested_instances` (`NestedInstance`) place their types: each on a plane of the host (`host`, a `PlaneRef`, Ref. Level
+when none) at `at` in that plane's axes, `offset` along its normal and turned `angle` degrees about it, `visible` a yes/no or a
+formula, and `params` setting the nested family's parameters, type or instance: a number, or a formula over the host's
+(Associate Family Parameter: `{"W": "Width"}`); a material, a text or a URL parameter names one of the host's of its kind, or
+holds the material's name or the words, as a form's `material` does. A parameter the nested family works out by a formula, a
+reporting one and a family type (T24's) can't be set. Both are parts (`HasPart`: ids and GUIDs, kept by place); the definition
+inside is the nested family's own, its forms' and planes' ids and GUIDs not the project library's (a nested copy of a project
+family holds the same GUIDs). Every walk that names a parameter or a material reaches them: `rename_parameter`, `every_formula`,
+`material_refs_mut`, `materials`, `rename_material` (into the definitions, at every depth), `hosted_on`, `rehost` and
+`resolve_hosts`; deleting a plane an instance stands on is refused, naming it.
+
+`Family::pieces_at` adds each visible instance's pieces (`nested_pieces`): the nested family's values for its type, the
+instance's `params` worked out over the host's values and seeded over the type's (`Family::values_seeded`), built (its own nested
+instances too), then placed on its host plane's frame, flexed with the host's type, so an instance follows a plane a label moves.
+Plans, sections, the 3D view, the family's own views, `render` and IFC all read `pieces_at`, so the nested geometry is in the
+host's triangles and in its IFC body with nothing else to do; an instance standing upright on a level plane adds its plan
+symbols to the host's marks. A host's voids don't cut nested instances and a nested void cuts its own family only (Revit's
+default; a void cutting the host is T23's). `Family::check` builds every type with them and checks each definition in turn: no
+family nested in itself or in one it is nested in (`Model::check` knows the project family's name), names unique, at most
+`MAX_NESTING` (5) levels, `MAX_NESTED` (32) families and `MAX_NESTED_INSTANCES` (256) instances to a family, `MAX_NESTED_TOTAL`
+(128) definitions in a tree, and a build meter of `MAX_NESTED_BUILDS` (2048) instance builds shared by the tree, so a hostile
+file ends in an error.
+
+The `family` command: `nest {path | definition, name?, overwrite?, shared_nested?}` loads a family into the family
+(`nested::nest_into`), refused over one it nests defined otherwise unless `overwrite` says `version` (its values kept where they
+fit, through the reload rules above) or `version_and_values`; `nested` replaces the list, `delete_nested` takes families away
+(refused while an instance places one); `nested_instance` patches one by id or GUID (none adds one; a `host` may be the Work
+Plane dialog's name), `nested_instances` replaces the list, `delete_nested_instance` takes them away; `dry_run`'s `changes` say
+`nested` and `nested_instances`.
+
+A nested family whose `shared` option is on is shared. Loaded into a target (the project's families, or a host's nested list),
+a family brings the shared families nested in it, reached through shared ones only (a family that isn't shared keeps what it
+nests to itself, `Family::shared_within`): one the target hasn't is added to it; one it has otherwise is asked about
+("Shared Family Already Loaded", `nested::reconcile_shared`; `shared_nested: {name: project | family}` in the command): `project` gives the family loaded the target's (the default when
+unanswered), `family` overwrites the target's with the family's, its values too. One definition of a shared family is kept
+across the target: after one changes in the project, every family of the project that nests it, at any depth, takes the same
+(`Family::replace_shared`). A shared nested instance is built into its host as any other: its own element in the project
+(Tab-select, schedules, tags, IFC aggregated into its host) is T6b's. A nested family's type chosen by a family type parameter
+is T24's. A door's leaf on a hinge (T26) is a nested instance on a pivoted line's face or on a pivoted plane, placed on its
+host's flexed frame, so it turns with the pivot (F7d, *Dimensions and constraints*): `family_pivot_tests` swings a nested leaf
+by an instance `Swing Angle` and finds it, and the door's IFC body, as drawn by hand at 45°. An instance's `angle` may also
+read an instance parameter.
+
+In the family document (`editor/nested.rs`): Insert > Load Family loads a family file into the family, asking Family Already
+Exists and Shared Family Already Loaded against its nested families (`exists.rs`'s `After::Nest`); Create > Component (CM) places
+an instance of one, picked in the Options Bar, by a click in a plan or an elevation, on that view's work plane (from {3D} the floor
+plan opens); a click on an instance selects it ("Modify | Nested Instance"), its outline drawn, and Delete takes it away. Its
+Properties: the type (any nested family's), the Work Plane, X, Y, Offset and Angle, Visible, and its family's parameters under
+their groups, each with Revit's "=" (`Field::Nested`, `NestedRows`). The Project Browser's Families lists the nested families
+and their types, with Edit Family and Delete on the right-click. Edit Family (also on the instance's contextual tab) opens the
+nested family's own document over the host's (`BimApp::family_hosts`): its Load into Project and Load into Project and Close load
+it back into the host, asking Family Already Exists in the family's words; Close Family goes back without loading. The project is
+untouched until the host is loaded. A nested instance is moved by its Properties; dragging it in a view is T6b's. FORMAT 18
+says an older build would leave both fields out of a file.
+
 ## Reloading a family
 
 `family {path, name?, overwrite?}` can choose how to load over a family already in the project:
@@ -624,9 +908,10 @@ document renamed renames the project's family as before, asking nothing. Load in
 family went in; on Cancel or a refusal the document stays open, a refusal said in it.
 
 A load asks its questions in turn (`Question`): the family's own, then "Shared Family Already Loaded" for each shared family
-nested in it that the project has otherwise (keep the project's version, or overwrite it with the family's). Nested families
-(T6) don't exist yet, so nothing detects the second question: the document's `shared_nested` is where T6 puts what it finds,
-and until then only tests inject it. The answers are kept as the load's `Decided`, for the command to take once it can.
+nested in it that the project has otherwise (keep the project's version, or overwrite it with the family's), as the core's dry
+run says them (`shared_conflicts`); the answers go into the command as `shared_nested` and are kept as the load's `Decided`. Loading
+into a family (Insert > Load Family in a family document, or Load into Project from a nested family's document) asks the same
+two questions against that family's nested families, in the family's words (*Nested families*).
 
 Load matches family and type names exactly, including case. The caller's `name` overrides the file's name. A new family name
 creates a separate library definition; imported part identities are reconciled by the normal library sync and do not rename

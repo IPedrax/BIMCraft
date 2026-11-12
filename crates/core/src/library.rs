@@ -237,6 +237,12 @@ impl HasPart for crate::family::RefLine {
     }
 }
 
+impl HasPart for crate::family::FamilyDimension {
+    fn ident(&mut self) -> (&mut Id, &mut Guid) {
+        (&mut self.id, &mut self.guid)
+    }
+}
+
 impl HasPart for crate::family::Connector {
     fn ident(&mut self) -> (&mut Id, &mut Guid) {
         (&mut self.id, &mut self.guid)
@@ -256,6 +262,18 @@ impl HasPart for crate::model::ShapePoint {
 }
 
 impl HasPart for crate::model::SplitLine {
+    fn ident(&mut self) -> (&mut Id, &mut Guid) {
+        (&mut self.id, &mut self.guid)
+    }
+}
+
+impl HasPart for crate::family::NestedFamily {
+    fn ident(&mut self) -> (&mut Id, &mut Guid) {
+        (&mut self.id, &mut self.guid)
+    }
+}
+
+impl HasPart for crate::family::NestedInstance {
     fn ident(&mut self) -> (&mut Id, &mut Guid) {
         (&mut self.id, &mut self.guid)
     }
@@ -914,11 +932,15 @@ impl Model {
         }
         for (n, f) in &self.families {
             add("form", "family", n, f.forms.iter().map(|x| (x.id, x.guid)).collect());
+            add("sketch line", "family", n, f.forms.iter().flat_map(|x| x.sketch.iter().map(|l| (l.id, l.guid))).collect());
             add("symbol", "family", n, f.symbols.iter().map(|x| (x.id, x.guid)).collect());
             add("connector", "family", n, f.connectors.iter().map(|x| (x.id, x.guid)).collect());
             // A family's datums hold the GUIDs every family's do, and are no parts of the library.
             add("plane", "family", n, f.planes.iter().filter(|x| !x.datum()).map(|x| (x.id, x.guid)).collect());
             add("line", "family", n, f.lines.iter().map(|x| (x.id, x.guid)).collect());
+            add("dimension", "family", n, f.dimensions.iter().map(|x| (x.id, x.guid)).collect());
+            add("nested family", "family", n, f.nested.iter().map(|x| (x.id, x.guid)).collect());
+            add("nested instance", "family", n, f.nested_instances.iter().map(|x| (x.id, x.guid)).collect());
         }
         for (n, g) in &self.detail_groups {
             add("member", "detail group", n, g.members.iter().map(|x| (x.id, x.guid)).collect());
@@ -1047,19 +1069,31 @@ impl Model {
             x.layers.iter_mut().for_each(|l| give(&mut l.id, &mut l.guid));
         }
         for f in self.families.values_mut() {
+            let forms_were: Vec<Guid> = f.forms.iter().map(|x| x.guid).collect();
+            let lines_were: Vec<Guid> = f.forms.iter().flat_map(|x| x.sketch.iter().map(|l| l.guid)).collect();
             f.forms.iter_mut().for_each(|x| give(&mut x.id, &mut x.guid));
+            f.forms.iter_mut().flat_map(|x| x.sketch.iter_mut()).for_each(|l| give(&mut l.id, &mut l.guid));
             f.symbols.iter_mut().for_each(|x| give(&mut x.id, &mut x.guid));
             f.connectors.iter_mut().for_each(|x| give(&mut x.id, &mut x.guid));
             // A plane or a line given another GUID (a copy's) takes what is drawn on it along.
             let was: (Vec<Guid>, Vec<Guid>) = (f.planes.iter().map(|x| x.guid).collect(), f.lines.iter().map(|x| x.guid).collect());
             f.planes.iter_mut().filter(|x| !x.datum()).for_each(|x| give(&mut x.id, &mut x.guid));
             f.lines.iter_mut().for_each(|x| give(&mut x.id, &mut x.guid));
+            f.dimensions.iter_mut().for_each(|x| give(&mut x.id, &mut x.guid));
+            f.nested.iter_mut().for_each(|x| give(&mut x.id, &mut x.guid));
+            f.nested_instances.iter_mut().for_each(|x| give(&mut x.id, &mut x.guid));
             let moved = |old: &[Guid], new: Vec<Guid>| -> Vec<(Guid, Guid)> {
                 old.iter().zip(new).filter(|(a, b)| !a.is_nil() && **a != *b).map(|(a, b)| (*a, b)).collect()
             };
             let planes = moved(&was.0, f.planes.iter().map(|x| x.guid).collect());
             let lines = moved(&was.1, f.lines.iter().map(|x| x.guid).collect());
             f.rehost(&planes, &lines);
+            // A dimension measuring to a form or a sketch line given another GUID (a copy's) measures to it still.
+            let mut parts = moved(&forms_were, f.forms.iter().map(|x| x.guid).collect());
+            parts.extend(moved(&lines_were, f.forms.iter().flat_map(|x| x.sketch.iter().map(|l| l.guid)).collect()));
+            if !parts.is_empty() {
+                f.resolve_dimension_refs(&parts);
+            }
         }
         for g in self.detail_groups.values_mut() {
             g.members.iter_mut().for_each(|x| give(&mut x.id, &mut x.guid));
@@ -1264,11 +1298,15 @@ impl Model {
         }
         for f in self.families.values_mut() {
             f.forms.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
+            f.forms.iter_mut().flat_map(|x| x.sketch.iter_mut()).for_each(|l| (l.id, l.guid) = (0, Guid::default()));
             f.symbols.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
             f.connectors.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
             // A plane's and a line's GUIDs stay: the forms and lines drawn on them name them by it.
             f.planes.iter_mut().filter(|x| !x.datum()).for_each(|x| x.id = 0);
             f.lines.iter_mut().for_each(|x| x.id = 0);
+            f.dimensions.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
+            f.nested.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
+            f.nested_instances.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
         }
         for g in self.detail_groups.values_mut() {
             g.members.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));

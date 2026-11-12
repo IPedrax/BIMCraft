@@ -285,8 +285,15 @@ fn components_work_plane(s: &mut Session, p: &Value) -> R {
     Ok(json!({"ids": changed.iter().map(|(id, _)| *id).collect::<Vec<_>>()}))
 }
 
-/// A plane of family `f` by name (a datum's too), or as `PlaneRef` takes it.
+/// A plane of family `f` by name (a datum's too), as the Work Plane dialog lists it (`"Reference Line 1 : Vertical"`), or
+/// as `PlaneRef` takes it.
 fn family_host(c: &str, f: &crate::family::Family, v: &Value) -> Result<PlaneRef, String> {
+    if let Value::String(n) = v {
+        return f.plane_set().by_name(n).ok_or_else(|| {
+            let names: Vec<String> = f.plane_set().listed().into_iter().map(|(_, l)| l).collect();
+            bad(c, format!("the family has no work plane named `{n}`; by name they are: {}", names.join(", ")))
+        });
+    }
     if let Some(Value::String(n)) = v.get("plane")
         && Guid::parse(n).is_none()
     {
@@ -381,13 +388,10 @@ fn family_work_plane(s: &mut Session, p: &Value) -> R {
                     return Err(bad(c, "`keep`: the new plane isn't parallel to the form's, so the form can't stay where it is on it"));
                 };
                 let map = |q: &[Expr; 2]| [affine(rx[0], &q[0], rx[1], &q[1], rx[2]), affine(ry[0], &q[0], ry[1], &q[1], ry[2])];
-                fm.profile = fm.profile.iter().map(map).collect();
-                if let Some(circle) = &mut fm.circle {
-                    circle.centre = map(&circle.centre);
-                }
-                if let Some(axis) = &mut fm.axis {
-                    *axis = [map(&axis[0]), map(&axis[1])];
-                } else {
+                // A plane that mirrors the profile turns its arcs the other way.
+                let flip = rx[0] * ry[1] - rx[1] * ry[0] < 0.0;
+                fm.sketch.iter_mut().for_each(|l| l.map_points(map, flip));
+                if !fm.revolves() {
                     let depth = |t: &Expr| affine(sign, t, 0.0, &Expr::Number(0.0), d);
                     (fm.from, fm.to) = if sign > 0.0 { (depth(&fm.from), depth(&fm.to)) } else { (depth(&fm.to), depth(&fm.from)) };
                 }

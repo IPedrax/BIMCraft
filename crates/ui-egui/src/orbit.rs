@@ -1456,10 +1456,10 @@ impl BimApp {
         if patched {
             self.open_work_plane();
         }
-        // The work plane, drawn while it's being set or a new outline is sketched on it; and what Pick in View would take.
+        // The work plane, drawn while it's being set, shown (Show) or a new outline is sketched on it; and what a Pick would take.
         let m = &self.session.model;
         let new_sketch = self.sketch.as_ref().and_then(|sk| sk.surface.filter(|_| sk.plan == crate::Sheet::View3D));
-        if (self.work_plane.is_some() || new_sketch.is_some())
+        if (self.work_plane.is_some() || self.show_work_plane || new_sketch.is_some())
             && let Some(extent) = m.model_box()
             && let Ok(plane) = m.work_plane(m.default_3d()).resolve(m)
         {

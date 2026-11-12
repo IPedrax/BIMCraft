@@ -26,7 +26,7 @@ pub(crate) struct State {
     /// The draft as the last step left it: what an edit still going on (a drag, a field being typed in, a dialog) began from.
     mark: Option<Draft>,
     /// The draft when the dialog open was, which its Cancel goes back to.
-    dialog_saved: Option<Draft>,
+    pub(super) dialog_saved: Option<Draft>,
     /// A form picked in the Project Browser, which Properties opens.
     pub(super) reveal: Option<usize>,
     /// What Load into Project was refused for: said until the draft changes.
@@ -41,9 +41,6 @@ pub(crate) struct State {
     pub(super) temp: super::temp_hide::Temp,
     /// Load into Project and Close went in: the document closes once the frame's work is done.
     pub(super) loaded_to_close: bool,
-    /// The shared families nested in this one that the project already has, defined otherwise, which "Shared Family Already
-    /// Loaded" asks about on loading (`exists`). T6 (nested families) works them out; until then only a test puts them here.
-    pub(super) shared_nested: Vec<String>,
     /// Why Family Category and Parameters' Apply or OK was refused, while the draft is as it was then.
     options_refused: Option<(Draft, String)>,
     /// What Family Category and Parameters' category list is filtered by, and whether the list has been shown since it opened.
@@ -65,7 +62,6 @@ impl Default for State {
             preview_visibility: false,
             temp: Default::default(),
             loaded_to_close: false,
-            shared_nested: Vec::new(),
             options_refused: None,
             category_filter: String::new(),
             category_shown: false,
@@ -90,8 +86,13 @@ pub(super) struct Draft {
     picked: usize,
     /// Its reference planes: drawn and moved in its plans and elevations.
     planes: Vec<RefPlane>,
+    /// Its dimensions: drawn, labelled and locked in its plans and elevations.
+    dimensions: Vec<bimcraft_core::family::FamilyDimension>,
     /// Its options: Family Category and Parameters' table, Properties' Other group.
     options: super::options::OptionsText,
+    /// Its nested families and their instances (T6a).
+    nested: Vec<bimcraft_core::family::NestedFamily>,
+    nested_instances: Vec<bimcraft_core::family::NestedInstance>,
 }
 
 impl Draft {
@@ -107,7 +108,10 @@ impl Draft {
             adaptive: ed.adaptive.clone(),
             picked: ed.picked,
             planes: ed.planes.clone(),
+            dimensions: ed.dimensions.clone(),
             options: ed.options.clone(),
+            nested: ed.nested.clone(),
+            nested_instances: ed.nested_instances.clone(),
         }
     }
 
@@ -122,7 +126,10 @@ impl Draft {
         ed.adaptive = self.adaptive;
         ed.picked = self.picked;
         ed.planes = self.planes;
+        ed.dimensions = self.dimensions;
         ed.options = self.options;
+        ed.nested = self.nested;
+        ed.nested_instances = self.nested_instances;
         // What is selected and no longer there goes from the selection.
         let nodes = ed.adaptive.as_ref().map(|d| d.nodes.iter().map(|n| n.id.clone()).collect::<Vec<_>>()).unwrap_or_default();
         ed.modeller.selection.retain(|id| nodes.contains(id));
@@ -141,13 +148,6 @@ impl FamilyEditor {
         self.document.clean = Some(d);
     }
 
-    /// The shared nested families the project already has otherwise, which loading asks about: T6's to work out, and until
-    /// then a test's to inject.
-    #[cfg(test)]
-    pub(crate) fn set_shared_nested(&mut self, names: Vec<String>) {
-        self.document.shared_nested = names;
-    }
-
     /// Whether Preview Visibility is on: the preview shows the family as placed.
     pub(crate) fn preview_visibility(&self) -> bool {
         self.document.preview_visibility
@@ -160,7 +160,12 @@ impl FamilyEditor {
 
     /// Whether a dialog of the document's is open: Family Types, Family Category and Parameters, or an association.
     fn modal(&self) -> bool {
-        self.dialog.is_some() || self.associating.is_some()
+        self.dialog.is_some()
+            || self.associating.is_some()
+            || self.views.unsatisfied.is_some()
+            || self.views.creating.is_some()
+            || self.views.dialog.is_some()
+            || self.views.go_to.is_some()
     }
 
     /// The document's history, at the end of a frame: Undo or Redo when `ask` says so, else a step for what changed since the
@@ -223,11 +228,35 @@ fn context(ed: &FamilyEditor) -> Option<&'static str> {
     }
     // A form of a family that isn't adaptive, selected.
     if ed.adaptive.is_none() {
+        if let Some(title) = ed.sketch_title() {
+            return Some(title);
+        }
         if ed.editing_2d() && ed.views.drawing.is_some() {
             return Some(msg!("Modify | Place Reference Plane"));
         }
+        if ed.placing.is_some() {
+            return Some(msg!("Modify | Place Component"));
+        }
+        if ed.selected_nested().is_some() {
+            return Some(msg!("Modify | Nested Instance"));
+        }
+        if ed.editing_2d() && ed.views.dimensioning.is_some() {
+            return Some(msg!("Modify | Place Dimensions"));
+        }
+        if ed.editing_2d() && ed.views.aligning.is_some() {
+            return Some(msg!("Modify | Align"));
+        }
+        if ed.selected_dimension().is_some() {
+            return Some(msg!("Modify | Dimensions"));
+        }
+        if ed.editing_2d() && ed.views.pivoting.is_some() {
+            return Some(msg!("Modify | Pivot"));
+        }
         if ed.selected_plane().is_some() {
             return Some(msg!("Modify | Reference Planes"));
+        }
+        if ed.selected_line().is_some() {
+            return Some(msg!("Modify | Reference Lines"));
         }
         return ed.selected_form().map(|_| msg!("Modify | Form"));
     }
@@ -328,6 +357,12 @@ impl BimApp {
         let tab = ed.doc_tab;
         let drawing = !matches!(ed.modeller.tool, Draw::Modify);
         let adaptive = ed.adaptive.is_some();
+        // Sketch mode (F5): its contextual tab alone, as Revit's "Modify | Create Extrusion".
+        if ed.sketching() {
+            self.select_and_properties(ui, ed);
+            self.form_sketch_panels(ui, ed);
+            return;
+        }
         if matches!(tab, DocTab::Create | DocTab::Modify | DocTab::Context) {
             self.select_and_properties(ui, ed);
         }
@@ -339,16 +374,44 @@ impl BimApp {
             // A family that isn't adaptive is made of forms drawn in sketches, which BIMCraft doesn't have yet: its forms are
             // added and edited in Properties.
             DocTab::Create => ribbon::panel(ui, msg!("Forms"), |ui| {
-                for label in [msg!("Extrusion"), msg!("Blend"), msg!("Revolve"), msg!("Sweep"), msg!("Swept Blend"), msg!("Void Forms")] {
-                    later(ui, Icon::CreateForm, label);
+                // Extrusion and Revolve sketch on the work plane (F5); Blend, Sweep and Swept Blend are F6's.
+                let tip = msg!("Extrusion: sketch a profile on the work plane, extruded along its normal");
+                if big_button(ui, Icon::CreateForm, msg!("Extrusion"), false, tip).clicked() {
+                    ed.create_form(false, false);
                 }
+                later(ui, Icon::CreateForm, msg!("Blend"));
+                let tip = msg!("Revolve: sketch a profile and an axis line on the work plane, turned about the axis");
+                if big_button(ui, Icon::CreateForm, msg!("Revolve"), false, tip).clicked() {
+                    ed.create_form(true, false);
+                }
+                later(ui, Icon::CreateForm, msg!("Sweep"));
+                later(ui, Icon::CreateForm, msg!("Swept Blend"));
+                let tip = msg!("Void Forms: a void extrusion or revolve, sketched as a solid one is, which cuts the solids before it");
+                let r = big_button(ui, Icon::CreateForm, msg!("Void Forms"), false, tip);
+                ribbon::choices(ui, &r, false, |ui| {
+                    if ui.button(t("Void Extrusion")).clicked() {
+                        ed.create_form(false, true);
+                        ui.close();
+                    }
+                    if ui.button(t("Void Revolve")).clicked() {
+                        ed.create_form(true, true);
+                        ui.close();
+                    }
+                });
             }),
             _ => {}
         }
         match tab {
             DocTab::Create => {
                 ribbon::panel(ui, msg!("Model"), |ui| {
-                    later(ui, Icon::Component, "Component");
+                    // A family loaded into this one placed (T6a): in a plan or an elevation, on the view's work plane.
+                    let tip =
+                        msg!("Component (CM): an instance of a family loaded into this one, placed by a click in a plan or an elevation");
+                    let can = !adaptive && !ed.nested.is_empty();
+                    if ui.add_enabled_ui(can, |ui| big_button(ui, Icon::Component, "Component", ed.placing.is_some(), tip)).inner.clicked()
+                    {
+                        ed.component_tool();
+                    }
                     later(ui, Icon::Text, msg!("Model Text"));
                 });
                 ribbon::panel(ui, msg!("Datum"), |ui| {
@@ -361,6 +424,55 @@ impl BimApp {
                         ed.reference_plane_tool();
                     }
                 });
+                // Drawn in a plan or an elevation of a family that isn't adaptive (F7).
+                if !adaptive {
+                    ribbon::panel(ui, msg!("Dimension"), |ui| {
+                        let tip = msg!(
+                            "Aligned Dimension (DI): pick parallel reference planes, extrusion ends or lines of forms, then click where it goes"
+                        );
+                        let on = ed.views.dimensioning.is_some();
+                        let aligned = ed.views.dim_kind == bimcraft_core::family::DimKind::Aligned;
+                        if ui
+                            .add_enabled_ui(ed.editing_2d() && !ed.sketching(), |ui| {
+                                big_button(ui, Icon::Dimension, msg!("Aligned Dimension"), on && aligned, tip)
+                            })
+                            .inner
+                            .clicked()
+                        {
+                            ed.dimension_tool();
+                        }
+                        // The angles between lines that cross (F7c); a circle or an arc of a sketch, its radius or its diameter
+                        // (F7b).
+                        for (kind, icon, label, tip) in [
+                            (
+                                bimcraft_core::family::DimKind::Angular,
+                                Icon::Angular,
+                                msg!("Angular"),
+                                msg!(
+                                    "Angular Dimension: pick reference lines, reference planes or lines of forms that cross, then click where its arc goes"
+                                ),
+                            ),
+                            (
+                                bimcraft_core::family::DimKind::Radial,
+                                Icon::Radial,
+                                msg!("Radial"),
+                                msg!("Radial Dimension: pick a circle or an arc of a form's sketch, then click where it goes"),
+                            ),
+                            (
+                                bimcraft_core::family::DimKind::Diameter,
+                                Icon::Diameter,
+                                msg!("Diameter"),
+                                msg!("Diameter Dimension: pick a circle or an arc of a form's sketch, then click where it goes"),
+                            ),
+                        ] {
+                            let lit = on && ed.views.dim_kind == kind;
+                            let usable = ed.editing_2d() && !ed.sketching();
+                            if ui.add_enabled_ui(usable, |ui| crate::small_button(ui, icon, label, lit, tip)).inner.clicked() {
+                                ed.radial_tool(kind);
+                            }
+                        }
+                    });
+                }
                 // In {3D} too, where Show draws it over the preview.
                 if !adaptive {
                     views_work_plane_panel(ui, ed);
@@ -372,8 +484,8 @@ impl BimApp {
             }
             DocTab::Insert => {
                 ribbon::panel(ui, msg!("Family"), |ui| {
-                    if big_button(ui, Icon::LoadFamily, msg!("Load Family"), false, msg!("Load Family: open a family file here")).clicked()
-                    {
+                    let tip = msg!("Load Family: a family file loaded into this family, to place with Component");
+                    if big_button(ui, Icon::LoadFamily, msg!("Load Family"), false, tip).clicked() {
                         ed.ask.load = true;
                     }
                     if big_button(ui, Icon::Save, msg!("Save Family"), false, msg!("Save Family: the family to a file")).clicked() {
@@ -416,8 +528,17 @@ impl BimApp {
                 let form = ed.selected_form();
                 ribbon::panel(ui, msg!("Modify"), |ui| {
                     let some = !ed.modeller.selection.is_empty();
-                    for (icon, label) in [(Icon::Align, "Align"), (Icon::Offset, "Offset"), (Icon::MirrorPick, msg!("Mirror - Pick Axis"))]
-                    {
+                    // Align, in a plan or an elevation of a family that isn't adaptive (F7): what is picked second onto what is
+                    // picked first, and a padlock that locks them.
+                    if ed.editing_2d() {
+                        let tip = msg!("Align (AL): pick a reference, then what moves onto it; its padlock locks them");
+                        if crate::small_button(ui, Icon::Align, "Align", ed.views.aligning.is_some(), tip).clicked() {
+                            ed.align_tool();
+                        }
+                    } else {
+                        later_small(ui, Icon::Align, "Align");
+                    }
+                    for (icon, label) in [(Icon::Offset, "Offset"), (Icon::MirrorPick, msg!("Mirror - Pick Axis"))] {
                         later_small(ui, icon, label);
                     }
                     later_small(ui, Icon::MirrorDraw, msg!("Mirror - Draw Axis"));
@@ -459,17 +580,35 @@ impl BimApp {
                     later_small(ui, Icon::Split, msg!("Split Element"));
                     let tip = msg!("Delete (DE): what is selected, with what depends on it");
                     let plane = ed.selected_plane().filter(|g| ed.planes.iter().any(|p| p.guid == *g && !p.datum()));
+                    let dim = ed.selected_dimension();
+                    let nested = ed.selected_nested();
+                    let line = ed.selected_line();
                     if ui
-                        .add_enabled_ui(some || form.is_some() || plane.is_some(), |ui| big_button(ui, Icon::Delete, "Delete", false, tip))
+                        .add_enabled_ui(
+                            some || form.is_some() || plane.is_some() || dim.is_some() || nested.is_some() || line.is_some(),
+                            |ui| big_button(ui, Icon::Delete, "Delete", false, tip),
+                        )
                         .inner
                         .clicked()
                     {
-                        if let Some(g) = plane {
+                        if let Some(i) = nested {
+                            ed.nested_instances.remove(i);
+                            ed.select_nested(None);
+                        } else if let Some(g) = dim {
+                            ed.delete_dimension(g);
+                        } else if let Some(g) = line {
+                            if let Err(e) = ed.delete_line(g) {
+                                self.status = Status { text: e, error: true };
+                            }
+                        } else if let Some(g) = plane {
                             if let Err(e) = ed.delete_plane(g) {
                                 self.status = Status { text: e, error: true };
                             }
                         } else if let Some(i) = form {
-                            ed.forms.remove(i);
+                            let gone = ed.forms.remove(i).original.guid;
+                            if !gone.is_nil() {
+                                ed.forget_reference(gone);
+                            }
                             ed.form = None;
                         } else if let Some(d) = ed.adaptive.as_mut() {
                             adaptive_view::delete(d, &mut ed.modeller);
@@ -480,8 +619,33 @@ impl BimApp {
                     later(ui, Icon::Measure, msg!("Measure"));
                 });
                 if tab == DocTab::Context {
+                    if let Some(i) = ed.selected_nested() {
+                        self.nested_mode_panel(ui, ed, i);
+                    }
+                    // F7d: a reference line or a plane of the family's own turns about a point it is pinned to.
+                    if ed.editing_2d() && ed.pivot_candidate().is_some() {
+                        ribbon::panel(ui, msg!("Rotation"), |ui| {
+                            let tip = msg!(
+                                "Pivot: click the point it turns about (where two planes cross, a line's end, a point of a sketch, or anywhere); its Swing Angle turns it"
+                            );
+                            if big_button(ui, Icon::Rotate, msg!("Pivot"), ed.views.pivoting.is_some(), tip).clicked() {
+                                ed.pivot_tool();
+                            }
+                            let pivoted = ed.pivot_candidate().filter(|g| ed.draft_pivot(*g).is_some());
+                            let tip = msg!("Remove Pivot: it stops turning and stays where it is drawn");
+                            if ui
+                                .add_enabled_ui(pivoted.is_some(), |ui| big_button(ui, Icon::Delete, msg!("Remove Pivot"), false, tip))
+                                .inner
+                                .clicked()
+                                && let Some(g) = pivoted
+                            {
+                                ed.remove_pivot(g);
+                            }
+                        });
+                    }
                     if let Some(i) = ed.selected_form() {
                         self.form_work_plane_panel(ui, ed, i);
+                        self.form_mode_panel(ui, ed, i);
                     }
                     if !lines.is_empty() {
                         self.form_panel(ui, ed, &lines);
@@ -501,12 +665,22 @@ impl BimApp {
                 }
             }
         }
+        let into_host = ed.into_host;
         ribbon::panel(ui, msg!("Family Editor"), |ui| {
-            let tip = msg!("Load into Project: the project takes the family as it is here, and the family stays open");
+            // Opened from a family it is nested in, it loads back into that one (T6a), as Revit's does into the open family.
+            let tip = if into_host {
+                msg!("Load into Project: the family it is nested in takes it as it is here, and it stays open")
+            } else {
+                msg!("Load into Project: the project takes the family as it is here, and the family stays open")
+            };
             if big_button(ui, Icon::LoadIntoProject, msg!("Load into Project"), false, tip).clicked() {
                 ed.ask.apply = true;
             }
-            let tip = msg!("Load into Project and Close: the project takes the family, and the family closes");
+            let tip = if into_host {
+                msg!("Load into Project and Close: the family it is nested in takes it, and it closes")
+            } else {
+                msg!("Load into Project and Close: the project takes the family, and the family closes")
+            };
             if big_button(ui, Icon::LoadIntoProjectClose, msg!("Load into Project and Close"), false, tip).clicked() {
                 ed.ask.ok = true;
             }
@@ -522,8 +696,11 @@ impl BimApp {
                 ed.modeller.picking_plane = false;
                 ed.form = None;
                 ed.views.drawing = None;
-                ed.views.picking_plane = false;
+                ed.views.picking = None;
                 ed.views.plane = None;
+                ed.views.dimensioning = None;
+                ed.views.aligning = None;
+                ed.views.dim = None;
             }
         });
         let shown = self.docking.shown(Palette::Properties);
@@ -607,11 +784,28 @@ impl BimApp {
     /// family that isn't adaptive, the family and its forms and symbols.
     pub(crate) fn family_properties(&mut self, ui: &mut Ui) {
         let Some(mut ed) = self.family_editor.take() else { return };
+        // A form being sketched: what it will be.
+        if ed.sketching() {
+            self.form_sketch_properties(ui, &mut ed);
+            self.family_editor = Some(ed);
+            return;
+        }
         let values = ed.values();
         let category = category_label(ed.category);
         let selected = ed.modeller.selection.clone();
         let params = ed.parameter_kinds();
-        // A reference plane selected in a plan or an elevation: its name.
+        // A reference line selected (F7d): its pivot.
+        if let Some(g) = ed.selected_line() {
+            let i = ed.lines.iter().position(|l| l.guid == g).unwrap_or_default();
+            selector(ui, Icon::Line, &tf("Reference Line {}", &[&(i + 1).to_string()]));
+            ui.add_space(6.0);
+            if let Some(e) = ed.pivot_properties(ui, g, self.session.model.units) {
+                self.status = Status { text: e, error: true };
+            }
+            self.family_editor = Some(ed);
+            return;
+        }
+        // A reference plane selected in a plan or an elevation: its name, and its pivot (F7d).
         if let Some(g) = ed.selected_plane() {
             selector(ui, Icon::Line, t("Reference Plane"));
             ui.add_space(6.0);
@@ -626,7 +820,19 @@ impl BimApp {
                     }
                     ui.end_row();
                 });
+                if !datum && let Some(e) = ed.pivot_properties(ui, g, self.session.model.units) {
+                    self.status = Status { text: e, error: true };
+                }
             }
+            self.family_editor = Some(ed);
+            return;
+        }
+        // A nested instance selected: its type, where it stands and its family's parameters (T6a).
+        if let Some(i) = ed.selected_nested() {
+            let what = ed.nested_instances.get(i).map(|n| format!("{} : {}", n.family, n.type_name)).unwrap_or_default();
+            selector(ui, Icon::Component, &what);
+            ui.add_space(6.0);
+            self.nested_properties(ui, &mut ed, i);
             self.family_editor = Some(ed);
             return;
         }
@@ -779,6 +985,7 @@ impl BimApp {
                         });
                     }
                 });
+                self.nested_browser(ui);
                 if !forms.is_empty() {
                     egui::CollapsingHeader::new(t("Forms")).id_salt("family-forms").default_open(true).show(ui, |ui| {
                         for (i, form) in forms.iter().enumerate() {
@@ -803,6 +1010,7 @@ impl BimApp {
     /// button, and its view control bar at the bottom.
     pub(crate) fn family_central(&mut self, ui: &mut Ui) {
         let Some(mut ed) = self.family_editor.take() else { return };
+        ed.snaps = self.snaps_now();
         let pane = ui.available_rect_before_wrap();
         self.view_rect = pane;
         self.pane = pane;
@@ -826,11 +1034,13 @@ impl BimApp {
         } else {
             let response = ui.interact(pane, UiId::new("family-preview"), Sense::click_and_drag());
             // A click in the view lets the selected form go, as a click on nothing does in Revit.
-            if response.clicked() {
+            if response.clicked() && !ed.sketching() {
                 ed.form = None;
             }
             ed.document.preview_size = [pane.width().clamp(64.0, 1600.0) as u32, pane.height().clamp(64.0, 1200.0) as u32];
-            let orbit = response.dragged_by(PointerButton::Primary)
+            // While sketching, a drag drags a picked line's end rather than turn the view, unless none is held.
+            let gripped = ed.sketch.as_ref().is_some_and(|s| s.sketch.drag.is_some());
+            let orbit = (response.dragged_by(PointerButton::Primary) && !gripped)
                 || (response.dragged_by(PointerButton::Middle) && ui.input(|i| i.modifiers.shift));
             if orbit {
                 let d = response.drag_delta();
@@ -838,8 +1048,32 @@ impl BimApp {
             }
             let base = Arc::clone(&self.session.model);
             ed.refresh(ui.ctx(), &base);
+            // A double click on a form sketches it again, as Edit Extrusion or Edit Revolve does (F5).
+            if response.double_clicked()
+                && !ed.sketching()
+                && let (Some(p), Some((cam, size))) = (response.interact_pointer_pos(), ed.preview.as_ref().map(|p| (p.cam, p.size)))
+            {
+                let px = (
+                    f64::from((p.x - pane.min.x) * size[0] as f32 / pane.width().max(1.0)),
+                    f64::from((p.y - pane.min.y) * size[1] as f32 / pane.height().max(1.0)),
+                );
+                let values = ed.values();
+                let hit = ed.family().ok().and_then(|f| bimcraft_core::family::views::form_at_3d(&f, &values, &cam, px));
+                if let Some(i) = hit {
+                    ed.select_form_at(i);
+                    if let Err(e) = ed.edit_form_sketch(i) {
+                        self.status = Status { text: e, error: true };
+                    }
+                }
+            }
             if let Some(p) = &ed.preview {
                 ui.painter().image(p.tile.id(), pane, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
+            }
+            // A form being sketched on its plane, over the picture (F5).
+            if let Some((cam, size)) = ed.preview.as_ref().map(|p| (p.cam, p.size))
+                && let Some(e) = ed.sketch_in_3d(ui, &response, &ui.painter_at(pane), &cam, size, pane)
+            {
+                self.status = Status { text: e, error: true };
             }
         }
         let card = crate::style::card([true, false, true, false]).inner_margin(Margin::same(2));
@@ -911,6 +1145,15 @@ impl BimApp {
         let units = self.session.model.units;
         let Some(ed) = self.family_editor.as_mut() else { return false };
         let Some(name) = context(ed) else { return false };
+        if ed.sketching() {
+            ui.horizontal(|ui| {
+                ui.set_min_height(24.0);
+                ui.label(t(name));
+                ui.separator();
+                super::sketch::options_bar(ui, ed, units);
+            });
+            return true;
+        }
         let values = ed.values();
         let lines = ed.adaptive.as_ref().is_some_and(|d| !adaptive_view::selected(d, &ed.modeller, &values).1.is_empty());
         let drawing = !matches!(ed.modeller.tool, Draw::Modify);
@@ -943,14 +1186,24 @@ impl BimApp {
                 let l = ui.label(t("Depth (mm)"));
                 ui.add(egui::DragValue::new(&mut ed.modeller.depth).speed(5.).range(1.0..=100_000.0)).labelled_by(l.id);
             }
+            // Component's family and type (T6a).
+            super::nested::placing_options(ui, ed);
+            // A dimension's Label, as Revit's Options Bar has it (T19).
+            if let Some(g) = ed.selected_dimension() {
+                ui.separator();
+                if let Some(e) = ed.dimension_options(ui, g) {
+                    self.status = Status { text: e, error: true };
+                }
+            }
             // A selected extrusion's Depth, as Revit's Options Bar has it.
+            let driven = ed.selected_form().map(|i| ed.driven_ends(i)).unwrap_or_default();
             if let Some(i) = ed.selected_form()
                 && let Some(f) = ed.forms.get_mut(i)
                 && !f.revolve
                 && !f.mesh()
             {
                 ui.separator();
-                super::extrusion::depth(ui, units, f, &values);
+                super::extrusion::depth(ui, units, f, &values, driven);
             }
         });
         true
@@ -964,11 +1217,43 @@ impl BimApp {
     /// What the family document's status bar asks for: an adaptive family's modelling view's tool, or how another's preview turns.
     pub(crate) fn family_prompt(&self) -> Option<&'static str> {
         let ed = self.family_editor.as_ref()?;
+        if let Some(s) = ed.sketch.as_ref() {
+            // Align on the sketch's lines (F7b).
+            if ed.views.aligning.is_some() {
+                return Some(match s.align_from {
+                    None => msg!("Click the reference to align to: a reference plane, a reference line or a line."),
+                    Some(_) => msg!("Click the line of the sketch that moves onto it; its padlock locks them."),
+                });
+            }
+            return Some(super::sketch::prompt(s));
+        }
         Some(match (ed.views.shown, ed.adaptive.is_some()) {
             (Some(_), true) => msg!("An adaptive family's plans and elevations show its test placement; model it in {3D}."),
-            (Some(_), false) if ed.views.picking_plane => msg!("Click a reference plane or a datum: the view's work plane."),
+            (Some(_), false) if ed.views.picking.is_some_and(|p| p.line) => {
+                msg!("Click a reference line: the work plane it was sketched in. Esc goes back to the dialog.")
+            }
+            (Some(_), false) if ed.views.picking.is_some() => {
+                msg!("Click a reference plane or a datum for the work plane. Esc goes back to the dialog.")
+            }
             (Some(_), false) if ed.views.drawing.is_some() => msg!("Click two points: a reference plane through them."),
-            (Some(_), false) => msg!("Click a form or a reference plane to select it; drag a selected plane to move it."),
+            (Some(_), false) if ed.views.dimensioning.is_some() && ed.views.dim_kind == bimcraft_core::family::DimKind::Angular => {
+                msg!("Click lines that cross (reference lines, reference planes, lines of forms), then click where the dimension goes.")
+            }
+            (Some(_), false) if ed.views.dimensioning.is_some() && ed.views.dim_kind != bimcraft_core::family::DimKind::Aligned => {
+                msg!("Click a circle or an arc, then click where the dimension goes.")
+            }
+            (Some(_), false) if ed.views.dimensioning.is_some() => {
+                msg!("Click parallel reference planes, extrusion ends or lines of forms, then click where the dimension goes.")
+            }
+            (Some(_), false) if ed.views.aligning.as_ref().is_some_and(Option::is_none) => msg!("Click the reference to align to."),
+            (Some(_), false) if ed.views.aligning.is_some() => msg!("Click what moves onto it."),
+            (Some(_), false) if ed.placing.is_some() => msg!("Click where the component goes, on the view's work plane."),
+            (Some(_), false) if ed.views.pivoting.is_some() => {
+                msg!("Click the point it turns about: where two planes cross, a line's end, a point of a sketch, or anywhere.")
+            }
+            (Some(_), false) => msg!(
+                "Click a form, a nested instance, a reference plane, a reference line or a dimension to select it; drag a selected plane to move it, a grip to turn or stretch."
+            ),
             (None, true) => adaptive_view::prompt(&ed.modeller),
             (None, false) => msg!("Drag the picture to turn it."),
         })
@@ -977,13 +1262,18 @@ impl BimApp {
     /// Undo in a family document: one step back through its own history, done when the frame ends; the project's is not touched.
     pub(crate) fn family_undo(&mut self) {
         if let Some(ed) = self.family_editor.as_mut() {
-            ed.ask.undo = true;
+            // While sketching, the sketch's own last change.
+            if ed.sketching() {
+                ed.undo_sketch();
+            } else {
+                ed.ask.undo = true;
+            }
         }
     }
 
     /// Redo in a family document: a step undone done again.
     pub(crate) fn family_redo(&mut self) {
-        if let Some(ed) = self.family_editor.as_mut() {
+        if let Some(ed) = self.family_editor.as_mut().filter(|ed| !ed.sketching()) {
             ed.ask.redo = true;
         }
     }
@@ -1000,18 +1290,52 @@ impl BimApp {
             self.family_typed(ctx);
         }
         let Some(ed) = self.family_editor.as_mut() else { return };
+        // Sketch mode: Escape lets the shape's points go, then its tool; Delete takes the lines picked away; Ctrl+Z takes back
+        // the sketch's own last change. The document's history waits for Finish.
+        if let Some(s) = ed.sketch.as_mut() {
+            if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+                // Align's reference let go, then Align itself; else the sketch's own Escape.
+                if ed.views.aligning.is_some() && s.align_from.is_none() && s.offer.is_none() {
+                    ed.views.aligning = None;
+                } else {
+                    s.escape();
+                }
+            }
+            if ctx.input(|i| i.key_pressed(egui::Key::Delete)) {
+                s.delete_picked();
+            }
+            if ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::Z)) {
+                ed.undo_sketch();
+            }
+            return;
+        }
         // Escape lets a selected form go, though a button clicked has the keyboard (the window's own Escape does it otherwise).
         if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
             // The plane being drawn first, then the tool, then the selection.
-            if ed.views.picking_plane {
-                ed.views.picking_plane = false;
+            if ed.stop_picking() || ed.views.pivoting.take().is_some() {
+            } else if let Some(refs) = ed.views.dimensioning.as_mut() {
+                if refs.is_empty() {
+                    ed.views.dimensioning = None;
+                } else {
+                    refs.clear();
+                }
+            } else if let Some(first) = ed.views.aligning {
+                ed.views.aligning = first.map(|_| None);
+                ed.views.align_lock = None;
+            } else if ed.views.dim.is_some() {
+                ed.views.dim = None;
             } else if let Some(first) = ed.views.drawing {
                 ed.views.drawing = first.map(|_| None);
-            } else if ed.views.plane.take().is_none() {
+            } else if ed.views.plane.take().is_none() && ed.views.line.take().is_none() {
                 ed.let_form_go();
             }
         }
         let pressed = |m: egui::Modifiers, k: egui::Key| ctx.input_mut(|i| i.consume_key(m, k));
+        if let Some(g) = ed.selected_dimension()
+            && pressed(egui::Modifiers::NONE, egui::Key::Delete)
+        {
+            ed.delete_dimension(g);
+        }
         if pressed(egui::Modifiers::COMMAND | egui::Modifiers::SHIFT, egui::Key::Z) || pressed(egui::Modifiers::COMMAND, egui::Key::Y) {
             ed.ask.redo = true;
         } else if pressed(egui::Modifiers::COMMAND, egui::Key::Z) {
@@ -1025,6 +1349,15 @@ impl BimApp {
     pub(crate) fn document_dialogs(&mut self, ctx: &Context, ed: &mut FamilyEditor, materials: &[String]) {
         // Associate Family Parameter, from a row's "=": a parameter New Parameter makes goes in the family at once, as in Revit.
         ed.associate_dialog(ctx);
+        // F7: Constraints are not satisfied, and Create Parameter… for a dimension's label.
+        ed.constraints_dialog(ctx);
+        ed.create_parameter_dialog(ctx);
+        // T12: the Work Plane dialog and Go To View.
+        let base = Arc::clone(&self.session.model);
+        if let Some(e) = ed.work_plane_dialog(ctx, &base) {
+            self.status = Status { text: e, error: true };
+        }
+        ed.go_to_view_dialog(ctx);
         let Some(dialog) = ed.dialog else {
             ed.document.dialog_saved = None;
             ed.document.category_shown = false;
@@ -1065,6 +1398,10 @@ impl BimApp {
             && let Some(why) = ed.formula_refusal()
         {
             ed.refuse_types(why);
+            (ok, apply) = (false, false);
+        }
+        // Values a type's dimensions can't hold (a labelled length of 0): "Constraints are not satisfied", over the dialog.
+        if (ok || apply) && !cancel && dialog == DocDialog::Types && ed.constraints_refusal(ok) {
             (ok, apply) = (false, false);
         }
         // Options the `family` command would refuse (an OmniClass number that isn't one), said in the dialog, which stays open.
@@ -1269,29 +1606,15 @@ fn work_plane_panel(ui: &mut Ui, ed: &mut FamilyEditor) {
     });
 }
 
-/// Work Plane in a plan or an elevation of a family that isn't adaptive (F4): Set picks the view's work plane from the
-/// family's planes, as A4's list names them, or by a click on one (Pick); Show tints it. Revit's Work Plane dialog is T12's.
+/// Work Plane on the Create tab of a family that isn't adaptive: Set opens Revit's Work Plane dialog for the view's work plane
+/// (T12: Name, Pick a plane, Pick a line, Go To View); Show tints it.
 fn views_work_plane_panel(ui: &mut Ui, ed: &mut FamilyEditor) {
-    let listed = ed.plane_set().listed();
-    let now = ed.views.work_plane();
-    let mut chosen = None;
     ribbon::panel(ui, msg!("Work Plane"), |ui| {
-        let tip = msg!("Set: the view's work plane, a plane picked in the view or from the list");
-        let r = big_button(ui, Icon::PickFaces, msg!("Set"), ed.views.picking_plane, tip);
-        // Pick takes a plane clicked in a plan or an elevation; {3D} offers the list alone.
-        let pickable = ed.views.shown.is_some();
-        ribbon::choices(ui, &r, false, |ui| {
-            if pickable && ui.button(t(PICK)).clicked() {
-                ed.views.picking_plane = true;
-                ui.close();
-            }
-            for (plane, label) in &listed {
-                if ui.selectable_label(now == *plane, t(label)).clicked() {
-                    chosen = Some(*plane);
-                    ui.close();
-                }
-            }
-        });
+        let tip = msg!("Set: the view's work plane, by name or picked in the view (the Work Plane dialog)");
+        let on = ed.views.dialog.is_some() || ed.views.picking.is_some();
+        if big_button(ui, Icon::PickFaces, msg!("Set"), on, tip).clicked() {
+            ed.open_work_plane_dialog(super::work_plane::Target::View);
+        }
         crate::stacked(ui, |ui| {
             let tip = msg!("Show: the view's work plane, tinted");
             if crate::stacked_button(ui, Icon::Visibility, msg!("Show"), ed.views.show_work_plane, tip).clicked() {
@@ -1299,10 +1622,6 @@ fn views_work_plane_panel(ui: &mut Ui, ed: &mut FamilyEditor) {
             }
         });
     });
-    if let Some(p) = chosen {
-        ed.views.set_work_plane(p);
-        ed.views.picking_plane = false;
-    }
 }
 
 /// The family's Identity Data in Properties: its name, typed, and its category.
