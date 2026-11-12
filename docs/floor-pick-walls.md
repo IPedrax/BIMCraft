@@ -10,7 +10,7 @@
 | Choose a side | Autodesk's floor exercise uses the flip control to pick the inside face with the core option cleared. [Terrain and Building Pad, floor steps 8–10](https://help.autodesk.com/cloudhelp/2027/ENU/Revit-GetStarted/files/GUID-E325CDE7-5468-43C8-BEAD-EC5AF13231F0.htm) | Picks on either side of the rectangle below produce the same four location lines. There is no per-pick core-face selector. |
 | Complete the sketch | Finish requires a closed profile. [Create a Floor](https://help.autodesk.com/cloudhelp/2027/ENU/Revit-ArchDesign/files/GUID-A688CED0-E08C-4ED3-A8E8-14CBE78902BB.htm) | Sketch lines stay in the draft until Finish. The existing `floor {sketch}` command validates the loop. Its `offset` parameter sets height above level. |
 
-The native Revit 2027.3 (27.3.0.28) observation in [#273](https://github.com/IPedrax/BIMCraft/pull/273) measured two wall join orders in Fine plan. The floor vertices below are geometric expectations checked on synthetic BIMCraft Rust walls. A native floor pick on that corner is still needed to establish the Revit result.
+The native Revit 2027.3 (27.3.0.28) observation in [#273](https://github.com/IPedrax/BIMCraft/pull/273) measured two wall join orders in Fine plan. The synthetic BIMCraft Rust L uses the wall-axis intersection as its origin.
 
 ## Reproduce the geometry
 
@@ -51,6 +51,8 @@ The #273 butt requires two sufficiently long, straight, centre-location walls wi
 
 Scripts and MCP can request the same untrimmed sketch line with `sketch {"wall":100002,"face":"exterior-core"}`, substituting the picked wall's id or GUID. Use `interior-core` for the other face. Omitting `face` follows the authored location line, including its arc. The result's `line` is a standard sketch line. A core pick needs a straight wall type with one structural layer. Unsupported picks report an error. Moving a wall after Finish leaves the drawn floor boundary in place.
 
-## Open native comparison
+## Native floor comparison
 
-Measure the Revit 2027.3 compound L with core on and off, both sides, both butt orders and a nonzero edge offset. These cases inform a later automatic trim/extend decision. The draft uses explicit face selection, manual corner trims and zero edge offset. Curved core faces, absent or multiple structural layers and persistent wall associations remain open.
+On the masonry-through L in Revit 2027.3, picking the return joined the two floor sketch lines immediately. With the exterior side picked and zero edge offset, the corner relative to the wall-axis intersection was (+60, +80) mm with the core option enabled and (+100, +100) mm with it cleared. Flipping the connected core-off picks moved both lines.
+
+The BIMCraft Rust draft uses explicit face selection, manual corner trims and zero edge offset. Curved core faces, absent or multiple structural layers, persistent wall associations and automatic corner joining remain open.

@@ -270,11 +270,19 @@ fn floor_core_picks_can_be_trimmed_and_finished_on_either_face() {
 fn the_tools_palette_offers_the_same_floor_pick_references() {
     let mut h = bimcraft(include_str!("../../../../samples/floor-pick-walls.txt"));
     tool(&mut h, "Floor");
-    h.get_by_label("Pick Walls").click_accesskit();
-    h.run();
+    let press_row = |h: &mut Harness<BimApp>, label| {
+        let rect = h.get_by_label(label).rect();
+        assert!(rect.width() > 100. && rect.right() <= h.state().view_rect.left(), "{label} needs a row in the Tools palette: {rect:?}");
+        h.get_by_label(label).scroll_to_me();
+        h.run();
+        press(h, label);
+    };
+    press_row(&mut h, "Pick Walls");
     press(&mut h, "Core Face: Exterior");
     click(&mut h, P2(4000., 25.));
     assert!(line_of(&h, P2(0., -70.), P2(8000., -70.)).is_some());
+    press_row(&mut h, "Trim/Extend to Corner");
+    assert!(matches!(h.state().tool, Tool::Trim(None)));
 }
 
 #[test]

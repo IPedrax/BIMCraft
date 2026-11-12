@@ -400,6 +400,15 @@ fn caret(ui: &Ui, c: egui::Pos2, ink: egui::Color32) {
     ui.painter().add(Shape::convex_polygon(vec![c + vec2(-3.0, -1.5), c + vec2(3.0, -1.5), c + vec2(0.0, 2.0)], ink, Stroke::NONE));
 }
 
+/// A row of small ribbon buttons. In a panel list each button already takes the full row.
+pub(crate) fn tool_row(ui: &mut Ui, add: impl FnOnce(&mut Ui)) {
+    if listing() {
+        add(ui);
+    } else {
+        ui.horizontal(add);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
