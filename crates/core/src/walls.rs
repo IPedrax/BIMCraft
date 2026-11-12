@@ -235,7 +235,7 @@ pub(crate) fn arm(m: &Model, id: Id, w: &Wall, at_end: bool, mine: bool) -> Arm 
 /// The walls at wall `id`'s start (or `at_end`, its end), round the node counter-clockwise, its own
 /// among them: those ending there, and a wall it ends on, both ways from where it does. Whether it
 /// ends on one, too.
-fn arms(m: &Model, id: Id, at_end: bool, index: Option<&Index>) -> (Vec<Arm>, bool) {
+fn arms(m: &Model, id: Id, at_end: bool, index: Option<&Index>, keep: &impl Fn(&Wall) -> bool) -> (Vec<Arm>, bool) {
     let Some(w) = m.wall(id) else { return (Vec::new(), false) };
     let node = if at_end { w.end } else { w.start };
     let mut arms = vec![arm(m, id, w, at_end, true)];
@@ -260,7 +260,7 @@ fn arms(m: &Model, id: Id, at_end: bool, index: Option<&Index>) -> (Vec<Arm>, bo
     // Where they meet is asked first: whether they overlap in height takes both walls' heights, under any roof or floor
     // they're attached to.
     for (other, o) in candidates {
-        if other == id {
+        if other == id || !keep(o) {
             continue;
         }
         if o.start.dist(node) <= TOL {
@@ -300,7 +300,7 @@ pub fn cap(m: &Model, id: Id, at_end: bool) -> Vec<P2> {
 }
 
 fn cap_in(m: &Model, id: Id, at_end: bool, index: Option<&Index>) -> Vec<P2> {
-    end_geometry(m, id, at_end, index).outline
+    end_geometry(m, id, at_end, index, &|_| true).outline
 }
 
 #[derive(Default)]
@@ -315,9 +315,10 @@ impl WallEnd {
     }
 }
 
-fn end_geometry(m: &Model, id: Id, at_end: bool, index: Option<&Index>) -> WallEnd {
+/// [`cap`] and how a compound corner shares it, joined only to walls `keep` keeps.
+fn end_geometry(m: &Model, id: Id, at_end: bool, index: Option<&Index>, keep: &impl Fn(&Wall) -> bool) -> WallEnd {
     let Some(w) = m.wall(id) else { return WallEnd::default() };
-    let (arms, through) = arms(m, id, at_end, index);
+    let (arms, through) = arms(m, id, at_end, index, keep);
     let n = arms.len();
     let Some(i) = arms.iter().position(|a| a.id == id) else { return WallEnd::default() };
     let (prev, me, next) = (&arms[(i + n - 1) % n], &arms[i], &arms[(i + 1) % n]);
@@ -351,11 +352,16 @@ pub fn centre_line(m: &Model, id: Id) -> Vec<P2> {
 
 /// [`centre_line`], its joins found through `index` when there is one.
 pub(crate) fn centre_line_in(m: &Model, id: Id, index: Option<&Index>) -> Vec<P2> {
+    centre_line_filtered(m, id, index, &|_| true)
+}
+
+/// A centre line joined only to walls kept by the caller, such as those bounding a level at its computation height.
+pub(crate) fn centre_line_filtered(m: &Model, id: Id, index: Option<&Index>, keep: &impl Fn(&Wall) -> bool) -> Vec<P2> {
     let Some(w) = m.wall(id) else { return Vec::new() };
     let axis = Axis::of(w);
     let mut line = axis.points(0.0, axis.length(), centre(m, w));
     for at_end in [false, true] {
-        let (arms, _) = arms(m, id, at_end, index);
+        let (arms, _) = arms(m, id, at_end, index, keep);
         let Some(me) = arms.iter().find(|a| a.id == id) else { continue };
         let reach = 2.0 * arms.iter().map(|a| a.thick).fold(1.0, f64::max);
         let crossing = arms
@@ -377,6 +383,11 @@ pub fn outline(m: &Model, id: Id) -> Vec<P2> {
 }
 
 pub(crate) fn outline_in(m: &Model, id: Id, index: Option<&Index>) -> Vec<P2> {
+    outline_filtered(m, id, index, &|_| true)
+}
+
+/// An outline whose caps join only walls kept by the caller; physical wall geometry still uses every overlapping wall.
+pub(crate) fn outline_filtered(m: &Model, id: Id, index: Option<&Index>, keep: &impl Fn(&Wall) -> bool) -> Vec<P2> {
     let Some(w) = m.wall(id) else { return Vec::new() };
     let axis = Axis::of(w);
     let (ext, int) = faces(m, w);
@@ -385,9 +396,9 @@ pub(crate) fn outline_in(m: &Model, id: Id, index: Option<&Index>) -> Vec<P2> {
         let n = pts.len();
         pts.into_iter().skip(1).take(n.saturating_sub(2))
     };
-    let mut ring = cap_in(m, id, false, index);
+    let mut ring = end_geometry(m, id, false, index, keep).outline;
     ring.extend(between(axis.points(0.0, len, ext)));
-    ring.extend(cap_in(m, id, true, index));
+    ring.extend(end_geometry(m, id, true, index, keep).outline);
     ring.extend(between(axis.points(len, 0.0, int)));
     ring.dedup_by(|a, b| a.dist(*b) < 1e-6);
     ring
@@ -459,7 +470,7 @@ pub(crate) fn layer_geometry(m: &Model, id: Id, index: Option<&Index>) -> LayerG
     let Some(w) = m.wall(id) else { return LayerGeometry::default() };
     let axis = Axis::of(w);
     let len = axis.length();
-    let ends = [end_geometry(m, id, false, index), end_geometry(m, id, true, index)];
+    let ends = [end_geometry(m, id, false, index, &|_| true), end_geometry(m, id, true, index, &|_| true)];
     let lines = boundaries(m, w)
         .into_iter()
         .enumerate()

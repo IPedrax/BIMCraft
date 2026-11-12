@@ -59,7 +59,10 @@ impl<'a> Rooms<'a> {
             None => Some(self.index.get_or_init(|| Index::new(m))),
         };
         let walls: Vec<(Id, Vec<P2>)> = match at {
-            RoomArea::Finish => m.bounding_walls(&level, true).map(|id| (id, walls::outline_in(m, id, index))).collect(),
+            RoomArea::Finish => m
+                .bounding_walls(&level, true)
+                .map(|id| (id, walls::outline_filtered(m, id, index, &|w| m.room_bounding(w, level))))
+                .collect(),
             RoomArea::Centre => Vec::new(),
         };
         let lines = match at {
@@ -222,7 +225,7 @@ mod tests {
                 .elements
                 .iter()
                 .filter(|(_, e)| matches!(e, Element::Wall(w) if m.room_bounding(w, r.level)))
-                .any(|(id, _)| geom::contains(&walls::outline_in(m, *id, None), r.point));
+                .any(|(id, _)| geom::contains(&walls::outline_filtered(m, *id, None, &|w| m.room_bounding(w, r.level)), r.point));
             if inside {
                 return Err(Unbound::NotEnclosed);
             }
