@@ -13036,6 +13036,56 @@ msgstr "{}: `{}` não é um número de ampères"
 msgid "{}: `{}` is not a whole number"
 msgstr "{}: `{}` não é um número inteiro"
 
+#: crates/ui-egui/src/properties.rs:2018 crates/ui-egui/src/properties.rs:2023
+msgid "Circuit Number"
+msgstr "Número do circuito"
+
+#: crates/ui-egui/src/mep.rs:207
+msgid "Create Circuit"
+msgstr "Criar circuito"
+
+#: crates/ui-egui/src/mep.rs:206
+msgid "Create Circuit: the selected devices on the selected distribution board, behind one breaker"
+msgstr "Criar circuito: os dispositivos selecionados no quadro de distribuição selecionado, atrás de um disjuntor"
+
+#: crates/ui-egui/src/properties.rs:2076
+msgid "Current"
+msgstr "Corrente"
+
+#: crates/ui-egui/src/properties.rs:2065 crates/ui-egui/src/properties.rs:2069
+msgid "Demand Factor"
+msgstr "Fator de demanda"
+
+#: crates/ui-egui/src/properties.rs:2077
+msgid "Devices"
+msgstr "Dispositivos"
+
+#: crates/ui-egui/src/properties.rs:2074
+msgid "Panel"
+msgstr "Quadro"
+
+#: crates/ui-egui/src/properties.rs:2033 crates/ui-egui/src/properties.rs:2038
+msgid "Rating"
+msgstr "Corrente nominal"
+
+#: crates/ui-egui/src/mep.rs:189
+msgid "Select one distribution board and the devices on its circuit."
+msgstr "Selecione um quadro de distribuição e os dispositivos do seu circuito."
+
+#: crates/ui-egui/src/mep.rs:193
+msgid "Select the devices of the circuit along with its board."
+msgstr "Selecione os dispositivos do circuito junto com o quadro."
+
+#: crates/ui-egui/src/lang.rs:312
+msgctxt "category"
+msgid "Circuit"
+msgstr "Circuito"
+
+#: crates/ui-egui/src/lang.rs:312
+msgctxt "category-plural"
+msgid "Circuits"
+msgstr "Circuitos"
+
 #: crates/ui-egui/src/lib.rs:3433
 #~ msgid "Click a point the arc passes through: it sets the radius. Esc cancels."
 #~ msgstr "Clique num ponto por onde o arco passa: ele define o raio. Esc cancela."

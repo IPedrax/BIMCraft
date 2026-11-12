@@ -13036,6 +13036,56 @@ msgstr ""
 msgid "{}: `{}` is not a whole number"
 msgstr ""
 
+#: crates/ui-egui/src/properties.rs:2018 crates/ui-egui/src/properties.rs:2023
+msgid "Circuit Number"
+msgstr ""
+
+#: crates/ui-egui/src/mep.rs:207
+msgid "Create Circuit"
+msgstr ""
+
+#: crates/ui-egui/src/mep.rs:206
+msgid "Create Circuit: the selected devices on the selected distribution board, behind one breaker"
+msgstr ""
+
+#: crates/ui-egui/src/properties.rs:2076
+msgid "Current"
+msgstr ""
+
+#: crates/ui-egui/src/properties.rs:2065 crates/ui-egui/src/properties.rs:2069
+msgid "Demand Factor"
+msgstr ""
+
+#: crates/ui-egui/src/properties.rs:2077
+msgid "Devices"
+msgstr ""
+
+#: crates/ui-egui/src/properties.rs:2074
+msgid "Panel"
+msgstr ""
+
+#: crates/ui-egui/src/properties.rs:2033 crates/ui-egui/src/properties.rs:2038
+msgid "Rating"
+msgstr ""
+
+#: crates/ui-egui/src/mep.rs:189
+msgid "Select one distribution board and the devices on its circuit."
+msgstr ""
+
+#: crates/ui-egui/src/mep.rs:193
+msgid "Select the devices of the circuit along with its board."
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:312
+msgctxt "category"
+msgid "Circuit"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:312
+msgctxt "category-plural"
+msgid "Circuits"
+msgstr ""
+
 #: crates/ui-egui/src/fillpatterns.rs:634
 #~ msgid "A pattern of the file replaces the one of its name in this list; else it is left out"
 #~ msgstr "Un motif du fichier remplace celui du même nom dans cette liste; sinon il est omis"
