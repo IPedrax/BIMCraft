@@ -158,13 +158,14 @@ fn distinct(pts: Vec<P2>, least: usize) -> Option<Vec<P2>> {
     (out.len() >= least).then_some(out)
 }
 
-/// A layer name a DXF takes: the drawing's own, unless it is empty or holds a character a layer's name can't.
+/// A layer name a DXF takes: the drawing's own, unless it is empty or holds a character a layer's name can't. It is
+/// written as `dxf_text` writes it, so an accent or another script is `\U+XXXX`, as the header's code page asks.
 fn layer_name(name: &str) -> String {
     let clean: String = name.chars().filter(|c| !c.is_control() && !"<>/\\\":;?*|=`".contains(*c)).take(255).collect();
     if clean.trim().is_empty() { "cadimport".into() } else { clean }
 }
 
-/// `text` as a DXF string of a 2004 file: what isn't ASCII as `\U+XXXX`, controls dropped.
+/// `text` as a DXF string of a 2004 file, a text's or a layer's name: what isn't ASCII as `\U+XXXX`, controls dropped.
 fn dxf_text(text: &str) -> String {
     let mut out = String::new();
     for c in text.chars().filter(|c| !c.is_control()).take(1000) {
@@ -392,7 +393,7 @@ pub fn write(m: &Model, d: &Drawing, look: &Look) -> Written {
     let layer_rows = std::iter::once(("0".to_string(), None)).chain(layers.iter().map(|(n, c)| (n.clone(), Some(*c))));
     for (name, color) in layer_rows {
         w.record("LAYER", &t, "AcDbLayerTableRecord");
-        w.g(2, name);
+        w.g(2, dxf_text(&name));
         w.g(70, 0);
         w.g(62, 7);
         if let Some(c) = color {
@@ -489,7 +490,7 @@ pub fn write(m: &Model, d: &Drawing, look: &Look) -> Written {
         w.g(5, h);
         w.g(330, &ms);
         w.g(100, "AcDbEntity");
-        w.g(8, layer);
+        w.g(8, dxf_text(layer));
         w.rgb(color);
     };
     for o in &out {

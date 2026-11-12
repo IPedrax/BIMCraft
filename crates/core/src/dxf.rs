@@ -652,7 +652,7 @@ impl<'a> Reader<'a> {
                         (None, None) => (Color::Index(7), false),
                     };
                     self.layers.push(Layer {
-                        name: e.str(2).unwrap_or("0").to_string(),
+                        name: escapes(e.str(2).unwrap_or("0")),
                         color,
                         linetype: e.str(6).filter(|s| !s.is_empty()).unwrap_or("Continuous").to_string(),
                         weight: weight(e.int(370)?),
@@ -833,7 +833,7 @@ impl Style {
             Some(lt) if lt.eq_ignore_ascii_case("BYBLOCK") => inh.and_then(|i| i.linetype).map(String::from),
             Some(lt) => Some(lt.to_string()),
         };
-        Ok(Style { layer: layer.chars().take(MAX_CHARS).collect(), color, linetype, weight: weight(e.int(370)?) })
+        Ok(Style { layer: escapes(layer).chars().take(MAX_CHARS).collect(), color, linetype, weight: weight(e.int(370)?) })
     }
 }
 
@@ -1201,6 +1201,31 @@ fn leading_color(raw: &str) -> Option<Color> {
         }
     }
     color
+}
+
+/// A name as a file of 2004 and before writes it: a character its code page lacks is `\U+XXXX`; the rest is as it is.
+fn escapes(s: &str) -> String {
+    if !s.contains("\\U+") {
+        return s.to_string();
+    }
+    let mut out = String::new();
+    let mut rest = s;
+    while let Some(i) = rest.find("\\U+") {
+        out.push_str(&rest[..i]);
+        let hex = rest.get(i + 3..i + 7).filter(|h| h.chars().all(|c| c.is_ascii_hexdigit()));
+        match hex.and_then(|h| u32::from_str_radix(h, 16).ok()).and_then(char::from_u32) {
+            Some(ch) => {
+                out.push(ch);
+                rest = &rest[i + 7..];
+            }
+            None => {
+                out.push_str("\\U+");
+                rest = &rest[i + 3..];
+            }
+        }
+    }
+    out.push_str(rest);
+    out
 }
 
 /// A text's words as a file writes them: `%%d` is a degree sign, `%%p` plus or minus, `%%c` a diameter, `%%%` a

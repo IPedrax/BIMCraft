@@ -190,3 +190,31 @@ fn a_plan_saved_as_dwg_reads_back_with_every_entity_and_layer_its_dxf_has() {
     assert!(fills(&back) > 0 && fills(&back) == fills(&ours), "the walls' poché comes through");
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn a_layer_named_with_accents_or_another_script_comes_back_from_the_dwg_whole() {
+    let dir = std::env::temp_dir().join(format!("bimcraft-dwg-names-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let source = dir.join("names.dxf");
+    let header = pairs(&[(0, "SECTION"), (2, "HEADER"), (9, "$ACADVER"), (1, "AC1018"), (9, "$INSUNITS"), (70, "4"), (0, "ENDSEC")]);
+    let lines: String = ["MOBILIÁRIOS", "通风系统图"]
+        .iter()
+        .enumerate()
+        .map(|(i, l)| {
+            let y = (i * 1000).to_string();
+            pairs(&[(0, "LINE"), (8, l), (10, "0"), (20, &y), (11, "4000"), (21, &y)])
+        })
+        .collect();
+    let body = pairs(&[(0, "SECTION"), (2, "ENTITIES")]) + &lines + &pairs(&[(0, "ENDSEC"), (0, "EOF")]);
+    std::fs::write(&source, header + &body).unwrap();
+    let mut s = bimcraft_core::engine::Session::new();
+    s.dwg_out = Some(writer());
+    s.execute("import_cad", &serde_json::json!({"path": source})).unwrap();
+    let out = dir.join("names.dwg");
+    s.execute("save", &serde_json::json!({"path": out})).unwrap();
+    let back = dxf::read(&to_dxf(&std::fs::read(&out).unwrap(), Limits::DEFAULT).unwrap().dxf).unwrap();
+    let on = |l: &str| back.entities.iter().filter(|e| e.layer == l).count();
+    let names: Vec<&str> = back.layers.iter().map(|l| l.name.as_str()).collect();
+    assert_eq!((on("MOBILIÁRIOS"), on("通风系统图")), (1, 1), "{names:?}");
+    let _ = std::fs::remove_dir_all(&dir);
+}

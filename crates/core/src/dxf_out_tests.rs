@@ -146,3 +146,23 @@ fn an_imported_drawing_goes_out_on_its_own_layers_with_its_text_as_text_and_no_e
         }
     }
 }
+
+#[test]
+fn a_layer_named_with_accents_or_another_script_goes_out_as_the_file_s_code_page_says_and_comes_back_whole() {
+    use crate::cad_tests::{dxf, file, line};
+    let lines = line("MOBILIÁRIOS", (0.0, 0.0), (4.0, 0.0)) + &line("通风系统图", (0.0, 1.0), (4.0, 1.0));
+    let text = dxf("6", &[("MOBILIÁRIOS", "1", false), ("通风系统图", "3", false)], &lines);
+    let mut s = Session::new();
+    run(&mut s, "import_cad", json!({"path": file("dxf-out", "accents.dxf", &text)}));
+    let out = path("accents", "plan.dxf");
+    run(&mut s, "save", json!({"path": out}));
+    let written = std::fs::read_to_string(&out).unwrap();
+    // The header says ANSI_1252, so nothing in the file is beyond ASCII: a name's other characters are \U+XXXX.
+    assert!(written.is_ascii(), "{:?}", written.lines().find(|l| !l.is_ascii()));
+    assert!(written.contains("MOBILI\\U+00C1RIOS") && written.contains("\\U+901A\\U+98CE"), "escaped names");
+    let d = dxf::read_text(&written).unwrap();
+    let names: Vec<&str> = d.layers.iter().map(|l| l.name.as_str()).collect();
+    assert!(names.contains(&"MOBILIÁRIOS") && names.contains(&"通风系统图"), "{names:?}");
+    assert_eq!(d.entities.iter().filter(|e| e.layer == "MOBILIÁRIOS").count(), 1);
+    assert_eq!(d.entities.iter().filter(|e| e.layer == "通风系统图").count(), 1);
+}
