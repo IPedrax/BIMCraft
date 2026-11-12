@@ -10,7 +10,7 @@ use bimcraft_i18n::msg;
 use crate::geom::P2;
 use crate::graphics::Look;
 use crate::language::Language;
-use crate::model::{Element, Id, Key, Model, Schedule, Viewport, paper};
+use crate::model::{Element, Id, Key, Model, Schedule, Sheet, Viewport, paper};
 use crate::pen::Pen;
 use crate::render::{self, Drawing, PAPER, Part, Prim, Rgb, View};
 use crate::{font, schedule, view3d};
@@ -93,57 +93,156 @@ fn frame_in(m: &Model, work: &Work, id: impl Key) -> Option<(View, (f32, f32))> 
     Some((view, (x - view.width as f32 / 2.0, y - view.height as f32 / 2.0)))
 }
 
-/// Where view `view` at 1 : `scale` goes on sheet `sheet` by default: right of the views on it,
-/// else in the middle of the paper above the title box; when there's no room left on the right,
-/// in the paper's top right corner.
-pub fn spot(m: &Model, sheet: impl Key, view: impl Key, scale: f64) -> P2 {
-    let sheet = m.guid(sheet);
+/// Clearance between automatically placed views and the title block, mm.
+const GAP: f64 = 10.0;
+/// Room under a view for its name, rule and scale, mm. Schedules have their title inside the table.
+const UNDER: f64 = 15.0;
+
+/// The complete view and title on paper: left, bottom, right and top relative to the view's centre.
+fn footprint(m: &Model, view: impl Key, scale: f64) -> Option<[f64; 4]> {
+    let P2(w, h) = size(m, view, scale)?;
+    if matches!(m.elements.get(view), Some(Element::Schedule(_))) {
+        return Some([-w / 2.0, -h / 2.0, w / 2.0, h / 2.0]);
+    }
+    let name = m.view_name(view).unwrap_or_default();
+    // Lettering uppercases the name while drawing it (a character may expand to more than one).
+    let name_width = f64::from(font::width(&name.to_uppercase(), (3.0 * DENSITY) as f32)) / DENSITY;
+    let rule = f64::from(font::width(name, (3.0 * DENSITY) as f32)) / DENSITY + 10.0;
+    let scale_width = f64::from(font::width(&m.units.scale(scale), (2.0 * DENSITY) as f32)) / DENSITY;
+    Some([-w / 2.0, -h / 2.0 - UNDER, (w / 2.0).max(-w / 2.0 + ROOM + name_width.max(rule).max(scale_width)), h / 2.0])
+}
+
+/// Where views go by default on a sheet: the box they keep inside (its title block's drawing area, else the border 5 mm
+/// in), the title block they keep clear of (none in a drawing area, or on a sheet with no title block), the middle the
+/// first goes in, and the paper, mm.
+struct Room {
+    inside: [f64; 4],
+    title: Option<[f64; 4]>,
+    middle: P2,
+    paper: P2,
+}
+
+/// The [`Room`] of sheet `sheet`, an A3 of the built-in title block for anything else.
+fn room(m: &Model, sheet: impl Key) -> Room {
     let sh = m.sheet(sheet);
     let size_name = sh.map(|s| s.size.as_str()).unwrap_or("A3");
     let paper = sh.and_then(|s| paper(&s.size)).unwrap_or(P2(420.0, 297.0));
     let margins = m.standard().sheet_margins(size_name);
-    // Above its title block: the project's it names, else the built-in one, whose room a sheet with none keeps too.
-    let title = sh.and_then(|s| m.title_blocks.get(&s.title_block)).map_or(margins.title_height, |t| t.height);
-    let middle = P2((margins.left + paper.0 - margins.right) / 2.0, (margins.bottom + title + paper.1 - margins.top) / 2.0);
-    let taken = size(m, view, scale).unwrap_or(P2(0.0, 0.0));
-    let right = rightmost_viewport_edge(m, sheet);
-    // Inside the border, 5 mm clear of it.
-    let (east, north) = (paper.0 - margins.right - 5.0, paper.1 - margins.top - 5.0);
-    match right {
-        None => middle,
-        Some(r) if r + 10.0 + taken.0 <= east => P2(r + 10.0 + taken.0 / 2.0, middle.1),
-        Some(_) => P2(east - taken.0 / 2.0, north - taken.1 / 2.0),
+    let own = sh.and_then(|s| m.title_blocks.get(&s.title_block));
+    if let Some([lo, hi]) = own.and_then(|t| t.drawing_area) {
+        return Room { inside: [lo.0, lo.1, hi.0, hi.1], title: None, middle: (lo + hi) * 0.5, paper };
+    }
+    // The title block in the border's bottom right corner: the project's the sheet names, else the built-in one.
+    let right = paper.0 - margins.right;
+    let title = match own {
+        _ if sh.is_some_and(Sheet::has_no_title_block) => None,
+        Some(t) => Some([right - t.width, margins.bottom, right, margins.bottom + t.height]),
+        None => Some([
+            right - margins.title_width.min(paper.0 - margins.left - margins.right),
+            margins.bottom,
+            right,
+            margins.bottom + margins.title_height,
+        ]),
+    };
+    // The first view stands in the middle of the border, above the title block.
+    let above = title.map_or(margins.bottom, |t| t[3]);
+    Room {
+        inside: [margins.left + 5.0, margins.bottom + 5.0, right - 5.0, paper.1 - margins.top - 5.0],
+        title,
+        middle: P2((margins.left + right) / 2.0, (above + paper.1 - margins.top) / 2.0),
+        paper,
     }
 }
 
-/// The rightmost existing viewport frame edge, in paper millimetres.
-fn rightmost_viewport_edge(m: &Model, sheet: impl Key) -> Option<f64> {
+/// Footprint `b` of a view, relative to its centre, moved to stand at `p`.
+fn moved(b: [f64; 4], p: P2) -> [f64; 4] {
+    [b[0] + p.0, b[1] + p.1, b[2] + p.0, b[3] + p.1]
+}
+
+/// Where view `view` at 1 : `scale` goes on sheet `sheet` by default: in its usual middle when
+/// free, otherwise beside or below another view or in a corner, clear of their titles and the
+/// title block, or inside the title block's drawing area when it gives one. When no candidate
+/// fits, continue right of all the views, off the paper without stacking.
+pub fn spot(m: &Model, sheet: impl Key, view: impl Key, scale: f64) -> P2 {
     let sheet = m.guid(sheet);
-    m.on_sheet(sheet)
+    let Room { inside: [west, south, east, north], title, middle, paper } = room(m, sheet);
+    let taken = footprint(m, view, scale).unwrap_or([0.0; 4]);
+    let placed: Vec<[f64; 4]> = m
+        .on_sheet(sheet)
         .into_iter()
         .filter_map(|id| match m.elements.get(id) {
-            Some(Element::Viewport(v)) if v.sheet == sheet => Some(v.at.0 + size(m, v.view, v.scale)?.0 / 2.0),
+            Some(Element::Viewport(v)) if v.sheet == sheet => Some(moved(footprint(m, v.view, v.scale)?, v.at)),
             _ => None,
         })
-        .fold(None, |r: Option<f64>, x| Some(r.map_or(x, |r| r.max(x))))
+        .collect();
+    let reserved: Vec<[f64; 4]> = placed.iter().copied().chain(title).collect();
+    // Candidate coordinates subtract and add half sizes; tolerate only their floating-point roundoff.
+    let eps = 1e-9;
+    let apart = |a: [f64; 4], b: &[f64; 4]| {
+        a[2] + GAP <= b[0] + eps || b[2] + GAP <= a[0] + eps || a[3] + GAP <= b[1] + eps || b[3] + GAP <= a[1] + eps
+    };
+    let free = |p: &P2| {
+        let b = moved(taken, *p);
+        b[0] + eps >= west && b[1] + eps >= south && b[2] <= east + eps && b[3] <= north + eps && reserved.iter().all(|o| apart(b, o))
+    };
+    if placed.is_empty() && free(&middle) {
+        return middle;
+    }
+    let right = placed.iter().map(|b| b[2]).reduce(f64::max).unwrap_or(east);
+    let beside = P2(right + GAP - taken[0], middle.1);
+    if free(&beside) {
+        return beside;
+    }
+    let mut spots: Vec<P2> = reserved
+        .iter()
+        .flat_map(|o| [P2(o[2] + GAP - taken[0], o[3] - taken[3]), P2(o[0] - taken[0], o[1] - GAP - taken[3])])
+        .chain([
+            P2(west - taken[0], north - taken[3]),
+            P2(west - taken[0], south - taken[1]),
+            P2(east - taken[2], north - taken[3]),
+            P2(east - taken[2], south - taken[1]),
+        ])
+        .collect();
+    // Prefer the topmost free candidate, then the leftmost.
+    spots.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.total_cmp(&b.0)));
+    // Keep overflow backgrounds wholly beyond the paper so they cannot erase its border or title block.
+    spots.into_iter().find(free).unwrap_or(P2(right.max(paper.0) + GAP - taken[0], middle.1))
 }
 
-/// Default placement uses the sheet's standard unless its template defines a drawing rectangle.
+/// [`spot`], refused when the view and its title are larger than the drawing area its sheet's title block gives.
 pub fn automatic_center(m: &Model, sheet: impl Key, view: impl Key, scale: f64) -> Result<P2, String> {
+    let sheet = m.guid(sheet);
     let area = m.sheet(sheet).and_then(|s| m.title_blocks.get(&s.title_block)).and_then(|t| t.drawing_area);
-    let Some([lo, hi]) = area else { return Ok(spot(m, sheet, view, scale)) };
-    let frame = size(m, view, scale).ok_or_else(|| "the viewport frame cannot be measured at this scale".to_string())?;
-    let available = hi - lo;
-    if frame.0 > available.0 || frame.1 > available.1 {
-        return Err(format!(
-            "viewport frame is {} × {} mm at 1:{scale}; drawing area is {} × {} mm. Choose a smaller view scale or an explicit center",
-            frame.0, frame.1, available.0, available.1
-        ));
+    if let Some([lo, hi]) = area {
+        let b = footprint(m, view, scale).ok_or_else(|| "the viewport frame cannot be measured at this scale".to_string())?;
+        let (taken, available) = (P2(b[2] - b[0], b[3] - b[1]), hi - lo);
+        if taken.0 > available.0 || taken.1 > available.1 {
+            return Err(format!(
+                "the viewport frame and its title are {:.1} × {:.1} mm at 1 : {scale}, and the title block's drawing area {:.1} × \
+                 {:.1} mm: choose a smaller view scale or give `at`",
+                taken.0, taken.1, available.0, available.1
+            ));
+        }
     }
-    let middle = (lo + hi) * 0.5;
-    let Some(edge) = rightmost_viewport_edge(m, sheet) else { return Ok(middle) };
-    let left = (edge + 10.0).max(lo.0);
-    if left + frame.0 <= hi.0 { Ok(P2(left + frame.0 / 2.0, middle.1)) } else { Ok(hi - frame * 0.5) }
+    Ok(spot(m, sheet, view, scale))
+}
+
+/// What to say of view `view` at 1 : `scale` standing at `at` on sheet `sheet` when it, or its title, reaches past
+/// the paper's edge: nothing when the paper holds it.
+pub fn off_paper(m: &Model, sheet: impl Key, view: impl Key, scale: f64, at: P2) -> Option<String> {
+    let Room { paper, .. } = room(m, sheet);
+    let b = moved(footprint(m, view, scale)?, at);
+    let eps = 1e-6;
+    (b[0] < -eps || b[1] < -eps || b[2] > paper.0 + eps || b[3] > paper.1 + eps).then(|| {
+        format!(
+            "the view and its title, {:.1} × {:.1} mm at 1 : {scale}, reach past the {:.1} × {:.1} mm paper: give `at`, a \
+             smaller `scale` or a larger sheet",
+            b[2] - b[0],
+            b[3] - b[1],
+            paper.0,
+            paper.1
+        )
+    })
 }
 
 /// `text` with its left end at paper point `at` (mm), capitals `height` mm tall.
