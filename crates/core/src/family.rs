@@ -20,12 +20,14 @@ use crate::view3d::{P3, add, cross, mul};
 
 mod bounds;
 pub mod constraints;
+pub mod forms;
 pub mod nested;
 mod options;
 mod planes;
 pub mod sketch;
 mod validate;
 pub mod views;
+pub mod visibility;
 
 pub(crate) use validate::check_family_edits;
 
@@ -35,6 +37,7 @@ pub use constraints::{
 };
 pub use nested::{Keep, NestedFamily, NestedInstance};
 pub use options::{MAX_OMNICLASS, OPTION_KEYS, OmniClass};
+pub use visibility::Visibility;
 
 pub use planes::{
     CENTER_FRONT_BACK, CENTER_LEFT_RIGHT, DATUMS, Face, Frame, MAX_LINES, MAX_PLANES, PlaneRef, Planes, REF_LEVEL, RefLine, RefPlane,
@@ -581,6 +584,10 @@ pub struct Symbol {
     /// category itself.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub subcategory: Option<String>,
+    /// Its Visibility Settings (F8): the detail levels it is drawn at; none, Medium and Fine
+    /// ([`visibility::SYMBOL_DEFAULT`]), as a plan's symbols always were.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub visibility: Option<Visibility>,
 }
 
 /// What a connector joins: `power` carries a load, `switch` only switches one, `pipe` joins a pipe of its `domain`, `data`
@@ -782,6 +789,23 @@ pub struct Form {
     /// Shared, so an undo step's copy of the model doesn't copy it.
     #[serde(default, skip_serializing_if = "no_mesh")]
     pub mesh: Arc<Vec<[P3; 3]>>,
+    /// A Blend's top (F6): lines in its host plane's axes, at `to` along its normal; its `sketch` is then its base, at `from`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub top: Vec<sketch::FormLine>,
+    /// A Sweep's profile, or a Swept Blend's two (F6): its `sketch` is then the path they are swept along.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sweep: Option<forms::Swept>,
+    /// Edit Vertices' Twist (F6): a Blend's top's, or a Swept Blend's second profile's, first vertex moved on by so many.
+    #[serde(default, skip_serializing_if = "is_zero_i32")]
+    pub twist: i32,
+    /// Its Visibility Settings (F8): the views it is drawn in by the way they look and their detail level. None draws as a
+    /// file of 17 did. A void cuts whatever they say: they are drawing, and a void is never drawn.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub visibility: Option<Visibility>,
+}
+
+fn is_zero_i32(x: &i32) -> bool {
+    *x == 0
 }
 
 fn no_mesh(mesh: &Arc<Vec<[P3; 3]>>) -> bool {
@@ -820,6 +844,14 @@ struct FormIn {
     visible: Option<Expr>,
     #[serde(default)]
     mesh: Arc<Vec<[P3; 3]>>,
+    #[serde(default)]
+    top: Vec<sketch::FormLine>,
+    #[serde(default)]
+    sweep: Option<forms::Swept>,
+    #[serde(default)]
+    twist: i32,
+    #[serde(default)]
+    visibility: Option<Visibility>,
 }
 
 impl TryFrom<FormIn> for Form {
@@ -864,6 +896,10 @@ impl TryFrom<FormIn> for Form {
             material: f.material,
             visible: f.visible,
             mesh: f.mesh,
+            top: f.top,
+            sweep: f.sweep,
+            twist: f.twist,
+            visibility: f.visibility,
         })
     }
 }
@@ -1041,10 +1077,14 @@ pub struct Piece {
     pub tris: Vec<[P3; 3]>,
     pub caps: usize,
     pub outline: Vec<P2>,
+    /// The holes in its outline seen from above (F6: a sweep round a closed path on a level plane), each clockwise.
+    pub holes: Vec<Vec<P2>>,
     pub bottom: f64,
     pub top: f64,
     pub material: String,
     pub round: bool,
+    /// Its form's Visibility Settings (and a nested instance's over them): where views draw it. None, as a file of 17 drew it.
+    pub vis: Option<Visibility>,
 }
 
 /// Where one form lies before any void cuts it: its box in the family's own axes (x along a
@@ -1702,7 +1742,7 @@ impl Family {
             }
         }
         for form in &mut self.forms {
-            form.sketch.iter_mut().flat_map(sketch::FormLine::exprs_mut).for_each(&mut expr);
+            form.all_lines_mut().flat_map(sketch::FormLine::exprs_mut).for_each(&mut expr);
             [&mut form.from, &mut form.to].into_iter().for_each(&mut expr);
             form.visible.iter_mut().for_each(&mut expr);
             if form.material == old {
@@ -2071,13 +2111,14 @@ impl Family {
             if form.sketch.len() > sketch::MAX_SKETCH {
                 return Err(format!("{who}: its sketch has {} lines, more than {}", form.sketch.len(), sketch::MAX_SKETCH));
             }
+            forms::check_kind(form).map_err(|e| format!("{who}: {e}"))?;
             if form.mesh.is_empty() {
                 self.frame(&form.host).map_err(|e| format!("{who}: its host: {e}"))?;
             }
             if !self.parameters.iter().any(|p| p.name == form.material && p.kind == Kind::Material) {
                 material_ok(&who, &form.material)?;
             }
-            let mut exprs = form.sketch_exprs().chain([&form.from, &form.to]).chain(&form.visible);
+            let mut exprs = form.all_lines().flat_map(sketch::FormLine::exprs).chain([&form.from, &form.to]).chain(&form.visible);
             if exprs.any(|e| matches!(e, Expr::Formula(f) if long(f))) {
                 return Err(format!("{who}: a formula of it is longer than {MAX_FORMULA} characters"));
             }
@@ -2127,6 +2168,11 @@ impl Family {
         if symbol_exprs.into_iter().any(|e| matches!(e, Expr::Formula(f) if long(f))) {
             return Err(format!("a formula of a symbol is longer than {MAX_FORMULA} characters"));
         }
+        for (i, y) in self.symbols.iter().enumerate() {
+            if let Some(v) = y.visibility {
+                v.check_symbol().map_err(|e| format!("symbol {}: {e}", i + 1))?;
+            }
+        }
         self.check_options()?;
         self.check_connectors()?;
         self.check_nested(has_material, chain, total)?;
@@ -2138,7 +2184,7 @@ impl Family {
             let pieces = self
                 .values(t, &BTreeMap::new())
                 .and_then(|v| {
-                    self.marks_metered(&v, &mut meter)?;
+                    self.marks_metered(&v, None, &mut meter)?;
                     self.check_dimensions_for(&v)?;
                     self.check_pivot_values(&v)?;
                     // Its dimensions solved for the type: what they hold built where they put it.
@@ -2379,11 +2425,22 @@ impl Family {
 
     /// [`Family::marks`], each with the subcategory key it is drawn in (none, its category).
     pub fn marks_tagged(&self, values: &BTreeMap<String, Val>) -> Result<Vec<Tagged>, String> {
-        self.marks_metered(values, &mut nested::Meter::default())
+        self.marks_metered(values, None, &mut nested::Meter::default())
     }
 
-    /// [`Family::marks_tagged`], its nested instances' counted by `meter`.
-    pub(crate) fn marks_metered<'a>(&'a self, values: &BTreeMap<String, Val>, meter: &mut nested::Meter) -> Result<Vec<Tagged>, String> {
+    /// [`Family::marks_tagged`] that a view at detail level `detail` draws: each symbol's Visibility Settings, a nested
+    /// instance's over its family's symbols, and with none Medium and Fine ([`visibility::SYMBOL_DEFAULT`]).
+    pub fn marks_in(&self, values: &BTreeMap<String, Val>, detail: crate::graphics::Detail) -> Result<Vec<Tagged>, String> {
+        self.marks_metered(values, Some(detail), &mut nested::Meter::default())
+    }
+
+    /// [`Family::marks_tagged`], at `detail` if it says (else every symbol), its nested instances' counted by `meter`.
+    pub(crate) fn marks_metered<'a>(
+        &'a self,
+        values: &BTreeMap<String, Val>,
+        detail: Option<crate::graphics::Detail>,
+        meter: &mut nested::Meter,
+    ) -> Result<Vec<Tagged>, String> {
         let mut read = HashMap::new();
         let mut out = Vec::new();
         for (i, sym) in self.symbols.iter().enumerate() {
@@ -2397,6 +2454,11 @@ impl Family {
             }
             if let Some(v) = &sym.visible
                 && number(v, values, &mut read).map_err(said)? == 0.0
+            {
+                continue;
+            }
+            if let Some(d) = detail
+                && !sym.visibility.unwrap_or(visibility::SYMBOL_DEFAULT).at(d)
             {
                 continue;
             }
@@ -2438,7 +2500,7 @@ impl Family {
             }
             out.push((Mark::Line(pts), sub));
         }
-        out.extend(self.nested_marks(values, meter)?);
+        out.extend(self.nested_marks(values, detail, meter)?);
         Ok(out)
     }
 
@@ -2476,7 +2538,9 @@ impl Family {
                         top,
                         round: false,
                         outline: std::mem::take(&mut piece.outline),
+                        holes: std::mem::take(&mut piece.holes),
                         material: std::mem::take(&mut piece.material),
+                        vis: piece.vis,
                     };
                 }
             }
@@ -2506,6 +2570,14 @@ impl Family {
         };
         let piece = if !form.mesh.is_empty() {
             mesh(&form.mesh, material)?
+        } else if form.kind() != forms::FormKind::Extrusion && form.kind() != forms::FormKind::Revolve {
+            let frame = self.frame(&form.host).map_err(|e| format!("its host: {e}"))?;
+            let (tris, plan) = forms::build(form, &frame, &mut num)?.unwrap_or_default();
+            let (bottom, top) = heights(&tris);
+            // Seen from above: a sweep on a level plane, the band it covers; else the hull of what it builds.
+            let (outline, holes) =
+                plan.unwrap_or_else(|| (crate::geom::hull(tris.iter().flatten().map(|p| P2(p[0], p[1])).collect()), Vec::new()));
+            Piece { caps: tris.len(), tris, outline, holes, bottom, top, material, round: false, vis: None }
         } else {
             let regions = form.loops(&mut num)?;
             let (from, to) = (num(&form.from)?, num(&form.to)?);
@@ -2522,7 +2594,7 @@ impl Family {
                     let axis = [P2(num(&p[0])?, num(&p[1])?), P2(num(&q[0])?, num(&q[1])?)];
                     let (tris, outline) = revolve(&regions, axis, (from, to), &frame)?;
                     let (bottom, top) = heights(&tris);
-                    Piece { caps: tris.len(), tris, outline, bottom, top, material, round: false }
+                    Piece { caps: tris.len(), tris, outline, holes: Vec::new(), bottom, top, material, round: false, vis: None }
                 }
                 None => {
                     let (tris, caps) = sweep(&regions, from, to, &frame)?;
@@ -2538,11 +2610,11 @@ impl Family {
                         }
                         _ => crate::geom::hull(tris.iter().flatten().map(|p| P2(p[0], p[1])).collect()),
                     };
-                    Piece { tris, caps, outline, bottom, top, material, round: form.circle().is_some() }
+                    Piece { tris, caps, outline, holes: Vec::new(), bottom, top, material, round: form.circle().is_some(), vis: None }
                 }
             }
         };
-        Ok(Some(piece))
+        Ok(Some(Piece { vis: form.visibility, ..piece }))
     }
 
     /// Where each of its forms lies, sized by `values`, before any void cuts it: its place in
@@ -2898,7 +2970,7 @@ fn mesh(tris: &[[P3; 3]], material: String) -> Result<Piece, String> {
     let (bottom, top) = tris.iter().flatten().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| (lo.min(p[2]), hi.max(p[2])));
     // ponytail: the convex hull stands for its outline; trace its silhouette if hulls mislead.
     let outline = crate::geom::hull(tris.iter().flatten().map(|p| P2(p[0], p[1])).collect());
-    Ok(Piece { tris: tris.to_vec(), caps: tris.len(), outline, bottom, top, material, round: false })
+    Ok(Piece { tris: tris.to_vec(), caps: tris.len(), outline, holes: Vec::new(), bottom, top, material, round: false, vis: None })
 }
 
 /// The families a new project starts with, BIMCraft's own: tables, chairs, beds, sofas, desks,

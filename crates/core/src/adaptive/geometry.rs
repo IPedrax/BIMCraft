@@ -77,10 +77,12 @@ impl Mesh {
             tris: self.triangles(),
             caps: self.faces.len(),
             outline: geom::hull(self.vertices.iter().map(|p| P2(p[0], p[1])).collect()),
+            holes: Vec::new(),
             bottom: if bottom.is_finite() { bottom } else { 0. },
             top: if top.is_finite() { top } else { 0. },
             material,
             round: false,
+            vis: None,
         }
     }
     pub fn face_frame(&self, index: usize, barycentric: P3) -> Result<Frame, String> {

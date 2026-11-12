@@ -436,7 +436,7 @@ impl Mesh {
                 return Ok(None);
             }
             if plain || look.shows(span.id) {
-                shown.extend(span.at.clone());
+                shown.extend(span.at.clone().filter(|&i| scene.tris.get(i).is_some_and(|t| look.forms_show(t.vis, false))));
                 let view = if plain { 0 } else { look.transparency(span.id) };
                 for (a, t) in
                     alphas.get_mut(span.at.clone()).unwrap_or_default().iter_mut().zip(scene.tris.get(span.at.clone()).unwrap_or_default())
@@ -718,7 +718,7 @@ impl Mesh {
                 if k % 8192 == 0 && cancelled() {
                     return Ok(None);
                 }
-                let Some(t) = scene.tris.get(i).filter(|t| look.shows(t.owner)) else { continue };
+                let Some(t) = scene.tris.get(i).filter(|t| look.shows(t.owner) && look.forms_show(t.vis, false)) else { continue };
                 let owner = owner_of(&mut mesh, t.owner, 0);
                 mesh.wires.push(Wire { ends, owner, face: face_at(i) });
             }

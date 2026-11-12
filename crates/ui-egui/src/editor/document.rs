@@ -374,28 +374,44 @@ impl BimApp {
             // A family that isn't adaptive is made of forms drawn in sketches, which BIMCraft doesn't have yet: its forms are
             // added and edited in Properties.
             DocTab::Create => ribbon::panel(ui, msg!("Forms"), |ui| {
-                // Extrusion and Revolve sketch on the work plane (F5); Blend, Sweep and Swept Blend are F6's.
+                // Extrusion and Revolve sketch on the work plane (F5); Blend, Sweep and Swept Blend too (F6).
+                use bimcraft_core::family::forms::FormKind;
                 let tip = msg!("Extrusion: sketch a profile on the work plane, extruded along its normal");
                 if big_button(ui, Icon::CreateForm, msg!("Extrusion"), false, tip).clicked() {
-                    ed.create_form(false, false);
+                    ed.create_form(FormKind::Extrusion, false);
                 }
-                later(ui, Icon::CreateForm, msg!("Blend"));
+                let tip = msg!("Blend: sketch a base and a top on the work plane, joined between their two ends");
+                if big_button(ui, Icon::CreateForm, msg!("Blend"), false, tip).clicked() {
+                    ed.create_form(FormKind::Blend, false);
+                }
                 let tip = msg!("Revolve: sketch a profile and an axis line on the work plane, turned about the axis");
                 if big_button(ui, Icon::CreateForm, msg!("Revolve"), false, tip).clicked() {
-                    ed.create_form(true, false);
+                    ed.create_form(FormKind::Revolve, false);
                 }
-                later(ui, Icon::CreateForm, msg!("Sweep"));
-                later(ui, Icon::CreateForm, msg!("Swept Blend"));
-                let tip = msg!("Void Forms: a void extrusion or revolve, sketched as a solid one is, which cuts the solids before it");
+                let tip = msg!("Sweep: sketch or pick a path on the work plane, then a profile square to it, swept along it");
+                if big_button(ui, Icon::CreateForm, msg!("Sweep"), false, tip).clicked() {
+                    ed.create_form(FormKind::Sweep, false);
+                }
+                let tip = msg!("Swept Blend: a path of one line or arc, and a profile at each end, blended along it");
+                if big_button(ui, Icon::CreateForm, msg!("Swept Blend"), false, tip).clicked() {
+                    ed.create_form(FormKind::SweptBlend, false);
+                }
+                let tip = msg!(
+                    "Void Forms: a void extrusion, blend, revolve, sweep or swept blend, sketched as a solid one is, which cuts the solids before it"
+                );
                 let r = big_button(ui, Icon::CreateForm, msg!("Void Forms"), false, tip);
                 ribbon::choices(ui, &r, false, |ui| {
-                    if ui.button(t("Void Extrusion")).clicked() {
-                        ed.create_form(false, true);
-                        ui.close();
-                    }
-                    if ui.button(t("Void Revolve")).clicked() {
-                        ed.create_form(true, true);
-                        ui.close();
+                    for (label, kind) in [
+                        (msg!("Void Extrusion"), FormKind::Extrusion),
+                        (msg!("Void Blend"), FormKind::Blend),
+                        (msg!("Void Revolve"), FormKind::Revolve),
+                        (msg!("Void Sweep"), FormKind::Sweep),
+                        (msg!("Void Swept Blend"), FormKind::SweptBlend),
+                    ] {
+                        if ui.button(t(label)).clicked() {
+                            ed.create_form(kind, true);
+                            ui.close();
+                        }
                     }
                 });
             }),
@@ -646,6 +662,10 @@ impl BimApp {
                     if let Some(i) = ed.selected_form() {
                         self.form_work_plane_panel(ui, ed, i);
                         self.form_mode_panel(ui, ed, i);
+                        visibility_panel(ui, ed, super::visibility::Target::Form(i));
+                    }
+                    if let Some(i) = ed.selected_nested() {
+                        visibility_panel(ui, ed, super::visibility::Target::Nested(i));
                     }
                     if !lines.is_empty() {
                         self.form_panel(ui, ed, &lines);
@@ -1033,9 +1053,29 @@ impl BimApp {
             }
         } else {
             let response = ui.interact(pane, UiId::new("family-preview"), Sense::click_and_drag());
-            // A click in the view lets the selected form go, as a click on nothing does in Revit.
-            if response.clicked() && !ed.sketching() {
-                ed.form = None;
+            // Where a point of the pane is in the picture last drawn, through the camera it was drawn with.
+            let drawn = ed.preview.as_ref().map(|p| (p.cam, p.size));
+            let in_picture = |p: egui::Pos2, size: [u32; 2]| {
+                (
+                    f64::from((p.x - pane.min.x) * size[0] as f32 / pane.width().max(1.0)),
+                    f64::from((p.y - pane.min.y) * size[1] as f32 / pane.height().max(1.0)),
+                )
+            };
+            // A click selects the form or the nested instance under it, and on nothing lets the selection go, as in Revit
+            // and the project's 3D view; the pointer over one lights it first (T11).
+            if let Some((cam, size)) = drawn
+                && !ed.sketching()
+            {
+                if response.clicked()
+                    && let Some(p) = response.interact_pointer_pos()
+                {
+                    ed.click_3d(&cam, in_picture(p, size));
+                }
+                let still = !response.dragged() && ui.input(|i| !i.pointer.any_down());
+                let at = response.hover_pos().filter(|_| still).map(|p| (p, in_picture(p, size)));
+                ed.hover_3d(at, &cam);
+            } else {
+                ed.views.hover3d = None;
             }
             ed.document.preview_size = [pane.width().clamp(64.0, 1600.0) as u32, pane.height().clamp(64.0, 1200.0) as u32];
             // While sketching, a drag drags a picked line's end rather than turn the view, unless none is held.
@@ -1053,10 +1093,7 @@ impl BimApp {
                 && !ed.sketching()
                 && let (Some(p), Some((cam, size))) = (response.interact_pointer_pos(), ed.preview.as_ref().map(|p| (p.cam, p.size)))
             {
-                let px = (
-                    f64::from((p.x - pane.min.x) * size[0] as f32 / pane.width().max(1.0)),
-                    f64::from((p.y - pane.min.y) * size[1] as f32 / pane.height().max(1.0)),
-                );
+                let px = in_picture(p, size);
                 let values = ed.values();
                 let hit = ed.family().ok().and_then(|f| bimcraft_core::family::views::form_at_3d(&f, &values, &cam, px));
                 if let Some(i) = hit {
@@ -1091,6 +1128,19 @@ impl BimApp {
         let mut bar = ui.new_child(UiBuilder::new().id_salt("family-view-bar").max_rect(pane).layout(Layout::bottom_up(Align::Min)));
         crate::style::card([true, true, true, true]).inner_margin(Margin::symmetric(6, 2)).show(&mut bar, |ui| {
             ui.horizontal(|ui| {
+                // F8: the document's Detail Level, which each of its views draws its forms and symbols at.
+                if ed.adaptive.is_none() {
+                    let now = ed.views.detail;
+                    let tip = msg!("Detail Level: the forms and symbols each view of the family draws, as their Visibility Settings say");
+                    let r = crate::footer::menu_button(ui, "Detail Level", now.name(), tip, None);
+                    egui::Popup::menu(&r).show(|ui| {
+                        for d in bimcraft_core::graphics::Detail::ALL {
+                            if ui.selectable_label(now == d, t(d.name())).clicked() {
+                                ed.views.detail = d;
+                            }
+                        }
+                    });
+                }
                 ui.label(RichText::new(t("Shaded")).color(pal().muted));
                 if icon_button(ui, Icon::Fit, "Zoom to Fit").clicked() {
                     ed.modeller.camera = None;
@@ -1358,6 +1408,8 @@ impl BimApp {
             self.status = Status { text: e, error: true };
         }
         ed.go_to_view_dialog(ctx);
+        // F8: Family Element Visibility Settings.
+        ed.visibility_dialog(ctx);
         let Some(dialog) = ed.dialog else {
             ed.document.dialog_saved = None;
             ed.document.category_shown = false;
@@ -1669,4 +1721,17 @@ pub(crate) fn group(ui: &mut Ui, title: &str, add: impl FnOnce(&mut Ui)) {
             Grid::new(key).num_columns(2).striped(true).min_col_width(half).max_col_width(half).show(ui, add);
         });
     }
+}
+
+/// Revit's Visibility panel on a form's or a nested instance's contextual tab: Visibility Settings opens Family Element
+/// Visibility Settings for it (F8).
+fn visibility_panel(ui: &mut Ui, ed: &mut FamilyEditor, target: super::visibility::Target) {
+    ribbon::panel(ui, msg!("Visibility"), |ui| {
+        let tip = msg!(
+            "Visibility Settings: the views it is drawn in (Plan/RCP, Front/Back, Left/Right, only when cut) and at which detail levels"
+        );
+        if big_button(ui, Icon::Visibility, msg!("Visibility Settings"), false, tip).clicked() {
+            ed.open_visibility(target);
+        }
+    });
 }

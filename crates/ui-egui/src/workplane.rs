@@ -7,18 +7,20 @@
 //! seen near the pointer as a dimension's ends do in plan; each with an offset along its normal. As Revit's, OK with a Pick
 //! closes the dialog and the click (the third, for points) sets the plane; Escape brings the dialog back. The plane may lie
 //! at any angle; the Floor, Ceiling, Roof and Shaft tools picked in the 3D view sketch a new one on it at once
-//! (`sketch3d.rs`) when it lies level, and say it must otherwise. The plane is drawn as a grid while it's being set or
-//! sketched on, or Show is on. As in ArchiCAD, it has a patch of its own in the view, a small square of it (by the model's
-//! south-west corner for a level one, where it was set for another), that a click in Modify opens the dialog from; the
-//! right-click menu and the Architecture tab's Datum > Set do too.
+//! (`sketch3d.rs`) when it lies level, and say it must otherwise. The plane is drawn tinted with a grid while it's being set
+//! or sketched on, or Show is on, as a family's {3D} draws its own. As in ArchiCAD, it has a patch of its own in the view, a
+//! small square of it (by the model's south-west corner for a level one, where it was set for another), that a click in
+//! Modify opens the dialog from; the right-click menu and the Architecture tab's Datum > Set do too. Both are drawn into the
+//! picture depth tested, as surfaces are (`view3d::PlaneMark`, on the processor and the card alike): what stands in front of
+//! the plane hides it, a face it lies on doesn't, and a click on the patch where something hides it is that thing's.
 
 use bimcraft_i18n::msg;
 
 use bimcraft_core::geom::P2;
 use bimcraft_core::graphics::Look;
-use bimcraft_core::view3d::{Camera, Face, P3, Scene};
+use bimcraft_core::view3d::{Camera, Face, P3, PlaneMark, Scene};
 use bimcraft_core::workplane::{self, Frame, Surface};
-use egui::{Align, Context, Id as UiId, Layout, Painter, Pos2, Rect, RichText, Stroke, TextEdit, Ui, vec2};
+use egui::{Align, Color32, Context, Id as UiId, Layout, Painter, Pos2, Rect, RichText, Stroke, TextEdit, Ui, vec2};
 use serde_json::json;
 
 use crate::lang::{t, tf};
@@ -83,6 +85,28 @@ pub(crate) enum Aim {
 /// How wide the work plane's patch is, in points: the same on screen at any zoom.
 const PATCH: f64 = 30.0;
 
+/// Work Plane > Show's tint, in a project's 3D view, a family's {3D} and the family's plans and elevations.
+pub(crate) const TINT: Color32 = Color32::from_rgba_premultiplied(30, 70, 140, 60);
+
+/// How much room the project's 3D view leaves round the model on its work plane, mm.
+const ROOM: f64 = 2000.0;
+
+/// Patch `p` of a work plane as a 3D view draws it: tinted, with grid lines `step` apart and its outline (a family's {3D} and
+/// the project's 3D view alike).
+pub(crate) fn plane_mark(p: Patch, step: f64) -> PlaneMark {
+    PlaneMark {
+        origin: p.origin,
+        axes: p.axes,
+        lo: p.lo,
+        hi: p.hi,
+        step,
+        fill: TINT.to_array(),
+        grid: pal().muted.gamma_multiply(0.5).to_array(),
+        edge: pal().accent.gamma_multiply(0.6).to_array(),
+        edge_width: 1.0,
+    }
+}
+
 /// What pick `picking` takes at pixel `at` of the 3D view through `cam` (`ppp` pixels a point): the face there, or the
 /// corner seen within the snap's reach, else the point of the surface there.
 pub(crate) fn aim(scene: &Scene, cam: &Camera, at: (f64, f64), picking: &Picking, look: &Look, ppp: f32) -> Option<Aim> {
@@ -130,26 +154,17 @@ impl BimApp {
     }
 
     /// The work plane's patch as the 3D view in `rect` shows it through `cam`, `ppp` pixels a point: its corners on screen.
-    /// A square of the plane: on a level one by the model's south-west corner, half its width clear of it; on another,
-    /// about the point it was set through. None without a camera or a plane.
+    /// None without a camera or a plane.
     pub(crate) fn work_plane_ring(&self, cam: Option<Camera>, rect: Rect, ppp: f32) -> Option<[Pos2; 4]> {
         let cam = cam?;
-        let m = &self.session.model;
-        let plane = m.work_plane(m.default_3d()).resolve(m).ok()?;
-        let side = PATCH * f64::from(ppp) / cam.scale.max(1e-12);
+        let (plane, corner, side) = patch_square(&self.session.model, &cam, ppp)?;
         let (across, up) = plane.axes();
-        let (start, from) = if workplane::is_level(&plane) {
-            let corner = m.model_box().map_or([0.0; 3], |(lo, _)| lo);
-            (plane.nearest(corner), -1.5)
-        } else {
-            (plane.origin, -0.5)
-        };
         let at = |a: f64, b: f64| {
-            let p: P3 = std::array::from_fn(|k| start[k] + (across[k] * a + up[k] * b) * side);
+            let p: P3 = std::array::from_fn(|k| corner[k] + (across[k] * a + up[k] * b) * side);
             let (x, y, _) = cam.project(p);
             rect.min + vec2(x as f32 / ppp, y as f32 / ppp)
         };
-        let ring = [at(from, from), at(from + 1.0, from), at(from + 1.0, from + 1.0), at(from, from + 1.0)];
+        let ring = [at(0.0, 0.0), at(1.0, 0.0), at(1.0, 1.0), at(0.0, 1.0)];
         ring.iter().all(|p| p.x.is_finite() && p.y.is_finite()).then_some(ring)
     }
 
@@ -587,14 +602,68 @@ pub(crate) fn on_patch(ring: &[Pos2; 4], at: Pos2) -> bool {
     bimcraft_core::geom::contains(&ring, P2(f64::from(at.x), f64::from(at.y)))
 }
 
-/// The work plane's patch, `ring` on screen: lit while `hovered`, when it also says what the plane is (`name`).
-pub(crate) fn draw_patch(painter: &Painter, ring: [Pos2; 4], hovered: bool, name: &str) {
-    let fill = pal().accent.gamma_multiply(if hovered { 0.45 } else { 0.2 });
-    painter.add(egui::Shape::convex_polygon(ring.to_vec(), fill, Stroke::new(1.5, pal().accent)));
-    if hovered {
-        let right = ring.iter().fold(ring[0], |a, p| if p.x > a.x { *p } else { a });
-        crate::canvas::tag(painter, right + egui::vec2(8.0, 0.0), egui::Align2::LEFT_CENTER, tf("Work Plane: {}", &[name]));
+/// Model `m`'s 3D view's work plane's patch, a square of the plane `PATCH` points wide through `cam` (`ppp` pixels a point):
+/// on a level one by the model's south-west corner, half its width clear of it; on another, about the point it was set
+/// through. The plane, and the patch's corner from which it runs `side` mm along the plane's axes. None without a plane.
+fn patch_square(m: &bimcraft_core::model::Model, cam: &Camera, ppp: f32) -> Option<(Frame, P3, f64)> {
+    let plane = m.work_plane(m.default_3d()).resolve(m).ok()?;
+    let side = PATCH * f64::from(ppp) / cam.scale.max(1e-12);
+    let (across, up) = plane.axes();
+    let (start, from) = if workplane::is_level(&plane) {
+        let corner = m.model_box().map_or([0.0; 3], |(lo, _)| lo);
+        (plane.nearest(corner), -1.5)
+    } else {
+        (plane.origin, -0.5)
+    };
+    let corner = std::array::from_fn(|k| start[k] + (across[k] + up[k]) * from * side);
+    Some((plane, corner, side))
+}
+
+/// What model `m`'s 3D view through `cam` (`ppp` pixels a point) draws of its work plane into its picture: the plane tinted
+/// with its grid (with `plane`: while it's being set or sketched on, or Show is on), on `on` when a new outline is sketched
+/// on another, and its patch (with `square`: in Modify), lit while the pointer is on it (`lit`).
+pub(crate) fn marks(
+    m: &bimcraft_core::model::Model,
+    cam: &Camera,
+    ppp: f32,
+    plane: bool,
+    on: Option<Frame>,
+    square: bool,
+    lit: bool,
+) -> Vec<PlaneMark> {
+    let mut marks = Vec::new();
+    if plane
+        && let Some(extent) = m.model_box()
+        && let Ok(frame) = m.work_plane(m.default_3d()).resolve(m)
+    {
+        let frame = on.unwrap_or(frame);
+        let middle: P3 = std::array::from_fn(|k| (extent.0[k] + extent.1[k]) / 2.0);
+        if let Some(p) = patch(frame, extent, ROOM, middle) {
+            let step = workplane::grid_step((p.hi.0 - p.lo.0).max(p.hi.1 - p.lo.1));
+            marks.push(plane_mark(p, step));
+        }
     }
+    if square && let Some((frame, corner, side)) = patch_square(m, cam, ppp) {
+        marks.push(PlaneMark {
+            origin: corner,
+            axes: frame.axes(),
+            lo: (0.0, 0.0),
+            hi: (side, side),
+            step: 0.0,
+            fill: pal().accent.gamma_multiply(if lit { 0.45 } else { 0.2 }).to_array(),
+            grid: [0; 4],
+            edge: pal().accent.to_array(),
+            edge_width: 1.5 * f64::from(ppp),
+        });
+    }
+    marks
+}
+
+/// What the work plane's patch, `ring` on screen, says while the pointer is on it: what the plane is (`name`). The patch itself
+/// is drawn into the picture ([`marks`]).
+pub(crate) fn name_patch(painter: &Painter, ring: [Pos2; 4], name: &str) {
+    let right = ring.iter().fold(ring[0], |a, p| if p.x > a.x { *p } else { a });
+    crate::canvas::tag(painter, right + egui::vec2(8.0, 0.0), egui::Align2::LEFT_CENTER, tf("Work Plane: {}", &[name]));
 }
 
 /// The patch of a plane a work plane is drawn over: from `lo` to `hi` along its `axes` (across it and up it) from `origin`.
@@ -621,27 +690,4 @@ pub(crate) fn patch(p: Frame, (lo, hi): (P3, P3), room: f64, about: P3) -> Optio
     let (a, b) = ((a.0 - room, a.1 - room), (b.0 + room, b.1 + room));
     let span = (b.0 - a.0).max(b.1 - a.1);
     (span.is_finite() && span > 0.0).then_some(Patch { origin: o, axes: (across, up), lo: a, hi: b })
-}
-
-/// Plane `p` drawn as a light grid over as much of it as the model's box `(lo, hi)` spans and `room` mm round, `screen`
-/// placing its points.
-pub(crate) fn draw_plane(painter: &Painter, p: Frame, (lo, hi): (P3, P3), room: f64, screen: impl Fn(P3) -> Pos2) {
-    let middle: P3 = std::array::from_fn(|k| (lo[k] + hi[k]) / 2.0);
-    let Some(Patch { origin: o, axes: (across, up), lo: a, hi: b }) = patch(p, (lo, hi), room, middle) else { return };
-    let span = (b.0 - a.0).max(b.1 - a.1);
-    // A metre apart, or as many as fit in twenty.
-    let step = (span / 20.0).max(1000.0);
-    let stroke = Stroke::new(1.0, pal().muted.gamma_multiply(0.5));
-    let at = |u: f64, v: f64| screen(std::array::from_fn(|k| o[k] + across[k] * u + up[k] * v));
-    let lines = |n: f64| (0..=(n.ceil() as usize).min(40)).map(move |k| k as f64 * step);
-    for d in lines((b.0 - a.0) / step) {
-        let u = (a.0 + d).min(b.0);
-        painter.line_segment([at(u, a.1), at(u, b.1)], stroke);
-    }
-    for d in lines((b.1 - a.1) / step) {
-        let v = (a.1 + d).min(b.1);
-        painter.line_segment([at(a.0, v), at(b.0, v)], stroke);
-    }
-    let ring = [at(a.0, a.1), at(b.0, a.1), at(b.0, b.1), at(a.0, b.1)];
-    painter.add(egui::Shape::closed_line(ring.to_vec(), Stroke::new(1.0, pal().accent.gamma_multiply(0.6))));
 }

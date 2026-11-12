@@ -7,6 +7,7 @@ pub(crate) mod dimensions;
 pub(crate) mod document;
 pub(crate) mod exists;
 mod extrusion;
+pub(crate) mod lit3d;
 mod nested;
 pub(crate) mod options;
 mod pivot;
@@ -14,6 +15,7 @@ pub(crate) mod sketch;
 mod temp_hide;
 mod types_dialog;
 pub(crate) mod views;
+pub(crate) mod visibility;
 pub(crate) mod work_plane;
 
 use crate::popup::Modal;
@@ -182,8 +184,12 @@ impl FormText {
 
     /// What it says it is, for its heading.
     fn describe(&self) -> String {
+        use bimcraft_core::family::forms::FormKind;
         let what = match (self.mesh(), self.shape, self.revolve) {
             (true, _, _) => t("Mesh"),
+            _ if self.original.kind() == FormKind::Blend => t("Blend"),
+            _ if self.original.kind() == FormKind::Sweep => t("Sweep"),
+            _ if self.original.kind() == FormKind::SweptBlend => t("Swept Blend"),
             (_, Shape::Circle, true) => t("Revolved Circle"),
             (_, Shape::Circle, false) => t("Cylinder"),
             (_, Shape::Profile | Shape::Sketch, true) => t("Revolve"),
@@ -348,6 +354,8 @@ struct SymbolText {
     visible: String,
     /// The subcategory it is drawn in, by its English name (`Opening`); blank, its category.
     subcategory: String,
+    /// Its Visibility Settings (F8): the detail levels it is drawn at; none, Medium and Fine.
+    visibility: Option<bimcraft_core::family::Visibility>,
 }
 
 impl SymbolText {
@@ -365,6 +373,7 @@ impl SymbolText {
             align: LabelAlign::Left,
             visible: String::new(),
             subcategory: String::new(),
+            visibility: None,
         };
         match part {
             Part::Line => SymbolText { line: s("0, 0\n0, 900"), ..base },
@@ -381,6 +390,7 @@ impl SymbolText {
         t.line = profile_text(&y.line);
         t.visible = y.visible.as_ref().map(expr_text).unwrap_or_default();
         t.subcategory = y.subcategory.clone().unwrap_or_default();
+        t.visibility = y.visibility;
         if let Some(c) = &y.arc {
             (t.part, t.centre, t.radius, t.from, t.to) =
                 (Part::Arc, [ex(&c.centre[0]), ex(&c.centre[1])], ex(&c.radius), ex(&c.from), ex(&c.to));
@@ -398,7 +408,7 @@ impl SymbolText {
         let (id, guid) = self.ident;
         let centre = [text_expr(&self.centre[0]), text_expr(&self.centre[1])];
         let subcategory = (!self.subcategory.trim().is_empty()).then(|| self.subcategory.clone());
-        let base = Symbol { visible, id, guid, subcategory, ..Symbol::default() };
+        let base = Symbol { visible, id, guid, subcategory, visibility: self.visibility, ..Symbol::default() };
         Ok(match self.part {
             Part::Arc => Symbol {
                 arc: Some(Curve { centre, radius: text_expr(&self.radius), from: text_expr(&self.from), to: text_expr(&self.to) }),
@@ -852,6 +862,8 @@ impl FamilyEditor {
         let placed_only = self.document.preview_visibility;
         // Work Plane > Show: the plane drawn into the picture, so the forms in front of it hide it.
         let work_plane = self.shown_work_plane_3d();
+        // What is selected, and what is under the pointer, highlighted as the project's 3D view does (T11).
+        let lit = self.lit_3d();
         let result = self.family().and_then(|f| {
             let key = {
                 let mut h = DefaultHasher::new();
@@ -865,7 +877,8 @@ impl FamilyEditor {
                     ground.to_array(),
                     placed_only,
                     self.temporary(),
-                    format!("{work_plane:?} {:?}", (pal().muted, pal().accent)),
+                    self.views.detail,
+                    format!("{work_plane:?} {:?} {lit:?}", (pal().muted, pal().accent)),
                 )
                     .hash(&mut h);
                 (base.materials.len(), base.images.len()).hash(&mut h);
@@ -874,9 +887,10 @@ impl FamilyEditor {
             if self.preview.as_ref().is_some_and(|p| p.key == key) {
                 return Ok(None);
             }
-            let ghosts = ghosted(&f, &self.values());
+            let by_view = bimcraft_core::family::views::hidden_in(&f, &self.values(), None, self.views.detail, 0.0);
+            let ghosts = ghosted(&f, &self.values(), &by_view);
             let every = self.scratch(base, ghosts.as_ref().unwrap_or(&f))?;
-            let mut graphics = bimcraft_core::graphics::Graphics::default();
+            let mut graphics = bimcraft_core::graphics::Graphics { detail: self.views.detail, ..Default::default() };
             graphics.categories.insert("level".into(), bimcraft_core::graphics::Override { hidden: true, ..Default::default() });
             let [w, h] = self.document.preview_size;
             let scene = Scene::new(&every);
@@ -887,7 +901,14 @@ impl FamilyEditor {
             if self.temp_hidden_host() {
                 graphics.categories.insert("wall".into(), bimcraft_core::graphics::Override { hidden: true, ..Default::default() });
             }
-            let mut image = if hidden.is_some() || (placed_only && ghosts.is_some()) {
+            let mut image = if !lit.is_empty() {
+                // The parts lit, each a family of its own placed where the family is, tinted; the rest without them.
+                let shown = hidden.as_ref().unwrap_or(shown);
+                let (rest, parts) = lit3d::split(shown, &lit);
+                let mut drawn = self.scratch(base, &rest)?;
+                let tints = lit3d::place(&mut drawn, self.name.trim(), parts);
+                Scene::new(&drawn).render_in(&cam, &tints, &bimcraft_core::graphics::Look::with(&drawn, &graphics))
+            } else if hidden.is_some() || (placed_only && ghosts.is_some()) {
                 let drawn = self.scratch(base, hidden.as_ref().unwrap_or(shown))?;
                 Scene::new(&drawn).render_in(&cam, &[], &bimcraft_core::graphics::Look::with(&drawn, &graphics))
             } else {
@@ -897,9 +918,15 @@ impl FamilyEditor {
             for p in image.rgba.as_chunks_mut::<4>().0.iter_mut().filter(|p| p[..3] == [255; 3]) {
                 p[..3].copy_from_slice(&ground.to_array()[..3]);
             }
+            let extents = bimcraft_core::family::views::extents(&f, &self.values());
             if let Some(shown) = &work_plane {
-                let extents = bimcraft_core::family::views::extents(&f, &self.values());
                 views::draw_work_plane_3d(&mut image, &cam, shown, extents);
+            }
+            // A reference plane or line selected, drawn over the picture where nothing stands in front of it.
+            if let Some((datum, c)) = lit.iter().find(|(l, _)| !matches!(l, lit3d::Lit::Part(_))) {
+                let values = self.values();
+                let flexed = f.flexed(&values).map(std::borrow::Cow::into_owned).unwrap_or_else(|_| f.clone());
+                lit3d::draw_datum(&mut image, &cam, &flexed, *datum, Color32::from_rgb(c.0, c.1, c.2), extents);
             }
             let pixels = image.rgba.as_chunks::<4>().0.iter().map(|p| Color32::from_rgb(p[0], p[1], p[2])).collect();
             let picture = ColorImage { size: [w as usize, h as usize], pixels, source_size: Default::default() };
@@ -920,15 +947,18 @@ const GHOST: &str = "Preview Visibility ghost";
 /// The colour of the frame round the family document's view, and of its banner, while Preview Visibility is on.
 pub(crate) const PREVIEW_FRAME: Color32 = Color32::from_rgb(232, 128, 0);
 
-/// The family as the preview draws it while Preview Visibility is off: each solid form the type (its `values`) hides shown, in
+/// The family as the preview draws it while Preview Visibility is off: each solid form the type (its `values`) hides, or its
+/// Visibility Settings leave out of {3D} at the document's Detail Level (`by_view`, F8), shown, in
 /// the ghost's material, as Revit's family editor greys a form hidden in a type so it can still be edited. A void stays as it
 /// builds: never seen, it cuts only where it is there. None when the type hides no form.
-fn ghosted(f: &Family, values: &BTreeMap<String, bimcraft_core::family::Val>) -> Option<Family> {
+fn ghosted(f: &Family, values: &BTreeMap<String, bimcraft_core::family::Val>, by_view: &[bool]) -> Option<Family> {
     let mut g = f.clone();
     let mut any = false;
-    for form in g.forms.iter_mut().filter(|form| !form.void) {
-        if form.visible.as_ref().is_some_and(|v| crate::adaptive_editor::worth(v, values) == Some(0.0)) {
+    for (i, form) in g.forms.iter_mut().enumerate().filter(|(_, form)| !form.void) {
+        let in_type = form.visible.as_ref().is_some_and(|v| crate::adaptive_editor::worth(v, values) == Some(0.0));
+        if in_type || by_view.get(i).copied().unwrap_or(false) {
             form.visible = None;
+            form.visibility = None;
             form.material = GHOST.into();
             any = true;
         }
@@ -1328,7 +1358,7 @@ fn symbols_tab(ed: &mut FamilyEditor, ui: &mut Ui) {
         RichText::new(t("Symbols are what the plan draws of the family besides its forms: lines, arcs, labels and dots."))
             .color(pal().muted),
     );
-    let mut remove = None;
+    let (mut remove, mut open_visibility) = (None, None);
     // The subcategories a symbol may be drawn in: its family's category's (a door's and a window's Opening).
     let subs: Vec<&'static str> = bimcraft_core::graphics::subcategories(ed.category.graphics_category()).map(|s| s.name).collect();
     for (i, y) in ed.symbols.iter_mut().enumerate() {
@@ -1430,6 +1460,14 @@ fn symbols_tab(ed: &mut FamilyEditor, ui: &mut Ui) {
                     c.response.widget_info(|| WidgetInfo::labeled(WidgetType::ComboBox, true, format!("{} {n}", t("Symbol Subcategory"))));
                     ui.end_row();
                 }
+                // F8: the detail levels it is drawn at (Family Element Visibility Settings), named short so the column stays narrow.
+                ui.label(t("Detail Levels"));
+                let r = ui.button(t("Edit…"));
+                r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, format!("{} {n}", t("Symbol Visibility Settings"))));
+                if r.clicked() {
+                    open_visibility = Some(i);
+                }
+                ui.end_row();
             });
             if ui.button(t("Delete")).clicked() {
                 remove = Some(i);
@@ -1438,6 +1476,9 @@ fn symbols_tab(ed: &mut FamilyEditor, ui: &mut Ui) {
     }
     if links.request.is_some() {
         ed.associating = links.request;
+    }
+    if let Some(i) = open_visibility {
+        ed.open_visibility(visibility::Target::Symbol(i));
     }
     if let Some(i) = remove {
         ed.symbols.remove(i);

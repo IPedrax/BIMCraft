@@ -932,7 +932,7 @@ impl Model {
         }
         for (n, f) in &self.families {
             add("form", "family", n, f.forms.iter().map(|x| (x.id, x.guid)).collect());
-            add("sketch line", "family", n, f.forms.iter().flat_map(|x| x.sketch.iter().map(|l| (l.id, l.guid))).collect());
+            add("sketch line", "family", n, f.forms.iter().flat_map(|x| x.all_lines().map(|l| (l.id, l.guid))).collect());
             add("symbol", "family", n, f.symbols.iter().map(|x| (x.id, x.guid)).collect());
             add("connector", "family", n, f.connectors.iter().map(|x| (x.id, x.guid)).collect());
             // A family's datums hold the GUIDs every family's do, and are no parts of the library.
@@ -1070,9 +1070,9 @@ impl Model {
         }
         for f in self.families.values_mut() {
             let forms_were: Vec<Guid> = f.forms.iter().map(|x| x.guid).collect();
-            let lines_were: Vec<Guid> = f.forms.iter().flat_map(|x| x.sketch.iter().map(|l| l.guid)).collect();
+            let lines_were: Vec<Guid> = f.forms.iter().flat_map(|x| x.all_lines().map(|l| l.guid)).collect();
             f.forms.iter_mut().for_each(|x| give(&mut x.id, &mut x.guid));
-            f.forms.iter_mut().flat_map(|x| x.sketch.iter_mut()).for_each(|l| give(&mut l.id, &mut l.guid));
+            f.forms.iter_mut().flat_map(|x| x.all_lines_mut()).for_each(|l| give(&mut l.id, &mut l.guid));
             f.symbols.iter_mut().for_each(|x| give(&mut x.id, &mut x.guid));
             f.connectors.iter_mut().for_each(|x| give(&mut x.id, &mut x.guid));
             // A plane or a line given another GUID (a copy's) takes what is drawn on it along.
@@ -1090,7 +1090,7 @@ impl Model {
             f.rehost(&planes, &lines);
             // A dimension measuring to a form or a sketch line given another GUID (a copy's) measures to it still.
             let mut parts = moved(&forms_were, f.forms.iter().map(|x| x.guid).collect());
-            parts.extend(moved(&lines_were, f.forms.iter().flat_map(|x| x.sketch.iter().map(|l| l.guid)).collect()));
+            parts.extend(moved(&lines_were, f.forms.iter().flat_map(|x| x.all_lines().map(|l| l.guid)).collect()));
             if !parts.is_empty() {
                 f.resolve_dimension_refs(&parts);
             }
@@ -1298,7 +1298,7 @@ impl Model {
         }
         for f in self.families.values_mut() {
             f.forms.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
-            f.forms.iter_mut().flat_map(|x| x.sketch.iter_mut()).for_each(|l| (l.id, l.guid) = (0, Guid::default()));
+            f.forms.iter_mut().flat_map(|x| x.all_lines_mut()).for_each(|l| (l.id, l.guid) = (0, Guid::default()));
             f.symbols.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
             f.connectors.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
             // A plane's and a line's GUIDs stay: the forms and lines drawn on them name them by it.

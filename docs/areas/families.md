@@ -90,8 +90,8 @@ a project only through the `favorite` command (`load` never overwrites without `
 docked Properties and Project Browser, and a 3D view: an adaptive family's modelling view and tools
 ([adaptive families](adaptive-families.md)), another's 3D preview. For a family that isn't adaptive, Forms and Symbols are
 edited in Properties (whose Adaptive tab makes it adaptive); Family Types and Family Category and Parameters open dialogs
-(Apply, OK, and Cancel putting back what the dialog began from). Extrusion, Revolve and Void Forms sketch forms (F5, below);
-Blend, Sweep and Swept Blend (F6) remain disabled placeholders. Undo and Redo are the document's own (`Draft`), and never undo the project.
+(Apply, OK, and Cancel putting back what the dialog began from). Extrusion, Blend, Revolve, Sweep, Swept Blend and Void Forms
+sketch forms (F5 and F6, below). Undo and Redo are the document's own (`Draft`), and never undo the project.
 Family Types is Revit's (`editor/types_dialog.rs`): Type name, a drop-down of the types with New Type (a name asked, the type
 shown copied), Rename Type and Delete Type (refused for the last, saying why); Search parameters (by name, case aside); one table,
 Parameter, Value, Formula and Lock, under the groups' headings in `Group::ALL`'s order (the Properties palette's), each folding.
@@ -115,14 +115,21 @@ parameter metadata and symbols remain in the draft even when their dedicated too
 A form selected in the document (from the Project Browser's Forms list, or Select in the Forms tab; Escape, a click in the view or
 Modify lets it go) shows its own Properties in place of the family's tabs, as Revit's do for an Extrusion (`editor/extrusion.rs`):
 Constraints (Extrusion End and Start in the project's units, each with `=`, a revolve's angles instead; the Work Plane, read-only,
-named as `Planes::listed` names it), Graphics (Visible with `=`; Visibility/Graphics Overrides is F8's and shows greyed), Materials
+named as `Planes::listed` names it), Graphics (Visible with `=`; Visibility/Graphics Overrides' Edit… opens F8's Visibility Settings, *Visibility Settings* below), Materials
 and Finishes (Material with `=`) and Identity Data (Solid/Void). A value tied to a parameter or worked out by a formula is greyed. The
 contextual tab is "Modify | Form", with Delete and Edit Work Plane, which opens the Work Plane dialog for the form (T12, below); the Options Bar shows
 Depth (End less Start: typed, Start stays and End moves; greyed while End is tied). Edits go to the draft and its history. Solid/Void
 and Edit Work Plane run `family` (its `form` patch) and `edit_work_plane` on a private session holding the draft, as Save Family
 does, and take the form back with the id and GUID it had: the form moves with the plane. Sketch mode (Edit Extrusion, Finish and
-Cancel Edit Mode, Create Extrusion's Depth while sketching) is F5's (below), Visibility Settings F8's;
-the 3D preview does not highlight the form selected.
+Cancel Edit Mode, Create Extrusion's Depth while sketching) is F5's (below); its Visibility panel's Visibility Settings is F8's (below).
+
+{3D} shows what is selected as the project's 3D view does (T11, `editor/lit3d.rs`): a form, a void or a nested instance selected
+is tinted halfway in the selection's colour with its edges whole, through the project's own tints (`Scene::render_in`), the part a
+family of its own in the scratch model placed where the family is, the rest of the family without it, so what stands in front of
+it still hides it; a void, never seen, is drawn see-through while selected. The form or nested instance under the pointer is lit
+in the hover colour (`family::views::part_at_3d`, the one whose surface there is nearest the eye), and a click selects it, a click
+on nothing letting the selection go. A reference plane or line selected in a plan or an elevation is drawn into {3D}'s picture in
+the selection's colour, depth tested as the work plane is (`view3d::PlaneMark`, `Image::draw_line`).
 
 Expression-valued form and symbol properties (their numbers, Visible and a form's Material) offer `=` (`editor/association.rs`),
 which opens the Associate Family Parameter an adaptive element's rows open (`adaptive_editor::associate`, through the `Tied`
@@ -248,6 +255,53 @@ gives it, so a hidden one stays hidden as forms move in the list. A hidden form 
 document's (`document::State::temp`), as Preview Visibility: not saved, no step of the history, no unsaved change, gone when the
 family closes. While it hides anything the view wears the project's cyan frame (`footer::FRAME`) and the bar says
 "Temporary Hide/Isolate (HR resets)"; Preview Visibility's orange frame is then drawn just inside it, so both show.
+
+### Visibility Settings (F8)
+
+F8, FORMAT 18 (`family/visibility.rs`). Revit's Family Element Visibility Settings: a form's, a void's and a nested instance's
+`visibility` is `{plan, front_back, left_right, coarse, medium, fine, only_when_cut}`, each true by default but `only_when_cut`,
+and a file or a command writes only what differs (`{"plan": false}`); a symbol's takes only `coarse`, `medium` and `fine`
+(`Visibility::check_symbol`, refused in `Family::check` naming the symbol), as Revit's symbolic lines do. They are drawing
+only: `Family::pieces` still builds every form `visible` leaves in, so IFC, schedules, bounds and snapping are untouched, and a
+form is drawn where both `visible` and its settings allow it. A void cuts whatever its settings say (they are kept, and change
+nothing: cutting per view would change the solid per view and its IFC). A nested instance's settings AND with each of its
+family's forms' and symbols' (`Visibility::both`, `nested.rs`); a nested piece's view direction is read against the host's axes.
+
+Each built form carries its settings as `Piece::vis`. What a view reads, by `Look::forms()` (`FormView`: how it looks, set by
+`Look::of`, and its detail level, by `Look::with`):
+
+- **Plans and ceiling plans** read `plan`, cut or not (Revit applies Plan/RCP only to a family the plan cuts; BIMCraft draws a
+  family's symbols in its level's plans whatever height its forms reach, so applying it always keeps a hidden leaf from
+  doubling its symbolic swing), and the view's detail level; `only_when_cut` draws a form only where the cut plane passes
+  through it (`render::plan_draws`; the family's own plan, `family_plan`, the same). A door's or a window's forms with no
+  settings keep the old rule: left out of a plan at Coarse with its symbols.
+- **Sections and elevations** read `front_back` where they look nearer the component's y axis (its family's Front and Back
+  elevations' way; a tie counts as Front/Back) and `left_right` nearer its x (`visibility::class`), and their detail level;
+  the projection never draws `only_when_cut`, the poché where the line cuts does (`render::section_base` asks
+  `look.forms_show(vis, true)`).
+- **3D views** read only their detail level, whichever way they look, as Revit's 3D always shows the form; never
+  `only_when_cut`. A 3D view has a Detail Level now: the `detail` command takes a 3D view or `{3D}` (made when its level first
+  changes, as `visual_style` makes it), and the 3D view's control bar and its Properties (Graphics) have it. It changes nothing else in 3D yet.
+
+The 3D scene keeps a form's settings packed on each of its triangles (`Tri::vis`, `Solid::Mesh`'s `vis`:
+`visibility::packed`, the hide flags and the component's x axis in plan to a half turn; 0 for anything without settings), and
+every picture, pick, wireframe and the card's mesh (`view3d/gpu.rs`) leaves out those `Look::forms_show` refuses. A copy whose
+triangles carry settings is never instanced on the card (`placements`), so the card's per-triangle filter sees it. Symbols:
+`Family::marks_in(values, detail)` (`Model::component_marks_in`, `Model::opening_marks_in`) gives those drawn at a detail level,
+a symbol with no settings at Medium and Fine (`SYMBOL_DEFAULT`, the old "Coarse leaves them out"); so a door authored as
+Revit's, its leaf `{plan: false}` and its swing a symbol, shows the swing in plan where the leaf's outline was.
+
+In the family document (`editor/visibility.rs`), Family Element Visibility Settings opens from a form's or a nested instance's
+contextual tab (Visibility > Visibility Settings), from a form's Properties (Graphics > Visibility/Graphics Overrides, Edit…)
+and from a symbol's row in the Symbols tab (Detail Levels, Edit…; only its detail levels can be changed):
+View Specific Display (Plan/RCP, Front/Back, Left/Right, Only shown when cut), Detail Levels (Coarse, Medium, Fine), Default,
+OK (into the draft, a step of its history) and Cancel. The document's view control bar has a Detail Level menu (`Views::detail`,
+the session's, Fine when a family opens). Its views draw a form its settings leave out of that view (`views::hidden_in`)
+**halftone**, as Revit's family views grey it, so it can still be seen and picked; Preview Visibility on leaves it out, as the
+project would. The plans and elevations take it into the ghost component of forms the type hides (`views.rs::ghosts`), which a
+door's or a window's now has too: a generic copy of the family, its wall's thickness a parameter, placed at the opening's
+frame. {3D} ghosts the forms its Detail Level leaves out in the ghost material. Model lines and model text in families, and
+symbolic lines drawn in elevations, are not here.
 
 ## Shared parameters file
 
@@ -527,7 +581,8 @@ Level until Set, by name alone): Show draws it
 into its picture over the patch the project's 3D view lays its work plane on (`workplane::patch`), what the family takes up and
 300 mm round: tinted as the plans tint it, with its outline and a grid through the family's origin whose step leaves about 5 to 20
 lines across it (10, 50, 100, 500 or 1000 mm, `workplane::grid_step`), depth tested against the picture
-(`view3d::Image::draw_plane`), so a form in front of the plane hides it and one behind it is seen through its tint.
+(`view3d::Image::draw_marks`, through `workplane::plane_mark`, as the project's 3D view draws its own), so a form in front of the
+plane hides it and one behind it is seen through its tint.
 An adaptive family's modelling view keeps its own Work Plane panel and Show. An elevation is framed on what it shows as a project's
 is (`render::section_extent`), so its levels' names past their lines' ends aren't cut at the picture's edge.
 
@@ -591,6 +646,62 @@ was keeps its formulas (`family::sketch::kept`), one moved holds numbers. A sele
 in a plan or an elevation that sees its plane edge-on; dragged, they move along the normal, a step of the history; an end tied to a
 parameter or a formula is greyed and a drag on it is refused, saying why. The Forms tab keeps the typed corners, circle and axis as
 an advanced view; a sketch they can't say shows as "Sketch" with its count of lines.
+
+## Blends, sweeps and swept blends
+
+F6, FORMAT 18 (`family/forms.rs`). A form's `sketch` is always drawn in its host plane's axes: an extrusion's or a revolve's
+profile, a Blend's base, a Sweep's or a Swept Blend's path. What a form is follows from what it holds (`Form::kind`,
+`FormKind`): a `top` (lines in the host's axes) makes it a Blend, its base at `from` (First End) and its top at `to` (Second
+End) along the normal; a `sweep` (`{profile, end?}`) a Sweep, or with `end` a Swept Blend. A profile is drawn in the profile
+plane's axes (`forms::profile_frame`): x to the right of someone looking along the path, y the host's normal, its origin on
+the path, so it is the same at every point of the path and the plane it is shown on is only where it is drawn (a Sweep's at
+the middle of the path's first line, Revit's default; a Swept Blend's at the path's start and end). `twist` (Edit Vertices'
+Twist) moves the top's, or the second profile's, first vertex on. `Family::check` (`forms::check_kind`) refuses a `top` with
+a `sweep`, either with an axis or a mesh, a twist on anything but a blend or a swept blend or past `MAX_TWIST`, and a swept
+blend's path of more than one line. Every line of `top`, `sweep.profile` and `sweep.end` is a part ("sketch line"), kept by
+place within its group (`Form::keep_lines`); `rename_parameter`, `every_formula` and the formula checks reach them
+(`Form::all_lines`). A build of 28 would drop the three fields and build a Blend as an extrusion of its base, so 29 refuses
+it as newer; a file of 17 holds none and has no migrate step.
+
+Built (`forms::build`, from `Family::solid`): a Blend's ends and a Swept Blend's profiles are one loop each (several, or a
+hole, refused, as Revit's); a Sweep's profile may have several loops and holes. `forms::mapped` pairs two rings: each starts
+at its vertex nearest the angle (about its middle, from +x) of the first ring's least-angled vertex, the second moved on by
+`twist`; equal counts pair vertex to vertex, others are walked together taking the shorter diagonal each step, measured
+as the turn between the two vertices about their own rings' middles (not as a length, which pairs a ring off the other's
+middle across it and folds a swept blend's sides), a vertex of one held while the other's run past it (a fan, as Revit's
+square-to-circle blend), so no vertex is added. A Swept Blend's end stations are its profiles exactly, so a held vertex
+stays one point there. The path
+(`forms::path`) is the sketch's lines chained end to end, open or closed, or one circle; a gap, a branch, two pieces, a line
+of no length or a crossing are refused, naming where. Arcs are chorded 32 to a turn. At each vertex of the path the profile
+is mitred along the bisector (`stations`); where a bend's set-backs either side of a segment (the profile's reach on the
+inside times tan of half the turn) are longer than it, or the path turns back, it is refused ("would fold over itself").
+A Swept Blend's rings are interpolated along the path's length. Every solid is closed and turned out by its signed volume
+(no volume refused), capped where the path is open. On a level host a sweep's plan outline is the band it covers
+(`Piece::holes` carries the hole of one round a closed path, which `render::component` draws), else the hull of its
+triangles, as for any form not flat on a level plane. IFC writes the triangles as every form's (a closed face set).
+
+Constraints (F7) reach a Blend's base and top and a sweep's path: they are `Form::plane_lines`, the sketch then the top,
+whose vertices join within one group only (a base corner and a top corner over each other stay two); a Blend's First and
+Second End are measured as an extrusion's Start and End. A sweep's profile lines lie in a plane of their own and aren't
+measured yet: a dimension naming one is refused, saying so (F6d). `edit_work_plane`'s `keep` maps a Blend's top too (and
+swaps base and top on a plane facing the other way) and refuses a sweep on a plane facing the other way or mirrored.
+
+In the family document (`editor/sketch.rs`), Create > Blend, Sweep and Swept Blend, and Void Forms' Void Blend, Void Sweep
+and Void Swept Blend, open sketch mode with every part of the form: `FormSketch::part` (`Part::Main`, `Top`, `Profile`,
+`End`) is on screen, the others wait in `parts` and are drawn grey on their own planes (`other_parts`). A Blend's tab is
+"Modify | Create Blend Base Boundary" with Edit Top ("… Top Boundary", drawn on the plane at its Second End) and Edit Base;
+a Sweep's "Modify | Sweep > Sketch Path" with Sketch Path, Pick Path (Pick Lines on the path), Edit Profile and a greyed
+Select Profile showing "<By Sketch>"; a Swept Blend's the same with Profile 1 and Profile 2. A profile can't be edited
+before the path chains (said in the status bar); its plane faces along the path, so a view that doesn't see it flat gives
+way to one that does (an elevation), else {3D} (`show_part`). Edit Vertices' Twist Left and Twist Right step `twist`. The
+Options Bar's Depth is a Blend's Second End less its First; Properties show First End and Second End, a sweep no ends.
+Finish checks each part (`finish_f6`), putting the part at fault on screen with its lines red, then builds the form with
+every type as F5 does (`commit_form`); Edit Blend, Edit Sweep and Edit Swept Blend (and a double click) sketch it again,
+each part keeping its lines' formulas where they don't move.
+
+Left out, each a task: Edit Vertices' connecting chosen vertex pairs by hand (F6b); profile families (BIMCraft has no
+Profile category: loading one, `sweep.family`, its offsets and angle; F6c); dimensions and locks on a sweep's profile (F6d);
+paths across planes and Pick Path of 3D edges (F6e).
 
 ## Family options
 
@@ -776,7 +887,7 @@ windows' opening lines are in Opening. The Family Editor's Symbols tab picks it 
 
 `Model::component_marks` places a component's marks (mirrored, then turned and moved) and `Model::opening_marks` an opening's,
 and `render::marks` draws them: lines in the category's pen (`BY_CATEGORY`, so Object Styles and Visibility/Graphics apply), dots
-as filled discs. Coarse detail leaves them out. A label's anchor is placed with the component (turned, mirrored, moved) but its
+as filled discs. Coarse detail leaves them out, unless their Visibility Settings tick Coarse (F8, *Visibility Settings*). A label's anchor is placed with the component (turned, mirrored, moved) but its
 letters never are: they are always drawn at 0 degrees in the view, left to right with a horizontal baseline, however the component
 stands (the simplest rule; no flipping by quadrant). Symbols are annotation of the component's level: they draw in that level's
 plan and its ceiling plan whatever height the component's forms reach (a ceiling light shows its symbols in the floor plan) and

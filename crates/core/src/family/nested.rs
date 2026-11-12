@@ -63,6 +63,9 @@ pub struct NestedInstance {
     pub visible: Option<Expr>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, Expr>,
+    /// Its Visibility Settings (F8), over those of each of its family's forms and symbols.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub visibility: Option<super::Visibility>,
 }
 
 impl NestedInstance {
@@ -235,20 +238,32 @@ impl Family {
                 tris.iter_mut().for_each(|t| t.swap(1, 2));
             }
             let (bottom, top) = heights(&tris);
-            let outline = if placed.level() {
-                piece.outline.iter().map(|p| placed.point([p.0, p.1, 0.0])).map(|q| P2(q[0], q[1])).collect()
+            let at = |ring: &[P2]| -> Vec<P2> { ring.iter().map(|p| placed.point([p.0, p.1, 0.0])).map(|q| P2(q[0], q[1])).collect() };
+            let (outline, holes) = if placed.level() {
+                (at(&piece.outline), piece.holes.iter().map(|h| at(h)).collect())
             } else {
-                crate::geom::hull(tris.iter().flatten().map(|p| P2(p[0], p[1])).collect())
+                (crate::geom::hull(tris.iter().flatten().map(|p| P2(p[0], p[1])).collect()), Vec::new())
             };
-            out.push(Piece { tris, caps: piece.caps, outline, bottom, top, material: piece.material, round: piece.round });
+            let vis = super::Visibility::both(piece.vis, self.nested_instances[i].visibility);
+            out.push(Piece { tris, caps: piece.caps, outline, holes, bottom, top, material: piece.material, round: piece.round, vis });
         }
         Ok(out)
     }
 
     /// Its nested instances' plan marks, sized by `values`, for those that stand upright on a level plane.
-    pub(super) fn nested_marks(&self, values: &BTreeMap<String, Val>, meter: &mut Meter) -> Result<Vec<Tagged>, String> {
+    pub(super) fn nested_marks(
+        &self,
+        values: &BTreeMap<String, Val>,
+        detail: Option<crate::graphics::Detail>,
+        meter: &mut Meter,
+    ) -> Result<Vec<Tagged>, String> {
         let mut out = Vec::new();
         for i in 0..self.nested_instances.len() {
+            if let (Some(d), Some(v)) = (detail, self.nested_instances[i].visibility)
+                && !v.at(d)
+            {
+                continue;
+            }
             let who = |e: String| format!("nested instance {}: {e}", i + 1);
             let Some((nested, own, placed)) = self.placed_instance(i, values).map_err(who)? else { continue };
             if !placed.level() {
@@ -259,7 +274,7 @@ impl Family {
                 let q = placed.point([p.0, p.1, 0.0]);
                 P2(q[0], q[1])
             };
-            out.extend(nested.marks_metered(&own, meter).map_err(who)?.into_iter().map(|(m, sub)| (m.map(to), sub)));
+            out.extend(nested.marks_metered(&own, detail, meter).map_err(who)?.into_iter().map(|(m, sub)| (m.map(to), sub)));
         }
         Ok(out)
     }

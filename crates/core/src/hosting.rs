@@ -243,6 +243,7 @@ impl Placement {
             let base = self.origin[2];
             return Piece {
                 outline: pc.outline.iter().map(|q| self.place([q.0, q.1, 0.0])).map(|p| P2(p[0], p[1])).collect(),
+                holes: pc.holes.iter().map(|h| h.iter().map(|q| self.place([q.0, q.1, 0.0])).map(|p| P2(p[0], p[1])).collect()).collect(),
                 bottom: base + pc.bottom,
                 top: base + pc.top,
                 tris,
@@ -252,7 +253,7 @@ impl Placement {
         let all = tris.iter().flatten();
         let (bottom, top) = all.clone().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| (lo.min(p[2]), hi.max(p[2])));
         let outline = crate::geom::hull(all.filter(|p| p.iter().all(|v| v.is_finite())).map(|p| P2(p[0], p[1])).collect());
-        Piece { tris, outline, bottom, top, ..pc.clone() }
+        Piece { tris, outline, holes: Vec::new(), bottom, top, ..pc.clone() }
     }
 }
 

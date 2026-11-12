@@ -168,12 +168,12 @@ fn escape_or_a_click_in_the_view_lets_the_form_go() {
     h.run();
     assert!(h.query_by_label("Extrusion End").is_none());
     assert!(h.query_by_label("Form From 1").is_some(), "the family's tabs are back, the form's own row open in its Forms tab");
-    // Selected again, from the Forms tab, and let go by a click in the view.
+    // Selected again, from the Forms tab, and let go by a click in the view on nothing (one on a form selects it, T11).
     h.get_by_label("Select").scroll_to_me();
     h.run();
     press(&mut h, "Select");
     assert!(h.query_by_label("Extrusion End").is_some());
-    let view = h.state().pane.center();
-    click_at(&mut h, view);
+    let nothing = h.state().pane.min + vec2(40.0, 120.0);
+    click_at(&mut h, nothing);
     assert!(h.query_by_label("Extrusion End").is_none());
 }

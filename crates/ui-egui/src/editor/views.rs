@@ -34,6 +34,10 @@ pub(crate) struct Views {
     pub(crate) dialog: Option<super::work_plane::Dialog>,
     /// Go To View, asked for a plane the view shown doesn't show flat.
     pub(crate) go_to: Option<super::work_plane::GoTo>,
+    /// Family Element Visibility Settings, open (F8).
+    pub(crate) visibility: Option<super::visibility::Dialog>,
+    /// The document's Detail Level, which every one of its views draws at (F8): the session's, Fine when a family opens.
+    pub(crate) detail: bimcraft_core::graphics::Detail,
     /// The Reference Plane tool, on, with its first click once made.
     pub(crate) drawing: Option<Option<P2>>,
     /// The plane selected, by GUID.
@@ -72,6 +76,9 @@ pub(crate) struct Views {
     pane: Option<Rect>,
     /// The reference line selected, by GUID (F7d).
     pub(crate) line: Option<Guid>,
+    /// Where the pointer was last over {3D} and the camera {3D} was seen through, and the form or nested instance under it
+    /// there (T11's hover).
+    pub(crate) hover3d: Option<(egui::Pos2, bimcraft_core::view3d::Camera, Option<bimcraft_core::family::views::Part>)>,
     /// Pivot, on: the line or plane the next click pins.
     pub(crate) pivoting: Option<Guid>,
     /// A grip being dragged, and where the pointer was (the view's mm).
@@ -121,12 +128,12 @@ fn default_work_plane(which: Option<Which>) -> PlaneRef {
 }
 
 /// How far beyond what the family takes up {3D} draws its work plane, mm: as far as the plans and elevations frame past it.
-const WORK_PLANE_MARGIN: f64 = 300.0;
+pub(crate) const WORK_PLANE_MARGIN: f64 = 300.0;
 
 /// The selection's colour in the family's views.
 pub(super) const PICKED: Color32 = Color32::from_rgb(40, 120, 230);
-/// Work Plane > Show's tint.
-pub(crate) const TINT: Color32 = Color32::from_rgba_premultiplied(30, 70, 140, 60);
+/// Work Plane > Show's tint, the project's 3D view's.
+pub(crate) const TINT: Color32 = crate::workplane::TINT;
 
 impl Views {
     /// The work plane of the view shown.
@@ -266,22 +273,33 @@ impl FamilyEditor {
     /// The scratch model view `which` is drawn of, staged: the family as Preview Visibility and Temporary Hide/Isolate show it;
     /// while Preview Visibility is off, the solid forms the type hides a second component of their own, halftone, so they
     /// can still be seen and picked (not for a door or a window, whose wall holds one opening).
-    fn staged(&self, base: &Model) -> Result<Staged, String> {
+    fn staged(&self, base: &Model, which: Which) -> Result<Staged, String> {
         let f = self.family()?;
         let values = self.values();
         let shown = temp_hide::without(&f, |i| self.temp_hidden_form(i)).unwrap_or_else(|| f.clone());
         let mut model = self.scratch(base, &shown)?;
         let mut ghost_id = None;
+        // F8: what the view's Visibility Settings leave out, at the document's Detail Level, drawn halftone too.
+        let cut = model.levels().first().map_or(bimcraft_core::model::CUT_HEIGHT, |(_, l)| l.view_range.cut);
+        let by_view = fv::hidden_in(&f, &values, Some(which), self.views.detail, cut);
         if !self.document.preview_visibility
-            && !f.category.hosted()
-            && let Some(g) = ghosts(&f, &values, |i| self.temp_hidden_form(i))
+            && let Some(g) = ghosts(&f, &values, |i| self.temp_hidden_form(i), &by_view)
         {
             let mut s = Session::new();
             s.model = Arc::new(model);
             let name = format!("{} {GHOST}", self.name.trim());
             let type_name = self.types.get(self.picked).map(|(n, _)| n.clone()).unwrap_or_default();
+            // A door's or a window's ghost stands where its family's axes are in the wall: its opening's frame.
+            let mut place = json!({"family": name, "type": type_name, "at": [0, 0], "params": self.preview_params});
+            let frame = s.model.elements.values().find_map(|e| match e {
+                Element::Door(o) | Element::Window(o) => s.model.opening_frame(o),
+                _ => None,
+            });
+            if let Some((p, _, z)) = frame {
+                (place["at"], place["offset"]) = (json!([p.0, p.1]), json!(z));
+            }
             s.model_mut().families.insert(name.clone(), g);
-            let made = s.execute("component", &json!({"family": name, "type": type_name, "at": [0, 0], "params": self.preview_params}))?;
+            let made = s.execute("component", &place)?;
             ghost_id = made["id"].as_u64();
             model = Arc::unwrap_or_clone(s.model);
         }
@@ -298,6 +316,7 @@ impl FamilyEditor {
                 Some(Element::Elevation(s)) => &mut s.graphics,
                 _ => continue,
             };
+            graphics.detail = self.views.detail;
             if let Some(g) = ghost_guid {
                 graphics.elements.insert(g, Override { halftone: true, ..Default::default() });
             }
@@ -324,6 +343,7 @@ impl FamilyEditor {
                 pan.1.to_bits(),
                 self.document.preview_visibility,
                 self.temporary(),
+                self.views.detail,
                 crate::style::canvas_dark(),
             )
                 .hash(&mut h);
@@ -333,7 +353,7 @@ impl FamilyEditor {
         if self.views.cache.as_ref().is_some_and(|c| c.key == key) {
             return;
         }
-        let drawn = self.staged(base).and_then(|mut st| {
+        let drawn = self.staged(base, which).and_then(|mut st| {
             let shown = st.draw(which, size[0], size[1], zoom, P2(pan.0, pan.1))?;
             Ok((st, shown))
         });
@@ -1119,21 +1139,45 @@ pub(crate) fn draw_work_plane_3d(
     let plane = bimcraft_core::workplane::Frame { origin: f.origin, normal: f.z };
     let Some(p) = crate::workplane::patch(plane, extents, WORK_PLANE_MARGIN, [0.0; 3]) else { return };
     let step = bimcraft_core::workplane::grid_step((p.hi.0 - p.lo.0).max(p.hi.1 - p.lo.1));
-    let (grid, edge) = (pal().muted.gamma_multiply(0.5), pal().accent.gamma_multiply(0.6));
-    image.draw_plane(cam, p.origin, p.axes, (p.lo, p.hi), step, TINT.to_array(), grid.to_array(), edge.to_array());
+    image.draw_marks(cam, &[crate::workplane::plane_mark(p, step)]);
 }
 
-/// The solid forms the type previewed (`values`) hides, alone: what a view draws halftone while Preview Visibility is off.
-/// Every other form, and each `hidden` for now, is left out. None when the type hides none.
-fn ghosts(f: &Family, values: &BTreeMap<String, bimcraft_core::family::Val>, hidden: impl Fn(usize) -> bool) -> Option<Family> {
+/// The solid forms the type previewed (`values`) hides, and those the view's Visibility Settings leave out (`by_view`, F8),
+/// alone: what a view draws halftone while Preview Visibility is off. Every other form, and each `hidden` for now, is left
+/// out. A door's or a window's is a generic family of its own, its wall's thickness a parameter, so it stands as a component
+/// beside the opening rather than a second opening in the wall. None when nothing is hidden.
+fn ghosts(
+    f: &Family,
+    values: &BTreeMap<String, bimcraft_core::family::Val>,
+    hidden: impl Fn(usize) -> bool,
+    by_view: &[bool],
+) -> Option<Family> {
     let mut g = f.clone();
     let mut any = false;
     for (i, form) in g.forms.iter_mut().enumerate() {
-        let off = !form.void && !hidden(i) && form.visible.as_ref().is_some_and(|v| crate::adaptive_editor::worth(v, values) == Some(0.0));
+        let in_type = form.visible.as_ref().is_some_and(|v| crate::adaptive_editor::worth(v, values) == Some(0.0));
+        let off = !form.void && !hidden(i) && (in_type || by_view.get(i).copied().unwrap_or(false));
         form.visible = if off { None } else { Some(Expr::Number(0.0)) };
+        form.visibility = None;
         any |= off;
     }
-    any.then_some(g)
+    if !any {
+        return None;
+    }
+    if g.category.hosted() {
+        let wall = match values.get(bimcraft_core::family::WALL) {
+            Some(bimcraft_core::family::Val::Number(t)) => *t,
+            _ => bimcraft_core::family::DEFAULT_WALL,
+        };
+        let p = serde_json::from_value(json!({"name": bimcraft_core::family::WALL, "value": wall})).ok()?;
+        g.parameters.push(p);
+        g.category = Category::Generic;
+        g.operation = None;
+    }
+    // Its symbols and nested instances are the family's, drawn as it draws them.
+    g.symbols.clear();
+    g.nested_instances.clear();
+    Some(g)
 }
 
 /// What the ghost family is called beside the family in a view's scratch model.

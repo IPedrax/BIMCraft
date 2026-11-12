@@ -1037,8 +1037,10 @@ other_files(
         &[],
         "{view, detail?: coarse | medium | fine} how much a plan, a section or an elevation draws of what it cuts: coarse, one \
          poché and openings as their gaps; medium, compound layers with the lines between them and an opening's leaf, swing and \
-         glass; fine (the default), the layers' patterns and a floor's surface pattern too. Without `detail` it only says what \
-         the view has",
+         glass; fine (the default), the layers' patterns and a floor's surface pattern too. A family's forms and symbols with \
+         Visibility Settings (`family` `visibility`) are drawn only at the levels they tick, in every view. A 3D view (`{3D}` \
+         for the default one, made when its level first changes) has a detail level too, which only those settings read. \
+         Without `detail` it only says what the view has",
         view_detail,
     ),
     edit(
@@ -1162,8 +1164,13 @@ other_files(
          structural|data|other, shared?: guid, reporting?, of?: category}], parameter?: {name, rename?, …a parameter's \
          fields}, delete_parameter?: [name, …], types?: {type: {parameter: value}}, forms?: [{host?: {plane: guid} | {line: guid, face: \
          horizontal|vertical|start|end}, plane?: xy|xz|yz, sketch?: [{start: [a, b], end: [a, b], turn?, axis?} | {centre: [a, b], radius}, …], \
-         profile?: [[a, b], …], circle?: {centre: [a, b], radius}, axis?: [[a, b], [a, b]], from?, to, material?, visible?, \
-         void?}], symbols?: [{line?: [[x, y], …] | arc?: {centre: [x, y], radius, from?, to} | text?: {at: [x, y], height, value, align?: left|center|right} | dot?: {centre: [x, y], radius}, visible?}], form?: {id | guid, …a \
+         profile?: [[a, b], …], circle?: {centre: [a, b], radius}, axis?: [[a, b], [a, b]], from?, to, material?, visible?, visibility?, \
+         void?, top?: [sketch lines] (a Blend: `sketch` its base at `from`, `top` its top at `to`, each one closed loop in the \
+         host plane's axes), sweep?: {profile: [sketch lines], end?: [sketch lines]} (a Sweep: `sketch` is its path, a chain of \
+         lines and arcs, open or closed, or one circle, and `profile` its profile drawn square to the path, x to the right \
+         looking along it and y the host's normal; with `end`, a Swept Blend: a path of one line or arc, `profile` at its start \
+         and `end` at its end, one loop each), twist?: n (a Blend's top or a Swept Blend's end profile paired from its vertex n \
+         on: Edit Vertices' Twist)}], symbols?: [{line?: [[x, y], …] | arc?: {centre: [x, y], radius, from?, to} | text?: {at: [x, y], height, value, align?: left|center|right} | dot?: {centre: [x, y], radius}, visible?, visibility?: {coarse?, medium?, fine?}}], form?: {id | guid, …a \
          form's fields}, symbol?: {id | guid, …a symbol's fields}, delete_form?: [id | guid, …], delete_symbol?: [id | guid, …], \
          ref_planes?: [{guid?, name?, start: [x, y, z], end: [x, y, z], up: [x, y, z], reference?: not_a_reference|strong|weak|\
          left|center_left_right|right|front|center_front_back|back|bottom|center_elevation|top, defines_origin?, subcategory?}], \
@@ -1194,7 +1201,7 @@ other_files(
          a reply's `options` has them all), rename?, delete?: true, dry_run?, path?, definition?, save?, overwrite?: no|version|version_and_values, \
          shared_nested?: {name: project|family}, nest?: {path | definition, name?, overwrite?, shared_nested?}, nested?: [{name, family}], \
          delete_nested?: [names], nested_instances?: [...], nested_instance?: {id | guid?, family, type, host?, at?: [x, y], offset?, \
-         angle?, visible?, params?: {name: number | formula}}, delete_nested_instance?: [ids or GUIDs]} a family of \
+         angle?, visible?, visibility?, params?: {name: number | formula}}, delete_nested_instance?: [ids or GUIDs]} a family of \
          the project's, BIMCraft's own parametric component: created, changed, read, or loaded from the .json file at `path` (a \
          family as `inspect` shows it, with its `name`). Without `name` it lists the project's families, each its category and \
          how many types, forms and symbols it has; with only a `name` it reads one — its definition, each of its types' \
@@ -1203,7 +1210,15 @@ other_files(
          and symbols replaced, patched and deleted by id, the `rename`) instead of doing it; a change that's refused comes back \
          as an error, as it would without it. `form` merges its fields over the one form of that `id` or `guid` (a `null` takes \
          a field away; its place, its id and its GUID stay), `delete_form` takes those forms away; `symbol` and `delete_symbol` \
-         do the same for symbols — where `forms` and `symbols` still replace whole lists. `parameter` edits the one parameter \
+         do the same for symbols — where `forms` and `symbols` still replace whole lists. `visibility` is Revit's Visibility \
+         Settings, drawing only (IFC, schedules and `visible` are untouched; it ANDs with `visible`): {plan?, front_back?, \
+         left_right?, coarse?, medium?, fine?, only_when_cut?}, each true by default but `only_when_cut`; `plan` is plans and \
+         ceiling plans, cut or not; `front_back` sections and elevations looking along the family's y axis, `left_right` along \
+         its x (the nearer axis); a 3D view reads only the detail levels; `only_when_cut` draws it only where a plan's cut plane \
+         or a section's line passes through it. A symbol takes only the detail levels (none: medium and fine), and a nested \
+         instance's are ANDed with its family's own. A void keeps cutting whatever they say. A door's leaf `{plan: false}` with \
+         a symbolic swing shows the swing in plan in place of the leaf. A form patch merges `visibility` whole (`null` takes it \
+         away). `parameter` edits the one parameter \
          named (or adds it), as Revit's Edit Parameter: its fields merged over it (`null` takes one away), `rename` keeping its \
          GUID with every formula, form, label and component value following it, and `instance` switched with what its types \
          and components hold moved onto them, not lost (to instance, each component takes its type's value; to type, each type \
@@ -10342,6 +10357,31 @@ fn visual_style(s: &mut Session, p: &Value) -> R {
 
 fn view_detail(s: &mut Session, p: &Value) -> R {
     let c = "detail";
+    // A 3D view's (F8: which of a family's forms it draws): `{3D}` is the default 3D view, made when its level first changes.
+    let three_d = match p.get("view") {
+        Some(Value::String(n)) if n.eq_ignore_ascii_case("{3D}") || n.eq_ignore_ascii_case("3D") => Some(s.model.default_3d()),
+        Some(_) => view_param(c, &s.model, p, false).ok().filter(|v| matches!(s.model.elements.get(v), Some(Element::View3D(_)))).map(Some),
+        None => None,
+    };
+    if let Some(view) = three_d {
+        let level = detail_param(c, p)?;
+        if let (Some(_), Some(v)) = (level, view) {
+            own_to_set(c, &s.model, v, Group::Detail, "detail level")?;
+        }
+        let has = |view: Option<Id>, m: &Model| {
+            view.and_then(|v| graphics::graphics_of(m, v)).map_or_else(Default::default, |g| g.resolved(m).detail)
+        };
+        let view = match (level, view) {
+            (Some(level), view) if level != has(view, &s.model) => {
+                let v = view.unwrap_or_else(|| s.model_mut().insert(Element::View3D(View3D::default_view())));
+                change_graphics(s, v, |g| g.detail = level);
+                Some(v)
+            }
+            (_, view) => view,
+        };
+        let m = &s.model;
+        return Ok(json!({"view": view, "name": view.and_then(|v| m.view_name(v)), "detail": has(view, m)}));
+    }
     let view = scaled_view(c, &s.model, p)?;
     if let Some(level) = detail_param(c, p)? {
         own_to_set(c, &s.model, view, Group::Detail, "detail level")?;
@@ -11596,8 +11636,7 @@ fn family(s: &mut Session, p: &Value) -> R {
             .iter()
             .map(|x| {
                 let sketch: Vec<Value> = x
-                    .sketch
-                    .iter()
+                    .plane_lines()
                     .filter_map(|l| {
                         let drawn = l.curve(&mut |e| crate::family::worth(e, &values)).ok()?;
                         Some(match drawn.curve {
@@ -11820,6 +11859,18 @@ fn family(s: &mut Session, p: &Value) -> R {
     // A dimension that measures to what the family hasn't: refused, unless the caller says to delete it (T14's Delete
     // Dimension(s)); a reload can't leave one behind unasked.
     let dangling = f.dangling_dimensions();
+    // A sweep's profile lies square to its path, in a plane of its own: not measured yet (F6d), and said so.
+    let profile_lines: Vec<crate::ids::Guid> =
+        f.forms.iter().flat_map(|x| x.sweep.iter().flat_map(|s| s.profile.iter().chain(&s.end)).map(|l| l.guid)).collect();
+    for i in &dangling {
+        let on_profile = f.dimensions[*i].refs.iter().any(|r| match *r {
+            crate::family::DimRef::Sketch(_, l) | crate::family::DimRef::Point(_, l, _) => profile_lines.contains(&l),
+            _ => false,
+        });
+        if on_profile {
+            return Err(bad(c, format!("dimension {}: a sweep's profile line isn't measured or locked yet: dimension its path", i + 1)));
+        }
+    }
     if !dangling.is_empty() {
         match string(c, &p, "invalid_dimensions")?.as_deref() {
             Some("delete") => {

@@ -146,7 +146,7 @@ fn number_row(
 
 impl BimApp {
     /// The selected form's Properties, as Revit's for an Extrusion: Constraints (Extrusion End and Start, each with "=", and
-    /// the Work Plane it is drawn on, read-only), Graphics (Visible with "="; Visibility/Graphics Overrides, F8's, greyed),
+    /// the Work Plane it is drawn on, read-only), Graphics (Visible with "="; Visibility/Graphics Overrides' Edit…, F8's Visibility Settings),
     /// Materials and Finishes (Material with "="), Identity Data (Solid/Void). A revolve's are its angles, a mesh's none.
     pub(super) fn form_properties(&mut self, ui: &mut Ui, ed: &mut FamilyEditor, i: usize) {
         let units = self.session.model.units;
@@ -157,7 +157,7 @@ impl BimApp {
         let host = host_label(ed.plane_set(), &ed.forms[i].host);
         let [from, to] = ed.driven_ends(i);
         let Some(f) = ed.forms.get_mut(i) else { return };
-        let (mut visible, mut void) = (false, None);
+        let (mut visible, mut void, mut edit_visibility) = (false, None, false);
         group(ui, msg!("Constraints"), |ui| {
             if f.mesh() {
                 ui.label(t("Mesh"));
@@ -165,22 +165,28 @@ impl BimApp {
                 ui.end_row();
                 return;
             }
-            let (end, start, u) = if f.revolve {
-                (msg!("End Angle"), msg!("Start Angle"), None)
-            } else {
-                (msg!("Extrusion End"), msg!("Extrusion Start"), Some(units))
+            use bimcraft_core::family::forms::FormKind;
+            let kind = f.original.kind();
+            let (end, start, u) = match kind {
+                _ if f.revolve => (msg!("End Angle"), msg!("Start Angle"), None),
+                FormKind::Blend => (msg!("Second End"), msg!("First End"), Some(units)),
+                _ => (msg!("Extrusion End"), msg!("Extrusion Start"), Some(units)),
             };
-            number_row(ui, u, end, &mut f.to, &values, &mut links, ((Field::Form(Slot::To), i), to));
-            number_row(ui, u, start, &mut f.from, &values, &mut links, ((Field::Form(Slot::From), i), from));
+            // A sweep has no ends of its own: its path says where it goes (F6).
+            if !kind.swept() {
+                number_row(ui, u, end, &mut f.to, &values, &mut links, ((Field::Form(Slot::To), i), to));
+                number_row(ui, u, start, &mut f.from, &values, &mut links, ((Field::Form(Slot::From), i), from));
+            }
             ui.label(t("Work Plane"));
             ui.label(&host);
             ui.end_row();
         });
         group(ui, msg!("Graphics"), |ui| {
             visible = visible_row(ui, &mut f.visible, t("Visible").to_string(), &values);
-            // F8's, not built yet: where Revit has it, greyed.
-            ui.label(t("Visibility/Graphics Overrides"));
-            ui.add_enabled(false, egui::Button::new(t("Edit…"))).on_disabled_hover_text(t("Not in BIMCraft yet"));
+            // F8: Family Element Visibility Settings.
+            let l = ui.label(t("Visibility/Graphics Overrides"));
+            let tip = msg!("Family Element Visibility Settings: the views and detail levels it is drawn in");
+            edit_visibility = ui.button(t("Edit…")).labelled_by(l.id).on_hover_text(t(tip)).clicked();
             ui.end_row();
         });
         group(ui, msg!("Materials and Finishes"), |ui| {
@@ -230,6 +236,9 @@ impl BimApp {
         }
         if links.request.is_some() {
             ed.associating = links.request;
+        }
+        if edit_visibility {
+            ed.open_visibility(super::visibility::Target::Form(i));
         }
         if let Some(v) = void {
             let base = Arc::clone(&self.session.model);

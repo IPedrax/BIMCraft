@@ -1501,9 +1501,9 @@ fn the_view_control_bar_sets_the_3d_views_visual_style_and_wf_hl_and_sd_do_too()
     let style = |h: &Harness<BimApp>| Look::of_3d(&h.state().session.model).style();
     press(&mut h, "Default 3D View");
     assert_eq!(h.state().sheet, Sheet::View3D);
-    // Shaded until told otherwise; a 3D view has no scale or detail level.
+    // Shaded until told otherwise; a 3D view has no scale, and (F8) has a detail level, which a family's forms read.
     assert!(painted_text(&h).contains(&"Shaded".to_string()));
-    assert!(h.query_by_label("Scale").is_none() && h.query_by_label("Detail Level").is_none());
+    assert!(h.query_by_label("Scale").is_none() && h.query_all_by_label("Detail Level").count() > 0);
     pick(&mut h, Role::Button, "Visual Style");
     press(&mut h, "Wireframe");
     assert_eq!(style(&h), VisualStyle::Wireframe);
@@ -1593,11 +1593,11 @@ fn properties_of_a_view_show_and_set_its_scale_detail_level_and_visual_style() {
     let g = bimcraft_core::graphics::graphics_of(&h.state().session.model, section).unwrap();
     assert_eq!((g.scale, g.detail), (Some(200.0), Detail::Medium));
     assert_eq!((plan_graphics(&h, 100000).scale, plan_graphics(&h, 100000).detail), (Some(75.0), Detail::Coarse));
-    // The 3D view: a visual style, no scale or detail level.
+    // The 3D view: a visual style and (F8) a detail level, no scale.
     press(&mut h, "Default 3D View");
     assert_eq!(h.state().sheet, Sheet::View3D);
     assert!(h.query_by_role_and_label(Role::ComboBox, "View Scale").is_none());
-    assert!(h.query_by_role_and_label(Role::ComboBox, "Detail Level").is_none());
+    assert_eq!(combo_value(&h, "Detail Level"), "Fine");
     assert_eq!(combo_value(&h, "Visual Style"), "Shaded");
     choose(&mut h, "Visual Style", "Hidden Line");
     assert_eq!(Look::of_3d(&h.state().session.model).style(), VisualStyle::HiddenLine);
@@ -6945,6 +6945,7 @@ mod background_grid;
 mod extrusion_properties;
 mod family_already_exists;
 mod family_angles;
+mod family_blend;
 mod family_category_dialog;
 mod family_dimensions;
 mod family_document;
@@ -6954,7 +6955,9 @@ mod family_sketch_locks;
 mod family_temporary_hide;
 mod family_types_dialog;
 mod family_views;
+mod family_visibility;
 #[cfg(test)]
 mod family_work_plane;
+mod highlight3d;
 mod nested_families;
 mod preview_visibility;
