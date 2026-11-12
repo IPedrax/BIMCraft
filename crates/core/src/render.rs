@@ -1134,6 +1134,12 @@ fn plan_shows_among(m: &Model, key: Guid, among: bool) -> Vec<P2> {
             Element::Dimension(dm) if m.annotation_in(e, key) => extent.push(dm.at),
             Element::Section(v) | Element::Elevation(v) => extent.extend([v.start, v.end]),
             Element::Tag(t) if m.annotation_in(e, key) => extent.extend(m.anchor(t.host).map(|a| a + t.offset)),
+            // A multistorey stair is on the plan of every level it passes.
+            Element::Stair(st) if st.multistorey && m.storeys(st).iter().any(|s| s.0 == level) => {
+                if let Some(l) = stairs::layout(m, e) {
+                    extent.extend(l.runs.iter().flat_map(|r| r.ring(l.width)).chain(l.pads.into_iter().flat_map(|p| p.ring)));
+                }
+            }
             Element::Stair(Stair { level: l, top_level: t, .. }) | Element::Ramp(Ramp { level: l, top_level: t, .. })
                 if *l == level || *t == Some(level) =>
             {
@@ -3542,60 +3548,122 @@ fn opening(d: &mut Drawing, m: &Model, e: &Element, o: &Opening, w: &Wall, cut: 
     }
 }
 
-/// A stair in the plan of `level`. From its own level: its risers up to the cut plane, a cut line
+/// A stair in the plan of `level`. From its own level: its risers up to the cut plane, a break mark
 /// across the run there, the rest (and the landings over the cut plane) dashed, and its walk line
-/// marked UP. From the level it climbs to: all of it, and the walk line marked DN.
+/// marked UP. From the level it climbs to: all of it, and the walk line marked DN. On a level a
+/// multistorey stair passes, both: the storey that climbs from it up to the break mark, marked UP, and past
+/// the mark the storey that comes up to it from below, seen from above and marked DN.
 fn stair(d: &mut Drawing, m: &Model, st: &Stair, level: impl Key) {
     let level = m.guid(level);
-    // The storey that stands on this level, going up; else, on the level it climbs to, its last storey, going down.
-    let mut storeys = stairs::storeys(m, st);
+    let storeys = stairs::storeys(m, st);
     let here = storeys.iter().position(|(on, _)| *on == level);
-    let up = here.is_some();
-    if !up && st.top_level != Some(level) {
+    if here.is_none() && st.top_level != Some(level) {
         return;
     }
-    let Some((_, l)) = (match here {
-        Some(i) => Some(storeys.swap_remove(i)),
-        None => storeys.pop(),
-    }) else {
-        return;
-    };
-    let risers: u32 = l.runs.iter().map(|r| r.risers).sum::<u32>() + l.winders as u32;
-    let (floor, top) = (l.walk.first().map_or(0.0, |w| w.1), l.walk.last().map_or(0.0, |w| w.1));
-    let each = if risers > 0 { (top - floor) / f64::from(risers) } else { 0.0 };
+    // The storey that ends on this level, seen from above; and the one that stands on it.
+    let under = match here {
+        Some(i) => i.checked_sub(1).and_then(|j| storeys.get(j)),
+        None => storeys.last(),
+    }
+    .map(|(_, l)| l);
+    let over = here.and_then(|i| storeys.get(i)).map(|(_, l)| l);
+    if let Some(l) = under {
+        flights(d, st, l, f64::INFINITY, false);
+    }
+    let cut = m.shown_range(level).cut;
+    if let Some(l) = over {
+        flights(d, st, l, cut, under.is_none());
+    }
+    match (over, under) {
+        (Some(l), None) => walk(d, m, &l.walk, true),
+        (None, Some(l)) => walk(d, m, &l.walk, false),
+        // Up to the break mark; and down from the far end to it, along the storey below.
+        (Some(l), Some(below)) => {
+            let (floor, top) = (l.walk.first().map_or(0.0, |w| w.1), l.walk.last().map_or(0.0, |w| w.1));
+            let share = if top > floor { ((cut - floor) / (top - floor)).clamp(0.0, 1.0) } else { 1.0 };
+            walk(d, m, &part(&l.walk, 0.0, share), true);
+            walk(d, m, &part(&below.walk, share, 1.0), false);
+        }
+        (None, None) => {}
+    }
+}
+
+/// The stretch of `line` between two shares of its length, `from` and `to`.
+fn part(line: &[(P2, f64)], from: f64, to: f64) -> Vec<(P2, f64)> {
+    let total: f64 = line.windows(2).map(|w| w.first().zip(w.get(1)).map_or(0.0, |(a, b)| a.0.dist(b.0))).sum();
+    let (from, to) = (from * total, to * total);
+    let mut out = Vec::new();
+    let mut d = 0.0;
+    for w in line.windows(2) {
+        let &[(a, za), (b, zb)] = w else { continue };
+        let len = a.dist(b);
+        let at = |x: f64| {
+            let f = if len > 0.0 { (x - d) / len } else { 0.0 };
+            (a + (b - a) * f, za + (zb - za) * f)
+        };
+        if d + len >= from && d <= to {
+            if out.is_empty() {
+                out.push(at(from.max(d)));
+            }
+            out.push(at(to.min(d + len)));
+        }
+        d += len;
+    }
+    out
+}
+
+/// The runs and landings of one storey of stair `st`: what is under the plane at height `cut` in full lines, with a
+/// break mark across the run the plane passes through; what is over it dashed, or left out where the storey below is
+/// drawn there.
+fn flights(d: &mut Drawing, st: &Stair, l: &stairs::Layout, cut: f64, dashed: bool) {
     let half = st.width / 2.0;
-    // The riser the cut plane passes through, counted from the first; from above, none.
-    let rise = m.shown_range(level).cut - floor;
-    let cut = if up && each > 0.0 { (rise / each).floor() } else { f64::INFINITY };
-    // Risers below the run drawn.
-    let mut below = 0.0;
+    // A line over the cut plane: dashed, or not drawn.
+    let above = |d: &mut Drawing, a: P2, b: P2| {
+        if dashed {
+            segment(d, a, b, true);
+        }
+    };
     for run in &l.runs {
         let at = |along: f64, across: f64| run.start + run.u * along + run.u.perp() * across;
+        let each = if run.risers > 0 { (run.z.1 - run.z.0) / f64::from(run.risers) } else { 0.0 };
         for k in 0..run.risers {
             let k = f64::from(k);
-            segment(d, at(k * st.tread, -half), at(k * st.tread, half), below + k > cut);
+            if run.z.0 + k * each > cut + 1e-6 {
+                above(d, at(k * st.tread, -half), at(k * st.tread, half));
+            } else {
+                segment(d, at(k * st.tread, -half), at(k * st.tread, half), false);
+            }
         }
-        let line = ((cut - below + 0.5) * st.tread).clamp(0.0, run.length);
+        // Where the plane passes: half a tread past the last riser under it.
+        let line = if each > 0.0 && cut.is_finite() {
+            ((((cut - run.z.0) / each).floor() + 0.5) * st.tread).clamp(0.0, run.length)
+        } else {
+            run.length
+        };
         for side in [-half, half] {
             if line > 0.0 {
                 segment(d, at(0.0, side), at(line, side), false);
             }
             if line < run.length {
-                segment(d, at(line, side), at(run.length, side), true);
+                above(d, at(line, side), at(run.length, side));
             }
         }
-        if cut >= below && line < run.length {
-            d.line(&[at(line - 0.4 * st.tread, -half), at(line + 0.4 * st.tread, half)], Pen::PROJECTION, INK, false);
+        // The break mark: across the run on the slant, with a jog in its middle.
+        if cut >= run.z.0 && line < run.length {
+            let (a, b) = (at(line - 0.4 * st.tread, -half), at(line + 0.4 * st.tread, half));
+            let (jog, mid) = (run.u * (0.22 * st.tread), |f: f64| a + (b - a) * f);
+            d.line(&[a, mid(0.44) + jog, mid(0.56) - jog, b], Pen::PROJECTION, INK, false);
         }
-        below += f64::from(run.risers);
     }
     for pad in &l.pads {
-        let over = up && pad.z - floor > rise;
         for (a, b) in geom::ring_edges(&pad.ring) {
-            segment(d, a, b, over);
+            if pad.z > cut + 1e-6 {
+                above(d, a, b);
+            } else {
+                segment(d, a, b, false);
+            }
         }
     }
-    walk(d, m, &l.walk, up);
 }
 
 /// A ramp in the plan of `level`: from its own level, its runs' and landings' outlines, dashed
@@ -5210,6 +5278,32 @@ mod tests {
         assert!(drawn(&d, 100010, &|p| matches!(p, Prim::Line { dash: Some(_), .. })), "above the cut plane, dashed");
         let up = plan(&s.model, 100001, 800, 600);
         assert!(up.owners.contains(&Some(100010)) && !up.owners.contains(&Some(100013)), "from above: the stair, not the ramp");
+    }
+
+    #[test]
+    fn the_plan_of_a_level_a_stair_passes_shows_it_going_up_and_coming_from_below() {
+        let mut s = house();
+        s.script(
+            r#"level {"name": "Level 3", "elevation": 6000}
+               stair {"start": [20000, 0], "angle": 90, "width": 1200, "top_level": "Level 3", "multistorey": true}"#,
+        )
+        .unwrap();
+        let id = *s.model.elements.iter().find(|(_, e)| matches!(e, Element::Stair(_))).unwrap().0;
+        let levels: Vec<Id> = s.model.levels().into_iter().map(|(id, _)| id).collect();
+        let of = |level: Id| {
+            let d = plan(&s.model, level, 800, 600);
+            let mine: Vec<Prim> = d.prims.iter().zip(&d.owners).filter(|(_, o)| **o == Some(id)).map(|(p, _)| p.clone()).collect();
+            let arrows = mine.iter().filter(|p| matches!(p, Prim::Fill { color, .. } if *color == INK)).count();
+            let dashed = mine.iter().any(|p| matches!(p, Prim::Line { dash: Some(_), .. }));
+            // The stair is in the picture: its far end, 4480 north of its foot.
+            let (x, y) = d.view.px(P2(20000.0, 4400.0));
+            (arrows, dashed, (0.0..800.0).contains(&x) && (0.0..600.0).contains(&y))
+        };
+        // Where it starts: up, the rest dashed over the cut. Where it passes: up to the break mark and down from past it,
+        // nothing dashed, the storey below seen there. Where it ends: down alone.
+        assert_eq!(of(levels[0]), (1, true, true));
+        assert_eq!(of(levels[1]), (2, false, true));
+        assert_eq!(of(levels[2]), (1, false, true));
     }
 
     #[test]

@@ -2509,7 +2509,7 @@ msgstr "剖切面"
 msgid "Cylinder"
 msgstr "圓柱體"
 
-#: crates/core/src/render.rs:3654
+#: crates/core/src/render.rs:3722
 msgid "DN"
 msgstr "下"
 
@@ -5302,7 +5302,7 @@ msgstr "NBR 17068：延伸 2 至 3 mm"
 msgid "NBR 6492: Target in plan (±0.00), equilateral triangle in section"
 msgstr "NBR 6492：平面採用圓環靶心 (±0.00)，剖面採用等邊三角形"
 
-#: crates/core/src/render.rs:2883
+#: crates/core/src/render.rs:2889
 msgid "NOT ENCLOSED"
 msgstr "未封閉"
 
@@ -6814,7 +6814,7 @@ msgstr "將一個視圖放到此圖紙上：尚未上圖紙的視圖"
 msgid "Quadrant"
 msgstr "象限點"
 
-#: crates/core/src/render.rs:2883
+#: crates/core/src/render.rs:2889
 msgid "REDUNDANT"
 msgstr "冗餘"
 
@@ -9244,7 +9244,7 @@ msgstr "類型："
 msgid "Types"
 msgstr "類型"
 
-#: crates/core/src/render.rs:3654
+#: crates/core/src/render.rs:3722
 msgid "UP"
 msgstr "上"
 
