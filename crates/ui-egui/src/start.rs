@@ -44,7 +44,7 @@ enum Thumb {
 #[derive(Default)]
 pub struct Home {
     pub shown: bool,
-    /// Whether it was brought up over a project, which Back (and Ctrl+D, as in Revit) goes back to.
+    /// Whether it was brought up over a project, which Back (and Ctrl+U) goes back to.
     pub over: bool,
     thumbs: HashMap<PathBuf, Thumb>,
     drawn: Option<Receiver<(PathBuf, Option<ColorImage>)>>,
@@ -107,7 +107,7 @@ fn back(ui: &mut Ui) -> Response {
     icons::paint(ui.painter(), Icon::Back, icon, pal().text);
     ui.painter().text(pos2(rect.left() + 34.0, rect.center().y), Align2::LEFT_CENTER, label, font, pal().text);
     let cmd = if cfg!(target_os = "macos") { "⌘" } else { "Ctrl+" };
-    r.on_hover_text(tf("Back to the project ({}D)", &[cmd]))
+    r.on_hover_text(tf("Back to the project ({}U)", &[cmd]))
 }
 
 /// How long ago `when` was, in words.
@@ -150,7 +150,7 @@ impl BimApp {
         self.home.shown = true;
     }
 
-    /// Home and Ctrl+D: the start page over the project, or, from it, back to the project (when there is one behind it).
+    /// Home and Ctrl+U: the start page over the project, or, from it, back to the project (when there is one behind it).
     pub(crate) fn toggle_home(&mut self) {
         if !self.home.shown {
             (self.home.shown, self.home.over) = (true, true);

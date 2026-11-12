@@ -26,6 +26,7 @@ pub(crate) struct FixtureTool {
 }
 
 /// The run category a two-letter shortcut picks (the command's alias), if it is one.
+#[cfg(test)]
 pub(crate) fn run_with(letters: &str) -> Option<&'static str> {
     bimcraft_core::engine::find(letters).and_then(|c| bimcraft_core::run_category_of(c.id))
 }
@@ -155,6 +156,7 @@ pub(crate) fn fixture(key: &str) -> Option<&'static FixtureTool> {
 }
 
 /// The fixture tool a two-letter shortcut picks.
+#[cfg(test)]
 pub(crate) fn fixture_with(letters: &str) -> Option<&'static FixtureTool> {
     FIXTURES.iter().find(|f| f.letters == letters)
 }

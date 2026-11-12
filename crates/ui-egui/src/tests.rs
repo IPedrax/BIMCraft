@@ -307,9 +307,12 @@ fn key(h: &mut Harness<BimApp>, k: Key) {
     h.run();
 }
 
-/// Letters typed over the view: a two-letter shortcut.
+/// Letters typed over the view: a two-letter shortcut, read from the physical keys as the window does.
 fn shortcut(h: &mut Harness<BimApp>, letters: &str) {
-    h.event(Event::Text(letters.into()));
+    for c in letters.chars() {
+        let key = Key::from_name(&c.to_ascii_uppercase().to_string()).expect("a letter");
+        h.event(Event::Key { key, physical_key: Some(key), pressed: true, repeat: false, modifiers: Modifiers::NONE });
+    }
     h.run();
 }
 
@@ -1003,7 +1006,20 @@ fn ks_lists_every_shortcut_and_every_one_it_lists_works() {
     }
     use crate::lang::Lang;
     // Names the catalogs don't have yet: KS shows them in English until a translator gives them, as any missing translation.
-    let awaiting = ["Graphic Display Options", "Pin", "Unpin"];
+    let awaiting = [
+        "Graphic Display Options",
+        "Pin",
+        "Unpin",
+        "Duct",
+        "Down Conductor",
+        "Earthing Conductor",
+        "Cabling",
+        "Filled Region",
+        "Detail Line",
+        "Join into Polyline",
+        "Explode Polyline",
+        "Wall Footing",
+    ];
     for (_, name) in crate::shortcuts().into_iter().filter(|(_, name)| !awaiting.contains(name)) {
         for l in [Lang::Portuguese, Lang::Spanish] {
             assert!(crate::lang::translated_in(l, name).is_some(), "{name} in {l:?}");
@@ -1019,8 +1035,9 @@ fn manage_tab_opens_keyboard_shortcuts_dialog() {
     press(&mut h, "Manage");
     press(&mut h, "Shortcuts");
     assert!(h.state().show_shortcuts);
-    assert!(h.query_by_label("Load File...").is_some());
-    assert!(h.query_by_label("Add Shortcut").is_some());
+    assert!(h.query_by_label("Import…").is_some());
+    assert!(h.query_by_label("Export…").is_some());
+    assert!(h.query_by_label("Help (Markdown)…").is_some());
     press(&mut h, "Close");
     assert!(!h.state().show_shortcuts);
 }

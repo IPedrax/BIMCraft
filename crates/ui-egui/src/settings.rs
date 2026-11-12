@@ -13,7 +13,6 @@ use crate::popup::Modal;
 
 use bimcraft_i18n::msg;
 
-use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use egui::{Align, Color32, ComboBox, Context, Id as UiId, Layout, RichText, ScrollArea, ThemePreference, Ui, vec2};
@@ -32,10 +31,12 @@ use std::collections::BTreeSet;
 
 /// The settings file's name, in the folder of the favorites.
 pub const FILE: &str = "settings.json";
-/// The most of it that's read: it's a few hundred bytes.
-const MAX_FILE: u64 = 64 * 1024;
+/// The most of it that's read: a full set of 4096 bindings still fits.
+const MAX_FILE: u64 = 1 << 20;
 /// The most shortcuts of the user's own that are read back: the file is the user's, but also a hand's or a damage's.
-pub const MAX_SHORTCUTS: usize = 256;
+pub const MAX_SHORTCUTS: usize = 4096;
+/// The most actions a settings file may name.
+pub const MAX_ACTIONS: usize = 512;
 
 /// The settings file beside the favorites file at `favorites`.
 pub fn beside(favorites: &Path) -> PathBuf {
@@ -121,8 +122,8 @@ pub struct Settings {
     /// The plans' origin marker, and the view's name in their corner: working aids on the screen.
     pub origin_marker: bool,
     pub view_name: bool,
-    /// The shortcuts the user made (Keyboard Shortcuts): two-character key to the English name of an action.
-    pub shortcuts: BTreeMap<String, String>,
+    /// The shortcuts: chords and sequences, many per action, saved as a full effective set.
+    pub shortcuts: crate::shortcuts::Config,
     /// The system's title bar rather than the window's own, where the window can draw its own.
     pub system_title_bar: bool,
     /// Agents: the window opens the control port (on `agents_port`, 0 for any free one), and they may edit or only read.
@@ -165,7 +166,7 @@ impl Settings {
             "grid_snapping": self.grid_snapping,
             "origin_marker": self.origin_marker,
             "view_name": self.view_name,
-            "shortcuts": self.shortcuts,
+            "shortcuts": self.shortcuts.to_json(),
             "system_title_bar": self.system_title_bar,
             "agents": {"listen": self.agents_listen, "port": self.agents_port, "edit": self.agents_edit},
             // The key, only when the user asked for it to be kept, and then only sealed.
@@ -227,19 +228,10 @@ impl Settings {
     }
 }
 
-/// The shortcuts a settings file holds: an object of key to action, of which only the entries that Keyboard Shortcuts could have made
-/// are kept (a key of two letters or digits, in upper case whatever its case in the file, and an action's English name), and no more
-/// than [`MAX_SHORTCUTS`]. A value that isn't an object leaves `base`'s; an empty object is none (Restore Defaults).
-fn shortcuts_from(v: &Value, base: BTreeMap<String, String>) -> BTreeMap<String, String> {
-    let Some(entries) = v.as_object() else { return base };
-    entries
-        .iter()
-        .filter_map(|(key, action)| {
-            let (key, action) = (key.to_ascii_uppercase(), action.as_str()?);
-            (crate::shortcuts::is_key(&key) && crate::shortcuts::ACTIONS.contains(&action)).then(|| (key, action.to_string()))
-        })
-        .take(MAX_SHORTCUTS)
-        .collect()
+/// The shortcuts a settings file holds: version 2 keeps its full set; an old object of key to
+/// action is migrated over the base profile.
+fn shortcuts_from(v: &Value, base: crate::shortcuts::Config) -> crate::shortcuts::Config {
+    if v.is_object() { crate::shortcuts::Config::from_json(v, &base) } else { base }
 }
 
 /// `[r, g, b]`, each 0 to 255: a colour; anything else, none.
@@ -315,7 +307,17 @@ impl BimApp {
     /// Keeps the settings in `path`: what it holds now, and from now on what changes.
     pub fn use_settings(&mut self, path: PathBuf) {
         let now = self.settings_now(ThemePreference::System);
-        let kept = read(&path).map_or(now.clone(), |v| Settings::from_json(&v, now));
+        let raw = read(&path);
+        // An old key-to-action object is migrated to version 2, and the file is written back.
+        let migrating = raw
+            .as_ref()
+            .and_then(|v| v.get("shortcuts"))
+            .and_then(Value::as_object)
+            .is_some_and(|o| o.get("version").and_then(Value::as_u64) != Some(2));
+        let kept = match raw {
+            Some(v) => Settings::from_json(&v, now),
+            None => now,
+        };
         (self.lang, self.ribbon_min, self.docking) = (kept.language, kept.ribbon_minimized, kept.docking.clone());
         (self.compact, self.profile, self.scale) = (kept.compact, kept.profile, kept.scale);
         (self.scheme, self.accent) = (kept.scheme, kept.accent);
@@ -333,7 +335,8 @@ impl BimApp {
         self.scan_contrast = kept.high_contrast;
         self.grid_snapping = kept.grid_snapping;
         (self.show_origin, self.show_view_name) = (kept.origin_marker, kept.view_name);
-        self.custom_shortcuts = kept.shortcuts.clone();
+        self.shortcuts = crate::shortcuts::Shortcuts::from_config(&kept.shortcuts);
+        crate::shortcuts::publish(&self.shortcuts);
         self.system_title_bar = kept.system_title_bar;
         (self.agents.listen, self.agents.port, self.agents.edit) = (kept.agents_listen, kept.agents_port, kept.agents_edit);
         let a = &mut self.assistant;
@@ -349,7 +352,7 @@ impl BimApp {
             },
             None => a.remember = false,
         }
-        self.settings_kept = Some(kept);
+        self.settings_kept = if migrating { None } else { Some(kept) };
         self.settings_path = Some(path);
     }
 
@@ -382,7 +385,7 @@ impl BimApp {
             grid_snapping: self.grid_snapping,
             origin_marker: self.show_origin,
             view_name: self.show_view_name,
-            shortcuts: self.custom_shortcuts.clone(),
+            shortcuts: self.shortcuts.to_config(),
             system_title_bar: self.system_title_bar,
             agents_listen: self.agents.listen,
             agents_port: self.agents.port,

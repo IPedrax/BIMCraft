@@ -18,8 +18,10 @@ const MOST: usize = 12;
 /// What a row of Find does.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum Found {
-    /// A tool or a command, by its name in `shortcuts::ACTIONS`.
-    Action(&'static str),
+    /// A tool or command, by its stable action id.
+    Action(crate::shortcuts::ActionId),
+    /// A family document's own command, by its English name.
+    FamilyAction(&'static str),
     View(Sheet),
     /// A 3D view: the default `{3D}` when none.
     View3D(Option<Id>),
@@ -56,15 +58,15 @@ pub(crate) fn button(ui: &mut egui::Ui) -> egui::Response {
 }
 
 impl BimApp {
-    /// What Find lists for `query`: the tools and commands, then the views, `MOST` at most; each with the shortcut it has.
-    pub(crate) fn find_matches(&self, query: &str) -> Vec<(String, Option<&'static str>, Found)> {
-        let keys = crate::shortcuts();
+    /// What Find lists for `query`: the tools and commands, then the views, `MOST` at most; each with the bindings it has.
+    pub(crate) fn find_matches(&self, query: &str) -> Vec<(String, Option<String>, Found)> {
         if self.active_family().is_some() {
-            return self.family_find_matches(query, &keys);
+            return self.family_find_matches(query);
         }
-        let actions = crate::shortcuts::ACTIONS.iter().map(|a| {
-            let key = keys.iter().find(|(_, does)| does == a).map(|(k, _)| *k);
-            (t(a).to_string(), key, Found::Action(a))
+        let actions = crate::shortcuts::registry().actions().iter().filter(|a| a.kind.bindable()).map(|a| {
+            let label = t(a.label).to_string();
+            let keys = self.shortcuts.hints(&a.id, 2).join(", ");
+            (label, if keys.is_empty() { None } else { Some(keys) }, Found::Action(a.id.clone()))
         });
         let views = self.openable().into_iter().map(|(label, f)| (label, None, f));
         // The plugins' functions, as their ribbon tabs and the Tools palette list them.
@@ -80,16 +82,35 @@ impl BimApp {
                 })
                 .collect::<Vec<_>>()
         });
-        actions.chain(plugin_commands).chain(views).filter(|(label, ..)| matches(label, query)).take(MOST).collect()
+        actions
+            .chain(plugin_commands)
+            .chain(views)
+            .filter(|(label, keys, found)| {
+                let all_bindings = match found {
+                    Found::Action(id) => {
+                        self.shortcuts.bindings(id).iter().map(|b| crate::shortcuts::display_binding(*b)).collect::<Vec<_>>().join(" ")
+                    }
+                    _ => String::new(),
+                };
+                matches(label, query)
+                    || matches(keys.as_deref().unwrap_or(""), query)
+                    || matches(&all_bindings, query)
+                    || matches(
+                        match found {
+                            Found::Action(id) => id,
+                            _ => "",
+                        },
+                        query,
+                    )
+            })
+            .take(MOST)
+            .collect()
     }
 
     /// What Find lists on a family tab: the family document's commands, then its views.
-    fn family_find_matches(&self, query: &str, keys: &[(&'static str, &'static str)]) -> Vec<(String, Option<&'static str>, Found)> {
+    fn family_find_matches(&self, query: &str) -> Vec<(String, Option<String>, Found)> {
         use bimcraft_core::family::views::{Side, Which};
-        let actions = self.family_find_actions().into_iter().map(|a| {
-            let key = keys.iter().find(|(_, does)| *does == a).map(|(k, _)| *k);
-            (t(a).to_string(), key, Found::Action(a))
-        });
+        let actions = self.family_find_actions().into_iter().map(|a| (t(a).to_string(), None, Found::FamilyAction(a)));
         let views = [None, Some(Which::Plan), Some(Which::Ceiling)]
             .into_iter()
             .chain(Side::ALL.iter().map(|s| Some(Which::Elevation(*s))))
@@ -133,7 +154,7 @@ impl BimApp {
                     let font = egui::FontId::proportional(13.0);
                     ui.painter().text(rect.left_center() + vec2(8.0, 0.0), Align2::LEFT_CENTER, label, font.clone(), pal().text);
                     if let Some(key) = key {
-                        ui.painter().text(rect.right_center() - vec2(8.0, 0.0), Align2::RIGHT_CENTER, key, font, pal().muted);
+                        ui.painter().text(rect.right_center() - vec2(8.0, 0.0), Align2::RIGHT_CENTER, key.as_str(), font, pal().muted);
                     }
                     if row.clicked() {
                         run = Some(f.clone());
@@ -153,10 +174,15 @@ impl BimApp {
         match run {
             // On a family tab, the family document's own (Find lists nothing else there).
             Some(Found::Action(a)) if self.active_family().is_some() => {
+                if let Some(def) = crate::shortcuts::registry().get(&a) {
+                    self.family_find_action(def.label);
+                }
+            }
+            Some(Found::FamilyAction(a)) => {
                 self.family_find_action(a);
             }
             Some(Found::Action(a)) => {
-                self.execute_shortcut_action(a);
+                self.execute_action(ctx, &a);
             }
             Some(Found::FamilyView(which)) => {
                 if let Some(ed) = self.active_family_mut() {
