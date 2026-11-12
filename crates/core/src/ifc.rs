@@ -71,10 +71,10 @@ const TYPE_MATERIALS: u64 = 57;
 const USAGE_MATERIALS: u64 = 58;
 const WALLED: u64 = 61;
 const WALLED_DEFINES: u64 = 62;
-const PLOT_PROPERTIES: u64 = 63;
-const PLOT_DEFINES: u64 = 64;
-const PLOT_NAMES: u64 = 65;
-const PLOT_NAMES_DEFINES: u64 = 66;
+const PLOT_PROPERTIES: u64 = 75;
+const PLOT_DEFINES: u64 = 76;
+const PLOT_NAMES: u64 = 77;
+const PLOT_NAMES_DEFINES: u64 = 78;
 
 /// Site footprint metadata in curve order: Names, Guids and Levels (native GUIDs).
 pub const PROPERTY_LINES: &str = "BIMCraft_PropertyLines";
