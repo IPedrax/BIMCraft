@@ -1103,12 +1103,26 @@ impl End {
     }
 }
 
-/// How far a point stands from a line `toward` it (a unit vector along x or y): see [`Model::clearances`].
+/// How far a point, `from`, stands from a line `toward` it (a unit vector): see [`Model::clearances`].
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Clearance {
+    pub from: P2,
     pub toward: P2,
     pub distance: f64,
     pub to: Reference,
+}
+
+/// The nearest of `lines` from `at` going `toward` (a unit vector), as far as each runs; a line `at` stands on is no
+/// distance away, so the next one counts.
+fn nearest(lines: &[(Reference, Line)], at: P2, toward: P2) -> Option<Clearance> {
+    lines
+        .iter()
+        .filter_map(|&(to, (a, b))| {
+            let hit = geom::line_intersection(at, at + toward, a, b)?;
+            let distance = (hit - at).dot(toward);
+            (distance > TOL && geom::dist_to_segment(hit, a, b) <= 1e-6).then_some(Clearance { from: at, toward, distance, to })
+        })
+        .min_by(|x, y| x.distance.total_cmp(&y.distance))
 }
 
 /// A dimension in a level's plan. Aligned: the distances between parallel references, along a
@@ -5934,8 +5948,36 @@ impl Model {
     /// of it (a straight wall the level's plan cuts, as far as it runs; a grid as far as it is drawn): the temporary
     /// dimensions of a column or a component. A line it stands on is no distance away, so the next one counts.
     pub fn clearances(&self, level: impl Key, at: P2) -> [Option<Clearance>; 4] {
+        let lines = self.plan_lines(level);
+        [P2(1.0, 0.0), P2(0.0, 1.0), P2(-1.0, 0.0), P2(0.0, -1.0)].map(|toward| nearest(&lines, at, toward))
+    }
+
+    /// How far straight wall `id`'s centre line stands from the nearest parallel wall centre line or grid to its left and to
+    /// its right (counter-clockwise from the way it runs, and clockwise), measured square to it from its middle, as
+    /// [`Model::clearances`] finds them on its level's plan: the temporary dimensions a selected wall moves by. None for a
+    /// curved wall, or a side with no such line across from its middle.
+    pub fn wall_clearances(&self, id: impl Key) -> [Option<Clearance>; 2] {
+        let Some(w) = self.wall(id).filter(|w| w.arc == 0.0) else { return [None, None] };
+        let (axis, (ext, int)) = (walls::Axis::of(w), walls::faces(self, w));
+        let length = axis.length();
+        if length <= TOL {
+            return [None, None];
+        }
+        let middle = axis.at(length / 2.0, (ext + int) / 2.0);
+        let u = (w.end - w.start) * (1.0 / w.start.dist(w.end));
+        let me = self.guid(id);
         let lines: Vec<(Reference, Line)> = self
-            .elements
+            .plan_lines(w.level)
+            .into_iter()
+            .filter(|(to, (a, b))| to.id != me && a.dist(*b) > TOL && u.cross((*b - *a) * (1.0 / a.dist(*b))).abs() < 1e-6)
+            .collect();
+        [P2(-u.1, u.0), P2(u.1, -u.0)].map(|toward| nearest(&lines, middle, toward))
+    }
+
+    /// The centre lines of the straight walls `level`'s plan cuts, and the grids, each as a reference to it: what temporary
+    /// dimensions measure to.
+    fn plan_lines(&self, level: impl Key) -> Vec<(Reference, Line)> {
+        self.elements
             .with_guids()
             .filter_map(|(_, id, e)| match e {
                 Element::Grid(g) => Some((Reference::line(id, Face::Centre), (g.start, g.end))),
@@ -5946,17 +5988,7 @@ impl Model {
                 }
                 _ => None,
             })
-            .collect();
-        [P2(1.0, 0.0), P2(0.0, 1.0), P2(-1.0, 0.0), P2(0.0, -1.0)].map(|toward| {
-            lines
-                .iter()
-                .filter_map(|&(to, (a, b))| {
-                    let hit = geom::line_intersection(at, at + toward, a, b)?;
-                    let distance = (hit - at).dot(toward);
-                    (distance > TOL && geom::dist_to_segment(hit, a, b) <= 1e-6).then_some(Clearance { toward, distance, to })
-                })
-                .min_by(|x, y| x.distance.total_cmp(&y.distance))
-        })
+            .collect()
     }
 
     /// The stretch of its wall's location line a door or window stands in, as distances along it: from the nearest face,

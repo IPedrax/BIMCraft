@@ -665,6 +665,9 @@ pub struct BimApp {
     tag_label: String,
     /// What the Text tool writes.
     note_text: String,
+    /// Notes written with a leader: the Text tool's first click is the point it reaches, kept here with its view.
+    pub(crate) note_leader: bool,
+    pub(crate) note_arrow: Option<(Id, P2)>,
     /// The note being written on the canvas.
     note_edit: Option<notes::NoteEdit>,
     /// Text Type Properties, while it's open.
@@ -1405,6 +1408,8 @@ impl BimApp {
             tag_leader: false,
             tag_label: String::new(),
             note_text: String::new(),
+            note_leader: false,
+            note_arrow: None,
             note_edit: None,
             text_type_dialog: None,
             dimension_type_dialog: None,
@@ -2649,6 +2654,7 @@ impl BimApp {
 
     fn set_tool(&mut self, mut tool: Tool) {
         self.adaptive_clicks.clear();
+        self.note_arrow = None;
         // Trim/Extend to Corner with two lines or walls selected (or picked, sketching) joins them at once, keeping the
         // parts toward their middles; with any other selection it asks for the picks.
         if tool == Tool::Trim(None) && self.corner_selected() {
@@ -2931,6 +2937,11 @@ impl BimApp {
     /// Escape: dismiss the error, drop the chain being drawn, else leave the tool, else clear the
     /// selection.
     fn escape(&mut self) {
+        // A note's leader point clicked goes first, the Text tool staying on.
+        if self.note_arrow.take().is_some() {
+            self.status = Status::default();
+            return;
+        }
         // A form selected in a family document goes first.
         if let Some(ed) = self.active_family_mut()
             && ed.let_form_go()
@@ -5096,6 +5107,9 @@ impl BimApp {
                     let l = ui.label(t("Text:"));
                     ui.add(TextEdit::singleline(&mut self.note_text).desired_width(240.0).hint_text(t("what the note says")))
                         .labelled_by(l.id);
+                    if ui.checkbox(&mut self.note_leader, t("Leader")).changed() {
+                        self.note_arrow = None;
+                    }
                 }
                 Tool::Attach => {
                     ui.label(t("Attach Wall:"));

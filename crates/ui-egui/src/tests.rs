@@ -1344,7 +1344,7 @@ fn typing_a_length_puts_the_next_point_that_far_toward_the_cursor() {
 fn a_selected_walls_temporary_dimension_sets_its_length() {
     let mut h = app(BOX);
     click(&mut h, P2(4000.0, 0.0));
-    h.get_by_label_contains("Temporary dimension").click();
+    h.get_by_label("Temporary dimension 8000").click();
     h.run();
     h.key_press_modifiers(Modifiers::COMMAND, Key::A);
     h.event(Event::Text("9000".into()));
@@ -1354,6 +1354,19 @@ fn a_selected_walls_temporary_dimension_sets_its_length() {
     assert_eq!(walls(&h)[0], (P2(-500.0, 0.0), P2(8500.0, 0.0)));
     assert_eq!(walls(&h)[1].0, P2(8500.0, 0.0), "the wall joined at that end followed");
     assert_eq!(walls(&h)[3].1, P2(-500.0, 0.0), "the wall joined at the other end followed too");
+}
+
+#[test]
+fn a_selected_walls_temporary_dimension_to_a_parallel_wall_moves_it() {
+    let mut h = app(&format!("{BOX}\nwall {{\"points\": [[0, 2500], [8000, 2500]], \"type\": \"Interior - 100mm\"}}"));
+    let mid = ids(&h, "wall")[4];
+    click(&mut h, P2(4000.0, 2500.0));
+    assert_eq!(h.state().selection, [mid]);
+    // Centre line to centre line, square to it (#281): 2500 to the south wall, 3500 to the north one.
+    assert!(h.query_by_label("Temporary dimension 3500").is_some());
+    retype_dimension(&mut h, "2500", "2800");
+    assert_eq!((field(&h, mid, "start"), field(&h, mid, "end")), (json!([0.0, 2800.0]), json!([8000.0, 2800.0])));
+    assert!(h.query_by_label("Temporary dimension 3200").is_some(), "the other side follows");
 }
 
 #[test]
@@ -2759,6 +2772,34 @@ fn text_notes_go_where_clicked_in_plans_sections_and_sheets() {
     let notes = ids(&h, "text");
     assert_eq!((field(&h, notes[1], "view"), field(&h, notes[1], "at")), (json!(section), json!([3000.0, 2500.0])));
     assert_eq!((field(&h, notes[2], "view"), field(&h, notes[2], "at")), (json!(sheet), json!([50.0, 50.0])));
+}
+
+/// Text with Leader ticked (#381): the first click is the point the leader reaches, the next where the note goes, in a plan
+/// and in a section; Esc between them forgets the first.
+#[test]
+fn the_text_tool_with_a_leader_takes_its_point_then_the_notes() {
+    let mut h = app_at(&format!("{BOX}\nsection {{\"start\": [-1000, 3000], \"end\": [9000, 3000]}}"), 0.05);
+    let section = ids(&h, "section")[0];
+    press(&mut h, "Annotate");
+    press(&mut h, "Text");
+    type_into(&mut h, "Text:", "Lintel");
+    press(&mut h, "Leader");
+    click(&mut h, P2(2000.0, 2000.0));
+    assert!(ids(&h, "text").is_empty(), "the first click is the leader's");
+    key(&mut h, Key::Escape);
+    assert_eq!(h.state().tool, Tool::Text, "Esc forgets the point, the tool stays");
+    click(&mut h, P2(3000.0, 2000.0));
+    click(&mut h, P2(4000.0, 2500.0));
+    let notes = ids(&h, "text");
+    assert_eq!((field(&h, notes[0], "at"), field(&h, notes[0], "leader")), (json!([4000.0, 2500.0]), json!([3000.0, 2000.0])));
+    browse(&mut h, "Section 1");
+    click(&mut h, P2(3000.0, 1000.0));
+    click(&mut h, P2(4000.0, 2500.0));
+    let notes = ids(&h, "text");
+    assert_eq!(
+        (field(&h, notes[1], "view"), field(&h, notes[1], "at"), field(&h, notes[1], "leader")),
+        (json!(section), json!([4000.0, 2500.0]), json!([3000.0, 1000.0]))
+    );
 }
 
 #[test]

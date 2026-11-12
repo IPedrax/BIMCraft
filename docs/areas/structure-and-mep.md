@@ -264,8 +264,10 @@ keeps its last intended position for conflict review. Outlet and niche placement
 ## Steel sections
 
 `profiles.rs` gives beam and structural-column types an optional `profile`. The public `type` command accepts a catalogue
-name (`profile: "IPE 300"`; IPE 80–600, HEA/HEB 100–600), or `shape` I/H, U, L, RHS/SHS, CHS and plate dimensions in mm.
-I/U use `width`, `depth`, `web`, `flange`, and optional root `radius`; L uses `width`, `depth`, `thickness`, optional root
+name (`profile: "IPE 300"`; IPE 80–600, HEA/HEB 100–600), or `shape` I/H, U, L, T, RHS/SHS, CHS and plate dimensions in mm.
+I/U/T use `width`, `depth`, `web`, `flange`, and optional root `radius` (a T's flange on top); `turned: true` turns any
+section half round in its plane, as IFC turns a profile by its own axes, so an inverted T (a foundation beam) is a T turned,
+and IFC import reads an `IfcTShapeProfileDef` whose axes point down as one; L uses `width`, `depth`, `thickness`, optional root
 `radius`; RHS uses `width`, `depth`, `thickness`; CHS uses `width` (diameter) and `thickness`. Plates must fit, or the
 command rolls back. Creating a `beam` or `structural_column` with a missing catalogue-named `type` adds it first; existing
 project types take precedence. A catalogue beam defaults to Metal. Editing dimensions/plates clears a catalogue designation
