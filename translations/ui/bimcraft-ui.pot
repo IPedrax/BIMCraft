@@ -13227,3 +13227,15 @@ msgstr ""
 #: crates/ui-egui/src/properties.rs:282
 msgid "Follow View Scale"
 msgstr ""
+
+#: crates/ui-egui/src/mep.rs:148
+msgid "Patch Panel (PB): a panel on the wall, where you click; Space turns it"
+msgstr ""
+
+#: crates/core/src/commands.rs:1193 crates/ui-egui/src/context.rs:74
+msgid "Pin"
+msgstr ""
+
+#: crates/core/src/commands.rs:1202 crates/ui-egui/src/context.rs:75
+msgid "Unpin"
+msgstr ""

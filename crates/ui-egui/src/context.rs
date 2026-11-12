@@ -44,6 +44,9 @@ pub(crate) enum Action {
     /// The selected walls' and runs' joins refused (Revit's Disallow Join), or taken up again.
     DisallowJoin,
     AllowJoin,
+    /// The selected elements pinned where they are, or unpinned.
+    Pin,
+    Unpin,
 }
 
 impl Action {
@@ -71,6 +74,8 @@ impl Action {
             Action::WorkPlane => msg!("Set Work Plane…"),
             Action::DisallowJoin => msg!("Disallow Join"),
             Action::AllowJoin => msg!("Allow Join"),
+            Action::Pin => msg!("Pin"),
+            Action::Unpin => msg!("Unpin"),
         }
     }
 
@@ -86,6 +91,8 @@ impl Action {
             Action::CreateGroup => Some("GP"),
             Action::Ungroup => Some("UG"),
             Action::Delete => Some("Del"),
+            Action::Pin => Some("PN"),
+            Action::Unpin => Some("UP"),
             _ => None,
         }
     }
@@ -159,6 +166,9 @@ impl BimApp {
                     Item::new(Action::Delete, true),
                 ]);
                 groups.push(edits);
+                // What is pinned stays where it is until it is unpinned.
+                let pinned: Vec<bool> = self.selection.iter().map(|id| m.is_pinned(*id)).collect();
+                groups.push(vec![Item::new(Action::Pin, pinned.iter().any(|p| !*p)), Item::new(Action::Unpin, pinned.iter().any(|p| *p))]);
                 // Detail lines, regions and notes group; a group comes apart.
                 let groupable = self.selection.iter().all(|id| m.elements.get(*id).is_some_and(bimcraft_core::groups::holds));
                 if groupable || self.group_selected() {
@@ -242,6 +252,17 @@ impl BimApp {
             }
             Action::DisallowJoin => self.set_joins(false),
             Action::AllowJoin => self.set_joins(true),
+            Action::Pin => self.set_pinned(true),
+            Action::Unpin => self.set_pinned(false),
+        }
+    }
+
+    /// Pin every selected element, or unpin them, as one command; those already as asked are left.
+    pub(crate) fn set_pinned(&mut self, pinned: bool) {
+        let ids: Vec<bimcraft_core::model::Id> =
+            self.selection.iter().copied().filter(|id| self.session.model.is_pinned(*id) != pinned).collect();
+        if !ids.is_empty() {
+            self.run(if pinned { "pin" } else { "unpin" }, serde_json::json!({"ids": ids}));
         }
     }
 

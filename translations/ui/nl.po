@@ -12989,6 +12989,18 @@ msgstr ""
 msgid "Follow View Scale"
 msgstr ""
 
+#: crates/ui-egui/src/mep.rs:148
+msgid "Patch Panel (PB): a panel on the wall, where you click; Space turns it"
+msgstr "Patchpaneel (PB): een paneel op de muur, waar je klikt; met de spatiebalk draai je het"
+
+#: crates/core/src/commands.rs:1193 crates/ui-egui/src/context.rs:74
+msgid "Pin"
+msgstr ""
+
+#: crates/core/src/commands.rs:1202 crates/ui-egui/src/context.rs:75
+msgid "Unpin"
+msgstr ""
+
 #: crates/ui-egui/src/fillpatterns.rs:634
 #~ msgid "A pattern of the file replaces the one of its name in this list; else it is left out"
 #~ msgstr "Een patroon uit het bestand vervangt het patroon met dezelfde naam in deze lijst; anders wordt het weggelaten"

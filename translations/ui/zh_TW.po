@@ -12988,6 +12988,18 @@ msgstr ""
 msgid "Follow View Scale"
 msgstr ""
 
+#: crates/ui-egui/src/mep.rs:148
+msgid "Patch Panel (PB): a panel on the wall, where you click; Space turns it"
+msgstr "配線架 (PB)：在單擊處放置牆上的配線架；按空格鍵旋轉"
+
+#: crates/core/src/commands.rs:1193 crates/ui-egui/src/context.rs:74
+msgid "Pin"
+msgstr ""
+
+#: crates/core/src/commands.rs:1202 crates/ui-egui/src/context.rs:75
+msgid "Unpin"
+msgstr ""
+
 #: crates/ui-egui/src/lib.rs:3433
 #~ msgid "Click a point the arc passes through: it sets the radius. Esc cancels."
 #~ msgstr "單擊圓弧經過的一點：由此確定半徑。按 Esc 取消。"

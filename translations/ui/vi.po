@@ -12990,6 +12990,18 @@ msgstr ""
 msgid "Follow View Scale"
 msgstr ""
 
+#: crates/ui-egui/src/mep.rs:148
+msgid "Patch Panel (PB): a panel on the wall, where you click; Space turns it"
+msgstr "Patch panel (PB): một tấm trên tường, tại chỗ bạn nhấp; Space để xoay"
+
+#: crates/core/src/commands.rs:1193 crates/ui-egui/src/context.rs:74
+msgid "Pin"
+msgstr ""
+
+#: crates/core/src/commands.rs:1202 crates/ui-egui/src/context.rs:75
+msgid "Unpin"
+msgstr ""
+
 #: crates/ui-egui/src/lib.rs:4503
 #~ msgid "Click to select. Drag to orbit (or Shift and the middle button), the middle button pans, the wheel zooms."
 #~ msgstr "Nhấp để chọn. Kéo để xoay quanh (hoặc Shift và nút giữa), nút giữa để kéo, con lăn để thu phóng."

@@ -83,16 +83,17 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// title box or folding marks); a viewport may keep a scale of its own as its view's changes (`follow_scale: false`,
 /// written only then); a wall or a run may refuse to join its neighbours (`join: false`, written only then); a dimension
 /// may measure to the line across a column, square to its angle (`across`); a door's type or family may open as a gate
-/// (`operation`: `sectional` or `roller`); and a project may hold property lines (the `propertyline` category, a row of
-/// `graphics::MODEL` that views' graphics and Object Styles may name). Nothing in a file of 17 changes, but a build that
-/// reads up to 17 would answer such a connector, dimension, operation or property line with a serde error ("unknown
-/// variant", "missing field `system`") and graphics or a style of `propertyline` as a category it doesn't have, would leave
-/// the title blocks and a viewport's `follow_scale` out as fields it doesn't know, drawing every sheet with the built-in
-/// title box, and would silently drop `join: false` and join the element again, not say "saved by a newer BIMCraft". 18
-/// also holds the Family Editor's families and what places them in a project, which a build that reads up to 17 would leave
-/// out as fields it doesn't know, drawing a family without them or failing to build it and losing them on saving, or refuse
-/// on opening ("unknown variant", "isn't a category views draw"), not say "saved by a newer BIMCraft"; a file of 17 is
-/// brought up to 18 by [`Model::migrate`]:
+/// (`operation`: `sectional` or `roller`); a project may hold property lines (the `propertyline` category, a row of
+/// `graphics::MODEL` that views' graphics and Object Styles may name); and it may pin elements where they are (`pinned`,
+/// their GUIDs). Nothing in a file of 17 changes, but a build that reads up to 17 would answer such a connector, dimension,
+/// operation or property line with a serde error ("unknown variant", "missing field `system`") and graphics or a style of
+/// `propertyline` as a category it doesn't have, would leave the title blocks and a viewport's `follow_scale` out as fields
+/// it doesn't know, drawing every sheet with the built-in title box, and would silently drop `join: false` and join the
+/// element again, and the pins, letting what was pinned move, not say "saved by a newer BIMCraft". 18 also holds the Family
+/// Editor's families and what places them in a project, which a build that reads up to 17 would leave out as fields it
+/// doesn't know, drawing a family without them or failing to build it and losing them on saving, or refuse on opening
+/// ("unknown variant", "isn't a category views draw"), not say "saved by a newer BIMCraft"; a file of 17 is brought up to
+/// 18 by [`Model::migrate`]:
 ///
 /// - Family parameters: text, whole numbers, areas, volumes, URLs and family types, grouped (`group`), shared (`shared`, a
 ///   GUID) or reporting (`reporting`); a family type parameter names its category (`of`).
@@ -3036,6 +3037,10 @@ pub struct Model {
     /// opens the rest, so it took no `FORMAT` step.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub georeference: Option<Georeference>,
+    /// The elements pinned where they are, by GUID: commands that place, draw or delete them refuse them until `unpin`. One of
+    /// FORMAT 18's: a build that reads up to 17 would leave it out of a file and let them move.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub pinned: BTreeSet<Guid>,
     pub elements: Elements,
     /// The ids and GUIDs of the library: its types, materials, pictures, families, parameters, view filters and
     /// templates, phases, phase filters and design options.
@@ -3130,6 +3135,7 @@ impl Model {
             detail_groups: BTreeMap::new(),
             title_blocks: BTreeMap::new(),
             title_values: BTreeMap::new(),
+            pinned: BTreeSet::new(),
             reinforcement: BTreeMap::new(),
             voltages: crate::electrical::voltages(),
             distribution_systems: crate::electrical::distribution_systems(),
@@ -3694,6 +3700,8 @@ impl Model {
                 }
             }
         }
+        // A pin of an element this build left out (a newer one's kind) is dropped, and the rest of the file opens.
+        m.pinned.retain(|g| m.elements.id(*g).is_some());
         Ok((m, left_out))
     }
 
@@ -3761,11 +3769,12 @@ impl Model {
         // 17 to 18 (pipe, data and earthing connectors, a connector's place; title blocks of the project's own, with a
         // drawing area and a border of their own, their fields' values, and sheets with none; viewports that keep a scale
         // of their own; walls and runs that refuse to join; a dimension to the line across a column; sectional and roller
-        // doors; property lines) has none either: a file of 17's connectors are a power or a switch one, each with its
-        // system, which 18 reads as they were; a file of 17 holds no title blocks, its sheets keeping the built-in one, no
-        // `follow_scale`, so its viewports follow their views' scales from then on, as one placed without a scale does, no
-        // `join`, which reads as joining, as it always did, none of its dimensions measures `across`, none of its
-        // operations is a gate's, and it holds no property line and names no `propertyline` in its graphics or styles.
+        // doors; property lines; pinned elements) has none either: a file of 17's connectors are a power or a switch one,
+        // each with its system, which 18 reads as they were; a file of 17 holds no title blocks, its sheets keeping the
+        // built-in one, no `follow_scale`, so its viewports follow their views' scales from then on, as one placed without
+        // a scale does, no `join`, which reads as joining, as it always did, none of its dimensions measures `across`, none
+        // of its operations is a gate's, it holds no property line and names no `propertyline` in its graphics or styles,
+        // and nothing in it is pinned.
         // The Family Editor's part of 18, and what places its families, takes
         // one step, in this order (it leaves the rest of 18 alone: title blocks, `join` and `across` aren't a family's, and a
         // connector's `at` is in the family's axes, which the datums are whatever plane `defines_origin`, and it has no `host`
@@ -3946,6 +3955,11 @@ impl Model {
     /// The GUID of the element `k` finds; the nil GUID, which is no element's, when there's none.
     pub fn guid(&self, k: impl Key) -> Guid {
         self.elements.guid(k).unwrap_or_default()
+    }
+
+    /// Whether element `k` is pinned where it is (`pin`), so a command that places, draws or deletes it refuses it.
+    pub fn is_pinned(&self, k: impl Key) -> bool {
+        self.pinned.contains(&self.guid(k))
     }
 
     pub fn level(&self, id: impl Key) -> Option<&Level> {
@@ -6483,6 +6497,9 @@ impl Model {
     /// Everything that must hold between commands: references resolve, geometry is finite and
     /// not degenerate, doors and windows fit their walls and don't overlap.
     pub fn check(&self) -> Result<(), String> {
+        if let Some(g) = self.pinned.iter().find(|g| self.elements.id(**g).is_none()) {
+            return Err(format!("`pinned` names an element that is gone ({g})"));
+        }
         if let Some(lw) = &self.line_weights {
             lw.check()?;
         }
@@ -7992,6 +8009,7 @@ impl Model {
             distribution_systems,
             wire_types,
             georeference,
+            pinned,
             elements: _,
             library,
             loaded,
@@ -8033,6 +8051,7 @@ impl Model {
             && *distribution_systems == o.distribution_systems
             && *wire_types == o.wire_types
             && *georeference == o.georeference
+            && *pinned == o.pinned
             && *library == o.library
             && loaded.len() == o.loaded.len()
             && loaded.iter().zip(&o.loaded).all(|((a, x), (b, y))| a == b && Arc::ptr_eq(x, y))

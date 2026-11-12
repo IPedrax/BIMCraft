@@ -168,6 +168,24 @@ fn reinforcing_again_replaces_its_bars_and_leaves_the_ones_drawn_by_hand() {
 }
 
 #[test]
+fn reinforcing_again_replaces_a_pinned_bar_and_its_pin_goes_with_it() {
+    let mut s = Session::new();
+    let host = beam(&mut s);
+    let spec = json!({"host": host, "cover": 25, "bottom": {"count": 3, "diameter": 16}, "stirrup": {"diameter": 5, "spacing": 150}});
+    let first = ids(&run(&mut s, "reinforce", spec.clone()));
+    run(&mut s, "pin", json!({"ids": [first[0]]}));
+    // The bars a rule made are the rule's: armed again, the pinned one is replaced as the rest, and no pin is left naming it.
+    let again = run(&mut s, "reinforce", spec);
+    assert_eq!(again["removed"].as_u64(), Some(44));
+    assert!(s.model.elements.get(first[0]).is_none(), "the pinned bar is replaced as the others");
+    assert!(s.model.pinned.is_empty(), "its pin goes with it");
+    s.model.check().unwrap();
+    // Undo puts it back, pinned.
+    run(&mut s, "undo", json!({}));
+    assert!(s.model.is_pinned(first[0]));
+}
+
+#[test]
 fn a_beam_that_cannot_hold_what_it_is_told_is_refused_and_says_what_to_change() {
     let mut s = Session::new();
     let host = beam(&mut s);

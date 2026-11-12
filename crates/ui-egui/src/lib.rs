@@ -2407,6 +2407,14 @@ impl BimApp {
                     self.delete();
                     return true;
                 }
+                Some("pin") => {
+                    self.set_pinned(true);
+                    return true;
+                }
+                Some("unpin") => {
+                    self.set_pinned(false);
+                    return true;
+                }
                 Some("fillet") => {
                     self.set_tool(Tool::DetailLine(Vec::new()));
                     self.set_shape(draw::Target::Detail, draw::Shape::Fillet);

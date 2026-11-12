@@ -1003,7 +1003,7 @@ fn ks_lists_every_shortcut_and_every_one_it_lists_works() {
     }
     use crate::lang::Lang;
     // Names the catalogs don't have yet: KS shows them in English until a translator gives them, as any missing translation.
-    let awaiting = ["Graphic Display Options"];
+    let awaiting = ["Graphic Display Options", "Pin", "Unpin"];
     for (_, name) in crate::shortcuts().into_iter().filter(|(_, name)| !awaiting.contains(name)) {
         for l in [Lang::Portuguese, Lang::Spanish] {
             assert!(crate::lang::translated_in(l, name).is_some(), "{name} in {l:?}");
@@ -2997,9 +2997,12 @@ fn nothing_a_translated_interface_shows_is_left_in_english() {
     use egui_kittest::kittest::{By, NodeT};
     // A label in English that the table translates is a string the window forgot to translate: a
     // widget's name, or a plain label's text, which egui gives screen readers as its value.
+    // A shortcut key (PR, UP) is not English prose: the Keyboard Shortcuts window shows it as it is in every language.
+    let keys: Vec<&str> = crate::shortcuts().into_iter().map(|(k, _)| k).collect();
     let english = |h: &Harness<BimApp>, l: Lang| -> Vec<String> {
         h.query_all(By::new())
             .filter_map(|n| n.accesskit_node().label().or_else(|| n.accesskit_node().value()))
+            .filter(|s| !keys.contains(&s.as_str()))
             .filter(|s| crate::lang::translated_in(l, s).is_some_and(|x| x != s))
             .collect()
     };
@@ -6675,7 +6678,8 @@ fn choose_item(h: &mut Harness<BimApp>, label: &str) {
     h.run();
 }
 
-const MENU: [&str; 8] = ["Cancel", "Zoom to Fit", "Zoom In", "Home View", "Edit Type", "Select All Instances", "Hide Element", "Delete"];
+const MENU: [&str; 10] =
+    ["Cancel", "Zoom to Fit", "Zoom In", "Home View", "Edit Type", "Select All Instances", "Hide Element", "Delete", "Pin", "Unpin"];
 
 #[test]
 fn a_right_click_in_a_plan_opens_a_menu_of_what_the_view_and_the_selection_can_do() {
@@ -6695,8 +6699,14 @@ fn a_right_click_in_a_plan_opens_a_menu_of_what_the_view_and_the_selection_can_d
     let at = h.state().screen(P2(4000.0, 3000.0));
     assert_eq!(
         offered(&mut h, at, &MENU),
-        ["Cancel", "Zoom to Fit", "Zoom In", "Edit Type", "Select All Instances", "Hide Element", "Delete"]
+        ["Cancel", "Zoom to Fit", "Zoom In", "Edit Type", "Select All Instances", "Hide Element", "Delete", "Pin", "Unpin"]
     );
+    // Pin keeps it where it is, and the menu offers to take the pin out again.
+    choose_item(&mut h, "Pin");
+    assert!(h.state().session.model.is_pinned(south));
+    offered(&mut h, at, &MENU);
+    choose_item(&mut h, "Unpin");
+    assert!(!h.state().session.model.is_pinned(south));
     choose_item(&mut h, "Edit Type");
     assert!(h.state().type_dialog.is_some(), "Type Properties is open");
     assert_eq!(h.state().selection, [south], "a right click leaves the selection as it was");
@@ -6783,7 +6793,7 @@ fn every_view_has_the_right_click_menu() {
     h.get_by_label("Hall").click();
     h.run();
     let at = h.get_by_label("Hall").rect().center();
-    assert_eq!(offered(&mut h, at, &MENU), ["Cancel", "Edit Type", "Select All Instances", "Delete"]);
+    assert_eq!(offered(&mut h, at, &MENU), ["Cancel", "Edit Type", "Select All Instances", "Delete", "Pin", "Unpin"]);
     choose_item(&mut h, "Delete");
     assert!(ids(&h, "room").is_empty());
 }

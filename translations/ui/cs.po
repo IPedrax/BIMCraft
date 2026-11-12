@@ -12988,6 +12988,18 @@ msgstr ""
 msgid "Follow View Scale"
 msgstr ""
 
+#: crates/ui-egui/src/mep.rs:148
+msgid "Patch Panel (PB): a panel on the wall, where you click; Space turns it"
+msgstr "Propojovací panel (PB): panel na stěně v místě kliknutí; mezerník jej otočí"
+
+#: crates/core/src/commands.rs:1193 crates/ui-egui/src/context.rs:74
+msgid "Pin"
+msgstr ""
+
+#: crates/core/src/commands.rs:1202 crates/ui-egui/src/context.rs:75
+msgid "Unpin"
+msgstr ""
+
 #: crates/ui-egui/src/lib.rs:3039
 #~ msgid "Aligned Dimension (DI): pick parallel wall faces, wall ends, doors, windows or grids, then click where the dimension line goes"
 #~ msgstr "Zarovnaná kóta (DI): vyberte rovnoběžné plochy stěn, konce stěn, dveře, okna nebo osnovy a potom klikněte do místa vynášecí čáry"

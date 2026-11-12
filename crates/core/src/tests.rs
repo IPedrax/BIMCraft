@@ -772,6 +772,89 @@ fn move_and_copy_refuse_levels_and_what_breaks_the_model() {
 }
 
 #[test]
+fn a_pinned_element_keeps_its_place_and_its_pin_until_unpinned() {
+    let mut s = Session::new();
+    let ids = house(&mut s);
+    let wall = ids[0];
+    let before = ends(&mut s, wall);
+    // Pin it: the reply names it and `elements` says so, in one undo step.
+    assert_eq!(run(&mut s, "PN", json!({"ids": [wall]}))["pinned"], json!([wall]));
+    assert_eq!(element(&mut s, wall)["pinned"], json!(true));
+    assert_eq!(s.history().last(), Some(&"Pin"));
+    let steps = s.history().len();
+    run(&mut s, "pin", json!({"ids": [wall]}));
+    assert_eq!(s.history().len(), steps, "pinning a pinned element changes nothing");
+    // A pinned door stops its wall moving, and the wall deleting.
+    let door = run(&mut s, "door", json!({"at": [2000, 0]}))["id"].as_u64().unwrap();
+    run(&mut s, "pin", json!({"ids": [door]}));
+    let e = s.execute("move", &json!({"ids": [wall], "by": [0, 100]})).unwrap_err();
+    assert!(e.contains("door") && e.contains("pinned"), "a pinned door is carried by its wall: {e}");
+    let e = s.execute("delete", &json!({"ids": [wall]})).unwrap_err();
+    assert!(e.contains("door") && e.contains("unpin"), "and goes with it: {e}");
+    // A temporary dimension (and a level or shape grip) goes through `modify`: it refuses a placing field too.
+    let e = s.execute("modify", &json!({"id": door, "offset": 2500})).unwrap_err();
+    assert!(e.contains("pinned") && e.contains("offset"), "{e}");
+    run(&mut s, "unpin", json!({"ids": [door]}));
+    // Moving, turning, mirroring and deleting it are refused, and the model stays as it was.
+    for (cmd, p) in [
+        ("move", json!({"ids": [wall], "by": [0, 100]})),
+        ("rotate", json!({"ids": [wall], "about": [0, 0], "angle": 5})),
+        ("mirror", json!({"ids": [wall], "axis": [[0, 0], [0, 1000]]})),
+        ("delete", json!({"ids": [wall]})),
+    ] {
+        let e = s.execute(cmd, &p).unwrap_err();
+        assert!(e.contains("pinned") && e.contains("unpin"), "{cmd}: {e}");
+    }
+    assert_eq!(ends(&mut s, wall), before);
+    // A copy is a new element and comes unpinned.
+    let made = run(&mut s, "copy", json!({"ids": [wall], "by": [0, -2000]}))["ids"].clone();
+    let twin = made[0].as_u64().unwrap();
+    assert_ne!(twin, wall);
+    assert_eq!(element(&mut s, twin).get("pinned"), None);
+    assert_eq!(element(&mut s, wall)["pinned"], json!(true), "the original keeps its pin");
+    // The pin is in the file: a project opened again still holds it.
+    let guid = s.model.guid(wall);
+    let saved = serde_json::to_value(&*s.model).unwrap();
+    let reopened: Model = serde_json::from_value(saved).unwrap();
+    assert!(reopened.is_pinned(guid), "the pin survives the file");
+    // Unpin it: it moves again.
+    assert_eq!(run(&mut s, "UP", json!({"ids": [wall]}))["unpinned"], json!([wall]));
+    assert_eq!(element(&mut s, wall).get("pinned"), None);
+    run(&mut s, "move", json!({"ids": [wall], "by": [0, 100]}));
+    assert_ne!(ends(&mut s, wall), before);
+    // Undo the move, then the unpin: the pin is back.
+    run(&mut s, "undo", json!({}));
+    run(&mut s, "undo", json!({}));
+    assert_eq!(element(&mut s, wall)["pinned"], json!(true));
+}
+
+#[test]
+fn a_pinned_wall_keeps_its_neighbours_from_dragging_it_and_a_missing_pin_is_refused() {
+    let mut s = Session::new();
+    let ids = house(&mut s);
+    let before = ends(&mut s, ids[1]);
+    run(&mut s, "pin", json!({"ids": [ids[1]]}));
+    let e = s.execute("move", &json!({"ids": [ids[0]], "by": [0, 100]})).unwrap_err();
+    assert!(e.contains("pinned") && e.contains("wall"), "moving the south wall would drag its east neighbour: {e}");
+    assert_eq!(ends(&mut s, ids[1]), before);
+    // A pin that names an element the project no longer has is refused, not kept in the file.
+    let mut m = Model::new("P");
+    m.pinned.insert(Default::default());
+    assert!(m.check().unwrap_err().contains("pinned"));
+}
+
+#[test]
+fn a_pinned_element_a_file_leaves_out_does_not_stop_the_open() {
+    let mut s = Session::new();
+    let ids = house(&mut s);
+    run(&mut s, "pin", json!({"ids": [ids[0]]}));
+    let mut v = serde_json::to_value(&*s.model).unwrap();
+    v["elements"].as_object_mut().unwrap().remove(&ids[0].to_string());
+    let (m, _) = Model::read(&v.to_string()).unwrap();
+    assert!(m.pinned.is_empty(), "the pin of an element the file leaves out is dropped, and the rest opens");
+}
+
+#[test]
 fn deleting_a_wall_takes_its_openings_and_used_levels_stay() {
     let mut s = Session::new();
     let ids = house(&mut s);
