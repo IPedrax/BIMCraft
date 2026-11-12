@@ -62,8 +62,8 @@ impl Guest {
         s.set_read_timeout(Some(timing.handshake))?;
         s.set_write_timeout(Some(timing.handshake))?;
         let (initiator, msg1) = noise::initiate(&code.psk(), PROLOGUE, b"", &ring::rand::SystemRandom::new()).map_err(io::Error::other)?;
-        wire::write_raw(s, &msg1)?;
-        let Ok(msg2) = wire::read_raw(s) else {
+        // The host hangs up on a wrong code, a kicked guest or a locked-out address before or after the first message is out.
+        let Ok(msg2) = wire::write_raw(s, &msg1).and_then(|()| wire::read_raw(s)) else {
             return Err(io::Error::other(
                 "the host closed the connection during the handshake: check the code (after five wrong ones, wait a moment)",
             ));

@@ -1632,6 +1632,8 @@ impl BimApp {
         if let Some(b) = reboxed.or(boxed) {
             crate::section_box::draw(&p, &cam, b, modify, (o.boxing.map(|(k, _)| k), o.hot_grip), screen);
         }
+        // The others in a Co-Work session: what they selected, and where they look from.
+        crate::cowork::paint_3d(&p, &self.cowork, &mut self.cowork_seen, &model, scene, &|q: P3| on_screen(&cam, rect, ppp, q));
         // The drawing tools take their points on the face under the cursor (`workplane`), snapped as its level's plan snaps:
         // a wall chain under way on the plane its first point found, a run's end on the face it is clicked on (where there is
         // none, the plane of its start). The point is shown as a plan shows a snap, and the wall or run from the point before.

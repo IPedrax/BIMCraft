@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use serde_json::{Value, json};
 
-use crate::cowork::{Delta, Place, Put, apply, batch_for_guest, delta, place, run_for_guest, whole};
+use crate::cowork::{Delta, Look, On, Place, Presence, Put, apply, batch_for_guest, delta, place, run_for_guest, whole};
 use crate::engine::Session;
 use crate::model::{Id, Model};
 
@@ -361,4 +361,71 @@ fn a_guests_window_runs_what_reads_itself_and_sends_what_edits() {
             other => panic!("{command}: {other:?}"),
         }
     }
+}
+
+#[test]
+fn a_presence_goes_as_json_and_one_that_cant_be_drawn_is_refused() {
+    let s = house();
+    let wall = s.model.elements.iter().find(|(_, e)| e.category() == "wall").map(|(id, _)| *id).unwrap();
+    let camera = crate::view3d::Camera {
+        azimuth: 225.0,
+        elevation: 30.0,
+        scale: 0.05,
+        target: [4000.0, 3000.0, 1500.0],
+        width: 800,
+        height: 600,
+        lens: Some(35.0),
+    };
+    let p = Presence {
+        view: Some(On { kind: "plan".into(), of: s.model.elements.guid(wall) }),
+        cursor: Some(crate::geom::P2(1000.0, 2000.0)),
+        zoom: Some((4000.0, 3000.0, 0.1)),
+        camera: Some(Look::of(&camera)),
+        selection: vec![s.model.elements.guid(wall).unwrap()],
+    };
+    let back: Presence = serde_json::from_value(serde_json::to_value(&p).unwrap()).unwrap();
+    assert_eq!(back, p);
+    assert_eq!(back.check(), Ok(()));
+    assert_eq!(back.camera.unwrap().camera(), camera, "the camera, whole");
+    // Where it looks from: the eye in perspective, and in a parallel view somewhere back along its line, never the target.
+    assert_eq!(Look::of(&camera).eye(), camera.eye().unwrap());
+    let parallel = Look::of(&crate::view3d::Camera { lens: None, ..camera });
+    let eye = parallel.eye();
+    assert!(eye.iter().all(|c| c.is_finite()) && eye != camera.target);
+    assert_eq!(Presence::default().check(), Ok(()), "nothing to show is a presence too");
+    let mut bad = Vec::new();
+    for change in [
+        |p: &mut Presence| p.cursor = Some(crate::geom::P2(f64::NAN, 0.0)),
+        |p: &mut Presence| p.cursor = Some(crate::geom::P2(1e12, 0.0)),
+        |p: &mut Presence| p.zoom = Some((0.0, 0.0, 0.0)),
+        |p: &mut Presence| p.zoom = Some((0.0, 0.0, f64::INFINITY)),
+        |p: &mut Presence| p.camera.as_mut().unwrap().scale = -1.0,
+        |p: &mut Presence| p.camera.as_mut().unwrap().target[2] = f64::NAN,
+        |p: &mut Presence| p.camera.as_mut().unwrap().lens = Some(1e9),
+        |p: &mut Presence| p.camera.as_mut().unwrap().width = 0,
+        |p: &mut Presence| p.camera.as_mut().unwrap().elevation = 500.0,
+        |p: &mut Presence| p.view.as_mut().unwrap().kind = "a very long kind of view".into(),
+        |p: &mut Presence| p.selection = vec![crate::ids::Guid::default()],
+        |p: &mut Presence| p.selection = vec![crate::ids::Guid::new(); crate::cowork::MAX_SELECTION + 1],
+    ] {
+        let mut q = p.clone();
+        change(&mut q);
+        bad.push(q.check().err());
+    }
+    assert!(bad.iter().all(Option::is_some), "{bad:?}");
+    for text in [r#"{"cursor": [0, 0], "extra": 1}"#, r#"{"camera": {"azimuth": 0}}"#, r#"{"selection": "all"}"#] {
+        assert!(serde_json::from_str::<Presence>(text).is_err(), "{text}");
+    }
+}
+
+#[test]
+fn a_scene_boxes_the_elements_asked_for_by_their_triangles() {
+    let mut s = Session::new();
+    let w = wall(&mut s, 0);
+    let scene = crate::view3d::Scene::new(&s.model);
+    let boxes = scene.boxes(&[w, 999_999].into_iter().collect());
+    assert_eq!(boxes.keys().copied().collect::<Vec<_>>(), [w], "an element the scene doesn't draw has no box");
+    let (lo, hi) = boxes[&w];
+    assert!(lo[0] <= 0.0 && hi[0] >= 6000.0 && lo[2] <= 0.0 && hi[2] > 2000.0, "the wall, end to end and floor to top: {lo:?} {hi:?}");
+    assert!(scene.boxes(&Default::default()).is_empty());
 }

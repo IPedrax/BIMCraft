@@ -294,5 +294,156 @@ fn co_work_screenshots() {
         let mut h = bimcraft(BOX);
         h.state_mut().settings_page = Some(crate::settings::Page::Cowork);
         save(&mut h, "settings");
+        // Bo in the session: his pointer and his selection on the plan, his badge on the bar.
+        let mut h = host_window();
+        h.state_mut().cowork_dialog = None;
+        let key = level(&h, "Level 1");
+        let wall = ids(&h, "wall")[0];
+        let (plan, guid) = (h.state().session.model.elements.guid(key), h.state().session.model.elements.guid(wall).unwrap());
+        let (_, tx, thread) = bo_at(&mut h, move |_| bimcraft_core::cowork::Presence {
+            view: Some(bimcraft_core::cowork::On { kind: "plan".into(), of: plan }),
+            cursor: Some(P2(4000.0, 3000.0)),
+            selection: vec![guid],
+            ..Default::default()
+        });
+        save(&mut h, "presence");
+        drop(tx);
+        thread.join().unwrap();
     }
+}
+
+/// Bo, with no window, in `h`'s session: joins, says where he is (`p`, made from his copy of the project), and stays until the
+/// sender is dropped. His number in the session comes back.
+fn bo_at(
+    h: &mut Harness<'static, BimApp>,
+    p: impl FnOnce(&Model) -> bimcraft_core::cowork::Presence + Send + 'static,
+) -> (u32, std::sync::mpsc::Sender<Option<Value>>, std::thread::JoinHandle<()>) {
+    let (addr, code) = hosted(h);
+    let (tx, rx) = channel::<Option<Value>>();
+    let bo = std::thread::spawn(move || {
+        let (mut bo, model) = Joined::join(addr, &code, "Bo", Arc::new(|| {})).unwrap();
+        let mut copy = bimcraft_core::engine::Session::new();
+        let p = p(&model);
+        copy.adopt(model);
+        bo.present(p);
+        loop {
+            match rx.recv_timeout(Duration::from_millis(5)) {
+                // A wall to draw, as Bo.
+                Ok(Some(params)) => drop(bo.exec(&mut copy, "wall", &params)),
+                Ok(None) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return,
+                Err(_) => drop(bo.pump(&mut copy)),
+            }
+        }
+    });
+    frames_until(h, |h| crate::cowork::others_of(&h.state().cowork).is_some_and(|o| o.values().any(|o| o.presence != Default::default())));
+    let id = *crate::cowork::others_of(&h.state().cowork).unwrap().keys().next().unwrap();
+    (id, tx, bo)
+}
+
+fn level(h: &Harness<BimApp>, name: &str) -> Id {
+    h.state().session.model.levels().into_iter().find(|(_, l)| l.name == name).map(|(id, _)| id).unwrap()
+}
+
+#[test]
+fn the_others_show_on_the_plan_they_are_on_in_their_colours_and_in_properties() {
+    let mut h = host_window();
+    h.state_mut().cowork_dialog = None;
+    let key = level(&h, "Level 1");
+    let wall = ids(&h, "wall")[0];
+    let (plan, wall_guid) = (h.state().session.model.elements.guid(key), h.state().session.model.elements.guid(wall).unwrap());
+    let (bo, tx, thread) = bo_at(&mut h, move |_| bimcraft_core::cowork::Presence {
+        view: Some(bimcraft_core::cowork::On { kind: "plan".into(), of: plan }),
+        cursor: Some(P2(2000.0, 3000.0)),
+        selection: vec![wall_guid],
+        ..Default::default()
+    });
+    let marks = |h: &Harness<BimApp>, kind: &str| {
+        let s = h.state();
+        let here = bimcraft_core::cowork::On { kind: kind.into(), of: plan };
+        crate::cowork::marks(crate::cowork::others_of(&s.cowork).unwrap(), &s.session.model, &here, &s.cowork_seen)
+    };
+    let on_plan = marks(&h, "plan");
+    assert_eq!(on_plan.pointers, vec![("Bo".to_string(), 1, P2(2000.0, 3000.0))], "his pointer, in his colour");
+    assert_eq!(on_plan.lit.get(&wall), Some(&1), "his selection, in his colour");
+    assert!(marks(&h, "ceiling").pointers.is_empty(), "his pointer is on another view");
+    // Selected here too: Properties says he has it.
+    h.state_mut().selection = vec![wall];
+    h.run();
+    assert!(h.query_by_label("Bo has this selected").is_some());
+    // What he draws lights in his colour for a moment, selected or not.
+    let before = ids(&h, "wall");
+    tx.send(Some(json!({"points": [[0, 9000], [5000, 9000]]}))).unwrap();
+    frames_until(&mut h, |h| ids(h, "wall").len() > before.len());
+    let made = *ids(&h, "wall").iter().find(|id| !before.contains(id)).unwrap();
+    frames_until(&mut h, |h| marks(h, "plan").lit.get(&made) == Some(&1));
+    // The window's own badge for him on the view control bar.
+    assert!(h.query_by_label("Bo").is_some());
+    let _ = bo;
+    drop(tx);
+    thread.join().unwrap();
+}
+
+#[test]
+fn following_someone_shows_their_view_until_you_move_it_yourself() {
+    let mut h = host_window();
+    h.state_mut().cowork_dialog = None;
+    let up = level(&h, "Level 2");
+    let plan = h.state().session.model.elements.guid(up);
+    let (bo, tx, thread) = bo_at(&mut h, move |_| bimcraft_core::cowork::Presence {
+        view: Some(bimcraft_core::cowork::On { kind: "plan".into(), of: plan }),
+        zoom: Some((1000.0, 500.0, 0.2)),
+        ..Default::default()
+    });
+    // As the other tests click the view control bar, which floats over the view.
+    h.get_by_label("Bo").click_accesskit();
+    h.run();
+    assert_eq!(h.state().cowork_seen.following, Some(bo));
+    frames_until(&mut h, |h| h.state().sheet == Sheet::Plan(up));
+    let v = h.state().canvas.view(up).unwrap();
+    assert_eq!((v.cx, v.cy, v.scale), (1000.0, 500.0, 0.2), "his zoom");
+    // Moving the view stops it.
+    h.state_mut().canvas.set_view(up, 0.0, 0.0, 0.1);
+    frames_until(&mut h, |h| h.state().cowork_seen.following.is_none());
+    assert!(h.state().status.text.contains("stopped following Bo"), "{:?}", h.state().status);
+    drop(tx);
+    thread.join().unwrap();
+}
+
+#[test]
+fn a_window_says_where_it_is_and_a_3d_view_boxes_what_the_others_selected() {
+    let mut h = host_window();
+    h.state_mut().cowork_dialog = None;
+    let wall = ids(&h, "wall")[0];
+    let guid = h.state().session.model.elements.guid(wall).unwrap();
+    let camera = bimcraft_core::view3d::Camera {
+        azimuth: 225.0,
+        elevation: 30.0,
+        scale: 0.05,
+        target: [4000.0, 3000.0, 1500.0],
+        width: 800,
+        height: 600,
+        lens: Some(35.0),
+    };
+    let (_, tx, thread) = bo_at(&mut h, move |_| bimcraft_core::cowork::Presence {
+        view: Some(bimcraft_core::cowork::On { kind: "3d".into(), of: None }),
+        camera: Some(bimcraft_core::cowork::Look::of(&camera)),
+        selection: vec![guid],
+        ..Default::default()
+    });
+    // The host's own presence: its plan and its selection.
+    h.state_mut().selection = vec![wall];
+    h.run();
+    let mine = h.state().my_presence();
+    assert_eq!(mine.view.as_ref().map(|v| v.kind.as_str()), Some("plan"));
+    assert_eq!(mine.selection, vec![guid]);
+    assert!(mine.zoom.is_some() && mine.camera.is_none());
+    // In 3D, Bo's selection is boxed in his colour.
+    shortcut(&mut h, "3D");
+    frames_until(&mut h, |h| h.state().cowork_seen.boxes.is_some());
+    let (_, _, boxes) = h.state().cowork_seen.boxes.clone().unwrap();
+    assert_eq!(boxes.len(), 1, "his one wall");
+    assert_eq!(boxes[0].0, 1, "in his colour");
+    assert!(h.state().my_presence().camera.is_some(), "the camera goes with a 3D view");
+    drop(tx);
+    thread.join().unwrap();
 }

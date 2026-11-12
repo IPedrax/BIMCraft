@@ -2,8 +2,8 @@
 //! guest's on the test's, joined over this machine's address.
 
 use std::net::{Ipv4Addr, SocketAddr};
-use std::sync::Arc;
 use std::sync::mpsc::{Sender, channel};
+use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
@@ -19,6 +19,8 @@ type Job = Box<dyn FnOnce(&mut Session, &mut Option<Hosting>) + Send>;
 
 struct Host {
     jobs: Sender<Job>,
+    /// What the host's passes reported.
+    said: Arc<Mutex<Vec<Happened>>>,
     thread: Option<JoinHandle<Session>>,
     port: u16,
     code: crate::Code,
@@ -29,6 +31,8 @@ impl Host {
     fn start() -> Host {
         let (jobs, rx) = channel::<Job>();
         let (ready, info) = channel();
+        let said = Arc::new(Mutex::new(Vec::new()));
+        let log = Arc::clone(&said);
         let thread = std::thread::spawn(move || {
             let mut session = Session::new();
             session.script(bimcraft_core::sample::SAMPLE).unwrap();
@@ -51,16 +55,14 @@ impl Host {
                     Err(_) => break,
                 }
                 match hosting.as_mut() {
-                    Some(h) => {
-                        h.pump(&mut session);
-                    }
+                    Some(h) => log.lock().unwrap().extend(h.pump(&mut session)),
                     None => break,
                 }
             }
             session
         });
         let (port, code) = info.recv().unwrap();
-        Host { jobs, thread: Some(thread), port, code }
+        Host { jobs, said, thread: Some(thread), port, code }
     }
 
     fn at(&self) -> SocketAddr {
@@ -160,7 +162,12 @@ fn a_guest_edits_the_hosts_model_and_both_keep_the_same_one() {
     let mut session = host.end("Ana ended the session");
     assert_eq!(session.author, None, "the host's steps are nobody's again");
     assert!(session.execute("undo", &json!({})).is_ok(), "and its undo is the plain one");
-    assert_eq!(bo.pump(&mut copy), vec![Happened::Over("Ana ended the session".into())]);
+    // The ending is on its way: it comes when the guest's reader has it.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !bo.pump(&mut copy).contains(&Happened::Over("Ana ended the session".into())) {
+        assert!(Instant::now() < deadline, "the ending never came");
+        std::thread::sleep(Duration::from_millis(5));
+    }
     assert!(bo.exec(&mut copy, "wall", &wall(60000)).unwrap_err().contains("ended"));
 }
 
@@ -221,4 +228,77 @@ fn another_project_in_the_hosts_session_never_reaches_the_guests() {
     bo.pump(&mut copy);
     assert_eq!(json_of(&copy.model), joined, "the guest keeps the project it joined");
     assert_ne!(host.on(|_, h| h.as_ref().unwrap().project()), host.model().uid);
+}
+
+/// Pumps `who` until `ok` holds of it.
+fn pump_until(who: &mut Joined, s: &mut Session, ok: impl Fn(&Joined) -> bool) -> Vec<Happened> {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let mut said = Vec::new();
+    while !ok(who) {
+        assert!(Instant::now() < deadline, "never got there: {:?}", who.others());
+        said.extend(who.pump(s));
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    said
+}
+
+#[test]
+fn everyone_sees_where_the_others_are_and_who_changed_what_in_their_colours() {
+    use bimcraft_core::cowork::Presence;
+    use bimcraft_core::geom::P2;
+    let host = Host::start();
+    let (mut bo, mut sb) = join(&host, "Bo");
+    let (mut cy, mut sc) = join(&host, "Cy");
+    let ids = host.on(|_, h| h.as_ref().unwrap().people().into_iter().map(|(id, _)| id).collect::<Vec<_>>());
+    let (bo_id, cy_id) = (ids[0], ids[1]);
+    let w = sb.model.elements.iter().find(|(_, e)| matches!(e, Element::Wall(_))).map(|(id, _)| *id).unwrap();
+    let p = Presence { cursor: Some(P2(1000.0, 2000.0)), selection: vec![sb.model.elements.guid(w).unwrap()], ..Default::default() };
+    bo.present(p.clone());
+    // Cy has it from the host, under Bo's name and colour; so has the host.
+    pump_until(&mut cy, &mut sc, |c| c.others().get(&bo_id).is_some_and(|o| o.presence == p));
+    let o = &cy.others()[&bo_id];
+    assert_eq!((o.name.as_str(), o.colour), ("Bo", 1));
+    assert_eq!((cy.others()[&0].name.as_str(), cy.others()[&0].colour), ("Ana", 0), "the host is 0, in colour 0");
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while host.on(move |_, h| h.as_ref().unwrap().others()[&bo_id].presence.clone()) != p {
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    // The host's own, to both.
+    let q = Presence { cursor: Some(P2(-500.0, 0.0)), ..Default::default() };
+    let sent = q.clone();
+    host.on(move |_, h| h.as_mut().unwrap().present(sent));
+    pump_until(&mut bo, &mut sb, |b| b.others()[&0].presence == q);
+    // What can't be drawn isn't kept: the host keeps Bo where he was.
+    bo.present(Presence { cursor: Some(P2(f64::NAN, 0.0)), ..Default::default() });
+    std::thread::sleep(Duration::from_millis(200));
+    assert_eq!(host.on(move |_, h| h.as_ref().unwrap().others()[&bo_id].presence.clone()), p);
+    // Someone who comes in late sees everyone at once.
+    let (mut di, mut sd) = join(&host, "Di");
+    pump_until(&mut di, &mut sd, |d| d.others().get(&bo_id).is_some_and(|o| o.presence == p) && d.others()[&0].presence == q);
+    assert_eq!(di.others()[&cy_id].name, "Cy");
+    // Bo's wall lights in Bo's colour for the others, and not for Bo.
+    let made = bo.exec(&mut sb, "wall", &wall(40000)).unwrap();
+    let made = made["id"].as_u64().or_else(|| made["ids"][0].as_u64()).unwrap();
+    let edited = Happened::Edited(bo_id, vec![made]);
+    assert!(!bo.pump(&mut sb).contains(&edited), "his own edit doesn't light for him");
+    let mut said = pump_until(&mut cy, &mut sc, |c| c.others().len() == 3);
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !said.contains(&edited) {
+        assert!(Instant::now() < deadline, "{said:?}");
+        said.extend(cy.pump(&mut sc));
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(host.said.lock().unwrap().contains(&edited), "nor for the host's window");
+    // The host's own edit lights for the guests in the host's colour.
+    host.on(|s, _| s.execute("wall", &wall(43000)).map(|_| ()).unwrap());
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !said.iter().any(|h| matches!(h, Happened::Edited(0, ids) if ids.len() == 1)) {
+        assert!(Instant::now() < deadline, "{said:?}");
+        said.extend(cy.pump(&mut sc));
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    // One who leaves is no longer among the others.
+    drop(di);
+    pump_until(&mut cy, &mut sc, |c| c.others().len() == 2);
 }

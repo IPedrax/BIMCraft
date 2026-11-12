@@ -402,6 +402,11 @@ impl Canvas {
         })
     }
 
+    /// Shows view `level` with its middle at `cx`, `cy` and `scale` pixels a millimetre: following someone in Co-Work.
+    pub(crate) fn set_view(&mut self, level: Id, cx: f64, cy: f64, scale: f64) {
+        self.cams.insert(level, Camera { scale, cx, cy });
+    }
+
     /// Where model point `p` shows on screen.
     pub fn screen(&self, p: P2) -> Pos2 {
         match self.level.and_then(|l| self.view(l)) {
@@ -1491,6 +1496,8 @@ impl BimApp {
         let up = matches!(self.sheet, Sheet::Ceiling(_));
         let fit = |w, h| if up { render::ceiling_plan(&model, key, w, h).view } else { render::plan(&model, key, w, h).view };
         let Some((view, local)) = self.canvas.navigate(ui, &response, rect, key, fit) else { return };
+        // Where the pointer is, for the others in a Co-Work session.
+        self.cowork_seen.pointer = local.map(|q| (key, view.mm(q)));
         let mods = ui.input(|i| i.modifiers);
         let shape = self.shape();
         let pipeline = self.card.canvas();
@@ -1822,6 +1829,7 @@ impl BimApp {
         if !kept {
             paint(&p, place, &d, &marked, painted_hover, self.thin, &pictures);
         }
+        crate::cowork::paint_plan(&p, &self.cowork, &self.cowork_seen, &model, (key, up), rect, &view, (&d.drawing, d.place));
         // The working aids: where the project's 0, 0 is, and which view this is. On the screen only; no drawing is made of them.
         if self.show_origin {
             let (x, y) = view.px(P2(0.0, 0.0));

@@ -909,6 +909,8 @@ pub struct BimApp {
     cowork: Option<cowork::Live>,
     pub(crate) cowork_prefs: cowork::Prefs,
     cowork_dialog: Option<cowork::Dialog>,
+    /// What the window keeps of the others in the session and of where it is itself.
+    cowork_seen: cowork::Seen,
     /// The Revit file being read, on a thread of its own.
     revit_job: Option<revit::Job>,
     /// Files to open at the next frame: the command line's, and what the system asked for while a Revit file was being read.
@@ -1554,6 +1556,7 @@ impl BimApp {
             cowork: None,
             cowork_prefs: cowork::Prefs::default(),
             cowork_dialog: None,
+            cowork_seen: cowork::Seen::default(),
             revit_job: None,
             opens: Vec::new(),
             dialog: None,
@@ -1577,7 +1580,7 @@ impl BimApp {
     pub(crate) fn pump(&mut self, ctx: &Context) {
         // What agents asked of the project comes before the tidying, which puts right what a command left stale.
         self.answer_agents(ctx);
-        self.pump_cowork();
+        self.pump_cowork(ctx);
         // A project put in the session's place under the window (the control port turns an agent's New and Open away, but a
         // script or an embedder may do them, and joining a Co-Work session puts the host's there) starts it over, as File > New
         // does: its sketch and dialogs were of the old one, and it gets a recovery copy of its own. (The old one's stays until

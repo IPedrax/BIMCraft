@@ -1,7 +1,7 @@
 # Co-Work: live co-editing of one project
 
-Planned on 2026-11-12 against `origin/main` at 733dd127, and revised the same day with the user's answers. Slices 1 to 3 are
-built (the engine's side, the transport, and hosting and joining in the desktop); what they do, and what of them is left, is in
+Planned on 2026-11-12 against `origin/main` at 733dd127, and revised the same day with the user's answers. Slices 1 to 4 are
+built (the engine's side, the transport, hosting and joining in the desktop, and seeing each other); what they do, and what of them is left, is in
 [docs/areas/cowork.md](docs/areas/cowork.md).
 
 Sizes follow DISCUSSIONS-PLAN.md: S is a day or two, M about a week, L more.
@@ -364,7 +364,11 @@ Undo list, a refused undo's elements lit in the other's colour (slice 4), asking
   - Then two real windows side by side, as in [looking at results](docs/areas/looking-at-results.md), with the host minimised
     while the guest edits.
 
-### 4. Presence (M)
+### 4. Presence (M): built
+
+As built: the badges are on the view control bar, beside the session's status, rather than the title bar; pointers are shown on plans, not yet on sections and sheets; others' selections in 3D
+are boxes rather than outlines; a refused undo's elements aren't lit yet. The tests check what is drawn (`marks`, the boxes) rather
+than pixels, which a harness without a graphics card can't give for the 3D view.
 
 - Cursors, 3D cameras, peers' selections, edit flashes, the people bar, follow, the soft lock in Properties. What a window
   shows of someone else is computed in the core where a front end would need it (which view a presence is on, where a camera's

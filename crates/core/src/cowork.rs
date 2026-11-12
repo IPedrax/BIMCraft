@@ -186,3 +186,116 @@ fn as_guest<T>(
     (session.author, session.phase, session.option, session.no_files) = (author, phase, option, no_files);
     result
 }
+
+/// The most elements a person's selection is shown with.
+pub const MAX_SELECTION: usize = 10_000;
+
+/// What one person in a session shows the others: the view on their screen, where their pointer is on it, how their plan is
+/// zoomed, their 3D camera, and what they have selected. A window sends its own when it changes and draws the others'.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Presence {
+    #[serde(default)]
+    pub view: Option<On>,
+    /// The pointer, as a model point, on a plan.
+    #[serde(default)]
+    pub cursor: Option<crate::geom::P2>,
+    /// A plan's middle and pixels per mm, which a window following this person copies.
+    #[serde(default)]
+    pub zoom: Option<(f64, f64, f64)>,
+    #[serde(default)]
+    pub camera: Option<Look>,
+    #[serde(default)]
+    pub selection: Vec<Guid>,
+}
+
+/// A view: its kind (`plan`, `ceiling`, `3d`, `section`, `sheet`, `schedule`) and the GUID of its level, section, sheet or
+/// schedule (none for the default 3D view).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct On {
+    pub kind: String,
+    #[serde(default)]
+    pub of: Option<Guid>,
+}
+
+/// A 3D view's camera as it travels: every field of [`crate::view3d::Camera`].
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Look {
+    pub azimuth: f64,
+    pub elevation: f64,
+    pub scale: f64,
+    pub target: crate::view3d::P3,
+    pub width: u32,
+    pub height: u32,
+    #[serde(default)]
+    pub lens: Option<f64>,
+}
+
+impl Look {
+    pub fn of(c: &crate::view3d::Camera) -> Look {
+        Look {
+            azimuth: c.azimuth,
+            elevation: c.elevation,
+            scale: c.scale,
+            target: c.target,
+            width: c.width,
+            height: c.height,
+            lens: c.lens,
+        }
+    }
+
+    pub fn camera(&self) -> crate::view3d::Camera {
+        let Look { azimuth, elevation, scale, target, width, height, lens } = *self;
+        crate::view3d::Camera { azimuth, elevation, scale, target, width, height, lens }
+    }
+
+    /// Where it looks from, to draw it in another's 3D view: the eye in perspective; in a parallel view, which has none, back
+    /// from its target along its line by as much model as its picture is wide.
+    pub fn eye(&self) -> crate::view3d::P3 {
+        let c = self.camera();
+        c.eye().unwrap_or_else(|| {
+            let (back, ..) = c.axes();
+            let far = f64::from(self.width) / self.scale;
+            [0, 1, 2].map(|i| self.target[i] + back[i] * far)
+        })
+    }
+}
+
+impl Presence {
+    /// Whether it can be drawn: every number finite and in the model's range, a camera a 3D view could have, a selection of
+    /// GUIDs no longer than [`MAX_SELECTION`]. What comes from another window is checked so before it is kept.
+    pub fn check(&self) -> Result<(), String> {
+        let near = |v: f64| v.is_finite() && v.abs() <= crate::model::MAX_COORD;
+        let scale = |s: f64| s.is_finite() && s > 0.0 && s <= 1e6;
+        if let Some(v) = &self.view
+            && (v.kind.is_empty() || v.kind.len() > 16 || !v.kind.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit()))
+        {
+            return Err("a view's kind is a short word".into());
+        }
+        if self.cursor.is_some_and(|p| !(near(p.0) && near(p.1))) {
+            return Err("the pointer is out of the model".into());
+        }
+        if self.zoom.is_some_and(|(x, y, s)| !(near(x) && near(y) && scale(s))) {
+            return Err("a plan's zoom is no zoom".into());
+        }
+        if let Some(c) = &self.camera {
+            let lens = c.lens.is_none_or(|l| (crate::view3d::MIN_LENS..=crate::view3d::MAX_LENS).contains(&l));
+            let size = (1..=16_384).contains(&c.width) && (1..=16_384).contains(&c.height);
+            if !(c.azimuth.is_finite()
+                && (-90.0..=90.0).contains(&c.elevation)
+                && scale(c.scale)
+                && c.target.iter().all(|v| near(*v))
+                && lens
+                && size)
+            {
+                return Err("a camera no 3D view could have".into());
+            }
+        }
+        if self.selection.len() > MAX_SELECTION || self.selection.iter().any(|g| g.is_nil() || g.pending().is_some()) {
+            return Err(format!("a selection is at most {MAX_SELECTION} elements' GUIDs"));
+        }
+        Ok(())
+    }
+}

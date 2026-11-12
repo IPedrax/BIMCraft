@@ -106,8 +106,34 @@ the desktop wires it in slice 3.
 - **The host opening another project, or closing,** ends the session: guests are told "Ana opened another project" or "the
   host closed the session".
 
+## Built: seeing each other (slice 4)
+
+- **A presence** (`cowork::Presence` in the core): the view on someone's screen (its kind and the GUID of its level, section,
+  sheet or schedule), their pointer on a plan as a model point, the plan's zoom, their 3D camera (every field of
+  `view3d::Camera`, as `cowork::Look`) and their selection as GUIDs. `Presence::check` refuses what can't be drawn (a number not
+  finite or past the model's range, a camera no 3D view could have, more than `MAX_SELECTION` GUIDs), and a window keeps only
+  what passes. `Look::eye` is where a camera looks from, for drawing it in another's 3D view (back along its line in a parallel
+  view, which has no eye). `Scene::boxes` is the box each of some elements takes in a scene, from their triangles.
+- **Who is where** (`bimcraft_cowork::live`): `Hosting` and `Joined` keep the others (`Other`: name, colour number, presence),
+  the host as 0 with colour 0 and the guests in join order. `present` sends the window's own when it changed; the transport
+  hands a guest's to the other guests at once, and a newcomer gets everyone's right after the people. Every delta says who made
+  it (`by`), so a window lights what someone else changed (`Happened::Edited`), never its own.
+- **The window** (`crates/ui-egui/src/cowork.rs`) sends where it is at most 15 times a second (`my_presence`: the view, the
+  pointer on a plan, the plan's zoom, the 3D camera, the selection), and draws the others in their colours, eight distinct ones
+  none of which is the selection's blue or the hover's:
+  - on a plan, the pointer of each person on that plan, an arrow with their name, and what anyone has selected or just changed
+    (lit for a second and a half), outlined over the drawing (`paint_plan`, from `marks`);
+  - in 3D, what anyone has selected, boxed (`Scene::boxes`, worked out again only when the scene or the selections change),
+    and for each person in a 3D view a dot where they look from, a dashed line to what they look at, and their name
+    (`paint_3d`);
+  - on the view control bar, a badge for each (their initial in their colour; its tooltip says their view and how much they
+    have selected). A click follows them: their view, their plan's pan and zoom or their 3D camera, until the user moves the
+    view themselves, which the window says;
+  - in Properties, "Ana has this selected" in Ana's colour, over an element someone else has selected too.
+
 ## Not built yet
 
-Presence (slice 4) and the shared AI chat (slice 5). Also not yet: a guest's Undo list (the shared history's labels), the
-elements in a refused undo lit up in the other person's colour (it needs slice 4's colours), the host asked before it quits
-while others are in, and guests importing files of their own.
+The shared AI chat (slice 5). Also not yet: others' pointers on a section or a sheet (a presence has them only on plans), a
+guest's Undo list (the shared history's labels), the elements of a refused undo lit in the other person's colour (the error
+names them, but the window doesn't read it), the host asked before it quits while others are in, guests importing files of
+their own, and Manage > Run Script for a guest (it runs on the read-only copy, which refuses its edits).
