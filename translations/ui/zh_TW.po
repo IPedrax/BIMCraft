@@ -4323,7 +4323,7 @@ msgstr "找到 {}；以下沒有對應的圖元：{}"
 msgid "Fine"
 msgstr "精細"
 
-#: crates/core/src/import.rs:1543
+#: crates/core/src/import.rs:1559
 #: crates/ui-egui/src/notes.rs:451
 #: crates/ui-egui/src/properties.rs:742
 msgid "Finish"
@@ -5111,7 +5111,7 @@ msgstr ""
 msgid "Instances of {} are placed in the family: delete them first."
 msgstr "族中已放置 {} 的實例：請先刪除它們。"
 
-#: crates/core/src/import.rs:1542
+#: crates/core/src/import.rs:1558
 #: crates/ui-egui/src/draw.rs:664
 msgid "Insulation"
 msgstr "保溫層"
@@ -5989,7 +5989,7 @@ msgstr "中等"
 msgid "Medium Lines"
 msgstr "中粗線"
 
-#: crates/core/src/import.rs:1545
+#: crates/core/src/import.rs:1561
 #: crates/ui-egui/src/properties.rs:741
 msgid "Membrane"
 msgstr "薄膜層"
@@ -10134,7 +10134,7 @@ msgstr "子網格分割數 Y"
 msgid "Subgrid pen"
 msgstr "子網格筆"
 
-#: crates/core/src/import.rs:1544
+#: crates/core/src/import.rs:1560
 #: crates/ui-egui/src/properties.rs:739
 msgid "Substrate"
 msgstr "基層"

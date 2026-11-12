@@ -4323,7 +4323,7 @@ msgstr "Encuentra {}; nada tiene estos: {}"
 msgid "Fine"
 msgstr "Alto"
 
-#: crates/core/src/import.rs:1543
+#: crates/core/src/import.rs:1559
 #: crates/ui-egui/src/notes.rs:451
 #: crates/ui-egui/src/properties.rs:742
 msgid "Finish"
@@ -5111,7 +5111,7 @@ msgstr ""
 msgid "Instances of {} are placed in the family: delete them first."
 msgstr "Hay instancias de {} colocadas en la familia: elimínalas primero."
 
-#: crates/core/src/import.rs:1542
+#: crates/core/src/import.rs:1558
 #: crates/ui-egui/src/draw.rs:664
 msgid "Insulation"
 msgstr "Aislamiento"
@@ -5989,7 +5989,7 @@ msgstr "Medio"
 msgid "Medium Lines"
 msgstr "Líneas medias"
 
-#: crates/core/src/import.rs:1545
+#: crates/core/src/import.rs:1561
 #: crates/ui-egui/src/properties.rs:741
 msgid "Membrane"
 msgstr "Membrana"
@@ -10134,7 +10134,7 @@ msgstr "Divisiones de la subcuadrícula Y"
 msgid "Subgrid pen"
 msgstr "Plumilla de la subcuadrícula"
 
-#: crates/core/src/import.rs:1544
+#: crates/core/src/import.rs:1560
 #: crates/ui-egui/src/properties.rs:739
 msgid "Substrate"
 msgstr "Sustrato"
