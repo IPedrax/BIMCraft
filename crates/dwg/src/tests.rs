@@ -159,3 +159,10 @@ fn real_drawings_where_a_folder_of_them_is_named() {
         eprintln!("{} ({} kB) in {:?}: {said}", path.display(), std::fs::metadata(&path).map_or(0, |m| m.len() >> 10), start.elapsed());
     }
 }
+
+#[test]
+fn the_limits_hold_the_largest_real_drawings_and_the_dxf_one_is_the_readers() {
+    // Measured on real projects: a DWG of 77 MB, and 301 MB of DXF from one of 38 MB.
+    assert_eq!(Limits::DEFAULT.dwg_bytes, 128 << 20);
+    assert_eq!(Limits::DEFAULT.dxf_bytes, bimcraft_core::dxf::MAX_BYTES);
+}
