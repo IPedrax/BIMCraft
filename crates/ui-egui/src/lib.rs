@@ -706,6 +706,18 @@ pub struct BimApp {
     /// A selected element's temporary dimension being typed: the element, which of its dimensions (a wall has one, a
     /// door or window two: from its wall's start, from its end), the length so far.
     dim_edit: Option<(Id, usize, String)>,
+    /// The pointer is over a dimension's number, padlock, EQ or text button: the canvas leaves the click to it.
+    over_dimension_control: bool,
+    /// A number field was left by Esc: the key's own Esc handling must not clear the selection then.
+    dim_edit_escaped: bool,
+    /// Edit Dimension References, while it's on: the dimension, its references being picked, and where its line goes.
+    dimension_refs_edit: Option<canvas::DimensionRefsEdit>,
+    /// The dimension segment picked out of a chain, by Tab and a click: the dimension and which segment.
+    dimension_segment: Option<(Id, usize)>,
+    /// The segment Tab is stepping over now, highlighted until a click picks it.
+    dimension_segment_hover: Option<(Id, usize)>,
+    /// The reference of an element Tab is stepping over while a dimension is picked or its references are edited.
+    dimension_reference_hover: Option<(Id, Reference)>,
     /// A selected wall's angle being typed: the wall, whether it turns about its start (else its
     /// end), the angle so far.
     angle_edit: Option<(Id, bool, String)>,
@@ -1407,6 +1419,12 @@ impl BimApp {
             font_finder: lang::cjk_fonts,
             typed_length: String::new(),
             dim_edit: None,
+            over_dimension_control: false,
+            dim_edit_escaped: false,
+            dimension_refs_edit: None,
+            dimension_segment: None,
+            dimension_segment_hover: None,
+            dimension_reference_hover: None,
             temporary: HashMap::new(),
             shadow: None,
             linked_3d: None,
@@ -2101,10 +2119,13 @@ impl BimApp {
         if pressed(Modifiers::NONE, Key::Escape) && !self.cancel_pattern_pick() {
             self.escape();
         }
-        // Enter places a typed length, else builds the wall chain.
-        if pressed(Modifiers::NONE, Key::Enter)
-            && let Some(level) = self.plan_level()
-        {
+        // Enter confirms Edit Dimension References; else it places a typed length, else builds the wall chain.
+        let mut enter = pressed(Modifiers::NONE, Key::Enter);
+        if enter && self.dimension_refs_edit.is_some() {
+            self.commit_dimension_refs();
+            enter = false;
+        }
+        if enter && let Some(level) = self.plan_level() {
             match (&self.tool, self.typed_length.is_empty() && self.drawing.other.is_empty()) {
                 _ if self.picking_pattern_lines() => self.finish_pattern_lines(),
                 (Tool::Railing(_), true) => self.finish_railing(level),
@@ -2119,6 +2140,15 @@ impl BimApp {
         }
         if !self.typed_length.is_empty() && pressed(Modifiers::NONE, Key::Backspace) {
             self.typed_length.pop();
+        }
+        // Backspace while a dimension is being picked takes its last reference out.
+        if pressed(Modifiers::NONE, Key::Backspace)
+            && self.typed_length.is_empty()
+            && self.dim_edit.is_none()
+            && self.dimension_refs_edit.is_none()
+            && let Tool::Dimension(_, refs) = &mut self.tool
+        {
+            refs.pop();
         }
         if pressed(Modifiers::NONE, Key::Delete) {
             self.delete();
@@ -2906,6 +2936,19 @@ impl BimApp {
         {
             return;
         }
+        // Edit Dimension References goes next: the dimension stays as it was.
+        if self.dimension_refs_edit.take().is_some() {
+            return;
+        }
+        // A dimension segment picked goes, leaving its dimension as it was.
+        if self.dimension_segment.take().is_some() || self.dimension_segment_hover.take().is_some() {
+            return;
+        }
+        self.dimension_reference_hover = None;
+        // A number field left by Esc keeps the selection it was typed for.
+        if std::mem::take(&mut self.dim_edit_escaped) || self.dim_edit.take().is_some() {
+            return;
+        }
         // Pick in View goes back to its dialog.
         if self.stop_work_plane_pick() {
             return;
@@ -2980,6 +3023,14 @@ impl BimApp {
     }
 
     fn delete(&mut self) {
+        // A dimension segment picked out of a chain goes, not the whole dimension.
+        if let Some((id, segment)) = self.dimension_segment.take() {
+            self.dimension_segment_hover = None;
+            if self.run("dimension_segment", json!({"id": id, "segment": segment})).is_some() {
+                self.selection = if self.session.model.elements.get(id).is_some() { vec![id] } else { Vec::new() };
+            }
+            return;
+        }
         // Under Modify Sub Elements, what of the shape is selected.
         if self.shape_delete() {
             return;
@@ -4556,6 +4607,24 @@ impl BimApp {
                 self.edit_type();
             }
         });
+        // A dimension selected: its references are picked again from the Modify tab, as from its right-click menu.
+        let dimension = matches!(self.selection.as_slice(), [id]
+            if matches!(self.session.model.elements.get(*id), Some(Element::Dimension(d)) if !d.alignment));
+        if dimension {
+            panel(ui, msg!("Dimension"), |ui| {
+                let active = self.dimension_refs_edit.is_some();
+                let tip = msg!(
+                    "Edit Dimension References: click a picked reference to take it out, another element to add it; click away places the line. Enter confirms, Esc cancels"
+                );
+                if big_button(ui, Icon::Dimension, "Edit Dimension References", active, tip).clicked() {
+                    if active {
+                        self.commit_dimension_refs();
+                    } else {
+                        self.start_dimension_refs_edit();
+                    }
+                }
+            });
+        }
         // Hide in View, and Override Graphics: what the selection does in the view on screen.
         if !self.selection.is_empty() && self.graphic_view().is_some() {
             panel(ui, "View", |ui| {
@@ -5269,6 +5338,11 @@ impl BimApp {
         {
             return prompt;
         }
+        if self.dimension_refs_edit.is_some() {
+            return msg!(
+                "Click a face, an axis or a corner to add it, the same one again to take it out; Tab steps over the references of the element under the cursor. Enter or the button confirms, Esc cancels."
+            );
+        }
         match &self.tool {
             Tool::Modify => msg!("Click to select, Tab for what's underneath, Ctrl adds, Shift takes away; drag to box or to move."),
             Tool::Wall(chain) if chain.is_empty() => msg!("Click to enter the wall's start point."),
@@ -5319,8 +5393,9 @@ impl BimApp {
             }
             Tool::Dimension(_, refs) if refs.len() == 1 => msg!("Pick the next reference or endpoint."),
             Tool::Dimension(..) => msg!(
-                "Pick more references, or click away from them where the dimension line goes; Space steps Auto, Aligned, Horizontal, \
-                 Vertical. Esc cancels."
+                "Pick more references, or click away from them where the dimension line goes; Tab steps over the faces, axes and \
+                 corners of the element under the cursor. A picked reference clicked again is taken out, Backspace takes out the \
+                 last, Esc starts over. Space steps Auto, Aligned, Horizontal, Vertical."
             ),
             Tool::Measure(None) => msg!("Click the ruler's start: points snap as they do drawing."),
             Tool::Measure(Some(_)) => msg!("Click its end: its length and angle read beside it. Esc cancels."),

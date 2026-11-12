@@ -589,13 +589,30 @@ seven segment kinds, paper units, text fitting and centerline semantics.
 
 Annotate > Dimension has Aligned (DI) and Linear, and Angular, Radial, Diameter, Arc Length, Spot Elevation and Spot Slope small beside
 them (`BimApp::dimension_panel`); Spot Slope (`Tool::SpotSlope`) runs `spot_slope` where a floor or a roof is clicked in a plan. Aligned and Linear are one tool, `Tool::Dimension(mode, refs)`: a click near an endpoint picks it before the line
-it ends (`canvas::dimension_pick`), marked with a square; after two, a click away places the dimension the Options Bar's Place says (Auto,
+it ends (`canvas::dimension_pick`), marked with a square; a click on a reference already picked takes it out, Backspace the last, and Esc starts the chain over; after two, a click away places the dimension the Options Bar's Place says (Auto,
 Aligned, Horizontal, Vertical; Space steps them), drawn as it would be while the cursor moves. `Tool::Round(kind, picked)` is Radial, Diameter
 and Arc Length; after its arc, Arc Length takes two ends on it to measure between (`dims::arc_point`), or a click places the whole arc's. A new dimension takes the type the Type Selector names, else its kind's (`dimtypes::dimension_type_for`); Edit Type on one opens
 Dimension Type Properties (`dimtypes.rs`), and Properties edits its prefix, suffix, text above and below, Replace With Text and Equality Display.
-A double click on one of its numbers opens Dimension Text for that segment (`DimensionTextDialog`). Selected, an aligned or linear one shows
-a padlock under each segment and, over a string of two or more, EQ past its end (`dimension_constraints`): a click locks or unlocks, or makes
-it equal or not.
+With one element selected, the numbers of the dimensions that measure to it are drawn smaller in `accent_ink`; a click on one opens an empty
+field (`canvas::dimension_highlights`), and Enter moves the selected element, the opposite reference staying (an equal chain's far end stays). A double click on a number, or a click on the Aa button over a selected dimension's numbers, opens Dimension Text for that segment
+(`DimensionTextDialog`); a segment's Replace With Text beats its number, and an equal chain prints its type's Equality Text in every drawing while
+its EQ control appears over the middle of the chain. Selected, an aligned or linear one shows
+a padlock under each segment (open while the segment is free, shut while locked), which a click locks or unlocks, and the EQ over the chain, struck through until a click makes it
+equal or not — its ends staying, the inner references spreading evenly; a value typed into an equal chain makes every segment it. A
+placed dimension's references are changed from the right-click menu's Edit Dimension References or the Modify tab's button (`dimension
+{id, refs, at}`): a picked reference clicked is taken out, another face, axis or corner added, and Enter confirms. A selected wall's
+temporary length dimension (`temporary_dimension`) has a dimension-line button under its number that makes it a permanent dimension between
+the wall's ends or, where an end is joined to a perpendicular wall, between those walls' centre lines (`walls::joined_perpendicular`; a
+wall merely near it isn't a join), so changing it moves that whole wall; typing its number resizes the wall through `wall_length`: both free
+ends or both joined ends move evenly, one joined moves its free end alone. A dimension measured along one wall resizes it wherever its references stand — side
+faces, corner handles, end faces or a mix — the wall being nudged until the measured value is reached (`dimension_value`), so face
+corners at joined ends no longer leave it short. Tab over a dimension chain steps through its segments, a click picks one, and Delete takes only that segment out
+(`dimension_segment`): the chains either side stay on their own references, the left keeping the dimension and the right becoming a new one.
+A dimension selected also offers Edit Dimension References on the Modify tab, as its right-click menu does: a click on a picked reference
+takes it out, a click on another face, axis or corner of the same element adds it (faces are independent), a click in the open confirms
+and leaves the edit (Enter too), and Esc cancels. Tab over an element steps through its faces, axes and corners, highlighting the reference a click would
+bind, while creating a chain or editing one (`dimension_references`). Dragging a dimension moves it only square to its line (`dragged`
+projects onto the line's normal); it never slides along itself.
 
 ## Background grids
 

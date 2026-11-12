@@ -217,6 +217,8 @@ mod connector_tests;
 #[cfg(test)]
 mod detail_tests;
 #[cfg(test)]
+mod dimension_edit_tests;
+#[cfg(test)]
 mod dimension_tests;
 #[cfg(test)]
 mod line_tests;
