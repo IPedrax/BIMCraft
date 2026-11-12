@@ -926,6 +926,18 @@ fn solids_in_with(
             }
             // Each tread a block from the floor up to it, each landing a slab up to its top; the last
             // riser of a run climbs onto a landing, or the floor above.
+            // A stair of a type, built as the type says.
+            Element::Stair(st) if m.types.stair.contains_key(&st.type_name) => {
+                out.extend(stairs::parts(m, st).into_iter().flatten().map(|(ring, bottom, top)| Solid::Prism {
+                    owner: id,
+                    color: SLAB,
+                    tex: 0,
+                    ring,
+                    bottom,
+                    top,
+                    curve: None,
+                }));
+            }
             Element::Stair(st) => {
                 let (_, each, _) = m.flight(st);
                 let (base, l) = (m.elevation(st.level), stairs::stair(m, st));

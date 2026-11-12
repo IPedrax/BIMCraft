@@ -2835,6 +2835,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
         // Its riser, from the rise the model will measure, so it counts the same risers.
         let climb = top_level.map_or(height, |t| elevation(t) - elevation(level));
         let stair = Stair {
+            type_name: String::new(),
             params: Default::default(),
             level,
             top_level,

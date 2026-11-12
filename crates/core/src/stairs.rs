@@ -34,6 +34,8 @@ impl Run {
 pub struct Pad {
     pub ring: Vec<P2>,
     pub z: f64,
+    /// A tread (a winder, a spiral's), not a landing.
+    pub tread: bool,
 }
 
 /// A stair's or a ramp's runs and landings, how wide they are, and its walk line: up the middle of
@@ -98,7 +100,7 @@ fn chain(start: P2, angle: f64, width: f64, runs: Vec<(f64, (f64, f64), u32)>, t
             out.winders += rings.len();
             // The walk line climbs through the turn: on into it, round the inside corner at the stair's middle, and on out.
             let top = (rings.len() as f64 - 1.0) * each;
-            out.pads.extend(rings.into_iter().enumerate().map(|(k, ring)| Pad { ring: ccw(ring), z: z.1 + k as f64 * each }));
+            out.pads.extend(rings.into_iter().enumerate().map(|(k, ring)| Pad { ring: ccw(ring), z: z.1 + k as f64 * each, tread: true }));
             let (r, sweep) = (w / 2.0, turn.abs());
             let total = 2.0 * into + r * sweep.to_radians();
             let high = |d: f64| z.1 + if total > 0.0 { top * d / total } else { 0.0 };
@@ -114,7 +116,7 @@ fn chain(start: P2, angle: f64, width: f64, runs: Vec<(f64, (f64, f64), u32)>, t
             (at, u) = (next + dir * into, dir);
             continue;
         } else {
-            out.pads.push(Pad { ring: ccw(ring), z: z.1 });
+            out.pads.push(Pad { ring: ccw(ring), z: z.1, tread: false });
             out.walk.extend(via.into_iter().map(|p| (p, z.1)));
         }
         (at, u) = (next, dir);
@@ -321,7 +323,7 @@ fn spiral(st: &Stair, sp: crate::model::Spiral, n: u32, each: f64, base: f64) ->
         } else {
             ring.push(centre);
         }
-        out.pads.push(Pad { ring: ccw(ring), z: base + f64::from(k + 1) * each });
+        out.pads.push(Pad { ring: ccw(ring), z: base + f64::from(k + 1) * each, tread: true });
     }
     out.winders = out.pads.len();
     let (end, rise) = (f64::from(treads) * step, f64::from(n) * each);
@@ -528,6 +530,80 @@ pub fn layout(m: &Model, e: &Element) -> Option<Layout> {
         Element::Ramp(r) => Some(ramp(m, r)),
         _ => None,
     }
+}
+
+/// A stair's solids as its type builds it, each a ring in plan between two planes; none for a stair of no type, which is
+/// solid down to its level. With a waist: each tread from its top down to the slab's sloping underside, and each landing
+/// that thick. With none: treads standing free, risers between them where the type has any, and a stringer down each
+/// side of each run where it has those.
+pub fn parts(m: &Model, st: &Stair) -> Option<Vec<(Vec<P2>, Plane, Plane)>> {
+    let t = m.types.stair.get(&st.type_name)?;
+    let (_, each, _) = m.flight(st);
+    let l = stair(m, st);
+    let (half, base) = (st.width / 2.0, m.elevation(st.level));
+    let mut out: Vec<(Vec<P2>, Plane, Plane)> = Vec::new();
+    let slope = if st.tread > 0.0 { each / st.tread } else { 0.0 };
+    let open = t.waist <= 0.0;
+    // How thick a landing or a winder is, and how far a sloping slab reaches down under the corner of a step.
+    let (flat, down) = (if open { t.tread_thickness.max(1.0) } else { t.waist }, t.waist * (1.0 + slope * slope).sqrt());
+    for run in &l.runs {
+        let (u, n) = (run.u, run.u.perp());
+        let rect = |a: f64, b: f64, c: f64, d: f64| {
+            ccw(vec![run.start + u * a + n * c, run.start + u * b + n * c, run.start + u * b + n * d, run.start + u * a + n * d])
+        };
+        // A plane sloping with the run, `z` high at its foot.
+        let sloping = |z: f64| {
+            let g = u * slope;
+            Plane { z: z - g.dot(run.start), g }
+        };
+        // A piece under a sloping plane that would dip below `floor` near the foot: flat-bottomed there.
+        let under = |out: &mut Vec<(Vec<P2>, Plane, Plane)>, a: f64, b: f64, c: f64, d: f64, bottom: f64, floor: f64, top: Plane| {
+            // Where the sloping bottom, `bottom` high at the foot, comes up to `floor`.
+            let cross = if slope > 0.0 { (floor - bottom) / slope } else { f64::INFINITY };
+            if cross > a + 1e-6 {
+                out.push((rect(a, b.min(cross), c, d), Plane::flat(floor), top));
+            }
+            if cross < b - 1e-6 {
+                out.push((rect(a.max(cross), b, c, d), sloping(bottom), top));
+            }
+        };
+        // A run from the floor stands on it; one from a landing ends level with the landing's underside.
+        let floor = if (run.z.0 - base).abs() < 1e-6 { run.z.0 } else { run.z.0 - flat };
+        for k in 1..run.risers {
+            let k = f64::from(k);
+            let (a, b, top) = ((k - 1.0) * st.tread, k * st.tread, run.z.0 + k * each);
+            if open {
+                // The tread, out over the one below by its nosing; and the riser under its front edge.
+                out.push((rect(a - t.nosing, b, -half, half), Plane::flat(top - t.tread_thickness), Plane::flat(top)));
+                if t.riser_thickness > 0.0 {
+                    let from = if k > 1.0 { top - each } else { run.z.0 };
+                    out.push((rect(a, a + t.riser_thickness, -half, half), Plane::flat(from), Plane::flat(top - t.tread_thickness)));
+                }
+            } else {
+                under(&mut out, a, b, -half, half, run.z.0 - down, floor, Plane::flat(top));
+            }
+        }
+        if open {
+            // The last riser, up to what the run climbs onto.
+            if t.riser_thickness > 0.0 && run.risers > 0 {
+                let from = if run.risers > 1 { run.z.1 - each } else { run.z.0 };
+                out.push((rect(run.length, run.length + t.riser_thickness, -half, half), Plane::flat(from), Plane::flat(run.z.1 - flat)));
+            }
+            // A stringer down each side: its top 50 over the nosings' line, its underside its depth below that.
+            if t.stringer_width > 0.0 && t.stringer_depth > 0.0 && run.length > 0.0 {
+                let top = run.z.0 + each + 50.0;
+                for (c, d) in [(-half, -half + t.stringer_width), (half - t.stringer_width, half)] {
+                    under(&mut out, 0.0, run.length, c, d, top - t.stringer_depth, floor, sloping(top));
+                }
+            }
+        }
+    }
+    for pad in &l.pads {
+        // A winder is a step: with a slab under it, the slab is under the step below it too.
+        let thick = if pad.tread && !open { each + t.waist } else { flat };
+        out.push((pad.ring.clone(), Plane::flat((pad.z - thick).max(base)), Plane::flat(pad.z)));
+    }
+    Some(out)
 }
 
 /// The line a railing follows, in plan, with the height of what it runs along at each point: on a

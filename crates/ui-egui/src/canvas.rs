@@ -2652,6 +2652,7 @@ impl BimApp {
             let width = m.units.parse(&self.stair_width).ok_or_else(|| tf("stair: `{}` is not a width", &[&self.stair_width]))?;
             let rules = m.stair_rules();
             let mut st = Stair {
+                type_name: self.types.get("stair").cloned().or_else(|| m.default_type("stair").map(String::from)).unwrap_or_default(),
                 params: Default::default(),
                 level: m.guid(level),
                 top_level: m.level_above(level),

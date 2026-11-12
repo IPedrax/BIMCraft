@@ -670,7 +670,7 @@ other_files(
         ui_msg!("Stair"),
         &[],
         "{start: [x,y], end?: [x,y] | angle?, level?, top_level?, height?, width?, riser?, tread?, landings?: [{at, turn?, winders?, balance?, length?}, …], \
-         line?, offset?, spiral?, railings?} a stair from the middle of its first riser at `start`, climbing toward `end` (or `angle` degrees) up to the next level: \
+         line?, offset?, spiral?, type?, railings?} a stair from the middle of its first riser at `start`, climbing toward `end` (or `angle` degrees) up to the next level: \
          as many risers as keep each at most `riser` mm, treads `tread` deep (the project's building code's, 180 and 280 with \
          none: `building_code`), `width` wide (1000). One straight \
          run, as long as that makes it (`landings`: \"auto\" gives it the landings its code says are due, straight on); or with landings (each as deep as the stair is wide) after `at` risers, the next run \
@@ -686,6 +686,9 @@ other_files(
          With `spiral`: {radius, sweep?}, the stair winds about a centre `radius` from its middle line, to the left of its first \
          riser looking up (to the right when negative): every tread a winder, as deep on the middle line as `tread`, or turning \
          `sweep` degrees in all; a spiral has no landings. \
+         `type` names its stair type (`type` with category stair: `waist` for a slab under its steps, a monolithic stair; \
+         else `tread_thickness`, `riser_thickness`, `nosing`, and `stringer_width` by `stringer_depth` for stringers down its \
+         sides); with none it is solid down to its level. \
          With `railings`, a railing down each side too",
         stair,
     )
@@ -8936,6 +8939,7 @@ fn stair(s: &mut Session, p: &Value) -> R {
     let dim = |key: &str, default: f64| num(c, p, key).map(|v| v.unwrap_or(default));
     let auto = p.get("landings").and_then(Value::as_str) == Some("auto");
     let mut st = Stair {
+        type_name: string(c, p, "type")?.unwrap_or_default(),
         params: Default::default(),
         level,
         top_level,
@@ -11353,6 +11357,20 @@ fn edit_type(s: &mut Session, p: &Value) -> R {
             let (thickness, layers) = layered(c, p, m.types.roof.get(&name).map(|t| (t.thickness, t.layers.as_slice())), thickness, &need)?;
             let t = RoofType { thickness, layers };
             m.types.roof.insert(name.clone(), t.clone());
+            json!(t)
+        }
+        "stair" => {
+            let old = m.types.stair.get(&name).cloned().unwrap_or_default();
+            let part = |key: &str, was: f64| num(c, p, key).map(|v| v.unwrap_or(was));
+            let t = crate::model::StairType {
+                waist: part("waist", old.waist)?,
+                tread_thickness: part("tread_thickness", old.tread_thickness)?,
+                riser_thickness: part("riser_thickness", old.riser_thickness)?,
+                nosing: part("nosing", old.nosing)?,
+                stringer_width: part("stringer_width", old.stringer_width)?,
+                stringer_depth: part("stringer_depth", old.stringer_depth)?,
+            };
+            m.types.stair.insert(name.clone(), t.clone());
             json!(t)
         }
         "railing" => {

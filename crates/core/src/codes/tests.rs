@@ -545,3 +545,54 @@ fn a_spiral_stair_winds_about_its_centre() {
     landed["landings"] = json!([{"at": 8, "turn": 0}]);
     assert!(s.execute("stair", &landed).unwrap_err().contains("landings"));
 }
+
+#[test]
+fn a_stair_is_built_as_its_type_says() {
+    let mut s = Session::new();
+    let names = s.model.type_names("stair").join(", ");
+    assert!(names.contains("Monolithic 150mm") && names.contains("Cantilevered Treads"), "{names}");
+    let p = json!({"start": [0, 0], "angle": 0, "width": 1000, "landings": [{"at": 8, "turn": 90}]});
+    let solid = run(&mut s, "stair", p.clone())["id"].as_u64().unwrap();
+    assert!(crate::stairs::parts(&s.model, &stair_of(&s, solid)).is_none(), "of no type: solid to its level");
+
+    let of = |s: &mut Session, name: &str| {
+        let mut p = p.clone();
+        p["type"] = json!(name);
+        let id = run(s, "stair", p)["id"].as_u64().unwrap();
+        crate::stairs::parts(&s.model, &stair_of(s, id)).unwrap()
+    };
+    // Monolithic: nothing of it under the floor, and under the landing nothing lower than the slab.
+    let mono = of(&mut s, "Monolithic 150mm");
+    assert!(mono.iter().all(|(ring, bottom, top)| ring.iter().all(|q| bottom.at(*q) >= -1e-6 && top.at(*q) > bottom.at(*q) - 1e-6)));
+    let each = 3000.0 / 17.0;
+    let landing = mono.iter().find(|(_, _, top)| (top.z - 8.0 * each).abs() < 1e-6 && top.g == crate::geom::P2(0.0, 0.0)).unwrap();
+    assert!((landing.1.z - (8.0 * each - 150.0)).abs() < 1e-6, "the landing is the slab's thickness");
+    // Halfway up the first run, the underside is the slab's thickness below the steps' inner corners, square to the slope.
+    let at = crate::geom::P2(4.0 * 280.0 + 1.0, 0.0);
+    let under = mono.iter().filter(|(ring, _, _)| crate::geom::contains(ring, at)).map(|(_, b, _)| b.at(at)).fold(f64::INFINITY, f64::min);
+    let slope = each / 280.0;
+    let want = at.0 * slope - 150.0 * (1.0 + slope * slope).sqrt();
+    assert!((under - want).abs() < 1e-6, "{under} against {want}");
+
+    // Open treads: each 50 thick, 7 in the first run and 8 in the second, a landing, and no risers; with stringers, two a run.
+    let free = of(&mut s, "Cantilevered Treads");
+    assert_eq!(free.len(), 7 + 8 + 1);
+    assert!(free.iter().all(|(_, b, t)| (t.z - b.z - 80.0).abs() < 1e-6));
+    let strung = of(&mut s, "Stringers - Open Risers");
+    assert!(strung.len() >= 7 + 8 + 1 + 4, "{}", strung.len());
+    let closed = of(&mut s, "Stringers - Closed Risers");
+    assert_eq!(closed.len(), strung.len() + 8 + 9, "a riser for each riser");
+
+    // A type of the project's own, and one that cannot be.
+    run(&mut s, "type", json!({"category": "stair", "name": "Slab 200", "waist": 200}));
+    assert_eq!(s.model.types.stair["Slab 200"].waist, 200.0);
+    run(&mut s, "modify", json!({"id": solid, "type": "Slab 200"}));
+    assert!(crate::stairs::parts(&s.model, &stair_of(&s, solid)).is_some());
+    assert!(s.execute("type", &json!({"category": "stair", "name": "Nothing"})).is_err());
+    assert!(s.execute("type", &json!({"category": "stair", "name": "Deep", "waist": 1e9})).is_err());
+    assert!(s.execute("modify", &json!({"id": solid, "type": "No such type"})).unwrap_err().contains("Monolithic"));
+    // A file keeps the type, by its GUID.
+    let (back, left_out) = Model::read(&s.model.to_json().unwrap()).unwrap();
+    assert!(left_out.is_empty(), "{left_out:?}");
+    assert_eq!(back.types.stair["Slab 200"].waist, 200.0);
+}

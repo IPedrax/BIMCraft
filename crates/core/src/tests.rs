@@ -2068,6 +2068,8 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"start": [0, 0], "angle": 0, "landings": [{"at": 8, "turn": 90, "winders": 3, "balance": 1e9}, {"at": 9, "turn": -180, "winders": 1, "balance": 30}]}),
         json!({"start": [0, 0], "angle": 0, "spiral": {"radius": 1e-300, "sweep": 1e300}}),
         json!({"start": [0, 0], "angle": 0, "width": 1e9, "spiral": {"radius": -1e6, "sweep": 3600}, "height": 1e9, "riser": 1e-3}),
+        json!({"category": "stair", "name": "S", "waist": 1e300, "tread_thickness": -1, "nosing": "x", "stringer_depth": 5e-324}),
+        json!({"start": [0, 0], "angle": 0, "type": 5, "landings": [{"at": 6, "turn": 77.7, "winders": 2}]}),
         json!({"set": "nbr", "keep_rules": 5, "stairs": {"riser": 1e300, "going": -1, "flight_risers_max": 1e30, "walk_line": [], "winders": null}}),
         json!({"set": [], "reset": true, "stairs": {"riser_min": 1e-300, "riser_max": 5e-324, "walk_line_offset": f64::MAX}}),
         json!({"ids": [100002, 1e300, -1, "x"]}),

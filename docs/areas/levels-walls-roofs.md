@@ -177,7 +177,8 @@ the line stays when the width changes. A turn is straight on, back beside the ru
 corner). A landing has a `length` of its own (0: as deep as the stair is wide), and a turn may
 wind instead (`winders` treads fanned round the turn's inside corner, `stairs::wind`; they are `Layout::pads` too, the last
 `Layout::winders` of a turn's). With `balance`, the winders run that many treads into the flight on each side and all of the
-turn's steps are equal along the walk line and the inside string (`stairs::balanced`), so none comes to a point. A stair with a `spiral` (`radius` to its middle line, signed for the side its centre is on, and `sweep`) has no runs: its
+turn's steps are equal along the walk line and the inside string (`stairs::balanced`), so none comes to a point. A stair's type (`Model::types.stair`, `StairType`; none for a stair solid to its level) is what it is built of: `stairs::parts`
+gives its solids, a slab of the type's `waist` under the steps or treads, risers and stringers standing free. A stair with a `spiral` (`radius` to its middle line, signed for the side its centre is on, and `sweep`) has no runs: its
 treads are pieces of a ring (`stairs::spiral`), all of them `Layout::pads`. A project's **building code** (`codes.rs`, `data/building-codes.json`: generic, NBR, IBC, DIN,
 Japan; the numbers typed from memory and unchecked) is the rules its stairs are held to: `building_code` names one and changes
 any rule of it for the project (`Model::building_code`, `Model::stair_rules`), a new stair starts with its riser, going and

@@ -1636,6 +1636,9 @@ pub struct Component {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Stair {
+    /// Its stair type; none (empty) for one solid down to its level, as stairs always were.
+    #[serde(rename = "type", default, skip_serializing_if = "String::is_empty")]
+    pub type_name: String,
     pub level: Guid,
     #[serde(default)]
     pub top_level: Option<Guid>,
@@ -2504,6 +2507,42 @@ pub struct FloorType {
     pub layers: Vec<Layer>,
 }
 
+/// A stair type: what a stair is built of. With a `waist`, a slab that thick under its steps, sloping with them, and
+/// under its landings (a monolithic stair); with none, treads `tread_thickness` thick standing free, with risers
+/// `riser_thickness` thick between them (0: open risers) and a stringer `stringer_width` by `stringer_depth` down each
+/// side (0: none, the treads cantilevered). `nosing` is how far a tread reaches out over the one below. A stair of no type
+/// is solid down to its level.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StairType {
+    #[serde(default)]
+    pub waist: f64,
+    #[serde(default)]
+    pub tread_thickness: f64,
+    #[serde(default)]
+    pub riser_thickness: f64,
+    #[serde(default)]
+    pub nosing: f64,
+    #[serde(default)]
+    pub stringer_width: f64,
+    #[serde(default)]
+    pub stringer_depth: f64,
+}
+
+/// The stair types a project starts with.
+pub fn stair_types() -> BTreeMap<String, StairType> {
+    let open = StairType { tread_thickness: 50.0, nosing: 20.0, ..StairType::default() };
+    BTreeMap::from([
+        ("Monolithic 150mm".to_string(), StairType { waist: 150.0, ..StairType::default() }),
+        ("Stringers - Open Risers".to_string(), StairType { stringer_width: 50.0, stringer_depth: 300.0, ..open.clone() }),
+        (
+            "Stringers - Closed Risers".to_string(),
+            StairType { riser_thickness: 25.0, stringer_width: 50.0, stringer_depth: 300.0, ..open.clone() },
+        ),
+        ("Cantilevered Treads".to_string(), StairType { tread_thickness: 80.0, ..StairType::default() }),
+    ])
+}
+
 /// A railing type: how high its rail stands, and how far apart its balusters are (0: none).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -2683,6 +2722,8 @@ pub struct Types {
     pub ceiling: BTreeMap<String, CeilingType>,
     #[serde(default)]
     pub railing: BTreeMap<String, RailingType>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub stair: BTreeMap<String, StairType>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub structural_column: BTreeMap<String, ColumnType>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -3266,6 +3307,7 @@ impl Model {
         m.types.ceiling.insert("Generic - 20mm".into(), CeilingType { thickness: 20.0, grid: 0.0, layers: Vec::new() });
         m.types.ceiling.insert("Tile 600 x 600".into(), CeilingType { thickness: 20.0, grid: 600.0, layers: Vec::new() });
         m.types.railing.insert("Railing - 1000mm".into(), RailingType { height: 1000.0, spacing: 120.0 });
+        m.types.stair = stair_types();
         let level = language.word("Level");
         m.insert(Element::Level(Level::new(format!("{level} 1"), 0.0)));
         m.insert(Element::Level(Level::new(format!("{level} 2"), 3000.0)));
@@ -3600,6 +3642,10 @@ impl Model {
             }
         }
         self.next_id = self.next_id.max(FIRST_ID);
+        // A file from before stair types has none: it gets the ones a project starts with. Its stairs stay solid.
+        if self.types.stair.is_empty() {
+            self.types.stair = stair_types();
+        }
         // A file from before line styles leaves the patterns and styles out, so it has the English ones, whatever its
         // language: named in its language (a file that holds them has them by GUID, never equal to these).
         if self.language != Language::English
@@ -4219,6 +4265,7 @@ impl Model {
             "roof" => names(&self.types.roof),
             "ceiling" => names(&self.types.ceiling),
             "railing" => names(&self.types.railing),
+            "stair" => names(&self.types.stair),
             run if RUN_CATEGORIES.contains(&run) => self.types.runs.get(run).map(names).unwrap_or_default(),
             _ => Vec::new(),
         }
@@ -4237,6 +4284,7 @@ impl Model {
             "roof" => "Generic - 300mm",
             "ceiling" => "Generic - 20mm",
             "railing" => "Railing - 1000mm",
+            "stair" => "Monolithic 150mm",
             "structuralcolumn" => "Concrete 300 x 300",
             "footing" => "Footing 1200 x 1200",
             "beam" => "Beam 200 x 500",
@@ -6398,6 +6446,26 @@ impl Model {
                 }
             }
         }
+        for (n, t) in &self.types.stair {
+            let parts = [
+                ("waist", t.waist),
+                ("tread_thickness", t.tread_thickness),
+                ("riser_thickness", t.riser_thickness),
+                ("nosing", t.nosing),
+                ("stringer_width", t.stringer_width),
+                ("stringer_depth", t.stringer_depth),
+            ];
+            for (what, v) in parts {
+                if !(0.0..=5000.0).contains(&v) {
+                    return Err(format!("stair type `{n}`: `{what}` is 0 to 5000 mm, not {v}"));
+                }
+            }
+            if t.waist == 0.0 && t.tread_thickness == 0.0 {
+                return Err(format!(
+                    "stair type `{n}` has neither a `waist` (a slab under its steps) nor a `tread_thickness` (treads standing free)"
+                ));
+            }
+        }
         for (n, t) in &self.types.railing {
             size(&format!("railing type `{n}` height"), t.height)?;
             if !(t.spacing == 0.0 || (50.0..=MAX_COORD).contains(&t.spacing)) {
@@ -7274,6 +7342,9 @@ impl Model {
                 crate::runs::check(&who, category, &crate::runs::Geom::of(self, r, t))?;
             }
             Element::Stair(st) => {
+                if !st.type_name.is_empty() {
+                    known(&who, &st.type_name, &self.types.stair)?;
+                }
                 level_ok(st.level)?;
                 point(&who, st.start)?;
                 coord(&format!("{who} angle"), st.angle)?;

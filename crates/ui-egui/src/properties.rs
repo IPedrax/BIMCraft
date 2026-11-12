@@ -461,6 +461,14 @@ fn type_rows(category: &str) -> &'static [(&'static str, &'static str, &'static 
         "roof" => &[(C, "thickness", msg!("Thickness"))],
         "ceiling" => &[(C, "thickness", msg!("Thickness")), (C, "grid", msg!("Tile Size"))],
         "railing" => &[(C, "height", msg!("Height")), (C, "spacing", msg!("Baluster Spacing"))],
+        "stair" => &[
+            (C, "waist", msg!("Monolithic Slab Thickness")),
+            (C, "tread_thickness", msg!("Tread Thickness")),
+            (C, "riser_thickness", msg!("Riser Thickness")),
+            (C, "nosing", msg!("Nosing Length")),
+            (C, "stringer_width", msg!("Stringer Width")),
+            (C, "stringer_depth", msg!("Stringer Depth")),
+        ],
         _ => &[],
     }
 }

@@ -64,8 +64,8 @@ impl Tab {
 }
 
 /// The categories of the system's families the browser lists, besides the runs': what Edit Type edits and the Type Selector picks.
-const SYSTEM_FAMILIES: [&str; 10] =
-    ["wall", "floor", "roof", "ceiling", "door", "window", "column", "railing", "structuralcolumn", "footing"];
+const SYSTEM_FAMILIES: [&str; 11] =
+    ["wall", "floor", "roof", "ceiling", "door", "window", "column", "railing", "stair", "structuralcolumn", "footing"];
 
 /// What a click on an entry does.
 #[derive(Clone, Debug, PartialEq)]
