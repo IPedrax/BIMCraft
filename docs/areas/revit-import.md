@@ -27,7 +27,10 @@ Moved from the root `CLAUDE.md`, word for word: the root keeps the rules and the
   a column is its box's rectangle (a turned one: its symbol's size and the placement's angle); a floor, ceiling or roof is the loops
   of its `OST_SketchLines` (the owner of a curve is the one id among its second reference list's that is a floor, a ceiling or a
   roof, first, middle or last; a curve's record reads as both a line and an arc, and the box it carries says which it is);
-  a roof by footprint comes in level (one that rises is a stand-in, its slopes unread), one by extrusion only where its box
+  a floor edited with Revit's shape tools comes in shaped by its top's vertices, which its data holds, its top at the height most
+  of them have (the creases between them are BIMCraft's own, and a variable layer's level underside is not read); a sketch that
+  does not close is tried again without the lines that cannot bound it (another sketch's, past the element's box, and a line
+  drawn twice); a roof by footprint comes in level (one that rises is a stand-in, its slopes unread), one by extrusion only where its box
   confirms it, and a wall that names a flat roof or one by extrusion has its top cut by it. A room tries the
   middle of its box and then a grid of points over it, and making the arrangement of a level's walls is what costs (`geom::faces`
   splits and matches every segment), so the faces of a level are made once and every point of every room of that level is asked of
