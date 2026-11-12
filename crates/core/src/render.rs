@@ -430,6 +430,10 @@ impl Drawing {
     pub(crate) fn width(&self, pen: Pen) -> f32 {
         (self.weights.mm(pen, false) * sheet::DENSITY) as f32 * self.paper
     }
+    /// How many pixels a millimetre of the paper this view stands for is: what a line's width is divided by for its weight on paper.
+    pub(crate) fn paper_px(&self) -> f32 {
+        sheet::DENSITY as f32 * self.paper
+    }
     /// `px` pixels of annotation, as big as the view's scale makes them.
     fn px(&self, px: f32) -> f32 {
         px * self.k

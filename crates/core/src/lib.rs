@@ -41,6 +41,9 @@ pub mod draw;
 #[cfg(test)]
 mod dry_run_tests;
 pub mod dxf;
+pub mod dxf_out;
+#[cfg(test)]
+mod dxf_out_tests;
 #[cfg(test)]
 mod eberick_tests;
 pub mod electrical;

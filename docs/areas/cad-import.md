@@ -99,3 +99,17 @@ and whether it's for the current view only; it runs `import_cad` on the plan on 
 the box open with the reason when a file can't come in. The Properties palette shows an import's drawing, file, unit, counts,
 level, position, angle and scale, and a drop-down for its colours. Visibility/Graphics has an Imported Categories tab: the
 category's row, and under each drawing of the project a check box for each of its layers, cleared for those the view hides. A right click on linked drawings selected offers Reload CAD, which runs `reload_cad` for each.
+
+## DXF export
+
+`save` to a path ending `.dxf` writes the plan of a level (`view`, the lowest by default) as a DXF (`dxf_out.rs`): the view's
+display list as the plan's PNG and SVG draw it (`render::plan`), its pixels turned back into model millimetres (`View::mm`), in
+the AutoCAD 2004 format (AC1018, the oldest with true colours) and the structure every reader since 2000 knows, its skeleton
+after CADCraft's writer (MIT OR Apache-2.0). Each element's lines go on the layer of its category or of the subcategory it is drawn
+in (`wall`, `door`, `dooropening`), what the view cuts on `<category>-cut`, patterns on `<category>-pattern`, lettering on
+`<category>-text` (a text note's on `text`), and what no element draws (the level's name) on `annotation`. A line is an
+LWPOLYLINE in its true colour, with the standard line weight nearest its width on paper (`dxf_out::lineweight`) and its dashes as
+a linetype in model millimetres (`BIM_DASH_n`); a fill is a solid HATCH, its first ring the outline and the rest holes. Lettering
+is our own font's strokes, as in the PDF; a picture can't be written and is counted in `left_out`. The reply names the layers and
+counts the entities. The tests read the file back with the reader above (`dxf_out_tests.rs`), and the sample house's plan was
+checked with ezdxf's audit (no errors) and through acadrust's DWG writer and reader (every entity back).

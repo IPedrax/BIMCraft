@@ -181,9 +181,12 @@ other_files(
     other_files(
         "save",
         "Save",
-        "{path?} .bimcraft saves the project (Save As with a path); .ifc exports IFC4; .glb exports the default 3D view's scene as \
-         glTF 2.0 (metres, y up, a node for each element named by its id, GUID and category in `extras`; returns `elements` and \
-         `triangles`); .svg or .png exports the lowest level's plan; .pdf prints every sheet, a page each",
+        "{path?, view?} .bimcraft saves the project (Save As with a path); .ifc exports IFC4; .glb exports the default 3D view's \
+         scene as glTF 2.0 (metres, y up, a node for each element named by its id, GUID and category in `extras`; returns \
+         `elements` and `triangles`); .svg or .png exports the lowest level's plan; .dxf exports the plan of `view` (a level, the \
+         lowest by default) as an AutoCAD 2004 DXF in model millimetres, each category on its layer (`wall`, `wall-cut`, \
+         `door-text`…), with its colours, line weights and dashes (returns `entities`, `layers` and what was `left_out`); .pdf \
+         prints every sheet, a page each",
         save,
         Files::Write,
     ),
@@ -3741,6 +3744,13 @@ fn save(s: &mut Session, p: &Value) -> R {
         let pages: Vec<(&Drawing, P2)> = sheets.iter().map(|(_, d, p)| (d, *p)).collect();
         std::fs::write(&path, pdf::pdf(&pages)).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
         return Ok(json!({"path": path, "format": "PDF", "pages": pages.len()}));
+    }
+    if format == "dxf" {
+        let level = level_param(c, &s.model, p, "view")?;
+        let seen = crate::link::seen(&s.model);
+        let out = crate::dxf_out::write(&seen, &render::plan(&seen, level, 1600, 1000));
+        std::fs::write(&path, &out.text).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+        return Ok(json!({"path": path, "format": "DXF", "entities": out.entities, "layers": out.layers, "left_out": out.left_out}));
     }
     if matches!(format.as_str(), "svg" | "png") {
         let level = level_param(c, &s.model, &json!({}), "view")?;
