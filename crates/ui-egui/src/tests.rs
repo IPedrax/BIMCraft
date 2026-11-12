@@ -1125,6 +1125,26 @@ fn file_export_lists_the_3d_scene_as_gltf_in_both_profiles_and_an_export_leaves_
 }
 
 #[test]
+fn import_3d_model_brings_an_objs_objects_in_on_the_plans_level_selected_and_says_what_came_in() {
+    let mut h = app("");
+    let dir = std::env::temp_dir().join(format!("bimcraft-ui-mesh-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let obj = "o Table\nv 0 0 0\nv 1 0 0\nv 1 0 1\nv 0 0 1\nv 0 0.75 0\nf 1 2 3 4\nf 1 2 5\no Lamp\nv 2 0 0\nv 2.2 0 0\nv 2 1.5 0\nf 6 7 8\nl 1 2\n";
+    std::fs::write(dir.join("room.obj"), obj).unwrap();
+    press(&mut h, "Insert");
+    assert!(h.query_by_label("Import 3D Model").is_some(), "Insert > Import lists it");
+    h.state_mut().import_mesh_path(dir.join("room.obj"));
+    h.run();
+    let st = h.state();
+    assert_eq!(st.selection.len(), 2, "{}", st.status.text);
+    assert!(st.session.model.families.contains_key("Table") && st.session.model.families.contains_key("Lamp"));
+    assert!(st.status.text.contains("2 objects") && st.status.text.contains("1 lines and points"), "{}", st.status.text);
+    // One undo step.
+    assert_eq!(st.session.history().last().copied(), Some("Import Mesh"));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn new_asks_before_dropping_unsaved_changes() {
     let mut h = app("");
     h.state_mut().session.execute("wall", &json!({"points": [[0, 0], [4000, 0]]})).unwrap();

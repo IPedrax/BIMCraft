@@ -44,6 +44,7 @@ mod linestyles;
 mod lineweights;
 mod links;
 mod mep;
+mod mesh;
 mod minimap;
 mod notes;
 mod objectstyles;
@@ -4431,6 +4432,12 @@ impl BimApp {
             );
             if big_button(ui, Icon::ImportCad, "Import CAD", self.cad_box.as_ref().is_some_and(|b| !b.linked()), tip).clicked() {
                 self.cad_dialog = Some(false);
+            }
+            let tip = msg!(
+                "Import 3D Model: an OBJ or glTF file's objects brought into the project as Generic Model families, each placed where the file has it on this plan's level, with its materials' colours"
+            );
+            if big_button(ui, Icon::Component, "Import 3D Model", false, tip).clicked() {
+                self.import_mesh_dialog(ui.ctx());
             }
         });
     }
