@@ -3262,9 +3262,14 @@ impl BimApp {
             }
             return self.run("render", p).is_some();
         }
-        let saved = self.run("save", json!({"path": file})).is_some();
-        // Exports (IFC, glTF, the sheets' PDF) leave the project unsaved.
-        if saved && !matches!(ext.as_str(), "ifc" | "glb" | "pdf") {
+        let mut p = json!({"path": file});
+        // A DXF or DWG is the plan on screen's level, or the lowest level's when no plan is.
+        if let (true, Sheet::Plan(id)) = (matches!(ext.as_str(), "dxf" | "dwg"), self.sheet) {
+            p["view"] = json!(id);
+        }
+        let saved = self.run("save", p).is_some();
+        // Exports (IFC, glTF, the sheets' PDF, a plan's DXF or DWG) leave the project unsaved.
+        if saved && !matches!(ext.as_str(), "ifc" | "glb" | "pdf" | "dxf" | "dwg") {
             self.saved = Arc::clone(&self.session.model);
             self.note_recent(path);
             self.autosave_saved();
@@ -3886,6 +3891,12 @@ impl BimApp {
             }
             if ui.button(t("Plan as SVG…")).clicked() {
                 self.export(ctx, msg!("SVG drawing"), "svg");
+            }
+            if ui.button(t("Plan as DXF…")).clicked() {
+                self.export(ctx, msg!("DXF drawing"), "dxf");
+            }
+            if ui.button(t("Plan as DWG…")).clicked() {
+                self.export(ctx, msg!("DWG drawing"), "dwg");
             }
             if ui.button(t("Sheets as PDF…")).clicked() {
                 self.export(ctx, "PDF", "pdf");

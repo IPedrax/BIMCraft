@@ -185,7 +185,8 @@ other_files(
          scene as glTF 2.0 (metres, y up, a node for each element named by its id, GUID and category in `extras`; returns \
          `elements` and `triangles`); .svg or .png exports the lowest level's plan; .dxf exports the plan of `view` (a level, the \
          lowest by default) as an AutoCAD 2004 DXF in model millimetres, each category on its layer (`wall`, `wall-cut`, \
-         `door-text`…), with its colours, line weights and dashes (returns `entities`, `layers` and what was `left_out`); .pdf \
+         `door-text`…), with its colours, line weights and dashes (returns `entities`, `layers` and what was `left_out`); .dwg \
+         the same drawing as a DWG, where the app can write one; .pdf \
          prints every sheet, a page each",
         save,
         Files::Write,
@@ -3745,12 +3746,22 @@ fn save(s: &mut Session, p: &Value) -> R {
         std::fs::write(&path, pdf::pdf(&pages)).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
         return Ok(json!({"path": path, "format": "PDF", "pages": pages.len()}));
     }
-    if format == "dxf" {
+    if format == "dxf" || format == "dwg" {
+        // A DWG is the same drawing, written by the app's DWG writer from the DXF.
+        let writer = match format.as_str() {
+            "dwg" => Some(s.dwg_out.clone().ok_or_else(|| bad(c, "this build can't write DWG; save as .dxf, which CAD programs open"))?),
+            _ => None,
+        };
         let level = level_param(c, &s.model, p, "view")?;
         let seen = crate::link::seen(&s.model);
         let out = crate::dxf_out::write(&seen, &render::plan(&seen, level, 1600, 1000));
-        std::fs::write(&path, &out.text).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
-        return Ok(json!({"path": path, "format": "DXF", "entities": out.entities, "layers": out.layers, "left_out": out.left_out}));
+        let bytes = match &writer {
+            Some(w) => w(&out.text).map_err(|e| bad(c, e))?,
+            None => out.text.into_bytes(),
+        };
+        std::fs::write(&path, &bytes).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+        let kind = if writer.is_some() { "DWG" } else { "DXF" };
+        return Ok(json!({"path": path, "format": kind, "entities": out.entities, "layers": out.layers, "left_out": out.left_out}));
     }
     if matches!(format.as_str(), "svg" | "png") {
         let level = level_param(c, &s.model, &json!({}), "view")?;

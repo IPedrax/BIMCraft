@@ -159,3 +159,34 @@ fn real_drawings_where_a_folder_of_them_is_named() {
         eprintln!("{} ({} kB) in {:?}: {said}", path.display(), std::fs::metadata(&path).map_or(0, |m| m.len() >> 10), start.elapsed());
     }
 }
+
+#[test]
+fn a_plan_saved_as_dwg_reads_back_with_every_entity_and_layer_its_dxf_has() {
+    use serde_json::json;
+    let mut s = bimcraft_core::engine::Session::new();
+    s.dwg_out = Some(writer());
+    s.execute("wall", &json!({"points": [[0, 0], [6000, 0], [6000, 4000]]})).unwrap();
+    s.execute("door", &json!({"at": [2000, 0]})).unwrap();
+    let dir = std::env::temp_dir().join(format!("bimcraft-dwg-out-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let (dxf_path, dwg_path) = (dir.join("plan.dxf"), dir.join("plan.dwg"));
+    let as_dxf = s.execute("save", &json!({"path": dxf_path})).unwrap();
+    let as_dwg = s.execute("save", &json!({"path": dwg_path})).unwrap();
+    assert_eq!(as_dwg["format"], "DWG");
+    assert_eq!((&as_dwg["entities"], &as_dwg["layers"]), (&as_dxf["entities"], &as_dxf["layers"]));
+    let dwg = std::fs::read(&dwg_path).unwrap();
+    assert!(is_dwg(&dwg), "{:?}", dwg.get(..6));
+    let back = dxf::read(&to_dxf(&dwg, Limits::DEFAULT).unwrap().dxf).unwrap();
+    let ours = dxf::read_text(&std::fs::read_to_string(&dxf_path).unwrap()).unwrap();
+    assert_eq!(back.unit, "mm");
+    assert_eq!(back.entities.len(), ours.entities.len());
+    let names = |d: &dxf::Dxf| {
+        let mut n: Vec<String> = d.layers.iter().map(|l| l.name.clone()).collect();
+        n.sort();
+        n
+    };
+    assert_eq!(names(&back), names(&ours));
+    let fills = |d: &dxf::Dxf| d.entities.iter().filter(|e| matches!(e.shape, Shape::Fill { solid: true, .. })).count();
+    assert!(fills(&back) > 0 && fills(&back) == fills(&ours), "the walls' poché comes through");
+    let _ = std::fs::remove_dir_all(&dir);
+}

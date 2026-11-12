@@ -113,3 +113,11 @@ a linetype in model millimetres (`BIM_DASH_n`); a fill is a solid HATCH, its fir
 is our own font's strokes, as in the PDF; a picture can't be written and is counted in `left_out`. The reply names the layers and
 counts the entities. The tests read the file back with the reader above (`dxf_out_tests.rs`), and the sample house's plan was
 checked with ezdxf's audit (no errors) and through acadrust's DWG writer and reader (every entity back).
+
+`save` to a `.dwg` writes the same drawing as a DWG: the core makes the DXF and hands it to the session's `DwgWriter`
+(`cad::DwgWriter`, `Session::dwg_out`), which the apps set to `bimcraft-dwg`'s `writer()`, acadrust reading that DXF and writing
+it as DWG, in the app's own process under `catch_unwind` (it reads only a DXF of the core's own, never a stranger's file). A
+session without one, as the core's and the desktop's tests are, says to save as .dxf. The desktop's File > Export has Plan as
+DXF… and Plan as DWG…: the plan on screen's level, or the lowest level's when no plan is on screen, and the project stays unsaved
+as with every export. `bimcraft-dwg`'s test saves a plan as both and reads the DWG back through `to_dxf`: the same entities, the
+same layers and the same solid fills.

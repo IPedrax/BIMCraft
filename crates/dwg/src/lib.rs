@@ -228,14 +228,28 @@ fn drain(stream: impl Read, cap: u64) -> Vec<u8> {
     buf
 }
 
-/// The DWG a DXF becomes, written by the same library: tests make their DWG files with it, since Autodesk's own are never
-/// committed.
+/// The DWG a DXF becomes, written by the same library: what Save as DWG writes from the DXF the core made of a view, and how
+/// the tests make their DWG files, since Autodesk's own are never committed. It runs in this process, under `catch_unwind`:
+/// what it reads is a DXF of the core's own, not a stranger's file.
+pub fn from_dxf(dxf: &str) -> Result<Vec<u8>, String> {
+    let write = || {
+        let doc = acadrust::DxfReader::from_reader(Cursor::new(dxf.as_bytes().to_vec()))
+            .and_then(acadrust::DxfReader::read)
+            .map_err(|e| format!("the DXF couldn't be read: {e}"))?;
+        acadrust::DwgWriter::write_to_vec(&doc).map_err(|e| format!("the DWG couldn't be written: {e}"))
+    };
+    std::panic::catch_unwind(write).unwrap_or_else(|_| Err("the DWG writer stopped on this drawing; save it as DXF".into()))
+}
+
+/// The same, by the name the tests know it by.
 #[cfg(any(test, feature = "testing"))]
 pub fn dwg_from_dxf(dxf: &str) -> Result<Vec<u8>, String> {
-    let doc = acadrust::DxfReader::from_reader(Cursor::new(dxf.as_bytes().to_vec()))
-        .and_then(acadrust::DxfReader::read)
-        .map_err(|e| format!("the DXF couldn't be read: {e}"))?;
-    acadrust::DwgWriter::write_to_vec(&doc).map_err(|e| format!("the DWG couldn't be written: {e}"))
+    from_dxf(dxf)
+}
+
+/// The DWG writer an app hands its `Session` ([`from_dxf`]).
+pub fn writer() -> bimcraft_core::cad::DwgWriter {
+    std::sync::Arc::new(|dxf: &str| from_dxf(dxf))
 }
 
 #[cfg(test)]

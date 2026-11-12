@@ -8,7 +8,7 @@ use bimcraft_i18n::ui_msg;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use bimcraft_core::cad::DwgReader;
+use bimcraft_core::cad::{DwgReader, DwgWriter};
 use bimcraft_core::engine::Session;
 use bimcraft_core::sample::SAMPLE;
 use bimcraft_ui_egui::control::Control;
@@ -68,6 +68,7 @@ fn main() -> ExitCode {
     };
     let mut session = Session::new();
     session.dwg = dwg_reader();
+    session.dwg_out = dwg_writer();
     // A blank project starts in the interface's language: its levels named in it.
     if args.is_empty() {
         let _ = session.execute("new", &json!({"language": language.project().code()}));
@@ -248,6 +249,18 @@ fn dwg_reader() -> Option<DwgReader> {
 
 #[cfg(not(feature = "dwg"))]
 fn dwg_reader() -> Option<DwgReader> {
+    None
+}
+
+/// The DWG writer a session is given: `bimcraft-dwg`'s, behind the `dwg` feature. A build without it hands none, and a .dwg says
+/// to save as DXF.
+#[cfg(feature = "dwg")]
+fn dwg_writer() -> Option<DwgWriter> {
+    Some(bimcraft_dwg::writer())
+}
+
+#[cfg(not(feature = "dwg"))]
+fn dwg_writer() -> Option<DwgWriter> {
     None
 }
 

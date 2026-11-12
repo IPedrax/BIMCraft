@@ -11,6 +11,8 @@ unmodified as a separate library; NOTICE carries it and ACadSharp's MIT notice).
 - **A file is hostile, and the decoder can't be interrupted.** `to_dxf` checks `Limits` before and while it converts and runs
   under `catch_unwind`, but a file that makes the decoder allocate past memory aborts the process, so the apps read a DWG in a
   child of their own (`in_child`, answered by `child_main`, which every app's `main` calls first).
+- **Writing is in process.** `writer()` (Save as DWG) turns a DXF the core wrote into DWG with acadrust's writer under
+  `catch_unwind`, in the app's own process: what it reads is the core's own DXF, not a hostile file.
 - **Autodesk's files are never committed.** Tests make DWG files from DXF text with `dwg_from_dxf` (the `testing` feature);
   `BIMCRAFT_DWG_SAMPLES` names a folder of real ones, read only where it is set.
 

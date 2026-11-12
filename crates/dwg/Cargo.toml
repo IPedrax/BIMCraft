@@ -10,7 +10,7 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
-# The reader is handed to a session as the core's `DwgReader`. The core never depends on this crate.
+# The reader and the writer are handed to a session as the core's `DwgReader` and `DwgWriter`. The core never depends on this crate.
 bimcraft-core = { workspace = true }
 # MPL-2.0, file-level copyleft: used unmodified, as a separate library, it suits the workspace's MIT OR Apache-2.0 (NOTICE).
 # Its DWG code is ported from ACadSharp (MIT) and follows the Open Design Alliance's published DWG specification.
@@ -19,3 +19,6 @@ acadrust = { version = "=0.6.6", default-features = false }
 [features]
 # `dwg_from_dxf`, which makes DWG files from DXF text, for the apps' tests too.
 testing = []
+
+[dev-dependencies]
+serde_json = { workspace = true }

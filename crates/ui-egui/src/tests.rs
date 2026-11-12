@@ -1125,6 +1125,35 @@ fn file_export_lists_the_3d_scene_as_gltf_in_both_profiles_and_an_export_leaves_
 }
 
 #[test]
+fn file_export_writes_the_plan_on_screen_as_dxf_and_leaves_the_project_unsaved_and_a_dwg_needs_the_apps_writer() {
+    for (name, mut h) in [("Rev", app(SAMPLE)), ("BIMCraft", bimcraft(SAMPLE))] {
+        press(&mut h, "File");
+        h.get_by_label_contains("Export").click();
+        h.run();
+        assert!(h.query_by_label("Plan as DXF…").is_some(), "{name}: File > Export lists DXF");
+        assert!(h.query_by_label("Plan as DWG…").is_some(), "{name}: File > Export lists DWG");
+    }
+    let mut h = app(SAMPLE);
+    let dir = std::env::temp_dir().join(format!("bimcraft-ui-dxf-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    // A level of its own with one wall, its plan on screen: the DXF is that plan, not the lowest level's.
+    let upper = h.state_mut().session.execute("level", &json!({"elevation": 6000, "name": "Upper"})).unwrap()["id"].as_u64().unwrap();
+    h.state_mut().session.execute("wall", &json!({"points": [[0, 0], [1000, 0]], "level": "Upper"})).unwrap();
+    h.state_mut().open_sheet(Sheet::Plan(upper));
+    h.run();
+    assert!(h.state_mut().save_to(&dir.join("upper.dxf")), "{}", h.state().status.text);
+    let d = bimcraft_core::dxf::read_text(&std::fs::read_to_string(dir.join("upper.dxf")).unwrap()).unwrap();
+    let walls = d.entities.iter().filter(|e| e.layer.starts_with("wall")).count();
+    let doors = d.entities.iter().filter(|e| e.layer.starts_with("door")).count();
+    assert!(walls > 0 && doors == 0, "the upper plan: {walls} wall and {doors} door entities");
+    assert!(h.state().dirty() && h.state().session.path.is_none(), "the project is still unsaved");
+    // A window built without the DWG writer (as the tests' is) says to save as DXF.
+    assert!(!h.state_mut().save_to(&dir.join("upper.dwg")));
+    assert!(h.state().status.text.contains(".dxf"), "{}", h.state().status.text);
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn new_asks_before_dropping_unsaved_changes() {
     let mut h = app("");
     h.state_mut().session.execute("wall", &json!({"points": [[0, 0], [4000, 0]]})).unwrap();

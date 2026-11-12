@@ -89,3 +89,17 @@ fn a_view_names_the_level_whose_plan_is_written() {
     assert_eq!(walls(&lower), 0);
     assert!(walls(&upper) > 0);
 }
+
+#[test]
+fn a_dwg_needs_the_apps_writer_and_without_one_the_reply_says_to_save_as_dxf() {
+    let mut s = Session::new();
+    run(&mut s, "wall", json!({"points": [[0, 0], [3000, 0]]}));
+    let file = path("dwg", "plan.dwg");
+    let e = s.execute("save", &json!({"path": file})).unwrap_err();
+    assert!(e.contains(".dxf"), "{e}");
+    assert!(!file.exists());
+    // With one, it writes what the writer makes of the DXF.
+    s.dwg_out = Some(std::sync::Arc::new(|dxf: &str| Ok(format!("DWG of {} bytes", dxf.len()).into_bytes())));
+    assert_eq!(run(&mut s, "save", json!({"path": file}))["format"], "DWG");
+    assert!(std::fs::read_to_string(&file).unwrap().starts_with("DWG of "));
+}

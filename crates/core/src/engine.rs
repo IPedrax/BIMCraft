@@ -166,6 +166,8 @@ pub struct Session {
     resets: usize,
     /// What reads a DWG drawing, when the app has one (`cad::DwgReader`); none says to save it as DXF.
     pub dwg: Option<crate::cad::DwgReader>,
+    /// What writes a DWG, when the app has one (`cad::DwgWriter`); none says to save as DXF.
+    pub dwg_out: Option<crate::cad::DwgWriter>,
     /// The commands plugins registered, beside the static [`commands`]. They belong to this session, not the
     /// process, so two sessions and the tests never share them.
     external: Vec<ExternalCommand>,
@@ -246,6 +248,7 @@ impl Session {
             checks: 0,
             resets: 0,
             dwg: None,
+            dwg_out: None,
             external: Vec::new(),
             read_only: None,
             dry_run: false,

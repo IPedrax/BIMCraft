@@ -8,7 +8,7 @@ mod window;
 use std::io::Write;
 use std::process::ExitCode;
 
-use bimcraft_core::cad::DwgReader;
+use bimcraft_core::cad::{DwgReader, DwgWriter};
 use bimcraft_core::engine::Session;
 use bimcraft_core::sample::SAMPLE;
 use bimcraft_plugin::{Level, Plugins};
@@ -72,6 +72,7 @@ pub(crate) fn note_plugins(plugins: &Plugins, seen: &mut usize) {
 fn cli(args: &[String], out: &mut impl Write) -> Result<(), String> {
     let mut s = Session::new();
     s.dwg = dwg_reader();
+    s.dwg_out = dwg_writer();
     let plugins = load_plugins(&mut s);
     let mut seen = plugins.log().len();
     match args {
@@ -185,6 +186,18 @@ fn dwg_reader() -> Option<DwgReader> {
 
 #[cfg(not(feature = "dwg"))]
 fn dwg_reader() -> Option<DwgReader> {
+    None
+}
+
+/// The DWG writer a session is given: `bimcraft-dwg`'s, behind the `dwg` feature. A build without it hands none, and a .dwg says
+/// to save as DXF.
+#[cfg(feature = "dwg")]
+fn dwg_writer() -> Option<DwgWriter> {
+    Some(bimcraft_dwg::writer())
+}
+
+#[cfg(not(feature = "dwg"))]
+fn dwg_writer() -> Option<DwgWriter> {
     None
 }
 
