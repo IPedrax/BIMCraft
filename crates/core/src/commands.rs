@@ -2282,6 +2282,29 @@ other_files(
         dr_check,
     ),
     other(
+        "bath_volumes",
+        "Check Bathroom Volumes",
+        "{fixture: {outline?: [[x, y], …], shower?: [x, y], floor?, rim?}, things: [{name?, kind, at: [x, y, z], ip?, class?, supply?, voltage?, rcd?, serving?}], public?, standard?} \
+         which of the volumes around a bathtub or a shower each thing stands in, and whether it may stand there, as NBR 5410:2004 \
+         item 9.1 asks. The numbers are data (`data/bath-volumes.json`, one rule set for each standard, every volume and every thing \
+         it allows naming its source): `standard` names the set, `NBR 5410:2004` the default and only one so far. `fixture` is the \
+         tub, tray or recess in plan (`outline`, mm) or the outlet of a shower with no tray (`shower`), `floor` the level one stands on \
+         (mm, 0 by default) and `rim` the tub's rim above it (mm, 0 by default). Volume 0 is the inside up to the rim (none for a shower \
+         with no tray); 1 over it up to 2.25 m (0.6 m round a shower with no tray); 2 out 0.60 m more, up to 3 m, so over volume 1 \
+         too; 3 out 2.40 m more, up to 2.25 m. A thing's `kind` is outlet, switch (any device that protects, isolates or controls), \
+         box (a junction box; `serving` when it connects only equipment of these volumes), luminaire, heater (a water heater) or \
+         equipment; `ip` the second digit of its IP code, `class` I, II or III, `supply` mains (the default), selv (with `voltage`, V) \
+         or separation (its own separating transformer), `rcd` the residual-current device that protects it, mA. Each comes back \
+         with its `volume` (null outside them all), the least `ip_min` there (IPX7, 4, 3 and 1; IPX5 in volumes 2 and 3 of a \
+         `public` bathroom), `allowed`, `ok` (allowed, with an IP known and enough), `why` and `sources`; `failing` names the \
+         things that are not `ok`. In volume 0 only SELV up to 12 V; no outlet or switch in volumes 0 to 2 (a switch at SELV \
+         excepted); a heater of class I or II in volume 1 and 2, a luminaire of class II in volume 2; an outlet in volume 3 by \
+         separation, SELV or a residual-current device of 30 mA at most. The volumes are measured straight: the walls and \
+         partitions they go around are not seen (`not_covered`), so what stands behind one is taken as inside. It has no \
+         shortcut: Revit has no tool for it. It changes nothing",
+        bath_volumes,
+    ),
+    other(
         "dps_check",
         "Check Surge Protection",
         "{region: AQ1|AQ2|AQ3, overhead?, accepted_risk?, risk_to_people?, purpose?: line|direct|both, earthing?: TT|TN-S|TN-C|IT, \
@@ -6366,6 +6389,108 @@ fn dr_check(_: &mut Session, p: &Value) -> R {
         "max_residual_ma": set.max_residual_ma,
         "max_outlet_a": set.max_outlet_a,
         "building": if residential { "residential" } else { "other" },
+        "not_covered": set.not_covered,
+    }))
+}
+
+fn bath_volumes(_: &mut Session, p: &Value) -> R {
+    use crate::bath::{self, Bath, CLASSES, Fixture, KINDS, SUPPLIES, Thing};
+    let c = "bath_volumes";
+    if !p.is_object() {
+        return Err(bad(c, "params must be an object"));
+    }
+    only(c, p, &["fixture", "things", "public", "standard"])?;
+    let public = flag(c, p, "public")?;
+    let names: Vec<&str> = bath::rule_sets().iter().map(|r| r.standard.as_str()).collect();
+    let standard = choice(c, p, "standard", &names, bath::DEFAULT)?;
+    let set = bath::rule_set(standard).ok_or_else(|| bad(c, format!("no rules for `{standard}` in data/bath-volumes.json")))?;
+    let f = p.get("fixture").filter(|v| v.is_object()).ok_or_else(|| bad(c, "`fixture` {outline | shower, floor?, rim?} is required"))?;
+    let at = |e: String| format!("fixture: {e}");
+    only(c, f, &["outline", "shower", "floor", "rim"]).map_err(at)?;
+    let fixture = match (f.get("outline").filter(|v| !v.is_null()), point_opt(c, f, "shower").map_err(at)?) {
+        (Some(_), None) => {
+            let ring = points(c, f, "outline").map_err(at)?;
+            if ring.len() < 3 || geom::area(&ring).abs() < 1.0 {
+                return Err(bad(c, "fixture: `outline` needs 3 points or more around an area"));
+            }
+            Fixture::Outline(ring)
+        }
+        (None, Some(s)) => Fixture::Shower(s),
+        _ => return Err(bad(c, "fixture: give `outline` (a tub, tray or recess) or `shower` (a shower with no tray), one of them")),
+    };
+    let floor = within(c, f, "floor", 0.0, -MAX_COORD, MAX_COORD).map_err(at)?;
+    let rim = within(c, f, "rim", 0.0, 0.0, 10_000.0).map_err(at)?;
+    let b = Bath { fixture, floor, rim };
+    let list = match p.get("things") {
+        Some(Value::Array(a)) if !a.is_empty() && a.len() <= 5000 => a,
+        _ => return Err(bad(c, "`things` is a list of 1 to 5000 things, each {kind, at: [x, y, z]}")),
+    };
+    const KEYS: &[&str] = &["name", "kind", "at", "ip", "class", "supply", "voltage", "rcd", "serving"];
+    let mut out = Vec::new();
+    let mut failing = Vec::new();
+    for (i, item) in list.iter().enumerate() {
+        let at = |e: String| format!("things[{i}]: {e}");
+        let o = item.as_object().ok_or_else(|| bad(c, format!("things[{i}] must be an object")))?;
+        if let Some(k) = o.keys().find(|k| !KEYS.contains(&k.as_str())) {
+            return Err(bad(c, format!("things[{i}]: unknown parameter `{k}`")));
+        }
+        let name = string(c, item, "name").map_err(at)?.unwrap_or_else(|| format!("#{}", i + 1));
+        if name.chars().count() > MAX_TEXT {
+            return Err(bad(c, format!("things[{i}]: `name` is longer than {MAX_TEXT} characters")));
+        }
+        let kind = choice(c, item, "kind", KINDS, "").map_err(at)?;
+        if kind.is_empty() {
+            return Err(bad(c, at(format!("`kind` ({}) is required", KINDS.join(", ")))));
+        }
+        let point = item.get("at").and_then(point3).ok_or_else(|| bad(c, at("`at` [x, y, z] in mm is required".into())))?;
+        let ip = match item.get("ip").filter(|v| !v.is_null()) {
+            None => None,
+            Some(v) => Some(
+                v.as_u64().filter(|n| *n <= 8).ok_or_else(|| bad(c, at(format!("`ip` is the IP code's second digit, 0 to 8, got {v}"))))?
+                    as u8,
+            ),
+        };
+        let class = choice(c, item, "class", CLASSES, "").map_err(at)?;
+        let supply = choice(c, item, "supply", SUPPLIES, "mains").map_err(at)?;
+        let optional = |key: &str, hi: f64| -> Result<Option<f64>, String> {
+            match item.get(key).filter(|v| !v.is_null()) {
+                None => Ok(None),
+                Some(_) => within(c, item, key, 0.0, 0.0, hi).map(Some).map_err(at),
+            }
+        };
+        let thing = Thing {
+            at: point,
+            kind: kind.to_string(),
+            ip,
+            class: (!class.is_empty()).then(|| class.to_string()),
+            supply: supply.to_string(),
+            voltage: optional("voltage", 1.0e6)?,
+            rcd: optional("rcd", 1.0e6)?,
+            serving: flag(c, item, "serving").map_err(at)?,
+        };
+        let v = set.check(&b, &thing, public);
+        let ok = v.allowed && (v.volume.is_none() || v.ip_ok == Some(true));
+        if !ok {
+            failing.push(name.clone());
+        }
+        out.push(json!({
+            "name": name,
+            "kind": kind,
+            "volume": v.volume,
+            "ip_min": v.ip_min,
+            "ip_ok": v.ip_ok,
+            "allowed": v.allowed,
+            "ok": ok,
+            "why": v.why,
+            "sources": v.sources,
+        }));
+    }
+    Ok(json!({
+        "standard": set.standard,
+        "standard_source": set.source,
+        "things": out,
+        "failing": failing,
+        "public": public,
         "not_covered": set.not_covered,
     }))
 }
