@@ -889,6 +889,22 @@ pub fn solve(m: &Model, st: &Stair, locks: Locks) -> Vec<Proposal> {
             })
             .collect();
         let mut sets = vec![moved.clone()];
+        // Winders that come to a point, or too near one: balanced into the flights by as few treads as give their narrow
+        // end the least depth the rules ask.
+        if !locks.landings {
+            let mut balanced = moved.clone();
+            for l in balanced.iter_mut().filter(|l| l.winders > 0) {
+                let narrow = |j: u32| 2.0 * f64::from(j) * tread / f64::from(l.winders + 2 * j);
+                if narrow(l.balance) < rules.winder_narrow_min - EPS
+                    && let Some(j) = (l.balance + 1..=12).find(|j| narrow(*j) >= rules.winder_narrow_min - EPS)
+                {
+                    l.balance = j;
+                }
+            }
+            if balanced != moved {
+                sets.insert(0, balanced);
+            }
+        }
         if !locks.landings && st.spiral.is_none() {
             let most = f64::from(rules.flight_risers(riser));
             let mut more = Vec::new();
@@ -934,6 +950,15 @@ pub fn solve(m: &Model, st: &Stair, locks: Locks) -> Vec<Proposal> {
                     .map(|l| l.at.to_string())
                     .collect();
                 changes.push(format!("{added} more landing{}, after {} risers", if added == 1 { "" } else { "s" }, at.join(" and ")));
+            }
+            if added == 0
+                && let Some((l, _)) = made.landings.iter().zip(&st.landings).find(|(a, b)| a.balance != b.balance)
+            {
+                changes.push(format!(
+                    "its winders balanced over {} tread{} of the flight on each side",
+                    l.balance,
+                    if l.balance == 1 { "" } else { "s" }
+                ));
             }
             if made.landings.iter().zip(&st.landings).any(|(a, b)| (a.length - b.length).abs() > EPS) && added == 0 {
                 changes.push(format!("landings {} mm long", mm(due)));

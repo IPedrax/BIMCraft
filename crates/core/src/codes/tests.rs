@@ -829,3 +829,20 @@ fn a_stair_is_drawn_by_hand_riser_by_riser_and_a_made_one_becomes_one() {
 fn steps_of(n: u32) -> Value {
     json!((0..n).map(|i| json!({"riser": [[0, 300 * i], [1000, 300 * i]]})).collect::<Vec<_>>())
 }
+
+#[test]
+fn the_solver_balances_winders_that_come_to_a_point() {
+    let mut s = Session::new();
+    run(&mut s, "building_code", json!({"set": "din"}));
+    let p = json!({"start": [0, 0], "angle": 90, "width": 1000, "landings": [{"at": 7, "turn": 90, "winders": 3}]});
+    let id = run(&mut s, "stair", p)["id"].as_u64().unwrap();
+    assert!(broken(&mut s, id).contains(&"winder_narrow_min".to_string()));
+    let r = run(&mut s, "stair_solve", json!({"id": id}));
+    let first = &r["proposals"][0];
+    assert_eq!(first["findings"], json!([]), "{r}");
+    // DIN asks 100 at the narrow end: one tread of each flight gives 2 × 270 / 5 = 108.
+    assert_eq!(first["landings"][0]["balance"], 1);
+    assert!(first["changes"].as_array().unwrap().iter().any(|c| c.as_str().unwrap().contains("balanced over 1 tread")), "{first}");
+    run(&mut s, "stair_solve", json!({"id": id, "apply": 1}));
+    assert_eq!(broken(&mut s, id), Vec::<String>::new());
+}

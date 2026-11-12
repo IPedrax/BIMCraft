@@ -99,7 +99,7 @@ msgstr "Anzahl"
 msgid "Crosshatch"
 msgstr "Schraffur"
 
-#: crates/core/src/render.rs:3722
+#: crates/core/src/render.rs:3757
 msgid "DN"
 msgstr "AB"
 
@@ -603,7 +603,7 @@ msgstr "Auftritt"
 msgid "Type"
 msgstr "Typ"
 
-#: crates/core/src/render.rs:3722
+#: crates/core/src/render.rs:3757
 msgid "UP"
 msgstr "AUF"
 

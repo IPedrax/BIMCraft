@@ -1180,7 +1180,6 @@ pub fn export(m: &Model) -> String {
             }
             Element::Stair(st) => {
                 let Some(&(_, storey)) = storeys.get(&st.level) else { continue };
-                let (_, each, _) = m.flight(st);
                 let (base, l) = (m.elevation(st.level), stairs::stair(m, st));
                 let at = w.place(Some(storey), (0.0, 0.0, 0.0), None);
                 let ent =
@@ -1190,6 +1189,8 @@ pub fn export(m: &Model) -> String {
                 // Its flights, each tread a block from the floor up to it, as in 3D; its landings.
                 let mut parts = Vec::new();
                 for (i, run) in l.runs.iter().enumerate() {
+                    // Each riser of this run: a storey of its own height has its own.
+                    let each = if run.risers > 0 { (run.z.1 - run.z.0) / f64::from(run.risers) } else { 0.0 };
                     let fat = w.place(Some(at), (run.start.0, run.start.1, run.z.0 - base), Some(run.u));
                     let steps: Vec<(u64, f64, f64)> = (1..run.risers)
                         .map(|k| {

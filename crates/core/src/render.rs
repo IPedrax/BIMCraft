@@ -3664,6 +3664,41 @@ fn flights(d: &mut Drawing, st: &Stair, l: &stairs::Layout, cut: f64, dashed: bo
             }
         }
     }
+    // The plane passing through a winder, a spiral's tread or one drawn by hand: the break mark across the lowest of them
+    // over it, square to the walk line there, when no run is cut.
+    let in_run = l.runs.iter().any(|run| cut >= run.z.0 && cut < run.z.1);
+    let lowest = l.pads.iter().filter(|p| p.tread && p.z > cut + 1e-6).min_by(|a, b| a.z.total_cmp(&b.z));
+    let under = l.walk.first().is_some_and(|w| w.1 <= cut);
+    if let (false, true, true, Some(pad)) = (in_run, under, cut.is_finite(), lowest) {
+        let c = geom::centroid(&pad.ring);
+        // The way the stair goes there: along the stretch of the walk line nearest the tread's middle.
+        let way = l.walk.windows(2).filter_map(|w| Some((w.first()?.0, w.get(1)?.0))).filter(|(a, b)| a.dist(*b) > 1e-6).min_by(|x, y| {
+            let far = |(a, b): &(P2, P2)| ((*a + *b) * 0.5).dist(c);
+            far(x).total_cmp(&far(y))
+        });
+        if let Some((a, b)) = way {
+            let u = (b - a).unit();
+            let n = u.perp();
+            // Where the line across the tread through its middle leaves it, on each side.
+            let reach: Vec<f64> = geom::ring_edges(&pad.ring)
+                .filter_map(|(p, q)| {
+                    let (e, den) = (q - p, n.0 * (q - p).1 - n.1 * (q - p).0);
+                    if den.abs() < 1e-9 {
+                        return None;
+                    }
+                    let t = ((p - c).0 * e.1 - (p - c).1 * e.0) / den;
+                    let k = ((p - c).0 * n.1 - (p - c).1 * n.0) / den;
+                    (-1e-9..=1.0 + 1e-9).contains(&k).then_some(t)
+                })
+                .collect();
+            let (lo, hi) = reach.iter().fold((0.0f64, 0.0f64), |(lo, hi), t| (lo.min(*t), hi.max(*t)));
+            if hi - lo > 1.0 {
+                let (from, to, jog) = (c + n * lo, c + n * hi, u * (0.2 * st.tread));
+                let mid = |f: f64| from + (to - from) * f;
+                d.line(&[from, mid(0.44) + jog, mid(0.56) - jog, to], Pen::PROJECTION, INK, false);
+            }
+        }
+    }
 }
 
 /// A ramp in the plan of `level`: from its own level, its runs' and landings' outlines, dashed
