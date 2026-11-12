@@ -425,7 +425,7 @@ const DEFAULT_CHORDS: &[(&str, &[&str])] = &[
     ("ui.palette.properties", &["Ctrl+1"]),
     ("ui.palette.browser", &["Ctrl+2"]),
     ("ui.file.export_pdf", &["Ctrl+P"]),
-    ("ui.view.home", &["Ctrl+U"]),
+    ("ui.view.home", &["Ctrl+D"]),
     ("cmd.undo", &["Ctrl+Z"]),
     ("cmd.redo", &["Ctrl+Shift+Z", "Ctrl+Y"]),
     ("cmd.delete", &["Delete"]),
@@ -3165,10 +3165,10 @@ mod tests {
     }
 
     #[test]
-    fn the_bimcraft_profile_has_home_on_ctrl_u_ctrl_d_free_and_f8_for_the_guides() {
+    fn the_bimcraft_profile_has_home_on_ctrl_d_ctrl_u_free_and_f8_for_the_guides() {
         let s = Shortcuts::defaults(Profile::BimCraft);
-        assert_eq!(s.binding_owner(parse_binding("Ctrl+U").unwrap()).map(|s| s.to_string()), Some("ui.view.home".to_string()));
-        assert!(s.binding_owner(parse_binding("Ctrl+D").unwrap()).is_none());
+        assert_eq!(s.binding_owner(parse_binding("Ctrl+D").unwrap()).map(|s| s.to_string()), Some("ui.view.home".to_string()));
+        assert!(s.binding_owner(parse_binding("Ctrl+U").unwrap()).is_none());
         let guides = registry().resolve("ui.view.alignment_guides").unwrap();
         assert!(s.bindings(&guides).contains(&parse_binding("F8").unwrap()));
         assert!(!s.bindings(&guides).contains(&parse_binding("F11").unwrap()));
