@@ -21,5 +21,10 @@ It talks only to peers the user chose, by a code or an address, never to a serve
 - **The host's threads never wait for the window.** Presence is relayed by the guest's own thread, and every event calls the
   `Wake` the window gave, its `request_repaint`, so a minimised window answers too.
 
-Tests run on this machine's address only, with short `Timing`s (`tests::quick`), and take about two seconds:
-`cargo test -p bimcraft-cowork`.
+- **`live.rs` is the session on the core's `Session`** (the crate depends on `bimcraft-core`; the core never on it): the host's
+  (`Hosting`) and a guest's (`Joined`), which the window pumps. A new kind of message (presence, the chat) is answered there, and
+  tested in `live_tests.rs`, which runs a host's session on a thread and a guest's on the test's, with no window.
+
+Tests run on this machine's address only, with short `Timing`s (`tests::quick`), and take a few seconds:
+`cargo test -p bimcraft-cowork`. A test against a window that hosts uses the default `Timing`, as the window does: a guest that
+expects pings sooner than the host sends them takes the line for broken.

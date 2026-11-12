@@ -80,10 +80,15 @@ impl Guest {
         let r = s.try_clone()?;
         std::thread::Builder::new().name("cowork-host".into()).spawn(move || read(r, recv, &etx, &wake))?;
         let guest = Guest { tx, events, stream: s.try_clone()?, writer: Some(writer) };
-        let first = match guest.events.recv_timeout(WELCOME) {
-            Ok(e) => Ok(e),
-            Err(RecvTimeoutError::Timeout) => Err("the host's window didn't answer"),
-            Err(RecvTimeoutError::Disconnected) => Err("the connection to the host closed"),
+        // What the host sent before its welcome (a change being made as this guest came in) is in the welcome.
+        let until = std::time::Instant::now() + WELCOME;
+        let first = loop {
+            match guest.events.recv_timeout(until.saturating_duration_since(std::time::Instant::now())) {
+                Ok(GuestEvent::Message(m)) if m["op"] != "welcome" => {}
+                Ok(e) => break Ok(e),
+                Err(RecvTimeoutError::Timeout) => break Err("the host's window didn't answer"),
+                Err(RecvTimeoutError::Disconnected) => break Err("the connection to the host closed"),
+            }
         };
         Ok((guest, first))
     }
@@ -96,6 +101,11 @@ impl Guest {
     /// The next thing that happened, if any.
     pub fn try_event(&self) -> Option<GuestEvent> {
         self.events.try_recv().ok()
+    }
+
+    /// The next thing that happens within `wait`: a window waiting for the host's answer to a command.
+    pub fn wait_event(&self, wait: Duration) -> Option<GuestEvent> {
+        self.events.recv_timeout(wait).ok()
     }
 }
 

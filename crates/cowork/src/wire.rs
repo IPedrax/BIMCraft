@@ -1,5 +1,7 @@
 //! What goes on a connection: the two handshake messages, each a 2-byte length and the message, then frames, each a 4-byte
-//! length and the sealed message. A length is checked before anything is read; a message is a JSON object with an `op`.
+//! length and the sealed message. A length is checked before anything is read; a message is a JSON object with an `op`. One
+//! longer than [`DEFLATE_OVER`] goes deflated, marked by a first byte JSON never starts with, and is inflated no further than
+//! [`MAX_INFLATED`].
 //! And the writer thread both sides run: what the window queues goes out in order, and a ping when there has been nothing.
 
 use std::io::{self, Read, Write};
@@ -10,8 +12,8 @@ use std::time::Duration;
 
 use serde_json::{Value, json};
 
-use crate::MAX_FRAME;
 use crate::noise::Cipher;
+use crate::{MAX_FRAME, MAX_INFLATED};
 
 /// The longest handshake message read: a key, a tag and a small payload.
 const MAX_RAW: usize = 1024;
@@ -19,6 +21,26 @@ const MAX_RAW: usize = 1024;
 const MAX_OP: usize = 32;
 /// How many messages may wait for a peer's writer: past it, the peer isn't keeping up and is dropped.
 pub(crate) const QUEUE: usize = 1024;
+/// A message longer than this goes deflated.
+const DEFLATE_OVER: usize = 64 << 10;
+/// The first byte of a deflated message.
+const DEFLATED: u8 = 1;
+
+pub(crate) fn deflate(bytes: &[u8]) -> io::Result<Vec<u8>> {
+    let mut e = flate2::write::DeflateEncoder::new(Vec::new(), flate2::Compression::fast());
+    e.write_all(bytes)?;
+    e.finish()
+}
+
+/// `bytes` inflated, or an error past `limit` bytes: a small message may not unpack into a huge one.
+pub(crate) fn inflate(bytes: &[u8], limit: usize) -> io::Result<Vec<u8>> {
+    let mut out = Vec::new();
+    flate2::read::DeflateDecoder::new(bytes).take(limit as u64 + 1).read_to_end(&mut out)?;
+    if out.len() > limit {
+        return Err(invalid("a message that unpacks past any a session sends"));
+    }
+    Ok(out)
+}
 
 fn invalid(why: impl Into<String>) -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, why.into())
@@ -44,6 +66,13 @@ pub(crate) fn read_raw(r: &mut impl Read) -> io::Result<Vec<u8>> {
 }
 
 pub(crate) fn write_bytes(w: &mut impl Write, cipher: &mut Cipher, msg: &[u8]) -> io::Result<()> {
+    let packed;
+    let msg = if msg.len() > DEFLATE_OVER {
+        packed = [&[DEFLATED][..], &deflate(msg)?].concat();
+        &packed
+    } else {
+        msg
+    };
     let sealed = cipher.seal(msg).map_err(invalid)?;
     let len = u32::try_from(sealed.len()).map_err(|_| invalid("a message too long"))?;
     w.write_all(&len.to_be_bytes())?;
@@ -65,7 +94,10 @@ pub(crate) fn read_frame(r: &mut impl Read, cipher: &mut Cipher) -> io::Result<V
     }
     let mut sealed = vec![0u8; len];
     r.read_exact(&mut sealed)?;
-    let plain = cipher.open(&sealed).map_err(invalid)?;
+    let mut plain = cipher.open(&sealed).map_err(invalid)?;
+    if plain.first() == Some(&DEFLATED) {
+        plain = inflate(&plain[1..], MAX_INFLATED)?;
+    }
     let msg: Value = serde_json::from_slice(&plain).map_err(|e| invalid(format!("not JSON: {e}")))?;
     match msg.get("op").and_then(Value::as_str) {
         Some(op) if !op.is_empty() && op.len() <= MAX_OP => Ok(msg),

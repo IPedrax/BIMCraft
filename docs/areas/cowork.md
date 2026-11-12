@@ -75,6 +75,39 @@ the desktop wires it in slice 3.
   its session port and its code's tag. Nothing secret goes either way, and an answer that isn't one is passed over. A host whose
   discovery port is taken still hosts, out of sight (`Host::discovery_port` is none).
 
+## Built: hosting and joining in the desktop (slice 3)
+
+- **A session on a `Session`** (`bimcraft_cowork::live`, tested with no window in `live_tests.rs`). `Hosting::start` makes the
+  host's steps its own (`Session::author`), and `pump`, once a pass, lets guests in with the whole project (`welcome`, a
+  `cowork::whole` delta with the linked models in it), runs their `execute` and `batch` as theirs (`run_for_guest`,
+  `batch_for_guest`) and answers each after the delta of what it changed, sends what changed since the last pass whoever changed
+  it (the window, its agents, the assistant), the whole model again to a guest that lost step (`resync`), and the people (a
+  name another has gets a number). It stops sending once the window holds another project. `Joined::join` returns the copy
+  of the host's project to put in the window; `exec` and `batch` run what only reads on it and send what edits to the host
+  (`cowork::place`), waiting up to 10 seconds for the answer and taking in the deltas before it; `pump` takes in the rest in
+  order, asks for the whole model again on a gap or a delta that doesn't fit, and says `Over` when the host ended or went.
+- **The window** (`crates/ui-egui/src/cowork.rs`): Collaborate > Work Together > Co-Work, CW and Find open the Co-Work
+  dialog, in both profiles. Not in a session, it hosts this project (Start Co-Work) or joins one: the sessions found on the
+  network are listed (asked every 3 seconds while it is open), and the code alone picks the host on this network; from another
+  network the host's address goes in too, with a port after a colon if it isn't 41730. Joining with unsaved changes is refused:
+  it would put the host's project in the window. Hosting, it shows the code (Copy), this machine's address and the port, Guests
+  may edit, and who is in, each with Kick (who is then kept out for the session); End Session. A guest sees whose session it
+  is and who is in, and Leave. The view control bar says "Co-Work: hosting, 2 in" or "Co-Work: Ana's session", and the title
+  says it too.
+- **File > Settings > Co-Work** keeps the name the others see, the address and port a host listens on (0.0.0.0 and 41730 by
+  default; anything beyond that, such as forwarding a port, is the user's), Visible on this network, and Guests may edit.
+- **What a guest's window does.** `BimApp::exec` and `exec_batch` send a guest's commands through `Joined`; the project is
+  read-only in the window otherwise (`cowork::GUEST`), so nothing changes it but what the host sends. Autosave is off (the
+  host's keeps the project). An agent on a guest's control port only reads, by the same read-only. When the session ends the
+  project stays, read-only, to save as a file of the guest's own; a project the user opens after is theirs to change.
+- **Answering while minimised.** `BimApp::pump` answers agents, pumps the session and polls the assistant. `App::logic`
+  calls it, which eframe runs while the window is hidden too (at least every 100 ms when woken), and the session's threads
+  wake the window when anything comes; `show` calls it as well, for the tests that drive `show` alone.
+- **The host opening another project, or closing,** ends the session: guests are told "Ana opened another project" or "the
+  host closed the session".
+
 ## Not built yet
 
-Hosting and joining in the desktop, presence, and the shared AI chat: slices 3 to 5 of the plan.
+Presence (slice 4) and the shared AI chat (slice 5). Also not yet: a guest's Undo list (the shared history's labels), the
+elements in a refused undo lit up in the other person's colour (it needs slice 4's colours), the host asked before it quits
+while others are in, and guests importing files of their own.

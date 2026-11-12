@@ -290,6 +290,15 @@ impl Session {
         self.redo.clear();
     }
 
+    /// Takes `model` as the project, with no history of its own: a Co-Work guest's copy taking in the host's
+    /// (`cowork::apply`, which checked it). What the session may do (`read_only`) and its file stay.
+    pub fn adopt(&mut self, model: Model) {
+        self.model = Arc::new(model);
+        self.verified = Some(Arc::clone(&self.model));
+        self.undo.clear();
+        self.redo.clear();
+    }
+
     /// Labels of the undo steps, oldest first.
     pub fn history(&self) -> Vec<&str> {
         self.undo.iter().map(|(st, _)| st.label.as_str()).collect()

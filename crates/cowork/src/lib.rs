@@ -11,6 +11,7 @@
 //! - [`Guest`]: joins, waits for the window's welcome, and passes the host's messages on as [`GuestEvent`]s; it can tell a host
 //!   that ended the session from one that vanished.
 //! - [`discover`]: asks the LAN who hosts, and a host answers while it is visible.
+//! - [`live`]: a session on the core's `Session`, the host's and a guest's, which the window pumps once a pass.
 //!
 //! Everything that comes in is hostile: lengths are capped before anything is read, a peer that floods, falls silent or says
 //! what is no message is dropped, and an address that gets the code wrong five times waits. Each side pings the other when it
@@ -20,9 +21,12 @@ mod code;
 mod discovery;
 mod guest;
 mod host;
+pub mod live;
 mod noise;
 mod wire;
 
+#[cfg(test)]
+mod live_tests;
 #[cfg(test)]
 mod tests;
 
@@ -39,8 +43,21 @@ pub const MAX_GUESTS: usize = 8;
 pub const MAX_NAME: usize = 40;
 /// The most messages a guest may send in a second, presence and pings included; past it, the host drops it.
 pub const MAX_RATE: u32 = 100;
-/// The longest message, in bytes: a big project's whole model, deflated, fits.
+/// The longest message on the wire, in bytes: a big project's whole model, deflated, fits.
 pub const MAX_FRAME: usize = 64 << 20;
+/// The longest a message unpacks to: the biggest project file opens (the core's `MAX_FILE`).
+pub const MAX_INFLATED: usize = 256 << 20;
+/// The port a host listens on unless the user says another, and the one it answers "who hosts?" on.
+pub const PORT: u16 = 41730;
+pub const DISCOVERY_PORT: u16 = 41731;
+
+/// This machine's address on its LAN, as the system would reach the rest of the world from it: what the Start dialog shows. A
+/// UDP socket only picks its way out when it is connected; nothing is sent.
+pub fn lan_address() -> Option<std::net::IpAddr> {
+    let s = std::net::UdpSocket::bind(("0.0.0.0", 0)).ok()?;
+    s.connect(("192.0.2.1", 9)).ok()?;
+    s.local_addr().ok().map(|a| a.ip()).filter(|ip| !ip.is_unspecified())
+}
 
 /// How long things may take. The tests shorten them.
 #[derive(Clone, Copy, Debug)]

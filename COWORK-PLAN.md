@@ -1,7 +1,8 @@
 # Co-Work: live co-editing of one project
 
-Planned on 2026-11-12 against `origin/main` at 733dd127, and revised the same day with the user's answers. Slices 1 and 2 are
-built (the engine's side, the interface's funnel and the transport); what they do is in [docs/areas/cowork.md](docs/areas/cowork.md).
+Planned on 2026-11-12 against `origin/main` at 733dd127, and revised the same day with the user's answers. Slices 1 to 3 are
+built (the engine's side, the transport, and hosting and joining in the desktop); what they do, and what of them is left, is in
+[docs/areas/cowork.md](docs/areas/cowork.md).
 
 Sizes follow DISCUSSIONS-PLAN.md: S is a day or two, M about a week, L more.
 
@@ -334,7 +335,12 @@ Each slice ships alone, starts with its failing tests, and passes the three chec
     heartbeat timeout (shortened in the test, as `Control::start_within` shortens `FIRST_LINE`).
   - Discovery finds a host by its tag and ignores junk datagrams.
 
-### 3. Hosting and joining in the desktop (M)
+### 3. Hosting and joining in the desktop (M): built
+
+As built, beyond what follows: the session's logic is `bimcraft_cowork::live` (`Hosting`, `Joined`), so it is tested with no
+window; a kick keeps that address out for the session; a message over 64 KB goes deflated (inflated to at most 256 MB); a whole
+model carries the models its links read; a guest with unsaved changes is refused rather than asked. Left for later: a guest's
+Undo list, a refused undo's elements lit in the other's colour (slice 4), asking the host before it quits.
 
 - `crates/ui-egui/src/cowork.rs`: Start, Join (with the list of hosts found), Leave and End, kick, Guests may edit; the guest's
   funnel; the host's broadcast; the guest's copy kept read-only; Settings > Co-Work (display name, listen address and port,

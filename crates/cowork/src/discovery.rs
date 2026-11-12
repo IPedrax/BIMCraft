@@ -85,7 +85,9 @@ pub fn discover(targets: &[SocketAddr], wait: Duration) -> Vec<Found> {
         }
         match socket.recv_from(&mut buf) {
             Ok((n, from)) => {
-                if let Some(f) = found(&buf[..n], from).filter(|f| !hosts.contains(f)) {
+                // A host on this machine answers from each of its addresses: once is enough.
+                if let Some(f) = found(&buf[..n], from).filter(|f| !hosts.iter().any(|h| h.tag == f.tag && h.addr.port() == f.addr.port()))
+                {
                     hosts.push(f);
                 }
             }

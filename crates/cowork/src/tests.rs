@@ -224,6 +224,40 @@ fn a_host_and_two_guests_join_talk_relay_presence_leave_and_are_kicked() {
     assert!(matches!(event(&host), HostEvent::Left { peer, .. } if peer == ida));
     assert!(host.people().is_empty());
     assert!(!host.send(ida, &json!({"op": "x"})), "gone");
+    // Kicked is out for the session, from that address, code or not.
+    let e = Guest::join(at(&host), host.code(), hello("Bo"), quick(), Arc::new(|| {})).err().unwrap();
+    assert!(e.contains("closed"), "{e}");
+}
+
+#[test]
+fn a_big_message_goes_deflated_and_a_bomb_is_refused() {
+    let host = host();
+    let (a, ida) = join(&host, "Bo");
+    let big = "wall ".repeat(2 << 20);
+    assert!(host.send(ida, &json!({"op": "delta", "model": big})));
+    assert!(matches!(guest_event(&a), GuestEvent::Message(m) if m["model"].as_str().is_some_and(|s| s.len() == big.len())));
+    // What inflates past the limit is no message.
+    let packed = wire::deflate(&vec![b' '; 5000]).unwrap();
+    assert!(packed.len() < 100);
+    assert_eq!(wire::inflate(&packed, 5000).unwrap().len(), 5000);
+    assert!(wire::inflate(&packed, 4999).is_err());
+    assert!(wire::inflate(b"not deflate", 5000).is_err());
+}
+
+#[test]
+fn a_join_waits_for_the_welcome_past_what_comes_before_it() {
+    let host = host();
+    let code = host.code().clone();
+    let addr = at(&host);
+    let joining = std::thread::spawn(move || Guest::join(addr, &code, hello("Bo"), quick(), Arc::new(|| {})));
+    let HostEvent::Joined { peer, .. } = event(&host) else { panic!("a join") };
+    host.send(peer, &json!({"op": "delta", "seq": 7}));
+    host.send(peer, &json!({"op": "welcome", "seq": 7}));
+    let (guest, welcome) = joining.join().unwrap().unwrap();
+    assert_eq!(welcome["op"], "welcome");
+    assert!(guest.wait_event(Duration::from_millis(50)).is_none(), "what came before the welcome is in it");
+    host.send(peer, &json!({"op": "delta", "seq": 8}));
+    assert!(matches!(guest.wait_event(Duration::from_secs(5)), Some(GuestEvent::Message(m)) if m["seq"] == 8));
 }
 
 #[test]
@@ -393,7 +427,8 @@ fn a_guest_finds_a_host_on_the_lan_by_its_code_and_ignores_junk() {
     for bytes in [&b"hello"[..], &[0u8; 2000][..], br#"{"bimcraft-cowork": 2, "op": "who"}"#] {
         junk.send_to(bytes, target).unwrap();
     }
-    let found = discover(&[target], Duration::from_millis(500));
+    // Asked twice (the broadcast address and this machine's, say), a host is listed once.
+    let found = discover(&[target, target], Duration::from_millis(500));
     assert_eq!(found.len(), 1, "{found:?}");
     let f = &found[0];
     assert_eq!((f.addr, f.name.as_str(), f.project.as_str(), f.version.as_str()), (at(&host), "Ana", "House", VERSION));

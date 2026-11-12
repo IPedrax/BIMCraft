@@ -2,7 +2,7 @@
 //! what the window queues, and the discovery answer. The window takes [`HostEvent`]s and sends with [`Host::send`] and
 //! [`Host::broadcast`]; presence is relayed to the other guests by the guest's own thread, without waiting for a frame.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, Shutdown, SocketAddr, TcpListener, TcpStream, UdpSocket};
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
@@ -59,6 +59,7 @@ pub struct Person {
 
 struct Peer {
     person: Person,
+    ip: IpAddr,
     tx: SyncSender<Out>,
     stream: TcpStream,
     writer: Option<JoinHandle<()>>,
@@ -77,6 +78,8 @@ struct Shared {
     pending: AtomicUsize,
     /// Wrong codes by address: how many, and when the last was.
     failures: Mutex<HashMap<IpAddr, (u32, Instant)>>,
+    /// The addresses of guests kicked: not let in again while the session lasts.
+    banned: Mutex<HashSet<IpAddr>>,
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -165,6 +168,7 @@ impl Host {
             next: AtomicU32::new(1),
             pending: AtomicUsize::new(0),
             failures: Mutex::new(HashMap::new()),
+            banned: Mutex::new(HashSet::new()),
         });
         let discovery = config.discovery.and_then(|port| {
             let socket = UdpSocket::bind((at.ip(), port)).ok()?;
@@ -221,9 +225,11 @@ impl Host {
         }
     }
 
-    /// Tells a guest it must go, and why, and lets it go.
+    /// Tells a guest it must go, and why, lets it go, and keeps its address out while the session lasts: the code alone would
+    /// let it straight back in.
     pub fn kick(&self, peer: u32, why: &str) {
-        let Some(p) = lock(&self.shared.peers).iter().find(|p| p.person.id == peer).map(|p| p.tx.clone()) else { return };
+        let Some((p, ip)) = lock(&self.shared.peers).iter().find(|p| p.person.id == peer).map(|p| (p.tx.clone(), p.ip)) else { return };
+        lock(&self.shared.banned).insert(ip);
         let _ = p.try_send(Out::of(&json!({"op": "ended", "why": why})));
         self.shared.remove(peer, &format!("kicked: {why}"));
     }
@@ -298,7 +304,7 @@ fn clean(name: Option<&str>) -> String {
 /// One connection: the handshake and the hello, then what the guest says until it goes. `joined` is its number once it is in.
 fn serve(mut s: TcpStream, shared: &Shared, joined: &mut Option<u32>) -> io::Result<()> {
     let ip = s.peer_addr()?.ip();
-    if shared.locked_out(ip) {
+    if shared.locked_out(ip) || lock(&shared.banned).contains(&ip) {
         return Ok(());
     }
     let timing = shared.timing;
@@ -340,7 +346,7 @@ fn serve(mut s: TcpStream, shared: &Shared, joined: &mut Option<u32>) -> io::Res
     let (tx, rx) = sync_channel(QUEUE);
     let (w, ping) = (s.try_clone()?, timing.ping);
     let writer = std::thread::Builder::new().name("cowork-writer".into()).spawn(move || wire::writer(w, t.send, rx, ping))?;
-    peers.push(Peer { person: person.clone(), tx: tx.clone(), stream: s.try_clone()?, writer: Some(writer) });
+    peers.push(Peer { person: person.clone(), ip, tx: tx.clone(), stream: s.try_clone()?, writer: Some(writer) });
     drop(peers);
     let id = person.id;
     *joined = Some(id);

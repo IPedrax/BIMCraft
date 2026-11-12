@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use serde_json::{Value, json};
 
-use crate::cowork::{Delta, Put, apply, delta, run_for_guest};
+use crate::cowork::{Delta, Place, Put, apply, batch_for_guest, delta, place, run_for_guest, whole};
 use crate::engine::Session;
 use crate::model::{Id, Model};
 
@@ -98,8 +98,8 @@ fn a_delta_that_does_not_fit_never_changes_the_copy_and_says_why() {
         Delta::Elements { next_id: Id::MAX, put: vec![], gone: vec![] },
         Delta::Elements { next_id: next, put: vec![Put { id: crate::ids::LINKED + 5, ..put(&with_door, wall_id) }], gone: vec![] },
         // Not a model at all.
-        Delta::Whole { model: "{not json".into() },
-        Delta::Whole { model: "[]".into() },
+        Delta::Whole { model: "{not json".into(), links: Default::default() },
+        Delta::Whole { model: "[]".into(), links: Default::default() },
     ];
     for d in bad {
         let kept = json_of(&copy);
@@ -281,4 +281,84 @@ fn outside_a_session_undo_and_redo_are_as_they_always_were() {
     s.execute("redo", &json!({})).unwrap();
     assert!(s.model.elements.contains_key(a));
     assert!(s.steps(false).iter().all(|st| st.by.is_none()));
+}
+
+#[test]
+fn a_whole_model_carries_the_linked_models_a_guest_cant_read_from_its_own_disk() {
+    let dir = std::env::temp_dir().join(format!("bimcraft-cowork-links-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let file = dir.join("neighbour.bimc");
+    let mut neighbour = house();
+    neighbour.execute("save", &json!({"path": file.to_string_lossy()})).unwrap();
+    let mut host = house();
+    let copy = (*host.model).clone();
+    let before = Arc::clone(&host.model);
+    host.execute("link", &json!({"path": file.to_string_lossy()})).unwrap();
+    // The guest's disk hasn't the file: only what the delta brings.
+    std::fs::remove_dir_all(&dir).unwrap();
+    let d = delta(&before, &host.model).unwrap();
+    let d: Delta = serde_json::from_str(&serde_json::to_string(&d).unwrap()).unwrap();
+    let copy = apply(&copy, &d).unwrap();
+    assert_eq!(copy.loaded.keys().collect::<Vec<_>>(), host.model.loaded.keys().collect::<Vec<_>>());
+    let (path, theirs) = host.model.loaded.iter().next().unwrap();
+    assert_eq!(json_of(&copy.loaded[path]), json_of(theirs), "the linked model as the host read it");
+    // A welcome is the whole model, links and all.
+    let w = apply(&Model::new("Project"), &whole(&host.model).unwrap()).unwrap();
+    assert_eq!((json_of(&w), w.loaded.len()), (json_of(&host.model), 1));
+    // A link that doesn't read is refused with the rest.
+    let Delta::Whole { model, .. } = whole(&host.model).unwrap() else { panic!() };
+    let bad = Delta::Whole { model, links: [(path.clone(), "{not json".to_string())].into() };
+    assert!(apply(&copy, &bad).is_err());
+}
+
+#[test]
+fn a_guests_batch_is_one_step_of_theirs_or_nothing() {
+    let mut s = house();
+    s.author = Some("Ana".into());
+    let none = (None, None);
+    let walls = |y: i64| ("wall".to_string(), json!({"points": [[0, y], [6000, y]]}));
+    let made = batch_for_guest(&mut s, "Bo", "Draw", &[walls(40000), walls(43000)], none.clone(), true).unwrap();
+    assert_eq!(made.len(), 2);
+    let top = s.steps(false)[0];
+    assert_eq!((top.label.as_str(), top.by.as_deref()), ("Draw", Some("Bo")));
+    assert_eq!(s.author.as_deref(), Some("Ana"), "the host's again");
+    let kept = Arc::clone(&s.model);
+    for bad in [
+        vec![walls(46000), ("save".to_string(), json!({"path": "/tmp/x.bimc"}))],
+        vec![walls(46000), ("new".to_string(), json!({}))],
+        vec![walls(46000), ("door".to_string(), json!({"at": [99000, 99000]}))],
+    ] {
+        assert!(batch_for_guest(&mut s, "Bo", "Draw", &bad, none.clone(), true).is_err(), "{bad:?}");
+        assert!(Arc::ptr_eq(&kept, &s.model), "none of it stays");
+    }
+    let e = batch_for_guest(&mut s, "Bo", "Draw", &[walls(46000)], none, false).unwrap_err();
+    assert!(e.contains("only look"), "{e}");
+}
+
+#[test]
+fn a_guests_window_runs_what_reads_itself_and_sends_what_edits() {
+    let none = json!({});
+    for (command, params, want) in [
+        ("wall", json!({"points": [[0, 0], [1000, 0]]}), Place::Host),
+        ("WA", none.clone(), Place::Host),
+        ("undo", none.clone(), Place::Host),
+        ("redo", json!({"count": 2}), Place::Host),
+        ("my_plugin_command", none.clone(), Place::Host),
+        ("inspect", none.clone(), Place::Here),
+        ("save", json!({"path": "/tmp/copy.bimc"}), Place::Here),
+        ("render", none.clone(), Place::Here),
+    ] {
+        assert_eq!(place(command, &params), want, "{command} {params}");
+    }
+    for (command, params, says) in [
+        ("open", json!({"path": "/tmp/x.bimc"}), "leave"),
+        ("New", none.clone(), "leave"),
+        ("import_cad", json!({"path": "/tmp/plan.dxf"}), "host"),
+        ("point_cloud", json!({"path": "/tmp/scan.pts"}), "host"),
+    ] {
+        match place(command, &params) {
+            Place::Refused(why) => assert!(why.contains(says), "{command}: {why}"),
+            other => panic!("{command}: {other:?}"),
+        }
+    }
 }

@@ -513,6 +513,8 @@ dependencies = [
 name = "bimcraft-cowork"
 version = "0.11.0"
 dependencies = [
+ "bimcraft-core",
+ "flate2",
  "ring",
  "serde_json",
 ]
@@ -570,6 +572,7 @@ version = "0.11.0"
 dependencies = [
  "bimcraft-assistant",
  "bimcraft-core",
+ "bimcraft-cowork",
  "bimcraft-i18n",
  "bimcraft-plugin",
  "bimcraft-update",
