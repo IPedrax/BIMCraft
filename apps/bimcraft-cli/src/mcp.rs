@@ -32,7 +32,7 @@ window); or send several at once with script, one `command {json}` per line. lis
 parameters, and the menu it sits in. Check your work with inspect_model and query_elements, look at it with render (a PNG of a level's plan, with \
 ceiling: true its reflected ceiling plan, of a section or elevation by name, or of the 3D view with view \"{3D}\"; or a family \
 alone with family, type and mode \"3d\", \"plan\" or \"elevation\" — which draws in no project of yours), and save \
-to .bimcraft or .ifc.";
+to .bimc or .ifc.";
 
 /// What a refusal of a read-only server says lets the agent edit.
 const READ_ONLY_HOW: &str = "this MCP server was started with --read-only: start it without to edit";
@@ -152,9 +152,9 @@ fn tools() -> Value {
          "inputSchema": {"type": "object", "properties": {"view": {"type": ["string", "integer"]}, "family": {"type": "string"}, "type": {"type": "string"}, "mode": {"type": "string", "enum": ["3d", "plan", "elevation"]}, "wall_thickness": {"type": "number"}, "ceiling": {"type": "boolean"}, "width": {"type": "integer"}, "height": {"type": "integer"}, "azimuth": {"type": "number"}, "elevation": {"type": "number"}, "path": {"type": "string"}}}},
         {"name": "new_model", "description": "Start an empty project with Level 1 and Level 2.",
          "inputSchema": {"type": "object", "properties": {"name": {"type": "string"}}}},
-        {"name": "open", "description": "Open a .bimcraft project, import a Revit .rvt file (read directly, no Revit needed: its levels, walls, floors, ceilings, doors and windows, columns, rooms and flat roofs come in, and the reply lists what was left out and why), or import an .ifc file (IFC2x3 or IFC4, from Revit or any BIM tool): its storeys, straight and curved walls with their doors and windows, floors (level or sloped) and ceilings, with their holes, rooms, columns, grids, stairs and ramps of straight runs with landings, railings, shafts and roofs (flat, sloping all round over any footprint with gable ends, courtyards and openings, or one profile swept across) come in measured from their geometry; the reply lists what was left out and why.",
+        {"name": "open", "description": "Open a .bimc project (or a .bimt or earlier .bimcraft one), import a Revit .rvt file (read directly, no Revit needed: its levels, walls, floors, ceilings, doors and windows, columns, rooms and flat roofs come in, and the reply lists what was left out and why), or import an .ifc file (IFC2x3 or IFC4, from Revit or any BIM tool): its storeys, straight and curved walls with their doors and windows, floors (level or sloped) and ceilings, with their holes, rooms, columns, grids, stairs and ramps of straight runs with landings, railings, shafts and roofs (flat, sloping all round over any footprint with gable ends, courtyards and openings, or one profile swept across) come in measured from their geometry; the reply lists what was left out and why.",
          "inputSchema": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}},
-        {"name": "save", "description": "Save to .bimcraft (the project), or export by extension: .ifc (IFC4 for other BIM tools), .glb (the default 3D view's scene as glTF 2.0, for Blender and viewers: metres, y up, a node for each element named by its id), .svg or .png (the lowest level's plan), .pdf (every sheet, a page each).",
+        {"name": "save", "description": "Save to .bimc (the project; .bimt the same), or export by extension: .ifc (IFC4 for other BIM tools), .glb (the default 3D view's scene as glTF 2.0, for Blender and viewers: metres, y up, a node for each element named by its id), .svg or .png (the lowest level's plan), .pdf (every sheet, a page each).",
          "inputSchema": {"type": "object", "properties": {"path": {"type": "string"}}}}
     ])
 }

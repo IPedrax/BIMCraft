@@ -5667,8 +5667,8 @@ msgid "Load Family: a family file loaded into this family, to place with Compone
 msgstr "載入族：將族檔案載入到此族中，以便用“構件”放置"
 
 #: crates/ui-egui/src/sketch.rs:812
-msgid "Load Family: a family saved as a .json file, BIMCraft's own"
-msgstr "載入族：以 .json 檔案儲存的族，BIMCraft 自己的格式"
+msgid "Load Family: a family saved as a .bimf file (or an earlier .json), BIMCraft's own"
+msgstr ""
 
 #: crates/ui-egui/src/shortcuts.rs:398
 msgid "Load File..."

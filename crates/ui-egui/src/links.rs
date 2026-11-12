@@ -8,10 +8,17 @@ use serde_json::json;
 use crate::BimApp;
 use crate::lang::t;
 
+/// What Link Model offers: a project of any of its names, or an IFC file.
+pub(crate) fn link_extensions() -> Vec<&'static str> {
+    let mut extensions = bimcraft_core::files::PROJECTS.to_vec();
+    extensions.push("ifc");
+    extensions
+}
+
 impl BimApp {
     /// Link Model (LK): the file the user picks.
     pub(crate) fn link_model_dialog(&mut self, ctx: &Context) {
-        let dialog = rfd::AsyncFileDialog::new().add_filter(t("BIMCraft project or IFC"), &["bimcraft", "ifc"]);
+        let dialog = rfd::AsyncFileDialog::new().add_filter(t("BIMCraft project or IFC"), &link_extensions());
         self.ask_file(ctx, dialog, false, |app, path| app.link_path(&path));
     }
 

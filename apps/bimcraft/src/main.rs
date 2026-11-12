@@ -19,7 +19,7 @@ use serde_json::json;
 mod startup;
 
 const USAGE: &str = "USAGE: bimcraft [FILE] [--sample | --highrise | --tower] [--control PORT]
-  FILE       a .bimcraft project to open, or an .ifc or .rvt (Revit) file to import
+  FILE       a .bimc project (or a .bimt or earlier .bimcraft) to open, a .bimf family, or an .ifc or .rvt (Revit) file to import
   --sample   start on the sample house
   --highrise start on the original 20-storey performance sample
   --tower    start on the 100-storey reference tower with its annotation (1.2 million elements)
@@ -94,7 +94,8 @@ fn main() -> ExitCode {
                 eprintln!("bimcraft: unknown option `{flag}`\n\n{USAGE}");
                 return ExitCode::FAILURE;
             }
-            file if is_revit(Path::new(file)) => {
+            // A family opens in its own document, as a Revit file is read, once the window is up.
+            file if is_revit(Path::new(file)) || bimcraft_core::files::is_family(Path::new(file)) => {
                 later = Some(PathBuf::from(file));
                 Ok(())
             }

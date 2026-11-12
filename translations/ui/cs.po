@@ -5666,8 +5666,8 @@ msgid "Load Family: a family file loaded into this family, to place with Compone
 msgstr "Načíst rodinu: soubor rodiny načtený do této rodiny k umístění nástrojem Komponenta"
 
 #: crates/ui-egui/src/sketch.rs:812
-msgid "Load Family: a family saved as a .json file, BIMCraft's own"
-msgstr "Načíst rodinu: rodina uložená ve formátu .json, nativním pro BIMCraft"
+msgid "Load Family: a family saved as a .bimf file (or an earlier .json), BIMCraft's own"
+msgstr ""
 
 #: crates/ui-egui/src/shortcuts.rs:398
 msgid "Load File..."

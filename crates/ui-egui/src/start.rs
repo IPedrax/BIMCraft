@@ -71,7 +71,7 @@ impl Home {
 
 /// The picture of a project file's 3D view, RGBA; none for a file that isn't a project, can't be read, or holds nothing to see.
 pub fn picture(path: &Path) -> Option<ColorImage> {
-    let is_project = path.extension().is_some_and(|e| e.eq_ignore_ascii_case("bimcraft"));
+    let is_project = bimcraft_core::files::is_project(path);
     let meta = std::fs::metadata(path).ok()?;
     if !is_project || !meta.is_file() || meta.len() > MAX_THUMB_FILE {
         return None;
@@ -424,7 +424,7 @@ impl BimApp {
                 p.rect_filled(pic, pic_round, tint);
                 let icon = Rect::from_center_size(pic.center() - vec2(0.0, 6.0), vec2(40.0, 40.0));
                 let ext = path.extension().map(|e| e.to_string_lossy().to_uppercase()).unwrap_or_default();
-                let glyph = if ext == "BIMCRAFT" { Icon::Plan } else { Icon::Open };
+                let glyph = if bimcraft_core::files::is_project(path) { Icon::Plan } else { Icon::Open };
                 icons::paint(p, glyph, icon, pal().muted);
                 let note = if missing {
                     t("Not found").to_string()
@@ -680,6 +680,12 @@ mod tests {
         std::fs::write(&junk, "{ not json").unwrap();
         assert!(picture(&junk).is_none());
         assert!(picture(&dir.join("gone.bimcraft")).is_none());
+        // A project of any of its names has one: the new ones, a template, and the old one.
+        for name in ["walls.bimc", "walls.bimt", "walls.BIMC"] {
+            let named = dir.join(name);
+            std::fs::copy(&project, &named).unwrap();
+            assert!(picture(&named).is_some(), "{name}");
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
