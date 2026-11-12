@@ -12926,6 +12926,14 @@ msgctxt "side"
 msgid "Top"
 msgstr "Superior"
 
+#: crates/ui-egui/src/editor.rs:901
+msgid "Connectors are where the family joins a system: what an electrical device draws, where a pipe or a cable meets it. They are set with the family command; the editor keeps them."
+msgstr ""
+
+#: crates/ui-egui/src/editor.rs:906
+msgid "This family has no connectors."
+msgstr ""
+
 #: crates/ui-egui/src/lib.rs:3433
 #~ msgid "Click a point the arc passes through: it sets the radius. Esc cancels."
 #~ msgstr "Clique num ponto por onde o arco passa: ele define o raio. Esc cancela."

@@ -12926,6 +12926,74 @@ msgctxt "side"
 msgid "Top"
 msgstr ""
 
+#: crates/ui-egui/src/editor.rs:985
+msgid "Add Dot"
+msgstr ""
+
+#: crates/ui-egui/src/editor.rs:901
+msgid "Connectors are where the family joins a system: what an electrical device draws, where a pipe or a cable meets it. They are set with the family command; the editor keeps them."
+msgstr ""
+
+#: crates/ui-egui/src/workplane.rs:234
+msgid "Pick Points"
+msgstr ""
+
+#: crates/ui-egui/src/workplane.rs:232
+msgid "Pick Points: click three points on the model in the 3D view, each snapping to a corner near the pointer; the dialog comes back with them"
+msgstr ""
+
+#: crates/ui-egui/src/workplane.rs:222
+msgid "Pick Surface"
+msgstr ""
+
+#: crates/ui-egui/src/workplane.rs:221
+msgid "Pick Surface: click a face of the model in the 3D view, a wall's or a roof's; the dialog comes back with it"
+msgstr ""
+
+#: crates/ui-egui/src/workplane.rs:218
+msgid "Pick a surface"
+msgstr ""
+
+#: crates/ui-egui/src/workplane.rs:413
+msgid "Pick a surface first: Pick Surface, then a click on a face of the model."
+msgstr ""
+
+#: crates/ui-egui/src/workplane.rs:201
+msgid "Pick from list"
+msgstr ""
+
+#: crates/ui-egui/src/workplane.rs:414
+msgid "Pick three points first: Pick Points, then three clicks on the model."
+msgstr ""
+
+#: crates/ui-egui/src/workplane.rs:160
+msgid "Set Work Plane: the plane the 3D view sketches on, a level, a surface or three points, with an offset; its patch in the view sets it too"
+msgstr ""
+
+#: crates/ui-egui/src/editor.rs:915
+msgid "Symbols are what the plan draws of the family besides its forms: lines, arcs, labels and dots."
+msgstr ""
+
+#: crates/ui-egui/src/editor.rs:906
+msgid "This family has no connectors."
+msgstr ""
+
+#: crates/ui-egui/src/workplane.rs:199
+msgid "What the 3D view sketches on."
+msgstr ""
+
+#: crates/ui-egui/src/workplane.rs:151
+msgid "Work Plane: what the 3D view sketches on: a level, a surface of the model or three points, each with an offset"
+msgstr ""
+
+#: crates/ui-egui/src/workplane.rs:226 crates/ui-egui/src/workplane.rs:238
+msgid "none picked yet"
+msgstr ""
+
+#: crates/ui-egui/src/workplane.rs:237
+msgid "{}° from level"
+msgstr ""
+
 #: crates/ui-egui/src/fillpatterns.rs:634
 #~ msgid "A pattern of the file replaces the one of its name in this list; else it is left out"
 #~ msgstr "Un motivo del file sostituisce quello con lo stesso nome in questo elenco; altrimenti viene escluso"

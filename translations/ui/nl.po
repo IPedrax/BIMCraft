@@ -12927,6 +12927,14 @@ msgctxt "side"
 msgid "Top"
 msgstr "Boven"
 
+#: crates/ui-egui/src/editor.rs:901
+msgid "Connectors are where the family joins a system: what an electrical device draws, where a pipe or a cable meets it. They are set with the family command; the editor keeps them."
+msgstr ""
+
+#: crates/ui-egui/src/editor.rs:906
+msgid "This family has no connectors."
+msgstr ""
+
 #: crates/ui-egui/src/fillpatterns.rs:634
 #~ msgid "A pattern of the file replaces the one of its name in this list; else it is left out"
 #~ msgstr "Een patroon uit het bestand vervangt het patroon met dezelfde naam in deze lijst; anders wordt het weggelaten"
