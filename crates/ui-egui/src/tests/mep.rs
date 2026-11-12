@@ -261,7 +261,7 @@ const FIXTURE_TOOLS: &[FixtureTool] = &[
         button: "Patch Panel",
         key: "patchpanel",
         context: "Modify | Place Patch Panel",
-        letters: "PN",
+        letters: "PB",
         listed: "Patch Panel: 48 ports",
         not_listed: "Rack: 600 x 1000",
         first: "Patch Panel",

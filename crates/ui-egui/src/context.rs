@@ -88,7 +88,7 @@ impl Action {
             Action::CreateGroup => Some("GP"),
             Action::Ungroup => Some("UG"),
             Action::Delete => Some("Del"),
-            Action::Pin => Some("PR"),
+            Action::Pin => Some("PN"),
             Action::Unpin => Some("UP"),
             _ => None,
         }

@@ -5766,8 +5766,8 @@ msgid "Patch Panel"
 msgstr "配线架"
 
 #: crates/ui-egui/src/mep.rs:148
-msgid "Patch Panel (PN): a panel on the wall, where you click; Space turns it"
-msgstr "配线架 (PN)：在单击处放置墙上的配线架；按空格键旋转"
+msgid "Patch Panel (PB): a panel on the wall, where you click; Space turns it"
+msgstr "配线架 (PB)：在单击处放置墙上的配线架；按空格键旋转"
 
 #: crates/ui-egui/src/editor.rs:593
 msgid "Patch Panels"

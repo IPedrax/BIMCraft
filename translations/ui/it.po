@@ -5766,8 +5766,8 @@ msgid "Patch Panel"
 msgstr "Pannello di permutazione"
 
 #: crates/ui-egui/src/mep.rs:148
-msgid "Patch Panel (PN): a panel on the wall, where you click; Space turns it"
-msgstr "Pannello di permutazione (PN): un pannello a muro, dove clicchi; Spazio lo ruota"
+msgid "Patch Panel (PB): a panel on the wall, where you click; Space turns it"
+msgstr "Pannello di permutazione (PB): un pannello a muro, dove clicchi; Spazio lo ruota"
 
 #: crates/ui-egui/src/editor.rs:593
 msgid "Patch Panels"

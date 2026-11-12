@@ -5766,7 +5766,7 @@ msgid "Patch Panel"
 msgstr ""
 
 #: crates/ui-egui/src/mep.rs:148
-msgid "Patch Panel (PN): a panel on the wall, where you click; Space turns it"
+msgid "Patch Panel (PB): a panel on the wall, where you click; Space turns it"
 msgstr ""
 
 #: crates/ui-egui/src/editor.rs:593

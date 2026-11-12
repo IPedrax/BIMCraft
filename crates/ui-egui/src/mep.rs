@@ -142,10 +142,10 @@ pub(crate) const FIXTURES: &[FixtureTool] = &[
     FixtureTool {
         key: "patchpanel",
         kinds: &[Category::PatchPanel],
-        letters: "PN",
+        letters: "PB",
         label: "Patch Panel",
         title: msg!("Place Patch Panel"),
-        tip: msg!("Patch Panel (PN): a panel on the wall, where you click; Space turns it"),
+        tip: msg!("Patch Panel (PB): a panel on the wall, where you click; Space turns it"),
         icon: Icon::PatchPanel,
     },
 ];

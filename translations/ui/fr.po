@@ -5766,8 +5766,8 @@ msgid "Patch Panel"
 msgstr "Panneau de brassage"
 
 #: crates/ui-egui/src/mep.rs:148
-msgid "Patch Panel (PN): a panel on the wall, where you click; Space turns it"
-msgstr "Panneau de brassage (PN): un panneau sur le mur, à l'endroit du clic; Espace le fait pivoter"
+msgid "Patch Panel (PB): a panel on the wall, where you click; Space turns it"
+msgstr "Panneau de brassage (PB): un panneau sur le mur, à l'endroit du clic; Espace le fait pivoter"
 
 #: crates/ui-egui/src/editor.rs:593
 msgid "Patch Panels"

@@ -778,7 +778,7 @@ fn a_pinned_element_keeps_its_place_and_its_pin_until_unpinned() {
     let wall = ids[0];
     let before = ends(&mut s, wall);
     // Pin it: the reply names it and `elements` says so, in one undo step.
-    assert_eq!(run(&mut s, "PR", json!({"ids": [wall]}))["pinned"], json!([wall]));
+    assert_eq!(run(&mut s, "PN", json!({"ids": [wall]}))["pinned"], json!([wall]));
     assert_eq!(element(&mut s, wall)["pinned"], json!(true));
     assert_eq!(s.history().last(), Some(&"Pin"));
     let steps = s.history().len();

@@ -5766,8 +5766,8 @@ msgid "Patch Panel"
 msgstr "Panel de parcheo"
 
 #: crates/ui-egui/src/mep.rs:148
-msgid "Patch Panel (PN): a panel on the wall, where you click; Space turns it"
-msgstr "Panel de parcheo (PN): un panel en el muro, donde hagas clic; Espacio lo gira"
+msgid "Patch Panel (PB): a panel on the wall, where you click; Space turns it"
+msgstr "Panel de parcheo (PB): un panel en el muro, donde hagas clic; Espacio lo gira"
 
 #: crates/ui-egui/src/editor.rs:593
 msgid "Patch Panels"

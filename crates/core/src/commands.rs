@@ -1191,7 +1191,7 @@ other_files(
     edit(
         "pin",
         ui_msg!("Pin"),
-        &["PR"],
+        &["PN"],
         "{ids: [id,…]} pins elements where they are: `move`, `rotate`, `mirror`, `align`, `delete`, `flip`, `split`, \
          `corner`, `trim_extend`, `fillet`, `offset` with `copy` false and the detail line tools refuse them until `unpin`. \
          A pinned element is marked `pinned` in `elements` and kept in the file. Returns {pinned: [ids]}",
