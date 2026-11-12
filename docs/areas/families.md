@@ -1222,6 +1222,26 @@ The follow-ups it left open, done after it: Pick Lines' Lock and Trim/Extend to 
 `host_void_tests`). What they found: in a plan or an elevation, Pick Lines put a line where a plane is drawn rather than where
 the type previewed puts it, as the view shows it; it takes the one shown now.
 
+## Imported 3D models
+
+`import_mesh` (Insert > Import 3D Model) brings in the models other programs make: an OBJ, with the colours of the MTL it
+names, or a glTF 2.0, as `.gltf` with its buffers beside it or as a `.glb`. `mesh_in.rs` reads both from their public
+specifications, with no library, and caps what it reads (`MAX_BYTES`, `MAX_VERTICES`, `MAX_OBJECTS`, the depth and visits of
+a glTF's node tree). Each OBJ object (or group), and each glTF mesh under the place its nodes give it (translation, rotation
+and scale or a matrix, a mirrored node's triangles turned back outward), becomes a Generic Model family of one type,
+`Imported`, with a form for each of its materials. The family stands on its base with its box's centre on its origin, and a
+component of it goes where the object was, plus `at`, on the level, its base as the offset, so a file's objects come in where
+they stood. An object of more triangles than a form holds (`MAX_TRIANGLES`) comes in as pieces, `Name 2`, `Name 3`. A
+family name the project has already gets a number, `Box (2)`.
+
+Lengths are millimetres, centimetres, metres, inches or feet (`units`; a glTF is metres, an OBJ is guessed from its size), and
+an OBJ may be y-up (`up`; a glTF always is). A material's base colour (an MTL's `Kd` and `d`, a glTF's `baseColorFactor`,
+turned from linear to sRGB) colours the material the project doesn't have yet, its alpha its transparency; a material the
+project has keeps its own look. A buffer or an MTL is read only beside the file, never by an absolute path or `..`, and a
+data URI is decoded. What the reader can't use (textures, lines and points, sparse accessors, Draco and meshopt compression,
+which refuse the file) is listed in `left_out`; a file with nothing to bring in is an error that says what was left out.
+Generic components go to IFC as `IfcBuildingElementProxy`.
+
 ## Where the code lives
 
 Moved from the root `CLAUDE.md`'s module map, which names the files and points here for what each owns.

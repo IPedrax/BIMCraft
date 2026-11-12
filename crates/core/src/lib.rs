@@ -120,6 +120,9 @@ pub mod lines;
 pub mod link;
 pub mod loads;
 pub mod massing;
+pub mod mesh_in;
+#[cfg(test)]
+mod mesh_in_tests;
 pub mod model;
 pub mod nbr5410;
 pub mod network;
