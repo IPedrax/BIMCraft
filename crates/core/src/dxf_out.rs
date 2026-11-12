@@ -143,17 +143,25 @@ enum Out {
     },
 }
 
-/// `pts` without a point that repeats the one before it; none when fewer than `least` are left, a line or a ring of no
-/// length or area, which a reader takes as an empty entity.
+/// `pts` as written (to a hundred-thousandth of a millimetre, as `W::f` writes them) without a point that repeats the one
+/// before it; none when fewer than `least` are left, or when a ring (`least` 3) has no area: a line or a ring of no length or
+/// area, which a reader takes as an empty entity.
 fn distinct(pts: Vec<P2>, least: usize) -> Option<Vec<P2>> {
+    let written = |v: f64| (v * 1e5).round() / 1e5;
     let mut out: Vec<P2> = Vec::with_capacity(pts.len());
-    for p in pts {
-        if out.last().is_none_or(|q| (q.0 - p.0).abs() > 1e-6 || (q.1 - p.1).abs() > 1e-6) {
+    for p in pts.into_iter().map(|p| P2(written(p.0), written(p.1))) {
+        if out.last().is_none_or(|q| *q != p) {
             out.push(p);
         }
     }
-    while out.len() > 1 && out.first().zip(out.last()).is_some_and(|(a, b)| (a.0 - b.0).abs() <= 1e-6 && (a.1 - b.1).abs() <= 1e-6) {
+    while out.len() > 1 && out.first() == out.last() {
         out.pop();
+    }
+    if least >= 3 {
+        let twice: f64 = out.iter().zip(out.iter().cycle().skip(1)).map(|(a, b)| a.0 * b.1 - b.0 * a.1).sum();
+        if twice.abs() <= 1e-9 {
+            return None;
+        }
     }
     (out.len() >= least).then_some(out)
 }

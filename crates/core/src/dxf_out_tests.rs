@@ -166,3 +166,25 @@ fn a_layer_named_with_accents_or_another_script_goes_out_as_the_file_s_code_page
     assert_eq!(d.entities.iter().filter(|e| e.layer == "MOBILIÁRIOS").count(), 1);
     assert_eq!(d.entities.iter().filter(|e| e.layer == "通风系统图").count(), 1);
 }
+
+#[test]
+fn a_fill_of_no_area_as_written_is_left_out_so_nothing_reads_back_empty() {
+    use crate::cad_tests::{dxf, file, pairs};
+    // Three corners, two of them a few millionths of a unit apart: distinct as read, one point once written to 1e-5 mm.
+    let solid = |a: (&str, &str), b: (&str, &str), c: (&str, &str)| {
+        pairs(&[(0, "SOLID"), (8, "FILL"), (10, a.0), (20, a.1), (11, b.0), (21, b.1), (12, c.0), (22, c.1), (13, c.0), (23, c.1)])
+    };
+    let near_twice = solid(("0", "0"), ("1000", "0"), ("1000.000002", "0.000001"));
+    // Three distinct corners on one line: no area either.
+    let in_line = solid(("0", "10"), ("500", "10"), ("1000", "10"));
+    let kept = solid(("0", "100"), ("1000", "100"), ("0", "600"));
+    let text = dxf("4", &[("FILL", "1", false)], &(near_twice + &in_line + &kept));
+    let mut s = Session::new();
+    run(&mut s, "import_cad", json!({"path": file("dxf-out", "slivers.dxf", &text), "position": "origin"}));
+    let out = path("slivers", "plan.dxf");
+    run(&mut s, "save", json!({"path": out}));
+    let d = dxf::read_text(&std::fs::read_to_string(&out).unwrap()).unwrap();
+    assert_eq!(d.left_out.get("empty"), None, "{:?}", d.left_out);
+    let fills: Vec<_> = d.entities.iter().filter(|e| e.layer == "FILL").collect();
+    assert_eq!(fills.len(), 1, "only the fill with an area: {fills:?}");
+}
