@@ -304,6 +304,42 @@ fn everyone_sees_where_the_others_are_and_who_changed_what_in_their_colours() {
 }
 
 #[test]
+fn a_guests_script_runs_on_the_hosts_model_as_one_step_of_theirs() {
+    let host = Host::start();
+    let (mut bo, mut sb) = join(&host, "Bo");
+    let n = walls(&sb.model);
+    let script = "wall {\"points\": [[0, 40000], [6000, 40000]]}\nwall {\"points\": [[6000, 40000], [6000, 46000]]}";
+    assert_eq!(bo.script(&mut sb, script).unwrap().len(), 2);
+    assert_eq!(walls(&sb.model), n + 2, "his copy has them at once");
+    let top = host.on(|s, _| (s.steps(false)[0].label.clone(), s.steps(false)[0].by.clone()));
+    assert_eq!(top, ("Script".to_string(), Some("Bo".to_string())));
+    assert!(bo.script(&mut sb, "new {}").is_err(), "never another project");
+    // His Undo list is his own script, from the host.
+    pump_until(&mut bo, &mut sb, |b| b.history(false).len() == 1);
+    assert_eq!((bo.history(false)[0].label.as_str(), &bo.history(false)[0].made), ("Script", &vec![("wall".to_string(), 2)]));
+    bo.exec(&mut sb, "undo", &json!({})).unwrap();
+    pump_until(&mut bo, &mut sb, |b| b.history(false).is_empty() && b.history(true).len() == 1);
+    assert_eq!(walls(&sb.model), n);
+}
+
+#[test]
+fn a_guests_import_goes_to_the_host_with_its_file() {
+    let host = Host::start();
+    let (mut bo, mut sb) = join(&host, "Bo");
+    let dir = std::env::temp_dir().join(format!("bimcraft-guest-import-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let pat = dir.join("mine.pat");
+    std::fs::write(&pat, "*Bo Diagonal, his\n45, 0,0, 0,3.175\n").unwrap();
+    bo.exec(&mut sb, "import_fill_patterns", &json!({"path": pat.to_string_lossy()})).unwrap();
+    assert!(sb.model.fill_patterns.contains_key("Bo Diagonal"), "his copy has it");
+    assert!(host.model().fill_patterns.contains_key("Bo Diagonal"), "the host's project has it");
+    // A link stays the host's.
+    let e = bo.exec(&mut sb, "import_cad", &json!({"path": pat.to_string_lossy(), "link": true})).unwrap_err();
+    assert!(e.contains("host"), "{e}");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn whoever_has_a_key_pays_with_it_and_a_lent_one_is_for_those_who_have_none() {
     use crate::live::{AiKey, payer};
     use std::collections::BTreeMap;

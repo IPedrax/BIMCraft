@@ -159,6 +159,81 @@ pub fn batch_for_guest(
     as_guest(session, guest, made_in, edit, |s| s.transaction(label, |s| commands.iter().map(|(c, p)| s.execute(c, p)).collect()))
 }
 
+/// The commands a guest brings a file of its own into the project with. The file goes to the host, which reads it once from a
+/// temporary folder of its own and keeps nothing of it but what the command makes; a link would point at that folder, so linking
+/// is the host's.
+pub const IMPORTS: [&str; 5] = ["insert", "import_cad", "import_mesh", "point_cloud", "import_fill_patterns"];
+/// How a guest's window writes the file it sends: base64, as [`import_for_guest`] reads it.
+pub use crate::commands::base64;
+
+/// The biggest file a guest sends to be imported, in bytes.
+pub const MAX_IMPORT: usize = 32 << 20;
+
+/// The file on the guest's machine that `command` with `params` imports, when it is a guest's import: one of [`IMPORTS`], one
+/// file at `path`, no link and nothing saved.
+pub fn guest_import(command: &str, params: &Value) -> Option<String> {
+    find(command).filter(|c| IMPORTS.contains(&c.id))?;
+    let link = params.get("link").is_some_and(|l| *l == Value::Bool(true));
+    let save = params.get("save").is_some_and(|v| !v.is_null());
+    if link || save {
+        return None;
+    }
+    params["path"].as_str().map(str::to_string)
+}
+
+/// A guest's import, as the host runs it: the file's `bytes` (base64) written as `name` in a temporary folder of the host's, the
+/// command run on it as the guest's step, and the folder removed.
+#[allow(clippy::too_many_arguments)]
+pub fn import_for_guest(
+    session: &mut Session,
+    guest: &str,
+    command: &str,
+    params: &Value,
+    name: &str,
+    bytes: &str,
+    made_in: (Option<String>, Option<String>),
+    edit: bool,
+) -> Result<Value, String> {
+    let c = find(command)
+        .filter(|_| guest_import(command, params).is_some())
+        .ok_or_else(|| format!("`{command}` isn't a file a guest imports: the host links, saves and opens"))?;
+    may(c.id, edit)?;
+    let bytes = crate::texture::unbase64(bytes)
+        .filter(|b| b.len() <= MAX_IMPORT)
+        .ok_or_else(|| format!("the file didn't come whole, or is bigger than {} MB", MAX_IMPORT >> 20))?;
+    // Only the file's own name, of plain characters: never a path into the host's disk.
+    let base = name.rsplit(['/', '\\']).next().unwrap_or_default();
+    let name: String = base.chars().filter(|c| c.is_alphanumeric() || "._- ()".contains(*c)).take(100).collect();
+    if name.trim_start_matches('.').is_empty() {
+        return Err("the file has no name the host can keep it by".into());
+    }
+    let dir = tempfile::Builder::new().prefix("bimcraft-cowork-").tempdir().map_err(|e| format!("the host couldn't keep the file: {e}"))?;
+    let path = dir.path().join(&name);
+    std::fs::write(&path, bytes).map_err(|e| format!("the host couldn't keep the file: {e}"))?;
+    let mut params = params.clone();
+    params["path"] = Value::String(path.to_string_lossy().into_owned());
+    as_guest(session, guest, made_in, edit, |s| {
+        // This one file, which the guest sent: the fence is back up after it.
+        s.no_files = false;
+        s.execute(c.id, &params)
+    })
+}
+
+/// A guest's script (Manage > Run Script) as one undo step, `Script`, the guest's: run only once its dry run passes, which refuses
+/// a line that would replace the project, undo, redo or touch a file before anything runs.
+pub fn script_for_guest(
+    session: &mut Session,
+    guest: &str,
+    text: &str,
+    made_in: (Option<String>, Option<String>),
+    edit: bool,
+) -> Result<Vec<Value>, String> {
+    as_guest(session, guest, made_in, edit, |s| {
+        s.script_dry_run(text)?;
+        s.script_atomic(text)
+    })
+}
+
 /// What a guest may not ask whatever its params: to replace the project, or to change it while the host lets guests only look.
 fn may(command: &str, edit: bool) -> Result<(), String> {
     let found = find(command);
@@ -197,7 +272,8 @@ pub const MAX_SELECTION: usize = 10_000;
 pub struct Presence {
     #[serde(default)]
     pub view: Option<On>,
-    /// The pointer, as a model point, on a plan.
+    /// The pointer, in the drawing of the view it is over: a model point on a plan, a point of a section's drawing or of a sheet's
+    /// paper, in mm.
     #[serde(default)]
     pub cursor: Option<crate::geom::P2>,
     /// A plan's middle and pixels per mm, which a window following this person copies.

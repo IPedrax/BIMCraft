@@ -1829,7 +1829,8 @@ impl BimApp {
         if !kept {
             paint(&p, place, &d, &marked, painted_hover, self.thin, &pictures);
         }
-        crate::cowork::paint_plan(&p, &self.cowork, &self.cowork_seen, &model, (key, up), rect, &view, (&d.drawing, d.place));
+        let kind = if up { "ceiling" } else { "plan" };
+        crate::cowork::paint_plan(&p, &self.cowork, &self.cowork_seen, &model, (kind, key), rect, &view, (&d.drawing, d.place));
         // The working aids: where the project's 0, 0 is, and which view this is. On the screen only; no drawing is made of them.
         if self.show_origin {
             let (x, y) = view.px(P2(0.0, 0.0));

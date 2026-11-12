@@ -68,6 +68,34 @@ pub enum Happened {
     },
 }
 
+/// A step in a guest's Undo or Redo list, as the host names it: the command's label and the elements it made and took away, by
+/// category, which the window names in its own language.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct Named {
+    pub label: String,
+    pub made: Vec<(String, usize)>,
+    pub removed: Vec<(String, usize)>,
+}
+
+/// What `who`'s undo and redo take back, as the host sends it.
+fn history(session: &Session, who: &str) -> Value {
+    let list = |redo: bool| -> Vec<Value> {
+        let steps = session.own_steps(who, redo);
+        steps.iter().map(|st| json!({"label": st.label, "made": st.made, "removed": st.removed})).collect()
+    };
+    json!({"undo": list(false), "redo": list(true)})
+}
+
+/// A list of [`Named`] read strictly: none when any of it isn't one.
+fn named(v: &Value) -> Option<Vec<Named>> {
+    let tally = |v: &Value| -> Option<Vec<(String, usize)>> {
+        let list = v.as_array().filter(|l| l.len() <= MAX_LABEL)?;
+        list.iter().map(|p| Some((text(&p[0])?, usize::try_from(p[1].as_u64()?).ok()?))).collect()
+    };
+    let list = v.as_array().filter(|l| l.len() <= bimcraft_core::engine::UNDO_LIMIT)?;
+    list.iter().map(|s| Some(Named { label: text(&s["label"])?, made: tally(&s["made"])?, removed: tally(&s["removed"])? })).collect()
+}
+
 /// A guest's AI key as it tells the host, which never has the key itself: the provider and model it is for, and whether it pays for
 /// others' messages (its owner said Always, or Ask and hasn't said no).
 #[derive(Clone, Debug, PartialEq)]
@@ -176,6 +204,8 @@ pub struct Hosting {
     keys: BTreeMap<u32, AiKey>,
     chat: Value,
     asks: Arc<Mutex<Asks>>,
+    /// Each guest's Undo and Redo lists as last sent.
+    histories: BTreeMap<u32, Value>,
 }
 
 impl Hosting {
@@ -187,7 +217,8 @@ impl Hosting {
         let project = session.model.uid;
         let sent = Arc::clone(&session.model);
         let (keys, chat, asks) = (BTreeMap::new(), Value::Null, Arc::default());
-        Ok(Hosting { host, name, edit: true, people: BTreeMap::new(), mine: None, sent, seq: 0, project, keys, chat, asks })
+        let histories = BTreeMap::new();
+        Ok(Hosting { host, name, edit: true, people: BTreeMap::new(), mine: None, sent, seq: 0, project, keys, chat, asks, histories })
     }
 
     pub fn host(&self) -> &Host {
@@ -308,6 +339,15 @@ impl Hosting {
             }
         }
         self.flush(session, 0, &mut said);
+        // Each guest's own Undo and Redo lists, when they changed.
+        self.histories.retain(|id, _| self.people.contains_key(id));
+        for (id, o) in &self.people {
+            let now = history(session, &o.name);
+            if self.histories.get(id) != Some(&now) {
+                self.host.send(*id, &json!({"op": "history", "history": now}));
+                self.histories.insert(*id, now);
+            }
+        }
         said
     }
 
@@ -357,6 +397,14 @@ impl Hosting {
                 let label = msg["label"].as_str().unwrap_or("Co-Work").chars().take(MAX_LABEL).collect::<String>();
                 cowork::batch_for_guest(session, &name, &label, &commands, made_in, self.edit).map(Value::from)
             }),
+            Some("import") => match (msg["command"].as_str(), params(&msg["params"]), msg["name"].as_str(), msg["bytes"].as_str()) {
+                (Some(c), Some(p), Some(n), Some(b)) => cowork::import_for_guest(session, &name, c, &p, n, b, made_in, self.edit),
+                _ => Err("an `import` has a `command`, its `params`, the file's `name` and its `bytes`".into()),
+            },
+            Some("script") => match msg["text"].as_str() {
+                Some(text) => cowork::script_for_guest(session, &name, text, made_in, self.edit).map(Value::from),
+                None => Err("a `script` has its `text`".into()),
+            },
             Some("resync") => {
                 self.flush(session, 0, said);
                 if let Ok(d) = cowork::whole(&session.model) {
@@ -459,6 +507,9 @@ pub struct Joined {
     over: Option<String>,
     /// This window's AI key as last told.
     key: Option<AiKey>,
+    /// What this guest's undo and redo would take back, as the host last said.
+    undo: Vec<Named>,
+    redo: Vec<Named>,
     /// What else the host said that the window hears at its next pass.
     said: Vec<Happened>,
 }
@@ -494,6 +545,8 @@ impl Joined {
             over: None,
             key: None,
             said: Vec::new(),
+            undo: Vec::new(),
+            redo: Vec::new(),
         };
         Ok((joined, model))
     }
@@ -522,6 +575,11 @@ impl Joined {
         if self.mine.as_ref() != Some(&p) && self.guest.send(&json!({"op": "presence", "presence": p})) {
             self.mine = Some(p);
         }
+    }
+
+    /// What this guest's undo (or with `redo`, redo) would take back, the next first: its Undo and Redo lists.
+    pub fn history(&self, redo: bool) -> &[Named] {
+        if redo { &self.redo } else { &self.undo }
     }
 
     /// Sends a message for the assistant, with its files (JSON the window builds).
@@ -562,7 +620,11 @@ impl Joined {
     pub fn exec(&mut self, session: &mut Session, command: &str, params: &Value) -> Result<Value, String> {
         match cowork::place(command, params) {
             Place::Here => session.execute(command, params),
-            Place::Refused(why) => Err(why),
+            // A file of this guest's own goes to the host with the command, which imports it there.
+            Place::Refused(why) => match cowork::guest_import(command, params) {
+                Some(path) => self.import(session, command, params, &path),
+                None => Err(why),
+            },
             Place::Host => {
                 let msg = json!({"op": "execute", "command": command, "params": params, "phase": session.phase, "option": session.option});
                 self.ask(session, msg)
@@ -581,6 +643,29 @@ impl Joined {
         }
         let list: Vec<Value> = commands.iter().map(|(c, p)| json!([c, p])).collect();
         let msg = json!({"op": "batch", "label": label, "commands": list, "phase": session.phase, "option": session.option});
+        Ok(self.ask(session, msg)?.as_array().cloned().unwrap_or_default())
+    }
+
+    /// An import of a file on this guest's machine: its bytes go to the host with the command, at most [`cowork::MAX_IMPORT`].
+    fn import(&mut self, session: &mut Session, command: &str, params: &Value, path: &str) -> Result<Value, String> {
+        let too_big = || format!("{path} is bigger than the {} MB a guest sends the host to import", cowork::MAX_IMPORT >> 20);
+        if std::fs::metadata(path).map_err(|e| format!("couldn't read {path}: {e}"))?.len() > cowork::MAX_IMPORT as u64 {
+            return Err(too_big());
+        }
+        // Read once more within the cap: the file may have grown since.
+        let bytes = std::fs::read(path).map_err(|e| format!("couldn't read {path}: {e}"))?;
+        if bytes.len() > cowork::MAX_IMPORT {
+            return Err(too_big());
+        }
+        let name = std::path::Path::new(path).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+        let msg = json!({"op": "import", "command": command, "params": params, "name": name,
+            "bytes": cowork::base64(&bytes), "phase": session.phase, "option": session.option});
+        self.ask(session, msg)
+    }
+
+    /// A script (Manage > Run Script) run on the host's model as one undo step of this guest's, once its dry run passes there.
+    pub fn script(&mut self, session: &mut Session, text: &str) -> Result<Vec<Value>, String> {
+        let msg = json!({"op": "script", "text": text, "phase": session.phase, "option": session.option});
         Ok(self.ask(session, msg)?.as_array().cloned().unwrap_or_default())
     }
 
@@ -691,6 +776,11 @@ impl Joined {
                 }
             }
             Some("chat") => self.said.push(Happened::Chat(m["state"].clone())),
+            Some("history") => {
+                if let (Some(undo), Some(redo)) = (named(&m["history"]["undo"]), named(&m["history"]["redo"])) {
+                    (self.undo, self.redo) = (undo, redo);
+                }
+            }
             Some("chat_refused") => {
                 let why = m["why"].as_str().unwrap_or("the assistant didn't take the message");
                 self.said.push(Happened::Failed(why.chars().take(MAX_ERROR).collect()));

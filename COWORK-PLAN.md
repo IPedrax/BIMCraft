@@ -378,7 +378,7 @@ than pixels, which a harness without a graphics card can't give for the 3D view.
   view draws nothing; a peer's selection outlines in their colour; follow switches the view and stops on your own pan; hostile
   presence (NaN, a GUID that isn't there, 100,000 GUIDs) is dropped.
 
-### 5. The shared AI chat (M)
+### 5. The shared AI chat (M): built
 
 - In `crates/assistant`: `Msg`'s JSON form; each assistant turn tagged with its key's owner and provider; the plain-text form of
   a turn made on another key; a remote completion for `Chat`; who pays for a turn, as a pure function of the mode, the sender,
@@ -396,7 +396,7 @@ than pixels, which a harness without a graphics card can't give for the 3D view.
 
 ### 6. Later, each on its own
 
-- A guest's import: the file's bytes, capped, sent to the host, which reads them from a temporary folder (S).
+- A guest's import: the file's bytes, capped, sent to the host, which reads them from a temporary folder (S): built.
 - Ask to join: a guest without the code knocks and the host lets them in; needs a PAKE or a fingerprint the two compare (M).
 - Handing the host's role to a guest before the host leaves (M).
 

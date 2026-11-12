@@ -47,12 +47,17 @@ fn the_interface_changes_the_project_only_through_exec() {
         let text = text.split("#[cfg(test)]\nmod tests {").next().unwrap_or(text);
         // Joined, so a call split over lines (`self.session` and then `.transaction(`) is still one.
         let joined: String = text.split_whitespace().collect();
-        for call in ["self.session.execute(", "self.session.transaction(", "self.session.script("] {
+        for call in ["self.session.execute(", "self.session.transaction(", "self.session.script(", "self.session.script_atomic("] {
             found.extend(std::iter::repeat_n(format!("{name}: {call}"), joined.matches(call).count()));
         }
     }
-    // The funnel itself, once each.
-    let funnel = ["lib.rs: self.session.execute(", "lib.rs: self.session.transaction("];
+    // The funnel itself, and the sample house, which replaces the project (never a host's to run).
+    let funnel = [
+        "lib.rs: self.session.execute(",
+        "lib.rs: self.session.transaction(",
+        "lib.rs: self.session.script_atomic(",
+        "lib.rs: self.session.script_atomic(",
+    ];
     for f in funnel {
         let at = found.iter().position(|x| x == f).unwrap_or_else(|| panic!("the funnel is there: {f}"));
         found.remove(at);
@@ -577,4 +582,91 @@ fn a_guests_window_lends_its_key_once_its_owner_says_yes_and_the_key_stays_there
     assert_eq!(sent.len(), 1, "his window made the request");
     assert!(sent[0].body.contains("hello") && sent[0].headers.iter().any(|(_, v)| v.contains(KEY)), "the conversation, on his key");
     assert!(!h.state().assistant.usage.is_empty(), "the tokens count where the key is");
+}
+
+#[test]
+fn a_refused_undo_lights_what_the_other_changed_in_their_colour() {
+    let mut h = host_window();
+    let (addr, code) = hosted(&h);
+    let w = h.state().session.model.next_id;
+    h.state_mut().exec("wall", &json!({"points": [[0, 9000], [5000, 9000]]})).unwrap();
+    // Bo moves Ana's wall, with no window.
+    let bo = std::thread::spawn(move || {
+        let (mut bo, model) = Joined::join(addr, &code, "Bo", Arc::new(|| {})).unwrap();
+        let mut copy = bimcraft_core::engine::Session::new();
+        copy.adopt(model);
+        bo.exec(&mut copy, "move", &json!({"ids": [w], "by": [0, 500]})).unwrap();
+    });
+    frames_until(&mut h, |_| bo.is_finished());
+    bo.join().unwrap();
+    // Ana's undo is refused, says who, and lights the wall in Bo's colour.
+    let e = h.state_mut().exec("undo", &json!({})).unwrap_err();
+    assert!(e.contains("Bo changed"), "{e}");
+    // Bo is the first guest: colour 1, the host's being 0.
+    assert!(h.state().cowork_seen.flashes.iter().any(|(_, colour, ids)| *colour == 1 && ids == &vec![w]), "{e}");
+}
+
+#[test]
+fn a_host_with_guests_in_is_asked_before_the_window_closes() {
+    let mut h = host_window();
+    let (addr, code) = hosted(&h);
+    let (go, stop) = channel::<()>();
+    let bo = std::thread::spawn(move || {
+        let (_bo, _) = Joined::join(addr, &code, "Bo", Arc::new(|| {})).unwrap();
+        let _ = stop.recv();
+    });
+    frames_until(&mut h, |h| matches!(&h.state().cowork, Some(Live::Host(x)) if !x.people().is_empty()));
+    let close = |h: &mut Harness<BimApp>| {
+        h.input_mut().viewports.entry(egui::ViewportId::ROOT).or_default().events.push(egui::ViewportEvent::Close);
+        h.step();
+        h.output().viewport_output.get(&egui::ViewportId::ROOT).is_some_and(|v| v.commands.contains(&egui::ViewportCommand::CancelClose))
+    };
+    assert!(close(&mut h), "held");
+    h.run();
+    h.get_by_label_contains("Bo are in your Co-Work session");
+    press(&mut h, "Cancel");
+    assert_eq!(h.state().cowork_quit, None);
+    assert!(close(&mut h), "asked again");
+    h.run();
+    press(&mut h, "End and Close");
+    assert_eq!(h.state().cowork_quit, Some(true));
+    // Then it closes as any window does (asking to save a changed project first), and is not held again.
+    let held = close(&mut h);
+    assert!(!held || h.state().pending.is_some(), "it closes, or asks only about saving");
+    go.send(()).unwrap();
+    bo.join().unwrap();
+}
+
+#[test]
+fn a_pointer_on_a_section_or_a_sheet_goes_to_the_others_and_theirs_shows_there() {
+    let mut h = host_window();
+    h.state_mut().cowork_dialog = None;
+    let section = h.state().session.model.next_id;
+    h.state_mut().exec("section", &json!({"start": [-1000, 1500], "end": [6000, 1500]})).unwrap();
+    let sheet = h.state().session.model.next_id;
+    h.state_mut().exec("sheet", &json!({})).unwrap();
+    for (view, kind) in [(Sheet::Section(section), "section"), (Sheet::Paper(sheet), "sheet")] {
+        h.state_mut().open_sheet(view);
+        h.run();
+        h.hover_at(h.ctx.content_rect().center());
+        h.run();
+        let p = h.state().my_presence();
+        assert_eq!(p.view.as_ref().map(|v| v.kind.as_str()), Some(kind));
+        assert!(p.cursor.is_some(), "the pointer on the {kind}'s drawing");
+    }
+    // Bo's on the section shows there, and not on the sheet.
+    let of = h.state().session.model.elements.guid(section);
+    let (_, tx, thread) = bo_at(&mut h, move |_| bimcraft_core::cowork::Presence {
+        view: Some(bimcraft_core::cowork::On { kind: "section".into(), of }),
+        cursor: Some(P2(1000.0, 1500.0)),
+        ..Default::default()
+    });
+    let marks = |h: &Harness<BimApp>, kind: &str, id: Id| {
+        let s = h.state();
+        let here = bimcraft_core::cowork::On { kind: kind.into(), of: s.session.model.elements.guid(id) };
+        crate::cowork::marks(crate::cowork::others_of(&s.cowork).unwrap(), &s.session.model, &here, &s.cowork_seen).pointers.len()
+    };
+    assert_eq!((marks(&h, "section", section), marks(&h, "sheet", sheet)), (1, 0));
+    drop(tx);
+    thread.join().unwrap();
 }

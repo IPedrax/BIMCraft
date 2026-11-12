@@ -258,9 +258,14 @@ impl BimApp {
             Sheet::Plan(k) | Sheet::Ceiling(k) => Some(k),
             _ => None,
         };
+        // The pointer, in the drawing of the view it is over: a plan's model point, a section's or a sheet's own.
+        let drawn = match self.sheet {
+            Sheet::Plan(k) | Sheet::Ceiling(k) | Sheet::Section(k) | Sheet::Paper(k) => Some(k),
+            _ => None,
+        };
         Presence {
             view: self.on_screen(),
-            cursor: self.cowork_seen.pointer.filter(|(k, _)| Some(*k) == plan).map(|(_, p)| p),
+            cursor: self.cowork_seen.pointer.filter(|(k, _)| Some(*k) == drawn).map(|(_, p)| p),
             zoom: plan.and_then(|k| self.canvas.view(k)).map(|v| (v.cx, v.cy, v.scale)),
             camera: self.orbit.camera.filter(|_| self.sheet == Sheet::View3D).map(|c| Look::of(&c)),
             selection: self.selection.iter().take(MAX_SELECTION).filter_map(|id| m.elements.guid(*id)).collect(),
@@ -337,6 +342,53 @@ impl BimApp {
             self.session.read_only = None;
         }
         live
+    }
+
+    /// A host asked to close while others are in: ending the session for them is the user's to say.
+    pub(crate) fn quit_window(&mut self, ctx: &Context) {
+        if self.cowork_quit != Some(false) {
+            return;
+        }
+        let names = match &self.cowork {
+            Some(Live::Host(h)) => h.people().into_iter().map(|(_, n)| n).collect::<Vec<_>>().join(", "),
+            _ => return self.cowork_quit = None,
+        };
+        let (mut quit, mut stay) = (false, false);
+        let r = Modal::new(UiId::new("cowork-quit"), t("End the Co-Work session?")).width(420.0).show(ctx, |ui| {
+            crate::popup::body(ui, |ui| {
+                ui.label(tf(
+                    "{} are in your Co-Work session: closing BIMCraft ends it for them, and they keep a read-only copy.",
+                    &[&names],
+                ));
+            });
+            crate::popup::footer(ui, |ui| {
+                ui.horizontal(|ui| {
+                    quit = ui.button(t("End and Close")).clicked();
+                    stay = ui.button(t("Cancel")).clicked();
+                });
+            });
+        });
+        if quit {
+            self.cowork_quit = Some(true);
+            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+        } else if stay || r.should_close() {
+            self.cowork_quit = None;
+        }
+    }
+
+    /// A refused undo or redo lights what someone else changed after the step, in their colour: the core's error names them,
+    /// "…: Bo changed wall 100004, door 100007 after it (…)".
+    pub(crate) fn light_refused(&mut self, error: &str) {
+        let Some(others) = others_of(&self.cowork) else { return };
+        for o in others.values() {
+            let Some((_, rest)) = error.split_once(&format!(": {} changed ", o.name)) else { continue };
+            let things = rest.split(" after it").next().unwrap_or_default();
+            let ids: Vec<Id> = things.split(", ").filter_map(|t| t.rsplit(' ').next()?.parse().ok()).collect();
+            if !ids.is_empty() {
+                self.cowork_seen.flashes.push((Instant::now(), o.colour, ids));
+                return;
+            }
+        }
     }
 
     /// The view control bar: whose session this is and who is in it; a click opens Co-Work. Nothing outside a session.
@@ -683,7 +735,7 @@ pub struct Seen {
     pub(crate) pointer: Option<(Id, P2)>,
     sent: Option<Instant>,
     /// Others' edits still lit: since when, in whose colour, which elements.
-    flashes: Vec<(Instant, usize, Vec<Id>)>,
+    pub(crate) flashes: Vec<(Instant, usize, Vec<Id>)>,
     /// Whom the window follows, and what following last showed: a change of the user's own stops it.
     pub(crate) following: Option<u32>,
     followed: Option<Shown>,
@@ -722,21 +774,21 @@ pub(crate) fn marks(others: &BTreeMap<u32, Other>, m: &Model, here: &On, seen: &
     marks
 }
 
-/// The plan `key` (a ceiling plan with `up`) as the others mark it, over its drawing: what they selected or just changed outlined
-/// in their colours, and their pointers with their names.
+/// The view `key` of `kind` (a plan, a ceiling plan, a section, a sheet) as the others mark it, over its drawing: what they selected
+/// or just changed outlined in their colours, and their pointers with their names.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn paint_plan(
     p: &Painter,
     live: &Option<Live>,
     seen: &Seen,
     m: &Model,
-    (key, up): (Id, bool),
+    (kind, key): (&str, Id),
     rect: Rect,
     view: &View,
     d: (&Drawing, crate::canvas::Place),
 ) {
     let Some(others) = others_of(live) else { return };
-    let here = On { kind: (if up { "ceiling" } else { "plan" }).into(), of: m.elements.guid(key) };
+    let here = On { kind: kind.into(), of: m.elements.guid(key) };
     let marks = marks(others, m, &here, seen);
     let (drawing, at) = d;
     if !marks.lit.is_empty() {

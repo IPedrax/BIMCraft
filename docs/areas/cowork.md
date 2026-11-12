@@ -156,9 +156,27 @@ the desktop wires it in slice 3.
 - **Across keys.** A provider's reasoning is valid only where it was made, so a turn on another key or provider than the last
   starts the model afresh, with what was said before told as text in the message (`chat::fold`), and the log keeps all of it.
 
+## Built: the rest of the gaps
+
+- **Undo lists.** In a session the Undo and Redo lists show what that person's undo takes back (`Session::own_steps`: their
+  edits still standing, and to redo the edits their undos took back, named as those edits). The host's window reads its own
+  session; a guest's has its lists from the host (`history`, sent when they change, read strictly into `live::Named`).
+- **A refused undo** lights what the other person changed after the step, in their colour (`BimApp::light_refused`, which finds
+  the ids in the core's error, "…: Bo changed wall 100004 after it").
+- **The host is asked before it closes** while guests are in ("End the Co-Work session?", `quit_window`); a host with nobody in
+  closes as any window does.
+- **Pointers on sections and sheets.** A presence's `cursor` is in the drawing of the view it is over: a model point on a plan, a
+  point of a section's drawing or of a sheet's paper. Each view draws the others' pointers and selections over its drawing
+  (`paint_plan`).
+- **Run Script for a guest** goes to the host (`script`, `cowork::script_for_guest`): its dry run there first, then the script as
+  one undo step, the guest's. The window's scripts go through `BimApp::exec_script`, which the funnel test counts.
+- **A guest's imports.** Import CAD, Import Mesh, Point Cloud, Insert from File and Import Fill Patterns of a file on a guest's
+  machine send the file (at most `MAX_IMPORT`, 32 MB) with the command (`import`); the host writes it into a temporary folder of
+  its own, runs the command on it as the guest's step and removes the folder (`cowork::import_for_guest`). Only the file's own
+  name is kept, of plain characters. A link would point at that folder, so linking stays the host's, and a command that needs files
+  beside the one sent (an OBJ's MTL, a glTF's buffers) finds them missing.
+
 ## Not built yet
 
-Others' pointers on a section or a sheet (a presence has them only on plans), a
-guest's Undo list (the shared history's labels), the elements of a refused undo lit in the other person's colour (the error
-names them, but the window doesn't read it), the host asked before it quits while others are in, guests importing files of
-their own, and Manage > Run Script for a guest (it runs on the read-only copy, which refuses its edits).
+Slice 6 of the plan: asking to join without the code, and handing the host's role to a guest. Not checked by any test: a session
+between two machines, a minimised host on Wayland, a live provider call on a lent key.

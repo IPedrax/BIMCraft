@@ -913,6 +913,8 @@ pub struct BimApp {
     cowork_seen: cowork::Seen,
     /// The session's shared AI chat, as this window takes part in it.
     cowork_ai: cowork::Ai,
+    /// A host with guests in that was asked to close: asking whether to end the session (false), or told to (true).
+    cowork_quit: Option<bool>,
     /// The Revit file being read, on a thread of its own.
     revit_job: Option<revit::Job>,
     /// Files to open at the next frame: the command line's, and what the system asked for while a Revit file was being read.
@@ -1220,19 +1222,24 @@ fn icon_button(ui: &mut Ui, icon: Icon, label: &str) -> Response {
 
 /// An undo step as Undo's list names it: what it made (Create Walls) or took away (Delete Door), or else its command.
 fn step_name(st: &engine::Step) -> String {
-    let one = |list: &[(&str, usize)]| match list {
-        [(c, n)] => Some(lang::category(c, *n > 1)),
+    named(&st.label, &st.made, &st.removed)
+}
+
+/// A step named by its label and what it made and took away: Create Walls, Delete Door, or its command.
+fn named<C: AsRef<str>>(label: &str, made: &[(C, usize)], removed: &[(C, usize)]) -> String {
+    let one = |list: &[(C, usize)]| match list {
+        [(c, n)] => Some(lang::category(c.as_ref(), *n > 1)),
         _ => None,
     };
-    if let Some(asked) = assistant::step_label(&st.label) {
+    if let Some(asked) = assistant::step_label(label) {
         return asked;
     }
-    let named = match (st.made.as_slice(), st.removed.as_slice()) {
+    let named = match (made, removed) {
         (made, []) if !made.is_empty() => one(made).map(|c| tf("Create {}", &[&c])),
         ([], removed) if !removed.is_empty() => one(removed).map(|c| tf("Delete {}", &[&c])),
         _ => None,
     };
-    named.unwrap_or_else(|| t(&st.label).to_string())
+    named.unwrap_or_else(|| t(label).to_string())
 }
 
 /// A tab, of the ribbon or of a view. Contextual tabs are green, as Revit's are.
@@ -1560,6 +1567,7 @@ impl BimApp {
             cowork_dialog: None,
             cowork_seen: cowork::Seen::default(),
             cowork_ai: cowork::Ai::default(),
+            cowork_quit: None,
             revit_job: None,
             opens: Vec::new(),
             dialog: None,
@@ -1618,6 +1626,9 @@ impl BimApp {
             Some(cowork::Live::Guest(joined)) => joined.exec(&mut self.session, id, params),
             _ => self.session.execute(id, params),
         };
+        if let (Err(e), true) = (&result, matches!(id, "undo" | "redo")) {
+            self.light_refused(e);
+        }
         // The core renames and drops the option with its set.
         self.active_option = self.session.option.clone();
         result
@@ -1629,6 +1640,17 @@ impl BimApp {
         let result = match &mut self.cowork {
             Some(cowork::Live::Guest(joined)) => joined.batch(&mut self.session, label, commands),
             _ => self.session.transaction(label, |s| commands.iter().map(|(c, p)| s.execute(c, p)).collect()),
+        };
+        self.active_option = self.session.option.clone();
+        result
+    }
+
+    /// A script as one undo step, `Script`: on a guest's window the host runs it.
+    pub(crate) fn exec_script(&mut self, text: &str) -> Result<Vec<Value>, String> {
+        self.made_in();
+        let result = match &mut self.cowork {
+            Some(cowork::Live::Guest(joined)) => joined.script(&mut self.session, text),
+            _ => self.session.script_atomic(text),
         };
         self.active_option = self.session.option.clone();
         result
@@ -1830,7 +1852,14 @@ impl BimApp {
             self.title = title;
         }
         let documents = self.families.iter().any(|d| d.ed.as_ref().is_some_and(editor::FamilyEditor::unsaved));
-        if ctx.input(|i| i.viewport().close_requested()) && !self.closing && (self.installing() || self.dirty() || documents) {
+        // A host whose guests are in is asked first: closing ends the session for them.
+        let others_in = matches!(&self.cowork, Some(cowork::Live::Host(h)) if !h.people().is_empty());
+        let held = others_in && self.cowork_quit != Some(true);
+        if ctx.input(|i| i.viewport().close_requested()) && !self.closing && held {
+            ctx.send_viewport_cmd(ViewportCommand::CancelClose);
+            self.cowork_quit = Some(false);
+        }
+        if ctx.input(|i| i.viewport().close_requested()) && !self.closing && !held && (self.installing() || self.dirty() || documents) {
             ctx.send_viewport_cmd(ViewportCommand::CancelClose);
             // An update being put in place holds the window: it closes it when it's in. The family documents are asked about
             // first.
@@ -1842,7 +1871,7 @@ impl BimApp {
                 }
             }
         }
-        if ctx.input(|i| i.viewport().close_requested()) && !self.dirty() && !self.installing() && !documents {
+        if ctx.input(|i| i.viewport().close_requested()) && !held && !self.dirty() && !self.installing() && !documents {
             self.retire_autosave();
         }
         if self.home.shown {
@@ -3658,7 +3687,12 @@ impl BimApp {
     /// and every step before it, and a click undoes (or redoes) them all.
     fn steps_list(&mut self, ui: &mut Ui, redo: bool) {
         let what = if redo { "Redo" } else { "Undo" };
-        let names: Vec<String> = self.session.steps(redo).into_iter().map(step_name).collect();
+        // In a Co-Work session, what this person's undo takes back: their own steps (a guest has them from the host).
+        let names: Vec<String> = match &self.cowork {
+            Some(cowork::Live::Guest(j)) => j.history(redo).iter().map(|s| named(&s.label, &s.made, &s.removed)).collect(),
+            Some(cowork::Live::Host(h)) => self.session.own_steps(h.name(), redo).into_iter().map(step_name).collect(),
+            None => self.session.steps(redo).into_iter().map(step_name).collect(),
+        };
         let (rect, arrow) = ui.allocate_exact_size(vec2(12.0, 22.0), Sense::click());
         let label = t(if redo { msg!("Redo History") } else { msg!("Undo History") });
         arrow.widget_info(|| WidgetInfo::labeled(WidgetType::Button, !names.is_empty(), label));
@@ -5874,6 +5908,7 @@ impl BimApp {
         self.purge_window(ctx);
         self.cowork_window(ctx);
         self.lend_window(ctx);
+        self.quit_window(ctx);
         if std::mem::take(&mut self.link_dialog) {
             self.link_model_dialog(ctx);
         }

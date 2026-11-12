@@ -5,7 +5,10 @@ use std::sync::Arc;
 
 use serde_json::{Value, json};
 
-use crate::cowork::{Delta, Look, On, Place, Presence, Put, apply, batch_for_guest, delta, place, run_for_guest, whole};
+use crate::cowork::{
+    Delta, Look, On, Place, Presence, Put, apply, batch_for_guest, delta, guest_import, import_for_guest, place, run_for_guest,
+    script_for_guest, whole,
+};
 use crate::engine::Session;
 use crate::model::{Id, Model};
 
@@ -176,6 +179,29 @@ fn undo_takes_back_only_your_own_edits() {
 }
 
 #[test]
+fn each_persons_undo_list_is_what_their_undo_and_redo_take_back() {
+    let mut s = house();
+    s.author = Some("Ana".into());
+    let w = wall(&mut s, 40000);
+    by(&mut s, "Ana", "move", json!({"ids": [w], "by": [0, 100]})).unwrap();
+    s.author = Some("Bo".into());
+    wall(&mut s, 46000);
+    let labels = |s: &Session, who: &str, redo: bool| s.own_steps(who, redo).iter().map(|st| st.label.clone()).collect::<Vec<_>>();
+    assert_eq!(labels(&s, "Ana", false), ["Move", "Wall"], "hers, the next first, past Bo's");
+    assert_eq!(labels(&s, "Bo", false), ["Wall"]);
+    assert!(labels(&s, "Ana", true).is_empty());
+    by(&mut s, "Ana", "undo", json!({})).unwrap();
+    assert_eq!(labels(&s, "Ana", false), ["Wall"], "what she undid is no longer there to undo");
+    assert_eq!(labels(&s, "Ana", true), ["Move"], "but to redo, named as it was");
+    by(&mut s, "Ana", "redo", json!({})).unwrap();
+    assert_eq!((labels(&s, "Ana", false), labels(&s, "Ana", true)), (vec!["Move".to_string(), "Wall".to_string()], vec![]));
+    // The list's count is what `undo` takes: two of hers.
+    let n = s.own_steps("Ana", false).len();
+    by(&mut s, "Ana", "undo", json!({"count": n})).unwrap();
+    assert!(s.own_steps("Ana", false).is_empty());
+}
+
+#[test]
 fn undo_takes_back_several_of_your_edits_at_once_or_none() {
     let mut s = house();
     s.author = Some("Ana".into());
@@ -332,6 +358,52 @@ fn a_guests_batch_is_one_step_of_theirs_or_nothing() {
         assert!(Arc::ptr_eq(&kept, &s.model), "none of it stays");
     }
     let e = batch_for_guest(&mut s, "Bo", "Draw", &[walls(46000)], none, false).unwrap_err();
+    assert!(e.contains("only look"), "{e}");
+}
+
+#[test]
+fn a_guests_script_is_one_step_of_theirs_once_its_dry_run_passes() {
+    let mut s = house();
+    s.author = Some("Ana".into());
+    let none = (None, None);
+    let script = "@a = wall {\"points\": [[0, 40000], [6000, 40000]]}\nwall {\"points\": [[6000, 40000], [6000, 46000]]}";
+    let done = script_for_guest(&mut s, "Bo", script, none.clone(), true).unwrap();
+    assert_eq!(done.len(), 2);
+    let top = s.steps(false)[0];
+    assert_eq!((top.label.as_str(), top.by.as_deref()), ("Script", Some("Bo")));
+    assert_eq!(s.author.as_deref(), Some("Ana"));
+    let kept = Arc::clone(&s.model);
+    // What a dry run refuses, a guest's script never does: a file, another project, an undo.
+    for bad in ["wall {\"points\": [[0, 50000], [6000, 50000]]}\nsave {\"path\": \"/tmp/x.bimc\"}", "new {}", "undo {}"] {
+        assert!(script_for_guest(&mut s, "Bo", bad, none.clone(), true).is_err(), "{bad}");
+        assert!(Arc::ptr_eq(&kept, &s.model), "none of it stays");
+    }
+    let e = script_for_guest(&mut s, "Bo", script, none, false).unwrap_err();
+    assert!(e.contains("only look"), "{e}");
+}
+
+#[test]
+fn a_guest_imports_a_file_of_its_own_through_the_host_which_keeps_nothing_of_it() {
+    let mut s = house();
+    s.author = Some("Ana".into());
+    let none = (None, None);
+    let pat = crate::commands::base64(b"*Guest Diagonal, a guest's\n45, 0,0, 0,3.175\n");
+    let params = json!({"path": "/home/bo/patterns.pat"});
+    assert_eq!(guest_import("import_fill_patterns", &params).as_deref(), Some("/home/bo/patterns.pat"));
+    import_for_guest(&mut s, "Bo", "import_fill_patterns", &params, "../../patterns.pat", &pat, none.clone(), true).unwrap();
+    assert!(s.model.fill_patterns.contains_key("Guest Diagonal"));
+    let top = s.steps(false)[0];
+    assert_eq!(top.by.as_deref(), Some("Bo"));
+    assert!(!s.no_files && s.author.as_deref() == Some("Ana"), "the session as it was");
+    // A link would point at the host's temporary folder; a save, a file of the host's; neither is a guest's import.
+    for (command, params) in [("import_cad", json!({"path": "/home/bo/a.dxf", "link": true})), ("save", json!({"path": "/tmp/x.bimc"}))] {
+        assert!(guest_import(command, &params).is_none(), "{command}");
+        assert!(import_for_guest(&mut s, "Bo", command, &params, "a.dxf", &pat, none.clone(), true).is_err(), "{command}");
+    }
+    let big = crate::commands::base64(&vec![b' '; crate::cowork::MAX_IMPORT + 1]);
+    assert!(import_for_guest(&mut s, "Bo", "import_fill_patterns", &params, "p.pat", &big, none.clone(), true).is_err(), "too big");
+    assert!(import_for_guest(&mut s, "Bo", "import_fill_patterns", &params, "p.pat", "not base64!", none.clone(), true).is_err());
+    let e = import_for_guest(&mut s, "Bo", "import_fill_patterns", &params, "p.pat", &pat, none, false).unwrap_err();
     assert!(e.contains("only look"), "{e}");
 }
 

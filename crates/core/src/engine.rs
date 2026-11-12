@@ -845,6 +845,33 @@ impl Session {
         Ok(json!({ if redo { "redone" } else { "undone" }: label, "count": count }))
     }
 
+    /// What `by`'s undo (or with `redo`, redo) would take back in a Co-Work session, the next first, as [`Session::undo_own`] takes
+    /// them: their edits still standing, or the edits their undos took back, named by those edits. A list's place is the `count`.
+    pub fn own_steps(&self, by: &str, redo: bool) -> Vec<&Step> {
+        let standing = |st: &Step| st.by.as_deref() == Some(by) && !st.undone;
+        let mut list = Vec::new();
+        for (st, _) in self.undo.iter().rev() {
+            if redo && st.by.as_deref() == Some(by) && st.undoes.is_none() {
+                break;
+            }
+            if standing(st) && st.inverse == redo {
+                list.push(self.origin(st));
+            }
+        }
+        list
+    }
+
+    /// The edit an undo or a redo goes back to, through the steps it undid, as far as the history still has them.
+    fn origin<'a>(&'a self, mut st: &'a Step) -> &'a Step {
+        for _ in 0..self.undo.len() {
+            match st.undoes.and_then(|n| self.undo.iter().find(|(o, _)| o.n == n)) {
+                Some((o, _)) => st = o,
+                None => break,
+            }
+        }
+        st
+    }
+
     /// One of [`Session::undo_own`]'s steps; the new step's label.
     fn own_step(&mut self, by: &str, redo: bool) -> Result<String, String> {
         let what = if redo { "redo" } else { "undo" };
