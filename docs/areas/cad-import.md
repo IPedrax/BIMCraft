@@ -18,7 +18,8 @@ ELLIPSE (as a polyline), SPLINE (its fit points, else its control points), POINT
 out, aligned as the file says), SOLID and TRACE, and HATCH (its boundary loops, solid or patterned; a patterned one is drawn as a
 pale fill of its colour, since its pattern isn't kept). An INSERT places its block's entities, scaled, turned and arrayed, up to
 `MAX_DEPTH` blocks deep; an entity on layer 0 of a block takes the insert's layer, and one by block its colour. DIMENSION draws
-its anonymous block. What the reader doesn't know (3DFACE, a viewport, an image, a proxy) is counted by kind in
+its anonymous block, and ACAD_TABLE (a schedule of areas, a legend, a list of sheets) the block AutoCAD keeps of how the table
+looks (`*T…`), from the table's insertion point, so a drawing that is only a table comes in too. What the reader doesn't know (3DFACE, a viewport, an image, a proxy) is counted by kind in
 `Dxf::left_out`, and the command lists it. The text itself is read as UTF-8 where it is, and else by the code page the header names in
 `$DWGCODEPAGE`: the East Asian pages and the Windows ones decode through `encoding_rs`, and a page without a decoder here (the DOS
 ones) reads as Latin-1, as it always has.
