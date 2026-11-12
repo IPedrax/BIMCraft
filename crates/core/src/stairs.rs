@@ -339,15 +339,61 @@ fn spiral(st: &Stair, sp: crate::model::Spiral, n: u32, each: f64, base: f64) ->
 
 /// A stair's runs: its risers split at its landings, each run a tread shorter than its risers.
 pub fn stair(m: &Model, st: &Stair) -> Layout {
+    let mut all = storeys(m, st).into_iter().map(|(_, l)| l);
+    let Some(mut out) = all.next() else { return first(m, st) };
+    // The storeys above, one after another.
+    for l in all {
+        out.runs.extend(l.runs);
+        out.pads.extend(l.pads);
+        out.walk.extend(l.walk);
+        out.winders += l.winders;
+    }
+    out
+}
+
+/// The layout of a stair's first storey, which is the stair as it is drawn and edited.
+pub fn first(m: &Model, st: &Stair) -> Layout {
     let (n, each, _) = m.flight(st);
-    let base = m.elevation(st.level);
+    laid(st, &st.landings, n, each, m.elevation(st.level))
+}
+
+/// Each storey of a stair, lowest first: the level it stands on and its layout there. A storey higher or lower than the
+/// first has the risers its height asks, and the first's landings moved with them: after the same share of its risers,
+/// where every run still holds two; else that storey has one flight.
+pub fn storeys(m: &Model, st: &Stair) -> Vec<(crate::model::Guid, Layout)> {
+    let (n0, _, _) = m.flight(st);
+    m.storeys(st)
+        .into_iter()
+        .enumerate()
+        .map(|(i, (level, base, rise))| {
+            let (n, each, _) = m.flight_of(st, rise);
+            if i == 0 || n == n0 {
+                return (level, laid(st, &st.landings, n, each, base));
+            }
+            let scale = if n0 > 0 { f64::from(n) / f64::from(n0) } else { 1.0 };
+            let moved: Vec<crate::model::Landing> =
+                st.landings.iter().map(|l| crate::model::Landing { at: (l.at * scale).round(), ..*l }).collect();
+            let mut last = 0.0;
+            let holds = moved.iter().all(|l| {
+                let (wound, into) = (f64::from(l.wound()), f64::from(l.balance));
+                let ok = l.at - into >= last + 2.0 && l.at + wound + into <= f64::from(n) - 2.0;
+                last = l.at + wound + into;
+                ok
+            });
+            (level, laid(st, if holds { &moved } else { &[] }, n, each, base))
+        })
+        .collect()
+}
+
+/// A stair's layout over one storey: `n` risers each `each` high from `base`, with `landings`.
+fn laid(st: &Stair, landings: &[crate::model::Landing], n: u32, each: f64, base: f64) -> Layout {
     if let Some(sp) = st.spiral {
         return spiral(st, sp, n, each, base);
     }
     // Each run from the riser it starts at to the one that climbs off it; winders climb some between two runs.
     let mut spans: Vec<(u32, u32)> = Vec::new();
     let mut from = 0u32;
-    for l in &st.landings {
+    for l in landings {
         let to = (l.at.max(0.0).min(f64::from(n))) as u32;
         // Winders balanced into the flights take treads of the run before them and of the one after.
         spans.push((from, to.saturating_sub(l.balance).max(from)));
@@ -364,8 +410,7 @@ pub fn stair(m: &Model, st: &Stair) -> Layout {
             )
         })
         .collect();
-    let turns: Vec<Turn> = st
-        .landings
+    let turns: Vec<Turn> = landings
         .iter()
         .map(|l| Turn { turn: l.turn, winders: l.winders, length: l.length, into: f64::from(l.balance) * st.tread, balance: l.balance })
         .collect();
@@ -376,7 +421,7 @@ pub fn stair(m: &Model, st: &Stair) -> Layout {
 /// the other order, its top where its foot was. None for a stair with no run.
 pub fn flipped(m: &Model, st: &Stair) -> Option<Stair> {
     let (n, _, _) = m.flight(st);
-    let l = stair(m, st);
+    let l = first(m, st);
     if let Some(sp) = st.spiral {
         // From its top round the other way: the centre on its other side.
         let (&(top, _), &(before, _)) = (l.walk.last()?, l.walk.get(l.walk.len().checked_sub(2)?)?);
@@ -435,7 +480,7 @@ pub enum Grip {
 /// Where each of a stair's grips is, in plan.
 pub fn grips(m: &Model, st: &Stair) -> Vec<(Grip, P2)> {
     use crate::model::StairLine;
-    let l = stair(m, st);
+    let l = first(m, st);
     let mut out = vec![(Grip::Foot, st.start)];
     let Some(first) = l.runs.first() else { return out };
     let (mid, n) = (first.start + first.u * (first.length / 2.0), first.u.perp() * (st.width / 2.0));
@@ -466,7 +511,7 @@ pub fn grips(m: &Model, st: &Stair) -> Vec<(Grip, P2)> {
 pub fn dragged(m: &Model, st: &Stair, grip: Grip, to: P2) -> Stair {
     use crate::model::StairLine;
     let mut out = st.clone();
-    let l = stair(m, st);
+    let l = first(m, st);
     let whole = |x: f64| (x * 1000.0).round() / 1000.0 + 0.0;
     match grip {
         Grip::Foot => out.start = P2(whole(to.0), whole(to.1)),
@@ -538,15 +583,21 @@ pub fn layout(m: &Model, e: &Element) -> Option<Layout> {
 /// side of each run where it has those.
 pub fn parts(m: &Model, st: &Stair) -> Option<Vec<(Vec<P2>, Plane, Plane)>> {
     let t = m.types.stair.get(&st.type_name)?;
-    let (_, each, _) = m.flight(st);
+    let (_, first_each, _) = m.flight(st);
     let l = stair(m, st);
     let (half, base) = (st.width / 2.0, m.elevation(st.level));
+    // The heights its storeys stand at: a run from one of them stands on that floor.
+    let floors: Vec<f64> = m.storeys(st).into_iter().map(|s| s.1).collect();
     let mut out: Vec<(Vec<P2>, Plane, Plane)> = Vec::new();
-    let slope = if st.tread > 0.0 { each / st.tread } else { 0.0 };
     let open = t.waist <= 0.0;
-    // How thick a landing or a winder is, and how far a sloping slab reaches down under the corner of a step.
-    let (flat, down) = (if open { t.tread_thickness.max(1.0) } else { t.waist }, t.waist * (1.0 + slope * slope).sqrt());
+    // How thick a landing or a winder is.
+    let flat = if open { t.tread_thickness.max(1.0) } else { t.waist };
     for run in &l.runs {
+        // Each riser of this run, which a storey of its own height makes its own; and how far a sloping slab reaches
+        // down under the corner of a step.
+        let each = if run.risers > 0 { (run.z.1 - run.z.0) / f64::from(run.risers) } else { first_each };
+        let slope = if st.tread > 0.0 { each / st.tread } else { 0.0 };
+        let down = t.waist * (1.0 + slope * slope).sqrt();
         let (u, n) = (run.u, run.u.perp());
         let rect = |a: f64, b: f64, c: f64, d: f64| {
             ccw(vec![run.start + u * a + n * c, run.start + u * b + n * c, run.start + u * b + n * d, run.start + u * a + n * d])
@@ -568,7 +619,7 @@ pub fn parts(m: &Model, st: &Stair) -> Option<Vec<(Vec<P2>, Plane, Plane)>> {
             }
         };
         // A run from the floor stands on it; one from a landing ends level with the landing's underside.
-        let floor = if (run.z.0 - base).abs() < 1e-6 { run.z.0 } else { run.z.0 - flat };
+        let floor = if floors.iter().any(|z| (run.z.0 - z).abs() < 1e-6) { run.z.0 } else { run.z.0 - flat };
         for k in 1..run.risers {
             let k = f64::from(k);
             let (a, b, top) = ((k - 1.0) * st.tread, k * st.tread, run.z.0 + k * each);
@@ -600,7 +651,7 @@ pub fn parts(m: &Model, st: &Stair) -> Option<Vec<(Vec<P2>, Plane, Plane)>> {
     }
     for pad in &l.pads {
         // A winder is a step: with a slab under it, the slab is under the step below it too.
-        let thick = if pad.tread && !open { each + t.waist } else { flat };
+        let thick = if pad.tread && !open { first_each + t.waist } else { flat };
         out.push((pad.ring.clone(), Plane::flat((pad.z - thick).max(base)), Plane::flat(pad.z)));
     }
     Some(out)

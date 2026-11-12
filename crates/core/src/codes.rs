@@ -544,6 +544,43 @@ pub fn stair_findings(m: &Model, st: &Stair) -> Vec<Finding> {
             message: format!("it is {} mm wide, under the least, {} mm: widen it", mm(st.width), rules.width_min),
         });
     }
+    // A multistorey stair's other storeys have risers of their own heights: each inside the range, and none far from
+    // the first's.
+    let others: Vec<f64> = m.storeys(st).into_iter().skip(1).map(|s| m.flight_of(st, s.2).1).collect();
+    let (low, high) = others.iter().fold((riser, riser), |(lo, hi), r| (lo.min(*r), hi.max(*r)));
+    if let Some((i, r)) = others.iter().enumerate().find(|(_, r)| **r < rules.riser_min - EPS || **r > rules.riser_max + EPS) {
+        let (rule, limit, what) = if *r > rules.riser_max {
+            ("riser_max", rules.riser_max, "over the most")
+        } else {
+            ("riser_min", rules.riser_min, "under the least")
+        };
+        if !out.iter().any(|f| f.rule == rule) {
+            out.push(Finding {
+                rule,
+                value: mm(*r),
+                limit,
+                message: format!(
+                    "each riser of storey {} is {} mm, {what}, {limit} mm: change its `riser`, which every storey counts its risers by",
+                    i + 2,
+                    mm(*r)
+                ),
+            });
+        }
+    }
+    if high - low > rules.uniformity + EPS {
+        out.push(Finding {
+            rule: "uniformity",
+            value: mm(high - low),
+            limit: rules.uniformity,
+            message: format!(
+                "its storeys are of different heights, and their risers differ by {} mm ({} to {}), over the most, {} mm: a `riser` that divides each storey more evenly brings them together",
+                mm(high - low),
+                mm(low),
+                mm(high),
+                rules.uniformity
+            ),
+        });
+    }
     // A spiral is one flight, and every tread of it a winder.
     if let Some(sp) = st.spiral {
         let rise = f64::from(n) * riser;

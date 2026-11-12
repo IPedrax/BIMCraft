@@ -641,3 +641,57 @@ fn the_solver_proposes_the_nearest_stairs_that_fit_the_code() {
     assert_eq!(stair_of(&s, tall).landings.len(), 1);
     assert!(s.execute("stair_solve", &json!({"id": tall, "lock": ["colour"]})).is_err());
 }
+
+#[test]
+fn a_multistorey_stair_stands_on_each_level_with_the_risers_its_storey_asks() {
+    let mut s = Session::new();
+    // Level 2 is 3000 up; a third 3600 over it, and a fourth 3000 over that.
+    let l3 = run(&mut s, "level", json!({"name": "Level 3", "elevation": 6600}))["id"].as_u64().unwrap();
+    let l4 = run(&mut s, "level", json!({"name": "Level 4", "elevation": 9600}))["id"].as_u64().unwrap();
+    let p =
+        json!({"start": [0, 0], "angle": 90, "width": 1200, "top_level": l4, "multistorey": true, "landings": [{"at": 8, "turn": 180}]});
+    let id = run(&mut s, "stair", p)["id"].as_u64().unwrap();
+    let st = stair_of(&s, id);
+    // It is the stair of its first storey: 17 risers of 176.5.
+    let (n, each, _) = s.model.flight(&st);
+    assert_eq!(n, 17);
+    assert!((each - 3000.0 / 17.0).abs() < 1e-9);
+    let all = crate::stairs::storeys(&s.model, &st);
+    assert_eq!(all.len(), 3);
+    assert_eq!(all[2].0, s.model.guid(l3), "by the level each stands on");
+    // The middle storey is 3600: 20 risers of 180, its landing after the same share of them (8 of 17: 9 of 20).
+    let counts: Vec<Vec<u32>> = all.iter().map(|(_, l)| l.runs.iter().map(|r| r.risers).collect()).collect();
+    assert_eq!(counts, [vec![8, 9], vec![9, 11], vec![8, 9]]);
+    let tops: Vec<f64> = all.iter().map(|(_, l)| l.walk.last().unwrap().1).collect();
+    assert!(tops.iter().zip([3000.0, 6600.0, 9600.0]).all(|(a, b)| (a - b).abs() < 1e-6), "{tops:?}");
+    // Every storey starts where the first does.
+    assert!(all.iter().all(|(_, l)| l.runs[0].start == all[0].1.runs[0].start));
+    let whole = crate::stairs::stair(&s.model, &st);
+    assert_eq!((whole.runs.len(), whole.pads.len()), (6, 3));
+
+    // Its storeys' risers are 176.5 and 180: 3.5 apart, inside the generic rules' 10 and outside NBR's 5? No: inside both.
+    assert_eq!(broken(&mut s, id), Vec::<String>::new());
+    // A storey of 2800 has 16 risers of 175 under a riser of 180; of 2500, 14 of 178.6. Tighten the rule to see it said.
+    run(&mut s, "building_code", json!({"stairs": {"uniformity": 2}}));
+    let found = run(&mut s, "stair_check", json!({"ids": [id]}));
+    let f = &found["stairs"][0]["findings"][0];
+    assert_eq!(f["rule"], "uniformity");
+    assert!((f["value"].as_f64().unwrap() - 3.53).abs() < 0.01, "{f}");
+
+    // The plan of the middle level shows its own storey, going up.
+    let png = std::env::temp_dir().join(format!("bimcraft-storeys-{}.png", std::process::id())).to_string_lossy().to_string();
+    let r = run(&mut s, "render", json!({"view": "Level 3", "path": png}));
+    assert_eq!(r["kind"], "plan");
+    std::fs::remove_file(&png).ok();
+    // Each storey is built in the 3D scene.
+    run(&mut s, "modify", json!({"id": id, "type": "Monolithic 150mm"}));
+    let parts = crate::stairs::parts(&s.model, &stair_of(&s, id)).unwrap();
+    let high = parts.iter().map(|(ring, _, top)| ring.iter().map(|q| top.at(*q)).fold(0.0, f64::max)).fold(0.0, f64::max);
+    assert!((high - (9600.0 - 3000.0 / 17.0)).abs() < 1e-6, "the top tread, a riser under the top floor: {high}");
+
+    // Not multistorey, the same stair is one flight to the top; and a multistorey stair needs a top level.
+    run(&mut s, "modify", json!({"id": id, "multistorey": false}));
+    assert_eq!(crate::stairs::storeys(&s.model, &stair_of(&s, id)).len(), 1);
+    assert!(s.execute("stair", &json!({"start": [0, 0], "angle": 0, "height": 6000, "multistorey": true})).is_err());
+    let _ = l4;
+}

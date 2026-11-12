@@ -325,6 +325,7 @@ fn rows(category: &str) -> &'static [Row] {
                 Choice(&[("left", "Run: Left"), ("centre", "Run: Center"), ("right", "Run: Right")]),
             ),
             ("Constraints", "offset", msg!("Location Line Offset"), Length),
+            ("Constraints", "multistorey", msg!("Multistorey"), Flag),
             ("Dimensions", "width", msg!("Actual Run Width"), Length),
             ("Dimensions", "spiral.radius", msg!("Spiral Radius"), LengthIf),
             ("Dimensions", "riser", msg!("Maximum Riser Height"), Length),

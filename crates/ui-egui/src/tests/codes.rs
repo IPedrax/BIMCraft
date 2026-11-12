@@ -285,3 +285,25 @@ fn the_code_check_window_offers_stairs_that_fit_and_applies_one() {
     assert_eq!(field(&h, id, "width"), json!(1200.0));
     assert!(h.query_by_label("Building Code Check").is_none(), "inside the rules, the window goes");
 }
+
+#[test]
+fn the_stair_tool_climbs_to_a_level_chosen_and_stands_on_each_on_the_way() {
+    let mut h = app(BOX);
+    let l3 = h.state_mut().run("level", json!({"name": "Level 3", "elevation": 6600})).unwrap()["id"].as_u64().unwrap();
+    h.run();
+    tool(&mut h, "Stair");
+    press(&mut h, "Railings");
+    assert!(h.query_by_label("Multistorey").is_none(), "to the level above, there is one storey");
+    h.state_mut().stair_top = Some(Some(l3));
+    h.run();
+    press(&mut h, "Multistorey");
+    click(&mut h, P2(1000.0, 1000.0));
+    click(&mut h, P2(1000.0, 2960.0));
+    click(&mut h, P2(3000.0, 3500.0));
+    let st = ids(&h, "stair");
+    assert_eq!((st.len(), field(&h, st[0], "multistorey"), field(&h, st[0], "top_level").is_null()), (1, json!(true), false));
+    // The stair of its first storey, 3000 up: 17 risers; the storey over it, 3600 up, has 20.
+    let storeys = field(&h, st[0], "storeys");
+    assert_eq!((storeys[0]["risers"].as_u64(), storeys[1]["risers"].as_u64()), (Some(17), Some(20)));
+    assert_eq!(field(&h, st[0], "landings"), json!([{"at": 8.0, "turn": -90.0}]));
+}

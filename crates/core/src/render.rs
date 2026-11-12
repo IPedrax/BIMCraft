@@ -3547,15 +3547,25 @@ fn opening(d: &mut Drawing, m: &Model, e: &Element, o: &Opening, w: &Wall, cut: 
 /// marked UP. From the level it climbs to: all of it, and the walk line marked DN.
 fn stair(d: &mut Drawing, m: &Model, st: &Stair, level: impl Key) {
     let level = m.guid(level);
-    let up = st.level == level;
+    // The storey that stands on this level, going up; else, on the level it climbs to, its last storey, going down.
+    let mut storeys = stairs::storeys(m, st);
+    let here = storeys.iter().position(|(on, _)| *on == level);
+    let up = here.is_some();
     if !up && st.top_level != Some(level) {
         return;
     }
-    let (_, each, _) = m.flight(st);
-    let l = stairs::stair(m, st);
+    let Some((_, l)) = (match here {
+        Some(i) => Some(storeys.swap_remove(i)),
+        None => storeys.pop(),
+    }) else {
+        return;
+    };
+    let risers: u32 = l.runs.iter().map(|r| r.risers).sum::<u32>() + l.winders as u32;
+    let (floor, top) = (l.walk.first().map_or(0.0, |w| w.1), l.walk.last().map_or(0.0, |w| w.1));
+    let each = if risers > 0 { (top - floor) / f64::from(risers) } else { 0.0 };
     let half = st.width / 2.0;
     // The riser the cut plane passes through, counted from the first; from above, none.
-    let rise = m.shown_range(level).cut - m.elevation(st.level);
+    let rise = m.shown_range(level).cut - floor;
     let cut = if up && each > 0.0 { (rise / each).floor() } else { f64::INFINITY };
     // Risers below the run drawn.
     let mut below = 0.0;
@@ -3580,7 +3590,7 @@ fn stair(d: &mut Drawing, m: &Model, st: &Stair, level: impl Key) {
         below += f64::from(run.risers);
     }
     for pad in &l.pads {
-        let over = up && pad.z - m.elevation(st.level) > rise;
+        let over = up && pad.z - floor > rise;
         for (a, b) in geom::ring_edges(&pad.ring) {
             segment(d, a, b, over);
         }

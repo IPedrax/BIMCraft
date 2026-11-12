@@ -939,9 +939,10 @@ fn solids_in_with(
                 }));
             }
             Element::Stair(st) => {
-                let (_, each, _) = m.flight(st);
                 let (base, l) = (m.elevation(st.level), stairs::stair(m, st));
                 for run in &l.runs {
+                    // Each riser of this run: a storey of its own height has its own.
+                    let each = if run.risers > 0 { (run.z.1 - run.z.0) / f64::from(run.risers) } else { 0.0 };
                     let frame = Frame { o: run.start, u: run.u, n: run.u.perp() };
                     for k in 1..run.risers {
                         let k = f64::from(k);

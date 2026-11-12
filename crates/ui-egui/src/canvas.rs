@@ -2651,12 +2651,14 @@ impl BimApp {
         } else {
             let width = m.units.parse(&self.stair_width).ok_or_else(|| tf("stair: `{}` is not a width", &[&self.stair_width]))?;
             let rules = m.stair_rules();
+            let top = top_params(m, level, self.stair_top, &self.stair_height).map_err(|e| tf("stair: {}", &[&e]))?;
+            let (top_level, height) = (top["top_level"].as_u64().map(|t| m.guid(t)), top["height"].as_f64().unwrap_or(DEFAULT_HEIGHT));
             let mut st = Stair {
                 type_name: self.types.get("stair").cloned().or_else(|| m.default_type("stair").map(String::from)).unwrap_or_default(),
                 params: Default::default(),
                 level: m.guid(level),
-                top_level: m.level_above(level),
-                height: DEFAULT_HEIGHT,
+                top_level,
+                height,
                 start,
                 angle,
                 width,
@@ -2666,7 +2668,10 @@ impl BimApp {
                 line: self.stair_line,
                 offset: m.units.parse(&self.stair_offset).unwrap_or(0.0),
                 spiral: None,
+                multistorey: false,
             };
+            // Multistorey where it climbs past a level on the way.
+            st.multistorey = self.stair_multistorey && m.storeys(&Stair { multistorey: true, ..st.clone() }).len() > 1;
             // A spiral: the first click is its centre, the second the middle of its first riser; it winds counter-clockwise
             // from there, or clockwise as the Options Bar says, with treads of the code's depth on its middle line.
             if self.stair_spiral {

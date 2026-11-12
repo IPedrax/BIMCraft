@@ -670,7 +670,7 @@ other_files(
         ui_msg!("Stair"),
         &[],
         "{start: [x,y], end?: [x,y] | angle?, level?, top_level?, height?, width?, riser?, tread?, landings?: [{at, turn?, winders?, balance?, length?}, …], \
-         line?, offset?, spiral?, type?, railings?} a stair from the middle of its first riser at `start`, climbing toward `end` (or `angle` degrees) up to the next level: \
+         line?, offset?, spiral?, type?, multistorey?, railings?} a stair from the middle of its first riser at `start`, climbing toward `end` (or `angle` degrees) up to the next level: \
          as many risers as keep each at most `riser` mm, treads `tread` deep (the project's building code's, 180 and 280 with \
          none: `building_code`), `width` wide (1000). One straight \
          run, as long as that makes it (`landings`: \"auto\" gives it the landings its code says are due, straight on); or with landings (each as deep as the stair is wide) after `at` risers, the next run \
@@ -689,6 +689,9 @@ other_files(
          `type` names its stair type (`type` with category stair: `waist` for a slab under its steps, a monolithic stair; \
          else `tread_thickness`, `riser_thickness`, `nosing`, and `stringer_width` by `stringer_depth` for stringers down its \
          sides); with none it is solid down to its level. \
+         `multistorey`: with a `top_level` several levels up, it is the stair of its first storey and stands again on each \
+         level on the way, each storey with the risers its own height asks and the landings after the same share of them; \
+         `stair_check` says how far the storeys' risers differ. \
          With `railings`, a railing down each side too",
         stair,
     )
@@ -2779,6 +2782,17 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
             extra.insert("riser_height".into(), json!(hundredth(each)));
             extra.insert("length".into(), json!(length));
             // Where it is outside the project's building code, in words: a sign for whoever reads its properties.
+            // Whether it stands on each level on its way (always said, so a front end can switch it); and its storeys.
+            extra.insert("multistorey".into(), json!(st.multistorey));
+            if st.multistorey {
+                let storeys: Vec<Value> = (m.storeys(st).into_iter())
+                    .map(|(level, base, rise)| {
+                        let (n, each, _) = m.flight_of(st, rise);
+                        json!({"level": level, "elevation": base, "risers": n, "riser_height": hundredth(each)})
+                    })
+                    .collect();
+                extra.insert("storeys".into(), json!(storeys));
+            }
             // In short, and each finding of its own: a front end lists them.
             let outside = crate::codes::stair_findings(m, st);
             let said = match outside.len() {
@@ -8968,6 +8982,7 @@ fn stair(s: &mut Session, p: &Value) -> R {
             None => Default::default(),
         },
         offset: dim("offset", 0.0)?,
+        multistorey: flag(c, p, "multistorey")?,
         spiral: match p.get("spiral") {
             v if absent(v) => None,
             Some(v) => Some(serde_json::from_value(v.clone()).map_err(|e| bad(c, format!("`spiral` is {{radius, sweep?}}: {e}")))?),

@@ -595,6 +595,11 @@ pub struct BimApp {
     /// The Stair tool turning by any angle, and drawing run after run.
     stair_free: bool,
     stair_chain: bool,
+    /// The Stair tool's top (none: the level above), its height when unconnected, and whether it stands on every level on
+    /// the way.
+    stair_top: Option<Option<Id>>,
+    stair_height: String,
+    stair_multistorey: bool,
     /// The Stair tool making a spiral, and which way it winds.
     stair_spiral: bool,
     stair_clockwise: bool,
@@ -1332,6 +1337,9 @@ impl BimApp {
             stair_chain: false,
             stair_spiral: false,
             stair_clockwise: false,
+            stair_top: None,
+            stair_height: units.length(bimcraft_core::model::DEFAULT_HEIGHT),
+            stair_multistorey: false,
             stair_line: Default::default(),
             stair_offset: units.length(0.0),
             roof_slope: "30".into(),
@@ -1880,6 +1888,7 @@ impl BimApp {
                 &mut self.column_height,
                 &mut self.stair_width,
                 &mut self.stair_offset,
+                &mut self.stair_height,
                 &mut self.roof_overhang,
                 &mut self.offset,
                 &mut self.ceiling_height,
@@ -4774,6 +4783,20 @@ impl BimApp {
                 }
                 Tool::Stair(_) => {
                     use bimcraft_core::model::StairLine;
+                    if let Some(level) = self.plan_level() {
+                        height_options(ui, &self.session.model, level, &mut self.stair_top, &mut self.stair_height, "stair-top");
+                        // Up past the level above, it can stand on each level on the way.
+                        let m = &self.session.model;
+                        let top = self.stair_top.unwrap_or(None).map(|t| m.elevation(t));
+                        let above = m.level_above(level).map(|g| m.elevation(g));
+                        if let (Some(top), Some(above)) = (top, above)
+                            && top > above + 1.0
+                        {
+                            ui.checkbox(&mut self.stair_multistorey, t("Multistorey")).on_hover_text(t(
+                                "The stair of its first storey, standing again on every level on the way up, each storey with the risers its height asks",
+                            ));
+                        }
+                    }
                     let lines = [(StairLine::Left, "Run: Left"), (StairLine::Centre, "Run: Center"), (StairLine::Right, "Run: Right")];
                     let l = ui.label(t("Location Line:"));
                     let now = lines.iter().find(|(k, _)| *k == self.stair_line).map_or("", |(_, s)| s);

@@ -1660,6 +1660,10 @@ pub struct Stair {
     /// A spiral: the stair winds about a centre, every tread a winder, and has no landings.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub spiral: Option<Spiral>,
+    /// Multistorey: it is the stair of its first storey, and stands again on every level it passes on its way to
+    /// its top level, each storey with the risers its own height asks.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub multistorey: bool,
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
@@ -4511,8 +4515,31 @@ impl Model {
     /// A stair's flight: how many risers, how high each is, and how long its runs are together
     /// (a tread less each, the last riser of each climbing onto a landing or the floor above).
     pub fn flight(&self, st: &Stair) -> (u32, f64, f64) {
+        // A multistorey stair is the stair of its first storey.
+        let rise = self.storeys(st).first().map_or(0.0, |s| s.2);
+        self.flight_of(st, rise)
+    }
+
+    /// The storeys a stair climbs, lowest first: the level each stands on, its height, and how far up the next is. One,
+    /// from its level to its top, unless it is multistorey: then one from each level it passes.
+    pub fn storeys(&self, st: &Stair) -> Vec<(Guid, f64, f64)> {
         let (base, top) = self.span(st.level, 0.0, st.top_level, st.height);
-        let rise = top - base;
+        if !st.multistorey || st.top_level.is_none() {
+            return vec![(st.level, base, top - base)];
+        }
+        let crossed: Vec<(Id, f64)> =
+            self.levels().into_iter().map(|(id, l)| (id, l.elevation)).filter(|(_, z)| *z >= base - TOL && *z < top - TOL).collect();
+        let all: Vec<(Guid, f64, f64)> = crossed
+            .iter()
+            .enumerate()
+            .map(|(i, (id, z))| (self.guid(*id), *z, crossed.get(i + 1).map_or(top, |next| next.1) - z))
+            .take(200)
+            .collect();
+        if all.is_empty() { vec![(st.level, base, top - base)] } else { all }
+    }
+
+    /// A stair's flight over a storey `rise` high: its risers, how high each is, and how long its runs are together.
+    pub fn flight_of(&self, st: &Stair, rise: f64) -> (u32, f64, f64) {
         // Not a number, or less than one, is none.
         let n = (rise / st.riser - 1e-9).ceil().clamp(0.0, 1e6) as u32;
         let each = if n > 0 { rise / f64::from(n) } else { 0.0 };
@@ -7367,6 +7394,12 @@ impl Model {
                     if !st.landings.is_empty() {
                         return Err(format!("{who}: a spiral stair has no landings"));
                     }
+                    if st.multistorey {
+                        return Err(format!("{who}: a spiral stair is not multistorey yet; give each storey its own"));
+                    }
+                }
+                if st.multistorey && st.top_level.is_none() {
+                    return Err(format!("{who}: a multistorey stair climbs to a `top_level`, and stands on each level on the way"));
                 }
                 match st.top_level {
                     Some(t) => level_ok(t)?,
