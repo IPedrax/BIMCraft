@@ -81,7 +81,7 @@ msgstr "Widoki 3D"
 
 #: crates/ui-egui/src/mesh.rs:16
 msgid "3D models (OBJ, glTF)"
-msgstr ""
+msgstr "Modele 3D (OBJ, glTF)"
 
 #: crates/ui-egui/src/settings.rs:652
 msgid "3D view resolution"
@@ -1293,7 +1293,7 @@ msgstr "Cegła 225 x 75"
 
 #: crates/ui-egui/src/mesh.rs:35
 msgid "Brought in {} objects as Generic Model families."
-msgstr ""
+msgstr "Wczytano {} obiektów jako rodziny Model ogólny."
 
 #: crates/ui-egui/src/lib.rs:4043
 msgid "Build"
@@ -2424,7 +2424,7 @@ msgstr ""
 
 #: crates/ui-egui/src/script.rs:75
 msgid "Commands, one a line (id {json params}; # starts a comment):"
-msgstr ""
+msgstr "Polecenia, jedno w wierszu (id {parametry json}; # zaczyna komentarz):"
 
 #: crates/ui-egui/src/settings.rs:576
 msgid "Compact"
@@ -5032,11 +5032,11 @@ msgstr "Import"
 
 #: crates/ui-egui/src/lib.rs:4468
 msgid "Import 3D Model"
-msgstr ""
+msgstr "Importuj model 3D"
 
 #: crates/ui-egui/src/lib.rs:4466
 msgid "Import 3D Model: an OBJ or glTF file's objects brought into the project as Generic Model families, each placed where the file has it on this plan's level, with its materials' colours"
-msgstr ""
+msgstr "Importuj model 3D: obiekty pliku OBJ lub glTF wczytane do projektu jako rodziny Model ogólny, każdy umieszczony tam, gdzie ma go plik, na poziomie tego rzutu, z kolorami swoich materiałów"
 
 #: crates/ui-egui/src/editor/document.rs:583
 #: crates/ui-egui/src/lib.rs:4462
@@ -5224,7 +5224,7 @@ msgstr ""
 
 #: crates/ui-egui/src/script.rs:32
 msgid "It changes the project's settings or library too."
-msgstr ""
+msgstr "Zmienia też ustawienia lub bibliotekę projektu."
 
 #: crates/ui-egui/src/editor/pivot.rs:167
 msgid "It is no longer there."
@@ -5404,7 +5404,7 @@ msgstr ""
 
 #: crates/ui-egui/src/mesh.rs:38
 msgid "Left out: {}."
-msgstr ""
+msgstr "Pominięto: {}."
 
 #: crates/ui-egui/src/editor/visibility.rs:81
 msgid "Left/Right"
@@ -5822,7 +5822,7 @@ msgstr ""
 
 #: crates/ui-egui/src/lib.rs:4620
 msgid "Macros"
-msgstr ""
+msgstr "Makra"
 
 #: crates/ui-egui/src/fillpatterns.rs:611
 msgid "Made of detail lines picked in the plan, repeating the rectangle between two corners"
@@ -8444,7 +8444,7 @@ msgstr ""
 
 #: crates/ui-egui/src/script.rs:63
 msgid "Ran {} lines as one undo step. {}"
-msgstr ""
+msgstr "Wykonano {} wierszy jako jeden krok cofania. {}"
 
 #: crates/ui-egui/src/properties.rs:2079
 #: crates/ui-egui/src/properties.rs:2084
@@ -9071,11 +9071,11 @@ msgstr "Uruchom"
 #: crates/ui-egui/src/lib.rs:4623
 #: crates/ui-egui/src/script.rs:72
 msgid "Run Script"
-msgstr ""
+msgstr "Uruchom skrypt"
 
 #: crates/ui-egui/src/lib.rs:4622
 msgid "Run Script: commands, one a line as agents and the command line write them, tried first and run as one undo step"
-msgstr ""
+msgstr "Uruchom skrypt: polecenia, jedno w wierszu, tak jak zapisują je agenci i wiersz poleceń, najpierw wypróbowane i wykonane jako jeden krok cofania"
 
 #: crates/ui-egui/src/plugins.rs:160
 msgid "Runs the plugin's command"
@@ -10816,7 +10816,7 @@ msgstr ""
 
 #: crates/ui-egui/src/script.rs:37
 msgid "The project would then have {} warnings."
-msgstr ""
+msgstr "Projekt miałby wtedy {} ostrzeżeń."
 
 #: crates/ui-egui/src/start.rs:365
 msgid "The projects you open or save show here."
@@ -11225,11 +11225,11 @@ msgstr ""
 
 #: crates/ui-egui/src/script.rs:107
 msgid "Try"
-msgstr ""
+msgstr "Wypróbuj"
 
 #: crates/ui-egui/src/script.rs:96
 msgid "Try shows what it would do and changes nothing. Run does it as one undo step."
-msgstr ""
+msgstr "Wypróbuj pokazuje, co by zrobił, i niczego nie zmienia. Uruchom wykonuje to jako jeden krok cofania."
 
 #: crates/ui-egui/src/lib.rs:410
 msgid "Turn Snap Override Off"
@@ -12113,7 +12113,7 @@ msgstr ""
 
 #: crates/ui-egui/src/script.rs:29
 msgid "Would make {}, change {} and remove {} elements."
-msgstr ""
+msgstr "Utworzyłby {}, zmienił {} i usunął {} elementów."
 
 #: crates/ui-egui/src/editor/nested.rs:294
 #: crates/ui-egui/src/editor/options.rs:100

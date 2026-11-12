@@ -81,7 +81,7 @@ msgstr "Vistas 3D"
 
 #: crates/ui-egui/src/mesh.rs:16
 msgid "3D models (OBJ, glTF)"
-msgstr ""
+msgstr "Modelos 3D (OBJ, glTF)"
 
 #: crates/ui-egui/src/settings.rs:652
 msgid "3D view resolution"
@@ -1293,7 +1293,7 @@ msgstr "Tijolo 225 x 75"
 
 #: crates/ui-egui/src/mesh.rs:35
 msgid "Brought in {} objects as Generic Model families."
-msgstr ""
+msgstr "{} objetos trazidos como famílias de Modelo Genérico."
 
 #: crates/ui-egui/src/lib.rs:4043
 msgid "Build"
@@ -2424,7 +2424,7 @@ msgstr "Comando / Ferramenta:"
 
 #: crates/ui-egui/src/script.rs:75
 msgid "Commands, one a line (id {json params}; # starts a comment):"
-msgstr ""
+msgstr "Comandos, um por linha (id {parâmetros json}; # inicia um comentário):"
 
 #: crates/ui-egui/src/settings.rs:576
 msgid "Compact"
@@ -5032,11 +5032,11 @@ msgstr "Importar"
 
 #: crates/ui-egui/src/lib.rs:4468
 msgid "Import 3D Model"
-msgstr ""
+msgstr "Importar modelo 3D"
 
 #: crates/ui-egui/src/lib.rs:4466
 msgid "Import 3D Model: an OBJ or glTF file's objects brought into the project as Generic Model families, each placed where the file has it on this plan's level, with its materials' colours"
-msgstr ""
+msgstr "Importar modelo 3D: os objetos de um arquivo OBJ ou glTF trazidos ao projeto como famílias de Modelo Genérico, cada um colocado onde o arquivo o tem, no nível desta planta, com as cores dos seus materiais"
 
 #: crates/ui-egui/src/editor/document.rs:583
 #: crates/ui-egui/src/lib.rs:4462
@@ -5224,7 +5224,7 @@ msgstr "Não dá para deslocar: dê uma distância e escolha uma linha, arco, po
 
 #: crates/ui-egui/src/script.rs:32
 msgid "It changes the project's settings or library too."
-msgstr ""
+msgstr "Também muda as configurações ou a biblioteca do projeto."
 
 #: crates/ui-egui/src/editor/pivot.rs:167
 msgid "It is no longer there."
@@ -5404,7 +5404,7 @@ msgstr "Deixados de fora: {}"
 
 #: crates/ui-egui/src/mesh.rs:38
 msgid "Left out: {}."
-msgstr ""
+msgstr "Deixado de fora: {}."
 
 #: crates/ui-egui/src/editor/visibility.rs:81
 msgid "Left/Right"
@@ -5822,7 +5822,7 @@ msgstr "Traço longo"
 
 #: crates/ui-egui/src/lib.rs:4620
 msgid "Macros"
-msgstr ""
+msgstr "Macros"
 
 #: crates/ui-egui/src/fillpatterns.rs:611
 msgid "Made of detail lines picked in the plan, repeating the rectangle between two corners"
@@ -8444,7 +8444,7 @@ msgstr "Rampa: clique onde ela começa e depois onde o lance termina; um patamar
 
 #: crates/ui-egui/src/script.rs:63
 msgid "Ran {} lines as one undo step. {}"
-msgstr ""
+msgstr "Executou {} linhas como um passo de desfazer. {}"
 
 #: crates/ui-egui/src/properties.rs:2079
 #: crates/ui-egui/src/properties.rs:2084
@@ -9066,16 +9066,16 @@ msgstr "Redonda"
 
 #: crates/ui-egui/src/script.rs:106
 msgid "Run"
-msgstr ""
+msgstr "Executar"
 
 #: crates/ui-egui/src/lib.rs:4623
 #: crates/ui-egui/src/script.rs:72
 msgid "Run Script"
-msgstr ""
+msgstr "Executar roteiro"
 
 #: crates/ui-egui/src/lib.rs:4622
 msgid "Run Script: commands, one a line as agents and the command line write them, tried first and run as one undo step"
-msgstr ""
+msgstr "Executar roteiro: comandos, um por linha como os agentes e a linha de comando os escrevem, testados antes e executados como um passo de desfazer"
 
 #: crates/ui-egui/src/plugins.rs:160
 msgid "Runs the plugin's command"
@@ -10816,7 +10816,7 @@ msgstr "O projeto fica como você o deixou."
 
 #: crates/ui-egui/src/script.rs:37
 msgid "The project would then have {} warnings."
-msgstr ""
+msgstr "O projeto ficaria com {} avisos."
 
 #: crates/ui-egui/src/start.rs:365
 msgid "The projects you open or save show here."
@@ -11225,11 +11225,11 @@ msgstr "Disjuntor"
 
 #: crates/ui-egui/src/script.rs:107
 msgid "Try"
-msgstr ""
+msgstr "Testar"
 
 #: crates/ui-egui/src/script.rs:96
 msgid "Try shows what it would do and changes nothing. Run does it as one undo step."
-msgstr ""
+msgstr "Testar mostra o que ele faria e não muda nada. Executar faz tudo como um passo de desfazer."
 
 #: crates/ui-egui/src/lib.rs:410
 msgid "Turn Snap Override Off"
@@ -12113,7 +12113,7 @@ msgstr "Bancada"
 
 #: crates/ui-egui/src/script.rs:29
 msgid "Would make {}, change {} and remove {} elements."
-msgstr ""
+msgstr "Criaria {}, mudaria {} e removeria {} elementos."
 
 #: crates/ui-egui/src/editor/nested.rs:294
 #: crates/ui-egui/src/editor/options.rs:100

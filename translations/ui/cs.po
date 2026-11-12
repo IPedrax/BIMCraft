@@ -80,7 +80,7 @@ msgstr "3D pohledy"
 
 #: crates/ui-egui/src/mesh.rs:16
 msgid "3D models (OBJ, glTF)"
-msgstr ""
+msgstr "3D modely (OBJ, glTF)"
 
 #: crates/ui-egui/src/settings.rs:652
 msgid "3D view resolution"
@@ -1292,7 +1292,7 @@ msgstr "Cihla 225 x 75"
 
 #: crates/ui-egui/src/mesh.rs:35
 msgid "Brought in {} objects as Generic Model families."
-msgstr ""
+msgstr "Načteno {} objektů jako rodiny Obecný model."
 
 #: crates/ui-egui/src/lib.rs:4043
 msgid "Build"
@@ -2423,7 +2423,7 @@ msgstr "Příkaz / nástroj:"
 
 #: crates/ui-egui/src/script.rs:75
 msgid "Commands, one a line (id {json params}; # starts a comment):"
-msgstr ""
+msgstr "Příkazy, jeden na řádek (id {parametry json}; # začíná komentář):"
 
 #: crates/ui-egui/src/settings.rs:576
 msgid "Compact"
@@ -5031,11 +5031,11 @@ msgstr "Importovat"
 
 #: crates/ui-egui/src/lib.rs:4468
 msgid "Import 3D Model"
-msgstr ""
+msgstr "Importovat 3D model"
 
 #: crates/ui-egui/src/lib.rs:4466
 msgid "Import 3D Model: an OBJ or glTF file's objects brought into the project as Generic Model families, each placed where the file has it on this plan's level, with its materials' colours"
-msgstr ""
+msgstr "Importovat 3D model: objekty souboru OBJ nebo glTF načtené do projektu jako rodiny Obecný model, každý umístěný tam, kde ho má soubor, na podlaží tohoto půdorysu, s barvami svých materiálů"
 
 #: crates/ui-egui/src/editor/document.rs:583
 #: crates/ui-egui/src/lib.rs:4462
@@ -5223,7 +5223,7 @@ msgstr "Nelze vytvořit ekvidistantu: zadejte vzdálenost a vyberte úsečku, ob
 
 #: crates/ui-egui/src/script.rs:32
 msgid "It changes the project's settings or library too."
-msgstr ""
+msgstr "Mění také nastavení nebo knihovnu projektu."
 
 #: crates/ui-egui/src/editor/pivot.rs:167
 msgid "It is no longer there."
@@ -5403,7 +5403,7 @@ msgstr "Vynecháno: {}"
 
 #: crates/ui-egui/src/mesh.rs:38
 msgid "Left out: {}."
-msgstr ""
+msgstr "Vynecháno: {}."
 
 #: crates/ui-egui/src/editor/visibility.rs:81
 msgid "Left/Right"
@@ -5821,7 +5821,7 @@ msgstr "Dlouhá čárkovaná"
 
 #: crates/ui-egui/src/lib.rs:4620
 msgid "Macros"
-msgstr ""
+msgstr "Makra"
 
 #: crates/ui-egui/src/fillpatterns.rs:611
 msgid "Made of detail lines picked in the plan, repeating the rectangle between two corners"
@@ -8443,7 +8443,7 @@ msgstr "Rampa: klikněte na začátek a poté na konec ramene; podesta jej zalom
 
 #: crates/ui-egui/src/script.rs:63
 msgid "Ran {} lines as one undo step. {}"
-msgstr ""
+msgstr "Provedeno {} řádků jako jeden krok zpět. {}"
 
 #: crates/ui-egui/src/properties.rs:2079
 #: crates/ui-egui/src/properties.rs:2084
@@ -9065,16 +9065,16 @@ msgstr "Kruhový"
 
 #: crates/ui-egui/src/script.rs:106
 msgid "Run"
-msgstr ""
+msgstr "Spustit"
 
 #: crates/ui-egui/src/lib.rs:4623
 #: crates/ui-egui/src/script.rs:72
 msgid "Run Script"
-msgstr ""
+msgstr "Spustit skript"
 
 #: crates/ui-egui/src/lib.rs:4622
 msgid "Run Script: commands, one a line as agents and the command line write them, tried first and run as one undo step"
-msgstr ""
+msgstr "Spustit skript: příkazy, jeden na řádek, jak je píší agenti a příkazový řádek, nejprve vyzkoušené a provedené jako jeden krok zpět"
 
 #: crates/ui-egui/src/plugins.rs:160
 msgid "Runs the plugin's command"
@@ -10815,7 +10815,7 @@ msgstr "Projekt zůstane ve stavu, v jakém jste jej opustili."
 
 #: crates/ui-egui/src/script.rs:37
 msgid "The project would then have {} warnings."
-msgstr ""
+msgstr "Projekt by pak měl {} upozornění."
 
 #: crates/ui-egui/src/start.rs:365
 msgid "The projects you open or save show here."
@@ -11224,11 +11224,11 @@ msgstr ""
 
 #: crates/ui-egui/src/script.rs:107
 msgid "Try"
-msgstr ""
+msgstr "Vyzkoušet"
 
 #: crates/ui-egui/src/script.rs:96
 msgid "Try shows what it would do and changes nothing. Run does it as one undo step."
-msgstr ""
+msgstr "Vyzkoušet ukáže, co by udělal, a nic nezmění. Spustit to provede jako jeden krok zpět."
 
 #: crates/ui-egui/src/lib.rs:410
 msgid "Turn Snap Override Off"
@@ -12112,7 +12112,7 @@ msgstr "Pracovní deska"
 
 #: crates/ui-egui/src/script.rs:29
 msgid "Would make {}, change {} and remove {} elements."
-msgstr ""
+msgstr "Vytvořil by {}, změnil {} a odstranil {} prvků."
 
 #: crates/ui-egui/src/editor/nested.rs:294
 #: crates/ui-egui/src/editor/options.rs:100

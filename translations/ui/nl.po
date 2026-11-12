@@ -81,7 +81,7 @@ msgstr "3D-weergaven"
 
 #: crates/ui-egui/src/mesh.rs:16
 msgid "3D models (OBJ, glTF)"
-msgstr ""
+msgstr "3D-modellen (OBJ, glTF)"
 
 #: crates/ui-egui/src/settings.rs:652
 msgid "3D view resolution"
@@ -1293,7 +1293,7 @@ msgstr "Baksteen 225 x 75"
 
 #: crates/ui-egui/src/mesh.rs:35
 msgid "Brought in {} objects as Generic Model families."
-msgstr ""
+msgstr "{} objecten binnengehaald als families van Generiek model."
 
 #: crates/ui-egui/src/lib.rs:4043
 msgid "Build"
@@ -2424,7 +2424,7 @@ msgstr "Opdracht / gereedschap:"
 
 #: crates/ui-egui/src/script.rs:75
 msgid "Commands, one a line (id {json params}; # starts a comment):"
-msgstr ""
+msgstr "Opdrachten, één per regel (id {json-parameters}; # begint een opmerking):"
 
 #: crates/ui-egui/src/settings.rs:576
 msgid "Compact"
@@ -5032,11 +5032,11 @@ msgstr "Importeren"
 
 #: crates/ui-egui/src/lib.rs:4468
 msgid "Import 3D Model"
-msgstr ""
+msgstr "3D-model importeren"
 
 #: crates/ui-egui/src/lib.rs:4466
 msgid "Import 3D Model: an OBJ or glTF file's objects brought into the project as Generic Model families, each placed where the file has it on this plan's level, with its materials' colours"
-msgstr ""
+msgstr "3D-model importeren: de objecten van een OBJ- of glTF-bestand binnengehaald in het project als families van Generiek model, elk geplaatst waar het bestand het heeft, op het niveau van deze plattegrond, met de kleuren van zijn materialen"
 
 #: crates/ui-egui/src/editor/document.rs:583
 #: crates/ui-egui/src/lib.rs:4462
@@ -5224,7 +5224,7 @@ msgstr "Kan niet verschoven worden: geef een afstand en kies een lijn, een boog,
 
 #: crates/ui-egui/src/script.rs:32
 msgid "It changes the project's settings or library too."
-msgstr ""
+msgstr "Het wijzigt ook de instellingen of de bibliotheek van het project."
 
 #: crates/ui-egui/src/editor/pivot.rs:167
 msgid "It is no longer there."
@@ -5404,7 +5404,7 @@ msgstr "Weggelaten: {}"
 
 #: crates/ui-egui/src/mesh.rs:38
 msgid "Left out: {}."
-msgstr ""
+msgstr "Weggelaten: {}."
 
 #: crates/ui-egui/src/editor/visibility.rs:81
 msgid "Left/Right"
@@ -5822,7 +5822,7 @@ msgstr "Lange streep"
 
 #: crates/ui-egui/src/lib.rs:4620
 msgid "Macros"
-msgstr ""
+msgstr "Macro's"
 
 #: crates/ui-egui/src/fillpatterns.rs:611
 msgid "Made of detail lines picked in the plan, repeating the rectangle between two corners"
@@ -8444,7 +8444,7 @@ msgstr "Helling: klik waar ze begint en waar haar loop eindigt; een bordes laat 
 
 #: crates/ui-egui/src/script.rs:63
 msgid "Ran {} lines as one undo step. {}"
-msgstr ""
+msgstr "{} regels uitgevoerd als één stap om ongedaan te maken. {}"
 
 #: crates/ui-egui/src/properties.rs:2079
 #: crates/ui-egui/src/properties.rs:2084
@@ -9066,16 +9066,16 @@ msgstr "Rond"
 
 #: crates/ui-egui/src/script.rs:106
 msgid "Run"
-msgstr ""
+msgstr "Uitvoeren"
 
 #: crates/ui-egui/src/lib.rs:4623
 #: crates/ui-egui/src/script.rs:72
 msgid "Run Script"
-msgstr ""
+msgstr "Script uitvoeren"
 
 #: crates/ui-egui/src/lib.rs:4622
 msgid "Run Script: commands, one a line as agents and the command line write them, tried first and run as one undo step"
-msgstr ""
+msgstr "Script uitvoeren: opdrachten, één per regel zoals agents en de opdrachtregel ze schrijven, eerst geprobeerd en uitgevoerd als één stap om ongedaan te maken"
 
 #: crates/ui-egui/src/plugins.rs:160
 msgid "Runs the plugin's command"
@@ -10816,7 +10816,7 @@ msgstr "Het project blijft zoals je het liet."
 
 #: crates/ui-egui/src/script.rs:37
 msgid "The project would then have {} warnings."
-msgstr ""
+msgstr "Het project zou dan {} waarschuwingen hebben."
 
 #: crates/ui-egui/src/start.rs:365
 msgid "The projects you open or save show here."
@@ -11225,11 +11225,11 @@ msgstr ""
 
 #: crates/ui-egui/src/script.rs:107
 msgid "Try"
-msgstr ""
+msgstr "Proberen"
 
 #: crates/ui-egui/src/script.rs:96
 msgid "Try shows what it would do and changes nothing. Run does it as one undo step."
-msgstr ""
+msgstr "Proberen toont wat het zou doen en verandert niets. Uitvoeren doet het als één stap om ongedaan te maken."
 
 #: crates/ui-egui/src/lib.rs:410
 msgid "Turn Snap Override Off"
@@ -12113,7 +12113,7 @@ msgstr "Werkblad"
 
 #: crates/ui-egui/src/script.rs:29
 msgid "Would make {}, change {} and remove {} elements."
-msgstr ""
+msgstr "Zou {} elementen maken, {} wijzigen en {} verwijderen."
 
 #: crates/ui-egui/src/editor/nested.rs:294
 #: crates/ui-egui/src/editor/options.rs:100

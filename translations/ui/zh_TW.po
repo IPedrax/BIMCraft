@@ -81,7 +81,7 @@ msgstr "3D視圖"
 
 #: crates/ui-egui/src/mesh.rs:16
 msgid "3D models (OBJ, glTF)"
-msgstr ""
+msgstr "3D 模型（OBJ、glTF）"
 
 #: crates/ui-egui/src/settings.rs:652
 msgid "3D view resolution"
@@ -1293,7 +1293,7 @@ msgstr "磚 225 x 75"
 
 #: crates/ui-egui/src/mesh.rs:35
 msgid "Brought in {} objects as Generic Model families."
-msgstr ""
+msgstr "已將 {} 個物件作為一般模型族導入。"
 
 #: crates/ui-egui/src/lib.rs:4043
 msgid "Build"
@@ -2424,7 +2424,7 @@ msgstr "命令 / 工具："
 
 #: crates/ui-egui/src/script.rs:75
 msgid "Commands, one a line (id {json params}; # starts a comment):"
-msgstr ""
+msgstr "命令，每行一個（id {json 參數}；# 開始註解）："
 
 #: crates/ui-egui/src/settings.rs:576
 msgid "Compact"
@@ -5032,11 +5032,11 @@ msgstr "導入"
 
 #: crates/ui-egui/src/lib.rs:4468
 msgid "Import 3D Model"
-msgstr ""
+msgstr "導入 3D 模型"
 
 #: crates/ui-egui/src/lib.rs:4466
 msgid "Import 3D Model: an OBJ or glTF file's objects brought into the project as Generic Model families, each placed where the file has it on this plan's level, with its materials' colours"
-msgstr ""
+msgstr "導入 3D 模型：將 OBJ 或 glTF 檔案中的物件作為一般模型族導入專案，每個物件放在檔案中的位置、本平面的樓層上，並帶有其材質的顏色"
 
 #: crates/ui-egui/src/editor/document.rs:583
 #: crates/ui-egui/src/lib.rs:4462
@@ -5224,7 +5224,7 @@ msgstr "無法偏移：請輸入距離，並拾取直線、圓弧、多段線或
 
 #: crates/ui-egui/src/script.rs:32
 msgid "It changes the project's settings or library too."
-msgstr ""
+msgstr "它也會變更專案的設定或庫。"
 
 #: crates/ui-egui/src/editor/pivot.rs:167
 msgid "It is no longer there."
@@ -5404,7 +5404,7 @@ msgstr "未導入：{}"
 
 #: crates/ui-egui/src/mesh.rs:38
 msgid "Left out: {}."
-msgstr ""
+msgstr "未導入：{}。"
 
 #: crates/ui-egui/src/editor/visibility.rs:81
 msgid "Left/Right"
@@ -5822,7 +5822,7 @@ msgstr "長劃線"
 
 #: crates/ui-egui/src/lib.rs:4620
 msgid "Macros"
-msgstr ""
+msgstr "巨集"
 
 #: crates/ui-egui/src/fillpatterns.rs:611
 msgid "Made of detail lines picked in the plan, repeating the rectangle between two corners"
@@ -8444,7 +8444,7 @@ msgstr "坡道：單擊起點，再單擊坡段終點；平台使其轉向"
 
 #: crates/ui-egui/src/script.rs:63
 msgid "Ran {} lines as one undo step. {}"
-msgstr ""
+msgstr "已將 {} 行作為一個復原步驟執行。{}"
 
 #: crates/ui-egui/src/properties.rs:2079
 #: crates/ui-egui/src/properties.rs:2084
@@ -9066,16 +9066,16 @@ msgstr "圓形"
 
 #: crates/ui-egui/src/script.rs:106
 msgid "Run"
-msgstr ""
+msgstr "執行"
 
 #: crates/ui-egui/src/lib.rs:4623
 #: crates/ui-egui/src/script.rs:72
 msgid "Run Script"
-msgstr ""
+msgstr "執行腳本"
 
 #: crates/ui-egui/src/lib.rs:4622
 msgid "Run Script: commands, one a line as agents and the command line write them, tried first and run as one undo step"
-msgstr ""
+msgstr "執行腳本：命令每行一個，寫法與代理和命令列相同，先試執行，再作為一個復原步驟執行"
 
 #: crates/ui-egui/src/plugins.rs:160
 msgid "Runs the plugin's command"
@@ -10816,7 +10816,7 @@ msgstr "項目保持您離開時的狀態。"
 
 #: crates/ui-egui/src/script.rs:37
 msgid "The project would then have {} warnings."
-msgstr ""
+msgstr "屆時專案將有 {} 個警告。"
 
 #: crates/ui-egui/src/start.rs:365
 msgid "The projects you open or save show here."
@@ -11225,11 +11225,11 @@ msgstr ""
 
 #: crates/ui-egui/src/script.rs:107
 msgid "Try"
-msgstr ""
+msgstr "試執行"
 
 #: crates/ui-egui/src/script.rs:96
 msgid "Try shows what it would do and changes nothing. Run does it as one undo step."
-msgstr ""
+msgstr "試執行顯示它會做什麼，不做任何變更。執行則作為一個復原步驟進行。"
 
 #: crates/ui-egui/src/lib.rs:410
 msgid "Turn Snap Override Off"
@@ -12113,7 +12113,7 @@ msgstr "檯面"
 
 #: crates/ui-egui/src/script.rs:29
 msgid "Would make {}, change {} and remove {} elements."
-msgstr ""
+msgstr "將建立 {} 個、變更 {} 個、刪除 {} 個元素。"
 
 #: crates/ui-egui/src/editor/nested.rs:294
 #: crates/ui-egui/src/editor/options.rs:100
