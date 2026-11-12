@@ -1,7 +1,12 @@
 # BIMCraft Swedish project translations.
 # SPDX-License-Identifier: MIT OR Apache-2.0
 msgid ""
-msgstr "Project-Id-Version: BIMCraft\nLanguage: sv\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\n"
+msgstr ""
+"Project-Id-Version: BIMCraft\n"
+"Language: sv\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
 
 #: crates/core/src/sheet.rs:304
 msgid "AS INDICATED"
@@ -11,8 +16,7 @@ msgstr ""
 msgid "Air Terminal"
 msgstr "Fångstång"
 
-#: crates/core/src/schedule.rs:194
-#: crates/core/src/schedule.rs:233
+#: crates/core/src/schedule.rs:194 crates/core/src/schedule.rs:233
 msgid "Area"
 msgstr "Area"
 
@@ -192,8 +196,7 @@ msgstr "Elbelysning"
 msgid "Electrical Power"
 msgstr "Elkraft"
 
-#: crates/core/src/commands.rs:9869
-#: crates/core/src/commands.rs:12435
+#: crates/core/src/commands.rs:9869 crates/core/src/commands.rs:12435
 msgid "Elevation"
 msgstr "Fasad"
 
@@ -245,8 +248,7 @@ msgstr "Karmbredd"
 msgid "Gate Valve"
 msgstr "Slidventil"
 
-#: crates/core/src/family.rs:2205
-#: crates/core/src/view3d.rs:1004
+#: crates/core/src/family.rs:2205 crates/core/src/view3d.rs:1004
 msgid "Glass"
 msgstr "Glas"
 
@@ -310,8 +312,7 @@ msgstr "Benbredd"
 msgid "Length"
 msgstr "Längd"
 
-#: crates/core/src/commands.rs:6503
-#: crates/core/src/model.rs:3177
+#: crates/core/src/commands.rs:6503 crates/core/src/model.rs:3177
 msgid "Level"
 msgstr "Nivå"
 
@@ -487,8 +488,7 @@ msgstr "Avjämningsmassa"
 msgid "Seat Height"
 msgstr "Sitthöjd"
 
-#: crates/core/src/commands.rs:9846
-#: crates/core/src/commands.rs:12434
+#: crates/core/src/commands.rs:9846 crates/core/src/commands.rs:12434
 msgid "Section"
 msgstr "Sektion"
 
@@ -687,4 +687,3 @@ msgstr "bwc"
 #: crates/core/src/loads.rs:79
 msgid "wc"
 msgstr "wc"
-
