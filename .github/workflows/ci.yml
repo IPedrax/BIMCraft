@@ -23,15 +23,16 @@ jobs:
   check:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 60
+    # Windows builds and tests the slowest: about 55 minutes before its desktop tests start, which run their GPU ones on one thread.
+    timeout-minutes: ${{ matrix.timeout }}
     strategy:
       fail-fast: false
       matrix:
         include:
           # The oldest Ubuntu runner, as the release workflow's Linux job.
-          - { name: Linux, runner: ubuntu-22.04 }
-          - { name: Windows, runner: windows-latest }
-          - { name: macOS, runner: macos-15 }
+          - { name: Linux, runner: ubuntu-22.04, timeout: 60 }
+          - { name: Windows, runner: windows-latest, timeout: 100 }
+          - { name: macOS, runner: macos-15, timeout: 60 }
     steps:
       - uses: actions/checkout@v4
 
@@ -67,7 +68,20 @@ jobs:
           cargo build --manifest-path crates/plugin/tests/sample-plugin/Cargo.toml --target wasm32-unknown-unknown --release
 
       - name: Test
+        if: runner.os != 'Windows'
         run: cargo test --workspace
+
+      # Concurrent headless GPU adapters can crash the Windows driver (0xc0000005).
+      # Keep all tests; only GPU and retained UI tests run serially on Windows.
+      - name: Test (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cargo test --workspace --exclude bimcraft-ui-egui
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test -p bimcraft-ui-egui -- --skip gpu:: --skip retained::
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          cargo test -p bimcraft-ui-egui -- gpu:: retained:: --test-threads=1
 
   # What CLAUDE.md asks after touching ifc.rs: IfcOpenShell validates what BIMCraft writes, with the EXPRESS rules, and builds every
   # product's shape. The sample house, and ci/ifc-coverage.txt for what the sample doesn't reach (structure, runs, masses, phases).
@@ -93,9 +107,11 @@ jobs:
         run: |
           cargo run -q -p bimcraft-cli -- run --sample --save house.ifc
           cargo run -q -p bimcraft-cli -- run --script ci/ifc-coverage.txt --save coverage.ifc
+          cargo run -q -p bimcraft-cli -- run --script ci/family-window.txt --save family-window.ifc
 
+      # family-window.ifc: the Family Editor's exit test (F10) as commands, a parametric window placed, flexed and scheduled.
       - name: Validate
-        run: python ci/validate_ifc.py house.ifc coverage.ifc
+        run: python ci/validate_ifc.py house.ifc coverage.ifc family-window.ifc
 
   # What CLAUDE.md asks after touching packaging/: shellcheck on the scripts and actionlint on the workflows (which runs shellcheck
   # on their `run:` steps too). The runner image has shellcheck; actionlint is a pinned release, checked against its sum.

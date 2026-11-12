@@ -34,7 +34,7 @@ fn leaf(h: &Harness<BimApp>) -> Option<Visibility> {
 fn visibility_settings_from_the_contextual_tab_and_from_properties_set_the_forms_settings() {
     let (mut h, _) = open(&door(""), "Test Door");
     select_form(&mut h, 4);
-    assert!(h.query_all_by_label("Modify | Form").count() > 0);
+    assert!(h.query_all_by_label("Modify | Extrusion").count() > 0);
     press(&mut h, "Visibility Settings");
     assert!(h.query_by_label("Family Element Visibility Settings").is_some(), "the dialog");
     for b in ["Plan/RCP", "Front/Back", "Left/Right", "Coarse", "Medium", "Fine"] {

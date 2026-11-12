@@ -135,7 +135,7 @@ pub fn sketch_lines(
         return Err("align: pick a different sketch line to align".into());
     }
     let before = lines.get(target).ok_or_else(|| "align: the sketch line no longer exists".to_string())?;
-    let placement = Placement::new(reference, line)?;
+    let placement = Placement::onto(reference, line)?;
     let moved = before.map(|q| placement.map(q));
     let junctions = [(before.start(), moved.start()), (before.end(), moved.end())];
     let mut out = lines.to_vec();
@@ -186,6 +186,22 @@ impl Placement {
         let about = (line.0 + line.1) * 0.5;
         let n = u.perp();
         Ok(Self { about, angle, by: n * (reference.0 - about).dot(n) })
+    }
+
+    /// The Family Editor's Align of a line that turns: about where it crosses the reference when it reaches it there, else
+    /// about its end nearer the crossing, then slid square onto the reference. Already parallel, it only slides.
+    pub(crate) fn onto(reference: Line, line: Line) -> Result<Self, String> {
+        let mut p = Self::new(reference, line)?;
+        let (u, v) = ((reference.1 - reference.0).unit(), line.1 - line.0);
+        let across = v.cross(u);
+        if across.abs() > 1e-12 {
+            // Along the line from its start to the reference's line, as a share of its length.
+            let s = (reference.0 - line.0).cross(u) / across;
+            p.about = line.0 + v * s.clamp(0.0, 1.0);
+            let n = u.perp();
+            p.by = n * (reference.0 - p.about).dot(n);
+        }
+        Ok(p)
     }
 
     pub(crate) fn map(&self, q: P2) -> P2 {

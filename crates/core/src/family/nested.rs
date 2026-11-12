@@ -306,6 +306,27 @@ impl Family {
         out
     }
 
+    /// Each shared family nested in it, at any depth, made one definition: the first copy met, going down its nested
+    /// families in their order (each family before what it nests: the one [`Family::shared_within`] reports), every other
+    /// copy rewritten to it, as Revit holds one definition of a shared family. Rewriting a copy may change a family that
+    /// nests it, so the walk is repeated until nothing changes, at most as deep as nesting goes. Whether anything changed.
+    pub fn unify_shared(&mut self) -> bool {
+        let mut any = false;
+        for _ in 0..=MAX_NESTING + 1 {
+            let mut changed = false;
+            for (name, _) in self.shared_within() {
+                // Its first copy as it is now, after the names before it were made one.
+                let Some((_, first)) = self.shared_within().into_iter().find(|(n, _)| *n == name) else { continue };
+                changed |= self.replace_shared(&name, &first);
+            }
+            any |= changed;
+            if !changed {
+                break;
+            }
+        }
+        any
+    }
+
     /// Every shared family nested in it named `name`, at any depth, made `definition`: one definition of a shared family.
     /// Whether any was.
     pub fn replace_shared(&mut self, name: &str, definition: &Family) -> bool {
@@ -470,8 +491,9 @@ pub fn conflicts(incoming: &Family, name: &str, has: &dyn Fn(&str) -> Option<Fam
     (exists, shared)
 }
 
-/// The shared families nested in `incoming` (a family loaded into a target holding `has`) reconciled with the target's, as
-/// `answers` say for each the target has otherwise (none: the target's own): `Keep::Project` gives `incoming` the target's,
+/// The shared families nested in `incoming` (a family loaded into a target holding `has`) made one definition each within it
+/// ([`Family::unify_shared`]), then reconciled with the target's, as `answers` say for each the target has otherwise (none:
+/// the target's own): `Keep::Project` gives `incoming` the target's,
 /// `Keep::Family` overwrites the target's with `incoming`'s, its values too (as `version_and_values` does, keeping the
 /// target's own types and part identities). What the target
 /// takes: each shared family it gains or has overwritten, by name; and the names it was asked about.
@@ -481,7 +503,10 @@ pub fn reconcile_shared(
     has: &dyn Fn(&str) -> Option<Family>,
     answers: &BTreeMap<String, Keep>,
 ) -> (Vec<(String, Family)>, Vec<String>) {
-    let (mut takes, mut asked) = (Vec::new(), Vec::new());
+    let (mut takes, mut asked): (Vec<(String, Family)>, Vec<String>) = (Vec::new(), Vec::new());
+    // Its copies of each shared family made one first (the first met), so what the target takes of one never brings back
+    // another's copy that differs.
+    incoming.unify_shared();
     for (s, def) in incoming.shared_within() {
         if s == name {
             continue;
@@ -502,6 +527,16 @@ pub fn reconcile_shared(
             }
             Some(_) => {}
             None => takes.push((s, def)),
+        }
+    }
+    // A shared family taken from the target (Keep::Project) or overwritten may be nested in another taken before it, whose
+    // definition was read before the change: each taken as `incoming` holds it once all are made, so every definition the
+    // target takes holds the same copies, in whatever order they are applied.
+    incoming.unify_shared();
+    let now = incoming.shared_within();
+    for (s, def) in &mut takes {
+        if let Some((_, current)) = now.iter().find(|(n, _)| n == s) {
+            def.clone_from(current);
         }
     }
     (takes, asked)

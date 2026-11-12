@@ -23,7 +23,8 @@ fn box_file(dir: &std::path::Path) -> std::path::PathBuf {
 /// The cabinet open in its document in {3D} (in `h`), the box loaded into it and placed at (-150, -100) on Ref. Level, 300
 /// above it (by Offset): on the plinth, under the top.
 fn nest_box(h: &mut Harness<BimApp>, dir: &std::path::Path) {
-    h.state_mut().nest_family_file(&box_file(dir));
+    let doc = h.state().active_doc().expect("a family document");
+    h.state_mut().nest_family_file(doc, &box_file(dir));
     h.run();
     view(h, Some(Which::Plan));
     ed_mut(h).component_tool();
@@ -31,7 +32,7 @@ fn nest_box(h: &mut Harness<BimApp>, dir: &std::path::Path) {
     let at = editor(h).views.screen_of([-150.0, -100.0, 0.0]).expect("the floor plan shows");
     click_at(h, at);
     h.run();
-    if let Some(ed) = h.state_mut().family_editor.as_mut() {
+    if let Some(ed) = h.state_mut().active_family_mut() {
         ed.nested_instances[0].offset = bimcraft_core::family::Expr::Number(300.0);
     }
     key(h, Key::Escape);
@@ -57,7 +58,7 @@ fn cabinet_kept(dir: &std::path::Path) -> (Harness<'static, BimApp>, Pictures) {
 }
 
 fn ed_mut<'a>(h: &'a mut Harness<'_, BimApp>) -> &'a mut crate::editor::FamilyEditor {
-    h.state_mut().family_editor.as_mut().expect("a family open")
+    h.state_mut().active_family_mut().expect("a family open")
 }
 
 /// The last picture kept of the texture named `name` (`family-preview`, `view3d`).
@@ -70,7 +71,7 @@ fn kept(h: &Harness<BimApp>, pictures: &Pictures, name: &str) -> egui::ColorImag
 /// {3D}'s colour at family point `p`, and where it is on screen.
 fn in_3d(h: &Harness<BimApp>, pictures: &Pictures, p: [f64; 3]) -> (Color32, egui::Pos2) {
     let img = kept(h, pictures, "family-preview");
-    let preview = editor(h).preview().expect("drawn");
+    let preview = editor(h).drawn_3d().expect("drawn");
     let (x, y, _) = preview.cam.project(p);
     (img.pixels[y as usize * img.size[0] + x as usize], preview.screen(h.state().view_rect, p))
 }
@@ -130,7 +131,7 @@ fn the_pointer_over_a_form_or_a_nested_instance_lights_it_and_a_click_selects_it
     assert_eq!((editor(&h).selected_form(), editor(&h).selected_nested()), (None, None), "a click on nothing lets it go");
     // Under the pointer, as {3D} finds it.
     let ed = editor(&h);
-    let cam = ed.preview().unwrap().cam;
+    let cam = ed.drawn_3d().unwrap().cam;
     let f = ed.draft_family().unwrap();
     let (x, y, _) = cam.project(NESTED);
     assert_eq!(bimcraft_core::family::views::part_at_3d(&f, &ed.values(), &cam, (x, y)), Some(Part::Nested(0)));
@@ -262,7 +263,7 @@ fn p1_pictures() {
     ed_mut(&mut h).select_form(2);
     save(&mut h, "family-void");
     ed_mut(&mut h).let_form_go();
-    let at = editor(&h).preview().unwrap().screen(h.state().view_rect, PLINTH);
+    let at = editor(&h).drawn_3d().unwrap().screen(h.state().view_rect, PLINTH);
     h.hover_at(at);
     save(&mut h, "family-hover");
     h.hover_at(h.state().view_rect.min + vec2(5.0, 300.0));

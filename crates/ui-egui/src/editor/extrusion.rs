@@ -33,8 +33,8 @@ impl FamilyEditor {
 
     /// Escape: the form selected let go. Whether there was one.
     pub(crate) fn let_form_go(&mut self) -> bool {
-        // Component placing, then a nested instance selected, go first.
-        if self.placing.take().is_some() || self.nested_sel.take().is_some() {
+        // Component placing, then a nested instance or a symbol selected, go first.
+        if self.placing.take().is_some() || self.nested_sel.take().is_some() || self.symbol.take().is_some() {
             return true;
         }
         self.selected_form().is_some() && self.form.take().is_some()
@@ -83,8 +83,12 @@ fn host_label(planes: bimcraft_core::family::Planes, host: &PlaneRef) -> String 
 
 /// How wide a row's field is beside its "=".
 fn width(ui: &Ui) -> f32 {
-    let column = ui.ctx().data(|w| w.get_temp::<f32>(UiId::new("family-group-column"))).unwrap_or(160.0);
-    (column - 34.0).max(40.0)
+    (column(ui) - 34.0).max(40.0)
+}
+
+/// The value column's width, for a field with no "=" beside it.
+fn column(ui: &Ui) -> f32 {
+    ui.ctx().data(|w| w.get_temp::<f32>(UiId::new("family-group-column"))).unwrap_or(160.0)
 }
 
 /// A number typed into a field labelled by `label`, kept as typed while the field has the focus (so "2." is not read back as
@@ -155,8 +159,19 @@ impl BimApp {
         let (values, params) = (ed.values(), ed.parameter_kinds());
         let mut links = association::Controls::new(ed);
         let host = host_label(ed.plane_set(), &ed.forms[i].host);
+        let hosted = ed.category.hosted();
         let [from, to] = ed.driven_ends(i);
+        // Where its dimensions and locks put it for the type previewed, otherwise than it is drawn: said, as its sketch and the
+        // dimensions change it, not a field here.
+        let held = held_forms(ed, &values).get(i).is_some_and(Option::is_some);
+        let type_name = ed.types.get(ed.picked).map(|(n, _)| n.clone()).unwrap_or_default();
         let Some(f) = ed.forms.get_mut(i) else { return };
+        if held {
+            let edit = t(edit_label(f.original.kind()));
+            let note = tf("Set by its dimensions and locks for the type {}: {} or the dimensions change it.", &[type_name.as_str(), edit]);
+            ui.add(egui::Label::new(RichText::new(note).color(pal().muted)).wrap());
+            ui.add_space(4.0);
+        }
         let (mut visible, mut void, mut edit_visibility) = (false, None, false);
         group(ui, msg!("Constraints"), |ui| {
             if f.mesh() {
@@ -172,8 +187,24 @@ impl BimApp {
                 FormKind::Blend => (msg!("Second End"), msg!("First End"), Some(units)),
                 _ => (msg!("Extrusion End"), msg!("Extrusion Start"), Some(units)),
             };
-            // A sweep has no ends of its own: its path says where it goes (F6).
-            if !kind.swept() {
+            // A sweep has no ends of its own: its path says where it goes (F6), and its profiles what it sweeps, each a sketch
+            // Edit Sweep or Edit Swept Blend draws again.
+            if kind.swept() {
+                let lines = |n: usize| tf("Sketch, {} lines and arcs", &[&n.to_string()]);
+                let sweep = f.original.sweep.clone().unwrap_or_default();
+                let mut rows = vec![(msg!("Path"), f.original.sketch.len())];
+                if kind == FormKind::SweptBlend {
+                    rows.push((msg!("Profile 1"), sweep.profile.len()));
+                    rows.push((msg!("Profile 2"), sweep.end.len()));
+                } else {
+                    rows.push((msg!("Profile"), sweep.profile.len()));
+                }
+                for (label, n) in rows {
+                    ui.label(t(label));
+                    ui.label(RichText::new(lines(n)).color(pal().muted));
+                    ui.end_row();
+                }
+            } else {
                 number_row(ui, u, end, &mut f.to, &values, &mut links, ((Field::Form(Slot::To), i), to));
                 number_row(ui, u, start, &mut f.from, &values, &mut links, ((Field::Form(Slot::From), i), from));
             }
@@ -228,6 +259,28 @@ impl BimApp {
                 });
             c.response.labelled_by(l.id);
             ui.end_row();
+            // F10d: what a door's or a window's void cuts: the forms listed before it and the wall, whatever its place in
+            // the list; the wall alone (an opening's void round its frame); or the forms alone (a sash's light).
+            if f.void && hosted {
+                use bimcraft_core::family::Cuts;
+                let l = ui.label(t("Cuts"));
+                let name = |c: Cuts| match c {
+                    Cuts::Both => t("Forms and Host"),
+                    Cuts::Host => t("Host"),
+                    Cuts::Forms => t("Forms"),
+                };
+                let now = f.original.cuts();
+                let tip = msg!("What the void cuts: the solid forms listed before it, and the wall the door or window stands in");
+                let c = ComboBox::from_id_salt(("form-cuts", i)).selected_text(name(now)).width(column(ui).max(40.0)).show_ui(ui, |ui| {
+                    for c in [Cuts::Both, Cuts::Host, Cuts::Forms] {
+                        if ui.selectable_label(now == c, name(c)).clicked() {
+                            f.original.cuts = (c != Cuts::Both).then_some(c);
+                        }
+                    }
+                });
+                c.response.labelled_by(l.id).on_hover_text(t(tip));
+                ui.end_row();
+            }
         });
         if visible {
             let typed = f.visible.trim().to_string();
@@ -242,7 +295,9 @@ impl BimApp {
         }
         if let Some(v) = void {
             let base = Arc::clone(&self.session.model);
-            if let Err(e) = ed.through(&base, i, "family", |name, guid| json!({"name": name, "form": {"guid": guid, "void": v}})) {
+            if let Err(e) =
+                ed.through(&base, i, "family", |name, guid| json!({"name": name, "form": {"guid": guid, "void": v, "cuts": null}}))
+            {
                 self.status = Status { text: e, error: true };
             }
         }
@@ -282,5 +337,17 @@ pub(super) fn depth(ui: &mut Ui, units: Units, f: &mut FormText, values: &BTreeM
             let mut shown = shown;
             ui.add_enabled(false, TextEdit::singleline(&mut shown).desired_width(90.0)).labelled_by(l.id);
         }
+    }
+}
+
+/// The Mode panel's Edit tool for a form of `kind`, as Revit names it.
+pub(crate) fn edit_label(kind: bimcraft_core::family::forms::FormKind) -> &'static str {
+    use bimcraft_core::family::forms::FormKind;
+    match kind {
+        FormKind::Revolve => msg!("Edit Revolve"),
+        FormKind::Blend => msg!("Edit Blend"),
+        FormKind::Sweep => msg!("Edit Sweep"),
+        FormKind::SweptBlend => msg!("Edit Swept Blend"),
+        FormKind::Extrusion => msg!("Edit Extrusion"),
     }
 }

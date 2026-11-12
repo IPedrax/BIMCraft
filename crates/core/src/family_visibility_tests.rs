@@ -287,14 +287,14 @@ fn settings_are_kept_through_a_file_and_read_back_by_the_family_command() {
 }
 
 #[test]
-fn a_file_of_30_reads_with_no_settings_and_draws_as_it_did() {
+fn a_file_of_17_reads_with_no_settings_and_draws_as_it_did() {
     // The starter door's project written as a file of 17: no `visibility` anywhere, `format` 17.
     let mut s = Session::new();
     run(&mut s, "wall", json!({"points": [[0, 0], [6000, 0]]}));
     run(&mut s, "door", json!({"at": [3000, 0], "family": "Single Door"}));
-    let dir = std::env::temp_dir().join(format!("bimcraft-f8-30-{}", std::process::id()));
+    let dir = std::env::temp_dir().join(format!("bimcraft-f8-17-{}", std::process::id()));
     std::fs::create_dir_all(&dir).unwrap();
-    let path = dir.join("thirty.bimcraft");
+    let path = dir.join("seventeen.bimcraft");
     run(&mut s, "save", json!({"path": path}));
     let mut file: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
     let _ = std::fs::remove_dir_all(&dir);

@@ -51,7 +51,6 @@ fn a_forms_visible_tied_to_a_yes_no_parameter_through_equals_greys_its_tick() {
     h.state_mut().edit_family("Cabinet");
     h.run();
     // The second form, picked in the Project Browser, is selected: Properties show its own rows (T11).
-    press(&mut h, "Symbols");
     h.get_by_label("2. Extrusion").scroll_to_me();
     h.run();
     press(&mut h, "2. Extrusion");

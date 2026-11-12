@@ -55,6 +55,15 @@ fn load(name: &str, value: f64) -> Value {
     json!({"name": name, "kind": "number", "value": value})
 }
 
+/// How far into the room, out from the wall's face, a wall device's room calculation point stands, mm.
+pub const ROOM_POINT_OUT: f64 = 150.0;
+
+/// A wall device's room calculation point, as Revit's wall-mounted families have one: [`ROOM_POINT_OUT`] in front of the
+/// wall's face (its front is toward -y) at `z`, so a device on the face is in the room on its side.
+fn room_point(z: Value) -> Value {
+    json!([0, -ROOM_POINT_OUT, z])
+}
+
 /// A one-pole power connector of 127 V that draws the load `load_va` names (a parameter, or a number), as `classification`.
 fn power(load_va: Value, power_factor: f64, classification: &str) -> Value {
     json!({
@@ -291,6 +300,7 @@ fn electrical(language: Language) -> Vec<(String, Value)> {
             "category": "equipment",
             "parameters": [size(&width, 400.0), size(&height, 500.0), size(&depth, 120.0), size(&mounting, 1300.0), material(&mat, &metal)],
             "types": {"12 circuits": {}, "24 circuits": {&width: 500, &height: 700}, "36 circuits": {&width: 600, &height: 900}},
+            "room_calculation_point": room_point(f(format!("{mounting} + {height} / 2"))),
             "forms": [
                 block([f(minus_half_w.clone()), f(format!("-({depth})")), f(half_w.clone()), n(0.0)], f(mounting.clone()), f(format!("{mounting} + {height}")), &mat),
                 block(
@@ -350,6 +360,7 @@ fn electrical(language: Language) -> Vec<(String, Value)> {
             "parameters": [size(&mounting, 300.0), load(&load_name, 100.0)],
             "types": {"Low 300": {}, "Medium 1100": {&mounting: 1100}, "High 2100": {&mounting: 2100}},
             "connectors": [power(f(load_name.clone()), 0.8, "receptacle")],
+            "room_calculation_point": room_point(f(mounting.clone())),
             "forms": [plate.clone(), socket.clone()]
         }),
     ));
@@ -365,6 +376,7 @@ fn electrical(language: Language) -> Vec<(String, Value)> {
                 "kind": "power", "system": "power-unbalanced", "poles": 3, "voltage": 220, "power_factor": 0.8,
                 "load_va": phases.iter().map(|p| f(p.clone())).collect::<Vec<_>>(), "classification": "receptacle"
             }],
+            "room_calculation_point": room_point(f(mounting.clone())),
             "forms": [plate.clone(), socket]
         }),
     ));
@@ -375,6 +387,7 @@ fn electrical(language: Language) -> Vec<(String, Value)> {
             "parameters": [size(&mounting, 1100.0)],
             "types": {"Medium 1100": {}, "Low 300": {&mounting: 300}},
             "connectors": [{"kind": "switch", "system": "switch", "classification": "switching"}],
+            "room_calculation_point": room_point(f(mounting.clone())),
             "forms": [plate, block([n(-12.0), n(-18.0), n(12.0), n(-12.0)], up(-30.0), up(30.0), &plaster)]
         }),
     ));
@@ -457,6 +470,7 @@ fn telecom(language: Language) -> Vec<(String, Value)> {
                 "category": "dataoutlet",
                 "parameters": [size(&mounting, 300.0)],
                 "types": {"Low 300": {}, "Medium 1100": {&mounting: 1100}},
+                "room_calculation_point": room_point(up(42.5)),
                 "forms": plate(2)
             }),
         ),
@@ -466,6 +480,7 @@ fn telecom(language: Language) -> Vec<(String, Value)> {
                 "category": "voiceoutlet",
                 "parameters": [size(&mounting, 300.0)],
                 "types": {"Low 300": {}, "Medium 1100": {&mounting: 1100}},
+                "room_calculation_point": room_point(up(42.5)),
                 "forms": plate(1)
             }),
         ),
@@ -476,6 +491,7 @@ fn telecom(language: Language) -> Vec<(String, Value)> {
                 "category": "patchpanel",
                 "parameters": [size(&mounting, 1500.0), material(&mat, &metal)],
                 "types": {"24 ports": {}, "48 ports": {}},
+                "room_calculation_point": room_point(up(22.0)),
                 "forms": [block([n(-241.5), n(-50.0), n(241.5), n(0.0)], f(mounting.clone()), up(44.0), &mat)]
             }),
         ),

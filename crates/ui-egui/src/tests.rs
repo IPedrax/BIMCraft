@@ -58,6 +58,35 @@ fn press(h: &mut Harness<BimApp>, label: &str) {
     h.run();
 }
 
+/// File > `menu` > `item`, as Revit's New and Open each have a project and a family; `item` as it reads out, its shortcut too.
+fn file_menu(h: &mut Harness<BimApp>, menu: &str, item: &str) {
+    press(h, "File");
+    // A submenu's label carries its arrow.
+    press(h, &format!("{menu} ⏵"));
+    press(h, item);
+}
+
+/// File > New > Family…'s category `name`, then OK: the row in the dialog, under its "Category:", not a ribbon button of the name.
+fn new_family_of(h: &mut Harness<BimApp>, name: &str) {
+    file_menu(h, "New", "Family…");
+    let top = h.get_by_label("Category:").rect().top();
+    let row = h.get_all_by_label(name).map(|n| n.rect()).filter(|r| r.top() > top).min_by(|a, b| a.top().total_cmp(&b.top()));
+    click_at(h, row.expect("the category is listed").center());
+    press_near(h, "OK", "Category:");
+}
+
+/// Ctrl+N (Cmd+N) as the File menu reads it out: what the window's context makes of the shortcut, which a test's context
+/// spells the same on every system.
+fn cmd_n(h: &Harness<BimApp>) -> String {
+    h.ctx.format_shortcut(&egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::N))
+}
+
+/// File > New > Project.
+fn new_project(h: &mut Harness<BimApp>) {
+    let n = cmd_n(h);
+    file_menu(h, "New", &format!("Project {n}"));
+}
+
 /// One of Manage > Annotation Settings' dialogs (Line Weights, Line Styles, Line Patterns, Fill Patterns), from its list.
 fn annotation(h: &mut Harness<BimApp>, item: &str) {
     if h.query_by_label("Annotation Settings").is_none() {
@@ -1076,11 +1105,7 @@ fn new_asks_before_dropping_unsaved_changes() {
     let mut h = app("");
     h.state_mut().session.execute("wall", &json!({"points": [[0, 0], [4000, 0]]})).unwrap();
     // Menu items read out their shortcut too: "New Ctrl+N".
-    let new = |h: &mut Harness<BimApp>| {
-        press(h, "File");
-        h.get_by_label_contains("New").click();
-        h.run();
-    };
+    let new = |h: &mut Harness<BimApp>| new_project(h);
     new(&mut h);
     press(&mut h, "Cancel");
     assert_eq!(walls(&h).len(), 1);
@@ -2790,8 +2815,14 @@ fn the_interface_speaks_portuguese() {
     // A new project, in the interface's language: its levels named in Portuguese.
     key(&mut h, Key::Escape);
     press(&mut h, "Arquivo");
-    // Menu items read out their shortcut too: "Novo Ctrl+N".
+    // New is a submenu, as Revit's: a project or a family.
     h.get_by_label_contains("Novo").click();
+    h.run();
+    // Its Project, in the interface's language, read out with its shortcut.
+    {
+        let n = cmd_n(&h);
+        h.get_by_label_contains(&n).click();
+    }
     h.run();
     let levels: Vec<String> = h.state().session.model.levels().iter().map(|(_, l)| l.name.clone()).collect();
     assert_eq!(levels, ["Nível 1", "Nível 2"]);
@@ -2815,6 +2846,12 @@ fn the_interface_speaks_spanish() {
     press(&mut h, "Archivo");
     h.get_by_label_contains("Nuevo").click();
     h.run();
+    // Its Project, in the interface's language, read out with its shortcut.
+    {
+        let n = cmd_n(&h);
+        h.get_by_label_contains(&n).click();
+    }
+    h.run();
     let levels: Vec<String> = h.state().session.model.levels().iter().map(|(_, l)| l.name.clone()).collect();
     assert_eq!(levels, ["Nivel 1", "Nivel 2"]);
 }
@@ -2833,6 +2870,12 @@ fn the_interface_speaks_dutch() {
     key(&mut h, Key::Escape);
     press(&mut h, "Bestand");
     h.get_by_label_contains("Nieuw").click();
+    h.run();
+    // Its Project, in the interface's language, read out with its shortcut.
+    {
+        let n = cmd_n(&h);
+        h.get_by_label_contains(&n).click();
+    }
     h.run();
     let levels: Vec<String> = h.state().session.model.levels().iter().map(|(_, l)| l.name.clone()).collect();
     assert_eq!(levels, ["Niveau 1", "Niveau 2"]);
@@ -3301,7 +3344,8 @@ component {"family": "Stool", "at": [3000, 2000]}"#;
     // Picked by its outline.
     click(&mut h, P2(3200.0, 2000.0));
     assert_eq!(h.state().selection, [c]);
-    assert!(h.query_by_label("Modify | Components").is_some());
+    // Named for its family's category, as Revit's.
+    assert!(h.query_by_label("Modify | Furniture").is_some());
     // Its instance parameter, in Properties.
     type_into(&mut h, "Seat", "500");
     key(&mut h, Key::Enter);
@@ -5143,7 +5187,6 @@ fn a_tool_with_choices_of_its_own_opens_them_from_a_panels_list() {
         (Tab::Manage, "Settings", "Project Units", "Feet and inches"),
         (Tab::Manage, "Settings", "Project Language", "Español"),
         (Tab::Manage, "Settings", "Project Language", "Nederlands"),
-        (Tab::Manage, "Family Editor", "New Family", "Furniture"),
         (Tab::View, "Create", "Schedules", "Schedule/Quantities…"),
         (Tab::View, "Create", "Duplicate View", "Duplicate with Detailing"),
         (Tab::View, "Windows", "User Interface", "Language"),
@@ -5757,9 +5800,11 @@ fn the_family_editor_edits_a_family_says_what_wont_build_and_starts_a_new_one_of
     click(&mut h, P2(3800.0, 3000.0));
     assert_eq!(h.state().selection, [table]);
     h.set_size(vec2(1800.0, 900.0));
-    press(&mut h, "Manage");
+    // Laid out at the new size: the Mode panel keeps to the ribbon's right end.
+    h.run();
+    // Modify | Furniture's Mode panel, as Revit's.
     press(&mut h, "Edit Family");
-    assert!(h.state().family_editor.is_some(), "the window is open on the table's family");
+    assert!(h.state().active_family().is_some(), "the window is open on the table's family");
     // The table's parameters, a row each: its top's Thickness, 40 mm, here the first type's, 1200 x 800.
     press(&mut h, "Family Types");
     type_into(&mut h, "Parameter Value Thickness", "55");
@@ -5777,13 +5822,12 @@ fn the_family_editor_edits_a_family_says_what_wont_build_and_starts_a_new_one_of
     assert_eq!(h.query_all_by_label_contains("Nope").count(), 1, "the window says what's wrong, once");
     assert_eq!(h.state().session.model.families["Table"].parameters[3].formula, None);
     press(&mut h, "Cancel");
-    assert!(h.state().family_editor.is_some(), "Cancel closes Family Types and restores its draft");
+    assert!(h.state().active_family().is_some(), "Cancel closes Family Types and restores its draft");
     press(&mut h, "Close Family");
-    assert!(h.state().family_editor.is_none());
-    // A new family of a category: its name, then OK; a door's has the opening's Width and Height.
+    assert!(h.state().active_family().is_none());
+    // A new family of a category (File > New > Family…): its name, then OK; a door's has the opening's Width and Height.
     key(&mut h, Key::Escape);
-    press(&mut h, "New Family");
-    press(&mut h, "Door");
+    new_family_of(&mut h, "Door");
     type_into(&mut h, "Family name", "Cupboard Door");
     press(&mut h, "Load into Project and Close");
     let f = &h.state().session.model.families["Cupboard Door"];
@@ -5796,12 +5840,21 @@ fn the_family_editor_shows_a_familys_connectors_and_keeps_them() {
     let mut h = app(&format!("{BOX}\ncomponent {{\"family\": \"WC\", \"at\": [3000, 3000]}}"));
     let wc = find(&h, |e| matches!(e, Element::Component(_)));
     h.state_mut().selection = vec![wc];
+    h.state_mut().tab = Tab::Context;
     h.set_size(vec2(1800.0, 900.0));
-    press(&mut h, "Manage");
+    h.run();
+    // Modify | Plumbing Fixtures' Mode panel; the family document's Project Browser lists its connectors as it does its forms.
     press(&mut h, "Edit Family");
-    press(&mut h, "Connectors");
     assert!(h.query_by_label_contains("pipe · waste · out · Size 100").is_some(), "the waste outlet, its DN");
+    let ed = h.state().active_family().expect("the family document");
+    let waste = (0..9).map(|i| ed.connector_name(i)).find(|n| n.contains("waste")).expect("listed");
     assert!(h.query_by_label_contains("cold · in").is_some(), "the cistern's cold water");
+    // Selected there, Properties show it.
+    h.get_by_label(&waste).scroll_to_me();
+    h.run();
+    press(&mut h, &waste);
+    assert!(h.state().active_family().and_then(|ed| ed.selected_connector()).is_some());
+    assert!(h.query_all_by_label_contains("Connector Domain").next().is_some_and(|n| n.value().as_deref() == Some("waste")));
     // Loaded into the project, the family keeps them as they were.
     let before = h.state().session.model.families["WC"].connectors.clone();
     press(&mut h, "Load into Project");
@@ -5809,6 +5862,7 @@ fn the_family_editor_shows_a_familys_connectors_and_keeps_them() {
         press(&mut h, "Overwrite the existing version and its parameter values");
     }
     assert_eq!(h.state().session.model.families["WC"].connectors, before);
+    assert!(h.state().status.text.is_empty() || !h.state().status.error, "{}", h.state().status.text);
 }
 
 #[test]
@@ -6414,9 +6468,7 @@ mod updates {
     fn the_updater_survives_new_and_open() {
         let mut r = rig("v0.5.0", true);
         r.start();
-        press(&mut r.h, "File");
-        r.h.get_by_label_contains("New").click();
-        r.h.run();
+        new_project(&mut r.h);
         assert!(r.h.state().updates.is_some() && r.h.query_by_label(OFFER).is_some(), "a new project is still in the version offered");
     }
 
@@ -6541,6 +6593,34 @@ fn a_right_click_in_a_plan_opens_a_menu_of_what_the_view_and_the_selection_can_d
 }
 
 #[test]
+fn a_family_instance_selected_offers_edit_family_on_the_right_click_as_revit_does() {
+    let mut h = app("");
+    h.state_mut()
+        .session
+        .execute("family", &json!({"name":"Adaptive panel","types":{"A":{}},"adaptive":bimcraft_core::adaptive::four_point_panel()}))
+        .unwrap();
+    let result = h.state_mut().session.execute("component", &json!({"family":"Adaptive panel","at":[0,0]})).unwrap();
+    let id = serde_json::from_value(result["id"].clone()).unwrap();
+    // Nothing selected: no family to edit.
+    let at = h.state().screen(P2(4000.0, 3000.0));
+    assert!(offered(&mut h, at, &["Edit Family"]).is_empty());
+    key(&mut h, Key::Escape);
+    // The panel selected: Edit Family opens the Family Editor on it, at its Adaptive tab.
+    h.state_mut().selection = vec![id];
+    h.run();
+    assert_eq!(offered(&mut h, at, &["Edit Family"]), ["Edit Family"]);
+    choose_item(&mut h, "Edit Family");
+    assert!(h.state().active_family().is_some(), "the Family Editor is open");
+    h.set_size(vec2(1800., 1000.));
+    h.run();
+    assert!(h.query_by_label("Load into Project").is_some(), "it opens as a family document");
+    // As Revit's: the family as defined; the instance it was opened from is there to replay.
+    assert_eq!(h.query_all_by_label_contains("Replaying instance").count(), 0, "it opens on the family, not on the instance");
+    press(&mut h, "Replay Instance");
+    assert!(h.query_all_by_label_contains("Replaying instance").count() > 0, "replayed, it shows the instance selected");
+}
+
+#[test]
 fn a_wall_or_a_run_selected_offers_to_refuse_or_take_up_its_joins() {
     let mut h = app(r#"strip_footing {"points": [[0, 0], [4000, 0]]}"#);
     let footing = ids(&h, "stripfooting")[0];
@@ -6571,34 +6651,6 @@ fn a_wall_or_a_run_selected_offers_to_refuse_or_take_up_its_joins() {
     h2.run();
     let at = h2.state().screen(P2(4000.0, 3000.0));
     assert!(offered(&mut h2, at, &["Disallow Join", "Allow Join"]).is_empty());
-}
-
-#[test]
-fn a_family_instance_selected_offers_edit_family_on_the_right_click_as_revit_does() {
-    let mut h = app("");
-    h.state_mut()
-        .session
-        .execute("family", &json!({"name":"Adaptive panel","types":{"A":{}},"adaptive":bimcraft_core::adaptive::four_point_panel()}))
-        .unwrap();
-    let result = h.state_mut().session.execute("component", &json!({"family":"Adaptive panel","at":[0,0]})).unwrap();
-    let id = serde_json::from_value(result["id"].clone()).unwrap();
-    // Nothing selected: no family to edit.
-    let at = h.state().screen(P2(4000.0, 3000.0));
-    assert!(offered(&mut h, at, &["Edit Family"]).is_empty());
-    key(&mut h, Key::Escape);
-    // The panel selected: Edit Family opens the Family Editor on it, at its Adaptive tab.
-    h.state_mut().selection = vec![id];
-    h.run();
-    assert_eq!(offered(&mut h, at, &["Edit Family"]), ["Edit Family"]);
-    choose_item(&mut h, "Edit Family");
-    assert!(h.state().family_editor.is_some(), "the Family Editor is open");
-    h.set_size(vec2(1800., 1000.));
-    h.run();
-    assert!(h.query_by_label("Load into Project").is_some(), "it opens as a family document");
-    // As Revit's: the family as defined; the instance it was opened from is there to replay.
-    assert_eq!(h.query_all_by_label_contains("Replaying instance").count(), 0, "it opens on the family, not on the instance");
-    press(&mut h, "Replay Instance");
-    assert!(h.query_all_by_label_contains("Replaying instance").count() > 0, "replayed, it shows the instance selected");
 }
 
 #[test]
@@ -6880,7 +6932,7 @@ fn adaptive_family_editor_reopens_exact_failed_instance_and_keeps_valid_dependen
     assert!(r.failed());
     assert!(r.values.contains_key("p1"));
     press(&mut h, "Close Family");
-    assert!(h.state().family_editor.is_none());
+    assert!(h.state().active_family().is_none());
 }
 
 #[test]
@@ -6926,7 +6978,7 @@ fn adaptive_editor_visual_preview_in_three_looks() {
         h.run();
         h.render().unwrap().save(std::path::Path::new(&folder).join(format!("adaptive-create-{name}.png"))).unwrap();
         // Point 1 selected, so Properties shows its Revit fields.
-        if let Some(ed) = h.state_mut().family_editor.as_mut() {
+        if let Some(ed) = h.state_mut().active_family_mut() {
             ed.modeller.selection = vec!["p1".into()];
         }
         h.run();
@@ -6943,15 +6995,23 @@ fn adaptive_editor_visual_preview_in_three_looks() {
 mod background_grid;
 
 mod extrusion_properties;
+mod family_align_forms;
+mod family_align_turn;
 mod family_already_exists;
 mod family_angles;
 mod family_blend;
 mod family_category_dialog;
 mod family_dimensions;
 mod family_document;
+mod family_exit;
+mod family_nav3d;
+mod family_open;
 mod family_pivots;
+mod family_properties;
 mod family_sketch;
 mod family_sketch_locks;
+mod family_tabs;
+mod family_tabs_async;
 mod family_temporary_hide;
 mod family_types_dialog;
 mod family_views;

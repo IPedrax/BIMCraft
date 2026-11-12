@@ -134,7 +134,7 @@ fn heights(h: &mut Harness<BimApp>, id: egui::Id, frames: usize) -> Vec<f32> {
 }
 
 fn family_dialog(h: &mut Harness<BimApp>, which: crate::editor::DocDialog) -> egui::Id {
-    h.state_mut().family_editor.as_mut().unwrap().dialog = Some(which);
+    h.state_mut().active_family_mut().unwrap().dialog = Some(which);
     egui::Id::new(("family-dialog", which as u8))
 }
 

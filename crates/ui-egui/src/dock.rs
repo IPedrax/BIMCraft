@@ -625,7 +625,7 @@ impl BimApp {
     fn palette_title(&self, p: Palette) -> String {
         match p {
             Palette::Properties | Palette::Tools | Palette::Assistant => t(p.label()).to_string(),
-            Palette::Browser => match &self.family_editor {
+            Palette::Browser => match self.active_family() {
                 Some(ed) => format!("{} · {}", t(p.label()), ed.title()),
                 _ => format!("{} · {}", t(p.label()), self.session.model.name),
             },

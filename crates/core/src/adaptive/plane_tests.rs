@@ -1,6 +1,6 @@
-//! Adaptive work planes as the family's reference planes (the adaptive arm of FORMAT 18 to 20): the three datums an adaptive
-//! family had of its own are the family's datum planes, a point drawn on one names it by GUID, a file that named a datum
-//! reads as that plane, and nothing moves.
+//! Adaptive work planes as the family's reference planes: the three datums an adaptive family had of its own before it had
+//! reference planes are the family's datum planes, a point drawn on one names it by GUID, a point that names a datum reads
+//! as that plane, and nothing moves.
 use super::*;
 use crate::family::{CENTER_FRONT_BACK, CENTER_LEFT_RIGHT, Face, Family, PlaneRef, Planes, REF_LEVEL};
 use serde_json::{Value, json};
@@ -9,7 +9,7 @@ fn near(a: P3, b: P3) -> bool {
     (0..3).all(|i| (a[i] - b[i]).abs() < 1e-9)
 }
 
-/// The old datums as files of 18 named them, the plane each is now, and the frame `Datum::frame()` gave it, as it was.
+/// The old datums as an adaptive point named them, the plane each is now, and the frame `Datum::frame()` gave it, as it was.
 fn old_datums() -> [(&'static str, Guid, Frame); 3] {
     [
         ("level", REF_LEVEL, Frame::default()),
@@ -40,7 +40,7 @@ fn the_default_work_plane_is_ref_level() {
     assert_eq!(WorkPlane::default(), WorkPlane::Plane(PlaneRef::Plane(REF_LEVEL)));
 }
 
-/// A point's node, as a file of 18 held it: on the world, its frame given, and the datum it was drawn on (none, no key).
+/// A point's node, as one from before reference planes was held: on the world, its frame given, and the datum it was drawn on (none, no key).
 fn old_point(id: &str, frame: Frame, datum: Option<&str>) -> Value {
     let mut host = json!({"type": "world", "frame": frame});
     if let Some(d) = datum {
@@ -52,7 +52,7 @@ fn old_point(id: &str, frame: Frame, datum: Option<&str>) -> Value {
 #[test]
 fn old_datum_keys_read_as_the_datum_planes_and_no_datum_stays_none() {
     for (name, guid, frame) in old_datums() {
-        let node: Node = serde_json::from_value(old_point("p", frame, Some(name))).expect("a file of 18 reads");
+        let node: Node = serde_json::from_value(old_point("p", frame, Some(name))).expect("an old point reads");
         assert_eq!(
             node.operation,
             Operation::Point { host: Host::World { frame, plane: Some(PlaneRef::Plane(guid)) }, transform: Transform::default() }
@@ -75,7 +75,7 @@ fn old_datum_keys_read_as_the_datum_planes_and_no_datum_stays_none() {
     );
 }
 
-/// The points of the file of 18: one on each datum, as the old Definition::add_point_on put them, one with no datum, and one
+/// The points of an adaptive family from before reference planes: one on each datum, as the old Definition::add_point_on put them, one with no datum, and one
 /// hosted on the Front/Back point's XZ plane at an offset.
 fn old_nodes() -> Vec<Value> {
     let [(l, _, level), (fb, _, front), (lr, _, side)] = old_datums();
@@ -91,17 +91,18 @@ fn old_nodes() -> Vec<Value> {
 }
 
 #[test]
-fn a_format_18_adaptive_family_evaluates_its_points_where_it_did() {
-    // A project saved now, made a file of 18: its family without planes, its points naming datums.
+fn an_adaptive_family_from_before_planes_evaluates_its_points_where_it_did() {
+    // A project saved now, made a file of 17 so the one step runs: its family without planes, its points naming datums
+    // (read whatever the file's format).
     let mut s = crate::engine::Session::new();
     s.execute("family", &json!({"name": "Old", "types": {"A": {}}, "adaptive": {"nodes": []}})).unwrap();
     let mut file: Value = serde_json::from_str(&s.model.to_json().unwrap()).unwrap();
-    file["format"] = json!(18);
+    file["format"] = json!(17);
     let families = file["families"].as_object_mut().expect("families by name");
     let family = families.values_mut().find(|f| f.get("adaptive").is_some()).expect("the adaptive family");
     family.as_object_mut().unwrap().remove("planes");
     family["adaptive"]["nodes"] = Value::Array(old_nodes());
-    let (model, left_out) = crate::model::Model::read(&file.to_string()).expect("a file of 18 opens");
+    let (model, left_out) = crate::model::Model::read(&file.to_string()).expect("a file of 17 opens");
     assert!(left_out.is_empty(), "{left_out:?}");
     model.check().expect("and is sound");
     let f = &model.families["Old"];

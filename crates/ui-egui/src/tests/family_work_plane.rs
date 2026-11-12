@@ -30,7 +30,7 @@ fn in_dialog(h: &mut Harness<BimApp>, label: &str) {
 
 /// Name in the open dialog made `plane`.
 fn choose(h: &mut Harness<BimApp>, plane: PlaneRef) {
-    if let Some(d) = h.state_mut().family_editor.as_mut().and_then(|ed| ed.views.dialog.as_mut()) {
+    if let Some(d) = h.state_mut().active_family_mut().and_then(|ed| ed.views.dialog.as_mut()) {
         d.chosen = plane;
     }
     h.run();

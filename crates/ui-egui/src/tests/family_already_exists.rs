@@ -63,7 +63,7 @@ fn a_changed_family_asks_and_overwrite_the_existing_version_keeps_the_projects_v
     assert_eq!(f.types["A"]["Width"], json!(150), "and its type's value");
     assert_eq!(steps(&h), before + 1, "one undo step");
     assert_eq!(h.state().family_decided.as_ref().and_then(|d| d.overwrite), Some(Overwrite::Version));
-    assert!(h.state().family_editor.is_some(), "Load into Project leaves the document open");
+    assert!(h.state().active_family().is_some(), "Load into Project leaves the document open");
     // Undone, the project's family is as it was.
     press(&mut h, "Close Family");
     h.state_mut().session.execute("undo", &json!({})).unwrap();
@@ -82,7 +82,7 @@ fn overwrite_the_existing_version_and_its_parameter_values_takes_the_familys_val
     assert!(f.types.contains_key("A"));
     assert_eq!(steps(&h), before + 1);
     assert_eq!(h.state().family_decided.as_ref().and_then(|d| d.overwrite), Some(Overwrite::VersionAndValues));
-    assert!(!h.state().family_editor.as_ref().unwrap().unsaved(), "loaded: nothing unsaved");
+    assert!(!h.state().active_family().unwrap().unsaved(), "loaded: nothing unsaved");
 }
 
 #[test]
@@ -94,7 +94,7 @@ fn cancel_keeps_the_projects_family_as_it_is() {
     assert!(!asked(&h, EXISTS));
     assert_eq!(h.state().session.model.to_json().unwrap(), was, "the project keeps its version");
     assert_eq!(steps(&h), before, "no undo step");
-    assert!(h.state().family_editor.as_ref().unwrap().unsaved(), "the document still has what it didn't load");
+    assert!(h.state().active_family().unwrap().unsaved(), "the document still has what it didn't load");
     // Escape is Cancel too.
     press(&mut h, "Load into Project");
     assert!(asked(&h, EXISTS));
@@ -114,7 +114,7 @@ fn an_identical_family_loads_as_a_no_op_without_asking() {
     assert_eq!(steps(&h), before, "no undo step");
     assert_eq!(h.state().session.model.to_json().unwrap(), was);
     press(&mut h, "Load into Project and Close");
-    assert!(h.state().family_editor.is_none(), "the load went ahead, a no-op: the document closes");
+    assert!(h.state().active_family().is_none(), "the load went ahead, a no-op: the document closes");
     assert_eq!(steps(&h), before);
 }
 
@@ -133,7 +133,8 @@ fn a_new_family_loads_without_asking() {
     h.state_mut().new_family(bimcraft_core::family::Category::Generic);
     h.run();
     type_into(&mut h, "Family name", "Reload");
-    h.get_by_label("Close Family").focus();
+    // Two documents open now, each its tab: the new one's, last.
+    h.get_all_by_label("Close Family").last().unwrap().focus();
     h.run();
     press(&mut h, "Load into Project");
     assert!(asked(&h, EXISTS));
@@ -144,13 +145,13 @@ fn load_into_project_and_close_closes_on_overwrite_and_stays_open_on_cancel() {
     let mut h = changed();
     press(&mut h, "Load into Project and Close");
     assert!(asked(&h, EXISTS));
-    assert!(h.state().family_editor.is_some(), "open while it asks");
+    assert!(h.state().active_family().is_some(), "open while it asks");
     press(&mut h, "Cancel");
-    assert!(h.state().family_editor.is_some(), "Cancel: the document stays open");
+    assert!(h.state().active_family().is_some(), "Cancel: the document stays open");
     assert!(!reload(&h).parameters.iter().any(|p| p.name == "Parameter 1"));
     press(&mut h, "Load into Project and Close");
     press(&mut h, VERSION);
-    assert!(h.state().family_editor.is_none(), "it went in: the document closes");
+    assert!(h.state().active_family().is_none(), "it went in: the document closes");
     assert!(reload(&h).parameters.iter().any(|p| p.name == "Parameter 1"));
     assert!(h.query_by_label("Architecture").is_some(), "the project's ribbon is back");
 }
@@ -162,14 +163,14 @@ fn a_refused_load_stays_said_and_the_document_stays_open() {
     h.run();
     // A formula naming a parameter the family hasn't (T9's refusal), in the draft as a file from before T9 may hold one: Family
     // Types refuses to take one typed.
-    h.state_mut().family_editor.as_mut().unwrap().set_formula("Width", "Nope + 1");
+    h.state_mut().active_family_mut().unwrap().set_formula("Width", "Nope + 1");
     h.run();
     let was = h.state().session.model.to_json().unwrap();
     // Asked first, as Revit asks before it reads the family; the overwrite is then refused, as a whole.
     press(&mut h, "Load into Project and Close");
     press(&mut h, VALUES);
-    assert!(h.state().family_editor.is_some(), "refused: the document stays open");
-    assert!(h.state().family_editor.as_ref().unwrap().problem().is_some_and(|p| p.contains("Nope")), "the refusal is kept");
+    assert!(h.state().active_family().is_some(), "refused: the document stays open");
+    assert!(h.state().active_family().unwrap().problem().is_some_and(|p| p.contains("Nope")), "the refusal is kept");
     assert!(h.query_all_by_label_contains("Nope").count() > 0, "and shown");
     assert_eq!(h.state().session.model.to_json().unwrap(), was);
 }
@@ -222,7 +223,8 @@ fn a_shared_nested_family_asks_after_the_family_and_either_choice_loads() {
         own["name"] = json!("Hinge");
         assert!(h.state_mut().run("family", json!({"definition": own})).is_some());
         // Loaded into the document: it has no Hinge, so nothing asks.
-        h.state_mut().nest_family_file(&door);
+        let doc = h.state().active_doc().expect("a family document");
+        h.state_mut().nest_family_file(doc, &door);
         h.run();
         assert!(!asked(&h, EXISTS) && !asked(&h, SHARED));
         press(&mut h, "Load into Project and Close");
@@ -236,7 +238,7 @@ fn a_shared_nested_family_asks_after_the_family_and_either_choice_loads() {
         assert_eq!(decided.overwrite, Some(Overwrite::Version));
         assert_eq!(decided.shared, [("Hinge".to_string(), want)]);
         assert!(reload(&h).parameters.iter().any(|p| p.name == "Parameter 1"));
-        assert!(h.state().family_editor.is_none());
+        assert!(h.state().active_family().is_none());
         // One Hinge across the project: the project's, and the one nested in Reload's door, as answered.
         let m = &h.state().session.model;
         assert_eq!(m.families["Hinge"].parameters[0].value.as_f64(), Some(width));

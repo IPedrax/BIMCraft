@@ -1766,8 +1766,8 @@ fn warnings_are_collected_not_stopped_at_the_first() {
 }
 
 /// What a family is in a file: its own fields, no more and no less, and a project written here read
-/// back whole (ТЗ-003 §6.8). FORMAT 18 grew its `planes` (the datums, always written), a form's `host`, and its
-/// `sketch`, in place of its `profile`.
+/// back whole (ТЗ-003 §6.8). FORMAT 19 grew its `planes` (the datums, always written), a form's `host`, and its `sketch`
+/// in place of its `profile`.
 #[test]
 fn a_family_is_saved_with_the_fields_it_has_always_had() {
     let mut s = Session::new();
@@ -2111,12 +2111,12 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"boundary": [[0, 0], [1, 0], [0, 0]]}),
         json!({"start": [0, 0], "end": [0, 0]}),
         json!({"level": "nowhere"}),
-        json!({"system": 5, "level": [], "tolerance": 1e300}),
         json!({"name": "Level : nowhere", "offset": 1e300}),
         json!({"name": 5, "ref_plane": [], "dissociate": "x"}),
         json!({"ref_plane": 100002, "dissociate": true}),
         json!({"dissociate": true, "offset": -1e300}),
         json!({"family": "Generic", "form": 1, "host": "Reference Line 99 : Vertical"}),
+        json!({"system": 5, "level": [], "tolerance": 1e300}),
         json!({"path": 5}),
         json!({"path": "/nonexistent/scan.las", "units": "furlong", "spacing": -1}),
         json!({"cloud": "nope", "origin": "file", "at": [1e300, 0]}),
@@ -2513,6 +2513,14 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"view": "{3D}", "silhouette": 1e300, "edges": "x", "ambient_shadows": 5}),
         json!({"view": "Level 1", "silhouette": -1, "edges": false}),
         json!({"silhouette": 10, "ambient_shadows": true, "edges": false}),
+        // Work planes: a reference plane of no line, of no `up`, out of reach; hosts that aren't, and a form's host given oddly.
+        json!({"start": [0, 0, 0], "end": [1e300, 0, 0], "up": [0, 0, 0]}),
+        json!({"start": [0, 0], "end": [1000, 0], "up": [1, 0, 0], "name": "a\nb"}),
+        json!({"family": "Chair", "at": [0, 0, 1e300], "host": {"plane": 100002}}),
+        json!({"family": "Chair", "at": [0, 0], "host": {"plane": "nope", "level": 5}}),
+        json!({"ids": [100002, 100003], "host": {"level": "Level 2"}}),
+        json!({"family": "Chair", "form": 1, "host": {"line": 1, "face": "x"}, "keep": 1}),
+        json!({"family": "Chair", "options": {"default_elevation": 1e300, "work_plane_based": "x"}}),
         // Title blocks: sizes and lettering no paper has, a field no key, lines and fills of no points, a title block no sheet
         // can name, and fields' values that aren't text.
         json!({"name": "T", "width": 1e300, "height": -1, "texts": [{"at": [1e300, 0], "text": "{X}", "size": 1e300, "angle": "x"}]}),
@@ -2524,14 +2532,6 @@ fn hostile_params_never_panic_or_break_the_model() {
         // A sheet's title block that's neither a name nor true or false, and a title block that would be called none.
         json!({"number": "Z2", "title_block": [false], "name": "none", "rename": " NONE "}),
         json!({"id": 100000, "title_block": {"none": true}}),
-        // Work planes: a reference plane of no line, of no `up`, out of reach; hosts that aren't, and a form's host given oddly.
-        json!({"start": [0, 0, 0], "end": [1e300, 0, 0], "up": [0, 0, 0]}),
-        json!({"start": [0, 0], "end": [1000, 0], "up": [1, 0, 0], "name": "a\nb"}),
-        json!({"family": "Chair", "at": [0, 0, 1e300], "host": {"plane": 100002}}),
-        json!({"family": "Chair", "at": [0, 0], "host": {"plane": "nope", "level": 5}}),
-        json!({"ids": [100002, 100003], "host": {"level": "Level 2"}}),
-        json!({"family": "Chair", "form": 1, "host": {"line": 1, "face": "x"}, "keep": 1}),
-        json!({"family": "Chair", "options": {"default_elevation": 1e300, "work_plane_based": "x"}}),
     ];
     let mut base = Session::new();
     house(&mut base);
@@ -2612,19 +2612,6 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"ids": [100002, 100003], "top_offset": 1e-300, "top_level": null, "height": -1}),
         wall,
     ];
-    // A strip footing of the runs' own: its gripped end, an end that isn't one, an end for a wall and a
-    // run together, and join flags that aren't booleans.
-    let footing = base.execute("strip_footing", &json!({"points": [[0, 0], [4000, 0]]})).map_or(Value::Null, |r| r["ids"][0].clone());
-    let grips = [
-        json!({"ids": [footing], "by": [10.0, 0.0], "end": "start"}),
-        json!({"ids": [footing], "by": [10.0, 0.0], "end": "both"}),
-        json!({"ids": [footing, 100002], "by": [10.0, 0.0], "end": "end"}),
-        json!({"ids": [100002, 100003], "by": [10.0, 0.0], "end": "start"}),
-        json!({"ids": [footing], "end": "start"}),
-        json!({"id": footing, "join": "x"}),
-        json!({"id": footing, "join": null}),
-        json!({"id": 100002, "join": "no"}),
-    ];
     // Nested families (T6a): deep, cyclic, a family nesting itself, huge counts, hostile places and associations.
     let nested = {
         let leaf = json!({"types": {"A": {}}, "parameters": [{"name": "W", "value": 10}], "forms": [{"profile": [[0, 0], ["W", 0], ["W", 1], [0, 1]], "to": 1}]});
@@ -2655,8 +2642,21 @@ fn hostile_params_never_panic_or_break_the_model() {
             json!({"name": "F", "types": {"A": {}}, "nested": "x", "nested_instances": [{"family": 5}], "nested_instance": {"id": u64::MAX}}),
         ]
     };
+    // A strip footing of the runs' own: its gripped end, an end that isn't one, an end for a wall and a
+    // run together, and join flags that aren't booleans.
+    let footing = base.execute("strip_footing", &json!({"points": [[0, 0], [4000, 0]]})).map_or(Value::Null, |r| r["ids"][0].clone());
+    let grips = [
+        json!({"ids": [footing], "by": [10.0, 0.0], "end": "start"}),
+        json!({"ids": [footing], "by": [10.0, 0.0], "end": "both"}),
+        json!({"ids": [footing, 100002], "by": [10.0, 0.0], "end": "end"}),
+        json!({"ids": [100002, 100003], "by": [10.0, 0.0], "end": "start"}),
+        json!({"ids": [footing], "end": "start"}),
+        json!({"id": footing, "join": "x"}),
+        json!({"id": footing, "join": null}),
+        json!({"id": 100002, "join": "no"}),
+    ];
     let hostile: Vec<Value> =
-        hostile.into_iter().chain(detailing.into_iter().map(|(_, p)| p)).chain(slopes).chain(offsets).chain(grips).chain(nested).collect();
+        hostile.into_iter().chain(detailing.into_iter().map(|(_, p)| p)).chain(slopes).chain(offsets).chain(nested).chain(grips).collect();
     // Each command against each value, on a copy of the same session; the commands shared out between the cores.
     let cmds: Vec<_> = commands().iter().filter(|c| !matches!(c.id, "open" | "save")).collect();
     let threads = std::thread::available_parallelism().map_or(4, |n| n.get());
@@ -6143,6 +6143,28 @@ fn a_file_from_before_guids_opens_with_guids_and_six_digit_ids() {
 }
 
 #[test]
+fn a_file_of_the_family_editors_unreleased_formats_20_to_32_is_refused_as_newer() {
+    // The Family Editor took the format from 17 to 32 a step at a time before it was released, and then became one step.
+    // Upstream's 18 (connectors with a place) came first, so that step is 18 to 19. Nothing of 20 to 32 was released, so
+    // this build reads none of them: each is refused as any newer file is. 18 and 19 are read as upstream's 18 and as this
+    // 19: a file an unreleased build wrote with either number can't be told from them.
+    use crate::model::{FORMAT, Model};
+    assert_eq!(FORMAT, 19);
+    let mut s = Session::new();
+    house(&mut s);
+    let v = serde_json::to_value(&*s.model).unwrap();
+    for old in 20..=32 {
+        let mut was = v.clone();
+        was["format"] = json!(old);
+        let e = Model::read(&was.to_string()).unwrap_err();
+        assert!(
+            e.contains("saved by a newer BIMCraft") && e.contains(&format!("file format {old}")) && e.contains("reads up to 19"),
+            "{old}: {e}"
+        );
+    }
+}
+
+#[test]
 fn a_project_is_saved_in_the_current_format_and_one_of_format_4_up_opens_as_it_is_and_a_newer_one_is_refused() {
     use crate::model::{FORMAT, Model};
     // 5 added the scans a project holds and the point clouds that place them; 6 added detailing (lines, regions, groups,
@@ -6881,4 +6903,57 @@ fn an_error_that_repeats_a_huge_value_stays_short() {
     // A short message is left as it is.
     let e = s.execute("graphics", &json!({"view": "Level 1", "hide_elements": [1]})).unwrap_err();
     assert!(!e.contains("more characters"), "{e}");
+}
+
+/// F10, the Family Editor's exit test through commands (`ci/family-window.txt`, which CI writes to IFC for IfcOpenShell): the
+/// window drawn with reference planes, labelled dimensions, a frame locked to them and a void, flexed through its types as built,
+/// scheduled, and written to IFC with its opening. The desktop's twin is `crates/ui-egui/src/tests/family_exit.rs`.
+#[test]
+fn the_exit_tests_window_flexes_as_built_schedules_and_goes_to_ifc() {
+    let mut s = Session::new();
+    s.script(include_str!("../../../ci/family-window.txt")).unwrap();
+    let (window, east) = (100006, 100007);
+    let f = s.model.families["Exit Window"].clone();
+    // The void listed after the frame (F10d), cutting the wall alone; Sill on Ref. Level (F10c), Height measured from it.
+    assert!(!f.forms[0].void && f.forms[1].void && f.forms[1].cuts == Some(crate::family::Cuts::Host));
+    let sill = f.planes.iter().find(|p| p.name == "Sill").map(|p| p.guid).unwrap();
+    let height = f.dimensions.iter().find(|d| d.label.as_deref() == Some("Height")).unwrap();
+    assert_eq!(height.refs[0], crate::family::DimRef::Plane(sill));
+    // Flexed through its types: the frame and the void it cuts the wall with are its Width and Height, whatever was drawn.
+    for (name, w, h) in [("900 x 1200", 900.0, 1200.0), ("1200 x 1500", 1200.0, 1500.0), ("600 x 600", 600.0, 600.0)] {
+        run(&mut s, "modify", json!({"ids": [window], "type": name}));
+        let e = s.model.elements.get(window).unwrap().clone();
+        let bbox = |tris: &mut dyn Iterator<Item = [f64; 3]>| {
+            tris.fold(([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]), |(lo, hi), p| {
+                (std::array::from_fn(|k| lo[k].min(p[k])), std::array::from_fn(|k| hi[k].max(p[k])))
+            })
+        };
+        let pieces = s.model.opening_pieces(&e);
+        let (lo, hi) = bbox(&mut pieces.iter().flat_map(|p| p.tris.iter()).flatten().copied());
+        let want = ([4000.0 - w / 2.0, -40.0, 900.0], [4000.0 + w / 2.0, 40.0, 900.0 + h]);
+        let near = |a: [f64; 3], b: [f64; 3]| a.iter().zip(b).all(|(x, y)| (x - y).abs() < 1e-6);
+        assert!(near(lo, want.0) && near(hi, want.1), "{name}: the frame {lo:?} {hi:?}");
+        let voids = s.model.opening_voids(&e);
+        assert_eq!(voids.len(), 1, "{name}: one void cuts the wall");
+        let (lo, hi) = bbox(&mut voids.iter().flatten().flatten().copied());
+        assert!(near(lo, [want.0[0], -300.0, 900.0]) && near(hi, [want.1[0], 300.0, 900.0 + h]), "{name}: the void {lo:?} {hi:?}");
+        // The frame's light, 50 mm inside the opening all round: its volume.
+        let v = f.values(name, &Default::default()).unwrap();
+        let flexed = f.flexed(&v).unwrap();
+        let z = flexed.planes.iter().find(|p| p.guid == sill).map(|p| p.start[2]).unwrap();
+        assert!(z.abs() < 1e-6, "{name}: Sill stays on Ref. Level, at {z}");
+        let built: f64 = f.pieces(&v).unwrap().iter().map(|p| crate::ifc_geometry_tests::volume(&p.tris)).sum();
+        assert!((built - (w * h - (w - 100.0) * (h - 100.0)) * 80.0).abs() < 1.0, "{name}: the frame's volume {built}");
+    }
+    run(&mut s, "modify", json!({"ids": [window], "type": "1200 x 1500"}));
+    // Its schedule lists both windows with their sizes.
+    let t = run(&mut s, "schedule", json!({"name": "Exit Windows"}));
+    assert_eq!(t["elements"], json!([[window], [east]]));
+    let sizes: Vec<(Value, Value)> = t["rows"].as_array().unwrap().iter().map(|r| (r[2].clone(), r[3].clone())).collect();
+    assert_eq!(sizes, [(json!(1200.0), json!(1500.0)), (json!(600.0), json!(600.0))]);
+    // IFC: two IfcWindows of those sizes, each filling an opening that voids its wall.
+    let ifc = crate::ifc::export(&s.model);
+    let n = |class: &str| ifc.lines().filter(|l| l.contains(&format!("={class}("))).count();
+    assert_eq!((n("IFCWINDOW"), n("IFCOPENINGELEMENT"), n("IFCRELVOIDSELEMENT"), n("IFCRELFILLSELEMENT")), (2, 2, 2, 2));
+    assert!(ifc.contains("'Exit Window:1200 x 1500',#") && ifc.contains(",1500.,1200.,.WINDOW."), "the window's OverallHeight and Width");
 }

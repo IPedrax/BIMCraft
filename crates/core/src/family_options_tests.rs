@@ -253,6 +253,112 @@ fn the_room_calculation_point_decides_which_room_a_component_is_in() {
     assert_eq!(room_of(&mut s, c), Value::Null);
 }
 
+/// Two rooms, `West` (0..4000) and `East` (4000..8000), split by a 200 mm wall along x = 4000 whose faces are at 3900 and
+/// 4100; the rooms measured `at` (centre or finish). `room` holds what else the rooms are made with (`limit_offset`, …).
+fn walled_rooms(at: &str, room: Value) -> (Session, [Id; 2]) {
+    let mut s = Session::new();
+    let generic = json!({"type": "Generic - 200mm"});
+    let wall = |points: Value, closed: bool| {
+        let mut p = generic.clone();
+        p["points"] = points;
+        p["closed"] = json!(closed);
+        p
+    };
+    run(&mut s, "wall", wall(json!([[0, 0], [8000, 0], [8000, 6000], [0, 6000]]), true));
+    run(&mut s, "wall", wall(json!([[4000, 0], [4000, 6000]]), false));
+    let mut ids = [0; 2];
+    for (i, (name, x)) in [("West", 2000), ("East", 6000)].into_iter().enumerate() {
+        let mut p = room.clone();
+        p["point"] = json!([x, 3000]);
+        p["name"] = json!(name);
+        ids[i] = id_of(&run(&mut s, "room", p));
+    }
+    run(&mut s, "room_area", json!({"at": at}));
+    (s, ids)
+}
+
+/// The starter families that hang on a wall, their back on its face.
+const WALL_DEVICES: [&str; 7] =
+    ["Outlet", "Three-Phase Outlet", "Switch", "Distribution Board", "Data Outlet", "Voice Outlet", "Patch Panel"];
+
+#[test]
+fn the_starter_wall_devices_have_a_room_calculation_point_in_front_of_the_wall() {
+    let s = Session::new();
+    for name in WALL_DEVICES {
+        let f = &s.model.families[name];
+        let v = f.values(f.types.keys().next().unwrap(), &Default::default()).unwrap();
+        let [x, y, z] = f.room_point(&v).unwrap().unwrap_or_else(|| panic!("{name} has no room calculation point"));
+        assert_eq!((x, y), (0.0, -crate::fixtures::ROOM_POINT_OUT), "{name}: on its axis, out in front of the wall");
+        // At the middle of the device's height: its forms' box spans that height.
+        let pieces = f.pieces(&v).unwrap();
+        let (lo, hi) = pieces.iter().fold((f64::MAX, f64::MIN), |(lo, hi), p| (lo.min(p.bottom), hi.max(p.top)));
+        assert!(((lo + hi) / 2.0 - z).abs() < 1.0, "{name}: {z} is not halfway up {lo}..{hi}");
+    }
+}
+
+#[test]
+fn a_wall_device_on_a_walls_face_is_in_the_room_on_its_side() {
+    for at in ["centre", "finish"] {
+        for name in WALL_DEVICES {
+            let (mut s, [west, east]) = walled_rooms(at, json!({}));
+            // On the middle wall's east face, facing east (its front, -y, turned to +x); on its west face, facing west.
+            let e = id_of(&run(&mut s, "component", json!({"family": name, "at": [4100, 3000], "angle": 90})));
+            let w = id_of(&run(&mut s, "component", json!({"family": name, "at": [3900, 3000], "angle": -90})));
+            // On the outer wall's inside face, facing in.
+            let south = id_of(&run(&mut s, "component", json!({"family": name, "at": [6000, 100], "angle": 180})));
+            let guid = |s: &Session, id: Id| json!(s.model.guid(id));
+            assert_eq!(room_of(&mut s, e), guid(&s, east), "{name} at {at}: on the east face");
+            assert_eq!(room_of(&mut s, w), guid(&s, west), "{name} at {at}: on the west face");
+            assert_eq!(room_of(&mut s, south), guid(&s, east), "{name} at {at}: on the outer wall");
+        }
+    }
+}
+
+#[test]
+fn a_component_over_a_rooms_top_or_under_its_bottom_is_not_in_it() {
+    // Rooms 2400 tall over their level, starting 0 over it.
+    let (mut s, [west, _]) = walled_rooms("centre", json!({"top_level": null, "limit_offset": 2400}));
+    cabinet(&mut s);
+    let guid = json!(s.model.guid(west));
+    let at = |s: &mut Session, offset: f64| id_of(&run(s, "component", json!({"family": "Cabinet", "at": [1000, 3000], "offset": offset})));
+    // Its insertion point at the floor, at the top, and over it (a component raised to a mezzanine).
+    let (floor, top, over) = (at(&mut s, 0.0), at(&mut s, 2400.0), at(&mut s, 2600.0));
+    assert_eq!(room_of(&mut s, floor), guid, "on the room's bottom: in it");
+    assert_eq!(room_of(&mut s, top), guid, "on its top: in it");
+    assert_eq!(room_of(&mut s, over), Value::Null, "over its top: in none");
+    // Its room calculation point hung over the room's top (a ceiling luminaire's, under the slab) takes it out too.
+    run(&mut s, "family", json!({"name": "Cabinet", "options": {"room_calculation_point": [500, 300, 2700]}}));
+    assert_eq!(room_of(&mut s, floor), Value::Null, "its point over the top");
+    run(&mut s, "family", json!({"name": "Cabinet", "options": {"room_calculation_point": [500, 300, 1200]}}));
+    assert_eq!(room_of(&mut s, floor), guid, "its point inside again");
+    // A room that starts 500 over its level holds nothing on the floor under it.
+    let (mut s, [west, _]) = walled_rooms("centre", json!({"base_offset": 500}));
+    cabinet(&mut s);
+    let low = at(&mut s, 0.0);
+    let high = at(&mut s, 600.0);
+    assert_eq!(room_of(&mut s, low), Value::Null, "under its bottom");
+    assert_eq!(room_of(&mut s, high), json!(s.model.guid(west)));
+    // IFC says the same: the one over the room is in no space, the one in it is in the West one.
+    let f = crate::ifc::export(&s.model);
+    assert_eq!(f.matches("=IFCRELREFERENCEDINSPATIALSTRUCTURE(").count(), 1, "only the one inside");
+}
+
+#[test]
+fn a_component_without_a_point_on_a_rooms_boundary_is_in_the_room_on_its_side_of_the_centre_line() {
+    for at in ["centre", "finish"] {
+        let (mut s, [_, east]) = walled_rooms(at, json!({}));
+        cabinet(&mut s);
+        // Its insertion point on the middle wall's east face, at the room's bottom.
+        let c = id_of(&run(&mut s, "component", json!({"family": "Cabinet", "at": [4100, 3000]})));
+        let rooms = crate::rooms::Rooms::new(&s.model);
+        let crate::model::Element::Component(cp) = &s.model.elements[c] else { panic!("a component") };
+        let plan = rooms.room_at(cp.level, P2(4100.0, 3000.0));
+        assert_eq!(rooms.component(cp), plan, "at {at}: its room is its plan point's, as before");
+        // Rooms take in what their walls' centre lines bound, however the project measures their areas (as #280 counts).
+        assert_eq!(plan, Some(east), "at {at}: east of the centre line");
+    }
+}
+
 /// The STEP entity number of the line holding `what`, e.g. `=IFCSPACE(` with `'East'`.
 fn entity(f: &str, what: &[&str]) -> String {
     f.lines().find(|l| what.iter().all(|w| l.contains(w))).and_then(|l| l.split('=').next()).unwrap().to_string()
@@ -319,7 +425,19 @@ fn data(f: &str) -> &str {
 fn rooms_without_room_points_export_as_before_but_for_the_references() {
     let mut s = Session::new();
     s.script(crate::sample::SAMPLE).unwrap();
-    assert!(s.model.families.values().all(|f| f.room_calculation_point.is_none() && f.omniclass.is_none()));
+    // The sample's components are of families with no room calculation point (the starter wall devices have one).
+    let placed: Vec<&str> = s
+        .model
+        .elements
+        .values()
+        .filter_map(|e| match e {
+            crate::model::Element::Component(c) => Some(c.family.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert!(!placed.is_empty());
+    assert!(placed.iter().all(|n| s.model.families[*n].room_calculation_point.is_none()), "{placed:?}");
+    assert!(s.model.families.values().all(|f| f.omniclass.is_none()));
     let now = crate::ifc::export(&s.model);
     let before = crate::ifc::export_with(&s.model, false);
     assert!(now.contains("=IFCRELREFERENCEDINSPATIALSTRUCTURE("), "the sample's furniture stands in its rooms");

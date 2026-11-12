@@ -296,7 +296,7 @@ fn edit_work_plane_puts_components_on_a_face_and_back_on_a_level() {
 }
 
 #[test]
-fn a_file_keeps_its_face_hosts_and_a_file_of_22_reads_as_it_did() {
+fn a_file_keeps_its_face_hosts_and_a_file_of_17_reads_as_it_did() {
     let mut s = Session::new();
     light(&mut s, false);
     let w = first(&run(&mut s, "wall", json!({"points": [[0, 0], [6000, 0]], "height": 3000})));

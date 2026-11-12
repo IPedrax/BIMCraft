@@ -53,14 +53,12 @@ pub(super) fn view(h: &mut Harness<BimApp>, which: Option<Which>) {
 }
 
 pub(super) fn editor<'a>(h: &'a Harness<'_, BimApp>) -> &'a crate::editor::FamilyEditor {
-    h.state().family_editor.as_ref().expect("a family open")
+    h.state().active_family().expect("a family open")
 }
 
-/// The view's last picture.
-fn picture(h: &Harness<BimApp>, pictures: &Pictures) -> egui::ColorImage {
-    let named = |id: &egui::TextureId| h.ctx.tex_manager().read().meta(*id).is_some_and(|m| m.name == "family-view");
-    let kept = pictures.0.lock().unwrap();
-    kept.iter().rev().find(|(id, _)| named(id)).map(|(_, p)| p.clone()).expect("the view was drawn")
+/// The view's pixels, as its drawing paints them over its picture (the drawing is painted as vectors).
+fn picture(h: &Harness<BimApp>, _: &Pictures) -> egui::ColorImage {
+    editor(h).view_pixels().expect("the view was drawn")
 }
 
 /// The picture's pixels within `r` of family point `p`.
@@ -102,11 +100,8 @@ pub(super) fn click_family(h: &mut Harness<BimApp>, p: [f64; 3]) {
     click_at(h, at);
 }
 
-/// Form `n` (from 1) selected from the Project Browser's Forms list, the Properties' Symbols tab in front.
+/// Form `n` (from 1) selected from the Project Browser's Forms list.
 pub(super) fn select_form(h: &mut Harness<BimApp>, n: usize) {
-    if h.query_by_label("Symbols").is_some() {
-        press(h, "Symbols");
-    }
     let label = format!("{n}. Extrusion");
     h.get_by_label(&label).scroll_to_me();
     h.run();
@@ -132,14 +127,14 @@ fn each_browser_entry_opens_its_view_and_the_tab_names_it() {
     ] {
         view(&mut h, which);
         assert_eq!(editor(&h).views.shown, which);
-        assert!(h.query_all_by_label(&format!("Box · {title}")).count() > 0, "the tab names {title}");
+        assert!(h.query_all_by_label(&format!("Box - {title}")).count() > 0, "the tab names {title}");
         let p = picture(&h, &pictures);
         assert!(!seen.contains(&p.pixels), "{title} is a picture of its own");
         seen.push(p.pixels);
     }
     view(&mut h, None);
     assert_eq!(editor(&h).views.shown, None);
-    assert!(h.query_all_by_label("Box · {3D}").count() > 0);
+    assert!(h.query_all_by_label("Box - {3D}").count() > 0);
 }
 
 #[test]
@@ -228,7 +223,7 @@ fn a_click_selects_a_form_or_a_plane_and_a_selected_plane_moves_by_a_drag() {
     view(&mut h, Some(Which::Elevation(Side::Front)));
     click_family(&mut h, [750.0, 0.0, 1000.0]);
     assert_eq!(editor(&h).selected_form(), Some(0), "the box");
-    assert!(h.query_all_by_label("Modify | Form").count() > 0, "its contextual tab, as in {{3D}}");
+    assert!(h.query_all_by_label("Modify | Extrusion").count() > 0, "its contextual tab, as in {{3D}}");
     view(&mut h, Some(Which::Plan));
     assert_eq!(editor(&h).selected_form(), Some(0), "a view opened keeps the selection");
     let edge = plane(&h, "Edge").guid;
@@ -249,6 +244,64 @@ fn a_click_selects_a_form_or_a_plane_and_a_selected_plane_moves_by_a_drag() {
     let (a, b) = (editor(&h).views.screen_of([0.0, 0.0, 0.0]).unwrap(), editor(&h).views.screen_of([300.0, 0.0, 0.0]).unwrap());
     drag_screen(&mut h, a, b, PointerButton::Primary);
     assert!(editor(&h).planes.iter().all(|p| !p.datum() || p.as_datum()), "the datums as they are");
+}
+
+/// A window with a Sill plane on Ref. Level, Align-locked to it, and Head 1200 above: as the blank window has Sill (F10c).
+const SILL_WINDOW: &str = r#"family {"name": "Sill Window", "category": "window", "parameters": [{"name": "Width", "value": 900}, {"name": "Height", "value": 1200}], "types": {"T": {}}, "ref_planes": [{"guid": "f1000000-0000-4000-8000-000000000003", "name": "Head", "start": [-1500, 0, 1200], "end": [1500, 0, 1200], "up": [0, 1, 0]}, {"guid": "f1000000-0000-4000-8000-000000000004", "name": "Sill", "start": [-1500, 0, 0], "end": [1500, 0, 0], "up": [0, 1, 0]}], "dimensions": [{"refs": [{"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a1"}, {"plane": "f1000000-0000-4000-8000-000000000004"}], "view": "front", "at": [1300, 0, 0], "locked": [{"segment": 0, "length": 0}], "alignment": true}], "forms": [{"plane": "xz", "profile": [[-450, 0], [450, 0], [450, 1200], [-450, 1200]], "from": -40, "to": 40}]}"#;
+
+/// The pointer over family point `p` in the view shown.
+fn hover_family(h: &mut Harness<BimApp>, p: [f64; 3]) {
+    let at = editor(h).views.screen_of(p).expect("a view shown");
+    h.hover_at(at);
+    h.run();
+}
+
+/// F10c: a plane on another (Sill on Ref. Level) is drawn, and picked: a click takes the one Tab has come to, lit, Tab stepping
+/// through those under the pointer as Revit's does; so a dimension measures from it. The blank window has one, locked.
+#[test]
+fn a_sill_plane_on_ref_level_is_picked_with_tab_and_dimensioned_to() {
+    let (mut h, _) = open(SILL_WINDOW, "Sill Window");
+    view(&mut h, Some(Which::Elevation(Side::Front)));
+    let sill = plane(&h, "Sill").guid;
+    let head = plane(&h, "Head").guid;
+    let level = bimcraft_core::family::REF_LEVEL;
+    // Both drawn there: the pointer over them finds both.
+    hover_family(&mut h, [-1300.0, 0.0, 0.0]);
+    let mut under = editor(&h).views.under.clone();
+    under.sort();
+    let mut both = vec![sill, level];
+    both.sort();
+    assert_eq!(under, both, "Sill and Ref. Level, one on the other");
+    // A click takes the first; Tab, the next; Tab again, back to the first.
+    click_family(&mut h, [-1300.0, 0.0, 0.0]);
+    let first = editor(&h).selected_plane().unwrap();
+    key(&mut h, Key::Tab);
+    click_family(&mut h, [-1300.0, 0.0, 0.0]);
+    let second = editor(&h).selected_plane().unwrap();
+    assert_ne!(first, second, "Tab took the other");
+    key(&mut h, Key::Tab);
+    click_family(&mut h, [-1300.0, 0.0, 0.0]);
+    assert_eq!(editor(&h).selected_plane(), Some(first), "and round again");
+    key(&mut h, Key::Escape);
+    // Aligned Dimension from Sill (Tabbed to, where it isn't first) to Head.
+    h.get_by_role_and_label(Role::Button, "Aligned Dimension").click();
+    h.run();
+    hover_family(&mut h, [-1300.0, 0.0, 0.0]);
+    while editor(&h).views.under.get(editor(&h).views.cycle) != Some(&sill) {
+        key(&mut h, Key::Tab);
+    }
+    click_family(&mut h, [-1300.0, 0.0, 0.0]);
+    click_family(&mut h, [-1300.0, 0.0, 1200.0]);
+    click_family(&mut h, [-1700.0, 0.0, 600.0]);
+    let d = editor(&h).dimensions.last().unwrap().clone();
+    assert_eq!(d.refs, vec![bimcraft_core::family::DimRef::Plane(sill), bimcraft_core::family::DimRef::Plane(head)]);
+    // The blank window ships with Sill, Align-locked to Ref. Level, and builds.
+    let blank = crate::editor::FamilyEditor::blank(bimcraft_core::family::Category::Window).draft_family().unwrap();
+    let sill = blank.planes.iter().find(|p| p.name == "Sill").expect("the blank's Sill");
+    assert!(sill.start[2] == 0.0 && sill.end[2] == 0.0, "on Ref. Level");
+    let lock = blank.dimensions.iter().find(|d| d.alignment).expect("its lock");
+    assert_eq!(lock.refs, vec![bimcraft_core::family::DimRef::Plane(level), bimcraft_core::family::DimRef::Plane(sill.guid)]);
+    assert_eq!(blank.check(&|_| true), Ok(()));
 }
 
 #[test]
@@ -277,13 +330,13 @@ fn work_plane_set_picks_a_plane_and_show_tints_it() {
 
 /// Where family point `p` is on screen in {3D}.
 fn in_3d(h: &Harness<BimApp>, p: [f64; 3]) -> egui::Pos2 {
-    editor(h).preview().expect("the preview drawn").screen(h.state().view_rect, p)
+    editor(h).drawn_3d().expect("{3D} drawn").screen(h.state().view_rect, p)
 }
 
 /// The {3D} preview's last picture's colour at family point `p`.
 fn preview_at(h: &Harness<BimApp>, pictures: &Pictures, p: [f64; 3]) -> Color32 {
     let img = super::preview_visibility::preview(h, pictures);
-    let (x, y, _) = editor(h).preview().expect("the preview drawn").cam.project(p);
+    let (x, y, _) = editor(h).drawn_3d().expect("{3D} drawn").cam.project(p);
     img.pixels[y as usize * img.size[0] + x as usize]
 }
 
@@ -305,7 +358,7 @@ fn work_plane_show_draws_the_work_plane_into_3d_hidden_by_the_forms_in_front_of_
     assert_ne!(preview_at(&h, &pictures, ON_PLANE), plane, "Ref. Level tinted where it is seen");
     assert_eq!(preview_at(&h, &pictures, ON_BOX), front, "the box in front of it keeps its colours");
     // Set to Center (Front/Back), upright through the origin, in front of the box: the box behind it is tinted.
-    if let Some(ed) = h.state_mut().family_editor.as_mut() {
+    if let Some(ed) = h.state_mut().active_family_mut() {
         ed.views.set_work_plane(bimcraft_core::family::PlaneRef::Plane(bimcraft_core::family::CENTER_FRONT_BACK));
     }
     h.run();
@@ -340,7 +393,7 @@ fn a_reference_line_shows_in_plan_and_in_an_elevation() {
 fn a_form_the_type_hides_is_halftone_until_preview_visibility_and_a_form_hidden_for_now_is_gone() {
     let (mut h, pictures) = open(&format!("{BOX}\n{CABINET}"), "Cabinet");
     // Type B hides the second form (2000 to 3000 east).
-    if let Some(ed) = h.state_mut().family_editor.as_mut() {
+    if let Some(ed) = h.state_mut().active_family_mut() {
         ed.preview_type("B");
     }
     view(&mut h, Some(Which::Plan));
@@ -452,4 +505,71 @@ mod gpu {
         assert_ne!(at(&before, on), at(&after, on), "tinted where Ref. Level is");
         assert_eq!(at(&before, front), at(&after, front), "the box in front of it keeps its colour");
     }
+}
+
+/// A family's connectors are drawn in {3D} and in its plans (#269), each at its place: the pointer over one lights it, a click
+/// selects it (Properties show it), as a form is; in a plan too.
+#[test]
+fn a_connector_is_lit_under_the_pointer_and_selected_by_a_click_in_3d_and_in_a_plan() {
+    let (mut h, _) = open("", "WC");
+    let marks = editor(&h).connector_marks();
+    assert_eq!(marks.len(), 2, "the WC's waste and cold water");
+    let (waste, cold) = (marks[0].at, marks[1].at);
+    // {3D}: over the waste outlet, it is lit; a click selects it.
+    h.hover_at(in_3d(&h, waste));
+    h.run();
+    assert_eq!(editor(&h).connector_hover, Some(0));
+    let at = in_3d(&h, waste);
+    click_at(&mut h, at);
+    assert_eq!(editor(&h).selected_connector(), Some(0));
+    assert!(h.query_all_by_label("Modify | Connectors").count() > 0, "its contextual tab");
+    // A click on the cold water's selects that one instead.
+    let at = in_3d(&h, cold);
+    click_at(&mut h, at);
+    assert_eq!(editor(&h).selected_connector(), Some(1));
+    // The plan: the same.
+    key(&mut h, Key::Escape);
+    view(&mut h, Some(Which::Plan));
+    hover_family(&mut h, cold);
+    assert_eq!(editor(&h).connector_hover, Some(1));
+    click_family(&mut h, cold);
+    assert_eq!(editor(&h).selected_connector(), Some(1));
+    // Off it, a click on the bowl selects a form, and lets the connector go.
+    click_family(&mut h, [0.0, -150.0, 0.0]);
+    assert_eq!(editor(&h).selected_connector(), None);
+}
+
+/// Every point of the lines the last frame painted, on screen.
+fn painted_points(h: &Harness<BimApp>) -> Vec<egui::Pos2> {
+    fn walk(s: &egui::Shape, out: &mut Vec<egui::Pos2>) {
+        match s {
+            egui::Shape::Vec(v) => v.iter().for_each(|s| walk(s, out)),
+            egui::Shape::LineSegment { points, .. } => out.extend(points),
+            egui::Shape::Path(p) => out.extend(&p.points),
+            _ => {}
+        }
+    }
+    let mut out = Vec::new();
+    for clipped in &h.output().shapes {
+        walk(&clipped.shape, &mut out);
+    }
+    out
+}
+
+#[test]
+fn a_family_plan_is_painted_as_vectors_as_a_project_plan_is_with_no_picture_uploaded() {
+    let (mut h, pictures) = open(BOX_FAMILY, "Box");
+    view(&mut h, Some(Which::Plan));
+    let named = |id: &egui::TextureId| h.ctx.tex_manager().read().meta(*id).is_some_and(|m| m.name == "family-view");
+    assert!(!pictures.0.lock().unwrap().iter().any(|(id, _)| named(id)), "a plan is no picture");
+    // The box's corner, where its outline's lines meet.
+    let corner = editor(&h).views.screen_of([500.0, 300.0, 0.0]).expect("a view shown");
+    assert!(painted_points(&h).iter().any(|p| p.distance(corner) < 1.5), "the box's outline painted at {corner:?}");
+    // An elevation's hidden-line picture goes under its lines.
+    view(&mut h, Some(Which::Elevation(Side::Front)));
+    let named = |id: &egui::TextureId| h.ctx.tex_manager().read().meta(*id).is_some_and(|m| m.name == "family-view");
+    assert!(pictures.0.lock().unwrap().iter().any(|(id, _)| named(id)), "the elevation's picture");
+    // Its datums, drawn over it as lines: Ref. Level's line through the origin.
+    let origin = editor(&h).views.screen_of([0.0, 0.0, 0.0]).expect("a view shown");
+    assert!(painted_points(&h).iter().any(|p| (p.y - origin.y).abs() < 1.5), "Ref. Level painted at {origin:?}");
 }

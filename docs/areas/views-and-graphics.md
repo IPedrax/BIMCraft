@@ -58,6 +58,17 @@ would: a compound element's layer lines, an opening's jambs and glass, a stair's
 holds only the categories set apart from `styles::default_of` (which draws as before: cut pen 10, seen pen 4). What's next on this
 foundation: annotation categories' object styles and subcategories, viewports as windows onto their views, and printing.
 
+Doors > Opening and Windows > Opening (`dooropening`, `windowopening`, rows of `graphics::SUBCATEGORIES`) are what Revit draws a
+door's swing and a window's opening lines in: a family symbol names its subcategory (`subcategory: "Opening"`, the English name,
+checked against its category's by `Family::check`), and a door of the project's own type draws its swing there too. The starter
+doors' and windows' symbols all name it. `Family::marks_tagged` and `Model::opening_marks` give each mark its subcategory's key,
+and the plan leaves out a mark whose subcategory the view hides (`Graphics::hides`, so the category hidden hides it too). A
+`Drawing` keeps the subcategory each primitive is drawn in (`subs`, beside `owners`): `by_category` gives it the subcategory's
+object style, and `Look::dress` the view's row for it (`Look::sub_paint`: the row laid over the category's, under the filters and
+the element's own override). Object Styles has a row for each (`styles::model_sub`, `model_subs`; the desktop's dialog lists it as
+Doors > Opening), drawing in its category's pens until given its own (`styles::inherited`). Rooms' subcategories have no Object
+Styles row. Revit's Plan Swing and Elevation Swing aren't rows: BIMCraft has no elevation symbols, and the swing is Opening. A view,
+template or Object Styles naming either key is part of what FORMAT 18 says an older build would refuse.
 The `sheet` command takes a named `size` (A3 by default), landscape: ISO A0–A4 and B1–B4, ARCH A–E and E1–E3, ANSI A–E and Super B
 (13 × 19 in). ISO, ARCH and ANSI accept a space or none (`ISO A4`, `ISOA4`, `ARCH E2`, `ARCHE2`); ISO also accepts the bare name
 (`A4`, `B1`). ANSI A also accepts `LETTER`, ANSI B `TABLOID` or `LEDGER`. Super B accepts `SUPER B`, `SUPERB` or `SUPER-B`. Names
@@ -83,17 +94,6 @@ is not among them, so the ARCH sizes and Super B follow PWG 5101.1-2023, the Pri
 Table 3 lists ARCH A 9 × 12, B 12 × 18, C 18 × 24, D 24 × 36, E 36 × 48, E2 26 × 38 and E3 27 × 39 in, 30 × 42 in (ARCH E1) as
 `wide-format`, and Super B 13 × 19 in; its Table 4 lists the ISO sizes again. An inch is 25.4 mm exactly, so the inch
 sizes go into millimetres with no rounding.
-Doors > Opening and Windows > Opening (`dooropening`, `windowopening`, rows of `graphics::SUBCATEGORIES`) are what Revit draws a
-door's swing and a window's opening lines in: a family symbol names its subcategory (`subcategory: "Opening"`, the English name,
-checked against its category's by `Family::check`), and a door of the project's own type draws its swing there too. The starter
-doors' and windows' symbols all name it. `Family::marks_tagged` and `Model::opening_marks` give each mark its subcategory's key,
-and the plan leaves out a mark whose subcategory the view hides (`Graphics::hides`, so the category hidden hides it too). A
-`Drawing` keeps the subcategory each primitive is drawn in (`subs`, beside `owners`): `by_category` gives it the subcategory's
-object style, and `Look::dress` the view's row for it (`Look::sub_paint`: the row laid over the category's, under the filters and
-the element's own override). Object Styles has a row for each (`styles::model_sub`, `model_subs`; the desktop's dialog lists it as
-Doors > Opening), drawing in its category's pens until given its own (`styles::inherited`). Rooms' subcategories have no Object
-Styles row. Revit's Plan Swing and Elevation Swing aren't rows: BIMCraft has no elevation symbols, and the swing is Opening. A view,
-template or Object Styles naming either key is what FORMAT 18 says an older build would refuse.
 
 Family components are split by category. A component is of its family's category (`graphics::category_of`; `component_category` names
 each `family::Category`: `furniture`, `casework`, `plumbing`, `drain`, `pipefitting`, `pipeaccessory`, `equipment`, `outlet`, `switch`,
@@ -772,7 +772,7 @@ the picture shows under them (`dims3d::pick`).
 ## Title blocks
 
 A sheet is drawn with the built-in title box unless it names a title block of the project's own (`Sheet::title_block`, a library
-entry of kind `title-block`, held by GUID in a file like any other name; FORMAT 19). A title block (`titleblock.rs`) is a box, `width`
+entry of kind `title-block`, held by GUID in a file like any other name; FORMAT 18). A title block (`titleblock.rs`) is a box, `width`
 by `height` mm, that stands in the sheet's bottom right corner inside the border, where the built-in one stands, with lines (in pens),
 solid fills (a logo) and lettering, all in mm on paper from its own bottom left corner; the border and NBR 17067's folding marks are
 drawn as before, and a view placed by default goes above its height (`sheet::spot`). Lettering may name fields as `{KEY}`: a field the

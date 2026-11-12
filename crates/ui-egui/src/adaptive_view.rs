@@ -6,6 +6,7 @@
 //! its edits in `adaptive/edit.rs`); Undo here steps back through this editor's edits, and Apply or OK makes the family the
 //! project's.
 use crate::lang::t;
+use crate::orbit::{Cube, Input, Orbit};
 use crate::style::pal;
 use bimcraft_core::adaptive::{Definition, Evaluated, Evaluation, Host, Operation, Picked, Plane, PointType, Show, WorkPlane, gizmo_end};
 use bimcraft_core::family::{CENTER_FRONT_BACK, CENTER_LEFT_RIGHT, PlaneRef, Planes, REF_LEVEL, Val};
@@ -37,8 +38,6 @@ pub(crate) enum Draw {
 /// A drag under way in the view.
 #[derive(Clone, Debug)]
 enum Drag {
-    Orbit(Pos2),
-    Pan(Pos2),
     /// A point dragged over the horizontal plane at its height.
     Plane(String, f64),
     /// A point dragged along a gizmo axis: which, where the drag began, and where the point was then.
@@ -54,6 +53,8 @@ pub(crate) struct Modeller {
     pub(crate) tool: Draw,
     pub(crate) selection: Vec<String>,
     drag: Option<Drag>,
+    /// How the view turns, pans and zooms: the project's 3D view's navigation (`Orbit::navigate`), in the view's points.
+    nav: Orbit,
     /// The solid or void Create Form makes: its depth, mm.
     pub(crate) depth: f64,
     /// Where Point Element and Line draw: Revit's Placement Plane, Ref. Level to begin with.
@@ -72,6 +73,7 @@ impl Default for Modeller {
             tool: Draw::Modify,
             selection: Vec::new(),
             drag: None,
+            nav: Orbit::default(),
             depth: 300.,
             work_plane: WorkPlane::default(),
             picking_plane: false,
@@ -126,62 +128,6 @@ fn room(r: &Evaluation) -> (P3, P3) {
         std::array::from_fn(|i| if i == 2 { (lo[i] - 300.).min(0.) } else { (lo[i] - 300.).min(-1500.) }),
         std::array::from_fn(|i| (hi[i] + 300.).max(1500.)),
     )
-}
-
-/// The ViewCube's faces, as Revit's: the direction each looks from (its outward normal), its name, and the camera's azimuth and
-/// elevation that look at the family from that side.
-const CUBE_FACES: [(P3, &str, f64, f64); 6] = [
-    ([0., 0., 1.], msg!("TOP"), -90., 89.),
-    ([0., 0., -1.], msg!("BOTTOM"), -90., -89.),
-    ([0., -1., 0.], msg!("FRONT"), -90., 0.),
-    ([0., 1., 0.], msg!("BACK"), 90., 0.),
-    ([1., 0., 0.], msg!("RIGHT"), 0., 0.),
-    ([-1., 0., 0.], msg!("LEFT"), 180., 0.),
-];
-
-/// Where the ViewCube stands in view `rect`: its top right corner, 84 px across.
-fn cube_rect(rect: Rect) -> Rect {
-    Rect::from_min_size(rect.right_top() + vec2(-98.0, 14.0), vec2(84.0, 84.0))
-}
-
-/// The house over the ViewCube's corner: Home, Revit's default 3D view.
-pub(crate) fn home_rect(rect: Rect) -> Rect {
-    Rect::from_min_size(cube_rect(rect).left_top() + vec2(-4.0, -6.0), vec2(18.0, 18.0))
-}
-
-/// The ViewCube's faces that face the camera, each on screen with its name and the view it gives.
-pub(crate) fn cube_faces(cam: &Camera, rect: Rect) -> Vec<(Vec<Pos2>, &'static str, f64, f64)> {
-    let (a, e) = (cam.azimuth.to_radians(), cam.elevation.clamp(-89.0, 89.0).to_radians());
-    let back = [e.cos() * a.cos(), e.cos() * a.sin(), e.sin()];
-    let right = [-a.sin(), a.cos(), 0.0];
-    let up = [back[1] * right[2] - back[2] * right[1], back[2] * right[0] - back[0] * right[2], back[0] * right[1] - back[1] * right[0]];
-    let box_ = cube_rect(rect);
-    let (c, half) = (box_.center(), box_.width() as f64 * 0.27);
-    let dot = |p: P3, q: P3| p[0] * q[0] + p[1] * q[1] + p[2] * q[2];
-    let on = |p: P3| c + vec2((dot(p, right) * half) as f32, (-dot(p, up) * half) as f32);
-    CUBE_FACES
-        .iter()
-        .filter(|(n, ..)| dot(*n, back) > 0.02)
-        .map(|(n, label, az, el)| {
-            // The face's two other axes, round it in turn.
-            let k = n.iter().position(|v| v.abs() > 0.5).unwrap_or(2);
-            let (u, v) = ((k + 1) % 3, (k + 2) % 3);
-            let corner = |su: f64, sv: f64| {
-                let mut p = *n;
-                p[u] = su;
-                p[v] = sv;
-                on(p)
-            };
-            (vec![corner(-1., -1.), corner(1., -1.), corner(1., 1.), corner(-1., 1.)], *label, *az, *el)
-        })
-        .collect()
-}
-
-/// Whether `p` is inside the convex polygon `poly`.
-fn inside(poly: &[Pos2], p: Pos2) -> bool {
-    let side = |a: Pos2, b: Pos2| (b.x - a.x) * (p.y - a.y) - (b.y - a.y) * (p.x - a.x);
-    let sides: Vec<f32> = (0..poly.len()).map(|i| side(poly[i], poly[(i + 1) % poly.len()])).collect();
-    sides.iter().all(|s| *s >= 0.) || sides.iter().all(|s| *s <= 0.)
 }
 
 /// How far each of a point's planes reaches from it on screen, px: half the square drawn.
@@ -367,22 +313,10 @@ pub(crate) fn show(
         None => fit(&r, rect.width(), rect.height()),
     };
     let px = |p: Pos2| (f64::from(p.x - rect.min.x), f64::from(p.y - rect.min.y));
-    let (hover, wheel, pinch, latest, mods, middle) = ui.input(|i| {
-        (
-            i.pointer.hover_pos().filter(|p| rect.contains(*p)),
-            i.smooth_scroll_delta.y,
-            i.zoom_delta(),
-            i.pointer.latest_pos(),
-            i.modifiers,
-            i.pointer.button_down(PointerButton::Middle),
-        )
-    });
-    if let Some(at) = hover {
-        let factor = (f64::from(wheel) * 0.004).exp() * f64::from(pinch);
-        if factor.is_finite() && factor != 1.0 {
-            cam = cam.zoom(factor.clamp(0.2, 5.0), px(at));
-        }
-    }
+    let (hover, latest, mods) = ui.input(|i| (i.pointer.hover_pos().filter(|p| rect.contains(*p)), i.pointer.latest_pos(), i.modifiers));
+    // The wheel and a pinch zoom toward the cursor, as in the project's 3D view; the view is drawn in points.
+    let input = Input::in_points(ui, rect, &response);
+    cam = m.nav.zoom(ui.ctx(), &input, cam, None);
     let screen_of = |cam: &Camera, p: P3| -> Option<(f64, f64, f64)> {
         let (x, y, z) = cam.project(p);
         (x.is_finite() && y.is_finite()).then_some((x, y, z))
@@ -413,10 +347,11 @@ pub(crate) fn show(
                 })
                 .map(|k| (id.clone(), k, *o))
         });
-        let on_cube = cube_rect(rect).contains(origin);
-        m.drag = Some(match (primary && !on_cube, m.tool == Draw::Modify, on_arrow) {
-            (true, true, Some((id, k, o))) => Drag::Axis(id, k, origin, o),
-            (true, true, None) => match hidden.seen(&r).pick(&|p| screen_of(&cam, p), px(origin)) {
+        let on_cube = Orbit::cube_rect(rect).contains(origin);
+        // Else the view's navigation turns or pans it (below).
+        m.drag = match (primary && !on_cube, m.tool == Draw::Modify, on_arrow) {
+            (true, true, Some((id, k, o))) => Some(Drag::Axis(id, k, origin, o)),
+            (true, true, None) => Some(match hidden.seen(&r).pick(&|p| screen_of(&cam, p), px(origin)) {
                 Some(Picked::Point(id)) if movable(d, &id) => {
                     m.selection = vec![id.clone()];
                     let z = r.origin(&id).map_or(0., |o| o[2]);
@@ -424,24 +359,16 @@ pub(crate) fn show(
                 }
                 // On empty space, as Revit's: a selection box.
                 _ => Drag::Box(origin),
-            },
-            _ if middle && !mods.shift => Drag::Pan(origin),
-            _ => Drag::Orbit(origin),
-        });
+            }),
+            _ => None,
+        };
     }
+    // Shift and the middle button, or a drag the tool doesn't take, orbit; the middle button pans.
+    cam = m.nav.navigate(ui, &response, &input, cam, m.drag.is_some(), false, false, None).cam;
     if response.dragged()
         && let (Some(drag), Some(now)) = (m.drag.clone(), latest)
     {
         match drag {
-            Drag::Orbit(last) => {
-                let delta = now - last;
-                cam = cam.orbit(-f64::from(delta.x) * 0.4, f64::from(delta.y) * 0.4);
-                m.drag = Some(Drag::Orbit(now));
-            }
-            Drag::Pan(last) => {
-                cam = cam.pan(px(last), px(now));
-                m.drag = Some(Drag::Pan(now));
-            }
             Drag::Plane(id, z) => {
                 if let Some(to) = cam.on_plane(px(now), z) {
                     let _ = d.move_point(&id, &r, to);
@@ -477,7 +404,7 @@ pub(crate) fn show(
     }
     m.camera = Some(cam);
     let seen = hidden.seen(&r);
-    let hovered = hover.filter(|_| m.drag.is_none()).and_then(|at| seen.pick(&|p| screen_of(&cam, p), px(at)));
+    let hovered = hover.filter(|_| m.drag.is_none() && !m.nav.turning()).and_then(|at| seen.pick(&|p| screen_of(&cam, p), px(at)));
     // Placement Plane's Pick: the plane under the pointer lights up, and a click makes it the work plane; Escape gives up.
     let plane_at = |at: Pos2| {
         let half = PLANE_REACH / cam.scale.max(1e-9);
@@ -485,16 +412,12 @@ pub(crate) fn show(
     };
     let lit = if m.picking_plane { hover.and_then(plane_at) } else { None };
     // The ViewCube: a face clicked looks at the family from that side; the house, Revit's default 3D view.
-    let on_cube = response
-        .clicked()
-        .then(|| response.interact_pointer_pos())
-        .flatten()
-        .filter(|at| cube_rect(rect).contains(*at) || home_rect(rect).contains(*at));
+    let on_cube = response.clicked().then(|| response.interact_pointer_pos()).flatten().filter(|at| Orbit::on_cube(rect, *at));
     if let Some(at) = on_cube {
-        if home_rect(rect).contains(at) {
-            m.camera = None;
-        } else if let Some((_, _, az, el)) = cube_faces(&cam, rect).into_iter().find(|(poly, ..)| inside(poly, at)) {
-            m.camera = Some(Camera { azimuth: az, elevation: el, ..cam });
+        match Orbit::cube_click(&cam, rect, at) {
+            Some(Cube::Home) => m.camera = None,
+            Some(Cube::Look(azimuth, elevation)) => m.camera = Some(Camera { azimuth, elevation, ..cam }),
+            None => {}
         }
     } else if m.picking_plane
         && response.clicked()
@@ -914,17 +837,7 @@ fn draw(
         }
     }
     // The ViewCube, as Revit's: the faces turned to the eye, named, the one under the pointer lit; the house over its corner.
-    let face_fill = if crate::style::canvas_dark() { Color32::from_rgb(92, 97, 106) } else { Color32::from_rgb(236, 237, 239) };
-    let edge = if crate::style::canvas_dark() { Color32::from_rgb(150, 155, 165) } else { Color32::from_rgb(120, 124, 130) };
-    for (poly, label, ..) in cube_faces(cam, rect) {
-        let lit = hover.is_some_and(|h| inside(&poly, h));
-        let centre = poly.iter().fold(Pos2::ZERO, |a, q| a + q.to_vec2() / poly.len() as f32);
-        p.add(Shape::convex_polygon(poly, if lit { cp.hover.gamma_multiply(0.6) } else { face_fill }, Stroke::new(1.0, edge)));
-        p.text(centre, egui::Align2::CENTER_CENTER, t(label), egui::FontId::proportional(9.5), ink.gamma_multiply(0.85));
-    }
-    let home = home_rect(rect);
-    let home_lit = hover.is_some_and(|h| home.contains(h));
-    crate::icons::paint(&p, crate::icons::Icon::Home, home, if home_lit { cp.hover } else { edge });
+    Orbit::draw_cube(&p, cam, rect, hover);
     p.rect_stroke(rect, 2.0, Stroke::new(1.0, pal().border), StrokeKind::Inside);
     if all.order.is_empty() {
         p.text(

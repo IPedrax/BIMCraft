@@ -243,6 +243,14 @@ impl Category {
 pub const WALL: &str = "Wall Thickness";
 /// A wall as thick as this is assumed where a hosted family is built without one: 200 mm.
 pub const DEFAULT_WALL: f64 = 200.0;
+
+/// The wall a door's or a window's `values` stand in: its `Wall Thickness`, else [`DEFAULT_WALL`].
+fn wall_of(values: &BTreeMap<String, Val>) -> f64 {
+    match values.get(WALL) {
+        Some(Val::Number(t)) => *t,
+        _ => DEFAULT_WALL,
+    }
+}
 /// The parameters that open a hosted family's wall: its width and its height, and the height of its sill.
 pub const WIDTH: &str = msg!("Width");
 pub const HEIGHT: &str = msg!("Height");
@@ -802,6 +810,41 @@ pub struct Form {
     /// file of 17 did. A void cuts whatever they say: they are drawing, and a void is never drawn.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub visibility: Option<Visibility>,
+    /// What a void cuts (F10d): none, [`Cuts::Both`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cuts: Option<Cuts>,
+}
+
+/// What a void cuts (F10d): the solid forms listed before it that it reaches, and in a door's or a window's family the wall
+/// it stands in where it reaches into it, whatever its place in the list (`both`, a void's unless said); the wall alone
+/// (`host`: an opening's void round the frame, which it would otherwise cut away); or the forms alone (`forms`: a sash's
+/// light, which cuts the sash and leaves the wall its rectangle).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Cuts {
+    #[default]
+    Both,
+    Host,
+    Forms,
+}
+
+impl Cuts {
+    /// Whether it cuts the solid forms listed before it.
+    pub fn forms(self) -> bool {
+        self != Cuts::Host
+    }
+
+    /// Whether it cuts the host.
+    pub fn host(self) -> bool {
+        self != Cuts::Forms
+    }
+}
+
+impl Form {
+    /// What it cuts, a void: as it says, else both.
+    pub fn cuts(&self) -> Cuts {
+        self.cuts.unwrap_or_default()
+    }
 }
 
 fn is_zero_i32(x: &i32) -> bool {
@@ -852,6 +895,8 @@ struct FormIn {
     twist: i32,
     #[serde(default)]
     visibility: Option<Visibility>,
+    #[serde(default)]
+    cuts: Option<Cuts>,
 }
 
 impl TryFrom<FormIn> for Form {
@@ -900,6 +945,7 @@ impl TryFrom<FormIn> for Form {
             sweep: f.sweep,
             twist: f.twist,
             visibility: f.visibility,
+            cuts: f.cuts,
         })
     }
 }
@@ -2105,6 +2151,9 @@ impl Family {
             if ways != 1 {
                 return Err(format!("{who}: it takes a `sketch` (or its `profile` or `circle`) or a `mesh`, one of them"));
             }
+            if form.cuts.is_some() && !form.void {
+                return Err(format!("{who}: `cuts` says what a void cuts; a solid form cuts nothing, so leave it out"));
+            }
             if form.revolves() && !form.mesh.is_empty() {
                 return Err(format!("{who}: a `mesh` is as it is; an `axis` turns a `sketch`, a `profile` or a `circle`"));
             }
@@ -2519,7 +2568,10 @@ impl Family {
                 continue;
             };
             if self.forms[i].void {
-                voids.push((i, out.len(), piece.tris));
+                // A void that cuts its host alone (F10d) cuts none of its forms.
+                if self.forms[i].cuts().forms() {
+                    voids.push((i, out.len(), piece.tris));
+                }
             } else {
                 out.push(piece);
             }
@@ -2635,38 +2687,39 @@ impl Family {
     }
 
     /// The voids a door's or a window's family cuts its wall with, sized by `values`, in its own axes: each void that reaches
-    /// across into the wall (its `Wall Thickness` about y = 0) and cuts none of its forms, by their boxes (none listed before it that it reaches, as [`Shape::over`] says, the test a warning
-    /// of a void that cuts nothing makes), so one listed before them all. They are the opening's shape in the wall, in place
-    /// of the rectangle of its `Width` and `Height`; none, of another category, or of a family with none, and the
-    /// rectangle stands. A void that cuts a form (a sash's light) cuts only that form, as before.
+    /// across into the wall (its `Wall Thickness` about y = 0) and cuts the host ([`Cuts::host`]: unless it says `forms`),
+    /// whatever its place in the list, as Revit's do (F10d; before, only a void that cut none of the forms listed before it
+    /// did). They are the opening's shape in the wall, in place of the rectangle of its `Width` and `Height`; none, of another
+    /// category, or of a family with none, and the rectangle stands. A void that cuts the forms alone (a sash's light) cuts
+    /// them and leaves the wall to the rest.
     pub fn host_voids(&self, values: &BTreeMap<String, Val>) -> Result<Vec<Vec<[P3; 3]>>, String> {
-        if !self.category.hosted() || !self.forms.iter().any(|f| f.void) {
+        if !self.category.hosted() || !self.forms.iter().any(|f| f.void && f.cuts().host()) {
             return Ok(Vec::new());
         }
         // Across the wall it stands in: one that doesn't reach the wall cuts nothing, and leaves the rectangle.
-        let wall = match values.get(WALL) {
-            Some(Val::Number(t)) => *t,
-            _ => DEFAULT_WALL,
-        };
-        self.free_voids(values, |shape| shape.max[1] > -wall / 2.0 && shape.min[1] < wall / 2.0)
-    }
-
-    /// The voids a component of it placed on a face cuts its host with (Place on Face), sized by `values`, in its own axes:
-    /// each void that cuts none of its forms, by their boxes, as [`Family::host_voids`] finds a door's. Whether one reaches
-    /// its host is for where it stands to say: one that doesn't cuts nothing. Revit's face-based families always cut their
-    /// host with such voids, whatever `cut_with_voids_when_loaded` says (that is the project's voids cutting it).
-    pub fn face_voids(&self, values: &BTreeMap<String, Val>) -> Result<Vec<Vec<[P3; 3]>>, String> {
-        if self.adaptive.is_some() || !self.forms.iter().any(|f| f.void) {
-            return Ok(Vec::new());
-        }
-        self.free_voids(values, |_| true)
-    }
-
-    /// The voids that cut none of the solid forms listed before them, by their boxes, and that `reach` takes.
-    fn free_voids(&self, values: &BTreeMap<String, Val>, reach: impl Fn(&Shape) -> bool) -> Result<Vec<Vec<[P3; 3]>>, String> {
+        let wall = wall_of(values);
         let f = self.flexed(values).map_err(|e| e.to_string())?;
         let mut read = HashMap::new();
-        let (mut solids, mut out): (Vec<Shape>, Vec<Vec<[P3; 3]>>) = (Vec::new(), Vec::new());
+        let mut out = Vec::new();
+        for i in (0..f.forms.len()).filter(|i| f.forms[*i].void && f.forms[*i].cuts().host()) {
+            let Some(piece) = f.solid(i, values, &mut read).map_err(|e| format!("form {}: {e}", i + 1))? else {
+                continue;
+            };
+            if Shape::of(i, true, &piece.tris).is_some_and(|s| s.max[1] > -wall / 2.0 && s.min[1] < wall / 2.0) {
+                out.push(piece.tris);
+            }
+        }
+        Ok(out)
+    }
+
+    /// The voids a door's or a window's family cut its wall with before a void had `cuts` (F10d), by `values`: each that
+    /// reaches into the wall and cuts none of the solid forms listed before it, by their boxes. The forms' places in its
+    /// list, for [`Family::pin_cuts`].
+    fn voids_before_cuts(&self, values: &BTreeMap<String, Val>) -> Result<Vec<usize>, String> {
+        let wall = wall_of(values);
+        let f = self.flexed(values).map_err(|e| e.to_string())?;
+        let mut read = HashMap::new();
+        let (mut solids, mut out): (Vec<Shape>, Vec<usize>) = (Vec::new(), Vec::new());
         for i in 0..f.forms.len() {
             let Some(piece) = f.solid(i, values, &mut read).map_err(|e| format!("form {}: {e}", i + 1))? else {
                 continue;
@@ -2674,7 +2727,74 @@ impl Family {
             let Some(shape) = Shape::of(i, f.forms[i].void, &piece.tris) else { continue };
             if !shape.void {
                 solids.push(shape);
-            } else if !solids.iter().any(|solid| shape.over(solid)) && reach(&shape) {
+            } else if !solids.iter().any(|solid| shape.over(solid)) && shape.max[1] > -wall / 2.0 && shape.min[1] < wall / 2.0 {
+                out.push(i);
+            }
+        }
+        Ok(out)
+    }
+
+    /// FORMAT 18 to 19 (F10d), a door's or a window's family: each void that the old rule didn't cut the wall with, though
+    /// it reaches into it (it cut a solid form listed before it, by their boxes, in any of the family's types), now says
+    /// `forms`, so it cuts what it did and nothing more; one that did cut the wall cut none of the forms, and reads as it did.
+    /// The union over the types is a limit: the old rule decided type by type, and one `cuts` is the void's for all of them,
+    /// so a type whose void was clear of the solids (another type's, or another default of an instance parameter, overlapping)
+    /// no longer cuts the wall. It keeps the opening's rectangle there, as upstream's 17 and 18, which had no such rule, drew it.
+    pub(crate) fn pin_cuts(&mut self) {
+        for n in &mut self.nested {
+            n.family.pin_cuts();
+        }
+        if !self.category.hosted() || !self.forms.iter().any(|f| f.void && f.cuts.is_none()) {
+            return;
+        }
+        let sets: Vec<BTreeMap<String, Val>> = self.types.keys().filter_map(|t| self.values(t, &BTreeMap::new()).ok()).collect();
+        let wall_of_type = |values: &BTreeMap<String, Val>| {
+            let wall = wall_of(values);
+            let f = self.flexed(values).ok()?;
+            let mut read = HashMap::new();
+            let reach: Vec<usize> = (0..f.forms.len())
+                .filter(|i| f.forms[*i].void)
+                .filter(|i| {
+                    f.solid(*i, values, &mut read)
+                        .ok()
+                        .flatten()
+                        .and_then(|p| Shape::of(*i, true, &p.tris))
+                        .is_some_and(|s| s.max[1] > -wall / 2.0 && s.min[1] < wall / 2.0)
+                })
+                .collect();
+            Some((reach, self.voids_before_cuts(values).ok()?))
+        };
+        let mut pinned: BTreeSet<usize> = BTreeSet::new();
+        for values in &sets {
+            if let Some((reach, took)) = wall_of_type(values) {
+                pinned.extend(reach.into_iter().filter(|i| !took.contains(i)));
+            }
+        }
+        for i in pinned {
+            if let Some(form) = self.forms.get_mut(i).filter(|f| f.cuts.is_none()) {
+                form.cuts = Some(Cuts::Forms);
+            }
+        }
+    }
+
+    /// The voids a component of it placed on a face cuts its host with (Place on Face), sized by `values`, in its own axes:
+    /// each void that cuts the host ([`Cuts::host`]: `both` or `host`), whatever its place in the list, as a door's cuts its
+    /// wall ([`Family::host_voids`], F10d); never one that cuts the forms alone. Whether one reaches its host is for where it
+    /// stands to say: one that doesn't cuts nothing. Revit's face-based families always cut their host with such voids,
+    /// whatever `cut_with_voids_when_loaded` says (that is the project's voids cutting it). Before, a `both` void listed after
+    /// a solid it overlapped, by their boxes, cut the face no more: a face-hosted component came only with 19, so no file
+    /// holds one placed by that rule, and none needs a step.
+    pub fn face_voids(&self, values: &BTreeMap<String, Val>) -> Result<Vec<Vec<[P3; 3]>>, String> {
+        if self.adaptive.is_some() || !self.forms.iter().any(|f| f.void && f.cuts().host()) {
+            return Ok(Vec::new());
+        }
+        let f = self.flexed(values).map_err(|e| e.to_string())?;
+        let mut read = HashMap::new();
+        let mut out = Vec::new();
+        for i in (0..f.forms.len()).filter(|i| f.forms[*i].void && f.forms[*i].cuts().host()) {
+            if let Some(piece) = f.solid(i, values, &mut read).map_err(|e| format!("form {}: {e}", i + 1))?
+                && Shape::of(i, true, &piece.tris).is_some()
+            {
                 out.push(piece.tris);
             }
         }
@@ -3346,13 +3466,15 @@ fn hosted_library(language: crate::language::Language) -> Vec<(String, Value)> {
     ));
 
     // A casement window: two sashes meeting in the middle, each a box with a void through it, its bars 40 wide
-    // (20 where the sashes meet), and its pane after the void, so the void leaves it whole.
+    // (20 where the sashes meet), and its pane after the void, so the void leaves it whole; the void cuts the sash alone.
     let mut forms = window_frame(&block);
     let sash = |outer: [&str; 2], bars: [i32; 2]| -> Vec<Value> {
         let inside = [format!("({}) + {}", outer[0], bars[0]), format!("({}) - {}", outer[1], bars[1])];
         let (low, high) = (format!("{inner_b} + 40"), format!("{inner_t} - 40"));
         let mut hole = block([&inside[0], &inside[1]], ["-30", "30"], [&low, &high], "");
         hole["void"] = json!(true);
+        // The sash's light: it cuts the sash, and leaves the wall to the opening's rectangle (F10d).
+        hole["cuts"] = json!("forms");
         vec![block(outer, ["-20", "20"], [&inner_b, &inner_t], &frame_mat), hole, pane([&inside[0], &inside[1]], [&low, &high])]
     };
     forms.extend(sash([&inner_l, "-1"], [40, 20]));
