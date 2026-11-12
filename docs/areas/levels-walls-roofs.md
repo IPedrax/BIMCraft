@@ -192,7 +192,8 @@ value/>` each, a rule left out being the generic code's, what the file has that 
 `flip` on a stair makes it climb the other way over the same ground (`stairs::flipped`). A stair's grips, where they are and
 what a drag of one makes of the stair, are `stairs::grips` and `stairs::dragged`; the desktop's `stairgrips.rs` draws them on
 the plan and runs `modify` on release.
-`stair_solve` (`codes::solve`) proposes the stairs nearest one that fit the rules, least change first, and makes one with `apply`.
+`stairs::headroom` finds the floors standing over a stair's steps with less than the code's headroom, which `stair_check` reports
+and `stair_opening` cuts open with a shaft through each (`stairs::united` is the outline round the steps). `stair_solve` (`codes::solve`) proposes the stairs nearest one that fit the rules, least change first, and makes one with `apply`.
 Nothing is ever refused for breaking a rule: winders under a
 code without them are built and reported. The desktop's is Manage > Building Codes (`ui-egui/src/codes.rs`), apart from
 Technical Standards, which is about drafting. Where stairs are going, and why: [an advanced stair

@@ -40,7 +40,7 @@ msgstr ""
 msgid "Brick 225 x 75"
 msgstr ""
 
-#: crates/core/src/commands.rs:4320
+#: crates/core/src/commands.rs:4330
 msgid "Camera"
 msgstr ""
 
@@ -116,7 +116,7 @@ msgstr ""
 msgid "Data Outlet"
 msgstr ""
 
-#: crates/core/src/commands.rs:10032
+#: crates/core/src/commands.rs:10042
 msgid "Dependent"
 msgstr ""
 
@@ -192,8 +192,8 @@ msgstr ""
 msgid "Electrical Power"
 msgstr ""
 
-#: crates/core/src/commands.rs:9816
-#: crates/core/src/commands.rs:12408
+#: crates/core/src/commands.rs:9826
+#: crates/core/src/commands.rs:12418
 msgid "Elevation"
 msgstr ""
 
@@ -310,7 +310,7 @@ msgstr ""
 msgid "Length"
 msgstr ""
 
-#: crates/core/src/commands.rs:6531
+#: crates/core/src/commands.rs:6541
 #: crates/core/src/model.rs:3315
 msgid "Level"
 msgstr ""
@@ -335,7 +335,7 @@ msgstr ""
 msgid "Masking"
 msgstr ""
 
-#: crates/core/src/commands.rs:7804
+#: crates/core/src/commands.rs:7814
 msgid "Mass"
 msgstr ""
 
@@ -423,7 +423,7 @@ msgstr ""
 msgid "Porcelain"
 msgstr ""
 
-#: crates/core/src/commands.rs:3007
+#: crates/core/src/commands.rs:3017
 msgid "Project"
 msgstr ""
 
@@ -451,7 +451,7 @@ msgstr ""
 msgid "Roof tiles"
 msgstr ""
 
-#: crates/core/src/commands.rs:8029
+#: crates/core/src/commands.rs:8039
 msgid "Room"
 msgstr ""
 
@@ -487,8 +487,8 @@ msgstr ""
 msgid "Seat Height"
 msgstr ""
 
-#: crates/core/src/commands.rs:9793
-#: crates/core/src/commands.rs:12407
+#: crates/core/src/commands.rs:9803
+#: crates/core/src/commands.rs:12417
 msgid "Section"
 msgstr ""
 
@@ -612,7 +612,7 @@ msgstr ""
 msgid "Unbounded Height"
 msgstr ""
 
-#: crates/core/src/commands.rs:10173
+#: crates/core/src/commands.rs:10183
 msgid "Unnamed"
 msgstr ""
 

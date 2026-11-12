@@ -307,3 +307,18 @@ fn the_stair_tool_climbs_to_a_level_chosen_and_stands_on_each_on_the_way() {
     assert_eq!((storeys[0]["risers"].as_u64(), storeys[1]["risers"].as_u64()), (Some(17), Some(20)));
     assert_eq!(field(&h, st[0], "landings"), json!([{"at": 8.0, "turn": -90.0}]));
 }
+
+#[test]
+fn the_code_check_window_cuts_the_floor_over_a_stair_open() {
+    let mut h = app(BOX);
+    h.state_mut().run("floor", json!({"level": "Level 2", "boundary": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]]}));
+    let id = h.state_mut().run("stair", json!({"start": [1000, 1000], "angle": 0})).unwrap()["id"].as_u64().unwrap();
+    h.state_mut().code_findings = Some(id);
+    h.run();
+    assert!(h.query_by_label("Minimum Headroom").is_some(), "the floor over it leaves it no headroom");
+    let shafts = ids(&h, "shaft").len();
+    h.get_by_label("Cut Opening").click_accesskit();
+    h.run();
+    assert_eq!(ids(&h, "shaft").len(), shafts + 1);
+    assert!(h.query_by_label("Building Code Check").is_none(), "with its headroom, it is inside the rules");
+}

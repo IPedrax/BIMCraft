@@ -1697,6 +1697,16 @@ other_files(
         building_code_import,
     ),
     edit(
+        "stair_opening",
+        "Stair Opening",
+        &[],
+        "{id, headroom?} cuts the floors over stair `id` open where they leave less than the headroom over its steps (the \
+         building code's, or `headroom` mm): a shaft through each such floor alone, round the steps short of it. The reply \
+         names the `floors` and the `shafts` made; none when the stair has its headroom. The shafts are elements of their own: \
+         they stay where they are when the stair changes, to be deleted and made again",
+        stair_opening,
+    ),
+    edit(
         "stair_solve",
         "Solve Stair",
         &[],
@@ -13597,6 +13607,45 @@ fn building_code_import(s: &mut Session, p: &Value) -> R {
         m.stair_rules = None;
     }
     Ok(json!({"code": name, "left_out": left_out, "set": set}))
+}
+
+/// `stair_opening`: the floors over a stair cut open where they leave less than the headroom.
+fn stair_opening(s: &mut Session, p: &Value) -> R {
+    let c = "stair_opening";
+    only(c, p, &["id", "headroom"])?;
+    let m = &s.model;
+    let id = id_opt(c, p, "id")?.and_then(|g| m.elements.id(g)).ok_or_else(|| bad(c, "`id`, a stair, is required"))?;
+    let Some(Element::Stair(st)) = m.elements.get(id) else { return Err(bad(c, format!("{id} is not a stair"))) };
+    let least = match num(c, p, "headroom")? {
+        Some(h) if (0.0..=10_000.0).contains(&h) => h,
+        Some(h) => return Err(bad(c, format!("`headroom` is 0 to 10000 mm, not {h}"))),
+        None => m.stair_rules().headroom,
+    };
+    let mut made: Vec<Shaft> = Vec::new();
+    let mut floors = Vec::new();
+    for (floor, _, rings) in stairs::headroom(m, st, least) {
+        let Some(Element::Floor(f)) = m.elements.get(floor) else { continue };
+        let thickness = m.types.floor.get(&f.type_name).map_or(0.0, |t| t.thickness);
+        floors.push(floor);
+        // Through the floor alone: from just under it to just over it.
+        made.extend(stairs::united(&rings).into_iter().map(|mut boundary| {
+            if geom::area(&boundary) < 0.0 {
+                boundary.reverse();
+            }
+            let boundary = boundary.into_iter().map(micron).collect();
+            Shaft {
+                level: f.level,
+                boundary,
+                top_level: None,
+                height: thickness + 2.0,
+                base_offset: f.offset - thickness - 1.0,
+                sketch: Vec::new(),
+            }
+        }));
+    }
+    let m = s.model_mut();
+    let shafts: Vec<Id> = made.into_iter().map(|sh| m.insert(Element::Shaft(sh))).collect();
+    Ok(json!({"id": id, "headroom": least, "floors": floors, "shafts": shafts}))
 }
 
 /// `stair_solve`: the stairs nearest one that fit the project's building code, and with `apply`, one of them made.

@@ -246,6 +246,8 @@ impl BimApp {
         };
         let mut close = false;
         let mut apply = None;
+        let mut open_floor = false;
+        let low = list.as_array().is_some_and(|l| l.iter().any(|f| f["rule"] == "headroom"));
         let r = Modal::new(UiId::new("stair-code-findings"), t("Building Code Check")).width(460.0).show(ctx, |ui| {
             popup::body(ui, |ui| {
                 ScrollArea::vertical().max_height(420.0).show(ui, |ui| {
@@ -292,6 +294,14 @@ impl BimApp {
             });
             popup::footer(ui, |ui| {
                 ui.horizontal(|ui| {
+                    if low
+                        && ui
+                            .button(t("Cut Opening"))
+                            .on_hover_text(t("Cut the floor over the stair open where it leaves less than the headroom over its steps"))
+                            .clicked()
+                    {
+                        open_floor = true;
+                    }
                     if ui.button(t("Building Codes…")).on_hover_text(t("Open the project's building code and its rules")).clicked() {
                         self.codes_dialog = Some(CodesDialog::new(&m));
                         close = true;
@@ -304,6 +314,9 @@ impl BimApp {
         });
         if let Some(n) = apply {
             self.run("stair_solve", json!({"id": id, "apply": n}));
+        }
+        if open_floor {
+            self.run("stair_opening", json!({"id": id}));
         }
         if close || r.should_close() {
             self.code_findings = None;

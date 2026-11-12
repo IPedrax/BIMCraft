@@ -157,7 +157,7 @@ msgstr "Une boucle ne délimite aucune surface."
 msgid "A loop needs three lines: click a point that isn't the start."
 msgstr "Une boucle exige trois lignes: cliquer sur un point autre que le départ."
 
-#: crates/ui-egui/src/codes.rs:402
+#: crates/ui-egui/src/codes.rs:415
 msgid "A name of your own"
 msgstr ""
 
@@ -724,7 +724,7 @@ msgid "Applies to all views; snaps to the active view's enabled main grid or sub
 msgstr "S'applique à toutes les vues; s'accroche à la grille principale ou à la sous-grille activée de la vue active, même masquée"
 
 #: crates/ui-egui/src/background_grid.rs:112
-#: crates/ui-egui/src/codes.rs:430
+#: crates/ui-egui/src/codes.rs:443
 #: crates/ui-egui/src/display.rs:80
 #: crates/ui-egui/src/editor.rs:1134
 #: crates/ui-egui/src/electrical.rs:501
@@ -747,7 +747,7 @@ msgstr "Appliquer Masquer/Isoler à la vue"
 msgid "Apply Overrides"
 msgstr "Appliquer les remplacements"
 
-#: crates/ui-egui/src/codes.rs:267
+#: crates/ui-egui/src/codes.rs:269
 msgid "Apply {}"
 msgstr ""
 
@@ -1158,20 +1158,20 @@ msgstr "Construire"
 msgid "Building 3D view…"
 msgstr ""
 
-#: crates/ui-egui/src/codes.rs:383
+#: crates/ui-egui/src/codes.rs:396
 #: crates/ui-egui/src/properties.rs:335
 msgid "Building Code"
 msgstr ""
 
-#: crates/ui-egui/src/codes.rs:249
+#: crates/ui-egui/src/codes.rs:251
 msgid "Building Code Check"
 msgstr ""
 
-#: crates/ui-egui/src/codes.rs:368
+#: crates/ui-egui/src/codes.rs:381
 msgid "Building Code:"
 msgstr ""
 
-#: crates/ui-egui/src/codes.rs:360
+#: crates/ui-egui/src/codes.rs:373
 #: crates/ui-egui/src/lib.rs:4249
 msgid "Building Codes"
 msgstr ""
@@ -1180,12 +1180,12 @@ msgstr ""
 msgid "Building Codes: the rules stairs and railings are held to (NBR, IBC, DIN, JIS), which the project may change; now {}"
 msgstr ""
 
-#: crates/ui-egui/src/codes.rs:295
+#: crates/ui-egui/src/codes.rs:305
 msgid "Building Codes…"
 msgstr ""
 
-#: crates/ui-egui/src/codes.rs:463
-#: crates/ui-egui/src/codes.rs:470
+#: crates/ui-egui/src/codes.rs:476
+#: crates/ui-egui/src/codes.rs:483
 msgid "Building codes"
 msgstr ""
 
@@ -1252,7 +1252,7 @@ msgstr "Valeur calculée…"
 msgid "Came in: {}"
 msgstr "Importé: {}"
 
-#: crates/core/src/commands.rs:1850
+#: crates/core/src/commands.rs:1860
 #: crates/ui-egui/src/camera.rs:38
 #: crates/ui-egui/src/lib.rs:4074
 #: crates/ui-egui/src/properties.rs:266
@@ -1266,7 +1266,7 @@ msgstr "Caméra: cliquer à l'endroit de son œil, puis sur ce qu'elle regarde: 
 #: crates/ui-egui/src/background_grid.rs:111
 #: crates/ui-egui/src/cad.rs:131
 #: crates/ui-egui/src/clouds.rs:87
-#: crates/ui-egui/src/codes.rs:431
+#: crates/ui-egui/src/codes.rs:444
 #: crates/ui-egui/src/dimtypes.rs:319
 #: crates/ui-egui/src/display.rs:81
 #: crates/ui-egui/src/editor.rs:1133
@@ -2044,7 +2044,7 @@ msgstr "Cliquer dans le sens de la volée suivante depuis le palier: tout droit,
 msgid "Clockwise"
 msgstr ""
 
-#: crates/ui-egui/src/codes.rs:300
+#: crates/ui-egui/src/codes.rs:310
 #: crates/ui-egui/src/favorites.rs:179
 #: crates/ui-egui/src/graphics.rs:512
 #: crates/ui-egui/src/inquiry.rs:203
@@ -2468,13 +2468,13 @@ msgstr "Vue actuelle uniquement"
 msgid "Curve preview"
 msgstr "Aperçu de la courbe"
 
-#: crates/ui-egui/src/codes.rs:388
+#: crates/ui-egui/src/codes.rs:401
 #: crates/ui-egui/src/fillpatterns.rs:612
 #: crates/ui-egui/src/footer.rs:305
 msgid "Custom"
 msgstr "Personnalisé"
 
-#: crates/ui-egui/src/codes.rs:374
+#: crates/ui-egui/src/codes.rs:387
 msgid "Custom (based on {})"
 msgstr ""
 
@@ -2487,6 +2487,10 @@ msgstr "Coupe"
 #: crates/ui-egui/src/graphics.rs:722
 msgid "Cut Lines"
 msgstr "Lignes de coupe"
+
+#: crates/ui-egui/src/codes.rs:299
+msgid "Cut Opening"
+msgstr ""
 
 #: crates/ui-egui/src/properties.rs:2476
 msgid "Cut Pattern"
@@ -2504,6 +2508,10 @@ msgstr "Plume de coupe"
 #: crates/ui-egui/src/templates.rs:744
 msgid "Cut Plane"
 msgstr "Plan de coupe"
+
+#: crates/ui-egui/src/codes.rs:300
+msgid "Cut the floor over the stair open where it leaves less than the headroom over its steps"
+msgstr ""
 
 #: crates/ui-egui/src/editor.rs:152
 msgid "Cylinder"
@@ -2585,7 +2593,7 @@ msgstr "Épaisseur par défaut"
 msgid "Degrees, 5 to 135: to the left, or with a minus to the right"
 msgstr ""
 
-#: crates/ui-egui/src/codes.rs:395
+#: crates/ui-egui/src/codes.rs:408
 #: crates/ui-egui/src/editor.rs:664
 #: crates/ui-egui/src/editor.rs:837
 #: crates/ui-egui/src/editor.rs:975
@@ -2676,7 +2684,7 @@ msgstr "Démoli"
 msgid "Demolition"
 msgstr "Démolition"
 
-#: crates/core/src/commands.rs:10032
+#: crates/core/src/commands.rs:10042
 msgid "Dependent"
 msgstr "Dépendante"
 
@@ -3202,7 +3210,7 @@ msgstr "Paramètres électriques"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "Paramètres électriques: les tensions, systèmes de distribution et types de câbles auxquels renvoient les circuits et les tableaux; sections en mm²"
 
-#: crates/core/src/commands.rs:2246
+#: crates/core/src/commands.rs:2256
 msgid "Elements"
 msgstr "Éléments"
 
@@ -3345,7 +3353,7 @@ msgstr "Exporter"
 msgid "Export..."
 msgstr "Exporter..."
 
-#: crates/ui-egui/src/codes.rs:393
+#: crates/ui-egui/src/codes.rs:406
 msgid "Export…"
 msgstr ""
 
@@ -4257,7 +4265,7 @@ msgstr "Catégories importées"
 msgid "Imported {}: {}."
 msgstr "Import de {}: {}."
 
-#: crates/ui-egui/src/codes.rs:392
+#: crates/ui-egui/src/codes.rs:405
 msgid "Import…"
 msgstr ""
 
@@ -4558,7 +4566,7 @@ msgstr "Marge de classement / reliure à gauche:"
 msgid "Left of {}"
 msgstr ""
 
-#: crates/ui-egui/src/codes.rs:327
+#: crates/ui-egui/src/codes.rs:340
 msgid "Left out of the file, unknown to this version: {}"
 msgstr ""
 
@@ -4957,7 +4965,7 @@ msgstr "Créer une nomenclature, ou en ouvrir une"
 msgid "Make one with New, or read one from a DXF with Import DXF…."
 msgstr ""
 
-#: crates/ui-egui/src/codes.rs:268
+#: crates/ui-egui/src/codes.rs:270
 msgid "Make the stair this one, in one step that Undo takes back"
 msgstr ""
 
@@ -5071,7 +5079,7 @@ msgstr "Maximale"
 msgid "Maximum Riser Height"
 msgstr "Hauteur maximale de contremarche"
 
-#: crates/core/src/commands.rs:1960
+#: crates/core/src/commands.rs:1970
 msgid "Measure"
 msgstr "Mesurer"
 
@@ -5629,7 +5637,7 @@ msgstr "Numéro"
 #: crates/ui-egui/src/background_grid.rs:113
 #: crates/ui-egui/src/cad.rs:132
 #: crates/ui-egui/src/clouds.rs:88
-#: crates/ui-egui/src/codes.rs:432
+#: crates/ui-egui/src/codes.rs:445
 #: crates/ui-egui/src/dimtypes.rs:318
 #: crates/ui-egui/src/display.rs:82
 #: crates/ui-egui/src/editor.rs:1132
@@ -5755,7 +5763,7 @@ msgstr "Ouvrir la vue 3D par défaut"
 msgid "Open the last project at startup"
 msgstr "Ouvrir le dernier projet au démarrage"
 
-#: crates/ui-egui/src/codes.rs:295
+#: crates/ui-egui/src/codes.rs:305
 msgid "Open the project's building code and its rules"
 msgstr ""
 
@@ -6876,7 +6884,7 @@ msgstr "Rampe: cliquer à son début, puis à la fin de sa volée; un palier la 
 msgid "Read Convention"
 msgstr "Convention de lecture"
 
-#: crates/ui-egui/src/codes.rs:392
+#: crates/ui-egui/src/codes.rs:405
 msgid "Read a building code from an XML file, as one of the project's own"
 msgstr ""
 
@@ -7160,7 +7168,7 @@ msgstr "Réinitialiser le texte"
 msgid "Reset to NBR Defaults"
 msgstr "Rétablir les valeurs NBR"
 
-#: crates/ui-egui/src/codes.rs:426
+#: crates/ui-egui/src/codes.rs:439
 msgid "Reset to the Code's Rules"
 msgstr ""
 
@@ -7394,7 +7402,7 @@ msgstr "Enregistrer"
 msgid "Save As…"
 msgstr "Enregistrer sous…"
 
-#: crates/ui-egui/src/codes.rs:403
+#: crates/ui-egui/src/codes.rs:416
 msgid "Save Code"
 msgstr ""
 
@@ -7419,7 +7427,7 @@ msgstr "Enregistrer une copie de récupération toutes les"
 msgid "Save as"
 msgstr "Enregistrer sous"
 
-#: crates/ui-egui/src/codes.rs:401
+#: crates/ui-egui/src/codes.rs:414
 #: crates/ui-egui/src/reinforce.rs:465
 msgid "Save as:"
 msgstr "Enregistrer sous:"
@@ -7461,7 +7469,7 @@ msgstr "Échelle: le papier que cette vue représente, 1 : n du modèle: ses ann
 msgid "Scan"
 msgstr "Numérisation"
 
-#: crates/core/src/commands.rs:1754
+#: crates/core/src/commands.rs:1764
 msgid "Schedule"
 msgstr "Nomenclature"
 
@@ -8225,7 +8233,7 @@ msgstr "Acier: Nuance des étriers"
 msgid "Step in"
 msgstr "Décalage vers l'intérieur"
 
-#: crates/ui-egui/src/codes.rs:283
+#: crates/ui-egui/src/codes.rs:285
 msgid "Still outside: {}"
 msgstr ""
 
@@ -8460,7 +8468,7 @@ msgstr "Élément étiqueté"
 msgid "Take away the bars this command made for the element: bars drawn by hand stay"
 msgstr "Retirer les armatures créées par cette commande pour l'élément: les armatures dessinées à la main restent"
 
-#: crates/ui-egui/src/codes.rs:395
+#: crates/ui-egui/src/codes.rs:408
 msgid "Take this code of the project's own away; a project held to it keeps its rules"
 msgstr ""
 
@@ -8645,7 +8653,7 @@ msgstr ""
 msgid "The assistant sends your messages, and what it reads of the open project, to this provider, and only when you send a message. The Assistant palette (AI) asks once before the first."
 msgstr ""
 
-#: crates/ui-egui/src/codes.rs:364
+#: crates/ui-egui/src/codes.rs:377
 msgid "The building code this project's stairs and railings are held to. A new stair starts with its numbers. Any rule can be changed, for a state's or a city's own; a stair outside the rules is still built, and marked."
 msgstr ""
 
@@ -9340,7 +9348,7 @@ msgstr ""
 msgid "Unlock alignment"
 msgstr "Déverrouiller l'alignement"
 
-#: crates/core/src/commands.rs:10173
+#: crates/core/src/commands.rs:10183
 msgid "Unnamed"
 msgstr "Sans nom"
 
@@ -9348,7 +9356,7 @@ msgstr "Sans nom"
 msgid "Unsaved changes"
 msgstr "Modifications non enregistrées"
 
-#: crates/ui-egui/src/codes.rs:404
+#: crates/ui-egui/src/codes.rs:417
 msgid "Unsaved, the rules are still the project's when applied."
 msgstr ""
 
@@ -9897,7 +9905,7 @@ msgstr ""
 msgid "Worktop"
 msgstr "Plan de travail"
 
-#: crates/ui-egui/src/codes.rs:393
+#: crates/ui-egui/src/codes.rs:406
 msgid "Write these rules as an XML file, to hand to another project or office"
 msgstr ""
 

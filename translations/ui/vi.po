@@ -157,7 +157,7 @@ msgstr "Một vòng kín không bao diện tích nào."
 msgid "A loop needs three lines: click a point that isn't the start."
 msgstr "Vòng kín cần ba đường: hãy nhấp một điểm không phải điểm bắt đầu."
 
-#: crates/ui-egui/src/codes.rs:402
+#: crates/ui-egui/src/codes.rs:415
 msgid "A name of your own"
 msgstr ""
 
@@ -724,7 +724,7 @@ msgid "Applies to all views; snaps to the active view's enabled main grid or sub
 msgstr "Áp dụng cho mọi khung nhìn; bắt điểm vào lưới chính hoặc lưới phụ đang bật của khung nhìn hiện hành, kể cả khi bị ẩn"
 
 #: crates/ui-egui/src/background_grid.rs:112
-#: crates/ui-egui/src/codes.rs:430
+#: crates/ui-egui/src/codes.rs:443
 #: crates/ui-egui/src/display.rs:80
 #: crates/ui-egui/src/editor.rs:1134
 #: crates/ui-egui/src/electrical.rs:501
@@ -747,7 +747,7 @@ msgstr "Áp dụng Ẩn/Cô lập cho khung nhìn"
 msgid "Apply Overrides"
 msgstr "Áp dụng ghi đè"
 
-#: crates/ui-egui/src/codes.rs:267
+#: crates/ui-egui/src/codes.rs:269
 msgid "Apply {}"
 msgstr ""
 
@@ -1158,20 +1158,20 @@ msgstr "Xây dựng"
 msgid "Building 3D view…"
 msgstr ""
 
-#: crates/ui-egui/src/codes.rs:383
+#: crates/ui-egui/src/codes.rs:396
 #: crates/ui-egui/src/properties.rs:335
 msgid "Building Code"
 msgstr ""
 
-#: crates/ui-egui/src/codes.rs:249
+#: crates/ui-egui/src/codes.rs:251
 msgid "Building Code Check"
 msgstr ""
 
-#: crates/ui-egui/src/codes.rs:368
+#: crates/ui-egui/src/codes.rs:381
 msgid "Building Code:"
 msgstr ""
 
-#: crates/ui-egui/src/codes.rs:360
+#: crates/ui-egui/src/codes.rs:373
 #: crates/ui-egui/src/lib.rs:4249
 msgid "Building Codes"
 msgstr ""
@@ -1180,12 +1180,12 @@ msgstr ""
 msgid "Building Codes: the rules stairs and railings are held to (NBR, IBC, DIN, JIS), which the project may change; now {}"
 msgstr ""
 
-#: crates/ui-egui/src/codes.rs:295
+#: crates/ui-egui/src/codes.rs:305
 msgid "Building Codes…"
 msgstr ""
 
-#: crates/ui-egui/src/codes.rs:463
-#: crates/ui-egui/src/codes.rs:470
+#: crates/ui-egui/src/codes.rs:476
+#: crates/ui-egui/src/codes.rs:483
 msgid "Building codes"
 msgstr ""
 
@@ -1252,7 +1252,7 @@ msgstr "Giá trị tính toán…"
 msgid "Came in: {}"
 msgstr "Đã nhập vào: {}"
 
-#: crates/core/src/commands.rs:1850
+#: crates/core/src/commands.rs:1860
 #: crates/ui-egui/src/camera.rs:38
 #: crates/ui-egui/src/lib.rs:4074
 #: crates/ui-egui/src/properties.rs:266
@@ -1266,7 +1266,7 @@ msgstr "Camera: nhấp chỗ đặt mắt nhìn, rồi chỗ nó nhìn tới: m�
 #: crates/ui-egui/src/background_grid.rs:111
 #: crates/ui-egui/src/cad.rs:131
 #: crates/ui-egui/src/clouds.rs:87
-#: crates/ui-egui/src/codes.rs:431
+#: crates/ui-egui/src/codes.rs:444
 #: crates/ui-egui/src/dimtypes.rs:319
 #: crates/ui-egui/src/display.rs:81
 #: crates/ui-egui/src/editor.rs:1133
@@ -2044,7 +2044,7 @@ msgstr "Nhấp hướng của vế tiếp theo từ chiếu nghỉ: thẳng, tr�
 msgid "Clockwise"
 msgstr ""
 
-#: crates/ui-egui/src/codes.rs:300
+#: crates/ui-egui/src/codes.rs:310
 #: crates/ui-egui/src/favorites.rs:179
 #: crates/ui-egui/src/graphics.rs:512
 #: crates/ui-egui/src/inquiry.rs:203
@@ -2468,13 +2468,13 @@ msgstr "Chỉ khung nhìn hiện tại"
 msgid "Curve preview"
 msgstr "Xem trước đường cong"
 
-#: crates/ui-egui/src/codes.rs:388
+#: crates/ui-egui/src/codes.rs:401
 #: crates/ui-egui/src/fillpatterns.rs:612
 #: crates/ui-egui/src/footer.rs:305
 msgid "Custom"
 msgstr "Tùy chỉnh"
 
-#: crates/ui-egui/src/codes.rs:374
+#: crates/ui-egui/src/codes.rs:387
 msgid "Custom (based on {})"
 msgstr ""
 
@@ -2487,6 +2487,10 @@ msgstr "Cắt"
 #: crates/ui-egui/src/graphics.rs:722
 msgid "Cut Lines"
 msgstr "Nét cắt"
+
+#: crates/ui-egui/src/codes.rs:299
+msgid "Cut Opening"
+msgstr ""
 
 #: crates/ui-egui/src/properties.rs:2476
 msgid "Cut Pattern"
@@ -2504,6 +2508,10 @@ msgstr "Bút nét cắt"
 #: crates/ui-egui/src/templates.rs:744
 msgid "Cut Plane"
 msgstr "Mặt phẳng cắt"
+
+#: crates/ui-egui/src/codes.rs:300
+msgid "Cut the floor over the stair open where it leaves less than the headroom over its steps"
+msgstr ""
 
 #: crates/ui-egui/src/editor.rs:152
 msgid "Cylinder"
@@ -2585,7 +2593,7 @@ msgstr "Chiều dày mặc định"
 msgid "Degrees, 5 to 135: to the left, or with a minus to the right"
 msgstr ""
 
-#: crates/ui-egui/src/codes.rs:395
+#: crates/ui-egui/src/codes.rs:408
 #: crates/ui-egui/src/editor.rs:664
 #: crates/ui-egui/src/editor.rs:837
 #: crates/ui-egui/src/editor.rs:975
@@ -2676,7 +2684,7 @@ msgstr "Đã phá dỡ"
 msgid "Demolition"
 msgstr "Phá dỡ"
 
-#: crates/core/src/commands.rs:10032
+#: crates/core/src/commands.rs:10042
 msgid "Dependent"
 msgstr "Phụ thuộc"
 
@@ -3202,7 +3210,7 @@ msgstr "Cài đặt điện"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "Cài đặt điện: các điện áp, hệ thống phân phối và loại dây mà mạch điện và tủ điện tham chiếu; tiết diện tính bằng mm²"
 
-#: crates/core/src/commands.rs:2246
+#: crates/core/src/commands.rs:2256
 msgid "Elements"
 msgstr "Cấu kiện"
 
@@ -3345,7 +3353,7 @@ msgstr "Xuất"
 msgid "Export..."
 msgstr "Xuất..."
 
-#: crates/ui-egui/src/codes.rs:393
+#: crates/ui-egui/src/codes.rs:406
 msgid "Export…"
 msgstr ""
 
@@ -4257,7 +4265,7 @@ msgstr "Danh mục được nhập"
 msgid "Imported {}: {}."
 msgstr "Đã nhập {}: {}."
 
-#: crates/ui-egui/src/codes.rs:392
+#: crates/ui-egui/src/codes.rs:405
 msgid "Import…"
 msgstr ""
 
@@ -4558,7 +4566,7 @@ msgstr "Lề lưu trữ / đóng gáy bên trái:"
 msgid "Left of {}"
 msgstr ""
 
-#: crates/ui-egui/src/codes.rs:327
+#: crates/ui-egui/src/codes.rs:340
 msgid "Left out of the file, unknown to this version: {}"
 msgstr ""
 
@@ -4957,7 +4965,7 @@ msgstr "Tạo một bảng thống kê, hoặc mở một bảng có sẵn"
 msgid "Make one with New, or read one from a DXF with Import DXF…."
 msgstr ""
 
-#: crates/ui-egui/src/codes.rs:268
+#: crates/ui-egui/src/codes.rs:270
 msgid "Make the stair this one, in one step that Undo takes back"
 msgstr ""
 
@@ -5071,7 +5079,7 @@ msgstr "Tối đa"
 msgid "Maximum Riser Height"
 msgstr "Chiều cao bậc đứng tối đa"
 
-#: crates/core/src/commands.rs:1960
+#: crates/core/src/commands.rs:1970
 msgid "Measure"
 msgstr "Đo"
 
@@ -5629,7 +5637,7 @@ msgstr "Số"
 #: crates/ui-egui/src/background_grid.rs:113
 #: crates/ui-egui/src/cad.rs:132
 #: crates/ui-egui/src/clouds.rs:88
-#: crates/ui-egui/src/codes.rs:432
+#: crates/ui-egui/src/codes.rs:445
 #: crates/ui-egui/src/dimtypes.rs:318
 #: crates/ui-egui/src/display.rs:82
 #: crates/ui-egui/src/editor.rs:1132
@@ -5755,7 +5763,7 @@ msgstr "Mở khung nhìn 3D mặc định"
 msgid "Open the last project at startup"
 msgstr "Mở dự án cuối cùng khi khởi động"
 
-#: crates/ui-egui/src/codes.rs:295
+#: crates/ui-egui/src/codes.rs:305
 msgid "Open the project's building code and its rules"
 msgstr ""
 
@@ -6876,7 +6884,7 @@ msgstr "Đường dốc: nhấp chỗ bắt đầu, rồi chỗ vế dốc kết
 msgid "Read Convention"
 msgstr "Quy ước đọc"
 
-#: crates/ui-egui/src/codes.rs:392
+#: crates/ui-egui/src/codes.rs:405
 msgid "Read a building code from an XML file, as one of the project's own"
 msgstr ""
 
@@ -7160,7 +7168,7 @@ msgstr "Đặt lại màu chữ"
 msgid "Reset to NBR Defaults"
 msgstr "Đặt lại về mặc định NBR"
 
-#: crates/ui-egui/src/codes.rs:426
+#: crates/ui-egui/src/codes.rs:439
 msgid "Reset to the Code's Rules"
 msgstr ""
 
@@ -7394,7 +7402,7 @@ msgstr "Lưu"
 msgid "Save As…"
 msgstr "Lưu thành…"
 
-#: crates/ui-egui/src/codes.rs:403
+#: crates/ui-egui/src/codes.rs:416
 msgid "Save Code"
 msgstr ""
 
@@ -7419,7 +7427,7 @@ msgstr "Lưu bản sao phục hồi sau mỗi"
 msgid "Save as"
 msgstr "Lưu thành"
 
-#: crates/ui-egui/src/codes.rs:401
+#: crates/ui-egui/src/codes.rs:414
 #: crates/ui-egui/src/reinforce.rs:465
 msgid "Save as:"
 msgstr "Lưu thành:"
@@ -7461,7 +7469,7 @@ msgstr "Tỷ lệ: tờ giấy mà khung nhìn này đại diện, 1 : n của m
 msgid "Scan"
 msgstr "Bản quét"
 
-#: crates/core/src/commands.rs:1754
+#: crates/core/src/commands.rs:1764
 msgid "Schedule"
 msgstr "Bảng thống kê"
 
@@ -8225,7 +8233,7 @@ msgstr "Thép: mác thép đai"
 msgid "Step in"
 msgstr "Thụt vào"
 
-#: crates/ui-egui/src/codes.rs:283
+#: crates/ui-egui/src/codes.rs:285
 msgid "Still outside: {}"
 msgstr ""
 
@@ -8460,7 +8468,7 @@ msgstr "Cấu kiện được gắn nhãn"
 msgid "Take away the bars this command made for the element: bars drawn by hand stay"
 msgstr "Gỡ bỏ các thanh thép mà lệnh này đã tạo cho cấu kiện: thanh thép vẽ tay vẫn giữ nguyên"
 
-#: crates/ui-egui/src/codes.rs:395
+#: crates/ui-egui/src/codes.rs:408
 msgid "Take this code of the project's own away; a project held to it keeps its rules"
 msgstr ""
 
@@ -8645,7 +8653,7 @@ msgstr ""
 msgid "The assistant sends your messages, and what it reads of the open project, to this provider, and only when you send a message. The Assistant palette (AI) asks once before the first."
 msgstr ""
 
-#: crates/ui-egui/src/codes.rs:364
+#: crates/ui-egui/src/codes.rs:377
 msgid "The building code this project's stairs and railings are held to. A new stair starts with its numbers. Any rule can be changed, for a state's or a city's own; a stair outside the rules is still built, and marked."
 msgstr ""
 
@@ -9340,7 +9348,7 @@ msgstr ""
 msgid "Unlock alignment"
 msgstr ""
 
-#: crates/core/src/commands.rs:10173
+#: crates/core/src/commands.rs:10183
 msgid "Unnamed"
 msgstr "Chưa đặt tên"
 
@@ -9348,7 +9356,7 @@ msgstr "Chưa đặt tên"
 msgid "Unsaved changes"
 msgstr "Thay đổi chưa lưu"
 
-#: crates/ui-egui/src/codes.rs:404
+#: crates/ui-egui/src/codes.rs:417
 msgid "Unsaved, the rules are still the project's when applied."
 msgstr ""
 
@@ -9897,7 +9905,7 @@ msgstr ""
 msgid "Worktop"
 msgstr "Mặt bàn bếp"
 
-#: crates/ui-egui/src/codes.rs:393
+#: crates/ui-egui/src/codes.rs:406
 msgid "Write these rules as an XML file, to hand to another project or office"
 msgstr ""
 

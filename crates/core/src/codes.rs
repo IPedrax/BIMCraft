@@ -544,6 +544,19 @@ pub fn stair_findings(m: &Model, st: &Stair) -> Vec<Finding> {
             message: format!("it is {} mm wide, under the least, {} mm: widen it", mm(st.width), rules.width_min),
         });
     }
+    // A floor standing over its steps with less than the headroom between them, and not cut open there.
+    if let Some((floor, least, _)) = stairs::headroom(m, st, rules.headroom).into_iter().min_by(|a, b| a.1.total_cmp(&b.1)) {
+        out.push(Finding {
+            rule: "headroom",
+            value: mm(least),
+            limit: rules.headroom,
+            message: format!(
+                "under floor {floor} there is {} mm of headroom at the least, under the {} mm asked: cut the floor open over the stair (`stair_opening` does)",
+                mm(least),
+                rules.headroom
+            ),
+        });
+    }
     // A multistorey stair's other storeys have risers of their own heights: each inside the range, and none far from
     // the first's.
     let others: Vec<f64> = m.storeys(st).into_iter().skip(1).map(|s| m.flight_of(st, s.2).1).collect();

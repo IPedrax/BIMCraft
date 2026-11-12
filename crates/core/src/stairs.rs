@@ -577,6 +577,117 @@ pub fn layout(m: &Model, e: &Element) -> Option<Layout> {
     }
 }
 
+/// Each step of a stair that is stood on going up, in plan, with its height: every tread of its runs, its winders and its
+/// landings. (Its foot and the floor it climbs onto are floors.)
+pub fn treads(m: &Model, st: &Stair) -> Vec<(Vec<P2>, f64)> {
+    let l = stair(m, st);
+    let half = st.width / 2.0;
+    let mut out = Vec::new();
+    for run in &l.runs {
+        let each = if run.risers > 0 { (run.z.1 - run.z.0) / f64::from(run.risers) } else { 0.0 };
+        let n = run.u.perp();
+        for k in 1..run.risers {
+            let (a, b) = (f64::from(k - 1) * st.tread, f64::from(k) * st.tread);
+            let ring = vec![
+                run.start + run.u * a - n * half,
+                run.start + run.u * b - n * half,
+                run.start + run.u * b + n * half,
+                run.start + run.u * a + n * half,
+            ];
+            out.push((ring, run.z.0 + f64::from(k) * each));
+        }
+    }
+    out.extend(l.pads.into_iter().map(|p| (p.ring, p.z)));
+    out
+}
+
+/// Where a floor stands over a stair's steps with less than `least` between them: the floor, the least height from a
+/// step up to its underside, and the steps under it that are short of `least`, in plan. A floor cut open over a step
+/// (an opening of its own, or a shaft through it) is not over it.
+pub fn headroom(m: &Model, st: &Stair, least: f64) -> Vec<(crate::model::Id, f64, Vec<Vec<P2>>)> {
+    let steps = treads(m, st);
+    let Some(lowest) = steps.iter().map(|(_, z)| *z).reduce(f64::min) else { return Vec::new() };
+    // Shafts, with the heights they pass through.
+    let shafts: Vec<(&[P2], f64, f64)> = (m.elements.iter())
+        .filter_map(|(_, e)| match e {
+            Element::Shaft(sh) => {
+                let (bottom, top) = m.span(sh.level, sh.base_offset, sh.top_level, sh.height);
+                Some((sh.boundary.as_slice(), bottom, top))
+            }
+            _ => None,
+        })
+        .collect();
+    let mut out = Vec::new();
+    for (id, e) in m.elements.iter() {
+        let Element::Floor(f) = e else { continue };
+        let top = m.elevation(f.level) + f.offset;
+        let under = top - m.types.floor.get(&f.type_name).map_or(0.0, |t| t.thickness);
+        if top <= lowest + 1.0 || under - lowest > 1e5 {
+            continue;
+        }
+        // Whether the floor is over a point: inside its outline, and in no hole through it.
+        let over = |q: P2| {
+            geom::contains(&f.boundary, q)
+                && !f.openings.iter().any(|o| geom::contains(o, q))
+                && !shafts.iter().any(|(ring, bottom, up)| *bottom < top && *up > under && geom::contains(ring, q))
+        };
+        let short: Vec<(&Vec<P2>, f64)> = (steps.iter())
+            // A step under the floor's top: one inside its thickness has no headroom at all.
+            .filter(|(ring, z)| *z < top - 1.0 && under - z < least - 1e-6 && over(geom::centroid(ring)))
+            .map(|(ring, z)| (ring, (under - z).max(0.0)))
+            .collect();
+        if let Some(least_here) = short.iter().map(|(_, c)| *c).reduce(f64::min) {
+            out.push((*id, least_here, short.into_iter().map(|(ring, _)| ring.clone()).collect()));
+        }
+    }
+    out
+}
+
+/// The outlines round `rings` taken together: steps side by side made one outline, its corners only. Their hull,
+/// should they not triangulate.
+pub fn united(rings: &[Vec<P2>]) -> Vec<Vec<P2>> {
+    let all: Vec<P2> = rings.iter().flatten().copied().collect();
+    let Some(first) = all.first() else { return Vec::new() };
+    let (lo, hi) = all.iter().fold((*first, *first), |(lo, hi), q| (P2(lo.0.min(q.0), lo.1.min(q.1)), P2(hi.0.max(q.0), hi.1.max(q.1))));
+    let frame = vec![
+        P2(lo.0 - 100.0, lo.1 - 100.0),
+        P2(hi.0 + 100.0, lo.1 - 100.0),
+        P2(hi.0 + 100.0, hi.1 + 100.0),
+        P2(lo.0 - 100.0, hi.1 + 100.0),
+    ];
+    let lines: Vec<(P2, P2)> = rings.iter().flat_map(|r| geom::ring_edges(r)).filter(|(a, b)| a.dist(*b) > 1e-6).collect();
+    let Ok(t) = crate::triangulation::constrained(&frame, &[], &[], &lines) else { return vec![geom::hull(all)] };
+    let inside: Vec<bool> = (t.triangles.iter())
+        .map(|k| {
+            let c = k.iter().filter_map(|i| t.points.get(*i)).fold(P2(0.0, 0.0), |a, q| a + *q) * (1.0 / 3.0);
+            rings.iter().any(|r| geom::contains(r, c))
+        })
+        .collect();
+    let pieces = crate::triangulation::merge(&t, &inside, &|within: &bool, _| *within);
+    let mut out: Vec<Vec<P2>> = (pieces.into_iter())
+        .filter(|(_, within)| *within)
+        .filter_map(|(loops, _)| loops.into_iter().next())
+        .map(|ring| {
+            // Its corners only: a point on a straight edge is none.
+            let n = ring.len();
+            let kept: Vec<P2> = (0..n)
+                .filter(|i| {
+                    let (a, b, c) = (ring[(i + n - 1) % n], ring[*i], ring[(i + 1) % n]);
+                    ((b - a).0 * (c - b).1 - (b - a).1 * (c - b).0).abs()
+                        > 1e-3 * (b - a).length().max(1.0) * (c - b).length().max(1.0) / 1e3
+                })
+                .map(|i| ring[i])
+                .collect();
+            if kept.len() >= 3 { kept } else { ring }
+        })
+        .filter(|ring| geom::area(ring).abs() > 1.0)
+        .collect();
+    if out.is_empty() {
+        out.push(geom::hull(all));
+    }
+    out
+}
+
 /// A stair's solids as its type builds it, each a ring in plan between two planes; none for a stair of no type, which is
 /// solid down to its level. With a waist: each tread from its top down to the slab's sloping underside, and each landing
 /// that thick. With none: treads standing free, risers between them where the type has any, and a stringer down each

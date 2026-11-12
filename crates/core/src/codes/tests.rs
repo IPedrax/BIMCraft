@@ -695,3 +695,49 @@ fn a_multistorey_stair_stands_on_each_level_with_the_risers_its_storey_asks() {
     assert!(s.execute("stair", &json!({"start": [0, 0], "angle": 0, "height": 6000, "multistorey": true})).is_err());
     let _ = l4;
 }
+
+#[test]
+fn a_floor_over_a_stair_is_reported_and_cut_open_where_the_headroom_is_short() {
+    let mut s = Session::new();
+    // A floor 300 thick on Level 2, over all of a stair that climbs to it: 3000 up in 17 risers.
+    run(&mut s, "type", json!({"category": "floor", "name": "Slab 300", "thickness": 300}));
+    let floor = run(
+        &mut s,
+        "floor",
+        json!({"level": "Level 2", "type": "Slab 300", "boundary": [[-3000, -3000], [9000, -3000], [9000, 3000], [-3000, 3000]]}),
+    )["id"]
+        .as_u64()
+        .unwrap();
+    let id = run(&mut s, "stair", json!({"start": [0, 0], "angle": 0, "width": 1000}))["id"].as_u64().unwrap();
+    // The underside is 2700 up: a step 880 up or more has under 2000 over it (the generic rule's headroom).
+    let found = run(&mut s, "stair_check", json!({"ids": [id]}));
+    let f = &found["stairs"][0]["findings"][0];
+    assert_eq!(f["rule"], "headroom");
+    assert_eq!(f["value"], 0.0, "its top tread, 2824 up, is inside the floor's thickness");
+    assert!(f["message"].as_str().unwrap().contains(&floor.to_string()), "{f}");
+
+    // Cut open: one shaft through that floor alone, round the steps short of headroom: from the 4th tread to the top.
+    let r = run(&mut s, "stair_opening", json!({"id": id}));
+    assert_eq!((r["floors"].clone(), r["shafts"].as_array().map(Vec::len)), (json!([floor]), Some(1)));
+    let shaft = r["shafts"][0].as_u64().unwrap();
+    let Some(crate::model::Element::Shaft(sh)) = s.model.elements.get(shaft) else { panic!("no shaft") };
+    assert_eq!(sh.boundary.len(), 4, "a rectangle: {:?}", sh.boundary);
+    let xs: Vec<f64> = sh.boundary.iter().map(|q| q.0).collect();
+    let (lo, hi) = (xs.iter().copied().fold(f64::INFINITY, f64::min), xs.iter().copied().fold(0.0, f64::max));
+    // Steps 700 up or less keep 2000: the 4th tread is 705.9 up, and starts 840 along.
+    assert!((lo - 840.0).abs() < 1e-6 && (hi - 16.0 * 280.0).abs() < 1e-6, "{lo} to {hi}");
+    assert_eq!(broken(&mut s, id), Vec::<String>::new());
+    let again = run(&mut s, "stair_opening", json!({"id": id}));
+    assert_eq!(again["shafts"], json!([]), "it has its headroom");
+
+    // An L of treads is cut round as an L, not as its hull.
+    let l = run(&mut s, "stair", json!({"start": [0, -2000], "angle": 0, "width": 1000, "landings": [{"at": 12, "turn": -90}]}))["id"]
+        .as_u64()
+        .unwrap();
+    let r = run(&mut s, "stair_opening", json!({"id": l}));
+    let shaft = r["shafts"][0].as_u64().unwrap();
+    let Some(crate::model::Element::Shaft(sh)) = s.model.elements.get(shaft) else { panic!("no shaft") };
+    assert_eq!(sh.boundary.len(), 6, "{:?}", sh.boundary);
+    assert_eq!(broken(&mut s, l), Vec::<String>::new());
+    assert!(s.execute("stair_opening", &json!({"id": floor})).is_err());
+}
