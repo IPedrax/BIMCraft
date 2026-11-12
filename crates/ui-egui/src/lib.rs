@@ -4255,7 +4255,7 @@ impl BimApp {
             if big_button(ui, Icon::Section, "Section", matches!(self.tool, Tool::Section(_)), tip).clicked() {
                 self.set_tool(Tool::Section(None));
             }
-            let tip = msg!("Elevation: click beside the building, on the side to look at");
+            let tip = msg!("Elevation: click a wall, a line or a slab's edge to look at, the project's or a link's");
             if big_button(ui, Icon::Elevation, "Elevation", self.tool == Tool::Elevation, tip).clicked() {
                 self.set_tool(Tool::Elevation);
             }
@@ -5332,7 +5332,7 @@ impl BimApp {
             Tool::SpotSlope => msg!("Click a floor or a roof: the spot slope reads how steeply its top falls there, and which way."),
             Tool::Section(None) => msg!("Click the section's start: it looks to the left of the line you draw."),
             Tool::Section(Some(_)) => msg!("Click the section's end."),
-            Tool::Elevation => msg!("Click beside the building: the elevation looks at the side you click by."),
+            Tool::Elevation => msg!("Click a straight wall, a line or a slab's edge for the elevation to look at."),
             Tool::Camera(None) => msg!("Click where the camera's eye stands: it looks at the point you click next."),
             Tool::Camera(Some(_)) => msg!("Click what the camera looks at; its eye and target heights are the Options Bar's."),
             Tool::Column => msg!("Click to place a column, as high as the Options Bar says."),

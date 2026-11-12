@@ -469,6 +469,10 @@ impl Session {
                 if !self.model.unsettled_work_planes().is_empty() {
                     self.model_mut().settle_work_planes();
                 }
+                // An elevation that looks at a reference looks at it from wherever the command left its mark.
+                if cmd.undoable {
+                    crate::elevation::keep(self, &before, verified);
+                }
                 // Locked and equal dimensions moved what they measure to as the command moved it.
                 if cmd.undoable {
                     crate::constraints::keep(self, &before)?;

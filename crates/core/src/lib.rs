@@ -43,6 +43,7 @@ mod eberick_tests;
 pub mod electrical;
 #[cfg(test)]
 mod electrical_tests;
+pub mod elevation;
 pub mod engine;
 #[cfg(test)]
 mod face_host_tests;

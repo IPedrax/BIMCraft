@@ -2040,14 +2040,63 @@ fn the_section_tool_draws_a_section_whose_view_opens_from_the_browser_or_a_doubl
 }
 
 #[test]
-fn the_elevation_tool_looks_at_the_building_from_where_it_is_clicked() {
+fn the_elevation_tool_looks_at_the_wall_clicked_and_turns_round_when_dragged_past_it() {
     let mut h = app(BOX);
     press(&mut h, "View");
     press(&mut h, "Elevation");
-    click(&mut h, P2(4000.0, 7000.0));
+    // Beside the building there is nothing to look at: no elevation.
+    click(&mut h, P2(4000.0, 9000.0));
+    assert!(ids(&h, "elevation").is_empty());
+    // The north wall, clicked on its outer half: the mark stands 1.5 m outside its centre line, looking south at it.
+    click(&mut h, P2(4000.0, 6050.0));
     let made = ids(&h, "elevation");
-    assert_eq!((field(&h, made[0], "name"), field(&h, made[0], "looking")), (json!("North"), json!([0.0, -1.0])));
+    assert_eq!(made.len(), 1);
+    assert_eq!((field(&h, made[0], "name"), field(&h, made[0], "looking")), (json!("Elevation 1"), json!([0.0, -1.0])));
+    // The wall's centre line, as far as its mitred corners reach.
+    assert_eq!(field(&h, made[0], "reference"), json!([[8100.0, 6000.0], [-100.0, 6000.0]]));
+    let mid = |h: &Harness<'static, BimApp>| {
+        let v = h.state().session.model.section(made[0]).unwrap().clone();
+        (v.start + v.end) * 0.5
+    };
+    assert_eq!(mid(&h), P2(4000.0, 7500.0));
     assert!(h.query_by_label("Elevations (Building Elevation)").is_some());
+    // Its mark dragged inside the building, to the wall's other side: it looks north at the same wall, and its line comes
+    // over with it, as far from the wall as it was.
+    key(&mut h, Key::Escape);
+    drag(&mut h, P2(4000.0, 7500.0), P2(4000.0, 4000.0));
+    assert_eq!(field(&h, made[0], "mark"), json!([4000.0, 4000.0]));
+    assert_eq!(mid(&h), P2(4000.0, 4500.0));
+    assert_eq!(field(&h, made[0], "looking"), json!([0.0, 1.0]));
+    // Selected, its line shows; dragged off the mark, the line alone moves, the way it looks.
+    drag(&mut h, P2(1000.0, 4500.0), P2(1300.0, 2500.0));
+    assert_eq!(mid(&h), P2(4000.0, 2500.0));
+    assert_eq!(field(&h, made[0], "mark"), json!([4000.0, 4000.0]));
+}
+
+#[test]
+fn a_selected_sections_far_clip_and_cropped_ends_are_grips_in_plan() {
+    let mut h = app(&format!(
+        "{BOX}\nsection {{\"start\": [-1000, 3000], \"end\": [9000, 3000], \"depth\": 2000}}\ncrop {{\"view\": \"Section 1\"}}"
+    ));
+    let section = ids(&h, "section")[0];
+    let line = |h: &Harness<'static, BimApp>| {
+        let v = h.state().session.model.section(section).unwrap().clone();
+        (v.start, v.end, v.depth)
+    };
+    assert_eq!(line(&h), (P2(-1000.0, 3000.0), P2(9000.0, 3000.0), Some(2000.0)));
+    h.state_mut().selection = vec![section];
+    h.run();
+    // The arrows in the middle of the far clip line, 2 m the way it looks (north): dragged, the view sees that much further.
+    drag(&mut h, P2(4000.0, 5000.0), P2(4000.0, 5500.0));
+    assert_eq!(line(&h), (P2(-1000.0, 3000.0), P2(9000.0, 3000.0), Some(2500.0)));
+    // The grip at its end, along the line only.
+    drag(&mut h, P2(9000.0, 3000.0), P2(8500.0, 3400.0));
+    assert_eq!(line(&h), (P2(-1000.0, 3000.0), P2(8500.0, 3000.0), Some(2500.0)));
+    // Uncropped it has no grips at its ends: a drag there moves it whole.
+    h.state_mut().run("crop", json!({"view": section, "region": null}));
+    h.run();
+    drag(&mut h, P2(8500.0, 3000.0), P2(8500.0, 3500.0));
+    assert_eq!(line(&h), (P2(-1000.0, 3500.0), P2(8500.0, 3500.0), Some(2500.0)));
 }
 
 #[test]

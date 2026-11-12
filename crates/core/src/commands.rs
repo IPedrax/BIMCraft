@@ -951,9 +951,15 @@ other_files(
         "elevation",
         "Elevation",
         &[],
-        "{facing?: north|south|east|west, at?: [x,y], start?, end?, depth?, name?} an elevation view of the building's side \
-         `facing` (North shows the north side, looking south), from 3 m out, or through `at`; with `at` alone, of the side it's \
-         on; with `start` and `end`, along that line, looking to its left; with none, the four not there yet",
+        "{on?: id, reference?: [[x,y],[x,y]], facing?: north|south|east|west, at?: [x,y], start?, end?, depth?, name?} an \
+         elevation view. With `on` (a wall, a line, a floor's, roof's or ceiling's edge, a grid or any element with a straight \
+         edge, the project's or a link's by the id its view gives it) and `at`, it looks square at that element's straight edge \
+         nearest `at` (a wall's centre line) from `at`'s side of it: its mark stands at `at`, or 1.5 m out from the edge when \
+         `at` is on it (within a metre). `reference` gives the line itself instead of `on`. That line is kept in the \
+         elevation as `reference`, a line of its own and no tie to the element: moved to the line's other side the elevation \
+         turns round to look at it still, and `modify` with `reference` null lets it go. Without those, of the building's \
+         side `facing` (North shows the north side, looking south), from 3 m out, or through `at`; with `at` alone, of the \
+         side it's on; with `start` and `end`, along that line, looking to its left; with none, the four not there yet",
         elevation,
     ),
     edit(
@@ -1456,7 +1462,10 @@ other_files(
         ui_msg!("Move"),
         &["MV"],
         "{ids: [id,…], by: [dx, dy], end?: start|end} moves elements in plan; walls joined to a moved wall stretch to stay \
-         joined, and doors and windows slide along their walls. With `end`, only that end of one wall or one run moves",
+         joined, and doors and windows slide along their walls. With `end`, only that end of one wall or one run moves. One \
+         section or elevation takes `end` as the part its grips in plan move: `line` (the line it starts at, the way it \
+         looks), `start` or `end` (an end along the line, while it is cropped), `far` (its far clip, changing `depth`) and, \
+         an elevation, `mark` (its mark alone, anywhere: past its reference it turns round and its line comes over)",
         move_elements,
     ),
     edit(
@@ -10162,6 +10171,8 @@ fn section(s: &mut Session, p: &Value) -> R {
         end,
         depth,
         crop: None,
+        reference: None,
+        mark: None,
         graphics: Graphics::default(),
     }));
     Ok(json!({"id": id, "name": name}))
@@ -10176,6 +10187,61 @@ fn elevation(s: &mut Session, p: &Value) -> R {
         None => None,
     };
     let nothing = || bad(c, "there are no walls or floors to look at; draw some, or give `start` and `end`");
+    // The line it looks at: an element's edge, or one given.
+    let reference = match (p.get("on").filter(|v| !v.is_null()), p.get("reference").filter(|v| !v.is_null())) {
+        (Some(_), Some(_)) => return Err(bad(c, "give `on` or `reference`, not both")),
+        (None, None) => None,
+        (on, given) => {
+            let at = at.ok_or_else(|| bad(c, "`at` [x, y] is required with `on` or `reference`: the side to look from"))?;
+            let line = match (on, given) {
+                (Some(on), _) => {
+                    let g = serde_json::from_value::<Guid>(on.clone())
+                        .map_err(|_| bad(c, format!("`on` is an element's id or GUID, not {on}")))?;
+                    // The project's element, or a link's, in the model the views draw.
+                    let seen = if s.model.elements.id(g).is_some() { Arc::clone(&s.model) } else { crate::link::seen(&s.model) };
+                    let id = seen.elements.id(g).ok_or_else(|| bad(c, format!("there is no element {on}")))?;
+                    let e = seen.elements.get(id).ok_or_else(|| bad(c, format!("there is no element {on}")))?;
+                    crate::elevation::reference(&seen, id, at).ok_or_else(|| {
+                        bad(
+                            c,
+                            format!("{} {id} has no straight edge to look at; pick a straight wall, a line or a slab's edge", e.category()),
+                        )
+                    })?
+                }
+                (None, Some(v)) => match v.as_array().map(Vec::as_slice) {
+                    Some([a, b]) => point(a).zip(point(b)),
+                    _ => None,
+                }
+                .ok_or_else(|| bad(c, format!("`reference` is a line [[x, y], [x, y]] in mm, got {v}")))?,
+                (None, None) => return Err(bad(c, "give `on` or `reference`")),
+            };
+            if line.0.dist(line.1) <= TOL {
+                return Err(bad(c, "`reference` has no length: give a line to look at"));
+            }
+            let line = (micron(line.0), micron(line.1));
+            Some((line, crate::elevation::place(line, at)))
+        }
+    };
+    if let Some((line, mid)) = reference {
+        if facing.is_some() || p.get("start").is_some_and(|v| !v.is_null()) || p.get("end").is_some_and(|v| !v.is_null()) {
+            return Err(bad(c, "an elevation on a reference looks square at it: leave out `facing`, `start` and `end`"));
+        }
+        let (start, end) =
+            crate::elevation::new_line(line, mid).ok_or_else(|| bad(c, "`at` is on the reference; give a point beside it"))?;
+        let name = name.unwrap_or_else(|| m.free_view_name(m.language.word("Elevation"), true));
+        let v = Section {
+            name: name.clone(),
+            start: micron(start),
+            end: micron(end),
+            depth,
+            crop: None,
+            reference: Some([line.0, line.1]),
+            mark: None,
+            graphics: Graphics::default(),
+        };
+        let id = s.model_mut().insert(Element::Elevation(v));
+        return Ok(json!({"id": id, "name": name, "at": mid, "reference": [line.0, line.1]}));
+    }
     let lines: Vec<(String, P2, P2)> = match (point_opt(c, p, "start")?, point_opt(c, p, "end")?) {
         (Some(a), Some(b)) => vec![(name.unwrap_or_else(|| m.free_view_name(m.language.word("Elevation"), true)), a, b)],
         (None, None) => {
@@ -10206,7 +10272,16 @@ fn elevation(s: &mut Session, p: &Value) -> R {
         .into_iter()
         .map(|(name, start, end)| {
             (
-                m.insert(Element::Elevation(Section { name: name.clone(), start, end, depth, crop: None, graphics: Graphics::default() })),
+                m.insert(Element::Elevation(Section {
+                    name: name.clone(),
+                    start,
+                    end,
+                    depth,
+                    crop: None,
+                    reference: None,
+                    mark: None,
+                    graphics: Graphics::default(),
+                })),
                 name,
             )
         })
@@ -10270,27 +10345,40 @@ fn crop(s: &mut Session, p: &Value) -> R {
                 None => v.crop = Some(render::section_heights(m, view)),
             }
             let crop = v.crop;
-            let m = s.model_mut();
-            let guid = m.guid(view);
-            if let Some(Element::Section(old) | Element::Elevation(old)) = m.elements.get_mut(view) {
-                *old = v;
+            // An elevation's mark stays where it stands while its line changes under it.
+            if (shift != 0.0 || region.is_some_and(|r| r.is_some()))
+                && let Some(Element::Elevation(old)) = m.elements.get(view)
+            {
+                v.mark = Some(micron(crate::elevation::mark(old)));
             }
-            // What's noted in the view keeps its spot over the model.
-            for e in m.elements.values_mut() {
-                match e {
-                    Element::Text(n) if n.view == guid => {
-                        n.at.0 -= shift;
-                        if let Some(l) = &mut n.leader {
-                            l.0 -= shift;
-                        }
-                    }
-                    Element::Spot(sp) if sp.view == guid => sp.at.0 -= shift,
-                    _ => {}
-                }
-            }
+            view_line(s.model_mut(), view, v, shift);
             Ok(json!({"view": view, "crop": crop}))
         }
         _ => Err(bad(c, format!("{} isn't a plan, a section or an elevation; only those crop", view_title(m, view)))),
+    }
+}
+
+/// Section or elevation `view` becomes `v`, its start having moved `shift` mm along its line: what's noted in the view
+/// keeps its spot over the model.
+fn view_line(m: &mut Model, view: Id, v: Section, shift: f64) {
+    let guid = m.guid(view);
+    if let Some(Element::Section(old) | Element::Elevation(old)) = m.elements.get_mut(view) {
+        *old = v;
+    }
+    if shift == 0.0 {
+        return;
+    }
+    for e in m.elements.values_mut() {
+        match e {
+            Element::Text(n) if n.view == guid => {
+                n.at.0 -= shift;
+                if let Some(l) = &mut n.leader {
+                    l.0 -= shift;
+                }
+            }
+            Element::Spot(sp) if sp.view == guid => sp.at.0 -= shift,
+            _ => {}
+        }
     }
 }
 
@@ -13646,11 +13734,18 @@ pub(crate) fn transform(c: &str, m: &Model, mut e: Element, id: Id, mo: &Motion,
         // A tag's place hangs on its door or window's: see `relocate` and `duplicate`.
         Element::Tag(_) => {}
         Element::Section(v) | Element::Elevation(v) => {
-            (v.start, v.end) = (f(v.start), f(v.end));
+            (v.start, v.end, v.mark) = (f(v.start), f(v.end), v.mark.map(|q| micron(f(q))));
             // A mirror image of it looks the mirrored way round: to the left of its line again.
             if mo.mirror {
                 std::mem::swap(&mut v.start, &mut v.end);
             }
+            // The line an elevation looks at goes with it when it is carried along with other things; taken on its own
+            // (or with other marks), the line stays and it looks at it from where it comes to stand.
+            let marks = |id: &Id| matches!(m.elements.get(*id), Some(Element::Section(_) | Element::Elevation(_)));
+            if !with.iter().all(marks) {
+                v.reference = v.reference.map(|[a, b]| [micron(f(a)), micron(f(b))]);
+            }
+            crate::elevation::settle(v);
         }
     }
     Ok(e)
@@ -14508,14 +14603,29 @@ fn move_elements(s: &mut Session, p: &Value) -> R {
     let ids = ids_param(c, &s.model, p)?;
     let by = point_req(c, p, "by")?;
     // Moving one end: `Some(true)` the start, `Some(false)` the end.
-    let end = match string(c, p, "end")?.as_deref() {
+    let end = match string(c, p, "end")? {
         None => None,
-        Some("start") => Some(true),
-        Some("end") => Some(false),
-        Some(other) => return Err(bad(c, format!("`end` is `start` or `end`, not `{other}`"))),
+        Some(name) => {
+            // A part of a section or an elevation, as its grips in plan move it.
+            if let [one] = ids.as_slice()
+                && let Some(e @ (Element::Section(v) | Element::Elevation(v))) = s.model.elements.get(*one)
+            {
+                let part = crate::elevation::Part::named(&name)
+                    .ok_or_else(|| bad(c, format!("`end` of a section or an elevation is mark, line, start, end or far, not `{name}`")))?;
+                let moved = crate::elevation::dragged(v, matches!(e, Element::Elevation(_)), part, by).map_err(|e| bad(c, e))?;
+                let shift = (moved.start - v.start).dot((v.end - v.start).unit());
+                view_line(s.model_mut(), *one, moved, shift);
+                return Ok(json!({"moved": ids, "end": name}));
+            }
+            match name.as_str() {
+                "start" => Some(true),
+                "end" => Some(false),
+                other => return Err(bad(c, format!("`end` is `start` or `end`, not `{other}`"))),
+            }
+        }
     };
     if end.is_some() && !matches!(ids.as_slice(), [one] if s.model.wall(*one).is_some() || s.model.run_of(*one).is_some()) {
-        return Err(bad(c, "`end` moves an end of one wall or one run; give `ids` one wall or one run"));
+        return Err(bad(c, "`end` moves an end of one wall or one run, or a part of one section or elevation; give `ids` one of those"));
     }
     relocate(c, s, &ids, &Motion { map: &|q| q + by, slide: Some(by), mirror: false }, end)?;
     Ok(json!({"moved": ids}))

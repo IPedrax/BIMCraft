@@ -84,16 +84,17 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// written only then); a wall or a run may refuse to join its neighbours (`join: false`, written only then); a dimension
 /// may measure to the line across a column, square to its angle (`across`); a door's type or family may open as a gate
 /// (`operation`: `sectional` or `roller`); a project may hold property lines (the `propertyline` category, a row of
-/// `graphics::MODEL` that views' graphics and Object Styles may name); and it may pin elements where they are (`pinned`,
-/// their GUIDs). Nothing in a file of 17 changes, but a build that reads up to 17 would answer such a connector, dimension,
-/// operation or property line with a serde error ("unknown variant", "missing field `system`") and graphics or a style of
-/// `propertyline` as a category it doesn't have, would leave the title blocks and a viewport's `follow_scale` out as fields
-/// it doesn't know, drawing every sheet with the built-in title box, and would silently drop `join: false` and join the
-/// element again, and the pins, letting what was pinned move, not say "saved by a newer BIMCraft". 18 also holds the Family
-/// Editor's families and what places them in a project, which a build that reads up to 17 would leave out as fields it
-/// doesn't know, drawing a family without them or failing to build it and losing them on saving, or refuse on opening
-/// ("unknown variant", "isn't a category views draw"), not say "saved by a newer BIMCraft"; a file of 17 is brought up to
-/// 18 by [`Model::migrate`]:
+/// `graphics::MODEL` that views' graphics and Object Styles may name); it may pin elements where they are (`pinned`, their
+/// GUIDs); and an elevation may keep the line it looks at (`reference`) and stand its mark apart from its line (`mark`).
+/// Nothing in a file of 17 changes, but a build that reads up to 17 would answer such a connector, dimension, operation or
+/// property line with a serde error ("unknown variant", "missing field `system`") and graphics or a style of `propertyline`
+/// as a category it doesn't have, would leave the title blocks and a viewport's `follow_scale` out as fields it doesn't
+/// know, drawing every sheet with the built-in title box, and would silently drop `join: false` and join the element again,
+/// and the pins, letting what was pinned move, and would drop an elevation's reference and mark, drawing the mark back on
+/// its line, not say "saved by a newer BIMCraft". 18 also holds the Family Editor's families and what places them in a
+/// project, which a build that reads up to 17 would leave out as fields it doesn't know, drawing a family without them or
+/// failing to build it and losing them on saving, or refuse on opening ("unknown variant", "isn't a category views draw"),
+/// not say "saved by a newer BIMCraft"; a file of 17 is brought up to 18 by [`Model::migrate`]:
 ///
 /// - Family parameters: text, whole numbers, areas, volumes, URLs and family types, grouped (`group`), shared (`shared`, a
 ///   GUID) or reporting (`reporting`); a family type parameter names its category (`of`).
@@ -1943,6 +1944,13 @@ pub struct Section {
     pub depth: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub crop: Option<[f64; 2]>,
+    /// The line an elevation looks at, square to it from whichever side its mark stands on (`elevation.rs`): the edge it
+    /// was placed on, kept as a line of its own, not a tie to what had the edge. One of FORMAT 18's, as `mark` is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference: Option<[P2; 2]>,
+    /// Where an elevation's mark stands in plan, apart from its line; none: at the line's middle.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mark: Option<P2>,
     /// What it hides and how it draws the rest.
     #[serde(default, skip_serializing_if = "Graphics::is_default")]
     pub graphics: Graphics,
@@ -3769,12 +3777,13 @@ impl Model {
         // 17 to 18 (pipe, data and earthing connectors, a connector's place; title blocks of the project's own, with a
         // drawing area and a border of their own, their fields' values, and sheets with none; viewports that keep a scale
         // of their own; walls and runs that refuse to join; a dimension to the line across a column; sectional and roller
-        // doors; property lines; pinned elements) has none either: a file of 17's connectors are a power or a switch one,
-        // each with its system, which 18 reads as they were; a file of 17 holds no title blocks, its sheets keeping the
-        // built-in one, no `follow_scale`, so its viewports follow their views' scales from then on, as one placed without
-        // a scale does, no `join`, which reads as joining, as it always did, none of its dimensions measures `across`, none
-        // of its operations is a gate's, it holds no property line and names no `propertyline` in its graphics or styles,
-        // and nothing in it is pinned.
+        // doors; property lines; pinned elements; an elevation's reference and mark) has none either: a file of 17's
+        // connectors are a power or a switch one, each with its system, which 18 reads as they were; a file of 17 holds no
+        // title blocks, its sheets keeping the built-in one, no `follow_scale`, so its viewports follow their views' scales
+        // from then on, as one placed without a scale does, no `join`, which reads as joining, as it always did, none of
+        // its dimensions measures `across`, none of its operations is a gate's, it holds no property line and names no
+        // `propertyline` in its graphics or styles, nothing in it is pinned, and its elevations have no reference and their
+        // marks on their lines.
         // The Family Editor's part of 18, and what places its families, takes
         // one step, in this order (it leaves the rest of 18 alone: title blocks, `join` and `across` aren't a family's, and a
         // connector's `at` is in the family's axes, which the datums are whatever plane `defines_origin`, and it has no `host`
@@ -7560,6 +7569,10 @@ impl Model {
                 line(&who, v.start, v.end)?;
                 if let Some(d) = v.depth {
                     size(&format!("{who} depth"), d)?;
+                }
+                for (what, q) in v.mark.iter().map(|q| ("mark", q)).chain(v.reference.iter().flatten().map(|q| ("reference", q))) {
+                    coord(&format!("{who} {what}"), q.0)?;
+                    coord(&format!("{who} {what}"), q.1)?;
                 }
                 if let Some([bottom, top]) = v.crop {
                     coord(&format!("{who} crop"), bottom)?;

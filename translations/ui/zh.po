@@ -13000,6 +13000,14 @@ msgstr ""
 msgid "Unpin"
 msgstr ""
 
+#: crates/ui-egui/src/canvas.rs:2099 crates/ui-egui/src/lib.rs:5026
+msgid "Click a straight wall, a line or a slab's edge for the elevation to look at."
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:4059
+msgid "Elevation: click a wall, a line or a slab's edge to look at, the project's or a link's"
+msgstr ""
+
 #: crates/ui-egui/src/lib.rs:3433
 #~ msgid "Click a point the arc passes through: it sets the radius. Esc cancels."
 #~ msgstr "单击圆弧经过的一点：由此确定半径。按 Esc 取消。"

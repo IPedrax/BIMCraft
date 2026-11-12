@@ -13239,3 +13239,11 @@ msgstr ""
 #: crates/core/src/commands.rs:1202 crates/ui-egui/src/context.rs:75
 msgid "Unpin"
 msgstr ""
+
+#: crates/ui-egui/src/canvas.rs:2099 crates/ui-egui/src/lib.rs:5026
+msgid "Click a straight wall, a line or a slab's edge for the elevation to look at."
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:4059
+msgid "Elevation: click a wall, a line or a slab's edge to look at, the project's or a link's"
+msgstr ""

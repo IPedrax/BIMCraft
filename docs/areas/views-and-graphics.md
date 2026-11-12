@@ -845,3 +845,50 @@ key beside it, with Make Text (`TitleBlock::make_text`: back to plain text, the 
 text has Make Field, keyed by what it says (`TitleBlock::free_key`, numbered past the keys there are) as each sheet's. An
 MTEXT's colour is the one its formatting sets before its first word (`\C`, `\c`), over the entity's. The stroke lettering has the
 ordinals º and ª.
+
+## Elevations that look at a reference
+
+The Elevation tool asks for something to look at (`elevation.rs`): a straight wall, a line (a detail line, a grid, a line of a
+CAD drawing) or the edge of a floor, a roof, a ceiling or anything else with a straight edge, the project's or a link's. The
+canvas hovers what `elevation::reference` answers for, in the model the views draw (`link::seen`), and a click runs
+`elevation {on, at}`: `on` the element's id (a link's element by the id that model gives it, which the command looks up in
+`link::seen` again) and `at` the point clicked. `reference` gives the line outright instead, for a script or an agent.
+
+The edge is taken once and kept in the elevation as a line (`Section::reference`, two points): a wall's centre line as far as its
+outline reaches, else the element's straight edge nearest `at` (`align::nearest`). It is not a tie: the wall may move or be
+deleted and the elevation stays as it is, and a link's element needs no id that survives a reload. `elevation::place` puts the
+mark at `at`, or `OUT` (1.5 m) from the line on `at`'s side when `at` is on the line (within a metre, as a click on a wall is),
+and `new_line` runs the view's line through the mark, long enough to see the whole edge and a metre past each end.
+
+An elevation with a reference always looks square at its line from the side its mark (`elevation::mark`: the middle of its
+line, or where the mark was put apart from it) is on:
+`elevation::settle` turns its line about the line's own middle, keeping its length, and the engine settles every elevation a command made or
+changed (`elevation::keep`, after the command and before the checks), so a move, a turn, a mirror or a `modify` of its ends
+all leave it facing its line, and one taken to the line's other side turns round. Past the line's ends it looks at the line
+carried on; on the line itself it stays as it was. Moved alone (or with other marks) its reference stays where it is; moved,
+turned, mirrored or copied together with anything else, the reference goes through the same motion (`transformed`), so a
+building moved with its elevations keeps them as they were. The desktop draws a mark dragged alone as it will stand, turned
+round past its line. `modify` with `reference` null lets the line go, and the elevation is then an ordinary one;
+the building elevations of `facing` and those of `start` and `end` never have one. `reference` is one of FORMAT 18's: a build
+that reads up to 17 refuses the file, saying it is from a newer BIMCraft, rather than drop the line the elevation looks at.
+
+## A section's and an elevation's extent in plan
+
+Selected alone with Modify, a section or an elevation shows its extent on the plan as Revit does (`canvas.rs`'s
+`view_extent_overlay`, from `elevation.rs`): the line the view starts at, long dashes and dots in the accent colour, and, when
+its far clip is on (`depth`, Properties' Far Clip Offset), the line it sees as far as (`elevation::far`) with the two sides
+between them, dashed. `elevation::grips` says what can be held: a round grip at each end of the line only while the view is
+cropped (uncropped the line moves and doesn't stretch, since the view then shows everything along it), and a pair of arrows in
+the middle of the far clip line.
+
+Each part moves through `move` with the part as its `end` (`elevation::Part`, worked out by `elevation::dragged`, which the
+desktop also draws its preview from): `start` and `end` go along the line and no shorter than `SHORTEST` (what is noted in
+the view keeps its spot over the model, as after `crop`); `far` goes to and from the line and sets `depth`; `line` moves the
+line the way it looks, which is how a drag from an elevation's line off its mark goes. A section dragged by its line moves whole.
+
+An elevation's mark is apart from its line (`Section::mark`; none while it has never been moved apart, and the mark is then at
+the line's middle). A drag of an elevation's mark runs `move` with `end: mark`: the mark alone goes anywhere. When it crosses
+the line the elevation looks at, the elevation turns round and its line comes over to the mark's side, as far from the
+reference as it was; moved whole across (the Move tool, or with other things), the line turns round where it stands. Changing
+the line (its grips, `crop`) pins the mark where it stood. `mark` is FORMAT 18's too, so a build that reads up to 17 never draws
+the mark back at the middle.

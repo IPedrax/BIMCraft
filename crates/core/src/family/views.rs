@@ -223,7 +223,7 @@ pub fn stage(mut m: Model, family: &Family, values: &BTreeMap<String, Val>, show
         let start = l * back + r * a;
         let end = l * back + r * b;
         let section =
-            Section { name: side.name().into(), start, end, depth: None, crop: None, graphics: crate::graphics::Graphics::default() };
+            Section { name: side.name().into(), start, end, depth: None, crop: None, reference: None, mark: None, graphics: crate::graphics::Graphics::default() };
         elevations.push((side, m.insert(Element::Elevation(section)), start));
     }
     let lines = family.lines.iter().map(|l| (l.start, l.end)).collect();

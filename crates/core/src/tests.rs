@@ -2632,8 +2632,28 @@ fn hostile_params_never_panic_or_break_the_model() {
     // A shared parameters file's actions, on files of the sweep's own (`shared_parameter_tests::sweep_payloads`).
     targeted.extend(crate::shared_parameter_tests::sweep_payloads());
     // A section and an elevation of it, after those, so that no id the payloads name moves: their views are drawn too.
-    let _ = base.execute("section", &json!({"start": [-1000, 3000], "end": [9000, 3000]}));
-    let _ = base.execute("elevation", &json!({"facing": "south"}));
+    let section = base.execute("section", &json!({"start": [-1000, 3000], "end": [9000, 3000]})).map_or(Value::Null, |r| r["id"].clone());
+    let elevation = base.execute("elevation", &json!({"facing": "south"})).map_or(Value::Null, |r| r["id"].clone());
+    // An elevation looking at a wall's edge or at a line given, and a section's or an elevation's parts moved as their grips in
+    // plan move them: what they can't be.
+    let marks = [
+        json!({"on": 100002, "at": [4000, -2000]}),
+        json!({"on": 100002, "at": [1e300, 0]}),
+        json!({"on": "x", "at": [0, 0], "reference": [[0, 0]]}),
+        json!({"on": u64::MAX, "at": [0, 0]}),
+        json!({"on": "00000000-0000-4000-8000-000000000000", "at": [0, 0], "facing": "up"}),
+        json!({"on": 100002, "at": [4000, -2000], "facing": "south", "start": [0, 0], "end": [1, 0]}),
+        json!({"reference": [[0, 0], [8000, 0]], "at": [4000, 0], "depth": -5}),
+        json!({"reference": [[0, 0], [1e300, 0]], "at": [0, -1000]}),
+        json!({"reference": "x"}),
+        json!({"id": elevation, "reference": [[0, 0], [1e300, 0]], "mark": [1e300, 0]}),
+        json!({"id": elevation, "reference": [[0, 0], [8000, 0]], "mark": [0, 9000]}),
+        json!({"ids": [elevation], "by": [1e300, 0], "end": "mark"}),
+        json!({"ids": [elevation], "by": [0, 9000], "end": "mark"}),
+        json!({"ids": [elevation], "by": [0, -1e9], "end": "far"}),
+        json!({"ids": [elevation, section], "by": [5, 5], "end": "line"}),
+        json!({"ids": [section], "by": [0, f64::MAX], "end": "mark"}),
+    ];
     let views = |m: &Model| {
         m.elements.values().filter(|e| matches!(e, crate::model::Element::Section(_) | crate::model::Element::Elevation(_))).count()
     };
@@ -2761,7 +2781,7 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"points": [[0, 0], [4000, 0], [4000, 3000], [0, 3000], [0, 0], [0, 0]], "name": "Doubled"}),
     ];
     let hostile: Vec<Value> =
-        hostile.into_iter().chain(detailing.into_iter().map(|(_, p)| p)).chain(slopes).chain(offsets).chain(nested).chain(grips).chain(plots).collect();
+        hostile.into_iter().chain(detailing.into_iter().map(|(_, p)| p)).chain(slopes).chain(offsets).chain(nested).chain(grips).chain(plots).chain(marks).collect();
     // Each command against each value, on a copy of the same session; the commands shared out between the cores.
     let cmds: Vec<_> = commands().iter().filter(|c| !matches!(c.id, "open" | "save")).collect();
     let threads = std::thread::available_parallelism().map_or(4, |n| n.get());
