@@ -239,10 +239,56 @@ impl BimApp {
             self.code_findings = None;
             return;
         }
+        // The stairs nearest it that fit: the solver's answers, each to apply.
+        let proposals = match m.elements.get(id) {
+            Some(bimcraft_core::model::Element::Stair(st)) => codes::solve(&m, st, codes::Locks::default()),
+            _ => Vec::new(),
+        };
         let mut close = false;
-        let r = Modal::new(UiId::new("stair-code-findings"), t("Building Code Check")).width(420.0).show(ctx, |ui| {
+        let mut apply = None;
+        let r = Modal::new(UiId::new("stair-code-findings"), t("Building Code Check")).width(460.0).show(ctx, |ui| {
             popup::body(ui, |ui| {
-                ScrollArea::vertical().max_height(360.0).show(ui, |ui| findings(ui, &m, &list));
+                ScrollArea::vertical().max_height(420.0).show(ui, |ui| {
+                    findings(ui, &m, &list);
+                    if proposals.is_empty() {
+                        return;
+                    }
+                    ui.add_space(6.0);
+                    let fits = proposals.iter().any(|p| p.findings.is_empty());
+                    let head = if fits {
+                        "Stairs that fit the rules, the nearest first:"
+                    } else {
+                        "No stair near it fits every rule. The nearest:"
+                    };
+                    ui.label(RichText::new(t(head)).strong());
+                    for (i, p) in proposals.iter().enumerate() {
+                        ui.separator();
+                        ui.horizontal(|ui| {
+                            let label = tf("Apply {}", &[&(i + 1).to_string()]);
+                            if ui.button(label).on_hover_text(t("Make the stair this one, in one step that Undo takes back")).clicked() {
+                                apply = Some(i + 1);
+                            }
+                            ui.vertical(|ui| {
+                                for c in &p.changes {
+                                    ui.add(egui::Label::new(c).wrap());
+                                }
+                                if !p.findings.is_empty() {
+                                    let left: Vec<&str> = p
+                                        .findings
+                                        .iter()
+                                        .map(|f| LABELS.iter().find(|(k, _, _)| *k == f.rule).map_or(f.rule, |(_, _, l)| t(l)))
+                                        .collect();
+                                    ui.add(
+                                        egui::Label::new(
+                                            RichText::new(tf("Still outside: {}", &[&left.join(", ")])).color(OUTSIDE).small(),
+                                        )
+                                        .wrap(),
+                                    );
+                                }
+                            });
+                        });
+                    }
+                });
             });
             popup::footer(ui, |ui| {
                 ui.horizontal(|ui| {
@@ -256,6 +302,9 @@ impl BimApp {
                 });
             });
         });
+        if let Some(n) = apply {
+            self.run("stair_solve", json!({"id": id, "apply": n}));
+        }
         if close || r.should_close() {
             self.code_findings = None;
         }

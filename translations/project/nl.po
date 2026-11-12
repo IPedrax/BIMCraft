@@ -40,7 +40,7 @@ msgstr "Baksteen"
 msgid "Brick 225 x 75"
 msgstr "Baksteen 225 x 75"
 
-#: crates/core/src/commands.rs:4295
+#: crates/core/src/commands.rs:4306
 msgid "Camera"
 msgstr "Camera"
 
@@ -116,7 +116,7 @@ msgstr "Streep-punt"
 msgid "Data Outlet"
 msgstr "Data-aansluiting"
 
-#: crates/core/src/commands.rs:10006
+#: crates/core/src/commands.rs:10017
 msgid "Dependent"
 msgstr "Afhankelijk"
 
@@ -192,8 +192,8 @@ msgstr "Elektrische verlichting"
 msgid "Electrical Power"
 msgstr "Elektrische voeding"
 
-#: crates/core/src/commands.rs:9790
-#: crates/core/src/commands.rs:12382
+#: crates/core/src/commands.rs:9801
+#: crates/core/src/commands.rs:12393
 msgid "Elevation"
 msgstr "Gevel"
 
@@ -310,7 +310,7 @@ msgstr "Breedte poot"
 msgid "Length"
 msgstr "Lengte"
 
-#: crates/core/src/commands.rs:6506
+#: crates/core/src/commands.rs:6517
 #: crates/core/src/model.rs:3311
 msgid "Level"
 msgstr "Niveau"
@@ -335,7 +335,7 @@ msgstr "Merkteken"
 msgid "Masking"
 msgstr "Maskering"
 
-#: crates/core/src/commands.rs:7779
+#: crates/core/src/commands.rs:7790
 msgid "Mass"
 msgstr "Massa"
 
@@ -423,7 +423,7 @@ msgstr "Pleister"
 msgid "Porcelain"
 msgstr "Porselein"
 
-#: crates/core/src/commands.rs:2982
+#: crates/core/src/commands.rs:2993
 msgid "Project"
 msgstr "Project"
 
@@ -451,7 +451,7 @@ msgstr "Optreden"
 msgid "Roof tiles"
 msgstr "Dakpannen"
 
-#: crates/core/src/commands.rs:8004
+#: crates/core/src/commands.rs:8015
 msgid "Room"
 msgstr "Ruimte"
 
@@ -487,8 +487,8 @@ msgstr "Chape"
 msgid "Seat Height"
 msgstr "Zithoogte"
 
-#: crates/core/src/commands.rs:9767
-#: crates/core/src/commands.rs:12381
+#: crates/core/src/commands.rs:9778
+#: crates/core/src/commands.rs:12392
 msgid "Section"
 msgstr "Doorsnede"
 
@@ -612,7 +612,7 @@ msgstr "OMHOOG"
 msgid "Unbounded Height"
 msgstr "Onbegrensde hoogte"
 
-#: crates/core/src/commands.rs:10147
+#: crates/core/src/commands.rs:10158
 msgid "Unnamed"
 msgstr "Naamloos"
 

@@ -596,3 +596,48 @@ fn a_stair_is_built_as_its_type_says() {
     assert!(left_out.is_empty(), "{left_out:?}");
     assert_eq!(back.types.stair["Slab 200"].waist, 200.0);
 }
+
+#[test]
+fn the_solver_proposes_the_nearest_stairs_that_fit_the_code() {
+    let mut s = Session::new();
+    run(&mut s, "building_code", json!({"set": "nbr"}));
+    // 3000 up in 15 risers of 200 with treads of 240, a metre wide: too steep, too short a tread, too narrow.
+    let id = run(&mut s, "stair", json!({"start": [0, 0], "angle": 0, "riser": 200, "tread": 240}))["id"].as_u64().unwrap();
+    assert_eq!(broken(&mut s, id), ["riser_max", "going_min", "width_min"]);
+    let r = run(&mut s, "stair_solve", json!({"id": id}));
+    assert_eq!(r["inside"], false);
+    let all = r["proposals"].as_array().unwrap();
+    assert!(!all.is_empty() && all.iter().all(|p| p["findings"] == json!([])), "{r}");
+    // The nearest: 17 risers of 176.5 (the fewest under 180), the least tread the step rule allows, the least width.
+    let first = &all[0];
+    assert_eq!((first["risers"].as_u64(), first["width"].as_f64()), (Some(17), Some(1200.0)));
+    let (riser, tread) = (first["riser"].as_f64().unwrap(), first["tread"].as_f64().unwrap());
+    assert!((630.0..=650.0).contains(&(2.0 * riser + tread)) && (280.0..=320.0).contains(&tread), "{first}");
+    assert!(first["changes"].as_array().unwrap().iter().any(|c| c.as_str().unwrap().contains("17 risers")), "{first}");
+
+    // Locked, the width stays, and the answers say what they still break.
+    let r = run(&mut s, "stair_solve", json!({"id": id, "lock": ["width"]}));
+    let locked = r["proposals"].as_array().unwrap();
+    let narrow = |p: &Value| p["findings"].as_array().unwrap().iter().any(|f| f["rule"] == "width_min");
+    assert!(locked.iter().all(|p| p["width"] == 1000.0 && narrow(p)), "{r}");
+    assert_eq!(locked[0]["findings"].as_array().map(Vec::len), Some(1), "the nearest breaks the width alone");
+
+    // Applied, the stair is inside the rules, in one step; and then there is nothing to propose.
+    let steps = s.history().len();
+    run(&mut s, "stair_solve", json!({"id": id, "apply": 1}));
+    assert_eq!(s.history().len(), steps + 1);
+    assert_eq!(broken(&mut s, id), Vec::<String>::new());
+    let r = run(&mut s, "stair_solve", json!({"id": id}));
+    assert_eq!((r["inside"].as_bool(), r["proposals"].as_array().map(Vec::len)), (Some(true), Some(0)));
+    assert!(s.execute("stair_solve", &json!({"id": id, "apply": 1})).is_err());
+
+    // A flight too high gets its landing, and a short landing its length.
+    let tall = run(&mut s, "stair", json!({"start": [0, 5000], "angle": 0, "height": 5400, "width": 1200}))["id"].as_u64().unwrap();
+    assert_eq!(broken(&mut s, tall), ["flight_rise_max"]);
+    let r = run(&mut s, "stair_solve", json!({"id": tall}));
+    assert!(r["proposals"][0]["changes"][0].as_str().unwrap().contains("landing"), "{r}");
+    run(&mut s, "stair_solve", json!({"id": tall, "apply": 1}));
+    assert_eq!(broken(&mut s, tall), Vec::<String>::new());
+    assert_eq!(stair_of(&s, tall).landings.len(), 1);
+    assert!(s.execute("stair_solve", &json!({"id": tall, "lock": ["colour"]})).is_err());
+}

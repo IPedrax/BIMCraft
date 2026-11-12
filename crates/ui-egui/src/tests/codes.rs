@@ -268,3 +268,20 @@ fn the_stair_tool_makes_a_spiral_about_a_centre_clicked() {
         "north of the centre, east first"
     );
 }
+
+#[test]
+fn the_code_check_window_offers_stairs_that_fit_and_applies_one() {
+    let mut h = app(BOX);
+    h.state_mut().run("building_code", json!({"set": "nbr"}));
+    let id = h.state_mut().run("stair", json!({"start": [1000, 1000], "angle": 90, "riser": 200, "tread": 240})).unwrap()["id"]
+        .as_u64()
+        .unwrap();
+    h.state_mut().code_findings = Some(id);
+    h.run();
+    assert!(h.query_by_label("Stairs that fit the rules, the nearest first:").is_some());
+    h.get_by_label("Apply 1").click_accesskit();
+    h.run();
+    assert_eq!(field(&h, id, "risers"), json!(17));
+    assert_eq!(field(&h, id, "width"), json!(1200.0));
+    assert!(h.query_by_label("Building Code Check").is_none(), "inside the rules, the window goes");
+}

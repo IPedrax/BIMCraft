@@ -720,5 +720,176 @@ pub fn stair_findings(m: &Model, st: &Stair) -> Vec<Finding> {
     out
 }
 
+/// What `solve` leaves as it is: the count of risers, the treads' depth, the width, the landings.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Locks {
+    pub risers: bool,
+    pub tread: bool,
+    pub width: bool,
+    pub landings: bool,
+}
+
+/// A stair `solve` proposes in place of one: its risers, treads, width and landings, what that changes, said, and what
+/// it would still be outside of (nothing, for one that fits).
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct Proposal {
+    pub risers: u32,
+    pub riser: f64,
+    pub tread: f64,
+    pub width: f64,
+    pub landings: Vec<Landing>,
+    pub changes: Vec<String>,
+    pub findings: Vec<Finding>,
+    #[serde(skip)]
+    pub cost: f64,
+}
+
+impl Proposal {
+    /// `st` as the proposal makes it.
+    pub fn applied(&self, st: &Stair) -> Stair {
+        Stair { riser: self.riser, tread: self.tread, width: self.width, landings: self.landings.clone(), ..st.clone() }
+    }
+}
+
+/// Whether every run of a stair of `n` risers with `landings` keeps two risers or more.
+fn runs_hold(n: u32, landings: &[Landing]) -> bool {
+    let mut last = 0.0;
+    for l in landings {
+        let (wound, into) = (f64::from(l.wound()), f64::from(l.balance));
+        if l.at - into < last + 2.0 || l.at + wound + into > f64::from(n) - 2.0 {
+            return false;
+        }
+        last = l.at + wound + into;
+    }
+    true
+}
+
+/// The stairs nearest `st` that are inside the project's rules, the one that changes least first: other counts of
+/// risers, a tread the step rule allows, the least width, the landings the rules ask (the stair's own moved with its
+/// risers, lengthened where they are short, and more where a flight is too long). What `locks` names stays as it is.
+/// When none fits, the nearest, with what each would still break. A stair already inside the rules is the only answer.
+pub fn solve(m: &Model, st: &Stair, locks: Locks) -> Vec<Proposal> {
+    let rules = m.stair_rules();
+    let (n0, each0, _) = m.flight(st);
+    if n0 == 0 {
+        return Vec::new();
+    }
+    let rise = f64::from(n0) * each0;
+    let counts: Vec<u32> = if locks.risers {
+        vec![n0]
+    } else {
+        let lo = (rise / rules.riser_max - 1e-9).ceil().max(2.0) as u32;
+        let hi = if rules.riser_min > 0.0 { (rise / rules.riser_min + 1e-9).floor().max(2.0) as u32 } else { lo + 40 };
+        let hi = hi.clamp(lo, lo + 40);
+        let mut all: Vec<u32> = (lo..=hi).collect();
+        if !all.contains(&n0) {
+            all.push(n0);
+        }
+        all
+    };
+    let mut out: Vec<Proposal> = Vec::new();
+    for n in counts {
+        let riser = rise / f64::from(n);
+        // A tread inside its own range and the step rule's, the nearest to the stair's.
+        let tread = if locks.tread {
+            st.tread
+        } else {
+            let (lo, hi) =
+                (rules.going_min.max(rules.step_min - 2.0 * riser).ceil(), rules.going_max.min(rules.step_max - 2.0 * riser).floor());
+            if lo <= hi { st.tread.clamp(lo, hi) } else { st.tread.clamp(rules.going_min, rules.going_max) }
+        };
+        let width = if locks.width { st.width } else { st.width.max(rules.width_min) };
+        // Its landings, moved with its risers; and with the landings the rules ask of flights too long.
+        let scale = f64::from(n) / f64::from(n0);
+        let due = rules.landing_length_for(width, riser, tread);
+        let moved: Vec<Landing> = st
+            .landings
+            .iter()
+            .map(|l| {
+                let mut l = *l;
+                l.at = (l.at * scale).round();
+                // A landing shorter than the rules ask takes their length.
+                let deep = if l.length > 0.0 { l.length } else { width };
+                if !locks.landings
+                    && l.winders == 0
+                    && matches!(l.turn.abs(), 0.0 | 90.0 | 180.0)
+                    && deep < rules.landing_due(width, riser, tread) - EPS
+                {
+                    l.length = due;
+                }
+                l
+            })
+            .collect();
+        let mut sets = vec![moved.clone()];
+        if !locks.landings && st.spiral.is_none() {
+            let most = f64::from(rules.flight_risers(riser));
+            let mut more = Vec::new();
+            let mut from = 0.0;
+            let ends = moved.iter().map(|l| (l.at - f64::from(l.balance), Some(*l))).chain([(f64::from(n), None)]);
+            for (to, turn) in ends {
+                let flights = ((to - from) / most).ceil().max(1.0);
+                for i in 1..(flights as u32) {
+                    more.push(Landing { at: from + ((to - from) * f64::from(i) / flights).round(), length: due, ..Landing::default() });
+                }
+                if let Some(l) = turn {
+                    from = l.at + f64::from(l.wound()) + f64::from(l.balance);
+                    more.push(l);
+                }
+            }
+            if more.len() != moved.len() {
+                sets.push(more);
+            }
+        }
+        for landings in sets {
+            if !runs_hold(n, &landings) {
+                continue;
+            }
+            let p = Proposal { risers: n, riser, tread, width, landings, changes: Vec::new(), findings: Vec::new(), cost: 0.0 };
+            let made = p.applied(st);
+            let findings = stair_findings(m, &made);
+            let mut changes = Vec::new();
+            if n != n0 {
+                changes.push(format!("{n} risers of {} mm, where it has {n0} of {}", mm(riser), mm(each0)));
+            }
+            if (tread - st.tread).abs() > EPS {
+                changes.push(format!("treads {} mm deep, where they are {}", mm(tread), mm(st.tread)));
+            }
+            if (width - st.width).abs() > EPS {
+                changes.push(format!("{} mm wide, where it is {}", mm(width), mm(st.width)));
+            }
+            let added = made.landings.len().saturating_sub(st.landings.len());
+            if added > 0 {
+                let at: Vec<String> = made
+                    .landings
+                    .iter()
+                    .filter(|l| !st.landings.iter().any(|o| (o.at * scale).round() == l.at))
+                    .map(|l| l.at.to_string())
+                    .collect();
+                changes.push(format!("{added} more landing{}, after {} risers", if added == 1 { "" } else { "s" }, at.join(" and ")));
+            }
+            if made.landings.iter().zip(&st.landings).any(|(a, b)| (a.length - b.length).abs() > EPS) && added == 0 {
+                changes.push(format!("landings {} mm long", mm(due)));
+            }
+            let cost = f64::from(n.abs_diff(n0)) * 10.0
+                + (tread - st.tread).abs() / 10.0
+                + (width - st.width).abs() / 50.0
+                + added as f64 * 3.0
+                + if changes.is_empty() { 0.0 } else { 0.5 }
+                + findings.len() as f64 * 1000.0;
+            out.push(Proposal { changes, findings, cost, ..p });
+        }
+    }
+    out.sort_by(|a, b| a.cost.total_cmp(&b.cost));
+    // A stair inside the rules as it is needs nothing; else what changes nothing is no proposal.
+    if out.first().is_some_and(|p| p.changes.is_empty() && p.findings.is_empty()) {
+        out.truncate(1);
+        return out;
+    }
+    out.retain(|p| !p.changes.is_empty());
+    let fits = out.iter().filter(|p| p.findings.is_empty()).count();
+    out.truncate(if fits > 0 { fits.min(5) } else { 3 });
+    out
+}
+
 #[cfg(test)]
 mod tests;

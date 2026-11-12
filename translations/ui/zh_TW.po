@@ -157,7 +157,7 @@ msgstr "有一個環不圍合任何面積。"
 msgid "A loop needs three lines: click a point that isn't the start."
 msgstr "閉合輪廓至少需要三條線：請單擊起點以外的點。"
 
-#: crates/ui-egui/src/codes.rs:353
+#: crates/ui-egui/src/codes.rs:402
 msgid "A name of your own"
 msgstr ""
 
@@ -724,7 +724,7 @@ msgid "Applies to all views; snaps to the active view's enabled main grid or sub
 msgstr "適用於所有視圖；捕捉到活動視圖中已啟用的主網格或子網格，即使已隱藏"
 
 #: crates/ui-egui/src/background_grid.rs:112
-#: crates/ui-egui/src/codes.rs:381
+#: crates/ui-egui/src/codes.rs:430
 #: crates/ui-egui/src/display.rs:80
 #: crates/ui-egui/src/editor.rs:1134
 #: crates/ui-egui/src/electrical.rs:501
@@ -746,6 +746,10 @@ msgstr "將隱藏/隔離應用到視圖"
 #: crates/ui-egui/src/phasing.rs:640
 msgid "Apply Overrides"
 msgstr "應用替換"
+
+#: crates/ui-egui/src/codes.rs:267
+msgid "Apply {}"
+msgstr ""
 
 #: crates/ui-egui/src/editor.rs:923
 msgid "Arc"
@@ -1154,20 +1158,20 @@ msgstr "構建"
 msgid "Building 3D view…"
 msgstr ""
 
-#: crates/ui-egui/src/codes.rs:334
+#: crates/ui-egui/src/codes.rs:383
 #: crates/ui-egui/src/properties.rs:334
 msgid "Building Code"
 msgstr ""
 
-#: crates/ui-egui/src/codes.rs:243
+#: crates/ui-egui/src/codes.rs:249
 msgid "Building Code Check"
 msgstr ""
 
-#: crates/ui-egui/src/codes.rs:319
+#: crates/ui-egui/src/codes.rs:368
 msgid "Building Code:"
 msgstr ""
 
-#: crates/ui-egui/src/codes.rs:311
+#: crates/ui-egui/src/codes.rs:360
 #: crates/ui-egui/src/lib.rs:4240
 msgid "Building Codes"
 msgstr ""
@@ -1176,12 +1180,12 @@ msgstr ""
 msgid "Building Codes: the rules stairs and railings are held to (NBR, IBC, DIN, JIS), which the project may change; now {}"
 msgstr ""
 
-#: crates/ui-egui/src/codes.rs:249
+#: crates/ui-egui/src/codes.rs:295
 msgid "Building Codes…"
 msgstr ""
 
-#: crates/ui-egui/src/codes.rs:414
-#: crates/ui-egui/src/codes.rs:421
+#: crates/ui-egui/src/codes.rs:463
+#: crates/ui-egui/src/codes.rs:470
 msgid "Building codes"
 msgstr ""
 
@@ -1248,7 +1252,7 @@ msgstr "計算值…"
 msgid "Came in: {}"
 msgstr "已導入：{}"
 
-#: crates/core/src/commands.rs:1836
+#: crates/core/src/commands.rs:1847
 #: crates/ui-egui/src/camera.rs:38
 #: crates/ui-egui/src/lib.rs:4065
 #: crates/ui-egui/src/properties.rs:266
@@ -1262,7 +1266,7 @@ msgstr "相機：單擊視點所在位置，再單擊其注視的目標：由該
 #: crates/ui-egui/src/background_grid.rs:111
 #: crates/ui-egui/src/cad.rs:131
 #: crates/ui-egui/src/clouds.rs:87
-#: crates/ui-egui/src/codes.rs:382
+#: crates/ui-egui/src/codes.rs:431
 #: crates/ui-egui/src/dimtypes.rs:319
 #: crates/ui-egui/src/display.rs:81
 #: crates/ui-egui/src/editor.rs:1133
@@ -2040,7 +2044,7 @@ msgstr "單擊平台之後下一梯段的走向：直行、左轉、右轉，或
 msgid "Clockwise"
 msgstr ""
 
-#: crates/ui-egui/src/codes.rs:254
+#: crates/ui-egui/src/codes.rs:300
 #: crates/ui-egui/src/favorites.rs:179
 #: crates/ui-egui/src/graphics.rs:512
 #: crates/ui-egui/src/inquiry.rs:203
@@ -2464,13 +2468,13 @@ msgstr "僅目前視圖"
 msgid "Curve preview"
 msgstr "曲線預覽"
 
-#: crates/ui-egui/src/codes.rs:339
+#: crates/ui-egui/src/codes.rs:388
 #: crates/ui-egui/src/fillpatterns.rs:612
 #: crates/ui-egui/src/footer.rs:305
 msgid "Custom"
 msgstr "自定義"
 
-#: crates/ui-egui/src/codes.rs:325
+#: crates/ui-egui/src/codes.rs:374
 msgid "Custom (based on {})"
 msgstr ""
 
@@ -2581,7 +2585,7 @@ msgstr "預設厚度"
 msgid "Degrees, 5 to 135: to the left, or with a minus to the right"
 msgstr ""
 
-#: crates/ui-egui/src/codes.rs:346
+#: crates/ui-egui/src/codes.rs:395
 #: crates/ui-egui/src/editor.rs:664
 #: crates/ui-egui/src/editor.rs:837
 #: crates/ui-egui/src/editor.rs:975
@@ -2672,7 +2676,7 @@ msgstr "已拆除"
 msgid "Demolition"
 msgstr "拆除"
 
-#: crates/core/src/commands.rs:10006
+#: crates/core/src/commands.rs:10017
 msgid "Dependent"
 msgstr "相關"
 
@@ -3198,7 +3202,7 @@ msgstr "電氣設置"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "電氣設置：迴路和配電箱所引用的電壓、配電系統和導線類型；截面積以 mm² 計"
 
-#: crates/core/src/commands.rs:2232
+#: crates/core/src/commands.rs:2243
 msgid "Elements"
 msgstr "圖元"
 
@@ -3341,7 +3345,7 @@ msgstr "導出"
 msgid "Export..."
 msgstr "導出..."
 
-#: crates/ui-egui/src/codes.rs:344
+#: crates/ui-egui/src/codes.rs:393
 msgid "Export…"
 msgstr ""
 
@@ -4253,7 +4257,7 @@ msgstr "導入的類別"
 msgid "Imported {}: {}."
 msgstr "已導入 {}：{}。"
 
-#: crates/ui-egui/src/codes.rs:343
+#: crates/ui-egui/src/codes.rs:392
 msgid "Import…"
 msgstr ""
 
@@ -4554,7 +4558,7 @@ msgstr "左側裝訂/歸檔邊距:"
 msgid "Left of {}"
 msgstr ""
 
-#: crates/ui-egui/src/codes.rs:278
+#: crates/ui-egui/src/codes.rs:327
 msgid "Left out of the file, unknown to this version: {}"
 msgstr ""
 
@@ -4953,6 +4957,10 @@ msgstr "創建明細表，或開啟已有的明細表"
 msgid "Make one with New, or read one from a DXF with Import DXF…."
 msgstr ""
 
+#: crates/ui-egui/src/codes.rs:268
+msgid "Make the stair this one, in one step that Undo takes back"
+msgstr ""
+
 #: crates/ui-egui/src/lib.rs:1231
 msgid "Manage"
 msgstr "管理"
@@ -5063,7 +5071,7 @@ msgstr "最大值"
 msgid "Maximum Riser Height"
 msgstr "最大踢面高度"
 
-#: crates/core/src/commands.rs:1946
+#: crates/core/src/commands.rs:1957
 msgid "Measure"
 msgstr "測量"
 
@@ -5616,7 +5624,7 @@ msgstr "編號"
 #: crates/ui-egui/src/background_grid.rs:113
 #: crates/ui-egui/src/cad.rs:132
 #: crates/ui-egui/src/clouds.rs:88
-#: crates/ui-egui/src/codes.rs:383
+#: crates/ui-egui/src/codes.rs:432
 #: crates/ui-egui/src/dimtypes.rs:318
 #: crates/ui-egui/src/display.rs:82
 #: crates/ui-egui/src/editor.rs:1132
@@ -5742,7 +5750,7 @@ msgstr "開啟預設3D視圖"
 msgid "Open the last project at startup"
 msgstr "啟動時開啟上次的項目"
 
-#: crates/ui-egui/src/codes.rs:249
+#: crates/ui-egui/src/codes.rs:295
 msgid "Open the project's building code and its rules"
 msgstr ""
 
@@ -6863,7 +6871,7 @@ msgstr "坡道：單擊起點，再單擊坡段終點；平台使其轉向"
 msgid "Read Convention"
 msgstr "讀取規則"
 
-#: crates/ui-egui/src/codes.rs:343
+#: crates/ui-egui/src/codes.rs:392
 msgid "Read a building code from an XML file, as one of the project's own"
 msgstr ""
 
@@ -7147,7 +7155,7 @@ msgstr "重設文字"
 msgid "Reset to NBR Defaults"
 msgstr "重置為 NBR 預設值"
 
-#: crates/ui-egui/src/codes.rs:377
+#: crates/ui-egui/src/codes.rs:426
 msgid "Reset to the Code's Rules"
 msgstr ""
 
@@ -7381,7 +7389,7 @@ msgstr "儲存"
 msgid "Save As…"
 msgstr "另存為…"
 
-#: crates/ui-egui/src/codes.rs:354
+#: crates/ui-egui/src/codes.rs:403
 msgid "Save Code"
 msgstr ""
 
@@ -7406,7 +7414,7 @@ msgstr "每隔多久儲存一次恢復副本"
 msgid "Save as"
 msgstr "另存為"
 
-#: crates/ui-egui/src/codes.rs:352
+#: crates/ui-egui/src/codes.rs:401
 #: crates/ui-egui/src/reinforce.rs:465
 msgid "Save as:"
 msgstr "另存為："
@@ -7448,7 +7456,7 @@ msgstr "比例：此視圖所代表的圖紙，為模型的 1 : n；其註釋和
 msgid "Scan"
 msgstr "掃瞄"
 
-#: crates/core/src/commands.rs:1740
+#: crates/core/src/commands.rs:1751
 msgid "Schedule"
 msgstr "明細表"
 
@@ -8212,6 +8220,10 @@ msgstr "鋼材：箍筋鋼種"
 msgid "Step in"
 msgstr "內縮量"
 
+#: crates/ui-egui/src/codes.rs:283
+msgid "Still outside: {}"
+msgstr ""
+
 #: crates/ui-egui/src/reinforce.rs:496
 msgid "Stirrup grade"
 msgstr "箍筋鋼種"
@@ -8443,7 +8455,7 @@ msgstr "被標記的圖元"
 msgid "Take away the bars this command made for the element: bars drawn by hand stay"
 msgstr "刪除此命令為該構件生成的鋼筋；手工繪製的鋼筋保留"
 
-#: crates/ui-egui/src/codes.rs:346
+#: crates/ui-egui/src/codes.rs:395
 msgid "Take this code of the project's own away; a project held to it keeps its rules"
 msgstr ""
 
@@ -8628,7 +8640,7 @@ msgstr ""
 msgid "The assistant sends your messages, and what it reads of the open project, to this provider, and only when you send a message. The Assistant palette (AI) asks once before the first."
 msgstr ""
 
-#: crates/ui-egui/src/codes.rs:315
+#: crates/ui-egui/src/codes.rs:364
 msgid "The building code this project's stairs and railings are held to. A new stair starts with its numbers. Any rule can be changed, for a state's or a city's own; a stair outside the rules is still built, and marked."
 msgstr ""
 
@@ -9319,7 +9331,7 @@ msgstr ""
 msgid "Unlock alignment"
 msgstr "解鎖對齊"
 
-#: crates/core/src/commands.rs:10147
+#: crates/core/src/commands.rs:10158
 msgid "Unnamed"
 msgstr "未命名"
 
@@ -9327,7 +9339,7 @@ msgstr "未命名"
 msgid "Unsaved changes"
 msgstr "有未儲存的更改"
 
-#: crates/ui-egui/src/codes.rs:355
+#: crates/ui-egui/src/codes.rs:404
 msgid "Unsaved, the rules are still the project's when applied."
 msgstr ""
 
@@ -9876,7 +9888,7 @@ msgstr ""
 msgid "Worktop"
 msgstr "檯面"
 
-#: crates/ui-egui/src/codes.rs:344
+#: crates/ui-egui/src/codes.rs:393
 msgid "Write these rules as an XML file, to hand to another project or office"
 msgstr ""
 

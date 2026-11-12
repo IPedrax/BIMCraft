@@ -1693,6 +1693,17 @@ other_files(
          code's, and what it holds that this version doesn't know is listed as `left_out`. `set` holds the project to it",
         building_code_import,
     ),
+    edit(
+        "stair_solve",
+        "Solve Stair",
+        &[],
+        "{id, lock?: [risers | tread | width | landings, …], apply?: n} the stairs nearest stair `id` that are inside the project's \
+         building code, the one that changes least first: each a count of `risers` and their height `riser`, a `tread`, a `width` \
+         and `landings`, with its `changes` said and the `findings` it would still have (none for one that fits; when none fits, \
+         the nearest three). `lock` names what stays as it is. A stair already inside the rules answers `inside`: true and no \
+         proposals. `apply`: n makes the stair the nth proposal",
+        stair_solve,
+    ),
     other(
         "stair_check",
         "Check Stairs",
@@ -13571,6 +13582,45 @@ fn building_code_import(s: &mut Session, p: &Value) -> R {
         m.stair_rules = None;
     }
     Ok(json!({"code": name, "left_out": left_out, "set": set}))
+}
+
+/// `stair_solve`: the stairs nearest one that fit the project's building code, and with `apply`, one of them made.
+fn stair_solve(s: &mut Session, p: &Value) -> R {
+    use crate::codes;
+    let c = "stair_solve";
+    only(c, p, &["id", "lock", "apply"])?;
+    let m = &s.model;
+    let id = id_opt(c, p, "id")?.and_then(|g| m.elements.id(g)).ok_or_else(|| bad(c, "`id`, a stair, is required"))?;
+    let Some(Element::Stair(st)) = m.elements.get(id) else { return Err(bad(c, format!("{id} is not a stair"))) };
+    let mut locks = codes::Locks::default();
+    let named: Option<Vec<String>> = shaped(c, p, "lock", "[risers | tread | width | landings, …]")?;
+    for l in named.into_iter().flatten() {
+        match l.as_str() {
+            "risers" => locks.risers = true,
+            "tread" => locks.tread = true,
+            "width" => locks.width = true,
+            "landings" => locks.landings = true,
+            other => return Err(bad(c, format!("`lock` names risers, tread, width or landings, not `{other}`"))),
+        }
+    }
+    let proposals = codes::solve(m, st, locks);
+    let Some(which) = num(c, p, "apply")? else {
+        let inside = proposals.first().is_some_and(|p| p.changes.is_empty());
+        return Ok(
+            json!({"id": id, "code": m.building_code().code, "inside": inside, "proposals": if inside { Vec::new() } else { proposals }}),
+        );
+    };
+    let chosen =
+        (which.fract() == 0.0 && which >= 1.0).then(|| proposals.get(which as usize - 1)).flatten().filter(|p| !p.changes.is_empty());
+    let Some(chosen) = chosen else {
+        return Err(bad(c, format!("`apply` is the number of a proposal, 1 to {}, as `stair_solve` lists them", proposals.len())));
+    };
+    let made = chosen.applied(st);
+    let reply = json!({"id": id, "applied": chosen});
+    if let Some(Element::Stair(old)) = s.model_mut().elements.get_mut(id) {
+        *old = made;
+    }
+    Ok(reply)
 }
 
 fn stair_check(s: &mut Session, p: &Value) -> R {
