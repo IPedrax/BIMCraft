@@ -60,6 +60,21 @@ enum Drag {
     Box((f32, f32)),
 }
 
+/// Edit Dimension References: the dimension being edited, its references as they are being picked, and where its line goes.
+#[derive(Clone, Debug)]
+pub(crate) struct DimensionRefsEdit {
+    pub(crate) id: Id,
+    pub(crate) refs: Vec<Reference>,
+    pub(crate) at: P2,
+}
+
+/// How a dimension's number is drawn: its size, and the ink of the numbers a click turns into a field.
+#[derive(Clone, Copy)]
+struct NumberInk {
+    size: f32,
+    color: Color32,
+}
+
 /// Geometry does not change when the pointer, selection, tool or theme changes.
 /// Keep one drawing per canvas, bounded to its latest model and framing.
 #[derive(Default, Clone)]
@@ -885,14 +900,22 @@ fn padlock(p: &Painter, at: Pos2, locked: bool, ink: Color32) {
     let body = Rect::from_center_size(at + vec2(0.0, 3.0), vec2(10.0, 8.0));
     p.rect_filled(body, 1.5, pal().surface);
     p.rect_stroke(body, 1.5, Stroke::new(1.5, ink), StrokeKind::Middle);
-    let lift = if locked { 0.0 } else { -3.0 };
-    let top = body.top() + lift;
-    let shackle: Vec<Pos2> = (0..=8)
+    let top = body.top();
+    let mut shackle: Vec<Pos2> = (0..=8)
         .map(|k| {
             let t = std::f32::consts::PI * k as f32 / 8.0;
             pos2(body.center().x - 3.0 * t.cos(), top - 4.0 * t.sin())
         })
         .collect();
+    if !locked {
+        // An open shackle, swung up and out about the foot it keeps on the body: clearly not shut.
+        let pivot = pos2(body.center().x - 3.0, top);
+        let turn = -0.7_f32;
+        for pt in &mut shackle {
+            let d = *pt - pivot;
+            *pt = pivot + vec2(d.x * turn.cos() - d.y * turn.sin(), d.x * turn.sin() + d.y * turn.cos());
+        }
+    }
     p.add(Shape::line(shackle, Stroke::new(1.5, ink)));
 }
 
@@ -1163,6 +1186,39 @@ fn dimension_pick(m: &Model, refs: &[Reference], id: Id, p: P2, near: f64) -> Op
     reference_for(m, DimKind::Aligned, refs.iter().find(|r| r.point.is_none()), id, p, near)
 }
 
+/// The references of element `id` a dimension after `refs` may take at `p`, nearest first, apart from those it has already:
+/// its corners and ends, and its lines parallel to the first line picked. What Tab steps through as the pointer is over an
+/// element, so the one a click would take is seen before it is.
+fn dimension_references(m: &Model, refs: &[Reference], id: Id, p: P2, near: f64) -> Vec<Reference> {
+    let first = refs.iter().find(|r| r.point.is_none()).and_then(|r| m.reference_line(r).ok());
+    let mut out: Vec<(f64, Reference)> = Vec::new();
+    for (r, q) in m.reference_points(id) {
+        if refs.contains(&r) {
+            continue;
+        }
+        let d = q.dist(p);
+        if d <= near {
+            out.push((d, r));
+        }
+    }
+    for (r, l) in m.reference_lines(id) {
+        if refs.contains(&r) {
+            continue;
+        }
+        if let Some((a, b)) = first
+            && !geom::parallel(a, b, l.0, l.1)
+        {
+            continue;
+        }
+        let d = geom::dist_to_segment(p, l.0, l.1);
+        if d <= near {
+            out.push((d, r));
+        }
+    }
+    out.sort_by(|a, b| a.0.total_cmp(&b.0));
+    out.into_iter().map(|(_, r)| r).collect()
+}
+
 /// Of element `id`'s lines that a dimension of `kind` can take after `first` (for an aligned one,
 /// parallel to it; for an angular one, across it), the nearest `p`, if it's within `near` mm: a
 /// wall's far end isn't picked by a click on its middle.
@@ -1430,6 +1486,11 @@ impl BimApp {
             (Tool::Modify, Some(q)) if !sketching => d.pick_all(q, PICK),
             _ => Vec::new(),
         };
+        // A dimension under the cursor: Tab steps through its segments before its element.
+        let dim_under = under.iter().copied().find(|id| {
+            matches!(model.elements.get(*id), Some(Element::Dimension(d))
+                if matches!(d.kind, DimKind::Aligned | DimKind::Linear) && !d.alignment)
+        });
         if under != c.under {
             (c.under, c.cycle) = (under, 0);
         }
@@ -1442,7 +1503,63 @@ impl BimApp {
             });
         }
         let tabbed = std::mem::take(&mut self.tab_cycle) || tab;
-        if tabbed && !c.under.is_empty() {
+        // A dimension being picked or edited: Tab steps through the references of the element under the cursor, so the one a
+        // click takes is seen first: its corners and ends, and its faces and centre lines.
+        let reference_refs: Option<Vec<Reference>> = match (&self.dimension_refs_edit, &self.tool) {
+            (Some(edit), _) => Some(edit.refs.clone()),
+            (None, Tool::Dimension(_, refs)) => Some(refs.clone()),
+            _ => None,
+        };
+        let element_under =
+            local.and_then(|q| d.pick_all(q, PICK).into_iter().find(|id| !matches!(model.elements.get(*id), Some(Element::Dimension(_)))));
+        let reference_context: Option<(Id, Vec<Reference>)> = match (local, reference_refs, element_under) {
+            (Some(q), Some(refs), Some(id)) => {
+                let candidates = dimension_references(&model, &refs, id, view.mm(q), 2.0 * f64::from(PICK) / view.scale);
+                (!candidates.is_empty()).then_some((id, candidates))
+            }
+            _ => None,
+        };
+        if self
+            .dimension_reference_hover
+            .as_ref()
+            .is_some_and(|(id, r)| !reference_context.as_ref().is_some_and(|(held, cands)| held == id && cands.contains(r)))
+        {
+            self.dimension_reference_hover = None;
+        }
+        let mut reference_tabbed = false;
+        if tabbed && let Some((id, candidates)) = &reference_context {
+            let next = match &self.dimension_reference_hover {
+                Some((held, r)) if held == id => {
+                    let i = candidates.iter().position(|x| x == r).unwrap_or(0);
+                    candidates[(i + 1) % candidates.len()]
+                }
+                _ => candidates[0],
+            };
+            self.dimension_reference_hover = Some((*id, next));
+            reference_tabbed = true;
+        }
+        if self.dimension_segment_hover.is_some_and(|(id, _)| Some(id) != dim_under) {
+            self.dimension_segment_hover = None;
+        }
+        let mut segment_tabbed = false;
+        if !reference_tabbed
+            && tabbed
+            && let Some(id) = dim_under
+            && let Some(Element::Dimension(d)) = model.elements.get(id)
+        {
+            let (_, st) = model.stations(d);
+            let count = st.len().saturating_sub(1);
+            if count > 0 {
+                let at = local.map(|q| model.dimension_segment_at(d, view.mm(q))).unwrap_or(0).min(count - 1);
+                let next = match self.dimension_segment_hover {
+                    Some((held, i)) if held == id => (i + 1) % count,
+                    _ => at,
+                };
+                self.dimension_segment_hover = Some((id, next));
+                segment_tabbed = true;
+            }
+        }
+        if tabbed && !reference_tabbed && !segment_tabbed && !c.under.is_empty() {
             c.cycle = (c.cycle + 1) % c.under.len();
         }
         // While a rectangle is drawn, Tab moves between its width and its height; a line's or a wall's, its length and its angle.
@@ -1626,9 +1743,31 @@ impl BimApp {
             let q = (at.x - rect.min.x, at.y - rect.min.y);
             // What lay under the press, which the hand may have left by the time the button came up.
             let found = if Some(q) == local { hovered } else { under_at(q) };
-            self.click(&model, (level, key), &view, q, found, click_modifiers(ui));
-            // A snap override typed was for that point.
-            self.snap_once = None;
+            // A dimension's control keeps a click over it (its number, EQ, padlock or text button), but a mark that
+            // opens a view or a note, or is written in, is the click's: a double click there must not be held back.
+            let opens = found.is_some_and(|id| {
+                model.section(id).is_some()
+                    || matches!(model.elements.get(id), Some(Element::View3D(_)))
+                    || crate::notes::is_note(&model, id)
+            });
+            if self.over_dimension_control && !opens {
+                self.snap_once = None;
+            } else {
+                // Tab has picked a segment of the dimension under the cursor: a click selects that segment.
+                if let Some((dim, segment)) = self.dimension_segment_hover
+                    && (found == Some(dim) || d.pick_all(q, PICK).contains(&dim))
+                {
+                    self.selection = vec![dim];
+                    self.dimension_segment = Some((dim, segment));
+                    self.dimension_segment_hover = None;
+                } else {
+                    self.dimension_segment = None;
+                    self.dimension_segment_hover = None;
+                    self.click(&model, (level, key), &view, q, found, click_modifiers(ui));
+                }
+                // A snap override typed was for that point.
+                self.snap_once = None;
+            }
         }
         // A double click ends a spline or a polyline at the point clicked, as Enter does.
         if response.double_clicked() && !dragged && !writing && self.finishable() {
@@ -1767,6 +1906,7 @@ impl BimApp {
         self.line_grip_overlay(&ui.painter_at(rect), rect, &view, cursor);
         self.shape_overlay(ui, &model, &view, rect, level);
         self.temporary_dimension(ui, &model, &view, rect);
+        self.dimension_overlays(ui, &model, &view, rect, key);
         self.locks(ui, &model, &view, rect, key);
         self.context_menu(&response);
         self.nav_bar(ui, rect, key);
@@ -1987,6 +2127,12 @@ impl BimApp {
     fn dragged(&self, m: &Model, v: &View, from: P2, to: P2) -> P2 {
         let by = round(to - from);
         let &[id] = self.selection.as_slice() else { return by };
+        // A dimension's line moves only square to itself, as far as the drag goes that way: along it, it stays put.
+        if let Some(Element::Dimension(d)) = m.elements.get(id) {
+            let (n, _) = m.crossings(d);
+            let off = n.perp();
+            return if off.length() > 1e-9 { off * by.dot(off) } else { P2(0.0, 0.0) };
+        }
         let Some(Element::Door(o) | Element::Window(o)) = m.elements.get(id) else { return by };
         let Some(w) = m.wall(o.host).filter(|w| w.arc == 0.0) else { return by };
         let u = (w.end - w.start).unit();
@@ -1995,6 +2141,11 @@ impl BimApp {
     }
 
     fn click(&mut self, m: &Model, (level, key): (Id, Id), v: &View, at: (f32, f32), hovered: Option<Id>, mods: Modifiers) {
+        // Edit Dimension References: picks take references out or put them in, a click away fixes the line.
+        if self.dimension_refs_edit.is_some() {
+            self.dimension_refs_click(m, key, v, at, hovered);
+            return;
+        }
         match &self.tool {
             &Tool::Vertex { delete } if self.sketch.is_some() => self.vertex_click(None, v.mm(at), f64::from(PICK) / v.scale, delete),
             Tool::Split | Tool::Trim(_) | Tool::TrimTo { .. } | Tool::Offset if self.sketch.is_some() => {
@@ -2198,9 +2349,18 @@ impl BimApp {
             // its mode says.
             Tool::Dimension(mode, refs) => {
                 let (mode, mut refs) = (*mode, refs.clone());
-                match hovered.and_then(|id| dimension_pick(m, &refs, id, v.mm(at), 2.0 * f64::from(PICK) / v.scale)) {
+                let picked = self
+                    .dimension_reference_hover
+                    .filter(|(id, _)| Some(*id) == hovered)
+                    .map(|(_, r)| r)
+                    .or_else(|| hovered.and_then(|id| dimension_pick(m, &refs, id, v.mm(at), 2.0 * f64::from(PICK) / v.scale)));
+                self.dimension_reference_hover = None;
+                match picked {
                     Some(r) => {
-                        if !refs.contains(&r) {
+                        // A reference picked again is taken out, as Revit's dimension tool does.
+                        if let Some(i) = refs.iter().position(|x| *x == r) {
+                            refs.remove(i);
+                        } else {
                             refs.push(r);
                         }
                         self.tool = Tool::Dimension(mode, refs);
@@ -3350,34 +3510,46 @@ impl BimApp {
     /// A temporary dimension's number at `at`, which a click turns into a field to type a new one: what was typed once
     /// the field is left (None inside it for Esc). `key` is the element and which of its dimensions.
     fn dimension_number(&mut self, ui: &mut Ui, at: Rect, key: (Id, usize), text: &str) -> Option<Option<String>> {
-        self.number_field(ui, at, key, text, bimcraft_i18n::msg!("Temporary dimension {}"))
+        let look = NumberInk { size: 12.0, color: pal().accent };
+        self.number_field(ui, at, key, text, bimcraft_i18n::msg!("Temporary dimension {}"), look)
     }
 
     /// A dimension's number at `at`, as [`dimension_number`](Self::dimension_number) shows one, named `name` (with the number
-    /// in it) for the screen reader.
-    fn number_field(&mut self, ui: &mut Ui, at: Rect, key: (Id, usize), text: &str, name: &str) -> Option<Option<String>> {
-        let font = FontId::proportional(12.0);
+    /// in it) for the screen reader. A field opens empty: what was typed once it is left (None for Esc, an empty one, or a
+    /// click elsewhere), and a null for a number left empty.
+    fn number_field(&mut self, ui: &mut Ui, at: Rect, key: (Id, usize), text: &str, name: &str, look: NumberInk) -> Option<Option<String>> {
+        let font = FontId::proportional(look.size);
         let field = ui.id().with(("temporary dimension", key));
-        let (mut done, mut start) = (None, false);
+        let (mut done, mut start, mut escaped) = (None, false, false);
         match &mut self.dim_edit {
             Some((id, n, typed)) if (*id, *n) == key => {
+                self.over_dimension_control = true;
                 let edit = ui.put(at.expand2(vec2(18.0, 2.0)), TextEdit::singleline(typed).id(field).horizontal_align(Align::Center));
                 if edit.lost_focus() {
-                    done = Some(ui.input(|i| !i.key_pressed(Key::Escape)).then(|| typed.clone()));
+                    escaped = ui.input(|i| i.key_pressed(Key::Escape));
+                    let typed = typed.trim().to_string();
+                    done = Some((!escaped && !typed.is_empty()).then_some(typed));
                 } else if !edit.has_focus() {
                     edit.request_focus();
                 }
             }
             _ => {
                 let r = ui.interact(at, field.with("number"), Sense::click());
+                if r.hovered() {
+                    self.over_dimension_control = true;
+                }
                 r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, tf(name, &[text])));
                 ui.painter().rect_filled(at, 2.0, pal().surface);
-                ui.painter().text(at.center(), Align2::CENTER_CENTER, text, font, if r.hovered() { pal().hover } else { pal().accent });
+                let ink = if r.hovered() { pal().hover } else { look.color };
+                ui.painter().text(at.center(), Align2::CENTER_CENTER, text, font, ink);
                 start = r.clicked();
             }
         }
         if start {
-            self.dim_edit = Some((key.0, key.1, text.to_string()));
+            self.dim_edit = Some((key.0, key.1, String::new()));
+        }
+        if escaped {
+            self.dim_edit_escaped = true;
         }
         if done.is_some() {
             self.dim_edit = None;
@@ -3393,14 +3565,12 @@ impl BimApp {
             return;
         }
         let (n, cross) = m.crossings(d);
-        let (Some(&(first, _)), Some(&(last, _))) = (cross.first(), cross.last()) else { return };
         if cross.len() < 2 {
             return;
         }
         let screen = |q: P2| pos(rect.min, v.px(q));
         let on = |s: f64| screen(d.at + n * s);
-        // On screen: along the line, and off it to the side its numbers aren't.
-        let along = (on(1.0) - on(0.0)).normalized();
+        // On screen: off the line to the side its numbers aren't.
         let side = (screen(d.at - n.perp()) - screen(d.at)).normalized();
         let p = ui.painter_at(rect);
         for (i, pair) in cross.windows(2).enumerate() {
@@ -3408,6 +3578,9 @@ impl BimApp {
             let at = on((s0 + s1) / 2.0) + side * 14.0;
             let locked = d.locked.iter().any(|l| l.segment == i);
             let r = ui.interact(Rect::from_center_size(at, vec2(16.0, 18.0)), ui.id().with(("dimension lock", id, i)), Sense::click());
+            if r.hovered() {
+                self.over_dimension_control = true;
+            }
             let name = tf("Lock segment {}", &[&(i + 1).to_string()]);
             r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, locked, name.clone()));
             let ink = if r.hovered() {
@@ -3427,13 +3600,30 @@ impl BimApp {
             }
         }
         // Each segment's number, which a click turns into a field: a length typed there moves what the segment ends at
-        // (`dimension_value`), as a temporary dimension's does.
+        // (`dimension_value`), as a temporary dimension's does; under it, a small T opens the number's Dimension Text.
         if m.dimension_type(d).string == bimcraft_core::dims::DimString::Continuous {
             for (i, (pair, label)) in cross.windows(2).zip(m.dimension_labels(d)).enumerate() {
                 let [(s0, _), (s1, _)] = pair else { continue };
                 let size = p.layout_no_wrap(label.clone(), FontId::proportional(12.0), pal().accent).size() + vec2(10.0, 4.0);
                 let at = Rect::from_center_size(on((s0 + s1) / 2.0) - side * 12.0, size);
-                let Some(Some(typed)) = self.number_field(ui, at, (id, i), &label, bimcraft_i18n::msg!("Dimension {}")) else { continue };
+                // A larger button over the number, which opens the same Dimension Text the double click does.
+                let icon = Rect::from_center_size(at.center() - vec2(0.0, at.height() / 2.0 + 12.0), vec2(24.0, 20.0));
+                let r = ui.interact(icon, ui.id().with(("dimension text", id, i)), Sense::click());
+                if r.hovered() {
+                    self.over_dimension_control = true;
+                }
+                r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, t("Dimension text")));
+                let ink = if r.hovered() { pal().hover } else { pal().accent_ink };
+                p.rect_filled(icon, 3.0, pal().surface);
+                p.rect_stroke(icon, 3.0, Stroke::new(1.0, ink), StrokeKind::Inside);
+                p.text(icon.center(), Align2::CENTER_CENTER, "Aa", FontId::proportional(12.0), ink);
+                if r.clicked() {
+                    self.dimension_text_dialog = Some(crate::dimtypes::DimensionTextDialog::new(m, id, i));
+                }
+                let look = NumberInk { size: 12.0, color: pal().accent };
+                let Some(Some(typed)) = self.number_field(ui, at, (id, i), &label, bimcraft_i18n::msg!("Dimension {}"), look) else {
+                    continue;
+                };
                 match m.units.parse(&typed) {
                     Some(value) => {
                         self.run("dimension_value", json!({"id": id, "segment": i, "value": value}));
@@ -3442,9 +3632,142 @@ impl BimApp {
                 }
             }
         }
-        if cross.len() > 2 {
-            let at = on(last.max(first)) + along * 22.0;
-            let r = ui.interact(Rect::from_center_size(at, vec2(26.0, 18.0)), ui.id().with(("dimension equal", id)), Sense::click());
+    }
+
+    /// A selected element's dimensions, whose numbers are picked to type a value into: shown smaller and in the accent's
+    /// ink (Revit's own), a click opening an empty field. What is typed moves the selected element, the far reference
+    /// staying where it is; an equal dimension takes its value at the end opposite the element.
+    fn dimension_highlights(&mut self, ui: &mut Ui, m: &Model, v: &View, rect: Rect, key: Id) {
+        if self.tool != Tool::Modify || self.canvas.drag.is_some() || self.canvas.grip.is_some() || self.drawing.grip.is_some() {
+            return;
+        }
+        let &[sel] = self.selection.as_slice() else { return };
+        if matches!(m.elements.get(sel), Some(Element::Dimension(_))) {
+            return;
+        }
+        let Some(sel_guid) = m.elements.guid(sel) else { return };
+        let screen = |q: P2| pos(rect.min, v.px(q));
+        let pointer = ui.input(|i| i.pointer.hover_pos());
+        let p = ui.painter_at(rect);
+        let dims: Vec<(Id, Dimension)> = m
+            .elements
+            .iter()
+            .filter_map(|(&id, e)| match e {
+                Element::Dimension(d)
+                    if matches!(d.kind, DimKind::Aligned | DimKind::Linear)
+                        && !d.alignment
+                        && m.annotation_in(e, key)
+                        && d.refs.iter().any(|r| r.id == sel_guid) =>
+                {
+                    Some((id, d.clone()))
+                }
+                _ => None,
+            })
+            .collect();
+        for (id, d) in dims {
+            let (n, cross) = m.crossings(&d);
+            if cross.len() < 2 {
+                continue;
+            }
+            let side = (screen(d.at - n.perp()) - screen(d.at)).normalized();
+            let on = |s: f64| screen(d.at + n * s);
+            let labels = m.dimension_labels(&d);
+            for (i, (pair, label)) in cross.windows(2).zip(labels).enumerate() {
+                let [(s0, _), (s1, _)] = pair else { continue };
+                let size = p.layout_no_wrap(label.clone(), FontId::proportional(11.0), pal().accent_ink).size() + vec2(10.0, 4.0);
+                let at = Rect::from_center_size(on((s0 + s1) / 2.0) - side * 12.0, size);
+                let editing = matches!(&self.dim_edit, Some((eid, ei, _)) if (*eid, *ei) == (id, i));
+                if pointer.is_some_and(|q| at.expand2(vec2(18.0, 2.0)).contains(q)) || editing {
+                    self.over_dimension_control = true;
+                }
+                let look = NumberInk { size: 11.0, color: pal().accent_ink };
+                let Some(Some(typed)) = self.number_field(ui, at, (id, i), &label, bimcraft_i18n::msg!("Dimension {}"), look) else {
+                    continue;
+                };
+                let Some(value) = m.units.parse(&typed) else {
+                    self.status = Status { text: tf("`{}` is not a length", &[typed.trim()]), error: true };
+                    continue;
+                };
+                // The far reference stays: the clicked segment's other station, or an equal dimension's opposite end.
+                let (_, st) = m.stations(&d);
+                let hold = if d.equal {
+                    let k = st.len().saturating_sub(1);
+                    let near = st.iter().position(|(_, _, r)| r.id == sel_guid).unwrap_or(0);
+                    st.get(if near * 2 <= k { k } else { 0 }).map(|(_, _, r)| *r)
+                } else {
+                    match (st.get(i), st.get(i + 1)) {
+                        (Some((_, _, a)), Some((_, _, b))) if a.id == sel_guid => Some(*b),
+                        (Some((_, _, a)), Some((_, _, b))) if b.id == sel_guid => Some(*a),
+                        _ => None,
+                    }
+                };
+                let mut params = json!({"id": id, "segment": i, "value": value});
+                if let Some(hold) = hold {
+                    params["hold"] = json!(hold);
+                }
+                self.run("dimension_value", params);
+            }
+        }
+    }
+
+    /// A selected element's dimensions, each number picked as [`dimension_highlights`](Self::dimension_highlights) says.
+    fn dimension_overlays(&mut self, ui: &mut Ui, m: &Model, v: &View, rect: Rect, key: Id) {
+        self.dimension_reference_highlight(ui, m, v, rect);
+        if let Some(edit) = &self.dimension_refs_edit {
+            // The references picked so far, each marked where it crosses the line being edited.
+            if let Some(Element::Dimension(old)) = m.elements.get(edit.id) {
+                let d = Dimension { refs: edit.refs.clone(), ..old.clone() };
+                let (_, st) = m.stations(&d);
+                let p = ui.painter_at(rect);
+                for (_, _, r) in st {
+                    if let Ok((a, b)) = m.reference_geometry(&r) {
+                        let c = pos(rect.min, v.px((a + b) * 0.5));
+                        p.circle_stroke(c, 7.0, Stroke::new(2.0, pal().accent));
+                    }
+                }
+            }
+            return;
+        }
+        self.dimension_segment_highlight(ui, m, v, rect);
+        self.dimension_eq_hint(ui, m, v, rect);
+        self.dimension_highlights(ui, m, v, rect, key);
+    }
+
+    /// The equality control over the middle of a dimension's chain: over an equal chain while the pointer is near it, and
+    /// always while the dimension is selected. A click makes the chain equal or not, as Revit's EQ; one that isn't equal
+    /// wears it struck through. Screen only: never drawn in a plan, a PNG or on paper.
+    fn dimension_eq_hint(&mut self, ui: &mut Ui, m: &Model, v: &View, rect: Rect) {
+        let cursor = ui.input(|i| i.pointer.hover_pos()).filter(|p| rect.contains(*p));
+        let q = cursor.map(|p| v.mm((p.x - rect.min.x, p.y - rect.min.y)));
+        let near = 25.0 / v.scale;
+        let mut toggle: Option<(Id, bool)> = None;
+        let p = ui.painter_at(rect);
+        for (&id, e) in m.elements.iter() {
+            let Element::Dimension(d) = e else { continue };
+            if d.alignment || !matches!(d.kind, DimKind::Aligned | DimKind::Linear) {
+                continue;
+            }
+            let (n, st) = m.stations(d);
+            if st.len() < 3 {
+                continue;
+            }
+            let (first, last) = (st[0].0, st[st.len() - 1].0);
+            let selected = matches!(self.selection.as_slice(), [one] if *one == id) && self.tool == Tool::Modify;
+            let hovered = q.is_some_and(|q| {
+                let s = (q - d.at).dot(n);
+                s >= first - near && s <= last + near && (q - (d.at + n * s)).length() <= near
+            });
+            if !selected && !(hovered && d.equal) {
+                continue;
+            }
+            let at = pos(rect.min, v.px(d.at + n * ((first + last) / 2.0))) + vec2(0.0, -30.0);
+            let text = m.dimension_type(d).equality_text;
+            let size = p.layout_no_wrap(text.clone(), FontId::proportional(12.0), pal().accent_ink).size() + vec2(10.0, 4.0);
+            let chip = Rect::from_center_size(at, size);
+            let r = ui.interact(chip, ui.id().with(("dimension eq", id)), Sense::click());
+            if r.hovered() {
+                self.over_dimension_control = true;
+            }
             r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, d.equal, t("Equal")));
             let ink = if r.hovered() {
                 pal().hover
@@ -3453,15 +3776,108 @@ impl BimApp {
             } else {
                 pal().muted
             };
-            p.rect_filled(r.rect, 3.0, pal().surface);
-            p.text(at, Align2::CENTER_CENTER, "EQ", FontId::proportional(12.0), ink);
+            p.rect_filled(chip, 3.0, pal().surface);
+            p.rect_stroke(chip, 3.0, Stroke::new(1.0, ink), StrokeKind::Inside);
+            p.text(at, Align2::CENTER_CENTER, text, FontId::proportional(12.0), ink);
             if !d.equal {
-                p.line_segment([r.rect.left_bottom() + vec2(4.0, -3.0), r.rect.right_top() + vec2(-4.0, 3.0)], Stroke::new(1.2, ink));
+                p.line_segment([chip.left_bottom() + vec2(4.0, -3.0), chip.right_top() + vec2(-4.0, 3.0)], Stroke::new(1.2, ink));
             }
             if r.clicked() {
-                self.run("dimension_constraint", json!({"id": id, "equal": !d.equal}));
+                toggle = Some((id, !d.equal));
             }
         }
+        if let Some((id, equal)) = toggle {
+            self.run("dimension_constraint", json!({"id": id, "equal": equal}));
+        }
+    }
+
+    /// The reference Tab picked on the element under the cursor, drawn over the plan: a line brightened, or a corner ringed.
+    fn dimension_reference_highlight(&self, ui: &Ui, m: &Model, v: &View, rect: Rect) {
+        let Some((_, r)) = self.dimension_reference_hover else { return };
+        let Ok((a, b)) = m.reference_geometry(&r) else { return };
+        let p = ui.painter_at(rect);
+        if a.dist(b) > 1e-9 {
+            p.line_segment([pos(rect.min, v.px(a)), pos(rect.min, v.px(b))], Stroke::new(3.5, pal().accent));
+        } else {
+            p.circle_stroke(pos(rect.min, v.px(a)), 6.0, Stroke::new(2.0, pal().accent));
+        }
+    }
+
+    /// The segment Tab picked, or a click selected, drawn over the dimension line: brighter while it is the picked one.
+    fn dimension_segment_highlight(&mut self, ui: &mut Ui, m: &Model, v: &View, rect: Rect) {
+        let Some((id, segment)) = self.dimension_segment.or(self.dimension_segment_hover) else { return };
+        let Some(Element::Dimension(d)) = m.elements.get(id) else {
+            self.dimension_segment = None;
+            self.dimension_segment_hover = None;
+            return;
+        };
+        let (n, st) = m.stations(d);
+        let (Some(a), Some(b)) = (st.get(segment), st.get(segment + 1)) else { return };
+        let on = |s: f64| pos(rect.min, v.px(d.at + n * s));
+        let p = ui.painter_at(rect);
+        let (ink, width) = if self.dimension_segment == Some((id, segment)) { (pal().accent, 5.0) } else { (pal().hover, 3.0) };
+        p.line_segment([on(a.0), on(b.0)], Stroke::new(width, ink));
+        p.circle_filled(on((a.0 + b.0) / 2.0), 5.0, ink);
+    }
+
+    /// Starts Edit Dimension References on the selected dimension, if it is one.
+    pub(crate) fn start_dimension_refs_edit(&mut self) {
+        let &[id] = self.selection.as_slice() else { return };
+        let Some(Element::Dimension(d)) = self.session.model.elements.get(id) else { return };
+        if d.alignment {
+            return;
+        }
+        self.tool = Tool::Modify;
+        self.dimension_reference_hover = None;
+        self.dimension_refs_edit = Some(DimensionRefsEdit { id, refs: d.refs.clone(), at: d.at });
+    }
+
+    /// Confirms Edit Dimension References: one command, one undo step; nothing while fewer than two references are left.
+    pub(crate) fn commit_dimension_refs(&mut self) {
+        let Some(edit) = self.dimension_refs_edit.take() else { return };
+        self.dimension_reference_hover = None;
+        if edit.refs.len() < 2 {
+            self.status = Status { text: bimcraft_i18n::msg!("A dimension has two references at least.").to_string(), error: true };
+            return;
+        }
+        // The line may have been dragged while its references were picked: commit where the dimension is now.
+        let (at, same) = match self.session.model.elements.get(edit.id) {
+            Some(Element::Dimension(d)) => (d.at, d.refs == edit.refs),
+            _ => (edit.at, false),
+        };
+        // Nothing picked differently: leaving the mode is enough, and makes no undo step.
+        if same {
+            return;
+        }
+        if self.run("dimension", json!({"id": edit.id, "refs": edit.refs, "at": point(at)})).is_none() {
+            self.dimension_refs_edit = Some(edit);
+        }
+    }
+
+    /// A click while editing a dimension's references: one picked again goes, another is added; a click in the open confirms
+    /// and leaves the mode. The line moves only by dragging.
+    fn dimension_refs_click(&mut self, m: &Model, _key: Id, v: &View, at: (f32, f32), hovered: Option<Id>) {
+        let Some(mut edit) = self.dimension_refs_edit.take() else { return };
+        let q = v.mm(at);
+        // The reference Tab picked, else the one nearest the cursor: a face, an axis or a corner.
+        let picked = self
+            .dimension_reference_hover
+            .filter(|(id, _)| Some(*id) == hovered)
+            .map(|(_, r)| r)
+            .or_else(|| hovered.and_then(|id| dimension_pick(m, &edit.refs, id, q, 2.0 * f64::from(PICK) / v.scale)));
+        self.dimension_reference_hover = None;
+        if let Some(r) = picked {
+            if let Some(i) = edit.refs.iter().position(|x| *x == r) {
+                edit.refs.remove(i);
+            } else {
+                edit.refs.push(r);
+            }
+            self.dimension_refs_edit = Some(edit);
+            return;
+        }
+        // A click in the open confirms the edit and leaves the mode; the line itself is moved by dragging, not here.
+        self.dimension_refs_edit = Some(edit);
+        self.commit_dimension_refs();
     }
 
     /// The locks of the dimensions in plan `key`, shown whether they're selected or not, as Revit shows them: a shut padlock
@@ -3476,6 +3892,7 @@ impl BimApp {
             _ => None,
         };
         let mut unlock = None;
+        let mut unlocked: Vec<(Id, usize)> = Vec::new();
         for (&id, e) in m.elements.iter() {
             let Element::Dimension(d) = e else { continue };
             if d.locked.is_empty() || Some(id) == alone || !m.annotation_in(e, key) {
@@ -3484,6 +3901,9 @@ impl BimApp {
             if d.alignment {
                 let at = screen(d.at) + vec2(12.0, -12.0);
                 let r = ui.interact(Rect::from_center_size(at, vec2(16.0, 18.0)), ui.id().with(("alignment lock", id)), Sense::click());
+                if r.hovered() {
+                    self.over_dimension_control = true;
+                }
                 r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, true, t("Unlock alignment")));
                 padlock(&p, at, true, if r.hovered() { pal().hover } else { pal().accent });
                 if r.clicked() {
@@ -3498,11 +3918,23 @@ impl BimApp {
                 let [(s0, _), (s1, _)] = pair else { continue };
                 if d.locked.iter().any(|l| l.segment == i) {
                     let at = on((s0 + s1) / 2.0) + side * 14.0;
-                    let r = ui.interact(Rect::from_center_size(at, vec2(16.0, 18.0)), ui.id().with(("shown lock", id, i)), Sense::hover());
-                    r.widget_info(|| WidgetInfo::labeled(WidgetType::Label, true, tf("Locked segment {}", &[&(i + 1).to_string()])));
-                    padlock(&p, at, true, pal().muted);
+                    let r = ui.interact(Rect::from_center_size(at, vec2(18.0, 20.0)), ui.id().with(("shown lock", id, i)), Sense::click());
+                    if r.hovered() {
+                        self.over_dimension_control = true;
+                    }
+                    let name = tf("Locked segment {}", &[&(i + 1).to_string()]);
+                    r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, true, name.clone()));
+                    padlock(&p, at, true, if r.hovered() { pal().hover } else { pal().muted });
+                    if r.clicked() {
+                        unlocked.push((id, i));
+                    }
                 }
             }
+        }
+        for (id, i) in unlocked {
+            let Some(Element::Dimension(d)) = self.session.model.elements.get(id) else { continue };
+            let segments: Vec<usize> = d.locked.iter().map(|l| l.segment).filter(|&s| s != i).collect();
+            self.run("dimension_constraint", json!({"id": id, "locked": segments}));
         }
         if let Some(id) = unlock {
             self.run("delete", json!({"ids": [id]}));
@@ -3529,6 +3961,7 @@ impl BimApp {
     /// to the ends of its wall. A click on a number types a new length: a wall's end moves (the walls joined there
     /// follow), an opening slides along its wall.
     fn temporary_dimension(&mut self, ui: &mut Ui, m: &Model, v: &View, rect: Rect) {
+        self.over_dimension_control = false;
         let &[id] = self.selection.as_slice() else {
             self.dim_edit = None;
             return;
@@ -3575,14 +4008,44 @@ impl BimApp {
         };
         let text = m.units.length(length);
         let size = p.layout_no_wrap(text.clone(), FontId::proportional(12.0), pal().accent).size() + vec2(10.0, 4.0);
-        if let Some(typed) = self.dimension_number(ui, Rect::from_center_size(middle, size), (id, 0), &text) {
+        let number = Rect::from_center_size(middle, size);
+        // Under the number, a small dimension-line button makes the temporary dimension a real one: a dimension between
+        // the wall's ends, where the temporary line is. A curved wall's length along its arc is no aligned dimension's.
+        if w.arc == 0.0 {
+            let icon = Rect::from_center_size(middle + vec2(0.0, size.y / 2.0 + 10.0), vec2(22.0, 16.0));
+            let r = ui.interact(icon, ui.id().with(("permanent dimension", id)), Sense::click());
+            if r.hovered() {
+                self.over_dimension_control = true;
+            }
+            r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, t("Make Dimension Permanent")));
+            let ink = if r.hovered() { pal().hover } else { pal().accent_ink };
+            p.rect_filled(icon, 3.0, pal().surface);
+            p.rect_stroke(icon, 3.0, Stroke::new(1.0, ink), StrokeKind::Inside);
+            let y = icon.center().y;
+            let (left, right) = (icon.left() + 4.0, icon.right() - 4.0);
+            p.line_segment([pos2(left, y), pos2(right, y)], Stroke::new(1.0, ink));
+            for x in [left, right] {
+                p.line_segment([pos2(x, y - 3.0), pos2(x, y + 3.0)], Stroke::new(1.0, ink));
+            }
+            if r.clicked() {
+                let at = v.mm((icon.center().x - rect.min.x, icon.center().y - rect.min.y));
+                // A perpendicular wall joined at an end is what the dimension is measured to there: changing it moves
+                // that whole wall, not just its joined end (which would leave it out of square).
+                let start = walls::joined_perpendicular(m, id, false);
+                let end = walls::joined_perpendicular(m, id, true);
+                let refs = match (start, end) {
+                    (Some(a), Some(b)) if a != b => json!([{"id": a}, {"id": b}]),
+                    (Some(a), None) => json!([{"id": a}, {"id": id, "point": "end"}]),
+                    (None, Some(b)) => json!([{"id": id, "point": "start"}, {"id": b}]),
+                    _ => json!([{"id": id, "point": "start"}, {"id": id, "point": "end"}]),
+                };
+                self.run("dimension", json!({"refs": refs, "at": point(at)}));
+            }
+        }
+        if let Some(typed) = self.dimension_number(ui, number, (id, 0), &text) {
             match typed.map(|t| (m.units.parse(&t), t)) {
-                // Its end moved along its chord: an arc keeps its turn, its length as typed.
                 Some((Some(len), _)) if len > 0.0 => {
-                    let by = (w.end - w.start) * (len / length - 1.0);
-                    if by.length() > 1e-6 {
-                        self.run("move", json!({"ids": [id], "by": point(by), "end": "end"}));
-                    }
+                    self.run("wall_length", json!({"id": id, "value": len}));
                 }
                 Some((_, typed)) => self.status = Status { text: tf("`{}` is not a length", &[typed.trim()]), error: true },
                 None => {}
@@ -3936,7 +4399,11 @@ impl BimApp {
             }
             // The references and endpoints picked, the one under the cursor, else the dimension a click places.
             Tool::Dimension(mode, refs) => {
-                let candidate = hovered.and_then(|id| dimension_pick(m, refs, id, v.mm(q), 2.0 * f64::from(PICK) / v.scale));
+                let candidate = self
+                    .dimension_reference_hover
+                    .filter(|(id, _)| Some(*id) == hovered)
+                    .map(|(_, r)| r)
+                    .or_else(|| hovered.and_then(|id| dimension_pick(m, refs, id, v.mm(q), 2.0 * f64::from(PICK) / v.scale)));
                 for r in refs.iter().chain(&candidate) {
                     match (r.point, m.reference_geometry(r)) {
                         (Some(_), Ok((a, _))) => {

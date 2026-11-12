@@ -86,11 +86,11 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// (`operation`: `sectional` or `roller`); a project may hold property lines (the `propertyline` category, a row of
 /// `graphics::MODEL` that views' graphics and Object Styles may name); it may pin elements where they are (`pinned`, their
 /// GUIDs); an elevation may keep the line it looks at (`reference`) and stand its mark apart from its line (`mark`); a
-/// project's language may be Polish (`pl`); a distribution board may hold its electrical data (a component's `panel`: its
+/// project's language may be Polish (`pl`) or Vietnamese (`vi`); a distribution board may hold its electrical data (a component's `panel`: its
 /// distribution system, mains, slots and the board that supplies it); and a project may hold circuits (the `circuit`
 /// category, each on its board's slots from its `number`), panel schedules (`panelschedule`) and demand factors by
 /// classification (`demand_factors`). Nothing in a file of 17 changes, but a build that reads up to 17 would answer such a
-/// connector, dimension, operation, property line, circuit or panel schedule, or Polish, with a serde error ("unknown
+/// connector, dimension, operation, property line, circuit or panel schedule, or Polish or Vietnamese, with a serde error ("unknown
 /// variant", "missing field `system`") and graphics or a style of `propertyline` as a category it doesn't have, would leave
 /// the title blocks and a viewport's `follow_scale` out as fields it doesn't know, drawing every sheet with the built-in
 /// title box, and would silently drop `join: false` and join the element again, and the pins, letting what was pinned move,
@@ -2797,6 +2797,25 @@ pub struct ProjectParameter {
     #[serde(default)]
     pub kind: ParameterKind,
     pub categories: Vec<String>,
+    /// The property set an IFC export writes each category's values in, by category: the set they came in from another
+    /// program. A category it doesn't name writes them in the project's own, `Project Parameters`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub sets: BTreeMap<String, String>,
+    /// A classification system's codes, which IFC holds as classification references rather than properties: a text
+    /// parameter whose value is an element's code in the system.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub classification: Option<Classification>,
+}
+
+/// A classification system, as IFC's `IfcClassification` names it: Uniclass, OmniClass, a national table.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Classification {
+    /// Its name.
+    pub system: String,
+    /// Its edition, where the file says.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub edition: Option<String>,
 }
 
 /// The most project parameters a project holds.
@@ -2839,6 +2858,42 @@ impl ProjectParameter {
             ParameterKind::Number | ParameterKind::Length => v.as_f64().is_some_and(|x| x.is_finite() && x.abs() <= MAX_COORD),
             ParameterKind::YesNo => v.is_boolean(),
         }
+    }
+
+    /// Whether what it says of IFC is what a file can hold: a set for each of its categories at most, named as no set
+    /// BIMCraft reads into fields of its own; a classification, a text parameter's in no set, with a system named.
+    fn check_ifc(&self) -> Result<(), String> {
+        let named = |what: &str, v: &str| -> Result<(), String> {
+            if v.trim().is_empty() || v.trim() != v {
+                return Err(format!("{what} needs a name, without spaces round it"));
+            }
+            if v.chars().count() > MAX_TEXT {
+                return Err(format!("{what} is longer than {MAX_TEXT} characters"));
+            }
+            Ok(())
+        };
+        for (c, set) in &self.sets {
+            if !self.categories.contains(c) {
+                return Err(format!("it has a set for {c}s, which it isn't for"));
+            }
+            named(&format!("the set for {c}s"), set)?;
+            if !crate::ifc::foreign_set(set) {
+                return Err(format!("BIMCraft reads `{set}` into fields of its own; put {c}s' values in another set"));
+            }
+        }
+        if let Some(cl) = &self.classification {
+            if self.kind != ParameterKind::Text {
+                return Err("a classification's codes are text".into());
+            }
+            if !self.sets.is_empty() {
+                return Err("a classification's codes go in IFC as references, not in a property set".into());
+            }
+            named("its classification system", &cl.system)?;
+            if let Some(e) = &cl.edition {
+                named("its classification's edition", e)?;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -3808,14 +3863,14 @@ impl Model {
         // 17 to 18 (pipe, data and earthing connectors, a connector's place; title blocks of the project's own, with a
         // drawing area and a border of their own, their fields' values, and sheets with none; viewports that keep a scale
         // of their own; walls and runs that refuse to join; a dimension to the line across a column; sectional and roller
-        // doors; property lines; pinned elements; an elevation's reference and mark; Polish as a project's language; a
+        // doors; property lines; pinned elements; an elevation's reference and mark; Polish or Vietnamese as a project's language; a
         // distribution board's `panel`; circuits, panel schedules and `demand_factors`) has none either: a file of 17's
         // connectors are a power or a switch one, each with its system, which 18 reads as they were; a file of 17 holds no
         // title blocks, its sheets keeping the built-in one, no `follow_scale`, so its viewports follow their views' scales
         // from then on, as one placed without a scale does, no `join`, which reads as joining, as it always did, none of
         // its dimensions measures `across`, none of its operations is a gate's, it holds no property line and names no
         // `propertyline` in its graphics or styles, nothing in it is pinned, its elevations have no reference and their
-        // marks on their lines, its language isn't Polish, none of its components has a `panel`, and it has no circuits,
+        // marks on their lines, its language isn't Polish or Vietnamese, none of its components has a `panel`, and it has no circuits,
         // panel schedules or `demand_factors`.
         // The Family Editor's part of 18, and what places its families, takes
         // one step, in this order (it leaves the rest of 18 alone: title blocks, `join` and `across` aren't a family's, and a
@@ -6708,6 +6763,7 @@ impl Model {
             {
                 return Err(format!("{who}: family `{f}` has a parameter of that name; name it otherwise"));
             }
+            p.check_ifc().map_err(|e| format!("{who}: {e}"))?;
         }
         graphics::check_project(self)?;
         phasing::check_project(self)?;

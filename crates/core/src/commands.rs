@@ -101,8 +101,9 @@ pub static ALL: &[Command] = &[
     other(
         "new",
         "New",
-        "{name?, language?: en|pt|es|sv|cs|fr|nl} an empty project with Level 1 (0) and Level 2 (3000), named in its language (Nível 1, \
-         Nível 2 in Portuguese; Nivel 1, Nivel 2 in Spanish; Nivå 1, Nivå 2 in Swedish; Niveau 1, Niveau 2 in Dutch)",
+        "{name?, language?: en|pt|es|sv|cs|fr|de|nl|it|pl|vi} an empty project with Level 1 (0) and Level 2 (3000), named in its \
+         language (Nível 1, Nível 2 in Portuguese; Nivel 1, Nivel 2 in Spanish; Nivå 1, Nivå 2 in Swedish; Niveau 1, Niveau 2 in \
+         Dutch; Tầng 1, Tầng 2 in Vietnamese)",
         new,
     ),
 other_files(
@@ -853,7 +854,10 @@ other_files(
          horizontal (its lines must run square to it); angular: the angle between two references that meet, on the side \
          of `at`; radial: a round column's, curved wall's, circle's or arc's radius, toward `at`; diameter: the same \
          across, through its centre; arc_length: how long a curved wall's centre line or face, or an arc, is along it \
-         (all of it, or with two point refs after it, between them), its line an arc through `at`. A ref is {id, face?}: a wall's centre (the default), left or right face (of its \
+         (all of it, or with two point refs after it, between them), its line an arc through `at`. With `id`, it edits that \
+         dimension instead: `refs` replaces them (two at least, no duplicates; its locks and segment texts follow the pairs \
+         of references they were on, and those of a pair gone are dropped), `at`, `kind`, `orient`, `type`, its text and \
+         `equality` change when given; a dimension Align locked can't be edited until its lock is taken off. A ref is {id, face?}: a wall's centre (the default), left or right face (of its \
          start-to-end direction), start or end; a door's or window's centre, or its jamb toward its wall's start or end; \
          a column's or structural column's centre line along its angle (the default; west to east at angle 0), `across`, \
          its centre line square to that (south to north), its left or right face (of its angle's direction: north or \
@@ -921,6 +925,17 @@ other_files(
          have now. After any command, what a constrained dimension measures to moves with what the command moved, or the \
          command is refused, saying which dimension can't be kept",
         dimension_constraint,
+    ),
+    edit(
+        "dimension_segment",
+        ui_msg!("Delete Dimension Segment"),
+        &[],
+        "{id, segment} takes one segment out of an aligned or a linear dimension's chain: the chains either side of it stay, \
+         each measured to the references it had, so the deleted segment's measures are not made one with a neighbour; the left \
+         chain keeps this dimension, the right one is new at the same line. A chain left with one segment loses its equality, \
+         and a chain's only segment takes the dimension away. Locks and segment texts follow the references that remain. \
+         Returns {id, deleted, values, right?, right_values?}, or {deleted: id}",
+        dimension_segment,
     ),
     edit(
         "dimension_text",
@@ -1216,10 +1231,13 @@ other_files(
         "Project Parameters",
         &[],
         "{name, kind?: text|number|length|yesno, categories?: [wall|floor|ceiling|roof|door|window|room|column|component|stair|\
-         ramp|railing|mass, …], rename?, delete?: true} a project parameter, as Revit's Manage > Project Parameters makes one: a value \
+         ramp|railing|mass, …], sets?: {category: property set name|null}, classification?: {system, edition?}|null, rename?, \
+         delete?: true} a project parameter, as Revit's Manage > Project Parameters makes one: a value \
          of its kind each element of its categories may have of its own, set with `modify {id, params: {name: value}}` (lengths \
          in mm, yes or no as true or false). Off a category, that category's elements lose their values of it; deleted, every \
-         element does; renamed, they follow it. `inspect` lists them",
+         element does; renamed, they follow it. `sets` names the IFC property set a category's values go in (an import keeps \
+         the one they came in; none: `Project Parameters`); `classification` makes a text parameter a classification \
+         system's codes, which IFC holds as classification references. `inspect` lists them",
         parameter,
     )
     .menu("Manage > Project Parameters"),
@@ -1492,10 +1510,15 @@ other_files(
         "dimension_value",
         ui_msg!("Dimension Value"),
         &[],
-        "{id, value, segment?} types a length into an aligned or a linear dimension's segment (the first unless told), as a \
-         click on its number does: what the segment ends at (its second reference, as the dimension runs west to east or south \
-         to north) moves along the dimension so the segment is `value` mm; a locked segment is locked at it, and the other \
-         locks hold, or it is refused. Returns {id, moved, by}",
+        "{id, value, segment?, hold?: start|end|both|ref} types a length into an aligned or a linear dimension's segment (the \
+         first unless told), as a click on its number does: with `hold` `start` (the default), the segment's first reference \
+         stays and its second moves along the dimension so the segment is `value` mm; with `end`, the second stays and the \
+         first moves; with a reference {id, face?, point?}, that one stays and the other moves; a locked segment is locked \
+         at it, and the other locks hold, or it is refused. For an equal dimension, `start` and `end` name its own first and \
+         last reference, and every segment becomes `value` (the far end moves); `both` keeps both ends and takes only the \
+         value they already divide into evenly. One wall's own length (its two ends) resizes it: both ends free or both \
+         joined move evenly, one joined moves its free end; its thickness, a door's or window's width and a column's size \
+         are their type's and are refused. Returns {id, moved, by, values}",
         dimension_value,
     ),
     edit(
@@ -1508,6 +1531,15 @@ other_files(
          looks), `start` or `end` (an end along the line, while it is cropped), `far` (its far clip, changing `depth`) and, \
          an elevation, `mark` (its mark alone, anywhere: past its reference it turns round and its line comes over)",
         move_elements,
+    ),
+    edit(
+        "wall_length",
+        ui_msg!("Wall Length"),
+        &[],
+        "{id, value} gives one wall a length, as a temporary dimension beside it types one: both ends free or both joined \
+         move evenly, one joined moves its free end alone; a curved wall keeps its turn, its end moving along its chord. \
+         Returns {moved, by, length}",
+        wall_length,
     ),
     edit(
         "copy",
@@ -1915,9 +1947,9 @@ other_files(
         "language",
         "Project Language",
         &[],
-        "{code?: en|pt|es|sv|cs|fr|nl} the language the project's drawings speak (a stair's UP, a title block's SCALE, a schedule's \
-         headings) and new names come in (levels, sections, elevations, sheets, rooms, schedules): English, Brazilian \
-         Portuguese, Spanish, Swedish, Czech, French or Dutch. What's already named stays named",
+        "{code?: en|pt|es|sv|cs|fr|de|nl|it|pl|vi} the language the project's drawings speak (a stair's UP, a title block's SCALE, a \
+         schedule's headings) and new names come in (levels, sections, elevations, sheets, rooms, schedules): English, Brazilian \
+         Portuguese, Spanish, Swedish, Czech, French, German, Dutch, Italian, Polish or Vietnamese. What's already named stays named",
         language,
     )
     .menu("Manage > Project Language"),
@@ -3362,8 +3394,8 @@ fn new(s: &mut Session, p: &Value) -> R {
 }
 
 fn language_param(c: &str, code: &str) -> Result<Language, String> {
-    let codes = "en, pt, es or sv";
-    Language::from_code(code).ok_or_else(|| bad(c, format!("`{code}` is no language here; use {codes}")))
+    let codes = Language::ALL.map(Language::code).join(", ");
+    Language::from_code(code).ok_or_else(|| bad(c, format!("`{code}` is no language here; use one of {codes}")))
 }
 
 fn language(s: &mut Session, p: &Value) -> R {
@@ -9376,6 +9408,10 @@ fn dimension_3d(s: &mut Session, p: &Value) -> R {
 
 fn dimension(s: &mut Session, p: &Value) -> R {
     let c = "dimension";
+    // With an id, it edits the dimension there rather than making one.
+    if let Some(g) = id_opt(c, p, "id")? {
+        return dimension_edit(s, p, g);
+    }
     let m = &s.model;
     let (level, view) = plan_param(c, m, p, "level")?;
     let at = point_req(c, p, "at")?;
@@ -9389,38 +9425,7 @@ fn dimension(s: &mut Session, p: &Value) -> R {
         Some(o) => Some(serde_json::from_value(json!(o)).map_err(|_| bad(c, format!("`orient` is horizontal or vertical, not `{o}`")))?),
     };
     let given = p.get("refs").and_then(Value::as_array).ok_or_else(|| bad(c, "`refs` [ref, …] is required"))?;
-    if given.len() > MAX_POINTS {
-        return Err(bad(c, format!("`refs` has more than {MAX_POINTS} references")));
-    }
-    let mut refs: Vec<Reference> = Vec::new();
-    for v in given {
-        let near = |q: P2, what: &str| bad(c, format!("no {what} at [{}, {}] on {}", q.0, q.1, level_name(m, level)));
-        let endpoint = v.get("endpoint").filter(|_| v.as_object().is_some_and(|o| o.len() == 1));
-        if let Some(e) = endpoint {
-            let q = point(e).ok_or_else(|| bad(c, format!("`endpoint` is a point [x, y], not {e}")))?;
-            refs.push(
-                endpoint_near(m, level, view, q)
-                    .ok_or_else(|| near(q, "end of a wall, a wall face, a door, a window, a column, a grid or a detail line"))?,
-            );
-            continue;
-        }
-        let r = match point(v) {
-            Some(q) if matches!(kind, DimKind::Radial | DimKind::Diameter) => {
-                arc_near(m, level, view, q).ok_or_else(|| near(q, "round column's, curved wall's, circle's or arc's edge"))?
-            }
-            Some(q) if kind == DimKind::ArcLength => sweep_near(m, level, view, q).ok_or_else(|| near(q, "curved wall or arc"))?,
-            Some(q) => {
-                // After the first: one parallel to it, or for an angle, one across it.
-                let first = refs.first().and_then(|r| m.reference_line(r).ok());
-                let keep = |l: Line| first.is_none_or(|(a, b)| geom::parallel(a, b, l.0, l.1) == (kind == DimKind::Aligned));
-                reference_near(m, level, q, keep)
-                    .ok_or_else(|| near(q, "wall face, wall centre line, wall end, door, window, column or grid line"))?
-            }
-            None => serde_json::from_value::<Reference>(v.clone())
-                .map_err(|e| bad(c, format!("{v} is not a reference {{id, face?}} or a point [x, y]: {e}")))?,
-        };
-        refs.push(r);
-    }
+    let refs = dimension_refs(c, m, level, view, kind, given)?;
     if kind == DimKind::Linear && orient.is_none() {
         // East or west of everything it measures, vertical; else horizontal.
         let xs: Vec<f64> = refs.iter().filter_map(|r| m.reference_geometry(r).ok()).flat_map(|(a, b)| [a.0, b.0]).collect();
@@ -9454,6 +9459,151 @@ fn dimension(s: &mut Session, p: &Value) -> R {
     let values: Vec<f64> = m.dimension_values(&d).into_iter().map(hundredth).collect();
     let id = s.model_mut().insert(Element::Dimension(d));
     Ok(json!({"id": id, "values": values}))
+}
+
+/// `refs` of a dimension being made or edited: references, `{endpoint}`, or points near what the plan shows.
+fn dimension_refs(c: &str, m: &Model, level: Guid, view: Option<Guid>, kind: DimKind, given: &[Value]) -> Result<Vec<Reference>, String> {
+    if given.len() > MAX_POINTS {
+        return Err(bad(c, format!("`refs` has more than {MAX_POINTS} references")));
+    }
+    let mut refs: Vec<Reference> = Vec::new();
+    for v in given {
+        let near = |q: P2, what: &str| bad(c, format!("no {what} at [{}, {}] on {}", q.0, q.1, level_name(m, level)));
+        let endpoint = v.get("endpoint").filter(|_| v.as_object().is_some_and(|o| o.len() == 1));
+        if let Some(e) = endpoint {
+            let q = point(e).ok_or_else(|| bad(c, format!("`endpoint` is a point [x, y], not {e}")))?;
+            refs.push(
+                endpoint_near(m, level, view, q)
+                    .ok_or_else(|| near(q, "end of a wall, a wall face, a door, a window, a column, a grid or a detail line"))?,
+            );
+            continue;
+        }
+        let r = match point(v) {
+            Some(q) if matches!(kind, DimKind::Radial | DimKind::Diameter) => {
+                arc_near(m, level, view, q).ok_or_else(|| near(q, "round column's, curved wall's, circle's or arc's edge"))?
+            }
+            Some(q) if kind == DimKind::ArcLength => sweep_near(m, level, view, q).ok_or_else(|| near(q, "curved wall or arc"))?,
+            Some(q) => {
+                // After the first: one parallel to it, or for an angle, one across it.
+                let first = refs.first().and_then(|r| m.reference_line(r).ok());
+                let keep = |l: Line| first.is_none_or(|(a, b)| geom::parallel(a, b, l.0, l.1) == (kind == DimKind::Aligned));
+                reference_near(m, level, q, keep)
+                    .ok_or_else(|| near(q, "wall face, wall centre line, wall end, door, window, column or grid line"))?
+            }
+            None => serde_json::from_value::<Reference>(v.clone())
+                .map_err(|e| bad(c, format!("{v} is not a reference {{id, face?}} or a point [x, y]: {e}")))?,
+        };
+        refs.push(r);
+    }
+    Ok(refs.into_iter().map(|r| resolved_reference(m, r)).collect())
+}
+
+/// Whether two stations' references are one segment's two ends, in either order.
+fn segment_pair_is(a: &Reference, b: &Reference, c: &Reference, d: &Reference) -> bool {
+    (same_reference(a, c) && same_reference(b, d)) || (same_reference(a, d) && same_reference(b, c))
+}
+
+/// Where the segment between references `a` and `b` lies in `stations`: its index, when they are two neighbours there.
+fn segment_of(stations: &[(f64, Line, Reference)], a: &Reference, b: &Reference) -> Option<usize> {
+    stations.windows(2).position(|w| segment_pair_is(a, b, &w[0].2, &w[1].2))
+}
+
+/// Edits dimension `g`: its references, line, kind, orientation, type, text and equality; its locks and segment texts
+/// follow the pairs of references they were on.
+fn dimension_edit(s: &mut Session, p: &Value, g: Guid) -> R {
+    let c = "dimension";
+    let m = &s.model;
+    let id = m.elements.id(g).ok_or_else(|| bad(c, format!("no element {g}")))?;
+    let Some(Element::Dimension(old)) = m.elements.get(id) else {
+        return Err(bad(c, format!("{} {id} isn't a dimension", m.elements.get(id).map_or("nothing", |e| e.category()))));
+    };
+    if old.alignment {
+        return Err(bad(c, "an alignment lock's dimension can't be edited: unlock it first"));
+    }
+    let old = old.clone();
+    let mut d = old.clone();
+    if let Some(k) = string(c, p, "kind")? {
+        d.kind = serde_json::from_value(json!(k))
+            .map_err(|_| bad(c, format!("`kind` is aligned, linear, angular, radial, diameter or arc_length, not `{k}`")))?;
+    }
+    if let Some(o) = string(c, p, "orient")? {
+        d.orient = Some(serde_json::from_value(json!(o)).map_err(|_| bad(c, format!("`orient` is horizontal or vertical, not `{o}`")))?);
+    }
+    if let Some(t) = name_param(c, p, "type")? {
+        d.type_name = t;
+    }
+    if let Some(at) = point_opt(c, p, "at")? {
+        d.at = at;
+    }
+    for (key, slot) in [
+        ("prefix", &mut d.prefix),
+        ("suffix", &mut d.suffix),
+        ("above", &mut d.above),
+        ("below", &mut d.below),
+        ("replace", &mut d.replace),
+    ] {
+        if let Some(t) = string(c, p, key)? {
+            *slot = t;
+        }
+    }
+    if !absent(p.get("equality")) {
+        d.equality = flag(c, p, "equality")?;
+    }
+    let mut remap = false;
+    if let Some(given) = p.get("refs").filter(|v| !v.is_null()) {
+        let given = given.as_array().ok_or_else(|| bad(c, format!("`refs` is [ref, …], not {given}")))?;
+        let refs = dimension_refs(c, m, old.level, old.view, d.kind, given)?;
+        if refs.len() < 2 {
+            return Err(bad(c, "`refs` is at least two references"));
+        }
+        if let Some((i, j)) =
+            (0..refs.len()).find_map(|i| (i + 1..refs.len()).find(|&j| same_reference(&refs[i], &refs[j])).map(|j| (i, j)))
+        {
+            return Err(bad(c, format!("`refs` has a duplicate: {} at {i} and {j}", reference_way(&refs[i]))));
+        }
+        d.refs = refs;
+        remap = true;
+    }
+    if !matches!(d.kind, DimKind::Aligned | DimKind::Linear) {
+        d.equal = false;
+        d.locked.clear();
+    }
+    let old_st = m.stations(&old).1;
+    if remap {
+        let new_st = m.stations(&d).1;
+        if d.equal && new_st.len() < 3 {
+            return Err(bad(c, "an equal dimension needs two segments at least"));
+        }
+        d.locked = old
+            .locked
+            .iter()
+            .filter_map(|l| {
+                let (a, b) = (old_st.get(l.segment)?.2, old_st.get(l.segment + 1)?.2);
+                Some(crate::model::Lock { segment: segment_of(&new_st, &a, &b)?, length: l.length })
+            })
+            .collect();
+        let numbers = m.dimension_labels(&old).len();
+        d.texts = old
+            .texts
+            .iter()
+            .filter_map(|t| {
+                let segment = if t.segment + 1 < old_st.len() {
+                    let (a, b) = (old_st.get(t.segment)?.2, old_st.get(t.segment + 1)?.2);
+                    segment_of(&new_st, &a, &b)?
+                } else if t.segment < numbers {
+                    t.segment.min(new_st.len().saturating_sub(1))
+                } else {
+                    return None;
+                };
+                Some(crate::model::SegmentText { segment, ..t.clone() })
+            })
+            .collect();
+        d.texts.sort_by_key(|t| t.segment);
+    }
+    let values: Vec<f64> = s.model.dimension_values(&d).into_iter().map(hundredth).collect();
+    let refs = d.refs.clone();
+    s.model_mut().elements.insert(id, Element::Dimension(d));
+    Ok(json!({"id": id, "values": values, "refs": refs}))
 }
 
 fn tag(s: &mut Session, p: &Value) -> R {
@@ -9633,11 +9783,13 @@ fn dimension_constraint(s: &mut Session, p: &Value) -> R {
     use crate::model::Lock;
     let c = "dimension_constraint";
     only(c, p, &["id", "equal", "locked"])?;
+    let before = Arc::clone(&s.model);
     let id = element_id(c, &s.model, p.get("id").unwrap_or(&Value::Null))?;
     let Some(Element::Dimension(d)) = s.model.elements.get(id) else {
         return Err(bad(c, format!("{} {id} isn't a dimension", s.model.elements.get(id).map_or("nothing", |e| e.category()))));
     };
     let mut d = d.clone();
+    let before_equal = d.equal;
     let values = s.model.dimension_values(&d);
     if !absent(p.get("equal")) {
         d.equal = flag(c, p, "equal")?;
@@ -9662,7 +9814,29 @@ fn dimension_constraint(s: &mut Session, p: &Value) -> R {
         locked.sort_by_key(|l| l.segment);
         d.locked = locked;
     }
+    let spread = d.equal && !before_equal && matches!(d.kind, DimKind::Aligned | DimKind::Linear) && !d.alignment;
     s.model_mut().elements.insert(id, Element::Dimension(d.clone()));
+    if spread {
+        // Its ends stay where they are and what lies between spreads evenly; a lock of another length can't hold.
+        let (_, st) = s.model.stations(&d);
+        let k = st.len().saturating_sub(1);
+        if k >= 2 {
+            let even = (st[k].0 - st[0].0) / k as f64;
+            if d.locked.iter().any(|l| (l.length - even).abs() > 0.01) {
+                return Err(bad(c, format!("dimension {id}'s locked segment keeps a length its equal segments can't all have")));
+            }
+            crate::constraints::keep_more(s, &before, &[st[0].2.id, st[k].2.id])
+                .map_err(|e| bad(c, format!("dimension {id} can't be equal: {e}")))?;
+            let now = current_dimension(s, c, id)?;
+            let (_, after) = s.model.stations(&now);
+            if before_station_moved(&after, &st, 0) || before_station_moved(&after, &st, k) {
+                return Err(bad(c, format!("dimension {id}'s ends can't stay while its segments are equal")));
+            }
+            if s.model.dimension_values(&now).iter().any(|v| (v - even).abs() > 0.01) {
+                return Err(bad(c, format!("dimension {id}'s segments can't all be {even}")));
+            }
+        }
+    }
     Ok(json!({"id": id, "equal": d.equal, "locked": d.locked.iter().map(|l| l.segment).collect::<Vec<_>>()}))
 }
 
@@ -11936,7 +12110,31 @@ fn parameter(s: &mut Session, p: &Value) -> R {
             return Err(e);
         }
         clear(m, &name, &gone);
+        param.sets.retain(|k, _| list.contains(k));
         param.categories = list;
+    }
+    if let Some(v) = p.get("sets").filter(|v| !v.is_null()) {
+        let map = v
+            .as_object()
+            .filter(|o| o.len() <= PARAMETER_CATEGORIES.len())
+            .ok_or_else(|| bad(c, format!("`sets` maps a category to the property set its values go in, not {v}")))?;
+        for (k, set) in map {
+            match set {
+                Value::Null => {
+                    param.sets.remove(&category(k));
+                }
+                Value::String(n) => {
+                    param.sets.insert(category(k), n.clone());
+                }
+                _ => return Err(bad(c, format!("`sets`: {k}'s set is a name, or null, not {set}"))),
+            }
+        }
+    }
+    if let Some(v) = p.get("classification") {
+        param.classification = match v {
+            Value::Null => None,
+            v => Some(serde_json::from_value(v.clone()).map_err(|e| bad(c, format!("`classification` is {{system, edition?}}: {e}")))?),
+        };
     }
     let name = match string(c, p, "rename")? {
         Some(to) => {
@@ -15332,11 +15530,88 @@ fn alignment_lock(c: &str, s: &mut Session, id: Id, to: Option<Guid>, reference:
     Ok(s.model_mut().insert(Element::Dimension(d)))
 }
 
-/// A typed value for a dimension's segment, as Revit's: what the segment ends at moves along the dimension (its second
-/// reference, as the dimension's line runs) so the segment is that long; a locked segment is locked at it.
+/// Which end of a segment stays put when its value is typed: as `dimension_value`'s `hold` says.
+enum Hold {
+    /// The segment's first station, or an equal dimension's first end.
+    Start,
+    /// The segment's second station, or an equal dimension's last end.
+    End,
+    /// Both ends of an equal dimension: only a value that keeps them both can be typed.
+    Both,
+    /// A station the segment ends at, named by its reference.
+    At(Reference),
+}
+
+/// `hold`, as [`dimension_value`] takes it.
+fn hold_param(m: &Model, c: &str, p: &Value) -> Result<Hold, String> {
+    match p.get("hold") {
+        None | Some(Value::Null) => Ok(Hold::Start),
+        Some(Value::String(s)) => match s.as_str() {
+            "start" => Ok(Hold::Start),
+            "end" => Ok(Hold::End),
+            "both" => Ok(Hold::Both),
+            other => Err(bad(c, format!("`hold` is `start`, `end`, `both` or a reference, not `{other}`"))),
+        },
+        Some(v @ Value::Object(_)) => serde_json::from_value::<Reference>(v.clone())
+            .map(|r| Hold::At(resolved_reference(m, r)))
+            .map_err(|e| bad(c, format!("{v} is not a reference {{id, face?, point?}}: {e}"))),
+        Some(v) => Err(bad(c, format!("`hold` is `start`, `end`, `both` or a reference, not {v}"))),
+    }
+}
+
+/// `r` with an id an element's GUID already, as the model's references are.
+fn resolved_reference(m: &Model, mut r: Reference) -> Reference {
+    if let Some(id) = r.id.pending()
+        && let Some(g) = m.elements.guid(id)
+    {
+        r.id = g;
+    }
+    r
+}
+
+/// Whether two references name the same line or point.
+fn same_reference(a: &Reference, b: &Reference) -> bool {
+    a.id == b.id && a.face == b.face && a.point == b.point
+}
+
+/// How `hold` names a reference the segment doesn't end at, for an error.
+fn reference_way(r: &Reference) -> String {
+    let face = match r.face {
+        Face::Centre => "centre line",
+        Face::Across => "across line",
+        Face::Left => "left face",
+        Face::Right => "right face",
+        Face::Start => "start",
+        Face::End => "end",
+    };
+    match r.point {
+        Some(End::Start) => format!("{face}'s start"),
+        Some(End::End) => format!("{face}'s end"),
+        None => face.to_string(),
+    }
+}
+
+/// A reference of a too-long chain's end, held by what a value would move, for an error.
+fn held_reference(s: &Model, r: &Reference) -> String {
+    format!("{} {}", s.elements.get(r.id).map_or("element", |e| e.category()), s.shown(r.id))
+}
+
+/// The dimension `id` as the model holds it now.
+fn current_dimension(s: &Session, c: &str, id: Id) -> Result<Dimension, String> {
+    match s.model.elements.get(id) {
+        Some(Element::Dimension(d)) => Ok(d.clone()),
+        _ => Err(bad(c, format!("dimension {id} is gone"))),
+    }
+}
+
+/// A typed value for a dimension's segment, as Revit's: the reference `hold` leaves in place keeps still, and the other
+/// end of the segment moves along the dimension so the segment is that long; a locked segment is locked at it. An equal
+/// dimension takes its value at one of its ends, every segment becoming `value`. A dimension across or along one wall
+/// resizes the wall, or is refused where its thickness is its type's. The result is checked, and an error leaves the model
+/// as it was (the engine rolls a refused command back).
 fn dimension_value(s: &mut Session, p: &Value) -> R {
     let c = "dimension_value";
-    only(c, p, &["id", "value", "segment"])?;
+    only(c, p, &["id", "value", "segment", "hold"])?;
     let id = element_id(c, &s.model, p.get("id").unwrap_or(&Value::Null))?;
     let Some(Element::Dimension(d)) = s.model.elements.get(id) else {
         return Err(bad(c, format!("{} {id} isn't a dimension", s.model.elements.get(id).map_or("nothing", |e| e.category()))));
@@ -15351,19 +15626,346 @@ fn dimension_value(s: &mut Session, p: &Value) -> R {
     }
     let (n, st) = s.model.stations(&d);
     let segment = count_opt(c, p, "segment", 0)?;
-    let (Some((from, ..)), Some((to, _, r))) = (st.get(segment), st.get(segment + 1)) else {
+    if st.len() < 2 || segment + 1 >= st.len() {
         return Err(bad(c, format!("dimension {id} has segments 0 to {}, not {segment}", st.len().saturating_sub(2))));
+    }
+    let hold = hold_param(&s.model, c, p)?;
+    let before = Arc::clone(&s.model);
+    if d.equal {
+        let change = EqualChange { n, st: &st, before: &before };
+        return dimension_value_equal(s, c, id, &mut d, value, &hold, &change);
+    }
+    let (anchor, mover) = match &hold {
+        Hold::Start => (segment, segment + 1),
+        Hold::End => (segment + 1, segment),
+        Hold::Both => return Err(bad(c, "hold both is for an equal dimension")),
+        Hold::At(r) => {
+            if same_reference(r, &st[segment].2) {
+                (segment, segment + 1)
+            } else if same_reference(r, &st[segment + 1].2) {
+                (segment + 1, segment)
+            } else {
+                return Err(bad(c, format!("`hold` is a reference this segment ends at, not {}", reference_way(r))));
+            }
+        }
     };
-    let by = value - (to - from);
-    let moved = s.model.elements.id(r.id).ok_or_else(|| bad(c, "what it measures to is gone"))?;
+    let (from, to) = (st[anchor].0, st[mover].0);
+    let distance = (to - from).abs();
+    let signed = if to >= from { value - distance } else { distance - value };
+    let (r_anchor, r_mover) = (&st[anchor].2, &st[mover].2);
+    // A locked segment is locked at the value before what keeps it is kept, so the lock holds the new length.
     if let Some(l) = d.locked.iter_mut().find(|l| l.segment == segment) {
         l.length = value;
-        s.model_mut().elements.insert(id, Element::Dimension(d));
+        s.model_mut().elements.insert(id, Element::Dimension(d.clone()));
     }
-    if by.abs() > 1e-9 {
-        move_by(s, moved, n * by)?;
+    // One element gives both ends of the segment: its length (or its thickness, which isn't the dimension's to set).
+    let moved_id = s.model.elements.id(r_mover.id).ok_or_else(|| bad(c, "what it measures to is gone"))?;
+    let moved = if r_anchor.id == r_mover.id {
+        let Some(w) = s.model.wall(moved_id).cloned() else {
+            return Err(bad(
+                c,
+                format!(
+                    "segment {segment} lies within one {}: its size is its type's, not the dimension's to set",
+                    s.model.elements.get(moved_id).map_or("element", |e| e.category())
+                ),
+            ));
+        };
+        let u = (w.end - w.start).unit();
+        if u.cross(n).abs() <= 1e-6 {
+            // Along the wall: its two ends are the segment's. Face corners and ends move a little differently where
+            // walls join, so nudge the wall until what the dimension measures is the value (the first try is exact for
+            // the location line's own points).
+            for _ in 0..6 {
+                let now = current_dimension(s, c, id)?;
+                let (_, st_now) = s.model.stations(&now);
+                let (Some(a), Some(b)) = (st_now.get(anchor), st_now.get(mover)) else { break };
+                let distance = (b.0 - a.0).abs();
+                let need = if b.0 >= a.0 { value - distance } else { distance - value };
+                if need.abs() <= 0.01 {
+                    break;
+                }
+                let Some(w) = s.model.wall(moved_id).cloned() else { break };
+                resize_wall(s, c, id, &WallGrowth { wall_id: moved_id, wall: &w, signed: need, n, segment })?;
+            }
+            moved_id
+        } else if u.dot(n).abs() <= 1e-6 {
+            return Err(bad(
+                c,
+                format!("segment {segment} lies across one wall: its thickness is its Wall Type's, not the dimension's to set"),
+            ));
+        } else {
+            return Err(bad(c, format!("segment {segment} spans one wall at an angle; type its length along the wall")));
+        }
+    } else {
+        if signed.abs() > 1e-9 {
+            move_by(s, moved_id, n * signed)?;
+        }
+        moved_id
+    };
+    // The segment is that long once what keeps it is kept, and every lock holds: else the engine takes it all back.
+    crate::constraints::keep(s, &before).map_err(|e| bad(c, format!("segment {segment} can't be {value}: {e}")))?;
+    let now = current_dimension(s, c, id)?;
+    let values = s.model.dimension_values(&now);
+    if values.get(segment).is_none_or(|v| (v - value).abs() > 0.01) {
+        return Err(bad(
+            c,
+            format!(
+                "segment {segment} can't be {value}: what it measures to is joined to something that stays ({})",
+                held_reference(&s.model, r_mover)
+            ),
+        ));
     }
-    Ok(json!({"id": id, "moved": moved, "by": hundredth(by)}))
+    let values = values.into_iter().map(hundredth).collect::<Vec<_>>();
+    Ok(json!({"id": id, "moved": moved, "by": hundredth(signed), "values": values}))
+}
+
+/// A typed value into an equal dimension: every segment becomes `value`, an end `hold` names staying put.
+struct EqualChange<'a> {
+    /// The way the dimension measures.
+    n: P2,
+    /// Its stations before the value.
+    st: &'a [(f64, Line, Reference)],
+    /// The model before the command.
+    before: &'a Model,
+}
+
+fn dimension_value_equal(
+    s: &mut Session,
+    c: &str,
+    id: Id,
+    d: &mut Dimension,
+    value: f64,
+    hold: &Hold,
+    change: &EqualChange,
+) -> Result<Value, String> {
+    let (n, st, before) = (change.n, change.st, change.before);
+    let k = st.len() - 1;
+    let (anchor, mover) = match hold {
+        Hold::Both => {
+            let total = st[k].0 - st[0].0;
+            let even = total / k as f64;
+            if (value - even).abs() > 0.01 {
+                return Err(bad(c, format!("an equal dimension's value would move both ends: {value} isn't {total} / {k}")));
+            }
+            (0, k)
+        }
+        Hold::Start => (0, k),
+        Hold::End => (k, 0),
+        Hold::At(r) => match st.iter().position(|(_, _, x)| same_reference(x, r)) {
+            Some(0) => (0, k),
+            Some(i) if i == k => (k, 0),
+            Some(_) => return Err(bad(c, "an equal dimension is anchored at one of its ends")),
+            None => return Err(bad(c, format!("`hold` is a reference this segment ends at, not {}", reference_way(r)))),
+        },
+    };
+    // Its locks must agree with one another, then all take the value.
+    let lengths: Vec<f64> = d.locked.iter().map(|l| l.length).collect();
+    if let Some(&first) = lengths.first()
+        && lengths.iter().any(|l| (l - first).abs() > 0.01)
+    {
+        return Err(bad(c, "its locked segments differ in length, so they can't be equal"));
+    }
+    for l in d.locked.iter_mut() {
+        l.length = value;
+    }
+    s.model_mut().elements.insert(id, Element::Dimension(d.clone()));
+    let (from, to) = (st[anchor].0, st[mover].0);
+    let distance = (to - from).abs();
+    // Both ends stay: nothing moves, the even spread does it. Else the far end goes so that all `k` segments are `value`.
+    let target = k as f64 * value;
+    let signed = match hold {
+        Hold::Both => 0.0,
+        _ if to >= from => target - distance,
+        _ => distance - target,
+    };
+    let r_mover = &st[mover].2;
+    let moved_id = s.model.elements.id(r_mover.id).ok_or_else(|| bad(c, "what it measures to is gone"))?;
+    if signed.abs() > 1e-9 {
+        move_by(s, moved_id, n * signed)?;
+    }
+    crate::constraints::keep_more(s, before, &[st[0].2.id, st[k].2.id])
+        .map_err(|e| bad(c, format!("its segments can't all be {value}: {e}")))?;
+    let now = current_dimension(s, c, id)?;
+    let (_, after) = s.model.stations(&now);
+    let values = s.model.dimension_values(&now);
+    if before_station_moved(after.as_slice(), st, anchor) {
+        return Err(bad(c, format!("an equal dimension is anchored at one of its ends: its {} end moved", anchor + 1)));
+    }
+    if values.iter().any(|v| (v - value).abs() > 0.01) {
+        return Err(bad(c, format!("its segments can't all be {value}: what it measures to is joined to something that stays")));
+    }
+    let values = values.into_iter().map(hundredth).collect::<Vec<_>>();
+    Ok(json!({"id": id, "moved": moved_id, "by": hundredth(signed), "values": values}))
+}
+
+/// Whether the station `anchor` of the chain has moved from where it was.
+fn before_station_moved(after: &[(f64, Line, Reference)], before: &[(f64, Line, Reference)], index: usize) -> bool {
+    match (after.get(index), before.get(index)) {
+        (Some((a, _, ra)), Some((b, _, rb))) => same_reference(ra, rb) && (a - b).abs() > 0.01,
+        _ => true,
+    }
+}
+
+/// Resizes wall `wall_id` so that the dimension's segment `id` reads `value`: both ends free or both joined move apart
+/// evenly, one joined moves its free end alone. `signed` is how much longer it must get along its own way, `n`.
+struct WallGrowth<'a> {
+    wall_id: Id,
+    wall: &'a Wall,
+    signed: f64,
+    n: P2,
+    segment: usize,
+}
+
+fn resize_wall(s: &mut Session, c: &str, id: Id, growth: &WallGrowth) -> Result<(), String> {
+    let (wall_id, w, signed, n, segment) = (growth.wall_id, growth.wall, growth.signed, growth.n, growth.segment);
+    if w.arc != 0.0 {
+        return Err(bad(c, format!("dimension {id}'s segment {segment} spans a curved wall; only straight walls are resized")));
+    }
+    let u = (w.end - w.start).unit();
+    if u.cross(n).abs() > 1e-6 {
+        return Err(bad(c, format!("segment {segment} spans one wall at an angle; type its length along the wall")));
+    }
+    // How much longer the wall gets: the dimension may run the other way along it.
+    let signed = signed * if u.dot(n) >= 0.0 { 1.0 } else { -1.0 };
+    let index = crate::walls::Index::new(&s.model);
+    let start_joined = crate::walls::joined_at(&s.model, wall_id, false, Some(&index));
+    let end_joined = crate::walls::joined_at(&s.model, wall_id, true, Some(&index));
+    // Both ends alike, one joined or neither: each moves half; one joined alone leaves that one and moves the other.
+    let (start, end) = match (start_joined, end_joined) {
+        (true, false) => (0.0, signed),
+        (false, true) => (-signed, 0.0),
+        _ => (-signed / 2.0, signed / 2.0),
+    };
+    for (end_name, by) in [("start", start), ("end", end)] {
+        if by.abs() > 1e-9 {
+            move_elements(s, &json!({"ids": [wall_id], "by": [u.0 * by, u.1 * by], "end": end_name}))?;
+        }
+    }
+    Ok(())
+}
+
+/// A wall given its length, as a temporary dimension beside it types one: both ends free or both joined move apart
+/// evenly, one joined moves its free end alone; a curved wall keeps its turn, its end moving along its chord.
+fn wall_length(s: &mut Session, p: &Value) -> R {
+    let c = "wall_length";
+    only(c, p, &["id", "value"])?;
+    let id = element_id(c, &s.model, p.get("id").unwrap_or(&Value::Null))?;
+    let Some(w) = s.model.wall(id).cloned() else {
+        return Err(bad(c, format!("{} {id} isn't a wall", s.model.elements.get(id).map_or("nothing", |e| e.category()))));
+    };
+    let value = num(c, p, "value")?.ok_or_else(|| bad(c, "`value`, the length in mm, is required"))?;
+    if !(value > TOL && value <= MAX_COORD) {
+        return Err(bad(c, format!("`value` is a length above 0 and at most {MAX_COORD} mm, not {value}")));
+    }
+    let before = Arc::clone(&s.model);
+    let by;
+    if w.arc != 0.0 {
+        let length = Axis::of(&w).length();
+        if length <= TOL {
+            return Err(bad(c, "the wall has no length"));
+        }
+        let chord = (w.end - w.start) * (value / length - 1.0);
+        by = chord.length();
+        if chord.length() > 1e-9 {
+            move_elements(s, &json!({"ids": [id], "by": [chord.0, chord.1], "end": "end"}))?;
+        }
+    } else {
+        let u = (w.end - w.start).unit();
+        let signed = value - (w.end - w.start).length();
+        by = signed;
+        if signed.abs() > 1e-9 {
+            resize_wall(s, c, id, &WallGrowth { wall_id: id, wall: &w, signed, n: u, segment: 0 })?;
+        }
+    }
+    crate::constraints::keep(s, &before)?;
+    let Some(now) = s.model.wall(id) else { return Err(bad(c, "the wall is gone")) };
+    let length = Axis::of(now).length();
+    if (length - value).abs() > 0.01 {
+        return Err(bad(c, format!("the wall can't be {value}: what keeps it is joined to something that stays")));
+    }
+    Ok(json!({"moved": id, "by": hundredth(by), "length": hundredth(length)}))
+}
+
+/// Takes one segment out of an aligned or a linear dimension's chain, leaving what lay on either side of it as chains of their
+/// own, each measured to the references it had: the left chain keeps the original dimension, the right one is a new dimension
+/// at the same line. Its locks and segment texts follow the pairs of references that remain; a chain left with one segment
+/// loses its equality, and a segment alone takes the whole dimension away.
+fn dimension_segment(s: &mut Session, p: &Value) -> R {
+    let c = "dimension_segment";
+    only(c, p, &["id", "segment"])?;
+    let id = element_id(c, &s.model, p.get("id").unwrap_or(&Value::Null))?;
+    let Some(Element::Dimension(d)) = s.model.elements.get(id) else {
+        return Err(bad(c, format!("{} {id} isn't a dimension", s.model.elements.get(id).map_or("nothing", |e| e.category()))));
+    };
+    if !matches!(d.kind, DimKind::Aligned | DimKind::Linear) || d.alignment {
+        return Err(bad(c, format!("dimension {id} isn't an aligned or a linear one: only their segments are taken out")));
+    }
+    let d = d.clone();
+    let (_, st) = s.model.stations(&d);
+    let count = st.len().saturating_sub(1);
+    let segment = count_opt(c, p, "segment", 0)?;
+    if count == 0 || segment >= count {
+        return Err(bad(c, format!("dimension {id} has segments 0 to {}, not {segment}", count.saturating_sub(1))));
+    }
+    // One segment alone: the dimension goes with it.
+    if count == 1 {
+        s.model_mut().elements.remove(id);
+        return Ok(json!({"deleted": id}));
+    }
+    // The stations either side of the segment are the two chains' ends; the deleted segment's own two stay apart.
+    let refs_of = |part: &[(f64, Line, Reference)]| part.iter().map(|(_, _, r)| *r).collect::<Vec<_>>();
+    let part = |refs: Vec<Reference>| {
+        let mut part = d.clone();
+        part.refs = refs;
+        let (_, new_st) = s.model.stations(&part);
+        part.locked = d
+            .locked
+            .iter()
+            .filter_map(|l| {
+                let (a, b) = (st.get(l.segment)?.2, st.get(l.segment + 1)?.2);
+                Some(crate::model::Lock { segment: segment_of(&new_st, &a, &b)?, length: l.length })
+            })
+            .collect();
+        part.texts = d
+            .texts
+            .iter()
+            .filter_map(|t| {
+                let (a, b) = (st.get(t.segment)?.2, st.get(t.segment + 1)?.2);
+                Some(crate::model::SegmentText { segment: segment_of(&new_st, &a, &b)?, ..t.clone() })
+            })
+            .collect();
+        part.texts.sort_by_key(|t| t.segment);
+        if new_st.len() < 3 {
+            part.equal = false;
+            part.equality = false;
+        }
+        part
+    };
+    let left = (segment > 0).then(|| part(refs_of(&st[..=segment])));
+    let right = (segment + 1 < count).then(|| part(refs_of(&st[segment + 1..])));
+    let mut right_id: Option<Id> = None;
+    match (left, right) {
+        (Some(left), Some(right)) => {
+            s.model_mut().elements.insert(id, Element::Dimension(left));
+            right_id = Some(s.model_mut().insert(Element::Dimension(right)));
+        }
+        (Some(left), None) => {
+            s.model_mut().elements.insert(id, Element::Dimension(left));
+        }
+        (None, Some(right)) => {
+            s.model_mut().elements.insert(id, Element::Dimension(right));
+        }
+        (None, None) => return Err(bad(c, "the segment is the whole dimension: nothing is left to keep")),
+    }
+    let now = current_dimension(s, c, id)?;
+    let values = s.model.dimension_values(&now).into_iter().map(hundredth).collect::<Vec<_>>();
+    let mut reply = json!({"id": id, "deleted": segment, "values": values});
+    if let Some(right) = right_id {
+        let values = current_dimension(s, c, right).map(|d| s.model.dimension_values(&d))?;
+        reply["right"] = json!(right);
+        reply["right_values"] = json!(values.into_iter().map(hundredth).collect::<Vec<_>>());
+    }
+    Ok(reply)
 }
 
 /// Element `id` moved `by` in plan, as `move` moves it: what keeps a dimension's constraints.

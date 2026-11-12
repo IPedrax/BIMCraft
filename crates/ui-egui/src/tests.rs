@@ -1330,8 +1330,10 @@ fn a_selected_walls_temporary_dimension_sets_its_length() {
     h.event(Event::Text("9000".into()));
     h.run();
     key(&mut h, Key::Enter);
-    assert_eq!(walls(&h)[0], (P2(0.0, 0.0), P2(9000.0, 0.0)));
-    assert_eq!(walls(&h)[1].0, P2(9000.0, 0.0), "the wall joined at that end followed");
+    // Both ends of the south wall are joined: both move evenly, and the walls joined there follow.
+    assert_eq!(walls(&h)[0], (P2(-500.0, 0.0), P2(8500.0, 0.0)));
+    assert_eq!(walls(&h)[1].0, P2(8500.0, 0.0), "the wall joined at that end followed");
+    assert_eq!(walls(&h)[3].1, P2(-500.0, 0.0), "the wall joined at the other end followed too");
 }
 
 #[test]
@@ -5376,6 +5378,21 @@ fn a_tool_with_choices_of_its_own_opens_them_from_a_panels_list() {
     press(&mut h, "Feet and inches");
     assert_eq!(h.state().session.model.units, bimcraft_core::units::Units::FeetInches);
     assert!(!egui::Popup::is_any_open(&h.ctx), "the list and its choices close with it");
+}
+
+/// Manage > Project Language lists every language a project can be in, Vietnamese among them as it is in Settings > Language
+/// (#367), and picking it puts the project in it.
+#[test]
+fn project_language_lists_every_project_language_and_picks_vietnamese() {
+    use bimcraft_core::language::Language;
+    let mut h = app(BOX);
+    h.state_mut().tab = Tab::Manage;
+    h.run();
+    from_list(&mut h, "Settings", "Project Language");
+    let missing: Vec<&str> = Language::ALL.iter().map(|l| l.label()).filter(|l| h.query_all_by_label(l).next().is_none()).collect();
+    assert!(missing.is_empty(), "not in the list: {missing:?}");
+    press(&mut h, "Tiếng Việt");
+    assert_eq!(h.state().session.model.language, Language::Vietnamese);
 }
 
 /// UN (Project Units) at the least a window can be: the tool is in its panel's list by then, which the shortcut opens, and the
