@@ -295,6 +295,7 @@ fn rows(category: &str) -> &'static [Row] {
         "viewport" => &[
             ("Identity Data", "title", "View Name", Shown),
             ("Graphics", "scale", msg!("View Scale (1 : n)"), Number),
+            ("Graphics", "follow_scale", msg!("Follow View Scale"), Flag),
             ("Other", "at", "Location", PaperPoint),
         ],
         // As Revit's: a work plane-based family's level is its Schedule Level, its height over it its Elevation from Level

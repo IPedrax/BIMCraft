@@ -12984,6 +12984,10 @@ msgstr ""
 msgid "Use a drawing area for automatic placement"
 msgstr ""
 
+#: crates/ui-egui/src/properties.rs:282
+msgid "Follow View Scale"
+msgstr ""
+
 #: crates/ui-egui/src/fillpatterns.rs:634
 #~ msgid "A pattern of the file replaces the one of its name in this list; else it is left out"
 #~ msgstr "Un motif du fichier remplace celui du même nom dans cette liste; sinon il est omis"

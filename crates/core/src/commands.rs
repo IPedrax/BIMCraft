@@ -1008,8 +1008,9 @@ other_files(
          if none fits; a schedule keeps its size), its middle `at` mm from the paper's bottom left corner (by default in a free \
          spot clear of the other views, their titles and the title block, or in the title block's drawing area; right of all \
          views when full); a view goes on one sheet. Returns {id, at, scale}, and a `warning` when the view or its title reaches \
-         past the paper. A schedule (Room Schedule, Door Schedule…) or the 3D view ({3D}, seen from `azimuth` and `elevation` \
-         degrees) comes to be as it's first placed",
+         past the paper. Told a scale of its own, the viewport keeps it whatever the view's later changes, until \
+         `modify {follow_scale: true}`, which gives it the view's scale again, whatever `scale` comes with it. A schedule (Room Schedule, Door Schedule…) or the 3D view ({3D}, seen from `azimuth` \
+         and `elevation` degrees) comes to be as it's first placed",
         place,
     ),
     edit(
@@ -1042,8 +1043,9 @@ other_files(
         "{view, scale?: 1 | … | 100000} a plan's, section's or elevation's scale, 1 : `scale`: the paper the view stands for, \
          1 mm of paper being `scale` mm of the model. Its annotation (lettering, grid bubbles, tags, dimension ticks…) and its \
          line weights (pens) are that paper's, so a screen shows them as the paper would at its zoom. Every view has one: \
-         1 : 100 until it is given another, and null is refused. A view placed on a sheet takes it for the viewport's scale. \
-         Without `scale` it only says what the view has",
+         1 : 100 until it is given another, and null is refused. A view placed on a sheet takes it for the viewport's scale, and \
+         the viewports of it there follow when it changes, unless one was placed at a scale of its own. Without `scale` it \
+         only says what the view has",
         view_scale,
     ),
     edit(
@@ -3048,6 +3050,7 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
         Element::Viewport(v) => {
             extra.insert("title".into(), json!(m.view_name(v.view)));
             extra.insert("size".into(), json!(sheet::size(m, v.view, v.scale)));
+            extra.insert("follow_scale".into(), json!(v.follow_scale));
         }
         Element::Section(v) | Element::Elevation(v) => {
             let l = v.looking();
@@ -10427,6 +10430,11 @@ fn view_scale(s: &mut Session, p: &Value) -> R {
     if let Some(scale) = scale_param(c, p)? {
         own_to_set(c, &s.model, view, Group::Scale, "scale")?;
         change_graphics(s, view, |g| g.scale = Some(scale));
+        // Its viewports on sheets follow, when one has their scale to take: a view that already has this
+        // scale leaves the model as it was, and is no undo step.
+        if sheet::follows_scale(&s.model, view, scale) {
+            sheet::follow_scale(s.model_mut(), view, scale);
+        }
     }
     let m = &s.model;
     let now = graphics::scale_of(m, view);
@@ -10762,6 +10770,7 @@ fn place(s: &mut Session, p: &Value) -> R {
         None => return Err(bad(c, "`view`, a level's, section's, elevation's, schedule's or 3D view's name or id, is required")),
     };
     // The view's own scale, unless told another; an unscaled 3D view's, one that fits the paper.
+    let own = scale.is_none();
     let scale = scale.unwrap_or_else(|| sheet::default_scale(&s.model, sheet, view));
     let at = match at {
         Some(at) => at,
@@ -10770,7 +10779,8 @@ fn place(s: &mut Session, p: &Value) -> R {
     // Off the paper, by hand or for want of room on it, it goes there all the same, and the reply says so.
     let warning = sheet::off_paper(&s.model, sheet, view, scale, at);
     let (sheet, view) = (s.model.guid(sheet), s.model.guid(view));
-    let id = s.model_mut().insert(Element::Viewport(Viewport { sheet, view, at, scale }));
+    // Told another, it keeps that one: only a viewport at its view's scale follows the view.
+    let id = s.model_mut().insert(Element::Viewport(Viewport { sheet, view, at, scale, follow_scale: own }));
     let mut out = json!({"id": id, "at": at, "scale": scale});
     if let Some(w) = warning {
         out["warning"] = json!(w);
@@ -13188,6 +13198,16 @@ fn modify(s: &mut Session, p: &Value) -> R {
             && !fields.contains_key("runs")
         {
             n.runs = crate::text::remap(&old.text, &n.text, &old.runs);
+        }
+        if let (Element::Viewport(old), Element::Viewport(new)) = (e, &mut e2) {
+            if new.follow_scale && (!old.follow_scale || fields.get("follow_scale") == Some(&Value::Bool(true))) {
+                // Told to follow (again), it takes its view's scale now, not at the view's next change, whatever `scale` is
+                // given with it.
+                new.scale = graphics::scale_of(m, new.view);
+            } else if new.scale != old.scale {
+                // A viewport given a scale of its own keeps it: its view's scale no longer moves it.
+                new.follow_scale = false;
+            }
         }
         graphics::check_followed(m, e, &e2).map_err(|err| bad(c, format!("element {id}: {err}")))?;
         // A strip footing glued to the wall keeps its top on the wall's base: raised or lowered along its level

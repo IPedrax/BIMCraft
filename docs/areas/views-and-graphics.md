@@ -12,10 +12,13 @@ the bar and Properties show it greyed out, the template named on hover (`control
 laid out one pixel to the pixel and grown about its anchor), and 1 on a sheet (`draw_at`, `section_at`), where the viewport's scale already
 sets paper size. Every plan, section and elevation has a scale: one with none of its own is at its project units' default,
 1 : 100 or 1/8" = 1'-0" (`Units::default_scale`, `Graphics::scale_n`, `graphics::scale_of`), and `scale` refuses null. A viewport
-placed with no scale takes the view's. An unscaled 3D view instead takes the finest offered project scale from the default
-up at which `sheet::spot` finds it and its title a place in the sheet's room, clear of the views there and the title block,
-or in the title block's drawing area (`sheet::default_scale`); if none fits, it takes the coarsest offered scale and may still
-extend off the sheet, which `place`'s `warning` says. Explicit viewport scales, assigned view/template scales and explicit
+placed with no scale takes the view's, and follows it when the view's scale changes (`sheet::follow_scale`); one placed
+at a scale of its own (`place` with `scale`, or `modify`) keeps that one (`Viewport::follow_scale`, written only when off,
+FORMAT 18, and Properties' Follow View Scale switches it); `follow_scale: true` gives it its view's scale at once, whatever
+`scale` the same `modify` gives. An unscaled 3D view instead takes the finest offered project scale from the
+default up at which `sheet::spot` finds it and its title a place in the sheet's room, clear of the views there and the title
+block, or in the title block's drawing area (`sheet::default_scale`); if none fits, it takes the coarsest offered scale and may
+still extend off the sheet, which `place`'s `warning` says. Explicit viewport scales, assigned view/template scales and explicit
 positions are preserved. `place` returns the chosen `scale` with its id and position. The units name the scales and list the ones offered (`Units::scale`, `scales`,
 `parse_scale`): metric 1 : n; in inches or feet the architect's (12" = 1'-0" to 1/32" = 1'-0") and the engineer's (1" = 10'-0" to
 1" = 200'-0"), and 1 : n for any other. The Scale menu, Properties, templates and sheets' titles name them so, and a scale is typed

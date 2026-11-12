@@ -80,18 +80,19 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// kind `title-block`; one may give the paper rectangle views are placed in by default, `drawing_area`, and draw the
 /// sheet's border itself, `template_border`) and its values of their fields (`title_values`), and a sheet may name one
 /// (`title_block`) and hold its values of its fields (`fields`), or name `none` to have no title block at all (no border,
-/// title box or folding marks); a wall or a run may refuse to join its neighbours (`join: false`, written only then); a
-/// dimension may measure to the line across a column, square to its angle (`across`); a door's type or family may open as a
-/// gate (`operation`: `sectional` or `roller`); and a project may hold property lines (the `propertyline` category, a row
-/// of `graphics::MODEL` that views' graphics and Object Styles may name). Nothing in a file of 17 changes, but a build that
+/// title box or folding marks); a viewport may keep a scale of its own as its view's changes (`follow_scale: false`,
+/// written only then); a wall or a run may refuse to join its neighbours (`join: false`, written only then); a dimension
+/// may measure to the line across a column, square to its angle (`across`); a door's type or family may open as a gate
+/// (`operation`: `sectional` or `roller`); and a project may hold property lines (the `propertyline` category, a row of
+/// `graphics::MODEL` that views' graphics and Object Styles may name). Nothing in a file of 17 changes, but a build that
 /// reads up to 17 would answer such a connector, dimension, operation or property line with a serde error ("unknown
 /// variant", "missing field `system`") and graphics or a style of `propertyline` as a category it doesn't have, would leave
-/// the title blocks out as fields it doesn't know, drawing every sheet with the built-in title box, and would silently drop
-/// `join: false` and join the element again, not say "saved by a newer BIMCraft". 18 also holds the Family Editor's
-/// families and what places them in a project, which a build that reads up to 17 would leave out as fields it doesn't know,
-/// drawing a family without them or failing to build it and losing them on saving, or refuse on opening ("unknown variant",
-/// "isn't a category views draw"), not say "saved by a newer BIMCraft"; a file of 17 is brought up to 18 by
-/// [`Model::migrate`]:
+/// the title blocks and a viewport's `follow_scale` out as fields it doesn't know, drawing every sheet with the built-in
+/// title box, and would silently drop `join: false` and join the element again, not say "saved by a newer BIMCraft". 18
+/// also holds the Family Editor's families and what places them in a project, which a build that reads up to 17 would leave
+/// out as fields it doesn't know, drawing a family without them or failing to build it and losing them on saving, or refuse
+/// on opening ("unknown variant", "isn't a category views draw"), not say "saved by a newer BIMCraft"; a file of 17 is
+/// brought up to 18 by [`Model::migrate`]:
 ///
 /// - Family parameters: text, whole numbers, areas, volumes, URLs and family types, grouped (`group`), shared (`shared`, a
 ///   GUID) or reporting (`reporting`); a family type parameter names its category (`of`).
@@ -2072,6 +2073,11 @@ pub struct Viewport {
     pub view: Guid,
     pub at: P2,
     pub scale: f64,
+    /// Whether it takes its view's scale as that changes, as a viewport placed without one does; one placed at a
+    /// scale of its own (`place` with `scale`) keeps it, and `scale` leaves it where it is. Written only when off, one of
+    /// FORMAT 18's.
+    #[serde(default = "yes", skip_serializing_if = "is_yes")]
+    pub follow_scale: bool,
 }
 
 /// A pattern for the element of any run category, its run bound as `$r`: a tab adds its categories here, and every place
@@ -3753,12 +3759,13 @@ impl Model {
         // 17 to 18, for a type's steel section (`profile`), has none either: a file of 17 holds none, its types keeping the
         // plain rectangle or circle they had.
         // 17 to 18 (pipe, data and earthing connectors, a connector's place; title blocks of the project's own, with a
-        // drawing area and a border of their own, their fields' values, and sheets with none; walls and runs that refuse to
-        // join; a dimension to the line across a column; sectional and roller doors; property lines) has none either: a
-        // file of 17's connectors are a power or a switch one, each with its system, which 18 reads as they were; a file of
-        // 17 holds no title blocks, its sheets keeping the built-in one, no `join`, which reads as joining, as it always
-        // did, none of its dimensions measures `across`, none of its operations is a gate's, and it holds no property line
-        // and names no `propertyline` in its graphics or styles.
+        // drawing area and a border of their own, their fields' values, and sheets with none; viewports that keep a scale
+        // of their own; walls and runs that refuse to join; a dimension to the line across a column; sectional and roller
+        // doors; property lines) has none either: a file of 17's connectors are a power or a switch one, each with its
+        // system, which 18 reads as they were; a file of 17 holds no title blocks, its sheets keeping the built-in one, no
+        // `follow_scale`, so its viewports follow their views' scales from then on, as one placed without a scale does, no
+        // `join`, which reads as joining, as it always did, none of its dimensions measures `across`, none of its
+        // operations is a gate's, and it holds no property line and names no `propertyline` in its graphics or styles.
         // The Family Editor's part of 18, and what places its families, takes
         // one step, in this order (it leaves the rest of 18 alone: title blocks, `join` and `across` aren't a family's, and a
         // connector's `at` is in the family's axes, which the datums are whatever plane `defines_origin`, and it has no `host`
