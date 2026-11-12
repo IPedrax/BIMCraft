@@ -12931,6 +12931,14 @@ msgstr ""
 msgid "This family has no connectors."
 msgstr ""
 
+#: crates/core/src/model.rs:2562
+msgid "Roller"
+msgstr ""
+
+#: crates/core/src/model.rs:2561
+msgid "Sectional"
+msgstr ""
+
 #: crates/ui-egui/src/fillpatterns.rs:634
 #~ msgid "A pattern of the file replaces the one of its name in this list; else it is left out"
 #~ msgstr "Ein Muster der Datei ersetzt das gleichnamige in dieser Liste; sonst wird es ausgelassen"

@@ -1182,7 +1182,7 @@ other_files(
          locked?: [{segment, length}], equal?, alignment?}], \
          dimension?: {id | guid, …a dimension's fields} (none: one added), delete_dimension?: [id | guid, …], \
          invalid_dimensions?: delete, solve?: type, \
-         operation?: swing|double-swing|sliding|double-sliding|folding|fixed (a door's or window's, for IFC and schedules), \
+         operation?: swing|double-swing|sliding|double-sliding|folding|fixed|sectional|roller (a door's or window's, for IFC and schedules), \
          kind?: which fixture or fitting it is, for IFC's predefined type (plumbing: wc|lav|sink|laundry|shower|bath|bidet|urinal; \
          drain: floor_drain|floor_waste|roof_drain; pipefitting: bend|tee|cross|transition|coupling; \"\" clears it), \
          ifc?: {class, predefined?, object_type?} | null (the IFC class a generic family's components go out as, which one \

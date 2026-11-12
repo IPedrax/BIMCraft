@@ -12936,6 +12936,14 @@ msgstr ""
 msgid "This family has no connectors."
 msgstr ""
 
+#: crates/core/src/model.rs:2562
+msgid "Roller"
+msgstr ""
+
+#: crates/core/src/model.rs:2561
+msgid "Sectional"
+msgstr ""
+
 #: crates/ui-egui/src/lib.rs:4503
 #~ msgid "Click to select. Drag to orbit (or Shift and the middle button), the middle button pans, the wheel zooms."
 #~ msgstr "Nhấp để chọn. Kéo để xoay quanh (hoặc Shift và nút giữa), nút giữa để kéo, con lăn để thu phóng."

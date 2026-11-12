@@ -3232,15 +3232,25 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
         let typed = l.typed.get(&id).and_then(|t| e(*t));
         let operated = enumeration(o.args.get(11))
             .filter(|_| is_door)
+            .map(|op| (op, text(o.args.get(12))))
             .or_else(|| {
                 typed.filter(|_| is_door).and_then(|t| match t.name.as_str() {
-                    "IFCDOORTYPE" => enumeration(t.args.get(10)),
-                    "IFCDOORSTYLE" => enumeration(t.args.get(8)),
+                    "IFCDOORTYPE" => enumeration(t.args.get(10)).map(|op| (op, text(t.args.get(12)))),
+                    "IFCDOORSTYLE" => enumeration(t.args.get(8)).map(|op| (op, None)),
                     _ => None,
                 })
             })
-            .and_then(crate::model::Operation::from_ifc_door);
+            .and_then(|(op, user)| crate::model::Operation::from_ifc_door_with_user(op, user));
         let operation = operated.map(|(op, _)| op);
+        // Industrial equipment stands off one face. Recover its facing from the actual body rather than relocating it
+        // to the other side when the opening itself (which is symmetric) is read back.
+        let flip_facing = operation.is_some_and(crate::model::Operation::industrial)
+            && m.wall(host).is_some_and(|w| {
+                let axis = crate::walls::Axis::of(w);
+                let at = axis.at((s0 + s1) / 2.0, crate::walls::centre(&m, w));
+                let normal = axis.tangent((s0 + s1) / 2.0).perp();
+                span(r.body(o).iter().flatten().map(|p| (r.flat(*p) - at).dot(normal))).is_some_and(|(lo, hi)| lo + hi < 0.0)
+            });
         let same = |k: &OpeningType| (k.width - width).abs() < 0.05 && (k.height - height).abs() < 0.05 && k.operation == operation;
         let new = OpeningType { width, height, sill: if is_door { 0.0 } else { sill }, operation };
         let types = if is_door { &mut m.types.door } else { &mut m.types.window };
@@ -3260,7 +3270,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
             offset: micron(P2((s0 + s1) / 2.0, 0.0)).0,
             sill,
             mark,
-            flip_facing: false,
+            flip_facing,
             flip_hand,
         };
         let oid = m.insert(if is_door { Element::Door(op) } else { Element::Window(op) });

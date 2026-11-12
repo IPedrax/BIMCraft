@@ -2075,6 +2075,12 @@ impl Family {
         self.check_planes()?;
         self.check_dimensions()?;
         self.check_pivots()?;
+        // A sectional or roller door is a gate's: no window opens that way.
+        if self.category == Category::Window
+            && let Some(op) = self.operation.filter(|op| op.industrial())
+        {
+            return Err(format!("`operation` `{}` is a door's, a gate's; a window family takes another", op.name()));
+        }
         if self.category.hosted() {
             for name in [WIDTH, HEIGHT] {
                 if !self.parameters.iter().any(|p| p.name == name && p.kind == Kind::Length && !p.reporting) {
@@ -2956,7 +2962,7 @@ fn rings(regions: &[crate::geom::Region]) -> impl Iterator<Item = &Vec<P2>> {
 
 /// `regions`, each outline counter-clockwise and its holes clockwise in `frame`'s plane, swept along its normal from `from`
 /// to `to`: their caps, then their sides, every triangle turned out; and how many the caps take.
-fn sweep(regions: &[crate::geom::Region], from: f64, to: f64, frame: &Frame) -> Result<(Vec<[P3; 3]>, usize), String> {
+pub(crate) fn sweep(regions: &[crate::geom::Region], from: f64, to: f64, frame: &Frame) -> Result<(Vec<[P3; 3]>, usize), String> {
     // A normal that points down the family's axis it lies most along (Center (Front/Back)'s, -y) is swept the axis' own way,
     // in the frame mirrored: the same solid, its triangles as they were when such a form named `xz`.
     let k = (1..3).fold(0, |k, i| if frame.z[i].abs() > frame.z[k].abs() { i } else { k });

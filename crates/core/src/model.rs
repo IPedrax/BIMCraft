@@ -76,11 +76,12 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// the starter fixtures and fittings have them; a project may hold title blocks of its own (`title_blocks`, library entries of
 /// kind `title-block`) and its values of their fields (`title_values`), and a sheet may name one (`title_block`) and hold its
 /// values of its fields (`fields`), or name `none` to have no title block at all (no border, title box or folding marks); a
-/// wall or a run may refuse to join its neighbours (`join: false`, written only then); and a dimension may measure to the line
-/// across a column, square to its angle (`across`). Nothing in a file of 17 changes, but a build that reads up to 17 would
-/// answer such a connector or dimension with a serde error ("unknown variant", "missing field `system`"), would leave the
-/// title blocks out as fields it doesn't know, drawing every sheet with the built-in title box, and would silently drop
-/// `join: false` and join the element again, not say "saved by a newer BIMCraft". 18 also holds the Family Editor's families and
+/// wall or a run may refuse to join its neighbours (`join: false`, written only then); a dimension may measure to the line
+/// across a column, square to its angle (`across`); and a door's type or family may open as a gate (`operation`: `sectional`
+/// or `roller`). Nothing in a file of 17 changes, but a build that reads up to 17 would answer such a connector, dimension
+/// or operation with a serde error ("unknown variant", "missing field `system`"), would leave the title blocks out as fields
+/// it doesn't know, drawing every sheet with the built-in title box, and would silently drop `join: false` and join the
+/// element again, not say "saved by a newer BIMCraft". 18 also holds the Family Editor's families and
 /// what places them in a project, which a build that reads up to 17 would leave out as fields it doesn't know, drawing a
 /// family without them or failing to build it and losing them on saving, or refuse on opening ("unknown variant", "isn't a
 /// category views draw"), not say "saved by a newer BIMCraft"; a file of 17 is brought up to 18 by [`Model::migrate`]:
@@ -2572,11 +2573,23 @@ pub enum Operation {
     Folding,
     /// Nothing opens.
     Fixed,
+    /// Hinged horizontal panels run up and overhead on tracks.
+    Sectional,
+    /// A curtain winds onto a coil above the opening.
+    Roller,
 }
 
 impl Operation {
-    pub const ALL: [Operation; 6] =
-        [Operation::Swing, Operation::DoubleSwing, Operation::Sliding, Operation::DoubleSliding, Operation::Folding, Operation::Fixed];
+    pub const ALL: [Operation; 8] = [
+        Operation::Swing,
+        Operation::DoubleSwing,
+        Operation::Sliding,
+        Operation::DoubleSliding,
+        Operation::Folding,
+        Operation::Fixed,
+        Operation::Sectional,
+        Operation::Roller,
+    ];
 
     /// Its name, as files and commands spell it.
     pub fn name(self) -> &'static str {
@@ -2587,6 +2600,8 @@ impl Operation {
             Operation::DoubleSliding => "double-sliding",
             Operation::Folding => "folding",
             Operation::Fixed => "fixed",
+            Operation::Sectional => "sectional",
+            Operation::Roller => "roller",
         }
     }
 
@@ -2599,11 +2614,23 @@ impl Operation {
             Operation::DoubleSliding => msg!("Double Sliding"),
             Operation::Folding => msg!("Folding"),
             Operation::Fixed => msg!("Fixed"),
+            Operation::Sectional => msg!("Sectional"),
+            Operation::Roller => msg!("Roller"),
         }
     }
 
     pub fn parse(name: &str) -> Option<Operation> {
         Operation::ALL.into_iter().find(|o| o.name().eq_ignore_ascii_case(name.trim()))
+    }
+
+    /// Project-owned industrial door types have generated panels and equipment.
+    pub fn industrial(self) -> bool {
+        matches!(self, Operation::Sectional | Operation::Roller)
+    }
+
+    /// IFC4 has no sectional-door enumeration, so the user-defined operation carries its meaning.
+    pub fn ifc_door_user(self) -> Option<&'static str> {
+        (self == Operation::Sectional).then_some("SECTIONAL")
     }
 
     /// A door's `IfcDoorTypeOperationEnum`, its leaf to the right with `right`; a door that says
@@ -2617,6 +2644,8 @@ impl Operation {
             Operation::DoubleSliding => ".DOUBLE_DOOR_SLIDING.",
             Operation::Folding => side(".FOLDING_TO_LEFT.", ".FOLDING_TO_RIGHT."),
             Operation::Fixed => ".NOTDEFINED.",
+            Operation::Sectional => ".USERDEFINED.",
+            Operation::Roller => ".ROLLINGUP.",
         }
     }
 
@@ -2635,9 +2664,19 @@ impl Operation {
             "SLIDING_TO_LEFT" | "SLIDING_TO_RIGHT" => Operation::Sliding,
             "DOUBLE_DOOR_SLIDING" => Operation::DoubleSliding,
             "FOLDING_TO_LEFT" | "FOLDING_TO_RIGHT" | "DOUBLE_DOOR_FOLDING" => Operation::Folding,
+            "ROLLINGUP" => Operation::Roller,
             _ => return None,
         };
         Some((op, right))
+    }
+
+    /// Read an IFC4 custom operation as well as the standard operation enumeration.
+    pub fn from_ifc_door_with_user(e: &str, user: Option<&str>) -> Option<(Operation, bool)> {
+        if e.trim_matches('.') == "USERDEFINED" && user.is_some_and(|u| u.trim().eq_ignore_ascii_case("SECTIONAL")) {
+            Some((Operation::Sectional, false))
+        } else {
+            Self::from_ifc_door(e)
+        }
     }
 
     /// A window's `IfcWindowTypePartitioningEnum`: two panels side by side where two leaves meet, else one.
@@ -3686,10 +3725,11 @@ impl Model {
         // read as dimensions of nothing) has no step: a file of 15 holds none.
         // 16 to 17 (multi-category schedules, Italian as a project's language) has none either: a file of 16 holds neither.
         // 17 to 18 (pipe, data and earthing connectors, a connector's place; title blocks of the project's own, their fields'
-        // values, and sheets with none; walls and runs that refuse to join; a dimension to the line across a column) has none
-        // either: a file of 17's connectors are a power or a switch one, each with its system, which 18 reads as they were; a
-        // file of 17 holds no title blocks, its sheets keeping the built-in one, no `join`, which reads as joining, as it always
-        // did, and none of its dimensions measures `across`. The Family Editor's part of 18, and what places its families, takes
+        // values, and sheets with none; walls and runs that refuse to join; a dimension to the line across a column; sectional
+        // and roller doors) has none either: a file of 17's connectors are a power or a switch one, each with its system, which
+        // 18 reads as they were; a file of 17 holds no title blocks, its sheets keeping the built-in one, no `join`, which reads
+        // as joining, as it always did, none of its dimensions measures `across`, and none of its operations is a gate's.
+        // The Family Editor's part of 18, and what places its families, takes
         // one step, in this order (it leaves the rest of 18 alone: title blocks, `join` and `across` aren't a family's, and a
         // connector's `at` is in the family's axes, which the datums are whatever plane `defines_origin`, and it has no `host`
         // that 1 below would move).
@@ -4428,7 +4468,8 @@ impl Model {
 
     /// A door's or window's family's solids and the lines its plan draws, in the family's own axes, turned out with
     /// the opening's flips as mirror images (its hinge on the other jamb, its swing to the wall's other side);
-    /// none for one that isn't of a family, or doesn't build.
+    /// Project-owned industrial doors use the same pieces for their generated equipment; none for an ordinary project type
+    /// or a family that doesn't build.
     pub fn opening_local(&self, e: &Element) -> Option<(Vec<Piece>, Vec<crate::family::Tagged>)> {
         self.opening_local_at(e, None)
     }
@@ -4436,13 +4477,20 @@ impl Model {
     /// [`Model::opening_local`], its marks those a plan at `detail` draws if it says.
     fn opening_local_at(&self, e: &Element, detail: Option<crate::graphics::Detail>) -> Option<(Vec<Piece>, Vec<crate::family::Tagged>)> {
         let (Element::Door(o) | Element::Window(o)) = e else { return None };
-        let f = self.families.get(o.family.as_ref()?)?;
-        let values = f.values_in(&o.type_name, &o.params, self.thickness(self.wall(o.host)?)).ok()?;
-        let marks = match detail {
-            Some(d) => f.marks_in(&values, d),
-            None => f.marks_tagged(&values),
+        let (pieces, marks) = if let Some(name) = &o.family {
+            let f = self.families.get(name)?;
+            let values = f.values_in(&o.type_name, &o.params, self.thickness(self.wall(o.host)?)).ok()?;
+            let marks = match detail {
+                Some(d) => f.marks_in(&values, d),
+                None => f.marks_tagged(&values),
+            };
+            (f.pieces(&values).ok()?, marks.ok()?)
+        } else {
+            let t = self.opening_type(e)?;
+            let operation = t.operation.filter(|op| matches!(e, Element::Door(_)) && op.industrial())?;
+            let face = self.thickness(self.wall(o.host)?) / 2.0;
+            (crate::doors::pieces(operation, t.width, t.height, face, self.language.word("Metal")).ok()?, Vec::new())
         };
-        let (pieces, marks) = (f.pieces(&values).ok()?, marks.ok()?);
         let (fx, fy) = (if o.flip_hand { -1.0 } else { 1.0 }, if o.flip_facing { -1.0 } else { 1.0 });
         let mirrored = fx * fy < 0.0;
         let flip = |p: [f64; 3]| [fx * p[0] + 0.0, fy * p[1] + 0.0, p[2]];
@@ -6448,6 +6496,14 @@ impl Model {
                 size(&format!("{cat} type `{n}` width"), t.width)?;
                 size(&format!("{cat} type `{n}` height"), t.height)?;
                 coord(&format!("{cat} type `{n}` sill"), t.sill)?;
+                if cat == "window"
+                    && let Some(op) = t.operation.filter(|op| op.industrial())
+                {
+                    return Err(format!(
+                        "window type `{n}`: `{}` is a door's operation, a gate's; give the window another, or make it a door type",
+                        op.name()
+                    ));
+                }
             }
         }
         if self.images.len() > MAX_IMAGES {

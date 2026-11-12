@@ -7019,5 +7019,6 @@ mod family_visibility;
 #[cfg(test)]
 mod family_work_plane;
 mod highlight3d;
+mod industrial_doors;
 mod nested_families;
 mod preview_visibility;

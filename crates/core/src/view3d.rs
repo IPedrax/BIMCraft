@@ -1247,11 +1247,12 @@ fn solids_in_with(
             })),
             // Of a family: each form in its material's colour, cut where a section's line passes through it. Else a door's leaf or a window's glass: a 50 mm panel in the middle of the wall, square to it.
             Element::Door(o) | Element::Window(o) => {
-                if let Some(family) = o.family.as_ref() {
+                let pieces = m.opening_pieces(e);
+                if o.family.is_some() || !pieces.is_empty() {
                     let fallback = if matches!(e, Element::Door(_)) { DOOR } else { GLASS };
-                    let cut = m.families.get(family).is_none_or(crate::family::Family::cuts_in_views);
+                    let cut = o.family.as_ref().and_then(|f| m.families.get(f)).is_none_or(crate::family::Family::cuts_in_views);
                     let x = m.opening_frame(o).map_or(P2(1.0, 0.0), |(_, u, _)| u);
-                    for piece in m.opening_pieces(e) {
+                    for piece in pieces {
                         let color = m.materials.get(&piece.material).map_or(fallback, |x| Rgb(x.color[0], x.color[1], x.color[2]));
                         out.push(Solid::Mesh {
                             owner: id,

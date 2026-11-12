@@ -13173,3 +13173,11 @@ msgstr ""
 #: crates/ui-egui/src/workplane.rs:237
 msgid "{}° from level"
 msgstr ""
+
+#: crates/core/src/model.rs:2562
+msgid "Roller"
+msgstr ""
+
+#: crates/core/src/model.rs:2561
+msgid "Sectional"
+msgstr ""
