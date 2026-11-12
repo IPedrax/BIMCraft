@@ -1003,11 +1003,13 @@ other_files(
         "Place View",
         &[],
         "{sheet: number or id, view: a level's, section's, elevation's, schedule's or 3D view's name or id, at?: [x, y], \
-         scale?, azimuth?, elevation?} puts the view on the sheet at 1 : `scale` (by default the view's own, see `scale`, 1 : 100 when it has none of its own; a schedule keeps its size), \
-         its middle `at` mm from the paper's bottom left corner (by default in a free spot clear of the other views, their titles \
-         and the title block, or in the title block's drawing area; right of all views when full); a view goes on one sheet. \
-         Returns {id, at}, and a `warning` when the view or its title reaches past the paper. A schedule (Room Schedule, Door \
-         Schedule…) or the 3D view ({3D}, seen from `azimuth` and `elevation` degrees) comes to be as it's first placed",
+         scale?, azimuth?, elevation?} puts the view on the sheet at 1 : `scale` (by default the view's own, see `scale`; an \
+         unscaled 3D view uses the finest offered project scale from the default up that fits the sheet's room, or the coarsest \
+         if none fits; a schedule keeps its size), its middle `at` mm from the paper's bottom left corner (by default in a free \
+         spot clear of the other views, their titles and the title block, or in the title block's drawing area; right of all \
+         views when full); a view goes on one sheet. Returns {id, at, scale}, and a `warning` when the view or its title reaches \
+         past the paper. A schedule (Room Schedule, Door Schedule…) or the 3D view ({3D}, seen from `azimuth` and `elevation` \
+         degrees) comes to be as it's first placed",
         place,
     ),
     edit(
@@ -10759,8 +10761,8 @@ fn place(s: &mut Session, p: &Value) -> R {
             .ok_or_else(|| bad(c, format!("`view`: {v} is not a plan, a section, an elevation, a schedule or a 3D view")))?,
         None => return Err(bad(c, "`view`, a level's, section's, elevation's, schedule's or 3D view's name or id, is required")),
     };
-    // The view's own scale, unless told another; 1 : 100 for a view with none.
-    let scale = scale.unwrap_or_else(|| graphics::scale_of(&s.model, view));
+    // The view's own scale, unless told another; an unscaled 3D view's, one that fits the paper.
+    let scale = scale.unwrap_or_else(|| sheet::default_scale(&s.model, sheet, view));
     let at = match at {
         Some(at) => at,
         None => sheet::automatic_center(&s.model, sheet, view, scale).map_err(|why| bad(c, why))?,
@@ -10769,7 +10771,7 @@ fn place(s: &mut Session, p: &Value) -> R {
     let warning = sheet::off_paper(&s.model, sheet, view, scale, at);
     let (sheet, view) = (s.model.guid(sheet), s.model.guid(view));
     let id = s.model_mut().insert(Element::Viewport(Viewport { sheet, view, at, scale }));
-    let mut out = json!({"id": id, "at": at});
+    let mut out = json!({"id": id, "at": at, "scale": scale});
     if let Some(w) = warning {
         out["warning"] = json!(w);
     }

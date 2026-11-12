@@ -8,9 +8,9 @@
 use bimcraft_i18n::msg;
 
 use crate::geom::P2;
-use crate::graphics::Look;
+use crate::graphics::{self, Look};
 use crate::language::Language;
-use crate::model::{Element, Id, Key, Model, Schedule, Sheet, Viewport, paper};
+use crate::model::{Element, Guid, Id, Key, Model, Schedule, Sheet, Viewport, paper};
 use crate::pen::Pen;
 use crate::render::{self, Drawing, PAPER, Part, Prim, Rgb, View};
 use crate::{font, schedule, view3d};
@@ -77,6 +77,22 @@ fn framing_in(m: &Model, work: &Work, view: impl Key, scale: f64) -> Option<View
 /// How much paper view `view` takes at 1 : `scale`, mm.
 pub fn size(m: &Model, view: impl Key, scale: f64) -> Option<P2> {
     framing(m, view, scale).map(|v| P2(f64::from(v.width) / DENSITY, f64::from(v.height) / DENSITY))
+}
+
+/// A placed view's scale when none is given: its own, or, for an unscaled 3D view, the finest
+/// offered project scale from the default up at which [`spot`] finds it and its title a place in the
+/// sheet's room, clear of the views there and the title block (or in the title block's drawing
+/// area). If none fits, use the coarsest offered scale. Assigned view and template scales are kept.
+pub fn default_scale(m: &Model, sheet: impl Key, view: impl Key) -> f64 {
+    let own = graphics::scale_of(m, view);
+    let assigned = graphics::graphics_of(m, view).is_some_and(|g| g.resolved(m).scale.is_some());
+    if assigned || !matches!(m.elements.get(view), Some(Element::View3D(_))) {
+        return own;
+    }
+    let sheet = m.guid(sheet);
+    let mut scales: Vec<f64> = m.units.scales().iter().copied().filter(|n| *n >= own).collect();
+    scales.sort_by(f64::total_cmp);
+    scales.iter().copied().find(|n| free_spot(m, sheet, view, *n).is_some()).or_else(|| scales.last().copied()).unwrap_or(own)
 }
 
 /// Viewport `id`'s view frame, and where that frame's top left corner sits in its sheet's drawing,
@@ -165,16 +181,30 @@ fn moved(b: [f64; 4], p: P2) -> [f64; 4] {
 /// fits, continue right of all the views, off the paper without stacking.
 pub fn spot(m: &Model, sheet: impl Key, view: impl Key, scale: f64) -> P2 {
     let sheet = m.guid(sheet);
-    let Room { inside: [west, south, east, north], title, middle, paper } = room(m, sheet);
-    let taken = footprint(m, view, scale).unwrap_or([0.0; 4]);
-    let placed: Vec<[f64; 4]> = m
-        .on_sheet(sheet)
+    free_spot(m, sheet, view, scale).unwrap_or_else(|| {
+        // Keep overflow backgrounds wholly beyond the paper so they cannot erase its border or title block.
+        let Room { middle, paper, inside, .. } = room(m, sheet);
+        let right = placed(m, sheet).iter().map(|b| b[2]).reduce(f64::max).unwrap_or(inside[2]);
+        P2(right.max(paper.0) + GAP - footprint(m, view, scale).unwrap_or([0.0; 4])[0], middle.1)
+    })
+}
+
+/// The footprints of the views on sheet `sheet`, where they stand.
+fn placed(m: &Model, sheet: Guid) -> Vec<[f64; 4]> {
+    m.on_sheet(sheet)
         .into_iter()
         .filter_map(|id| match m.elements.get(id) {
             Some(Element::Viewport(v)) if v.sheet == sheet => Some(moved(footprint(m, v.view, v.scale)?, v.at)),
             _ => None,
         })
-        .collect();
+        .collect()
+}
+
+/// [`spot`] when it finds view `view` at 1 : `scale` a place in the sheet's room; none when the view must go off the paper.
+fn free_spot(m: &Model, sheet: Guid, view: impl Key, scale: f64) -> Option<P2> {
+    let Room { inside: [west, south, east, north], title, middle, .. } = room(m, sheet);
+    let taken = footprint(m, view, scale).unwrap_or([0.0; 4]);
+    let placed = placed(m, sheet);
     let reserved: Vec<[f64; 4]> = placed.iter().copied().chain(title).collect();
     // Candidate coordinates subtract and add half sizes; tolerate only their floating-point roundoff.
     let eps = 1e-9;
@@ -186,12 +216,12 @@ pub fn spot(m: &Model, sheet: impl Key, view: impl Key, scale: f64) -> P2 {
         b[0] + eps >= west && b[1] + eps >= south && b[2] <= east + eps && b[3] <= north + eps && reserved.iter().all(|o| apart(b, o))
     };
     if placed.is_empty() && free(&middle) {
-        return middle;
+        return Some(middle);
     }
     let right = placed.iter().map(|b| b[2]).reduce(f64::max).unwrap_or(east);
     let beside = P2(right + GAP - taken[0], middle.1);
     if free(&beside) {
-        return beside;
+        return Some(beside);
     }
     let mut spots: Vec<P2> = reserved
         .iter()
@@ -205,8 +235,7 @@ pub fn spot(m: &Model, sheet: impl Key, view: impl Key, scale: f64) -> P2 {
         .collect();
     // Prefer the topmost free candidate, then the leftmost.
     spots.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.total_cmp(&b.0)));
-    // Keep overflow backgrounds wholly beyond the paper so they cannot erase its border or title block.
-    spots.into_iter().find(free).unwrap_or(P2(right.max(paper.0) + GAP - taken[0], middle.1))
+    spots.into_iter().find(free)
 }
 
 /// [`spot`], refused when the view and its title are larger than the drawing area its sheet's title block gives.
