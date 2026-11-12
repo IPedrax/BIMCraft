@@ -1751,7 +1751,7 @@ fn warnings_are_collected_not_stopped_at_the_first() {
             ]}),
         )
         .unwrap_err();
-    assert!(e.contains("reads `Nowhere`") && e.contains("`Height / -`"), "{e}");
+    assert!(e.contains("not a valid parameter: Nowhere") && e.contains("`Height / -`"), "{e}");
     // A profile with no area is refused as it always was, and its void is named with it.
     let e = s
         .execute(
@@ -2509,6 +2509,8 @@ fn hostile_params_never_panic_or_break_the_model() {
     // A sloped reference plane and a work plane-based component on it, after the roof, so that no id moves; and the payloads
     // that name them.
     targeted.extend(crate::work_plane_tests::sweep_payloads(&mut base));
+    // A floor and a wall with a component on a face of each, and the payloads that place, move and host them.
+    targeted.extend(crate::face_host_tests::sweep_payloads(&mut base));
     let line = |slope: Value| json!({"start": [0, 0], "end": [8000, 0], "slope": slope});
     let rest = [
         json!({"start": [8000, 0], "end": [8000, 6000]}),

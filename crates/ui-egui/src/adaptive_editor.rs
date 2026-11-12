@@ -308,6 +308,43 @@ pub(crate) enum Field {
     Visible,
     /// What a form is made of.
     Material,
+    /// A row of a form of a family's own (one that isn't adaptive), its place among the family's forms the `id`.
+    Form(Slot),
+    /// A row of a symbol of a family's own, its place among the family's symbols the `id`.
+    Symbol(Slot),
+}
+
+/// Which row of a family's own form or symbol "=" ties: its numbers, whether it shows, what it is made of.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Slot {
+    From,
+    To,
+    Visible,
+    Material,
+    /// A circle's (or a symbol's) centre, x or y; a form's circle's radius is its third.
+    Centre(usize),
+    /// A revolve's axis: its two points' x and y.
+    Axis(usize),
+    /// A symbol's radius or text height.
+    Radius,
+}
+
+/// What Associate Family Parameter ties a row of: an adaptive definition's element, or a family's own forms.
+pub(crate) trait Tied {
+    /// `a`'s choice made: the row tied to the parameter chosen or, with <None>, untied, keeping what it came to.
+    fn tie(&mut self, a: &Associating, values: &BTreeMap<String, Val>);
+    /// What the row `a` is open on holds now, as the Family Types dialog types a value: a new parameter starts from it.
+    fn value_now(&mut self, a: &Associating, values: &BTreeMap<String, Val>) -> String;
+}
+
+impl Tied for Definition {
+    fn tie(&mut self, a: &Associating, values: &BTreeMap<String, Val>) {
+        tie(self, a, values);
+    }
+
+    fn value_now(&mut self, a: &Associating, values: &BTreeMap<String, Val>) -> String {
+        value_now(self, a, values)
+    }
 }
 
 /// Associate Family Parameter, open on `field` of element `id` (its row is `label`, holding a `kind`): the parameter chosen
@@ -341,7 +378,7 @@ fn holds(kind: Holds) -> &'static str {
 }
 
 /// What `e` comes to with the type's `values`; none for a formula that does not work out.
-fn worth(e: &Expr, values: &BTreeMap<String, Val>) -> Option<f64> {
+pub(crate) fn worth(e: &Expr, values: &BTreeMap<String, Val>) -> Option<f64> {
     match e {
         Expr::Number(x) => Some(*x),
         Expr::Formula(f) => bimcraft_core::family::eval(f, &mut |n| match values.get(n) {
@@ -367,7 +404,7 @@ fn expr_mut(node: &mut adaptive::Node, field: Field) -> Option<&mut Expr> {
 }
 
 /// Revit's "=" at the end of a row: Associate Family Parameter for `label`, lit while the row is tied. Whether it was pressed.
-fn equals(ui: &mut Ui, label: &str, tied: bool) -> bool {
+pub(crate) fn equals(ui: &mut Ui, label: &str, tied: bool) -> bool {
     let name = tf("Associate Family Parameter: {}", &[t(label)]);
     let r = ui.add(egui::Button::new("=").small().selected(tied)).on_hover_text(t("Associate Family Parameter"));
     r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, &name));
@@ -463,7 +500,7 @@ fn material_row(ui: &mut Ui, material: &mut String, values: &BTreeMap<String, Va
 }
 
 /// Associate Family Parameter, opening on `field` of `id`: tied already to one of `params`, that one is chosen.
-fn associating(id: &str, field: Field, kind: Holds, label: &str, now: Option<&str>, params: &[(String, Holds)]) -> Associating {
+pub(crate) fn associating(id: &str, field: Field, kind: Holds, label: &str, now: Option<&str>, params: &[(String, Holds)]) -> Associating {
     let chosen = now.filter(|n| params.iter().any(|(p, k)| p == n && *k == kind)).map(String::from);
     Associating { id: id.to_string(), field, kind, label: label.to_string(), chosen, new: None }
 }
@@ -655,7 +692,7 @@ fn value_now(d: &mut Definition, a: &Associating, values: &BTreeMap<String, Val>
 pub(crate) fn associate(
     ctx: &egui::Context,
     a: &mut Associating,
-    d: &mut Definition,
+    d: &mut dyn Tied,
     params: &[(String, Holds)],
     values: &BTreeMap<String, Val>,
 ) -> (bool, Option<NewParameter>) {
@@ -715,14 +752,14 @@ pub(crate) fn associate(
         Some((typed, instance)) => {
             let name = typed.trim().to_string();
             if ok && !name.is_empty() && !params.iter().any(|(p, _)| *p == name) {
-                add = Some(NewParameter { name: name.clone(), kind: a.kind, instance, value: value_now(d, a, values) });
+                add = Some(NewParameter { name: name.clone(), kind: a.kind, instance, value: d.value_now(a, values) });
                 a.chosen = Some(name);
             } else if !(cancel || r.should_close()) {
                 a.new = Some((typed, instance));
             }
         }
         None if ok => {
-            tie(d, a, values);
+            d.tie(a, values);
             done = true;
         }
         None => done = cancel || r.should_close(),

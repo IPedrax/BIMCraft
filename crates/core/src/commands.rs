@@ -23,11 +23,11 @@ use crate::lines::{DetailLine, LineStyle};
 use crate::massing;
 use crate::model::{
     CEILING_HEIGHT, CadImport, Ceiling, CeilingType, Column, ColumnType, Component, DEFAULT_HEIGHT, DimKind, Dimension, Dimension3D,
-    Element, End, Extrusion, Face, Facing, Floor, FloorType, Grid, Guid, Id, Key, Landing, Layer, Level, Line, Location, MAX_COORD,
-    MAX_POINTS, MAX_SLOPE, MAX_TEXT, Mass, Model, Note, Opening, OpeningType, Orient, PARAMETER_CATEGORIES, ParameterKind, Pattern,
-    Perspective, PlanView, PointCloud, ProjectParameter, RAMP_SLOPE, RAMP_WIDTH, RISER, Railing, RailingType, Ramp, Rebar, Ref3, Reference,
-    Roof, RoofType, Room, RoomArea, RoomSeparator, STAIR_WIDTH, Schedule, Section, SectionBox, Shaft, Sheet, Side, Spot, Stair, TOL, TREAD,
-    Tag, Unbound, View3D, Viewport, Wall, WallType, heading, paper,
+    Element, End, Extrusion, Face, Facing, Floor, FloorType, Grid, Guid, HostRef, Hosted, Id, Key, Landing, Layer, Level, Line, Location,
+    MAX_COORD, MAX_POINTS, MAX_SLOPE, MAX_TEXT, Mass, Model, Note, Opening, OpeningType, Orient, PARAMETER_CATEGORIES, ParameterKind,
+    Pattern, Perspective, PlanView, PointCloud, ProjectParameter, RAMP_SLOPE, RAMP_WIDTH, RISER, Railing, RailingType, Ramp, Rebar, Ref3,
+    Reference, Roof, RoofType, Room, RoomArea, RoomSeparator, STAIR_WIDTH, Schedule, Section, SectionBox, Shaft, Sheet, Side, Spot, Stair,
+    TOL, TREAD, Tag, Unbound, View3D, Viewport, Wall, WallType, heading, paper,
 };
 use crate::paint;
 use crate::phasing;
@@ -201,8 +201,8 @@ other_files(
     edit("grid", ui_msg!("Grid"), &["GR"], "{start: [x,y], end: [x,y], name?} names follow the last grid: 1, 2… or A, B…", grid).menu("Architecture > Grid"),
     edit(
         "reference_plane",
-        "Reference Plane",
-        &[],
+        ui_msg!("Reference Plane"),
+        &["RP"],
         "{start, end, up?: [x,y,z], name?, level?} a reference plane of the project: drawn along the line from `start` to `end` \
          ([x, y] on `level`, the lowest by default, or [x, y, z]), its other direction `up` (the vertical by default, so a line \
          drawn in plan makes an upright plane; tilt `up` for a sloped one). Work plane-based components are placed on it \
@@ -214,8 +214,9 @@ other_files(
         "edit_work_plane",
         "Edit Work Plane",
         &[],
-        "{ids, host: {level: name|id} | {plane: name|id|GUID}} puts components on a level (at their plan point, on it) or a \
-         reference plane of the project (taken onto it; one from another plane keeps its Offset from Host). \
+        "{ids, host: {level: name|id} | {plane: name|id|GUID} | {face: {element: id|GUID, face}}} puts components on a level \
+         (at their plan point, on it), a reference plane of the project or a face of a wall, a floor, a ceiling or a roof \
+         (taken onto it; one from another plane or face keeps its Offset from Host). \
          {family, form | ref_line: id|GUID, host: {plane: name|id|GUID} | {line, face}, keep?, dry_run?} puts a family's form \
          or reference line on another of its planes: it moves with the plane, as Revit's Edit Work Plane, keeping its profile \
          and start and end in the new plane's axes; with `keep` it stays where it is, which only a plane parallel to its old \
@@ -1183,7 +1184,7 @@ other_files(
          dots (`23.30.20.17`) and a title, which IFC writes as a classification reference on its type; work_plane_based (off), \
          always_vertical (on), cut_with_voids_when_loaded (off) and shared (off) are kept for later and change nothing yet; \
          a reply's `options` has them all), \
-         rename?, delete?: true, dry_run?, path?, save?} a family of \
+         rename?, delete?: true, dry_run?, path?, definition?, save?, overwrite?: no|version|version_and_values} a family of \
          the project's, BIMCraft's own parametric component: created, changed, read, or loaded from the .json file at `path` (a \
          family as `inspect` shows it, with its `name`). Without `name` it lists the project's families, each its category and \
          how many types, forms and symbols it has; with only a `name` it reads one — its definition, each of its types' \
@@ -1206,7 +1207,9 @@ other_files(
          family's own. `reporting`, a length or an angle, reads a dimension and drives none: no formula, type or component sets \
          it, and until labelled dimensions exist it holds its `value`. Every reply carries `warnings`: what's \
          worth knowing and doesn't stop the change (a void cutting no solid, a form outside the opening or thicker than its \
-         wall, a door's or window's plan with no symbols). Its forms are profiles drawn in its own axes (x along a component's \
+         wall, a door's or window's plan with no symbols). `definition` is a family as such a file holds it, given in place of `path` and loaded as the file would be (read strictly). On `path` or `definition`, `overwrite` chooses `no` (keep the project family), \
+         `version` (replace the definition, retaining compatible values) or `version_and_values` (also use incoming values). \
+         Omitted: legacy merge. Project-only types and instance overrides stay; incoming formulas replace the old ones. Its forms are profiles drawn in its own axes (x along a component's \
          angle, y to its left, z up from its base): each is drawn on its `host`, a plane of the family, in that plane's own \
          axes, and swept along its normal from `from` to `to`. Every family has three datums, pinned, with the same GUIDs in \
          every family: Ref. Level (9e3c0a10-1f0b-4d8c-8a5e-0000000000a1, its xy, normal +z), Center (Front/Back) \
@@ -1276,13 +1279,20 @@ other_files(
         ui_msg!("Component"),
         &["CM"],
         "{family, type?, at: [x,y], level?, angle?, offset?, mirrored?, params?: {parameter: value}, adaptive?: {frames: {number: {origin,x,y,z}}, context?}, host?: {level: name|id} | \
-         {plane: name|id|GUID}} a family's type placed, its first by default: at a point on a level, turned `angle` degrees \
+         {plane: name|id|GUID} | {face: {element: id|GUID, face: exterior|interior|top|bottom}}} a family's type placed, its first by default: at a point on a level, turned `angle` degrees \
          counter-clockwise, `offset` mm up from the level (none: its family's Default Elevation, unless work plane-based), and \
          with `mirrored` flipped across its own x axis; `params` sets its instance parameters (`modify` merges into them, a null \
          taking one back to the family's). A work plane-based family may go on a reference plane (`host` `plane`, Place on Work \
          Plane): `at` [x, y] is taken straight onto the plane, [x, y, z] along its normal (an upright plane needs it), `offset` \
          is its Offset from Host along the normal, `level` its Schedule Level (by default the highest level at or below it); \
-         it follows the plane when the plane moves, upright or, its family not Always Vertical, tilted with the plane. An \
+         it follows the plane when the plane moves, upright or, its family not Always Vertical, tilted with the plane (a plane \
+         turned about the vertical turns it too). Or on a face (Place on Face): a wall's `exterior` or `interior` side, `at` \
+         [x, y, z] taken to its nearest point there; a floor's, a ceiling's or a roof's `top` or `bottom`, `at` [x, y] taken \
+         straight onto it (a roof's slope or a shaped floor's plane under it); it follows the face when its host moves, turns, \
+         or changes slope, thickness or type, goes with a floor, a ceiling or a roof moved or copied, and is deleted with its \
+         host; one its face no longer reaches stays on the face's plane, with a warning. Always Vertical keeps it plumb on \
+         every face; else it stands out along the face's normal (hanging from an underside), and on a wall's side `angle` \
+         turns it from the face's level direction, so it turns with the wall. An \
          adaptive family's component is placed by its points (`adaptive`, else the family's test placement) and takes no `host` \
          plane",
         work_plane::component,
@@ -2854,6 +2864,10 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
             // Its work plane, as Properties shows it, and its Offset from Host: on a level, its height over it.
             extra.insert("work_plane".into(), json!(m.work_plane_name(cp)));
             extra.insert("offset_from_host".into(), json!(cp.host.map_or(cp.offset, |h| h.offset)));
+            // What it is hosted on, a face's element or a reference plane (Revit's Host); none on a level.
+            if let Some(h) = cp.host {
+                extra.insert("host_element".into(), json!(h.host.guid()));
+            }
         }
         Element::Column(col) | Element::StructuralColumn(col) | Element::Footing(col) => {
             let (bottom, top) = m.span(col.level, col.base_offset, col.top_level, col.height);
@@ -3182,6 +3196,12 @@ fn open_file(s: &mut Session, p: &Value) -> R {
     let name = m.name.clone();
     s.reset(m, Some(path.clone()));
     let mut reply = json!({"path": path, "name": name});
+    // A formula saying a name its family lacks, which this BIMCraft refuses a command making: the file opens, saying so.
+    let warnings: Vec<String> =
+        s.model.families.iter().flat_map(|(n, f)| f.unknown_names().into_iter().map(move |w| format!("family `{n}`: {w}"))).collect();
+    if !warnings.is_empty() {
+        reply["warnings"] = json!(warnings);
+    }
     if !renamed.is_empty() {
         reply["renamed"] = json!(renamed);
     }
@@ -7610,6 +7630,15 @@ fn flip(s: &mut Session, p: &Value) -> R {
                 o.offset = lengths.get(&o.host).copied().unwrap_or_default() - o.offset;
                 (o.flip_facing, o.flip_hand) = (!o.flip_facing, !o.flip_hand);
             }
+            // On a side of the flipped wall: the same face, which is now its other side, as far from its other end.
+            Element::Component(cp) => {
+                if let Some(Hosted { host: HostRef::Face { element, face }, uv, .. }) = &mut cp.host
+                    && let Some(length) = lengths.get(element)
+                {
+                    uv[0] = length - uv[0];
+                    *face = face.other_side();
+                }
+            }
             _ => {}
         }
     }
@@ -10972,6 +11001,18 @@ fn patch_parameter(
             }
         }
     }
+    // Given a formula, it is worked out from then on, as Revit's is: what its types and its components held of it goes.
+    if now.driven().is_some() {
+        f.types.values_mut().for_each(|t| {
+            t.remove(&name);
+        });
+        patches.component_ops.retain(|op| !matches!(op, ComponentOp::Set(_, n, _) | ComponentOp::Remove(_, n) if *n == name));
+        for (id, _, own) in &users {
+            if own.is_some_and(|o| o.contains_key(&name)) {
+                patches.component_ops.push(ComponentOp::Remove(*id, name.clone()));
+            }
+        }
+    }
     if let Some(to) = rename
         && to != name
     {
@@ -11015,41 +11056,166 @@ fn delete_parameter(
     Ok(())
 }
 
+/// Explicit reloads retain part identities and project-only types. Instance overrides stay on their elements.
+fn family_reload(mut incoming: crate::family::Family, old: &crate::family::Family, keep_values: bool) -> crate::family::Family {
+    let compatible = |p: &crate::family::Parameter| {
+        old.parameters.iter().find(|q| {
+            q.name == p.name
+                && q.kind == p.kind
+                && q.instance == p.instance
+                && q.shared == p.shared
+                && !q.reporting
+                && !p.reporting
+                && q.of == p.of
+                && q.formula.is_none()
+                && p.formula.is_none()
+        })
+    };
+    // Keep incoming defaults on new types before replacing the family's defaults.
+    if keep_values {
+        for (name, values) in &mut incoming.types {
+            if !old.types.contains_key(name) {
+                for p in incoming.parameters.iter().filter(|p| !p.instance && !p.reporting && p.formula.is_none()) {
+                    values.entry(p.name.clone()).or_insert_with(|| p.value.clone());
+                }
+            }
+        }
+    }
+    for (name, values) in &old.types {
+        let only_in_project = !incoming.types.contains_key(name);
+        let target = incoming.types.entry(name.clone()).or_default();
+        if keep_values || only_in_project {
+            for p in incoming.parameters.iter().filter(|p| !p.instance) {
+                if let Some(q) = compatible(p) {
+                    target.insert(p.name.clone(), values.get(&p.name).unwrap_or(&q.value).clone());
+                }
+            }
+        }
+    }
+    if keep_values {
+        for p in &mut incoming.parameters {
+            if let Some(q) = compatible(p) {
+                p.value.clone_from(&q.value);
+            }
+        }
+    }
+    let mut old = old.clone();
+    crate::library::keep_parts(&mut old.forms, &mut incoming.forms);
+    crate::library::keep_parts(&mut old.symbols, &mut incoming.symbols);
+    crate::library::keep_parts(&mut old.connectors, &mut incoming.connectors);
+    crate::library::keep_parts(&mut old.planes, &mut incoming.planes);
+    crate::library::keep_parts(&mut old.lines, &mut incoming.lines);
+    incoming
+}
+
 /// A project's families: read one (`family {name}` alone costs no undo step), change one, make one
 /// or take one away. The whole change is worked out and checked before the model is touched, so
 /// reading and `dry_run` leave the project as they found it, and a family [`Model::check`] would
 /// refuse is never put in it: every error it has comes back at once, its warnings with them.
 fn family(s: &mut Session, p: &Value) -> R {
     let c = "family";
-    // From a file: its fields under the name given, else its own, else the file's.
+    let overwrite = match p.get("overwrite") {
+        None => None,
+        Some(Value::String(v)) if matches!(v.as_str(), "no" | "version" | "version_and_values") => Some(v.clone()),
+        Some(_) => return Err(bad(c, "`overwrite` must be no, version, or version_and_values")),
+    };
+    let definition = p.get("definition").filter(|v| !v.is_null());
+    let path = string(c, p, "path")?;
+    if path.is_some() && definition.is_some() {
+        return Err(bad(c, "`path` or `definition`, not both: the family loaded comes from one"));
+    }
+    if overwrite.is_some() && path.is_none() && definition.is_none() {
+        return Err(bad(c, "`overwrite` is only for loading a family with `path` or `definition`"));
+    }
+    // From a file, or a definition as a file holds it: its fields under the name given, else its own, else the file's.
     let mut p = p.clone();
-    if let Some(path) = string(c, &p, "path")? {
-        let path = PathBuf::from(path);
-        let size = std::fs::metadata(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?.len();
-        if size >= MAX_FILE {
-            return Err(bad(c, format!("{} is too large ({size} bytes)", path.display())));
+    let loaded = match (path, definition) {
+        (Some(path), _) => {
+            let path = PathBuf::from(path);
+            let size = std::fs::metadata(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?.len();
+            if size >= MAX_FILE {
+                return Err(bad(c, format!("{} is too large ({size} bytes)", path.display())));
+            }
+            let text = std::fs::read_to_string(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+            let loaded: Value = serde_json::from_str(&text).map_err(|e| bad(c, format!("{} is not a family: {e}", path.display())))?;
+            let Value::Object(fields) = loaded else {
+                return Err(bad(c, format!("{} is not a family: it isn't an object", path.display())));
+            };
+            let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+            Some((fields, json!(stem)))
         }
-        let text = std::fs::read_to_string(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
-        let loaded: Value = serde_json::from_str(&text).map_err(|e| bad(c, format!("{} is not a family: {e}", path.display())))?;
-        let Value::Object(mut fields) = loaded else {
-            return Err(bad(c, format!("{} is not a family: it isn't an object", path.display())));
-        };
-        let stem = path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
-        let name = p.get("name").filter(|v| !v.is_null()).cloned().or_else(|| fields.remove("name")).unwrap_or(json!(stem));
+        // A command's own definition is read strictly, as any command's params are: a misspelled field is an error.
+        (None, Some(definition)) => {
+            let Value::Object(mut fields) = definition.clone() else {
+                return Err(bad(c, "`definition` is a family as a family file holds it, an object"));
+            };
+            let own = fields.remove("name");
+            serde_json::from_value::<crate::family::Family>(Value::Object(fields.clone()))
+                .map_err(|e| bad(c, format!("`definition`: {e}")))?;
+            if let Some(own) = own {
+                fields.insert("name".into(), own);
+            }
+            Some((fields, Value::Null))
+        }
+        (None, None) => None,
+    };
+    if let Some((mut fields, stem)) = loaded {
+        let name = p.get("name").filter(|v| !v.is_null()).cloned().or_else(|| fields.remove("name")).unwrap_or(stem);
+        if !name.as_str().is_some_and(|n| !n.trim().is_empty()) {
+            return Err(bad(c, "`name` must be a nonempty family name"));
+        }
         // Only the family it holds: what a file says to rename or delete isn't for it to say.
-        let mut family: Map<String, Value> =
-            ["category", "kind", "ifc", "parameters", "types", "forms", "symbols", "operation", "connectors", "adaptive"]
-                .into_iter()
-                .filter_map(|k| fields.remove(k).map(|v| (k.to_string(), v)))
-                .collect();
-        // Its options, flat fields in a file, as the command takes them.
-        if let Some(options) = crate::family::Family::options_from_fields(&mut fields) {
+        let mut family: Map<String, Value> = [
+            "category",
+            "kind",
+            "ifc",
+            "parameters",
+            "types",
+            "forms",
+            "symbols",
+            "operation",
+            "connectors",
+            "adaptive",
+            "planes",
+            "lines",
+        ]
+        .into_iter()
+        .filter_map(|k| fields.remove(k).map(|v| (k.to_string(), v)))
+        .collect();
+        // Keep file fields canonical until its replacement policy has built the incoming definition.
+        for key in crate::family::OPTION_KEYS {
+            if let Some(value) = fields.remove(key) {
+                family.insert(key.into(), value);
+            }
+        }
+        if let Some(policy) = &overwrite {
+            let name =
+                name.as_str().map(str::trim).filter(|n| !n.is_empty()).ok_or_else(|| bad(c, "`name` must be a nonempty family name"))?;
+            if let Some(old) = s.model.families.get(name) {
+                let incoming =
+                    if policy == "no" { old.clone() } else { serde_json::from_value(Value::Object(family)).map_err(|e| bad(c, e))? };
+                if policy == "no" || incoming == *old {
+                    let (_, warnings) = old.problems(&|m| s.model.materials.contains_key(m));
+                    let mut reply = family_reply(name, old, &warnings);
+                    reply["overwritten"] = json!(false);
+                    if flag(c, &p, "dry_run")? {
+                        reply["dry_run"] = json!(true);
+                        reply["ok"] = json!(true);
+                        reply["changes"] = family_changes(Some(old), old, &Patches::default(), None);
+                    }
+                    return Ok(reply);
+                }
+                let reloaded = family_reload(incoming, old, policy == "version");
+                family = serde_json::from_value(serde_json::to_value(reloaded).map_err(|e| bad(c, e))?).map_err(|e| bad(c, e))?;
+            }
+        }
+        // A file holds the definition's names; translate only after applying its reload policy.
+        if let Some(options) = crate::family::Family::options_from_fields(&mut family) {
             family.insert("options".into(), options);
         }
-        // Its planes and lines, as the command takes them.
-        for (k, key) in [("planes", "ref_planes"), ("lines", "ref_lines")] {
-            if let Some(v) = fields.remove(k) {
-                family.insert(key.into(), v);
+        for (field, command) in [("planes", "ref_planes"), ("lines", "ref_lines")] {
+            if let Some(value) = family.remove(field) {
+                family.insert(command.into(), value);
             }
         }
         family.insert("name".into(), name);
@@ -11140,6 +11306,11 @@ fn family(s: &mut Session, p: &Value) -> R {
         let f = s.model.families.get(&name).ok_or_else(|| bad(c, format!("there's no family `{name}`")))?;
         let (_, warnings) = f.problems(&|m| s.model.materials.contains_key(m));
         let mut reply = family_reply(&name, f, &warnings);
+        // What a file from before may hold and a change to it refuses until it is mended.
+        let errors = f.unknown_names();
+        if !errors.is_empty() {
+            reply["errors"] = json!(errors);
+        }
         if dry {
             reply["dry_run"] = json!(true);
             reply["ok"] = json!(true);
@@ -11148,7 +11319,7 @@ fn family(s: &mut Session, p: &Value) -> R {
         return Ok(reply);
     }
     let was = s.model.families.get(&name).cloned();
-    let mut f = was.clone().unwrap_or_default();
+    let mut f = if overwrite.is_some() { Default::default() } else { was.clone().unwrap_or_default() };
     let field = |key: &str, e: serde_json::Error| bad(c, format!("`{key}`: {e}"));
     let mut patches = Patches::default();
     if let Some(v) = p.get("category").filter(|v| !v.is_null()) {
@@ -11338,6 +11509,12 @@ fn family(s: &mut Session, p: &Value) -> R {
         return Err(said.join("\n"));
     }
     if dry {
+        if overwrite.is_some() {
+            let mut preview = (*s.model).clone();
+            preview.families.insert(to.clone(), f.clone());
+            preview.sync_library();
+            preview.check().map_err(|e| bad(c, e))?;
+        }
         let mut reply = family_reply(&to, &f, &warnings);
         reply["dry_run"] = json!(true);
         reply["ok"] = json!(true);
@@ -12647,10 +12824,60 @@ fn host_line(was: P2, candidates: impl IntoIterator<Item = Id>, line_of: impl Fn
 /// Take elements by `mo`, keeping walls joined: walls joined to a taken wall stretch to stay
 /// joined, and doors and windows in walls that changed keep their place or go with their wall.
 /// With `end` (`Some(true)` the start, `Some(false)` the end), only that end of one wall or one run goes.
+/// The components on the faces of elements `ids` (Place on Face): those on a floor's, a ceiling's or a roof's, which a
+/// command taking their host whole takes too; and those on a wall's side, which their wall takes by itself.
+fn face_hosted(m: &Model, ids: &[Id]) -> (Vec<Id>, Vec<Id>) {
+    let lookup = m.lookup();
+    let (mut slabs, mut sides) = (Vec::new(), Vec::new());
+    for &id in ids {
+        let Some(e) = m.elements.get(id) else { continue };
+        if !matches!(e.category(), "wall" | "floor" | "ceiling" | "roof") {
+            continue;
+        }
+        let g = m.guid(id);
+        for r in lookup.referrers(&g) {
+            if let Some(Element::Component(cp)) = m.elements.get(r)
+                && let Some(Hosted { host: HostRef::Face { element, .. }, .. }) = cp.host
+                && element == g
+            {
+                if e.category() == "wall" { sides.push(r) } else { slabs.push(r) }
+            }
+        }
+    }
+    (slabs, sides)
+}
+
+/// Component `e`, on a wall's side, as it is once its wall is mirrored, which runs back the other way: as far from the
+/// wall's other end, turned the other way on the face and mirrored.
+fn side_mirrored(m: &Model, e: &Element) -> Option<Element> {
+    let Element::Component(cp) = e else { return None };
+    let mut cp = cp.clone();
+    let h = cp.host.as_mut()?;
+    let length = Axis::of(m.wall(h.host.guid())?).length();
+    h.uv[0] = length - h.uv[0];
+    cp.angle = 180.0 - cp.angle + 0.0;
+    cp.mirrored = !cp.mirrored;
+    Some(Element::Component(cp))
+}
+
 fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>) -> Result<(), String> {
     let m = &s.model;
     // The walls, and what points at each: found among those, not every element.
     let lookup = m.lookup();
+    // What is on a face of a floor, a ceiling or a roof taken whole goes with it, as Revit's hosted elements do; what is
+    // on a wall's side keeps its place along it, so the wall takes it (mirrored, from its other end).
+    let (carried_faces, on_sides) = face_hosted(m, ids);
+    let ids: Vec<Id> = if end.is_none() {
+        ids.iter().copied().filter(|id| !on_sides.contains(id)).chain(carried_faces.into_iter().filter(|id| !ids.contains(id))).collect()
+    } else {
+        ids.to_vec()
+    };
+    let ids = ids.as_slice();
+    let sides: Vec<(Id, Element)> = if end.is_none() && mo.mirror {
+        on_sides.iter().filter_map(|id| Some((*id, side_mirrored(m, m.elements.get(*id)?)?))).collect()
+    } else {
+        Vec::new()
+    };
     let f = mo.map;
     let moving: BTreeSet<Id> = ids.iter().copied().collect();
     let moving_guids: BTreeSet<Guid> = ids.iter().map(|id| m.guid(*id)).collect();
@@ -13035,6 +13262,9 @@ fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>
     for (id, w) in walls {
         m.elements.insert(id, Element::Wall(w));
     }
+    for (id, e) in sides {
+        m.elements.insert(id, e);
+    }
     for (id, e) in others {
         if mo.mirror && matches!(e, Element::Mass(_)) {
             flipped.push(id);
@@ -13091,6 +13321,8 @@ fn duplicate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion) -> R {
             // A copied wall brings its doors and windows, a stair or a ramp its railings; see below.
             Element::Door(o) | Element::Window(o) if copying_guids.contains(&o.host) => {}
             Element::Railing(Railing { host: Some(h), .. }) if copying_guids.contains(&h) => {}
+            Element::Component(cp)
+                if cp.host.is_some_and(|h| matches!(h.host, HostRef::Face { .. }) && copying_guids.contains(&h.host.guid())) => {}
             e @ (Element::Dimension(_) | Element::Tag(_) | Element::Spot(_)) => notes.push((id, e)),
             e => copies.push((id, e)),
         }
@@ -13117,11 +13349,22 @@ fn duplicate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion) -> R {
             (id, e)
         })
         .collect();
+    // What is on the faces of copied hosts: a copy on the copy, taken as its host is (on a floor's, a ceiling's or a roof's),
+    // or at its place along the copied wall's side.
+    let (slabs, sides) = face_hosted(m, ids);
+    let mut on_faces: Vec<(Id, Element)> = Vec::new();
+    for id in slabs {
+        on_faces.push((id, transformed(c, m, id, mo, &copying)?));
+    }
+    for id in sides {
+        let Some(e) = m.elements.get(id) else { continue };
+        on_faces.push((id, if mo.mirror { side_mirrored(m, e).unwrap_or_else(|| e.clone()) } else { e.clone() }));
+    }
     let m = s.model_mut();
     let mut made = Vec::new();
     // Each copied element's copy.
     let mut hosts = BTreeMap::new();
-    for (from, mut e) in copies.into_iter().chain(hosted) {
+    for (from, mut e) in copies.into_iter().chain(hosted).chain(on_faces) {
         let door = matches!(e, Element::Door(_));
         match &mut e {
             Element::Grid(g) => g.name = next_grid_name(m),
@@ -13134,6 +13377,22 @@ fn duplicate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion) -> R {
                 }))
             }
             Element::Railing(r) => r.host = r.host.map(|h| hosts.get(&h).copied().unwrap_or(h)),
+            // On the copy of its host's face, where its place there puts it.
+            Element::Component(cp)
+                if cp.host.is_some_and(|h| matches!(h.host, HostRef::Face { .. }) && hosts.contains_key(&h.host.guid())) =>
+            {
+                if let Some(h) = &mut cp.host {
+                    let g = h.host.guid_mut();
+                    *g = hosts.get(g).copied().unwrap_or(*g);
+                }
+                // On a wall's side its place along the copy puts it; on a floor's, a ceiling's or a roof's it went with it.
+                if let Some(h) = cp.host
+                    && m.wall(h.host.guid()).is_some()
+                    && let Some((at, offset)) = m.hosted_at(&h, cp.level)
+                {
+                    (cp.at, cp.offset) = (at, offset);
+                }
+            }
             Element::Door(o) | Element::Window(o) => {
                 o.host = hosts.get(&o.host).copied().unwrap_or(o.host);
                 o.mark = next_number(m.elements.values().filter_map(|e| match e {

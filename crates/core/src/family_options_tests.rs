@@ -115,7 +115,7 @@ fn options_are_checked_with_errors_that_say_what_to_fix() {
     bad(&mut s, json!({"room_calculation_point": [1e300, 0, 0]}), "room_calculation_point");
     bad(&mut s, json!({"room_calculation_point": [0, 0]}), "[x, y, z]");
     bad(&mut s, json!({"room_calculation_point": ["Count", 0, 0]}), "length parameters");
-    bad(&mut s, json!({"room_calculation_point": ["Nowhere * 2", 0, 0]}), "length parameters");
+    bad(&mut s, json!({"room_calculation_point": ["Nowhere * 2", 0, 0]}), "not a valid parameter: Nowhere");
     bad(&mut s, json!({"room_calculation_point": ["Width * 1e300", 0, 0]}), "type `A`");
     bad(&mut s, json!({"room_calculation_point": ["Width +", 0, 0]}), "room_calculation_point");
     for number in ["", "23-30", "a.b", "23..30", ".23", "23.", &"1".repeat(65)] {

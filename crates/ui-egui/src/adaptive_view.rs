@@ -11,7 +11,7 @@ use bimcraft_core::adaptive::{Definition, Evaluated, Evaluation, Host, Operation
 use bimcraft_core::family::{CENTER_FRONT_BACK, CENTER_LEFT_RIGHT, PlaneRef, Planes, REF_LEVEL, Val};
 use bimcraft_core::view3d::{AZIMUTH, Camera, ELEVATION, P3};
 use bimcraft_i18n::msg;
-use egui::{Color32, Key, Modifiers, PointerButton, Pos2, Rect, Sense, Shape, Stroke, StrokeKind, Ui, vec2};
+use egui::{Color32, Key, PointerButton, Pos2, Rect, Sense, Shape, Stroke, StrokeKind, Ui, vec2};
 use std::collections::BTreeMap;
 
 /// The tool the view's clicks are for.
@@ -54,8 +54,6 @@ pub(crate) struct Modeller {
     pub(crate) tool: Draw,
     pub(crate) selection: Vec<String>,
     drag: Option<Drag>,
-    /// The definition before each edit, newest last.
-    history: Vec<Definition>,
     /// The solid or void Create Form makes: its depth, mm.
     pub(crate) depth: f64,
     /// Where Point Element and Line draw: Revit's Placement Plane, Ref. Level to begin with.
@@ -74,12 +72,32 @@ impl Default for Modeller {
             tool: Draw::Modify,
             selection: Vec::new(),
             drag: None,
-            history: Vec::new(),
             depth: 300.,
             work_plane: WorkPlane::default(),
             picking_plane: false,
             show_work_plane: false,
         }
+    }
+}
+
+/// What the view leaves out for now (the family document's Temporary Hide/Isolate, `editor/temp_hide.rs`): elements by id,
+/// neither drawn nor picked, and the datums and reference planes.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct Hidden {
+    pub(crate) nodes: std::collections::BTreeSet<String>,
+    pub(crate) datums: bool,
+}
+
+impl Hidden {
+    /// Evaluation `r` with what is hidden left out: what the view draws and picks.
+    fn seen(&self, r: &Evaluation) -> Evaluation {
+        if self.nodes.is_empty() {
+            return r.clone();
+        }
+        let mut seen = r.clone();
+        seen.values.retain(|id, _| !self.nodes.contains(id));
+        seen.order.retain(|id| !self.nodes.contains(id));
+        seen
     }
 }
 
@@ -96,13 +114,6 @@ impl Modeller {
                 self.rect.min + vec2(x as f32, y as f32)
             }
             None => self.rect.center(),
-        }
-    }
-
-    fn remember(&mut self, d: &Definition) {
-        self.history.push(d.clone());
-        if self.history.len() > 64 {
-            self.history.remove(0);
         }
     }
 }
@@ -233,8 +244,7 @@ pub(crate) fn selected(d: &Definition, m: &Modeller, values: &BTreeMap<String, V
 
 /// Make Adaptive, a toggle as Revit's: points all adaptive already go back to reference points; otherwise the others are made
 /// adaptive, numbered in the order they were selected.
-pub(crate) fn make_adaptive(d: &mut Definition, m: &mut Modeller, points: &[String]) {
-    m.remember(d);
+pub(crate) fn make_adaptive(d: &mut Definition, points: &[String]) {
     let all = points.iter().all(|id| matches!(d.point_type(id), Some(PointType::Placement | PointType::ShapeHandle)));
     for id in points {
         let _ = if all { d.make_reference(id) } else { d.make_adaptive(id).map(|_| ()) };
@@ -244,25 +254,15 @@ pub(crate) fn make_adaptive(d: &mut Definition, m: &mut Modeller, points: &[Stri
 /// Create Form, a solid or a `void`, from the lines selected, `m.depth` deep; it is selected after. What went wrong, if it did.
 pub(crate) fn create_form(d: &mut Definition, m: &mut Modeller, lines: &[String], void: bool) -> Result<(), String> {
     let before = d.clone();
-    let id = d.create_form(lines, m.depth, void).inspect_err(|_| *d = before.clone())?;
-    m.history.push(before);
+    let id = d.create_form(lines, m.depth, void).inspect_err(|_| *d = before)?;
     m.selection = vec![id];
     Ok(())
 }
 
 /// Delete: what is selected, with what depends on it.
 pub(crate) fn delete(d: &mut Definition, m: &mut Modeller) {
-    m.remember(d);
     d.remove(&m.selection);
     m.selection.clear();
-}
-
-/// Undo: one step back through this family's edits; whether there was one.
-pub(crate) fn undo(d: &mut Definition, m: &mut Modeller) -> bool {
-    let Some(before) = m.history.pop() else { return false };
-    *d = before;
-    m.selection.retain(|id| d.nodes.iter().any(|n| &n.id == id));
-    true
 }
 
 /// What the tool in hand asks for, as the status bar says it.
@@ -330,7 +330,6 @@ fn transform_click(d: &mut Definition, m: &mut Modeller, r: &Evaluation, p: P3, 
     };
     match done {
         Ok(made) => {
-            m.history.push(before);
             if let Some(made) = made {
                 // The copies of what was selected are selected after.
                 m.selection = made.into_iter().filter(|id| d.nodes.iter().any(|n| &n.id == id)).collect();
@@ -346,8 +345,17 @@ fn transform_click(d: &mut Definition, m: &mut Modeller, r: &Evaluation, p: P3, 
     }
 }
 
-/// The modelling view, `size` points, over definition `d` evaluated with `values`.
-pub(crate) fn show(ui: &mut Ui, d: &mut Definition, planes: Planes, m: &mut Modeller, values: &BTreeMap<String, Val>, size: egui::Vec2) {
+/// The modelling view, `size` points, over definition `d` evaluated with `values`, what is `hidden` for now neither drawn nor
+/// picked.
+pub(crate) fn show(
+    ui: &mut Ui,
+    d: &mut Definition,
+    planes: Planes,
+    m: &mut Modeller,
+    values: &BTreeMap<String, Val>,
+    size: egui::Vec2,
+    hidden: &Hidden,
+) {
     if m.depth <= 0. {
         m.depth = 300.;
     }
@@ -408,7 +416,7 @@ pub(crate) fn show(ui: &mut Ui, d: &mut Definition, planes: Planes, m: &mut Mode
         let on_cube = cube_rect(rect).contains(origin);
         m.drag = Some(match (primary && !on_cube, m.tool == Draw::Modify, on_arrow) {
             (true, true, Some((id, k, o))) => Drag::Axis(id, k, origin, o),
-            (true, true, None) => match r.pick(&|p| screen_of(&cam, p), px(origin)) {
+            (true, true, None) => match hidden.seen(&r).pick(&|p| screen_of(&cam, p), px(origin)) {
                 Some(Picked::Point(id)) if movable(d, &id) => {
                     m.selection = vec![id.clone()];
                     let z = r.origin(&id).map_or(0., |o| o[2]);
@@ -420,9 +428,6 @@ pub(crate) fn show(ui: &mut Ui, d: &mut Definition, planes: Planes, m: &mut Mode
             _ if middle && !mods.shift => Drag::Pan(origin),
             _ => Drag::Orbit(origin),
         });
-        if matches!(m.drag, Some(Drag::Axis(..) | Drag::Plane(..))) {
-            m.remember(d);
-        }
     }
     if response.dragged()
         && let (Some(drag), Some(now)) = (m.drag.clone(), latest)
@@ -455,7 +460,7 @@ pub(crate) fn show(ui: &mut Ui, d: &mut Definition, planes: Planes, m: &mut Mode
     if response.drag_stopped() {
         // A box let go selects what it takes: Ctrl adds it to the selection, Shift takes it away, else it is the selection.
         if let (Some(Drag::Box(from)), Some(to)) = (m.drag.clone(), latest) {
-            let taken = r.in_box(&|p| screen_of(&cam, p), px(from), px(to));
+            let taken = hidden.seen(&r).in_box(&|p| screen_of(&cam, p), px(from), px(to));
             if mods.ctrl || mods.command {
                 for id in taken {
                     if !m.selection.contains(&id) {
@@ -471,7 +476,8 @@ pub(crate) fn show(ui: &mut Ui, d: &mut Definition, planes: Planes, m: &mut Mode
         m.drag = None;
     }
     m.camera = Some(cam);
-    let hovered = hover.filter(|_| m.drag.is_none()).and_then(|at| r.pick(&|p| screen_of(&cam, p), px(at)));
+    let seen = hidden.seen(&r);
+    let hovered = hover.filter(|_| m.drag.is_none()).and_then(|at| seen.pick(&|p| screen_of(&cam, p), px(at)));
     // Placement Plane's Pick: the plane under the pointer lights up, and a click makes it the work plane; Escape gives up.
     let plane_at = |at: Pos2| {
         let half = PLANE_REACH / cam.scale.max(1e-9);
@@ -502,7 +508,7 @@ pub(crate) fn show(ui: &mut Ui, d: &mut Definition, planes: Planes, m: &mut Mode
         && let Some(at) = response.interact_pointer_pos()
     {
         let mods = crate::canvas::click_modifiers(ui);
-        let picked = r.pick(&|p| screen_of(&cam, p), px(at));
+        let picked = seen.pick(&|p| screen_of(&cam, p), px(at));
         // Where the click falls on the work plane (Ref. Level when the one chosen has gone).
         let plane = m.work_plane.frame(&r, planes).unwrap_or_default();
         let on_plane = cam.on(px(at), plane.origin, plane.z);
@@ -533,7 +539,6 @@ pub(crate) fn show(ui: &mut Ui, d: &mut Definition, planes: Planes, m: &mut Mode
                     None => m.selection.clear(),
                 },
                 Draw::Point => {
-                    let before = d.clone();
                     let made = match picked {
                         Some(Picked::Curve(curve, t)) => d.add_hosted_point(&curve, t).ok(),
                         // Snapped onto the point under the pointer: exactly where it falls on the work plane (on that point's own
@@ -542,12 +547,10 @@ pub(crate) fn show(ui: &mut Ui, d: &mut Definition, planes: Planes, m: &mut Mode
                         _ => on_plane.and_then(|p| d.add_point_on(&work_plane, p, &r, planes).ok()),
                     };
                     if let Some(id) = made {
-                        m.history.push(before);
                         m.selection = vec![id];
                     }
                 }
                 Draw::Line(chain) => {
-                    let before = d.clone();
                     let point = match picked {
                         Some(Picked::Point(id)) => Some(id),
                         _ => on_plane.and_then(|p| d.add_point_on(&work_plane, p, &r, planes).ok()),
@@ -562,7 +565,6 @@ pub(crate) fn show(ui: &mut Ui, d: &mut Definition, planes: Planes, m: &mut Mode
                         } else if chain.last() != Some(&id) {
                             chain.push(id);
                         }
-                        m.history.push(before);
                     }
                 }
                 Draw::Move { .. } | Draw::Rotate { .. } => {}
@@ -570,21 +572,14 @@ pub(crate) fn show(ui: &mut Ui, d: &mut Definition, planes: Planes, m: &mut Mode
         }
     }
     // Finishing a chain open: Enter, Escape or a right click; Escape again back to Modify.
-    let (enter, escape, delete, undo) = ui.input(|i| {
-        (
-            i.key_pressed(Key::Enter),
-            i.key_pressed(Key::Escape),
-            i.key_pressed(Key::Delete),
-            i.modifiers.matches_exact(Modifiers::COMMAND) && i.key_pressed(Key::Z),
-        )
-    });
+    // Undo is the family document's, through its history.
+    let (enter, escape, delete) = ui.input(|i| (i.key_pressed(Key::Enter), i.key_pressed(Key::Escape), i.key_pressed(Key::Delete)));
     if m.picking_plane && escape {
         m.picking_plane = false;
     }
     let finish = enter || ((escape || response.secondary_clicked()) && hover.is_some());
     if finish && let Draw::Line(chain) = &mut m.tool {
         if chain.len() >= 2 {
-            m.history.push(d.clone());
             if let Ok(line) = d.add_chain(chain, false) {
                 m.selection = vec![line];
             }
@@ -596,19 +591,12 @@ pub(crate) fn show(ui: &mut Ui, d: &mut Definition, planes: Planes, m: &mut Mode
         m.tool = Draw::Modify;
     }
     if hover.is_some() && delete && !m.selection.is_empty() {
-        m.remember(d);
         d.remove(&m.selection);
         m.selection.clear();
     }
-    if hover.is_some()
-        && undo
-        && let Some(before) = m.history.pop()
-    {
-        *d = before;
-    }
     m.selection.retain(|id| d.nodes.iter().any(|n| &n.id == id));
     let r = d.evaluate(values, &d.preview);
-    draw(ui, rect, &cam, d, planes, &r, m, hovered.as_ref().map(Picked::id), hover, lit.as_ref());
+    draw(ui, rect, &cam, d, planes, &r, m, hovered.as_ref().map(Picked::id), hover, lit.as_ref(), hidden);
 }
 
 /// What the view shows: the work plane, the forms shaded, the lines, the points with the adaptive ones numbered, the
@@ -625,7 +613,12 @@ fn draw(
     hovered: Option<&str>,
     hover: Option<Pos2>,
     lit: Option<&WorkPlane>,
+    hidden: &Hidden,
 ) {
+    // The datums are placed round all there is, so they stay where they are as elements are hidden; the rest draws what is seen.
+    let all = r;
+    let seen = hidden.seen(r);
+    let r = &seen;
     let p = ui.painter_at(rect);
     // On the drawing's own ground, as the plans and the 3D view: light in a dark interface when the user keeps the canvas light.
     let cp = crate::style::canvas_pal();
@@ -658,8 +651,8 @@ fn draw(
     };
     // The work plane Point Element and Line draw on, when Work Plane > Show shows it: a blue tint over it and a grid on it, a
     // line each metre over what the family takes up there.
-    let (lo, hi) = extent(r).unwrap_or(([-1000.; 3], [1000.; 3]));
-    let plane = m.work_plane.frame(r, planes).unwrap_or_default();
+    let (lo, hi) = extent(all).unwrap_or(([-1000.; 3], [1000.; 3]));
+    let plane = m.work_plane.frame(all, planes).unwrap_or_default();
     let corners: Vec<P3> =
         (0..8).map(|k| plane.inverse_point([[lo, hi][k & 1][0], [lo, hi][(k >> 1) & 1][1], [lo, hi][k >> 2][2]])).collect();
     let span = |i: usize| {
@@ -691,13 +684,17 @@ fn draw(
     // The datums, as Revit's template has them and draws them: Ref. Level a dash-dot outline in the ink, the two Center
     // reference planes dashed green; each 300 mm beyond what the family takes up, named at a corner. The one drawn on is
     // drawn heavier, the one Pick is over in the hover's colour.
-    let (a, b) = room(r);
+    let (a, b) = room(all);
     let green = if crate::style::canvas_dark() { Color32::from_rgb(90, 200, 110) } else { Color32::from_rgb(20, 140, 40) };
-    for (datum, name, quad) in [
-        (REF_LEVEL, "Ref. Level", [[a[0], a[1], 0.], [b[0], a[1], 0.], [b[0], b[1], 0.], [a[0], b[1], 0.]]),
-        (CENTER_FRONT_BACK, "Center (Front/Back)", [[a[0], 0., a[2]], [b[0], 0., a[2]], [b[0], 0., b[2]], [a[0], 0., b[2]]]),
-        (CENTER_LEFT_RIGHT, "Center (Left/Right)", [[0., a[1], a[2]], [0., b[1], a[2]], [0., b[1], b[2]], [0., a[1], b[2]]]),
-    ] {
+    for (datum, name, quad) in if hidden.datums {
+        Vec::new()
+    } else {
+        vec![
+            (REF_LEVEL, "Ref. Level", [[a[0], a[1], 0.], [b[0], a[1], 0.], [b[0], b[1], 0.], [a[0], b[1], 0.]]),
+            (CENTER_FRONT_BACK, "Center (Front/Back)", [[a[0], 0., a[2]], [b[0], 0., a[2]], [b[0], 0., b[2]], [a[0], 0., b[2]]]),
+            (CENTER_LEFT_RIGHT, "Center (Left/Right)", [[0., a[1], a[2]], [0., b[1], a[2]], [0., b[1], b[2]], [0., a[1], b[2]]]),
+        ]
+    } {
         let plane = WorkPlane::Plane(PlaneRef::Plane(datum));
         let active = m.work_plane == plane;
         let picked = lit == Some(&plane);
@@ -724,7 +721,7 @@ fn draw(
     }
     // The family's own named reference planes, which Placement Plane lists and Pick picks: dashed green as the Center ones,
     // over as much of each as the room's box spans in it, named at a corner.
-    for (own, label) in planes.listed().into_iter().skip(3).filter(|(own, _)| matches!(own, PlaneRef::Plane(_))) {
+    for (own, label) in planes.listed().into_iter().skip(3).filter(|(own, _)| !hidden.datums && matches!(own, PlaneRef::Plane(_))) {
         let Ok(f) = planes.frame(&own) else { continue };
         let f = bimcraft_core::adaptive::Frame::from(f);
         let plane = WorkPlane::Plane(own);
@@ -929,7 +926,7 @@ fn draw(
     let home_lit = hover.is_some_and(|h| home.contains(h));
     crate::icons::paint(&p, crate::icons::Icon::Home, home, if home_lit { cp.hover } else { edge });
     p.rect_stroke(rect, 2.0, Stroke::new(1.0, pal().border), StrokeKind::Inside);
-    if r.order.is_empty() {
+    if all.order.is_empty() {
         p.text(
             rect.center(),
             egui::Align2::CENTER_CENTER,

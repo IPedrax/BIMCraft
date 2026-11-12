@@ -22,6 +22,9 @@ mod bounds;
 mod options;
 mod planes;
 mod validate;
+pub mod views;
+
+pub(crate) use validate::check_family_edits;
 
 pub use options::{MAX_OMNICLASS, OPTION_KEYS, OmniClass};
 
@@ -387,6 +390,12 @@ impl Parameter {
         })
     }
 
+    /// The formula that works it out, when one does: then no type or component sets it, and Family Types and Properties
+    /// show what it comes to, greyed, as Revit's do.
+    pub fn driven(&self) -> Option<&str> {
+        self.formula.as_deref()
+    }
+
     /// What it may be on its own, `who` saying which it is: a family type parameter names its category and holds no value,
     /// nothing else names one; a reporting parameter is a length or an angle worked out by no formula; a shared one's GUID
     /// is a GUID.
@@ -432,7 +441,7 @@ impl Default for Expr {
     }
 }
 
-/// The shorthand a form (and a file of 19 or before) names its sketch plane by, from before reference planes: across the
+/// The shorthand a form (and a file of 17 or before) names its sketch plane by, from before reference planes: across the
 /// family's x and y, swept up (Ref. Level); upright, across x and z, swept along +y (Center (Front/Back), whose normal is
 /// -y, so its `from` and `to` are negated and swap places, a formula wrapped as `-(…)`; a revolve's angles stay as they
 /// are); or across y and z, swept along x (Center (Left/Right)).
@@ -1065,6 +1074,28 @@ pub const MAX_TYPES: usize = 1000;
 /// The longest formula, in characters.
 pub const MAX_FORMULA: usize = 1024;
 
+/// The units a number in a formula may be given in, each with what one of it is in the family's own: lengths in mm, areas in
+/// mm², volumes in mm³. An angle's `°` (or `º`) is a degree, as angles already are.
+const UNITS: [(&str, f64); 10] = [
+    ("mm", 1.0),
+    ("cm", 10.0),
+    ("dm", 100.0),
+    ("m", 1000.0),
+    ("mm²", 1.0),
+    ("cm²", 100.0),
+    ("m²", 1.0e6),
+    ("mm³", 1.0),
+    ("cm³", 1000.0),
+    ("m³", 1.0e9),
+];
+
+/// How long the word at the start of `chars` is (a letter, then letters, digits and `_`, `²` and `³` among them); none when
+/// it doesn't start with a letter.
+fn unit_word(chars: &[char]) -> Option<usize> {
+    chars.first().filter(|c| c.is_alphabetic())?;
+    Some(chars.iter().take_while(|c| c.is_alphanumeric() || **c == '_').count())
+}
+
 /// A formula, read.
 pub(crate) enum Node {
     Number(f64),
@@ -1102,6 +1133,29 @@ impl Reader {
     fn deeper(&mut self) -> Result<(), String> {
         self.depth += 1;
         if self.depth > MAX_DEPTH { Err(format!("it's nested too deep (more than {MAX_DEPTH} levels)")) } else { Ok(()) }
+    }
+
+    /// The unit a number just read is given in, as what one of it is in the family's own (mm, mm², mm³, degrees); none, 1.
+    /// A word after a number is a unit or nothing a formula may say, since a number is never followed by a name.
+    fn unit(&mut self) -> Result<f64, String> {
+        let start = self.at;
+        let Some(c) = self.peek() else { return Ok(1.0) };
+        if matches!(c, '°' | 'º') {
+            self.at += 1;
+            return Ok(1.0);
+        }
+        let Some(len) = unit_word(self.chars.get(self.at..).unwrap_or_default()) else {
+            self.at = start;
+            return Ok(1.0);
+        };
+        let word: String = self.chars.get(self.at..self.at + len).unwrap_or_default().iter().collect();
+        match UNITS.iter().find(|(u, _)| *u == word) {
+            Some((_, x)) => {
+                self.at += len;
+                Ok(*x)
+            }
+            None => Err(format!("`{word}` isn't a unit a number takes: {}", UNITS.map(|(u, _)| u).join(", "))),
+        }
     }
 
     fn compare(&mut self) -> Result<Node, String> {
@@ -1197,7 +1251,8 @@ impl Reader {
                     }
                 }
                 let text: String = self.chars.get(start..self.at).unwrap_or_default().iter().collect();
-                text.parse().map(Node::Number).map_err(|_| format!("`{text}` isn't a number"))
+                let x: f64 = text.parse().map_err(|_| format!("`{text}` isn't a number"))?;
+                Ok(Node::Number(x * self.unit()?))
             }
             // A name may hold spaces, as Revit's do: `Leg Height`.
             Some(c) if c.is_alphabetic() || c == '_' => {
@@ -1400,6 +1455,14 @@ pub fn nameable(name: &str) -> bool {
         && name.chars().count() <= MAX_TEXT
 }
 
+/// Why a formula can't say `name`, which none of `parameters` is named, in Revit's words: names are case sensitive, so one that
+/// differs from a parameter's in case only is offered.
+pub(crate) fn not_a_parameter(name: &str, parameters: &[Parameter]) -> String {
+    let near = parameters.iter().find(|p| p.name.to_lowercase() == name.to_lowercase());
+    let near = near.map(|p| format!(" (the family has `{}`)", p.name)).unwrap_or_default();
+    format!("the following is not a valid parameter: {name}. Note that parameter names are case sensitive{near}.")
+}
+
 /// A stored value read as parameter `p` holds it.
 pub(crate) fn read(p: &Parameter, v: &Value) -> Result<Val, String> {
     let bad = |what: &str| format!("parameter `{}` holds {what}, not {v}", p.name);
@@ -1468,6 +1531,14 @@ pub fn renamed_in_formula(formula: &str, from: &str, to: &str) -> String {
                         at += 1;
                     }
                 }
+            }
+            // Its unit, which is no name: `2 m` holds no parameter `m`.
+            let mut end = at;
+            while chars.get(end).is_some_and(|c| c.is_whitespace()) {
+                end += 1;
+            }
+            if let Some(len) = unit_word(&chars[end..]) {
+                at = end + len;
             }
             out.extend(&chars[start..at]);
         } else if c.is_alphabetic() || c == '_' {
@@ -1683,7 +1754,7 @@ impl Family {
         if let Some(v) = done.get(name) {
             return Ok(v.clone());
         }
-        let p = self.parameters.iter().find(|p| p.name == name).ok_or_else(|| format!("`{name}` isn't one of its parameters"))?;
+        let p = self.parameters.iter().find(|p| p.name == name).ok_or_else(|| not_a_parameter(name, &self.parameters))?;
         if path.iter().any(|n| n == name) {
             return Err(format!("`{name}`'s formula comes back to itself"));
         }
@@ -1830,8 +1901,10 @@ impl Family {
                 if p.instance {
                     return Err(format!("{who}: `{k}` is an instance parameter; each component sets its own"));
                 }
-                if p.formula.is_some() {
-                    return Err(format!("{who}: `{k}` is worked out by its formula"));
+                if let Some(f) = p.driven() {
+                    return Err(format!(
+                        "{who}: `{k}` is worked out by its formula `{f}`; change the formula, or take it away to set `{k}`"
+                    ));
                 }
                 if p.reporting {
                     return Err(format!("{who}: `{k}` is a reporting parameter: its dimension says what it is, and nothing sets it"));
@@ -1883,7 +1956,7 @@ impl Family {
             let Some(label) = &y.text else { continue };
             for name in fields(&label.value).map_err(|e| format!("symbol {}: {e}", i + 1))? {
                 if !self.parameters.iter().any(|p| p.name == name) {
-                    return Err(format!("symbol {}: its text reads `{{{name}}}`, which isn't one of the family's parameters", i + 1));
+                    return Err(format!("symbol {}: its text `{{{name}}}`: {}", i + 1, not_a_parameter(name, &self.parameters)));
                 }
             }
         }
@@ -2342,6 +2415,22 @@ impl Family {
             Some(Val::Number(t)) => *t,
             _ => DEFAULT_WALL,
         };
+        self.free_voids(values, |shape| shape.max[1] > -wall / 2.0 && shape.min[1] < wall / 2.0)
+    }
+
+    /// The voids a component of it placed on a face cuts its host with (Place on Face), sized by `values`, in its own axes:
+    /// each void that cuts none of its forms, by their boxes, as [`Family::host_voids`] finds a door's. Whether one reaches
+    /// its host is for where it stands to say: one that doesn't cuts nothing. Revit's face-based families always cut their
+    /// host with such voids, whatever `cut_with_voids_when_loaded` says (that is the project's voids cutting it).
+    pub fn face_voids(&self, values: &BTreeMap<String, Val>) -> Result<Vec<Vec<[P3; 3]>>, String> {
+        if self.adaptive.is_some() || !self.forms.iter().any(|f| f.void) {
+            return Ok(Vec::new());
+        }
+        self.free_voids(values, |_| true)
+    }
+
+    /// The voids that cut none of the solid forms listed before them, by their boxes, and that `reach` takes.
+    fn free_voids(&self, values: &BTreeMap<String, Val>, reach: impl Fn(&Shape) -> bool) -> Result<Vec<Vec<[P3; 3]>>, String> {
         let mut read = HashMap::new();
         let (mut solids, mut out): (Vec<Shape>, Vec<Vec<[P3; 3]>>) = (Vec::new(), Vec::new());
         for i in 0..self.forms.len() {
@@ -2351,7 +2440,7 @@ impl Family {
             let Some(shape) = Shape::of(i, self.forms[i].void, &piece.tris) else { continue };
             if !shape.void {
                 solids.push(shape);
-            } else if !solids.iter().any(|solid| shape.over(solid)) && shape.max[1] > -wall / 2.0 && shape.min[1] < wall / 2.0 {
+            } else if !solids.iter().any(|solid| shape.over(solid)) && reach(&shape) {
                 out.push(piece.tris);
             }
         }
@@ -2362,6 +2451,12 @@ impl Family {
     /// doesn't stop it: every finding, not only the first, so they're fixed in one go.
     pub fn problems(&self, has_material: &dyn Fn(&str) -> bool) -> (Vec<String>, Vec<String>) {
         validate::problems(self, has_material)
+    }
+
+    /// Each name its formulas say that isn't one of its parameters, a line each: what a command changing it refuses
+    /// ([`Family::problems`]) and what opening a file that holds it warns of.
+    pub fn unknown_names(&self) -> Vec<String> {
+        validate::unknown_said(self)
     }
 }
 

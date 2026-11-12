@@ -1,7 +1,7 @@
 //! Work planes for families and their components (T4, T13): Edit Work Plane on a family's forms and reference lines, the
 //! project's reference planes, work plane-based components hosted on them (tilted with the plane or kept upright by Always
 //! Vertical), following the plane when it moves, their Schedule Level, Elevation from Level, Work Plane and Offset from Host,
-//! a family's Default Elevation, and files of 21 read by 22.
+//! a family's Default Elevation, and files of 17 read by 18.
 
 use std::collections::BTreeMap;
 
@@ -173,6 +173,32 @@ fn moving_or_turning_the_host_plane_moves_the_instance_and_moving_the_instance_k
     // Undone, it is back.
     run(&mut s, "undo", json!({}));
     assert!(close(component(&s, c).at.1, 4000.0));
+}
+
+#[test]
+fn turning_the_host_plane_about_the_vertical_turns_the_instance_with_it() {
+    for always_vertical in [true, false] {
+        let mut s = Session::new();
+        sign(&mut s, always_vertical);
+        let r = ramp(&mut s);
+        let c = id_of(&run(&mut s, "component", json!({"family": "Sign", "at": [2000, 2000], "host": {"plane": "Ramp"}, "angle": 10})));
+        let axes = |s: &Session| s.model.component_placement(component(s, c)).axes;
+        let before = axes(&s);
+        run(&mut s, "rotate", json!({"ids": [r], "about": [0, 0], "angle": 90}));
+        let same = |a: f64, b: f64| ((a - b + 180.0).rem_euclid(360.0) - 180.0).abs() < 1e-4;
+        assert!(same(component(&s, c).angle, 100.0), "{}", component(&s, c).angle);
+        // Every axis of it turned a quarter about the vertical, as the plane did.
+        let quarter = |v: [f64; 3]| [-v[1], v[0], v[2]];
+        for (a, b) in axes(&s).into_iter().zip(before) {
+            assert!(a.iter().zip(quarter(b)).all(|(x, y)| (x - y).abs() < 1e-9), "{a:?} against {b:?}");
+        }
+        // Turned with its plane in one command, it turns once.
+        run(&mut s, "rotate", json!({"ids": [r, c], "about": [0, 0], "angle": 90}));
+        assert!(same(component(&s, c).angle, 190.0), "{}", component(&s, c).angle);
+        // Moved, the plane doesn't turn it.
+        run(&mut s, "move", json!({"ids": [r], "by": [500, 0]}));
+        assert!(same(component(&s, c).angle, 190.0));
+    }
 }
 
 #[test]
@@ -351,6 +377,29 @@ fn a_forms_work_plane_changed_moves_it_with_the_plane_or_keeps_it_where_it_is() 
     let before = s.model.families["P"].clone();
     run(&mut s, "edit_work_plane", json!({"family": "P", "form": form, "host": {"plane": "Side"}, "dry_run": true}));
     assert_eq!(s.model.families["P"], before);
+}
+
+/// Revit's Solid/Void on a selected form: the `family` command's `form` patch switches it, and back, the form keeping its place
+/// and identity; a void cuts the solids listed before it.
+#[test]
+fn a_form_switches_between_solid_and_void_through_the_family_command() {
+    let mut s = Session::new();
+    family_with_plane(&mut s);
+    run(
+        &mut s,
+        "family",
+        json!({"name": "P", "forms": [{"profile": [[0, 0], [100, 0], [100, 50], [0, 50]], "from": 10, "to": 60},
+                                                      {"profile": [[20, 0], [40, 0], [40, 50], [20, 50]], "from": 0, "to": 100}]}),
+    );
+    let (id, guid) = (s.model.families["P"].forms[1].id, s.model.families["P"].forms[1].guid);
+    let solid = box_of(&s);
+    run(&mut s, "family", json!({"name": "P", "form": {"guid": guid, "void": true}}));
+    let f = &s.model.families["P"].forms[1];
+    assert!(f.void && f.id == id && f.guid == guid);
+    assert_ne!(box_of(&s), solid, "the void cuts the solid instead of adding to it");
+    run(&mut s, "family", json!({"name": "P", "form": {"id": id, "void": false}}));
+    assert!(!s.model.families["P"].forms[1].void);
+    assert_eq!(box_of(&s), solid);
 }
 
 #[test]

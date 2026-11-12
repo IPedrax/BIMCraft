@@ -25,7 +25,7 @@ use crate::style::pal;
 use crate::{BimApp, Sheet, Status, small_button};
 
 /// What Revit draws round a view that is hiding or isolating for now.
-const FRAME: Color32 = Color32::from_rgb(0, 190, 220);
+pub(crate) const FRAME: Color32 = Color32::from_rgb(0, 190, 220);
 
 /// What a view hides or reveals for now.
 #[derive(Clone, Debug, Default, PartialEq)]

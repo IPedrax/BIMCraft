@@ -5,7 +5,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use super::{DEFAULT_WALL, Expr, Family, HEIGHT, Kind, MAX_FORMULA, Val, WALL, WIDTH, names};
+use super::{DEFAULT_WALL, Expr, Family, HEIGHT, Kind, Load, MAX_FORMULA, Val, WALL, WIDTH, names, not_a_parameter};
+use crate::model::Model;
 
 /// `f`'s errors, which a change may not go ahead with, and its warnings, which don't stop it: its
 /// formulas read over its own parameters, [`Family::check`]'s own findings (a family that builds,
@@ -14,7 +15,10 @@ use super::{DEFAULT_WALL, Expr, Family, HEIGHT, Kind, MAX_FORMULA, Val, WALL, WI
 pub(crate) fn problems(f: &Family, has_material: &dyn Fn(&str) -> bool) -> (Vec<String>, Vec<String>) {
     let mut errors = Vec::new();
     formulas(f, &mut errors);
-    if let Err(e) = f.check(has_material) {
+    // A room calculation point's name is the check's to refuse too, in the same words: said once.
+    if let Err(e) = f.check(has_material)
+        && !errors.contains(&e)
+    {
         errors.push(e);
     }
     let mut warnings = Vec::new();
@@ -26,22 +30,25 @@ pub(crate) fn problems(f: &Family, has_material: &dyn Fn(&str) -> bool) -> (Vec<
     (errors, warnings)
 }
 
-/// Every formula of the family read: the ones that don't read, saying why and where they stop, and
-/// the ones that say a name it has no parameter of. `Wall Thickness`, the wall's own, counts as one
-/// of a door's or a window's; no other family's formulas may say it.
+/// Every formula the family holds, each with what holds it (`parameter `Width``, `form 2`, …): its parameters', its forms'
+/// sizes and `visible`, its symbols' sizes and `visible`, its room calculation point's, its connectors' and its adaptive
+/// definition's. A part that holds a formula is listed here as [`Family::rename_parameter`] walks it, so no formula goes
+/// unread.
+/// Every formula of the family read: the ones that don't read, saying why and where they stop, the ones that say a name it
+/// has no parameter of, and the ones that read words. `Wall Thickness`, the wall's own, counts as one of a door's or a
+/// window's; no other family's formulas may say it.
 fn formulas(f: &Family, out: &mut Vec<String>) {
-    let given: BTreeSet<&str> = f.parameters.iter().map(|p| p.name.as_str()).collect();
-    let read = |who: &str, formula: &str, out: &mut Vec<String>| {
+    for (who, formula) in every_formula(f) {
         // A formula longer than what it may be is `Family::check`'s to count, not read again here.
         if formula.chars().count() > MAX_FORMULA {
-            return;
+            continue;
         }
         match names(formula) {
             Err(e) => out.push(format!("{who}: {e}")),
             Ok(found) => {
                 for n in found {
-                    if !given.contains(n.as_str()) && !(f.category.hosted() && n == WALL) {
-                        out.push(format!("{who}: formula `{formula}` reads `{n}`, which isn't one of its parameters"));
+                    if !known(f, &n) {
+                        out.push(format!("{who}: formula `{formula}`: {}", not_a_parameter(&n, &f.parameters)));
                     } else if let Some(p) = f.parameters.iter().find(|p| p.name == n && p.kind.text() && p.kind != Kind::Material) {
                         // Words a formula can't read; a material's name is refused where it is worked out, as it always was.
                         out.push(format!("{who}: formula `{formula}` reads `{n}`, which is {}: a formula reads numbers", p.kind.said()));
@@ -49,10 +56,75 @@ fn formulas(f: &Family, out: &mut Vec<String>) {
                 }
             }
         }
-    };
+    }
+}
+
+/// Whether a formula of `f` may say `name`: one of its parameters, or a door's or a window's `Wall Thickness`.
+fn known(f: &Family, name: &str) -> bool {
+    f.parameters.iter().any(|p| p.name == name) || (f.category.hosted() && name == WALL)
+}
+
+/// Each name a formula of `f` says that isn't one of its parameters: the formula, the name, and what holds it.
+pub(crate) fn unknown_names(f: &Family) -> Vec<(String, String, String)> {
+    let mut out = Vec::new();
+    for (who, formula) in every_formula(f) {
+        if formula.chars().count() > MAX_FORMULA {
+            continue;
+        }
+        for n in names(formula).unwrap_or_default() {
+            if !known(f, &n) {
+                out.push((who.clone(), formula.to_string(), n));
+            }
+        }
+    }
+    out
+}
+
+/// What is wrong with `f`'s formulas' names, a line each, said as [`Family::problems`] says them.
+pub(crate) fn unknown_said(f: &Family) -> Vec<String> {
+    unknown_names(f)
+        .into_iter()
+        .map(|(who, formula, n)| format!("{who}: formula `{formula}`: {}", not_a_parameter(&n, &f.parameters)))
+        .collect()
+}
+
+/// What a command must leave true of the families it made or changed, which [`Family::check`] doesn't ask of every family
+/// because a file from before it may break it and still open: no formula says a name that isn't one of its family's
+/// parameters. A family changed that held one before passes while the change adds no new one, so a command that only
+/// touches it in passing (a material renamed) isn't refused for what it found; the `family` command, which edits it, asks
+/// all of them ([`Family::problems`]). `before` is the project the command began with.
+pub(crate) fn check_family_edits(now: &Model, before: &Model) -> Result<(), String> {
+    if now.families.same_allocation(&before.families) {
+        return Ok(());
+    }
+    for (name, f) in now.families.iter() {
+        let was = before.families.get(name);
+        if was == Some(f) {
+            continue;
+        }
+        let old: BTreeSet<(String, String)> = was.map(unknown_names).unwrap_or_default().into_iter().map(|(_, x, n)| (x, n)).collect();
+        let new: Vec<String> = unknown_names(f)
+            .into_iter()
+            .filter(|(_, x, n)| !old.contains(&(x.clone(), n.clone())))
+            .map(|(who, formula, n)| format!("family `{name}`: {who}: formula `{formula}`: {}", not_a_parameter(&n, &f.parameters)))
+            .collect();
+        if !new.is_empty() {
+            return Err(new.join("\n"));
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn every_formula(f: &Family) -> Vec<(String, &str)> {
+    fn add<'a>(out: &mut Vec<(String, &'a str)>, who: &dyn Fn() -> String, e: &'a Expr) {
+        if let Expr::Formula(formula) = e {
+            out.push((who(), formula.as_str()));
+        }
+    }
+    let mut out: Vec<(String, &str)> = Vec::new();
     for p in &f.parameters {
         if let Some(formula) = &p.formula {
-            read(&format!("parameter `{}`", p.name), formula, out);
+            out.push((format!("parameter `{}`", p.name), formula.as_str()));
         }
     }
     for (i, form) in f.forms.iter().enumerate() {
@@ -66,24 +138,42 @@ fn formulas(f: &Family, out: &mut Vec<String>) {
             .chain(circle)
             .chain(form.axis.iter().flatten().flatten());
         for e in exprs {
-            if let Expr::Formula(formula) = e {
-                read(&format!("form {}", i + 1), formula, out);
-            }
+            add(&mut out, &|| format!("form {}", i + 1), e);
         }
     }
     for (i, sym) in f.symbols.iter().enumerate() {
+        let label = sym.text.iter().flat_map(|l| l.at.iter().chain([&l.height]));
+        let dot = sym.dot.iter().flat_map(|c| c.centre.iter().chain([&c.radius]));
         let exprs = sym
             .line
             .iter()
             .flatten()
             .chain(&sym.visible)
-            .chain(sym.arc.iter().flat_map(|c| c.centre.iter().chain([&c.radius, &c.from, &c.to])));
+            .chain(sym.arc.iter().flat_map(|c| c.centre.iter().chain([&c.radius, &c.from, &c.to])))
+            .chain(label)
+            .chain(dot);
         for e in exprs {
-            if let Expr::Formula(formula) = e {
-                read(&format!("symbol {}", i + 1), formula, out);
-            }
+            add(&mut out, &|| format!("symbol {}", i + 1), e);
         }
     }
+    for e in f.room_calculation_point.iter().flatten() {
+        add(&mut out, &|| "`room_calculation_point`".to_string(), e);
+    }
+    for (i, c) in f.connectors.iter().enumerate() {
+        let loads: &[Expr] = match &c.load_va {
+            Load::One(e) => std::slice::from_ref(e),
+            Load::PerPhase(v) => v,
+        };
+        for e in [&c.voltage, &c.power_factor].into_iter().chain(loads) {
+            add(&mut out, &|| format!("connector {}", i + 1), e);
+        }
+    }
+    if let Some(d) = &f.adaptive {
+        for (id, e) in d.exprs() {
+            add(&mut out, &|| format!("adaptive element `{id}`"), e);
+        }
+    }
+    out
 }
 
 /// What the forms' boxes say, over every type: a void that reaches no solid before it (but a door's or a window's, which
@@ -110,7 +200,8 @@ fn geometry(f: &Family, out: &mut Vec<String>) {
             let cut = shapes.iter().any(|solid| !solid.void && solid.index < void.index && void.over(solid));
             // A door's or a window's that cuts none of its forms cuts its wall ([`Family::host_voids`]), where it reaches it.
             let host = f.category.hosted();
-            if !cut && (!host || void.max[1] <= -wall / 2.0 || void.min[1] >= wall / 2.0) {
+            // A work plane-based family's cuts the face it is placed on ([`Family::face_voids`]), where it reaches it.
+            if !cut && !f.work_plane_based && (!host || void.max[1] <= -wall / 2.0 || void.min[1] >= wall / 2.0) {
                 let what = if host { "no solid form listed before it, nor its wall" } else { "no solid form listed before it" };
                 faults
                     .entry(format!("form {}: its void passes through {what}; it cuts nothing", void.index + 1))

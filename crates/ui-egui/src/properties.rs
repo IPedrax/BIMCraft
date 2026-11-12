@@ -124,9 +124,10 @@ fn nested(key: &str, val: Value) -> Value {
     key.rsplit('.').fold(val, |v, k| json!({ k: v }))
 }
 
-/// The rows only a work plane-based family's components show, and those only the others' do.
-const WORK_PLANE_ROWS: [&str; 4] = ["Schedule Level", "Elevation from Level", "Work Plane", "Offset from Host"];
-const LEVEL_ROWS: [&str; 2] = ["Level", "Height Offset From Level"];
+/// The rows only a work plane-based family's components show, and the one only the others' do: as Revit's, both show their
+/// height over their level as Elevation from Level.
+const WORK_PLANE_ROWS: [&str; 3] = ["Schedule Level", "Work Plane", "Offset from Host"];
+const LEVEL_ROWS: [&str; 1] = ["Level"];
 
 /// Whether row `label` shows for components that are (`based`) or aren't of work plane-based families.
 fn work_plane_row(label: &str, based: bool) -> bool {
@@ -290,16 +291,15 @@ fn rows(category: &str) -> &'static [Row] {
             ("Graphics", "scale", msg!("View Scale (1 : n)"), Number),
             ("Other", "at", "Location", PaperPoint),
         ],
-        // A work plane-based family's: its level is its Schedule Level, its height over it its Elevation from Level (read
-        // only on a plane, which it follows), what it is on and how far off it; another's, its level and height as before
-        // (`work_plane_rows`).
+        // As Revit's: a work plane-based family's level is its Schedule Level, its height over it its Elevation from Level
+        // (read only on a plane, which it follows), then what it is on and how far off it; another's, its Level and its
+        // Elevation from Level (`work_plane_row`).
         "component" => &[
             ("Constraints", "level", "Level", Level),
-            ("Constraints", "offset", "Height Offset From Level", Length),
-            ("Constraints", "level", "Schedule Level", Level),
-            ("Constraints", "offset", "Elevation from Level", Length),
+            ("Constraints", "level", msg!("Schedule Level"), Level),
+            ("Constraints", "offset", msg!("Elevation from Level"), Length),
             ("Constraints", "work_plane", "Work Plane", Shown),
-            ("Constraints", "offset_from_host", "Offset from Host", Length),
+            ("Constraints", "offset_from_host", msg!("Offset from Host"), Length),
             ("Other", "at", "Location", Point),
             ("Other", "angle", "Rotation (°)", Number),
         ],

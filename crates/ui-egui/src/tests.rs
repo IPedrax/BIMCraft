@@ -1007,7 +1007,7 @@ fn ma_gives_the_walls_selected_after_the_first_its_type_in_one_undo_step() {
 
 #[test]
 fn keys_for_tools_bimcraft_lacks_are_bound_to_nothing_rather_than_to_another_tool() {
-    for keys in ["SU", "LI", "SF", "BR", "BS", "RN", "RP", "CV", "TF", "DA", "FD"] {
+    for keys in ["SU", "LI", "SF", "BR", "BS", "RN", "CV", "TF", "DA", "FD"] {
         let mut app = BimApp::new(Session::new());
         app.typed = keys.into();
         assert!(!app.shortcut(), "{keys}");
@@ -5760,25 +5760,32 @@ fn the_family_editor_edits_a_family_says_what_wont_build_and_starts_a_new_one_of
     press(&mut h, "Manage");
     press(&mut h, "Edit Family");
     assert!(h.state().family_editor.is_some(), "the window is open on the table's family");
-    // The table's parameters, a row each: its fourth is its top's thickness, 40 mm.
-    type_into(&mut h, "Parameter Value 4", "55");
-    press_near(&mut h, "Apply", "Cancel");
-    let thickness = |h: &Harness<BimApp>| h.state().session.model.families["Table"].parameters[3].value.clone();
+    // The table's parameters, a row each: its top's Thickness, 40 mm, here the first type's, 1200 x 800.
+    press(&mut h, "Family Types");
+    type_into(&mut h, "Parameter Value Thickness", "55");
+    press(&mut h, "OK");
+    press(&mut h, "Load into Project");
+    // The project has the table otherwise: its values too, as they were typed.
+    press(&mut h, "Overwrite the existing version and its parameter values");
+    let thickness = |h: &Harness<BimApp>| h.state().session.model.families["Table"].types["1200 x 800"]["Thickness"].clone();
     assert_eq!(thickness(&h), json!(55.0));
-    // A formula naming what isn't there is said, in the window; the project's family is as it was.
-    type_into(&mut h, "Parameter Formula 4", "Nope + 1");
+    // A formula naming what isn't there is refused, said in the window; the project's family is as it was.
+    press(&mut h, "Family Types");
+    type_into(&mut h, "Parameter Formula Thickness", "Nope + 1");
     press_near(&mut h, "Apply", "Cancel");
     assert!(h.state().status.text.is_empty(), "the window says it itself: a box over the view's corner would lie on its buttons");
     assert_eq!(h.query_all_by_label_contains("Nope").count(), 1, "the window says what's wrong, once");
     assert_eq!(h.state().session.model.families["Table"].parameters[3].formula, None);
     press(&mut h, "Cancel");
-    assert!(h.state().family_editor.is_none(), "Cancel closes it");
+    assert!(h.state().family_editor.is_some(), "Cancel closes Family Types and restores its draft");
+    press(&mut h, "Close Family");
+    assert!(h.state().family_editor.is_none());
     // A new family of a category: its name, then OK; a door's has the opening's Width and Height.
     key(&mut h, Key::Escape);
     press(&mut h, "New Family");
     press(&mut h, "Door");
     type_into(&mut h, "Family name", "Cupboard Door");
-    press(&mut h, "OK");
+    press(&mut h, "Load into Project and Close");
     let f = &h.state().session.model.families["Cupboard Door"];
     assert_eq!(f.category, bimcraft_core::family::Category::Door);
     assert!(f.parameters.iter().any(|p| p.name == "Width") && !f.forms.is_empty());
@@ -5795,9 +5802,12 @@ fn the_family_editor_shows_a_familys_connectors_and_keeps_them() {
     press(&mut h, "Connectors");
     assert!(h.query_by_label_contains("pipe · waste · out · Size 100").is_some(), "the waste outlet, its DN");
     assert!(h.query_by_label_contains("cold · in").is_some(), "the cistern's cold water");
-    // Applied, the family keeps them as they were.
+    // Loaded into the project, the family keeps them as they were.
     let before = h.state().session.model.families["WC"].connectors.clone();
-    press_near(&mut h, "Apply", "Cancel");
+    press(&mut h, "Load into Project");
+    if h.query_by_label("Overwrite the existing version and its parameter values").is_some() {
+        press(&mut h, "Overwrite the existing version and its parameter values");
+    }
     assert_eq!(h.state().session.model.families["WC"].connectors, before);
 }
 
@@ -5924,6 +5934,7 @@ mod display;
 mod dock;
 mod draw;
 mod electrical;
+mod family_formulas;
 mod fills;
 mod filter;
 mod fonts;
@@ -6861,6 +6872,8 @@ fn adaptive_family_editor_reopens_exact_failed_instance_and_keeps_valid_dependen
     press(&mut h, "Replay Instance");
     assert!(h.query_all_by_label_contains("Replaying instance").count() > 0);
     press(&mut h, "Load into Project");
+    // The replayed placement is the family's preview: the project has the family otherwise.
+    press(&mut h, "Overwrite the existing version");
     let Element::Component(c) = &h.state().session.model.elements[&id] else { panic!() };
     assert_eq!(c.adaptive.as_ref(), Some(&p));
     let r = h.state().session.model.component_adaptive_evaluation(c).unwrap();
@@ -6928,3 +6941,12 @@ fn adaptive_editor_visual_preview_in_three_looks() {
     }
 }
 mod background_grid;
+
+mod extrusion_properties;
+mod family_already_exists;
+mod family_category_dialog;
+mod family_document;
+mod family_temporary_hide;
+mod family_types_dialog;
+mod family_views;
+mod preview_visibility;

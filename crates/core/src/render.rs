@@ -50,7 +50,7 @@ const INK: Rgb = Rgb(25, 25, 25);
 const FAINT: Rgb = Rgb(120, 120, 120);
 const GRID: Rgb = Rgb(60, 100, 150);
 /// A reference plane's line in plan.
-const REFERENCE_PLANE: Rgb = Rgb(70, 140, 90);
+pub(crate) const REFERENCE_PLANE: Rgb = Rgb(70, 140, 90);
 /// A mass's outline, dashed.
 const MASS: Rgb = Rgb(88, 112, 168);
 /// Room for grid bubbles and the view title around the drawing, px.
@@ -1246,7 +1246,7 @@ pub fn sketch(m: &Model, view: View, id: Id, e: &Element) -> Drawing {
         Element::Ramp(r) => ramp(&mut d, m, r, r.level),
         Element::Railing(rl) => d.line(&stairs::railing(m, rl).into_iter().map(|(p, _)| p).collect::<Vec<_>>(), Pen::MEDIUM, INK, false),
         Element::RoomSeparator(rs) => d.line(&[rs.start, rs.end], Pen::PROJECTION, INK, false),
-        Element::Roof(r) => roof(&mut d, m, r),
+        Element::Roof(r) => roof(&mut d, m, id, r),
         Element::Mass(ms) => d.dashed(&ms.boundary, Pen::MEDIUM, MASS, true),
         _ => {}
     }
@@ -2305,7 +2305,7 @@ fn section_base_cancellable(
         let variable = m.variable_under(owner);
         d.owner = Some(owner);
         for r in rings {
-            let &[a0, b0, b1, a1] = r.as_slice() else { continue };
+            let Some([a0, b0, b1, a1]) = quad(r) else { continue };
             // Where each layer starts down from the top at each end.
             let down = |top: P2, bottom: P2| {
                 let depth = top.1 - bottom.1;
@@ -2393,10 +2393,164 @@ fn section_base_cancellable(
             grid(&mut d, P2(along, lo - GRID_PAST), P2(along, hi + GRID_PAST), &g.name);
         }
     }
+    // Reference planes square to it (Revit's rule: their normal across the way it looks), their trace dashed green over
+    // the whole frame and named at its end; one it looks straight at, or askew, has none.
+    let look3 = v.looking();
+    let mut lettered = Lettered::default();
+    let (corner_a, corner_b) = (d.view.mm((0.0, 0.0)), d.view.mm((d.view.width as f32, d.view.height as f32)));
+    let (lo_v, hi_v) =
+        (P2(corner_a.0.min(corner_b.0), corner_a.1.min(corner_b.1)), P2(corner_a.0.max(corner_b.0), corner_a.1.max(corner_b.1)));
+    for plane_id in m.rare("refplane") {
+        if cancelled() {
+            return None;
+        }
+        let Some(Element::RefPlane(rp)) = m.elements.get(plane_id).filter(|_| look.shows(plane_id)) else { continue };
+        let n = rp.frame().z;
+        if (n[0] * look3.0 + n[1] * look3.1).abs() > 1e-6 {
+            continue;
+        }
+        // n·p = n·start over the view's (along, up): a·s + b·z = c.
+        let (a, b) = (n[0] * u.0 + n[1] * u.1, n[2]);
+        let c = n[0] * (rp.start[0] - v.start.0) + n[1] * (rp.start[1] - v.start.1) + n[2] * rp.start[2];
+        let k = a * a + b * b;
+        if k < 1e-12 {
+            continue;
+        }
+        let foot = P2(a * c / k, b * c / k);
+        let along = P2(-b, a) * (1.0 / k.sqrt());
+        let far = 1e7;
+        if let Some((p, q)) = clip(foot - along * far, foot + along * far, lo_v, hi_v) {
+            // Drawn from its lower or left end, so the name sits at the top or the right.
+            let (p, q) = if (q.1 - p.1).abs() > (q.0 - p.0).abs() {
+                if q.1 < p.1 { (q, p) } else { (p, q) }
+            } else if q.0 < p.0 {
+                (q, p)
+            } else {
+                (p, q)
+            };
+            d.owner = Some(plane_id);
+            let (pa, pb) = (d.view.px(p), d.view.px(q));
+            d.stroke(vec![pa, pb], Pen::FINE, REFERENCE_PLANE, Some(vec![10.0, 5.0]), false);
+            lettered.traces.push((plane_id, pa, pb));
+        }
+    }
+    // Their names once every trace is known, in the order they were drawn: each inside the frame, by the end it reaches
+    // (the trace runs to the frame's edge); crowded there, by the other end, inside the frame too, or beside the trace.
+    for (plane_id, pa, pb) in lettered.traces.clone() {
+        let Some(Element::RefPlane(rp)) = m.elements.get(plane_id) else { continue };
+        d.owner = Some(plane_id);
+        let len = (pb.0 - pa.0).hypot(pb.1 - pa.1).max(1e-3);
+        let dir = ((pb.0 - pa.0) / len, (pb.1 - pa.1) / len);
+        let h = d.px(10.0);
+        let room = ((font::width(&rp.name, h) + d.px(16.0)) * dir.0.abs() + (h + d.px(16.0)) * dir.1.abs()).min(len / 2.0);
+        let short = (pb.0 - dir.0 * room, pb.1 - dir.1 * room);
+        let short_a = (pa.0 + dir.0 * room, pa.1 + dir.1 * room);
+        plane_name_px(&mut d, [(pa, short), (pb, short_a)], &rp.name, &mut lettered);
+    }
+    d.owner = None;
     if cancelled() {
         return None;
     }
     Some(d)
+}
+
+/// A reference plane's name, lettered beyond its end `b` (from `a`), in model points; by its other end, or beside its line,
+/// where a name lettered before is in the way ([`plane_name_px`]).
+fn plane_name(d: &mut Drawing, a: P2, b: P2, name: &str, lettered: &mut Lettered) {
+    let (pa, pb) = (d.view.px(a), d.view.px(b));
+    plane_name_px(d, [(pa, pb), (pb, pa)], name, lettered);
+}
+
+/// A family's reference lines over a drawing of one of its views (F4), each from one end to the other in the view's
+/// millimetres: solid, in the reference planes' green and the thinnest pen, thinner than a plane's dashed trace, as Revit
+/// draws them. One seen end on (shorter than a pixel) has nothing to draw. They are owned by nothing: not picked.
+pub(crate) fn reference_lines(d: &mut Drawing, lines: &[(P2, P2)]) {
+    d.own(None);
+    d.part(Part::Projection);
+    for &(a, b) in lines {
+        let (pa, pb) = (d.view.px(a), d.view.px(b));
+        if (pb.0 - pa.0).hypot(pb.1 - pa.1) >= 1.0 {
+            d.stroke(vec![pa, pb], Pen::HAIRLINE, REFERENCE_PLANE, None, false);
+        }
+    }
+}
+
+/// What a drawing's reference-plane names are placed among: the boxes the names lettered so far take up, in pixels
+/// (`[left, top, right, bottom]`), and every plane's trace it draws, each with its plane, in pixels.
+#[derive(Default)]
+struct Lettered {
+    boxes: Vec<[f32; 4]>,
+    traces: Vec<Trace>,
+}
+
+/// A reference plane's trace in a drawing: the plane, and its ends in pixels.
+type Trace = (Id, (f32, f32), (f32, f32));
+
+/// How many steps along its trace a crowded reference plane's name is tried at, beside it, by each end and on each side.
+const NAME_STEPS: usize = 3;
+
+/// A reference plane's name, in the planes' green, lettered just beyond the end of its trace (pixels): `ends[0]` the end it
+/// goes by alone, `ends[1]` the other, each as (from, to), lettered beyond `to`. Where it would overlap a name `lettered`
+/// before, as two planes close together would have them, it goes beyond the other end; crowded there too, it goes beside
+/// its trace, its box a hair off the line just inside an end: by the first end, on one side then the other, then by the
+/// other end, then a name's extent and a gap further in, [`NAME_STEPS`] times. The first place clear of the other names and
+/// of the other planes' traces inside the picture is taken (else the first clear of the names inside it, else the first
+/// clear of them; else where it goes alone). So a name always touches its own plane's line, never stands
+/// where it could be read as another's, and a plane alone is named as it always was.
+fn plane_name_px(d: &mut Drawing, ends: [((f32, f32), (f32, f32)); 2], name: &str, lettered: &mut Lettered) {
+    if name.is_empty() {
+        return;
+    }
+    let h = d.px(10.0);
+    let w = font::width(name, h);
+    let (gap, hair) = (d.px(6.0), d.px(2.0));
+    let axes = |e: usize| {
+        let (a, b) = ends[e];
+        let len = (b.0 - a.0).hypot(b.1 - a.1).max(1e-3);
+        (b, ((b.0 - a.0) / len, (b.1 - a.1) / len))
+    };
+    let boxed = |at: (f32, f32)| (at, [at.0 - w / 2.0, at.1 - h / 2.0, at.0 + w / 2.0, at.1 + h / 2.0]);
+    // Beyond each end, along the trace: for an upright trace, its half height is enough.
+    let beyond = |e: usize| {
+        let (b, dir) = axes(e);
+        let reach = (w / 2.0 + gap) * dir.0.abs() + (h / 2.0 + gap) * dir.1.abs();
+        boxed((b.0 + dir.0 * reach, b.1 + dir.1 * reach))
+    };
+    // Beside the trace by end `e`, on `side` (1 or -1), `n` steps in from it.
+    let beside = |e: usize, side: f32, n: usize| {
+        let (b, dir) = axes(e);
+        let across = (-dir.1 * side, dir.0 * side);
+        let along = (w / 2.0) * dir.0.abs() + (h / 2.0) * dir.1.abs();
+        let off = (w / 2.0) * across.0.abs() + (h / 2.0) * across.1.abs() + hair;
+        let back = along + (2.0 * along + gap) * n as f32;
+        boxed((b.0 - dir.0 * back + across.0 * off, b.1 - dir.1 * back + across.1 * off))
+    };
+    let mut places = vec![beyond(0), beyond(1)];
+    for n in 0..NAME_STEPS {
+        for e in 0..2 {
+            places.extend([beside(e, 1.0, n), beside(e, -1.0, n)]);
+        }
+    }
+    let clear = |r: &[f32; 4]| lettered.boxes.iter().all(|o| r[2] <= o[0] || o[2] <= r[0] || r[3] <= o[1] || o[3] <= r[1]);
+    // Moved, a name also keeps off every other plane's trace, so it can't be read as that one's.
+    let own = d.owner;
+    let apart =
+        |r: &[f32; 4]| clear(r) && !lettered.traces.iter().any(|(id, a, b)| Some(*id) != own && clips(*a, *b, (r[0], r[1]), (r[2], r[3])));
+    let (width, height) = (d.view.width as f32, d.view.height as f32);
+    let inside = |r: &[f32; 4]| r[0] >= 0.0 && r[1] >= 0.0 && r[2] <= width && r[3] <= height;
+    let (at, r) = if clear(&places[0].1) {
+        places[0]
+    } else {
+        places
+            .iter()
+            .find(|(_, r)| apart(r) && inside(r))
+            .or_else(|| places.iter().find(|(_, r)| clear(r) && inside(r)))
+            .or_else(|| places.iter().find(|(_, r)| clear(r)))
+            .copied()
+            .unwrap_or(places[0])
+    };
+    lettered.boxes.push(r);
+    d.text(name, at, h, REFERENCE_PLANE);
 }
 
 fn section_finish(m: &Model, id: Id, d: Drawing) -> Drawing {
@@ -2725,8 +2879,10 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
         d.owner = Some(id);
         // Surface overrides also work on an unpatterned material and at coarse detail.
         let material = m.type_layers("floor", &f.type_name).first().and_then(|l| m.materials.get(&l.material));
+        // The holes the voids of what is on its faces cut it with, where they are just under its top (T16b).
+        let cut_by = slab_holes(m, id, crate::hosting::FaceRole::Top);
         for (face, rise) in m.floor_slabs(f) {
-            for piece in m.less_shafts(&face, rise).0 {
+            for piece in less_holes(m.less_shafts(&face, rise).0, &cut_by) {
                 let replaced = override_patterns(&mut d, m, std::slice::from_ref(&piece), false, (f.pattern_origin, f.pattern_angle));
                 if !replaced
                     && d.detail == Detail::Fine
@@ -2746,7 +2902,7 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
                 }
             }
         }
-        for ring in std::iter::once(&f.boundary).chain(&f.openings) {
+        for ring in std::iter::once(&f.boundary).chain(&f.openings).chain(&cut_by) {
             d.line(ring, BY_CATEGORY, FAINT, true);
         }
         // A shaped one's creases: the edges of each of its planes, as thin as its outline.
@@ -2905,6 +3061,18 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
             d.owner = Some(id);
             opening(&mut d, m, e, o, w, range.cut, shown(id), &|sub| graphics.hides(sub));
         }
+        // A component on one of a wall's faces whose voids cut it (T16b): the wall cleared where the cut plane passes through
+        // them, as a door's voids clear it. The hole is the wall's: the component hidden, it is still there.
+        if let Element::Wall(w) = e
+            && shown(id)
+            && m.spans(w, range.cut)
+        {
+            for (by, voids) in m.hosted_voids(id) {
+                d.owner = Some(by).filter(|c| shown(*c));
+                let past = 3.0 / d.view.scale;
+                wall_voids(&mut d, &Axis::of(w), walls::faces(m, w), past, &voids, range.cut);
+            }
+        }
     }
     d.part(Part::Projection);
     // A ceiling plan isn't cropped: the crop region is the floor plan's.
@@ -2917,6 +3085,18 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
     let reference = !graphics.hides("roomreference");
     // Bars seen from above that lie where another was drawn (a column's stirrups, up its height) are drawn once.
     let mut bars_seen: std::collections::HashSet<Vec<(i64, i64)>> = std::collections::HashSet::new();
+    // The reference planes' names lettered so far, among every upright plane's trace: one crowded goes elsewhere.
+    let mut lettered = Lettered::default();
+    for (&id, e) in all().filter(|(id, _)| shown(**id)) {
+        if let Element::RefPlane(rp) = e
+            && rp.upright()
+        {
+            let (a, b) = (P2(rp.start[0], rp.start[1]), P2(rp.end[0], rp.end[1]));
+            if let Some((a, b)) = crop.map_or(Some((a, b)), |[lo, hi]| clip(a, b, lo, hi)) {
+                lettered.traces.push((id, d.view.px(a), d.view.px(b)));
+            }
+        }
+    }
     for (&id, e) in all().filter(|(id, _)| shown(**id)) {
         d.owner = Some(id);
         match e {
@@ -2926,6 +3106,7 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
                 let (a, b) = (P2(rp.start[0], rp.start[1]), P2(rp.end[0], rp.end[1]));
                 if let Some((a, b)) = crop.map_or(Some((a, b)), |[lo, hi]| clip(a, b, lo, hi)) {
                     d.dashed(&[a, b], Pen::FINE, REFERENCE_PLANE, false);
+                    plane_name(&mut d, a, b, &rp.name, &mut lettered);
                 }
             }
             // Cropped, a grid stops at the crop's edge, with its bubbles there.
@@ -2992,7 +3173,7 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
             Element::Ceiling(c) if up => {
                 let z = m.elevation(c.level) + c.offset;
                 if range.cut < z && z <= range.top {
-                    ceiling(&mut d, m, c);
+                    ceiling(&mut d, m, id, c);
                 }
             }
             _ if up => {}
@@ -3006,7 +3187,7 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
                 let pts = vec![d.view.px(rs.start), d.view.px(rs.end)];
                 d.stroke(pts, BY_CATEGORY, INK, None, false);
             }
-            Element::Roof(r) if r.level == level => roof(&mut d, m, r),
+            Element::Roof(r) if r.level == level => roof(&mut d, m, id, r),
             // Overhead, from below: its edges, round its courtyards too, dashed, while its eaves are under
             // the view range's top.
             Element::Roof(r) => {
@@ -3193,6 +3374,20 @@ fn component(d: &mut Drawing, m: &Model, pieces: &[crate::family::Piece]) {
 }
 
 /// The outlines of the holes shafts cut in a floor's or a ceiling's slabs.
+/// The holes in plan that the voids of the components on face `seen` of floor, ceiling or roof `id` cut it with
+/// ([`Model::hosted_voids`]): each void's slice a millimetre inside that face, under its middle, which is what a plan looking
+/// at that face sees of it. None where nothing on its faces has voids that reach that far.
+fn slab_holes(m: &Model, id: Id, seen: crate::hosting::FaceRole) -> Vec<Vec<P2>> {
+    let Some(g) = m.elements.guid(id) else { return Vec::new() };
+    let inward = if seen == crate::hosting::FaceRole::Top { -1.0 } else { 1.0 };
+    view3d::host_holes(m, id, |q| m.face_at(g, seen, [q.0, q.1]).filter(|a| a.on).map(|a| a.point[2] + inward))
+}
+
+/// `pieces` less each of `holes`: convex pieces where there are any, else as they are.
+fn less_holes(pieces: Vec<Vec<P2>>, holes: &[Vec<P2>]) -> Vec<Vec<P2>> {
+    holes.iter().fold(pieces, |left, hole| walls::minus(&left, hole))
+}
+
 fn holes(d: &mut Drawing, m: &Model, slabs: &[(Vec<[f64; 3]>, f64)]) {
     let cut: std::collections::BTreeSet<Id> = slabs.iter().flat_map(|(face, rise)| m.less_shafts(face, *rise).1).collect();
     for id in cut {
@@ -3422,12 +3617,14 @@ fn hatching(d: &mut Drawing, ring: &[P2], pattern: Pattern, u: P2, color: Rgb, g
 
 /// A ceiling in its reflected ceiling plan: its outline and its openings', the holes shafts cut in
 /// it, and with a grid, its tiles: lines through its middle, a tile apart, stopping at the holes.
-fn ceiling(d: &mut Drawing, m: &Model, c: &Ceiling) {
+fn ceiling(d: &mut Drawing, m: &Model, id: Id, c: &Ceiling) {
     let slabs = m.ceiling_slabs(c);
     // Its bottom layer's surface pattern, or the view's foreground and background.
     let material = m.type_layers("ceiling", &c.type_name).last().and_then(|l| m.materials.get(&l.material));
+    // The holes the voids of what is on its faces cut it with, where they are just over its underside (T16b).
+    let cut_by = slab_holes(m, id, crate::hosting::FaceRole::Bottom);
     for (face, rise) in &slabs {
-        for piece in m.less_shafts(face, *rise).0 {
+        for piece in less_holes(m.less_shafts(face, *rise).0, &cut_by) {
             let replaced = override_patterns(d, m, std::slice::from_ref(&piece), false, (P2(0.0, 0.0), 0.0));
             if !replaced && let Some(x) = material {
                 match x.surface_pattern.as_ref().and_then(|n| m.fill_patterns.get(n)) {
@@ -3437,7 +3634,7 @@ fn ceiling(d: &mut Drawing, m: &Model, c: &Ceiling) {
             }
         }
     }
-    for ring in std::iter::once(&c.boundary).chain(&c.openings) {
+    for ring in std::iter::once(&c.boundary).chain(&c.openings).chain(&cut_by) {
         d.line(ring, BY_CATEGORY, INK, true);
     }
     holes(d, m, &slabs);
@@ -3449,7 +3646,7 @@ fn ceiling(d: &mut Drawing, m: &Model, c: &Ceiling) {
     if t.grid <= 0.0 || (hi.0 - lo.0).max(hi.1 - lo.1) / t.grid > 2000.0 {
         return;
     }
-    let pieces: Vec<Vec<P2>> = slabs.iter().flat_map(|(face, rise)| m.less_shafts(face, *rise).0).collect();
+    let pieces: Vec<Vec<P2>> = slabs.iter().flat_map(|(face, rise)| less_holes(m.less_shafts(face, *rise).0, &cut_by)).collect();
     let mid = (lo + hi) * 0.5;
     for (u, across, (a, b)) in
         [(P2(0.0, 1.0), P2(1.0, 0.0), (lo.0 - mid.0, hi.0 - mid.0)), (P2(1.0, 0.0), P2(0.0, 1.0), (lo.1 - mid.1, hi.1 - mid.1))]
@@ -3555,6 +3752,60 @@ fn fit_by(extent: impl Fn(f64) -> [P2; 2], width: u32, height: u32, n: f64) -> V
     View { scale: fits_at, cx: (lo.0 + hi.0) / 2.0, cy: (lo.1 + hi.1) / 2.0, width, height }
 }
 
+/// A slab's cut piece in a section as its four corners, `[a0, b0, b1, a1]`: its bottom from left to right, then its top from
+/// right to left, as an uncut slab's comes. One a void cut (a mesh's slice, its points in any order, with points along its
+/// edges) is taken to its corners when it has two upright sides; a recess's or any other shape has none, and its layers are
+/// not drawn.
+fn quad(r: &[P2]) -> Option<[P2; 4]> {
+    if let &[a0, b0, b1, a1] = r
+        && a0.0 < b0.0
+        && (a0.0 - a1.0).abs() < 1e-6
+        && (b0.0 - b1.0).abs() < 1e-6
+    {
+        return Some([a0, b0, b1, a1]);
+    }
+    let n = r.len();
+    let corners: Vec<P2> = (0..n)
+        .filter(|&i| {
+            let (a, b, c) = (r[(i + n - 1) % n], r[i], r[(i + 1) % n]);
+            (b - a).cross(c - b).abs() > 1e-6 * (b - a).length().max(1.0) * (c - b).length().max(1.0)
+        })
+        .map(|i| r[i])
+        .collect();
+    // As it was before any void: four points in the order an uncut slab's come.
+    let as_given = || if let &[a0, b0, b1, a1] = r { Some([a0, b0, b1, a1]) } else { None };
+    let &[_, _, _, _] = corners.as_slice() else { return as_given() };
+    let mut by_x = corners;
+    by_x.sort_by(|p, q| p.0.total_cmp(&q.0));
+    let (l, h) = (by_x[0..2].to_vec(), by_x[2..4].to_vec());
+    if (l[0].0 - l[1].0).abs() > 1e-3 || (h[0].0 - h[1].0).abs() > 1e-3 || h[0].0 - l[0].0 < 1e-6 {
+        return as_given();
+    }
+    let low = |v: &[P2]| if v[0].1 < v[1].1 { (v[0], v[1]) } else { (v[1], v[0]) };
+    let ((a0, a1), (b0, b1)) = (low(&l), low(&h));
+    Some([a0, b0, b1, a1])
+}
+
+/// Where the cut plane at height `cut` passes through `voids` in a wall along `axis` with faces `ext` and `int` off it: the
+/// wall cleared there, inside its faces (and `past` beyond them, where the outlines' outer halves are), so a void deeper than
+/// the wall clears no more than the wall; its edges across the wall, the jambs.
+fn wall_voids(d: &mut Drawing, axis: &Axis, (ext, int): (f64, f64), past: f64, voids: &[Vec<[view3d::P3; 3]>], cut: f64) {
+    let off = |q: P2| axis.project(q).1;
+    for ring in voids.iter().flat_map(|v| view3d::level_slice(v, cut)) {
+        let clear = geom::clip(&geom::clip(&ring, |q| ext + past - off(q)), |q| off(q) - (int - past));
+        if clear.len() >= 3 {
+            d.fill(&[clear], PAPER);
+        }
+        let inside = geom::clip(&geom::clip(&ring, |q| ext - off(q)), |q| off(q) - int);
+        let on_face = |q: P2| (off(q) - ext).abs() < 1e-6 || (off(q) - int).abs() < 1e-6;
+        for (a, b) in geom::ring_edges(&inside) {
+            if inside.len() >= 3 && !(on_face(a) && on_face(b)) {
+                d.line(&[a, b], Pen::HEAVY, INK, false);
+            }
+        }
+    }
+}
+
 /// A door or window the cut plane at height `cut` passes through: a gap in the wall, jambs, and
 /// a leaf with its swing, or glass.
 #[allow(clippy::too_many_arguments)]
@@ -3582,20 +3833,7 @@ fn opening(d: &mut Drawing, m: &Model, e: &Element, o: &Opening, w: &Wall, cut: 
             d.line(&[axis.at(s, int), axis.at(s, ext)], Pen::HEAVY, INK, false);
         }
     } else {
-        let off = |q: P2| axis.project(q).1;
-        for ring in voids.iter().flat_map(|v| level_slice(v, cut)) {
-            let clear = geom::clip(&geom::clip(&ring, |q| ext + past - off(q)), |q| off(q) - (int - past));
-            if clear.len() >= 3 {
-                d.fill(&[clear], PAPER);
-            }
-            let inside = geom::clip(&geom::clip(&ring, |q| ext - off(q)), |q| off(q) - int);
-            let on_face = |q: P2| (off(q) - ext).abs() < 1e-6 || (off(q) - int).abs() < 1e-6;
-            for (a, b) in geom::ring_edges(&inside) {
-                if inside.len() >= 3 && !(on_face(a) && on_face(b)) {
-                    d.line(&[a, b], Pen::HEAVY, INK, false);
-                }
-            }
-        }
+        wall_voids(d, &axis, (ext, int), past, &voids, cut);
     }
     d.own(owner);
     if !shown || d.detail == Detail::Coarse {
@@ -3643,15 +3881,6 @@ fn opening(d: &mut Drawing, m: &Model, e: &Element, o: &Opening, w: &Wall, cut: 
             d.line(&axis.points(s0, s1, across), Pen::PROJECTION, INK, false);
         }
     }
-}
-
-/// Where the level plane at height `z` cuts closed mesh `tris`, as rings in plan: [`view3d::slice`] of the mesh turned on its
-/// side, so its upright plane is the level one.
-fn level_slice(tris: &[[view3d::P3; 3]], z: f64) -> Vec<Vec<P2>> {
-    const FAR: f64 = 1.0e6;
-    let turned: Vec<[view3d::P3; 3]> = tris.iter().map(|t| t.map(|p| [p[0], p[2] - z, p[1]])).collect();
-    let rings = view3d::slice(&turned, P2(-FAR, 0.0), P2(1.0, 0.0), 2.0 * FAR).unwrap_or_default();
-    rings.into_iter().map(|r| r.into_iter().map(|q| P2(q.0 - FAR, q.1)).collect()).collect()
 }
 
 /// A stair in the plan of `level`. From its own level: its risers up to the cut plane, a cut line
@@ -3777,7 +4006,7 @@ fn arrow(d: &mut Drawing, a: (f32, f32), b: (f32, f32)) -> (f32, f32) {
 /// A roof in the plan of its level: its outline, and where its slopes meet, its ridges, hips and
 /// valleys.
 // ponytail: openings aren't drawn; a dormer's roof covers its own. Draw them for skylights.
-fn roof(d: &mut Drawing, m: &Model, r: &Roof) {
+fn roof(d: &mut Drawing, m: &Model, id: Id, r: &Roof) {
     let faces = m.roof_faces(r).map_or_else(|_| vec![m.roof_outline(r)], |f| f.into_iter().flat_map(|(loops, _)| loops).collect());
     // A shaped one's creases thin, as a shaped floor's are, its outline and courtyards as any roof's.
     let shaped = !r.shape.is_empty();
@@ -3789,6 +4018,10 @@ fn roof(d: &mut Drawing, m: &Model, r: &Roof) {
         for ring in std::iter::once(&r.boundary).chain(&r.courtyards) {
             d.line(ring, BY_CATEGORY, INK, true);
         }
+    }
+    // The holes the voids of what is on its faces cut it with, where they are just under its top (T16b).
+    for ring in slab_holes(m, id, crate::hosting::FaceRole::Top) {
+        d.line(&ring, BY_CATEGORY, INK, true);
     }
 }
 
@@ -4599,6 +4832,63 @@ fn path(rings: &[&[(f32, f32)]], closed: bool) -> Option<tiny_skia::Path> {
         }
     }
     pb.finish()
+}
+
+/// `d`'s pixels, row by row as red, green, blue and alpha, drawn on paper or over `under` (a section's picture at its size):
+/// what a front end shows as a texture.
+pub fn rgba(d: &Drawing, under: Option<&view3d::Image>) -> Result<Vec<u8>, String> {
+    let mut pm = match under.filter(|i| i.width == d.view.width && i.height == d.view.height) {
+        Some(i) => picture(i.width, i.height, &i.rgba).ok_or("the image size is out of range")?,
+        None => {
+            let mut pm = Pixmap::new(d.view.width, d.view.height).ok_or("the image size is out of range")?;
+            pm.fill(Color::from_rgba8(PAPER.0, PAPER.1, PAPER.2, 255));
+            pm
+        }
+    };
+    paint(&mut pm, d);
+    Ok(pm.take())
+}
+
+/// A family's floor plan (F4), as Revit's family editor draws it: the project's plan of `level` (`draw`), and over it each
+/// component's forms seen from above whatever their height (a family's plan sees all of it), and where a form crosses the
+/// cut plane, its cut outline in the cut pen ([`crate::family::views::plan_cut`]). Project plans never cut a component.
+pub(crate) fn family_plan(m: &Model, level: Id, view: View) -> Drawing {
+    let mut d = draw(m, level, view);
+    let cut = m.level(level).map_or(crate::model::CUT_HEIGHT, |l| l.view_range.cut);
+    let look = Look::of(m, level);
+    let mut extra = Drawing::new(view);
+    (extra.k, extra.paper, extra.detail, extra.weights) = (d.k, d.paper, d.detail, d.weights);
+    for (&id, e) in m.elements.iter() {
+        let Element::Component(c) = e else { continue };
+        if !look.shows(id) {
+            continue;
+        }
+        let pieces = m.component_pieces(c);
+        extra.owner = Some(id);
+        extra.part(Part::Projection);
+        component(&mut extra, m, &pieces);
+        extra.part(Part::Cut);
+        for p in pieces.iter().filter(|p| p.bottom < cut && p.top > cut) {
+            for ring in crate::family::views::plan_cut(&p.tris, cut) {
+                extra.line(&ring, Pen::CUT, INK, true);
+            }
+        }
+    }
+    extra.owner = None;
+    extra.part(Part::Projection);
+    extra.by_category(|o, sub| style_of(m, o, sub));
+    look.dress(&mut extra);
+    extra.weigh(|o| annotates(m, o));
+    let subs = extra.take_subs();
+    for ((((prim, owner), part), pen), sub) in extra.prims.into_iter().zip(extra.owners).zip(extra.parts).zip(extra.pens).zip(subs) {
+        d.subs.resize(d.prims.len(), None);
+        d.subs.push(sub);
+        d.prims.push(prim);
+        d.owners.push(owner);
+        d.parts.push(part);
+        d.pens.push(pen);
+    }
+    d
 }
 
 pub fn png(d: &Drawing) -> Result<Vec<u8>, String> {
@@ -5715,5 +6005,161 @@ mod tests {
             _ => false,
         });
         assert!(through, "a run turns the corner");
+    }
+
+    /// The text a drawing letters for element `id`: how many strokes of lettering it owns.
+    fn lettered_by(d: &Drawing, id: Id) -> usize {
+        d.owners.iter().zip(&d.parts).filter(|(o, p)| **o == Some(id) && **p == Part::Text).count()
+    }
+
+    /// F4: a reference plane with a name prints it in plan, beyond its end, as Revit's does; one without prints nothing.
+    #[test]
+    fn a_named_reference_plane_prints_its_name_in_plan() {
+        let mut s = house();
+        let id = |v: serde_json::Value| v["id"].as_u64().unwrap();
+        let named =
+            id(s.execute("reference_plane", &serde_json::json!({"name": "Axis", "start": [2000, -1000], "end": [2000, 7000]})).unwrap());
+        let bare = id(s.execute("reference_plane", &serde_json::json!({"start": [5000, -1000], "end": [5000, 7000]})).unwrap());
+        let level = s.model.levels()[0].0;
+        let d = plan(&s.model, level, 800, 600);
+        assert!(lettered_by(&d, named) > 0, "its name is lettered");
+        assert_eq!(lettered_by(&d, bare), 0, "an unnamed one letters nothing");
+        assert!(drawn_by(&d, bare) > 0, "and is still drawn");
+    }
+
+    /// The box the lettering element `id` owns in `d` covers, in pixels: `[left, top, right, bottom]`.
+    fn lettering_box(d: &Drawing, id: Id) -> [f32; 4] {
+        let mut b = [f32::MAX, f32::MAX, f32::MIN, f32::MIN];
+        for (prim, _) in d.prims.iter().zip(d.owners.iter().zip(&d.parts)).filter(|(_, (o, p))| **o == Some(id) && **p == Part::Text) {
+            if let Prim::Line { pts, .. } = prim {
+                for &(x, y) in pts {
+                    b = [b[0].min(x), b[1].min(y), b[2].max(x), b[3].max(y)];
+                }
+            }
+        }
+        assert!(b[0] <= b[2], "{id} letters something");
+        b
+    }
+
+    fn apart(a: [f32; 4], b: [f32; 4]) -> bool {
+        a[2] < b[0] || b[2] < a[0] || a[3] < b[1] || b[3] < a[1]
+    }
+
+    /// Two named reference planes 100 mm apart, in plan and in a section across them: their names would lie on each other by
+    /// the ends they share, so the second is lettered by its other end, the first where it goes alone.
+    #[test]
+    fn the_names_of_two_planes_close_together_do_not_overlap() {
+        let mut s = house();
+        let id = |v: serde_json::Value| v["id"].as_u64().unwrap();
+        let mut plane = |name: &str, x: f64| {
+            id(s.execute("reference_plane", &serde_json::json!({"name": name, "start": [x, -1000], "end": [x, 7000]})).unwrap())
+        };
+        let (first, second) = (plane("Center (Left/Right)", 2000.0), plane("Edge", 2100.0));
+        let level = s.model.levels()[0].0;
+        let d = plan(&s.model, level, 800, 600);
+        let (a, b) = (lettering_box(&d, first), lettering_box(&d, second));
+        assert!(apart(a, b), "in plan: {a:?} and {b:?}");
+        // The first by its end (the top, 7000), the second by its start, at the bottom.
+        let (top, bottom) = (d.view.px(P2(2000.0, 7000.0)).1, d.view.px(P2(2000.0, -1000.0)).1);
+        assert!(a[3] < top && b[1] > bottom, "the first above its end, the second below its start: {a:?} {b:?}");
+        // Alone, the first is lettered as it was.
+        let mut alone = house();
+        alone
+            .execute("reference_plane", &serde_json::json!({"name": "Center (Left/Right)", "start": [2000, -1000], "end": [2000, 7000]}))
+            .unwrap();
+        let only = alone.model.elements.iter().find_map(|(i, e)| matches!(e, Element::RefPlane(_)).then_some(*i)).unwrap();
+        assert_eq!(lettering_box(&plan(&alone.model, level, 800, 600), only), a, "a plane alone is named where it was");
+        // A section across both: their traces upright, their names inside the frame, apart.
+        let cut = id(s.execute("section", &serde_json::json!({"start": [-1000, 1500], "end": [9000, 1500]})).unwrap());
+        let d = section(&s.model, cut, section_fit(&s.model, cut, 800, 600));
+        let (a, b) = (lettering_box(&d, first), lettering_box(&d, second));
+        assert!(apart(a, b), "in the section: {a:?} and {b:?}");
+        assert!(named_by_its_own_trace(&d, first) && named_by_its_own_trace(&d, second), "each by its own trace");
+        assert!(a[1] >= 0.0 && b[3] <= d.view.height as f32 && b[1] > a[3], "the first at the top, the second at the bottom");
+    }
+
+    /// Whether the name element `id` letters in `d` touches its own trace: its box within the gap a name keeps from its
+    /// trace's end (6 px of annotation) of the dashed line it draws.
+    fn named_by_its_own_trace(d: &Drawing, id: Id) -> bool {
+        let r = lettering_box(d, id);
+        let tol = 6.0 * d.k + 1.5;
+        let traces: Vec<&Vec<(f32, f32)>> = d
+            .prims
+            .iter()
+            .zip(&d.owners)
+            .filter_map(|(p, o)| match p {
+                Prim::Line { pts, dash: Some(_), .. } if *o == Some(id) => Some(pts),
+                _ => None,
+            })
+            .collect();
+        traces.iter().flat_map(|pts| pts.windows(2)).any(|w| {
+            (0..=400).any(|i| {
+                let t = i as f32 / 400.0;
+                let (x, y) = (w[0].0 + (w[1].0 - w[0].0) * t, w[0].1 + (w[1].1 - w[0].1) * t);
+                let dx = (r[0] - x).max(x - r[2]).max(0.0);
+                let dy = (r[1] - y).max(y - r[3]).max(0.0);
+                dx.hypot(dy) <= tol
+            })
+        })
+    }
+
+    /// Four named planes 100 mm apart, in plan and in a section: every name clear of the others and touching its own trace,
+    /// so none can be read as its neighbour's.
+    #[test]
+    fn crowded_plane_names_stay_clear_and_by_their_own_traces() {
+        let mut s = house();
+        let id = |v: serde_json::Value| v["id"].as_u64().unwrap();
+        let mut planes = Vec::new();
+        for (k, name) in ["Center (Left/Right)", "Edge", "Near", "Inner Face"].iter().enumerate() {
+            let x = 2000.0 + 100.0 * k as f64;
+            planes
+                .push(id(s.execute("reference_plane", &serde_json::json!({"name": name, "start": [x, -1000], "end": [x, 7000]})).unwrap()));
+        }
+        let level = s.model.levels()[0].0;
+        let cut = id(s.execute("section", &serde_json::json!({"start": [-1000, 1500], "end": [9000, 1500]})).unwrap());
+        for (what, d) in
+            [("plan", plan(&s.model, level, 800, 600)), ("section", section(&s.model, cut, section_fit(&s.model, cut, 800, 600)))]
+        {
+            for (i, a) in planes.iter().enumerate() {
+                assert!(named_by_its_own_trace(&d, *a), "{what}: plane {i}'s name by its own trace: {:?}", lettering_box(&d, *a));
+                for b in &planes[i + 1..] {
+                    assert!(apart(lettering_box(&d, *a), lettering_box(&d, *b)), "{what}: names {a} and {b} apart");
+                }
+            }
+        }
+    }
+
+    /// F4: a section or an elevation draws each reference plane square to it as Revit's do: its trace, dashed in the reference
+    /// planes' green, with its name; one it looks straight at (parallel to it) is not drawn.
+    #[test]
+    fn a_section_draws_the_reference_planes_square_to_it() {
+        let mut s = house();
+        let id = |v: serde_json::Value| v["id"].as_u64().unwrap();
+        let across =
+            id(s.execute("reference_plane", &serde_json::json!({"name": "Across", "start": [3000, -2000], "end": [3000, 8000]})).unwrap());
+        let level = id(s
+            .execute("reference_plane", &serde_json::json!({"name": "Sill", "start": [0, 0, 900], "end": [8000, 0, 900], "up": [0, 1, 0]}))
+            .unwrap());
+        let parallel =
+            id(s.execute("reference_plane", &serde_json::json!({"name": "Along", "start": [0, 3000], "end": [8000, 3000]})).unwrap());
+        let cut = id(s.execute("section", &serde_json::json!({"start": [-1000, 1500], "end": [9000, 1500]})).unwrap());
+        let d = section(&s.model, cut, section_fit(&s.model, cut, 800, 600));
+        let dashed_green = |p: Id| {
+            d.prims
+                .iter()
+                .zip(&d.owners)
+                .any(|(prim, o)| *o == Some(p) && matches!(prim, Prim::Line { dash: Some(_), color, .. } if *color == REFERENCE_PLANE))
+        };
+        assert!(dashed_green(across), "an upright plane across the section: its trace, upright");
+        assert!(dashed_green(level), "a level plane: its trace, level, at its height");
+        assert!(lettered_by(&d, across) > 0 && lettered_by(&d, level) > 0, "each named");
+        assert_eq!(drawn_by(&d, parallel), 0, "a plane the section looks straight at has no trace in it");
+        // The upright one's trace stands at its place along the line, 4000 from its start.
+        let x = d.view.px(P2(4000.0, 0.0)).0;
+        let upright = d.prims.iter().zip(&d.owners).any(|(prim, o)| {
+            *o == Some(across)
+                && matches!(prim, Prim::Line { pts, dash: Some(_), .. } if pts.len() == 2 && (pts[0].0 - x).abs() < 1.0 && (pts[1].0 - x).abs() < 1.0)
+        });
+        assert!(upright, "upright, 4000 along");
     }
 }

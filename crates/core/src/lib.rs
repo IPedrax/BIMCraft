@@ -43,6 +43,10 @@ pub mod electrical;
 #[cfg(test)]
 mod electrical_tests;
 pub mod engine;
+#[cfg(test)]
+mod face_host_tests;
+#[cfg(test)]
+mod face_void_tests;
 pub mod falls;
 pub mod family;
 #[cfg(test)]
@@ -57,6 +61,8 @@ pub mod favorites;
 pub mod fills;
 mod fixtures;
 mod font;
+#[cfg(test)]
+mod formula_visibility_tests;
 pub mod geom;
 #[cfg(test)]
 mod georef_tests;
