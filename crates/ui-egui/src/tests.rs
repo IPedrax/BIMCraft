@@ -6944,6 +6944,37 @@ fn a_selected_levels_plane_has_a_grip_on_each_edge_in_3d_that_drags_it() {
 }
 
 #[test]
+fn run_script_tries_a_script_then_runs_it_as_one_undo_step_and_never_touches_a_file() {
+    let mut h = app(BOX);
+    let walls = ids(&h, "wall").len();
+    // Manage grew past what a narrower window shows of it: wide enough for its last panel.
+    h.set_size(vec2(2200.0, 900.0));
+    press(&mut h, "Manage");
+    press(&mut h, "Run Script");
+    let field = "Commands, one a line (id {json params}; # starts a comment):";
+    let script = "# two walls\nwall {\"points\": [[20000, 0], [24000, 0]]}\nwall {\"points\": [[20000, 3000], [24000, 3000]]}";
+    type_into(&mut h, field, script);
+    // Try: what it would make, and nothing made.
+    press(&mut h, "Try");
+    assert!(h.query_by_label("Would make 2, change 0 and remove 0 elements.").is_some());
+    assert_eq!(ids(&h, "wall").len(), walls);
+    // Run: made, as one undo step, and the dialog closes.
+    press(&mut h, "Run");
+    assert_eq!(ids(&h, "wall").len(), walls + 2);
+    assert!(h.state().run_script.is_none());
+    assert!(!h.state().status.error && h.state().status.text.starts_with("Ran 2 lines as one undo step."), "{}", h.state().status.text);
+    assert_eq!(h.state().session.history().last().copied(), Some("Script"));
+    // A line that would write a file is refused before anything runs, and the dialog says which.
+    press(&mut h, "Run Script");
+    type_into(&mut h, field, "wall {\"points\": [[30000, 0], [34000, 0]]}\nsave {\"path\": \"/tmp/x.bimcraft\"}");
+    press(&mut h, "Run");
+    assert_eq!(ids(&h, "wall").len(), walls + 2);
+    assert!(h.state().run_script.as_ref().is_some_and(|d| d.said().is_some_and(|(s, error)| error && s.contains("line 2"))));
+    press(&mut h, "Close");
+    assert!(h.state().run_script.is_none());
+}
+
+#[test]
 fn select_by_id_finds_elements_by_id_guid_or_ifc_globalid_says_what_it_missed_and_shows_them() {
     let mut h = app(&format!("{BOX}\nwall {{\"points\": [[20000, 20000], [23000, 20000]], \"level\": \"Level 2\"}}"));
     let walls = ids(&h, "wall");

@@ -62,6 +62,7 @@ mod renames;
 mod retained;
 pub mod revit;
 mod ribbon;
+mod script;
 mod section;
 mod section_box;
 mod section_worker;
@@ -842,6 +843,8 @@ pub struct BimApp {
     purge_dialog: Option<purge::PurgeDialog>,
     /// Manage > Select by ID and IDs of Selection, while open.
     select_by_id: Option<inquiry::SelectById>,
+    /// Manage > Run Script, while open.
+    run_script: Option<script::RunScript>,
     /// The Work Plane dialog's draft, while it's open or picking its points in the 3D view.
     work_plane: Option<workplane::Draft>,
     /// The Work Plane dialog's Show (T12): the 3D view's work plane drawn as a grid whether or not it is being set.
@@ -1508,6 +1511,7 @@ impl BimApp {
             options_dialog: None,
             purge_dialog: None,
             select_by_id: None,
+            run_script: None,
             work_plane: None,
             show_work_plane: false,
             ids_of_selection: None,
@@ -2048,6 +2052,7 @@ impl BimApp {
             || self.options_dialog.is_some()
             || self.purge_dialog.is_some()
             || self.select_by_id.is_some()
+            || self.run_script.is_some()
             || self.work_plane.as_ref().is_some_and(|d| d.picking.is_none())
             || self.ids_of_selection.is_some()
             || self.selection_filter.is_some()
@@ -4605,6 +4610,13 @@ impl BimApp {
                 self.options_dialog = Some(phasing::OptionsDialog::default());
             }
         });
+        panel(ui, msg!("Macros"), |ui| {
+            let tip =
+                msg!("Run Script: commands, one a line as agents and the command line write them, tried first and run as one undo step");
+            if big_button(ui, Icon::Code, "Run Script", self.run_script.is_some(), tip).clicked() {
+                self.open_run_script();
+            }
+        });
     }
 
     fn modify_tab(&mut self, ui: &mut Ui) {
@@ -5794,6 +5806,7 @@ impl BimApp {
         }
         self.import_cad_window(ctx);
         self.select_by_id_window(ctx);
+        self.run_script_window(ctx);
         self.work_plane_window(ctx);
         self.ids_of_selection_window(ctx);
         self.selection_filter_window(ctx);
