@@ -3845,7 +3845,7 @@ impl BimApp {
                             1 => (format!("{}: {}", t("Outside 1 rule"), named.join(", ")), crate::codes::OUTSIDE),
                             n => (format!("{}: {}", tf("Outside {} rules", &[&n.to_string()]), named.join(", ")), crate::codes::OUTSIDE),
                         };
-                        p.text(cursor + vec2(14.0, 10.0), Align2::LEFT_TOP, said, FontId::proportional(11.5), color);
+                        p.text(cursor + vec2(18.0, 22.0), Align2::LEFT_TOP, said, FontId::proportional(11.5), color);
                     }
                 }
                 return;

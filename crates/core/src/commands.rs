@@ -2807,6 +2807,9 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
             // Where it is outside the project's building code, in words: a sign for whoever reads its properties.
             // Whether it stands on each level on its way (always said, so a front end can switch it); and its storeys.
             extra.insert("multistorey".into(), json!(st.multistorey));
+            // Its location line and how far it stands from it, said when they are the usual ones too.
+            extra.insert("line".into(), json!(st.line));
+            extra.insert("offset".into(), json!(st.offset));
             if st.multistorey {
                 let storeys: Vec<Value> = (m.storeys(st).into_iter())
                     .map(|(level, base, rise)| {

@@ -374,3 +374,13 @@ fn the_building_codes_dialog_writes_lengths_in_the_project_s_units() {
     assert!(code.ends_with(" m"), "{code}");
     assert!(h.query_by_label(&format!("Changed: the code says {code}")).is_some(), "{code}");
 }
+
+#[test]
+fn a_stair_s_properties_say_the_location_line_it_has() {
+    let mut h = app(BOX);
+    let id = h.state_mut().run("stair", json!({"start": [1000, 1000], "angle": 90})).unwrap()["id"].as_u64().unwrap();
+    h.state_mut().selection = vec![id];
+    h.run();
+    assert_eq!(field(&h, id, "line"), json!("centre"), "said, so Properties show it and not the first of the list");
+    assert_eq!(field(&h, id, "offset"), json!(0.0));
+}

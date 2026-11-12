@@ -131,7 +131,8 @@ pub(crate) fn findings(ui: &mut Ui, m: &Model, list: &Value) {
         }
         // What the core says of it, its fix after the colon, on a line of its own.
         let said = f["message"].as_str().unwrap_or("");
-        let fix = said.split_once(": ").map_or(said, |(_, fix)| fix);
+        // The core writes field names in backticks, for agents: plain here.
+        let fix = said.split_once(": ").map_or(said, |(_, fix)| fix).replace('`', "");
         ui.add(egui::Label::new(RichText::new(fix).small()).wrap());
     }
     ui.separator();
@@ -291,7 +292,7 @@ impl BimApp {
                             }
                             ui.vertical(|ui| {
                                 for c in &p.changes {
-                                    ui.add(egui::Label::new(c).wrap());
+                                    ui.add(egui::Label::new(c.replace('`', "")).wrap());
                                 }
                                 if !p.findings.is_empty() {
                                     let left: Vec<&str> = p
