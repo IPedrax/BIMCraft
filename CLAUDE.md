@@ -126,7 +126,7 @@ One line per module: what it owns. Read its file and, for the areas it names, th
 
 Plugins: [notes](crates/plugin/CLAUDE.md), [sdk](crates/plugin-sdk/CLAUDE.md), [area](docs/areas/plugins.md), one `unsafe`.
 
-`crates/ui-egui` (`bimcraft-ui-egui`, a thin shell over the core; notes: [crates/ui-egui/CLAUDE.md](crates/ui-egui/CLAUDE.md); area: [the desktop](docs/areas/desktop.md)):
+`crates/ui-egui` (`bimcraft-ui-egui`, a thin shell over the core; notes: [crates/ui-egui/CLAUDE.md](crates/ui-egui/CLAUDE.md); areas: [the desktop](docs/areas/desktop.md), [keyboard shortcuts](docs/areas/shortcuts.md)):
 
 - Its module map, a line for each file, is in [crates/ui-egui/CLAUDE.md](crates/ui-egui/CLAUDE.md): a new module of the window adds its line there.
 

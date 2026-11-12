@@ -997,11 +997,17 @@ fn a_picked_file_is_copied_to_a_folder_of_the_chats_and_what_is_not_sendable_is_
 
 #[test]
 fn a_file_name_that_could_end_the_block_early_is_cleaned() {
-    let dir = tempfile::tempdir().unwrap();
-    std::fs::write(dir.path().join("a\"><b.txt"), "x").unwrap();
-    let mut chat = chat_on(&Arc::new(Fake::default()));
-    chat.attach(&dir.path().join("a\"><b.txt"));
-    assert_eq!(chat.attached[0].name, "a___b.txt");
+    assert_eq!(crate::attach::clean("a\"><b.txt"), "a___b.txt");
+    assert_eq!(crate::attach::clean("a\\b.txt"), "a_b.txt");
+    // A quote or angle bracket cannot be a file name on Windows, so only Unix stages such a file.
+    #[cfg(not(windows))]
+    {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("a\"><b.txt"), "x").unwrap();
+        let mut chat = chat_on(&Arc::new(Fake::default()));
+        chat.attach(&dir.path().join("a\"><b.txt"));
+        assert_eq!(chat.attached[0].name, "a___b.txt");
+    }
 }
 
 #[test]
