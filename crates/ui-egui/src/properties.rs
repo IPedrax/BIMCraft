@@ -1939,6 +1939,22 @@ impl BimApp {
                         l.balance = 0;
                     }
                 }
+                if l.winders == 0 && matches!(l.turn.abs(), 0.0 | 90.0 | 180.0) {
+                    let name = ui
+                        .label(t("Next Run Width"))
+                        .on_hover_text(t("How wide the run after this landing is; empty for as wide as the run before"));
+                    let now = if l.width > 0.0 { units.length(l.width) } else { String::new() };
+                    if let Some(typed) = self.field(ui, id, &format!("landing-{i}-width"), now, name.id, &units.length(st.width)) {
+                        match (typed.trim().is_empty(), units.parse(&typed)) {
+                            (true, _) => (l.width, changed) = (0.0, true),
+                            (_, Some(x)) => (l.width, changed) = (x, true),
+                            _ => failed = Some(tf("`{}` is not a length", &[typed.trim()])),
+                        }
+                    }
+                    ui.end_row();
+                } else {
+                    l.width = 0.0;
+                }
                 if l.winders == 0 {
                     let name = ui
                         .label(t("Landing Length"))

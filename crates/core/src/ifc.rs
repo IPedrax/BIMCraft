@@ -1195,7 +1195,7 @@ pub fn export(m: &Model) -> String {
                     let steps: Vec<(u64, f64, f64)> = (1..run.risers)
                         .map(|k| {
                             let k = f64::from(k);
-                            (w.rectangle(P2((k - 0.5) * st.tread, 0.0), P2(st.tread, st.width)), base - run.z.0, run.z.0 - base + k * each)
+                            (w.rectangle(P2((k - 0.5) * st.tread, 0.0), P2(st.tread, run.width)), base - run.z.0, run.z.0 - base + k * each)
                         })
                         .collect();
                     let shape = w.bodies(&steps, &[], None);
@@ -1223,7 +1223,7 @@ pub fn export(m: &Model) -> String {
                 for (i, run) in l.runs.iter().enumerate() {
                     let g = run.u * ((run.z.1 - run.z.0) / run.length.max(1e-9));
                     let top = walls::Plane { z: run.z.0 - g.dot(run.start), g };
-                    let brep = w.prism(&run.ring(r.width), &walls::Plane::flat(base), &top, base);
+                    let brep = w.prism(&run.ring(), &walls::Plane::flat(base), &top, base);
                     let shape = w.solid(&[brep], &[]);
                     let fat = w.place(Some(at), (0.0, 0.0, 0.0), None);
                     parts.push(

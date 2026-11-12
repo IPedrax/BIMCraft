@@ -73,7 +73,7 @@ fn element_lines(m: &Model, e: &Element) -> Vec<Line> {
             r.groups().iter().flat_map(|g| crate::groups::placed(m, g)).flat_map(|e| element_lines(m, &e)).collect()
         }
         Element::Stair(_) | Element::Ramp(_) => crate::stairs::layout(m, e).map_or_else(Vec::new, |l| {
-            l.runs.iter().flat_map(|r| path(&r.ring(l.width), true)).chain(l.pads.iter().flat_map(|p| path(&p.ring, true))).collect()
+            l.runs.iter().flat_map(|r| path(&r.ring(), true)).chain(l.pads.iter().flat_map(|p| path(&p.ring, true))).collect()
         }),
         Element::Railing(r) => path(&crate::stairs::railing(m, r).iter().map(|(p, _)| *p).collect::<Vec<_>>(), false),
         Element::RoomSeparator(r) => vec![(r.start, r.end)],

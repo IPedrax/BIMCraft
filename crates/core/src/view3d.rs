@@ -946,7 +946,7 @@ fn solids_in_with(
                     let frame = Frame { o: run.start, u: run.u, n: run.u.perp() };
                     for k in 1..run.risers {
                         let k = f64::from(k);
-                        let (a, c) = (((k - 1.0) * st.tread, k * st.tread), (-st.width / 2.0, st.width / 2.0));
+                        let (a, c) = (((k - 1.0) * st.tread, k * st.tread), (-run.width / 2.0, run.width / 2.0));
                         out.push(Solid::Box { owner: id, color: SLAB, tex: 0, frame, a, c, z: (base, run.z.0 + k * each) });
                     }
                 }
@@ -962,7 +962,7 @@ fn solids_in_with(
                         owner: id,
                         color: SLAB,
                         tex: 0,
-                        ring: run.ring(r.width),
+                        ring: run.ring(),
                         bottom: Plane::flat(base),
                         top,
                         curve: None,

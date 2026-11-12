@@ -1691,6 +1691,10 @@ pub struct Landing {
     /// Balanced so, every tread of the turn has some depth at its narrow end.
     #[serde(default, skip_serializing_if = "no_winders")]
     pub balance: u32,
+    /// How wide the run after it is; 0 for as wide as the run before it. Only after a landing that goes straight on,
+    /// turns square or turns back.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub width: f64,
     /// How deep it is along the run that climbs onto it; 0 for as deep as the runs are wide. A landing that turns
     /// left or right is no shorter than that, the next run leaving from its far end.
     #[serde(default, skip_serializing_if = "is_zero")]
@@ -7958,6 +7962,18 @@ fn landings(who: &str, landings: &[Landing], risers: Option<f64>) -> Result<(), 
         }
         if l.winders > 30 {
             return Err(format!("{who}: {} winders in one turn; 30 at most", l.winders));
+        }
+        coord(&format!("{who} landing width"), l.width)?;
+        if l.width < 0.0 || (l.width > 0.0 && l.width < 100.0) {
+            return Err(format!(
+                "{who}: the run after a landing is `width` 100 mm wide or more, or 0 for as wide as the run before, not {}",
+                l.width
+            ));
+        }
+        if l.width > 0.0 && (l.winders > 0 || !matches!(l.turn.abs(), 0.0 | 90.0 | 180.0)) {
+            return Err(format!(
+                "{who}: the next run takes a `width` of its own after a landing that goes straight on, turns square or turns back, not on winders or at another angle"
+            ));
         }
         coord(&format!("{who} landing length"), l.length)?;
         if l.length < 0.0 {

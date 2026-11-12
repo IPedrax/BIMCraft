@@ -500,7 +500,12 @@ pub fn stair_findings(m: &Model, st: &Stair) -> Vec<Finding> {
     } else {
         st.tread
     };
-    let width = if drawn { st.sketch.iter().map(|s| s.riser[0].dist(s.riser[1])).fold(f64::INFINITY, f64::min) } else { st.width };
+    let width = if drawn {
+        st.sketch.iter().map(|s| s.riser[0].dist(s.riser[1])).fold(f64::INFINITY, f64::min)
+    } else {
+        // Its narrowest run.
+        st.landings.iter().filter(|l| l.width > 0.0).map(|l| l.width).fold(st.width, f64::min)
+    };
     let mut range = |rule_min: &'static str, rule_max: &'static str, what: &str, v: f64, min: f64, max: f64, fix: (&str, &str)| {
         if v < min - EPS {
             out.push(Finding {

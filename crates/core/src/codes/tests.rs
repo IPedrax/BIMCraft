@@ -185,7 +185,7 @@ fn a_stair_stands_by_its_location_line_which_stays_when_it_widens() {
     let id = run(&mut s, "stair", json!({"start": [0, 0], "angle": 90, "width": 1000, "line": "left"}))["id"].as_u64().unwrap();
     let left = |s: &Session| {
         let l = crate::stairs::stair(&s.model, &stair_of(s, id));
-        l.runs[0].ring(l.width).iter().map(|p| p.0).fold(f64::INFINITY, f64::min)
+        l.runs[0].ring().iter().map(|p| p.0).fold(f64::INFINITY, f64::min)
     };
     assert!(left(&s).abs() < 1e-6);
     run(&mut s, "modify", json!({"id": id, "width": 1400}));
@@ -333,7 +333,7 @@ fn a_stair_flipped_climbs_the_other_way_over_the_same_ground() {
         let mut pts: Vec<(i64, i64)> = l
             .runs
             .iter()
-            .flat_map(|r| r.ring(l.width))
+            .flat_map(|r| r.ring())
             .chain(l.pads.iter().flat_map(|p| p.ring.clone()))
             .map(|p| ((p.0 * 10.0).round() as i64, (p.1 * 10.0).round() as i64))
             .collect();
@@ -472,7 +472,7 @@ fn a_stair_turns_by_any_angle_on_a_landing_or_on_winders() {
     assert!((b.u.0 + 0.5f64.sqrt()).abs() < 1e-9 && (b.u.1 - 0.5f64.sqrt()).abs() < 1e-9, "north-west: {:?}", b.u);
     // The runs share the inside corner of the turn, the left end of the first run's top.
     let corner = a.end() + P2(-500.0, 0.0);
-    assert!(b.ring(1000.0).iter().any(|q| q.dist(corner) < 1e-6), "{:?}", b.ring(1000.0));
+    assert!(b.ring().iter().any(|q| q.dist(corner) < 1e-6), "{:?}", b.ring());
     // The landing: a kite of w × w·tan(22.5°).
     let kite = 1000.0 * 1000.0 * (22.5f64).to_radians().tan();
     assert!((crate::geom::area(&l.pads[0].ring) - kite).abs() < 1e-3, "{}", crate::geom::area(&l.pads[0].ring));
@@ -845,4 +845,48 @@ fn the_solver_balances_winders_that_come_to_a_point() {
     assert!(first["changes"].as_array().unwrap().iter().any(|c| c.as_str().unwrap().contains("balanced over 1 tread")), "{first}");
     run(&mut s, "stair_solve", json!({"id": id, "apply": 1}));
     assert_eq!(broken(&mut s, id), Vec::<String>::new());
+}
+
+#[test]
+fn a_run_after_a_landing_takes_a_width_of_its_own() {
+    use crate::geom::P2;
+    let mut s = Session::new();
+    // North 1200 wide; then left, 900 wide; then back beside that run, 1500 wide.
+    let p = json!({"start": [0, 0], "angle": 90, "width": 1200,
+        "landings": [{"at": 6, "turn": 90, "width": 900}, {"at": 11, "turn": 180, "width": 1500}]});
+    let id = run(&mut s, "stair", p)["id"].as_u64().unwrap();
+    let st = stair_of(&s, id);
+    let l = crate::stairs::stair(&s.model, &st);
+    assert_eq!(l.runs.iter().map(|r| r.width).collect::<Vec<_>>(), [1200.0, 900.0, 1500.0]);
+    // The first landing is as wide as the first run and as deep as the second is wide; the second run leaves its far end.
+    let top = 5.0 * 280.0;
+    let near = |a: P2, b: P2| a.dist(b) < 1e-6;
+    assert!((crate::geom::area(&l.pads[0].ring) - 1200.0 * 900.0).abs() < 1e-3);
+    assert!(near(l.runs[1].start, P2(-600.0, top + 450.0)), "{:?}", l.runs[1].start);
+    // The landing back is across both runs, 900 + 1500, and as deep as the run onto it is wide.
+    assert!((crate::geom::area(&l.pads[1].ring) - 2400.0 * 900.0).abs() < 1e-3, "{}", crate::geom::area(&l.pads[1].ring));
+    let end = l.runs[1].end();
+    assert!(
+        near(l.runs[2].start, end + P2(0.0, -1200.0)),
+        "beside it to its left, their middles 1200 apart: {:?} from {:?}",
+        l.runs[2].start,
+        end
+    );
+    // Its narrowest run is held to the least width; flipped, the widths are met the other way round.
+    run(&mut s, "building_code", json!({"stairs": {"width_min": 1000}}));
+    assert_eq!(broken(&mut s, id), ["width_min"]);
+    run(&mut s, "flip", json!({"ids": [id]}));
+    let back = stair_of(&s, id);
+    assert_eq!((back.width, back.landings.iter().map(|l| l.width).collect::<Vec<_>>()), (1500.0, vec![900.0, 1200.0]));
+    let widths: Vec<f64> = crate::stairs::stair(&s.model, &back).runs.iter().map(|r| r.width).collect();
+    assert_eq!(widths, [1500.0, 900.0, 1200.0]);
+
+    for bad in [
+        json!([{"at": 6, "turn": 90, "winders": 3, "width": 900}]),
+        json!([{"at": 6, "turn": 45, "width": 900}]),
+        json!([{"at": 6, "turn": 90, "width": 50}]),
+        json!([{"at": 6, "turn": 90, "width": -900}]),
+    ] {
+        assert!(s.execute("stair", &json!({"start": [0, 0], "angle": 90, "landings": bad})).is_err(), "{bad}");
+    }
 }

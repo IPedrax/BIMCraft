@@ -669,7 +669,7 @@ other_files(
         "stair",
         ui_msg!("Stair"),
         &[],
-        "{start: [x,y], end?: [x,y] | angle?, level?, top_level?, height?, width?, riser?, tread?, landings?: [{at, turn?, winders?, balance?, length?}, …], \
+        "{start: [x,y], end?: [x,y] | angle?, level?, top_level?, height?, width?, riser?, tread?, landings?: [{at, turn?, winders?, balance?, length?, width?}, …], \
          line?, offset?, spiral?, sketch?, type?, multistorey?, railings?} a stair from the middle of its first riser at `start`, climbing toward `end` (or `angle` degrees) up to the next level: \
          as many risers as keep each at most `riser` mm, treads `tread` deep (the project's building code's, 180 and 280 with \
          none: `building_code`), `width` wide (1000). One straight \
@@ -680,7 +680,8 @@ other_files(
          last; a code that does not allow them still builds them, and `stair_check` says so. With `balance` (treads), the winders run that \
          many treads into the flight on each side, and those treads and the winders are redrawn as steps equal along the walk line \
          and along the inside string, so none comes to a point. \
-         A landing is `length` deep along the run that climbs onto it (0 or none: as deep as the stair is wide). \
+         A landing is `length` deep along the run that climbs onto it (0 or none: as deep as the stair is wide), and the run \
+         after it is `width` wide (0 or none: as wide as the run before), after a landing straight on, square or back. \
          `line` says which line of the stair `start` is on, \"left\", \"centre\" (as it is with none) or \"right\" looking up it, \
          and `offset` moves the stair that far to the left of the line: the line stays when the width changes. \
          With `spiral`: {radius, sweep?}, the stair winds about a centre `radius` from its middle line, to the left of its first \

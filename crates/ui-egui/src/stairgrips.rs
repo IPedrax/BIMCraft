@@ -104,7 +104,7 @@ impl BimApp {
             let square = ui.input(|i| i.modifiers.shift);
             shown = self.stair_dragged(m, level, v, &st, grip, (q.x - rect.min.x, q.y - rect.min.y), square);
             let l = stairs::stair(m, &shown);
-            let rings = l.runs.iter().map(|r| r.ring(l.width)).chain(l.pads.iter().map(|pad| pad.ring.clone()));
+            let rings = l.runs.iter().map(|r| r.ring()).chain(l.pads.iter().map(|pad| pad.ring.clone()));
             for ring in rings {
                 let ring: Vec<Pos2> = ring.into_iter().map(&at).collect();
                 p.add(Shape::closed_line(ring, Stroke::new(1.0, pal().accent)));

@@ -2074,6 +2074,7 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"start": [0, 0], "angle": 0, "multistorey": true, "top_level": 100002, "riser": 1e-9}),
         json!({"sketch": [{"riser": [[0, 0], [1e300, 0]], "outline": [[0, 0]]}, {"riser": "x"}], "height": 1e9}),
         json!({"sketch": [{"riser": [[0, 0], [1000, 0]]}, {"riser": [[0, 1e-9], [1000, 1e-9]], "outline": [[0, 0], [1, 0], [0, 1e300]]}], "spiral": {"radius": 5}}),
+        json!({"start": [0, 0], "angle": 0, "landings": [{"at": 6, "turn": 90, "width": 1e300}, {"at": 10, "turn": 180, "width": 5e-324}]}),
         json!({"id": 100002, "headroom": 1e300}),
         json!({"id": "x", "headroom": -1}),
         json!({"id": 100002, "lock": ["risers", 5, "x"], "apply": 1e300}),

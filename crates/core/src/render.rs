@@ -1137,14 +1137,14 @@ fn plan_shows_among(m: &Model, key: Guid, among: bool) -> Vec<P2> {
             // A multistorey stair is on the plan of every level it passes.
             Element::Stair(st) if st.multistorey && m.storeys(st).iter().any(|s| s.0 == level) => {
                 if let Some(l) = stairs::layout(m, e) {
-                    extent.extend(l.runs.iter().flat_map(|r| r.ring(l.width)).chain(l.pads.into_iter().flat_map(|p| p.ring)));
+                    extent.extend(l.runs.iter().flat_map(|r| r.ring()).chain(l.pads.into_iter().flat_map(|p| p.ring)));
                 }
             }
             Element::Stair(Stair { level: l, top_level: t, .. }) | Element::Ramp(Ramp { level: l, top_level: t, .. })
                 if *l == level || *t == Some(level) =>
             {
                 if let Some(l) = stairs::layout(m, e) {
-                    extent.extend(l.runs.iter().flat_map(|r| r.ring(l.width)).chain(l.pads.into_iter().flat_map(|p| p.ring)));
+                    extent.extend(l.runs.iter().flat_map(|r| r.ring()).chain(l.pads.into_iter().flat_map(|p| p.ring)));
                 }
             }
             Element::Railing(rl) if m.level_of(e) == Some(level) => extent.extend(stairs::railing(m, rl).into_iter().map(|(p, _)| p)),
@@ -3616,7 +3616,6 @@ fn part(line: &[(P2, f64)], from: f64, to: f64) -> Vec<(P2, f64)> {
 /// break mark across the run the plane passes through; what is over it dashed, or left out where the storey below is
 /// drawn there.
 fn flights(d: &mut Drawing, st: &Stair, l: &stairs::Layout, cut: f64, dashed: bool) {
-    let half = st.width / 2.0;
     // A line over the cut plane: dashed, or not drawn.
     let above = |d: &mut Drawing, a: P2, b: P2| {
         if dashed {
@@ -3624,6 +3623,7 @@ fn flights(d: &mut Drawing, st: &Stair, l: &stairs::Layout, cut: f64, dashed: bo
         }
     };
     for run in &l.runs {
+        let half = run.width / 2.0;
         let at = |along: f64, across: f64| run.start + run.u * along + run.u.perp() * across;
         let each = if run.risers > 0 { (run.z.1 - run.z.0) / f64::from(run.risers) } else { 0.0 };
         for k in 0..run.risers {
@@ -3712,7 +3712,7 @@ fn ramp(d: &mut Drawing, m: &Model, r: &Ramp, level: impl Key) {
     }
     let l = stairs::ramp(m, r);
     let cut = if up { m.plan_range(level).cut } else { f64::INFINITY };
-    let rings = l.runs.iter().map(|run| (run.ring(r.width), run.z.0)).chain(l.pads.iter().map(|p| (p.ring.clone(), p.z)));
+    let rings = l.runs.iter().map(|run| (run.ring(), run.z.0)).chain(l.pads.iter().map(|p| (p.ring.clone(), p.z)));
     for (ring, z) in rings {
         for (a, b) in geom::ring_edges(&ring) {
             segment(d, a, b, z > cut);
