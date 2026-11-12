@@ -46,9 +46,11 @@ fn a_component_knows_the_room_it_stands_in() {
 fn an_outlet_on_a_walls_face_is_in_the_room_on_that_side() {
     let mut s = Session::new();
     two_rooms(&mut s);
-    // The bottom wall runs from y -100 to 100 and the middle one from x 3900 to 4100: on their faces, inside each room.
-    let bottom = id(&run(&mut s, "component", json!({"family": "Outlet", "at": [2000, 100]})));
-    let middle = id(&run(&mut s, "component", json!({"family": "Outlet", "at": [4100, 1500]})));
+    // The bottom wall runs from y -100 to 100 and the middle one from x 3900 to 4100: on their faces, inside each room, each
+    // facing its room as one placed on the face does. An outlet's room calculation point stands 150 mm in front of it (its
+    // front is toward -y), so the one on the bottom wall's north face is turned to face north.
+    let bottom = id(&run(&mut s, "component", json!({"family": "Outlet", "at": [2000, 100], "angle": 180})));
+    let middle = id(&run(&mut s, "component", json!({"family": "Outlet", "at": [4100, 1500], "angle": 90})));
     assert_eq!(inspect(&mut s, bottom)["room_name"], "Sala");
     assert_eq!(inspect(&mut s, middle)["room_name"], "Cozinha");
     // The same, with the rooms measured at the finish faces.

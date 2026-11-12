@@ -27,15 +27,11 @@ fn cabinet() -> (Harness<'static, BimApp>, Pictures) {
 
 /// Whether the family document's view hides anything for now.
 fn hiding(h: &Harness<BimApp>) -> bool {
-    h.state().family_editor.as_ref().is_some_and(|ed| ed.temporary().hides())
+    h.state().active_family().is_some_and(|ed| ed.temporary().hides())
 }
 
-/// Form `n` (from 1) of a family that isn't adaptive selected from the Project Browser's Forms list, as a user picks it; the
-/// Properties' Symbols tab in front, so the Forms tab's own rows aren't there too.
+/// Form `n` (from 1) of a family that isn't adaptive selected from the Project Browser's Forms list, as a user picks it.
 fn select_form(h: &mut Harness<BimApp>, n: usize) {
-    if h.query_by_label("Symbols").is_some() {
-        press(h, "Symbols");
-    }
     press(h, &format!("{n}. Extrusion"));
 }
 
@@ -60,7 +56,7 @@ fn hide_and_isolate_element_and_category_change_what_the_preview_draws_and_reset
     assert!(first.iter().all(|&i| first_hidden.pixels[i] == ground), "where it was is the ground");
     assert!(!bare(&first_hidden, ground), "the second form stays");
     // The form selected was let go; it is still in the Forms list.
-    assert!(h.state().family_editor.as_ref().unwrap().selected_form().is_none());
+    assert!(h.state().active_family().unwrap().selected_form().is_none());
     assert!(h.query_all_by_label("1. Extrusion").count() > 0);
     // HR: as it was.
     shortcut(&mut h, "HR");
@@ -162,7 +158,7 @@ fn temporary_hide_is_not_saved_no_step_and_no_unsaved_change_and_goes_with_the_f
     select_form(&mut h, 1);
     shortcut(&mut h, "HH");
     assert!(hiding(&h));
-    let ed = h.state().family_editor.as_ref().unwrap();
+    let ed = h.state().active_family().unwrap();
     assert!(!ed.unsaved(), "hiding is no change to the family");
     assert_eq!(ed.draft_family().unwrap().forms.iter().filter(|f| f.visible.is_some()).count(), 1, "the draft is as it was");
     // Undo: nothing to undo, so the form stays hidden.
@@ -217,7 +213,7 @@ pub(super) fn adaptive() -> (Harness<'static, BimApp>, Vec<String>, String) {
     let mut h = app("");
     h.set_size(vec2(1800., 1000.));
     h.state_mut().new_family(Category::Generic);
-    if let Some(ed) = h.state_mut().family_editor.as_mut() {
+    if let Some(ed) = h.state_mut().active_family_mut() {
         ed.adaptive = Some(d);
     }
     h.run();
@@ -227,7 +223,7 @@ pub(super) fn adaptive() -> (Harness<'static, BimApp>, Vec<String>, String) {
 
 /// A click in the modelling view at model point `p`.
 fn click_model(h: &mut Harness<BimApp>, p: [f64; 3]) {
-    let pos = h.state().family_editor.as_ref().map(|e| e.modeller.screen(p)).unwrap();
+    let pos = h.state().active_family().map(|e| e.modeller.screen(p)).unwrap();
     h.hover_at(pos);
     h.run();
     for pressed in [true, false] {
@@ -237,14 +233,14 @@ fn click_model(h: &mut Harness<BimApp>, p: [f64; 3]) {
 }
 
 fn select(h: &mut Harness<BimApp>, ids: &[&String]) {
-    if let Some(ed) = h.state_mut().family_editor.as_mut() {
+    if let Some(ed) = h.state_mut().active_family_mut() {
         ed.modeller.selection = ids.iter().map(|s| s.to_string()).collect();
     }
     h.run();
 }
 
 fn selection(h: &Harness<BimApp>) -> Vec<String> {
-    h.state().family_editor.as_ref().unwrap().modeller.selection.clone()
+    h.state().active_family().unwrap().modeller.selection.clone()
 }
 
 /// What the modelling view drew: the forms' triangles, the reference points (filled dots 3.5 across), and whether the datums are.
@@ -299,7 +295,7 @@ fn hide_and_isolate_in_the_adaptive_view_leave_out_points_forms_and_datums_and_h
     assert_eq!(drawn(&h), (0, 4, false));
     assert!(framed_in(&h, CYAN), "the adaptive view wears the frame too");
     // No change to the family, no step.
-    assert!(!h.state().family_editor.as_ref().unwrap().unsaved());
+    assert!(!h.state().active_family().unwrap().unsaved());
     press(&mut h, "Undo");
     assert!(hiding(&h));
     shortcut(&mut h, "HR");

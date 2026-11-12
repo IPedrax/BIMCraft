@@ -196,7 +196,7 @@ pub(super) fn without(f: &Family, hidden: impl Fn(usize) -> bool) -> Option<Fami
 impl BimApp {
     /// Temporary Hide/Isolate in the family document's view; what it can't do, in the status bar.
     pub(crate) fn family_temp(&mut self, asked: Asked) {
-        let Some(ed) = self.family_editor.as_mut() else { return };
+        let Some(ed) = self.active_family_mut() else { return };
         if let Err(why) = ed.temp(asked) {
             self.status = Status { text: t(why).into(), error: true };
         }
@@ -264,16 +264,26 @@ impl BimApp {
             };
             // Reference Plane, in a family's plan or elevation (F4): the family document's own.
             if self.typed == "RP"
-                && let Some(ed) = self.family_editor.as_mut()
+                && let Some(ed) = super::tabs::active_in(&mut self.families, self.sheet)
                 && ed.editing_2d()
             {
                 self.typed.clear();
                 ed.reference_plane_tool();
                 continue;
             }
+            // Trim/Extend to Corner while a form is sketched (F10a).
+            if self.typed == "TR"
+                && let Some(ed) = super::tabs::active_in(&mut self.families, self.sheet)
+                && let Some(s) = ed.sketch.as_mut()
+            {
+                s.trim_tool();
+                ed.views.aligning = None;
+                self.typed.clear();
+                continue;
+            }
             // Aligned Dimension and Align there too (F7).
             if matches!(self.typed.as_str(), "DI" | "AL")
-                && let Some(ed) = self.family_editor.as_mut()
+                && let Some(ed) = super::tabs::active_in(&mut self.families, self.sheet)
                 && ed.editing_2d()
             {
                 if self.typed == "DI" {

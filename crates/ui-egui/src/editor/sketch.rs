@@ -115,7 +115,18 @@ pub(crate) struct FormSketch {
     /// Locks added while sketching, and those the form had that were taken off: written at Finish, dropped by Cancel.
     pub(crate) locks: Vec<FamilyDimension>,
     pub(crate) unlocked: Vec<Guid>,
+    /// Pick Lines' Lock, on the Options Bar (F10a): a line picked from a reference is locked to it, as Align's padlock locks.
+    pub(crate) lock: bool,
+    /// Trim/Extend to Corner (TR), on: the first line picked, where it was clicked (the part kept).
+    pub(crate) trim: Option<Option<(usize, P2)>>,
 }
+
+/// What Pick Lines picks: the line, and the reference it lies on, if the view found one, as a lock waiting for the sketch's
+/// line (its `refs` the reference alone): what Lock adds.
+pub(crate) type Picked = (Curve, Option<FamilyDimension>);
+
+/// What Pick Lines picks in a plan or an elevation: the line in the view's millimetres, and the lock waiting, as [`Picked`].
+pub(crate) type PickedInView = ((P2, P2), Option<FamilyDimension>);
 
 /// A padlock shown while a form is sketched (F7b): Align's offer (open), a lock added while sketching, one the form had.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -233,7 +244,30 @@ impl FormSketch {
 
     /// A click at `p` on the plane: the next point of the shape (made once it has its points), or with Modify a line picked;
     /// `pick` is what Pick Lines finds there. What went wrong, if anything.
-    fn click(&mut self, p: P2, reach: f64, shift: bool, pick: &dyn Fn() -> Result<Curve, String>) -> Option<String> {
+    fn click(&mut self, p: P2, reach: f64, shift: bool, pick: &dyn Fn() -> Result<Picked, String>) -> Option<String> {
+        // Trim/Extend to Corner: two lines, each on the part to keep.
+        if let Some(first) = self.trim {
+            let Some(i) = self.sketch.line_at(p, reach) else {
+                return Some(t("Pick a line of the sketch, on the part to keep.").to_string());
+            };
+            match first {
+                None => self.trim = Some(Some((i, p))),
+                Some((a, keep)) if a != i => {
+                    self.trim = Some(None);
+                    let (Some(la), Some(lb)) = (self.sketch.lines.get(a), self.sketch.lines.get(i)) else { return None };
+                    match shapes::corner(&la.curve, keep, &lb.curve, p) {
+                        Some((ca, cb)) => {
+                            self.sketch.lines[a].curve = ca;
+                            self.sketch.lines[i].curve = cb;
+                            self.sketch.changed();
+                        }
+                        None => return Some(t("These lines don't meet: pick two that would, on the parts to keep.").to_string()),
+                    }
+                }
+                Some(_) => {}
+            }
+            return None;
+        }
         match self.tool {
             None => {
                 match self.sketch.line_at(p, reach) {
@@ -248,9 +282,23 @@ impl FormSketch {
                 None
             }
             Some(Shape::PickLines) => match pick() {
-                Ok(c) => {
+                Ok((c, lock)) => {
                     let by = self.options().offset;
+                    let n = self.sketch.lines.len();
                     self.add(vec![shapes::pick(&c, p, by).unwrap_or(c)]);
+                    // Lock (F10a): the line picked locked to the reference it lies on, as Align's padlock locks it.
+                    if self.lock
+                        && by == 0.0
+                        && let Some(mut d) = lock
+                        && self.sketch.lines.len() == n + 1
+                    {
+                        let l = &mut self.sketch.lines[n];
+                        if l.guid.is_nil() {
+                            l.guid = Guid::new();
+                        }
+                        d.refs.push(DimRef::Sketch(self.guid, l.guid));
+                        self.locks.push(d);
+                    }
                     None
                 }
                 Err(e) => Some(e),
@@ -303,6 +351,10 @@ impl FormSketch {
         if self.align_from.take().is_some() {
             return;
         }
+        if let Some(first) = self.trim {
+            self.trim = first.map(|_| None);
+            return;
+        }
         if !self.points.is_empty() || self.fillet.is_some() {
             self.points.clear();
             self.fillet = None;
@@ -328,6 +380,13 @@ impl FormSketch {
         self.axis_tool = axis;
         self.points.clear();
         self.fillet = None;
+        self.trim = None;
+    }
+
+    /// Trim/Extend to Corner (TR) on: the next two lines picked meet at a corner.
+    pub(crate) fn trim_tool(&mut self) {
+        self.set_tool(None, false);
+        self.trim = Some(None);
     }
 
     /// The lines over the view: the profile's in sketch magenta (picked, wrong as the project's are), the Axis Line green and
@@ -338,7 +397,8 @@ impl FormSketch {
             Some(Drag::Grip(_)) => self.hover,
             _ => None,
         };
-        self.sketch.paint(p, shown, hovered, cursor, &self.fillet.into_iter().collect::<Vec<_>>());
+        let lit: Vec<usize> = self.fillet.into_iter().chain(self.trim.flatten().map(|(i, _)| i)).collect();
+        self.sketch.paint(p, shown, hovered, cursor, &lit);
         for l in self.sketch.lines.iter().filter(|l| is_axis(l)) {
             let pts: Vec<Pos2> = l.points().into_iter().filter_map(at).collect();
             if let [a, b] = pts.as_slice() {
@@ -366,6 +426,14 @@ const CHAIN: &str = "family-sketch-chain";
 /// Chain, as the Options Bar last left it this session.
 pub(crate) fn chain(ctx: &Context) -> bool {
     ctx.data(|d| d.get_temp::<bool>(UiId::new(CHAIN))).unwrap_or(true)
+}
+
+/// Where Pick Lines' Lock is kept for the session: off, unless the Options Bar turned it on (as Revit's starts).
+const LOCK: &str = "family-sketch-lock";
+
+/// Pick Lines' Lock, as the Options Bar last left it this session.
+pub(crate) fn lock(ctx: &Context) -> bool {
+    ctx.data(|d| d.get_temp::<bool>(UiId::new(LOCK))).unwrap_or(false)
 }
 
 /// Whether a line drawn is the Axis Line.
@@ -589,6 +657,8 @@ impl FamilyEditor {
             offer: None,
             locks: Vec::new(),
             unlocked: Vec::new(),
+            lock: false,
+            trim: None,
         }));
         self.form = None;
         self.views.plane = None;
@@ -815,7 +885,8 @@ impl FamilyEditor {
         self.views.aligning = None;
         self.sketch = None;
         self.form = Some(at);
-        self.tab = Tab::Forms;
+        self.symbol = None;
+        self.connector = None;
         Ok(())
     }
 
@@ -839,7 +910,7 @@ impl FamilyEditor {
         which: Which,
         view: &bimcraft_core::render::View,
         pane: Rect,
-        pick_view: &dyn Fn(Pos2) -> Option<(P2, P2)>,
+        pick_view: &dyn Fn(Pos2) -> Option<PickedInView>,
     ) -> Option<String> {
         let frame = self.sketch_frame()?;
         let screen = |q: P2| {
@@ -861,11 +932,11 @@ impl FamilyEditor {
                 painter.add(egui::Shape::line(pts, Stroke::new(1.5, GHOST)));
             }
         }
-        let pick = |p: Pos2| -> Result<Curve, String> {
+        let pick = |p: Pos2| -> Result<Picked, String> {
             let missed = || t("Pick a reference plane, a reference line or a form's edge in the view.").to_string();
-            let (a, b) = pick_view(p).ok_or_else(missed)?;
+            let ((a, b), lock) = pick_view(p).ok_or_else(missed)?;
             let (a, b) = (on_plane(st, which, &frame, a).ok_or_else(missed)?, on_plane(st, which, &frame, b).ok_or_else(missed)?);
-            if a.dist(b) > 1.0 { Ok(Curve::line(a, b)) } else { Err(square_to_plane()) }
+            if a.dist(b) > 1.0 { Ok((Curve::line(a, b), lock)) } else { Err(square_to_plane()) }
         };
         self.sketch_input(ui, response, painter, &screen, &at, reach, &pick, seen_flat)
     }
@@ -930,7 +1001,7 @@ impl FamilyEditor {
                 }
             }
         }
-        let pick = |p: Pos2| -> Result<Curve, String> {
+        let pick = |p: Pos2| -> Result<Picked, String> {
             let at = P2(f64::from(p.x), f64::from(p.y));
             let near = edges
                 .iter()
@@ -939,7 +1010,7 @@ impl FamilyEditor {
                 .min_by(|a, b| a.0.total_cmp(&b.0));
             let (_, edge) = near.ok_or_else(|| t("Pick a reference plane, a reference line or a form's edge in the view.").to_string())?;
             let (a, b) = fs::on_plane(&frame, edge).map_err(|_| square_to_plane())?;
-            Ok(Curve::line(a, b))
+            Ok((Curve::line(a, b), None))
         };
         let on = response.hover_pos().is_some_and(|p| at(p).is_some());
         self.sketch_input(ui, response, painter, &screen, &at, reach, &pick, on || response.hover_pos().is_none())
@@ -957,7 +1028,7 @@ impl FamilyEditor {
         screen: &dyn Fn(P2) -> Option<Pos2>,
         at: &dyn Fn(Pos2) -> Option<P2>,
         reach: f64,
-        pick: &dyn Fn(Pos2) -> Result<Curve, String>,
+        pick: &dyn Fn(Pos2) -> Result<Picked, String>,
         usable: bool,
     ) -> Option<String> {
         // What it snaps to, found again when the draft changes.
@@ -978,6 +1049,7 @@ impl FamilyEditor {
         let snaps = self.snaps;
         let s = self.sketch.as_mut()?;
         s.chain = chain(ui.ctx());
+        s.lock = lock(ui.ctx());
         // The pointer snapped, as a project's view snaps it, while a shape is drawn or a line's end dragged.
         let snapping = matches!(s.tool, Some(shape) if !matches!(shape, Shape::Fillet | Shape::PickLines)) || s.sketch.drag.is_some();
         let snap = |s: &FormSketch, raw: P2| -> bimcraft_core::snap::Found {
@@ -1202,6 +1274,11 @@ impl FamilyEditor {
 
 /// What the status bar asks for while a form is sketched.
 pub(crate) fn prompt(s: &FormSketch) -> &'static str {
+    match s.trim {
+        Some(None) => return msg!("Pick the first line, on the part to keep."),
+        Some(Some(_)) => return msg!("Pick the second line, on the part to keep."),
+        None => {}
+    }
     match s.tool {
         Some(Shape::PickLines) if s.kind.swept() && s.part == Part::Main => {
             msg!("Click a reference plane, a reference line or a form's edge: a line of the path along it.")
@@ -1211,6 +1288,9 @@ pub(crate) fn prompt(s: &FormSketch) -> &'static str {
         }
         None => msg!("Click a line to pick it, Shift to add; drag a picked line's end; Delete takes the lines picked away."),
         Some(_) if s.axis_tool => msg!("Click two points: the axis the profile turns about."),
+        Some(Shape::PickLines) if s.lock => {
+            msg!("Click a reference plane, a reference line or a form's edge: a line along it, locked to it.")
+        }
         Some(Shape::PickLines) => msg!("Click a reference plane, a reference line or a form's edge: a line along it."),
         Some(Shape::Fillet) => msg!("Click two lines that meet: they are rounded by an arc of the Options Bar's radius."),
         Some(_) => msg!("Click the points of the shape; Finish Edit Mode when the lines close into loops."),
@@ -1221,6 +1301,7 @@ pub(crate) fn prompt(s: &FormSketch) -> &'static str {
 /// a polygon's sides, a fixed Radius and Offset, as the project's Draw panel has them.
 pub(crate) fn options_bar(ui: &mut Ui, ed: &mut FamilyEditor, units: bimcraft_core::units::Units) {
     let values = ed.values();
+    let flat_view = ed.views.shown.is_some();
     let Some(s) = ed.sketch.as_mut() else { return };
     if matches!(s.kind, FormKind::Extrusion | FormKind::Blend) {
         let l = ui.label(t("Depth"));
@@ -1263,6 +1344,21 @@ pub(crate) fn options_bar(ui: &mut Ui, ed: &mut FamilyEditor, units: bimcraft_co
     if s.tool.is_some_and(|t| t.offsets() || t == Shape::PickLines) && !s.axis_tool {
         let l = ui.label(t("Offset"));
         ui.add(TextEdit::singleline(&mut s.offset).desired_width(70.0)).labelled_by(l.id);
+    }
+    // Lock (F10a): a line picked from a reference plane, a reference line or a form's line locked to it, as Align's padlock
+    // locks it; with no Offset, and in a plan or an elevation, where Align works too. Kept for the session.
+    if s.tool == Some(Shape::PickLines) && !s.axis_tool {
+        let usable = s.options().offset == 0.0 && flat_view;
+        let mut on = lock(ui.ctx());
+        let tip = if usable {
+            msg!("Lock: each line picked is locked to what it was picked from, as Align's padlock locks it")
+        } else {
+            msg!("Lock locks a line picked with no Offset, in a plan or an elevation")
+        };
+        if ui.add_enabled(usable, egui::Checkbox::new(&mut on, t("Lock"))).on_hover_text(t(tip)).on_disabled_hover_text(t(tip)).changed() {
+            ui.ctx().data_mut(|d| d.insert_temp(UiId::new(LOCK), on));
+            s.lock = on;
+        }
     }
 }
 
@@ -1406,12 +1502,18 @@ impl BimApp {
             });
         });
         let aligning = ed.views.aligning.is_some();
-        let mut align = false;
+        let (mut align, mut trim) = (false, false);
         let Some(s) = ed.sketch.as_mut() else { return };
         ribbon::panel(ui, msg!("Modify"), |ui| {
             let tip = msg!("Modify (MD): pick lines of the sketch, and drag their ends");
-            if crate::small_button(ui, Icon::Modify, "Modify", s.tool.is_none() && !aligning, tip).clicked() {
+            let trimming = s.trim.is_some();
+            if crate::small_button(ui, Icon::Modify, "Modify", s.tool.is_none() && !aligning && !trimming, tip).clicked() {
                 s.set_tool(None, false);
+            }
+            // Trim/Extend to Corner (TR): two lines trimmed or extended to where they meet, each keeping the part clicked.
+            let tip = msg!("Trim/Extend to Corner (TR): pick two lines, on the parts to keep");
+            if crate::small_button(ui, Icon::Trim, "Trim/Extend to Corner", trimming, tip).clicked() {
+                trim = true;
             }
             // Align (AL, F7b): a line of the sketch onto a plane, a reference line or another line; its padlock locks them.
             let tip = msg!("Align (AL): pick a reference, then a line of the sketch that moves onto it; its padlock locks them");
@@ -1441,6 +1543,12 @@ impl BimApp {
         });
         if align {
             ed.align_tool();
+        }
+        if trim {
+            ed.views.aligning = None;
+            if let Some(s) = ed.sketch.as_mut() {
+                s.trim_tool();
+            }
         }
         if finish {
             match ed.finish_form_sketch(units) {

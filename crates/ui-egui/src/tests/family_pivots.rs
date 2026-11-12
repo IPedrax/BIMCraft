@@ -167,16 +167,16 @@ fn family_pivots_screenshots() {
         h.run();
         h.render().unwrap().save(std::path::Path::new(&folder).join(name)).unwrap();
     };
-    h.state_mut().family_editor.as_mut().unwrap().preview_type("Shut");
+    h.state_mut().active_family_mut().unwrap().preview_type("Shut");
     h.run();
     click_family(&mut h, [100.0, 0.0, 0.0]);
     for (t, name) in [("Shut", "f7d-plan-0.png"), ("Half", "f7d-plan-45.png"), ("Open", "f7d-plan-90.png")] {
-        h.state_mut().family_editor.as_mut().unwrap().preview_type(t);
+        h.state_mut().active_family_mut().unwrap().preview_type(t);
         h.run();
         save(&mut h, name);
     }
     // The grip held half way to 20°.
-    h.state_mut().family_editor.as_mut().unwrap().preview_type("Shut");
+    h.state_mut().active_family_mut().unwrap().preview_type("Shut");
     h.run();
     let from = grip(&h);
     let to = round_the_hinge(&h, 900.0, 20.0);
@@ -193,7 +193,7 @@ fn family_pivots_screenshots() {
     h.run();
     // The pivoted plane, selected.
     key(&mut h, Key::Escape);
-    h.state_mut().family_editor.as_mut().unwrap().preview_type("Half");
+    h.state_mut().active_family_mut().unwrap().preview_type("Half");
     h.run();
     let (c, sn) = ((-30f64).to_radians().cos(), (-30f64).to_radians().sin());
     click_family(&mut h, [-450.0 + 700.0 * c, -900.0 + 700.0 * sn, 0.0]);

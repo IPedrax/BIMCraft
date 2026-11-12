@@ -777,11 +777,16 @@ impl BimApp {
         });
     }
 
-    /// The Mode panel at the ribbon's right end: Finish and Cancel while sketching, Edit Boundary when one floor, ceiling,
-    /// roof or shaft is selected.
+    /// The Mode panel at the ribbon's right end, as Revit's: Finish and Cancel while sketching, Edit Boundary when one floor,
+    /// ceiling, roof or shaft is selected, Edit Family when a family's instance is (Load Family too while placing one).
     pub(crate) fn mode_panel(&mut self, ui: &mut Ui) {
         let sketching = self.sketch.is_some();
-        if !sketching && !(self.boundary_selected() && self.tool == Tool::Modify) {
+        let boundary = self.boundary_selected() && self.tool == Tool::Modify;
+        // Placing a component: Load Family and Edit Family (Modify | Place Component); a family's instance selected, Edit
+        // Family (Modify | <Category>).
+        let placing = !sketching && matches!(self.tool, Tool::Component | Tool::Fixture(_));
+        let family = if !sketching && (placing || self.tool == Tool::Modify) { self.family_in_hand() } else { None };
+        if !sketching && !boundary && !placing && family.is_none() {
             return;
         }
         // Pushed to the right end by the room the rest leaves: its width as it was last drawn.
@@ -798,9 +803,27 @@ impl BimApp {
                     {
                         self.cancel_sketch();
                     }
-                } else if big_button(ui, Icon::Line, "Edit Boundary", false, "Edit Boundary: sketch its outline and holes again").clicked()
+                } else if boundary
+                    && big_button(ui, Icon::Line, "Edit Boundary", false, "Edit Boundary: sketch its outline and holes again").clicked()
                 {
                     self.edit_boundary();
+                }
+                if placing {
+                    let tip = msg!("Load Family: a family saved as a .json file, BIMCraft's own");
+                    if big_button(ui, Icon::LoadFamily, "Load Family", false, tip).clicked() {
+                        let dialog = rfd::AsyncFileDialog::new().add_filter(t("BIMCraft family"), &["json"]);
+                        // A family the project has otherwise asks first: Family Already Exists.
+                        self.ask_file(ui.ctx(), dialog, false, |app, path| app.load_family_file(&path));
+                    }
+                }
+                if placing || family.is_some() {
+                    let tip = msg!("Edit Family: the family of what is selected, or of the component being placed");
+                    let r = ui.add_enabled_ui(family.is_some(), |ui| big_button(ui, Icon::FamilyEditor, "Edit Family", false, tip));
+                    if r.inner.clicked()
+                        && let Some(f) = family.as_deref()
+                    {
+                        self.edit_family(f);
+                    }
                 }
             });
         });

@@ -230,6 +230,14 @@ pub fn stage(mut m: Model, family: &Family, values: &BTreeMap<String, Val>, show
     Staged { model: m, level, elevations, planes, room, lines }
 }
 
+/// What one of a family's views draws, for a front end that paints it as vectors: its frame, its drawing (what picks), and
+/// an elevation's hidden-line picture, which the drawing goes over.
+pub struct Lines {
+    pub view: View,
+    pub drawing: Drawing,
+    pub picture: Option<crate::view3d::Image>,
+}
+
 /// What one of a family's views shows: its frame, its drawing (what picks) and its pixels.
 pub struct Shown {
     pub view: View,
@@ -319,7 +327,7 @@ impl Staged {
     /// View `which`, `width` by `height` pixels, `zoom` times as close as fitted, moved `pan` mm. Its scale is the one at
     /// which, fitted, its annotation and pens are their size on paper, so the names read as a sheet's would, and grow
     /// and shrink as it is zoomed, as a project's views' do.
-    pub fn draw(&mut self, which: Which, width: u32, height: u32, zoom: f64, pan: P2) -> Result<Shown, String> {
+    pub fn draw_lines(&mut self, which: Which, width: u32, height: u32, zoom: f64, pan: P2) -> Result<Lines, String> {
         let fitted = self.frame(which, width, height, 1.0, P2(0.0, 0.0));
         let n = (crate::sheet::DENSITY / fitted.scale).clamp(1.0, 1e5);
         if let Some(g) = self.view_id(which).and_then(|id| self.model.elements.get_mut(id)).and_then(crate::graphics::graphics_mut) {
@@ -340,6 +348,12 @@ impl Staged {
             }
         };
         render::reference_lines(&mut drawing, &lines);
+        Ok(Lines { view, drawing, picture })
+    }
+
+    /// View `which` as [`draw_lines`](Self::draw_lines) draws it, rasterized: its drawing over its picture, on paper.
+    pub fn draw(&mut self, which: Which, width: u32, height: u32, zoom: f64, pan: P2) -> Result<Shown, String> {
+        let Lines { view, drawing, picture } = self.draw_lines(which, width, height, zoom, pan)?;
         let rgba = render::rgba(&drawing, picture.as_ref())?;
         Ok(Shown { view, drawing, rgba })
     }
@@ -356,8 +370,12 @@ impl Staged {
             .map(|(i, _)| i)
     }
 
-    /// The family's plane a reference plane of the scratch model drawn by `owner` stands for.
+    /// The family's plane a reference plane of the scratch model drawn by `owner` stands for: Ref. Level for the level an
+    /// elevation draws it as, so it is picked as the planes are (a dimension to the sill, Align, a work plane).
     pub fn plane_of(&self, owner: Id) -> Option<Guid> {
+        if owner == self.level {
+            return Some(super::REF_LEVEL);
+        }
         self.planes.get(&owner).copied()
     }
 }
@@ -609,6 +627,131 @@ mod tests {
         (-2..=2).any(|dx| (-2..=2).any(|dy| green(pixel(s, (at.0 + dx as f32, at.1 + dy as f32)))))
     }
 
+    /// F10: a window's frame, one extrusion across the wall with its light a hole, is cut in plan as its two jambs, as the
+    /// plane cuts it, not outlined whole: in the family's plan and the project's.
+    #[test]
+    fn a_window_familys_plan_cuts_its_frame_as_its_jambs() {
+        let f: Family = serde_json::from_value(json!({
+            "category": "window",
+            "parameters": [{"name": "Width", "value": 1200}, {"name": "Height", "value": 1500}],
+            "types": {"T": {}},
+            "forms": [{"host": {"plane": crate::family::CENTER_FRONT_BACK}, "from": -40, "to": 40, "sketch": [
+                {"start": [-600, 0], "end": [600, 0]}, {"start": [600, 0], "end": [600, 1500]},
+                {"start": [600, 1500], "end": [-600, 1500]}, {"start": [-600, 1500], "end": [-600, 0]},
+                {"start": [-550, 50], "end": [-550, 1450]}, {"start": [-550, 1450], "end": [550, 1450]},
+                {"start": [550, 1450], "end": [550, 50]}, {"start": [550, 50], "end": [-550, 50]}]}],
+        }))
+        .unwrap();
+        let mut s = Session::new();
+        s.model_mut().families.insert("W".into(), f.clone());
+        s.execute("wall", &json!({"points": [[-2500, 0], [2500, 0]]})).unwrap();
+        let window = s.execute("window", &json!({"at": [0, 0], "family": "W", "type": "T", "sill": 0})).unwrap()["id"].as_u64().unwrap();
+        let values = f.values("T", &BTreeMap::new()).unwrap();
+        let mut st = stage(std::sync::Arc::unwrap_or_clone(s.model.clone()), &f, &values, &|_| true);
+        let d = st.draw(Which::Plan, 600, 400, 1.0, P2(0.0, 0.0)).unwrap().drawing;
+        let cut = d
+            .prims
+            .iter()
+            .zip(&d.parts)
+            .zip(&d.owners)
+            .filter(|((p, part), owner)| {
+                **part == render::Part::Cut && owner.is_some_and(|o| o == window) && matches!(p, render::Prim::Line { closed: true, .. })
+            })
+            .count();
+        assert_eq!(cut, 2, "each jamb cut");
+        // Each a 50 by 80 ring, at either end of the opening.
+        let rings: Vec<Vec<P2>> = d
+            .prims
+            .iter()
+            .zip(&d.parts)
+            .zip(&d.owners)
+            .filter(|((_, part), owner)| **part == render::Part::Cut && owner.is_some_and(|o| o == window))
+            .filter_map(|((p, _), _)| match p {
+                render::Prim::Line { pts, closed: true, .. } => Some(pts.iter().map(|q| d.view.mm(*q)).collect()),
+                _ => None,
+            })
+            .collect();
+        for ring in &rings {
+            let (x0, x1) = ring.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(a, b), q| (a.min(q.0), b.max(q.0)));
+            assert!((x1 - x0 - 50.0).abs() < 2.0 && (x0.abs() - 575.0).abs() < 30.0, "a jamb: {x0} to {x1}");
+        }
+    }
+
+    /// The lines drawn in projection of what `window` owns in `d`, in mm: each straight piece.
+    fn seen_lines(d: &render::Drawing, window: crate::model::Id) -> Vec<(P2, P2)> {
+        d.prims
+            .iter()
+            .zip(&d.parts)
+            .zip(&d.owners)
+            .filter(|((_, part), owner)| **part == render::Part::Projection && **owner == Some(window))
+            .flat_map(|((p, _), _)| match p {
+                render::Prim::Line { pts, .. } => pts.windows(2).map(|w| (d.view.mm(w[0]), d.view.mm(w[1]))).collect(),
+                _ => Vec::new(),
+            })
+            .collect()
+    }
+
+    /// F10b: a window's forms below the plan's cut plane are seen from it, in projection, as walls below the cut are: the
+    /// frame's lower rail between its cut jambs, and a sill board outside the wall; its head and a hood over the cut are not
+    /// drawn. In the family's plan and the project's.
+    #[test]
+    fn a_window_familys_plan_sees_its_forms_below_the_cut_and_not_above() {
+        let f: Family = serde_json::from_value(json!({
+            "category": "window",
+            "parameters": [{"name": "Width", "value": 1200}, {"name": "Height", "value": 1500}],
+            "types": {"T": {}},
+            "forms": [
+                {"host": {"plane": crate::family::CENTER_FRONT_BACK}, "from": -40, "to": 40, "sketch": [
+                    {"start": [-600, 0], "end": [600, 0]}, {"start": [600, 0], "end": [600, 1500]},
+                    {"start": [600, 1500], "end": [-600, 1500]}, {"start": [-600, 1500], "end": [-600, 0]},
+                    {"start": [-550, 50], "end": [-550, 1450]}, {"start": [-550, 1450], "end": [550, 1450]},
+                    {"start": [550, 1450], "end": [550, 50]}, {"start": [550, 50], "end": [-550, 50]}]},
+                {"profile": [[-650, -150], [650, -150], [650, -40], [-650, -40]], "from": 0, "to": 30},
+                {"profile": [[-650, 40], [650, 40], [650, 160], [-650, 160]], "from": 1400, "to": 1450}
+            ],
+        }))
+        .unwrap();
+        let mut s = Session::new();
+        s.model_mut().families.insert("W".into(), f.clone());
+        s.execute("wall", &json!({"points": [[-2500, 0], [2500, 0]]})).unwrap();
+        let window = s.execute("window", &json!({"at": [0, 0], "family": "W", "type": "T", "sill": 0})).unwrap()["id"].as_u64().unwrap();
+        let values = f.values("T", &BTreeMap::new()).unwrap();
+        let mut st = stage(std::sync::Arc::unwrap_or_clone(s.model.clone()), &f, &values, &|_| true);
+        let family = st.draw(Which::Plan, 600, 400, 1.0, P2(0.0, 0.0)).unwrap().drawing;
+        let staged_window =
+            st.model.elements.iter().find(|(_, e)| matches!(e, crate::model::Element::Window(_))).map(|(id, _)| *id).unwrap();
+        let view = render::View { scale: 0.2, cx: 0.0, cy: 0.0, width: 600, height: 400 };
+        let project = render::draw(&s.model, 100000, view);
+        for (d, owner, which) in [(&family, staged_window, "family"), (&project, window, "project")] {
+            let lines = seen_lines(d, owner);
+            let along = |y: f64, x0: f64, x1: f64| {
+                lines.iter().any(|(a, b)| (a.1 - y).abs() < 2.0 && (b.1 - y).abs() < 2.0 && a.0.min(b.0) <= x0 && a.0.max(b.0) >= x1)
+            };
+            let at = |y: f64| lines.iter().any(|(a, b)| (a.1 - y).abs() < 2.0 && (b.1 - y).abs() < 2.0 && a.dist(*b) > 50.0);
+            // The lower rail's faces between the jambs, which the cut covers.
+            let rail = [-40.0, 40.0].iter().filter(|y| along(**y, -500.0, 500.0)).count();
+            assert_eq!(rail, 2, "{which}: the lower rail between the jambs: {lines:?}");
+            assert!(
+                !lines.iter().any(|(a, b)| (a.1.abs() - 40.0).abs() < 2.0 && a.0.abs().min(b.0.abs()) > 560.0),
+                "{which}: not over the cut jambs: {lines:?}"
+            );
+            // The sill board's outer edge on one side, all along it; nothing of the hood over the cut on the other.
+            let (board, hood) = (at(150.0) || at(-150.0), at(160.0) || at(-160.0));
+            assert!(board, "{which}: the sill board below the cut: {lines:?}");
+            assert!(!hood, "{which}: nothing above the cut: {lines:?}");
+            // Lighter than the cut: the projection pen.
+            let width = |part: render::Part| {
+                d.prims.iter().zip(&d.parts).zip(&d.owners).filter(|((_, p), o)| **p == part && **o == Some(owner)).find_map(
+                    |((p, _), _)| match p {
+                        render::Prim::Line { width, .. } => Some(*width),
+                        _ => None,
+                    },
+                )
+            };
+            assert!(width(render::Part::Projection).unwrap() < width(render::Part::Cut).unwrap(), "{which}: lighter than the cut");
+        }
+    }
+
     #[test]
     fn the_plan_cuts_a_form_crossing_its_cut_plane_and_sees_the_others() {
         for (z0, z1, crossing) in [(0.0, 2000.0, true), (0.0, 800.0, false), (1500.0, 2500.0, false)] {
@@ -665,6 +808,16 @@ mod tests {
             assert!(some, "a green trace at ({x}, {y})");
         }
         assert!(st.model.levels().len() == 1 && st.model.levels()[0].1.name == "Ref. Level");
+    }
+
+    /// F10: Ref. Level, drawn as a level in an elevation, is picked there as the family's datum, as a plane's trace is.
+    #[test]
+    fn ref_level_drawn_as_a_level_in_an_elevation_is_picked_as_the_datum() {
+        let mut st = staged(&boxed(0.0, 1500.0));
+        let shown = st.draw(Which::Elevation(Side::Front), 600, 400, 1.0, P2(0.0, 0.0)).unwrap();
+        let at = shown.view.px(st.to_view(Which::Elevation(Side::Front), [-1300.0, 0.0, 0.0]));
+        let picked: Vec<Guid> = shown.drawing.pick_all(at, 6.0).into_iter().filter_map(|id| st.plane_of(id)).collect();
+        assert_eq!(picked.first(), Some(&super::super::REF_LEVEL), "{picked:?}");
     }
 
     /// Each elevation sees the box (east of the origin, behind it) on its own side of the Center plane across it: Front

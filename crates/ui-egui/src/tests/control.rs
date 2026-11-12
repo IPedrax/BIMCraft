@@ -418,9 +418,8 @@ fn desktop_context_follows_clearing_deletion_and_the_users_new_project() {
     assert_eq!(replies[1]["ok"]["selection"], json!([]));
     click(&mut h, P2(8000.0, 3000.0));
     assert!(!h.state().selection.is_empty());
-    press(&mut h, "File");
-    h.get_by_label_contains("New").click();
-    h.run();
+    // File > New > Project: New is a list of Project and Family.
+    new_project(&mut h);
     press(&mut h, "Don't Save");
     let line = request(&h, json!({"op": "context"}));
     let replies = ask(&mut h, vec![line]);

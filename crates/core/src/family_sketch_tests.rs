@@ -1,7 +1,8 @@
-//! F5: a form's sketch. Files of 23 and before (a form's `profile`, `circle` and `axis`) read as sketches, building the same
-//! triangles and the same IFC as they did (`testdata/family_format23.golden.json`, written by the build of 23), and saved and
-//! read again unchanged, each line keeping its id and GUID; sketches of several loops, holes and arcs; what's wrong with
-//! one, named; a revolve's axis line; formulas in a sketch renamed and moved with its plane.
+//! F5: a form's sketch. Files of 17 and before (a form's `profile`, `circle` and `axis`) read as sketches, building the same
+//! triangles and the same IFC as they did (`testdata/family_profiles.golden.json`, written by the last build before
+//! sketches), and saved and read again unchanged, each line keeping its id and GUID; sketches of several loops, holes
+//! and arcs; what's wrong with one, named; a revolve's axis line; formulas in a sketch renamed and moved with its
+//! plane.
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -115,11 +116,11 @@ fn alike(a: &Value, b: &Value, at: &str) -> Result<(), String> {
 }
 
 fn golden() -> Value {
-    serde_json::from_str(include_str!("../testdata/family_format23.golden.json")).unwrap()
+    serde_json::from_str(include_str!("../testdata/family_profiles.golden.json")).unwrap()
 }
 
 /// The legacy project as a file of 17 holds it: its forms as profiles, circles and axes.
-fn file_of_23() -> String {
+fn file_of_17() -> String {
     let s = legacy_project();
     let mut file: Value = serde_json::from_str(&s.model.to_json().unwrap()).unwrap();
     file["format"] = json!(17);
@@ -129,8 +130,8 @@ fn file_of_23() -> String {
 }
 
 #[test]
-fn a_file_of_23_reads_as_sketches_and_builds_the_same_triangles_and_ifc() {
-    let (m, left_out) = Model::read(&file_of_23()).unwrap();
+fn a_file_of_17_reads_as_sketches_and_builds_the_same_triangles_and_ifc() {
+    let (m, left_out) = Model::read(&file_of_17()).unwrap();
     assert!(left_out.is_empty(), "{left_out:?}");
     assert_eq!(m.format, FORMAT);
     let g = golden();
@@ -153,7 +154,7 @@ fn a_file_of_23_reads_as_sketches_and_builds_the_same_triangles_and_ifc() {
 
 #[test]
 fn a_sketch_saved_and_read_again_is_the_same_each_line_keeping_its_id_and_guid() {
-    let (m, _) = Model::read(&file_of_23()).unwrap();
+    let (m, _) = Model::read(&file_of_17()).unwrap();
     let text = m.to_json().unwrap();
     assert!(!text.contains("\"profile\"") && !text.contains("\"circle\"") && text.contains("\"sketch\""));
     let (again, left_out) = Model::read(&text).unwrap();

@@ -105,6 +105,8 @@ pub const MAX_SLOPE: f64 = 75.0;
 ///   (`nested_instances`).
 /// - Visibility (F8): a family's forms, symbols and nested instances may carry Visibility Settings (`visibility`): the views
 ///   they are drawn in by the way those look, and their detail level.
+/// - Void cuts (F10d): a void's `cuts` says whether it cuts the family's forms, the wall or both, and a door's or a window's
+///   void cuts its wall wherever it reaches into it, whatever its place in the family's list.
 /// - Subcategories: a view's graphics, a view template and the object styles may name `dooropening` and `windowopening`
 ///   (Doors > Opening, Windows > Opening), and a family's symbol the subcategory it is drawn in (`subcategory`).
 /// - Adaptive families: a family may be adaptive (`adaptive`: its points, lines and forms), and a component may hold its
@@ -3687,25 +3689,40 @@ impl Model {
         // values, and sheets with none; walls and runs that refuse to join; a dimension to the line across a column) has none
         // either: a file of 17's connectors are a power or a switch one, each with its system, which 18 reads as they were; a
         // file of 17 holds no title blocks, its sheets keeping the built-in one, no `join`, which reads as joining, as it always
-        // did, and none of its dimensions measures `across`. The Family Editor's part of 18, and what places its families:
+        // did, and none of its dimensions measures `across`. The Family Editor's part of 18, and what places its families, takes
+        // one step, in this order (it leaves the rest of 18 alone: title blocks, `join` and `across` aren't a family's, and a
+        // connector's `at` is in the family's axes, which the datums are whatever plane `defines_origin`, and it has no `host`
+        // that 1 below would move).
         // 1. A form's `plane` becomes its `host`, a datum: `xy` Ref. Level and `yz` Center (Left/Right) as they were; `xz`
         //    Center (Front/Back), its `from` and `to` negated and swapped (a formula wrapped as `-(…)`), since it swept along
-        //    +y and the datum's normal is -y, a revolve's angles as they were. Reading the file does it, as it reads a
-        //    command's shorthands (`Form`'s `FormIn`), whatever its format, and a family read without its datums is given
-        //    them (`Family::planes`). Its `profile`, `circle` and `axis` become lines of its `sketch` the same way, given their
-        //    ids and GUIDs by the library's sync as any new part is, building the triangles they did.
+        //    +y and the datum's normal is -y, a revolve's angles as they were. Its `profile`, `circle` and `axis` become lines
+        //    of its `sketch`, given their ids and GUIDs by the library's sync as any new part is, building the triangles they
+        //    did. Reading the file does both, as it reads a command's shorthands (`Form`'s `FormIn`), whatever its format,
+        //    and a family read without its datums is given them (`Family::planes`).
         // 2. Every family's datums are put first and its origin settled, whatever the file held (`Family::settle_planes`).
-        // An adaptive point drawn on one of an adaptive family's own datums held `"datum": "level" | "front_back" |
-        // "left_right"` in its `world` host, the name the Family Editor's first adaptive points gave their work plane; it
-        // still reads as the datum plane of the same frame (`Host::World`'s `plane_or_datum`), so nothing moves.
-        // The rest needs nothing of a file of 17, which holds none of it: an adaptive family and a component's adaptive
-        // frames, a family's dimensions of every kind, labels, locks and Align's locks, pivots, nested families, Blends
-        // and Sweeps (every form of 17 is an extrusion or a revolve, built as it was), Visibility Settings (a part without them draws as it did,
-        // `family::visibility`), a family parameter's group, shared GUID and reporting (each defaults to what a file of 17 means: grouped by its kind, the family's own, set), Doors > Opening
-        // and Windows > Opening, and the project's reference planes and components hosted on them or on faces (a hosted
-        // component's `at` and `offset` are worked out from its host whatever the file says).
+        // 3. A door's or a window's void cuts its wall wherever it reaches into it, whatever its place in the family's list,
+        //    unless its `cuts` says `forms`. Before, only one that cut none of the solid forms listed before it cut the
+        //    wall, in its own shape in place of the opening's rectangle (a rule only unreleased builds of the Family Editor
+        //    had: 17 cut the wall with the opening's rectangle alone, and a file of 17 reads by it). Each void that rule didn't
+        //    cut the wall with, though it reaches into it, says `forms`
+        //    (`Family::pin_cuts`), so it cuts what it did. It runs after 2, as it did, the family flexed on its settled planes.
+        //    A limit: one `cuts` is a void's for every type, and the old rule decided type by type. A void that overlapped a
+        //    solid in any type, or by the default of an instance parameter that moves it, says `forms` for all of them, so a
+        //    type whose void was clear of the solids and cut the wall with the old rule cuts it no more. That is the
+        //    conservative side: the wall keeps the opening's rectangle, as 17 drew it, and one value per
+        //    void can't hold both outcomes.
+        // The rest needs nothing of a file of 17, which holds none of it: an adaptive family and a component's
+        // adaptive frames, a family parameter's group, shared GUID and reporting (each defaults to what a file of 17 means:
+        // grouped by its kind, the family's own, set), Doors > Opening and Windows > Opening, the project's reference planes
+        // and components hosted on them or on faces (a hosted component's `at` and `offset` are worked out from its host
+        // whatever the file says), a family's dimensions of every kind, nested families, Blends and Sweeps (every form of 17
+        // or 18 is an extrusion or a revolve, built as it was), pivots, and Visibility Settings (a part without them draws as it
+        // did, `family::visibility`). An adaptive point's `"datum": "level" | "front_back" | "left_right"`, the name the
+        // Family Editor's first adaptive points gave their work plane, is still read as the datum plane of the same frame
+        // (`Host::World`'s `plane_or_datum`); a file of 17 holds no adaptive family, so it takes no part in this step.
         if self.format < 18 {
             self.families.values_mut().for_each(crate::family::Family::settle_planes);
+            self.families.values_mut().for_each(crate::family::Family::pin_cuts);
         }
         self.settle_hosts(None);
         self.format = FORMAT;

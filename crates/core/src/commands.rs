@@ -2841,7 +2841,8 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
             extra.insert(key.into(), json!(g));
         }
     });
-    // The room a component stands in, as Revit's Room parameter: by GUID, with its number and name for schedules and tags.
+    // The room a component is in, as Revit's Room parameter (`Rooms::component`: its family's room calculation point, else its
+    // insertion point, in a room's volume): by GUID, with its number and name for schedules and tags; left out outside every room.
     if let Element::Component(c) = e
         && let Some(id) = rooms.component(c)
         && let Some(Element::Room(r)) = m.elements.get(id)
@@ -13299,9 +13300,6 @@ fn host_line(was: P2, candidates: impl IntoIterator<Item = Id>, line_of: impl Fn
     candidates.into_iter().filter_map(line_of).find(|&(a, b)| geom::dist_to_segment(was, a, b) <= TOL)
 }
 
-/// Take elements by `mo`, keeping walls joined: walls joined to a taken wall stretch to stay
-/// joined, and doors and windows in walls that changed keep their place or go with their wall.
-/// With `end` (`Some(true)` the start, `Some(false)` the end), only that end of one wall or one run goes.
 /// The components on the faces of elements `ids` (Place on Face): those on a floor's, a ceiling's or a roof's, which a
 /// command taking their host whole takes too; and those on a wall's side, which their wall takes by itself.
 fn face_hosted(m: &Model, ids: &[Id]) -> (Vec<Id>, Vec<Id>) {
@@ -13338,6 +13336,9 @@ fn side_mirrored(m: &Model, e: &Element) -> Option<Element> {
     Some(Element::Component(cp))
 }
 
+/// Take elements by `mo`, keeping walls joined: walls joined to a taken wall stretch to stay
+/// joined, and doors and windows in walls that changed keep their place or go with their wall.
+/// With `end` (`Some(true)` the start, `Some(false)` the end), only that end of one wall or one run goes.
 fn relocate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion, end: Option<bool>) -> Result<(), String> {
     let m = &s.model;
     // The walls, and what points at each: found among those, not every element.

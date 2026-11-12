@@ -8,6 +8,7 @@
 //! project already has ("Shared Family Already Loaded"), as the core's dry run finds them (`shared_conflicts`); the answers
 //! go into the command (`shared_nested`). Loading into a family (T6a: Insert > Load Family in a family document, or Load into
 //! Project from a nested family's document opened by Edit Family) asks the same, against that family's nested families.
+use super::tabs::DocId;
 use super::*;
 use std::collections::VecDeque;
 use std::path::Path;
@@ -51,18 +52,29 @@ pub(crate) enum Shared {
     Family,
 }
 
-/// What is done once the family is loaded.
+/// What is done once the family is loaded. A load from a family document names it (`doc`): the questions may be answered
+/// after another tab came forward, and the load finishes in the document that started it, or nowhere if that one was closed.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum After {
-    /// From the family document: close it (Load into Project and Close), place the test placement, give it to the instance.
-    Document { close: bool, place: bool, apply_placement: bool },
+    /// From family document `doc`: close it (Load into Project and Close), place the test placement, give it to the instance.
+    Document { doc: DocId, close: bool, place: bool, apply_placement: bool },
     /// From Load Family: the Component tool takes the family.
     Component,
-    /// Insert > Load Family in a family document: the family goes into the open document (T6a).
-    Nest,
-    /// Load into Project from a nested family's document: it goes into the document under it, which it closes back to with
+    /// Insert > Load Family in family document `doc`: the family goes into it (T6a).
+    Nest { doc: DocId },
+    /// Load into Project from nested family document `doc`: it goes into the document under it, which it closes back to with
     /// `close`.
-    IntoHost { close: bool },
+    IntoHost { doc: DocId, close: bool },
+}
+
+impl After {
+    /// The family document the load is from; none for Load Family into the project.
+    fn doc(self) -> Option<DocId> {
+        match self {
+            After::Document { doc, .. } | After::Nest { doc } | After::IntoHost { doc, .. } => Some(doc),
+            After::Component => None,
+        }
+    }
 }
 
 /// A load waiting for its answers.
@@ -147,15 +159,19 @@ impl BimApp {
         }
     }
 
-    /// Family `family`, named `name`, loaded into a family: the open document (`After::Nest`) or, from a nested family's
+    /// Family `family`, named `name`, loaded into a family: document `doc` (`After::Nest`) or, from a nested family's
     /// document, the one under it (`After::IntoHost`); asking first when that family nests one of the name defined otherwise,
     /// or a shared family `family` nests otherwise.
     pub(super) fn nest_family(&mut self, name: String, family: Family, after: After) {
         let target = match after {
-            After::IntoHost { .. } => self.family_hosts.last(),
-            _ => self.family_editor.as_ref(),
+            After::IntoHost { doc, .. } => self.doc(doc).and_then(|d| d.host).and_then(|h| self.family_of(h)),
+            After::Nest { doc } => self.family_of(doc),
+            _ => None,
         };
-        let Some(target) = target else { return };
+        let Some(target) = target else {
+            self.document_closed();
+            return;
+        };
         let (exists, shared) = target.nest_conflicts(&name, &family);
         let mut questions: VecDeque<Question> = shared.into_iter().map(Question::SharedNested).collect();
         if exists {
@@ -177,15 +193,15 @@ impl BimApp {
         }
     }
 
-    /// A load into a family answered: the family loaded into the document `ed` (the open one, or the one under it), as
-    /// answered. Whether it went in; a refusal is said in the document it came from.
-    fn finish_nest(&mut self, ed: &mut FamilyEditor, loading: &mut Loading, into_host: bool) -> bool {
+    /// A load into a family answered: the family loaded into document `doc`, whose draft `ed` is (taken out), or with
+    /// `into_host` into the one under it, as answered. Whether it went in; a refusal is said in the document it came from.
+    fn finish_nest(&mut self, doc: DocId, ed: &mut FamilyEditor, loading: &mut Loading, into_host: bool) -> bool {
         let Some(family) = loading.nest.take() else { return false };
         let overwrite = loading.decided.overwrite.map(|o| o == Overwrite::Version);
         let answers = loading.decided.answers();
         let name = loading.name.clone();
         let done = if into_host {
-            match self.family_hosts.last_mut() {
+            match self.doc(doc).and_then(|d| d.host).and_then(|h| self.family_of_mut(h)) {
                 Some(host) => host.nest(&name, family, overwrite, &answers),
                 None => Err(t("The family it was nested in is closed.").to_string()),
             }
@@ -232,9 +248,17 @@ impl BimApp {
     }
 
     /// Loads the family document's draft into the project, asking first when the project has it otherwise; `after` says
-    /// what follows. The document is the window's (`family_editor`) while it waits.
+    /// what follows, and which document it finishes in.
     pub(super) fn load_draft(&mut self, ed: &mut FamilyEditor, after: After) {
         let base = Arc::clone(&self.session.model);
+        // The project may have changed under the open document (an agent, Purge, a project undo): a family it no longer has
+        // loads as new, and an instance it was opened from that is gone no longer replays.
+        if ed.original.as_ref().is_some_and(|was| !base.families.contains_key(was)) {
+            ed.original = None;
+        }
+        if ed.source.is_some_and(|id| !base.elements.contains_key(id)) {
+            (ed.source, ed.replay) = (None, None);
+        }
         let prepared = ed.command(&base).and_then(|legacy| {
             let family = ed.family()?;
             let definition = serde_json::to_value(&family).map_err(|e| e.to_string())?;
@@ -309,7 +333,7 @@ impl BimApp {
             Some(p) => self.run("family", p).is_some(),
         };
         self.family_decided = Some(std::mem::take(&mut loading.decided));
-        let After::Document { close, place, apply_placement } = loading.after else {
+        let After::Document { close, place, apply_placement, .. } = loading.after else {
             return;
         };
         if !made {
@@ -353,6 +377,11 @@ impl BimApp {
     /// Cancel, the corner's × or Escape drop the load: the project keeps what it has, and the document stays open.
     pub(crate) fn family_load_dialog(&mut self, ctx: &Context) {
         let Some(mut loading) = self.family_loading.take() else { return };
+        // The document that asked, closed meanwhile: nothing left to load into, nor from.
+        if loading.after.doc().is_some_and(|doc| self.doc(doc).is_none()) {
+            self.document_closed();
+            return;
+        }
         let Some(question) = loading.questions.front().cloned() else {
             self.end_family_load(loading);
             return;
@@ -450,38 +479,41 @@ impl BimApp {
         }
     }
 
-    /// A load answered: run it from the document it came from (closing it on Load into Project and Close, when it went in),
-    /// or for the Component tool.
+    /// A load answered: run it from the document it came from, whichever tab is active (closing it on Load into Project and
+    /// Close, when it went in), or for the Component tool. That document closed meanwhile, nothing is loaded anywhere.
     fn end_family_load(&mut self, mut loading: Loading) {
         match loading.after {
             After::Component => self.finish_component_load(loading),
-            After::Nest => {
-                let Some(mut ed) = self.family_editor.take() else { return };
-                self.finish_nest(&mut ed, &mut loading, false);
-                self.family_editor = Some(ed);
+            After::Nest { doc } => {
+                let Some(mut ed) = self.take_family_of(doc) else { return self.document_closed() };
+                self.finish_nest(doc, &mut ed, &mut loading, false);
+                self.put_family_of(doc, ed);
             }
-            After::IntoHost { close } => {
-                let Some(mut ed) = self.family_editor.take() else { return };
-                let made = self.finish_nest(&mut ed, &mut loading, true);
-                // Load into Project and Close: back to the family it was nested in.
-                if made
-                    && close
-                    && let Some(host) = self.family_hosts.pop()
-                {
-                    self.family_editor = Some(host);
-                } else {
-                    self.family_editor = Some(ed);
+            After::IntoHost { doc, close } => {
+                let Some(mut ed) = self.take_family_of(doc) else { return self.document_closed() };
+                let made = self.finish_nest(doc, &mut ed, &mut loading, true);
+                self.put_family_of(doc, ed);
+                // Load into Family and Close: back to the family it was nested in.
+                if made && close {
+                    self.close_family_document(doc);
                 }
             }
-            After::Document { .. } => {
-                // Closed meanwhile, the document has nothing to load.
-                let Some(mut ed) = self.family_editor.take() else { return };
+            After::Document { doc, .. } => {
+                let Some(mut ed) = self.take_family_of(doc) else { return self.document_closed() };
                 self.finish_family_load(&mut ed, &mut loading);
-                if !std::mem::take(&mut ed.document.loaded_to_close) {
-                    self.family_editor = Some(ed);
+                let closed = std::mem::take(&mut ed.document.loaded_to_close);
+                self.put_family_of(doc, ed);
+                if closed {
+                    self.close_family_document(doc);
                 }
             }
         }
+    }
+
+    /// A load whose family document was closed before it finished: said in the status bar, nothing loaded anywhere.
+    pub(super) fn document_closed(&mut self) {
+        self.status =
+            Status { text: t("The family document was closed before the load finished: nothing was loaded.").to_string(), error: true };
     }
 }
 

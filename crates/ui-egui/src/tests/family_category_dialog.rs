@@ -32,12 +32,12 @@ fn dialog(h: &mut Harness<BimApp>) {
 }
 
 fn open(h: &Harness<BimApp>) -> bool {
-    h.state().family_editor.as_ref().is_some_and(|e| e.dialog.is_some())
+    h.state().active_family().is_some_and(|e| e.dialog.is_some())
 }
 
 /// The draft as it stands, built.
 fn draft(h: &Harness<BimApp>) -> Family {
-    h.state().family_editor.as_ref().unwrap().draft_family().unwrap()
+    h.state().active_family().unwrap().draft_family().unwrap()
 }
 
 /// The widget named `label` furthest right: the dialog's, over Properties' on the left.
@@ -128,7 +128,7 @@ fn every_option_round_trips_through_the_dialog() {
         press(&mut h, VERSION);
     }
     let p = &h.state().session.model.families["Box"];
-    assert!(p.work_plane_based && p.shared && p.default_elevation == 450.0, "{:?}", h.state().family_editor.as_ref().unwrap().problem());
+    assert!(p.work_plane_based && p.shared && p.default_elevation == 450.0, "{:?}", h.state().active_family().unwrap().problem());
 }
 
 #[test]
@@ -319,7 +319,7 @@ fn turning_work_plane_based_off_while_components_are_on_planes_is_refused_on_loa
     if h.query_by_label(VERSION).is_some() {
         press(&mut h, VERSION);
     }
-    let ed = h.state().family_editor.as_ref().unwrap();
+    let ed = h.state().active_family().unwrap();
     assert!(ed.problem().is_some_and(|p| p.contains("isn't work plane-based")), "{:?}", ed.problem());
     assert!(h.query_by_label_contains("isn't work plane-based").is_some(), "said in the document");
     assert_eq!(h.state().session.model.to_json().unwrap(), was, "the project is as it was");

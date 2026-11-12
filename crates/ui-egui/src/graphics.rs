@@ -191,7 +191,7 @@ impl BimApp {
             }
             Sheet::Section(id) => Some(json!(id)),
             Sheet::View3D => Some(self.active_3d().map_or_else(|| json!("{3D}"), |id| json!(id))),
-            Sheet::Paper(_) | Sheet::Schedule(_) | Sheet::Table(_) => None,
+            Sheet::Paper(_) | Sheet::Schedule(_) | Sheet::Table(_) | Sheet::Family(..) => None,
         }
     }
 

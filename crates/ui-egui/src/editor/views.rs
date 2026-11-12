@@ -15,7 +15,7 @@ use bimcraft_core::geom::P2;
 use bimcraft_core::graphics::Override;
 use bimcraft_core::ids::Guid;
 use bimcraft_core::model::Element;
-use bimcraft_core::render::{Drawing, View};
+use bimcraft_core::render::{Drawing, Rgb, View};
 
 /// What the family document's views keep for the session.
 #[derive(Default)]
@@ -87,6 +87,21 @@ pub(crate) struct Views {
     pub(crate) grips_shown: Vec<(super::pivot::Grip, egui::Pos2)>,
     /// What is typed in a pivot's rows of Properties: its element, its angle, its minimum and its maximum.
     pub(crate) pivot_text: Option<(Guid, String, String, String)>,
+    /// The planes under the pointer, where several lie on one another (a Sill plane on Ref. Level, F10c), and which of them
+    /// a click takes: Tab steps through them, as Revit's Tab does.
+    pub(crate) under: Vec<Guid>,
+    pub(crate) cycle: usize,
+}
+
+/// The planes the view draws under pixel `(x, y)` of `drawing` (within reach), each once, nearest first.
+fn planes_under(drawing: &Drawing, staged: &Staged, at: (f32, f32)) -> Vec<Guid> {
+    let mut out: Vec<Guid> = Vec::new();
+    for g in drawing.pick_all(at, 6.0).into_iter().filter_map(|id| staged.plane_of(id)) {
+        if !out.contains(&g) {
+            out.push(g);
+        }
+    }
+    out
 }
 
 /// A view drawn: what it was drawn of, its scratch model, its frame and drawing (to pick in) and its picture.
@@ -96,7 +111,21 @@ pub(super) struct Cached {
     pub(super) staged: Staged,
     view: View,
     drawing: Drawing,
-    texture: TextureHandle,
+    /// An elevation's hidden-line picture, which its drawing is painted over; and the picture itself, kept for a test.
+    texture: Option<TextureHandle>,
+    #[cfg(test)]
+    picture: Option<bimcraft_core::view3d::Image>,
+}
+
+#[cfg(test)]
+impl FamilyEditor {
+    /// The view shown's pixels, as its drawing paints over its picture: what a test reads where the painted vectors are.
+    pub(crate) fn view_pixels(&self) -> Option<ColorImage> {
+        let c = self.views.cache.as_ref()?;
+        let rgba = bimcraft_core::render::rgba(&c.drawing, c.picture.as_ref()).ok()?;
+        let pixels = rgba.as_chunks::<4>().0.iter().map(|p| Color32::from_rgb(p[0], p[1], p[2])).collect();
+        Some(ColorImage { size: [c.view.width as usize, c.view.height as usize], pixels, source_size: Default::default() })
+    }
 }
 
 /// The name a family's view goes by, as Revit's browser and title name it.
@@ -132,6 +161,11 @@ pub(crate) const WORK_PLANE_MARGIN: f64 = 300.0;
 
 /// The selection's colour in the family's views.
 pub(super) const PICKED: Color32 = Color32::from_rgb(40, 120, 230);
+/// How far a dimension's tick reaches from its point, in points: what a padlock keeps clear of.
+const TICK: f32 = 7.0;
+
+/// The plane a click would take where several lie on one another (F10c): lit, lighter than one selected.
+const PRESELECT: Color32 = Color32::from_rgb(110, 170, 240);
 /// Work Plane > Show's tint, the project's 3D view's.
 pub(crate) const TINT: Color32 = crate::workplane::TINT;
 
@@ -354,16 +388,29 @@ impl FamilyEditor {
             return;
         }
         let drawn = self.staged(base, which).and_then(|mut st| {
-            let shown = st.draw(which, size[0], size[1], zoom, P2(pan.0, pan.1))?;
+            let shown = st.draw_lines(which, size[0], size[1], zoom, P2(pan.0, pan.1))?;
             Ok((st, shown))
         });
         match drawn {
             Ok((staged, shown)) => {
-                let pixels = shown.rgba.as_chunks::<4>().0.iter().map(|p| Color32::from_rgb(p[0], p[1], p[2])).collect();
-                let picture =
-                    ColorImage { size: [shown.view.width as usize, shown.view.height as usize], pixels, source_size: Default::default() };
-                let texture = ctx.load_texture("family-view", picture, TextureOptions::LINEAR);
-                self.views.cache = Some(Cached { key, which, staged, view: shown.view, drawing: shown.drawing, texture });
+                // The drawing is painted as vectors, as a project's plan is; an elevation's hidden-line picture goes under it, as a
+                // section's does, dark on a dark canvas as the drawing over it is.
+                let texture = shown.picture.as_ref().map(|image| {
+                    let pixels = image.rgba.as_chunks::<4>().0.iter().map(|p| crate::canvas::color(Rgb(p[0], p[1], p[2]))).collect();
+                    let picture =
+                        ColorImage { size: [image.width as usize, image.height as usize], pixels, source_size: Default::default() };
+                    ctx.load_texture("family-view", picture, TextureOptions::NEAREST)
+                });
+                self.views.cache = Some(Cached {
+                    key,
+                    which,
+                    staged,
+                    view: shown.view,
+                    drawing: shown.drawing,
+                    texture,
+                    #[cfg(test)]
+                    picture: shown.picture,
+                });
                 self.problem = None;
             }
             Err(e) => {
@@ -383,18 +430,46 @@ impl FamilyEditor {
         let c = self.views.cache.as_ref().filter(|c| c.which == which)?;
         let view = c.view;
         let painter = ui.painter_at(pane);
-        painter.image(
-            c.texture.id(),
-            Rect::from_min_size(pane.min, vec2(view.width as f32, view.height as f32)),
-            Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)),
-            Color32::WHITE,
-        );
+        painter.rect_filled(pane, 0.0, crate::canvas::color(bimcraft_core::render::PAPER));
+        if let Some(t) = &c.texture {
+            let at = Rect::from_min_size(pane.min, vec2(view.width as f32, view.height as f32));
+            painter.image(t.id(), at, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
+        }
+        crate::canvas::paint(&painter, crate::canvas::Place::at(pane.min), &c.drawing, &[], None, false, &[]);
         let screen = |q: P2| {
             let (x, y) = view.px(q);
             pane.min + vec2(x, y)
         };
         let at_view = |p: egui::Pos2| view.mm((p.x - pane.min.x, p.y - pane.min.y));
         let editable = self.adaptive.is_none();
+        // The planes under the pointer, and Tab stepping through them where several lie on one another (F10c).
+        let under =
+            response.hover_pos().map(|p| planes_under(&c.drawing, &c.staged, (p.x - pane.min.x, p.y - pane.min.y))).unwrap_or_default();
+        if under != self.views.under {
+            (self.views.under, self.views.cycle) = (under, 0);
+        }
+        if response.hovered() && ui.input(|i| i.key_pressed(egui::Key::Tab)) {
+            ui.ctx().memory_mut(|m| {
+                if let Some(f) = m.focused() {
+                    m.surrender_focus(f);
+                }
+            });
+            if self.views.under.len() > 1 {
+                self.views.cycle = (self.views.cycle + 1) % self.views.under.len();
+            }
+        }
+        let (under, cycle) = (self.views.under.clone(), self.views.cycle);
+        // The plane a click at `p` takes: the one Tab has come to, where the pointer is over several; else the nearest.
+        let plane_at = |drawing: &Drawing, staged: &Staged, p: egui::Pos2| -> Option<Guid> {
+            let here = planes_under(drawing, staged, (p.x - pane.min.x, p.y - pane.min.y));
+            if here.len() > 1 && here == under { here.get(cycle % here.len()).copied() } else { here.first().copied() }
+        };
+        // Where several planes lie on one another, the one a click would take, lit.
+        if editable && under.len() > 1 {
+            for s in plane_strokes(&c.drawing, &c.staged, under[cycle % under.len()], pane.min) {
+                painter.line_segment(s, Stroke::new(2.0, PRESELECT));
+            }
+        }
         // A form being sketched (F5): the view draws and picks for the sketch alone.
         if editable && self.sketch.is_some() {
             let cache = self.views.cache.take()?;
@@ -409,8 +484,7 @@ impl FamilyEditor {
                 if response.clicked()
                     && let Some(p) = response.interact_pointer_pos()
                 {
-                    let (x, y) = (p.x - pane.min.x, p.y - pane.min.y);
-                    let plane = cache.drawing.pick_all((x, y), 6.0).into_iter().find_map(|id| cache.staged.plane_of(id));
+                    let plane = plane_at(&cache.drawing, &cache.staged, p);
                     let line = cache.staged.line_at(which, at_view(p), reach);
                     problem = self.picked(&Arc::new(base.clone()), plane, line);
                 }
@@ -418,14 +492,49 @@ impl FamilyEditor {
                 self.zoom_and_pan(ui, &response, which, view.scale);
                 return problem;
             }
-            // Pick Lines: a reference plane's or a reference line's trace, else the nearest edge of another form's outline.
-            let pick = |p: egui::Pos2| -> Option<(P2, P2)> {
-                let (x, y) = (p.x - pane.min.x, p.y - pane.min.y);
-                let picked = cache.drawing.pick_all((x, y), 6.0).into_iter().find_map(|id| cache.staged.plane_of(id));
-                if let Some(g) = picked
-                    && let Some(plane) = planes.iter().find(|q| q.guid == g)
-                {
-                    return plane_trace(&cache.staged, which, &plane.frame());
+            // Pick Lines: a reference plane's or a reference line's trace, else the nearest edge of another form's outline. With
+            // Lock on (F10a), what Align would take there (a plane, a reference line, another form's line), as its lock waits.
+            let locking = self.sketch.as_ref().is_some_and(|s| s.lock && s.options().offset == 0.0);
+            let own = self.sketch.as_ref().map(|s| s.guid).unwrap_or_default();
+            let pick = |p: egui::Pos2| -> Option<super::sketch::PickedInView> {
+                let picked = plane_at(&cache.drawing, &cache.staged, p);
+                let lock = |r: DimRef| FamilyDimension {
+                    id: 0,
+                    guid: Guid::new(),
+                    view: bimcraft_core::family::DimView::of(which),
+                    refs: vec![r],
+                    at: cache.staged.from_view(which, at_view(p)),
+                    label: None,
+                    locked: vec![bimcraft_core::model::Lock { segment: 0, length: 0.0 }],
+                    equal: false,
+                    alignment: true,
+                    kind: Default::default(),
+                };
+                // The planes as the type previewed puts them, as the view draws them.
+                let flexed = family.as_ref().map(|f| f.flexed(&values).map(std::borrow::Cow::into_owned).unwrap_or_else(|_| f.clone()));
+                let trace = |g: Guid| {
+                    let plane = flexed
+                        .as_ref()
+                        .and_then(|f| f.planes.iter().find(|q| q.guid == g))
+                        .or_else(|| planes.iter().find(|q| q.guid == g))?;
+                    plane_trace(&cache.staged, which, &plane.frame())
+                };
+                if locking && let Some(flexed) = flexed.as_ref() {
+                    let screen_of = dims::screen_of(view, pane.min);
+                    if let Some(r) =
+                        dims::reference_at(flexed, &values, &cache.staged, which, picked, p, &screen_of).filter(|r| !r.names(own))
+                        && let Some((a, b)) = dims::drawn_as(flexed, &values, &cache.staged, which, &r).filter(|(a, b)| a != b)
+                    {
+                        // A plane's whole trace, as Pick Lines takes it unlocked; else the line the reference is drawn as.
+                        let line = match r {
+                            DimRef::Plane(g) => trace(g),
+                            _ => None,
+                        };
+                        return Some((line.unwrap_or((a, b)), Some(lock(r))));
+                    }
+                }
+                if let Some(t) = picked.and_then(trace) {
+                    return Some((t, None));
                 }
                 let q = at_view(p);
                 let f = family.as_ref()?;
@@ -440,7 +549,7 @@ impl FamilyEditor {
                         }
                     }
                 }
-                best.map(|(_, s)| s)
+                best.map(|(_, s)| (s, None))
             };
             // Align on the sketch's lines (F7b), and the padlocks of its locks: clicked before the sketch takes the click.
             let frame = self.sketch_frame();
@@ -470,8 +579,7 @@ impl FamilyEditor {
                         let flexed =
                             family.as_ref().map(|f| f.flexed(&values).map(std::borrow::Cow::into_owned).unwrap_or_else(|_| f.clone()));
                         let screen_of = dims::screen_of(view, pane.min);
-                        let (x, y) = (p.x - pane.min.x, p.y - pane.min.y);
-                        let plane = cache.drawing.pick_all((x, y), 6.0).into_iter().find_map(|id| cache.staged.plane_of(id));
+                        let plane = plane_at(&cache.drawing, &cache.staged, p);
                         let outside = flexed.as_ref().and_then(|f| {
                             let r = dims::reference_at(f, &values, &cache.staged, which, plane, p, &screen_of).filter(|r| !r.names(own))?;
                             let (a, b) = dims::drawn_as(f, &values, &cache.staged, which, &r)?;
@@ -506,10 +614,7 @@ impl FamilyEditor {
         let family: Option<Family> =
             drawn.as_ref().map(|f| f.flexed(&values).map(std::borrow::Cow::into_owned).unwrap_or_else(|_| f.clone()));
         let on_screen = dims::screen_of(view, pane.min);
-        let pick_plane = |p: egui::Pos2| -> Option<Guid> {
-            let (x, y) = (p.x - pane.min.x, p.y - pane.min.y);
-            c.drawing.pick_all((x, y), 6.0).into_iter().find_map(|id| c.staged.plane_of(id))
-        };
+        let pick_plane = |p: egui::Pos2| -> Option<Guid> { plane_at(&c.drawing, &c.staged, p) };
         let kind = self.views.dim_kind;
         let radial = kind.is_round();
         let angular = kind == bimcraft_core::family::DimKind::Angular;
@@ -575,6 +680,12 @@ impl FamilyEditor {
                 }
             } else if let (Some(a), Some(b)) = (m.points.first(), m.points.last()) {
                 lines.push([on_screen(*a), on_screen(*b)]);
+                // Its ticks: a small cross at each point, so a padlock keeps off them too.
+                for p in &m.points {
+                    let c = on_screen(*p);
+                    lines.push([c - egui::vec2(TICK, 0.0), c + egui::vec2(TICK, 0.0)]);
+                    lines.push([c - egui::vec2(0.0, TICK), c + egui::vec2(0.0, TICK)]);
+                }
             }
         }
         let offer = self.views.align_lock.filter(|(.., w)| *w == which).and_then(|(reference, target, at, _)| {
@@ -599,17 +710,20 @@ impl FamilyEditor {
             let (Some(base), Some(f)) = (m.points.first(), family.as_ref()) else { continue };
             let base_at = on_screen(*base);
             let dir = on_screen(*base + m.across) - base_at;
-            // A form one of its references belongs to: its outline is the inside the padlock keeps out of.
-            let ring: Vec<egui::Pos2> = refs
-                .iter()
-                .find_map(|r| match r {
-                    DimRef::Form(g, _) | DimRef::Sketch(g, _) | DimRef::Point(g, ..) => f.forms.iter().position(|x| x.guid == *g),
-                    _ => None,
-                })
-                .map(|i| fv::outline(f, &values, &c.staged, which, i).into_iter().map(&on_screen).collect())
-                .unwrap_or_default();
+            // A form one of its references belongs to: its outline is the inside the padlock keeps out of. Planes and lines
+            // alone: every solid form's, so a plane's padlock isn't left inside a form it runs through.
+            let ring = |i: usize| -> Vec<egui::Pos2> { fv::outline(f, &values, &c.staged, which, i).into_iter().map(&on_screen).collect() };
+            let own = refs.iter().find_map(|r| match r {
+                DimRef::Form(g, _) | DimRef::Sketch(g, _) | DimRef::Point(g, ..) => f.forms.iter().position(|x| x.guid == *g),
+                _ => None,
+            });
+            let rings: Vec<Vec<egui::Pos2>> = match own {
+                Some(i) => vec![ring(i)],
+                None => (0..f.forms.len()).filter(|i| !f.forms[*i].void).map(ring).collect(),
+            };
             let taken: Vec<egui::Pos2> = locks.iter().map(|(_, p)| *p).collect();
-            let at = dims::padlock_spot(base_at, dir, &|p| ring.len() > 2 && dims::within(&ring, p), &lines, &taken);
+            let inside = |p: egui::Pos2| rings.iter().any(|r| r.len() > 2 && dims::within(r, p));
+            let at = dims::padlock_spot(base_at, dir, &inside, &lines, &taken);
             locks.push((m.index, at));
         }
         let offered = offer.as_ref().and_then(|o| locks.iter().find(|(i, _)| *i == o.index).map(|(_, p)| *p));
@@ -683,6 +797,13 @@ impl FamilyEditor {
         if let Some(at) = align_lock {
             dims::padlock(&painter, at, false, pal().accent);
         }
+        // The connectors (#269), at their places in the family's axes as the view sees them; the one under the pointer lit, as a
+        // click would pick it.
+        let connector_marks = if editable { self.connector_marks() } else { Vec::new() };
+        let project = |q: [f64; 3]| Some(screen(c.staged.to_view(which, q)));
+        self.connector_hover = response.hover_pos().and_then(|p| super::connector_marks::pick(&connector_marks, &project, p));
+        let lit = (PICKED, crate::style::canvas_pal().hover);
+        super::connector_marks::paint(&painter, &connector_marks, &project, self.selected_connector(), self.connector_hover, lit);
         // What is selected, over the picture.
         if editable && let (Some(i), Some(f)) = (self.selected_form(), family.as_ref()) {
             let ring: Vec<egui::Pos2> = fv::outline(f, &values, &c.staged, which, i).into_iter().map(screen).collect();
@@ -817,6 +938,7 @@ impl FamilyEditor {
             self.views.grip = Some((grip, now));
         }
         let mut select_nested: Option<usize> = None;
+        let mut select_connector: Option<usize> = None;
         let mut place_at: Option<(PlaneRef, (f64, f64), f64)> = None;
         let mut moved: Option<(Guid, [f64; 3])> = None;
         let mut new_plane = None;
@@ -920,7 +1042,21 @@ impl FamilyEditor {
                         align = Some((a, r, q));
                         self.views.aligning = Some(None);
                     }
-                    _ => problem = Some(t("Pick a reference plane, an extrusion's end or a line of a form.").to_string()),
+                    (Some(_), Some(_)) => {
+                        problem = Some(t("That is the reference: pick what moves onto it.").to_string());
+                    }
+                    (None, _) => {
+                        // Over a form but on none of its faces: say what of a form Align takes.
+                        let form = family.as_ref().and_then(|f| fv::form_at(f, &values, &c.staged, which, q).and_then(|i| f.forms.get(i)));
+                        problem = Some(match form {
+                            Some(f) if !f.mesh.is_empty() => {
+                                t("A form made of a mesh has no faces Align can take: pick a reference plane, an extrusion's end or a line of a form.")
+                            }
+                            Some(_) => t("Align takes a form's straight edge, a side the view sees edge on, or its end: click on its outline."),
+                            None => t("Pick a reference plane, an extrusion's end or a line of a form."),
+                        }
+                        .to_string());
+                    }
                 }
             } else if let Some(hit) = dims::clicked(&marks, &self.dimensions, selected_dim, align_lock, &locks, p, &on_screen) {
                 let lengths = match &hit {
@@ -932,6 +1068,8 @@ impl FamilyEditor {
                     _ => Vec::new(),
                 };
                 on_dims = Some((hit, lengths));
+            } else if let Some(i) = super::connector_marks::pick(&connector_marks, &project, p) {
+                select_connector = Some(i);
             } else if let Some(i) = family.as_ref().and_then(|f| fv::nested_at(f, &values, &c.staged, which, q)) {
                 select_nested = Some(i);
             } else {
@@ -1028,6 +1166,9 @@ impl FamilyEditor {
         if let Some((host, at, offset)) = place_at {
             self.place_nested(host, at, offset);
         }
+        if let Some(i) = select_connector {
+            self.select_connector(i);
+        }
         if let Some(i) = select_nested {
             self.select_nested(Some(i));
         }
@@ -1043,14 +1184,12 @@ impl FamilyEditor {
         }
         if let Some((form, plane)) = select {
             self.nested_sel = None;
+            self.symbol = None;
+            self.connector = None;
             self.views.dim = None;
             self.form = form;
             self.views.plane = plane;
             self.views.line = select_line.flatten();
-            if let Some(i) = form {
-                self.tab = Tab::Forms;
-                self.document.reveal = Some(i);
-            }
         }
         // A plane its dimensions hold is dragged through them: a label it changes takes the new length, what is locked to it
         // follows, and what can't hold says so.
@@ -1126,20 +1265,15 @@ impl FamilyEditor {
     }
 }
 
-/// Work Plane > Show in the family's {3D}: plane `f` drawn into its picture `image` (taken through `cam`), as the project's 3D
-/// view lays out its work plane (`workplane::patch`) over what the family takes up (`extents`) and [`WORK_PLANE_MARGIN`]
-/// round, tinted as the plans tint it, with a grid through the family's origin about 5 to 20 lines across
-/// (`workplane::grid_step`) and its outline; depth tested, so a form in front of it hides it.
-pub(crate) fn draw_work_plane_3d(
-    image: &mut bimcraft_core::view3d::Image,
-    cam: &bimcraft_core::view3d::Camera,
-    f: &bimcraft_core::family::Frame,
-    extents: ([f64; 3], [f64; 3]),
-) {
+/// Work Plane > Show in the family's {3D}: plane `f` as a mark over its picture, as the project's 3D view lays out its work plane
+/// (`workplane::patch`) over what the family takes up (`extents`) and [`WORK_PLANE_MARGIN`] round, tinted as the plans tint it,
+/// with a grid through the family's origin about 5 to 20 lines across (`workplane::grid_step`) and its outline; depth tested,
+/// so a form in front of it hides it.
+pub(crate) fn work_plane_mark(f: &bimcraft_core::family::Frame, extents: ([f64; 3], [f64; 3])) -> Option<bimcraft_core::view3d::PlaneMark> {
     let plane = bimcraft_core::workplane::Frame { origin: f.origin, normal: f.z };
-    let Some(p) = crate::workplane::patch(plane, extents, WORK_PLANE_MARGIN, [0.0; 3]) else { return };
+    let p = crate::workplane::patch(plane, extents, WORK_PLANE_MARGIN, [0.0; 3])?;
     let step = bimcraft_core::workplane::grid_step((p.hi.0 - p.lo.0).max(p.hi.1 - p.lo.1));
-    image.draw_marks(cam, &[crate::workplane::plane_mark(p, step)]);
+    Some(crate::workplane::plane_mark(p, step))
 }
 
 /// The solid forms the type previewed (`values`) hides, and those the view's Visibility Settings leave out (`by_view`, F8),

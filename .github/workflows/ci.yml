@@ -23,15 +23,16 @@ jobs:
   check:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 60
+    # Windows builds and tests the slowest: about 55 minutes before its desktop tests start.
+    timeout-minutes: ${{ matrix.timeout }}
     strategy:
       fail-fast: false
       matrix:
         include:
           # The oldest Ubuntu runner, as the release workflow's Linux job.
-          - { name: Linux, runner: ubuntu-22.04 }
-          - { name: Windows, runner: windows-latest }
-          - { name: macOS, runner: macos-15 }
+          - { name: Linux, runner: ubuntu-22.04, timeout: 60 }
+          - { name: Windows, runner: windows-latest, timeout: 100 }
+          - { name: macOS, runner: macos-15, timeout: 60 }
     steps:
       - uses: actions/checkout@v4
 
@@ -93,9 +94,11 @@ jobs:
         run: |
           cargo run -q -p bimcraft-cli -- run --sample --save house.ifc
           cargo run -q -p bimcraft-cli -- run --script ci/ifc-coverage.txt --save coverage.ifc
+          cargo run -q -p bimcraft-cli -- run --script ci/family-window.txt --save family-window.ifc
 
+      # family-window.ifc: the Family Editor's exit test (F10) as commands, a parametric window placed, flexed and scheduled.
       - name: Validate
-        run: python ci/validate_ifc.py house.ifc coverage.ifc
+        run: python ci/validate_ifc.py house.ifc coverage.ifc family-window.ifc
 
   # What CLAUDE.md asks after touching packaging/: shellcheck on the scripts and actionlint on the workflows (which runs shellcheck
   # on their `run:` steps too). The runner image has shellcheck; actionlint is a pinned release, checked against its sum.

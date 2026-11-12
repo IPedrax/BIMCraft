@@ -21,15 +21,13 @@ fn selected() -> Harness<'static, BimApp> {
     assert!(made.is_some());
     h.state_mut().edit_family("Plinth");
     h.run();
-    // The Forms tab lists the form too: the browser's is the one picked.
-    press(&mut h, "Symbols");
     press(&mut h, "1. Extrusion");
     h
 }
 
 /// The draft as it stands, built.
 fn draft(h: &Harness<BimApp>) -> Family {
-    h.state().family_editor.as_ref().unwrap().draft_family().unwrap()
+    h.state().active_family().unwrap().draft_family().unwrap()
 }
 
 /// The draft's built triangles: their lowest and highest z.
@@ -62,10 +60,10 @@ fn a_selected_form_shows_revits_extrusion_properties() {
         assert!(h.query_by_label(group).is_some(), "{group}");
     }
     // The contextual tab and the Options Bar's Depth come with it.
-    assert!(h.query_all_by_label("Modify | Form").count() > 0);
+    assert!(h.query_all_by_label("Modify | Extrusion").count() > 0);
     assert_eq!(h.get_by_label("Depth").value().as_deref(), Some("50"));
-    // The Forms tab is not shown under it, as Revit's Properties show only what is selected.
-    assert!(h.query_by_label("Form From 1").is_none());
+    // The family's own are not shown under it, as Revit's Properties show only what is selected.
+    assert!(h.query_by_label("Family name").is_none());
 }
 
 #[test]
@@ -129,12 +127,12 @@ fn edit_work_plane_moves_the_form_onto_another_plane() {
     // The Work Plane dialog (T12), on the form's plane; Name chooses Up.
     assert!(h.query_by_label("Current Work Plane").is_some(), "the dialog");
     let up = draft(&h).planes.iter().find(|p| p.name == "Up").unwrap().guid;
-    if let Some(d) = h.state_mut().family_editor.as_mut().and_then(|ed| ed.views.dialog.as_mut()) {
+    if let Some(d) = h.state_mut().active_family_mut().and_then(|ed| ed.views.dialog.as_mut()) {
         assert_eq!(d.chosen, PlaneRef::default(), "Name starts on the form's own plane");
         d.chosen = PlaneRef::Plane(up);
     }
     press(&mut h, "OK");
-    assert!(h.state().family_editor.as_ref().unwrap().views.dialog.is_none());
+    assert!(h.state().active_family().unwrap().views.dialog.is_none());
     let f = draft(&h);
     let up = f.planes.iter().find(|p| p.name == "Up").unwrap().guid;
     assert_eq!(f.forms[0].host, PlaneRef::Plane(up));
@@ -167,11 +165,9 @@ fn escape_or_a_click_in_the_view_lets_the_form_go() {
     h.key_press(Key::Escape);
     h.run();
     assert!(h.query_by_label("Extrusion End").is_none());
-    assert!(h.query_by_label("Form From 1").is_some(), "the family's tabs are back, the form's own row open in its Forms tab");
-    // Selected again, from the Forms tab, and let go by a click in the view on nothing (one on a form selects it, T11).
-    h.get_by_label("Select").scroll_to_me();
-    h.run();
-    press(&mut h, "Select");
+    assert!(h.query_by_label("Family name").is_some(), "nothing selected, Properties show the family's own");
+    // Selected again, from the browser, and let go by a click in the view on nothing (one on a form selects it, T11).
+    press(&mut h, "1. Extrusion");
     assert!(h.query_by_label("Extrusion End").is_some());
     let nothing = h.state().pane.min + vec2(40.0, 120.0);
     click_at(&mut h, nothing);

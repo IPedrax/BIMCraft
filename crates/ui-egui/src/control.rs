@@ -410,6 +410,8 @@ impl BimApp {
             crate::Sheet::Table(id) => {
                 ("schedule", Some(id), matches!(m.elements.get(id), Some(bimcraft_core::model::Element::Schedule(_))))
             }
+            // A family document's view: not the project's, so it has no id here.
+            crate::Sheet::Family(..) => ("family", None, true),
         };
         let active_view = if exists {
             json!({"kind": kind, "name": self.view_name(self.sheet), "id": id, "guid": id.map(|id| m.guid(id))})
