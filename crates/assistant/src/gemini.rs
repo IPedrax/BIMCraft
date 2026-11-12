@@ -7,13 +7,18 @@
 use serde_json::{Value, json};
 
 use crate::net::Request;
-use crate::{Call, Msg, Reply, SYSTEM, api_error, clip, json_body, tools};
+use crate::{Call, Msg, Reply, SYSTEM, Usage, api_error, clip, count, json_body, tools, user_parts};
 
 pub fn request(model: &str, key: &str, history: &[Msg]) -> Request {
     let contents: Vec<Value> = history
         .iter()
         .map(|m| match m {
-            Msg::User(text) => json!({"role": "user", "parts": [{"text": text}]}),
+            Msg::User(text, files) => json!({"role": "user", "parts": user_parts(
+                text,
+                files,
+                |t| json!({"text": t}),
+                |mime, b64| json!({"inlineData": {"mimeType": mime, "data": b64}}),
+            )}),
             Msg::Assistant(reply) => reply.raw.clone(),
             Msg::Results(done) => json!({"role": "user", "parts": done.iter().map(|d| {
                 let mut call = json!({"name": d.name, "response": if d.error { json!({"error": d.text}) } else { json!({"result": d.text}) }});
@@ -39,6 +44,7 @@ pub fn request(model: &str, key: &str, history: &[Msg]) -> Request {
         "systemInstruction": {"parts": [{"text": SYSTEM}]},
         "contents": contents,
         "tools": [{"functionDeclarations": declarations}],
+        "generationConfig": {"thinkingConfig": {"includeThoughts": true}},
     });
     Request {
         url: format!("https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"),
@@ -71,14 +77,14 @@ pub fn parse(status: u16, body: &str) -> Result<Reply, String> {
         return Err(format!("{WHO} blocked the request or sent no answer{why}"));
     };
     let finish = candidate["finishReason"].as_str().unwrap_or("STOP");
-    let (mut text, mut calls) = (String::new(), Vec::new());
+    let (mut text, mut thinking, mut calls) = (String::new(), String::new(), Vec::new());
     for part in candidate["content"]["parts"].as_array().into_iter().flatten() {
         if let Some(call) = part.get("functionCall") {
             let Some(name) = call["name"].as_str() else { return Err(format!("{WHO} sent a tool call with no name")) };
             let args = call.get("args").cloned().unwrap_or_else(|| json!({}));
             calls.push(Call { id: call["id"].as_str().unwrap_or_default().into(), name: name.into(), args });
-        } else if let Some(t) = part["text"].as_str().filter(|_| part["thought"] != true) {
-            text.push_str(t);
+        } else if let Some(t) = part["text"].as_str() {
+            if part["thought"] == true { &mut thinking } else { &mut text }.push_str(t);
         }
     }
     match finish {
@@ -99,5 +105,8 @@ pub fn parse(status: u16, body: &str) -> Result<Reply, String> {
         raw = json!({"role": "model", "parts": []});
     }
     raw["role"] = json!("model");
-    Ok(Reply { text, calls, raw })
+    let u = &v["usageMetadata"];
+    // Gemini counts the thinking apart from the candidates, and bills it as output.
+    let output = count(&u["candidatesTokenCount"]).saturating_add(count(&u["thoughtsTokenCount"]));
+    Ok(Reply { thinking, text, calls, raw, usage: Usage { input: count(&u["promptTokenCount"]), output } })
 }

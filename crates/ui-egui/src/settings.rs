@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 use egui::{Align, Color32, ComboBox, Context, Id as UiId, Layout, RichText, ScrollArea, ThemePreference, Ui, vec2};
 use serde_json::{Value, json};
 
-use bimcraft_assistant::{Provider, model_ok, seal};
+use bimcraft_assistant::{Provider, Usage, model_ok, seal};
 
 use crate::BimApp;
 use crate::assistant::Secret;
@@ -133,9 +133,21 @@ pub struct Settings {
     pub assistant_provider: Provider,
     pub assistant_model: String,
     pub assistant_sealed: Option<String>,
+    /// Tokens the providers counted, by the project's file (none for one not yet saved): `usage_from` reads them back.
+    pub assistant_usage: BTreeMap<String, Usage>,
 }
 
 impl Settings {
+    /// The Assistant's part of the file: the key only as sealed, and the token counts only once there are any.
+    fn assistant_json(&self) -> Value {
+        let mut v = json!({"provider": self.assistant_provider.key(), "model": self.assistant_model, "key_sealed": self.assistant_sealed});
+        if !self.assistant_usage.is_empty() {
+            v["usage"] =
+                self.assistant_usage.iter().map(|(k, u)| (k.clone(), json!([u.input, u.output]))).collect::<serde_json::Map<_, _>>().into();
+        }
+        v
+    }
+
     pub fn to_json(&self) -> Value {
         let theme = match self.theme {
             ThemePreference::Dark => "dark",
@@ -169,7 +181,7 @@ impl Settings {
             "system_title_bar": self.system_title_bar,
             "agents": {"listen": self.agents_listen, "port": self.agents_port, "edit": self.agents_edit},
             // The key, only when the user asked for it to be kept, and then only sealed.
-            "assistant": {"provider": self.assistant_provider.key(), "model": self.assistant_model, "key_sealed": self.assistant_sealed},
+            "assistant": self.assistant_json(),
         })
     }
 
@@ -223,8 +235,20 @@ impl Settings {
                 None => base.assistant_sealed,
                 Some(sealed) => sealed.as_str().filter(|s| seal::well_formed(s)).map(str::to_string),
             },
+            assistant_usage: usage_from(&v["assistant"]["usage"], base.assistant_usage),
         }
     }
+}
+
+/// The token counts a settings file holds: an object of project path to [in, out], at most `MAX_PROJECTS` of them (one that is not
+/// that is left out). Not an object leaves `base`'s.
+fn usage_from(v: &Value, base: BTreeMap<String, Usage>) -> BTreeMap<String, Usage> {
+    let Some(map) = v.as_object() else { return base };
+    map.iter()
+        .filter(|(k, _)| k.len() <= 4096)
+        .filter_map(|(k, v)| Some((k.clone(), Usage { input: v.get(0)?.as_u64()?, output: v.get(1)?.as_u64()? })))
+        .take(crate::assistant::MAX_PROJECTS + 1)
+        .collect()
 }
 
 /// The shortcuts a settings file holds: an object of key to action, of which only the entries that Keyboard Shortcuts could have made
@@ -338,6 +362,7 @@ impl BimApp {
         (self.agents.listen, self.agents.port, self.agents.edit) = (kept.agents_listen, kept.agents_port, kept.agents_edit);
         let a = &mut self.assistant;
         (a.provider, a.model, a.sealed) = (kept.assistant_provider, kept.assistant_model.clone(), kept.assistant_sealed.clone());
+        a.usage = kept.assistant_usage.clone();
         // A saved key is opened for the session, unless it is under a passphrase: then it stays locked until the user types it. One this build
         // cannot open (another kind of build saved it, or the file was changed) is forgotten, and the user types it again.
         (a.protect, a.key_saved) = (false, false);
@@ -390,6 +415,7 @@ impl BimApp {
             assistant_provider: self.assistant.provider,
             assistant_model: self.assistant.model.clone(),
             assistant_sealed: self.assistant.sealed.clone(),
+            assistant_usage: self.assistant.usage.clone(),
         }
     }
 

@@ -30,6 +30,18 @@ What comes from the network is hostile, and what goes out is the user's:
 - The turn runs in `Chat::poll`, once a frame: the request is on a thread, its reply is taken in the frame, the tools run on the
   session there, one transaction named `LABEL` for each reply's calls, and the turn's end merges them into one undo step
   (`Session::merge_steps`). The network stays behind `Net` (`testing::Fake`), so no test reaches a provider.
+- `attach.rs`: the files sent with a message. A picked file is copied into a `TempDir` that is the chat's (gone on `clear`, `reset` and
+  drop), read back as text (UTF-8, `MAX_FILE_TEXT`) or a picture (`MAX_FILE_IMAGE`, base64 by `attach::base64`), and goes out through
+  `user_parts`, which each provider writes in its own form. A file's name is cleaned (`clean`) because it is inside `<file name="…">`.
+  File bytes are capped apart from the words (`MAX_FILES_TOTAL`, `Msg::file_bytes`). The model has no file tool, and the rule above that
+  tools never read a file stands.
+- `saved.rs`: a chat kept for each project, in a `chats` folder the window picks (`write`, `read`, `remove`, `Chat::to_saved`,
+  `Chat::restore`). The file is hostile: `restore` parses all of it or none (`parse`), within the live chat's caps, and a new
+  `Line`, `Msg` or `Reply` field is written and read there with a test. Pictures are not kept (`msg_json`), the key never is.
+- `Reply` carries `thinking` (the provider's summary, shown apart from the answer; `raw` is still what goes back) and `usage` (`Usage`,
+  what the provider counted: the chat hands it over with `take_usage` and the window keeps it by project). A new provider reads both.
+- `todo_write` (`tools::TODO`) is answered by `tools::run` but its list is kept by the chat (`Chat::todos`), not logged as a call and
+  not an undo step. The schema has an array of objects, which Gemini takes as it is.
 - Look at `tools::all()`'s schemas when adding a tool: plain types only (Gemini takes a subset of OpenAPI; `gemini::schema` writes a
   free-form object as text that the tool reads back).
 - `cargo test -p bimcraft-assistant` runs in about a second.

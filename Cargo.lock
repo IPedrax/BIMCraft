@@ -477,6 +477,7 @@ dependencies = [
  "bimcraft-core",
  "ring",
  "serde_json",
+ "tempfile",
  "ureq",
 ]
 

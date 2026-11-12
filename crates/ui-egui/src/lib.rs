@@ -3444,7 +3444,9 @@ impl BimApp {
             }
         }
         // A file dropped on the window opens as one the system asked for.
-        let dropped: Vec<PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().map(|f| f.path().to_path_buf()).collect());
+        let mut dropped: Vec<PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().map(|f| f.path().to_path_buf()).collect());
+        // Over the Assistant palette, a file is for the message.
+        self.drop_on_assistant(ctx, &mut dropped);
         self.opens.extend(dropped);
         // A Revit file being read holds the files that come meanwhile, which are opened in turn once it is over: the last one wins.
         if !self.importing()
