@@ -181,6 +181,169 @@ Levels; Convert, Edit Sketch, Flip, Railing).
 | 16 | IFC both ways | `IfcStair` of `IfcStairFlight`, landings, winder treads and railings with `Pset_StairFlightCommon`; import keeps a stair a stair. | IFC export of stairs | |
 | 17 | Finish | The codes' numbers checked against the documents, the dialog in the project's units, translations. | | Part done: the Building Codes dialog and the check window write lengths in the project's units (millimetres to the hundredth, a code's inch being 25.4). Still to come: the codes' numbers checked against their texts, the new labels translated, and whether a stair's new fields call for a new file format number |
 
+## Handoff and to-do (2026-11-12)
+
+Everything a new session needs to pick the work up. Branch `feat/advanced-stair-tool`, draft PR
+[#386](https://github.com/IPedrax/BIMCraft/pull/386); push with
+`git push https://github.com/dansity/BIMCraft HEAD:feat/advanced-stair-tool` (the only remote, `origin`, is upstream). The
+last commit is `9d6d12a7` (stairs drawn along a line). Railings are parked: the user asked for stairs first. Working mode
+the user asked for: push through the coding, run only the tests near the change while working, the full checks
+(`cargo fmt --check`, clippy, `cargo test --workspace`) once before each commit, commit and push often, keep this table
+and the PR description up to date. An RPM when asked: `packaging/linux/package.sh --formats rpm` →
+`dist/release/bimcraft-0.11.0-linux-x86_64.rpm`.
+
+### 1. The batch in the working tree (not committed)
+
+What it adds:
+
+- On `StairType` (`model.rs`): `rules: TypeRules`, which has a min and a max each (`Option<f64>`) for the riser, going,
+  step (2R+G), ratio (G/R), sum (G+R) and pitch, plus `landing_min` and `walk_offset_min`. It also gains
+  `plan: PlanShows {below, same, above}` of `PlanShow`, and `line_visible`, `line_hidden` and `fill`.
+- `Model::check` refuses a min above its max and over-long pattern names.
+- The `type` command for a stair takes `rules` and `plan` as a merge patch, where `null` takes a rule off. It also takes
+  `line_visible`, `line_hidden` and `fill`.
+- `codes::limits` / `limits_of` give a stair its rules: the type's rules over the project's code. `stair_findings` and
+  `solve` read them, and there are new findings for ratio, sum and pitch.
+- `render::stair` draws each of the three cases by the type's `PlanShow` (`Shown`, `StairLook`, `shown_as`). Dashes come
+  from the named line patterns and the fill from `fill_pattern`.
+- `stairs::Goings` and `allot` stretch or shrink a path's treads within the rules so that a flight ends where it was drawn.
+  `Run::going()` is each run's own going, and the plan, 3D and IFC read it.
+- New desktop file `crates/ui-egui/src/stairtype.rs`, the stair page of Type Properties:
+  - the rules grid: a tick and a field for the min, a tick and a field for the max; an unticked rule shows the code's
+    number greyed;
+  - the three plan pickers;
+  - the line-pattern and fill pickers.
+
+Steps to finish it:
+
+1. Fix two test expectations in `crates/core/src/codes/tests.rs`. The code is right; the tests predate stretched treads.
+   - About line 946, `a_stair_is_drawn_along_a_path_of_flights_and_landings`: the corner landing is now the corner alone,
+     1000 × 1000. The old 1000 × 1000 + 100 × 1000 included the 100 mm that the flight's treads now take up.
+   - About line 1009, `a_stair_type_has_rules_of_its_own_and_says_how_its_stairs_show_in_plan`: the solver proposes 19
+     risers, not 18, because the type's `pitch_max: 30` also counts. Assert `>= 18`.
+2. Run `cargo test -p bimcraft-core --lib -- codes::` and the ui-egui stair and type tests
+   (`cargo test -p bimcraft-ui-egui stair`, `… type`).
+3. Run clippy and `cargo i18n update`: there are new UI labels in `stairtype.rs` and `codes.rs` `TYPE_LABELS`.
+4. If the hostile sweep has no payload for `type` with `rules` and `plan`, add one.
+5. Write a desktop test that opens a stair type's Type Properties, ticks a rule and checks the `type` command it sends.
+6. Commit as "Stairs: a stair type's own rules, plan display, line patterns and fill; treads stretched to a flight's length".
+   Then push, update rows 7, 9 and 13 below and the PR description, and rebuild the RPM.
+7. Tell the user what **Add Landings Due** is; they asked about the old **By the Code** button and are waiting for the
+   answer:
+   - By the Code replaced a stair's landings with the code's, all straight on, so it dropped turns. That was the bug they
+     saw.
+   - Add Landings Due runs the solver with the risers, tread and width locked. It keeps every landing the stair has and adds
+     only those the code still asks for (a flight too long).
+
+### 2. What the user's screenshots showed (the reference for what is left)
+
+- **Revit's Modify | Create Stair ribbon** (for step 7 and the tool):
+  - Mode: Cancel and Finish.
+  - Components: Run, Landing, Support, and the run shapes (straight, full-step spiral, centre-ends spiral, L winder,
+    U winder, sketch).
+  - Multistorey Stairs: Connect Levels.
+  - Work Plane.
+  - Tools: Convert, Edit Sketch, Flip, Railing.
+  - Options Bar: Location Line (Run: Center), Offset, Actual Run Width, Automatic Landing.
+  - Properties: the type (Assembled Stair) and Edit Type.
+  - Ours now: the Draw panel (Straight, Arc, Spiral, By Risers) and the Segment panel (Steps, Landing) in the ribbon; size
+    and location line in the Options Bar. **Still to do: Support as a component drawn on its own, and Connect Levels as a
+    ribbon button.**
+- **Archicad's floor plan display, one of nine for each of three cases** (level below, own level, level above). This is
+  done in the working tree; the `PlanShow` names map to Archicad's list in its order:
+  - with break mark, visible / hidden → `break_visible_hidden`;
+  - no break mark, visible → `no_break_visible`;
+  - below the break mark, visible → `below_visible`;
+  - above the break mark, visible → `above_visible`;
+  - no break mark, hidden → `no_break_hidden`;
+  - above the break mark, hidden → `above_hidden`;
+  - below the break mark, hidden → `below_hidden`;
+  - with break mark, all visible → `break_all_visible`;
+  - with break mark, hidden / visible → `break_hidden_visible`;
+  - and our own `not_shown`.
+
+  Defaults: the level below `not_shown`, the own level `break_visible_hidden`, the level above `no_break_visible`.
+  **Still to do:**
+  - a preview icon for each choice in the picker, as Archicad's list has;
+  - the fill drawn under the visible part in every case;
+  - a view able to override the type's choice (Visibility/Graphics).
+- **Min and max with two fields** (Revit's Maximum Riser Height and Actual Tread Depth, each given a second box). This is
+  done as the rules grid. **Still to do:** the same min/max pair in the Building Codes dialog for the project's code, not
+  only on the type.
+- **Archicad's Rules and Standards panel.** The numbers are its defaults, in metres. "Done" means in the working tree.
+
+  | Rule | Ticked | Min | Max | Here |
+  |---|---|---|---|---|
+  | Riser height | both | 0.150 | 0.200 | Done |
+  | Tread depth | both | 0.250 | 0.350 | Done |
+  | 2 risers + 1 tread | both | 0.600 | 0.650 | Done |
+  | Tread / riser ratio | off | 0.100 | 1.000 | Done |
+  | Tread + riser | off | 0.450 | 0.600 | Done |
+  | Pitch | off | 20° | 30° | Done |
+  | Automatic landing length | on | 1.000 | | Done as `landing_min` |
+  | Walk-line offset range | on | 0.300 | | Done as `walk_offset_min` |
+
+  **Still to do, as on that panel:**
+  - **Baseline lock** (ticked and greyed there).
+  - **Length calculation**, a choice that was set to "along arc (previous version)": how a curved flight's length is
+    measured.
+  - **Landing extra-length distribution**, a choice that was set to "evenly": where the length a landing gains beyond its
+    minimum goes.
+  - **Walk line at a landing**, a choice that was set to "angular", against rounded.
+- **Covers: Archicad's tread and riser finishes** (step 9). The picture showed a section of two steps with these numbers:
+  - 0.025, the thickness of the tread's cover;
+  - 0.010 under it, how far the tread's cover stands out at the nosing;
+  - 0.015, the thickness of the riser's cover;
+  - two greyed 0.010 fields, the side overhangs, which apply only when a side is open.
+
+  To do:
+  - `tread_cover`, `riser_cover`, `cover_nosing` and `cover_side` on `StairType`, each with a material;
+  - `stairs::parts` adds the cover solids on top of the structure;
+  - the riser height stays measured finish to finish, so the structure steps sit lower by the cover;
+  - IFC writes the covers as `IfcCovering` or as a layer;
+  - the Type Properties page gets a little diagram like Archicad's.
+- **A monolithic stair converted to a sketch lost the continuity of its underside.** Fixed and committed: a tread that is
+  not part of a straight run gets its own sloping underside in `stairs::parts`.
+
+### 3. The rest of the to-do, by step
+
+- **7, the path:**
+  - a width of its own after winders or an angled turn;
+  - a landing's length on an angled turn;
+  - flights drawn apart and joined later (a landing stretch in between is the way for now);
+  - drawn from the top down;
+  - a circle (full spiral) segment in the path, not only the Spiral shape.
+- **9, stair types:**
+  - covers (above);
+  - materials;
+  - a centre stringer (carriage);
+  - a spiral's post;
+  - the support's lines as location lines;
+  - the plan showing nosings and stringers;
+  - IFC following the type.
+- **10, sketch:**
+  - boundaries that are not straight between risers;
+  - a tread's outline drawn in the tool;
+  - converting one run and keeping the rest;
+  - converting a spiral;
+  - converting back.
+- **11, solver:**
+  - locks kept on the stair;
+  - its proposals offered while drawing.
+- **12, multistorey:** a storey edited apart from the others; a spiral that is multistorey.
+- **13, plan symbol:** tread numbers; the plan following the type (see the plan display above); a view overriding the type.
+- **14, headroom:** beams, roofs and ceilings as obstacles; measured on the nosing line; a margin round the opening; an
+  opening that follows the stair.
+- **15, railings:** parked.
+- **16, IFC both ways:**
+  - `IfcStair` of `IfcStairFlight` and `IfcSlab` landings, with `Pset_StairFlightCommon`;
+  - a property set holding a path's, a spiral's, a sketch's and winders' own fields, so an import keeps a stair a stair.
+- **17, finish:**
+  - the codes' numbers checked against their texts;
+  - translations of the new labels;
+  - whether `path`, `sketch`, `spiral`, `rules` and `plan` call for a `FORMAT` bump (they are new fields with defaults, so
+    an older version leaves them out: probably no bump, but say so in the PR).
+
 ## Open questions
 
 - **The codes' numbers are unchecked.** NBR 9050/9077, the IBC, DIN 18065 and Japan's Building Standards Law are in
