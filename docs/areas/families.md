@@ -258,7 +258,7 @@ family closes. While it hides anything the view wears the project's cyan frame (
 
 ### Visibility Settings (F8)
 
-F8, FORMAT 31 (`family/visibility.rs`). Revit's Family Element Visibility Settings: a form's, a void's and a nested instance's
+F8, FORMAT 18 (`family/visibility.rs`). Revit's Family Element Visibility Settings: a form's, a void's and a nested instance's
 `visibility` is `{plan, front_back, left_right, coarse, medium, fine, only_when_cut}`, each true by default but `only_when_cut`,
 and a file or a command writes only what differs (`{"plan": false}`); a symbol's takes only `coarse`, `medium` and `fine`
 (`Visibility::check_symbol`, refused in `Family::check` naming the symbol), as Revit's symbolic lines do. They are drawing
@@ -649,7 +649,7 @@ an advanced view; a sketch they can't say shows as "Sketch" with its count of li
 
 ## Blends, sweeps and swept blends
 
-F6, FORMAT 29 (`family/forms.rs`). A form's `sketch` is always drawn in its host plane's axes: an extrusion's or a revolve's
+F6, FORMAT 18 (`family/forms.rs`). A form's `sketch` is always drawn in its host plane's axes: an extrusion's or a revolve's
 profile, a Blend's base, a Sweep's or a Swept Blend's path. What a form is follows from what it holds (`Form::kind`,
 `FormKind`): a `top` (lines in the host's axes) makes it a Blend, its base at `from` (First End) and its top at `to` (Second
 End) along the normal; a `sweep` (`{profile, end?}`) a Sweep, or with `end` a Swept Blend. A profile is drawn in the profile
@@ -661,7 +661,7 @@ a `sweep`, either with an axis or a mesh, a twist on anything but a blend or a s
 blend's path of more than one line. Every line of `top`, `sweep.profile` and `sweep.end` is a part ("sketch line"), kept by
 place within its group (`Form::keep_lines`); `rename_parameter`, `every_formula` and the formula checks reach them
 (`Form::all_lines`). A build of 28 would drop the three fields and build a Blend as an extrusion of its base, so 29 refuses
-it as newer; a file of 28 holds none and has no migrate step.
+it as newer; a file of 17 holds none and has no migrate step.
 
 Built (`forms::build`, from `Family::solid`): a Blend's ends and a Swept Blend's profiles are one loop each (several, or a
 hole, refused, as Revit's); a Sweep's profile may have several loops and holes. `forms::mapped` pairs two rings: each starts

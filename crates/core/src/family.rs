@@ -799,7 +799,7 @@ pub struct Form {
     #[serde(default, skip_serializing_if = "is_zero_i32")]
     pub twist: i32,
     /// Its Visibility Settings (F8): the views it is drawn in by the way they look and their detail level. None draws as a
-    /// file of 30 did. A void cuts whatever they say: they are drawing, and a void is never drawn.
+    /// file of 17 did. A void cuts whatever they say: they are drawing, and a void is never drawn.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub visibility: Option<Visibility>,
 }
@@ -1083,7 +1083,7 @@ pub struct Piece {
     pub top: f64,
     pub material: String,
     pub round: bool,
-    /// Its form's Visibility Settings (and a nested instance's over them): where views draw it. None, as a file of 30 drew it.
+    /// Its form's Visibility Settings (and a nested instance's over them): where views draw it. None, as a file of 17 drew it.
     pub vis: Option<Visibility>,
 }
 

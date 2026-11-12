@@ -1,7 +1,7 @@
 //! F8: where a family's part is drawn, as Revit's Family Element Visibility Settings say: in which views by the way they look
 //! at it (Plan/RCP, Front/Back, Left/Right; only where cut) and at which detail levels (Coarse, Medium, Fine). It is
 //! drawing only: a part hidden in a view is still in the model, its IFC and its schedules, which read [`super::Family::pieces`]
-//! as before. A part with no settings draws as a file of 30 did (`None`, below).
+//! as before. A part with no settings draws as a file of 17 did (`None`, below).
 //!
 //! The views ask through [`FormView`], which a [`crate::graphics::Look`] holds: a plan, a view along a direction in plan (a
 //! section or an elevation), or 3D, and its detail level. A built form carries its settings as a [`Piece`](super::Piece)'s
