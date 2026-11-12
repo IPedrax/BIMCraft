@@ -12970,6 +12970,22 @@ msgstr ""
 msgid "Weight per Metre"
 msgstr ""
 
+#: crates/ui-egui/src/titleblocks.rs:327
+msgid "Bottom left"
+msgstr ""
+
+#: crates/ui-egui/src/titleblocks.rs:321
+msgid "Template draws the sheet border"
+msgstr ""
+
+#: crates/ui-egui/src/titleblocks.rs:327
+msgid "Top right"
+msgstr ""
+
+#: crates/ui-egui/src/titleblocks.rs:323
+msgid "Use a drawing area for automatic placement"
+msgstr ""
+
 #: crates/ui-egui/src/lib.rs:4503
 #~ msgid "Click to select. Drag to orbit (or Shift and the middle button), the middle button pans, the wheel zooms."
 #~ msgstr "Nhấp để chọn. Kéo để xoay quanh (hoặc Shift và nút giữa), nút giữa để kéo, con lăn để thu phóng."

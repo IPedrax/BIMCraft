@@ -974,10 +974,10 @@ other_files(
         "title_block",
         "Title Blocks",
         &[],
-        "{name?, like?, rename?, delete?: true, path?, units?: auto|mm|cm|m|in|ft, width?, height?, font?, lines?, fills?, \
+        "{name?, like?, rename?, delete?: true, path?, units?: auto|mm|cm|m|in|ft, width?, height?, font?, drawing_area?, template_border?, lines?, fills?, \
          texts?, fields?} a title block of the project's own, as Revit's title block families with labels, which a sheet names to be \
          drawn with it in its bottom right corner, inside the border, in place of the built-in title box. Without `name`, the \
-         project's title blocks, its title fields' values and the automatic fields. All lengths are mm on paper from the title \
+         project's title blocks, its title fields' values and the automatic fields. drawing_area [[left,bottom],[right,top]] is in sheet mm for automatic placement; template_border:true omits the standard frame and keeps fold marks. Other lengths are mm on paper from the title \
          block's bottom left corner: `width` and `height` its box; `font` what letters its texts (Arial unless told; any the system has); `lines` [{points: [[x, y], …], closed?, pen?: 0 to 16 (1)}]; \
          `fills` [{rings: [[[x, y], …], …]}], filled through (a logo); `texts` [{at: [x, y] on the baseline, text, size?: \
          capitals mm (2.5), angle?: degrees, align?: left|center|right, width_factor?: 0.1 to 10 (1), color?: [r, g, b]}]. A text may name fields as `{KEY}`: the automatic ones \
@@ -10599,7 +10599,27 @@ fn title_values(s: &mut Session, p: &Value) -> R {
 fn title_block(s: &mut Session, p: &Value) -> R {
     use crate::titleblock::{self, TitleBlock};
     let c = "title_block";
-    only(c, p, &["name", "like", "rename", "delete", "path", "units", "width", "height", "font", "lines", "fills", "texts", "fields"])?;
+    only(
+        c,
+        p,
+        &[
+            "name",
+            "like",
+            "rename",
+            "delete",
+            "path",
+            "units",
+            "width",
+            "height",
+            "font",
+            "drawing_area",
+            "template_border",
+            "lines",
+            "fills",
+            "texts",
+            "fields",
+        ],
+    )?;
     let Some(name) = name_param(c, p, "name")? else {
         let auto: Map<String, Value> = titleblock::AUTO.iter().map(|(k, what)| ((*k).to_string(), json!(what))).collect();
         return Ok(json!({"title_blocks": s.model.title_blocks, "values": s.model.title_values, "auto": auto}));
@@ -10644,7 +10664,7 @@ fn title_block(s: &mut Session, p: &Value) -> R {
         }
         // The fields it had keep their labels, whose and defaults where the drawing still names them.
         let fields = read.fields.iter().map(|f| t.field(&f.key).cloned().unwrap_or_else(|| f.clone())).collect();
-        t = TitleBlock { fields, ..read };
+        t = TitleBlock { fields, drawing_area: t.drawing_area, template_border: t.template_border, ..read };
         left_out = out;
     } else if p.get("units").is_some() {
         return Err(bad(c, "`units` is the unit of the DXF `path` names"));
@@ -10652,7 +10672,7 @@ fn title_block(s: &mut Session, p: &Value) -> R {
     // What's given goes over it, read as a file reads one: a key it hasn't is an error.
     let mut v = serde_json::to_value(&t).map_err(|e| bad(c, e))?;
     if let Some(o) = v.as_object_mut() {
-        for key in ["width", "height", "font", "lines", "fills", "texts", "fields"] {
+        for key in ["width", "height", "font", "drawing_area", "template_border", "lines", "fills", "texts", "fields"] {
             match p.get(key) {
                 None => {}
                 Some(Value::Null) => {
@@ -10740,7 +10760,10 @@ fn place(s: &mut Session, p: &Value) -> R {
     };
     // The view's own scale, unless told another; 1 : 100 for a view with none.
     let scale = scale.unwrap_or_else(|| graphics::scale_of(&s.model, view));
-    let at = at.unwrap_or_else(|| sheet::spot(&s.model, sheet, view, scale));
+    let at = match at {
+        Some(at) => at,
+        None => sheet::automatic_center(&s.model, sheet, view, scale).map_err(|why| bad(c, why))?,
+    };
     let (sheet, view) = (s.model.guid(sheet), s.model.guid(view));
     let id = s.model_mut().insert(Element::Viewport(Viewport { sheet, view, at, scale }));
     Ok(json!({"id": id, "at": at}))

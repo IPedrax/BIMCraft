@@ -784,6 +784,13 @@ definition, and a value given to one (DATE, to issue on) is said instead. A key 
 shows on the sheet. `titleblock::values` works them out, `sheet::title_values` with the sheet's scale, and `elements` gives a sheet's
 as `title_values`, with the keys that are its own to give as `sheet_fields`.
 
+A definition may set `drawing_area: [[left,bottom],[right,top]]` in millimetres from the paper's bottom left. Each sheet using it
+must contain the rectangle. The first automatic viewport is centered there. Subsequent frames are placed to the right when they fit,
+otherwise at the rectangle's top right. An oversized frame reports both sizes. Explicit centers and existing viewports keep their
+positions. Set `template_border: true` for a frame drawn by the template's own lines; standard fold marks still print.
+Both options are under Size in the title-block editor, and FORMAT 18 holds them; a definition without them keeps the standard
+border and placement.
+
 A sheet may also have no title block at all: `sheet {"title_block": "none"}` (`titleblock::NONE`, in any case, or `false`; `true` or
 `""` is the built-in one), for one drawn on the sheet itself. It leaves out the border, the title box and its lettering and the folding
 marks, not viewports, their titles, schedules, text notes or detail lines. Properties > Title Block offers None beside Built-in and
