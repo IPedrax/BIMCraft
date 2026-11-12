@@ -70,3 +70,7 @@ beam {"points": [[0,9500],[6000,9500]], "offset": 3000, "type": "B 150x600", "ju
 beam {"points": [[0,10000],[6000,10000]], "offset": 3000, "type": "B 150x600"}
 beam {"points": [[0,10500],[6000,10500]], "offset": 3000, "end_offset": 3500, "type": "Steel Tube 150", "justify": "centre"}
 beam {"points": [[0,11000],[6000,11000]], "offset": 3000, "type": "B 120x300"}
+# Native grids: parallel and reversed U axes plus an oblique V axis. Last, so the ids above stay put.
+grid {"name": "U1", "start": [-500,100], "end": [2500,4100]}
+grid {"name": "U2", "start": [3500,4100], "end": [500,100]}
+grid {"name": "V", "start": [0,2000], "end": [4000,-1000]}

@@ -3320,7 +3320,9 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
         let Some(g) = e(id) else { continue };
         let f = r.frame(g);
         seen.insert(id);
-        for axis in [7, 8, 9].into_iter().flat_map(|i| refs(g.args.get(i))).filter_map(&e) {
+        // Read shared references kindly, once per grid: another grid may place that same axis somewhere else.
+        let mut axes_seen = BTreeSet::new();
+        for axis in [7, 8, 9].into_iter().flat_map(|i| refs(g.args.get(i))).filter(|a| axes_seen.insert(*a)).filter_map(&e) {
             let Some(pts) = r.curve(reference(axis.args.get(1)), 0) else { continue };
             let (Some(p), Some(q)) = (pts.first(), pts.last()) else { continue };
             let (mut start, mut end) = (micron(r.flat(f.at(*p))), micron(r.flat(f.at(*q))));
@@ -3333,6 +3335,22 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
             origin.entry(id).or_insert(gid);
             elements_from.entry(id).or_default().push(gid);
         }
+    }
+    // A single real axis cannot satisfy IfcGrid's U/V cardinalities. BIMCraft writes it as a truthful curve annotation.
+    for id in named(&["IFCANNOTATION"]) {
+        let Some(g) = e(id).filter(|g| text(g.args.get(4)) == Some(crate::ifc::GRID_AXIS)) else { continue };
+        seen.insert(id);
+        let Some(pts) = r.axis(g) else {
+            leave(&mut skipped, &mut seen, id, "its grid annotation has no axis");
+            continue;
+        };
+        let (Some(p), Some(q)) = (pts.first(), pts.last()) else { continue };
+        let (start, end) = (micron(r.flat(*p)), micron(r.flat(*q)));
+        let tag = text(g.args.get(2)).map_or_else(|| next_number(grid_names.iter().map(String::as_str)), String::from);
+        let gid = m.insert(Element::Grid(Grid { name: fresh(&mut grid_names, &tag), start, end }));
+        from.insert(gid, who(id));
+        origin.insert(id, gid);
+        elements_from.entry(id).or_default().push(gid);
     }
 
     // What else in the building has a body: a component of a generic family that remembers the IFC class it came in as, with its

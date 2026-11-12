@@ -75,6 +75,8 @@ const WALLED: u64 = 61;
 const WALLED_DEFINES: u64 = 62;
 const FACE_OPENING: u64 = 63;
 const FACE_VOIDS: u64 = 64;
+const GRID: u64 = 73;
+const GRID_CONTAINS: u64 = 74;
 
 /// The property set an element's values of the project's parameters go in.
 pub const PARAMETERS: &str = "Project Parameters";
@@ -92,6 +94,10 @@ pub const WALL: &str = "BIMCraft_Wall";
 
 /// The object type a room separation line's virtual element carries, which the import reads it back by.
 pub const SEPARATION: &str = "RoomSeparation";
+
+/// A lone grid axis cannot form an IfcGrid's two nonempty, disjoint axis sets. Its curve annotation carries this object
+/// type so import can restore it as a native grid rather than inventing another axis.
+pub const GRID_AXIS: &str = "BIMCraft_GridAxis";
 
 /// The property set what a placed device's connector says that IFC's `Pset_ElectricalDeviceCommon` has no property for goes
 /// in: its load in VA (in all, and `LoadVAPhase1`… for each phase), its system and its classification.
@@ -791,6 +797,43 @@ fn wall_quantities(m: &Model, wl: &crate::model::Wall, holes: &[(f64, f64, f64)]
     values
 }
 
+/// Grids span storeys, so their placement and containment belong to the building. Each real axis is written once.
+fn grids(w: &mut Step, m: &Model, building: u64, building_at: u64, context: u64) {
+    let grids: Vec<_> = m.elements.iter().filter_map(|(id, e)| if let Element::Grid(g) = e { Some((*id, g)) } else { None }).collect();
+    let Some((first_id, first)) = grids.first() else { return };
+    let along = (first.end - first.start).unit();
+    let (mut u, mut v, mut lines) = (Vec::new(), Vec::new(), Vec::new());
+    for (_, g) in &grids {
+        let (a, b) = (w.point(g.start), w.point(g.end));
+        let line = w.add(format!("IFCPOLYLINE((#{a},#{b}))"));
+        lines.push(line);
+        if grids.len() > 1 {
+            let axis = w.add(format!("IFCGRIDAXIS({},#{line},.T.)", s(&g.name)));
+            if along.cross((g.end - g.start).unit()).abs() < 1e-9 {
+                u.push(axis);
+            } else {
+                v.push(axis);
+            }
+        }
+    }
+    let at = w.place(Some(building_at), (0.0, 0.0, 0.0), None);
+    let rep = w.add(format!("IFCSHAPEREPRESENTATION(#{context},'Axis','Curve2D',({}))", refs(&lines)));
+    let shape = w.add(format!("IFCPRODUCTDEFINITIONSHAPE($,$,(#{rep}))"));
+    let ent = if grids.len() == 1 {
+        w.add(format!("IFCANNOTATION({},$,{},$,'{GRID_AXIS}',#{at},#{shape})", w.guid(ELEMENT, *first_id), s(&first.name)))
+    } else {
+        // IFC requires U and V to be nonempty. For parallel axes, put the last real axis in V; IRREGULAR promises no
+        // rectangular layout. A lone axis instead uses the annotation above: sharing it across U/V violates WR2.
+        if v.is_empty()
+            && let Some(last) = u.pop()
+        {
+            v.push(last);
+        }
+        w.add(format!("IFCGRID({},$,'Grid',$,$,#{at},#{shape},({}),({}),$,.IRREGULAR.)", w.guid(GRID, 0), refs(&u), refs(&v)))
+    };
+    w.add(format!("IFCRELCONTAINEDINSPATIALSTRUCTURE({},$,$,$,(#{ent}),#{building})", w.guid(GRID_CONTAINS, 0)));
+}
+
 pub fn export(m: &Model) -> String {
     export_with(m, true)
 }
@@ -873,6 +916,7 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool) -> String {
     if !all.is_empty() {
         w.add(format!("IFCRELAGGREGATES({},$,$,$,#{building},({}))", w.guid(AGGREGATES, BUILDING), refs(&all)));
     }
+    grids(&mut w, m, building, building_at, axis);
 
     let mut contained: BTreeMap<Guid, Vec<u64>> = BTreeMap::new();
     // The components in each room, by the room's id: contained in their storey, and referenced in its space too.
