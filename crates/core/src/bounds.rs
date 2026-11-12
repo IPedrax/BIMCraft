@@ -213,12 +213,10 @@ pub(crate) fn primitive(m: &Model, id: Id) -> Bounds {
 }
 
 pub(crate) fn place_component(m: &Model, c: &crate::model::Component, bounds: [P3; 2]) -> Bounds {
-    let (sin, cos) = c.angle.to_radians().sin_cos();
-    let base = m.elevation(c.level) + c.offset;
+    let placed = m.component_placement(c);
     padded((0..8).map(|k| {
         let [x, y, z] = [bounds[k & 1][0], bounds[(k >> 1) & 1][1], bounds[(k >> 2) & 1][2]];
-        let y = if c.mirrored { -y } else { y };
-        [c.at.0 + x * cos - y * sin, c.at.1 + x * sin + y * cos, base + z]
+        placed.place([x, if c.mirrored { -y } else { y }, z])
     }))
 }
 

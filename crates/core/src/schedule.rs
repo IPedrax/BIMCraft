@@ -434,7 +434,25 @@ const OWN: &[(&str, usize, &[Own])] = &[
             DESIGN_OPTION,
         ],
     ),
-    ("component", 4, &[FAMILY, TYPE, LEVEL, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION, ROOM_NUMBER, ROOM_NAME]),
+    (
+        "component",
+        4,
+        &[
+            FAMILY,
+            TYPE,
+            LEVEL,
+            COUNT,
+            PHASE_CREATED,
+            PHASE_DEMOLISHED,
+            DESIGN_OPTION,
+            ROOM_NUMBER,
+            ROOM_NAME,
+            // Its height over its level (its Schedule Level, for one on a plane), what it is on, and how far off that.
+            ("Elevation from Level", Kind::Length, From::Key("offset")),
+            ("Work Plane", Kind::Text, From::Key("work_plane")),
+            ("Offset from Host", Kind::Length, From::Key("offset_from_host")),
+        ],
+    ),
     (
         "stair",
         7,
@@ -576,9 +594,10 @@ pub fn fields(m: &Model, cat: &str) -> Vec<(String, Kind)> {
                 &p.name,
                 match p.kind {
                     family::Kind::Length => Kind::Length,
-                    family::Kind::Number | family::Kind::Angle => Kind::Number,
+                    family::Kind::Number | family::Kind::Angle | family::Kind::Integer | family::Kind::Volume => Kind::Number,
+                    family::Kind::Area => Kind::Area,
                     family::Kind::YesNo => Kind::YesNo,
-                    family::Kind::Material => Kind::Text,
+                    family::Kind::Material | family::Kind::Text | family::Kind::Url | family::Kind::FamilyType => Kind::Text,
                 },
             );
         }
@@ -947,7 +966,10 @@ impl Row<'_> {
             let v = j.get("values").and_then(|v| v.get(name)).cloned().unwrap_or(Value::Null);
             return match (p.kind, v.as_f64()) {
                 (family::Kind::YesNo, Some(x)) => Value::Bool(x != 0.0),
-                (family::Kind::Material, _) if v.as_str() == Some("") => Value::Null,
+                // A family's areas and volumes are in mm² and mm³; schedules show m² and m³.
+                (family::Kind::Area, Some(x)) => serde_json::json!(fine(x / 1e6)),
+                (family::Kind::Volume, Some(x)) => serde_json::json!(fine(x / 1e9)),
+                (k, _) if k.text() && v.as_str() == Some("") => Value::Null,
                 _ => v,
             };
         }

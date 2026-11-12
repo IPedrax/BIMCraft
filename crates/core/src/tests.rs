@@ -1766,7 +1766,7 @@ fn warnings_are_collected_not_stopped_at_the_first() {
 }
 
 /// What a family is in a file: its own fields, no more and no less, and a project written here read
-/// back whole — the file format didn't grow a field this release (ТЗ-003 §6.8).
+/// back whole (ТЗ-003 §6.8). FORMAT 18 grew its `planes` (the datums, always written) and a form's `host`.
 #[test]
 fn a_family_is_saved_with_the_fields_it_has_always_had() {
     let mut s = Session::new();
@@ -1777,8 +1777,8 @@ fn a_family_is_saved_with_the_fields_it_has_always_had() {
         keys.sort();
         keys
     }
-    assert_eq!(keys(&f), ["category", "forms", "parameters", "types"], "`symbols` and `operation` are only there when they are");
-    assert_eq!(keys(&f["forms"][0]), ["from", "guid", "id", "material", "plane", "profile", "to"], "every other field is unset");
+    assert_eq!(keys(&f), ["category", "forms", "parameters", "planes", "types"], "`symbols` and `operation` are only there when they are");
+    assert_eq!(keys(&f["forms"][0]), ["from", "guid", "host", "id", "material", "profile", "to"], "every other field is unset");
     let path = temp("family-format.bimcraft");
     run(&mut s, "save", json!({"path": path}));
     let mut back = Session::new();
@@ -2285,8 +2285,27 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"name": "F", "types": {"A": {}}, "forms": [{"profile": [[0, 0], [1e9, 0], [1e9, 1e9]], "to": 1e9}, {"circle": {"centre": [0, 0], "radius": 1e9}, "from": -1e9, "to": 1e9, "void": true}]}),
         json!({"name": "F", "types": {"A": {}}, "forms": [{"circle": {"centre": [0, 0], "radius": 5}, "to": 1}, {"plane": "yz", "circle": {"centre": [0, 0], "radius": 1e-9}, "to": 1, "void": true}]}),
         json!({"name": "F", "types": {}, "parameters": [{"name": " ", "kind": "material", "value": 5}]}),
+        json!({"name": "F", "types": {"A": {}}, "ref_planes": [{"start": [0, 0, 0], "end": [1e300, 0, 0], "up": [0, 0, f64::MAX]}, {"start": [0, 0, 0], "end": [0, 0, 0], "up": [0, 0, 0], "reference": "left", "defines_origin": true, "level": true}]}),
+        json!({"name": "F", "types": {"A": {}}, "ref_planes": [{"guid": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a1", "start": [5, 0, 0], "end": [1, 0, 0], "up": [0, 1, 0]}], "ref_plane": {"guid": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a3", "name": "x"}}),
+        json!({"name": "F", "types": {"A": {}}, "ref_planes": "x", "ref_lines": [{"start": [0, 0, 0], "end": [1, 0, 0], "host": {"plane": 5, "line": 5}}], "delete_ref_plane": ["9e3c0a10-1f0b-4d8c-8a5e-0000000000a2", 5]}),
+        json!({"name": "F", "types": {"A": {}}, "ref_lines": [{"guid": "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f809", "start": [0, 0, 0], "end": [1, 0, 0], "host": {"line": "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f809", "face": "end"}}], "forms": [{"host": {"line": "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f809", "face": "up"}, "profile": [[0, 0], [9, 0], [9, 9]], "to": 1}]}),
+        json!({"name": "F", "types": {"A": {}}, "ref_lines": [{"start": [0, 0, 0], "end": [1e9, 1e9, 0]}, {"start": [0, 0, 0], "end": [0, 0, 1e9], "host": {"line": 5, "face": "start"}}], "ref_line": {"id": 5, "start": "x"}, "delete_ref_line": "x"}),
+        json!({"name": "F", "types": {"A": {}}, "ref_planes": [{"guid": "1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8", "start": [0, 0, 1e9], "end": [1e-9, 0, 1e9], "up": [0, 1e-300, 0]}], "forms": [{"host": {"plane": "1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8"}, "plane": "xz", "profile": [[0, 0], [1e9, 0], [0, 1e9]], "from": -1e9, "to": 1e9}]}),
+        json!({"name": "F", "types": {"A": {}}, "ref_planes": [{"guid": "1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8", "start": [0, 0, 0], "end": [1, 1, 1], "up": [-1, 1, 0], "defines_origin": true}], "forms": [{"host": {"plane": "1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8"}, "profile": [[0, 0], [9e8, 0], [0, 9e8]], "axis": [[0, 0], [0, 1]], "to": 360}]}),
+        json!({"name": "F", "types": {"A": {}}, "options": {"room_calculation_point": [f64::MAX, "1e300 * 1e300", "Nope"], "omniclass": {"number": "1".repeat(10_000), "title": "\u{0}"}, "cut_in_views": 5}}),
+        json!({"name": "F", "types": {"A": {}}, "options": {"work_plane_based": "x", "always_vertical": [], "shared": {}, "cut_with_voids_when_loaded": null, "room_calculation_point": [[], {}, null]}}),
+        json!({"name": "F", "types": {"A": {}}, "options": {"omniclass": {"number": "23..", "title": "x".repeat(100_000)}, "nope": true}}),
+        json!({"name": "F", "types": {"A": {}}, "parameters": [{"name": "W", "value": 1e300}], "options": {"room_calculation_point": ["W * W", "-W", "if(W > 0, W, 0)"], "omniclass": null, "cut_in_views": true}}),
+        json!({"name": "F", "options": "x"}),
+        json!({"name": "F", "options": [null, 1]}),
         json!({"name": "", "delete": true, "rename": ""}),
+        json!({"name": "Outlet", "parameter": {"name": "X", "kind": "familytype", "of": "nowhere", "shared": 5, "group": [], "rename": ""}}),
+        json!({"name": "Outlet", "parameter": {"name": "Load", "instance": true, "rename": "Width", "reporting": true, "kind": "integer"}}),
+        json!({"name": "Outlet", "parameter": {"name": "Height", "rename": "1 bad", "kind": "url", "value": "a\nb"}, "delete_parameter": ["Nope", 5]}),
+        json!({"name": "Outlet", "parameter": "x", "delete_parameter": "x"}),
         json!({"path": "/nonexistent/family.json"}),
+        json!({"path": "/nonexistent/shared.txt", "action": "load", "family": "Outlet", "name": "X", "guid": "x", "under": 5}),
+        json!({"path": "/nonexistent/shared.txt", "action": "export", "group": "\u{0}", "kind": "familytype", "of": "rack"}),
         json!({"name": "P", "kind": "length", "categories": ["wall", "wall", "clouds"], "rename": "Q"}),
         json!({"name": "P", "kind": "yesno", "categories": ["door", "component"], "rename": "1 bad"}),
         json!({"name": "Count", "categories": ["room"]}),
@@ -2454,6 +2473,14 @@ fn hostile_params_never_panic_or_break_the_model() {
         // A sheet's title block that's neither a name nor true or false, and a title block that would be called none.
         json!({"number": "Z2", "title_block": [false], "name": "none", "rename": " NONE "}),
         json!({"id": 100000, "title_block": {"none": true}}),
+        // Work planes: a reference plane of no line, of no `up`, out of reach; hosts that aren't, and a form's host given oddly.
+        json!({"start": [0, 0, 0], "end": [1e300, 0, 0], "up": [0, 0, 0]}),
+        json!({"start": [0, 0], "end": [1000, 0], "up": [1, 0, 0], "name": "a\nb"}),
+        json!({"family": "Chair", "at": [0, 0, 1e300], "host": {"plane": 100002}}),
+        json!({"family": "Chair", "at": [0, 0], "host": {"plane": "nope", "level": 5}}),
+        json!({"ids": [100002, 100003], "host": {"level": "Level 2"}}),
+        json!({"family": "Chair", "form": 1, "host": {"line": 1, "face": "x"}, "keep": 1}),
+        json!({"family": "Chair", "options": {"default_elevation": 1e300, "work_plane_based": "x"}}),
     ];
     let mut base = Session::new();
     house(&mut base);
@@ -2462,7 +2489,9 @@ fn hostile_params_never_panic_or_break_the_model() {
     let _ = base.execute("mass", &json!({"boundary": block(), "height": 9000, "lean": [1500, 500]}));
     // Detailing, one of each (detail lines, regions, a group, a repeating detail, a sketch floor, Linework), and the payloads
     // that name them: some for every command, some for the one they are for.
-    let (detailing, targeted) = crate::detail_tests::sweep_payloads(&mut base);
+    let (detailing, mut targeted) = crate::detail_tests::sweep_payloads(&mut base);
+    // A shared parameters file's actions, on files of the sweep's own (`shared_parameter_tests::sweep_payloads`).
+    targeted.extend(crate::shared_parameter_tests::sweep_payloads());
     // A section and an elevation of it, after those, so that no id the payloads name moves: their views are drawn too.
     let _ = base.execute("section", &json!({"start": [-1000, 3000], "end": [9000, 3000]}));
     let _ = base.execute("elevation", &json!({"facing": "south"}));
@@ -2477,6 +2506,9 @@ fn hostile_params_never_panic_or_break_the_model() {
     let roof = base
         .execute("roof", &json!({"boundary": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]], "slope": 30, "slopes": [30, 45, 30, 45]}))
         .map_or(Value::Null, |r| r["id"].clone());
+    // A sloped reference plane and a work plane-based component on it, after the roof, so that no id moves; and the payloads
+    // that name them.
+    targeted.extend(crate::work_plane_tests::sweep_payloads(&mut base));
     let line = |slope: Value| json!({"start": [0, 0], "end": [8000, 0], "slope": slope});
     let rest = [
         json!({"start": [8000, 0], "end": [8000, 6000]}),

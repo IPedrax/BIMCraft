@@ -12,7 +12,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::Arc;
 
 use bimcraft_core::element_json_with;
-use bimcraft_core::family::{Kind as Holds, Val};
+use bimcraft_core::family::{Group, Kind as Holds, Val};
 use bimcraft_core::model::{Element, Function, Guid, Id, Layer, Location, Model, PARAMETER_CATEGORIES, ParameterKind, Pattern};
 use bimcraft_core::rooms::Rooms;
 use bimcraft_core::schedule::{self, Field, Filter, Op, Sort};
@@ -122,6 +122,15 @@ fn relevant(e: &Value, key: &str) -> bool {
 /// `{key: val}` for `modify`, nested through the dots: modify merges into fields that are objects.
 fn nested(key: &str, val: Value) -> Value {
     key.rsplit('.').fold(val, |v, k| json!({ k: v }))
+}
+
+/// The rows only a work plane-based family's components show, and those only the others' do.
+const WORK_PLANE_ROWS: [&str; 4] = ["Schedule Level", "Elevation from Level", "Work Plane", "Offset from Host"];
+const LEVEL_ROWS: [&str; 2] = ["Level", "Height Offset From Level"];
+
+/// Whether row `label` shows for components that are (`based`) or aren't of work plane-based families.
+fn work_plane_row(label: &str, based: bool) -> bool {
+    if based { !LEVEL_ROWS.contains(&label) } else { !WORK_PLANE_ROWS.contains(&label) }
 }
 
 fn rows(category: &str) -> &'static [Row] {
@@ -281,9 +290,16 @@ fn rows(category: &str) -> &'static [Row] {
             ("Graphics", "scale", msg!("View Scale (1 : n)"), Number),
             ("Other", "at", "Location", PaperPoint),
         ],
+        // A work plane-based family's: its level is its Schedule Level, its height over it its Elevation from Level (read
+        // only on a plane, which it follows), what it is on and how far off it; another's, its level and height as before
+        // (`work_plane_rows`).
         "component" => &[
             ("Constraints", "level", "Level", Level),
             ("Constraints", "offset", "Height Offset From Level", Length),
+            ("Constraints", "level", "Schedule Level", Level),
+            ("Constraints", "offset", "Elevation from Level", Length),
+            ("Constraints", "work_plane", "Work Plane", Shown),
+            ("Constraints", "offset_from_host", "Offset from Host", Length),
             ("Other", "at", "Location", Point),
             ("Other", "angle", "Rotation (°)", Number),
         ],
@@ -1536,7 +1552,7 @@ impl BimApp {
         let v: serde_json::Map<String, Value> = rows
             .iter()
             .map(|r| (r.1, r.3))
-            .chain([("top_level", Shown), ("enclosed", Shown)])
+            .chain([("top_level", Shown), ("enclosed", Shown), ("host", Shown)])
             .map(|(k, kind)| {
                 let one = field_of(&first, k, kind);
                 let shared = all.iter().all(|e| field_of(e, k, kind) == one);
@@ -1548,6 +1564,11 @@ impl BimApp {
         // What an element points at is in its JSON as a GUID, or as an id for the one beside it.
         let id_of = |v: &Value| v.as_u64().or_else(|| v.as_str().and_then(Guid::parse).and_then(|g| model.elements.id(g)));
         let level_name = |v: &Value| id_of(v).and_then(|l| model.level(l)).map_or_else(String::new, |l| l.name.clone());
+        // Components all of work plane-based families show where they are on their work planes.
+        let based = ids.iter().all(|id| match model.elements.get(*id) {
+            Some(Element::Component(c)) => model.families.get(&c.family).is_some_and(|f| f.work_plane_based),
+            _ => false,
+        });
         let mut groups: Vec<&'static str> = Vec::new();
         for (g, ..) in rows {
             if !groups.contains(g) {
@@ -1573,6 +1594,9 @@ impl BimApp {
             }
             grid(ui, ("properties", id, group), |ui| {
                 for &(_, key, label, kind) in rows.iter().filter(|r| r.0 == group) {
+                    if !work_plane_row(label, based) {
+                        continue;
+                    }
                     let val = &v[key];
                     // A length one element hasn't got (a straight wall's radius): no row.
                     if ids.len() == 1 && matches!(kind, LengthShown | LengthIf) && val.is_null() {
@@ -1583,12 +1607,19 @@ impl BimApp {
                     }
                     let kind = match kind {
                         Height if !v["top_level"].is_null() => LengthShown,
+                        Length if key == "offset" && !v["host"].is_null() => LengthShown,
                         Point if paper => PaperPoint,
                         kind => kind,
                     };
                     let label = t(label);
                     let name = ui.label(label);
                     match kind {
+                        // A component's Work Plane, `Level : Level 1`: what it is on in the interface's words, its name as it is.
+                        Shown if key == "work_plane" => {
+                            let said = text(val);
+                            let said = said.split_once(" : ").map_or(said.clone(), |(what, name)| format!("{} : {name}", t(what)));
+                            ui.label(RichText::new(said).color(pal().muted));
+                        }
                         Shown => {
                             let said = text(val);
                             ui.label(RichText::new(t(&said)).color(pal().muted));
@@ -1841,12 +1872,9 @@ impl BimApp {
         };
         let (units, materials): (Units, Vec<String>) = (model.units, model.materials.keys().cloned().collect());
         let mut change: Option<(String, Result<Value, String>)> = None;
-        for (group, kinds) in [
-            ("Dimensions", &[Holds::Length, Holds::Number, Holds::Angle][..]),
-            (msg!("Materials and Finishes"), &[Holds::Material][..]),
-            ("Other", &[Holds::YesNo][..]),
-        ] {
-            let params: Vec<_> = f.parameters.iter().filter(|p| p.instance && kinds.contains(&p.kind)).collect();
+        for g in Group::ALL {
+            let group = g.label();
+            let params: Vec<_> = f.parameters.iter().filter(|p| p.instance && p.group() == g).collect();
             if params.is_empty() {
                 continue;
             }
@@ -1864,8 +1892,18 @@ impl BimApp {
                         let name = ui.label(&p.name);
                         let kind = if p.kind == Holds::Length { Length } else { Number };
                         match p.kind {
-                            _ if p.formula.is_some() => {
+                            // What a formula works out, or a reporting parameter reads: shown, not typed.
+                            _ if p.formula.is_some() || p.reporting => {
                                 ui.label(RichText::new(shown(kind, &val, units)).color(pal().muted));
+                            }
+                            Holds::FamilyType => {
+                                ui.label(RichText::new(val.as_str().unwrap_or_default()).color(pal().muted));
+                            }
+                            Holds::Text | Holds::Url => {
+                                if let Some(typed) = self.field(ui, id, &p.name, val.as_str().unwrap_or_default().to_string(), name.id, "")
+                                {
+                                    change = Some((p.name.clone(), Ok(json!(typed))));
+                                }
                             }
                             Holds::YesNo => {
                                 let mut on = val.as_f64().is_some_and(|x| x != 0.0);
@@ -1880,7 +1918,7 @@ impl BimApp {
                                     change = Some((p.name.clone(), Ok(json!(m))));
                                 }
                             }
-                            Holds::Length | Holds::Number | Holds::Angle => {
+                            Holds::Length | Holds::Number | Holds::Angle | Holds::Integer | Holds::Area | Holds::Volume => {
                                 if let Some(typed) = self.field(ui, id, &p.name, shown(kind, &val, units), name.id, "") {
                                     change = Some((p.name.clone(), parse(kind, &typed, units)));
                                 }
@@ -2514,7 +2552,7 @@ pub(crate) struct FamilyDialog {
     /// The components that were on the type when the dialog opened; OK puts them on the type shown.
     elements: Vec<Id>,
     /// Each type parameter: its name, what it holds, as typed, and whether a formula works it out.
-    fields: Vec<(String, Holds, String, bool)>,
+    fields: Vec<(String, Holds, String, bool, Group)>,
     /// A new name being typed, for a duplicate or a rename.
     naming: Naming,
     /// What stopped OK, Apply, Duplicate or Rename.
@@ -2535,7 +2573,11 @@ impl FamilyDialog {
                     Some(Val::Text(t)) => t.clone(),
                     None => String::new(),
                 };
-                f.parameters.iter().filter(|p| !p.instance).map(|p| (p.name.clone(), p.kind, typed(p), p.formula.is_some())).collect()
+                f.parameters
+                    .iter()
+                    .filter(|p| !p.instance)
+                    .map(|p| (p.name.clone(), p.kind, typed(p), p.formula.is_some() || p.reporting, p.group()))
+                    .collect()
             })
             .unwrap_or_default();
         FamilyDialog { family, name, elements, fields, naming: Naming::None, error: None }
@@ -2550,12 +2592,14 @@ impl FamilyDialog {
     /// aren't what they hold.
     fn params(&self, name: &str, units: Units) -> Result<Value, String> {
         let mut set = serde_json::Map::new();
-        for (key, kind, typed, _) in self.fields.iter().filter(|f| !f.3) {
+        for (key, kind, typed, ..) in self.fields.iter().filter(|f| !f.3 && f.1 != Holds::FamilyType) {
             let v = match kind {
                 Holds::Length => json!(units.parse(typed).ok_or_else(|| tf("{}: `{}` is not a length", &[key, typed]))?),
-                Holds::Number | Holds::Angle => json!(number(typed).ok_or_else(|| tf("{}: `{}` is not a number", &[key, typed]))?),
+                Holds::Number | Holds::Angle | Holds::Integer | Holds::Area | Holds::Volume => {
+                    json!(number(typed).ok_or_else(|| tf("{}: `{}` is not a number", &[key, typed]))?)
+                }
                 Holds::YesNo => json!(typed == "1"),
-                Holds::Material => json!(typed),
+                Holds::Material | Holds::Text | Holds::Url | Holds::FamilyType => json!(typed),
             };
             set.insert(key.clone(), v);
         }
@@ -2575,23 +2619,12 @@ impl BimApp {
             crate::popup::body(ui, |ui| {
                 asked = typeprops::head(ui, "family-type", &d.family, &names, &d.name, &mut d.naming, true);
                 let below = typeprops::foot_height(ui, d.error.is_some());
-                // Each parameter under the group Revit gives what it holds: lengths and angles are dimensions.
-                let group = |kind: &Holds| match kind {
-                    Holds::Length | Holds::Angle => "Dimensions",
-                    Holds::Material => msg!("Materials and Finishes"),
-                    Holds::Number | Holds::YesNo => "Other",
-                };
-                let mut groups: Vec<&str> = Vec::new();
-                for (_, kind, ..) in &d.fields {
-                    if !groups.contains(&group(kind)) {
-                        groups.push(group(kind));
-                    }
-                }
-                groups.sort_by_key(|g| ["Materials and Finishes", "Dimensions", "Other"].iter().position(|x| x == g));
+                // Each parameter under its group: its own, else the one its kind goes under.
+                let groups: Vec<Group> = Group::ALL.into_iter().filter(|g| d.fields.iter().any(|f| f.4 == *g)).collect();
                 typeprops::table(ui, "family-type", below, |tb| {
                     for g in groups {
-                        tb.group(g);
-                        for (key, kind, typed, computed) in d.fields.iter_mut().filter(|f| group(&f.1) == g) {
+                        tb.group(g.label());
+                        for (key, kind, typed, computed, _) in d.fields.iter_mut().filter(|f| f.4 == g) {
                             match kind {
                                 // What a formula works out, shown as Revit greys it.
                                 _ if *computed => tb.shown(key, typed),
@@ -2603,7 +2636,10 @@ impl BimApp {
                                 Holds::Material => tb.pick(key, typed, &materials),
                                 Holds::Length => tb.text(key, typed, model.units.name()),
                                 Holds::Angle => tb.text(key, typed, "°"),
-                                Holds::Number => tb.text(key, typed, ""),
+                                Holds::Area => tb.text(key, typed, "mm²"),
+                                Holds::Volume => tb.text(key, typed, "mm³"),
+                                Holds::FamilyType => tb.shown(key, typed),
+                                Holds::Number | Holds::Integer | Holds::Text | Holds::Url => tb.text(key, typed, ""),
                             }
                         }
                     }

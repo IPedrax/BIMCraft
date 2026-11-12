@@ -126,6 +126,13 @@ impl<'a> Rooms<'a> {
         rooms.iter().find(|(id, r)| self.centre_of(*id, r).is_some_and(|g| region_holds(&g, p))).map(|(id, _)| *id)
     }
 
+    /// The room component `c` is in: the one holding its family's room calculation point, placed where it stands
+    /// ([`Model::component_room_point`]), on its level; its insertion point's where its family has none.
+    pub fn component(&self, c: &crate::model::Component) -> Option<Id> {
+        let [x, y, _] = self.m.component_room_point(c);
+        self.room_at(c.level, P2(x, y))
+    }
+
     /// Room `r`'s (of id `id`) boundary at the walls' centre lines, found once.
     fn centre_of(&self, id: Id, r: &Room) -> Option<Region> {
         if let Some(g) = self.centre.borrow().get(&id) {

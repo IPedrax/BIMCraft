@@ -68,7 +68,8 @@ starts with a few (`Beam 200 x 500`…), and the `type` command creates and chan
 centre line's ends, the footprint in plan, the prism or tube in 3D. The plan, the section, the 3D view, the snaps and
 IFC call it and know no category. A rectangular run is a sloped prism, so sections cut it; a round one is a tube mesh, a convex
 solid, which a section cuts by the plane through its line (`Solid::cuts`: where the tube's edges cross the plane, their hull, a
-ring, an ellipse when the line is oblique). A component's forms, which are not convex, are shown beyond the line and never cut.
+ring, an ellipse when the line is oblique). A component's forms are cut the same way where its category is built in (`view3d::slice`
+for shapes that aren't convex); a fixture's are shown beyond the line.
 
 ## (b) Points and verticals
 
@@ -181,8 +182,8 @@ the four took a few lines in each of these places, and the tests are rows in two
 - A conductor or a conduit under its level (an earthing ring, usually) shows in a plan whose view range reaches it (its View Depth).
 - An inspection box is a proxy, so a filter on the other lightning kinds finds it; `IfcDistributionChamberElement`
   `.INSPECTIONCHAMBER.` is the real class. A patch panel is placed on the wall, not in a rack.
-- A section cuts a tube by the plane through its line, which is exact for a convex mesh only; a component's forms are not, and are
-  never cut.
+- A section cuts a closed mesh, a tube or a family's form, by the plane through its line (`view3d::slice`); one that doesn't
+  close falls back on the hull of where its edges cross the plane, which is exact for a convex mesh only.
 - Braces are beams that slope; they will want their own type and `IfcMember`.
 - Import finds a run's section as the box round its body in the frame the axis gives it, so a member rolled about its axis
   reads as the box. An upright run comes back running up with its width along east, whichever end it was drawn from.

@@ -21,6 +21,7 @@ use crate::fills::{self, FillPattern, FilledRegionType};
 use crate::geom::{self, P2, Region};
 use crate::graphics::{self, Graphics, ViewFilter, ViewTemplate};
 pub use crate::groups::{DetailGroup, RepeatingDetail};
+pub use crate::hosting::{HostRef, Hosted, ReferencePlane};
 use crate::language::Language;
 pub use crate::lines::DetailLine;
 use crate::lines::{self, LinePattern, LineStyle};
@@ -79,7 +80,23 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// across a column, square to its angle (`across`). Nothing in a file of 17 changes, but a build that reads up to 17 would
 /// answer such a connector or dimension with a serde error ("unknown variant", "missing field `system`"), would leave the
 /// title blocks out as fields it doesn't know, drawing every sheet with the built-in title box, and would silently drop
-/// `join: false` and join the element again, not say "saved by a newer BIMCraft". 17: a schedule may list several categories
+/// `join: false` and join the element again, not say "saved by a newer BIMCraft". 18 also holds the Family Editor's families and
+/// what places them in a project, which a build that reads up to 17 would leave out as fields it doesn't know, drawing a
+/// family without them or failing to build it and losing them on saving, or refuse on opening ("unknown variant", "isn't a
+/// category views draw"), not say "saved by a newer BIMCraft"; a file of 17 is brought up to 18 by [`Model::migrate`]:
+///
+/// - Family parameters: text, whole numbers, areas, volumes, URLs and family types, grouped (`group`), shared (`shared`, a
+///   GUID) or reporting (`reporting`); a family type parameter names its category (`of`).
+/// - Reference planes and lines (F2): a family has reference planes (its three datums and its own, `planes`) and reference
+///   lines (`lines`), and a form is drawn on a `host`, one of them, where it named a `plane` (`xy`, `xz` or `yz`). A form on
+///   `xz` swept along +y and its host, Center (Front/Back), has its normal toward -y, so such a form's `from` and `to` are
+///   read negated and swapped.
+/// - Subcategories: a view's graphics, a view template and the object styles may name `dooropening` and `windowopening`
+///   (Doors > Opening, Windows > Opening), and a family's symbol the subcategory it is drawn in (`subcategory`).
+/// - Work planes and hosts (T4): the project has reference planes (`refplane`); a work plane-based component may be hosted
+///   on one (`host`), its `at` and `offset` following the plane and its family's axes tilted with it.
+///
+/// 17: a schedule may list several categories
 /// (`multicategory`, with `categories`) and a project's language may be Italian (`it`); nothing in a file of 16 changes, but a
 /// build that reads up to 16 would refuse either on opening (no schedule of that category, an unknown variant), not say
 /// "saved by a newer BIMCraft". 16: a 3D view may hold dimensions (the
@@ -1610,7 +1627,8 @@ pub struct Run {
 
 /// A family's type placed: at `at` on `level`, `offset` mm up from it, turned `angle` degrees
 /// (counter-clockwise from east) and, `mirrored`, flipped across its own x axis; `params`, its
-/// instance parameters' values where they aren't the family's.
+/// instance parameters' values where they aren't the family's. Hosted on a reference plane (`host`), `level` is its
+/// Schedule Level, `at` and `offset` follow the plane, and it may tilt with it (`Model::component_placement`).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Component {
@@ -1627,6 +1645,10 @@ pub struct Component {
     pub mirrored: bool,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
+    /// What a work plane-based component stands on, where that isn't its level: its place on a reference plane, which its
+    /// `at` and `offset` are worked out from (`crate::hosting`). None, it is on `level`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host: Option<Hosted>,
 }
 
 /// A stair from `level` up to `top_level` (or `height` mm), climbing from the middle of its first
@@ -2042,7 +2064,7 @@ macro_rules! visit_refs {
                     f(g)
                 }
             }
-            Element::Grid(_) | Element::Sheet(_) | Element::Schedule(_) | Element::Link(_) => {}
+            Element::Grid(_) | Element::RefPlane(_) | Element::Sheet(_) | Element::Schedule(_) | Element::Link(_) => {}
             Element::PlanView(v) => {
                 f(& $($m)? v.level);
                 if let Some(g) = & $($m)? v.parent { f(g) }
@@ -2086,7 +2108,10 @@ macro_rules! visit_refs {
                 f(& $($m)? v.view);
             }
             run_arm!(r) => f(& $($m)? r.level),
-            Element::Component(c) => f(& $($m)? c.level),
+            Element::Component(c) => {
+                f(& $($m)? c.level);
+                if let Some(Hosted { host: HostRef::Plane(g), .. }) = & $($m)? c.host { f(g) }
+            }
             Element::Railing(r) => {
                 f(& $($m)? r.level);
                 if let Some(g) = & $($m)? r.host { f(g) }
@@ -2123,6 +2148,9 @@ macro_rules! visit_refs {
 pub enum Element {
     Level(Level),
     Grid(Grid),
+    /// A reference plane of the project, which work plane-based components are hosted on.
+    #[serde(rename = "refplane")]
+    RefPlane(ReferencePlane),
     Wall(Wall),
     Floor(Floor),
     Ceiling(Ceiling),
@@ -2370,6 +2398,7 @@ impl Element {
             Element::PlanView(_) => "planview",
             Element::Level(_) => "level",
             Element::Grid(_) => "grid",
+            Element::RefPlane(_) => "refplane",
             Element::Wall(_) => "wall",
             Element::Floor(_) => "floor",
             Element::Ceiling(_) => "ceiling",
@@ -3227,6 +3256,35 @@ impl Model {
         self.elements.iter().find(|(_, e)| self.component_materials(e).contains(&name)).map(|(id, _)| format!("component {id}"))
     }
 
+    /// Whether the families' shared parameters agree: a shared GUID is one name and one kind wherever a family holds it, and
+    /// a name is one shared GUID, so a schedule's column of it is one parameter.
+    fn check_shared_parameters(&self) -> Result<(), String> {
+        let mut by_guid: BTreeMap<Guid, (&str, &crate::family::Parameter)> = BTreeMap::new();
+        let mut by_name: BTreeMap<&str, (&str, Guid)> = BTreeMap::new();
+        for (n, f) in &self.families {
+            for p in &f.parameters {
+                let Some(g) = p.shared else { continue };
+                let who = format!("family `{n}`: parameter `{}` is shared as {g}", p.name);
+                if let Some((other, q)) = by_guid.get(&g) {
+                    if q.name != p.name {
+                        return Err(format!("{who}, which family `{other}` calls `{}`; a shared parameter has one name", q.name));
+                    }
+                    if q.kind != p.kind {
+                        return Err(format!("{who}, which family `{other}` holds as {}, not {}", q.kind.said(), p.kind.said()));
+                    }
+                }
+                if let Some((other, h)) = by_name.get(p.name.as_str())
+                    && *h != g
+                {
+                    return Err(format!("{who}, but family `{other}` shares `{}` as {h}: one name is one shared parameter", p.name));
+                }
+                by_guid.entry(g).or_insert((n, p));
+                by_name.entry(p.name.as_str()).or_insert((n, g));
+            }
+        }
+        Ok(())
+    }
+
     /// Whether the values `params` give an element of family `name` are its instance parameters' own: what the
     /// element sets of the family are instance parameters, none worked out by a formula, materials in the library.
     fn family_values_ok(&self, who: &str, name: &str, f: &Family, params: &BTreeMap<String, serde_json::Value>) -> Result<(), String> {
@@ -3238,7 +3296,11 @@ impl Model {
             if p.formula.is_some() {
                 return Err(format!("{who}: `{k}` is worked out by its formula"));
             }
+            if p.reporting {
+                return Err(format!("{who}: `{k}` is a reporting parameter: its dimension says what it is, and nothing sets it"));
+            }
             if let crate::family::Val::Text(m) = crate::family::read(p, v).map_err(|e| format!("{who}: {e}"))?
+                && p.kind == crate::family::Kind::Material
                 && !m.is_empty()
                 && !self.materials.contains_key(&m)
             {
@@ -3301,50 +3363,52 @@ impl Model {
         if f.symbols.is_empty() {
             return Vec::new();
         }
+        // Tilted with its plane, it has no plan of its own to draw its symbols in.
+        if !self.component_placement(c).upright {
+            return Vec::new();
+        }
         let Ok(marks) = f.values(&c.type_name, &c.params).and_then(|v| f.marks(&v)) else { return Vec::new() };
         let (sin, cos) = c.angle.to_radians().sin_cos();
         let flip = if c.mirrored { -1.0 } else { 1.0 };
         marks.iter().map(|k| k.map(|q| P2(c.at.0 + q.0 * cos - flip * q.1 * sin, c.at.1 + q.0 * sin + flip * q.1 * cos))).collect()
     }
 
+    /// Where component `c`'s room is found from: its family's room calculation point for its values, mirrored, turned and
+    /// moved with it to where it stands (x, y and the height over the project's origin); its insertion point where its family
+    /// has none, or the point doesn't work out.
+    pub fn component_room_point(&self, c: &Component) -> [f64; 3] {
+        let placed = self.component_placement(c);
+        let local =
+            self.families.get(&c.family).and_then(|f| f.values(&c.type_name, &c.params).ok().and_then(|v| f.room_point(&v).ok().flatten()));
+        let Some([x, y, z]) = local else { return placed.origin };
+        placed.place([x, if c.mirrored { -y } else { y }, z])
+    }
+
     /// Component `c`'s connectors, worked out for its type and values, with their place and the way they face in the
-    /// model: mirrored if it is, turned and moved to where it stands (a connector without a place has neither). None for a
-    /// component whose family has none or doesn't work out.
+    /// model: mirrored if it is, then placed as its family's axes are ([`Model::component_placement`]), so one hosted on a
+    /// tilted plane or a face carries them with it (a connector without a place has neither). None for a component whose
+    /// family has none or doesn't work out.
     pub fn component_connectors(&self, c: &Component) -> Vec<crate::family::PlacedConnector> {
         let Some(f) = self.families.get(&c.family) else { return Vec::new() };
         let Ok(connectors) = f.connector_values(&c.type_name, &c.params) else { return Vec::new() };
-        let base = self.elevation(c.level) + c.offset;
-        let (sin, cos) = c.angle.to_radians().sin_cos();
-        let flip = if c.mirrored { -1.0 } else { 1.0 };
-        let turn = |p: [f64; 3]| [p[0] * cos - flip * p[1] * sin, p[0] * sin + flip * p[1] * cos, p[2]];
+        let placed = self.component_placement(c);
+        let flip = |p: [f64; 3]| [p[0], if c.mirrored { -p[1] } else { p[1] }, p[2]];
+        let [a, b, z] = placed.axes;
+        let turn = |p: [f64; 3]| -> [f64; 3] { std::array::from_fn(|i| p[0] * a[i] + p[1] * b[i] + p[2] * z[i]) };
         connectors
             .into_iter()
             .map(|k| {
-                let at = k.at.map(|p| {
-                    let q = turn(p);
-                    [c.at.0 + q[0], c.at.1 + q[1], base + q[2]]
-                });
-                let dir = k.direction.map(turn);
+                let at = k.at.map(|p| placed.place(flip(p)));
+                let dir = k.direction.map(|d| turn(flip(d)));
                 (k, at, dir)
             })
             .collect()
     }
 
-    /// Component `c`'s solids in the model: its own, turned and moved to where it stands.
+    /// Component `c`'s solids in the model: its own, placed where it stands ([`Model::component_placement`]).
     pub fn component_pieces(&self, c: &Component) -> Vec<Piece> {
-        let base = self.elevation(c.level) + c.offset;
-        let (sin, cos) = c.angle.to_radians().sin_cos();
-        let place = |p: [f64; 3]| [c.at.0 + p[0] * cos - p[1] * sin, c.at.1 + p[0] * sin + p[1] * cos, base + p[2]];
-        self.component_local_pieces(c)
-            .into_iter()
-            .map(|pc| Piece {
-                tris: pc.tris.iter().map(|t| t.map(place)).collect(),
-                outline: pc.outline.iter().map(|q| place([q.0, q.1, 0.0])).map(|p| P2(p[0], p[1])).collect(),
-                bottom: base + pc.bottom,
-                top: base + pc.top,
-                ..pc
-            })
-            .collect()
+        let placed = self.component_placement(c);
+        self.component_local_pieces(c).iter().map(|pc| placed.piece(pc)).collect()
     }
 
     /// Adds an element unchecked; the engine runs [`Model::check`] after every command.
@@ -3531,7 +3595,21 @@ impl Model {
         // values, and sheets with none; walls and runs that refuse to join; a dimension to the line across a column) has none
         // either: a file of 17's connectors are a power or a switch one, each with its system, which 18 reads as they were; a
         // file of 17 holds no title blocks, its sheets keeping the built-in one, no `join`, which reads as joining, as it always
-        // did, and none of its dimensions measures `across`.
+        // did, and none of its dimensions measures `across`. The Family Editor's part of 18, and what places its families:
+        // 1. A form's `plane` becomes its `host`, a datum: `xy` Ref. Level and `yz` Center (Left/Right) as they were; `xz`
+        //    Center (Front/Back), its `from` and `to` negated and swapped (a formula wrapped as `-(…)`), since it swept along
+        //    +y and the datum's normal is -y, a revolve's angles as they were. Reading the file does it, as it reads a
+        //    command's shorthand (`Form`'s `FormIn`), whatever its format, and a family read without its datums is given them
+        //    (`Family::planes`).
+        // 2. Every family's datums are put first and its origin settled, whatever the file held (`Family::settle_planes`).
+        // The rest needs nothing of a file of 17, which holds none of it: a family parameter's group, shared GUID and
+        // reporting (each defaults to what a file of 17 means: grouped by its kind, the family's own, set), Doors > Opening
+        // and Windows > Opening, and the project's reference planes and components hosted on them (a hosted component's `at`
+        // and `offset` are worked out from its host whatever the file says).
+        if self.format < 18 {
+            self.families.values_mut().for_each(crate::family::Family::settle_planes);
+        }
+        self.settle_hosts(None);
         self.format = FORMAT;
     }
 
@@ -4236,11 +4314,11 @@ impl Model {
     /// A door's or window's family's solids and the lines its plan draws, in the family's own axes, turned out with
     /// the opening's flips as mirror images (its hinge on the other jamb, its swing to the wall's other side);
     /// none for one that isn't of a family, or doesn't build.
-    pub fn opening_local(&self, e: &Element) -> Option<(Vec<Piece>, Vec<crate::family::Mark>)> {
+    pub fn opening_local(&self, e: &Element) -> Option<(Vec<Piece>, Vec<crate::family::Tagged>)> {
         let (Element::Door(o) | Element::Window(o)) = e else { return None };
         let f = self.families.get(o.family.as_ref()?)?;
         let values = f.values_in(&o.type_name, &o.params, self.thickness(self.wall(o.host)?)).ok()?;
-        let (pieces, marks) = (f.pieces(&values).ok()?, f.marks(&values).ok()?);
+        let (pieces, marks) = (f.pieces(&values).ok()?, f.marks_tagged(&values).ok()?);
         let (fx, fy) = (if o.flip_hand { -1.0 } else { 1.0 }, if o.flip_facing { -1.0 } else { 1.0 });
         let mirrored = fx * fy < 0.0;
         let flip = |p: [f64; 3]| [fx * p[0] + 0.0, fy * p[1] + 0.0, p[2]];
@@ -4253,8 +4331,43 @@ impl Model {
                 Piece { tris: tris.collect(), outline: if mirrored { outline.into_iter().rev().collect() } else { outline }, ..pc }
             })
             .collect();
-        let marks = marks.iter().map(|k| k.map(|q| P2(fx * q.0 + 0.0, fy * q.1 + 0.0))).collect();
+        let marks = marks.iter().map(|(k, sub)| (k.map(|q| P2(fx * q.0 + 0.0, fy * q.1 + 0.0)), *sub)).collect();
         Some((pieces, marks))
+    }
+
+    /// The voids a door's or window's family cuts its wall with ([`crate::family::Family::host_voids`]), in the family's own
+    /// axes turned out with the opening's flips as [`Model::opening_local`]'s solids are; none for one that isn't of a family,
+    /// has none, or doesn't build, whose wall the rectangle of its width and height cuts.
+    pub fn opening_voids_local(&self, e: &Element) -> Vec<Vec<[crate::view3d::P3; 3]>> {
+        let (Element::Door(o) | Element::Window(o)) = e else { return Vec::new() };
+        let Some(f) = o.family.as_ref().and_then(|n| self.families.get(n)) else { return Vec::new() };
+        if !f.category.hosted() || !f.forms.iter().any(|x| x.void) {
+            return Vec::new();
+        }
+        let Some(w) = self.wall(o.host) else { return Vec::new() };
+        let Ok(voids) = f.values_in(&o.type_name, &o.params, self.thickness(w)).and_then(|v| f.host_voids(&v)) else {
+            return Vec::new();
+        };
+        let (fx, fy) = (if o.flip_hand { -1.0 } else { 1.0 }, if o.flip_facing { -1.0 } else { 1.0 });
+        let flip = |p: [f64; 3]| [fx * p[0] + 0.0, fy * p[1] + 0.0, p[2]];
+        let mirrored = fx * fy < 0.0;
+        voids
+            .into_iter()
+            .map(|v| {
+                v.iter().map(|[a, b, c]| if mirrored { [flip(*a), flip(*c), flip(*b)] } else { [flip(*a), flip(*b), flip(*c)] }).collect()
+            })
+            .collect()
+    }
+
+    /// [`Model::opening_voids_local`] where the opening stands, in the model's own axes.
+    pub fn opening_voids(&self, e: &Element) -> Vec<Vec<[crate::view3d::P3; 3]>> {
+        let (Element::Door(o) | Element::Window(o)) = e else { return Vec::new() };
+        let Some((at, u, z)) = self.opening_frame(o) else { return Vec::new() };
+        let place = |p: [f64; 3]| {
+            let q = at + u * p[0] + u.perp() * p[1];
+            [q.0, q.1, z + p[2]]
+        };
+        self.opening_voids_local(e).into_iter().map(|v| v.iter().map(|t| t.map(place)).collect()).collect()
     }
 
     /// A door's or window's family's solids where it stands, in the model's own axes: each form's triangles, its
@@ -4278,11 +4391,12 @@ impl Model {
             .collect()
     }
 
-    /// The marks a door's or window's family draws in plan, where it stands.
-    pub fn opening_marks(&self, e: &Element) -> Vec<crate::family::Mark> {
+    /// The marks a door's or window's family draws in plan, where it stands, each with the subcategory it is drawn in
+    /// (`dooropening`; none, its category).
+    pub fn opening_marks(&self, e: &Element) -> Vec<crate::family::Tagged> {
         let (Element::Door(o) | Element::Window(o)) = e else { return Vec::new() };
         let (Some((_, marks)), Some((at, u, _))) = (self.opening_local(e), self.opening_frame(o)) else { return Vec::new() };
-        marks.iter().map(|k| k.map(|q| at + u * q.0 + u.perp() * q.1)).collect()
+        marks.iter().map(|(k, sub)| (k.map(|q| at + u * q.0 + u.perp() * q.1), *sub)).collect()
     }
 
     /// The level an element stands on: a door's or window's is its wall's, a tag's its door's or
@@ -4322,6 +4436,7 @@ impl Model {
             Element::PlanView(v) => Some(v.level),
             Element::Level(_)
             | Element::Grid(_)
+            | Element::RefPlane(_)
             | Element::Section(_)
             | Element::Elevation(_)
             | Element::Sheet(_)
@@ -6229,6 +6344,7 @@ impl Model {
             }
             f.check(&|m| self.materials.contains_key(m)).map_err(|e| format!("family `{n}`: {e}"))?;
         }
+        self.check_shared_parameters()?;
         if self.parameters.len() > MAX_PROJECT_PARAMETERS {
             return Err(format!("the project has {} parameters; it holds up to {MAX_PROJECT_PARAMETERS}", self.parameters.len()));
         }
@@ -6534,6 +6650,21 @@ impl Model {
         }
         phasing::check_order(self, &who, e)?;
         match e {
+            Element::RefPlane(p) => {
+                p.check(&who)?;
+                // A name is one plane's: there are few planes, so the others are looked at here.
+                if !p.name.is_empty() {
+                    let lookup = self.lookup();
+                    let twin = lookup
+                        .rare("refplane")
+                        .find(|other| *other != id && matches!(self.elements.get(*other), Some(Element::RefPlane(o)) if o.name == p.name));
+                    if let Some(other) = twin {
+                        // Named by both, the same whichever is checked first.
+                        let (a, b) = (id.min(other), id.max(other));
+                        return Err(format!("reference planes {a} and {b} are both named `{}`; a name is one plane's", p.name));
+                    }
+                }
+            }
             Element::Level(l) => {
                 text(&who, "name", &l.name)?;
                 coord(&format!("{who} elevation"), l.elevation)?;
@@ -7147,6 +7278,32 @@ impl Model {
                 point(&who, c.at)?;
                 coord(&format!("{who} angle"), c.angle)?;
                 coord(&format!("{who} offset"), c.offset)?;
+                // On a reference plane, only a work plane-based family's component. (An adaptive component, when the
+                // adaptive branch's `adaptive` merges, is placed by its own points: a `host` on one is refused here too.)
+                if let Some(h) = &c.host {
+                    match self.elements.get(h.host.guid()) {
+                        Some(Element::RefPlane(_)) => {}
+                        Some(other) => {
+                            return Err(format!(
+                                "{who}: its host, {} {}, isn't a reference plane",
+                                other.category(),
+                                self.shown(h.host.guid())
+                            ));
+                        }
+                        None => return Err(format!("{who}: its host, reference plane {}, doesn't exist", self.shown(h.host.guid()))),
+                    }
+                    if !f.work_plane_based {
+                        return Err(format!(
+                            "{who}: it is hosted on {}, and family `{}` isn't work plane-based: turn its `work_plane_based` \
+                             option on, or put the component on a level (`edit_work_plane` with `host` `level`)",
+                            self.work_plane_name(c),
+                            c.family
+                        ));
+                    }
+                    coord(&format!("{who} host uv"), h.uv[0])?;
+                    coord(&format!("{who} host uv"), h.uv[1])?;
+                    coord(&format!("{who} offset from host"), h.offset)?;
+                }
                 self.family_values_ok(&who, &c.family, f, &c.params)?;
                 // Its shape, built once for each family, type and values the project's components have.
                 let build = || f.values(&c.type_name, &c.params).and_then(|v| f.pieces(&v).and(f.marks(&v))).map(|_| ());
