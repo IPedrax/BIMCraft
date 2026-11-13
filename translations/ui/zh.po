@@ -993,11 +993,11 @@ msgstr "关联标高"
 msgid "At least {} characters"
 msgstr ""
 
-#: crates/core/src/model.rs:2957
+#: crates/core/src/model.rs:2960
 msgid "At wall centre line"
 msgstr "在墙中心线"
 
-#: crates/core/src/model.rs:2958
+#: crates/core/src/model.rs:2961
 msgid "At wall finish"
 msgstr "在墙面层"
 
@@ -1344,7 +1344,7 @@ msgstr "边界线：轮廓的线"
 msgid "Branch Panel"
 msgstr ""
 
-#: crates/core/src/model.rs:3274
+#: crates/core/src/model.rs:3277
 msgid "Brick"
 msgstr "砖"
 
@@ -1626,7 +1626,7 @@ msgstr "中心"
 msgid "Centre Lines"
 msgstr "中心线"
 
-#: crates/core/src/model.rs:3282
+#: crates/core/src/model.rs:3285
 msgid "Ceramic tile"
 msgstr "瓷砖"
 
@@ -2561,7 +2561,7 @@ msgstr "概念体量"
 msgid "Concrete"
 msgstr "混凝土"
 
-#: crates/core/src/model.rs:3276
+#: crates/core/src/model.rs:3279
 msgid "Concrete block"
 msgstr "混凝土砌块"
 
@@ -2728,7 +2728,7 @@ msgstr "已复制 {} 个 IFC GlobalId。"
 msgid "Copied {} rows, tab-separated."
 msgstr "已复制 {} 行，以制表符分隔。"
 
-#: crates/core/src/model.rs:3290
+#: crates/core/src/model.rs:3293
 msgid "Copper"
 msgstr "铜"
 
@@ -2779,15 +2779,15 @@ msgstr "复制其 ID、GUID 和 IFC GlobalId"
 msgid "Copy: click the point to copy from."
 msgstr ""
 
-#: crates/core/src/model.rs:455
+#: crates/core/src/model.rs:458
 msgid "Core Centreline"
 msgstr "核心层中心线"
 
-#: crates/core/src/model.rs:458
+#: crates/core/src/model.rs:461
 msgid "Core Face: Exterior"
 msgstr "核心面：外部"
 
-#: crates/core/src/model.rs:459
+#: crates/core/src/model.rs:462
 msgid "Core Face: Interior"
 msgstr "核心面：内部"
 
@@ -3614,11 +3614,11 @@ msgstr "点线"
 msgid "Double Door"
 msgstr "双扇门"
 
-#: crates/core/src/model.rs:2709
+#: crates/core/src/model.rs:2712
 msgid "Double Sliding"
 msgstr "双扇推拉"
 
-#: crates/core/src/model.rs:2707
+#: crates/core/src/model.rs:2710
 msgid "Double Swing"
 msgstr "双扇平开"
 
@@ -3778,7 +3778,7 @@ msgstr "接地极 (EG)：在单击处自标高向下打入接地棒；按空格�
 msgid "Earthing Electrodes"
 msgstr "接地极"
 
-#: crates/core/src/model.rs:2016
+#: crates/core/src/model.rs:2019
 msgid "East"
 msgstr "东"
 
@@ -4545,11 +4545,11 @@ msgstr "完成编辑模式：闭合成环的线成为形状"
 msgid "Finish Edit Mode: the lines, closed into loops, become the outline and its holes"
 msgstr "完成编辑模式：闭合成环的线成为轮廓及其洞口"
 
-#: crates/core/src/model.rs:456
+#: crates/core/src/model.rs:459
 msgid "Finish Face: Exterior"
 msgstr "面层面：外部"
 
-#: crates/core/src/model.rs:457
+#: crates/core/src/model.rs:460
 msgid "Finish Face: Interior"
 msgstr "面层面：内部"
 
@@ -4570,7 +4570,7 @@ msgstr "第一端点"
 msgid "Fit"
 msgstr ""
 
-#: crates/core/src/model.rs:2711
+#: crates/core/src/model.rs:2714
 msgid "Fixed"
 msgstr "固定"
 
@@ -4699,7 +4699,7 @@ msgstr ""
 msgid "Folder for new projects"
 msgstr "新项目的文件夹"
 
-#: crates/core/src/model.rs:2710
+#: crates/core/src/model.rs:2713
 msgid "Folding"
 msgstr "折叠"
 
@@ -4959,7 +4959,7 @@ msgstr "访客可以编辑"
 msgid "Guests without an AI key may use mine"
 msgstr "没有 AI 密钥的访客可以使用我的"
 
-#: crates/core/src/model.rs:3281
+#: crates/core/src/model.rs:3284
 msgid "Gypsum board"
 msgstr "石膏板"
 
@@ -6168,7 +6168,7 @@ msgstr "管理"
 msgid "Manage Presets…"
 msgstr "管理预设…"
 
-#: crates/core/src/model.rs:1594
+#: crates/core/src/model.rs:1597
 msgid "Mark"
 msgstr "标记"
 
@@ -6743,7 +6743,7 @@ msgstr "NBR 6492：平面采用圆环靶心 (±0.00)，剖面采用等边三角�
 msgid "NOT ENCLOSED"
 msgstr "未封闭"
 
-#: crates/core/src/model.rs:1595
+#: crates/core/src/model.rs:1598
 #: crates/ui-egui/src/adaptive_editor.rs:665
 #: crates/ui-egui/src/adaptive_editor.rs:804
 #: crates/ui-egui/src/cad.rs:85
@@ -7029,7 +7029,7 @@ msgstr ""
 msgid "Normalized Segment Length"
 msgstr ""
 
-#: crates/core/src/model.rs:2014
+#: crates/core/src/model.rs:2017
 msgid "North"
 msgstr "北"
 
@@ -9228,7 +9228,7 @@ msgstr "踢面高度"
 msgid "Risers"
 msgstr "踢面"
 
-#: crates/core/src/model.rs:2713
+#: crates/core/src/model.rs:2716
 msgid "Roller"
 msgstr ""
 
@@ -9256,7 +9256,7 @@ msgstr "面屋顶 (RB)：在所选体量的顶面上创建屋顶"
 msgid "Roof by Footprint: click inside the walls to roof them, on the level above"
 msgstr "迹线屋顶：单击墙内部，在上一标高为其创建屋顶"
 
-#: crates/core/src/model.rs:3283
+#: crates/core/src/model.rs:3286
 msgid "Roof tiles"
 msgstr "屋面瓦"
 
@@ -9558,7 +9558,7 @@ msgstr "明细表/数量（全部）"
 msgid "Scope"
 msgstr ""
 
-#: crates/core/src/model.rs:3279
+#: crates/core/src/model.rs:3282
 msgid "Screed"
 msgstr "找平层"
 
@@ -9615,7 +9615,7 @@ msgstr "剖面框：将三维视图剪切到一个框内，每个面可在视图
 msgid "Section: {}"
 msgstr "剖面：{}"
 
-#: crates/core/src/model.rs:2712
+#: crates/core/src/model.rs:2715
 msgid "Sectional"
 msgstr ""
 
@@ -10135,7 +10135,7 @@ msgstr "跳过此版本"
 msgid "Sky"
 msgstr "天空"
 
-#: crates/core/src/model.rs:2708
+#: crates/core/src/model.rs:2711
 msgid "Sliding"
 msgstr "推拉"
 
@@ -10308,7 +10308,7 @@ msgstr "排序/成组"
 msgid "Source code on GitHub"
 msgstr "GitHub 上的源代码"
 
-#: crates/core/src/model.rs:2015
+#: crates/core/src/model.rs:2018
 msgid "South"
 msgstr "南"
 
@@ -10625,7 +10625,7 @@ msgstr ""
 msgid "Swept Blend: a path of one line or arc, and a profile at each end, blended along it"
 msgstr "放样融合：一条线或一段弧构成的路径，两端各有一个轮廓，沿路径融合"
 
-#: crates/core/src/model.rs:2706
+#: crates/core/src/model.rs:2709
 msgid "Swing"
 msgstr "平开"
 
@@ -11670,7 +11670,7 @@ msgstr "扭曲：{}"
 msgid "Two {} are called {}."
 msgstr "有两个{}的名称都是“{}”。"
 
-#: crates/core/src/model.rs:1596
+#: crates/core/src/model.rs:1599
 #: crates/ui-egui/src/adaptive_editor.rs:724
 #: crates/ui-egui/src/editor/dimensions.rs:1010
 #: crates/ui-egui/src/editor/nested.rs:273
@@ -12229,7 +12229,7 @@ msgstr "墙"
 msgid "Wall (WA): each click builds a wall; Enter or Esc ends the chain"
 msgstr "墙 (WA)：每次单击创建一段墙；按 Enter 或 Esc 结束连续绘制"
 
-#: crates/core/src/model.rs:454
+#: crates/core/src/model.rs:457
 msgid "Wall Centreline"
 msgstr "墙中心线"
 
@@ -12295,7 +12295,7 @@ msgstr "重量"
 msgid "Weight per Metre"
 msgstr ""
 
-#: crates/core/src/model.rs:2017
+#: crates/core/src/model.rs:2020
 msgid "West"
 msgstr "西"
 
