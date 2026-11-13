@@ -20,7 +20,7 @@ use crate::icons::Icon;
 use crate::lang::{t, tf};
 use crate::properties::number;
 use crate::style::{canvas_pal, pal};
-use crate::{BimApp, Sheet, Status, Tool, big_button, draw, panel, ribbon, small_button};
+use crate::{BimApp, Sheet, Status, Tool, big_button, draw, inked_button, panel, ribbon, small_button};
 
 /// What Finish Edit Mode makes of the lines.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -795,12 +795,11 @@ impl BimApp {
             panel(ui, "Mode", |ui| {
                 if sketching {
                     let tip = msg!("Finish Edit Mode: the lines, closed into loops, become the outline and its holes");
-                    if big_button(ui, Icon::Check, "Finish Edit Mode", false, tip).clicked() {
+                    if inked_button(ui, Icon::Check, "Finish Edit Mode", false, tip, Some(pal().context)).clicked() {
                         self.finish_sketch();
                     }
-                    if big_button(ui, Icon::Close, "Cancel Edit Mode", false, "Cancel Edit Mode: drop the lines, keep it as it was")
-                        .clicked()
-                    {
+                    let tip = "Cancel Edit Mode: drop the lines, keep it as it was";
+                    if inked_button(ui, Icon::Close, "Cancel Edit Mode", false, tip, Some(pal().error)).clicked() {
                         self.cancel_sketch();
                     }
                 } else if boundary
@@ -899,8 +898,10 @@ impl BimApp {
         let was = sk.region.1.clone();
         let c = egui::ComboBox::from_id_salt("region-lines").selected_text(shown).width(160.0).show_ui(ui, |ui| {
             ui.selectable_value(&mut sk.region.1, None, &invisible);
-            for n in m.line_styles.keys() {
-                ui.selectable_value(&mut sk.region.1, Some(n.clone()), n);
+            for (n, style) in &m.line_styles {
+                if crate::linestyles::style_row(ui, m, Some(style), sk.region.1.as_ref() == Some(n), n) {
+                    sk.region.1 = Some(n.clone());
+                }
             }
         });
         c.response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::ComboBox, true, t("Line Style")));

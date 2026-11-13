@@ -106,6 +106,9 @@ pub(crate) fn import(cx: &mut Import, f: &Facts) {
             top_level: None,
             height: mm(r.bbox[5] - r.bbox[2]),
             base_offset: micron(mm(r.bbox[2]) - mm(elevation)),
+            top_offset: 0.0,
+            attach_top: None,
+            attach_base: None,
             params: Default::default(),
         };
         let id = cx.model.insert(Element::Footing(footing));

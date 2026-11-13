@@ -255,6 +255,14 @@ fn drag_screen(h: &mut Harness<BimApp>, a: Pos2, b: Pos2, button: PointerButton)
     h.run();
 }
 
+/// Shift and a middle drag between points on screen: how the 3D view orbits, as in Revit.
+fn orbit_screen(h: &mut Harness<BimApp>, a: Pos2, b: Pos2) {
+    h.event(Event::ModifiersChanged(Modifiers::SHIFT));
+    drag_screen(h, a, b, PointerButton::Middle);
+    h.event(Event::ModifiersChanged(Modifiers::NONE));
+    h.run();
+}
+
 /// A primary drag on the plan between model points, in steps, as a hand makes it.
 fn drag(h: &mut Harness<BimApp>, from: P2, to: P2) {
     let (a, b) = (h.state().screen(from), h.state().screen(to));
@@ -1989,16 +1997,18 @@ fn a_click_made_on_the_move_in_3d_picks_what_was_under_the_press_and_leaves_the_
 }
 
 #[test]
-fn in_3d_a_shift_drag_boxes_shift_and_the_middle_button_orbit_the_middle_button_pans_and_the_wheel_zooms() {
+fn in_3d_a_primary_drag_boxes_shift_and_the_middle_button_orbit_the_middle_button_pans_and_the_wheel_zooms() {
     let mut h = app(BOX);
     press(&mut h, "Default 3D View");
     let cam = |h: &Harness<BimApp>| h.state().orbit.camera.unwrap();
     let (start, mid) = (cam(&h), h.state().orbit.rect.center());
-    // Shift and a primary drag are a selection box, as in a plan: the view stays.
+    // A primary drag is a selection box, as in a plan, with Shift held or not: the view stays.
+    drag_screen(&mut h, mid, mid + vec2(100.0, 0.0), PointerButton::Primary);
+    assert_eq!(cam(&h), start, "the primary button doesn't turn the view");
     h.event(Event::ModifiersChanged(Modifiers::SHIFT));
     drag_screen(&mut h, mid, mid + vec2(100.0, 0.0), PointerButton::Primary);
     h.event(Event::ModifiersChanged(Modifiers::NONE));
-    assert_eq!(cam(&h), start, "Shift and the primary button don't turn the view");
+    assert_eq!(cam(&h), start, "Shift and the primary button don't turn it either");
     drag_screen(&mut h, mid, mid + vec2(0.0, 50.0), PointerButton::Middle);
     let panned = cam(&h);
     assert!(panned.target != start.target && panned.azimuth == start.azimuth, "{panned:?}");
@@ -2037,9 +2047,7 @@ fn in_3d_a_box_from_the_left_picks_what_lies_wholly_inside_and_from_the_right_wh
     let on: Vec<Pos2> = corners.iter().map(|p| h.state().screen3(*p)).collect();
     let (lo, hi) = on.iter().fold((on[0], on[0]), |(lo, hi), p| (lo.min(*p), hi.max(*p)));
     let before = h.state().orbit.camera;
-    h.event(Event::ModifiersChanged(Modifiers::SHIFT));
     drag_screen(&mut h, lo, hi, PointerButton::Primary);
-    h.event(Event::ModifiersChanged(Modifiers::NONE));
     assert_eq!(h.state().selection, [south], "window: wholly inside");
     assert_eq!(h.state().orbit.camera, before);
     key(&mut h, Key::Escape);
@@ -2187,7 +2195,7 @@ fn the_camera_tool_makes_a_perspective_3d_view_from_an_eye_and_a_target() {
     // Orbiting writes the camera's eye and target back, so leaving and returning stands it where it was left.
     let before = field(&h, made[0], "camera");
     let mid = h.state().orbit.rect.center();
-    drag_screen(&mut h, mid, mid + vec2(90.0, 0.0), PointerButton::Primary);
+    orbit_screen(&mut h, mid, mid + vec2(90.0, 0.0));
     h.run();
     let after = field(&h, made[0], "camera");
     assert_ne!(after, before, "the orbit moved the camera's eye and target");
@@ -6259,6 +6267,7 @@ mod popup;
 mod presets;
 mod profile;
 mod purge;
+mod qol;
 mod reinforce;
 mod revit;
 mod rooms;
