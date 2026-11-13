@@ -353,6 +353,42 @@ fn a_door_whose_origin_moves_below_its_sill_reloads_and_stays_where_it_is() {
 }
 
 #[test]
+fn a_component_inserted_from_a_file_keeps_its_place_by_this_projects_family_of_its_name() {
+    // The other project: a Box by its datums, turned and mirrored, and a door off its datums.
+    let (mut other, ids) = project();
+    let wall = id_of(&run(&mut other, "wall", json!({"points": [[0, 8000], [6000, 8000]]})));
+    door_family(&mut other);
+    let door = id_of(&run(&mut other, "door", json!({"wall": wall, "offset": 2000, "family": "Door", "flip_hand": true})));
+    let dir = std::env::temp_dir().join(format!("bimcraft-origin-insert-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("other.bimc");
+    std::fs::write(&path, other.model.to_json().unwrap()).unwrap();
+    // This project has its own Box and Door, the same but for where their origins are.
+    let mut s = Session::new();
+    boxes(&mut s);
+    run(&mut s, "family", json!({"name": "Box", "ref_planes": origin_planes([120.0, -40.0, 30.0])}));
+    door_family(&mut s);
+    run(&mut s, "family", json!({"name": "Door", "ref_planes": origin_planes([-450.0, 0.0, -100.0])}));
+    let r = run(&mut s, "insert", json!({"path": path, "ids": [ids[1], door]}));
+    let here = |id: Id| r["ids"][id.to_string()].as_u64().unwrap_or_else(|| panic!("{r}"));
+    // (This project has no room for it to be in.)
+    let without_room = |mut v: Value| {
+        v.as_object_mut().unwrap().remove("room");
+        v
+    };
+    assert_eq!(
+        without_room(placed(&s.model, here(ids[1]))),
+        without_room(placed(&other.model, ids[1])),
+        "the Box stands where it stood there"
+    );
+    let pieces = |m: &Model, id: Id| -> Vec<[[i64; 3]; 3]> {
+        m.opening_pieces(&m.elements[id]).iter().flat_map(|p| p.tris.iter().map(|t| t.map(r3))).collect()
+    };
+    assert_eq!(pieces(&s.model, here(door)), pieces(&other.model, door), "and the door");
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn a_reload_with_a_new_origin_keeps_a_fittings_connectors_and_pipes_joined() {
     let mut s = Session::new();
     // A tee, turned and mirrored, its three pipes drawn to its connectors.

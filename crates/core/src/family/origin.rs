@@ -180,15 +180,30 @@ impl Model {
             .map(|(id, _)| *id)
             .collect();
         for id in ids {
-            let moved = match self.elements.get(id) {
-                Some(Element::Component(c)) => self.component_origin_moved(c, by).map(Element::Component),
-                Some(Element::Door(o)) => Some(Element::Door(opening_origin_moved(o, by))),
-                Some(Element::Window(o)) => Some(Element::Window(opening_origin_moved(o, by))),
-                _ => None,
-            };
-            if let (Some(e), Some(slot)) = (moved, self.elements.get_mut(id)) {
-                *slot = e;
-            }
+            self.instance_origin_moved(id, by);
+        }
+    }
+
+    /// Element `id`, a component or a door or a window, moved so it stays where it stands after its family's origin moved
+    /// `by` (its axes); anything else as it is.
+    pub(crate) fn instance_origin_moved(&mut self, id: crate::ids::Id, by: P3) {
+        let moved = match self.elements.get(id) {
+            Some(Element::Component(c)) => self.component_origin_moved(c, by).map(Element::Component),
+            Some(Element::Door(o)) => Some(Element::Door(opening_origin_moved(o, by))),
+            Some(Element::Window(o)) => Some(Element::Window(opening_origin_moved(o, by))),
+            _ => None,
+        };
+        if let (Some(e), Some(slot)) = (moved, self.elements.get_mut(id)) {
+            *slot = e;
+        }
+    }
+
+    /// The family element `e` is placed of, a component's or a door's or a window's; none for anything else.
+    pub(crate) fn placed_family(e: &Element) -> Option<&str> {
+        match e {
+            Element::Component(c) => Some(c.family.as_str()),
+            Element::Door(o) | Element::Window(o) => o.family.as_deref(),
+            _ => None,
         }
     }
 

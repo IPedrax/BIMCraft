@@ -516,7 +516,9 @@ mirrored with it; one on a face of a wall, a floor, a ceiling or a roof only alo
 and up its wall (`offset`, `sill`), since the host fixes where they are across it, so across it they follow the new origin.
 Nested instances are moved in the families that place them, a place or a turn given by a formula staying one. A file of a
 build that placed every family by its datums holds no record, so one whose family already had a plane marked opens with its
-instances where they were drawn. An imported 3D model's family (`import_mesh`) has its origin on its datums. Tests:
+instances where they were drawn. Insert from File (`insert.rs`) moves a component or a door or a window whose family this
+project has otherwise (by name, with its own GUID) by the difference of the two families' origins, so it stands where it
+stood in the other project. An imported 3D model's family (`import_mesh`) has its origin on its datums. Tests:
 `origin_tests.rs`.
 
 **In the family document.** A reference plane's Properties have Defines Origin under Other (none for an adaptive family):
