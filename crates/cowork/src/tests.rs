@@ -418,6 +418,20 @@ fn a_hello_is_read_strictly_and_its_name_made_safe() {
 }
 
 #[test]
+fn a_name_keeps_no_invisible_format_characters_and_an_honest_one_is_kept() {
+    // An override, a zero-width space, a soft hyphen and a byte-order mark: none of them shows, all of them deceive.
+    let hidden = "Bo\u{202e}\u{200b}\u{00ad}\u{feff}";
+    assert_eq!(crate::host::clean(Some(hidden), "Guest"), "Bo");
+    assert_eq!(crate::host::clean(Some("\u{2066}Bo\u{2069}"), "Guest"), "Bo", "an isolate");
+    assert_eq!(crate::host::clean(Some("\u{202e}\u{200b}\u{00ad}\u{feff}"), "Guest"), "Guest", "nothing but them");
+    // A name's own letters and signs are its own, and the cut is by characters.
+    for name in ["José", "李", "Ana 🏠"] {
+        assert_eq!(crate::host::clean(Some(name), "Guest"), name);
+    }
+    assert_eq!(crate::host::clean(Some(&"李".repeat(crate::MAX_NAME * 2)), "Guest").chars().count(), crate::MAX_NAME);
+}
+
+#[test]
 fn a_guest_finds_a_host_on_the_lan_by_its_code_and_ignores_junk() {
     let host = host_with(Some(0));
     let port = host.discovery_port().unwrap();

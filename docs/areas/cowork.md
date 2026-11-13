@@ -59,7 +59,8 @@ the desktop wires it in slice 3.
   reordered or replayed frame ends the connection.
 - **A host** (`Host::start`) listens where it is told (0.0.0.0 and the session port by default; anything beyond that, such as
   forwarding a port, is the user's), lets in a guest with the right code and the same version, at most eight, and hands the
-  window `HostEvent`s: `Joined` (the guest's number, its name made safe, its colour by join order, its hello), `Message` and
+  window `HostEvent`s: `Joined` (the guest's number, its name made safe — no control or invisible format characters, its
+  colour by join order, its hello), `Message` and
   `Left` (with why: it left, was kicked, fell silent, flooded, broke the line). The window sends with `send` and `broadcast`, and
   `kick`s. Presence is relayed to the other guests by the guest's own thread, with `from` added, so it never waits for the
   window. Dropping the host says `ended` ("the host closed the session") to every guest and waits until that is out; `end` says

@@ -20,7 +20,8 @@ use bimcraft_core::engine::Session;
 use bimcraft_core::model::{Id, Model};
 use serde_json::{Value, json};
 
-use crate::{Code, Guest, GuestEvent, Host, HostConfig, HostEvent, MAX_NAME, Mailer, Timing, Wake};
+use crate::host::clean;
+use crate::{Code, Guest, GuestEvent, Host, HostConfig, HostEvent, Mailer, Timing, Wake};
 
 /// The version a guest must share with its host.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -596,7 +597,7 @@ impl Joined {
         let delta: Delta =
             serde_json::from_value(welcome["delta"].clone()).map_err(|e| format!("the host's project didn't come whole: {e}"))?;
         let model = cowork::apply(&Model::new("Project"), &delta)?;
-        let host = welcome["host"].as_str().unwrap_or("the host").chars().filter(|c| !c.is_control()).take(MAX_NAME).collect();
+        let host = clean(welcome["host"].as_str(), "the host");
         let seq = welcome["seq"].as_u64().unwrap_or(0);
         let you = welcome["you"].as_u64().and_then(|n| u32::try_from(n).ok()).unwrap_or(0);
         let host_other = Other { name: String::clone(&host), colour: 0, presence: Presence::default() };
@@ -824,7 +825,6 @@ impl Joined {
                 }
             }
             Some("people") => {
-                let clean = |n: &str| n.chars().filter(|c| !c.is_control()).take(MAX_NAME).collect::<String>();
                 let listed: Vec<(u32, String, usize)> = m["people"]
                     .as_array()
                     .into_iter()
@@ -833,7 +833,7 @@ impl Joined {
                     .filter_map(|p| {
                         let id = p["id"].as_u64().and_then(|n| u32::try_from(n).ok()).filter(|n| *n != 0)?;
                         let colour = p["colour"].as_u64().map_or(0, |c| (c as usize).min(crate::MAX_GUESTS));
-                        Some((id, clean(p["name"].as_str()?), colour))
+                        Some((id, clean(Some(p["name"].as_str()?), "Guest"), colour))
                     })
                     .collect();
                 self.people = listed.iter().map(|(_, n, _)| n.clone()).collect();
@@ -860,7 +860,7 @@ impl Joined {
                 let addr = m["addr"].as_str().and_then(|a| a.parse::<SocketAddr>().ok());
                 let code = m["code"].as_str().and_then(|c| Code::parse(c).ok());
                 if let (Some(addr), Some(code)) = (addr, code) {
-                    let host = m["host"].as_str().unwrap_or("the new host").chars().filter(|c| !c.is_control()).take(MAX_NAME).collect();
+                    let host = clean(m["host"].as_str(), "the new host");
                     self.said.push(Happened::Moved { host, addr, code });
                 }
             }
