@@ -8,7 +8,6 @@ use bimcraft_i18n::msg;
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use bimcraft_core::engine::Session;
 use bimcraft_core::lines::{LinePattern, LineStyle, SOLID, Segment};
 use bimcraft_core::model::Model;
 use bimcraft_core::pen::{MAX_PEN, Pen};
@@ -331,7 +330,7 @@ impl BimApp {
             if commands.is_empty() {
                 return Ok(());
             }
-            self.session.transaction("Line Styles", |s: &mut Session| commands.iter().try_for_each(|(c, p)| s.execute(c, p).map(|_| ())))
+            self.exec_batch("Line Styles", &commands).map(|_| ())
         });
         if let Err(e) = done {
             d.error = Some(e.clone());

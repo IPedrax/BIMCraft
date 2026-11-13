@@ -21,7 +21,7 @@ pub const MAX_SAVED: u64 = 16 << 20;
 /// The format of the file: a newer one is left alone.
 const VERSION: u64 = 1;
 /// The lines of a log that are kept, as a live chat keeps them.
-const MAX_LINES: usize = 500;
+pub(crate) const MAX_LINES: usize = 500;
 
 /// The name of a project's file in the chats folder: the SHA-256 of its path, in hex.
 pub fn file_name(project: &Path) -> String {
@@ -52,7 +52,7 @@ pub fn remove(dir: &Path, project: &Path) {
     let _ = fs::remove_file(dir.join(file_name(project)));
 }
 
-fn line_json(l: &Line) -> Value {
+pub(crate) fn line_json(l: &Line) -> Value {
     match l {
         Line::You(t) => json!({"t": "you", "text": t}),
         Line::Files(names) => json!({"t": "files", "names": names}),
@@ -63,19 +63,41 @@ fn line_json(l: &Line) -> Value {
     }
 }
 
-fn msg_json(m: &Msg) -> Value {
+/// A file as JSON: a picture as its bytes in base64 with `pictures` (between windows), else as a note that it is not kept.
+pub(crate) fn file_json(f: &Attached, pictures: bool) -> Value {
+    match &f.body {
+        Body::Text(t) => json!({"name": f.name, "text": t}),
+        Body::Image { b64, .. } if pictures => json!({"name": f.name, "b64": b64}),
+        Body::Image { .. } => {
+            json!({"name": f.name, "text": format!("[the picture {} was sent with this message and is not kept]", f.name)})
+        }
+    }
+}
+
+/// A file read back: text, or a picture the providers take, its base64 of a size one may be.
+pub(crate) fn file_from(f: &Value) -> Option<Attached> {
+    let name = text(f, "name")?;
+    let body = match (f.get("text"), f["b64"].as_str()) {
+        (Some(t), None) => Body::Text(t.as_str()?.to_string()),
+        (None, Some(b64)) => {
+            let fits = b64.len() as u64 <= crate::MAX_FILE_IMAGE * 4 / 3 + 4;
+            let base64 = b64.bytes().all(|c| c.is_ascii_alphanumeric() || matches!(c, b'+' | b'/' | b'='));
+            (fits && base64).then_some(())?;
+            Body::Image { mime: crate::attach::image_mime(&name)?, b64: b64.to_string() }
+        }
+        _ => return None,
+    };
+    Some(Attached { name, body })
+}
+
+pub(crate) fn msg_json(m: &Msg) -> Value {
+    msg_json_with(m, false)
+}
+
+pub(crate) fn msg_json_with(m: &Msg, pictures: bool) -> Value {
     match m {
         Msg::User(text, files) => {
-            let files: Vec<Value> = files
-                .iter()
-                .map(|f| {
-                    let text = match &f.body {
-                        Body::Text(t) => t.clone(),
-                        Body::Image { .. } => format!("[the picture {} was sent with this message and is not kept]", f.name),
-                    };
-                    json!({"name": f.name, "text": text})
-                })
-                .collect();
+            let files: Vec<Value> = files.iter().map(|f| file_json(f, pictures)).collect();
             json!({"t": "user", "text": text, "files": files})
         }
         Msg::Assistant(r) => {
@@ -93,7 +115,7 @@ fn text(v: &Value, key: &str) -> Option<String> {
     v[key].as_str().map(str::to_string)
 }
 
-fn line_from(v: &Value) -> Option<Line> {
+pub(crate) fn line_from(v: &Value) -> Option<Line> {
     Some(match v["t"].as_str()? {
         "you" => Line::You(text(v, "text")?),
         "files" => Line::Files(v["names"].as_array()?.iter().map(|n| n.as_str().map(str::to_string)).collect::<Option<_>>()?),
@@ -105,14 +127,10 @@ fn line_from(v: &Value) -> Option<Line> {
     })
 }
 
-fn msg_from(v: &Value) -> Option<Msg> {
+pub(crate) fn msg_from(v: &Value) -> Option<Msg> {
     Some(match v["t"].as_str()? {
         "user" => {
-            let files = v["files"]
-                .as_array()?
-                .iter()
-                .map(|f| Some(Attached { name: text(f, "name")?, body: Body::Text(text(f, "text")?) }))
-                .collect::<Option<_>>()?;
+            let files = v["files"].as_array()?.iter().map(file_from).collect::<Option<_>>()?;
             Msg::User(text(v, "text")?, files)
         }
         "assistant" => {
@@ -135,7 +153,7 @@ fn msg_from(v: &Value) -> Option<Msg> {
     })
 }
 
-fn todo_from(v: &Value) -> Option<Todo> {
+pub(crate) fn todo_from(v: &Value) -> Option<Todo> {
     let status = match v["status"].as_str()? {
         "pending" => Status::Pending,
         "in_progress" => Status::InProgress,
@@ -189,6 +207,7 @@ impl Chat {
         let Some(p) = parse(v) else { return false };
         let same = v["provider"].as_str().and_then(Provider::from_key) == Some(current);
         (self.log, self.todos, self.history) = (p.log, p.todos, if same { p.history } else { Vec::new() });
+        self.paid = None;
         if !same {
             let was = v["provider"].as_str().and_then(Provider::from_key).map_or("another provider", Provider::name);
             self.log.push(Line::Note(format!(
@@ -205,7 +224,7 @@ impl Chat {
     }
 }
 
-fn todo_json(t: &Todo) -> Value {
+pub(crate) fn todo_json(t: &Todo) -> Value {
     let status = match t.status {
         Status::Pending => "pending",
         Status::InProgress => "in_progress",

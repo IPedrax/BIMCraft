@@ -202,6 +202,7 @@ icon_names! {
     FamilyTypes,
     LoadIntoProject,
     LoadIntoProjectClose,
+    Cowork,
 }
 
 /// A single unfilled contour in grid coordinates, shared by egui and the catalog.
@@ -1413,6 +1414,13 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.line(&[(12.0, 6.5), (21.0, 6.5)]);
             g.closed(&[(3.0, 15.0), (8.0, 15.0), (8.0, 20.0), (3.0, 20.0)]);
             g.line(&[(12.0, 17.5), (21.0, 17.5)]);
+        }
+        Icon::Cowork => {
+            // Two people, one a step behind the other.
+            g.circle((9.0, 7.0), 3.0);
+            g.line(&[(3.0, 20.0), (3.0, 16.0), (5.0, 12.5), (13.0, 12.5), (15.0, 16.0), (15.0, 20.0)]);
+            g.line(&[(14.5, 4.6), (16.0, 4.0), (18.5, 5.0), (19.0, 7.0), (18.0, 9.5), (16.5, 10.0)]);
+            g.line(&[(17.0, 12.5), (19.0, 12.5), (21.0, 16.0), (21.0, 20.0)]);
         }
         Icon::Home => {
             // Home retains its door, keeping it distinct from the modeling Roof icon.

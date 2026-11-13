@@ -1057,6 +1057,7 @@ impl BimApp {
         };
         let active_3d = self.active_3d();
         self.type_selector(ui, &model, subject);
+        self.held_by_others(ui);
         let (filter, ids, rows) = match subject {
             Subject::Element(id) => match model.elements.get(id) {
                 Some(e) => (

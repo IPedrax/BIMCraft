@@ -136,6 +136,8 @@ pub struct Settings {
     pub assistant_sealed: Option<String>,
     /// Tokens the providers counted, by the project's file (none for one not yet saved): `usage_from` reads them back.
     pub assistant_usage: BTreeMap<String, Usage>,
+    /// Co-Work: the name the others see, where a host listens, whether it is visible on the network, whether guests may edit.
+    pub cowork: crate::cowork::Prefs,
 }
 
 impl Settings {
@@ -183,6 +185,7 @@ impl Settings {
             "agents": {"listen": self.agents_listen, "port": self.agents_port, "edit": self.agents_edit},
             // The key, only when the user asked for it to be kept, and then only sealed.
             "assistant": self.assistant_json(),
+            "cowork": self.cowork.to_json(),
         })
     }
 
@@ -237,6 +240,7 @@ impl Settings {
                 Some(sealed) => sealed.as_str().filter(|s| seal::well_formed(s)).map(str::to_string),
             },
             assistant_usage: usage_from(&v["assistant"]["usage"], base.assistant_usage),
+            cowork: crate::cowork::Prefs::from_json(&v["cowork"], base.cowork),
         }
     }
 }
@@ -296,12 +300,13 @@ pub enum Page {
     Files,
     Agents,
     Assistant,
+    Cowork,
     Updates,
 }
 
 impl Page {
-    pub const ALL: [Page; 7] =
-        [Page::Interface, Page::Performance, Page::Graphics, Page::Files, Page::Agents, Page::Assistant, Page::Updates];
+    pub const ALL: [Page; 8] =
+        [Page::Interface, Page::Performance, Page::Graphics, Page::Files, Page::Agents, Page::Assistant, Page::Cowork, Page::Updates];
 
     pub fn name(self) -> &'static str {
         match self {
@@ -311,6 +316,7 @@ impl Page {
             Page::Files => msg!("Files"),
             Page::Agents => msg!("Agents"),
             Page::Assistant => msg!("Assistant"),
+            Page::Cowork => msg!("Co-Work"),
             Page::Updates => msg!("Updates"),
         }
     }
@@ -363,6 +369,7 @@ impl BimApp {
         crate::shortcuts::publish(&self.shortcuts);
         self.system_title_bar = kept.system_title_bar;
         (self.agents.listen, self.agents.port, self.agents.edit) = (kept.agents_listen, kept.agents_port, kept.agents_edit);
+        self.cowork_prefs = kept.cowork.clone();
         let a = &mut self.assistant;
         (a.provider, a.model, a.sealed) = (kept.assistant_provider, kept.assistant_model.clone(), kept.assistant_sealed.clone());
         a.usage = kept.assistant_usage.clone();
@@ -419,6 +426,7 @@ impl BimApp {
             assistant_model: self.assistant.model.clone(),
             assistant_sealed: self.assistant.sealed.clone(),
             assistant_usage: self.assistant.usage.clone(),
+            cowork: self.cowork_prefs.clone(),
         }
     }
 
@@ -464,6 +472,7 @@ impl BimApp {
                             Page::Files => self.files_page(ui),
                             Page::Agents => self.agents_page(ui),
                             Page::Assistant => self.assistant_page(ui),
+                            Page::Cowork => self.cowork_page(ui),
                             Page::Updates => self.updates_page(ui),
                         });
                     });

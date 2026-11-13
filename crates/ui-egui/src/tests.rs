@@ -1021,6 +1021,7 @@ fn ks_lists_every_shortcut_and_every_one_it_lists_works() {
         "Join into Polyline",
         "Explode Polyline",
         "Wall Footing",
+        "Co-Work",
     ];
     for (_, name) in crate::shortcuts().into_iter().filter(|(_, name)| !awaiting.contains(name)) {
         for l in [Lang::Portuguese, Lang::Spanish] {
@@ -6240,6 +6241,7 @@ mod cad;
 mod chinese;
 mod clouds;
 mod control;
+mod cowork;
 mod dialog;
 mod dimensions;
 mod dims3d;

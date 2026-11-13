@@ -26,6 +26,9 @@ mod commands;
 mod component_geometry;
 pub mod conduit;
 mod constraints;
+pub mod cowork;
+#[cfg(test)]
+mod cowork_tests;
 pub mod crosscheck;
 mod csg;
 pub mod curves;

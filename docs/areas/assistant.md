@@ -144,6 +144,11 @@ with AI and ask for a wall; for a quick look at the wire without the window, giv
 `Msg::User` in a scratch program. What a real provider does that a recorded reply cannot show (a model id that no longer exists, a
 schema one provider refuses) shows only that way, so when a provider changes, check it live.
 
+## In a Co-Work session
+
+The chat is the host's and everyone's: a guest's palette shows it and sends to it, each message runs as its sender's, and whoever
+has a key pays with it while one who has none is lent one. The whole of it is in [Co-Work](cowork.md#built-the-shared-ai-chat-slice-5).
+
 ## Not done
 
 - A dry run (`Session::script_dry_run`) the assistant could offer before it changes anything, and reviewable edits ([discussion

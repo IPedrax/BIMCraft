@@ -21,6 +21,7 @@ mod canvas;
 mod clouds;
 mod context;
 pub mod control;
+pub mod cowork;
 mod dialog;
 mod dimtypes;
 mod display;
@@ -314,6 +315,7 @@ enum Tab {
     Insert,
     Annotate,
     Massing,
+    Collaborate,
     View,
     Manage,
     Modify,
@@ -338,6 +340,7 @@ fn tab_key(tab: Tab) -> u64 {
         Tab::Manage => 10,
         Tab::Modify => 11,
         Tab::Context => 12,
+        Tab::Collaborate => 13,
         Tab::Plugin(i) => 100 + i as u64,
     }
 }
@@ -377,7 +380,7 @@ type Buttons<'a> = &'a [(Icon, &'a str, &'a str, Option<Tool>, bool)];
 
 /// The desktop's own two-letter shortcuts, which [`BimApp::shortcut`] takes before the commands'
 /// aliases, and what Keyboard Shortcuts (KS) calls them.
-const SHORTCUTS: [(&str, &str); 56] = [
+const SHORTCUTS: [(&str, &str); 57] = [
     ("3D", "3D View"),
     ("MD", "Modify"),
     ("SB", "Floor: Structural"),
@@ -431,6 +434,7 @@ const SHORTCUTS: [(&str, &str); 56] = [
     ("SD", "Shaded"),
     ("KS", "Keyboard Shortcuts"),
     ("AI", msg!("Assistant")),
+    ("CW", msg!("Co-Work")),
     ("BX", "Section Box"),
     ("GD", "Graphic Display Options"),
     // Revit has none for its title blocks; no command or tool takes TB.
@@ -929,6 +933,16 @@ pub struct BimApp {
     control: Option<control::Control>,
     /// File > Settings > Agents: whether the window opens the port, on which, and whether agents may edit or only read.
     agents: control::Agents,
+    /// Co-Work: the session the window is in, what Settings keeps of it, and its dialog while open.
+    cowork: Option<cowork::Live>,
+    pub(crate) cowork_prefs: cowork::Prefs,
+    cowork_dialog: Option<cowork::Dialog>,
+    /// What the window keeps of the others in the session and of where it is itself.
+    cowork_seen: cowork::Seen,
+    /// The session's shared AI chat, as this window takes part in it.
+    cowork_ai: cowork::Ai,
+    /// A host with guests in that was asked to close: asking whether to end the session (false), or told to (true).
+    cowork_quit: Option<bool>,
     /// The Revit file being read, on a thread of its own.
     revit_job: Option<revit::Job>,
     /// Files to open at the next frame: the command line's, and what the system asked for while a Revit file was being read.
@@ -1238,19 +1252,24 @@ fn icon_button(ui: &mut Ui, icon: Icon, label: &str) -> Response {
 
 /// An undo step as Undo's list names it: what it made (Create Walls) or took away (Delete Door), or else its command.
 fn step_name(st: &engine::Step) -> String {
-    let one = |list: &[(&str, usize)]| match list {
-        [(c, n)] => Some(lang::category(c, *n > 1)),
+    named(&st.label, &st.made, &st.removed)
+}
+
+/// A step named by its label and what it made and took away: Create Walls, Delete Door, or its command.
+fn named<C: AsRef<str>>(label: &str, made: &[(C, usize)], removed: &[(C, usize)]) -> String {
+    let one = |list: &[(C, usize)]| match list {
+        [(c, n)] => Some(lang::category(c.as_ref(), *n > 1)),
         _ => None,
     };
-    if let Some(asked) = assistant::step_label(&st.label) {
+    if let Some(asked) = assistant::step_label(label) {
         return asked;
     }
-    let named = match (st.made.as_slice(), st.removed.as_slice()) {
+    let named = match (made, removed) {
         (made, []) if !made.is_empty() => one(made).map(|c| tf("Create {}", &[&c])),
         ([], removed) if !removed.is_empty() => one(removed).map(|c| tf("Delete {}", &[&c])),
         _ => None,
     };
-    named.unwrap_or_else(|| t(&st.label).to_string())
+    named.unwrap_or_else(|| t(label).to_string())
 }
 
 /// A tab, of the ribbon or of a view. Contextual tabs are green, as Revit's are.
@@ -1288,7 +1307,7 @@ fn tab_button_with(ui: &mut Ui, label: &str, active: bool, contextual: bool, sen
 const FLOATING_CARD: f32 = 30.0;
 
 /// The ribbon's tabs, in order, with the icon the Tools palette's rail gives each (the contextual tab comes after them).
-const TABS: [(Tab, &str, Icon); 12] = [
+const TABS: [(Tab, &str, Icon); 13] = [
     (Tab::Architecture, msg!("Architecture"), Icon::Wall),
     (Tab::Structure, msg!("Structure"), Icon::Beam),
     (Tab::Plumbing, msg!("Plumbing"), Icon::Pipe),
@@ -1298,6 +1317,7 @@ const TABS: [(Tab, &str, Icon); 12] = [
     (Tab::Insert, msg!("Insert"), Icon::ImportCad),
     (Tab::Annotate, msg!("Annotate"), Icon::Dimension),
     (Tab::Massing, msg!("Massing"), Icon::Mass),
+    (Tab::Collaborate, msg!("Collaborate"), Icon::Cowork),
     (Tab::View, msg!("View"), Icon::View3D),
     (Tab::Manage, msg!("Manage"), Icon::Settings),
     (Tab::Modify, "Modify", Icon::Modify),
@@ -1572,6 +1592,12 @@ impl BimApp {
             revit: None,
             control: None,
             agents: control::Agents::default(),
+            cowork: None,
+            cowork_prefs: cowork::Prefs::default(),
+            cowork_dialog: None,
+            cowork_seen: cowork::Seen::default(),
+            cowork_ai: cowork::Ai::default(),
+            cowork_quit: None,
             revit_job: None,
             opens: Vec::new(),
             dialog: None,
@@ -1591,14 +1617,30 @@ impl BimApp {
         self.canvas.screen(p)
     }
 
+    /// What comes from outside the window, done once a pass: agents' requests, the Co-Work session's, the assistant's replies.
+    /// `logic` calls it, which runs while the window is minimised too, so a host keeps answering its guests; `show` calls it as
+    /// well, for the tests that drive `show` alone (in the window it finds nothing left by then).
+    pub(crate) fn pump(&mut self, ctx: &Context) {
+        // What agents asked of the project comes before the tidying, which puts right what a command left stale.
+        self.answer_agents(ctx);
+        self.pump_cowork(ctx);
+        // A project put in the session's place under the window (the control port turns an agent's New and Open away, but a
+        // script or an embedder may do them, and joining a Co-Work session puts the host's there) starts it over, as File > New
+        // does: its sketch and dialogs were of the old one, and it gets a recovery copy of its own. (The old one's stays until
+        // that is written: nobody was asked about its changes.)
+        if self.session.model.uid != self.project {
+            self.reopened();
+            self.autosave_document();
+        }
+        // After that check: a reply that came as the project was replaced is not for the new one (`State::project_replaced`).
+        self.poll_assistant(ctx);
+    }
+
     /// Run a command; when it fails, say why.
     fn run(&mut self, id: &str, params: Value) -> Option<Value> {
-        self.made_in();
-        match self.session.execute(id, &params) {
+        match self.exec(id, &params) {
             Ok(v) => {
                 self.status = Status::default();
-                // The core renames and drops the option with its set.
-                self.active_option = self.session.option.clone();
                 Some(v)
             }
             Err(e) => {
@@ -1606,6 +1648,44 @@ impl BimApp {
                 None
             }
         }
+    }
+
+    /// Run a command on the project, in the view's phase and option: the one way the interface changes it, so that a Co-Work
+    /// guest's commands can go to the host (COWORK-PLAN.md). A test reads the sources for any other.
+    pub(crate) fn exec(&mut self, id: &str, params: &Value) -> Result<Value, String> {
+        self.made_in();
+        let result = match &mut self.cowork {
+            Some(cowork::Live::Guest(joined)) => joined.exec(&mut self.session, id, params),
+            _ => self.session.execute(id, params),
+        };
+        if let (Err(e), true) = (&result, matches!(id, "undo" | "redo")) {
+            self.light_refused(e);
+        }
+        // The core renames and drops the option with its set.
+        self.active_option = self.session.option.clone();
+        result
+    }
+
+    /// Several commands as one undo step named `label`, all or nothing: what each gave, or the error.
+    pub(crate) fn exec_batch(&mut self, label: &str, commands: &[(&str, Value)]) -> Result<Vec<Value>, String> {
+        self.made_in();
+        let result = match &mut self.cowork {
+            Some(cowork::Live::Guest(joined)) => joined.batch(&mut self.session, label, commands),
+            _ => self.session.transaction(label, |s| commands.iter().map(|(c, p)| s.execute(c, p)).collect()),
+        };
+        self.active_option = self.session.option.clone();
+        result
+    }
+
+    /// A script as one undo step, `Script`: on a guest's window the host runs it.
+    pub(crate) fn exec_script(&mut self, text: &str) -> Result<Vec<Value>, String> {
+        self.made_in();
+        let result = match &mut self.cowork {
+            Some(cowork::Live::Guest(joined)) => joined.script(&mut self.session, text),
+            _ => self.session.script_atomic(text),
+        };
+        self.active_option = self.session.option.clone();
+        result
     }
 
     /// The contextual tab's name while a tool is on or something is selected.
@@ -1781,17 +1861,7 @@ impl BimApp {
             self.status = updates::failed(t(lang::NO_CHINESE_FONT).to_string());
         }
         lang::set(self.lang);
-        // What agents asked of the project comes before the tidying, which puts right what a command left stale.
-        self.answer_agents(&ctx);
-        // A project put in the session's place under the window (the control port turns an agent's New and Open away, but a
-        // script or an embedder may do them) starts it over, as File > New does: its sketch and dialogs were of the old one, and
-        // it gets a recovery copy of its own. (The old one's stays until that is written: nobody was asked about its changes.)
-        if self.session.model.uid != self.project {
-            self.reopened();
-            self.autosave_document();
-        }
-        // After that check: a reply that came as the project was replaced is not for the new one (`State::project_replaced`).
-        self.poll_assistant(&ctx);
+        self.pump(&ctx);
         self.tidy();
         self.poll_updates(&ctx);
         self.poll_revit(&ctx);
@@ -1805,14 +1875,23 @@ impl BimApp {
         let view = self.view_title(self.sheet);
         let title = match self.family_title() {
             Some(family) => format!("{family} · BIMCraft"),
-            None => format!("{}{} · {view} · BIMCraft", self.session.model.name, if self.dirty() { "*" } else { "" }),
+            None => {
+                format!("{}{} · {view} · {}BIMCraft", self.session.model.name, if self.dirty() { "*" } else { "" }, self.cowork_title())
+            }
         };
         if title != self.title {
             ctx.send_viewport_cmd(ViewportCommand::Title(title.clone()));
             self.title = title;
         }
         let documents = self.families.iter().any(|d| d.ed.as_ref().is_some_and(editor::FamilyEditor::unsaved));
-        if ctx.input(|i| i.viewport().close_requested()) && !self.closing && (self.installing() || self.dirty() || documents) {
+        // A host whose guests are in is asked first: closing ends the session for them.
+        let others_in = matches!(&self.cowork, Some(cowork::Live::Host(h)) if !h.people().is_empty());
+        let held = others_in && self.cowork_quit != Some(true);
+        if ctx.input(|i| i.viewport().close_requested()) && !self.closing && held {
+            ctx.send_viewport_cmd(ViewportCommand::CancelClose);
+            self.cowork_quit = Some(false);
+        }
+        if ctx.input(|i| i.viewport().close_requested()) && !self.closing && !held && (self.installing() || self.dirty() || documents) {
             ctx.send_viewport_cmd(ViewportCommand::CancelClose);
             // An update being put in place holds the window: it closes it when it's in. The family documents are asked about
             // first.
@@ -1824,7 +1903,7 @@ impl BimApp {
                 }
             }
         }
-        if ctx.input(|i| i.viewport().close_requested()) && !self.dirty() && !self.installing() && !documents {
+        if ctx.input(|i| i.viewport().close_requested()) && !held && !self.dirty() && !self.installing() && !documents {
             self.retire_autosave();
         }
         if self.home.shown {
@@ -3206,6 +3285,9 @@ impl BimApp {
         fresh.space_mouse = self.space_mouse.take();
         fresh.control = self.control.take();
         fresh.agents = std::mem::take(&mut self.agents);
+        fresh.cowork_prefs = std::mem::take(&mut self.cowork_prefs);
+        fresh.cowork = fresh.cowork_kept(self.cowork.take());
+        fresh.cowork_ai = std::mem::take(&mut self.cowork_ai);
         fresh.opens = std::mem::take(&mut self.opens);
         (fresh.recent, fresh.recent_path) = (std::mem::take(&mut self.recent), self.recent_path.take());
         fresh.autosave = std::mem::take(&mut self.autosave);
@@ -3394,7 +3476,12 @@ impl BimApp {
     /// and every step before it, and a click undoes (or redoes) them all.
     fn steps_list(&mut self, ui: &mut Ui, redo: bool) {
         let what = if redo { "Redo" } else { "Undo" };
-        let names: Vec<String> = self.session.steps(redo).into_iter().map(step_name).collect();
+        // In a Co-Work session, what this person's undo takes back: their own steps (a guest has them from the host).
+        let names: Vec<String> = match &self.cowork {
+            Some(cowork::Live::Guest(j)) => j.history(redo).iter().map(|s| named(&s.label, &s.made, &s.removed)).collect(),
+            Some(cowork::Live::Host(h)) => self.session.own_steps(h.name(), redo).into_iter().map(step_name).collect(),
+            None => self.session.steps(redo).into_iter().map(step_name).collect(),
+        };
         let (rect, arrow) = ui.allocate_exact_size(vec2(12.0, 22.0), Sense::click());
         let label = t(if redo { msg!("Redo History") } else { msg!("Undo History") });
         arrow.widget_info(|| WidgetInfo::labeled(WidgetType::Button, !names.is_empty(), label));
@@ -3571,6 +3658,7 @@ impl BimApp {
             Tab::Annotate => self.annotate_tab(ui),
             Tab::Massing => self.massing_tab(ui),
             Tab::View => self.view_tab(ui),
+            Tab::Collaborate => self.collaborate_tab(ui),
             Tab::Manage => self.manage_tab(ui),
             Tab::Modify | Tab::Context => self.modify_tab(ui),
             Tab::Plugin(i) => self.plugin_tab(ui, i),
@@ -4262,6 +4350,17 @@ impl BimApp {
             );
             if big_button(ui, Icon::Component, "Import 3D Model", false, tip).clicked() {
                 self.import_mesh_dialog(ui.ctx());
+            }
+        });
+    }
+
+    /// Collaborate: Co-Work, others working on this project live.
+    fn collaborate_tab(&mut self, ui: &mut Ui) {
+        panel(ui, msg!("Work Together"), |ui| {
+            let tip =
+                msg!("Co-Work (CW): host this project for others on BIMCraft, or join someone's session, and see each other's edits live");
+            if big_button(ui, Icon::Cowork, "Co-Work", self.cowork_dialog.is_some(), tip).clicked() {
+                self.open_cowork();
             }
         });
     }
@@ -5596,6 +5695,9 @@ impl BimApp {
         self.electrical_window(ctx);
         self.options_window(ctx);
         self.purge_window(ctx);
+        self.cowork_window(ctx);
+        self.lend_window(ctx);
+        self.quit_window(ctx);
         if std::mem::take(&mut self.link_dialog) {
             self.link_model_dialog(ctx);
         }
@@ -5675,6 +5777,12 @@ impl BimApp {
 }
 
 impl eframe::App for BimApp {
+    /// Runs before each pass, and while the window is hidden too: agents and a Co-Work session's guests are answered when the
+    /// window is minimised.
+    fn logic(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
+        self.pump(ctx);
+    }
+
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         self.show(ui);
     }
