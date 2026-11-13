@@ -10,15 +10,15 @@ msgstr " Vynecháno: {}{}."
 msgid " Moved {}, {} mm to bring it near the origin."
 msgstr " Posunuto o {}, {} mm pro umístění poblíž počátku."
 
-#: crates/ui-egui/src/shortcuts.rs:1735
+#: crates/ui-egui/src/shortcuts.rs:1730
 msgid "\"{}\" is already assigned to \"{}\""
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:1110
+#: crates/ui-egui/src/shortcuts.rs:1105
 msgid "\"{}\" is reserved by the application"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:1082
+#: crates/ui-egui/src/shortcuts.rs:1077
 msgid "\"{}\" needs a modifier or a second key"
 msgstr ""
 
@@ -159,7 +159,7 @@ msgstr "Projekt BIMCraft, soubor IFC nebo soubor aplikace Revit."
 msgid "A chat is kept for each saved project, on this computer, beside settings.json (never in the project). A picture sent in it is not kept."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:2872
+#: crates/ui-egui/src/shortcuts.rs:2867
 msgid "A chord such as Ctrl+D, or two keys such as WA. Esc cancels; Backspace clears."
 msgstr ""
 
@@ -207,7 +207,7 @@ msgstr "Filtr se vytváří v nabídce Pohled > Filtry"
 msgid "A form made of a mesh has no faces Align can take: pick a reference plane, an extrusion's end or a line of a form."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:1113
+#: crates/ui-egui/src/shortcuts.rs:1108
 msgid "A letter or digit needs a modifier or a second key"
 msgstr ""
 
@@ -235,8 +235,8 @@ msgstr "Smyčka vyžaduje tři čáry: klikněte na bod, který není počátkem
 msgid "A mesh from a file has no sketch to edit."
 msgstr "Síť ze souboru nemá skicu, kterou by bylo možné upravit."
 
-#: crates/ui-egui/src/shortcuts.rs:1045
-#: crates/ui-egui/src/shortcuts.rs:1079
+#: crates/ui-egui/src/shortcuts.rs:1040
+#: crates/ui-egui/src/shortcuts.rs:1074
 msgid "A modifier alone is not a binding"
 msgstr ""
 
@@ -370,7 +370,7 @@ msgstr "Přijmout primární"
 msgid "Accept Primary: the primary option's elements stay in the model; the others' elements and the set go"
 msgstr "Přijmout primární: prvky primární varianty zůstanou v modelu; prvky ostatních variant a celá sada budou odstraněny"
 
-#: crates/ui-egui/src/shortcuts.rs:2580
+#: crates/ui-egui/src/shortcuts.rs:2575
 msgid "Actions"
 msgstr ""
 
@@ -510,7 +510,7 @@ msgstr "Přidat napětí"
 msgid "Add Wire Type"
 msgstr "Přidat typ vodiče"
 
-#: crates/ui-egui/src/shortcuts.rs:2696
+#: crates/ui-egui/src/shortcuts.rs:2691
 msgid "Add a binding"
 msgstr ""
 
@@ -543,7 +543,7 @@ msgstr ""
 msgid "Add to Project"
 msgstr "Přidat do projektu"
 
-#: crates/ui-egui/src/shortcuts.rs:2953
+#: crates/ui-egui/src/shortcuts.rs:2948
 msgid "Add to the current set"
 msgstr ""
 
@@ -698,8 +698,8 @@ msgstr "Vodítka zarovnání zapnuta"
 msgid "All"
 msgstr "Vše"
 
-#: crates/ui-egui/src/shortcuts.rs:2424
-#: crates/ui-egui/src/shortcuts.rs:2426
+#: crates/ui-egui/src/shortcuts.rs:2419
+#: crates/ui-egui/src/shortcuts.rs:2421
 msgid "All categories"
 msgstr ""
 
@@ -777,8 +777,8 @@ msgstr ""
 msgid "An agent can work on this project: bimcraft-cli mcp --connect {}"
 msgstr "Na tomto projektu může pracovat agent: bimcraft-cli mcp --connect {}"
 
-#: crates/ui-egui/src/shortcuts.rs:1014
-#: crates/ui-egui/src/shortcuts.rs:1021
+#: crates/ui-egui/src/shortcuts.rs:1009
+#: crates/ui-egui/src/shortcuts.rs:1016
 msgid "An empty binding"
 msgstr ""
 
@@ -887,7 +887,7 @@ msgstr "Platí pro všechny pohledy; přichytává se k zapnuté hlavní mříž
 #: crates/ui-egui/src/lineweights.rs:150
 #: crates/ui-egui/src/objectstyles.rs:89
 #: crates/ui-egui/src/properties.rs:653
-#: crates/ui-egui/src/shortcuts.rs:2753
+#: crates/ui-egui/src/shortcuts.rs:2748
 #: crates/ui-egui/src/standards.rs:333
 #: crates/ui-egui/src/titleblocks.rs:652
 #: crates/ui-egui/src/typeprops.rs:309
@@ -899,7 +899,7 @@ msgstr "Použít"
 msgid "Apply Hide/Isolate to View"
 msgstr "Použít skrytí/izolování na pohled"
 
-#: crates/ui-egui/src/shortcuts.rs:2967
+#: crates/ui-egui/src/shortcuts.rs:2962
 msgid "Apply Import"
 msgstr ""
 
@@ -907,7 +907,7 @@ msgstr ""
 msgid "Apply Overrides"
 msgstr "Použít přepsání"
 
-#: crates/ui-egui/src/shortcuts.rs:2447
+#: crates/ui-egui/src/shortcuts.rs:2442
 msgid "Apply Profile"
 msgstr ""
 
@@ -991,7 +991,7 @@ msgstr "Při neuložených změnách se nejprve zeptá na uložení, poté ukon�
 msgid "Assign View Template"
 msgstr "Přiřadit šablonu pohledu"
 
-#: crates/ui-egui/src/shortcuts.rs:2747
+#: crates/ui-egui/src/shortcuts.rs:2742
 msgid "Assigned {} of {}"
 msgstr ""
 
@@ -1506,11 +1506,11 @@ msgstr "Kamera: klikněte na místo, kde stojí její oko, a potom na to, na co 
 #: crates/ui-egui/src/properties.rs:3519
 #: crates/ui-egui/src/purge.rs:77
 #: crates/ui-egui/src/reinforce.rs:536
-#: crates/ui-egui/src/shortcuts.rs:2496
-#: crates/ui-egui/src/shortcuts.rs:2756
-#: crates/ui-egui/src/shortcuts.rs:2903
-#: crates/ui-egui/src/shortcuts.rs:2909
-#: crates/ui-egui/src/shortcuts.rs:2994
+#: crates/ui-egui/src/shortcuts.rs:2491
+#: crates/ui-egui/src/shortcuts.rs:2751
+#: crates/ui-egui/src/shortcuts.rs:2898
+#: crates/ui-egui/src/shortcuts.rs:2904
+#: crates/ui-egui/src/shortcuts.rs:2989
 #: crates/ui-egui/src/standards.rs:334
 #: crates/ui-egui/src/templates.rs:757
 #: crates/ui-egui/src/titleblocks.rs:653
@@ -1574,7 +1574,7 @@ msgstr "Kategorie bez přepsání se vykreslují podle nastavení ve Stylech obj
 #: crates/ui-egui/src/editor/document.rs:1917
 #: crates/ui-egui/src/objectstyles.rs:65
 #: crates/ui-egui/src/properties.rs:2297
-#: crates/ui-egui/src/shortcuts.rs:2547
+#: crates/ui-egui/src/shortcuts.rs:2542
 #: crates/ui-egui/src/standards.rs:193
 msgid "Category"
 msgstr "Kategorie"
@@ -2432,7 +2432,7 @@ msgstr ""
 #: crates/ui-egui/src/revit.rs:261
 #: crates/ui-egui/src/script.rs:103
 #: crates/ui-egui/src/settings.rs:482
-#: crates/ui-egui/src/shortcuts.rs:2759
+#: crates/ui-egui/src/shortcuts.rs:2754
 msgid "Close"
 msgstr "Zavřít"
 
@@ -2555,7 +2555,7 @@ msgstr "Sloučit: prvky vytvořené, demolované a zobrazené v této fázi pře
 msgid "Coming in a later version"
 msgstr "Bude k dispozici v novější verzi"
 
-#: crates/ui-egui/src/shortcuts.rs:2536
+#: crates/ui-egui/src/shortcuts.rs:2531
 msgid "Command"
 msgstr ""
 
@@ -2831,12 +2831,12 @@ msgstr "Nosná vrstva: vnitřní"
 msgid "Could not fit the 3D view: {}"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:2482
+#: crates/ui-egui/src/shortcuts.rs:2477
 msgid "Could not open the file: {}"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:3060
-#: crates/ui-egui/src/shortcuts.rs:3075
+#: crates/ui-egui/src/shortcuts.rs:3055
+#: crates/ui-egui/src/shortcuts.rs:3070
 msgid "Could not write the file: {}"
 msgstr ""
 
@@ -3522,11 +3522,11 @@ msgid "Disallow Join"
 msgstr ""
 
 #: crates/ui-egui/src/autosave.rs:307
-#: crates/ui-egui/src/shortcuts.rs:2507
+#: crates/ui-egui/src/shortcuts.rs:2502
 msgid "Discard"
 msgstr "Zahodit"
 
-#: crates/ui-egui/src/shortcuts.rs:2505
+#: crates/ui-egui/src/shortcuts.rs:2500
 msgid "Discard the changes made here?"
 msgstr ""
 
@@ -4236,11 +4236,11 @@ msgstr "Exportovat"
 msgid "Export..."
 msgstr "Exportovat..."
 
-#: crates/ui-egui/src/shortcuts.rs:3057
+#: crates/ui-egui/src/shortcuts.rs:3052
 msgid "Exported."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:2459
+#: crates/ui-egui/src/shortcuts.rs:2454
 msgid "Export…"
 msgstr ""
 
@@ -5047,7 +5047,7 @@ msgstr "Výška:"
 msgid "Held by Dimensions"
 msgstr "Držené kótami"
 
-#: crates/ui-egui/src/shortcuts.rs:2462
+#: crates/ui-egui/src/shortcuts.rs:2457
 msgid "Help (Markdown)…"
 msgstr ""
 
@@ -5264,7 +5264,7 @@ msgstr ""
 msgid "Import units"
 msgstr "Jednotky importu"
 
-#: crates/ui-egui/src/shortcuts.rs:2945
+#: crates/ui-egui/src/shortcuts.rs:2940
 msgid "Import {}"
 msgstr ""
 
@@ -5280,7 +5280,7 @@ msgstr "Import: vzor ze souboru nahradí v tomto seznamu vzor téhož názvu; ne
 msgid "Imported Categories"
 msgstr "Importované kategorie"
 
-#: crates/ui-egui/src/shortcuts.rs:2986
+#: crates/ui-egui/src/shortcuts.rs:2981
 msgid "Imported {} bindings ({} skipped)."
 msgstr ""
 
@@ -5288,11 +5288,11 @@ msgstr ""
 msgid "Imported {}: {}."
 msgstr "Importováno {}: {}."
 
-#: crates/ui-egui/src/shortcuts.rs:2990
+#: crates/ui-egui/src/shortcuts.rs:2985
 msgid "Imported; the old profile is in {}."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:2456
+#: crates/ui-egui/src/shortcuts.rs:2451
 msgid "Import…"
 msgstr ""
 
@@ -5533,7 +5533,7 @@ msgstr ""
 msgid "Justification:"
 msgstr "Zarovnání:"
 
-#: crates/ui-egui/src/shortcuts.rs:2510
+#: crates/ui-egui/src/shortcuts.rs:2505
 msgid "Keep Editing"
 msgstr ""
 
@@ -5553,11 +5553,11 @@ msgstr ""
 msgid "Key"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:2558
+#: crates/ui-egui/src/shortcuts.rs:2553
 msgid "Key combinations"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:2413
+#: crates/ui-egui/src/shortcuts.rs:2408
 msgid "Keyboard Shortcuts"
 msgstr "Klávesové zkratky"
 
@@ -5565,7 +5565,7 @@ msgstr "Klávesové zkratky"
 msgid "Keyboard Shortcuts (KS): customize, edit, and load shortcut keys"
 msgstr "Klávesové zkratky (KS): přizpůsobení, úprava a načtení klávesových zkratek"
 
-#: crates/ui-egui/src/shortcuts.rs:2138
+#: crates/ui-egui/src/shortcuts.rs:2133
 msgid "Keyboard shortcuts applied."
 msgstr ""
 
@@ -6203,11 +6203,11 @@ msgstr ""
 msgid "Mark as Spare"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:3072
+#: crates/ui-egui/src/shortcuts.rs:3067
 msgid "Markdown help written."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:3045
+#: crates/ui-egui/src/shortcuts.rs:3040
 msgid "Markdown is a help file; use Help (Markdown)… to write it."
 msgstr ""
 
@@ -7064,15 +7064,15 @@ msgstr "Neohraničeno"
 msgid "Not Displayed"
 msgstr "Nezobrazeno"
 
-#: crates/ui-egui/src/shortcuts.rs:1699
+#: crates/ui-egui/src/shortcuts.rs:1694
 msgid "Not a binding: \"{}\""
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:1019
+#: crates/ui-egui/src/shortcuts.rs:1014
 msgid "Not a key: \"{}\""
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:1780
+#: crates/ui-egui/src/shortcuts.rs:1775
 msgid "Not a shortcuts file"
 msgstr ""
 
@@ -7366,7 +7366,7 @@ msgstr "Otevřít výchozí 3D pohled"
 msgid "Open the last project at startup"
 msgstr "Při spuštění otevřít poslední projekt"
 
-#: crates/ui-egui/src/shortcuts.rs:2478
+#: crates/ui-egui/src/shortcuts.rs:2473
 msgid "Open the saved file"
 msgstr ""
 
@@ -8530,7 +8530,7 @@ msgstr "Předvolba: Název"
 msgid "Presets"
 msgstr "Předvolby"
 
-#: crates/ui-egui/src/shortcuts.rs:2871
+#: crates/ui-egui/src/shortcuts.rs:2866
 msgid "Press a combination…"
 msgstr ""
 
@@ -8550,7 +8550,7 @@ msgstr "Primární ({})"
 #: crates/core/src/schedule.rs:212
 #: crates/ui-egui/src/editor/extrusion.rs:200
 #: crates/ui-egui/src/settings.rs:541
-#: crates/ui-egui/src/shortcuts.rs:2441
+#: crates/ui-egui/src/shortcuts.rs:2436
 msgid "Profile"
 msgstr "Profil"
 
@@ -8574,7 +8574,7 @@ msgstr "Profil 2"
 msgid "Profile 2: sketch the profile at the path's end, square to it"
 msgstr "Profil 2: načrtněte profil na konci cesty, kolmo k ní"
 
-#: crates/ui-egui/src/shortcuts.rs:2450
+#: crates/ui-egui/src/shortcuts.rs:2445
 msgid "Profile “{}” applied to the pending set."
 msgstr ""
 
@@ -8991,7 +8991,7 @@ msgstr ""
 msgid "Remove"
 msgstr "Odebrat"
 
-#: crates/ui-egui/src/shortcuts.rs:2719
+#: crates/ui-egui/src/shortcuts.rs:2714
 msgid "Remove All"
 msgstr ""
 
@@ -9095,7 +9095,7 @@ msgstr "Opakovaný detail"
 msgid "Repeating Detail: click its start and end; the group on the Options Bar repeats along it every spacing"
 msgstr "Opakovaný detail: klikněte na začátek a konec; skupina z panelu Možnosti se opakuje podél něj podle rozteče"
 
-#: crates/ui-egui/src/shortcuts.rs:2895
+#: crates/ui-egui/src/shortcuts.rs:2890
 msgid "Replace"
 msgstr ""
 
@@ -9107,7 +9107,7 @@ msgstr "Nahradit textem"
 msgid "Replace With Text:"
 msgstr "Nahradit textem:"
 
-#: crates/ui-egui/src/shortcuts.rs:2952
+#: crates/ui-egui/src/shortcuts.rs:2947
 msgid "Replace everything"
 msgstr ""
 
@@ -9132,15 +9132,15 @@ msgstr ""
 msgid "Reporting Parameter"
 msgstr "Parametr výkazu"
 
-#: crates/ui-egui/src/shortcuts.rs:1670
+#: crates/ui-egui/src/shortcuts.rs:1665
 msgid "Reserved key: \"{}\""
 msgstr ""
 
 #: crates/ui-egui/src/graphics.rs:1318
 #: crates/ui-egui/src/lineweights.rs:146
 #: crates/ui-egui/src/objectstyles.rs:82
-#: crates/ui-egui/src/shortcuts.rs:2492
-#: crates/ui-egui/src/shortcuts.rs:2716
+#: crates/ui-egui/src/shortcuts.rs:2487
+#: crates/ui-egui/src/shortcuts.rs:2711
 msgid "Reset"
 msgstr "Obnovit výchozí"
 
@@ -9148,7 +9148,7 @@ msgstr "Obnovit výchozí"
 msgid "Reset Accent"
 msgstr "Obnovit zvýraznění"
 
-#: crates/ui-egui/src/shortcuts.rs:2465
+#: crates/ui-egui/src/shortcuts.rs:2460
 msgid "Reset All"
 msgstr ""
 
@@ -9209,7 +9209,7 @@ msgstr "Restartovat a nainstalovat"
 msgid "Restore Down"
 msgstr "Obnovit dolů"
 
-#: crates/ui-egui/src/shortcuts.rs:2490
+#: crates/ui-egui/src/shortcuts.rs:2485
 msgid "Return every action to the starting profile?"
 msgstr ""
 
@@ -9241,7 +9241,7 @@ msgstr "Revizní obláček: obláček kolem provedené změny s přiřazenou rev
 msgid "Revision:"
 msgstr "Revize:"
 
-#: crates/ui-egui/src/shortcuts.rs:3049
+#: crates/ui-egui/src/shortcuts.rs:3044
 msgid "Revit XML import is supported; export it from Revit."
 msgstr ""
 
@@ -9636,7 +9636,7 @@ msgstr "Hledat v Prohlížeči projektu"
 #: crates/ui-egui/src/browser.rs:264
 #: crates/ui-egui/src/editor/document.rs:1708
 #: crates/ui-egui/src/editor/types_dialog.rs:197
-#: crates/ui-egui/src/shortcuts.rs:2417
+#: crates/ui-egui/src/shortcuts.rs:2412
 msgid "Search…"
 msgstr "Hledat…"
 
@@ -10333,7 +10333,7 @@ msgstr "Seřadit parametry každé skupiny podle názvu, od Z do A"
 msgid "Sorting/Grouping"
 msgstr "Řazení/seskupování"
 
-#: crates/ui-egui/src/shortcuts.rs:2569
+#: crates/ui-egui/src/shortcuts.rs:2564
 msgid "Source"
 msgstr ""
 
@@ -11012,7 +11012,7 @@ msgstr "To není IP adresa: 0.0.0.0 naslouchá na všech adresách tohoto počí
 msgid "That is the reference: pick what moves onto it."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:3018
+#: crates/ui-egui/src/shortcuts.rs:3013
 msgid "That is too big to be a shortcuts file."
 msgstr "Soubor je příliš velký na to, aby byl souborem klávesových zkratek."
 
@@ -11111,15 +11111,15 @@ msgstr "Rodina {}, kterou načítáte, už v této rodině existuje, ale je defi
 msgid "The family {} you are loading is already in this project, defined differently. What would you like to do?"
 msgstr "Rodina {}, kterou načítáte, už v tomto projektu existuje, ale je definována jinak. Co chcete udělat?"
 
-#: crates/ui-egui/src/shortcuts.rs:3029
+#: crates/ui-egui/src/shortcuts.rs:3024
 msgid "The file has no usable bindings."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:1739
+#: crates/ui-egui/src/shortcuts.rs:1734
 msgid "The file has too many bindings"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:1643
+#: crates/ui-egui/src/shortcuts.rs:1638
 msgid "The file has too many lines"
 msgstr ""
 
@@ -11404,7 +11404,7 @@ msgstr "Tato instalace nemá grafickou kartu, na které by bylo možné vykresli
 msgid "This end is tied to a parameter or worked out by a formula: change it in Family Types."
 msgstr "Tento konec je svázán s parametrem nebo vypočten vzorcem: změňte jej v okně Typy rodiny."
 
-#: crates/ui-egui/src/shortcuts.rs:3012
+#: crates/ui-egui/src/shortcuts.rs:3007
 msgid "This is a help file to read. Use .bks, .txt or .json to import."
 msgstr ""
 
@@ -11871,20 +11871,20 @@ msgstr "Jednotky"
 msgid "Units Format"
 msgstr "Formát jednotek"
 
-#: crates/ui-egui/src/shortcuts.rs:1664
-#: crates/ui-egui/src/shortcuts.rs:1720
-#: crates/ui-egui/src/shortcuts.rs:1722
-#: crates/ui-egui/src/shortcuts.rs:1755
+#: crates/ui-egui/src/shortcuts.rs:1659
+#: crates/ui-egui/src/shortcuts.rs:1715
+#: crates/ui-egui/src/shortcuts.rs:1717
+#: crates/ui-egui/src/shortcuts.rs:1750
 msgid "Unknown action: \"{}\""
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:1033
+#: crates/ui-egui/src/shortcuts.rs:1028
+#: crates/ui-egui/src/shortcuts.rs:1057
 #: crates/ui-egui/src/shortcuts.rs:1062
-#: crates/ui-egui/src/shortcuts.rs:1067
 msgid "Unknown key: \"{}\""
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:1029
+#: crates/ui-egui/src/shortcuts.rs:1024
 msgid "Unknown modifier: \"{}\""
 msgstr ""
 
@@ -12013,7 +12013,7 @@ msgstr "Proměnná"
 msgid "Version {}"
 msgstr "Verze {}"
 
-#: crates/ui-egui/src/shortcuts.rs:1684
+#: crates/ui-egui/src/shortcuts.rs:1679
 msgid "Version {} is not supported"
 msgstr ""
 
@@ -13336,7 +13336,7 @@ msgstr "{} vás požádal(a), abyste odešli"
 msgid "{} at x {}, y {}"
 msgstr "{} v poloze x {}, y {}"
 
-#: crates/ui-egui/src/shortcuts.rs:2947
+#: crates/ui-egui/src/shortcuts.rs:2942
 msgid "{} bindings read; {} errors."
 msgstr ""
 
@@ -13654,11 +13654,11 @@ msgstr "{}: {}, vybráno {}. Kliknutím sledovat"
 msgid "{}; and {} more"
 msgstr "{}; a {} dalších"
 
-#: crates/ui-egui/src/shortcuts.rs:2935
+#: crates/ui-egui/src/shortcuts.rs:2930
 msgid "“{}” assigned to “{}”."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:2889
+#: crates/ui-egui/src/shortcuts.rs:2884
 msgid "“{}” is already assigned to “{}”."
 msgstr ""
 
@@ -13730,7 +13730,7 @@ msgstr "• Velmi silná čára (0,70 mm — pero 12): výrazné železobetonov�
 msgid "• Wide / Heavy (0.50 mm — 0.70 mm): Cut walls and structural sections."
 msgstr "• Široká / silná (0,50 mm — 0,70 mm): řezané stěny a konstrukční řezy."
 
-#: crates/ui-egui/src/shortcuts.rs:2964
+#: crates/ui-egui/src/shortcuts.rs:2959
 msgid "…and {} more"
 msgstr ""
 

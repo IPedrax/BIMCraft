@@ -491,7 +491,7 @@ fn build_registry() -> Registry {
     }
 
     for c in bimcraft_core::engine::commands() {
-        let mut kind = if TOOL_COMMANDS.contains(&c.id) {
+        let kind = if TOOL_COMMANDS.contains(&c.id) {
             ActionKind::Tool
         } else if DIALOG_COMMANDS.contains(&c.id) {
             ActionKind::Dialog
@@ -500,11 +500,6 @@ fn build_registry() -> Registry {
         } else {
             ActionKind::Input
         };
-        // A few commands need parameters and have no UI that gathers them: they are shown but not
-        // offered. Keeping them `Input` is the dialog's way of saying why.
-        if c.params.starts_with('{') && c.menu.is_none() && c.aliases.is_empty() {
-            kind = if kind == ActionKind::Tool { ActionKind::Tool } else { ActionKind::Input };
-        }
         let id: Arc<str> = Arc::from(format!("cmd.{}", c.id));
         push(
             ActionDef {
@@ -2086,14 +2081,14 @@ fn sort_header(ui: &mut egui::Ui, width: f32, label: &str, on: bool, ascending: 
 
 /// One binding chip: clicking its text edits it, clicking the small `×` near its right edge
 /// removes it. A read-only chip has no `×` and takes no clicks.
-fn binding_chip(ui: &mut egui::Ui, text: &str, editable: bool) -> (bool, bool) {
+fn binding_chip(ui: &mut egui::Ui, text: &str, name: &str, editable: bool) -> (bool, bool) {
     let font = egui::FontId::proportional(12.0);
     let galley = ui.painter().layout_no_wrap(text.to_string(), font.clone(), pal().text);
     let pad = 12.0;
     let width = if editable { galley.size().x + 8.0 + pad * 2.0 } else { galley.size().x + 16.0 };
     let sense = if editable { egui::Sense::click() } else { egui::Sense::hover() };
     let (rect, response) = ui.allocate_exact_size(vec2(width, 20.0), sense);
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, editable, text));
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, editable, name));
     let cross_x = rect.right() - pad;
     let pointer = ui.ctx().pointer_hover_pos();
     let over_cross = editable && response.hovered() && pointer.is_some_and(|p| p.x >= cross_x - 7.0 && p.x <= rect.right());
@@ -2685,7 +2680,7 @@ impl BimApp {
                                     ui.horizontal_wrapped(|ui| {
                                         for b in &keys {
                                             let text = display_binding_localized(*b, self.lang);
-                                            let (edit, remove) = binding_chip(ui, &text, enabled);
+                                            let (edit, remove) = binding_chip(ui, &text, &display_binding(*b), enabled);
                                             if edit {
                                                 edit_binding = Some((def.id.clone(), *b));
                                             }
