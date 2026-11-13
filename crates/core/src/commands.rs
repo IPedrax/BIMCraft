@@ -11024,8 +11024,8 @@ fn grid_type(s: &mut Session, p: &Value) -> R {
     }
     let mut t: GridType = serde_json::from_value(v).map_err(|e| bad(c, e.to_string()))?;
     if let Some(f) = font.filter(|f| !f.trim().eq_ignore_ascii_case(t.font.trim())) {
-        t.font =
-            crate::text::known(&f).ok_or_else(|| bad(c, format!("this system has no font `{f}`; `grid_type` without `name` lists them")))?;
+        t.font = crate::text::known(&f)
+            .ok_or_else(|| bad(c, format!("this system has no font `{f}`; `grid_type` without `name` lists them")))?;
     }
     let name = match name_param(c, p, "rename")? {
         Some(to) if to != name => {
@@ -18633,6 +18633,9 @@ fn line_pattern(s: &mut Session, p: &Value) -> R {
         }
         if let Some((user, _)) = m.line_styles.iter().find(|(_, st)| st.pattern.as_deref() == Some(&*name)) {
             return Err(bad(c, format!("`{name}` is line style `{user}`'s pattern; give it another first")));
+        }
+        if let Some((user, _)) = m.grid_types.iter().find(|(_, t)| t.line_pattern.as_deref() == Some(&*name)) {
+            return Err(bad(c, format!("`{name}` is grid type `{user}`'s pattern; give it another first")));
         }
         return Ok(json!({"deleted": name}));
     }

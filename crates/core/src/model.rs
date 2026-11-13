@@ -4347,7 +4347,7 @@ impl Model {
         if self.grid_types.is_empty() {
             self.grid_types = crate::grids::types(self.language);
         }
-        let wanted = crate::grids::default_type(&self.grid_types).cloned().unwrap_or_default();
+        let wanted = crate::grids::default_type(&self.grid_types, self.language).cloned().unwrap_or_default();
         for e in self.elements.values_mut() {
             if let Element::Grid(g) = e
                 && g.type_name.is_empty()
@@ -4944,7 +4944,7 @@ impl Model {
             "spotcoordinate" => {
                 return crate::spots::default_type(&self.spot_coordinate_types, crate::coordinates::Origin::Survey).map(String::as_str);
             }
-            "grid" => return crate::grids::default_type(&self.grid_types).map(String::as_str),
+            "grid" => return crate::grids::default_type(&self.grid_types, self.language).map(String::as_str),
             "wall" | "floor" => "Generic - 200mm",
             "door" => "Single 900 x 2100",
             "column" => "Rectangular 400 x 400",

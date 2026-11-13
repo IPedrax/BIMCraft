@@ -1642,6 +1642,9 @@ impl Model {
         for p in self.line_styles.values_mut().filter_map(|s| s.pattern.as_mut()) {
             f(&Kind::LinePattern, p);
         }
+        for p in self.grid_types.values_mut().filter_map(|t| t.line_pattern.as_mut()) {
+            f(&Kind::LinePattern, p);
+        }
         for m in self.detail_groups.values_mut().flat_map(|g| g.members.iter_mut()) {
             m.element.lib_refs_mut(f);
         }

@@ -143,9 +143,10 @@ pub fn default_types() -> BTreeMap<String, GridType> {
     types(Language::English)
 }
 
-/// The type a new grid gets when none is named: [`ISO`], else the first.
-pub fn default_type(types: &BTreeMap<String, GridType>) -> Option<&String> {
-    types.get_key_value(ISO).map(|(k, _)| k).or_else(|| types.keys().next())
+/// The type a new grid gets when none is named: [`ISO`], in `language` (else its English name, a file from another
+/// language), else the first.
+pub fn default_type(types: &BTreeMap<String, GridType>, language: Language) -> Option<&String> {
+    [language.word(ISO), ISO].into_iter().find_map(|n| types.get_key_value(n).map(|(k, _)| k)).or_else(|| types.keys().next())
 }
 
 #[cfg(test)]
@@ -181,12 +182,12 @@ mod tests {
             assert!(types.contains_key(name), "{name}");
             assert_eq!(types[name].check(name, &crate::lines::default_patterns()), Ok(()));
         }
-        assert_eq!(default_type(&types).map(String::as_str), Some(ISO));
+        assert_eq!(default_type(&types, Language::English).map(String::as_str), Some(ISO));
         let patterns = crate::lines::patterns(Language::Portuguese);
         let types = types(Language::Portuguese);
         for t in types.values() {
             assert!(t.line_pattern.as_ref().is_none_or(|p| patterns.contains_key(p)), "{t:?}");
         }
-        assert_eq!(default_type(&types).map(String::as_str), types.keys().next().map(String::as_str));
+        assert_eq!(default_type(&types, Language::Portuguese).map(String::as_str), Some(Language::Portuguese.word(ISO)));
     }
 }

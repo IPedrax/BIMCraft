@@ -207,6 +207,12 @@ fn bring_library(to: &mut Model, from: &Model, take: &BTreeSet<Id>, out: &mut In
                     here(&Kind::LinePattern, p);
                 }
             }
+            // A grid type's pattern follows too: a project may hold one of the same name with another GUID, or none.
+            Kind::GridType => {
+                if let Some(p) = to.grid_types.get_mut(&name).and_then(|t| t.line_pattern.as_mut()) {
+                    here(&Kind::LinePattern, p);
+                }
+            }
             Kind::DetailGroup => {
                 for m in to.detail_groups.get_mut(&name).into_iter().flat_map(|g| g.members.iter_mut()) {
                     m.element.lib_refs_mut(&mut |k: &Kind, n: &mut String| here(k, n));
