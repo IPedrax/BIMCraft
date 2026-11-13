@@ -204,6 +204,7 @@ pub mod triad;
 pub mod triangulation;
 pub mod units;
 pub mod view3d;
+pub mod viewable;
 #[cfg(test)]
 mod wall_top_offset_tests;
 pub mod walls;
