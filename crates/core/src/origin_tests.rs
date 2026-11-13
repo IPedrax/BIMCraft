@@ -318,6 +318,41 @@ fn a_door_keeps_its_place_along_its_wall_and_follows_the_origin_across_it() {
 }
 
 #[test]
+fn a_door_whose_origin_moves_below_its_sill_reloads_and_stays_where_it_is() {
+    let mut s = Session::new();
+    let wall = id_of(&run(&mut s, "wall", json!({"points": [[0, 0], [6000, 0]]})));
+    door_family(&mut s);
+    let door = id_of(&run(&mut s, "door", json!({"wall": wall, "offset": 2000, "family": "Door"})));
+    let before = s.model.clone();
+    let pieces = |m: &Model| -> Vec<[[i64; 3]; 3]> {
+        m.opening_pieces(&m.elements[door]).iter().flat_map(|p| p.tris.iter().map(|t| t.map(r3))).collect()
+    };
+    let hole = |m: &Model| {
+        let Some(Element::Door(o)) = m.elements.get(door) else { panic!("a door") };
+        let h = crate::walls::hole(m, m.wall(o.host).unwrap(), &m.elements[door], o).unwrap();
+        [h.s0, h.s1, h.bottom, h.top].map(rounded)
+    };
+    // Its family reloaded with a Shelf 100 mm under Ref. Level defining the origin in z: the door at sill 0 stays put, its
+    // insertion point now 100 under the wall's base.
+    let mut definition = moved_definition(&s.model, "Door", [0.0; 3]);
+    definition["planes"]
+        .as_array_mut()
+        .unwrap()
+        .push(json!({"name": "Shelf", "start": [-1000, 0, -100], "end": [1000, 0, -100], "up": [0, 1000, 0], "defines_origin": true}));
+    run(&mut s, "family", json!({"name": "Door", "definition": definition, "overwrite": "version"}));
+    assert_eq!(s.model.families["Door"].origin(), [0.0, 0.0, -100.0]);
+    assert_eq!(pieces(&s.model), pieces(&before));
+    assert_eq!(hole(&s.model), hole(&before));
+    let Some(Element::Door(o)) = s.model.elements.get(door) else { panic!("a door") };
+    assert_eq!(rounded(o.sill), rounded(-100.0), "its insertion point under the wall's base, its opening on it");
+    // Saved and opened, and edited, it stays a door in its wall.
+    let (read, _) = Model::read(&s.model.to_json().unwrap()).unwrap();
+    assert_eq!(read.check(), Ok(()));
+    run(&mut s, "modify", json!({"ids": [door], "mark": "D1"}));
+    assert_eq!(hole(&s.model), hole(&before));
+}
+
+#[test]
 fn a_reload_with_a_new_origin_keeps_a_fittings_connectors_and_pipes_joined() {
     let mut s = Session::new();
     // A tee, turned and mirrored, its three pipes drawn to its connectors.
