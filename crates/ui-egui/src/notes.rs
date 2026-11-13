@@ -8,7 +8,7 @@
 use crate::popup::Modal;
 
 use bimcraft_core::geom::P2;
-use bimcraft_core::model::{Element, Id, Model, Note};
+use bimcraft_core::model::{Element, Id, LeaderKind, Model, Note};
 use bimcraft_core::render::{self, Drawing};
 use bimcraft_core::text::{self, Format, Layout, Style, TextType};
 use bimcraft_i18n::msg;
@@ -60,6 +60,7 @@ impl NoteEdit {
             size: None,
             angle: 0.0,
             leader: None,
+            leader_kind: LeaderKind::Straight,
             override_format: false,
             runs: Vec::new(),
         };
@@ -219,19 +220,24 @@ impl NoteEdit {
             return None;
         }
         let runs = serde_json::to_value(&n.runs).unwrap_or_default();
+        let mut p = json!({"text": n.text, "at": [n.at.0, n.at.1], "type": n.type_name,
+                           "override_format": n.override_format, "runs": runs, "leader_kind": n.leader_kind.name()});
+        if let Some(l) = n.leader {
+            p["leader"] = json!([l.0, l.1]);
+        }
         match self.id {
-            None => Some((
-                "text",
-                json!({"text": n.text, "at": [n.at.0, n.at.1], "view": self.view, "type": n.type_name,
-                       "override_format": n.override_format, "runs": runs}),
-            )),
+            None => {
+                p["view"] = json!(self.view);
+                Some(("text", p))
+            }
             Some(id) => {
                 let was = match m.elements.get(id) {
                     Some(Element::Text(was)) => was,
                     _ => return None,
                 };
                 (*was != n).then(|| {
-                    ("modify", json!({"id": id, "text": n.text, "type": n.type_name, "override_format": n.override_format, "runs": runs}))
+                    p["id"] = json!(id);
+                    ("modify", p)
                 })
             }
         }
@@ -251,7 +257,12 @@ impl BimApp {
     /// A new note opened for writing in view `view` at `at`.
     pub(crate) fn start_note(&mut self, view: Id, at: P2) {
         self.finish_note();
-        self.note_edit = Some(NoteEdit::new(&self.session.model, view, at, self.note_type()));
+        let mut e = NoteEdit::new(&self.session.model, view, at, self.note_type());
+        // A note placed with a leader keeps the kind the Options Bar showed; one without says nothing about a leader.
+        if self.note_leader {
+            e.note.leader_kind = self.note_leader_kind;
+        }
+        self.note_edit = Some(e);
         self.status =
             Status { text: t("Type the note: Shift+Enter breaks the line, Enter or a click outside it finishes.").into(), error: false };
     }
@@ -430,6 +441,10 @@ impl BimApp {
             .response
             .labelled_by(l.id);
         ui.checkbox(&mut e.note.override_format, t("Override Formatting"));
+        // A note that has a leader may have it run a different way, as Revit's Properties does.
+        if e.note.leader.is_some() {
+            leader_type(ui, &mut e.note.leader_kind);
+        }
         let fmt = e.note.override_format;
         for (which, label, tip) in [
             (Which::Bold, "B", msg!("Bold (Ctrl+B)")),
@@ -452,6 +467,18 @@ impl BimApp {
         self.note_edit = Some(e);
         if finish {
             self.finish_note();
+        }
+    }
+}
+
+/// The Options Bar's Leader Type, for a note's leader: Straight, Two Segment or Curved.
+pub(crate) fn leader_type(ui: &mut Ui, kind: &mut LeaderKind) {
+    ui.label(t("Leader Type:"));
+    for (k, label) in
+        [(LeaderKind::Straight, msg!("Straight")), (LeaderKind::TwoSegment, msg!("Two Segment")), (LeaderKind::Curved, msg!("Curved"))]
+    {
+        if ui.selectable_label(*kind == k, t(label)).clicked() {
+            *kind = k;
         }
     }
 }
