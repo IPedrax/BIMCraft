@@ -9,6 +9,7 @@ use bimcraft_core::pen::Pen;
 use bimcraft_core::render::{self, Drawing, Prim, Rgb, View};
 use serde_json::{Value, json};
 
+#[allow(clippy::unwrap_used)] // Test fixture creation must succeed.
 fn id(reply: Value) -> u64 {
     reply["id"].as_u64().unwrap()
 }
@@ -19,6 +20,7 @@ fn plan(s: &Session, scale: f64) -> Drawing {
 
 /// The grid line `g` draws: its colour, its dash and its width. The longest two-point line of its own is the line; its
 /// lettering and the bubbles' rings are shorter or have more corners.
+#[allow(clippy::expect_used)] // A test draws a grid line; none is a failure it reports below.
 fn line(d: &Drawing, g: u64) -> (Rgb, Option<Vec<f32>>, f32) {
     let found = d
         .prims
@@ -50,6 +52,7 @@ fn bubbles(d: &Drawing, g: u64) -> Vec<f32> {
         .collect()
 }
 
+#[allow(clippy::unwrap_used)] // Test fixture creation must succeed.
 fn grid(s: &mut Session) -> u64 {
     id(s.execute("grid", &json!({"start": [0, 0], "end": [10000, 0], "name": "1"})).unwrap())
 }
@@ -156,6 +159,7 @@ fn a_section_draws_a_grid_in_its_type_too() {
     assert!(len > 0.0);
 }
 
+#[allow(clippy::panic)] // A test reads a grid; another element is a broken fixture.
 fn grid_type_name(m: &Model, id: u64) -> String {
     match m.elements.get(id) {
         Some(Element::Grid(g)) => g.type_name.clone(),
