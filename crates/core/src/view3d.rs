@@ -1163,7 +1163,15 @@ fn solids_in_with(
                         _ => out.extend(m.column_pieces(e).iter().map(|ring| slab(id, color, ring, span))),
                     }
                 }
-                out.extend(parts.into_iter().map(|p| Solid::Prism { owner: id, color, tex: 0, ring: p.ring, bottom: p.bottom, top: p.top, curve: None }));
+                out.extend(parts.into_iter().map(|p| Solid::Prism {
+                    owner: id,
+                    color,
+                    tex: 0,
+                    ring: p.ring,
+                    bottom: p.bottom,
+                    top: p.top,
+                    curve: None,
+                }));
             }
             // A rectangular run is a prism of its outline — mitred where it joins, as the plan fills it — which a
             // section cuts; a round one a tube, its ends cut by the same planes, shown beyond its line; a steel
@@ -1552,7 +1560,10 @@ pub(crate) fn layered_with(m: &Model, s: Solid) -> Vec<(Solid, Option<usize>)> {
                     return vec![(Solid::Mesh { owner, color, tex, tris, caps, round, cut, vis }, None)];
                 };
                 if !inside.is_empty() {
-                    out.push((Solid::Mesh { owner, color: layer_color, tex: layer_tex, tris: inside, caps: 0, round: false, cut, vis }, place));
+                    out.push((
+                        Solid::Mesh { owner, color: layer_color, tex: layer_tex, tris: inside, caps: 0, round: false, cut, vis },
+                        place,
+                    ));
                 }
             }
             out

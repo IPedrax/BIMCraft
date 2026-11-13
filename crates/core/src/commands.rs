@@ -688,8 +688,9 @@ other_files(
         "column",
         ui_msg!("Column"),
         &["CL"],
-        "{at: [x,y], type?, angle?, level?, top_level?, height?, base_offset?} a column, its width along `angle` degrees; up to \
-         the next level, or `height` mm tall, or up to `top_level`",
+        "{at: [x,y], type?, angle?, level?, top_level?, top_offset?, height?, base_offset?, attach_top?, attach_base?} a column, \
+         its width along `angle` degrees; up to the next level, or `height` mm tall, or up to `top_level` (`top_offset` mm above \
+         it). `attach_top`, `attach_base`: a roof or floor (id) its top follows from below, or its base stands on, as a wall's do",
         column,
     )
     .menu("Architecture > Column"),
@@ -697,9 +698,10 @@ other_files(
         "structural_column",
         ui_msg!("Structural Column"),
         &["CL"],
-        "{at: [x,y], type?, angle?, level?, top_level?, height?, base_offset?} a column of the structure, as `column` makes one but \
-         in its own category with its own types (`type` with category structural column): up to the next level, or `height` mm \
-         tall, or up to `top_level`. CL is `column`'s too; on the desktop's Structure tab it is this one",
+        "{at: [x,y], type?, angle?, level?, top_level?, top_offset?, height?, base_offset?, attach_top?, attach_base?} a column of \
+         the structure, as `column` makes one but in its own category with its own types (`type` with category structural column): \
+         up to the next level, or `height` mm tall, or up to `top_level`, with `column`'s `top_offset`, `attach_top` and \
+         `attach_base`. CL is `column`'s too; on the desktop's Structure tab it is this one",
         structural_column,
     ),
     edit(

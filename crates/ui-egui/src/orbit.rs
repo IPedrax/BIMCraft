@@ -23,10 +23,10 @@ use std::sync::Arc;
 
 use bimcraft_i18n::msg;
 
-use bimcraft_core::handles::{self, Handle};
 use bimcraft_core::dims3d;
 use bimcraft_core::geom::{self, P2};
 use bimcraft_core::graphics::{Look, VisualStyle};
+use bimcraft_core::handles::{self, Handle};
 use bimcraft_core::model::{Dimension3D, Id, Model, Ref3, TOL, ViewCamera};
 use bimcraft_core::render::{self, Rgb};
 use bimcraft_core::snap::{self, Found, Kind, Reach, Snaps};
@@ -388,6 +388,9 @@ pub struct Orbit {
     slot: u64,
     /// What its processor picture's texture is called.
     name: &'static str,
+    /// Whether a drag with the primary button orbits (a hand without a middle button), where it has nothing else to do: the family
+    /// views', which have no selection box to give it. The project's 3D view's primary button boxes, and never moves the camera.
+    pub(crate) hand_orbits: bool,
     /// The handle of the selected wall or column being dragged: the element, which, its place and where the drag began.
     pub(crate) handle: Option<(Id, Handle, P3, Pos2)>,
     /// The handle under the pointer.
@@ -454,6 +457,7 @@ impl Default for Orbit {
             fitted: None,
             slot: NEXT_SLOT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             name: "view3d",
+            hand_orbits: false,
             handle: None,
             hot_handle: None,
             chain: Vec::new(),
@@ -774,9 +778,9 @@ impl Orbit {
 }
 
 impl Orbit {
-    /// A view whose processor picture's texture is called `name`.
+    /// A family's view, whose processor picture's texture is called `name`, and whose primary button orbits ([`hand_orbits`](Self::hand_orbits)).
     pub(crate) fn named(name: &'static str) -> Orbit {
-        Orbit { name, ..Orbit::default() }
+        Orbit { name, hand_orbits: true, ..Orbit::default() }
     }
 
     /// Zoom to Fit: all the view shows of its model, from where the camera is, fitted on the worker.
@@ -1094,7 +1098,8 @@ impl Orbit {
 
     /// The hand's drag, from `cam` (zoomed already): Shift and the middle button orbit, 0.4° a point, round the point under the
     /// pointer where the drag began (found in `scene` as [`zoom`](Self::zoom) finds it; the target, where nothing is); the
-    /// middle button alone pans. The primary button never moves the camera: with `boxes`, it drags a selection box.
+    /// middle button alone pans. The primary button drags a selection box with `boxes`, and orbits only where
+    /// [`hand_orbits`](Self::hand_orbits): the project's 3D view never moves the camera with it.
     /// A drag that a view's tool `held` this frame (a grip's) is the tool's. A drag that turns out a `quick` click puts the camera
     /// back. Then a click on the triad's end turns the camera to look from that side. The camera is the view's from here on.
     #[allow(clippy::too_many_arguments)]
@@ -1113,12 +1118,11 @@ impl Orbit {
             && !held
             && let Some(origin) = ui.input(|i| i.pointer.press_origin())
         {
-            if response.dragged_by(PointerButton::Primary) {
-                if boxes {
-                    self.select = Some(origin);
-                }
-            } else if response.dragged_by(PointerButton::Middle) {
-                let orbit = input.shift;
+            let primary = response.dragged_by(PointerButton::Primary);
+            if primary && boxes {
+                self.select = Some(origin);
+            } else if (primary && self.hand_orbits) || response.dragged_by(PointerButton::Middle) {
+                let orbit = (primary && self.hand_orbits) || input.shift;
                 let pivot = orbit.then(|| self.picker.as_ref()?.surface(scene, &cam, input.px(origin))).flatten().map(|s| s.at);
                 self.drag = Some((orbit, origin, pivot));
                 self.before = Some(cam);
@@ -1951,7 +1955,7 @@ impl BimApp {
             p.extend(egui::Shape::dashed_line(&line, Stroke::new(1.5, pal().accent), 8.0, 5.0));
         }
         for (h, q) in &own_handles {
-            draw_handle(&p, &cam, *h, *q, o.handle.map(|(_, held, ..)| held), o.hot_handle, &screen);
+            draw_handle(&p, &cam, *h, *q, o.handle.map(|(_, held, ..)| held), o.hot_handle, screen);
         }
         // The drawing tools take their points on the face under the cursor (`workplane`), snapped as its level's plan snaps:
         // a wall chain under way on the plane its first point found, a run's end on the face it is clicked on (where there is

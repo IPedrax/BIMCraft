@@ -205,7 +205,7 @@ finished (`Canvas::quick`, `BimApp::finish_drag`: grips, crop regions, a sheet's
 that drag's start replaced comes back (`BimApp::grab`) for the click to pick from. A slower press is the drag it is. In the 3D view
 a quick press is a click whatever the tool, and a camera the hand turned meanwhile goes back (`Orbit::before`). There, as in
 Revit, Shift and the middle button orbit, round the point under the pointer, and the middle button alone pans; a primary drag never
-moves the camera: in Modify it is a selection box, as in a plan, adding to the selection with Shift held; it takes levels by what of
+moves the camera: in Modify it is a selection box, as in a plan, adding to the selection with Shift held (the family editor's views have no box, so there it still orbits, `Orbit::hand_orbits`); it takes levels by what of
 them is drawn, the far edges of each plane and its head (`Orbit::select`, drawn by `canvas::box_shapes`), which picks what `Scene::in_box` finds: from the left what lies wholly
 inside, from the right what it touches, by where the model is rather than what's in front, so what's behind is boxed too.
 A 3D mouse (a 3Dconnexion SpaceMouse, SpaceNavigator, SpacePilot) moves the active 3D view as 3DxWare's object mode moves a
@@ -636,15 +636,6 @@ takes it out, a click on another face, axis or corner of the same element adds i
 and leaves the edit (Enter too), and Esc cancels. Tab over an element steps through its faces, axes and corners, highlighting the reference a click would
 bind, while creating a chain or editing one (`dimension_references`). Dragging a dimension moves it only square to its line (`dragged`
 projects onto the line's normal); it never slides along itself.
-
-A number takes a value in any of three ways, each ending in `dimension_value`. A dimension selected alone shows its numbers, and what
-the segment ends at moves, or an angular dimension's second line turns. An element selected, alone or with a dimension, lights the
-dimensions on it (`Model::dimensions_on`, added to what the canvas marks) and shows the numbers of the segments it is at one end of
-(`BimApp::element_dimensions`), each a field over the number the drawing letters (`Drawing::dimension_number_places`), drawn after
-the temporary dimensions so it is the one on top: typing one moves or turns that element, as `moves` says, whichever end it is. An angle turns about
-where the lines cross and takes the dimension's arc with it (`angular_value`). A selected wall also shows temporary dimensions across
-it, to the nearest parallel wall or grid each side (`Model::wall_clearances`), which move it square to itself. A dimension in a 3D
-view holds points, not elements, so there is nothing for its number to move.
 
 In the app bar beside Settings, the AI button (`BimApp::agents_toggle`) is Settings > Agents' Let agents work on this project, for a
 quick switch, and is lit while it is on. Finish and Cancel Edit Mode wear green and red, in any theme, through the palette's `context`
