@@ -1387,6 +1387,10 @@ impl BimApp {
                 self.spot_type_dialog = Some(crate::spots::SpotTypeDialog::new(&self.session.model, name, elements));
                 return;
             }
+            if category == "grid" {
+                self.grid_type_dialog = Some(crate::gridtypes::GridTypeDialog::new(&self.session.model, name, elements));
+                return;
+            }
             let pair = if category == "component" {
                 self.component_type()
             } else {

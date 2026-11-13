@@ -104,6 +104,7 @@ pub mod glue;
 #[cfg(test)]
 mod glue_tests;
 pub mod graphics;
+pub mod grids;
 pub mod groups;
 pub mod handles;
 #[cfg(test)]

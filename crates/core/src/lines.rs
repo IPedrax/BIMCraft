@@ -180,6 +180,12 @@ pub fn patterns(language: Language) -> BTreeMap<String, LinePattern> {
         (msg!("Dash Dot"), vec![D(5.0), S(1.5), Dot, S(1.5)]),
         (msg!("Hidden"), vec![D(1.5), S(1.0)]),
         (msg!("Centre"), vec![D(10.0), S(1.5), D(2.0), S(1.5)]),
+        // A grid's line, drawn as the standards a starter grid type follows describe it: mm on paper, one reading each.
+        (msg!("Grid - ISO Dash Dot"), vec![D(12.7), S(3.2), Dot, S(3.2)]),
+        (msg!("Grid - DIN Dash Dot"), vec![D(20.0), S(4.0), Dot, S(4.0)]),
+        (msg!("Grid - ASME Chain"), vec![D(20.0), S(3.0), D(5.0), S(3.0)]),
+        (msg!("Grid - Architectural Chain"), vec![D(15.0), S(2.0), D(2.0), S(2.0), D(2.0), S(2.0)]),
+        (msg!("Grid - Compact Dash Dot"), vec![D(6.0), S(1.5), Dot, S(1.5)]),
     ]
     .into_iter()
     .map(|(n, s)| (language.word(n).to_string(), LinePattern(s)))

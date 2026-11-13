@@ -3127,7 +3127,11 @@ impl BimApp {
             Tool::Grid(start) => match start.take() {
                 None => *start = Some(p),
                 Some(a) if a.dist(p) > TOL => {
-                    self.run("grid", json!({"start": point(a), "end": point(p)}));
+                    let mut params = json!({"start": point(a), "end": point(p)});
+                    if let Some(type_name) = self.grid_type_for() {
+                        params["type"] = json!(type_name);
+                    }
+                    self.run("grid", params);
                 }
                 Some(a) => *start = Some(a),
             },

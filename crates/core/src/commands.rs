@@ -218,7 +218,15 @@ other_files(
         level,
     )
     .menu("Architecture > Level"),
-    edit("grid", ui_msg!("Grid"), &["GR"], "{start: [x,y], end: [x,y], name?} names follow the last grid: 1, 2… or A, B…", grid).menu("Architecture > Grid"),
+    edit(
+        "grid",
+        ui_msg!("Grid"),
+        &["GR"],
+        "{start: [x,y], end: [x,y], name?, type?} a grid line of the project's grid type `type` (its default type \
+         without one); names follow the last grid: 1, 2… or A, B…",
+        grid,
+    )
+    .menu("Architecture > Grid"),
     edit(
         "reference_plane",
         ui_msg!("Reference Plane"),
@@ -1081,6 +1089,19 @@ other_files(
          Arial` (radial and diameter ones). `rename` renames it, its dimensions following; `delete` takes it away while no \
          dimension is of it. Without `name`, it lists every type",
         dimension_type,
+    ),
+    edit(
+        "grid_type",
+        "Grid Types",
+        &[],
+        "{name?, like?, rename?, delete?: true, …values} a grid type of the project's, as Revit's type parameters: Graphics: \
+         `line_pattern` (a line pattern of the project's, mm on paper; null, a solid line), `line_pen` (0 to 16; 4), `color` \
+         (\"#rrggbb\" or [r, g, b]; #3c6496). Text: `font` (as text types take; Arial), `text_size` (2.5 mm), `bold`, \
+         `italic`, `underline`, `width_factor` (1). A new one starts as `like` says, else as the default. A project starts with \
+         `Grid - ISO 128` (a new grid's type), `Grid - DIN 1356`, `Grid - ASME Y14.2`, `Grid - Architectural`, `Grid - \
+         Continuous` and `Grid - Compact`, each on its own line pattern. `rename` renames it, its grids following; `delete` \
+         takes it away while no grid is of it. Without `name`, it lists every type and the project's line patterns",
+        grid_type,
     ),
     edit(
         "spot",
@@ -2137,7 +2158,7 @@ other_files(
         "delete_type",
         "Delete Type",
         &[],
-        "{category?: wall|floor|door|window|column|roof|ceiling|railing|…, family?, type?} deletes a type of a category \
+        "{category?: wall|floor|door|window|column|roof|ceiling|railing|…|grid, family?, type?} deletes a type of a category \
          (`category` and `type`), a family (`family`) or one of a family's types (`family` and `type`), as Revit's Delete on one \
          in the Project Browser does; refused while an element uses it (it says how many), and for the last type of a \
          category or of a family",
@@ -2147,7 +2168,7 @@ other_files(
         "rename_type",
         "Rename Type",
         &[],
-        "{category?: wall|floor|door|window|column|roof|ceiling|railing|…, family?, type, name} renames a type of a category \
+        "{category?: wall|floor|door|window|column|roof|ceiling|railing|…|grid, family?, type, name} renames a type of a category \
          (`category` and `type`) or one of a family's types (`family` and `type`) to `name`, as Rename in Type Properties does: \
          the elements of it, and what else names it, follow, and it keeps its GUID; refused for a name another type of it has. \
          Text types and filled region types rename with `rename` on `text_type` and `filled_region_type`",
@@ -8369,7 +8390,17 @@ fn grid(s: &mut Session, p: &Value) -> R {
         Some(n) => n,
         None => next_grid_name(&s.model),
     };
-    let id = s.model_mut().insert(Element::Grid(Grid { name: name.clone(), start, end }));
+    let type_name = match name_param(c, p, "type")? {
+        Some(t) => {
+            if !s.model.grid_types.contains_key(&t) {
+                let there: Vec<&str> = s.model.grid_types.keys().map(String::as_str).collect();
+                return Err(bad(c, format!("there's no grid type `{t}` (there are: {})", there.join(", "))));
+            }
+            t
+        }
+        None => s.model.default_type("grid").map(String::from).unwrap_or_default(),
+    };
+    let id = s.model_mut().insert(Element::Grid(Grid { name: name.clone(), type_name, start, end }));
     Ok(json!({"id": id, "name": name}))
 }
 
@@ -10941,6 +10972,79 @@ fn dimension_type(s: &mut Session, p: &Value) -> R {
     t.check(&name).map_err(|e| bad(c, e))?;
     if m.dimension_types.get(&name) != Some(&t) {
         m.dimension_types.insert(name.clone(), t.clone());
+    }
+    Ok(json!({"name": name, "type": t}))
+}
+
+fn grid_type(s: &mut Session, p: &Value) -> R {
+    use crate::grids::GridType;
+    let c = "grid_type";
+    let Some(name) = name_param(c, p, "name")? else {
+        return Ok(json!({
+            "types": s.model.grid_types,
+            "patterns": s.model.line_patterns,
+            "fonts": crate::text::families(),
+        }));
+    };
+    let m = s.model_mut();
+    if flag(c, p, "delete")? {
+        if let Some((id, _)) = m.elements.iter().find(|(_, e)| matches!(e, Element::Grid(g) if g.type_name == name)) {
+            return Err(bad(c, format!("grid {id} is of `{name}`; give it another type first")));
+        }
+        if !m.grid_types.contains_key(&name) {
+            return Err(bad(c, format!("there's no grid type `{name}`")));
+        }
+        if m.grid_types.len() <= 1 {
+            return Err(bad(c, "it's the last grid type: a grid needs one; make another first"));
+        }
+        m.grid_types.remove(&name);
+        return Ok(json!({"deleted": name}));
+    }
+    let t = match (m.grid_types.get(&name), name_param(c, p, "like")?) {
+        (Some(t), _) => t.clone(),
+        (None, Some(like)) => {
+            m.grid_types.get(&like).cloned().ok_or_else(|| bad(c, format!("there's no grid type `{like}` to start from")))?
+        }
+        (None, None) => GridType::default(),
+    };
+    // What it is, with the values given over it, read as a file reads one: a key it hasn't is an error.
+    let mut v = serde_json::to_value(&t).map_err(|e| bad(c, e.to_string()))?;
+    let mut font = None;
+    if let Some(o) = v.as_object_mut() {
+        for (key, value) in p.as_object().into_iter().flatten() {
+            match key.as_str() {
+                "name" | "like" | "rename" | "delete" => {}
+                "font" => font = name_param(c, p, "font")?,
+                "color" if !value.is_null() => {
+                    let rgb =
+                        colour(value).ok_or_else(|| bad(c, format!("`color` is \"#rrggbb\" or [r, g, b], each 0 to 255, not {value}")))?;
+                    o.insert(key.clone(), json!(rgb));
+                }
+                _ => {
+                    o.insert(key.clone(), value.clone());
+                }
+            }
+        }
+    }
+    let mut t: GridType = serde_json::from_value(v).map_err(|e| bad(c, e.to_string()))?;
+    if let Some(f) = font.filter(|f| !f.trim().eq_ignore_ascii_case(t.font.trim())) {
+        t.font = crate::text::known(&f)
+            .ok_or_else(|| bad(c, format!("this system has no font `{f}`; `grid_type` without `name` lists them")))?;
+    }
+    let name = match name_param(c, p, "rename")? {
+        Some(to) if to != name => {
+            if m.grid_types.contains_key(&to) {
+                return Err(bad(c, format!("there's already a grid type `{to}`")));
+            }
+            m.grid_types.remove(&name);
+            rename_entry(m, &LibKind::GridType, &name, &to);
+            to
+        }
+        _ => name,
+    };
+    t.check(&name, &m.line_patterns).map_err(|e| bad(c, e))?;
+    if m.grid_types.get(&name) != Some(&t) {
+        m.grid_types.insert(name.clone(), t.clone());
     }
     Ok(json!({"name": name, "type": t}))
 }
@@ -17906,7 +18010,9 @@ fn entry_of(c: &str, m: &Model, p: &Value) -> Result<(LibKind, String), String> 
             if !names.contains(&ty.as_str()) {
                 return Err(bad(c, format!("there is no {cat} type `{ty}`{}", known_names(&names))));
             }
-            Ok((LibKind::Type(cat), ty))
+            // A grid's type is a library entry of its own, not a `type:grid` of the model's types.
+            let kind = if cat == "grid" { LibKind::GridType } else { LibKind::Type(cat) };
+            Ok((kind, ty))
         }
         (None, Some(f), None) => {
             if !m.families.contains_key(&f) {
@@ -17942,6 +18048,9 @@ fn delete_type(s: &mut Session, p: &Value) -> R {
     match &kind {
         LibKind::Type(cat) if m.type_names(cat).len() <= 1 => {
             return Err(bad(c, format!("`{name}` is the last {label}: a {cat} needs one; make another first")));
+        }
+        LibKind::GridType if m.grid_types.len() <= 1 => {
+            return Err(bad(c, format!("`{name}` is the last {label}: a grid needs one; make another first")));
         }
         LibKind::FamilyType if name.split_once(": ").and_then(|(f, _)| m.families.get(f)).is_some_and(|f| f.types.len() <= 1) => {
             return Err(bad(c, format!("`{name}` is its family's last type: delete the family")));
@@ -18533,6 +18642,9 @@ fn line_pattern(s: &mut Session, p: &Value) -> R {
         }
         if let Some((user, _)) = m.line_styles.iter().find(|(_, st)| st.pattern.as_deref() == Some(&*name)) {
             return Err(bad(c, format!("`{name}` is line style `{user}`'s pattern; give it another first")));
+        }
+        if let Some((user, _)) = m.grid_types.iter().find(|(_, t)| t.line_pattern.as_deref() == Some(&*name)) {
+            return Err(bad(c, format!("`{name}` is grid type `{user}`'s pattern; give it another first")));
         }
         return Ok(json!({"deleted": name}));
     }

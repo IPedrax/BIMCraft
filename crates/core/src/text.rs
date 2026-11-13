@@ -235,7 +235,11 @@ impl Default for TextType {
 impl TextType {
     /// An error saying what to fix, unless it is one a note can be lettered in.
     pub fn check(&self, name: &str) -> Result<(), String> {
-        let who = format!("text type `{name}`");
+        self.check_who(&format!("text type `{name}`"))
+    }
+
+    /// [`TextType::check`], its error naming what it is rather than a text type: a grid type's lettering, say.
+    pub fn check_who(&self, who: &str) -> Result<(), String> {
         // Any name: a font this system hasn't is stood in for, so a project from another opens and draws.
         let n = self.font.trim().chars().count();
         if n == 0 || n > crate::model::MAX_TEXT || self.font.chars().any(char::is_control) {

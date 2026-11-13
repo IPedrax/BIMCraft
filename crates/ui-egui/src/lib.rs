@@ -39,6 +39,7 @@ mod footer;
 mod gpu;
 pub use gpu::limits_for;
 mod graphics;
+mod gridtypes;
 mod groups;
 pub mod icons;
 mod inquiry;
@@ -707,6 +708,7 @@ pub struct BimApp {
     spot_type_dialog: Option<spots::SpotTypeDialog>,
     /// The spot coordinate whose leader's end is being dragged.
     spot_grip: Option<Id>,
+    grid_type_dialog: Option<gridtypes::GridTypeDialog>,
     dimension_text_dialog: Option<dimtypes::DimensionTextDialog>,
     /// The line style the Detail Line tool draws in; blank for the project's Thin Lines.
     line_style: String,
@@ -1508,6 +1510,7 @@ impl BimApp {
             dimension_type_dialog: None,
             spot_type_dialog: None,
             spot_grip: None,
+            grid_type_dialog: None,
             dimension_text_dialog: None,
             line_style: String::new(),
             linework_style: String::new(),
@@ -2195,6 +2198,7 @@ impl BimApp {
             || self.text_type_dialog.is_some()
             || self.dimension_type_dialog.is_some()
             || self.spot_type_dialog.is_some()
+            || self.grid_type_dialog.is_some()
             || self.dimension_text_dialog.is_some()
             || self.materials_dialog.is_some()
             || self.family_dialog.is_some()
@@ -6171,6 +6175,7 @@ impl BimApp {
         self.text_type_window(ctx);
         self.dimension_type_window(ctx);
         self.spot_type_window(ctx);
+        self.grid_type_window(ctx);
         self.dimension_text_window(ctx);
         self.standards_window(ctx);
         self.electrical_window(ctx);

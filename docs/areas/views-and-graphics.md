@@ -722,6 +722,47 @@ them without knowing: `Look::with` makes a linked id halftone, and picking never
 `view_model` does, cached by the project's `Arc`. The schedules, `Model::check`, IFC and every command that edits work on the project itself.
 To do: shared coordinates, a link's graphics overrides and visibility per view, hosting on a linked wall, unloading.
 
+## Grid types
+
+A grid (`Grid`, the `grid` command) is a named axis for dimensions and snaps, and it draws in a grid type (`grids.rs`,
+`Model::grid_types`, a library entry `Kind::GridType`, the `grid_type` command), as a dimension draws in a dimension type. A
+grid names its type (`type`) as a file names any type; a new grid takes the project's default type, `Grid - ISO 128`.
+`Model::type_names("grid")` and `Model::default_type("grid")` are what fills a Type Selector and enables Edit Type, and a
+grid's type is checked like a dimension's (`Model::check`).
+
+| Field | Meaning | Default |
+|---|---|---|
+| `line_pattern` | A line pattern of the project by name (`lines.rs`), its lengths mm on paper; none, a solid line | `Grid - ISO Dash Dot` for the ISO type |
+| `line_pen` | The pen the line and its bubble are drawn in | 4 (0.18 mm on paper) |
+| `color` | The line's and its name's colour | `[60, 100, 150]` |
+| `font`, `text_size` | The name's font (the system's, IBM Plex or our lettering, as a text type's) and capitals, mm on paper | Arial, 2.5 mm |
+| `bold`, `italic`, `underline`, `width_factor` | Its lettering | off, 1.0 |
+
+A pattern is in mm on paper, so its chain scales with the view's scale and reads the same on every sheet, as a detail
+line's does; the renderer turns it into pixels with `sheet::DENSITY * d.paper` and raises every segment to at least 2 px,
+so the dot of a chain stays visible in egui's kept canvas. The bubble's radius follows its name (`max(2.2 mm, 0.6 ·
+text_size + half the laid-out name)`), and its name is laid out by `text::layout` in the type's text and centred in it.
+A view's Visibility/Graphics is applied after the type, so it still overrides the dash, the colour and the weight, and
+hides the category; the type is only the default.
+
+A project starts with six types (`grids::types`), one reading of each standard rather than an exhaustive one — lengths in
+the standards are fixed in line-weight groups, and bubble sizes may be an office standard of their own:
+
+| Type | Pattern | Pen (mm on paper) | Text | Source |
+|---|---|---|---|---|
+| `Grid - ISO 128` | 12.7 / 3.2 / dot / 3.2 | 4 (0.18) | 2.5 mm | ISO 128-2 chain line; ISO 128-23; EN ISO 7519 |
+| `Grid - DIN 1356` | 20 / 4 / dot / 4 | 7 (0.25) | 2.5 mm | DIN 1356-1; DIN 15-1 (Strichpunktlinie) |
+| `Grid - ASME Y14.2` | 20 / 3 / 5 / 3 | 9 (0.30) | 3.5 mm | ASME Y14.2 centre line |
+| `Grid - Architectural` | 15 / 2 / 2 / 2 / 2 / 2 | 4 (0.18) | 2.5 mm | office practice, not a standard |
+| `Grid - Continuous` | solid | 4 (0.18) | 2.5 mm | coordination and zone grids (NCS practice) |
+| `Grid - Compact` | 6 / 1.5 / dot / 1.5 | 4 (0.18) | 2.0 mm | templates for dense plans, not a standard |
+
+The set is open: any type may be changed, duplicated or made on any pattern of the project, and put on any grid. The
+Project Browser's Families lists the project's grid types under Grids, where a right click deletes one nothing uses. A type a
+grid uses can't be deleted; `purge` leaves grid types alone, as it leaves text and dimension types. `insert` brings a grid
+type, and the line pattern it names, from another project, and format 20 holds them: a file of 19 opens with each grid in
+`Grid - ISO 128` (or the first type there is) and the starter set put back (`Model::typed_grids`).
+
 ## Dimensions
 
 A dimension (`Dimension`, the `dimension` command) measures the model as it is, so it follows what it measures. Its `refs` are lines

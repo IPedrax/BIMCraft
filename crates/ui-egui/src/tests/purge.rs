@@ -84,3 +84,27 @@ fn the_browsers_families_list_the_systems_types_and_a_right_click_deletes_an_unu
     press(&mut h, "Delete");
     assert!(!h.state().session.model.types.wall.contains_key("Spare 100"));
 }
+
+#[test]
+fn the_browsers_families_list_grids_and_a_right_click_deletes_an_unused_axis_type() {
+    let mut h = app(&format!(
+        "{BOX}\ngrid {{\"start\": [1000, 1000], \"end\": [7000, 1000], \"name\": \"1\"}}\n\
+         grid_type {{\"name\": \"Spare Axis\", \"like\": \"Grid - ISO 128\"}}"
+    ));
+    press(&mut h, "List Families");
+    assert!(h.query_by_label("Grids").is_some(), "grid types are in Families");
+    // The type the grid is of is refused, saying so.
+    type_into(&mut h, FIND, "grid - iso 128");
+    in_browser(&h, "Grid - ISO 128").click_secondary();
+    h.run();
+    press(&mut h, "Delete");
+    assert!(h.state().status.error && h.state().status.text.contains("is used"), "{}", h.state().status.text);
+    assert!(h.state().session.model.grid_types.contains_key("Grid - ISO 128"));
+    // A type no grid is of goes, with its library entry.
+    type_into(&mut h, FIND, "spare axis");
+    in_browser(&h, "Spare Axis").click_secondary();
+    h.run();
+    press(&mut h, "Delete");
+    assert!(!h.state().session.model.grid_types.contains_key("Spare Axis"));
+    assert!(h.state().session.model.library.id(&bimcraft_core::library::Kind::GridType, "Spare Axis").is_none());
+}

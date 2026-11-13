@@ -3,7 +3,7 @@
 //! through get a heavy outline and grey poché, and below it a thin one (faint past the view
 //! range's bottom); doors a leaf and swing, windows glass lines, stairs their risers up to the cut
 //! line and a walk line, roofs their ridge and hips (dashed overhead, below the view range's top),
-//! rooms a tag, grids a long dash and a dot with a bubble at each end, dimensions witness lines and ticks
+//! rooms a tag, grids their type's line and a bubble at each end, dimensions witness lines and ticks
 //! (an arc for an angle, an arrow for a radius), door and window tags their mark in a box, text
 //! notes their lines, spot elevations a triangle and their height, sections their line and head,
 //! elevations a marker, sloped floors their slope arrow, shafts their outline and a cross; all of
@@ -23,8 +23,8 @@ use crate::geom::{self, P2};
 use crate::graphics::{Detail, Look, scale_of};
 use crate::model::Guid;
 use crate::model::{
-    CEILING_CUT, Ceiling, DetailLine, DimKind, Dimension, Element, FilledRegion, Floor, Function, Id, Key, Layer, Model, Note, Opening,
-    Pattern, PlanRange, Railing, Ramp, Roof, Section, Shaft, Stair, TOL, Tag, View3D, Wall,
+    CEILING_CUT, Ceiling, DetailLine, DimKind, Dimension, Element, FilledRegion, Floor, Function, Grid, Id, Key, Layer, Model, Note,
+    Opening, Pattern, PlanRange, Railing, Ramp, Roof, Section, Shaft, Stair, TOL, Tag, View3D, Wall,
 };
 use crate::pen::{Pen, Weights};
 use crate::styles::{BY_CATEGORY, ObjectStyle};
@@ -50,14 +50,12 @@ pub const POCHE: Rgb = Rgb(168, 168, 168);
 pub const LIGHT_POCHE: Rgb = Rgb(212, 212, 212);
 const INK: Rgb = Rgb(25, 25, 25);
 const FAINT: Rgb = Rgb(120, 120, 120);
-const GRID: Rgb = Rgb(60, 100, 150);
 /// A reference plane's line in plan.
 pub(crate) const REFERENCE_PLANE: Rgb = Rgb(70, 140, 90);
 /// A mass's outline, dashed.
 const MASS: Rgb = Rgb(88, 112, 168);
 /// Room for grid bubbles and the view title around the drawing, px.
 const MARGIN: f64 = 70.0;
-const BUBBLE: f32 = 11.0;
 
 /// What a primitive draws of its element, for the view's overrides: lines and fills in projection
 /// (what lies below the cut plane, beyond a section's line, annotation) or where the view cuts
@@ -2603,7 +2601,7 @@ fn section_base_cancellable(
         {
             let along = (x - v.start).dot(u);
             d.owner = Some(grid_id);
-            grid(&mut d, P2(along, lo - GRID_PAST), P2(along, hi + GRID_PAST), &g.name);
+            grid(&mut d, m, g, P2(along, lo - GRID_PAST), P2(along, hi + GRID_PAST));
         }
     }
     // Reference planes square to it (Revit's rule: their normal across the way it looks), their trace dashed green over
@@ -3471,7 +3469,7 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
             // Cropped, a grid stops at the crop's edge, with its bubbles there.
             Element::Grid(g) => {
                 if let Some((a, b)) = crop.map_or(Some((g.start, g.end)), |[lo, hi]| clip(g.start, g.end, lo, hi)) {
-                    grid(&mut d, a, b, &g.name);
+                    grid(&mut d, m, g, a, b);
                 }
             }
             Element::Room(r) if r.level == level && inside(r.point) && !up => {
@@ -5305,25 +5303,41 @@ fn elevation_mark(d: &mut Drawing, v: &Section) {
     d.grow(from, c);
 }
 
-/// A grid line drawn as a long dash and a dot, with a bubble holding its name beyond each end.
-fn grid(d: &mut Drawing, start: P2, end: P2, name: &str) {
+/// A grid line drawn in its type's pattern, pen and colour, with a bubble holding its name beyond each end.
+fn grid(d: &mut Drawing, m: &Model, g: &Grid, start: P2, end: P2) {
+    // A file that names a type it no longer has (a broken file, which `check` wouldn't pass) draws in the project's default.
+    let t = m
+        .grid_types
+        .get(&g.type_name)
+        .or_else(|| crate::grids::default_type(&m.grid_types, m.language).and_then(|n| m.grid_types.get(n)))
+        .cloned()
+        .unwrap_or_default();
+    let color = Rgb(t.color[0], t.color[1], t.color[2]);
+    // Pixels to a mm of paper: the pattern's and the bubble's lengths are paper mm, as a detail line's are.
+    let px_per_mm = sheet::DENSITY as f32 * d.paper;
     let (a, b) = (d.view.px(start), d.view.px(end));
-    // ISO 128-23 draws an axis as a long dash and a dot; a plain dash reads as a hidden edge. The dot
-    // is 2 px because egui's kept canvas loses a 1 px one while a view moves (`retained.rs`).
-    let dash = d.note_dash(&[14.0, 3.0, 2.0, 3.0]);
-    d.stroke(vec![a, b], Pen::PROJECTION, GRID, dash, false);
+    let dash = t.line_pattern.as_ref().and_then(|n| m.line_patterns.get(n)).and_then(|p| grid_dash(p, px_per_mm));
+    d.stroke(vec![a, b], t.line_pen, color, dash, false);
     let len = (b.0 - a.0).hypot(b.1 - a.1).max(1e-3);
     let dir = ((b.0 - a.0) / len, (b.1 - a.1) / len);
-    for ((x, y), k) in [(a, -BUBBLE), (b, BUBBLE)] {
-        let from = d.prims.len();
-        let c = (x + dir.0 * k, y + dir.1 * k);
+    let layout = crate::text::layout(&t.text_type(), &g.name, &[]);
+    // Big enough for the name, and never smaller than a quarter of a millimetre of paper across: a ring round nothing reads
+    // as a dot on the end of the line.
+    let r = (0.6 * t.text_size + layout.width.max(layout.height) / 2.0).max(2.2) as f32 * px_per_mm;
+    for ((x, y), k) in [(a, -1.0f32), (b, 1.0f32)] {
+        let c = (x + dir.0 * r * k, y + dir.1 * r * k);
         let ring = (0..32).map(|i| {
-            let t = f64::from(i) * PI / 16.0;
-            (c.0 + BUBBLE * t.cos() as f32, c.1 + BUBBLE * t.sin() as f32)
+            let th = i as f32 * (PI as f32) / 16.0;
+            (c.0 + r * th.cos(), c.1 + r * th.sin())
         });
-        d.stroke(ring.collect(), Pen::BUBBLE, GRID, None, true);
-        d.text(name, c, 10.0, GRID);
-        d.grow(from, (x, y));
+        d.stroke(ring.collect(), t.line_pen, color, None, true);
+        // Its name, centred in the bubble: mm of paper, as a note's lettering is.
+        let frame = NoteFrame {
+            at: (c.0 - layout.width as f32 / 2.0 * px_per_mm, c.1 - layout.height as f32 / 2.0 * px_per_mm),
+            k: px_per_mm,
+            angle: 0.0,
+        };
+        lettering(d, &layout, frame, color);
     }
 }
 
@@ -5389,6 +5403,12 @@ pub(crate) fn origin_marks(d: &mut Drawing, m: &Model, shows: impl Fn(&str) -> b
         d.on_top.extend(d.owner);
     }
     d.owner = None;
+}
+
+/// The on and off lengths of a grid's line pattern in pixels, no segment shorter than 2 px: a dot is 0.01 mm on paper, a
+/// fraction of a pixel that egui's kept canvas loses while a view moves (`retained.rs`), so the dot of a chain would go.
+fn grid_dash(pattern: &crate::lines::LinePattern, px_per_mm: f32) -> Option<Vec<f32>> {
+    pattern.dash(px_per_mm).map(|dash| dash.into_iter().map(|x| x.max(2.0)).collect())
 }
 
 /// A camera's symbol in plan, at its eye: a little body pointing the way it looks, a line to what it looks at, and its name
@@ -6120,7 +6140,7 @@ mod tests {
         let d = section(&s.model, 100010, view);
         assert_eq!(d.pick(at(0.0, 1500.0), 2.0), Some(100005), "the cut is the wall's to pick");
         assert_eq!(d.pick(at(4000.0, 3000.0), 3.0), Some(100001), "Level 2's line");
-        assert_eq!(d.pick(at(0.0, 3700.0), 3.0), Some(100009), "grid 1, where it crosses the section");
+        assert_eq!(d.pick(at(0.0, 3200.0), 3.0), Some(100009), "grid 1, where it crosses the section");
     }
 
     #[test]
@@ -6149,7 +6169,7 @@ mod tests {
         assert_eq!(pixel(&png, p), (255, 255, 255));
         let d = section(&s.model, 100011, view);
         assert!(d.prims.iter().all(|p| !matches!(p, Prim::Fill { color, .. } if *color == POCHE)), "no cut");
-        assert_eq!(d.pick(view.px(P2(0.0 - start.0, 3700.0)), 3.0), Some(100009), "grid 1 runs into what it sees");
+        assert_eq!(d.pick(view.px(P2(0.0 - start.0, 3200.0)), 3.0), Some(100009), "grid 1 runs into what it sees");
         assert_eq!(
             view3d::Scene::new(&s.model)
                 .cut(&section_camera(&s.model, 100011, view).unwrap().0, &section_camera(&s.model, 100011, view).unwrap().1, &[])
@@ -6262,7 +6282,8 @@ mod tests {
         assert!(d.pick((name.0, name.1 - 16.0 * d.k), 3.0) == Some(100008), "the name past the crop's edge");
         // Grid 1 stops at the crop's edge, its bubble there.
         let (x, y) = d.view.px(P2(0.0, 4000.0));
-        assert_eq!(d.pick((x + 11.0 * d.k, y - 11.0 * d.k), 2.0), Some(100009));
+        let r = bubble(&d, 100009) / 2.0;
+        assert_eq!(d.pick((x + r, y - r), 2.0), Some(100009));
         // A section cropped to the ground floor's lower part: Level 2 isn't in it, and the cut wall stops.
         s.script("section {\"start\": [-1000, 3000], \"end\": [9000, 3000]}").unwrap();
         s.execute("crop", &serde_json::json!({"view": 100010, "region": [[0, -100], [5000, 2000]]})).unwrap();
@@ -6455,6 +6476,10 @@ mod tests {
                 Prim::Line { pts, .. } => {
                     Some(pts.iter().map(|p| p.1).fold(f32::MIN, f32::max) - pts.iter().map(|p| p.1).fold(f32::MAX, f32::min))
                 }
+                Prim::Fill { rings, .. } => {
+                    let ys: Vec<f32> = rings.iter().flatten().map(|p| p.1).collect();
+                    (!ys.is_empty()).then(|| ys.iter().copied().fold(f32::MIN, f32::max) - ys.iter().copied().fold(f32::MAX, f32::min))
+                }
                 _ => None,
             })
             .fold(0.0, f32::max)
@@ -6504,24 +6529,23 @@ mod tests {
     fn a_views_scale_sizes_its_annotation_as_paper_at_that_scale_holds_it() {
         let mut s = house();
         s.execute("scale", &serde_json::json!({"view": 100000, "scale": 50})).unwrap();
-        // A tenth of a pixel to the mm: at 1 : 50, annotation is the size it has been all along (10 px lettering is
-        // 2 mm of paper, DENSITY px to the mm).
+        // A tenth of a pixel to the mm: at 1 : 50, annotation is paper size (2.5 mm lettering at DENSITY px to the mm).
         let view = View { angle: 0.0, scale: 0.1, cx: 4000.0, cy: 3000.0, width: 1000, height: 800 };
         let grid = |s: &Session, view: View| {
             let d = draw(&s.model, 100000, view);
             (lettering(&d, 100009), bubble(&d, 100009))
         };
         let (text, ring) = grid(&s, view);
-        assert!((text - 10.0).abs() < 1.0 && (ring - 22.0).abs() < 1.0, "{text} {ring}");
+        assert!((8.0..=18.0).contains(&text) && (ring - 31.25).abs() < 2.0, "{text} {ring}");
         // The bubble stands where it did, its middle a bubble's radius, times k, past the grid's end.
         let ends = [view.px(P2(0.0, -2000.0)), view.px(P2(0.0, 8000.0))];
-        assert!((bubble_gap(&draw(&s.model, 100000, view), 100009, ends) - 11.0).abs() < 0.5);
+        assert!((bubble_gap(&draw(&s.model, 100000, view), 100009, ends) - ring / 2.0).abs() < 0.5);
         for (n, k) in [(50, 1.0), (100, 2.0), (200, 4.0), (25, 0.5)] {
             s.execute("scale", &serde_json::json!({"view": 100000, "scale": n})).unwrap();
             let (t, r) = grid(&s, view);
             assert!((t - text * k).abs() < 1.0 && (r - ring * k).abs() < 1.0, "1 : {n}: {t} {r}");
             let gap = bubble_gap(&draw(&s.model, 100000, view), 100009, ends);
-            assert!((gap - 11.0 * k).abs() < 0.5, "1 : {n}: the bubble grows about the grid's end: {gap}");
+            assert!((gap - ring / 2.0 * k).abs() < 0.5, "1 : {n}: the bubble grows about the grid's end: {gap}");
         }
         // Zoomed in twice, the same view's annotation is twice the size: a screen showing 1 mm as 0.2 px, at 1 : 100.
         s.execute("scale", &serde_json::json!({"view": 100000, "scale": 100})).unwrap();
@@ -6537,7 +6561,7 @@ mod tests {
         let view = View { angle: 0.0, scale: 0.1, cx: 5000.0, cy: 1500.0, width: 1200, height: 800 };
         s.execute("scale", &serde_json::json!({"view": 100010, "scale": 50})).unwrap();
         let none = lettering(&section(&s.model, 100010, view), 100009);
-        assert!((none - 10.0).abs() < 1.0, "{none}");
+        assert!((8.0..=18.0).contains(&none), "{none}");
         s.execute("scale", &serde_json::json!({"view": 100010, "scale": 100})).unwrap();
         let hundred = lettering(&section(&s.model, 100010, view), 100009);
         assert!((hundred - 2.0 * none).abs() < 1.0, "{hundred}");
@@ -7006,5 +7030,26 @@ mod tests {
                 && matches!(prim, Prim::Line { pts, dash: Some(_), .. } if pts.len() == 2 && (pts[0].0 - x).abs() < 1.0 && (pts[1].0 - x).abs() < 1.0)
         });
         assert!(upright, "upright, 4000 along");
+    }
+
+    /// A grid's chain (F4): lengths scale with the paper, and its dot never falls below 2 px, which egui's kept canvas keeps.
+    #[test]
+    fn a_grid_dash_scales_with_the_paper_and_keeps_its_dot_visible() {
+        let chain = crate::lines::LinePattern(vec![
+            crate::lines::Segment::Dash(12.7),
+            crate::lines::Segment::Space(3.2),
+            crate::lines::Segment::Dot,
+            crate::lines::Segment::Space(3.2),
+        ]);
+        let big = grid_dash(&chain, 5.0).expect("dashed");
+        assert!((big[0] - 63.5).abs() < 1e-3 && (big[1] - 16.0).abs() < 1e-3, "{big:?}");
+        assert!(big[2] >= 2.0, "the dot survives: {big:?}");
+        let small = grid_dash(&chain, 2.5).expect("dashed");
+        assert!((small[0] - 31.75).abs() < 1e-3 && small[2] >= 2.0, "{small:?}");
+        // A pattern too fine to see draws solid, as any line's does.
+        assert_eq!(
+            grid_dash(&crate::lines::LinePattern(vec![crate::lines::Segment::Dash(0.1), crate::lines::Segment::Space(0.05)]), 1.0),
+            None
+        );
     }
 }

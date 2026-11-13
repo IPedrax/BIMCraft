@@ -207,6 +207,12 @@ fn bring_library(to: &mut Model, from: &Model, take: &BTreeSet<Id>, out: &mut In
                     here(&Kind::LinePattern, p);
                 }
             }
+            // A grid type's pattern follows too: a project may hold one of the same name with another GUID, or none.
+            Kind::GridType => {
+                if let Some(p) = to.grid_types.get_mut(&name).and_then(|t| t.line_pattern.as_mut()) {
+                    here(&Kind::LinePattern, p);
+                }
+            }
             Kind::DetailGroup => {
                 for m in to.detail_groups.get_mut(&name).into_iter().flat_map(|g| g.members.iter_mut()) {
                     m.element.lib_refs_mut(&mut |k: &Kind, n: &mut String| here(k, n));
@@ -463,6 +469,7 @@ fn copy_definition(to: &mut Model, from: &Model, kind: &Kind, name: &str) -> boo
         Kind::ReinforcementPreset => one(&mut to.reinforcement, Some(&from.reinforcement), name),
         Kind::DimensionType => one(&mut to.dimension_types, Some(&from.dimension_types), name),
         Kind::SpotCoordinateType => one(&mut to.spot_coordinate_types, Some(&from.spot_coordinate_types), name),
+        Kind::GridType => one(&mut to.grid_types, Some(&from.grid_types), name),
         Kind::Voltage => one(&mut to.voltages, Some(&from.voltages), name),
         Kind::DistributionSystem => one(&mut to.distribution_systems, Some(&from.distribution_systems), name),
         Kind::WireType => one(&mut to.wire_types, Some(&from.wire_types), name),
