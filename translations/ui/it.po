@@ -1400,7 +1400,7 @@ msgstr "Linea di contorno: le linee del profilo"
 msgid "Branch Panel"
 msgstr ""
 
-#: crates/core/src/model.rs:3477
+#: crates/core/src/model.rs:3482
 msgid "Brick"
 msgstr "Mattone"
 
@@ -1727,7 +1727,7 @@ msgstr "Centro"
 msgid "Centre Lines"
 msgstr "Linee d'asse"
 
-#: crates/core/src/model.rs:3485
+#: crates/core/src/model.rs:3490
 msgid "Ceramic tile"
 msgstr "Piastrella ceramica"
 
@@ -2712,7 +2712,7 @@ msgstr "Volume concettuale"
 msgid "Concrete"
 msgstr "Calcestruzzo"
 
-#: crates/core/src/model.rs:3479
+#: crates/core/src/model.rs:3484
 msgid "Concrete block"
 msgstr "Blocco in calcestruzzo"
 
@@ -2895,7 +2895,7 @@ msgstr "Copiati {} IFC GlobalId."
 msgid "Copied {} rows, tab-separated."
 msgstr "Copiate {} righe, separate da tabulazione."
 
-#: crates/core/src/model.rs:3493
+#: crates/core/src/model.rs:3498
 msgid "Copper"
 msgstr "Rame"
 
@@ -5284,7 +5284,7 @@ msgstr "Gli ospiti possono modificare"
 msgid "Guests without an AI key may use mine"
 msgstr "Gli ospiti senza chiave IA possono usare la mia"
 
-#: crates/core/src/model.rs:3484
+#: crates/core/src/model.rs:3489
 msgid "Gypsum board"
 msgstr "Cartongesso"
 
@@ -8227,7 +8227,7 @@ msgstr "Fase di demolizione"
 msgid "Phase Filter"
 msgstr "Filtro delle fasi"
 
-#: crates/core/src/ifc.rs:2237
+#: crates/core/src/ifc.rs:2265
 msgid "Phase Filters"
 msgstr "Filtri delle fasi"
 
@@ -9845,7 +9845,7 @@ msgstr "Copertura da faccia (RB): una copertura sulle facce superiori dei volumi
 msgid "Roof by Footprint: click inside the walls to roof them, on the level above"
 msgstr "Copertura da impronta: clicca dentro i muri per coprirli, sul piano superiore"
 
-#: crates/core/src/model.rs:3486
+#: crates/core/src/model.rs:3491
 msgid "Roof tiles"
 msgstr "Tegole"
 
@@ -10155,7 +10155,7 @@ msgstr "Abachi/Quantità (tutti)"
 msgid "Scope"
 msgstr ""
 
-#: crates/core/src/model.rs:3482
+#: crates/core/src/model.rs:3487
 msgid "Screed"
 msgstr "Massetto"
 

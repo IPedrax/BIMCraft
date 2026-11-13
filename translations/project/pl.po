@@ -32,7 +32,7 @@ msgstr "Wanna"
 msgid "Bed"
 msgstr "Łóżko"
 
-#: crates/core/src/model.rs:3477
+#: crates/core/src/model.rs:3482
 msgid "Brick"
 msgstr "Cegła"
 
@@ -68,7 +68,7 @@ msgstr "Oś"
 msgid "Centre Lines"
 msgstr "Linie osiowe"
 
-#: crates/core/src/model.rs:3485
+#: crates/core/src/model.rs:3490
 msgid "Ceramic tile"
 msgstr "Płytka ceramiczna"
 
@@ -86,7 +86,7 @@ msgstr ""
 msgid "Concrete"
 msgstr "Beton"
 
-#: crates/core/src/model.rs:3479
+#: crates/core/src/model.rs:3484
 msgid "Concrete block"
 msgstr "Bloczek betonowy"
 
@@ -95,7 +95,7 @@ msgstr "Bloczek betonowy"
 msgid "Connected Load (VA)"
 msgstr ""
 
-#: crates/core/src/model.rs:3493
+#: crates/core/src/model.rs:3498
 msgid "Copper"
 msgstr "Miedź"
 
@@ -289,7 +289,7 @@ msgstr "Szkło"
 msgid "Gross Floor Area"
 msgstr "Powierzchnia całkowita kondygnacji"
 
-#: crates/core/src/model.rs:3484
+#: crates/core/src/model.rs:3489
 msgid "Gypsum board"
 msgstr "Płyta gipsowo-kartonowa"
 
@@ -346,7 +346,7 @@ msgid "Length"
 msgstr "Długość"
 
 #: crates/core/src/commands.rs:7485
-#: crates/core/src/model.rs:3625
+#: crates/core/src/model.rs:3630
 msgid "Level"
 msgstr "Poziom"
 
@@ -405,7 +405,7 @@ msgstr "Membrana"
 #: crates/core/src/commands.rs:3333
 #: crates/core/src/commands.rs:14563
 #: crates/core/src/family.rs:3429
-#: crates/core/src/model.rs:4948
+#: crates/core/src/model.rs:4953
 msgid "Metal"
 msgstr "Metal"
 
@@ -531,7 +531,7 @@ msgstr "Liczba podstopnic"
 msgid "Roller"
 msgstr ""
 
-#: crates/core/src/model.rs:3486
+#: crates/core/src/model.rs:3491
 msgid "Roof tiles"
 msgstr "Dachówki"
 
@@ -563,7 +563,7 @@ msgstr "SKALA WEDŁUG OZNACZEŃ"
 msgid "Sand"
 msgstr "Piasek"
 
-#: crates/core/src/model.rs:3482
+#: crates/core/src/model.rs:3487
 msgid "Screed"
 msgstr "Jastrych"
 

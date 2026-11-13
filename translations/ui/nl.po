@@ -1400,7 +1400,7 @@ msgstr "Randlijn: de lijnen van het profiel"
 msgid "Branch Panel"
 msgstr ""
 
-#: crates/core/src/model.rs:3477
+#: crates/core/src/model.rs:3482
 msgid "Brick"
 msgstr "Baksteen"
 
@@ -1727,7 +1727,7 @@ msgstr "Hartlijn"
 msgid "Centre Lines"
 msgstr "Hartlijnen"
 
-#: crates/core/src/model.rs:3485
+#: crates/core/src/model.rs:3490
 msgid "Ceramic tile"
 msgstr "Keramische tegel"
 
@@ -2712,7 +2712,7 @@ msgstr "Conceptuele massa"
 msgid "Concrete"
 msgstr "Beton"
 
-#: crates/core/src/model.rs:3479
+#: crates/core/src/model.rs:3484
 msgid "Concrete block"
 msgstr "Betonblok"
 
@@ -2895,7 +2895,7 @@ msgstr "{} IFC-GlobalId's gekopieerd."
 msgid "Copied {} rows, tab-separated."
 msgstr "{} rijen gekopieerd, gescheiden door tabs."
 
-#: crates/core/src/model.rs:3493
+#: crates/core/src/model.rs:3498
 msgid "Copper"
 msgstr "Koper"
 
@@ -5284,7 +5284,7 @@ msgstr "Gasten mogen bewerken"
 msgid "Guests without an AI key may use mine"
 msgstr "Gasten zonder AI-sleutel mogen de mijne gebruiken"
 
-#: crates/core/src/model.rs:3484
+#: crates/core/src/model.rs:3489
 msgid "Gypsum board"
 msgstr "Gipsplaat"
 
@@ -8227,7 +8227,7 @@ msgstr "Fase van sloop"
 msgid "Phase Filter"
 msgstr "Fasefilter"
 
-#: crates/core/src/ifc.rs:2237
+#: crates/core/src/ifc.rs:2265
 msgid "Phase Filters"
 msgstr "Fasefilters"
 
@@ -9845,7 +9845,7 @@ msgstr "Dak op vlak (RB): een dak op de bovenvlakken van de geselecteerde massa'
 msgid "Roof by Footprint: click inside the walls to roof them, on the level above"
 msgstr "Dak door voetafdruk: klik binnen de muren om ze te voorzien van een dak, op het niveau erboven"
 
-#: crates/core/src/model.rs:3486
+#: crates/core/src/model.rs:3491
 msgid "Roof tiles"
 msgstr "Dakpannen"
 
@@ -10155,7 +10155,7 @@ msgstr "Lijsten/hoeveelheden (alle)"
 msgid "Scope"
 msgstr ""
 
-#: crates/core/src/model.rs:3482
+#: crates/core/src/model.rs:3487
 msgid "Screed"
 msgstr "Chape"
 

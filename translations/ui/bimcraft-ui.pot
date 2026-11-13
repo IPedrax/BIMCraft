@@ -1400,7 +1400,7 @@ msgstr ""
 msgid "Branch Panel"
 msgstr ""
 
-#: crates/core/src/model.rs:3477
+#: crates/core/src/model.rs:3482
 msgid "Brick"
 msgstr ""
 
@@ -1727,7 +1727,7 @@ msgstr ""
 msgid "Centre Lines"
 msgstr ""
 
-#: crates/core/src/model.rs:3485
+#: crates/core/src/model.rs:3490
 msgid "Ceramic tile"
 msgstr ""
 
@@ -2712,7 +2712,7 @@ msgstr ""
 msgid "Concrete"
 msgstr ""
 
-#: crates/core/src/model.rs:3479
+#: crates/core/src/model.rs:3484
 msgid "Concrete block"
 msgstr ""
 
@@ -2895,7 +2895,7 @@ msgstr ""
 msgid "Copied {} rows, tab-separated."
 msgstr ""
 
-#: crates/core/src/model.rs:3493
+#: crates/core/src/model.rs:3498
 msgid "Copper"
 msgstr ""
 
@@ -5284,7 +5284,7 @@ msgstr ""
 msgid "Guests without an AI key may use mine"
 msgstr ""
 
-#: crates/core/src/model.rs:3484
+#: crates/core/src/model.rs:3489
 msgid "Gypsum board"
 msgstr ""
 
@@ -8227,7 +8227,7 @@ msgstr ""
 msgid "Phase Filter"
 msgstr ""
 
-#: crates/core/src/ifc.rs:2237
+#: crates/core/src/ifc.rs:2265
 msgid "Phase Filters"
 msgstr ""
 
@@ -9845,7 +9845,7 @@ msgstr ""
 msgid "Roof by Footprint: click inside the walls to roof them, on the level above"
 msgstr ""
 
-#: crates/core/src/model.rs:3486
+#: crates/core/src/model.rs:3491
 msgid "Roof tiles"
 msgstr ""
 
@@ -10155,7 +10155,7 @@ msgstr ""
 msgid "Scope"
 msgstr ""
 
-#: crates/core/src/model.rs:3482
+#: crates/core/src/model.rs:3487
 msgid "Screed"
 msgstr ""
 

@@ -32,7 +32,7 @@ msgstr "Banheira"
 msgid "Bed"
 msgstr "Cama"
 
-#: crates/core/src/model.rs:3477
+#: crates/core/src/model.rs:3482
 msgid "Brick"
 msgstr "Tijolo"
 
@@ -68,7 +68,7 @@ msgstr "Eixo"
 msgid "Centre Lines"
 msgstr "Linhas de eixo"
 
-#: crates/core/src/model.rs:3485
+#: crates/core/src/model.rs:3490
 msgid "Ceramic tile"
 msgstr "Cerâmica"
 
@@ -86,7 +86,7 @@ msgstr "Classificação"
 msgid "Concrete"
 msgstr "Concreto"
 
-#: crates/core/src/model.rs:3479
+#: crates/core/src/model.rs:3484
 msgid "Concrete block"
 msgstr "Bloco de concreto"
 
@@ -95,7 +95,7 @@ msgstr "Bloco de concreto"
 msgid "Connected Load (VA)"
 msgstr "Carga instalada (VA)"
 
-#: crates/core/src/model.rs:3493
+#: crates/core/src/model.rs:3498
 msgid "Copper"
 msgstr "Cobre"
 
@@ -289,7 +289,7 @@ msgstr "Vidro"
 msgid "Gross Floor Area"
 msgstr "Área bruta de piso"
 
-#: crates/core/src/model.rs:3484
+#: crates/core/src/model.rs:3489
 msgid "Gypsum board"
 msgstr "Placa de gesso"
 
@@ -346,7 +346,7 @@ msgid "Length"
 msgstr "Comprimento"
 
 #: crates/core/src/commands.rs:7485
-#: crates/core/src/model.rs:3625
+#: crates/core/src/model.rs:3630
 msgid "Level"
 msgstr "Nível"
 
@@ -405,7 +405,7 @@ msgstr "Manta impermeável"
 #: crates/core/src/commands.rs:3333
 #: crates/core/src/commands.rs:14563
 #: crates/core/src/family.rs:3429
-#: crates/core/src/model.rs:4948
+#: crates/core/src/model.rs:4953
 msgid "Metal"
 msgstr "Metal"
 
@@ -531,7 +531,7 @@ msgstr "Espelhos"
 msgid "Roller"
 msgstr ""
 
-#: crates/core/src/model.rs:3486
+#: crates/core/src/model.rs:3491
 msgid "Roof tiles"
 msgstr "Telhas"
 
@@ -563,7 +563,7 @@ msgstr "ESCALA CONFORME INDICADO"
 msgid "Sand"
 msgstr "Areia"
 
-#: crates/core/src/model.rs:3482
+#: crates/core/src/model.rs:3487
 msgid "Screed"
 msgstr "Contrapiso"
 

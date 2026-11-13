@@ -32,7 +32,7 @@ msgstr "Badkar"
 msgid "Bed"
 msgstr "Säng"
 
-#: crates/core/src/model.rs:3477
+#: crates/core/src/model.rs:3482
 msgid "Brick"
 msgstr "Tegel"
 
@@ -68,7 +68,7 @@ msgstr "Centrum"
 msgid "Centre Lines"
 msgstr "Centrumlinjer"
 
-#: crates/core/src/model.rs:3485
+#: crates/core/src/model.rs:3490
 msgid "Ceramic tile"
 msgstr "Keramisk platta"
 
@@ -86,7 +86,7 @@ msgstr ""
 msgid "Concrete"
 msgstr "Betong"
 
-#: crates/core/src/model.rs:3479
+#: crates/core/src/model.rs:3484
 msgid "Concrete block"
 msgstr "Betongblock"
 
@@ -95,7 +95,7 @@ msgstr "Betongblock"
 msgid "Connected Load (VA)"
 msgstr ""
 
-#: crates/core/src/model.rs:3493
+#: crates/core/src/model.rs:3498
 msgid "Copper"
 msgstr "Koppar"
 
@@ -289,7 +289,7 @@ msgstr "Glas"
 msgid "Gross Floor Area"
 msgstr "Bruttoarea"
 
-#: crates/core/src/model.rs:3484
+#: crates/core/src/model.rs:3489
 msgid "Gypsum board"
 msgstr "Gipsskiva"
 
@@ -346,7 +346,7 @@ msgid "Length"
 msgstr "Längd"
 
 #: crates/core/src/commands.rs:7485
-#: crates/core/src/model.rs:3625
+#: crates/core/src/model.rs:3630
 msgid "Level"
 msgstr "Nivå"
 
@@ -405,7 +405,7 @@ msgstr "Membran"
 #: crates/core/src/commands.rs:3333
 #: crates/core/src/commands.rs:14563
 #: crates/core/src/family.rs:3429
-#: crates/core/src/model.rs:4948
+#: crates/core/src/model.rs:4953
 msgid "Metal"
 msgstr "Metall"
 
@@ -531,7 +531,7 @@ msgstr "Sättsteg"
 msgid "Roller"
 msgstr ""
 
-#: crates/core/src/model.rs:3486
+#: crates/core/src/model.rs:3491
 msgid "Roof tiles"
 msgstr "Takpannor"
 
@@ -563,7 +563,7 @@ msgstr "SKALA ENLIGT ANGIVELSE"
 msgid "Sand"
 msgstr "Sand"
 
-#: crates/core/src/model.rs:3482
+#: crates/core/src/model.rs:3487
 msgid "Screed"
 msgstr "Avjämningsmassa"
 

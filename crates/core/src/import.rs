@@ -4314,6 +4314,13 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
     }
     m.elements = m.elements.regiven(&globals);
     m.resolve();
+    // The project's, its site's and its building's GlobalIds, where they are ones, so the export writes them back.
+    let global_of = |class: &str| {
+        let first = ids.iter().copied().filter(|id| e(*id).is_some_and(|x| x.name == class)).min()?;
+        crate::ifc::expand(text(e(first)?.args.first())?).map(Guid::from_u128)
+    };
+    m.ifc_guids =
+        crate::ifc::SpatialGuids { project: global_of("IFCPROJECT"), site: global_of("IFCSITE"), building: global_of("IFCBUILDING") };
     // The library's GUIDs too, the file makes: the same file reads the same every time.
     m.library = crate::library::Library::default();
     m.forget_parts();
@@ -5386,6 +5393,37 @@ ENDSEC;END-ISO-10303-21;",
         };
         assert_eq!(guids(&s.model), guids(&ifc(text.as_bytes(), "holes").unwrap().model));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_file_written_back_keeps_its_project_site_and_building_globalids() {
+        let ring = [(0.0, 0.0), (500.0, 0.0), (500.0, 300.0), (0.0, 300.0)];
+        let (project, site, building) = ("2O2Fr$t4X7Zf8NOew3FLOH", "1hqIFTRjfV6AWq_bMtnZwI", "0yJ5ayD3P8tx3eUBfrjlEx");
+        let spatial = format!(
+            "#8=IFCSITE('{site}',$,'Site',$,$,#6,$,$,.ELEMENT.,$,$,$,$,$);\n#9=IFCBUILDING('{building}',$,'B',$,$,#6,$,$,.ELEMENT.,$,$,$);\n#7=IFCBUILDINGSTOREY"
+        );
+        let file = proxies("Box", 1, &ring, "0.,0.,1.", 450.0)
+            .replace("IFCPROJECT('p'", &format!("IFCPROJECT('{project}'"))
+            .replace("#7=IFCBUILDINGSTOREY", &spatial);
+        // Each read is a project of its own, but what the file named keeps its name: read twice, written twice, the same.
+        let read = || ifc(file.as_bytes(), "x").unwrap().model;
+        let (first, second) = (crate::ifc::export(&read()), crate::ifc::export(&read()));
+        for (class, id) in [("IFCPROJECT", project), ("IFCSITE", site), ("IFCBUILDING", building)] {
+            let written = format!("={class}('{id}'");
+            assert!(first.contains(&written) && second.contains(&written), "{class} is written as {id}: {first}");
+        }
+        // They go with the project's file, and come back from it.
+        let m = read();
+        let back: Model = serde_json::from_value(serde_json::to_value(&m).unwrap()).unwrap();
+        assert_eq!(back.ifc_guids, m.ifc_guids);
+        // A file whose GlobalIds aren't GlobalIds keeps none, and its export makes its own, as a project of BIMCraft's does.
+        let unnamed = ifc(proxies("Box", 1, &ring, "0.,0.,1.", 450.0).as_bytes(), "x").unwrap().model;
+        assert_eq!(unnamed.ifc_guids, crate::ifc::SpatialGuids::default());
+        // A project of BIMCraft's own has none, writes none in its file, and exports the same GlobalIds every time.
+        let native = crate::engine::Session::new().model;
+        assert!(serde_json::to_value(&native).unwrap().get("ifc_guids").is_none());
+        let project_line = |text: &str| text.lines().find(|l| l.contains("=IFCPROJECT(")).map(str::to_string);
+        assert_eq!(project_line(&crate::ifc::export(&native)), project_line(&crate::ifc::export(&native)));
     }
 
     #[test]

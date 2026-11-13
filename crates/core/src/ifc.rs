@@ -166,6 +166,25 @@ pub const PROJECT_INFO: &str = "BIMCraft_ProjectInformation";
 /// The property set an element's phase and design option go in; on the project, its phases and design option sets.
 pub const PHASING: &str = "BIMCraft_Phasing";
 
+/// The GlobalIds an IFC file gave its project, its site and its building, so a model read from one writes them back as they
+/// were; what a project of BIMCraft's own never has, and the export makes from the model's `uid`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SpatialGuids {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project: Option<Guid>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub site: Option<Guid>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub building: Option<Guid>,
+}
+
+impl SpatialGuids {
+    pub fn is_empty(&self) -> bool {
+        *self == SpatialGuids::default()
+    }
+}
+
 /// What a `Phase Created` says of itself when the element holds none: it was made in the first phase.
 pub const IMPLIED: &str = "Implied: no phase is set for it, so it was made in the first phase";
 
@@ -386,6 +405,11 @@ impl Step {
             Some(g) => s(&guid(self.uid, role, fold(*g))),
             None => s(&guid(self.uid, role, id)),
         }
+    }
+
+    /// The GlobalId of the project, the site or the building (`role`): the one the file it was read from gave it, else its own.
+    fn spatial(&self, role: u64, kept: Option<Guid>) -> String {
+        kept.map_or_else(|| self.guid(role, 0), |g| s(&compress(g.as_u128())))
     }
 
     /// Part `i` of element `id`, for its GlobalId.
@@ -1052,7 +1076,8 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool) -> String {
     let info = m.project_info();
     let said = |t: &str| if t.is_empty() { "$".to_string() } else { s(t) };
     let phase = said(info.map_or("", |(_, i)| i.status.as_str()));
-    let project = w.add(format!("IFCPROJECT({},$,{},$,$,$,{phase},(#{ctx}),#{units})", w.guid(PROJECT, 0), s(&m.name)));
+    let project =
+        w.add(format!("IFCPROJECT({},$,{},$,$,$,{phase},(#{ctx}),#{units})", w.spatial(PROJECT, m.ifc_guids.project), s(&m.name)));
     let site_at = w.place(None, (0.0, 0.0, 0.0), None);
     // Plot boundaries are curves, not solids. Their coordinates are site-local XY; their plan level is metadata.
     let plots: Vec<(Id, &crate::model::PropertyLine)> = m
@@ -1077,7 +1102,7 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool) -> String {
         let rep = w.add(format!("IFCSHAPEREPRESENTATION(#{plan},'FootPrint','Curve2D',({}))", refs(&curves)));
         format!("#{}", w.add(format!("IFCPRODUCTDEFINITIONSHAPE($,$,(#{rep}))")))
     };
-    let site = w.add(format!("IFCSITE({},$,'Site',$,$,#{site_at},{footprint},$,.ELEMENT.,$,$,$,$,$)", w.guid(SITE, 0)));
+    let site = w.add(format!("IFCSITE({},$,'Site',$,$,#{site_at},{footprint},$,.ELEMENT.,$,$,$,$,$)", w.spatial(SITE, m.ifc_guids.site)));
     if !plots.is_empty() {
         let total = plots.iter().map(|(_, pl)| geom::area(&pl.points).abs()).sum::<f64>() / 1e6;
         let area = w.add(format!("IFCPROPERTYSINGLEVALUE('TotalArea',$,IFCAREAMEASURE({}),$)", real(total)));
@@ -1109,8 +1134,11 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool) -> String {
         }
         None => "$".to_string(),
     };
-    let building =
-        w.add(format!("IFCBUILDING({},$,{},$,$,#{building_at},$,$,.ELEMENT.,$,$,{address})", w.guid(BUILDING, 0), s(building_name)));
+    let building = w.add(format!(
+        "IFCBUILDING({},$,{},$,$,#{building_at},$,$,.ELEMENT.,$,$,{address})",
+        w.spatial(BUILDING, m.ifc_guids.building),
+        s(building_name)
+    ));
     if let Some((_, i)) = info {
         let props: Vec<u64> = crate::project_info::FIELDS
             .iter()
