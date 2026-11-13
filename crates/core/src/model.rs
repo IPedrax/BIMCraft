@@ -72,7 +72,10 @@ pub const CEILING_CUT: f64 = 2300.0;
 pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
-/// The version of the project file this build writes, and the newest it reads. 19: a schedule may be of sheets, the
+/// The version of the project file this build writes, and the newest it reads. 20 (0.12's, which every change since 0.11 shares):
+/// a column holds a `top_offset` and the roof or floor its top and its base are attached to (`attach_top`, `attach_base`), as a
+/// wall's are; nothing in a file of 19 changes, but a build that reads up to 19 would leave them out of a file as fields it doesn't
+/// know and stand the column at its own level, not "saved by a newer BIMCraft". 19: a schedule may be of sheets, the
 /// sheet list (`of: "sheet"`, as the Room or Level Schedule is); nothing in a file of 18 changes, but a build that reads
 /// up to 18 holds `sheet` as a category schedules aren't of, and would draw its sheet list with no columns, not say
 /// "saved by a newer BIMCraft". 18: a beam's or a structural column's type may
@@ -172,7 +175,7 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 2: the library has ids and GUIDs too
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
-pub const FORMAT: u32 = 19;
+pub const FORMAT: u32 = 20;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -3924,6 +3927,8 @@ impl Model {
         //    conservative side: the wall keeps the opening's rectangle, as 17 drew it, and one value per
         //    void can't hold both outcomes.
         // 18 to 19 (a schedule of sheets, the sheet list) has no step either: a file of 18 holds none.
+        // 19 to 20 (a column's `top_offset`, `attach_top` and `attach_base`) has none either: a file of 19 holds none, its columns
+        // keeping the top they had, at their top level or their height.
         // The rest needs nothing of a file of 17, which holds none of it: an adaptive family and a component's
         // adaptive frames, a family parameter's group, shared GUID and reporting (each defaults to what a file of 17 means:
         // grouped by its kind, the family's own, set), Doors > Opening and Windows > Opening, the project's reference planes
