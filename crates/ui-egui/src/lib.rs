@@ -463,6 +463,32 @@ const SHORTCUTS: [(&str, &str); 58] = [
 ];
 
 /// Every two-letter shortcut and what it does: the desktop's own, then the commands' aliases.
+/// How long a letter typed with Ctrl held waits for a second one before it does its own job as a Ctrl key (S saves, Z
+/// undoes): a second letter in time makes the two a shortcut (Ctrl held, S then A: Select All Instances). Letting Ctrl go
+/// ends the wait at once.
+pub(crate) const CTRL_WAIT: f64 = 0.5;
+
+/// The letters and digits typed this frame with Ctrl held (Cmd on a Mac) and no other modifier, taken out of the frame's
+/// events, upper case: BIMCraft's shortcuts are two of them, as Revit's are two letters.
+pub(crate) fn ctrl_letters(ctx: &Context) -> Vec<char> {
+    ctx.input_mut(|i| {
+        let mut out = Vec::new();
+        i.events.retain(|e| {
+            let Event::Key { key, pressed: true, modifiers, .. } = e else { return true };
+            let name = key.name();
+            let mut chars = name.chars();
+            match (modifiers.command && !modifiers.shift && !modifiers.alt, chars.next(), chars.next()) {
+                (true, Some(c), None) if c.is_ascii_alphanumeric() => {
+                    out.push(c.to_ascii_uppercase());
+                    false
+                }
+                _ => true,
+            }
+        });
+        out
+    })
+}
+
 fn shortcuts() -> Vec<(&'static str, &'static str)> {
     let aliases = engine::commands().iter().flat_map(|c| c.aliases.iter().map(move |a| (*a, c.label)));
     SHORTCUTS
@@ -797,8 +823,10 @@ pub struct BimApp {
     edit: Option<(Id, String, String)>,
     /// The Level tool's elevation and name, as typed in the Options Bar.
     new_level: (String, String),
-    /// The last letters typed over the plan, for two-letter shortcuts.
+    /// The letters typed with Ctrl held, for two-letter shortcuts: one waits for a second ([`CTRL_WAIT`]).
     typed: String,
+    /// When the one letter in `typed` was typed, by the window's clock.
+    typed_at: f64,
     pending: Option<Pending>,
     /// What Delete was asked to take while it asks whether rooms' floors and ceilings go with them.
     deleting_rooms: Option<Vec<Id>>,
@@ -1558,6 +1586,7 @@ impl BimApp {
             edit: None,
             new_level: (String::new(), String::new()),
             typed: String::new(),
+            typed_at: 0.0,
             pending: None,
             deleting_rooms: None,
             type_dialog: None,
@@ -2253,44 +2282,28 @@ impl BimApp {
         let pressed = |m: Modifiers, k: Key| ctx.input_mut(|i| i.consume_key(m, k));
         if pressed(Modifiers::COMMAND | Modifiers::SHIFT, Key::S) {
             self.save_as(ctx, None);
-        } else if pressed(Modifiers::COMMAND, Key::S) {
-            self.save(ctx, None);
-        }
-        if pressed(Modifiers::COMMAND, Key::O) {
-            self.guard(Pending::Open, ctx);
-        }
-        if pressed(Modifiers::COMMAND, Key::N) {
-            self.guard(Pending::New, ctx);
-        }
-        if pressed(Modifiers::COMMAND, Key::K) {
-            self.find = Some(String::new());
         }
         if pressed(Modifiers::COMMAND, Key::Comma) {
             self.settings_page = Some(settings::Page::Interface);
         }
-        if pressed(Modifiers::COMMAND, Key::Num1) {
-            self.toggle_properties();
-        }
-        if pressed(Modifiers::COMMAND, Key::P) {
-            self.export(ctx, "PDF", "pdf");
-        }
-        // The rest belongs to a text field while one has the keyboard.
+        // A text field has the letters: there Ctrl's own keys that aren't a field's act at once, and no shortcut is typed.
         if ctx.egui_wants_keyboard_input() {
+            for (key, letter) in [(Key::S, 'S'), (Key::O, 'O'), (Key::N, 'N'), (Key::K, 'K'), (Key::P, 'P'), (Key::Num1, '1')] {
+                if pressed(Modifiers::COMMAND, key) {
+                    self.ctrl_key(ctx, letter);
+                }
+            }
+            self.typed.clear();
             return;
         }
-        if pressed(Modifiers::COMMAND, Key::D) {
-            self.toggle_home();
-        }
-        if self.sketch.is_some() {
-            // While sketching, Ctrl+Z takes back a line; the model's steps wait until Finish or Cancel.
-            if pressed(Modifiers::COMMAND, Key::Z) {
-                self.unsketch();
-            }
-        } else if pressed(Modifiers::COMMAND | Modifiers::SHIFT, Key::Z) || pressed(Modifiers::COMMAND, Key::Y) {
+        if self.sketch.is_none() && pressed(Modifiers::COMMAND | Modifiers::SHIFT, Key::Z) {
             self.run("redo", json!({}));
-        } else if pressed(Modifiers::COMMAND, Key::Z) {
-            self.run("undo", json!({}));
         }
+        // Shortcuts are two letters typed with Ctrl held; a letter that is a Ctrl key of its own waits for a second.
+        for letter in ctrl_letters(ctx) {
+            self.ctrl_letter(ctx, letter);
+        }
+        self.ctrl_waited(ctx);
         // Esc while a custom fill pattern is picked brings its dialog back.
         if pressed(Modifiers::NONE, Key::Escape) && !self.cancel_pattern_pick() {
             self.escape();
@@ -2386,26 +2399,68 @@ impl BimApp {
                 .collect()
         });
         // A digit starts a length while a tool is picking its next point, and everything typed
-        // after it (feet, inches, fractions, a unit) is the length's until Enter; letters before
-        // one are shortcuts.
-        let mut shortcut = String::new();
+        // after it (feet, inches, fractions, a unit) is the length's until Enter. Letters typed
+        // without Ctrl are no shortcut.
         for ch in typed.chars() {
             let listening = self.base().is_some() || self.filleting() || self.rotating();
             let sign = ch == '-' && self.rotating() && self.typed_length.is_empty();
             if listening && (ch.is_ascii_digit() || ch == '.' || sign || !self.typed_length.is_empty()) {
                 self.typed_length.push(ch);
-            } else {
-                shortcut.push(ch);
             }
         }
-        for ch in shortcut.chars().filter(|c| c.is_ascii_alphanumeric()) {
-            self.typed.push(ch.to_ascii_uppercase());
-            if self.typed.len() > 2 {
-                self.typed.remove(0);
+    }
+
+    /// A letter typed with Ctrl held: with the one before it, a shortcut; if the two aren't one, the first does its own job
+    /// as a Ctrl key ([`BimApp::ctrl_key`]) and the second waits in its place.
+    fn ctrl_letter(&mut self, ctx: &Context, letter: char) {
+        self.typed.push(letter);
+        self.typed_at = ctx.input(|i| i.time);
+        if self.typed.len() < 2 {
+            return;
+        }
+        if self.shortcut() {
+            self.typed.clear();
+            return;
+        }
+        let first = self.typed.remove(0);
+        self.ctrl_key(ctx, first);
+    }
+
+    /// A letter left waiting for a second does its own job once Ctrl is let go, or after [`CTRL_WAIT`] with Ctrl still held.
+    fn ctrl_waited(&mut self, ctx: &Context) {
+        if self.typed.len() != 1 {
+            return;
+        }
+        let (held, now) = ctx.input(|i| (i.modifiers.command, i.time));
+        let left = CTRL_WAIT - (now - self.typed_at);
+        if held && left > 0.0 {
+            ctx.request_repaint_after(std::time::Duration::from_secs_f64(left));
+            return;
+        }
+        let letter = self.typed.remove(0);
+        self.ctrl_key(ctx, letter);
+    }
+
+    /// What a letter typed with Ctrl does on its own: S saves, O opens, N makes a new project, K finds a command, P prints
+    /// to PDF, D shows the start page, Z undoes (a sketch's last line while sketching), Y redoes, 1 shows Properties.
+    fn ctrl_key(&mut self, ctx: &Context, letter: char) {
+        match letter {
+            'S' => self.save(ctx, None),
+            'O' => self.guard(Pending::Open, ctx),
+            'N' => self.guard(Pending::New, ctx),
+            'K' => self.find = Some(String::new()),
+            'P' => self.export(ctx, "PDF", "pdf"),
+            'D' => self.toggle_home(),
+            // While sketching, Ctrl+Z takes back a line; the model's steps wait until Finish or Cancel.
+            'Z' if self.sketch.is_some() => self.unsketch(),
+            'Z' => {
+                self.run("undo", json!({}));
             }
-            if self.typed.len() == 2 && self.shortcut() {
-                self.typed.clear();
+            'Y' if self.sketch.is_none() => {
+                self.run("redo", json!({}));
             }
+            '1' => self.toggle_properties(),
+            _ => {}
         }
     }
 
