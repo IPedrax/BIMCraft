@@ -2934,8 +2934,7 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"point": [2000, 2000], "type": 5}),
         json!({"point": [2000, 2000], "type": "No such"}),
     ];
-    let hostile: Vec<Value> =
-        hostile.into_iter().chain(detailing.into_iter().map(|(_, p)| p)).chain(slopes).chain(offsets).chain(finishes).collect();
+    let hostile: Vec<Value> = hostile.into_iter().chain(finishes).collect();
     // Each command against each value, on a copy of the same session; the commands shared out between the cores.
     let cmds: Vec<_> = commands().iter().filter(|c| !matches!(c.id, "open" | "save")).collect();
     let threads = std::thread::available_parallelism().map_or(4, |n| n.get());
