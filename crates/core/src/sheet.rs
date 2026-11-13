@@ -529,6 +529,7 @@ pub fn title_values(m: &Model, id: impl Key) -> std::collections::BTreeMap<Strin
         })
         .collect();
     crate::titleblock::values(m, id, &scale_value(&scaled, m.language, m.units))
+}
 
 /// View `id` drawn into `d` in its frame `view`, whose top left corner is at `(ox, oy)` of `d`: a plan's or a section's lines,
 /// a section's and a 3D view's pictures, or a schedule's table; its own title left out (a sheet titles it under the frame).

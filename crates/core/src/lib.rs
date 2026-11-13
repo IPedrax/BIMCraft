@@ -57,13 +57,13 @@ pub mod electrical;
 mod electrical_tests;
 pub mod elevation;
 pub mod engine;
+pub mod export;
+#[cfg(test)]
+mod export_tests;
 #[cfg(test)]
 mod face_host_tests;
 #[cfg(test)]
 mod face_void_tests;
-pub mod export;
-#[cfg(test)]
-mod export_tests;
 pub mod falls;
 pub mod family;
 #[cfg(test)]

@@ -5583,7 +5583,7 @@ pub fn rgba(d: &Drawing, under: Option<&view3d::Image>) -> Result<Vec<u8>, Strin
             pm
         }
     };
-    paint(&mut pm, d);
+    paint(&mut pm, d, Transform::identity(), None);
     Ok(pm.take())
 }
 
