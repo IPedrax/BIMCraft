@@ -50,11 +50,6 @@ const MAX_NAMESAKES: usize = 100;
 /// Faces of a body item, with the look they are drawn in.
 type LookedFaces = (Option<Look>, Vec<Vec<P3>>);
 
-/// Prototype switches, read once.
-fn proto(name: &str) -> bool {
-    std::env::var_os(name).is_some()
-}
-
 /// How deep an import follows what an element is part of.
 const MAX_DEPTH: usize = 16;
 
@@ -4540,9 +4535,6 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
             skipped.push(format!("{}: part of its body was left out, {because}", who(id)));
         }
     }
-    if proto("BIMCRAFT_PROTO_TYPEPROPS") {
-        types_hold(&mut m);
-    }
     let moved = (r.shift != P2(0.0, 0.0)).then_some(r.shift * -1.0);
     Ok(Imported { model: m, schema: file.schema.clone(), skipped, moved })
 }
@@ -4845,75 +4837,6 @@ fn stair_from(r: &Reader, s: &Entity, faces: &[Vec<P3>]) -> Result<Flight, Strin
     let angle = (u.1.atan2(u.0).to_degrees() * 1e6).round() / 1e6 + 0.0;
     let from = treads.first().map_or(z0, |(z, _)| z - each);
     Ok((start, angle, c1 - c0, risers, each * f64::from(risers), s1 - s0, from))
-}
-
-/// Prototype: a project parameter that every component of the families holding it carries, the same in all copies of a
-/// type, becomes a parameter of those families, its value each type's, and leaves the copies.
-fn types_hold(m: &mut Model) {
-    use crate::family::{Kind, Parameter};
-    // By name: per (family, type), the values its copies hold, and how many copies lack it.
-    // By name: per (family, type), the values its copies hold and how many hold one.
-    type Held = BTreeMap<(String, String), (BTreeSet<String>, usize)>;
-    let mut seen: BTreeMap<String, Held> = BTreeMap::new();
-    let mut copies: BTreeMap<(String, String), usize> = BTreeMap::new();
-    let mut of: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
-    for el in m.elements.values() {
-        let Element::Component(c) = el else { continue };
-        let key = (c.family.clone(), c.type_name.clone());
-        *copies.entry(key.clone()).or_default() += 1;
-        for (n, v) in &c.params {
-            let e = seen.entry(n.clone()).or_default().entry(key.clone()).or_default();
-            e.0.insert(v.to_string());
-            e.1 += 1;
-            of.entry(n.clone()).or_default().insert(c.family.clone());
-        }
-    }
-    let mut moved: Vec<String> = Vec::new();
-    for (name, groups) in &seen {
-        let families = &of[name];
-        let held = groups.iter().all(|(k, (vals, n))| vals.len() == 1 && *n == copies[k]);
-        let whole = copies.keys().filter(|(f, _)| families.contains(f)).all(|k| groups.contains_key(k));
-        let free = families.iter().all(|f| {
-            m.families
-                .get(f)
-                .is_some_and(|fam| !fam.parameters.iter().any(|p| &p.name == name) && fam.parameters.len() < crate::family::MAX_PARAMETERS)
-        });
-        if held && whole && free {
-            moved.push(name.clone());
-        }
-    }
-    for name in &moved {
-        let kind = match m.parameters.get(name).map(|p| p.kind) {
-            Some(ParameterKind::Number) => Kind::Number,
-            Some(ParameterKind::Length) => Kind::Length,
-            Some(ParameterKind::YesNo) => Kind::YesNo,
-            _ => Kind::Text,
-        };
-        let mut values: BTreeMap<(String, String), serde_json::Value> = BTreeMap::new();
-        for el in m.elements.values_mut() {
-            if let Element::Component(c) = el
-                && let Some(v) = c.params.remove(name)
-            {
-                values.insert((c.family.clone(), c.type_name.clone()), v);
-            }
-        }
-        for f in &of[name] {
-            let Some(fam) = m.families.get_mut(f) else { continue };
-            fam.parameters.push(Parameter { name: name.clone(), kind, ..Parameter::default() });
-            for (t, set) in fam.types.iter_mut() {
-                if let Some(v) = values.get(&(f.clone(), t.clone())) {
-                    set.insert(name.clone(), v.clone());
-                }
-            }
-        }
-        if let Some(p) = m.parameters.get_mut(name) {
-            p.categories.retain(|c| c != "component");
-            p.sets.remove("component");
-            if p.categories.is_empty() {
-                m.parameters.remove(name);
-            }
-        }
-    }
 }
 
 #[cfg(test)]

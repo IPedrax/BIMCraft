@@ -321,7 +321,7 @@ msgstr "Vodorovná"
 msgid "Inspection Box"
 msgstr "Revizní šachta"
 
-#: crates/core/src/import.rs:1673
+#: crates/core/src/import.rs:1668
 msgid "Insulation"
 msgstr "Tepelná izolace"
 
@@ -398,7 +398,7 @@ msgstr ""
 msgid "Medium Lines"
 msgstr "Střední čáry"
 
-#: crates/core/src/import.rs:1676
+#: crates/core/src/import.rs:1671
 msgid "Membrane"
 msgstr "Hydroizolační fólie"
 

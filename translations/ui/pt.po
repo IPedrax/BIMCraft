@@ -4523,7 +4523,7 @@ msgstr "Encontra {}; nada tem estes: {}"
 msgid "Fine"
 msgstr "Fino"
 
-#: crates/core/src/import.rs:1674
+#: crates/core/src/import.rs:1669
 #: crates/ui-egui/src/notes.rs:451
 #: crates/ui-egui/src/properties.rs:821
 msgid "Finish"
@@ -5353,7 +5353,7 @@ msgstr ""
 msgid "Instances of {} are placed in the family: delete them first."
 msgstr "Há instâncias de {} inseridas na família: exclua-as primeiro."
 
-#: crates/core/src/import.rs:1673
+#: crates/core/src/import.rs:1668
 #: crates/ui-egui/src/draw.rs:664
 msgid "Insulation"
 msgstr "Isolamento"
@@ -6312,7 +6312,7 @@ msgstr "Médio"
 msgid "Medium Lines"
 msgstr "Linhas médias"
 
-#: crates/core/src/import.rs:1676
+#: crates/core/src/import.rs:1671
 #: crates/ui-egui/src/properties.rs:820
 msgid "Membrane"
 msgstr "Membrana"
@@ -10562,7 +10562,7 @@ msgstr "Divisões da subgrade Y"
 msgid "Subgrid pen"
 msgstr "Pena da subgrade"
 
-#: crates/core/src/import.rs:1675
+#: crates/core/src/import.rs:1670
 #: crates/ui-egui/src/properties.rs:818
 msgid "Substrate"
 msgstr "Substrato"
