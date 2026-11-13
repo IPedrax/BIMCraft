@@ -253,10 +253,10 @@ impl BimApp {
             self.status = Status { text, error: true };
             return;
         }
-        let done = self.session.transaction(msg!("Visibility Set"), |s| {
-            s.execute("template", &json!({"name": name, "from": view, "controls": SET}))?;
-            s.execute("graphics", &json!({"view": view, "template": name}))
-        });
+        let done = self.exec_batch(
+            msg!("Visibility Set"),
+            &[("template", json!({"name": name, "from": view, "controls": SET})), ("graphics", json!({"view": view, "template": name}))],
+        );
         self.status = match done {
             Ok(_) => Status::default(),
             Err(text) => Status { text, error: true },

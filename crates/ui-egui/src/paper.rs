@@ -37,6 +37,8 @@ impl BimApp {
             View { scale: room(w, size.0).min(room(h, size.1)), cx: size.0 / 2.0, cy: size.1 / 2.0, width: w, height: h }
         };
         let Some((view, local)) = self.canvas.navigate(ui, &response, rect, id, fit) else { return };
+        // Where the pointer is on the paper, for the others in a Co-Work session.
+        self.cowork_seen.pointer = local.map(|q| (id, view.mm(q)));
         let writing = self.writing();
         let papers = &mut self.paper;
         if !matches!(&papers.drawn, Some((m, s, _)) if Arc::ptr_eq(m, &model) && *s == id) {
@@ -88,6 +90,7 @@ impl BimApp {
         let sheet_rect = Rect::from_two_pos(at.origin, rect.min + vec2(view.px(P2(size.0, 0.0)).0, view.px(P2(size.0, 0.0)).1));
         p.rect(sheet_rect, 0.0, Color32::WHITE, Stroke::new(1.0, pal().border), StrokeKind::Outside);
         paint(&p, at, &d, &self.selection, hovered, self.thin, &pictures);
+        crate::cowork::paint_plan(&p, &self.cowork, &self.cowork_seen, &model, ("sheet", id), rect, &view, (&d, at));
         // While a note is written here, the pointer is its editor's.
         if self.writing_in(id) {
             self.paper.drag = None;

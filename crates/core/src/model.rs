@@ -1615,6 +1615,15 @@ pub struct Column {
     pub height: f64,
     #[serde(default)]
     pub base_offset: f64,
+    /// How far above `top_level` its top is.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub top_offset: f64,
+    /// The roof or floor its top follows from below, as a wall's; a footing has none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attach_top: Option<Guid>,
+    /// The roof or floor its base stands on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attach_base: Option<Guid>,
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
@@ -2168,13 +2177,16 @@ macro_rules! visit_refs {
             }
             Element::Shaft(Shaft { level, top_level, .. })
             | Element::Mass(Mass { level, top_level, .. })
-            | Element::Column(Column { level, top_level, .. })
-            | Element::StructuralColumn(Column { level, top_level, .. })
-            | Element::Footing(Column { level, top_level, .. })
             | Element::Stair(Stair { level, top_level, .. })
             | Element::Ramp(Ramp { level, top_level, .. }) => {
                 f(level);
                 if let Some(g) = top_level { f(g) }
+            }
+            Element::Column(c) | Element::StructuralColumn(c) | Element::Footing(c) => {
+                f(& $($m)? c.level);
+                if let Some(g) = & $($m)? c.top_level { f(g) }
+                if let Some(g) = & $($m)? c.attach_top { f(g) }
+                if let Some(g) = & $($m)? c.attach_base { f(g) }
             }
             Element::Door(o) | Element::Window(o) => f(& $($m)? o.host),
             Element::Dimension(d) => {
@@ -4320,15 +4332,15 @@ impl Model {
         self.spans(w, self.plan_range(level).cut)
     }
 
-    /// Whether a plan of `level` cuts column `c` (a structural one, a footing), as the plan draws it cut: it spans the
+    /// Whether a plan of `level` cuts column `e` (a structural one, a footing), as the plan draws it cut: it spans the
     /// plan's cut plane, whatever level it stands on.
-    pub fn column_cut_by(&self, c: &Column, level: impl Key) -> bool {
-        self.column_spans(c, self.plan_range(level).cut)
+    pub fn column_cut_by(&self, e: &Element, level: impl Key) -> bool {
+        self.column_spans(e, self.plan_range(level).cut)
     }
 
-    /// Whether column `c` (a structural one, a footing) spans height `z`: from its bottom, `z` or below, to its top, above.
-    pub(crate) fn column_spans(&self, c: &Column, z: f64) -> bool {
-        let (bottom, top) = self.span(c.level, c.base_offset, c.top_level, c.height);
+    /// Whether column `e` (a structural one, a footing) spans height `z`: from its bottom, `z` or below, to its top, above.
+    pub(crate) fn column_spans(&self, e: &Element, z: f64) -> bool {
+        let (bottom, top) = self.column_span(e);
         bottom <= z && z < top
     }
 
@@ -4355,7 +4367,7 @@ impl Model {
         ids.sort_unstable();
         ids.into_iter()
             .filter_map(|id| self.elements.get(id))
-            .filter(|e| matches!(e, Element::Column(c) | Element::StructuralColumn(c) if c.room_bounding && self.column_spans(c, z)))
+            .filter(|e| matches!(e, Element::Column(c) | Element::StructuralColumn(c) if c.room_bounding && self.column_spans(e, z)))
             .map(|e| self.column_outline(e))
             .filter(|o| o.len() >= 3)
             .collect()
@@ -4812,6 +4824,23 @@ impl Model {
     pub fn span(&self, level: impl Key, base_offset: f64, top_level: Option<Guid>, height: f64) -> (f64, f64) {
         let base = self.elevation(level) + base_offset;
         (base, top_level.map_or(base + height, |t| self.elevation(t)))
+    }
+
+    /// Column `e`'s lowest base and highest top (a structural column's, a footing's): by its constraints, or on and under what it's
+    /// attached to. Everything that reads a column's heights comes here. (0, 0) for what isn't one.
+    pub fn column_span(&self, e: &Element) -> (f64, f64) {
+        let Some(col) = e.column() else { return (0.0, 0.0) };
+        walls::column_heights(self, e, col)
+    }
+
+    /// Its base by its level and offset, whatever it's attached to.
+    pub fn column_own_base(&self, col: &Column) -> f64 {
+        self.elevation(col.level) + col.base_offset
+    }
+
+    /// Its top by its top constraint, whatever it's attached to: its top level and offset, or its base and height.
+    pub fn column_own_top(&self, col: &Column) -> f64 {
+        col.top_level.map_or(self.column_own_base(col) + col.height, |t| self.elevation(t) + col.top_offset)
     }
 
     /// Whether the horizontal plane at height `z` passes through mass `ms`.
@@ -7832,9 +7861,22 @@ impl Model {
                     Some(t) => level_ok(t)?,
                     None => size(&format!("{who} height"), col.height)?,
                 }
-                let (bottom, top) = self.span(col.level, col.base_offset, col.top_level, col.height);
+                coord(&format!("{who} top offset"), col.top_offset)?;
+                for (what, at) in [("attach_top", col.attach_top), ("attach_base", col.attach_base)] {
+                    if let Some(a) = at {
+                        if matches!(e, Element::Footing(_)) {
+                            return Err(format!("{who}: a footing has no {what}"));
+                        }
+                        if !matches!(self.elements.get(a), Some(Element::Roof(_) | Element::Floor(_))) {
+                            return Err(format!("{who}: {what} {} isn't a roof or a floor", self.shown(a)));
+                        }
+                    }
+                }
+                let (bottom, top) = self.column_span(e);
                 if top <= bottom + TOL {
-                    return Err(format!("{who}: its top must be above its base"));
+                    return Err(format!(
+                        "{who}: its top ({top:.0} mm) must be above its base ({bottom:.0} mm); raise its top constraint, or attach it to something over its base"
+                    ));
                 }
             }
             run_arm!(r) => {
@@ -8124,9 +8166,21 @@ impl Model {
         self.elements.changed_since(&before.elements)
     }
 
+    /// What changed from `before` to this model, exactly: the elements that differ (made, changed, removed, or given another GUID),
+    /// and whether anything but the elements and the ids still to give did. Where [`Model::changed_since`] can only say
+    /// "everything", every element is compared: a person's undo needs the exact list (`Session::undo_own`).
+    pub fn diff(&self, before: &Model) -> (BTreeSet<Id>, bool) {
+        let candidates: BTreeSet<Id> = match self.elements.changed_since(&before.elements) {
+            Changed::Ids(ids) => ids,
+            Changed::All => self.elements.keys().chain(before.elements.keys()).copied().collect(),
+        };
+        let differ = |id: &Id| self.elements.get(*id) != before.elements.get(*id) || self.elements.guid(*id) != before.elements.guid(*id);
+        (candidates.into_iter().filter(differ).collect(), !self.same_settings(before))
+    }
+
     /// Whether everything but the elements and the ids still to give is the same in both. Every field is named, so a new
     /// one must say how it compares.
-    fn same_settings(&self, o: &Model) -> bool {
+    pub(crate) fn same_settings(&self, o: &Model) -> bool {
         let Model {
             format,
             name,

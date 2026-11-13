@@ -871,9 +871,7 @@ impl BimApp {
             if commands.is_empty() {
                 return Ok(());
             }
-            self.session.transaction(if editing { "Type Properties" } else { "Fill Patterns" }, |s: &mut Session| {
-                commands.iter().try_for_each(|(c, p)| s.execute(c, p).map(|_| ()))
-            })
+            self.exec_batch(if editing { "Type Properties" } else { "Fill Patterns" }, &commands).map(|_| ())
         });
         if let Err(e) = done {
             d.error = Some(e.clone());

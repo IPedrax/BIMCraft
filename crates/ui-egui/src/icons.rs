@@ -111,6 +111,7 @@ icon_names! {
     Flip,
     Attach,
     Detach,
+    Ai,
     Floor,
     WorkPlane,
     RefPlane,
@@ -202,6 +203,7 @@ icon_names! {
     FamilyTypes,
     LoadIntoProject,
     LoadIntoProjectClose,
+    Cowork,
 }
 
 /// A single unfilled contour in grid coordinates, shared by egui and the catalog.
@@ -990,6 +992,12 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.line(&[(12.0, 14.0), (12.0, 7.0)]);
             g.line(&[(9.5, 9.5), (12.0, 7.0), (14.5, 9.5)]);
         }
+        Icon::Ai => {
+            // The letters themselves, A then I, as the one sign everyone reads for this.
+            g.line(&[(2.5, 20.0), (9.0, 4.0), (15.5, 20.0)]);
+            g.line(&[(5.0, 14.5), (13.0, 14.5)]);
+            g.line(&[(20.5, 4.0), (20.5, 20.0)]);
+        }
         Icon::Detach => {
             g.line(&[(3.0, 8.0), (12.0, 3.0), (21.0, 8.0)]);
             g.line(&[(7.0, 15.0), (7.0, 21.0), (17.0, 21.0), (17.0, 15.0)]);
@@ -1413,6 +1421,13 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.line(&[(12.0, 6.5), (21.0, 6.5)]);
             g.closed(&[(3.0, 15.0), (8.0, 15.0), (8.0, 20.0), (3.0, 20.0)]);
             g.line(&[(12.0, 17.5), (21.0, 17.5)]);
+        }
+        Icon::Cowork => {
+            // Two people, one a step behind the other.
+            g.circle((9.0, 7.0), 3.0);
+            g.line(&[(3.0, 20.0), (3.0, 16.0), (5.0, 12.5), (13.0, 12.5), (15.0, 16.0), (15.0, 20.0)]);
+            g.line(&[(14.5, 4.6), (16.0, 4.0), (18.5, 5.0), (19.0, 7.0), (18.0, 9.5), (16.5, 10.0)]);
+            g.line(&[(17.0, 12.5), (19.0, 12.5), (21.0, 16.0), (21.0, 20.0)]);
         }
         Icon::Home => {
             // Home retains its door, keeping it distinct from the modeling Roof icon.

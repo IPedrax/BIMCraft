@@ -153,7 +153,7 @@ impl BimApp {
         if exists && probe.get("overwrite").is_none() && (probe.get("path").is_some() || probe.get("definition").is_some()) {
             probe["overwrite"] = json!("version");
         }
-        match self.session.execute("family", &probe) {
+        match self.exec("family", &probe) {
             Ok(r) => r["shared_conflicts"].as_array().into_iter().flatten().filter_map(|v| v.as_str().map(String::from)).collect(),
             Err(_) => Vec::new(),
         }
@@ -233,7 +233,7 @@ impl BimApp {
         if exists && probe.get("overwrite").is_none() && (probe.get("path").is_some() || probe.get("definition").is_some()) {
             probe["overwrite"] = json!("version");
         }
-        match self.session.execute("family", &probe) {
+        match self.exec("family", &probe) {
             Err(e) if e.contains(bimcraft_core::family::constraints::INVALID_DIMENSIONS) => Some(e),
             _ => None,
         }
@@ -244,7 +244,7 @@ impl BimApp {
         let mut probe = source.clone();
         probe["overwrite"] = json!("version");
         probe["dry_run"] = json!(true);
-        self.session.execute("family", &probe).is_ok_and(|r| r["overwritten"] == json!(false))
+        self.exec("family", &probe).is_ok_and(|r| r["overwritten"] == json!(false))
     }
 
     /// Loads the family document's draft into the project, asking first when the project has it otherwise; `after` says
@@ -303,9 +303,9 @@ impl BimApp {
         let source = json!({"path": path.to_string_lossy()});
         // The name it loads under, as the command works it out; a file that isn't a family says so as the load would.
         // A file whose dimensions measure to nothing loads under its name all the same, once they are deleted: asked below.
-        let named = self.session.execute("family", &json!({"path": path.to_string_lossy(), "dry_run": true})).or_else(|e| {
+        let named = self.exec("family", &json!({"path": path.to_string_lossy(), "dry_run": true})).or_else(|e| {
             if e.contains(bimcraft_core::family::constraints::INVALID_DIMENSIONS) {
-                self.session.execute("family", &json!({"path": path.to_string_lossy(), "dry_run": true, "invalid_dimensions": "delete"}))
+                self.exec("family", &json!({"path": path.to_string_lossy(), "dry_run": true, "invalid_dimensions": "delete"}))
             } else {
                 Err(e)
             }

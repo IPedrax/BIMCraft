@@ -1,12 +1,12 @@
 //! Anthropic's Messages API (`POST /v1/messages`) with tool use, written from the public reference for raw HTTP: the
 //! conversation goes in as `messages`, the tools as `tools` with an `input_schema`, a tool's answer comes back as a
 //! `tool_result` block in a user message naming the `tool_use` block's id, and the assistant's `content` array goes back whole,
-//! its thinking blocks included, because the API reads them only in the conversation that made them.
+//! its thinking blocks included (and their summaries shown to the user apart from the answer), because the API reads them only in the conversation that made them.
 
 use serde_json::{Value, json};
 
 use crate::net::Request;
-use crate::{Call, Msg, Reply, SYSTEM, api_error, clip, json_body, tools};
+use crate::{Call, Msg, Reply, SYSTEM, Usage, api_error, clip, count, json_body, tools, user_parts};
 
 const URL: &str = "https://api.anthropic.com/v1/messages";
 /// The API's dated version of itself, as the current reference sends it. Nothing here sends a sampling parameter, which that version refuses.
@@ -18,7 +18,13 @@ pub fn request(model: &str, key: &str, history: &[Msg]) -> Request {
     let messages: Vec<Value> = history
         .iter()
         .map(|m| match m {
-            Msg::User(text) => json!({"role": "user", "content": text}),
+            Msg::User(text, files) if files.is_empty() => json!({"role": "user", "content": text}),
+            Msg::User(text, files) => json!({"role": "user", "content": user_parts(
+                text,
+                files,
+                |t| json!({"type": "text", "text": t}),
+                |mime, b64| json!({"type": "image", "source": {"type": "base64", "media_type": mime, "data": b64}}),
+            )}),
             Msg::Assistant(reply) => json!({"role": "assistant", "content": reply.raw}),
             Msg::Results(done) => json!({"role": "user", "content": done.iter().map(|d| {
                 json!({"type": "tool_result", "tool_use_id": d.id, "content": d.text, "is_error": d.error})
@@ -27,7 +33,10 @@ pub fn request(model: &str, key: &str, history: &[Msg]) -> Request {
         .collect();
     let tools: Vec<Value> =
         tools::all().into_iter().map(|t| json!({"name": t.name, "description": t.about, "input_schema": t.schema})).collect();
-    let body = json!({"model": model, "max_tokens": MAX_TOKENS, "system": SYSTEM, "tools": tools, "messages": messages});
+    // Summarized, because the default hides the reasoning (an empty block) and the palette shows it apart from the answer.
+    let thinking = json!({"type": "adaptive", "display": "summarized"});
+    let body =
+        json!({"model": model, "max_tokens": MAX_TOKENS, "thinking": thinking, "system": SYSTEM, "tools": tools, "messages": messages});
     Request {
         url: URL.into(),
         headers: vec![("x-api-key".into(), key.into()), ("anthropic-version".into(), VERSION.into())],
@@ -42,10 +51,11 @@ pub fn parse(status: u16, body: &str) -> Result<Reply, String> {
     }
     let v = json_body(WHO, body)?;
     let blocks = v["content"].as_array().ok_or_else(|| format!("{WHO} sent a reply with no content ({})", clip(body.trim(), 80)))?;
-    let (mut text, mut calls) = (String::new(), Vec::new());
+    let (mut text, mut thinking, mut calls) = (String::new(), String::new(), Vec::new());
     for block in blocks {
         match block["type"].as_str() {
             Some("text") => text.push_str(block["text"].as_str().unwrap_or_default()),
+            Some("thinking") => thinking.push_str(block["thinking"].as_str().unwrap_or_default()),
             Some("tool_use") => {
                 let (Some(id), Some(name)) = (block["id"].as_str(), block["name"].as_str()) else {
                     return Err(format!("{WHO} sent a tool call with no id or name"));
@@ -67,5 +77,10 @@ pub fn parse(status: u16, body: &str) -> Result<Reply, String> {
         Some("max_tokens") => text.push_str("\n\n(cut off at the length limit)"),
         _ => {}
     }
-    Ok(Reply { text, calls, raw: v["content"].clone() })
+    let u = &v["usage"];
+    // The cached part of the prompt is counted apart by the API and is still what the request carried.
+    let input = count(&u["input_tokens"])
+        .saturating_add(count(&u["cache_read_input_tokens"]))
+        .saturating_add(count(&u["cache_creation_input_tokens"]));
+    Ok(Reply { thinking, text, calls, raw: v["content"].clone(), usage: Usage { input, output: count(&u["output_tokens"]) } })
 }
