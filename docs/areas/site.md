@@ -72,6 +72,19 @@ The triangulation is the floor shape editor's (`triangulation::constrained`), no
   fill pattern and colour, a structural material, and the function. The interval is the instance's for now.
 - **Its layers in 3D**: a toposolid is not split by its compound structure as a floor is, so its sides take its top
   layer's material and its lower layers show no colour there.
+- **A variable layer**: a floor's or a roof's type may mark a layer `variable`, and a shaped one's underside then stays
+  level at its base, that layer taking up the shape. A toposolid type may too (same `Layer`), but a toposolid ignores
+  it: its bottom is always its top plumbed down by its layers' total, so the solid's volume is its plan area times that
+  thickness. Honouring it would give a terrain the flat base Revit's `Variable` layer gives, and a body of earth under
+  its lowest point instead of a slab thinning at every dip.
+- **Its area**: `area_m2` is its boundary's plan area. There is no area of its 3D top, so a schedule has no sloped
+  figure beside the plan one to choose between.
+- **Split Element, and paint**: `split` takes walls and detail lines, so a toposolid cannot be sliced; its top has no
+  face, so `paint` refuses it.
+- **A wall attached to it**: `attach_top` and `attach_base` take a floor or a roof, not a toposolid.
+- **Everywhere but its own plan**: only that level's plan draws it; another plan, or a section, does not, and its
+  contours are drawn in plan only, not in 3D.
+- **Smooth shading**: a shaped top is drawn faceted; there is no `Toposolid Smooth Shading` toggle.
 - **A V/G surface-pattern override**: a view's override reaches a floor's top, not yet a toposolid's.
 - **Sub-Divide**: a sub-area with its own offset, material and inherit-contours.
 - **Graded Region**: a new toposolid for the proposed state, the old one Existing, and cut/fill.
