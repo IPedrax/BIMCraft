@@ -1,0 +1,59 @@
+# Temporary, for the branch IPedrax-Test/apt-repository only (not merged): the release workflow's `apt` job with a throwaway key, no
+# deploy, since the real key and the Pages deployment exist only for a version tag. The same commands, in the same order.
+name: APT dry run
+
+on:
+  push:
+    branches: ["IPedrax-Test/apt-repository"]
+    paths: [".github/workflows/apt-dryrun.yml", "packaging/linux/apt-repo.sh", "packaging/linux/apt-repo-check.sh"]
+
+permissions:
+  contents: read
+
+jobs:
+  apt:
+    name: APT repository, dry run
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Tools
+        timeout-minutes: 30
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends apt-utils gnupg
+
+      - name: The .deb files of the newest releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir debs
+          for tag in $(gh release list --exclude-drafts --exclude-pre-releases --limit 3 --json tagName --jq '.[].tagName'); do
+            gh release download "$tag" --pattern '*.deb' --dir debs
+          done
+          ls -l debs
+
+      # Held as the real one is: armored secret key text, imported into a clean home.
+      - name: A throwaway key, as the secret holds the real one
+        run: |
+          home="$(mktemp -d)"
+          GNUPGHOME="$home" gpg --batch --pinentry-mode loopback --passphrase '' --quick-gen-key 'dry run <dry@example.invalid>' ed25519 sign never
+          GNUPGHOME="$home" gpg --batch --armor --export-secret-keys > "$RUNNER_TEMP/secret.asc"
+          gpgconf --kill gpg-agent || true
+
+      - name: Sign and build the site
+        run: |
+          cat "$RUNNER_TEMP/secret.asc" | gpg --batch --import
+          key="$(gpg --batch --list-secret-keys --with-colons | awk -F: '/^fpr/ { print $10; exit }')"
+          packaging/linux/apt-repo.sh debs _site "$key"
+          gpg --batch --export "$key" > "$RUNNER_TEMP/keyring.gpg"
+          gpgv --keyring "$RUNNER_TEMP/keyring.gpg" _site/dists/stable/InRelease
+
+      - name: Install from it, as a client does
+        run: |
+          newest="$(for f in debs/*.deb; do f="${f##*/}"; f="${f#bimcraft-}"; echo "${f%%-*}"; done | sort -V | tail -1)"
+          packaging/linux/apt-repo-check.sh _site "$newest"
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
