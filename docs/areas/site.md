@@ -70,6 +70,9 @@ The triangulation is the floor shape editor's (`triangulation::constrained`), no
 - **Create from Import**: CSV points and 3D DXF contours.
 - **The rest of the type**: contour display by type (start and end elevation, line style subcategories), the coarse-scale
   fill pattern and colour, a structural material, and the function. The interval is the instance's for now.
+- **Its layers in 3D**: a toposolid is not split by its compound structure as a floor is, so its sides take its top
+  layer's material and its lower layers show no colour there.
+- **A V/G surface-pattern override**: a view's override reaches a floor's top, not yet a toposolid's.
 - **Sub-Divide**: a sub-area with its own offset, material and inherit-contours.
 - **Graded Region**: a new toposolid for the proposed state, the old one Existing, and cut/fill.
 - **Excavate**: a floor, roof or toposolid cutting it; hosting site components, parking, railings; slab edge.

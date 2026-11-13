@@ -73,9 +73,11 @@ pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
 /// The version of the project file this build writes, and the newest it reads. 20: a project may hold toposolids (the
-/// `toposolid` category: a boundary on a level, `offset`, `thickness`, a `shape`, a contour `interval` and a `name`), which
-/// a build that reads up to 19 would answer with a serde error ("unknown variant"), not say "saved by a
-/// newer BIMCraft"; nothing in a file of 19 changes. 19: a schedule may be of sheets, the
+/// `toposolid` category: a boundary on a level, a `type` of compound layers that is its thickness, `offset`, a `shape`, a
+/// contour `interval` and a `name`, and a floor's two fields for placing its top's pattern, `pattern_origin` and
+/// `pattern_angle`); a build that reads up to 19 would answer a toposolid with a serde error ("unknown variant"), not say
+/// "saved by a newer
+/// BIMCraft"; nothing in a file of 19 changes. 19: a schedule may be of sheets, the
 /// sheet list (`of: "sheet"`, as the Room or Level Schedule is); nothing in a file of 18 changes, but a build that reads
 /// up to 18 holds `sheet` as a category schedules aren't of, and would draw its sheet list with no columns, not say
 /// "saved by a newer BIMCraft". 18: a beam's or a structural column's type may
@@ -4084,13 +4086,16 @@ impl Model {
 
     /// Where element `id`'s model pattern starts (its `pattern_origin`) once its pattern line `line` lies on `reference`:
     /// the origin moved across by the gap between the two, which must run the same way (plan mm, a line by its two ends).
-    /// What Align on a pattern asks of the model; set the answer with `modify`. A filled region or a floor has a pattern to
-    /// align; the error says what else is wrong.
+    /// What Align on a pattern asks of the model; set the answer with `modify`. A filled region, a floor or a toposolid has
+    /// a pattern to align; the error says what else is wrong.
     pub fn align_pattern(&self, id: Id, reference: (P2, P2), line: (P2, P2)) -> Result<P2, String> {
         let origin = match self.elements.get(id) {
             Some(Element::FilledRegion(r)) => r.pattern_origin,
             Some(Element::Floor(f)) => f.pattern_origin,
-            Some(e) => return Err(format!("{} {id} has no model pattern to align; a filled region or a floor has", e.category())),
+            Some(Element::Toposolid(t)) => t.pattern_origin,
+            Some(e) => {
+                return Err(format!("{} {id} has no model pattern to align; a filled region, a floor or a toposolid has", e.category()));
+            }
             None => return Err(format!("no element {id}")),
         };
         if [reference, line].iter().any(|(a, b)| !(a.is_finite() && b.is_finite()) || a.dist(*b) < TOL) {
@@ -7342,6 +7347,8 @@ impl Model {
                 crate::site::check(&who, &pl.points)?;
             }
             Element::Toposolid(t) => {
+                point(&format!("{who} pattern origin"), t.pattern_origin)?;
+                coord(&format!("{who} pattern angle"), t.pattern_angle)?;
                 level_ok(t.level)?;
                 known(&who, &t.type_name, &self.types.toposolid)?;
                 boundary(&who, &t.boundary)?;

@@ -1809,8 +1809,8 @@ fn pattern_frames(m: &Model) -> BTreeMap<Id, [f64; 3]> {
 
 /// Two unit vectors across a triangle's plane, the way a texture's across and up lie on it, and the triangle's normal. A
 /// face that lies flat, or gently enough (a ground's), takes the plan's own: east and north, so one paving runs unbroken
-/// across a fold, as the pattern a plan draws does. Any other, a wall's or a roof's, has across level (to the right of
-/// someone looking at it) and up going up it.
+/// across a fold, as the pattern a plan draws does. Any steeper face, a wall's or a pitch past [`PAVED`], has across level
+/// (to the right of someone looking at it) and up going up it.
 fn basis(t: &Tri, turn: f64) -> [P3; 3] {
     let n = unit(cross(sub(t.p[1], t.p[0]), sub(t.p[2], t.p[0])));
     if n[2] > PAVED {
@@ -2101,7 +2101,7 @@ impl Scene {
         if cancelled() {
             return None;
         }
-        Some(Scene { planes, faces: Arc::new(faces), scans: scans_of(m), ..Scene::bare(tris) })
+        Some(Scene { planes, faces: Arc::new(faces), scans: scans_of(m), frames: pattern_frames(m), ..Scene::bare(tris) })
     }
 
     /// A scene of `tris` alone: no planes, faces, textures, smooth normals, levels or scans.

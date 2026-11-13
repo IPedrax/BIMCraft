@@ -7274,32 +7274,43 @@ fn a_toposolid_is_made_from_a_sketch_and_its_points_shape_its_top() {
 #[test]
 fn a_toposolid_shows_its_types_surface_pattern_in_plan_and_its_texture_in_3d() {
     let mut s = Session::new();
-    // A paving surface: a model pattern and a texture, on the type's one layer.
-    run(
-        &mut s,
-        "fill_pattern",
-        json!({"name": "Pavers 1500", "target": "model", "lines": [{"angle": 45, "spacing": 1500}, {"angle": 135, "spacing": 1500}]}),
-    );
-    run(&mut s, "material", json!({"name": "Pavers", "surface": "Pavers 1500", "texture": {"kind": "tile", "size": [1500, 1500]}}));
+    // A paving surface: a model pattern of level courses, and a texture, on the type's one layer.
+    run(&mut s, "fill_pattern", json!({"name": "Pavers", "target": "model", "lines": [{"angle": 0, "spacing": 1000}]}));
+    run(&mut s, "material", json!({"name": "Paving", "surface": "Pavers", "texture": {"kind": "tile", "size": [1000, 1000]}}));
     run(
         &mut s,
         "type",
-        json!({"category": "toposolid", "name": "Paved", "layers": [{"function": "finish", "material": "Pavers", "thickness": 300}]}),
+        json!({"category": "toposolid", "name": "Paved", "layers": [{"function": "finish", "material": "Paving", "thickness": 300}]}),
     );
     let t = run(&mut s, "toposolid", json!({"type": "Paved", "boundary": plot(), "points": [[5000, 5000, 2000]]}))["id"]
         .as_u64()
         .unwrap_or_default();
-    // In plan, its top's fill pattern, over the planes the shape makes.
+    // Its top's pattern frame is the element's, not each piece's: one paving, from its origin, turned by its angle.
+    run(&mut s, "modify", json!({"id": t, "pattern_origin": [400, 250], "pattern_angle": 30}));
     let view = crate::render::View { scale: 0.02, cx: 5000.0, cy: 5000.0, width: 400, height: 300 };
     let d = crate::render::draw(&s.model, s.model.guid(100000), view);
-    let pattern = d
-        .prims
-        .iter()
-        .zip(&d.parts)
-        .zip(&d.owners)
-        .filter(|((_, part), owner)| **part == crate::render::Part::Pattern && **owner == Some(t))
-        .count();
-    assert!(pattern > 0, "the toposolid's type's surface pattern is drawn, {pattern} prims");
+    let (sin, cos) = 30f64.to_radians().sin_cos();
+    let across = (-sin, cos);
+    let (mut drawn, mut off_lattice) = (0, Vec::new());
+    for ((prim, part), owner) in d.prims.iter().zip(&d.parts).zip(&d.owners) {
+        if *part != crate::render::Part::Pattern || *owner != Some(t) {
+            continue;
+        }
+        let crate::render::Prim::Line { pts, .. } = prim else { continue };
+        let (a, b) = (view.mm(pts[0]), view.mm(pts[1]));
+        // Each line runs the way the element's pattern is turned: 30° counter-clockwise, not 30° the other way.
+        let along = (b.0 - a.0, b.1 - a.1);
+        let off = (along.0 * across.0 + along.1 * across.1) / along.0.hypot(along.1);
+        assert!(off.abs() < 1e-3, "a line of the paving is not at its 30°: {off}");
+        // And it lies a whole spacing from the element's origin, whichever piece of the fold drew it: per-piece anchoring
+        // would restart the courses at each piece's own corner, and land off this lattice.
+        let c = (a.0 - 400.0) * across.0 + (a.1 - 250.0) * across.1;
+        off_lattice.push(c - (c / 1000.0).round() * 1000.0);
+        drawn += 1;
+    }
+    assert!(drawn > 1, "the paving is drawn over the shaped top, {drawn} lines");
+    // The pixels put a line within a pixel's worth of millimetres of the lattice, no more.
+    assert!(off_lattice.iter().all(|d| d.abs() < 60.0), "off the element's pattern lattice: {off_lattice:?}");
     // In 3D, its top's pieces take that material's texture.
     let textured = crate::view3d::shaded(&s.model)
         .iter()
@@ -7358,6 +7369,13 @@ fn a_toposolid_refuses_a_boundary_that_crosses_and_a_point_outside_it() {
     assert!(e.contains("simple"), "{e}");
     let e = s.execute("toposolid", &json!({"boundary": plot(), "points": [[20000, 0, 0]]})).unwrap_err();
     assert!(e.contains("outside"), "{e}");
+    // Its pattern frame is checked as a floor's is: an origin or an angle no plan can lay a hatch out from is refused, not
+    // left to hang the renderer (a lattice billions of spacings away never reaches the ring).
+    let id = run(&mut s, "toposolid", json!({"boundary": plot()}))["id"].as_u64().unwrap_or_default();
+    let e = s.execute("modify", &json!({"id": id, "pattern_origin": [1e18, 0]})).unwrap_err();
+    assert!(e.contains("pattern origin"), "{e}");
+    let e = s.execute("modify", &json!({"id": id, "pattern_angle": 1e18})).unwrap_err();
+    assert!(e.contains("pattern angle"), "{e}");
 }
 
 #[test]

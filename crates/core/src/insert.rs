@@ -202,6 +202,7 @@ fn bring_library(to: &mut Model, from: &Model, take: &BTreeSet<Id>, out: &mut In
                     "floor" => t.floor.get_mut(&name).map(|x| &mut x.layers),
                     "roof" => t.roof.get_mut(&name).map(|x| &mut x.layers),
                     "ceiling" => t.ceiling.get_mut(&name).map(|x| &mut x.layers),
+                    "toposolid" => t.toposolid.get_mut(&name).map(|x| &mut x.layers),
                     _ => None,
                 };
                 for l in layers.into_iter().flatten() {

@@ -567,7 +567,8 @@ other_files(
          its top `offset` mm over its level (0). `points` are survey points, their z in project coordinates, stored above \
          the flat top; the top is shaped by them and by split lines as a floor's, so `add_point`, `edit_shape`, \
          `add_split_line` and `reset_shape` take it. `interval` is the mm between the contour lines plans draw (1000; 0 \
-         for none). Returns id, name, area_m2, volume_m3, thickness, top and bottom",
+         for none). Its type's top material's surface pattern lies over the whole top from `pattern_origin` and turned by \
+         `pattern_angle`, as a floor's (`modify` sets both). Returns id, name, area_m2, volume_m3, thickness, top and bottom",
         toposolid,
     ),
     other(
@@ -1513,7 +1514,7 @@ other_files(
         "{id | ids: [id,…], …fields} change fields as `elements` shows them, of one element or several; `level` and `top_level` may be names. \
          `join: false` on a wall or a run turns off its joins: its ends stay square and it neither stretches with its neighbours nor pulls \
          them (Revit's Disallow Join). \
-         A filled region's or a floor's model pattern is set by `pattern_origin` [x, y], plan mm, where its lines start, and \
+         A filled region's, a floor's or a toposolid's model pattern is set by `pattern_origin` [x, y], plan mm, where its lines start, and \
          `pattern_angle`, degrees counter-clockwise (both shown by `elements`); to put a pattern line of one on a reference \
          line, Model::align_pattern gives the `pattern_origin` that does. A floor's, a ceiling's, a roof's or a shaft's \
          outline it sets is held to what `floor` says of it",
@@ -14947,6 +14948,8 @@ pub(crate) fn transform(c: &str, m: &Model, mut e: Element, id: Id, mo: &Motion,
             }
             t.shape.points.iter_mut().for_each(|x| x.at = f(x.at));
             t.shape.lines.iter_mut().for_each(|l| (l.a, l.b) = (f(l.a), f(l.b)));
+            // Its top's pattern goes with it: turned as the element turns, moved as its origin moves.
+            (t.pattern_origin, t.pattern_angle) = turned(f, t.pattern_origin, t.pattern_angle);
         }
         Element::Shaft(Shaft { boundary, .. }) => {
             boundary.iter_mut().for_each(|q| *q = f(*q));
