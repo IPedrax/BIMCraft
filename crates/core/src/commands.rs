@@ -561,12 +561,13 @@ other_files(
         "toposolid",
         ui_msg!("Toposolid"),
         &["TS"],
-        "{boundary: [[x,y],…], points?: [[x,y,z],…], level?, offset?, thickness?, interval?, name?} a solid topographic \
-         element (Revit's Toposolid): its boundary in plan, its top `offset` mm over its level (0) and `thickness` mm of solid \
-         under it (300). `points` are survey points, their z in project coordinates, stored above the flat top; the top is \
-         shaped by them and by split lines as a floor's, so `add_point`, `edit_shape`, `add_split_line` and `reset_shape` take \
-         it. `interval` is the mm between the contour lines plans draw (1000; 0 for none). Returns id, name, area_m2, \
-         volume_m3, top and bottom",
+        "{type?, boundary?: [[x,y],…], sketch?: […], points?: [[x,y,z],…], level?, offset?, interval?, name?} a solid \
+         topographic element (Revit's Toposolid): its boundary in plan, as `sketch` (the Editor's lines, solved into one \
+         ring as a floor's are) or `boundary`, its `type` (the layers it is made of, and so how thick it is), \
+         its top `offset` mm over its level (0). `points` are survey points, their z in project coordinates, stored above \
+         the flat top; the top is shaped by them and by split lines as a floor's, so `add_point`, `edit_shape`, \
+         `add_split_line` and `reset_shape` take it. `interval` is the mm between the contour lines plans draw (1000; 0 \
+         for none). Returns id, name, area_m2, volume_m3, thickness, top and bottom",
         toposolid,
     ),
     other(
@@ -1182,7 +1183,7 @@ other_files(
         "type",
         "Edit Type",
         &[],
-        "{category: wall|floor|ceiling|door|window|column|structuralcolumn|footing|roof|railing|beam|stripfooting|pipe|duct|conduit|\
+        "{category: wall|floor|ceiling|door|window|column|structuralcolumn|footing|roof|railing|toposolid|beam|stripfooting|pipe|duct|conduit|\
          cabletray|wire|downconductor|groundconductor|cable, name, thickness? | width?, height?, sill?, operation? | width?, depth?, round?, \
          material?, profile?, shape?, web?, flange?, radius? | height?, spacing?} creates the type, or changes it everywhere it's used. A column's, a structural column's or \
          a footing's type is a `width` by `depth`, or `round` (`width` across); a run's (a beam's, a pipe's, a cable tray's…) too, \
@@ -1196,8 +1197,9 @@ other_files(
          substrate|thermal|membrane|finish, material?, thickness}, …] from its exterior side in: it's as thick as they are, \
          its core from its first structure layer to its last, and a new `thickness` goes to its structure. A ceiling type may \
          have `grid`: its square tiles' width, mm, which reflected ceiling plans draw (0, none); a railing type, `height` (its \
-         rail over what it runs along) and `spacing` (its balusters' centres, 0 for none). Floor, roof and ceiling types may \
-         have `layers` too, from the top down; a layer's `material` is one of the library's (see `material`)",
+         rail over what it runs along) and `spacing` (its balusters' centres, 0 for none). Floor, roof, ceiling and toposolid \
+         types may have `layers` too, from the top down; a layer's `material` is one of the library's (see `material`). A \
+         toposolid type's `thickness` is how thick its toposolids are (Revit's Default Thickness)",
         edit_type,
     ),
     edit_files(
@@ -3110,12 +3112,16 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
         }
         Element::Toposolid(t) => {
             let (lo, hi) = m.toposolid_range(t);
+            let thickness = m.toposolid_thickness(t);
             extra.insert("area_m2".into(), json!(m2(geom::area(&t.boundary).abs())));
             extra.insert("volume_m3".into(), json!((m.toposolid_volume(t) / 1e6).round() / 1e3));
             extra.insert("top".into(), json!([hundredth(lo), hundredth(hi)]));
-            extra.insert("bottom".into(), json!([hundredth(lo - t.thickness), hundredth(hi - t.thickness)]));
-            extra.insert("thickness".into(), json!(t.thickness));
+            extra.insert("bottom".into(), json!([hundredth(lo - thickness), hundredth(hi - thickness)]));
+            extra.insert("thickness".into(), json!(thickness));
             extra.insert("interval".into(), json!(t.interval));
+            // Where its top's model pattern starts and how far it's turned: shown at their defaults too, to be set by modify.
+            extra.insert("pattern_origin".into(), json!(t.pattern_origin));
+            extra.insert("pattern_angle".into(), json!(t.pattern_angle));
         }
         Element::RoomSeparator(rs) => {
             extra.insert("length".into(), json!(hundredth(rs.start.dist(rs.end))));
@@ -8000,15 +8006,20 @@ fn property_line(s: &mut Session, p: &Value) -> R {
 
 fn toposolid(s: &mut Session, p: &Value) -> R {
     let c = "toposolid";
-    only(c, p, &["boundary", "points", "level", "offset", "thickness", "interval", "name"])?;
+    only(c, p, &["type", "boundary", "sketch", "points", "level", "offset", "interval", "name"])?;
     let m = &s.model;
     let level = level_param(c, m, p, "level")?;
-    let mut boundary = ring(points(c, p, "boundary")?);
+    let type_name = type_param(c, p, m, "toposolid")?;
+    // Drawn in the Sketch Editor, the outline is its lines solved; a toposolid is one ring, with no holes.
+    let mut boundary = match sketched(c, p, "", &[])? {
+        Some((r, _)) if r.holes.is_empty() => r.outer,
+        Some(_) => return Err(bad(c, "the sketch has a loop inside its outline; a toposolid is one ring: draw it without")),
+        None => ring(points(c, p, "boundary")?),
+    };
     if geom::area(&boundary) < 0.0 {
         boundary.reverse();
     }
     let offset = num(c, p, "offset")?.unwrap_or(0.0);
-    let thickness = num(c, p, "thickness")?.unwrap_or(300.0);
     let interval = num(c, p, "interval")?.unwrap_or(1000.0);
     let base = m.elevation(level) + offset;
     // Survey points, their z in project coordinates: kept above the flat top, as a floor's shape points are.
@@ -8032,12 +8043,14 @@ fn toposolid(s: &mut Session, p: &Value) -> R {
     };
     let area = m2(geom::area(&boundary).abs());
     let solid = Toposolid {
+        type_name,
         level,
         boundary,
         offset,
-        thickness,
         shape: crate::model::Shape { points, lines: Vec::new() },
         interval,
+        pattern_origin: P2(0.0, 0.0),
+        pattern_angle: 0.0,
         name: name.clone(),
         params: BTreeMap::new(),
     };
@@ -8047,13 +8060,15 @@ fn toposolid(s: &mut Session, p: &Value) -> R {
     };
     let (lo, hi) = s.model.toposolid_range(t);
     let volume = (s.model.toposolid_volume(t) / 1e6).round() / 1e3;
+    let thickness = s.model.toposolid_thickness(t);
     Ok(json!({
         "id": id,
         "name": name,
         "area_m2": area,
         "volume_m3": volume,
+        "thickness": thickness,
         "top": [hundredth(lo), hundredth(hi)],
-        "bottom": [hundredth(lo - t.thickness), hundredth(hi - t.thickness)],
+        "bottom": [hundredth(lo - thickness), hundredth(hi - thickness)],
     }))
 }
 
@@ -14204,6 +14219,13 @@ fn edit_type(s: &mut Session, p: &Value) -> R {
             m.types.floor.insert(name.clone(), t.clone());
             json!(t)
         }
+        "toposolid" => {
+            let (thickness, layers) =
+                layered(c, p, m.types.toposolid.get(&name).map(|t| (t.thickness, t.layers.as_slice())), thickness, &need)?;
+            let t = FloorType { thickness, layers };
+            m.types.toposolid.insert(name.clone(), t.clone());
+            json!(t)
+        }
         "door" | "window" => {
             let map = if cat == "door" { &mut m.types.door } else { &mut m.types.window };
             let old = map.get(&name).cloned();
@@ -18097,6 +18119,7 @@ fn inspect(s: &mut Session, p: &Value) -> R {
     if brief {
         let types = m.types.wall.len()
             + m.types.floor.len()
+            + m.types.toposolid.len()
             + m.types.door.len()
             + m.types.window.len()
             + m.types.column.len()

@@ -6,10 +6,19 @@ by elevation points and split lines. The element is `Toposolid` (`model.rs`); th
 
 ## The element
 
-`Toposolid`: `level`, `boundary` (a simple ring in plan, counter-clockwise; concave fine), `offset` (its flat top's height
-over the level), `thickness` (300 by default; its bottom is that far under its top everywhere), `shape` (points and split
-lines on its top, a floor's `Shape`), `interval` (the mm between the contour lines plans draw; 1000, 0 for none), a `name`
-and `params` (phases, design options, project parameters).
+`Toposolid`: `type` (its type's name: what it is made of, see below), `level`, `boundary` (a simple ring in plan,
+counter-clockwise; concave fine), `offset` (its flat top's height over the level), `shape` (points and split lines on its top,
+a floor's `Shape`), `interval` (the mm between the contour lines plans draw; 1000, 0 for none), a `name` and `params` (phases,
+design options, project parameters).
+
+## The type: what it is made of
+
+A toposolid type (`Model::types.toposolid`, a `FloorType`: `thickness` and `layers`) is a compound structure like a floor's,
+from the top down: each layer a `function`, a `material` and a `thickness`. Its thickness is its layers' total, Revit's
+**Default Thickness**, and that is how thick every toposolid of the type is: the instance's Thickness is read-only. The
+project starts with `Generic - 300mm`, so a toposolid is 300 mm thick until its type says otherwise; `type {category:
+toposolid, name, thickness? | layers?}` makes or changes one, and every toposolid of it follows. `Model::migrate` gives a file
+from before `FORMAT` 20 that type.
 
 A point's `z` is above the flat top, as a floor's shape points are. `toposolid`'s `points` are survey points whose z is in
 project coordinates, and the command stores them relative to `elevation(level) + offset`. `add_point {absolute}` does the same
@@ -17,11 +26,13 @@ conversion.
 
 ## Create from Sketch, then Add Point
 
-`toposolid {boundary, points?, level?, offset?, thickness?, interval?, name?}` makes one. It refuses a boundary that isn't
-simple (the sketch solver: crossings, spikes, zero-length edges), a point outside it, fewer than three corners, and a
-thickness of 0 or less or an interval out of range. `Model::check` holds the same rules and checks the shape as a floor's is
-checked. A point may lie below the level: the bottom follows the top, so the solid is its thickness everywhere (a pit is
-just a dip in the top), where Revit refuses a point below its base.
+`toposolid {type?, sketch?, boundary?, points?, level?, offset?, interval?, name?}` makes one. Its outline comes as `sketch`
+(the Sketch Editor's lines, solved into one ring as a floor's are) or as `boundary`; it refuses one that isn't simple
+(the sketch solver: crossings, spikes, zero-length edges), a sketch with a loop inside its outline (a toposolid has no
+holes), a point outside it, fewer than three corners, an interval out of range, and a type nothing has or one whose
+thickness is 0. `Model::check` holds the same rules and checks the shape as a floor's is checked. A point may lie below the
+level: the bottom follows the top, so the solid is its thickness everywhere (a pit is just a dip in the top), where Revit
+refuses a point below its base.
 
 A toposolid is **shapeable**: `Model::shapeable` returns a `Floor` view of it (`toposolid_as_floor`), as `roof_as_floor` does
 for a flat roof. So `add_point`, `edit_shape`, `add_split_line` and `reset_shape` work on it with no code of their own, and
@@ -43,8 +54,12 @@ The triangulation is the floor shape editor's (`triangulation::constrained`), no
 
 ## Where it shows
 
-- **Plans**, on its own level: its boundary, and its contour lines at `interval`. `contours {id}` gives the lines as data.
-- **3D**: its top's pieces, each a slab down to the plane under it.
+- **Plans**, on its own level: its boundary, its contour lines at `interval`, and its type's top material's surface pattern —
+  a named fill pattern or a built-in one — laid over the whole top in one frame, from `pattern_origin` and turned by
+  `pattern_angle` (degrees counter-clockwise), so the pattern runs unbroken over a fold. `contours {id}` gives the lines as
+  data.
+- **3D**: its top's pieces, each a slab down to the plane under it, and its type's finish material's texture, on the plan's
+  axes turned by the same angle from the same origin: a paving meets itself at a fold, and turns as the plan's pattern does.
 - **Schedules**: category `toposolid`: Name, Level, Area, Volume, Thickness.
 - **IFC**: an `IfcSlab` with `.BASESLAB.`, a closed faceted Brep, in the level's storey, with `Qto_SlabBaseQuantities`.
 - **File**: `FORMAT` 20 (a build that reads up to 19 refuses a toposolid as an unknown element kind).
@@ -53,12 +68,13 @@ The triangulation is the floor shape editor's (`triangulation::constrained`), no
 ## Not yet
 
 - **Create from Import**: CSV points and 3D DXF contours.
-- **A toposolid type**: layers (structure), contour display by type (start and end elevation, line style subcategories).
+- **The rest of the type**: contour display by type (start and end elevation, line style subcategories), the coarse-scale
+  fill pattern and colour, a structural material, and the function. The interval is the instance's for now.
 - **Sub-Divide**: a sub-area with its own offset, material and inherit-contours.
 - **Graded Region**: a new toposolid for the proposed state, the old one Existing, and cut/fill.
 - **Excavate**: a floor, roof or toposolid cutting it; hosting site components, parking, railings; slab edge.
-- **The desktop tool**: the Massing tab's Toposolid button and its Options Bar (a command creates one for now), and the
-  Properties rows.
+- **An Options Bar at creation**: the command uses the default type (300 mm) and interval 1000; Properties changes them
+  afterwards.
 - **Editing the outline**: `edit_boundary` refuses a toposolid yet; delete it and make it again.
 - **Snaps, picking and tags**: snaps and alignment guides don't know its points, only its lines pick it in plan (no fill),
   and a tag can't be hosted on it.

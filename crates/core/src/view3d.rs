@@ -720,18 +720,24 @@ pub(crate) fn crossings(ring: &[P2], p: P2, u: P2) -> Vec<(f64, f64)> {
 
 /// The slabs `face`, and what lies `rise` over it, make: less the shafts through it, each piece of
 /// it on the face's plane.
-fn slabs(out: &mut Vec<Solid>, m: &Model, owner: Id, color: Rgb, face: Vec<P3>, rise: f64) {
+fn slabs(out: &mut Vec<Solid>, m: &Model, owner: Id, color: Rgb, face: Vec<P3>, rise: f64, tex: u32) {
     let (pieces, shafts) = m.less_shafts(&face, rise);
     match (shafts.is_empty(), Plane::of(&face)) {
         (false, Some(plane)) => out.extend(pieces.into_iter().map(|ring| Solid::Slab {
             owner,
             color,
-            tex: 0,
+            tex,
             face: ring.iter().map(|q| [q.0, q.1, plane.at(*q)]).collect(),
             rise,
         })),
-        _ => out.push(Solid::Slab { owner, color, tex: 0, face, rise }),
+        _ => out.push(Solid::Slab { owner, color, tex, face, rise }),
     }
+}
+
+/// A slab's texture: its type's first layer's material's, where it has one — the material whose surface a plan draws
+/// over the slab's top.
+fn slab_tex(m: &Model, category: &str, type_name: &str) -> u32 {
+    m.type_layers(category, type_name).first().map_or(0, |l| skin(m, &l.material)) & TEXTURE
 }
 
 /// The model's solids: walls cut around their openings, door leaves and glass, floor slabs and
@@ -1012,24 +1018,32 @@ fn slab_solids(m: &Model, id: Id, e: &Element) -> Vec<Solid> {
             for (ring, bottom, top) in m.floor_prisms(f) {
                 let rise = ring.iter().map(|q| top.at(*q) - bottom.at(*q)).fold(0.0, f64::max);
                 for piece in m.less_shafts(&bottom.lift(&ring), rise).0 {
-                    out.push(Solid::Prism { owner: id, color: SLAB, tex: 0, ring: piece, bottom, top, curve: None });
+                    out.push(Solid::Prism {
+                        owner: id,
+                        color: SLAB,
+                        tex: slab_tex(m, "floor", &f.type_name),
+                        ring: piece,
+                        bottom,
+                        top,
+                        curve: None,
+                    });
                 }
             }
         }
         Element::Floor(f) => {
             for (face, rise) in m.floor_slabs(f) {
-                slabs(&mut out, m, id, SLAB, face, rise);
+                slabs(&mut out, m, id, SLAB, face, rise, slab_tex(m, "floor", &f.type_name));
             }
         }
         // The site's ground: its top's pieces, each a slab down to the plane under it.
         Element::Toposolid(t) => {
             for (face, rise) in m.toposolid_slabs(t) {
-                slabs(&mut out, m, id, SLAB, face, rise);
+                slabs(&mut out, m, id, SLAB, face, rise, slab_tex(m, "toposolid", &t.type_name));
             }
         }
         Element::Ceiling(c) => {
             for (face, rise) in m.ceiling_slabs(c) {
-                slabs(&mut out, m, id, CEILING, face, rise);
+                slabs(&mut out, m, id, CEILING, face, rise, slab_tex(m, "ceiling", &c.type_name));
             }
         }
         // Under a variable layer, a shaped roof's underside is level: each piece a prism from it up to its top.
@@ -1037,13 +1051,21 @@ fn slab_solids(m: &Model, id: Id, e: &Element) -> Vec<Solid> {
             for (ring, bottom, top) in m.roof_prisms(r) {
                 let rise = ring.iter().map(|q| top.at(*q) - bottom.at(*q)).fold(0.0, f64::max);
                 for piece in m.less_shafts(&bottom.lift(&ring), rise).0 {
-                    out.push(Solid::Prism { owner: id, color: ROOF, tex: 0, ring: piece, bottom, top, curve: None });
+                    out.push(Solid::Prism {
+                        owner: id,
+                        color: ROOF,
+                        tex: slab_tex(m, "roof", &r.type_name),
+                        ring: piece,
+                        bottom,
+                        top,
+                        curve: None,
+                    });
                 }
             }
         }
         Element::Roof(r) => {
             for (face, rise) in m.roof_slabs(r) {
-                slabs(&mut out, m, id, ROOF, face, rise);
+                slabs(&mut out, m, id, ROOF, face, rise, slab_tex(m, "roof", &r.type_name));
             }
         }
         _ => {}
@@ -1609,6 +1631,9 @@ pub struct Scene {
     faces: Arc<Vec<&'static str>>,
     /// Each texture the scene uses, by id. A textured triangle lies across its plane as [`basis`] says.
     skins: Vec<Option<Sampler>>,
+    /// Each element's pattern frame — where its top's model pattern starts and how far it is turned, degrees
+    /// counter-clockwise — so the texture a ground shows in 3D turns with the pattern a plan draws.
+    frames: BTreeMap<Id, [f64; 3]>,
     /// The edges a wireframe draws, found when one is first asked for.
     edges: OnceLock<Vec<(usize, [P3; 2])>>,
     /// The masses, which a section's picture leaves out: it outlines where its line cuts them.
@@ -1764,13 +1789,38 @@ impl Rule {
     }
 }
 
-/// Two unit vectors across a triangle's plane, the way a texture's across and up lie on it: across is level (to the
-/// right of someone looking at the face from outside, east where it lies flat), up goes up it (north where it lies flat).
-fn basis(t: &Tri) -> [P3; 2] {
+/// The normal's height over a face that a paving's pattern is projected in plan over: more up than this, the pattern
+/// lies in plan and runs over the whole graded surface, cut only where the ground folds steeply under it.
+const PAVED: f64 = 0.5;
+
+/// Each element's pattern frame: where its top's model pattern starts in plan, and how far it is turned, degrees
+/// counter-clockwise — the frame `fill_pattern` draws it in, so a ground's texture turns with it.
+fn pattern_frames(m: &Model) -> BTreeMap<Id, [f64; 3]> {
+    let frame = |origin: P2, angle: f64| [origin.0, origin.1, angle];
+    m.elements
+        .iter()
+        .filter_map(|(id, e)| match e {
+            Element::Floor(f) => Some((*id, frame(f.pattern_origin, f.pattern_angle))),
+            Element::Toposolid(t) => Some((*id, frame(t.pattern_origin, t.pattern_angle))),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Two unit vectors across a triangle's plane, the way a texture's across and up lie on it, and the triangle's normal. A
+/// face that lies flat, or gently enough (a ground's), takes the plan's own: east and north, so one paving runs unbroken
+/// across a fold, as the pattern a plan draws does. Any other, a wall's or a roof's, has across level (to the right of
+/// someone looking at it) and up going up it.
+fn basis(t: &Tri, turn: f64) -> [P3; 3] {
     let n = unit(cross(sub(t.p[1], t.p[0]), sub(t.p[2], t.p[0])));
+    if n[2] > PAVED {
+        // The plan's axes, turned by the element's pattern angle: degrees counter-clockwise, as `fill_pattern` draws it.
+        let (s, c) = turn.to_radians().sin_cos();
+        return [[c, s, 0.0], [-s, c, 0.0], n];
+    }
     let level = cross([0.0, 0.0, 1.0], n);
     let across = if dot(level, level) < 1e-4 { [1.0, 0.0, 0.0] } else { unit(level) };
-    [across, unit(cross(n, across))]
+    [across, unit(cross(n, across)), n]
 }
 
 /// Whether `p` is inside `look`'s section box, or there is none.
@@ -1828,6 +1878,7 @@ impl Scene {
             smooth: Vec::new(),
             faces: Arc::default(),
             skins: Vec::new(),
+            frames: BTreeMap::new(),
             masses: BTreeSet::new(),
             levels: Vec::new(),
             scans: Vec::new(),
@@ -1891,6 +1942,7 @@ impl Scene {
             smooth,
             faces: Arc::new(faces),
             skins,
+            frames: pattern_frames(m),
             masses,
             levels,
             scans,
@@ -2060,6 +2112,7 @@ impl Scene {
             smooth: Vec::new(),
             faces: Arc::new(Vec::new()),
             skins: Vec::new(),
+            frames: BTreeMap::new(),
             masses: BTreeSet::new(),
             levels: Vec::new(),
             scans: Vec::new(),
@@ -3036,10 +3089,15 @@ impl Scene {
             if !plain && colour(tri) != tri.color {
                 return None;
             }
-            let [across, up] = basis(tri);
+            let [ox, oy, turn] = self.frames.get(&tri.owner).copied().unwrap_or([0.0, 0.0, 0.0]);
+            let [across, up, n] = basis(tri, turn);
             let (x, y) = ((k % w) as f64 + 0.5, (k / w) as f64 + 0.5);
             let at = cam.point_at((x, y), f64::from(z));
-            Some(sampler.at(dot(at, across), dot(at, up), foot))
+            // A face seen edge-on spreads a pixel over more of it: a coarser level, or its courses alias into moiré.
+            let facing = dot(n, cam.toward(at)).abs().max(0.15);
+            // A ground's pattern starts where a plan's does; a wall's or a roof's is anchored to the world.
+            let p = if n[2] > PAVED { [at[0] - ox, at[1] - oy, at[2]] } else { at };
+            Some(sampler.at(dot(p, across), dot(p, up), foot / facing))
         };
         // What triangle `t` shows at pixel `k`, whose surface is `depths` there: a curve's, the blend of its corners' lighting; a
         // flat face's, its own shade; a texture's colour lit as the face is.
@@ -4473,6 +4531,70 @@ impl Scene {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_grounds_texture_lies_in_plan_so_one_paving_runs_over_its_folds() {
+        let tri = |p: [P3; 3]| Tri { p, owner: 100000, color: Rgb(0, 0, 0), tex: 0, curve: None, vis: 0 };
+        let flat = tri([[0.0, 0.0, 0.0], [1000.0, 0.0, 0.0], [0.0, 1000.0, 0.0]]);
+        // 30° up: still a ground, so the same plan's axes, and one paving over both.
+        let graded = tri([[0.0, 0.0, 0.0], [1000.0, 0.0, 0.0], [0.0, 1000.0, 577.0]]);
+        assert_eq!(basis(&flat, 0.0)[..2], basis(&graded, 0.0)[..2], "a graded ground takes the plan's axes");
+        // A wall's face keeps its own: across level in it, up it.
+        let wall = tri([[0.0, 0.0, 0.0], [1000.0, 0.0, 0.0], [0.0, 0.0, 1000.0]]);
+        assert_ne!(basis(&flat, 0.0)[..2], basis(&wall, 0.0)[..2], "a wall's courses run level along it");
+        // Turned by the element's pattern angle, degrees counter-clockwise, as `fill_pattern` draws it: the across axis
+        // goes from east to north-east at 45°, and a wall is untouched by it.
+        let [across, up, _] = basis(&flat, 45.0);
+        assert!(across[0] > 0.70 && across[1] > 0.70 && across[2] == 0.0, "{across:?}");
+        assert!(up[0] < -0.70 && up[1] > 0.70, "{up:?}");
+        assert_eq!(basis(&wall, 45.0), basis(&wall, 0.0), "a wall's texture is the world's, not the pattern's");
+    }
+
+    #[test]
+    fn a_shaped_grounds_top_faces_up_and_its_pattern_frame_reaches_the_triangles() {
+        use crate::engine::Session;
+        let mut s = Session::new();
+        s.execute("fill_pattern", &serde_json::json!({"name": "Pavers", "target": "model", "lines": [{"angle": 0, "spacing": 1000}]}))
+            .unwrap();
+        s.execute(
+            "material",
+            &serde_json::json!({"name": "Pavers", "surface": "Pavers", "texture": {"kind": "tile", "size": [1000, 1000]}}),
+        )
+        .unwrap();
+        s.execute(
+            "type",
+            &serde_json::json!({"category": "toposolid", "name": "Paved", "layers": [{"function": "finish", "material": "Pavers", "thickness": 300}]}),
+        )
+        .unwrap();
+        let t = s
+            .execute(
+                "toposolid",
+                &serde_json::json!({"type": "Paved", "boundary": [[0, 0], [10000, 0], [10000, 8000], [0, 8000]], "points": [[5000, 4000, 2000]]}),
+            )
+            .unwrap()["id"]
+            .as_u64()
+            .unwrap_or_default();
+        s.execute("modify", &serde_json::json!({"id": t, "pattern_angle": 30, "pattern_origin": [1000, 500]})).unwrap();
+        // Its pattern frame reaches the scene, keyed by the element id its triangles carry.
+        let scene = Scene::new(&s.model);
+        assert_eq!(scene.frames.get(&t), Some(&[1000.0, 500.0, 30.0]));
+        assert!(scene.tris.iter().any(|tri| tri.owner == t), "its triangles are its own");
+        // Every top triangle faces up and every bottom one down, whatever way round its ring came: `prism` turns it out.
+        // A flipped top would take a per-face frame and break the paving where the ground folds.
+        let (mut up, mut down) = (0, 0);
+        for solid in shaded(&s.model).into_iter().filter(|x| matches!(x, Solid::Slab { owner, .. } if *owner == t)) {
+            for [a, b, c] in solid.triangles() {
+                let n = unit(cross(sub(b, a), sub(c, a)));
+                if n[2] > PAVED {
+                    up += 1;
+                } else if n[2] < -PAVED {
+                    down += 1;
+                }
+            }
+        }
+        assert!(up > 0, "its top faces up");
+        assert_eq!(up, down, "as many triangles facing up as down");
+    }
 
     #[test]
     fn a_sections_scene_holds_what_can_show_and_its_picture_is_the_whole_scenes() {

@@ -1238,6 +1238,7 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool) -> String {
             Element::Toposolid(t) => {
                 let Some(&(_, storey)) = storeys.get(&t.level) else { continue };
                 let at = w.place(Some(storey), (0.0, 0.0, 0.0), None);
+                let thickness = m.toposolid_thickness(t);
                 // Its top's planes and the solid under them: a closed Brep, as Revit writes a terrain slab.
                 let shape = match m.toposolid_solid(t) {
                     Some(solid) => {
@@ -1246,7 +1247,7 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool) -> String {
                     }
                     None => {
                         let faces: Vec<Vec<P3>> = m.toposolid_slabs(t).into_iter().map(|(face, _)| face).collect();
-                        w.breps(&faces, m.elevation(t.level), t.thickness)
+                        w.breps(&faces, m.elevation(t.level), thickness)
                     }
                 };
                 let ent = w.add(format!(
@@ -1261,7 +1262,7 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool) -> String {
                 let gross = geom::area(&t.boundary).abs();
                 let volume = m.toposolid_volume(t);
                 let values = [
-                    ("Width", "LENGTH", t.thickness),
+                    ("Width", "LENGTH", thickness),
                     ("Perimeter", "LENGTH", perimeter(&t.boundary)),
                     ("GrossArea", "AREA", gross / 1e6),
                     ("NetArea", "AREA", gross / 1e6),

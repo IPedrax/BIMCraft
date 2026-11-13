@@ -227,6 +227,7 @@ fn copy_definition(to: &mut Model, from: &Model, kind: &Kind, name: &str) -> boo
         Kind::Type(c) => match c.as_str() {
             "wall" => one(&mut t.wall, Some(&f.wall), name),
             "floor" => one(&mut t.floor, Some(&f.floor), name),
+            "toposolid" => one(&mut t.toposolid, Some(&f.toposolid), name),
             "ceiling" => one(&mut t.ceiling, Some(&f.ceiling), name),
             "roof" => one(&mut t.roof, Some(&f.roof), name),
             "door" => one(&mut t.door, Some(&f.door), name),

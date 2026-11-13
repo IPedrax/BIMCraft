@@ -292,30 +292,31 @@ pub struct PropertyLine {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Toposolid {
+    /// Its type: the layers it is made of, and so how thick it is (`Types::toposolid`).
+    #[serde(rename = "type")]
+    pub type_name: String,
     pub level: Guid,
     /// Its outline in plan, counter-clockwise; concave fine.
     pub boundary: Vec<P2>,
     /// How far its flat top is over its level, mm.
     #[serde(default)]
     pub offset: f64,
-    /// How thick the solid is under its top, mm: its bottom is this far under its top everywhere.
-    #[serde(default = "toposolid_thickness")]
-    pub thickness: f64,
     /// Points and split lines on its top, a floor's (`Floor::shape`).
     #[serde(default, skip_serializing_if = "Shape::is_empty")]
     pub shape: Shape,
     /// The mm between the contour lines plans draw; 0 for none.
     #[serde(default = "contour_interval")]
     pub interval: f64,
+    /// Where its top's model pattern starts, and how far it's turned, degrees: Revit's aligned and rotated pattern.
+    #[serde(default, skip_serializing_if = "crate::fills::at_origin")]
+    pub pattern_origin: P2,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub pattern_angle: f64,
     #[serde(default)]
     pub name: String,
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
-}
-
-fn toposolid_thickness() -> f64 {
-    300.0
 }
 
 fn contour_interval() -> f64 {
@@ -2835,6 +2836,10 @@ pub struct Types {
     pub ceiling: BTreeMap<String, CeilingType>,
     #[serde(default)]
     pub railing: BTreeMap<String, RailingType>,
+    /// The toposolid types: the layers each is made of, and so how thick it is (its layers' total, as Revit's Default
+    /// Thickness), from the top down.
+    #[serde(default)]
+    pub toposolid: BTreeMap<String, FloorType>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub structural_column: BTreeMap<String, ColumnType>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -2888,11 +2893,12 @@ pub struct Classification {
 pub const MAX_PROJECT_PARAMETERS: usize = 256;
 
 /// The categories project parameters are for.
-pub const PARAMETER_CATEGORIES: [&str; 25] = [
+pub const PARAMETER_CATEGORIES: [&str; 26] = [
     "wall",
     "floor",
     "ceiling",
     "roof",
+    "toposolid",
     "door",
     "window",
     "room",
@@ -3350,6 +3356,7 @@ impl Model {
         ];
         m.types.wall.insert("Exterior - 300mm".into(), WallType { thickness: 300.0, layers });
         m.types.floor.insert("Generic - 200mm".into(), FloorType { thickness: 200.0, layers: Vec::new() });
+        m.types.toposolid.insert("Generic - 300mm".into(), FloorType { thickness: 300.0, layers: Vec::new() });
         for (n, w) in [("Single 900 x 2100", 900.0), ("Single 800 x 2100", 800.0)] {
             m.types.door.insert(n.into(), OpeningType { width: w, height: 2100.0, sill: 0.0, operation: None });
         }
@@ -3469,7 +3476,8 @@ impl Model {
         let floors = t.floor.iter().map(|(n, x)| ("floor", n.as_str(), x.thickness, x.layers.as_slice()));
         let roofs = t.roof.iter().map(|(n, x)| ("roof", n.as_str(), x.thickness, x.layers.as_slice()));
         let ceilings = t.ceiling.iter().map(|(n, x)| ("ceiling", n.as_str(), x.thickness, x.layers.as_slice()));
-        walls.chain(floors).chain(roofs).chain(ceilings)
+        let toposolids = t.toposolid.iter().map(|(n, x)| ("toposolid", n.as_str(), x.thickness, x.layers.as_slice()));
+        walls.chain(floors).chain(roofs).chain(ceilings).chain(toposolids)
     }
 
     /// The layers of type `name` of `category`, a wall's from its exterior in, the others' from
@@ -3480,11 +3488,12 @@ impl Model {
 
     /// Every type's layers, to change.
     pub fn layers_mut(&mut self) -> impl Iterator<Item = &mut Layer> {
-        let Types { wall, floor, roof, ceiling, .. } = &mut *self.types;
+        let Types { wall, floor, roof, ceiling, toposolid, .. } = &mut *self.types;
         (wall.values_mut().flat_map(|t| t.layers.iter_mut()))
             .chain(floor.values_mut().flat_map(|t| t.layers.iter_mut()))
             .chain(roof.values_mut().flat_map(|t| t.layers.iter_mut()))
             .chain(ceiling.values_mut().flat_map(|t| t.layers.iter_mut()))
+            .chain(toposolid.values_mut().flat_map(|t| t.layers.iter_mut()))
     }
 
     /// Every material the types' layers name that the library hasn't, put in it: what a project
@@ -3974,10 +3983,13 @@ impl Model {
             self.families.values_mut().for_each(crate::family::Family::settle_planes);
             self.families.values_mut().for_each(crate::family::Family::pin_cuts);
         }
+        // A file of 19 has no toposolid type: the one a new toposolid is made of, which `default_type` names.
+        if self.format < 20 {
+            self.types.toposolid.entry("Generic - 300mm".into()).or_insert(FloorType { thickness: 300.0, layers: Vec::new() });
+        }
         self.settle_hosts(None);
         self.format = FORMAT;
     }
-
     /// Each dimension from before dimension types given the one its kind starts in.
     fn typed_dimensions(&mut self) {
         let types = &self.dimension_types;
@@ -4569,6 +4581,7 @@ impl Model {
             "roof" => names(&self.types.roof),
             "ceiling" => names(&self.types.ceiling),
             "railing" => names(&self.types.railing),
+            "toposolid" => names(&self.types.toposolid),
             run if RUN_CATEGORIES.contains(&run) => self.types.runs.get(run).map(names).unwrap_or_default(),
             _ => Vec::new(),
         }
@@ -4582,6 +4595,7 @@ impl Model {
             "text" => return crate::text::default_type(&self.text_types).map(String::as_str),
             "dimension" => return crate::dims::default_type(&self.dimension_types, DimKind::Aligned).map(String::as_str),
             "wall" | "floor" => "Generic - 200mm",
+            "toposolid" => "Generic - 300mm",
             "door" => "Single 900 x 2100",
             "column" => "Rectangular 400 x 400",
             "roof" => "Generic - 300mm",
@@ -5312,6 +5326,11 @@ impl Model {
         self.shaped_solid(f, openings, self.floor_depth(f), self.floor_under(f).map(|(p, _)| p))
     }
 
+    /// A toposolid's thickness, mm: its type's, its layers' total (Revit's Default Thickness).
+    pub fn toposolid_thickness(&self, t: &Toposolid) -> f64 {
+        self.types.toposolid.get(&t.type_name).map_or(0.0, |x| x.thickness)
+    }
+
     /// A toposolid's top in convex pieces, each counter-clockwise with the plane it lies in (`floor_faces` on its top).
     pub fn toposolid_faces(&self, t: &Toposolid) -> Vec<(Vec<P2>, walls::Plane)> {
         self.floor_faces(&self.toposolid_as_floor(t))
@@ -5319,19 +5338,20 @@ impl Model {
 
     /// A toposolid's pieces in plan, each a bottom face and how far it rises to the top: what the 3D view draws as slabs.
     pub fn toposolid_slabs(&self, t: &Toposolid) -> Vec<(Vec<[f64; 3]>, f64)> {
+        let thickness = self.toposolid_thickness(t);
         self.toposolid_faces(t)
             .into_iter()
             .map(|(ring, top)| {
-                let bottom = walls::Plane { z: top.z - t.thickness, ..top };
-                (bottom.lift(&ring), t.thickness)
+                let bottom = walls::Plane { z: top.z - thickness, ..top };
+                (bottom.lift(&ring), thickness)
             })
             .collect()
     }
 
-    /// A toposolid's slab as one closed solid: its top's planes, and `thickness` under them plumb, its sides round its
+    /// A toposolid's slab as one closed solid: its top's planes, and its thickness under them plumb, its sides round its
     /// boundary. None for a boundary that doesn't triangulate.
     pub fn toposolid_solid(&self, t: &Toposolid) -> Option<Polyhedron> {
-        self.solid_under_shape(&self.toposolid_as_floor(t), &[], t.thickness, None)
+        self.solid_under_shape(&self.toposolid_as_floor(t), &[], self.toposolid_thickness(t), None)
     }
 
     /// How much a toposolid holds, mm³.
@@ -6990,7 +7010,7 @@ impl Model {
             }
             match layers.iter().filter(|l| l.variable).count() {
                 0 => {}
-                _ if matches!(cat, "wall" | "ceiling") => {
+                _ if matches!(cat, "wall" | "ceiling" | "toposolid") => {
                     return Err(format!("{who}: only a floor's or a roof's layer can be variable, to take up a shaped top's falls"));
                 }
                 1 => {}
@@ -7323,15 +7343,13 @@ impl Model {
             }
             Element::Toposolid(t) => {
                 level_ok(t.level)?;
+                known(&who, &t.type_name, &self.types.toposolid)?;
                 boundary(&who, &t.boundary)?;
                 crate::site::check(&who, &t.boundary)?;
                 text(&who, "name", &t.name)?;
                 coord(&format!("{who} offset"), t.offset)?;
-                coord(&format!("{who} thickness"), t.thickness)?;
                 coord(&format!("{who} interval"), t.interval)?;
-                if t.thickness <= 0.0 {
-                    return Err(format!("{who}: its thickness is {} mm: it must be more than 0", t.thickness));
-                }
+                coord(&format!("{who} thickness"), self.toposolid_thickness(t))?;
                 if t.interval != 0.0 && t.interval < MIN_CONTOUR_INTERVAL {
                     return Err(format!(
                         "{who}: its contour interval is {} mm: it must be 0, or at least {MIN_CONTOUR_INTERVAL} mm",

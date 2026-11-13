@@ -3080,7 +3080,7 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
                             FAINT,
                             (f.pattern_origin, f.pattern_angle),
                         ),
-                        None => surface(&mut d, &piece, x.surface, FAINT),
+                        None => surface(&mut d, &piece, x.surface, FAINT, (f.pattern_origin, f.pattern_angle)),
                     }
                 }
             }
@@ -3392,8 +3392,29 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
             Element::Ramp(r) => ramp(&mut d, m, r, level),
             Element::Railing(rl) if m.level_of(e) == Some(level) => railing(&mut d, m, rl, range.cut),
             Element::PropertyLine(pl) if pl.level == level => property_outline(&mut d, pl),
-            // A toposolid: its boundary, and the lines where its top crosses each contour height.
+            // A toposolid: its boundary, the lines where its top crosses each contour height, and its type's surface.
             Element::Toposolid(t) if t.level == level => {
+                d.owner = Some(id);
+                let material = m.type_layers("toposolid", &t.type_name).first().and_then(|l| m.materials.get(&l.material));
+                if d.detail == Detail::Fine
+                    && let Some(x) = material
+                {
+                    for (face, rise) in m.toposolid_slabs(t) {
+                        for piece in m.less_shafts(&face, rise).0 {
+                            match x.surface_pattern.as_ref().and_then(|n| m.fill_patterns.get(n)) {
+                                Some(p) => fill_pattern(
+                                    &mut d,
+                                    p,
+                                    std::slice::from_ref(&piece),
+                                    std::slice::from_ref(&piece),
+                                    FAINT,
+                                    (t.pattern_origin, t.pattern_angle),
+                                ),
+                                None => surface(&mut d, &piece, x.surface, FAINT, (t.pattern_origin, t.pattern_angle)),
+                            }
+                        }
+                    }
+                }
                 d.line(&t.boundary, BY_CATEGORY, FAINT, true);
                 for (_, lines) in m.toposolid_contours(t) {
                     for (a, b) in lines {
@@ -3717,28 +3738,30 @@ fn cut_layer(d: &mut Drawing, m: &Model, layer: &Layer, ring: &[P2], u: P2, room
             d.fill(&[ring.to_vec()], PAPER);
         }
         let gap = GAP / d.view.scale;
-        hatch(d, ring, pattern, u, INK, gap);
+        hatch(d, ring, pattern, u, INK, gap, P2(0.0, 0.0));
     } else if layer.function != Function::Structure && over.is_none() {
         d.fill(&[ring.to_vec()], LIGHT_POCHE);
     }
 }
 
-/// A surface pattern over `ring`, where its lines are far enough apart to read.
-fn surface(d: &mut Drawing, ring: &[P2], pattern: Pattern, color: Rgb) {
+/// A surface pattern over `ring`, where its lines are far enough apart to read: its courses turned by `placed`'s angle
+/// and its lines started at its origin, as a named fill pattern's are — one paving over every piece of a shaped slab.
+fn surface(d: &mut Drawing, ring: &[P2], pattern: Pattern, color: Rgb, (origin, angle): (P2, f64)) {
     if MODULE * d.view.scale >= GAP / 2.0 {
-        hatch(d, ring, pattern, P2(1.0, 0.0), color, MODULE);
+        let (sin, cos) = angle.to_radians().sin_cos();
+        hatch(d, ring, pattern, P2(cos, sin), color, MODULE, origin);
     }
 }
 
 /// `pattern` over `ring` (model mm), as far as the view shows it: its lines `gap` mm apart, thin,
 /// its courses along unit `u`; an insulation's zigzag along the ring's length, side to side.
-fn hatch(d: &mut Drawing, ring: &[P2], pattern: Pattern, u: P2, color: Rgb, gap: f64) {
+fn hatch(d: &mut Drawing, ring: &[P2], pattern: Pattern, u: P2, color: Rgb, gap: f64, origin: P2) {
     let part = std::mem::replace(&mut d.part, Part::Pattern);
-    hatching(d, ring, pattern, u, color, gap);
+    hatching(d, ring, pattern, u, color, gap, origin);
     d.part = part;
 }
 
-fn hatching(d: &mut Drawing, ring: &[P2], pattern: Pattern, u: P2, color: Rgb, gap: f64) {
+fn hatching(d: &mut Drawing, ring: &[P2], pattern: Pattern, u: P2, color: Rgb, gap: f64, origin: P2) {
     let (w, h) = (d.view.width as f32, d.view.height as f32);
     let (lo, hi) = (d.view.mm((0.0, h)), d.view.mm((w, 0.0)));
     let ring = [(P2(1.0, 0.0), lo.0), (P2(-1.0, 0.0), -hi.0), (P2(0.0, 1.0), lo.1), (P2(0.0, -1.0), -hi.1)]
@@ -3767,9 +3790,12 @@ fn hatching(d: &mut Drawing, ring: &[P2], pattern: Pattern, u: P2, color: Rgb, g
         if (c1 - c0) / step > 2000.0 {
             return;
         }
-        let mut k = (c0 / step).ceil();
-        while k * step <= c1 {
-            seg(d, dir.perp() * (k * step) + dir * (a0 - 1.0), dir, f64::NEG_INFINITY, f64::INFINITY);
+        // Its lines lie where the pattern puts them all over the model, not at this ring's own extent: one paving over
+        // every piece of a shaped slab, and turned as the view's origin and angle say.
+        let on = origin.dot(dir.perp());
+        let mut k = ((c0 - on) / step).ceil();
+        while on + k * step <= c1 {
+            seg(d, dir.perp() * (on + k * step) + dir * (a0 - 1.0), dir, f64::NEG_INFINITY, f64::INFINITY);
             k += 1.0;
         }
     };
@@ -3869,7 +3895,7 @@ fn ceiling(d: &mut Drawing, m: &Model, id: Id, c: &Ceiling) {
             if !replaced && let Some(x) = material {
                 match x.surface_pattern.as_ref().and_then(|n| m.fill_patterns.get(n)) {
                     Some(p) => fill_pattern(d, p, std::slice::from_ref(&piece), std::slice::from_ref(&piece), INK, (P2(0.0, 0.0), 0.0)),
-                    None => surface(d, &piece, x.surface, INK),
+                    None => surface(d, &piece, x.surface, INK, (P2(0.0, 0.0), 0.0)),
                 }
             }
         }

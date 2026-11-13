@@ -924,6 +924,9 @@ impl Model {
         for (n, x) in &t.floor {
             add("layer", "floor type", n, x.layers.iter().map(|l| (l.id, l.guid)).collect());
         }
+        for (n, x) in &t.toposolid {
+            add("layer", "toposolid type", n, x.layers.iter().map(|l| (l.id, l.guid)).collect());
+        }
         for (n, x) in &t.roof {
             add("layer", "roof type", n, x.layers.iter().map(|l| (l.id, l.guid)).collect());
         }
@@ -1060,6 +1063,9 @@ impl Model {
             x.layers.iter_mut().for_each(|l| give(&mut l.id, &mut l.guid));
         }
         for x in t.floor.values_mut() {
+            x.layers.iter_mut().for_each(|l| give(&mut l.id, &mut l.guid));
+        }
+        for x in t.toposolid.values_mut() {
             x.layers.iter_mut().for_each(|l| give(&mut l.id, &mut l.guid));
         }
         for x in t.roof.values_mut() {
@@ -1292,7 +1298,8 @@ impl Model {
             .flat_map(|x| x.layers.iter_mut())
             .chain(t.floor.values_mut().flat_map(|x| x.layers.iter_mut()))
             .chain(t.roof.values_mut().flat_map(|x| x.layers.iter_mut()))
-            .chain(t.ceiling.values_mut().flat_map(|x| x.layers.iter_mut()));
+            .chain(t.ceiling.values_mut().flat_map(|x| x.layers.iter_mut()))
+            .chain(t.toposolid.values_mut().flat_map(|x| x.layers.iter_mut()));
         for l in layers {
             (l.id, l.guid) = (0, Guid::default());
         }
@@ -1541,7 +1548,8 @@ impl Model {
             .flat_map(|x| x.layers.iter_mut())
             .chain(t.floor.values_mut().flat_map(|x| x.layers.iter_mut()))
             .chain(t.roof.values_mut().flat_map(|x| x.layers.iter_mut()))
-            .chain(t.ceiling.values_mut().flat_map(|x| x.layers.iter_mut()));
+            .chain(t.ceiling.values_mut().flat_map(|x| x.layers.iter_mut()))
+            .chain(t.toposolid.values_mut().flat_map(|x| x.layers.iter_mut()));
         for l in layers.filter(|l| !l.material.is_empty()) {
             f(&Kind::Material, &mut l.material);
         }
