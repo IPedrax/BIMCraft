@@ -2284,6 +2284,8 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"view": "{3D}", "region": null}),
         json!({"text": "", "at": [0, 0]}),
         json!({"text": "x", "at": [0, 0], "size": 1e300, "angle": f64::MAX, "leader": [1e300, 0]}),
+        json!({"text": "x", "at": [0, 0], "leader": [0, 1e300], "leader_kind": "zigzag"}),
+        json!({"text": "x", "at": [0, 0], "leader": [0, 1e300], "leader_kind": "curved"}),
         json!({"text": "x", "at": [0, 0], "view": 100002}),
         json!({"at": [4000, 3000], "view": 100002, "host": u64::MAX}),
         json!({"kind": "angular", "refs": [{"id": 100002}, {"id": 100004}], "at": [0, 0]}),

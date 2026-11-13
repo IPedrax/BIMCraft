@@ -23,8 +23,8 @@ use crate::geom::{self, P2};
 use crate::graphics::{Detail, Look, scale_of};
 use crate::model::Guid;
 use crate::model::{
-    CEILING_CUT, Ceiling, DetailLine, DimKind, Dimension, Element, FilledRegion, Floor, Function, Id, Key, Layer, Model, Note, Opening,
-    Pattern, PlanRange, Railing, Ramp, Roof, Section, Shaft, Stair, TOL, Tag, View3D, Wall,
+    CEILING_CUT, Ceiling, DetailLine, DimKind, Dimension, Element, FilledRegion, Floor, Function, Id, Key, Layer, LeaderKind, Model, Note,
+    Opening, Pattern, PlanRange, Railing, Ramp, Roof, Section, Shaft, Stair, TOL, Tag, View3D, Wall,
 };
 use crate::pen::{Pen, Weights};
 use crate::styles::{BY_CATEGORY, ObjectStyle};
@@ -4919,9 +4919,36 @@ pub(crate) fn note(d: &mut Drawing, m: &Model, n: &Note) {
         // From the side nearer where it points.
         let to = d.view.px(to);
         let right = frame.mm(to).0 > layout.width / 2.0;
-        let from = frame.px((if right { layout.width + off } else { -off }, t.size / 2.0));
-        d.stroke(vec![from, to], Pen::PROJECTION, INK, None, false);
-        arrow(d, from, to);
+        let (fx, fy) = (if right { layout.width + off } else { -off }, t.size / 2.0);
+        let from = frame.px((fx, fy));
+        // A shoulder level with the note, its lettering's height long, always away from the note and never past the point:
+        // where two segments meet, and where an arc is pulled toward.
+        let side = if right { 1.0 } else { -1.0 };
+        let along = (frame.mm(to).0 - fx) * side;
+        let reach = side * if along > 0.0 { t.size.min(along) } else { t.size };
+        let elbow = frame.px((fx + reach, fy));
+        match n.leader_kind {
+            LeaderKind::Straight => {
+                d.stroke(vec![from, to], Pen::PROJECTION, INK, None, false);
+                arrow(d, from, to);
+            }
+            LeaderKind::TwoSegment => {
+                d.stroke(vec![from, elbow, to], Pen::PROJECTION, INK, None, false);
+                arrow(d, elbow, to);
+            }
+            LeaderKind::Curved => {
+                // A quadratic curve from the note's side, level out of it and turned toward the point by the shoulder's
+                // corner: the same corner a two-segment leader bends at.
+                let mut arc = Vec::with_capacity(17);
+                for step in 0..=16 {
+                    let u = step as f32 / 16.0;
+                    let (a, b, c) = ((1.0 - u) * (1.0 - u), 2.0 * u * (1.0 - u), u * u);
+                    arc.push((a * from.0 + b * elbow.0 + c * to.0, a * from.1 + b * elbow.1 + c * to.1));
+                }
+                d.stroke(arc, Pen::PROJECTION, INK, None, false);
+                arrow(d, elbow, to);
+            }
+        }
     }
 }
 

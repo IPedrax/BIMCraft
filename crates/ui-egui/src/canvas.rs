@@ -2974,6 +2974,7 @@ impl BimApp {
         let mut p = json!({"text": text, "at": point(at), "view": view});
         if let Some(arrow) = leader {
             p["leader"] = point(arrow);
+            p["leader_kind"] = json!(self.note_leader_kind.name());
         }
         self.run("text", p);
     }
@@ -4549,6 +4550,7 @@ impl BimApp {
                 let mut n = crate::notes::NoteEdit::new(m, key, round(v.mm(q)), self.note_type()).note;
                 n.text = text;
                 n.leader = self.note_arrow.filter(|(view, _)| *view == key).map(|(_, arrow)| arrow);
+                n.leader_kind = self.note_leader_kind;
                 sketched(&Element::Text(n));
                 return;
             }
