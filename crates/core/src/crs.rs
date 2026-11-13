@@ -54,6 +54,17 @@ fn unit_of(to_meter: f64) -> String {
     }
 }
 
+/// The EPSG code a coordinate reference system's name gives: `EPSG:31983`, `epsg:31983` or `31983`.
+pub fn code(name: &str) -> Option<u32> {
+    let t = name.trim();
+    t.strip_prefix("EPSG:").or_else(|| t.strip_prefix("epsg:")).unwrap_or(t).trim().parse().ok()
+}
+
+/// Whether EPSG's dataset as this version has it holds code `code`, projected or not.
+pub fn known(code: u32) -> bool {
+    def(code).is_some()
+}
+
 /// The projected CRS of EPSG code `code`; else why not.
 pub fn lookup(code: u32) -> Result<Info, String> {
     let d = def(code).ok_or_else(|| format!("EPSG:{code} isn't a CRS this version knows"))?;

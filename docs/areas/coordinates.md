@@ -57,6 +57,39 @@ with coordinates are 34. Files of 19 and 33 need no step: their georeference is 
 internal origin. #284's own files (its unreleased builds wrote 19) keep their points; its `locations` and `crs` are left
 out and `open` lists them (`left_out`).
 
+## A map's CRS and WGS84
+
+A site's map system is its georeference's `crs` where that names an EPSG code (`EPSG:31983`) of a projected CRS
+(`Georeference::map`, `crs::code`): the shared coordinates are a grid of it. A name this version doesn't know is kept, as
+IFC files name their own, and has no WGS84; a known geographic code is refused. `crs.rs` looks it up in
+`crs-definitions` (EPSG's definitions as proj strings, CC0; `lookup` refuses a code it lacks and a geographic one), names
+it by its WKT's name, and gives its grid unit (metre, foot, US survey foot: shared coordinates stay mm, and the grid's own
+numbers are the mm over `Info::mm`). `to_wgs84` and `from_wgs84` go through `proj4rs`, pure Rust PROJ.4: 2D, with the
+definition's Helmert shift, so within centimetres of PROJ on a UTM or Lambert grid and metres where PROJ would use a grid
+shift. That is what WGS84 is for here, the map and the sun; survey numbers never go through it. `search` scans every code
+(a match, fast) for a code or all words of a name. EPSG's terms ask for the attribution in `NOTICE`.
+
+### Finding a system by place
+
+People know where the site is, not which EPSG code its survey is in. `places.rs` finds countries and cities by name offline
+(Natural Earth's countries, with their names in English, Portuguese, Spanish, French, German and Italian, and its ~7,300
+populated places, biggest first: `assets/map/places.tsv`, 318 KB, written by `places.py`), accents aside (`fold`: "sao
+paulo"), and later words may name the state or country ("paulo brasil"). Each place is paired with the systems surveys
+there use, the one to pick first: the country's national grid (`grids`: British National Grid, Lambert-93, RD New, LV95…),
+the place's UTM zone (or Gauss-Krüger band, MGA zone, Lo zone) on the country's datum (`zones`: SIRGAS 2000, ETRS89,
+NAD83(2011), NAD83(CSRS), GDA2020, JGD2011, CGCS2000, POSGAR 2007, Hartebeesthoek94, Mexico ITRF2008), then the zone on
+WGS 84, which is anywhere's. Zones are named as EPSG names them and looked up by that name, so one this version lacks is left
+out, never invented; `every_country_s_systems_are_known` holds each pattern to the dataset. Which systems a country uses is
+ours, a starting list: a country not in it gets the WGS 84 zone, and the name search finds the rest. `georeference {search}` (the `crs` command of
+#284, folded into it) returns the places beside the systems found by name: `places: [{kind, name, region, country, iso, longitude, latitude, systems:
+[{code, name, unit, why}]}]`.
+
+`Frame::Wgs84` is [longitude, latitude, elevation mm]; `Frames::convert` returns an error without a map system. The
+`coordinates` report adds each point's `wgs84` and the `crs`. `location` takes `latitude` and `longitude` for the Survey
+Point's east and north. Setting a known code names the georeference after it where no `description` is given. IFC
+export writes the map's unit (a foot as a conversion-based unit) and the site's RefLatitude, RefLongitude and RefElevation
+where the map system is known; `import_cad` reads a drawing whose file says inches at map coordinates in its unit.
+
 ## Elevations, spots and schedules
 
 `Origin` (base, survey, internal) says what a reading measures from: `Frames::elevation` turns an internal height into one
@@ -101,7 +134,8 @@ Tests: `spot_coordinate_tests.rs`, `coordinates_tests.rs`. The desktop's tool an
 `save` to `.ifc` takes `ifc_origin` (`ifc::Origin`: internal, the default; base; survey; shared) and writes through
 `ifc::export_at`. The site's placement puts the file's origin at that internal point, or (shared) the map's own coordinates,
 turned to true north. There is one `IfcMapConversion`, always the active site at the file's origin: its eastings, northings
-and height are the site's shared coordinates of that point, in metres; its x axis is the site's rotation; and its scale, as
+and height are the site's shared coordinates of that point, in the map's unit (metres, or a foot where the map system is
+in feet); its x axis is the site's rotation; and its scale, as
 IFC4 has it, carries the unit with the ground-to-grid scale (0.9996 in metres is 0.0009996, as IfcOpenShell's `xyz2enh`
 takes it). For `shared` the conversion turns and moves nothing, its scale only the unit; the site's placement can move and
 turn but not scale, so there a point lies at its ground distance from the origin, not its grid one. The conversion and its
@@ -124,8 +158,8 @@ Geometry stays near the internal origin; what comes in at map coordinates goes t
 
 A civil drawing in metres often keeps AutoCAD's imperial default in its header (`$INSUNITS` inches). With units auto,
 `import_cad` reads a drawing whose file says inches and whose middle is more than 50 000 units off its origin
-(`looks_like_map`) in metres (the map system's unit once map systems name one, slice 6), and says so in `notes`; one that
-says feet (US State Plane drawings are) is read in feet with a `warning`. Units given
+(`looks_like_map`) in the unit of the active site's map system, else in metres, and says so in `notes`; one that says feet
+(US State Plane drawings are) is read in the map system's unit when that is metric, else in feet with a `warning`. Units given
 are always kept. Placed origin to origin past what a model reaches, it is refused with the ways to bring it in.
 
 - **CAD** (`import_cad`, `position: shared`): the drawing's coordinates are the map's, in its units. Its middle goes where
@@ -210,7 +244,8 @@ The north arrow annotation, and the map and the sun (the plan's stage 8), are on
 - `location`: makes (a copy of the active site), edits, renames, activates and deletes a site, its numbers the Survey
   Point's; `shift` adds to one, or to every site when no `name` is given (the survey says +5 m: one command).
 - `specify_coordinates`: the active site solved for a point.
-- `convert_coordinates`: points between `internal`, `base` and `shared`, of the active site or the one named.
+- `convert_coordinates`: points between `internal`, `base`, `shared` and `wgs84`, of the active site or the one named.
+- `georeference {search, limit}`: map systems by code, name or place.
 - `coordinates {acquire}` and `coordinates {reset}`: Acquire Coordinates from a link or a placed drawing, Reset Coordinates.
 - `link`: `by: manual|base|shared` and `location`; `import_cad` (`position: shared`, `acquire`) and `point_cloud`
   (`origin: shared`, `acquire`).
@@ -220,4 +255,4 @@ The north arrow annotation, and the map and the sun (the plan's stage 8), are on
 
 Every change is a command and so one undo step. Tests: `coordinates_tests.rs`, and the payloads in the hostile sweep.
 
-Not yet (the plan's later slices): map systems and WGS84, and the desktop.
+Not yet (the plan's later slices): the desktop.

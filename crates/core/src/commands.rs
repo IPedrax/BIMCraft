@@ -761,9 +761,10 @@ other_files(
     other(
         "convert_coordinates",
         "Convert Coordinates",
-        "{points: [[x,y,z], …], from: internal|base|shared, to: internal|base|shared, location?} each point from one frame to \
-         another, mm: `internal`, the file's own, where geometry is; `base`, from the Project Base Point; `shared`, the map \
-         coordinates of the active location (or of `location`). Returns points",
+        "{points: [[x,y,z], …], from: internal|base|shared|wgs84, to: internal|base|shared|wgs84, location?} each point from one \
+         frame to another, mm: `internal`, the file's own, where geometry is; `base`, from the Project Base Point; `shared`, the \
+         map coordinates of the active site (or of the site `location` names); `wgs84`, [longitude, latitude, elevation mm], \
+         through the site's map system (its `crs`, a projected EPSG code). Returns points",
         convert_coordinates,
     ),
     edit(
@@ -2219,7 +2220,13 @@ other_files(
          from the map's east (`rotation`, degrees counterclockwise: true north east of project north) and a distance on the map \
          over the same in the project (`scale`, 1 as it starts; in plan only, heights stay true). It is the active site: \
          `location` names it and keeps others, and says it at the Survey Point. Any field makes one; what isn't given keeps its \
-         value. `clear` takes it away. With nothing, it says it (null for none). \
+         value. `clear` takes it away. With nothing, it says it (null for none). A projected EPSG code this version knows is the \
+         site's map system: it names itself as the description, and WGS84 (`convert_coordinates`, `location`'s `latitude` and \
+         `longitude`) and a map unit other than the metre go through it. `search` (with `limit`, 20 by default) finds systems \
+         whose code it is or whose name has all its words (`found`), and the countries and cities it names (`places`: \
+         \"São Paulo\", \"paulo brasil\", \"Alemania\", accents aside), each with its `longitude`, `latitude` and the `systems` \
+         surveys there use, the one to pick first: the national grid, the place's zone on the country's datum, the zone on WGS 84, \
+         each with `why`; it changes nothing. \
          IFC import keeps the file's (moved with the model where the import brings it near the origin) and export writes it back as \
          IfcMapConversion to an IfcProjectedCRS in metres; the model's own coordinates and drawings don't move",
         georeference,
@@ -8110,7 +8117,7 @@ fn import_cad(s: &mut Session, p: &Value) -> R {
         }
         (None | Some("auto"), None) => {
             let bulk = cad.bulk().unwrap_or_default();
-            let (k, note) = auto_scale(dxf.scale, &dxf.unit, (bulk[0] + bulk[1]) * 0.5);
+            let (k, note) = auto_scale(&s.model, dxf.scale, &dxf.unit, (bulk[0] + bulk[1]) * 0.5);
             notes.extend(note);
             k
         }
@@ -8118,6 +8125,7 @@ fn import_cad(s: &mut Session, p: &Value) -> R {
     };
     let unit_warning = (absent(p.get("units")) || string(c, p, "units")?.as_deref() == Some("auto"))
         && absent(p.get("scale"))
+        && s.model.site().map().is_none()
         && looks_like_map(dxf.scale, (cad.bulk().unwrap_or_default()[0] + cad.bulk().unwrap_or_default()[1]) * 0.5) == Some(false);
     let file_unit = dxf.unit.clone();
     let bulk = cad.bulk().unwrap_or_default();
@@ -9287,7 +9295,11 @@ fn coordinates(s: &mut Session, p: &Value) -> R {
 fn location(s: &mut Session, p: &Value) -> R {
     use crate::coordinates::MAX_LOCATIONS;
     let c = "location";
-    only(c, p, &["name", "east", "north", "elevation", "angle", "scale", "rename", "activate", "delete", "shift"])?;
+    only(
+        c,
+        p,
+        &["name", "east", "north", "elevation", "angle", "scale", "rename", "activate", "delete", "shift", "latitude", "longitude"],
+    )?;
     let name = name_param(c, p, "name")?;
     let shift = shared3(c, p, "shift")?;
     let shifted = |g: &mut crate::model::Georeference, d: [f64; 3]| {
@@ -9341,6 +9353,17 @@ fn location(s: &mut Session, p: &Value) -> R {
         if let Some(x) = shared1(c, p, key)? {
             at[i] = x;
         }
+    }
+    // Or put on the globe, through the site's map system.
+    match (amount(c, p, "longitude", "degrees")?, amount(c, p, "latitude", "degrees")?) {
+        (None, None) => {}
+        (Some(lon), Some(lat)) => {
+            let map = g.map().ok_or_else(|| {
+                bad(c, "`latitude` and `longitude` need the site's map system: name a projected EPSG code with `georeference` (`crs`)")
+            })?;
+            (at[0], at[1]) = crate::crs::from_wgs84(map.code, lon, lat).map_err(|e| bad(c, e))?;
+        }
+        _ => return Err(bad(c, "`latitude` and `longitude` go together")),
     }
     g.specify(survey, at);
     if let Some(d) = shift {
@@ -9474,7 +9497,7 @@ fn convert_coordinates(s: &mut Session, p: &Value) -> R {
         bad(c, format!("there's no location `{name}`; the project has {}", names.join(", ")))
     })?;
     let f = Frames { co: &m.coordinates, site };
-    let out: Vec<[f64; 3]> = pts.into_iter().map(|q| f.convert(q, from, to)).collect();
+    let out: Vec<[f64; 3]> = pts.into_iter().map(|q| f.convert(q, from, to)).collect::<Result<_, _>>().map_err(|e| bad(c, e))?;
     if out.iter().flatten().any(|x| !crate::coordinates::on_map(*x)) {
         return Err(bad(c, "a point lands past the coordinates' bounds"));
     }
@@ -10931,13 +10954,18 @@ fn looks_like_map(scale: Option<f64>, middle: P2) -> Option<bool> {
 }
 
 /// The scale an import whose units are auto reads a drawing at, and a note when it isn't its file's: a file that says inches
-/// for map coordinates (`looks_like_map`) is read in metres. Else its file's.
-fn auto_scale(scale: Option<f64>, unit: &str, middle: P2) -> (f64, Option<String>) {
+/// for map coordinates (`looks_like_map`) is read in the unit of the active site's map system, else in metres; one that says
+/// feet, in the map system's unit when that is metric. Else its file's.
+fn auto_scale(m: &Model, scale: Option<f64>, unit: &str, middle: P2) -> (f64, Option<String>) {
     let file = scale.unwrap_or(1.0);
     let unit = spelled(unit);
-    // shortcut: metres until map systems name their unit (slice 6), which then reads inches, and feet on a metric map, in it.
-    let (k, why) = match looks_like_map(scale, middle) {
-        Some(true) => (1000.0, "metres, as map coordinates are".to_string()),
+    let info = m.site().map();
+    let (k, why) = match (looks_like_map(scale, middle), &info) {
+        // Inches, or feet where the map system is metric: the map system's unit.
+        (Some(inches), Some(i)) if inches || i.mm() >= 1000.0 => {
+            (i.mm(), format!("{}s, the unit of the project's map system ({})", i.unit, i.name))
+        }
+        (Some(true), _) => (1000.0, "metres, as map coordinates are".to_string()),
         _ => return (file, None),
     };
     if (k - file).abs() < 1e-9 {
@@ -18374,7 +18402,20 @@ fn georeference(s: &mut Session, p: &Value) -> R {
     const TEXTS: [&str; 5] = ["description", "geodetic_datum", "vertical_datum", "map_projection", "map_zone"];
     const NUMBERS: [&str; 5] = ["eastings", "northings", "height", "rotation", "scale"];
     let keys: Vec<&str> = ["crs", "clear"].into_iter().chain(TEXTS).chain(NUMBERS).collect();
-    only(c, p, &keys)?;
+    only(c, p, &[&keys[..], &["search", "limit"]].concat())?;
+    // A map system found by its code, by the words of its name, or by a place: changing nothing.
+    if let Some(text) = string(c, p, "search")? {
+        let limit = match p.get("limit") {
+            v if absent(v) => 20,
+            Some(v) => {
+                v.as_u64().filter(|n| (1..=500).contains(n)).ok_or_else(|| bad(c, format!("`limit` must be 1 to 500, got {v}")))? as usize
+            }
+            None => 20,
+        };
+        let found: Vec<Value> = crate::crs::search(&text, limit).iter().map(crate::crs::Info::json).collect();
+        let places: Vec<Value> = crate::places::find(&text, limit).iter().map(crate::places::Place::json).collect();
+        return Ok(json!({"found": found, "places": places}));
+    }
     let given = keys.iter().filter(|k| **k != "clear").any(|k| !absent(p.get(*k)));
     match p.get("clear") {
         None | Some(Value::Null) => {}
@@ -18393,6 +18434,13 @@ fn georeference(s: &mut Session, p: &Value) -> R {
         let mut g = s.model.site().clone();
         if let Some(crs) = string(c, p, "crs")? {
             g.crs = crs.trim().to_string();
+            // A known EPSG code must be a map grid, and names itself where no description is given.
+            if let Some(code) = crate::crs::code(&g.crs).filter(|code| crate::crs::known(*code)) {
+                let map = crate::crs::lookup(code).map_err(|e| bad(c, e))?;
+                if absent(p.get("description")) {
+                    g.description = Some(map.name);
+                }
+            }
         }
         let mut texts = [&mut g.description, &mut g.geodetic_datum, &mut g.vertical_datum, &mut g.map_projection, &mut g.map_zone];
         for (key, field) in TEXTS.into_iter().zip(texts.iter_mut()) {

@@ -116,6 +116,9 @@ fn ifc_goes_out_with_its_map_conversion_and_crs() {
     // True north, in the file's axes: 10° east of its y.
     let north = format!("IFCDIRECTION(({},{}))", crate::ifc::ratio(sn), crate::ifc::ratio(c));
     assert!(text.contains(&north), "{north} in the file");
+    // Its site's latitude, about 23° 33' south.
+    let site = text.lines().find(|l| l.contains("IFCSITE(")).unwrap();
+    assert!(site.contains("(-23,-33,"), "{site}");
 }
 
 #[test]
@@ -167,6 +170,23 @@ fn ifc_map_conversion_scale_takes_the_projects_millimetres_to_the_maps_unit() {
     let text = ifc_of(&mut s, "ifc-scale-shared", Some("shared"));
     let k = conversion_of(&text);
     assert!((k[5] - 1e-3).abs() < 1e-15 && k[0] == 0.0 && k[1] == 0.0, "{k:?}");
+
+    // In US survey feet (NY Long Island): the scale takes millimetres to feet.
+    let mut s = Session::new();
+    run(&mut s, "georeference", json!({"crs": "EPSG:2263"}));
+    run(&mut s, "location", json!({"name": "Internal", "east": 300_000_000.0, "north": 60_000_000.0, "scale": 0.9999}));
+    run(&mut s, "wall", json!({"points": [[0, 0], [8000, 0]]}));
+    let text = ifc_of(&mut s, "ifc-scale-ft", None);
+    assert!(text.contains("'US SURVEY FOOT'"), "the map's unit: {text}");
+    let k = conversion_of(&text);
+    let ft = 1200.0 / 3937.0 * 1000.0;
+    assert!((k[5] - 0.9999 / ft).abs() < 1e-12, "scale {} in {k:?}", k[5]);
+    let want = to_shared(&s, [8000.0, 0.0, 0.0]).map(|x| x / ft);
+    let got = on_map(k, [8000.0, 0.0, 0.0]);
+    assert!(near3(got, want, 1e-3), "{got:?}, not {want:?}");
+    // And it reads back in feet, where it was.
+    let (back, g) = wall_start_shared(&text);
+    assert!(near3(back, to_shared(&s, [0.0; 3]), 1.0) && (g.scale - 0.9999).abs() < 1e-9, "{back:?} {g:?}");
 }
 
 #[test]

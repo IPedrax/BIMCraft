@@ -147,6 +147,12 @@ impl Georeference {
         self.specify([0.0; 3], [metre(q[0]), metre(q[1]), metre(q[2])]);
     }
 
+    /// Its map system, where its `crs` names an EPSG code of a projected system this version knows: what WGS84, a map unit
+    /// other than the metre, and a place search need.
+    pub fn map(&self) -> Option<crate::crs::Info> {
+        crate::crs::code(&self.crs).and_then(|c| crate::crs::lookup(c).ok())
+    }
+
     /// It as Revit shows it, with the Survey Point at `survey`.
     pub fn location(&self, survey: P3) -> Location {
         let [east, north, elevation] = self.to_shared(survey);
@@ -231,16 +237,19 @@ pub enum Frame {
     Base,
     /// The site's shared coordinates.
     Shared,
+    /// WGS84 through the site's map system: longitude and latitude, degrees, and the elevation, mm.
+    Wgs84,
 }
 
 impl Frame {
-    pub const NAMES: &str = "internal, base, shared";
+    pub const NAMES: &str = "internal, base, shared, wgs84";
 
     pub fn parse(s: &str) -> Option<Frame> {
         match s {
             "internal" => Some(Frame::Internal),
             "base" => Some(Frame::Base),
             "shared" | "survey" => Some(Frame::Shared),
+            "wgs84" => Some(Frame::Wgs84),
             _ => None,
         }
     }
@@ -290,19 +299,35 @@ impl Frames<'_> {
         }
     }
 
-    /// `p` from frame `from` to frame `to`.
-    pub fn convert(&self, p: P3, from: Frame, to: Frame) -> P3 {
+    /// The EPSG code WGS84 goes through; else what to do.
+    fn code(&self) -> Result<u32, String> {
+        self.site.map().map(|i| i.code).ok_or_else(|| {
+            "WGS84 needs the site's map system: name a projected EPSG code with `georeference` (`crs`: EPSG:31983)".to_string()
+        })
+    }
+
+    /// `p` from frame `from` to frame `to`; WGS84 needs a map system.
+    pub fn convert(&self, p: P3, from: Frame, to: Frame) -> Result<P3, String> {
         let b = self.co.base;
         let internal = match from {
             Frame::Internal => p,
             Frame::Base => [p[0] + b[0], p[1] + b[1], p[2] + b[2]],
             Frame::Shared => self.to_internal(p),
+            Frame::Wgs84 => {
+                let (e, n) = crate::crs::from_wgs84(self.code()?, p[0], p[1])?;
+                self.to_internal([e, n, p[2]])
+            }
         };
-        match to {
+        Ok(match to {
             Frame::Internal => internal,
             Frame::Base => [internal[0] - b[0], internal[1] - b[1], internal[2] - b[2]],
             Frame::Shared => self.to_shared(internal),
-        }
+            Frame::Wgs84 => {
+                let q = self.to_shared(internal);
+                let (lon, lat) = crate::crs::to_wgs84(self.code()?, q[0], q[1])?;
+                [lon, lat, q[2]]
+            }
+        })
     }
 }
 
@@ -405,7 +430,11 @@ impl Model {
         let point = |p: Point| {
             let at = p.at(&self.coordinates);
             let (id, guid) = ids(&Kind::CoordinatePoint, p.name());
-            json!({"internal": at, "shared": f.to_shared(at), "id": id, "guid": guid})
+            let mut v = json!({"internal": at, "shared": f.to_shared(at), "id": id, "guid": guid});
+            if let Ok(w) = f.convert(at, Frame::Internal, Frame::Wgs84) {
+                v["wgs84"] = json!(w);
+            }
+            v
         };
         let sites = std::iter::once((&self.coordinates.active, self.site())).chain(&self.coordinates.sites);
         let locations: serde_json::Map<String, Value> = sites
@@ -427,6 +456,7 @@ impl Model {
             "location": f.location(),
             "locations": locations,
             "georeference": self.georeference,
+            "crs": self.site().map().map(|i| i.json()),
         })
     }
 }

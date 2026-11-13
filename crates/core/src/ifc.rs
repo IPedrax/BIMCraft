@@ -1013,6 +1013,16 @@ pub fn export(m: &Model) -> String {
     export_with(m, true, Origin::Internal)
 }
 
+/// A plane angle as IFC's compound measure: degrees, minutes, seconds and millionths of a second, all of its sign.
+fn compound(deg: f64) -> String {
+    let micro = (deg.abs() * 3_600_000_000.0).round() as i64;
+    let sign = if deg < 0.0 { -1 } else { 1 };
+    let (d, rest) = (micro / 3_600_000_000, micro % 3_600_000_000);
+    let (min, rest) = (rest / 60_000_000, rest % 60_000_000);
+    let (sec, millionths) = (rest / 1_000_000, rest % 1_000_000);
+    format!("({},{},{},{})", sign * d, sign * min, sign * sec, sign * millionths)
+}
+
 /// The model as IFC4, its coordinates' origin at `at`, with the active site's true north and, where it names a coordinate
 /// reference system, its map conversion from that origin (`IfcMapConversion`, `IfcProjectedCRS`).
 pub fn export_at(m: &Model, at: Origin) -> String {
@@ -1046,6 +1056,7 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin) -> Strin
     let co = &m.coordinates;
     // The active site: one map conversion, from the file's origin.
     let g = m.site();
+    let map = g.map();
     let (turn_c, turn_s) = (g.rotation.to_radians().cos(), g.rotation.to_radians().sin());
     // The file's origin, as an internal point (none: the shared coordinates' own).
     let from = match at {
@@ -1070,10 +1081,20 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin) -> Strin
     // unit with the ground-to-grid scale: 0.9996 in metres is 0.0009996. At the shared origin the file's coordinates are the
     // map's, so the conversion only changes the unit.
     if !g.crs.is_empty() {
+        // In its map system's unit, where it names one this version knows: a foot is a unit converted from the metre.
+        let to_meter = map.as_ref().map_or(1.0, |i| i.to_meter);
         let metre = w.add("IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.)");
+        let unit = if (to_meter - 1.0).abs() < 1e-12 {
+            metre
+        } else {
+            let dims = w.add("IFCDIMENSIONALEXPONENTS(1,0,0,0,0,0,0)");
+            let measure = w.add(format!("IFCMEASUREWITHUNIT(IFCLENGTHMEASURE({}),#{metre})", ratio(to_meter)));
+            let name = if map.as_ref().is_some_and(|i| i.unit == "US survey foot") { "US SURVEY FOOT" } else { "FOOT" };
+            w.add(format!("IFCCONVERSIONBASEDUNIT(#{dims},.LENGTHUNIT.,'{name}',#{measure})"))
+        };
         let or_none = |t: &Option<String>| t.as_deref().map_or_else(|| "$".to_string(), s);
         let crs = w.add(format!(
-            "IFCPROJECTEDCRS({},{},{},{},{},{},#{metre})",
+            "IFCPROJECTEDCRS({},{},{},{},{},{},#{unit})",
             s(&g.crs),
             or_none(&g.description),
             or_none(&g.geodetic_datum),
@@ -1081,7 +1102,7 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin) -> Strin
             or_none(&g.map_projection),
             or_none(&g.map_zone)
         ));
-        let mm = 1000.0;
+        let mm = to_meter * 1000.0;
         let (q, axis, scale) = match from {
             Some(o) => (g.to_shared(o), (turn_c, turn_s), g.scale / mm),
             None => ([0.0; 3], (1.0, 0.0), 1.0 / mm),
@@ -1139,7 +1160,18 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin) -> Strin
         let rep = w.add(format!("IFCSHAPEREPRESENTATION(#{plan},'FootPrint','Curve2D',({}))", refs(&curves)));
         format!("#{}", w.add(format!("IFCPRODUCTDEFINITIONSHAPE($,$,(#{rep}))")))
     };
-    let site = w.add(format!("IFCSITE({},$,'Site',$,$,#{site_at},{footprint},$,.ELEMENT.,$,$,$,$,$)", w.guid(SITE, 0)));
+    // The site's latitude, longitude and elevation, where its map system is known: of the file's origin, or of the internal one
+    // in map coordinates.
+    let frames = m.frames();
+    let geo = map
+        .as_ref()
+        .and_then(|_| frames.convert(from.unwrap_or([0.0; 3]), crate::coordinates::Frame::Internal, crate::coordinates::Frame::Wgs84).ok());
+    let (lat, lon, elevation) = match (geo, from) {
+        (Some(w), Some(o)) => (compound(w[1]), compound(w[0]), real(g.to_shared(o)[2])),
+        (Some(w), None) => (compound(w[1]), compound(w[0]), real(0.0)),
+        (None, _) => ("$".into(), "$".into(), "$".into()),
+    };
+    let site = w.add(format!("IFCSITE({},$,'Site',$,$,#{site_at},{footprint},$,.ELEMENT.,{lat},{lon},{elevation},$,$)", w.guid(SITE, 0)));
     if !plots.is_empty() {
         let total = plots.iter().map(|(_, pl)| geom::area(&pl.points).abs()).sum::<f64>() / 1e6;
         let area = w.add(format!("IFCPROPERTYSINGLEVALUE('TotalArea',$,IFCAREAMEASURE({}),$)", real(total)));
