@@ -44,4 +44,9 @@ What comes from the network is hostile, and what goes out is the user's:
   not an undo step. The schema has an array of objects, which Gemini takes as it is.
 - Look at `tools::all()`'s schemas when adding a tool: plain types only (Gemini takes a subset of OpenAPI; `gemini::schema` writes a
   free-form object as text that the tool reads back).
+- A Co-Work session shares the host's chat ([Co-Work](../../docs/areas/cowork.md)): `Chat::send_shared` runs a message as another
+  person's (their name on the undo step, the session's author swapped while the calls run) on a key that is `Pays::Key` here or
+  `Pays::Remote` in another window, which counts its own tokens. `wire.rs` is the chat as it goes between windows: the saved forms
+  with pictures kept, read as strictly. Another payer or provider than the last starts the model afresh, told the earlier turns
+  as text (`fold`). Tested in `shared_tests.rs`.
 - `cargo test -p bimcraft-assistant` runs in about a second.

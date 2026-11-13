@@ -772,8 +772,8 @@ impl BimApp {
             [one] => return self.run(command, one.clone()).into_iter().collect(),
             _ => {}
         }
-        let done =
-            self.session.transaction(label, |s| params.iter().map(|p| s.execute(command, p)).collect::<Result<Vec<Value>, String>>());
+        let commands: Vec<(&str, Value)> = params.into_iter().map(|p| (command, p)).collect();
+        let done = self.exec_batch(label, &commands);
         match done {
             Ok(v) => {
                 self.status = Status::default();

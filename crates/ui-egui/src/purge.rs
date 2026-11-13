@@ -33,7 +33,7 @@ impl BimApp {
     /// What the checked kinds would take out: a dry run of the command.
     fn relist_purge(&mut self, d: &mut PurgeDialog) {
         let kinds: Vec<&str> = PURGE_KINDS.iter().zip(d.kinds).filter(|(_, on)| *on).map(|(k, _)| *k).collect();
-        let reply = self.session.execute("purge", &json!({"kinds": kinds, "dry_run": true})).unwrap_or_default();
+        let reply = self.exec("purge", &json!({"kinds": kinds, "dry_run": true})).unwrap_or_default();
         d.listed = reply["removed"]
             .as_array()
             .into_iter()

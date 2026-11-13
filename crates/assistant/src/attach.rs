@@ -122,11 +122,3 @@ pub(crate) fn base64(bytes: &[u8]) -> String {
     }
     out
 }
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn cleans_a_name_that_could_end_the_file_block_early() {
-        assert_eq!(super::clean("a\"><b.txt"), "a___b.txt");
-    }
-}

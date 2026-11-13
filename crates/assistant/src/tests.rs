@@ -995,15 +995,15 @@ fn a_picked_file_is_copied_to_a_folder_of_the_chats_and_what_is_not_sendable_is_
     assert_eq!(std::fs::read_dir(&stage).unwrap().count(), MAX_FILES - 1, "the removed one's copy is deleted");
 }
 
+// Windows refuses `"`, `<` and `>` in a file name, so such a file can only be attached elsewhere.
+#[cfg(unix)]
 #[test]
-fn attaching_a_file_cleans_control_characters_from_its_display_name() {
+fn a_file_name_that_could_end_the_block_early_is_cleaned() {
     let dir = tempfile::tempdir().unwrap();
-    // U+007F is legal in a filename on Windows, macOS and Linux.
-    let path = dir.path().join("a\u{7f}b.txt");
-    std::fs::write(&path, "x").unwrap();
+    std::fs::write(dir.path().join("a\"><b.txt"), "x").unwrap();
     let mut chat = chat_on(&Arc::new(Fake::default()));
-    chat.attach(&path);
-    assert_eq!(chat.attached[0].name, "a_b.txt");
+    chat.attach(&dir.path().join("a\"><b.txt"));
+    assert_eq!(chat.attached[0].name, "a___b.txt");
 }
 
 #[test]

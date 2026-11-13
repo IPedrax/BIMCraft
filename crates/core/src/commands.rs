@@ -187,8 +187,19 @@ other_files(
         save,
         Files::Write,
     ),
-    other("undo", "Undo", "{count?} takes back the last `count` steps (1 by default)", undo),
-    other("redo", "Redo", "{count?} does again the last `count` steps undone (1 by default)", redo),
+    other(
+        "undo",
+        "Undo",
+        "{count?} takes back the last `count` steps (1 by default). In a Co-Work session, the caller's own last `count` edits, wherever \
+         they are in the history; refused, saying who, when someone changed the same elements or the project's settings after them",
+        undo,
+    ),
+    other(
+        "redo",
+        "Redo",
+        "{count?} does again the last `count` steps undone (1 by default). In a Co-Work session, the caller's own last `count` undos",
+        redo,
+    ),
     edit(
         "level",
         ui_msg!("Level"),
@@ -7229,11 +7240,19 @@ fn storm_size(_: &mut Session, p: &Value) -> R {
 }
 
 fn undo(s: &mut Session, p: &Value) -> R {
-    s.step_back(false, steps("undo", p)?)
+    let count = steps("undo", p)?;
+    match s.author.clone() {
+        Some(by) => s.undo_own(&by, false, count),
+        None => s.step_back(false, count),
+    }
 }
 
 fn redo(s: &mut Session, p: &Value) -> R {
-    s.step_back(true, steps("redo", p)?)
+    let count = steps("redo", p)?;
+    match s.author.clone() {
+        Some(by) => s.undo_own(&by, true, count),
+        None => s.step_back(true, count),
+    }
 }
 
 /// How many steps undo or redo takes: `count`, 1 by default.

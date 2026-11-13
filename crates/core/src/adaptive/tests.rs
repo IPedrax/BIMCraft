@@ -172,9 +172,9 @@ fn loft_accepts_three_ordered_profiles() {
     let mut profiles = vec![];
     for section in 0..3 {
         let mut ids = vec![];
-        for (i, point) in base.nodes[..4].iter().enumerate() {
+        for (i, n) in base.nodes.iter().take(4).enumerate() {
             let id = format!("p{section}_{i}");
-            let Operation::Point { host: Host::Adaptive { frame, .. }, .. } = &point.operation else { panic!() };
+            let Operation::Point { host: Host::Adaptive { frame, .. }, .. } = &n.operation else { panic!() };
             let mut p = frame.origin;
             p[2] = section as f64 * 1000.;
             nodes.push(adaptive(&id, (section * 4 + i + 1) as u32, p));
