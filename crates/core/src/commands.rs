@@ -2158,7 +2158,7 @@ other_files(
         "delete_type",
         "Delete Type",
         &[],
-        "{category?: wall|floor|door|window|column|roof|ceiling|railing|…, family?, type?} deletes a type of a category \
+        "{category?: wall|floor|door|window|column|roof|ceiling|railing|…|grid, family?, type?} deletes a type of a category \
          (`category` and `type`), a family (`family`) or one of a family's types (`family` and `type`), as Revit's Delete on one \
          in the Project Browser does; refused while an element uses it (it says how many), and for the last type of a \
          category or of a family",
@@ -2168,7 +2168,7 @@ other_files(
         "rename_type",
         "Rename Type",
         &[],
-        "{category?: wall|floor|door|window|column|roof|ceiling|railing|…, family?, type, name} renames a type of a category \
+        "{category?: wall|floor|door|window|column|roof|ceiling|railing|…|grid, family?, type, name} renames a type of a category \
          (`category` and `type`) or one of a family's types (`family` and `type`) to `name`, as Rename in Type Properties does: \
          the elements of it, and what else names it, follow, and it keeps its GUID; refused for a name another type of it has. \
          Text types and filled region types rename with `rename` on `text_type` and `filled_region_type`",
@@ -10991,9 +10991,13 @@ fn grid_type(s: &mut Session, p: &Value) -> R {
         if let Some((id, _)) = m.elements.iter().find(|(_, e)| matches!(e, Element::Grid(g) if g.type_name == name)) {
             return Err(bad(c, format!("grid {id} is of `{name}`; give it another type first")));
         }
-        if m.grid_types.remove(&name).is_none() {
+        if !m.grid_types.contains_key(&name) {
             return Err(bad(c, format!("there's no grid type `{name}`")));
         }
+        if m.grid_types.len() <= 1 {
+            return Err(bad(c, "it's the last grid type: a grid needs one; make another first"));
+        }
+        m.grid_types.remove(&name);
         return Ok(json!({"deleted": name}));
     }
     let t = match (m.grid_types.get(&name), name_param(c, p, "like")?) {
@@ -18006,7 +18010,9 @@ fn entry_of(c: &str, m: &Model, p: &Value) -> Result<(LibKind, String), String> 
             if !names.contains(&ty.as_str()) {
                 return Err(bad(c, format!("there is no {cat} type `{ty}`{}", known_names(&names))));
             }
-            Ok((LibKind::Type(cat), ty))
+            // A grid's type is a library entry of its own, not a `type:grid` of the model's types.
+            let kind = if cat == "grid" { LibKind::GridType } else { LibKind::Type(cat) };
+            Ok((kind, ty))
         }
         (None, Some(f), None) => {
             if !m.families.contains_key(&f) {
@@ -18042,6 +18048,9 @@ fn delete_type(s: &mut Session, p: &Value) -> R {
     match &kind {
         LibKind::Type(cat) if m.type_names(cat).len() <= 1 => {
             return Err(bad(c, format!("`{name}` is the last {label}: a {cat} needs one; make another first")));
+        }
+        LibKind::GridType if m.grid_types.len() <= 1 => {
+            return Err(bad(c, format!("`{name}` is the last {label}: a grid needs one; make another first")));
         }
         LibKind::FamilyType if name.split_once(": ").and_then(|(f, _)| m.families.get(f)).is_some_and(|f| f.types.len() <= 1) => {
             return Err(bad(c, format!("`{name}` is its family's last type: delete the family")));

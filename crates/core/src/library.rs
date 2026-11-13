@@ -694,6 +694,7 @@ impl Model {
             Kind::ViewFilter => self.view_filters.remove(name).is_some(),
             Kind::ViewTemplate => self.view_templates.remove(name).is_some(),
             Kind::TitleBlock => self.title_blocks.remove(name).is_some(),
+            Kind::GridType => self.grid_types.remove(name).is_some(),
             _ => false,
         }
     }
@@ -731,6 +732,7 @@ impl Model {
                 (Some((f, old)), Some((g, new))) if f == g => self.families.get_mut(f).is_some_and(|fam| mv(&mut fam.types, old, new)),
                 _ => false,
             },
+            Kind::GridType => mv(&mut self.grid_types, from, to),
             _ => false,
         }
     }

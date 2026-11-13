@@ -307,6 +307,32 @@ fn hostile_parameters_never_panic_with_the_grid_type_command() {
 }
 
 #[test]
+fn delete_type_deletes_a_free_grid_type_and_refuses_a_used_or_the_last_one() {
+    let mut s = Session::new();
+    // A type no grid uses goes, as Delete on it in the Project Browser does.
+    s.execute("grid_type", &json!({"name": "Spare Axis", "like": "Grid - ISO 128"})).unwrap();
+    s.execute("delete_type", &json!({"category": "grid", "type": "Spare Axis"})).unwrap();
+    assert!(!s.model.grid_types.contains_key("Spare Axis"));
+    assert!(s.model.library.id(&Kind::GridType, "Spare Axis").is_none());
+
+    // A type one is of is refused, saying how many use it.
+    let g = grid(&mut s);
+    let e = s.execute("delete_type", &json!({"category": "grid", "type": "Grid - ISO 128"})).unwrap_err();
+    assert!(e.contains("grid type `Grid - ISO 128` is used") && e.contains("grid"), "{e}");
+    assert_eq!(grid_type_name(&s.model, g), "Grid - ISO 128");
+
+    // The last type stays: a grid needs one.
+    s.execute("delete", &json!({"ids": [g]})).unwrap();
+    for name in ["Grid - DIN 1356", "Grid - ASME Y14.2", "Grid - Architectural", "Grid - Continuous", "Grid - Compact"] {
+        s.execute("delete_type", &json!({"category": "grid", "type": name})).unwrap();
+    }
+    let e = s.execute("grid_type", &json!({"name": "Grid - ISO 128", "delete": true})).unwrap_err();
+    assert!(e.contains("last grid type"), "{e}");
+    let e = s.execute("delete_type", &json!({"category": "grid", "type": "Grid - ISO 128"})).unwrap_err();
+    assert!(e.contains("last grid type"), "{e}");
+}
+
+#[test]
 fn a_grid_type_is_a_library_entry_like_any_other() {
     let kind = Kind::GridType;
     let json = serde_json::to_string(&kind).unwrap();
