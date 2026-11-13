@@ -33,6 +33,7 @@ mod favorites;
 mod fillpatterns;
 mod filter;
 mod find;
+mod finishes;
 mod footer;
 mod gpu;
 pub use gpu::limits_for;
@@ -52,10 +53,12 @@ mod objectstyles;
 mod orbit;
 mod panelsched;
 mod paper;
+mod parameters;
 mod phasing;
 mod plugins;
 mod popup;
 mod presets;
+mod projectinfo;
 mod properties;
 mod purge;
 pub mod recent;
@@ -773,6 +776,8 @@ pub struct BimApp {
     /// The last letters typed over the plan, for two-letter shortcuts.
     typed: String,
     pending: Option<Pending>,
+    /// What Delete was asked to take while it asks whether rooms' floors and ceilings go with them.
+    deleting_rooms: Option<Vec<Id>>,
     type_dialog: Option<properties::TypeDialog>,
     materials_dialog: Option<properties::MaterialsDialog>,
     family_dialog: Option<properties::FamilyDialog>,
@@ -799,7 +804,7 @@ pub struct BimApp {
     recent_path: Option<std::path::PathBuf>,
     /// The start page: up when the window opens on no project, and from the quick access bar's Home.
     home: start::Home,
-    parameters_dialog: Option<properties::ParametersDialog>,
+    parameter_manager: Option<parameters::ParameterManager>,
     schedule_dialog: Option<properties::ScheduleDialog>,
     /// Visibility/Graphics, Filters and View Templates, while they're open.
     vg_dialog: Option<graphics::VgDialog>,
@@ -810,6 +815,7 @@ pub struct BimApp {
     phasing_dialog: Option<phasing::PhasingDialog>,
     /// Graphic Display Options (GD), while open.
     display_dialog: Option<display::DisplayDialog>,
+    project_info_dialog: Option<projectinfo::ProjectInfoDialog>,
     /// Structure > Reinforce, while open, and what was typed in it for each kind of host.
     reinforce_dialog: Option<reinforce::ReinforceDialog>,
     reinforce_kept: BTreeMap<reinforce::Form, BTreeMap<&'static str, String>>,
@@ -884,6 +890,8 @@ pub struct BimApp {
     rotate_after: bool,
     /// The Properties palette's folded groups.
     collapsed: BTreeSet<&'static str>,
+    /// The names of Properties' groups a project's parameters make, kept for `collapsed`.
+    collapse_keys: Vec<&'static str>,
     /// Where views show, last frame.
     view_rect: Rect,
     /// Where the last view drawn showed, whether it was the active view or not.
@@ -1519,6 +1527,7 @@ impl BimApp {
             new_level: (String::new(), String::new()),
             typed: String::new(),
             pending: None,
+            deleting_rooms: None,
             type_dialog: None,
             materials_dialog: None,
             family_dialog: None,
@@ -1536,13 +1545,14 @@ impl BimApp {
             recent_path: None,
             home: start::Home::default(),
             paint_material: String::new(),
-            parameters_dialog: None,
+            parameter_manager: None,
             schedule_dialog: None,
             vg_dialog: None,
             filters_dialog: None,
             templates_dialog: None,
             phasing_dialog: None,
             display_dialog: None,
+            project_info_dialog: None,
             reinforce_dialog: None,
             reinforce_kept: BTreeMap::new(),
             panel_slot: None,
@@ -1581,6 +1591,7 @@ impl BimApp {
             place_on_face: false,
             rotate_after: false,
             collapsed: BTreeSet::new(),
+            collapse_keys: Vec::new(),
             view_rect: Rect::ZERO,
             pane: Rect::ZERO,
             browser_tab: browser::Tab::All,
@@ -2148,13 +2159,14 @@ impl BimApp {
             || self.materials_dialog.is_some()
             || self.family_dialog.is_some()
             || self.favorites_dialog.is_some()
-            || self.parameters_dialog.is_some()
+            || self.parameter_manager.is_some()
             || self.schedule_dialog.is_some()
             || self.vg_dialog.is_some()
             || self.filters_dialog.is_some()
             || self.templates_dialog.is_some()
             || self.phasing_dialog.is_some()
             || self.display_dialog.is_some()
+            || self.project_info_dialog.is_some()
             || self.reinforce_dialog.is_some()
             || self.line_weights_dialog.is_some()
             || self.electrical_dialog.is_some()
@@ -3224,9 +3236,7 @@ impl BimApp {
             self.delete_sketch_lines();
             return;
         }
-        if !self.selection.is_empty() {
-            self.run("delete", json!({"ids": self.selection}));
-        }
+        self.delete_elements(self.selection.clone());
     }
 
     /// Zoom the view on screen by `factor` about its middle.
@@ -4679,10 +4689,26 @@ impl BimApp {
             if big_button(ui, Icon::Code, "Plugins", self.plugins_dialog, tip).clicked() {
                 self.plugins_dialog = true;
             }
-            let tip = msg!("Project Parameters: values of your own each element of their categories holds, for schedules and IFC");
-            if big_button(ui, Icon::Parameters, "Project Parameters", self.parameters_dialog.is_some(), tip).clicked() {
-                self.parameters_dialog = Some(properties::ParametersDialog::new(&self.session.model));
-            }
+            // The project's information, its parameters and Purge Unused, stacked, as Revit's Settings panel has them.
+            stacked(ui, |ui| {
+                let tip =
+                    msg!("Project Information: the project's name, number, client, address, status and issue date, and its parameters");
+                if stacked_button(ui, Icon::ProjectInfo, "Project Information", self.project_info_dialog.is_some(), tip).clicked() {
+                    self.open_project_info();
+                }
+                let tip = msg!(
+                    "Project Parameters: project and shared parameters in one place, their categories, dictionaries, import and export"
+                );
+                if stacked_button(ui, Icon::Parameters, "Project Parameters", self.parameter_manager.is_some(), tip).clicked() {
+                    self.parameter_manager = Some(parameters::ParameterManager::new(&self.session.model));
+                }
+                let tip = msg!(
+                    "Purge Unused (PU): take out the types, families and the rest nothing in the project uses; each category keeps a type"
+                );
+                if stacked_button(ui, Icon::Delete, "Purge Unused", self.purge_dialog.is_some(), tip).clicked() {
+                    self.open_purge();
+                }
+            });
             // What annotation draws with: pens, line styles and patterns, fill patterns; one button that lists them.
             let open = self.line_weights_dialog.is_some() || self.line_styles_dialog.is_some() || self.fill_patterns_dialog.is_some();
             let tip = msg!("Annotation Settings: line weights, line styles, line patterns and fill patterns");
@@ -4708,12 +4734,6 @@ impl BimApp {
                     self.fill_patterns_dialog = Some(fillpatterns::FillPatternsDialog::new(&self.session.model));
                 }
             });
-            let tip = msg!(
-                "Purge Unused (PU): take out the types, families and the rest nothing in the project uses; each category keeps a type"
-            );
-            if big_button(ui, Icon::Delete, "Purge Unused", self.purge_dialog.is_some(), tip).clicked() {
-                self.open_purge();
-            }
             let now_std = self.session.model.standard();
             let tip = tf("Technical Standards: configure drawing standards (NBR, ISO, ANSI, EU); now {}", &[t(now_std.short_name())]);
             if big_button(ui, Icon::Settings, "Technical Standards", self.standards_dialog.is_some(), &tip).clicked() {
@@ -5968,6 +5988,7 @@ impl BimApp {
 
     fn dialogs(&mut self, ctx: &Context) {
         self.type_properties(ctx);
+        self.delete_rooms_window(ctx);
         self.family_type_properties(ctx);
         self.materials_window(ctx);
         self.favorites_window(ctx);
@@ -5989,6 +6010,7 @@ impl BimApp {
         self.templates_window(ctx);
         self.phasing_window(ctx);
         self.display_window(ctx);
+        self.project_info_window(ctx);
         self.reinforce_window(ctx);
         self.line_weights_window(ctx);
         self.object_styles_window(ctx);

@@ -318,6 +318,13 @@ fn fitted_height(text: &str, height: f64, width: f64) -> f64 {
     if taken > width { height * width / taken } else { height }
 }
 
+/// `text` lettered `height` mm tall, its right end at `at`.
+fn right(d: &mut Drawing, text: &str, at: P2, height: f64) {
+    let h = (height * DENSITY) as f32;
+    let (x, y) = d.view.px(at);
+    d.text(text, (x - font::width(text, h) / 2.0, y), h, INK);
+}
+
 /// Draw standard folding marks (marcas de dobramento) as specified in NBR 17067.
 fn draw_folding_marks(d: &mut Drawing, paper: P2, size: &str, margins: crate::standards::SheetMargins) {
     let s = crate::model::paper_name(size);
@@ -384,6 +391,15 @@ fn title_block(d: &mut Drawing, m: &Model, id: impl Key, paper: P2, views: &[&Vi
         sheet.number.to_uppercase(),
     );
     left(d, &project, P2(x0 + 4.0, y0 + 33.0), fitted_height(&project, 5.0, width - 8.0));
+    // Right of the project, what its information says of the client, and its number, status and issue date.
+    if let Some((_, info)) = m.project_info() {
+        let client = info.client.to_uppercase();
+        right(d, &client, P2(x1 - 4.0, y0 + 36.0), fitted_height(&client, 2.5, width / 2.0));
+        let said: Vec<&str> =
+            [&info.number, &info.status, &info.issue_date].into_iter().map(String::as_str).filter(|t| !t.is_empty()).collect();
+        let said = said.join("   ").to_uppercase();
+        right(d, &said, P2(x1 - 4.0, y0 + 30.0), fitted_height(&said, 2.0, width / 2.0));
+    }
     left(d, &name, P2(x0 + 4.0, y0 + 17.0), fitted_height(&name, 3.5, width - 58.0));
     left(d, &scale, P2(x0 + 4.0, y0 + 7.0), fitted_height(&scale, 2.0, width - 58.0));
     let number_height = (fitted_height(&number, 7.0, 42.0) * DENSITY) as f32;

@@ -138,11 +138,17 @@ mod openings_past_top_tests;
 mod oracle_tests;
 pub mod paint;
 pub mod panel_schedule;
+#[cfg(test)]
+mod parameter_tests;
+pub mod parameters;
 pub mod pat;
 pub mod pdf;
 pub mod pen;
 pub mod phasing;
 pub mod plumbing;
+pub mod project_info;
+#[cfg(test)]
+mod project_info_tests;
 #[cfg(test)]
 mod pset_tests;
 #[cfg(test)]
@@ -163,6 +169,8 @@ mod roof_slopes_tests;
 mod room_area_tests;
 #[cfg(test)]
 mod room_bounds_tests;
+#[cfg(test)]
+mod room_finish_tests;
 #[cfg(test)]
 mod room_freeze_tests;
 #[cfg(test)]
