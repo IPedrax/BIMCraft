@@ -3170,7 +3170,7 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
                 extra.insert("depth".into(), json!(t.depth));
                 extra.insert("round".into(), json!(t.round));
                 if let Some(pr) = &t.profile {
-                    steel_take_off(&mut extra, pr, (t.width, t.depth), top - bottom);
+                    steel_take_off(&mut extra, pr, (t.width, t.depth), top - bottom, true);
                 }
             }
         }
@@ -3183,7 +3183,9 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
                 extra.insert("length".into(), json!(hundredth(g.length())));
                 extra.insert("axis".into(), json!([g.a, g.b].map(|p| p.map(hundredth))));
                 if let Some(pr) = &t.profile {
-                    steel_take_off(&mut extra, pr, (t.width, t.depth), g.length());
+                    // shortcut: a beam of no material is weighed as steel too, until materials carry a density.
+                    let steel = t.material.is_empty() || t.material == m.language.word("Metal");
+                    steel_take_off(&mut extra, pr, (t.width, t.depth), g.length(), steel);
                 }
             }
         }
@@ -10292,9 +10294,9 @@ fn chain(s: &mut Session, p: &Value, category: &str) -> R {
     Ok(json!({"ids": ids}))
 }
 
-/// A steel member's take-off for its JSON (and so its schedule): its section's name, its area (cm²), its weight per metre
-/// (kg/m, in steel) and its weight (kg) over `length` mm.
-fn steel_take_off(extra: &mut Map<String, Value>, p: &crate::model::Profile, (width, depth): (f64, f64), length: f64) {
+/// A profiled member's take-off for its JSON (and so its schedule): its section's name, its area (cm²) and, when it is
+/// `steel`, its weight per metre (kg/m) and its weight (kg) over `length` mm.
+fn steel_take_off(extra: &mut Map<String, Value>, p: &crate::model::Profile, (width, depth): (f64, f64), length: f64, steel: bool) {
     let name = if p.name.is_empty() {
         let size = |x: f64| format!("{}", hundredth(x));
         format!("{} {} x {}", p.shape.word(), size(depth), size(width))
@@ -10305,8 +10307,10 @@ fn steel_take_off(extra: &mut Map<String, Value>, p: &crate::model::Profile, (wi
     let per_metre = area * 1e-6 * crate::profiles::STEEL_DENSITY;
     extra.insert("profile".into(), json!(name));
     extra.insert("section_area_cm2".into(), json!(hundredth(area / 100.0)));
-    extra.insert("weight_kg_m".into(), json!(hundredth(per_metre)));
-    extra.insert("weight_kg".into(), json!(hundredth(per_metre * length / 1000.0)));
+    if steel {
+        extra.insert("weight_kg_m".into(), json!(hundredth(per_metre)));
+        extra.insert("weight_kg".into(), json!(hundredth(per_metre * length / 1000.0)));
+    }
 }
 
 /// A structural column's or a beam's `type` that the project hasn't got and the catalogue has (`IPE 300`): made, under the

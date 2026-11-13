@@ -266,6 +266,23 @@ fn a_schedule_of_steel_lists_each_sections_weight_per_metre_and_its_total_weight
 }
 
 #[test]
+fn a_concrete_t_has_its_section_area_but_no_weight_of_steel() {
+    let mut s = Session::new();
+    let t = json!({"category": "beam", "name": "T", "shape": "T", "width": 1500, "depth": 1000, "web": 400, "flange": 500,
+                   "material": "Concrete"});
+    run(&mut s, "type", t);
+    let id = made(&mut s, "beam", json!({"points": [[0, 0], [6000, 0]], "type": "T"}));
+    // The library has no density for concrete, so it has no weight; a schedule shows the 0 a beam of no section shows.
+    let j = element_json(&s.model, id);
+    assert!(j["section_area_cm2"].as_f64().is_some_and(|a| a > 0.0) && j.get("weight_kg_m").is_none(), "{j}");
+    let r =
+        run(&mut s, "schedule", json!({"name": "T", "category": "beam", "fields": ["Type", "Section Area", "Weight per Metre", "Weight"]}));
+    let row = &r["rows"][0];
+    assert_eq!(row[0], "T");
+    assert_eq!((row[2].as_f64(), row[3].as_f64()), (Some(0.0), Some(0.0)), "{row}");
+}
+
+#[test]
 fn steel_sections_go_out_as_ifc_profiles_with_a_material_profile_set() {
     let mut s = Session::new();
     made(&mut s, "beam", json!({"points": [[0, 0], [6000, 0]], "type": "IPE 300", "offset": 3000}));
