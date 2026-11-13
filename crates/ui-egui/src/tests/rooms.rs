@@ -182,6 +182,8 @@ fn the_palette_finds_the_room_its_components_stand_in_once_a_model() {
     h.run();
     let moved = kept(&h);
     assert!(moved.len() == 2 && moved.iter().all(|j| j["room_name"] == "East"), "{moved:?}");
+}
+
 /// A room of a type with a floor and a ceiling, each made for it at the walls' faces.
 const FINISHED: &str = r#"wall {"points": [[0,0],[8000,0],[8000,6000],[0,6000]], "closed": true}
 room {"point": [4000, 3000]}
