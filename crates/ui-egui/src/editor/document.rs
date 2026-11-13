@@ -2108,7 +2108,7 @@ impl BimApp {
         super::connector_marks::paint(&p, &marks, &project, ed.selected_connector(), ed.connector_hover, lit);
         // The insertion point, where the planes that define the origin cross (O1).
         if let Some(at) = ed.origin_mark() {
-            super::origin_mark::paint(&p, &project, at);
+            super::origin_mark::paint_3d(&p, &project, at);
         }
         // A form being sketched on its plane, over the picture (F5), with its padlocks.
         if let Some(e) = ed.sketch_in_3d(ui, &response, &p, &cam, size, pane) {
