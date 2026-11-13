@@ -30,12 +30,6 @@ impl GridTypeDialog {
         GridTypeDialog { name, t, elements, naming: Naming::None, error: None, find: String::new() }
     }
 
-    /// What stopped OK, Apply, Duplicate or Rename, if anything did.
-    #[cfg(test)]
-    pub(crate) fn error(&self) -> Option<&str> {
-        self.error.as_deref()
-    }
-
     /// The `grid_type` command for the type as typed, under `name` (from the one shown, for a duplicate).
     fn params(&self, name: &str) -> Value {
         let mut p = serde_json::to_value(&self.t).unwrap_or_else(|_| json!({}));

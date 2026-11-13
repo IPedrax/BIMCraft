@@ -9,7 +9,7 @@ use bimcraft_core::pen::Pen;
 use bimcraft_core::render::{self, Drawing, Prim, Rgb, View};
 use serde_json::{Value, json};
 
-fn id(reply: &Value) -> u64 {
+fn id(reply: Value) -> u64 {
     reply["id"].as_u64().unwrap()
 }
 
@@ -234,14 +234,14 @@ fn a_grid_type_with_a_missing_pattern_or_bad_lettering_is_refused() {
         (GridType { text_size: 0.0, ..iso.clone() }, "size"),
         (GridType { width_factor: 0.0, ..iso.clone() }, "width factor"),
     ] {
-        s.model.grid_types.insert("Bad".into(), type_now);
+        s.model_mut().grid_types.insert("Bad".into(), type_now);
         let e = s.model.check().unwrap_err();
         assert!(e.contains("grid type `Bad`") && e.contains(says), "{says}: {e}");
-        s.model.grid_types.remove("Bad");
+        s.model_mut().grid_types.remove("Bad");
     }
     // A grid whose type the project hasn't says so, naming the grid and the types there are.
     let g = grid(&mut s);
-    if let Some(Element::Grid(x)) = s.model.elements.get_mut(g) {
+    if let Some(Element::Grid(x)) = s.model_mut().elements.get_mut(g) {
         x.type_name = "Nope".into();
     }
     let e = s.model.check().unwrap_err();
@@ -336,6 +336,7 @@ fn delete_type_deletes_a_free_grid_type_and_refuses_a_used_or_the_last_one() {
 fn a_grid_type_is_a_library_entry_like_any_other() {
     let kind = Kind::GridType;
     let json = serde_json::to_string(&kind).unwrap();
-    assert_eq!((json.as_str(), kind.label()), (Some("\"grid-type\""), "grid type".to_string()));
+    assert_eq!(json, "\"grid-type\"");
+    assert_eq!(kind.label(), "grid type");
     assert_eq!(serde_json::from_str::<Kind>(&json).unwrap(), kind);
 }
