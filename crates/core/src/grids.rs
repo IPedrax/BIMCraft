@@ -177,17 +177,17 @@ mod tests {
 
     #[test]
     fn the_starter_types_are_named_in_the_projects_language_and_the_default_is_iso() {
-        let types = types(Language::English);
+        let starter = types(Language::English);
         for name in [ISO, DIN, ASME, ARCHITECTURAL, CONTINUOUS, COMPACT] {
-            assert!(types.contains_key(name), "{name}");
-            assert_eq!(types[name].check(name, &crate::lines::default_patterns()), Ok(()));
+            assert!(starter.contains_key(name), "{name}");
+            assert_eq!(starter[name].check(name, &crate::lines::default_patterns()), Ok(()));
         }
-        assert_eq!(default_type(&types, Language::English).map(String::as_str), Some(ISO));
+        assert_eq!(default_type(&starter, Language::English).map(String::as_str), Some(ISO));
         let patterns = crate::lines::patterns(Language::Portuguese);
-        let types = types(Language::Portuguese);
-        for t in types.values() {
+        let translated = types(Language::Portuguese);
+        for t in translated.values() {
             assert!(t.line_pattern.as_ref().is_none_or(|p| patterns.contains_key(p)), "{t:?}");
         }
-        assert_eq!(default_type(&types, Language::Portuguese).map(String::as_str), Some(Language::Portuguese.word(ISO)));
+        assert_eq!(default_type(&translated, Language::Portuguese).map(String::as_str), Some(Language::Portuguese.word(ISO)));
     }
 }
