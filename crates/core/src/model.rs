@@ -7777,6 +7777,21 @@ impl Model {
                 point(&who, c.at)?;
                 coord(&format!("{who} angle"), c.angle)?;
                 coord(&format!("{who} offset"), c.offset)?;
+                // Its tilt, where it has one: two unit directions square to each other, on no plane and placed by no points,
+                // which tilt a component themselves.
+                if let Some([x, z]) = c.tilt {
+                    let unit = |v: [f64; 3]| {
+                        v.iter().all(|k| k.is_finite()) && ((v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt() - 1.0).abs() < 1e-6
+                    };
+                    if !(unit(x) && unit(z) && (x[0] * z[0] + x[1] * z[1] + x[2] * z[2]).abs() < 1e-6) {
+                        return Err(format!("{who}: its tilt's x and z must be unit directions square to each other, not {x:?} and {z:?}"));
+                    }
+                    if c.host.is_some() || self.placed_by_points(c) {
+                        return Err(format!(
+                            "{who}: it is tilted, and stands on a work plane or is placed by its points, which tilt it themselves"
+                        ));
+                    }
+                }
                 // On a reference plane, only a work plane-based family's component, and never an adaptive one: it is placed
                 // by its own points.
                 if let Some(h) = &c.host {

@@ -164,3 +164,49 @@ fn a_bolt_whose_file_gives_its_size_comes_in_in_a_family_of_that_size() {
     assert_eq!(copies(m, "Bolt assembly BOLTM20*60").len(), 1, "{:?}", m.families.keys().collect::<Vec<_>>());
     assert_eq!(copies(m, "Bolt assembly").len(), 1, "the one of no size keeps the product's name");
 }
+
+#[test]
+fn a_bolt_lying_down_is_the_same_type_tilted_and_keeps_its_tilt_through_a_file() {
+    let mut g = G::new();
+    let r = rod(&mut g, 8.0, 50.0);
+    let map = shape(&mut g, &[r]);
+    bolt(&mut g, "Bolt", map, [0.0, 0.0, 0.0], UP, EAST);
+    // The same bolt lying along x, as through a brace's web: its z east, its x down.
+    bolt(&mut g, "Bolt", map, [2000.0, 0.0, 500.0], EAST, [0.0, 0.0, -1.0]);
+    let i = g.import();
+    let m = &i.model;
+    assert_eq!(m.families["Bolt"].types.len(), 1, "one shape, one type, however it lies");
+    let placed = copies(m, "Bolt");
+    let lying = placed.iter().find(|c| c.tilt.is_some()).expect("the lying one is tilted");
+    assert!(placed.iter().any(|c| c.tilt.is_none()), "the upright one isn't");
+    // Drawn where it lies: 50 mm along x from its insertion point, 16 across in y and in z.
+    let tris: Vec<[[f64; 3]; 3]> = m.component_pieces(lying).into_iter().flat_map(|p| p.tris).collect();
+    let span = |k: usize| {
+        let (lo, hi) = tris.iter().flatten().fold((f64::MAX, f64::MIN), |(lo, hi), p| (lo.min(p[k]), hi.max(p[k])));
+        hi - lo
+    };
+    assert!((span(0) - 50.0).abs() < 1e-6 && span(1) <= 16.0 + 1e-6 && span(2) <= 16.0 + 1e-6, "{} {} {}", span(0), span(1), span(2));
+    // Saved and read back, it keeps its tilt; an upright one writes none.
+    let text = m.to_json().unwrap();
+    assert_eq!(text.matches("\"tilt\"").count(), 1);
+    let (back, left_out) = Model::read(&text).unwrap();
+    assert!(left_out.is_empty(), "{left_out:?}");
+    assert_eq!(back.to_json().unwrap(), text);
+}
+
+#[test]
+fn a_tilt_that_isnt_two_square_unit_directions_is_refused() {
+    let mut g = G::new();
+    let r = rod(&mut g, 8.0, 50.0);
+    let map = shape(&mut g, &[r]);
+    bolt(&mut g, "Bolt", map, [0.0, 0.0, 0.0], EAST, UP);
+    let mut m = g.import().model;
+    assert!(m.check().is_ok());
+    for c in m.elements.values_mut() {
+        if let Element::Component(c) = c {
+            c.tilt = Some([[1.0, 0.0, 0.0], [1.0, 0.0, 0.0]]);
+        }
+    }
+    let e = m.check().unwrap_err();
+    assert!(e.contains("tilt"), "{e}");
+}
