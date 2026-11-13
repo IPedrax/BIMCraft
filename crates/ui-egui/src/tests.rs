@@ -7284,6 +7284,42 @@ fn adaptive_editor_visual_preview_in_three_looks() {
         h.render().unwrap().save(std::path::Path::new(&folder).join(format!("adaptive-associate-{name}.png"))).unwrap();
     }
 }
+
+#[test]
+fn a_grids_type_is_chosen_in_the_type_selector_and_edited_in_its_type_properties() {
+    let mut h = app(&format!("{BOX}\ngrid {{\"start\": [0, 0], \"end\": [10000, 0], \"name\": \"1\"}}"));
+    let g = ids(&h, "grid")[0];
+    h.state_mut().selection = vec![g];
+    h.run();
+    // Its Type Selector is not empty, and picking another type switches the grid at once.
+    press(&mut h, "Type Selector");
+    press(&mut h, "Grid - DIN 1356");
+    assert_eq!(field(&h, g, "type"), json!("Grid - DIN 1356"));
+    // Edit Type opens Grid Type Properties; a value changed applies to the type.
+    press(&mut h, "Edit Type");
+    assert!(h.state().grid_type_dialog.is_some(), "Grid Type Properties is open");
+    type_into(&mut h, "Text Size", "3.5");
+    press(&mut h, "OK");
+    assert_eq!(h.state().session.model.grid_types["Grid - DIN 1356"].text_size, 3.5);
+    // Duplicate makes a type, which OK puts the selected grid on.
+    press(&mut h, "Edit Type");
+    press(&mut h, "Duplicate…");
+    type_into(&mut h, "New type", "Mine");
+    press(&mut h, "Create");
+    press(&mut h, "OK");
+    assert!(h.state().session.model.grid_types.contains_key("Mine"));
+    assert_eq!(field(&h, g, "type"), json!("Mine"));
+    // With the Grid tool on, the type the selector names is what a new grid gets.
+    key(&mut h, Key::Escape);
+    h.state_mut().tool = Tool::Grid(None);
+    h.state_mut().types.insert("grid", "Grid - Compact".into());
+    h.run();
+    click(&mut h, P2(1000.0, 2000.0));
+    click(&mut h, P2(7000.0, 2000.0));
+    let grids = ids(&h, "grid");
+    assert_eq!(grids.len(), 2, "the new grid");
+    assert_eq!(field(&h, grids[1], "type"), json!("Grid - Compact"));
+}
 mod background_grid;
 
 mod extrusion_properties;
