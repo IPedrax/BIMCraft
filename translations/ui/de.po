@@ -2,11 +2,11 @@
 msgid ""
 msgstr "Project-Id-Version: BIMCraft\nLast-Translator: Christopher Kluge\nLanguage: de\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\n"
 
-#: crates/ui-egui/src/lib.rs:492
+#: crates/ui-egui/src/lib.rs:494
 msgid " Left out: {}{}."
 msgstr " Ausgelassen: {}{}."
 
-#: crates/ui-egui/src/lib.rs:495
+#: crates/ui-egui/src/lib.rs:497
 msgid " Moved {}, {} mm to bring it near the origin."
 msgstr " {}, {} mm verschoben, um es nahe an den Ursprung zu bringen."
 
@@ -59,17 +59,17 @@ msgstr ""
 msgid "3D"
 msgstr "3D"
 
-#: crates/ui-egui/src/lib.rs:4186
+#: crates/ui-egui/src/lib.rs:4198
 msgid "3D Scene as glTF…"
 msgstr "3D-Szene als glTF…"
 
 #: crates/ui-egui/src/browser.rs:397
-#: crates/ui-egui/src/lib.rs:4597
+#: crates/ui-egui/src/lib.rs:4609
 #: crates/ui-egui/src/properties.rs:1803
 msgid "3D View"
 msgstr "3D-Ansicht"
 
-#: crates/ui-egui/src/lib.rs:3464
+#: crates/ui-egui/src/lib.rs:3476
 msgid "3D View: {3D}"
 msgstr "3D-Ansicht: {3D}"
 
@@ -98,7 +98,7 @@ msgstr "Auflösung der 3D-Ansicht"
 msgid "45° Oblique Stroke (Tick)"
 msgstr "45°-Schrägstrich (Häkchen)"
 
-#: crates/ui-egui/src/lib.rs:490
+#: crates/ui-egui/src/lib.rs:492
 msgid "; and {} more"
 msgstr "; und {} weitere"
 
@@ -147,7 +147,7 @@ msgstr "Ein BIMCraft-Projekt oder eine IFC-Datei."
 msgid "A BIMCraft project, an IFC or a Revit file."
 msgstr "Ein BIMCraft-Projekt, eine IFC- oder eine Revit-Datei."
 
-#: crates/ui-egui/src/coordinates.rs:1163
+#: crates/ui-egui/src/coordinates.rs:1168
 msgid "A calculator for coordinates: type a point as one system gives it and read it in another. Use it to check a survey point against the model, to give a contractor or a consultant the site coordinates of a point you know in the model, or to find where a GPS reading falls in the building. It only calculates: nothing in the project changes. Lengths are in mm; latitude and longitude in degrees."
 msgstr ""
 
@@ -159,7 +159,7 @@ msgstr ""
 msgid "A circle's, an ellipse's or an arc's points along its axes: east, north, west and south"
 msgstr "Die Punkte eines Kreises, einer Ellipse oder eines Bogens entlang ihrer Achsen: Osten, Norden, Westen und Süden"
 
-#: crates/ui-egui/src/coordinates.rs:1000
+#: crates/ui-egui/src/coordinates.rs:1005
 msgid "A city, a country, an EPSG code or words of a name: São Paulo, Germany, 31983, UTM 23S"
 msgstr ""
 
@@ -219,7 +219,7 @@ msgstr "Eine Linie ist zu kurz: ihre Enden liegen 1 mm oder weniger auseinander.
 msgid "A line isn't one that can be drawn: two of its points lie on each other."
 msgstr "Eine Linie lässt sich nicht zeichnen: zwei ihrer Punkte liegen aufeinander."
 
-#: crates/ui-egui/src/coordinates.rs:346
+#: crates/ui-egui/src/coordinates.rs:351
 msgid "A location needs a name."
 msgstr ""
 
@@ -239,11 +239,11 @@ msgstr "Ein Netz aus einer Datei hat keine Skizze zum Bearbeiten."
 msgid "A name of your own for this state, such as 2026 standard. Nothing compares it."
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:656
+#: crates/ui-egui/src/coordinates.rs:661
 msgid "A new location, a copy of the active one"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:4646
+#: crates/ui-egui/src/lib.rs:4658
 msgid "A new sheet, with a title block"
 msgstr "Ein neuer Plan mit Schriftfeld"
 
@@ -361,7 +361,7 @@ msgstr ""
 msgid "Above:"
 msgstr "Oben:"
 
-#: crates/ui-egui/src/lib.rs:5338
+#: crates/ui-egui/src/lib.rs:5350
 msgid "Absolute"
 msgstr "Absolut"
 
@@ -377,11 +377,11 @@ msgstr "Primär übernehmen"
 msgid "Accept Primary: the primary option's elements stay in the model; the others' elements and the set go"
 msgstr "Primär übernehmen: Die Elemente der primären Option bleiben im Modell; die Elemente der anderen und das Set entfallen"
 
-#: crates/ui-egui/src/coordinates.rs:810
+#: crates/ui-egui/src/coordinates.rs:815
 msgid "Acquire"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:798
+#: crates/ui-egui/src/coordinates.rs:803
 msgid "Acquire Coordinates"
 msgstr ""
 
@@ -390,11 +390,11 @@ msgstr ""
 msgid "Acquire coordinates from it"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:811
+#: crates/ui-egui/src/coordinates.rs:816
 msgid "Acquire from {}"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:614
+#: crates/ui-egui/src/coordinates.rs:619
 msgid "Active"
 msgstr ""
 
@@ -406,7 +406,7 @@ msgstr "Aktiv (NBR 17067: A4-Modulfaltung mit Lasche)"
 msgid "Active design option:"
 msgstr "Aktive Entwurfsoption:"
 
-#: crates/ui-egui/src/coordinates.rs:548
+#: crates/ui-egui/src/coordinates.rs:553
 msgid "Active location"
 msgstr ""
 
@@ -453,7 +453,7 @@ msgid "Adaptive point {} placed: click point {} of {}."
 msgstr ""
 
 #: crates/ui-egui/src/properties.rs:3709
-#: crates/ui-egui/src/shortcuts.rs:442
+#: crates/ui-egui/src/shortcuts.rs:445
 msgid "Add"
 msgstr "Hinzufügen"
 
@@ -482,7 +482,7 @@ msgstr "Filter hinzufügen"
 msgid "Add Line"
 msgstr "Linie hinzufügen"
 
-#: crates/ui-egui/src/coordinates.rs:655
+#: crates/ui-egui/src/coordinates.rs:660
 msgid "Add Location"
 msgstr ""
 
@@ -500,11 +500,11 @@ msgstr "Parameter hinzufügen"
 msgid "Add Parameter makes one for the families checked. A type parameter's value goes on all their types; each type can then change it in Type Properties."
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:3021
+#: crates/ui-egui/src/lib.rs:3033
 msgid "Add Point"
 msgstr "Punkt hinzufügen"
 
-#: crates/ui-egui/src/lib.rs:3020
+#: crates/ui-egui/src/lib.rs:3032
 msgid "Add Point: click on the top to raise or lower it there to the Options Bar's elevation"
 msgstr "Punkt hinzufügen: auf die Oberseite klicken, um sie dort auf die Höhe aus der Optionsleiste anzuheben oder abzusenken"
 
@@ -524,8 +524,8 @@ msgstr "Segment hinzufügen"
 msgid "Add Selected"
 msgstr "Auswahl hinzufügen"
 
-#: crates/ui-egui/src/shortcuts.rs:405
-#: crates/ui-egui/src/shortcuts.rs:426
+#: crates/ui-egui/src/shortcuts.rs:408
+#: crates/ui-egui/src/shortcuts.rs:429
 msgid "Add Shortcut"
 msgstr "Tastenkürzel hinzufügen"
 
@@ -537,11 +537,11 @@ msgstr "Größe hinzufügen"
 msgid "Add Sort"
 msgstr "Sortierung hinzufügen"
 
-#: crates/ui-egui/src/lib.rs:3034
+#: crates/ui-egui/src/lib.rs:3046
 msgid "Add Split Line"
 msgstr "Teilungslinie hinzufügen"
 
-#: crates/ui-egui/src/lib.rs:3032
+#: crates/ui-egui/src/lib.rs:3044
 msgid "Add Split Line: click two points; the top folds along the line between them"
 msgstr "Teilungslinie hinzufügen: zwei Punkte anklicken; die Oberseite knickt entlang der Linie zwischen ihnen"
 
@@ -676,7 +676,7 @@ msgstr "Luftauslässe"
 msgid "Align"
 msgstr "Ausrichten"
 
-#: crates/ui-egui/src/lib.rs:5014
+#: crates/ui-egui/src/lib.rs:5026
 #: crates/ui-egui/src/sketch.rs:738
 msgid "Align (AL): pick a reference line, then what to line up with it"
 msgstr "Ausrichten (AL): Referenzlinie wählen, dann das auszurichtende Element"
@@ -701,12 +701,12 @@ msgstr "Ausrichten richtet Linien an dem aus, was ein Grundriss zeigt: in der 3D
 msgid "Align takes a form's straight edge, a side the view sees edge on, or its end: click on its outline."
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:5631
+#: crates/ui-egui/src/lib.rs:5643
 msgid "Align with True North ({}°)"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:4407
-#: crates/ui-egui/src/lib.rs:5429
+#: crates/ui-egui/src/lib.rs:4419
+#: crates/ui-egui/src/lib.rs:5441
 msgid "Aligned"
 msgstr "Ausgerichtet"
 
@@ -719,7 +719,7 @@ msgstr "Ausgerichtete Bemaßung"
 msgid "Aligned Dimension (DI): pick parallel reference planes, extrusion ends or lines of forms, then click where it goes"
 msgstr "Ausgerichtete Bemaßung (DI): parallele Referenzebenen, Extrusionsenden oder Linien von Körpern wählen, dann klicken, wo sie verläuft"
 
-#: crates/ui-egui/src/lib.rs:4409
+#: crates/ui-egui/src/lib.rs:4421
 msgid "Aligned Dimension (DI): pick parallel wall faces, wall ends, doors, windows or grids, or endpoints, then click where the dimension line goes"
 msgstr "Ausgerichtete Bemaßung (DI): parallele Wandflächen, Wandenden, Türen, Fenster oder Raster bzw. Endpunkte wählen, dann die Stelle der Maßlinie anklicken"
 
@@ -736,11 +736,11 @@ msgstr "Ausgerichtete Bemaßung: {}"
 msgid "Alignment Guides"
 msgstr "Ausrichtungslinien"
 
-#: crates/ui-egui/src/lib.rs:2123
+#: crates/ui-egui/src/lib.rs:2125
 msgid "Alignment guides off"
 msgstr "Ausrichtungslinien aus"
 
-#: crates/ui-egui/src/lib.rs:2123
+#: crates/ui-egui/src/lib.rs:2125
 msgid "Alignment guides on"
 msgstr "Ausrichtungslinien ein"
 
@@ -775,7 +775,7 @@ msgstr ""
 msgid "Allowed"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:5337
+#: crates/ui-egui/src/lib.rs:5349
 msgid "Along Surface"
 msgstr "Entlang der Oberfläche"
 
@@ -864,7 +864,7 @@ msgstr "Und:"
 
 #: crates/core/src/snap.rs:71
 #: crates/ui-egui/src/adaptive_editor.rs:531
-#: crates/ui-egui/src/coordinates.rs:620
+#: crates/ui-egui/src/coordinates.rs:625
 #: crates/ui-egui/src/editor/nested.rs:297
 #: crates/ui-egui/src/parameters.rs:34
 #: crates/ui-egui/src/parameters.rs:47
@@ -881,22 +881,22 @@ msgstr ""
 msgid "Angle steps"
 msgstr "Winkelschritte"
 
-#: crates/ui-egui/src/coordinates.rs:1504
+#: crates/ui-egui/src/coordinates.rs:1521
 msgid "Angle to True North"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:579
-#: crates/ui-egui/src/coordinates.rs:755
+#: crates/ui-egui/src/coordinates.rs:584
+#: crates/ui-egui/src/coordinates.rs:760
 msgid "Angle to true north"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:5603
-#: crates/ui-egui/src/lib.rs:5622
+#: crates/ui-egui/src/lib.rs:5615
+#: crates/ui-egui/src/lib.rs:5634
 msgid "Angle:"
 msgstr "Winkel:"
 
 #: crates/ui-egui/src/editor/document.rs:506
-#: crates/ui-egui/src/lib.rs:4427
+#: crates/ui-egui/src/lib.rs:4439
 msgid "Angular"
 msgstr "Winkel"
 
@@ -904,11 +904,11 @@ msgstr "Winkel"
 msgid "Angular Dimension: pick reference lines, reference planes or lines of forms that cross, then click where its arc goes"
 msgstr "Winkelbemaßung: sich schneidende Referenzlinien, Referenzebenen oder Linien von Körpern wählen, dann die Stelle ihres Bogens anklicken"
 
-#: crates/ui-egui/src/lib.rs:4428
+#: crates/ui-egui/src/lib.rs:4440
 msgid "Angular Dimension: pick two lines that meet, then click where the arc goes"
 msgstr "Winkelbemaßung: zwei sich treffende Linien wählen, dann die Stelle des Bogens anklicken"
 
-#: crates/ui-egui/src/lib.rs:1354
+#: crates/ui-egui/src/lib.rs:1356
 msgid "Annotate"
 msgstr "Beschriften"
 
@@ -928,11 +928,11 @@ msgstr "Linienstärken für Beschriftungen"
 msgid "Annotation Pens (mm on paper):"
 msgstr "Beschriftungsstifte (mm auf Papier):"
 
-#: crates/ui-egui/src/lib.rs:4794
+#: crates/ui-egui/src/lib.rs:4806
 msgid "Annotation Settings"
 msgstr "Beschriftungseinstellungen"
 
-#: crates/ui-egui/src/lib.rs:4793
+#: crates/ui-egui/src/lib.rs:4805
 msgid "Annotation Settings: line weights, line styles, line patterns and fill patterns"
 msgstr "Beschriftungseinstellungen: Linienstärken, Linienstile, Linienmuster und Füllmuster"
 
@@ -958,7 +958,7 @@ msgid "Applies to all views; snaps to the active view's enabled main grid or sub
 msgstr "Gilt für alle Ansichten; fängt am aktivierten Hauptraster oder Unterraster der aktiven Ansicht, auch wenn dieses ausgeblendet ist"
 
 #: crates/ui-egui/src/background_grid.rs:112
-#: crates/ui-egui/src/coordinates.rs:1268
+#: crates/ui-egui/src/coordinates.rs:1273
 #: crates/ui-egui/src/display.rs:80
 #: crates/ui-egui/src/editor/document.rs:1643
 #: crates/ui-egui/src/electrical.rs:500
@@ -1004,12 +1004,12 @@ msgstr ""
 msgid "Arc"
 msgstr "Bogen"
 
-#: crates/ui-egui/src/lib.rs:4445
+#: crates/ui-egui/src/lib.rs:4457
 #: crates/ui-egui/src/properties.rs:267
 msgid "Arc Length"
 msgstr "Bogenlänge"
 
-#: crates/ui-egui/src/lib.rs:4446
+#: crates/ui-egui/src/lib.rs:4458
 msgid "Arc Length Dimension: pick a curved wall or an arc, then click where the dimension's arc goes"
 msgstr "Bogenlängenbemaßung: gekrümmte Wand oder Bogen wählen, dann die Stelle des Bemaßungsbogens anklicken"
 
@@ -1017,7 +1017,7 @@ msgstr "Bogenlängenbemaßung: gekrümmte Wand oder Bogen wählen, dann die Stel
 msgid "Arc Length:"
 msgstr "Bogenlänge:"
 
-#: crates/ui-egui/src/lib.rs:1347
+#: crates/ui-egui/src/lib.rs:1349
 msgid "Architecture"
 msgstr "Architektur"
 
@@ -1103,7 +1103,7 @@ msgid "Assign View Template"
 msgstr "Ansichtsvorlage zuweisen"
 
 #: crates/ui-egui/src/dock.rs:46
-#: crates/ui-egui/src/lib.rs:455
+#: crates/ui-egui/src/lib.rs:457
 #: crates/ui-egui/src/settings.rs:331
 msgid "Assistant"
 msgstr ""
@@ -1145,15 +1145,15 @@ msgstr "An Wandoberfläche"
 msgid "Attach"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:5125
+#: crates/ui-egui/src/lib.rs:5137
 msgid "Attach Top/Base"
 msgstr "Oberkante/Unterkante anfügen"
 
-#: crates/ui-egui/src/lib.rs:5124
+#: crates/ui-egui/src/lib.rs:5136
 msgid "Attach Top/Base: pick a roof or a floor for the tops, or bases, of the walls and columns to follow"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:5449
+#: crates/ui-egui/src/lib.rs:5461
 msgid "Attach Wall:"
 msgstr "Wand anfügen:"
 
@@ -1173,7 +1173,7 @@ msgstr ""
 msgid "Author"
 msgstr "Autor"
 
-#: crates/ui-egui/src/lib.rs:5428
+#: crates/ui-egui/src/lib.rs:5440
 msgid "Auto"
 msgstr "Automatisch"
 
@@ -1245,7 +1245,7 @@ msgstr "BIMCraft konnte nicht starten"
 msgid "BIMCraft family"
 msgstr "BIMCraft-Familie"
 
-#: crates/ui-egui/src/lib.rs:3557
+#: crates/ui-egui/src/lib.rs:3569
 msgid "BIMCraft project"
 msgstr "BIMCraft-Projekt"
 
@@ -1253,7 +1253,7 @@ msgstr "BIMCraft-Projekt"
 msgid "BIMCraft project or IFC"
 msgstr "BIMCraft-Projekt oder IFC"
 
-#: crates/ui-egui/src/lib.rs:3744
+#: crates/ui-egui/src/lib.rs:3756
 msgid "BIMCraft project, IFC or Revit"
 msgstr "BIMCraft-Projekt, IFC oder Revit"
 
@@ -1293,7 +1293,7 @@ msgstr ""
 msgid "Back"
 msgstr "Zurück"
 
-#: crates/ui-egui/src/lib.rs:5410
+#: crates/ui-egui/src/lib.rs:5422
 msgid "Back to Coordinates"
 msgstr ""
 
@@ -1350,7 +1350,7 @@ msgstr "Balusterabstand"
 msgid "Bars"
 msgstr "Stäbe"
 
-#: crates/ui-egui/src/lib.rs:5453
+#: crates/ui-egui/src/lib.rs:5465
 msgid "Base"
 msgstr "Basis"
 
@@ -1530,7 +1530,7 @@ msgstr "Ziegel 225 x 75"
 msgid "Brought in {} objects as Generic Model families."
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:4306
+#: crates/ui-egui/src/lib.rs:4318
 msgid "Build"
 msgstr "Erstellen"
 
@@ -1618,12 +1618,12 @@ msgstr "Eingelesen: {}"
 
 #: crates/core/src/commands.rs:2394
 #: crates/ui-egui/src/camera.rs:38
-#: crates/ui-egui/src/lib.rs:4622
+#: crates/ui-egui/src/lib.rs:4634
 #: crates/ui-egui/src/properties.rs:292
 msgid "Camera"
 msgstr "Kamera"
 
-#: crates/ui-egui/src/lib.rs:4621
+#: crates/ui-egui/src/lib.rs:4633
 msgid "Camera: click where its eye stands, then what it looks at: a 3D view in perspective from there"
 msgstr "Kamera: den Augpunkt anklicken, dann das Ziel: eine perspektivische 3D-Ansicht von dort"
 
@@ -1631,8 +1631,8 @@ msgstr "Kamera: den Augpunkt anklicken, dann das Ziel: eine perspektivische 3D-A
 #: crates/ui-egui/src/background_grid.rs:111
 #: crates/ui-egui/src/cad.rs:140
 #: crates/ui-egui/src/clouds.rs:95
-#: crates/ui-egui/src/coordinates.rs:1269
-#: crates/ui-egui/src/coordinates.rs:1353
+#: crates/ui-egui/src/coordinates.rs:1274
+#: crates/ui-egui/src/coordinates.rs:1358
 #: crates/ui-egui/src/cowork.rs:403
 #: crates/ui-egui/src/dimtypes.rs:319
 #: crates/ui-egui/src/display.rs:81
@@ -1661,8 +1661,8 @@ msgstr "Kamera: den Augpunkt anklicken, dann das Ziel: eine perspektivische 3D-A
 #: crates/ui-egui/src/properties.rs:3821
 #: crates/ui-egui/src/purge.rs:77
 #: crates/ui-egui/src/reinforce.rs:536
-#: crates/ui-egui/src/shortcuts.rs:405
-#: crates/ui-egui/src/shortcuts.rs:533
+#: crates/ui-egui/src/shortcuts.rs:408
+#: crates/ui-egui/src/shortcuts.rs:536
 #: crates/ui-egui/src/standards.rs:334
 #: crates/ui-egui/src/templates.rs:757
 #: crates/ui-egui/src/titleblocks.rs:653
@@ -1794,7 +1794,7 @@ msgstr "Deckengrundriss: {}"
 msgid "Ceiling Plans"
 msgstr "Deckengrundrisse"
 
-#: crates/ui-egui/src/lib.rs:4323
+#: crates/ui-egui/src/lib.rs:4335
 msgid "Ceiling: click inside a room for a ceiling out to its walls"
 msgstr "Decke: in einen Raum klicken für eine Decke bis zu dessen Wänden"
 
@@ -1853,7 +1853,7 @@ msgid "Ceramic tile"
 msgstr "Keramikfliese"
 
 #: crates/ui-egui/src/editor/sketch.rs:1330
-#: crates/ui-egui/src/lib.rs:5596
+#: crates/ui-egui/src/lib.rs:5608
 #: crates/ui-egui/src/linestyles.rs:431
 #: crates/ui-egui/src/structure.rs:152
 msgid "Chain"
@@ -1946,11 +1946,11 @@ msgstr "Aktualisierungen werden gesucht…"
 msgid "Choose Point and click on the work plane."
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:946
+#: crates/ui-egui/src/coordinates.rs:951
 msgid "Choose a map system"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:4570
+#: crates/ui-egui/src/lib.rs:4582
 msgid "Choose a theme, including a dark interface with a light canvas"
 msgstr "Ein Design wählen, auch eine dunkle Oberfläche mit heller Zeichenfläche"
 
@@ -1972,7 +1972,7 @@ msgstr "Kreis: Mittelpunkt und dann einen Punkt auf dem Kreis anklicken (oder nu
 msgid "Circuit Number"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:4328
+#: crates/ui-egui/src/lib.rs:4340
 msgid "Circulation"
 msgstr "Verkehrsfläche"
 
@@ -1992,7 +1992,7 @@ msgstr "Umschriebenes Vieleck: Mittelpunkt und dann Seitenmitte anklicken; Seite
 msgid "Classification"
 msgstr "Klassifizierung"
 
-#: crates/ui-egui/src/coordinates.rs:980
+#: crates/ui-egui/src/coordinates.rs:985
 #: crates/ui-egui/src/parameters.rs:708
 msgid "Clear"
 msgstr ""
@@ -2013,7 +2013,7 @@ msgstr "Suche zurücksetzen"
 msgid "Clearance"
 msgstr "Betondeckung"
 
-#: crates/ui-egui/src/lib.rs:5747
+#: crates/ui-egui/src/lib.rs:5759
 msgid "Click a base point to measure from."
 msgstr "Basispunkt anklicken, von dem aus gemessen wird."
 
@@ -2025,7 +2025,7 @@ msgstr "Einen Kreis oder einen Bogen anklicken, dann an die Stelle der Bemaßung
 msgid "Click a corner of the rectangle."
 msgstr "Eine Ecke des Rechtecks anklicken."
 
-#: crates/ui-egui/src/lib.rs:5849
+#: crates/ui-egui/src/lib.rs:5861
 msgid "Click a corner of the shaft opening."
 msgstr "Eine Ecke des Schachtdurchbruchs anklicken."
 
@@ -2037,19 +2037,19 @@ msgstr "Eine Fläche eines Volumenkörpers anklicken: eine Wand steht darauf."
 msgid "Click a face of the model for the work plane. Esc goes back to the dialog."
 msgstr "Eine Fläche des Modells für die Arbeitsebene anklicken. Esc führt zurück zum Dialog."
 
-#: crates/ui-egui/src/lib.rs:5789
+#: crates/ui-egui/src/lib.rs:5801
 msgid "Click a face to paint it with the material in the Options Bar; the 3D view orbits as ever."
 msgstr "Eine Fläche anklicken, um sie mit dem Material aus der Optionenleiste zu belegen; die 3D-Ansicht lässt sich weiterhin umkreisen."
 
-#: crates/ui-egui/src/lib.rs:5728
+#: crates/ui-egui/src/lib.rs:5740
 msgid "Click a face, an axis or a corner to add it, the same one again to take it out; Tab steps over the references of the element under the cursor. Enter or the button confirms, Esc cancels."
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:5815
+#: crates/ui-egui/src/lib.rs:5827
 msgid "Click a floor or a roof: the spot slope reads how steeply its top falls there, and which way."
 msgstr "Einen Boden oder ein Dach anklicken: die Neigungsbemaßung gibt an, wie steil die Oberseite dort abfällt und in welche Richtung."
 
-#: crates/ui-egui/src/lib.rs:5814
+#: crates/ui-egui/src/lib.rs:5826
 msgid "Click a floor, a roof, a stair or a wall: the spot elevation reads the height of its top there."
 msgstr "Boden, Dach, Treppe oder Wand anklicken: die Höhenbemaßung liest dort die Höhe der Oberkante."
 
@@ -2069,11 +2069,11 @@ msgstr "Eine Linie anklicken, um sie zu wählen, mit Umschalt hinzufügen; das E
 msgid "Click a line, a wall or a grid to draw along it."
 msgstr "Auf eine Linie, eine Wand oder ein Raster klicken, um daran entlang zu zeichnen."
 
-#: crates/ui-egui/src/lib.rs:5754
+#: crates/ui-egui/src/lib.rs:5766
 msgid "Click a linked model or a CAD drawing: this project takes its shared coordinates. Esc cancels."
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:5790
+#: crates/ui-egui/src/lib.rs:5802
 msgid "Click a painted face to take its paint off."
 msgstr "Auf eine bemalte Fläche klicken, um die Farbe zu entfernen."
 
@@ -2085,23 +2085,23 @@ msgstr "Einen Punkt auf dem Kreis anklicken. Esc bricht ab."
 msgid "Click a point the arc passes through. Esc cancels."
 msgstr "Einen Punkt anklicken, durch den der Bogen verläuft. Esc bricht ab."
 
-#: crates/ui-egui/src/lib.rs:5701
+#: crates/ui-egui/src/lib.rs:5713
 msgid "Click a point to mark its height."
 msgstr "Einen Punkt anklicken, um seine Höhe zu markieren."
 
-#: crates/ui-egui/src/lib.rs:5707
+#: crates/ui-egui/src/lib.rs:5719
 msgid "Click a point, a corner or an edge to select it (Shift adds), then type its height or drag its arrows; Delete removes it."
 msgstr "Einen Punkt, eine Ecke oder eine Kante zum Auswählen anklicken (Umschalt fügt hinzu), dann die Höhe eingeben oder an den Pfeilen ziehen; Entf entfernt das Gewählte."
 
-#: crates/ui-egui/src/lib.rs:5862
+#: crates/ui-egui/src/lib.rs:5874
 msgid "Click a point, a corner or an edge to select it (Shift adds), then type its height; drag a point to move it; Delete removes it."
 msgstr "Einen Punkt, eine Ecke oder eine Kante zum Auswählen anklicken (Umschalt fügt hinzu), dann die Höhe eingeben; einen Punkt zum Verschieben ziehen; Entf entfernt das Gewählte."
 
-#: crates/ui-egui/src/lib.rs:5780
+#: crates/ui-egui/src/lib.rs:5792
 msgid "Click a polyline or a spline where a vertex goes."
 msgstr "Eine Polylinie oder einen Spline anklicken, wo ein Scheitelpunkt hin soll."
 
-#: crates/ui-egui/src/lib.rs:5781
+#: crates/ui-egui/src/lib.rs:5793
 msgid "Click a polyline's corner or a spline's point to take it out."
 msgstr "Eine Ecke einer Polylinie oder einen Punkt eines Splines anklicken, um ihn zu entfernen."
 
@@ -2125,16 +2125,16 @@ msgstr "Eine Referenzebene, eine Referenzlinie oder eine Kante eines Körpers an
 msgid "Click a reference plane, a reference line or a form's edge: a line of the path along it."
 msgstr "Eine Referenzebene, eine Referenzlinie oder eine Kante eines Körpers anklicken: eine Linie des Pfads daran entlang."
 
-#: crates/ui-egui/src/lib.rs:5845
+#: crates/ui-egui/src/lib.rs:5857
 msgid "Click a roof's slope where the dormer's front wall goes, across the slope."
 msgstr "Die Dachschräge anklicken, wo die Frontwand der Gaube hin soll, quer zur Schräge."
 
-#: crates/ui-egui/src/lib.rs:5837
+#: crates/ui-egui/src/lib.rs:5849
 msgid "Click a stair or a ramp for a railing down each side, or the start of a path."
 msgstr "Eine Treppe oder eine Rampe anklicken, um auf jeder Seite ein Geländer zu erhalten, oder den Anfang eines Pfads."
 
 #: crates/ui-egui/src/canvas.rs:2226
-#: crates/ui-egui/src/lib.rs:5818
+#: crates/ui-egui/src/lib.rs:5830
 msgid "Click a straight wall, a line or a slab's edge for the elevation to look at."
 msgstr ""
 
@@ -2146,19 +2146,19 @@ msgstr ""
 msgid "Click a text to pick it"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:5690
+#: crates/ui-egui/src/lib.rs:5702
 msgid "Click a view on the sheet to select it, drag it to move it, double-click it to open it."
 msgstr "Eine Ansicht auf dem Plan anklicken, um sie auszuwählen, ziehen, um sie zu verschieben, doppelklicken, um sie zu öffnen."
 
-#: crates/ui-egui/src/lib.rs:5782
+#: crates/ui-egui/src/lib.rs:5794
 msgid "Click a wall or a line where to split it."
 msgstr "Eine Wand oder eine Linie anklicken, wo sie geteilt werden soll."
 
-#: crates/ui-egui/src/lib.rs:5737
+#: crates/ui-egui/src/lib.rs:5749
 msgid "Click a wall to place the door."
 msgstr "Eine Wand anklicken, um die Tür zu platzieren."
 
-#: crates/ui-egui/src/lib.rs:5738
+#: crates/ui-egui/src/lib.rs:5750
 msgid "Click a wall to place the window."
 msgstr "Eine Wand anklicken, um das Fenster zu platzieren."
 
@@ -2170,27 +2170,27 @@ msgstr "Eine Wand, einen Träger, ein Rohr oder ein anderes entlang einer Linie 
 msgid "Click a wall: a boundary line along it."
 msgstr "Eine Wand anklicken: eine Begrenzungslinie daran entlang."
 
-#: crates/ui-egui/src/lib.rs:5846
+#: crates/ui-egui/src/lib.rs:5858
 msgid "Click an edge of a roof's footprint: it stands upright, a gable end; click it again to slope it."
 msgstr "Eine Kante der Dachgrundfläche anklicken: sie steht senkrecht, ein Giebelende; erneut anklicken, um sie zu neigen."
 
-#: crates/ui-egui/src/lib.rs:5785
+#: crates/ui-egui/src/lib.rs:5797
 msgid "Click an edge to draw it in the line style in the Options Bar; <By Category> puts it back."
 msgstr "Eine Kante anklicken, um sie im Linienstil der Optionsleiste zu zeichnen; <Nach Kategorie> setzt sie zurück."
 
-#: crates/ui-egui/src/lib.rs:5802
+#: crates/ui-egui/src/lib.rs:5814
 msgid "Click an element to tag it with its type, a door's or window's with its mark, or with the field in Label."
 msgstr "Ein Element anklicken, um es mit seinem Typ zu beschriften, eine Tür oder ein Fenster mit ihrer Kennzeichnung, oder mit dem Feld in Bezeichnung."
 
-#: crates/ui-egui/src/lib.rs:5784
+#: crates/ui-egui/src/lib.rs:5796
 msgid "Click an element to take it down in the view's phase; click it again to take it back."
 msgstr "Ein Element anklicken, um es in der Phase der Ansicht abzubrechen; erneut anklicken, um es zurückzunehmen."
 
-#: crates/ui-egui/src/lib.rs:5778
+#: crates/ui-egui/src/lib.rs:5790
 msgid "Click each line to trim or extend to it, on the part to keep; Esc picks another boundary."
 msgstr "Jede Linie auf dem zu behaltenden Teil anklicken, um sie daran zu kürzen oder zu verlängern; Esc wählt eine andere Grenze."
 
-#: crates/ui-egui/src/lib.rs:5844
+#: crates/ui-egui/src/lib.rs:5856
 msgid "Click how far across the roof is swept, to either side of the line. Esc cancels."
 msgstr "Anklicken, wie weit das Dach zu beiden Seiten der Linie gezogen wird. Esc bricht ab."
 
@@ -2202,27 +2202,27 @@ msgstr "Anklicken, wie weit er ausbaucht, auf der Seite, zu der er verläuft. Es
 msgid "Click how far its other axis reaches. Esc cancels."
 msgstr "Anklicken, wie weit die andere Achse reicht. Esc bricht ab."
 
-#: crates/ui-egui/src/lib.rs:5848
+#: crates/ui-egui/src/lib.rs:5860
 msgid "Click inside a room: a ceiling out to its walls' faces, as high as the Options Bar says."
 msgstr "In einen Raum klicken: eine Decke bis zu den Wandflächen, so hoch wie in der Optionsleiste angegeben."
 
-#: crates/ui-egui/src/lib.rs:5847
+#: crates/ui-egui/src/lib.rs:5859
 msgid "Click inside the walls to floor them: the slab runs under their outline, its top at the level."
 msgstr "In die Wände klicken, um einen Boden zu erstellen: die Platte verläuft unter ihrem Umriss, Oberkante auf dem Geschoss."
 
-#: crates/ui-egui/src/lib.rs:5839
+#: crates/ui-egui/src/lib.rs:5851
 msgid "Click inside the walls to roof them, on the level above: the overhang runs past their faces."
 msgstr "In die Wände klicken, um ein Dach darüber zu erstellen, im Geschoss darüber: der Überstand reicht über ihre Flächen hinaus."
 
-#: crates/ui-egui/src/lib.rs:5739
+#: crates/ui-egui/src/lib.rs:5751
 msgid "Click inside walls to place a room; the outline shows the room you'd get."
 msgstr "In die Wände klicken, um einen Raum zu platzieren; der Umriss zeigt den entstehenden Raum."
 
-#: crates/ui-egui/src/lib.rs:5801
+#: crates/ui-egui/src/lib.rs:5813
 msgid "Click its end: its length and angle read beside it. Esc cancels."
 msgstr "Sein Ende anklicken: Länge und Winkel werden daneben angezeigt. Esc bricht ab."
 
-#: crates/ui-egui/src/lib.rs:5859
+#: crates/ui-egui/src/lib.rs:5871
 msgid "Click its head: the floor rises toward it at the Options Bar's slope. Esc cancels."
 msgstr "Seinen Kopf anklicken: der Boden steigt dorthin mit der Neigung aus der Optionsleiste an. Esc bricht ab."
 
@@ -2238,12 +2238,12 @@ msgstr "Seinen nächsten Punkt anklicken; Enter schließt ab, der erste Punkt er
 msgid "Click lines that cross (reference lines, reference planes, lines of forms), then click where the dimension goes."
 msgstr "Sich schneidende Linien anklicken (Referenzlinien, Referenzebenen, Linien von Körpern), dann an die Stelle der Bemaßung klicken."
 
-#: crates/ui-egui/src/lib.rs:5679
-#: crates/ui-egui/src/lib.rs:5871
+#: crates/ui-egui/src/lib.rs:5691
+#: crates/ui-egui/src/lib.rs:5883
 msgid "Click on Bottom Left Corner"
 msgstr "Auf die untere linke Ecke klicken"
 
-#: crates/ui-egui/src/lib.rs:5680
+#: crates/ui-egui/src/lib.rs:5692
 msgid "Click on Top Right Corner"
 msgstr "Auf die obere rechte Ecke klicken"
 
@@ -2251,7 +2251,7 @@ msgstr "Auf die obere rechte Ecke klicken"
 msgid "Click on the model: a point of its surface."
 msgstr "Auf das Modell klicken: ein Punkt seiner Oberfläche."
 
-#: crates/ui-egui/src/lib.rs:5866
+#: crates/ui-egui/src/lib.rs:5878
 msgid "Click on the top: a point there, the Options Bar's offset over the surface, or at its Absolute elevation."
 msgstr "Auf die Oberseite klicken: ein Punkt dort, im Versatz aus der Optionsleiste über der Oberfläche oder auf der absoluten Höhe."
 
@@ -2267,7 +2267,7 @@ msgstr "Ein Ende seiner Achse anklicken."
 msgid "Click parallel reference planes, extrusion ends or lines of forms, then click where the dimension goes."
 msgstr "Parallele Referenzebenen, Extrusionsenden oder Linien von Körpern anklicken, dann an die Stelle der Bemaßung klicken."
 
-#: crates/ui-egui/src/lib.rs:5712
+#: crates/ui-egui/src/lib.rs:5724
 msgid "Click points along what to measure: each length and the total read beside them. Click the first point again to close it and read its area; Enter ends the chain, Esc clears it."
 msgstr ""
 
@@ -2279,11 +2279,11 @@ msgstr ""
 msgid "Click the arc's centre."
 msgstr "Den Mittelpunkt des Bogens anklicken."
 
-#: crates/ui-egui/src/lib.rs:5750
+#: crates/ui-egui/src/lib.rs:5762
 msgid "Click the centre of rotation."
 msgstr "Den Drehpunkt anklicken."
 
-#: crates/ui-egui/src/lib.rs:5753
+#: crates/ui-egui/src/lib.rs:5765
 msgid "Click the centre the model turns about."
 msgstr ""
 
@@ -2303,15 +2303,15 @@ msgstr "Das Ende einer Linie anklicken: der Bogen setzt in Richtung der Linie an
 msgid "Click the end of its first axis."
 msgstr "Das Ende der ersten Achse anklicken."
 
-#: crates/ui-egui/src/lib.rs:5752
+#: crates/ui-egui/src/lib.rs:5764
 msgid "Click the end of the angle. Esc cancels."
 msgstr "Das Ende des Winkels anklicken. Esc bricht ab."
 
-#: crates/ui-egui/src/lib.rs:5766
+#: crates/ui-egui/src/lib.rs:5778
 msgid "Click the end of the angle: the model turns, and true north with it, so nothing moves in the world. Esc cancels."
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:5770
+#: crates/ui-egui/src/lib.rs:5782
 msgid "Click the end of the mirror axis."
 msgstr "Das Ende der Spiegelachse anklicken."
 
@@ -2319,7 +2319,7 @@ msgstr "Das Ende der Spiegelachse anklicken."
 msgid "Click the end of the run. Esc stops the chain."
 msgstr "Das Ende des Laufs anklicken. Esc beendet die Kette."
 
-#: crates/ui-egui/src/lib.rs:5853
+#: crates/ui-egui/src/lib.rs:5865
 msgid "Click the first corner of the mass's footprint."
 msgstr "Die erste Ecke der Grundfläche des Volumenkörpers anklicken."
 
@@ -2327,7 +2327,7 @@ msgstr "Die erste Ecke der Grundfläche des Volumenkörpers anklicken."
 msgid "Click the first point the spline passes through."
 msgstr "Den ersten Punkt anklicken, durch den der Spline verläuft."
 
-#: crates/ui-egui/src/lib.rs:5854
+#: crates/ui-egui/src/lib.rs:5866
 msgid "Click the footprint's next corner. Esc cancels."
 msgstr "Die nächste Ecke der Grundfläche anklicken. Esc bricht ab."
 
@@ -2335,11 +2335,11 @@ msgstr "Die nächste Ecke der Grundfläche anklicken. Esc bricht ab."
 msgid "Click the line of the sketch that moves onto it; its padlock locks them."
 msgstr "Die Linie der Skizze anklicken, die darauf verschoben wird; das Schloss sperrt beide."
 
-#: crates/ui-egui/src/lib.rs:5776
+#: crates/ui-egui/src/lib.rs:5788
 msgid "Click the line to trim or extend to it, on the part to keep."
 msgstr "Die Linie auf dem zu behaltenden Teil anklicken, um daran zu kürzen oder zu verlängern."
 
-#: crates/ui-egui/src/lib.rs:5842
+#: crates/ui-egui/src/lib.rs:5854
 msgid "Click the line's end: the profile rises from it at the Options Bar's slope."
 msgstr "Das Ende der Linie anklicken: das Profil steigt von dort mit der Neigung aus der Optionsleiste an."
 
@@ -2347,11 +2347,11 @@ msgstr "Das Ende der Linie anklicken: das Profil steigt von dort mit der Neigung
 msgid "Click the line's end; the next starts there. The first point again closes the loop; Esc stops."
 msgstr "Das Ende der Linie anklicken; die nächste beginnt dort. Der erste Punkt erneut schließt die Schleife; Esc beendet."
 
-#: crates/ui-egui/src/lib.rs:5741
+#: crates/ui-egui/src/lib.rs:5753
 msgid "Click the line's next point; each click places a line. Esc ends the chain."
 msgstr "Den nächsten Punkt der Linie anklicken; jeder Klick platziert eine Linie. Esc beendet die Kette."
 
-#: crates/ui-egui/src/lib.rs:5855
+#: crates/ui-egui/src/lib.rs:5867
 msgid "Click the next corner; Enter, or the first corner again, finishes the mass. Esc cancels."
 msgstr "Die nächste Ecke anklicken; Enter oder die erste Ecke erneut schließt den Volumenkörper ab. Esc bricht ab."
 
@@ -2367,7 +2367,7 @@ msgstr ""
 msgid "Click the opposite corner. Esc cancels."
 msgstr "Die gegenüberliegende Ecke anklicken. Esc bricht ab."
 
-#: crates/ui-egui/src/lib.rs:5851
+#: crates/ui-egui/src/lib.rs:5863
 msgid "Click the opposite corner: the shaft cuts the floors, ceilings and roofs up to its top. Esc cancels."
 msgstr "Die gegenüberliegende Ecke anklicken: der Schacht schneidet Böden, Decken und Dächer bis zu seiner Oberkante. Esc bricht ab."
 
@@ -2375,7 +2375,7 @@ msgstr "Die gegenüberliegende Ecke anklicken: der Schacht schneidet Böden, Dec
 msgid "Click the other end."
 msgstr "Das andere Ende anklicken."
 
-#: crates/ui-egui/src/lib.rs:5838
+#: crates/ui-egui/src/lib.rs:5850
 msgid "Click the path's next point. Enter finishes, Esc cancels."
 msgstr "Den nächsten Punkt des Pfads anklicken. Enter schließt ab, Esc bricht ab."
 
@@ -2383,11 +2383,11 @@ msgstr "Den nächsten Punkt des Pfads anklicken. Enter schließt ab, Esc bricht 
 msgid "Click the point it turns about: where two planes cross, a line's end, a point of a sketch, or anywhere."
 msgstr "Den Punkt anklicken, um den es sich dreht: wo sich zwei Ebenen kreuzen, das Ende einer Linie, einen Punkt einer Skizze oder irgendwo."
 
-#: crates/ui-egui/src/lib.rs:5759
+#: crates/ui-egui/src/lib.rs:5771
 msgid "Click the point the shared coordinates typed are at: it snaps, and a wall's corner is its bottom, a slab's its top. Esc goes back."
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:5755
+#: crates/ui-egui/src/lib.rs:5767
 msgid "Click the point the spot coordinate reads; it snaps."
 msgstr ""
 
@@ -2403,23 +2403,23 @@ msgstr "Die Referenz anklicken, an der ausgerichtet wird."
 msgid "Click the reference to align to: a reference plane, a reference line or a line."
 msgstr "Die Referenz anklicken, an der ausgerichtet wird: eine Referenzebene, eine Referenzlinie oder eine Linie."
 
-#: crates/ui-egui/src/lib.rs:5800
+#: crates/ui-egui/src/lib.rs:5812
 msgid "Click the ruler's start: points snap as they do drawing."
 msgstr "Den Anfang des Lineals anklicken: Punkte fangen wie beim Zeichnen."
 
-#: crates/ui-egui/src/lib.rs:5817
+#: crates/ui-egui/src/lib.rs:5829
 msgid "Click the section's end."
 msgstr "Das Ende des Schnitts anklicken."
 
-#: crates/ui-egui/src/lib.rs:5816
+#: crates/ui-egui/src/lib.rs:5828
 msgid "Click the section's start: it looks to the left of the line you draw."
 msgstr "Den Anfang des Schnitts anklicken: er blickt nach links von der gezeichneten Linie."
 
-#: crates/ui-egui/src/lib.rs:5740
+#: crates/ui-egui/src/lib.rs:5752
 msgid "Click the separation line's start."
 msgstr "Den Anfang der Trennlinie anklicken."
 
-#: crates/ui-egui/src/lib.rs:5858
+#: crates/ui-egui/src/lib.rs:5870
 msgid "Click the slope arrow's tail: where the floor's top stays at its height offset."
 msgstr "Den Fuß des Neigungspfeils anklicken: dort bleibt die Bodenoberkante auf ihrem Höhenversatz."
 
@@ -2427,15 +2427,15 @@ msgstr "Den Fuß des Neigungspfeils anklicken: dort bleibt die Bodenoberkante au
 msgid "Click the spline's first control point."
 msgstr "Den ersten Kontrollpunkt des Splines anklicken."
 
-#: crates/ui-egui/src/lib.rs:5751
+#: crates/ui-egui/src/lib.rs:5763
 msgid "Click the start of the angle, or type an angle and press Enter."
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:5840
+#: crates/ui-egui/src/lib.rs:5852
 msgid "Click the start of the line the roof's profile runs along."
 msgstr "Den Anfang der Linie anklicken, entlang der das Dachprofil verläuft."
 
-#: crates/ui-egui/src/lib.rs:5769
+#: crates/ui-egui/src/lib.rs:5781
 msgid "Click the start of the mirror axis."
 msgstr "Den Anfang der Spiegelachse anklicken."
 
@@ -2455,27 +2455,27 @@ msgstr "Den zweiten Punkt der Arbeitsebene anklicken."
 msgid "Click the work plane's third point."
 msgstr "Den dritten Punkt der Arbeitsebene anklicken."
 
-#: crates/ui-egui/src/lib.rs:5734
+#: crates/ui-egui/src/lib.rs:5746
 msgid "Click to build the wall to the next point. Enter or Esc ends the chain, Shift keeps it square."
 msgstr "Klicken, um die Wand zum nächsten Punkt zu ziehen. Enter oder Esc beendet die Kette, Umschalt hält sie rechtwinklig."
 
-#: crates/ui-egui/src/lib.rs:5744
+#: crates/ui-egui/src/lib.rs:5756
 msgid "Click to enter the grid's end point."
 msgstr "Klicken, um den Endpunkt des Rasters einzugeben."
 
-#: crates/ui-egui/src/lib.rs:5743
+#: crates/ui-egui/src/lib.rs:5755
 msgid "Click to enter the grid's start point."
 msgstr "Klicken, um den Startpunkt des Rasters einzugeben."
 
-#: crates/ui-egui/src/lib.rs:5746
+#: crates/ui-egui/src/lib.rs:5758
 msgid "Click to enter the reference plane's end point."
 msgstr "Klicken, um den Endpunkt der Referenzebene einzugeben."
 
-#: crates/ui-egui/src/lib.rs:5745
+#: crates/ui-egui/src/lib.rs:5757
 msgid "Click to enter the reference plane's start point."
 msgstr "Klicken, um den Startpunkt der Referenzebene einzugeben."
 
-#: crates/ui-egui/src/lib.rs:5733
+#: crates/ui-egui/src/lib.rs:5745
 msgid "Click to enter the wall's start point."
 msgstr "Klicken, um den Startpunkt der Wand einzugeben."
 
@@ -2483,7 +2483,7 @@ msgstr "Klicken, um den Startpunkt der Wand einzugeben."
 msgid "Click to pick the text, drag to move it"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:5821
+#: crates/ui-egui/src/lib.rs:5833
 msgid "Click to place a column, as high as the Options Bar says."
 msgstr "Klicken, um eine Stütze zu platzieren, so hoch wie in der Optionsleiste angegeben."
 
@@ -2495,7 +2495,7 @@ msgstr "Klicken, um eine tragende Stütze zu platzieren, so hoch wie in der Opti
 msgid "Click to place an isolated footing: its top at the Options Bar's offset, as thick as it says."
 msgstr "Klicken, um ein Einzelfundament zu platzieren: Oberkante auf dem Versatz aus der Optionsleiste, so dick wie dort angegeben."
 
-#: crates/ui-egui/src/lib.rs:5693
+#: crates/ui-egui/src/lib.rs:5705
 msgid "Click to select what the view cuts or sees; the middle button pans, the wheel zooms."
 msgstr "Klicken, um auszuwählen, was die Ansicht schneidet oder zeigt; mittlere Taste verschiebt, das Rad zoomt."
 
@@ -2503,11 +2503,11 @@ msgstr "Klicken, um auszuwählen, was die Ansicht schneidet oder zeigt; mittlere
 msgid "Click to select, Ctrl adds; drag a box to select (left to right what is inside it, right to left what it touches); drag a point or a gizmo arrow to move it; Shift and the middle button orbit."
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:5732
+#: crates/ui-egui/src/lib.rs:5744
 msgid "Click to select, Tab for what's underneath, Ctrl adds, Shift takes away; drag to box or to move."
 msgstr "Klicken zum Auswählen, Tab für das Darunterliegende, Strg fügt hinzu, Umschalt entfernt; ziehen für Fensterauswahl oder Verschieben."
 
-#: crates/ui-egui/src/lib.rs:5686
+#: crates/ui-egui/src/lib.rs:5698
 msgid "Click to select, drag a box to select several. Shift and the middle button orbit, the middle button pans, the wheel zooms."
 msgstr "Klicken zum Auswählen, Rahmen aufziehen für mehrere. Umschalt und mittlere Taste umkreisen das Modell, die mittlere Taste verschiebt, das Rad zoomt."
 
@@ -2531,7 +2531,7 @@ msgstr "Zwei Punkte anklicken: die Achse, um die sich das Profil dreht."
 msgid "Click what moves onto it."
 msgstr "Das anklicken, was darauf verschoben wird."
 
-#: crates/ui-egui/src/lib.rs:5820
+#: crates/ui-egui/src/lib.rs:5832
 msgid "Click what the camera looks at; its eye and target heights are the Options Bar's."
 msgstr "Das anklicken, worauf die Kamera blickt; Augen- und Zielhöhe stammen aus der Optionsleiste."
 
@@ -2539,11 +2539,11 @@ msgstr "Das anklicken, worauf die Kamera blickt; Augen- und Zielhöhe stammen au
 msgid "Click where a corner goes. Esc cancels."
 msgstr "Klicken, wo eine Ecke hin soll. Esc bricht ab."
 
-#: crates/ui-egui/src/lib.rs:5788
+#: crates/ui-egui/src/lib.rs:5800
 msgid "Click where it ends: the group repeats along the line every spacing."
 msgstr "Klicken, wo sie endet: die Gruppe wiederholt sich entlang der Linie in jedem Abstand."
 
-#: crates/ui-egui/src/lib.rs:5869
+#: crates/ui-egui/src/lib.rs:5881
 msgid "Click where it ends: the top folds along it. Esc cancels."
 msgstr "Klicken, wo sie endet: die Oberseite knickt an ihr entlang. Esc bricht ab."
 
@@ -2551,15 +2551,15 @@ msgstr "Klicken, wo sie endet: die Oberseite knickt an ihr entlang. Esc bricht a
 msgid "Click where it goes."
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:5756
+#: crates/ui-egui/src/lib.rs:5768
 msgid "Click where its leader ends. Esc cancels."
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:5826
+#: crates/ui-egui/src/lib.rs:5838
 msgid "Click where its run ends: past its last riser, one run to the level above; short of it, a landing. Esc cancels."
 msgstr "Klicken, wo ihr Lauf endet: hinter der letzten Steigung ein Lauf bis zum Geschoss darüber; davor ein Podest. Esc bricht ab."
 
-#: crates/ui-egui/src/lib.rs:5831
+#: crates/ui-egui/src/lib.rs:5843
 msgid "Click where its run ends: past its top, one run, as high as the Options Bar says; short of it, a landing. Esc cancels."
 msgstr "Klicken, wo ihr Lauf endet: hinter ihrer Oberkante ein Lauf, so hoch wie in der Optionsleiste angegeben; davor ein Podest. Esc bricht ab."
 
@@ -2579,7 +2579,7 @@ msgstr "Klicken, wo der Bogen endet."
 msgid "Click where the arc ends. Esc cancels."
 msgstr "Klicken, wo der Bogen endet. Esc bricht ab."
 
-#: crates/ui-egui/src/lib.rs:5804
+#: crates/ui-egui/src/lib.rs:5816
 msgid "Click where the arc goes: the angle on that side. Esc cancels."
 msgstr "Klicken, wohin der Bogen verläuft: der Winkel auf dieser Seite. Esc bricht ab."
 
@@ -2587,11 +2587,11 @@ msgstr "Klicken, wohin der Bogen verläuft: der Winkel auf dieser Seite. Esc bri
 msgid "Click where the arc starts."
 msgstr "Klicken, wo der Bogen beginnt."
 
-#: crates/ui-egui/src/lib.rs:5748
+#: crates/ui-egui/src/lib.rs:5760
 msgid "Click where the base point goes, or type a distance and press Enter. Esc cancels."
 msgstr "Klicken, wohin der Basispunkt soll, oder eine Distanz eingeben und Enter drücken. Esc bricht ab."
 
-#: crates/ui-egui/src/lib.rs:5819
+#: crates/ui-egui/src/lib.rs:5831
 msgid "Click where the camera's eye stands: it looks at the point you click next."
 msgstr "Klicken, wo der Augpunkt der Kamera steht: sie blickt auf den Punkt, der als Nächstes angeklickt wird."
 
@@ -2599,31 +2599,31 @@ msgstr "Klicken, wo der Augpunkt der Kamera steht: sie blickt auf den Punkt, der
 msgid "Click where the component goes, on the view's work plane."
 msgstr "Dort klicken, wo das Bauteil platziert wird, auf der Arbeitsebene der Ansicht."
 
-#: crates/ui-egui/src/lib.rs:5823
+#: crates/ui-egui/src/lib.rs:5835
 msgid "Click where the component goes; Space turns it a quarter turn."
 msgstr "Klicken, wohin das Bauteil soll; Leertaste dreht es um eine Vierteldrehung."
 
-#: crates/ui-egui/src/lib.rs:5749
+#: crates/ui-egui/src/lib.rs:5761
 msgid "Click where the copy's base point goes, or type a distance and press Enter. Esc cancels."
 msgstr "Klicken, wohin der Basispunkt der Kopie soll, oder eine Distanz eingeben und Enter drücken. Esc bricht ab."
 
-#: crates/ui-egui/src/lib.rs:5856
+#: crates/ui-egui/src/lib.rs:5868
 msgid "Click where the detail line starts."
 msgstr "Klicken, wo die Detaillinie beginnt."
 
-#: crates/ui-egui/src/lib.rs:5811
+#: crates/ui-egui/src/lib.rs:5823
 msgid "Click where the diameter goes. Esc cancels."
 msgstr "Klicken, wo der Durchmesser verläuft. Esc bricht ab."
 
-#: crates/ui-egui/src/lib.rs:5809
+#: crates/ui-egui/src/lib.rs:5821
 msgid "Click where the dimension's arc goes, or pick two points on the arc to measure between. Esc cancels."
 msgstr "Klicken, wo der Bogen der Bemaßung verläuft, oder zwei Punkte auf dem Bogen für das Maß wählen. Esc bricht ab."
 
-#: crates/ui-egui/src/lib.rs:5786
+#: crates/ui-egui/src/lib.rs:5798
 msgid "Click where the group's origin goes."
 msgstr "Klicken, wohin der Ursprung der Gruppe soll."
 
-#: crates/ui-egui/src/lib.rs:5870
+#: crates/ui-egui/src/lib.rs:5882
 msgid "Click where the line starts."
 msgstr "Klicken, wo die Linie beginnt."
 
@@ -2643,23 +2643,23 @@ msgstr ""
 msgid "Click where the polyline starts."
 msgstr "Klicken, wo die Polylinie beginnt."
 
-#: crates/ui-egui/src/lib.rs:5812
+#: crates/ui-egui/src/lib.rs:5824
 msgid "Click where the radius goes. Esc cancels."
 msgstr "Klicken, wo der Radius verläuft. Esc bricht ab."
 
-#: crates/ui-egui/src/lib.rs:5828
+#: crates/ui-egui/src/lib.rs:5840
 msgid "Click where the ramp starts: the middle of its foot."
 msgstr "Klicken, wo die Rampe beginnt: die Mitte ihres Fußes."
 
-#: crates/ui-egui/src/lib.rs:5787
+#: crates/ui-egui/src/lib.rs:5799
 msgid "Click where the repeating detail starts."
 msgstr "Klicken, wo das wiederholte Detail beginnt."
 
-#: crates/ui-egui/src/lib.rs:5868
+#: crates/ui-egui/src/lib.rs:5880
 msgid "Click where the split line starts: a point, a corner or an edge of the top."
 msgstr "Klicken, wo die Teilungslinie beginnt: ein Punkt, eine Ecke oder eine Kante der Oberseite."
 
-#: crates/ui-egui/src/lib.rs:5824
+#: crates/ui-egui/src/lib.rs:5836
 msgid "Click where the stair starts: the middle of its first riser."
 msgstr "Klicken, wo die Treppe beginnt: die Mitte ihrer ersten Steigung."
 
@@ -2667,7 +2667,7 @@ msgstr "Klicken, wo die Treppe beginnt: die Mitte ihrer ersten Steigung."
 msgid "Click which way it climbs: its risers take it up to the level above. Esc cancels."
 msgstr "Klicken, in welche Richtung sie ansteigt: ihre Steigungen führen sie zum Geschoss darüber. Esc bricht ab."
 
-#: crates/ui-egui/src/lib.rs:5835
+#: crates/ui-egui/src/lib.rs:5847
 msgid "Click which way the next run goes from the landing: on, left, right, or back beside it."
 msgstr "Klicken, wohin der nächste Lauf vom Podest geht: geradeaus, links, rechts oder zurück daneben."
 
@@ -2683,7 +2683,7 @@ msgstr ""
 #: crates/ui-egui/src/favorites.rs:179
 #: crates/ui-egui/src/graphics.rs:512
 #: crates/ui-egui/src/inquiry.rs:203
-#: crates/ui-egui/src/lib.rs:6019
+#: crates/ui-egui/src/lib.rs:6031
 #: crates/ui-egui/src/parameters.rs:704
 #: crates/ui-egui/src/parameters.rs:722
 #: crates/ui-egui/src/phasing.rs:278
@@ -2697,15 +2697,15 @@ msgstr ""
 #: crates/ui-egui/src/revit.rs:261
 #: crates/ui-egui/src/script.rs:103
 #: crates/ui-egui/src/settings.rs:486
-#: crates/ui-egui/src/shortcuts.rs:571
+#: crates/ui-egui/src/shortcuts.rs:574
 msgid "Close"
 msgstr "Schließen"
 
-#: crates/ui-egui/src/lib.rs:5993
+#: crates/ui-egui/src/lib.rs:6005
 msgid "Close Family"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:4681
+#: crates/ui-egui/src/lib.rs:4693
 msgid "Close Inactive"
 msgstr "Inaktive schließen"
 
@@ -2721,13 +2721,13 @@ msgstr "Schließen ohne Laden"
 msgid "Close dialog"
 msgstr "Dialog schließen"
 
-#: crates/ui-egui/src/lib.rs:4681
+#: crates/ui-egui/src/lib.rs:4693
 msgid "Close every view but this one"
 msgstr "Alle Ansichten außer dieser schließen"
 
 #: crates/ui-egui/src/dock.rs:593
 #: crates/ui-egui/src/dock.rs:727
-#: crates/ui-egui/src/lib.rs:5993
+#: crates/ui-egui/src/lib.rs:6005
 msgid "Close {}"
 msgstr "{} schließen"
 
@@ -2737,13 +2737,13 @@ msgstr ""
 
 #: crates/ui-egui/src/cowork.rs:476
 #: crates/ui-egui/src/cowork.rs:589
-#: crates/ui-egui/src/lib.rs:456
-#: crates/ui-egui/src/lib.rs:4750
+#: crates/ui-egui/src/lib.rs:458
+#: crates/ui-egui/src/lib.rs:4762
 #: crates/ui-egui/src/settings.rs:332
 msgid "Co-Work"
 msgstr "Co-Work"
 
-#: crates/ui-egui/src/lib.rs:4749
+#: crates/ui-egui/src/lib.rs:4761
 msgid "Co-Work (CW): host this project for others on BIMCraft, or join someone's session, and see each other's edits live"
 msgstr ""
 
@@ -2773,7 +2773,7 @@ msgstr "Grob"
 msgid "Code:"
 msgstr "Code:"
 
-#: crates/ui-egui/src/lib.rs:1356
+#: crates/ui-egui/src/lib.rs:1358
 msgid "Collaborate"
 msgstr ""
 
@@ -2800,7 +2800,7 @@ msgstr "Farbe in Grundrissen"
 msgid "Column"
 msgstr "Stütze"
 
-#: crates/ui-egui/src/lib.rs:4311
+#: crates/ui-egui/src/lib.rs:4323
 msgid "Column (CL): click where it stands"
 msgstr "Stütze (CL): klicken, wo sie steht"
 
@@ -2821,7 +2821,7 @@ msgstr "Kombinieren: Was in dieser Phase erstellt, abgebrochen und angezeigt wur
 msgid "Coming in a later version"
 msgstr "In einer späteren Version verfügbar"
 
-#: crates/ui-egui/src/shortcuts.rs:434
+#: crates/ui-egui/src/shortcuts.rs:437
 msgid "Command / Tool:"
 msgstr "Befehl / Werkzeug:"
 
@@ -2842,7 +2842,7 @@ msgstr "Vergleich"
 msgid "Component"
 msgstr "Bauteil"
 
-#: crates/ui-egui/src/lib.rs:4312
+#: crates/ui-egui/src/lib.rs:4324
 msgid "Component (CM): a family's type, where you click; Space turns it"
 msgstr "Bauteil (CM): der Typ einer Familie, wo geklickt wird; Leertaste dreht es"
 
@@ -2854,7 +2854,7 @@ msgstr "Bauteil (CM): ein Exemplar einer in diese Familie geladenen Familie, per
 msgid "Computation Height"
 msgstr "Berechnungshöhe"
 
-#: crates/ui-egui/src/lib.rs:4239
+#: crates/ui-egui/src/lib.rs:4251
 msgid "Conceptual Mass"
 msgstr "Konzeptioneller Volumenkörper"
 
@@ -2965,8 +2965,8 @@ msgstr "Anschluss: ein Rohr-, Strom-, Schalter-, Daten- oder Erdungsanschluss, w
 msgid "Connectors"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:5401
-#: crates/ui-egui/src/lib.rs:5404
+#: crates/ui-egui/src/lib.rs:5413
+#: crates/ui-egui/src/lib.rs:5416
 msgid "Constrain"
 msgstr "Abhängig machen"
 
@@ -3008,11 +3008,11 @@ msgstr "Steuerport"
 msgid "Convert"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:3027
+#: crates/ui-egui/src/lib.rs:3039
 msgid "Convert Lines"
 msgstr "Linien umwandeln"
 
-#: crates/ui-egui/src/lib.rs:3025
+#: crates/ui-egui/src/lib.rs:3037
 msgid "Convert Lines: make the selected folding lines split lines, so the top keeps folding along them"
 msgstr "Linien umwandeln: die gewählten Knicklinien zu Teilungslinien machen, damit die Oberseite weiter an ihnen entlang knickt"
 
@@ -3032,7 +3032,7 @@ msgstr ""
 msgid "Coordinates acquired from {}."
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:1288
+#: crates/ui-egui/src/coordinates.rs:1293
 msgid "Coordinates reset: shared coordinates are the file's own."
 msgstr ""
 
@@ -3066,19 +3066,19 @@ msgid "Copper"
 msgstr "Kupfer"
 
 #: crates/core/src/commands.rs:1830
-#: crates/ui-egui/src/coordinates.rs:1214
+#: crates/ui-egui/src/coordinates.rs:1219
 #: crates/ui-egui/src/cowork.rs:600
 #: crates/ui-egui/src/editor/document.rs:658
 #: crates/ui-egui/src/inquiry.rs:176
-#: crates/ui-egui/src/lib.rs:5415
-#: crates/ui-egui/src/lib.rs:5579
-#: crates/ui-egui/src/lib.rs:5616
+#: crates/ui-egui/src/lib.rs:5427
+#: crates/ui-egui/src/lib.rs:5591
+#: crates/ui-egui/src/lib.rs:5628
 #: crates/ui-egui/src/parameters.rs:1239
 #: crates/ui-egui/src/plugins.rs:255
 msgid "Copy"
 msgstr "Kopieren"
 
-#: crates/ui-egui/src/lib.rs:5063
+#: crates/ui-egui/src/lib.rs:5075
 msgid "Copy (CO): click a base point, then where the copy goes"
 msgstr "Kopieren (CO): einen Basispunkt anklicken, dann das Ziel der Kopie"
 
@@ -3194,7 +3194,7 @@ msgstr "Anzahl"
 msgid "Counted from what each reply reports, on this computer. The provider's own page is the bill."
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:930
+#: crates/ui-egui/src/coordinates.rs:935
 msgid "Country"
 msgstr ""
 
@@ -3210,7 +3210,7 @@ msgid "Cover"
 msgstr "Betondeckung"
 
 #: crates/ui-egui/src/editor/document.rs:354
-#: crates/ui-egui/src/lib.rs:5649
+#: crates/ui-egui/src/lib.rs:5661
 #: crates/ui-egui/src/parameters.rs:1068
 #: crates/ui-egui/src/templates.rs:497
 #: crates/ui-egui/src/typeprops.rs:100
@@ -3229,7 +3229,7 @@ msgstr ""
 msgid "Create Circuit: the selected devices on the selected distribution board, behind one breaker"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:1798
+#: crates/ui-egui/src/lib.rs:1800
 msgid "Create Extrusion Roof"
 msgstr "Dach durch Extrusion erstellen"
 
@@ -3237,7 +3237,7 @@ msgstr "Dach durch Extrusion erstellen"
 msgid "Create Filled Region Boundary"
 msgstr "Begrenzung für gefüllten Bereich erstellen"
 
-#: crates/ui-egui/src/lib.rs:1800
+#: crates/ui-egui/src/lib.rs:1802
 msgid "Create Floor"
 msgstr "Boden erstellen"
 
@@ -3265,7 +3265,7 @@ msgstr "Gruppe erstellen (GP): Die ausgewählten Detaillinien, gefüllten Bereic
 msgid "Create Masking Region Boundary"
 msgstr "Begrenzung für Maskierungsbereich erstellen"
 
-#: crates/ui-egui/src/lib.rs:1803
+#: crates/ui-egui/src/lib.rs:1805
 msgid "Create Mass"
 msgstr "Volumenkörper erstellen"
 
@@ -3273,19 +3273,19 @@ msgstr "Volumenkörper erstellen"
 msgid "Create Parameter…"
 msgstr "Parameter erstellen…"
 
-#: crates/ui-egui/src/lib.rs:1796
+#: crates/ui-egui/src/lib.rs:1798
 msgid "Create Railing Path"
 msgstr "Geländerpfad erstellen"
 
-#: crates/ui-egui/src/lib.rs:1795
+#: crates/ui-egui/src/lib.rs:1797
 msgid "Create Ramp"
 msgstr "Rampe erstellen"
 
-#: crates/ui-egui/src/lib.rs:1797
+#: crates/ui-egui/src/lib.rs:1799
 msgid "Create Roof Footprint"
 msgstr "Dachgrundfläche erstellen"
 
-#: crates/ui-egui/src/lib.rs:1802
+#: crates/ui-egui/src/lib.rs:1804
 msgid "Create Shaft Opening"
 msgstr "Schachtdurchbruch erstellen"
 
@@ -3297,7 +3297,7 @@ msgstr "Skizze für Schachtdurchbruch erstellen"
 msgid "Create Similar"
 msgstr "Ähnliches erstellen"
 
-#: crates/ui-egui/src/lib.rs:1794
+#: crates/ui-egui/src/lib.rs:1796
 msgid "Create Stair"
 msgstr "Treppe erstellen"
 
@@ -3305,15 +3305,15 @@ msgstr "Treppe erstellen"
 msgid "Create four-point adaptive panel"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:1304
+#: crates/ui-egui/src/lib.rs:1306
 msgid "Create {}"
 msgstr "{} erstellen"
 
-#: crates/ui-egui/src/lib.rs:4590
+#: crates/ui-egui/src/lib.rs:4602
 msgid "Crop View"
 msgstr "Ansicht zuschneiden"
 
-#: crates/ui-egui/src/lib.rs:4589
+#: crates/ui-egui/src/lib.rs:4601
 msgid "Crop View: show only the crop region; drag its edges by their grips"
 msgstr "Ansicht zuschneiden: nur den Zuschneidebereich anzeigen; Kanten an ihren Griffen ziehen"
 
@@ -3403,7 +3403,7 @@ msgstr "DN"
 msgid "Dark"
 msgstr "Dunkel"
 
-#: crates/ui-egui/src/lib.rs:4571
+#: crates/ui-egui/src/lib.rs:4583
 msgid "Dark Mode"
 msgstr "Dunkelmodus"
 
@@ -3424,7 +3424,7 @@ msgid "Dashed"
 msgstr "Gestrichelt"
 
 #: crates/core/src/family.rs:361
-#: crates/ui-egui/src/lib.rs:1352
+#: crates/ui-egui/src/lib.rs:1354
 msgid "Data"
 msgstr "Daten"
 
@@ -3449,7 +3449,7 @@ msgid "Data Outlets"
 msgstr "Datenauslässe"
 
 #: crates/ui-egui/src/editor/document.rs:473
-#: crates/ui-egui/src/lib.rs:4386
+#: crates/ui-egui/src/lib.rs:4398
 msgid "Datum"
 msgstr "Bezug"
 
@@ -3471,7 +3471,7 @@ msgstr ""
 msgid "Default"
 msgstr "Standard"
 
-#: crates/ui-egui/src/lib.rs:3811
+#: crates/ui-egui/src/lib.rs:3823
 msgid "Default 3D View"
 msgstr "Standard-3D-Ansicht"
 
@@ -3492,7 +3492,7 @@ msgid "Default Thickness"
 msgstr "Standard-Dicke"
 
 #: crates/ui-egui/src/adaptive_editor.rs:806
-#: crates/ui-egui/src/coordinates.rs:643
+#: crates/ui-egui/src/coordinates.rs:648
 #: crates/ui-egui/src/editor/document.rs:680
 #: crates/ui-egui/src/editor/document.rs:1121
 #: crates/ui-egui/src/editor/document.rs:1139
@@ -3516,7 +3516,7 @@ msgstr "Standard-Dicke"
 msgid "Delete"
 msgstr "Löschen"
 
-#: crates/ui-egui/src/lib.rs:5087
+#: crates/ui-egui/src/lib.rs:5099
 msgid "Delete (DE) the selection"
 msgstr "Auswahl löschen (DE)"
 
@@ -3585,7 +3585,7 @@ msgstr "Scheitelpunkt löschen: eine Ecke einer Polylinie oder einen Punkt eines
 msgid "Delete Wire Type"
 msgstr "Leitungstyp löschen"
 
-#: crates/ui-egui/src/coordinates.rs:644
+#: crates/ui-egui/src/coordinates.rs:649
 msgid "Delete location {}"
 msgstr ""
 
@@ -3609,7 +3609,7 @@ msgstr ""
 msgid "Delete voltage {}"
 msgstr "Spannung {} löschen"
 
-#: crates/ui-egui/src/lib.rs:1305
+#: crates/ui-egui/src/lib.rs:1307
 #: crates/ui-egui/src/lineweights.rs:56
 msgid "Delete {}"
 msgstr "{} löschen"
@@ -3621,11 +3621,11 @@ msgstr "{} löschen"
 msgid "Demand Factor"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:5194
+#: crates/ui-egui/src/lib.rs:5206
 msgid "Demolish"
 msgstr "Abbrechen"
 
-#: crates/ui-egui/src/lib.rs:5192
+#: crates/ui-egui/src/lib.rs:5204
 msgid "Demolish (DW): click an element to take it down in the view's phase; click it again to take it back"
 msgstr "Abbrechen (DW): ein Element anklicken, um es in der Phase der Ansicht abzubrechen; erneut anklicken, um es zurückzunehmen"
 
@@ -3678,13 +3678,13 @@ msgstr ""
 msgid "Design Option"
 msgstr "Entwurfsoption"
 
-#: crates/ui-egui/src/lib.rs:4916
+#: crates/ui-egui/src/lib.rs:4928
 #: crates/ui-egui/src/phasing.rs:318
 #: crates/ui-egui/src/templates.rs:699
 msgid "Design Options"
 msgstr "Entwurfsoptionen"
 
-#: crates/ui-egui/src/lib.rs:4915
+#: crates/ui-egui/src/lib.rs:4927
 msgid "Design Options (DO): sets of options for a part of the design, and the one new elements are made in"
 msgstr "Entwurfsoptionen (DO): Optionssätze für einen Teil des Entwurfs und die Option, in der neue Elemente erstellt werden"
 
@@ -3692,11 +3692,11 @@ msgstr "Entwurfsoptionen (DO): Optionssätze für einen Teil des Entwurfs und di
 msgid "Desk"
 msgstr "Schreibtisch"
 
-#: crates/ui-egui/src/lib.rs:5129
+#: crates/ui-egui/src/lib.rs:5141
 msgid "Detach Top/Base"
 msgstr "Oberkante/Unterkante lösen"
 
-#: crates/ui-egui/src/lib.rs:5128
+#: crates/ui-egui/src/lib.rs:5140
 msgid "Detach Top/Base: the tops and bases of the walls and columns their own again"
 msgstr ""
 
@@ -3776,7 +3776,7 @@ msgstr "Diagonal aufwärts"
 
 #: crates/core/src/fixtures.rs:216
 #: crates/ui-egui/src/editor/document.rs:520
-#: crates/ui-egui/src/lib.rs:4439
+#: crates/ui-egui/src/lib.rs:4451
 #: crates/ui-egui/src/reinforce.rs:51
 #: crates/ui-egui/src/reinforce.rs:59
 #: crates/ui-egui/src/reinforce.rs:66
@@ -3797,7 +3797,7 @@ msgstr "Durchmesser"
 msgid "Diameter Dimension: pick a circle or an arc of a form's sketch, then click where it goes"
 msgstr "Durchmesserbemaßung: einen Kreis oder einen Bogen der Skizze eines Körpers wählen, dann klicken, wo sie verläuft"
 
-#: crates/ui-egui/src/lib.rs:4440
+#: crates/ui-egui/src/lib.rs:4452
 msgid "Diameter Dimension: pick a round column, a curved wall, a circle or an arc, then click where it goes"
 msgstr "Durchmesserbemaßung: eine runde Stütze, eine gekrümmte Wand, einen Kreis oder einen Bogen wählen, dann klicken, wo sie verläuft"
 
@@ -3825,14 +3825,14 @@ msgstr ""
 msgid "Dictionary:"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:783
+#: crates/ui-egui/src/coordinates.rs:788
 msgid "Did the surveyor's numbers change by a fixed amount? Type the change here and every location moves by it in one go, for example 5 m more elevation."
 msgstr ""
 
 #: crates/ui-egui/src/dimtypes.rs:94
 #: crates/ui-egui/src/editor/document.rs:485
 #: crates/ui-egui/src/lang.rs:31
-#: crates/ui-egui/src/lib.rs:4957
+#: crates/ui-egui/src/lib.rs:4969
 msgid "Dimension"
 msgstr "Bemaßung"
 
@@ -3924,7 +3924,7 @@ msgstr ""
 msgid "Disconnected"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:5924
+#: crates/ui-egui/src/lib.rs:5936
 msgid "Dismiss"
 msgstr "Ausblenden"
 
@@ -3995,13 +3995,13 @@ msgstr "Domäne"
 msgid "Don't"
 msgstr "Nicht"
 
-#: crates/ui-egui/src/lib.rs:6215
+#: crates/ui-egui/src/lib.rs:6227
 msgid "Don't Save"
 msgstr "Nicht speichern"
 
 #: crates/ui-egui/src/fillpatterns.rs:413
-#: crates/ui-egui/src/lib.rs:3978
-#: crates/ui-egui/src/lib.rs:4078
+#: crates/ui-egui/src/lib.rs:3990
+#: crates/ui-egui/src/lib.rs:4090
 msgid "Done"
 msgstr "Fertig"
 
@@ -4013,7 +4013,7 @@ msgstr "Werkzeugbearbeitung beenden"
 msgid "Door"
 msgstr "Tür"
 
-#: crates/ui-egui/src/lib.rs:4309
+#: crates/ui-egui/src/lib.rs:4321
 msgid "Door (DR): click a wall"
 msgstr "Tür (DR): Wand anklicken"
 
@@ -4025,7 +4025,7 @@ msgstr "Türtabelle"
 msgid "Dormer"
 msgstr "Gaube"
 
-#: crates/ui-egui/src/lib.rs:4376
+#: crates/ui-egui/src/lib.rs:4388
 msgid "Dormer: click a roof's slope where its front wall goes; the roof opens under it"
 msgstr "Gaube: die Dachschräge an der Stelle der Frontwand anklicken; das Dach öffnet sich darunter"
 
@@ -4142,15 +4142,15 @@ msgstr "Duplizieren"
 msgid "Duplicate Checked"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:4603
+#: crates/ui-egui/src/lib.rs:4615
 msgid "Duplicate View"
 msgstr "Ansicht duplizieren"
 
-#: crates/ui-egui/src/lib.rs:4601
+#: crates/ui-egui/src/lib.rs:4613
 msgid "Duplicate View (DP): a new plan of this level with its own annotation; with detailing, it starts with this plan's; as a dependent, it follows this plan's range and graphics"
 msgstr "Ansicht duplizieren (DP): ein neuer Plan dieses Geschosses mit eigener Beschriftung; mit Details beginnt er mit denen dieses Plans; als abhängige Ansicht folgt er Bereich und Grafik dieses Plans"
 
-#: crates/ui-egui/src/lib.rs:4529
+#: crates/ui-egui/src/lib.rs:4541
 msgid "Duplicate View: open a plan first"
 msgstr "Ansicht duplizieren: zuerst einen Plan öffnen"
 
@@ -4167,7 +4167,7 @@ msgstr "Mit Details duplizieren"
 msgid "Duplicate…"
 msgstr "Duplizieren…"
 
-#: crates/ui-egui/src/coordinates.rs:1491
+#: crates/ui-egui/src/coordinates.rs:1508
 msgid "E/W"
 msgstr ""
 
@@ -4188,7 +4188,7 @@ msgstr "Jeder Wert ist eine Länge, und Oben kann für das Geschoss darüber lee
 msgid "Each line's angle, origin and spacing"
 msgstr "Winkel, Ursprung und Abstand jeder Linie"
 
-#: crates/ui-egui/src/coordinates.rs:603
+#: crates/ui-egui/src/coordinates.rs:608
 msgid "Each location gives the Survey Point's shared coordinates and the angle to true north, so one building can stand on several sites. Type any value; the model never moves."
 msgstr ""
 
@@ -4234,13 +4234,13 @@ msgid "Earthing Electrodes"
 msgstr "Erdungselektroden"
 
 #: crates/core/src/model.rs:2170
-#: crates/ui-egui/src/coordinates.rs:571
-#: crates/ui-egui/src/coordinates.rs:788
+#: crates/ui-egui/src/coordinates.rs:576
+#: crates/ui-egui/src/coordinates.rs:793
 msgid "East"
 msgstr "Osten"
 
-#: crates/ui-egui/src/coordinates.rs:617
-#: crates/ui-egui/src/coordinates.rs:680
+#: crates/ui-egui/src/coordinates.rs:622
+#: crates/ui-egui/src/coordinates.rs:685
 msgid "East ({})"
 msgstr ""
 
@@ -4255,7 +4255,7 @@ msgstr ""
 
 #: crates/ui-egui/src/linestyles.rs:245
 #: crates/ui-egui/src/parameters.rs:1607
-#: crates/ui-egui/src/shortcuts.rs:536
+#: crates/ui-egui/src/shortcuts.rs:539
 msgid "Edit"
 msgstr "Bearbeiten"
 
@@ -4285,11 +4285,11 @@ msgid "Edit Boundary"
 msgstr "Umriss bearbeiten"
 
 #: crates/ui-egui/src/context.rs:81
-#: crates/ui-egui/src/lib.rs:4962
+#: crates/ui-egui/src/lib.rs:4974
 msgid "Edit Dimension References"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:4960
+#: crates/ui-egui/src/lib.rs:4972
 msgid "Edit Dimension References: click a picked reference to take it out, another element to add it; click away places the line. Enter confirms, Esc cancels"
 msgstr ""
 
@@ -4373,7 +4373,7 @@ msgstr "Sweep-Verschmelzung bearbeiten: Pfad und Profile neu skizzieren"
 msgid "Edit Title Blocks…"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:4078
+#: crates/ui-egui/src/lib.rs:4090
 #: crates/ui-egui/src/presets.rs:176
 msgid "Edit Tools"
 msgstr "Werkzeuge bearbeiten"
@@ -4396,11 +4396,11 @@ msgstr "Scheitelpunkte bearbeiten"
 
 #: crates/ui-egui/src/editor/extrusion.rs:313
 #: crates/ui-egui/src/editor/work_plane.rs:190
-#: crates/ui-egui/src/lib.rs:5141
+#: crates/ui-egui/src/lib.rs:5153
 msgid "Edit Work Plane"
 msgstr "Arbeitsebene bearbeiten"
 
-#: crates/ui-egui/src/lib.rs:5139
+#: crates/ui-egui/src/lib.rs:5151
 msgid "Edit Work Plane: the components onto a level, a reference plane or a face picked (the Work Plane dialog), keeping their Offset from Host"
 msgstr "Arbeitsebene bearbeiten: die Bauteile auf ein Geschoss, eine Referenzebene oder eine gewählte Fläche (Dialogfeld Arbeitsebene), mit ihrem Versatz vom Basiselement"
 
@@ -4408,7 +4408,7 @@ msgstr "Arbeitsebene bearbeiten: die Bauteile auf ein Geschoss, eine Referenzebe
 msgid "Edit Work Plane: the form onto another of the family's planes, moving with it (the Work Plane dialog)"
 msgstr "Arbeitsebene bearbeiten: den Körper auf eine andere Ebene der Familie, mit der er sich dann bewegt (Dialogfeld Arbeitsebene)"
 
-#: crates/ui-egui/src/lib.rs:4946
+#: crates/ui-egui/src/lib.rs:4958
 msgid "Edit the type"
 msgstr "Den Typ bearbeiten"
 
@@ -4442,7 +4442,7 @@ msgstr "Bogen 90°"
 
 #: crates/core/src/family.rs:357
 #: crates/ui-egui/src/editor/connectors.rs:299
-#: crates/ui-egui/src/lib.rs:1350
+#: crates/ui-egui/src/lib.rs:1352
 msgid "Electrical"
 msgstr "Elektro"
 
@@ -4467,11 +4467,11 @@ msgid "Electrical Power"
 msgstr ""
 
 #: crates/ui-egui/src/electrical.rs:477
-#: crates/ui-egui/src/lib.rs:4824
+#: crates/ui-egui/src/lib.rs:4836
 msgid "Electrical Settings"
 msgstr "Elektroeinstellungen"
 
-#: crates/ui-egui/src/lib.rs:4822
+#: crates/ui-egui/src/lib.rs:4834
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "Elektroeinstellungen: die Spannungen, Verteilungssysteme und Leitungstypen, auf die sich Stromkreise und Verteiler beziehen; Querschnitte in mm²"
 
@@ -4479,21 +4479,21 @@ msgstr "Elektroeinstellungen: die Spannungen, Verteilungssysteme und Leitungstyp
 msgid "Elements"
 msgstr "Elemente"
 
-#: crates/ui-egui/src/coordinates.rs:1491
+#: crates/ui-egui/src/coordinates.rs:1508
 msgid "Elev"
 msgstr ""
 
 #: crates/ui-egui/src/canvas.rs:4401
-#: crates/ui-egui/src/coordinates.rs:571
-#: crates/ui-egui/src/coordinates.rs:788
-#: crates/ui-egui/src/coordinates.rs:1187
-#: crates/ui-egui/src/lib.rs:4618
-#: crates/ui-egui/src/lib.rs:5645
+#: crates/ui-egui/src/coordinates.rs:576
+#: crates/ui-egui/src/coordinates.rs:793
+#: crates/ui-egui/src/coordinates.rs:1192
+#: crates/ui-egui/src/lib.rs:4630
+#: crates/ui-egui/src/lib.rs:5657
 msgid "Elevation"
 msgstr "Ansicht"
 
-#: crates/ui-egui/src/coordinates.rs:619
-#: crates/ui-egui/src/coordinates.rs:682
+#: crates/ui-egui/src/coordinates.rs:624
+#: crates/ui-egui/src/coordinates.rs:687
 msgid "Elevation ({})"
 msgstr ""
 
@@ -4501,7 +4501,7 @@ msgstr ""
 msgid "Elevation (°)"
 msgstr "Höhe (°)"
 
-#: crates/ui-egui/src/lib.rs:3048
+#: crates/ui-egui/src/lib.rs:3060
 msgid "Elevation Base:"
 msgstr "Höhenbasis:"
 
@@ -4517,17 +4517,17 @@ msgstr "Höhe über Geschoss"
 msgid "Elevation/Section"
 msgstr "Ansicht/Schnitt"
 
-#: crates/ui-egui/src/lib.rs:5344
-#: crates/ui-egui/src/lib.rs:5350
+#: crates/ui-egui/src/lib.rs:5356
+#: crates/ui-egui/src/lib.rs:5362
 msgid "Elevation:"
 msgstr "Höhe:"
 
-#: crates/ui-egui/src/lib.rs:4617
+#: crates/ui-egui/src/lib.rs:4629
 msgid "Elevation: click a wall, a line or a slab's edge to look at, the project's or a link's"
 msgstr ""
 
 #: crates/ui-egui/src/editor/views.rs:137
-#: crates/ui-egui/src/lib.rs:3454
+#: crates/ui-egui/src/lib.rs:3466
 msgid "Elevation: {}"
 msgstr "Ansicht: {}"
 
@@ -4628,7 +4628,7 @@ msgstr "Gleichheitsanzeige"
 msgid "Equality Text"
 msgstr "Gleichheitstext"
 
-#: crates/ui-egui/src/lib.rs:5916
+#: crates/ui-egui/src/lib.rs:5928
 #: crates/ui-egui/src/plugins.rs:410
 msgid "Error"
 msgstr "Fehler"
@@ -4646,7 +4646,7 @@ msgstr ""
 msgid "Evaluation and host references"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:4665
+#: crates/ui-egui/src/lib.rs:4677
 msgid "Every view is on a sheet."
 msgstr "Jede Ansicht liegt auf einem Plan."
 
@@ -4672,23 +4672,23 @@ msgstr "Bestand"
 msgid "Existing family parameters of compatible type:"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:4197
+#: crates/ui-egui/src/lib.rs:4209
 msgid "Exit"
 msgstr "Beenden"
 
-#: crates/ui-egui/src/lib.rs:3970
+#: crates/ui-egui/src/lib.rs:3982
 msgid "Expand the Ribbon"
 msgstr "Menüband erweitern"
 
-#: crates/ui-egui/src/lib.rs:5106
+#: crates/ui-egui/src/lib.rs:5118
 msgid "Explode Polyline"
 msgstr "Polylinie auflösen"
 
-#: crates/ui-egui/src/lib.rs:5105
+#: crates/ui-egui/src/lib.rs:5117
 msgid "Explode Polyline (EX): a polyline taken apart into a line or an arc for each segment"
 msgstr "Polylinie auflösen (EX): eine Polylinie, in je eine Linie oder einen Bogen pro Segment zerlegt"
 
-#: crates/ui-egui/src/lib.rs:4173
+#: crates/ui-egui/src/lib.rs:4185
 msgid "Export"
 msgstr "Exportieren"
 
@@ -4732,7 +4732,7 @@ msgstr "Augpunkt"
 msgid "Eye Elevation"
 msgstr "Augenhöhe"
 
-#: crates/ui-egui/src/lib.rs:5324
+#: crates/ui-egui/src/lib.rs:5336
 msgid "Eye Height:"
 msgstr "Augenhöhe:"
 
@@ -4826,7 +4826,7 @@ msgstr "Familientypen"
 msgid "Family Types: the family's parameters, their formulas, and its types"
 msgstr "Familientypen: die Parameter der Familie, ihre Formeln und ihre Typen"
 
-#: crates/ui-egui/src/lib.rs:5983
+#: crates/ui-egui/src/lib.rs:5995
 msgid "Family document: {}"
 msgstr "Familiendokument: {}"
 
@@ -4853,8 +4853,8 @@ msgstr "Familie:"
 msgid "Family: {}"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:4140
-#: crates/ui-egui/src/lib.rs:4148
+#: crates/ui-egui/src/lib.rs:4152
+#: crates/ui-egui/src/lib.rs:4160
 msgid "Family…"
 msgstr "Familie…"
 
@@ -4867,11 +4867,11 @@ msgid "Faster for large models. If the card fails, the 3D view is drawn on the p
 msgstr ""
 
 #: crates/ui-egui/src/favorites.rs:112
-#: crates/ui-egui/src/lib.rs:4763
+#: crates/ui-egui/src/lib.rs:4775
 msgid "Favorites"
 msgstr "Favoriten"
 
-#: crates/ui-egui/src/lib.rs:4762
+#: crates/ui-egui/src/lib.rs:4774
 msgid "Favorites: the materials and families you keep for every project; add one to this project with a click"
 msgstr "Favoriten: die Materialien und Familien, die für jedes Projekt bereitgehalten werden; mit einem Klick zu diesem Projekt hinzufügen"
 
@@ -4900,7 +4900,7 @@ msgstr ""
 msgid "Fields"
 msgstr "Felder"
 
-#: crates/ui-egui/src/lib.rs:3771
+#: crates/ui-egui/src/lib.rs:3783
 #: crates/ui-egui/src/parameters.rs:1497
 msgid "File"
 msgstr "Datei"
@@ -4917,7 +4917,7 @@ msgstr "Dateien"
 msgid "Fill Patterns"
 msgstr "Füllmuster"
 
-#: crates/ui-egui/src/lib.rs:4811
+#: crates/ui-egui/src/lib.rs:4823
 msgid "Fill Patterns: the patterns filled regions and materials fill with, simple or made from lines drawn"
 msgstr "Füllmuster: die Muster, mit denen gefüllte Bereiche und Materialien gefüllt werden, einfach oder aus gezeichneten Linien erstellt"
 
@@ -4969,7 +4969,7 @@ msgstr ""
 #: crates/ui-egui/src/editor/document.rs:1707
 #: crates/ui-egui/src/filter.rs:68
 #: crates/ui-egui/src/graphics.rs:455
-#: crates/ui-egui/src/lib.rs:4218
+#: crates/ui-egui/src/lib.rs:4230
 #: crates/ui-egui/src/parameters.rs:1814
 msgid "Filter"
 msgstr "Filter"
@@ -4978,8 +4978,8 @@ msgstr "Filter"
 msgid "Filter Rules"
 msgstr "Filterregeln"
 
-#: crates/ui-egui/src/lib.rs:5884
-#: crates/ui-egui/src/lib.rs:5885
+#: crates/ui-egui/src/lib.rs:5896
+#: crates/ui-egui/src/lib.rs:5897
 msgid "Filter Selection"
 msgstr "Auswahl filtern"
 
@@ -4993,27 +4993,27 @@ msgstr "Filtern nach:"
 msgid "Filter:"
 msgstr "Filter:"
 
-#: crates/ui-egui/src/lib.rs:4217
+#: crates/ui-egui/src/lib.rs:4229
 msgid "Filter: keep some of the selection, by category or by the values of a parameter they all have"
 msgstr "Filter: einen Teil der Auswahl behalten, nach Kategorie oder nach den Werten eines Parameters, den alle haben"
 
 #: crates/ui-egui/src/graphics.rs:440
-#: crates/ui-egui/src/lib.rs:4559
+#: crates/ui-egui/src/lib.rs:4571
 msgid "Filters"
 msgstr "Filter"
 
-#: crates/ui-egui/src/lib.rs:4558
+#: crates/ui-egui/src/lib.rs:4570
 msgid "Filters (FT): rules that pick out elements for a view to hide or draw another way"
 msgstr "Filter (FT): Regeln, die Elemente für eine Ansicht herausgreifen, um sie auszublenden oder anders zu zeichnen"
 
 #: crates/ui-egui/src/find.rs:42
-#: crates/ui-egui/src/lib.rs:3823
+#: crates/ui-egui/src/lib.rs:3835
 #: crates/ui-egui/src/parameters.rs:796
 #: crates/ui-egui/src/parameters.rs:1448
 msgid "Find"
 msgstr "Suchen"
 
-#: crates/ui-egui/src/coordinates.rs:1003
+#: crates/ui-egui/src/coordinates.rs:1008
 msgid "Find a map system"
 msgstr ""
 
@@ -5114,11 +5114,11 @@ msgstr "Eben"
 msgid "Flat: it has no slope arrow. Draw one from where its top stays toward where it rises."
 msgstr "Eben: Es gibt keinen Neigungspfeil. Einen zeichnen, von der Stelle, an der die Oberseite bleibt, dorthin, wo sie ansteigt."
 
-#: crates/ui-egui/src/lib.rs:5120
+#: crates/ui-egui/src/lib.rs:5132
 msgid "Flip"
 msgstr "Umdrehen"
 
-#: crates/ui-egui/src/lib.rs:5119
+#: crates/ui-egui/src/lib.rs:5131
 msgid "Flip (Space): the walls' exterior sides go to the other side of their location lines"
 msgstr "Umdrehen (Leertaste): die Außenseiten der Wände wechseln auf die andere Seite ihrer Positionierungslinien"
 
@@ -5144,7 +5144,7 @@ msgstr "Anschlag umgedreht"
 
 #: crates/ui-egui/src/dock.rs:619
 #: crates/ui-egui/src/dock.rs:870
-#: crates/ui-egui/src/lib.rs:6015
+#: crates/ui-egui/src/lib.rs:6027
 msgid "Float"
 msgstr "Schweben"
 
@@ -5172,8 +5172,8 @@ msgid "Floor Plan"
 msgstr "Grundriss"
 
 #: crates/ui-egui/src/editor/views.rs:135
-#: crates/ui-egui/src/lib.rs:3449
-#: crates/ui-egui/src/lib.rs:3450
+#: crates/ui-egui/src/lib.rs:3461
+#: crates/ui-egui/src/lib.rs:3462
 msgid "Floor Plan: {}"
 msgstr "Grundriss: {}"
 
@@ -5194,7 +5194,7 @@ msgstr ""
 msgid "Floor by Face"
 msgstr "Boden durch Fläche"
 
-#: crates/ui-egui/src/lib.rs:4259
+#: crates/ui-egui/src/lib.rs:4271
 msgid "Floor by Face (FB): a floor on the selected masses' top faces"
 msgstr "Boden durch Fläche (FB): ein Boden auf den oberen Flächen der ausgewählten Volumenkörper"
 
@@ -5210,7 +5210,7 @@ msgstr "Boden: Tragwerk"
 msgid "Floor: Structural (SB): click inside the walls to floor them with a slab that carries load"
 msgstr "Boden: Tragwerk (SB): innerhalb der Wände klicken, um sie mit einer tragenden Platte zu belegen"
 
-#: crates/ui-egui/src/lib.rs:4322
+#: crates/ui-egui/src/lib.rs:4334
 msgid "Floor: click inside the walls to floor them"
 msgstr "Boden: innerhalb der Wände klicken, um sie mit einem Boden zu belegen"
 
@@ -5317,7 +5317,7 @@ msgstr "Rahmenbreite"
 msgid "Frequency (cycles per segment)"
 msgstr "Frequenz (Zyklen pro Segment)"
 
-#: crates/ui-egui/src/coordinates.rs:1177
+#: crates/ui-egui/src/coordinates.rs:1182
 msgid "From"
 msgstr "Von"
 
@@ -5366,15 +5366,15 @@ msgstr ""
 msgid "GUID"
 msgstr "GUID"
 
-#: crates/ui-egui/src/lib.rs:5382
+#: crates/ui-egui/src/lib.rs:5394
 msgid "Gable"
 msgstr "Giebel"
 
-#: crates/ui-egui/src/lib.rs:5153
+#: crates/ui-egui/src/lib.rs:5165
 msgid "Gable Edge"
 msgstr "Giebelkante"
 
-#: crates/ui-egui/src/lib.rs:5152
+#: crates/ui-egui/src/lib.rs:5164
 msgid "Gable Edge: click an edge of a roof's footprint to stand it upright, a gable end; click again to slope it"
 msgstr "Giebelkante: eine Kante des Dachgrundrisses anklicken, um sie als Giebelende aufzurichten; erneut klicken, um sie zu neigen"
 
@@ -5398,7 +5398,7 @@ msgstr "Absperrventil"
 msgid "Generic"
 msgstr "Allgemein"
 
-#: crates/ui-egui/src/lib.rs:5198
+#: crates/ui-egui/src/lib.rs:5210
 msgid "Geometry"
 msgstr "Geometrie"
 
@@ -5474,7 +5474,7 @@ msgstr "Die Grafik folgt der übergeordneten Ansicht {}"
 msgid "Grid"
 msgstr "Raster"
 
-#: crates/ui-egui/src/lib.rs:4384
+#: crates/ui-egui/src/lib.rs:4396
 msgid "Grid (GR): click its two ends"
 msgstr "Raster (GR): seine beiden Enden anklicken"
 
@@ -5568,7 +5568,7 @@ msgstr "Sitzung wird an {} übergeben…"
 msgid "Has Shoulder"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:802
+#: crates/ui-egui/src/coordinates.rs:807
 msgid "Have a survey drawing or a linked model already sitting in the right place? Acquire takes its coordinates for this project, so the two agree. Choose one below, or pick it in the view. It happens straight away and can be undone; anything typed in this window and not applied yet is cleared."
 msgstr ""
 
@@ -5593,12 +5593,12 @@ msgstr "Höhe"
 msgid "Height Offset From Level"
 msgstr "Höhenversatz vom Geschoss"
 
-#: crates/ui-egui/src/lib.rs:5318
+#: crates/ui-egui/src/lib.rs:5330
 msgid "Height Offset:"
 msgstr "Höhenversatz:"
 
-#: crates/ui-egui/src/lib.rs:973
-#: crates/ui-egui/src/lib.rs:5393
+#: crates/ui-egui/src/lib.rs:975
+#: crates/ui-egui/src/lib.rs:5405
 msgid "Height:"
 msgstr "Höhe:"
 
@@ -5626,7 +5626,7 @@ msgstr "Verdeckte Linien und Drahtmodell zeichnen ihre Kanten immer"
 msgid "Hidden Lines"
 msgstr "Verdeckte Linien"
 
-#: crates/ui-egui/src/lib.rs:4979
+#: crates/ui-egui/src/lib.rs:4991
 msgid "Hide Category"
 msgstr "Kategorie ausblenden"
 
@@ -5635,15 +5635,15 @@ msgstr "Kategorie ausblenden"
 msgid "Hide Category (HC)"
 msgstr "Kategorie ausblenden (HC)"
 
-#: crates/ui-egui/src/lib.rs:4978
+#: crates/ui-egui/src/lib.rs:4990
 msgid "Hide Category (VH): leave every category the selection is of out of this view"
 msgstr "Kategorie ausblenden (VH): jede Kategorie, zu der die Auswahl gehört, aus dieser Ansicht weglassen"
 
-#: crates/ui-egui/src/lib.rs:4975
+#: crates/ui-egui/src/lib.rs:4987
 msgid "Hide Element"
 msgstr "Element ausblenden"
 
-#: crates/ui-egui/src/lib.rs:4974
+#: crates/ui-egui/src/lib.rs:4986
 msgid "Hide Element (EH): leave the selected elements out of this view"
 msgstr "Element ausblenden (EH): die ausgewählten Elemente aus dieser Ansicht weglassen"
 
@@ -5676,7 +5676,7 @@ msgstr "Farbe für hohen Kontrast"
 msgid "Highlight what's under the cursor"
 msgstr "Element unter dem Cursor hervorheben"
 
-#: crates/ui-egui/src/lib.rs:3768
+#: crates/ui-egui/src/lib.rs:3780
 msgid "Home"
 msgstr "Start"
 
@@ -5697,7 +5697,7 @@ msgid "Hook"
 msgstr "Haken"
 
 #: crates/core/src/fills.rs:410
-#: crates/ui-egui/src/lib.rs:5430
+#: crates/ui-egui/src/lib.rs:5442
 #: crates/ui-egui/src/properties.rs:808
 msgid "Horizontal"
 msgstr "Horizontal"
@@ -5737,17 +5737,17 @@ msgstr "Anzahl, Dicke und Abstand der Stäbe sind frei wählbar; ein leeres Feld
 msgid "How many phases and wires each system has (the line conductors and the neutral), the voltages it supplies, and how it is earthed."
 msgstr "Wie viele Phasen und Leiter jedes System hat (die Außenleiter und der Neutralleiter), die Spannungen, die es liefert, und wie es geerdet ist."
 
-#: crates/ui-egui/src/coordinates.rs:615
+#: crates/ui-egui/src/coordinates.rs:620
 #: crates/ui-egui/src/inquiry.rs:165
 msgid "ID"
 msgstr "ID"
 
-#: crates/ui-egui/src/coordinates.rs:1466
+#: crates/ui-egui/src/coordinates.rs:1483
 msgid "ID {}"
 msgstr ""
 
 #: crates/ui-egui/src/inquiry.rs:160
-#: crates/ui-egui/src/lib.rs:4901
+#: crates/ui-egui/src/lib.rs:4913
 msgid "IDs of Selection"
 msgstr "IDs der Auswahl"
 
@@ -5771,7 +5771,7 @@ msgstr "IDs, GUIDs oder IFC GlobalIds, beliebig viele:"
 msgid "IFC GlobalId"
 msgstr "IFC GlobalId"
 
-#: crates/ui-egui/src/lib.rs:4174
+#: crates/ui-egui/src/lib.rs:4186
 msgid "IFC…"
 msgstr "IFC…"
 
@@ -5800,7 +5800,7 @@ msgstr "ISO 7200: 180 mm"
 msgid "Identity Data"
 msgstr "Identitätsdaten"
 
-#: crates/ui-egui/src/lib.rs:6211
+#: crates/ui-egui/src/lib.rs:6223
 msgid "If you don't, the changes since it was last saved are lost."
 msgstr "Andernfalls gehen die Änderungen seit der letzten Speicherung verloren."
 
@@ -5809,25 +5809,25 @@ msgid "Image"
 msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:582
-#: crates/ui-egui/src/lib.rs:4729
+#: crates/ui-egui/src/lib.rs:4741
 #: crates/ui-egui/src/parameters.rs:1128
 msgid "Import"
 msgstr "Importieren"
 
-#: crates/ui-egui/src/lib.rs:4739
+#: crates/ui-egui/src/lib.rs:4751
 msgid "Import 3D Model"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:4737
+#: crates/ui-egui/src/lib.rs:4749
 msgid "Import 3D Model: an OBJ or glTF file's objects brought into the project as Generic Model families, each placed where the file has it on this plan's level, with its materials' colours"
 msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:583
-#: crates/ui-egui/src/lib.rs:4733
+#: crates/ui-egui/src/lib.rs:4745
 msgid "Import CAD"
 msgstr "CAD importieren"
 
-#: crates/ui-egui/src/lib.rs:4731
+#: crates/ui-egui/src/lib.rs:4743
 msgid "Import CAD: a DWG or DXF drawing brought into the project, drawn under the model in the plans of a level, its layers, colours and linetypes kept, and snapped to"
 msgstr "CAD importieren: eine DWG- oder DXF-Zeichnung wird ins Projekt übernommen, unter dem Modell in den Plänen eines Geschosses gezeichnet, ihre Layer, Farben und Linientypen bleiben erhalten, und es wird darauf gefangen"
 
@@ -5866,7 +5866,7 @@ msgstr "Importierte Kategorien"
 msgid "Imported from this file"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:485
+#: crates/ui-egui/src/lib.rs:487
 msgid "Imported {}: {}."
 msgstr "Importiert {}: {}."
 
@@ -5922,7 +5922,7 @@ msgstr ""
 msgid "Indicator as Prefix / Suffix"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:4893
+#: crates/ui-egui/src/lib.rs:4905
 msgid "Inquiry"
 msgstr "Abfrage"
 
@@ -5936,7 +5936,7 @@ msgid "Inscribed Polygon: click its centre, then a corner; Sides on the Options 
 msgstr "Einbeschriebenes Vieleck: Mittelpunkt klicken, dann eine Ecke; Seiten in der Optionsleiste"
 
 #: crates/ui-egui/src/editor/document.rs:355
-#: crates/ui-egui/src/lib.rs:1353
+#: crates/ui-egui/src/lib.rs:1355
 msgid "Insert"
 msgstr "Einfügen"
 
@@ -6034,7 +6034,7 @@ msgid "Interface scale"
 msgstr "Oberflächenskalierung"
 
 #: crates/core/src/coordinates.rs:27
-#: crates/ui-egui/src/coordinates.rs:1472
+#: crates/ui-egui/src/coordinates.rs:1489
 msgid "Internal"
 msgstr "Intern"
 
@@ -6043,12 +6043,12 @@ msgid "Internal (the model's own)"
 msgstr ""
 
 #: crates/core/src/graphics.rs:136
-#: crates/ui-egui/src/coordinates.rs:691
+#: crates/ui-egui/src/coordinates.rs:696
 #: crates/ui-egui/src/spots.rs:329
 msgid "Internal Origin"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:666
+#: crates/ui-egui/src/coordinates.rs:671
 msgid "Internal coordinates are the file's own, where the geometry is. The Project Base Point is a reference that elevations, spot coordinates and links measure from: moving it moves nothing else."
 msgstr ""
 
@@ -6121,7 +6121,7 @@ msgstr ""
 msgid "Its coordinates are the site's (a survey's): it goes where the active location puts them, turned to match"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:634
+#: crates/ui-egui/src/coordinates.rs:639
 msgid "Its id in the project, as every element and library entry has"
 msgstr ""
 
@@ -6141,7 +6141,7 @@ msgstr "Mitte auf dem Projektursprung"
 msgid "Its middle on the project's origin and its foot on the level"
 msgstr "Mitte auf dem Projektursprung, Fuß auf dem Geschoss"
 
-#: crates/ui-egui/src/coordinates.rs:723
+#: crates/ui-egui/src/coordinates.rs:728
 msgid "Its numbers stay, and the building moves in the world, as the point does."
 msgstr ""
 
@@ -6170,11 +6170,11 @@ msgstr "Beitreten"
 msgid "Join a session"
 msgstr "Einer Sitzung beitreten"
 
-#: crates/ui-egui/src/lib.rs:5102
+#: crates/ui-egui/src/lib.rs:5114
 msgid "Join into Polyline"
 msgstr "Zu Polylinie verbinden"
 
-#: crates/ui-egui/src/lib.rs:5101
+#: crates/ui-egui/src/lib.rs:5113
 msgid "Join into Polyline (PJ): the lines selected, meeting end to end, become one polyline"
 msgstr "Zu Polylinie verbinden (PJ): die ausgewählten Linien, Ende an Ende aneinandergereiht, werden eine Polylinie"
 
@@ -6219,11 +6219,11 @@ msgstr ""
 msgid "Key"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:393
+#: crates/ui-egui/src/shortcuts.rs:396
 msgid "Keyboard Shortcuts"
 msgstr "Tastenkürzel"
 
-#: crates/ui-egui/src/lib.rs:4852
+#: crates/ui-egui/src/lib.rs:4864
 msgid "Keyboard Shortcuts (KS): customize, edit, and load shortcut keys"
 msgstr "Tastenkürzel (KS): Tastenkürzel anpassen, bearbeiten und laden"
 
@@ -6239,7 +6239,7 @@ msgstr "Art"
 msgid "Kitchen Sink"
 msgstr "Küchenspüle"
 
-#: crates/ui-egui/src/coordinates.rs:746
+#: crates/ui-egui/src/coordinates.rs:751
 msgid "Know the survey coordinates of one spot, such as a site corner or a benchmark? Type them here, press Pick Point and Specify, and click that spot in the view. The window hides while you pick and comes back so you can check before OK. A wall's corner gives its bottom; a floor, roof or ceiling gives its top."
 msgstr ""
 
@@ -6255,16 +6255,16 @@ msgstr ""
 msgid "Label"
 msgstr "Bezeichnung"
 
-#: crates/ui-egui/src/lib.rs:5419
+#: crates/ui-egui/src/lib.rs:5431
 #: crates/ui-egui/src/parameters.rs:1599
 msgid "Label:"
 msgstr "Beschriftung:"
 
-#: crates/ui-egui/src/lib.rs:4696
+#: crates/ui-egui/src/lib.rs:4708
 msgid "Language"
 msgstr "Sprache"
 
-#: crates/ui-egui/src/coordinates.rs:775
+#: crates/ui-egui/src/coordinates.rs:780
 msgid "Last specified at the internal point {}"
 msgstr ""
 
@@ -6273,13 +6273,13 @@ msgstr ""
 msgid "Later"
 msgstr "Später"
 
-#: crates/ui-egui/src/coordinates.rs:867
-#: crates/ui-egui/src/coordinates.rs:1187
+#: crates/ui-egui/src/coordinates.rs:872
+#: crates/ui-egui/src/coordinates.rs:1192
 msgid "Latitude"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:587
-#: crates/ui-egui/src/coordinates.rs:1499
+#: crates/ui-egui/src/coordinates.rs:592
+#: crates/ui-egui/src/coordinates.rs:1516
 msgid "Latitude, longitude"
 msgstr ""
 
@@ -6299,8 +6299,8 @@ msgstr "Schichten, von oben nach unten"
 msgid "Layout"
 msgstr "Layout"
 
-#: crates/ui-egui/src/lib.rs:5418
-#: crates/ui-egui/src/lib.rs:5444
+#: crates/ui-egui/src/lib.rs:5430
+#: crates/ui-egui/src/lib.rs:5456
 #: crates/ui-egui/src/properties.rs:254
 msgid "Leader"
 msgstr "Bezugslinie"
@@ -6415,7 +6415,7 @@ msgstr "Längen und Größen sind mm auf Papier. Die Mittellinie bestimmt Geomet
 msgid "Lengths: mm. Rotations: degrees, local intrinsic X then Y then Z. Offsets use host axes."
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:5328
+#: crates/ui-egui/src/lib.rs:5340
 msgid "Lens:"
 msgstr "Objektiv:"
 
@@ -6449,12 +6449,12 @@ msgid "Let this session's chat use your AI key for others who have none? What th
 msgstr "Soll der Chat dieser Sitzung Ihren AI-Schlüssel für andere ohne Schlüssel verwenden? Was sie fragen, wird Ihrem Konto berechnet."
 
 #: crates/core/src/commands.rs:212
-#: crates/ui-egui/src/lib.rs:5502
+#: crates/ui-egui/src/lib.rs:5514
 #: crates/ui-egui/src/shape.rs:101
 msgid "Level"
 msgstr "Geschoss"
 
-#: crates/ui-egui/src/lib.rs:4383
+#: crates/ui-egui/src/lib.rs:4395
 msgid "Level (LL): a new level at an elevation"
 msgstr "Geschoss (LL): ein neues Geschoss auf einer Höhe"
 
@@ -6491,7 +6491,7 @@ msgstr "Leuchte"
 msgid "Lighting Fixture (LF): a luminaire, where you click, hung from the slab; Space turns it"
 msgstr "Leuchte (LF): eine Leuchte an der Klickstelle, von der Decke abgehängt; Leertaste dreht sie"
 
-#: crates/ui-egui/src/lib.rs:1351
+#: crates/ui-egui/src/lib.rs:1353
 msgid "Lightning Protection"
 msgstr "Blitzschutz"
 
@@ -6520,7 +6520,7 @@ msgstr "Liniengrafik"
 msgid "Line Pattern Creator"
 msgstr "Linienmuster-Editor"
 
-#: crates/ui-egui/src/lib.rs:4807
+#: crates/ui-egui/src/lib.rs:4819
 msgid "Line Patterns: the dashes, dots, spaces and shapes lines are drawn with"
 msgstr "Linienmuster: die Striche, Punkte, Lücken und Formen, mit denen Linien gezeichnet werden"
 
@@ -6540,7 +6540,7 @@ msgstr "Linienstil:"
 msgid "Line Styles"
 msgstr "Linienstile"
 
-#: crates/ui-egui/src/lib.rs:4803
+#: crates/ui-egui/src/lib.rs:4815
 msgid "Line Styles: the pen, colour and line pattern detail lines draw in"
 msgstr "Linienstile: Stift, Farbe und Linienmuster, in denen Detaillinien gezeichnet werden"
 
@@ -6557,7 +6557,7 @@ msgstr "Linienstärke"
 msgid "Line Weights"
 msgstr "Linienstärken"
 
-#: crates/ui-egui/src/lib.rs:4799
+#: crates/ui-egui/src/lib.rs:4811
 msgid "Line Weights: what each pen draws on paper, the model's at each scale and the annotation's at any"
 msgstr "Linienstärken: was jeder Stift auf Papier zeichnet, die des Modells je Maßstab und die der Beschriftung bei jedem"
 
@@ -6593,11 +6593,11 @@ msgstr "Linie {}"
 msgid "Line: a line between each two points clicked"
 msgstr "Linie: eine Linie zwischen je zwei geklickten Punkten"
 
-#: crates/ui-egui/src/lib.rs:4416
+#: crates/ui-egui/src/lib.rs:4428
 msgid "Linear"
 msgstr "Linear"
 
-#: crates/ui-egui/src/lib.rs:4418
+#: crates/ui-egui/src/lib.rs:4430
 msgid "Linear Dimension: pick endpoints (wall ends and corners, line ends, grid ends), then click where it goes: horizontal or vertical as the cursor lies"
 msgstr "Lineare Bemaßung: Endpunkte wählen (Wandenden und Ecken, Linienenden, Rasterenden), dann die Zielstelle klicken: horizontal oder vertikal je nach Cursorlage"
 
@@ -6622,33 +6622,33 @@ msgstr "Linien überlappen ({}): Eine liegt auf einer anderen, oder eine Linie i
 msgid "Lines up with wall {}"
 msgstr "Richtet sich an Wand {} aus"
 
-#: crates/ui-egui/src/lib.rs:5048
+#: crates/ui-egui/src/lib.rs:5060
 msgid "Linework"
 msgstr "Linienführung"
 
-#: crates/ui-egui/src/lib.rs:5049
+#: crates/ui-egui/src/lib.rs:5061
 msgid "Linework (LW): click an edge to draw it in another line style, or hide it, in this view only"
 msgstr "Linienführung (LW): eine Kante klicken, um sie in einem anderen Linienstil zu zeichnen oder auszublenden, nur in dieser Ansicht"
 
-#: crates/ui-egui/src/lib.rs:4709
+#: crates/ui-egui/src/lib.rs:4721
 msgid "Link"
 msgstr "Verknüpfen"
 
-#: crates/ui-egui/src/lib.rs:4725
+#: crates/ui-egui/src/lib.rs:4737
 msgid "Link CAD"
 msgstr "CAD verknüpfen"
 
-#: crates/ui-egui/src/lib.rs:4723
+#: crates/ui-egui/src/lib.rs:4735
 msgid "Link CAD: a DWG or DXF drawing shown in the plans of a level, read again from its file on Reload and when the project opens"
 msgstr "CAD verknüpfen: eine DWG- oder DXF-Zeichnung in den Plänen eines Geschosses, bei Neu laden und beim Öffnen des Projekts erneut aus ihrer Datei gelesen"
 
-#: crates/ui-egui/src/lib.rs:4713
-#: crates/ui-egui/src/lib.rs:4883
+#: crates/ui-egui/src/lib.rs:4725
+#: crates/ui-egui/src/lib.rs:4895
 #: crates/ui-egui/src/links.rs:89
 msgid "Link Model"
 msgstr "Modell verknüpfen"
 
-#: crates/ui-egui/src/lib.rs:4711
+#: crates/ui-egui/src/lib.rs:4723
 msgid "Link Model (LK): another project, a BIMCraft file or an IFC, shown in this one as a reference that can't be edited: halftone in the plans, the sections and the 3D view, and snapped to"
 msgstr "Modell verknüpfen (LK): ein anderes Projekt, eine BIMCraft-Datei oder ein IFC, als nicht bearbeitbare Referenz eingebunden: Halbton in den Plänen, den Schnitten und der 3D-Ansicht, und darauf gefangen"
 
@@ -6710,7 +6710,7 @@ msgstr "Familie laden: eine Familiendatei, in diese Familie geladen, zum Platzie
 msgid "Load Family: a family saved as a .bimf file (or an earlier .json), BIMCraft's own"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:401
+#: crates/ui-egui/src/shortcuts.rs:404
 msgid "Load File..."
 msgstr "Datei laden..."
 
@@ -6779,18 +6779,23 @@ msgid "Local grid"
 msgstr ""
 
 #: crates/core/src/panel_schedule.rs:370
-#: crates/ui-egui/src/coordinates.rs:1241
+#: crates/ui-egui/src/coordinates.rs:1246
 #: crates/ui-egui/src/editor/connectors.rs:288
-#: crates/ui-egui/src/lib.rs:4889
+#: crates/ui-egui/src/lib.rs:456
+#: crates/ui-egui/src/lib.rs:4901
 #: crates/ui-egui/src/properties.rs:182
 msgid "Location"
 msgstr "Position"
+
+#: crates/ui-egui/src/lib.rs:4899
+msgid "Location (LO): where the project stands in the world: its locations, the Project Base Point and the Survey Point, the map system, managing them, and conversions"
+msgstr ""
 
 #: crates/ui-egui/src/properties.rs:141
 msgid "Location Line"
 msgstr "Positionslinie"
 
-#: crates/ui-egui/src/lib.rs:5585
+#: crates/ui-egui/src/lib.rs:5597
 msgid "Location Line:"
 msgstr "Positionslinie:"
 
@@ -6798,36 +6803,32 @@ msgstr "Positionslinie:"
 msgid "Location line: {}"
 msgstr "Positionslinie: {}"
 
-#: crates/ui-egui/src/coordinates.rs:628
+#: crates/ui-egui/src/coordinates.rs:633
 msgid "Location {} active"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:640
+#: crates/ui-egui/src/coordinates.rs:645
 msgid "Location {} angle"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:637
+#: crates/ui-egui/src/coordinates.rs:642
 msgid "Location {} east"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:639
+#: crates/ui-egui/src/coordinates.rs:644
 msgid "Location {} elevation"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:636
+#: crates/ui-egui/src/coordinates.rs:641
 msgid "Location {} name"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:638
+#: crates/ui-egui/src/coordinates.rs:643
 msgid "Location {} north"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:642
+#: crates/ui-egui/src/coordinates.rs:647
 msgid "Location {} scale"
-msgstr ""
-
-#: crates/ui-egui/src/lib.rs:4887
-msgid "Location: where the project stands in the world: its locations, the Project Base Point and the Survey Point, the map system, managing them, and conversions"
 msgstr ""
 
 #: crates/ui-egui/src/coordinates.rs:33
@@ -6876,8 +6877,8 @@ msgstr ""
 msgid "Long Dash"
 msgstr "Langer Strich"
 
-#: crates/ui-egui/src/coordinates.rs:867
-#: crates/ui-egui/src/coordinates.rs:1187
+#: crates/ui-egui/src/coordinates.rs:872
+#: crates/ui-egui/src/coordinates.rs:1192
 msgid "Longitude"
 msgstr ""
 
@@ -6885,7 +6886,7 @@ msgstr ""
 msgid "Looking for sessions on this network…"
 msgstr "Sitzungen in diesem Netzwerk werden gesucht…"
 
-#: crates/ui-egui/src/lib.rs:4920
+#: crates/ui-egui/src/lib.rs:4932
 msgid "Macros"
 msgstr ""
 
@@ -6982,7 +6983,7 @@ msgstr ""
 msgid "Make a new one for the room, as its type says"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:4625
+#: crates/ui-egui/src/lib.rs:4637
 msgid "Make a schedule, or open one"
 msgstr "Tabelle erstellen oder öffnen"
 
@@ -6996,7 +6997,7 @@ msgstr ""
 
 #: crates/ui-egui/src/coordinates.rs:33
 #: crates/ui-egui/src/editor/document.rs:358
-#: crates/ui-egui/src/lib.rs:1358
+#: crates/ui-egui/src/lib.rs:1360
 msgid "Manage"
 msgstr "Verwalten"
 
@@ -7008,7 +7009,7 @@ msgstr "Voreinstellungen verwalten…"
 msgid "Map System"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:858
+#: crates/ui-egui/src/coordinates.rs:863
 msgid "Map system"
 msgstr ""
 
@@ -7041,11 +7042,11 @@ msgstr "Maskierungsbereich"
 msgid "Masking Region: sketch an area that hides what's under it, in this view"
 msgstr "Maskierungsbereich: einen Bereich skizzieren, der verdeckt, was darunter liegt, in dieser Ansicht"
 
-#: crates/ui-egui/src/lib.rs:4240
+#: crates/ui-egui/src/lib.rs:4252
 msgid "Mass"
 msgstr "Volumenkörper"
 
-#: crates/ui-egui/src/lib.rs:4237
+#: crates/ui-egui/src/lib.rs:4249
 msgid "Mass (MS): click the corners of the footprint; Enter, or the first corner again, finishes; Esc cancels"
 msgstr "Volumenkörper (MS): die Ecken der Grundfläche klicken; Enter oder erneut die erste Ecke schließt ab; Esc bricht ab"
 
@@ -7053,11 +7054,11 @@ msgstr "Volumenkörper (MS): die Ecken der Grundfläche klicken; Enter oder erne
 msgid "Mass Floors"
 msgstr "Volumenkörpergeschosse"
 
-#: crates/ui-egui/src/lib.rs:4252
+#: crates/ui-egui/src/lib.rs:4264
 msgid "Mass Floors (MF): a floor at each level the selected masses cross"
 msgstr "Volumenkörpergeschosse (MF): ein Boden auf jedem Geschoss, das die ausgewählten Volumenkörper schneiden"
 
-#: crates/ui-egui/src/lib.rs:1355
+#: crates/ui-egui/src/lib.rs:1357
 msgid "Massing"
 msgstr "Massenmodellierung"
 
@@ -7065,11 +7066,11 @@ msgstr "Massenmodellierung"
 msgid "Match Properties"
 msgstr "Eigenschaften übertragen"
 
-#: crates/ui-egui/src/lib.rs:2810
+#: crates/ui-egui/src/lib.rs:2822
 msgid "Match Properties: source type '{}' selected. Select target elements and press MA again."
 msgstr "Eigenschaften übertragen: Quelltyp '{}' gewählt. Zielelemente auswählen und MA erneut drücken."
 
-#: crates/ui-egui/src/lib.rs:2816
+#: crates/ui-egui/src/lib.rs:2828
 msgid "Matched properties: applied type '{}' to {} element(s)"
 msgstr "Eigenschaften übertragen: Typ '{}' auf {} Element(e) angewendet"
 
@@ -7086,12 +7087,12 @@ msgid "Material"
 msgstr "Material"
 
 #: crates/ui-egui/src/electrical.rs:419
-#: crates/ui-egui/src/lib.rs:5293
+#: crates/ui-egui/src/lib.rs:5305
 #: crates/ui-egui/src/properties.rs:2884
 msgid "Material:"
 msgstr "Material:"
 
-#: crates/ui-egui/src/lib.rs:4759
+#: crates/ui-egui/src/lib.rs:4771
 #: crates/ui-egui/src/properties.rs:2880
 msgid "Materials"
 msgstr "Materialien"
@@ -7104,7 +7105,7 @@ msgstr "Materialien"
 msgid "Materials and Finishes"
 msgstr "Materialien und Oberflächen"
 
-#: crates/ui-egui/src/lib.rs:4758
+#: crates/ui-egui/src/lib.rs:4770
 msgid "Materials: the project's library, each material's colour in 3D and the patterns its cut and its surfaces show"
 msgstr "Materialien: die Bibliothek des Projekts, die 3D-Farbe jedes Materials und die Muster, die sein Schnitt und seine Oberflächen zeigen"
 
@@ -7143,7 +7144,7 @@ msgstr "Maximale Steigungshöhe"
 msgid "Measure"
 msgstr "Messen"
 
-#: crates/ui-egui/src/lib.rs:4508
+#: crates/ui-egui/src/lib.rs:4520
 msgid "Measure (ME): click two points; their length and angle read beside the ruler between them. In the 3D view, any two points of the model, whatever the work plane"
 msgstr ""
 
@@ -7223,7 +7224,7 @@ msgstr "Minikarte der Ansicht"
 msgid "Minimize"
 msgstr "Minimieren"
 
-#: crates/ui-egui/src/lib.rs:3972
+#: crates/ui-egui/src/lib.rs:3984
 msgid "Minimize the Ribbon"
 msgstr "Menüband minimieren"
 
@@ -7255,11 +7256,11 @@ msgstr "Spiegeln, Achse zeichnen"
 msgid "Mirror Pick Axis"
 msgstr "Spiegeln, Achse wählen"
 
-#: crates/ui-egui/src/lib.rs:5035
+#: crates/ui-egui/src/lib.rs:5047
 msgid "Mirror, Draw Axis (DM): click the axis's two ends"
 msgstr "Spiegeln, Achse zeichnen (DM): die beiden Enden der Achse klicken"
 
-#: crates/ui-egui/src/lib.rs:5028
+#: crates/ui-egui/src/lib.rs:5040
 msgid "Mirror, Pick Axis (MM): pick a wall or grid to mirror across"
 msgstr "Spiegeln, Achse wählen (MM): eine Wand oder ein Raster zum Spiegeln wählen"
 
@@ -7296,7 +7297,7 @@ msgstr "Modell-Linienstärken"
 msgid "Model Text"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:4249
+#: crates/ui-egui/src/lib.rs:4261
 msgid "Model by Face"
 msgstr "Modell auf Fläche"
 
@@ -7312,11 +7313,11 @@ msgstr "Modelle"
 #: crates/ui-egui/src/editor/document.rs:778
 #: crates/ui-egui/src/editor/sketch.rs:1507
 #: crates/ui-egui/src/editor/sketch.rs:1510
-#: crates/ui-egui/src/lib.rs:1737
-#: crates/ui-egui/src/lib.rs:1806
-#: crates/ui-egui/src/lib.rs:1824
-#: crates/ui-egui/src/lib.rs:1825
-#: crates/ui-egui/src/lib.rs:4211
+#: crates/ui-egui/src/lib.rs:1739
+#: crates/ui-egui/src/lib.rs:1808
+#: crates/ui-egui/src/lib.rs:1826
+#: crates/ui-egui/src/lib.rs:1827
+#: crates/ui-egui/src/lib.rs:4223
 #: crates/ui-egui/src/parameters.rs:1069
 msgid "Modify"
 msgstr "Bearbeiten"
@@ -7326,27 +7327,27 @@ msgid "Modify (MD): pick lines of the sketch, and drag their ends"
 msgstr "Bearbeiten (MD): Linien der Skizze wählen und ihre Enden ziehen"
 
 #: crates/ui-egui/src/editor/document.rs:777
-#: crates/ui-egui/src/lib.rs:4211
+#: crates/ui-egui/src/lib.rs:4223
 msgid "Modify (MD): select elements"
 msgstr "Bearbeiten (MD): Elemente auswählen"
 
-#: crates/ui-egui/src/lib.rs:5116
+#: crates/ui-egui/src/lib.rs:5128
 msgid "Modify Column"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:5099
+#: crates/ui-egui/src/lib.rs:5111
 msgid "Modify Lines"
 msgstr "Linien bearbeiten"
 
-#: crates/ui-egui/src/lib.rs:3017
+#: crates/ui-egui/src/lib.rs:3029
 msgid "Modify Sub Elements"
 msgstr "Teilelemente bearbeiten"
 
-#: crates/ui-egui/src/lib.rs:3015
+#: crates/ui-egui/src/lib.rs:3027
 msgid "Modify Sub Elements: select a point, a corner or an edge of the top, then type its height on the Options Bar or its label"
 msgstr "Teilelemente bearbeiten: einen Punkt, eine Ecke oder eine Kante der Oberseite wählen, dann die Höhe in der Optionsleiste oder an der Beschriftung eingeben"
 
-#: crates/ui-egui/src/lib.rs:5116
+#: crates/ui-egui/src/lib.rs:5128
 msgid "Modify Wall"
 msgstr "Wand bearbeiten"
 
@@ -7528,7 +7529,7 @@ msgstr "Montagehöhe"
 msgid "Move"
 msgstr "Verschieben"
 
-#: crates/ui-egui/src/lib.rs:5062
+#: crates/ui-egui/src/lib.rs:5074
 msgid "Move (MV): click a base point, then where it goes"
 msgstr "Verschieben (MV): einen Basispunkt klicken, dann die Zielstelle"
 
@@ -7548,13 +7549,13 @@ msgstr "Nach unten"
 msgid "Move Up"
 msgstr "Nach oben"
 
-#: crates/ui-egui/src/coordinates.rs:717
-#: crates/ui-egui/src/coordinates.rs:1515
+#: crates/ui-egui/src/coordinates.rs:722
+#: crates/ui-egui/src/coordinates.rs:1532
 msgid "Move the point only"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:722
-#: crates/ui-egui/src/coordinates.rs:1515
+#: crates/ui-egui/src/coordinates.rs:727
+#: crates/ui-egui/src/coordinates.rs:1532
 msgid "Move the shared coordinates with it"
 msgstr ""
 
@@ -7562,7 +7563,7 @@ msgstr ""
 msgid "Move: click the point to move from."
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:1825
+#: crates/ui-egui/src/lib.rs:1827
 msgid "Multi-Select"
 msgstr "Mehrfachauswahl"
 
@@ -7570,7 +7571,7 @@ msgstr "Mehrfachauswahl"
 msgid "Multi-Select ({})"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:5405
+#: crates/ui-egui/src/lib.rs:5417
 msgid "Multiple"
 msgstr "Mehrfach"
 
@@ -7583,7 +7584,7 @@ msgstr "Mehrere Kategorien"
 msgid "Multiple Categories ({})"
 msgstr "Mehrere Kategorien ({})"
 
-#: crates/ui-egui/src/coordinates.rs:1491
+#: crates/ui-egui/src/coordinates.rs:1508
 msgid "N/S"
 msgstr ""
 
@@ -7624,7 +7625,7 @@ msgstr "NICHT UMSCHLOSSEN"
 #: crates/ui-egui/src/adaptive_editor.rs:804
 #: crates/ui-egui/src/cad.rs:89
 #: crates/ui-egui/src/clouds.rs:62
-#: crates/ui-egui/src/coordinates.rs:616
+#: crates/ui-egui/src/coordinates.rs:621
 #: crates/ui-egui/src/editor/connectors.rs:223
 #: crates/ui-egui/src/editor/dimensions.rs:1005
 #: crates/ui-egui/src/editor/document.rs:901
@@ -7632,7 +7633,7 @@ msgstr "NICHT UMSCHLOSSEN"
 #: crates/ui-egui/src/editor/work_plane.rs:211
 #: crates/ui-egui/src/electrical.rs:297
 #: crates/ui-egui/src/electrical.rs:343
-#: crates/ui-egui/src/lib.rs:5647
+#: crates/ui-egui/src/lib.rs:5659
 #: crates/ui-egui/src/parameters.rs:820
 #: crates/ui-egui/src/parameters.rs:1399
 #: crates/ui-egui/src/parameters.rs:1689
@@ -7684,7 +7685,7 @@ msgid "Never"
 msgstr "Nie"
 
 #: crates/ui-egui/src/graphics.rs:453
-#: crates/ui-egui/src/lib.rs:4136
+#: crates/ui-egui/src/lib.rs:4148
 #: crates/ui-egui/src/properties.rs:2894
 #: crates/ui-egui/src/titleblocks.rs:575
 msgid "New"
@@ -7712,7 +7713,7 @@ msgstr "Neue Familie"
 msgid "New Filter"
 msgstr "Neuer Filter"
 
-#: crates/ui-egui/src/coordinates.rs:252
+#: crates/ui-egui/src/coordinates.rs:257
 msgid "New Location"
 msgstr ""
 
@@ -7855,15 +7856,15 @@ msgstr "Kein Host in diesem Netzwerk hat diesen Code: Geben Sie auch die Adresse
 msgid "No longer from a dictionary. They keep their GUIDs."
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:566
+#: crates/ui-egui/src/coordinates.rs:571
 msgid "No map system"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:981
+#: crates/ui-egui/src/coordinates.rs:986
 msgid "No map system: shared coordinates in metres, and no latitude or longitude"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:1019
+#: crates/ui-egui/src/coordinates.rs:1024
 msgid "No place, and no projected system of EPSG's, matches."
 msgstr ""
 
@@ -7879,7 +7880,7 @@ msgstr ""
 msgid "No recent projects yet"
 msgstr "Noch keine zuletzt verwendeten Projekte"
 
-#: crates/ui-egui/src/lib.rs:6067
+#: crates/ui-egui/src/lib.rs:6079
 msgid "No rows yet: the {} is empty."
 msgstr "Noch keine Zeilen: {} ist leer."
 
@@ -7939,7 +7940,7 @@ msgstr ""
 msgid "None"
 msgstr "Keine"
 
-#: crates/ui-egui/src/coordinates.rs:965
+#: crates/ui-egui/src/coordinates.rs:970
 msgid "None: shared coordinates in metres, and no latitude or longitude. Choose one…"
 msgstr ""
 
@@ -7953,13 +7954,13 @@ msgid "Normalized Segment Length"
 msgstr ""
 
 #: crates/core/src/model.rs:2168
-#: crates/ui-egui/src/coordinates.rs:571
-#: crates/ui-egui/src/coordinates.rs:788
+#: crates/ui-egui/src/coordinates.rs:576
+#: crates/ui-egui/src/coordinates.rs:793
 msgid "North"
 msgstr "Norden"
 
-#: crates/ui-egui/src/coordinates.rs:618
-#: crates/ui-egui/src/coordinates.rs:681
+#: crates/ui-egui/src/coordinates.rs:623
+#: crates/ui-egui/src/coordinates.rs:686
 msgid "North ({})"
 msgstr ""
 
@@ -8013,7 +8014,7 @@ msgstr ""
 msgid "Not visible on this network: another session on this machine has the port"
 msgstr "In diesem Netzwerk nicht sichtbar: Eine andere Sitzung auf diesem Rechner belegt den Port"
 
-#: crates/ui-egui/src/lib.rs:5916
+#: crates/ui-egui/src/lib.rs:5928
 msgid "Note"
 msgstr "Notiz"
 
@@ -8047,7 +8048,7 @@ msgstr "Kein Objekt hat diese ID oder GUID: {}"
 msgid "Nothing here yet."
 msgstr "Hier ist noch nichts."
 
-#: crates/ui-egui/src/coordinates.rs:1334
+#: crates/ui-egui/src/coordinates.rs:1339
 msgid "Nothing in the model moves, and the other locations and the map system stay."
 msgstr ""
 
@@ -8091,7 +8092,7 @@ msgstr "Anzahl der Pole"
 #: crates/ui-egui/src/background_grid.rs:113
 #: crates/ui-egui/src/cad.rs:141
 #: crates/ui-egui/src/clouds.rs:96
-#: crates/ui-egui/src/coordinates.rs:1270
+#: crates/ui-egui/src/coordinates.rs:1275
 #: crates/ui-egui/src/dimtypes.rs:318
 #: crates/ui-egui/src/display.rs:82
 #: crates/ui-egui/src/editor/dimensions.rs:1025
@@ -8131,7 +8132,7 @@ msgstr "Objektfänge"
 msgid "Object Styles"
 msgstr "Objektstile"
 
-#: crates/ui-egui/src/lib.rs:4829
+#: crates/ui-egui/src/lib.rs:4841
 msgid "Object Styles: the pen each category draws in, seen and cut, in every view"
 msgstr "Objektstile: der Stift, mit dem jede Kategorie gezeichnet wird, in Ansicht und Schnitt, in jeder Ansicht"
 
@@ -8170,7 +8171,7 @@ msgstr "Aus: kein Agent kann dieses Fenster erreichen"
 msgid "Offset"
 msgstr "Versatz"
 
-#: crates/ui-egui/src/lib.rs:5021
+#: crates/ui-egui/src/lib.rs:5033
 #: crates/ui-egui/src/sketch.rs:758
 msgid "Offset (OF): pick a wall or a line; a copy goes to the cursor's side"
 msgstr "Versatz (OF): eine Wand oder Linie wählen; eine Kopie entsteht auf der Cursorseite"
@@ -8179,12 +8180,12 @@ msgstr "Versatz (OF): eine Wand oder Linie wählen; eine Kopie entsteht auf der 
 msgid "Offset from Host"
 msgstr "Versatz vom Basiselement"
 
-#: crates/ui-egui/src/lib.rs:5341
+#: crates/ui-egui/src/lib.rs:5353
 msgid "Offset from Surface:"
 msgstr "Versatz von der Oberfläche:"
 
 #: crates/ui-egui/src/draw.rs:350
-#: crates/ui-egui/src/lib.rs:5576
+#: crates/ui-egui/src/lib.rs:5588
 #: crates/ui-egui/src/structure.rs:146
 msgid "Offset:"
 msgstr "Versatz:"
@@ -8234,8 +8235,8 @@ msgstr "Nur im Schnitt angezeigt"
 msgid "Opaque"
 msgstr "Undurchsichtig"
 
-#: crates/ui-egui/src/lib.rs:3773
-#: crates/ui-egui/src/lib.rs:4144
+#: crates/ui-egui/src/lib.rs:3785
+#: crates/ui-egui/src/lib.rs:4156
 #: crates/ui-egui/src/start.rs:380
 msgid "Open"
 msgstr "Öffnen"
@@ -8277,7 +8278,7 @@ msgstr "Tabelle öffnen"
 msgid "Open a view of the kind ({}) to make a template from it."
 msgstr "Eine Ansicht dieser Art ({}) öffnen, um daraus eine Vorlage zu erstellen."
 
-#: crates/ui-egui/src/lib.rs:4597
+#: crates/ui-egui/src/lib.rs:4609
 msgid "Open the default 3D view"
 msgstr "Standard-3D-Ansicht öffnen"
 
@@ -8291,7 +8292,7 @@ msgstr "Geöffnet aus {}: {}, {} ausgelassen."
 
 #: crates/core/src/graphics.rs:133
 #: crates/core/src/graphics.rs:134
-#: crates/ui-egui/src/lib.rs:4365
+#: crates/ui-egui/src/lib.rs:4377
 #: crates/ui-egui/src/revit.rs:213
 msgid "Opening"
 msgstr "Öffnung"
@@ -8417,7 +8418,7 @@ msgstr "Auslässe"
 msgid "Outlets & Equipment"
 msgstr "Auslässe & Geräte"
 
-#: crates/ui-egui/src/lib.rs:5379
+#: crates/ui-egui/src/lib.rs:5391
 msgid "Overhang:"
 msgstr "Überstand:"
 
@@ -8434,7 +8435,7 @@ msgstr "Überschrieben"
 msgid "Override Formatting"
 msgstr "Formatierung überschreiben"
 
-#: crates/ui-egui/src/lib.rs:4983
+#: crates/ui-egui/src/lib.rs:4995
 msgid "Override Graphics"
 msgstr "Grafik überschreiben"
 
@@ -8442,7 +8443,7 @@ msgstr "Grafik überschreiben"
 msgid "Override Graphics by Element"
 msgstr "Grafik nach Element überschreiben"
 
-#: crates/ui-egui/src/lib.rs:4982
+#: crates/ui-egui/src/lib.rs:4994
 msgid "Override Graphics by Element (EO): draw the selected elements their own way in this view"
 msgstr "Grafik nach Element überschreiben (EO): ausgewählte Elemente in dieser Ansicht eigenständig darstellen"
 
@@ -8462,7 +8463,7 @@ msgstr "Vorhandene Version überschreiben"
 msgid "Overwrite the existing version and its parameter values"
 msgstr "Vorhandene Version und ihre Parameterwerte überschreiben"
 
-#: crates/ui-egui/src/lib.rs:4178
+#: crates/ui-egui/src/lib.rs:4190
 msgid "PNG image"
 msgstr "PNG-Bild"
 
@@ -8470,15 +8471,15 @@ msgstr "PNG-Bild"
 msgid "PVC"
 msgstr "PVC"
 
-#: crates/ui-egui/src/lib.rs:5200
+#: crates/ui-egui/src/lib.rs:5212
 msgid "Paint"
 msgstr "Streichen"
 
-#: crates/ui-egui/src/lib.rs:5199
+#: crates/ui-egui/src/lib.rs:5211
 msgid "Paint (PT): lay a material, and its texture, over the face you click in the 3D view"
 msgstr "Streichen (PT): Material samt Textur auf die in der 3D-Ansicht angeklickte Fläche legen"
 
-#: crates/ui-egui/src/lib.rs:3839
+#: crates/ui-egui/src/lib.rs:3851
 #: crates/ui-egui/src/settings.rs:642
 msgid "Palettes"
 msgstr "Paletten"
@@ -8496,7 +8497,7 @@ msgstr ""
 msgid "Panel Schedule: the load schedule of the selected distribution board, a view that goes on a sheet"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:3463
+#: crates/ui-egui/src/lib.rs:3475
 msgid "Panel Schedule: {}"
 msgstr ""
 
@@ -8723,12 +8724,12 @@ msgstr "Phasen"
 msgid "Phases, in order:"
 msgstr "Phasen, in Reihenfolge:"
 
-#: crates/ui-egui/src/lib.rs:4910
+#: crates/ui-egui/src/lib.rs:4922
 #: crates/ui-egui/src/phasing.rs:258
 msgid "Phasing"
 msgstr "Phasen"
 
-#: crates/ui-egui/src/lib.rs:4909
+#: crates/ui-egui/src/lib.rs:4921
 msgid "Phasing (PH): the project's phases in order, the phase filters that show them, and how a filter draws each"
 msgstr "Phasen (PH): die Phasen des Projekts in Reihenfolge, die Phasenfilter, die sie zeigen, und wie ein Filter jede darstellt"
 
@@ -8766,7 +8767,7 @@ msgstr "Pfad wählen"
 msgid "Pick Path: pick reference planes, reference lines or forms' edges: lines of the path along them"
 msgstr "Pfad wählen: Referenzebenen, Referenzlinien oder Kanten von Körpern wählen: Linien des Pfads daran entlang"
 
-#: crates/ui-egui/src/coordinates.rs:769
+#: crates/ui-egui/src/coordinates.rs:774
 msgid "Pick Point and Specify"
 msgstr ""
 
@@ -8790,7 +8791,7 @@ msgstr "Eine Ecke, eine Kante oder eine Fläche des Modells zum Bemaßen wählen
 msgid "Pick a corner, an edge or a face of the model to measure."
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:5805
+#: crates/ui-egui/src/lib.rs:5817
 msgid "Pick a curved wall or an arc."
 msgstr "Eine gekrümmte Wand oder einen Bogen wählen."
 
@@ -8827,7 +8828,7 @@ msgstr "Linie auswählen: nach OK eine Wand, einen Träger, ein Rohr oder ein an
 msgid "Pick a line: click a reference line in the view."
 msgstr "Linie auswählen: eine Referenzlinie in der Ansicht anklicken."
 
-#: crates/ui-egui/src/coordinates.rs:307
+#: crates/ui-egui/src/coordinates.rs:312
 msgid "Pick a map system first: latitude and longitude reach the grid through it."
 msgstr ""
 
@@ -8860,7 +8861,7 @@ msgstr "Ebene auswählen: eine Referenzebene oder ein Bezugselement in der Ansic
 msgid "Pick a plane: one of a point's planes, the level or a reference plane; Escape gives up."
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:5771
+#: crates/ui-egui/src/lib.rs:5783
 msgid "Pick a reference edge or centre line; the line under the cursor is highlighted."
 msgstr "Eine Bezugskante oder Mittellinie wählen; die Linie unter dem Cursor wird hervorgehoben."
 
@@ -8881,15 +8882,15 @@ msgstr "Eine Referenzebene, eine Referenzlinie oder eine Linie wählen, dann ein
 msgid "Pick a reference plane, an extrusion's end or a line of a form."
 msgstr "Eine Referenzebene, ein Ende einer Extrusion oder eine Linie eines Körpers wählen."
 
-#: crates/ui-egui/src/lib.rs:5735
+#: crates/ui-egui/src/lib.rs:5747
 msgid "Pick a roof or a floor: the bases of what's selected stand on it."
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:5736
+#: crates/ui-egui/src/lib.rs:5748
 msgid "Pick a roof or a floor: the tops of what's selected follow its underside."
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:5806
+#: crates/ui-egui/src/lib.rs:5818
 msgid "Pick a round column, a curved wall, a circle or an arc."
 msgstr "Eine runde Stütze, eine gekrümmte Wand, einen Kreis oder einen Bogen wählen."
 
@@ -8913,19 +8914,19 @@ msgstr ""
 msgid "Pick a straight line of the sketch: it moves onto the reference."
 msgstr "Eine gerade Linie der Skizze wählen: sie wird auf die Referenz verschoben."
 
-#: crates/ui-egui/src/lib.rs:5792
+#: crates/ui-egui/src/lib.rs:5804
 msgid "Pick a wall face, centre line or end, a door, a window, a grid, or an endpoint to measure from."
 msgstr "Eine Wandfläche, Mittellinie oder ein Wandende, eine Tür, ein Fenster, ein Raster oder einen Endpunkt als Messbezug wählen."
 
-#: crates/ui-egui/src/lib.rs:5768
+#: crates/ui-egui/src/lib.rs:5780
 msgid "Pick a wall or grid to mirror across."
 msgstr "Eine Wand oder ein Raster als Spiegelachse wählen."
 
-#: crates/ui-egui/src/lib.rs:5803
+#: crates/ui-egui/src/lib.rs:5815
 msgid "Pick a wall, a grid or another line; then one that meets it."
 msgstr "Eine Wand, ein Raster oder eine andere Linie wählen; dann eine, die sie trifft."
 
-#: crates/ui-egui/src/coordinates.rs:818
+#: crates/ui-egui/src/coordinates.rs:823
 msgid "Pick in the View"
 msgstr ""
 
@@ -8933,7 +8934,7 @@ msgstr ""
 msgid "Pick lines that cross, then click where the dimension goes."
 msgstr "Sich schneidende Linien wählen, dann an die Stelle der Bemaßung klicken."
 
-#: crates/ui-egui/src/lib.rs:5796
+#: crates/ui-egui/src/lib.rs:5808
 msgid "Pick more references, or click away from them where the dimension line goes; Tab steps over the faces, axes and corners of the element under the cursor. A picked reference clicked again is taken out, Backspace takes out the last, Esc starts over. Space steps Auto, Aligned, Horizontal, Vertical."
 msgstr ""
 
@@ -8949,7 +8950,7 @@ msgstr "Skizzenlinien wählen (ein Rahmen wählt mehrere); das Ende einer gewäh
 msgid "Pick text files or pictures, or drop them here"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:5772
+#: crates/ui-egui/src/lib.rs:5784
 msgid "Pick the element's highlighted edge to move and turn onto the reference."
 msgstr "Die hervorgehobene Kante des Elements wählen, um sie auf den Bezug zu verschieben und zu drehen."
 
@@ -8965,7 +8966,7 @@ msgstr "Die erste Linie auf dem zu behaltenden Teil wählen."
 msgid "Pick the first sketch line, on the part to keep."
 msgstr "Die erste Skizzenlinie wählen, auf dem zu behaltenden Teil."
 
-#: crates/ui-egui/src/lib.rs:5773
+#: crates/ui-egui/src/lib.rs:5785
 msgid "Pick the first wall or line, on the part to keep."
 msgstr "Die erste Wand oder Linie wählen, auf dem zu behaltenden Teil."
 
@@ -8973,7 +8974,7 @@ msgstr "Die erste Wand oder Linie wählen, auf dem zu behaltenden Teil."
 msgid "Pick the highlighted sketch line to move and turn onto the reference; joined ends follow."
 msgstr "Die hervorgehobene Skizzenlinie wählen, um sie auf den Bezug zu verschieben und zu drehen; verbundene Enden folgen."
 
-#: crates/ui-egui/src/lib.rs:5775
+#: crates/ui-egui/src/lib.rs:5787
 msgid "Pick the line to trim or extend to: a line, a wall or a grid."
 msgstr "Die Linie wählen, bis zu der gekürzt oder verlängert wird: eine Linie, eine Wand oder ein Raster."
 
@@ -8981,7 +8982,7 @@ msgstr "Die Linie wählen, bis zu der gekürzt oder verlängert wird: eine Linie
 msgid "Pick the lines and the tile's corners again: the pattern keeps its name"
 msgstr "Die Linien und die Ecken der Kachel erneut wählen: das Muster behält seinen Namen"
 
-#: crates/ui-egui/src/lib.rs:5794
+#: crates/ui-egui/src/lib.rs:5806
 msgid "Pick the next reference or endpoint."
 msgstr "Den nächsten Bezug oder Endpunkt wählen."
 
@@ -8993,7 +8994,7 @@ msgstr "Die zweite Linie auf dem zu behaltenden Teil wählen."
 msgid "Pick the second line."
 msgstr "Die zweite Linie wählen."
 
-#: crates/ui-egui/src/lib.rs:5807
+#: crates/ui-egui/src/lib.rs:5819
 msgid "Pick the second point on the arc. Esc cancels."
 msgstr "Den zweiten Punkt auf dem Bogen wählen. Esc bricht ab."
 
@@ -9001,7 +9002,7 @@ msgstr "Den zweiten Punkt auf dem Bogen wählen. Esc bricht ab."
 msgid "Pick the second sketch line, on the part to keep."
 msgstr "Die zweite Skizzenlinie wählen, auf dem zu behaltenden Teil."
 
-#: crates/ui-egui/src/lib.rs:5774
+#: crates/ui-egui/src/lib.rs:5786
 msgid "Pick the second wall or line, on the part to keep."
 msgstr "Die zweite Wand oder Linie wählen, auf dem zu behaltenden Teil."
 
@@ -9087,7 +9088,7 @@ msgstr "Drehpunkt"
 msgid "Pivot: click the point it turns about (where two planes cross, a line's end, a point of a sketch, or anywhere); its Swing Angle turns it"
 msgstr "Drehgelenk: den Punkt anklicken, um den es sich dreht (wo sich zwei Ebenen kreuzen, das Ende einer Linie, einen Punkt einer Skizze oder irgendwo); sein Schwenkwinkel dreht es"
 
-#: crates/ui-egui/src/coordinates.rs:873
+#: crates/ui-egui/src/coordinates.rs:878
 msgid "Place"
 msgstr ""
 
@@ -9107,21 +9108,21 @@ msgstr "Kabeltrasse platzieren"
 msgid "Place Cabling"
 msgstr "Verkabelung platzieren"
 
-#: crates/ui-egui/src/lib.rs:1801
+#: crates/ui-egui/src/lib.rs:1803
 msgid "Place Ceiling"
 msgstr "Decke platzieren"
 
-#: crates/ui-egui/src/lib.rs:5611
-#: crates/ui-egui/src/lib.rs:5637
+#: crates/ui-egui/src/lib.rs:5623
+#: crates/ui-egui/src/lib.rs:5649
 msgid "Place Centre"
 msgstr "Mittelpunkt platzieren"
 
-#: crates/ui-egui/src/lib.rs:1790
+#: crates/ui-egui/src/lib.rs:1792
 #: crates/ui-egui/src/orbit.rs:1423
 msgid "Place Column"
 msgstr "Stütze platzieren"
 
-#: crates/ui-egui/src/lib.rs:1792
+#: crates/ui-egui/src/lib.rs:1794
 #: crates/ui-egui/src/orbit.rs:1425
 msgid "Place Component"
 msgstr "Bauteil platzieren"
@@ -9134,11 +9135,11 @@ msgstr "Leerrohr platzieren"
 msgid "Place Data Outlet"
 msgstr "Datenauslass platzieren"
 
-#: crates/ui-egui/src/lib.rs:1777
+#: crates/ui-egui/src/lib.rs:1779
 msgid "Place Detail Group"
 msgstr "Detailgruppe platzieren"
 
-#: crates/ui-egui/src/lib.rs:1781
+#: crates/ui-egui/src/lib.rs:1783
 msgid "Place Detail Lines"
 msgstr "Detaillinien platzieren"
 
@@ -9146,11 +9147,11 @@ msgstr "Detaillinien platzieren"
 msgid "Place Device"
 msgstr "Gerät platzieren"
 
-#: crates/ui-egui/src/lib.rs:1775
+#: crates/ui-egui/src/lib.rs:1777
 msgid "Place Dimensions"
 msgstr "Bemaßungen platzieren"
 
-#: crates/ui-egui/src/lib.rs:1768
+#: crates/ui-egui/src/lib.rs:1770
 msgid "Place Door"
 msgstr "Tür platzieren"
 
@@ -9174,7 +9175,7 @@ msgstr "Erdungselektrode platzieren"
 msgid "Place Electrical Equipment"
 msgstr "Elektrogerät platzieren"
 
-#: crates/ui-egui/src/lib.rs:1773
+#: crates/ui-egui/src/lib.rs:1775
 msgid "Place Grid"
 msgstr "Raster platzieren"
 
@@ -9190,7 +9191,7 @@ msgstr ""
 msgid "Place Instance: a new instance of the family on the test placement, in the project"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:1779
+#: crates/ui-egui/src/lib.rs:1781
 msgid "Place Insulation"
 msgstr "Dämmung platzieren"
 
@@ -9198,7 +9199,7 @@ msgstr "Dämmung platzieren"
 msgid "Place Isolated Footing"
 msgstr "Einzelfundament platzieren"
 
-#: crates/ui-egui/src/lib.rs:1772
+#: crates/ui-egui/src/lib.rs:1774
 msgid "Place Level"
 msgstr "Geschoss platzieren"
 
@@ -9230,23 +9231,23 @@ msgstr "Sanitärkeramik platzieren"
 msgid "Place Rack"
 msgstr "Regal platzieren"
 
-#: crates/ui-egui/src/lib.rs:1774
+#: crates/ui-egui/src/lib.rs:1776
 msgid "Place Reference Plane"
 msgstr "Referenzebene platzieren"
 
-#: crates/ui-egui/src/lib.rs:1778
+#: crates/ui-egui/src/lib.rs:1780
 msgid "Place Repeating Detail"
 msgstr "Wiederholtes Detail platzieren"
 
-#: crates/ui-egui/src/lib.rs:1780
+#: crates/ui-egui/src/lib.rs:1782
 msgid "Place Revision Cloud"
 msgstr "Revisionswolke platzieren"
 
-#: crates/ui-egui/src/lib.rs:1770
+#: crates/ui-egui/src/lib.rs:1772
 msgid "Place Room"
 msgstr "Raum platzieren"
 
-#: crates/ui-egui/src/lib.rs:1771
+#: crates/ui-egui/src/lib.rs:1773
 msgid "Place Room Separation"
 msgstr "Raumtrennlinie platzieren"
 
@@ -9254,11 +9255,11 @@ msgstr "Raumtrennlinie platzieren"
 msgid "Place Structural Column"
 msgstr "Tragende Stütze platzieren"
 
-#: crates/ui-egui/src/lib.rs:1776
+#: crates/ui-egui/src/lib.rs:1778
 msgid "Place Text"
 msgstr "Text platzieren"
 
-#: crates/ui-egui/src/lib.rs:4660
+#: crates/ui-egui/src/lib.rs:4672
 msgid "Place View"
 msgstr "Ansicht platzieren"
 
@@ -9266,7 +9267,7 @@ msgstr "Ansicht platzieren"
 msgid "Place Voice Outlet"
 msgstr "Sprachauslass platzieren"
 
-#: crates/ui-egui/src/lib.rs:1765
+#: crates/ui-egui/src/lib.rs:1767
 #: crates/ui-egui/src/orbit.rs:1422
 msgid "Place Wall"
 msgstr "Wand platzieren"
@@ -9275,7 +9276,7 @@ msgstr "Wand platzieren"
 msgid "Place Wall Footing"
 msgstr "Wandfundament platzieren"
 
-#: crates/ui-egui/src/lib.rs:1769
+#: crates/ui-egui/src/lib.rs:1771
 msgid "Place Window"
 msgstr "Fenster platzieren"
 
@@ -9283,19 +9284,19 @@ msgstr "Fenster platzieren"
 msgid "Place Wire"
 msgstr "Leitung platzieren"
 
-#: crates/ui-egui/src/coordinates.rs:859
+#: crates/ui-egui/src/coordinates.rs:864
 msgid "Place by latitude and longitude"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:5494
+#: crates/ui-egui/src/lib.rs:5506
 msgid "Place on Face"
 msgstr "Auf Fläche platzieren"
 
-#: crates/ui-egui/src/lib.rs:5491
+#: crates/ui-egui/src/lib.rs:5503
 msgid "Place on Work Plane"
 msgstr "Auf Arbeitsebene platzieren"
 
-#: crates/ui-egui/src/lib.rs:5426
+#: crates/ui-egui/src/lib.rs:5438
 msgid "Place:"
 msgstr "Platzieren:"
 
@@ -9303,7 +9304,7 @@ msgstr "Platzieren:"
 msgid "Placement Plane"
 msgstr "Platzierungsebene"
 
-#: crates/ui-egui/src/lib.rs:5506
+#: crates/ui-egui/src/lib.rs:5518
 msgid "Placement Plane:"
 msgstr "Platzierungsebene:"
 
@@ -9315,7 +9316,7 @@ msgstr ""
 msgid "Placement {} - {}"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:1022
+#: crates/ui-egui/src/coordinates.rs:1027
 msgid "Places"
 msgstr ""
 
@@ -9332,7 +9333,7 @@ msgstr "Grundriss"
 msgid "Plan Area"
 msgstr "Planfläche"
 
-#: crates/ui-egui/src/lib.rs:4180
+#: crates/ui-egui/src/lib.rs:4192
 msgid "Plan as SVG…"
 msgstr "Plan als SVG…"
 
@@ -9352,18 +9353,18 @@ msgstr "Grundrisse"
 msgid "Plaster"
 msgstr "Putz"
 
-#: crates/ui-egui/src/lib.rs:4768
+#: crates/ui-egui/src/lib.rs:4780
 #: crates/ui-egui/src/plugins.rs:148
 #: crates/ui-egui/src/plugins.rs:288
 msgid "Plugins"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:4767
+#: crates/ui-egui/src/lib.rs:4779
 msgid "Plugins: the WASM extensions in your plugin folder, what became of each, their log, and switching them on and off"
 msgstr ""
 
 #: crates/core/src/family.rs:359
-#: crates/ui-egui/src/lib.rs:1349
+#: crates/ui-egui/src/lib.rs:1351
 msgid "Plumbing"
 msgstr "Sanitär"
 
@@ -9384,16 +9385,16 @@ msgid "Plumbing Fixtures"
 msgstr "Sanitärkeramik"
 
 #: crates/ui-egui/src/adaptive_editor.rs:619
-#: crates/ui-egui/src/coordinates.rs:676
+#: crates/ui-egui/src/coordinates.rs:681
 msgid "Point"
 msgstr ""
 
 #: crates/ui-egui/src/clouds.rs:52
-#: crates/ui-egui/src/lib.rs:4719
+#: crates/ui-egui/src/lib.rs:4731
 msgid "Point Cloud"
 msgstr "Punktwolke"
 
-#: crates/ui-egui/src/lib.rs:4717
+#: crates/ui-egui/src/lib.rs:4729
 msgid "Point Cloud: laser scans (PTS, XYZ, PLY, LAS or E57) brought into the project, one file or a survey's stations as one scan, drawn in the 3D view, plans and sections and snapped to"
 msgstr "Punktwolke: Laserscans (PTS, XYZ, PLY, LAS oder E57) ins Projekt übernehmen, eine Datei oder die Stationen einer Vermessung als ein Scan, in 3D-Ansicht, Grundrissen und Schnitten dargestellt und mit Fang"
 
@@ -9405,7 +9406,7 @@ msgstr ""
 msgid "Point Element: click the work plane for a reference point, or a line for one hosted on it"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:1506
+#: crates/ui-egui/src/coordinates.rs:1523
 msgid "Point angle to true north"
 msgstr ""
 
@@ -9421,11 +9422,11 @@ msgstr "Punkthöhe {}"
 msgid "Point of a sketch"
 msgstr "Punkt einer Skizze"
 
-#: crates/ui-egui/src/lib.rs:5783
+#: crates/ui-egui/src/lib.rs:5795
 msgid "Point to a wall or a line: the offset goes to the cursor's side. Click to place it."
 msgstr "Auf eine Wand oder Linie zeigen: der Versatz geht zur Cursorseite. Zum Platzieren klicken."
 
-#: crates/ui-egui/src/coordinates.rs:1479
+#: crates/ui-egui/src/coordinates.rs:1496
 msgid "Point {}"
 msgstr ""
 
@@ -9564,7 +9565,7 @@ msgid "Profile 2: sketch the profile at the path's end, square to it"
 msgstr "Profil 2: das Profil am Ende des Pfads skizzieren, rechtwinklig dazu"
 
 #: apps/bimcraft/src/main.rs:271
-#: crates/ui-egui/src/lib.rs:4137
+#: crates/ui-egui/src/lib.rs:4149
 #: crates/ui-egui/src/parameters.rs:850
 #: crates/ui-egui/src/parameters.rs:1189
 #: crates/ui-egui/src/parameters.rs:1332
@@ -9581,12 +9582,12 @@ msgid "Project Address"
 msgstr "Projektadresse"
 
 #: crates/core/src/graphics.rs:137
-#: crates/ui-egui/src/coordinates.rs:697
+#: crates/ui-egui/src/coordinates.rs:702
 #: crates/ui-egui/src/spots.rs:329
 msgid "Project Base Point"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:699
+#: crates/ui-egui/src/coordinates.rs:704
 msgid "Project Base Point {}"
 msgstr ""
 
@@ -9599,7 +9600,7 @@ msgstr "Projektbrowser"
 msgid "Project Information"
 msgstr "Projektinformationen"
 
-#: crates/ui-egui/src/lib.rs:4774
+#: crates/ui-egui/src/lib.rs:4786
 msgid "Project Information: the project's name, number, client, address, status and issue date, and its parameters"
 msgstr "Projektinformationen: Name, Nummer, Auftraggeber, Adresse, Status und Ausgabedatum des Projekts sowie seine Parameter"
 
@@ -9607,15 +9608,15 @@ msgstr "Projektinformationen: Name, Nummer, Auftraggeber, Adresse, Status und Au
 msgid "Project Issue Date"
 msgstr "Ausgabedatum des Projekts"
 
-#: crates/ui-egui/src/lib.rs:4870
+#: crates/ui-egui/src/lib.rs:4882
 msgid "Project Language"
 msgstr "Projektsprache"
 
-#: crates/ui-egui/src/lib.rs:4869
+#: crates/ui-egui/src/lib.rs:4881
 msgid "Project Language: what the drawings say and how new things are named; now {}"
 msgstr "Projektsprache: was in den Zeichnungen steht und wie Neues benannt wird; aktuell {}"
 
-#: crates/ui-egui/src/lib.rs:4881
+#: crates/ui-egui/src/lib.rs:4893
 msgid "Project Location"
 msgstr ""
 
@@ -9638,7 +9639,7 @@ msgstr "Projektnummer"
 msgid "Project Parameters"
 msgstr "Projektparameter"
 
-#: crates/ui-egui/src/lib.rs:4779
+#: crates/ui-egui/src/lib.rs:4791
 msgid "Project Parameters: project and shared parameters in one place, their categories, dictionaries, import and export"
 msgstr ""
 
@@ -9651,11 +9652,11 @@ msgid "Project Status"
 msgstr "Projektstatus"
 
 #: crates/ui-egui/src/editor/document.rs:600
-#: crates/ui-egui/src/lib.rs:4841
+#: crates/ui-egui/src/lib.rs:4853
 msgid "Project Units"
 msgstr "Projekteinheiten"
 
-#: crates/ui-egui/src/lib.rs:4840
+#: crates/ui-egui/src/lib.rs:4852
 msgid "Project Units (UN): how lengths show and read; now {}"
 msgstr "Projekteinheiten (UN): wie Längen angezeigt und gelesen werden; aktuell {}"
 
@@ -9698,18 +9699,18 @@ msgstr "Projektionsstift"
 msgid "Projection/Surface"
 msgstr "Projektion/Oberfläche"
 
-#: crates/ui-egui/src/lib.rs:4145
+#: crates/ui-egui/src/lib.rs:4157
 msgid "Project…"
 msgstr "Projekt…"
 
 #: crates/ui-egui/src/editor/document.rs:793
 #: crates/ui-egui/src/editor/document.rs:794
-#: crates/ui-egui/src/lib.rs:4941
+#: crates/ui-egui/src/lib.rs:4953
 msgid "Properties"
 msgstr "Eigenschaften"
 
 #: crates/ui-egui/src/editor/document.rs:794
-#: crates/ui-egui/src/lib.rs:4941
+#: crates/ui-egui/src/lib.rs:4953
 msgid "Properties (PP): show or hide the palette"
 msgstr "Eigenschaften (PP): Palette ein- oder ausblenden"
 
@@ -9735,7 +9736,7 @@ msgstr ""
 msgid "Purge Unused"
 msgstr "Nicht verwendete löschen"
 
-#: crates/ui-egui/src/lib.rs:4785
+#: crates/ui-egui/src/lib.rs:4797
 msgid "Purge Unused (PU): take out the types, families and the rest nothing in the project uses; each category keeps a type"
 msgstr "Nicht verwendete löschen (PU): Typen, Familien und alles Übrige entfernen, was im Projekt nichts nutzt; jede Kategorie behält einen Typ"
 
@@ -9747,7 +9748,7 @@ msgstr "{} löschen"
 msgid "Purged {} unused."
 msgstr "{} nicht verwendete gelöscht."
 
-#: crates/ui-egui/src/lib.rs:4659
+#: crates/ui-egui/src/lib.rs:4671
 msgid "Put a view on this sheet: one not on a sheet yet"
 msgstr "Eine Ansicht auf diesen Plan legen: eine, die noch auf keinem Plan liegt"
 
@@ -9776,7 +9777,7 @@ msgid "Racks"
 msgstr "Regale"
 
 #: crates/ui-egui/src/editor/document.rs:514
-#: crates/ui-egui/src/lib.rs:4433
+#: crates/ui-egui/src/lib.rs:4445
 msgid "Radial"
 msgstr "Radial"
 
@@ -9784,7 +9785,7 @@ msgstr "Radial"
 msgid "Radial Dimension: pick a circle or an arc of a form's sketch, then click where it goes"
 msgstr "Radiale Bemaßung: einen Kreis oder einen Bogen der Skizze eines Körpers wählen, dann klicken, wo sie verläuft"
 
-#: crates/ui-egui/src/lib.rs:4434
+#: crates/ui-egui/src/lib.rs:4446
 msgid "Radial Dimension: pick a round column, a curved wall, a circle or an arc, then click where the radius goes"
 msgstr "Radiale Bemaßung: eine runde Stütze, eine gekrümmte Wand, einen Kreis oder einen Bogen wählen, dann klicken, wo der Radius verläuft"
 
@@ -9806,12 +9807,12 @@ msgstr "Radius:"
 msgid "Railing"
 msgstr "Geländer"
 
-#: crates/ui-egui/src/lib.rs:4345
+#: crates/ui-egui/src/lib.rs:4357
 msgid "Railing: click a stair or a ramp for one down each side, or click a path and press Enter"
 msgstr "Geländer: eine Treppe oder Rampe anklicken für je eines auf beiden Seiten, oder einen Pfad anklicken und Eingabe drücken"
 
-#: crates/ui-egui/src/lib.rs:5363
-#: crates/ui-egui/src/lib.rs:5374
+#: crates/ui-egui/src/lib.rs:5375
+#: crates/ui-egui/src/lib.rs:5386
 msgid "Railings"
 msgstr "Geländer"
 
@@ -9819,7 +9820,7 @@ msgstr "Geländer"
 msgid "Ramp"
 msgstr "Rampe"
 
-#: crates/ui-egui/src/lib.rs:4339
+#: crates/ui-egui/src/lib.rs:4351
 msgid "Ramp: click where it starts, then where its run ends; a landing turns it"
 msgstr "Rampe: den Anfang anklicken, dann das Ende des Laufs; ein Podest dreht sie"
 
@@ -9852,7 +9853,7 @@ msgstr "Zuletzt verwendet"
 msgid "Recessed Luminaire"
 msgstr "Einbauleuchte"
 
-#: crates/ui-egui/src/coordinates.rs:899
+#: crates/ui-egui/src/coordinates.rs:904
 msgid "Recommended"
 msgstr ""
 
@@ -9860,7 +9861,7 @@ msgstr ""
 msgid "Recover"
 msgstr "Wiederherstellen"
 
-#: crates/ui-egui/src/lib.rs:4170
+#: crates/ui-egui/src/lib.rs:4182
 msgid "Recover Autosave…"
 msgstr "Automatische Sicherung wiederherstellen…"
 
@@ -9893,19 +9894,19 @@ msgstr "Rechteck: vier Linien zwischen zwei gegenüberliegenden Ecken"
 msgid "Redefine"
 msgstr "Neu definieren"
 
-#: crates/ui-egui/src/lib.rs:3799
+#: crates/ui-egui/src/lib.rs:3811
 msgid "Redo"
 msgstr "Wiederholen"
 
-#: crates/ui-egui/src/lib.rs:3866
+#: crates/ui-egui/src/lib.rs:3878
 msgid "Redo History"
 msgstr "Wiederholungsverlauf"
 
-#: crates/ui-egui/src/lib.rs:3914
+#: crates/ui-egui/src/lib.rs:3926
 msgid "Redo {}"
 msgstr "{} wiederholen"
 
-#: crates/ui-egui/src/lib.rs:3913
+#: crates/ui-egui/src/lib.rs:3925
 msgid "Redo {} steps"
 msgstr "{} Schritte wiederholen"
 
@@ -9913,7 +9914,7 @@ msgstr "{} Schritte wiederholen"
 msgid "Redraw views in the background"
 msgstr "Ansichten im Hintergrund neu zeichnen"
 
-#: crates/ui-egui/src/lib.rs:4396
+#: crates/ui-egui/src/lib.rs:4408
 msgid "Ref Plane"
 msgstr "Ref.-Ebene"
 
@@ -9949,7 +9950,7 @@ msgstr "Referenzlinie {}"
 #: crates/ui-egui/src/editor/pivot.rs:259
 #: crates/ui-egui/src/editor/pivot.rs:260
 #: crates/ui-egui/src/editor/work_plane.rs:82
-#: crates/ui-egui/src/lib.rs:5472
+#: crates/ui-egui/src/lib.rs:5484
 msgid "Reference Plane"
 msgstr "Referenzebene"
 
@@ -9957,7 +9958,7 @@ msgstr "Referenzebene"
 msgid "Reference Plane (RP): a plane drawn by two clicks in a plan or an elevation"
 msgstr "Referenzebene (RP): eine Ebene, mit zwei Klicks in einem Grundriss oder einer Ansicht gezeichnet"
 
-#: crates/ui-egui/src/lib.rs:4395
+#: crates/ui-egui/src/lib.rs:4407
 msgid "Reference Plane (RP): click its two ends; work plane-based components are placed on it and move with it"
 msgstr "Referenzebene (RP): ihre beiden Enden anklicken; arbeitsebenenbasierte Bauteile werden darauf platziert und bewegen sich mit ihr"
 
@@ -10057,11 +10058,11 @@ msgstr ""
 msgid "Remove Constraints"
 msgstr "Abhängigkeiten entfernen"
 
-#: crates/ui-egui/src/lib.rs:5204
+#: crates/ui-egui/src/lib.rs:5216
 msgid "Remove Paint"
 msgstr "Farbe entfernen"
 
-#: crates/ui-egui/src/lib.rs:5203
+#: crates/ui-egui/src/lib.rs:5215
 msgid "Remove Paint: take the paint off the face you click in the 3D view"
 msgstr "Farbe entfernen: Farbe von der angeklickten Fläche in der 3D-Ansicht abnehmen"
 
@@ -10197,7 +10198,7 @@ msgstr ""
 msgid "Reporting Parameter"
 msgstr "Berichtsparameter"
 
-#: crates/ui-egui/src/coordinates.rs:1354
+#: crates/ui-egui/src/coordinates.rs:1359
 #: crates/ui-egui/src/graphics.rs:1343
 #: crates/ui-egui/src/lineweights.rs:146
 #: crates/ui-egui/src/objectstyles.rs:82
@@ -10216,12 +10217,12 @@ msgstr "Zeichenfläche zurücksetzen"
 msgid "Reset Colour"
 msgstr "Farbe zurücksetzen"
 
-#: crates/ui-egui/src/coordinates.rs:837
-#: crates/ui-egui/src/coordinates.rs:1327
+#: crates/ui-egui/src/coordinates.rs:842
+#: crates/ui-egui/src/coordinates.rs:1332
 msgid "Reset Coordinates"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:844
+#: crates/ui-egui/src/coordinates.rs:849
 msgid "Reset Coordinates…"
 msgstr ""
 
@@ -10233,11 +10234,11 @@ msgstr "Palettenlayout zurücksetzen"
 msgid "Reset Panels"
 msgstr "Panels zurücksetzen"
 
-#: crates/ui-egui/src/lib.rs:3038
+#: crates/ui-egui/src/lib.rs:3050
 msgid "Reset Shape"
 msgstr "Form zurücksetzen"
 
-#: crates/ui-egui/src/lib.rs:3037
+#: crates/ui-egui/src/lib.rs:3049
 msgid "Reset Shape: take the points and split lines off, the top flat again"
 msgstr "Form zurücksetzen: Punkte und Teilungslinien entfernen, die Oberseite wieder eben"
 
@@ -10262,7 +10263,7 @@ msgstr ""
 msgid "Reset the counts"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:1329
+#: crates/ui-egui/src/coordinates.rs:1334
 msgid "Reset the project's coordinates?"
 msgstr ""
 
@@ -10274,8 +10275,8 @@ msgstr "Auf NBR-Standard zurücksetzen"
 msgid "Restart and install"
 msgstr "Neu starten und installieren"
 
-#: crates/ui-egui/src/shortcuts.rs:415
 #: crates/ui-egui/src/shortcuts.rs:418
+#: crates/ui-egui/src/shortcuts.rs:421
 msgid "Restore Defaults"
 msgstr "Standard wiederherstellen"
 
@@ -10372,11 +10373,11 @@ msgstr ""
 msgid "Roof"
 msgstr "Dach"
 
-#: crates/ui-egui/src/lib.rs:4316
+#: crates/ui-egui/src/lib.rs:4328
 msgid "Roof by Extrusion"
 msgstr "Dach durch Extrusion"
 
-#: crates/ui-egui/src/lib.rs:4318
+#: crates/ui-egui/src/lib.rs:4330
 msgid "Roof by Extrusion: click a line's start and end, then how far across it's swept; its profile rises from the line"
 msgstr "Dach durch Extrusion: Start und Ende einer Linie anklicken, dann die Extrusionstiefe; das Profil steigt von der Linie auf"
 
@@ -10384,11 +10385,11 @@ msgstr "Dach durch Extrusion: Start und Ende einer Linie anklicken, dann die Ext
 msgid "Roof by Face"
 msgstr "Dach über Fläche"
 
-#: crates/ui-egui/src/lib.rs:4260
+#: crates/ui-egui/src/lib.rs:4272
 msgid "Roof by Face (RB): a roof on the selected masses' top faces"
 msgstr "Dach über Fläche (RB): ein Dach auf den oberen Flächen der ausgewählten Volumenkörper"
 
-#: crates/ui-egui/src/lib.rs:4313
+#: crates/ui-egui/src/lib.rs:4325
 msgid "Roof by Footprint: click inside the walls to roof them, on the level above"
 msgstr "Dach über Grundriss: innerhalb der Wände anklicken, um sie im Geschoss darüber zu überdachen"
 
@@ -10404,19 +10405,19 @@ msgstr "Neigung des Dachs"
 msgid "Room"
 msgstr "Raum"
 
-#: crates/ui-egui/src/lib.rs:4352
+#: crates/ui-egui/src/lib.rs:4364
 msgid "Room & Area"
 msgstr "Raum & Fläche"
 
-#: crates/ui-egui/src/lib.rs:4354
+#: crates/ui-egui/src/lib.rs:4366
 msgid "Room (RM): click inside walls"
 msgstr "Raum (RM): innerhalb der Wände anklicken"
 
-#: crates/ui-egui/src/lib.rs:4859
+#: crates/ui-egui/src/lib.rs:4871
 msgid "Room Area Computation"
 msgstr "Raumflächenberechnung"
 
-#: crates/ui-egui/src/lib.rs:4858
+#: crates/ui-egui/src/lib.rs:4870
 msgid "Room Area Computation: where room areas are measured; now {}"
 msgstr "Raumflächenberechnung: wo Raumflächen gemessen werden; aktuell {}"
 
@@ -10445,7 +10446,7 @@ msgstr "Raumtabelle"
 msgid "Room Separation Lines"
 msgstr "Raumtrennlinien"
 
-#: crates/ui-egui/src/lib.rs:4358
+#: crates/ui-egui/src/lib.rs:4370
 msgid "Room Separator: lines that bound rooms as walls do, to split an open space; click from point to point"
 msgstr "Raumtrennlinie: Linien, die Räume wie Wände begrenzen, um einen offenen Raum zu teilen; von Punkt zu Punkt klicken"
 
@@ -10470,7 +10471,7 @@ msgstr ""
 msgid "Rotate"
 msgstr "Drehen"
 
-#: crates/ui-egui/src/lib.rs:5067
+#: crates/ui-egui/src/lib.rs:5079
 msgid "Rotate (RO): click the angle's start, then its end"
 msgstr "Drehen (RO): Start des Winkels anklicken, dann das Ende"
 
@@ -10478,18 +10479,18 @@ msgstr "Drehen (RO): Start des Winkels anklicken, dann das Ende"
 msgid "Rotate (RO): what is selected, about its centre, by the angle between two clicks"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:822
-#: crates/ui-egui/src/coordinates.rs:832
+#: crates/ui-egui/src/coordinates.rs:827
+#: crates/ui-egui/src/coordinates.rs:837
 msgid "Rotate Project North"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:5763
+#: crates/ui-egui/src/lib.rs:5775
 msgid "Rotate Project North: click the start of the angle, or type an angle and press Enter. It turns the whole model."
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:5488
-#: crates/ui-egui/src/lib.rs:5498
+#: crates/ui-egui/src/lib.rs:5500
 #: crates/ui-egui/src/lib.rs:5510
+#: crates/ui-egui/src/lib.rs:5522
 msgid "Rotate after placement"
 msgstr "Nach dem Platzieren drehen"
 
@@ -10533,12 +10534,12 @@ msgstr "Rund"
 msgid "Run"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:4923
+#: crates/ui-egui/src/lib.rs:4935
 #: crates/ui-egui/src/script.rs:70
 msgid "Run Script"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:4922
+#: crates/ui-egui/src/lib.rs:4934
 msgid "Run Script: commands, one a line as agents and the command line write them, tried first and run as one undo step"
 msgstr ""
 
@@ -10554,7 +10555,7 @@ msgstr "MASSSTAB"
 msgid "SCALE AS INDICATED"
 msgstr "MASSSTAB WIE ANGEGEBEN"
 
-#: crates/ui-egui/src/lib.rs:4181
+#: crates/ui-egui/src/lib.rs:4193
 msgid "SVG drawing"
 msgstr "SVG-Zeichnung"
 
@@ -10579,12 +10580,12 @@ msgstr "Beispielprojekt"
 msgid "Sand"
 msgstr "Sand"
 
-#: crates/ui-egui/src/lib.rs:3777
-#: crates/ui-egui/src/shortcuts.rs:530
+#: crates/ui-egui/src/lib.rs:3789
+#: crates/ui-egui/src/shortcuts.rs:533
 msgid "Save"
 msgstr "Speichern"
 
-#: crates/ui-egui/src/lib.rs:4166
+#: crates/ui-egui/src/lib.rs:4178
 msgid "Save As…"
 msgstr "Speichern unter…"
 
@@ -10597,11 +10598,11 @@ msgid "Save Dictionary first: there are changes not saved."
 msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:574
-#: crates/ui-egui/src/lib.rs:4156
+#: crates/ui-egui/src/lib.rs:4168
 msgid "Save Family"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:4159
+#: crates/ui-egui/src/lib.rs:4171
 msgid "Save Family As…"
 msgstr ""
 
@@ -10631,7 +10632,7 @@ msgid "Save as:"
 msgstr "Speichern als:"
 
 #: crates/ui-egui/src/editor/tabs.rs:297
-#: crates/ui-egui/src/lib.rs:6209
+#: crates/ui-egui/src/lib.rs:6221
 msgid "Save changes to {}?"
 msgstr "Änderungen an {} speichern?"
 
@@ -10661,7 +10662,7 @@ msgstr "{} zu den Favoriten hinzugefügt"
 msgid "Saved, encrypted with the passphrase."
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:621
+#: crates/ui-egui/src/coordinates.rs:626
 #: crates/ui-egui/src/footer.rs:291
 msgid "Scale"
 msgstr "Maßstab"
@@ -10690,13 +10691,13 @@ msgstr "Bauteillisten-Geschoss"
 msgid "Schedule Properties: {}"
 msgstr "Tabelleneigenschaften: {}"
 
-#: crates/ui-egui/src/lib.rs:4627
+#: crates/ui-egui/src/lib.rs:4639
 msgid "Schedule/Quantities…"
 msgstr "Tabelle/Mengen…"
 
-#: crates/ui-egui/src/lib.rs:3459
-#: crates/ui-egui/src/lib.rs:3460
-#: crates/ui-egui/src/lib.rs:3462
+#: crates/ui-egui/src/lib.rs:3471
+#: crates/ui-egui/src/lib.rs:3472
+#: crates/ui-egui/src/lib.rs:3474
 msgid "Schedule: {}"
 msgstr "Tabelle: {}"
 
@@ -10704,7 +10705,7 @@ msgstr "Tabelle: {}"
 msgid "Scheduled fields (in order):"
 msgstr "Tabellenfelder (in Reihenfolge):"
 
-#: crates/ui-egui/src/lib.rs:4625
+#: crates/ui-egui/src/lib.rs:4637
 msgid "Schedules"
 msgstr "Tabellen"
 
@@ -10747,7 +10748,7 @@ msgstr ""
 #: crates/ui-egui/src/browser.rs:264
 #: crates/ui-egui/src/editor/document.rs:1708
 #: crates/ui-egui/src/editor/types_dialog.rs:204
-#: crates/ui-egui/src/shortcuts.rs:399
+#: crates/ui-egui/src/shortcuts.rs:402
 msgid "Search…"
 msgstr "Suchen…"
 
@@ -10760,11 +10761,11 @@ msgstr "Sitzhöhe"
 msgid "Second End"
 msgstr "Zweites Ende"
 
-#: crates/ui-egui/src/lib.rs:4614
+#: crates/ui-egui/src/lib.rs:4626
 msgid "Section"
 msgstr "Schnitt"
 
-#: crates/ui-egui/src/lib.rs:4613
+#: crates/ui-egui/src/lib.rs:4625
 msgid "Section (CR): click its start, then its end; it looks to the left of the line"
 msgstr "Schnitt (CR): Start und Ende anklicken; die Blickrichtung liegt links der Linie"
 
@@ -10780,7 +10781,7 @@ msgstr "Schnittkasten"
 msgid "Section Box: cut the 3D view to a box, each face moved by its grip in the view or typed here (BX)"
 msgstr "Schnittkasten: 3D-Ansicht auf einen Kasten zuschneiden; jede Fläche über ihren Griff in der Ansicht verschieben oder hier eingeben (BX)"
 
-#: crates/ui-egui/src/lib.rs:3453
+#: crates/ui-egui/src/lib.rs:3465
 msgid "Section: {}"
 msgstr "Schnitt: {}"
 
@@ -10849,7 +10850,7 @@ msgstr "Segment {}: Nach oben"
 #: crates/ui-egui/src/editor/document.rs:1107
 #: crates/ui-egui/src/editor/document.rs:1136
 #: crates/ui-egui/src/editor/document.rs:1155
-#: crates/ui-egui/src/lib.rs:4210
+#: crates/ui-egui/src/lib.rs:4222
 msgid "Select"
 msgstr "Auswählen"
 
@@ -10861,24 +10862,24 @@ msgstr "Alle Exemplare auswählen"
 msgid "Select a beam, a column, a footing or a floor to reinforce first."
 msgstr "Zuerst einen Träger, eine Stütze, ein Fundament oder einen Boden zum Bewehren auswählen."
 
-#: crates/ui-egui/src/lib.rs:4295
+#: crates/ui-egui/src/lib.rs:4307
 msgid "Select a mass first."
 msgstr "Zuerst einen Volumenkörper auswählen."
 
-#: crates/ui-egui/src/shortcuts.rs:451
+#: crates/ui-egui/src/shortcuts.rs:454
 msgid "Select an action to assign."
 msgstr "Eine Aktion zum Zuweisen auswählen."
 
-#: crates/ui-egui/src/lib.rs:2794
+#: crates/ui-egui/src/lib.rs:2806
 msgid "Select an element first to match its properties"
 msgstr "Zuerst ein Element auswählen, um dessen Eigenschaften zu übernehmen"
 
 #: crates/ui-egui/src/inquiry.rs:119
-#: crates/ui-egui/src/lib.rs:4895
+#: crates/ui-egui/src/lib.rs:4907
 msgid "Select by ID"
 msgstr "Nach ID auswählen"
 
-#: crates/ui-egui/src/lib.rs:4894
+#: crates/ui-egui/src/lib.rs:4906
 msgid "Select by ID: select elements by their IDs, GUIDs or IFC GlobalIds, as many as you paste, and show them"
 msgstr "Nach ID auswählen: Elemente über ihre IDs, GUIDs oder IFC GlobalIds auswählen, so viele wie eingefügt, und anzeigen"
 
@@ -10886,7 +10887,7 @@ msgstr "Nach ID auswählen: Elemente über ihre IDs, GUIDs oder IFC GlobalIds au
 msgid "Select elements of one kind: all beams, all columns, all footings or all floors."
 msgstr "Elemente einer Art auswählen: alle Träger, alle Stützen, alle Fundamente oder alle Böden."
 
-#: crates/ui-egui/src/lib.rs:5676
+#: crates/ui-egui/src/lib.rs:5688
 msgid "Select fill pattern lines then press Enter"
 msgstr "Linien des Füllmusters wählen, dann Enter drücken"
 
@@ -10946,7 +10947,7 @@ msgstr "Durch Bemaßungen und Sperren für den Typ {} festgelegt: {} oder die Be
 msgid "Set by view template {}: change the template, or stop following it."
 msgstr "Durch Ansichtsvorlage {} festgelegt: Vorlage ändern oder nicht mehr folgen."
 
-#: crates/ui-egui/src/coordinates.rs:758
+#: crates/ui-egui/src/coordinates.rs:763
 msgid "Set it too"
 msgstr ""
 
@@ -10963,12 +10964,12 @@ msgid "Set: the work plane, a plane picked in the view (a point's, the level or 
 msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:597
-#: crates/ui-egui/src/lib.rs:3815
+#: crates/ui-egui/src/lib.rs:3827
 #: crates/ui-egui/src/settings.rs:457
 msgid "Settings"
 msgstr "Einstellungen"
 
-#: crates/ui-egui/src/lib.rs:4193
+#: crates/ui-egui/src/lib.rs:4205
 msgid "Settings…"
 msgstr "Einstellungen…"
 
@@ -10981,15 +10982,15 @@ msgstr "Schattiert"
 msgid "Shadows"
 msgstr "Schatten"
 
-#: crates/ui-egui/src/lib.rs:4369
+#: crates/ui-egui/src/lib.rs:4381
 msgid "Shaft"
 msgstr "Schacht"
 
-#: crates/ui-egui/src/lib.rs:4370
+#: crates/ui-egui/src/lib.rs:4382
 msgid "Shaft Opening: click two opposite corners; it cuts the floors, ceilings and roofs it passes through"
 msgstr "Schachtdurchbruch: zwei gegenüberliegende Ecken anklicken; durchdringt die Böden, Decken und Dächer"
 
-#: crates/ui-egui/src/lib.rs:5151
+#: crates/ui-egui/src/lib.rs:5163
 msgid "Shape Editing"
 msgstr "Formbearbeitung"
 
@@ -11001,7 +11002,7 @@ msgstr ""
 msgid "Shape Handle Point (Adaptive)"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:1489
+#: crates/ui-egui/src/coordinates.rs:1506
 #: crates/ui-egui/src/editor/options.rs:19
 msgid "Shared"
 msgstr "Gemeinsam genutzt"
@@ -11026,7 +11027,7 @@ msgstr "Gemeinsam genutzte Familie bereits geladen"
 msgid "Shared North"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:750
+#: crates/ui-egui/src/coordinates.rs:755
 msgid "Shared coordinates"
 msgstr ""
 
@@ -11045,11 +11046,11 @@ msgstr "Datei für gemeinsam genutzte Parameter:"
 msgid "Shared: {}"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:5387
+#: crates/ui-egui/src/lib.rs:5399
 msgid "Shed"
 msgstr "Pultdach"
 
-#: crates/ui-egui/src/lib.rs:4646
+#: crates/ui-egui/src/lib.rs:4658
 #: crates/ui-egui/src/titleblocks.rs:150
 #: crates/ui-egui/src/titleblocks.rs:153
 #: crates/ui-egui/src/titleblocks.rs:492
@@ -11057,7 +11058,7 @@ msgstr "Pultdach"
 msgid "Sheet"
 msgstr "Plan"
 
-#: crates/ui-egui/src/lib.rs:4645
+#: crates/ui-egui/src/lib.rs:4657
 msgid "Sheet Composition"
 msgstr "Planzusammenstellung"
 
@@ -11082,40 +11083,40 @@ msgstr "Pläne"
 msgid "Sheets (all)"
 msgstr "Pläne (alle)"
 
-#: crates/ui-egui/src/lib.rs:4183
+#: crates/ui-egui/src/lib.rs:4195
 msgid "Sheets as PDF…"
 msgstr "Pläne als PDF…"
 
-#: crates/ui-egui/src/coordinates.rs:793
+#: crates/ui-egui/src/coordinates.rs:798
 msgid "Shift All"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:779
+#: crates/ui-egui/src/coordinates.rs:784
 msgid "Shift every location"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:790
+#: crates/ui-egui/src/coordinates.rs:795
 msgid "Shift {}"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:460
+#: crates/ui-egui/src/shortcuts.rs:463
 msgid "Shortcut '{}' added for '{}'."
 msgstr "Tastenkürzel „{}“ für „{}“ hinzugefügt."
 
-#: crates/ui-egui/src/shortcuts.rs:564
+#: crates/ui-egui/src/shortcuts.rs:567
 msgid "Shortcut '{}' updated."
 msgstr "Tastenkürzel „{}“ aktualisiert."
 
-#: crates/ui-egui/src/shortcuts.rs:428
+#: crates/ui-egui/src/shortcuts.rs:431
 msgid "Shortcut Keys:"
 msgstr "Tastenkürzel:"
 
-#: crates/ui-egui/src/shortcuts.rs:448
-#: crates/ui-egui/src/shortcuts.rs:557
+#: crates/ui-egui/src/shortcuts.rs:451
+#: crates/ui-egui/src/shortcuts.rs:560
 msgid "Shortcut keys are two characters, letters or numbers."
 msgstr "Tastenkürzel bestehen aus zwei Zeichen, Buchstaben oder Zahlen."
 
-#: crates/ui-egui/src/lib.rs:4853
+#: crates/ui-egui/src/lib.rs:4865
 msgid "Shortcuts"
 msgstr "Tastenkürzel"
 
@@ -11160,11 +11161,11 @@ msgstr "Alle Werkzeuge anzeigen"
 msgid "Show Existing Parameters"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:4244
+#: crates/ui-egui/src/lib.rs:4256
 msgid "Show Mass"
 msgstr "Volumenkörper anzeigen"
 
-#: crates/ui-egui/src/lib.rs:4243
+#: crates/ui-egui/src/lib.rs:4255
 msgid "Show Mass (MH): hides the masses in this view, or shows them again"
 msgstr "Volumenkörper anzeigen (MH): blendet die Volumenkörper in dieser Ansicht aus oder wieder ein"
 
@@ -11205,7 +11206,7 @@ msgstr "Hintergrundraster anzeigen, ihre Einstellungen ändern oder den Rasterfa
 msgid "Show grids"
 msgstr "Raster anzeigen"
 
-#: crates/ui-egui/src/lib.rs:4686
+#: crates/ui-egui/src/lib.rs:4698
 msgid "Show or hide the palettes, and pick the interface's language"
 msgstr "Paletten ein- oder ausblenden und die Sprache der Oberfläche wählen"
 
@@ -11389,19 +11390,19 @@ msgstr "Neigung"
 msgid "Slope (°)"
 msgstr "Neigung (°)"
 
-#: crates/ui-egui/src/lib.rs:5167
+#: crates/ui-egui/src/lib.rs:5179
 msgid "Slope Arrow"
 msgstr "Neigungspfeil"
 
-#: crates/ui-egui/src/lib.rs:5166
+#: crates/ui-egui/src/lib.rs:5178
 msgid "Slope Arrow: click its tail, then its head; the floor rises toward the head at the Options Bar's slope"
 msgstr "Neigungspfeil: Fuß und Spitze anklicken; der Boden steigt zur Spitze mit der Neigung aus der Optionsleiste"
 
-#: crates/ui-egui/src/lib.rs:5332
-#: crates/ui-egui/src/lib.rs:5372
-#: crates/ui-egui/src/lib.rs:5377
-#: crates/ui-egui/src/lib.rs:5385
-#: crates/ui-egui/src/lib.rs:5395
+#: crates/ui-egui/src/lib.rs:5344
+#: crates/ui-egui/src/lib.rs:5384
+#: crates/ui-egui/src/lib.rs:5389
+#: crates/ui-egui/src/lib.rs:5397
+#: crates/ui-egui/src/lib.rs:5407
 msgid "Slope:"
 msgstr "Neigung:"
 
@@ -11458,7 +11459,7 @@ msgstr "An Tangenten fangen"
 msgid "Snap tolerance"
 msgstr "Fangtoleranz"
 
-#: crates/ui-egui/src/lib.rs:2696
+#: crates/ui-egui/src/lib.rs:2708
 msgid "Snap: {} (next point)"
 msgstr "Fang: {} (nächster Punkt)"
 
@@ -11470,11 +11471,11 @@ msgstr "Fänge"
 msgid "Snaps Off"
 msgstr "Fänge aus"
 
-#: crates/ui-egui/src/lib.rs:2697
+#: crates/ui-egui/src/lib.rs:2709
 msgid "Snaps off (next point)"
 msgstr "Fänge aus (nächster Punkt)"
 
-#: crates/ui-egui/src/lib.rs:4834
+#: crates/ui-egui/src/lib.rs:4846
 msgid "Snaps: what a picked point sticks to (ends, middles, crossings, centres, perpendiculars), and the angles it steps by; SE, SM, SI, SC, SP and SN take one alone for the next point, SO none"
 msgstr "Fänge: woran ein gewählter Punkt haftet (Enden, Mitten, Kreuzungen, Mittelpunkte, Senkrechte) und die Winkelschritte; SE, SM, SI, SC, SP und SN gelten einzeln für den nächsten Punkt, SO für keinen"
 
@@ -11569,7 +11570,7 @@ msgstr "Abstand"
 msgid "Spacing (mm)"
 msgstr "Abstand (mm)"
 
-#: crates/ui-egui/src/lib.rs:5289
+#: crates/ui-egui/src/lib.rs:5301
 msgid "Spacing:"
 msgstr "Abstand:"
 
@@ -11577,7 +11578,7 @@ msgstr "Abstand:"
 msgid "Spare"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:742
+#: crates/ui-egui/src/coordinates.rs:747
 msgid "Specify Coordinates at a Point"
 msgstr ""
 
@@ -11586,11 +11587,11 @@ msgstr ""
 msgid "Specify a new Work Plane"
 msgstr "Neue Arbeitsebene angeben"
 
-#: crates/ui-egui/src/coordinates.rs:761
+#: crates/ui-egui/src/coordinates.rs:766
 msgid "Specify angle"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:752
+#: crates/ui-egui/src/coordinates.rs:757
 msgid "Specify {}"
 msgstr ""
 
@@ -11616,13 +11617,13 @@ msgid "Split"
 msgstr "Teilen"
 
 #: crates/ui-egui/src/editor/document.rs:678
-#: crates/ui-egui/src/lib.rs:5041
+#: crates/ui-egui/src/lib.rs:5053
 #: crates/ui-egui/src/sketch.rs:757
 #: crates/ui-egui/src/sketch.rs:1020
 msgid "Split Element"
 msgstr "Element teilen"
 
-#: crates/ui-egui/src/lib.rs:5042
+#: crates/ui-egui/src/lib.rs:5054
 #: crates/ui-egui/src/sketch.rs:757
 msgid "Split Element (SL): click a wall or a line where to split it"
 msgstr "Element teilen (SL): eine Wand oder eine Linie an der Teilungsstelle anklicken"
@@ -11631,8 +11632,12 @@ msgstr "Element teilen (SL): eine Wand oder eine Linie an der Teilungsstelle ank
 msgid "Split between the line's ends."
 msgstr "Zwischen den Enden der Linie teilen."
 
-#: crates/ui-egui/src/lib.rs:4465
-msgid "Spot Coordinate: click a point in a plan, then where its leader ends; it reads north, east and the elevation as its type says"
+#: crates/core/src/commands.rs:1097
+msgid "Spot Coordinate"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:4477
+msgid "Spot Coordinate (PC): click a point in a plan, then where its leader ends; it reads north, east and the elevation as its type says"
 msgstr ""
 
 #: crates/ui-egui/src/spots.rs:127
@@ -11643,17 +11648,17 @@ msgstr ""
 msgid "Spot Elevation"
 msgstr "Höhenbemaßung"
 
-#: crates/ui-egui/src/lib.rs:4452
+#: crates/ui-egui/src/lib.rs:4464
 msgid "Spot Elevation (EL): click a floor, a roof or a stair; in a section, a point"
 msgstr "Höhenbemaßung (EL): einen Boden, ein Dach oder eine Treppe anklicken; im Schnitt einen Punkt"
 
 #: crates/core/src/commands.rs:1131
-#: crates/ui-egui/src/lib.rs:1783
-#: crates/ui-egui/src/lib.rs:4457
+#: crates/ui-egui/src/lib.rs:1785
+#: crates/ui-egui/src/lib.rs:4469
 msgid "Spot Slope"
 msgstr "Neigungsbemaßung"
 
-#: crates/ui-egui/src/lib.rs:4458
+#: crates/ui-egui/src/lib.rs:4470
 msgid "Spot Slope: click a floor or a roof in a plan; an arrow points downhill with how steeply its top falls"
 msgstr "Neigungsbemaßung: einen Boden oder ein Dach in einem Grundriss anklicken; ein Pfeil zeigt bergab und gibt an, wie steil die Oberseite abfällt"
 
@@ -11665,7 +11670,7 @@ msgstr "Quadratraster"
 msgid "Stair"
 msgstr "Treppe"
 
-#: crates/ui-egui/src/lib.rs:4333
+#: crates/ui-egui/src/lib.rs:4345
 msgid "Stair: click where it starts, then where its run ends; a landing turns it"
 msgstr "Treppe: Anfang und Ende des Laufs anklicken; ein Podest lenkt sie um"
 
@@ -11712,7 +11717,7 @@ msgstr "Co-Work starten"
 msgid "Start Level Offset"
 msgstr "Versatz Startgeschoss"
 
-#: crates/ui-egui/src/coordinates.rs:841
+#: crates/ui-egui/src/coordinates.rs:846
 msgid "Start the project's coordinates over: they become the model's own again, with no offset and no turn. Nothing in the model moves, and linked models stay exactly where they are, even when their file isn't loaded. You are asked to confirm first."
 msgstr ""
 
@@ -11784,7 +11789,7 @@ msgstr "Tragende Stütze"
 msgid "Structural Column (CL): click where it stands"
 msgstr "Tragende Stütze (CL): Standort anklicken"
 
-#: crates/ui-egui/src/lib.rs:1348
+#: crates/ui-egui/src/lib.rs:1350
 #: crates/ui-egui/src/properties.rs:862
 msgid "Structure"
 msgstr "Struktur"
@@ -11873,16 +11878,16 @@ msgid "Surface, {}°"
 msgstr "Fläche, {}°"
 
 #: crates/core/src/graphics.rs:138
-#: crates/ui-egui/src/coordinates.rs:703
+#: crates/ui-egui/src/coordinates.rs:708
 #: crates/ui-egui/src/spots.rs:329
 msgid "Survey Point"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:705
+#: crates/ui-egui/src/coordinates.rs:710
 msgid "Survey Point {}"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:1179
+#: crates/ui-egui/src/coordinates.rs:1184
 msgid "Swap"
 msgstr ""
 
@@ -12040,7 +12045,7 @@ msgstr "System {} Phasen"
 msgid "System {} wires"
 msgstr "System {} Leiter"
 
-#: crates/ui-egui/src/coordinates.rs:1034
+#: crates/ui-egui/src/coordinates.rs:1039
 msgid "Systems"
 msgstr ""
 
@@ -12060,19 +12065,19 @@ msgstr "Tabelle"
 msgid "Tag"
 msgstr "Beschriftung"
 
-#: crates/ui-egui/src/lib.rs:4518
+#: crates/ui-egui/src/lib.rs:4530
 msgid "Tag All"
 msgstr "Alle beschriften"
 
-#: crates/ui-egui/src/lib.rs:4515
+#: crates/ui-egui/src/lib.rs:4527
 msgid "Tag by Category"
 msgstr "Nach Kategorie beschriften"
 
-#: crates/ui-egui/src/lib.rs:4514
+#: crates/ui-egui/src/lib.rs:4526
 msgid "Tag by Category (TG): click an element to tag it with its type, a door's or window's mark, or the field in Label"
 msgstr "Nach Kategorie beschriften (TG): Element anklicken, um es mit seinem Typ, der Tür- oder Fensternummer oder dem Feld unter Beschriftung zu beschriften"
 
-#: crates/ui-egui/src/lib.rs:4518
+#: crates/ui-egui/src/lib.rs:4530
 msgid "Tag every door and window in this view that has no tag"
 msgstr "Alle Türen und Fenster in dieser Ansicht beschriften, die noch keine Beschriftung haben"
 
@@ -12117,7 +12122,7 @@ msgstr "Bogen tangential am Ende: das Ende einer Linie anklicken, dann das Ende 
 msgid "Target"
 msgstr "Zielpunkt"
 
-#: crates/ui-egui/src/lib.rs:5326
+#: crates/ui-egui/src/lib.rs:5338
 msgid "Target Height:"
 msgstr "Zielhöhe:"
 
@@ -12125,12 +12130,12 @@ msgstr "Zielhöhe:"
 msgid "Team"
 msgstr "Team"
 
-#: crates/ui-egui/src/lib.rs:4818
+#: crates/ui-egui/src/lib.rs:4830
 #: crates/ui-egui/src/standards.rs:271
 msgid "Technical Standards"
 msgstr "Technische Normen"
 
-#: crates/ui-egui/src/lib.rs:4817
+#: crates/ui-egui/src/lib.rs:4829
 msgid "Technical Standards: configure drawing standards (NBR, ISO, ANSI, EU); now {}"
 msgstr "Technische Normen: Zeichnungsnormen konfigurieren (NBR, ISO, ANSI, EU); aktuell {}"
 
@@ -12204,7 +12209,7 @@ msgstr ""
 msgid "Text"
 msgstr "Text"
 
-#: crates/ui-egui/src/lib.rs:4500
+#: crates/ui-egui/src/lib.rs:4512
 msgid "Text (TX): type the note in the Options Bar, then click where it goes"
 msgstr "Text (TX): Notiz in der Optionsleiste eingeben, dann die Zielposition anklicken"
 
@@ -12249,7 +12254,7 @@ msgstr "Textgröße"
 msgid "Text colour"
 msgstr "Textfarbe"
 
-#: crates/ui-egui/src/lib.rs:5441
+#: crates/ui-egui/src/lib.rs:5453
 msgid "Text:"
 msgstr "Text:"
 
@@ -12321,11 +12326,11 @@ msgstr "Die Co-Work-Sitzung ist beendet"
 msgid "The Co-Work session is over: {}. The project stays read-only here: save it as a file of your own to go on"
 msgstr "Die Co-Work-Sitzung ist beendet: {}. Das Projekt bleibt hier schreibgeschützt: Speichern Sie es als eigene Datei, um weiterzuarbeiten"
 
-#: crates/ui-egui/src/coordinates.rs:1438
+#: crates/ui-egui/src/coordinates.rs:1443
 msgid "The Internal Origin is the file's own 0, 0, 0: it never moves. Move the Project Base Point or the Survey Point."
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:1333
+#: crates/ui-egui/src/coordinates.rs:1338
 msgid "The Project Base Point and the Survey Point go back on the internal origin."
 msgstr ""
 
@@ -12334,11 +12339,11 @@ msgstr ""
 msgid "The Same Parameter"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:592
+#: crates/ui-egui/src/coordinates.rs:597
 msgid "The Survey Point's shared coordinates, in the active location."
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:1332
+#: crates/ui-egui/src/coordinates.rs:1337
 msgid "The active location goes back on the internal origin: no offset, no turn, a scale of 1."
 msgstr ""
 
@@ -12379,7 +12384,7 @@ msgstr ""
 msgid "The base"
 msgstr "Die Basis"
 
-#: crates/ui-egui/src/coordinates.rs:718
+#: crates/ui-egui/src/coordinates.rs:723
 msgid "The building stays where it is in the world: every location's numbers are worked out again."
 msgstr ""
 
@@ -12391,7 +12396,7 @@ msgstr "Der Mittelpunkt einer gekrümmten Wand, einer Stütze oder eines Bauteil
 msgid "The control port, through which an agent works on this project (bimcraft-cli mcp --connect): whether it is open, how many agents are connected, and whether they may only read. Click for File > Settings > Agents"
 msgstr "Der Steuerport, über den ein Agent an diesem Projekt arbeitet (bimcraft-cli mcp --connect): ob er offen ist, wie viele Agenten verbunden sind und ob sie nur lesen dürfen. Klicken für Datei > Einstellungen > Agenten"
 
-#: crates/ui-egui/src/lib.rs:5893
+#: crates/ui-egui/src/lib.rs:5905
 msgid "The cursor in shared coordinates: the active location's east and north, in the map system's unit"
 msgstr ""
 
@@ -12545,7 +12550,7 @@ msgstr "Das Projekt enthält keine Entwurfsoptionen: Verwalten > Entwurfsoptione
 msgid "The project has no families."
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:806
+#: crates/ui-egui/src/coordinates.rs:811
 msgid "The project has no linked model or CAD drawing."
 msgstr ""
 
@@ -12569,7 +12574,7 @@ msgstr ""
 msgid "The project would then have {} warnings."
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:855
+#: crates/ui-egui/src/coordinates.rs:860
 msgid "The projected coordinate system the shared coordinates are a grid of: a UTM zone, a State Plane zone, a national grid. It shows them in its unit, and takes them to latitude and longitude for the map and the sun."
 msgstr ""
 
@@ -12597,7 +12602,7 @@ msgstr ""
 msgid "The saved API key is locked: unlock it in the Assistant settings."
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:2799
+#: crates/ui-egui/src/lib.rs:2811
 msgid "The selected element has no type to match"
 msgstr "Das ausgewählte Element hat keinen passenden Typ"
 
@@ -12617,8 +12622,8 @@ msgstr "Die gemeinsam genutzte Familie {}, die in der zu ladenden Familie versch
 msgid "The shared family {} nested in this family is already loaded in the project. Which version should the project use?"
 msgstr "Die gemeinsam genutzte Familie {}, die in dieser Familie verschachtelt ist, ist bereits in das Projekt geladen. Welche Version soll das Projekt verwenden?"
 
-#: crates/ui-egui/src/shortcuts.rs:456
-#: crates/ui-egui/src/shortcuts.rs:559
+#: crates/ui-egui/src/shortcuts.rs:459
+#: crates/ui-egui/src/shortcuts.rs:562
 msgid "The shortcut '{}' already exists for '{}'."
 msgstr "Das Tastenkürzel '{}' ist bereits für '{}' belegt."
 
@@ -12663,7 +12668,7 @@ msgstr "Die Ansicht sieht die Arbeitsebene von der Kante: in einer Ansicht skizz
 msgid "The voltages of the project, in volts, and the band a device may read within. A distribution system names them."
 msgstr "Die Spannungen des Projekts in Volt und der Bereich, in dem ein Gerät sie vorfinden darf. Ein Verteilungssystem bezieht sich auf sie."
 
-#: crates/ui-egui/src/coordinates.rs:818
+#: crates/ui-egui/src/coordinates.rs:823
 msgid "The window steps aside: click a linked model or a drawing"
 msgstr ""
 
@@ -12687,11 +12692,11 @@ msgstr "Dann nach:"
 msgid "There are no lines yet: draw the outline."
 msgstr "Es sind noch keine Linien vorhanden: Umriss zeichnen."
 
-#: crates/ui-egui/src/lib.rs:5523
+#: crates/ui-egui/src/lib.rs:5535
 msgid "There's no ceiling here to place it on."
 msgstr "Hier ist keine Decke, auf der es platziert werden kann."
 
-#: crates/ui-egui/src/lib.rs:5523
+#: crates/ui-egui/src/lib.rs:5535
 msgid "There's no floor or roof here to place it on."
 msgstr "Hier ist kein Boden und kein Dach, auf dem es platziert werden kann."
 
@@ -12733,11 +12738,11 @@ msgstr "Dicke:"
 
 #: crates/core/src/lines.rs:194
 #: crates/ui-egui/src/editor/document.rs:590
-#: crates/ui-egui/src/lib.rs:4566
+#: crates/ui-egui/src/lib.rs:4578
 msgid "Thin Lines"
 msgstr "Dünne Linien"
 
-#: crates/ui-egui/src/lib.rs:4566
+#: crates/ui-egui/src/lib.rs:4578
 msgid "Thin Lines (TL): every line one pixel wide"
 msgstr "Dünne Linien (TL): jede Linie ist einen Pixel breit"
 
@@ -12763,7 +12768,7 @@ msgstr "Dieses Ende ist an einen Parameter gebunden oder wird durch eine Formel 
 msgid "This plugin asks to read and write files on your computer. Its commands reach the disk only while you allow it."
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:2099
+#: crates/ui-egui/src/lib.rs:2101
 msgid "This project has no levels. Add one with the Level tool."
 msgstr "Dieses Projekt enthält keine Geschosse. Mit dem Werkzeug Geschoss eines hinzufügen."
 
@@ -12771,14 +12776,14 @@ msgstr "Dieses Projekt enthält keine Geschosse. Mit dem Werkzeug Geschoss eines
 msgid "This project has {}, the file {}"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:5717
+#: crates/ui-egui/src/lib.rs:5729
 msgid "This tool works in plan views: open one from the Project Browser."
 msgstr "Dieses Werkzeug funktioniert in Grundrissansichten: einen Grundriss im Projektbrowser öffnen."
 
 #: crates/ui-egui/src/footer.rs:228
 #: crates/ui-egui/src/graphics.rs:222
 #: crates/ui-egui/src/graphics.rs:269
-#: crates/ui-egui/src/lib.rs:4282
+#: crates/ui-egui/src/lib.rs:4294
 msgid "This view has no graphics to override."
 msgstr "Diese Ansicht enthält keine Grafik zum Überschreiben."
 
@@ -12814,7 +12819,7 @@ msgstr "Linienstärke Teilstrich"
 msgid "Tick Mark Size"
 msgstr "Teilstrichgröße"
 
-#: crates/ui-egui/src/lib.rs:4079
+#: crates/ui-egui/src/lib.rs:4091
 msgid "Tick the tools this palette shows; Find still has the others"
 msgstr "Die Werkzeuge anhaken, die diese Palette zeigt; die Suche findet die übrigen weiterhin"
 
@@ -12866,13 +12871,13 @@ msgstr "Schriftfeldbreite:"
 msgid "Title Block {}"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:4652
+#: crates/ui-egui/src/lib.rs:4664
 #: crates/ui-egui/src/purge.rs:17
 #: crates/ui-egui/src/titleblocks.rs:556
 msgid "Title Blocks"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:4651
+#: crates/ui-egui/src/lib.rs:4663
 msgid "Title Blocks (TB): your own, read from a DXF or typed, with fields each sheet or the whole project fills in"
 msgstr ""
 
@@ -12880,7 +12885,7 @@ msgstr ""
 msgid "Title bar"
 msgstr "Titelleiste"
 
-#: crates/ui-egui/src/coordinates.rs:1183
+#: crates/ui-egui/src/coordinates.rs:1188
 msgid "To"
 msgstr "Bis"
 
@@ -12912,7 +12917,7 @@ msgstr "Zu dicht für eine Vorschau in dieser Größe."
 msgid "Tools"
 msgstr "Werkzeuge"
 
-#: crates/ui-egui/src/lib.rs:5450
+#: crates/ui-egui/src/lib.rs:5462
 #: crates/ui-egui/src/reinforce.rs:182
 #: crates/ui-egui/src/templates.rs:744
 msgid "Top"
@@ -12971,7 +12976,7 @@ msgstr "Oben, Stäbe in Richtung Norden"
 msgid "Topology: {} ({} triangles)"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:6109
+#: crates/ui-egui/src/lib.rs:6121
 msgid "Total"
 msgstr "Gesamt"
 
@@ -13018,22 +13023,22 @@ msgstr "Auftritt"
 msgid "Trim/Extend"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:5080
+#: crates/ui-egui/src/lib.rs:5092
 #: crates/ui-egui/src/sketch.rs:753
 msgid "Trim/Extend Multiple Elements"
 msgstr "Mehrere Elemente kürzen/verlängern"
 
-#: crates/ui-egui/src/lib.rs:5082
+#: crates/ui-egui/src/lib.rs:5094
 #: crates/ui-egui/src/sketch.rs:754
 msgid "Trim/Extend Multiple Elements: pick the line to trim or extend to, then each line to change, on the part to keep"
 msgstr "Mehrere Elemente kürzen/verlängern: die Ziellinie wählen, dann jede zu ändernde Linie auf dem zu behaltenden Teil"
 
-#: crates/ui-egui/src/lib.rs:5055
+#: crates/ui-egui/src/lib.rs:5067
 #: crates/ui-egui/src/sketch.rs:747
 msgid "Trim/Extend Single Element"
 msgstr "Einzelnes Element kürzen/verlängern"
 
-#: crates/ui-egui/src/lib.rs:5056
+#: crates/ui-egui/src/lib.rs:5068
 #: crates/ui-egui/src/sketch.rs:748
 msgid "Trim/Extend Single Element: pick the line to trim or extend to, then the line to change, on the part to keep"
 msgstr "Einzelnes Element kürzen/verlängern: die Ziellinie wählen, dann die zu ändernde Linie auf dem zu behaltenden Teil"
@@ -13049,7 +13054,7 @@ msgstr "Kürzen/Verlängern bis zur Ecke"
 msgid "Trim/Extend to Corner (TR): pick two lines, on the parts to keep"
 msgstr "Kürzen/Verlängern bis zur Ecke (TR): zwei Linien auf den zu behaltenden Teilen wählen"
 
-#: crates/ui-egui/src/lib.rs:5074
+#: crates/ui-egui/src/lib.rs:5086
 #: crates/ui-egui/src/sketch.rs:742
 msgid "Trim/Extend to Corner (TR): pick two walls or two lines, on the parts to keep"
 msgstr "Kürzen/Verlängern bis zur Ecke (TR): zwei Wände oder zwei Linien auf den zu behaltenden Teilen wählen"
@@ -13065,7 +13070,7 @@ msgstr ""
 msgid "True North"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:522
+#: crates/ui-egui/src/coordinates.rs:527
 msgid "True north is {}° from project north, clockwise"
 msgstr ""
 
@@ -13089,7 +13094,7 @@ msgstr "Fang-Überschreibung ausschalten"
 msgid "Turn the wall about its {}: {}"
 msgstr "Die Wand um ihre {} drehen: {}"
 
-#: crates/ui-egui/src/coordinates.rs:826
+#: crates/ui-egui/src/coordinates.rs:831
 msgid "Turn the whole model on the plan, say to square the building up with the screen, without changing where it is in the world: true north turns back by the same amount. The window closes and you pick the angle on the plan, as with Rotate; you can also type it."
 msgstr ""
 
@@ -13113,7 +13118,7 @@ msgstr "Nach rechts verdrehen: die Scheitelpunkte der Oberseite mit denen der Ba
 msgid "Twist: {}"
 msgstr "Verdrehung: {}"
 
-#: crates/ui-egui/src/coordinates.rs:349
+#: crates/ui-egui/src/coordinates.rs:354
 msgid "Two locations are called {}."
 msgstr ""
 
@@ -13142,7 +13147,7 @@ msgid "Type Parameters"
 msgstr "Typparameter"
 
 #: crates/ui-egui/src/dimtypes.rs:89
-#: crates/ui-egui/src/lib.rs:4946
+#: crates/ui-egui/src/lib.rs:4958
 #: crates/ui-egui/src/notes.rs:501
 #: crates/ui-egui/src/properties.rs:2721
 #: crates/ui-egui/src/properties.rs:3238
@@ -13185,15 +13190,15 @@ msgstr ""
 msgid "Type or paste an ID, a GUID or an IFC GlobalId."
 msgstr "ID, GUID oder IFC GlobalId eingeben oder einfügen."
 
-#: crates/ui-egui/src/lib.rs:5696
+#: crates/ui-egui/src/lib.rs:5708
 msgid "Type the new level's elevation in the Options Bar, then Create."
 msgstr "Höhe des neuen Geschosses in der Optionsleiste eingeben, dann Erstellen."
 
-#: crates/ui-egui/src/lib.rs:5699
+#: crates/ui-egui/src/lib.rs:5711
 msgid "Type the note in the Options Bar, then click where it goes."
 msgstr "Notiz in der Optionsleiste eingeben, dann die Zielposition anklicken."
 
-#: crates/ui-egui/src/lib.rs:5813
+#: crates/ui-egui/src/lib.rs:5825
 msgid "Type the note in the Options Bar, then click where it goes: its top left corner."
 msgstr "Notiz in der Optionsleiste eingeben, dann die Zielposition anklicken: ihre linke obere Ecke."
 
@@ -13201,7 +13206,7 @@ msgstr "Notiz in der Optionsleiste eingeben, dann die Zielposition anklicken: ih
 msgid "Type the note: Shift+Enter breaks the line, Enter or a click outside it finishes."
 msgstr "Notiz eingeben: Umschalt+Enter erzwingt einen Zeilenumbruch, Enter oder ein Klick außerhalb schließt ab."
 
-#: crates/ui-egui/src/coordinates.rs:1017
+#: crates/ui-egui/src/coordinates.rs:1022
 msgid "Type where the project is, or the system's name or code."
 msgstr ""
 
@@ -13239,8 +13244,8 @@ msgstr "Nicht markierte Ebenen übernehmen; <Keine> blendet eine Ebene aus."
 msgid "Unclassified"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:972
-#: crates/ui-egui/src/lib.rs:980
+#: crates/ui-egui/src/lib.rs:974
+#: crates/ui-egui/src/lib.rs:982
 #: crates/ui-egui/src/properties.rs:2036
 msgid "Unconnected"
 msgstr "Nicht verbunden"
@@ -13259,15 +13264,15 @@ msgstr "Unterstrichen"
 msgid "Underline (Ctrl+U)"
 msgstr "Unterstrichen (Strg+U)"
 
-#: crates/ui-egui/src/lib.rs:3788
+#: crates/ui-egui/src/lib.rs:3800
 msgid "Undo"
 msgstr "Rückgängig"
 
-#: crates/ui-egui/src/lib.rs:3866
+#: crates/ui-egui/src/lib.rs:3878
 msgid "Undo History"
 msgstr "Rückgängig-Verlauf"
 
-#: crates/ui-egui/src/coordinates.rs:1349
+#: crates/ui-egui/src/coordinates.rs:1354
 msgid "Undo brings it back."
 msgstr ""
 
@@ -13275,11 +13280,11 @@ msgstr ""
 msgid "Undo steps kept"
 msgstr "Aufbewahrte Rückgängig-Schritte"
 
-#: crates/ui-egui/src/lib.rs:3914
+#: crates/ui-egui/src/lib.rs:3926
 msgid "Undo {}"
 msgstr "Rückgängig {}"
 
-#: crates/ui-egui/src/lib.rs:3913
+#: crates/ui-egui/src/lib.rs:3925
 msgid "Undo {} steps"
 msgstr "{} Schritte rückgängig"
 
@@ -13291,19 +13296,19 @@ msgstr "Ausklappen"
 msgid "Ungroup"
 msgstr "Gruppierung aufheben"
 
-#: crates/ui-egui/src/lib.rs:4996
+#: crates/ui-egui/src/lib.rs:5008
 msgid "Unhide Category"
 msgstr "Kategorie einblenden"
 
-#: crates/ui-egui/src/lib.rs:4995
+#: crates/ui-egui/src/lib.rs:5007
 msgid "Unhide Category (VU): bring back every category the selection is of that this view hides"
 msgstr "Kategorie einblenden (VU): alle Kategorien der Auswahl wieder einblenden, die diese Ansicht ausblendet"
 
-#: crates/ui-egui/src/lib.rs:4990
+#: crates/ui-egui/src/lib.rs:5002
 msgid "Unhide Element"
 msgstr "Element einblenden"
 
-#: crates/ui-egui/src/lib.rs:4989
+#: crates/ui-egui/src/lib.rs:5001
 msgid "Unhide Element (EU): bring back the selected elements this view hides"
 msgstr "Element einblenden (EU): die ausgewählten Elemente wieder einblenden, die diese Ansicht ausblendet"
 
@@ -13311,7 +13316,7 @@ msgstr "Element einblenden (EU): die ausgewählten Elemente wieder einblenden, d
 msgid "Unhide Elements"
 msgstr "Elemente einblenden"
 
-#: crates/ui-egui/src/coordinates.rs:961
+#: crates/ui-egui/src/coordinates.rs:966
 msgid "Unit: {}"
 msgstr ""
 
@@ -13341,7 +13346,7 @@ msgstr "Unbenannt"
 msgid "Unpin"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:5904
+#: crates/ui-egui/src/lib.rs:5916
 msgid "Unsaved changes"
 msgstr "Nicht gespeicherte Änderungen"
 
@@ -13379,7 +13384,7 @@ msgstr "Jetzt aktualisieren"
 msgid "Update to Face"
 msgstr "An Fläche anpassen"
 
-#: crates/ui-egui/src/lib.rs:4264
+#: crates/ui-egui/src/lib.rs:4276
 msgid "Update to Face (UF): the walls, floors and roofs made by face from the selected masses follow them again"
 msgstr "An Fläche anpassen (UF): Die aus den ausgewählten Volumenkörpern über Fläche erzeugten Wände, Böden und Dächer folgen ihnen wieder"
 
@@ -13421,7 +13426,7 @@ msgstr "Version dieser Familie verwenden"
 msgid "Used"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:4687
+#: crates/ui-egui/src/lib.rs:4699
 msgid "User Interface"
 msgstr "Benutzeroberfläche"
 
@@ -13465,13 +13470,13 @@ msgid "Version {}"
 msgstr "Version {}"
 
 #: crates/core/src/fills.rs:411
-#: crates/ui-egui/src/lib.rs:5431
+#: crates/ui-egui/src/lib.rs:5443
 #: crates/ui-egui/src/properties.rs:809
 msgid "Vertical"
 msgstr "Vertikal"
 
 #: crates/ui-egui/src/editor/document.rs:357
-#: crates/ui-egui/src/lib.rs:1357
+#: crates/ui-egui/src/lib.rs:1359
 msgid "View"
 msgstr "Ansicht"
 
@@ -13521,16 +13526,16 @@ msgstr "Ansichtsvorlage"
 msgid "View Template: {}"
 msgstr "Ansichtsvorlage: {}"
 
-#: crates/ui-egui/src/lib.rs:4563
+#: crates/ui-egui/src/lib.rs:4575
 #: crates/ui-egui/src/templates.rs:303
 msgid "View Templates"
 msgstr "Ansichtsvorlagen"
 
-#: crates/ui-egui/src/lib.rs:4562
+#: crates/ui-egui/src/lib.rs:4574
 msgid "View Templates (VT): a view's settings under a name, for other views to follow"
 msgstr "Ansichtsvorlagen (VT): Die Einstellungen einer Ansicht unter einem Namen, denen andere Ansichten folgen"
 
-#: crates/ui-egui/src/lib.rs:4177
+#: crates/ui-egui/src/lib.rs:4189
 msgid "View as PNG…"
 msgstr "Als PNG anzeigen…"
 
@@ -13579,11 +13584,11 @@ msgid "Visibility Settings: the views it is drawn in (Plan/RCP, Front/Back, Left
 msgstr "Sichtbarkeitseinstellungen: die Ansichten, in denen es gezeichnet wird (Grundriss/Deckenplan, Vorne/Hinten, Links/Rechts, nur im Schnitt), und bei welchen Detailgraden"
 
 #: crates/ui-egui/src/editor/document.rs:589
-#: crates/ui-egui/src/lib.rs:4552
+#: crates/ui-egui/src/lib.rs:4564
 msgid "Visibility/Graphics"
 msgstr "Sichtbarkeit/Grafik"
 
-#: crates/ui-egui/src/lib.rs:4549
+#: crates/ui-egui/src/lib.rs:4561
 msgid "Visibility/Graphics (VV): what this view hides, and how it draws the rest, by category, filter and element"
 msgstr "Sichtbarkeit/Grafik (VV): was diese Ansicht ausblendet und wie sie den Rest darstellt, nach Kategorie, Filter und Element"
 
@@ -13727,7 +13732,7 @@ msgstr "WC"
 msgid "Wall"
 msgstr "Wand"
 
-#: crates/ui-egui/src/lib.rs:4308
+#: crates/ui-egui/src/lib.rs:4320
 msgid "Wall (WA): each click builds a wall; Enter or Esc ends the chain"
 msgstr "Wand (WA): jeder Klick erzeugt eine Wand; Enter oder Esc beendet die Kette"
 
@@ -13755,7 +13760,7 @@ msgstr "Wandtabelle"
 msgid "Wall by Face"
 msgstr "Wand über Fläche"
 
-#: crates/ui-egui/src/lib.rs:4256
+#: crates/ui-egui/src/lib.rs:4268
 msgid "Wall by Face (WB): a wall on each edge of the selected masses' footprints"
 msgstr "Wand über Fläche (WB): eine Wand an jeder Kante der Grundflächen der ausgewählten Volumenkörper"
 
@@ -13849,11 +13854,11 @@ msgstr "Neuerungen"
 msgid "When Selected"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:1514
+#: crates/ui-egui/src/coordinates.rs:1531
 msgid "When it moves"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:713
+#: crates/ui-egui/src/coordinates.rs:718
 msgid "When the Survey Point moves"
 msgstr ""
 
@@ -13873,7 +13878,7 @@ msgstr "Wo die Koordinaten der Datei es platzieren, wie von der Vermessung geset
 msgid "Where its shared coordinates put it in the world: the two projects agree on the site"
 msgstr ""
 
-#: crates/ui-egui/src/coordinates.rs:862
+#: crates/ui-egui/src/coordinates.rs:867
 msgid "Where the Survey Point is on the globe, in WGS84 degrees: the active location's east and north are worked out from it."
 msgstr ""
 
@@ -13913,17 +13918,17 @@ msgid "Width Factor"
 msgstr "Breitenfaktor"
 
 #: crates/ui-egui/src/draw.rs:699
-#: crates/ui-egui/src/lib.rs:5360
-#: crates/ui-egui/src/lib.rs:5370
-#: crates/ui-egui/src/lib.rs:5391
+#: crates/ui-egui/src/lib.rs:5372
+#: crates/ui-egui/src/lib.rs:5382
+#: crates/ui-egui/src/lib.rs:5403
 msgid "Width:"
 msgstr "Breite:"
 
-#: crates/ui-egui/src/lib.rs:5397
+#: crates/ui-egui/src/lib.rs:5409
 msgid "Window"
 msgstr "Fenster"
 
-#: crates/ui-egui/src/lib.rs:4310
+#: crates/ui-egui/src/lib.rs:4322
 msgid "Window (WN): click a wall"
 msgstr "Fenster (WN): eine Wand anklicken"
 
@@ -14016,7 +14021,7 @@ msgstr "Maßhilfslinienüberstand:"
 #: crates/ui-egui/src/editor/nested.rs:290
 #: crates/ui-egui/src/editor/sketch.rs:1530
 #: crates/ui-egui/src/editor/work_plane.rs:190
-#: crates/ui-egui/src/lib.rs:5137
+#: crates/ui-egui/src/lib.rs:5149
 #: crates/ui-egui/src/workplane.rs:265
 msgid "Work Plane"
 msgstr "Arbeitsebene"
@@ -14033,7 +14038,7 @@ msgstr "Arbeitsebene: worauf die 3D-Ansicht skizziert: ein Geschoss, eine Refere
 msgid "Work Plane: {}"
 msgstr "Arbeitsebene: {}"
 
-#: crates/ui-egui/src/lib.rs:4747
+#: crates/ui-egui/src/lib.rs:4759
 msgid "Work Together"
 msgstr ""
 
@@ -14055,7 +14060,7 @@ msgstr ""
 msgid "Worktop"
 msgstr "Arbeitsplatte"
 
-#: crates/ui-egui/src/coordinates.rs:1065
+#: crates/ui-egui/src/coordinates.rs:1070
 msgid "World map"
 msgstr ""
 
@@ -14069,7 +14074,7 @@ msgstr ""
 msgid "X"
 msgstr "X"
 
-#: crates/ui-egui/src/coordinates.rs:1189
+#: crates/ui-egui/src/coordinates.rs:1194
 msgid "X / East"
 msgstr ""
 
@@ -14083,7 +14088,7 @@ msgstr ""
 msgid "Y"
 msgstr "Y"
 
-#: crates/ui-egui/src/coordinates.rs:1189
+#: crates/ui-egui/src/coordinates.rs:1194
 msgid "Y / North"
 msgstr ""
 
@@ -14150,7 +14155,7 @@ msgstr "Die Textfarbe lag zu nah an den Panels: sie wird dunkler oder heller gem
 msgid "Z"
 msgstr "Z"
 
-#: crates/ui-egui/src/coordinates.rs:1189
+#: crates/ui-egui/src/coordinates.rs:1194
 msgid "Z / Elevation"
 msgstr ""
 
@@ -14189,7 +14194,7 @@ msgstr "Verkleinern"
 msgid "Zoom to Fit"
 msgstr "Alles einpassen"
 
-#: crates/ui-egui/src/lib.rs:995
+#: crates/ui-egui/src/lib.rs:997
 msgid "`{}` is not a height"
 msgstr "`{}` ist keine Höhe"
 
@@ -14268,7 +14273,7 @@ msgstr "eine Familie braucht einen Namen"
 msgid "a family needs a type"
 msgstr "eine Familie braucht einen Typ"
 
-#: crates/ui-egui/src/lib.rs:5420
+#: crates/ui-egui/src/lib.rs:5432
 msgid "a field, such as Type or Height"
 msgstr "ein Feld, etwa Typ oder Höhe"
 
@@ -14460,7 +14465,7 @@ msgstr "fck (MPa)"
 msgid "fitted spline"
 msgstr "angepasster Spline"
 
-#: crates/ui-egui/src/lib.rs:4187
+#: crates/ui-egui/src/lib.rs:4199
 msgid "glTF binary"
 msgstr "glTF binär"
 
@@ -14496,7 +14501,7 @@ msgstr "ist kleiner als oder gleich"
 msgid "its active one"
 msgstr ""
 
-#: crates/ui-egui/src/lib.rs:5660
+#: crates/ui-egui/src/lib.rs:5672
 msgid "level: `{}` is not an elevation"
 msgstr "Geschoss: `{}` ist keine Höhe"
 
@@ -14597,8 +14602,8 @@ msgstr "Dach: `{}` ist keine Neigung"
 msgid "roof: the slope `{}` and the overhang `{}` must be numbers"
 msgstr "Dach: Neigung `{}` und Überstand `{}` müssen Zahlen sein"
 
-#: crates/ui-egui/src/lib.rs:5608
-#: crates/ui-egui/src/lib.rs:5627
+#: crates/ui-egui/src/lib.rs:5620
+#: crates/ui-egui/src/lib.rs:5639
 msgid "rotate: `{}` is not an angle in degrees"
 msgstr "Drehen: `{}` ist kein Winkel in Grad"
 
@@ -14610,11 +14615,11 @@ msgstr "zuerst eine Detailgruppe zum Aufheben auswählen"
 msgid "select a point, a corner or an edge first"
 msgstr "zuerst einen Punkt, eine Ecke oder eine Kante wählen"
 
-#: crates/ui-egui/src/lib.rs:2782
+#: crates/ui-egui/src/lib.rs:2794
 msgid "select an element that has a type first"
 msgstr "zuerst ein Element mit Typ auswählen"
 
-#: crates/ui-egui/src/lib.rs:2756
+#: crates/ui-egui/src/lib.rs:2768
 msgid "select one element to create one like it first"
 msgstr "zuerst ein Element auswählen, um ein gleiches zu erstellen"
 
@@ -14622,15 +14627,15 @@ msgstr "zuerst ein Element auswählen, um ein gleiches zu erstellen"
 msgid "select the detail lines, filled regions and text to group first"
 msgstr "zuerst Detaillinien, Gefüllte Bereiche und Text zum Gruppieren auswählen"
 
-#: crates/ui-egui/src/lib.rs:2891
+#: crates/ui-egui/src/lib.rs:2903
 msgid "select the floor or flat roof to shape first"
 msgstr "zuerst den Boden oder das Flachdach zum Formen wählen"
 
-#: crates/ui-egui/src/lib.rs:2887
+#: crates/ui-egui/src/lib.rs:2899
 msgid "select the floor to slope first"
 msgstr "zuerst den Boden zum Neigen auswählen"
 
-#: crates/ui-egui/src/lib.rs:2883
+#: crates/ui-egui/src/lib.rs:2895
 msgid "select the walls or columns to attach first"
 msgstr ""
 
@@ -14639,7 +14644,7 @@ msgstr ""
 msgid "select what to hide or isolate first"
 msgstr "zuerst auswählen, was ausgeblendet oder isoliert werden soll"
 
-#: crates/ui-egui/src/lib.rs:2879
+#: crates/ui-egui/src/lib.rs:2891
 msgid "select what to move, copy, rotate or mirror first"
 msgstr "zuerst auswählen, was verschoben, kopiert, gedreht oder gespiegelt werden soll"
 
@@ -14707,7 +14712,7 @@ msgstr "die Linie kann nicht entfernt werden, solange {} darauf gezeichnet ist"
 msgid "the model has no levels"
 msgstr "das Modell hat keine Geschosse"
 
-#: crates/ui-egui/src/lib.rs:5648
+#: crates/ui-egui/src/lib.rs:5660
 msgid "the next free name"
 msgstr "der nächste freie Name"
 
@@ -14786,7 +14791,7 @@ msgstr "Wand: {}"
 msgid "west"
 msgstr "Westen"
 
-#: crates/ui-egui/src/lib.rs:5442
+#: crates/ui-egui/src/lib.rs:5454
 msgid "what the note says"
 msgstr "was in der Notiz steht"
 
@@ -14986,7 +14991,7 @@ msgstr "{} Linienfamilien, die eine Kachel von {} × {} wiederholen (umrandet)."
 msgid "{} line {}: {}"
 msgstr "{} Linie {}: {}"
 
-#: crates/ui-egui/src/coordinates.rs:1343
+#: crates/ui-egui/src/coordinates.rs:1348
 msgid "{} links placed by base points or shared coordinates are pinned by origin where they stand."
 msgstr ""
 
@@ -15024,7 +15029,7 @@ msgstr "{} mit dem Schlüssel von {}"
 msgid "{} opened another project"
 msgstr "{} hat ein anderes Projekt geöffnet"
 
-#: crates/ui-egui/src/lib.rs:3613
+#: crates/ui-egui/src/lib.rs:3625
 msgid "{} opened without {} fields this version doesn't know; saving it leaves them out."
 msgstr "{} geöffnet ohne {} Felder, die diese Version nicht kennt; beim Speichern werden sie weggelassen."
 
@@ -16411,3 +16416,9 @@ msgstr "Oben"
 #: crates/ui-egui/src/settings.rs:644
 #~ msgid "Show the origin marker in plans"
 #~ msgstr "Ursprungsmarkierung in Grundrissen anzeigen"
+#: crates/ui-egui/src/lib.rs:4887
+#~ msgid "Location: where the project stands in the world: its locations, the Project Base Point and the Survey Point, the map system, managing them, and conversions"
+#~ msgstr ""
+#: crates/ui-egui/src/lib.rs:4465
+#~ msgid "Spot Coordinate: click a point in a plan, then where its leader ends; it reads north, east and the elevation as its type says"
+#~ msgstr ""

@@ -310,6 +310,9 @@ reads; Edit Type opens Spot Coordinate Type Properties (`spots::SpotTypeDialog`)
 Duplicate and Rename; the leader's end is a grip (`BimApp::spot_grip_drag`), which `modify` moves. Tests:
 `spot_coordinate_tests.rs`, `crates/ui-egui/src/tests/spots.rs`.
 
+Shortcuts: Location LO, Specify Coordinates at a Point CP (the window steps aside at once for the point), Rotate Project
+North TN (Revit's RN is its Reinforcement Numbers, kept for that), Spot Coordinate PC; Keyboard Shortcuts (KS) lists them.
+
 ## Commands
 
 - `georeference`: the active site as IFC has it, at the internal origin; any field makes one, `clear` takes it away.

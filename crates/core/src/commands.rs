@@ -744,7 +744,7 @@ other_files(
     edit(
         "specify_coordinates",
         "Specify Coordinates at a Point",
-        &[],
+        &["CP"],
         "{at: [x,y,z] | [x,y], on?, level?, east, north, elevation, angle?} sets the active site so that internal point `at` \
          has the shared coordinates given (mm), turned to `angle` (degrees from project north to true north, east positive) when \
          given. A point picked in plan, `at: [x, y]`, takes its height from `on`, the element picked: a wall's bottom, a floor's, \
@@ -755,7 +755,7 @@ other_files(
     edit(
         "rotate_project_north",
         "Rotate Project North",
-        &[],
+        &["TN"],
         "{angle?: degrees, true_north?: true, about?: [x, y]} turns the whole model `angle` degrees counter-clockwise about \
          `about` (default the Project Base Point), as Revit's Rotate Project North: every element that has a place in plan, \
          the Project Base Point and the Survey Point, and links placed by hand or by base points; and turns every location's \
@@ -1094,8 +1094,8 @@ other_files(
     ),
     edit(
         "spot_coordinate",
-        "Spot Coordinate",
-        &[],
+        ui_msg!("Spot Coordinate"),
+        &["PC"],
         "{at: [x, y], view?, type?, origin?: base|survey|internal, host?, end?: [x, y], leader?, shoulder?} a spot \
          coordinate in a level's plan (the lowest by default): the north and east of `at`, and its elevation, as its type \
          (`spot_coordinate_type`) says. Without `type`, the project's type that reads from `origin`: the Survey Point (the \

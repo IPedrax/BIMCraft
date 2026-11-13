@@ -184,6 +184,11 @@ impl CoordinatesDialog {
         }
     }
 
+    /// Open on the project's coordinates, stepped aside at once for Specify Coordinates' point to be picked in the view (CP).
+    pub(crate) fn picking_a_point(m: &Model) -> CoordinatesDialog {
+        CoordinatesDialog { tab: MANAGE, picking: true, ..CoordinatesDialog::new(m) }
+    }
+
     /// Whether the window has stepped aside for a point to be picked in the view.
     pub(crate) fn picking(&self) -> bool {
         self.picking
@@ -1448,6 +1453,18 @@ impl BimApp {
                 self.run("coordinates", json!({"survey": to, "move": how}));
             }
         }
+    }
+
+    /// Manage > Location (LO): the window, on the project's coordinates as they are.
+    pub(crate) fn open_location(&mut self) {
+        self.coordinates_dialog = Some(CoordinatesDialog::new(&self.session.model));
+    }
+
+    /// Specify Coordinates at a Point (CP): the Location window, stepped aside at once for the point to be picked in the view; it
+    /// comes back on Manage with the draft to review.
+    pub(crate) fn specify_coordinates_pick(&mut self) {
+        self.coordinates_dialog = Some(CoordinatesDialog::picking_a_point(&self.session.model));
+        self.set_tool(crate::Tool::SpecifyPoint);
     }
 
     /// Properties for a point picked in a view: its name; where it is, internal (typed, it moves; the Internal Origin's

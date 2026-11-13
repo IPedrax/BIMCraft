@@ -477,3 +477,23 @@ fn a_plan_s_properties_turn_it_to_true_north_and_the_canvas_turns_with_it() {
     let picked = h.state().selection.first().copied();
     assert!(matches!(picked.and_then(|id| h.state().session.model.elements.get(id)), Some(Element::Wall(_))), "{picked:?}");
 }
+
+#[test]
+fn location_specify_coordinates_rotate_project_north_and_spot_coordinate_have_their_shortcuts_in_both_profiles() {
+    for rev in [false, true] {
+        let mut h = if rev { app(BOX) } else { bimcraft(BOX) };
+        shortcut(&mut h, "LO");
+        assert!(h.state().coordinates_dialog.is_some(), "LO opens the Location window (rev {rev})");
+        h.state_mut().coordinates_dialog = None;
+        shortcut(&mut h, "CP");
+        assert_eq!(h.state().tool, Tool::SpecifyPoint, "CP picks Specify Coordinates' point (rev {rev})");
+        assert!(h.state().coordinates_dialog.as_ref().is_some_and(|d| d.picking()), "the window waits aside (rev {rev})");
+        key(&mut h, egui::Key::Escape);
+        h.state_mut().coordinates_dialog = None;
+        shortcut(&mut h, "TN");
+        assert!(matches!(h.state().tool, Tool::RotateNorth { .. }), "TN: Rotate Project North (rev {rev})");
+        key(&mut h, egui::Key::Escape);
+        shortcut(&mut h, "PC");
+        assert_eq!(h.state().tool, Tool::SpotCoordinate(None), "PC: Spot Coordinate (rev {rev})");
+    }
+}

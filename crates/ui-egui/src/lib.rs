@@ -399,7 +399,7 @@ type Buttons<'a> = &'a [(Icon, &'a str, &'a str, Option<Tool>, bool)];
 
 /// The desktop's own two-letter shortcuts, which [`BimApp::shortcut`] takes before the commands'
 /// aliases, and what Keyboard Shortcuts (KS) calls them.
-const SHORTCUTS: [(&str, &str); 57] = [
+const SHORTCUTS: [(&str, &str); 58] = [
     ("3D", "3D View"),
     ("MD", "Modify"),
     ("SB", "Floor: Structural"),
@@ -452,6 +452,8 @@ const SHORTCUTS: [(&str, &str); 57] = [
     ("HL", "Hidden Line"),
     ("SD", "Shaded"),
     ("KS", "Keyboard Shortcuts"),
+    // Revit has none for Manage > Location; BIMCraft's window of it.
+    ("LO", msg!("Location")),
     ("AI", msg!("Assistant")),
     ("CW", msg!("Co-Work")),
     ("BX", "Section Box"),
@@ -2514,6 +2516,10 @@ impl BimApp {
                 self.link_dialog = true;
                 return true;
             }
+            "LO" => {
+                self.open_location();
+                return true;
+            }
             "DP" => {
                 self.duplicate_plan("duplicate");
                 return true;
@@ -2612,6 +2618,12 @@ impl BimApp {
                     Tool::DetailLine(Vec::new())
                 }
                 Some("spot") => Tool::Spot,
+                Some("spot_coordinate") => Tool::SpotCoordinate(None),
+                Some("rotate_project_north") => Tool::RotateNorth { centre: P2(0.0, 0.0), start: None, place: false },
+                Some("specify_coordinates") => {
+                    self.specify_coordinates_pick();
+                    return true;
+                }
                 Some("tag") => Tool::Tag,
                 // Revit's CL is the structural column on its Structure tab, the architectural one elsewhere.
                 Some("column") if self.tab == Tab::Structure || (self.tab == Tab::Context && self.back == Tab::Structure) => {
@@ -4462,7 +4474,7 @@ impl BimApp {
                 Icon::SpotCoordinate,
                 "Spot Coordinate",
                 msg!(
-                    "Spot Coordinate: click a point in a plan, then where its leader ends; it reads north, east and the elevation as its type says"
+                    "Spot Coordinate (PC): click a point in a plan, then where its leader ends; it reads north, east and the elevation as its type says"
                 ),
                 Tool::SpotCoordinate(None),
             ),
@@ -4884,10 +4896,10 @@ impl BimApp {
                 self.link_dialog = true;
             }
             let tip = msg!(
-                "Location: where the project stands in the world: its locations, the Project Base Point and the Survey Point, the map system, managing them, and conversions"
+                "Location (LO): where the project stands in the world: its locations, the Project Base Point and the Survey Point, the map system, managing them, and conversions"
             );
             if big_button(ui, Icon::Coordinates, "Location", self.coordinates_dialog.is_some(), tip).clicked() {
-                self.coordinates_dialog = Some(coordinates::CoordinatesDialog::new(&self.session.model));
+                self.open_location();
             }
         });
         panel(ui, msg!("Inquiry"), |ui| {
