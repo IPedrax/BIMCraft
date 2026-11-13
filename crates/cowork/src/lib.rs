@@ -21,6 +21,7 @@ mod code;
 mod discovery;
 mod guest;
 mod host;
+mod knock;
 pub mod live;
 mod noise;
 mod wire;
@@ -34,6 +35,7 @@ pub use code::Code;
 pub use discovery::{Found, discover};
 pub use guest::{Guest, GuestEvent};
 pub use host::{Host, HostConfig, HostEvent, Mailer, Person};
+pub use knock::{KNOCK_WAIT, knock};
 
 use std::time::Duration;
 

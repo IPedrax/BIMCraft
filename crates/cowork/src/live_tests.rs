@@ -432,3 +432,80 @@ fn the_chat_is_the_hosts_and_a_turn_on_a_guests_key_asks_that_guests_window() {
     let got = asking.join().unwrap();
     assert_eq!(got, Err("Bo left: ask again".into()));
 }
+
+#[test]
+fn a_knock_comes_to_the_hosts_window_which_lets_it_in_with_the_code() {
+    let host = Host::start();
+    let addr = host.at();
+    let (tx, rx) = std::sync::mpsc::channel();
+    let bo = std::thread::spawn(move || crate::knock(addr, "Bo", VERSION, quick(), move |d| drop(tx.send(d.to_string()))));
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let (k, digits) = loop {
+        let found = host.said.lock().unwrap().iter().find_map(|h| match h {
+            Happened::Knock { knock, name, digits } if name == "Bo" => Some((*knock, digits.clone())),
+            _ => None,
+        });
+        if let Some(f) = found {
+            break f;
+        }
+        assert!(Instant::now() < deadline, "the knock never came");
+        std::thread::sleep(Duration::from_millis(5));
+    };
+    assert_eq!(rx.recv_timeout(Duration::from_secs(5)).unwrap(), digits);
+    host.on(move |_, h| h.as_ref().unwrap().answer_knock(k, true));
+    let code = bo.join().unwrap().unwrap();
+    assert_eq!(code, host.code);
+    let (joined, _) = Joined::join_with(addr, &code, "Bo", quick(), Arc::new(|| {})).unwrap();
+    assert_eq!(joined.host(), "Ana");
+}
+
+#[test]
+fn a_host_hands_the_session_to_a_guest_and_the_others_move_there() {
+    let host = Host::start();
+    let (mut bo, mut sb) = join(&host, "Bo");
+    let (mut cy, mut sc) = join(&host, "Cy");
+    let bo_id = host.on(|_, h| h.as_ref().unwrap().people().into_iter().find(|(_, n)| n == "Bo").unwrap().0);
+    host.on(|s, _| s.execute("wall", &wall(40000)).map(|_| ()).unwrap());
+    let theirs = json_of(&host.model());
+    host.on(move |s, h| h.as_mut().unwrap().hand_over(s, bo_id)).unwrap();
+    // Bo is asked to host, and hosts from his copy, which has everything the host's had.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !bo.pump(&mut sb).contains(&Happened::HandOver) {
+        assert!(Instant::now() < deadline, "Bo was never asked");
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert_eq!(json_of(&sb.model), theirs);
+    sb.read_only = None;
+    let config = HostConfig {
+        addr: SocketAddr::from((Ipv4Addr::LOCALHOST, 0)),
+        version: VERSION.into(),
+        name: "Bo".into(),
+        project: "House".into(),
+        discovery: None,
+        timing: quick(),
+        wake: Arc::new(|| {}),
+    };
+    let mut hosting = Hosting::start(config, &mut sb).unwrap();
+    bo.hosting(Ok((hosting.host().port(), hosting.host().code().clone())));
+    // Cy is told where, and joins Bo there while Bo's window runs.
+    let moved = loop {
+        let said = cy.pump(&mut sc);
+        if let Some(m) = said.iter().find_map(|h| match h {
+            Happened::Moved { host, addr, code } => Some((host.clone(), *addr, code.clone())),
+            _ => None,
+        }) {
+            break m;
+        }
+        assert!(Instant::now() < deadline, "Cy was never told");
+        std::thread::sleep(Duration::from_millis(5));
+    };
+    assert_eq!((moved.0.as_str(), moved.1.port()), ("Bo", hosting.host().port()));
+    let rejoin = std::thread::spawn(move || Joined::join_with(moved.1, &moved.2, "Cy", quick(), Arc::new(|| {})));
+    while !rejoin.is_finished() {
+        hosting.pump(&mut sb);
+        std::thread::sleep(Duration::from_millis(3));
+    }
+    let (_, model) = rejoin.join().unwrap().unwrap();
+    assert_eq!(json_of(&model), theirs, "the project as it was, from its new host");
+    assert!(host.said.lock().unwrap().contains(&Happened::HandedOver("Bo".into())), "the old host's window hears it is done");
+}

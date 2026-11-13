@@ -35,7 +35,7 @@ msgstr "(žádné)"
 msgid "0 for any port that is free; an open port moves to a new one"
 msgstr "0 pro libovolný volný port; otevřený port se přesune na nový"
 
-#: crates/ui-egui/src/cowork.rs:679
+#: crates/ui-egui/src/cowork.rs:751
 msgid "0.0.0.0 listens on every address of this machine's. From outside this network, guests need the port forwarded to it, which is for you to set up."
 msgstr "0.0.0.0 naslouchá na každé adrese tohoto počítače. Zvenčí této sítě musí hosté přesměrovat port na něj, což si nastavíte sami."
 
@@ -528,11 +528,11 @@ msgstr ""
 msgid "Added {} to the project"
 msgstr "Do projektu bylo přidáno {}"
 
-#: crates/ui-egui/src/cowork.rs:602
+#: crates/ui-egui/src/cowork.rs:662
 msgid "Address:"
 msgstr "Adresa:"
 
-#: crates/ui-egui/src/cowork.rs:554
+#: crates/ui-egui/src/cowork.rs:607
 msgid "Address: {}, port {}"
 msgstr "Adresa: {}, port {}"
 
@@ -904,7 +904,7 @@ msgstr "Šířka područky"
 msgid "Arrow"
 msgstr "Šipka"
 
-#: crates/ui-egui/src/cowork.rs:691
+#: crates/ui-egui/src/cowork.rs:765
 msgid "As a guest, lend my AI key to those without one:"
 msgstr "Jako host půjčit můj klíč AI těm, kdo žádný nemají:"
 
@@ -932,6 +932,14 @@ msgstr "Nejdřív se zeptat"
 #: crates/ui-egui/src/assistant.rs:567
 msgid "Ask the assistant to look at or change the project"
 msgstr ""
+
+#: crates/ui-egui/src/cowork.rs:674
+msgid "Ask to Join"
+msgstr "Požádat o připojení"
+
+#: crates/ui-egui/src/cowork.rs:667
+msgid "Asking the host to let you in. Read out these digits: the host lets you in only if they see the same: {}"
+msgstr "Žádá se hostitel, aby vás pustil dovnitř. Přečtěte tyto číslice: hostitel vás pustí, jen když uvidí stejné: {}"
 
 #: crates/ui-egui/src/updates.rs:128
 msgid "Asks to save first if there are unsaved changes, then closes BIMCraft, installs the update and starts it again."
@@ -1427,7 +1435,7 @@ msgstr "Kamera: klikněte na místo, kde stojí její oko, a potom na to, na co 
 #: crates/ui-egui/src/background_grid.rs:111
 #: crates/ui-egui/src/cad.rs:131
 #: crates/ui-egui/src/clouds.rs:87
-#: crates/ui-egui/src/cowork.rs:367
+#: crates/ui-egui/src/cowork.rs:403
 #: crates/ui-egui/src/dimtypes.rs:319
 #: crates/ui-egui/src/display.rs:81
 #: crates/ui-egui/src/editor/dimensions.rs:967
@@ -2357,7 +2365,7 @@ msgstr "Klikněte pro určení směru dalšího ramene z podesty: rovně, vlevo,
 msgid "Clipboard"
 msgstr ""
 
-#: crates/ui-egui/src/cowork.rs:625
+#: crates/ui-egui/src/cowork.rs:691
 #: crates/ui-egui/src/favorites.rs:179
 #: crates/ui-egui/src/graphics.rs:512
 #: crates/ui-egui/src/inquiry.rs:203
@@ -2412,8 +2420,8 @@ msgstr "Zavřít {}"
 msgid "Closed polyline, {} points"
 msgstr ""
 
-#: crates/ui-egui/src/cowork.rs:432
-#: crates/ui-egui/src/cowork.rs:536
+#: crates/ui-egui/src/cowork.rs:476
+#: crates/ui-egui/src/cowork.rs:589
 #: crates/ui-egui/src/lib.rs:437
 #: crates/ui-egui/src/lib.rs:4573
 #: crates/ui-egui/src/settings.rs:327
@@ -2424,19 +2432,19 @@ msgstr "Co-Work"
 msgid "Co-Work (CW): host this project for others on BIMCraft, or join someone's session, and see each other's edits live"
 msgstr ""
 
-#: crates/ui-egui/src/cowork.rs:663
+#: crates/ui-egui/src/cowork.rs:735
 msgid "Co-Work lets others on BIMCraft work on this project with you, live (Collaborate > Co-Work, CW)."
 msgstr "Co-Work umožňuje ostatním v BIMCraftu pracovat s vámi na tomto projektu živě (Spolupráce > Co-Work, CW)."
 
-#: crates/ui-egui/src/cowork.rs:397
+#: crates/ui-egui/src/cowork.rs:441
 msgid "Co-Work: hosting, {} in"
 msgstr "Co-Work: hostitel, {} připojeno"
 
-#: crates/ui-egui/src/cowork.rs:403
+#: crates/ui-egui/src/cowork.rs:447
 msgid "Co-Work: who is in this session (CW)"
 msgstr "Co-Work: kdo je v této relaci (CW)"
 
-#: crates/ui-egui/src/cowork.rs:398
+#: crates/ui-egui/src/cowork.rs:442
 msgid "Co-Work: {}'s session"
 msgstr "Co-Work: relace uživatele {}"
 
@@ -2445,8 +2453,8 @@ msgstr "Co-Work: relace uživatele {}"
 msgid "Coarse"
 msgstr "Hrubý"
 
-#: crates/ui-egui/src/cowork.rs:545
 #: crates/ui-egui/src/cowork.rs:598
+#: crates/ui-egui/src/cowork.rs:658
 msgid "Code:"
 msgstr "Kód:"
 
@@ -2710,7 +2718,7 @@ msgid "Copper"
 msgstr "Měď"
 
 #: crates/core/src/commands.rs:1573
-#: crates/ui-egui/src/cowork.rs:547
+#: crates/ui-egui/src/cowork.rs:600
 #: crates/ui-egui/src/editor/document.rs:658
 #: crates/ui-egui/src/inquiry.rs:176
 #: crates/ui-egui/src/lib.rs:5211
@@ -2785,9 +2793,14 @@ msgstr "Aktualizace se nepodařilo zkontrolovat: {}"
 msgid "Couldn't download the update: {}"
 msgstr "Aktualizaci se nepodařilo stáhnout: {}"
 
-#: crates/ui-egui/src/cowork.rs:481
+#: crates/ui-egui/src/cowork/door.rs:35
+#: crates/ui-egui/src/cowork.rs:531
 msgid "Couldn't find {}: type an IP address or a name, with a port after a colon if it isn't {}"
 msgstr "{} se nepodařilo najít: zadejte IP adresu nebo název, případně s portem za dvojtečkou, pokud není {}"
+
+#: crates/ui-egui/src/cowork/door.rs:128
+msgid "Couldn't host the session: {}"
+msgstr "Relaci se nepodařilo hostovat: {}"
 
 #: crates/ui-egui/src/updates.rs:48
 msgid "Couldn't install the update: {}"
@@ -2797,7 +2810,7 @@ msgstr "Aktualizaci se nepodařilo nainstalovat: {}"
 msgid "Couldn't listen on port {} for agents: {}"
 msgstr "Nelze naslouchat na portu {} pro agenty: {}"
 
-#: crates/ui-egui/src/cowork.rs:458
+#: crates/ui-egui/src/cowork.rs:502
 msgid "Couldn't listen on port {}: {}"
 msgstr "Na portu {} nelze naslouchat: {}"
 
@@ -3529,7 +3542,7 @@ msgstr "Doména"
 msgid "Don't"
 msgstr "Ne"
 
-#: crates/ui-egui/src/lib.rs:5954
+#: crates/ui-egui/src/lib.rs:5955
 msgid "Don't Save"
 msgstr "Neukládat"
 
@@ -4046,15 +4059,15 @@ msgstr "Koncový úhel"
 msgid "End Level Offset"
 msgstr "Odsazení konce od podlaží"
 
-#: crates/ui-egui/src/cowork.rs:621
+#: crates/ui-egui/src/cowork.rs:687
 msgid "End Session"
 msgstr "Ukončit relaci"
 
-#: crates/ui-egui/src/cowork.rs:366
+#: crates/ui-egui/src/cowork.rs:402
 msgid "End and Close"
 msgstr "Ukončit a zavřít"
 
-#: crates/ui-egui/src/cowork.rs:357
+#: crates/ui-egui/src/cowork.rs:391
 msgid "End the Co-Work session?"
 msgstr "Ukončit relaci Co-Work?"
 
@@ -4910,13 +4923,13 @@ msgstr "Seskupit parametr pod:"
 msgid "Group:"
 msgstr "Skupina:"
 
-#: crates/ui-egui/src/cowork.rs:558
-#: crates/ui-egui/src/cowork.rs:685
+#: crates/ui-egui/src/cowork.rs:611
+#: crates/ui-egui/src/cowork.rs:757
 msgid "Guests may edit"
 msgstr "Hosté mohou upravovat"
 
-#: crates/ui-egui/src/cowork.rs:561
-#: crates/ui-egui/src/cowork.rs:689
+#: crates/ui-egui/src/cowork.rs:617
+#: crates/ui-egui/src/cowork.rs:763
 msgid "Guests without an AI key may use mine"
 msgstr "Hosté bez klíče AI mohou použít můj"
 
@@ -4938,6 +4951,18 @@ msgstr "Polovina"
 #: crates/ui-egui/src/graphics.rs:1310
 msgid "Halftone"
 msgstr "Polotón"
+
+#: crates/ui-egui/src/cowork.rs:401
+msgid "Hand Over and Close"
+msgstr "Předat a zavřít"
+
+#: crates/ui-egui/src/cowork.rs:630
+msgid "Hand the session to them: they host it, and the others move there"
+msgstr "Předat relaci této osobě: ta ji bude hostovat a ostatní se přesunou k ní"
+
+#: crates/ui-egui/src/cowork/door.rs:93
+msgid "Handing the session to {}…"
+msgstr "Předávání relace uživateli {}…"
 
 #: crates/core/src/family.rs:3180
 msgid "Headboard Height"
@@ -5057,7 +5082,7 @@ msgstr "Hák"
 msgid "Horizontal"
 msgstr "Vodorovná"
 
-#: crates/ui-egui/src/cowork.rs:446
+#: crates/ui-egui/src/cowork.rs:490
 #: crates/ui-egui/src/editor/extrusion.rs:269
 #: crates/ui-egui/src/properties.rs:249
 msgid "Host"
@@ -5075,7 +5100,7 @@ msgstr "Hostitelská stěna"
 msgid "Host and Loop System (xyz)"
 msgstr ""
 
-#: crates/ui-egui/src/cowork.rs:583
+#: crates/ui-egui/src/cowork.rs:643
 msgid "Host this project"
 msgstr "Hostovat tento projekt"
 
@@ -5148,7 +5173,7 @@ msgstr "ISO 7200: 180 mm"
 msgid "Identity Data"
 msgstr "Identifikační údaje"
 
-#: crates/ui-egui/src/lib.rs:5950
+#: crates/ui-egui/src/lib.rs:5951
 msgid "If you don't, the changes since it was last saved are lost."
 msgstr "Pokud tak neučiníte, změny od posledního uložení budou ztraceny."
 
@@ -5206,7 +5231,7 @@ msgstr "Importováno {}: {}."
 msgid "In"
 msgstr "Dovnitř"
 
-#: crates/ui-egui/src/cowork.rs:580
+#: crates/ui-egui/src/cowork.rs:640
 msgid "In it: {} and {}"
 msgstr "V ní: {} a {}"
 
@@ -5407,11 +5432,11 @@ msgstr "Normy čar JIS Z 8310 / JIS A 0150:"
 msgid "Jog"
 msgstr "Lomení"
 
-#: crates/ui-egui/src/cowork.rs:609
+#: crates/ui-egui/src/cowork.rs:673
 msgid "Join"
 msgstr "Připojit se"
 
-#: crates/ui-egui/src/cowork.rs:587
+#: crates/ui-egui/src/cowork.rs:647
 msgid "Join a session"
 msgstr "Připojit se k relaci"
 
@@ -5423,7 +5448,7 @@ msgstr "Spojit do křivky"
 msgid "Join into Polyline (PJ): the lines selected, meeting end to end, become one polyline"
 msgstr "Spojit do křivky (PJ): vybrané čáry navazující na sebe koncovými body se spojí do jedné křivky"
 
-#: crates/ui-egui/src/cowork.rs:607
+#: crates/ui-egui/src/cowork.rs:670
 msgid "Joining…"
 msgstr "Připojování…"
 
@@ -5463,7 +5488,7 @@ msgstr "Klávesové zkratky"
 msgid "Keyboard Shortcuts (KS): customize, edit, and load shortcut keys"
 msgstr "Klávesové zkratky (KS): přizpůsobení, úprava a načtení klávesových zkratek"
 
-#: crates/ui-egui/src/cowork.rs:571
+#: crates/ui-egui/src/cowork.rs:627
 msgid "Kick"
 msgstr "Vyhodit"
 
@@ -5535,7 +5560,7 @@ msgstr "Materiál křídla"
 msgid "Leaf Thickness"
 msgstr "Tloušťka křídla"
 
-#: crates/ui-egui/src/cowork.rs:622
+#: crates/ui-egui/src/cowork.rs:688
 msgid "Leave"
 msgstr "Odejít"
 
@@ -5606,9 +5631,17 @@ msgstr ""
 msgid "Lens:"
 msgstr "Objektiv:"
 
+#: crates/ui-egui/src/cowork/door.rs:75
+msgid "Let In"
+msgstr "Pustit dovnitř"
+
 #: crates/ui-egui/src/settings.rs:767
 msgid "Let agents work on this project"
 msgstr "Nechat agenty pracovat na tomto projektu"
+
+#: crates/ui-egui/src/cowork/door.rs:70
+msgid "Let them in only if their screen shows these same digits: ask them to read theirs out. Others would see different ones."
+msgstr "Pusťte ji dovnitř, jen když její obrazovka ukazuje stejné číslice: požádejte ji, ať přečte své. Jiná osoba by viděla jiné."
 
 #: crates/ui-egui/src/cowork/chat.rs:323
 msgid "Let this session's chat use your AI key for others who have none? What they ask is billed to your account."
@@ -5845,7 +5878,7 @@ msgstr ""
 msgid "List {}"
 msgstr "Výpis {}"
 
-#: crates/ui-egui/src/cowork.rs:670
+#: crates/ui-egui/src/cowork.rs:742
 msgid "Listen on:"
 msgstr "Naslouchat na:"
 
@@ -5995,7 +6028,7 @@ msgstr ""
 msgid "Long Dash"
 msgstr "Dlouhá čárkovaná"
 
-#: crates/ui-egui/src/cowork.rs:589
+#: crates/ui-egui/src/cowork.rs:649
 msgid "Looking for sessions on this network…"
 msgstr "Hledání relací v této síti…"
 
@@ -6063,6 +6096,10 @@ msgstr "Nastavit rodinu jako adaptivní: její body se umístí tam, kam se klik
 #: crates/ui-egui/src/titleblocks.rs:499
 msgid "Make Field"
 msgstr ""
+
+#: crates/ui-egui/src/cowork.rs:631
+msgid "Make Host"
+msgstr "Udělat hostitelem"
 
 #: crates/ui-egui/src/phasing.rs:386
 msgid "Make Primary"
@@ -6866,7 +6903,7 @@ msgstr "Dosud žádné filtry: tlačítkem Nový vytvoříte nový."
 msgid "No font with Chinese characters was found on this system: install one (such as Noto Sans CJK) and choose Chinese again."
 msgstr "V tomto systému nebylo nalezeno žádné písmo se znaky čínštiny: nainstalujte písmo (například Noto Sans CJK) a zvolte čínštinu znovu."
 
-#: crates/ui-egui/src/cowork.rs:121
+#: crates/ui-egui/src/cowork.rs:129
 msgid "No host on this network has that code: type the host's address too"
 msgstr "Žádný hostitel v této síti nemá tento kód: zadejte i adresu hostitele"
 
@@ -6902,7 +6939,7 @@ msgstr "Žádné stěny na tomto podlaží neuzavírají plochu: načrtněte obr
 msgid "No {} templates yet: New from This View makes one from a view of the kind."
 msgstr "Zatím žádné šablony ({}): Nová z tohoto pohledu vytvoří šablonu z pohledu daného druhu."
 
-#: crates/ui-egui/src/cowork.rs:566
+#: crates/ui-egui/src/cowork.rs:622
 msgid "Nobody has joined yet."
 msgstr "Zatím se nikdo nepřipojil."
 
@@ -6987,7 +7024,7 @@ msgstr "Není v tomto systému: vykresleno pomocí {}"
 msgid "Not saved with the passphrase yet."
 msgstr ""
 
-#: crates/ui-egui/src/cowork.rs:556
+#: crates/ui-egui/src/cowork.rs:609
 msgid "Not visible on this network: another session on this machine has the port"
 msgstr "V této síti není vidět: port má jiná relace na tomto počítači"
 
@@ -7120,7 +7157,7 @@ msgstr "Vypnuto"
 msgid "Off, agents only read the project: they inspect it, read its schedules, render its views and export it to new files (its sheets to PDF among them), and whatever they ask that would change it, undo it, replace it or save over its file is refused"
 msgstr "Vypnuto, agenti projekt pouze čtou: prohlížejí jej, čtou jeho výkazy, vykreslují jeho pohledy a exportují jej do nových souborů (mimo jiné jeho výkresy do PDF); cokoli, co by jej změnilo, vrátilo zpět, nahradilo nebo přepsalo jeho soubor, je odmítnuto"
 
-#: crates/ui-egui/src/cowork.rs:686
+#: crates/ui-egui/src/cowork.rs:758
 msgid "Off, guests only look: they see the project and the others, and change nothing"
 msgstr "Vypnuto, hosté se jen dívají: vidí projekt a ostatní a nic nemění"
 
@@ -7338,11 +7375,16 @@ msgstr "Ostatní"
 msgid "Other Borders (Top, Right, Bottom):"
 msgstr "Ostatní okraje (horní, pravý, dolní):"
 
-#: crates/ui-egui/src/cowork.rs:584
+#: crates/ui-egui/src/cowork.rs:614
+#: crates/ui-egui/src/cowork.rs:759
+msgid "Others may ask to join without the code"
+msgstr "Ostatní mohou požádat o připojení bez kódu"
+
+#: crates/ui-egui/src/cowork.rs:644
 msgid "Others on this network find it; on another, they join with this machine's address and port."
 msgstr "Ostatní v této síti ji najdou; v jiné se připojí adresou a portem tohoto počítače."
 
-#: crates/ui-egui/src/cowork.rs:683
+#: crates/ui-egui/src/cowork.rs:755
 msgid "Others on this network see the session in their Join list: your name and the project's. Off, they need this machine's address"
 msgstr "Ostatní v této síti uvidí relaci ve svém seznamu pro připojení: vaše jméno a název projektu. Vypnuto, potřebují adresu tohoto počítače"
 
@@ -7813,6 +7855,10 @@ msgstr "Vyberte střechu nebo podlahu: horní hrany vybraných stěn budou sledo
 #: crates/ui-egui/src/lib.rs:5557
 msgid "Pick a round column, a curved wall, a circle or an arc."
 msgstr "Vyberte kruhový sloup, zakřivenou stěnu, kružnici nebo oblouk."
+
+#: crates/ui-egui/src/cowork/door.rs:29
+msgid "Pick a session in the list, or type the host's address, to ask to join"
+msgstr "Vyberte relaci v seznamu nebo zadejte adresu hostitele a požádejte o připojení"
 
 #: crates/ui-egui/src/sketch.rs:955
 msgid "Pick a sketch line as the trim/extend boundary."
@@ -9378,7 +9424,7 @@ msgid "Save as:"
 msgstr "Uložit jako:"
 
 #: crates/ui-egui/src/editor/tabs.rs:297
-#: crates/ui-egui/src/lib.rs:5948
+#: crates/ui-egui/src/lib.rs:5949
 msgid "Save changes to {}?"
 msgstr "Uložit změny v {}?"
 
@@ -9386,7 +9432,8 @@ msgstr "Uložit změny v {}?"
 msgid "Save the key"
 msgstr ""
 
-#: crates/ui-egui/src/cowork.rs:467
+#: crates/ui-egui/src/cowork/door.rs:24
+#: crates/ui-egui/src/cowork.rs:512
 msgid "Save this project first: joining puts the host's project in this window"
 msgstr "Nejdřív tento projekt uložte: připojením se do tohoto okna načte projekt hostitele"
 
@@ -10183,6 +10230,10 @@ msgstr "Plná výplň"
 msgid "Solid/Void"
 msgstr ""
 
+#: crates/ui-egui/src/cowork/door.rs:64
+msgid "Someone asks to join"
+msgstr "Někdo žádá o připojení"
+
 #: crates/ui-egui/src/properties.rs:3548
 msgid "Sort by:"
 msgstr "Seřadit podle:"
@@ -10343,7 +10394,7 @@ msgstr "Začátek"
 msgid "Start Angle"
 msgstr "Počáteční úhel"
 
-#: crates/ui-egui/src/cowork.rs:585
+#: crates/ui-egui/src/cowork.rs:645
 msgid "Start Co-Work"
 msgstr "Spustit Co-Work"
 
@@ -10866,7 +10917,7 @@ msgstr "Tato konverzace je větší, než může požadavek unést"
 msgid "That is as many presets as are kept: delete one first"
 msgstr "Je uložen největší možný počet předvoleb: nejprve jednu odstraňte"
 
-#: crates/ui-egui/src/cowork.rs:676
+#: crates/ui-egui/src/cowork.rs:748
 msgid "That is no IP address: 0.0.0.0 listens on all of this machine's"
 msgstr "To není IP adresa: 0.0.0.0 naslouchá na všech adresách tohoto počítače"
 
@@ -10886,11 +10937,11 @@ msgstr "Tento prvek je kolmý k pracovní rovině: nemá na ní žádnou čáru,
 msgid "The 3D view is drawn on the processor: {}"
 msgstr "3D pohled je vykreslován procesorem: {}"
 
-#: crates/ui-egui/src/cowork.rs:643
+#: crates/ui-egui/src/cowork.rs:715
 msgid "The Co-Work session is over"
 msgstr "Relace Co-Work skončila"
 
-#: crates/ui-egui/src/cowork.rs:192
+#: crates/ui-egui/src/cowork.rs:226
 msgid "The Co-Work session is over: {}. The project stays read-only here: save it as a file of your own to go on"
 msgstr "Relace Co-Work skončila: {}. Projekt tu zůstává jen pro čtení: pro pokračování ho uložte jako vlastní soubor"
 
@@ -10968,9 +11019,13 @@ msgstr "Rodina {}, kterou načítáte, už v této rodině existuje, ale je defi
 msgid "The family {} you are loading is already in this project, defined differently. What would you like to do?"
 msgstr "Rodina {}, kterou načítáte, už v tomto projektu existuje, ale je definována jinak. Co chcete udělat?"
 
-#: crates/ui-egui/src/cowork.rs:166
+#: crates/ui-egui/src/cowork.rs:174
 msgid "The files with that message weren't ones the assistant takes"
 msgstr "Soubory u této zprávy nejsou takové, které asistent přijímá"
+
+#: crates/ui-egui/src/cowork.rs:400
+msgid "The first guest hosts the session; the others move there"
+msgstr "První host relaci hostuje, ostatní se přesunou k němu"
 
 #: crates/ui-egui/src/properties.rs:2937
 msgid "The foot of the perpendicular from the last point to a wall or grid"
@@ -11112,7 +11167,11 @@ msgstr ""
 msgid "The selected element has no type to match"
 msgstr "Vybraný prvek nemá žádný odpovídající typ"
 
-#: crates/ui-egui/src/cowork.rs:688
+#: crates/ui-egui/src/cowork/door.rs:139
+msgid "The session moved to {}: joining there"
+msgstr "Relace se přesunula k uživateli {}: připojování tam"
+
+#: crates/ui-egui/src/cowork.rs:762
 msgid "The shared AI chat: whoever has an AI key of their own uses it; one who has none is lent one."
 msgstr "Sdílený chat AI: kdo má vlastní klíč AI, použije ho; kdo žádný nemá, dostane půjčený."
 
@@ -11516,6 +11575,10 @@ msgstr ""
 #: crates/ui-egui/src/script.rs:94
 msgid "Try shows what it would do and changes nothing. Run does it as one undo step."
 msgstr ""
+
+#: crates/ui-egui/src/cowork/door.rs:76
+msgid "Turn Away"
+msgstr "Odmítnout"
 
 #: crates/ui-egui/src/lib.rs:413
 msgid "Turn Snap Override Off"
@@ -11988,7 +12051,7 @@ msgstr "Přepsání viditelnosti/zobrazení pro {}"
 msgid "Visible"
 msgstr "Viditelný"
 
-#: crates/ui-egui/src/cowork.rs:682
+#: crates/ui-egui/src/cowork.rs:754
 msgid "Visible on this network"
 msgstr "Viditelné v této síti"
 
@@ -12241,7 +12304,7 @@ msgstr "Kde jej umísťují souřadnice jeho souboru podle zaměření"
 msgid "Where two walls or grids cross"
 msgstr "Kde se kříží dvě stěny nebo modulové osy"
 
-#: crates/ui-egui/src/cowork.rs:562
+#: crates/ui-egui/src/cowork.rs:618
 msgid "Whoever has a key of their own always uses it. Off, one who has none uses a key a guest lends"
 msgstr "Kdo má vlastní klíč, vždy použije ten. Vypnuto, kdo žádný nemá, použije klíč, který půjčí host"
 
@@ -12338,6 +12401,10 @@ msgstr "Drátový model"
 #: crates/ui-egui/src/electrical.rs:345
 msgid "Wires"
 msgstr "Vodiče"
+
+#: crates/ui-egui/src/cowork.rs:674
+msgid "Without the code: the host lets you in"
+msgstr "Bez kódu: hostitel vás pustí dovnitř"
 
 #: crates/ui-egui/src/dimtypes.rs:131
 msgid "Witness Line Control"
@@ -12446,23 +12513,31 @@ msgstr "Ano/Ne"
 msgid "Yesterday"
 msgstr "Včera"
 
-#: crates/ui-egui/src/cowork.rs:578
+#: crates/ui-egui/src/cowork.rs:638
 msgid "You are in {}'s session. Your edits go to the host; the project stays read-only here when the session ends."
 msgstr "Jste v relaci uživatele {}. Vaše úpravy jdou hostiteli; po skončení relace tu projekt zůstane jen pro čtení."
 
-#: crates/ui-egui/src/cowork.rs:541
+#: crates/ui-egui/src/cowork/door.rs:121
+msgid "You host the Co-Work session now. The project is your copy of it: save it as a file of your own"
+msgstr "Nyní hostujete relaci Co-Work. Projekt je vaše kopie: uložte ho jako vlastní soubor"
+
+#: crates/ui-egui/src/cowork.rs:594
 msgid "You host this project. Others join with this code; on another network they need this machine's address and port too."
 msgstr "Hostujete tento projekt. Ostatní se připojí tímto kódem; v jiné síti potřebují navíc adresu a port tohoto počítače."
 
-#: crates/ui-egui/src/cowork.rs:514
+#: crates/ui-egui/src/cowork.rs:564
 msgid "You joined {}'s session"
 msgstr "Připojili jste se k relaci uživatele {}"
 
-#: crates/ui-egui/src/cowork.rs:647
+#: crates/ui-egui/src/cowork.rs:719
 msgid "You left the session. The project stays read-only here: save it as a file of your own to go on"
 msgstr "Opustili jste relaci. Projekt tu zůstává jen pro čtení: pro pokračování ho uložte jako vlastní soubor"
 
-#: crates/ui-egui/src/cowork.rs:293
+#: crates/ui-egui/src/cowork.rs:760
+msgid "You let each in yourself, once they read out the digits your screen shows"
+msgstr "Každého pustíte dovnitř sami, až přečte číslice, které ukazuje vaše obrazovka"
+
+#: crates/ui-egui/src/cowork.rs:327
 msgid "You stopped following {}"
 msgstr "Přestali jste sledovat uživatele {}"
 
@@ -12470,7 +12545,7 @@ msgstr "Přestali jste sledovat uživatele {}"
 msgid "Your messages, and what the assistant reads of this project (its levels, elements, schedules), are sent to {}. Nothing is sent until you send a message."
 msgstr ""
 
-#: crates/ui-egui/src/cowork.rs:666
+#: crates/ui-egui/src/cowork.rs:738
 msgid "Your name:"
 msgstr "Vaše jméno:"
 
@@ -12856,7 +12931,7 @@ msgstr "odsazení: `{}` není platná vzdálenost"
 msgid "offset: it offsets straight walls"
 msgstr "odsazení: odsadí přímé stěny"
 
-#: crates/ui-egui/src/cowork.rs:603
+#: crates/ui-egui/src/cowork.rs:663
 msgid "on this network, none"
 msgstr "v této síti žádné"
 
@@ -12884,7 +12959,7 @@ msgstr "obrázek"
 msgid "polyline"
 msgstr "křivka"
 
-#: crates/ui-egui/src/cowork.rs:672
+#: crates/ui-egui/src/cowork.rs:744
 msgid "port"
 msgstr "port"
 
@@ -13046,7 +13121,7 @@ msgstr "zde není žádná plocha k aplikaci barvy"
 msgid "there's no folder to keep favorites in here"
 msgstr "zde není žádná složka pro ukládání oblíbených položek"
 
-#: crates/ui-egui/src/cowork.rs:553
+#: crates/ui-egui/src/cowork.rs:606
 msgid "this machine"
 msgstr "tento počítač"
 
@@ -13153,13 +13228,17 @@ msgstr "Šablona {}"
 msgid "{} already exists: save under a name ending in .pat to replace it."
 msgstr "{} již existuje: chcete-li jej nahradit, uložte jej pod názvem s příponou .pat."
 
-#: crates/ui-egui/src/cowork.rs:360
+#: crates/ui-egui/src/cowork.rs:394
 msgid "{} are in your Co-Work session: closing BIMCraft ends it for them, and they keep a read-only copy."
 msgstr "{} jsou ve vaší relaci Co-Work: zavřením BIMCraftu pro ně skončí a zůstane jim kopie jen pro čtení."
 
-#: crates/ui-egui/src/cowork.rs:636
+#: crates/ui-egui/src/cowork.rs:708
 msgid "{} asked you to leave"
 msgstr "{} vás požádal(a), abyste odešli"
+
+#: crates/ui-egui/src/cowork/door.rs:66
+msgid "{} asks to join your Co-Work session without the code."
+msgstr "{} žádá o připojení k vaší relaci Co-Work bez kódu."
 
 #: crates/ui-egui/src/sketch.rs:280
 msgid "{} at x {}, y {}"
@@ -13190,7 +13269,7 @@ msgstr "{} nepůjčuje svůj klíč AI"
 msgid "{} elements"
 msgstr "{} prvků"
 
-#: crates/ui-egui/src/cowork.rs:641
+#: crates/ui-egui/src/cowork.rs:713
 msgid "{} ended the session"
 msgstr "{} ukončil(a) relaci"
 
@@ -13214,7 +13293,7 @@ msgstr ""
 msgid "{} h ago"
 msgstr "Před {} h"
 
-#: crates/ui-egui/src/cowork.rs:324
+#: crates/ui-egui/src/cowork.rs:358
 msgid "{} has this selected"
 msgstr "{} to má vybrané"
 
@@ -13222,11 +13301,19 @@ msgstr "{} to má vybrané"
 msgid "{} holds no parameters, so it has no phase to demolish"
 msgstr "{} neobsahuje žádné parametry, nemá tedy žádnou fázi k demolici"
 
+#: crates/ui-egui/src/cowork/door.rs:102
+msgid "{} hosts the session now"
+msgstr "{} nyní hostuje relaci"
+
+#: crates/ui-egui/src/cowork/door.rs:104
+msgid "{} hosts the session now: the others have moved there"
+msgstr "{} nyní hostuje relaci: ostatní se tam přesunuli"
+
 #: crates/ui-egui/src/assistant.rs:265
 msgid "{} in · {} out · {} total"
 msgstr ""
 
-#: crates/ui-egui/src/cowork.rs:445
+#: crates/ui-egui/src/cowork.rs:489
 msgid "{} is no address to listen on"
 msgstr "{} není adresa k naslouchání"
 
@@ -13242,11 +13329,11 @@ msgstr "{} je ještě dotazován(a), zda půjčí klíč: zeptejte se znovu"
 msgid "{} isn't parallel to this view. Open a view that shows it flat:"
 msgstr "Prvek {} není rovnoběžný s tímto pohledem. Otevřete pohled, který jej zobrazuje bez zkreslení:"
 
-#: crates/ui-egui/src/cowork.rs:155
+#: crates/ui-egui/src/cowork.rs:163
 msgid "{} joined the session"
 msgstr "{} se připojil(a) k relaci"
 
-#: crates/ui-egui/src/cowork.rs:156
+#: crates/ui-egui/src/cowork.rs:164
 msgid "{} left the session: {}"
 msgstr "{} opustil(a) relaci: {}"
 
@@ -13292,7 +13379,7 @@ msgstr "{}: {} {}"
 msgid "{} on {}'s key"
 msgstr "{} s klíčem uživatele {}"
 
-#: crates/ui-egui/src/cowork.rs:334
+#: crates/ui-egui/src/cowork.rs:368
 msgid "{} opened another project"
 msgstr "{} otevřel(a) jiný projekt"
 
@@ -13328,7 +13415,7 @@ msgstr "Vzor {} předefinován z čar"
 msgid "{} selected."
 msgstr "Vybráno: {}."
 
-#: crates/ui-egui/src/cowork.rs:176
+#: crates/ui-egui/src/cowork.rs:184
 msgid "{} stopped the assistant"
 msgstr "{} zastavil(a) asistenta"
 
@@ -13348,7 +13435,7 @@ msgstr "Před {} lety"
 msgid "{}'s AI key is for another provider now: ask again"
 msgstr "Klíč AI uživatele {} je nyní pro jiného poskytovatele: zeptejte se znovu"
 
-#: crates/ui-egui/src/cowork.rs:433
+#: crates/ui-egui/src/cowork.rs:477
 msgid "{}'s Co-Work"
 msgstr "Co-Work uživatele {}"
 
@@ -13470,7 +13557,7 @@ msgstr ""
 msgid "{}: {}"
 msgstr "{}: {}"
 
-#: crates/ui-egui/src/cowork.rs:420
+#: crates/ui-egui/src/cowork.rs:464
 msgid "{}: {}, {} selected. Click to follow"
 msgstr "{}: {}, vybráno {}. Kliknutím sledovat"
 

@@ -28,6 +28,7 @@ use crate::lang::{t, tf};
 use crate::popup::Modal;
 
 mod chat;
+mod door;
 use crate::style::pal;
 use crate::{BimApp, Sheet};
 pub use chat::{Ai, Lending};
@@ -50,6 +51,8 @@ pub struct Prefs {
     pub visible: bool,
     /// Whether guests may edit, or only look.
     pub edit: bool,
+    /// Whether someone without the code may ask to join.
+    pub knocks: bool,
     /// Whether the host's AI key answers guests who have none.
     pub lend_key: bool,
     /// Whether, as a guest, this window's key answers others who have none.
@@ -65,6 +68,7 @@ impl Default for Prefs {
             port: PORT,
             visible: true,
             edit: true,
+            knocks: true,
             lend_key: true,
             lending: Lending::Ask,
         }
@@ -73,8 +77,8 @@ impl Default for Prefs {
 
 impl Prefs {
     pub fn to_json(&self) -> Value {
-        let (lend_key, lending) = (self.lend_key, self.lending.key());
-        json!({"name": self.name, "addr": self.addr, "port": self.port, "visible": self.visible, "edit": self.edit, "lend_key": lend_key, "lending": lending})
+        let (lend_key, lending, knocks) = (self.lend_key, self.lending.key(), self.knocks);
+        json!({"name": self.name, "addr": self.addr, "port": self.port, "visible": self.visible, "edit": self.edit, "knocks": knocks, "lend_key": lend_key, "lending": lending})
     }
 
     pub fn from_json(v: &Value, base: Prefs) -> Prefs {
@@ -84,6 +88,7 @@ impl Prefs {
             port: v["port"].as_u64().and_then(|p| u16::try_from(p).ok()).unwrap_or(base.port),
             visible: v["visible"].as_bool().unwrap_or(base.visible),
             edit: v["edit"].as_bool().unwrap_or(base.edit),
+            knocks: v["knocks"].as_bool().unwrap_or(base.knocks),
             lend_key: v["lend_key"].as_bool().unwrap_or(base.lend_key),
             lending: v["lending"].as_str().and_then(Lending::from_key).unwrap_or(base.lending),
         }
@@ -106,6 +111,9 @@ pub struct Dialog {
     looking: Option<Receiver<Vec<Found>>>,
     looked: Option<Instant>,
     joining: Option<Receiver<Result<(Joined, Model), String>>>,
+    /// A knock under way: the digits to compare, once the host's window has them too.
+    digits: Option<Receiver<String>>,
+    shown: Option<String>,
     pub(crate) error: Option<String>,
 }
 
@@ -183,6 +191,32 @@ impl BimApp {
                 }
                 Happened::AiRequest { reference, own, provider, model, history } => {
                     self.lend_for(reference, own, &provider, model, history);
+                    continue;
+                }
+                Happened::Knock { knock, name, digits } => {
+                    self.cowork_seen.knocks.push((knock, name, digits));
+                    continue;
+                }
+                Happened::KnockGone(knock) => {
+                    self.cowork_seen.knocks.retain(|(k, ..)| *k != knock);
+                    continue;
+                }
+                Happened::HandOver => {
+                    self.take_over(ctx);
+                    continue;
+                }
+                Happened::HandedOver(name) => {
+                    // The session is over here: what else it said (the new host leaving this one) is no news.
+                    self.handed_over(ctx, &name);
+                    break;
+                }
+                Happened::Moved { host, addr, code } => {
+                    self.cowork_seen.moving = Some((host, addr, code));
+                    continue;
+                }
+                Happened::Over(_) if self.cowork_seen.moving.is_some() => {
+                    self.cowork = None;
+                    self.move_to_new_host(ctx);
                     continue;
                 }
                 Happened::Over(why) => {
@@ -353,7 +387,7 @@ impl BimApp {
             Some(Live::Host(h)) => h.people().into_iter().map(|(_, n)| n).collect::<Vec<_>>().join(", "),
             _ => return self.cowork_quit = None,
         };
-        let (mut quit, mut stay) = (false, false);
+        let (mut quit, mut stay, mut hand) = (false, false, false);
         let r = Modal::new(UiId::new("cowork-quit"), t("End the Co-Work session?")).width(420.0).show(ctx, |ui| {
             crate::popup::body(ui, |ui| {
                 ui.label(tf(
@@ -363,12 +397,22 @@ impl BimApp {
             });
             crate::popup::footer(ui, |ui| {
                 ui.horizontal(|ui| {
+                    let tip = t("The first guest hosts the session; the others move there");
+                    hand = ui.button(t("Hand Over and Close")).on_hover_text(tip).clicked();
                     quit = ui.button(t("End and Close")).clicked();
                     stay = ui.button(t("Cancel")).clicked();
                 });
             });
         });
-        if quit {
+        let first = match &self.cowork {
+            Some(Live::Host(h)) => h.people().first().map(|(id, _)| *id),
+            _ => None,
+        };
+        if let (true, Some(id)) = (hand, first) {
+            self.cowork_quit = None;
+            self.cowork_seen.close_after = true;
+            self.make_host(id);
+        } else if quit {
             self.cowork_quit = Some(true);
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);
         } else if stay || r.should_close() {
@@ -457,6 +501,7 @@ impl BimApp {
         let mut hosting = Hosting::start(config, &mut self.session)
             .map_err(|e| tf("Couldn't listen on port {}: {}", &[&p.port.to_string(), &e.to_string()]))?;
         hosting.edit = p.edit;
+        hosting.host().set_knocks(p.knocks);
         self.cowork = Some(Live::Host(hosting));
         Ok(())
     }
@@ -467,6 +512,11 @@ impl BimApp {
             d.error = Some(t("Save this project first: joining puts the host's project in this window").to_string());
             return;
         }
+        self.join_now(d, ctx);
+    }
+
+    /// Joins as the dialog says, on a thread, whatever is in the window: a session that moved replaces its copy with the new host's.
+    fn join_now(&mut self, d: &mut Dialog, ctx: &Context) {
         let code = match Code::parse(&d.code) {
             Ok(c) => c,
             Err(e) => return d.error = Some(e),
@@ -531,8 +581,11 @@ impl BimApp {
             }
             ctx.request_repaint_after(LOOK_EVERY);
         }
-        let (mut close, mut start, mut join, mut end) = (false, false, false, false);
-        let mut kick = None;
+        let (mut close, mut start, mut join, mut end, mut ask) = (false, false, false, false, false);
+        let (mut kick, mut make_host) = (None, None);
+        if let Some(digits) = d.digits.as_ref().and_then(|r| r.try_recv().ok()) {
+            d.shown = Some(digits);
+        }
         let r = Modal::new(UiId::new("cowork"), t("Co-Work")).width(500.0).show(ctx, |ui| {
             crate::popup::body(ui, |ui| {
                 ui.add_space(4.0);
@@ -558,6 +611,9 @@ impl BimApp {
                         if ui.checkbox(&mut h.edit, t("Guests may edit")).changed() {
                             self.cowork_prefs.edit = h.edit;
                         }
+                        if ui.checkbox(&mut self.cowork_prefs.knocks, t("Others may ask to join without the code")).changed() {
+                            h.host().set_knocks(self.cowork_prefs.knocks);
+                        }
                         ui.checkbox(&mut self.cowork_prefs.lend_key, t("Guests without an AI key may use mine"))
                             .on_hover_text(t("Whoever has a key of their own always uses it. Off, one who has none uses a key a guest lends"));
                         ui.add_space(6.0);
@@ -570,6 +626,10 @@ impl BimApp {
                                 ui.label(&name);
                                 if ui.small_button(t("Kick")).clicked() {
                                     kick = Some(id);
+                                }
+                                let tip = t("Hand the session to them: they host it, and the others move there");
+                                if ui.small_button(t("Make Host")).on_hover_text(tip).clicked() {
+                                    make_host = Some(id);
                                 }
                             });
                         }
@@ -603,10 +663,16 @@ impl BimApp {
                             let hint = t("on this network, none");
                             ui.add_sized([220.0, 22.0], egui::TextEdit::singleline(&mut d.address).hint_text(hint));
                         });
-                        if d.joining.is_some() {
+                        if let Some(digits) = d.shown.as_ref().filter(|_| d.joining.is_some()) {
+                            let said = bimcraft_i18n::msg!("Asking the host to let you in. Read out these digits: the host lets you in only if they see the same: {}");
+                            ui.label(tf(said, &[digits]));
+                        } else if d.joining.is_some() {
                             ui.label(RichText::new(t("Joining…")).color(pal().muted));
                         } else {
-                            join = ui.button(t("Join")).clicked();
+                            ui.horizontal(|ui| {
+                                join = ui.button(t("Join")).clicked();
+                                ask = ui.button(t("Ask to Join")).on_hover_text(t("Without the code: the host lets you in")).clicked();
+                            });
                         }
                     }
                 }
@@ -631,6 +697,12 @@ impl BimApp {
         }
         if join {
             self.start_joining(&mut d, ctx);
+        }
+        if ask {
+            self.start_knocking(&mut d, ctx);
+        }
+        if let Some(id) = make_host {
+            self.make_host(id);
         }
         if let (Some(id), Some(Live::Host(h))) = (kick, &self.cowork) {
             h.kick(id, &tf("{} asked you to leave", &[h.name()]));
@@ -684,6 +756,8 @@ impl BimApp {
         ));
         ui.checkbox(&mut p.edit, t("Guests may edit"))
             .on_hover_text(t("Off, guests only look: they see the project and the others, and change nothing"));
+        ui.checkbox(&mut p.knocks, t("Others may ask to join without the code"))
+            .on_hover_text(t("You let each in yourself, once they read out the digits your screen shows"));
         ui.add_space(6.0);
         ui.label(t("The shared AI chat: whoever has an AI key of their own uses it; one who has none is lent one."));
         ui.checkbox(&mut p.lend_key, t("Guests without an AI key may use mine"));
@@ -736,6 +810,11 @@ pub struct Seen {
     sent: Option<Instant>,
     /// Others' edits still lit: since when, in whose colour, which elements.
     pub(crate) flashes: Vec<(Instant, usize, Vec<Id>)>,
+    /// The host's: knocks waiting for an answer (the knock, the name, the digits); whether to close once the session is handed over.
+    pub(crate) knocks: Vec<(u32, String, String)>,
+    pub(crate) close_after: bool,
+    /// A guest's: where the session moved, to join there once the old host's ends.
+    pub(crate) moving: Option<(String, SocketAddr, Code)>,
     /// Whom the window follows, and what following last showed: a change of the user's own stops it.
     pub(crate) following: Option<u32>,
     followed: Option<Shown>,

@@ -670,3 +670,59 @@ fn a_pointer_on_a_section_or_a_sheet_goes_to_the_others_and_theirs_shows_there()
     drop(tx);
     thread.join().unwrap();
 }
+
+#[test]
+fn a_knock_shows_its_digits_on_the_host_and_let_in_it_is_told_the_code() {
+    let mut h = host_window();
+    h.state_mut().cowork_dialog = None;
+    let (addr, code) = hosted(&h);
+    let (tx, rx) = channel();
+    let bo = std::thread::spawn(move || bimcraft_cowork::knock(addr, "Bo", VERSION, quick(), move |d| drop(tx.send(d.to_string()))));
+    frames_until(&mut h, |h| !h.state().cowork_seen.knocks.is_empty());
+    h.run();
+    let digits = rx.recv_timeout(Duration::from_secs(5)).unwrap();
+    h.get_by_label(&digits);
+    h.get_by_label_contains("Bo asks to join");
+    press(&mut h, "Let In");
+    assert_eq!(bo.join().unwrap().unwrap(), code);
+    assert!(h.state().cowork_seen.knocks.is_empty());
+}
+
+#[test]
+fn make_host_hands_the_session_to_a_guests_window_which_hosts_it_from_its_copy() {
+    let mut ana = host_window();
+    ana.state_mut().cowork_dialog = None;
+    let (addr, code) = hosted(&ana);
+    let mut bo = app("");
+    bo.state_mut().cowork_prefs =
+        Prefs { name: "Bo".into(), addr: "127.0.0.1".into(), port: 0, visible: false, edit: true, ..Prefs::default() };
+    shortcut(&mut bo, "CW");
+    {
+        let d = bo.state_mut().cowork_dialog.as_mut().unwrap();
+        (d.code, d.address) = (code.to_string(), addr.to_string());
+    }
+    bo.run();
+    press(&mut bo, "Join");
+    let both = |ana: &mut Harness<BimApp>, bo: &mut Harness<BimApp>, done: &dyn Fn(&BimApp, &BimApp) -> bool| {
+        let until = Instant::now() + Duration::from_secs(20);
+        while !done(ana.state(), bo.state()) {
+            assert!(Instant::now() < until, "{:?} / {:?}", ana.state().status, bo.state().status);
+            ana.step();
+            bo.step();
+            std::thread::sleep(Duration::from_millis(3));
+        }
+    };
+    both(&mut ana, &mut bo, &|a, b| b.guest() && matches!(&a.cowork, Some(Live::Host(h)) if !h.people().is_empty()));
+    bo.state_mut().cowork_dialog = None;
+    let theirs = ana.state().session.model.to_json().unwrap();
+    let id = match &ana.state().cowork {
+        Some(Live::Host(h)) => h.people()[0].0,
+        _ => panic!("Ana hosts"),
+    };
+    ana.state_mut().make_host(id);
+    both(&mut ana, &mut bo, &|a, b| a.cowork.is_none() && matches!(b.cowork, Some(Live::Host(_))));
+    assert!(ana.state().status.text.contains("Bo hosts the session now"), "{:?}", ana.state().status);
+    assert_eq!(bo.state().session.read_only, None, "his copy is his to change");
+    assert_eq!(bo.state().session.model.to_json().unwrap(), theirs);
+    assert_eq!(bo.state().session.author.as_deref(), Some("Bo"));
+}

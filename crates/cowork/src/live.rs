@@ -57,6 +57,27 @@ pub enum Happened {
     ChatStop(String),
     /// A guest's window: the chat as the host's window sent it (JSON that window builds).
     Chat(Value),
+    /// The host's window: someone without the code knocks, as `name`; let in only once they read out the same `digits`
+    /// ([`Hosting::answer_knock`]).
+    Knock {
+        knock: u32,
+        name: String,
+        digits: String,
+    },
+    /// The host's window: a knock nobody answered is over.
+    KnockGone(u32),
+    /// The host's window: the guest the session was handed to hosts it now, and the others are on their way there: this window's
+    /// session is over.
+    HandedOver(String),
+    /// A guest's window: the host hands the session to this window, which hosts it from its copy and answers with
+    /// [`Joined::hosting`].
+    HandOver,
+    /// A guest's window: the session moved to `host`, at `addr` with `code`: the window joins it there.
+    Moved {
+        host: String,
+        addr: SocketAddr,
+        code: Code,
+    },
     /// A guest's window: the host asks for a request on this window's key, for a message of its own (`own`) or another's; the
     /// window answers with [`Joined::ai_reply`].
     AiRequest {
@@ -206,6 +227,8 @@ pub struct Hosting {
     asks: Arc<Mutex<Asks>>,
     /// Each guest's Undo and Redo lists as last sent.
     histories: BTreeMap<u32, Value>,
+    /// The guest the session is being handed to, and where it connects from (it may be gone by the time it answers).
+    handing: Option<(u32, std::net::IpAddr)>,
 }
 
 impl Hosting {
@@ -218,7 +241,8 @@ impl Hosting {
         let sent = Arc::clone(&session.model);
         let (keys, chat, asks) = (BTreeMap::new(), Value::Null, Arc::default());
         let histories = BTreeMap::new();
-        Ok(Hosting { host, name, edit: true, people: BTreeMap::new(), mine: None, sent, seq: 0, project, keys, chat, asks, histories })
+        let (people, handing) = (BTreeMap::new(), None);
+        Ok(Hosting { host, name, edit: true, people, mine: None, sent, seq: 0, project, keys, chat, asks, histories, handing })
     }
 
     pub fn host(&self) -> &Host {
@@ -254,6 +278,28 @@ impl Hosting {
 
     pub fn kick(&self, peer: u32, why: &str) {
         self.host.kick(peer, why);
+    }
+
+    /// The window's answer to a knock: let in (told the code) or turned away.
+    pub fn answer_knock(&self, knock: u32, let_in: bool) {
+        self.host.answer_knock(knock, let_in);
+    }
+
+    /// Hands the session to guest `peer`: its window hosts it from its copy, which has everything the host's has, and the others
+    /// are sent there. This window's session is over once it says it hosts ([`Happened::HandedOver`]).
+    pub fn hand_over(&mut self, session: &mut Session, peer: u32) -> Result<(), String> {
+        if !self.people.contains_key(&peer) {
+            return Err("that guest is no longer in the session".into());
+        }
+        let mut said = Vec::new();
+        self.flush(session, 0, &mut said);
+        let gone = || "that guest is no longer in the session".to_string();
+        let ip = self.host.ip_of(peer).ok_or_else(gone)?;
+        if !self.host.send(peer, &json!({"op": "handover"})) {
+            return Err(gone());
+        }
+        self.handing = Some((peer, ip));
+        Ok(())
     }
 
     /// The guests' AI keys, by number, as they said (join order).
@@ -336,6 +382,8 @@ impl Hosting {
                     }
                 }
                 HostEvent::Message { peer, msg } => self.answer(session, peer, &msg, &mut said),
+                HostEvent::Knock { knock, name, digits } => said.push(Happened::Knock { knock, name, digits }),
+                HostEvent::KnockGone { knock } => said.push(Happened::KnockGone(knock)),
             }
         }
         self.flush(session, 0, &mut said);
@@ -425,6 +473,27 @@ impl Hosting {
                 return;
             }
             Some("chat_stop") => return said.push(Happened::ChatStop(name)),
+            Some("hosting") if self.handing.is_some_and(|(p, _)| p == peer) => {
+                let ip = self.handing.take().map(|(_, ip)| ip);
+                let port = msg["port"].as_u64().and_then(|p| u16::try_from(p).ok()).filter(|p| *p != 0);
+                let code = msg["code"].as_str().and_then(|c| Code::parse(c).ok());
+                match (port, code, ip) {
+                    (Some(port), Some(code), Some(ip)) => {
+                        let addr = SocketAddr::new(ip, port);
+                        let moved = json!({"op": "moved", "host": name, "addr": addr.to_string(), "code": code.to_string()});
+                        self.host.broadcast(&moved, Some(peer));
+                        said.push(Happened::HandedOver(name));
+                    }
+                    _ => {
+                        let why = msg["error"].as_str().unwrap_or("it didn't say where");
+                        said.push(Happened::Failed(format!(
+                            "{name} couldn't host the session: {}",
+                            why.chars().take(MAX_ERROR).collect::<String>()
+                        )));
+                    }
+                }
+                return;
+            }
             Some("ai_key") => {
                 match (text(&msg["provider"]), text(&msg["model"])) {
                     (Some(provider), Some(model)) => {
@@ -575,6 +644,15 @@ impl Joined {
         if self.mine.as_ref() != Some(&p) && self.guest.send(&json!({"op": "presence", "presence": p})) {
             self.mine = Some(p);
         }
+    }
+
+    /// The answer to [`Happened::HandOver`]: the port and code this window hosts the session on now, or why it couldn't.
+    pub fn hosting(&self, result: Result<(u16, Code), String>) {
+        let msg = match result {
+            Ok((port, code)) => json!({"op": "hosting", "port": port, "code": code.to_string()}),
+            Err(e) => json!({"op": "hosting", "error": e}),
+        };
+        self.guest.send(&msg);
     }
 
     /// What this guest's undo (or with `redo`, redo) would take back, the next first: its Undo and Redo lists.
@@ -776,6 +854,15 @@ impl Joined {
                 }
             }
             Some("chat") => self.said.push(Happened::Chat(m["state"].clone())),
+            Some("handover") => self.said.push(Happened::HandOver),
+            Some("moved") => {
+                let addr = m["addr"].as_str().and_then(|a| a.parse::<SocketAddr>().ok());
+                let code = m["code"].as_str().and_then(|c| Code::parse(c).ok());
+                if let (Some(addr), Some(code)) = (addr, code) {
+                    let host = m["host"].as_str().unwrap_or("the new host").chars().filter(|c| !c.is_control()).take(MAX_NAME).collect();
+                    self.said.push(Happened::Moved { host, addr, code });
+                }
+            }
             Some("history") => {
                 if let (Some(undo), Some(redo)) = (named(&m["history"]["undo"]), named(&m["history"]["redo"])) {
                     (self.undo, self.redo) = (undo, redo);
