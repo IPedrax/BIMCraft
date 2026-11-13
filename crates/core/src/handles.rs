@@ -289,6 +289,26 @@ mod tests {
         assert!(s.execute("modify", &json!({"id": column, "attach_top": roof})).is_ok());
     }
 
+    /// What FORMAT 33 holds of a column: its top offset and what it's attached to are in the file, by GUID, and a copy follows the
+    /// same roof.
+    #[test]
+    fn an_attached_column_keeps_what_it_follows_through_a_file_and_a_copy() {
+        let (mut s, _, column, roof) = house();
+        run(&mut s, "modify", json!({"id": column, "attach_top": roof, "top_offset": 150}));
+        let held = |m: &crate::model::Model, id: Id| {
+            m.elements.get(id).and_then(Element::column).map(|c| (c.top_offset, c.attach_top, c.attach_base))
+        };
+        let text = serde_json::to_string(&*s.model).unwrap_or_default();
+        let (read, left_out) = crate::model::Model::read(&text).unwrap_or_else(|e| panic!("{e}"));
+        assert!(left_out.is_empty(), "{left_out:?}");
+        assert_eq!(held(&read, column), held(&s.model, column));
+        assert_eq!(held(&read, column).map(|h| (h.0, h.1.is_some())), Some((150.0, true)));
+        run(&mut s, "copy", json!({"ids": [column], "by": [500, 0]}));
+        let made: Vec<Id> = s.model.elements.iter().filter(|(id, e)| **id != column && e.column().is_some()).map(|(id, _)| *id).collect();
+        assert_eq!(made.len(), 1);
+        assert_eq!(held(&s.model, made[0]), held(&s.model, column), "the copy stands under the same roof");
+    }
+
     #[test]
     fn a_dragged_height_lands_on_a_level_within_reach() {
         let (s, ..) = house();
