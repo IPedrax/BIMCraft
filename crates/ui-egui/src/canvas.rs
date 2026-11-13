@@ -4466,7 +4466,7 @@ impl BimApp {
                 p.line_segment([c - vec2(8.0, 0.0), c + vec2(8.0, 0.0)], thin);
                 p.line_segment([c - vec2(0.0, 8.0), c + vec2(0.0, 8.0)], thin);
                 // Project north (up the plan) and true north (the active location's angle), as long arrows from the centre.
-                let true_north = m.coordinates.location().angle;
+                let true_north = m.site().rotation;
                 let north = |deg: f64, ink: Color32, label: &str, p: &Painter| {
                     let (sn, cs) = (deg.to_radians() as f32).sin_cos();
                     let dir = vec2(sn, -cs);

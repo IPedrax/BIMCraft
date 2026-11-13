@@ -730,21 +730,26 @@ other_files(
         "location",
         "Location",
         &[],
-        "{name?, east?, north?, elevation?, angle?, scale?, rename?, activate?: true, delete?: true, shift?: [de, dn, dz]} a \
-         location of the project, one position of the building in the shared coordinates (Revit's named site): the Survey Point's \
-         shared `east`, `north` and `elevation` (mm), the `angle` from project north to true north (degrees, east positive) and \
-         the `scale` from ground to grid (1 unless a map projection's; heights are not scaled). A new one starts as a copy of the \
-         active one. `activate` makes it the one the shared coordinates are in. `shift` adds to its east, north and elevation, or \
-         to every location's when no `name` is given (the survey says the site is 5 m higher: shift [0, 0, 5000]). The active \
-         location can't be deleted. Without `name` or `shift`, lists them",
+        "{name?, east?, north?, elevation?, latitude?, longitude?, angle?, scale?, crs?, rename?, activate?: true, delete?: true, \
+         shift?: [de, dn, dz]} a named site of the project (Revit's), one position of the building in the shared coordinates: \
+         the Survey Point's shared `east`, `north` and `elevation` (mm), or its `latitude` and `longitude` through the site's map \
+         system, the `angle` from project north to true north (degrees, east positive) and the `scale` from ground to grid (1 \
+         unless a map projection's; heights are not scaled), and its map system (`crs`, as `georeference` takes it). The active \
+         site is the georeference; the others are kept beside it, each where it would put the project. A new one starts as a \
+         copy of the active one. `activate` makes it the active one, the georeference. `shift` adds to its east, north and \
+         elevation, or to every site's when no `name` is given (the survey says the site is 5 m higher: shift [0, 0, 5000]). The \
+         active site can't be deleted. Without `name` or `shift`, lists them",
         location,
     ),
     edit(
         "specify_coordinates",
         "Specify Coordinates at a Point",
         &[],
-        "{at: [x,y,z], east, north, elevation, angle?} sets the active location so that internal point `at` has the shared \
-         coordinates given (mm), turned to `angle` (degrees from project north to true north, east positive) when given",
+        "{at: [x,y,z] | [x,y], on?, level?, east, north, elevation, angle?} sets the active site so that internal point `at` \
+         has the shared coordinates given (mm), turned to `angle` (degrees from project north to true north, east positive) when \
+         given. A point picked in plan, `at: [x, y]`, takes its height from `on`, the element picked: a wall's bottom, a floor's, \
+         roof's or ceiling's top there; else from `level` (the lowest by default): the top of what stands on it there, else the \
+         level",
         specify_coordinates,
     ),
     edit(
@@ -9298,7 +9303,7 @@ fn location(s: &mut Session, p: &Value) -> R {
     only(
         c,
         p,
-        &["name", "east", "north", "elevation", "angle", "scale", "rename", "activate", "delete", "shift", "latitude", "longitude"],
+        &["name", "east", "north", "elevation", "angle", "scale", "rename", "activate", "delete", "shift", "latitude", "longitude", "crs"],
     )?;
     let name = name_param(c, p, "name")?;
     let shift = shared3(c, p, "shift")?;
@@ -9340,6 +9345,15 @@ fn location(s: &mut Session, p: &Value) -> R {
     }
     // A new one starts as a copy of the active one.
     let mut g = was.clone().unwrap_or_else(|| m.site().clone());
+    // Its map system, as `georeference` takes one.
+    if let Some(crs) = string(c, p, "crs")? {
+        g.crs = crs.trim().to_string();
+        if let Some(code) = crate::crs::code(&g.crs).filter(|code| crate::crs::known(*code)) {
+            g.description = Some(crate::crs::lookup(code).map_err(|e| bad(c, e))?.name);
+        } else if g.crs.is_empty() {
+            g.description = None;
+        }
+    }
     if let Some(a) = north_angle(c, p, "angle")? {
         g.rotation = a;
     }
@@ -9458,8 +9472,28 @@ fn rotate_project_north(s: &mut Session, p: &Value) -> R {
 
 fn specify_coordinates(s: &mut Session, p: &Value) -> R {
     let c = "specify_coordinates";
-    only(c, p, &["at", "east", "north", "elevation", "angle"])?;
-    let at = point3_req(c, p, "at")?;
+    only(c, p, &["at", "east", "north", "elevation", "angle", "on", "level"])?;
+    let picked = !absent(p.get("on")) || !absent(p.get("level"));
+    let at = match p.get("at").and_then(Value::as_array).map(Vec::len) {
+        Some(2) => {
+            let q = point_req(c, p, "at")?;
+            let on = match p.get("on") {
+                v if absent(v) => None,
+                Some(v) => Some(element_id(c, &s.model, v)?),
+                None => None,
+            };
+            let level = match (on.and_then(|id| s.model.elements.get(id)).and_then(|e| s.model.level_of(e)), absent(p.get("level"))) {
+                (Some(l), true) => l,
+                _ => level_param(c, &s.model, p, "level")?,
+            };
+            let z = crate::coordinates::picked_z(&s.model, level, q, on);
+            [q.0, q.1, z]
+        }
+        _ if picked => {
+            return Err(bad(c, "`on` and `level` work out the height of a point picked in plan: give `at` as [x, y] with them"));
+        }
+        _ => point3_req(c, p, "at")?,
+    };
     let need = |key: &str| shared1(c, p, key)?.ok_or_else(|| bad(c, format!("`{key}` (mm) is required")));
     let shared = [need("east")?, need("north")?, need("elevation")?];
     let mut g = s.model.site().clone();

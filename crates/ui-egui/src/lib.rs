@@ -21,8 +21,8 @@ mod canvas;
 mod clouds;
 mod context;
 pub mod control;
-pub mod cowork;
 mod coordinates;
+pub mod cowork;
 mod dialog;
 mod dimtypes;
 mod display;
@@ -4876,18 +4876,18 @@ impl BimApp {
                 }
             });
         });
-        panel(ui, msg!("Project Location"), |ui| {
+        // Revit's Project Location: where the project stands, and what stands with it by shared coordinates.
+        // Yielding: Location goes into the panel's list before any other panel gives way, so the tab is no wider than it was.
+        ribbon::yielding(ui, msg!("Project Location"), |ui| {
+            let tip = "Link Model (LK): another project, a BIMCraft file or an IFC, shown in this one as a reference that can't be edited: halftone in the plans, the sections and the 3D view, and snapped to";
+            if big_button(ui, Icon::Link, "Link Model", false, tip).clicked() {
+                self.link_dialog = true;
+            }
             let tip = msg!(
                 "Location: where the project stands in the world: its locations, the Project Base Point and the Survey Point, the map system, managing them, and conversions"
             );
             if big_button(ui, Icon::Coordinates, "Location", self.coordinates_dialog.is_some(), tip).clicked() {
                 self.coordinates_dialog = Some(coordinates::CoordinatesDialog::new(&self.session.model));
-            }
-        });
-        panel(ui, msg!("Links"), |ui| {
-            let tip = "Link Model (LK): another project, a BIMCraft file or an IFC, shown in this one as a reference that can't be edited: halftone in the plans, the sections and the 3D view, and snapped to";
-            if big_button(ui, Icon::Link, "Link Model", false, tip).clicked() {
-                self.link_dialog = true;
             }
         });
         panel(ui, msg!("Inquiry"), |ui| {
@@ -5627,7 +5627,7 @@ impl BimApp {
                 _ => self.status = Status { text: tf("rotate: `{}` is not an angle in degrees", &[&self.angle]), error: true },
             }
         }
-        let angle = self.session.model.coordinates.location().angle;
+        let angle = self.session.model.site().rotation;
         let align = tf("Align with True North ({}°)", &[&format!("{angle:.3}")]);
         if ui.add_enabled(angle.abs() > 1e-9, egui::Button::new(align)).clicked()
             && let &Tool::RotateNorth { centre, .. } = &self.tool

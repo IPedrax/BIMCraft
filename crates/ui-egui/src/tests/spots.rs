@@ -109,7 +109,7 @@ fn acquire_coordinates_takes_them_from_the_cad_drawing_clicked() {
     assert!(h.state().coordinates_dialog.is_none(), "the window steps aside");
     // A click on the square's west edge.
     click(&mut h, P2(2000.0, 3000.0));
-    let q = h.state().session.model.coordinates.to_shared([4000.0, 3000.0, 0.0]);
+    let q = h.state().session.model.frames().to_shared([4000.0, 3000.0, 0.0]);
     assert!((q[0] - 500_002_000.0).abs() < 1e-3 && (q[1] - 7_000_002_000.0).abs() < 1e-3, "{q:?}");
     assert_eq!(h.state().tool, Tool::Modify);
     assert!(h.state().status.text.contains("survey"), "{}", h.state().status.text);

@@ -207,6 +207,6 @@ fn by_shared_coordinates_puts_the_drawing_where_the_active_location_puts_it_or_a
     let placed = imports(&h);
     assert_eq!(placed.len(), 1, "{}", h.state().status.text);
     // Acquired: its middle (E 5 m, N 3 m) is now the project's origin.
-    let l = h.state().session.model.coordinates.location();
+    let l = h.state().session.model.frames().location();
     assert!((l.east - 5_000.0).abs() < 1.0 && (l.north - 3_000.0).abs() < 1.0, "{l:?}");
 }

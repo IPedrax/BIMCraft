@@ -126,8 +126,7 @@ as a surveyor's CAD reads a point out); `spot_coordinate` takes `type`, or witho
 (`spots::default_type`), the Survey Point's when it gives none: after Acquire Coordinates, a spot coordinate reads what the
 drawing's program says of its point. One from before types keeps reading from where it did. `spot_coordinate_type` lists, makes (`like`), changes, renames and deletes them.
 
-Tests: `spot_coordinate_tests.rs`, `coordinates_tests.rs`. The desktop's tool and type dialog come with the Location window
-(slice 7).
+Tests: `spot_coordinate_tests.rs`, `coordinates_tests.rs`; the desktop's below.
 
 ## IFC: one map conversion
 
@@ -218,10 +217,7 @@ a circle with a cross in it, the Survey Point as a circle with a triangle in it.
 
 They are picked as elements are, by the library ids of their entries (`coordinates::Point`, `Point::of`, `Point::id`):
 each mark's primitives are owned by its point, and a pick takes a point before what's under it (`Drawing::on_top`; the
-Internal Origin stands on walls' corners), in a plan, a section or the 3D view. The selection keeps them as it keeps elements. The 3D view's marks, Properties of a point and its drag come with the
-Location window (slice 7).
-
-## Orientation: plans turned to true north
+Internal Origin stands on walls' corners), in a plan, a section or the 3D view. ## Orientation: plans turned to true north
 
 A plan's graphics hold `orientation`, `project_north` (the default) or `true_north` (`graphics::Orientation`; `graphics
 {view, orientation}`, or `modify` of the view's `graphics`; a view's own, not a template's). Oriented to true north, a plan is
@@ -230,10 +226,89 @@ moves. `render::View` has an `angle`: `px` and `mm` turn about the view's middle
 whole box the view sees, which culling, hatching and patterns clip to. `render::plan` and the ceiling plan fit the plan as it
 lies turned (`fit_turned`), and so does a sheet's viewport of it (`sheet::framing_in`). Dimension numbers run along their
 turned lines and never upside down; elevation and section heads point the way they look on screen; CAD text turns with its
-drawing; a spot coordinate's shoulder and text stay level on the sheet. The desktop's canvas turning with the plan comes with the Location window (slice 7). Tests: `coordinates_tests.rs` (the
-angle, the fit, the sheet).
+drawing; a spot coordinate's shoulder and text stay level on the sheet. The desktop's canvas keeps each view's turn (`Canvas::turn`, set each frame from the plan), so zoom, pan, picking and snapping
+go through it, and the minimap draws the plan turned too. Properties' Graphics group has **Orientation** (Project North, True
+North) under Detail Level for a plan and a ceiling plan. Tests: `coordinates_tests.rs` (the angle, the fit, the sheet),
+`tests/coordinates.rs` (the dropdown, a click through the turned canvas).
 
 The north arrow annotation, and the map and the sun (the plan's stage 8), are on the [roadmap](../../ROADMAP.md) (0.9).
+
+## The desktop: Manage > Project Location
+
+`crates/ui-egui/src/coordinates.rs`. The panel has **Coordinates**, which opens the window. **Rotate Project North** is on
+the window's Manage tab: its button closes the window for a tool on the plan that works as Rotate does (`Tool::RotateNorth`, in `canvas.rs` beside `Tool::Rotate`): it starts on
+the Project Base Point (Place Centre moves the centre), a click is the angle's start and the next its end, and between them
+the whole plan turns as a ghost, with project north (up, muted) and true north (in the accent, as it will be once turned)
+drawn from the centre and the angle at the cursor. The Options Bar takes an angle typed (Enter) and has **Align with True
+North** (the active angle, in its name). It runs `rotate_project_north` with `about` the centre, one undo step, and goes
+back to Modify. Its icon is a north arrowhead in a counter-clockwise turn arrow.
+
+The window is designed to answer "where is this building?" at a glance, and to remove Revit's traps:
+
+- **The summary**, always in sight above the tabs: a dial with project north straight up and true north as the accent's
+  arrow at the active angle; the active location, switched in place; the Survey Point's shared East, North and Elevation in
+  large monospace figures in the map's own unit; the angle; the map system as a chip (`EPSG:31983`) with its name; and,
+  with one, the latitude and longitude.
+- **Locations**: every site in a striped table, typed into (Revit's can only be made by moving things): an Active
+  radio, the name, East, North and Elevation in the grid's unit, the angle and the scale. Add Location copies the active
+  one. Delete is off for the active one and for the last one. **Shift every location** adds the same amounts to all of
+  them, the "+5 m from the survey" case.
+- **Points**: the Internal Origin, the Project Base Point and the Survey Point. Each shows its internal X, Y and Z, typed in
+  the project's units, and its shared coordinates beside them, worked out live. Revit's two ways of moving the Survey Point
+  (clipped and unclipped) are two named choices, each saying what it does to the building. Under them is **Specify
+  Coordinates at a Point**: shared coordinates only (east, north, elevation, and the angle if it's set too), typed, then
+  **Pick Point and Specify**: the window steps aside (`CoordinatesDialog::picking`, `Tool::SpecifyPoint`) and the point is
+  picked in the active view, snapped, with the shared coordinates it will get at the cursor. In a plan its height is
+  `coordinates::picked_z`'s, by what the snap came from: a wall's bottom (a wall's corner is set out at its base), a floor's,
+  roof's or ceiling's top there, else the top of what stands on the level there, else the level. In the 3D view it is the
+  corner, edge or face picked, as a 3D dimension's end snaps: a wall's top corner is its top. The window comes back with the
+  draft worked out, to review before OK or Apply; Esc (or Back to Coordinates in the Options Bar, or another tool) brings it
+  back unchanged. Agents do the same with `specify_coordinates {at: [x, y], on | level}`.
+- **Map System**: an offline **world map** (`world.rs`: Natural Earth's 1:110m coastlines and borders, public domain, 34 KB
+  in `assets/map/world.bin`), a placeholder until stage 8's tiles: a plain latitude and longitude grid, dragged to pan and
+  scrolled to zoom about the cursor, every location a pin (the active one in the accent), the latitude and longitude typed as
+  a cross, and a click picks them for Place. Above it the map system is a dropdown: the button shows the one picked (its code as a chip, its name and unit) or
+  none, and opens a search of places and systems as you type. **Places** lists each country or city found (a pin, its
+  state and country, its latitude and longitude) with its systems under it, the first tagged Recommended and each saying
+  why (national grid, the national datum's zone, WGS 84's); **Systems** lists EPSG's projected systems whose code or name
+  matches. A system picked under a place also takes the place's latitude and longitude for Place and flies the map there
+  (a country wide, a city close); the Survey Point waits for Place, since a city's middle is rarely the site. Clear beside
+  it takes the map system away. **Place by latitude and longitude** puts the Survey Point on the globe.
+- Dubai's grid is EPSG:3997, `WGS 84 / Dubai Local TM` (DLTM): the search reads EPSG's "TM" and "UTM" as transverse
+  Mercator and knows "DLTM", and a place in the emirate offers it first (`places::local`).
+- **Convert**: a calculator, changing nothing: a point between the internal, base, shared and WGS84 frames, with Swap and
+  Copy.
+
+It is a draft (`CoordinatesDialog`): a row for each site, its numbers at the Survey Point and its own map system, worked
+out with the core's own `Georeference` (`site_of`), and OK or Apply runs it as one undo step named "Coordinates": the site
+renames (`renames::plan`), then `coordinates` with `move: system` (the draft has already worked out what moving the point
+did to the sites), then each site changed (`location`, with `crs` where its map system changed), then `activate`, then the
+deletes. The map system the window picks is the active row's. A refusal stays in the window and says why. It looks the same in the three looks: only the theme's tokens
+(`pal()`, `card`). Tests: `crates/ui-egui/src/tests/coordinates.rs`.
+
+### The rest of the desktop
+
+The selection keeps the three points as it keeps elements.
+Selected, Properties shows the point (`BimApp::point_properties`): its name and id, where it is internal (X, Y, Z typed move
+it, the Internal Origin's fixed) and shared, in the map's unit (with latitude and longitude under a map system), the angle to
+true north at the Project Base Point (typed, the active location's), and for the Survey Point its clip, Revit's paperclip:
+**Move the point only** (the default; the world stays) or **Move the shared coordinates with it** (`BimApp::survey_moves`).
+Dragged, or moved with Move, a point runs `coordinates` with `base` or `survey` (and `move` as the clip says), never `move`
+(`BimApp::move_point`); the Internal Origin refuses, saying it is the file's own 0, 0, 0.
+
+The status bar reads the cursor out in shared coordinates beside its x and y, in the map's unit (`BimApp::shared_readout`),
+once they are not the file's own.
+
+Link Model asks how to position the file, as Revit's link dialog does (`links::LinkBox`): Origin to Origin, Project Base
+Point to Project Base Point, or By Shared Coordinates (with which of its locations, its active one by default), as `link`'s
+`by` and `location`. Import CAD, Link CAD and Point Cloud have By Shared Coordinates beside Center to Center and Origin to
+Origin, with **Acquire coordinates from it** (`acquire: true`).
+
+In the desktop, Annotate > Dimension > Spot Coordinate places one with two clicks, both snapped: the point, then the
+leader's end, as the Type Selector's type (`BimApp::spot_type`). Selected, its Properties show Leader, Has Shoulder and what it
+reads; Edit Type opens Spot Coordinate Type Properties (`spots::SpotTypeDialog`), every parameter in Revit's groups, with
+Duplicate and Rename; the leader's end is a grip (`BimApp::spot_grip_drag`), which `modify` moves. Tests:
+`spot_coordinate_tests.rs`, `crates/ui-egui/src/tests/spots.rs`.
 
 ## Commands
 
@@ -255,4 +330,4 @@ The north arrow annotation, and the map and the sun (the plan's stage 8), are on
 
 Every change is a command and so one undo step. Tests: `coordinates_tests.rs`, and the payloads in the hostile sweep.
 
-Not yet (the plan's later slices): the desktop.
+In the desktop: below and in [the desktop](desktop.md).

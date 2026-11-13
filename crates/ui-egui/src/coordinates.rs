@@ -9,12 +9,12 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-use bimcraft_core::coordinates::{Coordinates, Frame, Location, MAX_LOCATIONS, Move, Point};
+use bimcraft_core::coordinates::{Coordinates, Frame, Frames, Location, MAX_LOCATIONS, Move, NONE, Point};
 use bimcraft_core::crs::{self, Info};
 use bimcraft_core::engine::Session;
 use bimcraft_core::geom::P2;
 use bimcraft_core::library::Kind;
-use bimcraft_core::model::{Element, Id, Model};
+use bimcraft_core::model::{Element, Georeference, Id, Model};
 use bimcraft_core::places::{self, Kind as PlaceKind, Place, Suggestion};
 use bimcraft_core::units::Units;
 use bimcraft_i18n::msg;
@@ -49,8 +49,8 @@ const FRAMES: [(Frame, &str); 4] = [
     (Frame::Wgs84, msg!("GPS (WGS84 longitude, latitude)")),
 ];
 
-/// A location as the window holds it: what it was called when the window opened (none, a new one), what it is called now,
-/// and its numbers, mm and degrees, as the core keeps them.
+/// A site as the window holds it: what it was called when the window opened (none, a new one), what it is called now, its
+/// numbers at the Survey Point, mm and degrees, as Revit shows a site, and its map system (a georeference's `crs`).
 #[derive(Clone, Debug, PartialEq)]
 struct Row {
     /// Its id in the project's library (`Kind::Location`), shown; none until a new one is applied.
@@ -58,6 +58,14 @@ struct Row {
     was: Option<String>,
     name: String,
     at: Location,
+    crs: String,
+}
+
+/// The site a row is, with the Survey Point at `survey`: where it puts the internal origin, as the core keeps it.
+fn site_of(r: &Row, survey: [f64; 3]) -> Georeference {
+    let mut g = Georeference { crs: r.crs.clone(), rotation: r.at.angle, scale: r.at.scale, ..NONE.clone() };
+    g.specify(survey, [r.at.east, r.at.north, r.at.elevation]);
+    g
 }
 
 /// The Location window: its tab, and the project's coordinates as edited and not yet applied.
@@ -70,7 +78,6 @@ pub(crate) struct CoordinatesDialog {
     active: usize,
     base: [f64; 3],
     survey: [f64; 3],
-    crs: Option<u32>,
     /// How a Survey Point typed elsewhere moves: the point alone (the world stays), or the shared system with it.
     survey_moves: Move,
     /// Shift All's amounts, mm.
@@ -118,19 +125,25 @@ impl CoordinatesDialog {
     /// Open on the project's coordinates.
     pub(crate) fn new(m: &Model) -> CoordinatesDialog {
         let co = &m.coordinates;
-        let rows: Vec<Row> = co
-            .locations
+        let mut names = co.names();
+        names.sort_unstable();
+        let rows: Vec<Row> = names
             .iter()
-            .map(|(n, l)| Row {
-                id: m.library.id(&Kind::Location, n).map(|i| i.to_string()),
-                was: Some(n.clone()),
-                name: n.clone(),
-                at: l.clone(),
+            .filter_map(|n| {
+                let g = m.site_named(n)?;
+                Some(Row {
+                    id: m.library.id(&Kind::Location, n).map(|i| i.to_string()),
+                    was: Some(n.to_string()),
+                    name: n.to_string(),
+                    at: g.location(co.survey),
+                    crs: g.crs.clone(),
+                })
             })
             .collect();
         let active = rows.iter().position(|r| r.name == co.active).unwrap_or(0);
+        let here = m.frames().location();
         let lat_lon =
-            co.crs.and_then(|c| crs::to_wgs84(c, co.location().east, co.location().north).ok()).map_or([0.0; 2], |(lon, lat)| [lat, lon]);
+            m.site().map().and_then(|i| crs::to_wgs84(i.code, here.east, here.north).ok()).map_or([0.0; 2], |(lon, lat)| [lat, lon]);
         CoordinatesDialog {
             tab: 0,
             rows,
@@ -138,11 +151,10 @@ impl CoordinatesDialog {
             active,
             base: co.base,
             survey: co.survey,
-            crs: co.crs,
             survey_moves: Move::Point,
             shift: [0.0; 3],
             specify_at: co.survey,
-            specify_shared: co.to_shared(co.survey),
+            specify_shared: m.frames().to_shared(co.survey),
             specify_angle: None,
             acquire: None,
             pick_acquire: false,
@@ -197,34 +209,35 @@ impl CoordinatesDialog {
         self.error.as_deref()
     }
 
-    /// The draft as the core's coordinates, to work things out with: each location under its row's number, so names being
-    /// typed (blank, or the same twice) never lose one.
-    fn draft(&self) -> Coordinates {
-        let mut co = Coordinates::named("0");
-        co.locations = self.rows.iter().enumerate().map(|(i, r)| (i.to_string(), r.at.clone())).collect();
-        co.active = self.active.to_string();
-        co.base = self.base;
-        co.survey = self.survey;
-        co.crs = self.crs;
-        co
+    /// The draft's points, as the core's coordinates.
+    fn points(&self) -> Coordinates {
+        Coordinates { base: self.base, survey: self.survey, ..Coordinates::default() }
     }
 
-    /// The locations of `co`, as [`Self::draft`] numbered them, back into the rows.
-    fn take(&mut self, co: &Coordinates) {
-        for (i, r) in self.rows.iter_mut().enumerate() {
-            if let Some(l) = co.locations.get(&i.to_string()) {
-                r.at = l.clone();
-            }
-        }
+    /// The active row's site, to work things out with.
+    fn site(&self) -> Georeference {
+        self.rows.get(self.active).map_or_else(|| NONE.clone(), |r| site_of(r, self.survey))
     }
 
     fn active_location(&self) -> Location {
-        self.rows.get(self.active).map(|r| r.at.clone()).unwrap_or_else(|| self.draft().location())
+        self.rows.get(self.active).map_or_else(|| NONE.location(self.survey), |r| r.at)
     }
 
-    /// The map system, if the draft has one this version knows.
+    /// The active site's map system, if it names one this version knows.
     fn info(&self) -> Option<Info> {
-        self.crs.and_then(|c| crs::lookup(c).ok())
+        self.site().map()
+    }
+
+    /// Its EPSG code.
+    fn code(&self) -> Option<u32> {
+        self.info().map(|i| i.code)
+    }
+
+    /// The active site's map system set, or taken away.
+    fn set_crs(&mut self, code: Option<u32>) {
+        if let Some(r) = self.rows.get_mut(self.active) {
+            r.crs = code.map_or_else(String::new, |c| format!("EPSG:{c}"));
+        }
     }
 
     /// The map's grid unit: mm per unit, and its symbol. Metres without a map system.
@@ -238,8 +251,8 @@ impl CoordinatesDialog {
     fn add(&mut self) {
         let names: Vec<&str> = self.rows.iter().map(|r| r.name.as_str()).collect();
         let name = spare(&names, t("New Location"));
-        let at = self.active_location();
-        self.rows.push(Row { id: None, was: None, name, at });
+        let (at, crs) = (self.active_location(), self.rows.get(self.active).map(|r| r.crs.clone()).unwrap_or_default());
+        self.rows.push(Row { id: None, was: None, name, at, crs });
     }
 
     fn delete(&mut self, i: usize) {
@@ -265,22 +278,34 @@ impl CoordinatesDialog {
     }
 
     /// The Survey Point moved to `to`, as `survey_moves` says.
+    /// Every site is anchored at the internal origin: moved alone, the point's numbers in each change; with the system, they
+    /// stay.
     fn move_survey(&mut self, to: [f64; 3]) {
-        let mut co = self.draft();
-        co.move_survey(to, self.survey_moves);
-        self.survey = co.survey;
-        self.take(&co);
+        if self.survey_moves == Move::Point {
+            for r in &mut self.rows {
+                r.at = site_of(r, self.survey).location(to);
+            }
+        }
+        self.survey = to;
     }
 
     fn specify(&mut self) {
-        let mut co = self.draft();
-        co.specify(self.specify_at, self.specify_shared, self.specify_angle);
-        self.take(&co);
+        let survey = self.survey;
+        let (at, shared, angle) = (self.specify_at, self.specify_shared, self.specify_angle);
+        if let Some(r) = self.rows.get_mut(self.active) {
+            let mut g = site_of(r, survey);
+            if let Some(a) = angle {
+                g.rotation = a;
+            }
+            g.specify(at, shared);
+            r.at = g.location(survey);
+        }
     }
 
     /// The active location's Survey Point placed at the latitude and longitude typed.
     fn place(&mut self) -> Result<(), String> {
-        let code = self.crs.ok_or_else(|| t("Pick a map system first: latitude and longitude reach the grid through it.").to_string())?;
+        let code =
+            self.code().ok_or_else(|| t("Pick a map system first: latitude and longitude reach the grid through it.").to_string())?;
         let (e, n) = crs::from_wgs84(code, self.lat_lon[1], self.lat_lon[0])?;
         if let Some(r) = self.rows.get_mut(self.active) {
             (r.at.east, r.at.north) = (e, n);
@@ -291,7 +316,7 @@ impl CoordinatesDialog {
     /// A system picked from under a place: the map system, and the place as the latitude and longitude to Place by, the map
     /// gone to it. The Survey Point itself waits for Place: a city's middle is rarely the site.
     fn pick_for(&mut self, code: u32, place: &Place) {
-        self.crs = Some(code);
+        self.set_crs(Some(code));
         self.lat_lon = [place.lat, place.lon];
         self.map_at = (place.lon as f32, place.lat as f32);
         // Fitted again when the map is drawn: a country wide, a city close.
@@ -328,35 +353,33 @@ impl CoordinatesDialog {
         Ok(())
     }
 
-    /// What the draft asks of the project, in an order the core can do it in: the map system; the renames (by
-    /// `renames::plan`, which gets chains and swaps right); the points, their numbers kept (`move: system`), since the
-    /// locations' own come next, as the draft worked them out; the active one; and last what was taken away.
+    /// What the draft asks of the project, in an order the core can do it in: the renames (by `renames::plan`, which gets
+    /// chains and swaps right); the points, their numbers kept (`move: system`), since the sites' own come next, as the draft
+    /// worked them out, each with its map system; the active one; and last what was taken away.
     fn commands(&self, m: &Model) -> Result<Vec<(&'static str, Value)>, String> {
         self.check()?;
         let co = &m.coordinates;
         let mut out: Vec<(&'static str, Value)> = Vec::new();
-        if self.crs != co.crs {
-            out.push(("crs", self.crs.map_or_else(|| json!({"clear": true}), |c| json!({"code": c}))));
-        }
         let rows: Vec<renames::Row> = self
             .rows
             .iter()
             .map(|r| renames::Row { was: r.was.as_deref(), name: r.name.trim(), gone: false })
             .chain(self.gone.iter().map(|n| renames::Row { was: Some(n.as_str()), name: n.as_str(), gone: true }))
             .collect();
-        let plan = renames::plan(&co.locations.keys().cloned().collect(), &rows);
+        let plan = renames::plan(&co.names().into_iter().map(String::from).collect(), &rows);
         out.extend(plan.renames.iter().map(|(from, to)| ("location", json!({"name": from, "rename": to}))));
         if self.base != co.base || self.survey != co.survey {
             out.push(("coordinates", json!({"base": self.base, "survey": self.survey, "move": "system"})));
         }
         for r in &self.rows {
-            let was = r.was.as_ref().and_then(|n| co.locations.get(n));
-            if was != Some(&r.at) {
+            let was = r.was.as_deref().and_then(|n| m.site_named(n));
+            if was.map(|g| g.location(co.survey)) != Some(r.at) || was.map(|g| g.crs.as_str()) != Some(r.crs.as_str()) {
                 let l = &r.at;
-                out.push((
-                    "location",
-                    json!({"name": r.name.trim(), "east": l.east, "north": l.north, "elevation": l.elevation, "angle": l.angle, "scale": l.scale}),
-                ));
+                let mut p = json!({"name": r.name.trim(), "east": l.east, "north": l.north, "elevation": l.elevation, "angle": l.angle, "scale": l.scale});
+                if was.map(|g| g.crs.as_str()) != Some(r.crs.as_str()) {
+                    p["crs"] = json!(r.crs);
+                }
+                out.push(("location", p));
             }
         }
         if let Some(r) = self.rows.get(self.active)
@@ -515,7 +538,7 @@ fn summary(ui: &mut Ui, d: &mut CoordinatesDialog) {
     let grid = d.grid();
     let l = d.active_location();
     let info = d.info();
-    let at = d.draft().to_shared(d.survey);
+    let at = d.site().to_shared(d.survey);
     crate::style::card([false; 4]).inner_margin(Margin::same(10)).show(ui, |ui| {
         ui.set_width(ui.available_width());
         ui.horizontal(|ui| {
@@ -645,7 +668,7 @@ fn points_tab(ui: &mut Ui, d: &mut CoordinatesDialog, units: Units) {
         ),
     );
     let grid = d.grid();
-    let co = d.draft();
+    let co = d.site();
     let mut survey = d.survey;
     Grid::new("coordinates-points").striped(true).spacing([10.0, 5.0]).show(ui, |ui| {
         heads(
@@ -848,7 +871,7 @@ fn map_tab(ui: &mut Ui, d: &mut CoordinatesDialog) {
                 r.labelled_by(l.id);
                 ui.add_space(8.0);
             }
-            if ui.add_enabled(d.crs.is_some(), Button::new(t("Place"))).clicked() {
+            if ui.add_enabled(d.info().is_some(), Button::new(t("Place"))).clicked() {
                 d.error = d.place().err();
             }
         });
@@ -959,7 +982,7 @@ fn system_picker(ui: &mut Ui, d: &mut CoordinatesDialog) {
             .on_hover_text(t("No map system: shared coordinates in metres, and no latitude or longitude"))
             .clicked()
         {
-            d.crs = None;
+            d.set_crs(None);
         }
         r.on_hover_cursor(egui::CursorIcon::PointingHand)
     });
@@ -1002,7 +1025,7 @@ fn system_picker(ui: &mut Ui, d: &mut CoordinatesDialog) {
                             ui.add_space(2.0);
                             place_row(ui, place);
                             for (k, s) in systems.iter().enumerate() {
-                                if found_row(ui, &s.info, d.crs == Some(s.info.code), Some(&place.name), Some(s.why), k == 0) {
+                                if found_row(ui, &s.info, d.code() == Some(s.info.code), Some(&place.name), Some(s.why), k == 0) {
                                     picked = Some((s.info.code, Some(place.clone())));
                                 }
                             }
@@ -1011,7 +1034,7 @@ fn system_picker(ui: &mut Ui, d: &mut CoordinatesDialog) {
                     if !d.found.is_empty() {
                         group_head(ui, msg!("Systems"));
                         for i in &d.found {
-                            if found_row(ui, i, d.crs == Some(i.code), None, None, false) {
+                            if found_row(ui, i, d.code() == Some(i.code), None, None, false) {
                                 picked = Some((i.code, None));
                             }
                         }
@@ -1021,7 +1044,7 @@ fn system_picker(ui: &mut Ui, d: &mut CoordinatesDialog) {
     if let Some((code, place)) = picked {
         match place {
             Some(p) => d.pick_for(code, &p),
-            None => d.crs = Some(code),
+            None => d.set_crs(Some(code)),
         }
         egui::Popup::close_id(ui.ctx(), id);
     }
@@ -1046,7 +1069,7 @@ fn world_map(ui: &mut Ui, d: &mut CoordinatesDialog) {
         d.map_zoom = rect.width() / -d.map_zoom;
     } else if d.map_zoom == 0.0 {
         // Fitted to show the whole world, or a continent round a place already set.
-        d.map_zoom = if d.crs.is_some() { rect.width() / 60.0 } else { rect.width() / 360.0 };
+        d.map_zoom = if d.info().is_some() { rect.width() / 60.0 } else { rect.width() / 360.0 };
     }
     let fit = rect.width() / 360.0;
     if r.dragged() {
@@ -1097,7 +1120,7 @@ fn world_map(ui: &mut Ui, d: &mut CoordinatesDialog) {
         }
     }
     // The locations, as pins.
-    if let Some(code) = d.crs {
+    if let Some(code) = d.code() {
         for (i, row) in d.rows.iter().enumerate() {
             let Ok((lon, lat)) = crs::to_wgs84(code, row.at.east, row.at.north) else { continue };
             let c = to_px(at, zoom, (lon as f32, lat as f32));
@@ -1175,7 +1198,8 @@ fn convert_tab(ui: &mut Ui, d: &mut CoordinatesDialog) {
         }
     });
     ui.add_space(8.0);
-    let result = d.draft().convert(d.point, d.from, d.to);
+    let (co, site) = (d.points(), d.site());
+    let result = Frames { co: &co, site: &site }.convert(d.point, d.from, d.to);
     UiFrame::new().fill(pal().bar).corner_radius(CornerRadius::same(6)).inner_margin(Margin::same(10)).show(ui, |ui| {
         ui.set_width(ui.available_width());
         match result {
@@ -1347,7 +1371,7 @@ impl BimApp {
             if commands.is_empty() {
                 return Ok(());
             }
-            self.session.transaction("Location", |s: &mut Session| commands.iter().try_for_each(|(c, p)| s.execute(c, p).map(|_| ())))
+            self.exec_batch("Location", &commands).map(|_| ())
         });
         if let Err(e) = done {
             d.error = Some(e.clone());
@@ -1366,12 +1390,13 @@ impl BimApp {
     /// The status bar's read out of plan point `p` in shared coordinates, in the map system's unit (metres without one):
     /// none while shared coordinates are the file's own there.
     pub(crate) fn shared_readout(&self, p: P2) -> Option<String> {
-        let co = &self.session.model.coordinates;
-        let q = co.to_shared([p.0, p.1, 0.0]);
-        if (q[0] - p.0).abs() < 0.5 && (q[1] - p.1).abs() < 0.5 && co.crs.is_none() {
+        let m = &self.session.model;
+        let q = m.frames().to_shared([p.0, p.1, 0.0]);
+        let map = m.site().map();
+        if (q[0] - p.0).abs() < 0.5 && (q[1] - p.1).abs() < 0.5 && map.is_none() {
             return None;
         }
-        let grid = match co.crs.and_then(|c| crs::lookup(c).ok()) {
+        let grid = match map {
             Some(i) => (i.mm(), unit_symbol(&i.unit)),
             None => (1000.0, "m".into()),
         };
@@ -1456,11 +1481,12 @@ impl BimApp {
                 }
                 ui.end_row();
             }
-            let grid = match co.crs.and_then(|c| crs::lookup(c).ok()) {
+            let map = m.site().map();
+            let grid = match &map {
                 Some(i) => (i.mm(), unit_symbol(&i.unit)),
                 None => (1000.0, "m".into()),
             };
-            let shared = co.to_shared(at);
+            let shared = m.frames().to_shared(at);
             ui.label(RichText::new(t("Shared")).strong());
             ui.end_row();
             for (k, label) in [msg!("E/W"), msg!("N/S"), msg!("Elev")].iter().enumerate() {
@@ -1468,8 +1494,8 @@ impl BimApp {
                 ui.label(RichText::new(shown(shared[k], &grid)).monospace());
                 ui.end_row();
             }
-            if let Some(code) = co.crs
-                && let Ok((lon, lat)) = crs::to_wgs84(code, shared[0], shared[1])
+            if let Some(i) = &map
+                && let Ok((lon, lat)) = crs::to_wgs84(i.code, shared[0], shared[1])
             {
                 ui.label(t("Latitude, longitude"));
                 ui.label(RichText::new(format!("{lat:.6}°, {lon:.6}°")).monospace());
@@ -1477,7 +1503,7 @@ impl BimApp {
             }
             if p == Point::Base {
                 ui.label(t("Angle to True North"));
-                let mut a = co.location().angle;
+                let mut a = m.site().rotation;
                 if angle_field(ui, &mut a, t("Point angle to true north").to_string()) {
                     self.run("location", json!({"name": co.active, "angle": a}));
                 }

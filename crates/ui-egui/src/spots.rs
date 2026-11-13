@@ -143,11 +143,11 @@ impl BimApp {
         }
         match asked {
             Some(Head::Switch(name)) => d = SpotTypeDialog { elements: d.elements, ..SpotTypeDialog::new(&model, name, Vec::new()) },
-            Some(Head::Duplicate(name)) => match self.session.execute("spot_coordinate_type", &d.params(&name)) {
+            Some(Head::Duplicate(name)) => match self.exec("spot_coordinate_type", &d.params(&name)) {
                 Ok(_) => d = SpotTypeDialog { elements: d.elements, ..SpotTypeDialog::new(&self.session.model, name, Vec::new()) },
                 Err(e) => d.error = Some(e),
             },
-            Some(Head::Rename(to)) => match self.session.execute("spot_coordinate_type", &json!({"name": d.name, "rename": to})) {
+            Some(Head::Rename(to)) => match self.exec("spot_coordinate_type", &json!({"name": d.name, "rename": to})) {
                 Ok(_) => {
                     if self.types.get("spotcoordinate") == Some(&d.name) {
                         self.types.insert("spotcoordinate", to.clone());
@@ -162,7 +162,7 @@ impl BimApp {
         }
         if ok || apply {
             let changed = model.spot_coordinate_types.get(&d.name) != Some(&d.t);
-            let mut result = if changed { self.session.execute("spot_coordinate_type", &d.params(&d.name)).map(|_| ()) } else { Ok(()) };
+            let mut result = if changed { self.exec("spot_coordinate_type", &d.params(&d.name)).map(|_| ()) } else { Ok(()) };
             let moved: Vec<Id> = d
                 .elements
                 .iter()
@@ -172,7 +172,7 @@ impl BimApp {
                 })
                 .collect();
             if ok && result.is_ok() && !moved.is_empty() {
-                result = self.session.execute("modify", &json!({"ids": moved, "type": d.name})).map(|_| ());
+                result = self.exec("modify", &json!({"ids": moved, "type": d.name})).map(|_| ());
             }
             match result {
                 Ok(()) if ok => return,

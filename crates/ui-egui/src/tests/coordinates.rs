@@ -53,14 +53,14 @@ fn locations_are_typed_shifted_and_applied_as_one_undo_step() {
     unfold(&mut h, "Shift every location");
     type_role(&mut h, Role::SpinButton, "Shift elevation", "5");
     press(&mut h, "Shift All");
-    assert!(h.state().session.model.coordinates.locations.len() == 1, "nothing is the project's until OK");
+    assert!(h.state().session.model.coordinates.sites.is_empty(), "nothing is the project's until OK");
     press(&mut h, "OK");
     assert!(h.state().coordinates_dialog.is_none(), "{:?}", said(&h));
-    let co = &h.state().session.model.coordinates;
-    let a = &co.locations[&co.active];
+    let m = &h.state().session.model;
+    let a = m.frames().location();
     assert!((a.east - 333_317_911.0).abs() < 1e-3 && (a.north - 7_394_644_037.0).abs() < 1e-3, "{a:?}");
     assert_eq!((a.angle, a.elevation), (10.0, 5000.0));
-    let b = &co.locations["Lot B"];
+    let b = m.site_named("Lot B").unwrap().location(m.coordinates.survey);
     assert_eq!((b.east, b.north, b.angle, b.elevation), (333_400_000.0, a.north, 10.0, 5000.0), "a copy of the active one, shifted");
     assert_eq!(h.state().session.history().len(), steps + 1, "one undo step");
     assert_eq!(h.state().session.history().last(), Some(&"Location"));
@@ -78,14 +78,14 @@ fn another_location_is_made_active_and_the_old_one_taken_away() {
     assert!(h.state().coordinates_dialog.is_none(), "{:?}", said(&h));
     let co = &h.state().session.model.coordinates;
     assert_eq!(co.active, "Site");
-    assert_eq!(co.locations.keys().collect::<Vec<_>>(), ["Site"]);
+    assert_eq!(co.names(), ["Site"]);
 }
 
 #[test]
 fn moving_the_survey_point_alone_keeps_the_building_where_it_is_in_the_world() {
     let mut h = app(BOX);
     h.state_mut().session.execute("location", &json!({"name": "Internal", "east": 500_000_000.0, "angle": 30})).unwrap();
-    let before = h.state().session.model.coordinates.to_shared([0.0; 3]);
+    let before = h.state().session.model.frames().to_shared([0.0; 3]);
     open(&mut h);
     press(&mut h, "Points");
     let units = h.state().session.model.units;
@@ -94,7 +94,7 @@ fn moving_the_survey_point_alone_keeps_the_building_where_it_is_in_the_world() {
     assert!(h.state().coordinates_dialog.is_none(), "{:?}", said(&h));
     let co = &h.state().session.model.coordinates;
     assert!((co.survey[0] - 4000.0).abs() < 1e-6, "{:?}", co.survey);
-    let after = co.to_shared([0.0; 3]);
+    let after = h.state().session.model.frames().to_shared([0.0; 3]);
     assert!(before.iter().zip(after).all(|(a, b)| (a - b).abs() < 1e-3), "{before:?} {after:?}");
 }
 
@@ -111,7 +111,7 @@ fn a_map_system_is_found_by_its_code_and_picked() {
     assert!(h.query_by_label("Find a map system").is_none(), "a pick closes it");
     press(&mut h, "OK");
     assert!(h.state().coordinates_dialog.is_none(), "{:?}", said(&h));
-    assert_eq!(h.state().session.model.coordinates.crs, Some(31983));
+    assert_eq!(h.state().session.model.site().map().map(|i| i.code), Some(31983));
 }
 
 #[test]
@@ -128,8 +128,8 @@ fn a_city_is_found_by_name_and_its_country_s_system_picked_with_it() {
     assert!((at[0] + 23.557).abs() < 0.01 && (at[1] + 46.627).abs() < 0.01, "the place to Place the Survey Point at: {at:?}");
     press(&mut h, "OK");
     assert!(h.state().coordinates_dialog.is_none(), "{:?}", said(&h));
-    assert_eq!(h.state().session.model.coordinates.crs, Some(31983));
-    assert_eq!(h.state().session.model.coordinates.location().east, 0.0, "the Survey Point stays until Place");
+    assert_eq!(h.state().session.model.site().map().map(|i| i.code), Some(31983));
+    assert_eq!(h.state().session.model.frames().location().east, 0.0, "the Survey Point stays until Place");
 }
 
 #[test]
@@ -138,7 +138,7 @@ fn rotate_project_north_aligns_with_true_north_from_the_manage_tab() {
     h.state_mut().session.execute("location", &json!({"name": "Internal", "angle": 12.5})).unwrap();
     rotate_north(&mut h);
     press(&mut h, "Align with True North (12.500°)");
-    assert_eq!(h.state().session.model.coordinates.location().angle, 0.0);
+    assert_eq!(h.state().session.model.frames().location().angle, 0.0);
     assert_eq!(h.state().session.history().last(), Some(&"Rotate Project North"));
 }
 
@@ -162,11 +162,10 @@ fn specify_coordinates_steps_aside_for_a_point_picked_on_the_plan_and_comes_back
     click(&mut h, P2(8030.0, 25.0));
     assert_eq!(h.state().tool, Tool::Modify);
     assert!(h.query_by_label("Pick Point and Specify").is_some(), "the window is back, to review");
-    assert_eq!(h.state().session.model.coordinates.location().east, 0.0, "nothing is the project's until OK");
+    assert_eq!(h.state().session.model.frames().location().east, 0.0, "nothing is the project's until OK");
     press(&mut h, "OK");
     assert!(h.state().coordinates_dialog.is_none(), "{:?}", said(&h));
-    let co = &h.state().session.model.coordinates;
-    let q = co.to_shared([8000.0, 0.0, 0.0]);
+    let q = h.state().session.model.frames().to_shared([8000.0, 0.0, 0.0]);
     assert!((q[0] - 1_000_000.0).abs() < 1e-3 && (q[1] - 2_000_000.0).abs() < 1e-3 && (q[2] - 50_000.0).abs() < 1e-3, "{q:?}");
 }
 
@@ -186,7 +185,7 @@ fn in_the_3d_view_the_point_is_the_corner_picked_top_or_bottom_as_seen() {
     click_at(&mut h, at);
     assert!(h.query_by_label("Pick Point and Specify").is_some(), "the window is back: {}", h.state().status.text);
     press(&mut h, "OK");
-    let q = h.state().session.model.coordinates.to_shared([8100.0, -100.0, 3000.0]);
+    let q = h.state().session.model.frames().to_shared([8100.0, -100.0, 3000.0]);
     assert!((q[2] - 100_000.0).abs() < 1e-3, "{q:?}");
 }
 
@@ -216,12 +215,12 @@ fn rotate_project_north_is_a_tool_on_the_plan_that_turns_the_whole_model_about_t
         "it starts on the Project Base Point: {:?}",
         h.state().tool
     );
-    assert_eq!(h.state().session.model.coordinates.location().angle, 0.0, "nothing turns until the angle's end");
+    assert_eq!(h.state().session.model.frames().location().angle, 0.0, "nothing turns until the angle's end");
     // The angle's start north of the base point, its end west of it: 90° counter-clockwise.
     click(&mut h, P2(8000.0, 4000.0));
     click(&mut h, P2(3000.0, 0.0));
     let m = &h.state().session.model;
-    assert_eq!(m.coordinates.location().angle, -90.0, "true north turned back as much: the building stays in the world");
+    assert_eq!(m.site().rotation, -90.0, "true north turned back as much: the building stays in the world");
     let Some(Element::Wall(w)) = m.elements.get(wall) else { panic!() };
     assert!(w.start.dist(P2(8000.0, -8000.0)) < 1e-6, "the whole model turned, about the base point: {:?}", w.start);
     assert_eq!(h.state().session.history().last(), Some(&"Rotate Project North"));
@@ -260,7 +259,7 @@ fn rotate_project_north_takes_an_angle_typed_in_the_options_bar() {
     type_into(&mut h, "Angle:", "30");
     h.key_press(Key::Enter);
     h.run();
-    assert_eq!(h.state().session.model.coordinates.location().angle, -30.0);
+    assert_eq!(h.state().session.model.frames().location().angle, -30.0);
     assert_eq!(h.state().tool, Tool::Modify);
 }
 
@@ -281,7 +280,7 @@ fn each_location_shows_its_id_and_a_new_one_has_none_until_applied() {
 #[test]
 fn a_click_on_the_world_map_picks_the_latitude_and_longitude_to_place_by() {
     let mut h = app(BOX);
-    h.state_mut().session.execute("crs", &json!({"code": 31983})).unwrap();
+    h.state_mut().session.execute("georeference", &json!({"crs": "EPSG:31983"})).unwrap();
     h.state_mut().session.execute("location", &json!({"name": "Internal", "east": 333_317_911.0, "north": 7_394_644_037.0})).unwrap();
     open(&mut h);
     press(&mut h, "Map System");
@@ -297,7 +296,7 @@ fn a_click_on_the_world_map_picks_the_latitude_and_longitude_to_place_by() {
     h.run();
     press(&mut h, "Place");
     press(&mut h, "OK");
-    let l = h.state().session.model.coordinates.location();
+    let l = h.state().session.model.frames().location();
     assert!(l.east > 333_317_911.0 + 50_000_000.0, "the Survey Point placed further east: {l:?}");
 }
 
@@ -333,14 +332,14 @@ fn a_point_is_picked_on_the_plan_and_its_properties_say_where_it_is_and_move_it(
 fn a_point_dragged_moves_and_the_survey_point_moves_as_its_clip_says() {
     use bimcraft_core::coordinates::Point;
     let mut h = points_shown();
-    let before = h.state().session.model.coordinates.to_shared([0.0; 3]);
+    let before = h.state().session.model.frames().to_shared([0.0; 3]);
     click(&mut h, P2(6000.0, 4000.0));
     assert_eq!(h.state().selection, [point_id(&h, Point::Survey)]);
     // Clipped (the default): the point alone; the world stays.
     drag(&mut h, P2(6000.0, 4000.0), P2(7000.0, 4000.0));
     let co = &h.state().session.model.coordinates;
     assert_eq!(co.survey, [7000.0, 4000.0, 0.0]);
-    assert_eq!(co.to_shared([0.0; 3]), before, "the building stays where it is in the world");
+    assert_eq!(h.state().session.model.frames().to_shared([0.0; 3]), before, "the building stays where it is in the world");
     // Unclipped: the shared coordinates go with it.
     h.get_by_role_and_label(Role::RadioButton, "Move the shared coordinates with it").scroll_to_me();
     h.run();
@@ -348,7 +347,7 @@ fn a_point_dragged_moves_and_the_survey_point_moves_as_its_clip_says() {
     drag(&mut h, P2(7000.0, 4000.0), P2(7000.0, 5000.0));
     let co = &h.state().session.model.coordinates;
     assert_eq!(co.survey, [7000.0, 5000.0, 0.0]);
-    assert!((co.to_shared([0.0; 3])[1] - before[1]).abs() > 1.0, "the world moved with it");
+    assert!((h.state().session.model.frames().to_shared([0.0; 3])[1] - before[1]).abs() > 1.0, "the world moved with it");
 }
 
 #[test]
@@ -372,7 +371,7 @@ fn the_status_bar_reads_the_cursor_out_in_shared_coordinates_once_they_are_not_t
     assert_eq!(h.state().shared_readout(P2(1000.0, 2000.0)), None, "the same numbers: nothing more to say");
     h.state_mut().run("location", json!({"name": "Internal", "east": 333_000_000.0, "north": 7_394_000_000.0}));
     assert_eq!(h.state().shared_readout(P2(1000.0, 2000.0)).as_deref(), Some("E 333001.000 m  N 7394002.000 m"));
-    h.state_mut().run("crs", json!({"code": 2263}));
+    h.state_mut().run("georeference", json!({"crs": "EPSG:2263"}));
     let s = h.state().shared_readout(P2(0.0, 0.0)).unwrap();
     assert!(s.ends_with("US ft"), "in the map system's unit: {s}");
 }
@@ -421,11 +420,19 @@ fn reset_asks_first_then_puts_the_coordinates_back_and_pins_nothing_it_needn_t()
     // Cancel: nothing changes.
     press_near(&mut h, "Cancel", "Reset the project's coordinates?");
     assert!(h.query_by_label("Reset the project's coordinates?").is_none());
-    assert_eq!(h.state().session.model.coordinates.location().east, 500_000_000.0);
+    assert_eq!(h.state().session.model.frames().location().east, 500_000_000.0);
     press(&mut h, "Reset Coordinates…");
     press(&mut h, "Reset");
     let co = &h.state().session.model.coordinates;
-    assert_eq!((co.location().east, co.location().north, co.location().angle, co.base), (0.0, 0.0, 0.0, [0.0; 3]));
+    assert_eq!(
+        (
+            h.state().session.model.frames().location().east,
+            h.state().session.model.frames().location().north,
+            h.state().session.model.site().rotation,
+            co.base
+        ),
+        (0.0, 0.0, 0.0, [0.0; 3])
+    );
     assert!(h.state().coordinates_dialog.as_ref().is_some_and(|d| d.tab() == crate::coordinates::MANAGE), "the window stays, on Manage");
     assert_eq!(h.state().session.history().last(), Some(&"Coordinates"));
 }
@@ -445,7 +452,7 @@ fn acquire_from_the_manage_tab_takes_a_drawing_s_coordinates() {
     manage_tab(&mut h);
     unfold(&mut h, "Acquire Coordinates");
     press(&mut h, "Acquire from square (CAD drawing)");
-    let q = h.state().session.model.coordinates.to_shared([4000.0, 3000.0, 0.0]);
+    let q = h.state().session.model.frames().to_shared([4000.0, 3000.0, 0.0]);
     assert!((q[0] - 500_002_000.0).abs() < 1e-3 && (q[1] - 7_000_000_000.0).abs() < 1e-3, "{q:?}");
     assert!(h.state().coordinates_dialog.is_some(), "the window stays open, showing them");
 }
