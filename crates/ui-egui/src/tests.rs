@@ -311,7 +311,7 @@ fn key(h: &mut Harness<BimApp>, k: Key) {
 fn shortcut(h: &mut Harness<BimApp>, letters: &str) {
     for c in letters.chars() {
         let key = Key::from_name(&c.to_ascii_uppercase().to_string()).expect("a letter");
-        h.event(Event::Key { key, physical_key: Some(key), pressed: true, repeat: false, modifiers: Modifiers::NONE });
+        h.key_press(key);
     }
     h.run();
 }
@@ -978,7 +978,7 @@ fn sa_selects_every_element_of_the_selected_ones_type_the_view_shows() {
 fn ks_lists_every_shortcut_and_every_one_it_lists_works() {
     let mut h = app(BOX);
     shortcut(&mut h, "KS");
-    for label in ["Create Similar", "CS", "Select All Instances", "SA", "CR", "WA", "KS", "ZF, ZE, ZA", "Demolish", "DW"] {
+    for label in ["Create Similar", "CS", "Select All Instances", "SA", "CR", "WA", "KS", "ZF", "ZE", "ZA", "Demolish", "DW"] {
         assert!(h.query_by_label(label).is_some(), "{label}");
     }
     shortcut(&mut h, "WA");

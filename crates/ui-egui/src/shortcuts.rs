@@ -2092,6 +2092,7 @@ fn binding_chip(ui: &mut egui::Ui, text: &str, editable: bool) -> (bool, bool) {
     let width = if editable { galley.size().x + 8.0 + pad * 2.0 } else { galley.size().x + 16.0 };
     let sense = if editable { egui::Sense::click() } else { egui::Sense::hover() };
     let (rect, response) = ui.allocate_exact_size(vec2(width, 20.0), sense);
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, editable, text));
     let cross_x = rect.right() - pad;
     let pointer = ui.ctx().pointer_hover_pos();
     let over_cross = editable && response.hovered() && pointer.is_some_and(|p| p.x >= cross_x - 7.0 && p.x <= rect.right());
@@ -3090,7 +3091,8 @@ mod tests {
         assert_eq!(parse_binding("Primary+d"), Ok(ctrl_d));
         assert_ne!(parse_binding("Ctrl+Shift+D").unwrap(), ctrl_d);
         assert_eq!(parse_binding("WA"), Ok(Binding::Sequence([Key::W, Key::A])));
-        assert_eq!(parse_binding("WА"), Ok(Binding::Sequence([Key::W, Key::A])));
+        assert_eq!(parse_binding("WА"), Ok(Binding::Sequence([Key::W, Key::F])), "Cyrillic А is the physical F");
+        assert_eq!(parse_binding("WФ"), Ok(Binding::Sequence([Key::W, Key::A])), "Cyrillic Ф is the physical A");
         assert_eq!(parse_binding("F2"), Ok(Binding::Chord(KeyChord::new(Key::F2, false, false, false, false))));
         assert!(parse_binding("Ctrl++").is_err());
         assert!(parse_binding("Ctrl+").is_err());
