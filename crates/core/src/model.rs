@@ -172,9 +172,10 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 2: the library has ids and GUIDs too
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
-/// 20: rooms have types (`types.room`), which may name a floor type and a ceiling type, and a room holds the floor and the
+/// 33 (20 to 32 were the Family Editor's steps before it was released, none of them released, and [`Model::read`] refuses
+/// them): rooms have types (`types.room`), which may name a floor type and a ceiling type, and a room holds the floor and the
 /// ceiling made for it (`floor`, `ceiling`); a build that reads up to 19 would lose the links and leave the finishes behind.
-pub const FORMAT: u32 = 20;
+pub const FORMAT: u32 = 33;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -926,7 +927,7 @@ pub struct Room {
     pub point: P2,
     pub name: String,
     pub number: String,
-    /// What a file from before format 20 holds, a colour of the room's own on plans: `Model::migrate` moves it to a room
+    /// What a file from before format 33 holds, a colour of the room's own on plans: `Model::migrate` moves it to a room
     /// type (`RoomType::colour`), so a room of the project has none, and `Model::check` refuses one.
     #[serde(default, skip_serializing)]
     pub colour: Option<[u8; 3]>,
@@ -3892,6 +3893,13 @@ impl Model {
                 "it was saved by a newer BIMCraft (file format {format}; this one reads up to {FORMAT}): update BIMCraft to open it"
             ));
         }
+        // 20 to 32 were the Family Editor's steps before it was released: none was, so none is read, as a newer file isn't.
+        if (20..=32).contains(&format) {
+            return Err(format!(
+                "it was saved by an unreleased build of BIMCraft (file format {format}), which no released one reads: save it again \
+                 with that build as a format this one reads, or open it there"
+            ));
+        }
         if format < 4 {
             pens_from_pixels(&mut v);
         }
@@ -4073,7 +4081,7 @@ impl Model {
             self.families.values_mut().for_each(crate::family::Family::pin_cuts);
         }
         self.settle_hosts(None);
-        // 19 to 20: rooms have types. A file of 19 has none, so its rooms are of the starter one, with no floor or ceiling.
+        // 19 to 33: rooms have types. A file of 19 has none, so its rooms are of the starter one, with no floor or ceiling.
         if self.types.room.is_empty() {
             self.types.room.insert(ROOM_TYPE.into(), RoomType::default());
         }

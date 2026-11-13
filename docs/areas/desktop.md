@@ -323,7 +323,7 @@ colour (`RoomType::colour`, red, green and blue, none for no fill), which plans 
 the model, as Revit's colour fill is (`render.rs`, `Drawing::solid_fills_under`): whatever stands in the room is drawn over it, and so
 are a floor's outline and its pattern's lines, while a floor's solid fill (its material's, or a view's override of its background)
 lies under it and shows only where no coloured room is. A limit: in a plan with a coloured room, every floor's solid fill is under
-every floor's lines, so a floor seen through another's solid fill shows its lines. OK and Apply give them to the `type` command; a file from before format 20, whose rooms held a colour of
+every floor's lines, so a floor seen through another's solid fill shows its lines. OK and Apply give them to the `type` command; a file from before format 33, whose rooms held a colour of
 their own, opens with each on a type of its colour (`Model::coloured_room_type`).
 A room that has a floor or a ceiling of its own shows them first in Properties
 (`finishes.rs`, `connected_finishes`, under the Edit Type row): for each, its type, a link of its id that selects it, and Disconnect
