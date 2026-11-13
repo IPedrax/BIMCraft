@@ -331,8 +331,8 @@ fn a_file_is_hashed_as_it_is_checked_before_it_runs() {
 }
 
 /// The manifests (path from the root, text) that break the network rule: `ureq` and the other HTTP clients belong to the two crates
-/// that reach the network, the updater and the assistant, and those two are dependencies of the desktop (`apps/bimcraft`, which
-/// attaches them, and `crates/ui-egui`, which draws them) and of nothing else.
+/// that reach the network by HTTPS, the updater and the assistant, and those two and Co-Work's transport are dependencies of the
+/// desktop (`apps/bimcraft`, which attaches them, and `crates/ui-egui`, which draws them) and of nothing else.
 fn network_offenders(manifests: &[(String, String)]) -> Vec<String> {
     let owners = ["crates/update/", "crates/assistant/"];
     let desktop = ["apps/bimcraft/", "crates/ui-egui/"];
@@ -344,7 +344,7 @@ fn network_offenders(manifests: &[(String, String)]) -> Vec<String> {
                 bad.push(format!("{path} depends on {dep}: only the updater and the assistant reach the network"));
             }
         }
-        for dep in ["bimcraft-update", "bimcraft-assistant"] {
+        for dep in ["bimcraft-update", "bimcraft-assistant", "bimcraft-cowork"] {
             if depends(text, dep) && !desktop.iter().any(|d| path.starts_with(d)) {
                 bad.push(format!("{path} depends on {dep}: the core, the CLI and the MCP server never reach the network"));
             }
@@ -377,6 +377,7 @@ fn the_network_rule_catches_a_manifest_that_breaks_it() {
         m("crates/assistant/Cargo.toml", "[dependencies]\nureq = { workspace = true }\nbimcraft-core = { workspace = true }\n"),
         m("crates/ui-egui/Cargo.toml", "bimcraft-update = { workspace = true }\nbimcraft-assistant = { workspace = true }\n"),
         m("apps/bimcraft/Cargo.toml", "bimcraft-update = { workspace = true }\nbimcraft-assistant = { workspace = true }\n"),
+        m("crates/ui-egui/Cargo.toml", "bimcraft-cowork = { workspace = true }\n"),
         m("crates/core/Cargo.toml", "name = \"bimcraft-core\"\n"),
     ];
     assert!(network_offenders(&fine).is_empty());
@@ -387,6 +388,8 @@ fn the_network_rule_catches_a_manifest_that_breaks_it() {
         ("crates/core/Cargo.toml", "ureq = \"3\"\n"),
         ("crates/plugin/Cargo.toml", "reqwest = \"0.12\"\n"),
         ("apps/bimcraft-cli/Cargo.toml", "  hyper = \"1\"\n"),
+        ("apps/bimcraft-cli/Cargo.toml", "bimcraft-cowork = { workspace = true }\n"),
+        ("crates/core/Cargo.toml", "bimcraft-cowork = { path = \"../cowork\" }\n"),
     ] {
         assert_eq!(network_offenders(&[m(path, text)]).len(), 1, "{path}: {text}");
     }

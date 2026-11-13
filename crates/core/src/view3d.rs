@@ -1796,6 +1796,24 @@ const HEAD_TEXT: f32 = 11.0;
 const HEAD_PAD: f32 = 3.0;
 
 impl Scene {
+    /// The box each of `ids` takes in the scene, from its triangles: another person's selection, outlined in a Co-Work session's
+    /// 3D view. An element the scene doesn't draw has none.
+    pub fn boxes(&self, ids: &HashSet<Id>) -> BTreeMap<Id, (P3, P3)> {
+        let mut out: BTreeMap<Id, (P3, P3)> = BTreeMap::new();
+        if ids.is_empty() {
+            return out;
+        }
+        for t in self.tris.iter().filter(|t| ids.contains(&t.owner)) {
+            let (lo, hi) = out.entry(t.owner).or_insert(([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]));
+            for p in &t.p {
+                for i in 0..3 {
+                    (lo[i], hi[i]) = (lo[i].min(p[i]), hi[i].max(p[i]));
+                }
+            }
+        }
+        out
+    }
+
     pub fn new(m: &Model) -> Scene {
         Self::new_cancellable(m, &|| false).unwrap_or_else(|| Scene {
             tris: Vec::new(),

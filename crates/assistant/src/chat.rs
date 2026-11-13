@@ -11,7 +11,7 @@ use std::sync::mpsc::{Receiver, TryRecvError, channel};
 use bimcraft_core::bridge::Access;
 use bimcraft_core::engine::Session;
 
-use crate::attach::{self, Attachment};
+use crate::attach::{self, Attached, Attachment};
 use crate::net::Net;
 use crate::tools::{self, TODO, Todo, to_text};
 use crate::{
@@ -21,6 +21,8 @@ use crate::{
 
 /// How many lines of the log are kept.
 const MAX_LOG: usize = 500;
+/// The most of an earlier conversation, in characters, that a model which didn't have it is told as text.
+const MAX_FOLD: usize = 30_000;
 
 /// What the palette shows, in order.
 #[derive(Clone, Debug, PartialEq)]
@@ -42,11 +44,28 @@ pub enum Line {
     Note(String),
 }
 
+/// Asks the model on another window's key, in a Co-Work session: the provider, the model and the conversation go there and the
+/// reply comes back. Called on the turn's thread; an `Err` (that window left, or its provider refused) is shown and ends the turn.
+pub type Remote = Arc<dyn Fn(Provider, &str, &[Msg]) -> Result<Reply, String> + Send + Sync>;
+
+/// Whose key a turn runs on.
+#[derive(Clone)]
+pub enum Pays {
+    /// This window's: the tokens are counted here.
+    Key(String),
+    /// Another window's: it counts them.
+    Remote(Remote),
+}
+
 /// A message of the user's that is being worked on.
 struct Turn {
     /// The undo step it ends as.
     label: String,
-    key: String,
+    pays: Pays,
+    provider: Provider,
+    model: String,
+    /// Who asked, in a Co-Work session: the steps of the turn are theirs.
+    by: Option<String>,
     rounds: usize,
 }
 
@@ -69,6 +88,8 @@ pub struct Chat {
     staged: usize,
     /// Tokens the provider has counted since the window last took them ([`Chat::take_usage`]).
     unreported: Usage,
+    /// Who paid for the conversation the model has (empty for this window's own key) and with what provider: another starts it afresh.
+    pub(crate) paid: Option<(String, Provider)>,
 }
 
 impl Chat {
@@ -87,7 +108,13 @@ impl Chat {
             stage: None,
             staged: 0,
             unreported: Usage::default(),
+            paid: None,
         }
+    }
+
+    /// The network the chat reaches its provider through: a Co-Work guest's window makes a request on its key with it.
+    pub fn net(&self) -> Arc<dyn Net> {
+        Arc::clone(&self.net)
     }
 
     /// The tokens counted since the last call, which the window adds to what it keeps for the project.
@@ -143,6 +170,7 @@ impl Chat {
             self.history.clear();
             self.todos.clear();
             self.drop_files();
+            self.paid = None;
         }
     }
 
@@ -156,6 +184,44 @@ impl Chat {
     /// Sends the user's message with `key`, and begins the turn. Refused, with a note in the log, when a message is being worked on,
     /// the message or the key is no good, or the conversation has outgrown [`MAX_HISTORY`].
     pub fn send(&mut self, text: &str, key: &str) {
+        if self.busy() || text.trim().is_empty() {
+            return;
+        }
+        if !key_ok(key) {
+            return self.note("Give a key and a model id first.");
+        }
+        let Some(files) = self.load_attached() else { return };
+        let (provider, model) = (self.provider, self.model.clone());
+        self.begin(text, files, None, "", provider, &model, Pays::Key(key.into()));
+        if self.busy() {
+            self.attached.clear();
+        }
+    }
+
+    /// Reads the files picked for the next message, which stay picked; `None`, with a note, when one can no longer be read.
+    pub fn load_attached(&mut self) -> Option<Vec<Attached>> {
+        let mut files = Vec::with_capacity(self.attached.len());
+        for a in &self.attached {
+            match a.load() {
+                Ok(f) => files.push(f),
+                Err(e) => {
+                    self.note(e);
+                    return None;
+                }
+            }
+        }
+        Some(files)
+    }
+
+    /// Sends a message of `by`'s in a Co-Work session, asked on `payer`'s key with `provider` and `model`: the tools run here, as
+    /// `by`'s edits. Another payer or provider than the last starts the model afresh, as its reasoning means nothing to another.
+    #[allow(clippy::too_many_arguments)]
+    pub fn send_shared(&mut self, text: &str, files: Vec<Attached>, by: &str, payer: &str, provider: Provider, model: &str, pays: Pays) {
+        self.begin(text, files, Some(by), payer, provider, model, pays);
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn begin(&mut self, text: &str, files: Vec<Attached>, by: Option<&str>, payer: &str, provider: Provider, model: &str, pays: Pays) {
         let text = text.trim();
         if self.busy() || text.is_empty() {
             return;
@@ -163,32 +229,43 @@ impl Chat {
         if text.chars().count() > MAX_TEXT {
             return self.note(format!("That message is longer than {MAX_TEXT} characters: shorten it."));
         }
-        if !key_ok(key) || !model_ok(&self.model) {
+        if !model_ok(model) {
             return self.note("Give a key and a model id first.");
         }
-        if self.history.iter().map(Msg::size).sum::<usize>() + text.len() > MAX_HISTORY {
-            return self.note("This conversation is too long to send again: clear the chat and start a new one.");
+        let paid = (payer.to_string(), provider);
+        // Another key or provider can't take the earlier turns as they were made (reasoning and calls are valid only where they
+        // were): it has them told as text in the message.
+        let mut told = text.to_string();
+        if self.paid.as_ref().is_some_and(|p| *p != paid) && !self.history.is_empty() {
+            told = format!(
+                "What was said earlier in this chat, on another key (its reasoning is not here):\n{}\n\nNow: {text}",
+                fold(&self.history)
+            );
+            self.history.clear();
+            let whose = if payer.is_empty() { "your key".into() } else { format!("{payer}'s key") };
+            self.note(format!("Asked on {whose} with {}: the model starts afresh, told what was said before as text.", provider.name()));
         }
-        let mut files = Vec::with_capacity(self.attached.len());
-        for a in &self.attached {
-            match a.load() {
-                Ok(f) => files.push(f),
-                Err(e) => return self.note(e),
-            }
+        if self.history.iter().map(Msg::size).sum::<usize>() + told.len() > MAX_HISTORY {
+            return self.note("This conversation is too long to send again: clear the chat and start a new one.");
         }
         let sent: usize = self.history.iter().map(Msg::file_bytes).sum::<usize>() + files.iter().map(|f| f.len()).sum::<usize>();
         if sent > MAX_FILES_TOTAL {
             return self.note("The files in this conversation are more than can be sent again: clear the chat, or send fewer.");
         }
+        self.paid = Some(paid);
         self.log.push(Line::You(text.into()));
         if !files.is_empty() {
             self.log.push(Line::Files(files.iter().map(|f| f.name.clone()).collect()));
         }
-        self.attached.clear();
         self.todos.clear();
-        self.history.push(Msg::User(text.into(), files));
-        let label = format!("{LABEL}: {}", clip(&text.split_whitespace().collect::<Vec<_>>().join(" "), 40));
-        self.turn = Some(Turn { label, key: key.into(), rounds: 0 });
+        self.history.push(Msg::User(told, files));
+        let what = clip(&text.split_whitespace().collect::<Vec<_>>().join(" "), 40);
+        let label = match by {
+            Some(by) => format!("{LABEL} ({by}): {what}"),
+            None => format!("{LABEL}: {what}"),
+        };
+        let by = by.map(str::to_string);
+        self.turn = Some(Turn { label, pays, provider, model: model.into(), by, rounds: 0 });
         if let Err(e) = self.launch() {
             self.note(e);
             self.turn = None;
@@ -205,13 +282,17 @@ impl Chat {
         if self.history.iter().map(Msg::size).sum::<usize>() > MAX_HISTORY {
             return Err("Stopped: the conversation has grown past what is sent at once. Clear the chat to start a new one.".into());
         }
-        let (provider, model, key) = (self.provider, self.model.clone(), turn.key.clone());
+        let (provider, model, pays) = (turn.provider, turn.model.clone(), turn.pays.clone());
         let (net, history, wake) = (Arc::clone(&self.net), self.history.clone(), Arc::clone(&self.wake));
         let (tx, rx) = channel();
         std::thread::Builder::new()
             .name("assistant".into())
             .spawn(move || {
-                let _ = tx.send(complete(provider, net.as_ref(), &model, &key, &history));
+                let reply = match pays {
+                    Pays::Key(key) => complete(provider, net.as_ref(), &model, &key, &history),
+                    Pays::Remote(ask) => ask(provider, &model, &history),
+                };
+                let _ = tx.send(reply);
                 wake();
             })
             .map_err(|e| format!("could not start the request: {e}"))?;
@@ -236,7 +317,13 @@ impl Chat {
                 return true;
             }
         };
-        self.unreported.add(reply.usage);
+        let (by, here) = match &self.turn {
+            Some(turn) => (turn.by.clone(), matches!(turn.pays, Pays::Key(_))),
+            None => (None, true),
+        };
+        if here {
+            self.unreported.add(reply.usage);
+        }
         if !reply.thinking.trim().is_empty() {
             self.log.push(Line::Thinks(clip(reply.thinking.trim(), 20_000)));
         }
@@ -249,7 +336,12 @@ impl Chat {
             self.finish(session);
             return true;
         }
+        // The calls are the edits of whoever asked: undo takes them back as theirs.
+        let author = by.map(|by| session.author.replace(by));
         let done = batch(session, &calls, access);
+        if let Some(author) = author {
+            session.author = author;
+        }
         for (call, d) in calls.iter().zip(&done) {
             // The checklist is drawn as a list, not as a call in the log; one that was refused is shown, so the user sees why it is not.
             if call.name == TODO && !d.error {
@@ -290,6 +382,7 @@ impl Chat {
         self.todos.clear();
         self.drop_files();
         self.unreported = Usage::default();
+        self.paid = None;
     }
 
     /// Ends the turn: its batches become one undo step.
@@ -298,6 +391,35 @@ impl Chat {
             session.merge_steps(LABEL, &turn.label);
         }
     }
+}
+
+/// The conversation as text, for a model that didn't have it: the words, the tools called and what they gave, without reasoning or
+/// pictures; its last [`MAX_FOLD`] characters.
+fn fold(history: &[Msg]) -> String {
+    let mut out = String::new();
+    for m in history {
+        match m {
+            Msg::User(text, files) => {
+                out += &format!("\n[user] {text}");
+                for f in files {
+                    out += &format!(" [file {}]", f.name);
+                }
+            }
+            Msg::Assistant(r) => {
+                out += &format!("\n[assistant] {}", r.text.trim());
+                for c in &r.calls {
+                    out += &format!("\n[called {} {}]", c.name, clip(&c.args.to_string(), 300));
+                }
+            }
+            Msg::Results(done) => {
+                for d in done {
+                    out += &format!("\n[{} gave] {}", d.name, clip(&d.text, 600));
+                }
+            }
+        }
+    }
+    let n = out.chars().count();
+    out.chars().skip(n.saturating_sub(MAX_FOLD)).collect()
 }
 
 /// Runs a reply's calls as one transaction: a call that fails is told so and the others go on (a failed command has changed

@@ -504,6 +504,7 @@ impl BimApp {
                     // The control port: off, listening, the agents connected, read-only.
                     ui.separator();
                     self.agents_indicator(ui);
+                    self.cowork_indicator(ui);
                 })
             })
             .response

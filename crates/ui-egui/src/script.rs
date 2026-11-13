@@ -57,9 +57,7 @@ impl BimApp {
     /// whether it ran.
     pub(crate) fn run_script_text(&mut self, text: &str) -> Result<String, String> {
         let dry = self.session.script_dry_run(text)?;
-        self.made_in();
-        let lines = self.session.script_atomic(text)?.len();
-        self.active_option = self.session.option.clone();
+        let lines = self.exec_script(text)?.len();
         let done = tf("Ran {} lines as one undo step. {}", &[&lines.to_string(), &summary(&dry)]);
         self.status = Status { text: done.clone(), error: false };
         Ok(done)

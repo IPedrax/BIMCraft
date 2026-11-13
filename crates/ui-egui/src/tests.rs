@@ -1005,7 +1005,7 @@ fn ks_lists_every_shortcut_and_every_one_it_lists_works() {
     }
     use crate::lang::Lang;
     // Names the catalogs don't have yet: KS shows them in English until a translator gives them, as any missing translation.
-    let awaiting = ["Graphic Display Options", "Pin", "Unpin"];
+    let awaiting = ["Graphic Display Options", "Pin", "Unpin", "Co-Work"];
     for (_, name) in crate::shortcuts().into_iter().filter(|(_, name)| !awaiting.contains(name)) {
         for l in [Lang::Portuguese, Lang::Spanish] {
             assert!(crate::lang::translated_in(l, name).is_some(), "{name} in {l:?}");
@@ -6223,6 +6223,7 @@ mod cad;
 mod chinese;
 mod clouds;
 mod control;
+mod cowork;
 mod dialog;
 mod dimensions;
 mod dims3d;
