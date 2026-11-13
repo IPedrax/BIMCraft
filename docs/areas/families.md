@@ -459,8 +459,8 @@ part (`HasPart`, `parts_now`), with an id and a GUID. Each has a `reference` (T1
 `center_elevation`, `top`, each of these one plane's or line's in the family), a `subcategory` and `defines_origin`.
 `Family::check_planes` says what's wrong: a name used twice, a named reference taken twice, numbers past `MAX_COORD`, a line
 with one point, an `up` along the line, the origin defined twice in a direction, or by a plane square to none of x, y and z.
-The datums define the origin until a plane of the family's own in their direction takes it; moving the origin there (and
-correcting placed components' `at` so they stay put) is not done yet: the flag is kept and checked only.
+The datums define the origin until a plane of the family's own in their direction takes it: where the planes that define it
+cross is the family's insertion point (*The origin*, below).
 
 A family's `lines` are its reference lines (T18), each `start` to `end` drawn on a `host` it lies on, with four planes: its
 host's through it (`horizontal`), square to that through it (`vertical`), and square to it at each end (`start`, `end`), their
@@ -487,6 +487,37 @@ An adaptive family's work planes are these planes too: a reference point is draw
 or a reference line's face, and keeps it as its Work Plane by `PlaneRef`; the three datums an adaptive definition had of its own
 before are the datum planes, read from an older file by name ([adaptive families](adaptive-families.md)). `Family::hosted_on`,
 `rehost` and `resolve_hosts` follow its points as they follow forms and lines.
+
+### The origin
+
+O1 (`family/origin.rs`). A family stands by its insertion point, `Family::origin`: where the planes that define the origin
+cross, one square to each of x, y and z, a datum's in a direction no plane of the family's own takes over. Those planes stay
+as a type flexes (a dimension never moves them, a pivot never turns them), so it is one point for every type. An adaptive
+family has none: its points place it. The family's forms, planes and lines stay where they are in its axes; only the point it
+is placed by changes.
+
+**One placement.** Every way a family's axes are put in the project goes through `hosting::Placement::by_origin`: the
+insertion point, the axes, and the origin flipped as the pieces are, giving the place of the family's own zero. A component's
+is `Model::component_placement` (its pieces, outlines, plan marks, connectors, room calculation point, face voids, bounds in
+`bounds.rs` and `component_geometry.rs`, the 3D scene and its picking, plans and their picking, IFC's local placement); a door's
+or a window's is `Model::opening_placement` (its pieces, marks and voids, `opening_frame`); a nested instance's is
+`placed_instance` in `family/nested.rs`. A door's or a window's opening is its family's datums': `Model::opening_middle` gives
+its middle along the wall and its bottom, which its hole, the checks on its place in its wall, dimensions to it, wall splits and
+joins, Timber Framing and IFC's opening read in place of `offset` and `sill`. A family document's scratch project places the
+family by its origin, so its forms stand where its planes are drawn.
+
+**Instances stay put.** A family records the origin its instances were placed against (`placed_origin`, left out of a file
+while it is the datums'; it is bookkeeping and never makes two families differ). After every command but those that replace
+the project (`Session::execute`), and as a project is read (`Model::read`), `Model::settle_origins` moves the instances of
+each family whose origin is not that record by the difference, in the same undo step, and makes the record its origin: a
+reload (`family_reload` carries the record over), an edit of the planes, a shared family replaced across the project
+(`replace_shared` keeps each copy's record). A component on a level or a reference plane moves by the difference turned and
+mirrored with it; one on a face of a wall, a floor, a ceiling or a roof only along the face, and a door or a window only along
+and up its wall (`offset`, `sill`), since the host fixes where they are across it, so across it they follow the new origin.
+Nested instances are moved in the families that place them, a place or a turn given by a formula staying one. A file of a
+build that placed every family by its datums holds no record, so one whose family already had a plane marked opens with its
+instances where they were drawn. An imported 3D model's family (`import_mesh`) has its origin on its datums. Tests:
+`origin_tests.rs`.
 
 ## Dimensions and constraints
 
@@ -1253,6 +1284,7 @@ planes, components hosted on them or on faces (Place on Face), and where a compo
 `family/`:
 
 - `family/planes.rs`: reference planes and lines, forms' hosts.
+- `family/origin.rs`: its origin, the insertion point it stands by, and its instances kept where they stand when it moves (O1).
 - `family/options.rs`: Family Category and Parameters' options.
 - `family/views.rs`: a family's plans and elevations.
 - `family/sketch.rs`: forms' sketches.

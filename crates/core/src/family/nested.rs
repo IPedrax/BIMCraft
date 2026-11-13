@@ -470,7 +470,10 @@ fn replace_shared(list: &mut [NestedFamily], name: &str, definition: &Family, de
     for n in list.iter_mut() {
         if n.name == name && n.family.shared {
             if n.family != *definition {
+                // Its instances in this family were placed against its origin as it was: kept, so they stay put (O1).
+                let placed = n.family.placed_origin;
                 n.family = definition.clone();
+                n.family.placed_origin = placed;
                 any = true;
             }
         } else {
@@ -589,7 +592,7 @@ pub fn nest_into(
     report.shared_asked = asked;
     for (s, def) in takes {
         match work.iter().position(|n| n.name == s) {
-            Some(j) => work[j].family = def.clone(),
+            Some(j) => work[j].family = Family { placed_origin: work[j].family.placed_origin, ..def.clone() },
             None => {
                 report.shared_added.push(s.clone());
                 work.push(NestedFamily { name: s.clone(), family: def.clone(), ..Default::default() });

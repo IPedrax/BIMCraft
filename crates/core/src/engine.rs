@@ -498,6 +498,14 @@ impl Session {
                 if unsettled {
                     self.model_mut().keep_rooms();
                 }
+                // A family whose origin the command moved (a reload, an edit of its planes) moves its instances by as much, so
+                // they stay where they stand (O1); a project the command replaced was settled as it was read.
+                if !REPLACES.contains(&cmd.id) {
+                    let settled = !self.model.origins_unsettled(&before);
+                    if !settled {
+                        self.model_mut().settle_origins(Some(&before));
+                    }
+                }
                 // A hosted component goes where its plane is, or onto its plane where the command moved it.
                 let unsettled = self.model.unsettled(Some(&before));
                 if !unsettled.is_empty() {
