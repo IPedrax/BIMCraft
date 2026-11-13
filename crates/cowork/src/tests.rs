@@ -21,6 +21,7 @@ fn quick() -> Timing {
         silence: Duration::from_millis(400),
         handshake: Duration::from_millis(800),
         lockout: Duration::from_millis(500),
+        frame: crate::MAX_FRAME,
     }
 }
 
@@ -242,6 +243,42 @@ fn a_big_message_goes_deflated_and_a_bomb_is_refused() {
     assert_eq!(wire::inflate(&packed, 5000).unwrap().len(), 5000);
     assert!(wire::inflate(&packed, 4999).is_err());
     assert!(wire::inflate(b"not deflate", 5000).is_err());
+}
+
+#[test]
+fn a_message_longer_than_a_frame_goes_in_parts_which_only_a_guest_reads() {
+    let rng = ring::rand::SystemRandom::new();
+    let code = Code::new().unwrap();
+    let (i, msg1) = noise::initiate(&code.psk(), b"p", b"", &rng).unwrap();
+    let (_, msg2, r) = noise::respond(&code.psk(), b"p", &msg1, b"", &rng).unwrap();
+    let (_, mut i) = i.finish(&msg2).unwrap();
+    // Letters at random deflate to about 60%: 2 MB of them take a dozen frames of 100 KB.
+    let mut x = 0x9E37_79B9_7F4A_7C15_u64;
+    let text: String = (0..2_000_000)
+        .map(|_| {
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            char::from(b'a' + (x % 26) as u8)
+        })
+        .collect();
+    let msg = json!({"op": "welcome", "delta": text});
+    let mut sent = Vec::new();
+    wire::write_in(&mut sent, &mut i.send, msg.to_string().as_bytes(), 100_000).unwrap();
+    assert!(sent.len() > 10 * 100_000);
+    let mut began = 0;
+    let read = wire::read_message(&mut sent.as_slice(), &mut r.recv.clone(), Some(&mut || began += 1)).unwrap();
+    assert_eq!((read, began), (msg, 1));
+    // A host reads no parts of a guest's.
+    let e = wire::read_frame(&mut sent.as_slice(), &mut r.recv.clone()).unwrap_err();
+    assert!(e.to_string().contains("only a host sends"), "{e}");
+    // Parts that say they are more than this machine takes are refused as they begin, saying how much, not as a closed line.
+    let mut claimed = Vec::new();
+    let head = [&[2u8][..], &(300u64 << 20).to_be_bytes(), b"x"].concat();
+    wire::write_in(&mut claimed, &mut i.send, &head, 100_000).unwrap();
+    let e = wire::read_message(&mut claimed.as_slice(), &mut r.recv.clone(), Some(&mut || {})).unwrap_err();
+    assert_eq!(e.kind(), std::io::ErrorKind::OutOfMemory);
+    assert!(e.to_string().starts_with("the host's project: it is 315 MB to receive, past the 269 MB a session sends"), "{e}");
 }
 
 #[test]

@@ -21,6 +21,7 @@ use crate::language::Language;
 use crate::library::Kind as LibKind;
 use crate::lines::{DetailLine, LineStyle};
 use crate::massing;
+use crate::memory;
 use crate::model::{
     CEILING_HEIGHT, CadImport, Ceiling, CeilingType, Column, ColumnType, Component, DEFAULT_HEIGHT, DimKind, Dimension, Dimension3D,
     Element, End, Extrusion, Face, Facing, Floor, FloorType, Grid, Guid, HostRef, Hosted, Id, Key, Landing, Layer, Level, Line, Location,
@@ -108,7 +109,8 @@ pub static ALL: &[Command] = &[
 other_files(
         "open",
         "Open",
-        "{path} a .bimc project (a .bimt file too, and the .bimcraft of earlier versions; under 256 MiB), or an .ifc (under 512 MiB) read into a new one (its `elements` by \
+        "{path} a .bimc project (a .bimt file too, and the .bimcraft of earlier versions), or an .ifc read into a new one, as large as the memory the \
+         machine has free allows (8 times a project's size, 14 times an IFC's; without the apps' meter, under 256 and 512 MiB) (its `elements` by \
          category, `generic` the components of IFC classes BIMCraft has no element for, `skipped` what was left out and why)",
         open,
         Files::Read,
@@ -3746,15 +3748,15 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
 
 // ---------- files and history ----------
 
-/// Project files this large or larger are refused.
+/// Project and family files this large or larger are refused when nothing measures memory (`memory.rs`): about 2 GB to read.
 const MAX_FILE: u64 = 256 << 20;
 
-/// IFC files this large or larger are refused. Reading one peaks at about 12 to 14 times its size in memory (measured on
-/// Revit-like, meshed and BIMCraft-written files of 17 to 81 MB), so one just under 512 MiB stays under about 8 GB.
+/// IFC files this large or larger are refused when nothing measures memory. Reading one peaks at about 12 to 14 times its size
+/// ([`memory::IFC`]), so one just under 512 MiB stays under about 8 GB.
 const MAX_IFC: u64 = 512 << 20;
 
-/// Files of `extension` (in lower case) this large or larger are refused by `open`: an IFC file at [`MAX_IFC`], a project at
-/// [`MAX_FILE`].
+/// Files of `extension` (in lower case) this large or larger are refused by `open` when nothing measures memory: an IFC file at
+/// [`MAX_IFC`], a project at [`MAX_FILE`]. With a meter, what the machine has free is the limit ([`memory::Budget`]).
 fn max_file(extension: &str) -> u64 {
     if extension == "ifc" { MAX_IFC } else { MAX_FILE }
 }
@@ -3831,19 +3833,28 @@ fn open_file(s: &mut Session, p: &Value) -> R {
     let c = "open";
     let path = PathBuf::from(string(c, p, "path")?.ok_or_else(|| bad(c, "`path` is required"))?);
     let size = std::fs::metadata(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?.len();
-    let most = max_file(&ext(&path));
-    if size >= most {
-        return Err(bad(c, format!("{} is too large ({size} bytes; `open` takes one under {most})", path.display())));
-    }
+    let ifc = ext(&path) == "ifc";
+    // Held to the memory the machine has free, where the app measures it; else to a fixed size.
+    let budget = match memory::Budget::start(size, if ifc { memory::IFC } else { memory::PROJECT }) {
+        Ok(Some(budget)) => budget,
+        Ok(None) => {
+            let most = max_file(&ext(&path));
+            if size >= most {
+                return Err(bad(c, format!("{} is too large ({size} bytes; `open` takes one under {most})", path.display())));
+            }
+            memory::Budget::none()
+        }
+        Err(e) => return Err(bad(c, format!("{}: {e}", path.display()))),
+    };
     // IFC comes in as a new project: saving it asks where.
-    if ext(&path) == "ifc" {
+    if ifc {
         let bytes = std::fs::read(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
         let stem = path.file_stem().map_or_else(|| "Project".into(), |s| s.to_string_lossy().into_owned());
-        let file = crate::step::parse(&bytes).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+        let file = crate::step::parse_within(&bytes, &budget).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
         let seed = crate::import::seed(&bytes);
         // The text is freed before the model is built from it, so the two are not both held at the peak.
         drop(bytes);
-        let i = crate::import::from_step(file, &stem, seed).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+        let i = crate::import::from_step(file, &stem, seed, &budget).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
         let mut counts: BTreeMap<&str, usize> = BTreeMap::new();
         for e in i.model.elements.values() {
             *counts.entry(e.category()).or_default() += 1;
@@ -3861,7 +3872,11 @@ fn open_file(s: &mut Session, p: &Value) -> R {
         return Ok(reply);
     }
     let text = std::fs::read_to_string(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
-    let (mut m, left_out) = Model::read(&text).map_err(|e| bad(c, format!("{} is not a BIMCraft project: {e}", path.display())))?;
+    let (mut m, left_out) = Model::read_within(&text, &budget).map_err(|e| match budget.check() {
+        Ok(()) => bad(c, format!("{} is not a BIMCraft project: {e}", path.display())),
+        Err(_) => bad(c, format!("{}: {e}", path.display())),
+    })?;
+    drop(text);
     m.adopt_materials();
     // A project parameter named as a phase or a design option is held under is from before they were: it keeps its values, renamed.
     let mut renamed = BTreeMap::new();
@@ -4356,10 +4371,8 @@ fn autosave(s: &mut Session, p: &Value) -> R {
     if s.path.as_ref() == Some(&path) {
         return Err(bad("autosave", "the recovery file must differ from the saved project"));
     }
+    // As large as the project is: `recover` opens it held to the memory that's free, as `open` does.
     let text = s.model.to_json().map_err(|e| bad("autosave", e))?;
-    if text.len() as u64 >= MAX_FILE {
-        return Err(bad("autosave", "the recovery snapshot exceeds the project file size limit"));
-    }
     crate::autosave::atomic_write(&path, &text).map_err(|e| bad("autosave", e))?;
     Ok(json!({"path": path, "format": "bimcraft"}))
 }

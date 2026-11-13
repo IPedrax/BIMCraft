@@ -34,3 +34,5 @@ bimcraft-i18n = { workspace = true, features = ["catalog"] }
 [dev-dependencies]
 # Decodes the JPEG XL pictures exports write, to check they are lossless.
 jxl-oxide = { version = "0.12", default-features = false }
+# A counting allocator, as the apps have, for the test of reads held to the memory that's free (`tests/memory_budget.rs`).
+cap = { workspace = true }

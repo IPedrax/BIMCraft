@@ -37,8 +37,13 @@ pub struct File {
 const DEPTH: usize = 32;
 
 pub fn parse(text: &[u8]) -> Result<File, String> {
+    parse_within(text, &crate::memory::Budget::none())
+}
+
+/// [`parse`], stopped with an error when reading takes more memory than `budget` allows (`memory.rs`).
+pub fn parse_within(text: &[u8], budget: &crate::memory::Budget) -> Result<File, String> {
     let header = find(text, b"HEADER;").ok_or("not a STEP file: it has no HEADER section")?;
-    let mut p = Parser { s: text, i: header + 7 };
+    let mut p = Parser { s: text, i: header + 7, budget };
     let mut schema = String::new();
     loop {
         p.skip();
@@ -68,6 +73,7 @@ pub fn parse(text: &[u8]) -> Result<File, String> {
     p.expect(b';')?;
     let mut entities = HashMap::new();
     loop {
+        budget.check()?;
         p.skip();
         if p.word(b"ENDSEC") {
             break;
@@ -109,6 +115,7 @@ fn first_string(args: &[V]) -> Option<String> {
 struct Parser<'a> {
     s: &'a [u8],
     i: usize,
+    budget: &'a crate::memory::Budget,
 }
 
 impl Parser<'_> {
@@ -285,6 +292,7 @@ impl Parser<'_> {
             return Ok(out);
         }
         loop {
+            self.budget.check()?;
             out.push(self.value(depth)?);
             self.skip();
             match self.peek() {
@@ -352,6 +360,15 @@ fn decode(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_file_that_takes_more_memory_than_is_free_is_stopped_even_inside_one_entity() {
+        let values = vec!["()"; 1000].join(",");
+        let text = format!("ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCX({values});\nENDSEC;\n");
+        assert!(parse(text.as_bytes()).is_ok());
+        let e = parse_within(text.as_bytes(), &crate::memory::testing::budget(8_000_000)).err().unwrap_or_default();
+        assert!(e.starts_with("reading it took more than the 8 MB of memory this machine had free, so it was stopped"), "{e}");
+    }
 
     #[test]
     fn entities_and_their_parameters_read_as_written() {

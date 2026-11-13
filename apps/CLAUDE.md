@@ -12,5 +12,7 @@ tools run the same commands. Neither adds behaviour of its own: a feature is a c
   user lets agents only read (Settings > Agents) the engine runs its requests read-only. `mcp --connect` is the asking side (`window.rs`).
 - `mcp --read-only [FILE]` is a headless server that opens FILE and then only reads it (`Session::read_only`); `mcp --connect --read-only`
   asks the window to run each request read-only. The refusals say what lets the agent edit, and the instructions say it may only read.
+- Both count what they allocate (`cap`, the global allocator) and read what the machine has free (`sysinfo`), and install that as
+  the core's meter first thing in `main`, so a file opened is held to the memory there is (`bimcraft_core::memory`).
 - A release build on Windows has no console: a start that fails says so through `startup::note`, not `eprintln!` alone.
 - `cargo test -p bimcraft -p bimcraft-cli` runs in a few seconds.

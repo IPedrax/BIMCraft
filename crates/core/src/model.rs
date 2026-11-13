@@ -4043,9 +4043,15 @@ impl Model {
     /// misspelled one. The fields left out come back as JSON pointers into the file (`/elements/100004/finish`). A file
     /// of a newer format is refused whole, since what changed may be more than a field.
     pub fn read(text: &str) -> Result<(Model, Vec<String>), String> {
+        Model::read_within(text, &crate::memory::Budget::none())
+    }
+
+    /// [`Model::read`], stopped with an error, before it takes more, when the process has allocated past `budget`
+    /// (`memory.rs`): the values, then each element, are checked as they are read.
+    pub fn read_within(text: &str, budget: &crate::memory::Budget) -> Result<(Model, Vec<String>), String> {
         use crate::lenient;
         use serde_json::Value;
-        let mut v: Value = serde_json::from_str(text).map_err(|e| e.to_string())?;
+        let mut v: Value = crate::memory::json(text, budget)?;
         let format = v.get("format").map_or(Some(0), Value::as_u64).ok_or("`format` must be a whole number")?;
         if format > u64::from(FORMAT) {
             return Err(format!(
@@ -4060,6 +4066,7 @@ impl Model {
         let mut elements = v.get_mut("elements").map_or(Value::Null, Value::take);
         if let Value::Object(es) = &mut elements {
             for (id, e) in es.iter_mut() {
+                budget.check()?;
                 let mut bare = e.clone();
                 let category = bare.as_object_mut().and_then(|o| {
                     o.remove("guid");
@@ -4095,7 +4102,9 @@ impl Model {
             }
             v["elements"] = elements;
         }
+        budget.check()?;
         let mut m: Model = serde_json::from_value(v).map_err(|e| e.to_string())?;
+        budget.check()?;
         m.migrate();
         m.names_from_file();
         // A family's dimension measuring to something it hasn't is left out, as what this version can't read is: a file is

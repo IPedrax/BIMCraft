@@ -433,8 +433,8 @@ fn serve(mut s: TcpStream, shared: &Shared, joined: &mut Option<u32>) -> io::Res
     let colour = (1..).find(|c| peers.iter().all(|p| p.person.colour != *c)).unwrap_or(0);
     let person = Person { id: shared.next.fetch_add(1, Ordering::SeqCst), name: name.clone(), colour };
     let (tx, rx) = sync_channel(QUEUE);
-    let (w, ping) = (s.try_clone()?, timing.ping);
-    let writer = std::thread::Builder::new().name("cowork-writer".into()).spawn(move || wire::writer(w, t.send, rx, ping))?;
+    let (w, ping, frame) = (s.try_clone()?, timing.ping, timing.frame);
+    let writer = std::thread::Builder::new().name("cowork-writer".into()).spawn(move || wire::writer(w, t.send, rx, ping, frame))?;
     peers.push(Peer { person: person.clone(), ip, tx: tx.clone(), stream: s.try_clone()?, writer: Some(writer) });
     drop(peers);
     let id = person.id;

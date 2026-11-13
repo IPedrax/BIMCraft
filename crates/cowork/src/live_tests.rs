@@ -87,12 +87,17 @@ impl Host {
     }
 }
 
+/// The frame the live tests write: a whole model is several times it.
+const FRAME: usize = 16 << 10;
+
 fn quick() -> Timing {
     Timing {
         ping: Duration::from_millis(60),
         silence: Duration::from_secs(2),
         handshake: Duration::from_secs(2),
         lockout: Duration::from_millis(500),
+        // Small, so every whole model these tests send goes in parts, as a big project's does at the real size (issue #438).
+        frame: FRAME,
     }
 }
 
@@ -125,6 +130,19 @@ fn until(joined: &mut Joined, s: &mut Session, ok: impl Fn(&Session) -> bool) {
 
 fn wall(y: i64) -> Value {
     json!({"points": [[0, y], [6000, y]]})
+}
+
+#[test]
+fn a_project_longer_than_a_frame_comes_to_a_guest_in_parts() {
+    // Issue #438: a whole model past the frame (64 MiB, 16 KiB here) went in one, and the guest hung up on it, saying the
+    // connection closed. Now it comes in parts, the guest waiting for them all past the time a welcome is given to start.
+    let host = Host::start();
+    let model = host.model();
+    let whole = json!({"op": "welcome", "delta": bimcraft_core::cowork::whole(&model).unwrap()}).to_string();
+    assert!(crate::wire::deflate(whole.as_bytes()).unwrap().len() > 2 * FRAME, "the welcome must take several frames");
+    let (_bo, copy) = join(&host, "Bo");
+    assert_eq!(json_of(&copy.model), json_of(&model));
+    host.end("done");
 }
 
 #[test]
