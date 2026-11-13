@@ -234,7 +234,7 @@ struct How<'a> {
     weak: bool,
 }
 
-fn parameter_name(raw: &str) -> Option<String> {
+pub(crate) fn parameter_name(raw: &str) -> Option<String> {
     let spaced: String = raw.chars().map(|c| if c.is_alphanumeric() || c == '_' { c } else { ' ' }).collect();
     Some(spaced.split_whitespace().collect::<Vec<_>>().join(" ")).filter(|n| crate::family::nameable(n))
 }
@@ -3953,6 +3953,54 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
     // program's, named for the property (less what a formula can't say, as the brackets of "Cargas (G2)"). Each one's kind from
     // its first value's, for the categories of the elements holding one; up to as many as a project holds, and as many values
     // as `MAX_VALUES`.
+    // The project's information: its phase is its status, its building's name and address are its own; what BIMCraft wrote
+    // in its set, all of it as it was typed. Its element stands for the project, so the project's parameters come in on it.
+    if let Some(pid) = ids.iter().copied().find(|id| e(*id).is_some_and(|x| x.name == "IFCPROJECT")) {
+        let has_sets = |pid: u64| {
+            named(&["IFCRELDEFINESBYPROPERTIES"]).into_iter().filter_map(e).any(|rel| {
+                refs(rel.args.get(4)).contains(&pid)
+                    && reference(rel.args.get(5)).and_then(e).is_some_and(|x| text(x.args.get(2)) == Some(crate::ifc::PARAMETERS))
+            })
+        };
+        let mut info = crate::project_info::ProjectInfo::default();
+        let one_line = |t: &str| clip(&t.split_whitespace().collect::<Vec<_>>().join(" "));
+        if let Some(phase) = e(pid).and_then(|p| text(p.args.get(6))) {
+            info.status = one_line(phase);
+        }
+        let title = m.name.clone();
+        if let Some(b) = named(&["IFCBUILDING"]).into_iter().filter_map(e).next() {
+            if let Some(n) = text(b.args.get(2)).filter(|n| clip(n) != title) {
+                info.building = one_line(n);
+            }
+            if let Some(a) = reference(b.args.get(11)).and_then(e).filter(|a| a.name == "IFCPOSTALADDRESS") {
+                let mut lines: Vec<String> = list(a.args.get(4)).iter().filter_map(|l| text(Some(l))).map(str::to_string).collect();
+                let town = [text(a.args.get(8)), text(a.args.get(6))].into_iter().flatten().collect::<Vec<_>>().join(" ");
+                lines.extend(Some(town).filter(|t| !t.is_empty()));
+                lines.extend([text(a.args.get(7)), text(a.args.get(9))].into_iter().flatten().map(str::to_string));
+                info.address = lines.join("\n").chars().take(crate::project_info::MAX_ADDRESS).collect();
+            }
+        }
+        for rel in named(&["IFCRELDEFINESBYPROPERTIES"]).into_iter().filter_map(e).filter(|rel| refs(rel.args.get(4)).contains(&pid)) {
+            let Some(set) = reference(rel.args.get(5))
+                .and_then(e)
+                .filter(|x| x.name == "IFCPROPERTYSET" && text(x.args.get(2)) == Some(crate::ifc::PROJECT_INFO))
+            else {
+                continue;
+            };
+            for prop in refs(set.args.get(4)).into_iter().filter_map(e).filter(|x| x.name == "IFCPROPERTYSINGLEVALUE") {
+                let (Some(name), Some(v)) = (text(prop.args.first()), text(prop.args.get(2))) else { continue };
+                let Some((key, _)) = crate::project_info::FIELDS.iter().find(|(_, label)| *label == name) else { continue };
+                let v = if *key == "address" { v.chars().take(crate::project_info::MAX_ADDRESS).collect() } else { one_line(v) };
+                if let Some(slot) = info.get_mut(key) {
+                    *slot = v;
+                }
+            }
+        }
+        if info != crate::project_info::ProjectInfo::default() || has_sets(pid) {
+            let id = m.insert(Element::ProjectInfo(info));
+            elements_from.entry(pid).or_default().push(id);
+        }
+    }
     let (mut over, mut clash, mut values) = (BTreeSet::new(), BTreeSet::new(), 0);
     // The set each parameter's values came in, by category (none: the project's own): a category's values of a name come in
     // one set, the first; the others' are left out, said in `elsewhere`.
@@ -4063,6 +4111,23 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
                     ("IFCBOOLEAN" | "IFCLOGICAL", V::Enum(b)) if b == "T" || b == "F" => (ParameterKind::YesNo, json!(b == "T")),
                     ("IFCLENGTHMEASURE" | "IFCPOSITIVELENGTHMEASURE", v) => match real(Some(v)) {
                         Some(x) => (ParameterKind::Length, json!((x * mm * 1e6).round() / 1e6)),
+                        None => continue,
+                    },
+                    // What BIMCraft writes has its units fixed: m², m³ and radians.
+                    ("IFCINTEGER", v) if ours => match real(Some(v)) {
+                        Some(x) => (ParameterKind::Integer, json!(x)),
+                        None => continue,
+                    },
+                    ("IFCAREAMEASURE", v) if ours => match real(Some(v)) {
+                        Some(x) => (ParameterKind::Area, json!(x)),
+                        None => continue,
+                    },
+                    ("IFCVOLUMEMEASURE", v) if ours => match real(Some(v)) {
+                        Some(x) => (ParameterKind::Volume, json!(x)),
+                        None => continue,
+                    },
+                    ("IFCPLANEANGLEMEASURE", v) if ours => match real(Some(v)) {
+                        Some(x) => (ParameterKind::Angle, json!((x.to_degrees() * 1e6).round() / 1e6)),
                         None => continue,
                     },
                     ("IFCREAL" | "IFCINTEGER" | "IFCNUMERICMEASURE" | "IFCCOUNTMEASURE", v) => match real(Some(v)) {

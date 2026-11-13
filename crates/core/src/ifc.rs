@@ -94,6 +94,8 @@ const PANEL_DEFINES: u64 = 80;
 const DISTRIBUTION_SERVES: u64 = 81;
 const CIRCUIT_MEMBERS: u64 = 82;
 const CLASSIFIED: u64 = 83;
+const INFO: u64 = 84;
+const INFO_DEFINES: u64 = 85;
 
 /// Site footprint metadata in curve order: Names, Guids and Levels (native GUIDs).
 pub const PROPERTY_LINES: &str = "BIMCraft_PropertyLines";
@@ -155,6 +157,11 @@ pub const GRID_AXIS: &str = "BIMCraft_GridAxis";
 /// The property set what a placed device's connector says that IFC's `Pset_ElectricalDeviceCommon` has no property for goes
 /// in: its load in VA (in all, and `LoadVAPhase1`… for each phase), its system and its classification.
 pub const CONNECTOR_SET: &str = "BIMCraft_Connector";
+
+/// The property set on the project its information goes in, each field under the name Revit gives it
+/// (`project_info::FIELDS`): what IFC's own attributes (the project's phase, the building's name and address) don't hold, and
+/// those too, as typed, so they come back as they were.
+pub const PROJECT_INFO: &str = "BIMCraft_ProjectInformation";
 
 /// The property set an element's phase and design option go in; on the project, its phases and design option sets.
 pub const PHASING: &str = "BIMCraft_Phasing";
@@ -1041,7 +1048,11 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool) -> String {
     ]
     .map(|u| w.add(u));
     let units = w.add(format!("IFCUNITASSIGNMENT(({}))", refs(&units)));
-    let project = w.add(format!("IFCPROJECT({},$,{},$,$,$,$,(#{ctx}),#{units})", w.guid(PROJECT, 0), s(&m.name)));
+    // The project's information: its status is the project's phase, and its building's name and address the building's.
+    let info = m.project_info();
+    let said = |t: &str| if t.is_empty() { "$".to_string() } else { s(t) };
+    let phase = said(info.map_or("", |(_, i)| i.status.as_str()));
+    let project = w.add(format!("IFCPROJECT({},$,{},$,$,$,{phase},(#{ctx}),#{units})", w.guid(PROJECT, 0), s(&m.name)));
     let site_at = w.place(None, (0.0, 0.0, 0.0), None);
     // Plot boundaries are curves, not solids. Their coordinates are site-local XY; their plan level is metadata.
     let plots: Vec<(Id, &crate::model::PropertyLine)> = m
@@ -1090,7 +1101,26 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool) -> String {
         w.define(site, PROPERTY_LINES, &metadata, (PLOT_NAMES, PLOT_NAMES_DEFINES), 0);
     }
     let building_at = w.place(Some(site_at), (0.0, 0.0, 0.0), None);
-    let building = w.add(format!("IFCBUILDING({},$,{},$,$,#{building_at},$,$,.ELEMENT.,$,$,$)", w.guid(BUILDING, 0), s(&m.name)));
+    let building_name = info.map(|(_, i)| i.building.as_str()).filter(|b| !b.is_empty()).unwrap_or(&m.name);
+    let address = match info.map(|(_, i)| i.address.as_str()).filter(|a| !a.trim().is_empty()) {
+        Some(a) => {
+            let lines: Vec<String> = a.lines().map(str::trim).filter(|l| !l.is_empty()).map(s).collect();
+            format!("#{}", w.add(format!("IFCPOSTALADDRESS($,$,$,$,({}),$,$,$,$,$)", lines.join(","))))
+        }
+        None => "$".to_string(),
+    };
+    let building =
+        w.add(format!("IFCBUILDING({},$,{},$,$,#{building_at},$,$,.ELEMENT.,$,$,{address})", w.guid(BUILDING, 0), s(building_name)));
+    if let Some((_, i)) = info {
+        let props: Vec<u64> = crate::project_info::FIELDS
+            .iter()
+            .filter_map(|(key, label)| Some((*label, i.get(key).filter(|v| !v.is_empty())?)))
+            .map(|(label, v)| w.text_property(label, None, v))
+            .collect();
+        if !props.is_empty() {
+            w.define(project, PROJECT_INFO, &props, (INFO, INFO_DEFINES), 0);
+        }
+    }
     w.add(format!("IFCRELAGGREGATES({},$,$,$,#{project},(#{site}))", w.guid(AGGREGATES, PROJECT)));
     w.add(format!("IFCRELAGGREGATES({},$,$,$,#{site},(#{building}))", w.guid(AGGREGATES, SITE)));
 
@@ -1113,6 +1143,10 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool) -> String {
     let mut spaces: BTreeMap<Guid, Vec<u64>> = BTreeMap::new();
     // Each element's own entity, for what it holds of the project's parameters.
     let mut products: BTreeMap<Id, u64> = BTreeMap::new();
+    // The project's information is the project, for its values of the project's parameters.
+    if let Some((id, _)) = info {
+        products.insert(id, project);
+    }
     // Walls as (entity, placement), for the openings in them.
     let mut placed: BTreeMap<Id, (u64, u64)> = BTreeMap::new();
     // Floors, ceilings and roofs as (entity, placement, its height), for the shafts through them.
@@ -2068,7 +2102,12 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool) -> String {
         let Some(e) = m.elements.get(id) else { continue };
         let Some(params) = e.params() else { continue };
         let mut sets: BTreeMap<&str, Vec<u64>> = BTreeMap::new();
-        for (name, v) in params {
+        // A type parameter goes out on each element of the type: IFC has it where a reader of the element looks.
+        let of_type = m.parameters.iter().filter(|(_, p)| p.scope == crate::model::Scope::Type).filter_map(|(n, p)| {
+            let mine = p.categories.iter().any(|c| c == e.category());
+            Some((n, mine.then(|| crate::parameters::value_of(m, e, n, p)).flatten()?))
+        });
+        for (name, v) in params.iter().chain(of_type) {
             // The project's parameters for its category: a component's family's values are its family's.
             let Some(p) = m.parameters.get(name).filter(|p| p.categories.iter().any(|c| c == e.category())) else { continue };
             if p.classification.is_some() {
@@ -2085,6 +2124,10 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool) -> String {
                 (ParameterKind::Text, Value::String(t), _) => format!("IFCTEXT({})", s(t)),
                 (ParameterKind::Number, _, Some(x)) => format!("IFCREAL({})", real(x)),
                 (ParameterKind::Length, _, Some(x)) => format!("IFCLENGTHMEASURE({})", real(x)),
+                (ParameterKind::Integer, _, Some(x)) => format!("IFCINTEGER({})", x as i64),
+                (ParameterKind::Area, _, Some(x)) => format!("IFCAREAMEASURE({})", real(x)),
+                (ParameterKind::Volume, _, Some(x)) => format!("IFCVOLUMEMEASURE({})", real(x)),
+                (ParameterKind::Angle, _, Some(x)) => format!("IFCPLANEANGLEMEASURE({})", real(x.to_radians())),
                 (ParameterKind::YesNo, Value::Bool(b), _) => format!("IFCBOOLEAN({})", if *b { ".T." } else { ".F." }),
                 _ => continue,
             };

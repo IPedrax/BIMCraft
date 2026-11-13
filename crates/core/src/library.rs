@@ -64,6 +64,8 @@ pub enum Kind {
     WireType,
     /// A title block a sheet may be drawn with.
     TitleBlock,
+    /// A dictionary project parameters came from.
+    Dictionary,
 }
 
 impl Kind {
@@ -97,6 +99,7 @@ impl Kind {
             Kind::DistributionSystem => "distribution system".into(),
             Kind::WireType => "wire type".into(),
             Kind::TitleBlock => "title block".into(),
+            Kind::Dictionary => "parameter dictionary".into(),
         }
     }
 
@@ -108,6 +111,7 @@ impl Kind {
             "cad" => Kind::Cad,
             "family" => Kind::Family,
             "parameter" => Kind::Parameter,
+            "dictionary" => Kind::Dictionary,
             "view-filter" => Kind::ViewFilter,
             "view-template" => Kind::ViewTemplate,
             "phase" => Kind::Phase,
@@ -163,6 +167,7 @@ impl fmt::Display for Kind {
             Kind::DistributionSystem => f.write_str("distribution-system"),
             Kind::WireType => f.write_str("wire-type"),
             Kind::TitleBlock => f.write_str("title-block"),
+            Kind::Dictionary => f.write_str("dictionary"),
         }
     }
 }
@@ -801,6 +806,7 @@ impl Model {
         add(Kind::Cad, &mut self.cads.keys());
         add(Kind::Family, &mut self.families.keys());
         add(Kind::Parameter, &mut self.parameters.keys());
+        add(Kind::Dictionary, &mut self.dictionaries.keys());
         add(Kind::ViewFilter, &mut self.view_filters.keys());
         add(Kind::ViewTemplate, &mut self.view_templates.keys());
         add(Kind::Phase, &mut self.phases.iter());
@@ -1262,6 +1268,12 @@ impl Model {
         let keep: std::collections::BTreeSet<&(Kind, String)> = now.iter().collect();
         let gone: Vec<Id> =
             self.library.entries().filter(|(_, e)| !keep.contains(&(e.kind.clone(), e.name.clone()))).map(|(id, _)| id).collect();
+        // A type's values of project parameters go with it.
+        let gone_guids: Vec<Guid> =
+            gone.iter().filter_map(|id| self.library.entries().find(|(i, _)| i == id).map(|(_, e)| e.guid)).collect();
+        for q in self.parameters.values_mut().filter(|q| !q.type_values.is_empty()) {
+            q.type_values.retain(|g, _| !gone_guids.contains(g));
+        }
         for id in gone {
             self.library.remove(id);
         }
@@ -1480,6 +1492,11 @@ impl crate::model::Element {
                 }
             }
             Element::PointCloud(pc) => f(&Kind::Cloud, &mut pc.cloud),
+            Element::Tag(t) => {
+                if let Some(label) = &mut t.label {
+                    f(&Kind::Parameter, label);
+                }
+            }
             Element::DetailLine(l) => f(&Kind::LineStyle, &mut l.style),
             Element::DetailGroup(g) => f(&Kind::DetailGroup, &mut g.type_name),
             Element::RepeatingDetail(r) => f(&Kind::DetailGroup, &mut r.type_name),
@@ -1537,6 +1554,9 @@ impl Model {
     pub fn lib_refs_mut(&mut self, f: &mut dyn FnMut(&Kind, &mut String)) {
         for e in self.elements.values_mut() {
             e.lib_refs_mut(f);
+        }
+        for d in self.parameters.values_mut().filter_map(|p| p.dictionary.as_mut()) {
+            f(&Kind::Dictionary, d);
         }
         let t = &mut *self.types;
         let layers = t

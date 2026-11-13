@@ -26,7 +26,7 @@ use crate::model::{
     Element, End, Extrusion, Face, Facing, Floor, FloorType, Grid, Guid, HostRef, Hosted, Id, Key, Landing, Layer, Level, Line, Location,
     MAX_COORD, MAX_POINTS, MAX_SLOPE, MAX_TEXT, Mass, Model, Note, Opening, OpeningType, Orient, PARAMETER_CATEGORIES, ParameterKind,
     Pattern, Perspective, PlanView, PointCloud, ProjectParameter, PropertyLine, RAMP_SLOPE, RAMP_WIDTH, RISER, Railing, RailingType, Ramp,
-    Rebar, Ref3, Reference, Roof, RoofType, Room, RoomArea, RoomSeparator, STAIR_WIDTH, Schedule, Section, SectionBox, Shaft, Sheet, Side,
+    Rebar, Ref3, Reference, Roof, RoofType, Room, RoomArea, RoomSeparator, STAIR_WIDTH, Schedule, Scope, Section, SectionBox, Shaft, Sheet, Side,
     Spot, Stair, TOL, TREAD, Tag, Unbound, View3D, Viewport, Wall, WallType, heading, paper,
 };
 use crate::paint;
@@ -145,7 +145,7 @@ other_files(
         "insert",
         "Insert from File",
         &[],
-        "{path, ids?: [id, …]} elements of another project (.bimc, .bimcraft or .ifc) brought into this one: those `ids` names \
+        "{path, ids?: [id, …], same_parameters?: [name, …]} elements of another project (.bimc, .bimcraft or .ifc) brought into this one: those `ids` names \
          (their ids there), else all of them, and what they point at that this project hasn't (a level they stand on is \
          this project's of the same name, where it has one). Each keeps its id unless this project has that id, and its GUID \
          unless this project has that GUID: then it's a copy, with a GUID of its own (the same file inserted into itself is \
@@ -1279,17 +1279,140 @@ other_files(
         "parameter",
         "Project Parameters",
         &[],
-        "{name, kind?: text|number|length|yesno, categories?: [wall|floor|ceiling|roof|door|window|room|column|component|stair|\
-         ramp|railing|mass, …], sets?: {category: property set name|null}, classification?: {system, edition?}|null, rename?, \
-         delete?: true} a project parameter, as Revit's Manage > Project Parameters makes one: a value \
-         of its kind each element of its categories may have of its own, set with `modify {id, params: {name: value}}` (lengths \
-         in mm, yes or no as true or false). Off a category, that category's elements lose their values of it; deleted, every \
-         element does; renamed, they follow it. `sets` names the IFC property set a category's values go in (an import keeps \
-         the one they came in; none: `Project Parameters`); `classification` makes a text parameter a classification \
-         system's codes, which IFC holds as classification references. `inspect` lists them",
+        "{name, kind?: text|number|integer|length|area|volume|angle|yesno, categories?: [wall|floor|ceiling|roof|door|window|room|\
+         column|component|stair|ramp|railing|mass, …], sets?: {category: property set name|null}, classification?: {system, \
+         edition?}|null, rename?, delete?: true, description?, group?, read_only?: bool, scope?: instance|type, dictionary?: null} \
+         a project parameter, as Revit's Manage > Project Parameters makes one: a value of its kind each element of its \
+         categories may have of its own, set with `modify {id, params: {name: value}}`, or, `scope` type, each of their types, \
+         set with `type_parameter`. Rooms, stairs, ramps and masses have no types. Made a type parameter, its elements' values \
+         are wiped (answers `wiped`); made an instance parameter, each type's value is copied to its elements (`copied`). \
+         (Lengths in mm, areas in m², volumes in m³, angles in degrees, yes or no as true or false.) Off a category, that \
+         category's elements lose their values of it; deleted, every element does; renamed, they follow it, as schedules, their \
+         formulas, filters and tags do. `sets` names the IFC property set a category's values go in (an import keeps the one \
+         they came in; none: `Project Parameters`); `classification` makes a text parameter a classification system's codes, \
+         which IFC holds as classification references. `group` (one of Revit's, or a name of the project's own) and \
+         `read_only` are how Properties shows it. `dictionary` null makes one from a dictionary a project parameter again. \
+         `parameter_list` lists them",
         parameter,
     )
     .menu("Manage > Project Parameters"),
+    other(
+        "parameter_list",
+        "Parameter List",
+        "{} every project parameter with its id, GUID, whether it is shared (from a dictionary), its settings and what uses it \
+         (values, schedules, view filters, tags, calculated fields); the dictionaries in use and the category mapping kept",
+        crate::parameters::list,
+    ),
+    edit(
+        "parameter_batch",
+        "Parameter Batch",
+        &[],
+        "{ops: [{op?: set, …`parameter`'s params} | {op: delete, name} | {op: duplicate, name, as?} | {op: rename, names: [..], \
+         prefix?, suffix?, find?, replace?}], dry_run?: true} several changes to project parameters, all or none and one undo step. \
+         A duplicate is a parameter of its own, with its own GUID; its values don't come with it. `dry_run` says what would be done \
+         and changes nothing",
+        crate::parameters::batch,
+    ),
+    edit(
+        "parameter_import",
+        "Import Parameters",
+        &[],
+        "{path, dry_run?: true, map?: {their category: ours | null}, categories?: [..], resolve?: {name: same|separate|skip}, \
+         scopes?: {name: instance|type}, names?: [..], replace_categories?: true, skip_conflicts?: true} parameter definitions from a .xlsx \
+         or .csv table (columns GUID, Name, Kind, Categories, Group, Description, Instance/Type, User Modifiable), a .bimparams dictionary or a Revit \
+         shared parameter .txt. Answers each row's status: `create`, `modify`, `existing`, `conflict` or `skip`, with notes; `dry_run` \
+         stops there. A row is matched by GUID first, so it follows a rename; one of a name taken by another GUID is a conflict until \
+         `resolve` says `same` (the file's GUID means that parameter from now on), `separate` (it comes in as `name 2`) or `skip`. \
+         The file's categories are matched by name, Revit's among them, and `map` settles the ones listed as `unmapped` and is kept \
+         with the project; `broad` lists those that land on a wider category (all components). `categories` is for rows that name none, \
+         as a shared parameter file's. A file adds categories unless `replace_categories`. A conflict stops the import unless \
+         `skip_conflicts`. No element's values come from the file",
+        crate::parameters::import,
+    ),
+    other(
+        "parameter_export",
+        "Export Parameters",
+        "{path, names?: [..], definitions?: [..], name?, version?} the project's parameters, those named, or the `definitions` given, to a .xlsx or .csv table or a .bimparams \
+         dictionary (with its `name` and `version`). Definitions only, not values. Revit's shared parameter .txt is read, not written",
+        crate::parameters::export,
+    ),
+    other(
+        "dictionary",
+        "Parameter Dictionary",
+        "{path, name?, version?, add?: [{name, kind?, description?, group?, categories?, guid?, read_only?, scope?: instance|type}], \
+         names?: [project parameters], merge?: [paths], remove?: [names or GUIDs], skip_conflicts?: true} makes or changes the \
+         dictionary file at `path` (.bimparams); the project isn't changed. A definition with a GUID the file has replaces it; a new one \
+         gets a GUID; another GUID under a name the file has stops it unless `skip_conflicts`. `merge` takes in other files of any kind \
+         `parameter_import` reads. A change counts up its `revision` and dates it `changed`. `version` is a label of the team's own. \
+         Answers what the file now holds",
+        crate::parameters::dictionary,
+    ),
+    edit(
+        "dictionary_mount",
+        "Load Parameter Dictionary",
+        &[],
+        "{path} or {name, remove: true}: a dictionary's file loaded in the project, which remembers it and saves it as part of the \
+         project; several can be. Nothing comes into the project until `parameter_import`. A dictionary moved is found by its GUID, and \
+         takes its new path; another dictionary of a name already loaded is refused. `remove` is refused while a parameter comes from it",
+        crate::parameters::dictionary_mount,
+    ),
+    edit(
+        "parameter_merge",
+        "Merge Parameters",
+        &[],
+        "{from, into, overwrite?: true} parameter `from`'s values, and the schedules, filters, tags and formulas that name it, moved to \
+         `into`, of the same kind; `from` goes, and files holding its GUID mean `into` from then on. Elements holding both with different \
+         values stop it unless `overwrite` takes `from`'s",
+        crate::parameters::merge,
+    ),
+    edit(
+        "parameter_purge",
+        "Purge Parameters",
+        &[],
+        "{dry_run?: true} takes out the project parameters nothing uses (no value, schedule, view filter, tag or calculated field); \
+         answers the names",
+        crate::parameters::purge,
+    ),
+    edit(
+        "family_parameter_transfer",
+        "Transfer Family Parameters",
+        &[],
+        "{from, to: [families], names: [..], prefix?, suffix?, find?, replace?} a family's parameters copied to other families, with the \
+         parameters their formulas read, optionally renamed. A name a family has already is skipped and listed",
+        crate::parameters::family_transfer,
+    ),
+    edit(
+        "family_parameter_add",
+        "Add Family Parameters",
+        &[],
+        "{families: [..], parameters: [{name, kind?: length|number|angle|yesno|material|text, instance?: true, value?, formula?, group?, \
+         definition?: GUID}]} new parameters added to each family, all or none. A type parameter's `value` is every type's until a type \
+         sets its own. `definition` ties it to a dictionary's or a project parameter's GUID, so a family's and the project's are one \
+         parameter. A name a family has already is skipped and listed",
+        crate::parameters::family_add,
+    ),
+    edit(
+        "type_parameter",
+        "Type Parameter Values",
+        &[],
+        "{category, type, values?: {parameter: value | null}, copy_to?: type} or {family, type, ...}: a type's values of the project's \
+         type parameters (scope `type`), which every element of the type reads; null takes one away. `copy_to` gives another type of \
+         the same category the values this one has. With neither, answers the values it has",
+        crate::parameters::type_parameter,
+    ),
+    edit(
+        "project_info",
+        ui_msg!("Project Information"),
+        &[],
+        "{name?, number?, client?, address?, status?, issue_date?, author?, organization?, organization_description?, building?, \
+         params?: {parameter: value | null}}: the project's information, as Revit's Project Information. Each field is text (`\"\"` \
+         empties it; only `address` has lines, by `\\n`); `name` is the project's name. `params` sets its values of the project \
+         parameters for category `project` (null takes one away), as `modify` does on its element. With nothing, answers what it holds: \
+         {id (none until something is set), name, the fields, params}. Sheets' title blocks show the number, client, status and issue \
+         date; IFC writes the status as the project's phase, the building's name and address, and the rest in property sets",
+        crate::project_info::project_info,
+    )
+    .menu("Manage > Project Information"),
     edit_files(
         "family",
         "Load Family",
@@ -2602,7 +2725,7 @@ other_files(
 /// is cut, and says by how much.
 const MAX_MESSAGE: usize = 2000;
 
-fn bad(cmd: &str, msg: impl std::fmt::Display) -> String {
+pub(crate) fn bad(cmd: &str, msg: impl std::fmt::Display) -> String {
     let text = format!("{cmd}: {msg}");
     match text.char_indices().nth(MAX_MESSAGE) {
         Some((cut, _)) => format!("{}… ({} more characters)", &text[..cut], text[cut..].chars().count()),
@@ -2670,7 +2793,7 @@ fn num(c: &str, p: &Value, key: &str) -> Result<Option<f64>, String> {
     }
 }
 
-fn flag(c: &str, p: &Value, key: &str) -> Result<bool, String> {
+pub(crate) fn flag(c: &str, p: &Value, key: &str) -> Result<bool, String> {
     match p.get(key) {
         v if absent(v) => Ok(false),
         Some(Value::Bool(b)) => Ok(*b),
@@ -2679,7 +2802,7 @@ fn flag(c: &str, p: &Value, key: &str) -> Result<bool, String> {
     }
 }
 
-fn string(c: &str, p: &Value, key: &str) -> Result<Option<String>, String> {
+pub(crate) fn string(c: &str, p: &Value, key: &str) -> Result<Option<String>, String> {
     match p.get(key) {
         v if absent(v) => Ok(None),
         Some(Value::String(s)) if s.chars().count() <= MAX_TEXT => Ok(Some(s.clone())),
@@ -3398,7 +3521,7 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
                 extra.insert("slots".into(), json!(crate::electrical::slot_count(m, b)));
             }
         }
-        Element::Grid(_) | Element::RefPlane(_) | Element::Schedule(_) | Element::View3D(_) | Element::PlanView(_) => {}
+        Element::Grid(_) | Element::RefPlane(_) | Element::Schedule(_) | Element::View3D(_) | Element::PlanView(_) | Element::ProjectInfo(_) => {}
     }
     let mut v = serde_json::to_value(e).unwrap_or_default();
     if let Some(o) = v.as_object_mut() {
@@ -3679,9 +3802,14 @@ fn insert_from(s: &mut Session, p: &Value) -> R {
         Some(_) => ids_param(c, &other.model, p)?,
         None => Vec::new(),
     };
-    let made = crate::insert::insert(s.model_mut(), &other.model, &ids).map_err(|e| bad(c, e))?;
+    let same: BTreeSet<String> = match p.get("same_parameters") {
+        v if absent(v) => BTreeSet::new(),
+        Some(v) => serde_json::from_value(v.clone()).map_err(|_| bad(c, "`same_parameters` is a list of parameters' names"))?,
+        None => BTreeSet::new(),
+    };
+    let made = crate::insert::insert_with(s.model_mut(), &other.model, &ids, &same).map_err(|e| bad(c, e))?;
     let there: BTreeMap<String, Id> = made.ids.iter().map(|(a, b)| (a.to_string(), *b)).collect();
-    Ok(json!({"ids": there, "copies": made.copies, "library": made.library, "left_out": made.left_out}))
+    Ok(json!({"ids": there, "copies": made.copies, "library": made.library, "left_out": made.left_out, "parameters": made.parameters}))
 }
 
 /// The project a link's `path` names, read as `open` reads it: its own links are not followed.
@@ -12251,8 +12379,9 @@ fn paint(s: &mut Session, p: &Value) -> R {
     Ok(json!({"painted": ids}))
 }
 
-fn parameter(s: &mut Session, p: &Value) -> R {
+pub(crate) fn parameter(s: &mut Session, p: &Value) -> R {
     let c = "parameter";
+    only(c, p, &["name", "kind", "categories", "sets", "classification", "rename", "delete", "description", "group", "read_only", "scope", "dictionary"])?;
     let name = string(c, p, "name")?.map(|n| n.trim().to_string()).filter(|n| !n.is_empty()).ok_or_else(|| bad(c, "`name` is required"))?;
     let m = s.model_mut();
     // Off the categories `gone`, the ones it was for: their elements' values of `name`, and their
@@ -12297,16 +12426,38 @@ fn parameter(s: &mut Session, p: &Value) -> R {
         return Ok(json!({"deleted": name}));
     }
     let mut param: ProjectParameter = m.parameters.get(&name).cloned().unwrap_or_default();
+    if let Some(v) = p.get("description").filter(|v| !v.is_null()) {
+        param.description = v.as_str().ok_or_else(|| bad(c, "`description` is text"))?.to_string();
+    }
+    // One of Revit's groups by its name or heading, else a heading of the project's own; blank, none.
+    if let Some(v) = p.get("group").filter(|v| !v.is_null()) {
+        param.group = crate::family::Under::read(v.as_str().ok_or_else(|| bad(c, "`group` is text"))?);
+    }
+    if let Some(v) = p.get("read_only").filter(|v| !v.is_null()) {
+        param.read_only = v.as_bool().ok_or_else(|| bad(c, "`read_only` is true or false"))?;
+    }
+    match p.get("dictionary") {
+        Some(Value::Null) => param.dictionary = None,
+        Some(v) => {
+            return Err(bad(
+                c,
+                format!(
+                    "`dictionary` only takes null, which makes it a project parameter, not {v}; `parameter_import` brings a dictionary's"
+                ),
+            ));
+        }
+        None => {}
+    }
     if let Some(v) = p.get("kind").filter(|v| !v.is_null()) {
-        let kind: ParameterKind =
-            serde_json::from_value(v.clone()).map_err(|_| bad(c, format!("`kind`: {v} isn't one of text, number, length, yesno")))?;
+        let kind: ParameterKind = serde_json::from_value(v.clone())
+            .map_err(|_| bad(c, format!("`kind`: {v} isn't one of text, number, integer, length, area, volume, angle, yesno")))?;
         // Values of it: its categories' elements' own (a component's of its family's parameter of
         // that name aren't).
         let Model { families, elements, .. } = &*m;
         let valued = elements.values().any(|e| {
             let theirs = e.family().and_then(|(f, _)| families.get(f)).is_some_and(|f| f.parameters.iter().any(|q| q.name == name));
             param.categories.iter().any(|k| k == e.category()) && !theirs && e.params().is_some_and(|ps| ps.contains_key(&name))
-        });
+        }) || !param.type_values.is_empty();
         if kind != param.kind && valued {
             return Err(bad(c, format!("`{name}` has values of its kind; take them away before it holds another")));
         }
@@ -12328,6 +12479,15 @@ fn parameter(s: &mut Session, p: &Value) -> R {
         clear(m, &name, &gone);
         param.sets.retain(|k, _| list.contains(k));
         param.categories = list;
+        crate::parameters::keep_type_values_of_categories(m, &mut param);
+    }
+    let mut reply = json!({});
+    if let Some(v) = p.get("scope").filter(|v| !v.is_null()) {
+        let scope: Scope = serde_json::from_value(v.clone()).map_err(|_| bad(c, format!("`scope` is instance or type, not {v}")))?;
+        if scope != param.scope {
+            let (word, n) = crate::parameters::switch_scope(m, &name, &mut param, scope);
+            reply[word] = json!(n);
+        }
     }
     if let Some(v) = p.get("sets").filter(|v| !v.is_null()) {
         let map = v
@@ -12361,14 +12521,29 @@ fn parameter(s: &mut Session, p: &Value) -> R {
             if to != name && m.parameters.contains_key(&to) {
                 return Err(bad(c, format!("there's a parameter `{to}` already")));
             }
+            if to != name
+                && let Some(f) = crate::parameters::family_tied(m, &name)
+            {
+                return Err(bad(c, format!("family `{f}` has `{name}` tied to its definition, under this name; it has to keep it")));
+            }
             m.parameters.remove(&name);
             m.library.renamed(&LibKind::Parameter, &name, &to);
             for f in m.view_filters.values_mut().filter(|f| f.categories.iter().any(|k| param.categories.contains(k))) {
                 f.rules.iter_mut().filter(|r| r.field == name).for_each(|r| r.field = to.clone());
             }
             for e in m.elements.values_mut() {
+                if let Element::Tag(t) = e
+                    && t.label.as_deref() == Some(name.as_str())
+                {
+                    t.label = Some(to.clone());
+                }
                 if let Element::Schedule(sc) = e {
                     if param.categories.contains(&category(&sc.of)) {
+                        for f in &mut sc.fields {
+                            if let Some(text) = &mut f.formula {
+                                *text = crate::parameters::rename_in_formula(text, &name, &to);
+                            }
+                        }
                         let swap = |n: &mut String| {
                             if *n == name {
                                 *n = to.clone();
@@ -12393,7 +12568,9 @@ fn parameter(s: &mut Session, p: &Value) -> R {
         None => name,
     };
     m.parameters.insert(name.clone(), param.clone());
-    Ok(json!({"name": name, "parameter": param}))
+    reply["name"] = json!(name);
+    reply["parameter"] = json!(param);
+    Ok(reply)
 }
 
 /// What `form`, `symbol`, `delete_form` and `delete_symbol` did, for `dry_run`'s `changes`.
@@ -12493,11 +12670,15 @@ fn patch_parameter(
         Some(Value::String(to)) if !to.trim().is_empty() => Some(to.trim().to_string()),
         Some(v) => return Err(bad(c, format!("`parameter`: `rename` is the parameter's new name, not {v}"))),
     };
+    // One of Revit's groups, or a heading of the family's own: one line of text.
     if let Some(g) = fields.get("group").filter(|g| !g.is_null())
-        && serde_json::from_value::<crate::family::Group>(g.clone()).is_err()
+        && !g.as_str().and_then(crate::family::Under::read).is_some_and(|u| u.check("").is_ok())
     {
-        let groups: Vec<String> = crate::family::Group::ALL.iter().map(|g| json!(g).as_str().unwrap_or_default().to_string()).collect();
-        return Err(bad(c, format!("parameter `{name}`: `group` is one of {}, not {g}", groups.join(", "))));
+        let groups: Vec<&str> = crate::family::Group::ALL.iter().map(|g| g.key()).collect();
+        return Err(bad(
+            c,
+            format!("parameter `{name}`: `group` is one of {}, or a heading of its own up to {MAX_TEXT} characters on one line, not {g}", groups.join(", ")),
+        ));
     }
     let at = f.parameters.iter().position(|q| q.name == name);
     let was = at.and_then(|i| f.parameters.get(i).cloned());
@@ -13764,11 +13945,12 @@ fn shared_parameters(s: &mut Session, p: &Value) -> R {
             let instance = flag(c, p, "instance")?;
             let under = match p.get("under") {
                 v if absent(v) => None,
-                Some(v) => Some(serde_json::from_value::<crate::family::Group>(v.clone()).map_err(|_| {
-                    let groups: Vec<String> =
-                        crate::family::Group::ALL.iter().map(|g| json!(g).as_str().unwrap_or_default().to_string()).collect();
-                    bad(c, format!("`under` is one of {}, not {v}", groups.join(", ")))
-                })?),
+                Some(v) => Some(
+                    v.as_str().and_then(crate::family::Under::read).filter(|u| u.check("").is_ok()).ok_or_else(|| {
+                        let groups: Vec<&str> = crate::family::Group::ALL.iter().map(|g| g.key()).collect();
+                        bad(c, format!("`under` is one of {}, or a heading of its own on one line, not {v}", groups.join(", ")))
+                    })?,
+                ),
                 None => None,
             };
             let of = category()?;
@@ -14848,6 +15030,9 @@ pub(crate) fn transform(c: &str, m: &Model, mut e: Element, id: Id, mo: &Motion,
         Element::Sheet(_) => return Err(bad(c, format!("sheet {id} has no place in plan; move the views on it"))),
         Element::Schedule(_) | Element::PanelSchedule(_) | Element::PlanView(_) => {
             return Err(bad(c, format!("{category} {id} has no place in plan; move its viewport on its sheet")));
+        }
+        Element::ProjectInfo(_) => {
+            return Err(bad(c, format!("{id} is the project's information, which has no place in plan; a project has one")));
         }
         // A camera view has a place in plan: its mark. The camera goes as a whole (the plan point of its eye and its
         // target, each keeping its height), so moving, copying, turning or mirroring it keeps it looking the same way.
@@ -16964,9 +17149,18 @@ fn with_finishes(s: &Session, p: &Value) -> Result<Option<Value>, String> {
     Ok(Some(json!({"ids": ids})))
 }
 
+/// Refused for the project's information, which a project keeps: emptied, it says nothing.
+fn deletable(c: &str, m: &Model, ids: &[Id]) -> Result<(), String> {
+    match ids.iter().find(|id| matches!(m.elements.get(**id), Some(Element::ProjectInfo(_)))) {
+        Some(id) => Err(bad(c, format!("{id} is the project's information, which a project keeps; empty its fields with `project_info`"))),
+        None => Ok(()),
+    }
+}
+
 fn delete_indexed(s: &mut Session, p: &Value) -> R {
     let m = &s.model;
     let ids = ids_param("delete", m, p)?;
+    deletable("delete", m, &ids)?;
     let lookup = m.lookup();
     let mut gone: BTreeSet<Guid> = ids.iter().map(|id| m.guid(*id)).collect();
     let mut frontier = gone.clone();
@@ -17123,6 +17317,7 @@ fn delete_from_scratch(s: &mut Session, p: &Value) -> R {
     let c = "delete";
     let m = &s.model;
     let ids = ids_param(c, m, p)?;
+    deletable(c, m, &ids)?;
     let mut gone: BTreeSet<Guid> = ids.iter().map(|id| m.guid(*id)).collect();
     // What hangs on what goes, goes: a wall's doors and windows, and their tags.
     loop {
@@ -17387,7 +17582,7 @@ fn rename_entry(m: &mut Model, kind: &LibKind, from: &str, to: &str) {
 }
 
 /// An error naming the first key of `p` that isn't one of `keys`, the ones command `c` takes.
-fn only(c: &str, p: &Value, keys: &[&str]) -> Result<(), String> {
+pub(crate) fn only(c: &str, p: &Value, keys: &[&str]) -> Result<(), String> {
     match p.as_object().and_then(|o| o.keys().find(|k| !keys.contains(&k.as_str()))) {
         Some(k) => Err(bad(c, format!("`{k}` isn't one of its parameters: {}", keys.join(", ")))),
         None => Ok(()),

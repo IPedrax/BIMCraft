@@ -180,7 +180,7 @@ fn new_edit_and_delete_parameter_and_a_parameter_in_use_is_not_deleted() {
     let f = draft(&h);
     let shelf = f.parameters.iter().find(|p| p.name == "Shelf").unwrap();
     assert!(shelf.instance);
-    assert_eq!(shelf.group(), Group::Constraints);
+    assert_eq!(shelf.group(), bimcraft_core::family::Under::Group(Group::Constraints));
     assert!(h.query_by_label("Shelf (default)").is_some());
     assert!(h.get_by_label("Constraints").rect().top() < h.get_by_label("Dimensions").rect().top());
     // A name taken is refused in Parameter Properties.

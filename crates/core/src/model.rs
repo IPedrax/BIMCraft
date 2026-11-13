@@ -2241,7 +2241,7 @@ macro_rules! visit_refs {
                 }
             }
             Element::PanelSchedule(ps) => f(& $($m)? ps.panel),
-            Element::Grid(_) | Element::RefPlane(_) | Element::Sheet(_) | Element::Schedule(_) | Element::Link(_) => {}
+            Element::Grid(_) | Element::RefPlane(_) | Element::Sheet(_) | Element::Schedule(_) | Element::Link(_) | Element::ProjectInfo(_) => {}
             Element::PlanView(v) => {
                 f(& $($m)? v.level);
                 if let Some(g) = & $($m)? v.parent { f(g) }
@@ -2413,6 +2413,9 @@ pub enum Element {
     Circuit(crate::electrical::Circuit),
     /// A distribution board's load schedule, a view of its own.
     PanelSchedule(crate::panel_schedule::PanelSchedule),
+    /// The project's information (Revit's Project Information): one in a project at most.
+    #[serde(rename = "project")]
+    ProjectInfo(crate::project_info::ProjectInfo),
 }
 
 impl Element {
@@ -2434,7 +2437,8 @@ impl Element {
             | Element::Component(Component { params, .. })
             | Element::Stair(Stair { params, .. })
             | Element::Ramp(Ramp { params, .. })
-            | Element::Railing(Railing { params, .. }) => Some(params),
+            | Element::Railing(Railing { params, .. })
+            | Element::ProjectInfo(crate::project_info::ProjectInfo { params, .. }) => Some(params),
             _ => None,
         }
     }
@@ -2457,7 +2461,8 @@ impl Element {
             | Element::Component(Component { params, .. })
             | Element::Stair(Stair { params, .. })
             | Element::Ramp(Ramp { params, .. })
-            | Element::Railing(Railing { params, .. }) => Some(params),
+            | Element::Railing(Railing { params, .. })
+            | Element::ProjectInfo(crate::project_info::ProjectInfo { params, .. }) => Some(params),
             _ => None,
         }
     }
@@ -2592,6 +2597,7 @@ impl Element {
             Element::Link(_) => "link",
             Element::PointCloud(_) => "pointcloud",
             Element::CadImport(_) => "cadimport",
+            Element::ProjectInfo(_) => crate::project_info::CATEGORY,
             Element::Schedule(_) => "schedule",
             Element::View3D(_) => "view3d",
             Element::PlanView(_) => "planview",
@@ -2951,16 +2957,61 @@ pub enum ParameterKind {
     Number,
     Length,
     YesNo,
+    /// A whole number.
+    Integer,
+    /// In m², as a schedule's areas are.
+    Area,
+    /// In m³.
+    Volume,
+    /// In degrees.
+    Angle,
+}
+
+/// Whose value a project parameter is: each element's, or its type's, which every element of the type reads.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Scope {
+    #[default]
+    Instance,
+    Type,
+}
+
+impl Scope {
+    fn is_instance(&self) -> bool {
+        *self == Scope::Instance
+    }
 }
 
 /// A project parameter, as Revit's Manage > Project Parameters makes one: a value of its kind each
-/// element of its categories may have of its own.
+/// element of its categories, or each of their types, may have of its own. There is no separate shared kind: any parameter has a GUID, and can be
+/// scheduled and tagged; one from a dictionary says so in `dictionary`.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProjectParameter {
     #[serde(default)]
     pub kind: ParameterKind,
     pub categories: Vec<String>,
+    /// What it's for: Properties shows it as a tooltip.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub description: String,
+    /// The heading of Properties it shows under (one of Revit's groups, or the project's own); none for Project Parameters.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<crate::family::Under>,
+    /// Shown in Properties and not changed there; commands still can.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub read_only: bool,
+    /// Each element's, or its type's.
+    #[serde(default, skip_serializing_if = "Scope::is_instance")]
+    pub scope: Scope,
+    /// A type parameter's values, by the GUID of the type (a library entry), so a type renamed keeps its value.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub type_values: BTreeMap<Guid, serde_json::Value>,
+    /// The dictionary it came from, which makes it shared; a name in memory, its GUID in a file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dictionary: Option<String>,
+    /// Other parameters' GUIDs it has been said to be, or merged from: what a file holding one of them means here.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub same_as: Vec<Guid>,
     /// The property set an IFC export writes each category's values in, by category: the set they came in from another
     /// program. A category it doesn't name writes them in the project's own, `Project Parameters`.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -2983,10 +3034,10 @@ pub struct Classification {
 }
 
 /// The most project parameters a project holds.
-pub const MAX_PROJECT_PARAMETERS: usize = 256;
+pub const MAX_PROJECT_PARAMETERS: usize = 4096;
 
 /// The categories project parameters are for.
-pub const PARAMETER_CATEGORIES: [&str; 25] = [
+pub const PARAMETER_CATEGORIES: [&str; 26] = [
     "wall",
     "floor",
     "ceiling",
@@ -3012,6 +3063,7 @@ pub const PARAMETER_CATEGORIES: [&str; 25] = [
     "downconductor",
     "groundconductor",
     "cable",
+    "project",
 ];
 
 impl ProjectParameter {
@@ -3019,7 +3071,10 @@ impl ProjectParameter {
     pub fn holds(&self, v: &serde_json::Value) -> bool {
         match self.kind {
             ParameterKind::Text => v.as_str().is_some_and(|t| t.chars().count() <= MAX_TEXT),
-            ParameterKind::Number | ParameterKind::Length => v.as_f64().is_some_and(|x| x.is_finite() && x.abs() <= MAX_COORD),
+            ParameterKind::Number | ParameterKind::Length | ParameterKind::Area | ParameterKind::Volume | ParameterKind::Angle => {
+                v.as_f64().is_some_and(|x| x.is_finite() && x.abs() <= MAX_COORD)
+            }
+            ParameterKind::Integer => v.as_f64().is_some_and(|x| x.is_finite() && x.abs() <= MAX_COORD && x.fract() == 0.0),
             ParameterKind::YesNo => v.is_boolean(),
         }
     }
@@ -3216,6 +3271,12 @@ pub struct Model {
     /// Its project parameters, by name: values each element of their categories may have.
     #[serde(default)]
     pub parameters: BTreeMap<String, ProjectParameter>,
+    /// The dictionaries its parameters came from, by name: where each was and the version it was at.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub dictionaries: BTreeMap<String, crate::parameters::DictionaryRef>,
+    /// What the files imported call categories, each to one of ours or, none, left out: asked once.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub parameter_map: BTreeMap<String, Option<String>>,
     /// Its view filters, by name: categories and rules that pick elements out for views to hide
     /// or draw another way.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -3374,6 +3435,8 @@ impl Model {
             cads: BTreeMap::new(),
             families: BTreeMap::new().into(),
             parameters: BTreeMap::new(),
+            dictionaries: BTreeMap::new(),
+            parameter_map: BTreeMap::new(),
             view_filters: BTreeMap::new(),
             view_templates: graphics::starter_templates(language),
             phases: phasing::phases(language),
@@ -4100,6 +4163,8 @@ impl Model {
                 (r.type_name, r.colour) = (name, None);
             }
         }
+        // The project parameters' kinds and settings, `.bimparams` dictionaries, and the project's information (FORMAT 20,
+        // with the rooms) need nothing of a file of 19, which holds none of them.
         self.format = FORMAT;
     }
 
@@ -4999,6 +5064,7 @@ impl Model {
             | Element::Schedule(_)
             | Element::PanelSchedule(_)
             | Element::Link(_)
+            | Element::ProjectInfo(_)
             | Element::Dimension3D(_)
             | Element::View3D(_) => None,
         }
@@ -7001,6 +7067,15 @@ impl Model {
             if p.categories.is_empty() {
                 return Err(format!("{who}: it needs a category: one of {}", PARAMETER_CATEGORIES.join(", ")));
             }
+            if p.description.chars().count() > MAX_TEXT {
+                return Err(format!("{who}: a description holds up to {MAX_TEXT} characters"));
+            }
+            if let Some(u) = &p.group {
+                u.check(&who)?;
+            }
+            if let Some(d) = p.dictionary.as_ref().filter(|d| !self.dictionaries.contains_key(*d)) {
+                return Err(format!("{who}: there's no dictionary `{d}`; make it a project parameter with `dictionary` null"));
+            }
             if let Some(c) = p.categories.iter().find(|c| !PARAMETER_CATEGORIES.contains(&c.as_str())) {
                 return Err(format!("{who}: `{c}` isn't a category it can be for; there are {}", PARAMETER_CATEGORIES.join(", ")));
             }
@@ -7008,11 +7083,23 @@ impl Model {
                 return Err(format!("{who}: {c}s have a `{n}` of their own; name it otherwise"));
             }
             if p.categories.iter().any(|c| c == "component")
-                && let Some((f, _)) = self.families.iter().find(|(_, f)| f.parameters.iter().any(|q| q.name == *n))
+                && let Some(f) = crate::parameters::family_clash(self, n, p)
             {
                 return Err(format!("{who}: family `{f}` has a parameter of that name; name it otherwise"));
             }
             p.check_ifc().map_err(|e| format!("{who}: {e}"))?;
+            if p.scope == Scope::Type {
+                if let Some(c) = p.categories.iter().find(|c| crate::parameters::TYPELESS.contains(&c.as_str())) {
+                    return Err(format!(
+                        "{who}: {c}s have no types, so it can't be a type parameter for them; make it an instance parameter or take {c} off"
+                    ));
+                }
+            } else if !p.type_values.is_empty() {
+                return Err(format!("{who}: it holds values of types and isn't a type parameter"));
+            }
+            if let Some(v) = p.type_values.values().find(|v| !p.holds(v)) {
+                return Err(format!("{who}: a type's value {v} isn't what it holds"));
+            }
         }
         graphics::check_project(self)?;
         phasing::check_project(self)?;
@@ -7160,6 +7247,8 @@ impl Model {
                     | Element::Mass(_)
                     | Element::PointCloud(_)
                     | Element::CadImport(_)
+                    // One a project: a second is seen only beside the first.
+                    | Element::ProjectInfo(_)
             )
         };
         // What changed, as GUIDs, and the plan boxes the walls among it took up, before and now.
@@ -7267,7 +7356,19 @@ impl Model {
 
     /// What [`Model::check`] asks of element `id`, `e`, keeping in `t` what it must hold in common with the others.
     fn check_element<'a>(&'a self, id: Id, e: &'a Element, t: &mut Tally<'a>) -> Result<(), String> {
-        let Tally { level_names, grid_names, link_names, view_names, twins, sheet_numbers, placed, spans, members_placed, shapes } = t;
+        let Tally {
+            level_names,
+            grid_names,
+            link_names,
+            view_names,
+            twins,
+            sheet_numbers,
+            placed,
+            spans,
+            members_placed,
+            shapes,
+            project_info,
+        } = t;
         let who = format!("{} {id}", e.category());
         let level_ok = |l: Guid| self.level(l).map(|_| ()).ok_or(format!("{who}: level {} doesn't exist", self.shown(l)));
         // A view annotation is drawn in: a plan, a section or an elevation, or with `sheets`, a sheet.
@@ -7306,12 +7407,19 @@ impl Model {
                 .get(k)
                 .filter(|p| p.categories.iter().any(|c| c == e.category()))
                 .ok_or_else(|| format!("{who}: `{k}` isn't a parameter of {}s; add it with `parameter`", e.category()))?;
+            if p.scope == Scope::Type {
+                return Err(format!("{who}: `{k}` is a type parameter: its value is the type's, set with `type_parameter`"));
+            }
             if !p.holds(v) {
                 let what = match p.kind {
                     ParameterKind::Text => "text",
                     ParameterKind::Number => "a number",
                     ParameterKind::Length => "a length",
                     ParameterKind::YesNo => "yes or no",
+                    ParameterKind::Integer => "a whole number",
+                    ParameterKind::Area => "an area",
+                    ParameterKind::Volume => "a volume",
+                    ParameterKind::Angle => "an angle",
                 };
                 return Err(format!("{who}: `{k}` holds {what}, not {v}"));
             }
@@ -7794,6 +7902,17 @@ impl Model {
                 point(&format!("{who} at"), pc.at)?;
                 coord(&format!("{who} offset"), pc.offset)?;
                 coord(&format!("{who} angle"), pc.angle)?;
+            }
+            Element::ProjectInfo(info) => {
+                info.check(&who)?;
+                if let Some(k) =
+                    info.params.keys().find(|k| phasing::reserved(k) || crate::paint::reserved(k) || crate::massing::reserved(k))
+                {
+                    return Err(format!("{who}: the project has no `{k}`: phases, design options, paint and masses are its elements'"));
+                }
+                if let Some(first) = project_info.replace(id) {
+                    return Err(format!("{who}: the project's information is element {first}; a project has one, set with `project_info`"));
+                }
             }
             Element::CadImport(ci) => {
                 if !self.cads.contains_key(&ci.cad) {
@@ -8408,6 +8527,8 @@ impl Model {
             cads,
             families,
             parameters,
+            dictionaries,
+            parameter_map,
             view_filters,
             view_templates,
             phases,
@@ -8451,6 +8572,8 @@ impl Model {
             && *cads == o.cads
             && *families == o.families
             && *parameters == o.parameters
+            && *dictionaries == o.dictionaries
+            && *parameter_map == o.parameter_map
             && *view_filters == o.view_filters
             && *view_templates == o.view_templates
             && *phases == o.phases
@@ -8518,6 +8641,8 @@ struct Tally<'a> {
     members_placed: BTreeMap<Guid, usize>,
     /// Whether components' shapes build, by family, type and values (as JSON).
     shapes: HashMap<(&'a str, &'a str, String), Result<(), String>>,
+    /// The project's information element, once seen.
+    project_info: Option<Id>,
 }
 
 fn coord(what: &str, v: f64) -> Result<(), String> {
