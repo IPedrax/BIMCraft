@@ -15,7 +15,7 @@ fn id(reply: Value) -> u64 {
 }
 
 fn plan(s: &Session, scale: f64) -> Drawing {
-    render::draw(&s.model, s.model.levels()[0].0, View { scale, cx: 5000.0, cy: 0.0, width: 800, height: 600 })
+    render::draw(&s.model, s.model.levels()[0].0, View { angle: 0.0, scale, cx: 5000.0, cy: 0.0, width: 800, height: 600 })
 }
 
 /// The grid line `g` draws: its colour, its dash and its width. The longest two-point line of its own is the line; its
