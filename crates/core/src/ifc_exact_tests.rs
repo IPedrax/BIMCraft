@@ -5,6 +5,7 @@
 use crate::family::Expr;
 use crate::family::sketch::FormCurve;
 use crate::ifc_geometry_tests::{G, mesh, volume};
+use crate::model::{Component, Element, Model};
 
 /// A shape of the file's, `items` (solids), behind an `IfcRepresentationMap` at the origin.
 fn shape(g: &mut G, items: &[u32]) -> u32 {
@@ -52,7 +53,19 @@ fn bolt(g: &mut G, name: &str, map: u32, at: [f64; 3], z: [f64; 3], x: [f64; 3])
 }
 
 const UP: [f64; 3] = [0.0, 0.0, 1.0];
+const NORTH: [f64; 3] = [0.0, 1.0, 0.0];
 const EAST: [f64; 3] = [1.0, 0.0, 0.0];
+
+/// The components of family `family`.
+fn copies<'a>(m: &'a Model, family: &str) -> Vec<&'a Component> {
+    m.elements
+        .values()
+        .filter_map(|e| match e {
+            Element::Component(c) if c.family == family => Some(c),
+            _ => None,
+        })
+        .collect()
+}
 
 #[test]
 fn a_mapped_straight_extrusion_comes_in_as_the_form_it_is_and_draws_as_the_solid() {
@@ -91,4 +104,28 @@ fn a_profile_of_lines_comes_in_as_its_lines_and_a_solid_of_another_kind_as_trian
     let v = volume(&mesh(m, "Nut"));
     let solid = 900.0 * 3f64.sqrt() / 2.0 * 16.0;
     assert!((v - solid).abs() < 1e-3 * solid, "{v} for {solid}");
+}
+
+#[test]
+fn copies_of_one_mapped_shape_moved_turned_or_a_few_hundredths_apart_are_one_type() {
+    let mut g = G::new();
+    let r = rod(&mut g, 8.0, 50.0);
+    let map = shape(&mut g, &[r]);
+    // Tekla writes copies of one shape as maps of their own, a few hundredths of a millimetre apart.
+    let near = rod(&mut g, 8.03, 50.02);
+    let other = shape(&mut g, &[near]);
+    bolt(&mut g, "Bolt", map, [0.0, 0.0, 0.0], UP, EAST);
+    bolt(&mut g, "Bolt", map, [5000.0, 3000.0, 0.0], UP, NORTH);
+    bolt(&mut g, "Bolt", other, [9000.0, 0.0, 0.0], UP, EAST);
+    let i = g.import();
+    let m = &i.model;
+    assert_eq!(m.families["Bolt"].types.len(), 1, "{:?}", m.families["Bolt"].types.keys());
+    let placed = copies(m, "Bolt");
+    assert_eq!(placed.len(), 3);
+    // Each where the file has it, the one turned a quarter turn by its angle, none tilted.
+    let mut angles: Vec<f64> = placed.iter().map(|c| c.angle).collect();
+    angles.sort_by(f64::total_cmp);
+    assert_eq!(angles, [0.0, 0.0, 90.0]);
+    assert!(placed.iter().all(|c| c.tilt.is_none()));
+    assert!(placed.iter().any(|c| (c.at.0, c.at.1) == (5000.0, 3000.0)));
 }
