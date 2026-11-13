@@ -177,7 +177,9 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// ceiling made for it (`floor`, `ceiling`); a build that reads up to 19 would lose the links and leave the finishes behind. And
 /// project parameters may be of kinds 19 doesn't know (`integer`, `area`, `volume`, `angle`), a type's (`scope`, `type_values`),
 /// from a `.bimparams` dictionary (`dictionaries`), grouped under a heading of the project's own, and the project's information
-/// is an element that title blocks read; a build that reads up to 19 would answer such a kind with a serde error.
+/// is an element that title blocks read; a build that reads up to 19 would answer such a kind with a serde error. And a column
+/// holds a `top_offset` and the roof or floor its top and its base are attached to (`attach_top`, `attach_base`), as a wall's are;
+/// a build that reads up to 19 would leave them out of a file and stand the column at its own level, not "saved by a newer BIMCraft".
 pub const FORMAT: u32 = 33;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
@@ -4166,6 +4168,8 @@ impl Model {
                 (r.type_name, r.colour) = (name, None);
             }
         }
+        // A column's `top_offset`, `attach_top` and `attach_base` (FORMAT 33 too) need nothing of a file of 19, which holds none: its
+        // columns keep the top they had, at their top level or their height.
         // The project parameters' kinds and settings and `.bimparams` dictionaries (FORMAT 33, with the rooms) need nothing of
         // a file of 19, which holds none of them. The project's information does: a title value under one of its keys
         // (CLIENT, PROJECT_NUMBER, …) moves onto it, and a title block's field of such a key, which every title block has
