@@ -1487,7 +1487,7 @@ impl Shortcuts {
             }
             for key in keys.iter().take(MAX_PER_ACTION) {
                 let Ok(b) = parse_binding(key) else { continue };
-                let _ = s.add_binding(action, b, true);
+                let _ = s.add_binding(action, b, false);
             }
         }
         s
@@ -2300,6 +2300,8 @@ impl BimApp {
             "Select All Instances" => self.select_all_instances(),
             "Keyboard Shortcuts" => self.open_shortcuts(),
             "Co-Work" => self.open_cowork(),
+            "Pin" => self.set_pinned(true),
+            "Unpin" => self.set_pinned(false),
             "Visibility/Graphics" => self.open_graphics(0),
             "Hide Element" => self.hide_selection(false),
             "Hide Category" => self.hide_selection(true),

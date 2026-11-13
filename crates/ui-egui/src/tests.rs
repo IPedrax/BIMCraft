@@ -3129,11 +3129,18 @@ fn nothing_a_translated_interface_shows_is_left_in_english() {
     // A label in English that the table translates is a string the window forgot to translate: a
     // widget's name, or a plain label's text, which egui gives screen readers as its value.
     // A shortcut key (PR, UP) is not English prose: the Keyboard Shortcuts window shows it as it is in every language.
-    let keys: Vec<&str> = crate::shortcuts().into_iter().map(|(k, _)| k).collect();
+    let mut keys: Vec<String> = crate::shortcuts().into_iter().map(|(k, _)| k.to_string()).collect();
+    for a in crate::shortcuts::registry().actions() {
+        for b in &a.defaults {
+            if let Ok(b) = crate::shortcuts::parse_binding(b) {
+                keys.push(crate::shortcuts::display_binding(b));
+            }
+        }
+    }
     let english = |h: &Harness<BimApp>, l: Lang| -> Vec<String> {
         h.query_all(By::new())
             .filter_map(|n| n.accesskit_node().label().or_else(|| n.accesskit_node().value()))
-            .filter(|s| !keys.contains(&s.as_str()))
+            .filter(|s| !keys.contains(s))
             .filter(|s| crate::lang::translated_in(l, s).is_some_and(|x| x != s))
             .collect()
     };
