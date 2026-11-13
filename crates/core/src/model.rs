@@ -172,15 +172,15 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 2: the library has ids and GUIDs too
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
-/// 33 (20 to 32 were the Family Editor's steps before it was released, none of them released, and [`Model::read`] refuses
-/// them): rooms have types (`types.room`), which may name a floor type and a ceiling type, and a room holds the floor and the
+/// 20 (0.12's, which every change since 19 shares; the Family Editor's unreleased builds wrote 20 to 32 too, and a file of
+/// theirs stamped 20 opens as one of 0.12's, 21 and up as newer): rooms have types (`types.room`), which may name a floor type and a ceiling type, and a room holds the floor and the
 /// ceiling made for it (`floor`, `ceiling`); a build that reads up to 19 would lose the links and leave the finishes behind. And
 /// project parameters may be of kinds 19 doesn't know (`integer`, `area`, `volume`, `angle`), a type's (`scope`, `type_values`),
 /// from a `.bimparams` dictionary (`dictionaries`), grouped under a heading of the project's own, and the project's information
 /// is an element that title blocks read; a build that reads up to 19 would answer such a kind with a serde error. And a column
 /// holds a `top_offset` and the roof or floor its top and its base are attached to (`attach_top`, `attach_base`), as a wall's are;
 /// a build that reads up to 19 would leave them out of a file and stand the column at its own level, not "saved by a newer BIMCraft".
-pub const FORMAT: u32 = 33;
+pub const FORMAT: u32 = 20;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -932,7 +932,7 @@ pub struct Room {
     pub point: P2,
     pub name: String,
     pub number: String,
-    /// What a file from before format 33 holds, a colour of the room's own on plans: `Model::migrate` moves it to a room
+    /// What a file from before format 20 holds, a colour of the room's own on plans: `Model::migrate` moves it to a room
     /// type (`RoomType::colour`), so a room of the project has none, and `Model::check` refuses one.
     #[serde(default, skip_serializing)]
     pub colour: Option<[u8; 3]>,
@@ -3961,13 +3961,6 @@ impl Model {
                 "it was saved by a newer BIMCraft (file format {format}; this one reads up to {FORMAT}): update BIMCraft to open it"
             ));
         }
-        // 20 to 32 were the Family Editor's steps before it was released: none was, so none is read, as a newer file isn't.
-        if (20..=32).contains(&format) {
-            return Err(format!(
-                "it was saved by an unreleased build of BIMCraft (file format {format}), which no released one reads: save it again \
-                 with that build as a format this one reads, or open it there"
-            ));
-        }
         if format < 4 {
             pens_from_pixels(&mut v);
         }
@@ -4149,7 +4142,7 @@ impl Model {
             self.families.values_mut().for_each(crate::family::Family::pin_cuts);
         }
         self.settle_hosts(None);
-        // 19 to 33: rooms have types. A file of 19 has none, so its rooms are of the starter one, with no floor or ceiling.
+        // 19 to 20: rooms have types. A file of 19 has none, so its rooms are of the starter one, with no floor or ceiling.
         if self.types.room.is_empty() {
             self.types.room.insert(ROOM_TYPE.into(), RoomType::default());
         }
@@ -4168,13 +4161,13 @@ impl Model {
                 (r.type_name, r.colour) = (name, None);
             }
         }
-        // A column's `top_offset`, `attach_top` and `attach_base` (FORMAT 33 too) need nothing of a file of 19, which holds none: its
+        // A column's `top_offset`, `attach_top` and `attach_base` (FORMAT 20 too) need nothing of a file of 19, which holds none: its
         // columns keep the top they had, at their top level or their height.
-        // The project parameters' kinds and settings and `.bimparams` dictionaries (FORMAT 33, with the rooms) need nothing of
+        // The project parameters' kinds and settings and `.bimparams` dictionaries (FORMAT 20, with the rooms) need nothing of
         // a file of 19, which holds none of them. The project's information does: a title value under one of its keys
         // (CLIENT, PROJECT_NUMBER, …) moves onto it, and a title block's field of such a key, which every title block has
         // now, goes, its project default kept on the information where that says nothing.
-        if self.format < 33 {
+        if self.format < 20 {
             let keys: Vec<String> = self.title_values.keys().filter(|k| crate::project_info::field_of_key(k).is_some()).cloned().collect();
             for key in keys {
                 if let (Some(v), Some(field)) = (self.title_values.remove(&key), crate::project_info::field_of_key(&key))

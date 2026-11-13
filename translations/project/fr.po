@@ -405,7 +405,7 @@ msgstr "Membrane"
 #: crates/core/src/commands.rs:3333
 #: crates/core/src/commands.rs:14563
 #: crates/core/src/family.rs:3429
-#: crates/core/src/model.rs:4955
+#: crates/core/src/model.rs:4948
 msgid "Metal"
 msgstr "Métal"
 

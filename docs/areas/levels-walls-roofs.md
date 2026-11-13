@@ -64,7 +64,7 @@ boundary it has when frozen, both ways it can be measured (`Room::kept`, given a
 `Model::keep_rooms`, which the engine calls after every command, and let go when it is thawed): `room_region_at` returns it
 and the plan draws it without finding the level's lines, so the walls are never searched for it again, which saves the time
 of many rooms; moved, rotated or mirrored, its boundary goes with it, and only a bounded room can be frozen. A room has a type (`Room::type_name`, `types.room`, `RoomType`; a new
-project's `Standard`, which a file from before format 33 is given by `Model::migrate`), and a room type may name a floor type and a
+project's `Standard`, which a file from before format 20 is given by `Model::migrate`), and a room type may name a floor type and a
 ceiling type (`type {category: room, floor, floor_offset, ceiling, ceiling_offset}`): each of its rooms then has a floor and a
 ceiling of its own (`Room::floor`, `Room::ceiling`, a `Finish`: none, `Connected` to the element by its GUID, or `Disconnected`),
 ordinary `Floor` and `Ceiling` elements, so plans, sections, the 3D view, schedules and IFC read them with no room found.
