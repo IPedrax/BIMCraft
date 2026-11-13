@@ -3986,16 +3986,16 @@ fn link_model(s: &mut Session, p: &Value) -> R {
     };
     let location = name_param(c, p, "location")?;
     if let Some(l) = &location
-        && !other.coordinates.locations.contains_key(l)
+        && other.site_named(l).is_none()
     {
-        let names: Vec<&str> = other.coordinates.locations.keys().map(String::as_str).collect();
-        return Err(bad(c, format!("the linked project has no location `{l}`; it has {}", names.join(", "))));
+        return Err(bad(c, format!("the linked project has no location `{l}`; it has {}", other.coordinates.names().join(", "))));
     }
     let elements = other.elements.len();
     let link = crate::model::Link { name: name.clone(), path: path.clone(), at, angle, by, location, raised: 0.0, placed: None };
     let (placed, turned, raised) = crate::link::placement(&s.model, &link, &other);
     let mut reply = json!({"name": name, "elements": elements, "at": placed, "angle": turned, "raised": raised});
-    let scales = (s.model.coordinates.location().scale, other.coordinates.location().scale);
+    let theirs = link.location.as_deref().and_then(|n| other.site_named(n)).unwrap_or(other.site());
+    let scales = (s.model.site().scale, theirs.scale);
     if by == crate::link::By::Shared && (scales.0 - scales.1).abs() > 1e-9 {
         reply["warning"] = json!(format!(
             "its location's scale ({}) isn't this project's ({}): a link isn't scaled, so it stands by its origin and turn alone",
@@ -7743,7 +7743,7 @@ fn point_cloud(s: &mut Session, p: &Value) -> R {
     };
     let (lo, _) = scan.bounds();
     let origin = scan.origin();
-    let mut coordinates = m.coordinates.clone();
+    let mut site = m.site().clone();
     let mut acquired = None;
     let mut angle = 0.0;
     let (mut at, mut offset) = match string(c, p, "origin")?.as_deref() {
@@ -7751,14 +7751,15 @@ fn point_cloud(s: &mut Session, p: &Value) -> R {
         Some("shared") => {
             // Its file's coordinates are the map's: its middle goes where the active location puts it, turned to match.
             if flag(c, p, "acquire")? {
-                coordinates.acquire([origin[0], origin[1], origin[2] + lo[2]]);
-                acquired = Some(coordinates.location());
+                site.acquire([origin[0], origin[1], origin[2] + lo[2]]);
+                site.check().map_err(|e| bad(c, e))?;
+                acquired = Some(site.location(m.coordinates.survey));
             }
-            let here = coordinates.to_internal(origin);
+            let here = site.to_internal(origin);
             if !here.iter().all(|x| x.abs() <= MAX_COORD) {
                 return Err(bad(c, far_message(here)));
             }
-            angle = -coordinates.location().angle;
+            angle = -site.rotation;
             (P2(here[0], here[1]), here[2] - m.elevation(level))
         }
         Some("file") => {
@@ -7797,7 +7798,9 @@ fn point_cloud(s: &mut Session, p: &Value) -> R {
     if new {
         m.clouds.insert(name.clone(), scan);
     }
-    m.coordinates = coordinates;
+    if acquired.is_some() {
+        m.set_site(site);
+    }
     let id = m.insert(Element::PointCloud(PointCloud { cloud: name.clone(), level, at, offset, angle }));
     Ok(json!({"id": id, "cloud": name, "points": points, "read": read, "origin": origin, "acquired": acquired}))
 }
@@ -8088,7 +8091,7 @@ fn import_cad(s: &mut Session, p: &Value) -> R {
         }
         (None | Some("auto"), None) => {
             let bulk = cad.bulk().unwrap_or_default();
-            let (k, note) = auto_scale(&s.model, dxf.scale, &dxf.unit, (bulk[0] + bulk[1]) * 0.5);
+            let (k, note) = auto_scale(dxf.scale, &dxf.unit, (bulk[0] + bulk[1]) * 0.5);
             notes.extend(note);
             k
         }
@@ -8096,13 +8099,12 @@ fn import_cad(s: &mut Session, p: &Value) -> R {
     };
     let unit_warning = (absent(p.get("units")) || string(c, p, "units")?.as_deref() == Some("auto"))
         && absent(p.get("scale"))
-        && s.model.coordinates.crs.is_none()
         && looks_like_map(dxf.scale, (cad.bulk().unwrap_or_default()[0] + cad.bulk().unwrap_or_default()[1]) * 0.5) == Some(false);
     let file_unit = dxf.unit.clone();
     let bulk = cad.bulk().unwrap_or_default();
     let middle = (bulk[0] + bulk[1]) * 0.5;
     let acquire = flag(c, p, "acquire")?;
-    let mut coordinates = s.model.coordinates.clone();
+    let mut site = s.model.site().clone();
     let mut acquired = None;
     let (origin, at, angle, scale) = match string(c, p, "position")?.as_deref() {
         None | Some("center" | "centre") => {
@@ -8128,15 +8130,15 @@ fn import_cad(s: &mut Session, p: &Value) -> R {
             // Its file's coordinates are the map's: its middle goes where the active location puts it, turned and scaled to match.
             let q = [middle.0 * scale, middle.1 * scale, 0.0];
             if acquire {
-                coordinates.acquire(q);
-                acquired = Some(coordinates.location());
+                site.acquire(q);
+                site.check().map_err(|e| bad(c, e))?;
+                acquired = Some(site.location(s.model.coordinates.survey));
             }
-            let l = coordinates.location();
-            let here = coordinates.to_internal(q);
+            let here = site.to_internal(q);
             if !(here[0].abs() <= MAX_COORD && here[1].abs() <= MAX_COORD) {
                 return Err(bad(c, far_message(here)));
             }
-            (middle, P2(here[0], here[1]), -l.angle, scale / l.scale)
+            (middle, P2(here[0], here[1]), -site.rotation, scale / site.scale)
         }
         Some(o) => {
             return Err(bad(
@@ -8181,7 +8183,9 @@ fn import_cad(s: &mut Session, p: &Value) -> R {
     if new {
         m.cads.insert(name.clone(), cad);
     }
-    m.coordinates = coordinates;
+    if acquired.is_some() {
+        m.set_site(site);
+    }
     let id = m.insert(Element::CadImport(CadImport { cad: name.clone(), level, at, origin, scale, angle, view, hidden, colors }));
     let extents = m.cad_box(id);
     let mut reply = json!({
@@ -9177,14 +9181,12 @@ fn reset_coordinates(s: &mut Session) -> R {
     for (id, l) in pinned {
         m.elements.insert(id, Element::Link(l));
     }
-    let co = &mut m.coordinates;
-    co.base = [0.0; 3];
-    co.survey = [0.0; 3];
-    let active = co.active.clone();
-    if let Some(l) = co.locations.get_mut(&active) {
-        (l.east, l.north, l.elevation, l.angle, l.scale) = (0.0, 0.0, 0.0, 0.0, 1.0);
-    }
-    Ok(coordinates_report(&s.model))
+    m.coordinates.base = [0.0; 3];
+    m.coordinates.survey = [0.0; 3];
+    // The active site on the internal origin, its map system kept.
+    let g = crate::model::Georeference { eastings: 0.0, northings: 0.0, height: 0.0, rotation: 0.0, scale: 1.0, ..m.site().clone() };
+    m.set_site(g);
+    Ok(s.model.coordinates_report())
 }
 
 fn coordinates(s: &mut Session, p: &Value) -> R {
@@ -9196,20 +9198,28 @@ fn coordinates(s: &mut Session, p: &Value) -> R {
     }
     if let Some(from) = id_opt(c, p, "acquire")? {
         let m = &s.model;
-        let l = match m.elements.get(from) {
-            Some(Element::Link(l)) => l,
+        let mut g = m.site().clone();
+        match m.elements.get(from) {
             Some(Element::CadImport(ci)) => {
                 // A drawing's own coordinates are the map's: where its origin stands, the shared coordinates are its, in mm,
                 // and its axes the map's. The elevation stays.
                 let z = m.elevation(ci.level);
-                let shared = [ci.origin.0 * ci.scale, ci.origin.1 * ci.scale, m.coordinates.to_shared([ci.at.0, ci.at.1, z])[2]];
-                let mut co = m.coordinates.clone();
-                co.specify([ci.at.0, ci.at.1, z], shared, Some(-ci.angle));
-                co.check().map_err(|e| bad(c, e))?;
-                s.model_mut().coordinates = co;
-                let mut r = coordinates_report(&s.model);
-                r["acquired"] = json!({"from": from, "location": s.model.coordinates.location()});
-                return Ok(r);
+                let shared = [ci.origin.0 * ci.scale, ci.origin.1 * ci.scale, g.to_shared([ci.at.0, ci.at.1, z])[2]];
+                g.rotation = -ci.angle;
+                g.specify([ci.at.0, ci.at.1, z], shared);
+            }
+            Some(Element::Link(l)) => {
+                let other = m.loaded.get(&l.path).ok_or_else(|| bad(c, format!("link `{}` isn't loaded: `reload` it first", l.name)))?;
+                // Where its origin stands here, its shared coordinates are this project's from now on.
+                let (at, angle, dz) = crate::link::placement(m, l, other);
+                let theirs = l.location.as_deref().and_then(|n| other.site_named(n)).unwrap_or(other.site());
+                (g.rotation, g.scale) = (theirs.rotation - angle, theirs.scale);
+                // Its map system comes with it, where it names one.
+                if !theirs.crs.is_empty() {
+                    g = crate::model::Georeference { eastings: 0.0, northings: 0.0, height: 0.0, ..theirs.clone() };
+                    (g.rotation, g.scale) = (theirs.rotation - angle, theirs.scale);
+                }
+                g.specify([at.0, at.1, dz], theirs.to_shared([0.0; 3]));
             }
             _ => {
                 return Err(bad(
@@ -9217,29 +9227,13 @@ fn coordinates(s: &mut Session, p: &Value) -> R {
                     format!("`acquire` takes a link or a CAD drawing placed in the project, and element {from} is neither"),
                 ));
             }
-        };
-        let link = from;
-        let other = m.loaded.get(&l.path).ok_or_else(|| bad(c, format!("link `{}` isn't loaded: `reload` it first", l.name)))?;
-        // Where its origin stands here, its shared coordinates are this project's from now on.
-        let (at, angle, dz) = crate::link::placement(m, l, other);
-        let theirs =
-            l.location.as_ref().and_then(|n| other.coordinates.locations.get(n)).cloned().unwrap_or_else(|| other.coordinates.location());
-        let q = theirs.to_shared(other.coordinates.survey, [0.0; 3]);
-        let mut co = m.coordinates.clone();
-        let active = co.active.clone();
-        if let Some(here) = co.locations.get_mut(&active) {
-            here.angle = theirs.angle - angle;
-            here.scale = theirs.scale;
         }
-        co.specify([at.0, at.1, dz], q, None);
-        // Its map system comes with it, where it has one.
-        if other.coordinates.crs.is_some() {
-            co.crs = other.coordinates.crs;
-        }
-        co.check().map_err(|e| bad(c, e))?;
-        s.model_mut().coordinates = co;
-        let mut r = coordinates_report(&s.model);
-        r["acquired"] = json!({"from": link, "location": s.model.coordinates.location()});
+        g.rotation = (g.rotation + 180.0).rem_euclid(360.0) - 180.0;
+        g.check().map_err(|e| bad(c, e))?;
+        let m = s.model_mut();
+        m.set_site(g);
+        let mut r = m.coordinates_report();
+        r["acquired"] = json!({"from": from, "location": m.frames().location()});
         return Ok(r);
     }
     let base = match p.get("base") {
@@ -10863,18 +10857,13 @@ fn looks_like_map(scale: Option<f64>, middle: P2) -> Option<bool> {
 }
 
 /// The scale an import whose units are auto reads a drawing at, and a note when it isn't its file's: a file that says inches
-/// for map coordinates (`looks_like_map`) is read in the unit of the project's map system, else in metres; one that says
-/// feet, in the map system's unit when that is metric. Else its file's.
-fn auto_scale(m: &Model, scale: Option<f64>, unit: &str, middle: P2) -> (f64, Option<String>) {
+/// for map coordinates (`looks_like_map`) is read in metres. Else its file's.
+fn auto_scale(scale: Option<f64>, unit: &str, middle: P2) -> (f64, Option<String>) {
     let file = scale.unwrap_or(1.0);
     let unit = spelled(unit);
-    let info = m.coordinates.crs.and_then(|code| crate::crs::lookup(code).ok());
-    let (k, why) = match (looks_like_map(scale, middle), &info) {
-        // Inches, or feet where the map system is metric: the map system's unit.
-        (Some(inches), Some(i)) if inches || i.mm() >= 1000.0 => {
-            (i.mm(), format!("{}s, the unit of the project's map system ({})", i.unit, i.name))
-        }
-        (Some(true), _) => (1000.0, "metres, as map coordinates are".to_string()),
+    // shortcut: metres until map systems name their unit (slice 6), which then reads inches, and feet on a metric map, in it.
+    let (k, why) = match looks_like_map(scale, middle) {
+        Some(true) => (1000.0, "metres, as map coordinates are".to_string()),
         _ => return (file, None),
     };
     if (k - file).abs() < 1e-9 {

@@ -118,18 +118,52 @@ model is moved by; without one, the context's `TrueNorth` and that shift make a 
 coordinates comes back keeping them. Tests: `coordinates_io_tests.rs` (`one_map_conversion_is_placed_at_the_files_origin`,
 and the round trip from every origin), `georef_tests.rs`.
 
-## Elevations, spots and schedules
+## Far coordinates at import and export (the bias)
 
-`Origin` (base, survey) says what a reading measures from: `Coordinates::elevation` turns an internal height into one from
-the Project Base Point (`z - base.z`) or the Survey Point (the location's elevation plus `z - survey.z`), and
-`Coordinates::plan` a plan point into east and north from the base point, along the project's axes, or in shared
-coordinates. A `Spot` has an `origin` (`Model::spot_reads`, what its text and the `elements` and `spot` replies say;
-`spot_value` stays the internal height, which sections place it by) and, with `coordinate`, is a spot coordinate: in a plan
-only, its north over its east beside a cross (`Model::spot_coordinate`, `render::coordinate_mark`), with no host. A
-`Level` has an `elevation_base`; its head in sections and elevations and the level schedule's Elevation show
-`Model::level_shown`, and `elements` gives `elevation_shown` beside the internal `elevation` commands take. Columns, structural
-columns, footings and components give `shared_east`, `shared_north` and `shared_elevation` (their point at their base), which
-their schedules offer as Shared East, Shared North and Shared Elevation.
+Geometry stays near the internal origin; what comes in at map coordinates goes through the active site.
+
+A civil drawing in metres often keeps AutoCAD's imperial default in its header (`$INSUNITS` inches). With units auto,
+`import_cad` reads a drawing whose file says inches and whose middle is more than 50 000 units off its origin
+(`looks_like_map`) in metres (the map system's unit once map systems name one, slice 6), and says so in `notes`; one that
+says feet (US State Plane drawings are) is read in feet with a `warning`. Units given
+are always kept. Placed origin to origin past what a model reaches, it is refused with the ways to bring it in.
+
+- **CAD** (`import_cad`, `position: shared`): the drawing's coordinates are the map's, in its units. Its middle goes where
+  `to_internal` puts it, turned `-angle` and scaled `scale / location.scale`, so every point of it is where the transform
+  says. Past `MAX_COORD` it is refused with a message naming `acquire`; `acquire: true` first solves the active site
+  (`Coordinates::acquire`, angle and scale kept) so the drawing's middle, rounded to the metre, is the internal origin.
+- **Point clouds** (`point_cloud`, `origin: shared`): the scan's middle by `to_internal`, its height too, turned `-angle`;
+  a scan has no scale, so a site's scale isn't applied to it. `acquire` takes the middle in plan and the lowest point's
+  height, to the metre, so it stands on 0.
+
+## Links
+
+A link (`model::Link`) is placed `by` (`link::By`): `manual`, at `at` turned `angle` (origin to origin, as before); `base`,
+its Project Base Point on this project's, turned `angle` about it and raised to it; or `shared`, where its shared
+coordinates say: its active site (or the named site `location` names), carried to this project's active site. Its
+origin's map coordinates go through this project's `to_internal`, its turn is the two angles' difference, and its levels
+are raised by the difference in elevation. `link::placement` works this out each time the link is drawn (`bring`), so a
+change to either project's site moves it, and nothing is written into the linked file. A link has no scale: where the
+two locations' scales differ, `link` says so in a `warning` and places it by origin and turn alone. `link` replies with
+where it stands (`at`, `angle`, `raised`). A link placed by `base` or `shared` isn't moved or turned by hand: `move` and
+`rotate` refuse it and say to `modify` it with `by: manual` first.
+
+`coordinates {acquire: <id>}` is Revit's Acquire Coordinates. From a link (a BIMCraft project, or an IFC file, whose
+`IfcMapConversion` the import reads as its location): this project's active site is solved, rotation and scale from the
+link's site, so that the link's origin, where it stands now, has the link's map coordinates here, and its map system
+comes with it. From a CAD drawing placed in the project: its file's coordinates are taken for the map's, so where its origin
+stands the shared coordinates are its (in mm, by its scale), its axes are the map's (the angle is less its turn), and the
+elevation stays. The reply adds `acquired: {from, location}`. A Revit file can't be linked yet, and the Revit reader doesn't
+read a file's survey or base point, so a Revit project's coordinates come over through its IFC export. In the desktop,
+it is on the Location window's Manage tab: an Acquire button for each link and drawing, and Pick in the View, a tool
+(`Tool::Acquire`) whose click takes a linked model's element (`link::link_of` finds its link) or a drawing.
+
+`coordinates {reset: true}` is Reset Coordinates: the active site back on the internal origin (no offset, no turn, a scale
+of 1), both points on it; the other sites and the map system stay. No link moves: each placed by base points or shared
+coordinates is switched to `by: manual` where it stands, its height kept in `raised`. As Revit's file does, a link
+remembers where it stands (`Link::placed`, kept up after every command while its file is loaded, `Model::links_moved`), so
+a reset pins one whose file is gone where it last stood; one never loaded is refused.
+Tests: the link tests in `coordinates_io_tests.rs`.
 
 ## Commands
 
@@ -141,10 +175,12 @@ their schedules offer as Shared East, Shared North and Shared Elevation.
   Point's; `shift` adds to one, or to every site when no `name` is given (the survey says +5 m: one command).
 - `specify_coordinates`: the active site solved for a point.
 - `convert_coordinates`: points between `internal`, `base` and `shared`, of the active site or the one named.
+- `coordinates {acquire}` and `coordinates {reset}`: Acquire Coordinates from a link or a placed drawing, Reset Coordinates.
+- `link`: `by: manual|base|shared` and `location`; `import_cad` (`position: shared`, `acquire`) and `point_cloud`
+  (`origin: shared`, `acquire`).
 - `spot_coordinate` (`type`, `end`, `leader`, `shoulder`, `host`, `origin`) and `spot_coordinate_type`; `origin` on `spot`
   and `elevation_base` on `level` (and `modify`).
 
 Every change is a command and so one undo step. Tests: `coordinates_tests.rs`, and the payloads in the hostile sweep.
 
-Not yet (the plan's later slices): far CAD drawings and scans, links by shared coordinates, Acquire and Reset Coordinates,
-Rotate Project North, plans turned to true north, map systems and WGS84, and the desktop.
+Not yet (the plan's later slices): Rotate Project North, plans turned to true north, map systems and WGS84, and the desktop.

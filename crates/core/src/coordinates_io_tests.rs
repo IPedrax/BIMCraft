@@ -46,7 +46,6 @@ fn site_plan(e: f64, n: f64) -> String {
     format!("0\nSECTION\n2\nHEADER\n{header}0\nENDSEC\n0\nSECTION\n2\nENTITIES\n{lines}0\nENDSEC\n0\nEOF\n")
 }
 
-
 fn near2(v: &Value, want: [[f64; 2]; 2], tol: f64) -> bool {
     (0..2).all(|i| (0..2).all(|k| v[i][k].as_f64().is_some_and(|x| (x - want[i][k]).abs() < tol)))
 }
@@ -224,8 +223,6 @@ fn a_bad_ifc_origin_is_refused() {
     assert!(e.contains("internal") && e.contains("shared"), "{e}");
 }
 
-// ---------- links ----------
-
 #[test]
 fn one_map_conversion_is_placed_at_the_files_origin() {
     // #342 wrote a second conversion anchored at the internal origin whatever `ifc_origin` said: one, from the file's origin.
@@ -287,7 +284,7 @@ fn a_far_drawing_asks_to_acquire_its_coordinates_and_then_lands_near_the_origin(
     assert!(e.contains("acquire"), "{e}");
     let r = run(&mut s, "import_cad", json!({"path": path, "position": "shared", "acquire": true}));
     // Its middle, to the metre, is the internal origin's map coordinates now.
-    let l = &s.model.coordinates.locations["Internal"];
+    let l = s.model.frames().location();
     assert_eq!((l.east, l.north), (500_005_000.0, 7_000_003_000.0));
     assert!(near2(&r["extents"], [[-5000.0, -3000.0], [5000.0, 3000.0]], 1e-3), "{r}");
     assert_eq!(r["acquired"]["east"], 500_005_000.0, "{r}");
@@ -314,7 +311,7 @@ fn a_far_scan_acquires_its_coordinates_its_foot_at_the_origin() {
     let e = fails(&mut s, "point_cloud", json!({"path": path, "origin": "shared"}));
     assert!(e.contains("acquire"), "{e}");
     let id = run(&mut s, "point_cloud", json!({"path": path, "origin": "shared", "acquire": true}))["id"].as_u64().unwrap();
-    let l = &s.model.coordinates.locations["Internal"];
+    let l = s.model.frames().location();
     assert_eq!((l.east, l.north, l.elevation), (500_002_000.0, 7_000_002_000.0, 10_000.0));
     let (lo, hi) = s.model.cloud_box(id).unwrap();
     assert!(near3(lo, [-2000.0, -2000.0, 0.0], 0.5) && near3(hi, [2000.0, 1000.0, 2500.0], 0.5), "{lo:?} {hi:?}");
@@ -419,9 +416,9 @@ fn a_project_acquires_its_coordinates_from_a_link_placed_by_hand() {
     let id = run(&mut s, "link", json!({"path": path, "at": [10_000, 0], "angle": 5}))["id"].as_u64().unwrap();
     run(&mut s, "coordinates", json!({"acquire": id}));
     // Where the link's origin is, this project's shared coordinates are the link's.
-    let q = s.model.coordinates.to_shared([10_000.0, 0.0, 0.0]);
+    let q = s.model.frames().to_shared([10_000.0, 0.0, 0.0]);
     assert!(near3(q, [1_000_000.0, 2_000_000.0, 760_000.0], 1e-3), "{q:?}");
-    assert!((s.model.coordinates.location().angle - 10.0).abs() < 1e-9, "15° less the 5° it was turned");
+    assert!((s.model.site().rotation - 10.0).abs() < 1e-9, "15° less the 5° it was turned");
     // And so, by shared coordinates, it stands where it was put.
     run(&mut s, "modify", json!({"id": id, "by": "shared"}));
     assert!(close2(linked_wall(&s).0, (10_000.0, 0.0)));
@@ -454,7 +451,7 @@ fn a_project_acquires_its_coordinates_from_a_placed_drawing() {
     // Where its middle stands, the shared coordinates are the drawing's own, in mm, and its axes are the map's.
     let q = to_shared(&s, [2000.0, 1000.0, 0.0]);
     assert!(near3(q, [500_005_000.0, 7_000_003_000.0, 0.0], 1e-3), "{q:?} {r}");
-    assert!((s.model.coordinates.location().angle + 20.0).abs() < 1e-9, "{r}");
+    assert!((s.model.site().rotation + 20.0).abs() < 1e-9, "{r}");
     assert_eq!(r["acquired"]["from"], json!(id), "{r}");
     // So the same drawing brought in by shared coordinates lands on it.
     let again = run(&mut s, "import_cad", json!({"cad": "site", "position": "shared"}));
@@ -475,11 +472,11 @@ fn a_project_acquires_its_coordinates_from_a_linked_ifc() {
     let mut h = Session::new();
     let id = run(&mut h, "link", json!({"path": path, "at": [10_000, 0], "angle": 5}))["id"].as_u64().unwrap();
     run(&mut h, "coordinates", json!({"acquire": id}));
-    let q = h.model.coordinates.to_shared([10_000.0, 0.0, 0.0]);
+    let q = h.model.frames().to_shared([10_000.0, 0.0, 0.0]);
     assert!(near3(q, want, 1.0), "{q:?}, not {want:?}");
-    let l = h.model.coordinates.location();
-    assert!((l.angle - 5.0).abs() < 1e-6 && (l.scale - 0.9996).abs() < 1e-9, "10° less the 5° it was turned: {l:?}");
-    assert_eq!(h.model.coordinates.crs, Some(31983), "the map system comes with it");
+    let g = h.model.site();
+    assert!((g.rotation - 5.0).abs() < 1e-6 && (g.scale - 0.9996).abs() < 1e-9, "10° less the 5° it was turned: {g:?}");
+    assert_eq!(g.crs, "EPSG:31983", "the map system comes with it");
 }
 
 /// [`site_plan`] whose header says inches (`$INSUNITS` 1), as a civil drawing in metres often wrongly does.
@@ -491,7 +488,7 @@ fn site_plan_said_inches(e: f64, n: f64) -> String {
 fn map_coordinates_whose_file_says_inches_are_read_in_the_map_systems_unit() {
     // Dubai: DLTM, metres. The plot's corner at 248 599.2464, 2 715 989.0282.
     let mut s = Session::new();
-    run(&mut s, "crs", json!({"code": 3997}));
+    run(&mut s, "georeference", json!({"crs": "EPSG:3997"}));
     let path = file("cad-said-inches", "plot.dxf", &site_plan_said_inches(248_599.246_4, 2_715_989.028_2));
     let r = run(&mut s, "import_cad", json!({"path": path}));
     assert_eq!(r["scale"], 1000.0, "read in metres, the map system's unit: {r}");
@@ -560,7 +557,7 @@ fn reset_puts_the_coordinates_back_on_the_internal_origin_and_pins_the_links_whe
     let r = run(&mut s, "coordinates", json!({"reset": true}));
     let co = &s.model.coordinates;
     assert_eq!((co.base, co.survey), ([0.0; 3], [0.0; 3]), "{r}");
-    assert_eq!(co.to_shared([1234.0, 5678.0, 9.0]), [1234.0, 5678.0, 9.0], "shared is internal again");
+    assert_eq!(s.model.frames().to_shared([1234.0, 5678.0, 9.0]), [1234.0, 5678.0, 9.0], "shared is internal again");
     let after = seen(&s);
     assert_eq!(before.len(), after.len());
     for (a, b) in before.iter().zip(&after) {

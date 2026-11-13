@@ -131,6 +131,13 @@ impl Georeference {
         (self.eastings, self.northings, self.height) = (q[0] - now[0], q[1] - now[1], q[2] - now[2]);
     }
 
+    /// Solved, keeping its rotation and scale, so that the internal origin stands at shared point `q`, each coordinate rounded
+    /// to the metre: what a drawing or a scan far off acquires, so it lands near the origin and the shown numbers stay round.
+    pub fn acquire(&mut self, q: P3) {
+        let metre = |x: f64| (x / 1000.0).round() * 1000.0;
+        self.specify([0.0; 3], [metre(q[0]), metre(q[1]), metre(q[2])]);
+    }
+
     /// It as Revit shows it, with the Survey Point at `survey`.
     pub fn location(&self, survey: P3) -> Location {
         let [east, north, elevation] = self.to_shared(survey);
@@ -300,12 +307,9 @@ impl Coordinates {
         *self == Coordinates::default()
     }
 
-    /// The active location solved, keeping its angle and scale, so that the internal origin stands at shared point `q`, each
-    /// coordinate rounded to the metre: what a drawing or a scan far off acquires, so it lands near the origin and the shown
-    /// numbers stay round.
-    pub fn acquire(&mut self, q: P3) {
-        let metre = |x: f64| (x / 1000.0).round() * 1000.0;
-        self.specify([0.0; 3], [metre(q[0]), metre(q[1]), metre(q[2])], None);
+    /// The names of its sites: the active one first.
+    pub fn names(&self) -> Vec<&str> {
+        std::iter::once(&self.active).chain(self.sites.keys()).map(String::as_str).collect()
     }
 
     /// Whether it is whole and within bounds; else what to fix.
