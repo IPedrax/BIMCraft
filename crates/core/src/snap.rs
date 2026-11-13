@@ -97,6 +97,9 @@ pub struct Snaps {
     pub alignment_guides: bool,
     /// Alignment snap tolerance in screen pixels (default 8.0 px).
     pub alignment_tolerance: f32,
+    /// A stair snaps only at its location line's corners (its start, each corner of its path, its end), not at its risers,
+    /// sides and landings' edges: what the Stair tool asks while a stair is drafted, so it stays quick in a big project.
+    pub stair_corners: bool,
 }
 
 impl Snaps {
@@ -116,6 +119,7 @@ impl Snaps {
             angle: 0.0,
             alignment_guides: false,
             alignment_tolerance: 8.0,
+            stair_corners: false,
         }
     }
 
@@ -155,6 +159,7 @@ impl Default for Snaps {
             angle: 15.0,
             alignment_guides: true,
             alignment_tolerance: 8.0,
+            stair_corners: false,
         }
     }
 }
@@ -214,6 +219,8 @@ struct Scene<'a> {
     lines: Vec<(P2, P2, Option<Id>)>,
     /// The walls, with their thickness and their ids.
     walls: Vec<(Axis, f64, Id)>,
+    /// The edges of the outlines of the walls near, as the plan draws them, each with its wall.
+    faces: Vec<(P2, P2, Id)>,
     /// The detail lines near, of any shape.
     curves: Vec<(Curve, Option<Id>)>,
     /// Their chords near, each with its line's place in `curves`: crossed with other lines, never with their own.
@@ -264,11 +271,12 @@ impl<'a> Scene<'a> {
 
     /// What `level`'s plan has within `window` mm of `p`, but for what `look` hides: a cheap look at
     /// each element's extent first, so a plan of thousands of walls costs a few microseconds a wall.
-    fn of(m: &'a Model, level: Id, p: P2, window: f64, look: &'a Look, skip: Option<Id>) -> Scene<'a> {
+    fn of(m: &'a Model, level: Id, p: P2, window: f64, look: &'a Look, skip: Option<Id>, stair_corners: bool) -> Scene<'a> {
         let mut s = Scene {
             points: Vec::new(),
             lines: Vec::new(),
             walls: Vec::new(),
+            faces: Vec::new(),
             curves: Vec::new(),
             chords: Vec::new(),
             cloud: Some((m, level, look)),
@@ -297,6 +305,12 @@ impl<'a> Scene<'a> {
                     }
                 }
                 Element::DetailLine(l) if m.annotation_in(e, view) => s.curve(&l.curve, p, window, of),
+                // A section or an elevation snaps to the corners of a stair's steps, landings and stringers where it sees them.
+                Element::Stair(st) if !plan => {
+                    if let Some(v) = m.section(view) {
+                        section_stair(&mut s, m, v, st, p, window, of);
+                    }
+                }
                 // The rest is a plan's: a section has none of it.
                 _ if !plan => {}
                 // Annotation's anchors: where it is placed, and the points its leader or dimension line reaches.
@@ -431,7 +445,19 @@ impl<'a> Scene<'a> {
                 }
                 Element::Shaft(sh) if sh.level == level => s.points.extend(ring(&sh.boundary)),
                 Element::Mass(ms) if m.mass_cut_by(ms, cut) => s.points.extend(ring(&m.mass_outline(ms, cut))),
-                Element::Stair(st) if st.level == level && near(&[st.start]) => s.points.push((st.start, Kind::Endpoint, of)),
+                // Its sides, ends, risers and landings' edges, as a dimension finds them: their ends and middles, and the lines.
+                // Drafting a stair: only the corners of each one's location line.
+                Element::Stair(st) if st.level == level && stair_corners => s.points.extend(ring(&crate::stairs::line_corners(m, st))),
+                Element::Stair(st) if st.level == level => {
+                    let edges = crate::stairs::reference_edges(m, st);
+                    if !near(&edges.iter().flat_map(|(a, b)| [*a, *b]).chain([st.start]).collect::<Vec<_>>()) {
+                        continue;
+                    }
+                    s.points.push((st.start, Kind::Endpoint, of));
+                    for (a, b) in edges {
+                        s.segment(a, b, of);
+                    }
+                }
                 Element::Ramp(r) if r.level == level && near(&[r.start]) => s.points.push((r.start, Kind::Endpoint, of)),
                 Element::Railing(r) if r.level == level => s.points.extend(ring(&r.path)),
                 Element::CadImport(ci) if ci.level == level => cad_scene(&mut s, m, ci, p, window, look, id),
@@ -439,6 +465,43 @@ impl<'a> Scene<'a> {
             }
         }
         s
+    }
+}
+
+/// The corners of stair `st`'s parts as section or elevation `v` sees them, along its line from its start and up, within
+/// `window` of `p`, and their edges: what a spot elevation or a detail line drawn over a stair snaps to.
+fn section_stair(s: &mut Scene, m: &Model, v: &crate::model::Section, st: &crate::model::Stair, p: P2, window: f64, of: Option<Id>) {
+    let Some(parts) = crate::stairs::parts(m, st) else { return };
+    let u = (v.end - v.start).unit();
+    let look = v.looking();
+    let seen = |q: P2| {
+        let depth = (q - v.start).dot(look);
+        depth >= -TOL && depth <= v.depth.map_or(f64::INFINITY, |d| d + TOL)
+    };
+    let to_view = |q: P2, z: f64| P2((q - v.start).dot(u), z);
+    let near = |a: P2, b: P2| geom::dist_to_segment(p, a, b) <= window;
+    // Its corners and its lines; not their middles, which the short edges of a notch would crowd round each corner.
+    let edge = |s: &mut Scene, a: P2, b: P2| {
+        s.points.extend([(a, Kind::Endpoint, of), (b, Kind::Endpoint, of)]);
+        s.lines.push((a, b, of));
+    };
+    for (ring, bottom, top) in parts {
+        for (a, b) in geom::ring_edges(&ring) {
+            if !seen(a) && !seen(b) {
+                continue;
+            }
+            for plane in [&bottom, &top] {
+                let (a2, b2) = (to_view(a, plane.at(a)), to_view(b, plane.at(b)));
+                if near(a2, b2) && a2.dist(b2) > TOL {
+                    edge(s, a2, b2);
+                }
+            }
+            // The upright edge at its corner.
+            let (low, high) = (to_view(a, bottom.at(a)), to_view(a, top.at(a)));
+            if near(low, high) && low.dist(high) > TOL {
+                edge(s, low, high);
+            }
+        }
     }
 }
 
@@ -663,7 +726,10 @@ fn rank(k: Kind) -> u8 {
 /// the last of `from` horizontal or vertical.
 pub fn snap(m: &Model, level: Id, p: P2, reach: Reach, from: &[P2], square: bool, o: &Snaps) -> Found {
     let look = Look::of(m, level);
-    let scene = Scene::of(m, level, p, reach.point.max(reach.line) + MAX_HALF_THICKNESS, &look, None);
+    let window = reach.point.max(reach.line) + MAX_HALF_THICKNESS;
+    let mut scene = Scene::of(m, level, p, window, &look, None, o.stair_corners);
+    // The faces of the walls near: a stair or a wall drawn along a room's side starts at its face, not at the wall's middle.
+    outlines(m, level, p, window, &look, None, false, &mut scene);
     solve(scene, p, reach, from, square, o, false)
 }
 
@@ -686,51 +752,71 @@ thread_local! {
 pub fn in_sketch(m: &Model, sk: Sketch<'_>, p: P2, reach: Reach, from: &[P2], square: bool, o: &Snaps) -> Found {
     let look = Look::of(m, sk.view);
     let window = reach.point.max(reach.line) + MAX_HALF_THICKNESS;
-    let mut scene = Scene::of(m, sk.view, p, window, &look, sk.editing);
-    // The edges of what the plan builds, as the plan draws it: a section has none of them.
-    if m.plan_level(sk.view).is_some() {
-        let level = m.guid(m.plan_level(sk.view).unwrap_or(sk.view));
-        let edge = |ring: &[P2]| geom::ring_edges(ring).map(|(a, b)| geom::dist_to_segment(p, a, b)).fold(f64::INFINITY, f64::min);
-        let edges = |outline: &[P2], holes: &[Vec<P2>]| holes.iter().map(|h| edge(h)).fold(edge(outline), f64::min);
-        let mut near: Vec<(f64, Id)> = m
-            .elements
-            .iter()
-            .filter(|(id, _)| look.shows(**id) && sk.editing != Some(**id))
-            .filter_map(|(id, e)| match e {
-                Element::Wall(w) => {
-                    let d = crate::walls::Axis::of(w).distance(p, 0.0);
-                    (d <= window && m.cut_by(w, sk.view)).then_some((d, *id))
-                }
-                // Near an edge of its outline or of any opening: a big slab's hole in its middle is far from its outer edge.
-                Element::Floor(f) if f.level == level => Some((edges(&f.boundary, &f.openings), *id)),
-                Element::Ceiling(c) if c.level == level => Some((edges(&c.boundary, &c.openings), *id)),
-                _ => None,
-            })
-            .filter(|(d, _)| *d <= window)
-            .collect();
-        near.sort_by(|a, b| a.0.total_cmp(&b.0));
-        near.truncate(MAX_OUTLINES);
-        // One index for all of them, so each wall's joins are found among the walls its height meets.
-        let index = near.iter().any(|(_, id)| matches!(m.elements.get(*id), Some(Element::Wall(_)))).then(|| crate::walls::Index::new(m));
-        for (_, id) in near {
-            #[cfg(test)]
-            BUILT.with(|n| n.set(n.get() + 1));
-            match m.elements.get(id) {
-                Some(Element::Wall(_)) => scene.polyline(&crate::walls::outline_in(m, id, index.as_ref()), true, Some(id)),
-                Some(Element::Floor(Floor { boundary, openings, .. }) | Element::Ceiling(Ceiling { boundary, openings, .. })) => {
-                    scene.polyline(boundary, true, Some(id));
-                    for hole in openings {
-                        scene.polyline(hole, true, Some(id));
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
+    let mut scene = Scene::of(m, sk.view, p, window, &look, sk.editing, o.stair_corners);
+    outlines(m, sk.view, p, window, &look, sk.editing, true, &mut scene);
     for l in sk.lines {
         scene.curve(&l.curve, p, window, None);
     }
     solve(scene, p, reach, from, square, o, true)
+}
+
+/// The outlines of what the plan of `view` builds near `p`, as the plan draws them, added to `scene`: the faces of the walls
+/// nearest it, and with `slabs` the edges of floors and ceilings too. A section has none of them.
+#[allow(clippy::too_many_arguments)]
+fn outlines(m: &Model, view: Id, p: P2, window: f64, look: &Look, editing: Option<Id>, slabs: bool, scene: &mut Scene) {
+    // A sketch takes every wall whose line is within `window`; a plan only those whose faces the cursor reaches.
+    let reach = window - MAX_HALF_THICKNESS;
+    if m.plan_level(view).is_none() {
+        return;
+    }
+    let level = m.guid(m.plan_level(view).unwrap_or(view));
+    let edge = |ring: &[P2]| geom::ring_edges(ring).map(|(a, b)| geom::dist_to_segment(p, a, b)).fold(f64::INFINITY, f64::min);
+    let edges = |outline: &[P2], holes: &[Vec<P2>]| holes.iter().map(|h| edge(h)).fold(edge(outline), f64::min);
+    let mut near: Vec<(f64, Id)> = m
+        .elements
+        .iter()
+        .filter(|(id, _)| look.shows(**id) && editing != Some(**id))
+        .filter_map(|(id, e)| match e {
+            Element::Wall(w) => {
+                let d = crate::walls::Axis::of(w).distance(p, 0.0);
+                let within = if slabs { d <= window } else { d - m.thickness(w) / 2.0 <= reach };
+                (within && m.cut_by(w, view)).then_some((d, *id))
+            }
+            // Near an edge of its outline or of any opening: a big slab's hole in its middle is far from its outer edge.
+            Element::Floor(f) if slabs && f.level == level => Some((edges(&f.boundary, &f.openings), *id)),
+            Element::Ceiling(c) if slabs && c.level == level => Some((edges(&c.boundary, &c.openings), *id)),
+            _ => None,
+        })
+        .filter(|(d, _)| *d <= window)
+        .collect();
+    near.sort_by(|a, b| a.0.total_cmp(&b.0));
+    near.truncate(MAX_OUTLINES);
+    // One index for all of them, so each wall's joins are found among the walls its height meets.
+    let index = near.iter().any(|(_, id)| matches!(m.elements.get(*id), Some(Element::Wall(_)))).then(|| crate::walls::Index::new(m));
+    for (_, id) in near {
+        #[cfg(test)]
+        BUILT.with(|n| n.set(n.get() + 1));
+        match m.elements.get(id) {
+            Some(Element::Wall(_)) => {
+                let ring = crate::walls::outline_in(m, id, index.as_ref());
+                scene.faces.extend(geom::ring_edges(&ring).map(|(a, b)| (a, b, id)));
+                if slabs {
+                    scene.polyline(&ring, true, Some(id));
+                } else {
+                    // In a plan its corners and faces, not their middles: a mitred end's middle is the wall's own end.
+                    scene.points.extend(ring.iter().map(|q| (*q, Kind::Endpoint, Some(id))));
+                    scene.lines.extend(geom::ring_edges(&ring).map(|(a, b)| (a, b, Some(id))));
+                }
+            }
+            Some(Element::Floor(Floor { boundary, openings, .. }) | Element::Ceiling(Ceiling { boundary, openings, .. })) => {
+                scene.polyline(boundary, true, Some(id));
+                for hole in openings {
+                    scene.polyline(hole, true, Some(id));
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 fn solve(scene: Scene, p: P2, reach: Reach, from: &[P2], square: bool, o: &Snaps, nearest_lines: bool) -> Found {
@@ -882,7 +968,8 @@ fn solve(scene: Scene, p: P2, reach: Reach, from: &[P2], square: bool, o: &Snaps
         }
     }
 
-    // A wall's centre line, to the nearest 10 mm along it from its start, else the nearest 10 mm.
+    // A wall's centre line or one of its faces, whichever is nearer, to the nearest 10 mm along it from its start, else the
+    // nearest 10 mm.
     if o.nearest {
         let on = scene
             .walls
@@ -891,7 +978,22 @@ fn solve(scene: Scene, p: P2, reach: Reach, from: &[P2], square: bool, o: &Snaps
             .filter(|(_, d, _)| *d <= reach.line)
             .min_by(|x, y| x.1.total_cmp(&y.1));
         if let Some((a, _, id)) = on {
-            let at = micron(a.at((a.project(p).0 / STEP).round() * STEP, 0.0));
+            let centre = a.distance(p, 0.0);
+            let face = scene
+                .faces
+                .iter()
+                .filter(|(_, _, of)| *of == id)
+                .map(|&(f, g, _)| (f, g, geom::dist_to_segment(p, f, g)))
+                .filter(|(f, g, d)| f.dist(*g) > TOL && *d < centre)
+                .min_by(|x, y| x.2.total_cmp(&y.2));
+            let at = match face {
+                Some((f, g, _)) => {
+                    let u = (g - f).unit();
+                    let along = ((p - f).dot(u) / STEP).round() * STEP;
+                    micron(f + u * along.clamp(0.0, f.dist(g)))
+                }
+                None => micron(a.at((a.project(p).0 / STEP).round() * STEP, 0.0)),
+            };
             return Found { at, kind: Kind::Nearest, guide: None, source: Some(id) };
         }
         // A line: the point of it nearest the cursor.
@@ -1260,9 +1362,11 @@ mod tests {
     fn each_snap_switches_off_on_its_own() {
         let m = model(r#"wall {"points": [[0,0],[6000,0]]}"#);
         let o = Snaps::default();
-        assert_eq!(at(&m, P2(30.0, -20.0), &[], &Snaps { endpoint: false, ..o }).kind, Kind::Nearest);
+        // The middle of its end, where its outline's end crosses its centre line, is still a middle.
+        assert_ne!(at(&m, P2(30.0, -20.0), &[], &Snaps { endpoint: false, ..o }).kind, Kind::Endpoint);
+        assert_eq!(at(&m, P2(30.0, -20.0), &[], &Snaps { endpoint: false, midpoint: false, intersection: false, ..o }).kind, Kind::Nearest);
         assert_eq!(at(&m, P2(3040.0, 30.0), &[], &Snaps { midpoint: false, ..o }).kind, Kind::Nearest);
-        let none = Snaps { nearest: false, ..Snaps { endpoint: false, ..o } };
+        let none = Snaps { nearest: false, midpoint: false, intersection: false, ..Snaps { endpoint: false, ..o } };
         assert_eq!(at(&m, P2(34.0, -20.0), &[], &none).at, P2(30.0, -20.0));
     }
 
@@ -1432,6 +1536,72 @@ mod tests {
         let m = model(r#"wall {"points": [[0,0],[4000,0],[4000,3000]]}"#);
         let f = at(&m, P2(4030.0, 20.0), &[], &Snaps::only(Kind::Intersection));
         assert_eq!((f.kind, f.at), (Kind::Intersection, P2(4000.0, 0.0)));
+    }
+
+    #[test]
+    fn a_stair_snaps_at_its_corners_and_riser_ends_and_a_wall_at_its_faces() {
+        let m = model(
+            r#"wall {"points": [[0,0],[6000,0]]}
+               stair {"start": [2000, 1000], "angle": 90, "width": 1000}"#,
+        );
+        let o = Snaps::default();
+        let stair = m.elements.iter().find(|(_, e)| matches!(e, Element::Stair(_))).map(|(id, _)| *id);
+        // A corner of its foot: the start is its middle, 500 to each side.
+        let f = at(&m, P2(1530.0, 1020.0), &[], &o);
+        assert_eq!((f.at, f.kind, f.source), (P2(1500.0, 1000.0), Kind::Endpoint, stair));
+        // Along its side, far from any corner: on it.
+        let f = at(&m, P2(2530.0, 1000.0 + 1234.0), &[P2(4000.0, 1000.0 + 1234.0)], &Snaps { angle: 0.0, ..o });
+        assert_eq!(f.kind, Kind::Perpendicular, "{f:?}");
+        assert!((f.at.0 - 2500.0).abs() < 1e-6, "{f:?}");
+        // Near a wall's face, the face rather than its centre line.
+        let half = m.elements.values().find_map(|e| if let Element::Wall(w) = e { Some(m.thickness(w) / 2.0) } else { None }).unwrap();
+        let f = at(&m, P2(3234.0, half + 20.0), &[], &o);
+        assert_eq!(f.kind, Kind::Nearest);
+        assert!((f.at.1 - half).abs() < 1e-6 && (f.at.0 - 3230.0).abs() < 1e-6, "{f:?}");
+    }
+
+    #[test]
+    fn drafting_a_stair_snaps_to_a_stair_only_at_its_location_line_s_corners() {
+        let m = model(
+            r#"stair {"start": [2000, 1000], "angle": 90, "width": 1000}
+               stair {"start": [8000, 0], "width": 1000, "path": [{"to": [8000, 3000]}, {"to": [11000, 3000], "landing": true}]}"#,
+        );
+        let o = Snaps { stair_corners: true, ..Snaps::default() };
+        // Not the corner of its foot, which the other snaps take…
+        assert_eq!(at(&m, P2(1530.0, 1020.0), &[], &Snaps::default()).at, P2(1500.0, 1000.0));
+        let f = at(&m, P2(1530.0, 1020.0), &[], &o);
+        assert_ne!(f.at, P2(1500.0, 1000.0), "{f:?}");
+        // …but its start, on the line it was drawn along, and that line's far end.
+        let f = at(&m, P2(2020.0, 1015.0), &[], &o);
+        assert_eq!((f.at, f.kind), (P2(2000.0, 1000.0), Kind::Endpoint));
+        let st = m.elements.values().find_map(|e| if let Element::Stair(st) = e { Some(st.clone()) } else { None }).unwrap();
+        let top = *crate::stairs::line_corners(&m, &st).last().unwrap();
+        assert!((top.0 - 2000.0).abs() < 1e-6 && top.1 > 3000.0, "{top:?}");
+        let f = at(&m, top + P2(15.0, -10.0), &[], &o);
+        assert_eq!((f.at, f.kind), (top, Kind::Endpoint));
+        // One drawn along a path: the points it was drawn through.
+        for q in [P2(8000.0, 0.0), P2(8000.0, 3000.0), P2(11000.0, 3000.0)] {
+            let f = at(&m, q + P2(12.0, 9.0), &[], &o);
+            assert_eq!((f.at, f.kind), (q, Kind::Endpoint));
+        }
+    }
+
+    #[test]
+    fn a_section_snaps_to_the_corners_of_a_stair_s_steps() {
+        let mut s = Session::new();
+        s.script(
+            r#"stair {"start": [0, 0], "angle": 0, "width": 1000, "type": "Monolithic 150mm"}
+               section {"start": [-1000, 0], "end": [6000, 0], "depth": 2000}"#,
+        )
+        .unwrap();
+        let section = *s.model.elements.iter().find(|(_, e)| matches!(e, Element::Section(_))).unwrap().0;
+        let st = s.model.elements.values().find_map(|e| if let Element::Stair(st) = e { Some(st.clone()) } else { None }).unwrap();
+        // The nosing of the first tread: a tread along the line from the start, a riser up.
+        let (_, each, _) = s.model.flight(&st);
+        let along = 1000.0 + crate::stairs::stair(&s.model, &st).runs[0].going();
+        let f = snap(&s.model, section, P2(along + 20.0, each - 15.0), REACH, &[], false, &Snaps::default());
+        assert_ne!(f.kind, Kind::Free, "{f:?}");
+        assert!(f.at.dist(P2(along, each)) < 1.0, "{f:?} {along}");
     }
 
     #[test]

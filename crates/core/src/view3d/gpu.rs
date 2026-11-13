@@ -436,7 +436,9 @@ impl Mesh {
                 return Ok(None);
             }
             if plain || look.shows(span.id) {
-                shown.extend(span.at.clone());
+                // A part the view hides, a stair's headroom unless it shows it, is left out of its element's run.
+                let part_shown = |i: &usize| plain || scene.tris.get(*i).is_some_and(|t| look.shows_part(t.owner, t.part));
+                shown.extend(span.at.clone().filter(part_shown));
                 let view = if plain { 0 } else { look.transparency(span.id) };
                 for (a, t) in
                     alphas.get_mut(span.at.clone()).unwrap_or_default().iter_mut().zip(scene.tris.get(span.at.clone()).unwrap_or_default())
@@ -1553,6 +1555,16 @@ mod tests {
             }
             assert!(found > 500 && levels > 0, "{found} surfaces, {levels} on a level's plane");
         }
+    }
+
+    #[test]
+    fn a_stair_s_headroom_is_on_the_card_only_where_the_view_shows_it() {
+        let mut s = Session::new();
+        s.execute("stair", &json!({"start": [0, 0], "angle": 0, "width": 1000, "type": "Monolithic 150mm"})).unwrap();
+        let count = |s: &Session| Mesh::new(&Scene::new(&s.model), &Look::of_3d(&s.model)).unwrap().triangles();
+        let hidden = count(&s);
+        s.execute("graphics", &json!({"view": "{3D}", "categories": {"stairheadroom": {"shown": true}}})).unwrap();
+        assert!(count(&s) > hidden, "shown, its blocks are drawn too");
     }
 
     #[test]

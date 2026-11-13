@@ -5,7 +5,8 @@
 //!
 //! The numbers are data, not code: `data/building-codes.json` holds an entry for each code, naming its sources. They
 //! were typed from memory of those documents and are unchecked, as the file says; where a code gives no number the
-//! entry holds a forgiving one. The plan this is the first piece of: `docs/stair-tool-plan.md`.
+//! entry holds a forgiving one. The area, and the rule that every check is fast and spatial (it runs under the cursor and
+//! after every edit): `docs/areas/building-codes.md`. The plan this is the first piece of: `docs/stair-tool-plan.md`.
 
 use std::sync::OnceLock;
 

@@ -13,7 +13,7 @@ use bimcraft_core::model::{
     Ramp, Reference, Roof, Section, Spot, Stair, TOL, Tag, Wall,
 };
 use bimcraft_core::render::{self, Drawing, Prim, Rgb, View};
-use bimcraft_core::snap::{self, Found, Kind, Reach};
+use bimcraft_core::snap::{self, Found, Kind, Reach, Snaps};
 use bimcraft_core::view3d::shape_snap_plan;
 use bimcraft_core::walls::{self, Axis};
 use bimcraft_core::{floor_outline, opening_of, roof_footprint};
@@ -1245,7 +1245,8 @@ impl BimApp {
     /// vertical.
     pub(crate) fn snap(&self, m: &Model, level: Id, v: &View, at: (f32, f32), from: &[P2], square: bool) -> Found {
         let reach = Reach { point: SNAP / v.scale, line: f64::from(PICK) / v.scale };
-        let snaps = self.snaps_now();
+        // Drafting a stair, the stairs there are offer only their location lines' corners.
+        let snaps = Snaps { stair_corners: matches!(self.tool, Tool::Stair(_)), ..self.snaps_now() };
         // A camera's mark is a symbol, not a set of snap points: anywhere on it lands on its eye.
         if snaps.endpoint
             && let Some((id, eye)) = render::camera_at(m, level, v, at)

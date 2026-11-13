@@ -830,8 +830,9 @@ fn pathed(st: &Stair, n: u32, each: f64, base: f64, goings: Goings) -> Layout {
                 moved = was;
             }
         }
-        // On to the corner it ends at.
-        if i + 1 < plan.used && p.length() - hi > 1e-6 {
+        // On to the corner it ends at: but winders round that corner start short of it, where their square does (the
+        // landing to there is theirs to end), so the landing never runs on to the corner and back.
+        if i + 1 < plan.used && p.length() - hi > 1e-6 && !winds(&ps, i + 1) {
             group.push((p.b + moved, h));
         }
     }
@@ -859,9 +860,59 @@ fn sketched(st: &Stair, each: f64, base: f64) -> Layout {
     }
     out.winders = out.pads.len();
     let (n, rise) = (st.sketch.len(), st.sketch.len() as f64 * each);
-    out.walk =
-        st.sketch.iter().enumerate().map(|(i, s)| (s.mid(), base + if n > 1 { rise * i as f64 / (n as f64 - 1.0) } else { 0.0 })).collect();
+    let z = |i: usize| base + if n > 1 { rise * i as f64 / (n as f64 - 1.0) } else { 0.0 };
+    for (i, s) in st.sketch.iter().enumerate() {
+        out.walk.push((s.mid(), z(i)));
+        // Across a landing that turns, the walk line goes into it and round, as a landing drawn as one does: not
+        // straight from one riser's middle to the next.
+        if let Some(next) = st.sketch.get(i + 1) {
+            let across = turn_across(s, next);
+            let k = across.len() as f64 + 1.0;
+            out.walk.extend(across.into_iter().enumerate().map(|(j, q)| (q, z(i) + (z(i + 1) - z(i)) * (j as f64 + 1.0) / k)));
+        }
+    }
     out
+}
+
+/// Up a stair drawn by hand, the way into the tread after riser `s`: square to it, toward its outline (or the next riser).
+fn into_tread(s: &crate::model::SketchStep, next: &crate::model::SketchStep) -> P2 {
+    let d = (s.riser[1] - s.riser[0]).unit().perp();
+    let toward = if s.outline.len() >= 3 { geom::centroid(&s.outline) } else { next.mid() };
+    if d.dot(toward - s.mid()) < 0.0 { d * -1.0 } else { d }
+}
+
+/// The corners of the walk line across the landing between riser `s` and riser `next`, where the stair turns more than
+/// 60° there: none where it goes on about straight. Its outline gives its depth.
+fn turn_across(s: &crate::model::SketchStep, next: &crate::model::SketchStep) -> Vec<P2> {
+    if s.outline.len() < 3 || s.riser[0].dist(s.riser[1]) < 1e-6 || next.riser[0].dist(next.riser[1]) < 1e-6 {
+        return Vec::new();
+    }
+    let (a, b) = (s.mid(), next.mid());
+    let da = into_tread(s, next);
+    // Up the next flight: square to its riser, away from this landing.
+    let mut db = (next.riser[1] - next.riser[0]).unit().perp();
+    if db.dot(b - geom::centroid(&s.outline)) < 0.0 {
+        db = db * -1.0;
+    }
+    if da.dot(db) > 60f64.to_radians().cos() {
+        return Vec::new();
+    }
+    // A quarter turn: where the two lines square to the risers meet.
+    if da.cross(db).abs() > 1e-3
+        && let Some(x) = geom::line_intersection(a, a + da, b, b - db)
+        && (x - a).dot(da) > 0.0
+        && (b - x).dot(db) > 0.0
+    {
+        return vec![x];
+    }
+    // A half turn: out into the landing, half its depth, across and back.
+    let depth = s.outline.iter().map(|q| (*q - a).dot(da)).fold(0.0, f64::max);
+    if depth < 1e-6 {
+        return Vec::new();
+    }
+    let p = a + da * (depth / 2.0);
+    let q = b + da * ((p - b).dot(da));
+    vec![p, q]
 }
 
 /// A stair made by its runs and turns, as one drawn by hand: a riser for each of its risers, where it is, and the
@@ -1644,6 +1695,28 @@ pub fn treads(m: &Model, st: &Stair) -> Vec<(Vec<P2>, f64)> {
     out
 }
 
+/// The corners of the line a stair was drawn along, its location line: its start, each corner of its path and its end;
+/// of one laid out by runs, each run's ends moved onto that line; of one drawn by hand, its first riser's and last riser's
+/// ends; of a spiral, its start.
+pub fn line_corners(m: &Model, st: &Stair) -> Vec<P2> {
+    if !st.path.is_empty() {
+        return std::iter::once(st.start).chain(st.path.iter().map(|s| s.to)).collect();
+    }
+    if let (Some(a), Some(b)) = (st.sketch.first(), st.sketch.last()) {
+        return vec![a.riser[0], a.riser[1], b.riser[0], b.riser[1]];
+    }
+    if st.spiral.is_some() {
+        return vec![st.start];
+    }
+    let l = stair(m, st);
+    // How far the middle of its first run stands to the left of its start: every run's middle stands so of the line.
+    let Some(first) = l.runs.first() else { return vec![st.start] };
+    let side = (first.start - st.start).dot(first.u.perp());
+    let mut out: Vec<P2> = l.runs.iter().flat_map(|r| [r.start - r.u.perp() * side, r.end() - r.u.perp() * side]).collect();
+    out.dedup_by(|a, b| a.dist(*b) < 1e-6);
+    out
+}
+
 /// A stair's edges in plan that a dimension measures to, in a fixed order: of each run its sides, its foot and its head,
 /// then each riser up it; then each landing's and tread's edges.
 pub fn reference_edges(m: &Model, st: &Stair) -> Vec<(P2, P2)> {
@@ -1682,8 +1755,36 @@ pub fn clearance(m: &Model, st: &Stair) -> Vec<(Vec<P2>, Plane, Plane)> {
 pub fn headroom(m: &Model, st: &Stair, least: f64) -> Vec<(crate::model::Id, f64, Vec<Vec<P2>>)> {
     let steps = treads(m, st);
     let Some(lowest) = steps.iter().map(|(_, z)| *z).reduce(f64::min) else { return Vec::new() };
+    let highest = steps.iter().map(|(_, z)| *z).fold(lowest, f64::max);
+    // The box the steps cover in plan: what is nowhere over it, or higher than the top step and the headroom asked,
+    // is never too low, so it is passed over before its outline is made (a tower has thousands of beams and slabs).
+    let (lo, hi) = steps
+        .iter()
+        .flat_map(|(r, _)| r.iter())
+        .fold((P2(f64::INFINITY, f64::INFINITY), P2(f64::NEG_INFINITY, f64::NEG_INFINITY)), |(lo, hi), q| {
+            (P2(lo.0.min(q.0), lo.1.min(q.1)), P2(hi.0.max(q.0), hi.1.max(q.1)))
+        });
+    let reach = |under: f64, top: f64| top > lowest + 1.0 && under < highest + least + 1.0;
+    let over_box = |pts: &mut dyn Iterator<Item = P2>, grow: f64| {
+        let (a, b) = pts.fold((P2(f64::INFINITY, f64::INFINITY), P2(f64::NEG_INFINITY, f64::NEG_INFINITY)), |(a, b), q| {
+            (P2(a.0.min(q.0), a.1.min(q.1)), P2(b.0.max(q.0), b.1.max(q.1)))
+        });
+        a.0 - grow <= hi.0 && b.0 + grow >= lo.0 && a.1 - grow <= hi.1 && b.1 + grow >= lo.1
+    };
+    // What may be over it, from the model's lookup, never every element: floors and roofs (the few a plan finds among
+    // all), ceilings and shafts (kept by kind), and only the beams whose heights reach the stair's.
+    let lookup = m.lookup();
+    let mut candidates: std::collections::BTreeSet<crate::model::Id> = lookup.other().collect();
+    candidates.extend(lookup.rare("ceiling"));
+    candidates.extend(lookup.rare("shaft"));
+    for (group, one) in lookup.groups() {
+        let crate::derived::Group::Run { category: "beam", .. } = group else { continue };
+        let grow = m.elements.get(one).and_then(|e| m.run_type(e)).map_or(f64::NAN, |t| 2.0 * t.width.abs().max(t.depth.abs()) + 1.0);
+        candidates.extend(lookup.group_between(group, lowest - grow, highest + least + grow));
+    }
+    let near = || candidates.iter().filter_map(|id| m.elements.get(*id).map(|e| (id, e)));
     // Shafts, with the heights they pass through.
-    let shafts: Vec<(&[P2], f64, f64)> = (m.elements.iter())
+    let shafts: Vec<(&[P2], f64, f64)> = near()
         .filter_map(|(_, e)| match e {
             Element::Shaft(sh) => {
                 let (bottom, top) = m.span(sh.level, sh.base_offset, sh.top_level, sh.height);
@@ -1696,17 +1797,21 @@ pub fn headroom(m: &Model, st: &Stair, least: f64) -> Vec<(crate::model::Id, f64
     // through it, its underside and its top.
     type Over = (crate::model::Id, Vec<P2>, Vec<Vec<P2>>, Plane, f64);
     let mut over_head: Vec<Over> = Vec::new();
-    for (id, e) in m.elements.iter() {
+    for (id, e) in near() {
         match e {
             Element::Floor(f) => {
                 let top = m.elevation(f.level) + f.offset;
                 let under = top - m.types.floor.get(&f.type_name).map_or(0.0, |t| t.thickness);
-                over_head.push((*id, f.boundary.clone(), f.openings.clone(), Plane::flat(under), top));
+                if reach(under, top) && over_box(&mut f.boundary.iter().copied(), 1.0) {
+                    over_head.push((*id, f.boundary.clone(), f.openings.clone(), Plane::flat(under), top));
+                }
             }
             Element::Ceiling(c) => {
                 let under = m.elevation(c.level) + c.offset;
                 let top = under + m.types.ceiling.get(&c.type_name).map_or(0.0, |t| t.thickness);
-                over_head.push((*id, c.boundary.clone(), c.openings.clone(), Plane::flat(under), top));
+                if reach(under, top) && over_box(&mut c.boundary.iter().copied(), 1.0) {
+                    over_head.push((*id, c.boundary.clone(), c.openings.clone(), Plane::flat(under), top));
+                }
             }
             Element::Roof(r) => {
                 let thick = m.types.roof.get(&r.type_name).map_or(0.0, |t| t.thickness);
@@ -1717,7 +1822,10 @@ pub fn headroom(m: &Model, st: &Stair, least: f64) -> Vec<(crate::model::Id, f64
                 }
             }
             Element::Beam(_) => {
-                if let Some(g) = m.run_geom(e).filter(|g| !g.round) {
+                if let Some(g) = m.run_geom(e).filter(|g| !g.round)
+                    && reach(g.z_span().0, g.z_span().1)
+                    && over_box(&mut [P2(g.a[0], g.a[1]), P2(g.b[0], g.b[1])].into_iter(), g.width + 1.0)
+                {
                     let (_, bottom, top) = g.prism();
                     let ring = crate::runs::outline(m, *id);
                     let high = ring.iter().map(|q| top.at(*q)).fold(f64::NEG_INFINITY, f64::max);
@@ -1921,11 +2029,16 @@ pub fn parts_tagged(m: &Model, st: &Stair) -> Option<Vec<Tagged>> {
                     under(&mut out, 0.0, run.length, c, d, top - sd, floor, sloping(top));
                 }
             }
-            // A carriage down the middle: its top through the front corners of the treads' undersides.
-            if let (Some((cw, cd)), true) = (t.centre_stringer(), run.length > 0.0) {
+            // A carriage down the middle, notched under each tread: its top flat under the tread, its underside sloping
+            // with the run, `cd` under the treads' front corners (and never so little that a notch cuts it through).
+            if let (Some((cw, cd)), true) = (t.centre_stringer(), run.length > 0.0 && run.risers > 1) {
                 let top = run.z.0 + each - t.tread() - fin;
                 let c = (cw / 2.0).min(half);
-                under(&mut out, 0.0, run.length, -c, c, top - cd, floor, sloping(top));
+                let deep = cd.max(each + 50.0);
+                for k in 1..run.risers {
+                    let (a, b) = (f64::from(k - 1) * going, f64::from(k) * going);
+                    under(&mut out, a, b, -c, c, top - deep, floor, Plane::flat(top + f64::from(k - 1) * each));
+                }
             }
             tag(&out, &mut tags, PartKind::Supports);
         }
@@ -1940,6 +2053,15 @@ pub fn parts_tagged(m: &Model, st: &Stair) -> Option<Vec<Tagged>> {
                 out.push((ccw(vec![a.0, a.1, b.1, b.0]), Plane::flat((pad.z + 50.0 - sd).max(base)), Plane::flat(pad.z + 50.0)));
             }
         }
+    }
+    // Round an arc, a spiral or a turn that winds: the risers, stringers and carriage under the treads no run has.
+    tag(&out, &mut tags, PartKind::Supports);
+    if open {
+        let (risers, supports) = winding_parts(m, st, t, &l, &floors, base);
+        out.extend(risers);
+        tag(&out, &mut tags, PartKind::Risers);
+        out.extend(supports);
+        tag(&out, &mut tags, PartKind::Supports);
     }
     // A spiral's post, from its foot to its top.
     if let (Some(c), true) = (spiral_centre(st), t.post > 0.0) {
@@ -1970,8 +2092,28 @@ pub fn parts_tagged(m: &Model, st: &Stair) -> Option<Vec<Tagged>> {
                     .map(|q| shares(pad, q))
                     .filter(|v| v.len() >= 2)
             };
-            let (front, back) = (near(k.checked_sub(1), -first_each), near(Some(k + 1), first_each));
+            let (mut front, back) = (near(k.checked_sub(1), -first_each), near(Some(k + 1), first_each));
             let mid = |v: &[P2]| v.iter().fold(P2(0.0, 0.0), |a, q| a + *q) * (1.0 / v.len().max(1) as f64);
+            // The underside at the front edge: the slab's thickness under the step below, or, for a winder level with the
+            // landing it starts from, the landing's underside, so the two meet.
+            let mut low = pad.z - first_each - down - fin;
+            if front.is_none()
+                && let Some(v) =
+                    l.pads.iter().filter(|q| !q.tread && (q.z - pad.z).abs() < 1e-6).map(|q| shares(pad, q)).find(|v| v.len() >= 2)
+            {
+                // Where the slab under the flight that ends on that landing has got to at this winder's front edge, if
+                // the landing is too short for the slab to come up to its underside.
+                let slab = l.runs.iter().find(|r| (r.z.1 - pad.z).abs() < 1e-6 && r.risers > 1).map(|r| {
+                    let each = (r.z.1 - r.z.0) / f64::from(r.risers);
+                    let going = r.going();
+                    let slope = if going > 0.0 { each / going } else { 0.0 };
+                    let at = (mid(&v) - r.end()).dot(r.u).max(0.0);
+                    r.z.1 - each - t.slab() * (1.0 + slope * slope).sqrt() - fin + slope * at
+                });
+                low = slab.map_or(pad.z - flat - fin, |z| z.min(pad.z - flat - fin));
+                front = Some(v);
+            }
+            let high = pad.z - down - fin;
             let c = geom::centroid(&pad.ring);
             let (fm, bm) = match (&front, &back) {
                 (Some(f), Some(b)) => (mid(f), mid(b)),
@@ -1985,24 +2127,66 @@ pub fn parts_tagged(m: &Model, st: &Stair) -> Option<Vec<Tagged>> {
             }
             // How far from its front edge to its back a corner is, 0 to 1; a shared corner exactly so.
             let on = |v: P2, of: &Option<Vec<P2>>| of.as_ref().is_some_and(|e| e.iter().any(|w| w.dist(v) < 1e-3));
-            let height = |v: P2| {
-                let t = if on(v, &front) {
+            let t_of = |v: P2| {
+                if on(v, &front) {
                     0.0
                 } else if on(v, &back) {
                     1.0
                 } else {
                     ((v - fm).dot(span) / span.dot(span)).clamp(0.0, 1.0)
-                };
-                (pad.z - first_each + t * first_each - down - fin).max(base)
+                }
             };
+            // Its underside as triangles, each corner with how far from front to back it is.
+            let n = pad.ring.len();
+            let corners: Vec<usize> = (0..n).filter(|j| pad.ring.get(*j).is_some_and(|v| on(*v, &front) && on(*v, &back))).collect();
+            let mut tris: Vec<[(P2, f64); 3]> = Vec::new();
+            if let [j] = corners[..]
+                && let Some(&corner) = pad.ring.get(j)
+            {
+                // The corner winders fan round is on both edges, the front low and the back high: the underside there is
+                // ruled, a level line from the corner (a millimetre out from it) to each point of the rest of the
+                // outline, so it rises from front to back right up to the corner, and meets the next winder's along the
+                // whole of the edge they share.
+                let path: Vec<(P2, f64)> = (1..n).filter_map(|k| pad.ring.get((j + k) % n)).map(|v| (*v, t_of(*v))).collect();
+                let mut samples: Vec<(P2, f64)> = Vec::new();
+                for w in path.windows(2) {
+                    let [(p, tp), (q, tq)] = [w[0], w[1]];
+                    samples.extend((0..4).map(|k| {
+                        let f = f64::from(k) / 4.0;
+                        (p + (q - p) * f, tp + (tq - tp) * f)
+                    }));
+                }
+                samples.extend(path.last().copied());
+                // Each stretch between two level lines is no plane: four triangles round its middle, so neither line
+                // is the diagonal of a sliver that would tilt the underside along it.
+                let near = |o: P2| corner + (o - corner).unit();
+                for w in samples.windows(2) {
+                    let [(o0, t0), (o1, t1)] = [w[0], w[1]];
+                    let (c0, c1) = (near(o0), near(o1));
+                    let m = ((c0 + o0 + o1 + c1) * 0.25, (t0 + t1) / 2.0);
+                    tris.extend([[(c0, t0), (o0, t0), m], [(o0, t0), (o1, t1), m], [(o1, t1), (c1, t1), m], [(c1, t1), (c0, t0), m]]);
+                }
+            } else {
+                let points: Vec<(P2, f64)> = pad.ring.iter().map(|v| (*v, t_of(*v))).collect();
+                let ring: Vec<P2> = pad.ring.clone();
+                for tri in geom::triangulate(&ring) {
+                    if let [Some(a), Some(b), Some(c)] = tri.map(|i| points.get(i).copied()) {
+                        tris.push([a, b, c]);
+                    }
+                }
+            }
+            // The tread one solid down to the highest the underside reaches, so its top is one face; the triangles
+            // under that.
             let top = Plane::flat(pad.z - fin);
-            for tri in geom::triangulate(&pad.ring) {
-                let [Some(a), Some(b), Some(c)] = tri.map(|i| pad.ring.get(i).copied()) else { continue };
-                let (za, zb, zc) = (height(a), height(b), height(c));
+            let cut = low.max(high).max(base).min(pad.z - fin - 1.0);
+            out.push((pad.ring.clone(), Plane::flat(cut), top));
+            let top = Plane::flat(cut);
+            for [(a, ta), (b, tb), (c, tc)] in tris {
+                let [za, zb, zc] = [ta, tb, tc].map(|t| (low + t * (high - low)).max(base));
                 // The plane through the three: z = z0 + g·p.
                 let (e1, e2) = (b - a, c - a);
                 let det = e1.0 * e2.1 - e1.1 * e2.0;
-                if det.abs() < 1e-9 {
+                if det.abs() < 1e-6 {
                     continue;
                 }
                 let (d1, d2) = (zb - za, zc - za);
@@ -2032,26 +2216,6 @@ pub fn parts_tagged(m: &Model, st: &Stair) -> Option<Vec<Tagged>> {
         if !pad.tread || open {
             out.push((pad.ring.clone(), Plane::flat((pad.z - flat - fin).max(base)), Plane::flat(pad.z - fin)));
             tag(&out, &mut tags, if pad.tread { PartKind::Runs } else { PartKind::Landings });
-            // A tread round a turn on a centre stringer: a piece of the stringer under it, along the walk line.
-            if let (true, Some((cw, cd))) = (pad.tread && open, t.centre_stringer()) {
-                let c = geom::centroid(&pad.ring);
-                let way = l.walk.windows(2).filter_map(|w| Some((w.first()?.0, w.get(1)?.0))).filter(|(a, b)| a.dist(*b) > 1e-6).min_by(
-                    |x, y| {
-                        let far = |(a, b): &(P2, P2)| geom::dist_to_segment(c, *a, *b);
-                        far(x).total_cmp(&far(y))
-                    },
-                );
-                if let Some((a, b)) = way {
-                    let (u, n) = ((b - a).unit(), (b - a).unit().perp());
-                    let along: Vec<f64> = pad.ring.iter().map(|q| (*q - c).dot(u)).collect();
-                    let (lo, hi) = along.iter().fold((0.0f64, 0.0f64), |(lo, hi), x| (lo.min(*x), hi.max(*x)));
-                    let h = cw / 2.0;
-                    let ring = ccw(vec![c + u * lo - n * h, c + u * hi - n * h, c + u * hi + n * h, c + u * lo + n * h]);
-                    let top = pad.z - fin - flat;
-                    out.push((ring, Plane::flat((top - cd).max(base)), Plane::flat(top)));
-                    tag(&out, &mut tags, PartKind::Supports);
-                }
-            }
             continue;
         }
         // A tread that is no part of a run (a winder, a spiral's, one drawn by hand) on a slab: the slab's underside
@@ -2103,9 +2267,10 @@ fn joint(l: &Layout, a: P2, b: P2, inward: P2, z: f64, under: f64, slope: f64, d
     let pad = l.pads.iter().find(|p| !p.tread && (p.z - z).abs() < 1e-6 && geom::contains(&p.ring, probe))?;
     // As far as the landing goes that way.
     let reach = pad.ring.iter().map(|q| (*q - a).dot(inward)).fold(0.0, f64::max);
-    // A landing too short to take it (what a flight leaves short of winders) has none.
-    let x = (bottom - under) / slope;
-    if x < 1.0 || x > reach {
+    // A landing too short to take it (what a flight leaves short of winders) has it as far as it goes: the winder after
+    // it goes on from there.
+    let x = ((bottom - under) / slope).min(reach);
+    if x < 1.0 {
         return None;
     }
     let g = inward * slope;
@@ -2275,6 +2440,176 @@ pub fn covers(m: &Model, st: &Stair) -> Vec<(Vec<P2>, Plane, Plane)> {
     }
     // The risers no run has (round an arc, a spiral's): the riser's cover on its face, and the tread's cover out over it.
     let ahead = if risers { rc } else { 0.0 } + t.cover_nosing.max(0.0);
+    let nosings = all_nosings(m, st, &l);
+    for s in &nosings {
+        let strip = |w: f64| ccw(vec![s.a, s.b, s.b + s.out * w, s.a + s.out * w]);
+        if fin > 0.0 && ahead > 0.0 {
+            let ring = |x0: f64, x1: f64| {
+                ccw(vec![s.a + s.out * (ahead - x1), s.b + s.out * (ahead - x1), s.b + s.out * (ahead - x0), s.a + s.out * (ahead - x0)])
+            };
+            profiled(&mut out, profile, fin, s.z, ahead, ring);
+        }
+        if risers {
+            out.push((strip(rc), Plane::flat(s.z - s.rise), Plane::flat(s.z - fin)));
+        }
+    }
+    out
+}
+
+type Solid3 = (Vec<P2>, Plane, Plane);
+
+/// The plane through `a` at height `za` and `b` at `zb`, level square to the line between them.
+fn plane_along(a: P2, za: f64, b: P2, zb: f64) -> Plane {
+    let d = b - a;
+    let len2 = d.dot(d);
+    if len2 < 1e-9 {
+        return Plane::flat(za);
+    }
+    let g = d * ((zb - za) / len2);
+    Plane { z: za - g.dot(a), g }
+}
+
+/// An open stair's risers, side stringers and centre stringer under the treads that are no run's (round an arc, a spiral's,
+/// winders), so they go on unbroken from a run round the turn: each stringer's top rises from tread to tread as it does
+/// along a run, 50 over the nosings for a side stringer and through the treads' undersides for a carriage.
+fn winding_parts(m: &Model, st: &Stair, t: &crate::model::StairType, l: &Layout, floors: &[f64], base: f64) -> (Vec<Solid3>, Vec<Solid3>) {
+    let (mut risers, mut supports) = (Vec::new(), Vec::new());
+    if !l.pads.iter().any(|p| p.tread) {
+        return (risers, supports);
+    }
+    let fin = t.tread_cover.max(0.0);
+    let first_each = m.flight(st).1;
+    let nosings = all_nosings(m, st, l);
+    // The floor a piece stands on: the highest storey's under it.
+    let floor_under = |z: f64| floors.iter().copied().filter(|f| *f <= z + 1e-6).fold(base, f64::max);
+    // The risers.
+    if t.riser_thickness > 0.0 {
+        for s in &nosings {
+            let lower = s.z - s.rise;
+            let from = if floors.iter().any(|f| (f - lower).abs() < 1e-6) { lower } else { lower - fin };
+            let top = s.z - fin - t.tread();
+            if top - from < 1.0 || s.a.dist(s.b) < 1.0 {
+                continue;
+            }
+            let back = s.out * -t.riser_thickness;
+            risers.push((ccw(vec![s.a, s.b, s.b + back, s.a + back]), Plane::flat(from), Plane::flat(top)));
+        }
+    }
+    let side = t.side_stringers();
+    let centre = t.centre_stringer();
+    if side.is_none() && centre.is_none() {
+        return (risers, supports);
+    }
+    // Every riser line, with the height of the tread over it and how high it is: the layout's own, and each run's first
+    // and last.
+    let mut lines: Vec<(P2, P2, f64, f64)> = nosings.iter().map(|s| (s.a, s.b, s.z, s.rise)).collect();
+    for run in &l.runs {
+        let n = run.u.perp() * (run.width / 2.0);
+        let each = if run.risers > 0 { (run.z.1 - run.z.0) / f64::from(run.risers) } else { first_each };
+        lines.push((run.start - n, run.start + n, run.z.0 + each, each));
+        lines.push((run.end() - n, run.end() + n, run.z.1, each));
+    }
+    let on =
+        |p: P2, q: P2, (a, b, ..): &(P2, P2, f64, f64)| geom::dist_to_segment(p, *a, *b) < 1.0 && geom::dist_to_segment(q, *a, *b) < 1.0;
+    // The middle of each run's ends, where a carriage along it ends.
+    let run_ends: Vec<P2> = l.runs.iter().flat_map(|r| [r.start, r.end()]).collect();
+    // Each tread's carriage, from the middle of its front to the middle of its back, with its heights there.
+    let mut carriages: Vec<(P2, f64, P2, f64, f64)> = Vec::new();
+    // A pad of the other kind (a tread, a landing) level with `pad` that has the edge `a`–`b` too: the landing a flight
+    // leaves short of winders, and the first winder, level with it.
+    let level = |pad: &Pad, a: P2, b: P2| {
+        l.pads.iter().any(|q| {
+            q.tread != pad.tread
+                && (q.z - pad.z).abs() < 1.0
+                && geom::ring_edges(&q.ring).any(|(c, d)| geom::dist_to_segment(a, c, d) < 1.0 && geom::dist_to_segment(b, c, d) < 1.0)
+        })
+    };
+    let carried = |pad: &&Pad| pad.tread || geom::ring_edges(&pad.ring).any(|(a, b)| a.dist(b) > 1.0 && level(pad, a, b));
+    for pad in l.pads.iter().filter(carried) {
+        let edges: Vec<(P2, P2)> = geom::ring_edges(&pad.ring).filter(|(a, b)| a.dist(*b) > 1.0).collect();
+        let mut fronts = Vec::new();
+        let mut backs = Vec::new();
+        let mut sides = Vec::new();
+        let mut next = first_each;
+        for (a, b) in edges {
+            match lines.iter().find(|line| on(a, b, line)) {
+                Some(&(.., z, _)) if (z - pad.z).abs() < 1.0 => fronts.push((a, b)),
+                Some(&(.., z, rise)) if z > pad.z + 1.0 => {
+                    next = rise;
+                    backs.push((a, b));
+                }
+                Some(_) => {}
+                // The winder's front is the landing's edge it goes on from; the landing's back, flat on to the winder.
+                None if level(pad, a, b) => {
+                    if pad.tread {
+                        fronts.push((a, b));
+                    } else {
+                        next = 0.0;
+                        backs.push((a, b));
+                    }
+                }
+                None if pad.tread => sides.push((a, b)),
+                None => {}
+            }
+        }
+        if fronts.is_empty() || backs.is_empty() {
+            continue;
+        }
+        let dist = |v: P2, of: &[(P2, P2)]| of.iter().map(|(a, b)| geom::dist_to_segment(v, *a, *b)).fold(f64::INFINITY, f64::min);
+        // How far from its front to its back a point of it is, 0 to 1.
+        let along = |v: P2| {
+            let (f, b) = (dist(v, &fronts), dist(v, &backs));
+            if f + b > 1e-9 { f / (f + b) } else { 0.0 }
+        };
+        let floor = floor_under(pad.z - first_each * 0.5);
+        let bottom = |a: P2, za: f64, b: P2, zb: f64, deep: f64| {
+            if za.min(zb) - deep < floor { Plane::flat(floor) } else { plane_along(a, za - deep, b, zb - deep) }
+        };
+        let c = geom::centroid(&pad.ring);
+        if let Some((sw, sd)) = side {
+            for (a, b) in &sides {
+                let (za, zb) = (pad.z + 50.0 + next * along(*a), pad.z + 50.0 + next * along(*b));
+                let mut n = (*b - *a).unit().perp();
+                if n.dot(c - *a) < 0.0 {
+                    n = n * -1.0;
+                }
+                let w = sw.min(l.width / 2.0);
+                supports.push((ccw(vec![*a, *b, *b + n * w, *a + n * w]), bottom(*a, za, *b, zb, sd), plane_along(*a, za, *b, zb)));
+            }
+        }
+        if centre.is_some() {
+            let mid = |es: &[(P2, P2)]| es.iter().fold(P2(0.0, 0.0), |s, (a, b)| s + *a + *b) * (1.0 / (2 * es.len()) as f64);
+            let top = pad.z - fin - t.tread();
+            carriages.push((mid(&fronts), top, mid(&backs), top + next, floor));
+        }
+    }
+    if let Some((cw, cd)) = centre {
+        let h = cw / 2.0;
+        let meets = |q: P2, own: usize| {
+            run_ends.iter().any(|e| e.dist(q) < 1.0)
+                || carriages.iter().enumerate().any(|(k, (f, _, b, ..))| k != own && (f.dist(q) < 1.0 || b.dist(q) < 1.0))
+        };
+        for (k, &(f, zf, b, zb, floor)) in carriages.iter().enumerate() {
+            let len = f.dist(b);
+            if len < 1.0 {
+                continue;
+            }
+            let u = (b - f).unit();
+            let n = u.perp() * h;
+            // Lapped on under the next tread where it meets the next piece, so the turn leaves no notch on its outside.
+            let (f2, b2) = (f, if meets(b, k) { b + u * h } else { b });
+            // Notched under its tread: flat on top, its underside sloping on to the next piece's.
+            let deep = cd.max(zb - zf + 50.0);
+            let under = if zf - deep < floor { Plane::flat(floor) } else { plane_along(f, zf - deep, b, zb - deep) };
+            supports.push((ccw(vec![f2 - n, b2 - n, b2 + n, f2 + n]), under, Plane::flat(zf)));
+        }
+    }
+    (risers, supports)
+}
+
+/// Every riser of a stair that no run has: the layout's own (round an arc, a spiral's) and a winder's, the edge it shares with
+/// the step under it.
+fn all_nosings(m: &Model, st: &Stair, l: &Layout) -> Vec<Nosing> {
     let mut nosings = l.nosings.clone();
     // And a winder's: the edge it shares with the step a riser under it.
     let rise = m.flight(st).1;
@@ -2305,19 +2640,7 @@ pub fn covers(m: &Model, st: &Stair) -> Vec<(Vec<P2>, Plane, Plane)> {
             nosings.push(Nosing { a, b, out: way, z: pad.z, rise: pad.z - lower.z });
         }
     }
-    for s in &nosings {
-        let strip = |w: f64| ccw(vec![s.a, s.b, s.b + s.out * w, s.a + s.out * w]);
-        if fin > 0.0 && ahead > 0.0 {
-            let ring = |x0: f64, x1: f64| {
-                ccw(vec![s.a + s.out * (ahead - x1), s.b + s.out * (ahead - x1), s.b + s.out * (ahead - x0), s.a + s.out * (ahead - x0)])
-            };
-            profiled(&mut out, profile, fin, s.z, ahead, ring);
-        }
-        if risers {
-            out.push((strip(rc), Plane::flat(s.z - s.rise), Plane::flat(s.z - fin)));
-        }
-    }
-    out
+    nosings
 }
 
 /// The line a railing follows, in plan, with the height of what it runs along at each point: on a

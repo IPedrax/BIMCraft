@@ -120,6 +120,10 @@ already avoids two of Revit's faults: it cannot fail to build, and it follows it
    what stands in it, and the opening in the floor above can be cut from it.
 9. **One place for parameters.** A stair type (a library entry, with an id and a GUID) holds structure, tread, riser and
    nosing; the instance holds the path and what is locked.
+10. **A code check is fast, and spatial.** Every building-code check runs under the cursor while drawing, after any edit
+   on a placed element, and for each candidate of the solver, so it takes what is near from the model's lookup and never
+   walks every element. The rule, how and the story of why are the building code's own, not the stair's:
+   [building codes](areas/building-codes.md#every-check-is-fast).
 
 ## Decided (2026-11-11)
 
@@ -191,7 +195,9 @@ their own, and the user decided this branch does nothing with them. Working mode
 the user asked for: push through the coding, run only the tests near the change while working, the full checks
 (`cargo fmt --check`, clippy, `cargo test --workspace`) once before each commit, commit and push often, keep this table
 and the PR description up to date. An RPM when asked: `packaging/linux/package.sh --formats rpm` →
-`dist/release/bimcraft-0.11.0-linux-x86_64.rpm`.
+`dist/release/bimcraft-0.11.0-linux-x86_64.rpm`. **Any building-code check must be optimised to be fast** (principle 10,
+[building codes](areas/building-codes.md#every-check-is-fast)): spatial candidates from the lookup, timed on the highrise,
+never a walk over every element.
 
 ### 1. The batch in the working tree (not committed)
 
@@ -392,6 +398,36 @@ Steps to finish it:
 - **Words**: the stair tools' tips, the Type Properties page (a Model part and a Graphics part, a note under each choice) and
   the code check's advice rewritten in plain words; new icons for Draw from Top, Code Check, Convert to Sketch and Connect
   Levels.
+
+### 1d. Eighth round, fixes from the user's RPM (2026-11-13)
+
+- **Snapping in plan**: points snap to a stair's corners, riser ends and landing edges (their ends, middles and lines, the
+  edges a dimension finds), not only its start; and to the faces of the walls near the cursor (their outlines' corners and
+  edges), so a stair is drawn from a wall's face, not its centre line. Nearest takes a wall's face or its centre line,
+  whichever the cursor is nearer.
+- **Snapping in sections and elevations**: a spot elevation or a note snaps to the corners and edges of a stair's steps,
+  landings and stringers as the view sees them (`snap` on a section's view).
+- **Headroom off in 3D**: the 3D view on the graphics card drew a stair's headroom whatever the view said; it leaves out
+  any stair part the view hides now.
+- **Open stairs round an arc, a spiral or winders**: closed risers under each tread, side stringers along the curved sides
+  rising tread by tread, and the centre stringer as one notched carriage (flat under each tread, its underside sloping on
+  unbroken), on straight runs too (`winding_parts`).
+- **A U-shaped stair made a sketch**: the walk line goes into a landing that turns and round it, as before converting, not
+  straight from riser to riser.
+- **Winders round a corner of a path**: the landing a flight leaves short of the winders ended at the path's corner and
+  came back (a crossed outline: X lines in plan, the walk line out to the corner and back); it ends where the winders'
+  square starts now. On a slab, the winders' undersides run on unbroken: the corner they fan round is split, the underside
+  ruled from front to back round it (four triangles to each stretch, so no diagonal tilts it), the tread one solid over
+  that; the first winder, level with the landing, goes on from the slab of the flight, and a landing too short for the
+  slab to reach its underside has the slab as far as it goes (`joint`). A carriage runs on across that landing and the
+  first winder too.
+- **Drafting in a tower**: the code check under the cursor took seconds a frame in the highrise (`stairs::headroom` made
+  the outline of every floor, ceiling and beam of every storey, a beam's searching every run for its joins; `codes::solve`
+  runs it for each stair it tries). It takes what may be over the stair from the model's lookup now (floors and roofs among
+  `other`, ceilings and shafts by kind, beams by their band of height) and passes over what is not over its steps in plan
+  or above its top step and the headroom, before any outline: a placed stair's check (the Properties palette's, after any
+  edit) costs what is near it, not the building. While the Stair tool drafts, a stair snaps only at its location line's
+  corners (`Snaps::stair_corners`).
 
 ### 3. The to-do, closed
 

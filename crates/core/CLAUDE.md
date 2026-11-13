@@ -51,6 +51,7 @@ changes. A copy is a new element: a new id and a new GUID. IFC writes the GUID a
 | Task | Read |
 |---|---|
 | Levels, walls, floors, roofs, ceilings, shafts, stairs | [levels, walls and roofs](../../docs/areas/levels-walls-roofs.md) |
+| Building codes, their rules and checks (fast and spatial) | [building codes](../../docs/areas/building-codes.md) |
 | Plans, sections, 3D, visibility and graphics, templates, scale and detail | [views and graphics](../../docs/areas/views-and-graphics.md), [performance](../../docs/performance.md) |
 | Schedules and project parameters | [schedules](../../docs/areas/schedules.md) |
 | Phases and design options | [phasing](../../docs/areas/phasing.md) |

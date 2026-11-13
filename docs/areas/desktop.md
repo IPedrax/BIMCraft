@@ -151,7 +151,11 @@ line from the last point touches a circle or an arc (`tangents`), else a scan's 
 ([point clouds](point-clouds.md)), the foot of the perpendicular from the last point
 to one, a guide through that point at
 a multiple of `Snaps::angle` from east or from the line before it (where the guide crosses a wall or grid it lands there, and a
-grid point lying on it beats a rounded length), a wall's centre line or the nearest point of a detail line, else the nearest 10 mm.
+grid point lying on it beats a rounded length), a wall's centre line or face (whichever the cursor is nearer) or the nearest point of a detail line, else the nearest 10 mm.
+The walls the cursor reaches add their outlines as the plan draws them (`outlines`: the corners and the
+faces as lines), and a stair its corners, riser ends and landing edges (`stairs::reference_edges`); while the Stair
+tool drafts one, `Snaps::stair_corners` keeps a stair to its location line's corners (`stairs::line_corners`). In a section or an
+elevation, `snap` gives the corners and edges of a stair's steps as the view sees them, which its spot elevations and notes take.
 Annotation adds its anchors (`Kind::Anchor`, switched by `Snaps::annotation`): a note's insertion point and leader, a tag's head
 and, with a leader, its host's anchor, a dimension's line and stations, a spot elevation, section and elevation marks, detail
 groups and repeating details. A camera's mark is not a symbol to snap to: its body, lens and name all land on its eye, its target

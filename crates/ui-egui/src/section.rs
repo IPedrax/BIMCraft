@@ -376,8 +376,15 @@ impl BimApp {
         // Along the line and up, to the nearest 10 mm.
         let grid = self.background_grid();
         let snapping = self.grid_snapping;
+        let snaps = self.snaps_now();
         let at = |q: (f32, f32)| {
             let p = view.mm(q);
+            // What the view shows there first: a stair's nosing, a detail line's end.
+            let reach = bimcraft_core::snap::Reach { point: crate::canvas::SNAP / view.scale, line: f64::from(PICK) / view.scale };
+            let found = bimcraft_core::snap::snap(&model, id, p, reach, &[], false, &snaps);
+            if !matches!(found.kind, bimcraft_core::snap::Kind::Free) {
+                return found.at;
+            }
             if snapping && let Some(at) = grid.nearest(p) {
                 return at;
             }

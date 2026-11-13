@@ -2534,7 +2534,13 @@ impl Scene {
         let mut hit = vec![u32::MAX; w * h];
         for tinted in [false, true] {
             for &(i, [a, b]) in self.edges() {
-                let Some(owner) = self.tris.get(i).map(|t| t.owner).filter(|o| look.shows(*o) && tints.contains_key(o) == tinted) else {
+                let Some(owner) = self
+                    .tris
+                    .get(i)
+                    .filter(|t| look.shows_part(t.owner, t.part))
+                    .map(|t| t.owner)
+                    .filter(|o| tints.contains_key(o) == tinted)
+                else {
                     continue;
                 };
                 let Rgb(r, g, bl) = tints.get(&owner).copied().unwrap_or_else(|| look.edge(owner, EDGE));

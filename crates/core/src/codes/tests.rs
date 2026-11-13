@@ -1292,3 +1292,225 @@ fn a_multistorey_stair_separates_into_a_stair_for_each_storey() {
     assert_eq!((stair_of(&s, id).width, stair_of(&s, other).width), (1000.0, 1400.0));
     assert!(s.execute("stair_storeys", &json!({"id": id})).is_err());
 }
+
+#[test]
+fn an_open_stair_round_an_arc_has_its_risers_stringers_and_an_unbroken_carriage() {
+    use crate::stairs::{PartKind, parts_tagged};
+    let mut s = Session::new();
+    let path = json!([{"to": [0, 1300]}, {"to": [2500, 3800], "arc": -90}]);
+    let curved = |s: &mut Session, name: &str| {
+        let id = run(s, "stair", json!({"start": [0, 0], "width": 1000, "type": name, "path": path}))["id"].as_u64().unwrap();
+        let st = stair_of(s, id);
+        let l = crate::stairs::stair(&s.model, &st);
+        // What stands within the arc's treads, past the straight run's end.
+        let arc: Vec<Vec<crate::geom::P2>> = l.pads.iter().filter(|p| p.tread).map(|p| p.ring.clone()).collect();
+        let over_arc = move |ring: &[crate::geom::P2]| arc.iter().any(|a| ring.iter().any(|q| crate::geom::contains(a, *q)));
+        (parts_tagged(&s.model, &st).unwrap(), over_arc)
+    };
+    run(&mut s, "type", json!({"category": "stair", "name": "S", "construction": "stringers", "riser_thickness": 25}));
+    let (parts, over_arc) = curved(&mut s, "S");
+    let risers = parts.iter().filter(|(k, r, ..)| *k == PartKind::Risers && over_arc(r)).count();
+    let stringers = parts.iter().filter(|(k, r, ..)| *k == PartKind::Supports && over_arc(r)).count();
+    assert!(risers >= 10, "a riser under each tread round the arc: {risers}");
+    assert!(stringers >= 20, "stringers down both sides of the arc: {stringers}");
+    run(&mut s, "type", json!({"category": "stair", "name": "C", "construction": "carriage"}));
+    let (parts, _) = curved(&mut s, "C");
+    // Each piece of the carriage meets the next: its underside goes on from where the last one's ends.
+    let carriage: Vec<_> = parts.iter().filter(|(k, ..)| *k == PartKind::Supports).collect();
+    assert!(carriage.len() > 15);
+    for (_, ring, bottom, top) in &carriage {
+        let lowest_top = ring.iter().map(|q| top.at(*q)).fold(f64::INFINITY, f64::min);
+        let highest_bottom = ring.iter().map(|q| bottom.at(*q)).fold(f64::NEG_INFINITY, f64::max);
+        assert!(lowest_top > highest_bottom, "never cut through by its notches");
+    }
+}
+
+#[test]
+fn a_u_shaped_stair_made_a_sketch_keeps_its_walk_line_round_the_landing() {
+    let mut s = Session::new();
+    let p = json!({"start": [0, 0], "width": 1000, "type": "Monolithic 150mm",
+        "path": [{"to": [0, 1700]}, {"to": [0, 2900], "landing": true}, {"to": [1200, 2900], "landing": true}, {"to": [1200, 0]}]});
+    let id = run(&mut s, "stair", p)["id"].as_u64().unwrap();
+    run(&mut s, "stair_sketch", json!({"id": id}));
+    let l = crate::stairs::stair(&s.model, &stair_of(&s, id));
+    // No step of the walk line cuts across the landing at a slant: each goes along a flight or square across.
+    for w in l.walk.windows(2) {
+        let d = w[1].0 - w[0].0;
+        if d.length() > 1.0 {
+            assert!(d.0.abs() < 1.0 || d.1.abs() < 1.0, "{:?} to {:?}", w[0].0, w[1].0);
+        }
+    }
+    // And it goes into the landing, past the tops of both flights.
+    let top = l.walk.iter().map(|(q, _)| q.1).fold(f64::NEG_INFINITY, f64::max);
+    assert!(top > 1800.0, "{top}");
+}
+
+/// A U-shaped stair with two winder turns on a slab, as a stair drawn along a path makes one.
+fn wound_u(s: &mut Session, ty: &str) -> crate::model::Stair {
+    let p = json!({"start": [0, 0], "width": 1000, "type": ty,
+        "path": [{"to": [2000, 0]}, {"to": [2000, 2000], "winders": 4}, {"to": [0, 2000], "winders": 4}]});
+    let id = run(s, "stair", p)["id"].as_u64().unwrap();
+    stair_of(s, id)
+}
+
+#[test]
+fn a_landing_before_winders_ends_where_they_start_and_the_walk_line_never_turns_back() {
+    let mut s = Session::new();
+    let st = wound_u(&mut s, "Monolithic 150mm");
+    let l = crate::stairs::stair(&s.model, &st);
+    // The landing a flight leaves short of the winders is a plain rectangle up to their square, never on to the
+    // path's corner and back.
+    for pad in l.pads.iter().filter(|p| !p.tread) {
+        let ring = &pad.ring;
+        assert_eq!(ring.len(), 4, "{ring:?}");
+        let box_area = {
+            let (x0, x1) = ring.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(a, b), q| (a.min(q.0), b.max(q.0)));
+            let (y0, y1) = ring.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(a, b), q| (a.min(q.1), b.max(q.1)));
+            (x1 - x0) * (y1 - y0)
+        };
+        assert!((crate::geom::area(ring).abs() - box_area).abs() < 1.0, "{ring:?}");
+    }
+    let first = l.pads.iter().find(|p| !p.tread).unwrap();
+    assert!(first.ring.iter().all(|q| q.0 <= 1500.0 + 1e-6), "{:?}", first.ring);
+    // Each step of the walk line goes on the way the one before went, or turns, never back.
+    let steps: Vec<crate::geom::P2> = l.walk.windows(2).map(|w| w[1].0 - w[0].0).filter(|d| d.length() > 1.0).map(|d| d.unit()).collect();
+    for w in steps.windows(2) {
+        assert!(w[0].dot(w[1]) > -0.1, "{:?} then {:?}", w[0], w[1]);
+    }
+}
+
+#[test]
+fn a_slab_under_winders_runs_on_unbroken_from_one_winder_to_the_next() {
+    let mut s = Session::new();
+    let st = wound_u(&mut s, "Monolithic 150mm");
+    let l = crate::stairs::stair(&s.model, &st);
+    let parts = crate::stairs::parts_tagged(&s.model, &st).unwrap();
+    // How low the solids of the tread at `z` reach at `q`.
+    let under = |q: crate::geom::P2, z: f64| {
+        let Some(pad) = l.pads.iter().find(|p| p.tread && (p.z - z).abs() < 1e-6) else { return f64::INFINITY };
+        parts
+            .iter()
+            .filter(|(_, ring, ..)| crate::geom::contains(ring, q) && crate::geom::contains(&pad.ring, crate::geom::centroid(ring)))
+            .map(|(_, _, lo, _)| lo.at(q))
+            .fold(f64::INFINITY, f64::min)
+    };
+    let treads: Vec<&crate::stairs::Pad> = l.pads.iter().filter(|p| p.tread).collect();
+    let mut checked = 0;
+    for a in &treads {
+        for b in treads.iter().filter(|b| b.z > a.z + 1.0 && b.z < a.z + 300.0) {
+            let shared: Vec<crate::geom::P2> = a.ring.iter().copied().filter(|v| b.ring.iter().any(|w| w.dist(*v) < 1e-3)).collect();
+            if shared.len() < 2 {
+                continue;
+            }
+            let (p, q) = (shared[0], shared[1]);
+            let n = (q - p).unit().perp();
+            // Along the edge they share, a millimetre to each side of it (near the corner the winders fan round, the
+            // underside climbs steeply across a winder, so not too near it).
+            for f in [0.3, 0.6, 0.9] {
+                let m = p + (q - p) * f;
+                let (lo_a, lo_b) = [(m + n, m - n), (m - n, m + n)]
+                    .into_iter()
+                    .find_map(|(x, y)| {
+                        let (za, zb) = (under(x, a.z), under(y, b.z));
+                        (za.is_finite() && zb.is_finite()).then_some((za, zb))
+                    })
+                    .unwrap_or_else(|| panic!("no slab under {m:?} at {} or {}", a.z, b.z));
+                assert!((lo_a - lo_b).abs() < 10.0, "a step of {} under {m:?} between {} and {}", lo_a - lo_b, a.z, b.z);
+                checked += 1;
+            }
+        }
+    }
+    assert!(checked >= 18, "{checked}");
+}
+
+#[test]
+fn a_short_landing_before_winders_is_closed_under_the_flight_s_last_riser() {
+    let mut s = Session::new();
+    let st = wound_u(&mut s, "Monolithic 150mm");
+    let l = crate::stairs::stair(&s.model, &st);
+    let parts = crate::stairs::parts_tagged(&s.model, &st).unwrap();
+    for run in l.runs.iter().filter(|r| r.risers > 1) {
+        let Some(landing) = l.pads.iter().find(|p| !p.tread && (p.z - run.z.1).abs() < 1e-6) else { continue };
+        // Just past the flight's end, on its middle line: solid from the flight's last tread down to its slab, with no
+        // gap between the landing and the slab coming up under it.
+        let q = run.end() + run.u * 5.0;
+        assert!(crate::geom::contains(&landing.ring, q));
+        let mut spans: Vec<(f64, f64)> =
+            parts.iter().filter(|(_, ring, ..)| crate::geom::contains(ring, q)).map(|(_, _, lo, hi)| (lo.at(q), hi.at(q))).collect();
+        spans.sort_by(|a, b| a.0.total_cmp(&b.0));
+        let each = (run.z.1 - run.z.0) / f64::from(run.risers);
+        let mut reach = spans.first().map_or(f64::INFINITY, |s| s.0);
+        assert!(reach < run.z.1 - each, "{spans:?}");
+        for (lo, hi) in &spans {
+            assert!(*lo <= reach + 1.0, "a gap from {reach} to {lo} under {q:?}: {spans:?}");
+            reach = reach.max(*hi);
+        }
+        assert!(reach >= landing.z - 1.0, "{spans:?}");
+    }
+}
+
+#[test]
+fn a_carriage_runs_on_across_the_landing_before_winders_and_round_them() {
+    let mut s = Session::new();
+    run(&mut s, "type", json!({"category": "stair", "name": "C", "construction": "carriage", "riser_thickness": 0}));
+    let st = wound_u(&mut s, "C");
+    let l = crate::stairs::stair(&s.model, &st);
+    let parts = crate::stairs::parts_tagged(&s.model, &st).unwrap();
+    let carriage: Vec<_> = parts.iter().filter(|(k, ..)| *k == crate::stairs::PartKind::Supports).collect();
+    // Under the walk line, from the foot of the first flight to the top of the second, every point has carriage under
+    // it (the walk line goes round the winders a little outside the carriage's line, so look along the middle of each
+    // stretch between them).
+    let first = l.runs.first().unwrap();
+    let second = l.runs.get(1).unwrap();
+    let mut points = vec![];
+    for k in 1..40 {
+        points.push(first.start + first.u * (first.length * f64::from(k) / 40.0));
+    }
+    // Across the landing and the first winder, on the first flight's middle line, to the middle of the turn.
+    for x in (1400..=2000).step_by(25) {
+        points.push(crate::geom::P2(f64::from(x), 0.0));
+    }
+    for y in (0..=500).step_by(25) {
+        points.push(crate::geom::P2(2000.0, f64::from(y)));
+    }
+    for k in 1..40 {
+        points.push(second.start + second.u * (second.length * f64::from(k) / 40.0));
+    }
+    for q in points {
+        assert!(carriage.iter().any(|(_, ring, ..)| crate::geom::contains(ring, q)), "no carriage under {q:?}");
+    }
+}
+
+#[test]
+fn a_stair_in_a_tower_measures_its_headroom_to_what_is_over_it_and_only_that() {
+    let m = crate::sample::highrise(12).unwrap();
+    let mut s = Session::new();
+    s.reset(m, None);
+    // Under the beam along y = 24000 and up through the next storey's floor and the ceiling under it.
+    let id = run(&mut s, "stair", json!({"start": [20000, 20000], "end": [20000, 25000]}))["id"].as_u64().unwrap();
+    let st = stair_of(&s, id);
+    let m = &s.model;
+    let over: Vec<_> = crate::stairs::headroom(m, &st, 2100.0);
+    let kinds: std::collections::BTreeSet<&str> = over.iter().filter_map(|(id, ..)| m.elements.get(*id)).map(|e| e.category()).collect();
+    assert!(["floor", "ceiling", "beam"].iter().all(|k| kinds.contains(k)), "{kinds:?}");
+    // Nothing of a storey above the one it climbs, and nothing not over it in plan.
+    let top = crate::stairs::treads(m, &st).iter().map(|(_, z)| *z).fold(f64::NEG_INFINITY, f64::max);
+    for (id, ..) in &over {
+        let under = match m.elements.get(*id) {
+            Some(crate::model::Element::Floor(f)) => {
+                m.elevation(f.level) + f.offset - m.types.floor.get(&f.type_name).map_or(0.0, |t| t.thickness)
+            }
+            Some(crate::model::Element::Ceiling(c)) => m.elevation(c.level) + c.offset,
+            Some(e @ crate::model::Element::Beam(_)) => m.run_geom(e).unwrap().z_span().0,
+            _ => continue,
+        };
+        assert!(under < top + 2100.0, "{id} at {under}, over a stair whose top step is at {top}");
+    }
+    // The tower's whole height is not looked through: as quick at 12 storeys as the code check needs while drawing.
+    let t = std::time::Instant::now();
+    for _ in 0..10 {
+        crate::codes::stair_findings(m, &st);
+    }
+    let each = t.elapsed() / 10;
+    assert!(each < std::time::Duration::from_millis(200), "{each:?} for each code check");
+}

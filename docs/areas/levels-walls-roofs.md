@@ -193,14 +193,10 @@ references a dimension measures to (`Face::Edge`, `stairs::reference_edges`). IF
 (`IfcMember .STRINGER.`) and finishes as its type builds them, with `Pset_StairCommon`, `Pset_StairFlightCommon`, the flights'
 lengths and `BIMCraft_Stair` (the stair and its type as JSON), which an import makes a stair again. `stair_storeys` makes a
 multistorey stair a stair for each storey; `stair_sketch {back}` makes a converted stair the stair it was (`Stair::unsketched`).
-A project's **building code** (`codes.rs`, `data/building-codes.json`: generic, NBR 9050 and NBR 9077 apart, IBC, DIN,
-Japan; each rule naming its `source`, the NBR entries `checked` against their text, the rest typed from memory) is the rules its stairs are held to: `building_code` names one and changes
-any rule of it for the project (`Model::building_code`, `Model::stair_rules`), a new stair starts with its riser, going and
+A project's **building code** is the rules its stairs are held to (the codes, their sources, a project's own, XML, and the
+rule that every check is fast and spatial: [building codes](building-codes.md)): a new stair starts with its riser, going and
 landing length, `landings: "auto"` places the landings due, and `stair_check` (and `code_check`, `code_findings` on a stair)
-lists what a stair is outside of, with the number and the fix. A project keeps codes of its own too
-(`Model::building_codes`, found with BIMCraft's by `Model::code`): `building_code {save}` keeps the rules in force under a name,
-and `building_code_export` and `building_code_import` hand one on as XML (`BuildingCode::to_xml`, `from_xml`: a `<rule name
-value/>` each, a rule left out being the generic code's, what the file has that we don't know listed as `left_out`).
+lists what a stair is outside of, with the number and the fix.
 `flip` on a stair makes it climb the other way over the same ground (`stairs::flipped`). A stair's grips, where they are and
 what a drag of one makes of the stair, are `stairs::grips` and `stairs::dragged`; the desktop's `stairgrips.rs` draws them on
 the plan and runs `modify` on release.
