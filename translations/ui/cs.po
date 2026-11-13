@@ -2798,7 +2798,7 @@ msgstr "Aktualizaci se nepodařilo stáhnout: {}"
 msgid "Couldn't find {}: type an IP address or a name, with a port after a colon if it isn't {}"
 msgstr "{} se nepodařilo najít: zadejte IP adresu nebo název, případně s portem za dvojtečkou, pokud není {}"
 
-#: crates/ui-egui/src/cowork/door.rs:128
+#: crates/ui-egui/src/cowork/door.rs:136
 msgid "Couldn't host the session: {}"
 msgstr "Relaci se nepodařilo hostovat: {}"
 
@@ -4960,7 +4960,7 @@ msgstr "Předat a zavřít"
 msgid "Hand the session to them: they host it, and the others move there"
 msgstr "Předat relaci této osobě: ta ji bude hostovat a ostatní se přesunou k ní"
 
-#: crates/ui-egui/src/cowork/door.rs:93
+#: crates/ui-egui/src/cowork/door.rs:96
 msgid "Handing the session to {}…"
 msgstr "Předávání relace uživateli {}…"
 
@@ -11167,7 +11167,7 @@ msgstr ""
 msgid "The selected element has no type to match"
 msgstr "Vybraný prvek nemá žádný odpovídající typ"
 
-#: crates/ui-egui/src/cowork/door.rs:139
+#: crates/ui-egui/src/cowork/door.rs:147
 msgid "The session moved to {}: joining there"
 msgstr "Relace se přesunula k uživateli {}: připojování tam"
 
@@ -12517,7 +12517,7 @@ msgstr "Včera"
 msgid "You are in {}'s session. Your edits go to the host; the project stays read-only here when the session ends."
 msgstr "Jste v relaci uživatele {}. Vaše úpravy jdou hostiteli; po skončení relace tu projekt zůstane jen pro čtení."
 
-#: crates/ui-egui/src/cowork/door.rs:121
+#: crates/ui-egui/src/cowork/door.rs:129
 msgid "You host the Co-Work session now. The project is your copy of it: save it as a file of your own"
 msgstr "Nyní hostujete relaci Co-Work. Projekt je vaše kopie: uložte ho jako vlastní soubor"
 
@@ -13301,11 +13301,11 @@ msgstr "{} to má vybrané"
 msgid "{} holds no parameters, so it has no phase to demolish"
 msgstr "{} neobsahuje žádné parametry, nemá tedy žádnou fázi k demolici"
 
-#: crates/ui-egui/src/cowork/door.rs:102
+#: crates/ui-egui/src/cowork/door.rs:105
 msgid "{} hosts the session now"
 msgstr "{} nyní hostuje relaci"
 
-#: crates/ui-egui/src/cowork/door.rs:104
+#: crates/ui-egui/src/cowork/door.rs:107
 msgid "{} hosts the session now: the others have moved there"
 msgstr "{} nyní hostuje relaci: ostatní se tam přesunuli"
 

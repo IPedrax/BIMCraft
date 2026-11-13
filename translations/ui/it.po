@@ -2799,7 +2799,7 @@ msgstr "Impossibile scaricare l'aggiornamento: {}"
 msgid "Couldn't find {}: type an IP address or a name, with a port after a colon if it isn't {}"
 msgstr "Impossibile trovare {}: scrivi un indirizzo IP o un nome, con la porta dopo i due punti se non è {}"
 
-#: crates/ui-egui/src/cowork/door.rs:128
+#: crates/ui-egui/src/cowork/door.rs:136
 msgid "Couldn't host the session: {}"
 msgstr "Impossibile ospitare la sessione: {}"
 
@@ -4961,7 +4961,7 @@ msgstr "Passa e chiudi"
 msgid "Hand the session to them: they host it, and the others move there"
 msgstr "Passa la sessione a questa persona: la ospita lei, e gli altri si spostano lì"
 
-#: crates/ui-egui/src/cowork/door.rs:93
+#: crates/ui-egui/src/cowork/door.rs:96
 msgid "Handing the session to {}…"
 msgstr "Passaggio della sessione a {}…"
 
@@ -11168,7 +11168,7 @@ msgstr ""
 msgid "The selected element has no type to match"
 msgstr "L'elemento selezionato non ha un tipo da copiare"
 
-#: crates/ui-egui/src/cowork/door.rs:139
+#: crates/ui-egui/src/cowork/door.rs:147
 msgid "The session moved to {}: joining there"
 msgstr "La sessione è passata a {}: connessione in corso"
 
@@ -12518,7 +12518,7 @@ msgstr "Ieri"
 msgid "You are in {}'s session. Your edits go to the host; the project stays read-only here when the session ends."
 msgstr "Sei nella sessione di {}. Le tue modifiche vanno all'host; alla fine della sessione il progetto resta qui in sola lettura."
 
-#: crates/ui-egui/src/cowork/door.rs:121
+#: crates/ui-egui/src/cowork/door.rs:129
 msgid "You host the Co-Work session now. The project is your copy of it: save it as a file of your own"
 msgstr "Ora ospiti la sessione Co-Work. Il progetto è la tua copia: salvalo come un file tuo"
 
@@ -13302,11 +13302,11 @@ msgstr "{} ha questo selezionato"
 msgid "{} holds no parameters, so it has no phase to demolish"
 msgstr "{} non ha parametri, quindi non ha una fase da demolire"
 
-#: crates/ui-egui/src/cowork/door.rs:102
+#: crates/ui-egui/src/cowork/door.rs:105
 msgid "{} hosts the session now"
 msgstr "{} ospita ora la sessione"
 
-#: crates/ui-egui/src/cowork/door.rs:104
+#: crates/ui-egui/src/cowork/door.rs:107
 msgid "{} hosts the session now: the others have moved there"
 msgstr "{} ospita ora la sessione: gli altri si sono spostati lì"
 

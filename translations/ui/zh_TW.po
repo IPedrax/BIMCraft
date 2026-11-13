@@ -2799,7 +2799,7 @@ msgstr "無法下載更新：{}"
 msgid "Couldn't find {}: type an IP address or a name, with a port after a colon if it isn't {}"
 msgstr "找不到 {}：請輸入 IP 位址或名稱，若不是 {}，請在冒號後加上連接埠"
 
-#: crates/ui-egui/src/cowork/door.rs:128
+#: crates/ui-egui/src/cowork/door.rs:136
 msgid "Couldn't host the session: {}"
 msgstr "無法主持工作階段：{}"
 
@@ -4961,7 +4961,7 @@ msgstr "移交並關閉"
 msgid "Hand the session to them: they host it, and the others move there"
 msgstr "將工作階段移交給對方：由對方主持，其他人轉到那裡"
 
-#: crates/ui-egui/src/cowork/door.rs:93
+#: crates/ui-egui/src/cowork/door.rs:96
 msgid "Handing the session to {}…"
 msgstr "正在將工作階段移交給 {}…"
 
@@ -11168,7 +11168,7 @@ msgstr ""
 msgid "The selected element has no type to match"
 msgstr "所選元素沒有可符合的類型"
 
-#: crates/ui-egui/src/cowork/door.rs:139
+#: crates/ui-egui/src/cowork/door.rs:147
 msgid "The session moved to {}: joining there"
 msgstr "工作階段已轉到 {}：正在加入"
 
@@ -12518,7 +12518,7 @@ msgstr "昨天"
 msgid "You are in {}'s session. Your edits go to the host; the project stays read-only here when the session ends."
 msgstr "你在 {} 的工作階段中。你的編輯會傳送給主機；工作階段結束後，專案在此處保持唯讀。"
 
-#: crates/ui-egui/src/cowork/door.rs:121
+#: crates/ui-egui/src/cowork/door.rs:129
 msgid "You host the Co-Work session now. The project is your copy of it: save it as a file of your own"
 msgstr "你現在主持此 Co-Work 工作階段。專案是你的副本：請將它另存為你自己的檔案"
 
@@ -13302,11 +13302,11 @@ msgstr "{} 選取了此項"
 msgid "{} holds no parameters, so it has no phase to demolish"
 msgstr "{} 沒有參數，因此沒有可拆除的階段"
 
-#: crates/ui-egui/src/cowork/door.rs:102
+#: crates/ui-egui/src/cowork/door.rs:105
 msgid "{} hosts the session now"
 msgstr "{} 現在主持工作階段"
 
-#: crates/ui-egui/src/cowork/door.rs:104
+#: crates/ui-egui/src/cowork/door.rs:107
 msgid "{} hosts the session now: the others have moved there"
 msgstr "{} 現在主持工作階段：其他人已轉到那裡"
 
