@@ -445,7 +445,7 @@ fn schedules_list_where_columns_stand_in_shared_coordinates() {
 // ---------- views: Rotate Project North ----------
 
 fn wall_ends(s: &Session) -> Vec<[f64; 3]> {
-    let co = &s.model.coordinates;
+    let co = s.model.frames();
     s.model
         .elements
         .values()
@@ -468,22 +468,22 @@ fn rotate_project_north_turns_the_model_and_keeps_it_where_it_is_in_the_world() 
     run(&mut s, "location", json!({"name": "North Lot", "east": 5_000_000.0, "north": 2_000_000.0, "angle": -20.0}));
     run(&mut s, "coordinates", json!({"base": [1000, 0, 0], "survey": [2000, 1000, 500]}));
     run(&mut s, "wall", json!({"points": [[0, 0], [8000, 0], [8000, 6000]]}));
-    let (walls, base) = (wall_ends(&s), s.model.coordinates.to_shared(s.model.coordinates.base));
+    let (walls, base) = (wall_ends(&s), s.model.frames().to_shared(s.model.coordinates.base));
     // Aligned with true north: project north is true north now, and the walls run along the map's axes.
     let r = run(&mut s, "rotate_project_north", json!({"true_north": true}));
     assert!((r["angle"].as_f64().unwrap() - 30.0).abs() < 1e-9, "{r}");
     let co = &s.model.coordinates;
-    assert!(co.location().angle.abs() < 1e-9, "{:?}", co.location());
-    assert!((co.locations["North Lot"].angle + 50.0).abs() < 1e-9);
+    assert!(s.model.site().rotation.abs() < 1e-9, "{:?}", s.model.site());
+    assert!((co.sites["North Lot"].rotation + 50.0).abs() < 1e-9);
     assert!(same_place(&wall_ends(&s), &walls), "{:?} {walls:?}", wall_ends(&s));
-    assert!(same_place(&[co.to_shared(co.base)], &[base]));
+    assert!(same_place(&[s.model.frames().to_shared(co.base)], &[base]));
     assert_eq!(co.survey[2], 500.0, "heights stay");
     // By an angle about a point, and back: one undo step each.
     run(&mut s, "rotate_project_north", json!({"angle": 15, "about": [3000, 3000]}));
-    assert!((s.model.coordinates.location().angle + 15.0).abs() < 1e-9);
+    assert!((s.model.site().rotation + 15.0).abs() < 1e-9);
     assert!(same_place(&wall_ends(&s), &walls));
     run(&mut s, "undo", json!({}));
-    assert!(s.model.coordinates.location().angle.abs() < 1e-9);
+    assert!(s.model.site().rotation.abs() < 1e-9);
 }
 
 #[test]

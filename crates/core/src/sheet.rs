@@ -68,7 +68,7 @@ fn framing_in(m: &Model, work: &Work, view: impl Key, scale: f64) -> Option<View
         }
         Element::PanelSchedule(ps) => {
             let (width, height) = panel::size(m, ps)?;
-            return Some(View { scale: 1.0, cx: 0.0, cy: 0.0, width, height });
+            return Some(View { angle: 0.0, scale: 1.0, cx: 0.0, cy: 0.0, width, height });
         }
         Element::View3D(v) => {
             let cam = view3d::camera_in(m, v.azimuth, v.elevation, k, ROOM * DENSITY, &Look::of(m, view));

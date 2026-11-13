@@ -394,6 +394,7 @@ impl Canvas {
     pub(crate) fn view(&self, level: Id) -> Option<View> {
         let c = self.cams.get(&level)?;
         Some(View {
+            angle: 0.0,
             scale: c.scale,
             cx: c.cx,
             cy: c.cy,

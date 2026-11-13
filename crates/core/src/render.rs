@@ -1155,13 +1155,12 @@ fn turn_corners(runs: &mut [(Id, Vec<Vec<P2>>)], reach: f64) {
     }
 }
 
-/// The plan of `level` fitted into `width` x `height` px, as an image of it is made: with its name lettered at its bottom left.
-/// How far plan `key` is turned on screen, degrees counter-clockwise: oriented to true north, the active location's angle to
-/// true north (which is clockwise from project north), so true north is up; else 0.
+/// How far plan `key` is turned on screen, degrees counter-clockwise: oriented to true north, the active site's rotation (the
+/// angle to true north, clockwise from project north), so true north is up; else 0.
 pub fn view_angle(m: &Model, key: impl Key) -> f64 {
     match crate::graphics::graphics_of(m, key) {
         Some(g) if g.orientation == crate::graphics::Orientation::TrueNorth => {
-            let a = m.coordinates.location().angle;
+            let a = m.site().rotation;
             if a.is_finite() { a } else { 0.0 }
         }
         _ => 0.0,
@@ -1185,6 +1184,7 @@ pub(crate) fn fit_turned(pts: &[P2], width: u32, height: u32, n: f64, angle: f64
     View { cx: c.0, cy: c.1, angle, ..v }
 }
 
+/// The plan of `level` fitted into `width` x `height` px, as an image of it is made: with its name lettered at its bottom left.
 pub fn plan(m: &Model, level: impl Key, width: u32, height: u32) -> Drawing {
     let level = m.guid(level);
     let view = fit_turned(&plan_extent(m, level), width, height, scale_of(m, level), view_angle(m, level));
@@ -5701,7 +5701,7 @@ mod tests {
         let mut s = Session::new();
         s.script(include_str!("../../../ci/family-window.txt")).unwrap();
         let level = s.model.levels()[0].0;
-        let view = View { scale: 0.2, cx: 4000.0, cy: 0.0, width: 800, height: 600 };
+        let view = View { angle: 0.0, scale: 0.2, cx: 4000.0, cy: 0.0, width: 800, height: 600 };
         let d = draw(&s.model, level, view);
         // The south window, 1200 x 1500 at 4000: its jambs at 3400 and 4600, from the exterior face (y -100) to the interior's.
         for x in [3400.0, 4600.0] {
@@ -5733,7 +5733,7 @@ mod tests {
             "background": {"pattern": "Solid fill", "color": [255, 128, 64]}
         });
         s.execute("graphics", &serde_json::json!({"view": "Level 1", "categories": {"floor": {"projection": style}}})).unwrap();
-        let d = draw(&s.model, level, View { scale: 0.1, cx: 4000.0, cy: 3000.0, width: 1000, height: 800 });
+        let d = draw(&s.model, level, View { angle: 0.0, scale: 0.1, cx: 4000.0, cy: 3000.0, width: 1000, height: 800 });
         let pm = tiny_skia::Pixmap::decode_png(&png(&d).unwrap()).unwrap();
         // The room's inside, clear of its walls, its name and the column.
         let (lo, hi) = (d.view.px(P2(500.0, 2000.0)), d.view.px(P2(3000.0, 500.0)));

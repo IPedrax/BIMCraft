@@ -167,11 +167,39 @@ Tests: the link tests in `coordinates_io_tests.rs`.
 
 ## Rotate Project North
 
-`rotate_project_north` (`angle`, or `true_north: true` for the active location's angle; about `about`, else the Project
+`rotate_project_north` (`angle`, or `true_north: true` for the active site's rotation; about `about`, else the Project
 Base Point) turns every element with a place in plan, through `relocate` as `rotate` does, and both points; every
-location's angle goes back by as much (wrapped to -180..180), and a link placed by base points turns with it, so nothing
+site's rotation goes back by as much (wrapped to -180..180), solved again about the point that stays, and a link placed by base points turns with it, so nothing
 moves in the world, only the project's axes. Levels, sheets, schedules, 3D views and links by shared coordinates stay (the
-last follow the locations). Plan crops stay as they are.
+last follow the sites). Plan crops stay as they are.
+
+## Site's three origins
+
+Visibility/Graphics has a **Site** model category with three subcategories, `internalorigin`, `projectbasepoint` and
+`surveypoint` (`graphics::SUBCATEGORIES`), hidden unless a view shows them, as Revit's are: `graphics {"view": …, "show":
+["projectbasepoint"]}`, or their rows under Site in the dialog. Plans, sections and elevations draw them
+(`render::origin_marks`, through a projection from a model point to the drawing: a plan's x and y, a section's distance along
+its line and height), annotation-sized: the Internal Origin as a red x arrow and a green y arrow, the Project Base Point as
+a circle with a cross in it, the Survey Point as a circle with a triangle in it. Hiding Site hides all three.
+
+They are picked as elements are, by the library ids of their entries (`coordinates::Point`, `Point::of`, `Point::id`):
+each mark's primitives are owned by its point, and a pick takes a point before what's under it (`Drawing::on_top`; the
+Internal Origin stands on walls' corners), in a plan, a section or the 3D view. The selection keeps them as it keeps elements. The 3D view's marks, Properties of a point and its drag come with the
+Location window (slice 7).
+
+## Orientation: plans turned to true north
+
+A plan's graphics hold `orientation`, `project_north` (the default) or `true_north` (`graphics::Orientation`; `graphics
+{view, orientation}`, or `modify` of the view's `graphics`; a view's own, not a template's). Oriented to true north, a plan is
+turned on screen by the active site's rotation (its angle to true north) (`render::view_angle`), so true north is up; the model never
+moves. `render::View` has an `angle`: `px` and `mm` turn about the view's middle, `along` turns a direction and `shown` is the
+whole box the view sees, which culling, hatching and patterns clip to. `render::plan` and the ceiling plan fit the plan as it
+lies turned (`fit_turned`), and so does a sheet's viewport of it (`sheet::framing_in`). Dimension numbers run along their
+turned lines and never upside down; elevation and section heads point the way they look on screen; CAD text turns with its
+drawing; a spot coordinate's shoulder and text stay level on the sheet. The desktop's canvas turning with the plan comes with the Location window (slice 7). Tests: `coordinates_tests.rs` (the
+angle, the fit, the sheet).
+
+The north arrow annotation, and the map and the sun (the plan's stage 8), are on the [roadmap](../../ROADMAP.md) (0.9).
 
 ## Commands
 
@@ -192,4 +220,4 @@ last follow the locations). Plan crops stay as they are.
 
 Every change is a command and so one undo step. Tests: `coordinates_tests.rs`, and the payloads in the hostile sweep.
 
-Not yet (the plan's later slices): Rotate Project North, plans turned to true north, map systems and WGS84, and the desktop.
+Not yet (the plan's later slices): map systems and WGS84, and the desktop.

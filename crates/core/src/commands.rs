@@ -9378,31 +9378,13 @@ fn location(s: &mut Session, p: &Value) -> R {
     Ok(json!({"name": name, "location": g.location(survey), "georeference": g, "active": active, "id": id, "guid": guid}))
 }
 
-/// The `coordinates` report, with each location's and each point's id and GUID, as the library holds them.
-fn coordinates_report(m: &Model) -> Value {
-    use crate::coordinates::{BASE_POINT, INTERNAL_ORIGIN, SURVEY_POINT};
-    let mut r = m.coordinates.report();
-    let ids = |kind: &LibKind, name: &str| (m.library.id(kind, name), m.library.guid(kind, name));
-    for name in m.coordinates.locations.keys() {
-        let (id, guid) = ids(&LibKind::Location, name);
-        r["locations"][name]["id"] = json!(id);
-        r["locations"][name]["guid"] = json!(guid);
-    }
-    for (key, name) in [("internal_origin", INTERNAL_ORIGIN), ("base", BASE_POINT), ("survey", SURVEY_POINT)] {
-        let (id, guid) = ids(&LibKind::CoordinatePoint, name);
-        r[key]["id"] = json!(id);
-        r[key]["guid"] = json!(guid);
-    }
-    r
-}
-
 fn rotate_project_north(s: &mut Session, p: &Value) -> R {
     let c = "rotate_project_north";
     only(c, p, &["angle", "true_north", "about"])?;
     let angle = match (num(c, p, "angle")?, flag(c, p, "true_north")?) {
         (Some(a), false) if a.abs() <= 360.0 => a,
         (Some(a), false) => return Err(bad(c, format!("`angle` is degrees from -360 to 360, not {a}"))),
-        (None, true) => s.model.coordinates.location().angle,
+        (None, true) => s.model.site().rotation,
         (Some(_), true) => return Err(bad(c, "give `angle` or `true_north`, not both")),
         (None, false) => return Err(bad(c, "give `angle` (degrees, counter-clockwise) or `true_north: true`")),
     };
@@ -9430,7 +9412,17 @@ fn rotate_project_north(s: &mut Session, p: &Value) -> R {
         let a = (a + 180.0).rem_euclid(360.0) - 180.0;
         if a.abs() < 1e-9 { 0.0 } else { a }
     };
-    co.locations.values_mut().for_each(|l| l.angle = wrap(l.angle - angle));
+    // Every site turns back by as much about the point that stays, so every point keeps its place in the world.
+    let fixed = [about.0, about.1, 0.0];
+    let turned = |g: &mut crate::model::Georeference| {
+        let q = g.to_shared(fixed);
+        g.rotation = wrap(g.rotation - angle);
+        g.specify(fixed, q);
+    };
+    co.sites.values_mut().for_each(turned);
+    let mut g = m.site().clone();
+    turned(&mut g);
+    m.set_site(g);
     for e in m.elements.values_mut() {
         if let Element::Link(l) = e
             && l.by == crate::link::By::Base
