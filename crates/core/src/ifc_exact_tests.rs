@@ -129,3 +129,21 @@ fn copies_of_one_mapped_shape_moved_turned_or_a_few_hundredths_apart_are_one_typ
     assert!(placed.iter().all(|c| c.tilt.is_none()));
     assert!(placed.iter().any(|c| (c.at.0, c.at.1) == (5000.0, 3000.0)));
 }
+
+#[test]
+fn a_family_with_no_room_for_another_shape_goes_on_in_the_next_rather_than_leaving_it_out() {
+    let mut g = G::new();
+    // 260 bolts of as many sizes: one form each, four more than a family holds.
+    for k in 0..260 {
+        let r = rod(&mut g, 5.0 + 0.5 * f64::from(k), 50.0);
+        let map = shape(&mut g, &[r]);
+        bolt(&mut g, "Bolt", map, [f64::from(k) * 100.0, 0.0, 0.0], UP, EAST);
+    }
+    let i = g.import();
+    let m = &i.model;
+    assert!(!i.skipped.iter().any(|s| s.contains("more shapes than one family holds")), "{:?}", i.skipped);
+    let most = crate::family::MAX_FORMS;
+    assert_eq!(m.families["Bolt"].forms.len(), most);
+    assert_eq!(m.families["Bolt (2)"].forms.len(), 260 - most);
+    assert_eq!(copies(m, "Bolt").len() + copies(m, "Bolt (2)").len(), 260);
+}
