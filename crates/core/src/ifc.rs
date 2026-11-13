@@ -1175,7 +1175,7 @@ impl Origin {
 
 /// The model as IFC4, its coordinates the internal ones.
 pub fn export(m: &Model) -> String {
-    export_with(m, true, Origin::Internal)
+    export_with(m, true, Origin::Internal, Schema::Ifc4)
 }
 
 /// A plane angle as IFC's compound measure: degrees, minutes, seconds and millionths of a second, all of its sign.
@@ -1350,15 +1350,28 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
         (Some(w), None) => (compound(w[1]), compound(w[0]), real(0.0)),
         (None, _) => ("$".into(), "$".into(), "$".into()),
     };
-            or_none(&g.map_zone),
-        ];
-        let mm = to_meter * 1000.0;
-        let (q, axis, scale) = match from {
-            Some(o) => (g.to_shared(o), (turn_c, turn_s), g.scale / mm),
-            None => ([0.0; 3], (1.0, 0.0), 1.0 / mm),
-        };
-        let conversion = [real(q[0] / mm), real(q[1] / mm), real(q[2] / mm), ratio(axis.0), ratio(axis.1), ratio(scale)];
-        w.map_conversion(ctx, None, crs, unit, conversion);
+    let site = w.add(format!("IFCSITE({},$,'Site',$,$,#{site_at},{footprint},$,.ELEMENT.,{lat},{lon},{elevation},$,$)", w.guid(SITE, 0)));
+    if !plots.is_empty() {
+        let total = plots.iter().map(|(_, pl)| geom::area(&pl.points).abs()).sum::<f64>() / 1e6;
+        let area = w.add(format!("IFCPROPERTYSINGLEVALUE('TotalArea',$,IFCAREAMEASURE({}),$)", real(total)));
+        w.define(site, "Pset_SiteCommon", &[area], (PLOT_PROPERTIES, PLOT_DEFINES), 0);
+        let mut metadata = Vec::new();
+        for key in ["Names", "Guids", "Levels"] {
+            let values: Vec<String> = plots
+                .iter()
+                .map(|(id, pl)| {
+                    let value = match key {
+                        "Names" => pl.name.clone(),
+                        "Guids" => m.guid(*id).to_string(),
+                        _ => pl.level.to_string(),
+                    };
+                    let kind = if key == "Names" { "IFCTEXT" } else { "IFCLABEL" };
+                    format!("{kind}({})", s(&value))
+                })
+                .collect();
+            metadata.push(w.add(format!("IFCPROPERTYLISTVALUE({},$,({}),$)", s(key), values.join(","))));
+        }
+        w.define(site, PROPERTY_LINES, &metadata, (PLOT_NAMES, PLOT_NAMES_DEFINES), 0);
     }
     let building_at = w.place(Some(site_at), (0.0, 0.0, 0.0), None);
     let building_name = info.map(|(_, i)| i.building.as_str()).filter(|b| !b.is_empty()).unwrap_or(&m.name);
@@ -2513,15 +2526,16 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
         w.define(project, PHASING, &props, (PHASED, PHASED_DEFINES), 0);
     }
 
-            or_none(&g.map_zone),
-        ];
-        let mm = to_meter * 1000.0;
-        let (q, axis, scale) = match from {
-            Some(o) => (g.to_shared(o), (turn_c, turn_s), g.scale / mm),
-            None => ([0.0; 3], (1.0, 0.0), 1.0 / mm),
-        };
-        let conversion = [real(q[0] / mm), real(q[1] / mm), real(q[2] / mm), ratio(axis.0), ratio(axis.1), ratio(scale)];
-        w.map_conversion(ctx, None, crs, unit, conversion);
+    // The components standing in each room, referenced in its space (IFC4's "also in"), after everything else, so the rest
+    // of the file is as it was without them.
+    if reference_rooms {
+        for (room, items) in in_rooms {
+            if let Some(space) = products.get(&room) {
+                w.add(format!("IFCRELREFERENCEDINSPATIALSTRUCTURE({},$,$,$,({}),#{space})", w.guid(REFERENCED, room), refs(&items)));
+            }
+        }
+    }
+
     let app = s(&format!("BIMCraft {}", env!("CARGO_PKG_VERSION")));
     format!(
         "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('ViewDefinition [{}]'),'2;1');\n\

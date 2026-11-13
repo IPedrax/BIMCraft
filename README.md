@@ -290,7 +290,7 @@ out, and from a set its API writes (labels and a list value), while a set anothe
 
 ## Quick start
 
-The engine and the CLI need Rust 1.90 or later; the desktop app needs 1.95 (egui 0.36).
+The engine and the CLI need Rust 1.92 or later (krilla, which writes PDF); the desktop app needs 1.95 (egui 0.36).
 
 ```sh
 git clone https://github.com/IPedrax/bimcraft

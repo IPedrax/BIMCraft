@@ -470,8 +470,10 @@ mod tests {
     #[test]
     fn only_the_first_sheet_and_the_shared_strings_inflate_and_within_one_budget() {
         // Two huge sheets after the first (`sheet10` sorts after `sheet2`) are never inflated.
+        let z =
+            |ps: &[(&str, String)]| zip(&ps.iter().map(|(n, d)| Part { name: n, data: d.as_bytes(), store: false }).collect::<Vec<_>>());
         let big = "a".repeat(1 << 20);
-        let b = zip(&[
+        let b = z(&[
             ("xl/worksheets/sheet2.xml", big.clone()),
             ("xl/worksheets/sheet10.xml", big),
             ("xl/worksheets/sheet1.xml", "<row/>".into()),
@@ -479,7 +481,7 @@ mod tests {
         let parts = zip_entries(&b, 1024).unwrap();
         assert_eq!(parts.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>(), ["xl/worksheets/sheet1.xml"]);
         // The first sheet and the shared strings share one budget.
-        let b = zip(&[("xl/worksheets/sheet1.xml", "x".repeat(600)), ("xl/sharedStrings.xml", "y".repeat(600))]);
+        let b = z(&[("xl/worksheets/sheet1.xml", "x".repeat(600)), ("xl/sharedStrings.xml", "y".repeat(600))]);
         assert!(zip_entries(&b, 1024).unwrap_err().contains("more than"));
         assert_eq!(zip_entries(&b, 2048).unwrap().len(), 2);
     }
