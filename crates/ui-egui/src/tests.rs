@@ -2804,6 +2804,31 @@ fn the_text_tool_with_a_leader_takes_its_point_then_the_notes() {
     );
 }
 
+/// The Text tool's Leader Type (#381): a note placed with Two Segment or Curved keeps the kind it was placed with.
+#[test]
+fn the_text_tools_leader_type_goes_with_the_notes_it_places() {
+    let mut h = app(BOX);
+    press(&mut h, "Annotate");
+    press(&mut h, "Text");
+    type_into(&mut h, "Text:", "Lintel");
+    press(&mut h, "Leader");
+    press(&mut h, "Two Segment");
+    click(&mut h, P2(2000.0, 2000.0));
+    click(&mut h, P2(4000.0, 2500.0));
+    press(&mut h, "Curved");
+    click(&mut h, P2(3000.0, 2000.0));
+    click(&mut h, P2(5000.0, 2500.0));
+    let notes = ids(&h, "text");
+    assert_eq!(notes.len(), 2);
+    assert_eq!((field(&h, notes[0], "leader_kind"), field(&h, notes[1], "leader_kind")), (json!("two_segment"), json!("curved")));
+    // Rewritten, a placed note changes its leader's kind from its own Options Bar.
+    h.state_mut().edit_note(notes[0]);
+    h.run();
+    press(&mut h, "Curved");
+    press(&mut h, "Finish");
+    assert_eq!(field(&h, notes[0], "leader_kind"), json!("curved"));
+}
+
 #[test]
 fn angular_and_radial_dimensions_and_spot_elevations_from_the_annotate_tab() {
     // Walls 3 to 6, a slanted one 7, a round column 8, the floor 9.

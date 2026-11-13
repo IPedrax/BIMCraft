@@ -23,11 +23,11 @@ use crate::lines::{DetailLine, LineStyle};
 use crate::massing;
 use crate::model::{
     CEILING_HEIGHT, CadImport, Ceiling, CeilingType, Column, ColumnType, Component, DEFAULT_HEIGHT, DimKind, Dimension, Dimension3D,
-    Element, End, Extrusion, Face, Facing, Floor, FloorType, Grid, Guid, HostRef, Hosted, Id, Key, Landing, Layer, Level, Line, Location,
-    MAX_COORD, MAX_POINTS, MAX_SLOPE, MAX_TEXT, Mass, Model, Note, Opening, OpeningType, Orient, PARAMETER_CATEGORIES, ParameterKind,
-    Pattern, Perspective, PlanView, PointCloud, ProjectParameter, PropertyLine, RAMP_SLOPE, RAMP_WIDTH, RISER, Railing, RailingType, Ramp,
-    Rebar, Ref3, Reference, Roof, RoofType, Room, RoomArea, RoomSeparator, STAIR_WIDTH, Schedule, Section, SectionBox, Shaft, Sheet, Side,
-    Spot, Stair, TOL, TREAD, Tag, Unbound, View3D, Viewport, Wall, WallType, heading, paper,
+    Element, End, Extrusion, Face, Facing, Floor, FloorType, Grid, Guid, HostRef, Hosted, Id, Key, Landing, Layer, LeaderKind, Level, Line,
+    Location, MAX_COORD, MAX_POINTS, MAX_SLOPE, MAX_TEXT, Mass, Model, Note, Opening, OpeningType, Orient, PARAMETER_CATEGORIES,
+    ParameterKind, Pattern, Perspective, PlanView, PointCloud, ProjectParameter, PropertyLine, RAMP_SLOPE, RAMP_WIDTH, RISER, Railing,
+    RailingType, Ramp, Rebar, Ref3, Reference, Roof, RoofType, Room, RoomArea, RoomSeparator, STAIR_WIDTH, Schedule, Section, SectionBox,
+    Shaft, Sheet, Side, Spot, Stair, TOL, TREAD, Tag, Unbound, View3D, Viewport, Wall, WallType, heading, paper,
 };
 use crate::paint;
 use crate::phasing;
@@ -914,14 +914,17 @@ other_files(
         "text",
         ui_msg!("Text"),
         &["TX"],
-        "{text, at: [x, y], view?, type?, angle?, leader?: [x, y], override_format?, runs?: [{from, to, bold?, italic?, \
-         underline?}, …]} a text note, its first line's top left at `at`, in a view by name or id: a level's plan (the lowest \
-         by default; `at` in plan mm), a section or an elevation (`at` along its line from its start, and up), or a sheet by \
-         number (`at` in paper mm). Lettered as its text `type` says (2.5mm unless told; `text_type` lists and makes them: \
-         its font, its size, its border), turned `angle` degrees counter-clockwise; with `leader`, a line to that point. \
-         Lines break at \\n. With `override_format`, each run makes characters `from` up to `to` (counted in characters, a \
-         line break one) bold, italic or underlined (true), or not (false), whatever the type says; they stay when the \
-         type changes, and `modify` with a new `text` alone keeps them on what didn't change. Font and size are the type's",
+        "{text, at: [x, y], view?, type?, angle?, leader?: [x, y], leader_kind?, override_format?, runs?: [{from, to, \
+         bold?, italic?, underline?}, …]} a text note, its first line's top left at `at`, in a view by name or id: a level's \
+         plan (the lowest by default; `at` in plan mm), a section or an elevation (`at` along its line from its start, and \
+         up), or a sheet by number (`at` in paper mm). Lettered as its text `type` says (2.5mm unless told; `text_type` \
+         lists and makes them: its font, its size, its border), turned `angle` degrees counter-clockwise; with `leader`, a \
+         line to that point, `leader_kind` being how it runs there: `straight` (the default), `two_segment` (a shoulder \
+         level with the note, its lettering's height long, then to the point) or `curved` (an arc bowing from that \
+         shoulder's corner). Lines break at \\n. With `override_format`, each run makes characters `from` up to `to` \
+         (counted in characters, a line break one) bold, italic or underlined (true), or not (false), whatever the type \
+         says; they stay when the type changes, and `modify` with a new `text` alone keeps them on what didn't change. Font \
+         and size are the type's",
         text_note,
     ),
     edit(
@@ -9816,7 +9819,7 @@ fn text_note(s: &mut Session, p: &Value) -> R {
     if p.get("size").is_some() {
         return Err(bad(c, "a note's size is its text type's: give `type` (`text_type` lists them, and makes one of a size)"));
     }
-    only(c, p, &["text", "at", "view", "type", "angle", "leader", "override_format", "runs"])?;
+    only(c, p, &["text", "at", "view", "type", "angle", "leader", "leader_kind", "override_format", "runs"])?;
     let m = &s.model;
     let text = note_text(c, p)?.ok_or_else(|| bad(c, "`text` is required"))?;
     let at = point_req(c, p, "at")?;
@@ -9824,6 +9827,11 @@ fn text_note(s: &mut Session, p: &Value) -> R {
     let type_name = match name_param(c, p, "type")? {
         Some(n) => n,
         None => crate::text::default_type(&m.text_types).cloned().ok_or_else(|| bad(c, "the project has no text type; make one first"))?,
+    };
+    let leader_kind = match name_param(c, p, "leader_kind")? {
+        None => LeaderKind::Straight,
+        Some(n) => serde_json::from_value(Value::String(n.clone()))
+            .map_err(|_| bad(c, format!("`leader_kind` is straight, two_segment or curved, not `{n}`")))?,
     };
     let runs = match p.get("runs") {
         v if absent(v) => Vec::new(),
@@ -9838,6 +9846,7 @@ fn text_note(s: &mut Session, p: &Value) -> R {
         size: None,
         angle: num(c, p, "angle")?.unwrap_or(0.0),
         leader: point_opt(c, p, "leader")?,
+        leader_kind,
         override_format: flag(c, p, "override_format")?,
         runs,
     };

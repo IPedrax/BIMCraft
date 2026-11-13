@@ -1319,7 +1319,8 @@ impl Orient {
 
 /// A text note in a view: a level's plan, a section, an elevation or a sheet. `at` is the top left
 /// of its first line, in the view's own terms; lettered as its text type says (`crate::text`); turned
-/// `angle` degrees counter-clockwise; with a leader to `leader`. With `override_format`, its `runs`
+/// `angle` degrees counter-clockwise; with a leader to `leader`, straight, in two segments or curved as
+/// `leader_kind` says. With `override_format`, its `runs`
 /// make parts of it bold, italic or underlined, or not, whatever its type says; they stay when its type
 /// changes. `size` is a note's from before text types, which a file's reading gives a type of that size.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -1336,10 +1337,39 @@ pub struct Note {
     pub angle: f64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub leader: Option<P2>,
+    #[serde(default, skip_serializing_if = "LeaderKind::is_straight")]
+    pub leader_kind: LeaderKind,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub override_format: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub runs: Vec<crate::text::Run>,
+}
+
+/// How a note's leader reaches the point it names: straight from the note's side, in two segments (a shoulder level
+/// with the note, its lettering's height long, then to the point), or as an arc bowing from that shoulder's corner.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LeaderKind {
+    #[default]
+    Straight,
+    TwoSegment,
+    Curved,
+}
+
+impl LeaderKind {
+    /// Its name in a command or a file.
+    pub fn name(self) -> &'static str {
+        match self {
+            LeaderKind::Straight => "straight",
+            LeaderKind::TwoSegment => "two_segment",
+            LeaderKind::Curved => "curved",
+        }
+    }
+
+    /// Whether it is left out of a file: straight, the default.
+    fn is_straight(&self) -> bool {
+        *self == LeaderKind::Straight
+    }
 }
 
 /// A scan placed: the project's `cloud`, its middle at `at` in plan and `offset` mm over `level`, turned `angle` degrees

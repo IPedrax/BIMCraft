@@ -4,7 +4,8 @@
 use serde_json::{Value, json};
 
 use crate::engine::Session;
-use crate::model::{Element, Id, Model, Note};
+use crate::geom::P2;
+use crate::model::{Element, Id, LeaderKind, Model, Note};
 use crate::render::{self, View};
 
 fn run(s: &mut Session, c: &str, p: Value) -> Value {
@@ -203,6 +204,77 @@ fn a_notes_frame_turns_its_layout_into_the_drawing_and_back() {
     let back = f.mm(f.px((x, y)));
     assert!((back.0 - x).abs() < 1e-3 && (back.1 - y).abs() < 1e-3, "{back:?}");
     assert_eq!(layout.index_at(back), layout.lines[1].chars[2].index);
+}
+
+/// The last line a note draws, past its lettering and its border: its leader.
+fn leader_line(s: &Session, id: Id) -> (render::Drawing, Vec<(f32, f32)>) {
+    let view = View { scale: 0.1, cx: 0.0, cy: 0.0, width: 800, height: 400 };
+    let d = render::draw(&s.model, 100_000, view);
+    let pts = d
+        .prims
+        .iter()
+        .zip(&d.owners)
+        .filter(|(_, o)| **o == Some(id))
+        .filter_map(|(p, _)| match p {
+            render::Prim::Line { pts, .. } => Some(pts.clone()),
+            _ => None,
+        })
+        .next_back()
+        .unwrap_or_else(|| panic!("{id} draws no leader"));
+    (d, pts)
+}
+
+/// #381: a note's leader is straight, in two segments (level out of the note for its lettering's height, then to the
+/// point), or an arc bowing from that shoulder's corner.
+#[test]
+fn a_notes_leader_is_straight_two_segments_or_an_arc() {
+    let target = [3000.0, 1500.0];
+    let at = |d: &render::Drawing| d.view.px(P2(target[0], target[1]));
+    // Straight: from the note's side to the point in one stroke.
+    let (s, n) = with_note("Lintel", "5mm", json!({"leader": target}));
+    let (d, straight) = leader_line(&s, n);
+    assert_eq!(straight.len(), 2);
+    assert_eq!(straight[1], at(&d));
+    // Two segments: level out of the note, then to the point.
+    let (s, n) = with_note("Lintel", "5mm", json!({"leader": target, "leader_kind": "two_segment"}));
+    let (d, two) = leader_line(&s, n);
+    assert_eq!((two.len(), two[2]), (3, at(&d)));
+    assert_eq!(two[0].1, two[1].1, "the shoulder runs level");
+    assert!(two[1].0 - two[0].0 > 1.0, "the shoulder runs toward the point");
+    // A point the note's lettering itself stands over still gets its shoulder away from the note, never back across the
+    // text it belongs to: the point sits just inside where its straight leader leaves the note, in the note's own frame.
+    let from = d.view.mm(straight[0]);
+    let (s, n) = with_note("Lintel", "5mm", json!({"leader": [from.0 - 200.0, 1200.0], "leader_kind": "two_segment"}));
+    let (_, over) = leader_line(&s, n);
+    assert_eq!(over.len(), 3);
+    assert!(over[1].0 > over[0].0, "the shoulder runs away from the note");
+    // Curved: an arc, in steps, bowed away from the straight line between its ends.
+    let (s, n) = with_note("Lintel", "5mm", json!({"leader": target, "leader_kind": "curved"}));
+    let (d, curve) = leader_line(&s, n);
+    assert!(curve.len() > 3);
+    assert_eq!(curve[curve.len() - 1], at(&d));
+    let (a, b) = (curve[0], curve[curve.len() - 1]);
+    let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+    let len = dx.hypot(dy).max(1e-6);
+    let bow = curve.iter().map(|p| ((p.0 - a.0) * dy - (p.1 - a.1) * dx).abs() / len).fold(0.0, f32::max);
+    assert!(bow > 1.0, "bowed {bow} px from the chord");
+}
+
+/// #381: a leader's kind is the note's, straight unless told, and left out of the file while it is straight.
+#[test]
+fn a_leader_kind_is_the_notes_and_a_straight_one_is_left_out_of_the_file() {
+    let mut s = Session::new();
+    let n = id_of(&run(&mut s, "text", json!({"text": "Note", "at": [0, 0], "leader": [1000, 1000]})));
+    assert_eq!(note(&s, n).leader_kind, LeaderKind::Straight);
+    assert!(!s.model.to_json().unwrap().contains("leader_kind"), "a straight leader writes nothing extra");
+    run(&mut s, "modify", json!({"id": n, "leader_kind": "curved"}));
+    assert_eq!(note(&s, n).leader_kind, LeaderKind::Curved);
+    assert_eq!(serde_json::to_value(note(&s, n)).unwrap()["leader_kind"], json!("curved"));
+    // A kind given before the note has a leader is kept for the one it may get.
+    let m = id_of(&run(&mut s, "text", json!({"text": "Note", "at": [0, 0], "leader_kind": "two_segment"})));
+    assert_eq!(note(&s, m).leader_kind, LeaderKind::TwoSegment);
+    let e = err(&mut s, "text", json!({"text": "x", "at": [0, 0], "leader_kind": "zigzag"}));
+    assert!(e.contains("two_segment"), "{e}");
 }
 
 #[test]
