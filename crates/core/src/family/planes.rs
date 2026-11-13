@@ -315,8 +315,8 @@ impl RefPlane {
         Frame { origin: mul(z, dot(self.start, z)), x, y, z }
     }
 
-    /// Which of the family's axes its normal lies along (0, 1, 2 for x, y, z), if one.
-    fn direction(&self) -> Option<usize> {
+    /// Which of the family's axes its normal lies along (0, 1, 2 for x, y, z), if one: the direction it may define the origin in.
+    pub fn direction(&self) -> Option<usize> {
         let z = self.frame().z;
         (0..3).find(|&k| z[k].abs() > 1.0 - 1e-9)
     }

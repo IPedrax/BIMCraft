@@ -12,6 +12,7 @@ mod extrusion;
 pub(crate) mod lit3d;
 mod nested;
 pub(crate) mod options;
+mod origin_mark;
 mod pivot;
 pub(crate) mod sketch;
 pub(crate) mod tabs;
