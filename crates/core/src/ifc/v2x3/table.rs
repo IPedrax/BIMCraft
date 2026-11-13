@@ -2,7 +2,7 @@
 
 use super::Row;
 
-pub(super) static ROWS: [Row; 284] = [
+pub(super) static ROWS: [Row; 299] = [
     Row { from: "IFCACTUATOR", to: "IFCDISTRIBUTIONCONTROLELEMENT", count: 9, kind: 'E', attributes: &[] },
     Row {
         from: "IFCACTUATORTYPE",
@@ -51,6 +51,7 @@ pub(super) static ROWS: [Row; 284] = [
         kind: 'R',
         attributes: &[(9, true, "BELL BREAKGLASSBUTTON LIGHT MANUALPULLBOX SIREN WHISTLE USERDEFINED NOTDEFINED")],
     },
+    Row { from: "IFCANNOTATION", to: "IFCANNOTATION", count: 7, kind: 'R', attributes: &[] },
     Row { from: "IFCAUDIOVISUALAPPLIANCE", to: "IFCFLOWTERMINAL", count: 8, kind: 'E', attributes: &[] },
     Row { from: "IFCAUDIOVISUALAPPLIANCETYPE", to: "", count: 0, kind: '-', attributes: &[] },
     Row { from: "IFCBEAM", to: "IFCBEAM", count: 8, kind: 'E', attributes: &[] },
@@ -128,6 +129,13 @@ pub(super) static ROWS: [Row; 284] = [
     Row { from: "IFCCHIMNEY", to: "IFCBUILDINGELEMENTPROXY", count: 9, kind: 'E', attributes: &[(8, false, "COMPLEX ELEMENT PARTIAL")] },
     Row { from: "IFCCHIMNEYTYPE", to: "", count: 0, kind: '-', attributes: &[] },
     Row {
+        from: "IFCCIRCLEHOLLOWPROFILEDEF",
+        to: "IFCCIRCLEHOLLOWPROFILEDEF",
+        count: 5,
+        kind: '-',
+        attributes: &[(0, true, "CURVE AREA"), (2, true, ""), (3, true, ""), (4, true, "")],
+    },
+    Row {
         from: "IFCCIRCLEPROFILEDEF",
         to: "IFCCIRCLEPROFILEDEF",
         count: 4,
@@ -142,6 +150,14 @@ pub(super) static ROWS: [Row; 284] = [
         attributes: &[(8, false, "COMPLEX ELEMENT PARTIAL")],
     },
     Row { from: "IFCCIVILELEMENTTYPE", to: "", count: 0, kind: '-', attributes: &[] },
+    Row {
+        from: "IFCCLASSIFICATION",
+        to: "IFCCLASSIFICATION",
+        count: 4,
+        kind: '-',
+        attributes: &[(0, true, ""), (1, true, ""), (3, true, "")],
+    },
+    Row { from: "IFCCLASSIFICATIONREFERENCE", to: "IFCCLASSIFICATIONREFERENCE", count: 4, kind: '-', attributes: &[] },
     Row { from: "IFCCOIL", to: "IFCENERGYCONVERSIONDEVICE", count: 8, kind: 'E', attributes: &[] },
     Row {
         from: "IFCCOILTYPE",
@@ -253,12 +269,14 @@ pub(super) static ROWS: [Row; 284] = [
             "FORMEDDUCT INSPECTIONCHAMBER INSPECTIONPIT MANHOLE METERCHAMBER SUMP TRENCH VALVECHAMBER USERDEFINED NOTDEFINED",
         )],
     },
+    Row { from: "IFCDISTRIBUTIONCIRCUIT", to: "IFCSYSTEM", count: 5, kind: 'R', attributes: &[] },
     Row { from: "IFCDISTRIBUTIONCONTROLELEMENT", to: "IFCDISTRIBUTIONCONTROLELEMENT", count: 9, kind: 'E', attributes: &[] },
     Row { from: "IFCDISTRIBUTIONCONTROLELEMENTTYPE", to: "", count: 0, kind: '-', attributes: &[] },
     Row { from: "IFCDISTRIBUTIONELEMENT", to: "IFCDISTRIBUTIONELEMENT", count: 8, kind: 'E', attributes: &[] },
     Row { from: "IFCDISTRIBUTIONELEMENTTYPE", to: "IFCDISTRIBUTIONELEMENTTYPE", count: 9, kind: 'R', attributes: &[] },
     Row { from: "IFCDISTRIBUTIONFLOWELEMENT", to: "IFCDISTRIBUTIONFLOWELEMENT", count: 8, kind: 'E', attributes: &[] },
     Row { from: "IFCDISTRIBUTIONFLOWELEMENTTYPE", to: "", count: 0, kind: '-', attributes: &[] },
+    Row { from: "IFCDISTRIBUTIONSYSTEM", to: "IFCSYSTEM", count: 5, kind: 'R', attributes: &[] },
     Row { from: "IFCDOOR", to: "IFCDOOR", count: 10, kind: 'E', attributes: &[] },
     Row { from: "IFCDOORSTANDARDCASE", to: "IFCDOOR", count: 10, kind: 'E', attributes: &[] },
     Row {
@@ -483,6 +501,7 @@ pub(super) static ROWS: [Row; 284] = [
         attributes: &[(8, false, "COMPLEX ELEMENT PARTIAL")],
     },
     Row { from: "IFCGEOGRAPHICELEMENTTYPE", to: "", count: 0, kind: '-', attributes: &[] },
+    Row { from: "IFCGRID", to: "IFCGRID", count: 10, kind: 'R', attributes: &[(7, true, ""), (8, true, "")] },
     Row { from: "IFCHEATEXCHANGER", to: "IFCENERGYCONVERSIONDEVICE", count: 8, kind: 'E', attributes: &[] },
     Row {
         from: "IFCHEATEXCHANGERTYPE",
@@ -505,6 +524,13 @@ pub(super) static ROWS: [Row; 284] = [
     },
     Row { from: "IFCINTERCEPTOR", to: "IFCFLOWTREATMENTDEVICE", count: 8, kind: 'E', attributes: &[] },
     Row { from: "IFCINTERCEPTORTYPE", to: "", count: 0, kind: '-', attributes: &[] },
+    Row {
+        from: "IFCISHAPEPROFILEDEF",
+        to: "IFCISHAPEPROFILEDEF",
+        count: 8,
+        kind: '-',
+        attributes: &[(0, true, "CURVE AREA"), (2, true, ""), (3, true, ""), (4, true, ""), (5, true, ""), (6, true, "")],
+    },
     Row { from: "IFCJUNCTIONBOX", to: "IFCFLOWFITTING", count: 8, kind: 'E', attributes: &[] },
     Row { from: "IFCJUNCTIONBOXTYPE", to: "IFCJUNCTIONBOXTYPE", count: 10, kind: 'R', attributes: &[(9, true, "USERDEFINED NOTDEFINED")] },
     Row { from: "IFCLAMP", to: "IFCFLOWTERMINAL", count: 8, kind: 'E', attributes: &[] },
@@ -526,6 +552,13 @@ pub(super) static ROWS: [Row; 284] = [
         count: 10,
         kind: 'R',
         attributes: &[(9, true, "POINTSOURCE DIRECTIONSOURCE USERDEFINED NOTDEFINED")],
+    },
+    Row {
+        from: "IFCLSHAPEPROFILEDEF",
+        to: "IFCLSHAPEPROFILEDEF",
+        count: 11,
+        kind: '-',
+        attributes: &[(0, true, "CURVE AREA"), (2, true, ""), (3, true, ""), (5, true, "")],
     },
     Row { from: "IFCMAPCONVERSION", to: "", count: 0, kind: '-', attributes: &[] },
     Row { from: "IFCMATERIAL", to: "IFCMATERIAL", count: 1, kind: '-', attributes: &[(0, true, "")] },
@@ -694,6 +727,13 @@ pub(super) static ROWS: [Row; 284] = [
     },
     Row { from: "IFCRAMPTYPE", to: "", count: 0, kind: '-', attributes: &[] },
     Row {
+        from: "IFCRECTANGLEHOLLOWPROFILEDEF",
+        to: "IFCRECTANGLEHOLLOWPROFILEDEF",
+        count: 8,
+        kind: '-',
+        attributes: &[(0, true, "CURVE AREA"), (2, true, ""), (3, true, ""), (4, true, ""), (5, true, "")],
+    },
+    Row {
         from: "IFCRECTANGLEPROFILEDEF",
         to: "IFCRECTANGLEPROFILEDEF",
         count: 5,
@@ -730,6 +770,13 @@ pub(super) static ROWS: [Row; 284] = [
         attributes: &[(4, true, ""), (5, false, "PRODUCT PROCESS CONTROL RESOURCE ACTOR GROUP PROJECT NOTDEFINED"), (6, true, "")],
     },
     Row {
+        from: "IFCRELASSOCIATESCLASSIFICATION",
+        to: "IFCRELASSOCIATESCLASSIFICATION",
+        count: 6,
+        kind: 'R',
+        attributes: &[(4, true, ""), (5, true, "")],
+    },
+    Row {
         from: "IFCRELASSOCIATESMATERIAL",
         to: "IFCRELASSOCIATESMATERIAL",
         count: 6,
@@ -752,6 +799,20 @@ pub(super) static ROWS: [Row; 284] = [
     },
     Row { from: "IFCRELDEFINESBYTYPE", to: "IFCRELDEFINESBYTYPE", count: 6, kind: 'R', attributes: &[(4, true, ""), (5, true, "")] },
     Row { from: "IFCRELFILLSELEMENT", to: "IFCRELFILLSELEMENT", count: 6, kind: 'R', attributes: &[(4, true, ""), (5, true, "")] },
+    Row {
+        from: "IFCRELREFERENCEDINSPATIALSTRUCTURE",
+        to: "IFCRELREFERENCEDINSPATIALSTRUCTURE",
+        count: 6,
+        kind: 'R',
+        attributes: &[(4, true, ""), (5, true, "")],
+    },
+    Row {
+        from: "IFCRELSERVICESBUILDINGS",
+        to: "IFCRELSERVICESBUILDINGS",
+        count: 6,
+        kind: 'R',
+        attributes: &[(4, true, ""), (5, true, "")],
+    },
     Row { from: "IFCRELVOIDSELEMENT", to: "IFCRELVOIDSELEMENT", count: 6, kind: 'R', attributes: &[(4, true, ""), (5, true, "")] },
     Row {
         from: "IFCROOF",
@@ -936,6 +997,13 @@ pub(super) static ROWS: [Row; 284] = [
         attributes: &[(9, true, "ELEVATOR ESCALATOR MOVINGWALKWAY USERDEFINED NOTDEFINED")],
     },
     Row { from: "IFCTRIANGULATEDFACESET", to: "", count: 0, kind: '-', attributes: &[] },
+    Row {
+        from: "IFCTSHAPEPROFILEDEF",
+        to: "IFCTSHAPEPROFILEDEF",
+        count: 13,
+        kind: '-',
+        attributes: &[(0, true, "CURVE AREA"), (2, true, ""), (3, true, ""), (4, true, ""), (5, true, ""), (6, true, "")],
+    },
     Row { from: "IFCTUBEBUNDLE", to: "IFCENERGYCONVERSIONDEVICE", count: 8, kind: 'E', attributes: &[] },
     Row {
         from: "IFCTUBEBUNDLETYPE",
@@ -953,6 +1021,13 @@ pub(super) static ROWS: [Row; 284] = [
         count: 10,
         kind: 'R',
         attributes: &[(9, true, "AIRHANDLER AIRCONDITIONINGUNIT SPLITSYSTEM ROOFTOPUNIT USERDEFINED NOTDEFINED")],
+    },
+    Row {
+        from: "IFCUSHAPEPROFILEDEF",
+        to: "IFCUSHAPEPROFILEDEF",
+        count: 11,
+        kind: '-',
+        attributes: &[(0, true, "CURVE AREA"), (2, true, ""), (3, true, ""), (4, true, ""), (5, true, ""), (6, true, "")],
     },
     Row { from: "IFCVALVE", to: "IFCFLOWCONTROLLER", count: 8, kind: 'E', attributes: &[] },
     Row {

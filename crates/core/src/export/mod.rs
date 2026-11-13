@@ -148,7 +148,14 @@ impl Paged {
     /// Its size in its own mm (a plan's, the model's).
     pub fn extent(&self) -> P2 {
         let v = self.drawing.view;
-        P2(f64::from(v.width) / v.scale * self.n, f64::from(v.height) / v.scale * self.n)
+        let e = P2(f64::from(v.width) / v.scale * self.n, f64::from(v.height) / v.scale * self.n);
+        // On paper of its own it is that paper: its whole pixels round the paper's edge up by less than one (Letter's 215.9 mm
+        // is 1080 px at 5 to the mm, 216 mm), which is no second page.
+        let px = self.n / v.scale;
+        match self.own {
+            Some(p) if (e.0 - p.0).abs() <= px && (e.1 - p.1).abs() <= px => p,
+            _ => e,
+        }
     }
 
     /// What of it lies inside `region`, two opposite corners in its own coordinates (a plan's model mm, a section's along its
@@ -581,6 +588,7 @@ pub fn write_file(path: &Path, bytes: &[u8]) -> Result<(), String> {
     let parent = path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
     std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
     // Made as any file is, readable as the user's umask lets: a temporary file's own are the owner's alone.
+    #[cfg_attr(not(unix), allow(unused_mut))]
     let mut builder = tempfile::Builder::new();
     #[cfg(unix)]
     {

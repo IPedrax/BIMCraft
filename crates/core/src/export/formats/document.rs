@@ -108,8 +108,7 @@ impl Format for Pdf {
         if settings.title.as_deref().is_none_or(|t| t.trim().is_empty()) {
             settings.title = items.first().map(|i| i.title.clone());
         }
-        settings.created =
-            settings.created.or_else(|| std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).ok().map(|d| d.as_secs()));
+        // Undated unless an archive standard asks for a date (`pdf::document` gives it one), so the same project prints the same bytes.
         Ok(vec![Out { suffix: None, bytes: document(&pages, &settings)? }])
     }
 }
