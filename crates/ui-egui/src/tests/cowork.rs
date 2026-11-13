@@ -590,20 +590,24 @@ fn a_refused_undo_lights_what_the_other_changed_in_their_colour() {
     let (addr, code) = hosted(&h);
     let w = h.state().session.model.next_id;
     h.state_mut().exec("wall", &json!({"points": [[0, 9000], [5000, 9000]]})).unwrap();
-    // Bo moves Ana's wall, with no window.
+    // Bo moves Ana's wall, with no window, and stays in: once he has left, his colour goes with him.
+    let ((moved_tx, moved), (stay, stop)) = (channel::<()>(), channel::<()>());
     let bo = std::thread::spawn(move || {
         let (mut bo, model) = Joined::join(addr, &code, "Bo", Arc::new(|| {})).unwrap();
         let mut copy = bimcraft_core::engine::Session::new();
         copy.adopt(model);
         bo.exec(&mut copy, "move", &json!({"ids": [w], "by": [0, 500]})).unwrap();
+        let _ = moved_tx.send(());
+        let _ = stop.recv();
     });
-    frames_until(&mut h, |_| bo.is_finished());
-    bo.join().unwrap();
+    frames_until(&mut h, |_| moved.try_recv().is_ok());
     // Ana's undo is refused, says who, and lights the wall in Bo's colour.
     let e = h.state_mut().exec("undo", &json!({})).unwrap_err();
     assert!(e.contains("Bo changed"), "{e}");
     // Bo is the first guest: colour 1, the host's being 0.
     assert!(h.state().cowork_seen.flashes.iter().any(|(_, colour, ids)| *colour == 1 && ids == &vec![w]), "{e}");
+    drop(stay);
+    bo.join().unwrap();
 }
 
 #[test]
