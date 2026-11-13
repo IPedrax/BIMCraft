@@ -7674,6 +7674,7 @@ fn import_mesh(s: &mut Session, p: &Value) -> R {
         }
         m.families.insert(name.clone(), family);
         let id = m.insert(Element::Component(Component {
+            tilt: None,
             adaptive: None,
             family: name.clone(),
             type_name: "Imported".into(),

@@ -1719,6 +1719,10 @@ pub struct Component {
     pub offset: f64,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub mirrored: bool,
+    /// Where it lies tilted on no plane (a bolt through a brace, as an IFC file places it): the directions in the model of its
+    /// family's x and z, before `angle` turns them about the vertical. None, it stands upright, or as its plane tilts it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tilt: Option<[[f64; 3]; 2]>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
     /// What a work plane-based component stands on, where that isn't its level: its place on a reference plane, which its

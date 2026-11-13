@@ -993,11 +993,11 @@ msgstr "Gekoppeld niveau"
 msgid "At least {} characters"
 msgstr ""
 
-#: crates/core/src/model.rs:2957
+#: crates/core/src/model.rs:2961
 msgid "At wall centre line"
 msgstr "Op de hartlijn van de muur"
 
-#: crates/core/src/model.rs:2958
+#: crates/core/src/model.rs:2962
 msgid "At wall finish"
 msgstr "Op de afwerking van de muur"
 
@@ -1344,7 +1344,7 @@ msgstr "Randlijn: de lijnen van het profiel"
 msgid "Branch Panel"
 msgstr ""
 
-#: crates/core/src/model.rs:3274
+#: crates/core/src/model.rs:3278
 msgid "Brick"
 msgstr "Baksteen"
 
@@ -1626,7 +1626,7 @@ msgstr "Hartlijn"
 msgid "Centre Lines"
 msgstr "Hartlijnen"
 
-#: crates/core/src/model.rs:3282
+#: crates/core/src/model.rs:3286
 msgid "Ceramic tile"
 msgstr "Keramische tegel"
 
@@ -2561,7 +2561,7 @@ msgstr "Conceptuele massa"
 msgid "Concrete"
 msgstr "Beton"
 
-#: crates/core/src/model.rs:3276
+#: crates/core/src/model.rs:3280
 msgid "Concrete block"
 msgstr "Betonblok"
 
@@ -2728,7 +2728,7 @@ msgstr "{} IFC-GlobalId's gekopieerd."
 msgid "Copied {} rows, tab-separated."
 msgstr "{} rijen gekopieerd, gescheiden door tabs."
 
-#: crates/core/src/model.rs:3290
+#: crates/core/src/model.rs:3294
 msgid "Copper"
 msgstr "Koper"
 
@@ -3255,7 +3255,7 @@ msgstr "Gesloopt"
 msgid "Demolition"
 msgstr "Sloop"
 
-#: crates/core/src/commands.rs:11610
+#: crates/core/src/commands.rs:11611
 msgid "Dependent"
 msgstr "Afhankelijk"
 
@@ -3614,11 +3614,11 @@ msgstr "Gestippeld"
 msgid "Double Door"
 msgstr "Dubbele deur"
 
-#: crates/core/src/model.rs:2709
+#: crates/core/src/model.rs:2713
 msgid "Double Sliding"
 msgstr "Dubbel schuivend"
 
-#: crates/core/src/model.rs:2707
+#: crates/core/src/model.rs:2711
 msgid "Double Swing"
 msgstr "Dubbel draaiend"
 
@@ -3778,7 +3778,7 @@ msgstr "Aardingselektrode (EG): een staaf in de grond geslagen vanaf het niveau,
 msgid "Earthing Electrodes"
 msgstr "Aardingselektroden"
 
-#: crates/core/src/model.rs:2016
+#: crates/core/src/model.rs:2020
 msgid "East"
 msgstr "Oost"
 
@@ -4523,7 +4523,7 @@ msgstr "Vindt {}; niets heeft deze: {}"
 msgid "Fine"
 msgstr "Fijn"
 
-#: crates/core/src/import.rs:1575
+#: crates/core/src/import.rs:1731
 #: crates/ui-egui/src/notes.rs:451
 #: crates/ui-egui/src/properties.rs:821
 msgid "Finish"
@@ -4570,7 +4570,7 @@ msgstr "Eerste uiteinde"
 msgid "Fit"
 msgstr ""
 
-#: crates/core/src/model.rs:2711
+#: crates/core/src/model.rs:2715
 msgid "Fixed"
 msgstr "Vast"
 
@@ -4699,7 +4699,7 @@ msgstr ""
 msgid "Folder for new projects"
 msgstr "Map voor nieuwe projecten"
 
-#: crates/core/src/model.rs:2710
+#: crates/core/src/model.rs:2714
 msgid "Folding"
 msgstr "Vouwend"
 
@@ -4959,7 +4959,7 @@ msgstr "Gasten mogen bewerken"
 msgid "Guests without an AI key may use mine"
 msgstr "Gasten zonder AI-sleutel mogen de mijne gebruiken"
 
-#: crates/core/src/model.rs:3281
+#: crates/core/src/model.rs:3285
 msgid "Gypsum board"
 msgstr "Gipsplaat"
 
@@ -5353,7 +5353,7 @@ msgstr ""
 msgid "Instances of {} are placed in the family: delete them first."
 msgstr "Er zijn instanties van {} in de familie geplaatst: verwijder die eerst."
 
-#: crates/core/src/import.rs:1574
+#: crates/core/src/import.rs:1730
 #: crates/ui-egui/src/draw.rs:664
 msgid "Insulation"
 msgstr "Isolatie"
@@ -6312,7 +6312,7 @@ msgstr "Gemiddeld"
 msgid "Medium Lines"
 msgstr "Middeldikke lijnen"
 
-#: crates/core/src/import.rs:1577
+#: crates/core/src/import.rs:1733
 #: crates/ui-egui/src/properties.rs:820
 msgid "Membrane"
 msgstr "Membraan"
@@ -7029,7 +7029,7 @@ msgstr ""
 msgid "Normalized Segment Length"
 msgstr ""
 
-#: crates/core/src/model.rs:2014
+#: crates/core/src/model.rs:2018
 msgid "North"
 msgstr "Noord"
 
@@ -8645,7 +8645,7 @@ msgid "Properties over the Project Browser, on the left, as at first"
 msgstr "Eigenschappen boven de Projectbrowser, links, zoals in het begin"
 
 #: crates/core/src/commands.rs:550
-#: crates/core/src/commands.rs:7981
+#: crates/core/src/commands.rs:7982
 msgid "Property Line"
 msgstr ""
 
@@ -9228,7 +9228,7 @@ msgstr "Hoogte optrede"
 msgid "Risers"
 msgstr "Optreden"
 
-#: crates/core/src/model.rs:2713
+#: crates/core/src/model.rs:2717
 msgid "Roller"
 msgstr ""
 
@@ -9256,7 +9256,7 @@ msgstr "Dak op vlak (RB): een dak op de bovenvlakken van de geselecteerde massa'
 msgid "Roof by Footprint: click inside the walls to roof them, on the level above"
 msgstr "Dak door voetafdruk: klik binnen de muren om ze te voorzien van een dak, op het niveau erboven"
 
-#: crates/core/src/model.rs:3283
+#: crates/core/src/model.rs:3287
 msgid "Roof tiles"
 msgstr "Dakpannen"
 
@@ -9558,7 +9558,7 @@ msgstr "Lijsten/hoeveelheden (alle)"
 msgid "Scope"
 msgstr ""
 
-#: crates/core/src/model.rs:3279
+#: crates/core/src/model.rs:3283
 msgid "Screed"
 msgstr "Chape"
 
@@ -9615,7 +9615,7 @@ msgstr "Sectiekader: snij de 3D-weergave tot een kader, elk vlak verplaatst met 
 msgid "Section: {}"
 msgstr "Doorsnede: {}"
 
-#: crates/core/src/model.rs:2712
+#: crates/core/src/model.rs:2716
 msgid "Sectional"
 msgstr ""
 
@@ -10135,7 +10135,7 @@ msgstr "Deze versie overslaan"
 msgid "Sky"
 msgstr "Lucht"
 
-#: crates/core/src/model.rs:2708
+#: crates/core/src/model.rs:2712
 msgid "Sliding"
 msgstr "Schuivend"
 
@@ -10308,7 +10308,7 @@ msgstr "Sorteren/groeperen"
 msgid "Source code on GitHub"
 msgstr "Broncode op GitHub"
 
-#: crates/core/src/model.rs:2015
+#: crates/core/src/model.rs:2019
 msgid "South"
 msgstr "Zuid"
 
@@ -10562,7 +10562,7 @@ msgstr "Onderverdelingen van het subraster Y"
 msgid "Subgrid pen"
 msgstr "Pen van het subraster"
 
-#: crates/core/src/import.rs:1576
+#: crates/core/src/import.rs:1732
 #: crates/ui-egui/src/properties.rs:818
 msgid "Substrate"
 msgstr "Ondergrond"
@@ -10625,7 +10625,7 @@ msgstr ""
 msgid "Swept Blend: a path of one line or arc, and a profile at each end, blended along it"
 msgstr "Sweep-overgang: een pad van één lijn of boog en een profiel aan elk uiteinde, langs het pad in elkaar overgaand"
 
-#: crates/core/src/model.rs:2706
+#: crates/core/src/model.rs:2710
 msgid "Swing"
 msgstr "Draaiend"
 
@@ -11846,7 +11846,7 @@ msgstr ""
 msgid "Unlock alignment"
 msgstr "Uitlijning ontgrendelen"
 
-#: crates/core/src/commands.rs:11781
+#: crates/core/src/commands.rs:11782
 msgid "Unnamed"
 msgstr "Naamloos"
 
@@ -12295,7 +12295,7 @@ msgstr "Gewicht"
 msgid "Weight per Metre"
 msgstr ""
 
-#: crates/core/src/model.rs:2017
+#: crates/core/src/model.rs:2021
 msgid "West"
 msgstr "West"
 

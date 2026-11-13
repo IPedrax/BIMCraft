@@ -4569,6 +4569,7 @@ impl BimApp {
                     let at = self.found(sc, q, &[], false);
                     let angle = self.component_angle;
                     let c = Component {
+                        tilt: None,
                         adaptive: None,
                         family,
                         type_name,
