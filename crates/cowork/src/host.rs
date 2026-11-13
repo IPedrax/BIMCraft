@@ -15,12 +15,14 @@ use serde_json::{Value, json};
 
 use crate::noise::{self, PROLOGUE};
 use crate::wire::{self, Out, QUEUE};
-use crate::{Code, MAX_GUESTS, MAX_NAME, MAX_RATE, Timing, Wake, discovery};
+use crate::{Code, KNOCK_WAIT, MAX_GUESTS, MAX_NAME, MAX_RATE, Timing, Wake, discovery, knock};
 
 /// How many connections may be in their handshake at once: the rest are closed as they come.
 const MAX_PENDING: usize = 16;
 /// Wrong codes from one address before it waits.
 const LOCKOUT_AFTER: u32 = 5;
+/// The most knocks waiting for the host's window at once.
+const MAX_KNOCKS: usize = 3;
 /// What guests are told when the host goes without saying why.
 const CLOSED: &str = "the host closed the session";
 
@@ -47,6 +49,11 @@ pub enum HostEvent {
     Message { peer: u32, msg: Value },
     /// A guest went: it left, was kicked, fell silent, flooded or broke the line.
     Left { peer: u32, why: String },
+    /// Someone without the code asks to join, as `name`: the window lets it in or not ([`Host::answer_knock`]) once the person
+    /// knocking has read out the same `digits`.
+    Knock { knock: u32, name: String, digits: String },
+    /// A knock nobody answered in [`KNOCK_WAIT`] is over.
+    KnockGone { knock: u32 },
 }
 
 /// A guest in the session.
@@ -80,6 +87,10 @@ struct Shared {
     failures: Mutex<HashMap<IpAddr, (u32, Instant)>>,
     /// The addresses of guests kicked: not let in again while the session lasts.
     banned: Mutex<HashSet<IpAddr>>,
+    /// Whether it takes knocks; the addresses knocking now, and where each knock's answer goes.
+    knocks: AtomicBool,
+    knocking: Mutex<HashSet<IpAddr>>,
+    answers: Mutex<HashMap<u32, Sender<bool>>>,
 }
 
 fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
@@ -180,6 +191,9 @@ impl Host {
             pending: AtomicUsize::new(0),
             failures: Mutex::new(HashMap::new()),
             banned: Mutex::new(HashSet::new()),
+            knocks: AtomicBool::new(true),
+            knocking: Mutex::new(HashSet::new()),
+            answers: Mutex::new(HashMap::new()),
         });
         let discovery = config.discovery.and_then(|port| {
             let socket = UdpSocket::bind((at.ip(), port)).ok()?;
@@ -224,6 +238,23 @@ impl Host {
     /// Sends `msg` to one guest; false when it isn't there, or isn't keeping up (then it is hung up on).
     pub fn send(&self, peer: u32, msg: &Value) -> bool {
         self.mailer().send(peer, msg)
+    }
+
+    /// Whether someone without the code may knock (they may, until this says otherwise).
+    pub fn set_knocks(&self, on: bool) {
+        self.shared.knocks.store(on, Ordering::SeqCst);
+    }
+
+    /// The window's answer to a knock: let in (told the code) or turned away.
+    pub fn answer_knock(&self, knock: u32, let_in: bool) {
+        if let Some(tx) = lock(&self.shared.answers).get(&knock) {
+            let _ = tx.send(let_in);
+        }
+    }
+
+    /// Where guest `peer` connects from, as this machine sees it.
+    pub fn ip_of(&self, peer: u32) -> Option<IpAddr> {
+        lock(&self.shared.peers).iter().find(|p| p.person.id == peer).map(|p| p.ip)
     }
 
     /// What sends to a guest from another thread than the window's.
@@ -327,11 +358,22 @@ fn serve(mut s: TcpStream, shared: &Shared, joined: &mut Option<u32>) -> io::Res
     s.set_read_timeout(Some(timing.handshake))?;
     s.set_write_timeout(Some(timing.handshake))?;
     let msg1 = wire::read_raw(&mut s)?;
-    let Ok((_, msg2, mut t)) = noise::respond(&shared.code.psk(), PROLOGUE, &msg1, b"", &ring::rand::SystemRandom::new()) else {
-        shared.failed(ip);
-        return Ok(());
+    let rng = ring::rand::SystemRandom::new();
+    // The code, or a knock under the key everyone knows (while the host takes them); anything else is a wrong code.
+    let (msg2, mut t, knocked) = match noise::respond(&shared.code.psk(), PROLOGUE, &msg1, b"", &rng) {
+        Ok((_, msg2, t)) => (msg2, t, false),
+        Err(_) => match noise::respond(&knock::psk(), PROLOGUE, &msg1, b"", &rng) {
+            Ok((_, msg2, t)) if shared.knocks.load(Ordering::SeqCst) => (msg2, t, true),
+            _ => {
+                shared.failed(ip);
+                return Ok(());
+            }
+        },
     };
     wire::write_raw(&mut s, &msg2)?;
+    if knocked {
+        return answer_knock(&mut s, t, shared, ip);
+    }
     let hello = wire::read_frame(&mut s, &mut t.recv)?;
     lock(&shared.failures).remove(&ip);
     let version = hello["version"].as_str().unwrap_or("none");
@@ -372,6 +414,60 @@ fn serve(mut s: TcpStream, shared: &Shared, joined: &mut Option<u32>) -> io::Res
     let why = listen(&mut s, &mut t.recv, shared, id, &tx);
     shared.remove(id, &why);
     Ok(())
+}
+
+/// A knock: the guest's commitment, the host's nonce, the guest's, the digits for the window, and its answer.
+fn answer_knock(s: &mut TcpStream, mut t: noise::Transport, shared: &Shared, ip: IpAddr) -> io::Result<()> {
+    let said = wire::read_frame(s, &mut t.recv)?;
+    let mut end = |why: &str| wire::write_frame(s, &mut t.send, &json!({"op": "ended", "why": why}));
+    let version = said["version"].as_str().unwrap_or("none");
+    let Some(commitment) = knock::unhex(&said["commit"]).filter(|_| said["op"] == "knock") else {
+        return end("a knock says knock first, with its commitment");
+    };
+    if version != shared.version {
+        return end(&format!("the host runs BIMCraft {} and you run {}", shared.version, version.chars().take(32).collect::<String>()));
+    }
+    {
+        let mut knocking = lock(&shared.knocking);
+        if knocking.contains(&ip) || knocking.len() >= MAX_KNOCKS {
+            drop(knocking);
+            return end("the host has knocks waiting: try again in a moment");
+        }
+        knocking.insert(ip);
+    }
+    let result = knocked(s, &mut t, shared, ip, commitment, clean(said["name"].as_str()));
+    lock(&shared.knocking).remove(&ip);
+    result
+}
+
+/// [`answer_knock`] once the address holds its place among the knocks.
+fn knocked(s: &mut TcpStream, t: &mut noise::Transport, shared: &Shared, ip: IpAddr, commitment: [u8; 32], name: String) -> io::Result<()> {
+    let mine = knock::nonce().map_err(io::Error::other)?;
+    wire::write_frame(s, &mut t.send, &json!({"op": "nonce", "nonce": mine.iter().map(|b| format!("{b:02x}")).collect::<String>()}))?;
+    let said = wire::read_frame(s, &mut t.recv)?;
+    let Some(theirs) = knock::unhex(&said["nonce"]).filter(|n| said["op"] == "reveal" && knock::kept(&commitment, n)) else {
+        shared.failed(ip);
+        return wire::write_frame(s, &mut t.send, &json!({"op": "ended", "why": "the knock's nonce isn't the one it promised"}));
+    };
+    let digits = knock::digits(&t.hash, &theirs, &mine);
+    let (tx, rx) = channel();
+    let id = shared.next.fetch_add(1, Ordering::SeqCst);
+    lock(&shared.answers).insert(id, tx);
+    shared.event(HostEvent::Knock { knock: id, name, digits });
+    let answer = rx.recv_timeout(KNOCK_WAIT);
+    lock(&shared.answers).remove(&id);
+    let said = match answer {
+        Ok(true) => json!({"op": "let_in", "code": shared.code.to_string()}),
+        Ok(false) => {
+            shared.failed(ip);
+            json!({"op": "ended", "why": "the host didn't let you in"})
+        }
+        Err(_) => {
+            shared.event(HostEvent::KnockGone { knock: id });
+            json!({"op": "ended", "why": "the host didn't answer the knock"})
+        }
+    };
+    wire::write_frame(s, &mut t.send, &said)
 }
 
 /// What a guest says, until it goes; why it went.

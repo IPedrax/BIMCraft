@@ -48,7 +48,7 @@ msgstr "(ninguno)"
 msgid "0 for any port that is free; an open port moves to a new one"
 msgstr "0 para cualquier puerto libre; un puerto abierto pasa a uno nuevo"
 
-#: crates/ui-egui/src/cowork.rs:679
+#: crates/ui-egui/src/cowork.rs:751
 msgid "0.0.0.0 listens on every address of this machine's. From outside this network, guests need the port forwarded to it, which is for you to set up."
 msgstr "0.0.0.0 escucha en todas las direcciones de esta máquina. Desde fuera de esta red, los invitados necesitan que el puerto se redirija a ella, algo que te corresponde configurar a ti."
 
@@ -560,11 +560,11 @@ msgstr ""
 msgid "Added {} to the project"
 msgstr "{} añadido al proyecto"
 
-#: crates/ui-egui/src/cowork.rs:602
+#: crates/ui-egui/src/cowork.rs:662
 msgid "Address:"
 msgstr "Dirección:"
 
-#: crates/ui-egui/src/cowork.rs:554
+#: crates/ui-egui/src/cowork.rs:607
 msgid "Address: {}, port {}"
 msgstr "Dirección: {}, puerto {}"
 
@@ -955,7 +955,7 @@ msgstr "Ancho del brazo"
 msgid "Arrow"
 msgstr "Flecha"
 
-#: crates/ui-egui/src/cowork.rs:691
+#: crates/ui-egui/src/cowork.rs:765
 msgid "As a guest, lend my AI key to those without one:"
 msgstr "Como invitado, prestar mi clave de IA a quienes no tienen una:"
 
@@ -983,6 +983,14 @@ msgstr "Preguntarme antes"
 #: crates/ui-egui/src/assistant.rs:567
 msgid "Ask the assistant to look at or change the project"
 msgstr "Pide al asistente que mire o cambie el proyecto"
+
+#: crates/ui-egui/src/cowork.rs:674
+msgid "Ask to Join"
+msgstr "Pedir unirse"
+
+#: crates/ui-egui/src/cowork.rs:667
+msgid "Asking the host to let you in. Read out these digits: the host lets you in only if they see the same: {}"
+msgstr "Pidiendo al anfitrión que te deje entrar. Lee estos dígitos: el anfitrión te deja entrar solo si ve los mismos: {}"
 
 #: crates/ui-egui/src/updates.rs:128
 msgid "Asks to save first if there are unsaved changes, then closes BIMCraft, installs the update and starts it again."
@@ -1482,7 +1490,7 @@ msgstr "Cámara: haz clic donde está el ojo y luego en lo que mira: una vista 3
 #: crates/ui-egui/src/background_grid.rs:111
 #: crates/ui-egui/src/cad.rs:131
 #: crates/ui-egui/src/clouds.rs:87
-#: crates/ui-egui/src/cowork.rs:367
+#: crates/ui-egui/src/cowork.rs:403
 #: crates/ui-egui/src/dimtypes.rs:319
 #: crates/ui-egui/src/display.rs:81
 #: crates/ui-egui/src/editor/dimensions.rs:967
@@ -2416,7 +2424,7 @@ msgstr "Haz clic hacia donde sigue el siguiente tramo desde el descanso: de fren
 msgid "Clipboard"
 msgstr ""
 
-#: crates/ui-egui/src/cowork.rs:625
+#: crates/ui-egui/src/cowork.rs:691
 #: crates/ui-egui/src/favorites.rs:179
 #: crates/ui-egui/src/graphics.rs:512
 #: crates/ui-egui/src/inquiry.rs:203
@@ -2471,8 +2479,8 @@ msgstr "Cerrar {}"
 msgid "Closed polyline, {} points"
 msgstr ""
 
-#: crates/ui-egui/src/cowork.rs:432
-#: crates/ui-egui/src/cowork.rs:536
+#: crates/ui-egui/src/cowork.rs:476
+#: crates/ui-egui/src/cowork.rs:589
 #: crates/ui-egui/src/lib.rs:437
 #: crates/ui-egui/src/lib.rs:4362
 #: crates/ui-egui/src/settings.rs:319
@@ -2483,19 +2491,19 @@ msgstr "Co-Work"
 msgid "Co-Work (CW): host this project for others on BIMCraft, or join someone's session, and see each other's edits live"
 msgstr ""
 
-#: crates/ui-egui/src/cowork.rs:663
+#: crates/ui-egui/src/cowork.rs:735
 msgid "Co-Work lets others on BIMCraft work on this project with you, live (Collaborate > Co-Work, CW)."
 msgstr "Co-Work permite que otras personas trabajen contigo en este proyecto en BIMCraft, en directo (Colaborar > Co-Work, CW)."
 
-#: crates/ui-egui/src/cowork.rs:397
+#: crates/ui-egui/src/cowork.rs:441
 msgid "Co-Work: hosting, {} in"
 msgstr "Co-Work: anfitrión, {} dentro"
 
-#: crates/ui-egui/src/cowork.rs:403
+#: crates/ui-egui/src/cowork.rs:447
 msgid "Co-Work: who is in this session (CW)"
 msgstr "Co-Work: quién está en esta sesión (CW)"
 
-#: crates/ui-egui/src/cowork.rs:398
+#: crates/ui-egui/src/cowork.rs:442
 msgid "Co-Work: {}'s session"
 msgstr "Co-Work: sesión de {}"
 
@@ -2504,8 +2512,8 @@ msgstr "Co-Work: sesión de {}"
 msgid "Coarse"
 msgstr "Bajo"
 
-#: crates/ui-egui/src/cowork.rs:545
 #: crates/ui-egui/src/cowork.rs:598
+#: crates/ui-egui/src/cowork.rs:658
 msgid "Code:"
 msgstr "Código:"
 
@@ -2769,7 +2777,7 @@ msgid "Copper"
 msgstr "Cobre"
 
 #: crates/core/src/commands.rs:1573
-#: crates/ui-egui/src/cowork.rs:547
+#: crates/ui-egui/src/cowork.rs:600
 #: crates/ui-egui/src/editor/document.rs:658
 #: crates/ui-egui/src/inquiry.rs:176
 #: crates/ui-egui/src/lib.rs:5000
@@ -2853,9 +2861,14 @@ msgstr "No se pudo buscar actualizaciones: {}"
 msgid "Couldn't download the update: {}"
 msgstr "No se pudo descargar la actualización: {}"
 
-#: crates/ui-egui/src/cowork.rs:481
+#: crates/ui-egui/src/cowork/door.rs:35
+#: crates/ui-egui/src/cowork.rs:531
 msgid "Couldn't find {}: type an IP address or a name, with a port after a colon if it isn't {}"
 msgstr "No se encontró {}: escribe una dirección IP o un nombre, con el puerto tras dos puntos si no es {}"
+
+#: crates/ui-egui/src/cowork/door.rs:136
+msgid "Couldn't host the session: {}"
+msgstr "No se pudo alojar la sesión: {}"
 
 #: crates/ui-egui/src/updates.rs:48
 msgid "Couldn't install the update: {}"
@@ -2865,7 +2878,7 @@ msgstr "No se pudo instalar la actualización: {}"
 msgid "Couldn't listen on port {} for agents: {}"
 msgstr "No se pudo escuchar en el puerto {} para los agentes: {}"
 
-#: crates/ui-egui/src/cowork.rs:458
+#: crates/ui-egui/src/cowork.rs:502
 msgid "Couldn't listen on port {}: {}"
 msgstr "No se pudo escuchar en el puerto {}: {}"
 
@@ -3602,7 +3615,7 @@ msgstr "Dominio"
 msgid "Don't"
 msgstr "No"
 
-#: crates/ui-egui/src/lib.rs:5743
+#: crates/ui-egui/src/lib.rs:5744
 msgid "Don't Save"
 msgstr "No guardar"
 
@@ -4118,15 +4131,15 @@ msgstr "Ángulo final"
 msgid "End Level Offset"
 msgstr "Desfase final de nivel"
 
-#: crates/ui-egui/src/cowork.rs:621
+#: crates/ui-egui/src/cowork.rs:687
 msgid "End Session"
 msgstr "Terminar sesión"
 
-#: crates/ui-egui/src/cowork.rs:366
+#: crates/ui-egui/src/cowork.rs:402
 msgid "End and Close"
 msgstr "Terminar y cerrar"
 
-#: crates/ui-egui/src/cowork.rs:357
+#: crates/ui-egui/src/cowork.rs:391
 msgid "End the Co-Work session?"
 msgstr "¿Terminar la sesión de Co-Work?"
 
@@ -4985,13 +4998,13 @@ msgstr "Agrupar parámetro en:"
 msgid "Group:"
 msgstr "Grupo:"
 
-#: crates/ui-egui/src/cowork.rs:558
-#: crates/ui-egui/src/cowork.rs:685
+#: crates/ui-egui/src/cowork.rs:611
+#: crates/ui-egui/src/cowork.rs:757
 msgid "Guests may edit"
 msgstr "Los invitados pueden editar"
 
-#: crates/ui-egui/src/cowork.rs:561
-#: crates/ui-egui/src/cowork.rs:689
+#: crates/ui-egui/src/cowork.rs:617
+#: crates/ui-egui/src/cowork.rs:763
 msgid "Guests without an AI key may use mine"
 msgstr "Los invitados sin clave de IA pueden usar la mía"
 
@@ -5013,6 +5026,18 @@ msgstr "Mitad"
 #: crates/ui-egui/src/graphics.rs:1310
 msgid "Halftone"
 msgstr "Medio tono"
+
+#: crates/ui-egui/src/cowork.rs:401
+msgid "Hand Over and Close"
+msgstr "Ceder y cerrar"
+
+#: crates/ui-egui/src/cowork.rs:630
+msgid "Hand the session to them: they host it, and the others move there"
+msgstr "Ceder la sesión a esa persona: ella la aloja y los demás se mudan allí"
+
+#: crates/ui-egui/src/cowork/door.rs:96
+msgid "Handing the session to {}…"
+msgstr "Cediendo la sesión a {}…"
 
 #: crates/core/src/family.rs:3180
 msgid "Headboard Height"
@@ -5136,7 +5161,7 @@ msgstr "Gancho"
 msgid "Horizontal"
 msgstr "Horizontal"
 
-#: crates/ui-egui/src/cowork.rs:446
+#: crates/ui-egui/src/cowork.rs:490
 #: crates/ui-egui/src/editor/extrusion.rs:269
 #: crates/ui-egui/src/properties.rs:249
 msgid "Host"
@@ -5154,7 +5179,7 @@ msgstr "Muro anfitrión"
 msgid "Host and Loop System (xyz)"
 msgstr ""
 
-#: crates/ui-egui/src/cowork.rs:583
+#: crates/ui-egui/src/cowork.rs:643
 msgid "Host this project"
 msgstr "Alojar este proyecto"
 
@@ -5227,7 +5252,7 @@ msgstr "ISO 7200: 180 mm"
 msgid "Identity Data"
 msgstr "Datos de identidad"
 
-#: crates/ui-egui/src/lib.rs:5739
+#: crates/ui-egui/src/lib.rs:5740
 msgid "If you don't, the changes since it was last saved are lost."
 msgstr "Si no lo haces, se pierden los cambios desde la última vez que se guardó."
 
@@ -5301,7 +5326,7 @@ msgstr ""
 msgid "In"
 msgstr "Hacia adentro"
 
-#: crates/ui-egui/src/cowork.rs:580
+#: crates/ui-egui/src/cowork.rs:640
 msgid "In it: {} and {}"
 msgstr "En ella: {} y {}"
 
@@ -5502,11 +5527,11 @@ msgstr "Normas de líneas JIS Z 8310 / JIS A 0150:"
 msgid "Jog"
 msgstr "Desvío"
 
-#: crates/ui-egui/src/cowork.rs:609
+#: crates/ui-egui/src/cowork.rs:673
 msgid "Join"
 msgstr "Unirse"
 
-#: crates/ui-egui/src/cowork.rs:587
+#: crates/ui-egui/src/cowork.rs:647
 msgid "Join a session"
 msgstr "Unirse a una sesión"
 
@@ -5518,7 +5543,7 @@ msgstr "Unir en polilínea"
 msgid "Join into Polyline (PJ): the lines selected, meeting end to end, become one polyline"
 msgstr "Unir en polilínea (PJ): las líneas seleccionadas, unidas por sus extremos, pasan a ser una polilínea"
 
-#: crates/ui-egui/src/cowork.rs:607
+#: crates/ui-egui/src/cowork.rs:670
 msgid "Joining…"
 msgstr "Uniéndose…"
 
@@ -5570,7 +5595,7 @@ msgstr "Atajos de teclado (KS): personalizar, editar y cargar teclas de atajo"
 msgid "Keyboard shortcuts applied."
 msgstr ""
 
-#: crates/ui-egui/src/cowork.rs:571
+#: crates/ui-egui/src/cowork.rs:627
 msgid "Kick"
 msgstr "Expulsar"
 
@@ -5642,7 +5667,7 @@ msgstr "Material de la hoja"
 msgid "Leaf Thickness"
 msgstr "Espesor de la hoja"
 
-#: crates/ui-egui/src/cowork.rs:622
+#: crates/ui-egui/src/cowork.rs:688
 msgid "Leave"
 msgstr "Salir"
 
@@ -5713,9 +5738,17 @@ msgstr ""
 msgid "Lens:"
 msgstr "Lente:"
 
+#: crates/ui-egui/src/cowork/door.rs:75
+msgid "Let In"
+msgstr "Dejar entrar"
+
 #: crates/ui-egui/src/settings.rs:770
 msgid "Let agents work on this project"
 msgstr "Permitir que los agentes trabajen en este proyecto"
+
+#: crates/ui-egui/src/cowork/door.rs:70
+msgid "Let them in only if their screen shows these same digits: ask them to read theirs out. Others would see different ones."
+msgstr "Déjalo entrar solo si su pantalla muestra estos mismos dígitos: pídele que lea los suyos. Otros verían dígitos distintos."
 
 #: crates/ui-egui/src/cowork/chat.rs:323
 msgid "Let this session's chat use your AI key for others who have none? What they ask is billed to your account."
@@ -5952,7 +5985,7 @@ msgstr ""
 msgid "List {}"
 msgstr "Listar {}"
 
-#: crates/ui-egui/src/cowork.rs:670
+#: crates/ui-egui/src/cowork.rs:742
 msgid "Listen on:"
 msgstr "Escuchar en:"
 
@@ -6094,7 +6127,7 @@ msgstr ""
 msgid "Long Dash"
 msgstr "Trazo largo"
 
-#: crates/ui-egui/src/cowork.rs:589
+#: crates/ui-egui/src/cowork.rs:649
 msgid "Looking for sessions on this network…"
 msgstr "Buscando sesiones en esta red…"
 
@@ -6162,6 +6195,10 @@ msgstr "Hacer adaptativa la familia: sus puntos se colocan donde se hace clic pa
 #: crates/ui-egui/src/titleblocks.rs:499
 msgid "Make Field"
 msgstr ""
+
+#: crates/ui-egui/src/cowork.rs:631
+msgid "Make Host"
+msgstr "Hacer anfitrión"
 
 #: crates/ui-egui/src/phasing.rs:386
 msgid "Make Primary"
@@ -6973,7 +7010,7 @@ msgstr "Aún no hay filtros: Nuevo crea uno."
 msgid "No font with Chinese characters was found on this system: install one (such as Noto Sans CJK) and choose Chinese again."
 msgstr "No se encontró en este sistema ninguna fuente con caracteres chinos: instale una (como Noto Sans CJK) y elija el chino otra vez."
 
-#: crates/ui-egui/src/cowork.rs:121
+#: crates/ui-egui/src/cowork.rs:129
 msgid "No host on this network has that code: type the host's address too"
 msgstr "Ningún anfitrión de esta red tiene ese código: escribe también la dirección del anfitrión"
 
@@ -7009,7 +7046,7 @@ msgstr "Ningún muro de este nivel encierra un área: dibuje el contorno."
 msgid "No {} templates yet: New from This View makes one from a view of the kind."
 msgstr "Aún no hay plantillas de {}: Crear desde esta vista crea una a partir de una vista de ese tipo."
 
-#: crates/ui-egui/src/cowork.rs:566
+#: crates/ui-egui/src/cowork.rs:622
 msgid "Nobody has joined yet."
 msgstr "Todavía no se ha unido nadie."
 
@@ -7106,7 +7143,7 @@ msgstr "No está en este sistema: se dibuja con {}"
 msgid "Not saved with the passphrase yet."
 msgstr "Aún no guardada con la frase de contraseña."
 
-#: crates/ui-egui/src/cowork.rs:556
+#: crates/ui-egui/src/cowork.rs:609
 msgid "Not visible on this network: another session on this machine has the port"
 msgstr "No visible en esta red: otra sesión de esta máquina tiene el puerto"
 
@@ -7239,7 +7276,7 @@ msgstr "Desactivado"
 msgid "Off, agents only read the project: they inspect it, read its schedules, render its views and export it to new files (its sheets to PDF among them), and whatever they ask that would change it, undo it, replace it or save over its file is refused"
 msgstr "Sin marcar, los agentes solo leen el proyecto: lo inspeccionan, leen sus tablas, dibujan sus vistas y lo exportan a archivos nuevos (sus planos a PDF, entre otros), y se rechaza todo lo que pidan que lo cambie, lo deshaga, lo reemplace o se guarde sobre su archivo"
 
-#: crates/ui-egui/src/cowork.rs:686
+#: crates/ui-egui/src/cowork.rs:758
 msgid "Off, guests only look: they see the project and the others, and change nothing"
 msgstr "Desactivado, los invitados solo miran: ven el proyecto y a los demás, y no cambian nada"
 
@@ -7461,11 +7498,16 @@ msgstr "Otros"
 msgid "Other Borders (Top, Right, Bottom):"
 msgstr "Otros márgenes (superior, derecho, inferior):"
 
-#: crates/ui-egui/src/cowork.rs:584
+#: crates/ui-egui/src/cowork.rs:614
+#: crates/ui-egui/src/cowork.rs:759
+msgid "Others may ask to join without the code"
+msgstr "Otros pueden pedir unirse sin el código"
+
+#: crates/ui-egui/src/cowork.rs:644
 msgid "Others on this network find it; on another, they join with this machine's address and port."
 msgstr "Otros en esta red la encuentran; en otra red, se unen con la dirección y el puerto de esta máquina."
 
-#: crates/ui-egui/src/cowork.rs:683
+#: crates/ui-egui/src/cowork.rs:755
 msgid "Others on this network see the session in their Join list: your name and the project's. Off, they need this machine's address"
 msgstr "Otros en esta red ven la sesión en su lista Unirse: tu nombre y el del proyecto. Desactivado, necesitan la dirección de esta máquina"
 
@@ -7936,6 +7978,10 @@ msgstr "Elige una cubierta o un piso: la parte superior de los muros seleccionad
 #: crates/ui-egui/src/lib.rs:5346
 msgid "Pick a round column, a curved wall, a circle or an arc."
 msgstr "Elija un pilar redondo, un muro curvo, un círculo o un arco."
+
+#: crates/ui-egui/src/cowork/door.rs:29
+msgid "Pick a session in the list, or type the host's address, to ask to join"
+msgstr "Elige una sesión de la lista, o escribe la dirección del anfitrión, para pedir unirte"
 
 #: crates/ui-egui/src/sketch.rs:955
 msgid "Pick a sketch line as the trim/extend boundary."
@@ -9534,7 +9580,7 @@ msgid "Save as:"
 msgstr "Guardar como:"
 
 #: crates/ui-egui/src/editor/tabs.rs:297
-#: crates/ui-egui/src/lib.rs:5737
+#: crates/ui-egui/src/lib.rs:5738
 msgid "Save changes to {}?"
 msgstr "¿Guardar los cambios en {}?"
 
@@ -9542,7 +9588,8 @@ msgstr "¿Guardar los cambios en {}?"
 msgid "Save the key"
 msgstr "Guardar la clave"
 
-#: crates/ui-egui/src/cowork.rs:467
+#: crates/ui-egui/src/cowork/door.rs:24
+#: crates/ui-egui/src/cowork.rs:512
 msgid "Save this project first: joining puts the host's project in this window"
 msgstr "Guarda primero este proyecto: al unirte, el proyecto del anfitrión ocupa esta ventana"
 
@@ -10318,6 +10365,10 @@ msgstr "Relleno sólido"
 msgid "Solid/Void"
 msgstr ""
 
+#: crates/ui-egui/src/cowork/door.rs:64
+msgid "Someone asks to join"
+msgstr "Alguien pide unirse"
+
 #: crates/ui-egui/src/properties.rs:3548
 msgid "Sort by:"
 msgstr "Ordenar por:"
@@ -10482,7 +10533,7 @@ msgstr "Inicio"
 msgid "Start Angle"
 msgstr "Ángulo inicial"
 
-#: crates/ui-egui/src/cowork.rs:585
+#: crates/ui-egui/src/cowork.rs:645
 msgid "Start Co-Work"
 msgstr "Iniciar Co-Work"
 
@@ -11005,7 +11056,7 @@ msgstr "Esa conversación es más grande de lo que cabe en una solicitud"
 msgid "That is as many presets as are kept: delete one first"
 msgstr "Ese es el máximo de modelos que se guardan: elimine uno primero"
 
-#: crates/ui-egui/src/cowork.rs:676
+#: crates/ui-egui/src/cowork.rs:748
 msgid "That is no IP address: 0.0.0.0 listens on all of this machine's"
 msgstr "Eso no es una dirección IP: 0.0.0.0 escucha en todas las direcciones de esta máquina"
 
@@ -11030,11 +11081,11 @@ msgstr ""
 msgid "The 3D view is drawn on the processor: {}"
 msgstr "La vista 3D se dibuja en el procesador: {}"
 
-#: crates/ui-egui/src/cowork.rs:643
+#: crates/ui-egui/src/cowork.rs:715
 msgid "The Co-Work session is over"
 msgstr "La sesión de Co-Work ha terminado"
 
-#: crates/ui-egui/src/cowork.rs:192
+#: crates/ui-egui/src/cowork.rs:226
 msgid "The Co-Work session is over: {}. The project stays read-only here: save it as a file of your own to go on"
 msgstr "La sesión de Co-Work ha terminado: {}. El proyecto queda aquí en solo lectura: guárdalo como un archivo propio para continuar"
 
@@ -11124,9 +11175,13 @@ msgstr ""
 msgid "The file has too many lines"
 msgstr ""
 
-#: crates/ui-egui/src/cowork.rs:166
+#: crates/ui-egui/src/cowork.rs:174
 msgid "The files with that message weren't ones the assistant takes"
 msgstr "Los archivos de ese mensaje no son de un tipo que el asistente acepte"
+
+#: crates/ui-egui/src/cowork.rs:400
+msgid "The first guest hosts the session; the others move there"
+msgstr "El primer invitado aloja la sesión; los demás se mudan allí"
 
 #: crates/ui-egui/src/properties.rs:2937
 msgid "The foot of the perpendicular from the last point to a wall or grid"
@@ -11268,7 +11323,11 @@ msgstr "La clave de API guardada está bloqueada: desbloquéala en los ajustes d
 msgid "The selected element has no type to match"
 msgstr "El elemento seleccionado no tiene tipo para igualar"
 
-#: crates/ui-egui/src/cowork.rs:688
+#: crates/ui-egui/src/cowork/door.rs:147
+msgid "The session moved to {}: joining there"
+msgstr "La sesión pasó a {}: uniéndose allí"
+
+#: crates/ui-egui/src/cowork.rs:762
 msgid "The shared AI chat: whoever has an AI key of their own uses it; one who has none is lent one."
 msgstr "El chat de IA compartido: quien tiene una clave de IA propia usa la suya; quien no tiene ninguna recibe una prestada."
 
@@ -11671,6 +11730,10 @@ msgstr ""
 #: crates/ui-egui/src/script.rs:94
 msgid "Try shows what it would do and changes nothing. Run does it as one undo step."
 msgstr ""
+
+#: crates/ui-egui/src/cowork/door.rs:76
+msgid "Turn Away"
+msgstr "Rechazar"
 
 #: crates/ui-egui/src/lib.rs:413
 msgid "Turn Snap Override Off"
@@ -12164,7 +12227,7 @@ msgstr "Reemplazos de visibilidad/gráficos para {}"
 msgid "Visible"
 msgstr "Visibles"
 
-#: crates/ui-egui/src/cowork.rs:682
+#: crates/ui-egui/src/cowork.rs:754
 msgid "Visible on this network"
 msgstr "Visible en esta red"
 
@@ -12417,7 +12480,7 @@ msgstr "Donde lo ponen las coordenadas de su archivo, como lo situó el levantam
 msgid "Where two walls or grids cross"
 msgstr "Donde se cruzan dos muros o ejes"
 
-#: crates/ui-egui/src/cowork.rs:562
+#: crates/ui-egui/src/cowork.rs:618
 msgid "Whoever has a key of their own always uses it. Off, one who has none uses a key a guest lends"
 msgstr "Quien tiene una clave propia siempre la usa. Desactivado, quien no tiene usa la clave que preste un invitado"
 
@@ -12514,6 +12577,10 @@ msgstr "Estructura alámbrica"
 #: crates/ui-egui/src/electrical.rs:345
 msgid "Wires"
 msgstr "Hilos"
+
+#: crates/ui-egui/src/cowork.rs:674
+msgid "Without the code: the host lets you in"
+msgstr "Sin el código: el anfitrión te deja entrar"
 
 #: crates/ui-egui/src/dimtypes.rs:131
 msgid "Witness Line Control"
@@ -12622,23 +12689,31 @@ msgstr "Sí/No"
 msgid "Yesterday"
 msgstr "Ayer"
 
-#: crates/ui-egui/src/cowork.rs:578
+#: crates/ui-egui/src/cowork.rs:638
 msgid "You are in {}'s session. Your edits go to the host; the project stays read-only here when the session ends."
 msgstr "Estás en la sesión de {}. Tus ediciones van al anfitrión; al terminar la sesión, el proyecto queda aquí en solo lectura."
 
-#: crates/ui-egui/src/cowork.rs:541
+#: crates/ui-egui/src/cowork/door.rs:129
+msgid "You host the Co-Work session now. The project is your copy of it: save it as a file of your own"
+msgstr "Ahora alojas la sesión de Co-Work. El proyecto es tu copia: guárdalo como un archivo propio"
+
+#: crates/ui-egui/src/cowork.rs:594
 msgid "You host this project. Others join with this code; on another network they need this machine's address and port too."
 msgstr "Alojas este proyecto. Los demás se unen con este código; en otra red también necesitan la dirección y el puerto de esta máquina."
 
-#: crates/ui-egui/src/cowork.rs:514
+#: crates/ui-egui/src/cowork.rs:564
 msgid "You joined {}'s session"
 msgstr "Te uniste a la sesión de {}"
 
-#: crates/ui-egui/src/cowork.rs:647
+#: crates/ui-egui/src/cowork.rs:719
 msgid "You left the session. The project stays read-only here: save it as a file of your own to go on"
 msgstr "Saliste de la sesión. El proyecto queda aquí en solo lectura: guárdalo como un archivo propio para continuar"
 
-#: crates/ui-egui/src/cowork.rs:293
+#: crates/ui-egui/src/cowork.rs:760
+msgid "You let each in yourself, once they read out the digits your screen shows"
+msgstr "Dejas entrar a cada uno tú mismo, cuando lea los dígitos que muestra tu pantalla"
+
+#: crates/ui-egui/src/cowork.rs:327
 msgid "You stopped following {}"
 msgstr "Dejaste de seguir a {}"
 
@@ -12646,7 +12721,7 @@ msgstr "Dejaste de seguir a {}"
 msgid "Your messages, and what the assistant reads of this project (its levels, elements, schedules), are sent to {}. Nothing is sent until you send a message."
 msgstr "Tus mensajes, y lo que el asistente lee de este proyecto (sus niveles, elementos, tablas), se envían a {}. No se envía nada hasta que envíes un mensaje."
 
-#: crates/ui-egui/src/cowork.rs:666
+#: crates/ui-egui/src/cowork.rs:738
 msgid "Your name:"
 msgstr "Tu nombre:"
 
@@ -13032,7 +13107,7 @@ msgstr "desfase: `{}` no es una distancia"
 msgid "offset: it offsets straight walls"
 msgstr "desfase: solo desfasa muros rectos"
 
-#: crates/ui-egui/src/cowork.rs:603
+#: crates/ui-egui/src/cowork.rs:663
 msgid "on this network, none"
 msgstr "en esta red, ninguna"
 
@@ -13060,7 +13135,7 @@ msgstr "imagen"
 msgid "polyline"
 msgstr "polilínea"
 
-#: crates/ui-egui/src/cowork.rs:672
+#: crates/ui-egui/src/cowork.rs:744
 msgid "port"
 msgstr "puerto"
 
@@ -13222,7 +13297,7 @@ msgstr "no hay cara que pintar ahí"
 msgid "there's no folder to keep favorites in here"
 msgstr "no hay carpeta donde guardar favoritos aquí"
 
-#: crates/ui-egui/src/cowork.rs:553
+#: crates/ui-egui/src/cowork.rs:606
 msgid "this machine"
 msgstr "esta máquina"
 
@@ -13325,13 +13400,17 @@ msgstr "Plantilla de {}"
 msgid "{} already exists: save under a name ending in .pat to replace it."
 msgstr "{} ya existe: guarde con un nombre que termine en .pat para sustituirlo."
 
-#: crates/ui-egui/src/cowork.rs:360
+#: crates/ui-egui/src/cowork.rs:394
 msgid "{} are in your Co-Work session: closing BIMCraft ends it for them, and they keep a read-only copy."
 msgstr "{} están en tu sesión de Co-Work: cerrar BIMCraft la termina para ellos, y se quedan con una copia de solo lectura."
 
-#: crates/ui-egui/src/cowork.rs:636
+#: crates/ui-egui/src/cowork.rs:708
 msgid "{} asked you to leave"
 msgstr "{} te pidió que salieras"
+
+#: crates/ui-egui/src/cowork/door.rs:66
+msgid "{} asks to join your Co-Work session without the code."
+msgstr "{} pide unirse a tu sesión de Co-Work sin el código."
 
 #: crates/ui-egui/src/sketch.rs:280
 msgid "{} at x {}, y {}"
@@ -13366,7 +13445,7 @@ msgstr "{} no presta su clave de IA"
 msgid "{} elements"
 msgstr "{} elementos"
 
-#: crates/ui-egui/src/cowork.rs:641
+#: crates/ui-egui/src/cowork.rs:713
 msgid "{} ended the session"
 msgstr "{} terminó la sesión"
 
@@ -13390,7 +13469,7 @@ msgstr ""
 msgid "{} h ago"
 msgstr "hace {} h"
 
-#: crates/ui-egui/src/cowork.rs:324
+#: crates/ui-egui/src/cowork.rs:358
 msgid "{} has this selected"
 msgstr "{} tiene esto seleccionado"
 
@@ -13398,11 +13477,19 @@ msgstr "{} tiene esto seleccionado"
 msgid "{} holds no parameters, so it has no phase to demolish"
 msgstr "{} no tiene parámetros, así que no tiene fase que demoler"
 
+#: crates/ui-egui/src/cowork/door.rs:105
+msgid "{} hosts the session now"
+msgstr "{} aloja la sesión ahora"
+
+#: crates/ui-egui/src/cowork/door.rs:107
+msgid "{} hosts the session now: the others have moved there"
+msgstr "{} aloja la sesión ahora: los demás se han mudado allí"
+
 #: crates/ui-egui/src/assistant.rs:265
 msgid "{} in · {} out · {} total"
 msgstr ""
 
-#: crates/ui-egui/src/cowork.rs:445
+#: crates/ui-egui/src/cowork.rs:489
 msgid "{} is no address to listen on"
 msgstr "{} no es una dirección en la que escuchar"
 
@@ -13418,11 +13505,11 @@ msgstr "A {} todavía se le está pidiendo que preste su clave: vuelve a pregunt
 msgid "{} isn't parallel to this view. Open a view that shows it flat:"
 msgstr "{} no es paralelo a esta vista. Abre una vista que lo muestre de frente:"
 
-#: crates/ui-egui/src/cowork.rs:155
+#: crates/ui-egui/src/cowork.rs:163
 msgid "{} joined the session"
 msgstr "{} se unió a la sesión"
 
-#: crates/ui-egui/src/cowork.rs:156
+#: crates/ui-egui/src/cowork.rs:164
 msgid "{} left the session: {}"
 msgstr "{} salió de la sesión: {}"
 
@@ -13468,7 +13555,7 @@ msgstr "{} de {} {}"
 msgid "{} on {}'s key"
 msgstr "{} con la clave de {}"
 
-#: crates/ui-egui/src/cowork.rs:334
+#: crates/ui-egui/src/cowork.rs:368
 msgid "{} opened another project"
 msgstr "{} abrió otro proyecto"
 
@@ -13504,7 +13591,7 @@ msgstr "{} redefinido a partir de líneas"
 msgid "{} selected."
 msgstr "{} seleccionados."
 
-#: crates/ui-egui/src/cowork.rs:176
+#: crates/ui-egui/src/cowork.rs:184
 msgid "{} stopped the assistant"
 msgstr "{} detuvo el asistente"
 
@@ -13524,7 +13611,7 @@ msgstr "hace {} años"
 msgid "{}'s AI key is for another provider now: ask again"
 msgstr "La clave de IA de {} ahora es de otro proveedor: vuelve a preguntar"
 
-#: crates/ui-egui/src/cowork.rs:433
+#: crates/ui-egui/src/cowork.rs:477
 msgid "{}'s Co-Work"
 msgstr "Co-Work de {}"
 
@@ -13646,7 +13733,7 @@ msgstr ""
 msgid "{}: {}"
 msgstr "{}: {}"
 
-#: crates/ui-egui/src/cowork.rs:420
+#: crates/ui-egui/src/cowork.rs:464
 msgid "{}: {}, {} selected. Click to follow"
 msgstr "{}: {}, {} seleccionados. Clic para seguir"
 

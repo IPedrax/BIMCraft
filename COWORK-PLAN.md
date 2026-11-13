@@ -397,8 +397,9 @@ than pixels, which a harness without a graphics card can't give for the 3D view.
 ### 6. Later, each on its own
 
 - A guest's import: the file's bytes, capped, sent to the host, which reads them from a temporary folder (S): built.
-- Ask to join: a guest without the code knocks and the host lets them in; needs a PAKE or a fingerprint the two compare (M).
-- Handing the host's role to a guest before the host leaves (M).
+- Ask to join: a guest without the code knocks and the host lets them in; needs a PAKE or a fingerprint the two compare (M): built,
+  with digits both compare, the guest's nonce committed to first.
+- Handing the host's role to a guest before the host leaves (M): built.
 
 ## Rules and docs that change
 

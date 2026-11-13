@@ -5698,6 +5698,7 @@ impl BimApp {
         self.cowork_window(ctx);
         self.lend_window(ctx);
         self.quit_window(ctx);
+        self.knock_window(ctx);
         if std::mem::take(&mut self.link_dialog) {
             self.link_model_dialog(ctx);
         }

@@ -10,7 +10,7 @@ use serde_json::{Value, json};
 
 use crate::noise;
 use crate::wire;
-use crate::{Code, Guest, GuestEvent, Host, HostConfig, HostEvent, MAX_GUESTS, Timing, discover};
+use crate::{Code, Guest, GuestEvent, Host, HostConfig, HostEvent, MAX_GUESTS, Timing, discover, knock};
 
 const VERSION: &str = "9.9.9";
 
@@ -452,4 +452,54 @@ fn a_guest_finds_a_host_on_the_lan_by_its_code_and_ignores_junk() {
     // Out of sight, no answer.
     let hidden = self::host();
     assert_eq!(hidden.discovery_port(), None);
+}
+
+/// Bo knocks at `host` on a thread: the digits his window shows, and his answer once the host's window has given one.
+fn knocking(host: &Host) -> (std::sync::mpsc::Receiver<String>, std::thread::JoinHandle<Result<Code, String>>) {
+    let (addr, (tx, rx)) = (at(host), std::sync::mpsc::channel());
+    let bo = std::thread::spawn(move || knock(addr, "Bo", VERSION, quick(), move |d| drop(tx.send(d.to_string()))));
+    (rx, bo)
+}
+
+#[test]
+fn a_guest_without_the_code_knocks_both_see_the_same_digits_and_the_host_lets_it_in_or_not() {
+    let host = host();
+    let (shown, bo) = knocking(&host);
+    let HostEvent::Knock { knock: k, name, digits } = event(&host) else { panic!("a knock") };
+    assert_eq!(name, "Bo");
+    let his = shown.recv_timeout(Duration::from_secs(5)).unwrap();
+    assert_eq!(his, digits, "the two windows show the same digits");
+    assert!(digits.len() == 7 && digits.chars().filter(char::is_ascii_digit).count() == 6, "{digits}");
+    host.answer_knock(k, true);
+    let code = bo.join().unwrap().unwrap();
+    assert_eq!(code, *host.code(), "let in, he is told the code");
+    // Turned away, he hears why; and another knock's digits are new.
+    let (shown, bo) = knocking(&host);
+    let HostEvent::Knock { knock: k, digits: again, .. } = event(&host) else { panic!("a knock") };
+    assert_ne!(again, digits);
+    let _ = shown.recv_timeout(Duration::from_secs(5)).unwrap();
+    host.answer_knock(k, false);
+    assert!(bo.join().unwrap().unwrap_err().contains("didn't let you in"));
+    // A host that takes no knocks hangs up as on a wrong code.
+    host.set_knocks(false);
+    let (_, bo) = knocking(&host);
+    assert!(bo.join().unwrap().is_err());
+}
+
+#[test]
+fn a_guest_that_reveals_another_nonce_than_it_committed_to_is_turned_away() {
+    let host = host();
+    let mut s = TcpStream::connect(at(&host)).unwrap();
+    let (i, msg1) = noise::initiate(&crate::knock::psk(), noise::PROLOGUE, b"", &ring::rand::SystemRandom::new()).unwrap();
+    wire::write_raw(&mut s, &msg1).unwrap();
+    let msg2 = wire::read_raw(&mut s).unwrap();
+    let (_, mut t) = i.finish(&msg2).unwrap();
+    let committed = crate::knock::commit(&[1; 32]);
+    wire::write_frame(&mut s, &mut t.send, &json!({"op": "knock", "version": VERSION, "name": "Eve", "commit": committed})).unwrap();
+    assert_eq!(wire::read_frame(&mut s, &mut t.recv).unwrap()["op"], "nonce");
+    // Another nonce than the one committed to: the one a search between two handshakes would want.
+    wire::write_frame(&mut s, &mut t.send, &json!({"op": "reveal", "nonce": "02".repeat(32)})).unwrap();
+    let said = wire::read_frame(&mut s, &mut t.recv).unwrap();
+    assert_eq!(said["op"], "ended", "{said}");
+    assert!(host.try_event().is_none(), "the host's window never hears of it");
 }

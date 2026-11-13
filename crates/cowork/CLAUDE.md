@@ -18,6 +18,8 @@ It talks only to peers the user chose, by a code or an address, never to a serve
   `MAX_GUESTS` are in, and `MAX_PENDING` in their handshake.
 - **Each side pings** when it has said nothing for `Timing::ping`, so silence means a broken line; a guest tells a host that
   said `ended` (`GuestEvent::Ended`) from one that vanished (`GuestEvent::Lost`).
+- **A knock** (`knock.rs`) is the same handshake under a public key, then a commitment, two nonces and six digits both people
+  compare: keep the guest's commitment before the host's nonce, or someone in between can search for digits that agree.
 - **The host's threads never wait for the window.** Presence is relayed by the guest's own thread, and every event calls the
   `Wake` the window gave, its `request_repaint`, so a minimised window answers too.
 

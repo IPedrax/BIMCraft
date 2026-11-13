@@ -48,7 +48,7 @@ msgstr "(không có)"
 msgid "0 for any port that is free; an open port moves to a new one"
 msgstr "0 cho cổng nào đang trống; cổng đang mở sẽ chuyển sang một cổng mới"
 
-#: crates/ui-egui/src/cowork.rs:679
+#: crates/ui-egui/src/cowork.rs:751
 msgid "0.0.0.0 listens on every address of this machine's. From outside this network, guests need the port forwarded to it, which is for you to set up."
 msgstr "0.0.0.0 lắng nghe trên mọi địa chỉ của máy này. Từ bên ngoài mạng này, khách cần chuyển tiếp cổng tới máy này, việc đó do bạn tự thiết lập."
 
@@ -560,11 +560,11 @@ msgstr ""
 msgid "Added {} to the project"
 msgstr "Đã thêm {} vào dự án"
 
-#: crates/ui-egui/src/cowork.rs:602
+#: crates/ui-egui/src/cowork.rs:662
 msgid "Address:"
 msgstr "Địa chỉ:"
 
-#: crates/ui-egui/src/cowork.rs:554
+#: crates/ui-egui/src/cowork.rs:607
 msgid "Address: {}, port {}"
 msgstr "Địa chỉ: {}, cổng {}"
 
@@ -955,7 +955,7 @@ msgstr "Chiều rộng tay"
 msgid "Arrow"
 msgstr "Mũi tên"
 
-#: crates/ui-egui/src/cowork.rs:691
+#: crates/ui-egui/src/cowork.rs:765
 msgid "As a guest, lend my AI key to those without one:"
 msgstr "Với tư cách khách, cho những người chưa có khóa AI mượn khóa AI của tôi:"
 
@@ -983,6 +983,14 @@ msgstr "Hỏi tôi trước"
 #: crates/ui-egui/src/assistant.rs:567
 msgid "Ask the assistant to look at or change the project"
 msgstr ""
+
+#: crates/ui-egui/src/cowork.rs:674
+msgid "Ask to Join"
+msgstr "Xin tham gia"
+
+#: crates/ui-egui/src/cowork.rs:667
+msgid "Asking the host to let you in. Read out these digits: the host lets you in only if they see the same: {}"
+msgstr "Đang nhờ chủ phiên cho bạn vào. Hãy đọc các chữ số này: chủ phiên chỉ cho bạn vào nếu thấy các số giống vậy: {}"
 
 #: crates/ui-egui/src/updates.rs:128
 msgid "Asks to save first if there are unsaved changes, then closes BIMCraft, installs the update and starts it again."
@@ -1482,7 +1490,7 @@ msgstr "Camera: nhấp chỗ đặt mắt nhìn, rồi chỗ nó nhìn tới: m�
 #: crates/ui-egui/src/background_grid.rs:111
 #: crates/ui-egui/src/cad.rs:131
 #: crates/ui-egui/src/clouds.rs:87
-#: crates/ui-egui/src/cowork.rs:367
+#: crates/ui-egui/src/cowork.rs:403
 #: crates/ui-egui/src/dimtypes.rs:319
 #: crates/ui-egui/src/display.rs:81
 #: crates/ui-egui/src/editor/dimensions.rs:967
@@ -2416,7 +2424,7 @@ msgstr "Nhấp hướng của vế tiếp theo từ chiếu nghỉ: thẳng, tr�
 msgid "Clipboard"
 msgstr ""
 
-#: crates/ui-egui/src/cowork.rs:625
+#: crates/ui-egui/src/cowork.rs:691
 #: crates/ui-egui/src/favorites.rs:179
 #: crates/ui-egui/src/graphics.rs:512
 #: crates/ui-egui/src/inquiry.rs:203
@@ -2471,8 +2479,8 @@ msgstr "Đóng {}"
 msgid "Closed polyline, {} points"
 msgstr ""
 
-#: crates/ui-egui/src/cowork.rs:432
-#: crates/ui-egui/src/cowork.rs:536
+#: crates/ui-egui/src/cowork.rs:476
+#: crates/ui-egui/src/cowork.rs:589
 #: crates/ui-egui/src/lib.rs:437
 #: crates/ui-egui/src/lib.rs:4362
 #: crates/ui-egui/src/settings.rs:319
@@ -2483,19 +2491,19 @@ msgstr "Co-Work"
 msgid "Co-Work (CW): host this project for others on BIMCraft, or join someone's session, and see each other's edits live"
 msgstr ""
 
-#: crates/ui-egui/src/cowork.rs:663
+#: crates/ui-egui/src/cowork.rs:735
 msgid "Co-Work lets others on BIMCraft work on this project with you, live (Collaborate > Co-Work, CW)."
 msgstr "Co-Work cho phép người khác dùng BIMCraft làm việc cùng bạn trên dự án này theo thời gian thực (Cộng tác > Co-Work, CW)."
 
-#: crates/ui-egui/src/cowork.rs:397
+#: crates/ui-egui/src/cowork.rs:441
 msgid "Co-Work: hosting, {} in"
 msgstr "Co-Work: đang chủ trì, {} người tham gia"
 
-#: crates/ui-egui/src/cowork.rs:403
+#: crates/ui-egui/src/cowork.rs:447
 msgid "Co-Work: who is in this session (CW)"
 msgstr "Co-Work: ai đang trong phiên này (CW)"
 
-#: crates/ui-egui/src/cowork.rs:398
+#: crates/ui-egui/src/cowork.rs:442
 msgid "Co-Work: {}'s session"
 msgstr "Co-Work: phiên của {}"
 
@@ -2504,8 +2512,8 @@ msgstr "Co-Work: phiên của {}"
 msgid "Coarse"
 msgstr "Thô"
 
-#: crates/ui-egui/src/cowork.rs:545
 #: crates/ui-egui/src/cowork.rs:598
+#: crates/ui-egui/src/cowork.rs:658
 msgid "Code:"
 msgstr "Mã:"
 
@@ -2769,7 +2777,7 @@ msgid "Copper"
 msgstr "Đồng"
 
 #: crates/core/src/commands.rs:1573
-#: crates/ui-egui/src/cowork.rs:547
+#: crates/ui-egui/src/cowork.rs:600
 #: crates/ui-egui/src/editor/document.rs:658
 #: crates/ui-egui/src/inquiry.rs:176
 #: crates/ui-egui/src/lib.rs:5000
@@ -2853,9 +2861,14 @@ msgstr "Không thể kiểm tra cập nhật: {}"
 msgid "Couldn't download the update: {}"
 msgstr "Không thể tải xuống bản cập nhật: {}"
 
-#: crates/ui-egui/src/cowork.rs:481
+#: crates/ui-egui/src/cowork/door.rs:35
+#: crates/ui-egui/src/cowork.rs:531
 msgid "Couldn't find {}: type an IP address or a name, with a port after a colon if it isn't {}"
 msgstr "Không tìm thấy {}: hãy nhập địa chỉ IP hoặc tên, kèm cổng sau dấu hai chấm nếu không phải {}"
+
+#: crates/ui-egui/src/cowork/door.rs:136
+msgid "Couldn't host the session: {}"
+msgstr "Không thể chủ trì phiên: {}"
 
 #: crates/ui-egui/src/updates.rs:48
 msgid "Couldn't install the update: {}"
@@ -2865,7 +2878,7 @@ msgstr "Không thể cài đặt bản cập nhật: {}"
 msgid "Couldn't listen on port {} for agents: {}"
 msgstr "Không thể lắng nghe cổng {} cho tác nhân: {}"
 
-#: crates/ui-egui/src/cowork.rs:458
+#: crates/ui-egui/src/cowork.rs:502
 msgid "Couldn't listen on port {}: {}"
 msgstr "Không thể lắng nghe trên cổng {}: {}"
 
@@ -3602,7 +3615,7 @@ msgstr "Miền"
 msgid "Don't"
 msgstr "Không"
 
-#: crates/ui-egui/src/lib.rs:5743
+#: crates/ui-egui/src/lib.rs:5744
 msgid "Don't Save"
 msgstr "Không lưu"
 
@@ -4118,15 +4131,15 @@ msgstr "Góc kết thúc"
 msgid "End Level Offset"
 msgstr "Độ lệch tầng cuối"
 
-#: crates/ui-egui/src/cowork.rs:621
+#: crates/ui-egui/src/cowork.rs:687
 msgid "End Session"
 msgstr "Kết thúc phiên"
 
-#: crates/ui-egui/src/cowork.rs:366
+#: crates/ui-egui/src/cowork.rs:402
 msgid "End and Close"
 msgstr "Kết thúc và đóng"
 
-#: crates/ui-egui/src/cowork.rs:357
+#: crates/ui-egui/src/cowork.rs:391
 msgid "End the Co-Work session?"
 msgstr "Kết thúc phiên Co-Work?"
 
@@ -4985,13 +4998,13 @@ msgstr "Nhóm tham số dưới:"
 msgid "Group:"
 msgstr "Nhóm:"
 
-#: crates/ui-egui/src/cowork.rs:558
-#: crates/ui-egui/src/cowork.rs:685
+#: crates/ui-egui/src/cowork.rs:611
+#: crates/ui-egui/src/cowork.rs:757
 msgid "Guests may edit"
 msgstr "Khách được phép chỉnh sửa"
 
-#: crates/ui-egui/src/cowork.rs:561
-#: crates/ui-egui/src/cowork.rs:689
+#: crates/ui-egui/src/cowork.rs:617
+#: crates/ui-egui/src/cowork.rs:763
 msgid "Guests without an AI key may use mine"
 msgstr "Khách không có khóa AI có thể dùng khóa của tôi"
 
@@ -5013,6 +5026,18 @@ msgstr "Một nửa"
 #: crates/ui-egui/src/graphics.rs:1310
 msgid "Halftone"
 msgstr "Nửa tông"
+
+#: crates/ui-egui/src/cowork.rs:401
+msgid "Hand Over and Close"
+msgstr "Chuyển giao và đóng"
+
+#: crates/ui-egui/src/cowork.rs:630
+msgid "Hand the session to them: they host it, and the others move there"
+msgstr "Chuyển phiên cho họ: họ chủ trì phiên, và những người khác chuyển sang đó"
+
+#: crates/ui-egui/src/cowork/door.rs:96
+msgid "Handing the session to {}…"
+msgstr "Đang chuyển phiên cho {}…"
 
 #: crates/core/src/family.rs:3180
 msgid "Headboard Height"
@@ -5136,7 +5161,7 @@ msgstr "Móc"
 msgid "Horizontal"
 msgstr "Ngang"
 
-#: crates/ui-egui/src/cowork.rs:446
+#: crates/ui-egui/src/cowork.rs:490
 #: crates/ui-egui/src/editor/extrusion.rs:269
 #: crates/ui-egui/src/properties.rs:249
 msgid "Host"
@@ -5154,7 +5179,7 @@ msgstr "Tường chủ"
 msgid "Host and Loop System (xyz)"
 msgstr ""
 
-#: crates/ui-egui/src/cowork.rs:583
+#: crates/ui-egui/src/cowork.rs:643
 msgid "Host this project"
 msgstr "Chủ trì dự án này"
 
@@ -5227,7 +5252,7 @@ msgstr "ISO 7200: 180 mm"
 msgid "Identity Data"
 msgstr "Dữ liệu nhận dạng"
 
-#: crates/ui-egui/src/lib.rs:5739
+#: crates/ui-egui/src/lib.rs:5740
 msgid "If you don't, the changes since it was last saved are lost."
 msgstr "Nếu không, các thay đổi kể từ lần lưu cuối sẽ bị mất."
 
@@ -5301,7 +5326,7 @@ msgstr ""
 msgid "In"
 msgstr "Trong"
 
-#: crates/ui-egui/src/cowork.rs:580
+#: crates/ui-egui/src/cowork.rs:640
 msgid "In it: {} and {}"
 msgstr "Trong phiên: {} và {}"
 
@@ -5502,11 +5527,11 @@ msgstr "Tiêu chuẩn nét JIS Z 8310 / JIS A 0150:"
 msgid "Jog"
 msgstr "Đoạn bẻ"
 
-#: crates/ui-egui/src/cowork.rs:609
+#: crates/ui-egui/src/cowork.rs:673
 msgid "Join"
 msgstr "Tham gia"
 
-#: crates/ui-egui/src/cowork.rs:587
+#: crates/ui-egui/src/cowork.rs:647
 msgid "Join a session"
 msgstr "Tham gia một phiên"
 
@@ -5518,7 +5543,7 @@ msgstr "Nối thành đường đa tuyến"
 msgid "Join into Polyline (PJ): the lines selected, meeting end to end, become one polyline"
 msgstr "Nối thành đường đa tuyến (PJ): các đường đã chọn, nối đầu với đầu, trở thành một đường đa tuyến"
 
-#: crates/ui-egui/src/cowork.rs:607
+#: crates/ui-egui/src/cowork.rs:670
 msgid "Joining…"
 msgstr "Đang tham gia…"
 
@@ -5570,7 +5595,7 @@ msgstr "Phím tắt (KS): tùy chỉnh, sửa và nạp phím tắt"
 msgid "Keyboard shortcuts applied."
 msgstr ""
 
-#: crates/ui-egui/src/cowork.rs:571
+#: crates/ui-egui/src/cowork.rs:627
 msgid "Kick"
 msgstr "Mời ra"
 
@@ -5642,7 +5667,7 @@ msgstr "Vật liệu cánh"
 msgid "Leaf Thickness"
 msgstr "Chiều dày cánh"
 
-#: crates/ui-egui/src/cowork.rs:622
+#: crates/ui-egui/src/cowork.rs:688
 msgid "Leave"
 msgstr "Rời"
 
@@ -5713,9 +5738,17 @@ msgstr ""
 msgid "Lens:"
 msgstr "Ống kính:"
 
+#: crates/ui-egui/src/cowork/door.rs:75
+msgid "Let In"
+msgstr "Cho vào"
+
 #: crates/ui-egui/src/settings.rs:770
 msgid "Let agents work on this project"
 msgstr "Để tác nhân làm việc trên dự án này"
+
+#: crates/ui-egui/src/cowork/door.rs:70
+msgid "Let them in only if their screen shows these same digits: ask them to read theirs out. Others would see different ones."
+msgstr "Chỉ cho họ vào nếu màn hình của họ hiện đúng các chữ số này: hãy nhờ họ đọc số của họ. Người khác sẽ thấy số khác."
 
 #: crates/ui-egui/src/cowork/chat.rs:323
 msgid "Let this session's chat use your AI key for others who have none? What they ask is billed to your account."
@@ -5952,7 +5985,7 @@ msgstr ""
 msgid "List {}"
 msgstr "Danh sách {}"
 
-#: crates/ui-egui/src/cowork.rs:670
+#: crates/ui-egui/src/cowork.rs:742
 msgid "Listen on:"
 msgstr "Lắng nghe trên:"
 
@@ -6094,7 +6127,7 @@ msgstr ""
 msgid "Long Dash"
 msgstr "Gạch dài"
 
-#: crates/ui-egui/src/cowork.rs:589
+#: crates/ui-egui/src/cowork.rs:649
 msgid "Looking for sessions on this network…"
 msgstr "Đang tìm các phiên trên mạng này…"
 
@@ -6162,6 +6195,10 @@ msgstr "Chuyển họ thành thích ứng: các điểm của họ được đ�
 #: crates/ui-egui/src/titleblocks.rs:499
 msgid "Make Field"
 msgstr ""
+
+#: crates/ui-egui/src/cowork.rs:631
+msgid "Make Host"
+msgstr "Đặt làm chủ phiên"
 
 #: crates/ui-egui/src/phasing.rs:386
 msgid "Make Primary"
@@ -6973,7 +7010,7 @@ msgstr "Chưa có bộ lọc nào: Mới sẽ tạo một bộ lọc."
 msgid "No font with Chinese characters was found on this system: install one (such as Noto Sans CJK) and choose Chinese again."
 msgstr "Không tìm thấy phông chữ có ký tự tiếng Trung trên hệ thống này: hãy cài một phông (chẳng hạn Noto Sans CJK) rồi chọn lại tiếng Trung."
 
-#: crates/ui-egui/src/cowork.rs:121
+#: crates/ui-egui/src/cowork.rs:129
 msgid "No host on this network has that code: type the host's address too"
 msgstr "Không có máy chủ nào trên mạng này có mã đó: hãy nhập cả địa chỉ của máy chủ"
 
@@ -7009,7 +7046,7 @@ msgstr "Không có tường nào trên tầng này bao quanh một vùng: hãy p
 msgid "No {} templates yet: New from This View makes one from a view of the kind."
 msgstr "Chưa có mẫu {} nào: Mới từ khung nhìn này sẽ tạo một mẫu từ khung nhìn thuộc loại đó."
 
-#: crates/ui-egui/src/cowork.rs:566
+#: crates/ui-egui/src/cowork.rs:622
 msgid "Nobody has joined yet."
 msgstr "Chưa có ai tham gia."
 
@@ -7106,7 +7143,7 @@ msgstr "Không có trên hệ thống này: vẽ bằng {}"
 msgid "Not saved with the passphrase yet."
 msgstr ""
 
-#: crates/ui-egui/src/cowork.rs:556
+#: crates/ui-egui/src/cowork.rs:609
 msgid "Not visible on this network: another session on this machine has the port"
 msgstr "Không hiển thị trên mạng này: một phiên khác trên máy này đang dùng cổng đó"
 
@@ -7239,7 +7276,7 @@ msgstr "Tắt"
 msgid "Off, agents only read the project: they inspect it, read its schedules, render its views and export it to new files (its sheets to PDF among them), and whatever they ask that would change it, undo it, replace it or save over its file is refused"
 msgstr "Khi tắt, tác nhân chỉ đọc dự án: chúng kiểm tra dự án, đọc bảng thống kê, kết xuất khung nhìn và xuất ra tệp mới (trong đó có bản vẽ sang PDF), còn mọi yêu cầu làm thay đổi dự án, hoàn tác, thay thế hoặc ghi đè tệp đều bị từ chối"
 
-#: crates/ui-egui/src/cowork.rs:686
+#: crates/ui-egui/src/cowork.rs:758
 msgid "Off, guests only look: they see the project and the others, and change nothing"
 msgstr "Tắt: khách chỉ xem, họ thấy dự án và những người khác, và không thay đổi gì"
 
@@ -7461,11 +7498,16 @@ msgstr "Khác"
 msgid "Other Borders (Top, Right, Bottom):"
 msgstr "Các lề khác (trên, phải, dưới):"
 
-#: crates/ui-egui/src/cowork.rs:584
+#: crates/ui-egui/src/cowork.rs:614
+#: crates/ui-egui/src/cowork.rs:759
+msgid "Others may ask to join without the code"
+msgstr "Người khác có thể xin tham gia mà không cần mã"
+
+#: crates/ui-egui/src/cowork.rs:644
 msgid "Others on this network find it; on another, they join with this machine's address and port."
 msgstr "Những người trên mạng này sẽ tìm thấy nó; ở mạng khác, họ tham gia bằng địa chỉ và cổng của máy này."
 
-#: crates/ui-egui/src/cowork.rs:683
+#: crates/ui-egui/src/cowork.rs:755
 msgid "Others on this network see the session in their Join list: your name and the project's. Off, they need this machine's address"
 msgstr "Những người trên mạng này thấy phiên trong danh sách Tham gia của họ: tên của bạn và tên dự án. Khi tắt, họ cần địa chỉ của máy này"
 
@@ -7936,6 +7978,10 @@ msgstr "Chọn một mái hoặc sàn: đỉnh các tường đã chọn bám th
 #: crates/ui-egui/src/lib.rs:5346
 msgid "Pick a round column, a curved wall, a circle or an arc."
 msgstr "Chọn một cột tròn, tường cong, đường tròn hoặc cung."
+
+#: crates/ui-egui/src/cowork/door.rs:29
+msgid "Pick a session in the list, or type the host's address, to ask to join"
+msgstr "Chọn một phiên trong danh sách, hoặc nhập địa chỉ của chủ phiên, để xin tham gia"
 
 #: crates/ui-egui/src/sketch.rs:955
 msgid "Pick a sketch line as the trim/extend boundary."
@@ -9534,7 +9580,7 @@ msgid "Save as:"
 msgstr "Lưu thành:"
 
 #: crates/ui-egui/src/editor/tabs.rs:297
-#: crates/ui-egui/src/lib.rs:5737
+#: crates/ui-egui/src/lib.rs:5738
 msgid "Save changes to {}?"
 msgstr "Lưu các thay đổi vào {}?"
 
@@ -9542,7 +9588,8 @@ msgstr "Lưu các thay đổi vào {}?"
 msgid "Save the key"
 msgstr ""
 
-#: crates/ui-egui/src/cowork.rs:467
+#: crates/ui-egui/src/cowork/door.rs:24
+#: crates/ui-egui/src/cowork.rs:512
 msgid "Save this project first: joining puts the host's project in this window"
 msgstr "Hãy lưu dự án này trước: tham gia sẽ đưa dự án của chủ phiên vào cửa sổ này"
 
@@ -10318,6 +10365,10 @@ msgstr "Tô đặc"
 msgid "Solid/Void"
 msgstr ""
 
+#: crates/ui-egui/src/cowork/door.rs:64
+msgid "Someone asks to join"
+msgstr "Có người xin tham gia"
+
 #: crates/ui-egui/src/properties.rs:3548
 msgid "Sort by:"
 msgstr "Sắp xếp theo:"
@@ -10482,7 +10533,7 @@ msgstr "Đầu"
 msgid "Start Angle"
 msgstr "Góc bắt đầu"
 
-#: crates/ui-egui/src/cowork.rs:585
+#: crates/ui-egui/src/cowork.rs:645
 msgid "Start Co-Work"
 msgstr "Bắt đầu Co-Work"
 
@@ -11005,7 +11056,7 @@ msgstr "Cuộc trò chuyện đó quá lớn so với mức một yêu cầu có
 msgid "That is as many presets as are kept: delete one first"
 msgstr "Đã đạt số thiết lập sẵn tối đa được giữ: hãy xóa một thiết lập trước"
 
-#: crates/ui-egui/src/cowork.rs:676
+#: crates/ui-egui/src/cowork.rs:748
 msgid "That is no IP address: 0.0.0.0 listens on all of this machine's"
 msgstr "Đó không phải địa chỉ IP: 0.0.0.0 lắng nghe trên mọi địa chỉ của máy này"
 
@@ -11030,11 +11081,11 @@ msgstr ""
 msgid "The 3D view is drawn on the processor: {}"
 msgstr "Khung nhìn 3D được vẽ bằng bộ xử lý: {}"
 
-#: crates/ui-egui/src/cowork.rs:643
+#: crates/ui-egui/src/cowork.rs:715
 msgid "The Co-Work session is over"
 msgstr "Phiên Co-Work đã kết thúc"
 
-#: crates/ui-egui/src/cowork.rs:192
+#: crates/ui-egui/src/cowork.rs:226
 msgid "The Co-Work session is over: {}. The project stays read-only here: save it as a file of your own to go on"
 msgstr "Phiên Co-Work đã kết thúc: {}. Dự án ở đây chỉ còn đọc: hãy lưu thành tệp riêng của bạn để tiếp tục"
 
@@ -11124,9 +11175,13 @@ msgstr ""
 msgid "The file has too many lines"
 msgstr ""
 
-#: crates/ui-egui/src/cowork.rs:166
+#: crates/ui-egui/src/cowork.rs:174
 msgid "The files with that message weren't ones the assistant takes"
 msgstr "Các tệp kèm tin nhắn đó không phải loại trợ lý nhận"
+
+#: crates/ui-egui/src/cowork.rs:400
+msgid "The first guest hosts the session; the others move there"
+msgstr "Khách đầu tiên chủ trì phiên; những người khác chuyển sang đó"
 
 #: crates/ui-egui/src/properties.rs:2937
 msgid "The foot of the perpendicular from the last point to a wall or grid"
@@ -11268,7 +11323,11 @@ msgstr ""
 msgid "The selected element has no type to match"
 msgstr "Cấu kiện đã chọn không có kiểu để sao chép"
 
-#: crates/ui-egui/src/cowork.rs:688
+#: crates/ui-egui/src/cowork/door.rs:147
+msgid "The session moved to {}: joining there"
+msgstr "Phiên đã chuyển sang {}: đang tham gia ở đó"
+
+#: crates/ui-egui/src/cowork.rs:762
 msgid "The shared AI chat: whoever has an AI key of their own uses it; one who has none is lent one."
 msgstr "Chat AI dùng chung: ai có khóa AI riêng thì dùng khóa đó; ai chưa có thì được cho mượn một khóa."
 
@@ -11671,6 +11730,10 @@ msgstr ""
 #: crates/ui-egui/src/script.rs:94
 msgid "Try shows what it would do and changes nothing. Run does it as one undo step."
 msgstr ""
+
+#: crates/ui-egui/src/cowork/door.rs:76
+msgid "Turn Away"
+msgstr "Từ chối"
 
 #: crates/ui-egui/src/lib.rs:413
 msgid "Turn Snap Override Off"
@@ -12164,7 +12227,7 @@ msgstr "Ghi đè Hiển thị/Đồ họa cho {}"
 msgid "Visible"
 msgstr "Hiển thị"
 
-#: crates/ui-egui/src/cowork.rs:682
+#: crates/ui-egui/src/cowork.rs:754
 msgid "Visible on this network"
 msgstr "Hiển thị trên mạng này"
 
@@ -12417,7 +12480,7 @@ msgstr "Tại vị trí mà tọa độ trong tệp của nó xác định, như
 msgid "Where two walls or grids cross"
 msgstr "Nơi hai tường hoặc hai lưới trục giao nhau"
 
-#: crates/ui-egui/src/cowork.rs:562
+#: crates/ui-egui/src/cowork.rs:618
 msgid "Whoever has a key of their own always uses it. Off, one who has none uses a key a guest lends"
 msgstr "Ai có khóa riêng thì luôn dùng khóa đó. Khi tắt, người chưa có khóa dùng khóa do một khách cho mượn"
 
@@ -12514,6 +12577,10 @@ msgstr "Khung dây"
 #: crates/ui-egui/src/electrical.rs:345
 msgid "Wires"
 msgstr "Số dây"
+
+#: crates/ui-egui/src/cowork.rs:674
+msgid "Without the code: the host lets you in"
+msgstr "Không cần mã: chủ phiên cho bạn vào"
 
 #: crates/ui-egui/src/dimtypes.rs:131
 msgid "Witness Line Control"
@@ -12622,23 +12689,31 @@ msgstr "Có/Không"
 msgid "Yesterday"
 msgstr "Hôm qua"
 
-#: crates/ui-egui/src/cowork.rs:578
+#: crates/ui-egui/src/cowork.rs:638
 msgid "You are in {}'s session. Your edits go to the host; the project stays read-only here when the session ends."
 msgstr "Bạn đang trong phiên của {}. Các chỉnh sửa của bạn được gửi tới chủ phiên; khi phiên kết thúc, dự án ở đây chỉ còn đọc."
 
-#: crates/ui-egui/src/cowork.rs:541
+#: crates/ui-egui/src/cowork/door.rs:129
+msgid "You host the Co-Work session now. The project is your copy of it: save it as a file of your own"
+msgstr "Giờ bạn chủ trì phiên Co-Work. Dự án là bản sao của bạn: hãy lưu nó thành một tệp riêng"
+
+#: crates/ui-egui/src/cowork.rs:594
 msgid "You host this project. Others join with this code; on another network they need this machine's address and port too."
 msgstr "Bạn chủ trì dự án này. Người khác tham gia bằng mã này; ở mạng khác, họ cũng cần địa chỉ và cổng của máy này."
 
-#: crates/ui-egui/src/cowork.rs:514
+#: crates/ui-egui/src/cowork.rs:564
 msgid "You joined {}'s session"
 msgstr "Bạn đã tham gia phiên của {}"
 
-#: crates/ui-egui/src/cowork.rs:647
+#: crates/ui-egui/src/cowork.rs:719
 msgid "You left the session. The project stays read-only here: save it as a file of your own to go on"
 msgstr "Bạn đã rời phiên. Dự án ở đây chỉ còn đọc: hãy lưu thành tệp riêng của bạn để tiếp tục"
 
-#: crates/ui-egui/src/cowork.rs:293
+#: crates/ui-egui/src/cowork.rs:760
+msgid "You let each in yourself, once they read out the digits your screen shows"
+msgstr "Bạn tự cho từng người vào, khi họ đọc các chữ số mà màn hình của bạn hiện"
+
+#: crates/ui-egui/src/cowork.rs:327
 msgid "You stopped following {}"
 msgstr "Bạn đã ngừng theo dõi {}"
 
@@ -12646,7 +12721,7 @@ msgstr "Bạn đã ngừng theo dõi {}"
 msgid "Your messages, and what the assistant reads of this project (its levels, elements, schedules), are sent to {}. Nothing is sent until you send a message."
 msgstr ""
 
-#: crates/ui-egui/src/cowork.rs:666
+#: crates/ui-egui/src/cowork.rs:738
 msgid "Your name:"
 msgstr "Tên của bạn:"
 
@@ -13032,7 +13107,7 @@ msgstr "song song: `{}` không phải là khoảng cách"
 msgid "offset: it offsets straight walls"
 msgstr "song song: chỉ áp dụng cho tường thẳng"
 
-#: crates/ui-egui/src/cowork.rs:603
+#: crates/ui-egui/src/cowork.rs:663
 msgid "on this network, none"
 msgstr "trên mạng này, không có"
 
@@ -13060,7 +13135,7 @@ msgstr "hình ảnh"
 msgid "polyline"
 msgstr "đường đa tuyến"
 
-#: crates/ui-egui/src/cowork.rs:672
+#: crates/ui-egui/src/cowork.rs:744
 msgid "port"
 msgstr "cổng"
 
@@ -13222,7 +13297,7 @@ msgstr "không có mặt nào để sơn ở đó"
 msgid "there's no folder to keep favorites in here"
 msgstr "không có thư mục nào để lưu mục yêu thích ở đây"
 
-#: crates/ui-egui/src/cowork.rs:553
+#: crates/ui-egui/src/cowork.rs:606
 msgid "this machine"
 msgstr "máy này"
 
@@ -13325,13 +13400,17 @@ msgstr "Mẫu {}"
 msgid "{} already exists: save under a name ending in .pat to replace it."
 msgstr "{} đã tồn tại: hãy lưu dưới một tên kết thúc bằng .pat để thay thế nó."
 
-#: crates/ui-egui/src/cowork.rs:360
+#: crates/ui-egui/src/cowork.rs:394
 msgid "{} are in your Co-Work session: closing BIMCraft ends it for them, and they keep a read-only copy."
 msgstr "{} đang trong phiên Co-Work của bạn: đóng BIMCraft sẽ kết thúc phiên với họ, và họ giữ một bản sao chỉ đọc."
 
-#: crates/ui-egui/src/cowork.rs:636
+#: crates/ui-egui/src/cowork.rs:708
 msgid "{} asked you to leave"
 msgstr "{} đã mời bạn rời đi"
+
+#: crates/ui-egui/src/cowork/door.rs:66
+msgid "{} asks to join your Co-Work session without the code."
+msgstr "{} xin tham gia phiên Co-Work của bạn mà không cần mã."
 
 #: crates/ui-egui/src/sketch.rs:280
 msgid "{} at x {}, y {}"
@@ -13366,7 +13445,7 @@ msgstr "{} không cho mượn khóa AI của họ"
 msgid "{} elements"
 msgstr "{} cấu kiện"
 
-#: crates/ui-egui/src/cowork.rs:641
+#: crates/ui-egui/src/cowork.rs:713
 msgid "{} ended the session"
 msgstr "{} đã kết thúc phiên"
 
@@ -13390,7 +13469,7 @@ msgstr ""
 msgid "{} h ago"
 msgstr "{} giờ trước"
 
-#: crates/ui-egui/src/cowork.rs:324
+#: crates/ui-egui/src/cowork.rs:358
 msgid "{} has this selected"
 msgstr "{} đang chọn mục này"
 
@@ -13398,11 +13477,19 @@ msgstr "{} đang chọn mục này"
 msgid "{} holds no parameters, so it has no phase to demolish"
 msgstr "{} không có tham số nào, nên không có giai đoạn để phá dỡ"
 
+#: crates/ui-egui/src/cowork/door.rs:105
+msgid "{} hosts the session now"
+msgstr "{} đang chủ trì phiên"
+
+#: crates/ui-egui/src/cowork/door.rs:107
+msgid "{} hosts the session now: the others have moved there"
+msgstr "{} đang chủ trì phiên: những người khác đã chuyển sang đó"
+
 #: crates/ui-egui/src/assistant.rs:265
 msgid "{} in · {} out · {} total"
 msgstr ""
 
-#: crates/ui-egui/src/cowork.rs:445
+#: crates/ui-egui/src/cowork.rs:489
 msgid "{} is no address to listen on"
 msgstr "{} không phải địa chỉ để lắng nghe"
 
@@ -13418,11 +13505,11 @@ msgstr "{} vẫn đang được hỏi về việc cho mượn khóa: hãy hỏi 
 msgid "{} isn't parallel to this view. Open a view that shows it flat:"
 msgstr "{} không song song với khung nhìn này. Hãy mở một khung nhìn thể hiện nó phẳng:"
 
-#: crates/ui-egui/src/cowork.rs:155
+#: crates/ui-egui/src/cowork.rs:163
 msgid "{} joined the session"
 msgstr "{} đã tham gia phiên"
 
-#: crates/ui-egui/src/cowork.rs:156
+#: crates/ui-egui/src/cowork.rs:164
 msgid "{} left the session: {}"
 msgstr "{} đã rời phiên: {}"
 
@@ -13468,7 +13555,7 @@ msgstr "{} của {} {}"
 msgid "{} on {}'s key"
 msgstr "{} bằng khóa của {}"
 
-#: crates/ui-egui/src/cowork.rs:334
+#: crates/ui-egui/src/cowork.rs:368
 msgid "{} opened another project"
 msgstr "{} đã mở một dự án khác"
 
@@ -13504,7 +13591,7 @@ msgstr "{} được định nghĩa lại từ các đường"
 msgid "{} selected."
 msgstr "Đã chọn {}."
 
-#: crates/ui-egui/src/cowork.rs:176
+#: crates/ui-egui/src/cowork.rs:184
 msgid "{} stopped the assistant"
 msgstr "{} đã dừng trợ lý"
 
@@ -13524,7 +13611,7 @@ msgstr "{} năm trước"
 msgid "{}'s AI key is for another provider now: ask again"
 msgstr "Khóa AI của {} giờ thuộc nhà cung cấp khác: hãy hỏi lại"
 
-#: crates/ui-egui/src/cowork.rs:433
+#: crates/ui-egui/src/cowork.rs:477
 msgid "{}'s Co-Work"
 msgstr "Co-Work của {}"
 
@@ -13646,7 +13733,7 @@ msgstr ""
 msgid "{}: {}"
 msgstr "{}: {}"
 
-#: crates/ui-egui/src/cowork.rs:420
+#: crates/ui-egui/src/cowork.rs:464
 msgid "{}: {}, {} selected. Click to follow"
 msgstr "{}: {}, đã chọn {}. Nhấp để theo dõi"
 

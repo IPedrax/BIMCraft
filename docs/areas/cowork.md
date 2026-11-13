@@ -176,7 +176,25 @@ the desktop wires it in slice 3.
   name is kept, of plain characters. A link would point at that folder, so linking stays the host's, and a command that needs files
   beside the one sent (an OBJ's MTL, a glTF's buffers) finds them missing.
 
+## Built: asking to join, and handing the session over (slice 6)
+
+- **Ask to Join** (the Join dialog, with an address typed or a session picked) knocks without the code (`knock.rs`). The handshake
+  is the session's own Noise `NNpsk0` under a key everyone knows (`knock::psk`), so it is encrypted but proves nothing alone. Both
+  windows then show six digits made of the handshake's hash and a nonce from each side, the guest's committed to (a hash of it sent
+  first) before it sees the host's; so someone in between, who runs a handshake with each, can't search for a pair whose digits
+  agree (one in a million, and a turned-away knock counts toward the address's lockout). The host's window asks "Someone asks to
+  join" with the digits (`knock_window`); Let In tells the guest the code, and it joins with it as anyone does. At most
+  `MAX_KNOCKS` wait at once, one an address, each for `KNOCK_WAIT`. Settings > Co-Work and the session's dialog have Others may ask
+  to join without the code (on by default; off, a knock is a wrong code).
+- **Make Host** (the session's dialog, beside Kick) and **Hand Over and Close** (the question a host with guests in is asked when it
+  closes) hand the session to a guest (`Hosting::hand_over`): what changed goes out first, so its copy is the host's model; its
+  window hosts that copy as Settings > Co-Work says (`take_over`) and answers with its port and code (`hosting`); the old host sends
+  the others there (`moved`, with the address it sees the new host at) and its own session ends (`handed_over`). The others' windows
+  join the new host by themselves (`move_to_new_host`). The AI chat goes with the session, in the form a saved chat has, and the new host's
+  window goes on with it (`Chat::restore`: whole or not at all, the model starting afresh on another provider); the undo history
+  stays with the old host. The new host's project is its copy, with no file until it saves one.
+
 ## Not built yet
 
-Slice 6 of the plan: asking to join without the code, and handing the host's role to a guest. Not checked by any test: a session
-between two machines, a minimised host on Wayland, a live provider call on a lent key.
+Nothing of the plan. Not checked by any test: a session between two machines (and a handover to a machine the others can't reach),
+a minimised host on Wayland, a live provider call on a lent key.

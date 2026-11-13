@@ -73,8 +73,7 @@ impl Cipher {
 pub(crate) struct Transport {
     pub(crate) send: Cipher,
     pub(crate) recv: Cipher,
-    /// The handshake's hash, the same on both sides; the vectors check it.
-    #[cfg_attr(not(test), allow(dead_code))]
+    /// The handshake's hash, the same on both sides; the vectors check it, and a knock's digits are made of it.
     pub(crate) hash: [u8; 32],
 }
 

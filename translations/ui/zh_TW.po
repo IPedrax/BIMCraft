@@ -48,7 +48,7 @@ msgstr "（無）"
 msgid "0 for any port that is free; an open port moves to a new one"
 msgstr "0 表示任何空閒的連接埠；已開啟的連接埠會移到新的連接埠"
 
-#: crates/ui-egui/src/cowork.rs:679
+#: crates/ui-egui/src/cowork.rs:751
 msgid "0.0.0.0 listens on every address of this machine's. From outside this network, guests need the port forwarded to it, which is for you to set up."
 msgstr "0.0.0.0 會監聽本機的所有位址。要從本網路之外連線，訪客需要將連接埠轉送到本機，這需要由你自行設定。"
 
@@ -560,11 +560,11 @@ msgstr ""
 msgid "Added {} to the project"
 msgstr "已將 {} 添加到項目"
 
-#: crates/ui-egui/src/cowork.rs:602
+#: crates/ui-egui/src/cowork.rs:662
 msgid "Address:"
 msgstr "位址："
 
-#: crates/ui-egui/src/cowork.rs:554
+#: crates/ui-egui/src/cowork.rs:607
 msgid "Address: {}, port {}"
 msgstr "位址：{}，連接埠 {}"
 
@@ -955,7 +955,7 @@ msgstr "扶手寬度"
 msgid "Arrow"
 msgstr "箭頭"
 
-#: crates/ui-egui/src/cowork.rs:691
+#: crates/ui-egui/src/cowork.rs:765
 msgid "As a guest, lend my AI key to those without one:"
 msgstr "身為訪客，將我的 AI 金鑰借給沒有金鑰的人："
 
@@ -983,6 +983,14 @@ msgstr "先詢問我"
 #: crates/ui-egui/src/assistant.rs:567
 msgid "Ask the assistant to look at or change the project"
 msgstr ""
+
+#: crates/ui-egui/src/cowork.rs:674
+msgid "Ask to Join"
+msgstr "請求加入"
+
+#: crates/ui-egui/src/cowork.rs:667
+msgid "Asking the host to let you in. Read out these digits: the host lets you in only if they see the same: {}"
+msgstr "正在請主機讓你進入。請讀出這些數字：只有主機看到相同的數字，才會讓你進入：{}"
 
 #: crates/ui-egui/src/updates.rs:128
 msgid "Asks to save first if there are unsaved changes, then closes BIMCraft, installs the update and starts it again."
@@ -1482,7 +1490,7 @@ msgstr "相機：單擊視點所在位置，再單擊其注視的目標：由該
 #: crates/ui-egui/src/background_grid.rs:111
 #: crates/ui-egui/src/cad.rs:131
 #: crates/ui-egui/src/clouds.rs:87
-#: crates/ui-egui/src/cowork.rs:367
+#: crates/ui-egui/src/cowork.rs:403
 #: crates/ui-egui/src/dimtypes.rs:319
 #: crates/ui-egui/src/display.rs:81
 #: crates/ui-egui/src/editor/dimensions.rs:967
@@ -2416,7 +2424,7 @@ msgstr "單擊平台之後下一梯段的走向：直行、左轉、右轉，或
 msgid "Clipboard"
 msgstr ""
 
-#: crates/ui-egui/src/cowork.rs:625
+#: crates/ui-egui/src/cowork.rs:691
 #: crates/ui-egui/src/favorites.rs:179
 #: crates/ui-egui/src/graphics.rs:512
 #: crates/ui-egui/src/inquiry.rs:203
@@ -2471,8 +2479,8 @@ msgstr "關閉 {}"
 msgid "Closed polyline, {} points"
 msgstr ""
 
-#: crates/ui-egui/src/cowork.rs:432
-#: crates/ui-egui/src/cowork.rs:536
+#: crates/ui-egui/src/cowork.rs:476
+#: crates/ui-egui/src/cowork.rs:589
 #: crates/ui-egui/src/lib.rs:437
 #: crates/ui-egui/src/lib.rs:4362
 #: crates/ui-egui/src/settings.rs:319
@@ -2483,19 +2491,19 @@ msgstr "Co-Work"
 msgid "Co-Work (CW): host this project for others on BIMCraft, or join someone's session, and see each other's edits live"
 msgstr ""
 
-#: crates/ui-egui/src/cowork.rs:663
+#: crates/ui-egui/src/cowork.rs:735
 msgid "Co-Work lets others on BIMCraft work on this project with you, live (Collaborate > Co-Work, CW)."
 msgstr "Co-Work 讓其他人在 BIMCraft 中與你即時協同處理此專案（協作 > Co-Work，CW）。"
 
-#: crates/ui-egui/src/cowork.rs:397
+#: crates/ui-egui/src/cowork.rs:441
 msgid "Co-Work: hosting, {} in"
 msgstr "Co-Work：主持中，{} 人在內"
 
-#: crates/ui-egui/src/cowork.rs:403
+#: crates/ui-egui/src/cowork.rs:447
 msgid "Co-Work: who is in this session (CW)"
 msgstr "Co-Work：誰在此工作階段中 (CW)"
 
-#: crates/ui-egui/src/cowork.rs:398
+#: crates/ui-egui/src/cowork.rs:442
 msgid "Co-Work: {}'s session"
 msgstr "Co-Work：{} 的工作階段"
 
@@ -2504,8 +2512,8 @@ msgstr "Co-Work：{} 的工作階段"
 msgid "Coarse"
 msgstr "粗略"
 
-#: crates/ui-egui/src/cowork.rs:545
 #: crates/ui-egui/src/cowork.rs:598
+#: crates/ui-egui/src/cowork.rs:658
 msgid "Code:"
 msgstr "代碼："
 
@@ -2769,7 +2777,7 @@ msgid "Copper"
 msgstr "銅"
 
 #: crates/core/src/commands.rs:1573
-#: crates/ui-egui/src/cowork.rs:547
+#: crates/ui-egui/src/cowork.rs:600
 #: crates/ui-egui/src/editor/document.rs:658
 #: crates/ui-egui/src/inquiry.rs:176
 #: crates/ui-egui/src/lib.rs:5000
@@ -2853,9 +2861,14 @@ msgstr "無法檢查更新：{}"
 msgid "Couldn't download the update: {}"
 msgstr "無法下載更新：{}"
 
-#: crates/ui-egui/src/cowork.rs:481
+#: crates/ui-egui/src/cowork/door.rs:35
+#: crates/ui-egui/src/cowork.rs:531
 msgid "Couldn't find {}: type an IP address or a name, with a port after a colon if it isn't {}"
 msgstr "找不到 {}：請輸入 IP 位址或名稱，若不是 {}，請在冒號後加上連接埠"
+
+#: crates/ui-egui/src/cowork/door.rs:136
+msgid "Couldn't host the session: {}"
+msgstr "無法主持工作階段：{}"
 
 #: crates/ui-egui/src/updates.rs:48
 msgid "Couldn't install the update: {}"
@@ -2865,7 +2878,7 @@ msgstr "無法安裝更新：{}"
 msgid "Couldn't listen on port {} for agents: {}"
 msgstr "無法為智能體監聽連接埠 {}：{}"
 
-#: crates/ui-egui/src/cowork.rs:458
+#: crates/ui-egui/src/cowork.rs:502
 msgid "Couldn't listen on port {}: {}"
 msgstr "無法監聽連接埠 {}：{}"
 
@@ -3602,7 +3615,7 @@ msgstr "域"
 msgid "Don't"
 msgstr "不要"
 
-#: crates/ui-egui/src/lib.rs:5743
+#: crates/ui-egui/src/lib.rs:5744
 msgid "Don't Save"
 msgstr "不儲存"
 
@@ -4118,15 +4131,15 @@ msgstr "結束角度"
 msgid "End Level Offset"
 msgstr "終點標高偏移"
 
-#: crates/ui-egui/src/cowork.rs:621
+#: crates/ui-egui/src/cowork.rs:687
 msgid "End Session"
 msgstr "結束工作階段"
 
-#: crates/ui-egui/src/cowork.rs:366
+#: crates/ui-egui/src/cowork.rs:402
 msgid "End and Close"
 msgstr "結束並關閉"
 
-#: crates/ui-egui/src/cowork.rs:357
+#: crates/ui-egui/src/cowork.rs:391
 msgid "End the Co-Work session?"
 msgstr "結束 Co-Work 工作階段？"
 
@@ -4985,13 +4998,13 @@ msgstr "參數分組方式："
 msgid "Group:"
 msgstr "組："
 
-#: crates/ui-egui/src/cowork.rs:558
-#: crates/ui-egui/src/cowork.rs:685
+#: crates/ui-egui/src/cowork.rs:611
+#: crates/ui-egui/src/cowork.rs:757
 msgid "Guests may edit"
 msgstr "訪客可以編輯"
 
-#: crates/ui-egui/src/cowork.rs:561
-#: crates/ui-egui/src/cowork.rs:689
+#: crates/ui-egui/src/cowork.rs:617
+#: crates/ui-egui/src/cowork.rs:763
 msgid "Guests without an AI key may use mine"
 msgstr "沒有 AI 金鑰的訪客可以使用我的"
 
@@ -5013,6 +5026,18 @@ msgstr "一半"
 #: crates/ui-egui/src/graphics.rs:1310
 msgid "Halftone"
 msgstr "半色調"
+
+#: crates/ui-egui/src/cowork.rs:401
+msgid "Hand Over and Close"
+msgstr "移交並關閉"
+
+#: crates/ui-egui/src/cowork.rs:630
+msgid "Hand the session to them: they host it, and the others move there"
+msgstr "將工作階段移交給對方：由對方主持，其他人轉到那裡"
+
+#: crates/ui-egui/src/cowork/door.rs:96
+msgid "Handing the session to {}…"
+msgstr "正在將工作階段移交給 {}…"
 
 #: crates/core/src/family.rs:3180
 msgid "Headboard Height"
@@ -5136,7 +5161,7 @@ msgstr "彎鉤"
 msgid "Horizontal"
 msgstr "水平線"
 
-#: crates/ui-egui/src/cowork.rs:446
+#: crates/ui-egui/src/cowork.rs:490
 #: crates/ui-egui/src/editor/extrusion.rs:269
 #: crates/ui-egui/src/properties.rs:249
 msgid "Host"
@@ -5154,7 +5179,7 @@ msgstr "主體牆"
 msgid "Host and Loop System (xyz)"
 msgstr ""
 
-#: crates/ui-egui/src/cowork.rs:583
+#: crates/ui-egui/src/cowork.rs:643
 msgid "Host this project"
 msgstr "主持此專案"
 
@@ -5227,7 +5252,7 @@ msgstr "ISO 7200：180 mm"
 msgid "Identity Data"
 msgstr "標識數據"
 
-#: crates/ui-egui/src/lib.rs:5739
+#: crates/ui-egui/src/lib.rs:5740
 msgid "If you don't, the changes since it was last saved are lost."
 msgstr "如果不儲存，自上次儲存以來的更改將會丟失。"
 
@@ -5301,7 +5326,7 @@ msgstr ""
 msgid "In"
 msgstr "內"
 
-#: crates/ui-egui/src/cowork.rs:580
+#: crates/ui-egui/src/cowork.rs:640
 msgid "In it: {} and {}"
 msgstr "在其中：{} 和 {}"
 
@@ -5502,11 +5527,11 @@ msgstr "JIS Z 8310 / JIS A 0150 日本工業線寬標準:"
 msgid "Jog"
 msgstr "彎折"
 
-#: crates/ui-egui/src/cowork.rs:609
+#: crates/ui-egui/src/cowork.rs:673
 msgid "Join"
 msgstr "加入"
 
-#: crates/ui-egui/src/cowork.rs:587
+#: crates/ui-egui/src/cowork.rs:647
 msgid "Join a session"
 msgstr "加入工作階段"
 
@@ -5518,7 +5543,7 @@ msgstr "合併為多段線"
 msgid "Join into Polyline (PJ): the lines selected, meeting end to end, become one polyline"
 msgstr "合併為多段線 (PJ)：首尾相接的選定線合併為一條多段線"
 
-#: crates/ui-egui/src/cowork.rs:607
+#: crates/ui-egui/src/cowork.rs:670
 msgid "Joining…"
 msgstr "加入中…"
 
@@ -5570,7 +5595,7 @@ msgstr "快速鍵 (KS)：自定義、編輯和載入快速鍵"
 msgid "Keyboard shortcuts applied."
 msgstr ""
 
-#: crates/ui-egui/src/cowork.rs:571
+#: crates/ui-egui/src/cowork.rs:627
 msgid "Kick"
 msgstr "請出"
 
@@ -5642,7 +5667,7 @@ msgstr "門扇材質"
 msgid "Leaf Thickness"
 msgstr "門扇厚度"
 
-#: crates/ui-egui/src/cowork.rs:622
+#: crates/ui-egui/src/cowork.rs:688
 msgid "Leave"
 msgstr "離開"
 
@@ -5713,9 +5738,17 @@ msgstr ""
 msgid "Lens:"
 msgstr "鏡頭："
 
+#: crates/ui-egui/src/cowork/door.rs:75
+msgid "Let In"
+msgstr "允許進入"
+
 #: crates/ui-egui/src/settings.rs:770
 msgid "Let agents work on this project"
 msgstr "讓智能體在此項目上工作"
+
+#: crates/ui-egui/src/cowork/door.rs:70
+msgid "Let them in only if their screen shows these same digits: ask them to read theirs out. Others would see different ones."
+msgstr "只有當對方的螢幕顯示這些相同的數字時才讓其進入：請對方讀出他們的數字。其他人看到的會不同。"
 
 #: crates/ui-egui/src/cowork/chat.rs:323
 msgid "Let this session's chat use your AI key for others who have none? What they ask is billed to your account."
@@ -5952,7 +5985,7 @@ msgstr ""
 msgid "List {}"
 msgstr "列出 {}"
 
-#: crates/ui-egui/src/cowork.rs:670
+#: crates/ui-egui/src/cowork.rs:742
 msgid "Listen on:"
 msgstr "監聽："
 
@@ -6094,7 +6127,7 @@ msgstr ""
 msgid "Long Dash"
 msgstr "長劃線"
 
-#: crates/ui-egui/src/cowork.rs:589
+#: crates/ui-egui/src/cowork.rs:649
 msgid "Looking for sessions on this network…"
 msgstr "正在此網路中尋找工作階段…"
 
@@ -6162,6 +6195,10 @@ msgstr "使族自適應：其點放置在每個實例的單擊位置，如 Revit
 #: crates/ui-egui/src/titleblocks.rs:499
 msgid "Make Field"
 msgstr ""
+
+#: crates/ui-egui/src/cowork.rs:631
+msgid "Make Host"
+msgstr "設為主機"
 
 #: crates/ui-egui/src/phasing.rs:386
 msgid "Make Primary"
@@ -6973,7 +7010,7 @@ msgstr "尚無過濾器：點擊“新建”創建一個。"
 msgid "No font with Chinese characters was found on this system: install one (such as Noto Sans CJK) and choose Chinese again."
 msgstr "此系統中未找到含中文字符的字體：請安裝一款（如 Noto Sans CJK），然後重新選擇中文。"
 
-#: crates/ui-egui/src/cowork.rs:121
+#: crates/ui-egui/src/cowork.rs:129
 msgid "No host on this network has that code: type the host's address too"
 msgstr "此網路中沒有主機使用該代碼：請同時輸入主機的位址"
 
@@ -7009,7 +7046,7 @@ msgstr "此標高上沒有牆圍合出區域：請繪製輪廓。"
 msgid "No {} templates yet: New from This View makes one from a view of the kind."
 msgstr "尚無{}樣板：“從此視圖新建”可由該類視圖創建一個。"
 
-#: crates/ui-egui/src/cowork.rs:566
+#: crates/ui-egui/src/cowork.rs:622
 msgid "Nobody has joined yet."
 msgstr "還沒有人加入。"
 
@@ -7106,7 +7143,7 @@ msgstr "本系統沒有此字體：以 {} 繪製"
 msgid "Not saved with the passphrase yet."
 msgstr ""
 
-#: crates/ui-egui/src/cowork.rs:556
+#: crates/ui-egui/src/cowork.rs:609
 msgid "Not visible on this network: another session on this machine has the port"
 msgstr "在此網路中不可見：本機上的另一個工作階段佔用了該連接埠"
 
@@ -7239,7 +7276,7 @@ msgstr "關"
 msgid "Off, agents only read the project: they inspect it, read its schedules, render its views and export it to new files (its sheets to PDF among them), and whatever they ask that would change it, undo it, replace it or save over its file is refused"
 msgstr "關閉時，智能體只能讀取項目：它們可以查看項目、讀取其明細表、渲染其視圖，並將其導出為新檔案（包括將圖紙導出為 PDF）；任何會更改項目、將其復原或替換，或覆寫其檔案的請求都會被拒絕"
 
-#: crates/ui-egui/src/cowork.rs:686
+#: crates/ui-egui/src/cowork.rs:758
 msgid "Off, guests only look: they see the project and the others, and change nothing"
 msgstr "關：訪客只能檢視，可以看到專案和其他人，但不能變更任何內容"
 
@@ -7461,11 +7498,16 @@ msgstr "其他"
 msgid "Other Borders (Top, Right, Bottom):"
 msgstr "其他圖框邊距 (上、右、下):"
 
-#: crates/ui-egui/src/cowork.rs:584
+#: crates/ui-egui/src/cowork.rs:614
+#: crates/ui-egui/src/cowork.rs:759
+msgid "Others may ask to join without the code"
+msgstr "其他人可以不用代碼請求加入"
+
+#: crates/ui-egui/src/cowork.rs:644
 msgid "Others on this network find it; on another, they join with this machine's address and port."
 msgstr "此網路中的其他人可以找到它；在其他網路中，他們需使用本機的位址和連接埠加入。"
 
-#: crates/ui-egui/src/cowork.rs:683
+#: crates/ui-egui/src/cowork.rs:755
 msgid "Others on this network see the session in their Join list: your name and the project's. Off, they need this machine's address"
 msgstr "此網路中的其他人會在其「加入」清單中看到該工作階段：你的名稱和專案名稱。關閉後，他們需要本機的位址"
 
@@ -7936,6 +7978,10 @@ msgstr "選取屋頂或樓板：所選牆的頂部跟隨其底面。"
 #: crates/ui-egui/src/lib.rs:5346
 msgid "Pick a round column, a curved wall, a circle or an arc."
 msgstr "拾取圓柱、弧形牆、圓或圓弧。"
+
+#: crates/ui-egui/src/cowork/door.rs:29
+msgid "Pick a session in the list, or type the host's address, to ask to join"
+msgstr "在清單中選擇一個工作階段，或輸入主機的位址，以請求加入"
 
 #: crates/ui-egui/src/sketch.rs:955
 msgid "Pick a sketch line as the trim/extend boundary."
@@ -9534,7 +9580,7 @@ msgid "Save as:"
 msgstr "另存為："
 
 #: crates/ui-egui/src/editor/tabs.rs:297
-#: crates/ui-egui/src/lib.rs:5737
+#: crates/ui-egui/src/lib.rs:5738
 msgid "Save changes to {}?"
 msgstr "是否將更改儲存到 {}？"
 
@@ -9542,7 +9588,8 @@ msgstr "是否將更改儲存到 {}？"
 msgid "Save the key"
 msgstr ""
 
-#: crates/ui-egui/src/cowork.rs:467
+#: crates/ui-egui/src/cowork/door.rs:24
+#: crates/ui-egui/src/cowork.rs:512
 msgid "Save this project first: joining puts the host's project in this window"
 msgstr "請先儲存此專案：加入會將主機的專案載入此視窗"
 
@@ -10318,6 +10365,10 @@ msgstr "實體填充"
 msgid "Solid/Void"
 msgstr ""
 
+#: crates/ui-egui/src/cowork/door.rs:64
+msgid "Someone asks to join"
+msgstr "有人請求加入"
+
 #: crates/ui-egui/src/properties.rs:3548
 msgid "Sort by:"
 msgstr "排序方式："
@@ -10482,7 +10533,7 @@ msgstr "起點"
 msgid "Start Angle"
 msgstr "起始角度"
 
-#: crates/ui-egui/src/cowork.rs:585
+#: crates/ui-egui/src/cowork.rs:645
 msgid "Start Co-Work"
 msgstr "啟動 Co-Work"
 
@@ -11005,7 +11056,7 @@ msgstr "該對話超出了一次請求所能承載的大小"
 msgid "That is as many presets as are kept: delete one first"
 msgstr "模板數量已達保留上限：請先刪除一個"
 
-#: crates/ui-egui/src/cowork.rs:676
+#: crates/ui-egui/src/cowork.rs:748
 msgid "That is no IP address: 0.0.0.0 listens on all of this machine's"
 msgstr "這不是 IP 位址：0.0.0.0 會監聽本機的所有位址"
 
@@ -11030,11 +11081,11 @@ msgstr ""
 msgid "The 3D view is drawn on the processor: {}"
 msgstr "3D視圖由處理器繪製：{}"
 
-#: crates/ui-egui/src/cowork.rs:643
+#: crates/ui-egui/src/cowork.rs:715
 msgid "The Co-Work session is over"
 msgstr "Co-Work 工作階段已結束"
 
-#: crates/ui-egui/src/cowork.rs:192
+#: crates/ui-egui/src/cowork.rs:226
 msgid "The Co-Work session is over: {}. The project stays read-only here: save it as a file of your own to go on"
 msgstr "Co-Work 工作階段已結束：{}。專案在此處保持唯讀：請另存為你自己的檔案以繼續"
 
@@ -11124,9 +11175,13 @@ msgstr ""
 msgid "The file has too many lines"
 msgstr ""
 
-#: crates/ui-egui/src/cowork.rs:166
+#: crates/ui-egui/src/cowork.rs:174
 msgid "The files with that message weren't ones the assistant takes"
 msgstr "該訊息附帶的檔案不是助手接受的類型"
+
+#: crates/ui-egui/src/cowork.rs:400
+msgid "The first guest hosts the session; the others move there"
+msgstr "第一位訪客主持工作階段；其他人轉到那裡"
 
 #: crates/ui-egui/src/properties.rs:2937
 msgid "The foot of the perpendicular from the last point to a wall or grid"
@@ -11268,7 +11323,11 @@ msgstr ""
 msgid "The selected element has no type to match"
 msgstr "所選元素沒有可符合的類型"
 
-#: crates/ui-egui/src/cowork.rs:688
+#: crates/ui-egui/src/cowork/door.rs:147
+msgid "The session moved to {}: joining there"
+msgstr "工作階段已轉到 {}：正在加入"
+
+#: crates/ui-egui/src/cowork.rs:762
 msgid "The shared AI chat: whoever has an AI key of their own uses it; one who has none is lent one."
 msgstr "共享 AI 聊天：有自己 AI 金鑰的人使用自己的；沒有的人會被借給一把。"
 
@@ -11671,6 +11730,10 @@ msgstr ""
 #: crates/ui-egui/src/script.rs:94
 msgid "Try shows what it would do and changes nothing. Run does it as one undo step."
 msgstr ""
+
+#: crates/ui-egui/src/cowork/door.rs:76
+msgid "Turn Away"
+msgstr "拒絕"
 
 #: crates/ui-egui/src/lib.rs:413
 msgid "Turn Snap Override Off"
@@ -12164,7 +12227,7 @@ msgstr "{} 的可見性/圖形替換"
 msgid "Visible"
 msgstr "可見"
 
-#: crates/ui-egui/src/cowork.rs:682
+#: crates/ui-egui/src/cowork.rs:754
 msgid "Visible on this network"
 msgstr "在此網路中可見"
 
@@ -12417,7 +12480,7 @@ msgstr "按檔案座標放置，與測量時的位置一致"
 msgid "Where two walls or grids cross"
 msgstr "兩面牆或兩條軸網相交處"
 
-#: crates/ui-egui/src/cowork.rs:562
+#: crates/ui-egui/src/cowork.rs:618
 msgid "Whoever has a key of their own always uses it. Off, one who has none uses a key a guest lends"
 msgstr "有自己金鑰的人一律使用自己的。關閉後，沒有金鑰的人使用訪客借出的金鑰"
 
@@ -12514,6 +12577,10 @@ msgstr "線框"
 #: crates/ui-egui/src/electrical.rs:345
 msgid "Wires"
 msgstr "導線數"
+
+#: crates/ui-egui/src/cowork.rs:674
+msgid "Without the code: the host lets you in"
+msgstr "無需代碼：由主機讓你進入"
 
 #: crates/ui-egui/src/dimtypes.rs:131
 msgid "Witness Line Control"
@@ -12622,23 +12689,31 @@ msgstr "是/否"
 msgid "Yesterday"
 msgstr "昨天"
 
-#: crates/ui-egui/src/cowork.rs:578
+#: crates/ui-egui/src/cowork.rs:638
 msgid "You are in {}'s session. Your edits go to the host; the project stays read-only here when the session ends."
 msgstr "你在 {} 的工作階段中。你的編輯會傳送給主機；工作階段結束後，專案在此處保持唯讀。"
 
-#: crates/ui-egui/src/cowork.rs:541
+#: crates/ui-egui/src/cowork/door.rs:129
+msgid "You host the Co-Work session now. The project is your copy of it: save it as a file of your own"
+msgstr "你現在主持此 Co-Work 工作階段。專案是你的副本：請將它另存為你自己的檔案"
+
+#: crates/ui-egui/src/cowork.rs:594
 msgid "You host this project. Others join with this code; on another network they need this machine's address and port too."
 msgstr "你正在主持此專案。其他人使用此代碼加入；在其他網路中，他們還需要本機的位址和連接埠。"
 
-#: crates/ui-egui/src/cowork.rs:514
+#: crates/ui-egui/src/cowork.rs:564
 msgid "You joined {}'s session"
 msgstr "你已加入 {} 的工作階段"
 
-#: crates/ui-egui/src/cowork.rs:647
+#: crates/ui-egui/src/cowork.rs:719
 msgid "You left the session. The project stays read-only here: save it as a file of your own to go on"
 msgstr "你已離開工作階段。專案在此處保持唯讀：請另存為你自己的檔案以繼續"
 
-#: crates/ui-egui/src/cowork.rs:293
+#: crates/ui-egui/src/cowork.rs:760
+msgid "You let each in yourself, once they read out the digits your screen shows"
+msgstr "等每個人讀出你螢幕上顯示的數字後，由你親自讓其進入"
+
+#: crates/ui-egui/src/cowork.rs:327
 msgid "You stopped following {}"
 msgstr "你已停止跟隨 {}"
 
@@ -12646,7 +12721,7 @@ msgstr "你已停止跟隨 {}"
 msgid "Your messages, and what the assistant reads of this project (its levels, elements, schedules), are sent to {}. Nothing is sent until you send a message."
 msgstr ""
 
-#: crates/ui-egui/src/cowork.rs:666
+#: crates/ui-egui/src/cowork.rs:738
 msgid "Your name:"
 msgstr "你的名稱："
 
@@ -13032,7 +13107,7 @@ msgstr "偏移：`{}` 不是有效的距離"
 msgid "offset: it offsets straight walls"
 msgstr "偏移：僅可偏移直牆"
 
-#: crates/ui-egui/src/cowork.rs:603
+#: crates/ui-egui/src/cowork.rs:663
 msgid "on this network, none"
 msgstr "此網路中沒有"
 
@@ -13060,7 +13135,7 @@ msgstr "圖片"
 msgid "polyline"
 msgstr "多段線"
 
-#: crates/ui-egui/src/cowork.rs:672
+#: crates/ui-egui/src/cowork.rs:744
 msgid "port"
 msgstr "連接埠"
 
@@ -13222,7 +13297,7 @@ msgstr "該處沒有可上漆的面"
 msgid "there's no folder to keep favorites in here"
 msgstr "這裡沒有可存放收藏夾的資料夾"
 
-#: crates/ui-egui/src/cowork.rs:553
+#: crates/ui-egui/src/cowork.rs:606
 msgid "this machine"
 msgstr "本機"
 
@@ -13325,13 +13400,17 @@ msgstr "{}樣板"
 msgid "{} already exists: save under a name ending in .pat to replace it."
 msgstr "{}已存在：請用以 .pat 結尾的名稱儲存以替換它。"
 
-#: crates/ui-egui/src/cowork.rs:360
+#: crates/ui-egui/src/cowork.rs:394
 msgid "{} are in your Co-Work session: closing BIMCraft ends it for them, and they keep a read-only copy."
 msgstr "{} 在你的 Co-Work 工作階段中：關閉 BIMCraft 會為他們結束工作階段，他們會保留一份唯讀副本。"
 
-#: crates/ui-egui/src/cowork.rs:636
+#: crates/ui-egui/src/cowork.rs:708
 msgid "{} asked you to leave"
 msgstr "{} 請你離開"
+
+#: crates/ui-egui/src/cowork/door.rs:66
+msgid "{} asks to join your Co-Work session without the code."
+msgstr "{} 請求不用代碼加入你的 Co-Work 工作階段。"
 
 #: crates/ui-egui/src/sketch.rs:280
 msgid "{} at x {}, y {}"
@@ -13366,7 +13445,7 @@ msgstr "{} 不借出其 AI 金鑰"
 msgid "{} elements"
 msgstr "{} 個圖元"
 
-#: crates/ui-egui/src/cowork.rs:641
+#: crates/ui-egui/src/cowork.rs:713
 msgid "{} ended the session"
 msgstr "{} 結束了工作階段"
 
@@ -13390,7 +13469,7 @@ msgstr ""
 msgid "{} h ago"
 msgstr "{} 小時前"
 
-#: crates/ui-egui/src/cowork.rs:324
+#: crates/ui-egui/src/cowork.rs:358
 msgid "{} has this selected"
 msgstr "{} 選取了此項"
 
@@ -13398,11 +13477,19 @@ msgstr "{} 選取了此項"
 msgid "{} holds no parameters, so it has no phase to demolish"
 msgstr "{} 沒有參數，因此沒有可拆除的階段"
 
+#: crates/ui-egui/src/cowork/door.rs:105
+msgid "{} hosts the session now"
+msgstr "{} 現在主持工作階段"
+
+#: crates/ui-egui/src/cowork/door.rs:107
+msgid "{} hosts the session now: the others have moved there"
+msgstr "{} 現在主持工作階段：其他人已轉到那裡"
+
 #: crates/ui-egui/src/assistant.rs:265
 msgid "{} in · {} out · {} total"
 msgstr ""
 
-#: crates/ui-egui/src/cowork.rs:445
+#: crates/ui-egui/src/cowork.rs:489
 msgid "{} is no address to listen on"
 msgstr "{} 不是可監聽的位址"
 
@@ -13418,11 +13505,11 @@ msgstr "{} 仍在被詢問是否借出金鑰：請再問一次"
 msgid "{} isn't parallel to this view. Open a view that shows it flat:"
 msgstr "{} 與此視圖不平行。請開啟一個正對顯示它的視圖："
 
-#: crates/ui-egui/src/cowork.rs:155
+#: crates/ui-egui/src/cowork.rs:163
 msgid "{} joined the session"
 msgstr "{} 加入了工作階段"
 
-#: crates/ui-egui/src/cowork.rs:156
+#: crates/ui-egui/src/cowork.rs:164
 msgid "{} left the session: {}"
 msgstr "{} 離開了工作階段：{}"
 
@@ -13468,7 +13555,7 @@ msgstr "{}：{} {}"
 msgid "{} on {}'s key"
 msgstr "{} 使用 {} 的金鑰"
 
-#: crates/ui-egui/src/cowork.rs:334
+#: crates/ui-egui/src/cowork.rs:368
 msgid "{} opened another project"
 msgstr "{} 開啟了另一個專案"
 
@@ -13504,7 +13591,7 @@ msgstr "{} 已由線重新定義"
 msgid "{} selected."
 msgstr "已選擇 {}。"
 
-#: crates/ui-egui/src/cowork.rs:176
+#: crates/ui-egui/src/cowork.rs:184
 msgid "{} stopped the assistant"
 msgstr "{} 停止了助手"
 
@@ -13524,7 +13611,7 @@ msgstr "{} 年前"
 msgid "{}'s AI key is for another provider now: ask again"
 msgstr "{} 的 AI 金鑰現在屬於另一個提供者：請再問一次"
 
-#: crates/ui-egui/src/cowork.rs:433
+#: crates/ui-egui/src/cowork.rs:477
 msgid "{}'s Co-Work"
 msgstr "{} 的 Co-Work"
 
@@ -13646,7 +13733,7 @@ msgstr ""
 msgid "{}: {}"
 msgstr "{}：{}"
 
-#: crates/ui-egui/src/cowork.rs:420
+#: crates/ui-egui/src/cowork.rs:464
 msgid "{}: {}, {} selected. Click to follow"
 msgstr "{}：{}，已選取 {}。按一下以跟隨"
 
