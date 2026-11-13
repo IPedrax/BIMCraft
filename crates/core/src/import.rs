@@ -4314,10 +4314,14 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
     }
     m.elements = m.elements.regiven(&globals);
     m.resolve();
-    // The project's, its site's and its building's GlobalIds, where they are ones, so the export writes them back.
+    // The project's, its site's and its building's GlobalIds, where they are ones, so the export writes them back: the first
+    // of each in the file, as the project's name and units are its first project's (a project writes one site and one
+    // building). One an element already took, as a file that gives two things one GlobalId may, the export makes its own.
+    let taken: HashSet<Guid> = m.elements.with_guids().map(|(_, g, _)| g).collect();
     let global_of = |class: &str| {
         let first = ids.iter().copied().filter(|id| e(*id).is_some_and(|x| x.name == class)).min()?;
-        crate::ifc::expand(text(e(first)?.args.first())?).map(Guid::from_u128)
+        let g = crate::ifc::expand(text(e(first)?.args.first())?).map(Guid::from_u128)?;
+        Some(g).filter(|g| g.pending().is_none() && !taken.contains(g))
     };
     m.ifc_guids =
         crate::ifc::SpatialGuids { project: global_of("IFCPROJECT"), site: global_of("IFCSITE"), building: global_of("IFCBUILDING") };
@@ -5402,20 +5406,38 @@ ENDSEC;END-ISO-10303-21;",
         let spatial = format!(
             "#8=IFCSITE('{site}',$,'Site',$,$,#6,$,$,.ELEMENT.,$,$,$,$,$);\n#9=IFCBUILDING('{building}',$,'B',$,$,#6,$,$,.ELEMENT.,$,$,$);\n#7=IFCBUILDINGSTOREY"
         );
+        let (storey, element) = ("3Gx9R2kLp0YtWq8ZbNc1Vd", "0Kt7mQ2sXy4Hb9LcRw3PzA");
         let file = proxies("Box", 1, &ring, "0.,0.,1.", 450.0)
             .replace("IFCPROJECT('p'", &format!("IFCPROJECT('{project}'"))
+            .replace("IFCBUILDINGSTOREY('s'", &format!("IFCBUILDINGSTOREY('{storey}'"))
+            .replace("IFCBUILDINGELEMENTPROXY('g0'", &format!("IFCBUILDINGELEMENTPROXY('{element}'"))
             .replace("#7=IFCBUILDINGSTOREY", &spatial);
-        // Each read is a project of its own, but what the file named keeps its name: read twice, written twice, the same.
+        // Every GlobalId an export writes, each once.
+        let unique = |text: &str| {
+            let ids: Vec<&str> = text.lines().filter_map(|l| l.split_once("('")).filter_map(|(_, rest)| rest.get(..22)).collect();
+            let set: HashSet<&str> = ids.iter().copied().collect();
+            assert_eq!(set.len(), ids.len(), "a GlobalId written twice: {text}");
+        };
+        // Each read is a project of its own, but what the file named keeps its name: read twice, written twice, the same, and
+        // beside the storey's and the element's own.
         let read = || ifc(file.as_bytes(), "x").unwrap().model;
         let (first, second) = (crate::ifc::export(&read()), crate::ifc::export(&read()));
-        for (class, id) in [("IFCPROJECT", project), ("IFCSITE", site), ("IFCBUILDING", building)] {
+        for (class, id) in [("IFCPROJECT", project), ("IFCSITE", site), ("IFCBUILDING", building), ("IFCBUILDINGSTOREY", storey)] {
             let written = format!("={class}('{id}'");
             assert!(first.contains(&written) && second.contains(&written), "{class} is written as {id}: {first}");
         }
+        assert!(first.contains(&format!("('{element}'")), "the element keeps its own: {first}");
+        unique(&first);
         // They go with the project's file, and come back from it.
         let m = read();
-        let back: Model = serde_json::from_value(serde_json::to_value(&m).unwrap()).unwrap();
+        let (back, left_out) = Model::read(&serde_json::to_string(&m).unwrap()).unwrap();
+        assert!(left_out.is_empty(), "{left_out:?}");
         assert_eq!(back.ifc_guids, m.ifc_guids);
+        // A file that gives its site the GlobalId of an element keeps it for the element; the site's is the export's own.
+        let reused = file.replace(&format!("IFCSITE('{site}'"), &format!("IFCSITE('{element}'"));
+        let m = ifc(reused.as_bytes(), "x").unwrap().model;
+        assert_eq!(m.ifc_guids.site, None);
+        unique(&crate::ifc::export(&m));
         // A file whose GlobalIds aren't GlobalIds keeps none, and its export makes its own, as a project of BIMCraft's does.
         let unnamed = ifc(proxies("Box", 1, &ring, "0.,0.,1.", 450.0).as_bytes(), "x").unwrap().model;
         assert_eq!(unnamed.ifc_guids, crate::ifc::SpatialGuids::default());
@@ -5432,7 +5454,7 @@ ENDSEC;END-ISO-10303-21;",
         // read hashes afresh, so whatever came in a hash's order would change from read to read.
         let more = "#60=IFCSIUNIT(*,.LENGTHUNIT.,$,.METRE.);\n#61=IFCUNITASSIGNMENT((#60));\n#62=IFCPROJECT('q',$,'Other',$,$,$,$,$,#61);";
         let file = holed("#35=IFCSLAB('f',$,'Slab',$,$,#6,#34,$,.FLOOR.);", 35).replace("ENDSEC;END", &format!("{more}\nENDSEC;END"));
-        // Each read is a project of its own, its uid seeding its own GlobalIds; the rest the same.
+        // Each read is a project of its own, its uid seeding the GlobalIds the file doesn't give; the rest the same.
         let read = || Model { uid: 0, ..ifc(file.as_bytes(), "x").unwrap().model };
         let first = read();
         for _ in 0..8 {
