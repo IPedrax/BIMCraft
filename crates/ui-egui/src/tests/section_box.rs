@@ -66,3 +66,49 @@ fn a_plans_section_box_in_properties_makes_it_show_what_the_box_keeps() {
     assert_eq!(m.shown_range(level).cut, 1500.0);
     assert_eq!(m.shown_crop(level), Some([P2(-1000.0, -1000.0), P2(4000.0, 7000.0)]));
 }
+
+#[test]
+fn what_the_box_cuts_shows_filled_a_moved_face_cuts_again_on_the_same_scene_and_the_setting_leaves_it_hollow() {
+    let mut h = app(BOX);
+    h.state_mut().run("section_box", json!({"min": [-1000, -1000, -1000], "max": [9000, 7000, 1500]}));
+    press(&mut h, "Default 3D View");
+    let (caps, scene) = h.state().orbit.caps_shown();
+    let caps = caps.expect("the box's top cuts the walls: capped");
+    let south = find(&h, |e| matches!(e, Element::Wall(w) if w.start.1 == 0.0 && w.end.1 == 0.0));
+    assert!(caps.tris.iter().any(|t| t.owner == south && t.p.iter().all(|p| (p[2] - 1500.0).abs() < 1e-6)), "the south wall, on the top");
+    // The cap is the wall's: a click on it picks it.
+    let at = h.state().screen3([5000.0, 0.0, 1500.0]);
+    click_at(&mut h, at);
+    assert_eq!(h.state().selection, [south]);
+    // The top lowered: cut again, from the same scene.
+    h.state_mut().run("section_box", json!({"min": [-1000, -1000, -1000], "max": [9000, 7000, 1000]}));
+    h.run();
+    let (lower, again) = h.state().orbit.caps_shown();
+    let lower = lower.expect("capped again");
+    assert!(lower.tris.iter().any(|t| t.owner == south && t.p.iter().all(|p| (p[2] - 1000.0).abs() < 1e-6)), "at the new top");
+    assert!(Arc::ptr_eq(&scene.unwrap(), &again.unwrap()), "the scene is kept");
+    // Settings > Performance turns it off: the box's faces hollow.
+    press(&mut h, "Settings");
+    press(&mut h, "Performance");
+    pick(&mut h, Role::CheckBox, "Fill what the section box cuts");
+    assert!(!h.state().cut_fills_3d);
+    press(&mut h, "Close");
+    h.run();
+    assert!(h.state().orbit.caps_shown().0.is_none(), "hollow");
+}
+
+#[test]
+fn filling_what_the_box_cuts_is_kept_in_the_settings() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("settings.json");
+    let mut h = app("");
+    h.state_mut().use_settings(file.clone());
+    assert!(h.state().cut_fills_3d, "on from the start");
+    h.state_mut().cut_fills_3d = false;
+    h.run();
+    let kept: serde_json::Value = serde_json::from_slice(&std::fs::read(&file).unwrap()).unwrap();
+    assert_eq!(kept["cut_fills_3d"], false);
+    let mut again = app("");
+    again.state_mut().use_settings(file);
+    assert!(!again.state().cut_fills_3d, "and so the next start");
+}

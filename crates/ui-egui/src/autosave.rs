@@ -251,7 +251,8 @@ impl BimApp {
                 Notice::Discovered { .. } => {}
             }
         }
-        if self.autosave.worker.is_none() || self.autosave.interval_minutes == 0 || self.closing {
+        // A Co-Work guest's project is the host's, whose autosave keeps it.
+        if self.autosave.worker.is_none() || self.autosave.interval_minutes == 0 || self.closing || self.guest() {
             return;
         }
         let now = Instant::now();

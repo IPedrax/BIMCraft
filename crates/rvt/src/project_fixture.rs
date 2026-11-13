@@ -18,6 +18,10 @@ pub const PATTERN: u16 = 20;
 pub const PROFILE_ROOF: u16 = 21;
 /// `Roof`, the class of a roof by extrusion.
 pub const EXTRUSION_ROOF: u16 = 22;
+/// `ElementGroup`, a model group's class; `Toposolid` and `SiteSurface`, terrain's.
+pub const GROUP: u16 = 23;
+pub const TOPOSOLID: u16 = 24;
+pub const SITE_SURFACE: u16 = 25;
 /// The tag a name is framed by in the fixture's type data (any tag but `ffff` will do).
 pub const NAME_TAG: u16 = 0x1002;
 
@@ -313,6 +317,9 @@ impl Project {
             Class { name: "PatternHelper", fields: &["m_pattern"], base: None },
             Class { name: "ProfileRoof", fields: &["m_sketch"], base: None },
             Class { name: "Roof", fields: &["m_extrusion"], base: None },
+            Class { name: "ElementGroup", fields: &["m_members"], base: None },
+            Class { name: "Toposolid", fields: &["m_surface"], base: None },
+            Class { name: "SiteSurface", fields: &["m_points"], base: None },
         ])
     }
 

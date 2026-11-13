@@ -217,6 +217,10 @@ The command architecture is a strong basis: every change is already a JSON comma
 stages, each useful on its own.
 
 1. **Links** (done in 0.9): coordinate by reference, with no simultaneous editing.
+   **Co-Work** (built after 0.11): live co-editing on one person's window, Google-editor style. The host's window holds the
+   model, guests on the LAN or at an address join with a code, see each other's pointers, cameras and selections, undo their own
+   edits, and share the host's AI chat. There is no server, no offline work and no element ownership, so it doesn't replace
+   step 3 ([Co-Work](docs/areas/cowork.md)).
 2. **History and diff** (M): a project keeps its command log with authors and times; compare two versions by element
    GUID; restore a version. This is useful alone and is the foundation for the next step.
 3. **Central model with element ownership** (XL): `bimcraft-server` (Rust, self-hostable) holds the central model.

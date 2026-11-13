@@ -5,7 +5,6 @@
 use std::collections::BTreeSet;
 
 use bimcraft_core::electrical::{EARTHINGS, MATERIALS, MAX_SIZES, MAX_SYSTEMS, MAX_VOLTAGES, MAX_WIRE_TYPES, Voltage, WireSize, WireType};
-use bimcraft_core::engine::Session;
 use bimcraft_core::model::Model;
 use bimcraft_i18n::msg;
 use egui::{Align, Button, ComboBox, Context, DragValue, Grid, Id as UiId, Layout, RichText, TextEdit, Ui, WidgetInfo, WidgetType};
@@ -518,8 +517,7 @@ impl BimApp {
             if commands.is_empty() {
                 return Ok(());
             }
-            self.session
-                .transaction("Electrical Settings", |s: &mut Session| commands.iter().try_for_each(|(c, p)| s.execute(c, p).map(|_| ())))
+            self.exec_batch("Electrical Settings", &commands).map(|_| ())
         });
         if let Err(e) = done {
             d.error = Some(e.clone());

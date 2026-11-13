@@ -1,0 +1,20 @@
+[package]
+name = "bimcraft-cowork"
+description = "BIMCraft's Co-Work transport: a host's window and its guests over TCP, encrypted under the join code, and finding hosts on the LAN"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+# What a session is: the model, its commands and Co-Work's deltas (`live.rs`). The core never depends on this crate.
+bimcraft-core = { workspace = true }
+serde_json = { workspace = true }
+# X25519, ChaCha20-Poly1305, SHA-256 and HMAC for the Noise handshake, and the system's random numbers: the updater's and the
+# assistant's ring.
+ring = { workspace = true }
+# A big message (a whole model) goes deflated: the PDF writer's.
+flate2 = { workspace = true }

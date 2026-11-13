@@ -381,6 +381,8 @@ fn finish(mut cx: Import, schema: String) -> Result<Imported, String> {
     cx.model.sync_library();
     let m = &mut cx.model;
     let mut dropped: Vec<(Id, String)> = Vec::new();
+    // A floor whose shape the model refuses keeps its outline, level, and says why.
+    let mut unshaped: Vec<(Id, String)> = Vec::new();
     let mut checked = false;
     for _ in 0..=m.elements.len() {
         let Err(error) = m.check() else {
@@ -389,6 +391,13 @@ fn finish(mut cx: Import, schema: String) -> Result<Imported, String> {
         };
         let id = culprit(&error).filter(|id| cx.from.contains_key(id)).ok_or_else(|| error.clone())?;
         let why = error.split_once(": ").map_or(error.as_str(), |(_, why)| why);
+        if let Some(Element::Floor(fl)) = m.elements.get_mut(id)
+            && !fl.shape.is_empty()
+        {
+            fl.shape = Default::default();
+            unshaped.push((id, why.to_string()));
+            continue;
+        }
         dropped.push((id, why.to_string()));
         let gone = m.guid(id);
         m.elements.remove(id);
@@ -410,6 +419,11 @@ fn finish(mut cx: Import, schema: String) -> Result<Imported, String> {
     }
     for (id, why) in dropped {
         cx.dropped(id, &why);
+    }
+    for (id, why) in unshaped {
+        if let Some((kind, Ok(n))) = cx.from.get(&id).and_then(|f| origin(f)).map(|(k, n)| (k, n.map_err(str::to_string))) {
+            cx.note(&kind, n, &format!("its shape does not build ({why}): it comes in level"));
+        }
     }
     cx.tell();
     Ok(Imported { model: cx.model, schema, skipped: cx.skipped, moved: None })

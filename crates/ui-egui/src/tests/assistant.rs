@@ -614,3 +614,344 @@ fn a_locked_key_may_be_forgotten_and_one_under_a_passphrase_opens_in_any_build()
     assert!(again.state().assistant.sealed.is_none() && !again.state().assistant.remember && !again.state().assistant.protect);
     assert_eq!(written(&file)["assistant"]["key_sealed"], json!(null));
 }
+
+// ---------- the redesigned palette: thinking, checklist, files, tokens ----------
+
+fn reply_with(content: serde_json::Value, stop: &str, input: u64, output: u64) -> String {
+    json!({"type": "message", "role": "assistant", "content": content, "stop_reason": stop,
+        "usage": {"input_tokens": input, "output_tokens": output}})
+    .to_string()
+}
+
+#[test]
+fn the_checklist_the_model_writes_is_drawn_step_by_step_and_a_new_message_clears_it() {
+    let list = json!({"todos": [
+        {"content": "Draw the walls", "status": "completed"},
+        {"content": "Place the doors", "status": "in_progress"},
+        {"content": "Name the rooms", "status": "pending"},
+    ]});
+    for (profile, build) in BOTH {
+        let net = Fake::default()
+            .reply(200, anthropic(json!([{"type": "tool_use", "id": "t1", "name": "todo_write", "input": list}]), "tool_use"))
+            .reply(200, anthropic(json!([{"type": "text", "text": "On it."}]), "end_turn"));
+        let (mut h, _net) = open(build, net);
+        set_key(&mut h, KEY);
+        write(&mut h, "a house");
+        click_in_palette(&mut h, "Agree and send");
+        finish(&mut h);
+        for step in ["Draw the walls", "Place the doors", "Name the rooms"] {
+            h.get_by_label(step);
+        }
+        let todos = &h.state().assistant.chat.as_ref().unwrap().todos;
+        let statuses: Vec<_> = todos.iter().map(|t| t.status).collect();
+        use bimcraft_assistant::Status::*;
+        assert_eq!(statuses, [Completed, InProgress, Pending], "{profile}");
+        let used = h.state().assistant.log().iter().filter(|l| matches!(l, bimcraft_assistant::Line::Used { .. })).count();
+        assert_eq!(used, 0, "{profile}: the list is not a line of the log");
+    }
+}
+
+#[test]
+fn the_models_reasoning_is_folded_apart_from_its_answer_until_opened() {
+    let content =
+        json!([{"type": "thinking", "thinking": "Levels first, then walls.", "signature": "s"}, {"type": "text", "text": "Two levels."}]);
+    let (mut h, net) = open(app, Fake::default().reply(200, anthropic(content, "end_turn")));
+    set_key(&mut h, KEY);
+    write(&mut h, "what is in it?");
+    click_in_palette(&mut h, "Agree and send");
+    finish(&mut h);
+    h.get_by_label("Two levels.");
+    assert!(h.query_by_label_contains("Levels first").is_none(), "folded");
+    h.get_by_label("Thinking").click();
+    h.run();
+    h.get_by_label_contains("Levels first");
+    // The request asked for the summary, which the API hides by default.
+    let body: serde_json::Value = serde_json::from_str(&net.seen()[0].body).unwrap();
+    assert_eq!(body["thinking"]["display"], "summarized");
+}
+
+#[test]
+fn enter_sends_and_shift_enter_does_not() {
+    let (mut h, net) = open(app, wall_then_done());
+    set_key(&mut h, KEY);
+    write(&mut h, "a wall");
+    h.key_press_modifiers(Modifiers::SHIFT, Key::Enter);
+    h.run();
+    assert!(net.seen().is_empty() && !h.state().assistant.busy(), "Shift+Enter is a new line");
+    key(&mut h, Key::Enter);
+    finish(&mut h);
+    assert_eq!(net.seen().len(), 2);
+    assert_eq!(ids(&h, "wall").len(), 1);
+}
+
+#[derive(Debug)]
+struct Dropped(std::path::PathBuf);
+
+impl egui::DroppedFile for Dropped {
+    fn path(&self) -> &std::path::Path {
+        &self.0
+    }
+
+    fn bytes(&self) -> Result<Vec<u8>, String> {
+        Err("a test's file is not read".into())
+    }
+}
+
+#[test]
+fn files_are_picked_or_dropped_on_the_palette_shown_as_chips_and_sent_with_the_message() {
+    for (profile, build) in BOTH {
+        let dir = tempfile::tempdir().unwrap();
+        let (notes, plan) = (dir.path().join("notes.txt"), dir.path().join("plan.png"));
+        std::fs::write(&notes, "two walls").unwrap();
+        std::fs::write(&plan, [0x89, b'P', b'N', b'G']).unwrap();
+        let (mut h, net) = open(build, Fake::default().reply(200, anthropic(json!([{"type": "text", "text": "Seen."}]), "end_turn")));
+        set_key(&mut h, KEY);
+        // Dropped with the pointer over the palette, a file is for the message and does not open as a project.
+        let now = h.ctx.input(|i| i.time);
+        h.state_mut().assistant.over_at = Some(now);
+        h.input_mut().dropped_files.push(Arc::new(Dropped(notes.clone())));
+        h.step();
+        h.state_mut().assistant.chat.as_mut().unwrap().attach(&plan);
+        h.run();
+        assert!(h.state().opens.is_empty(), "{profile}: not opened as a project");
+        h.get_by_label("Attached files go to Anthropic Claude with your message.");
+        h.get_by_label("plan.png ×");
+        // A chip takes its file off the message, and the copy with it.
+        h.get_by_label("notes.txt ×").click();
+        h.run();
+        assert!(h.query_by_label("notes.txt ×").is_none(), "{profile}");
+        let stage = h.state().assistant.chat.as_ref().unwrap().stage_dir().unwrap().to_path_buf();
+        assert_eq!(std::fs::read_dir(&stage).unwrap().count(), 1, "{profile}");
+        write(&mut h, "what is this?");
+        click_in_palette(&mut h, "Agree and send");
+        finish(&mut h);
+        assert!(h.query_by_label("plan.png ×").is_none(), "{profile}: sent once");
+        h.get_by_label("@plan.png");
+        let body: serde_json::Value = serde_json::from_str(&net.seen()[0].body).unwrap();
+        assert_eq!(body["messages"][0]["content"][0]["type"], "image", "{profile}");
+        assert_eq!(body["messages"][0]["content"][1]["text"], "what is this?", "{profile}");
+        // A new chat takes the folder away.
+        click_in_palette(&mut h, "New chat");
+        assert!(!stage.exists(), "{profile}: the copies go with the chat");
+    }
+}
+
+#[test]
+fn a_file_dropped_away_from_the_palette_is_not_taken_for_the_message() {
+    let dir = tempfile::tempdir().unwrap();
+    let notes = dir.path().join("notes.txt");
+    std::fs::write(&notes, "two walls").unwrap();
+    let (mut h, _net) = open(app, Fake::default());
+    h.input_mut().dropped_files.push(Arc::new(Dropped(notes)));
+    h.step();
+    assert!(h.state().assistant.chat.as_ref().unwrap().attached.is_empty());
+}
+
+#[test]
+fn tokens_are_counted_for_the_project_kept_in_the_settings_file_and_shown_by_project_or_for_all() {
+    for (profile, build) in BOTH {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("settings.json");
+        let reply =
+            |input, output| Fake::default().reply(200, reply_with(json!([{"type": "text", "text": "Hi."}]), "end_turn", input, output));
+        let net = Arc::new(reply(1_200, 34).reply(200, reply_with(json!([{"type": "text", "text": "Again."}]), "end_turn", 5_000_000, 1)));
+        let mut h = build("");
+        h.state_mut().use_settings(file.clone());
+        h.state_mut().assistant.attach(net.clone());
+        h.state_mut().assistant.env = |_| None;
+        shortcut(&mut h, "AI");
+        set_key(&mut h, KEY);
+        write(&mut h, "hello");
+        click_in_palette(&mut h, "Agree and send");
+        finish(&mut h);
+        // A project that is not saved yet is one of its own; once it has a file, its tokens are that file's.
+        h.state_mut().session.path = Some("/work/house.bimc".into());
+        write(&mut h, "again");
+        click_in_palette(&mut h, "Send");
+        finish(&mut h);
+        let kept = written(&file)["assistant"]["usage"].clone();
+        assert_eq!(kept, json!({"": [1200, 34], "/work/house.bimc": [5000000, 1]}), "{profile}");
+        settings(&mut h);
+        h.get_by_label("5,001,200 in · 35 out · 5,001,235 total");
+        h.state_mut().assistant.usage_filter = Some("/work/house.bimc".into());
+        h.run();
+        h.get_by_label("5,000,000 in · 1 out · 5,000,001 total");
+        // Reset takes out the one project shown; with all shown, everything.
+        h.get_by_label("Reset the counts").click();
+        h.run();
+        assert_eq!(h.state().assistant.usage.len(), 1, "{profile}");
+        h.get_by_label("1,200 in · 34 out · 1,234 total");
+        h.get_by_label("Reset the counts").click();
+        h.run();
+        assert!(h.state().assistant.usage.is_empty(), "{profile}");
+        assert!(written(&file)["assistant"].get("usage").is_none(), "{profile}: nothing counted, nothing written");
+    }
+}
+
+#[test]
+fn the_token_counts_come_back_with_the_settings_and_a_damaged_entry_is_left_out() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("settings.json");
+    std::fs::write(
+        &file,
+        json!({"assistant": {"usage": {"/a.bimc": [7, 3], "/b.bimc": "many", "/c.bimc": [1], "/d.bimc": [-1, 2]}}}).to_string(),
+    )
+    .unwrap();
+    let mut h = app("");
+    h.state_mut().use_settings(file);
+    h.run();
+    let usage = &h.state().assistant.usage;
+    assert_eq!(usage.keys().collect::<Vec<_>>(), ["/a.bimc"]);
+    assert_eq!((usage["/a.bimc"].input, usage["/a.bimc"].output), (7, 3));
+}
+
+/// What the palette looks like, for a person to look at: `BIMCRAFT_ASSISTANT_DUMP=<folder>` writes a conversation with a file, a
+/// folded Thinking, a tool call, a failed one, the checklist and the box, in both profiles, light and dark.
+#[test]
+fn assistant_screenshots() {
+    use bimcraft_assistant::{Line, Status, Todo};
+    let Ok(folder) = std::env::var("BIMCRAFT_ASSISTANT_DUMP") else { return };
+    std::fs::create_dir_all(&folder).unwrap();
+    let todo = |content: &str, status| Todo { content: content.into(), status };
+    for (profile, build) in BOTH {
+        for (dark, look) in [(false, "light"), (true, "dark")] {
+            let (mut h, _net) = open(build, Fake::default());
+            let chat = h.state_mut().assistant.chat.as_mut().unwrap();
+            chat.log = vec![
+                Line::You("Draw a four room house and name the rooms from the attached brief".into()),
+                Line::Files(vec!["brief.txt".into(), "plan.png".into()]),
+                Line::Thinks("Look at the levels first, then draw the outer walls and split them.".into()),
+                Line::Says("I'll start with the outer walls, then the partitions.".into()),
+                Line::Used {
+                    name: "execute".into(),
+                    args: r#"{"command":"wall","params":{"points":[[0,0],[8000,0]]}}"#.into(),
+                    result: r#"{"id":100200}"#.into(),
+                    error: false,
+                },
+                Line::Used {
+                    name: "execute".into(),
+                    args: r#"{"command":"door"}"#.into(),
+                    result: "`door` needs an `at`".into(),
+                    error: true,
+                },
+                Line::Says("Walls are in. Doors next.".into()),
+            ];
+            chat.todos = vec![
+                todo("Map canvas, 3D view, title bar and Properties hooks", Status::Completed),
+                todo("Core: presence type, its checks, tested", Status::InProgress),
+                todo("Live layer: send, relay and keep others' presence", Status::Pending),
+                todo("Tests, screenshots, translations, docs", Status::Pending),
+            ];
+            if dark {
+                h.ctx.set_theme(egui::Theme::Dark);
+            }
+            h.run();
+            h.render().unwrap().save(std::path::Path::new(&folder).join(format!("assistant-{profile}-{look}.png"))).unwrap();
+            // The palette is short: the checklist, and the box, too.
+            h.get_by_label("Core: presence type, its checks, tested").scroll_to_me();
+            h.run();
+            h.render().unwrap().save(std::path::Path::new(&folder).join(format!("assistant-{profile}-{look}-plan.png"))).unwrap();
+            h.get_by_role(Role::MultilineTextInput).scroll_to_me();
+            h.run();
+            h.render().unwrap().save(std::path::Path::new(&folder).join(format!("assistant-{profile}-{look}-bottom.png"))).unwrap();
+        }
+    }
+}
+
+// ---------- a chat for each project ----------
+
+#[test]
+fn a_chat_is_kept_for_each_saved_project_and_comes_back_when_it_is_opened_again() {
+    for (profile, build) in BOTH {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("settings.json");
+        let chats = dir.path().join("chats");
+        let (house, shed) = (std::path::PathBuf::from("/work/house.bimc"), std::path::PathBuf::from("/work/shed.bimc"));
+        let net = Arc::new(wall_then_done_net().reply(200, anthropic(json!([{"type": "text", "text": "A shed."}]), "end_turn")));
+        let mut h = build("");
+        h.state_mut().use_settings(file.clone());
+        h.state_mut().assistant.attach(net.clone());
+        h.state_mut().assistant.env = |_| None;
+        shortcut(&mut h, "AI");
+        set_key(&mut h, KEY);
+        // An unsaved project has no file to keep a chat in.
+        h.state_mut().session.path = None;
+        h.run();
+        assert!(!chats.exists(), "{profile}");
+        h.state_mut().session.path = Some(house.clone());
+        write(&mut h, "a wall");
+        click_in_palette(&mut h, "Agree and send");
+        finish(&mut h);
+        h.run();
+        let kept = bimcraft_assistant::saved::read(&chats, &house).expect("kept once the turn was over");
+        assert_eq!(kept["project"], "/work/house.bimc", "{profile}");
+        assert!(!std::fs::read_to_string(chats.join(bimcraft_assistant::saved::file_name(&house))).unwrap().contains(KEY), "{profile}");
+
+        // Another project starts with none, and what is said there is kept apart.
+        h.state_mut().session.path = Some(shed.clone());
+        h.state_mut().assistant.project_replaced();
+        h.run();
+        assert!(h.state().assistant.log().is_empty(), "{profile}");
+        assert!(bimcraft_assistant::saved::read(&chats, &house).is_some(), "{profile}: the first one's is still there");
+        assert!(bimcraft_assistant::saved::read(&chats, &shed).is_none(), "{profile}");
+
+        // Back to the first, in a window of its own: the conversation is there, and the model is sent it again.
+        let mut next = build("");
+        next.state_mut().use_settings(file.clone());
+        next.state_mut().assistant.attach(net.clone());
+        next.state_mut().assistant.env = |_| None;
+        next.state_mut().session.path = Some(house.clone());
+        shortcut(&mut next, "AI");
+        next.run();
+        assert!(
+            next.state().assistant.log().iter().any(|l| matches!(l, bimcraft_assistant::Line::Says(t) if t == "Drew the wall.")),
+            "{profile}: {:?}",
+            next.state().assistant.log()
+        );
+        // The restored conversation fills the short palette, so the message goes the way the box sends it.
+        h_send(&mut next, "and a shed");
+        finish(&mut next);
+        let last: serde_json::Value = serde_json::from_str(&net.seen().last().unwrap().body).unwrap();
+        assert!(last["messages"].as_array().unwrap().len() >= 5, "{profile}: it came with the first turn's messages");
+        // New chat forgets it, in the file too.
+        next.state_mut().assistant.chat.as_mut().unwrap().clear();
+        next.run();
+        assert!(bimcraft_assistant::saved::read(&chats, &house).is_none(), "{profile}");
+    }
+}
+
+fn h_send(h: &mut Harness<BimApp>, text: &str) {
+    h.state_mut().assistant.chat.as_mut().unwrap().send(text, KEY);
+}
+
+fn wall_then_done_net() -> Fake {
+    wall_then_done()
+}
+
+#[test]
+fn a_chat_follows_its_project_when_it_is_saved_and_the_saved_chats_can_be_deleted() {
+    let dir = tempfile::tempdir().unwrap();
+    let file = dir.path().join("settings.json");
+    let chats = dir.path().join("chats");
+    let (mut h, _net) = open(app, wall_then_done());
+    h.state_mut().use_settings(file);
+    set_key(&mut h, KEY);
+    write(&mut h, "a wall");
+    click_in_palette(&mut h, "Agree and send");
+    finish(&mut h);
+    h.run();
+    assert!(!chats.exists(), "no file yet: the project is not saved");
+    // Save As gives the project a file, and the conversation, which was not lost, goes with it.
+    let saved = std::path::PathBuf::from("/work/new.bimc");
+    h.state_mut().session.path = Some(saved.clone());
+    h.run();
+    assert!(bimcraft_assistant::saved::read(&chats, &saved).is_some());
+    settings(&mut h);
+    h.get_by_label_contains("never in the project");
+    h.get_by_label("Delete the saved chats").click();
+    h.run();
+    assert!(!chats.exists());
+    assert!(!h.state().assistant.log().is_empty(), "what is on screen stays");
+    h.run();
+    assert!(!chats.exists(), "and is not written again until it changes");
+}
