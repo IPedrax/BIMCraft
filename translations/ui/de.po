@@ -4522,7 +4522,7 @@ msgstr "Findet {}; nichts hat diese: {}"
 msgid "Fine"
 msgstr "Fein"
 
-#: crates/core/src/import.rs:1730
+#: crates/core/src/import.rs:1674
 #: crates/ui-egui/src/notes.rs:451
 #: crates/ui-egui/src/properties.rs:821
 msgid "Finish"
@@ -5352,7 +5352,7 @@ msgstr ""
 msgid "Instances of {} are placed in the family: delete them first."
 msgstr "Exemplare von {} sind in der Familie platziert: zuerst löschen."
 
-#: crates/core/src/import.rs:1729
+#: crates/core/src/import.rs:1673
 #: crates/ui-egui/src/draw.rs:664
 msgid "Insulation"
 msgstr "Dämmung"
@@ -6311,7 +6311,7 @@ msgstr "Mittel"
 msgid "Medium Lines"
 msgstr "Mittlere Linien"
 
-#: crates/core/src/import.rs:1732
+#: crates/core/src/import.rs:1676
 #: crates/ui-egui/src/properties.rs:820
 msgid "Membrane"
 msgstr "Membran"
@@ -10561,7 +10561,7 @@ msgstr "Unterraster-Teilungen Y"
 msgid "Subgrid pen"
 msgstr "Stift des Unterrasters"
 
-#: crates/core/src/import.rs:1731
+#: crates/core/src/import.rs:1675
 #: crates/ui-egui/src/properties.rs:818
 msgid "Substrate"
 msgstr "Untergrund"

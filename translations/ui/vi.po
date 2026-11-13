@@ -4523,7 +4523,7 @@ msgstr "Tìm {}; không có đối tượng nào có: {}"
 msgid "Fine"
 msgstr "Chi tiết"
 
-#: crates/core/src/import.rs:1730
+#: crates/core/src/import.rs:1674
 #: crates/ui-egui/src/notes.rs:451
 #: crates/ui-egui/src/properties.rs:821
 msgid "Finish"
@@ -5353,7 +5353,7 @@ msgstr ""
 msgid "Instances of {} are placed in the family: delete them first."
 msgstr "Trong họ có các đối tượng của {}: hãy xóa chúng trước."
 
-#: crates/core/src/import.rs:1729
+#: crates/core/src/import.rs:1673
 #: crates/ui-egui/src/draw.rs:664
 msgid "Insulation"
 msgstr "Lớp cách nhiệt"
@@ -6312,7 +6312,7 @@ msgstr "Trung bình"
 msgid "Medium Lines"
 msgstr "Nét trung bình"
 
-#: crates/core/src/import.rs:1732
+#: crates/core/src/import.rs:1676
 #: crates/ui-egui/src/properties.rs:820
 msgid "Membrane"
 msgstr "Màng"
@@ -10562,7 +10562,7 @@ msgstr "Số ô lưới phụ Y"
 msgid "Subgrid pen"
 msgstr "Bút lưới phụ"
 
-#: crates/core/src/import.rs:1731
+#: crates/core/src/import.rs:1675
 #: crates/ui-egui/src/properties.rs:818
 msgid "Substrate"
 msgstr "Lớp nền"

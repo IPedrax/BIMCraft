@@ -51,18 +51,9 @@ const MAX_NAMESAKES: usize = 100;
 type LookedFaces = (Option<Look>, Vec<Vec<P3>>);
 
 /// Prototype switches, read once.
-fn proto_tolerance() -> Option<f64> {
-    static T: std::sync::OnceLock<Option<f64>> = std::sync::OnceLock::new();
-    *T.get_or_init(|| std::env::var("BIMCRAFT_PROTO_TOL").ok().and_then(|v| v.parse().ok()))
-}
 fn proto(name: &str) -> bool {
     std::env::var_os(name).is_some()
 }
-
-/// Below this radius (mm), a generic component's arc is drawn with at most [`SMALL_SIDES`] sides a turn: a bolt, a nut, a
-/// washer, a slot, which a steel model holds by the ten thousand.
-const SMALL_ARC: f64 = 25.0;
-const SMALL_SIDES: f64 = 8.0;
 
 /// How deep an import follows what an element is part of.
 const MAX_DEPTH: usize = 16;
@@ -643,33 +634,11 @@ struct Reader<'a> {
     /// that did so, once read.
     why: Cell<Option<&'static str>>,
     unread: RefCell<HashMap<u64, &'static str>>,
-    /// While a small part's body is read: an arc of a radius under [`SMALL_ARC`] takes at most [`SMALL_SIDES`] sides a turn.
-    coarse: Cell<bool>,
-    /// The farthest a side so made strays from its arc, mm (measured for the prototype).
-    worst: Cell<f64>,
-}
-
-// Prototype only: how far the small arcs stray, when asked.
-impl Drop for Reader<'_> {
-    fn drop(&mut self) {
-        if std::env::var_os("BIMCRAFT_PROTO_WORST").is_some() {
-            eprintln!("small arcs stray at most {:.3} mm", self.worst.get());
-        }
-    }
 }
 
 impl<'a> Reader<'a> {
     fn new(f: &'a File, mm: f64, rad: f64, shift: P2) -> Reader<'a> {
-        Reader {
-            f,
-            mm,
-            rad,
-            shift,
-            why: Cell::new(None),
-            unread: RefCell::new(HashMap::new()),
-            coarse: Cell::new(false),
-            worst: Cell::new(0.0),
-        }
+        Reader { f, mm, rad, shift, why: Cell::new(None), unread: RefCell::new(HashMap::new()) }
     }
 
     fn get(&self, id: u64) -> Option<&'a Entity> {
@@ -814,8 +783,7 @@ impl<'a> Reader<'a> {
             "IFCTRIMMEDCURVE" => self.trimmed(e),
             "IFCCIRCLE" | "IFCELLIPSE" => {
                 let (f, ra, rb) = self.conic(e)?;
-                let n = self.sides(ra.max(rb), 2.0 * PI, 24);
-                Some((0..n).map(|i| f64::from(i) * 2.0 * PI / f64::from(n)).map(|t| f.at([ra * t.cos(), rb * t.sin(), 0.0])).collect())
+                Some((0..24).map(|i| f64::from(i) * PI / 12.0).map(|t| f.at([ra * t.cos(), rb * t.sin(), 0.0])).collect())
             }
             "IFCBSPLINECURVEWITHKNOTS" | "IFCRATIONALBSPLINECURVEWITHKNOTS" => self.bspline(e),
             _ => None,
@@ -900,27 +868,6 @@ impl<'a> Reader<'a> {
         Some(Form { host: crate::family::PlaneRef::Plane(guid), sketch, from: Expr::Number(from), to: Expr::Number(to), ..Form::default() })
     }
 
-    /// How many sides an arc of radius `r` sweeping `sweep` takes: `usual`, or fewer for a small part's small arc.
-    fn sides(&self, r: f64, sweep: f64, usual: u32) -> u32 {
-        // Prototype: one tolerance (mm) for every arc, never more sides than before.
-        if let Some(tol) = proto_tolerance() {
-            let whole = sweep >= 2.0 * PI - 1e-9;
-            let least = if whole { 3 } else { 1 };
-            let step = if tol >= r { PI } else { 2.0 * (1.0 - tol / r).acos() };
-            let n = ((sweep / step).ceil() as u32).clamp(least, usual);
-            if n < usual {
-                self.worst.set(self.worst.get().max(r * (1.0 - (sweep / f64::from(n) / 2.0).cos())));
-            }
-            return n;
-        }
-        if !self.coarse.get() || r >= SMALL_ARC || proto("BIMCRAFT_PROTO_NOCOARSE") {
-            return usual;
-        }
-        let n = ((sweep / (2.0 * PI) * SMALL_SIDES).ceil() as u32).clamp(1, usual);
-        self.worst.set(self.worst.get().max(r * (1.0 - (sweep / f64::from(n) / 2.0).cos())));
-        n
-    }
-
     /// A trimmed line, or a trimmed circle as an arc.
     fn trimmed(&self, e: &Entity) -> Option<Vec<P3>> {
         let basis = self.at(e.args.first())?;
@@ -954,8 +901,7 @@ impl<'a> Reader<'a> {
                 let (a1, a2) = (angle(t1)?, angle(t2)?);
                 let ccw = (a2 - a1).rem_euclid(2.0 * PI);
                 let sweep = if enumeration(e.args.get(3)) == Some("F") { ccw - 2.0 * PI } else { ccw };
-                let n = self.sides(ra.max(rb), sweep.abs(), 12);
-                Some((0..=n).map(|i| a1 + sweep * f64::from(i) / f64::from(n)).map(|t| f.at([ra * t.cos(), rb * t.sin(), 0.0])).collect())
+                Some((0..=12).map(|i| a1 + sweep * f64::from(i) / 12.0).map(|t| f.at([ra * t.cos(), rb * t.sin(), 0.0])).collect())
             }
             _ => Some(vec![t1.0?, t2.0?]),
         }
@@ -973,10 +919,8 @@ impl<'a> Reader<'a> {
             pts.into_iter().map(|p| pos.at([p.0, p.1, 0.0])).map(|q| P2(q[0], q[1])).collect::<Vec<_>>()
         };
         let rect = |w: f64, h: f64| vec![P2(-w / 2.0, -h / 2.0), P2(w / 2.0, -h / 2.0), P2(w / 2.0, h / 2.0), P2(-w / 2.0, h / 2.0)];
-        let ellipse = |rx: f64, ry: f64| {
-            let n = self.sides(rx.max(ry), 2.0 * PI, 24);
-            (0..n).map(|i| f64::from(i) * 2.0 * PI / f64::from(n)).map(|t| P2(rx * t.cos(), ry * t.sin())).collect::<Vec<P2>>()
-        };
+        let ellipse =
+            |rx: f64, ry: f64| (0..24).map(|i| f64::from(i) * PI / 12.0).map(|t| P2(rx * t.cos(), ry * t.sin())).collect::<Vec<P2>>();
         match e.name.as_str() {
             "IFCRECTANGLEPROFILEDEF"
             | "IFCROUNDEDRECTANGLEPROFILEDEF"
@@ -3177,7 +3121,6 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
         };
         let fallback = element_material(&r, &l, id).unwrap_or_default();
         let mut groups: BTreeMap<String, Vec<[P3; 3]>> = BTreeMap::new();
-        r.coarse.set(class.is_some());
         // A straight extrusion inside the body's maps comes in as the form it is (a profile on a plane, from and to), in
         // the map's axes, as a family drawn by hand holds one, and is meshed only where it is drawn: a bolt's shaft, nut and
         // washer, by the ten thousand in a steel model. What isn't one comes in as triangles, as before.
@@ -3218,7 +3161,6 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
             } else {
                 (r.looked_items(x, &looks), Vec::new())
             };
-        r.coarse.set(false);
         for (look, faces) in looked {
             let tris = groups.entry(look.map_or_else(|| fallback.clone(), |l| l.material())).or_default();
             for face in faces {
