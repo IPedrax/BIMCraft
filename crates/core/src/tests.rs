@@ -2352,6 +2352,9 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"id": 100002, "arc": 90, "location": "interior-finish", "start": [0, 0]}),
         json!({"boundary": [[0, 0], [4000, 0], [4000, 4000]], "slope": 89, "arrow": [[0, 0], [0, 0]]}),
         json!({"boundary": [[0, 0], [4000, 0], [4000, 4000]], "slope": 5, "arrow": "x", "offset": 1e300}),
+        json!({"boundary": [[0, 0], [4000, 0], [4000, 4000]], "points": [[0, 0, 1e300]], "thickness": -1, "interval": 0.5}),
+        json!({"boundary": [[0, 0], [4000, 0], [0, 4000]], "points": [[-1e9, 0, 0], [1, 1, 1]], "level": 5, "material": 5}),
+        json!({"boundary": [[0, 0], [4000, 0], [0, 4000]], "points": "x", "thickness": "x", "interval": []}),
         json!({"point": [4000, 3000], "offset": 1e300, "slope": -1e300}),
         json!({"point": [4000, 3000], "top_level": u64::MAX, "height": -1, "base_offset": f64::MAX}),
         json!({"boundary": [[1000, 1000], [2000, 1000], [2000, 2000]], "level": 100001, "top_level": 100000}),
@@ -7228,4 +7231,114 @@ fn the_exit_tests_window_flexes_as_built_schedules_and_goes_to_ifc() {
     let n = |class: &str| ifc.lines().filter(|l| l.contains(&format!("={class}("))).count();
     assert_eq!((n("IFCWINDOW"), n("IFCOPENINGELEMENT"), n("IFCRELVOIDSELEMENT"), n("IFCRELFILLSELEMENT")), (2, 2, 2, 2));
     assert!(ifc.contains("'Exit Window:1200 x 1500',#") && ifc.contains(",1500.,1200.,.WINDOW."), "the window's OverallHeight and Width");
+}
+
+/// A 10 m square at the origin, the same in every toposolid test.
+fn plot() -> Value {
+    json!([[0, 0], [10000, 0], [10000, 10000], [0, 10000]])
+}
+
+#[test]
+fn a_toposolid_is_made_from_a_sketch_and_its_points_shape_its_top() {
+    let mut s = Session::new();
+    // A 10 x 10 m plot, 300 mm thick, one corner 2 m up: its bottom follows its top, so 100 m2 x 0.3 m.
+    let r = run(&mut s, "toposolid", json!({"boundary": plot(), "points": [[0, 0, 2000]], "thickness": 300}));
+    assert_eq!(r["area_m2"], 100.0);
+    assert_eq!(r["volume_m3"], 30.0);
+    assert_eq!(r["top"], json!([0.0, 2000.0]));
+    assert_eq!(r["bottom"], json!([-300.0, 1700.0]));
+}
+
+#[test]
+fn the_shape_commands_shape_a_toposolid_as_a_floor() {
+    let mut s = Session::new();
+    let id = run(&mut s, "toposolid", json!({"boundary": plot(), "thickness": 300}))["id"].clone();
+    // Add Point, Modify Sub Elements and Reset Shape are the floor's, on a toposolid.
+    let r = run(&mut s, "add_point", json!({"id": id, "at": [5000, 5000], "offset": 2000}));
+    assert_eq!(r["top"], json!([0.0, 2000.0]));
+    run(&mut s, "reset_shape", json!({"id": id}));
+    let v = run(&mut s, "elements", json!({"category": "toposolid"}));
+    assert_eq!(v["elements"][0]["top"], json!([0.0, 0.0]));
+    // Flat, its solid is still a solid: 100 m2 through 300 mm.
+    assert_eq!(v["elements"][0]["volume_m3"], 30.0);
+}
+
+#[test]
+fn a_toposolid_refuses_a_boundary_that_crosses_and_a_point_outside_it() {
+    let mut s = Session::new();
+    // A spike, out and back over itself: no simple ring.
+    let e = s
+        .execute("toposolid", &json!({"boundary": [[0, 0], [10000, 0], [5000, 5000], [10000, 0], [10000, 10000], [0, 10000]]}))
+        .unwrap_err();
+    assert!(e.contains("simple"), "{e}");
+    let e = s.execute("toposolid", &json!({"boundary": plot(), "points": [[20000, 0, 0]]})).unwrap_err();
+    assert!(e.contains("outside"), "{e}");
+}
+
+#[test]
+fn a_toposolid_point_is_in_project_coordinates_over_its_level() {
+    let mut s = Session::new();
+    // Level 2 is 3 m up: a survey point at 5 m is 2 m over the flat top.
+    let r = run(&mut s, "toposolid", json!({"boundary": plot(), "points": [[0, 0, 5000]], "thickness": 300, "level": "Level 2"}));
+    assert_eq!(r["top"], json!([3000.0, 5000.0]));
+    assert_eq!(r["bottom"], json!([2700.0, 4700.0]));
+}
+
+#[test]
+fn contours_cut_a_toposolid_at_each_interval() {
+    let mut s = Session::new();
+    let id = run(&mut s, "toposolid", json!({"boundary": plot(), "points": [[0, 0, 2000]], "interval": 500}))["id"].clone();
+    // Its top rises from its lowest to its highest by 2 m: a line at 500, 1000 and 1500, one cut through its one raised half.
+    let c = run(&mut s, "contours", json!({"id": id}));
+    let levels: Vec<(f64, usize)> =
+        c["levels"].as_array().unwrap().iter().map(|l| (l["z"].as_f64().unwrap(), l["lines"].as_array().unwrap().len())).collect();
+    assert_eq!(levels, [(500.0, 1), (1000.0, 1), (1500.0, 1)]);
+}
+
+#[test]
+fn a_toposolid_draws_its_boundary_and_contours_in_plan_and_its_solid_in_3d() {
+    let mut s = Session::new();
+    let id = run(&mut s, "toposolid", json!({"boundary": plot(), "points": [[0, 0, 2000]], "interval": 500}))["id"].as_u64().unwrap();
+    let view = crate::render::View { scale: 0.05, cx: 5000.0, cy: 5000.0, width: 1000, height: 1000 };
+    let d = crate::render::draw(&s.model, 100000, view);
+    let mine: Vec<&crate::render::Prim> = d.prims.iter().zip(&d.owners).filter(|(_, o)| **o == Some(id)).map(|(p, _)| p).collect();
+    // Its boundary, and one line at each of 500, 1000 and 1500.
+    assert_eq!(mine.len(), 4);
+    let segments: Vec<[crate::geom::P2; 2]> = mine
+        .iter()
+        .filter_map(|p| match p {
+            crate::render::Prim::Line { pts, .. } if pts.len() == 2 => Some([view.mm(pts[0]), view.mm(pts[1])]),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(segments.len(), 3);
+    // Each end of a contour has the same x + y: the top is 2000 - 0.2 (x + y) over its raised half.
+    for ([a, b], want) in segments.iter().zip([7500.0, 5000.0, 2500.0]) {
+        assert!(((a.0 + a.1) - want).abs() < 1.0 && ((b.0 + b.1) - want).abs() < 1.0, "{a:?} {b:?} {want}");
+    }
+    // In 3D: its top's two pieces, each a slab down to the plane under it.
+    let solids = crate::view3d::shaded(&s.model);
+    assert_eq!(solids.iter().filter(|x| x.owner() == id).count(), 2);
+}
+
+#[test]
+fn a_toposolid_goes_to_ifc_as_a_terrain_slab_and_comes_back_from_the_file() {
+    let mut s = Session::new();
+    run(&mut s, "toposolid", json!({"boundary": plot(), "points": [[0, 0, 2000]], "thickness": 300, "interval": 500}));
+    // IFC: one terrain slab, its top a closed Brep, its quantities under the slab's.
+    let ifc = crate::ifc::export(&s.model);
+    assert_eq!(ifc.lines().filter(|l| l.contains("=IFCSLAB(")).count(), 1);
+    assert!(ifc.contains(".BASESLAB.") && ifc.contains("IFCFACETEDBREP"), "a slab of a closed solid");
+    assert!(ifc.contains("Qto_SlabBaseQuantities") && ifc.contains("IFCQUANTITYVOLUME"));
+    // The file: the element as it was made, its shape's point too.
+    let was = serde_json::to_string(&*s.model).unwrap();
+    assert!(was.contains("\"toposolid\""));
+    let (m, left_out) = Model::read(&was).unwrap();
+    assert!(left_out.is_empty(), "{left_out:?}");
+    assert_eq!(m.format, crate::model::FORMAT);
+    let t = m.elements.values().find_map(|e| match e {
+        crate::model::Element::Toposolid(t) => Some(t),
+        _ => None,
+    });
+    assert_eq!(t.map(|t| (t.shape.points.len(), t.interval, t.thickness)), Some((1, 500.0, 300.0)));
 }

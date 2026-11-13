@@ -308,6 +308,7 @@ const OWN: &[(&str, usize, &[Own])] = &[
         ],
     ),
     ("ceiling", 5, &[ID, TYPE, LEVEL, OFFSET, AREA, THICKNESS, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION]),
+    ("toposolid", 5, &[NAME, LEVEL, AREA, VOLUME, THICKNESS, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION]),
     (
         "roof",
         4,

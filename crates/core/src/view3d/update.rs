@@ -299,6 +299,7 @@ fn draws(e: &Element) -> bool {
                 | Element::Footing(_)
                 | Element::Rebar(_)
                 | Element::Mass(_)
+                | Element::Toposolid(_)
                 | Element::Component(_)
                 | Element::Stair(_)
                 | Element::Ramp(_)

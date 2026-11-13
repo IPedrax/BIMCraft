@@ -1021,6 +1021,12 @@ fn slab_solids(m: &Model, id: Id, e: &Element) -> Vec<Solid> {
                 slabs(&mut out, m, id, SLAB, face, rise);
             }
         }
+        // The site's ground: its top's pieces, each a slab down to the plane under it.
+        Element::Toposolid(t) => {
+            for (face, rise) in m.toposolid_slabs(t) {
+                slabs(&mut out, m, id, SLAB, face, rise);
+            }
+        }
         Element::Ceiling(c) => {
             for (face, rise) in m.ceiling_slabs(c) {
                 slabs(&mut out, m, id, CEILING, face, rise);
@@ -1149,6 +1155,7 @@ fn solids_in_with(
         match e {
             Element::Wall(_) => out.extend(wall_solids(m, id, index)),
             Element::Floor(_) | Element::Ceiling(_) | Element::Roof(_) => out.extend(host_slab_solids(m, id, e)),
+            Element::Toposolid(_) => out.extend(host_slab_solids(m, id, e)),
             Element::Column(col) => {
                 out.push(slab(id, WALL, &m.column_outline(e), m.span(col.level, col.base_offset, col.top_level, col.height)))
             }

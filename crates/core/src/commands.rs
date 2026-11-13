@@ -27,7 +27,7 @@ use crate::model::{
     MAX_COORD, MAX_POINTS, MAX_SLOPE, MAX_TEXT, Mass, Model, Note, Opening, OpeningType, Orient, PARAMETER_CATEGORIES, ParameterKind,
     Pattern, Perspective, PlanView, PointCloud, ProjectParameter, PropertyLine, RAMP_SLOPE, RAMP_WIDTH, RISER, Railing, RailingType, Ramp,
     Rebar, Ref3, Reference, Roof, RoofType, Room, RoomArea, RoomSeparator, STAIR_WIDTH, Schedule, Section, SectionBox, Shaft, Sheet, Side,
-    Spot, Stair, TOL, TREAD, Tag, Unbound, View3D, Viewport, Wall, WallType, heading, paper,
+    Spot, Stair, TOL, TREAD, Tag, Toposolid, Unbound, View3D, Viewport, Wall, WallType, heading, paper,
 };
 use crate::paint;
 use crate::phasing;
@@ -556,6 +556,26 @@ other_files(
          `rotation`; without one, the project's +y). Schedules list name, area and perimeter. \
          IFC writes closed curves in the site's FootPrint. Returns id, name, area_m2",
         property_line,
+    ),
+    edit(
+        "toposolid",
+        ui_msg!("Toposolid"),
+        &["TS"],
+        "{boundary: [[x,y],…], points?: [[x,y,z],…], level?, offset?, thickness?, interval?, name?} a solid topographic \
+         element (Revit's Toposolid): its boundary in plan, its top `offset` mm over its level (0) and `thickness` mm of solid \
+         under it (300). `points` are survey points, their z in project coordinates, stored above the flat top; the top is \
+         shaped by them and by split lines as a floor's, so `add_point`, `edit_shape`, `add_split_line` and `reset_shape` take \
+         it. `interval` is the mm between the contour lines plans draw (1000; 0 for none). Returns id, name, area_m2, \
+         volume_m3, top and bottom",
+        toposolid,
+    ),
+    other(
+        "contours",
+        "Contours",
+        "{id} a toposolid's contour lines: at each multiple of its `interval` between its top's lowest and highest, the \
+         segments where its top crosses that height (mm, in the project's z). Returns `levels`, each with its `z` and its \
+         `lines` [[x,y],[x,y]]",
+        contours,
     ),
     edit(
         "room_separator",
@@ -3087,6 +3107,15 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
                 })
                 .collect();
             extra.insert("segments".into(), json!(segments));
+        }
+        Element::Toposolid(t) => {
+            let (lo, hi) = m.toposolid_range(t);
+            extra.insert("area_m2".into(), json!(m2(geom::area(&t.boundary).abs())));
+            extra.insert("volume_m3".into(), json!((m.toposolid_volume(t) / 1e6).round() / 1e3));
+            extra.insert("top".into(), json!([hundredth(lo), hundredth(hi)]));
+            extra.insert("bottom".into(), json!([hundredth(lo - t.thickness), hundredth(hi - t.thickness)]));
+            extra.insert("thickness".into(), json!(t.thickness));
+            extra.insert("interval".into(), json!(t.interval));
         }
         Element::RoomSeparator(rs) => {
             extra.insert("length".into(), json!(hundredth(rs.start.dist(rs.end))));
@@ -7969,6 +7998,82 @@ fn property_line(s: &mut Session, p: &Value) -> R {
     Ok(json!({"id": id, "name": name, "area_m2": area}))
 }
 
+fn toposolid(s: &mut Session, p: &Value) -> R {
+    let c = "toposolid";
+    only(c, p, &["boundary", "points", "level", "offset", "thickness", "interval", "name"])?;
+    let m = &s.model;
+    let level = level_param(c, m, p, "level")?;
+    let mut boundary = ring(points(c, p, "boundary")?);
+    if geom::area(&boundary) < 0.0 {
+        boundary.reverse();
+    }
+    let offset = num(c, p, "offset")?.unwrap_or(0.0);
+    let thickness = num(c, p, "thickness")?.unwrap_or(300.0);
+    let interval = num(c, p, "interval")?.unwrap_or(1000.0);
+    let base = m.elevation(level) + offset;
+    // Survey points, their z in project coordinates: kept above the flat top, as a floor's shape points are.
+    let survey = if absent(p.get("points")) { Vec::new() } else { points3(c, p, "points")? };
+    let points: Vec<crate::model::ShapePoint> =
+        survey.into_iter().map(|[x, y, z]| crate::model::ShapePoint { at: P2(x, y), z: z - base, ..Default::default() }).collect();
+    let name = match string(c, p, "name")? {
+        Some(n) => n,
+        None => {
+            let word = m.language.word(bimcraft_i18n::msg!("Toposolid"));
+            let taken: BTreeSet<&str> = m
+                .elements
+                .values()
+                .filter_map(|e| match e {
+                    Element::Toposolid(t) => Some(t.name.as_str()),
+                    _ => None,
+                })
+                .collect();
+            (1..).map(|k| format!("{word} {k}")).find(|n| !taken.contains(n.as_str())).unwrap_or_default()
+        }
+    };
+    let area = m2(geom::area(&boundary).abs());
+    let solid = Toposolid {
+        level,
+        boundary,
+        offset,
+        thickness,
+        shape: crate::model::Shape { points, lines: Vec::new() },
+        interval,
+        name: name.clone(),
+        params: BTreeMap::new(),
+    };
+    let id = s.model_mut().insert(Element::Toposolid(solid));
+    let Some(Element::Toposolid(t)) = s.model.elements.get(id) else {
+        return Err(bad(c, "the toposolid went missing as it was made"));
+    };
+    let (lo, hi) = s.model.toposolid_range(t);
+    let volume = (s.model.toposolid_volume(t) / 1e6).round() / 1e3;
+    Ok(json!({
+        "id": id,
+        "name": name,
+        "area_m2": area,
+        "volume_m3": volume,
+        "top": [hundredth(lo), hundredth(hi)],
+        "bottom": [hundredth(lo - t.thickness), hundredth(hi - t.thickness)],
+    }))
+}
+
+fn contours(s: &mut Session, p: &Value) -> R {
+    let c = "contours";
+    only(c, p, &["id"])?;
+    let key = id_opt(c, p, "id")?.ok_or_else(|| bad(c, "`id`, the toposolid, is required"))?;
+    let id = s.model.elements.id(key).ok_or_else(|| bad(c, format!("no element {key}")))?;
+    let Some(Element::Toposolid(t)) = s.model.elements.get(id) else {
+        return Err(bad(c, format!("{id} is not a toposolid")));
+    };
+    let levels: Vec<Value> = s
+        .model
+        .toposolid_contours(t)
+        .into_iter()
+        .map(|(z, lines)| json!({"z": hundredth(z), "lines": lines.iter().map(|(a, b)| json!([a, b])).collect::<Vec<_>>()}))
+        .collect();
+    Ok(json!({"id": id, "interval": t.interval, "levels": levels}))
+}
+
 fn room_separator(s: &mut Session, p: &Value) -> R {
     let c = "room_separator";
     let mut pts = points(c, p, "points")?;
@@ -11012,7 +11117,7 @@ fn shaped_floor(c: &str, s: &Session, p: &Value, keys: &[&str]) -> Result<(Id, F
         return Err(bad(c, format!("unknown parameter `{key}`")));
     }
     let m = &s.model;
-    let key = id_opt(c, p, "id")?.ok_or_else(|| bad(c, "`id`, the floor or flat roof to shape, is required"))?;
+    let key = id_opt(c, p, "id")?.ok_or_else(|| bad(c, "`id`, the floor, flat roof or toposolid to shape, is required"))?;
     let id = m.elements.id(key).ok_or_else(|| bad(c, format!("no element {key}")))?;
     m.shapeable(id).map(|f| (id, f)).map_err(|e| bad(c, format!("{id}: {e}")))
 }
@@ -14811,6 +14916,15 @@ pub(crate) fn transform(c: &str, m: &Model, mut e: Element, id: Id, mo: &Motion,
             if mo.mirror {
                 cl.boundary.reverse();
             }
+        }
+        Element::Toposolid(t) => {
+            t.boundary.iter_mut().for_each(|q| *q = f(*q));
+            // A mirror turns the outline clockwise; a toposolid keeps it counter-clockwise.
+            if mo.mirror {
+                t.boundary.reverse();
+            }
+            t.shape.points.iter_mut().for_each(|x| x.at = f(x.at));
+            t.shape.lines.iter_mut().for_each(|l| (l.a, l.b) = (f(l.a), f(l.b)));
         }
         Element::Shaft(Shaft { boundary, .. }) => {
             boundary.iter_mut().for_each(|q| *q = f(*q));

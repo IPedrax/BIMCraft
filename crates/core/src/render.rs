@@ -1169,6 +1169,7 @@ fn plan_shows_among(m: &Model, key: Guid, among: bool) -> Vec<P2> {
             Element::Floor(Floor { level: l, boundary, .. })
             | Element::Ceiling(Ceiling { level: l, boundary, .. })
             | Element::Shaft(Shaft { level: l, boundary, .. })
+            | Element::Toposolid(crate::model::Toposolid { level: l, boundary, .. })
                 if *l == level =>
             {
                 extent.extend(boundary)
@@ -3391,6 +3392,15 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
             Element::Ramp(r) => ramp(&mut d, m, r, level),
             Element::Railing(rl) if m.level_of(e) == Some(level) => railing(&mut d, m, rl, range.cut),
             Element::PropertyLine(pl) if pl.level == level => property_outline(&mut d, pl),
+            // A toposolid: its boundary, and the lines where its top crosses each contour height.
+            Element::Toposolid(t) if t.level == level => {
+                d.line(&t.boundary, BY_CATEGORY, FAINT, true);
+                for (_, lines) in m.toposolid_contours(t) {
+                    for (a, b) in lines {
+                        d.line(&[a, b], Pen::PROJECTION, FAINT, false);
+                    }
+                }
+            }
             // A room separation line: a thin line, on its own level's plan only.
             Element::RoomSeparator(rs) if rs.level == level => {
                 let pts = vec![d.view.px(rs.start), d.view.px(rs.end)];

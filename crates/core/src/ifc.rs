@@ -828,7 +828,7 @@ impl Step {
 fn common_pset(e: &Element) -> Option<&'static str> {
     Some(match e {
         Element::Wall(_) => "Pset_WallCommon",
-        Element::Floor(_) => "Pset_SlabCommon",
+        Element::Floor(_) | Element::Toposolid(_) => "Pset_SlabCommon",
         Element::Roof(_) => "Pset_RoofCommon",
         Element::Ceiling(_) => "Pset_CoveringCommon",
         Element::Door(_) => "Pset_DoorCommon",
@@ -1233,6 +1233,41 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool) -> String {
                     };
                     vec![("Width", "LENGTH", depth), ("GrossVolume", "VOLUME", gross / 1e9), ("NetVolume", "VOLUME", net / 1e9)]
                 };
+                w.quantities(ent, "Qto_SlabBaseQuantities", &values, id);
+            }
+            Element::Toposolid(t) => {
+                let Some(&(_, storey)) = storeys.get(&t.level) else { continue };
+                let at = w.place(Some(storey), (0.0, 0.0, 0.0), None);
+                // Its top's planes and the solid under them: a closed Brep, as Revit writes a terrain slab.
+                let shape = match m.toposolid_solid(t) {
+                    Some(solid) => {
+                        let brep = w.polyhedron(&solid, m.elevation(t.level));
+                        w.solid(&[brep], &[])
+                    }
+                    None => {
+                        let faces: Vec<Vec<P3>> = m.toposolid_slabs(t).into_iter().map(|(face, _)| face).collect();
+                        w.breps(&faces, m.elevation(t.level), t.thickness)
+                    }
+                };
+                let ent = w.add(format!(
+                    "IFCSLAB({},$,{},$,{},#{at},#{shape},'{id}',.BASESLAB.)",
+                    w.guid(ELEMENT, id),
+                    s(&t.name),
+                    s("Toposolid")
+                ));
+                contained.entry(t.level).or_default().push(ent);
+                products.insert(id, ent);
+                hosts.insert(id, (ent, at, m.elevation(t.level)));
+                let gross = geom::area(&t.boundary).abs();
+                let volume = m.toposolid_volume(t);
+                let values = [
+                    ("Width", "LENGTH", t.thickness),
+                    ("Perimeter", "LENGTH", perimeter(&t.boundary)),
+                    ("GrossArea", "AREA", gross / 1e6),
+                    ("NetArea", "AREA", gross / 1e6),
+                    ("GrossVolume", "VOLUME", volume / 1e9),
+                    ("NetVolume", "VOLUME", volume / 1e9),
+                ];
                 w.quantities(ent, "Qto_SlabBaseQuantities", &values, id);
             }
             Element::Ceiling(c) => {

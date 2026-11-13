@@ -72,7 +72,10 @@ pub const CEILING_CUT: f64 = 2300.0;
 pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
-/// The version of the project file this build writes, and the newest it reads. 19: a schedule may be of sheets, the
+/// The version of the project file this build writes, and the newest it reads. 20: a project may hold toposolids (the
+/// `toposolid` category: a boundary on a level, `offset`, `thickness`, a `shape`, a contour `interval` and a `name`), which
+/// a build that reads up to 19 would answer with a serde error ("unknown variant"), not say "saved by a
+/// newer BIMCraft"; nothing in a file of 19 changes. 19: a schedule may be of sheets, the
 /// sheet list (`of: "sheet"`, as the Room or Level Schedule is); nothing in a file of 18 changes, but a build that reads
 /// up to 18 holds `sheet` as a category schedules aren't of, and would draw its sheet list with no columns, not say
 /// "saved by a newer BIMCraft". 18: a beam's or a structural column's type may
@@ -172,7 +175,7 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 2: the library has ids and GUIDs too
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
-pub const FORMAT: u32 = 19;
+pub const FORMAT: u32 = 20;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -282,6 +285,41 @@ pub struct PropertyLine {
     pub name: String,
     pub level: Guid,
     pub points: Vec<P2>,
+}
+
+/// A solid topographic element, Revit's Toposolid: a boundary on a level, a thickness under its top, and a top shaped by
+/// elevation points and split lines as a floor's is. `shape`'s points are above the flat top (`level` plus `offset`).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Toposolid {
+    pub level: Guid,
+    /// Its outline in plan, counter-clockwise; concave fine.
+    pub boundary: Vec<P2>,
+    /// How far its flat top is over its level, mm.
+    #[serde(default)]
+    pub offset: f64,
+    /// How thick the solid is under its top, mm: its bottom is this far under its top everywhere.
+    #[serde(default = "toposolid_thickness")]
+    pub thickness: f64,
+    /// Points and split lines on its top, a floor's (`Floor::shape`).
+    #[serde(default, skip_serializing_if = "Shape::is_empty")]
+    pub shape: Shape,
+    /// The mm between the contour lines plans draw; 0 for none.
+    #[serde(default = "contour_interval")]
+    pub interval: f64,
+    #[serde(default)]
+    pub name: String,
+    /// Its values of the project's parameters, by name.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub params: BTreeMap<String, serde_json::Value>,
+}
+
+fn toposolid_thickness() -> f64 {
+    300.0
+}
+
+fn contour_interval() -> f64 {
+    1000.0
 }
 
 /// A reinforcing bar: a round bar of `diameter` mm bent along `path` (mm: x east, y north, z over `level`), of steel `grade`. It
@@ -787,6 +825,10 @@ type ShapeMesh = (crate::triangulation::Triangulation, Vec<[f64; 3]>, Vec<walls:
 /// The most points a shape has, and the most split lines.
 pub const MAX_SHAPE_POINTS: usize = 2_000;
 pub const MAX_SPLIT_LINES: usize = 2_000;
+/// The least mm between a toposolid's contour lines, the most levels its contours cut, and the most segments they have.
+pub const MIN_CONTOUR_INTERVAL: f64 = 10.0;
+pub const MAX_CONTOURS: usize = 1_000;
+pub const MAX_CONTOUR_SEGMENTS: usize = 20_000;
 
 /// A ceiling along `boundary` (counter-clockwise), open through its `openings` (holes inside it,
 /// apart), its underside `offset` mm above its level, its type's thickness over that.
@@ -1885,6 +1927,7 @@ impl Element {
         match self {
             Element::Floor(f) => Some(&mut f.shape),
             Element::Roof(r) => Some(&mut r.shape),
+            Element::Toposolid(t) => Some(&mut t.shape),
             _ => None,
         }
     }
@@ -2227,6 +2270,7 @@ macro_rules! visit_refs {
             }
             Element::RoomSeparator(rs) => f(& $($m)? rs.level),
             Element::PropertyLine(pl) => f(& $($m)? pl.level),
+            Element::Toposolid(t) => f(& $($m)? t.level),
             Element::Circuit(c) => {
                 f(& $($m)? c.panel);
                 for g in & $($m)? c.devices {
@@ -2254,6 +2298,8 @@ pub enum Element {
     Ceiling(Ceiling),
     Shaft(Shaft),
     Mass(Mass),
+    /// A solid topographic element: the site's ground, on a level.
+    Toposolid(Toposolid),
     Door(Opening),
     Window(Opening),
     Room(Room),
@@ -2328,6 +2374,7 @@ impl Element {
             | Element::Ceiling(Ceiling { params, .. })
             | Element::Roof(Roof { params, .. })
             | Element::Mass(Mass { params, .. })
+            | Element::Toposolid(Toposolid { params, .. })
             | Element::Door(Opening { params, .. })
             | Element::Window(Opening { params, .. })
             | Element::Room(Room { params, .. })
@@ -2351,6 +2398,7 @@ impl Element {
             | Element::Ceiling(Ceiling { params, .. })
             | Element::Roof(Roof { params, .. })
             | Element::Mass(Mass { params, .. })
+            | Element::Toposolid(Toposolid { params, .. })
             | Element::Door(Opening { params, .. })
             | Element::Window(Opening { params, .. })
             | Element::Room(Room { params, .. })
@@ -2507,6 +2555,7 @@ impl Element {
             Element::Ceiling(_) => "ceiling",
             Element::Shaft(_) => "shaft",
             Element::Mass(_) => "mass",
+            Element::Toposolid(_) => "toposolid",
             Element::Door(_) => "door",
             Element::Window(_) => "window",
             Element::Room(_) => "room",
@@ -4767,6 +4816,7 @@ impl Model {
             Element::Ceiling(c) => Some(c.level),
             Element::Shaft(sh) => Some(sh.level),
             Element::Mass(ms) => Some(ms.level),
+            Element::Toposolid(t) => Some(t.level),
             Element::Room(r) => Some(r.level),
             Element::RoomSeparator(rs) => Some(rs.level),
             Element::PropertyLine(pl) => Some(pl.level),
@@ -4899,8 +4949,29 @@ impl Model {
         }
     }
 
-    /// Element `id` as shape editing works on it: a floor as it is, or a flat roof by footprint as `roof_as_floor` sees it.
-    /// None for anything else, or with why for a roof that can't take a shape.
+    /// A toposolid's top as shape editing sees it: a floor over its boundary, at its flat top (its level plus `offset`), with
+    /// its shape. Its points' heights, picks, labels and checks are then a floor's; `toposolid_solid` lays its bottom its
+    /// thickness under.
+    pub fn toposolid_as_floor(&self, t: &Toposolid) -> Floor {
+        Floor {
+            type_name: String::new(),
+            level: t.level,
+            boundary: ccw(&t.boundary),
+            openings: Vec::new(),
+            offset: t.offset,
+            slope: 0.0,
+            arrow: None,
+            structural: false,
+            pattern_origin: P2::default(),
+            pattern_angle: 0.0,
+            sketch: Vec::new(),
+            shape: t.shape.clone(),
+            params: BTreeMap::new(),
+        }
+    }
+
+    /// Element `id` as shape editing works on it: a floor as it is, a flat roof by footprint as `roof_as_floor` sees it, or
+    /// a toposolid as `toposolid_as_floor` sees it. None for anything else, or with why for a roof that can't take a shape.
     pub fn shapeable(&self, id: impl Key) -> Result<Floor, String> {
         match self.elements.get(id) {
             Some(Element::Floor(f)) => Ok(f.clone()),
@@ -4908,7 +4979,8 @@ impl Model {
                 Some(why) => Err(why.into()),
                 None => Ok(self.roof_as_floor(r)),
             },
-            _ => Err("only floors and flat roofs have shapes".into()),
+            Some(Element::Toposolid(t)) => Ok(self.toposolid_as_floor(t)),
+            _ => Err("only floors, flat roofs and toposolids have shapes".into()),
         }
     }
 
@@ -5240,11 +5312,107 @@ impl Model {
         self.shaped_solid(f, openings, self.floor_depth(f), self.floor_under(f).map(|(p, _)| p))
     }
 
+    /// A toposolid's top in convex pieces, each counter-clockwise with the plane it lies in (`floor_faces` on its top).
+    pub fn toposolid_faces(&self, t: &Toposolid) -> Vec<(Vec<P2>, walls::Plane)> {
+        self.floor_faces(&self.toposolid_as_floor(t))
+    }
+
+    /// A toposolid's pieces in plan, each a bottom face and how far it rises to the top: what the 3D view draws as slabs.
+    pub fn toposolid_slabs(&self, t: &Toposolid) -> Vec<(Vec<[f64; 3]>, f64)> {
+        self.toposolid_faces(t)
+            .into_iter()
+            .map(|(ring, top)| {
+                let bottom = walls::Plane { z: top.z - t.thickness, ..top };
+                (bottom.lift(&ring), t.thickness)
+            })
+            .collect()
+    }
+
+    /// A toposolid's slab as one closed solid: its top's planes, and `thickness` under them plumb, its sides round its
+    /// boundary. None for a boundary that doesn't triangulate.
+    pub fn toposolid_solid(&self, t: &Toposolid) -> Option<Polyhedron> {
+        self.solid_under_shape(&self.toposolid_as_floor(t), &[], t.thickness, None)
+    }
+
+    /// How much a toposolid holds, mm³.
+    pub fn toposolid_volume(&self, t: &Toposolid) -> f64 {
+        self.toposolid_solid(t).map_or(0.0, |p| volume(&p))
+    }
+
+    /// A toposolid's top's lowest and highest, mm.
+    pub fn toposolid_range(&self, t: &Toposolid) -> (f64, f64) {
+        self.toposolid_faces(t)
+            .iter()
+            .flat_map(|(ring, plane)| ring.iter().map(move |q| plane.at(*q)))
+            .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), z| (lo.min(z), hi.max(z)))
+    }
+
+    /// A toposolid's contour lines: at each multiple of its `interval` between its top's lowest and highest (not at either),
+    /// the segments where its top crosses that height. At most [`MAX_CONTOURS`] levels, and
+    /// [`MAX_CONTOUR_SEGMENTS`] segments in all.
+    pub fn toposolid_contours(&self, t: &Toposolid) -> Vec<(f64, Vec<(P2, P2)>)> {
+        if t.interval <= 0.0 || t.shape.is_empty() {
+            return Vec::new();
+        }
+        let (lo, hi) = self.toposolid_range(t);
+        if !(lo.is_finite() && hi.is_finite()) {
+            return Vec::new();
+        }
+        let first = (lo / t.interval).ceil() as i64;
+        let last = ((hi / t.interval).floor() as i64).min(first + MAX_CONTOURS as i64 - 1);
+        let f = self.toposolid_as_floor(t);
+        let Ok((mesh, lifted, _)) = self.shape_mesh(&f, &[]) else { return Vec::new() };
+        let mut out = Vec::new();
+        let mut drawn = 0usize;
+        for k in first..=last {
+            let z = k as f64 * t.interval;
+            let mut lines = Vec::new();
+            for tri in &mesh.triangles {
+                let (Some(a), Some(b), Some(c)) = (lifted.get(tri[0]), lifted.get(tri[1]), lifted.get(tri[2])) else {
+                    continue;
+                };
+                let p = [*a, *b, *c];
+                let mut hits = Vec::new();
+                for (a, b) in [(0, 1), (1, 2), (2, 0)] {
+                    let (pa, pb) = (p[a], p[b]);
+                    let (da, db) = (pa[2] - z, pb[2] - z);
+                    // A corner exactly at the height counts as above it: a line crosses an edge with one end below.
+                    if (da < 0.0) != (db < 0.0) {
+                        let s = da / (da - db);
+                        hits.push(P2(pa[0] + (pb[0] - pa[0]) * s, pa[1] + (pb[1] - pa[1]) * s));
+                    }
+                }
+                if let [a, b] = hits.as_slice()
+                    && a.dist(*b) > TOL
+                {
+                    lines.push((*a, *b));
+                    drawn += 1;
+                    if drawn >= MAX_CONTOUR_SEGMENTS {
+                        break;
+                    }
+                }
+            }
+            if !lines.is_empty() {
+                out.push((z, lines));
+            }
+            if drawn >= MAX_CONTOUR_SEGMENTS {
+                break;
+            }
+        }
+        out
+    }
+
     /// A shaped top's slab as one closed solid (`shape_solid_over`), `depth` under its top, plumb, or down to `under`.
     fn shaped_solid(&self, f: &Floor, openings: &[Vec<P2>], depth: f64, under: Option<walls::Plane>) -> Option<Polyhedron> {
         if f.shape.is_empty() {
             return None;
         }
+        self.solid_under_shape(f, openings, depth, under)
+    }
+
+    /// A shape's slab from its top's triangulation, flat or shaped (`shaped_solid` without the floor's "no shape, no
+    /// solid").
+    fn solid_under_shape(&self, f: &Floor, openings: &[Vec<P2>], depth: f64, under: Option<walls::Plane>) -> Option<Polyhedron> {
         let (t, lifted, planes) = self.shape_mesh(f, openings).ok()?;
         let n = lifted.len();
         let down = |p: &[f64; 3]| [p[0], p[1], under.map_or(p[2] - depth, |u| u.at(P2(p[0], p[1])))];
@@ -7152,6 +7320,25 @@ impl Model {
                     return Err(format!("{who}: a property line needs a name"));
                 }
                 crate::site::check(&who, &pl.points)?;
+            }
+            Element::Toposolid(t) => {
+                level_ok(t.level)?;
+                boundary(&who, &t.boundary)?;
+                crate::site::check(&who, &t.boundary)?;
+                text(&who, "name", &t.name)?;
+                coord(&format!("{who} offset"), t.offset)?;
+                coord(&format!("{who} thickness"), t.thickness)?;
+                coord(&format!("{who} interval"), t.interval)?;
+                if t.thickness <= 0.0 {
+                    return Err(format!("{who}: its thickness is {} mm: it must be more than 0", t.thickness));
+                }
+                if t.interval != 0.0 && t.interval < MIN_CONTOUR_INTERVAL {
+                    return Err(format!(
+                        "{who}: its contour interval is {} mm: it must be 0, or at least {MIN_CONTOUR_INTERVAL} mm",
+                        t.interval
+                    ));
+                }
+                shape_ok(&who, &self.toposolid_as_floor(t), None)?;
             }
             Element::RoomSeparator(rs) => {
                 level_ok(rs.level)?;
