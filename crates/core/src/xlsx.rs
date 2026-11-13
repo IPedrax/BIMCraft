@@ -232,7 +232,10 @@ fn zip_entries(b: &[u8], budget: u64) -> Result<Vec<(String, Vec<u8>)>, String> 
             0 => body.extend_from_slice(data),
             8 => {
                 use std::io::Read;
-                flate2::read::DeflateDecoder::new(data).take(left.saturating_add(1)).read_to_end(&mut body).map_err(|e| format!("{NOT}: {e}"))?;
+                flate2::read::DeflateDecoder::new(data)
+                    .take(left.saturating_add(1))
+                    .read_to_end(&mut body)
+                    .map_err(|e| format!("{NOT}: {e}"))?;
             }
             other => return Err(format!("{name} is compressed in a way this reader doesn't know ({other})")),
         }

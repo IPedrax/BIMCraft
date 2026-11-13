@@ -174,7 +174,10 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// an element holds its GUID. None (0): a file from before.
 /// 33 (20 to 32 were the Family Editor's steps before it was released, none of them released, and [`Model::read`] refuses
 /// them): rooms have types (`types.room`), which may name a floor type and a ceiling type, and a room holds the floor and the
-/// ceiling made for it (`floor`, `ceiling`); a build that reads up to 19 would lose the links and leave the finishes behind.
+/// ceiling made for it (`floor`, `ceiling`); a build that reads up to 19 would lose the links and leave the finishes behind. And
+/// project parameters may be of kinds 19 doesn't know (`integer`, `area`, `volume`, `angle`), a type's (`scope`, `type_values`),
+/// from a `.bimparams` dictionary (`dictionaries`), grouped under a heading of the project's own, and the project's information
+/// is an element that title blocks read; a build that reads up to 19 would answer such a kind with a serde error.
 pub const FORMAT: u32 = 33;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
@@ -4163,8 +4166,37 @@ impl Model {
                 (r.type_name, r.colour) = (name, None);
             }
         }
-        // The project parameters' kinds and settings, `.bimparams` dictionaries, and the project's information (FORMAT 20,
-        // with the rooms) need nothing of a file of 19, which holds none of them.
+        // The project parameters' kinds and settings and `.bimparams` dictionaries (FORMAT 33, with the rooms) need nothing of
+        // a file of 19, which holds none of them. The project's information does: a title value under one of its keys
+        // (CLIENT, PROJECT_NUMBER, …) moves onto it, and a title block's field of such a key, which every title block has
+        // now, goes, its project default kept on the information where that says nothing.
+        if self.format < 33 {
+            let keys: Vec<String> = self.title_values.keys().filter(|k| crate::project_info::field_of_key(k).is_some()).cloned().collect();
+            for key in keys {
+                if let (Some(v), Some(field)) = (self.title_values.remove(&key), crate::project_info::field_of_key(&key))
+                    && !v.trim().is_empty()
+                {
+                    self.set_info(field, v);
+                }
+            }
+            let mut defaults = Vec::new();
+            for tb in self.title_blocks.values_mut() {
+                tb.fields.retain(|f| match crate::project_info::field_of_key(&f.key) {
+                    Some(field) => {
+                        if f.scope == crate::titleblock::Scope::Project && !f.default.trim().is_empty() {
+                            defaults.push((field, f.default.clone()));
+                        }
+                        false
+                    }
+                    None => true,
+                });
+            }
+            for (field, v) in defaults {
+                if self.project_info().and_then(|(_, i)| i.get(field)).unwrap_or("").is_empty() {
+                    self.set_info(field, v);
+                }
+            }
+        }
         self.format = FORMAT;
     }
 
@@ -7054,6 +7086,39 @@ impl Model {
         if self.parameters.len() > MAX_PROJECT_PARAMETERS {
             return Err(format!("the project has {} parameters; it holds up to {MAX_PROJECT_PARAMETERS}", self.parameters.len()));
         }
+        // The dictionaries its parameters came from: as many as a project keeps, each named, with where it was.
+        if self.dictionaries.len() > crate::parameters::MAX_DICTIONARIES {
+            return Err(format!(
+                "the project keeps up to {} dictionaries, not {}",
+                crate::parameters::MAX_DICTIONARIES,
+                self.dictionaries.len()
+            ));
+        }
+        for (n, d) in &self.dictionaries {
+            text(&format!("dictionary `{n}`"), "name", n)?;
+            if n.trim().is_empty() {
+                return Err("a dictionary needs a name".into());
+            }
+            if d.path.chars().count() > MAX_TEXT || d.version.chars().count() > MAX_TEXT {
+                return Err(format!("dictionary `{n}`: its path and its version hold up to {MAX_TEXT} characters each"));
+            }
+        }
+        // What files imported call categories, each to one of a parameter's or none: as many as a project has parameters.
+        if self.parameter_map.len() > MAX_PROJECT_PARAMETERS {
+            return Err(format!(
+                "the project maps up to {MAX_PROJECT_PARAMETERS} categories of other files, not {}",
+                self.parameter_map.len()
+            ));
+        }
+        for (raw, ours) in &self.parameter_map {
+            text("a category of another file", "name", raw)?;
+            if let Some(c) = ours.as_ref().filter(|c| !PARAMETER_CATEGORIES.contains(&c.as_str())) {
+                return Err(format!(
+                    "`{raw}` maps to `{c}`, which isn't a category a parameter is for; one of {}",
+                    PARAMETER_CATEGORIES.join(", ")
+                ));
+            }
+        }
         for (n, p) in &self.parameters {
             let who = format!("parameter `{n}`");
             if !crate::family::nameable(n) {
@@ -7072,6 +7137,14 @@ impl Model {
             }
             if let Some(u) = &p.group {
                 u.check(&who)?;
+            }
+            // Said to be other parameters (merged from them): a GUID once each, never its own.
+            if p.same_as.len() > MAX_PROJECT_PARAMETERS {
+                return Err(format!("{who}: it is said to be up to {MAX_PROJECT_PARAMETERS} other parameters"));
+            }
+            let own = self.library.guid(&crate::library::Kind::Parameter, n);
+            if p.same_as.iter().enumerate().any(|(i, g)| Some(*g) == own || p.same_as[..i].contains(g)) {
+                return Err(format!("{who}: `same_as` holds its own GUID, or one GUID twice"));
             }
             if let Some(d) = p.dictionary.as_ref().filter(|d| !self.dictionaries.contains_key(*d)) {
                 return Err(format!("{who}: there's no dictionary `{d}`; make it a project parameter with `dictionary` null"));

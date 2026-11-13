@@ -802,7 +802,9 @@ drawn as before, and a view placed by default goes above its height (`sheet::spo
 title block defines (`fields`: a key, a label for the desktop, a default) is the project's (`scope: project`, one value in
 `Model::title_values`, the same on every sheet) or each sheet's (`scope: sheet`, `Sheet::fields`); the automatic ones (`titleblock::AUTO`:
 PROJECT, SHEET_NAME, SHEET_NUMBER, SCALE (`1 : 100`, or AS INDICATED when the views' differ), DATE in the project's language, SHEET_INDEX and SHEET_COUNT by
-sheet number in reading order, and REVISION, the latest of the revision clouds on the sheet and on the views placed on it) need no
+sheet number in reading order, REVISION, the latest of the revision clouds on the sheet and on the views placed on it, and the project's
+information (`project_info`, Manage > Project Information): CLIENT, PROJECT_NUMBER, PROJECT_ADDRESS, PROJECT_STATUS, ISSUE_DATE, AUTHOR,
+ORGANIZATION, ORGANIZATION_DESCRIPTION and BUILDING, which `title_values` sets there too) need no
 definition, and a value given to one (DATE, to issue on) is said instead. A key no value fills stays as written, so a missing field
 shows on the sheet. `titleblock::values` works them out, `sheet::title_values` with the sheet's scale, and `elements` gives a sheet's
 as `title_values`, with the keys that are its own to give as `sheet_fields`.

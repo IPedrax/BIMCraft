@@ -55,6 +55,12 @@ The project owner chose this on 2026-10-21 and accepted the risk below. None of 
 5. Autodesk's open-source IFC exporter, `revit-ifc`, to learn what Revit's own IFC export writes. Read, never copied: its code
    is LGPL and would bring that licence in. Part 1 uses none of it.
 
+Revit's shared parameters text file is no part of a `.rvt`, but it is Revit's own format too, so where its layout comes from
+is said here: it is read by `crates/core`'s `shared_parameters.rs` (Manage > Shared Parameters, which also writes it) and
+`parameters/table.rs` (`read_shared`, Project Parameters' import), both from the layout the plain-text files users hold show
+on their face (tab-separated, `#` comments, `*META`, `*GROUP` and `*PARAM` headers naming the columns of the lines after
+them). No Autodesk file is bundled or read for it, and no Autodesk program was run to learn it.
+
 ### Forbidden sources
 
 - Autodesk SDK source, or disassembly or decompilation of Autodesk's binaries beyond their public export names.

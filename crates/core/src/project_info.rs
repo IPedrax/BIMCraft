@@ -63,6 +63,24 @@ pub const FIELDS: [(&str, &str); 9] = [
     ("building", ui_msg!("Building Name")),
 ];
 
+/// The title-block key each field of [`FIELDS`] fills: an automatic field of every title block ([`crate::titleblock::AUTO`]).
+pub const TITLE_KEYS: [(&str, &str); 9] = [
+    ("number", "PROJECT_NUMBER"),
+    ("client", "CLIENT"),
+    ("address", "PROJECT_ADDRESS"),
+    ("status", "PROJECT_STATUS"),
+    ("issue_date", "ISSUE_DATE"),
+    ("author", "AUTHOR"),
+    ("organization", "ORGANIZATION"),
+    ("organization_description", "ORGANIZATION_DESCRIPTION"),
+    ("building", "BUILDING"),
+];
+
+/// The field of [`FIELDS`] title-block key `key` names, in any case.
+pub fn field_of_key(key: &str) -> Option<&'static str> {
+    TITLE_KEYS.iter().find(|(_, k)| k.eq_ignore_ascii_case(key.trim())).map(|(f, _)| *f)
+}
+
 impl ProjectInfo {
     /// Field `key` of [`FIELDS`].
     pub fn get(&self, key: &str) -> Option<&str> {
@@ -113,6 +131,25 @@ impl ProjectInfo {
 }
 
 impl Model {
+    /// Field `field` of [`FIELDS`] set to `value`, the project's information made if it has none.
+    pub(crate) fn set_info(&mut self, field: &str, value: String) {
+        let id = match self.project_info() {
+            Some((id, _)) => id,
+            None => self.insert(Element::ProjectInfo(ProjectInfo::default())),
+        };
+        if let Some(Element::ProjectInfo(info)) = self.elements.get_mut(id)
+            && let Some(slot) = info.get_mut(field)
+        {
+            *slot = value;
+        }
+    }
+
+    /// What the project's information gives title blocks, by key ([`TITLE_KEYS`]): each field, empty where it says nothing.
+    pub fn info_title_values(&self) -> BTreeMap<String, String> {
+        let info = self.project_info().map(|(_, i)| i);
+        TITLE_KEYS.iter().map(|(f, k)| ((*k).to_string(), info.and_then(|i| i.get(f)).unwrap_or("").to_string())).collect()
+    }
+
     /// The project's information element, if it has one: its id and what it holds.
     pub fn project_info(&self) -> Option<(Id, &ProjectInfo)> {
         self.elements.iter().find_map(|(id, e)| match e {

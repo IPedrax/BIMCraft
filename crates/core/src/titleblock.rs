@@ -52,6 +52,16 @@ pub const AUTO: &[(&str, &str)] = &[
     ("SHEET_INDEX", "the sheet's place among the project's sheets, by number, from 1 (two digits)"),
     ("SHEET_COUNT", "how many sheets the project has (two digits)"),
     ("REVISION", "the latest revision of the revision clouds on the sheet and on the views placed on it"),
+    // The project's information (`project_info`, `crate::project_info::TITLE_KEYS`).
+    ("CLIENT", "the project information's client"),
+    ("PROJECT_NUMBER", "the project information's number"),
+    ("PROJECT_ADDRESS", "the project information's address"),
+    ("PROJECT_STATUS", "the project information's status"),
+    ("ISSUE_DATE", "the project information's issue date"),
+    ("AUTHOR", "the project information's author"),
+    ("ORGANIZATION", "the project information's organization name"),
+    ("ORGANIZATION_DESCRIPTION", "the project information's organization description"),
+    ("BUILDING", "the project information's building name"),
 ];
 
 /// Whose a field is: the project's, one value for every sheet, or each sheet's own.
@@ -628,6 +638,7 @@ pub fn values(m: &Model, id: impl Key, scale: &str) -> BTreeMap<String, String> 
     ] {
         out.insert(k.to_string(), v);
     }
+    out.extend(m.info_title_values());
     let tb = m.title_blocks.get(&sheet.title_block);
     for f in tb.iter().flat_map(|t| t.fields.iter()) {
         let key = f.key.to_ascii_uppercase();
@@ -971,9 +982,13 @@ mod tests {
     fn a_title_block_is_checked() {
         assert!(TitleBlock::default().check("T").is_ok());
         let mut tb = TitleBlock::default();
-        tb.fields.push(Field { key: "client".into(), label: String::new(), scope: Scope::Project, default: String::new() });
-        tb.fields.push(Field { key: "CLIENT".into(), label: String::new(), scope: Scope::Sheet, default: String::new() });
+        tb.fields.push(Field { key: "architect".into(), label: String::new(), scope: Scope::Project, default: String::new() });
+        tb.fields.push(Field { key: "ARCHITECT".into(), label: String::new(), scope: Scope::Sheet, default: String::new() });
         assert!(tb.check("T").unwrap_err().contains("defined twice"));
+        // The project's information fills CLIENT, so a title block needn't define it.
+        let mut tb = TitleBlock::default();
+        tb.fields.push(Field { key: "CLIENT".into(), label: String::new(), scope: Scope::Project, default: String::new() });
+        assert!(tb.check("T").unwrap_err().contains("automatic"));
         let mut tb = TitleBlock::default();
         tb.fields.push(Field { key: "DATE".into(), label: String::new(), scope: Scope::Sheet, default: String::new() });
         assert!(tb.check("T").unwrap_err().contains("automatic"));

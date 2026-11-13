@@ -43,7 +43,7 @@ pub struct Read {
 }
 
 impl Read {
-    fn leave_out(&mut self, why: String) {
+    pub(crate) fn leave_out(&mut self, why: String) {
         if self.left_out.len() < MAX_LEFT_OUT {
             self.left_out.push(why);
         }

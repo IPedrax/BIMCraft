@@ -275,6 +275,10 @@ fn bring_parameters(
     same: &BTreeSet<String>,
     out: &mut Inserted,
 ) -> Result<BTreeMap<String, String>, String> {
+    // Links run this for every model they draw: one with no parameters has nothing to bring.
+    if from.parameters.is_empty() {
+        return Ok(BTreeMap::new());
+    }
     // What's used, and the categories of what holds a value of each.
     let mut used: BTreeSet<String> = if whole { from.parameters.keys().cloned().collect() } else { BTreeSet::new() };
     let mut holders: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();

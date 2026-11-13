@@ -671,7 +671,13 @@ pub(crate) fn import(s: &mut Session, p: &Value) -> R {
     let c = "parameter_import";
     only(c, p, &["path", "names", "map", "resolve", "scopes", "categories", "replace_categories", "skip_conflicts", "dry_run"])?;
     let path = string(c, p, "path")?.ok_or_else(|| bad(c, "`path` is required"))?;
-    let read = table::read_file(&path).map_err(|e| bad(c, e))?;
+    let mut read = table::read_file(&path).map_err(|e| bad(c, e))?;
+    // A project holds no more parameters than this, so no row past so many can make or change one; planning them would only
+    // spend the window's time naming each against all the others.
+    if read.definitions.len() > crate::model::MAX_PROJECT_PARAMETERS {
+        read.definitions.truncate(crate::model::MAX_PROJECT_PARAMETERS);
+        read.leave_out(format!("rows past the {} parameters a project holds", crate::model::MAX_PROJECT_PARAMETERS));
+    }
     let mut choices = Choices { replace_categories: flag(c, p, "replace_categories")?, ..Choices::default() };
     if let Some(v) = p.get("map").filter(|v| !v.is_null()) {
         choices.map =
@@ -725,6 +731,15 @@ fn apply(s: &mut Session, rows: &[Planned], dictionary: Option<&table::Source>, 
     let c = "parameter_import";
     let dict_name = dictionary.map(|d| d.name.clone());
     if let Some(d) = dictionary {
+        // The same dictionary at a new path (its GUID the library's) is followed there; another of that name from another file
+        // is another dictionary, whose parameters would otherwise follow this one.
+        let same = d.guid.is_some() && s.model.library.guid(&LibKind::Dictionary, &d.name) == d.guid;
+        if let Some(other) = s.model.dictionaries.get(&d.name).filter(|o| !same && !o.path.is_empty() && o.path != path) {
+            return Err(bad(
+                c,
+                format!("the project has a dictionary `{}` from {} already; rename one of the two first", d.name, other.path),
+            ));
+        }
         let m = s.model_mut();
         m.dictionaries.insert(d.name.clone(), DictionaryRef { path: path.to_string(), version: d.version.clone(), revision: d.revision });
         // Its GUID, when the file has one, is what the library knows it by.
@@ -1458,7 +1473,7 @@ pub(crate) fn family_add(s: &mut Session, p: &Value) -> R {
 }
 
 /// The most dictionaries a project keeps loaded.
-const MAX_DICTIONARIES: usize = 256;
+pub(crate) const MAX_DICTIONARIES: usize = 256;
 
 /// The `dictionary_mount` command: a dictionary's file kept with the project, or taken off it.
 pub(crate) fn dictionary_mount(s: &mut Session, p: &Value) -> R {

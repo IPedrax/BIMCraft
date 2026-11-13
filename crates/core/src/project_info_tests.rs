@@ -197,3 +197,36 @@ fn a_sheets_title_block_shows_the_projects_number_client_status_and_date() {
     run(&mut s, "project_info", json!({"number": "2026-014", "client": "Ana Lima", "status": "Permit", "issue_date": "2026-11-09"}));
     assert!(inked(&s) > 50, "the client, and the number, status and date, lettered there");
 }
+
+#[test]
+fn title_blocks_read_the_projects_information_and_title_values_send_its_fields_there() {
+    let mut s = Session::new();
+    run(&mut s, "project_info", json!({"client": "ACME", "number": "2026-07"}));
+    let sheet = run(&mut s, "sheet", json!({}))["id"].as_u64().unwrap();
+    let v = crate::sheet::title_values(&s.model, sheet);
+    assert_eq!((v["CLIENT"].as_str(), v["PROJECT_NUMBER"].as_str(), v["AUTHOR"].as_str()), ("ACME", "2026-07", ""));
+    // Given as a title value, a field of the project's information goes to it; any other key stays a title value.
+    run(&mut s, "title_values", json!({"values": {"CLIENT": "Other", "ARCHITECT": "Me"}}));
+    let info = s.model.project_info().map(|(_, i)| i.client.clone());
+    assert_eq!(info.as_deref(), Some("Other"));
+    assert_eq!(s.model.title_values.keys().collect::<Vec<_>>(), ["ARCHITECT"]);
+    let r = run(&mut s, "title_values", json!({}));
+    assert_eq!((r["values"]["CLIENT"].as_str(), r["values"]["ARCHITECT"].as_str()), (Some("Other"), Some("Me")));
+    // Null empties it, as it does a title value.
+    run(&mut s, "title_values", json!({"values": {"CLIENT": null}}));
+    assert_eq!(s.model.project_info().map(|(_, i)| i.client.as_str()), Some(""));
+    assert!(crate::titleblock::AUTO.iter().any(|(k, _)| *k == "CLIENT"), "listed with the fields every title block has");
+}
+
+#[test]
+fn a_file_of_19_moves_its_title_values_of_the_projects_information_onto_it() {
+    let s = Session::new();
+    let mut v = serde_json::to_value(&*s.model).unwrap();
+    v["format"] = json!(19);
+    v["title_values"] = json!({"CLIENT": "ACME", "PROJECT_STATUS": "Draft", "ARCHITECT": "Me"});
+    let (m, _) = crate::model::Model::read(&v.to_string()).unwrap();
+    let info = m.project_info().map(|(_, i)| (i.client.as_str(), i.status.as_str()));
+    assert_eq!(info, Some(("ACME", "Draft")));
+    assert_eq!(m.title_values.keys().collect::<Vec<_>>(), ["ARCHITECT"]);
+    m.check().unwrap();
+}

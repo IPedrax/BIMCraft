@@ -382,7 +382,7 @@ fn the_commands_refuse_what_they_cant_do_and_leave_the_file_as_it_was() {
         (sp(json!({"path": path, "action": "load", "family": "Cabinet", "guid": COST})), COST),
         (sp(json!({"path": path, "action": "load", "name": "Fire Rating"})), "`family`"),
         (sp(json!({"path": path, "action": "load", "family": "Nowhere", "name": "Fire Rating"})), "Nowhere"),
-        (sp(json!({"path": path, "action": "load", "family": "Cabinet", "name": "Fire Rating", "under": "nowhere"})), "nowhere"),
+        (sp(json!({"path": path, "action": "load", "family": "Cabinet", "name": "Fire Rating", "under": "two\nlines"})), "under"),
         (sp(json!({"path": path, "action": "load", "family": "Cabinet", "name": "Fire Rating", "instance": "x"})), "instance"),
         (sp(json!({"path": unknown, "action": "load", "family": "Cabinet", "name": "Cost"})), "line 13"),
         (sp(json!({"path": twice, "action": "load", "family": "Cabinet", "name": "Fire Rating"})), "`guid`"),

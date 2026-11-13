@@ -85,7 +85,9 @@ values that differ unless `overwrite`, and adds the old GUID to `same_as`. `para
 `parameter_purge` goes by. A rename reaches tags and calculated fields too; `rename_in_formula` takes a name whole, spaces included.
 
 `read_only` (the window's Editable), `group` and `description` are how Properties and Type Properties show a parameter; a command can
-still set a read-only one. Area parameters are m², volumes m³, angles degrees.
+still set a read-only one. A group (`family::Under`) is one of Revit's, by its name (`identity-data`) or its heading, or a heading of
+the project's own, for project and family parameters alike; Revit's are listed first, in their order, then the own ones by name. A
+table's blank User Modifiable says nothing: a parameter keeps what it has. Area parameters are m², volumes m³, angles degrees.
 
 `family_parameter_transfer` copies a family's parameters to others, with the parameters their formulas read; a name a family
 has is skipped and listed.
@@ -94,7 +96,7 @@ has is skipped and listed.
 
 `family_parameter_add` gives many families new parameters at once, all or none (`Model::check` goes over each family). A type parameter's
 `value` is the family's own default, so it's every type's until a type sets its own in Type Properties. A family parameter may be `text`
-(`family::Kind::Text`), which takes no formula and which a formula can't read; `group` puts it under a group of its own in Properties.
+(`family::Kind::Text`), which takes no formula and which a formula can't read; `group` puts it under one of Revit's groups or a heading of its own in Properties.
 
 `definition` ties a family's parameter to a dictionary's or a project parameter's GUID, so the two are one parameter: a project parameter may
 share its name with a family's only if tied (`family_clash`), a schedule has one column for it, and the element reads the family's value

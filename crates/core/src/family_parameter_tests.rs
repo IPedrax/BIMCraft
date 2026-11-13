@@ -381,3 +381,25 @@ fn a_file_of_the_format_before_reads_every_parameter_as_a_family_one() {
     assert_eq!(f.parameters.iter().find(|p| p.name == "Height").map(|p| p.group()), Some(Under::Group(Group::Dimensions)));
     const { assert!(crate::model::FORMAT >= 18) };
 }
+
+#[test]
+fn a_group_is_one_of_revits_by_its_name_or_heading_or_a_heading_of_its_own() {
+    assert_eq!(Under::read("identity-data"), Some(Under::Group(Group::IdentityData)));
+    assert_eq!(Under::read(" Identity Data "), Some(Under::Group(Group::IdentityData)));
+    assert_eq!(Under::read("Fire"), Some(Under::Own("Fire".into())));
+    assert_eq!(Under::read("  "), None);
+    // Written as a group always was, so a file of 19 reads as it did, and a heading of its own as its words.
+    assert_eq!(serde_json::to_value(Under::Group(Group::IdentityData)).unwrap(), json!("identity-data"));
+    assert_eq!(serde_json::from_value::<Under>(json!("Fire")).unwrap(), Under::Own("Fire".into()));
+    assert!(serde_json::from_value::<Under>(json!("")).is_err());
+    // Revit's groups in their order, then the own headings by name, each once.
+    let listed = Under::listed([
+        Under::Own("b".into()),
+        Under::Group(Group::Other),
+        Under::Own("A".into()),
+        Under::Group(Group::Constraints),
+        Under::Own("b".into()),
+    ]);
+    assert_eq!(listed, [Under::Group(Group::Constraints), Under::Group(Group::Other), Under::Own("A".into()), Under::Own("b".into())]);
+    assert!(Under::Own("two\nlines".into()).check("p").is_err());
+}

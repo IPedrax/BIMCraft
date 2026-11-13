@@ -26,8 +26,8 @@ use crate::model::{
     Element, End, Extrusion, Face, Facing, Floor, FloorType, Grid, Guid, HostRef, Hosted, Id, Key, Landing, Layer, Level, Line, Location,
     MAX_COORD, MAX_POINTS, MAX_SLOPE, MAX_TEXT, Mass, Model, Note, Opening, OpeningType, Orient, PARAMETER_CATEGORIES, ParameterKind,
     Pattern, Perspective, PlanView, PointCloud, ProjectParameter, PropertyLine, RAMP_SLOPE, RAMP_WIDTH, RISER, Railing, RailingType, Ramp,
-    Rebar, Ref3, Reference, Roof, RoofType, Room, RoomArea, RoomSeparator, STAIR_WIDTH, Schedule, Scope, Section, SectionBox, Shaft, Sheet, Side,
-    Spot, Stair, TOL, TREAD, Tag, Unbound, View3D, Viewport, Wall, WallType, heading, paper,
+    Rebar, Ref3, Reference, Roof, RoofType, Room, RoomArea, RoomSeparator, STAIR_WIDTH, Schedule, Scope, Section, SectionBox, Shaft, Sheet,
+    Side, Spot, Stair, TOL, TREAD, Tag, Unbound, View3D, Viewport, Wall, WallType, heading, paper,
 };
 use crate::paint;
 use crate::phasing;
@@ -1095,10 +1095,12 @@ other_files(
     ),
     edit(
         "title_values",
-        "Project Information",
+        "Title Block Values",
         &[],
         "{values?: {KEY: text or null}} the project's values of its title blocks' project fields (and of an automatic field, \
-         DATE say, to give every sheet that instead): a key's null clears it. Without `values`, what they are",
+         DATE say, to give every sheet that instead): a key's null clears it. A key of the project's information (CLIENT, \
+         PROJECT_NUMBER, PROJECT_ADDRESS, PROJECT_STATUS, ISSUE_DATE, AUTHOR, ORGANIZATION, ORGANIZATION_DESCRIPTION, BUILDING) \
+         sets that field of it, as `project_info` does. Without `values`, what they are, the information's among them",
         title_values,
     ),
     edit(
@@ -3521,7 +3523,12 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
                 extra.insert("slots".into(), json!(crate::electrical::slot_count(m, b)));
             }
         }
-        Element::Grid(_) | Element::RefPlane(_) | Element::Schedule(_) | Element::View3D(_) | Element::PlanView(_) | Element::ProjectInfo(_) => {}
+        Element::Grid(_)
+        | Element::RefPlane(_)
+        | Element::Schedule(_)
+        | Element::View3D(_)
+        | Element::PlanView(_)
+        | Element::ProjectInfo(_) => {}
     }
     let mut v = serde_json::to_value(e).unwrap_or_default();
     if let Some(o) = v.as_object_mut() {
@@ -11996,15 +12003,38 @@ fn title_values(s: &mut Session, p: &Value) -> R {
     only(c, p, &["values"])?;
     match p.get("values") {
         v if absent(v) => {}
-        Some(v) => {
-            let values = field_values(c, "values", v, &s.model.title_values)?;
+        Some(Value::Object(given)) => {
+            // A field of the project's information (CLIENT, PROJECT_NUMBER, …) goes to it, where title blocks read it; any other
+            // key is a title value.
+            let (mut info, mut rest) = (Vec::new(), Map::new());
+            for (k, v) in given {
+                match (crate::project_info::field_of_key(k), v) {
+                    (Some(f), Value::Null) => info.push((f, String::new())),
+                    (Some(f), Value::String(t)) => info.push((f, t.trim().to_string())),
+                    (Some(_), v) => return Err(bad(c, format!("`values`: `{k}` is text or null, not {v}"))),
+                    (None, v) => {
+                        rest.insert(k.clone(), v.clone());
+                    }
+                }
+            }
+            let values = field_values(c, "values", &Value::Object(rest), &s.model.title_values)?;
             if values != s.model.title_values {
                 s.model_mut().title_values = values;
             }
+            for (f, v) in info {
+                if s.model.project_info().and_then(|(_, i)| i.get(f)).unwrap_or("") != v {
+                    s.model_mut().set_info(f, v);
+                }
+            }
+        }
+        Some(v) => {
+            field_values(c, "values", v, &s.model.title_values)?;
         }
         None => {}
     }
-    Ok(json!({"values": s.model.title_values}))
+    let mut all = s.model.title_values.clone();
+    all.extend(s.model.info_title_values().into_iter().filter(|(_, v)| !v.is_empty()));
+    Ok(json!({"values": all}))
 }
 
 fn title_block(s: &mut Session, p: &Value) -> R {
@@ -12381,7 +12411,24 @@ fn paint(s: &mut Session, p: &Value) -> R {
 
 pub(crate) fn parameter(s: &mut Session, p: &Value) -> R {
     let c = "parameter";
-    only(c, p, &["name", "kind", "categories", "sets", "classification", "rename", "delete", "description", "group", "read_only", "scope", "dictionary"])?;
+    only(
+        c,
+        p,
+        &[
+            "name",
+            "kind",
+            "categories",
+            "sets",
+            "classification",
+            "rename",
+            "delete",
+            "description",
+            "group",
+            "read_only",
+            "scope",
+            "dictionary",
+        ],
+    )?;
     let name = string(c, p, "name")?.map(|n| n.trim().to_string()).filter(|n| !n.is_empty()).ok_or_else(|| bad(c, "`name` is required"))?;
     let m = s.model_mut();
     // Off the categories `gone`, the ones it was for: their elements' values of `name`, and their
@@ -12677,7 +12724,10 @@ fn patch_parameter(
         let groups: Vec<&str> = crate::family::Group::ALL.iter().map(|g| g.key()).collect();
         return Err(bad(
             c,
-            format!("parameter `{name}`: `group` is one of {}, or a heading of its own up to {MAX_TEXT} characters on one line, not {g}", groups.join(", ")),
+            format!(
+                "parameter `{name}`: `group` is one of {}, or a heading of its own up to {MAX_TEXT} characters on one line, not {g}",
+                groups.join(", ")
+            ),
         ));
     }
     let at = f.parameters.iter().position(|q| q.name == name);
@@ -13945,12 +13995,10 @@ fn shared_parameters(s: &mut Session, p: &Value) -> R {
             let instance = flag(c, p, "instance")?;
             let under = match p.get("under") {
                 v if absent(v) => None,
-                Some(v) => Some(
-                    v.as_str().and_then(crate::family::Under::read).filter(|u| u.check("").is_ok()).ok_or_else(|| {
-                        let groups: Vec<&str> = crate::family::Group::ALL.iter().map(|g| g.key()).collect();
-                        bad(c, format!("`under` is one of {}, or a heading of its own on one line, not {v}", groups.join(", ")))
-                    })?,
-                ),
+                Some(v) => Some(v.as_str().and_then(crate::family::Under::read).filter(|u| u.check("").is_ok()).ok_or_else(|| {
+                    let groups: Vec<&str> = crate::family::Group::ALL.iter().map(|g| g.key()).collect();
+                    bad(c, format!("`under` is one of {}, or a heading of its own on one line, not {v}", groups.join(", ")))
+                })?),
                 None => None,
             };
             let of = category()?;

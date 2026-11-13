@@ -37,7 +37,10 @@ fn a_parameter_is_made_in_the_table_applied_at_once_and_given_values_in_properti
     type_role(&mut h, Role::TextInput, "Description of Finish Height", "To the top of the tile");
     press(&mut h, "Apply");
     let p = h.state().session.model.parameters["Finish Height"].clone();
-    assert_eq!((p.kind, p.categories.clone(), p.group.as_ref().map_or("", |u| u.label())), (ParameterKind::Length, vec!["wall".to_string()], "Finishes"));
+    assert_eq!(
+        (p.kind, p.categories.clone(), p.group.as_ref().map_or("", |u| u.label())),
+        (ParameterKind::Length, vec!["wall".to_string()], "Finishes")
+    );
     assert!(h.query_by_label("1 parameters | create 0 | modify 0 | existing 1 | delete 0").is_some());
     press(&mut h, "Close");
 

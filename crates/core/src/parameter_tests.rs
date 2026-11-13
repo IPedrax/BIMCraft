@@ -554,6 +554,13 @@ fn hostile_files_are_refused_or_read_as_far_as_they_go() {
     std::fs::write(&path, "Name,Categories\n123,Walls\nPhase Created,Walls\nLength,Walls\n").unwrap();
     let r = run(&mut s, "parameter_import", json!({"path": path, "dry_run": true}));
     assert_eq!((r["skip"].clone(), r["conflict"].clone()), (json!(1), json!(2)), "{r}");
+    // Thousands of rows of one name are planned no further than a project's parameters go, and it says so.
+    let path = file("many.csv");
+    std::fs::write(&path, format!("Name,Categories\n{}", "Same,Walls\n".repeat(5000))).unwrap();
+    let started = std::time::Instant::now();
+    let r = run(&mut s, "parameter_import", json!({"path": path, "dry_run": true}));
+    assert!(started.elapsed().as_secs() < 30, "planned in {:?}", started.elapsed());
+    assert!(r.to_string().contains("parameters a project holds"), "{r}");
     assert!(s.execute("parameter_export", &json!({"path": "/nonexistent/dir/out.csv"})).is_err());
     assert!(s.execute("parameter_export", &json!({"path": file("out.doc")})).is_err());
 }
@@ -929,4 +936,17 @@ fn a_dictionary_loaded_stays_with_the_project_and_several_can_be() {
     run(&mut s, "dictionary_mount", json!({"name": "one", "remove": true}));
     assert!(!s.model.dictionaries.contains_key("one"));
     assert!(s.execute("dictionary_mount", &json!({"path": "/nonexistent/x.bimparams"})).is_err());
+}
+
+#[test]
+fn a_table_that_doesnt_say_whether_a_parameter_can_be_changed_leaves_it_as_it_is() {
+    let mut s = Session::new();
+    run(&mut s, "parameter", json!({"name": "Rating", "categories": ["wall"], "read_only": true}));
+    let path = file("blank-modifiable.csv");
+    std::fs::write(&path, "Name,Categories,User Modifiable\nRating,Walls,\n").unwrap();
+    run(&mut s, "parameter_import", json!({"path": path}));
+    assert!(s.model.parameters["Rating"].read_only, "a blank cell says nothing");
+    std::fs::write(&path, "Name,Categories,User Modifiable\nRating,Walls,yes\n").unwrap();
+    run(&mut s, "parameter_import", json!({"path": path}));
+    assert!(!s.model.parameters["Rating"].read_only, "yes says it can be changed");
 }
