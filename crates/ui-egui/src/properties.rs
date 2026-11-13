@@ -959,12 +959,9 @@ impl BimApp {
         if let [(id, p)] = commands.as_slice() {
             return self.run_for_type(id, p.clone(), error);
         }
-        self.made_in();
-        let done = self.session.transaction("Type Properties", |s: &mut bimcraft_core::engine::Session| {
-            commands.iter().try_for_each(|(c, p)| s.execute(c, p).map(|_| ()))
-        });
-        match done {
-            Ok(()) => {
+        // Through the funnel, so a guest's change goes to the host as one undo step there too.
+        match self.exec_batch("Type Properties", &commands) {
+            Ok(_) => {
                 self.status = Status::default();
                 *error = None;
                 true
