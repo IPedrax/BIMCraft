@@ -4323,7 +4323,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
         let g = crate::ifc::expand(text(e(first)?.args.first())?).map(Guid::from_u128)?;
         Some(g).filter(|g| g.pending().is_none() && !taken.contains(g))
     };
-    m.ifc_guids =
+    m.spatial_guids =
         crate::ifc::SpatialGuids { project: global_of("IFCPROJECT"), site: global_of("IFCSITE"), building: global_of("IFCBUILDING") };
     // The library's GUIDs too, the file makes: the same file reads the same every time.
     m.library = crate::library::Library::default();
@@ -5432,18 +5432,18 @@ ENDSEC;END-ISO-10303-21;",
         let m = read();
         let (back, left_out) = Model::read(&serde_json::to_string(&m).unwrap()).unwrap();
         assert!(left_out.is_empty(), "{left_out:?}");
-        assert_eq!(back.ifc_guids, m.ifc_guids);
+        assert_eq!(back.spatial_guids, m.spatial_guids);
         // A file that gives its site the GlobalId of an element keeps it for the element; the site's is the export's own.
         let reused = file.replace(&format!("IFCSITE('{site}'"), &format!("IFCSITE('{element}'"));
         let m = ifc(reused.as_bytes(), "x").unwrap().model;
-        assert_eq!(m.ifc_guids.site, None);
+        assert_eq!(m.spatial_guids.site, None);
         unique(&crate::ifc::export(&m));
         // A file whose GlobalIds aren't GlobalIds keeps none, and its export makes its own, as a project of BIMCraft's does.
         let unnamed = ifc(proxies("Box", 1, &ring, "0.,0.,1.", 450.0).as_bytes(), "x").unwrap().model;
-        assert_eq!(unnamed.ifc_guids, crate::ifc::SpatialGuids::default());
+        assert_eq!(unnamed.spatial_guids, crate::ifc::SpatialGuids::default());
         // A project of BIMCraft's own has none, writes none in its file, and exports the same GlobalIds every time.
         let native = crate::engine::Session::new().model;
-        assert!(serde_json::to_value(&native).unwrap().get("ifc_guids").is_none());
+        assert!(serde_json::to_value(&native).unwrap().get("spatial_guids").is_none());
         let project_line = |text: &str| text.lines().find(|l| l.contains("=IFCPROJECT(")).map(str::to_string);
         assert_eq!(project_line(&crate::ifc::export(&native)), project_line(&crate::ifc::export(&native)));
     }

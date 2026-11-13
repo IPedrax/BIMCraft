@@ -1077,7 +1077,7 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool) -> String {
     let said = |t: &str| if t.is_empty() { "$".to_string() } else { s(t) };
     let phase = said(info.map_or("", |(_, i)| i.status.as_str()));
     let project =
-        w.add(format!("IFCPROJECT({},$,{},$,$,$,{phase},(#{ctx}),#{units})", w.spatial(PROJECT, m.ifc_guids.project), s(&m.name)));
+        w.add(format!("IFCPROJECT({},$,{},$,$,$,{phase},(#{ctx}),#{units})", w.spatial(PROJECT, m.spatial_guids.project), s(&m.name)));
     let site_at = w.place(None, (0.0, 0.0, 0.0), None);
     // Plot boundaries are curves, not solids. Their coordinates are site-local XY; their plan level is metadata.
     let plots: Vec<(Id, &crate::model::PropertyLine)> = m
@@ -1102,7 +1102,8 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool) -> String {
         let rep = w.add(format!("IFCSHAPEREPRESENTATION(#{plan},'FootPrint','Curve2D',({}))", refs(&curves)));
         format!("#{}", w.add(format!("IFCPRODUCTDEFINITIONSHAPE($,$,(#{rep}))")))
     };
-    let site = w.add(format!("IFCSITE({},$,'Site',$,$,#{site_at},{footprint},$,.ELEMENT.,$,$,$,$,$)", w.spatial(SITE, m.ifc_guids.site)));
+    let site =
+        w.add(format!("IFCSITE({},$,'Site',$,$,#{site_at},{footprint},$,.ELEMENT.,$,$,$,$,$)", w.spatial(SITE, m.spatial_guids.site)));
     if !plots.is_empty() {
         let total = plots.iter().map(|(_, pl)| geom::area(&pl.points).abs()).sum::<f64>() / 1e6;
         let area = w.add(format!("IFCPROPERTYSINGLEVALUE('TotalArea',$,IFCAREAMEASURE({}),$)", real(total)));
@@ -1136,7 +1137,7 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool) -> String {
     };
     let building = w.add(format!(
         "IFCBUILDING({},$,{},$,$,#{building_at},$,$,.ELEMENT.,$,$,{address})",
-        w.spatial(BUILDING, m.ifc_guids.building),
+        w.spatial(BUILDING, m.spatial_guids.building),
         s(building_name)
     ));
     if let Some((_, i)) = info {
