@@ -339,8 +339,6 @@ fn a_far_scan_acquires_its_coordinates_its_foot_at_the_origin() {
 
 // ---------- IFC ----------
 
-/// A project in São Paulo (SIRGAS 2000 / UTM 23S), true north 10° east of project north, with a wall.
-
 /// A project with a wall from (0, 0) to (8000, 0) on its Level 1, its locations as `locations` says, saved: the path.
 fn linked_file(test: &str, locations: &[(&str, Value)], base: [f64; 3]) -> String {
     let mut s = Session::new();
