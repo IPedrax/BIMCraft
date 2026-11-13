@@ -115,7 +115,7 @@ fn publishing_sets_and_their_print_sets_transfer_as_xml() {
 fn publisher_opens_from_view_tab_and_project_browser() {
     let mut h = app(PROJECT);
     press(&mut h, "View");
-    press(&mut h, "Publisher");
+    from_list(&mut h, "Windows", "Publisher");
     assert!(h.state().publisher.is_some());
     press(&mut h, "Close");
     let node = h.get_all_by_label("Level 1").find(|n| n.rect().center().x < 290.0 && n.accesskit_node().role() == Role::Button).unwrap();

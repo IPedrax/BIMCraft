@@ -200,7 +200,8 @@ impl BimApp {
             Sheet::Plan(id) | Sheet::Ceiling(id) | Sheet::Section(id) | Sheet::Paper(id) => Some(id),
             Sheet::View3D => self.active_3d(),
             Sheet::Table(id) => Some(id),
-            Sheet::Schedule(_) => None,
+            // A family document's own views are the family's, not the project's: nothing to export from them.
+            Sheet::Schedule(_) | Sheet::Family(..) => None,
         };
         id.filter(|id| export::kind_of(m, Some(*id)).is_some())
     }
@@ -427,7 +428,7 @@ impl BimApp {
                     // Several sources to a format that doesn't combine them: a file each, named after the one asked for.
                     let combine = combine && format.combines();
                     let each = all_sheets && !combine;
-                    self.ask_path(ctx, &what, format.extension(), move |app, path| {
+                    self.ask_path(ctx, &what, &[format.extension()], move |app, path| {
                         app.export_to(path, items, options, combine, each);
                     });
                 }

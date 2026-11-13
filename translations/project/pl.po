@@ -32,7 +32,7 @@ msgstr "Wanna"
 msgid "Bed"
 msgstr "Łóżko"
 
-#: crates/core/src/model.rs:3560
+#: crates/core/src/model.rs:3568
 msgid "Brick"
 msgstr "Cegła"
 
@@ -40,7 +40,7 @@ msgstr "Cegła"
 msgid "Brick 225 x 75"
 msgstr "Cegła 225 × 75"
 
-#: crates/core/src/commands.rs:5267
+#: crates/core/src/commands.rs:5320
 msgid "Camera"
 msgstr "Kamera"
 
@@ -68,7 +68,7 @@ msgstr "Oś"
 msgid "Centre Lines"
 msgstr "Linie osiowe"
 
-#: crates/core/src/model.rs:3568
+#: crates/core/src/model.rs:3576
 msgid "Ceramic tile"
 msgstr "Płytka ceramiczna"
 
@@ -86,7 +86,7 @@ msgstr ""
 msgid "Concrete"
 msgstr "Beton"
 
-#: crates/core/src/model.rs:3562
+#: crates/core/src/model.rs:3570
 msgid "Concrete block"
 msgstr "Bloczek betonowy"
 
@@ -95,11 +95,11 @@ msgstr "Bloczek betonowy"
 msgid "Connected Load (VA)"
 msgstr ""
 
-#: crates/core/src/model.rs:3576
+#: crates/core/src/model.rs:3584
 msgid "Copper"
 msgstr "Miedź"
 
-#: crates/core/src/commands.rs:1859
+#: crates/core/src/commands.rs:1896
 msgid "Copy"
 msgstr "Kopiuj"
 
@@ -132,7 +132,7 @@ msgstr "Gniazdo teleinformatyczne"
 msgid "Demand Factor"
 msgstr ""
 
-#: crates/core/src/commands.rs:12805
+#: crates/core/src/commands.rs:13072
 msgid "Dependent"
 msgstr "Zależny"
 
@@ -217,9 +217,9 @@ msgstr "Instalacja oświetleniowa"
 msgid "Electrical Power"
 msgstr "Instalacja elektryczna – zasilanie"
 
-#: crates/core/src/commands.rs:12552
-#: crates/core/src/commands.rs:12567
-#: crates/core/src/commands.rs:16989
+#: crates/core/src/commands.rs:12819
+#: crates/core/src/commands.rs:12834
+#: crates/core/src/commands.rs:17256
 msgid "Elevation"
 msgstr "Widok elewacji"
 
@@ -289,7 +289,7 @@ msgstr "Szkło"
 msgid "Gross Floor Area"
 msgstr "Powierzchnia całkowita kondygnacji"
 
-#: crates/core/src/model.rs:3567
+#: crates/core/src/model.rs:3575
 msgid "Gypsum board"
 msgstr "Płyta gipsowo-kartonowa"
 
@@ -349,8 +349,8 @@ msgstr "Szerokość nogi"
 msgid "Length"
 msgstr "Długość"
 
-#: crates/core/src/commands.rs:7843
-#: crates/core/src/model.rs:3708
+#: crates/core/src/commands.rs:7896
+#: crates/core/src/model.rs:3716
 msgid "Level"
 msgstr "Poziom"
 
@@ -390,7 +390,7 @@ msgstr "Oznaczenie"
 msgid "Masking"
 msgstr "Maskowanie"
 
-#: crates/core/src/commands.rs:10087
+#: crates/core/src/commands.rs:10354
 msgid "Mass"
 msgstr "Bryła"
 
@@ -406,10 +406,10 @@ msgstr "Linie średnie"
 msgid "Membrane"
 msgstr "Membrana"
 
-#: crates/core/src/commands.rs:3488
-#: crates/core/src/commands.rs:15595
+#: crates/core/src/commands.rs:3525
+#: crates/core/src/commands.rs:15862
 #: crates/core/src/family.rs:3429
-#: crates/core/src/model.rs:5035
+#: crates/core/src/model.rs:5043
 msgid "Metal"
 msgstr "Metal"
 
@@ -503,11 +503,11 @@ msgstr "Porcelana"
 msgid "Profile"
 msgstr ""
 
-#: crates/core/src/commands.rs:3750
+#: crates/core/src/commands.rs:3787
 msgid "Project"
 msgstr "Projekt"
 
-#: crates/core/src/commands.rs:8570
+#: crates/core/src/commands.rs:8623
 msgid "Property Line"
 msgstr ""
 
@@ -535,11 +535,11 @@ msgstr "Liczba podstopnic"
 msgid "Roller"
 msgstr ""
 
-#: crates/core/src/model.rs:3569
+#: crates/core/src/model.rs:3577
 msgid "Roof tiles"
 msgstr "Dachówki"
 
-#: crates/core/src/commands.rs:10312
+#: crates/core/src/commands.rs:10579
 msgid "Room"
 msgstr "Pomieszczenie"
 
@@ -567,7 +567,7 @@ msgstr "SKALA WEDŁUG OZNACZEŃ"
 msgid "Sand"
 msgstr "Piasek"
 
-#: crates/core/src/model.rs:3565
+#: crates/core/src/model.rs:3573
 msgid "Screed"
 msgstr "Jastrych"
 
@@ -575,8 +575,8 @@ msgstr "Jastrych"
 msgid "Seat Height"
 msgstr "Wysokość siedziska"
 
-#: crates/core/src/commands.rs:12487
-#: crates/core/src/commands.rs:16988
+#: crates/core/src/commands.rs:12754
+#: crates/core/src/commands.rs:17255
 msgid "Section"
 msgstr "Przekrój"
 
@@ -746,7 +746,7 @@ msgstr "Wysokość nieograniczona"
 msgid "Unclassified"
 msgstr ""
 
-#: crates/core/src/commands.rs:12976
+#: crates/core/src/commands.rs:13243
 msgid "Unnamed"
 msgstr "Bez nazwy"
 
@@ -775,7 +775,7 @@ msgstr "Objętość"
 msgid "WC"
 msgstr "WC"
 
-#: crates/core/src/commands.rs:350
+#: crates/core/src/commands.rs:360
 msgid "Wall"
 msgstr "Ściana"
 

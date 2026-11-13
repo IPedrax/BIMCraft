@@ -3670,12 +3670,6 @@ impl BimApp {
         });
     }
 
-    fn export(&mut self, ctx: &Context, what: &str, ext: &str) {
-        self.ask_path(ctx, what, &[ext], |app, p| {
-            app.save_to(&p);
-        });
-    }
-
     /// Asks, in the system's file dialog, where to save, and calls `then` with the path in a later frame: the first of `exts` is
     /// what it offers and what a path with none of them gets.
     fn ask_path(&mut self, ctx: &Context, what: &str, exts: &[&str], then: impl FnOnce(&mut BimApp, PathBuf) + 'static) {
@@ -4780,11 +4774,6 @@ impl BimApp {
             }
         });
         panel(ui, "Windows", |ui| {
-            if big_button(ui, Icon::Sheet, "Publisher", self.publisher.is_some(), "Open publishing sets and export their print sets")
-                .clicked()
-            {
-                self.open_publisher();
-            }
             if big_button(ui, Icon::CloseInactive, "Close Inactive", false, "Close every view but this one").clicked() {
                 let active = self.sheet;
                 self.views.retain(|v| *v == active);
@@ -4807,6 +4796,12 @@ impl BimApp {
                     }
                 }
             });
+            // Last, so a narrow window hands it to the panel's list before User Interface (File > Export has it too).
+            if big_button(ui, Icon::Sheet, "Publisher", self.publisher.is_some(), "Open publishing sets and export their print sets")
+                .clicked()
+            {
+                self.open_publisher();
+            }
         });
     }
 

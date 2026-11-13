@@ -49,13 +49,34 @@ reaches every front end.
 | Vector | SVG |
 | Raster | PNG, JPEG (jpeg-encoder), JPEG XL (zune-jpegxl, lossless only: the only lossy encoder in Rust is AGPL) |
 | Line | DXF (AC1018, written here), DWG (experimental: the DXF through acadrust, [CAD import](cad-import.md#dwg)) |
-| Model | IFC4, IFC4.3 (IFC4X3_ADD2), glTF, OBJ (metres, y up, vertex colours), STL (binary, mm); IFC2x3 and U3D planned |
+| Model | IFC4, IFC4.3 (IFC4X3_ADD2), IFC2x3 (TC1), glTF, OBJ (metres, y up, vertex colours), STL (binary, mm); U3D planned |
 | Schedule | CSV, XLSX, ODS |
 | Coordination | BCF 2.1 (a 3D view's camera, a snapshot, the selected elements and the hidden ones) |
 
 The tests are in `export_tests.rs` (through the commands) and in each format's file, through what it writes. A DXF is read
 back with `dxf.rs`, a JPEG XL is decoded pixel for pixel, and a zip is opened. Outside the tests, the DXF was checked with
-ezdxf's audit, IFC4.3 with IfcOpenShell (CI validates `coverage-4x3.ifc`), and ODS by opening it in LibreOffice.
+ezdxf's audit, IFC4.3 and IFC2x3 with IfcOpenShell (CI validates `coverage-4x3.ifc`, `house-2x3.ifc` and
+`coverage-2x3.ifc`), and ODS by opening it in LibreOffice.
+
+- **IFC2x3** (`ifc/v2x3.rs`) is the IFC4 writer's file turned as it is written: `Step::add` passes each entity through
+  `v2x3::downgrade`, so an element kind added to the writer goes out in IFC2x3 with no code of its own. `v2x3/table.rs`
+  (made by `ci/ifc2x3_table.py` from the two schemas IfcOpenShell carries; run it again when the writer names a new
+  entity) says, for each entity, the IFC2x3 class it is, how many attributes that has, whether it has an owner history
+  (every rooted entity must, there: one for the file, by Project Information's author) and the values its enumerations
+  take. A class only IFC4 has is its nearest IFC2x3 supertype: a pipe segment is an `IfcFlowSegment` whose
+  `IfcPipeSegmentType` still says what it is, furniture an `IfcFurnishingElement`, a chimney a proxy; an element short of
+  what its IFC2x3 class requires is a proxy too. A door's and a window's type are an `IfcDoorStyle` and an
+  `IfcWindowStyle`; a roof's and a footing's have no type object. What differs in kind the writer does where it asks
+  `Schema::Ifc2x3`: triangles are a faceted B-rep (no face sets), several materials an `IfcMaterialList`, a beam's,
+  column's or footing's material its own (no profile sets), a styled item's styles in an
+  `IfcPresentationStyleAssignment`, a see-through colour an `IfcSurfaceStyleRendering`, a swept disk with its ends, and
+  the map conversion and its CRS the project's `ePSet_MapConversion` and `ePSet_ProjectedCRS` with the same values, as
+  buildingSMART's guide to georeferencing has them and IfcOpenShell reads them. Checked with IfcOpenShell's schema and
+  rule validation, a shape built for every product and each shape's extent the same as the IFC4 file's; the file reads
+  back through `import.rs`. Not yet opened in Revit or another program that reads only IFC2x3.
+- **Where the model lies on a map** goes out once, whatever the schema: the active site's map conversion from the file's
+  origin (`ifc_origin`), as [coordinates](coordinates.md#ifc-one-map-conversion) has it: an `IfcMapConversion` in IFC4 and
+  IFC4.3, the `ePSet_MapConversion` and `ePSet_ProjectedCRS` property sets on the project in IFC2x3 (`Step::map_conversion`).
 
 - **PDF** (`pdf.rs`) is written with krilla, the library Typst writes its PDFs with. `pdf::Settings` (the `export`
   command's `pdf`) picks an archive standard, which krilla checks as it writes: a file that wouldn't be PDF/A is refused with
@@ -148,7 +169,7 @@ ezdxf's audit, IFC4.3 with IfcOpenShell (CI validates `coverage-4x3.ifc`), and O
   a set sent to a printer, folder names from tokens, a page preview in an entry's settings, and sheets picked by a
   parameter's value rather than by print set.
 - Project parameters on views and sheets, so a file name can take a sheet's own value.
-- IFC2x3 (a port of the IFC writer: owner history, IFC4-only entities), U3D and 3D PDF.
+- U3D and 3D PDF.
 - DWG and DXF export setups as Revit's: layers, colours, linetypes, lineweights, real hatch patterns rather than exploded
   lines and solid fills, text, coordinates, paper space (the ROADMAP's row).
 - Project-information tokens in file names, from the project parameters.

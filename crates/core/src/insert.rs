@@ -470,7 +470,6 @@ fn copy_definition(to: &mut Model, from: &Model, kind: &Kind, name: &str) -> boo
         Kind::PrintSet => one(&mut to.print_sets, Some(&from.print_sets), name),
         Kind::PublishSet => one(&mut to.publish_sets, Some(&from.publish_sets), name),
         Kind::Dictionary => one(&mut to.dictionaries, Some(&from.dictionaries), name),
-        Kind::PrintSet => one(&mut to.print_sets, Some(&from.print_sets), name),
         _ => false,
     }
 }

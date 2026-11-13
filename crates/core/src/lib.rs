@@ -157,17 +157,17 @@ pub mod pen;
 pub mod phasing;
 pub mod places;
 pub mod plumbing;
+pub mod printset;
 pub mod project_info;
 #[cfg(test)]
 mod project_info_tests;
+#[cfg(test)]
+mod pset_tests;
 pub mod publish;
 #[cfg(test)]
 mod publish_tests;
 #[cfg(test)]
-mod pset_tests;
-#[cfg(test)]
 mod raised_wall_room_tests;
-pub mod printset;
 #[cfg(test)]
 mod read_only_tests;
 pub mod rebar;

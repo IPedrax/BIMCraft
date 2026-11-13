@@ -197,7 +197,7 @@ impl BimApp {
         {
             // Only update completed entries. The command applies these to the current set, so edits made
             // while the background export ran are kept.
-            let _ = self.session.execute("publish_set", &json!({"name": name, "timings": report.published}));
+            let _ = self.exec("publish_set", &json!({"name": name, "timings": report.published}));
         }
         self.status = match answer {
             Ok((report, None)) => said(&report, &job.folder),

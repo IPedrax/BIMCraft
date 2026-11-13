@@ -75,6 +75,9 @@ One line per module: what it owns. Read the module's file and, for the areas it 
 - `graphics.rs`, `templates.rs`, `footer.rs`, `phasing.rs`: Visibility/Graphics, View Templates (and Assign View Template), the view control bar, Phasing. `filter.rs`: Filter on the selection. `parameters.rs`: Manage > Project Parameters, all of it. `projectinfo.rs`: Manage > Project Information. `inquiry.rs`, `recent.rs`, `autosave.rs`, `updates.rs`, `revit.rs`: Manage > Inquiry, Open Recent, autosave and recovery, the update banner, Revit files.
 - `assistant.rs`: the Assistant palette (AI) and its Settings page, the provider, model and key ([the assistant](../../docs/areas/assistant.md)).
 - `panelsched.rs`: the panel schedule on screen, a distribution board's load schedule as a view ([structure and MEP](../../docs/areas/structure-and-mep.md)).
+- `export/`: File > Export… with its page preview, printing and PDF settings, and exports written on a thread of their own with
+  Cancel. `printsets.rs`: the Print Sets window, and a set named from the browser's pick. `publisher.rs`: the Publisher
+  ([export](../../docs/areas/export.md)).
 - `coordinates.rs`: Manage > Project Location, the Location window (sites, points, the map system and its world map, Manage's
   cards, Convert), the site's points in Properties and the 3D view, and Rotate Project North's tool ([coordinates](../../docs/areas/coordinates.md)).
   `spots.rs`: the Spot Coordinate tool's type and Spot Coordinate Type Properties.

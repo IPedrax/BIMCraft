@@ -347,15 +347,10 @@ impl BimApp {
             selected = Some(name.clone());
             publish_commands.push(json!({"name": name, "folder": set.folder, "folders": set.folders, "overwrite": set.overwrite}));
         }
-        self.session.transaction("Import Publishing Sets", |session| {
-            for command in print_commands {
-                session.execute("print_set", &command)?;
-            }
-            for command in publish_commands {
-                session.execute("publish_set", &command)?;
-            }
-            Ok(())
-        })?;
+        // One undo step, through exec_batch so a Co-Work guest's import reaches the host.
+        let commands: Vec<(&str, Value)> =
+            print_commands.into_iter().map(|c| ("print_set", c)).chain(publish_commands.into_iter().map(|c| ("publish_set", c))).collect();
+        self.exec_batch("Import Publishing Sets", &commands)?;
         Ok((selected, missing))
     }
 
