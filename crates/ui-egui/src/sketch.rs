@@ -802,10 +802,15 @@ impl BimApp {
                     if inked_button(ui, Icon::Close, "Cancel Edit Mode", false, tip, Some(pal().error)).clicked() {
                         self.cancel_sketch();
                     }
-                } else if boundary
-                    && big_button(ui, Icon::Line, "Edit Boundary", false, "Edit Boundary: sketch its outline and holes again").clicked()
-                {
-                    self.edit_boundary();
+                } else if boundary {
+                    // A floor or a ceiling that follows a room has the room's outline.
+                    let followed = self.follows_a_room(&self.selection);
+                    let tip = "Edit Boundary: sketch its outline and holes again";
+                    let why = msg!("Its outline is its room's: disconnect it in Properties to sketch it");
+                    let r = ui.add_enabled_ui(!followed, |ui| big_button(ui, Icon::Line, "Edit Boundary", false, tip)).inner;
+                    if r.on_disabled_hover_text(t(why)).clicked() {
+                        self.edit_boundary();
+                    }
                 }
                 if placing {
                     let tip = msg!("Load Family: a family saved as a .bimf file (or an earlier .json), BIMCraft's own");

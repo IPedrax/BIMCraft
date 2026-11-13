@@ -2224,6 +2224,26 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"family": "Generic", "form": 1, "host": "Reference Line 99 : Vertical"}),
         json!({"system": 5, "level": [], "tolerance": 1e300}),
         json!({"path": 5}),
+        json!({"ops": "x", "dry_run": 5}),
+        json!({"ops": [{"op": "rename", "names": ["x"], "prefix": 1e300}, {"op": "zap"}, 5, {"op": "duplicate", "name": []}]}),
+        json!({"ops": [{"op": "duplicate", "name": "Rating", "as": "\u{1}"}, {"op": "rename", "names": [5]}], "dry_run": true}),
+        json!({"path": "/nonexistent/x.csv", "map": {"a": 5}, "resolve": {"a": "zap"}, "categories": [1], "names": "x", "replace_categories": 3}),
+        json!({"path": "/nonexistent/x.bimparams", "add": [{"name": 5}], "merge": [1], "remove": {}, "names": 5, "version": []}),
+        json!({"from": [], "into": 5, "overwrite": "x"}),
+        json!({"from": "a", "to": [1], "names": "x", "prefix": 5, "find": []}),
+        json!({"name": "P", "description": 5, "group": [], "read_only": 1, "scope": "x", "dictionary": "d", "kind": "plasma"}),
+        json!({"name": "P", "scope": 5, "categories": ["room"]}),
+        json!({"name": 5, "number": [], "client": "x\n", "address": "a".repeat(5000), "params": {"Nope": 1}, "issue_date": 1e300}),
+        json!({"number": "1", "params": "x", "building": "\u{1}", "status": "a\rb", "organization": {}}),
+        json!({"client": "c", "params": {"P": [], "Phase Created": "x"}, "author": null}),
+        json!({"category": "wall", "type": "x", "values": {"P": 1e300}, "copy_to": 5}),
+        json!({"family": [], "type": {}, "values": 5}),
+        json!({"category": "wall", "type": "Generic - 200mm", "values": {"Nope": []}}),
+        json!({"families": "x", "parameters": 5}),
+        json!({"path": 5, "name": [], "remove": "x"}),
+        json!({"name": "nope", "remove": true}),
+        json!({"families": ["x"], "parameters": [{"name": 5, "kind": "plasma", "definition": "x"}]}),
+        json!({"path": "/nonexistent/x.csv", "definitions": 5, "scopes": {"a": "zap"}}),
         json!({"path": "/nonexistent/scan.las", "units": "furlong", "spacing": -1}),
         json!({"cloud": "nope", "origin": "file", "at": [1e300, 0]}),
         json!({"path": "/nonexistent/plan.dxf", "units": "furlong", "scale": -1, "position": 3}),
@@ -2900,6 +2920,41 @@ fn hostile_params_never_panic_or_break_the_model() {
         .chain(circuits)
         .chain(schedules)
         .collect();
+    // A room with a floor and a ceiling of its own, last so that no id moves: one placed in the house and the starter room
+    // type given both, and the payloads that name a room, its floor and its ceiling.
+    let _ = base.execute("room", &json!({"point": [2000, 2000]}));
+    let _ = base.execute("type", &json!({"category": "room", "name": "Standard", "floor": "Generic - 200mm", "ceiling": "Generic - 20mm"}));
+    let finished = base.model.elements.iter().find_map(|(id, e)| match e {
+        crate::model::Element::Room(r) => {
+            Some((id, base.model.elements.id(r.floor.connected()?)?, base.model.elements.id(r.ceiling.connected()?)?))
+        }
+        _ => None,
+    });
+    let Some((room, floor, ceiling)) = finished else { panic!("the sweep's base has a room with a floor and a ceiling of its own") };
+    let finishes = [
+        json!({"id": room, "part": "floor", "action": "disconnect"}),
+        json!({"id": room, "part": "ceiling", "action": "regenerate"}),
+        json!({"id": room, "part": "wall", "action": []}),
+        json!({"id": room, "action": "disconnect"}),
+        json!({"id": floor, "part": "ceiling", "action": "disconnect"}),
+        json!({"id": ceiling, "action": "disconnect"}),
+        json!({"id": floor, "action": 1e300, "part": null}),
+        json!({"id": floor, "offset": 1e300, "boundary": [[0, 0], [1, 0], [0, 0]]}),
+        json!({"id": room, "floor": {"connected": ceiling}, "ceiling": "disconnected"}),
+        json!({"id": room, "type": "No such", "floor": 5}),
+        json!({"ids": [room, floor], "keep_finishes": "x"}),
+        json!({"ids": [room], "keep_finishes": true}),
+        json!({"ids": [floor, ceiling], "by": [1e8, 0]}),
+        json!({"ids": [room, floor], "by": [5000, 0], "copy": true}),
+        json!({"category": "room", "name": "Standard", "floor": null, "ceiling": 5}),
+        json!({"category": "room", "name": "Standard", "floor": "Generic - 200mm", "floor_offset": 1e300, "ceiling_offset": -1e300}),
+        json!({"category": "room", "name": "Standard", "floor": null, "ceiling": "Tile 600 x 600", "ceiling_offset": f64::MAX}),
+        json!({"category": "room", "name": "", "floor": [], "ceiling": {}, "floor_offset": "x"}),
+        json!({"category": "room", "name": "R", "floor": "Generic - 200mm", "ceiling": "Generic - 20mm", "ceiling_offset": -1e9}),
+        json!({"point": [2000, 2000], "type": 5}),
+        json!({"point": [2000, 2000], "type": "No such"}),
+    ];
+    let hostile: Vec<Value> = hostile.into_iter().chain(finishes).collect();
     // Each command against each value, on a copy of the same session; the commands shared out between the cores.
     let cmds: Vec<_> = commands().iter().filter(|c| !matches!(c.id, "open" | "save")).collect();
     let threads = std::thread::available_parallelism().map_or(4, |n| n.get());
@@ -6421,21 +6476,21 @@ fn a_file_from_before_guids_opens_with_guids_and_six_digit_ids() {
 }
 
 #[test]
-fn a_file_of_the_family_editors_unreleased_formats_20_to_32_is_refused_as_newer() {
-    // The Family Editor took the format from 17 to 32 a step at a time before it was released, and then became part of 18,
-    // which every change since 0.11 shares; 19 is the sheet list's (the Family Editor's 19 was never released either).
-    // Nothing of 20 to 32 was released, so this build reads none of them: each is refused as any newer file is.
+fn a_file_of_the_family_editors_unreleased_formats_21_to_32_is_refused_as_newer() {
+    // The Family Editor took the format from 17 to 32 a step at a time before it was released, and none of that was. 0.12's
+    // format is 20, which every change since 0.11 shares, so a file of those builds stamped 20 opens as one of 0.12's, and 21
+    // to 32 are refused as any newer file is.
     use crate::model::{FORMAT, Model};
-    assert_eq!(FORMAT, 19);
+    assert_eq!(FORMAT, 20);
     let mut s = Session::new();
     house(&mut s);
     let v = serde_json::to_value(&*s.model).unwrap();
-    for old in 20..=32 {
+    for old in 21..=32 {
         let mut was = v.clone();
         was["format"] = json!(old);
         let e = Model::read(&was.to_string()).unwrap_err();
         assert!(
-            e.contains("saved by a newer BIMCraft") && e.contains(&format!("file format {old}")) && e.contains("reads up to 19"),
+            e.contains("saved by a newer BIMCraft") && e.contains(&format!("file format {old}")) && e.contains("reads up to 20"),
             "{old}: {e}"
         );
     }

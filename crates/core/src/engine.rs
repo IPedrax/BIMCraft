@@ -514,6 +514,19 @@ impl Session {
                 // Locked and equal dimensions moved what they measure to as the command moved it.
                 if cmd.undoable {
                     crate::constraints::keep(self, &before)?;
+                    // A room's own floor and ceiling follow its boundary, on the levels the command changed.
+                    crate::rooms::follow(self, &before)?;
+                    // Tests hold that to what following every level makes.
+                    #[cfg(test)]
+                    {
+                        let mut whole = self.clone();
+                        crate::rooms::follow_all(&mut whole)?;
+                        assert!(
+                            whole.model.elements.iter().eq(self.model.elements.iter()),
+                            "the floors and ceilings of rooms followed by what `{}` changed aren't as following every level makes them",
+                            cmd.id
+                        );
+                    }
                 }
                 // What was made or changed must be as a sketch of it solves too (an outline that is simple), which a file
                 // from before may break; Insert from File brings in what it finds.
@@ -1255,7 +1268,10 @@ fn named(m: &Model, params: &Value) -> Option<Value> {
                 }
             }
             Value::Array(a) => a.iter_mut().for_each(|x| walk(m, x, changed)),
-            Value::Object(o) => o.values_mut().for_each(|x| walk(m, x, changed)),
+            // A `guid` field says which thing it is, as a definition for a dictionary does, and `definition` which one a family's parameter is tied to: they stay GUIDs.
+            Value::Object(o) => {
+                o.iter_mut().filter(|(k, _)| !matches!(k.as_str(), "guid" | "definition")).for_each(|(_, x)| walk(m, x, changed))
+            }
             _ => {}
         }
     }

@@ -110,7 +110,7 @@ fn bring(to: &mut Model, l: &crate::model::Link, from: &Model) -> Result<(), Str
     if ask.is_empty() {
         return Ok(());
     }
-    crate::insert::insert_as(to, &other, &ask, true).map(|_| ())
+    crate::insert::insert_as(to, &other, &ask, true, &BTreeSet::new()).map(|_| ())
 }
 
 #[cfg(test)]

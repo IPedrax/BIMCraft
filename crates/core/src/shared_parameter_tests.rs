@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use serde_json::{Value, json};
 
 use crate::engine::Session;
-use crate::family::{Category, Group, Kind};
+use crate::family::{Category, Group, Kind, Under};
 use crate::shared_parameters::{self, SharedFile};
 
 fn run(s: &mut Session, id: &str, p: Value) -> Value {
@@ -382,7 +382,7 @@ fn the_commands_refuse_what_they_cant_do_and_leave_the_file_as_it_was() {
         (sp(json!({"path": path, "action": "load", "family": "Cabinet", "guid": COST})), COST),
         (sp(json!({"path": path, "action": "load", "name": "Fire Rating"})), "`family`"),
         (sp(json!({"path": path, "action": "load", "family": "Nowhere", "name": "Fire Rating"})), "Nowhere"),
-        (sp(json!({"path": path, "action": "load", "family": "Cabinet", "name": "Fire Rating", "under": "nowhere"})), "nowhere"),
+        (sp(json!({"path": path, "action": "load", "family": "Cabinet", "name": "Fire Rating", "under": "two\nlines"})), "under"),
         (sp(json!({"path": path, "action": "load", "family": "Cabinet", "name": "Fire Rating", "instance": "x"})), "instance"),
         (sp(json!({"path": unknown, "action": "load", "family": "Cabinet", "name": "Cost"})), "line 13"),
         (sp(json!({"path": twice, "action": "load", "family": "Cabinet", "name": "Fire Rating"})), "`guid`"),
@@ -438,11 +438,11 @@ fn a_parameter_from_the_file_goes_into_a_family_and_is_there_when_the_project_is
     let f = &s.model.families["Cabinet"];
     let fire = f.parameters.iter().find(|p| p.name == "Fire Rating").cloned().unwrap_or_default();
     assert_eq!(fire.shared.map(|g| g.to_string()).as_deref(), Some(FIRE));
-    assert_eq!((fire.kind, fire.instance, fire.group()), (Kind::Text, true, Group::IdentityData));
+    assert_eq!((fire.kind, fire.instance, fire.group()), (Kind::Text, true, Under::Group(Group::IdentityData)));
     let span = f.parameters.iter().find(|p| p.name == "Clear Span").cloned().unwrap_or_default();
     assert_eq!(
         (span.kind, span.instance, span.group()),
-        (Kind::Length, false, Group::Dimensions),
+        (Kind::Length, false, Under::Group(Group::Dimensions)),
         "a type parameter under its kind's group"
     );
     // Its name and kind are the file's: the family can't change them.
