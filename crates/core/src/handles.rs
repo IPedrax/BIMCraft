@@ -289,7 +289,7 @@ mod tests {
         assert!(s.execute("modify", &json!({"id": column, "attach_top": roof})).is_ok());
     }
 
-    /// What FORMAT 33 holds of a column: its top offset and what it's attached to are in the file, by GUID, and a copy follows the
+    /// What FORMAT 20 holds of a column: its top offset and what it's attached to are in the file, by GUID, and a copy follows the
     /// same roof.
     #[test]
     fn an_attached_column_keeps_what_it_follows_through_a_file_and_a_copy() {
