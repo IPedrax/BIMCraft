@@ -289,6 +289,8 @@ struct Step {
     sections: BTreeMap<Section, u64>,
     /// What each OmniClass number and title classifies: type objects, else occurrences with none. Written once at the end.
     classified: BTreeMap<(String, String), Vec<u64>>,
+    /// The `IfcClassification` of each system by its name, written the first time a family or a parameter asks for it.
+    systems: BTreeMap<String, u64>,
 }
 
 /// A member's section as its type gives it: `width` and `depth` in mm (a round section is `width` across, so its depth is
@@ -479,7 +481,7 @@ impl Step {
         if classified.is_empty() {
             return;
         }
-        let system = self.add("IFCCLASSIFICATION($,$,$,'OmniClass',$,$,$)");
+        let system = self.classification("OmniClass", None);
         for ((number, title), objects) in classified {
             let key = number
                 .bytes()
@@ -490,6 +492,17 @@ impl Step {
             let reference = self.add(format!("IFCCLASSIFICATIONREFERENCE($,{},{name},#{system},$,$)", s(&number)));
             self.add(format!("IFCRELASSOCIATESCLASSIFICATION({},$,$,$,({}),#{reference})", self.guid(CLASSIFIES, key), refs(&objects)));
         }
+    }
+
+    /// The `IfcClassification` named `system`, one for each name whichever writer asks first; `edition` is the first asker's.
+    fn classification(&mut self, system: &str, edition: Option<&str>) -> u64 {
+        if let Some(&written) = self.systems.get(system) {
+            return written;
+        }
+        let edition = edition.map_or_else(|| "$".to_string(), s);
+        let written = self.add(format!("IFCCLASSIFICATION($,{edition},$,{},$,$,$)", s(system)));
+        self.systems.insert(system.to_string(), written);
+        written
     }
 
     /// Quantity set `name` of `(name, kind, value)` for `ent`: kind `LENGTH` in mm, `AREA` in m², `VOLUME` in m³.
@@ -986,6 +999,7 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool) -> String {
         typed: BTreeMap::new(),
         sections: BTreeMap::new(),
         classified: BTreeMap::new(),
+        systems: BTreeMap::new(),
     };
     let origin = w.add("IFCCARTESIANPOINT((0.,0.,0.))");
     w.z = w.add("IFCDIRECTION((0.,0.,1.))");
@@ -2090,18 +2104,9 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool) -> String {
     }
     // Each classification system the project's parameters hold codes of, an `IfcClassification`; each code in it a reference,
     // associated with the elements holding it.
-    let mut systems: BTreeMap<&str, u64> = BTreeMap::new();
     for ((name, code), ents) in &classified {
         let Some(c) = m.parameters.get(*name).and_then(|p| p.classification.as_ref()) else { continue };
-        let system = match systems.get(name) {
-            Some(&system) => system,
-            None => {
-                let edition = c.edition.as_deref().map_or_else(|| "$".to_string(), s);
-                let system = w.add(format!("IFCCLASSIFICATION($,{edition},$,{},$,$,$)", s(&c.system)));
-                systems.insert(name, system);
-                system
-            }
-        };
+        let system = w.classification(&c.system, c.edition.as_deref());
         let reference = w.add(format!("IFCCLASSIFICATIONREFERENCE($,{},$,#{system},$,$)", s(code)));
         let key = key_of(&format!("{name}\u{0}{code}"));
         w.add(format!("IFCRELASSOCIATESCLASSIFICATION({},$,$,$,({}),#{reference})", w.guid(CLASSIFIED, key), refs(ents)));
