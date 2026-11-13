@@ -147,3 +147,20 @@ fn a_family_with_no_room_for_another_shape_goes_on_in_the_next_rather_than_leavi
     assert_eq!(m.families["Bolt (2)"].forms.len(), 260 - most);
     assert_eq!(copies(m, "Bolt").len() + copies(m, "Bolt (2)").len(), 260);
 }
+
+#[test]
+fn a_bolt_whose_file_gives_its_size_comes_in_in_a_family_of_that_size() {
+    let mut g = G::new();
+    let r = rod(&mut g, 10.0, 60.0);
+    let map = shape(&mut g, &[r]);
+    let sized = bolt(&mut g, "Bolt assembly", map, [0.0, 0.0, 0.0], UP, EAST);
+    bolt(&mut g, "Bolt assembly", map, [1000.0, 0.0, 0.0], UP, EAST);
+    // As Tekla writes a bolt's properties: its name in its `Tekla Bolt` set. The second bolt has none.
+    let name = g.add("IFCPROPERTYSINGLEVALUE('Bolt Name',$,IFCLABEL('BOLTM20*60'),$)");
+    let set = g.add(&format!("IFCPROPERTYSET('{:0>22}',$,'Tekla Bolt',$,(#{name}))", g.next + 1));
+    g.add(&format!("IFCRELDEFINESBYPROPERTIES('{:0>22}',$,$,$,(#{sized}),#{set})", g.next + 1));
+    let i = g.import();
+    let m = &i.model;
+    assert_eq!(copies(m, "Bolt assembly BOLTM20*60").len(), 1, "{:?}", m.families.keys().collect::<Vec<_>>());
+    assert_eq!(copies(m, "Bolt assembly").len(), 1, "the one of no size keeps the product's name");
+}

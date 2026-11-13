@@ -3077,9 +3077,9 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
     }
     // The planes exact forms are drawn on, by GUID: one GUID for one plane, whichever family draws on it.
     let proto_planes: RefCell<HashMap<Guid, crate::family::RefPlane>> = RefCell::new(HashMap::new());
-    // Prototype: a bolt's size, as Tekla names it, names its family.
+    // A bolt's size, as Tekla names it ("BOLTM20*60" in its `Tekla Bolt` set), names its family after the product's name:
+    // a steel model's bolts in a family for each size, rather than thousands of types in "Bolt assembly", "(2)" and on.
     let sizes = PropertySets::read(&r, &named(&["IFCRELDEFINESBYPROPERTIES"]), &["Tekla Bolt"]);
-    let by_size = proto("BIMCRAFT_PROTO_SIZE");
     // A product to place: it, its family and type, whether mirrored, where, its angle and its height.
     type Placed = (u64, String, String, bool, P2, f64, f64, Option<[P3; 2]>);
     // Reads product `x` as a component of a family of `category` in `made`, its type found or made, and puts it in `placed`; a
@@ -3193,7 +3193,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
         let family = clip(parts.next().unwrap_or_default());
         let base = clip(parts.next().unwrap_or(&family));
         let family = match sizes.said(id, "Bolt Name").and_then(|p| text(p.args.get(2))) {
-            Some(size) if by_size && class.is_some() && !size.trim().is_empty() => clip(&format!("{family} {}", size.trim())),
+            Some(size) if class.is_some() && !size.trim().is_empty() => clip(&format!("{family} {}", size.trim())),
             _ => family,
         };
         // A generic family of the name but another class is another family, numbered on; so is one of the class with no room
