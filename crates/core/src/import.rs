@@ -822,8 +822,9 @@ impl<'a> Reader<'a> {
         }
     }
 
-    /// Prototype: item `it`, mapped by `mf` into the product's axes, as a form in the family's (`to_local`), where it is an
-    /// extrusion straight along its own axes of a circle or of a profile of lines; its plane stored in `planes`.
+    /// Item `it`, mapped by `mf` into the product's axes, as a form in the family's (`to_local`), where it is an extrusion
+    /// straight along its own axes of a circle or of a profile of lines (an arc's chords among them); its plane stored in
+    /// `planes`, one GUID for one plane whichever family draws on it.
     #[allow(clippy::too_many_arguments)]
     fn exact_form(
         &self,
@@ -1239,16 +1240,14 @@ impl<'a> Reader<'a> {
     /// Where a product's body lies: its frame, then the map of its first body item where that is an `IfcMappedItem` (as
     /// Tekla places a bolt, its map turning it); its frame where it isn't.
     fn body_frame(&self, product: &Entity) -> Frame {
-        self.frame(product).then(self.body_map(product))
+        self.frame(product).then(self.body_map(product).unwrap_or(WORLD))
     }
 
-    /// The map of a product's first body item, in its own coordinates, where that is an `IfcMappedItem`; none, its axes.
-    fn body_map(&self, product: &Entity) -> Frame {
-        let Some(item) = self.chosen(product).first().and_then(|i| self.get(*i)).filter(|e| e.name == "IFCMAPPEDITEM") else {
-            return WORLD;
-        };
-        let Some(map) = self.at(item.args.first()) else { return WORLD };
-        self.map_frame(map, item)
+    /// The map of a product's first body item, in its own coordinates, where that is an `IfcMappedItem`.
+    fn body_map(&self, product: &Entity) -> Option<Frame> {
+        let item = self.chosen(product).first().and_then(|i| self.get(*i)).filter(|e| e.name == "IFCMAPPEDITEM")?;
+        let map = self.at(item.args.first())?;
+        Some(self.map_frame(map, item))
     }
 
     /// A product's body as faces, in model coordinates: its Body representation, else any but a
@@ -3132,9 +3131,8 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
             );
         }
     }
-    // Prototype: the planes parametric forms are drawn on, by GUID (one GUID for one plane, whichever family).
+    // The planes exact forms are drawn on, by GUID: one GUID for one plane, whichever family draws on it.
     let proto_planes: RefCell<HashMap<Guid, crate::family::RefPlane>> = RefCell::new(HashMap::new());
-    let by_forms = proto("BIMCRAFT_PROTO_FORMS");
     // Prototype: a bolt's size, as Tekla names it, names its family.
     let sizes = PropertySets::read(&r, &named(&["IFCRELDEFINESBYPROPERTIES"]), &["Tekla Bolt"]);
     let by_size = proto("BIMCRAFT_PROTO_SIZE");
@@ -3157,12 +3155,13 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
         // A body that lies tilted (its axes square, its z not up) comes in in its own axes, which its component keeps: each
         // copy of a bolt is then one type, however it lies.
         let b = r.body_frame(x);
-        let map = r.body_map(x);
+        let mapped = r.body_map(x);
+        let map = mapped.unwrap_or(WORLD);
         let square = |v: P3| (dot(v, v) - 1.0).abs() < 1e-6;
         let sound = [b.x, b.y, b.z].into_iter().all(square) && dot(b.x, b.y).abs() < 1e-6;
         let tilted = sound && b.z[2] < 1.0 - 1e-9;
         // An upright generic body a map places, as Tekla places a bolt standing, also comes in its map's axes, turned by its angle.
-        let in_map = tilted || (sound && class.is_some() && map != WORLD);
+        let in_map = tilted || (sound && class.is_some() && mapped.is_some());
         let flat = |v: P3| unit([v[0], v[1], 0.0]);
         let along = [flat(f.x), flat(f.y), [1.0, 0.0, 0.0]].into_iter().find(|v| dot(*v, *v) > 0.5).unwrap_or([1.0, 0.0, 0.0]);
         let side = cross([0.0, 0.0, 1.0], along);
@@ -3179,10 +3178,11 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
         let fallback = element_material(&r, &l, id).unwrap_or_default();
         let mut groups: BTreeMap<String, Vec<[P3; 3]>> = BTreeMap::new();
         r.coarse.set(class.is_some());
-        // Prototype: a straight extrusion inside the body's maps comes in as the form it is (a profile on a plane, from and
-        // to), in the map's axes; what isn't one comes in as triangles, as before.
+        // A straight extrusion inside the body's maps comes in as the form it is (a profile on a plane, from and to), in
+        // the map's axes, as a family drawn by hand holds one, and is meshed only where it is drawn: a bolt's shaft, nut and
+        // washer, by the ten thousand in a steel model. What isn't one comes in as triangles, as before.
         let (looked, mut exact): (Vec<LookedFaces>, Vec<Form>) =
-            if by_forms && in_map && class.is_some() {
+            if in_map && class.is_some() {
                 let mut rest = Vec::new();
                 let mut exact = Vec::new();
                 let to_local = |w: P3| [dot(sub(w, map.o), map.x), dot(sub(w, map.o), map.y), dot(sub(w, map.o), map.z)];

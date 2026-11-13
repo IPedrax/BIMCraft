@@ -321,7 +321,7 @@ msgstr ""
 msgid "Inspection Box"
 msgstr ""
 
-#: crates/core/src/import.rs:1730
+#: crates/core/src/import.rs:1729
 msgid "Insulation"
 msgstr ""
 
@@ -398,7 +398,7 @@ msgstr ""
 msgid "Medium Lines"
 msgstr ""
 
-#: crates/core/src/import.rs:1733
+#: crates/core/src/import.rs:1732
 msgid "Membrane"
 msgstr ""
 

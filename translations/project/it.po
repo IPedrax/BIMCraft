@@ -321,7 +321,7 @@ msgstr "Orizzontale"
 msgid "Inspection Box"
 msgstr "Pozzetto di ispezione"
 
-#: crates/core/src/import.rs:1730
+#: crates/core/src/import.rs:1729
 msgid "Insulation"
 msgstr "Isolante"
 
@@ -398,7 +398,7 @@ msgstr ""
 msgid "Medium Lines"
 msgstr "Linee medie"
 
-#: crates/core/src/import.rs:1733
+#: crates/core/src/import.rs:1732
 msgid "Membrane"
 msgstr "Membrana"
 
