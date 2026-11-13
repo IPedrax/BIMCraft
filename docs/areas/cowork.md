@@ -190,8 +190,9 @@ the desktop wires it in slice 3.
   closes) hand the session to a guest (`Hosting::hand_over`): what changed goes out first, so its copy is the host's model; its
   window hosts that copy as Settings > Co-Work says (`take_over`) and answers with its port and code (`hosting`); the old host sends
   the others there (`moved`, with the address it sees the new host at) and its own session ends (`handed_over`). The others' windows
-  join the new host by themselves (`move_to_new_host`). The undo history and the AI chat stay with the old host: the new host starts
-  both afresh. The new host's project is its copy, with no file until it saves one.
+  join the new host by themselves (`move_to_new_host`). The AI chat goes with the session, in the form a saved chat has, and the new host's
+  window goes on with it (`Chat::restore`: whole or not at all, the model starting afresh on another provider); the undo history
+  stays with the old host. The new host's project is its copy, with no file until it saves one.
 
 ## Not built yet
 

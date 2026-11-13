@@ -70,8 +70,8 @@ pub enum Happened {
     /// session is over.
     HandedOver(String),
     /// A guest's window: the host hands the session to this window, which hosts it from its copy and answers with
-    /// [`Joined::hosting`].
-    HandOver,
+    /// [`Joined::hosting`]; with the host's AI chat, as the host's window keeps a chat (null for none), to go on with.
+    HandOver(Value),
     /// A guest's window: the session moved to `host`, at `addr` with `code`: the window joins it there.
     Moved {
         host: String,
@@ -285,9 +285,10 @@ impl Hosting {
         self.host.answer_knock(knock, let_in);
     }
 
-    /// Hands the session to guest `peer`: its window hosts it from its copy, which has everything the host's has, and the others
-    /// are sent there. This window's session is over once it says it hosts ([`Happened::HandedOver`]).
-    pub fn hand_over(&mut self, session: &mut Session, peer: u32) -> Result<(), String> {
+    /// Hands the session to guest `peer`, with the AI chat `chat` (as the window keeps one): its window hosts it from its copy,
+    /// which has everything the host's has, and the others are sent there. This window's session is over once it says it hosts
+    /// ([`Happened::HandedOver`]).
+    pub fn hand_over(&mut self, session: &mut Session, peer: u32, chat: Value) -> Result<(), String> {
         if !self.people.contains_key(&peer) {
             return Err("that guest is no longer in the session".into());
         }
@@ -295,7 +296,7 @@ impl Hosting {
         self.flush(session, 0, &mut said);
         let gone = || "that guest is no longer in the session".to_string();
         let ip = self.host.ip_of(peer).ok_or_else(gone)?;
-        if !self.host.send(peer, &json!({"op": "handover"})) {
+        if !self.host.send(peer, &json!({"op": "handover", "chat": chat})) {
             return Err(gone());
         }
         self.handing = Some((peer, ip));
@@ -854,7 +855,7 @@ impl Joined {
                 }
             }
             Some("chat") => self.said.push(Happened::Chat(m["state"].clone())),
-            Some("handover") => self.said.push(Happened::HandOver),
+            Some("handover") => self.said.push(Happened::HandOver(m["chat"].clone())),
             Some("moved") => {
                 let addr = m["addr"].as_str().and_then(|a| a.parse::<SocketAddr>().ok());
                 let code = m["code"].as_str().and_then(|c| Code::parse(c).ok());

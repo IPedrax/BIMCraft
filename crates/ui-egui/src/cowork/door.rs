@@ -89,7 +89,10 @@ impl BimApp {
     pub(crate) fn make_host(&mut self, id: u32) {
         let Some(Live::Host(h)) = &mut self.cowork else { return };
         let name = h.others().get(&id).map(|o| o.name.clone()).unwrap_or_default();
-        self.status = match h.hand_over(&mut self.session, id) {
+        // The chat goes with the session, in the form a saved chat has: the new host's window goes on with it.
+        let project = self.session.path.clone().unwrap_or_else(|| self.session.model.name.clone().into());
+        let chat = self.assistant.chat.as_ref().map_or(serde_json::Value::Null, |c| c.to_saved(&project));
+        self.status = match h.hand_over(&mut self.session, id, chat) {
             Ok(()) => crate::Status { text: tf("Handing the session to {}…", &[&name]), error: false },
             Err(e) => crate::Status { text: e, error: true },
         };
@@ -108,15 +111,20 @@ impl BimApp {
         }
     }
 
-    /// A guest's window the session is handed to: it hosts it from its copy, as Co-Work's settings say, and tells the old host
-    /// where; or, when it can't, says why and stays a guest.
-    pub(super) fn take_over(&mut self, ctx: &Context) {
+    /// A guest's window the session is handed to: it hosts it from its copy, as Co-Work's settings say, goes on with the old host's
+    /// AI chat (`chat`, read as a saved chat is: whole or not at all), and tells the old host where; or, when it can't, says why and
+    /// stays a guest.
+    pub(super) fn take_over(&mut self, ctx: &Context, chat: &serde_json::Value) {
         let Some(Live::Guest(old)) = self.cowork.take() else { return };
         self.session.read_only = None;
         match self.start_hosting(ctx) {
             Ok(()) => {
                 if let Some(Live::Host(h)) = &self.cowork {
                     old.hosting(Ok((h.host().port(), h.host().code().clone())));
+                }
+                let provider = self.assistant.provider;
+                if let Some(c) = self.assistant.chat.as_mut().filter(|_| !chat.is_null()) {
+                    c.restore(chat, provider);
                 }
                 let said = t("You host the Co-Work session now. The project is your copy of it: save it as a file of your own");
                 self.status = crate::Status { text: said.to_string(), error: false };

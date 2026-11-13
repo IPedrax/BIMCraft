@@ -467,13 +467,22 @@ fn a_host_hands_the_session_to_a_guest_and_the_others_move_there() {
     let bo_id = host.on(|_, h| h.as_ref().unwrap().people().into_iter().find(|(_, n)| n == "Bo").unwrap().0);
     host.on(|s, _| s.execute("wall", &wall(40000)).map(|_| ()).unwrap());
     let theirs = json_of(&host.model());
-    host.on(move |s, h| h.as_mut().unwrap().hand_over(s, bo_id)).unwrap();
-    // Bo is asked to host, and hosts from his copy, which has everything the host's had.
+    let chat = json!({"v": 1, "log": [{"t": "you", "text": "hello"}], "history": [], "todos": []});
+    let sent = chat.clone();
+    host.on(move |s, h| h.as_mut().unwrap().hand_over(s, bo_id, sent)).unwrap();
+    // Bo is asked to host, with the chat as the host's window kept it, and hosts from his copy, which has everything the host's had.
     let deadline = Instant::now() + Duration::from_secs(10);
-    while !bo.pump(&mut sb).contains(&Happened::HandOver) {
+    let given = loop {
+        if let Some(c) = bo.pump(&mut sb).into_iter().find_map(|h| match h {
+            Happened::HandOver(c) => Some(c),
+            _ => None,
+        }) {
+            break c;
+        }
         assert!(Instant::now() < deadline, "Bo was never asked");
         std::thread::sleep(Duration::from_millis(5));
-    }
+    };
+    assert_eq!(given, chat, "the chat goes with the session");
     assert_eq!(json_of(&sb.model), theirs);
     sb.read_only = None;
     let config = HostConfig {

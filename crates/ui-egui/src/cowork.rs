@@ -201,8 +201,8 @@ impl BimApp {
                     self.cowork_seen.knocks.retain(|(k, ..)| *k != knock);
                     continue;
                 }
-                Happened::HandOver => {
-                    self.take_over(ctx);
+                Happened::HandOver(chat) => {
+                    self.take_over(ctx, &chat);
                     continue;
                 }
                 Happened::HandedOver(name) => {

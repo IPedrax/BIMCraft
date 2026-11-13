@@ -693,7 +693,11 @@ fn make_host_hands_the_session_to_a_guests_window_which_hosts_it_from_its_copy()
     let mut ana = host_window();
     ana.state_mut().cowork_dialog = None;
     let (addr, code) = hosted(&ana);
+    // Ana's window has a chat going; Bo's has an assistant to go on with it.
+    with_assistant(&mut ana, bimcraft_assistant::testing::Fake::default(), KEY);
+    ana.state_mut().assistant.chat.as_mut().unwrap().log.push(bimcraft_assistant::Line::You("hello".into()));
     let mut bo = app("");
+    with_assistant(&mut bo, bimcraft_assistant::testing::Fake::default(), "");
     bo.state_mut().cowork_prefs =
         Prefs { name: "Bo".into(), addr: "127.0.0.1".into(), port: 0, visible: false, edit: true, ..Prefs::default() };
     shortcut(&mut bo, "CW");
@@ -714,6 +718,8 @@ fn make_host_hands_the_session_to_a_guests_window_which_hosts_it_from_its_copy()
     };
     both(&mut ana, &mut bo, &|a, b| b.guest() && matches!(&a.cowork, Some(Live::Host(h)) if !h.people().is_empty()));
     bo.state_mut().cowork_dialog = None;
+    // The frame after a join starts the window over on the host's project; the handover comes after that.
+    bo.run();
     let theirs = ana.state().session.model.to_json().unwrap();
     let id = match &ana.state().cowork {
         Some(Live::Host(h)) => h.people()[0].0,
@@ -725,4 +731,5 @@ fn make_host_hands_the_session_to_a_guests_window_which_hosts_it_from_its_copy()
     assert_eq!(bo.state().session.read_only, None, "his copy is his to change");
     assert_eq!(bo.state().session.model.to_json().unwrap(), theirs);
     assert_eq!(bo.state().session.author.as_deref(), Some("Bo"));
+    assert!(bo.state().assistant.log().contains(&bimcraft_assistant::Line::You("hello".into())), "the chat came with the session");
 }
