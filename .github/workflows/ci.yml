@@ -126,6 +126,9 @@ jobs:
       - name: shellcheck
         run: find packaging -name '*.sh' -print0 | xargs -0 shellcheck
 
+      - name: Discord release post
+        run: python3 ci/discord_release.py --self-test
+
       - name: actionlint
         run: |
           curl -sSfL -o actionlint.tar.gz https://github.com/rhysd/actionlint/releases/download/v1.7.7/actionlint_1.7.7_linux_amd64.tar.gz

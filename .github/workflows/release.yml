@@ -424,3 +424,31 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v5
+
+  # Tells the Discord server about a stable release: its notes, and a ping for the Release Pings role. Like `apt` it is a job of
+  # this workflow and not a `release: published` one, because the release is made with the workflow's GITHUB_TOKEN. The webhook is
+  # the secret DISCORD_RELEASE_WEBHOOK and the role's id the variable DISCORD_RELEASE_ROLE_ID (an id is no secret). With no
+  # webhook it posts nothing, and a failure leaves the release as it is.
+  discord:
+    name: Discord
+    if: startsWith(github.ref, 'refs/tags/') && !contains(github.ref_name, '-')
+    needs: release
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Post the release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
+          DISCORD_ROLE_ID: ${{ vars.DISCORD_RELEASE_ROLE_ID }}
+        run: |
+          if [ -z "$DISCORD_WEBHOOK" ]; then
+            echo "No DISCORD_RELEASE_WEBHOOK secret: nothing to post."
+            exit 0
+          fi
+          gh release view "$GITHUB_REF_NAME" --json name,url,body | python3 ci/discord_release.py "$DISCORD_WEBHOOK" "$DISCORD_ROLE_ID"
