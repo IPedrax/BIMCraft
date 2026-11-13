@@ -519,6 +519,13 @@ build that placed every family by its datums holds no record, so one whose famil
 instances where they were drawn. An imported 3D model's family (`import_mesh`) has its origin on its datums. Tests:
 `origin_tests.rs`.
 
+**In the family document.** A reference plane's Properties have Defines Origin under Other (none for an adaptive family):
+ticked, the plane takes the origin in its direction and the plane that had it lets go; cleared, the datum of that direction
+takes it back; a datum's box can't be cleared while it has the origin, nor a plane square to none of x, y and z ticked. A small
+crimson mark, a ring with a cross, shows the insertion point over {3D}, the plans and the elevations
+(`editor/origin_mark.rs`). Tests: `crates/ui-egui/src/tests/family_origin.rs`, which with `BIMCRAFT_O1_DUMP` set to a folder
+saves the window there (`o1-*.png`).
+
 ## Dimensions and constraints
 
 F7a (`family/constraints.rs`). A family's `dimensions` are Revit's family dimensions, each a part (id and GUID, `HasPart`): an
@@ -1308,4 +1315,5 @@ In `crates/ui-egui`, the Family Editor:
 - `editor/connectors.rs`: a family's connectors in the document, placed from Create > Connectors, listed in the browser, typed
   in Properties. `editor/connector_marks.rs`: their symbols and arrows over {3D}, plans and elevations, lit and picked (an
   overlay drawn through a view's projection alone).
+- `editor/origin_mark.rs`: the insertion point's mark over {3D}, plans and elevations, and Defines Origin ticked on a plane.
 - `editor/lit3d.rs`: {3D} staged for the project's 3D view (`FamilyScene`), its selection and hover highlight. `editor/visibility.rs`: Family Element Visibility Settings.

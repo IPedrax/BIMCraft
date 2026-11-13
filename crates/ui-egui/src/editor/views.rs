@@ -805,6 +805,10 @@ impl FamilyEditor {
         self.connector_hover = response.hover_pos().and_then(|p| super::connector_marks::pick(&connector_marks, &project, p));
         let lit = (PICKED, crate::style::canvas_pal().hover);
         super::connector_marks::paint(&painter, &connector_marks, &project, self.selected_connector(), self.connector_hover, lit);
+        // The insertion point, where the planes that define the origin cross (O1).
+        if let Some(at) = self.origin_mark() {
+            super::origin_mark::paint(&painter, &project, at);
+        }
         // What is selected, over the picture.
         if editable && let (Some(i), Some(f)) = (self.selected_form(), family.as_ref()) {
             let ring: Vec<egui::Pos2> = fv::outline(f, &values, &c.staged, which, i).into_iter().map(screen).collect();
