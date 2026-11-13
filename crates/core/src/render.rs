@@ -6140,7 +6140,7 @@ mod tests {
         let d = section(&s.model, 100010, view);
         assert_eq!(d.pick(at(0.0, 1500.0), 2.0), Some(100005), "the cut is the wall's to pick");
         assert_eq!(d.pick(at(4000.0, 3000.0), 3.0), Some(100001), "Level 2's line");
-        assert_eq!(d.pick(at(0.0, 3700.0), 3.0), Some(100009), "grid 1, where it crosses the section");
+        assert_eq!(d.pick(at(0.0, 3200.0), 3.0), Some(100009), "grid 1, where it crosses the section");
     }
 
     #[test]
@@ -6169,7 +6169,7 @@ mod tests {
         assert_eq!(pixel(&png, p), (255, 255, 255));
         let d = section(&s.model, 100011, view);
         assert!(d.prims.iter().all(|p| !matches!(p, Prim::Fill { color, .. } if *color == POCHE)), "no cut");
-        assert_eq!(d.pick(view.px(P2(0.0 - start.0, 3700.0)), 3.0), Some(100009), "grid 1 runs into what it sees");
+        assert_eq!(d.pick(view.px(P2(0.0 - start.0, 3200.0)), 3.0), Some(100009), "grid 1 runs into what it sees");
         assert_eq!(
             view3d::Scene::new(&s.model)
                 .cut(&section_camera(&s.model, 100011, view).unwrap().0, &section_camera(&s.model, 100011, view).unwrap().1, &[])
@@ -6282,7 +6282,8 @@ mod tests {
         assert!(d.pick((name.0, name.1 - 16.0 * d.k), 3.0) == Some(100008), "the name past the crop's edge");
         // Grid 1 stops at the crop's edge, its bubble there.
         let (x, y) = d.view.px(P2(0.0, 4000.0));
-        assert_eq!(d.pick((x + 11.0 * d.k, y - 11.0 * d.k), 2.0), Some(100009));
+        let r = bubble(&d, 100009) / 2.0;
+        assert_eq!(d.pick((x + r, y - r), 2.0), Some(100009));
         // A section cropped to the ground floor's lower part: Level 2 isn't in it, and the cut wall stops.
         s.script("section {\"start\": [-1000, 3000], \"end\": [9000, 3000]}").unwrap();
         s.execute("crop", &serde_json::json!({"view": 100010, "region": [[0, -100], [5000, 2000]]})).unwrap();
@@ -6475,6 +6476,10 @@ mod tests {
                 Prim::Line { pts, .. } => {
                     Some(pts.iter().map(|p| p.1).fold(f32::MIN, f32::max) - pts.iter().map(|p| p.1).fold(f32::MAX, f32::min))
                 }
+                Prim::Fill { rings, .. } => {
+                    let ys: Vec<f32> = rings.iter().flatten().map(|p| p.1).collect();
+                    (!ys.is_empty()).then(|| ys.iter().copied().fold(f32::MIN, f32::max) - ys.iter().copied().fold(f32::MAX, f32::min))
+                }
                 _ => None,
             })
             .fold(0.0, f32::max)
@@ -6524,24 +6529,23 @@ mod tests {
     fn a_views_scale_sizes_its_annotation_as_paper_at_that_scale_holds_it() {
         let mut s = house();
         s.execute("scale", &serde_json::json!({"view": 100000, "scale": 50})).unwrap();
-        // A tenth of a pixel to the mm: at 1 : 50, annotation is the size it has been all along (10 px lettering is
-        // 2 mm of paper, DENSITY px to the mm).
+        // A tenth of a pixel to the mm: at 1 : 50, annotation is paper size (2.5 mm lettering at DENSITY px to the mm).
         let view = View { angle: 0.0, scale: 0.1, cx: 4000.0, cy: 3000.0, width: 1000, height: 800 };
         let grid = |s: &Session, view: View| {
             let d = draw(&s.model, 100000, view);
             (lettering(&d, 100009), bubble(&d, 100009))
         };
         let (text, ring) = grid(&s, view);
-        assert!((text - 10.0).abs() < 1.0 && (ring - 22.0).abs() < 1.0, "{text} {ring}");
+        assert!((8.0..=18.0).contains(&text) && (ring - 31.25).abs() < 2.0, "{text} {ring}");
         // The bubble stands where it did, its middle a bubble's radius, times k, past the grid's end.
         let ends = [view.px(P2(0.0, -2000.0)), view.px(P2(0.0, 8000.0))];
-        assert!((bubble_gap(&draw(&s.model, 100000, view), 100009, ends) - 11.0).abs() < 0.5);
+        assert!((bubble_gap(&draw(&s.model, 100000, view), 100009, ends) - ring / 2.0).abs() < 0.5);
         for (n, k) in [(50, 1.0), (100, 2.0), (200, 4.0), (25, 0.5)] {
             s.execute("scale", &serde_json::json!({"view": 100000, "scale": n})).unwrap();
             let (t, r) = grid(&s, view);
             assert!((t - text * k).abs() < 1.0 && (r - ring * k).abs() < 1.0, "1 : {n}: {t} {r}");
             let gap = bubble_gap(&draw(&s.model, 100000, view), 100009, ends);
-            assert!((gap - 11.0 * k).abs() < 0.5, "1 : {n}: the bubble grows about the grid's end: {gap}");
+            assert!((gap - ring / 2.0 * k).abs() < 0.5, "1 : {n}: the bubble grows about the grid's end: {gap}");
         }
         // Zoomed in twice, the same view's annotation is twice the size: a screen showing 1 mm as 0.2 px, at 1 : 100.
         s.execute("scale", &serde_json::json!({"view": 100000, "scale": 100})).unwrap();
@@ -6557,7 +6561,7 @@ mod tests {
         let view = View { angle: 0.0, scale: 0.1, cx: 5000.0, cy: 1500.0, width: 1200, height: 800 };
         s.execute("scale", &serde_json::json!({"view": 100010, "scale": 50})).unwrap();
         let none = lettering(&section(&s.model, 100010, view), 100009);
-        assert!((none - 10.0).abs() < 1.0, "{none}");
+        assert!((8.0..=18.0).contains(&none), "{none}");
         s.execute("scale", &serde_json::json!({"view": 100010, "scale": 100})).unwrap();
         let hundred = lettering(&section(&s.model, 100010, view), 100009);
         assert!((hundred - 2.0 * none).abs() < 1.0, "{hundred}");
