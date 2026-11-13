@@ -1028,11 +1028,11 @@ msgstr "Piano associato"
 msgid "At least {} characters"
 msgstr ""
 
-#: crates/core/src/model.rs:3137
+#: crates/core/src/model.rs:3138
 msgid "At wall centre line"
 msgstr "Sull'asse del muro"
 
-#: crates/core/src/model.rs:3138
+#: crates/core/src/model.rs:3139
 msgid "At wall finish"
 msgstr "Sulla finitura del muro"
 
@@ -1388,7 +1388,7 @@ msgstr "Linea di contorno: le linee del profilo"
 msgid "Branch Panel"
 msgstr ""
 
-#: crates/core/src/model.rs:3462
+#: crates/core/src/model.rs:3463
 msgid "Brick"
 msgstr "Mattone"
 
@@ -1717,7 +1717,7 @@ msgstr "Centro"
 msgid "Centre Lines"
 msgstr "Linee d'asse"
 
-#: crates/core/src/model.rs:3470
+#: crates/core/src/model.rs:3471
 msgid "Ceramic tile"
 msgstr "Piastrella ceramica"
 
@@ -2698,7 +2698,7 @@ msgstr "Volume concettuale"
 msgid "Concrete"
 msgstr "Calcestruzzo"
 
-#: crates/core/src/model.rs:3464
+#: crates/core/src/model.rs:3465
 msgid "Concrete block"
 msgstr "Blocco in calcestruzzo"
 
@@ -2881,7 +2881,7 @@ msgstr "Copiati {} IFC GlobalId."
 msgid "Copied {} rows, tab-separated."
 msgstr "Copiate {} righe, separate da tabulazione."
 
-#: crates/core/src/model.rs:3478
+#: crates/core/src/model.rs:3479
 msgid "Copper"
 msgstr "Rame"
 
@@ -2937,15 +2937,15 @@ msgstr "Copia ID, GUID e IFC GlobalId"
 msgid "Copy: click the point to copy from."
 msgstr ""
 
-#: crates/core/src/model.rs:460
+#: crates/core/src/model.rs:461
 msgid "Core Centreline"
 msgstr "Asse del nucleo"
 
-#: crates/core/src/model.rs:463
+#: crates/core/src/model.rs:464
 msgid "Core Face: Exterior"
 msgstr "Faccia del nucleo: esterna"
 
-#: crates/core/src/model.rs:464
+#: crates/core/src/model.rs:465
 msgid "Core Face: Interior"
 msgstr "Faccia del nucleo: interna"
 
@@ -3438,7 +3438,7 @@ msgstr "Demolito"
 msgid "Demolition"
 msgstr ""
 
-#: crates/core/src/commands.rs:11752
+#: crates/core/src/commands.rs:11761
 msgid "Dependent"
 msgstr "Dipendente"
 
@@ -3845,11 +3845,11 @@ msgstr "Punteggiata"
 msgid "Double Door"
 msgstr "Porta a due battenti"
 
-#: crates/core/src/model.rs:2837
+#: crates/core/src/model.rs:2838
 msgid "Double Sliding"
 msgstr "Scorrevole doppia"
 
-#: crates/core/src/model.rs:2835
+#: crates/core/src/model.rs:2836
 msgid "Double Swing"
 msgstr "Doppio battente"
 
@@ -4010,7 +4010,7 @@ msgstr "Dispersore (EG): un picchetto infisso dal piano, dove clicchi; Spazio lo
 msgid "Earthing Electrodes"
 msgstr "Dispersori"
 
-#: crates/core/src/model.rs:2091
+#: crates/core/src/model.rs:2092
 msgid "East"
 msgstr "Est"
 
@@ -4807,11 +4807,11 @@ msgstr "Fine modalità di modifica: le linee, chiuse in contorni, diventano la f
 msgid "Finish Edit Mode: the lines, closed into loops, become the outline and its holes"
 msgstr "Fine modalità di modifica: le linee, chiuse in contorni, diventano il contorno e i suoi fori"
 
-#: crates/core/src/model.rs:461
+#: crates/core/src/model.rs:462
 msgid "Finish Face: Exterior"
 msgstr "Faccia di finitura: esterna"
 
-#: crates/core/src/model.rs:462
+#: crates/core/src/model.rs:463
 msgid "Finish Face: Interior"
 msgstr "Faccia di finitura: interna"
 
@@ -4832,7 +4832,7 @@ msgstr "Primo estremo"
 msgid "Fit"
 msgstr ""
 
-#: crates/core/src/model.rs:2839
+#: crates/core/src/model.rs:2840
 msgid "Fixed"
 msgstr "Fisso"
 
@@ -4972,7 +4972,7 @@ msgstr ""
 msgid "Folder for new projects"
 msgstr "Cartella per i nuovi progetti"
 
-#: crates/core/src/model.rs:2838
+#: crates/core/src/model.rs:2839
 msgid "Folding"
 msgstr "Pieghevole"
 
@@ -5259,7 +5259,7 @@ msgstr "Gli ospiti possono modificare"
 msgid "Guests without an AI key may use mine"
 msgstr "Gli ospiti senza chiave IA possono usare la mia"
 
-#: crates/core/src/model.rs:3469
+#: crates/core/src/model.rs:3470
 msgid "Gypsum board"
 msgstr "Cartongesso"
 
@@ -6575,7 +6575,7 @@ msgstr ""
 msgid "Map {}"
 msgstr ""
 
-#: crates/core/src/model.rs:1678
+#: crates/core/src/model.rs:1679
 msgid "Mark"
 msgstr "ID"
 
@@ -7160,7 +7160,7 @@ msgstr "NBR 6492: bersaglio in pianta (±0,00), triangolo equilatero in sezione"
 msgid "NOT ENCLOSED"
 msgstr "NON CHIUSA"
 
-#: crates/core/src/model.rs:1679
+#: crates/core/src/model.rs:1680
 #: crates/ui-egui/src/adaptive_editor.rs:665
 #: crates/ui-egui/src/adaptive_editor.rs:804
 #: crates/ui-egui/src/cad.rs:85
@@ -7460,7 +7460,7 @@ msgstr ""
 msgid "Normalized Segment Length"
 msgstr ""
 
-#: crates/core/src/model.rs:2089
+#: crates/core/src/model.rs:2090
 msgid "North"
 msgstr "Nord"
 
@@ -8182,7 +8182,7 @@ msgstr "Fase di demolizione"
 msgid "Phase Filter"
 msgstr "Filtro delle fasi"
 
-#: crates/core/src/ifc.rs:2232
+#: crates/core/src/ifc.rs:2237
 msgid "Phase Filters"
 msgstr "Filtri delle fasi"
 
@@ -9141,7 +9141,7 @@ msgid "Properties over the Project Browser, on the left, as at first"
 msgstr "Proprietà sopra il Navigatore di progetto, a sinistra, come all'inizio"
 
 #: crates/core/src/commands.rs:563
-#: crates/core/src/commands.rs:8113
+#: crates/core/src/commands.rs:8120
 msgid "Property Line"
 msgstr ""
 
@@ -9768,7 +9768,7 @@ msgstr "Altezza alzata"
 msgid "Risers"
 msgstr "Alzate"
 
-#: crates/core/src/model.rs:2841
+#: crates/core/src/model.rs:2842
 msgid "Roller"
 msgstr ""
 
@@ -9796,7 +9796,7 @@ msgstr "Copertura da faccia (RB): una copertura sulle facce superiori dei volumi
 msgid "Roof by Footprint: click inside the walls to roof them, on the level above"
 msgstr "Copertura da impronta: clicca dentro i muri per coprirli, sul piano superiore"
 
-#: crates/core/src/model.rs:3471
+#: crates/core/src/model.rs:3472
 msgid "Roof tiles"
 msgstr "Tegole"
 
@@ -10106,7 +10106,7 @@ msgstr "Abachi/Quantità (tutti)"
 msgid "Scope"
 msgstr ""
 
-#: crates/core/src/model.rs:3467
+#: crates/core/src/model.rs:3468
 msgid "Screed"
 msgstr "Massetto"
 
@@ -10173,7 +10173,7 @@ msgstr "Box di sezione: taglia la vista 3D con un parallelepipedo, ogni faccia s
 msgid "Section: {}"
 msgstr "Sezione: {}"
 
-#: crates/core/src/model.rs:2840
+#: crates/core/src/model.rs:2841
 msgid "Sectional"
 msgstr ""
 
@@ -10717,7 +10717,7 @@ msgstr "Salta questa versione"
 msgid "Sky"
 msgstr "Cielo"
 
-#: crates/core/src/model.rs:2836
+#: crates/core/src/model.rs:2837
 msgid "Sliding"
 msgstr "Scorrevole"
 
@@ -10896,7 +10896,7 @@ msgstr ""
 msgid "Source code on GitHub"
 msgstr "Codice sorgente su GitHub"
 
-#: crates/core/src/model.rs:2090
+#: crates/core/src/model.rs:2091
 msgid "South"
 msgstr "Sud"
 
@@ -11221,7 +11221,7 @@ msgstr ""
 msgid "Swept Blend: a path of one line or arc, and a profile at each end, blended along it"
 msgstr "Unione su percorso: un percorso di una linea o di un arco e un profilo a ogni estremo, uniti lungo il percorso"
 
-#: crates/core/src/model.rs:2834
+#: crates/core/src/model.rs:2835
 msgid "Swing"
 msgstr "Battente"
 
@@ -12326,7 +12326,7 @@ msgstr "Torsione: {}"
 msgid "Two {} are called {}."
 msgstr ""
 
-#: crates/core/src/model.rs:1680
+#: crates/core/src/model.rs:1681
 #: crates/ui-egui/src/adaptive_editor.rs:724
 #: crates/ui-egui/src/editor/dimensions.rs:1010
 #: crates/ui-egui/src/editor/nested.rs:273
@@ -12514,7 +12514,7 @@ msgstr ""
 msgid "Unlock alignment"
 msgstr ""
 
-#: crates/core/src/commands.rs:11923
+#: crates/core/src/commands.rs:11932
 msgid "Unnamed"
 msgstr "Senza nome"
 
@@ -12912,7 +12912,7 @@ msgstr "Muro"
 msgid "Wall (WA): each click builds a wall; Enter or Esc ends the chain"
 msgstr "Muro (WA): ogni clic costruisce un muro; Invio o Esc chiude la catena"
 
-#: crates/core/src/model.rs:459
+#: crates/core/src/model.rs:460
 msgid "Wall Centreline"
 msgstr "Asse del muro"
 
@@ -12977,7 +12977,7 @@ msgstr "Peso"
 msgid "Weight per Metre"
 msgstr ""
 
-#: crates/core/src/model.rs:2092
+#: crates/core/src/model.rs:2093
 msgid "West"
 msgstr "Ovest"
 

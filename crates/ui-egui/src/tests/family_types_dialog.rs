@@ -272,3 +272,16 @@ fn cancel_puts_back_what_family_types_began_with() {
     assert!(!open(&h));
     assert_eq!(draft(&h), was);
 }
+
+#[test]
+fn a_parameter_goes_under_a_heading_of_the_familys_own_listed_after_revits_groups() {
+    let mut h = opened();
+    press(&mut h, "New Parameter");
+    type_into(&mut h, "Name:", "Finish Code");
+    type_into(&mut h, "Or a heading of its own:", "Finishes");
+    ok_over(&mut h);
+    let code = draft(&h).parameters.iter().find(|p| p.name == "Finish Code").cloned().unwrap();
+    assert_eq!(code.group(), bimcraft_core::family::Under::Own("Finishes".into()));
+    // Its heading comes after the groups of Revit's the family uses.
+    assert!(h.get_by_label("Finishes").rect().top() > h.get_by_label("Dimensions").rect().top());
+}
