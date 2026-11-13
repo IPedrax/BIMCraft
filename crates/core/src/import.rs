@@ -1334,14 +1334,39 @@ fn unit_of(f: &File, id: Option<u64>, depth: usize) -> Option<(String, f64)> {
 /// factor) to a projected coordinate reference system that has a name. Its eastings, northings and height in mm of the map, which
 /// is the CRS's map unit, else the project's length unit; its scale a distance on the map over the same in the project (the file's
 /// scale takes the project's length unit to the map's, as IFC4 and IfcOpenShell read it). The model is moved near the origin by
-/// `r.shift`, so the map point of its origin is the one the file's origin put that far along.
+/// `r.shift`, so the map point of its origin is the one the file's origin put that far along. A file with none still has a
+/// site where its context's true north is turned from its y, or where the model was moved near the origin: the turn, and the
+/// shift as the map point of its origin, so what came in at map coordinates keeps them.
 fn georeference(r: &Reader, ids: &[u64]) -> Option<crate::model::Georeference> {
     let named = |e: &&Entity| r.at(e.args.get(1)).is_some_and(|c| c.name == "IFCPROJECTEDCRS" && text(c.args.first()).is_some());
     let conversion = ids
         .iter()
         .filter_map(|id| r.get(*id))
         .filter(|e| matches!(e.name.as_str(), "IFCMAPCONVERSION" | "IFCMAPCONVERSIONSCALED"))
-        .find(named)?;
+        .find(named);
+    let Some(conversion) = conversion else {
+        // True north alone: turned from the file's y, the model's project north.
+        let context = ids.iter().filter_map(|id| r.get(*id)).find(|e| e.name == "IFCGEOMETRICREPRESENTATIONCONTEXT");
+        let ratios: Vec<f64> = context
+            .and_then(|c| r.at(c.args.get(5)))
+            .map(|d| list(d.args.first()).iter().filter_map(|v| real(Some(v))).collect())
+            .unwrap_or_default();
+        let rotation = match ratios.as_slice() {
+            [x, y, ..] if x.hypot(*y) > 1e-12 => x.atan2(*y).to_degrees(),
+            _ => 0.0,
+        };
+        if rotation.abs() < 1e-9 && r.shift == P2(0.0, 0.0) {
+            return None;
+        }
+        let (sin, cos) = rotation.to_radians().sin_cos();
+        let (dx, dy) = (r.shift.0, r.shift.1);
+        return Some(crate::model::Georeference {
+            eastings: cos * dx - sin * dy,
+            northings: sin * dx + cos * dy,
+            rotation,
+            ..Default::default()
+        });
+    };
     let crs = r.at(conversion.args.get(1))?;
     let a = |i: usize| conversion.args.get(i);
     let map = reference(crs.args.get(6))
@@ -4291,7 +4316,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
     // Where it lies on a map, where the file says and the project can keep it.
     if let Some(g) = georeference(&r, &ids) {
         match g.check() {
-            Ok(()) => m.georeference = Some(g),
+            Ok(()) => m.set_site(g),
             Err(why) => skipped.push(format!("its map conversion: {why}; the project has no georeference")),
         }
     }

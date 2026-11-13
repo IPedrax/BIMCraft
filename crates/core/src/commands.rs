@@ -160,12 +160,16 @@ other_files(
         "link",
         "Link Model",
         &["LK"],
-        "{path, name?, at?: [x, y], angle?: degrees} another project (.bimc, .bimcraft or .ifc) shown in this one as a reference that \
+        "{path, name?, at?: [x, y], angle?: degrees, by?: manual|base|shared, location?} another project (.bimc, .bimcraft or .ifc) \
+         shown in this one as a reference that \
          can't be edited, as Revit's Link Revit: its walls, floors, roofs, columns, stairs and the rest of what it builds are \
          drawn in the plans, sections and 3D views, halftone, and snapped to; nothing of it is selected, scheduled, checked or \
          exported. It stands with its origin at `at` (default [0, 0]) turned `angle` about it; its levels stand at their own \
          elevations, on this project's levels at the same height. `path` is read now and again by `reload`, and kept as given: \
-         a relative one is relative to this project's file. `name` defaults to the file's. Returns `id`, `name`, `elements`",
+         a relative one is relative to this project's file. `name` defaults to the file's. `by: base` puts its Project Base Point \
+         on this project's (turned `angle` about it, and raised to it); `by: shared` stands it where its shared coordinates say \
+         (its active location, or `location`), by this project's active location: worked out each time it is drawn, never \
+         written into its file. Returns `id`, `name`, `elements`, and where it stands: `at`, `angle`, `raised`",
         link_model,
         Files::Read,
     )
@@ -181,7 +185,10 @@ other_files(
     other_files(
         "save",
         "Save",
-        "{path?} .bimc saves the project (Save As with a path), as does .bimt (a template); .ifc exports IFC4; .glb exports the default 3D view's scene as \
+        "{path?, ifc_origin?} .bimc saves the project (Save As with a path), as does .bimt (a template); .ifc exports IFC4, its \
+         coordinates' origin at `ifc_origin`: internal (the default), base (the Project Base Point), survey (the Survey Point) or \
+         shared (the map's coordinates themselves), with the active location's IfcMapConversion and IfcProjectedCRS, true north, \
+         and the site's latitude and longitude where the project has a CRS; .glb exports the default 3D view's scene as \
          glTF 2.0 (metres, y up, a node for each element named by its id, GUID and category in `extras`; returns `elements` and \
          `triangles`); .svg or .png exports the lowest level's plan; .pdf prints every sheet, a page each",
         save,
@@ -204,9 +211,10 @@ other_files(
         "level",
         ui_msg!("Level"),
         &["LL"],
-        "{elevation, name?, extent?: [[x,y],[x,y]]} a level at an elevation in mm; `extent`, the rectangle in plan its \
-         plane stretches over (south-west corner, then north-east), where sections, elevations and the 3D view show it \
-         (without one, the model's, a metre past it)",
+        "{elevation, name?, extent?: [[x,y],[x,y]], elevation_base?: base|survey} a level at an elevation in mm (internal); \
+         `extent`, the rectangle in plan its plane stretches over (south-west corner, then north-east), where sections, \
+         elevations and the 3D view show it (without one, the model's, a metre past it); `elevation_base`, what its head shows \
+         its elevation from: the Project Base Point (the default) or the Survey Point, the shared coordinates",
         level,
     )
     .menu("Architecture > Level"),
@@ -240,11 +248,12 @@ other_files(
         "point_cloud",
         "Point Cloud",
         &[],
-        "{path | cloud, name?, level?, at?: [x, y], offset?, angle?, units?, spacing?, origin?} brings in a laser scan (`path`: \
+        "{path | cloud, name?, level?, at?: [x, y], offset?, angle?, units?, spacing?, origin?, acquire?} brings in a laser scan (`path`: \
          PTS, XYZ, PLY, LAS or E57 (each of its scans placed by its pose), or a list of the files of one scan's stations, brought in as one; `units` of its coordinates mm, \
          cm, m (the default), in or ft; one point kept in each cube `spacing` mm wide) or places one the project holds again \
          (`cloud`, its name), as an element: its middle on `at` (the origin) and its foot on the level, or with `origin: file` \
-         where its file's coordinates put it; `offset` raises its middle over the level, `angle` turns it. Returns its id, the \
+         where its file's coordinates put it, or with `origin: shared` where they put it as the map's, by the active location \
+         (`acquire: true` first sets the location from the scan, so its middle lands at the origin and its foot on 0); `offset` raises its middle over the level, `angle` turns it. Returns its id, the \
          scan's name, the points kept and read, and where its middle was in the file",
         point_cloud,
         Files::Read,
@@ -268,11 +277,13 @@ other_files(
         "import_cad",
         "Import CAD",
         &[],
-        "{path | cad, name?, level?, view?, at?: [x, y], position?, units?, scale?, angle?, layers?, colors?, link?} brings in a \
+        "{path | cad, name?, level?, view?, at?: [x, y], position?, acquire?, units?, scale?, angle?, layers?, colors?, link?} brings in a \
          DXF drawing (`path`: an ASCII DXF of any version, or a DWG, which the desktop and the command line read as DXF) or places one the project holds again (`cad`, \
          its name), as an element in every plan of `level`, or with `view` (a plan) in that view only. `units` of the drawing: \
          auto (the default: what its file says, else mm), mm, cm, m, in or ft; or `scale`, mm to each of its units. `position`: \
-         center (the default: the middle of the drawing on `at`, the origin unless given) or origin (its origin on `at`); \
+         center (the default: the middle of the drawing on `at`, the origin unless given), origin (its origin on `at`) or \
+         shared (where its coordinates, the map's, put it by the active location, turned and scaled to match; `acquire: true` \
+         first sets the location from the drawing, so its middle lands at the origin); \
          `angle` turns it about `at`, degrees. `layers`: visible (the default: those its file has on and thawed), all, or a list \
          of those to show. `colors`: preserve (the default), invert or black. `link: true` remembers the file, so `reload_cad` \
          and opening the project read it again. Returns its id, the drawing's name, its unit, entities and layers, its extents \
@@ -698,6 +709,70 @@ other_files(
         panel,
     ),
     edit(
+        "coordinates",
+        "Coordinates",
+        &[],
+        "{base?: [x,y,z], survey?: [x,y,z], move?: point|system, acquire?: link or CAD id, reset?: true} the project's \
+         coordinates. `reset` puts the active location back on the internal origin (shared coordinates the file's own) and both \
+         points on it, and pins every link placed by base points or shared coordinates by hand where it stands, so none moves. `acquire` takes \
+         the shared coordinates of a link (its id; a BIMCraft project or an IFC file) or of a CAD drawing placed in the \
+         project (its coordinates taken for the map's) where it stands now, as Revit's Acquire Coordinates: this project's active \
+         location is solved so that the link's origin has the link's map coordinates here and its true north agrees. Without parameters, reports them: the \
+         internal origin, the Project Base Point and the Survey Point, each `internal` (the file's own mm, where geometry is) and \
+         `shared` (the active location's map coordinates, mm), the `active` location and every location. `base` moves the Project \
+         Base Point, the reference elevations and spot coordinates measure from; it moves no geometry. `survey` moves the Survey \
+         Point: `move: point` (the default) moves it alone, so the building stays where it is in the world and the point's shared \
+         coordinates change; `move: system` carries the shared system with it, so it keeps its shared coordinates and the building \
+         moves in the world",
+        coordinates,
+    ),
+    edit(
+        "location",
+        "Location",
+        &[],
+        "{name?, east?, north?, elevation?, latitude?, longitude?, angle?, scale?, crs?, rename?, activate?: true, delete?: true, \
+         shift?: [de, dn, dz]} a named site of the project (Revit's), one position of the building in the shared coordinates: \
+         the Survey Point's shared `east`, `north` and `elevation` (mm), or its `latitude` and `longitude` through the site's map \
+         system, the `angle` from project north to true north (degrees, east positive) and the `scale` from ground to grid (1 \
+         unless a map projection's; heights are not scaled), and its map system (`crs`, as `georeference` takes it). The active \
+         site is the georeference; the others are kept beside it, each where it would put the project. A new one starts as a \
+         copy of the active one. `activate` makes it the active one, the georeference. `shift` adds to its east, north and \
+         elevation, or to every site's when no `name` is given (the survey says the site is 5 m higher: shift [0, 0, 5000]). The \
+         active site can't be deleted. Without `name` or `shift`, lists them",
+        location,
+    ),
+    edit(
+        "specify_coordinates",
+        "Specify Coordinates at a Point",
+        &["CP"],
+        "{at: [x,y,z] | [x,y], on?, level?, east, north, elevation, angle?} sets the active site so that internal point `at` \
+         has the shared coordinates given (mm), turned to `angle` (degrees from project north to true north, east positive) when \
+         given. A point picked in plan, `at: [x, y]`, takes its height from `on`, the element picked: a wall's bottom, a floor's, \
+         roof's or ceiling's top there; else from `level` (the lowest by default): the top of what stands on it there, else the \
+         level",
+        specify_coordinates,
+    ),
+    edit(
+        "rotate_project_north",
+        "Rotate Project North",
+        &["TN"],
+        "{angle?: degrees, true_north?: true, about?: [x, y]} turns the whole model `angle` degrees counter-clockwise about \
+         `about` (default the Project Base Point), as Revit's Rotate Project North: every element that has a place in plan, \
+         the Project Base Point and the Survey Point, and links placed by hand or by base points; and turns every location's \
+         angle back by as much, so nothing moves in the world, only the project's axes. `true_north: true` turns it by the \
+         active location's angle, so project north is true north. Returns the `angle` turned and the elements `rotated`",
+        rotate_project_north,
+    ),
+    other(
+        "convert_coordinates",
+        "Convert Coordinates",
+        "{points: [[x,y,z], …], from: internal|base|shared|wgs84, to: internal|base|shared|wgs84, location?} each point from one \
+         frame to another, mm: `internal`, the file's own, where geometry is; `base`, from the Project Base Point; `shared`, the \
+         map coordinates of the active site (or of the site `location` names); `wgs84`, [longitude, latitude, elevation mm], \
+         through the site's map system (its `crs`, a projected EPSG code). Returns points",
+        convert_coordinates,
+    ),
+    edit(
         "column",
         ui_msg!("Column"),
         &["CL"],
@@ -1011,10 +1086,45 @@ other_files(
         "spot",
         ui_msg!("Spot Elevation"),
         &["EL"],
-        "{at: [x, y], view?, host?} a spot elevation: in a level's plan (the lowest by default), the height of the top of \
-         what stands on the level at `at` (or of `host`), following it; in a section or an elevation, of its point `at`, \
-         along and up",
+        "{at: [x, y], view?, host?, origin?: base|survey} a spot elevation: in a level's plan (the lowest by default), the \
+         height of the top of what stands on the level at `at` (or of `host`), following it; in a section or an elevation, \
+         of its point `at`, along and up. It reads from `origin`: the Project Base Point (the default) or the Survey Point, \
+         the shared elevation",
         spot,
+    ),
+    edit(
+        "spot_coordinate",
+        ui_msg!("Spot Coordinate"),
+        &["PC"],
+        "{at: [x, y], view?, type?, origin?: base|survey|internal, host?, end?: [x, y], leader?, shoulder?} a spot \
+         coordinate in a level's plan (the lowest by default): the north and east of `at`, and its elevation, as its type \
+         (`spot_coordinate_type`) says. Without `type`, the project's type that reads from `origin`: the Survey Point (the \
+         shared coordinates of the active location, in metres) by default; `base`, the Project Base Point; `internal`. Its elevation is of the top of `host` (else of \
+         what stands at `at`, else of the level). Its leader runs from `at` to `end` (else up and to the right, 8 mm on \
+         paper), its text on a shoulder there; `leader: false` puts the text beside the point, `shoulder: false` leaves the \
+         shoulder out. `modify` changes `type`, `end`, `leader` and `shoulder`. The reply gives `north`, `east` (mm) and \
+         `text`, its lines",
+        spot_coordinate,
+    ),
+    edit(
+        "spot_coordinate_type",
+        "Spot Coordinate Types",
+        &[],
+        "{name?, like?, rename?, delete?: true, …values} a spot coordinate type of the project's, as Revit's type \
+         parameters, lengths mm on paper. Constraints: `rotate_with_component` (its text turns with the component it reads). \
+         Graphics: `leader_arrowhead` filled|empty|dot|empty_dot|none, `arrowhead_size` (2.5), `leader_pen` and \
+         `arrowhead_pen` (0 to 16; 1), `leader_color` (\"#rrggbb\" or [r, g, b]), `symbol` none|cross|target, \
+         `symbol_size` (3). Text: `font` (Arial), `text_size` (2.5), `bold`, `italic`, `underline`, `width_factor` (1), \
+         `text_color`, `text_offset_leader` (1), `text_offset_symbol` (1), `text_location` above_leader|below_leader, \
+         `background` opaque|transparent, `origin` base|survey|internal (Coordinate Origin), `top` and `bottom` \
+         north_south|east_west|none (Top Value, Bottom Value), `north_south_indicator` (\"N \"), `east_west_indicator` \
+         (\"E \"), `include_elevation`, `elevation_indicator` (\"EL \"), `indicator` prefix|suffix, `units` (mm, cm, m, in, \
+         ft, ft-in; null for the project's) and `decimals` (0 to 6), `alternate` none|right|below with \
+         `alternate_units`, `alternate_decimals`, `alternate_prefix` and `alternate_suffix`. A new one starts as `like` \
+         says, else as the default. A project starts with `Spot Coordinate - Project Base Point` and `Spot Coordinate - \
+         Survey Point`. `rename` renames it, its spot coordinates following; `delete` takes it away while none is of it. \
+         Without `name`, it lists every type",
+        spot_coordinate_type,
     ),
     edit(
         "spot_slope",
@@ -2110,10 +2220,18 @@ other_files(
         &[],
         "{crs?, eastings?, northings?, height?, rotation?, scale?, description?, geodetic_datum?, vertical_datum?, map_projection?, \
          map_zone?, clear?: true} where the project lies on a map, as IFC's map conversion to a projected coordinate reference \
-         system: the CRS by name (an EPSG code, `EPSG:31983`) and what else is known of it, the map point of the project's origin \
-         (`eastings`, `northings`, `height`, mm), how far the project's x axis is turned from the map's east (`rotation`, degrees \
-         counterclockwise) and a distance on the map over the same in the project (`scale`, 1 as it starts). A project with none \
-         takes one with `crs`; what isn't given keeps its value. `clear` takes it away. With nothing, it says it (null for none). \
+         system: the CRS by name (an EPSG code, `EPSG:31983`; \"\" for none, a local grid) and what else is known of it, the map \
+         point of the project's internal origin (`eastings`, `northings`, `height`, mm), how far the project's x axis is turned \
+         from the map's east (`rotation`, degrees counterclockwise: true north east of project north) and a distance on the map \
+         over the same in the project (`scale`, 1 as it starts; in plan only, heights stay true). It is the active site: \
+         `location` names it and keeps others, and says it at the Survey Point. Any field makes one; what isn't given keeps its \
+         value. `clear` takes it away. With nothing, it says it (null for none). A projected EPSG code this version knows is the \
+         site's map system: it names itself as the description, and WGS84 (`convert_coordinates`, `location`'s `latitude` and \
+         `longitude`) and a map unit other than the metre go through it. `search` (with `limit`, 20 by default) finds systems \
+         whose code it is or whose name has all its words (`found`), and the countries and cities it names (`places`: \
+         \"São Paulo\", \"paulo brasil\", \"Alemania\", accents aside), each with its `longitude`, `latitude` and the `systems` \
+         surveys there use, the one to pick first: the national grid, the place's zone on the country's datum, the zone on WGS 84, \
+         each with `why`; it changes nothing. \
          IFC import keeps the file's (moved with the model where the import brings it near the origin) and export writes it back as \
          IfcMapConversion to an IfcProjectedCRS in metres; the model's own coordinates and drawings don't move",
         georeference,
@@ -2209,7 +2327,8 @@ other_files(
          | null, phase_filter?: name | null, options?: {set: option | null, …}, layers?: {drawing: [layer, …] | null, …}, template?: name | null, \
          background_grid?: {visible?, main?: {enabled?, color?: [r,g,b], pen?: 0..16}, sub?: {enabled?, color?, pen?}, \
          spacing?: [X,Y] (mm), divisions?: [X,Y] (1..1000), rotation?: degrees (-360..360)} | null, \
-         reset?: true} what a view hides and how it draws the rest, as Revit's Visibility/Graphics does; with \
+         orientation?: project_north|true_north (a plan's: which north is up; true north turns it on screen by the active \
+         location's angle to true north, never the model), reset?: true} what a view hides and how it draws the rest, as Revit's Visibility/Graphics does; with \
          none of those, the view's settings as they are. A category hidden (walls, floors, rooms, grids, dimensions, levels…, \
          in any case, singular or plural) leaves all its elements out of that view, and `hide_elements` the elements given. \
          In a 3D view rooms are hidden unless shown (`show: [rooms]`), every new 3D view so; shown, each is a \
@@ -2804,6 +2923,11 @@ pub(crate) fn flag(c: &str, p: &Value, key: &str) -> Result<bool, String> {
     }
 }
 
+/// [`flag`], `or` where it isn't given.
+fn flag_or(c: &str, p: &Value, key: &str, or: bool) -> Result<bool, String> {
+    if absent(p.get(key)) { Ok(or) } else { flag(c, p, key) }
+}
+
 pub(crate) fn string(c: &str, p: &Value, key: &str) -> Result<Option<String>, String> {
     match p.get(key) {
         v if absent(v) => Ok(None),
@@ -3307,10 +3431,12 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
             if let Some(h) = cp.host {
                 extra.insert("host_element".into(), json!(h.host.guid()));
             }
+            shared_at(m, &mut extra, cp.at, base);
         }
-        Element::Column(_) | Element::StructuralColumn(_) | Element::Footing(_) => {
+        Element::Column(col) | Element::StructuralColumn(col) | Element::Footing(col) => {
             let (bottom, top) = m.column_span(e);
             extra.insert("height".into(), json!(top - bottom));
+            shared_at(m, &mut extra, col.at, bottom);
             if let Some(t) = m.column_type(e) {
                 extra.insert("width".into(), json!(t.width));
                 extra.insert("depth".into(), json!(t.depth));
@@ -3486,8 +3612,22 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
             extra.insert("toward".into(), json!(read.and_then(|(_, d)| d).map(|d| [hundredth(d.0), hundredth(d.1)])));
             extra.insert("level".into(), json!(m.level_of(e)));
         }
+        Element::Spot(sp) if sp.coordinate => {
+            let read = m.spot_coordinate_reads(sp);
+            extra.insert("east".into(), json!(read.map(|r| hundredth(r.east))));
+            extra.insert("north".into(), json!(read.map(|r| hundredth(r.north))));
+            extra.insert("elevation".into(), json!(read.and_then(|r| r.elevation).map(hundredth)));
+            extra.insert("text".into(), json!(m.spot_coordinate_text(sp)));
+            extra.insert(
+                "type".into(),
+                json!(sp.type_name.clone().or_else(|| crate::spots::default_type(&m.spot_coordinate_types, sp.origin).cloned())),
+            );
+            extra.insert("leader".into(), json!(sp.leader));
+            extra.insert("shoulder".into(), json!(sp.shoulder));
+            extra.insert("level".into(), json!(m.level_of(e)));
+        }
         Element::Spot(sp) => {
-            extra.insert("elevation".into(), json!(m.spot_value(sp).map(hundredth)));
+            extra.insert("elevation".into(), json!(m.spot_reads(sp).map(hundredth)));
             extra.insert("level".into(), json!(m.level_of(e)));
         }
         Element::Link(l) => {
@@ -3497,6 +3637,7 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
         // Its Computation Height, which its JSON leaves out at the usual 1200 mm.
         Element::Level(l) => {
             extra.insert("computation_height".into(), json!(l.computation_height));
+            extra.insert("elevation_shown".into(), json!(hundredth(m.level_shown(l))));
         }
         Element::Dimension3D(d) => {
             extra.insert("length".into(), json!(hundredth(crate::dims3d::length(d))));
@@ -3863,11 +4004,33 @@ fn link_model(s: &mut Session, p: &Value) -> R {
     };
     let at = point_opt(c, p, "at")?.unwrap_or(P2(0.0, 0.0));
     let angle = num(c, p, "angle")?.unwrap_or(0.0);
+    let by = match string(c, p, "by")? {
+        None => crate::link::By::Manual,
+        Some(b) => crate::link::By::parse(&b).ok_or_else(|| bad(c, format!("`by` is {}, not `{b}`", crate::link::By::NAMES)))?,
+    };
+    let location = name_param(c, p, "location")?;
+    if let Some(l) = &location
+        && other.site_named(l).is_none()
+    {
+        return Err(bad(c, format!("the linked project has no location `{l}`; it has {}", other.coordinates.names().join(", "))));
+    }
     let elements = other.elements.len();
+    let link = crate::model::Link { name: name.clone(), path: path.clone(), at, angle, by, location, raised: 0.0, placed: None };
+    let (placed, turned, raised) = crate::link::placement(&s.model, &link, &other);
+    let mut reply = json!({"name": name, "elements": elements, "at": placed, "angle": turned, "raised": raised});
+    let theirs = link.location.as_deref().and_then(|n| other.site_named(n)).unwrap_or(other.site());
+    let scales = (s.model.site().scale, theirs.scale);
+    if by == crate::link::By::Shared && (scales.0 - scales.1).abs() > 1e-9 {
+        reply["warning"] = json!(format!(
+            "its location's scale ({}) isn't this project's ({}): a link isn't scaled, so it stands by its origin and turn alone",
+            scales.1, scales.0
+        ));
+    }
     let m = s.model_mut();
-    let id = m.insert(Element::Link(crate::model::Link { name: name.clone(), path: path.clone(), at, angle }));
+    let id = m.insert(Element::Link(link));
     m.loaded.insert(path, other);
-    Ok(json!({"id": id, "name": name, "elements": elements}))
+    reply["id"] = json!(id);
+    Ok(reply)
 }
 
 fn reload(s: &mut Session, p: &Value) -> R {
@@ -3908,8 +4071,14 @@ fn save(s: &mut Session, p: &Value) -> R {
         None => s.path.clone().ok_or_else(|| bad(c, "`path` is required: this project hasn't been saved yet"))?,
     };
     let format = ext(&path);
+    let ifc_origin = match string(c, p, "ifc_origin")? {
+        None => crate::ifc::Origin::Internal,
+        Some(o) => {
+            crate::ifc::Origin::parse(&o).ok_or_else(|| bad(c, format!("`ifc_origin` is {}, not `{o}`", crate::ifc::Origin::NAMES)))?
+        }
+    };
     if format == "ifc" {
-        std::fs::write(&path, crate::ifc::export(&s.model)).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+        std::fs::write(&path, crate::ifc::export_at(&s.model, ifc_origin)).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
         return Ok(json!({"path": path, "format": "IFC4"}));
     }
     if format == "glb" {
@@ -4422,7 +4591,7 @@ fn merged_override(c: &str, what: &str, from: Option<&Override>, patch: &Value) 
 /// categories' and its filters' alone.
 fn edit_graphics(c: &str, m: &Model, p: &Value, g: &mut Graphics, of_template: bool) -> Result<(), String> {
     let given = |k: &str| !absent(p.get(k));
-    let views_own = ["hide_elements", "show_elements", "elements", "layers"];
+    let views_own = ["hide_elements", "show_elements", "elements", "layers", "orientation"];
     if of_template && let Some(k) = views_own.iter().find(|k| given(k)).or(p.get("template").map(|_| &"template")) {
         return Err(bad(c, format!("`{k}` is a view's own; a template holds categories, filters, a phase and design options")));
     }
@@ -4456,6 +4625,13 @@ fn edit_graphics(c: &str, m: &Model, p: &Value, g: &mut Graphics, of_template: b
     }
     if flag(c, p, "reset")? {
         *g = Graphics::default();
+    }
+    match p.get("orientation") {
+        v if absent(v) => {}
+        Some(Value::String(o)) if o == "project_north" || o == "project" => g.orientation = graphics::Orientation::ProjectNorth,
+        Some(Value::String(o)) if o == "true_north" || o == "true" => g.orientation = graphics::Orientation::TrueNorth,
+        Some(v) => return Err(bad(c, format!("`orientation` is project_north or true_north, not {v}"))),
+        None => {}
     }
     if let Some(patch) = p.get("background_grid") {
         if patch.is_null() {
@@ -4620,7 +4796,7 @@ fn graphics_reply(g: &Graphics) -> Value {
         "hidden": hidden, "categories": g.categories, "filters": g.filters, "layers": g.layers,
         "phase": g.phase, "phase_filter": g.phase_filter, "options": g.options,
         "scale": g.scale, "detail": g.detail, "visual_style": g.style,
-        "background_grid": g.background_grid,
+        "background_grid": g.background_grid, "orientation": g.orientation,
     })
 }
 
@@ -7493,7 +7669,8 @@ fn level(s: &mut Session, p: &Value) -> R {
             _ => return Err(bad(c, "`extent` is two corners, [[x, y], [x, y]]: south-west, then north-east")),
         },
     };
-    let id = s.model_mut().insert(Element::Level(Level { extent, ..Level::new(name.clone(), elevation) }));
+    let elevation_base = origin_param(c, p)?;
+    let id = s.model_mut().insert(Element::Level(Level { extent, elevation_base, ..Level::new(name.clone(), elevation) }));
     Ok(json!({"id": id, "name": name}))
 }
 
@@ -7597,8 +7774,25 @@ fn point_cloud(s: &mut Session, p: &Value) -> R {
     };
     let (lo, _) = scan.bounds();
     let origin = scan.origin();
+    let mut site = m.site().clone();
+    let mut acquired = None;
+    let mut angle = 0.0;
     let (mut at, mut offset) = match string(c, p, "origin")?.as_deref() {
         None | Some("centre" | "center") => (P2(0.0, 0.0), -lo[2]),
+        Some("shared") => {
+            // Its file's coordinates are the map's: its middle goes where the active location puts it, turned to match.
+            if flag(c, p, "acquire")? {
+                site.acquire([origin[0], origin[1], origin[2] + lo[2]]);
+                site.check().map_err(|e| bad(c, e))?;
+                acquired = Some(site.location(m.coordinates.survey));
+            }
+            let here = site.to_internal(origin);
+            if !here.iter().all(|x| x.abs() <= MAX_COORD) {
+                return Err(bad(c, far_message(here)));
+            }
+            angle = -site.rotation;
+            (P2(here[0], here[1]), here[2] - m.elevation(level))
+        }
         Some("file") => {
             let z = origin[2] - m.elevation(level);
             if !(origin[0].abs() <= MAX_COORD && origin[1].abs() <= MAX_COORD && z.abs() <= MAX_COORD) {
@@ -7614,7 +7808,10 @@ fn point_cloud(s: &mut Session, p: &Value) -> R {
         Some(o) => {
             return Err(bad(
                 c,
-                format!("`origin` is centre (its middle on `at`, its foot on the level) or file (where its file puts it), not {o}"),
+                format!(
+                    "`origin` is centre (its middle on `at`, its foot on the level), file (where its file puts it) or shared (where \
+                     its coordinates, the map's, put it by the active location), not {o}"
+                ),
             ));
         }
     };
@@ -7624,14 +7821,19 @@ fn point_cloud(s: &mut Session, p: &Value) -> R {
     if let Some(o) = num(c, p, "offset")? {
         offset = o;
     }
-    let angle = num(c, p, "angle")?.unwrap_or(0.0);
+    if let Some(a) = num(c, p, "angle")? {
+        angle = a;
+    }
     let (points, read) = (scan.len(), scan.read());
     let m = s.model_mut();
     if new {
         m.clouds.insert(name.clone(), scan);
     }
+    if acquired.is_some() {
+        m.set_site(site);
+    }
     let id = m.insert(Element::PointCloud(PointCloud { cloud: name.clone(), level, at, offset, angle }));
-    Ok(json!({"id": id, "cloud": name, "points": points, "read": read, "origin": origin}))
+    Ok(json!({"id": id, "cloud": name, "points": points, "read": read, "origin": origin, "acquired": acquired}))
 }
 
 // ---------- CAD drawings ----------
@@ -7918,22 +8120,68 @@ fn import_cad(s: &mut Session, p: &Value) -> R {
             let (lo, hi) = (crate::model::CAD_SCALE.start(), crate::model::CAD_SCALE.end());
             return Err(bad(c, format!("`scale` is mm to each of the drawing's units, from {lo} to {hi}, not {k}")));
         }
-        (None | Some("auto"), None) => dxf.scale.unwrap_or(1.0),
+        (None | Some("auto"), None) => {
+            let bulk = cad.bulk().unwrap_or_default();
+            let (k, note) = auto_scale(&s.model, dxf.scale, &dxf.unit, (bulk[0] + bulk[1]) * 0.5);
+            notes.extend(note);
+            k
+        }
         (Some(u), None) => cloud::unit(u).ok_or_else(|| bad(c, format!("`units` is auto, mm, cm, m, in or ft, not {u}")))?,
     };
+    let unit_warning = (absent(p.get("units")) || string(c, p, "units")?.as_deref() == Some("auto"))
+        && absent(p.get("scale"))
+        && s.model.site().map().is_none()
+        && looks_like_map(dxf.scale, (cad.bulk().unwrap_or_default()[0] + cad.bulk().unwrap_or_default()[1]) * 0.5) == Some(false);
+    let file_unit = dxf.unit.clone();
     let bulk = cad.bulk().unwrap_or_default();
-    let origin = match string(c, p, "position")?.as_deref() {
-        None | Some("center" | "centre") => (bulk[0] + bulk[1]) * 0.5,
-        Some("origin") => P2(0.0, 0.0),
+    let middle = (bulk[0] + bulk[1]) * 0.5;
+    let acquire = flag(c, p, "acquire")?;
+    let mut site = s.model.site().clone();
+    let mut acquired = None;
+    let (origin, at, angle, scale) = match string(c, p, "position")?.as_deref() {
+        None | Some("center" | "centre") => {
+            (middle, point_opt(c, p, "at")?.unwrap_or(P2(0.0, 0.0)), num(c, p, "angle")?.unwrap_or(0.0), scale)
+        }
+        Some("origin") => {
+            // Its origin on `at`: refused where that puts the drawing past what a model reaches, saying how to bring it in.
+            let at = point_opt(c, p, "at")?.unwrap_or(P2(0.0, 0.0));
+            let here = [at.0 + middle.0 * scale, at.1 + middle.1 * scale, 0.0];
+            if !(here[0].abs() <= MAX_COORD && here[1].abs() <= MAX_COORD) {
+                return Err(bad(
+                    c,
+                    format!(
+                        "{}; or place it by shared coordinates (`position`: shared), or by its middle (`position`: center) and then take the project's coordinates from it \
+                         (`coordinates` with `acquire`)",
+                        far_message(here)
+                    ),
+                ));
+            }
+            (P2(0.0, 0.0), at, num(c, p, "angle")?.unwrap_or(0.0), scale)
+        }
+        Some("shared") => {
+            // Its file's coordinates are the map's: its middle goes where the active location puts it, turned and scaled to match.
+            let q = [middle.0 * scale, middle.1 * scale, 0.0];
+            if acquire {
+                site.acquire(q);
+                site.check().map_err(|e| bad(c, e))?;
+                acquired = Some(site.location(s.model.coordinates.survey));
+            }
+            let here = site.to_internal(q);
+            if !(here[0].abs() <= MAX_COORD && here[1].abs() <= MAX_COORD) {
+                return Err(bad(c, far_message(here)));
+            }
+            (middle, P2(here[0], here[1]), -site.rotation, scale / site.scale)
+        }
         Some(o) => {
             return Err(bad(
                 c,
-                format!("`position` is center (the middle of the drawing on `at`) or origin (its origin on `at`), not {o}"),
+                format!(
+                    "`position` is center (the middle of the drawing on `at`), origin (its origin on `at`) or shared (where its \
+                     coordinates, the map's, put it by the active location), not {o}"
+                ),
             ));
         }
     };
-    let at = point_opt(c, p, "at")?.unwrap_or(P2(0.0, 0.0));
-    let angle = num(c, p, "angle")?.unwrap_or(0.0);
     let hidden: BTreeSet<String> = match p.get("layers") {
         None | Some(Value::Null) => off_layers(&cad),
         Some(Value::String(w)) if w == "visible" => off_layers(&cad),
@@ -7957,6 +8205,7 @@ fn import_cad(s: &mut Session, p: &Value) -> R {
     let unit = match string(c, p, "units")?.filter(|u| u != "auto") {
         Some(u) => format!("{u} (its file says {})", dxf.unit),
         None if p.get("scale").is_some_and(|v| !v.is_null()) => format!("a scale of its own (its file says {})", dxf.unit),
+        None if dxf.scale.is_some_and(|k| (k - scale).abs() > 1e-9) => format!("the map system's (its file says {})", dxf.unit),
         None if dxf.scale.is_some() => dxf.unit.clone(),
         None => format!("{} (read as mm unless `units` says)", dxf.unit),
     };
@@ -7966,6 +8215,9 @@ fn import_cad(s: &mut Session, p: &Value) -> R {
     if new {
         m.cads.insert(name.clone(), cad);
     }
+    if acquired.is_some() {
+        m.set_site(site);
+    }
     let id = m.insert(Element::CadImport(CadImport { cad: name.clone(), level, at, origin, scale, angle, view, hidden, colors }));
     let extents = m.cad_box(id);
     let mut reply = json!({
@@ -7974,6 +8226,16 @@ fn import_cad(s: &mut Session, p: &Value) -> R {
     });
     if !notes.is_empty() {
         reply["notes"] = json!(notes);
+    }
+    if let Some(l) = acquired {
+        reply["acquired"] = json!(l);
+    }
+    if unit_warning {
+        reply["warning"] = json!(format!(
+            "its file says its units are {}, and its coordinates look like map coordinates: if they are in metres, bring it in \
+             again with units m (Import units: m), or set the project's map system first and it is read in its unit",
+            spelled(&file_unit)
+        ));
     }
     if far > 0 {
         reply["warning"] = json!(format!(
@@ -8880,6 +9142,400 @@ fn board_json(m: &Model, id: Id) -> Value {
         "installed_va": totals.as_ref().map(|t| t.installed_va), "demand_va": totals.as_ref().map(|t| t.demand_va),
         "current_a": totals.as_ref().and_then(|t| t.current_a),
     })
+}
+
+/// `[x, y, z]` under `key`, mm, within the map's bounds.
+fn shared3(c: &str, p: &Value, key: &str) -> Result<Option<[f64; 3]>, String> {
+    use crate::model::MAX_MAP;
+    match p.get(key) {
+        v if absent(v) => Ok(None),
+        Some(v) => v
+            .as_array()
+            .and_then(|a| match a.as_slice() {
+                [x, y, z] => Some([x.as_f64()?, y.as_f64()?, z.as_f64()?]),
+                _ => None,
+            })
+            .filter(|q| q.iter().all(|x| crate::coordinates::on_map(*x)))
+            .map(Some)
+            .ok_or_else(|| bad(c, format!("`{key}` must be [x, y, z] in mm, each within ±{MAX_MAP:e}, got {v}"))),
+        None => Ok(None),
+    }
+}
+
+/// A shared coordinate under `key`, mm.
+fn shared1(c: &str, p: &Value, key: &str) -> Result<Option<f64>, String> {
+    use crate::model::MAX_MAP;
+    match p.get(key) {
+        v if absent(v) => Ok(None),
+        Some(v) => v
+            .as_f64()
+            .filter(|x| crate::coordinates::on_map(*x))
+            .map(Some)
+            .ok_or_else(|| bad(c, format!("`{key}` must be a number of mm within ±{MAX_MAP:e}, got {v}"))),
+        None => Ok(None),
+    }
+}
+
+/// An angle to true north under `key`, degrees.
+fn north_angle(c: &str, p: &Value, key: &str) -> Result<Option<f64>, String> {
+    match amount(c, p, key, "degrees")? {
+        Some(a) if a.abs() > 360.0 => Err(bad(c, format!("`{key}` must be degrees from -360 to 360, got {a}"))),
+        a => Ok(a),
+    }
+}
+
+/// Reset Coordinates: the active location back on the internal origin (no offset, no turn, a scale of 1), both points on it,
+/// and every link placed by base points or by shared coordinates pinned by hand where it stands now, so none moves.
+fn reset_coordinates(s: &mut Session) -> R {
+    let c = "coordinates";
+    let m = &s.model;
+    let mut pinned = Vec::new();
+    for (id, e) in &m.elements {
+        let Element::Link(l) = e else { continue };
+        if l.by == crate::link::By::Manual {
+            continue;
+        }
+        // Where it stands: worked out from its file, else where it stood when it was last loaded, as the project remembers.
+        let (at, angle, raised) = match (m.loaded.get(&l.path), l.placed) {
+            (Some(other), _) => crate::link::placement(m, l, other),
+            (None, Some(p)) => (p.at, p.angle, p.raised),
+            (None, None) => {
+                return Err(bad(
+                    c,
+                    format!("link `{}` has never been loaded, so where it stands isn't known: `reload` it first, or delete it", l.name),
+                ));
+            }
+        };
+        pinned
+            .push((*id, crate::model::Link { by: crate::link::By::Manual, at, angle, raised, location: None, placed: None, ..l.clone() }));
+    }
+    let m = s.model_mut();
+    for (id, l) in pinned {
+        m.elements.insert(id, Element::Link(l));
+    }
+    m.coordinates.base = [0.0; 3];
+    m.coordinates.survey = [0.0; 3];
+    // The active site on the internal origin, its map system kept.
+    let g = crate::model::Georeference { eastings: 0.0, northings: 0.0, height: 0.0, rotation: 0.0, scale: 1.0, ..m.site().clone() };
+    m.set_site(g);
+    Ok(s.model.coordinates_report())
+}
+
+fn coordinates(s: &mut Session, p: &Value) -> R {
+    use crate::coordinates::Move;
+    let c = "coordinates";
+    only(c, p, &["base", "survey", "move", "acquire", "reset"])?;
+    if flag(c, p, "reset")? {
+        return reset_coordinates(s);
+    }
+    if let Some(from) = id_opt(c, p, "acquire")? {
+        let m = &s.model;
+        let mut g = m.site().clone();
+        match m.elements.get(from) {
+            Some(Element::CadImport(ci)) => {
+                // A drawing's own coordinates are the map's: where its origin stands, the shared coordinates are its, in mm,
+                // and its axes the map's. The elevation stays.
+                let z = m.elevation(ci.level);
+                let shared = [ci.origin.0 * ci.scale, ci.origin.1 * ci.scale, g.to_shared([ci.at.0, ci.at.1, z])[2]];
+                g.rotation = -ci.angle;
+                g.specify([ci.at.0, ci.at.1, z], shared);
+            }
+            Some(Element::Link(l)) => {
+                let other = m.loaded.get(&l.path).ok_or_else(|| bad(c, format!("link `{}` isn't loaded: `reload` it first", l.name)))?;
+                // Where its origin stands here, its shared coordinates are this project's from now on.
+                let (at, angle, dz) = crate::link::placement(m, l, other);
+                let theirs = l.location.as_deref().and_then(|n| other.site_named(n)).unwrap_or(other.site());
+                (g.rotation, g.scale) = (theirs.rotation - angle, theirs.scale);
+                // Its map system comes with it, where it names one.
+                if !theirs.crs.is_empty() {
+                    g = crate::model::Georeference { eastings: 0.0, northings: 0.0, height: 0.0, ..theirs.clone() };
+                    (g.rotation, g.scale) = (theirs.rotation - angle, theirs.scale);
+                }
+                g.specify([at.0, at.1, dz], theirs.to_shared([0.0; 3]));
+            }
+            _ => {
+                return Err(bad(
+                    c,
+                    format!("`acquire` takes a link or a CAD drawing placed in the project, and element {from} is neither"),
+                ));
+            }
+        }
+        g.rotation = (g.rotation + 180.0).rem_euclid(360.0) - 180.0;
+        g.check().map_err(|e| bad(c, e))?;
+        let m = s.model_mut();
+        m.set_site(g);
+        let mut r = m.coordinates_report();
+        r["acquired"] = json!({"from": from, "location": m.frames().location()});
+        return Ok(r);
+    }
+    let base = match p.get("base") {
+        v if absent(v) => None,
+        Some(v) => Some(point3(v).ok_or_else(|| bad(c, format!("`base` must be [x, y, z] in mm, got {v}")))?),
+        None => None,
+    };
+    let survey = match p.get("survey") {
+        v if absent(v) => None,
+        Some(v) => Some(point3(v).ok_or_else(|| bad(c, format!("`survey` must be [x, y, z] in mm, got {v}")))?),
+        None => None,
+    };
+    let how = match string(c, p, "move")?.as_deref() {
+        None | Some("point") => Move::Point,
+        Some("system") => Move::System,
+        Some(other) => {
+            return Err(bad(c, format!("`move` is point (the point alone) or system (the shared system with it), not `{other}`")));
+        }
+    };
+    if base.is_some() || survey.is_some() {
+        let m = s.model_mut();
+        if let Some(b) = base {
+            m.coordinates.base = b;
+        }
+        if let Some(sv) = survey {
+            m.move_survey(sv, how);
+        }
+    }
+    Ok(s.model.coordinates_report())
+}
+
+fn location(s: &mut Session, p: &Value) -> R {
+    use crate::coordinates::MAX_LOCATIONS;
+    let c = "location";
+    only(
+        c,
+        p,
+        &["name", "east", "north", "elevation", "angle", "scale", "rename", "activate", "delete", "shift", "latitude", "longitude", "crs"],
+    )?;
+    let name = name_param(c, p, "name")?;
+    let shift = shared3(c, p, "shift")?;
+    let shifted = |g: &mut crate::model::Georeference, d: [f64; 3]| {
+        g.eastings += d[0];
+        g.northings += d[1];
+        g.height += d[2];
+    };
+    let Some(name) = name else {
+        if let Some(d) = shift {
+            let m = s.model_mut();
+            let mut g = m.site().clone();
+            shifted(&mut g, d);
+            g.check().map_err(|e| bad(c, e))?;
+            m.set_site(g);
+            for (n, g) in &mut m.coordinates.sites {
+                shifted(g, d);
+                g.check().map_err(|e| bad(c, format!("site `{n}`: {e}")))?;
+            }
+        }
+        let r = s.model.coordinates_report();
+        return Ok(json!({"active": r["active"], "locations": r["locations"]}));
+    };
+    let m = s.model_mut();
+    let active = m.coordinates.active == name;
+    if flag(c, p, "delete")? {
+        if active {
+            return Err(bad(c, format!("`{name}` is the active site; activate another first")));
+        }
+        if m.coordinates.sites.remove(&name).is_none() {
+            return Err(bad(c, format!("there's no location `{name}`")));
+        }
+        return Ok(json!({"deleted": name}));
+    }
+    let was = m.site_named(&name).cloned();
+    let rename = name_param(c, p, "rename")?;
+    if was.is_none() && rename.is_some() {
+        return Err(bad(c, format!("there's no location `{name}` to rename")));
+    }
+    // A new one starts as a copy of the active one.
+    let mut g = was.clone().unwrap_or_else(|| m.site().clone());
+    // Its map system, as `georeference` takes one.
+    if let Some(crs) = string(c, p, "crs")? {
+        g.crs = crs.trim().to_string();
+        if let Some(code) = crate::crs::code(&g.crs).filter(|code| crate::crs::known(*code)) {
+            g.description = Some(crate::crs::lookup(code).map_err(|e| bad(c, e))?.name);
+        } else if g.crs.is_empty() {
+            g.description = None;
+        }
+    }
+    if let Some(a) = north_angle(c, p, "angle")? {
+        g.rotation = a;
+    }
+    if let Some(x) = amount(c, p, "scale", "grid over ground")? {
+        g.scale = x;
+    }
+    // East, north and elevation are the Survey Point's, as Revit shows a site; the georeference is the internal origin's.
+    let survey = m.coordinates.survey;
+    let mut at = g.to_shared(survey);
+    for (i, key) in ["east", "north", "elevation"].into_iter().enumerate() {
+        if let Some(x) = shared1(c, p, key)? {
+            at[i] = x;
+        }
+    }
+    // Or put on the globe, through the site's map system.
+    match (amount(c, p, "longitude", "degrees")?, amount(c, p, "latitude", "degrees")?) {
+        (None, None) => {}
+        (Some(lon), Some(lat)) => {
+            let map = g.map().ok_or_else(|| {
+                bad(c, "`latitude` and `longitude` need the site's map system: name a projected EPSG code with `georeference` (`crs`)")
+            })?;
+            (at[0], at[1]) = crate::crs::from_wgs84(map.code, lon, lat).map_err(|e| bad(c, e))?;
+        }
+        _ => return Err(bad(c, "`latitude` and `longitude` go together")),
+    }
+    g.specify(survey, at);
+    if let Some(d) = shift {
+        shifted(&mut g, d);
+    }
+    let name = match rename {
+        Some(to) if to != name => {
+            if m.site_named(&to).is_some() {
+                return Err(bad(c, format!("there's already a location `{to}`")));
+            }
+            if let Some(kept) = m.coordinates.sites.remove(&name) {
+                m.coordinates.sites.insert(to.clone(), kept);
+            }
+            // The active name is a reference to its library entry, so it follows.
+            rename_entry(m, &LibKind::Location, &name, &to);
+            to
+        }
+        _ => name,
+    };
+    g.check().map_err(|e| bad(c, format!("location `{name}`: {e}")))?;
+    if was.is_none() && m.coordinates.sites.len() + 1 >= MAX_LOCATIONS {
+        return Err(bad(c, format!("the project holds up to {MAX_LOCATIONS} locations")));
+    }
+    if active {
+        m.set_site(g.clone());
+    } else {
+        m.coordinates.sites.insert(name.clone(), g.clone());
+    }
+    if flag(c, p, "activate")? {
+        m.activate_site(&name);
+    }
+    let active = m.coordinates.active.clone();
+    m.sync_library();
+    let (id, guid) = (m.library.id(&LibKind::Location, &name), m.library.guid(&LibKind::Location, &name));
+    Ok(json!({"name": name, "location": g.location(survey), "georeference": g, "active": active, "id": id, "guid": guid}))
+}
+
+fn rotate_project_north(s: &mut Session, p: &Value) -> R {
+    let c = "rotate_project_north";
+    only(c, p, &["angle", "true_north", "about"])?;
+    let angle = match (num(c, p, "angle")?, flag(c, p, "true_north")?) {
+        (Some(a), false) if a.abs() <= 360.0 => a,
+        (Some(a), false) => return Err(bad(c, format!("`angle` is degrees from -360 to 360, not {a}"))),
+        (None, true) => s.model.site().rotation,
+        (Some(_), true) => return Err(bad(c, "give `angle` or `true_north`, not both")),
+        (None, false) => return Err(bad(c, "give `angle` (degrees, counter-clockwise) or `true_north: true`")),
+    };
+    let base = s.model.coordinates.base;
+    let about = point_opt(c, p, "about")?.unwrap_or(P2(base[0], base[1]));
+    let (sin, cos) = angle.to_radians().sin_cos();
+    let turn = move |q: P2| {
+        let d = q - about;
+        about + P2(d.0 * cos - d.1 * sin, d.0 * sin + d.1 * cos)
+    };
+    let micro = |q: P2| micron(turn(q));
+    let mo = Motion { map: &micro, slide: None, mirror: false };
+    // What has a place in plan turns; what hasn't (levels, sheets, links worked out from the points) stays.
+    let m = &s.model;
+    let all: BTreeSet<Id> = m.elements.keys().copied().collect();
+    let ids: Vec<Id> = all.iter().copied().filter(|id| transformed(c, m, *id, &mo, &all).is_ok()).collect();
+    relocate(c, s, &ids, &mo, None)?;
+    let m = s.model_mut();
+    let co = &mut m.coordinates;
+    for pt in [&mut co.base, &mut co.survey] {
+        let q = turn(P2(pt[0], pt[1]));
+        (pt[0], pt[1]) = (q.0, q.1);
+    }
+    let wrap = |a: f64| {
+        let a = (a + 180.0).rem_euclid(360.0) - 180.0;
+        if a.abs() < 1e-9 { 0.0 } else { a }
+    };
+    // Every site turns back by as much about the point that stays, so every point keeps its place in the world.
+    let fixed = [about.0, about.1, 0.0];
+    let turned = |g: &mut crate::model::Georeference| {
+        let q = g.to_shared(fixed);
+        g.rotation = wrap(g.rotation - angle);
+        g.specify(fixed, q);
+    };
+    co.sites.values_mut().for_each(turned);
+    let mut g = m.site().clone();
+    turned(&mut g);
+    m.set_site(g);
+    for e in m.elements.values_mut() {
+        if let Element::Link(l) = e
+            && l.by == crate::link::By::Base
+        {
+            l.angle = wrap(l.angle + angle);
+        }
+    }
+    Ok(json!({"angle": angle, "rotated": ids}))
+}
+
+fn specify_coordinates(s: &mut Session, p: &Value) -> R {
+    let c = "specify_coordinates";
+    only(c, p, &["at", "east", "north", "elevation", "angle", "on", "level"])?;
+    let picked = !absent(p.get("on")) || !absent(p.get("level"));
+    let at = match p.get("at").and_then(Value::as_array).map(Vec::len) {
+        Some(2) => {
+            let q = point_req(c, p, "at")?;
+            let on = match p.get("on") {
+                v if absent(v) => None,
+                Some(v) => Some(element_id(c, &s.model, v)?),
+                None => None,
+            };
+            let level = match (on.and_then(|id| s.model.elements.get(id)).and_then(|e| s.model.level_of(e)), absent(p.get("level"))) {
+                (Some(l), true) => l,
+                _ => level_param(c, &s.model, p, "level")?,
+            };
+            let z = crate::coordinates::picked_z(&s.model, level, q, on);
+            [q.0, q.1, z]
+        }
+        _ if picked => {
+            return Err(bad(c, "`on` and `level` work out the height of a point picked in plan: give `at` as [x, y] with them"));
+        }
+        _ => point3_req(c, p, "at")?,
+    };
+    let need = |key: &str| shared1(c, p, key)?.ok_or_else(|| bad(c, format!("`{key}` (mm) is required")));
+    let shared = [need("east")?, need("north")?, need("elevation")?];
+    let mut g = s.model.site().clone();
+    if let Some(a) = north_angle(c, p, "angle")? {
+        g.rotation = a;
+    }
+    g.specify(at, shared);
+    g.check().map_err(|e| bad(c, e))?;
+    let m = s.model_mut();
+    m.set_site(g);
+    Ok(json!({"active": m.coordinates.active, "location": m.frames().location(), "georeference": m.georeference}))
+}
+
+fn convert_coordinates(s: &mut Session, p: &Value) -> R {
+    use crate::coordinates::{Frame, Frames};
+    let c = "convert_coordinates";
+    only(c, p, &["points", "from", "to", "location"])?;
+    let frame = |key: &str| -> Result<Frame, String> {
+        let f = string(c, p, key)?.ok_or_else(|| bad(c, format!("`{key}` ({}) is required", Frame::NAMES)))?;
+        Frame::parse(&f).ok_or_else(|| bad(c, format!("`{key}` is one of {}, not `{f}`", Frame::NAMES)))
+    };
+    let (from, to) = (frame("from")?, frame("to")?);
+    let a = p.get("points").and_then(Value::as_array).ok_or_else(|| bad(c, "`points` [[x, y, z], …] is required"))?;
+    if a.len() > MAX_POINTS {
+        return Err(bad(c, format!("`points` has more than {MAX_POINTS} points")));
+    }
+    let pts = a
+        .iter()
+        .map(|v| shared3(c, &json!({"p": v}), "p")?.ok_or_else(|| bad(c, format!("`points`: {v} is not a point [x, y, z] in mm"))))
+        .collect::<Result<Vec<_>, _>>()?;
+    let m = &s.model;
+    let name = name_param(c, p, "location")?.unwrap_or_else(|| m.coordinates.active.clone());
+    let site = m.site_named(&name).ok_or_else(|| {
+        let names: Vec<&str> = std::iter::once(&m.coordinates.active).chain(m.coordinates.sites.keys()).map(String::as_str).collect();
+        bad(c, format!("there's no location `{name}`; the project has {}", names.join(", ")))
+    })?;
+    let f = Frames { co: &m.coordinates, site };
+    let out: Vec<[f64; 3]> = pts.into_iter().map(|q| f.convert(q, from, to)).collect::<Result<_, _>>().map_err(|e| bad(c, e))?;
+    if out.iter().flatten().any(|x| !crate::coordinates::on_map(*x)) {
+        return Err(bad(c, "a point lands past the coordinates' bounds"));
+    }
+    Ok(json!({"points": out, "from": string(c, p, "from")?, "to": string(c, p, "to")?, "location": name}))
 }
 
 fn wall(s: &mut Session, p: &Value) -> R {
@@ -10302,11 +10958,205 @@ fn spot(s: &mut Session, p: &Value) -> R {
         })?)),
         (None, None) => None,
     };
-    let sp = Spot { view: m.guid(view), at, host, slope: false };
-    let elevation = m.spot_value(&sp).map(hundredth);
+    let sp = Spot { host, origin: origin_param(c, p)?, ..Spot::new(m.guid(view), at) };
+    let elevation = m.spot_reads(&sp).map(hundredth);
     let host = host.and_then(|h| m.elements.id(h));
     let id = s.model_mut().insert(Element::Spot(sp));
     Ok(json!({"id": id, "elevation": elevation, "host": host}))
+}
+
+/// Where point `at`, at height `z`, stands in the active location's shared coordinates, as `shared_east`, `shared_north` and
+/// `shared_elevation`.
+fn shared_at(m: &Model, extra: &mut Map<String, Value>, at: P2, z: f64) {
+    let q = m.frames().to_shared([at.0, at.1, z]);
+    for (k, v) in ["shared_east", "shared_north", "shared_elevation"].into_iter().zip(q) {
+        extra.insert(k.into(), json!(hundredth(v)));
+    }
+}
+
+/// Whether a drawing whose file says it is drawn at `scale` mm to its unit, its middle at `middle` in that unit, looks like map
+/// coordinates in a unit its file gets wrong: its file says inches or feet, and its middle is more than 50 000 units off its
+/// origin (a civil drawing in metres whose header was left at AutoCAD's imperial default). Some(true) for inches, which
+/// map coordinates never are; Some(false) for feet, which US State Plane coordinates are.
+fn looks_like_map(scale: Option<f64>, middle: P2) -> Option<bool> {
+    let far = middle.0.abs().max(middle.1.abs()) > 50_000.0;
+    match scale {
+        Some(k) if far && (k - 25.4).abs() < 1e-6 => Some(true),
+        Some(k) if far && (k - 304.8).abs() < 0.01 => Some(false),
+        _ => None,
+    }
+}
+
+/// The scale an import whose units are auto reads a drawing at, and a note when it isn't its file's: a file that says inches
+/// for map coordinates (`looks_like_map`) is read in the unit of the active site's map system, else in metres; one that says
+/// feet, in the map system's unit when that is metric. Else its file's.
+fn auto_scale(m: &Model, scale: Option<f64>, unit: &str, middle: P2) -> (f64, Option<String>) {
+    let file = scale.unwrap_or(1.0);
+    let unit = spelled(unit);
+    let info = m.site().map();
+    let (k, why) = match (looks_like_map(scale, middle), &info) {
+        // Inches, or feet where the map system is metric: the map system's unit.
+        (Some(inches), Some(i)) if inches || i.mm() >= 1000.0 => {
+            (i.mm(), format!("{}s, the unit of the project's map system ({})", i.unit, i.name))
+        }
+        (Some(true), _) => (1000.0, "metres, as map coordinates are".to_string()),
+        _ => return (file, None),
+    };
+    if (k - file).abs() < 1e-9 {
+        return (file, None);
+    }
+    let note = format!(
+        "its file says its units are {unit}, but its coordinates are map coordinates: read in {why}; give `units` to read it otherwise"
+    );
+    (k, Some(note))
+}
+
+/// A unit's short name (`in`, `ft`) as a sentence says it.
+fn spelled(unit: &str) -> &str {
+    match unit {
+        "in" => "inches",
+        "ft" => "feet",
+        "mm" => "millimetres",
+        "cm" => "centimetres",
+        "m" => "metres",
+        u => u,
+    }
+}
+
+/// Why something far off can't come in where its coordinates put it, and what to do.
+fn far_message(here: [f64; 3]) -> String {
+    format!(
+        "where its coordinates put it, by the active location, is {:.0}, {:.0} mm from the internal origin, past the {MAX_COORD} mm \
+         a model reaches: set the location (`location`, `specify_coordinates`) or give `acquire: true`, which sets it from the \
+         file so it lands at the origin",
+        here[0], here[1]
+    )
+}
+
+/// What `origin` names: the Project Base Point unless it says the Survey Point.
+fn origin_param(c: &str, p: &Value) -> Result<crate::coordinates::Origin, String> {
+    use crate::coordinates::Origin;
+    let key = if p.get("elevation_base").is_some() { "elevation_base" } else { "origin" };
+    match string(c, p, key)? {
+        None => Ok(Origin::Base),
+        Some(t) => Origin::parse(&t).ok_or_else(|| bad(c, format!("`{key}` is {}, not `{t}`", Origin::NAMES))),
+    }
+}
+
+/// A spot coordinate: in a plan, the north and east of a point, and its elevation, as its type says.
+fn spot_coordinate(s: &mut Session, p: &Value) -> R {
+    let c = "spot_coordinate";
+    only(c, p, &["at", "view", "origin", "type", "host", "end", "leader", "shoulder"])?;
+    let m = &s.model;
+    let at = point_req(c, p, "at")?;
+    let view = view_param(c, m, p, false)?;
+    let Some(level) = m.plan_level(view) else {
+        return Err(bad(c, "a spot coordinate reads north and east: place it in a plan"));
+    };
+    // Without `origin`, the shared coordinates: what a spot coordinate is for once the project stands somewhere.
+    let origin = if absent(p.get("origin")) { crate::coordinates::Origin::Survey } else { origin_param(c, p)? };
+    let type_name = match name_param(c, p, "type")? {
+        Some(t) if m.spot_coordinate_types.contains_key(&t) => t,
+        Some(t) => return Err(bad(c, format!("there's no spot coordinate type `{t}`; `spot_coordinate_type` lists them"))),
+        None => crate::spots::default_type(&m.spot_coordinate_types, origin)
+            .cloned()
+            .ok_or_else(|| bad(c, "the project has no spot coordinate type; make one with `spot_coordinate_type`"))?,
+    };
+    // What it stands on, for its elevation: the element given, else what is at its point, else nothing (the level's).
+    let host = match id_opt(c, p, "host")? {
+        Some(h) => Some(m.guid(h)),
+        None => m.spot_host(level, at).map(|h| m.guid(h)),
+    };
+    let sp = Spot {
+        host,
+        coordinate: true,
+        type_name: Some(type_name.clone()),
+        leader: flag_or(c, p, "leader", true)?,
+        shoulder: flag_or(c, p, "shoulder", true)?,
+        end: point_opt(c, p, "end")?,
+        ..Spot::new(m.guid(view), at)
+    };
+    let read = m.spot_coordinate(&sp);
+    let text = m.spot_coordinate_text(&sp);
+    let host = host.and_then(|h| m.elements.id(h));
+    let id = s.model_mut().insert(Element::Spot(sp));
+    Ok(json!({"id": id, "type": type_name, "east": read.map(|(e, _)| hundredth(e)), "north": read.map(|(_, n)| hundredth(n)),
+        "text": text, "host": host}))
+}
+
+fn spot_coordinate_type(s: &mut Session, p: &Value) -> R {
+    use crate::spots::SpotCoordinateType;
+    let c = "spot_coordinate_type";
+    let Some(name) = name_param(c, p, "name")? else {
+        return Ok(json!({"types": s.model.spot_coordinate_types, "fonts": crate::text::families()}));
+    };
+    let m = s.model_mut();
+    if flag(c, p, "delete")? {
+        if let Some((id, _)) =
+            m.elements.iter().find(|(_, e)| matches!(e, Element::Spot(sp) if sp.type_name.as_deref() == Some(name.as_str())))
+        {
+            return Err(bad(c, format!("spot coordinate {id} is of `{name}`; give it another type first")));
+        }
+        if m.spot_coordinate_types.remove(&name).is_none() {
+            return Err(bad(c, format!("there's no spot coordinate type `{name}`")));
+        }
+        return Ok(json!({"deleted": name}));
+    }
+    let t = match (m.spot_coordinate_types.get(&name), name_param(c, p, "like")?) {
+        (Some(t), _) => t.clone(),
+        (None, Some(like)) => m
+            .spot_coordinate_types
+            .get(&like)
+            .cloned()
+            .ok_or_else(|| bad(c, format!("there's no spot coordinate type `{like}` to start from")))?,
+        (None, None) => SpotCoordinateType::default(),
+    };
+    // What it is, with the values given over it, read as a file reads one: a key it hasn't is an error.
+    let mut v = serde_json::to_value(&t).map_err(|e| bad(c, e.to_string()))?;
+    let mut font = None;
+    if let Some(o) = v.as_object_mut() {
+        for (key, value) in p.as_object().into_iter().flatten() {
+            match key.as_str() {
+                "name" | "like" | "rename" | "delete" => {}
+                "font" => font = name_param(c, p, "font")?,
+                "leader_color" | "text_color" if !value.is_null() => {
+                    let rgb =
+                        colour(value).ok_or_else(|| bad(c, format!("`{key}` is \"#rrggbb\" or [r, g, b], each 0 to 255, not {value}")))?;
+                    o.insert(key.clone(), json!(rgb));
+                }
+                "origin" if value.is_string() => {
+                    let t = value.as_str().unwrap_or_default();
+                    let origin = crate::coordinates::Origin::parse(t)
+                        .ok_or_else(|| bad(c, format!("`origin` is {}, not `{t}`", crate::coordinates::Origin::NAMES)))?;
+                    o.insert(key.clone(), json!(origin));
+                }
+                _ => {
+                    o.insert(key.clone(), value.clone());
+                }
+            }
+        }
+    }
+    let mut t: SpotCoordinateType = serde_json::from_value(v).map_err(|e| bad(c, e.to_string()))?;
+    if let Some(f) = font.filter(|f| !f.trim().eq_ignore_ascii_case(t.font.trim())) {
+        t.font = crate::text::known(&f)
+            .ok_or_else(|| bad(c, format!("this system has no font `{f}`; `spot_coordinate_type` without `name` lists them")))?;
+    }
+    let name = match name_param(c, p, "rename")? {
+        Some(to) if to != name => {
+            if m.spot_coordinate_types.contains_key(&to) {
+                return Err(bad(c, format!("there's already a spot coordinate type `{to}`")));
+            }
+            m.spot_coordinate_types.remove(&name);
+            rename_entry(m, &LibKind::SpotCoordinateType, &name, &to);
+            to
+        }
+        _ => name,
+    };
+    t.check(&name).map_err(|e| bad(c, e))?;
+    if m.spot_coordinate_types.get(&name) != Some(&t) {
+        m.spot_coordinate_types.insert(name.clone(), t.clone());
+    }
+    Ok(json!({"name": name, "type": t}))
 }
 
 /// A spot slope: in a plan, how steeply the top of the floor or roof at `at` (or `host`) falls there, and which way.
@@ -10325,7 +11175,7 @@ fn spot_slope(s: &mut Session, p: &Value) -> R {
         let place = format!("[{}, {}] on {}", at.0, at.1, level_name(m, level));
         bad(c, format!("no slope to read at {place}; place it on a floor or a roof"))
     })?;
-    let sp = Spot { view: m.guid(view), at, host: Some(m.guid(host)), slope: true };
+    let sp = Spot { host: Some(m.guid(host)), slope: true, ..Spot::new(m.guid(view), at) };
     let read = m.spot_slope(&sp);
     let id = s.model_mut().insert(Element::Spot(sp));
     Ok(
@@ -15115,7 +15965,10 @@ pub(crate) fn transform(c: &str, m: &Model, mut e: Element, id: Id, mo: &Motion,
             (n.at, n.angle) = (at, if mo.mirror { n.angle } else { angle });
             n.leader = n.leader.map(f);
         }
-        Element::Spot(sp) => sp.at = f(sp.at),
+        Element::Spot(sp) => {
+            sp.at = f(sp.at);
+            sp.end = sp.end.map(f);
+        }
         Element::DetailLine(l) => l.curve = l.curve.map(|p| micron(f(p))),
         // Its sketch went with it, above; its pattern goes too.
         Element::FilledRegion(r) => (r.pattern_origin, r.pattern_angle) = turned(f, r.pattern_origin, r.pattern_angle),
@@ -15129,6 +15982,17 @@ pub(crate) fn transform(c: &str, m: &Model, mut e: Element, id: Id, mo: &Motion,
             r.mirrored ^= mo.mirror;
         }
         // A link is moved and turned as a whole; its file stays as it is.
+        // Placed by base points or shared coordinates, where it stands is worked out, never moved by hand.
+        Element::Link(l) if !l.by.is_default() => {
+            return Err(bad(
+                c,
+                format!(
+                    "link `{}` stands by {}, worked out each time: `modify` it with `by: manual` (and `at`, `angle`) to place it by hand",
+                    l.name,
+                    if l.by == crate::link::By::Shared { "shared coordinates" } else { "base points" }
+                ),
+            ));
+        }
         Element::Link(l) => (l.at, l.angle) = turned(f, l.at, l.angle),
         Element::Viewport(v) => v.at = f(v.at),
         Element::Column(col) | Element::StructuralColumn(col) | Element::Footing(col) => (col.at, col.angle) = turned(f, col.at, col.angle),
@@ -17572,7 +18436,20 @@ fn georeference(s: &mut Session, p: &Value) -> R {
     const TEXTS: [&str; 5] = ["description", "geodetic_datum", "vertical_datum", "map_projection", "map_zone"];
     const NUMBERS: [&str; 5] = ["eastings", "northings", "height", "rotation", "scale"];
     let keys: Vec<&str> = ["crs", "clear"].into_iter().chain(TEXTS).chain(NUMBERS).collect();
-    only(c, p, &keys)?;
+    only(c, p, &[&keys[..], &["search", "limit"]].concat())?;
+    // A map system found by its code, by the words of its name, or by a place: changing nothing.
+    if let Some(text) = string(c, p, "search")? {
+        let limit = match p.get("limit") {
+            v if absent(v) => 20,
+            Some(v) => {
+                v.as_u64().filter(|n| (1..=500).contains(n)).ok_or_else(|| bad(c, format!("`limit` must be 1 to 500, got {v}")))? as usize
+            }
+            None => 20,
+        };
+        let found: Vec<Value> = crate::crs::search(&text, limit).iter().map(crate::crs::Info::json).collect();
+        let places: Vec<Value> = crate::places::find(&text, limit).iter().map(crate::places::Place::json).collect();
+        return Ok(json!({"found": found, "places": places}));
+    }
     let given = keys.iter().filter(|k| **k != "clear").any(|k| !absent(p.get(*k)));
     match p.get("clear") {
         None | Some(Value::Null) => {}
@@ -17587,16 +18464,17 @@ fn georeference(s: &mut Session, p: &Value) -> R {
         Some(_) => return Err(bad(c, "`clear` is true or false")),
     }
     if given {
-        let crs = string(c, p, "crs")?;
-        let mut g = match (&s.model.georeference, &crs) {
-            (Some(g), _) => g.clone(),
-            (None, Some(_)) => crate::model::Georeference { scale: 1.0, ..Default::default() },
-            (None, None) => {
-                return Err(bad(c, "the project has no georeference yet: give its coordinate reference system's name, `crs` (EPSG:31983)"));
+        // Any of its numbers makes one: a site needs no coordinate reference system.
+        let mut g = s.model.site().clone();
+        if let Some(crs) = string(c, p, "crs")? {
+            g.crs = crs.trim().to_string();
+            // A known EPSG code must be a map grid, and names itself where no description is given.
+            if let Some(code) = crate::crs::code(&g.crs).filter(|code| crate::crs::known(*code)) {
+                let map = crate::crs::lookup(code).map_err(|e| bad(c, e))?;
+                if absent(p.get("description")) {
+                    g.description = Some(map.name);
+                }
             }
-        };
-        if let Some(crs) = crs {
-            g.crs = crs;
         }
         let mut texts = [&mut g.description, &mut g.geodetic_datum, &mut g.vertical_datum, &mut g.map_projection, &mut g.map_zone];
         for (key, field) in TEXTS.into_iter().zip(texts.iter_mut()) {
@@ -17612,8 +18490,8 @@ fn georeference(s: &mut Session, p: &Value) -> R {
             }
         }
         g.check().map_err(|e| bad(c, e))?;
-        if s.model.georeference.as_ref() != Some(&g) {
-            s.model_mut().georeference = Some(g);
+        if s.model.site() != &g {
+            s.model_mut().set_site(g);
         }
     }
     Ok(json!({"georeference": s.model.georeference}))

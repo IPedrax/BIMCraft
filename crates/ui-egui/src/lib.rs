@@ -21,6 +21,7 @@ mod canvas;
 mod clouds;
 mod context;
 pub mod control;
+mod coordinates;
 pub mod cowork;
 mod dialog;
 mod dimtypes;
@@ -77,6 +78,7 @@ pub mod shortcuts;
 mod sketch;
 mod sketch3d;
 pub mod spacemouse;
+mod spots;
 mod standards;
 mod start;
 mod structure;
@@ -172,6 +174,18 @@ pub enum Tool {
         start: Option<P2>,
         place: bool,
     },
+    /// Rotate Project North: the whole model about `centre` (the Project Base Point at first), as Rotate turns a
+    /// selection, and every location's angle back by as much, so nothing moves in the world.
+    RotateNorth {
+        centre: P2,
+        start: Option<P2>,
+        place: bool,
+    },
+    /// Specify Coordinates at a Point: the point the shared coordinates typed in the Location window are at, picked in the
+    /// view (snapped) while the window steps aside.
+    SpecifyPoint,
+    /// Acquire Coordinates: the link or CAD drawing clicked gives the project its shared coordinates.
+    Acquire,
     /// Mirror the selection across a line picked, or with `draw`, a line drawn from `start`.
     Mirror {
         draw: bool,
@@ -221,6 +235,8 @@ pub enum Tool {
     Spot,
     /// A spot slope where clicked: how steeply the floor's or roof's top falls there.
     SpotSlope,
+    /// A spot coordinate: the point it reads, once clicked; the next click ends its leader.
+    SpotCoordinate(Option<P2>),
     /// A ruler laid between two points: the first, once clicked.
     Measure(Option<P2>),
     /// Tag the door or window clicked.
@@ -383,7 +399,7 @@ type Buttons<'a> = &'a [(Icon, &'a str, &'a str, Option<Tool>, bool)];
 
 /// The desktop's own two-letter shortcuts, which [`BimApp::shortcut`] takes before the commands'
 /// aliases, and what Keyboard Shortcuts (KS) calls them.
-const SHORTCUTS: [(&str, &str); 57] = [
+const SHORTCUTS: [(&str, &str); 58] = [
     ("3D", "3D View"),
     ("MD", "Modify"),
     ("SB", "Floor: Structural"),
@@ -436,6 +452,8 @@ const SHORTCUTS: [(&str, &str); 57] = [
     ("HL", "Hidden Line"),
     ("SD", "Shaded"),
     ("KS", "Keyboard Shortcuts"),
+    // Revit has none for Manage > Location; BIMCraft's window of it.
+    ("LO", msg!("Location")),
     ("AI", msg!("Assistant")),
     ("CW", msg!("Co-Work")),
     ("BX", "Section Box"),
@@ -685,6 +703,10 @@ pub struct BimApp {
     /// Text Type Properties, while it's open.
     text_type_dialog: Option<notes::TextTypeDialog>,
     dimension_type_dialog: Option<dimtypes::DimensionTypeDialog>,
+    /// Spot Coordinate Type Properties, while it's open.
+    spot_type_dialog: Option<spots::SpotTypeDialog>,
+    /// The spot coordinate whose leader's end is being dragged.
+    spot_grip: Option<Id>,
     dimension_text_dialog: Option<dimtypes::DimensionTextDialog>,
     /// The line style the Detail Line tool draws in; blank for the project's Thin Lines.
     line_style: String,
@@ -719,6 +741,8 @@ pub struct BimApp {
     cad_dialog: Option<bool>,
     /// Bringing a CAD drawing in: the box, while it's open.
     cad_box: Option<cad::CadBox>,
+    /// Link Model's box (its positioning), while it's open.
+    pub(crate) link_box: Option<links::LinkBox>,
     /// A selected element's temporary dimension being typed: the element, which of its dimensions (a wall has one, a
     /// door or window two: from its wall's start, from its end), the length so far.
     dim_edit: Option<(Id, usize, String)>,
@@ -853,6 +877,11 @@ pub struct BimApp {
     plugins_job: Option<std::sync::mpsc::Receiver<bimcraft_plugin::Plugins>>,
     /// Manage > Electrical Settings, while open.
     electrical_dialog: Option<electrical::ElectricalDialog>,
+    /// Manage > Coordinates, while it is open.
+    coordinates_dialog: Option<coordinates::CoordinatesDialog>,
+    /// How the Survey Point goes when it's dragged, moved or typed in Properties: clipped (the point alone, the world staying)
+    /// or unclipped (the shared coordinates with it), as Revit's clip says.
+    pub(crate) survey_moves: bimcraft_core::coordinates::Move,
     options_dialog: Option<phasing::OptionsDialog>,
     purge_dialog: Option<purge::PurgeDialog>,
     /// Manage > Select by ID and IDs of Selection, while open.
@@ -1477,6 +1506,8 @@ impl BimApp {
             note_edit: None,
             text_type_dialog: None,
             dimension_type_dialog: None,
+            spot_type_dialog: None,
+            spot_grip: None,
             dimension_text_dialog: None,
             line_style: String::new(),
             linework_style: String::new(),
@@ -1504,6 +1535,7 @@ impl BimApp {
             cloud_box: None,
             cad_dialog: None,
             cad_box: None,
+            link_box: None,
             tab_cycle: false,
             held: Vec::new(),
             show_shortcuts: false,
@@ -1571,6 +1603,8 @@ impl BimApp {
             plugin_pick: None,
             plugins_job: None,
             electrical_dialog: None,
+            coordinates_dialog: None,
+            survey_moves: bimcraft_core::coordinates::Move::Point,
             options_dialog: None,
             purge_dialog: None,
             select_by_id: None,
@@ -1709,6 +1743,7 @@ impl BimApp {
             | Tool::Move(_)
             | Tool::Copy(_)
             | Tool::Rotate { .. }
+            | Tool::RotateNorth { .. }
             | Tool::Mirror { .. }
             | Tool::Align(_)
             | Tool::Trim(_)
@@ -1726,7 +1761,9 @@ impl BimApp {
             | Tool::AddSplitLine(_)
             | Tool::SketchLine(_)
             | Tool::SketchPick
-            | Tool::PatternCorner(_) => None,
+            | Tool::PatternCorner(_)
+            | Tool::SpecifyPoint
+            | Tool::Acquire => None,
             Tool::Wall(_) => Some(msg!("Place Wall")),
             Tool::Paint => Some("Paint"),
             Tool::Unpaint => Some("Remove Paint"),
@@ -1746,6 +1783,7 @@ impl BimApp {
             Tool::DetailLine(_) => Some(msg!("Place Detail Lines")),
             Tool::Spot => Some("Spot Elevation"),
             Tool::SpotSlope => Some(msg!("Spot Slope")),
+            Tool::SpotCoordinate(_) => Some("Spot Coordinate"),
             Tool::Measure(_) => Some("Measure"),
             Tool::Tag => Some("Tag"),
             Tool::Section(_) => Some("Section"),
@@ -2114,7 +2152,8 @@ impl BimApp {
             self.units = to;
         }
         let m = &self.session.model;
-        self.selection.retain(|id| m.elements.contains_key(id));
+        // What's selected is the model's elements, and Site's points (by their library ids).
+        self.selection.retain(|id| m.elements.contains_key(id) || bimcraft_core::coordinates::Point::of(m, *id).is_some());
         self.active_option = self.active_option.take().filter(|o| bimcraft_core::phasing::option_exists(m, o));
         let docs: Vec<editor::tabs::DocId> = self.families.iter().map(|d| d.id).collect();
         let exists = |s: &Sheet| match s {
@@ -2155,6 +2194,7 @@ impl BimApp {
         self.type_dialog.is_some()
             || self.text_type_dialog.is_some()
             || self.dimension_type_dialog.is_some()
+            || self.spot_type_dialog.is_some()
             || self.dimension_text_dialog.is_some()
             || self.materials_dialog.is_some()
             || self.family_dialog.is_some()
@@ -2170,6 +2210,7 @@ impl BimApp {
             || self.reinforce_dialog.is_some()
             || self.line_weights_dialog.is_some()
             || self.electrical_dialog.is_some()
+            || self.coordinates_dialog.as_ref().is_some_and(|d| !d.picking())
             || self.object_styles_dialog.is_some()
             || self.line_styles_dialog.is_some()
             || self.fill_patterns_dialog.as_ref().is_some_and(|d| d.picking.is_none())
@@ -2271,6 +2312,14 @@ impl BimApp {
         }
         if enter && let Some(level) = self.plan_level() {
             match (&self.tool, self.typed_length.is_empty() && self.drawing.other.is_empty()) {
+                (&Tool::Rotate { centre, .. }, false) if let Some(angle) = self.typed_angle() => {
+                    self.typed_length.clear();
+                    self.turn(centre, angle);
+                }
+                (&Tool::RotateNorth { centre, .. }, false) if let Some(angle) = self.typed_angle() => {
+                    self.typed_length.clear();
+                    self.rotate_project_north(Some(angle), Some(centre));
+                }
                 _ if self.picking_pattern_lines() => self.finish_pattern_lines(),
                 (Tool::Railing(_), true) => self.finish_railing(level),
                 (Tool::Mass(_), true) => self.finish_mass(level),
@@ -2307,6 +2356,13 @@ impl BimApp {
         if self.tool == Tool::Modify && pressed(Modifiers::NONE, Key::Space) {
             self.flip();
         }
+        // Space while rotating: the next click places the centre, as Revit's Space does.
+        if let Tool::Rotate { place, start, .. } | Tool::RotateNorth { place, start, .. } = &mut self.tool
+            && pressed(Modifiers::NONE, Key::Space)
+        {
+            *place = true;
+            *start = None;
+        }
         // Space steps the Dimension tool's lay: Auto, Aligned, Horizontal, Vertical.
         if let Tool::Dimension(mode, _) = &mut self.tool
             && pressed(Modifiers::NONE, Key::Space)
@@ -2334,8 +2390,9 @@ impl BimApp {
         // one are shortcuts.
         let mut shortcut = String::new();
         for ch in typed.chars() {
-            let listening = self.base().is_some() || self.filleting();
-            if listening && (ch.is_ascii_digit() || ch == '.' || !self.typed_length.is_empty()) {
+            let listening = self.base().is_some() || self.filleting() || self.rotating();
+            let sign = ch == '-' && self.rotating() && self.typed_length.is_empty();
+            if listening && (ch.is_ascii_digit() || ch == '.' || sign || !self.typed_length.is_empty()) {
                 self.typed_length.push(ch);
             } else {
                 shortcut.push(ch);
@@ -2459,6 +2516,10 @@ impl BimApp {
                 self.link_dialog = true;
                 return true;
             }
+            "LO" => {
+                self.open_location();
+                return true;
+            }
             "DP" => {
                 self.duplicate_plan("duplicate");
                 return true;
@@ -2557,6 +2618,12 @@ impl BimApp {
                     Tool::DetailLine(Vec::new())
                 }
                 Some("spot") => Tool::Spot,
+                Some("spot_coordinate") => Tool::SpotCoordinate(None),
+                Some("rotate_project_north") => Tool::RotateNorth { centre: P2(0.0, 0.0), start: None, place: false },
+                Some("specify_coordinates") => {
+                    self.specify_coordinates_pick();
+                    return true;
+                }
                 Some("tag") => Tool::Tag,
                 // Revit's CL is the structural column on its Structure tab, the architectural one elsewhere.
                 Some("column") if self.tab == Tab::Structure || (self.tab == Tab::Context && self.back == Tab::Structure) => {
@@ -2691,6 +2758,7 @@ impl BimApp {
                 Tool::DetailLine(Vec::new())
             }
             Some(Element::Spot(sp)) if sp.slope => Tool::SpotSlope,
+            Some(Element::Spot(sp)) if sp.coordinate => Tool::SpotCoordinate(None),
             Some(Element::Spot(_)) => Tool::Spot,
             Some(Element::Tag(_)) => Tool::Tag,
             Some(Element::Section(_)) => Tool::Section(None),
@@ -2844,6 +2912,10 @@ impl BimApp {
             && let Some(middle) = self.middle()
         {
             *centre = middle;
+        }
+        if let Tool::RotateNorth { centre, .. } = &mut tool {
+            let b = self.session.model.coordinates.base;
+            *centre = P2(b[0], b[1]);
         }
         if tool == Tool::Level {
             let top = self.session.model.levels().last().map_or(0.0, |(_, l)| l.elevation);
@@ -3083,6 +3155,17 @@ impl BimApp {
     }
 
     /// The point the tool measures its next one from, while it has one.
+    /// Rotate or Rotate Project North waiting for its angle (not its centre): digits typed over the view are the angle.
+    pub(crate) fn rotating(&self) -> bool {
+        matches!(self.tool, Tool::Rotate { place: false, .. } | Tool::RotateNorth { place: false, .. })
+    }
+
+    /// The angle typed over the view while rotating, degrees counter-clockwise, if it reads as one.
+    pub(crate) fn typed_angle(&self) -> Option<f64> {
+        let t = self.typed_length.trim().trim_end_matches('°');
+        self.rotating().then(|| t.parse::<f64>().ok()).flatten().filter(|a| a.is_finite() && a.abs() <= 360.0)
+    }
+
     fn base(&self) -> Option<P2> {
         match &self.tool {
             Tool::Wall(chain) => chain.last().copied(),
@@ -3142,8 +3225,8 @@ impl BimApp {
         if std::mem::take(&mut self.dim_edit_escaped) || self.dim_edit.take().is_some() {
             return;
         }
-        // Pick in View goes back to its dialog.
-        if self.stop_work_plane_pick() {
+        // Pick in View goes back to its dialog, and so does Specify Coordinates' pick.
+        if self.stop_work_plane_pick() || self.stop_specify_pick() {
             return;
         }
         self.typed.clear();
@@ -4328,7 +4411,7 @@ impl BimApp {
         });
     }
 
-    /// Annotate > Dimension, as Revit's: Aligned and Linear big, the others small beside them, two rows of three.
+    /// Annotate > Dimension, as Revit's: Aligned and Linear big, the others small beside them, in two rows.
     fn dimension_panel(&mut self, ui: &mut Ui) {
         let big: [(Icon, &str, &str, Tool); 2] = [
             (
@@ -4350,7 +4433,7 @@ impl BimApp {
                 Tool::Dimension(DimMode::Auto, Vec::new()),
             ),
         ];
-        let small: [(Icon, &str, &str, Tool); 6] = [
+        let small: [(Icon, &str, &str, Tool); 7] = [
             (
                 Icon::Angular,
                 msg!("Angular"),
@@ -4387,6 +4470,14 @@ impl BimApp {
                 msg!("Spot Slope: click a floor or a roof in a plan; an arrow points downhill with how steeply its top falls"),
                 Tool::SpotSlope,
             ),
+            (
+                Icon::SpotCoordinate,
+                "Spot Coordinate",
+                msg!(
+                    "Spot Coordinate (PC): click a point in a plan, then where its leader ends; it reads north, east and the elevation as its type says"
+                ),
+                Tool::SpotCoordinate(None),
+            ),
         ];
         panel(ui, "Dimension", |ui| {
             for (icon, label, tip, tool) in &big {
@@ -4396,7 +4487,7 @@ impl BimApp {
             }
             ui.vertical(|ui| {
                 ui.spacing_mut().item_spacing.y = 2.0;
-                for row in small.chunks(3) {
+                for row in small.chunks(4) {
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 1.0;
                         for (icon, label, tip, tool) in row {
@@ -4797,10 +4888,18 @@ impl BimApp {
                 }
             });
         });
-        panel(ui, msg!("Links"), |ui| {
+        // Revit's Project Location: where the project stands, and what stands with it by shared coordinates.
+        // Yielding: Location goes into the panel's list before any other panel gives way, so the tab is no wider than it was.
+        ribbon::yielding(ui, msg!("Project Location"), |ui| {
             let tip = "Link Model (LK): another project, a BIMCraft file or an IFC, shown in this one as a reference that can't be edited: halftone in the plans, the sections and the 3D view, and snapped to";
             if big_button(ui, Icon::Link, "Link Model", false, tip).clicked() {
                 self.link_dialog = true;
+            }
+            let tip = msg!(
+                "Location (LO): where the project stands in the world: its locations, the Project Base Point and the Survey Point, the map system, managing them, and conversions"
+            );
+            if big_button(ui, Icon::Coordinates, "Location", self.coordinates_dialog.is_some(), tip).clicked() {
+                self.open_location();
             }
         });
         panel(ui, msg!("Inquiry"), |ui| {
@@ -5318,6 +5417,12 @@ impl BimApp {
                     ui.checkbox(&mut self.multiple, t("Multiple"));
                 }
                 Tool::Rotate { .. } => self.rotate_options(ui),
+                Tool::RotateNorth { .. } => self.rotate_north_options(ui),
+                Tool::SpecifyPoint => {
+                    if ui.button(t("Back to Coordinates")).clicked() {
+                        self.stop_specify_pick();
+                    }
+                }
                 Tool::Mirror { .. } => {
                     ui.checkbox(&mut self.mirror_copy, t("Copy"));
                 }
@@ -5523,6 +5628,31 @@ impl BimApp {
         ui.checkbox(&mut self.rotate_copy, t("Copy"));
     }
 
+    /// Rotate Project North's Options Bar: an angle to type (Enter turns by it), Align with True North (by the active
+    /// location's angle), and Place Centre.
+    fn rotate_north_options(&mut self, ui: &mut Ui) {
+        let l = ui.label(t("Angle:"));
+        let r = ui.add(TextEdit::singleline(&mut self.angle).desired_width(60.0).hint_text("°")).labelled_by(l.id);
+        if r.lost_focus() && ui.input(|i| i.key_pressed(Key::Enter)) {
+            match (self.angle.trim().parse::<f64>(), &self.tool) {
+                (Ok(a), &Tool::RotateNorth { centre, .. }) if a.is_finite() => self.rotate_project_north(Some(a), Some(centre)),
+                _ => self.status = Status { text: tf("rotate: `{}` is not an angle in degrees", &[&self.angle]), error: true },
+            }
+        }
+        let angle = self.session.model.site().rotation;
+        let align = tf("Align with True North ({}°)", &[&format!("{angle:.3}")]);
+        if ui.add_enabled(angle.abs() > 1e-9, egui::Button::new(align)).clicked()
+            && let &Tool::RotateNorth { centre, .. } = &self.tool
+        {
+            self.rotate_project_north(None, Some(centre));
+        }
+        if ui.button(t("Place Centre")).clicked()
+            && let Tool::RotateNorth { place, .. } = &mut self.tool
+        {
+            *place = true;
+        }
+    }
+
     fn level_options(&mut self, ui: &mut Ui) {
         let l = ui.label(t("Elevation"));
         ui.add(TextEdit::singleline(&mut self.new_level.0).desired_width(80.0)).labelled_by(l.id);
@@ -5630,8 +5760,23 @@ impl BimApp {
             Tool::Move(Some(_)) => msg!("Click where the base point goes, or type a distance and press Enter. Esc cancels."),
             Tool::Copy(Some(_)) => msg!("Click where the copy's base point goes, or type a distance and press Enter. Esc cancels."),
             Tool::Rotate { place: true, .. } => msg!("Click the centre of rotation."),
-            Tool::Rotate { start: None, .. } => msg!("Click the start of the angle, or type an angle in the Options Bar."),
+            Tool::Rotate { start: None, .. } => msg!("Click the start of the angle, or type an angle and press Enter."),
             Tool::Rotate { start: Some(_), .. } => msg!("Click the end of the angle. Esc cancels."),
+            Tool::RotateNorth { place: true, .. } => msg!("Click the centre the model turns about."),
+            Tool::Acquire => msg!("Click a linked model or a CAD drawing: this project takes its shared coordinates. Esc cancels."),
+            Tool::SpotCoordinate(None) => msg!("Click the point the spot coordinate reads; it snaps."),
+            Tool::SpotCoordinate(Some(_)) => msg!("Click where its leader ends. Esc cancels."),
+            Tool::SpecifyPoint => {
+                msg!(
+                    "Click the point the shared coordinates typed are at: it snaps, and a wall's corner is its bottom, a slab's its top. Esc goes back."
+                )
+            }
+            Tool::RotateNorth { start: None, .. } => {
+                msg!("Rotate Project North: click the start of the angle, or type an angle and press Enter. It turns the whole model.")
+            }
+            Tool::RotateNorth { start: Some(_), .. } => {
+                msg!("Click the end of the angle: the model turns, and true north with it, so nothing moves in the world. Esc cancels.")
+            }
             Tool::Mirror { draw: false, .. } => msg!("Pick a wall or grid to mirror across."),
             Tool::Mirror { draw: true, start: None } => msg!("Click the start of the mirror axis."),
             Tool::Mirror { draw: true, start: Some(_) } => msg!("Click the end of the mirror axis."),
@@ -5754,6 +5899,12 @@ impl BimApp {
                 }
                 if let Some(p) = self.canvas.cursor {
                     let u = self.session.model.units;
+                    // Where the cursor is in the world too, once the project's shared coordinates aren't its own.
+                    if let Some(shared) = self.shared_readout(p) {
+                        ui.monospace(RichText::new(shared).color(pal().accent_ink)).on_hover_text(t(
+                            "The cursor in shared coordinates: the active location's east and north, in the map system's unit",
+                        ));
+                    }
                     ui.monospace(format!("x {}  y {}", u.with_unit(p.0), u.with_unit(p.1)));
                 }
                 if let Some(note) = self.snap_note() {
@@ -6019,9 +6170,11 @@ impl BimApp {
         self.fill_patterns_window(ctx);
         self.text_type_window(ctx);
         self.dimension_type_window(ctx);
+        self.spot_type_window(ctx);
         self.dimension_text_window(ctx);
         self.standards_window(ctx);
         self.electrical_window(ctx);
+        self.coordinates_window(ctx);
         self.options_window(ctx);
         self.purge_window(ctx);
         self.cowork_window(ctx);
@@ -6039,6 +6192,7 @@ impl BimApp {
             self.import_cad_dialog(ctx, link);
         }
         self.import_cad_window(ctx);
+        self.link_window(ctx);
         self.select_by_id_window(ctx);
         self.run_script_window(ctx);
         self.work_plane_window(ctx);

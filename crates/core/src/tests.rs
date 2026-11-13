@@ -146,7 +146,7 @@ fn doors_and_windows_find_the_wall_under_a_point() {
 fn a_door_or_window_is_sketched_as_the_command_would_make_it() {
     let mut s = Session::new();
     house(&mut s);
-    let view = crate::render::View { scale: 0.1, cx: 4000.0, cy: 3000.0, width: 1000, height: 800 };
+    let view = crate::render::View { angle: 0.0, scale: 0.1, cx: 4000.0, cy: 3000.0, width: 1000, height: 800 };
     for (is_door, at) in [(true, [2000, 30]), (false, [5000, 0])] {
         let p = json!({"at": at, "level": 100000});
         let sketched = crate::opening_of(&s.model, &p, is_door).unwrap();
@@ -166,7 +166,7 @@ fn a_sketch_draws_its_pens_as_wide_as_the_plan_it_is_in_at_any_zoom() {
     house(&mut s);
     let sketched = crate::opening_of(&s.model, &json!({"at": [2000, 30], "level": 100000}), true).unwrap();
     let widest = |zoom: f64| {
-        let view = crate::render::View { scale: zoom, cx: 4000.0, cy: 3000.0, width: 1000, height: 800 };
+        let view = crate::render::View { angle: 0.0, scale: zoom, cx: 4000.0, cy: 3000.0, width: 1000, height: 800 };
         let d = crate::render::sketch(&s.model, view, 999, &sketched);
         d.prims.iter().filter_map(|p| if let crate::render::Prim::Line { width, .. } = p { Some(*width) } else { None }).fold(0.0, f32::max)
     };
@@ -1992,7 +1992,7 @@ fn components_show_in_plan_from_above_in_3d_and_beyond_a_section() {
     let mut s = Session::new();
     table(&mut s);
     let id = run(&mut s, "component", json!({"family": "Table", "at": [1000, 1000]}))["id"].as_u64().unwrap();
-    let view = crate::render::View { scale: 0.5, cx: 1500.0, cy: 1300.0, width: 1000, height: 800 };
+    let view = crate::render::View { angle: 0.0, scale: 0.5, cx: 1500.0, cy: 1300.0, width: 1000, height: 800 };
     let lines = |s: &Session| -> Vec<P2> {
         let d = crate::render::draw(&s.model, 100000, view);
         d.prims
@@ -2323,6 +2323,39 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"name": "230 V", "nominal": 230, "min": 5e-324, "max": f64::MAX}),
         json!({"name": "230 V", "rename": "400 V", "nominal": [], "volts": 1}),
         json!({"name": "230 V", "delete": true}),
+        json!({"base": [1e300, 0, 0], "survey": [0, 0], "move": 5}),
+        json!({"survey": [9.99e8, -9.99e8, 9.99e8], "move": "point"}),
+        json!({"survey": [1, 2, 3], "move": "system", "base": "x"}),
+        json!({"acquire": 100002}),
+        json!({"angle": 1e300, "about": [f64::MAX, 0]}),
+        json!({"true_north": true, "about": [9.99e8, -9.99e8]}),
+        json!({"angle": 359.99, "true_north": "x", "about": "x"}),
+        json!({"acquire": 999999999, "move": "point"}),
+        json!({"acquire": "x"}),
+        json!({"path": "no/such/folder/nowhere.bimcraft", "by": "shared", "location": "Nowhere"}),
+        json!({"path": "no/such/folder/nowhere.ifc", "by": 5, "location": 5, "at": [1e300, 0], "angle": f64::MAX}),
+        json!({"path": "", "by": "base", "location": ""}),
+        json!({"name": "Internal", "east": 1e11, "north": -1e11, "elevation": 1e11, "angle": 360, "scale": 1.1}),
+        json!({"name": "Internal", "east": 1e300, "angle": f64::MAX, "scale": 5e-324}),
+        json!({"name": "Internal", "rename": "", "activate": "x", "delete": 1}),
+        json!({"name": "Internal", "delete": true}),
+        json!({"shift": [1e11, 1e11, 1e11]}),
+        json!({"shift": [f64::MAX, 0, 0]}),
+        json!({"at": [0, 0, 0], "east": 1e11, "north": 1e11, "elevation": -1e11, "angle": 359.9}),
+        json!({"at": [9.99e8, 9.99e8, 0], "east": -1e11, "north": -1e11, "elevation": 0, "angle": 90}),
+        json!({"points": [[1e11, 1e11, 1e11], [0, 0, 0]], "from": "shared", "to": "base", "location": "Nowhere"}),
+        json!({"points": [[1e11, -1e11, 1e11]], "from": "shared", "to": "internal"}),
+        json!({"points": [[1e11, -1e11, 0]], "from": "shared", "to": "wgs84"}),
+        json!({"points": [[-180.5, 91, 0], [1e300, 0, 0]], "from": "wgs84", "to": "internal"}),
+        json!({"crs": "EPSG:31983", "search": 5, "limit": 1e300}),
+        json!({"search": "a b c d e f g h i j k l m n o p q r s t u v w x y z 0 1 2 3 4 5 6 7 8 9", "limit": 500}),
+        json!({"crs": "EPSG:4326"}),
+        json!({"name": "Internal", "latitude": -23.55, "longitude": -46.633}),
+        json!({"name": "Internal", "latitude": 1e300, "longitude": f64::MAX}),
+        json!({"at": [1e300, 0], "origin": "survey"}),
+        json!({"at": [0, 0], "view": "Section 1", "origin": 5}),
+        json!({"elevation": 1000, "elevation_base": "survey"}),
+        json!({"elevation": 1000, "elevation_base": []}),
         json!({"name": "S", "phases": 300, "wires": -1, "l_l": [], "l_n": 5, "ground": {}}),
         json!({"name": "S", "phases": 255, "wires": 255, "l_l": "400 V"}),
         json!({"name": "230/400 V", "phases": 3, "wires": 4, "l_l": "nope", "ground": "PE"}),
@@ -4944,7 +4977,7 @@ fn cut_patterns_show_where_a_layer_is_wide_enough_to_hold_them() {
     let w = run(&mut s, "wall", json!({"points": [[0, 0], [6000, 0]], "type": "Cavity 300"}))["ids"][0].as_u64().unwrap();
     // Its brick, 100 mm, to its left (north): at 1 : 100, 1 mm on the paper, wide enough for a brick pattern's lines.
     let lines = |s: &Session, scale: f64| {
-        let view = crate::render::View { scale, cx: 3000.0, cy: 0.0, width: 1200, height: 800 };
+        let view = crate::render::View { angle: 0.0, scale, cx: 3000.0, cy: 0.0, width: 1200, height: 800 };
         let d = crate::render::draw(&s.model, 100000, view);
         let (north, south) = (view.px(P2(3000.0, 150.0)).1, view.px(P2(3000.0, 50.0)).1);
         d.prims
@@ -4996,7 +5029,7 @@ fn surface_patterns_keep_their_size_in_the_building() {
     let f = run(&mut s, "floor", json!({"boundary": boundary, "type": "Tiled"}))["id"].as_u64().unwrap();
     // Where the tiles' joints running east cross the plan, px down it.
     let rows = |scale: f64| {
-        let view = crate::render::View { scale, cx: 3000.0, cy: 2000.0, width: 1200, height: 800 };
+        let view = crate::render::View { angle: 0.0, scale, cx: 3000.0, cy: 2000.0, width: 1200, height: 800 };
         let d = crate::render::draw(&s.model, 100000, view);
         let mut ys: Vec<f32> = d
             .prims
@@ -7008,7 +7041,7 @@ fn socket(category: &str) -> Value {
 
 /// What component `id` draws in the plan of level 100000 as model points: its open polylines (symbols), and its fills (dots).
 fn symbol_ink(s: &Session, id: u64) -> (Vec<Vec<P2>>, Vec<Vec<P2>>) {
-    let view = crate::render::View { scale: 0.5, cx: 1000.0, cy: 1000.0, width: 1000, height: 800 };
+    let view = crate::render::View { angle: 0.0, scale: 0.5, cx: 1000.0, cy: 1000.0, width: 1000, height: 800 };
     let d = crate::render::draw(&s.model, 100000, view);
     let (mut lines, mut fills) = (Vec::new(), Vec::new());
     for (p, o) in d.prims.iter().zip(&d.owners).filter(|(_, o)| **o == Some(id)) {
@@ -7196,7 +7229,7 @@ fn symbols_draw_in_the_plan_and_ceiling_plan_of_their_level_whatever_height_the_
     let (lines, fills) = symbol_ink(&s, id);
     assert!(lines.iter().all(|l| l.len() != 2 || l[0].1 < 1200.0), "no outline of the form: {}", lines.len());
     assert!(lines.len() >= 3 && fills.len() == 1, "{} {}", lines.len(), fills.len());
-    let view = crate::render::View { scale: 0.5, cx: 1000.0, cy: 1000.0, width: 1000, height: 800 };
+    let view = crate::render::View { angle: 0.0, scale: 0.5, cx: 1000.0, cy: 1000.0, width: 1000, height: 800 };
     let up = crate::render::draw_ceiling(&s.model, 100000, view);
     assert!(
         up.owners.iter().zip(&up.prims).any(|(o, p)| *o == Some(id) && matches!(p, crate::render::Prim::Fill { .. })),

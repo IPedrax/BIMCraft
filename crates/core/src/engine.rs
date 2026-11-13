@@ -458,6 +458,17 @@ impl Session {
                     }
                     m.forget_cad_layers(&unplaced);
                 }
+                // Each loaded link placed by base points or shared coordinates remembers where it stands, as Revit's file does,
+                // so Reset Coordinates can pin it there when its file is gone.
+                let moved = self.model.links_moved();
+                if !moved.is_empty() {
+                    let m = self.model_mut();
+                    for (id, placed) in moved {
+                        if let Some(Element::Link(l)) = m.elements.get_mut(id) {
+                            l.placed = Some(placed);
+                        }
+                    }
+                }
                 // What a command was given by id points at the element's GUID; what it put in the library has an id and a GUID.
                 if verified {
                     self.model_mut().resolve_changed(&before);

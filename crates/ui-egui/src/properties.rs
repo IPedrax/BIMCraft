@@ -250,6 +250,15 @@ fn rows(category: &str) -> &'static [Row] {
             ("Other", "host", msg!("Host"), Link),
             ("Other", "at", "Location", Point),
         ],
+        "spotcoordinate" => &[
+            ("Graphics", "leader", msg!("Leader"), Flag),
+            ("Graphics", "shoulder", msg!("Has Shoulder"), Flag),
+            ("Dimensions", "north", msg!("North / South"), LengthShown),
+            ("Dimensions", "east", msg!("East / West"), LengthShown),
+            ("Dimensions", "elevation", "Elevation", LengthShown),
+            ("Other", "host", msg!("Host"), Link),
+            ("Other", "at", "Location", Point),
+        ],
         "line" => &[
             ("Graphics", "style", "Line Style", LineStyle),
             ("Dimensions", "length", "Length", LengthShown),
@@ -585,6 +594,7 @@ fn icon(category: &str) -> Icon {
         "line" => Icon::Line,
         "region" => Icon::FilledRegion,
         "spot" => Icon::Spot,
+        "spotcoordinate" => Icon::SpotCoordinate,
         "view3d" => Icon::View3D,
         "pointcloud" => Icon::PointCloud,
         "cadimport" => Icon::ImportCad,
@@ -1235,6 +1245,7 @@ impl BimApp {
             ([], Tool::Text, _) => Subject::New("text"),
             ([], Tool::DetailLine(_), _) => Subject::New("line"),
             ([], Tool::Spot | Tool::SpotSlope, _) => Subject::New("spot"),
+            ([], Tool::SpotCoordinate(_), _) => Subject::New("spotcoordinate"),
             ([], Tool::Tag, _) => Subject::New("tag"),
             ([], Tool::Section(_), _) => Subject::New("section"),
             ([], Tool::Elevation, _) => Subject::New("elevation"),
@@ -1372,6 +1383,10 @@ impl BimApp {
                 self.dimension_type_dialog = Some(crate::dimtypes::DimensionTypeDialog::new(&self.session.model, name, elements));
                 return;
             }
+            if category == "spotcoordinate" {
+                self.spot_type_dialog = Some(crate::spots::SpotTypeDialog::new(&self.session.model, name, elements));
+                return;
+            }
             let pair = if category == "component" {
                 self.component_type()
             } else {
@@ -1388,6 +1403,11 @@ impl BimApp {
         // A new selection starts the filter over.
         if self.palette_filter.as_ref().is_some_and(|(_, picked_for)| *picked_for != self.selection) {
             self.palette_filter = None;
+        }
+        // Site's points, picked in a view, are no elements: their own Properties.
+        if let Some(p) = self.selected_point() {
+            self.point_properties(ui, p);
+            return;
         }
         let model = Arc::clone(&self.session.model);
         let subject = self.subject();

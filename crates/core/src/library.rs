@@ -56,6 +56,8 @@ pub enum Kind {
     /// A named set of parameters for `reinforce`, for one kind of host.
     ReinforcementPreset,
     DimensionType,
+    /// A spot coordinate type: how a spot coordinate draws and reads.
+    SpotCoordinateType,
     /// A voltage the electrical settings define, with the band a device may read within.
     Voltage,
     /// A distribution system, which names the voltages it supplies.
@@ -66,6 +68,10 @@ pub enum Kind {
     TitleBlock,
     /// A dictionary project parameters came from.
     Dictionary,
+    /// A location: one position of the building in the shared coordinates.
+    Location,
+    /// The Project Base Point or the Survey Point.
+    CoordinatePoint,
 }
 
 impl Kind {
@@ -95,11 +101,14 @@ impl Kind {
             Kind::TextType => "text type".into(),
             Kind::ReinforcementPreset => "reinforcement preset".into(),
             Kind::DimensionType => "dimension type".into(),
+            Kind::SpotCoordinateType => "spot coordinate type".into(),
             Kind::Voltage => "voltage".into(),
             Kind::DistributionSystem => "distribution system".into(),
             Kind::WireType => "wire type".into(),
             Kind::TitleBlock => "title block".into(),
             Kind::Dictionary => "parameter dictionary".into(),
+            Kind::Location => ui_msg!("location").into(),
+            Kind::CoordinatePoint => "coordinate point".into(),
         }
     }
 
@@ -128,10 +137,13 @@ impl Kind {
             "text-type" => Kind::TextType,
             "reinforcement-preset" => Kind::ReinforcementPreset,
             "dimension-type" => Kind::DimensionType,
+            "spot-coordinate-type" => Kind::SpotCoordinateType,
             "voltage" => Kind::Voltage,
             "distribution-system" => Kind::DistributionSystem,
             "wire-type" => Kind::WireType,
             "title-block" => Kind::TitleBlock,
+            "location" => Kind::Location,
+            "coordinate-point" => Kind::CoordinatePoint,
             _ => Kind::Type(s.strip_prefix("type:")?.to_string()),
         })
     }
@@ -163,11 +175,14 @@ impl fmt::Display for Kind {
             Kind::TextType => f.write_str("text-type"),
             Kind::ReinforcementPreset => f.write_str("reinforcement-preset"),
             Kind::DimensionType => f.write_str("dimension-type"),
+            Kind::SpotCoordinateType => f.write_str("spot-coordinate-type"),
             Kind::Voltage => f.write_str("voltage"),
             Kind::DistributionSystem => f.write_str("distribution-system"),
             Kind::WireType => f.write_str("wire-type"),
             Kind::TitleBlock => f.write_str("title-block"),
             Kind::Dictionary => f.write_str("dictionary"),
+            Kind::Location => f.write_str("location"),
+            Kind::CoordinatePoint => f.write_str("coordinate-point"),
         }
     }
 }
@@ -828,10 +843,14 @@ impl Model {
         add(Kind::TextType, &mut self.text_types.keys());
         add(Kind::ReinforcementPreset, &mut self.reinforcement.keys());
         add(Kind::DimensionType, &mut self.dimension_types.keys());
+        add(Kind::SpotCoordinateType, &mut self.spot_coordinate_types.keys());
         add(Kind::Voltage, &mut self.voltages.keys());
         add(Kind::DistributionSystem, &mut self.distribution_systems.keys());
         add(Kind::WireType, &mut self.wire_types.keys());
         add(Kind::TitleBlock, &mut self.title_blocks.keys());
+        add(Kind::Location, &mut std::iter::once(&self.coordinates.active).chain(self.coordinates.sites.keys()));
+        let points = crate::coordinates::Point::ALL.map(|p| p.name().to_string());
+        add(Kind::CoordinatePoint, &mut points.iter());
         out
     }
 
@@ -1515,6 +1534,11 @@ impl crate::model::Element {
             Element::Dimension3D(d) => f(&Kind::DimensionType, &mut d.type_name),
             // Neither the built-in one nor none is an entry of the library.
             Element::Sheet(sh) if !sh.title_block.is_empty() && !sh.has_no_title_block() => f(&Kind::TitleBlock, &mut sh.title_block),
+            Element::Spot(sp) => {
+                if let Some(t) = &mut sp.type_name {
+                    f(&Kind::SpotCoordinateType, t);
+                }
+            }
             Element::Schedule(sc) => {
                 let mut fields: Vec<&mut String> =
                     sc.fields.iter_mut().map(|x| &mut x.name).chain(sc.sort.iter_mut().map(|x| &mut x.field)).collect();
@@ -1619,6 +1643,7 @@ impl Model {
                 f(&Kind::FillPattern, p);
             }
         }
+        f(&Kind::Location, &mut self.coordinates.active);
         for d in self.distribution_systems.values_mut() {
             for v in d.voltages_mut() {
                 f(&Kind::Voltage, v);

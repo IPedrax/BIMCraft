@@ -78,7 +78,7 @@ fn a_room_whose_top_is_not_over_its_bottom_is_refused() {
 /// The dark pixels of level 1's plan in a box 14 px wide round the room's point, at 1 px to 10 mm.
 fn ink_at_point(s: &Session) -> usize {
     use crate::render::{View, draw, png};
-    let view = View { scale: 0.1, cx: 2000.0, cy: 1500.0, width: 600, height: 500 };
+    let view = View { angle: 0.0, scale: 0.1, cx: 2000.0, cy: 1500.0, width: 600, height: 500 };
     let img = tiny_skia::Pixmap::decode_png(&png(&draw(&s.model, 100000, view)).unwrap()).unwrap();
     let (x, y) = view.px(crate::geom::P2(2000.0, 1500.0));
     let (x, y) = (x as i64, y as i64);

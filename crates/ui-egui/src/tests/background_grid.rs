@@ -12,7 +12,7 @@ fn background_grid_menu_and_instance_editor_change_only_the_active_view() {
     h.run();
     let app = h.state();
     let level = app.plan_key().unwrap();
-    let view = bimcraft_core::render::View { scale: 0.1, cx: 0.0, cy: 0.0, width: 800, height: 600 };
+    let view = bimcraft_core::render::View { angle: 0.0, scale: 0.1, cx: 0.0, cy: 0.0, width: 800, height: 600 };
     let found = app.snap(&app.session.model, level, &view, view.px(P2(1230.0, -670.0)), &[], false);
     assert_eq!(found.at, P2(1000.0, -1000.0));
     let kept = app.background_grid();
@@ -127,7 +127,7 @@ fn background_grid_snapping_preserves_object_snaps_and_shift_constraints() {
     h.state_mut().run("graphics", json!({"view":"Level 1", "background_grid":{"main":{"enabled":true},"visible":false}}));
     let app = h.state();
     let level = app.plan_key().unwrap();
-    let view = bimcraft_core::render::View { scale: 0.1, cx: 0.0, cy: 0.0, width: 800, height: 600 };
+    let view = bimcraft_core::render::View { angle: 0.0, scale: 0.1, cx: 0.0, cy: 0.0, width: 800, height: 600 };
     let snapped = |p, from: &[P2], square| app.snap(&app.session.model, level, &view, view.px(p), from, square);
     assert_eq!(snapped(P2(1230.0, 670.0), &[], false).at, P2(1230.0, 670.0));
     assert_eq!(snapped(P2(-1340.0, -710.0), &[], false).at, P2(-1000.0, -1000.0));
