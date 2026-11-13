@@ -6,51 +6,67 @@ users complain of taken out. Why and what comes next: [the research](../coordina
 
 ## The model
 
-`coordinates.rs` holds `Model::coordinates` (`Coordinates`), left out of a file while it is the default:
+One location model: main's `Georeference` (`model.rs`, IFC's map conversion) is the project's **active site**, and
+`coordinates.rs` adds what Revit has round it. #284 brought its own `Location` anchored at the Survey Point; it was folded
+onto the georeference when it came onto main (2026-11-13), keeping its math and its commands, so IFC stays a straight
+write.
 
-- `base`: the **Project Base Point**, internal mm. A reference people move anywhere, which elevations, spot coordinates and
-  links will measure from; moving it moves no geometry.
-- `survey`: the **Survey Point**, internal mm. A control point, usually a benchmark near the building: each location says
-  what shared coordinates it has. There is no hidden shared origin and no clipped state. `move_survey` moves it with
-  `Move::Point` (the point alone: every location's numbers are worked out again, so the building stays where it is in the
-  world) or `Move::System` (the numbers stay, and the building moves in the world).
-- `locations` and `active`: the project's **locations**, Revit's named sites, by name, and the one the shared coordinates
-  are in. A `Location` is the Survey Point's `east`, `north` and `elevation` (mm), the `angle` from project north to true
-  north (degrees, clockwise, so east, positive) and the `scale` from ground to grid (1 unless a map projection's; heights are
-  never scaled). A project starts with one, `INTERNAL` ("Internal", in the project's language), at zero.
+- `Model::georeference`, the active site: the map point of the **internal origin** (`eastings`, `northings`, `height`,
+  mm), `rotation` (degrees counterclockwise from the map's east to project x, which is the angle from project north to true
+  north, clockwise: #284's `angle`) and `scale` (grid over ground, in plan only: heights stay true). A site needs no
+  coordinate reference system (`crs` empty): any field makes one. None is the internal coordinates as they are
+  (`coordinates::NONE`); `Model::set_site` keeps it none when a site comes back to that.
+- `Model::coordinates` (`Coordinates`), left out of a file while it is the default:
+  - `base`: the **Project Base Point**, internal mm. A reference people move anywhere, which elevations, spot coordinates
+    and links measure from; moving it moves no geometry.
+  - `survey`: the **Survey Point**, internal mm. A control point, usually a benchmark near the building. A site as Revit shows
+    it, a `Location`, is the Survey Point's `east`, `north` and `elevation` in it, with its `angle` and `scale`
+    (`Georeference::location`). Every site is anchored at the internal origin, so `Model::move_survey` with `Move::Point` (the
+    point alone) changes only the point and the building stays where it is in the world; with `Move::System` every site is
+    solved again (`Georeference::specify`) so the point keeps its numbers, and the building moves in the world.
+  - `active` and `sites`: the active site's name (`INTERNAL`, "Internal" in the project's language, as a project starts) and
+    Revit's other **named sites**, each a `Georeference` where it would put the project. `Model::activate_site` swaps one in
+    as the georeference and keeps the one that was active beside it.
 
-The transform, from internal `p` to shared, with `d = p - survey`:
+The transform, from internal `p` to shared, a the rotation and k the scale:
 
-    east  = location.east  + scale * (dx cos a - dy sin a)
-    north = location.north + scale * (dx sin a + dy cos a)
-    elev  = location.elevation + dz
+    east  = eastings  + k (x cos a - y sin a)
+    north = northings + k (x sin a + y cos a)
+    elev  = height + z
 
-`Location::to_internal` undoes it; `Coordinates::convert` goes between the frames `Internal`, `Base` (from the Project
-Base Point, along the project's axes) and `Shared`. `specify` solves the active location so that one internal point has the
-shared coordinates given (Revit's Specify Coordinates at a Point).
+`Georeference::to_internal` undoes it; `Frames` (the coordinates read through a site, `Model::frames` for the active one)
+converts between the frames `Internal`, `Base` (from the Project Base Point, along the project's axes) and `Shared`.
+`Georeference::specify` solves a site so that one internal point has the shared coordinates given (Revit's Specify
+Coordinates at a Point), its rotation and scale kept.
 
 **Why the bias.** Geometry is kept near the internal origin, and map coordinates (a UTM northing is 7.5e9 mm) only ever
 pass through the transform. f64 would hold such a number to a micrometre, but the math on geometry wouldn't hold it: the
 graphics card's f32 steps are half a metre that far out, squared lengths lose their digits, and `TOL` and the
-triangulation's grid assume small numbers. Shared values are bounded by `MAX_SHARED` (1e11 mm), internal ones by
+triangulation's grid assume small numbers. Shared values are bounded by `MAX_MAP` (1e13 mm, `on_map`), internal ones by
 `MAX_COORD`.
 
-**Ids.** Each location is a library entry (`Kind::Location`), and so are the two points (`Kind::CoordinatePoint`, named
-`BASE_POINT` and `SURVEY_POINT`), so all have an id and a GUID. `active` is a name reference in `Model::lib_refs_mut`, so a
-file holds its GUID and a rename follows.
+**Ids.** Each site is a library entry (`Kind::Location`), and so are the three points (`Kind::CoordinatePoint`, named
+`INTERNAL_ORIGIN`, `BASE_POINT` and `SURVEY_POINT`), so all have an id and a GUID. `active` is a name reference in
+`Model::lib_refs_mut`, so a file holds its GUID and a rename follows.
 
-`Coordinates::check` (from `Model::check`) refuses a point out of range, no location, more than `MAX_LOCATIONS`, an active
-name that isn't one, and a location out of bounds (`Location::check`: finite, within `MAX_SHARED`, an angle from -360 to 360,
-a scale in `SCALE`, 0.9 to 1.1).
+`Coordinates::check` (from `Model::check`) refuses a point out of range, more than `MAX_LOCATIONS` sites, a name that is empty
+or more than a line, the active name listed again among the others, and a site out of bounds (`Georeference::check`).
+
+**FORMAT 34.** A build that reads up to 33 would refuse a georeference without a CRS and lose the points and sites, so files
+with coordinates are 34. Files of 19 and 33 need no step: their georeference is the active site, both points at the
+internal origin. #284's own files (its unreleased builds wrote 19) keep their points; its `locations` and `crs` are left
+out and `open` lists them (`left_out`).
 
 ## Commands
 
-- `coordinates`: reports everything (the internal origin and both points, internal and shared, the active location and every
-  location); `base` and `survey` move the points, `move: point|system` how the Survey Point goes.
-- `location`: makes (a copy of the active one), edits, renames, activates and deletes a location; `shift` adds to one, or to
-  every location when no `name` is given (the survey says +5 m: one command).
-- `specify_coordinates`: the active location solved for a point.
-- `convert_coordinates`: points between `internal`, `base` and `shared`, of the active location or the one named.
+- `georeference`: the active site as IFC has it, at the internal origin; any field makes one, `clear` takes it away.
+- `coordinates`: reports everything (the three points, internal and shared, each with its id and GUID, the active site,
+  every site as Revit shows it, and the georeference); `base` and `survey` move the points, `move: point|system` how the
+  Survey Point goes.
+- `location`: makes (a copy of the active site), edits, renames, activates and deletes a site, its numbers the Survey
+  Point's; `shift` adds to one, or to every site when no `name` is given (the survey says +5 m: one command).
+- `specify_coordinates`: the active site solved for a point.
+- `convert_coordinates`: points between `internal`, `base` and `shared`, of the active site or the one named.
 
 Every change is a command and so one undo step. Tests: `coordinates_tests.rs`, and the payloads in the hostile sweep.
 

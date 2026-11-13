@@ -180,6 +180,10 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// is an element that title blocks read; a build that reads up to 19 would answer such a kind with a serde error. And a column
 /// holds a `top_offset` and the roof or floor its top and its base are attached to (`attach_top`, `attach_base`), as a wall's are;
 /// a build that reads up to 19 would leave them out of a file and stand the column at its own level, not "saved by a newer BIMCraft".
+/// And a project has a Project Base Point, a Survey Point and named sites beside its georeference (`coordinates`), and a
+/// georeference needs no coordinate reference system (`crs` may be left out); a build that reads up to 19 would refuse such a
+/// georeference and lose where the project stands. A file of 19 needs no step: its georeference is the active site, both
+/// points at the internal origin.
 pub const FORMAT: u32 = 20;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
@@ -3165,11 +3169,15 @@ pub const MAX_MAP: f64 = 1.0e13;
 
 /// Where the project lies on a map, as IFC's `IfcMapConversion` to a projected coordinate reference system: a point of the
 /// project at (x, y, z) mm is on the map at `eastings + scale * (x cos r - y sin r)`, `northings + scale * (x sin r + y cos r)`,
-/// `height + scale * z`, r the `rotation`. A file keeps it as it is; the drawings and the model's own coordinates don't move.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+/// `height + z`, r the `rotation`: the grid's scale is in plan only, heights stay true. It is the project's active site
+/// (`coordinates.rs`): a site needs no coordinate reference system, any of its numbers makes one. A file keeps it as it is;
+/// the drawings and the model's own coordinates don't move.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Georeference {
-    /// The map's coordinate reference system by its name, as IFC's `IfcProjectedCRS` names it (an EPSG code: `EPSG:31983`).
+    /// The map's coordinate reference system by its name, as IFC's `IfcProjectedCRS` names it (an EPSG code: `EPSG:31983`);
+    /// empty, a local grid with none named.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub crs: String,
     /// What else IFC says of it, where the file did: a description, its geodetic and vertical datums, map projection and zone.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -3201,12 +3209,15 @@ fn one() -> f64 {
     1.0
 }
 
+impl Default for Georeference {
+    fn default() -> Georeference {
+        crate::coordinates::NONE.clone()
+    }
+}
+
 impl Georeference {
-    /// What's wrong with it, if anything: its texts too long or its name empty, a number not finite or out of range.
+    /// What's wrong with it, if anything: its texts too long, a number not finite or out of range.
     pub fn check(&self) -> Result<(), String> {
-        if self.crs.trim().is_empty() {
-            return Err("its coordinate reference system needs a name (`crs`: an EPSG code, `EPSG:31983`)".into());
-        }
         let texts = [
             ("crs", Some(&self.crs)),
             ("description", self.description.as_ref()),

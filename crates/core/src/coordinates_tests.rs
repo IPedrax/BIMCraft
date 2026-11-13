@@ -1,5 +1,5 @@
-//! Coordinates: the Project Base Point, the Survey Point and the project's locations, through the commands every front end
-//! drives ([the plan](../../../docs/coordinates-plan.md)).
+//! Coordinates: the Project Base Point, the Survey Point and the project's sites, the georeference the active one, through
+//! the commands every front end drives ([the area](../../../docs/areas/coordinates.md)).
 
 use serde_json::{Value, json};
 
@@ -24,6 +24,11 @@ fn close(a: &Value, b: [f64; 3]) -> bool {
 
 fn convert(s: &mut Session, from: &str, to: &str, p: [f64; 3]) -> Value {
     run(s, "convert_coordinates", json!({"points": [p], "from": from, "to": to}))["points"][0].clone()
+}
+
+/// Site `name` as `coordinates` reports it: the Survey Point's numbers in it.
+fn loc(s: &mut Session, name: &str) -> Value {
+    run(s, "coordinates", json!({}))["locations"][name].clone()
 }
 
 #[test]
@@ -140,13 +145,12 @@ fn shift_moves_every_location_at_once() {
     run(&mut s, "location", json!({"name": "B", "elevation": 120_000.0}));
     // The survey says the site is 5 m higher than we had it.
     run(&mut s, "location", json!({"shift": [0.0, 0.0, 5000.0]}));
-    let c = &s.model.coordinates;
-    assert_eq!(c.locations["Internal"].elevation, 105_000.0);
-    assert_eq!(c.locations["B"].elevation, 125_000.0);
+    assert_eq!(loc(&mut s, "Internal")["elevation"], 105_000.0);
+    assert_eq!(loc(&mut s, "B")["elevation"], 125_000.0);
     // Or just one.
     run(&mut s, "location", json!({"name": "B", "shift": [1000.0, 0.0, 0.0]}));
-    assert_eq!(s.model.coordinates.locations["B"].east, 1000.0);
-    assert_eq!(s.model.coordinates.locations["Internal"].east, 0.0);
+    assert_eq!(loc(&mut s, "B")["east"], 1000.0);
+    assert_eq!(loc(&mut s, "Internal")["east"], 0.0);
 }
 
 #[test]
@@ -160,26 +164,26 @@ fn specify_coordinates_solves_the_active_location() {
     );
     let p = convert(&mut s, "internal", "shared", [4000.0, 2000.0, 0.0]);
     assert!(close(&p, [333_000_000.0, 7_400_000_000.0, 760_000.0]), "{p}");
-    assert_eq!(s.model.coordinates.locations["Internal"].angle, 30.0, "the angle stays unless given");
+    assert_eq!(loc(&mut s, "Internal")["angle"], 30.0, "the angle stays unless given");
     run(&mut s, "specify_coordinates", json!({"at": [4000.0, 2000.0, 0.0], "east": 1.0, "north": 2.0, "elevation": 3.0, "angle": -12.5}));
     assert!(close(&convert(&mut s, "internal", "shared", [4000.0, 2000.0, 0.0]), [1.0, 2.0, 3.0]));
-    assert_eq!(s.model.coordinates.locations["Internal"].angle, -12.5);
+    assert_eq!(loc(&mut s, "Internal")["angle"], -12.5);
 }
 
 #[test]
 fn coordinates_are_one_undo_step() {
     let mut s = Session::new();
-    let before = s.model.coordinates.clone();
+    let before = (s.model.coordinates.clone(), s.model.georeference.clone());
     run(&mut s, "location", json!({"name": "Internal", "east": 1.0}));
     run(&mut s, "undo", json!({}));
-    assert_eq!(s.model.coordinates, before);
+    assert_eq!((s.model.coordinates.clone(), s.model.georeference.clone()), before);
 }
 
 #[test]
 fn bad_coordinates_are_refused_with_what_to_fix() {
     let mut s = Session::new();
     for (p, says) in [
-        (json!({"name": "Internal", "scale": 2.0}), "scale"),
+        (json!({"name": "Internal", "scale": 2e6}), "scale"),
         (json!({"name": "Internal", "scale": 0.0}), "scale"),
         (json!({"name": "Internal", "angle": 1e9}), "angle"),
         (json!({"name": "Internal", "east": 1e20}), "east"),
@@ -205,7 +209,20 @@ fn coordinates_survive_a_file() {
     let text = s.model.to_json().unwrap();
     let (m, left_out) = Model::read(&text).unwrap();
     assert!(left_out.is_empty(), "{left_out:?}");
-    assert_eq!(m.coordinates, s.model.coordinates);
+    // A file's numbers read back to the last digit or so.
+    let rounded = |g: &crate::model::Georeference| {
+        let r = |v: f64| (v * 1e9).round() / 1e9;
+        (r(g.eastings), r(g.northings), r(g.height), g.rotation, g.scale)
+    };
+    assert_eq!(
+        (&m.coordinates.base, &m.coordinates.survey, &m.coordinates.active),
+        (&s.model.coordinates.base, &s.model.coordinates.survey, &s.model.coordinates.active)
+    );
+    assert_eq!(
+        m.coordinates.sites.values().map(rounded).collect::<Vec<_>>(),
+        s.model.coordinates.sites.values().map(rounded).collect::<Vec<_>>()
+    );
+    assert_eq!(m.georeference.as_ref().map(rounded), s.model.georeference.as_ref().map(rounded));
     assert_eq!(m.check(), Ok(()));
 }
 
@@ -225,4 +242,124 @@ fn a_project_in_portuguese_starts_with_its_location_named_in_it() {
     run(&mut s, "new", json!({"language": "pt"}));
     assert_eq!(s.model.coordinates.active, "Interno");
     assert_eq!(s.model.check(), Ok(()));
+}
+
+#[test]
+fn the_active_site_is_the_georeference_at_the_internal_origin() {
+    let mut s = Session::new();
+    run(&mut s, "coordinates", json!({"survey": [3000.0, 4000.0, 500.0]}));
+    // Revit's numbers are the Survey Point's; the georeference, as IFC writes it, is the internal origin's.
+    run(&mut s, "location", json!({"name": "Internal", "east": 1_000_000.0, "north": 2_000_000.0, "elevation": 10_000.0, "angle": 90.0}));
+    let g = s.model.georeference.clone().unwrap();
+    assert_eq!(g.rotation, 90.0);
+    // Project x is the map's north at 90 degrees: the survey's 3 m east and 4 m north are 4 m west and 3 m north on the map.
+    assert!(close(&json!([g.eastings, g.northings, g.height]), [1_000_000.0 + 4000.0, 2_000_000.0 - 3000.0, 9_500.0]), "{g:?}");
+    assert!(g.crs.is_empty(), "a site needs no coordinate reference system");
+    // The georeference command and the location say the same site.
+    let r = run(&mut s, "georeference", json!({}));
+    assert_eq!(r["georeference"]["eastings"], json!(g.eastings));
+}
+
+#[test]
+fn moving_the_survey_point_alone_changes_only_it() {
+    let mut s = Session::new();
+    run(&mut s, "georeference", json!({"crs": "EPSG:31983", "eastings": 333_000_000.0, "rotation": 12.0}));
+    run(&mut s, "location", json!({"name": "Other", "east": 5.0}));
+    let (g, sites) = (s.model.georeference.clone(), s.model.coordinates.sites.clone());
+    run(&mut s, "coordinates", json!({"survey": [3000.0, 4000.0, 0.0]}));
+    assert_eq!((&s.model.georeference, &s.model.coordinates.sites), (&g, &sites));
+    // With the system, every site is solved again, so the point keeps its numbers in each.
+    let before = (loc(&mut s, "Internal"), loc(&mut s, "Other"));
+    run(&mut s, "coordinates", json!({"survey": [-1000.0, 2500.0, 700.0], "move": "system"}));
+    let (a, b) = (loc(&mut s, "Internal"), loc(&mut s, "Other"));
+    for (was, now) in [(&before.0, &a), (&before.1, &b)] {
+        for k in ["east", "north", "elevation"] {
+            assert!((was[k].as_f64().unwrap() - now[k].as_f64().unwrap()).abs() < 1e-6, "{k}: {was} {now}");
+        }
+    }
+    assert_ne!(s.model.georeference, g);
+}
+
+#[test]
+fn activating_a_site_swaps_it_in_as_the_georeference() {
+    let mut s = Session::new();
+    run(&mut s, "georeference", json!({"crs": "EPSG:31983", "eastings": 333_000_000.0, "northings": 7_400_000_000.0}));
+    run(&mut s, "location", json!({"name": "Plot 2", "east": 500.0, "north": 600.0, "angle": 0.0}));
+    assert_eq!(s.model.georeference.as_ref().map(|g| g.eastings), Some(333_000_000.0), "a new site isn't active until asked");
+    assert_eq!(s.model.coordinates.sites["Plot 2"].crs, "EPSG:31983", "a new site starts as a copy of the active one");
+    let was = s.model.georeference.clone();
+    run(&mut s, "location", json!({"name": "Plot 2", "activate": true}));
+    assert_eq!(s.model.coordinates.active, "Plot 2");
+    assert_eq!(s.model.georeference.as_ref().map(|g| (g.eastings, g.northings)), Some((500.0, 600.0)));
+    assert_eq!(s.model.coordinates.sites.get("Internal"), was.as_ref(), "the one that was active is kept beside it");
+    assert!(close(&convert(&mut s, "internal", "shared", [0.0; 3]), [500.0, 600.0, 0.0]));
+    // Converting through another site leaves the active one be.
+    let r = run(&mut s, "convert_coordinates", json!({"points": [[0, 0, 0]], "from": "internal", "to": "shared", "location": "Internal"}));
+    assert!(close(&r["points"][0], [333_000_000.0, 7_400_000_000.0, 0.0]), "{r}");
+    assert_eq!(s.model.check(), Ok(()));
+    // Every site is a library entry with an id and a GUID, and so are the three points.
+    let r = run(&mut s, "coordinates", json!({}));
+    for name in ["Internal", "Plot 2"] {
+        assert!(r["locations"][name]["id"].is_u64() && r["locations"][name]["guid"].is_string(), "{name}: {r}");
+    }
+    for key in ["internal_origin", "base", "survey"] {
+        assert!(r[key]["id"].is_u64() && r[key]["guid"].is_string(), "{key}: {r}");
+    }
+}
+
+#[test]
+fn a_georeference_needs_no_coordinate_reference_system() {
+    let mut s = Session::new();
+    // True north alone makes one.
+    let r = run(&mut s, "georeference", json!({"rotation": 15.0}));
+    assert_eq!(r["georeference"]["rotation"], 15.0);
+    assert!(r["georeference"].get("crs").is_none(), "{r}");
+    assert_eq!(s.model.check(), Ok(()));
+    let text = s.model.to_json().unwrap();
+    let (m, left_out) = Model::read(&text).unwrap();
+    assert!(left_out.is_empty(), "{left_out:?}");
+    assert_eq!(m.georeference, s.model.georeference);
+}
+
+#[test]
+fn coordinates_share_0_12s_format_20_and_a_file_of_19_needs_no_step() {
+    assert_eq!(crate::model::FORMAT, 20);
+    let mut s = Session::new();
+    run(&mut s, "georeference", json!({"crs": "EPSG:31983", "eastings": 1000.0}));
+    let mut v: Value = serde_json::from_str(&s.model.to_json().unwrap()).unwrap();
+    v["format"] = json!(19);
+    v.as_object_mut().unwrap().remove("coordinates");
+    let (m, left_out) = Model::read(&v.to_string()).unwrap();
+    assert!(left_out.is_empty(), "{left_out:?}");
+    assert_eq!(m.georeference, s.model.georeference, "the georeference is the active site");
+    assert_eq!(m.coordinates.survey, [0.0; 3]);
+    assert_eq!(m.format, 20);
+}
+
+#[test]
+fn a_file_of_284s_coordinates_lists_them_as_left_out() {
+    // #284 was never released: its locations and map system (FORMAT 19's builds of that branch) aren't read, and say so.
+    let s = Session::new();
+    let mut v: Value = serde_json::from_str(&s.model.to_json().unwrap()).unwrap();
+    v["format"] = json!(19);
+    v["coordinates"] = json!({
+        "base": [1.0, 2.0, 3.0], "survey": [4.0, 5.0, 6.0], "active": "Internal",
+        "locations": {"Internal": {"east": 7.0, "north": 8.0, "elevation": 9.0, "angle": 10.0}}, "crs": 31983
+    });
+    let (m, left_out) = Model::read(&v.to_string()).unwrap();
+    assert!(left_out.iter().any(|p| p.starts_with("/coordinates/locations")), "{left_out:?}");
+    assert!(left_out.iter().any(|p| p == "/coordinates/crs"), "{left_out:?}");
+    assert_eq!(m.check(), Ok(()));
+}
+
+#[test]
+fn a_project_with_no_georeference_keeps_none_when_its_site_is_switched_back() {
+    let mut s = Session::new();
+    run(&mut s, "location", json!({"name": "Plot 2", "east": 500.0}));
+    run(&mut s, "location", json!({"name": "Plot 2", "activate": true}));
+    assert_eq!(s.model.georeference.as_ref().map(|g| g.eastings), Some(500.0));
+    assert_eq!(s.model.coordinates.sites.get("Internal"), Some(&crate::coordinates::NONE));
+    run(&mut s, "location", json!({"name": "Internal", "activate": true}));
+    assert_eq!(s.model.georeference, None, "the internal coordinates as they are");
+    assert_eq!(s.model.coordinates.sites["Plot 2"].eastings, 500.0);
 }

@@ -2152,10 +2152,12 @@ other_files(
         &[],
         "{crs?, eastings?, northings?, height?, rotation?, scale?, description?, geodetic_datum?, vertical_datum?, map_projection?, \
          map_zone?, clear?: true} where the project lies on a map, as IFC's map conversion to a projected coordinate reference \
-         system: the CRS by name (an EPSG code, `EPSG:31983`) and what else is known of it, the map point of the project's origin \
-         (`eastings`, `northings`, `height`, mm), how far the project's x axis is turned from the map's east (`rotation`, degrees \
-         counterclockwise) and a distance on the map over the same in the project (`scale`, 1 as it starts). A project with none \
-         takes one with `crs`; what isn't given keeps its value. `clear` takes it away. With nothing, it says it (null for none). \
+         system: the CRS by name (an EPSG code, `EPSG:31983`; \"\" for none, a local grid) and what else is known of it, the map \
+         point of the project's internal origin (`eastings`, `northings`, `height`, mm), how far the project's x axis is turned \
+         from the map's east (`rotation`, degrees counterclockwise: true north east of project north) and a distance on the map \
+         over the same in the project (`scale`, 1 as it starts; in plan only, heights stay true). It is the active site: \
+         `location` names it and keeps others, and says it at the Survey Point. Any field makes one; what isn't given keeps its \
+         value. `clear` takes it away. With nothing, it says it (null for none). \
          IFC import keeps the file's (moved with the model where the import brings it near the origin) and export writes it back as \
          IfcMapConversion to an IfcProjectedCRS in metres; the model's own coordinates and drawings don't move",
         georeference,
@@ -8924,9 +8926,9 @@ fn board_json(m: &Model, id: Id) -> Value {
     })
 }
 
-/// `[x, y, z]` under `key`, mm, within the shared coordinates' bounds.
+/// `[x, y, z]` under `key`, mm, within the map's bounds.
 fn shared3(c: &str, p: &Value, key: &str) -> Result<Option<[f64; 3]>, String> {
-    use crate::coordinates::MAX_SHARED;
+    use crate::model::MAX_MAP;
     match p.get(key) {
         v if absent(v) => Ok(None),
         Some(v) => v
@@ -8935,23 +8937,23 @@ fn shared3(c: &str, p: &Value, key: &str) -> Result<Option<[f64; 3]>, String> {
                 [x, y, z] => Some([x.as_f64()?, y.as_f64()?, z.as_f64()?]),
                 _ => None,
             })
-            .filter(|q| q.iter().all(|x| x.is_finite() && x.abs() <= MAX_SHARED))
+            .filter(|q| q.iter().all(|x| crate::coordinates::on_map(*x)))
             .map(Some)
-            .ok_or_else(|| bad(c, format!("`{key}` must be [x, y, z] in mm, each within ±{MAX_SHARED:e}, got {v}"))),
+            .ok_or_else(|| bad(c, format!("`{key}` must be [x, y, z] in mm, each within ±{MAX_MAP:e}, got {v}"))),
         None => Ok(None),
     }
 }
 
 /// A shared coordinate under `key`, mm.
 fn shared1(c: &str, p: &Value, key: &str) -> Result<Option<f64>, String> {
-    use crate::coordinates::MAX_SHARED;
+    use crate::model::MAX_MAP;
     match p.get(key) {
         v if absent(v) => Ok(None),
         Some(v) => v
             .as_f64()
-            .filter(|x| x.is_finite() && x.abs() <= MAX_SHARED)
+            .filter(|x| crate::coordinates::on_map(*x))
             .map(Some)
-            .ok_or_else(|| bad(c, format!("`{key}` must be a number of mm within ±{MAX_SHARED:e}, got {v}"))),
+            .ok_or_else(|| bad(c, format!("`{key}` must be a number of mm within ±{MAX_MAP:e}, got {v}"))),
         None => Ok(None),
     }
 }
@@ -8991,88 +8993,104 @@ fn coordinates(s: &mut Session, p: &Value) -> R {
             m.coordinates.base = b;
         }
         if let Some(sv) = survey {
-            m.coordinates.move_survey(sv, how);
+            m.move_survey(sv, how);
         }
     }
-    Ok(s.model.coordinates.report())
+    Ok(s.model.coordinates_report())
 }
 
 fn location(s: &mut Session, p: &Value) -> R {
-    use crate::coordinates::{Location, MAX_LOCATIONS};
+    use crate::coordinates::MAX_LOCATIONS;
     let c = "location";
     only(c, p, &["name", "east", "north", "elevation", "angle", "scale", "rename", "activate", "delete", "shift"])?;
     let name = name_param(c, p, "name")?;
     let shift = shared3(c, p, "shift")?;
-    let shifted = |l: &mut Location, d: [f64; 3]| {
-        l.east += d[0];
-        l.north += d[1];
-        l.elevation += d[2];
+    let shifted = |g: &mut crate::model::Georeference, d: [f64; 3]| {
+        g.eastings += d[0];
+        g.northings += d[1];
+        g.height += d[2];
     };
     let Some(name) = name else {
         if let Some(d) = shift {
             let m = s.model_mut();
-            for l in m.coordinates.locations.values_mut() {
-                shifted(l, d);
+            let mut g = m.site().clone();
+            shifted(&mut g, d);
+            g.check().map_err(|e| bad(c, e))?;
+            m.set_site(g);
+            for (n, g) in &mut m.coordinates.sites {
+                shifted(g, d);
+                g.check().map_err(|e| bad(c, format!("site `{n}`: {e}")))?;
             }
-            return Ok(json!({"locations": m.coordinates.locations}));
         }
-        return Ok(json!({"active": s.model.coordinates.active, "locations": s.model.coordinates.locations}));
+        let r = s.model.coordinates_report();
+        return Ok(json!({"active": r["active"], "locations": r["locations"]}));
     };
     let m = s.model_mut();
+    let active = m.coordinates.active == name;
     if flag(c, p, "delete")? {
-        if !m.coordinates.locations.contains_key(&name) {
+        if active {
+            return Err(bad(c, format!("`{name}` is the active site; activate another first")));
+        }
+        if m.coordinates.sites.remove(&name).is_none() {
             return Err(bad(c, format!("there's no location `{name}`")));
         }
-        if m.coordinates.active == name {
-            return Err(bad(c, format!("`{name}` is the active location; activate another first")));
-        }
-        m.coordinates.locations.remove(&name);
         return Ok(json!({"deleted": name}));
     }
-    let was = m.coordinates.locations.get(&name).cloned();
+    let was = m.site_named(&name).cloned();
     let rename = name_param(c, p, "rename")?;
     if was.is_none() && rename.is_some() {
         return Err(bad(c, format!("there's no location `{name}` to rename")));
     }
-    let mut l = was.clone().unwrap_or_else(|| m.coordinates.location());
-    if let Some(x) = shared1(c, p, "east")? {
-        l.east = x;
-    }
-    if let Some(x) = shared1(c, p, "north")? {
-        l.north = x;
-    }
-    if let Some(x) = shared1(c, p, "elevation")? {
-        l.elevation = x;
-    }
+    // A new one starts as a copy of the active one.
+    let mut g = was.clone().unwrap_or_else(|| m.site().clone());
     if let Some(a) = north_angle(c, p, "angle")? {
-        l.angle = a;
+        g.rotation = a;
     }
     if let Some(x) = amount(c, p, "scale", "grid over ground")? {
-        l.scale = x;
+        g.scale = x;
     }
+    // East, north and elevation are the Survey Point's, as Revit shows a site; the georeference is the internal origin's.
+    let survey = m.coordinates.survey;
+    let mut at = g.to_shared(survey);
+    for (i, key) in ["east", "north", "elevation"].into_iter().enumerate() {
+        if let Some(x) = shared1(c, p, key)? {
+            at[i] = x;
+        }
+    }
+    g.specify(survey, at);
     if let Some(d) = shift {
-        shifted(&mut l, d);
+        shifted(&mut g, d);
     }
     let name = match rename {
         Some(to) if to != name => {
-            if m.coordinates.locations.contains_key(&to) {
+            if m.site_named(&to).is_some() {
                 return Err(bad(c, format!("there's already a location `{to}`")));
             }
-            m.coordinates.locations.remove(&name);
+            if let Some(kept) = m.coordinates.sites.remove(&name) {
+                m.coordinates.sites.insert(to.clone(), kept);
+            }
+            // The active name is a reference to its library entry, so it follows.
             rename_entry(m, &LibKind::Location, &name, &to);
             to
         }
         _ => name,
     };
-    l.check(&name).map_err(|e| bad(c, e))?;
-    if !m.coordinates.locations.contains_key(&name) && m.coordinates.locations.len() >= MAX_LOCATIONS {
+    g.check().map_err(|e| bad(c, format!("location `{name}`: {e}")))?;
+    if was.is_none() && m.coordinates.sites.len() + 1 >= MAX_LOCATIONS {
         return Err(bad(c, format!("the project holds up to {MAX_LOCATIONS} locations")));
     }
-    m.coordinates.locations.insert(name.clone(), l.clone());
-    if flag(c, p, "activate")? {
-        m.coordinates.active = name.clone();
+    if active {
+        m.set_site(g.clone());
+    } else {
+        m.coordinates.sites.insert(name.clone(), g.clone());
     }
-    Ok(json!({"name": name, "location": l, "active": m.coordinates.active}))
+    if flag(c, p, "activate")? {
+        m.activate_site(&name);
+    }
+    let active = m.coordinates.active.clone();
+    m.sync_library();
+    let (id, guid) = (m.library.id(&LibKind::Location, &name), m.library.guid(&LibKind::Location, &name));
+    Ok(json!({"name": name, "location": g.location(survey), "georeference": g, "active": active, "id": id, "guid": guid}))
 }
 
 fn specify_coordinates(s: &mut Session, p: &Value) -> R {
@@ -9081,16 +9099,19 @@ fn specify_coordinates(s: &mut Session, p: &Value) -> R {
     let at = point3_req(c, p, "at")?;
     let need = |key: &str| shared1(c, p, key)?.ok_or_else(|| bad(c, format!("`{key}` (mm) is required")));
     let shared = [need("east")?, need("north")?, need("elevation")?];
-    let angle = north_angle(c, p, "angle")?;
+    let mut g = s.model.site().clone();
+    if let Some(a) = north_angle(c, p, "angle")? {
+        g.rotation = a;
+    }
+    g.specify(at, shared);
+    g.check().map_err(|e| bad(c, e))?;
     let m = s.model_mut();
-    m.coordinates.specify(at, shared, angle);
-    let l = m.coordinates.location();
-    l.check(&m.coordinates.active).map_err(|e| bad(c, e))?;
-    Ok(json!({"active": m.coordinates.active, "location": l}))
+    m.set_site(g);
+    Ok(json!({"active": m.coordinates.active, "location": m.frames().location(), "georeference": m.georeference}))
 }
 
 fn convert_coordinates(s: &mut Session, p: &Value) -> R {
-    use crate::coordinates::{Frame, MAX_SHARED};
+    use crate::coordinates::{Frame, Frames};
     let c = "convert_coordinates";
     only(c, p, &["points", "from", "to", "location"])?;
     let frame = |key: &str| -> Result<Frame, String> {
@@ -9106,19 +9127,18 @@ fn convert_coordinates(s: &mut Session, p: &Value) -> R {
         .iter()
         .map(|v| shared3(c, &json!({"p": v}), "p")?.ok_or_else(|| bad(c, format!("`points`: {v} is not a point [x, y, z] in mm"))))
         .collect::<Result<Vec<_>, _>>()?;
-    let mut co = s.model.coordinates.clone();
-    if let Some(name) = name_param(c, p, "location")? {
-        if !co.locations.contains_key(&name) {
-            let names: Vec<&str> = co.locations.keys().map(String::as_str).collect();
-            return Err(bad(c, format!("there's no location `{name}`; the project has {}", names.join(", "))));
-        }
-        co.active = name;
-    }
-    let out: Vec<[f64; 3]> = pts.into_iter().map(|q| co.convert(q, from, to)).collect();
-    if out.iter().flatten().any(|x| !x.is_finite() || x.abs() > MAX_SHARED) {
+    let m = &s.model;
+    let name = name_param(c, p, "location")?.unwrap_or_else(|| m.coordinates.active.clone());
+    let site = m.site_named(&name).ok_or_else(|| {
+        let names: Vec<&str> = std::iter::once(&m.coordinates.active).chain(m.coordinates.sites.keys()).map(String::as_str).collect();
+        bad(c, format!("there's no location `{name}`; the project has {}", names.join(", ")))
+    })?;
+    let f = Frames { co: &m.coordinates, site };
+    let out: Vec<[f64; 3]> = pts.into_iter().map(|q| f.convert(q, from, to)).collect();
+    if out.iter().flatten().any(|x| !crate::coordinates::on_map(*x)) {
         return Err(bad(c, "a point lands past the coordinates' bounds"));
     }
-    Ok(json!({"points": out, "from": string(c, p, "from")?, "to": string(c, p, "to")?, "location": co.active}))
+    Ok(json!({"points": out, "from": string(c, p, "from")?, "to": string(c, p, "to")?, "location": name}))
 }
 
 fn wall(s: &mut Session, p: &Value) -> R {
@@ -17826,16 +17846,10 @@ fn georeference(s: &mut Session, p: &Value) -> R {
         Some(_) => return Err(bad(c, "`clear` is true or false")),
     }
     if given {
-        let crs = string(c, p, "crs")?;
-        let mut g = match (&s.model.georeference, &crs) {
-            (Some(g), _) => g.clone(),
-            (None, Some(_)) => crate::model::Georeference { scale: 1.0, ..Default::default() },
-            (None, None) => {
-                return Err(bad(c, "the project has no georeference yet: give its coordinate reference system's name, `crs` (EPSG:31983)"));
-            }
-        };
-        if let Some(crs) = crs {
-            g.crs = crs;
+        // Any of its numbers makes one: a site needs no coordinate reference system.
+        let mut g = s.model.site().clone();
+        if let Some(crs) = string(c, p, "crs")? {
+            g.crs = crs.trim().to_string();
         }
         let mut texts = [&mut g.description, &mut g.geodetic_datum, &mut g.vertical_datum, &mut g.map_projection, &mut g.map_zone];
         for (key, field) in TEXTS.into_iter().zip(texts.iter_mut()) {
@@ -17851,8 +17865,8 @@ fn georeference(s: &mut Session, p: &Value) -> R {
             }
         }
         g.check().map_err(|e| bad(c, e))?;
-        if s.model.georeference.as_ref() != Some(&g) {
-            s.model_mut().georeference = Some(g);
+        if s.model.site() != &g {
+            s.model_mut().set_site(g);
         }
     }
     Ok(json!({"georeference": s.model.georeference}))
