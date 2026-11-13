@@ -72,7 +72,10 @@ pub const CEILING_CUT: f64 = 2300.0;
 pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
-/// The version of the project file this build writes, and the newest it reads. 19: a schedule may be of sheets, the
+/// The version of the project file this build writes, and the newest it reads. 20: a grid has a type (`type`), and a project
+/// holds grid types (`grid_types`, library entries of kind `grid-type`); a grid of 19 has none, and reading it as 20 gives it
+/// the type the standards name, a build that reads up to 19 answering that field with a serde error, not "saved by a newer
+/// BIMCraft". 19: a schedule may be of sheets, the
 /// sheet list (`of: "sheet"`, as the Room or Level Schedule is); nothing in a file of 18 changes, but a build that reads
 /// up to 18 holds `sheet` as a category schedules aren't of, and would draw its sheet list with no columns, not say
 /// "saved by a newer BIMCraft". 18: a beam's or a structural column's type may
@@ -185,6 +188,9 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// georeference and lose where the project stands; and it would read spot coordinates (a spot's `coordinate`, `type`, `origin`,
 /// `leader`, `shoulder` and `end`) and a level's `elevation_base` as spot elevations from the Project Base Point. A file of 19
 /// needs no step: its georeference is the active site, both points at the internal origin.
+/// And a grid has a type (`type`), and a project holds grid types (`grid_types`, library entries of kind `grid-type`); a grid of
+/// 19 has none, and reading it as 20 gives it the type the standards name, a build that reads up to 19 answering that field with
+/// a serde error, not "saved by a newer BIMCraft".
 pub const FORMAT: u32 = 20;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
@@ -276,6 +282,8 @@ pub struct PlanRange {
 #[serde(deny_unknown_fields)]
 pub struct Grid {
     pub name: String,
+    #[serde(rename = "type", default)]
+    pub type_name: String,
     pub start: P2,
     pub end: P2,
 }
@@ -3408,6 +3416,9 @@ pub struct Model {
     /// Its spot coordinate types, by name: how the spot coordinates of each draw their leader and read their point.
     #[serde(default = "crate::spots::types")]
     pub spot_coordinate_types: BTreeMap<String, crate::spots::SpotCoordinateType>,
+    /// Its grid types, by name: how the grids of each draw and letter their names in their bubbles.
+    #[serde(default = "crate::grids::default_types")]
+    pub grid_types: BTreeMap<String, crate::grids::GridType>,
     /// Its detail group types, by name: the members each one placed draws.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub detail_groups: BTreeMap<String, crate::groups::GroupType>,
@@ -3539,6 +3550,7 @@ impl Model {
             text_types: crate::text::types(language),
             dimension_types: crate::dims::types(),
             spot_coordinate_types: crate::spots::types(),
+            grid_types: crate::grids::types(language),
             detail_groups: BTreeMap::new(),
             title_blocks: BTreeMap::new(),
             title_values: BTreeMap::new(),
@@ -4151,6 +4163,10 @@ impl Model {
         {
             (self.line_styles, self.line_patterns) = (lines::styles(self.language), lines::patterns(self.language));
         }
+        // A file from before grid types leaves them out, so it holds the English starter set, whatever its language.
+        if self.language != Language::English && self.grid_types == crate::grids::default_types() {
+            self.grid_types = crate::grids::types(self.language);
+        }
         // 4 to 5 (scans, and the point clouds that place them) has no step: a file of 4 holds none of it, or holds it as 5 does.
         // 5 to 6 (detailing: lines, regions, groups, repeating details, line and fill styles) has none either: a file of 5 holds
         // none of it, so reading it as 6 changes nothing.
@@ -4162,6 +4178,9 @@ impl Model {
         // 9 to 10: a dimension may measure to a line's end (`point`) and run horizontal or vertical (`linear`), and has a
         // dimension type; one of 10 read by 9 would measure its points as lines. A dimension of 9 gets its kind's type.
         self.typed_dimensions();
+        // 19 to 20: a grid has a type, and a project has grid types. A grid of 19 gets the default type, and a project
+        // without grid types gets the starter set.
+        self.typed_grids();
         // 10 to 11 (Swedish, Czech and French as a project's language) has no step: a file of 10 holds none of them.
         // 11 to 12 (German and Dutch as a project's language, a wall that bounds no rooms, a family's connectors) has no step either: a
         // file of 11 holds none. The electrical settings (voltages, distribution systems, wire types) have none within 11 or 12: a file
@@ -4318,6 +4337,22 @@ impl Model {
                 if let Element::Dimension(d) = &mut member.element {
                     type_one(d);
                 }
+            }
+        }
+    }
+
+    /// Each grid from before grid types given the type the project starts one in, and a project without grid types the
+    /// starter set.
+    fn typed_grids(&mut self) {
+        if self.grid_types.is_empty() {
+            self.grid_types = crate::grids::types(self.language);
+        }
+        let wanted = crate::grids::default_type(&self.grid_types).cloned().unwrap_or_default();
+        for e in self.elements.values_mut() {
+            if let Element::Grid(g) = e
+                && g.type_name.is_empty()
+            {
+                g.type_name = wanted.clone();
             }
         }
     }
@@ -4882,6 +4917,7 @@ impl Model {
             "text" => names(&self.text_types),
             "dimension" => names(&self.dimension_types),
             "spotcoordinate" => names(&self.spot_coordinate_types),
+            "grid" => names(&self.grid_types),
             "wall" => names(&self.types.wall),
             "floor" => names(&self.types.floor),
             "door" => names(&self.types.door),
@@ -4908,6 +4944,7 @@ impl Model {
             "spotcoordinate" => {
                 return crate::spots::default_type(&self.spot_coordinate_types, crate::coordinates::Origin::Survey).map(String::as_str);
             }
+            "grid" => return crate::grids::default_type(&self.grid_types).map(String::as_str),
             "wall" | "floor" => "Generic - 200mm",
             "door" => "Single 900 x 2100",
             "column" => "Rectangular 400 x 400",
@@ -7136,6 +7173,9 @@ impl Model {
         for (n, t) in &self.dimension_types {
             t.check(n)?;
         }
+        for (n, t) in &self.grid_types {
+            t.check(n, &self.line_patterns)?;
+        }
         for (n, t) in &self.title_blocks {
             t.check(n)?;
         }
@@ -7705,6 +7745,13 @@ impl Model {
             Element::Grid(g) => {
                 text(&who, "name", &g.name)?;
                 line(&who, g.start, g.end)?;
+                if g.type_name.is_empty() {
+                    return Err(format!("{who}: it has no type; give it one of the project's grid types"));
+                }
+                if !self.grid_types.contains_key(&g.type_name) {
+                    let there: Vec<&str> = self.grid_types.keys().map(String::as_str).collect();
+                    return Err(format!("{who}: there's no grid type `{}` (there are: {})", g.type_name, there.join(", ")));
+                }
                 if !grid_names.insert(g.name.as_str()) {
                     return Err(format!("{who}: another grid is already named `{}`", g.name));
                 }
@@ -8793,6 +8840,7 @@ impl Model {
             text_types,
             dimension_types,
             spot_coordinate_types,
+            grid_types,
             detail_groups,
             title_blocks,
             title_values,
@@ -8840,6 +8888,7 @@ impl Model {
             && *text_types == o.text_types
             && *dimension_types == o.dimension_types
             && *spot_coordinate_types == o.spot_coordinate_types
+            && *grid_types == o.grid_types
             && *detail_groups == o.detail_groups
             && *title_blocks == o.title_blocks
             && *title_values == o.title_values

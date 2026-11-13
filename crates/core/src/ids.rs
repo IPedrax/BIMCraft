@@ -678,7 +678,7 @@ mod tests {
     use crate::model::Grid;
 
     fn grid() -> Element {
-        Element::Grid(Grid { name: "A".into(), start: P2(0.0, 0.0), end: P2(0.0, 1000.0) })
+        Element::Grid(Grid { name: "A".into(), type_name: "Grid - ISO 128".into(), start: P2(0.0, 0.0), end: P2(0.0, 1000.0) })
     }
 
     #[test]
@@ -795,7 +795,7 @@ mod journal_tests {
     fn the_journal_of_a_clone_starts_empty_names_what_changed_and_finds_what_a_sweep_changed() {
         let mut es = Elements::new();
         let g = |at: f64| {
-            Element::Grid(crate::model::Grid { start: crate::geom::P2(at, 0.0), end: crate::geom::P2(at, 1.0), name: String::new() })
+            Element::Grid(crate::model::Grid { start: crate::geom::P2(at, 0.0), end: crate::geom::P2(at, 1.0), name: String::new(), type_name: "Grid - ISO 128".into() })
         };
         for id in 100_000..100_005 {
             es.insert(id, g(0.0));
@@ -837,7 +837,7 @@ mod journal_tests {
     #[test]
     fn copies_share_their_chunks_until_one_changes_and_the_other_stays_as_it_was() {
         let g = |at: f64| {
-            Element::Grid(crate::model::Grid { start: crate::geom::P2(at, 0.0), end: crate::geom::P2(at, 1.0), name: String::new() })
+            Element::Grid(crate::model::Grid { start: crate::geom::P2(at, 0.0), end: crate::geom::P2(at, 1.0), name: String::new(), type_name: "Grid - ISO 128".into() })
         };
         let mut es = Elements::new();
         // Across three chunks, with a gap.

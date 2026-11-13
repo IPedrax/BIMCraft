@@ -218,7 +218,15 @@ other_files(
         level,
     )
     .menu("Architecture > Level"),
-    edit("grid", ui_msg!("Grid"), &["GR"], "{start: [x,y], end: [x,y], name?} names follow the last grid: 1, 2… or A, B…", grid).menu("Architecture > Grid"),
+    edit(
+        "grid",
+        ui_msg!("Grid"),
+        &["GR"],
+        "{start: [x,y], end: [x,y], name?, type?} a grid line of the project's grid type `type` (its default type \
+         without one); names follow the last grid: 1, 2… or A, B…",
+        grid,
+    )
+    .menu("Architecture > Grid"),
     edit(
         "reference_plane",
         ui_msg!("Reference Plane"),
@@ -1081,6 +1089,19 @@ other_files(
          Arial` (radial and diameter ones). `rename` renames it, its dimensions following; `delete` takes it away while no \
          dimension is of it. Without `name`, it lists every type",
         dimension_type,
+    ),
+    edit(
+        "grid_type",
+        "Grid Types",
+        &[],
+        "{name?, like?, rename?, delete?: true, …values} a grid type of the project's, as Revit's type parameters: Graphics: \
+         `line_pattern` (a line pattern of the project's, mm on paper; null, a solid line), `line_pen` (0 to 16; 4), `color` \
+         (\"#rrggbb\" or [r, g, b]; #3c6496). Text: `font` (as text types take; Arial), `text_size` (2.5 mm), `bold`, \
+         `italic`, `underline`, `width_factor` (1). A new one starts as `like` says, else as the default. A project starts with \
+         `Grid - ISO 128` (a new grid's type), `Grid - DIN 1356`, `Grid - ASME Y14.2`, `Grid - Architectural`, `Grid - \
+         Continuous` and `Grid - Compact`, each on its own line pattern. `rename` renames it, its grids following; `delete` \
+         takes it away while no grid is of it. Without `name`, it lists every type and the project's line patterns",
+        grid_type,
     ),
     edit(
         "spot",
@@ -8369,7 +8390,17 @@ fn grid(s: &mut Session, p: &Value) -> R {
         Some(n) => n,
         None => next_grid_name(&s.model),
     };
-    let id = s.model_mut().insert(Element::Grid(Grid { name: name.clone(), start, end }));
+    let type_name = match name_param(c, p, "type")? {
+        Some(t) => {
+            if !s.model.grid_types.contains_key(&t) {
+                let there: Vec<&str> = s.model.grid_types.keys().map(String::as_str).collect();
+                return Err(bad(c, format!("there's no grid type `{t}` (there are: {})", there.join(", "))));
+            }
+            t
+        }
+        None => s.model.default_type("grid").map(String::from).unwrap_or_default(),
+    };
+    let id = s.model_mut().insert(Element::Grid(Grid { name: name.clone(), type_name, start, end }));
     Ok(json!({"id": id, "name": name}))
 }
 
@@ -10941,6 +10972,75 @@ fn dimension_type(s: &mut Session, p: &Value) -> R {
     t.check(&name).map_err(|e| bad(c, e))?;
     if m.dimension_types.get(&name) != Some(&t) {
         m.dimension_types.insert(name.clone(), t.clone());
+    }
+    Ok(json!({"name": name, "type": t}))
+}
+
+fn grid_type(s: &mut Session, p: &Value) -> R {
+    use crate::grids::GridType;
+    let c = "grid_type";
+    let Some(name) = name_param(c, p, "name")? else {
+        return Ok(json!({
+            "types": s.model.grid_types,
+            "patterns": s.model.line_patterns,
+            "fonts": crate::text::families(),
+        }));
+    };
+    let m = s.model_mut();
+    if flag(c, p, "delete")? {
+        if let Some((id, _)) = m.elements.iter().find(|(_, e)| matches!(e, Element::Grid(g) if g.type_name == name)) {
+            return Err(bad(c, format!("grid {id} is of `{name}`; give it another type first")));
+        }
+        if m.grid_types.remove(&name).is_none() {
+            return Err(bad(c, format!("there's no grid type `{name}`")));
+        }
+        return Ok(json!({"deleted": name}));
+    }
+    let t = match (m.grid_types.get(&name), name_param(c, p, "like")?) {
+        (Some(t), _) => t.clone(),
+        (None, Some(like)) => {
+            m.grid_types.get(&like).cloned().ok_or_else(|| bad(c, format!("there's no grid type `{like}` to start from")))?
+        }
+        (None, None) => GridType::default(),
+    };
+    // What it is, with the values given over it, read as a file reads one: a key it hasn't is an error.
+    let mut v = serde_json::to_value(&t).map_err(|e| bad(c, e.to_string()))?;
+    let mut font = None;
+    if let Some(o) = v.as_object_mut() {
+        for (key, value) in p.as_object().into_iter().flatten() {
+            match key.as_str() {
+                "name" | "like" | "rename" | "delete" => {}
+                "font" => font = name_param(c, p, "font")?,
+                "color" if !value.is_null() => {
+                    let rgb =
+                        colour(value).ok_or_else(|| bad(c, format!("`color` is \"#rrggbb\" or [r, g, b], each 0 to 255, not {value}")))?;
+                    o.insert(key.clone(), json!(rgb));
+                }
+                _ => {
+                    o.insert(key.clone(), value.clone());
+                }
+            }
+        }
+    }
+    let mut t: GridType = serde_json::from_value(v).map_err(|e| bad(c, e.to_string()))?;
+    if let Some(f) = font.filter(|f| !f.trim().eq_ignore_ascii_case(t.font.trim())) {
+        t.font =
+            crate::text::known(&f).ok_or_else(|| bad(c, format!("this system has no font `{f}`; `grid_type` without `name` lists them")))?;
+    }
+    let name = match name_param(c, p, "rename")? {
+        Some(to) if to != name => {
+            if m.grid_types.contains_key(&to) {
+                return Err(bad(c, format!("there's already a grid type `{to}`")));
+            }
+            m.grid_types.remove(&name);
+            rename_entry(m, &LibKind::GridType, &name, &to);
+            to
+        }
+        _ => name,
+    };
+    t.check(&name, &m.line_patterns).map_err(|e| bad(c, e))?;
+    if m.grid_types.get(&name) != Some(&t) {
+        m.grid_types.insert(name.clone(), t.clone());
     }
     Ok(json!({"name": name, "type": t}))
 }
