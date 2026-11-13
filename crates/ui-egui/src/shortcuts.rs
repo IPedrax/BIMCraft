@@ -2313,7 +2313,7 @@ impl BimApp {
             "Reveal Hidden Elements" => self.temp_reveal(),
             "Unhide Elements" => {
                 if self.hidden_selection().0.is_empty() {
-                    self.open_graphics(3);
+                    self.open_graphics(graphics::ELEMENTS_TAB);
                 } else {
                     self.unhide_selection(false);
                 }
