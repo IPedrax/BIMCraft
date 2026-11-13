@@ -198,13 +198,13 @@ impl BimApp {
             Some(Head::Switch(name)) => {
                 d = DimensionTypeDialog { elements: d.elements, ..DimensionTypeDialog::new(&model, name, Vec::new()) }
             }
-            Some(Head::Duplicate(name)) => match self.session.execute("dimension_type", &d.params(&name)) {
+            Some(Head::Duplicate(name)) => match self.exec("dimension_type", &d.params(&name)) {
                 Ok(_) => {
                     d = DimensionTypeDialog { elements: d.elements, ..DimensionTypeDialog::new(&self.session.model, name, Vec::new()) }
                 }
                 Err(e) => d.error = Some(e),
             },
-            Some(Head::Rename(to)) => match self.session.execute("dimension_type", &json!({"name": d.name, "rename": to})) {
+            Some(Head::Rename(to)) => match self.exec("dimension_type", &json!({"name": d.name, "rename": to})) {
                 Ok(_) => {
                     if self.types.get("dimension") == Some(&d.name) {
                         self.types.insert("dimension", to.clone());
@@ -219,7 +219,7 @@ impl BimApp {
         }
         if ok || apply {
             let changed = model.dimension_types.get(&d.name) != Some(&d.t);
-            let mut result = if changed { self.session.execute("dimension_type", &d.params(&d.name)).map(|_| ()) } else { Ok(()) };
+            let mut result = if changed { self.exec("dimension_type", &d.params(&d.name)).map(|_| ()) } else { Ok(()) };
             let moved: Vec<Id> = d
                 .elements
                 .iter()
@@ -227,7 +227,7 @@ impl BimApp {
                 .filter(|id| matches!(self.session.model.elements.get(*id), Some(Element::Dimension(x)) if x.type_name != d.name))
                 .collect();
             if ok && result.is_ok() && !moved.is_empty() {
-                result = self.session.execute("modify", &json!({"ids": moved, "type": d.name})).map(|_| ());
+                result = self.exec("modify", &json!({"ids": moved, "type": d.name})).map(|_| ());
             }
             match result {
                 Ok(()) if ok => return,
@@ -324,7 +324,7 @@ impl BimApp {
             return;
         }
         if ok {
-            match self.session.execute("dimension_text", &d.params()) {
+            match self.exec("dimension_text", &d.params()) {
                 Ok(_) => return,
                 Err(e) => d.error = Some(e),
             }

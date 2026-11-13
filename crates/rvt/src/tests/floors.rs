@@ -172,6 +172,89 @@ fn a_diagonal_sketch_line_known_only_by_its_box_is_placed_where_one_pair_fits() 
 }
 
 #[test]
+fn a_sketch_line_of_another_sketch_or_drawn_twice_is_not_the_floors_boundary() {
+    // A real file names a floor in lines that are not its boundary: another sketch's rectangle reaching past the floor's own box,
+    // and its west edge a second time at another height (the structural samples' floors 495352 and 647908).
+    let mut p = project(2024);
+    p.recs.push(Rec::new(100, FLOORS).at([0.0, 0.0, -0.5, 20.0, 10.0, 0.0], &[10, 510, 100]));
+    rectangle(&mut p, 100, 200, [0.0, 0.0, 20.0, 10.0], 0.0, true);
+    rectangle(&mut p, 100, 210, [0.5, 0.5, 40.0, 12.0], 0.0, true);
+    line(&mut p, 100, 220, (0.0, 10.0), (0.0, 0.0), -2.0, true);
+    let i = import(&p);
+    let [(_, fl)] = floors(&i)[..] else { panic!("{:?}", i.skipped) };
+    assert!((area(&fl.boundary).abs() - 6096.0 * 3048.0).abs() < 1.0 && fl.boundary.len() == 4, "{:?}", fl.boundary);
+    assert!(!i.skipped.iter().any(|s| s.contains("footprint of its own box")), "{:?}", i.skipped);
+}
+
+/// A vertex of a shape-edited floor as its data holds it: eight `ff`, the vertex's id, `04 00 08 00`, the point (feet) and the
+/// twelve bytes after it.
+fn vertex(id: u64, at: [f64; 3]) -> Vec<u8> {
+    let mut v = vec![0xff; 8];
+    v.extend(id.to_le_bytes());
+    v.extend([0x04, 0x00, 0x08, 0x00]);
+    for c in at {
+        v.extend(c.to_le_bytes());
+    }
+    v.extend([6, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0]);
+    v
+}
+
+#[test]
+fn a_shape_edited_floor_comes_in_with_its_points_over_its_top() {
+    // 20 by 10 ft, its north edge a foot over its south one and a point in its middle half a foot up: its box runs from half a
+    // foot under its lowest corner to its highest. Two records that are no vertex of it: another tail, and a point past its box.
+    let mut p = project(2024);
+    p.recs.push(Rec::new(100, FLOORS).at([0.0, 0.0, -0.5, 20.0, 10.0, 1.0], &[10, 510, 100]));
+    rectangle(&mut p, 100, 200, [0.0, 0.0, 20.0, 10.0], 0.0, true);
+    let mut payload = vec![0u8; 16];
+    for (k, at) in [[0.0, 0.0, 0.0], [20.0, 0.0, 0.0], [20.0, 10.0, 1.0], [0.0, 10.0, 1.0], [10.0, 5.0, 0.5]].into_iter().enumerate() {
+        payload.extend(vertex(300 + k as u64, at));
+    }
+    let mut other = vertex(310, [5.0, 5.0, 0.25]);
+    other[44] = 7;
+    payload.extend(other);
+    payload.extend(vertex(311, [40.0, 5.0, 0.25]));
+    p.data.push(Block { id: 100, payload });
+    let i = import(&p);
+    let [(_, fl)] = floors(&i)[..] else { panic!("{:?}", i.skipped) };
+    // Its top where most of its corners are, the lower of two as many: the south edge, at the level.
+    assert_eq!((fl.level, fl.offset), (level_named(&i, "Level 1"), 0.0));
+    let mut points: Vec<(f64, f64, f64)> = fl.shape.points.iter().map(|q| (q.at.0, q.at.1, q.z)).collect();
+    points.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    assert_eq!(points, vec![(0.0, 3048.0, 304.8), (3048.0, 1524.0, 152.4), (6096.0, 3048.0, 304.8)]);
+    assert!(i.skipped.iter().any(|s| s.contains("shaped by the 5 points")), "{:?}", i.skipped);
+    assert!(!i.skipped.iter().any(|s| s.contains("comes in level")), "{:?}", i.skipped);
+    assert_eq!(i.model.check(), Ok(()));
+}
+
+#[test]
+fn the_architectural_samples_shape_edited_floors_come_in_shaped() {
+    for path in super::samples_of("snowdon-towers-sample-architectural.rvt") {
+        let (i, from) = crate::import_path_with_origins(&path, "x").unwrap();
+        let shaped = |id: u32| -> Vec<f64> {
+            let mut zs: Vec<f64> = i
+                .model
+                .elements
+                .iter()
+                .filter(|(m, _)| from[*m] == format!("Floor {id}"))
+                .filter_map(|(_, e)| match e {
+                    Element::Floor(fl) => Some(fl.shape.points.iter().map(|q| q.z).collect::<Vec<_>>()),
+                    _ => None,
+                })
+                .flatten()
+                .collect();
+            zs.sort_by(f64::total_cmp);
+            zs
+        };
+        // Floor 2134315: two of its 25 corners 0.86275 ft (262.97 mm) over the other 23, which are its top.
+        let raised: Vec<f64> = shaped(2_134_315).into_iter().filter(|z| z.abs() > 0.01).collect();
+        assert!(raised.len() == 2 && raised.iter().all(|z| (z - 262.97).abs() < 0.05), "{raised:?}");
+        // Floor 1397309: four corners and 114 points inside them.
+        assert!(shaped(1_397_309).len() >= 100, "{}", shaped(1_397_309).len());
+    }
+}
+
+#[test]
 fn a_floor_the_reader_cannot_describe_comes_in_flat_with_the_reason_or_is_left_out_with_it() {
     let mut p = floor_with_hole(2024, true);
     // Sloped or stepped: its box is taller than its type is thick.

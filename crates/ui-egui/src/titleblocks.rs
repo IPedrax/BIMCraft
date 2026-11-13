@@ -704,7 +704,7 @@ impl BimApp {
             } else {
                 name
             };
-            match self.session.execute("title_block", &json!({"name": name})) {
+            match self.exec("title_block", &json!({"name": name})) {
                 Ok(_) => d = TitleBlocksDialog::new(&self.session.model, Some(&name)),
                 Err(e) => d.error = Some(e),
             }
@@ -717,13 +717,13 @@ impl BimApp {
             if let Some(o) = p.as_object_mut() {
                 o.remove("rename");
             }
-            match self.session.execute("title_block", &p) {
+            match self.exec("title_block", &p) {
                 Ok(_) => d = TitleBlocksDialog::new(&self.session.model, Some(&name)),
                 Err(e) => d.error = Some(e),
             }
         }
         if delete {
-            match self.session.execute("title_block", &json!({"name": d.name, "delete": true})) {
+            match self.exec("title_block", &json!({"name": d.name, "delete": true})) {
                 Ok(_) => d = TitleBlocksDialog::new(&self.session.model, None),
                 Err(e) => d.error = Some(e),
             }

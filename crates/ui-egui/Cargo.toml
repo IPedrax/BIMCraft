@@ -16,6 +16,7 @@ bimcraft-core = { workspace = true }
 bimcraft-plugin = { workspace = true }
 bimcraft-update = { workspace = true }
 bimcraft-assistant = { workspace = true }
+bimcraft-cowork = { workspace = true }
 serde_json = { workspace = true }
 egui = { workspace = true }
 eframe = { workspace = true }

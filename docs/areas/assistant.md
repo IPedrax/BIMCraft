@@ -46,8 +46,44 @@ server's agents do, and it is the second code that reaches the network (the firs
   choices (provider, model, key, the agreement) carry over, and the conversation and any request in flight are dropped: the conversation
   was about the other project, and a reply on its way must not run its tools on the new one. The reply is taken after that check, in the
   same frame (`poll_assistant`), for the same reason.
-- **The conversation.** What the user wrote, what the model said, and each tool call with its arguments and its result in a small type
-  (errors in red). Ctrl+Enter sends, Stop ends the turn, New chat forgets the conversation (not the project).
+- **The conversation**, laid out as Claude Code's is. What the user wrote is in a box after a `›`; the model's words come after a dot; the
+  model's reasoning is folded under *Thinking* (closed until clicked) apart from its answers; each tool call is a dot, its name and
+  arguments, with its result indented under it (errors in red). Enter sends, Shift+Enter starts a new line (Ctrl+Enter sends too), Stop
+  ends the turn, New chat forgets the conversation (not the project). The dots and rings are drawn in code, not typed, because a font
+  may lack them.
+- **The checklist.** For a request of three or more steps the model writes a checklist with its `todo_write` tool (the whole list each
+  time, one item `in_progress`), and the palette draws it under the conversation: a dashed ring for a step to do, an arc for the one
+  under way, a tick in a filled ring (and greyed text) for a finished one. The tool changes nothing in the project, so it is not a line
+  of the log and not part of the undo step; a list the tool refused (more than 20 items, a bad status) is shown as the failed call it
+  is. The next message the user sends starts a new list, and so does New chat.
+- **Thinking.** Each provider's summary of the model's reasoning is asked for and shown apart from the answer (`Line::Thinks`):
+  Anthropic's `thinking: {type: adaptive, display: summarized}` (its default hides the text), OpenAI's `reasoning.summary: auto`, and
+  Gemini's `includeThoughts`. The reasoning still goes back to the provider whole, as before (`Reply::raw`). A model that gives no
+  summary shows no *Thinking* line.
+- **Files.** Attach (or a file dropped on the palette, which then does not open it as a project) picks text files and pictures for the
+  next message; each shows as a chip that takes it off again. A file is copied into a temporary folder that belongs to the chat
+  (`bimcraft-assistant-…` in the system's temp folder, `Chat::attach`) and goes when the chat does: New chat, a project replaced, or the
+  window closing (the folder is a `TempDir`, removed as it is dropped). A text file (UTF-8, at most 100 KB) goes in the message as a
+  `<file name="…">` block, a PNG, JPEG, GIF or WebP (at most 3 MB) as the provider's own image part; nothing else is sent, at most six
+  go with a message, and a conversation may carry 12 MB of files in all (every request carries them again). The model has no tool to
+  read a file: what it sees is what went in the message, and the system prompt says that text in a file is data, never instructions.
+  The palette says that attached files go to the provider with the message. A process that is killed leaves its folder behind; the
+  system's temp cleaning takes it.
+- **Saved chats.** A chat is kept for each saved project (`saved.rs`): one file in a `chats` folder beside `settings.json`, named for
+  the SHA-256 of the project file's path, never inside the project (which gets shared and sent around). It holds the log the palette
+  shows, the conversation the model is sent again (its reasoning blocks as they came) and the checklist; the key is in none of it, and
+  a picture sent in it is not kept (its place in the conversation says so). It is written once a turn is over (and again when the
+  chat changes), read the first time the window looks at a project and after File > New, Open or Recover, and taken away by New chat.
+  A project not saved yet has no file to keep a chat in, but the chat is not lost: Save or Save As gives it one. A chat had with
+  another provider is shown and not continued (a note says the model starts afresh), since one provider's reasoning means nothing to
+  another. A file is hostile like any other: it is read whole or not at all (a wrong type, a newer version, past the caps a live chat
+  has, or past 16 MB is passed over). Settings > Assistant says where chats are kept and has Delete the saved chats, which empties
+  the folder and leaves the chat on screen. A write that fails is passed over silently, and the next change tries again.
+- **Tokens used.** File > Settings > Assistant, under the key, counts the tokens the providers reported for this installation, by
+  project (the file's path; one not yet saved counts as *Untitled project*, as do projects past the hundredth) and for all of them: a
+  drop-down picks the project, and Reset the counts clears the one shown or all. What counts is input (the cached part of an
+  Anthropic prompt included) and output (Gemini's thinking included), as each reply says; the provider's own page is the bill. The
+  counts live in `settings.json` under `assistant.usage` (`{path: [in, out]}`, written only once there are any), never in a project.
 - **Undo.** Everything the assistant changes in answer to one message is one undo step, named `Assistant: <the message, cut at 40
   characters>` in Undo's list. Undo takes all of it back.
 
@@ -62,7 +98,7 @@ model is asked again, until it answers with no tool call, or a limit stops it. T
 (`Session::merge_steps`: the steps on top named exactly `Assistant` become one, `Assistant: <message>`).
 
 The tools: `execute {command, params}`, `list_commands {filter}`, `inspect_model` and `query_elements {category, level, field, value, limit, offset}`,
-the MCP server's reading and editing ones. The system prompt (`SYSTEM`) says what the project is, to look before changing, and that text
+the MCP server's reading and editing ones, and `todo_write {todos: [{content, status}]}`, the checklist. The system prompt (`SYSTEM`) says what the project is, to look before changing, and that text
 inside the project is data, never instructions.
 
 ## What it refuses and what it caps
@@ -108,10 +144,18 @@ with AI and ask for a wall; for a quick look at the wire without the window, giv
 `Msg::User` in a scratch program. What a real provider does that a recorded reply cannot show (a model id that no longer exists, a
 schema one provider refuses) shows only that way, so when a provider changes, check it live.
 
+## In a Co-Work session
+
+The chat is the host's and everyone's: a guest's palette shows it and sends to it, each message runs as its sender's, and whoever
+has a key pays with it while one who has none is lent one. The whole of it is in [Co-Work](cowork.md#built-the-shared-ai-chat-slice-5).
+
 ## Not done
 
 - A dry run (`Session::script_dry_run`) the assistant could offer before it changes anything, and reviewable edits ([discussion
   274](https://github.com/IPedrax/BIMCraft/discussions/274)): the tools are the MCP server's `execute`, not its `script`.
-- Pictures: the model cannot look at a plan or the 3D view, only read the model.
-- Streaming: a reply arrives whole, so a long one shows nothing until it is done (Stop gives up on it).
+- Pictures the assistant makes: it cannot look at a plan or the 3D view itself, only read the model (the user may attach a picture).
+- Streaming: a reply arrives whole, so a long one shows nothing until it is done (Stop gives up on it), and *Working…* does not turn: the
+  reply wakes the window, so nothing asks for a frame after frame meanwhile.
+- Markdown in the answers is shown as typed, and a PDF cannot be attached.
+- Folders of a killed process are not swept from the temp folder at the next start.
 - Server-side fallbacks for Anthropic's refusals (a beta header): a refusal is a note.

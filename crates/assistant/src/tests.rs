@@ -10,9 +10,13 @@ use bimcraft_core::bridge::Access;
 use bimcraft_core::engine::Session;
 use serde_json::{Value, json};
 
+use crate::attach::base64;
 use crate::net::{Net, Request, Ureq, allowed};
 use crate::testing::Fake;
-use crate::{Call, Chat, Done, Line, Msg, Provider, anthropic, clip, complete, gemini, key_ok, model_ok, openai, tools};
+use crate::{
+    Attached, Body, Call, Chat, Done, Line, MAX_FILES, MAX_FILES_TOTAL, Msg, Provider, Status, Usage, anthropic, clip, complete, gemini,
+    key_ok, model_ok, openai, tools,
+};
 
 const KEY: &str = "sk-test-0123456789abcdef";
 
@@ -49,7 +53,7 @@ fn anthropic_reads_one_tool_call_and_sends_its_answer_back_by_id() {
     assert_eq!(r.text, "Drawing.");
     assert_eq!(r.calls, vec![Call { id: "toolu_01".into(), name: "execute".into(), args: serde_json::from_str(WALL).unwrap() }]);
     let done = Done { id: "toolu_01".into(), name: "execute".into(), text: "{\"id\":100200}".into(), error: false };
-    let sent = anthropic::request("claude-sonnet-5-5", KEY, &[Msg::User("a wall".into()), Msg::Assistant(r), Msg::Results(vec![done])]);
+    let sent = anthropic::request("claude-sonnet-5-5", KEY, &[Msg::user("a wall"), Msg::Assistant(r), Msg::Results(vec![done])]);
     let body: Value = serde_json::from_str(&sent.body).unwrap();
     assert_eq!(body["model"], "claude-sonnet-5-5");
     assert_eq!(body["tools"].as_array().unwrap().len(), tools::all().len());
@@ -121,7 +125,7 @@ fn openai_reads_a_tool_call_and_replays_only_what_can_be_replayed() {
     let r = openai::parse(200, &openai_reply(output, "completed")).unwrap();
     assert_eq!(r.calls, vec![Call { id: "call_1".into(), name: "execute".into(), args: serde_json::from_str(WALL).unwrap() }]);
     let done = Done { id: "call_1".into(), name: "execute".into(), text: "ok".into(), error: false };
-    let sent = openai::request("gpt-6-astra", KEY, &[Msg::User("a wall".into()), Msg::Assistant(r), Msg::Results(vec![done])]);
+    let sent = openai::request("gpt-6-astra", KEY, &[Msg::user("a wall"), Msg::Assistant(r), Msg::Results(vec![done])]);
     let body: Value = serde_json::from_str(&sent.body).unwrap();
     assert_eq!((&body["store"], &body["model"]), (&json!(false), &json!("gpt-6-astra")));
     assert_eq!(body["include"], json!(["reasoning.encrypted_content"]));
@@ -183,11 +187,8 @@ fn gemini_reads_a_tool_call_and_sends_back_its_signature_and_an_answer_by_id() {
     assert_eq!(r.calls, vec![Call { id: "c1".into(), name: "execute".into(), args: serde_json::from_str(WALL).unwrap() }]);
     let done = vec![Done { id: "c1".into(), name: "execute".into(), text: "ok".into(), error: false }];
     let nameless = vec![Done { id: String::new(), name: "inspect_model".into(), text: "boom".into(), error: true }];
-    let sent = gemini::request(
-        "gemini-3.8-flash",
-        KEY,
-        &[Msg::User("a wall".into()), Msg::Assistant(r), Msg::Results(done), Msg::Results(nameless)],
-    );
+    let sent =
+        gemini::request("gemini-3.8-flash", KEY, &[Msg::user("a wall"), Msg::Assistant(r), Msg::Results(done), Msg::Results(nameless)]);
     let body: Value = serde_json::from_str(&sent.body).unwrap();
     assert_eq!(body["contents"][1]["role"], "model");
     assert_eq!(body["contents"][1]["parts"][0]["thoughtSignature"], "sig", "the signature goes back in the part it came in");
@@ -235,7 +236,7 @@ fn gemini_malformed_blocked_and_refused_replies_are_errors() {
 #[test]
 fn a_key_or_model_that_is_no_key_or_model_never_reaches_a_request() {
     let net = Fake::default();
-    let history = [Msg::User("hi".into())];
+    let history = [Msg::user("hi")];
     for model in ["", "a b", "x/../y", "m?key=1", "m:generate"] {
         assert!(!model_ok(model), "{model:?}");
         assert!(complete(Provider::Gemini, &net, model, KEY, &history).is_err());
@@ -572,7 +573,7 @@ fn a_message_is_refused_while_one_runs_and_when_it_is_too_long_or_the_key_is_bad
     drive(&mut chat, &mut s);
     assert_eq!(net.seen().len(), 1);
     // A conversation past the cap is not sent again.
-    chat.history.push(Msg::User("x".repeat(crate::MAX_HISTORY)));
+    chat.history.push(Msg::user("x".repeat(crate::MAX_HISTORY)));
     chat.send("one more", KEY);
     assert!(!chat.busy() && matches!(chat.log.last(), Some(Line::Note(n)) if n.contains("too long")));
     chat.clear();
@@ -792,4 +793,372 @@ fn a_key_under_a_passphrase_that_was_changed_is_refused_and_a_bad_text_never_pan
     }
     assert!(started.elapsed() < Duration::from_secs(2), "{:?}", started.elapsed());
     assert!(!seal::needs_passphrase("") && !seal::needs_passphrase("bc1:1000:00:00:00") && !seal::needs_passphrase("garbage"));
+}
+
+// ---------- thinking, the checklist, files and tokens ----------
+
+#[test]
+fn every_provider_gives_its_thinking_apart_from_the_answer_and_asks_for_it() {
+    let a = anthropic_reply(
+        json!([{"type": "thinking", "thinking": "Levels first.", "signature": "s"}, {"type": "text", "text": "Hi"}]),
+        "end_turn",
+    );
+    let r = anthropic::parse(200, &a).unwrap();
+    assert_eq!((r.thinking.as_str(), r.text.as_str()), ("Levels first.", "Hi"));
+    let body: Value = serde_json::from_str(&anthropic::request("claude-sonnet-5-5", KEY, &[Msg::user("x")]).body).unwrap();
+    assert_eq!(body["thinking"], json!({"type": "adaptive", "display": "summarized"}), "the default hides the summary");
+
+    let o = openai_reply(
+        json!([{"type": "reasoning", "summary": [{"type": "summary_text", "text": "One."}, {"type": "summary_text", "text": "Two."}]},
+               {"type": "message", "content": [{"type": "output_text", "text": "Hi"}]}]),
+        "completed",
+    );
+    let r = openai::parse(200, &o).unwrap();
+    assert_eq!((r.thinking.as_str(), r.text.as_str()), ("One.\n\nTwo.", "Hi"));
+    let body: Value = serde_json::from_str(&openai::request("gpt-6-astra", KEY, &[Msg::user("x")]).body).unwrap();
+    assert_eq!(body["reasoning"]["summary"], "auto");
+
+    let g = gemini_reply(json!([{"text": "Checking.", "thought": true}, {"text": "Hi"}]), "STOP");
+    let r = gemini::parse(200, &g).unwrap();
+    assert_eq!((r.thinking.as_str(), r.text.as_str()), ("Checking.", "Hi"));
+    let body: Value = serde_json::from_str(&gemini::request("gemini-3.8-flash", KEY, &[Msg::user("x")]).body).unwrap();
+    assert_eq!(body["generationConfig"]["thinkingConfig"]["includeThoughts"], true);
+}
+
+#[test]
+fn every_provider_counts_the_tokens_of_a_reply_in_its_own_fields() {
+    let a = json!({"content": [], "stop_reason": "end_turn", "usage": {"input_tokens": 10, "cache_read_input_tokens": 90, "cache_creation_input_tokens": 5, "output_tokens": 7}});
+    assert_eq!(anthropic::parse(200, &a.to_string()).unwrap().usage, Usage { input: 105, output: 7 });
+    let o = json!({"output": [], "status": "completed", "usage": {"input_tokens": 40, "output_tokens": 9}});
+    assert_eq!(openai::parse(200, &o.to_string()).unwrap().usage, Usage { input: 40, output: 9 });
+    let g = json!({"candidates": [{"finishReason": "STOP", "content": {"parts": []}}], "usageMetadata": {"promptTokenCount": 30, "candidatesTokenCount": 4, "thoughtsTokenCount": 6}});
+    assert_eq!(gemini::parse(200, &g.to_string()).unwrap().usage, Usage { input: 30, output: 10 });
+    // A reply with no count, or a hostile one, counts as none and never panics.
+    let hostile = json!({"content": [], "usage": {"input_tokens": "lots", "output_tokens": -1}});
+    assert_eq!(anthropic::parse(200, &hostile.to_string()).unwrap().usage, Usage::default());
+    assert_eq!(Usage { input: u64::MAX, output: 1 }.total(), u64::MAX);
+}
+
+#[test]
+fn files_go_before_the_words_in_each_providers_own_form() {
+    let files = vec![
+        Attached { name: "notes.txt".into(), body: Body::Text("two walls".into()) },
+        Attached { name: "plan.png".into(), body: Body::Image { mime: "image/png", b64: "AAAA".into() } },
+    ];
+    let history = [Msg::User("what is this?".into(), files)];
+    let body = |r: Request| serde_json::from_str::<Value>(&r.body).unwrap();
+    let a = body(anthropic::request("claude-sonnet-5-5", KEY, &history));
+    assert_eq!(a["messages"][0]["content"][0], json!({"type": "text", "text": "<file name=\"notes.txt\">\ntwo walls\n</file>"}));
+    assert_eq!(
+        a["messages"][0]["content"][1],
+        json!({"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "AAAA"}})
+    );
+    assert_eq!(a["messages"][0]["content"][2], json!({"type": "text", "text": "what is this?"}));
+    let o = body(openai::request("gpt-6-astra", KEY, &history));
+    assert_eq!(o["input"][0]["content"][1], json!({"type": "input_image", "image_url": "data:image/png;base64,AAAA"}));
+    assert_eq!(o["input"][0]["content"][2], json!({"type": "input_text", "text": "what is this?"}));
+    let g = body(gemini::request("gemini-3.8-flash", KEY, &history));
+    assert_eq!(g["contents"][0]["parts"][1], json!({"inlineData": {"mimeType": "image/png", "data": "AAAA"}}));
+    assert_eq!(g["contents"][0]["parts"][2], json!({"text": "what is this?"}));
+    assert!(!a.to_string().contains(KEY));
+}
+
+#[test]
+fn base64_is_the_standard_one_with_padding() {
+    for (plain, coded) in
+        [("", ""), ("f", "Zg=="), ("fo", "Zm8="), ("foo", "Zm9v"), ("foob", "Zm9vYg=="), ("fooba", "Zm9vYmE="), ("foobar", "Zm9vYmFy")]
+    {
+        assert_eq!(base64(plain.as_bytes()), coded);
+    }
+    assert_eq!(base64(&[0xff, 0xfe, 0xfd]), "//79");
+}
+
+#[test]
+fn a_checklist_is_read_whole_and_a_bad_one_is_told_what_is_wrong() {
+    let ok = tools::todos(&json!({"todos": [{"content": " Draw walls ", "status": "in_progress"}, {"content": "Add doors", "status": "pending"}, {"content": "x".repeat(500), "status": "completed"}]})).unwrap();
+    assert_eq!(
+        (ok[0].content.as_str(), ok[0].status, ok[1].status, ok[2].status),
+        ("Draw walls", Status::InProgress, Status::Pending, Status::Completed)
+    );
+    assert_eq!(ok[2].content.chars().count(), crate::MAX_TODO_TEXT + 1, "cut, with its ellipsis");
+    for bad in [
+        json!({}),
+        json!({"todos": "all of it"}),
+        json!({"todos": [{"content": "", "status": "pending"}]}),
+        json!({"todos": [{"content": "a", "status": "done"}]}),
+        json!({"todos": (0..=crate::MAX_TODOS).map(|i| json!({"content": format!("step {i}"), "status": "pending"})).collect::<Vec<_>>()}),
+    ] {
+        assert!(tools::todos(&bad).is_err(), "{bad}");
+    }
+    // The model is offered it, and it changes nothing in the project.
+    assert!(tools::all().iter().any(|t| t.name == tools::TODO));
+    let mut s = Session::new();
+    run(&mut s, "todo_write", json!({"todos": [{"content": "a", "status": "pending"}]})).unwrap();
+    assert_eq!(s.history(), Vec::<String>::new());
+}
+
+#[test]
+fn the_checklist_is_kept_for_the_palette_not_logged_as_a_call_and_cleared_by_the_next_message() {
+    let list = r#"{"todos":[{"content":"Draw walls","status":"in_progress"},{"content":"Add doors","status":"pending"}]}"#;
+    let net = Arc::new(
+        Fake::default()
+            .reply(200, tool_reply(&[("t1", "todo_write", list), ("t2", "execute", WALL)]))
+            .reply(200, text_reply("Done."))
+            .reply(200, text_reply("Again.")),
+    );
+    let (mut chat, mut s) = (chat_on(&net), Session::new());
+    chat.send("two walls and doors", KEY);
+    drive(&mut chat, &mut s);
+    assert_eq!(chat.todos.len(), 2);
+    assert_eq!((chat.todos[0].content.as_str(), chat.todos[0].status), ("Draw walls", Status::InProgress));
+    let used: Vec<_> = chat.log.iter().filter_map(|l| if let Line::Used { name, .. } = l { Some(name.as_str()) } else { None }).collect();
+    assert_eq!(used, ["execute"], "the checklist is not a line of the log");
+    assert_eq!(count(&mut s, "wall"), 1);
+    chat.send("and again", KEY);
+    assert!(chat.todos.is_empty(), "a new message starts a new list");
+    drive(&mut chat, &mut s);
+    // A list that is refused is shown as the failed call it is.
+    let net = Arc::new(
+        Fake::default()
+            .reply(200, tool_reply(&[("t1", "todo_write", r#"{"todos":[{"content":"a","status":"nope"}]}"#)]))
+            .reply(200, text_reply("ok")),
+    );
+    let mut chat = chat_on(&net);
+    chat.send("plan", KEY);
+    drive(&mut chat, &mut s);
+    assert!(chat.todos.is_empty() && chat.log.iter().any(|l| matches!(l, Line::Used { name, error: true, .. } if name == "todo_write")));
+}
+
+#[test]
+fn thinking_comes_before_the_answer_in_the_log_and_the_tokens_are_handed_over_once() {
+    let first = anthropic_reply(
+        json!([{"type": "thinking", "thinking": "Look first.", "signature": "s"}, {"type": "tool_use", "id": "t1", "name": "inspect_model", "input": {}}]),
+        "tool_use",
+    );
+    let net = Arc::new(Fake::default().reply(200, first).reply(200, text_reply("Two levels.")));
+    let (mut chat, mut s) = (chat_on(&net), Session::new());
+    chat.send("what is in it?", KEY);
+    drive(&mut chat, &mut s);
+    let kinds: Vec<&str> = chat
+        .log
+        .iter()
+        .map(|l| match l {
+            Line::You(_) => "you",
+            Line::Thinks(_) => "thinks",
+            Line::Says(_) => "says",
+            Line::Used { .. } => "used",
+            _ => "other",
+        })
+        .collect();
+    assert_eq!(kinds, ["you", "thinks", "used", "says"]);
+    assert_eq!(chat.take_usage(), Usage { input: 20, output: 10 }, "two replies of 10 and 5 tokens each");
+    assert_eq!(chat.take_usage(), Usage::default(), "handed over once");
+}
+
+/// A folder with one file of each kind a user might pick.
+fn picked() -> tempfile::TempDir {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("notes.txt"), "two walls").unwrap();
+    std::fs::write(dir.path().join("plan.png"), [0x89, b'P', b'N', b'G']).unwrap();
+    std::fs::write(dir.path().join("data.bin"), [0xff, 0xfe, 0x00, 0x80]).unwrap();
+    std::fs::write(dir.path().join("big.txt"), "x".repeat(crate::MAX_FILE_TEXT as usize + 1)).unwrap();
+    std::fs::create_dir(dir.path().join("folder")).unwrap();
+    dir
+}
+
+#[test]
+fn a_picked_file_is_copied_to_a_folder_of_the_chats_and_what_is_not_sendable_is_refused_with_a_note() {
+    let (from, net) = (picked(), Arc::new(Fake::default()));
+    let mut chat = chat_on(&net);
+    assert!(chat.stage_dir().is_none(), "no folder until a file is picked");
+    chat.attach(&from.path().join("notes.txt"));
+    chat.attach(&from.path().join("plan.png"));
+    let stage = chat.stage_dir().unwrap().to_path_buf();
+    assert_eq!(chat.attached.iter().map(|a| a.name.as_str()).collect::<Vec<_>>(), ["notes.txt", "plan.png"]);
+    assert!(chat.attached.iter().all(|a| std::fs::metadata(&stage).is_ok() && a.size > 0));
+    assert_eq!(std::fs::read_dir(&stage).unwrap().count(), 2);
+    // The copy is the chat's: the original may go.
+    std::fs::remove_file(from.path().join("notes.txt")).unwrap();
+    for (bad, why) in [("data.bin", "not text"), ("big.txt", "at most"), ("folder", "not a file"), ("missing.txt", "could not read")] {
+        let before = chat.attached.len();
+        chat.attach(&from.path().join(bad));
+        assert_eq!(chat.attached.len(), before, "{bad}");
+        assert!(matches!(chat.log.last(), Some(Line::Note(n)) if n.contains(why)), "{bad}: {:?}", chat.log.last());
+    }
+    for _ in 0..MAX_FILES {
+        chat.attach(&from.path().join("plan.png"));
+    }
+    assert_eq!(chat.attached.len(), MAX_FILES);
+    assert!(matches!(chat.log.last(), Some(Line::Note(n)) if n.contains("at most go with one message")));
+    chat.detach(0);
+    assert_eq!(chat.attached.len(), MAX_FILES - 1);
+    assert_eq!(std::fs::read_dir(&stage).unwrap().count(), MAX_FILES - 1, "the removed one's copy is deleted");
+}
+
+// Windows refuses `"`, `<` and `>` in a file name, so such a file can only be attached elsewhere.
+#[cfg(unix)]
+#[test]
+fn a_file_name_that_could_end_the_block_early_is_cleaned() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(dir.path().join("a\"><b.txt"), "x").unwrap();
+    let mut chat = chat_on(&Arc::new(Fake::default()));
+    chat.attach(&dir.path().join("a\"><b.txt"));
+    assert_eq!(chat.attached[0].name, "a___b.txt");
+}
+
+#[test]
+fn files_go_with_the_message_and_their_folder_goes_with_the_chat() {
+    let (from, net) = (picked(), Arc::new(Fake::default().reply(200, text_reply("Two walls and a picture."))));
+    let (mut chat, mut s) = (chat_on(&net), Session::new());
+    chat.attach(&from.path().join("notes.txt"));
+    chat.attach(&from.path().join("plan.png"));
+    let stage = chat.stage_dir().unwrap().to_path_buf();
+    chat.send("what is in these?", KEY);
+    drive(&mut chat, &mut s);
+    assert!(chat.attached.is_empty(), "sent files are not sent again");
+    assert!(chat.log.contains(&Line::Files(vec!["notes.txt".into(), "plan.png".into()])));
+    let body: Value = serde_json::from_str(&net.seen()[0].body).unwrap();
+    let content = &body["messages"][0]["content"];
+    assert!(content[0]["text"].as_str().unwrap().contains("<file name=\"notes.txt\">\ntwo walls\n</file>"));
+    assert_eq!(content[1]["source"]["data"], base64(&[0x89, b'P', b'N', b'G']));
+    assert_eq!(content[2]["text"], "what is in these?");
+    assert!(stage.exists(), "the copies stay until the chat goes");
+    chat.clear();
+    assert!(!stage.exists() && chat.stage_dir().is_none(), "a new chat removes the folder");
+    // Dropping the chat, as the window closing does, removes it too.
+    chat.attach(&from.path().join("plan.png"));
+    let stage = chat.stage_dir().unwrap().to_path_buf();
+    assert!(stage.exists());
+    drop(chat);
+    assert!(!stage.exists(), "closing removes the folder");
+}
+
+#[test]
+fn more_file_bytes_than_a_conversation_may_carry_are_refused() {
+    let (from, net) = (picked(), Arc::new(Fake::default()));
+    let mut chat = chat_on(&net);
+    chat.history.push(Msg::User("x".into(), vec![Attached { name: "old.txt".into(), body: Body::Text("y".repeat(MAX_FILES_TOTAL)) }]));
+    chat.attach(&from.path().join("notes.txt"));
+    chat.send("again", KEY);
+    assert!(!chat.busy() && matches!(chat.log.last(), Some(Line::Note(n)) if n.contains("more than can be sent")));
+    assert_eq!(chat.attached.len(), 1, "what was picked is still there to send after a new chat");
+}
+
+// ---------- chats kept for each project ----------
+
+/// A chat that has had a turn: a message with a text file and a picture, thinking, a call, a checklist and an answer.
+fn had_a_turn(net: &Arc<Fake>) -> (Chat, Session) {
+    let (from, mut chat, mut s) = (picked(), chat_on(net), Session::new());
+    chat.attach(&from.path().join("notes.txt"));
+    chat.attach(&from.path().join("plan.png"));
+    chat.send("two walls", KEY);
+    drive(&mut chat, &mut s);
+    (chat, s)
+}
+
+fn first_turn_net() -> Arc<Fake> {
+    let first = anthropic_reply(
+        json!([{"type": "thinking", "thinking": "Walls first.", "signature": "s"},
+               {"type": "tool_use", "id": "t1", "name": "todo_write", "input": {"todos": [{"content": "Draw", "status": "in_progress"}]}},
+               {"type": "tool_use", "id": "t2", "name": "execute", "input": serde_json::from_str::<Value>(WALL).unwrap()}]),
+        "tool_use",
+    );
+    Arc::new(Fake::default().reply(200, first).reply(200, text_reply("Drew it.")).reply(200, text_reply("More.")))
+}
+
+#[test]
+fn a_saved_chat_comes_back_as_it_was_and_the_model_is_sent_the_same_conversation_again() {
+    let net = first_turn_net();
+    let (chat, mut s) = had_a_turn(&net);
+    let project = std::path::Path::new("/work/house.bimc");
+    let saved = chat.to_saved(project);
+    assert!(!saved.to_string().contains(KEY), "the key is in none of it");
+    let mut back = chat_on(&net);
+    assert!(back.restore(&saved, Provider::Anthropic));
+    assert_eq!(back.log, chat.log);
+    assert_eq!((back.todos.clone(), back.model.clone()), (chat.todos.clone(), chat.model.clone()));
+    assert_eq!(back.history.len(), chat.history.len());
+    // A picture is not kept, its place says so; the text file is.
+    let Msg::User(_, files) = &back.history[0] else { panic!("first is the user's") };
+    assert_eq!(files[0].body, Body::Text("two walls".into()));
+    assert!(matches!(&files[1].body, Body::Text(t) if t.contains("plan.png") && t.contains("not kept")));
+    // The next message goes out after what was said before, the model's own turn (its thinking block) untouched.
+    back.send("and more", KEY);
+    drive(&mut back, &mut s);
+    let body: Value = serde_json::from_str(&net.seen().last().unwrap().body).unwrap();
+    let messages = body["messages"].as_array().unwrap();
+    assert_eq!(messages[1]["content"][0]["type"], "thinking");
+    assert_eq!(messages.last().unwrap()["content"], "and more");
+}
+
+#[test]
+fn a_chat_had_with_another_provider_is_shown_and_not_continued() {
+    let net = first_turn_net();
+    let (chat, _s) = had_a_turn(&net);
+    let saved = chat.to_saved(std::path::Path::new("/work/house.bimc"));
+    let mut back = chat_on(&net);
+    assert!(back.restore(&saved, Provider::OpenAi));
+    assert!(back.history.is_empty(), "another provider's reasoning means nothing to this one");
+    assert_eq!(back.log.len(), chat.log.len() + 1);
+    assert!(matches!(back.log.last(), Some(Line::Note(n)) if n.contains("Anthropic Claude") && n.contains("OpenAI")));
+}
+
+#[test]
+fn a_file_that_is_not_a_saved_chat_is_refused_whole_and_never_panics() {
+    let net = first_turn_net();
+    let (chat, _s) = had_a_turn(&net);
+    let good = chat.to_saved(std::path::Path::new("/p.bimc"));
+    let mut bad = vec![json!(null), json!([]), json!("x"), json!({}), json!({"v": 99, "log": [], "history": [], "todos": []})];
+    for key in ["log", "history", "todos"] {
+        let mut v = good.clone();
+        v[key] = json!("not a list");
+        bad.push(v);
+        let mut v = good.clone();
+        v[key] = json!([{"t": "nonsense"}]);
+        bad.push(v);
+        let mut v = good.clone();
+        v[key] = json!([5, null]);
+        bad.push(v);
+    }
+    let mut v = good.clone();
+    v["log"][0]["text"] = json!(7);
+    bad.push(v);
+    let mut v = good.clone();
+    v["todos"] = json!([{"content": "a", "status": "nope"}]);
+    bad.push(v);
+    let mut v = good.clone();
+    v["history"] = json!([{"t": "user", "text": "x".repeat(crate::MAX_HISTORY + 1), "files": []}]);
+    bad.push(v);
+    let mut v = good.clone();
+    v["log"] = json!((0..501).map(|_| json!({"t": "says", "text": "a"})).collect::<Vec<_>>());
+    bad.push(v);
+    for v in bad {
+        let mut c = chat_on(&net);
+        c.log.push(Line::Note("mine".into()));
+        assert!(!c.restore(&v, Provider::Anthropic), "{v}");
+        assert_eq!(c.log, vec![Line::Note("mine".into())], "a refused file changes nothing");
+    }
+}
+
+#[test]
+fn a_chat_is_written_into_a_folder_by_its_projects_path_read_back_and_removed() {
+    let net = first_turn_net();
+    let (chat, _s) = had_a_turn(&net);
+    let dir = tempfile::tempdir().unwrap();
+    let (a, b) = (std::path::Path::new("/work/a.bimc"), std::path::Path::new("/work/b.bimc"));
+    assert_ne!(crate::saved::file_name(a), crate::saved::file_name(b));
+    assert_eq!(crate::saved::file_name(a).len(), 64 + ".json".len());
+    assert!(crate::saved::read(dir.path(), a).is_none());
+    crate::saved::write(&dir.path().join("chats"), a, &chat).unwrap();
+    let kept = crate::saved::read(&dir.path().join("chats"), a).unwrap();
+    assert_eq!(kept["project"], "/work/a.bimc");
+    assert!(crate::saved::read(&dir.path().join("chats"), b).is_none(), "each project has its own");
+    assert_eq!(std::fs::read_dir(dir.path().join("chats")).unwrap().count(), 1, "no half-written file is left beside it");
+    crate::saved::remove(&dir.path().join("chats"), a);
+    assert!(crate::saved::read(&dir.path().join("chats"), a).is_none());
+    // A file past the cap is not read.
+    std::fs::create_dir_all(dir.path().join("big")).unwrap();
+    let big = std::fs::File::create(dir.path().join("big").join(crate::saved::file_name(a))).unwrap();
+    big.set_len(crate::saved::MAX_SAVED + 1).unwrap();
+    assert!(crate::saved::read(&dir.path().join("big"), a).is_none());
 }

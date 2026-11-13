@@ -26,6 +26,9 @@ mod commands;
 mod component_geometry;
 pub mod conduit;
 mod constraints;
+pub mod cowork;
+#[cfg(test)]
+mod cowork_tests;
 pub mod crosscheck;
 mod csg;
 pub mod curves;
@@ -96,6 +99,7 @@ pub mod glue;
 mod glue_tests;
 pub mod graphics;
 pub mod groups;
+pub mod handles;
 #[cfg(test)]
 mod host_void_tests;
 pub mod hosting;

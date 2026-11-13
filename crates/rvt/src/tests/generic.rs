@@ -133,6 +133,31 @@ fn an_element_of_a_category_with_no_name_that_has_the_box_of_a_named_elements_is
 }
 
 #[test]
+fn a_model_group_and_terrain_are_left_out_not_boxed() {
+    // A model group (class ElementGroup) is no body: its members come in on their own. Terrain (class Toposolid, or the older
+    // SiteSurface) is a surface the reader does not read, whose box would be a solid block over the whole site.
+    use crate::project_fixture::{GROUP, SITE_SURFACE, TOPOSOLID};
+    for release in [2019, 2024] {
+        let mut p = base(release);
+        p.recs.push(Rec::new(300, GENERIC_MODELS).at([8.0, 8.0, 0.0, 9.0, 9.0, 1.0], &[]));
+        let mut group = Rec::new(301, -2_000_095).at([0.0, 0.0, 0.0, 20.0, 20.0, 10.0], &[]);
+        group.class_tag = GROUP;
+        let mut topo = Rec::new(302, -2_001_122).at([-100.0, -100.0, -20.0, 500.0, 500.0, 10.0], &[]);
+        topo.class_tag = TOPOSOLID;
+        let mut site = Rec::new(303, -2_001_340).at([-100.0, -100.0, -20.0, 500.0, 500.0, 10.0], &[]);
+        site.class_tag = SITE_SURFACE;
+        p.recs.extend([group, topo, site]);
+        let i = import(&p);
+        let got: Vec<&str> = components(&i).iter().map(|c| c.family.as_str()).collect();
+        assert_eq!(got, ["Generic Models"], "Revit {release}: {:?}", i.skipped);
+        let says = |what: &str| i.skipped.iter().any(|s| s.contains(what));
+        assert!(says("it is a model group") && says("ids 301)"), "{:?}", i.skipped);
+        assert!(says("it is terrain") && says("ids 302)") && says("ids 303)"), "{:?}", i.skipped);
+        assert!(i.model.check().is_ok());
+    }
+}
+
+#[test]
 fn a_family_of_a_category_is_one_family_for_all_its_elements_and_names_a_single_type() {
     let mut p = base(2024);
     for (k, id) in (300..306).enumerate() {
