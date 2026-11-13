@@ -3433,7 +3433,7 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
             }
             shared_at(m, &mut extra, cp.at, base);
         }
-        Element::Column(_) | Element::StructuralColumn(_) | Element::Footing(_) => {
+        Element::Column(col) | Element::StructuralColumn(col) | Element::Footing(col) => {
             let (bottom, top) = m.column_span(e);
             extra.insert("height".into(), json!(top - bottom));
             shared_at(m, &mut extra, col.at, bottom);

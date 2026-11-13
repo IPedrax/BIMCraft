@@ -11,7 +11,6 @@ use std::sync::Arc;
 
 use bimcraft_core::coordinates::{Coordinates, Frame, Frames, Location, MAX_LOCATIONS, Move, NONE, Point};
 use bimcraft_core::crs::{self, Info};
-use bimcraft_core::engine::Session;
 use bimcraft_core::geom::P2;
 use bimcraft_core::library::Kind;
 use bimcraft_core::model::{Element, Georeference, Id, Model};

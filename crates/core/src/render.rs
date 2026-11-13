@@ -3886,7 +3886,8 @@ pub(crate) fn cap_fill(
     // A drawing as dense as a sheet's, of the paper the view stands for: its patterns spaced as they print.
     let scale = sheet::DENSITY / n;
     let side = |a: f64| ((a * scale).ceil() + 4.0).clamp(1.0, f64::from(u16::MAX)) as u32;
-    let view = View { scale, cx: (lo.0 + hi.0) / 2.0, cy: (lo.1 + hi.1) / 2.0, width: side(hi.0 - lo.0), height: side(hi.1 - lo.1) };
+    let view =
+        View { angle: 0.0, scale, cx: (lo.0 + hi.0) / 2.0, cy: (lo.1 + hi.1) / 2.0, width: side(hi.0 - lo.0), height: side(hi.1 - lo.1) };
     let mut d = Drawing::new(view);
     (d.paper, d.detail, d.owner) = (paper_of(n, scale), detail, Some(owner));
     if let Some(s) = over {
@@ -6716,7 +6717,7 @@ mod tests {
         let wall = s.model.elements.iter().find_map(|(id, e)| matches!(e, Element::Wall(_)).then_some(*id)).unwrap();
         let beam = s.model.elements.iter().find_map(|(id, e)| matches!(e, Element::Beam(_)).then_some(*id)).unwrap();
         let level = s.model.levels()[0].0;
-        let at = |m: &Model, zoom: f64| draw(m, level, View { scale: zoom, cx: 2000.0, cy: 1000.0, width: 2000, height: 1600 });
+        let at = |m: &Model, zoom: f64| draw(m, level, View { angle: 0.0, scale: zoom, cx: 2000.0, cy: 1000.0, width: 2000, height: 1600 });
         let hatch = |d: &Drawing| {
             (d.prims.iter().zip(&d.owners).zip(&d.parts))
                 .filter(|((p, o), part)| **o == Some(wall) && **part == Part::Pattern && matches!(p, Prim::Line { .. }))

@@ -4977,7 +4977,7 @@ fn cut_patterns_show_where_a_layer_is_wide_enough_to_hold_them() {
     let w = run(&mut s, "wall", json!({"points": [[0, 0], [6000, 0]], "type": "Cavity 300"}))["ids"][0].as_u64().unwrap();
     // Its brick, 100 mm, to its left (north): at 1 : 100, 1 mm on the paper, wide enough for a brick pattern's lines.
     let lines = |s: &Session, scale: f64| {
-        let view = crate::render::View { scale, cx: 3000.0, cy: 0.0, width: 1200, height: 800 };
+        let view = crate::render::View { angle: 0.0, scale, cx: 3000.0, cy: 0.0, width: 1200, height: 800 };
         let d = crate::render::draw(&s.model, 100000, view);
         let (north, south) = (view.px(P2(3000.0, 150.0)).1, view.px(P2(3000.0, 50.0)).1);
         d.prims
