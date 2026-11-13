@@ -112,6 +112,29 @@ pub fn edge_of(data: &[u8], bbox: &[f64; 6]) -> Option<Edge> {
     }
 }
 
+/// The edges that can bound an element whose box is `bbox` (feet), by index: those inside the box in plan, each once. A file names
+/// an element in lines of another sketch, past its box, and in one line twice at two heights.
+pub fn own_edges(edges: &[Edge], bbox: &[f64; 6]) -> Vec<usize> {
+    let points = |e: &Edge| -> Vec<Pt> { std::iter::once(e.a).chain(e.mid.iter().copied()).chain(std::iter::once(e.b)).collect() };
+    let alike = |p: &[Pt], q: &[Pt]| p.len() == q.len() && p.iter().zip(q).all(|(m, n)| same(*m, *n));
+    let mut kept: Vec<usize> = Vec::new();
+    for (k, e) in edges.iter().enumerate() {
+        let p = points(e);
+        let inside = p.iter().all(|q| in_box([q.0, q.1, 0.0], bbox));
+        let twice = kept.iter().filter_map(|&j| edges.get(j)).any(|o| {
+            let mut q = points(o);
+            alike(&p, &q) || {
+                q.reverse();
+                alike(&p, &q)
+            }
+        });
+        if inside && !twice {
+            kept.push(k);
+        }
+    }
+    kept
+}
+
 fn same(a: Pt, b: Pt) -> bool {
     (a.0 - b.0).abs() <= VERTEX_EPS && (a.1 - b.1).abs() <= VERTEX_EPS
 }

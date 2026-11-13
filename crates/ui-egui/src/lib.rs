@@ -21,6 +21,7 @@ mod canvas;
 mod clouds;
 mod context;
 pub mod control;
+pub mod cowork;
 mod dialog;
 mod dimtypes;
 mod display;
@@ -314,6 +315,7 @@ enum Tab {
     Insert,
     Annotate,
     Massing,
+    Collaborate,
     View,
     Manage,
     Modify,
@@ -338,6 +340,7 @@ fn tab_key(tab: Tab) -> u64 {
         Tab::Manage => 10,
         Tab::Modify => 11,
         Tab::Context => 12,
+        Tab::Collaborate => 13,
         Tab::Plugin(i) => 100 + i as u64,
     }
 }
@@ -377,7 +380,7 @@ type Buttons<'a> = &'a [(Icon, &'a str, &'a str, Option<Tool>, bool)];
 
 /// The desktop's own two-letter shortcuts, which [`BimApp::shortcut`] takes before the commands'
 /// aliases, and what Keyboard Shortcuts (KS) calls them.
-const SHORTCUTS: [(&str, &str); 56] = [
+const SHORTCUTS: [(&str, &str); 57] = [
     ("3D", "3D View"),
     ("MD", "Modify"),
     ("SB", "Floor: Structural"),
@@ -431,6 +434,7 @@ const SHORTCUTS: [(&str, &str); 56] = [
     ("SD", "Shaded"),
     ("KS", "Keyboard Shortcuts"),
     ("AI", msg!("Assistant")),
+    ("CW", msg!("Co-Work")),
     ("BX", "Section Box"),
     ("GD", "Graphic Display Options"),
     // Revit has none for its title blocks; no command or tool takes TB.
@@ -527,6 +531,9 @@ pub struct BimApp {
     background_grid_dialog: Option<background_grid::GridDialog>,
     /// Global grid snapping preference, independent of view graphics and templates.
     grid_snapping: bool,
+    /// Whether the 3D view's section box shows what it cuts filled (Settings > Performance): off, its faces are left hollow,
+    /// which spares cutting the model each time the box moves.
+    pub(crate) cut_fills_3d: bool,
     /// The origin marker on a plan, and the view's name in its corner (File > Settings): working aids, drawn on the screen and
     /// never in a drawing that is printed or exported.
     show_origin: bool,
@@ -901,6 +908,16 @@ pub struct BimApp {
     control: Option<control::Control>,
     /// File > Settings > Agents: whether the window opens the port, on which, and whether agents may edit or only read.
     agents: control::Agents,
+    /// Co-Work: the session the window is in, what Settings keeps of it, and its dialog while open.
+    cowork: Option<cowork::Live>,
+    pub(crate) cowork_prefs: cowork::Prefs,
+    cowork_dialog: Option<cowork::Dialog>,
+    /// What the window keeps of the others in the session and of where it is itself.
+    cowork_seen: cowork::Seen,
+    /// The session's shared AI chat, as this window takes part in it.
+    cowork_ai: cowork::Ai,
+    /// A host with guests in that was asked to close: asking whether to end the session (false), or told to (true).
+    cowork_quit: Option<bool>,
     /// The Revit file being read, on a thread of its own.
     revit_job: Option<revit::Job>,
     /// Files to open at the next frame: the command line's, and what the system asked for while a Revit file was being read.
@@ -947,7 +964,13 @@ fn top_params(m: &Model, level: Id, top: Option<Option<Id>>, height: &str) -> Re
 /// A ribbon button: an icon over its label, tinted while its tool is on; as wide as its label, which breaks over two lines
 /// when one would make it wider than `WIDE`.
 fn big_button(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str) -> Response {
-    ribbon_button(ui, icon, label, active, tip, true)
+    ribbon_button(ui, icon, label, active, tip, true, None)
+}
+
+/// A big ribbon button, or its row in a list, whose icon and name are in `own` rather than the theme's ink: Finish Edit Mode's
+/// green and Cancel Edit Mode's red.
+fn inked_button(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str, own: Option<Color32>) -> Response {
+    ribbon_button(ui, icon, label, active, tip, true, own)
 }
 
 /// A ribbon button whose label is a plugin's data: it isn't translated, as its manifest wrote it, and it has no icon
@@ -1005,14 +1028,14 @@ fn plugin_row(ui: &mut Ui, label: &str, tip: &str) -> Response {
     r.on_hover_text(t(tip))
 }
 
-fn ribbon_button(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str, translate: bool) -> Response {
+fn ribbon_button(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str, translate: bool, own: Option<Color32>) -> Response {
     const WIDE: f32 = 78.0;
     if ribbon::left_out(label) {
         return ui.allocate_response(egui::Vec2::ZERO, Sense::hover());
     }
     let name = label;
     if ribbon::listing() {
-        return list_row_in(ui, icon, label, active, tip, translate);
+        return list_row_in(ui, icon, label, active, tip, translate, own);
     }
     if let Some(r) = ribbon::handed_over(ui) {
         return r;
@@ -1030,11 +1053,14 @@ fn ribbon_button(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str, 
     let (rect, r) = ui.allocate_exact_size(vec2(width.max(54.0), 60.0), Sense::click());
     let enabled = ui.is_enabled();
     r.widget_info(|| WidgetInfo::selected(WidgetType::Button, enabled, active, &label));
-    let (fill, stroke, ink) = match (active, r.hovered() && enabled) {
+    let (fill, stroke, mut ink) = match (active, r.hovered() && enabled) {
         (true, _) => (pal().select_fill, Stroke::new(1.0, pal().accent), pal().accent_ink),
         (false, true) => (pal().hover_fill, Stroke::new(1.0, pal().hover), pal().icon),
         (false, false) => (Color32::TRANSPARENT, Stroke::NONE, if enabled { pal().icon } else { pal().icon.gamma_multiply(0.35) }),
     };
+    if let Some(own) = own.filter(|_| enabled) {
+        ink = own;
+    }
     // Keyboard focus shows as a ring, whatever else the button shows.
     let stroke = if r.has_focus() { style::focus_ring() } else { stroke };
     let p = ui.painter();
@@ -1045,6 +1071,7 @@ fn ribbon_button(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str, 
         (false, true) => pal().text,
         (false, false) => pal().muted.gamma_multiply(0.6),
     };
+    let text = own.filter(|_| enabled).unwrap_or(text);
     for (i, line) in lines.iter().enumerate() {
         p.text(rect.center_top() + vec2(0.0, 40.0 + 13.0 * i as f32), Align2::CENTER_CENTER, line, font.clone(), text);
     }
@@ -1086,10 +1113,11 @@ pub(crate) fn small_button(ui: &mut Ui, icon: Icon, label: &str, active: bool, t
 
 /// A ribbon button in its panel's list: a row of its icon and its name.
 fn list_row(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str) -> Response {
-    list_row_in(ui, icon, label, active, tip, true)
+    list_row_in(ui, icon, label, active, tip, true, None)
 }
 
-fn list_row_in(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str, translate: bool) -> Response {
+/// [`list_row`], its icon and name in `own` where it has an ink of its own ([`inked_button`]).
+fn list_row_in(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str, translate: bool, own: Option<Color32>) -> Response {
     if ribbon::left_out(label) {
         return ui.allocate_response(egui::Vec2::ZERO, Sense::hover());
     }
@@ -1111,9 +1139,9 @@ fn list_row_in(ui: &mut Ui, icon: Icon, label: &str, active: bool, tip: &str, tr
         p.rect_stroke(rect, 6.0, style::focus_ring(), StrokeKind::Inside);
     }
     let dim = |c: Color32| if enabled { c } else { c.gamma_multiply(0.4) };
-    let ink = if active { pal().accent_ink } else { pal().icon };
+    let ink = own.unwrap_or(if active { pal().accent_ink } else { pal().icon });
     icons::paint(p, icon, Rect::from_center_size(rect.left_center() + vec2(18.0, 0.0), vec2(20.0, 20.0)), dim(ink));
-    let text = if active { pal().accent_ink } else { pal().text };
+    let text = own.unwrap_or(if active { pal().accent_ink } else { pal().text });
     p.text(rect.left_center() + vec2(38.0, 0.0), Align2::LEFT_CENTER, label, FontId::proportional(13.0), dim(text));
     if ribbon::editing_tools() {
         return edit_tool(ui, r, rect, name);
@@ -1206,21 +1234,43 @@ fn icon_button(ui: &mut Ui, icon: Icon, label: &str) -> Response {
     r.on_hover_text(label)
 }
 
+/// The app bar's AI button: lit while it is `on`, a checkbox to a screen reader, what a click turns on or off.
+fn toggle_button(ui: &mut Ui, icon: Icon, label: &str, on: bool, tip: &str) -> Response {
+    let (rect, r) = ui.allocate_exact_size(vec2(26.0, 24.0), Sense::click());
+    r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, on, label));
+    let (ink, hover) = style::icon_inks();
+    if on {
+        ui.painter().rect_filled(rect, 6.0, pal().accent);
+    } else if r.hovered() {
+        ui.painter().rect_filled(rect, 6.0, hover);
+    }
+    if r.has_focus() {
+        ui.painter().rect_stroke(rect, 6.0, style::focus_ring(), StrokeKind::Inside);
+    }
+    icons::paint(ui.painter(), icon, Rect::from_center_size(rect.center(), vec2(18.0, 18.0)), if on { Color32::WHITE } else { ink });
+    r.on_hover_text(tip)
+}
+
 /// An undo step as Undo's list names it: what it made (Create Walls) or took away (Delete Door), or else its command.
 fn step_name(st: &engine::Step) -> String {
-    let one = |list: &[(&str, usize)]| match list {
-        [(c, n)] => Some(lang::category(c, *n > 1)),
+    named(&st.label, &st.made, &st.removed)
+}
+
+/// A step named by its label and what it made and took away: Create Walls, Delete Door, or its command.
+fn named<C: AsRef<str>>(label: &str, made: &[(C, usize)], removed: &[(C, usize)]) -> String {
+    let one = |list: &[(C, usize)]| match list {
+        [(c, n)] => Some(lang::category(c.as_ref(), *n > 1)),
         _ => None,
     };
-    if let Some(asked) = assistant::step_label(&st.label) {
+    if let Some(asked) = assistant::step_label(label) {
         return asked;
     }
-    let named = match (st.made.as_slice(), st.removed.as_slice()) {
+    let named = match (made, removed) {
         (made, []) if !made.is_empty() => one(made).map(|c| tf("Create {}", &[&c])),
         ([], removed) if !removed.is_empty() => one(removed).map(|c| tf("Delete {}", &[&c])),
         _ => None,
     };
-    named.unwrap_or_else(|| t(&st.label).to_string())
+    named.unwrap_or_else(|| t(label).to_string())
 }
 
 /// A tab, of the ribbon or of a view. Contextual tabs are green, as Revit's are.
@@ -1258,7 +1308,7 @@ fn tab_button_with(ui: &mut Ui, label: &str, active: bool, contextual: bool, sen
 const FLOATING_CARD: f32 = 30.0;
 
 /// The ribbon's tabs, in order, with the icon the Tools palette's rail gives each (the contextual tab comes after them).
-const TABS: [(Tab, &str, Icon); 12] = [
+const TABS: [(Tab, &str, Icon); 13] = [
     (Tab::Architecture, msg!("Architecture"), Icon::Wall),
     (Tab::Structure, msg!("Structure"), Icon::Beam),
     (Tab::Plumbing, msg!("Plumbing"), Icon::Pipe),
@@ -1268,6 +1318,7 @@ const TABS: [(Tab, &str, Icon); 12] = [
     (Tab::Insert, msg!("Insert"), Icon::ImportCad),
     (Tab::Annotate, msg!("Annotate"), Icon::Dimension),
     (Tab::Massing, msg!("Massing"), Icon::Mass),
+    (Tab::Collaborate, msg!("Collaborate"), Icon::Cowork),
     (Tab::View, msg!("View"), Icon::View3D),
     (Tab::Manage, msg!("Manage"), Icon::Settings),
     (Tab::Modify, "Modify", Icon::Modify),
@@ -1335,6 +1386,7 @@ impl BimApp {
             scan_contrast: footer::HIGH_CONTRAST,
             background_grid_dialog: None,
             grid_snapping: false,
+            cut_fills_3d: true,
             show_origin: true,
             show_view_name: true,
             ribbon_bottom: Pos2::ZERO,
@@ -1542,6 +1594,12 @@ impl BimApp {
             revit: None,
             control: None,
             agents: control::Agents::default(),
+            cowork: None,
+            cowork_prefs: cowork::Prefs::default(),
+            cowork_dialog: None,
+            cowork_seen: cowork::Seen::default(),
+            cowork_ai: cowork::Ai::default(),
+            cowork_quit: None,
             revit_job: None,
             opens: Vec::new(),
             dialog: None,
@@ -1559,14 +1617,30 @@ impl BimApp {
         self.canvas.screen(p)
     }
 
+    /// What comes from outside the window, done once a pass: agents' requests, the Co-Work session's, the assistant's replies.
+    /// `logic` calls it, which runs while the window is minimised too, so a host keeps answering its guests; `show` calls it as
+    /// well, for the tests that drive `show` alone (in the window it finds nothing left by then).
+    pub(crate) fn pump(&mut self, ctx: &Context) {
+        // What agents asked of the project comes before the tidying, which puts right what a command left stale.
+        self.answer_agents(ctx);
+        self.pump_cowork(ctx);
+        // A project put in the session's place under the window (the control port turns an agent's New and Open away, but a
+        // script or an embedder may do them, and joining a Co-Work session puts the host's there) starts it over, as File > New
+        // does: its sketch and dialogs were of the old one, and it gets a recovery copy of its own. (The old one's stays until
+        // that is written: nobody was asked about its changes.)
+        if self.session.model.uid != self.project {
+            self.reopened();
+            self.autosave_document();
+        }
+        // After that check: a reply that came as the project was replaced is not for the new one (`State::project_replaced`).
+        self.poll_assistant(ctx);
+    }
+
     /// Run a command; when it fails, say why.
     fn run(&mut self, id: &str, params: Value) -> Option<Value> {
-        self.made_in();
-        match self.session.execute(id, &params) {
+        match self.exec(id, &params) {
             Ok(v) => {
                 self.status = Status::default();
-                // The core renames and drops the option with its set.
-                self.active_option = self.session.option.clone();
                 Some(v)
             }
             Err(e) => {
@@ -1574,6 +1648,44 @@ impl BimApp {
                 None
             }
         }
+    }
+
+    /// Run a command on the project, in the view's phase and option: the one way the interface changes it, so that a Co-Work
+    /// guest's commands can go to the host (COWORK-PLAN.md). A test reads the sources for any other.
+    pub(crate) fn exec(&mut self, id: &str, params: &Value) -> Result<Value, String> {
+        self.made_in();
+        let result = match &mut self.cowork {
+            Some(cowork::Live::Guest(joined)) => joined.exec(&mut self.session, id, params),
+            _ => self.session.execute(id, params),
+        };
+        if let (Err(e), true) = (&result, matches!(id, "undo" | "redo")) {
+            self.light_refused(e);
+        }
+        // The core renames and drops the option with its set.
+        self.active_option = self.session.option.clone();
+        result
+    }
+
+    /// Several commands as one undo step named `label`, all or nothing: what each gave, or the error.
+    pub(crate) fn exec_batch(&mut self, label: &str, commands: &[(&str, Value)]) -> Result<Vec<Value>, String> {
+        self.made_in();
+        let result = match &mut self.cowork {
+            Some(cowork::Live::Guest(joined)) => joined.batch(&mut self.session, label, commands),
+            _ => self.session.transaction(label, |s| commands.iter().map(|(c, p)| s.execute(c, p)).collect()),
+        };
+        self.active_option = self.session.option.clone();
+        result
+    }
+
+    /// A script as one undo step, `Script`: on a guest's window the host runs it.
+    pub(crate) fn exec_script(&mut self, text: &str) -> Result<Vec<Value>, String> {
+        self.made_in();
+        let result = match &mut self.cowork {
+            Some(cowork::Live::Guest(joined)) => joined.script(&mut self.session, text),
+            _ => self.session.script_atomic(text),
+        };
+        self.active_option = self.session.option.clone();
+        result
     }
 
     /// The contextual tab's name while a tool is on or something is selected.
@@ -1749,17 +1861,7 @@ impl BimApp {
             self.status = updates::failed(t(lang::NO_CHINESE_FONT).to_string());
         }
         lang::set(self.lang);
-        // What agents asked of the project comes before the tidying, which puts right what a command left stale.
-        self.answer_agents(&ctx);
-        // A project put in the session's place under the window (the control port turns an agent's New and Open away, but a
-        // script or an embedder may do them) starts it over, as File > New does: its sketch and dialogs were of the old one, and
-        // it gets a recovery copy of its own. (The old one's stays until that is written: nobody was asked about its changes.)
-        if self.session.model.uid != self.project {
-            self.reopened();
-            self.autosave_document();
-        }
-        // After that check: a reply that came as the project was replaced is not for the new one (`State::project_replaced`).
-        self.poll_assistant(&ctx);
+        self.pump(&ctx);
         self.tidy();
         self.poll_updates(&ctx);
         self.poll_revit(&ctx);
@@ -1773,14 +1875,23 @@ impl BimApp {
         let view = self.view_title(self.sheet);
         let title = match self.family_title() {
             Some(family) => format!("{family} · BIMCraft"),
-            None => format!("{}{} · {view} · BIMCraft", self.session.model.name, if self.dirty() { "*" } else { "" }),
+            None => {
+                format!("{}{} · {view} · {}BIMCraft", self.session.model.name, if self.dirty() { "*" } else { "" }, self.cowork_title())
+            }
         };
         if title != self.title {
             ctx.send_viewport_cmd(ViewportCommand::Title(title.clone()));
             self.title = title;
         }
         let documents = self.families.iter().any(|d| d.ed.as_ref().is_some_and(editor::FamilyEditor::unsaved));
-        if ctx.input(|i| i.viewport().close_requested()) && !self.closing && (self.installing() || self.dirty() || documents) {
+        // A host whose guests are in is asked first: closing ends the session for them.
+        let others_in = matches!(&self.cowork, Some(cowork::Live::Host(h)) if !h.people().is_empty());
+        let held = others_in && self.cowork_quit != Some(true);
+        if ctx.input(|i| i.viewport().close_requested()) && !self.closing && held {
+            ctx.send_viewport_cmd(ViewportCommand::CancelClose);
+            self.cowork_quit = Some(false);
+        }
+        if ctx.input(|i| i.viewport().close_requested()) && !self.closing && !held && (self.installing() || self.dirty() || documents) {
             ctx.send_viewport_cmd(ViewportCommand::CancelClose);
             // An update being put in place holds the window: it closes it when it's in. The family documents are asked about
             // first.
@@ -1792,7 +1903,7 @@ impl BimApp {
                 }
             }
         }
-        if ctx.input(|i| i.viewport().close_requested()) && !self.dirty() && !self.installing() && !documents {
+        if ctx.input(|i| i.viewport().close_requested()) && !held && !self.dirty() && !self.installing() && !documents {
             self.retire_autosave();
         }
         if self.home.shown {
@@ -2131,6 +2242,15 @@ impl BimApp {
         if pressed(Modifiers::NONE, Key::Escape) && !self.cancel_pattern_pick() {
             self.escape();
         }
+        // Enter ends the 3D view's measured chain where it is.
+        if self.sheet == Sheet::View3D
+            && matches!(self.tool, Tool::Measure(_))
+            && self.orbit.chain.len() >= 2
+            && self.orbit.chain_done.is_none()
+            && pressed(Modifiers::NONE, Key::Enter)
+        {
+            self.orbit.chain_done = Some(false);
+        }
         // Enter confirms Edit Dimension References; else it places a typed length, else builds the wall chain.
         let mut enter = pressed(Modifiers::NONE, Key::Enter);
         if enter && self.dimension_refs_edit.is_some() {
@@ -2262,6 +2382,10 @@ impl BimApp {
             }
             "AI" => {
                 self.toggle_assistant();
+                return true;
+            }
+            "CW" => {
+                self.open_cowork();
                 return true;
             }
             "SA" => {
@@ -2687,8 +2811,8 @@ impl BimApp {
             self.status = Status { text: t("select what to move, copy, rotate or mirror first").into(), error: true };
             return;
         }
-        if tool == Tool::Attach && self.selected_walls().is_empty() {
-            self.status = Status { text: t("select the walls to attach first").into(), error: true };
+        if tool == Tool::Attach && self.selected_attachable().is_empty() {
+            self.status = Status { text: t("select the walls or columns to attach first").into(), error: true };
             return;
         }
         if matches!(tool, Tool::SlopeArrow(_)) && self.selected_floor().is_none() {
@@ -2735,6 +2859,7 @@ impl BimApp {
         }
         if !matches!(tool, Tool::Measure(_)) {
             self.measured = None;
+            (self.orbit.chain, self.orbit.chain_done) = (Vec::new(), None);
         }
         self.snap_once = None;
         self.door_flip_hand = false;
@@ -2760,6 +2885,44 @@ impl BimApp {
     /// The walls among the selection.
     fn selected_walls(&self) -> Vec<Id> {
         self.selection.iter().copied().filter(|id| self.session.model.wall(*id).is_some()).collect()
+    }
+
+    /// A click of Trim/Extend to Corner or Trim/Extend Single or Multiple Elements on `hovered`, at plan point `at` (the side kept),
+    /// in a plan or the 3D view alike.
+    pub(crate) fn trim_click(&mut self, hovered: Option<Id>, at: P2) {
+        match (self.tool.clone(), hovered) {
+            (Tool::Trim(None), Some(a)) => self.tool = Tool::Trim(Some((a, at))),
+            (Tool::Trim(Some((a, keep))), Some(b)) if b != a => {
+                self.run("corner", json!({"ids": [a, b], "keep": [[keep.0, keep.1], [at.0, at.1]]}));
+                self.tool = Tool::Trim(None);
+            }
+            (Tool::TrimTo { boundary: None, many }, Some(b)) => self.tool = Tool::TrimTo { boundary: Some(b), many },
+            (Tool::TrimTo { boundary: Some(b), many }, Some(id)) if id != b => {
+                self.run("trim_extend", json!({"boundary": b, "ids": [id], "keep": [[at.0, at.1]]}));
+                if !many {
+                    self.tool = Tool::TrimTo { boundary: None, many };
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// What's selected that Attach Top/Base takes: the walls and columns.
+    pub(crate) fn selected_attachable(&self) -> Vec<Id> {
+        let m = &self.session.model;
+        let can = |id: &Id| matches!(m.elements.get(*id), Some(Element::Wall(_) | Element::Column(_) | Element::StructuralColumn(_)));
+        self.selection.iter().copied().filter(can).collect()
+    }
+
+    /// Attach Top/Base's pick, in a plan or the 3D view: the selected walls and columns onto roof or floor `id`, then Modify, them
+    /// still selected.
+    pub(crate) fn attach_to(&mut self, id: Id) {
+        let field = if self.attach_base { "attach_base" } else { "attach_top" };
+        let mut p = json!({"ids": self.selected_attachable()});
+        p[field] = json!(id);
+        if self.run("modify", p).is_some() {
+            self.tool = Tool::Modify;
+        }
     }
 
     /// The roof selected, when one roof is all that is.
@@ -3003,7 +3166,11 @@ impl BimApp {
             Tool::Round(k, picked) if !picked.is_empty() => Tool::Round(k, Vec::new()),
             Tool::Section(Some(_)) => Tool::Section(None),
             Tool::Measure(Some(_)) => Tool::Measure(None),
-            // The ruler laid goes first, then the tool.
+            // The ruler begun or laid goes first, then the tool, in a plan and in the 3D view alike.
+            Tool::Measure(None) if !std::mem::take(&mut self.orbit.chain).is_empty() => {
+                self.orbit.chain_done = None;
+                Tool::Measure(None)
+            }
             Tool::Measure(None) if self.measured.take().is_some() => Tool::Measure(None),
             Tool::Stair(pts) if !pts.is_empty() => Tool::Stair(Vec::new()),
             Tool::Ramp(pts) if !pts.is_empty() => Tool::Ramp(Vec::new()),
@@ -3396,6 +3563,7 @@ impl BimApp {
         fresh.font_finder = self.font_finder;
         fresh.scan_contrast = self.scan_contrast;
         fresh.grid_snapping = self.grid_snapping;
+        fresh.cut_fills_3d = self.cut_fills_3d;
         (fresh.show_origin, fresh.show_view_name) = (self.show_origin, self.show_view_name);
         fresh.custom_shortcuts = std::mem::take(&mut self.custom_shortcuts);
         (fresh.light_canvas, fresh.scheme, fresh.accent) = (self.light_canvas, self.scheme, self.accent);
@@ -3413,6 +3581,9 @@ impl BimApp {
         fresh.space_mouse = self.space_mouse.take();
         fresh.control = self.control.take();
         fresh.agents = std::mem::take(&mut self.agents);
+        fresh.cowork_prefs = std::mem::take(&mut self.cowork_prefs);
+        fresh.cowork = fresh.cowork_kept(self.cowork.take());
+        fresh.cowork_ai = std::mem::take(&mut self.cowork_ai);
         fresh.opens = std::mem::take(&mut self.opens);
         (fresh.recent, fresh.recent_path) = (std::mem::take(&mut self.recent), self.recent_path.take());
         fresh.autosave = std::mem::take(&mut self.autosave);
@@ -3444,7 +3615,9 @@ impl BimApp {
             }
         }
         // A file dropped on the window opens as one the system asked for.
-        let dropped: Vec<PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().map(|f| f.path().to_path_buf()).collect());
+        let mut dropped: Vec<PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().map(|f| f.path().to_path_buf()).collect());
+        // Over the Assistant palette, a file is for the message.
+        self.drop_on_assistant(ctx, &mut dropped);
         self.opens.extend(dropped);
         // A Revit file being read holds the files that come meanwhile, which are opened in turn once it is over: the last one wins.
         if !self.importing()
@@ -3561,6 +3734,9 @@ impl BimApp {
                 if icon_button(ui, Icon::Settings, "Settings").clicked() {
                     self.settings_page = Some(settings::Page::Interface);
                 }
+                // Close beside the gear, and the Find field narrower for it: the title's room stays as it was.
+                ui.add_space(-6.0);
+                self.agents_toggle(ui);
                 // Find and the project's scale, in both profiles: BIMCraft's Find a field's width, Rev's an icon among the others.
                 ui.separator();
                 let find = if style::rev() { icon_button(ui, Icon::Search, "Find") } else { find::button(ui) };
@@ -3599,7 +3775,12 @@ impl BimApp {
     /// and every step before it, and a click undoes (or redoes) them all.
     fn steps_list(&mut self, ui: &mut Ui, redo: bool) {
         let what = if redo { "Redo" } else { "Undo" };
-        let names: Vec<String> = self.session.steps(redo).into_iter().map(step_name).collect();
+        // In a Co-Work session, what this person's undo takes back: their own steps (a guest has them from the host).
+        let names: Vec<String> = match &self.cowork {
+            Some(cowork::Live::Guest(j)) => j.history(redo).iter().map(|s| named(&s.label, &s.made, &s.removed)).collect(),
+            Some(cowork::Live::Host(h)) => self.session.own_steps(h.name(), redo).into_iter().map(step_name).collect(),
+            None => self.session.steps(redo).into_iter().map(step_name).collect(),
+        };
         let (rect, arrow) = ui.allocate_exact_size(vec2(12.0, 22.0), Sense::click());
         let label = t(if redo { msg!("Redo History") } else { msg!("Undo History") });
         arrow.widget_info(|| WidgetInfo::labeled(WidgetType::Button, !names.is_empty(), label));
@@ -3776,6 +3957,7 @@ impl BimApp {
             Tab::Annotate => self.annotate_tab(ui),
             Tab::Massing => self.massing_tab(ui),
             Tab::View => self.view_tab(ui),
+            Tab::Collaborate => self.collaborate_tab(ui),
             Tab::Manage => self.manage_tab(ui),
             Tab::Modify | Tab::Context => self.modify_tab(ui),
             Tab::Plugin(i) => self.plugin_tab(ui, i),
@@ -4234,7 +4416,7 @@ impl BimApp {
             &[(
                 Icon::Measure,
                 "Measure",
-                msg!("Measure (ME): click two points; their length and angle read beside the ruler between them"),
+                msg!("Measure (ME): click two points; their length and angle read beside the ruler between them. In the 3D view, any two points of the model, whatever the work plane"),
                 Tool::Measure(None),
             )],
         );
@@ -4467,6 +4649,17 @@ impl BimApp {
             );
             if big_button(ui, Icon::Component, "Import 3D Model", false, tip).clicked() {
                 self.import_mesh_dialog(ui.ctx());
+            }
+        });
+    }
+
+    /// Collaborate: Co-Work, others working on this project live.
+    fn collaborate_tab(&mut self, ui: &mut Ui) {
+        panel(ui, msg!("Work Together"), |ui| {
+            let tip =
+                msg!("Co-Work (CW): host this project for others on BIMCraft, or join someone's session, and see each other's edits live");
+            if big_button(ui, Icon::Cowork, "Co-Work", self.cowork_dialog.is_some(), tip).clicked() {
+                self.open_cowork();
             }
         });
     }
@@ -4811,20 +5004,23 @@ impl BimApp {
         }
         // Walls selected: Revit's Modify Wall panel.
         let walls = self.selected_walls();
-        if !walls.is_empty() && matches!(self.tool, Tool::Modify | Tool::Attach) {
-            panel(ui, msg!("Modify Wall"), |ui| {
-                let tip = msg!("Flip (Space): the walls' exterior sides go to the other side of their location lines");
-                if big_button(ui, Icon::Flip, "Flip", false, tip).clicked() {
-                    self.flip();
+        let attachable = self.selected_attachable();
+        if !attachable.is_empty() && matches!(self.tool, Tool::Modify | Tool::Attach) {
+            let title = if walls.is_empty() { msg!("Modify Column") } else { msg!("Modify Wall") };
+            panel(ui, title, |ui| {
+                if !walls.is_empty() {
+                    let tip = msg!("Flip (Space): the walls' exterior sides go to the other side of their location lines");
+                    if big_button(ui, Icon::Flip, "Flip", false, tip).clicked() {
+                        self.flip();
+                    }
                 }
-                let tip = msg!("Attach Top/Base: pick a roof or a floor for the walls' tops, or bases, to follow");
+                let tip = msg!("Attach Top/Base: pick a roof or a floor for the tops, or bases, of the walls and columns to follow");
                 if big_button(ui, Icon::Attach, "Attach Top/Base", self.tool == Tool::Attach, tip).clicked() {
                     self.set_tool(Tool::Attach);
                 }
-                if big_button(ui, Icon::Detach, "Detach Top/Base", false, "Detach Top/Base: the walls' tops and bases their own again")
-                    .clicked()
-                {
-                    self.run("modify", json!({"ids": walls, "attach_top": null, "attach_base": null}));
+                let tip = msg!("Detach Top/Base: the tops and bases of the walls and columns their own again");
+                if big_button(ui, Icon::Detach, "Detach Top/Base", false, tip).clicked() {
+                    self.run("modify", json!({"ids": attachable, "attach_top": null, "attach_base": null}));
                 }
             });
         }
@@ -5373,7 +5569,12 @@ impl BimApp {
                     "Click a point, a corner or an edge to select it (Shift adds), then type its height or drag its arrows; Delete removes it."
                 );
             }
-            (Sheet::View3D, Tool::AddPoint | Tool::AddSplitLine(_)) => {}
+            (Sheet::View3D, Tool::Measure(_)) => {
+                return msg!(
+                    "Click points along what to measure: each length and the total read beside them. Click the first point again to close it and read its area; Enter ends the chain, Esc clears it."
+                );
+            }
+            (Sheet::View3D, Tool::AddPoint | Tool::AddSplitLine(_) | Tool::Attach | Tool::Trim(_) | Tool::TrimTo { .. }) => {}
             (Sheet::View3D | Sheet::Section(_) | Sheet::Paper(_), _) => {
                 return msg!("This tool works in plan views: open one from the Project Browser.");
             }
@@ -5393,8 +5594,8 @@ impl BimApp {
             Tool::Modify => msg!("Click to select, Tab for what's underneath, Ctrl adds, Shift takes away; drag to box or to move."),
             Tool::Wall(chain) if chain.is_empty() => msg!("Click to enter the wall's start point."),
             Tool::Wall(_) => msg!("Click to build the wall to the next point. Enter or Esc ends the chain, Shift keeps it square."),
-            Tool::Attach if self.attach_base => msg!("Pick a roof or a floor: the selected walls' bases stand on it."),
-            Tool::Attach => msg!("Pick a roof or a floor: the selected walls' tops follow its underside."),
+            Tool::Attach if self.attach_base => msg!("Pick a roof or a floor: the bases of what's selected stand on it."),
+            Tool::Attach => msg!("Pick a roof or a floor: the tops of what's selected follow its underside."),
             Tool::Door => msg!("Click a wall to place the door."),
             Tool::Window => msg!("Click a wall to place the window."),
             Tool::Room => msg!("Click inside walls to place a room; the outline shows the room you'd get."),
@@ -5801,6 +6002,10 @@ impl BimApp {
         self.electrical_window(ctx);
         self.options_window(ctx);
         self.purge_window(ctx);
+        self.cowork_window(ctx);
+        self.lend_window(ctx);
+        self.quit_window(ctx);
+        self.knock_window(ctx);
         if std::mem::take(&mut self.link_dialog) {
             self.link_model_dialog(ctx);
         }
@@ -5880,6 +6085,12 @@ impl BimApp {
 }
 
 impl eframe::App for BimApp {
+    /// Runs before each pass, and while the window is hidden too: agents and a Co-Work session's guests are answered when the
+    /// window is minimised.
+    fn logic(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
+        self.pump(ctx);
+    }
+
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         self.show(ui);
     }

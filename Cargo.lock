@@ -477,6 +477,7 @@ dependencies = [
  "bimcraft-core",
  "ring",
  "serde_json",
+ "tempfile",
  "ureq",
 ]
 
@@ -506,6 +507,16 @@ dependencies = [
  "tiny-skia",
  "ttf-parser",
  "zune-jpeg",
+]
+
+[[package]]
+name = "bimcraft-cowork"
+version = "0.11.0"
+dependencies = [
+ "bimcraft-core",
+ "flate2",
+ "ring",
+ "serde_json",
 ]
 
 [[package]]
@@ -561,6 +572,7 @@ version = "0.11.0"
 dependencies = [
  "bimcraft-assistant",
  "bimcraft-core",
+ "bimcraft-cowork",
  "bimcraft-i18n",
  "bimcraft-plugin",
  "bimcraft-update",

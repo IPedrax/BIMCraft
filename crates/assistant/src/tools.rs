@@ -8,7 +8,45 @@ use bimcraft_core::bridge::{self, Access, Request};
 use bimcraft_core::engine::{Session, find, touches_files};
 use serde_json::{Value, json};
 
-use crate::{Call, MAX_RESULT, clip};
+use crate::{Call, MAX_RESULT, MAX_TODO_TEXT, MAX_TODOS, clip};
+
+/// The tool that writes the checklist the user watches. It changes no part of the project: the chat keeps what it says.
+pub const TODO: &str = "todo_write";
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Status {
+    Pending,
+    InProgress,
+    Completed,
+}
+
+/// One step of the model's checklist.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Todo {
+    pub content: String,
+    pub status: Status,
+}
+
+/// The checklist a `todo_write` call writes, whole (each call replaces the list). `Err` is what the model is told.
+pub fn todos(args: &Value) -> Result<Vec<Todo>, String> {
+    let list = args.get("todos").and_then(Value::as_array).ok_or("`todo_write` needs `todos`, an array of {content, status}")?;
+    if list.len() > MAX_TODOS {
+        return Err(format!("a checklist has at most {MAX_TODOS} items: keep the steps that matter"));
+    }
+    list.iter()
+        .map(|item| {
+            let content =
+                item["content"].as_str().map(str::trim).filter(|c| !c.is_empty()).ok_or("each item needs a `content`, some text")?;
+            let status = match item["status"].as_str() {
+                Some("pending") => Status::Pending,
+                Some("in_progress") => Status::InProgress,
+                Some("completed") => Status::Completed,
+                _ => return Err("each item's `status` is pending, in_progress or completed".to_string()),
+            };
+            Ok(Todo { content: clip(content, MAX_TODO_TEXT), status })
+        })
+        .collect()
+}
 
 pub struct Tool {
     pub name: &'static str,
@@ -50,6 +88,17 @@ pub fn all() -> Vec<Tool> {
                 "limit": {"type": "integer", "description": "at most this many (50 by default, 200 at most)"},
                 "offset": {"type": "integer", "description": "skip this many"},
             }}),
+        },
+        Tool {
+            name: TODO,
+            about: "Show the user your checklist for a request of three or more steps: the whole list each time, with exactly one item in_progress. \
+                    Call it again as each step finishes. It changes nothing in the project.",
+            schema: json!({"type": "object", "properties": {
+                "todos": {"type": "array", "description": "every step, in order", "items": {"type": "object", "properties": {
+                    "content": {"type": "string", "description": "the step, short and imperative"},
+                    "status": {"type": "string", "enum": ["pending", "in_progress", "completed"]},
+                }, "required": ["content", "status"]}},
+            }, "required": ["todos"]}),
         },
     ]
 }
@@ -127,6 +176,7 @@ pub fn run(session: &mut Session, call: &Call, access: Access) -> Result<Value, 
             params.insert("limit".into(), json!(limit));
             exec(session, "elements", Value::Object(params), access)
         }
-        other => Err(format!("unknown tool `{}`: execute, list_commands, inspect_model or query_elements", clip(other, 40))),
+        TODO => todos(&args).map(|_| json!("checklist shown")),
+        other => Err(format!("unknown tool `{}`: execute, list_commands, inspect_model, query_elements or todo_write", clip(other, 40))),
     }
 }

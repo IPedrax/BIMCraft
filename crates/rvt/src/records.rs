@@ -114,6 +114,10 @@ pub(crate) struct Tags {
     pub profile_roof: Option<u16>,
     /// `Roof`: a roof by extrusion.
     pub roof: Option<u16>,
+    /// `ElementGroup`: a model group, which is no body (its members are elements of their own).
+    pub group: Option<u16>,
+    /// `Toposolid` and `SiteSurface`: terrain, a surface whose box is no stand-in for it.
+    pub terrain: [Option<u16>; 2],
 }
 
 impl Tags {
@@ -135,6 +139,8 @@ impl Tags {
             pattern_helper: schema.tag("PatternHelper"),
             profile_roof: schema.tag("ProfileRoof"),
             roof: schema.tag("Roof"),
+            group: schema.tag("ElementGroup"),
+            terrain: [schema.tag("Toposolid"), schema.tag("SiteSurface")],
         })
     }
 

@@ -2795,6 +2795,9 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
             top_level,
             height: (height * 1000.0).round() / 1000.0,
             base_offset: ((z0 - elevation(level)) * 1000.0).round() / 1000.0,
+            top_offset: 0.0,
+            attach_top: None,
+            attach_base: None,
         };
         let cid = m.insert(make(column));
         from.insert(cid, who(id));

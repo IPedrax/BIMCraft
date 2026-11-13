@@ -235,8 +235,12 @@ pub(crate) fn draw(
             p.rect_stroke(r, 1.0, stroke, StrokeKind::Middle);
             continue;
         }
-        let (u, n) = (d.normalized(), d.normalized().rot90());
-        let arrow = vec![at + u * 12.0, at - u * 2.0 + n * 6.0, at - u * 2.0 - n * 6.0];
-        p.add(Shape::convex_polygon(arrow, fill, stroke));
+        arrow(p, at, d.normalized(), fill, stroke);
     }
+}
+
+/// An arrow at `at` pointing `u`, a unit on screen: a section box's face's, a wall's top's.
+pub(crate) fn arrow(p: &Painter, at: Pos2, u: Vec2, fill: egui::Color32, stroke: Stroke) {
+    let n = u.rot90();
+    p.add(Shape::convex_polygon(vec![at + u * 12.0, at - u * 2.0 + n * 6.0, at - u * 2.0 - n * 6.0], fill, stroke));
 }

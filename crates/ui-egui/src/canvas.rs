@@ -402,6 +402,11 @@ impl Canvas {
         })
     }
 
+    /// Shows view `level` with its middle at `cx`, `cy` and `scale` pixels a millimetre: following someone in Co-Work.
+    pub(crate) fn set_view(&mut self, level: Id, cx: f64, cy: f64, scale: f64) {
+        self.cams.insert(level, Camera { scale, cx, cy });
+    }
+
     /// Where model point `p` shows on screen.
     pub fn screen(&self, p: P2) -> Pos2 {
         match self.level.and_then(|l| self.view(l)) {
@@ -895,10 +900,11 @@ fn dimension_line(p: &Painter, a: Pos2, b: Pos2, n: Vec2, off: f32) -> Pos2 {
     a + along / 2.0 + n * (off + 11.0)
 }
 
-/// A padlock at `at` in `ink`: its body, and its shackle, shut when `locked`, swung up and open when not.
+/// A padlock at `at` in `ink`: locked, its body filled and its shackle shut; open, its body hollow and its shackle swung up and
+/// out about the foot it keeps on the body, so it can't be read as locked.
 fn padlock(p: &Painter, at: Pos2, locked: bool, ink: Color32) {
     let body = Rect::from_center_size(at + vec2(0.0, 3.0), vec2(10.0, 8.0));
-    p.rect_filled(body, 1.5, pal().surface);
+    p.rect_filled(body, 1.5, if locked { ink } else { pal().surface });
     p.rect_stroke(body, 1.5, Stroke::new(1.5, ink), StrokeKind::Middle);
     let top = body.top();
     let mut shackle: Vec<Pos2> = (0..=8)
@@ -1491,6 +1497,8 @@ impl BimApp {
         let up = matches!(self.sheet, Sheet::Ceiling(_));
         let fit = |w, h| if up { render::ceiling_plan(&model, key, w, h).view } else { render::plan(&model, key, w, h).view };
         let Some((view, local)) = self.canvas.navigate(ui, &response, rect, key, fit) else { return };
+        // Where the pointer is, for the others in a Co-Work session.
+        self.cowork_seen.pointer = local.map(|q| (key, view.mm(q)));
         let mods = ui.input(|i| i.modifiers);
         let shape = self.shape();
         let pipeline = self.card.canvas();
@@ -1822,6 +1830,8 @@ impl BimApp {
         if !kept {
             paint(&p, place, &d, &marked, painted_hover, self.thin, &pictures);
         }
+        let kind = if up { "ceiling" } else { "plan" };
+        crate::cowork::paint_plan(&p, &self.cowork, &self.cowork_seen, &model, (kind, key), rect, &view, (&d.drawing, d.place));
         // The working aids: where the project's 0, 0 is, and which view this is. On the screen only; no drawing is made of them.
         if self.show_origin {
             let (x, y) = view.px(P2(0.0, 0.0));
@@ -2310,14 +2320,7 @@ impl BimApp {
                 (Some(r), Some((draw::Picked::Element(id), line, false))) => self.align(r, id, line),
                 _ => {}
             },
-            &Tool::Trim(first) => match (first, hovered) {
-                (None, Some(a)) => self.tool = Tool::Trim(Some((a, v.mm(at)))),
-                (Some((a, keep)), Some(b)) if b != a => {
-                    self.run("corner", json!({"ids": [a, b], "keep": [point(keep), point(v.mm(at))]}));
-                    self.tool = Tool::Trim(None);
-                }
-                _ => {}
-            },
+            Tool::Trim(_) | Tool::TrimTo { .. } => self.trim_click(hovered, v.mm(at)),
             Tool::Split => {
                 if let Some(id) = hovered {
                     self.run("split", json!({"id": id, "at": point(self.snap(m, level, v, at, &[], false).at)}));
@@ -2341,16 +2344,6 @@ impl BimApp {
                 let p = self.snap(m, level, v, at, &[], false).at;
                 self.vertex_click(hovered, if delete { v.mm(at) } else { p }, f64::from(PICK) / v.scale, delete);
             }
-            &Tool::TrimTo { boundary, many } => match (boundary, hovered) {
-                (None, Some(b)) => self.tool = Tool::TrimTo { boundary: Some(b), many },
-                (Some(b), Some(id)) if id != b => {
-                    self.run("trim_extend", json!({"boundary": b, "ids": [id], "keep": [point(v.mm(at))]}));
-                    if !many {
-                        self.tool = Tool::TrimTo { boundary: None, many };
-                    }
-                }
-                _ => {}
-            },
             Tool::Demolish => {
                 if let Some(id) = hovered {
                     self.demolish(id);
@@ -2482,12 +2475,7 @@ impl BimApp {
             // The selected walls, onto the roof or floor picked; then Modify, the walls still selected.
             Tool::Attach => {
                 if let Some(id) = hovered {
-                    let field = if self.attach_base { "attach_base" } else { "attach_top" };
-                    let mut p = json!({"ids": self.selected_walls()});
-                    p[field] = json!(id);
-                    if self.run("modify", p).is_some() {
-                        self.tool = Tool::Modify;
-                    }
+                    self.attach_to(id);
                 }
             }
             Tool::Component | Tool::Fixture(_) => {
@@ -3632,6 +3620,11 @@ impl BimApp {
                 pal().muted
             };
             padlock(&p, at, locked, ink);
+            let r = r.on_hover_text(if locked {
+                tf("Segment {} is locked at its length: what it measures to moves together. Click to unlock it", &[&(i + 1).to_string()])
+            } else {
+                tf("Lock segment {} at its length, so what it measures to moves together", &[&(i + 1).to_string()])
+            });
             if r.clicked() {
                 let mut segments: Vec<usize> = d.locked.iter().map(|l| l.segment).filter(|&s| s != i).collect();
                 if !locked {
@@ -4630,6 +4623,9 @@ impl BimApp {
                     top_level: None,
                     height: 0.0,
                     base_offset: 0.0,
+                    top_offset: 0.0,
+                    attach_top: None,
+                    attach_base: None,
                 });
                 sketched(&e);
                 for (_, at, text, _) in standing_dimensions(p, m, v, &e) {
