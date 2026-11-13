@@ -57,6 +57,28 @@ with coordinates are 34. Files of 19 and 33 need no step: their georeference is 
 internal origin. #284's own files (its unreleased builds wrote 19) keep their points; its `locations` and `crs` are left
 out and `open` lists them (`left_out`).
 
+## IFC: one map conversion
+
+`save` to `.ifc` takes `ifc_origin` (`ifc::Origin`: internal, the default; base; survey; shared) and writes through
+`ifc::export_at`. The site's placement puts the file's origin at that internal point, or (shared) the map's own coordinates,
+turned to true north. There is one `IfcMapConversion`, always the active site at the file's origin: its eastings, northings
+and height are the site's shared coordinates of that point, in metres; its x axis is the site's rotation; and its scale, as
+IFC4 has it, carries the unit with the ground-to-grid scale (0.9996 in metres is 0.0009996, as IfcOpenShell's `xyz2enh`
+takes it). For `shared` the conversion turns and moves nothing, its scale only the unit; the site's placement can move and
+turn but not scale, so there a point lies at its ground distance from the origin, not its grid one. The conversion and its
+`IfcProjectedCRS` (named and described by the georeference's `crs` and texts) are written only when a coordinate reference
+system is named. The context's `TrueNorth` is written whenever the project has a site, from its rotation (straight up for
+`shared`). IFC4's single Scale scales heights too, which the model never does, so a reader drifts heights by the grid
+factor; IFC4.3's FactorZ is written 1.
+
+This fixes #342's merge, which kept main's conversion beside #284's: main's was anchored at the internal origin whatever
+`ifc_origin` said, so it was off by the origin's offset (and twice for shared).
+
+Import (`import::georeference`) reads the first conversion to a named CRS back as the site, composed with the shift a far
+model is moved by; without one, the context's `TrueNorth` and that shift make a site with no CRS, so what went out at map
+coordinates comes back keeping them. Tests: `coordinates_io_tests.rs` (`one_map_conversion_is_placed_at_the_files_origin`,
+and the round trip from every origin), `georef_tests.rs`.
+
 ## Commands
 
 - `georeference`: the active site as IFC has it, at the internal origin; any field makes one, `clear` takes it away.

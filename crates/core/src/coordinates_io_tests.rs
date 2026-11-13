@@ -1,5 +1,5 @@
 //! Far coordinates at import and export: drawings, scans and IFC files at map coordinates come in near the internal origin,
-//! by the active location's transform, and IFC goes out with its map conversion
+//! by the active site's transform, and IFC goes out with its one map conversion, from the file's origin
 //! ([coordinates](../../../docs/areas/coordinates.md)).
 
 use std::path::PathBuf;
@@ -28,41 +28,19 @@ fn file(test: &str, name: &str, text: &str) -> String {
     path.to_string_lossy().into_owned()
 }
 
-fn pairs(list: &[(i32, &str)]) -> String {
-    list.iter().map(|(c, v)| format!("{c}\n{v}\n")).collect()
-}
-
-/// A DXF in metres: a room 10 m by 6 m whose south-west corner is at map coordinates (`e`, `n`).
-fn site_plan(e: f64, n: f64) -> String {
-    let corners = [(0.0, 0.0), (10.0, 0.0), (10.0, 6.0), (0.0, 6.0), (0.0, 0.0)];
-    let lines: String = corners
-        .windows(2)
-        .map(|w| {
-            let (a, b) = ((e + w[0].0, n + w[0].1), (e + w[1].0, n + w[1].1));
-            pairs(&[(0, "LINE"), (8, "0"), (10, &a.0.to_string()), (20, &a.1.to_string()), (11, &b.0.to_string()), (21, &b.1.to_string())])
-        })
-        .collect();
-    let header = pairs(&[(9, "$INSUNITS"), (70, "6")]);
-    format!("0\nSECTION\n2\nHEADER\n{header}0\nENDSEC\n0\nSECTION\n2\nENTITIES\n{lines}0\nENDSEC\n0\nEOF\n")
-}
-
-fn near2(v: &Value, want: [[f64; 2]; 2], tol: f64) -> bool {
-    (0..2).all(|i| (0..2).all(|k| v[i][k].as_f64().is_some_and(|x| (x - want[i][k]).abs() < tol)))
-}
-
 fn near3(a: [f64; 3], b: [f64; 3], tol: f64) -> bool {
     a.iter().zip(b).all(|(a, b)| (a - b).abs() < tol)
 }
 
 fn to_shared(s: &Session, p: [f64; 3]) -> [f64; 3] {
-    s.model.coordinates.to_shared(p)
+    s.model.frames().to_shared(p)
 }
 
-// ---------- CAD ----------
+// ---------- IFC ----------
 
 fn surveyed() -> Session {
     let mut s = Session::new();
-    run(&mut s, "crs", json!({"code": 31983}));
+    run(&mut s, "georeference", json!({"crs": "EPSG:31983", "description": "SIRGAS 2000 / UTM zone 23S"}));
     run(
         &mut s,
         "location",
@@ -83,8 +61,8 @@ fn ifc_of(s: &mut Session, test: &str, origin: Option<&str>) -> String {
     std::fs::read_to_string(&path).unwrap()
 }
 
-/// The wall's start in a project read from `text`, in its shared coordinates.
-fn wall_start_shared(text: &str) -> ([f64; 3], crate::coordinates::Coordinates) {
+/// The wall's start in a project read from `text`, in its shared coordinates, and its site.
+fn wall_start_shared(text: &str) -> ([f64; 3], crate::model::Georeference) {
     let i = crate::import::ifc(text.as_bytes(), "back").unwrap();
     let w = i
         .model
@@ -95,7 +73,7 @@ fn wall_start_shared(text: &str) -> ([f64; 3], crate::coordinates::Coordinates) 
             _ => None,
         })
         .unwrap();
-    (i.model.coordinates.to_shared([w.0.0, w.0.1, w.1]), i.model.coordinates.clone())
+    (i.model.frames().to_shared([w.0.0, w.0.1, w.1]), i.model.site().clone())
 }
 
 #[test]
@@ -116,9 +94,6 @@ fn ifc_goes_out_with_its_map_conversion_and_crs() {
     // True north, in the file's axes: 10° east of its y.
     let north = format!("IFCDIRECTION(({},{}))", crate::ifc::ratio(sn), crate::ifc::ratio(c));
     assert!(text.contains(&north), "{north} in the file");
-    // Its site's latitude, about 23° 33' south.
-    let site = text.lines().find(|l| l.contains("IFCSITE(")).unwrap();
-    assert!(site.contains("(-23,-33,"), "{site}");
 }
 
 #[test]
@@ -127,11 +102,10 @@ fn ifc_comes_back_where_it_was_in_the_world_from_each_origin() {
         let mut s = surveyed();
         let want = to_shared(&s, [0.0, 0.0, 0.0]);
         let text = ifc_of(&mut s, &format!("ifc-{}", origin.unwrap_or("default")), origin);
-        let (back, co) = wall_start_shared(&text);
+        let (back, g) = wall_start_shared(&text);
         assert!(near3(back, want, 1.0), "{origin:?}: {back:?}, not {want:?}");
-        assert_eq!(co.crs, Some(31983), "{origin:?}");
-        let l = co.location();
-        assert!((l.angle - 10.0).abs() < 1e-6 && (l.scale - 0.9996).abs() < 1e-9 || origin == Some("shared"), "{origin:?}: {l:?}");
+        assert_eq!(g.crs, "EPSG:31983", "{origin:?}");
+        assert!((g.rotation - 10.0).abs() < 1e-6 && (g.scale - 0.9996).abs() < 1e-9 || origin == Some("shared"), "{origin:?}: {g:?}");
     }
 }
 
@@ -171,19 +145,6 @@ fn ifc_map_conversion_scale_takes_the_projects_millimetres_to_the_maps_unit() {
     let text = ifc_of(&mut s, "ifc-scale-shared", Some("shared"));
     let k = conversion_of(&text);
     assert!((k[5] - 1e-3).abs() < 1e-15 && k[0] == 0.0 && k[1] == 0.0, "{k:?}");
-
-    // In US survey feet (NY Long Island): the scale takes millimetres to feet.
-    let mut s = Session::new();
-    run(&mut s, "crs", json!({"code": 2263}));
-    run(&mut s, "location", json!({"name": "Internal", "east": 300_000_000.0, "north": 60_000_000.0, "scale": 0.9999}));
-    run(&mut s, "wall", json!({"points": [[0, 0], [8000, 0]]}));
-    let text = ifc_of(&mut s, "ifc-scale-ft", None);
-    let k = conversion_of(&text);
-    let ft = 1200.0 / 3937.0 * 1000.0;
-    assert!((k[5] - 0.9999 / ft).abs() < 1e-12, "scale {} in {k:?}", k[5]);
-    let want = to_shared(&s, [8000.0, 0.0, 0.0]).map(|x| x / ft);
-    let got = on_map(k, [8000.0, 0.0, 0.0]);
-    assert!(near3(got, want, 1e-3), "{got:?}, not {want:?}");
 }
 
 #[test]
@@ -199,7 +160,7 @@ fn ifc_whose_scale_carries_the_unit_comes_in_with_its_ground_to_grid_scale() {
             _ => None,
         });
         let e = end.unwrap();
-        let back = i.model.coordinates.to_shared([e.0, e.1, 0.0]);
+        let back = i.model.frames().to_shared([e.0, e.1, 0.0]);
         // At the shared origin the site's placement moves and turns but can't scale: the wall goes out at its length on the
         // ground, 8 m, not on the grid, 0.9996 of it (3.2 mm less).
         let tol = if origin == Some("shared") { 8000.0 * (1.0 - 0.9996) + 1.0 } else { 1.0 };
@@ -210,9 +171,8 @@ fn ifc_whose_scale_carries_the_unit_comes_in_with_its_ground_to_grid_scale() {
     let k = conversion_of(&text);
     let theirs = text.replace(&crate::ifc::ratio(k[5]), "0.001");
     assert_ne!(theirs, text);
-    let (_, co) = wall_start_shared(&theirs);
-    let l = co.location();
-    assert!((l.scale - 1.0).abs() < 1e-9, "ground to grid 1, the unit taken out: {l:?}");
+    let (_, g) = wall_start_shared(&theirs);
+    assert!((g.scale - 1.0).abs() < 1e-9, "ground to grid 1, the unit taken out: {g:?}");
 }
 
 #[test]
@@ -228,8 +188,10 @@ fn ifc_out_at_map_coordinates_comes_in_near_the_origin_and_keeps_where_it_was() 
     });
     let w = wall.unwrap();
     assert!(w.0.abs() < 1e6 && w.1.abs() < 1e6, "near the origin: {w:?}");
-    let back = i.model.coordinates.to_shared([w.0, w.1, 0.0]);
+    let back = i.model.frames().to_shared([w.0, w.1, 0.0]);
     assert!(near3(back, [500_001_000.0, 7_000_002_000.0, 0.0], 1.0), "{back:?}");
+    // With no coordinate reference system named, no map conversion goes out: the site comes back from the shift alone.
+    assert!(!text.contains("IFCMAPCONVERSION"), "{text}");
 }
 
 #[test]
@@ -240,3 +202,42 @@ fn a_bad_ifc_origin_is_refused() {
 }
 
 // ---------- links ----------
+
+#[test]
+fn one_map_conversion_is_placed_at_the_files_origin() {
+    // #342 wrote a second conversion anchored at the internal origin whatever `ifc_origin` said: one, from the file's origin.
+    for (origin, at) in [(None, [0.0; 3]), (Some("base"), [1000.0, 2000.0, 0.0]), (Some("survey"), [3000.0, -1000.0, 0.0])] {
+        let mut s = surveyed();
+        run(&mut s, "coordinates", json!({"base": [1000.0, 2000.0, 0.0]}));
+        let text = ifc_of(&mut s, &format!("ifc-one-{}", origin.unwrap_or("internal")), origin);
+        assert_eq!(text.matches("IFCMAPCONVERSION(").count(), 1, "{origin:?}");
+        assert_eq!(text.matches("IFCPROJECTEDCRS(").count(), 1, "{origin:?}");
+        let k = conversion_of(&text);
+        let want = to_shared(&s, at).map(|x| x / 1000.0);
+        assert!(near3([k[0], k[1], k[2]], want, 1e-6), "{origin:?}: {k:?}, not {want:?}");
+        // The file's origin is that point: the site is placed so.
+        let site = format!("IFCCARTESIANPOINT(({},{},{}))", -at[0], -at[1], -at[2]);
+        let shown = |x: f64| if x == 0.0 { "0.".to_string() } else { format!("{x}.") };
+        let site_short = format!("IFCCARTESIANPOINT(({},{},{}))", shown(-at[0]), shown(-at[1]), shown(-at[2]));
+        assert!(origin.is_none() || text.contains(&site) || text.contains(&site_short), "{origin:?}: {site_short}");
+    }
+}
+
+#[test]
+fn a_site_without_a_coordinate_reference_system_writes_true_north_and_no_map_conversion() {
+    let mut s = Session::new();
+    run(&mut s, "georeference", json!({"rotation": 30.0, "eastings": 5000.0}));
+    run(&mut s, "wall", json!({"points": [[0, 0], [8000, 0]]}));
+    let text = ifc_of(&mut s, "ifc-no-crs", None);
+    assert!(!text.contains("IFCMAPCONVERSION") && !text.contains("IFCPROJECTEDCRS"), "{text}");
+    let north = format!("IFCDIRECTION(({},{}))", crate::ifc::ratio(0.5), crate::ifc::ratio(30f64.to_radians().cos()));
+    assert!(text.contains(&north), "{north}");
+    // It comes back turned as it went.
+    let (_, g) = wall_start_shared(&text);
+    assert!((g.rotation - 30.0).abs() < 1e-6 && g.crs.is_empty(), "{g:?}");
+    // A project with no site writes no true north.
+    let mut plain = Session::new();
+    let text = ifc_of(&mut plain, "ifc-no-site", None);
+    let context = text.lines().find(|l| l.contains("=IFCGEOMETRICREPRESENTATIONCONTEXT(")).unwrap_or_default();
+    assert!(context.ends_with(",$);"), "{context}");
+}
