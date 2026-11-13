@@ -116,6 +116,21 @@ jobs:
 
   # What CLAUDE.md asks after touching packaging/: shellcheck on the scripts and actionlint on the workflows (which runs shellcheck
   # on their `run:` steps too). The runner image has shellcheck; actionlint is a pinned release, checked against its sum.
+  # The web viewer's modules, which run in node with no browser (web/tests).
+  web:
+    name: Web viewer
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Tests
+        run: node --test web/tests/*.test.mjs
+
   scripts:
     name: Scripts and workflows
     runs-on: ubuntu-24.04

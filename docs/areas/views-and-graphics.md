@@ -513,7 +513,9 @@ metres, turned and not mirrored: east stays x, up becomes y and north becomes -z
 normals, vertices that agree in position and normal are shared within a primitive, and a triangle with no area is left out. A scene past
 `gltf::MAX_TRIS` (the card's limit) is refused with how many triangles there are, and an empty one with what to show. The tests read the
 chunks back (header, lengths, alignment, the JSON, a box's bounds and volume); the Khronos validator (`npm i gltf-validator`, then
-`validateBytes`) reports no errors, warnings or hints on the sample house and on the 20-storey tower of `run --highrise`.
+`validateBytes`) reports no errors, warnings or hints on the sample house and on the 20-storey tower of `run --highrise`. With `viewer: true`, `save` writes
+the web viewer's file instead (`viewable.rs`: each shape stored once and quantized, each element's properties and the levels in
+`extras`; [web viewer](web-viewer.md)).
 
 The 3D view works round what is under the cursor, on both painters. What a pick finds has a point: `view3d::Surface` is the
 element, the model point where the line of sight through the pixel meets the surface the picture shows there, and its normal turned
