@@ -1386,7 +1386,8 @@ other_files(
          up made square to it, its origin the point of it nearest the family's origin); names are unique, each of left \
          through top is one plane's or line's, and `defines_origin` (one plane square to each of x, y and z; the datums \
          until another takes it) makes where those planes cross the insertion point the family is placed by, its forms left \
-         where they are. `ref_lines` are reference lines drawn on a `host` \
+         where they are and what is placed of it (components, nested instances, doors and windows) moved so it stays put. \
+         `ref_lines` are reference lines drawn on a `host` \
          (lying on it), each with four planes a form may be drawn on: `horizontal` (its host's, through it), `vertical` \
          (square to that through it), `start` and `end` (square to it at each end), their origin its start (`end`'s its \
          end). A line or a plane may carry a `pivot` (F7d; `ref_line`/`ref_plane` patch it, `null` takes it off): it keeps \
@@ -12736,6 +12737,8 @@ fn nested_edits(c: &str, name: &str, f: &mut crate::family::Family, p: &Value, p
 
 /// Explicit reloads retain part identities and project-only types. Instance overrides stay on their elements.
 pub(crate) fn family_reload(mut incoming: crate::family::Family, old: &crate::family::Family, keep_values: bool) -> crate::family::Family {
+    // What stands of the family was placed against its origin as it was: kept, so it stays put where the origin moves (O1).
+    incoming.placed_origin = old.placed_origin;
     let compatible = |p: &crate::family::Parameter| {
         old.parameters.iter().find(|q| {
             q.name == p.name

@@ -3817,6 +3817,9 @@ impl Model {
         }
         // A pin of an element this build left out (a newer one's kind) is dropped, and the rest of the file opens.
         m.pinned.retain(|g| m.elements.id(*g).is_some());
+        // A family's instances placed against an origin that isn't its own (a file of a build that placed every family by its
+        // datums, whose family had a plane marked as defining the origin) stay where they were drawn (O1).
+        m.settle_origins(None);
         Ok((m, left_out))
     }
 
