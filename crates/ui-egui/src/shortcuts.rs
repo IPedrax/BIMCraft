@@ -2362,6 +2362,8 @@ impl BimApp {
             "Snap to Intersections" => self.snap_once = Some(Once::Only(Snap::Intersection)),
             "Snap to Centres" => self.snap_once = Some(Once::Only(Snap::Centre)),
             "Snap to Perpendiculars" => self.snap_once = Some(Once::Only(Snap::Perpendicular)),
+            "Snap to Quadrants" => self.snap_once = Some(Once::Only(Snap::Quadrant)),
+            "Snap to Tangents" => self.snap_once = Some(Once::Only(Snap::Tangent)),
             "Snap to Nearest" => self.snap_once = Some(Once::Only(Snap::Nearest)),
             "Snaps Off" => self.snap_once = Some(Once::Off),
             "Turn Snap Override Off" => self.snap_once = None,

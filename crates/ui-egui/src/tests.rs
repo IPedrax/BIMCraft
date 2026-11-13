@@ -314,7 +314,9 @@ fn shortcut(h: &mut Harness<BimApp>, letters: &str) {
         h.key_press(key);
     }
     // Family tabs still read Event::Text for their own keys; project tabs read the physical keys.
-    h.event(Event::Text(letters.into()));
+    if h.state().active_family().is_some() {
+        h.event(Event::Text(letters.into()));
+    }
     h.run();
 }
 
@@ -3135,6 +3137,11 @@ fn nothing_a_translated_interface_shows_is_left_in_english() {
             if let Ok(b) = crate::shortcuts::parse_binding(b) {
                 keys.push(crate::shortcuts::display_binding(b));
             }
+        }
+    }
+    for (_, list) in crate::shortcuts::Shortcuts::defaults(crate::shortcuts::Profile::BimCraft).actions() {
+        for b in list {
+            keys.push(crate::shortcuts::display_binding(*b));
         }
     }
     let english = |h: &Harness<BimApp>, l: Lang| -> Vec<String> {
