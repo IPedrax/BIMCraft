@@ -32,7 +32,7 @@ msgstr "Badkar"
 msgid "Bed"
 msgstr "Säng"
 
-#: crates/core/src/model.rs:3214
+#: crates/core/src/model.rs:3724
 msgid "Brick"
 msgstr "Tegel"
 
@@ -40,7 +40,7 @@ msgstr "Tegel"
 msgid "Brick 225 x 75"
 msgstr "Tegel 225 x 75"
 
-#: crates/core/src/commands.rs:4352
+#: crates/core/src/commands.rs:4392
 msgid "Camera"
 msgstr "Kamera"
 
@@ -56,7 +56,7 @@ msgstr ""
 msgid "Ceiling Luminaire"
 msgstr "Takarmatur"
 
-#: crates/core/src/render.rs:3058
+#: crates/core/src/render.rs:3060
 msgid "Ceiling Plan"
 msgstr "Undertaksplan"
 
@@ -64,11 +64,11 @@ msgstr "Undertaksplan"
 msgid "Centre"
 msgstr "Centrum"
 
-#: crates/core/src/lines.rs:207
+#: crates/core/src/lines.rs:210
 msgid "Centre Lines"
 msgstr "Centrumlinjer"
 
-#: crates/core/src/model.rs:3222
+#: crates/core/src/model.rs:3732
 msgid "Ceramic tile"
 msgstr "Keramisk platta"
 
@@ -80,15 +80,15 @@ msgstr "Stol"
 msgid "Concrete"
 msgstr "Betong"
 
-#: crates/core/src/model.rs:3216
+#: crates/core/src/model.rs:3726
 msgid "Concrete block"
 msgstr "Betongblock"
 
-#: crates/core/src/model.rs:3230
+#: crates/core/src/model.rs:3740
 msgid "Copper"
 msgstr "Koppar"
 
-#: crates/core/src/commands.rs:1249
+#: crates/core/src/commands.rs:1283
 msgid "Copy"
 msgstr "Kopiera"
 
@@ -101,6 +101,7 @@ msgid "Crosshatch"
 msgstr "Korsskraffering"
 
 #: crates/core/src/render.rs:3757
+#: crates/core/src/render.rs:4102
 msgid "DN"
 msgstr "NED"
 
@@ -116,7 +117,7 @@ msgstr "Streckpunkt"
 msgid "Data Outlet"
 msgstr "Datauttag"
 
-#: crates/core/src/commands.rs:10093
+#: crates/core/src/commands.rs:10145
 msgid "Dependent"
 msgstr "Beroende"
 
@@ -160,11 +161,11 @@ msgstr "Punkt"
 msgid "Double Door"
 msgstr "Pardörr"
 
-#: crates/core/src/model.rs:2707
+#: crates/core/src/model.rs:3217
 msgid "Double Sliding"
 msgstr "Dubbelskjut"
 
-#: crates/core/src/model.rs:2705
+#: crates/core/src/model.rs:3215
 msgid "Double Swing"
 msgstr "Dubbelslag"
 
@@ -172,7 +173,7 @@ msgstr "Dubbelslag"
 msgid "Earthing Electrode"
 msgstr "Jordelektrod"
 
-#: crates/core/src/model.rs:2036
+#: crates/core/src/model.rs:2089
 msgid "East"
 msgstr "Öster"
 
@@ -180,20 +181,20 @@ msgstr "Öster"
 msgid "Elbow 90"
 msgstr "Böj 90"
 
-#: crates/core/src/graphics.rs:936
+#: crates/core/src/graphics.rs:985
 msgid "Electrical Ceiling"
 msgstr "El i undertak"
 
-#: crates/core/src/graphics.rs:935
+#: crates/core/src/graphics.rs:984
 msgid "Electrical Lighting"
 msgstr "Elbelysning"
 
-#: crates/core/src/graphics.rs:934
+#: crates/core/src/graphics.rs:983
 msgid "Electrical Power"
 msgstr "Elkraft"
 
-#: crates/core/src/commands.rs:9877
-#: crates/core/src/commands.rs:12484
+#: crates/core/src/commands.rs:9929
+#: crates/core/src/commands.rs:12690
 msgid "Elevation"
 msgstr "Fasad"
 
@@ -209,7 +210,7 @@ msgstr "Tyg"
 msgid "Family"
 msgstr "Familj"
 
-#: crates/core/src/model.rs:2709
+#: crates/core/src/model.rs:3219
 msgid "Fixed"
 msgstr "Fast"
 
@@ -225,7 +226,7 @@ msgstr "Golvbrunn"
 msgid "Floor Schedule"
 msgstr "Bjälklagsförteckning"
 
-#: crates/core/src/model.rs:2708
+#: crates/core/src/model.rs:3218
 msgid "Folding"
 msgstr "Vik"
 
@@ -246,7 +247,7 @@ msgid "Gate Valve"
 msgstr "Slidventil"
 
 #: crates/core/src/family.rs:2205
-#: crates/core/src/view3d.rs:1015
+#: crates/core/src/view3d.rs:1079
 msgid "Glass"
 msgstr "Glas"
 
@@ -254,11 +255,11 @@ msgstr "Glas"
 msgid "Gross Floor Area"
 msgstr "Bruttoarea"
 
-#: crates/core/src/model.rs:3221
+#: crates/core/src/model.rs:3731
 msgid "Gypsum board"
 msgstr "Gipsskiva"
 
-#: crates/core/src/lines.rs:202
+#: crates/core/src/lines.rs:205
 msgid "Hairline"
 msgstr "Hårfin linje"
 
@@ -274,7 +275,7 @@ msgstr "Höjd"
 msgid "Hidden"
 msgstr "Dold"
 
-#: crates/core/src/lines.rs:206
+#: crates/core/src/lines.rs:197
 msgid "Hidden Lines"
 msgstr "Dolda linjer"
 
@@ -310,8 +311,8 @@ msgstr "Benbredd"
 msgid "Length"
 msgstr "Längd"
 
-#: crates/core/src/commands.rs:6563
-#: crates/core/src/model.rs:3361
+#: crates/core/src/commands.rs:6603
+#: crates/core/src/model.rs:3871
 msgid "Level"
 msgstr "Nivå"
 
@@ -327,7 +328,7 @@ msgstr "Belastning"
 msgid "Long Dash"
 msgstr "Långstreckad"
 
-#: crates/core/src/model.rs:1515
+#: crates/core/src/model.rs:1519
 msgid "Mark"
 msgstr "Beteckning"
 
@@ -335,7 +336,7 @@ msgstr "Beteckning"
 msgid "Masking"
 msgstr "Maskering"
 
-#: crates/core/src/commands.rs:7836
+#: crates/core/src/commands.rs:7876
 msgid "Mass"
 msgstr "Volymmodell"
 
@@ -343,7 +344,7 @@ msgstr "Volymmodell"
 msgid "Material"
 msgstr ""
 
-#: crates/core/src/lines.rs:204
+#: crates/core/src/lines.rs:196
 msgid "Medium Lines"
 msgstr "Medelbreda linjer"
 
@@ -359,11 +360,11 @@ msgstr "Metall"
 msgid "Mounting Height"
 msgstr "Montagehöjd"
 
-#: crates/core/src/render.rs:2889
+#: crates/core/src/render.rs:2891
 msgid "NOT ENCLOSED"
 msgstr "EJ OMSLUTET"
 
-#: crates/core/src/model.rs:1516
+#: crates/core/src/model.rs:1520
 msgid "Name"
 msgstr "Namn"
 
@@ -375,7 +376,7 @@ msgstr "Nybyggnad"
 msgid "No"
 msgstr "Nej"
 
-#: crates/core/src/model.rs:2034
+#: crates/core/src/model.rs:2087
 msgid "North"
 msgstr "Norr"
 
@@ -395,7 +396,7 @@ msgstr "Öppningsfunktion"
 msgid "Outlet"
 msgstr "Eluttag"
 
-#: crates/core/src/lines.rs:208
+#: crates/core/src/lines.rs:211
 msgid "Overhead Lines"
 msgstr "Linjer ovanför"
 
@@ -423,11 +424,11 @@ msgstr "Puts"
 msgid "Porcelain"
 msgstr "Porslin"
 
-#: crates/core/src/commands.rs:3039
+#: crates/core/src/commands.rs:3079
 msgid "Project"
 msgstr "Projekt"
 
-#: crates/core/src/render.rs:2889
+#: crates/core/src/render.rs:2891
 msgid "REDUNDANT"
 msgstr "ÖVERFLÖDIGT"
 
@@ -447,11 +448,11 @@ msgstr "Sättstegshöjd"
 msgid "Risers"
 msgstr "Sättsteg"
 
-#: crates/core/src/model.rs:3223
+#: crates/core/src/model.rs:3733
 msgid "Roof tiles"
 msgstr "Takpannor"
 
-#: crates/core/src/commands.rs:8061
+#: crates/core/src/commands.rs:8101
 msgid "Room"
 msgstr "Rum"
 
@@ -479,7 +480,7 @@ msgstr "SKALA ENLIGT ANGIVELSE"
 msgid "Sand"
 msgstr "Sand"
 
-#: crates/core/src/model.rs:3219
+#: crates/core/src/model.rs:3729
 msgid "Screed"
 msgstr "Avjämningsmassa"
 
@@ -487,8 +488,8 @@ msgstr "Avjämningsmassa"
 msgid "Seat Height"
 msgstr "Sitthöjd"
 
-#: crates/core/src/commands.rs:9854
-#: crates/core/src/commands.rs:12483
+#: crates/core/src/commands.rs:9906
+#: crates/core/src/commands.rs:12689
 msgid "Section"
 msgstr "Sektion"
 
@@ -524,7 +525,7 @@ msgstr "Bröstningshöjd"
 msgid "Single Door"
 msgstr "Enkeldörr"
 
-#: crates/core/src/model.rs:2706
+#: crates/core/src/model.rs:3216
 msgid "Sliding"
 msgstr "Skjut"
 
@@ -552,11 +553,11 @@ msgstr "Helfylld svart"
 msgid "Solid fill"
 msgstr "Helfyllning"
 
-#: crates/core/src/model.rs:2035
+#: crates/core/src/model.rs:2088
 msgid "South"
 msgstr "Söder"
 
-#: crates/core/src/model.rs:2704
+#: crates/core/src/model.rs:3214
 msgid "Swing"
 msgstr "Slag"
 
@@ -600,11 +601,12 @@ msgstr "Totalt"
 msgid "Tread"
 msgstr "Plansteg"
 
-#: crates/core/src/model.rs:1517
+#: crates/core/src/model.rs:1521
 msgid "Type"
 msgstr "Typ"
 
 #: crates/core/src/render.rs:3757
+#: crates/core/src/render.rs:4102
 msgid "UP"
 msgstr "UPP"
 
@@ -612,7 +614,7 @@ msgstr "UPP"
 msgid "Unbounded Height"
 msgstr "Obegränsad höjd"
 
-#: crates/core/src/commands.rs:10234
+#: crates/core/src/commands.rs:10351
 msgid "Unnamed"
 msgstr "Namnlös"
 
@@ -652,11 +654,11 @@ msgstr "Tvättställ"
 msgid "Weight"
 msgstr "Vikt"
 
-#: crates/core/src/model.rs:2037
+#: crates/core/src/model.rs:2090
 msgid "West"
 msgstr "Väster"
 
-#: crates/core/src/lines.rs:205
+#: crates/core/src/lines.rs:208
 msgid "Wide Lines"
 msgstr "Breda linjer"
 

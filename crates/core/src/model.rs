@@ -951,6 +951,9 @@ pub enum Face {
     Right,
     Start,
     End,
+    /// A stair's edge seen in plan, by its place in [`crate::stairs::reference_edges`]: a run's side or end, a riser, a
+    /// landing's edge.
+    Edge(u32),
 }
 
 impl Face {
@@ -982,6 +985,7 @@ impl Face {
             Face::Right => "right face",
             Face::Start => "start",
             Face::End => "end",
+            Face::Edge(_) => "edge",
         }
     }
 }
@@ -1644,6 +1648,19 @@ pub struct Stair {
     pub top_level: Option<Guid>,
     #[serde(default)]
     pub height: f64,
+    /// How far its foot stands below its level, and its top below its top level (negative, above it): a stair that
+    /// stops short of the level it climbs to has a top offset, the height it does not climb.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub base_offset: f64,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub top_offset: f64,
+    /// Drawn along a path: every tread `tread` deep, the whole stair through (on, as it starts); off, each flight's
+    /// treads stretch or shrink inside the rules' range so it ends where it was drawn.
+    #[serde(default = "yes", skip_serializing_if = "is_yes")]
+    pub lock_going: bool,
+    /// Drawn by hand from a stair that was laid out (Convert to Sketch): what it was, for Convert Back.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unsketched: Option<Box<Unsketched>>,
     pub start: P2,
     pub angle: f64,
     pub width: f64,
@@ -1673,6 +1690,9 @@ pub struct Stair {
     /// its top level, each storey with the risers its own height asks.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub multistorey: bool,
+    /// Edges of its landings moved out (or in) from where its layout puts them: an edge no step stands on, of a landing.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub edges: Vec<LandingEdge>,
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
@@ -1730,6 +1750,39 @@ pub struct PathSeg {
     pub arc: f64,
     #[serde(default, skip_serializing_if = "no_winders")]
     pub winders: u32,
+    /// How wide this flight or landing is, where it is not as wide as the stair.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub width: Option<f64>,
+}
+
+/// An edge of a landing moved square to itself: of the `landing`th landing of the stair's first storey, from its foot
+/// up, the edge (or the edges in one line) facing `normal` degrees round from the way the stair starts off, moved `by`
+/// outward (inward when negative). Only an edge no step stands on moves.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct LandingEdge {
+    pub landing: u32,
+    pub normal: f64,
+    pub by: f64,
+}
+
+/// What a stair was before it was converted to a sketch: its foot, its way, its landings, its path, its spiral and its
+/// location line; Convert Back makes it that again.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Unsketched {
+    pub start: P2,
+    pub angle: f64,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub landings: Vec<Landing>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub path: Vec<PathSeg>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spiral: Option<Spiral>,
+    #[serde(default)]
+    pub line: StairLine,
+    #[serde(default)]
+    pub offset: f64,
 }
 
 /// A step of a stair drawn by hand: its `riser`, a line from its left end to its right end looking up the stair, and
@@ -2577,19 +2630,476 @@ pub struct StairType {
     pub stringer_width: f64,
     #[serde(default)]
     pub stringer_depth: f64,
+    /// The dimension rules its stairs are held to, each a least and a most that is on or off: one that is on takes
+    /// over from the project's building code for stairs of this type.
+    #[serde(default, skip_serializing_if = "TypeRules::is_empty")]
+    pub rules: TypeRules,
+    /// How its stairs show in plan: on the level below them, on their own level and on the level above.
+    #[serde(default, skip_serializing_if = "PlanShows::is_usual")]
+    pub plan: PlanShows,
+    /// Whether its plans number its treads, from the foot of each storey up.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub numbers: bool,
+    /// The line style of what shows of them in plan and of what is hidden, by name; none (or a style the project no
+    /// longer has) for its Medium Lines and its Hidden Lines.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub line_visible: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub line_hidden: String,
+    /// The fill pattern of the part of them shown in full lines, by name; none for no fill.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub fill: String,
+    /// A monolithic stair's step profile: square, or with its riser slanted back under the tread's front edge by
+    /// `nosing`.
+    #[serde(default, skip_serializing_if = "StepProfile::is_square")]
+    pub profile: StepProfile,
+    /// Whether its stairs begin with a tread level with the floor before their first riser (else, as they start, with
+    /// the riser), and whether they end with a tread level with the floor above after their last riser.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub start_tread: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub end_tread: bool,
+    /// A stringer down the middle under the treads (a carriage), `carriage_width` by `carriage_depth`; 0, none.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub carriage_width: f64,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub carriage_depth: f64,
+    /// A spiral stair's post at its centre, this across; 0, none.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub post: f64,
+    /// What its structure is made of, by material name; none for the usual grey.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub material: String,
+    /// Finishes laid over the structure: a cover `tread_cover` thick on each tread and landing, standing out
+    /// `cover_nosing` past the riser's cover at the front, and a cover `riser_cover` thick on each riser's face; past a
+    /// side with no stringer, the tread's cover stands out `cover_side`. A riser is measured from finish to finish, so
+    /// the structure sits `tread_cover` lower. Of `cover_material`, none for the structure's.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub tread_cover: f64,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub riser_cover: f64,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub cover_nosing: f64,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub cover_side: f64,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub cover_material: String,
+    /// What carries its treads: one slab, stringers down the sides, a stringer down the middle, or nothing (treads fixed
+    /// in a wall). None, as a type made before it was a choice: read from its sizes (a `waist`, a slab; stringers' sizes,
+    /// stringers; …).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub construction: Option<Construction>,
+    /// Whether a stair carried on stringers has them round its landings' free edges too, so a landing is framed as its
+    /// flights are; else a landing stands on its own.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub landing_stringers: bool,
+    /// The shape of the tread finish's front edge, seen from the side.
+    #[serde(default, skip_serializing_if = "FinishProfile::is_square")]
+    pub finish_profile: FinishProfile,
+    /// In plan: the head at the top of the walk line, the mark at its foot, and the break mark where the cut plane
+    /// passes.
+    #[serde(default, skip_serializing_if = "ArrowHead::is_usual")]
+    pub arrow: ArrowHead,
+    #[serde(default, skip_serializing_if = "WalkStart::is_usual")]
+    pub walk_start: WalkStart,
+    #[serde(default, skip_serializing_if = "CutMark::is_usual")]
+    pub cut_mark: CutMark,
+    /// Whether the walk line rounds its corners at a landing, as Archicad's Rounded; else it turns them square.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub walk_rounded: bool,
+}
+
+/// What carries a stair's treads.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Construction {
+    /// One slab under the steps and landings, cast in place (`waist` thick, 150 if none is given).
+    #[default]
+    Monolithic,
+    /// Treads between a stringer down each side (`stringer_width` by `stringer_depth`).
+    Stringers,
+    /// Treads on one stringer down the middle (`carriage_width` by `carriage_depth`).
+    Carriage,
+    /// Treads standing on their own, fixed in the wall beside them.
+    Treads,
+}
+
+impl Construction {
+    pub const ALL: [Construction; 4] = [Construction::Monolithic, Construction::Stringers, Construction::Carriage, Construction::Treads];
+}
+
+/// The front edge of a tread's finish, seen from the side.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FinishProfile {
+    /// Square.
+    #[default]
+    Square,
+    /// Its top edge rounded, half the finish's thickness across.
+    Rounded,
+    /// Its top edge cut at 45°, half the finish's thickness.
+    Chamfered,
+    /// Round from top to bottom, a half circle as thick as the finish.
+    Bullnose,
+}
+
+impl FinishProfile {
+    pub const ALL: [FinishProfile; 4] = [FinishProfile::Square, FinishProfile::Rounded, FinishProfile::Chamfered, FinishProfile::Bullnose];
+    pub fn is_square(&self) -> bool {
+        *self == FinishProfile::Square
+    }
+
+    /// How far in from the front edge the profile is at height `f` of the finish, 0 at its underside and 1 at its top, as a
+    /// share of the finish's thickness: 0 where the edge is square.
+    pub fn inset(self, f: f64) -> f64 {
+        let f = f.clamp(0.0, 1.0);
+        match self {
+            FinishProfile::Square => 0.0,
+            FinishProfile::Rounded => {
+                // A quarter circle of radius one half at the top.
+                let y = (f - 0.5).max(0.0);
+                0.5 - (0.25 - y * y).max(0.0).sqrt()
+            }
+            FinishProfile::Chamfered => (f - 0.5).max(0.0),
+            FinishProfile::Bullnose => {
+                let y = f - 0.5;
+                0.5 - (0.25 - y * y).max(0.0).sqrt()
+            }
+        }
+    }
+}
+
+/// The head at the top of a stair's walk line in plan.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ArrowHead {
+    /// A filled triangle.
+    #[default]
+    Filled,
+    /// Two strokes, open.
+    Open,
+    /// A triangle drawn in outline.
+    Hollow,
+    /// A stroke across the line's end.
+    Tick,
+    /// No head.
+    None,
+}
+
+impl ArrowHead {
+    pub const ALL: [ArrowHead; 5] = [ArrowHead::Filled, ArrowHead::Open, ArrowHead::Hollow, ArrowHead::Tick, ArrowHead::None];
+    pub fn is_usual(&self) -> bool {
+        *self == ArrowHead::Filled
+    }
+}
+
+/// The mark at the foot of a stair's walk line in plan.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WalkStart {
+    /// Nothing.
+    #[default]
+    None,
+    /// A filled dot.
+    Dot,
+    /// A small circle.
+    Circle,
+}
+
+impl WalkStart {
+    pub const ALL: [WalkStart; 3] = [WalkStart::None, WalkStart::Dot, WalkStart::Circle];
+    pub fn is_usual(&self) -> bool {
+        *self == WalkStart::None
+    }
+}
+
+/// The mark across a stair in plan where the cut plane passes.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CutMark {
+    /// One slanted line with a zigzag in its middle.
+    #[default]
+    Zigzag,
+    /// Two slanted lines, parallel, a little apart.
+    Double,
+    /// One straight slanted line.
+    Straight,
+    /// One slanted line with a curve in its middle.
+    Wave,
+}
+
+impl CutMark {
+    pub const ALL: [CutMark; 4] = [CutMark::Zigzag, CutMark::Double, CutMark::Straight, CutMark::Wave];
+    pub fn is_usual(&self) -> bool {
+        *self == CutMark::Zigzag
+    }
+}
+
+impl StairType {
+    /// What carries its treads: as it says, else as its sizes say.
+    pub fn built(&self) -> Construction {
+        self.construction.unwrap_or(if self.waist > 0.0 {
+            Construction::Monolithic
+        } else if self.stringer_width > 0.0 && self.stringer_depth > 0.0 {
+            Construction::Stringers
+        } else if self.carriage_width > 0.0 && self.carriage_depth > 0.0 {
+            Construction::Carriage
+        } else {
+            Construction::Treads
+        })
+    }
+
+    /// Whether it is one slab under its steps.
+    pub fn monolithic(&self) -> bool {
+        self.built() == Construction::Monolithic
+    }
+
+    /// How thick its slab is, square to the slope: its `waist`, 150 where a monolithic type gives none; 0, no slab.
+    pub fn slab(&self) -> f64 {
+        if !self.monolithic() {
+            0.0
+        } else if self.waist > 0.0 {
+            self.waist
+        } else {
+            150.0
+        }
+    }
+
+    /// How thick a free-standing tread is: its `tread_thickness`, 50 where it gives none.
+    pub fn tread(&self) -> f64 {
+        if self.tread_thickness > 0.0 { self.tread_thickness } else { 50.0 }
+    }
+
+    /// Its side stringers' width and depth, where it has them (50 by 300 where it gives no size).
+    pub fn side_stringers(&self) -> Option<(f64, f64)> {
+        let sized = self.stringer_width > 0.0 && self.stringer_depth > 0.0;
+        (self.built() == Construction::Stringers).then_some(if sized { (self.stringer_width, self.stringer_depth) } else { (50.0, 300.0) })
+    }
+
+    /// Its stringer down the middle's width and depth, where it has one: a carriage's own (100 by 250 where it gives no
+    /// size), or one under a stair on side stringers that sizes it.
+    pub fn centre_stringer(&self) -> Option<(f64, f64)> {
+        let sized = self.carriage_width > 0.0 && self.carriage_depth > 0.0;
+        match self.built() {
+            Construction::Carriage => Some(if sized { (self.carriage_width, self.carriage_depth) } else { (100.0, 250.0) }),
+            Construction::Stringers if sized => Some((self.carriage_width, self.carriage_depth)),
+            _ => None,
+        }
+    }
+}
+
+/// The profile of a monolithic stair's steps, seen from the side.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StepProfile {
+    /// A riser straight up, the tread square on it.
+    #[default]
+    Square,
+    /// The riser leaning back from the tread's front edge to its foot, `nosing` behind it.
+    Slanted,
+}
+
+impl StepProfile {
+    pub fn is_square(&self) -> bool {
+        *self == StepProfile::Square
+    }
+}
+
+/// A stair type's dimension rules: each a number where the rule is on, none where the project's building code decides
+/// (or, for a rule no code has, nothing is asked). Lengths in mm; `ratio` is the tread over the riser, `sum` the tread and
+/// the riser together, `pitch` the slope in degrees.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct TypeRules {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub riser_min: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub riser_max: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub going_min: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub going_max: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub step_min: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub step_max: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ratio_min: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ratio_max: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sum_min: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sum_max: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pitch_min: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pitch_max: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub landing_min: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub walk_offset_min: Option<f64>,
+}
+
+impl TypeRules {
+    pub fn is_empty(&self) -> bool {
+        *self == TypeRules::default()
+    }
+
+    /// Each rule that is on, by name.
+    pub fn each(&self) -> [(&'static str, Option<f64>); 14] {
+        [
+            ("riser_min", self.riser_min),
+            ("riser_max", self.riser_max),
+            ("going_min", self.going_min),
+            ("going_max", self.going_max),
+            ("step_min", self.step_min),
+            ("step_max", self.step_max),
+            ("ratio_min", self.ratio_min),
+            ("ratio_max", self.ratio_max),
+            ("sum_min", self.sum_min),
+            ("sum_max", self.sum_max),
+            ("pitch_min", self.pitch_min),
+            ("pitch_max", self.pitch_max),
+            ("landing_min", self.landing_min),
+            ("walk_offset_min", self.walk_offset_min),
+        ]
+    }
+}
+
+/// How a stair shows in a plan, each side of its break mark: what is under the mark and what is over it drawn in full
+/// lines (visible), in hidden lines, or left out; with the mark or without.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PlanShow {
+    /// With the break mark: visible under it, hidden over it.
+    #[default]
+    BreakVisibleHidden,
+    /// No break mark: all of it visible.
+    NoBreakVisible,
+    /// Under the break mark only, visible.
+    BelowVisible,
+    /// Over the break mark only, visible.
+    AboveVisible,
+    /// No break mark: all of it hidden.
+    NoBreakHidden,
+    /// Over the break mark only, hidden.
+    AboveHidden,
+    /// Under the break mark only, hidden.
+    BelowHidden,
+    /// With the break mark: all of it visible.
+    BreakAllVisible,
+    /// With the break mark: hidden under it, visible over it.
+    BreakHiddenVisible,
+    /// Not on that plan.
+    NotShown,
+}
+
+/// How a part of a stair, under its break mark or over it, is drawn in plan.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PlanPart {
+    /// In full lines (visible).
+    Full,
+    /// In hidden lines.
+    Hidden,
+    /// Left out.
+    Out,
+}
+
+impl PlanShow {
+    /// Every way, in the order Archicad's list has them, not shown last.
+    pub const ALL: [PlanShow; 10] = [
+        PlanShow::BreakVisibleHidden,
+        PlanShow::NoBreakVisible,
+        PlanShow::BelowVisible,
+        PlanShow::AboveVisible,
+        PlanShow::NoBreakHidden,
+        PlanShow::AboveHidden,
+        PlanShow::BelowHidden,
+        PlanShow::BreakAllVisible,
+        PlanShow::BreakHiddenVisible,
+        PlanShow::NotShown,
+    ];
+
+    /// What it draws: what is under the break mark, what is over it, and whether the mark is drawn; none for not shown.
+    pub fn look(self) -> Option<(PlanPart, PlanPart, bool)> {
+        use PlanPart::{Full, Hidden, Out};
+        Some(match self {
+            PlanShow::BreakVisibleHidden => (Full, Hidden, true),
+            PlanShow::NoBreakVisible => (Full, Full, false),
+            PlanShow::BelowVisible => (Full, Out, true),
+            PlanShow::AboveVisible => (Out, Full, true),
+            PlanShow::NoBreakHidden => (Hidden, Hidden, false),
+            PlanShow::AboveHidden => (Out, Hidden, true),
+            PlanShow::BelowHidden => (Hidden, Out, true),
+            PlanShow::BreakAllVisible => (Full, Full, true),
+            PlanShow::BreakHiddenVisible => (Hidden, Full, true),
+            PlanShow::NotShown => return None,
+        })
+    }
+}
+
+/// How a stair type's stairs show on the plan of the level below the one they stand on, of their own level, and of the
+/// level they climb to.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PlanShows {
+    #[serde(default = "PlanShows::usual_below")]
+    pub below: PlanShow,
+    #[serde(default)]
+    pub same: PlanShow,
+    #[serde(default = "PlanShows::usual_above")]
+    pub above: PlanShow,
+}
+
+impl Default for PlanShows {
+    fn default() -> PlanShows {
+        PlanShows { below: PlanShow::NotShown, same: PlanShow::BreakVisibleHidden, above: PlanShow::NoBreakVisible }
+    }
+}
+
+impl PlanShows {
+    fn usual_below() -> PlanShow {
+        PlanShow::NotShown
+    }
+
+    fn usual_above() -> PlanShow {
+        PlanShow::NoBreakVisible
+    }
+
+    pub fn is_usual(&self) -> bool {
+        *self == PlanShows::default()
+    }
 }
 
 /// The stair types a project starts with.
 pub fn stair_types() -> BTreeMap<String, StairType> {
     let open = StairType { tread_thickness: 50.0, nosing: 20.0, ..StairType::default() };
+    let built = |c: Construction| Some(c);
     BTreeMap::from([
-        ("Monolithic 150mm".to_string(), StairType { waist: 150.0, ..StairType::default() }),
-        ("Stringers - Open Risers".to_string(), StairType { stringer_width: 50.0, stringer_depth: 300.0, ..open.clone() }),
+        ("Monolithic 150mm".to_string(), StairType { waist: 150.0, construction: built(Construction::Monolithic), ..StairType::default() }),
+        (
+            "Stringers - Open Risers".to_string(),
+            StairType { stringer_width: 50.0, stringer_depth: 300.0, construction: built(Construction::Stringers), ..open.clone() },
+        ),
         (
             "Stringers - Closed Risers".to_string(),
-            StairType { riser_thickness: 25.0, stringer_width: 50.0, stringer_depth: 300.0, ..open.clone() },
+            StairType {
+                riser_thickness: 25.0,
+                stringer_width: 50.0,
+                stringer_depth: 300.0,
+                construction: built(Construction::Stringers),
+                ..open.clone()
+            },
         ),
-        ("Cantilevered Treads".to_string(), StairType { tread_thickness: 80.0, ..StairType::default() }),
+        (
+            "Centre Stringer".to_string(),
+            StairType { carriage_width: 120.0, carriage_depth: 250.0, construction: built(Construction::Carriage), ..open.clone() },
+        ),
+        (
+            "Cantilevered Treads".to_string(),
+            StairType { tread_thickness: 80.0, construction: built(Construction::Treads), ..StairType::default() },
+        ),
     ])
 }
 
@@ -4569,19 +5079,26 @@ impl Model {
     /// The storeys a stair climbs, lowest first: the level each stands on, its height, and how far up the next is. One,
     /// from its level to its top, unless it is multistorey: then one from each level it passes.
     pub fn storeys(&self, st: &Stair) -> Vec<(Guid, f64, f64)> {
-        let (base, top) = self.span(st.level, 0.0, st.top_level, st.height);
+        let (base, top) = self.stair_span(st);
         if !st.multistorey || st.top_level.is_none() {
             return vec![(st.level, base, top - base)];
         }
-        let crossed: Vec<(Id, f64)> =
-            self.levels().into_iter().map(|(id, l)| (id, l.elevation)).filter(|(_, z)| *z >= base - TOL && *z < top - TOL).collect();
-        let all: Vec<(Guid, f64, f64)> = crossed
-            .iter()
-            .enumerate()
-            .map(|(i, (id, z))| (self.guid(*id), *z, crossed.get(i + 1).map_or(top, |next| next.1) - z))
-            .take(200)
+        // Its foot on its own level, its base offset over it; then each level it passes.
+        let crossed: Vec<(Guid, f64)> = std::iter::once((st.level, base))
+            .chain(
+                (self.levels().into_iter())
+                    .map(|(id, l)| (self.guid(id), l.elevation))
+                    .filter(|(g, z)| *g != st.level && *z > base + TOL && *z < top - TOL),
+            )
             .collect();
-        if all.is_empty() { vec![(st.level, base, top - base)] } else { all }
+        crossed.iter().enumerate().map(|(i, (g, z))| (*g, *z, crossed.get(i + 1).map_or(top, |next| next.1) - z)).take(200).collect()
+    }
+
+    /// Where a stair's foot and its top are: its level and its top level, each less its offset (an offset is how far
+    /// below the level). A stair of no top level is `height` over its foot.
+    pub fn stair_span(&self, st: &Stair) -> (f64, f64) {
+        let base = self.elevation(st.level) - st.base_offset;
+        (base, st.top_level.map_or(base + st.height, |t| self.elevation(t) - st.top_offset))
     }
 
     /// A stair's flight over a storey `rise` high: its risers, how high each is, and how long its runs are together.
@@ -5474,6 +5991,7 @@ impl Model {
             Face::Right => (c.at - v * d - u * w, c.at - v * d + u * w),
             Face::Start => (c.at - u * w - v * d, c.at - u * w + v * d),
             Face::End => (c.at + u * w - v * d, c.at + u * w + v * d),
+            Face::Edge(_) => return Err(format!("column {id} has no numbered edges; measure to its centre lines or faces")),
         })
     }
 
@@ -5483,6 +6001,12 @@ impl Model {
     /// wherever its location line is.
     pub fn reference_line(&self, r: &Reference) -> Result<Line, String> {
         match (self.elements.get(r.id), r.face) {
+            (Some(Element::Stair(st)), Face::Edge(i)) => crate::stairs::reference_edges(self, st)
+                .get(i as usize)
+                .copied()
+                .ok_or_else(|| format!("stair {} has no edge {i} any more: it was changed; measure to it again", r.id)),
+            (Some(Element::Stair(_)), _) => Err(format!("stair {}'s lines are its edges (`face`: {{\"edge\": n}})", r.id)),
+            (_, Face::Edge(_)) => Err(format!("element {} has no numbered edges; only a stair does", r.id)),
             (Some(Element::Grid(g)), Face::Centre) => Ok((g.start, g.end)),
             (Some(Element::Grid(_)), _) => Err(format!("grid {} has no faces; measure to its line", r.id)),
             (Some(e @ (Element::Column(_) | Element::StructuralColumn(_))), face) => self.column_reference_line(e, face, r.id),
@@ -5508,7 +6032,7 @@ impl Model {
                     Face::Right => (axis.at(a, int), axis.at(b, int)),
                     Face::Start => (axis.at(a, int), axis.at(a, ext)),
                     Face::End => (axis.at(b, int), axis.at(b, ext)),
-                    Face::Across => {
+                    Face::Across | Face::Edge(_) => {
                         return Err(format!("wall {} has no across line; measure to its centre line, faces or ends", r.id));
                     }
                 })
@@ -5522,7 +6046,7 @@ impl Model {
                     Face::Centre => o.offset,
                     Face::Start => o.offset - t.width / 2.0,
                     Face::End => o.offset + t.width / 2.0,
-                    Face::Left | Face::Right | Face::Across => {
+                    Face::Left | Face::Right | Face::Across | Face::Edge(_) => {
                         return Err(format!("{what} has a centre and two jambs, start and end; measure to one of those"));
                     }
                 };
@@ -5544,7 +6068,7 @@ impl Model {
                     Face::Centre => Ok((a, b)),
                     Face::Start => Ok((a - n, a + n)),
                     Face::End => Ok((b - n, b + n)),
-                    Face::Left | Face::Right | Face::Across => {
+                    Face::Left | Face::Right | Face::Across | Face::Edge(_) => {
                         Err(format!("detail line {} has a line and two ends; measure to one of those", r.id))
                     }
                 }
@@ -5639,6 +6163,14 @@ impl Model {
     /// column's two centre lines and four faces, a door's or a window's centre and jambs, a grid's line.
     pub fn reference_lines(&self, id: impl Key) -> Vec<(Reference, Line)> {
         let id = self.guid(id);
+        // A stair's edges in plan, each by its place.
+        if let Some(Element::Stair(st)) = self.elements.get(id) {
+            return crate::stairs::reference_edges(self, st)
+                .into_iter()
+                .enumerate()
+                .map(|(i, l)| (Reference::line(id, Face::Edge(i as u32)), l))
+                .collect();
+        }
         let faces: &[Face] = match self.elements.get(id) {
             Some(Element::Wall(_)) => &[Face::Centre, Face::Left, Face::Right, Face::Start, Face::End],
             Some(Element::Column(_) | Element::StructuralColumn(_)) => {
@@ -5788,7 +6320,9 @@ impl Model {
                     Face::Left => ext,
                     Face::Right => int,
                     Face::Centre => (ext + int) / 2.0,
-                    Face::Start | Face::End | Face::Across => return Err(format!("wall {}'s ends are straight; {what}", r.id)),
+                    Face::Start | Face::End | Face::Across | Face::Edge(_) => {
+                        return Err(format!("wall {}'s ends are straight; {what}", r.id));
+                    }
                 };
                 Ok((c, radius - sweep.signum() * off, a0, sweep))
             }
@@ -6533,13 +7067,56 @@ impl Model {
                 ("nosing", t.nosing),
                 ("stringer_width", t.stringer_width),
                 ("stringer_depth", t.stringer_depth),
+                ("carriage_width", t.carriage_width),
+                ("carriage_depth", t.carriage_depth),
+                ("post", t.post),
+                ("tread_cover", t.tread_cover),
+                ("riser_cover", t.riser_cover),
+                ("cover_nosing", t.cover_nosing),
+                ("cover_side", t.cover_side),
             ];
             for (what, v) in parts {
                 if !(0.0..=5000.0).contains(&v) {
                     return Err(format!("stair type `{n}`: `{what}` is 0 to 5000 mm, not {v}"));
                 }
             }
-            if t.waist == 0.0 && t.tread_thickness == 0.0 {
+            for (what, v) in t.rules.each() {
+                if v.is_some_and(|v| !(0.0..=100_000.0).contains(&v)) {
+                    return Err(format!("stair type `{n}`: its rule `{what}` is 0 to 100000, or off"));
+                }
+            }
+            let r = &t.rules;
+            let pairs = [
+                ("riser", r.riser_min, r.riser_max),
+                ("going", r.going_min, r.going_max),
+                ("step", r.step_min, r.step_max),
+                ("ratio", r.ratio_min, r.ratio_max),
+                ("sum", r.sum_min, r.sum_max),
+                ("pitch", r.pitch_min, r.pitch_max),
+            ];
+            for (what, low, high) in pairs {
+                if let (Some(low), Some(high)) = (low, high)
+                    && low > high
+                {
+                    return Err(format!("stair type `{n}`: its rule `{what}_min`, {low}, is over `{what}_max`, {high}"));
+                }
+            }
+            for (what, name) in [("line_visible", &t.line_visible), ("line_hidden", &t.line_hidden), ("fill", &t.fill)] {
+                if name.chars().count() > MAX_TEXT {
+                    return Err(format!("stair type `{n}`: `{what}` names a pattern in {MAX_TEXT} characters at most"));
+                }
+            }
+            for (what, name) in [("material", &t.material), ("cover_material", &t.cover_material)] {
+                if !name.is_empty() && !self.materials.contains_key(name) {
+                    return Err(format!("stair type `{n}`: `{what}` `{name}` isn't in the library; add it with `material`"));
+                }
+            }
+            if t.profile == StepProfile::Slanted && (!t.monolithic() || t.nosing <= 0.0) {
+                return Err(format!(
+                    "stair type `{n}`: only a monolithic stair can have slanted risers, and they lean back by the `nosing`, so give it a nosing too"
+                ));
+            }
+            if t.construction.is_none() && t.waist == 0.0 && t.tread_thickness == 0.0 {
                 return Err(format!(
                     "stair type `{n}` has neither a `waist` (a slab under its steps) nor a `tread_thickness` (treads standing free)"
                 ));
@@ -7450,6 +8027,18 @@ impl Model {
                         return Err(format!("{who}: a spiral stair is not multistorey yet; give each storey its own"));
                     }
                 }
+                if st.edges.len() > 256 {
+                    return Err(format!("{who}: a stair has 256 landing edges moved at most, not {}", st.edges.len()));
+                }
+                for e in &st.edges {
+                    coord(&format!("{who} landing edge"), e.by)?;
+                    if !(-360.0..=360.0).contains(&e.normal) || e.landing > 10_000 {
+                        return Err(format!(
+                            "{who}: a landing edge faces -360 to 360 degrees from the way the stair starts, of a landing 0 to 10000, not {} of {}",
+                            e.normal, e.landing
+                        ));
+                    }
+                }
                 if !st.path.is_empty() {
                     if st.path.len() > 200 {
                         return Err(format!("{who}: a stair's path has 200 segments at most, not {}", st.path.len()));
@@ -7515,6 +8104,16 @@ impl Model {
                 }
                 for (what, v) in [("width", st.width), ("riser", st.riser), ("tread", st.tread)] {
                     size(&format!("{who} {what}"), v)?;
+                }
+                for w in st.path.iter().filter_map(|s| s.width) {
+                    size(&format!("{who} path width"), w)?;
+                }
+                for (what, v) in [("base_offset", st.base_offset), ("top_offset", st.top_offset)] {
+                    coord(&format!("{who} {what}"), v)?;
+                }
+                let (bottom, top) = self.stair_span(st);
+                if top <= bottom + TOL {
+                    return Err(format!("{who}: its top ({top} mm) is under its foot ({bottom} mm); check its offsets"));
                 }
                 let (n, _, _) = self.flight(st);
                 if !(2..=200).contains(&n) {

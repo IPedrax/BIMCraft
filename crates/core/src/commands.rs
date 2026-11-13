@@ -670,7 +670,7 @@ other_files(
         ui_msg!("Stair"),
         &[],
         "{start: [x,y], end?: [x,y] | angle?, level?, top_level?, height?, width?, riser?, tread?, landings?: [{at, turn?, winders?, balance?, length?, width?}, …], \
-         line?, offset?, path?, spiral?, sketch?, type?, multistorey?, railings?} a stair from the middle of its first riser at `start`, climbing toward `end` (or `angle` degrees) up to the next level: \
+         line?, offset?, path?, spiral?, sketch?, type?, multistorey?, base_offset?, top_offset?, lock_going?, railings?} a stair from the middle of its first riser at `start`, climbing toward `end` (or `angle` degrees) up to the next level: \
          as many risers as keep each at most `riser` mm, treads `tread` deep (the project's building code's, 180 and 280 with \
          none: `building_code`), `width` wide (1000). One straight \
          run, as long as that makes it (`landings`: \"auto\" gives it the landings its code says are due, straight on); or with landings (each as deep as the stair is wide) after `at` risers, the next run \
@@ -689,16 +689,30 @@ other_files(
          `sweep` degrees in all; a spiral has no landings. \
          `type` names its stair type (`type` with category stair: `waist` for a slab under its steps, a monolithic stair; \
          else `tread_thickness`, `riser_thickness`, `nosing`, and `stringer_width` by `stringer_depth` for stringers down its \
-         sides); with none it is solid down to its level. \
-         With `path`: [{to: [x,y], landing?, arc?, winders?}, …] the stair is drawn along a line from `start`, segment after \
+         sides; `profile` \"square\" or \"slanted\", a monolithic stair's riser leaning back from the tread's front edge by \
+         `nosing`; `start_tread` and `end_tread` true to begin with a tread level with the floor before the first riser, and \
+         to end with one level with the floor above after the last (else, as it starts, with a riser); `carriage_width` by `carriage_depth` for a stringer down the middle under the treads; `post`, the diameter of a \
+         spiral's post at its centre; `material` for its structure; `tread_cover`, `riser_cover`, `cover_nosing` and `cover_side` for finishes laid \
+         over it, of `cover_material`, a riser measured finish to finish; `numbers` true to number its treads in plan; `line_visible` and `line_hidden` the line styles its plan draws what shows and what is hidden in, Medium Lines and Hidden Lines when not given; `fill` a fill pattern for what shows; `construction` \"monolithic\", \"stringers\", \"carriage\" or \"treads\", what carries the treads \
+         (none: read from the sizes it has); `landing_stringers` true to run a stringed stair's stringers round its landings too; \
+         `finish_profile` \"square\", \"rounded\", \"chamfered\" or \"bullnose\", the front edge of the tread finish; `arrow` \
+         \"open\", \"filled\", \"hollow\", \"tick\" or \"none\", the head of the walk line in plan; `walk_start` \"none\", \"dot\" or \
+         \"circle\", the mark at its foot; `cut_mark` \"zigzag\", \"double\", \"straight\" or \"wave\", the break mark; `walk_rounded` true to round the \
+         walk line's corners at a landing); with none it is solid down to its level. \
+         With `path`: [{to: [x,y], landing?, arc?, winders?, width?}, …] the stair is drawn along a line from `start`, segment after \
          segment: each on `to` a point, a flight of steps or with `landing` a landing as long as the segment, straight or with \
-         `arc` an arc turning through that many degrees (left, or with a minus right). A flight has a tread every `tread` of its \
+         `arc` an arc turning through that many degrees (left, or with a minus right), and with `width` as wide as that, not \
+         as the stair. A flight has a tread every `tread` of its \
          length; the last flight has the risers left over, however long it is drawn, and what is drawn past the top is left \
          out. Where two flights meet at a corner, the corner is a landing, or with `winders` on the second, winders. A stair \
          with a `path` has no `landings`: its location line (`line`, `offset`) is the path. \
-         With `sketch`: [{riser: [[x,y],[x,y]], outline?: [[x,y],…]}, …] the stair is drawn by hand and needs no `start`: each \
+         `edges`: [{landing, normal, by}, …] moves edges of its landings that no step stands on (the free end of a          landing, its outer side): of the `landing`th landing from the foot (0 first), the edge facing `normal` degrees round          from the way the stair starts, `by` mm outward (negative, inward).          With `sketch`: [{riser: [[x,y],[x,y]], outline?: [[x,y],…]}, …] the stair is drawn by hand and needs no `start`: each \
          riser a line from its left end to its right, from the first up, as many risers as are drawn; the tread after a riser \
          is the ground between it and the next, or its `outline` (a landing round a corner). `stair_check` measures what is drawn. \
+         `base_offset` stands its foot that far below its level, `top_offset` its top that far below its `top_level` (a stair \
+         stopping short of it, as one drawn and finished before its top; negative, above). \
+         `lock_going` (true as it starts): drawn along a `path`, every tread `tread` deep; false, each flight's treads stretch or \
+         shrink inside the rules so it ends where it was drawn. \
          `multistorey`: with a `top_level` several levels up, it is the stair of its first storey and stands again on each \
          level on the way, each storey with the risers its own height asks and the landings after the same share of them; \
          `stair_check` says how far the storeys' risers differ. \
@@ -1011,6 +1025,26 @@ other_files(
          glass; fine (the default), the layers' patterns and a floor's surface pattern too. Without `detail` it only says what \
          the view has",
         view_detail,
+    ),
+    edit(
+        "stair_storeys",
+        "Separate Storeys",
+        &[],
+        "{id} makes multistorey stair `id` a stair for each storey it climbs, each on its own level up to the next, so any one \
+         of them can be changed apart from the others. The first stays stair `id`; the answer lists the others. The stairs are \
+         as they were, storey by storey",
+        stair_storeys,
+    ),
+    edit(
+        "stair_display",
+        "Stair Display",
+        &[],
+        "{view, below?, same?, above?, by_type?: true} how stairs show in a plan view, in place of what each stair's type says: \
+         `below`, `same` and `above` for the level under a stair, its own level and the level it climbs to, each \
+         break_visible_hidden, no_break_visible, below_visible, above_visible, no_break_hidden, above_hidden, below_hidden, \
+         break_all_visible, break_hidden_visible or not_shown; one not given stays as the view has it (as the usual type has it, the \
+         first time). `by_type`: true goes back to each type's own. Without any it only says what the view has",
+        stair_display,
     ),
     edit(
         "visual_style",
@@ -1712,7 +1746,9 @@ other_files(
         &[],
         "{id} makes stair `id`, made by its runs, landings and winders, a stair drawn by hand: a `sketch` of its risers, each a \
          line where it is, the landings and winders the outlines of the treads after them. It looks as it did; from then on any \
-         riser is moved by its ends (`modify` with `sketch`), and it has no `landings`. A spiral is not converted yet",
+         riser is moved by its ends (`modify` with `sketch`), and it has no `landings`. A spiral converts too, each tread its \
+         wedge. One round an arc, or with a landing at its foot, isn't converted yet. With `back`: true, a stair converted \
+         this way is made the stair it was again (what was done to its sketch since is lost)",
         stair_sketch,
     ),
     edit(
@@ -1722,7 +1758,8 @@ other_files(
         "{id, headroom?} cuts the floors over stair `id` open where they leave less than the headroom over its steps (the \
          building code's, or `headroom` mm): a shaft through each such floor alone, round the steps short of it. The reply \
          names the `floors` and the `shafts` made; none when the stair has its headroom. The shafts are elements of their own: \
-         they stay where they are when the stair changes, to be deleted and made again",
+         they stay where they are when the stair changes, to be deleted and made again. `margin` (mm, 0 to 2000) makes each opening \
+         reach that far past the steps all round",
         stair_opening,
     ),
     edit(
@@ -2805,7 +2842,7 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
         }
         Element::Stair(st) => {
             let (n, each, length) = m.flight(st);
-            let (bottom, top) = m.span(st.level, 0.0, st.top_level, st.height);
+            let (bottom, top) = m.stair_span(st);
             extra.insert("height".into(), json!(top - bottom));
             extra.insert("risers".into(), json!(n));
             extra.insert("riser_height".into(), json!(hundredth(each)));
@@ -2816,6 +2853,9 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
             // Its location line and how far it stands from it, said when they are the usual ones too.
             extra.insert("line".into(), json!(st.line));
             extra.insert("offset".into(), json!(st.offset));
+            extra.insert("base_offset".into(), json!(st.base_offset));
+            extra.insert("top_offset".into(), json!(st.top_offset));
+            extra.insert("lock_going".into(), json!(st.lock_going));
             if st.multistorey {
                 let storeys: Vec<Value> = (m.storeys(st).into_iter())
                     .map(|(level, base, rise)| {
@@ -8173,6 +8213,7 @@ fn nearest_reference(m: &Model, level: Guid, p: P2, keep: impl Fn(Line) -> bool,
         Some(Element::Door(o) | Element::Window(o)) => cut(m.wall(o.host)),
         Some(Element::Column(c) | Element::StructuralColumn(c)) => m.column_cut_by(c, level),
         Some(Element::Grid(_)) => true,
+        Some(Element::Stair(st)) => st.level == level || st.top_level == Some(level),
         _ => false,
     })
     .filter_map(|id| m.reference_at(id, p, &keep))
@@ -9009,9 +9050,8 @@ fn stair(s: &mut Session, p: &Value) -> R {
     // Drawn along a path, it climbs the way its first segment goes.
     let path: Vec<crate::model::PathSeg> = match p.get("path") {
         v if absent(v) => Vec::new(),
-        Some(v @ Value::Array(a)) if a.len() <= 200 => {
-            serde_json::from_value(v.clone()).map_err(|e| bad(c, format!("`path` is [{{to: [x,y], landing?, arc?, winders?}}, …]: {e}")))?
-        }
+        Some(v @ Value::Array(a)) if a.len() <= 200 => serde_json::from_value(v.clone())
+            .map_err(|e| bad(c, format!("`path` is [{{to: [x,y], landing?, arc?, winders?, width?}}, …]: {e}")))?,
         _ => return Err(bad(c, "`path` is a list of at most 200 segments [{to: [x,y], landing?, arc?, winders?}, …]")),
     };
     let angle = match path.first() {
@@ -9034,6 +9074,13 @@ fn stair(s: &mut Session, p: &Value) -> R {
         riser: dim("riser", m.stair_rules().riser)?,
         tread: dim("tread", m.stair_rules().going)?,
         landings: if auto { Vec::new() } else { landings_param(c, p)? },
+        base_offset: dim("base_offset", 0.0)?,
+        top_offset: dim("top_offset", 0.0)?,
+        lock_going: match p.get("lock_going") {
+            v if absent(v) => true,
+            _ => flag(c, p, "lock_going")?,
+        },
+        unsketched: None,
         line: match p.get("line") {
             v if absent(v) => Default::default(),
             Some(v) => serde_json::from_value(v.clone())
@@ -9042,6 +9089,11 @@ fn stair(s: &mut Session, p: &Value) -> R {
         },
         offset: dim("offset", 0.0)?,
         multistorey: flag(c, p, "multistorey")?,
+        edges: match p.get("edges") {
+            v if absent(v) => Vec::new(),
+            Some(v) => serde_json::from_value(v.clone()).map_err(|e| bad(c, format!("`edges` is [{{landing, normal, by}}, …]: {e}")))?,
+            None => Vec::new(),
+        },
         path,
         sketch,
         spiral: match p.get("spiral") {
@@ -10203,6 +10255,71 @@ fn view_detail(s: &mut Session, p: &Value) -> R {
     let m = &s.model;
     let now = graphics::graphics_of(m, view).map(|g| g.resolved(m).detail).unwrap_or_default();
     Ok(json!({"view": view, "name": m.view_name(view), "detail": now}))
+}
+
+fn stair_storeys(s: &mut Session, p: &Value) -> R {
+    let c = "stair_storeys";
+    only(c, p, &["id"])?;
+    let m = &s.model;
+    let id = id_opt(c, p, "id")?.and_then(|g| m.elements.id(g)).ok_or_else(|| bad(c, "`id`, a stair, is required"))?;
+    let Some(Element::Stair(st)) = m.elements.get(id) else { return Err(bad(c, format!("{id} is not a stair"))) };
+    let storeys = m.storeys(st);
+    if !st.multistorey || storeys.len() < 2 {
+        return Err(bad(c, format!("stair {id} climbs one storey: there is nothing to separate")));
+    }
+    let levels: Vec<Guid> = storeys.iter().map(|(g, ..)| *g).collect();
+    let mut each: Vec<Stair> = Vec::new();
+    for (i, (level, _, _)) in storeys.iter().enumerate() {
+        let top = levels.get(i + 1).copied().or(st.top_level);
+        let last = i + 1 == storeys.len();
+        each.push(Stair {
+            level: *level,
+            top_level: top,
+            multistorey: false,
+            base_offset: if i == 0 { st.base_offset } else { 0.0 },
+            top_offset: if last { st.top_offset } else { 0.0 },
+            ..st.clone()
+        });
+    }
+    let mut made = Vec::new();
+    let mut it = each.into_iter();
+    if let (Some(first), Some(Element::Stair(old))) = (it.next(), s.model_mut().elements.get_mut(id)) {
+        *old = first;
+    }
+    for st in it {
+        made.push(s.model_mut().insert(Element::Stair(st)));
+    }
+    Ok(json!({"id": id, "made": made}))
+}
+
+fn stair_display(s: &mut Session, p: &Value) -> R {
+    let c = "stair_display";
+    let view = scaled_view(c, &s.model, p)?;
+    let by_type = match p.get("by_type") {
+        v if absent(v) => false,
+        _ => flag(c, p, "by_type")?,
+    };
+    let given: Vec<(&str, &Value)> =
+        ["below", "same", "above"].into_iter().filter_map(|k| p.get(k).filter(|v| !v.is_null()).map(|v| (k, v))).collect();
+    if by_type || !given.is_empty() {
+        own_to_set(c, &s.model, view, Group::Categories, "stair display")?;
+    }
+    if by_type {
+        change_graphics(s, view, |g| g.stairs = None);
+    } else if !given.is_empty() {
+        let was = graphics::graphics_of(&s.model, view).and_then(|g| g.stairs).unwrap_or_default();
+        let mut all = serde_json::to_value(was).map_err(|e| bad(c, e))?;
+        for (k, v) in given {
+            all[k] = v.clone();
+        }
+        let now: crate::model::PlanShows = serde_json::from_value(all).map_err(|_| {
+            bad(c, "`below`, `same` and `above` are each break_visible_hidden, no_break_visible, below_visible, above_visible, no_break_hidden, above_hidden, below_hidden, break_all_visible, break_hidden_visible or not_shown")
+        })?;
+        change_graphics(s, view, |g| g.stairs = Some(now));
+    }
+    let m = &s.model;
+    let now = graphics::graphics_of(m, view).and_then(|g| g.resolved(m).stairs);
+    Ok(json!({"view": view, "name": m.view_name(view), "stairs": now.map_or(json!("by type"), |w| json!(w))}))
 }
 
 /// What to call element `id` in a message: a view's or a sheet's name, else its category and id.
@@ -11456,6 +11573,95 @@ fn edit_type(s: &mut Session, p: &Value) -> R {
                 nosing: part("nosing", old.nosing)?,
                 stringer_width: part("stringer_width", old.stringer_width)?,
                 stringer_depth: part("stringer_depth", old.stringer_depth)?,
+                // Its rules and how it shows in plan: what is given is merged into what it has, null taking a rule off.
+                rules: match p.get("rules") {
+                    v if absent(v) => old.rules,
+                    Some(v) if v.is_object() => {
+                        let mut all = serde_json::to_value(old.rules).map_err(|e| bad(c, e))?;
+                        merge(&mut all, v);
+                        serde_json::from_value(all).map_err(|e| bad(c, format!("`rules` is {{riser_min, riser_max, going_min, going_max, step_min, step_max, ratio_min, ratio_max, sum_min, sum_max, pitch_min, pitch_max, landing_min, walk_offset_min}}, each a number or null: {e}")))?
+                    }
+                    _ => return Err(bad(c, "`rules` is the rules to set, by name: {riser_max: 180, pitch_max: null, …}")),
+                },
+                plan: match p.get("plan") {
+                    v if absent(v) => old.plan,
+                    Some(v) if v.is_object() => {
+                        let mut all = serde_json::to_value(old.plan).map_err(|e| bad(c, e))?;
+                        merge(&mut all, v);
+                        serde_json::from_value(all).map_err(|e| bad(c, format!("`plan` is {{below, same, above}}, each break_visible_hidden, no_break_visible, below_visible, above_visible, no_break_hidden, above_hidden, below_hidden, break_all_visible, break_hidden_visible or not_shown: {e}")))?
+                    }
+                    _ => return Err(bad(c, "`plan` is how it shows on each plan: {below, same, above}")),
+                },
+                numbers: match p.get("numbers") {
+                    v if absent(v) => old.numbers,
+                    _ => flag(c, p, "numbers")?,
+                },
+                line_visible: string(c, p, "line_visible")?.unwrap_or(old.line_visible),
+                line_hidden: string(c, p, "line_hidden")?.unwrap_or(old.line_hidden),
+                fill: string(c, p, "fill")?.unwrap_or(old.fill),
+                profile: match p.get("profile") {
+                    v if absent(v) => old.profile,
+                    Some(v) => serde_json::from_value(v.clone())
+                        .map_err(|_| bad(c, "`profile` is \"square\" or \"slanted\" (the riser leaning back by the `nosing`)"))?,
+                    None => old.profile,
+                },
+                start_tread: match p.get("start_tread") {
+                    v if absent(v) => old.start_tread,
+                    _ => flag(c, p, "start_tread")?,
+                },
+                end_tread: match p.get("end_tread") {
+                    v if absent(v) => old.end_tread,
+                    _ => flag(c, p, "end_tread")?,
+                },
+                carriage_width: part("carriage_width", old.carriage_width)?,
+                carriage_depth: part("carriage_depth", old.carriage_depth)?,
+                post: part("post", old.post)?,
+                material: string(c, p, "material")?.unwrap_or(old.material),
+                tread_cover: part("tread_cover", old.tread_cover)?,
+                riser_cover: part("riser_cover", old.riser_cover)?,
+                cover_nosing: part("cover_nosing", old.cover_nosing)?,
+                cover_side: part("cover_side", old.cover_side)?,
+                cover_material: string(c, p, "cover_material")?.unwrap_or(old.cover_material),
+                construction: match p.get("construction") {
+                    v if absent(v) => old.construction,
+                    Some(v) => Some(serde_json::from_value(v.clone()).map_err(|_| {
+                        bad(c, "`construction` is \"monolithic\", \"stringers\", \"carriage\" (one stringer down the middle) or \"treads\" (treads fixed in a wall)")
+                    })?),
+                    None => old.construction,
+                },
+                landing_stringers: match p.get("landing_stringers") {
+                    v if absent(v) => old.landing_stringers,
+                    _ => flag(c, p, "landing_stringers")?,
+                },
+                finish_profile: match p.get("finish_profile") {
+                    v if absent(v) => old.finish_profile,
+                    Some(v) => serde_json::from_value(v.clone())
+                        .map_err(|_| bad(c, "`finish_profile` is \"square\", \"rounded\", \"chamfered\" or \"bullnose\""))?,
+                    None => old.finish_profile,
+                },
+                arrow: match p.get("arrow") {
+                    v if absent(v) => old.arrow,
+                    Some(v) => serde_json::from_value(v.clone())
+                        .map_err(|_| bad(c, "`arrow` is \"open\", \"filled\", \"hollow\", \"tick\" or \"none\""))?,
+                    None => old.arrow,
+                },
+                walk_start: match p.get("walk_start") {
+                    v if absent(v) => old.walk_start,
+                    Some(v) => {
+                        serde_json::from_value(v.clone()).map_err(|_| bad(c, "`walk_start` is \"none\", \"dot\" or \"circle\""))?
+                    }
+                    None => old.walk_start,
+                },
+                walk_rounded: match p.get("walk_rounded") {
+                    v if absent(v) => old.walk_rounded,
+                    _ => flag(c, p, "walk_rounded")?,
+                },
+                cut_mark: match p.get("cut_mark") {
+                    v if absent(v) => old.cut_mark,
+                    Some(v) => serde_json::from_value(v.clone())
+                        .map_err(|_| bad(c, "`cut_mark` is \"zigzag\", \"double\", \"straight\" or \"wave\""))?,
+                    None => old.cut_mark,
+                },
             };
             m.types.stair.insert(name.clone(), t.clone());
             json!(t)
@@ -13528,6 +13734,8 @@ fn building_code(s: &mut Session, p: &Value) -> R {
     let set = match p.get("set") {
         v if absent(v) => None,
         Some(Value::String(t)) if names.contains(t) => Some(t.clone()),
+        // The one entry the two Brazilian standards had before they were told apart: NBR 9050's now.
+        Some(Value::String(t)) if t == "nbr" => Some("nbr-9050".to_string()),
         Some(v) => return Err(bad(c, format!("`set` is one of {}, not {v}", names.join(", ")))),
         None => None,
     };
@@ -13570,6 +13778,12 @@ fn building_code(s: &mut Session, p: &Value) -> R {
     if let Some(name) = save {
         let from = code.as_deref().and_then(|k| s.model.code(k)).unwrap_or(codes::generic());
         let based_on = if from.based_on.is_empty() { from.code.clone() } else { from.based_on.clone() };
+        let stairs = own.take().unwrap_or_else(|| from.stairs.clone());
+        // A rule kept is still from where the code it came from says; one changed is the project's.
+        let mut sources = from.sources.clone();
+        for rule in stairs.changed(&from.stairs) {
+            sources.insert(rule, format!("{name}: the project's own number"));
+        }
         let new = codes::BuildingCode {
             code: name.clone(),
             name: name.clone(),
@@ -13577,7 +13791,9 @@ fn building_code(s: &mut Session, p: &Value) -> R {
             references: from.references.clone(),
             note: format!("The project's own, based on {}.", codes::code(&based_on).map_or(based_on.as_str(), |k| k.name.as_str())),
             based_on,
-            stairs: own.take().unwrap_or_else(|| from.stairs.clone()),
+            sources,
+            checked: String::new(),
+            stairs,
         };
         kept.retain(|k| k.code != name);
         kept.push(new);
@@ -13678,17 +13894,46 @@ fn building_code_import(s: &mut Session, p: &Value) -> R {
 /// `stair_sketch`: a stair made by its runs and turns becomes one drawn by hand, every riser a line of its own.
 fn stair_sketch(s: &mut Session, p: &Value) -> R {
     let c = "stair_sketch";
-    only(c, p, &["id"])?;
+    only(c, p, &["id", "back"])?;
     let m = &s.model;
     let id = id_opt(c, p, "id")?.and_then(|g| m.elements.id(g)).ok_or_else(|| bad(c, "`id`, a stair, is required"))?;
     let Some(Element::Stair(st)) = m.elements.get(id) else { return Err(bad(c, format!("{id} is not a stair"))) };
+    // Back: the stair it was before it was converted.
+    if flag(c, p, "back")? {
+        let Some(was) = st.unsketched.clone() else {
+            return Err(bad(c, format!("stair {id} wasn't converted from a stair laid out, so there is nothing to go back to")));
+        };
+        let mut made = st.clone();
+        made.sketch.clear();
+        made.unsketched = None;
+        let crate::model::Unsketched { start, angle, landings, path, spiral, line, offset } = *was;
+        (made.start, made.angle, made.landings, made.path, made.spiral, made.line, made.offset) =
+            (start, angle, landings, path, spiral, line, offset);
+        if let Some(Element::Stair(old)) = s.model_mut().elements.get_mut(id) {
+            *old = made;
+        }
+        return Ok(json!({"id": id, "back": true}));
+    }
     if !st.sketch.is_empty() {
         return Err(bad(c, format!("stair {id} is drawn by hand already")));
     }
     let Some(steps) = stairs::as_sketch(m, st) else {
-        return Err(bad(c, format!("stair {id} can't be made a sketch: a spiral is not converted yet")));
+        return Err(bad(
+            c,
+            format!("stair {id} can't be made a sketch yet: one round an arc, or with a landing at its foot, isn't converted"),
+        ));
     };
     let mut made = st.clone();
+    made.unsketched = Some(Box::new(crate::model::Unsketched {
+        start: st.start,
+        angle: st.angle,
+        landings: st.landings.clone(),
+        path: st.path.clone(),
+        spiral: st.spiral,
+        line: st.line,
+        offset: st.offset,
+    }));
+    made.spiral = None;
     made.sketch = steps
         .into_iter()
         .map(|s| crate::model::SketchStep { riser: s.riser.map(micron), outline: s.outline.into_iter().map(micron).collect() })
@@ -13710,10 +13955,16 @@ fn stair_sketch(s: &mut Session, p: &Value) -> R {
 /// `stair_opening`: the floors over a stair cut open where they leave less than the headroom.
 fn stair_opening(s: &mut Session, p: &Value) -> R {
     let c = "stair_opening";
-    only(c, p, &["id", "headroom"])?;
+    only(c, p, &["id", "headroom", "margin"])?;
     let m = &s.model;
     let id = id_opt(c, p, "id")?.and_then(|g| m.elements.id(g)).ok_or_else(|| bad(c, "`id`, a stair, is required"))?;
     let Some(Element::Stair(st)) = m.elements.get(id) else { return Err(bad(c, format!("{id} is not a stair"))) };
+    // How far the opening reaches past the steps under it, all round.
+    let margin = match num(c, p, "margin")? {
+        Some(x) if (0.0..=2000.0).contains(&x) => x,
+        Some(x) => return Err(bad(c, format!("`margin` is 0 to 2000 mm, not {x}"))),
+        None => 0.0,
+    };
     let least = match num(c, p, "headroom")? {
         Some(h) if (0.0..=10_000.0).contains(&h) => h,
         Some(h) => return Err(bad(c, format!("`headroom` is 0 to 10000 mm, not {h}"))),
@@ -13729,6 +13980,9 @@ fn stair_opening(s: &mut Session, p: &Value) -> R {
         made.extend(stairs::united(&rings).into_iter().map(|mut boundary| {
             if geom::area(&boundary) < 0.0 {
                 boundary.reverse();
+            }
+            if margin > 0.0 {
+                boundary = geom::grow(&boundary, margin);
             }
             let boundary = boundary.into_iter().map(micron).collect();
             Shaft {

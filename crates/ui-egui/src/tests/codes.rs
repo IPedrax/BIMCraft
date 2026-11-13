@@ -61,8 +61,8 @@ fn a_code_changed_is_custom_and_is_saved_under_a_name_and_deleted() {
     press(&mut h, "Building Codes");
     {
         let d = h.state_mut().codes_dialog.as_mut().unwrap();
-        d.selected = "nbr".into();
-        d.rules = serde_json::to_value(&bimcraft_core::codes::code("nbr").unwrap().stairs).unwrap().as_object().unwrap().clone();
+        d.selected = "nbr-9050".into();
+        d.rules = serde_json::to_value(&bimcraft_core::codes::code("nbr-9050").unwrap().stairs).unwrap().as_object().unwrap().clone();
     }
     h.run();
     assert!(h.query_by_label("Custom").is_none(), "the code's own rules");
@@ -75,7 +75,7 @@ fn a_code_changed_is_custom_and_is_saved_under_a_name_and_deleted() {
     let m = &h.state().session.model;
     assert_eq!(
         (m.building_code().code.as_str(), m.building_code().based_on.as_str(), m.stair_rules().width_min),
-        ("City Hall", "nbr", 1100.0)
+        ("City Hall", "nbr-9050", 1100.0)
     );
     assert_eq!(h.state().codes_dialog.as_ref().unwrap().selected, "City Hall");
     assert!(h.query_by_label("Custom").is_none(), "saved, it is a code like the others");
@@ -89,7 +89,7 @@ fn a_code_changed_is_custom_and_is_saved_under_a_name_and_deleted() {
     press(&mut h, "Delete");
     let m = &h.state().session.model;
     assert!(m.building_codes.is_empty());
-    assert_eq!((m.building_code().code.as_str(), m.stair_rules().width_min), ("nbr", 1100.0), "its rules stay, as the project's own");
+    assert_eq!((m.building_code().code.as_str(), m.stair_rules().width_min), ("nbr-9050", 1100.0), "its rules stay, as the project's own");
 }
 
 #[test]
@@ -231,12 +231,13 @@ fn the_building_codes_dialog_writes_lengths_in_the_project_s_units() {
     h.run();
     press(&mut h, "Manage");
     press(&mut h, "Building Codes");
-    // A rule changed: the code's own number beside it, seven inches as the project writes a length.
+    // A rule changed: the code's own number beside it, seven inches as the project writes a length, on the row of the
+    // riser's least and most.
     h.state_mut().codes_dialog.as_mut().unwrap().rules.insert("riser_max".into(), json!(200.0));
     h.run();
     let code = bimcraft_core::units::Units::Metres.with_unit(177.8);
     assert!(code.ends_with(" m"), "{code}");
-    assert!(h.query_by_label(&format!("Changed: the code says {code}")).is_some(), "{code}");
+    assert!(h.query_by_label(&format!("Changed: the code says max. {code}")).is_some(), "{code}");
 }
 
 #[test]
@@ -263,7 +264,7 @@ fn the_stair_tool_draws_a_stair_along_the_line_clicked_flights_and_landings() {
     press(&mut h, "Steps");
     click(&mut h, P2(3500.0, 400.0));
     assert!(ids(&h, "stair").is_empty(), "still short of its top");
-    // Enter finishes it: the last flight takes the risers left.
+    // Enter finishes it as drawn: what was clicked stays, and its top is under Level 2 by the risers not drawn.
     h.key_press(Key::Enter);
     h.run();
     let st = ids(&h, "stair");
@@ -272,11 +273,13 @@ fn the_stair_tool_draws_a_stair_along_the_line_clicked_flights_and_landings() {
         field(&h, st[0], "path"),
         json!([{"to": [1000.0, 2400.0]}, {"to": [3500.0, 2400.0], "landing": true}, {"to": [3500.0, 400.0]}])
     );
-    assert_eq!((field(&h, st[0], "risers"), field(&h, st[0], "landings")), (json!(17), Value::Null));
+    assert_eq!((field(&h, st[0], "risers"), field(&h, st[0], "landings")), (json!(10), Value::Null));
+    let top = field(&h, st[0], "top_offset").as_f64().unwrap();
+    assert!((top - 7.0 * 3000.0 / 17.0).abs() < 1e-6, "{top}: below Level 2 by the risers not drawn");
     let m = &h.state().session.model;
     let Some(Element::Stair(made)) = m.elements.get(st[0]) else { panic!("no stair") };
     let l = bimcraft_core::stairs::stair(m, made);
-    assert_eq!((l.runs.len(), l.pads.len(), l.runs.iter().map(|r| r.risers).sum::<u32>()), (2, 1, 17));
+    assert_eq!((l.runs.len(), l.pads.len(), l.runs.iter().map(|r| r.risers).sum::<u32>()), (2, 1, 10));
     assert_eq!(h.state().tool, Tool::Stair(Vec::new()), "ready for the next one");
 }
 

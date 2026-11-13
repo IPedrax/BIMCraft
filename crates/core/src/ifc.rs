@@ -69,12 +69,24 @@ const CONNECTOR: u64 = 55;
 const CONNECTOR_DEFINES: u64 = 56;
 const TYPE_MATERIALS: u64 = 57;
 const USAGE_MATERIALS: u64 = 58;
+const STAIR_COVERS: u64 = 59;
+const STAIR_MEMBERS: u64 = 60;
+const STAIR_PSET: u64 = 61;
+const STAIR_PSET_DEFINES: u64 = 62;
+const FLIGHT_PSET: u64 = 63;
+const FLIGHT_PSET_DEFINES: u64 = 64;
+const STAIR_OWN: u64 = 65;
+const STAIR_OWN_DEFINES: u64 = 66;
+const STAIR_MATERIALS: u64 = 67;
 
 /// The property set an element's values of the project's parameters go in.
 pub const PARAMETERS: &str = "Project Parameters";
 
 /// The property set a run's justification and category go in (its system is an IfcSystem it is assigned to).
 pub const RUN: &str = "BIMCraft_Run";
+/// BIMCraft's own property set on a stair: the stair as BIMCraft holds it (its path, spiral, sketch, winders, landings),
+/// and its type, so an import makes it a stair again rather than measuring its solids.
+pub const STAIR: &str = "BIMCraft_Stair";
 
 /// The property set a lofted mass records how its footprint and its top outline pair up in, corner for corner (the body is
 /// a closed face set that doesn't say): `Loft`, JSON `{bottom, top}`.
@@ -94,6 +106,65 @@ pub const PHASING: &str = "BIMCraft_Phasing";
 pub const IMPLIED: &str = "Implied: no phase is set for it, so it was made in the first phase";
 
 /// What a stair's or a ramp's IFC type is, by its landings: `kind` is STAIR or RAMP.
+/// A stair's predefined type, as IFC4 names the shapes: from its landings, its path's turns, or its spiral.
+fn stair_shape(st: &crate::model::Stair) -> String {
+    if st.spiral.is_some() {
+        return ".SPIRAL_STAIR.".into();
+    }
+    if !st.path.is_empty() {
+        if st.path.iter().any(|p| p.arc != 0.0) {
+            return ".CURVED_RUN_STAIR.".into();
+        }
+        // The turns between its flights: those at both ends of a landing are one turn.
+        let mut turns: Vec<f64> = Vec::new();
+        let mut from = st.start;
+        let mut way: Option<f64> = None;
+        let mut pending = 0.0;
+        for p in &st.path {
+            let d = p.to - from;
+            if d.length() < 1e-6 {
+                continue;
+            }
+            let a = d.1.atan2(d.0).to_degrees();
+            if let Some(w) = way {
+                pending += (a - w + 540.0).rem_euclid(360.0) - 180.0;
+            }
+            if !p.landing {
+                if pending.abs() > 1.0 {
+                    turns.push(pending);
+                }
+                pending = 0.0;
+            }
+            way = Some(a);
+            from = p.to;
+        }
+        if st.path.iter().any(|p| p.winders > 0) {
+            return match turns.len() {
+                1 => ".QUARTER_WINDING_STAIR.".into(),
+                2 if turns.windows(2).all(|p| p.first().map(|t| t.signum()) == p.get(1).map(|t| t.signum())) => {
+                    ".HALF_WINDING_STAIR.".into()
+                }
+                _ => ".NOTDEFINED.".into(),
+            };
+        }
+        let turned: Vec<crate::model::Landing> =
+            turns.iter().map(|t| crate::model::Landing { turn: (t / 90.0).round() * 90.0, ..Default::default() }).collect();
+        let landings = st.path.iter().filter(|p| p.landing).count();
+        if turned.is_empty() && landings > 0 {
+            return ".TWO_STRAIGHT_RUN_STAIR.".into();
+        }
+        return shape_of(&turned, "STAIR");
+    }
+    if st.landings.iter().any(|l| l.winders > 0) {
+        return match st.landings.len() {
+            1 => ".QUARTER_WINDING_STAIR.".into(),
+            2 => ".HALF_WINDING_STAIR.".into(),
+            _ => ".NOTDEFINED.".into(),
+        };
+    }
+    shape_of(&st.landings, "STAIR")
+}
+
 fn shape_of(landings: &[crate::model::Landing], kind: &str) -> String {
     let turns: Vec<f64> = landings.iter().map(|l| l.turn).collect();
     let shape = match turns.as_slice() {
@@ -289,6 +360,11 @@ impl Step {
     /// Part `i` of element `id`, for its GlobalId.
     fn part(&self, id: Id, i: usize) -> u64 {
         mix(self.own.get(&id).map_or(id, |g| fold(*g))).wrapping_add(i as u64)
+    }
+
+    /// A property of `kind` (an IFC measure or value type) whose value is `value` as STEP writes it.
+    fn typed_property(&mut self, name: &str, kind: &str, value: &str) -> u64 {
+        self.add(format!("IFCPROPERTYSINGLEVALUE({},$,{kind}({value}),$)", s(name)))
     }
 
     /// A text property, `note` describing it.
@@ -575,8 +651,9 @@ impl Step {
         self.shell(&b, &t)
     }
 
-    /// Landings: each a slab from `base` up to its top, placed in `at`.
-    fn landings(&mut self, l: &stairs::Layout, at: u64, base: f64, id: Id) -> Vec<u64> {
+    /// Landings: each a slab from `base` up to its top, placed in `at`; and the treads that are no run's (a curved
+    /// flight's, winders, a spiral's, one level with a floor), each a flight of one tread, of the kind `treads` says.
+    fn landings(&mut self, l: &stairs::Layout, at: u64, base: f64, id: Id, treads: &str) -> Vec<u64> {
         l.pads
             .iter()
             .enumerate()
@@ -584,6 +661,10 @@ impl Step {
                 let pat = self.place(Some(at), (0.0, 0.0, 0.0), None);
                 let profile = self.profile(&p.ring, &[]);
                 let shape = self.body(profile, 0.0, p.z - base, &[]);
+                if p.tread {
+                    let guid = self.guid(FLIGHT, self.part(id, 10_000 + i));
+                    return self.add(format!("IFCSTAIRFLIGHT({guid},$,'Tread',$,$,#{pat},#{shape},$,1,1,$,$,.{treads}.)"));
+                }
                 self.add(format!("IFCSLAB({},$,'Landing',$,$,#{pat},#{shape},$,.LANDING.)", self.guid(LANDING, self.part(id, i))))
             })
             .collect()
@@ -1182,33 +1263,201 @@ pub fn export(m: &Model) -> String {
                 let Some(&(_, storey)) = storeys.get(&st.level) else { continue };
                 let (base, l) = (m.elevation(st.level), stairs::stair(m, st));
                 let at = w.place(Some(storey), (0.0, 0.0, 0.0), None);
-                let ent =
-                    w.add(format!("IFCSTAIR({},$,'Stair',$,$,#{at},$,'{id}',{})", w.guid(ELEMENT, id), shape_of(&st.landings, "STAIR")));
+                let ent = w.add(format!("IFCSTAIR({},$,'Stair',$,$,#{at},$,'{id}',{})", w.guid(ELEMENT, id), stair_shape(st)));
                 contained.entry(st.level).or_default().push(ent);
                 products.insert(id, ent);
-                // Its flights, each tread a block from the floor up to it, as in 3D; its landings.
+                let (risers, riser, _) = m.flight(st);
+                let kind = m.types.stair.get(&st.type_name);
+                let nosing = kind.map_or(0.0, stairs::reach);
+                let waist = kind.map_or(0.0, |t| t.slab());
+                let held = crate::codes::limits(m, st).rules;
+                let treads = if st.spiral.is_some() {
+                    "SPIRAL"
+                } else if st.path.iter().any(|s| s.arc != 0.0) {
+                    "CURVED"
+                } else {
+                    "WINDER"
+                };
                 let mut parts = Vec::new();
-                for (i, run) in l.runs.iter().enumerate() {
-                    // Each riser of this run: a storey of its own height has its own.
-                    let each = if run.risers > 0 { (run.z.1 - run.z.0) / f64::from(run.risers) } else { 0.0 };
-                    let fat = w.place(Some(at), (run.start.0, run.start.1, run.z.0 - base), Some(run.u));
-                    let steps: Vec<(u64, f64, f64)> = (1..run.risers)
-                        .map(|k| {
-                            let k = f64::from(k);
-                            (w.rectangle(P2((k - 0.5) * st.tread, 0.0), P2(st.tread, run.width)), base - run.z.0, run.z.0 - base + k * each)
-                        })
-                        .collect();
-                    let shape = w.bodies(&steps, &[], None);
-                    parts.push(w.add(format!(
-                        "IFCSTAIRFLIGHT({},$,'Flight',$,$,#{fat},#{shape},$,{},{},{},{},.STRAIGHT.)",
-                        w.guid(FLIGHT, w.part(id, i)),
-                        run.risers,
-                        run.risers.saturating_sub(1),
-                        real(each),
-                        real(st.tread)
-                    )));
+                let mut flights = Vec::new();
+                match stairs::parts_tagged(m, st) {
+                    // Built as its type builds it: each solid in the flight, the landing or the stringers it is part of.
+                    Some(solids) => {
+                        use stairs::PartKind as K;
+                        let inside = |ring: &[P2], q: P2| geom::contains(ring, q);
+                        let mut of_run: Vec<Vec<u64>> = vec![Vec::new(); l.runs.len()];
+                        let mut of_pad: Vec<Vec<u64>> = vec![Vec::new(); l.pads.len()];
+                        let mut members = Vec::new();
+                        for (k, ring, bottom, top) in &solids {
+                            let c = geom::centroid(ring);
+                            let brep = w.prism(ring, bottom, top, base);
+                            if *k == K::Supports {
+                                members.push(brep);
+                                continue;
+                            }
+                            // Its flight: the run it lies over (a nosing reaches a little past it), else the landing or tread under it.
+                            let run = l.runs.iter().position(|r| {
+                                let along = (c - r.start).dot(r.u);
+                                let across = (c - r.start).dot(r.u.perp()).abs();
+                                (-r.going() * 0.5..=r.length + 1.0).contains(&along) && across <= r.width / 2.0 + 1.0 && *k != K::Landings
+                            });
+                            let pad = l.pads.iter().position(|p| inside(&p.ring, c));
+                            match (run, pad) {
+                                (Some(i), _) => of_run.get_mut(i).map(|v| v.push(brep)),
+                                (None, Some(j)) => of_pad.get_mut(j).map(|v| v.push(brep)),
+                                (None, None) => of_run.first_mut().or(of_pad.first_mut()).map(|v| v.push(brep)),
+                            };
+                        }
+                        for (i, (run, breps)) in l.runs.iter().zip(of_run).enumerate() {
+                            if breps.is_empty() {
+                                continue;
+                            }
+                            let each = if run.risers > 0 { (run.z.1 - run.z.0) / f64::from(run.risers) } else { 0.0 };
+                            let going = if run.risers > 1 { run.going() } else { st.tread };
+                            let shape = w.solid(&breps, &[]);
+                            let fat = w.place(Some(at), (0.0, 0.0, 0.0), None);
+                            let f = w.add(format!(
+                                "IFCSTAIRFLIGHT({},$,{},$,$,#{fat},#{shape},$,{},{},{},{},.STRAIGHT.)",
+                                w.guid(FLIGHT, w.part(id, i)),
+                                s(&format!("Flight {}", i + 1)),
+                                run.risers,
+                                run.risers.saturating_sub(1),
+                                real(each),
+                                real(going)
+                            ));
+                            flights.push((f, run.risers, each, going, run.length, w.part(id, i)));
+                            parts.push(f);
+                        }
+                        for (j, (pad, breps)) in l.pads.iter().zip(of_pad).enumerate() {
+                            if breps.is_empty() {
+                                continue;
+                            }
+                            let shape = w.solid(&breps, &[]);
+                            let pat = w.place(Some(at), (0.0, 0.0, 0.0), None);
+                            parts.push(if pad.tread {
+                                let guid = w.guid(FLIGHT, w.part(id, 10_000 + j));
+                                w.add(format!("IFCSTAIRFLIGHT({guid},$,'Tread',$,$,#{pat},#{shape},$,1,1,{},$,.{treads}.)", real(riser)))
+                            } else {
+                                w.add(format!("IFCSLAB({},$,'Landing',$,$,#{pat},#{shape},$,.LANDING.)", w.guid(LANDING, w.part(id, j))))
+                            });
+                        }
+                        if !members.is_empty() {
+                            let shape = w.solid(&members, &[]);
+                            let mat = w.place(Some(at), (0.0, 0.0, 0.0), None);
+                            parts.push(
+                                w.add(format!("IFCMEMBER({},$,'Stringer',$,$,#{mat},#{shape},$,.STRINGER.)", w.guid(STAIR_MEMBERS, id))),
+                            );
+                        }
+                    }
+                    // A stair of no type: each tread a block from the floor up to it, as in 3D; its landings.
+                    None => {
+                        for (i, run) in l.runs.iter().enumerate() {
+                            let each = if run.risers > 0 { (run.z.1 - run.z.0) / f64::from(run.risers) } else { 0.0 };
+                            let fat = w.place(Some(at), (run.start.0, run.start.1, run.z.0 - base), Some(run.u));
+                            let steps: Vec<(u64, f64, f64)> = (1..run.risers)
+                                .map(|k| {
+                                    let k = f64::from(k);
+                                    (
+                                        w.rectangle(P2((k - 0.5) * run.going(), 0.0), P2(run.going(), run.width)),
+                                        base - run.z.0,
+                                        run.z.0 - base + k * each,
+                                    )
+                                })
+                                .collect();
+                            let shape = w.bodies(&steps, &[], None);
+                            let going = if run.risers > 1 { run.going() } else { st.tread };
+                            let f = w.add(format!(
+                                "IFCSTAIRFLIGHT({},$,{},$,$,#{fat},#{shape},$,{},{},{},{},.STRAIGHT.)",
+                                w.guid(FLIGHT, w.part(id, i)),
+                                s(&format!("Flight {}", i + 1)),
+                                run.risers,
+                                run.risers.saturating_sub(1),
+                                real(each),
+                                real(going)
+                            ));
+                            flights.push((f, run.risers, each, going, run.length, w.part(id, i)));
+                            parts.push(f);
+                        }
+                        parts.extend(w.landings(&l, at, base, id, treads));
+                    }
                 }
-                parts.extend(w.landings(&l, at, base, id));
+                // The finishes its type lays over its treads, risers and landings: a covering, one of its parts.
+                let covers = stairs::covers(m, st);
+                if !covers.is_empty() {
+                    let breps: Vec<u64> = covers.iter().map(|(ring, bottom, top)| w.prism(ring, bottom, top, base)).collect();
+                    let shape = w.solid(&breps, &[]);
+                    let cat = w.place(Some(at), (0.0, 0.0, 0.0), None);
+                    parts.push(
+                        w.add(format!("IFCCOVERING({},$,'Stair Finish',$,$,#{cat},#{shape},$,.FLOORING.)", w.guid(STAIR_COVERS, id))),
+                    );
+                }
+                // What every IFC reader looks for on a stair (Pset_StairCommon) and on each flight (Pset_StairFlightCommon),
+                // and its flights' lengths.
+                let len = |w: &mut Step, n: &str, v: f64| w.typed_property(n, "IFCPOSITIVELENGTHMEASURE", &real(v.max(0.001)));
+                let count = |w: &mut Step, n: &str, v: u32| w.typed_property(n, "IFCCOUNTMEASURE", &v.to_string());
+                let walk = match held.walk_line {
+                    crate::codes::WalkLine::Centre => st.width / 2.0,
+                    crate::codes::WalkLine::NarrowSide => held.walk_line_offset.min(st.width),
+                };
+                let mut common = vec![
+                    count(&mut w, "NumberOfRiser", risers),
+                    count(&mut w, "NumberOfTreads", risers.saturating_sub(1)),
+                    len(&mut w, "RiserHeight", riser),
+                    len(&mut w, "TreadLength", st.tread),
+                    w.typed_property("NosingLength", "IFCLENGTHMEASURE", &real(nosing)),
+                    len(&mut w, "WalkingLineOffset", walk),
+                    len(&mut w, "RequiredHeadroom", held.headroom),
+                    w.typed_property("IsExternal", "IFCBOOLEAN", ".F."),
+                ];
+                if waist > 0.0 {
+                    common.push(len(&mut w, "WaistThickness", waist));
+                }
+                if !st.type_name.is_empty() {
+                    common.push(w.add(format!("IFCPROPERTYSINGLEVALUE('Reference',$,IFCIDENTIFIER({}),$)", s(&st.type_name))));
+                }
+                w.define(ent, "Pset_StairCommon", &common, (STAIR_PSET, STAIR_PSET_DEFINES), id);
+                for (f, n, each, going, length, key) in flights {
+                    let mut props = vec![
+                        count(&mut w, "NumberOfRiser", n),
+                        count(&mut w, "NumberOfTreads", n.saturating_sub(1)),
+                        len(&mut w, "RiserHeight", each),
+                        len(&mut w, "TreadLength", going),
+                        w.typed_property("NosingLength", "IFCLENGTHMEASURE", &real(nosing)),
+                        len(&mut w, "WalkingLineOffset", walk),
+                        len(&mut w, "Headroom", held.headroom),
+                    ];
+                    if waist > 0.0 {
+                        props.push(len(&mut w, "WaistThickness", waist));
+                    }
+                    w.define(f, "Pset_StairFlightCommon", &props, (FLIGHT_PSET, FLIGHT_PSET_DEFINES), key);
+                    w.quantities(f, "Qto_StairFlightBaseQuantities", &[("Length", "LENGTH", length)], key);
+                }
+                // Its own: the stair as BIMCraft holds it and its type, for an import to make it again.
+                let mut own = serde_json::to_value(st).unwrap_or_default();
+                if let Some(o) = own.as_object_mut() {
+                    o.remove("level");
+                    o.remove("top_level");
+                }
+                let mut props = vec![
+                    w.text_property("Definition", Some("The stair as BIMCraft holds it, as JSON"), &own.to_string()),
+                    w.typed_property("Level Elevation", "IFCLENGTHMEASURE", &real(base)),
+                ];
+                if let Some(top) = st.top_level {
+                    props.push(w.typed_property("Top Level Elevation", "IFCLENGTHMEASURE", &real(m.elevation(top))));
+                }
+                if let Some(t) = kind {
+                    props.push(w.text_property(
+                        "Type",
+                        Some("Its stair type as BIMCraft holds it, as JSON"),
+                        &serde_json::to_string(t).unwrap_or_default(),
+                    ));
+                }
+                w.define(ent, STAIR, &props, (STAIR_OWN, STAIR_OWN_DEFINES), id);
+                // Its structure's material.
+                if let Some(name) = kind.map(|t| t.material.clone()).filter(|n| !n.is_empty()) {
+                    let mat = w.material(m, &name);
+                    w.add(format!("IFCRELASSOCIATESMATERIAL({},$,$,$,(#{ent}),#{mat})", w.guid(STAIR_MATERIALS, id)));
+                }
                 wholes.insert(id, (ent, at, base, parts));
             }
             Element::Ramp(r) => {
@@ -1230,7 +1479,7 @@ pub fn export(m: &Model) -> String {
                         w.add(format!("IFCRAMPFLIGHT({},$,'Flight',$,$,#{fat},#{shape},$,.STRAIGHT.)", w.guid(FLIGHT, w.part(id, i)))),
                     );
                 }
-                parts.extend(w.landings(&l, at, base, id));
+                parts.extend(w.landings(&l, at, base, id, "STRAIGHT"));
                 wholes.insert(id, (ent, at, base, parts));
             }
             // On a stair or a ramp, it's one of its parts; see below.

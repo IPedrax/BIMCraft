@@ -251,6 +251,43 @@ impl Table<'_> {
         self.ui.painter().line_segment([pos2(r.left(), y), pos2(r.right(), y)], Stroke::new(1.0, pal().border.gamma_multiply(0.6)));
     }
 
+    /// A section's title over the groups in it (Model, Graphics), and what they are about under it: always open.
+    pub(crate) fn section(&mut self, name: &str, about: &str) {
+        self.open = true;
+        Frame::new().fill(pal().panel).inner_margin(Margin { left: 8, right: 8, top: 8, bottom: 6 }).show(self.ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.spacing_mut().item_spacing.y = 2.0;
+            ui.label(RichText::new(t(name)).font(semibold(14.0)).color(pal().accent));
+            if !about.is_empty() {
+                ui.add(Label::new(RichText::new(t(about)).color(pal().muted).small()).wrap());
+            }
+        });
+    }
+
+    /// A line of help across both columns, in small muted text.
+    pub(crate) fn note(&mut self, text: &str) {
+        self.full(|ui| {
+            ui.add(Label::new(RichText::new(text).color(pal().muted).small()).wrap());
+        });
+    }
+
+    /// A row of text typed, with what it does when hovered.
+    pub(crate) fn text_about(&mut self, label: &str, typed: &mut String, hint: &str, about: &str) {
+        self.row(label, |ui, l| {
+            ui.add(TextEdit::singleline(typed).hint_text(hint).desired_width(ui.available_width())).labelled_by(l).on_hover_text(about)
+        });
+    }
+
+    /// A row of yes or no, with what it does when hovered.
+    pub(crate) fn check_about(&mut self, label: &str, on: &mut bool, about: &str) {
+        self.row(label, |ui, l| {
+            let r = ui.checkbox(on, "");
+            let now = *on;
+            r.widget_info(|| WidgetInfo::selected(WidgetType::Checkbox, true, now, label));
+            r.labelled_by(l).on_hover_text(about)
+        });
+    }
+
     /// A row of text typed: a length, a number, a name.
     pub(crate) fn text(&mut self, label: &str, typed: &mut String, hint: &str) {
         self.row(label, |ui, l| ui.add(TextEdit::singleline(typed).hint_text(hint).desired_width(ui.available_width())).labelled_by(l));

@@ -718,7 +718,7 @@ impl Mesh {
                 if k % 8192 == 0 && cancelled() {
                     return Ok(None);
                 }
-                let Some(t) = scene.tris.get(i).filter(|t| look.shows(t.owner)) else { continue };
+                let Some(t) = scene.tris.get(i).filter(|t| look.shows_part(t.owner, t.part)) else { continue };
                 let owner = owner_of(&mut mesh, t.owner, 0);
                 mesh.wires.push(Wire { ends, owner, face: face_at(i) });
             }

@@ -605,6 +605,46 @@ impl BimApp {
                 }
                 ui.end_row();
             }
+            // How stairs show in a plan: by each one's type, or as this view says.
+            if let (Sheet::Plan(_), false) = (self.sheet, model.rare("stair").is_empty()) {
+                let note = controlled(Group::Categories);
+                let ways = crate::stairtype::plan_ways();
+                let now = shown.stairs;
+                for (i, (key, label)) in [
+                    ("below", msg!("Stairs on the Level Below")),
+                    ("same", msg!("Stairs on Their Own Level")),
+                    ("above", msg!("Stairs on the Level Above")),
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    let l = ui
+                        .label(t(label))
+                        .on_hover_text(t("How stairs show in this view. By Type follows each stair type's Floor Plan Display."));
+                    let current = now.map(|w| [w.below, w.same, w.above]).and_then(|w| w.get(i).copied());
+                    let said = current
+                        .and_then(|w| ways.iter().find(|(k, _)| *k == w).map(|(_, s)| t(s).to_string()))
+                        .unwrap_or_else(|| t("By Type").to_string());
+                    ui.add_enabled_ui(note.is_none(), |ui| {
+                        egui::ComboBox::from_id_salt(("stair-display", key))
+                            .selected_text(said)
+                            .width(ui.available_width())
+                            .show_ui(ui, |ui| {
+                                if ui.selectable_label(current.is_none(), t("By Type")).clicked() {
+                                    set = Some(("stair_display", json!({"view": view, "by_type": true})));
+                                }
+                                for (w, name) in &ways {
+                                    if ui.selectable_label(current == Some(*w), t(name)).clicked() {
+                                        set = Some(("stair_display", json!({"view": view, key: w})));
+                                    }
+                                }
+                            })
+                            .response
+                            .labelled_by(l.id);
+                    });
+                    ui.end_row();
+                }
+            }
             // A button naming the template, as Revit's: it opens the dialog to pick another, or none.
             ui.label(t("View Template"));
             let now = own.template.clone().unwrap_or_else(|| t("<None>").to_string());

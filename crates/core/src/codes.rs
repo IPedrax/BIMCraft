@@ -11,7 +11,7 @@ use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
 
-use crate::model::{Landing, Model, Stair};
+use crate::model::{Element, Landing, Model, Stair};
 use crate::stairs;
 
 /// The code of a project that has chosen none: wide ranges round common practice.
@@ -67,6 +67,9 @@ pub struct StairRules {
     pub walk_line_offset: f64,
     pub winder_going_min: f64,
     pub winder_narrow_min: f64,
+    /// The least and the most a tread's nosing stands out past the riser below it (finish to finish).
+    #[serde(default)]
+    pub nosing_min: f64,
     pub nosing_max: f64,
     pub open_risers: bool,
     /// The most two risers or goings of a flight may differ.
@@ -81,7 +84,7 @@ const MAX_RULE: f64 = 100_000.0;
 
 impl StairRules {
     /// Its lengths by name, as the data and `building_code` name them.
-    fn lengths(&self) -> [(&'static str, f64); 20] {
+    fn lengths(&self) -> [(&'static str, f64); 21] {
         [
             ("riser", self.riser),
             ("going", self.going),
@@ -98,6 +101,7 @@ impl StairRules {
             ("walk_line_offset", self.walk_line_offset),
             ("winder_going_min", self.winder_going_min),
             ("winder_narrow_min", self.winder_narrow_min),
+            ("nosing_min", self.nosing_min),
             ("nosing_max", self.nosing_max),
             ("uniformity", self.uniformity),
             ("handrail_min", self.handrail_min),
@@ -129,6 +133,7 @@ impl StairRules {
             ("going_min", self.going_min, "going_max", self.going_max),
             ("step_min", self.step_min, "step_max", self.step_max),
             ("handrail_min", self.handrail_min, "handrail_max", self.handrail_max),
+            ("nosing_min", self.nosing_min, "nosing_max", self.nosing_max),
         ] {
             if a > b {
                 return Err(format!("stair rules: `{low}` ({a}) is more than `{high}` ({b}); swap them, or change one"));
@@ -182,7 +187,7 @@ impl StairRules {
 }
 
 /// The rules' names, in the order the data lists them.
-pub const ORDER: [&str; 25] = [
+pub const ORDER: [&str; 26] = [
     "riser",
     "going",
     "riser_min",
@@ -202,6 +207,7 @@ pub const ORDER: [&str; 25] = [
     "walk_line_offset",
     "winder_going_min",
     "winder_narrow_min",
+    "nosing_min",
     "nosing_max",
     "open_risers",
     "uniformity",
@@ -228,6 +234,13 @@ pub struct BuildingCode {
     /// The code one of a project's own started from, by what it is called.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub based_on: String,
+    /// Where each rule's number comes from, by the rule's name: the document, its edition and its item, so anyone can
+    /// check it against its text; or why there is none (a forgiving number the document doesn't give).
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub sources: std::collections::BTreeMap<String, String>,
+    /// Who checked its numbers against the documents' text, and where that is written; empty while unchecked.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub checked: String,
     pub stairs: StairRules,
 }
 
@@ -262,8 +275,14 @@ impl BuildingCode {
             || long(&self.based_on)
             || self.references.len() > 50
             || self.references.iter().any(|r| long(r))
+            || long(&self.checked)
+            || self.sources.len() > ORDER.len()
+            || self.sources.iter().any(|(k, v)| !ORDER.contains(&k.as_str()) || long(v))
         {
-            return Err(format!("the building code `{}` has a text over 2000 characters, or more than 50 references", self.code));
+            return Err(format!(
+                "the building code `{}` has a text over 2000 characters, more than 50 references, or a source for a rule it doesn't have",
+                self.code
+            ));
         }
         self.stairs.check().map_err(|e| format!("the building code `{}`: {e}", self.code))
     }
@@ -284,6 +303,9 @@ impl BuildingCode {
         for r in &self.references {
             out.push_str(&format!("  <reference>{}</reference>\n", esc(r)));
         }
+        if !self.checked.is_empty() {
+            out.push_str(&format!("  <checked>{}</checked>\n", esc(&self.checked)));
+        }
         out.push_str("  <!-- Lengths in millimetres. A rule left out is read as the generic code's. -->\n  <stairs>\n");
         if let Ok(serde_json::Value::Object(rules)) = serde_json::to_value(&self.stairs) {
             for key in ORDER {
@@ -292,7 +314,10 @@ impl BuildingCode {
                     Some(v) => v.to_string(),
                     None => continue,
                 };
-                out.push_str(&format!("    <rule name=\"{key}\" value=\"{said}\"/>\n"));
+                match self.sources.get(key) {
+                    Some(from) => out.push_str(&format!("    <rule name=\"{key}\" value=\"{said}\" source=\"{}\"/>\n", esc(from))),
+                    None => out.push_str(&format!("    <rule name=\"{key}\" value=\"{said}\"/>\n")),
+                }
             }
         }
         out.push_str("  </stairs>\n</building-code>\n");
@@ -317,6 +342,8 @@ impl BuildingCode {
             references: Vec::new(),
             note: String::new(),
             based_on: String::new(),
+            sources: Default::default(),
+            checked: String::new(),
             stairs: generic().stairs.clone(),
         };
         let (mut left_out, mut root, mut rest) = (Vec::new(), false, text);
@@ -364,6 +391,7 @@ impl BuildingCode {
                     code.based_on = attr("based-on").unwrap_or_default();
                 }
                 "note" => code.note = text(),
+                "checked" => code.checked = text(),
                 "reference" if code.references.len() < 50 => code.references.push(text()),
                 "stairs" => {}
                 "rule" => {
@@ -383,6 +411,9 @@ impl BuildingCode {
                             _ => serde_json::Value::String(t.to_string()),
                         },
                     };
+                    if let Some(from) = attr("source").filter(|f| !f.trim().is_empty()) {
+                        code.sources.insert(key.clone(), from.trim().to_string());
+                    }
                     rules.insert(key, v);
                 }
                 other => {
@@ -417,6 +448,8 @@ fn fallback() -> BuildingCode {
         references: Vec::new(),
         note: String::new(),
         based_on: String::new(),
+        sources: Default::default(),
+        checked: String::new(),
         stairs: StairRules {
             riser: 180.0,
             going: 280.0,
@@ -437,6 +470,7 @@ fn fallback() -> BuildingCode {
             walk_line_offset: 300.0,
             winder_going_min: 210.0,
             winder_narrow_min: 100.0,
+            nosing_min: 0.0,
             nosing_max: 40.0,
             open_risers: true,
             uniformity: 10.0,
@@ -456,8 +490,10 @@ pub fn codes() -> &'static [BuildingCode] {
     })
 }
 
-/// A code by what it is called (`nbr`, `ibc`…).
+/// A code by what it is called (`nbr-9050`, `ibc`…). `nbr`, the one entry the two Brazilian standards had before they
+/// were told apart, is NBR 9050's.
 pub fn code(name: &str) -> Option<&'static BuildingCode> {
+    let name = if name == "nbr" { "nbr-9050" } else { name };
     codes().iter().find(|c| c.code == name)
 }
 
@@ -465,6 +501,55 @@ pub fn code(name: &str) -> Option<&'static BuildingCode> {
 pub fn generic() -> &'static BuildingCode {
     static NONE: OnceLock<BuildingCode> = OnceLock::new();
     code(GENERIC).unwrap_or_else(|| NONE.get_or_init(fallback))
+}
+
+/// The rules a stair is held to: the project's, with what its type has on in their place; and the rules only a type
+/// has, each a least and a most that may be off: the tread over the riser, the tread and the riser together, and the
+/// pitch in degrees.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Limits {
+    pub rules: StairRules,
+    pub ratio: (Option<f64>, Option<f64>),
+    pub sum: (Option<f64>, Option<f64>),
+    pub pitch: (Option<f64>, Option<f64>),
+}
+
+/// The rules stair `st` is held to.
+pub fn limits(m: &Model, st: &Stair) -> Limits {
+    limits_of(m, &st.type_name)
+}
+
+/// The rules a stair of the stair type `name` is held to; the project's, for no type.
+pub fn limits_of(m: &Model, name: &str) -> Limits {
+    let mut rules = m.stair_rules().clone();
+    let Some(t) = m.types.stair.get(name).map(|t| t.rules) else {
+        return Limits { rules, ratio: (None, None), sum: (None, None), pitch: (None, None) };
+    };
+    let set = |to: &mut f64, v: Option<f64>| {
+        if let Some(v) = v {
+            *to = v;
+        }
+    };
+    set(&mut rules.riser_min, t.riser_min);
+    set(&mut rules.riser_max, t.riser_max);
+    set(&mut rules.going_min, t.going_min);
+    set(&mut rules.going_max, t.going_max);
+    set(&mut rules.step_min, t.step_min);
+    set(&mut rules.step_max, t.step_max);
+    // A range the type turned upside down against the code's other end holds at the type's number.
+    rules.riser_min = rules.riser_min.min(rules.riser_max);
+    rules.going_min = rules.going_min.min(rules.going_max);
+    rules.step_min = rules.step_min.min(rules.step_max);
+    // What a new stair starts with is inside the range it is held to.
+    rules.riser = rules.riser.clamp(rules.riser_min, rules.riser_max);
+    rules.going = rules.going.clamp(rules.going_min, rules.going_max);
+    if let Some(v) = t.landing_min {
+        (rules.landing_rule, rules.landing_length) = (LandingRule::Fixed, v);
+    }
+    if let Some(v) = t.walk_offset_min {
+        (rules.walk_line, rules.walk_line_offset) = (WalkLine::NarrowSide, v);
+    }
+    Limits { rules, ratio: (t.ratio_min, t.ratio_max), sum: (t.sum_min, t.sum_max), pitch: (t.pitch_min, t.pitch_max) }
 }
 
 /// Where a stair is outside its project's rules: the rule by name, what the stair has, what the rule asks, and a
@@ -486,7 +571,8 @@ fn mm(x: f64) -> f64 {
 
 /// Where stair `st` is outside the project's rules, in the order the rules are listed; none when it is inside them all.
 pub fn stair_findings(m: &Model, st: &Stair) -> Vec<Finding> {
-    let rules = m.stair_rules();
+    let held = limits(m, st);
+    let rules = &held.rules;
     let (n, riser, _) = m.flight(st);
     let mut out = Vec::new();
     if n == 0 {
@@ -550,18 +636,84 @@ pub fn stair_findings(m: &Model, st: &Stair) -> Vec<Finding> {
             message: format!("it is {} mm wide, under the least, {} mm: widen it", mm(width), rules.width_min),
         });
     }
-    // A floor standing over its steps with less than the headroom between them, and not cut open there.
-    if let Some((floor, least, _)) = stairs::headroom(m, st, rules.headroom).into_iter().min_by(|a, b| a.1.total_cmp(&b.1)) {
-        out.push(Finding {
-            rule: "headroom",
-            value: mm(least),
-            limit: rules.headroom,
-            message: format!(
-                "under floor {floor} there is {} mm of headroom at the least, under the {} mm asked: cut the floor open over the stair (`stair_opening` does)",
+    // How far a tread stands out over the riser below it, finish to finish; and whether its risers are open.
+    if let Some(t) = m.types.stair.get(&st.type_name) {
+        let nosing = stairs::reach(t);
+        if nosing < rules.nosing_min - EPS {
+            out.push(Finding {
+                rule: "nosing_min",
+                value: mm(nosing),
+                limit: rules.nosing_min,
+                message: format!(
+                    "its treads stand out {} mm past the riser below, under the least, {} mm: give its type a longer nosing (`nosing`, or `cover_nosing` for the finish)",
+                    mm(nosing),
+                    rules.nosing_min
+                ),
+            });
+        } else if nosing > rules.nosing_max + EPS {
+            out.push(Finding {
+                rule: "nosing_max",
+                value: mm(nosing),
+                limit: rules.nosing_max,
+                message: format!(
+                    "its treads stand out {} mm past the riser below, over the most, {} mm: give its type a shorter nosing",
+                    mm(nosing),
+                    rules.nosing_max
+                ),
+            });
+        }
+        if !rules.open_risers && !t.monolithic() && t.riser_thickness <= 0.0 {
+            out.push(Finding {
+                rule: "open_risers",
+                value: 1.0,
+                limit: 0.0,
+                message: "its risers are open, which this code does not allow: use a type with risers (`riser_thickness`)".into(),
+            });
+        }
+    }
+    // The rules only a stair type has: the tread over the riser, the two together, and the pitch.
+    if riser > 0.0 && going.is_finite() {
+        let more = [
+            ("ratio_min", "ratio_max", "the tread over the riser", going / riser, held.ratio, ""),
+            ("sum_min", "sum_max", "a tread and a riser together", going + riser, held.sum, " mm"),
+            ("pitch_min", "pitch_max", "its pitch", (riser / going.max(1e-9)).atan().to_degrees(), held.pitch, "°"),
+        ];
+        for (low, high, what, v, (min, max), unit) in more {
+            let v = (v * 1000.0).round() / 1000.0;
+            if let Some(min) = min.filter(|min| v < min - EPS) {
+                out.push(Finding {
+                    rule: low,
+                    value: v,
+                    limit: min,
+                    message: format!("{what} is {v}{unit}, under the least its type asks, {min}{unit}"),
+                });
+            } else if let Some(max) = max.filter(|max| v > max + EPS) {
+                out.push(Finding {
+                    rule: high,
+                    value: v,
+                    limit: max,
+                    message: format!("{what} is {v}{unit}, over the most its type asks, {max}{unit}"),
+                });
+            }
+        }
+    }
+    // A floor, a ceiling or a beam over its steps with less than the headroom between them, and not cut open there.
+    if let Some((over, least, _)) = stairs::headroom(m, st, rules.headroom).into_iter().min_by(|a, b| a.1.total_cmp(&b.1)) {
+        let message = match m.elements.get(over) {
+            Some(Element::Floor(_)) => format!(
+                "under floor {over} there is {} mm of headroom at the least, under the {} mm asked: cut the floor open over the stair (`stair_opening` does)",
                 mm(least),
                 rules.headroom
             ),
-        });
+            Some(e) => format!(
+                "under {} {over} there is {} mm of headroom at the least, under the {} mm asked: raise it or move it clear of the stair",
+                e.category(),
+                mm(least),
+                rules.headroom
+            ),
+            None => String::new(),
+        };
+        out.push(Finding { rule: "headroom", value: mm(least), limit: rules.headroom, message });
     }
     // A multistorey stair's other storeys have risers of their own heights: each inside the range, and none far from
     // the first's.
@@ -841,7 +993,8 @@ fn runs_hold(n: u32, landings: &[Landing]) -> bool {
 /// risers, lengthened where they are short, and more where a flight is too long). What `locks` names stays as it is.
 /// When none fits, the nearest, with what each would still break. A stair already inside the rules is the only answer.
 pub fn solve(m: &Model, st: &Stair, locks: Locks) -> Vec<Proposal> {
-    let rules = m.stair_rules();
+    let held = limits(m, st);
+    let rules = &held.rules;
     let (n0, each0, _) = m.flight(st);
     // One drawn by hand is as it was drawn: there is nothing to count again.
     if n0 == 0 || !st.sketch.is_empty() {

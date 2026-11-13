@@ -328,6 +328,9 @@ pub struct Canvas {
     grip: Option<(Id, bool)>,
     /// A selected stair's grip being dragged: the stair, and which.
     pub(crate) stair_grip: Option<(Id, bimcraft_core::stairs::Grip)>,
+    /// A part of the selected stair picked on its own (a flight, a landing): the stair, and which part
+    /// (`stairs::stair_parts`).
+    pub(crate) stair_part: Option<(Id, usize)>,
     /// A selected level's end being dragged in a section or an elevation: the level, and whether
     /// it's its far end.
     level_grip: Option<(Id, bool)>,
@@ -363,6 +366,7 @@ impl Default for Canvas {
             crop_drag: None,
             grip: None,
             stair_grip: None,
+            stair_part: None,
             level_grip: None,
             press: None,
             lifted: None,
@@ -1522,6 +1526,14 @@ impl BimApp {
             });
         }
         let tabbed = std::mem::take(&mut self.tab_cycle) || tab;
+        // Drawing a stair outside the rules, Tab takes the nearest stair that fits: its riser, tread and width.
+        if tabbed
+            && matches!(self.tool, Tool::Stair(_))
+            && let Some((riser, tread, width)) = self.stair_offer.take()
+        {
+            let units = self.session.model.units;
+            (self.stair_riser, self.stair_tread, self.stair_width) = (units.length(riser), units.length(tread), units.length(width));
+        }
         if tabbed && !c.under.is_empty() {
             c.cycle = (c.cycle + 1) % c.under.len();
         }
@@ -2051,7 +2063,22 @@ impl BimApp {
             }
             // A sketch tool with the sketch gone: nothing to draw into.
             Tool::SketchLine(_) | Tool::SketchPick => self.tool = Tool::Modify,
-            Tool::Modify => self.pick_up(hovered.into_iter().collect(), mods),
+            // A click on the stair already selected, one drawn along a line, picks the flight or landing under it.
+            Tool::Modify
+                if !mods.shift
+                    && !mods.command
+                    && hovered.is_some()
+                    && self.selection.as_slice() == hovered.as_slice()
+                    && let Some(Element::Stair(st)) = hovered.and_then(|id| m.elements.get(id))
+                    && !st.path.is_empty()
+                    && let Some(i) = bimcraft_core::stairs::part_at(st, v.mm(at)) =>
+            {
+                self.canvas.stair_part = hovered.map(|id| (id, i));
+            }
+            Tool::Modify => {
+                self.canvas.stair_part = None;
+                self.pick_up(hovered.into_iter().collect(), mods);
+            }
             Tool::Door | Tool::Window => {
                 let door = matches!(self.tool, Tool::Door);
                 let cat = if door { "door" } else { "window" };
@@ -2365,7 +2392,8 @@ impl BimApp {
                 if !ramp {
                     self.stair_kinds.truncate(pts.len().saturating_sub(1));
                     if !pts.is_empty() {
-                        self.stair_kinds.push((self.stair_landing, self.stair_shape == crate::StairShape::Arc));
+                        let wide = m.units.parse(&self.stair_width);
+                        self.stair_kinds.push((self.stair_landing, self.stair_shape == crate::StairShape::Arc, wide));
                     }
                 }
                 pts.push(p);
@@ -2667,21 +2695,31 @@ impl BimApp {
                 done,
             ))
         } else {
-            let width = m.units.parse(&self.stair_width).ok_or_else(|| tf("stair: `{}` is not a width", &[&self.stair_width]))?;
-            let rules = m.stair_rules();
+            let width = m
+                .units
+                .parse(&self.stair_width)
+                .ok_or_else(|| tf("The width \"{}\" isn't a length. Type a number, such as 1200.", &[&self.stair_width]))?;
+            // The rules of the type the stair will be of: its own where it has them, else the building code's.
+            let kind = self.types.get("stair").cloned().or_else(|| m.default_type("stair").map(String::from)).unwrap_or_default();
+            let held = bimcraft_core::codes::limits_of(m, &kind);
+            let rules = &held.rules;
             let top = top_params(m, level, self.stair_top, &self.stair_height).map_err(|e| tf("stair: {}", &[&e]))?;
             let (top_level, height) = (top["top_level"].as_u64().map(|t| m.guid(t)), top["height"].as_f64().unwrap_or(DEFAULT_HEIGHT));
             let mut st = Stair {
-                type_name: self.types.get("stair").cloned().or_else(|| m.default_type("stair").map(String::from)).unwrap_or_default(),
+                type_name: kind.clone(),
                 params: Default::default(),
                 level: m.guid(level),
                 top_level,
                 height,
+                base_offset: 0.0,
+                top_offset: 0.0,
+                lock_going: self.stair_lock_going,
+                unsketched: None,
                 start,
                 angle,
                 width,
-                riser: rules.riser,
-                tread: rules.going,
+                riser: m.units.parse(&self.stair_riser).filter(|r| *r >= 50.0 && *r <= 500.0).unwrap_or(rules.riser),
+                tread: m.units.parse(&self.stair_tread).filter(|g| *g >= 50.0 && *g <= 2000.0).unwrap_or(rules.going),
                 landings: Vec::new(),
                 line: self.stair_line,
                 offset: m.units.parse(&self.stair_offset).unwrap_or(0.0),
@@ -2689,6 +2727,7 @@ impl BimApp {
                 sketch: Vec::new(),
                 path: Vec::new(),
                 multistorey: false,
+                edges: Vec::new(),
             };
             // Multistorey where it climbs past a level on the way.
             st.multistorey = self.stair_multistorey && m.storeys(&Stair { multistorey: true, ..st.clone() }).len() > 1;
@@ -2698,7 +2737,9 @@ impl BimApp {
                     .filter(|[a, b]| a.dist(*b) >= 1.0)
                     .map(|[a, b]| bimcraft_core::model::SketchStep { riser: [*a, *b], outline: Vec::new() })
                     .collect();
-                let [a, b, ..] = st.sketch.as_slice() else { return Err(t("click the two ends of each riser, two risers or more").into()) };
+                let [a, b, ..] = st.sketch.as_slice() else {
+                    return Err(t("Click both ends of each riser. A stair needs two risers at least.").into());
+                };
                 let way = b.mid() - a.mid();
                 (st.start, st.angle) = (a.mid(), (way.1.atan2(way.0).to_degrees() * 1e9).round() / 1e9);
                 (st.line, st.offset) = (Default::default(), 0.0);
@@ -2729,8 +2770,15 @@ impl BimApp {
                 if a.dist(b) < 1.0 {
                     continue;
                 }
-                let (landing, curved) =
-                    self.stair_kinds.get(i).copied().unwrap_or((self.stair_landing, self.stair_shape == crate::StairShape::Arc));
+                let (landing, curved, wide) =
+                    self.stair_kinds.get(i).copied().unwrap_or((self.stair_landing, self.stair_shape == crate::StairShape::Arc, None));
+                // Each stretch as wide as the Width box said when it was clicked: one wider or narrower than the first
+                // has a width of its own.
+                let wide = wide.unwrap_or(width);
+                if i == 0 {
+                    st.width = wide;
+                }
+                let own = ((wide - st.width).abs() > 1e-6).then_some(wide);
                 let chord = (b - a).unit();
                 // An arc turns through twice the angle from the way it leaves to its chord.
                 let arc = match way {
@@ -2742,7 +2790,7 @@ impl BimApp {
                 };
                 let after_flight = st.path.last().is_some_and(|s| !s.landing);
                 let winders = if !landing && after_flight && arc == 0.0 { self.stair_winders.min(30) } else { 0 };
-                st.path.push(bimcraft_core::model::PathSeg { to: b, landing, arc, winders });
+                st.path.push(bimcraft_core::model::PathSeg { to: b, landing, arc, winders, width: own });
                 // The way it goes on from there: along the chord, or round the arc.
                 let (s, c) = arc.to_radians().sin_cos();
                 way = Some(match way {
@@ -2755,6 +2803,36 @@ impl BimApp {
             st.angle = (along.1.atan2(along.0).to_degrees() * 1e9).round() / 1e9;
             // Done when its flights, as drawn, hold all its risers.
             let done = st.path.last().is_some_and(|s| !s.landing) && bimcraft_core::stairs::path_full(m, &st);
+            // Short of that, it is what is drawn and no more: each flight the risers its length holds, the stair's top
+            // under its top level by the risers not drawn. What was clicked stays put whatever is drawn next, and a
+            // double click finishes it there.
+            if !done && !st.multistorey {
+                let (n, each, _) = m.flight(&st);
+                let k = bimcraft_core::stairs::drawn_risers(m, &st);
+                if (2..n).contains(&k) {
+                    let short = f64::from(n - k) * each;
+                    if st.top_level.is_some() {
+                        st.top_offset = short;
+                    } else {
+                        st.height -= short;
+                    }
+                    // Its risers as high as they were: the count it climbs in is the count drawn.
+                    if m.flight(&st).0 != k {
+                        st.riser = each;
+                    }
+                    // Drawn from the top, what is drawn hangs from the top level: its foot raised, not its top lowered.
+                    if self.stair_from_top {
+                        st.top_offset = 0.0;
+                        st.base_offset = -short;
+                    }
+                }
+            }
+            // Drawn from the top, it climbs the other way along what was drawn.
+            if self.stair_from_top
+                && let Some(up) = bimcraft_core::stairs::flipped(m, &st)
+            {
+                st = up;
+            }
             Ok((Element::Stair(st), done))
         }
     }
@@ -3795,13 +3873,30 @@ impl BimApp {
                 if let Ok((e, _)) = self.flight(m, level, &with, ramp) {
                     sketched(&e);
                     let first = match &e {
+                        // Along a line: the risers drawn, of those it needs to reach its top level.
+                        // Along a line: the risers drawn, of those it needs to reach its top (its top level, or the
+                        // height asked), and how high the last of them climbs.
+                        Element::Stair(st) if !st.path.is_empty() => {
+                            let height = top_params(m, level, self.stair_top, &self.stair_height)
+                                .ok()
+                                .and_then(|p| p["height"].as_f64())
+                                .unwrap_or(st.height);
+                            let whole = Stair { top_offset: 0.0, height, ..st.clone() };
+                            let (full, each, _) = m.flight(&whole);
+                            let drawn = bimcraft_core::stairs::drawn_risers(m, &whole).clamp(1, full.max(1));
+                            Some(tf(
+                                "Step {} of {} - {}",
+                                &[&drawn.to_string(), &full.to_string(), &m.units.with_unit(f64::from(drawn) * each)],
+                            ))
+                        }
                         Element::Stair(st) => {
                             st.landings.first().map(|l| tf("{} of {} risers", &[&l.at.to_string(), &m.flight(st).0.to_string()]))
                         }
                         Element::Ramp(r) => r.landings.first().map(|l| tf("{} up", &[&m.units.with_unit(l.at)])),
                         _ => None,
                     };
-                    if let Some(text) = first.filter(|_| with.len() == 2) {
+                    let along = matches!(&e, Element::Stair(st) if !st.path.is_empty());
+                    if let Some(text) = first.filter(|_| with.len() == 2 || along) {
                         label(cursor, text);
                     }
                     // What the project's building code would say of the stair as it would be made: under the cursor.
@@ -3814,6 +3909,22 @@ impl BimApp {
                             n => (format!("{}: {}", tf("Outside {} rules", &[&n.to_string()]), named.join(", ")), crate::codes::OUTSIDE),
                         };
                         p.text(cursor + vec2(18.0, 22.0), Align2::LEFT_TOP, said, FontId::proportional(11.5), color);
+                        // The nearest stair that fits, offered: Tab takes its riser, tread and width.
+                        if !outside.is_empty() && st.sketch.is_empty() {
+                            let locks = bimcraft_core::codes::Locks { landings: true, ..Default::default() };
+                            if let Some(best) =
+                                bimcraft_core::codes::solve(m, st, locks).into_iter().next().filter(|b| b.findings.is_empty())
+                            {
+                                let tip = tf(
+                                    "Tab: {} risers of {}, treads {}",
+                                    &[&best.risers.to_string(), &m.units.with_unit(best.riser), &m.units.with_unit(best.tread)],
+                                );
+                                p.text(cursor + vec2(18.0, 38.0), Align2::LEFT_TOP, tip, FontId::proportional(11.5), pal().accent);
+                                self.stair_offer.set(Some((best.riser, best.tread, best.width)));
+                            }
+                        } else {
+                            self.stair_offer.set(None);
+                        }
                     }
                 }
                 return;

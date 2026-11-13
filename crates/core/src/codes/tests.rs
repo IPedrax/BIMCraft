@@ -26,7 +26,7 @@ fn broken(s: &mut Session, id: u64) -> Vec<String> {
 fn every_code_reads_names_its_sources_and_keeps_its_own_rules() {
     let all = codes();
     let names: Vec<&str> = all.iter().map(|c| c.code.as_str()).collect();
-    assert_eq!(names, ["generic", "nbr", "ibc", "din", "jis"]);
+    assert_eq!(names, ["generic", "nbr-9050", "nbr-9077", "ibc", "din", "jis"]);
     for c in all {
         c.stairs.check().unwrap_or_else(|e| panic!("{}: {e}", c.code));
         assert!(!c.name.is_empty() && !c.note.is_empty(), "{}", c.code);
@@ -44,7 +44,7 @@ fn a_project_has_no_code_until_one_is_chosen_and_then_its_rules() {
     let mut s = Session::new();
     let r = run(&mut s, "building_code", json!({}));
     assert_eq!(r["code"], "generic");
-    assert_eq!(r["all"].as_array().map(Vec::len), Some(5));
+    assert_eq!(r["all"].as_array().map(Vec::len), Some(6));
     assert_eq!(r["stairs"]["riser"], 180.0, "a stair as it always was");
     assert_eq!(r["stairs"]["going"], 280.0);
 
@@ -57,14 +57,14 @@ fn a_project_has_no_code_until_one_is_chosen_and_then_its_rules() {
     assert_eq!(s.history(), ["Building Codes"]);
 
     let e = s.execute("building_code", &json!({"set": "nec"})).unwrap_err();
-    assert!(e.contains("generic, nbr, ibc, din, jis"), "{e}");
+    assert!(e.contains("generic, nbr-9050, nbr-9077, ibc, din, jis"), "{e}");
 }
 
 #[test]
 fn a_project_changes_its_code_s_rules_and_the_answer_says_which() {
     let mut s = Session::new();
     run(&mut s, "building_code", json!({"set": "nbr"}));
-    let r = run(&mut s, "building_code", json!({"stairs": {"width_min": 1100, "winders": true}}));
+    let r = run(&mut s, "building_code", json!({"stairs": {"width_min": 1100, "winders": false}}));
     assert_eq!(r["stairs"]["width_min"], 1100.0);
     assert_eq!(r["stairs"]["riser_max"], 180.0, "the rest stays the code's");
     assert_eq!(r["changed"], json!(["width_min", "winders"]));
@@ -72,7 +72,7 @@ fn a_project_changes_its_code_s_rules_and_the_answer_says_which() {
     // A file keeps the code and what the project changed of it.
     let (back, left_out) = Model::read(&s.model.to_json().unwrap()).unwrap();
     assert!(left_out.is_empty(), "{left_out:?}");
-    assert_eq!(back.building_code().code, "nbr");
+    assert_eq!(back.building_code().code, "nbr-9050", "`nbr` is NBR 9050 now");
     assert_eq!(back.stair_rules().width_min, 1100.0);
 
     // Another code brings its own rules, unless the project's are kept.
@@ -132,7 +132,7 @@ fn a_stair_outside_its_code_is_built_and_reported() {
     let id = run(&mut s, "stair", json!({"start": [0, 0], "angle": 0, "riser": 200, "tread": 240, "width": 1200}))["id"].as_u64().unwrap();
     assert_eq!(broken(&mut s, id), ["riser_max", "going_min"]);
     let r = run(&mut s, "stair_check", json!({}));
-    assert_eq!(r["code"], "nbr");
+    assert_eq!(r["code"], "nbr-9050");
     assert_eq!(r["count"], 2);
     let f = &r["stairs"][0]["findings"][0];
     assert_eq!((f["value"].as_f64(), f["limit"].as_f64()), (Some(200.0), Some(180.0)));
@@ -161,7 +161,7 @@ fn a_flight_too_high_is_due_a_landing_which_auto_gives_it() {
     auto["landings"] = json!("auto");
     let id = run(&mut s, "stair", auto.clone())["id"].as_u64().unwrap();
     let st = stair_of(&s, id);
-    assert_eq!(st.landings.iter().map(|l| (l.at, l.turn)).collect::<Vec<_>>(), [(15.0, 0.0)], "30 risers of 180 in two flights");
+    assert_eq!(st.landings.iter().map(|l| (l.at, l.turn)).collect::<Vec<_>>(), [(16.0, 0.0)], "31 risers of 174 in two flights");
     assert_eq!(broken(&mut s, id), Vec::<String>::new());
 
     // DIN counts risers: a landing after 18 at most.
@@ -234,8 +234,8 @@ fn a_turn_winds_and_a_code_without_winders_says_so_and_still_builds_it() {
     // On the IBC's walk line, 12 inches from the narrow side: 304.8 × 90° / 3 = 159.6, under 11 inches; and a point.
     assert_eq!(broken(&mut s, id), ["winder_going_min", "winder_narrow_min"]);
 
-    // NBR has no winders: built all the same, and said.
-    run(&mut s, "building_code", json!({"set": "nbr"}));
+    // A code with no winders: built all the same, and said.
+    run(&mut s, "building_code", json!({"set": "nbr", "stairs": {"winders": false}}));
     assert!(broken(&mut s, id).contains(&"winders".to_string()));
 
     // Back beside the run, six winders through 180.
@@ -261,12 +261,15 @@ fn a_turn_winds_and_a_code_without_winders_says_so_and_still_builds_it() {
 #[test]
 fn a_project_saves_its_rules_as_a_code_of_its_own_and_hands_it_on_as_xml() {
     let mut s = Session::new();
-    run(&mut s, "building_code", json!({"set": "nbr", "stairs": {"width_min": 1100, "winders": true}}));
+    run(&mut s, "building_code", json!({"set": "nbr", "stairs": {"width_min": 1100, "winders": false}}));
     let r = run(&mut s, "building_code", json!({"save": "São Paulo IT 11"}));
-    assert_eq!((r["code"].as_str(), r["custom"].as_bool(), r["based_on"].as_str()), (Some("São Paulo IT 11"), Some(true), Some("nbr")));
+    assert_eq!(
+        (r["code"].as_str(), r["custom"].as_bool(), r["based_on"].as_str()),
+        (Some("São Paulo IT 11"), Some(true), Some("nbr-9050"))
+    );
     assert_eq!(r["changed"], json!([]), "they are the code's own rules now");
     assert_eq!(r["stairs"]["width_min"], 1100.0);
-    assert_eq!(r["all"].as_array().map(Vec::len), Some(6));
+    assert_eq!(r["all"].as_array().map(Vec::len), Some(7));
     assert_eq!(s.model.stair_rules, None);
 
     // Another code and back; a file keeps it.
@@ -283,12 +286,13 @@ fn a_project_saves_its_rules_as_a_code_of_its_own_and_hands_it_on_as_xml() {
     let path = dir.join("it11.xml").to_string_lossy().to_string();
     run(&mut s, "building_code_export", json!({"path": path}));
     let text = std::fs::read_to_string(&path).unwrap();
-    assert!(text.contains("<rule name=\"width_min\" value=\"1100.0\"/>") && text.contains("name=\"São Paulo IT 11\""), "{text}");
+    assert!(text.contains("<rule name=\"width_min\" value=\"1100.0\" source=\"São Paulo IT 11: the project's own number\"/>"), "{text}");
+    assert!(text.contains("name=\"São Paulo IT 11\"") && text.contains("source=\"NBR 9050:2020 6.8.2\""), "the sources go with it: {text}");
     let mut other = Session::new();
     let r = run(&mut other, "building_code_import", json!({"path": path, "set": true}));
     assert_eq!((r["code"].as_str(), r["left_out"].as_array().map(Vec::len)), (Some("São Paulo IT 11"), Some(0)));
     assert_eq!(other.model.stair_rules(), s.model.stair_rules());
-    assert_eq!(other.model.building_code().based_on, "nbr");
+    assert_eq!(other.model.building_code().based_on, "nbr-9050");
 
     // One written by hand: what it leaves out is the generic code's, what it has that we don't know is said.
     let hand = dir.join("hand.xml").to_string_lossy().to_string();
@@ -308,9 +312,15 @@ fn a_project_saves_its_rules_as_a_code_of_its_own_and_hands_it_on_as_xml() {
 
     // Taken away while the project is held to it: the rules stay, as its own, under the code it was based on.
     let r = run(&mut s, "building_code", json!({"delete": "São Paulo IT 11"}));
-    assert_eq!((r["code"].as_str(), r["stairs"]["width_min"].as_f64()), (Some("nbr"), Some(1100.0)));
+    assert_eq!((r["code"].as_str(), r["stairs"]["width_min"].as_f64()), (Some("nbr-9050"), Some(1100.0)));
     assert_eq!(r["changed"], json!(["width_min", "winders"]));
-    for p in [json!({"save": "nbr"}), json!({"save": ""}), json!({"save": "x".repeat(65)}), json!({"delete": "nbr"}), json!({"save": 5})] {
+    for p in [
+        json!({"save": "nbr-9050"}),
+        json!({"save": ""}),
+        json!({"save": "x".repeat(65)}),
+        json!({"delete": "nbr-9050"}),
+        json!({"save": 5}),
+    ] {
         assert!(s.execute("building_code", &p).is_err(), "{p}");
     }
     for bad in
@@ -534,8 +544,8 @@ fn a_spiral_stair_winds_about_its_centre() {
     run(&mut s, "flip", json!({"ids": [id]}));
     assert!((ground(&s) - before).abs() < 1.0);
     assert!(crate::stairs::stair(&s.model, &stair_of(&s, id)).walk[0].0.dist(top) < 0.01);
-    // NBR has no winders at all.
-    run(&mut s, "building_code", json!({"set": "nbr"}));
+    // A code with no winders at all.
+    run(&mut s, "building_code", json!({"set": "nbr", "stairs": {"winders": false}}));
     assert!(broken(&mut s, id).contains(&"winders".to_string()));
 
     for bad in [json!({"radius": 100}), json!({"radius": 1500, "sweep": 2}), json!({"radius": 1e300}), json!({"sweep": 90}), json!(5)] {
@@ -567,6 +577,11 @@ fn a_stair_is_built_as_its_type_says() {
     let each = 3000.0 / 17.0;
     let landing = mono.iter().find(|(_, _, top)| (top.z - 8.0 * each).abs() < 1e-6 && top.g == crate::geom::P2(0.0, 0.0)).unwrap();
     assert!((landing.1.z - (8.0 * each - 150.0)).abs() < 1e-6, "the landing is the slab's thickness");
+    // The flight's slab goes on under the landing until its underside meets the landing's.
+    let joint = mono.iter().find(|(_, bottom, top)| {
+        (top.z - landing.1.z).abs() < 1e-6 && top.g == crate::geom::P2(0.0, 0.0) && bottom.g != crate::geom::P2(0.0, 0.0)
+    });
+    assert!(joint.is_some(), "a wedge joins the flight to the landing");
     // Halfway up the first run, the underside is the slab's thickness below the steps' inner corners, square to the slope.
     let at = crate::geom::P2(4.0 * 280.0 + 1.0, 0.0);
     let under = mono.iter().filter(|(ring, _, _)| crate::geom::contains(ring, at)).map(|(_, b, _)| b.at(at)).fold(f64::INFINITY, f64::min);
@@ -944,8 +959,8 @@ fn a_stair_is_drawn_along_a_path_of_flights_and_landings() {
     let l = crate::stairs::stair(&s.model, &stair_of(&s, id));
     assert_eq!((l.runs[0].risers, l.pads.len(), l.pads[0].tread), (6, 1, false));
     assert!(
-        (crate::geom::area(&l.pads[0].ring) - (1000.0 * 1000.0 + 100.0 * 1000.0)).abs() < 1.0,
-        "the corner and the 100 the flight left: {}",
+        (crate::geom::area(&l.pads[0].ring) - 1100.0 * 1000.0).abs() < 1.0,
+        "treads of one depth: the corner and the 100 the treads leave short of it: {}",
         crate::geom::area(&l.pads[0].ring)
     );
     let mut wound = corner;
@@ -993,4 +1008,287 @@ fn a_stair_is_drawn_along_a_path_of_flights_and_landings() {
         assert!(s.execute("stair", &json!({"start": [0, 0], "path": bad})).is_err(), "{bad}");
     }
     assert!(s.execute("stair", &json!({"start": [0, 0], "path": [{"to": [0, 2000]}], "landings": [{"at": 4, "turn": 0}]})).is_err());
+}
+
+#[test]
+fn a_stair_type_has_rules_of_its_own_and_says_how_its_stairs_show_in_plan() {
+    let mut s = Session::new();
+    // The type's own most for a riser, and a pitch no code has; the rest the building code's.
+    run(
+        &mut s,
+        "type",
+        json!({"category": "stair", "name": "Gentle", "waist": 150, "rules": {"riser_max": 170, "pitch_max": 30},
+        "plan": {"below": "no_break_hidden"}}),
+    );
+    let id = run(&mut s, "stair", json!({"start": [0, 0], "angle": 0, "type": "Gentle"}))["id"].as_u64().unwrap();
+    // 17 risers of 176.5 with treads of 280: over the type's 170, and 32.2 degrees.
+    assert_eq!(broken(&mut s, id), ["riser_max", "pitch_max"]);
+    // The solver counts by the type's rules: 18 risers of 166.7 at the least, more for the pitch.
+    let r = run(&mut s, "stair_solve", json!({"id": id}));
+    assert!(r["proposals"][0]["risers"].as_u64().unwrap_or(0) >= 18, "{r}");
+    // A rule taken off again is the code's.
+    run(&mut s, "type", json!({"category": "stair", "name": "Gentle", "rules": {"riser_max": null, "pitch_max": null}}));
+    assert_eq!(broken(&mut s, id), Vec::<String>::new());
+    assert!(s.execute("type", &json!({"category": "stair", "name": "Gentle", "rules": {"riser_min": 200, "riser_max": 100}})).is_err());
+    assert!(s.execute("type", &json!({"category": "stair", "name": "Gentle", "plan": {"same": "sideways"}})).is_err());
+
+    // Drawn along a path, a flight's treads stretch or shrink inside their range to end where it was drawn: 2500 in 9
+    // treads of 277.8, the nearest to the usual 280 that share it evenly.
+    let id = run(
+        &mut s,
+        "stair",
+        json!({"start": [0, 5000], "lock_going": false, "path": [{"to": [3000, 5000]}, {"to": [3000, 9000], "landing": true}, {"to": [-3000, 9000]}]}),
+    )["id"]
+        .as_u64()
+        .unwrap();
+    let l = crate::stairs::stair(&s.model, &stair_of(&s, id));
+    assert!((l.runs[0].length - 2500.0).abs() < 1e-6, "to the corner, half the width short of the point: {}", l.runs[0].length);
+    let going = l.runs[0].going();
+    let range = crate::stairs::goings(&s.model, &stair_of(&s, id), 3000.0 / 17.0);
+    assert!((range.min..=range.max).contains(&going) && (l.runs[0].length / going).fract().abs() < 1e-9, "{going} {range:?}");
+
+    // On the plan of the level below it, the type shows it hidden: a stair from Level 2 up, seen on Level 1.
+    run(&mut s, "level", json!({"name": "Level 3", "elevation": 6000}));
+    let up = run(&mut s, "stair", json!({"start": [10000, 0], "angle": 0, "level": "Level 2", "type": "Gentle"}))["id"].as_u64().unwrap();
+    let levels: Vec<crate::model::Id> = s.model.levels().into_iter().map(|(id, _)| id).collect();
+    let d = crate::render::plan(&s.model, levels[0], 800, 600);
+    assert!(d.owners.contains(&Some(up)), "drawn on the level below");
+    let plain = run(&mut s, "stair", json!({"start": [10000, 3000], "angle": 0, "level": "Level 2"}))["id"].as_u64().unwrap();
+    let d = crate::render::plan(&s.model, levels[0], 800, 600);
+    assert!(!d.owners.contains(&Some(plain)), "a stair of no type is not");
+}
+
+#[test]
+fn a_stair_type_lays_finishes_over_its_steps_measured_finish_to_finish() {
+    let mut s = Session::new();
+    run(
+        &mut s,
+        "type",
+        json!({"category": "stair", "name": "Clad", "waist": 150, "tread_cover": 25, "riser_cover": 15, "cover_nosing": 10}),
+    );
+    let id = run(&mut s, "stair", json!({"start": [0, 0], "angle": 90, "type": "Clad"}))["id"].as_u64().unwrap();
+    let st = stair_of(&s, id);
+    let covers = crate::stairs::covers(&s.model, &st);
+    let (_, each, _) = s.model.flight(&st);
+    // The first tread's cover: its top the finished step, 25 thick, out past the riser's cover by 10.
+    let first = covers.first().unwrap();
+    assert!((first.2.z - each).abs() < 1e-6 && (first.1.z - (each - 25.0)).abs() < 1e-6, "{first:?}");
+    assert!(first.0.iter().any(|q| (q.1 + 25.0).abs() < 1e-6), "from 15 + 10 before the first riser: {:?}", first.0);
+    // The structure sits under the cover.
+    let parts = crate::stairs::parts(&s.model, &st).unwrap();
+    assert!(parts.iter().all(|(_, _, top)| top.z <= 3000.0 - 25.0 + 1e-6));
+    let ifc = crate::ifc::export(&s.model);
+    assert!(ifc.contains("IFCCOVERING(") && ifc.contains(".FLOORING."));
+}
+
+#[test]
+fn a_monolithic_stair_s_riser_may_slant_back_under_its_nosing() {
+    let mut s = Session::new();
+    run(
+        &mut s,
+        "type",
+        json!({"category": "stair", "name": "Raked", "waist": 150, "profile": "slanted", "nosing": 40, "carriage_width": 0}),
+    );
+    let id = run(&mut s, "stair", json!({"start": [0, 0], "angle": 0, "type": "Raked"}))["id"].as_u64().unwrap();
+    let parts = crate::stairs::parts(&s.model, &stair_of(&s, id)).unwrap();
+    // The wedge before the first riser: 40 out in front of it, its underside sloping down to the riser's foot.
+    assert!(parts.iter().any(|(ring, bottom, _)| ring.iter().any(|q| (q.0 + 40.0).abs() < 1e-6) && bottom.g.length() > 1.0), "{parts:?}");
+    assert!(s.execute("type", &json!({"category": "stair", "name": "Raked", "nosing": 0})).is_err(), "a slant needs its nosing");
+    assert!(s.execute("type", &json!({"category": "stair", "name": "Raked", "profile": "round"})).is_err());
+}
+
+#[test]
+fn a_landing_s_free_edge_is_dragged_out_and_its_steps_stay() {
+    use crate::geom::P2;
+    use crate::stairs::{Grip, dragged, grips};
+    let mut s = Session::new();
+    // A U: north, a landing east across the top, then south.
+    let p = json!({"start": [0, 0], "width": 1000, "path": [
+        {"to": [0, 1900]},
+        {"to": [2500, 1900], "landing": true},
+        {"to": [2500, -5000]}
+    ]});
+    let id = run(&mut s, "stair", p)["id"].as_u64().unwrap();
+    let st = stair_of(&s, id);
+    let before = crate::stairs::stair(&s.model, &st);
+    // The landing's far side, north, faces the way the stair starts: a grip at its middle.
+    let (grip, at) = grips(&s.model, &st).into_iter().find(|(g, _)| *g == Grip::Edge(0, 0)).expect("a grip on the landing's far edge");
+    assert!((at.1 - 2400.0).abs() < 1e-6, "{at:?}");
+    let moved = dragged(&s.model, &st, grip, at + P2(0.0, 500.0));
+    run(&mut s, "modify", json!({"id": id, "edges": moved.edges}));
+    let after = crate::stairs::stair(&s.model, &stair_of(&s, id));
+    assert_eq!(after.runs, before.runs, "the flights stay");
+    let area = crate::geom::area(&after.pads[0].ring);
+    assert!((area - 3500.0 * 1500.0).abs() < 1.0, "{area}");
+    // Its south side: the risers onto it and off it have no grip; the edge over the well between them has.
+    let south: Vec<P2> =
+        grips(&s.model, &stair_of(&s, id)).into_iter().filter(|(g, _)| *g == Grip::Edge(0, 1800)).map(|(_, p)| p).collect();
+    assert_eq!(south.len(), 1);
+    assert!(south[0].dist(P2(1250.0, 1400.0)) < 1e-6, "{south:?}");
+}
+
+#[test]
+fn a_flight_of_a_stair_drawn_along_a_line_takes_a_width_of_its_own() {
+    use crate::geom::P2;
+    let mut s = Session::new();
+    // North, a landing 1600 wide round the corner, then west 1400 wide.
+    let p = json!({"start": [0, 0], "width": 1000, "path": [
+        {"to": [0, 1700]},
+        {"to": [0, 2900], "landing": true, "width": 1600},
+        {"to": [-3000, 2900], "width": 1400}
+    ]});
+    let id = run(&mut s, "stair", p)["id"].as_u64().unwrap();
+    let st = stair_of(&s, id);
+    let l = crate::stairs::stair(&s.model, &st);
+    assert_eq!(l.runs.iter().map(|r| r.width).collect::<Vec<_>>(), [1000.0, 1400.0]);
+    // Its parts, picked on their own: a flight, the landing, a flight, each as wide as it is.
+    let parts = crate::stairs::stair_parts(&st);
+    assert_eq!(parts.iter().map(|p| (p.landing, p.width)).collect::<Vec<_>>(), [(false, 1000.0), (true, 1600.0), (false, 1400.0)]);
+    assert_eq!(crate::stairs::part_at(&st, P2(0.0, 500.0)), Some(0));
+    assert_eq!(crate::stairs::part_at(&st, P2(-2000.0, 2900.0)), Some(2));
+    // Set apart in Properties: the path, with the width on its segment.
+    let mut path = st.path.clone();
+    path[0].width = Some(1200.0);
+    run(&mut s, "modify", json!({"id": id, "path": path}));
+    assert_eq!(crate::stairs::stair(&s.model, &stair_of(&s, id)).runs[0].width, 1200.0);
+}
+
+#[test]
+fn the_brazilian_standards_are_two_codes_each_number_with_its_item() {
+    for name in ["nbr-9050", "nbr-9077"] {
+        let c = code(name).unwrap();
+        assert!(!c.checked.is_empty(), "{name} was checked against its text");
+        for rule in ORDER {
+            assert!(c.sources.contains_key(rule), "{name}: `{rule}` names no source");
+        }
+    }
+    assert_eq!(code("nbr").unwrap().code, "nbr-9050", "a project made with `nbr` keeps its rules");
+    // An emergency stair asks a nosing of 15 mm: a monolithic stair with none is short of it.
+    let mut s = Session::new();
+    run(&mut s, "building_code", json!({"set": "nbr-9077"}));
+    let p = json!({"start": [0, 0], "angle": 0, "height": 2800, "width": 1200, "type": "Monolithic 150mm"});
+    let id = run(&mut s, "stair", p)["id"].as_u64().unwrap();
+    assert!(broken(&mut s, id).contains(&"nosing_min".to_string()));
+    // With a finish standing out 15 mm, inside it.
+    run(&mut s, "type", json!({"category": "stair", "name": "Monolithic 150mm", "tread_cover": 20, "cover_nosing": 15}));
+    assert!(!broken(&mut s, id).contains(&"nosing_min".to_string()));
+}
+
+#[test]
+fn a_stair_type_is_built_as_its_construction_says_with_stringers_round_its_landings() {
+    use crate::stairs::{PartKind, parts_tagged};
+    let mut s = Session::new();
+    let p = json!({"start": [0, 0], "width": 1000, "type": "Monolithic 150mm",
+        "path": [{"to": [0, 1900]}, {"to": [2500, 1900], "landing": true}, {"to": [2500, -5000]}]});
+    let id = run(&mut s, "stair", p)["id"].as_u64().unwrap();
+    // A monolithic type made a stair on stringers: no slab, stringers down its flights; none round its landing until asked.
+    run(&mut s, "type", json!({"category": "stair", "name": "Monolithic 150mm", "construction": "stringers"}));
+    let kinds = |s: &Session| parts_tagged(&s.model, &stair_of(s, id)).unwrap();
+    let supports = |s: &Session| kinds(s).iter().filter(|(k, ..)| *k == PartKind::Supports).count();
+    let before = supports(&s);
+    assert!(before > 0, "stringers of their default size");
+    run(&mut s, "type", json!({"category": "stair", "name": "Monolithic 150mm", "landing_stringers": true}));
+    assert!(supports(&s) > before, "and round the landing's free edges");
+    assert!(kinds(&s).iter().any(|(k, ..)| *k == PartKind::Landings));
+    // A finish with a rounded edge is cut in slices at its nosing.
+    run(&mut s, "type", json!({"category": "stair", "name": "Monolithic 150mm", "tread_cover": 30, "cover_nosing": 20}));
+    let square = crate::stairs::covers(&s.model, &stair_of(&s, id)).len();
+    run(&mut s, "type", json!({"category": "stair", "name": "Monolithic 150mm", "finish_profile": "bullnose"}));
+    assert!(crate::stairs::covers(&s.model, &stair_of(&s, id)).len() > square);
+    assert!(s.execute("type", &json!({"category": "stair", "name": "Monolithic 150mm", "construction": "glass"})).is_err());
+}
+
+#[test]
+fn a_stair_goes_out_to_ifc_as_its_type_builds_it_and_comes_back_a_stair() {
+    let mut s = Session::new();
+    run(&mut s, "type", json!({"category": "stair", "name": "Stringers - Closed Risers", "landing_stringers": true}));
+    let p = json!({"start": [0, 0], "width": 1000, "type": "Stringers - Closed Risers",
+        "path": [{"to": [0, 1900]}, {"to": [2500, 1900], "landing": true}, {"to": [2500, -5000]}]});
+    let id = run(&mut s, "stair", p)["id"].as_u64().unwrap();
+    let file = crate::ifc::export(&s.model);
+    for want in [
+        "Pset_StairCommon",
+        "Pset_StairFlightCommon",
+        "Qto_StairFlightBaseQuantities",
+        ".STRINGER.",
+        "BIMCraft_Stair",
+        ".LANDING.",
+        ".HALF_TURN_STAIR.",
+    ] {
+        assert!(file.contains(want), "{want}");
+    }
+    let dir = std::env::temp_dir().join(format!("bimcraft-stair-ifc-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("stair.ifc");
+    std::fs::write(&path, &file).unwrap();
+    let mut back = Session::new();
+    run(&mut back, "open", json!({"path": path.to_string_lossy()}));
+    let made: Vec<crate::model::Stair> = back
+        .model
+        .elements
+        .values()
+        .filter_map(|e| match e {
+            crate::model::Element::Stair(st) => Some(st.clone()),
+            _ => None,
+        })
+        .collect();
+    let was = stair_of(&s, id);
+    assert_eq!(made.len(), 1);
+    assert_eq!((made[0].path.clone(), made[0].type_name.clone()), (was.path, was.type_name), "the same stair, of the same type");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn a_dimension_measures_to_a_stair_s_edges_and_a_view_shows_its_parts_as_it_says() {
+    let mut s = Session::new();
+    let id = run(&mut s, "stair", json!({"start": [0, 0], "angle": 0, "height": 2800, "width": 1200}))["id"].as_u64().unwrap();
+    let edges = s.model.reference_lines(id);
+    assert!(edges.len() > 10, "its sides, ends and risers");
+    let (r, line) = edges[4];
+    assert_eq!(s.model.reference_line(&r).unwrap(), line);
+    assert!(matches!(r.face, crate::model::Face::Edge(4)));
+    // A view hides a stair's walk line, and shows its headroom, which is off until shown.
+    let look = crate::graphics::Look::of_3d(&s.model);
+    assert!(!look.shows_part(id, crate::graphics::StairPart::Headroom.tag()));
+    assert!(look.shows_part(id, crate::graphics::StairPart::Runs.tag()));
+    let level = s.model.levels()[0].0;
+    let r = run(&mut s, "stair_display", json!({"view": level, "same": "no_break_visible"}));
+    assert_eq!(r["stairs"]["same"], "no_break_visible");
+    let r = run(&mut s, "stair_display", json!({"view": level, "by_type": true}));
+    assert_eq!(r["stairs"], "by type");
+    assert!(s.execute("stair_display", &json!({"view": level, "below": "upside_down"})).is_err());
+}
+
+#[test]
+fn a_spiral_converts_to_a_sketch_and_any_converted_stair_converts_back() {
+    let mut s = Session::new();
+    let p = json!({"start": [0, 0], "angle": 90, "width": 1000, "spiral": {"radius": 900}, "type": "Monolithic 150mm"});
+    let id = run(&mut s, "stair", p)["id"].as_u64().unwrap();
+    let was = stair_of(&s, id);
+    let risers = run(&mut s, "stair_sketch", json!({"id": id}))["risers"].as_u64().unwrap();
+    assert_eq!(risers, u64::from(s.model.flight(&was).0), "a riser for each");
+    let drawn = stair_of(&s, id);
+    assert!(drawn.spiral.is_none() && !drawn.sketch.is_empty());
+    run(&mut s, "stair_sketch", json!({"id": id, "back": true}));
+    let back = stair_of(&s, id);
+    assert_eq!((back.spiral, back.sketch.is_empty(), back.unsketched.is_none()), (was.spiral, true, true));
+    assert!(s.execute("stair_sketch", &json!({"id": id, "back": true})).is_err(), "nothing to go back to");
+}
+
+#[test]
+fn a_multistorey_stair_separates_into_a_stair_for_each_storey() {
+    let mut s = Session::new();
+    run(&mut s, "level", json!({"name": "Level 3", "elevation": 6000}));
+    let p = json!({"start": [0, 0], "angle": 0, "width": 1000, "top_level": "Level 3", "multistorey": true});
+    let id = run(&mut s, "stair", p)["id"].as_u64().unwrap();
+    let before = crate::stairs::storeys(&s.model, &stair_of(&s, id)).len();
+    assert_eq!(before, 2);
+    let r = run(&mut s, "stair_storeys", json!({"id": id}));
+    let other = r["made"][0].as_u64().unwrap();
+    assert!(!stair_of(&s, id).multistorey);
+    assert_ne!(stair_of(&s, id).level, stair_of(&s, other).level);
+    // One changed alone.
+    run(&mut s, "modify", json!({"id": other, "width": 1400}));
+    assert_eq!((stair_of(&s, id).width, stair_of(&s, other).width), (1000.0, 1400.0));
+    assert!(s.execute("stair_storeys", &json!({"id": id})).is_err());
 }

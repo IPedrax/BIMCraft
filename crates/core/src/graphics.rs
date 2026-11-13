@@ -125,7 +125,52 @@ pub struct Sub {
 pub const SUBCATEGORIES: &[Sub] = &[
     Sub { key: "roomreference", parent: "room", name: ui_msg!("Reference"), off: true },
     Sub { key: "roomseparator", parent: "room", name: ui_msg!("Room Separation Lines"), off: false },
+    Sub { key: "stairrun", parent: "stair", name: ui_msg!("Runs"), off: false },
+    Sub { key: "stairriser", parent: "stair", name: ui_msg!("Risers"), off: false },
+    Sub { key: "stairlanding", parent: "stair", name: ui_msg!("Landings"), off: false },
+    Sub { key: "stairsupport", parent: "stair", name: ui_msg!("Stringers and Supports"), off: false },
+    Sub { key: "stairfinish", parent: "stair", name: ui_msg!("Finishes"), off: false },
+    Sub { key: "stairpath", parent: "stair", name: ui_msg!("Walk Line and Arrow"), off: false },
+    Sub { key: "staircutmark", parent: "stair", name: ui_msg!("Cut Marks"), off: false },
+    Sub { key: "stairnumber", parent: "stair", name: ui_msg!("Tread Numbers"), off: false },
+    Sub { key: "stairheadroom", parent: "stair", name: ui_msg!("Headroom"), off: true },
 ];
+
+/// A stair's subcategories, in the order a part of a stair's solid or its plan names one by (`StairPart as usize`).
+pub const STAIR_SUBS: [&str; 9] =
+    ["stairrun", "stairriser", "stairlanding", "stairsupport", "stairfinish", "stairpath", "staircutmark", "stairnumber", "stairheadroom"];
+
+/// What a part of a stair is, for its subcategory: the index into [`STAIR_SUBS`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StairPart {
+    Runs,
+    Risers,
+    Landings,
+    Supports,
+    Finishes,
+    Path,
+    CutMark,
+    Numbers,
+    Headroom,
+}
+
+impl StairPart {
+    /// Its subcategory's key.
+    pub fn key(self) -> &'static str {
+        STAIR_SUBS.get(self as usize).copied().unwrap_or("stair")
+    }
+
+    /// The part a solid tagged `tag` is (1 + its index; 0, none).
+    pub fn of_tag(tag: u8) -> Option<StairPart> {
+        use StairPart::*;
+        [Runs, Risers, Landings, Supports, Finishes, Path, CutMark, Numbers, Headroom].get(usize::from(tag).checked_sub(1)?).copied()
+    }
+
+    /// The tag a solid of this part carries.
+    pub fn tag(self) -> u8 {
+        self as u8 + 1
+    }
+}
 
 /// The subcategory `key` is, if it is one.
 pub fn sub(key: &str) -> Option<&'static Sub> {
@@ -284,7 +329,7 @@ pub enum Dash {
 
 impl Dash {
     /// The on and off lengths a line is drawn with, px.
-    fn pattern(self) -> Option<Vec<f32>> {
+    pub(crate) fn pattern(self) -> Option<Vec<f32>> {
         match self {
             Dash::Solid => None,
             Dash::Dashed => Some(vec![10.0, 5.0]),
@@ -540,6 +585,9 @@ pub struct Graphics {
     /// The layers of each CAD drawing it hides, by the drawing's name: Revit's Imported Categories, layer by layer.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub layers: BTreeMap<String, BTreeSet<String>>,
+    /// How stairs show in this view's plan, in place of what their types say; none, as each type says.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stairs: Option<crate::model::PlanShows>,
 }
 
 /// An edge of `element` as the view draws it, from `from` to `to` (mm in the view's terms), in line style `style` instead
@@ -572,6 +620,7 @@ impl Graphics {
         let mut g = self.clone();
         if t.controls.contains(&Group::Categories) {
             g.categories = t.graphics.categories.clone();
+            g.stairs = t.graphics.stairs;
         }
         if t.controls.contains(&Group::Filters) {
             g.filters = t.graphics.filters.clone();
@@ -1041,10 +1090,20 @@ pub struct Look {
     section: Option<([f64; 3], [f64; 3])>,
     /// A 3D view's Graphic Display Options: its edges, silhouettes and ambient shadows.
     display: crate::view3d::DisplayOptions,
+    /// The parts of stairs it hides, a bit for each tag ([`StairPart::tag`]); none, those hidden unless a view shows them.
+    parts_hidden: Option<u16>,
+}
+
+/// The bits of the stair parts graphics `g` hides; with none, those off unless shown.
+fn parts_mask(g: Option<&Graphics>) -> u16 {
+    STAIR_SUBS.iter().enumerate().fold(0u16, |mask, (i, key)| {
+        let hidden = g.map_or_else(|| off_unless_shown(key), |g| g.hides(key));
+        if hidden { mask | (1 << (i + 1)) } else { mask }
+    })
 }
 
 /// `c` halfway to the paper.
-fn halftone(c: Rgb) -> Rgb {
+pub(crate) fn halftone(c: Rgb) -> Rgb {
     let half = |v: u8| v + (255 - v) / 2;
     Rgb(half(c.0), half(c.1), half(c.2))
 }
@@ -1101,7 +1160,7 @@ impl Look {
     /// (a room's area) makes redraws slow.
     pub fn with(m: &Model, own: &Graphics) -> Look {
         let g = own.resolved(m);
-        let mut look = Look { style: g.style, layers: own.layers.clone(), ..Look::default() };
+        let mut look = Look { style: g.style, layers: own.layers.clone(), parts_hidden: Some(parts_mask(Some(&g))), ..Look::default() };
         // Nothing to look for: no graphics of its own, and nothing in the project phased or in an option.
         let linked = m.elements.keys().next_back().is_some_and(|id| crate::link::is_linked(*id));
         if own.draws_as_is() && !linked && !crate::phasing::any(m) && m.rare("mass").is_empty() {
@@ -1187,6 +1246,11 @@ impl Look {
         !self.hidden.contains(&id)
     }
 
+    /// Whether the view draws part `part` of element `id` (a stair's, by its tag; 0, the whole of it).
+    pub fn shows_part(&self, id: Id, part: u8) -> bool {
+        self.shows(id) && (part == 0 || self.parts_hidden.unwrap_or_else(|| parts_mask(None)) & (1u16 << part.min(15)) == 0)
+    }
+
     /// The colour of element `id`'s fill where the view cuts it, which is `default` unless it says
     /// otherwise: what the drawing code fills the union of cut walls with.
     pub fn cut_fill(&self, id: Id, default: Rgb) -> Rgb {
@@ -1223,7 +1287,7 @@ impl Look {
 
     /// Whether it changes anything.
     pub fn is_plain(&self) -> bool {
-        self.hidden.is_empty() && self.paint.is_empty()
+        self.hidden.is_empty() && self.paint.is_empty() && self.parts_hidden.unwrap_or_else(|| parts_mask(None)) == 0
     }
 
     /// `d` with its primitives drawn as the view says: the colours, weights and dashes of each

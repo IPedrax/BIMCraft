@@ -175,6 +175,11 @@ icon_names! {
     CentreArc,
     TangentArc,
     Landing,
+    TreadLock,
+    StairFromTop,
+    StairCheck,
+    StairSketch,
+    StairLevels,
     Fillet,
     Spline,
     FitSpline,
@@ -852,6 +857,39 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.line(&[(3.0, 3.0), (8.0, 3.0), (14.0, 9.0), (21.0, 9.0)]);
             g.line(&[(3.0, 9.0), (8.0, 9.0), (14.0, 15.0), (21.0, 15.0)]);
             g.line(&[(3.0, 15.0), (8.0, 15.0), (14.0, 21.0), (21.0, 21.0)]);
+        }
+        // Treads of one depth, locked: two steps with a padlock over them.
+        Icon::TreadLock => {
+            g.line(&[(3.0, 21.0), (3.0, 18.0), (8.0, 18.0), (8.0, 15.0), (13.0, 15.0), (13.0, 12.0)]);
+            g.closed(&[(13.0, 9.0), (21.0, 9.0), (21.0, 16.0), (13.0, 16.0)]);
+            g.arc((17.0, 9.0), 2.5, 180.0, 360.0);
+            g.line(&[(17.0, 12.0), (17.0, 13.5)]);
+        }
+        Icon::StairFromTop => {
+            // Steps, and an arrow coming down them from the top.
+            g.line(&[(3.0, 21.0), (3.0, 17.0), (8.0, 17.0), (8.0, 13.0), (13.0, 13.0), (13.0, 9.0), (21.0, 9.0)]);
+            g.line(&[(18.0, 3.0), (18.0, 7.0)]);
+            g.line(&[(15.5, 4.5), (18.0, 7.0), (20.5, 4.5)]);
+            g.line(&[(18.0, 7.0), (10.0, 15.0)]);
+        }
+        Icon::StairCheck => {
+            // Steps, and a tick.
+            g.line(&[(3.0, 21.0), (3.0, 17.0), (7.0, 17.0), (7.0, 13.0), (11.0, 13.0), (11.0, 9.0), (15.0, 9.0)]);
+            g.line(&[(13.0, 17.0), (16.0, 20.0), (21.0, 13.0)]);
+        }
+        Icon::StairSketch => {
+            // Risers as loose lines, each with its two ends.
+            for x in [5.0, 10.0, 15.0, 20.0] {
+                g.line(&[(x, 5.0), (x, 19.0)]);
+                g.closed(&[(x - 1.0, 4.0), (x + 1.0, 4.0), (x + 1.0, 6.0), (x - 1.0, 6.0)]);
+                g.closed(&[(x - 1.0, 18.0), (x + 1.0, 18.0), (x + 1.0, 20.0), (x - 1.0, 20.0)]);
+            }
+        }
+        Icon::StairLevels => {
+            // Two levels, a stair between them.
+            g.line(&[(2.0, 21.0), (22.0, 21.0)]);
+            g.line(&[(2.0, 5.0), (22.0, 5.0)]);
+            g.line(&[(5.0, 21.0), (5.0, 17.0), (9.0, 17.0), (9.0, 13.0), (13.0, 13.0), (13.0, 9.0), (17.0, 9.0), (17.0, 5.0)]);
         }
         Icon::Landing => {
             g.closed(&[(3.0, 20.0), (3.0, 17.0), (6.0, 17.0), (6.0, 13.0), (17.0, 13.0), (17.0, 9.0), (21.0, 9.0), (21.0, 20.0)]);

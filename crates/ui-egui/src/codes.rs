@@ -5,6 +5,7 @@
 use bimcraft_core::codes::{self, GENERIC, ORDER};
 use bimcraft_core::model::Model;
 use bimcraft_core::units::Units;
+use bimcraft_i18n::msg;
 use egui::{Align, Color32, ComboBox, Context, DragValue, Grid, Id as UiId, Layout, RichText, ScrollArea, Ui, WidgetInfo, WidgetType};
 use serde_json::{Map, Value, json};
 
@@ -19,7 +20,7 @@ const TABS: [&str; 2] = ["Overview", "Stairs & Railings"];
 pub(crate) const OUTSIDE: Color32 = Color32::from_rgb(0xC8, 0x7A, 0x00);
 
 /// What each rule is called, and the group it is listed under.
-const LABELS: [(&str, &str, &str); 25] = [
+const LABELS: [(&str, &str, &str); 26] = [
     ("riser", "New stairs", "Riser Height"),
     ("going", "New stairs", "Tread Depth (going)"),
     ("riser_min", "Risers and treads", "Minimum Riser Height"),
@@ -39,6 +40,7 @@ const LABELS: [(&str, &str, &str); 25] = [
     ("walk_line_offset", "Winders", "Walk Line Offset From Narrow Side"),
     ("winder_going_min", "Winders", "Minimum Tread Depth at Walk Line"),
     ("winder_narrow_min", "Winders", "Minimum Tread Depth at Narrow End"),
+    ("nosing_min", "Treads", "Minimum Nosing"),
     ("nosing_max", "Treads", "Maximum Nosing"),
     ("open_risers", "Treads", "Open Risers Allowed"),
     ("uniformity", "Treads", "Most Difference Between Steps"),
@@ -47,9 +49,53 @@ const LABELS: [(&str, &str, &str); 25] = [
     ("guard_min", "Railings", "Minimum Guard Height"),
 ];
 
+/// What the rules only a stair type has are called.
+const TYPE_LABELS: [(&str, &str); 6] = [
+    ("ratio_min", "Minimum Tread / Riser Ratio"),
+    ("ratio_max", "Maximum Tread / Riser Ratio"),
+    ("sum_min", "Minimum Tread + Riser"),
+    ("sum_max", "Maximum Tread + Riser"),
+    ("pitch_min", "Minimum Stair Pitch"),
+    ("pitch_max", "Maximum Stair Pitch"),
+];
+
+/// What to do about a stair outside rule `rule`, as a person would say it.
+fn advice(rule: &str) -> Option<&'static str> {
+    Some(match rule {
+        "riser_max" => msg!("The risers are too high. Add more risers so each one is lower, or lower the Riser in the Options Bar."),
+        "riser_min" => msg!("The risers are too low. Use fewer, higher risers."),
+        "going_min" => msg!("The treads are too shallow. Make them deeper."),
+        "going_max" => msg!("The treads are too deep. Make them shallower."),
+        "step_min" => msg!("The steps are too short for a comfortable stride. Deepen the treads, or use fewer risers."),
+        "step_max" => msg!("The steps are too long for a comfortable stride. Make the treads shallower, or use more risers."),
+        "width_min" => msg!("The stair is too narrow. Make it wider."),
+        "headroom" => {
+            msg!("Something overhead is too low. Cut it open over the stair with Cut Opening below, or raise what is in the way.")
+        }
+        "flight_rise_max" | "flight_risers_max" => {
+            msg!("This flight climbs too far without a rest. Add a landing to break it up; Add Landings Due in Properties does it for you.")
+        }
+        "landing_length" => msg!("A landing is too short. Make it longer."),
+        "winders" => msg!("This code doesn't allow winders. Use a landing at the turn instead."),
+        "winder_going_min" => msg!("The winders are too shallow on the walk line. Use fewer of them, or spread them into the flights."),
+        "winder_narrow_min" => {
+            msg!("The winders come too close to a point at the inside. Spread them into the flights so each keeps some depth.")
+        }
+        "nosing_min" => msg!("The treads don't stand out enough over the risers. Give the stair type a longer nosing or finish nosing."),
+        "nosing_max" => msg!("The treads stand out too far over the risers. Give the stair type a shorter nosing."),
+        "open_risers" => msg!("This code doesn't allow open risers. Use a stair type with riser boards."),
+        "uniformity" => msg!("The risers aren't all the same height. Pick a riser height that divides each storey more evenly."),
+        "ratio_min" | "ratio_max" | "sum_min" | "sum_max" | "pitch_min" | "pitch_max" => {
+            msg!("The stair's proportions are outside what its type allows. Change the riser or the tread, or the type's rules.")
+        }
+        _ => return None,
+    })
+}
+
 /// What a rule is called, in the interface's language.
 pub(crate) fn rule_label(rule: &str) -> &str {
-    LABELS.iter().find(|(k, _, _)| *k == rule).map_or(rule, |(_, _, l)| t(l))
+    let of_type = TYPE_LABELS.iter().find(|(k, _)| *k == rule).map(|(_, l)| t(l));
+    LABELS.iter().find(|(k, _, _)| *k == rule).map(|(_, _, l)| t(l)).or(of_type).unwrap_or(rule)
 }
 
 /// What a rule that is a choice may be, as the core names each and as it is shown.
@@ -129,10 +175,14 @@ pub(crate) fn findings(ui: &mut Ui, m: &Model, list: &Value) {
                 ui.end_row();
             });
         }
-        // What the core says of it, its fix after the colon, on a line of its own.
-        let said = f["message"].as_str().unwrap_or("");
-        // The core writes field names in backticks, for agents: plain here.
-        let fix = said.split_once(": ").map_or(said, |(_, fix)| fix).replace('`', "");
+        // What to do about it, in plain words; the core's own sentence where there are none here.
+        let fix = match advice(rule) {
+            Some(a) => t(a).to_string(),
+            None => {
+                let said = f["message"].as_str().unwrap_or("");
+                said.split_once(": ").map_or(said, |(_, fix)| fix).replace('`', "")
+            }
+        };
         ui.add(egui::Label::new(RichText::new(fix).small()).wrap());
     }
     ui.separator();
@@ -157,12 +207,17 @@ fn overview_tab(ui: &mut Ui, code: &codes::BuildingCode) {
         }
         ui.add_space(8.0);
     }
-    ui.label(
-        RichText::new(t(
-            "The numbers were typed from memory of these documents and are unchecked: check one against a copy before relying on it.",
-        ))
-        .color(OUTSIDE),
-    );
+    if code.checked.is_empty() {
+        ui.label(
+            RichText::new(t(
+                "These numbers haven't been checked against the documents yet. Check one against a copy before you rely on it.",
+            ))
+            .color(OUTSIDE),
+        );
+    } else {
+        ui.label(RichText::new(&code.checked).color(pal().muted));
+    }
+    ui.label(RichText::new(t("Each rule shows where its number comes from on the Stairs tab.")).color(pal().muted).small());
 }
 
 /// Whether the rules in the dialog are no longer its code's: a code of the user's own making, until saved.
@@ -174,71 +229,130 @@ fn custom(m: &Model, d: &CodesDialog) -> bool {
     })
 }
 
+/// The rules shown as one row with a least and a most side by side, as Revit's Maximum Riser Height gets a second box:
+/// the least's key, the most's, and the row's name.
+const PAIRS: [(&str, &str, &str); 5] = [
+    ("riser_min", "riser_max", "Riser Height"),
+    ("going_min", "going_max", "Tread Depth"),
+    ("step_min", "step_max", "Step (2 risers + 1 tread)"),
+    ("nosing_min", "nosing_max", "Nosing"),
+    ("handrail_min", "handrail_max", "Handrail Height"),
+];
+
+/// The field of one rule's value: a tick, a choice, a count or a length.
+fn rule_field(ui: &mut Ui, units: Units, key: &str, label: &str, v: &mut Value) {
+    match v {
+        Value::Bool(b) => {
+            let r = ui.checkbox(b, "");
+            r.widget_info(|| WidgetInfo::labeled(WidgetType::Checkbox, true, t(label)));
+        }
+        Value::String(s) => {
+            let now = choices(key).iter().find(|(k, _)| k == s).map_or(s.as_str(), |(_, l)| l);
+            let c = ComboBox::from_id_salt(("building-code-rule", key)).selected_text(t(now)).width(170.0).show_ui(ui, |ui| {
+                for (k, l) in choices(key) {
+                    ui.selectable_value(s, (*k).to_string(), t(l));
+                }
+            });
+            c.response.widget_info(|| WidgetInfo::labeled(WidgetType::ComboBox, true, t(label)));
+        }
+        Value::Number(n) if key == "flight_risers_max" => {
+            let mut x = n.as_u64().unwrap_or(1);
+            let r = ui.add(DragValue::new(&mut x).range(1..=1000));
+            r.widget_info(|| WidgetInfo::labeled(WidgetType::DragValue, true, t(label)));
+            *v = json!(x);
+        }
+        Value::Number(n) => {
+            let mut x = n.as_f64().unwrap_or(0.0);
+            // In the project's units, typed as its lengths are.
+            let r = ui.add(
+                DragValue::new(&mut x)
+                    .range(0.0..=100_000.0)
+                    .speed(1.0)
+                    .custom_formatter(|v, _| length(units, v))
+                    .custom_parser(|typed| units.parse(typed.trim().trim_end_matches("mm").trim())),
+            );
+            r.widget_info(|| WidgetInfo::labeled(WidgetType::DragValue, true, t(label)));
+            *v = json!(x);
+        }
+        _ => {}
+    }
+}
+
+/// Whether a rule the dialog has is no longer the code's own number.
+fn changed(now: &Value, code: &Value) -> bool {
+    now != code && now.as_f64() != code.as_f64().or(Some(f64::NAN))
+}
+
 fn stairs_tab(ui: &mut Ui, m: &Model, d: &mut CodesDialog) {
     let own = rules_of(m, &d.selected);
+    let sources = m.code(&d.selected).map(|c| c.sources.clone()).unwrap_or_default();
     let units = m.units;
     let mut group = "";
     Grid::new("building-code-stairs").striped(true).num_columns(3).min_col_width(150.0).show(ui, |ui| {
         for (key, of, label) in LABELS {
             debug_assert!(ORDER.contains(&key));
+            // The most of a pair is on its least's row.
+            if PAIRS.iter().any(|(_, high, _)| *high == key) {
+                continue;
+            }
             if of != group {
                 group = of;
                 ui.label(RichText::new(t(of)).strong());
                 ui.end_row();
             }
-            ui.label(t(label));
-            let Some(v) = d.rules.get_mut(key) else {
-                ui.end_row();
-                continue;
+            let pair = PAIRS.iter().find(|(low, _, _)| *low == key);
+            let keys: Vec<(&str, &str)> = match pair {
+                Some((low, high, _)) => {
+                    let named = |k: &str| LABELS.iter().find(|(x, _, _)| *x == k).map_or("", |(_, _, l)| *l);
+                    vec![(*low, named(low)), (*high, named(high))]
+                }
+                None => vec![(key, label)],
             };
-            match v {
-                Value::Bool(b) => {
-                    let r = ui.checkbox(b, "");
-                    r.widget_info(|| WidgetInfo::labeled(WidgetType::Checkbox, true, t(label)));
+            ui.label(t(pair.map_or(label, |(_, _, l)| l)));
+            ui.horizontal(|ui| {
+                for (i, (k, named)) in keys.iter().enumerate() {
+                    if pair.is_some() {
+                        ui.label(RichText::new(t(if i == 0 { "min." } else { "max." })).color(pal().muted));
+                    }
+                    if let Some(v) = d.rules.get_mut(*k) {
+                        rule_field(ui, units, k, named, v);
+                    }
                 }
-                Value::String(s) => {
-                    let now = choices(key).iter().find(|(k, _)| k == s).map_or(s.as_str(), |(_, l)| l);
-                    let c = ComboBox::from_id_salt(("building-code-rule", key)).selected_text(t(now)).width(170.0).show_ui(ui, |ui| {
-                        for (k, l) in choices(key) {
-                            ui.selectable_value(s, (*k).to_string(), t(l));
-                        }
-                    });
-                    c.response.widget_info(|| WidgetInfo::labeled(WidgetType::ComboBox, true, t(label)));
-                }
-                Value::Number(n) if key == "flight_risers_max" => {
-                    let mut x = n.as_u64().unwrap_or(1);
-                    let r = ui.add(DragValue::new(&mut x).range(1..=1000));
-                    r.widget_info(|| WidgetInfo::labeled(WidgetType::DragValue, true, t(label)));
-                    *v = json!(x);
-                }
-                Value::Number(n) => {
-                    let mut x = n.as_f64().unwrap_or(0.0);
-                    // In the project's units, typed as its lengths are.
-                    let r = ui.add(
-                        DragValue::new(&mut x)
-                            .range(0.0..=100_000.0)
-                            .speed(1.0)
-                            .custom_formatter(|v, _| length(units, v))
-                            .custom_parser(|typed| units.parse(typed.trim().trim_end_matches("mm").trim())),
-                    );
-                    r.widget_info(|| WidgetInfo::labeled(WidgetType::DragValue, true, t(label)));
-                    *v = json!(x);
-                }
-                _ => {}
-            }
+            });
             // A rule the project changed: the code's own beside it, and the way back.
-            match (d.rules.get(key), own.get(key)) {
-                (Some(now), Some(code)) if now != code && now.as_f64() != code.as_f64().or(Some(f64::NAN)) => {
-                    ui.horizontal(|ui| {
-                        ui.label(RichText::new(tf("Changed: the code says {}", &[&said(units, key, code)])).color(OUTSIDE));
-                        if ui.small_button(t("Reset")).clicked() {
-                            d.rules.insert(key.to_string(), code.clone());
-                        }
-                    });
-                }
-                _ => {
+            let moved: Vec<(&str, Value)> = (keys.iter())
+                .filter_map(|(k, _)| match (d.rules.get(*k), own.get(*k)) {
+                    (Some(now), Some(code)) if changed(now, code) => Some((*k, code.clone())),
+                    _ => None,
+                })
+                .collect();
+            if moved.is_empty() {
+                // Where the number comes from, so anyone can check it against its document.
+                let from: Vec<&str> = keys.iter().filter_map(|(k, _)| sources.get(*k).map(String::as_str)).collect();
+                let mut from = from;
+                from.dedup();
+                if from.is_empty() {
                     ui.label("");
+                } else {
+                    let said = from.join("; ");
+                    ui.add(egui::Label::new(RichText::new(&said).color(pal().muted).small()).truncate()).on_hover_text(&said);
                 }
+            } else {
+                ui.horizontal(|ui| {
+                    let was: Vec<String> = moved.iter().map(|(k, code)| said(units, k, code)).collect();
+                    let was = if pair.is_some() && moved.len() == 1 {
+                        let side = if moved.first().is_some_and(|(k, _)| k.ends_with("_min")) { t("min.") } else { t("max.") };
+                        format!("{side} {}", was.join(""))
+                    } else {
+                        was.join(" – ")
+                    };
+                    ui.label(RichText::new(tf("Changed: the code says {}", &[&was])).color(OUTSIDE));
+                    if ui.small_button(t("Reset")).clicked() {
+                        for (k, code) in moved {
+                            d.rules.insert(k.to_string(), code);
+                        }
+                    }
+                });
             }
             ui.end_row();
         }

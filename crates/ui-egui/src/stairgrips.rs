@@ -78,7 +78,7 @@ impl BimApp {
                     let p = match grip {
                         // One drawn along a path: its points, where it starts and how wide it is.
                         _ if !after.path.is_empty() => {
-                            json!({"id": id, "start": [after.start.0, after.start.1], "angle": after.angle, "path": after.path, "width": after.width})
+                            json!({"id": id, "start": [after.start.0, after.start.1], "angle": after.angle, "path": after.path, "width": after.width, "edges": after.edges})
                         }
                         // One drawn by hand: its risers, and where it starts with them.
                         _ if !after.sketch.is_empty() => {
@@ -92,6 +92,7 @@ impl BimApp {
                         Grip::Top => json!({"id": id, "angle": after.angle}),
                         Grip::Width(_) => json!({"id": id, "width": after.width}),
                         Grip::Turn(_) | Grip::Landing(_) => json!({"id": id, "landings": after.landings}),
+                        Grip::Edge(..) => json!({"id": id, "edges": after.edges}),
                     };
                     self.run("modify", p);
                 }
@@ -106,6 +107,13 @@ impl BimApp {
         let p = ui.painter_at(rect);
         let at = |q: P2| pos(rect.min, v.px(q));
         let held = self.canvas.stair_grip.filter(|(g, _)| *g == id).map(|(_, g)| g);
+        // The flight or landing picked on its own: its outline, thick.
+        if let Some((_, i)) = self.canvas.stair_part.filter(|(s, _)| *s == id)
+            && let Some(part) = stairs::stair_parts(&st).get(i)
+        {
+            let ring: Vec<Pos2> = part.ring.iter().map(|q| at(*q)).collect();
+            p.add(Shape::closed_line(ring, Stroke::new(3.0, pal().accent)));
+        }
         let mut shown = st.clone();
         if let (Some(grip), Some(q)) = (held, ui.input(|i| i.pointer.latest_pos())) {
             let square = ui.input(|i| i.modifiers.shift);
@@ -132,6 +140,12 @@ impl BimApp {
                     shown.landings.get(i).map_or_else(String::new, |t| tf("{} of {} risers", &[&t.at.to_string(), &n.to_string()]))
                 }
                 Grip::Landing(i) => shown.landings.get(i).map_or_else(String::new, |t| m.units.with_unit(t.length)),
+                // How far the edge stands out from where the stair's layout puts it.
+                Grip::Edge(k, tenths) => {
+                    let normal = tenths as f64 / 10.0;
+                    let by = shown.edges.iter().find(|e| e.landing == k && (e.normal - normal).abs() < 0.5).map_or(0.0, |e| e.by);
+                    m.units.with_unit(by)
+                }
             };
             let outside = codes::stair_findings(m, &shown).len();
             let (said, color) = match outside {

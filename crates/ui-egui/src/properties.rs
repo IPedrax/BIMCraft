@@ -318,6 +318,8 @@ fn rows(category: &str) -> &'static [Row] {
             ("Constraints", "level", "Base Level", Level),
             ("Constraints", "top_level", "Top Level", TopLevel),
             ("Constraints", "height", "Unconnected Height", Height),
+            ("Constraints", "base_offset", msg!("Base Offset"), Length),
+            ("Constraints", "top_offset", msg!("Top Offset"), Length),
             (
                 "Constraints",
                 "line",
@@ -326,6 +328,7 @@ fn rows(category: &str) -> &'static [Row] {
             ),
             ("Constraints", "offset", msg!("Location Line Offset"), Length),
             ("Constraints", "multistorey", msg!("Multistorey"), Flag),
+            ("Dimensions", "lock_going", msg!("Lock Tread Depth"), Flag),
             ("Dimensions", "width", msg!("Actual Run Width"), Length),
             ("Dimensions", "spiral.radius", msg!("Spiral Radius"), LengthIf),
             ("Dimensions", "riser", msg!("Maximum Riser Height"), Length),
@@ -452,6 +455,7 @@ fn type_json<'a>(types: &'a Value, category: &str, name: &str) -> &'a Value {
 fn type_rows(category: &str) -> &'static [(&'static str, &'static str, &'static str)] {
     const C: &str = msg!("Construction");
     const D: &str = msg!("Dimensions");
+    const F: &str = msg!("Finishes");
     match category {
         "wall" => &[(C, "thickness", msg!("Width"))],
         "floor" => &[(C, "thickness", msg!("Default Thickness"))],
@@ -469,6 +473,13 @@ fn type_rows(category: &str) -> &'static [(&'static str, &'static str, &'static 
             (C, "nosing", msg!("Nosing Length")),
             (C, "stringer_width", msg!("Stringer Width")),
             (C, "stringer_depth", msg!("Stringer Depth")),
+            (C, "carriage_width", msg!("Middle Stringer Width")),
+            (C, "carriage_depth", msg!("Middle Stringer Depth")),
+            (C, "post", msg!("Spiral Post Diameter")),
+            (F, "tread_cover", msg!("Tread Cover Thickness")),
+            (F, "riser_cover", msg!("Riser Cover Thickness")),
+            (F, "cover_nosing", msg!("Cover Nosing")),
+            (F, "cover_side", msg!("Cover Side Overhang")),
         ],
         _ => &[],
     }
@@ -742,7 +753,7 @@ fn function_name(f: Function) -> &'static str {
 }
 
 /// A type's parameter as typed: its group, its field, its label, the text.
-type TypeField = (&'static str, &'static str, &'static str, String);
+pub(crate) type TypeField = (&'static str, &'static str, &'static str, String);
 
 /// The Type Properties dialog: a type of a category, and its parameters as typed; a layered
 /// type's layers, too.
@@ -762,6 +773,8 @@ pub(crate) struct TypeDialog {
     layers_were: Vec<LayerRow>,
     /// A run type's section: whether it is round (then it has a diameter and no depth) and what it is made of ("" for nothing).
     shape: Option<(bool, String)>,
+    /// A stair type's rules and how its stairs show in plan.
+    stair: Option<crate::stairtype::StairDraft>,
 }
 
 impl TypeDialog {
@@ -771,7 +784,27 @@ impl TypeDialog {
             let t = m.types.runs.get(category).and_then(|t| t.get(&name));
             (t.is_some_and(|t| t.round), t.map(|t| t.material.clone()).unwrap_or_default())
         });
-        TypeDialog { category, name, elements, fields, naming: Naming::None, error: None, layers_were: layers.clone(), layers, shape }
+        let stair = (category == "stair").then(|| crate::stairtype::StairDraft::new(m, &name));
+        TypeDialog {
+            category,
+            name,
+            elements,
+            fields,
+            naming: Naming::None,
+            error: None,
+            layers_were: layers.clone(),
+            layers,
+            shape,
+            stair,
+        }
+    }
+
+    /// What a stair type is built as, as the core names it (in tests, as the drop-down would set it).
+    #[cfg(test)]
+    pub(crate) fn set_construction(&mut self, to: &str) {
+        if let Some(st) = &mut self.stair {
+            st.set_construction(to);
+        }
     }
 
     /// The dialog showing type `name` as the model has it now.
@@ -782,7 +815,12 @@ impl TypeDialog {
     /// A type's sizes, as typed: lengths in the project's units.
     fn fields(m: &Model, category: &str, name: &str) -> Vec<TypeField> {
         let types = serde_json::to_value(&m.types).unwrap_or_default();
-        type_rows(category).iter().map(|(g, k, l)| (*g, *k, *l, shown(Length, &type_json(&types, category, name)[k], m.units))).collect()
+        // A size the file leaves out (a finish of none) is 0.
+        let size = |k: &str| match &type_json(&types, category, name)[k] {
+            Value::Null => json!(0.0),
+            v => v.clone(),
+        };
+        type_rows(category).iter().map(|(g, k, l)| (*g, *k, *l, shown(Length, &size(k), m.units))).collect()
     }
 
     /// A layered type's layers, as typed: one structure layer as thick as it, without any.
@@ -812,14 +850,17 @@ impl TypeDialog {
             p["layers"] = Value::Array(layers.collect::<Result<_, String>>()?);
         }
         let round = self.shape.as_ref().is_some_and(|(round, _)| *round);
-        for (_, key, label, typed) in
-            self.fields.iter().filter(|(_, key, ..)| !(layered && *key == "thickness") && !(round && *key == "depth"))
-        {
+        for (_, key, label, typed) in self.fields.iter().filter(|(_, key, ..)| {
+            !(layered && *key == "thickness") && !(round && *key == "depth") && self.stair.as_ref().is_none_or(|s| s.used(key))
+        }) {
             p[*key] = json!(units.parse(typed).ok_or_else(|| tf("{}: `{}` is not a length", &[t(label), typed]))?);
         }
         if let Some((round, material)) = &self.shape {
             p["round"] = json!(round);
             p["material"] = json!(material);
+        }
+        if let Some(stair) = &self.stair {
+            stair.params(&mut p, units)?;
         }
         Ok(p)
     }
@@ -1117,6 +1158,7 @@ impl BimApp {
             self.parameters(ui, &model, &ids, rows);
             if let Subject::Element(id) = subject {
                 self.stair_turns(ui, &model, id);
+                self.stair_flights(ui, &model, id);
                 self.ties(ui, &model, id);
             }
             self.component_parameters(ui, &model, &ids);
@@ -1839,6 +1881,80 @@ impl BimApp {
         }
     }
 
+    /// A stair drawn along a path, part by part from its foot: each flight and landing and how wide it is, the one picked
+    /// on its own on the canvas first. A width typed is that part's own; empty, it is as wide as the stair.
+    fn stair_flights(&mut self, ui: &mut Ui, model: &Model, id: Id) {
+        let Some(Element::Stair(st)) = model.elements.get(id) else { return };
+        if st.path.is_empty() {
+            return;
+        }
+        let group = msg!("Flights and Landings");
+        let open = !self.collapsed.contains(group);
+        if group_header(ui, t(group), open) && !self.collapsed.remove(group) {
+            self.collapsed.insert(group);
+        }
+        if !open {
+            return;
+        }
+        let parts = bimcraft_core::stairs::stair_parts(st);
+        let picked = self.canvas.stair_part.filter(|(s, _)| *s == id).map(|(_, i)| i);
+        // The one picked first, then the rest in order.
+        let mut order: Vec<usize> = (0..parts.len()).collect();
+        if let Some(i) = picked.filter(|i| *i < parts.len()) {
+            order.retain(|j| *j != i);
+            order.insert(0, i);
+        }
+        let units = model.units;
+        let mut path = st.path.clone();
+        let (mut changed, mut failed) = (false, None);
+        grid(ui, ("stair-flights", id), |ui| {
+            let (mut flights, mut landings) = (0, 0);
+            let names: Vec<String> = parts
+                .iter()
+                .map(|p| {
+                    if p.landing {
+                        landings += 1;
+                        tf("Landing {}", &[&landings.to_string()])
+                    } else {
+                        flights += 1;
+                        tf("Flight {}", &[&flights.to_string()])
+                    }
+                })
+                .collect();
+            for i in order {
+                let (Some(part), Some(name)) = (parts.get(i), names.get(i)) else { continue };
+                let label = RichText::new(name).strong();
+                ui.label(if picked == Some(i) { label.color(pal().accent) } else { label });
+                ui.end_row();
+                let own = path.get(part.segs.0).and_then(|s| s.width);
+                let name = ui.label(t("Width")).on_hover_text(t("How wide this flight or landing is; empty for as wide as the stair"));
+                let now = own.map_or(String::new(), |w| units.length(w));
+                if let Some(typed) = self.field(ui, id, &format!("part-{i}-width"), now, name.id, &units.length(st.width)) {
+                    let width = match (typed.trim().is_empty(), units.parse(&typed)) {
+                        (true, _) => Some(None),
+                        (_, Some(x)) if x > 0.0 => Some(Some(x)),
+                        _ => {
+                            failed = Some(tf("`{}` is not a length", &[typed.trim()]));
+                            None
+                        }
+                    };
+                    if let Some(w) = width {
+                        for seg in path.iter_mut().take(part.segs.1 + 1).skip(part.segs.0) {
+                            seg.width = w;
+                        }
+                        changed = true;
+                    }
+                }
+                ui.end_row();
+            }
+        });
+        if let Some(e) = failed {
+            self.status = Status { text: e, error: true };
+        } else if changed {
+            self.run("modify", json!({"id": id, "path": path}));
+        }
+    }
+
     /// A stair's landings and turns, one after another going up: after how many risers, which way the next run goes,
     /// whether the turn is winders and how many, and how long the landing is. A landing is added (where the longest run
     /// is halved), taken away, or all of them placed as the building code asks.
@@ -2333,7 +2449,33 @@ impl BimApp {
                         groups.push(g);
                     }
                 }
+                // A stair type's sizes that do nothing as it is typed: greyed, with why.
+                let monolithic = d.category == "stair"
+                    && d.fields.iter().find(|f| f.1 == "waist").and_then(|f| model.units.parse(&f.3)).is_some_and(|w| w > 0.0);
+                let slanted = d.stair.as_ref().is_some_and(|s| s.slanted());
+                let unused = |key: &str| -> Option<&'static str> {
+                    if d.category != "stair" {
+                        return None;
+                    }
+                    match key {
+                        "tread_thickness" | "riser_thickness" | "stringer_width" | "stringer_depth" | "carriage_width"
+                        | "carriage_depth"
+                            if monolithic =>
+                        {
+                            Some(msg!("Not used: a stair with a Monolithic Slab Thickness is one slab, with no treads, risers or stringers of their own"))
+                        }
+                        "nosing" if monolithic && !slanted => {
+                            Some(msg!("Used by a monolithic stair only with the Slanted Riser profile, as how far the riser leans back"))
+                        }
+                        _ => None,
+                    }
+                };
                 typeprops::table(ui, "type", below, |tb| {
+                    // A stair type lays out its own table: the model, then the graphics.
+                    if let Some(stair) = &mut d.stair {
+                        stair.show(tb, &model, &mut d.fields);
+                        return;
+                    }
                     for g in groups {
                         tb.group(g);
                         for (_, key, label, typed) in d.fields.iter_mut().filter(|f| f.0 == g) {
@@ -2341,7 +2483,17 @@ impl BimApp {
                             if round && *key == "depth" {
                                 continue;
                             }
-                            tb.text(t(if round && *key == "width" { "Diameter" } else { label }), typed, model.units.name());
+                            let label = t(if round && *key == "width" { "Diameter" } else { label });
+                            match unused(key) {
+                                Some(why) => {
+                                    tb.row(label, |ui, l| {
+                                        ui.add_enabled(false, TextEdit::singleline(typed).desired_width(ui.available_width()))
+                                            .on_disabled_hover_text(t(why))
+                                            .labelled_by(l)
+                                    });
+                                }
+                                None => tb.text(label, typed, model.units.name()),
+                            }
                         }
                         match (g, &mut d.shape) {
                             ("Dimensions", Some((round, _))) => tb.check(t("Round"), round),

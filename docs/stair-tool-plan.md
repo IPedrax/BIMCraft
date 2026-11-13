@@ -186,7 +186,8 @@ Levels; Convert, Edit Sketch, Flip, Railing).
 Everything a new session needs to pick the work up. Branch `feat/advanced-stair-tool`, draft PR
 [#386](https://github.com/IPedrax/BIMCraft/pull/386); push with
 `git push https://github.com/dansity/BIMCraft HEAD:feat/advanced-stair-tool` (the only remote, `origin`, is upstream). The
-last commit is `9d6d12a7` (stairs drawn along a line). Railings are parked: the user asked for stairs first. Working mode
+last commit is `9d6d12a7` (stairs drawn along a line). **Railings are out of this work's scope**: they are a category of
+their own, and the user decided this branch does nothing with them. Working mode
 the user asked for: push through the coding, run only the tests near the change while working, the full checks
 (`cargo fmt --check`, clippy, `cargo test --workspace`) once before each commit, commit and push often, keep this table
 and the PR description up to date. An RPM when asked: `packaging/linux/package.sh --formats rpm` →
@@ -234,6 +235,59 @@ Steps to finish it:
      saw.
    - Add Landings Due runs the solver with the risers, tread and width locked. It keeps every landing the stair has and adds
      only those the code still asks for (a flight too long).
+
+### 1b. Added to the batch in the second session (not committed; the user validates first)
+
+- The batch's two stale test expectations fixed (stretched treads take 9 of 277.8 in 2500).
+- **Covers** (step 9): `tread_cover`, `riser_cover`, `cover_nosing`, `cover_side`, `cover_material` and a structure
+  `material` on `StairType`; `stairs::covers` builds them, `parts` sits the structure `tread_cover` lower (risers finish to
+  finish); 3D paints each in its material; IFC writes them as one `IfcCovering` .FLOORING. among the stair's parts.
+- **Step profile** for a monolithic stair: `profile` `square` or `slanted`, the riser leaning back from the tread's front
+  edge by `nosing` (the user's sketch); runs and the riser onto a landing; the riser cover follows the slant. The user
+  said the finishes will get profile options of their own later: ask which.
+- **Middle stringer** (`carriage_width` × `carriage_depth`) and a spiral's **post** (`post`, its diameter).
+- **Plan**: tread numbers (`numbers` on the type), stringers' inner lines, treads' front edges at their nosing; the fill
+  was already drawn under every visible part.
+- **Type Properties**: Finishes rows, Step Profile, Materials, Tread Numbers; the plan pickers draw a little flight for
+  each way (`PlanShow::look` in the core, which the renderer reads too).
+- **Building Codes**: riser, tread, step and handrail as one row each with min. and max. side by side.
+- **Connect Levels** in Modify Stair: a level picked makes the stair multistorey up to it; Disconnect Levels undoes it.
+- Hostile payloads for the type's new fields; `cargo i18n update` run.
+- **Drawing along a line keeps what is clicked**: short of its top, the stair is what is drawn (`stairs::drawn_risers`),
+  its top under its top level by the risers not drawn, so a flight clicked stays put when a landing is drawn next; a
+  double click or Enter finishes it there. Stairs gained `base_offset` and `top_offset` (`Model::stair_span`), in
+  Properties as Base Offset and Top Offset. A monolithic landing is a riser deep at least (the riser onto it had a gap).
+- Third round: offsets measured **below** their levels (`stair_span`: level less offset); **Lock Tread Depth** in the
+  ribbon's Segment panel (`Stair::lock_going`, on by default: one depth the whole stair; off, flights stretch); the
+  location line's offset follows arcs (`pieces`), so a left or right line no longer drops when an arc is drawn; a curved
+  flight's and a spiral's underside smooth (each tread's corners share heights with its neighbours, cut into triangles,
+  shaded as one surface; the triangles' edges still show where edges are drawn); `start_tread` / `end_tread` on the type
+  (Begin with Riser / End with Riser in Type Properties); Type Properties greys the numbers the type does not use.
+- Fourth round: a flight going straight on into the next (a straight one into an arc, no corner or landing) is
+  **chained** (`Allotted::chained`, `chains`, `held`): its last tread is the step onto the next one's first riser, a
+  tread deep, and the pieces after it move with it (`moved` in `pathed`), so no sliver of a landing is left where the
+  locked depth does not divide the length. A monolithic landing is the slab's thickness again, and a flight's slab
+  **goes on under a landing** until the undersides meet (`joint`, from a run's end and from an arc's last riser); a run
+  from a landing stands on its underside, finish allowed for. The finish **stands out over every riser**: a nosing strip
+  where a run climbs onto a landing, the floor or an end tread, and on the risers no run has (`Layout::nosings`: round
+  an arc, a spiral's), with their riser covers. The type's plan lines are **line styles** (`line_visible`,
+  `line_hidden`), Medium Lines and Hidden Lines unless it names others (`lines::MEDIUM`, `lines::HIDDEN`).
+- Fifth round: drawing reads "Step k of n - height" (the count from the height asked when the top is unconnected, not
+  from the stair cut short). A landing's **free edges** (no riser or tread on them) have grips (`Grip::Edge`,
+  `stairs::landing_edges`): dragged, the edge moves square to itself, kept as `Stair::edges` ([{landing, normal, by}]),
+  applied in `laid` so every storey, cover and the plan follow. Flip forgets them.
+- Sixth round: **a width for each flight and landing** of a stair drawn along a path (`PathSeg::width`; `pieces` moves
+  each segment by half its own width for the location line and mitres where two meet; a corner takes of each side what
+  the other's width needs; a landing's sides are drawn stretch by stretch, `beside`). The Width box while drawing gives
+  the next stretch its width. **Parts picked on their own**: a click on the stair already selected picks the flight or
+  landing under it (`stairs::stair_parts`, `part_at`; `canvas.stair_part`), outlined on the canvas, and Properties lists
+  Flights and Landings, each with its Width, the picked one first. **Draw from Top** in the ribbon: the stair is drawn
+  down from where it arrives, and one finished short hangs from its top (`base_offset` negative). Winders' finishes
+  stand out over their risers (an edge shared with the step below); a landing's edge on a run's last riser is left out
+  of the plan (the nosing line stands for it); the walk line runs onto a start or end tread (UP clear of it); IFC
+  writes treads that are no run's as one-tread IfcStairFlights (SPIRAL, CURVED or WINDER), not landings; the smooth
+  underside's shared sides are left out of the 3D view (no triangle lines); headroom also measures to ceilings and
+  beams. The flight-to-landing wedge is left out where the landing is too short to hold it (before winders).
 
 ### 2. What the user's screenshots showed (the reference for what is left)
 
@@ -305,52 +359,83 @@ Steps to finish it:
 - **A monolithic stair converted to a sketch lost the continuity of its underside.** Fixed and committed: a tread that is
   not part of a straight run gets its own sloping underside in `stairs::parts`.
 
-### 3. The rest of the to-do, by step
+### 1c. Seventh round (2026-11-13)
 
-- **7, the path:**
-  - a width of its own after winders or an angled turn;
-  - a landing's length on an angled turn;
-  - flights drawn apart and joined later (a landing stretch in between is the way for now);
-  - drawn from the top down;
-  - a circle (full spiral) segment in the path, not only the Spiral shape.
-- **9, stair types:**
-  - covers (above);
-  - materials;
-  - a centre stringer (carriage);
-  - a spiral's post;
-  - the support's lines as location lines;
-  - the plan showing nosings and stringers;
-  - IFC following the type.
-- **10, sketch:**
-  - boundaries that are not straight between risers;
-  - a tread's outline drawn in the tool;
-  - converting one run and keeping the rest;
-  - converting a spiral;
-  - converting back.
-- **11, solver:**
-  - locks kept on the stair;
-  - its proposals offered while drawing.
-- **12, multistorey:** a storey edited apart from the others; a spiral that is multistorey.
-- **13, plan symbol:** tread numbers; the plan following the type (see the plan display above); a view overriding the type.
-- **14, headroom:** beams, roofs and ceilings as obstacles; measured on the nosing line; a margin round the opening; an
-  opening that follows the stair.
-- **15, railings:** parked.
-- **16, IFC both ways:**
-  - `IfcStair` of `IfcStairFlight` and `IfcSlab` landings, with `Pset_StairFlightCommon`;
-  - a property set holding a path's, a spiral's, a sketch's and winders' own fields, so an import keeps a stair a stair.
-- **17, finish:**
-  - the codes' numbers checked against their texts;
-  - translations of the new labels;
-  - whether `path`, `sketch`, `spiral`, `rules` and `plan` call for a `FORMAT` bump (they are new fields with defaults, so
-    an older version leaves them out: probably no bump, but say so in the PR).
+- **Stair types as a choice of construction**: `StairType::construction` (monolithic, stringers on both sides, a centre
+  stringer, treads fixed in a wall), a drop-down in Type Properties with a little side view of each; the sizes shown are those
+  the construction uses (`StairDraft::used`), and the others are kept for switching back. New types are made with Duplicate,
+  as for every type; the project starts with a Centre Stringer type as well.
+- **Stringers round landings** (`landing_stringers`), along each free edge, in plan as their inner lines; a centre stringer
+  goes on under the treads round an arc.
+- **Finish profiles**: square, rounded top edge, chamfered top edge, bullnose (`FinishProfile`, cut in slices at the nosing).
+- **Plan symbols**: the walk line's head (filled, open, outlined, tick, none), its foot (none, dot, circle), rounded corners
+  at a landing (Archicad's Walk line at landing), and the cut mark (zigzag, double, straight, wave).
+- **Visibility/Graphics**: the Stairs category has subcategories, Runs, Risers, Landings, Stringers and Supports, Finishes,
+  Walk Line and Arrow, Cut Marks, Tread Numbers and Headroom, each hidden or overridden on its own in plan, section and 3D.
+  **Headroom** is a see-through block over every tread and landing as high as the code asks, off until a view shows it.
+  A plan view may override the type's Floor Plan Display (Properties > Graphics, `stair_display`).
+- **Dimensions snap to stairs**: every side, end, riser and landing edge is a reference in plan (`Face::Edge`); 3D dimensions
+  snap to the stair's edges as to any solid's. Sections and elevations have no dimensions yet, for any element.
+- **IFC**: flights, landings, stringers (`IfcMember .STRINGER.`) and finishes as the type builds them; the stair's shape as
+  IFC4 names it (straight, quarter turn, half turn, winding, curved, spiral); `Pset_StairCommon` and
+  `Pset_StairFlightCommon`, `Qto_StairFlightBaseQuantities`, the structure's material; and `BIMCraft_Stair`, from which an
+  import makes the same stair of the same type again.
+- **Building codes, from the review on #386**: NBR 9050 (accessible route) and NBR 9077 (emergency exit) are two codes; every
+  number of theirs names its item (`sources`), shown beside it in Manage > Building Codes and carried in the XML (`source`);
+  `checked` says who checked them; `nosing_min` is a rule now (9077 asks 15 mm), and open risers are checked. A project made
+  with `nbr` is held to NBR 9050.
+- **While drawing**: Riser and Tread boxes in the Options Bar (empty, as the rules say), and when the stair would break a rule,
+  the nearest one that fits is offered under the cursor: Tab takes it.
+- **Also**: landing edge grips on every stair, not only those drawn along a line; a spiral converts to a sketch, and
+  **Convert Back** makes a converted stair what it was; **Separate Storeys** makes each storey of a multistorey stair its own
+  stair; `stair_opening` takes a `margin`; headroom is measured over the whole step (its nosing line too) and under roofs.
+- **Words**: the stair tools' tips, the Type Properties page (a Model part and a Graphics part, a note under each choice) and
+  the code check's advice rewritten in plain words; new icons for Draw from Top, Code Check, Convert to Sketch and Connect
+  Levels.
+
+### 3. The to-do, closed
+
+Each item of the earlier list, and what became of it.
+
+- **7, the path**: a width of its own after winders or an angled turn, done (sixth round, per segment); a landing's length
+  on an angled turn, done (the corner takes what each side's width needs); flights drawn apart and joined later, done as a
+  landing stretch drawn between them; drawn from the top down, done (Draw from Top); a full circle in the path: an arc
+  turns up to 340° and a full circle is two arcs, and a stair of more turns is the Spiral shape. Decided, not built: a
+  single 360° segment has no chord to draw it by.
+- **9, stair types**: covers, materials, a centre stringer, a spiral's post, the plan's nosings and stringers, IFC following
+  the type: done. The support's lines as location lines: decided against; the location line stays the run's left, centre or
+  right with an offset, which is what one matches to a drawing.
+- **10, sketch**: converting a spiral and converting back, done. Boundaries not straight between risers and a tread's own
+  outline: the model holds them (`SketchStep::outline`) and Convert to Sketch fills them; drawing them by hand stays the
+  riser-by-riser tool. Converting one run and keeping the rest: decided against, a stair is one sketch or none; Separate
+  Storeys and Convert Back cover the cases that came up.
+- **11, solver**: its proposals while drawing, done (Tab). Locks kept on the stair: decided against; Lock Tread Depth is
+  kept, the rest are the solver's choices of the moment.
+- **12, multistorey**: a storey edited apart, done (Separate Storeys). A multistorey spiral works as any multistorey stair.
+- **13, plan symbol**: tread numbers, the plan following the type, a view overriding it: done.
+- **14, headroom**: beams, ceilings and roofs as obstacles, measured over the whole step, a margin round the opening: done.
+  An opening that follows the stair: decided against; the shafts `stair_opening` makes are elements of their own, run again
+  after a change.
+- **15, railings**: out of scope (a category of their own).
+- **16, IFC both ways**: done, both ways for BIMCraft's own files; another tool's stair is still measured from its flights.
+- **17, finish**: the NBR numbers checked by a contributor (the others say they are unchecked, rule by rule); translations
+  updated with `cargo i18n update`; `FORMAT`: no bump. Every new field has a default and is left out when it has it, so an
+  older version reads a file without them as before; one with them is read leniently (`lenient.rs` leaves out what it doesn't
+  know and says so).
+- **Archicad's Rules and Standards panel**: baseline lock is how BIMCraft always works (the location line holds); length
+  calculation is along the walk line, the only way; the landing's extra length goes where the user drags its free edge;
+  walk line at a landing, angular or rounded, done (`walk_rounded`).
+- **Revit's ribbon**: Connect Levels is a ribbon button (Modify Stair); Support as a component drawn on its own: decided
+  against, supports come from the type (side, centre or landing stringers).
 
 ## Open questions
 
-- **The codes' numbers are unchecked.** NBR 9050/9077, the IBC, DIN 18065 and Japan's Building Standards Law are in
-  the data, typed from memory, one row each (the general occupancy). Someone with the texts must check them, and say
-  whether a code needs a row for each occupancy (a dwelling, a school).
+- **The codes' numbers**: NBR 9050 and NBR 9077 were checked against their text by a contributor (#386). The IBC, DIN 18065
+  and Japan's Building Standards Law are typed from memory, and each rule's `source` says so; someone with the texts should
+  check them, and say whether a code needs a row for each occupancy (a dwelling, a school).
 - **Is a stair's structure its type's, or may a flight differ?** Archicad allows it and its users report trouble with
   mixed structures; this plan says the type's.
+- **Railings** are out of scope for this work.
 - **Ramps** share `chain` today. They take the path (piece 3) and the plan symbol with the stair; rules of their own later.
 
 ## Sources

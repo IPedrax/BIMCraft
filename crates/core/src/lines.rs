@@ -192,6 +192,9 @@ pub fn default_patterns() -> BTreeMap<String, LinePattern> {
 
 /// The style a detail line is drawn in unless told another, the first of a project's styles: in English.
 pub const THIN: &str = msg!("Thin Lines");
+/// The styles a stair's plan draws what shows of it and what is hidden in, unless its type names others: in English.
+pub const MEDIUM: &str = msg!("Medium Lines");
+pub const HIDDEN: &str = msg!("Hidden Lines");
 
 /// The line styles a project starts with, named in `language`, black: a hairline, thin, medium and wide lines in the pens
 /// of fine lines, of what's seen and of what's cut, and hidden, centre and overhead lines.
@@ -201,9 +204,9 @@ pub fn styles(language: Language) -> BTreeMap<String, LineStyle> {
     [
         (msg!("Hairline"), style(Pen::HAIRLINE, None)),
         (THIN, style(Pen::FINE, None)),
-        (msg!("Medium Lines"), style(Pen::PROJECTION, None)),
+        (MEDIUM, style(Pen::PROJECTION, None)),
         (msg!("Wide Lines"), style(Pen::CUT, None)),
-        (msg!("Hidden Lines"), style(Pen(2), pattern("Hidden"))),
+        (HIDDEN, style(Pen(2), pattern("Hidden"))),
         (msg!("Centre Lines"), style(Pen(2), pattern("Centre"))),
         (msg!("Overhead Lines"), style(Pen(2), pattern("Dash"))),
     ]

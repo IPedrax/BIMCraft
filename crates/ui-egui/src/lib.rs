@@ -33,6 +33,7 @@ mod find;
 mod footer;
 mod gpu;
 mod stairgrips;
+mod stairtype;
 pub use gpu::limits_for;
 mod graphics;
 mod groups;
@@ -594,13 +595,24 @@ pub struct BimApp {
     stair_shape: StairShape,
     /// Whether the segment the Stair tool draws next is a landing, not a flight of steps.
     stair_landing: bool,
-    /// What each segment drawn so far is: a landing, an arc.
-    stair_kinds: Vec<(bool, bool)>,
+    /// What each segment drawn so far is: a landing, an arc, and how wide it was asked to be.
+    stair_kinds: Vec<(bool, bool, Option<f64>)>,
     /// The Stair tool's top (none: the level above), its height when unconnected, and whether it stands on every level on
     /// the way.
     stair_top: Option<Option<Id>>,
     stair_height: String,
     stair_multistorey: bool,
+    /// Whether the Stair tool keeps one tread depth the whole stair through (on as it starts), or lets each flight's
+    /// treads stretch to end where it is drawn.
+    pub(crate) stair_lock_going: bool,
+    /// Whether the Stair tool draws a stair from its top down: the first click is where it arrives.
+    pub(crate) stair_from_top: bool,
+    /// The Stair tool's riser height and tread depth as typed: empty, the type's rules or the building code's.
+    pub(crate) stair_riser: String,
+    pub(crate) stair_tread: String,
+    /// The nearest stair inside the rules to the one being drawn, while it is outside them: its riser, tread and width,
+    /// which Tab takes.
+    pub(crate) stair_offer: std::cell::Cell<Option<(f64, f64, f64)>>,
     /// Which way the Stair tool's spiral winds.
     stair_clockwise: bool,
     /// The Stair tool's location line, the line of the stair the clicks are on, and how far the stair stands from it.
@@ -1352,6 +1364,11 @@ impl BimApp {
             stair_top: None,
             stair_height: units.length(bimcraft_core::model::DEFAULT_HEIGHT),
             stair_multistorey: false,
+            stair_lock_going: true,
+            stair_from_top: false,
+            stair_riser: String::new(),
+            stair_tread: String::new(),
+            stair_offer: std::cell::Cell::new(None),
             stair_line: Default::default(),
             stair_offset: units.length(0.0),
             roof_slope: "30".into(),
@@ -3809,7 +3826,7 @@ impl BimApp {
                 (
                     Icon::Stair,
                     "Stair",
-                    msg!("Stair: click where it starts, then where its run ends; a landing turns it"),
+                    msg!("Stair: click where the stair starts, then where each flight or landing ends"),
                     Tool::Stair(Vec::new()),
                 ),
                 (
@@ -4559,24 +4576,24 @@ impl BimApp {
         if matches!(self.tool, Tool::Stair(_)) {
             panel(ui, msg!("Draw"), |ui| {
                 let shapes = [
-                    (StairShape::Straight, Icon::Line, "Straight", msg!("Straight: the stair follows a straight line to the next click")),
+                    (StairShape::Straight, Icon::Line, "Straight", msg!("Straight: the next stretch of the stair runs in a straight line")),
                     (
                         StairShape::Arc,
                         Icon::TangentArc,
                         "Arc",
-                        msg!("Arc: the stair follows an arc to the next click, leaving the stretch before it smoothly"),
+                        msg!("Arc: the next stretch curves, carrying on smoothly from the one before it"),
                     ),
                     (
                         StairShape::Spiral,
                         Icon::Circle,
                         "Spiral",
-                        msg!("Spiral: click the centre, then where the stair starts; it winds about the centre"),
+                        msg!("Spiral: click the centre first, then where the stair starts. It winds round the centre."),
                     ),
                     (
                         StairShape::Risers,
                         Icon::Stair,
                         "By Risers",
-                        msg!("By Risers: draw the stair by hand, two clicks a riser, the left end first; Enter makes it"),
+                        msg!("By Risers: draw each riser yourself with two clicks, left end first. Press Enter when you are done."),
                     ),
                 ];
                 for (shape, icon, label, tip) in shapes {
@@ -4593,13 +4610,25 @@ impl BimApp {
             });
             if matches!(self.stair_shape, StairShape::Straight | StairShape::Arc) {
                 panel(ui, msg!("Segment"), |ui| {
-                    let tip = msg!("Steps: the next stretch drawn is a flight of steps");
+                    let tip = msg!("Steps: the next stretch you draw is a flight of steps");
                     if big_button(ui, Icon::Stair, "Steps", !self.stair_landing, tip).clicked() {
                         self.stair_landing = false;
                     }
-                    let tip = msg!("Landing: the next stretch drawn is a landing, as long as it is drawn");
+                    let tip = msg!("Landing: the next stretch you draw is a landing, as long as you draw it");
                     if big_button(ui, Icon::Landing, "Landing", self.stair_landing, tip).clicked() {
                         self.stair_landing = true;
+                    }
+                    let tip = msg!(
+                        "Lock Tread Depth: keep every tread the same depth. Turn it off to let each flight stretch or squeeze its treads, within the rules, so it ends exactly where you click."
+                    );
+                    if big_button(ui, Icon::TreadLock, "Lock Tread Depth", self.stair_lock_going, tip).clicked() {
+                        self.stair_lock_going = !self.stair_lock_going;
+                    }
+                    let tip = msg!(
+                        "Draw from Top: start where the stair arrives upstairs and draw it down. Useful when the top landing has to sit in an exact spot."
+                    );
+                    if big_button(ui, Icon::StairFromTop, "Draw from Top", self.stair_from_top, tip).clicked() {
+                        self.stair_from_top = !self.stair_from_top;
                     }
                 });
             }
@@ -4608,20 +4637,64 @@ impl BimApp {
         let stairs = self.selected_stairs();
         if !stairs.is_empty() && self.tool == Tool::Modify {
             panel(ui, msg!("Modify Stair"), |ui| {
-                let tip = msg!("Flip (Space): the stair climbs the other way, from where its top was to where its foot was");
+                let tip = msg!("Flip (Space): make the stair climb the other way, so its top becomes its foot");
                 if big_button(ui, Icon::Flip, "Flip", false, tip).clicked() {
                     self.flip();
                 }
-                let tip = msg!("Convert to Sketch: every riser becomes a line of its own, to drag by its ends");
+                let tip = msg!("Convert to Sketch: turn every riser into a line you can drag by its ends, to match an odd shape");
                 if let [id] = stairs.as_slice()
-                    && matches!(self.session.model.elements.get(*id), Some(Element::Stair(st)) if st.sketch.is_empty() && st.spiral.is_none())
-                    && big_button(ui, Icon::Stair, "Convert to Sketch", false, tip).clicked()
+                    && matches!(self.session.model.elements.get(*id), Some(Element::Stair(st)) if st.sketch.is_empty())
+                    && big_button(ui, Icon::StairSketch, "Convert to Sketch", false, tip).clicked()
                 {
                     self.run("stair_sketch", json!({"id": id}));
                 }
-                let tip = msg!("Check: the rules of the project's building code this stair is outside of");
+                let tip = msg!("Convert Back: make this sketched stair the stair it was before it was converted");
                 if let [id] = stairs.as_slice()
-                    && big_button(ui, Icon::Stair, "Code Check", self.code_findings.is_some(), tip).clicked()
+                    && matches!(self.session.model.elements.get(*id), Some(Element::Stair(st)) if st.unsketched.is_some())
+                    && big_button(ui, Icon::Stair, "Convert Back", false, tip).clicked()
+                {
+                    self.run("stair_sketch", json!({"id": id, "back": true}));
+                }
+                // Connect Levels: the stair climbs on to a level picked, standing again on each level on the way.
+                if let [id] = stairs.as_slice()
+                    && let Some(Element::Stair(st)) = self.session.model.elements.get(*id)
+                {
+                    let m = &self.session.model;
+                    let base = m.elevation(st.level);
+                    let above: Vec<(String, bimcraft_core::model::Guid)> = (m.levels().into_iter())
+                        .filter(|(_, l)| l.elevation > base + 1e-6)
+                        .filter_map(|(lid, l)| Some((l.name.clone(), m.elements.guid(lid)?)))
+                        .collect();
+                    let (multi, top) = (st.multistorey, st.top_level);
+                    let tip = msg!("Connect Levels: carry the stair on up to a level you pick, repeating it on every level on the way");
+                    let r = big_button(ui, Icon::StairLevels, "Connect Levels", multi, tip);
+                    let mut pick: Option<Value> = None;
+                    egui::Popup::menu(&r).show(|ui| {
+                        ui.set_min_width(160.0);
+                        for (name, guid) in &above {
+                            if ui.selectable_label(multi && top == Some(*guid), name).clicked() {
+                                pick = Some(json!({"ids": [id], "top_level": name, "multistorey": true}));
+                            }
+                        }
+                        if multi {
+                            ui.separator();
+                            if ui.button(t("Disconnect Levels")).clicked() {
+                                let next = above.first().map(|(n, _)| n.clone());
+                                pick = Some(json!({"ids": [id], "multistorey": false, "top_level": next}));
+                            }
+                        }
+                    });
+                    if let Some(p) = pick {
+                        self.run("modify", p);
+                    }
+                    let tip = msg!("Separate Storeys: make each storey its own stair, so you can change one without the others");
+                    if multi && big_button(ui, Icon::StairLevels, "Separate Storeys", false, tip).clicked() {
+                        self.run("stair_storeys", json!({"id": id}));
+                    }
+                }
+                let tip = msg!("Code Check: see which building code rules this stair breaks, and what to change");
+                if let [id] = stairs.as_slice()
+                    && big_button(ui, Icon::StairCheck, "Code Check", self.code_findings.is_some(), tip).clicked()
                 {
                     let m = &self.session.model;
                     let outside =
@@ -4630,7 +4703,7 @@ impl BimApp {
                         self.code_findings = Some(*id);
                     } else {
                         self.status =
-                            Status { text: t("The stair is inside the rules of the project's building code.").to_string(), error: false };
+                            Status { text: t("This stair meets every rule of the project's building code.").to_string(), error: false };
                     }
                 }
             });
@@ -4863,7 +4936,7 @@ impl BimApp {
                             && top > above + 1.0
                         {
                             ui.checkbox(&mut self.stair_multistorey, t("Multistorey")).on_hover_text(t(
-                                "The stair of its first storey, standing again on every level on the way up, each storey with the risers its height asks",
+                                "Repeat the stair on every level on the way up, each storey with as many risers as its height needs",
                             ));
                         }
                     }
@@ -4879,15 +4952,29 @@ impl BimApp {
                         })
                         .response
                         .labelled_by(l.id)
-                        .on_hover_text(t("The line of the stair the clicks are on: it stays where it is when the width changes"));
+                        .on_hover_text(t("The line of the stair your clicks follow. It stays put when you change the width."));
                     let l = ui.label(t("Offset:"));
                     let hint = self.session.model.units.name();
                     ui.add(TextEdit::singleline(&mut self.stair_offset).desired_width(56.0).hint_text(hint)).labelled_by(l.id);
                     let l = ui.label(t("Width:"));
                     let hint = self.session.model.units.name();
-                    ui.add(TextEdit::singleline(&mut self.stair_width).desired_width(64.0).hint_text(hint)).labelled_by(l.id);
+                    ui.add(TextEdit::singleline(&mut self.stair_width).desired_width(64.0).hint_text(hint))
+                        .labelled_by(l.id)
+                        .on_hover_text(t("How wide the stair is. Change it between clicks to give the next flight or landing its own width."));
+                    // The riser and the tread: as typed, to match a drawing exactly; empty, as the rules say.
+                    let m = &self.session.model;
+                    let kind = self.types.get("stair").cloned().or_else(|| m.default_type("stair").map(String::from)).unwrap_or_default();
+                    let rules = bimcraft_core::codes::limits_of(m, &kind).rules;
+                    let l = ui.label(t("Riser:"));
+                    ui.add(TextEdit::singleline(&mut self.stair_riser).desired_width(56.0).hint_text(m.units.length(rules.riser)))
+                        .labelled_by(l.id)
+                        .on_hover_text(t("The most a riser may be: the stair takes as many risers as it needs to stay under it. Leave it empty to follow the rules."));
+                    let l = ui.label(t("Tread:"));
+                    ui.add(TextEdit::singleline(&mut self.stair_tread).desired_width(56.0).hint_text(m.units.length(rules.going)))
+                        .labelled_by(l.id)
+                        .on_hover_text(t("How deep each tread is. Leave it empty to follow the rules."));
                     let l = ui.label(t("Winders:"));
-                    let tip = t("How many winder treads go round a corner where two flights meet with no landing drawn; 0 makes the corner a landing");
+                    let tip = t("How many winder treads turn a corner where two flights meet without a landing. 0 puts a landing there.");
                     ui.add(egui::DragValue::new(&mut self.stair_winders).range(0..=30)).labelled_by(l.id).on_hover_text(tip);
                     if self.stair_winders > 0 && !self.session.model.stair_rules().winders {
                         let code = t(&self.session.model.building_code().name).to_string();
@@ -5203,7 +5290,7 @@ impl BimApp {
             }
             Tool::Stair(_) => {
                 msg!(
-                    "Click where this flight ends: past the top, the stair is done. Landing, in the ribbon, draws a landing next; a double click or Enter finishes."
+                    "Click where this flight ends: past the top, the stair is done. Landing, in the ribbon, draws a landing next; a double click or Enter finishes the stair as drawn, its top under its top level by what is not drawn."
                 )
             }
             Tool::Ramp(pts) if pts.is_empty() => msg!("Click where the ramp starts: the middle of its foot."),

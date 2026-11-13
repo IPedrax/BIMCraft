@@ -182,8 +182,19 @@ standing again on each level on the way (`Model::storeys`, `stairs::storeys`; `s
 its own count of risers. A stair's type (`Model::types.stair`, `StairType`; none for a stair solid to its level) is what it is built of: `stairs::parts`
 gives its solids, a slab of the type's `waist` under the steps or treads, risers and stringers standing free. A stair with a `sketch` is drawn by hand: a line for each riser and no runs (`stairs::sketched`), each tread the ground to the
 next riser or its own outline; `stair_sketch` (`stairs::as_sketch`) makes one of a stair made by runs and turns. A stair with a `spiral` (`radius` to its middle line, signed for the side its centre is on, and `sweep`) has no runs: its
-treads are pieces of a ring (`stairs::spiral`), all of them `Layout::pads`. A project's **building code** (`codes.rs`, `data/building-codes.json`: generic, NBR, IBC, DIN,
-Japan; the numbers typed from memory and unchecked) is the rules its stairs are held to: `building_code` names one and changes
+treads are pieces of a ring (`stairs::spiral`), all of them `Layout::pads`. A stair type's `construction` (`Construction`: monolithic, stringers, a centre
+stringer or treads fixed in a wall; none, read from its sizes by `StairType::built`) says what carries its treads, and
+`landing_stringers` runs a stringed stair's stringers round its landings' free edges; `stairs::parts_tagged` names each solid's
+part (`graphics::StairPart`: runs, risers, landings, supports, finishes, headroom), which a view's stair subcategories hide and
+override (Visibility/Graphics, `graphics::STAIR_SUBS`; Headroom, `stairs::clearance`, off until shown). A finish's front edge
+takes the type's `finish_profile` (`stairs::profiled`); its plan symbol, its `arrow`, `walk_start`, `cut_mark` and
+`walk_rounded`; a plan view may show every stair its own way (`stair_display`, `Graphics::stairs`). A stair's plan edges are
+references a dimension measures to (`Face::Edge`, `stairs::reference_edges`). IFC writes a stair's flights, landings, stringers
+(`IfcMember .STRINGER.`) and finishes as its type builds them, with `Pset_StairCommon`, `Pset_StairFlightCommon`, the flights'
+lengths and `BIMCraft_Stair` (the stair and its type as JSON), which an import makes a stair again. `stair_storeys` makes a
+multistorey stair a stair for each storey; `stair_sketch {back}` makes a converted stair the stair it was (`Stair::unsketched`).
+A project's **building code** (`codes.rs`, `data/building-codes.json`: generic, NBR 9050 and NBR 9077 apart, IBC, DIN,
+Japan; each rule naming its `source`, the NBR entries `checked` against their text, the rest typed from memory) is the rules its stairs are held to: `building_code` names one and changes
 any rule of it for the project (`Model::building_code`, `Model::stair_rules`), a new stair starts with its riser, going and
 landing length, `landings: "auto"` places the landings due, and `stair_check` (and `code_check`, `code_findings` on a stair)
 lists what a stair is outside of, with the number and the fix. A project keeps codes of its own too

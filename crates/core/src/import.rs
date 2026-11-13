@@ -2788,12 +2788,86 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
     // Stairs: each flight measured from its treads, a landing between each two and the way the next
     // one turns there. The railings among a stair's parts come in along it.
     let mut railings_on: HashMap<u64, Id> = HashMap::new();
+    // What BIMCraft's own set on a stair says: the stair as it held it, the heights of its levels, and its type.
+    let mut stair_own: HashMap<u64, (String, f64, Option<f64>, Option<String>)> = HashMap::new();
+    for rel in named(&["IFCRELDEFINESBYPROPERTIES"]).into_iter().filter_map(e) {
+        let Some(set) =
+            reference(rel.args.get(5)).and_then(e).filter(|x| x.name == "IFCPROPERTYSET" && text(x.args.get(2)) == Some(crate::ifc::STAIR))
+        else {
+            continue;
+        };
+        let prop = |name: &str| {
+            refs(set.args.get(4))
+                .into_iter()
+                .filter_map(e)
+                .find(|p| p.name == "IFCPROPERTYSINGLEVALUE" && text(p.args.first()) == Some(name))
+        };
+        let said = |name: &str| {
+            prop(name).and_then(|p| match p.args.get(2) {
+                Some(V::Typed(_, v)) => match &**v {
+                    V::Str(s) => Some(s.clone()),
+                    _ => None,
+                },
+                _ => None,
+            })
+        };
+        let length = |name: &str| {
+            prop(name).and_then(|p| match p.args.get(2) {
+                Some(V::Typed(_, v)) => real(Some(v)).map(|x| x * mm),
+                _ => None,
+            })
+        };
+        let (Some(definition), Some(elevation)) = (said("Definition"), length("Level Elevation")) else { continue };
+        for product in refs(rel.args.get(4)) {
+            stair_own.insert(product, (definition.clone(), elevation, length("Top Level Elevation"), said("Type")));
+        }
+    }
     let flights_alone = named(&["IFCSTAIRFLIGHT"]).into_iter().filter(|id| !in_whole(*id, &["IFCSTAIR"]));
     for id in named(&["IFCSTAIR"]).into_iter().filter(|id| !l.whole.contains_key(id)).chain(flights_alone) {
         let parts: Vec<u64> = l.parts.get(&id).cloned().unwrap_or_default();
         seen.insert(id);
         seen.extend(&parts);
         let of = |name: &str| parts.iter().copied().filter(|p| e(*p).is_some_and(|x| x.name == name)).collect::<Vec<u64>>();
+        // One BIMCraft wrote: the stair it held, on the levels at its heights, of its type.
+        if let Some((definition, elevation, top, kind)) = stair_own.get(&id) {
+            let level = level_for(id, *elevation);
+            let top_level = top.and_then(|t| topped(level, *elevation, t).0);
+            let made = serde_json::from_str::<serde_json::Value>(definition).ok().and_then(|mut v| {
+                let o = v.as_object_mut()?;
+                o.insert("level".into(), serde_json::to_value(level).ok()?);
+                if let Some(t) = top_level {
+                    o.insert("top_level".into(), serde_json::to_value(t).ok()?);
+                }
+                serde_json::from_value::<Stair>(v).ok()
+            });
+            if let Some(mut stair) = made {
+                if stair.top_level.is_none() && top.is_some() {
+                    stair.multistorey = false;
+                }
+                if let Some(t) = kind.as_deref().and_then(|k| serde_json::from_str::<crate::model::StairType>(k).ok())
+                    && !stair.type_name.is_empty()
+                    && !m.types.stair.contains_key(&stair.type_name)
+                {
+                    // Of materials the project has; else of none.
+                    let mut t = t;
+                    for name in [&mut t.material, &mut t.cover_material] {
+                        if !m.materials.contains_key(name.as_str()) {
+                            name.clear();
+                        }
+                    }
+                    m.types.stair.insert(stair.type_name.clone(), t);
+                }
+                if !stair.type_name.is_empty() && !m.types.stair.contains_key(&stair.type_name) {
+                    stair.type_name.clear();
+                }
+                let sid = m.insert(Element::Stair(stair));
+                from.insert(sid, who(id));
+                origin.entry(id).or_insert(sid);
+                elements_from.entry(id).or_default().push(sid);
+                railings_on.extend(of("IFCRAILING").into_iter().map(|p| (p, sid)));
+                continue;
+            }
+        }
         let flights = of("IFCSTAIRFLIGHT");
         let sources = if flights.is_empty() { vec![id] } else { flights };
         let measured: Result<Vec<Flight>, String> = sources.iter().filter_map(|f| e(*f)).map(|s| stair_from(&r, s, &r.body(s))).collect();
@@ -2852,6 +2926,11 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
             sketch: Vec::new(),
             path: Vec::new(),
             multistorey: false,
+            edges: Vec::new(),
+            base_offset: 0.0,
+            top_offset: 0.0,
+            lock_going: true,
+            unsketched: None,
         };
         let sid = m.insert(Element::Stair(stair));
         from.insert(sid, who(id));
@@ -3338,7 +3417,8 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
         // What BIMCraft writes in sets of its own, other than the parameters, it reads into fields.
         let called = text(set.args.get(2)).unwrap_or("");
         let ours = called == crate::ifc::PARAMETERS;
-        if !ours && (called.starts_with("BIMCraft_") || called == crate::ifc::SEPARATION) {
+        // A stair's and its flights' common sets say what the stair is (its risers, its going), which it is made from.
+        if !ours && (called.starts_with("BIMCraft_") || called == crate::ifc::SEPARATION || called.starts_with("Pset_Stair")) {
             continue;
         }
         for prop in refs(set.args.get(4)).into_iter().filter_map(e).filter(|x| x.name == "IFCPROPERTYSINGLEVALUE") {

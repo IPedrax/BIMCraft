@@ -1206,7 +1206,7 @@ pub fn sketch(m: &Model, view: View, id: Id, e: &Element) -> Drawing {
                 opening(&mut d, m, e, o, w, m.own_base(w) + o.sill, true);
             }
         }
-        Element::Stair(st) => stair(&mut d, m, st, st.level),
+        Element::Stair(st) => stair(&mut d, m, st, st.level, &StairSubs::default()),
         Element::Ramp(r) => ramp(&mut d, m, r, r.level),
         Element::Railing(rl) => d.line(&stairs::railing(m, rl).into_iter().map(|(p, _)| p).collect::<Vec<_>>(), Pen::MEDIUM, INK, false),
         Element::RoomSeparator(rs) => d.line(&[rs.start, rs.end], Pen::PROJECTION, INK, false),
@@ -1546,7 +1546,7 @@ impl SectionWork {
 
     /// The solids `look` shows, but the components'.
     fn shown<'a>(&'a self, look: &'a Look) -> impl Iterator<Item = &'a view3d::Solid> + 'a {
-        self.solids.iter().filter(|s| look.shows(s.owner()))
+        self.solids.iter().filter(|s| look.shows_part(s.owner(), s.part()))
     }
 
     /// The lowest and highest of each element `look` shows: its box's, which are its points'.
@@ -2856,6 +2856,8 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
     let inside = |p: P2| crop.is_none_or(|[lo, hi]| (lo.0..=hi.0).contains(&p.0) && (lo.1..=hi.1).contains(&p.1));
     // Every room of the level is found among the same lines, which take each wall's joins and heights to find: once.
     let rooms = crate::rooms::Rooms::new(m);
+    // How the view shows a stair's parts: its subcategories, each hidden or overridden, and the plan display it may set.
+    let stair_subs = StairSubs::of(m, key);
     // Rooms > Reference: off unless the view shows it.
     let reference =
         !crate::graphics::graphics_of(m, key).map_or_else(Default::default, |g| g.resolved(m).into_owned()).hides("roomreference");
@@ -2934,7 +2936,7 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
             _ if up => {}
             // A mass the plane passes through: its outline, dashed.
             Element::Mass(ms) if m.mass_cut_by(ms, range.cut) => d.dashed(&m.mass_outline(ms, range.cut), BY_CATEGORY, MASS, true),
-            Element::Stair(st) => stair(&mut d, m, st, level),
+            Element::Stair(st) => stair(&mut d, m, st, level, &stair_subs),
             Element::Ramp(r) => ramp(&mut d, m, r, level),
             Element::Railing(rl) if m.level_of(e) == Some(level) => railing(&mut d, m, rl, range.cut),
             // A room separation line: a thin line, on its own level's plan only.
@@ -3548,44 +3550,249 @@ fn opening(d: &mut Drawing, m: &Model, e: &Element, o: &Opening, w: &Wall, cut: 
     }
 }
 
-/// A stair in the plan of `level`. From its own level: its risers up to the cut plane, a break mark
-/// across the run there, the rest (and the landings over the cut plane) dashed, and its walk line
-/// marked UP. From the level it climbs to: all of it, and the walk line marked DN. On a level a
-/// multistorey stair passes, both: the storey that climbs from it up to the break mark, marked UP, and past
-/// the mark the storey that comes up to it from below, seen from above and marked DN.
-fn stair(d: &mut Drawing, m: &Model, st: &Stair, level: impl Key) {
+use crate::model::PlanPart as Shown;
+
+/// How a storey of a stair is drawn in a plan: what is under the break mark and what is over it, whether the mark is
+/// drawn, the dashes of a full line (none: unbroken) and of a hidden one, and the fill of what is in full lines.
+struct StairLook<'a> {
+    below: Shown,
+    above: Shown,
+    mark: bool,
+    full: Option<&'a crate::lines::LineStyle>,
+    hidden: Option<&'a crate::lines::LineStyle>,
+    fill: Option<&'a crate::fills::FillPattern>,
+    /// Whether its treads are numbered.
+    numbers: bool,
+    /// What the view does with each of its parts.
+    subs: &'a StairSubs,
+}
+
+/// What a view does with a stair's subcategories ([`crate::graphics::STAIR_SUBS`]): each hidden, or drawn as its override
+/// says; and how stairs show in its plan, where it sets that over their types.
+#[derive(Default)]
+pub(crate) struct StairSubs {
+    hidden: [bool; 9],
+    paint: [Option<crate::graphics::Override>; 9],
+    ways: Option<crate::model::PlanShows>,
+}
+
+impl StairSubs {
+    /// As view `key` has them.
+    pub(crate) fn of(m: &Model, key: impl Key) -> StairSubs {
+        let Some(own) = crate::graphics::graphics_of(m, key) else { return StairSubs::default() };
+        let g = own.resolved(m);
+        let mut out = StairSubs { ways: g.stairs, ..StairSubs::default() };
+        for (i, sub) in crate::graphics::STAIR_SUBS.iter().enumerate() {
+            out.hidden[i] = g.hides(sub);
+            out.paint[i] = g.categories.get(*sub).filter(|o| !o.projection.is_empty() || o.halftone).cloned();
+        }
+        out
+    }
+
+    /// Whether part `p` is hidden.
+    fn hides(&self, p: crate::graphics::StairPart) -> bool {
+        self.hidden.get(p as usize).copied().unwrap_or(false)
+    }
+
+    /// What was drawn from primitive `from` on, as part `p`'s override says: its colour, weight and dashes, halftone.
+    fn dress(&self, d: &mut Drawing, p: crate::graphics::StairPart, from: usize) {
+        let Some(Some(o)) = self.paint.get(p as usize) else { return };
+        let style = &o.projection;
+        for i in from..d.prims.len() {
+            if let Some(prim) = d.prims.get_mut(i) {
+                match prim {
+                    Prim::Line { color, dash, .. } => {
+                        if let Some([r, g, b]) = style.color {
+                            *color = Rgb(r, g, b);
+                        }
+                        if let Some(k) = style.dash {
+                            *dash = k.pattern();
+                        }
+                        if o.halftone {
+                            *color = crate::graphics::halftone(*color);
+                        }
+                    }
+                    Prim::Fill { color, .. } => {
+                        if let Some([r, g, b]) = style.color {
+                            *color = Rgb(r, g, b);
+                        }
+                        if o.halftone {
+                            *color = crate::graphics::halftone(*color);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            if let (Some(w), Some(pen)) = (style.weight, d.pens.get_mut(i)) {
+                *pen = Some(w);
+            }
+        }
+    }
+}
+
+/// A stair in the plan of `level`, as its type says it shows there (a stair of no type as stairs always did). On its
+/// own level: its risers up to the cut plane in full lines, a break mark across the run there, the rest hidden, and
+/// its walk line marked UP. On the level it climbs to: all of it, the walk line marked DN. On the level below it:
+/// nothing, unless its type shows it there. On a level a multistorey stair passes, both the storey that climbs from it
+/// and the one that comes up to it from below.
+fn stair(d: &mut Drawing, m: &Model, st: &Stair, level: impl Key, subs: &StairSubs) {
+    use crate::graphics::StairPart as P;
     let level = m.guid(level);
     let storeys = stairs::storeys(m, st);
+    let kind = m.types.stair.get(&st.type_name);
+    let ways = subs.ways.unwrap_or_else(|| kind.map(|t| t.plan).unwrap_or_default());
     let here = storeys.iter().position(|(on, _)| *on == level);
-    if here.is_none() && st.top_level != Some(level) {
-        return;
-    }
-    // The storey that ends on this level, seen from above; and the one that stands on it.
+    // The storey that ends on this level, seen from above; the one that stands on it; and the one over it, standing
+    // on the level above.
     let under = match here {
         Some(i) => i.checked_sub(1).and_then(|j| storeys.get(j)),
-        None => storeys.last(),
+        None if st.top_level == Some(level) => storeys.last(),
+        None => None,
+    };
+    let over = here.and_then(|i| storeys.get(i));
+    let overhead = m.level_above(level).and_then(|up| storeys.iter().find(|(on, _)| *on == up));
+    if under.is_none() && over.is_none() && overhead.is_none() {
+        return;
     }
-    .map(|(_, l)| l);
-    let over = here.and_then(|i| storeys.get(i)).map(|(_, l)| l);
-    if let Some(l) = under {
-        flights(d, st, l, f64::INFINITY, false);
+    // The plane's height over the floor of its own level: where every storey's break mark is.
+    let high = m.shown_range(level).cut - m.elevation(level);
+    // A type's line style, else the project's style of that name in its language or in English.
+    let style = |name: Option<&String>, usual: &str| {
+        name.and_then(|n| m.line_styles.get(n)).or_else(|| m.line_styles.get(m.language.word(usual))).or_else(|| m.line_styles.get(usual))
+    };
+    let look = |way: crate::model::PlanShow| {
+        let (below, above, mark) = way.look()?;
+        Some(StairLook {
+            below,
+            above,
+            mark,
+            full: kind.and_then(|t| style(Some(&t.line_visible), crate::lines::MEDIUM)),
+            hidden: style(kind.map(|t| &t.line_hidden), crate::lines::HIDDEN),
+            fill: kind.and_then(|t| m.fill_patterns.get(&t.fill)),
+            numbers: kind.is_some_and(|t| t.numbers),
+            subs,
+        })
+    };
+    let floor = |l: &stairs::Layout| l.walk.first().map_or(0.0, |w| w.1);
+    if let Some(look) = overhead.and_then(|_| look(ways.below))
+        && let Some((_, l)) = overhead
+    {
+        flights(d, m, st, l, floor(l) + high, &look);
     }
-    let cut = m.shown_range(level).cut;
-    if let Some(l) = over {
-        flights(d, st, l, cut, under.is_none());
+    let seen = under.and_then(|_| look(ways.above));
+    if let (Some(look), Some((_, l))) = (&seen, under) {
+        flights(d, m, st, l, floor(l) + high, look);
     }
-    match (over, under) {
-        (Some(l), None) => walk(d, m, &l.walk, true),
-        (None, Some(l)) => walk(d, m, &l.walk, false),
+    let mut up = over.and_then(|_| look(ways.same));
+    // Where the storey below is drawn, what is hidden over the mark is under it: left out.
+    if let (Some(look), true) = (&mut up, seen.is_some())
+        && look.above == Shown::Hidden
+    {
+        look.above = Shown::Out;
+    }
+    if let (Some(look), Some((_, l))) = (&up, over) {
+        flights(d, m, st, l, floor(l) + high, look);
+    }
+    if subs.hides(P::Path) {
+        return;
+    }
+    let from = d.prims.len();
+    let marks = kind.map_or((crate::model::ArrowHead::default(), crate::model::WalkStart::default()), |t| (t.arrow, t.walk_start));
+    let rounded = kind.is_some_and(|t| t.walk_rounded);
+    let walk_marked = |d: &mut Drawing, m: &Model, line: &[(P2, f64)], up: bool, marks| {
+        if rounded {
+            walk_marked(d, m, &round_corners(line, kind.map_or(0.0, |_| st.width / 2.0)), up, marks)
+        } else {
+            walk_marked(d, m, line, up, marks)
+        }
+    };
+    match (over.filter(|_| up.is_some()), under.filter(|_| seen.is_some())) {
+        (Some((_, l)), None) => walk_marked(d, m, &l.walk, true, marks),
+        (None, Some((_, l))) => walk_marked(d, m, &l.walk, false, marks),
         // Up to the break mark; and down from the far end to it, along the storey below.
-        (Some(l), Some(below)) => {
-            let (floor, top) = (l.walk.first().map_or(0.0, |w| w.1), l.walk.last().map_or(0.0, |w| w.1));
-            let share = if top > floor { ((cut - floor) / (top - floor)).clamp(0.0, 1.0) } else { 1.0 };
-            walk(d, m, &part(&l.walk, 0.0, share), true);
-            walk(d, m, &part(&below.walk, share, 1.0), false);
+        (Some((_, l)), Some((_, below))) => {
+            let (foot, top) = (floor(l), l.walk.last().map_or(0.0, |w| w.1));
+            let share = if top > foot { (high / (top - foot)).clamp(0.0, 1.0) } else { 1.0 };
+            walk_marked(d, m, &part(&l.walk, 0.0, share), true, marks);
+            walk_marked(d, m, &part(&below.walk, share, 1.0), false, marks);
         }
         (None, None) => {}
     }
+    subs.dress(d, P::Path, from);
+}
+
+/// `line` with each corner it turns rounded off, `r` from it at most along each side (half a side at most).
+fn round_corners(line: &[(P2, f64)], r: f64) -> Vec<(P2, f64)> {
+    let mut out: Vec<(P2, f64)> = line.first().copied().into_iter().collect();
+    for w in line.windows(3) {
+        let &[(a, _), (b, zb), (c, _)] = w else { continue };
+        let (u, v) = ((b - a), (c - b));
+        if u.length() < 1e-6 || v.length() < 1e-6 || u.unit().dot(v.unit()) > 0.999 {
+            out.push((b, zb));
+            continue;
+        }
+        let k = r.min(u.length() / 2.0).min(v.length() / 2.0);
+        let (p, q) = (b - u.unit() * k, b + v.unit() * k);
+        for i in 0..=8 {
+            let t = f64::from(i) / 8.0;
+            let pt = p * ((1.0 - t) * (1.0 - t)) + b * (2.0 * t * (1.0 - t)) + q * (t * t);
+            out.push((pt, zb));
+        }
+    }
+    if line.len() > 1 {
+        out.extend(line.last().copied());
+    }
+    out
+}
+
+/// A stair's walk line with the marks its type gives it: the head at its top, the mark at its foot, and UP or DN.
+fn walk_marked(d: &mut Drawing, m: &Model, line: &[(P2, f64)], up: bool, (head, foot): (crate::model::ArrowHead, crate::model::WalkStart)) {
+    use crate::model::{ArrowHead, WalkStart};
+    let mut pts: Vec<P2> = line.iter().map(|(p, _)| *p).collect();
+    pts.dedup_by(|a, b| a.dist(*b) < 1e-6);
+    if !up {
+        pts.reverse();
+    }
+    let (Some(&first), Some(&second), [.., before, last]) = (pts.first(), pts.get(1), pts.as_slice()) else { return };
+    let label = m.language.word(if up { msg!("UP") } else { msg!("DN") });
+    d.line(&pts, Pen::PROJECTION, INK, false);
+    let (a, b) = (d.view.px(*before), d.view.px(*last));
+    let len = (b.0 - a.0).hypot(b.1 - a.1).max(1e-3);
+    let (x, y) = ((b.0 - a.0) / len, (b.1 - a.1) / len);
+    let (long, wide) = (d.px(10.0), d.px(4.0));
+    let (l, r) = ((b.0 - x * long - y * wide, b.1 - y * long + x * wide), (b.0 - x * long + y * wide, b.1 - y * long - x * wide));
+    let width = d.width(Pen::PROJECTION);
+    match head {
+        ArrowHead::Filled => d.push(Prim::Fill { rings: vec![vec![b, l, r]], color: INK }),
+        ArrowHead::Open => d.stroke(vec![l, b, r], Pen::PROJECTION, INK, None, false),
+        ArrowHead::Hollow => d.stroke(vec![b, l, r], Pen::PROJECTION, INK, None, true),
+        ArrowHead::Tick => {
+            let (p, q) = ((b.0 - y * wide * 1.5, b.1 + x * wide * 1.5), (b.0 + y * wide * 1.5, b.1 - x * wide * 1.5));
+            d.stroke(vec![p, q], Pen::PROJECTION, INK, None, false);
+        }
+        ArrowHead::None => {}
+    }
+    let _ = width;
+    let s = d.view.px(first);
+    let ring = |k: f32| -> Vec<(f32, f32)> {
+        (0..16)
+            .map(|i| {
+                let t = i as f32 / 16.0 * std::f32::consts::TAU;
+                (s.0 + k * t.cos(), s.1 + k * t.sin())
+            })
+            .collect()
+    };
+    match foot {
+        WalkStart::Dot => d.push(Prim::Fill { rings: vec![ring(d.px(2.5))], color: INK }),
+        WalkStart::Circle => d.stroke(ring(d.px(3.5)), Pen::PROJECTION, INK, None, true),
+        WalkStart::None => {}
+    }
+    let (a, b) = (d.view.px(first), d.view.px(second));
+    let len = (b.0 - a.0).hypot(b.1 - a.1).max(1e-3);
+    let (x, y) = ((b.0 - a.0) / len, (b.1 - a.1) / len);
+    // Before the walk line's start, clear of it however long the word is.
+    let back = font::width(label, d.px(9.0)) / 2.0 * x.abs() + d.px(5.0) * y.abs() + d.px(8.0);
+    d.text(label, (a.0 - x * back, a.1 - y * back), d.px(9.0), INK);
 }
 
 /// The stretch of `line` between two shares of its length, `from` and `to`.
@@ -3612,57 +3819,130 @@ fn part(line: &[(P2, f64)], from: f64, to: f64) -> Vec<(P2, f64)> {
     out
 }
 
-/// The runs and landings of one storey of stair `st`: what is under the plane at height `cut` in full lines, with a
-/// break mark across the run the plane passes through; what is over it dashed, or left out where the storey below is
-/// drawn there.
-fn flights(d: &mut Drawing, st: &Stair, l: &stairs::Layout, cut: f64, dashed: bool) {
-    // A line over the cut plane: dashed, or not drawn.
-    let above = |d: &mut Drawing, a: P2, b: P2| {
-        if dashed {
-            segment(d, a, b, true);
+/// The runs and landings of one storey of stair `st`, as `look` draws what is under the plane at height `cut` and what
+/// is over it, with a break mark across the run the plane passes through where the look has one.
+fn flights(d: &mut Drawing, m: &Model, st: &Stair, l: &stairs::Layout, cut: f64, look: &StairLook) {
+    use crate::graphics::StairPart as P;
+    let subs = look.subs;
+    let line = |d: &mut Drawing, a: P2, b: P2, over: bool, part: P| {
+        if subs.hides(part) {
+            return;
+        }
+        let (style, dash) = match if over { look.above } else { look.below } {
+            Shown::Full => (look.full, None),
+            Shown::Hidden => (look.hidden, Some(vec![6.0, 4.0])),
+            Shown::Out => return,
+        };
+        let from = d.prims.len();
+        let pts = vec![d.view.px(a), d.view.px(b)];
+        match style {
+            Some(s) => d.styled(m, s, pts, false),
+            None => d.stroke(pts, BY_CATEGORY, INK, dash, false),
+        }
+        subs.dress(d, part, from);
+    };
+    // The fill of what is drawn in full lines, under the lines.
+    let filled = |d: &mut Drawing, ring: Vec<P2>, over: bool, part: P| {
+        if subs.hides(part) {
+            return;
+        }
+        if let (Some(p), Shown::Full) = (look.fill, if over { look.above } else { look.below }) {
+            fill_pattern(d, p, std::slice::from_ref(&ring), std::slice::from_ref(&ring), INK, (P2(0.0, 0.0), 0.0));
         }
     };
+    let kind = m.types.stair.get(&st.type_name);
+    let mark = kind.map_or(crate::model::CutMark::default(), |t| t.cut_mark);
+    // Seen from above, a tread's front edge stands out past its riser by its nosing; and a stringer's inner edge runs
+    // inside each side.
+    let nosing = kind.map_or(0.0, stairs::reach);
+    let stringer = kind.and_then(|t| t.side_stringers()).map_or(0.0, |(w, _)| w);
     for run in &l.runs {
         let half = run.width / 2.0;
         let at = |along: f64, across: f64| run.start + run.u * along + run.u.perp() * across;
         let each = if run.risers > 0 { (run.z.1 - run.z.0) / f64::from(run.risers) } else { 0.0 };
-        for k in 0..run.risers {
-            let k = f64::from(k);
-            if run.z.0 + k * each > cut + 1e-6 {
-                above(d, at(k * st.tread, -half), at(k * st.tread, half));
-            } else {
-                segment(d, at(k * st.tread, -half), at(k * st.tread, half), false);
-            }
-        }
+        // How deep its treads are: a flight drawn along a path has its own.
+        let tread = if run.risers > 1 { run.going() } else { st.tread };
         // Where the plane passes: half a tread past the last riser under it.
-        let line = if each > 0.0 && cut.is_finite() {
-            ((((cut - run.z.0) / each).floor() + 0.5) * st.tread).clamp(0.0, run.length)
+        let split = if each > 0.0 && cut.is_finite() {
+            ((((cut - run.z.0) / each).floor() + 0.5) * tread).clamp(0.0, run.length)
         } else {
             run.length
         };
-        for side in [-half, half] {
-            if line > 0.0 {
-                segment(d, at(0.0, side), at(line, side), false);
-            }
-            if line < run.length {
-                above(d, at(line, side), at(run.length, side));
+        if split > 0.0 {
+            filled(d, vec![at(0.0, -half), at(split, -half), at(split, half), at(0.0, half)], false, P::Runs);
+        }
+        if split < run.length {
+            filled(d, vec![at(split, -half), at(run.length, -half), at(run.length, half), at(split, half)], true, P::Runs);
+        }
+        for k in 0..run.risers {
+            let k = f64::from(k);
+            let edge = if k > 0.0 { (k * tread - nosing).max(0.0) } else { 0.0 };
+            line(d, at(edge, -half + stringer), at(edge, half - stringer), run.z.0 + k * each > cut + 1e-6, P::Runs);
+        }
+        if stringer > 0.0 && stringer < half {
+            for side in [-half + stringer, half - stringer] {
+                if split > 0.0 {
+                    line(d, at(0.0, side), at(split, side), false, P::Supports);
+                }
+                if split < run.length {
+                    line(d, at(split, side), at(run.length, side), true, P::Supports);
+                }
             }
         }
-        // The break mark: across the run on the slant, with a jog in its middle.
-        if cut >= run.z.0 && line < run.length {
-            let (a, b) = (at(line - 0.4 * st.tread, -half), at(line + 0.4 * st.tread, half));
-            let (jog, mid) = (run.u * (0.22 * st.tread), |f: f64| a + (b - a) * f);
-            d.line(&[a, mid(0.44) + jog, mid(0.56) - jog, b], Pen::PROJECTION, INK, false);
+        for side in [-half, half] {
+            let part = if stringer > 0.0 { P::Supports } else { P::Runs };
+            if split > 0.0 {
+                line(d, at(0.0, side), at(split, side), false, part);
+            }
+            if split < run.length {
+                line(d, at(split, side), at(run.length, side), true, part);
+            }
+        }
+        // The break mark: across the run on the slant, as the type draws it.
+        if look.mark && cut >= run.z.0 && split < run.length && !subs.hides(P::CutMark) {
+            let (a, b) = (at(split - 0.4 * tread, -half), at(split + 0.4 * tread, half));
+            let from = d.prims.len();
+            cut_mark(d, a, b, run.u * (0.22 * tread), mark);
+            subs.dress(d, P::CutMark, from);
         }
     }
+    // Where a run climbs onto a landing, its last riser is drawn at the nosing: the landing's edge on the riser is left out.
+    let near = |q: P2, a: P2, b: P2| {
+        let d = b - a;
+        let f = if d.dot(d) > 0.0 { ((q - a).dot(d) / d.dot(d)).clamp(0.0, 1.0) } else { 0.0 };
+        q.dist(a + d * f) < 1.0
+    };
+    let on_riser = |a: P2, b: P2| {
+        nosing > 0.0
+            && l.runs.iter().filter(|r| r.risers > 1).any(|r| {
+                let n = r.u.perp() * (r.width / 2.0);
+                near(a, r.end() - n, r.end() + n) && near(b, r.end() - n, r.end() + n)
+            })
+    };
+    // A stringed stair's stringers round its landings, where its type has them: their inner edges.
+    let round = kind.filter(|t| t.landing_stringers && !t.monolithic()).and_then(|t| t.side_stringers().or_else(|| t.centre_stringer()));
     for pad in &l.pads {
+        let over = pad.z > cut + 1e-6;
+        let part = if pad.tread { P::Runs } else { P::Landings };
+        filled(d, pad.ring.clone(), over, part);
         for (a, b) in geom::ring_edges(&pad.ring) {
-            if pad.z > cut + 1e-6 {
-                above(d, a, b);
-            } else {
-                segment(d, a, b, false);
+            if !on_riser(a, b) {
+                line(d, a, b, over, part);
             }
         }
+        if let (Some((w, _)), false) = (round, pad.tread) {
+            for ((_, a), (_, b)) in stairs::landing_stringers(l, pad, w) {
+                line(d, a, b, over, P::Supports);
+            }
+        }
+    }
+    if look.numbers && !subs.hides(P::Numbers) {
+        let from = d.prims.len();
+        numbers(d, m, st, l, cut, look);
+        subs.dress(d, P::Numbers, from);
+    }
+    if !look.mark {
+        return;
     }
     // The plane passing through a winder, a spiral's tread or one drawn by hand: the break mark across the lowest of them
     // over it, square to the walk line there, when no run is cut.
@@ -3692,12 +3972,77 @@ fn flights(d: &mut Drawing, st: &Stair, l: &stairs::Layout, cut: f64, dashed: bo
                 })
                 .collect();
             let (lo, hi) = reach.iter().fold((0.0f64, 0.0f64), |(lo, hi), t| (lo.min(*t), hi.max(*t)));
-            if hi - lo > 1.0 {
-                let (from, to, jog) = (c + n * lo, c + n * hi, u * (0.2 * st.tread));
-                let mid = |f: f64| from + (to - from) * f;
-                d.line(&[from, mid(0.44) + jog, mid(0.56) - jog, to], Pen::PROJECTION, INK, false);
+            if hi - lo > 1.0 && !subs.hides(P::CutMark) {
+                let start = d.prims.len();
+                cut_mark(d, c + n * lo, c + n * hi, u * (0.2 * st.tread), mark);
+                subs.dress(d, P::CutMark, start);
             }
         }
+    }
+}
+
+/// A stair's break mark from `a` to `b` across it, `jog` the way the stair goes, in the type's style.
+fn cut_mark(d: &mut Drawing, a: P2, b: P2, jog: P2, style: crate::model::CutMark) {
+    use crate::model::CutMark;
+    let mid = |f: f64| a + (b - a) * f;
+    match style {
+        CutMark::Zigzag => d.line(&[a, mid(0.44) + jog, mid(0.56) - jog, b], Pen::PROJECTION, INK, false),
+        CutMark::Straight => d.line(&[a, b], Pen::PROJECTION, INK, false),
+        CutMark::Double => {
+            let k = jog * 0.35;
+            d.line(&[a - k, b - k], Pen::PROJECTION, INK, false);
+            d.line(&[a + k, b + k], Pen::PROJECTION, INK, false);
+        }
+        CutMark::Wave => {
+            let mut pts = vec![a];
+            for i in 0..=16 {
+                let f = 0.35 + 0.3 * f64::from(i) / 16.0;
+                let w = (std::f64::consts::TAU * (f - 0.35) / 0.3).sin();
+                pts.push(mid(f) + jog * (0.6 * w));
+            }
+            pts.push(b);
+            d.line(&pts, Pen::PROJECTION, INK, false);
+        }
+    }
+}
+
+/// Each tread of one storey of a stair numbered from its foot up, the number on the tread's middle a little to the
+/// right of the walk line; where the tread is left out, so is its number.
+fn numbers(d: &mut Drawing, m: &Model, st: &Stair, l: &stairs::Layout, cut: f64, look: &StairLook) {
+    let foot = l.walk.first().map_or(0.0, |w| w.1);
+    let each = l.runs.iter().find(|r| r.risers > 0).map_or_else(|| m.flight(st).1, |r| (r.z.1 - r.z.0) / f64::from(r.risers));
+    if each <= 0.0 {
+        return;
+    }
+    let mut treads: Vec<(P2, f64)> = Vec::new();
+    for run in &l.runs {
+        let step = if run.risers > 0 { (run.z.1 - run.z.0) / f64::from(run.risers) } else { 0.0 };
+        let tread = if run.risers > 1 { run.going() } else { st.tread };
+        for k in 1..run.risers {
+            let k = f64::from(k);
+            treads.push((run.start + run.u * ((k - 0.5) * tread) - run.u.perp() * (run.width / 4.0), run.z.0 + k * step));
+        }
+    }
+    // A winder or a spiral's tread: to the right of the stretch of walk line nearest its middle.
+    let aside = |c: P2| {
+        let way = l.walk.windows(2).filter_map(|w| Some((w.first()?.0, w.get(1)?.0))).filter(|(a, b)| a.dist(*b) > 1e-6).min_by(|x, y| {
+            let far = |(a, b): &(P2, P2)| geom::dist_to_segment(c, *a, *b);
+            far(x).total_cmp(&far(y))
+        });
+        way.map_or(c, |(a, b)| c - (b - a).unit().perp() * (l.width / 4.0))
+    };
+    treads.extend(l.pads.iter().filter(|p| p.tread).map(|p| (aside(geom::centroid(&p.ring)), p.z)));
+    treads.retain(|(_, z)| *z > foot + each / 2.0);
+    treads.sort_by(|a, b| a.1.total_cmp(&b.1));
+    let size = d.px(7.0);
+    for (i, (at, z)) in treads.into_iter().enumerate() {
+        let shown = if z > cut + 1e-6 { look.above } else { look.below };
+        if shown == Shown::Out {
+            continue;
+        }
+        let label = (i + 1).to_string();
+        let p = d.view.px(at);
+        d.text(&label, p, size, INK);
     }
 }
 
