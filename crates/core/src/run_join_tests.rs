@@ -549,3 +549,35 @@ fn entities<'a>(file: &'a str, name: &str) -> Vec<&'a str> {
     let head = format!("={name}(");
     file.lines().filter(|l| l.contains(&head)).collect()
 }
+
+/// A frame of beams, as a steel model has them by the thousand: two meeting at a corner, a third ending on one, a fourth
+/// crossing two.
+fn frame() -> (Session, Vec<u64>) {
+    let s = session(
+        r#"beam {"points": [[0, 0], [6000, 0]]}
+beam {"points": [[6000, 0], [6000, 4000]]}
+beam {"points": [[3000, 0], [3000, 4000]]}
+beam {"points": [[-1000, 2000], [7000, 2000]]}"#,
+    );
+    let ids = runs(&s, "beam");
+    assert_eq!(ids.len(), 4, "{ids:?}");
+    (s, ids)
+}
+
+#[test]
+fn a_plan_finds_where_runs_meet_through_the_tile_index_as_looking_at_every_element_does() {
+    let (s, ids) = frame();
+    let m = &s.model;
+    // Through the index, each beam's outline is the one looking at every element gives: the same joins.
+    let index = crate::walls::Index::new(m);
+    for &id in &ids {
+        assert_eq!(crate::runs::outline_in(m, id, Some(&index)), crate::runs::outline_in(m, id, None), "beam {id}");
+    }
+    // With the model's lookup made, as a window's views have it, a plan still finds the joins through the index: it
+    // looks at every element for none of them (issue #264: 27,000 beams took a plan 7 minutes).
+    m.lookup();
+    let level = *m.elements.iter().find(|(_, e)| e.category() == "level").map(|(id, _)| id).unwrap();
+    crate::runs::SCANS.with(|n| n.set(0));
+    crate::render::plan(m, level, 800, 600);
+    assert_eq!(crate::runs::SCANS.with(std::cell::Cell::get), 0, "the plan looked at every element for a beam's ends");
+}

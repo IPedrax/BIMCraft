@@ -3043,7 +3043,7 @@ msgstr "Corta"
 msgid "Cylinder"
 msgstr "Cilindro"
 
-#: crates/core/src/render.rs:4504
+#: crates/core/src/render.rs:4502
 msgid "DN"
 msgstr "BAJA"
 
@@ -6739,7 +6739,7 @@ msgstr "NBR 17068: prolongación de 2 a 3 mm"
 msgid "NBR 6492: Target in plan (±0.00), equilateral triangle in section"
 msgstr "NBR 6492: Diana en planta (±0,00), triángulo equilátero en sección"
 
-#: crates/core/src/render.rs:3370
+#: crates/core/src/render.rs:3368
 msgid "NOT ENCLOSED"
 msgstr "NO DELIMITADA"
 
@@ -8682,7 +8682,7 @@ msgstr "Poner en este plano una vista que aún no está en ninguno"
 msgid "Quadrant"
 msgstr "Cuadrante"
 
-#: crates/core/src/render.rs:3370
+#: crates/core/src/render.rs:3368
 msgid "REDUNDANT"
 msgstr "REDUNDANTE"
 
@@ -11742,7 +11742,7 @@ msgstr "Escriba la nota: Mayús+Intro corta la línea; Intro o un clic fuera de 
 msgid "Type:"
 msgstr "Tipo:"
 
-#: crates/core/src/render.rs:4504
+#: crates/core/src/render.rs:4502
 msgid "UP"
 msgstr "SUBE"
 

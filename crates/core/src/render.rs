@@ -1139,11 +1139,10 @@ fn plan_shows_among(m: &Model, key: Guid, among: bool) -> Vec<P2> {
     let level = m.plan_level(key).map_or(key, |l| m.guid(l));
     let r = m.shown_range(key);
     let look = Look::of(m, key);
-    let index = match m.derived.made(&m.elements) {
-        Some(_) if among => None,
-        _ => Some(walls::Index::new(m)),
-    };
-    let index = index.as_ref();
+    // The tile index always: the lookup has walls' joins made, but a run's are found through the index, and without it a
+    // run looks at every element for its ends (a plan of 27,000 beams took 7 minutes).
+    let index = walls::Index::new(m);
+    let index = Some(&index);
     let mut components = crate::component_geometry::Components::new(m);
     let elements: Vec<(Id, &Element)> =
         if among { plan_elements(m, key, level, &r, false, &mut components) } else { m.elements.iter().map(|(id, e)| (*id, e)).collect() };
@@ -3054,11 +3053,10 @@ fn draw_plan(m: &Model, plan: impl Key, view: View, up: bool, k: f32, n: f64, ti
 fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, titled: bool, among: bool) -> Drawing {
     // The plan's own guid says what it is: its graphics, range, crop and annotation; its level is what it shows of the model.
     let level = m.plan_level(key).map_or(key, |l| m.guid(l));
-    let index = match m.derived.made(&m.elements) {
-        Some(_) if among => None,
-        _ => Some(walls::Index::new(m)),
-    };
-    let index = index.as_ref();
+    // The tile index always: the lookup has walls' joins made, but a run's are found through the index, and without it a
+    // run looks at every element for its ends (a plan of 27,000 beams took 7 minutes).
+    let index = walls::Index::new(m);
+    let index = Some(&index);
     let mut d = Drawing::new(view);
     (d.k, d.paper, d.detail, d.weights) = (k, paper_of(n, view.scale), detail_of(m, key), m.line_weights().at(n));
     let look = Look::of(m, key);

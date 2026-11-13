@@ -56,7 +56,7 @@ msgstr ""
 msgid "Ceiling Luminaire"
 msgstr "Luminaire de plafond"
 
-#: crates/core/src/render.rs:3559
+#: crates/core/src/render.rs:3557
 msgid "Ceiling Plan"
 msgstr "Plan de plafond"
 
@@ -111,7 +111,7 @@ msgstr "Nombre"
 msgid "Crosshatch"
 msgstr "Hachures croisées"
 
-#: crates/core/src/render.rs:4504
+#: crates/core/src/render.rs:4502
 msgid "DN"
 msgstr "DESCEND"
 
@@ -412,7 +412,7 @@ msgstr "Métal"
 msgid "Mounting Height"
 msgstr "Hauteur de pose"
 
-#: crates/core/src/render.rs:3370
+#: crates/core/src/render.rs:3368
 msgid "NOT ENCLOSED"
 msgstr "NON DÉLIMITÉE"
 
@@ -506,7 +506,7 @@ msgstr "Projet"
 msgid "Property Line"
 msgstr ""
 
-#: crates/core/src/render.rs:3370
+#: crates/core/src/render.rs:3368
 msgid "REDUNDANT"
 msgstr "REDONDANTE"
 
@@ -717,7 +717,7 @@ msgstr ""
 msgid "Type"
 msgstr "Type"
 
-#: crates/core/src/render.rs:4504
+#: crates/core/src/render.rs:4502
 msgid "UP"
 msgstr "MONTE"
 

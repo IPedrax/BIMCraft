@@ -303,6 +303,12 @@ fn lying_on(g: &Geom, node: P2) -> Option<f64> {
     (s > TOL && s < g.plan_length() - TOL && across.abs() <= g.width / 2.0 + TOL).then_some(s)
 }
 
+#[cfg(test)]
+thread_local! {
+    /// How many times a run's ends were met by looking at every element rather than through the tile index.
+    pub(crate) static SCANS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
 /// Run `id`'s arms round the node at its start (or with `at_end`, at its end), its own first, then those of the
 /// runs of its own category that end there or that it ends on (or that its node lies on), and — of a strip footing
 /// — of the walls it ends on, round the node counter-clockwise; and whether it ends ON one, which fills the node
@@ -324,16 +330,19 @@ fn arms(m: &Model, id: Id, at_end: bool, g: &Geom, index: Option<&walls::Index>)
     // bodies reach within half a width of the node.
     let near: Vec<(Id, &Element)> = match index {
         Some(index) => index.runs_near(node, lo, hi).into_iter().filter_map(|oid| Some((oid, m.elements.get(oid)?))).collect(),
-        None => m
-            .elements
-            .iter()
-            .filter(|(oid, oe)| **oid != id && oe.run().is_some())
-            .filter_map(|(oid, oe)| {
-                let og = m.run_geom(oe)?;
-                let (a, b) = (P2(og.a[0], og.a[1]), P2(og.b[0], og.b[1]));
-                (geom::dist_to_segment(node, a, b) <= og.width / 2.0 + TOL).then_some((*oid, oe))
-            })
-            .collect(),
+        None => {
+            #[cfg(test)]
+            SCANS.with(|n| n.set(n.get() + 1));
+            m.elements
+                .iter()
+                .filter(|(oid, oe)| **oid != id && oe.run().is_some())
+                .filter_map(|(oid, oe)| {
+                    let og = m.run_geom(oe)?;
+                    let (a, b) = (P2(og.a[0], og.a[1]), P2(og.b[0], og.b[1]));
+                    (geom::dist_to_segment(node, a, b) <= og.width / 2.0 + TOL).then_some((*oid, oe))
+                })
+                .collect()
+        }
     };
     for &(other, o) in &near {
         if other == id {
