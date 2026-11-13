@@ -757,7 +757,8 @@ the standards are fixed in line-weight groups, and bubble sizes may be an office
 | `Grid - Continuous` | solid | 4 (0.18) | 2.5 mm | coordination and zone grids (NCS practice) |
 | `Grid - Compact` | 6 / 1.5 / dot / 1.5 | 4 (0.18) | 2.0 mm | templates for dense plans, not a standard |
 
-The set is open: any type may be changed, duplicated or made on any pattern of the project, and put on any grid. A type a
+The set is open: any type may be changed, duplicated or made on any pattern of the project, and put on any grid. The
+Project Browser's Families lists the project's grid types under Grids, where a right click deletes one nothing uses. A type a
 grid uses can't be deleted; `purge` leaves grid types alone, as it leaves text and dimension types. `insert` brings a grid
 type, and the line pattern it names, from another project, and format 20 holds them: a file of 19 opens with each grid in
 `Grid - ISO 128` (or the first type there is) and the starter set put back (`Model::typed_grids`).
