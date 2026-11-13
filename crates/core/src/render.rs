@@ -7044,10 +7044,7 @@ mod tests {
         assert!((small[0] - 31.75).abs() < 1e-3 && small[2] >= 2.0, "{small:?}");
         // A pattern too fine to see draws solid, as any line's does.
         assert_eq!(
-            grid_dash(
-                &crate::lines::LinePattern(vec![crate::lines::Segment::Dash(0.1), crate::lines::Segment::Space(0.05)]),
-                1.0
-            ),
+            grid_dash(&crate::lines::LinePattern(vec![crate::lines::Segment::Dash(0.1), crate::lines::Segment::Space(0.05)]), 1.0),
             None
         );
     }
