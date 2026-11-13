@@ -135,6 +135,8 @@ mod opening_subcategory_tests;
 mod openings_past_top_tests;
 #[cfg(test)]
 mod oracle_tests;
+#[cfg(test)]
+mod origin_tests;
 pub mod paint;
 pub mod panel_schedule;
 pub mod pat;

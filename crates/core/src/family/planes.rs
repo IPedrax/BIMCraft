@@ -53,9 +53,8 @@ impl Reference {
 /// origin is the point of the plane nearest the family's origin, so a profile drawn on a plane parallel to a datum sits
 /// where it would on the datum, moved along the normal.
 ///
-/// `defines_origin` is stored and checked (at most one plane for each of x, y and z, and only a plane square to one of
-/// them), but moving the family's origin to a plane that takes it over, with the placed components' `at` corrected so they
-/// stay where they are, is not done yet: the datums are the origin whatever the flag says.
+/// `defines_origin`: at most one plane for each of x, y and z, and only a plane square to one of them; where those planes
+/// cross is the family's insertion point (O1, [`Family::origin`]), a datum's where no plane of its own takes it over.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RefPlane {

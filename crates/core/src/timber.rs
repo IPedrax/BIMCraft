@@ -164,7 +164,8 @@ pub(crate) fn query(s: &mut Session, params: &Value) -> Result<Value, String> {
         return Err(format!("timber framing requires an isolated wall; wall {other} meets it"));
     }
     let dims = m.opening_dims(e)?;
-    let cut = [o.offset - dims.width / 2., o.offset + dims.width / 2., o.sill, o.sill + dims.height];
+    let (middle, sill) = m.opening_middle(o);
+    let cut = [middle - dims.width / 2., middle + dims.width / 2., sill, sill + dims.height];
     let axis = Axis::of(w);
     let (base, top) = walls::heights(m, w);
     let result = layout(&rule, axis.length(), top - base, cut, window)?;

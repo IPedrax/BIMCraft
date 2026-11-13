@@ -332,6 +332,7 @@ impl FamilyEditor {
             if let Some((p, _, z)) = frame {
                 (place["at"], place["offset"]) = (json!([p.0, p.1]), json!(z));
             }
+            super::at_origin(&f, &mut place);
             s.model_mut().families.insert(name.clone(), g);
             let made = s.execute("component", &place)?;
             ghost_id = made["id"].as_u64();

@@ -3622,7 +3622,8 @@ impl Model {
             return Vec::new();
         }
         // Tilted with its plane, it has no plan of its own to draw its symbols in.
-        if !self.component_placement(c).upright {
+        let placed = self.component_placement(c);
+        if !placed.upright {
             return Vec::new();
         }
         let marks = f.values(&c.type_name, &c.params).and_then(|v| match detail {
@@ -3630,9 +3631,12 @@ impl Model {
             None => f.marks(&v),
         });
         let Ok(marks) = marks else { return Vec::new() };
-        let (sin, cos) = c.angle.to_radians().sin_cos();
         let flip = if c.mirrored { -1.0 } else { 1.0 };
-        marks.iter().map(|k| k.map(|q| P2(c.at.0 + q.0 * cos - flip * q.1 * sin, c.at.1 + q.0 * sin + flip * q.1 * cos))).collect()
+        let place = |q: P2| {
+            let p = placed.place([q.0, flip * q.1, 0.0]);
+            P2(p[0], p[1])
+        };
+        marks.iter().map(|k| k.map(place)).collect()
     }
 
     /// Where component `c`'s room is found from: its family's room calculation point for its values, mirrored, turned and
@@ -3642,7 +3646,7 @@ impl Model {
         let placed = self.component_placement(c);
         let local =
             self.families.get(&c.family).and_then(|f| f.values(&c.type_name, &c.params).ok().and_then(|v| f.room_point(&v).ok().flatten()));
-        let Some([x, y, z]) = local else { return placed.origin };
+        let Some([x, y, z]) = local else { return placed.insertion };
         placed.place([x, if c.mirrored { -y } else { y }, z])
     }
 
@@ -4624,12 +4628,52 @@ impl Model {
         self.opening_dims(e).ok()
     }
 
-    /// Where a door's or window's family's axes lie: the point in plan at the middle of the opening in the middle
-    /// of its wall, the way the wall runs there, and the height of its sill.
+    /// Where a door's or window's family's axes lie: the point in plan of their zero, the datums' crossing, the way the wall
+    /// runs there, and its height. Its insertion point is in the middle of its wall at `offset` along it, `sill` up it, and
+    /// the family stands by its origin there ([`Model::opening_placement`]); while the datums define the origin, that is the
+    /// middle of the opening.
     pub fn opening_frame(&self, o: &Opening) -> Option<(P2, P2, f64)> {
+        let placed = self.opening_placement(o)?;
+        let u = placed.axes[0];
+        Some((P2(placed.origin[0], placed.origin[1]), P2(u[0], u[1]), placed.origin[2]))
+    }
+
+    /// A door's or a window's family's axes in the model, as its pieces have them, the opening's flips taken already
+    /// ([`Model::opening_local`]): its insertion point in the middle of its wall at `offset` along its line and `sill` up from
+    /// its base, x along the wall there, y across it, z up; the family placed by its origin there
+    /// ([`crate::hosting::Placement::by_origin`]).
+    pub fn opening_placement(&self, o: &Opening) -> Option<crate::hosting::Placement> {
         let w = self.wall(o.host)?;
         let axis = walls::Axis::of(w);
-        Some((axis.at(o.offset, walls::centre(self, w)), axis.tangent(o.offset), self.own_base(w) + o.sill))
+        let (at, u) = (axis.at(o.offset, walls::centre(self, w)), axis.tangent(o.offset));
+        let n = u.perp();
+        let insertion = [at.0, at.1, self.own_base(w) + o.sill];
+        Some(crate::hosting::Placement::by_origin(
+            insertion,
+            [[u.0, u.1, 0.0], [n.0, n.1, 0.0], [0.0, 0.0, 1.0]],
+            true,
+            self.opening_origin(o),
+        ))
+    }
+
+    /// The origin of door or window `o`'s family in its own axes, flipped as the opening is: none (the datums' crossing) for
+    /// one of a project type.
+    pub fn opening_origin(&self, o: &Opening) -> [f64; 3] {
+        let Some(f) = o.family.as_ref().and_then(|n| self.families.get(n)) else { return [0.0; 3] };
+        let [x, y, z] = f.origin();
+        let (fx, fy) = (if o.flip_hand { -1.0 } else { 1.0 }, if o.flip_facing { -1.0 } else { 1.0 });
+        [fx * x + 0.0, fy * y + 0.0, z]
+    }
+
+    /// Where door or window `o`'s opening is in its wall: how far along its line its middle is, and how far up from its base
+    /// its bottom is. Its family's datums, Center (Left/Right) and Ref. Level, are the opening's middle and bottom, so this is
+    /// `offset` and `sill` until a plane of the family's own takes the origin over (O1).
+    pub fn opening_middle(&self, o: &Opening) -> (f64, f64) {
+        let [x, _, z] = self.opening_origin(o);
+        if x == 0.0 && z == 0.0 {
+            return (o.offset, o.sill);
+        }
+        (o.offset - x, o.sill - z)
     }
 
     /// A door's or window's family's solids and the lines its plan draws, in the family's own axes, turned out with
@@ -4708,34 +4752,16 @@ impl Model {
     /// [`Model::opening_voids_local`] where the opening stands, in the model's own axes.
     pub fn opening_voids(&self, e: &Element) -> Vec<Vec<[crate::view3d::P3; 3]>> {
         let (Element::Door(o) | Element::Window(o)) = e else { return Vec::new() };
-        let Some((at, u, z)) = self.opening_frame(o) else { return Vec::new() };
-        let place = |p: [f64; 3]| {
-            let q = at + u * p[0] + u.perp() * p[1];
-            [q.0, q.1, z + p[2]]
-        };
-        self.opening_voids_local(e).into_iter().map(|v| v.iter().map(|t| t.map(place)).collect()).collect()
+        let Some(placed) = self.opening_placement(o) else { return Vec::new() };
+        self.opening_voids_local(e).into_iter().map(|v| v.iter().map(|t| t.map(|p| placed.place(p))).collect()).collect()
     }
 
     /// A door's or window's family's solids where it stands, in the model's own axes: each form's triangles, its
     /// outline seen from above, and what it reaches from and to, over the level.
     pub fn opening_pieces(&self, e: &Element) -> Vec<Piece> {
         let (Element::Door(o) | Element::Window(o)) = e else { return Vec::new() };
-        let (Some((pieces, _)), Some((at, u, z))) = (self.opening_local(e), self.opening_frame(o)) else { return Vec::new() };
-        let place = |p: [f64; 3]| {
-            let q = at + u * p[0] + u.perp() * p[1];
-            [q.0, q.1, z + p[2]]
-        };
-        pieces
-            .into_iter()
-            .map(|pc| Piece {
-                tris: pc.tris.iter().map(|t| t.map(place)).collect(),
-                outline: pc.outline.iter().map(|q| place([q.0, q.1, 0.0])).map(|p| P2(p[0], p[1])).collect(),
-                holes: pc.holes.iter().map(|h| h.iter().map(|q| place([q.0, q.1, 0.0])).map(|p| P2(p[0], p[1])).collect()).collect(),
-                bottom: z + pc.bottom,
-                top: z + pc.top,
-                ..pc
-            })
-            .collect()
+        let (Some((pieces, _)), Some(placed)) = (self.opening_local(e), self.opening_placement(o)) else { return Vec::new() };
+        pieces.iter().map(|pc| placed.piece(pc)).collect()
     }
 
     /// The marks a door's or window's family draws in plan, where it stands, each with the subcategory it is drawn in
@@ -4751,8 +4777,12 @@ impl Model {
 
     fn opening_marks_at(&self, e: &Element, detail: Option<crate::graphics::Detail>) -> Vec<crate::family::Tagged> {
         let (Element::Door(o) | Element::Window(o)) = e else { return Vec::new() };
-        let (Some((_, marks)), Some((at, u, _))) = (self.opening_local_at(e, detail), self.opening_frame(o)) else { return Vec::new() };
-        marks.iter().map(|(k, sub)| (k.map(|q| at + u * q.0 + u.perp() * q.1), *sub)).collect()
+        let (Some((_, marks)), Some(placed)) = (self.opening_local_at(e, detail), self.opening_placement(o)) else { return Vec::new() };
+        let place = |q: P2| {
+            let p = placed.place([q.0, q.1, 0.0]);
+            P2(p[0], p[1])
+        };
+        marks.iter().map(|(k, sub)| (k.map(place), *sub)).collect()
     }
 
     /// The level an element stands on: a door's or window's is its wall's, a tag's its door's or
@@ -5799,10 +5829,11 @@ impl Model {
                 let (Some(w), Some(t)) = (self.wall(o.host), self.opening_type(e)) else {
                     return Err(format!("{what} has no wall or no type to measure"));
                 };
+                let (middle, _) = self.opening_middle(o);
                 let along = match face {
-                    Face::Centre => o.offset,
-                    Face::Start => o.offset - t.width / 2.0,
-                    Face::End => o.offset + t.width / 2.0,
+                    Face::Centre => middle,
+                    Face::Start => middle - t.width / 2.0,
+                    Face::End => middle + t.width / 2.0,
                     Face::Left | Face::Right | Face::Across => {
                         return Err(format!("{what} has a centre and two jambs, start and end; measure to one of those"));
                     }
@@ -6027,8 +6058,9 @@ impl Model {
                 (geom::dist_to_segment(hit, p, q) <= reach).then(|| along(hit))
             })
             .collect();
-        let start = hits.iter().copied().filter(|&t| t < o.offset).fold(0.0, f64::max);
-        let end = hits.iter().copied().filter(|&t| t > o.offset).fold(length, f64::min);
+        let (middle, _) = self.opening_middle(o);
+        let start = hits.iter().copied().filter(|&t| t < middle).fold(0.0, f64::max);
+        let end = hits.iter().copied().filter(|&t| t > middle).fold(length, f64::min);
         Some((start, end))
     }
 
@@ -6037,7 +6069,9 @@ impl Model {
     pub fn centred(&self, o: &Opening, near: f64) -> Option<f64> {
         let (start, end) = self.opening_span(o)?;
         let middle = (start + end) / 2.0;
-        ((o.offset - middle).abs() <= near).then_some(middle)
+        // Its opening's middle there, which its offset is from its family's origin (`opening_middle`).
+        let (at, _) = self.opening_middle(o);
+        ((at - middle).abs() <= near).then_some(middle + (o.offset - at))
     }
 
     /// The circle a radial dimension measures on `r`: a round column's centre and radius, or a
@@ -7310,7 +7344,9 @@ impl Model {
                 coord(&format!("{who} offset"), o.offset)?;
                 coord(&format!("{who} sill"), o.sill)?;
                 text(&who, "mark", &o.mark)?;
-                let (a, b) = (o.offset - t.width / 2.0, o.offset + t.width / 2.0);
+                // Its opening, its family's datums' middle and bottom (`opening_middle`), in the wall.
+                let (middle, sill) = self.opening_middle(o);
+                let (a, b) = (middle - t.width / 2.0, middle + t.width / 2.0);
                 let length = crate::walls::Axis::of(w).length();
                 if a < -TOL || b > length + TOL {
                     return Err(format!(
@@ -7322,22 +7358,22 @@ impl Model {
                 }
                 // Its sill in the wall: on or over its base, and under its top all across it (which a roof it's attached to may
                 // raise). Its head may rise past the top, as Revit lets it: the wall is cut up to its top, a notch open there.
-                if o.sill < 0.0 {
-                    return Err(format!("{who}: sill {} is under wall {}'s base; give it a sill of 0 or more", o.sill, self.shown(o.host)));
+                if sill < 0.0 {
+                    return Err(format!("{who}: sill {} is under wall {}'s base; give it a sill of 0 or more", sill, self.shown(o.host)));
                 }
                 let top =
-                    [a, o.offset, b].map(|s| crate::walls::top_at(self, w, s)).into_iter().fold(f64::INFINITY, f64::min) - self.own_base(w);
-                if o.sill > top - TOL {
+                    [a, middle, b].map(|s| crate::walls::top_at(self, w, s)).into_iter().fold(f64::INFINITY, f64::min) - self.own_base(w);
+                if sill > top - TOL {
                     return Err(format!(
                         "{who}: sill {} is at or over the top of wall {}, {} mm up from its base there, so nothing of it is in the \
                          wall; lower its sill to {} or less, or raise the wall's top",
-                        o.sill,
+                        sill,
                         self.shown(o.host),
                         (top * 100.0).round() / 100.0,
                         ((top - TOL) * 100.0).round() / 100.0
                     ));
                 }
-                let span = OpeningSpan { start: a, end: b, sill: o.sill, head: o.sill + t.height, id };
+                let span = OpeningSpan { start: a, end: b, sill, head: sill + t.height, id };
                 let list = spans.entry(o.host).or_default();
                 let at = list.partition_point(|held| held.start <= a);
                 list.insert(at, span);
