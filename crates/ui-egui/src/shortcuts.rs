@@ -2333,6 +2333,10 @@ impl BimApp {
             "Join into Polyline" => self.join_polyline(),
             "Explode Polyline" => self.explode_polyline(),
             "Detail Line" => self.set_tool(Tool::DetailLine(Vec::new())),
+            "Fillet Arc" => {
+                self.set_tool(Tool::DetailLine(Vec::new()));
+                self.set_shape(crate::draw::Target::Detail, crate::draw::Shape::Fillet);
+            }
             "Filled Region" => {
                 if let Some(view) = self.plan_key() {
                     self.start_sketch(crate::sketch::Of::Region { view, masking: false }, Vec::new());
@@ -2340,7 +2344,7 @@ impl BimApp {
             }
             "Down Conductor" => self.set_tool(Tool::Run("downconductor", None)),
             "Earthing Conductor" => self.set_tool(Tool::Run("groundconductor", None)),
-            "Cabling" => self.set_tool(Tool::Run("cabling", None)),
+            "Cabling" => self.set_tool(Tool::Run("cable", None)),
             "Reinforce" => self.open_reinforce(),
             "Reference Plane" => self.set_tool(Tool::ReferencePlane(None)),
             "Wireframe" => self.set_visual_style(bimcraft_core::graphics::VisualStyle::Wireframe),
@@ -2745,7 +2749,7 @@ impl BimApp {
             });
             crate::popup::footer(ui, |ui| {
                 ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
-                    if ui.button(t("Apply")).clicked() {
+                    if ui.button(t("Apply Changes")).clicked() {
                         apply = true;
                     }
                     if ui.button(t("Cancel")).clicked() {

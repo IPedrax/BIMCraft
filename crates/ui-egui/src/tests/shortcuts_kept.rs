@@ -16,7 +16,7 @@ fn add_in_the_dialog(h: &mut Harness<BimApp>, keys: &str, action: &str) {
     let id = resolve_action(action).unwrap();
     let binding = parse_binding(keys).unwrap();
     h.state_mut().shortcuts_dialog.pending.add_binding(&id, binding, true).unwrap();
-    press(h, "Apply");
+    press(h, "Apply Changes");
 }
 
 fn has(h: &Harness<BimApp>, keys: &str, action: &str) -> bool {
@@ -59,7 +59,7 @@ fn reset_all_in_the_dialog_is_kept_too() {
 
     press(&mut h, "Reset All");
     h.state_mut().shortcuts_dialog.pending = Shortcuts::defaults(crate::shortcuts::Profile::BimCraft);
-    press(&mut h, "Apply");
+    press(&mut h, "Apply Changes");
     assert!(!has(&h, "ZW", "Door"));
     press(&mut h, "Close");
     shortcut(&mut h, "WA");
@@ -78,7 +78,7 @@ fn a_key_edited_in_the_dialog_replaces_the_old_one_in_the_file() {
     let id = resolve_action("Door").unwrap();
     h.state_mut().shortcuts_dialog.pending.remove_binding(&id, parse_binding("ZW").unwrap());
     h.state_mut().shortcuts_dialog.pending.add_binding(&id, parse_binding("ZQ").unwrap(), true).unwrap();
-    press(&mut h, "Apply");
+    press(&mut h, "Apply Changes");
     assert!(has(&h, "ZQ", "Door") && !has(&h, "ZW", "Door"));
 }
 

@@ -313,6 +313,8 @@ fn shortcut(h: &mut Harness<BimApp>, letters: &str) {
         let key = Key::from_name(&c.to_ascii_uppercase().to_string()).expect("a letter");
         h.key_press(key);
     }
+    // Family tabs still read Event::Text for their own keys; project tabs read the physical keys.
+    h.event(Event::Text(letters.into()));
     h.run();
 }
 
@@ -859,17 +861,14 @@ fn the_selection_stays_as_views_change_and_a_schedule_shows_and_picks_it() {
 #[test]
 fn typed_shortcuts_pick_tools_like_revit() {
     let mut h = app(SAMPLE);
-    h.event(Event::Text("W".into()));
-    h.event(Event::Text("A".into()));
-    h.run();
+    shortcut(&mut h, "WA");
     assert!(matches!(h.state().tool, Tool::Wall(_)));
-    h.event(Event::Text("dr".into()));
-    h.run();
+    shortcut(&mut h, "DR");
     assert!(matches!(h.state().tool, Tool::Door));
-    h.event(Event::Text("DI".into()));
-    h.run();
+    shortcut(&mut h, "DI");
     assert!(matches!(h.state().tool, Tool::Dimension(..)));
-    h.event(Event::Text("tg".into()));
+    shortcut(&mut h, "TG");
+
     h.run();
     assert!(matches!(h.state().tool, Tool::Tag));
     shortcut(&mut h, "CR");

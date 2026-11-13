@@ -160,7 +160,7 @@ msgstr "Een BIMCraft-project, een IFC- of een Revit-bestand."
 msgid "A chat is kept for each saved project, on this computer, beside settings.json (never in the project). A picture sent in it is not kept."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:2867
+#: crates/ui-egui/src/shortcuts.rs:2871
 msgid "A chord such as Ctrl+D, or two keys such as WA. Esc cancels; Backspace clears."
 msgstr ""
 
@@ -371,7 +371,7 @@ msgstr "Primaire elementen behouden"
 msgid "Accept Primary: the primary option's elements stay in the model; the others' elements and the set go"
 msgstr "Primaire elementen behouden: de elementen van de primaire optie blijven in het model; de andere elementen en de verzameling verdwijnen"
 
-#: crates/ui-egui/src/shortcuts.rs:2575
+#: crates/ui-egui/src/shortcuts.rs:2579
 msgid "Actions"
 msgstr ""
 
@@ -511,7 +511,7 @@ msgstr "Spanning toevoegen"
 msgid "Add Wire Type"
 msgstr "Draadtype toevoegen"
 
-#: crates/ui-egui/src/shortcuts.rs:2691
+#: crates/ui-egui/src/shortcuts.rs:2695
 msgid "Add a binding"
 msgstr ""
 
@@ -544,7 +544,7 @@ msgstr ""
 msgid "Add to Project"
 msgstr "Aan het project toevoegen"
 
-#: crates/ui-egui/src/shortcuts.rs:2948
+#: crates/ui-egui/src/shortcuts.rs:2952
 msgid "Add to the current set"
 msgstr ""
 
@@ -699,8 +699,8 @@ msgstr "Uitlijnhulplijnen aan"
 msgid "All"
 msgstr "Alle"
 
-#: crates/ui-egui/src/shortcuts.rs:2419
-#: crates/ui-egui/src/shortcuts.rs:2421
+#: crates/ui-egui/src/shortcuts.rs:2423
+#: crates/ui-egui/src/shortcuts.rs:2425
 msgid "All categories"
 msgstr ""
 
@@ -888,19 +888,22 @@ msgstr "Geldt voor alle weergaven; snapt op het ingeschakelde hoofdraster of sub
 #: crates/ui-egui/src/lineweights.rs:150
 #: crates/ui-egui/src/objectstyles.rs:89
 #: crates/ui-egui/src/properties.rs:653
-#: crates/ui-egui/src/shortcuts.rs:2748
 #: crates/ui-egui/src/standards.rs:333
 #: crates/ui-egui/src/titleblocks.rs:652
 #: crates/ui-egui/src/typeprops.rs:309
 msgid "Apply"
 msgstr "Toepassen"
 
+#: crates/ui-egui/src/shortcuts.rs:2752
+msgid "Apply Changes"
+msgstr ""
+
 #: crates/ui-egui/src/editor/temp_hide.rs:226
 #: crates/ui-egui/src/footer.rs:432
 msgid "Apply Hide/Isolate to View"
 msgstr "Verbergen/isoleren op de weergave toepassen"
 
-#: crates/ui-egui/src/shortcuts.rs:2962
+#: crates/ui-egui/src/shortcuts.rs:2966
 msgid "Apply Import"
 msgstr ""
 
@@ -908,7 +911,7 @@ msgstr ""
 msgid "Apply Overrides"
 msgstr "Overschrijvingen toepassen"
 
-#: crates/ui-egui/src/shortcuts.rs:2442
+#: crates/ui-egui/src/shortcuts.rs:2446
 msgid "Apply Profile"
 msgstr ""
 
@@ -1000,7 +1003,7 @@ msgstr "Vraagt eerst om op te slaan als er niet-opgeslagen wijzigingen zijn, slu
 msgid "Assign View Template"
 msgstr "Weergavesjabloon toewijzen"
 
-#: crates/ui-egui/src/shortcuts.rs:2742
+#: crates/ui-egui/src/shortcuts.rs:2746
 msgid "Assigned {} of {}"
 msgstr ""
 
@@ -1515,11 +1518,11 @@ msgstr "Camera: klik waar het oog staat en dan waar het naar kijkt: een 3D-weerg
 #: crates/ui-egui/src/properties.rs:3519
 #: crates/ui-egui/src/purge.rs:77
 #: crates/ui-egui/src/reinforce.rs:536
-#: crates/ui-egui/src/shortcuts.rs:2491
-#: crates/ui-egui/src/shortcuts.rs:2751
-#: crates/ui-egui/src/shortcuts.rs:2898
-#: crates/ui-egui/src/shortcuts.rs:2904
-#: crates/ui-egui/src/shortcuts.rs:2989
+#: crates/ui-egui/src/shortcuts.rs:2495
+#: crates/ui-egui/src/shortcuts.rs:2755
+#: crates/ui-egui/src/shortcuts.rs:2902
+#: crates/ui-egui/src/shortcuts.rs:2908
+#: crates/ui-egui/src/shortcuts.rs:2993
 #: crates/ui-egui/src/standards.rs:334
 #: crates/ui-egui/src/templates.rs:757
 #: crates/ui-egui/src/titleblocks.rs:653
@@ -1583,7 +1586,7 @@ msgstr "Categorieën zonder overschrijving worden getekend zoals de objectstijle
 #: crates/ui-egui/src/editor/document.rs:1917
 #: crates/ui-egui/src/objectstyles.rs:65
 #: crates/ui-egui/src/properties.rs:2297
-#: crates/ui-egui/src/shortcuts.rs:2542
+#: crates/ui-egui/src/shortcuts.rs:2546
 #: crates/ui-egui/src/standards.rs:193
 msgid "Category"
 msgstr "Categorie"
@@ -2441,7 +2444,7 @@ msgstr ""
 #: crates/ui-egui/src/revit.rs:261
 #: crates/ui-egui/src/script.rs:103
 #: crates/ui-egui/src/settings.rs:482
-#: crates/ui-egui/src/shortcuts.rs:2754
+#: crates/ui-egui/src/shortcuts.rs:2758
 msgid "Close"
 msgstr "Sluiten"
 
@@ -2564,7 +2567,7 @@ msgstr "Samenvoegen: wat in deze fase gemaakt, gesloopt en getoond werd gaat naa
 msgid "Coming in a later version"
 msgstr "Wordt geïmplementeerd in een latere versie"
 
-#: crates/ui-egui/src/shortcuts.rs:2531
+#: crates/ui-egui/src/shortcuts.rs:2535
 msgid "Command"
 msgstr ""
 
@@ -2840,12 +2843,12 @@ msgstr "Kernvlak: binnenkant"
 msgid "Could not fit the 3D view: {}"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:2477
+#: crates/ui-egui/src/shortcuts.rs:2481
 msgid "Could not open the file: {}"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:3055
-#: crates/ui-egui/src/shortcuts.rs:3070
+#: crates/ui-egui/src/shortcuts.rs:3059
+#: crates/ui-egui/src/shortcuts.rs:3074
 msgid "Could not write the file: {}"
 msgstr ""
 
@@ -3536,11 +3539,11 @@ msgid "Disallow Join"
 msgstr ""
 
 #: crates/ui-egui/src/autosave.rs:307
-#: crates/ui-egui/src/shortcuts.rs:2502
+#: crates/ui-egui/src/shortcuts.rs:2506
 msgid "Discard"
 msgstr "Verwerpen"
 
-#: crates/ui-egui/src/shortcuts.rs:2500
+#: crates/ui-egui/src/shortcuts.rs:2504
 msgid "Discard the changes made here?"
 msgstr ""
 
@@ -4250,11 +4253,11 @@ msgstr "Exporteren"
 msgid "Export..."
 msgstr "Exporteren..."
 
-#: crates/ui-egui/src/shortcuts.rs:3052
+#: crates/ui-egui/src/shortcuts.rs:3056
 msgid "Exported."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:2454
+#: crates/ui-egui/src/shortcuts.rs:2458
 msgid "Export…"
 msgstr ""
 
@@ -5073,7 +5076,7 @@ msgstr "Hoogte:"
 msgid "Held by Dimensions"
 msgstr "Vastgehouden door maatlijnen"
 
-#: crates/ui-egui/src/shortcuts.rs:2457
+#: crates/ui-egui/src/shortcuts.rs:2461
 msgid "Help (Markdown)…"
 msgstr ""
 
@@ -5290,7 +5293,7 @@ msgstr ""
 msgid "Import units"
 msgstr "Importeenheden"
 
-#: crates/ui-egui/src/shortcuts.rs:2940
+#: crates/ui-egui/src/shortcuts.rs:2944
 msgid "Import {}"
 msgstr ""
 
@@ -5306,7 +5309,7 @@ msgstr "Importeren: een patroon uit het bestand vervangt het patroon met dezelfd
 msgid "Imported Categories"
 msgstr "Geïmporteerde categorieën"
 
-#: crates/ui-egui/src/shortcuts.rs:2981
+#: crates/ui-egui/src/shortcuts.rs:2985
 msgid "Imported {} bindings ({} skipped)."
 msgstr ""
 
@@ -5314,11 +5317,11 @@ msgstr ""
 msgid "Imported {}: {}."
 msgstr "{} geïmporteerd: {}."
 
-#: crates/ui-egui/src/shortcuts.rs:2985
+#: crates/ui-egui/src/shortcuts.rs:2989
 msgid "Imported; the old profile is in {}."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:2451
+#: crates/ui-egui/src/shortcuts.rs:2455
 msgid "Import…"
 msgstr ""
 
@@ -5559,7 +5562,7 @@ msgstr ""
 msgid "Justification:"
 msgstr "Uitlijning:"
 
-#: crates/ui-egui/src/shortcuts.rs:2505
+#: crates/ui-egui/src/shortcuts.rs:2509
 msgid "Keep Editing"
 msgstr ""
 
@@ -5579,11 +5582,11 @@ msgstr ""
 msgid "Key"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:2553
+#: crates/ui-egui/src/shortcuts.rs:2557
 msgid "Key combinations"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:2408
+#: crates/ui-egui/src/shortcuts.rs:2412
 msgid "Keyboard Shortcuts"
 msgstr "Sneltoetsen"
 
@@ -6241,11 +6244,11 @@ msgstr ""
 msgid "Mark as Spare"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:3067
+#: crates/ui-egui/src/shortcuts.rs:3071
 msgid "Markdown help written."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:3040
+#: crates/ui-egui/src/shortcuts.rs:3044
 msgid "Markdown is a help file; use Help (Markdown)… to write it."
 msgstr ""
 
@@ -7404,7 +7407,7 @@ msgstr "De standaard 3D-weergave openen"
 msgid "Open the last project at startup"
 msgstr "Bij het opstarten het laatste project openen"
 
-#: crates/ui-egui/src/shortcuts.rs:2473
+#: crates/ui-egui/src/shortcuts.rs:2477
 msgid "Open the saved file"
 msgstr ""
 
@@ -8577,7 +8580,7 @@ msgstr "Voorinstelling: naam"
 msgid "Presets"
 msgstr "Voorinstellingen"
 
-#: crates/ui-egui/src/shortcuts.rs:2866
+#: crates/ui-egui/src/shortcuts.rs:2870
 msgid "Press a combination…"
 msgstr ""
 
@@ -8597,7 +8600,7 @@ msgstr "Primair ({})"
 #: crates/core/src/schedule.rs:212
 #: crates/ui-egui/src/editor/extrusion.rs:200
 #: crates/ui-egui/src/settings.rs:541
-#: crates/ui-egui/src/shortcuts.rs:2436
+#: crates/ui-egui/src/shortcuts.rs:2440
 msgid "Profile"
 msgstr "Profiel"
 
@@ -8621,7 +8624,7 @@ msgstr "Profiel 2"
 msgid "Profile 2: sketch the profile at the path's end, square to it"
 msgstr "Profiel 2: schets het profiel aan het einde van het pad, haaks erop"
 
-#: crates/ui-egui/src/shortcuts.rs:2445
+#: crates/ui-egui/src/shortcuts.rs:2449
 msgid "Profile “{}” applied to the pending set."
 msgstr ""
 
@@ -9038,7 +9041,7 @@ msgstr ""
 msgid "Remove"
 msgstr "Verwijderen"
 
-#: crates/ui-egui/src/shortcuts.rs:2714
+#: crates/ui-egui/src/shortcuts.rs:2718
 msgid "Remove All"
 msgstr ""
 
@@ -9142,7 +9145,7 @@ msgstr "Herhaald detail"
 msgid "Repeating Detail: click its start and end; the group on the Options Bar repeats along it every spacing"
 msgstr "Herhaald detail: klik op het begin en het einde; de groep in de optiebalk herhaalt zich ertussen om de afstand"
 
-#: crates/ui-egui/src/shortcuts.rs:2890
+#: crates/ui-egui/src/shortcuts.rs:2894
 msgid "Replace"
 msgstr ""
 
@@ -9154,7 +9157,7 @@ msgstr "Vervangen door tekst"
 msgid "Replace With Text:"
 msgstr "Vervangen door tekst:"
 
-#: crates/ui-egui/src/shortcuts.rs:2947
+#: crates/ui-egui/src/shortcuts.rs:2951
 msgid "Replace everything"
 msgstr ""
 
@@ -9186,8 +9189,8 @@ msgstr ""
 #: crates/ui-egui/src/graphics.rs:1318
 #: crates/ui-egui/src/lineweights.rs:146
 #: crates/ui-egui/src/objectstyles.rs:82
-#: crates/ui-egui/src/shortcuts.rs:2487
-#: crates/ui-egui/src/shortcuts.rs:2711
+#: crates/ui-egui/src/shortcuts.rs:2491
+#: crates/ui-egui/src/shortcuts.rs:2715
 msgid "Reset"
 msgstr "Herstellen"
 
@@ -9195,7 +9198,7 @@ msgstr "Herstellen"
 msgid "Reset Accent"
 msgstr "Accent herstellen"
 
-#: crates/ui-egui/src/shortcuts.rs:2460
+#: crates/ui-egui/src/shortcuts.rs:2464
 msgid "Reset All"
 msgstr ""
 
@@ -9256,7 +9259,7 @@ msgstr "Herstarten en installeren"
 msgid "Restore Down"
 msgstr "Verkleinen"
 
-#: crates/ui-egui/src/shortcuts.rs:2485
+#: crates/ui-egui/src/shortcuts.rs:2489
 msgid "Return every action to the starting profile?"
 msgstr ""
 
@@ -9288,7 +9291,7 @@ msgstr "Revisiewolk: een wolk rond wat veranderd is, van de revisie in de optieb
 msgid "Revision:"
 msgstr "Revisie:"
 
-#: crates/ui-egui/src/shortcuts.rs:3044
+#: crates/ui-egui/src/shortcuts.rs:3048
 msgid "Revit XML import is supported; export it from Revit."
 msgstr ""
 
@@ -9684,7 +9687,7 @@ msgstr "De Projectbrowser doorzoeken"
 #: crates/ui-egui/src/browser.rs:264
 #: crates/ui-egui/src/editor/document.rs:1708
 #: crates/ui-egui/src/editor/types_dialog.rs:197
-#: crates/ui-egui/src/shortcuts.rs:2412
+#: crates/ui-egui/src/shortcuts.rs:2416
 msgid "Search…"
 msgstr "Zoeken…"
 
@@ -10385,7 +10388,7 @@ msgstr "De parameters van elke groep op naam sorteren, van Z tot A"
 msgid "Sorting/Grouping"
 msgstr "Sorteren/groeperen"
 
-#: crates/ui-egui/src/shortcuts.rs:2564
+#: crates/ui-egui/src/shortcuts.rs:2568
 msgid "Source"
 msgstr ""
 
@@ -11064,7 +11067,7 @@ msgstr "Dat is geen IP-adres: 0.0.0.0 luistert op alle adressen van deze machine
 msgid "That is the reference: pick what moves onto it."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:3013
+#: crates/ui-egui/src/shortcuts.rs:3017
 msgid "That is too big to be a shortcuts file."
 msgstr "Dat is te groot voor een sneltoetsenbestand."
 
@@ -11163,7 +11166,7 @@ msgstr "De familie {} die je laadt, staat al in deze familie, maar is anders ged
 msgid "The family {} you are loading is already in this project, defined differently. What would you like to do?"
 msgstr "De familie {} die je laadt, staat al in dit project, maar is anders gedefinieerd. Wat wil je doen?"
 
-#: crates/ui-egui/src/shortcuts.rs:3024
+#: crates/ui-egui/src/shortcuts.rs:3028
 msgid "The file has no usable bindings."
 msgstr ""
 
@@ -11464,7 +11467,7 @@ msgstr "Deze kopie heeft geen grafische kaart waarop ze de 3D-weergave kan teken
 msgid "This end is tied to a parameter or worked out by a formula: change it in Family Types."
 msgstr "Dit einde is gekoppeld aan een parameter of wordt berekend met een formule: wijzig het in Familietypen."
 
-#: crates/ui-egui/src/shortcuts.rs:3007
+#: crates/ui-egui/src/shortcuts.rs:3011
 msgid "This is a help file to read. Use .bks, .txt or .json to import."
 msgstr ""
 
@@ -13416,7 +13419,7 @@ msgstr "{} vraagt om zonder de code deel te nemen aan je Co-Work-sessie."
 msgid "{} at x {}, y {}"
 msgstr "{} bij x {}, y {}"
 
-#: crates/ui-egui/src/shortcuts.rs:2942
+#: crates/ui-egui/src/shortcuts.rs:2946
 msgid "{} bindings read; {} errors."
 msgstr ""
 
@@ -13742,11 +13745,11 @@ msgstr "{}: {}, {} geselecteerd. Klik om te volgen"
 msgid "{}; and {} more"
 msgstr "{}; en nog {}"
 
-#: crates/ui-egui/src/shortcuts.rs:2930
+#: crates/ui-egui/src/shortcuts.rs:2934
 msgid "“{}” assigned to “{}”."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:2884
+#: crates/ui-egui/src/shortcuts.rs:2888
 msgid "“{}” is already assigned to “{}”."
 msgstr ""
 
@@ -13818,7 +13821,7 @@ msgstr "• Zeer dikke lijn (0,70 mm — pen 12): opvallende gesneden dragende k
 msgid "• Wide / Heavy (0.50 mm — 0.70 mm): Cut walls and structural sections."
 msgstr "• Breed / zwaar (0,50 mm — 0,70 mm): gesneden muren en dragende doorsneden."
 
-#: crates/ui-egui/src/shortcuts.rs:2959
+#: crates/ui-egui/src/shortcuts.rs:2963
 msgid "…and {} more"
 msgstr ""
 
