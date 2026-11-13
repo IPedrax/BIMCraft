@@ -653,8 +653,9 @@ pub fn fields(m: &Model, cat: &str) -> Vec<(String, Kind)> {
             n,
             match p.kind {
                 ParameterKind::Text => Kind::Text,
-                ParameterKind::Number => Kind::Number,
+                ParameterKind::Number | ParameterKind::Integer | ParameterKind::Volume | ParameterKind::Angle => Kind::Number,
                 ParameterKind::Length => Kind::Length,
+                ParameterKind::Area => Kind::Area,
                 ParameterKind::YesNo => Kind::YesNo,
             },
         );
@@ -1027,14 +1028,7 @@ impl Row<'_> {
                 From::Shared => self.shared(name, *kind),
             };
         }
-        if let Some(p) = m.parameters.get(name).filter(|p| p.categories.iter().any(|c| c == cat)) {
-            return match self.e.params().and_then(|ps| ps.get(name)) {
-                Some(v) => v.clone(),
-                // Unset, a yes or no is no, as the palette shows it.
-                None if p.kind == ParameterKind::YesNo => Value::Bool(false),
-                None => Value::Null,
-            };
-        }
+        // A family's own first: where a project parameter has the name too, the family's is tied to it, and is its value here.
         if let Some((family, _)) = self.e.family()
             && let Some(p) = m.families.get(family).and_then(|f| f.parameters.iter().find(|p| p.name == name))
         {
@@ -1046,6 +1040,15 @@ impl Row<'_> {
                 (family::Kind::Volume, Some(x)) => serde_json::json!(fine(x / 1e9)),
                 (k, _) if k.text() && v.as_str() == Some("") => Value::Null,
                 _ => v,
+            };
+        }
+        let cat = self.cat;
+        if let Some(p) = m.parameters.get(name).filter(|p| p.categories.iter().any(|c| c == cat)) {
+            return match crate::parameters::value_of(m, self.e, name, p) {
+                Some(v) => v.clone(),
+                // Unset, a yes or no is no, as the palette shows it.
+                None if p.kind == ParameterKind::YesNo => Value::Bool(false),
+                None => Value::Null,
             };
         }
         Value::Null

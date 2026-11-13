@@ -172,7 +172,17 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 2: the library has ids and GUIDs too
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
-pub const FORMAT: u32 = 19;
+/// 20 (0.12's, which every change since 19 shares; the Family Editor's unreleased builds wrote 20 to 32 too, and a file of
+/// theirs stamped 20 opens as one of 0.12's, 21 and up as newer): rooms have types (`types.room`), which may name a floor type and a ceiling type, and a room holds the floor and the
+/// ceiling made for it (`floor`, `ceiling`); a build that reads up to 19 would lose the links and leave the finishes behind. And
+/// project parameters may be of kinds 19 doesn't know (`integer`, `area`, `volume`, `angle`), a type's (`scope`, `type_values`),
+/// from a `.bimparams` dictionary (`dictionaries`), grouped under a heading of the project's own, and the project's information
+/// is an element that title blocks read; a build that reads up to 19 would answer such a kind with a serde error. And a column
+/// holds a `top_offset` and the roof or floor its top and its base are attached to (`attach_top`, `attach_base`), as a wall's are;
+/// a build that reads up to 19 would leave them out of a file and stand the column at its own level, not "saved by a newer BIMCraft".
+/// And a component may lie tilted on no plane (`tilt`, its family's x and z in the model), as an imported bolt through a brace does;
+/// a build that reads up to 19 would answer one with a serde error, not "saved by a newer BIMCraft".
+pub const FORMAT: u32 = 20;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -915,14 +925,18 @@ pub struct Opening {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Room {
+    /// Its room type, which says whether it has a floor and a ceiling of its own, of what types and how far from its level.
+    #[serde(rename = "type", default = "room_type")]
+    pub type_name: String,
     pub level: Guid,
     /// A point inside the room. The boundary is found from the walls around it, so it follows
     /// them when they move.
     pub point: P2,
     pub name: String,
     pub number: String,
-    /// What it is filled with on plans, red, green and blue: none, no fill.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// What a file from before format 20 holds, a colour of the room's own on plans: `Model::migrate` moves it to a room
+    /// type (`RoomType::colour`), so a room of the project has none, and `Model::check` refuses one.
+    #[serde(default, skip_serializing)]
     pub colour: Option<[u8; 3]>,
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -943,6 +957,63 @@ pub struct Room {
     /// What a frozen room keeps, given it after the command that froze it (`Model::keep_rooms`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kept: Option<Kept>,
+    /// The floor made for it, as its type says, which follows its boundary at the walls' faces (`Model::follow_rooms`).
+    #[serde(default, skip_serializing_if = "Finish::is_none")]
+    pub floor: Finish,
+    /// The ceiling made for it, likewise.
+    #[serde(default, skip_serializing_if = "Finish::is_none")]
+    pub ceiling: Finish,
+}
+
+/// The floor or the ceiling a room's type asks for: none made yet (or none asked for), the one that follows the room, or
+/// let go (Disconnect), which stays so until it is made again (Regenerate).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Finish {
+    #[default]
+    None,
+    Connected(Guid),
+    Disconnected,
+}
+
+impl Finish {
+    pub fn is_none(&self) -> bool {
+        *self == Finish::None
+    }
+
+    /// The element that follows the room, while one does.
+    pub fn connected(&self) -> Option<Guid> {
+        match self {
+            Finish::Connected(g) => Some(*g),
+            _ => None,
+        }
+    }
+}
+
+/// Which of a room's finishes: its floor or its ceiling.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Part {
+    Floor,
+    Ceiling,
+}
+
+impl Part {
+    pub const BOTH: [Part; 2] = [Part::Floor, Part::Ceiling];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Part::Floor => "floor",
+            Part::Ceiling => "ceiling",
+        }
+    }
+}
+
+/// The room type a new project has, and the one a room read from a file without one is of: no floor, no ceiling.
+pub const ROOM_TYPE: &str = "Standard";
+
+fn room_type() -> String {
+    ROOM_TYPE.into()
 }
 
 impl Room {
@@ -950,6 +1021,7 @@ impl Room {
     /// frozen.
     pub fn new(level: Guid, point: P2, name: impl Into<String>, number: impl Into<String>) -> Room {
         Room {
+            type_name: ROOM_TYPE.into(),
             level,
             point,
             name: name.into(),
@@ -961,6 +1033,23 @@ impl Room {
             limit_offset: ROOM_LIMIT_OFFSET,
             frozen: false,
             kept: None,
+            floor: Finish::None,
+            ceiling: Finish::None,
+        }
+    }
+
+    /// Its floor or its ceiling.
+    pub fn finish(&self, part: Part) -> Finish {
+        match part {
+            Part::Floor => self.floor,
+            Part::Ceiling => self.ceiling,
+        }
+    }
+
+    pub fn finish_mut(&mut self, part: Part) -> &mut Finish {
+        match part {
+            Part::Floor => &mut self.floor,
+            Part::Ceiling => &mut self.ceiling,
         }
     }
 }
@@ -2163,7 +2252,7 @@ macro_rules! visit_refs {
                 }
             }
             Element::PanelSchedule(ps) => f(& $($m)? ps.panel),
-            Element::Grid(_) | Element::RefPlane(_) | Element::Sheet(_) | Element::Schedule(_) | Element::Link(_) => {}
+            Element::Grid(_) | Element::RefPlane(_) | Element::Sheet(_) | Element::Schedule(_) | Element::Link(_) | Element::ProjectInfo(_) => {}
             Element::PlanView(v) => {
                 f(& $($m)? v.level);
                 if let Some(g) = & $($m)? v.parent { f(g) }
@@ -2175,9 +2264,11 @@ macro_rules! visit_refs {
                 if let Some(g) = & $($m)? w.attach_base { f(g) }
             }
             Element::Floor(Floor { level, .. }) | Element::Ceiling(Ceiling { level, .. }) => f(level),
-            Element::Room(Room { level, top_level, .. }) => {
+            Element::Room(Room { level, top_level, floor, ceiling, .. }) => {
                 f(level);
                 if let Some(g) = top_level { f(g) }
+                if let Finish::Connected(g) = floor { f(g) }
+                if let Finish::Connected(g) = ceiling { f(g) }
             }
             Element::Shaft(Shaft { level, top_level, .. })
             | Element::Mass(Mass { level, top_level, .. })
@@ -2333,6 +2424,9 @@ pub enum Element {
     Circuit(crate::electrical::Circuit),
     /// A distribution board's load schedule, a view of its own.
     PanelSchedule(crate::panel_schedule::PanelSchedule),
+    /// The project's information (Revit's Project Information): one in a project at most.
+    #[serde(rename = "project")]
+    ProjectInfo(crate::project_info::ProjectInfo),
 }
 
 impl Element {
@@ -2354,7 +2448,8 @@ impl Element {
             | Element::Component(Component { params, .. })
             | Element::Stair(Stair { params, .. })
             | Element::Ramp(Ramp { params, .. })
-            | Element::Railing(Railing { params, .. }) => Some(params),
+            | Element::Railing(Railing { params, .. })
+            | Element::ProjectInfo(crate::project_info::ProjectInfo { params, .. }) => Some(params),
             _ => None,
         }
     }
@@ -2377,7 +2472,8 @@ impl Element {
             | Element::Component(Component { params, .. })
             | Element::Stair(Stair { params, .. })
             | Element::Ramp(Ramp { params, .. })
-            | Element::Railing(Railing { params, .. }) => Some(params),
+            | Element::Railing(Railing { params, .. })
+            | Element::ProjectInfo(crate::project_info::ProjectInfo { params, .. }) => Some(params),
             _ => None,
         }
     }
@@ -2512,6 +2608,7 @@ impl Element {
             Element::Link(_) => "link",
             Element::PointCloud(_) => "pointcloud",
             Element::CadImport(_) => "cadimport",
+            Element::ProjectInfo(_) => crate::project_info::CATEGORY,
             Element::Schedule(_) => "schedule",
             Element::View3D(_) => "view3d",
             Element::PlanView(_) => "planview",
@@ -2578,6 +2675,54 @@ pub struct FloorType {
     pub thickness: f64,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub layers: Vec<Layer>,
+}
+
+/// A room type: the floor and the ceiling its rooms have of their own, each a type of the project's and its distance from
+/// the room's level (a floor's top, a ceiling's underside); without either, its rooms have none.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RoomType {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub floor: Option<String>,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub floor_offset: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ceiling: Option<String>,
+    #[serde(default = "ceiling_height", skip_serializing_if = "is_ceiling_height")]
+    pub ceiling_offset: f64,
+    /// The colour its rooms are filled with on plans, and their spaces' bodies styled in in IFC; none, no fill.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub colour: Option<[u8; 3]>,
+}
+
+impl Default for RoomType {
+    /// No floor and no ceiling; one given it starts at the usual ceiling height.
+    fn default() -> Self {
+        RoomType { floor: None, floor_offset: 0.0, ceiling: None, ceiling_offset: CEILING_HEIGHT, colour: None }
+    }
+}
+
+impl RoomType {
+    /// The type of its floor or its ceiling, and how far from the level.
+    pub fn finish(&self, part: Part) -> Option<(&str, f64)> {
+        match part {
+            Part::Floor => self.floor.as_deref().map(|t| (t, self.floor_offset)),
+            Part::Ceiling => self.ceiling.as_deref().map(|t| (t, self.ceiling_offset)),
+        }
+    }
+
+    /// Whether its rooms have a floor or a ceiling of their own.
+    pub fn finishes(&self) -> bool {
+        self.floor.is_some() || self.ceiling.is_some()
+    }
+}
+
+fn ceiling_height() -> f64 {
+    CEILING_HEIGHT
+}
+
+fn is_ceiling_height(x: &f64) -> bool {
+    *x == CEILING_HEIGHT
 }
 
 /// A railing type: how high its rail stands, and how far apart its balusters are (0: none).
@@ -2802,6 +2947,9 @@ pub struct Types {
     pub ceiling: BTreeMap<String, CeilingType>,
     #[serde(default)]
     pub railing: BTreeMap<String, RailingType>,
+    /// Room types: what floor and ceiling a room has of its own.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub room: BTreeMap<String, RoomType>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub structural_column: BTreeMap<String, ColumnType>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -2820,16 +2968,61 @@ pub enum ParameterKind {
     Number,
     Length,
     YesNo,
+    /// A whole number.
+    Integer,
+    /// In m², as a schedule's areas are.
+    Area,
+    /// In m³.
+    Volume,
+    /// In degrees.
+    Angle,
+}
+
+/// Whose value a project parameter is: each element's, or its type's, which every element of the type reads.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Scope {
+    #[default]
+    Instance,
+    Type,
+}
+
+impl Scope {
+    fn is_instance(&self) -> bool {
+        *self == Scope::Instance
+    }
 }
 
 /// A project parameter, as Revit's Manage > Project Parameters makes one: a value of its kind each
-/// element of its categories may have of its own.
+/// element of its categories, or each of their types, may have of its own. There is no separate shared kind: any parameter has a GUID, and can be
+/// scheduled and tagged; one from a dictionary says so in `dictionary`.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProjectParameter {
     #[serde(default)]
     pub kind: ParameterKind,
     pub categories: Vec<String>,
+    /// What it's for: Properties shows it as a tooltip.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub description: String,
+    /// The heading of Properties it shows under (one of Revit's groups, or the project's own); none for Project Parameters.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<crate::family::Under>,
+    /// Shown in Properties and not changed there; commands still can.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub read_only: bool,
+    /// Each element's, or its type's.
+    #[serde(default, skip_serializing_if = "Scope::is_instance")]
+    pub scope: Scope,
+    /// A type parameter's values, by the GUID of the type (a library entry), so a type renamed keeps its value.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub type_values: BTreeMap<Guid, serde_json::Value>,
+    /// The dictionary it came from, which makes it shared; a name in memory, its GUID in a file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dictionary: Option<String>,
+    /// Other parameters' GUIDs it has been said to be, or merged from: what a file holding one of them means here.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub same_as: Vec<Guid>,
     /// The property set an IFC export writes each category's values in, by category: the set they came in from another
     /// program. A category it doesn't name writes them in the project's own, `Project Parameters`.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -2852,10 +3045,10 @@ pub struct Classification {
 }
 
 /// The most project parameters a project holds.
-pub const MAX_PROJECT_PARAMETERS: usize = 256;
+pub const MAX_PROJECT_PARAMETERS: usize = 4096;
 
 /// The categories project parameters are for.
-pub const PARAMETER_CATEGORIES: [&str; 25] = [
+pub const PARAMETER_CATEGORIES: [&str; 26] = [
     "wall",
     "floor",
     "ceiling",
@@ -2881,6 +3074,7 @@ pub const PARAMETER_CATEGORIES: [&str; 25] = [
     "downconductor",
     "groundconductor",
     "cable",
+    "project",
 ];
 
 impl ProjectParameter {
@@ -2888,7 +3082,10 @@ impl ProjectParameter {
     pub fn holds(&self, v: &serde_json::Value) -> bool {
         match self.kind {
             ParameterKind::Text => v.as_str().is_some_and(|t| t.chars().count() <= MAX_TEXT),
-            ParameterKind::Number | ParameterKind::Length => v.as_f64().is_some_and(|x| x.is_finite() && x.abs() <= MAX_COORD),
+            ParameterKind::Number | ParameterKind::Length | ParameterKind::Area | ParameterKind::Volume | ParameterKind::Angle => {
+                v.as_f64().is_some_and(|x| x.is_finite() && x.abs() <= MAX_COORD)
+            }
+            ParameterKind::Integer => v.as_f64().is_some_and(|x| x.is_finite() && x.abs() <= MAX_COORD && x.fract() == 0.0),
             ParameterKind::YesNo => v.is_boolean(),
         }
     }
@@ -3085,6 +3282,12 @@ pub struct Model {
     /// Its project parameters, by name: values each element of their categories may have.
     #[serde(default)]
     pub parameters: BTreeMap<String, ProjectParameter>,
+    /// The dictionaries its parameters came from, by name: where each was and the version it was at.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub dictionaries: BTreeMap<String, crate::parameters::DictionaryRef>,
+    /// What the files imported call categories, each to one of ours or, none, left out: asked once.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub parameter_map: BTreeMap<String, Option<String>>,
     /// Its view filters, by name: categories and rules that pick elements out for views to hide
     /// or draw another way.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -3243,6 +3446,8 @@ impl Model {
             cads: BTreeMap::new(),
             families: BTreeMap::new().into(),
             parameters: BTreeMap::new(),
+            dictionaries: BTreeMap::new(),
+            parameter_map: BTreeMap::new(),
             view_filters: BTreeMap::new(),
             view_templates: graphics::starter_templates(language),
             phases: phasing::phases(language),
@@ -3422,6 +3627,7 @@ impl Model {
         m.types.ceiling.insert("Generic - 20mm".into(), CeilingType { thickness: 20.0, grid: 0.0, layers: Vec::new() });
         m.types.ceiling.insert("Tile 600 x 600".into(), CeilingType { thickness: 20.0, grid: 600.0, layers: Vec::new() });
         m.types.railing.insert("Railing - 1000mm".into(), RailingType { height: 1000.0, spacing: 120.0 });
+        m.types.room.insert(ROOM_TYPE.into(), RoomType::default());
         let level = language.word("Level");
         m.insert(Element::Level(Level::new(format!("{level} 1"), 0.0)));
         m.insert(Element::Level(Level::new(format!("{level} 2"), 3000.0)));
@@ -3942,7 +4148,80 @@ impl Model {
             self.families.values_mut().for_each(crate::family::Family::pin_cuts);
         }
         self.settle_hosts(None);
+        // 19 to 20: rooms have types. A file of 19 has none, so its rooms are of the starter one, with no floor or ceiling.
+        if self.types.room.is_empty() {
+            self.types.room.insert(ROOM_TYPE.into(), RoomType::default());
+        }
+        // And a room's colour on plans is its type's: each room that had one of its own goes on a type of that colour.
+        let coloured: Vec<(Id, String, [u8; 3])> = self
+            .elements
+            .iter()
+            .filter_map(|(id, e)| match e {
+                Element::Room(r) => Some((*id, r.type_name.clone(), r.colour?)),
+                _ => None,
+            })
+            .collect();
+        for (id, like, colour) in coloured {
+            let name = self.coloured_room_type(&like, colour);
+            if let Some(Element::Room(r)) = self.elements.get_mut(id) {
+                (r.type_name, r.colour) = (name, None);
+            }
+        }
+        // A column's `top_offset`, `attach_top` and `attach_base` (FORMAT 20 too) need nothing of a file of 19, which holds none: its
+        // columns keep the top they had, at their top level or their height.
+        // A component's `tilt` (FORMAT 20 too) needs nothing of a file of 19, whose components all stand upright or on their plane.
+        // The project parameters' kinds and settings and `.bimparams` dictionaries (FORMAT 20, with the rooms) need nothing of
+        // a file of 19, which holds none of them. The project's information does: a title value under one of its keys
+        // (CLIENT, PROJECT_NUMBER, …) moves onto it, and a title block's field of such a key, which every title block has
+        // now, goes, its project default kept on the information where that says nothing.
+        if self.format < 20 {
+            let keys: Vec<String> = self.title_values.keys().filter(|k| crate::project_info::field_of_key(k).is_some()).cloned().collect();
+            for key in keys {
+                if let (Some(v), Some(field)) = (self.title_values.remove(&key), crate::project_info::field_of_key(&key))
+                    && !v.trim().is_empty()
+                {
+                    self.set_info(field, v);
+                }
+            }
+            let mut defaults = Vec::new();
+            for tb in self.title_blocks.values_mut() {
+                tb.fields.retain(|f| match crate::project_info::field_of_key(&f.key) {
+                    Some(field) => {
+                        if f.scope == crate::titleblock::Scope::Project && !f.default.trim().is_empty() {
+                            defaults.push((field, f.default.clone()));
+                        }
+                        false
+                    }
+                    None => true,
+                });
+            }
+            for (field, v) in defaults {
+                if self.project_info().and_then(|(_, i)| i.get(field)).unwrap_or("").is_empty() {
+                    self.set_info(field, v);
+                }
+            }
+        }
         self.format = FORMAT;
+    }
+
+    /// The room type that is as type `like` and fills its rooms in `colour` on plans: one the project has, or one made,
+    /// named after `like` and the colour (`Standard #D6E5D2`).
+    pub fn coloured_room_type(&mut self, like: &str, colour: [u8; 3]) -> String {
+        let want = RoomType { colour: Some(colour), ..self.types.room.get(like).cloned().unwrap_or_default() };
+        if let Some((name, _)) = self.types.room.iter().find(|(_, t)| **t == want) {
+            return name.clone();
+        }
+        let [r, g, b] = colour;
+        let base = format!("{like} #{r:02X}{g:02X}{b:02X}");
+        let free = |n: &String| !self.types.room.contains_key(n);
+        let name = std::iter::once(base.clone()).chain((2..).map(|i| format!("{base} {i}"))).find(free).unwrap_or(base);
+        self.types.room.insert(name.clone(), want);
+        name
+    }
+
+    /// The colour a room is filled with on plans, its type's; none, no fill.
+    pub fn room_colour(&self, r: &Room) -> Option<[u8; 3]> {
+        self.types.room.get(&r.type_name).and_then(|t| t.colour)
     }
 
     /// Each dimension from before dimension types given the one its kind starts in.
@@ -4536,6 +4815,7 @@ impl Model {
             "roof" => names(&self.types.roof),
             "ceiling" => names(&self.types.ceiling),
             "railing" => names(&self.types.railing),
+            "room" => names(&self.types.room),
             run if RUN_CATEGORIES.contains(&run) => self.types.runs.get(run).map(names).unwrap_or_default(),
             _ => Vec::new(),
         }
@@ -4554,6 +4834,7 @@ impl Model {
             "roof" => "Generic - 300mm",
             "ceiling" => "Generic - 20mm",
             "railing" => "Railing - 1000mm",
+            "room" => ROOM_TYPE,
             "structuralcolumn" => "Concrete 300 x 300",
             "footing" => "Footing 1200 x 1200",
             "beam" => "Beam 200 x 500",
@@ -4819,6 +5100,7 @@ impl Model {
             | Element::Schedule(_)
             | Element::PanelSchedule(_)
             | Element::Link(_)
+            | Element::ProjectInfo(_)
             | Element::Dimension3D(_)
             | Element::View3D(_) => None,
         }
@@ -6808,6 +7090,39 @@ impl Model {
         if self.parameters.len() > MAX_PROJECT_PARAMETERS {
             return Err(format!("the project has {} parameters; it holds up to {MAX_PROJECT_PARAMETERS}", self.parameters.len()));
         }
+        // The dictionaries its parameters came from: as many as a project keeps, each named, with where it was.
+        if self.dictionaries.len() > crate::parameters::MAX_DICTIONARIES {
+            return Err(format!(
+                "the project keeps up to {} dictionaries, not {}",
+                crate::parameters::MAX_DICTIONARIES,
+                self.dictionaries.len()
+            ));
+        }
+        for (n, d) in &self.dictionaries {
+            text(&format!("dictionary `{n}`"), "name", n)?;
+            if n.trim().is_empty() {
+                return Err("a dictionary needs a name".into());
+            }
+            if d.path.chars().count() > MAX_TEXT || d.version.chars().count() > MAX_TEXT {
+                return Err(format!("dictionary `{n}`: its path and its version hold up to {MAX_TEXT} characters each"));
+            }
+        }
+        // What files imported call categories, each to one of a parameter's or none: as many as a project has parameters.
+        if self.parameter_map.len() > MAX_PROJECT_PARAMETERS {
+            return Err(format!(
+                "the project maps up to {MAX_PROJECT_PARAMETERS} categories of other files, not {}",
+                self.parameter_map.len()
+            ));
+        }
+        for (raw, ours) in &self.parameter_map {
+            text("a category of another file", "name", raw)?;
+            if let Some(c) = ours.as_ref().filter(|c| !PARAMETER_CATEGORIES.contains(&c.as_str())) {
+                return Err(format!(
+                    "`{raw}` maps to `{c}`, which isn't a category a parameter is for; one of {}",
+                    PARAMETER_CATEGORIES.join(", ")
+                ));
+            }
+        }
         for (n, p) in &self.parameters {
             let who = format!("parameter `{n}`");
             if !crate::family::nameable(n) {
@@ -6821,6 +7136,23 @@ impl Model {
             if p.categories.is_empty() {
                 return Err(format!("{who}: it needs a category: one of {}", PARAMETER_CATEGORIES.join(", ")));
             }
+            if p.description.chars().count() > MAX_TEXT {
+                return Err(format!("{who}: a description holds up to {MAX_TEXT} characters"));
+            }
+            if let Some(u) = &p.group {
+                u.check(&who)?;
+            }
+            // Said to be other parameters (merged from them): a GUID once each, never its own.
+            if p.same_as.len() > MAX_PROJECT_PARAMETERS {
+                return Err(format!("{who}: it is said to be up to {MAX_PROJECT_PARAMETERS} other parameters"));
+            }
+            let own = self.library.guid(&crate::library::Kind::Parameter, n);
+            if p.same_as.iter().enumerate().any(|(i, g)| Some(*g) == own || p.same_as[..i].contains(g)) {
+                return Err(format!("{who}: `same_as` holds its own GUID, or one GUID twice"));
+            }
+            if let Some(d) = p.dictionary.as_ref().filter(|d| !self.dictionaries.contains_key(*d)) {
+                return Err(format!("{who}: there's no dictionary `{d}`; make it a project parameter with `dictionary` null"));
+            }
             if let Some(c) = p.categories.iter().find(|c| !PARAMETER_CATEGORIES.contains(&c.as_str())) {
                 return Err(format!("{who}: `{c}` isn't a category it can be for; there are {}", PARAMETER_CATEGORIES.join(", ")));
             }
@@ -6828,11 +7160,23 @@ impl Model {
                 return Err(format!("{who}: {c}s have a `{n}` of their own; name it otherwise"));
             }
             if p.categories.iter().any(|c| c == "component")
-                && let Some((f, _)) = self.families.iter().find(|(_, f)| f.parameters.iter().any(|q| q.name == *n))
+                && let Some(f) = crate::parameters::family_clash(self, n, p)
             {
                 return Err(format!("{who}: family `{f}` has a parameter of that name; name it otherwise"));
             }
             p.check_ifc().map_err(|e| format!("{who}: {e}"))?;
+            if p.scope == Scope::Type {
+                if let Some(c) = p.categories.iter().find(|c| crate::parameters::TYPELESS.contains(&c.as_str())) {
+                    return Err(format!(
+                        "{who}: {c}s have no types, so it can't be a type parameter for them; make it an instance parameter or take {c} off"
+                    ));
+                }
+            } else if !p.type_values.is_empty() {
+                return Err(format!("{who}: it holds values of types and isn't a type parameter"));
+            }
+            if let Some(v) = p.type_values.values().find(|v| !p.holds(v)) {
+                return Err(format!("{who}: a type's value {v} isn't what it holds"));
+            }
         }
         graphics::check_project(self)?;
         phasing::check_project(self)?;
@@ -6909,6 +7253,17 @@ impl Model {
                 return Err(format!("railing type `{n}`: spacing {} mm; balusters stand 50 mm apart or more, or 0 for none", t.spacing));
             }
         }
+        for (n, t) in &self.types.room {
+            let who = format!("room type `{n}`");
+            if let Some(f) = &t.floor {
+                known(&format!("{who}'s floor"), f, &self.types.floor)?;
+            }
+            if let Some(c) = &t.ceiling {
+                known(&format!("{who}'s ceiling"), c, &self.types.ceiling)?;
+            }
+            coord(&format!("{who} floor offset"), t.floor_offset)?;
+            coord(&format!("{who} ceiling offset"), t.ceiling_offset)?;
+        }
         for (n, t) in &self.types.ceiling {
             // A finer grid would draw a line every few pixels, and millions over a large ceiling.
             if !(t.grid == 0.0 || (100.0..=MAX_COORD).contains(&t.grid)) {
@@ -6969,6 +7324,8 @@ impl Model {
                     | Element::Mass(_)
                     | Element::PointCloud(_)
                     | Element::CadImport(_)
+                    // One a project: a second is seen only beside the first.
+                    | Element::ProjectInfo(_)
             )
         };
         // What changed, as GUIDs, and the plan boxes the walls among it took up, before and now.
@@ -7076,7 +7433,19 @@ impl Model {
 
     /// What [`Model::check`] asks of element `id`, `e`, keeping in `t` what it must hold in common with the others.
     fn check_element<'a>(&'a self, id: Id, e: &'a Element, t: &mut Tally<'a>) -> Result<(), String> {
-        let Tally { level_names, grid_names, link_names, view_names, twins, sheet_numbers, placed, spans, members_placed, shapes } = t;
+        let Tally {
+            level_names,
+            grid_names,
+            link_names,
+            view_names,
+            twins,
+            sheet_numbers,
+            placed,
+            spans,
+            members_placed,
+            shapes,
+            project_info,
+        } = t;
         let who = format!("{} {id}", e.category());
         let level_ok = |l: Guid| self.level(l).map(|_| ()).ok_or(format!("{who}: level {} doesn't exist", self.shown(l)));
         // A view annotation is drawn in: a plan, a section or an elevation, or with `sheets`, a sheet.
@@ -7115,12 +7484,19 @@ impl Model {
                 .get(k)
                 .filter(|p| p.categories.iter().any(|c| c == e.category()))
                 .ok_or_else(|| format!("{who}: `{k}` isn't a parameter of {}s; add it with `parameter`", e.category()))?;
+            if p.scope == Scope::Type {
+                return Err(format!("{who}: `{k}` is a type parameter: its value is the type's, set with `type_parameter`"));
+            }
             if !p.holds(v) {
                 let what = match p.kind {
                     ParameterKind::Text => "text",
                     ParameterKind::Number => "a number",
                     ParameterKind::Length => "a length",
                     ParameterKind::YesNo => "yes or no",
+                    ParameterKind::Integer => "a whole number",
+                    ParameterKind::Area => "an area",
+                    ParameterKind::Volume => "a volume",
+                    ParameterKind::Angle => "an angle",
                 };
                 return Err(format!("{who}: `{k}` holds {what}, not {v}"));
             }
@@ -7381,6 +7757,23 @@ impl Model {
                 text(&who, "name", &r.name)?;
                 text(&who, "number", &r.number)?;
                 kept(&who, r)?;
+                known(&who, &r.type_name, &self.types.room)?;
+                if r.colour.is_some() {
+                    return Err(format!(
+                        "{who}: a room's colour on plans is its type's; set it with `type {{category: room, name, colour}}`"
+                    ));
+                }
+                for part in Part::BOTH {
+                    let Some(g) = r.finish(part).connected() else { continue };
+                    let level = match (part, self.elements.get(g)) {
+                        (Part::Floor, Some(Element::Floor(f))) => f.level,
+                        (Part::Ceiling, Some(Element::Ceiling(c))) => c.level,
+                        _ => return Err(format!("{who}: its {} {} isn't a {} of the project", part.name(), self.shown(g), part.name())),
+                    };
+                    if !self.same(level, r.level) {
+                        return Err(format!("{who}: its {} {} is on another level", part.name(), self.shown(g)));
+                    }
+                }
                 if let Some(t) = r.top_level {
                     level_ok(t)?;
                 }
@@ -7586,6 +7979,17 @@ impl Model {
                 point(&format!("{who} at"), pc.at)?;
                 coord(&format!("{who} offset"), pc.offset)?;
                 coord(&format!("{who} angle"), pc.angle)?;
+            }
+            Element::ProjectInfo(info) => {
+                info.check(&who)?;
+                if let Some(k) =
+                    info.params.keys().find(|k| phasing::reserved(k) || crate::paint::reserved(k) || crate::massing::reserved(k))
+                {
+                    return Err(format!("{who}: the project has no `{k}`: phases, design options, paint and masses are its elements'"));
+                }
+                if let Some(first) = project_info.replace(id) {
+                    return Err(format!("{who}: the project's information is element {first}; a project has one, set with `project_info`"));
+                }
             }
             Element::CadImport(ci) => {
                 if !self.cads.contains_key(&ci.cad) {
@@ -8215,6 +8619,8 @@ impl Model {
             cads,
             families,
             parameters,
+            dictionaries,
+            parameter_map,
             view_filters,
             view_templates,
             phases,
@@ -8258,6 +8664,8 @@ impl Model {
             && *cads == o.cads
             && *families == o.families
             && *parameters == o.parameters
+            && *dictionaries == o.dictionaries
+            && *parameter_map == o.parameter_map
             && *view_filters == o.view_filters
             && *view_templates == o.view_templates
             && *phases == o.phases
@@ -8325,6 +8733,8 @@ struct Tally<'a> {
     members_placed: BTreeMap<Guid, usize>,
     /// Whether components' shapes build, by family, type and values (as JSON).
     shapes: HashMap<(&'a str, &'a str, String), Result<(), String>>,
+    /// The project's information element, once seen.
+    project_info: Option<Id>,
 }
 
 fn coord(what: &str, v: f64) -> Result<(), String> {
@@ -8973,7 +9383,8 @@ mod tests {
         assert_eq!(m.type_names("doors"), ["Single 800 x 2100", "Single 900 x 2100"], "any case, singular or plural");
         m.types.wall.remove("Generic - 200mm");
         assert_eq!(m.default_type("wall"), Some("Exterior - 300mm"), "else the first by name");
-        assert_eq!(m.default_type("room"), None, "rooms have no types");
+        assert_eq!(m.default_type("room"), Some("Standard"), "the one room type, with no floor or ceiling");
+        assert_eq!(m.default_type("level"), None, "levels have no types");
     }
 
     #[test]
