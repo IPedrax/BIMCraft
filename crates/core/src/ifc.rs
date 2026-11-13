@@ -444,7 +444,19 @@ impl Step {
     /// axis's abscissa and ordinate, scale). IFC2x3 has neither entity, so there they are the project's `ePSet_ProjectedCRS`
     /// and `ePSet_MapConversion`, as buildingSMART's guide to georeferencing has them, with the same values; `project` is
     /// none while it isn't written yet.
-    fn map_conversion(&mut self, ctx: u64, project: Option<u64>, crs: [String; 6], unit: u64, conversion: [String; 6]) {
+    /// The map conversion: `conversion` its eastings, northings, height and x axis, `(unit, grid)` its scale, the file's unit to
+    /// the map's and the ground-to-grid factor.
+    fn map_conversion(&mut self, ctx: u64, project: Option<u64>, crs: [String; 6], unit: u64, at: [String; 5], (k, grid): (f64, f64)) {
+        // IFC4.3's Scale is the unit's alone and its factors the grid's, in plan only, so heights stay true (FactorZ 1); IFC4 has
+        // one Scale for all three, which carries both.
+        if self.schema == Schema::Ifc4x3 {
+            let target = self.add(format!("IFCPROJECTEDCRS({},#{unit})", crs.join(",")));
+            let g = ratio(grid);
+            self.add(format!("IFCMAPCONVERSIONSCALED(#{ctx},#{target},{},{},{g},{g},1.)", at.join(","), ratio(k)));
+            return;
+        }
+        let [e, n, h, xa, xo] = at;
+        let conversion = [e, n, h, xa, xo, ratio(k * grid)];
         if self.schema != Schema::Ifc2x3 {
             let target = self.add(format!("IFCPROJECTEDCRS({},#{unit})", crs.join(",")));
             self.add(format!("IFCMAPCONVERSION(#{ctx},#{target},{})", conversion.join(",")));
@@ -1288,12 +1300,12 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
             or_none(&g.map_zone),
         ];
         let mm = to_meter * 1000.0;
-        let (q, axis, scale) = match from {
-            Some(o) => (g.to_shared(o), (turn_c, turn_s), g.scale / mm),
-            None => ([0.0; 3], (1.0, 0.0), 1.0 / mm),
+        let (q, axis, grid) = match from {
+            Some(o) => (g.to_shared(o), (turn_c, turn_s), g.scale),
+            None => ([0.0; 3], (1.0, 0.0), 1.0),
         };
-        let conversion = [real(q[0] / mm), real(q[1] / mm), real(q[2] / mm), ratio(axis.0), ratio(axis.1), ratio(scale)];
-        w.map_conversion(ctx, None, crs, unit, conversion);
+        let at = [real(q[0] / mm), real(q[1] / mm), real(q[2] / mm), ratio(axis.0), ratio(axis.1)];
+        w.map_conversion(ctx, None, crs, unit, at, (1.0 / mm, grid));
     }
     let units = [
         "IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.)",

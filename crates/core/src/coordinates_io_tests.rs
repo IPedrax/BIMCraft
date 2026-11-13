@@ -614,3 +614,18 @@ fn reset_pins_an_unloaded_link_where_it_last_stood() {
     let Some(crate::model::Element::Link(l)) = s.model.elements.get(id) else { panic!() };
     assert_eq!((l.by, l.at, l.angle, l.raised), (crate::link::By::Manual, placed.at, placed.angle, placed.raised));
 }
+
+#[test]
+fn ifc4x3_scales_the_grid_in_plan_only_and_reads_back_the_same() {
+    // Your answer 3: heights stay true. IFC4.3's Scale is the unit's, FactorX and FactorY the grid's, FactorZ 1.
+    let mut s = surveyed();
+    let path = file("ifc-4x3-scaled", "out.ifc", "");
+    run(&mut s, "export", json!({"format": "ifc4x3", "path": path}));
+    let text = std::fs::read_to_string(&path).unwrap();
+    let line = text.lines().find(|l| l.contains("IFCMAPCONVERSIONSCALED(")).unwrap_or_else(|| panic!("no scaled conversion:\n{text}"));
+    assert!(!text.contains("IFCMAPCONVERSION("), "one conversion only");
+    assert!(line.ends_with(",0.001,0.9996,0.9996,1.);"), "{line}");
+    let (back, g) = wall_start_shared(&text);
+    assert!(near3(back, to_shared(&s, [0.0, 0.0, 0.0]), 1.0), "{back:?}");
+    assert!((g.scale - 0.9996).abs() < 1e-9 && (g.rotation - 10.0).abs() < 1e-6, "{g:?}");
+}
