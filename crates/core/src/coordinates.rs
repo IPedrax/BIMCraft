@@ -253,6 +253,27 @@ impl Frames<'_> {
         self.site.location(self.co.survey)
     }
 
+    /// Internal height `z` as measured from `from`: the site's heights are never scaled.
+    pub fn elevation(&self, z: f64, from: Origin) -> f64 {
+        match from {
+            Origin::Base => z - self.co.base[2],
+            Origin::Survey => self.to_shared([0.0, 0.0, z])[2],
+            Origin::Internal => z,
+        }
+    }
+
+    /// Internal plan point `x`, `y` as measured from `from`: east and north.
+    pub fn plan(&self, x: f64, y: f64, from: Origin) -> (f64, f64) {
+        match from {
+            Origin::Base => (x - self.co.base[0], y - self.co.base[1]),
+            Origin::Internal => (x, y),
+            Origin::Survey => {
+                let q = self.to_shared([x, y, 0.0]);
+                (q[0], q[1])
+            }
+        }
+    }
+
     /// `p` from frame `from` to frame `to`.
     pub fn convert(&self, p: P3, from: Frame, to: Frame) -> P3 {
         let b = self.co.base;
@@ -277,25 +298,6 @@ impl Coordinates {
 
     pub fn is_default(&self) -> bool {
         *self == Coordinates::default()
-    }
-
-    /// Internal height `z` as measured from `from`.
-    pub fn elevation(&self, z: f64, from: Origin) -> f64 {
-        match from {
-            Origin::Base => z - self.base[2],
-            Origin::Survey => self.location().elevation + z - self.survey[2],
-        }
-    }
-
-    /// Internal plan point `x`, `y` as measured from `from`: east and north.
-    pub fn plan(&self, x: f64, y: f64, from: Origin) -> (f64, f64) {
-        match from {
-            Origin::Base => (x - self.base[0], y - self.base[1]),
-            Origin::Survey => {
-                let q = self.to_shared([x, y, 0.0]);
-                (q[0], q[1])
-            }
-        }
     }
 
     /// Whether it is whole and within bounds; else what to fix.

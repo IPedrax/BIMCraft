@@ -182,8 +182,9 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// a build that reads up to 19 would leave them out of a file and stand the column at its own level, not "saved by a newer BIMCraft".
 /// And a project has a Project Base Point, a Survey Point and named sites beside its georeference (`coordinates`), and a
 /// georeference needs no coordinate reference system (`crs` may be left out); a build that reads up to 19 would refuse such a
-/// georeference and lose where the project stands. A file of 19 needs no step: its georeference is the active site, both
-/// points at the internal origin.
+/// georeference and lose where the project stands; and it would read spot coordinates (a spot's `coordinate`, `type`, `origin`,
+/// `leader`, `shoulder` and `end`) and a level's `elevation_base` as spot elevations from the Project Base Point. A file of 19
+/// needs no step: its georeference is the active site, both points at the internal origin.
 pub const FORMAT: u32 = 20;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
@@ -6666,7 +6667,7 @@ impl Model {
 
     /// What a spot elevation shows: its height from its origin, the Project Base Point or the Survey Point.
     pub fn spot_reads(&self, sp: &Spot) -> Option<f64> {
-        self.spot_value(sp).map(|z| self.coordinates.elevation(z, sp.origin))
+        self.spot_value(sp).map(|z| self.frames().elevation(z, sp.origin))
     }
 
     /// What a spot coordinate shows: in a plan, the east and north of its point from its type's origin.
@@ -6691,12 +6692,12 @@ impl Model {
     pub fn spot_coordinate_reads(&self, sp: &Spot) -> Option<crate::spots::Reads> {
         let level = self.plan_level(sp.view)?;
         let origin = self.spot_coordinate_type(sp).origin;
-        let (east, north) = self.coordinates.plan(sp.at.0, sp.at.1, origin);
+        let (east, north) = self.frames().plan(sp.at.0, sp.at.1, origin);
         let z = match sp.host {
             Some(_) => self.spot_value(sp),
             None => Some(self.elevation(level)),
         };
-        Some(crate::spots::Reads { east, north, elevation: z.map(|z| self.coordinates.elevation(z, origin)) })
+        Some(crate::spots::Reads { east, north, elevation: z.map(|z| self.frames().elevation(z, origin)) })
     }
 
     /// Spot coordinate `sp`'s lines of text, as its type lays them.
@@ -6706,7 +6707,7 @@ impl Model {
 
     /// A level's elevation as it is shown: from its elevation base.
     pub fn level_shown(&self, l: &Level) -> f64 {
-        self.coordinates.elevation(l.elevation, l.elevation_base)
+        self.frames().elevation(l.elevation, l.elevation_base)
     }
 
     /// What a spot slope reads: in a plan, how steeply its host's top falls at its point, %, and which way, a unit vector

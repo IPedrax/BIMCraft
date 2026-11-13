@@ -57,6 +57,45 @@ with coordinates are 34. Files of 19 and 33 need no step: their georeference is 
 internal origin. #284's own files (its unreleased builds wrote 19) keep their points; its `locations` and `crs` are left
 out and `open` lists them (`left_out`).
 
+## Elevations, spots and schedules
+
+`Origin` (base, survey, internal) says what a reading measures from: `Frames::elevation` turns an internal height into one
+from the Project Base Point (`z - base.z`), the Survey Point (the site's shared elevation of it: its height plus `z`, never
+scaled) or the internal origin, and `Frames::plan` a plan point into east and north from the base point, along the
+project's axes, in shared coordinates, or as it is. A `Spot` has an `origin` (`Model::spot_reads`, what its text and the `elements` and `spot` replies say;
+`spot_value` stays the internal height, which sections place it by) and, with `coordinate`, is a spot coordinate (below). A
+`Level` has an `elevation_base`; its head in sections and elevations and the level schedule's Elevation show
+`Model::level_shown`, and `elements` gives `elevation_shown` beside the internal `elevation` commands take. Columns, structural
+columns, footings and components give `shared_east`, `shared_north` and `shared_elevation` (their point at their base), which
+their schedules offer as Shared East, Shared North and Shared Elevation.
+
+## Spot coordinates
+
+A spot coordinate is a `Spot` with `coordinate`, in a plan only, of its own category (`spotcoordinate`, Spot Coordinates in
+Visibility/Graphics, beside Spot Elevations). It has a type (`type`, `spots::SpotCoordinateType`, the project's
+`spot_coordinate_types`, a library entry `Kind::SpotCoordinateType`), `leader` and `shoulder` (both on by default), and
+`end`, where its leader ends (else 8 mm on paper up and right of its point, `render::leader_end`). Its elevation reads the top
+of `host` at its point (what stands there when it is placed), else its level's. The type holds Revit's type parameters:
+Rotate with Component; the leader's arrowhead (`filled`, `empty`, `dot`, `empty_dot`, `none`), the arrowhead's size, the
+leader's and the arrowhead's pens, the leader's colour, the symbol on the point (none, a cross, a target) and its size; the
+lettering (font, size, bold, italic, underline, width factor), the text's colour, its offsets from the leader and from the
+symbol, above or below the leader, an opaque or transparent background; the Coordinate Origin (`base`, `survey`, `internal`;
+`Origin::Internal` is the file's own numbers), the Top and Bottom Values (north/south, east/west, none), the indicators, the
+elevation and its indicator, prefix or suffix, units and decimals, and alternate units (none, right of each number, or below
+it) with their units, decimals, prefix and suffix. `SpotCoordinateType::lines` lays the text; `Model::spot_coordinate_text`
+gives it, and `elements` replies with `text`, `east`, `north`, `elevation`, `type`, `leader` and `shoulder`.
+`render/spots.rs` draws it, sizes in mm on paper: the symbol, the leader from the point to its end with the arrowhead on the
+point (an empty one filled with paper so the leader doesn't show through), the shoulder as long as the text on the side the
+leader leaves to, and the lines over it. Without a leader, the text stands beside the symbol.
+
+A project starts with `Spot Coordinate - Project Base Point` and `Spot Coordinate - Survey Point` (in metres to four places,
+as a surveyor's CAD reads a point out); `spot_coordinate` takes `type`, or without one the type that reads from `origin`
+(`spots::default_type`), the Survey Point's when it gives none: after Acquire Coordinates, a spot coordinate reads what the
+drawing's program says of its point. One from before types keeps reading from where it did. `spot_coordinate_type` lists, makes (`like`), changes, renames and deletes them.
+
+Tests: `spot_coordinate_tests.rs`, `coordinates_tests.rs`. The desktop's tool and type dialog come with the Location window
+(slice 7).
+
 ## IFC: one map conversion
 
 `save` to `.ifc` takes `ifc_origin` (`ifc::Origin`: internal, the default; base; survey; shared) and writes through
@@ -102,9 +141,10 @@ their schedules offer as Shared East, Shared North and Shared Elevation.
   Point's; `shift` adds to one, or to every site when no `name` is given (the survey says +5 m: one command).
 - `specify_coordinates`: the active site solved for a point.
 - `convert_coordinates`: points between `internal`, `base` and `shared`, of the active site or the one named.
+- `spot_coordinate` (`type`, `end`, `leader`, `shoulder`, `host`, `origin`) and `spot_coordinate_type`; `origin` on `spot`
+  and `elevation_base` on `level` (and `modify`).
 
 Every change is a command and so one undo step. Tests: `coordinates_tests.rs`, and the payloads in the hostile sweep.
 
-Not yet (the plan's later stages): a CRS and WGS84, levels' and spots' elevation base and spot coordinates, imports and
-exports through the transform (IFC's `IfcMapConversion`), links by shared coordinates, plans turned to true north, and the
-desktop.
+Not yet (the plan's later slices): far CAD drawings and scans, links by shared coordinates, Acquire and Reset Coordinates,
+Rotate Project North, plans turned to true north, map systems and WGS84, and the desktop.

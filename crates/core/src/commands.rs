@@ -10639,7 +10639,7 @@ fn spot(s: &mut Session, p: &Value) -> R {
 /// Where point `at`, at height `z`, stands in the active location's shared coordinates, as `shared_east`, `shared_north` and
 /// `shared_elevation`.
 fn shared_at(m: &Model, extra: &mut Map<String, Value>, at: P2, z: f64) {
-    let q = m.coordinates.to_shared([at.0, at.1, z]);
+    let q = m.frames().to_shared([at.0, at.1, z]);
     for (k, v) in ["shared_east", "shared_north", "shared_elevation"].into_iter().zip(q) {
         extra.insert(k.into(), json!(hundredth(v)));
     }

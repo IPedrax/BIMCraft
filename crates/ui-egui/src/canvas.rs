@@ -4540,24 +4540,18 @@ impl BimApp {
             Tool::Spot => {
                 let at = round(v.mm(q));
                 sketched(&Element::Spot(Spot {
-                    view: m.guid(key),
-                    at,
                     host: m.spot_host(level, at).map(|h| m.guid(h)),
                     slope: false,
-                    coordinate: false,
-                    origin: Default::default(),
+                    ..Spot::new(m.guid(key), at)
                 }));
                 return;
             }
             Tool::SpotSlope => {
                 let at = round(v.mm(q));
                 sketched(&Element::Spot(Spot {
-                    view: m.guid(key),
-                    at,
                     host: m.spot_host(level, at).map(|h| m.guid(h)),
                     slope: true,
-                    coordinate: false,
-                    origin: Default::default(),
+                    ..Spot::new(m.guid(key), at)
                 }));
                 return;
             }
