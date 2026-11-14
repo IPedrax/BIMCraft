@@ -1413,12 +1413,16 @@ impl BimApp {
             let at = sc.screen(res.snapped_point);
             let step = vec2(d.0 as f32, -(d.1 as f32)) * reach;
             sc.p.extend(Shape::dashed_line(&[at - step, at + step], magenta_stroke, 6.0, 4.0));
-            sc.p.rect_stroke(
-                Rect::from_center_size(sc.screen(res.reference_point), vec2(7.0, 7.0)),
-                0.0,
-                marker_stroke,
-                StrokeKind::Middle,
-            );
+            // The point it comes from, marked: a borrowed direction's is the point being drawn from,
+            // which already has the tool's own marker.
+            if !matches!(res.axis, bimcraft_core::alignment::AlignmentAxis::Inferred { .. }) {
+                sc.p.rect_stroke(
+                    Rect::from_center_size(sc.screen(res.reference_point), vec2(7.0, 7.0)),
+                    0.0,
+                    marker_stroke,
+                    StrokeKind::Middle,
+                );
+            }
         }
         if let Some(first) = alignments.first() {
             tag(sc.p, sc.screen(first.snapped_point) + vec2(12.0, 14.0), Align2::LEFT_TOP, alignment_tag(alignments));
@@ -2493,9 +2497,12 @@ impl BimApp {
                 }
             }
             Tool::Text => self.write_note(key, round(v.mm(at))),
-            Tool::DetailGroup => self.place_group(key, self.snap(m, level, v, at, &[], false).at),
+            Tool::DetailGroup => {
+                let p = self.snap_point(m, level, v, at, &[], false);
+                self.place_group(key, p)
+            }
             &Tool::RepeatingDetail(start) => {
-                let p = self.snap(m, level, v, at, start.as_slice(), mods.shift).at;
+                let p = self.snap_point(m, level, v, at, start.as_slice(), mods.shift);
                 match start {
                     None => self.tool = Tool::RepeatingDetail(Some(p)),
                     Some(a) => {
@@ -2514,7 +2521,7 @@ impl BimApp {
             Tool::SpotCoordinate(first) => {
                 let first = *first;
                 let from: Vec<P2> = first.into_iter().collect();
-                let p = self.snap(m, level, v, at, &from, mods.shift).at;
+                let p = self.snap_point(m, level, v, at, &from, mods.shift);
                 self.spot_coordinate_click(key, first, p);
             }
             Tool::Acquire => {
@@ -2612,7 +2619,8 @@ impl BimApp {
                     _ if path.len() >= 2 => Vec::new(),
                     _ => path.last().copied().into_iter().collect(),
                 };
-                let p = self.snap(m, level, v, at, &guide, mods.shift).at;
+                // The guide its preview draws is the line the click goes on, as a wall's does.
+                let p = self.snap_point(m, level, v, at, &guide, mods.shift);
                 match self.shape() {
                     draw::Shape::Fillet => {
                         let picked = hovered.filter(|id| matches!(m.elements.get(*id), Some(Element::DetailLine(_))));
@@ -2725,7 +2733,7 @@ impl BimApp {
             },
             // A custom fill pattern's tile: two opposite corners, the pattern made of the lines picked on the second.
             &Tool::PatternCorner(first) => {
-                let p = self.snap(m, level, v, at, first.as_slice(), false).at;
+                let p = self.snap_point(m, level, v, at, first.as_slice(), false);
                 match first {
                     None => self.tool = Tool::PatternCorner(Some(p)),
                     Some(a) => self.pattern_corners(a, p),
@@ -2733,7 +2741,7 @@ impl BimApp {
             }
             // Two opposite corners of a rectangle.
             &Tool::Shaft(start) => {
-                let p = self.snap(m, level, v, at, start.as_slice(), false).at;
+                let p = self.snap_point(m, level, v, at, start.as_slice(), false);
                 match start {
                     None => self.tool = Tool::Shaft(Some(p)),
                     Some(a) if (a.0 - p.0).abs() > TOL && (a.1 - p.1).abs() > TOL => {
@@ -2754,7 +2762,7 @@ impl BimApp {
             // The selected floor's slope arrow, from its tail to its head; then Modify, the floor
             // still selected.
             &Tool::SlopeArrow(tail) => {
-                let p = self.snap(m, level, v, at, tail.as_slice(), mods.shift).at;
+                let p = self.snap_point(m, level, v, at, tail.as_slice(), mods.shift);
                 match (tail, self.selected_floor(), number(&self.floor_slope)) {
                     (None, ..) => self.tool = Tool::SlopeArrow(Some(p)),
                     (Some(a), Some(floor), Some(slope)) if a.dist(p) > TOL => {

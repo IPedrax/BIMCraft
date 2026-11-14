@@ -106,9 +106,11 @@ pub struct AlignmentResult {
     pub reference_point: P2,
     /// The axis of this alignment.
     pub axis: AlignmentAxis,
-    /// The type of reference point.
+    /// The kind of point the guide runs through: a reference point's, or the endpoint being drawn from
+    /// when the direction was borrowed.
     pub kind: ReferenceType,
-    /// The wall the reference point is on, when it is a wall's: what the window names as why the point lined up.
+    /// The element the reference point is on, when it is one (a borrowed direction has none): for the
+    /// front ends that say what a point lined up with.
     pub wall_id: Option<Id>,
 }
 
@@ -519,7 +521,8 @@ impl AlignmentGuideService {
                     continue;
                 };
                 // Nearly parallel guides meet far away: that is not the point the cursor is choosing.
-                if q.dist(cursor) > tolerance * 2.0 {
+                // Half again the tolerance still takes X and Y, whose crossing is at most √2 apart.
+                if q.dist(cursor) > tolerance * 1.5 {
                     continue;
                 }
                 let cost = a.deviation(cursor) + b.deviation(cursor);
@@ -542,8 +545,13 @@ impl AlignmentGuideService {
     /// being drawn is nearest, parallel to it or square to it. Only a direction is borrowed, never a
     /// place, so a wall across the plan makes as good a parallel as the one under the cursor.
     fn inferred(&self, cursor: P2, start: P2, tolerance: f64) -> Option<Guide> {
-        let mut best: Option<(f64, AlignmentAxis)> = None;
+        // A cursor still on the point it started from is in every direction at once: the first line
+        // drawn would win and the badge would say `Parallel` to nothing.
         let v = cursor - start;
+        if v.length() <= tolerance {
+            return None;
+        }
+        let mut best: Option<(f64, AlignmentAxis)> = None;
         for &(a, b) in &self.lines {
             let len = a.dist(b);
             if len <= TOL {
@@ -555,7 +563,8 @@ impl AlignmentGuideService {
                 (v.cross(along).abs(), AlignmentAxis::Inferred { along, of: Inference::Parallel }),
                 (v.cross(square).abs(), AlignmentAxis::Inferred { along: square, of: Inference::Perpendicular }),
             ] {
-                // East and north are X's and Y's own guides, always on: a wall along one adds nothing.
+                // Within about a degree of east or north there is no direction to lend: that is the
+                // line the angle steps and X/Y already give, and it would only be renamed `Parallel`.
                 let d = axis.direction();
                 if d.0.abs() < 0.02 || d.1.abs() < 0.02 {
                     continue;
@@ -863,6 +872,38 @@ mod why_tests {
         assert_eq!(found[0].snapped_point, found[1].snapped_point, "one point, both guides");
         assert!((found[0].snapped_point.0 - 1000.0).abs() < 1e-3, "on the vertical guide");
         assert!((found[0].snapped_point.1 - 2577.35).abs() < 0.1, "and on the borrowed one");
+    }
+
+    /// Every direction is within tolerance of a cursor still on its start point, so none is borrowed.
+    #[test]
+    fn a_guide_is_not_borrowed_at_the_point_it_starts_from() {
+        let (s, level) = beside_a_slanted_wall();
+        let config = AlignmentConfig { angles: false, ..AlignmentConfig::default() };
+        let service = AlignmentGuideService::from_model(&s.model, level, config);
+        let start = P2(1234.0, 2000.0);
+
+        assert!(service.find_alignments(start, Some(start), 80.0).is_empty(), "on the start point");
+        assert!(service.find_alignments(start + P2(5.0, 0.0), Some(start), 80.0).is_empty(), "a hair off it");
+    }
+
+    /// A crossing further from the cursor than half again the tolerance is no point it is choosing:
+    /// two guides a few degrees apart would otherwise meet far away and fling it there.
+    #[test]
+    fn a_crossing_too_far_from_the_cursor_is_not_taken() {
+        let mut s = Session::new();
+        s.script(r#"wall {"points": [[0, 0], [0, 100]]}"#).unwrap();
+        s.script(r#"wall {"points": [[1000, 0], [1174, 985]]}"#).unwrap();
+        let level = s.model.levels()[0].0;
+        let config = AlignmentConfig { angles: false, ..AlignmentConfig::default() };
+        let service = AlignmentGuideService::from_model(&s.model, level, config);
+        // The vertical guide is x = 0; the borrowed one crosses it at (0, -567). The cursor is on the
+        // first and 24 mm off the second, 136 mm from where they meet: inside 2 × tolerance, past 1.5.
+        let start = P2(100.0, 0.0);
+        let found = service.find_alignments(P2(0.0, -431.0), Some(start), 80.0);
+
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert_eq!(found[0].axis, AlignmentAxis::X);
+        assert_eq!(found[0].snapped_point, P2(0.0, -431.0), "the cursor's own point, not the far crossing");
     }
 
     /// A direction a wall does not run in is not borrowed: no jump onto a line the cursor is nowhere near.
