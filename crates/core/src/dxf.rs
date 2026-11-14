@@ -942,6 +942,17 @@ impl<'a> Reader<'a> {
                     }
                     continue;
                 }
+                "ACAD_TABLE" => {
+                    // What a table looks like is kept in its block (`*T…`), drawn from the table's insertion point.
+                    match e.str(2) {
+                        Some(name) => {
+                            let at = e.point(10)?.unwrap_or(P2(0.0, 0.0));
+                            self.block(out, name, &style, xf.then(Xf { o: at, ..Xf::ID }), depth)?;
+                        }
+                        None => out.left("ACAD_TABLE"),
+                    }
+                    continue;
+                }
                 "SEQEND" | "VERTEX" | "ATTDEF" => continue,
                 other => {
                     out.left(other);
@@ -1867,6 +1878,58 @@ mod tests {
         let based = pairs(&[(0, "BLOCK"), (2, "B"), (10, "5"), (20, "5"), (0, "POINT"), (10, "5"), (20, "5"), (0, "ENDBLK")]);
         let d = read_text(&file("", "", &based, &pairs(&[(0, "INSERT"), (2, "B"), (10, "1"), (20, "2")]))).unwrap();
         assert_eq!(shapes(&d), [&Shape::Point(P2(1.0, 2.0))]);
+    }
+
+    #[test]
+    fn a_table_is_drawn_from_its_block_at_its_insertion_point_and_alone_still_draws_something() {
+        // AutoCAD keeps what a table looks like in an anonymous block (`*T…`): its grid as lines, its cells as text,
+        // relative to the table's insertion point.
+        let blocks = pairs(&[
+            (0, "BLOCK"),
+            (2, "*T1"),
+            (10, "0"),
+            (20, "0"),
+            (0, "LINE"),
+            (10, "0"),
+            (20, "0"),
+            (11, "40"),
+            (21, "0"),
+            (0, "TEXT"),
+            (10, "1"),
+            (20, "-4"),
+            (40, "2.5"),
+            (1, "Sala"),
+            (0, "ENDBLK"),
+        ]);
+        let table = pairs(&[
+            (0, "ACAD_TABLE"),
+            (8, "QUADRO"),
+            (100, "AcDbBlockReference"),
+            (2, "*T1"),
+            (10, "100"),
+            (20, "50"),
+            (100, "AcDbTable"),
+            (11, "1"),
+            (21, "0"),
+            (91, "2"),
+            (92, "1"),
+            (141, "8"),
+            (142, "40"),
+        ]);
+        let d = read_text(&file("", "", &blocks, &table)).unwrap();
+        assert!(d.left_out.is_empty(), "{:?}", d.left_out);
+        assert_eq!(d.entities.len(), 2, "{:?}", d.entities);
+        assert!(d.entities.iter().all(|e| e.layer == "QUADRO"), "the block's entities on layer 0 take the table's");
+        let b = union(d.entities.iter().map(|e| e.shape.bounds())).unwrap();
+        assert!(b[0].0 >= 99.9 && b[1].0 <= 140.1 && b[1].1 <= 50.1 && b[0].1 >= 44.0, "{b:?}");
+        assert!(
+            d.entities
+                .iter()
+                .any(|e| matches!(&e.shape, Shape::Text { text, at, .. } if text == "Sala" && at.dist(P2(101.0, 46.0)) < 1e-9))
+        );
+        // A table whose block is missing says so; it never fails the file.
+        let d = read_text(&file("", "", "", &table.replace("*T1", "*T9"))).unwrap();
+        assert_eq!(d.left_out.get("INSERT of a block the file doesn't define"), Some(&1));
     }
 
     #[test]
