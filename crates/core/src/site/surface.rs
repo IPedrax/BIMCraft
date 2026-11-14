@@ -467,11 +467,13 @@ fn build_in(points: &[[f64; 3]], lines: &[Line], options: &Options, outline: Opt
         }
         contour_keys.extend(r.0.iter().map(|&p| key(p)));
     }
-    // A summit or a pit: a closed contour with no other line's vertex inside it gets a point at its middle.
+    // A summit or a pit: a closed contour with nothing else inside it gets a point at its middle.
     let mut poles: Vec<(P2, f64)> = Vec::new();
     for &(i, z0) in &rings {
         let Some(ring) = ready.get(i).map(|r| &r.0) else { continue };
-        let inner = ready.iter().enumerate().any(|(j, r)| j != i && r.0.iter().any(|&p| geom::contains(ring, p)));
+        // Another line's vertex or a spot height inside it: the data says what is there, so no pole is made up.
+        let inner = ready.iter().enumerate().any(|(j, r)| j != i && r.0.iter().any(|&p| geom::contains(ring, p)))
+            || points.iter().any(|&[x, y, _]| geom::contains(ring, P2(x, y)));
         let mid = geom::centroid(ring);
         if inner || !geom::contains(ring, mid) {
             continue;
@@ -1045,6 +1047,14 @@ mod tests {
         let got = s.volume_above(0.0);
         assert!((got - want).abs() / want < 0.005, "{got} {want}");
         assert!(s.notes.iter().any(|n| n.contains("points added")), "{:?}", s.notes);
+    }
+
+    #[test]
+    fn a_spot_height_inside_a_summit_is_the_summit() {
+        // A surveyed spot height inside the top ring is the summit: no second peak is made beside it.
+        let s = build(&[[2_000.0, 1_000.0, 4_800.0]], &cone(1.0), &exact()).unwrap();
+        assert!(s.points.iter().all(|p| p.dist(P2(0.0, 0.0)) > 1.0), "a pole was added at the ring's middle");
+        assert!((s.elevation_at(P2(2_000.0, 1_000.0)).unwrap() - 4_800.0).abs() < 1e-6);
     }
 
     #[test]
