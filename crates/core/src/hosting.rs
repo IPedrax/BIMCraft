@@ -296,6 +296,11 @@ impl Model {
         if self.placed_by_points(c) {
             return upright;
         }
+        if let (None, Some([x, z])) = (c.host, c.tilt) {
+            let turn = |v: P3| [v[0] * cos - v[1] * sin, v[0] * sin + v[1] * cos, v[2]];
+            let (x, z) = (turn(x), turn(z));
+            return Placement { origin, axes: [x, cross(z, x), z], upright: false };
+        }
         let Some(h) = c.host else { return upright };
         let Some(at) = self.host_at(&h) else { return upright };
         let always_vertical = self.families.get(&c.family).is_none_or(|f| f.always_vertical);

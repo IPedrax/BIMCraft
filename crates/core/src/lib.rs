@@ -121,6 +121,8 @@ pub mod ifc;
 #[cfg(test)]
 mod ifc_colour_tests;
 #[cfg(test)]
+mod ifc_exact_tests;
+#[cfg(test)]
 mod ifc_generic_tests;
 #[cfg(test)]
 mod ifc_geometry_tests;

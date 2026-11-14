@@ -48,6 +48,9 @@ const MAX_VALUES: usize = 1_000_000;
 /// The most generic families of one name an import makes, each of another IFC class.
 const MAX_NAMESAKES: usize = 100;
 
+/// Faces of a body item, with the look they are drawn in.
+type LookedFaces = (Option<Look>, Vec<Vec<P3>>);
+
 /// How deep an import follows what an element is part of.
 const MAX_DEPTH: usize = 16;
 
@@ -245,7 +248,7 @@ fn num(x: f64) -> String {
     format!("{}", (x * 100.0).round() / 100.0 + 0.0)
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 struct Frame {
     o: P3,
     x: P3,
@@ -783,6 +786,196 @@ impl<'a> Reader<'a> {
         }
     }
 
+    /// Item `it`, mapped by `mf` into the product's axes, as a form in the family's (`to_local`), where it is an extrusion
+    /// straight along its own axes of a circle or of a profile of lines (an arc's chords among them); its plane stored in
+    /// `planes`, one GUID for one plane whichever family draws on it.
+    #[allow(clippy::too_many_arguments)]
+    fn exact_form(
+        &self,
+        it: u64,
+        mf: &Frame,
+        to_local: &dyn Fn(P3) -> P3,
+        dir_local: &dyn Fn(P3) -> P3,
+        seed: u64,
+        planes: &RefCell<HashMap<Guid, crate::family::RefPlane>>,
+    ) -> Option<Form> {
+        use crate::family::sketch::{FormCurve, FormLine};
+        let e = self.get(it).filter(|e| e.name == "IFCEXTRUDEDAREASOLID")?;
+        let depth = self.len(e.args.get(3))?;
+        let pos = self.axes(reference(e.args.get(1)));
+        let along = self.direction(reference(e.args.get(2))).unwrap_or([0.0, 0.0, 1.0]);
+        if along[0].abs() > 1e-9 || along[1].abs() > 1e-9 || depth <= 0.0 {
+            return None;
+        }
+        let sign = along[2].signum();
+        let profile = self.get(reference(e.args.first())?)?;
+        // The plane: one for each direction a form is square to, through the family's origin, its axes the same for every form
+        // on it (x the family's x, or y, made square to the direction), so a bolt's shank, washer and nut share one; how far
+        // up the direction a form stands is its from and to, as a family drawn by hand has it.
+        let at = |q: P3| to_local(mf.at(pos.at(q)));
+        let r1 = |v: f64| (v * 1e3).round() / 1e3 + 0.0;
+        let r6 = |v: f64| (v * 1e6).round() / 1e6 + 0.0;
+        let z = unit(cross(unit(dir_local(mf.dir(pos.x))), unit(dir_local(mf.dir(pos.y))))).map(r6);
+        let across = if z[0].abs() < 0.9 { [1.0, 0.0, 0.0] } else { [0.0, 1.0, 0.0] };
+        let x = unit(sub(across, mul(z, dot(across, z)))).map(r6);
+        let y = cross(z, x).map(r6);
+        let o = at([0.0, 0.0, 0.0]);
+        let in_plane = |q: P3| {
+            let d = at(q);
+            [Expr::Number(r1(dot(d, x))), Expr::Number(r1(dot(d, y)))]
+        };
+        let start = r1(dot(o, z));
+        let (from, to) = if sign > 0.0 { (start, r1(start + depth)) } else { (r1(start - depth), start) };
+        let line = |curve| FormLine { id: 0, guid: Guid::default(), curve, axis: false };
+        let sketch: Vec<FormLine> = match profile.name.as_str() {
+            "IFCCIRCLEPROFILEDEF" => {
+                let r = self.len(profile.args.get(3))?;
+                let c = self.axes(reference(profile.args.get(2))).o;
+                vec![line(FormCurve::Circle { centre: in_plane([c[0], c[1], 0.0]), radius: Expr::Number(r1(r)) })]
+            }
+            // Its outline as the file has it, an arc an arc (two lines and two half circles, a slotted hole's); one this
+            // can't follow (an ellipse's arc, an indexed curve) as the chords the import draws it with.
+            "IFCARBITRARYCLOSEDPROFILEDEF" if let Some(sides) = self.outline(reference(profile.args.get(2)), 0) => {
+                let turned = |t: f64| Expr::Number((t * 1e6).round() / 1e6 + 0.0);
+                // A side under a millimetre (a fillet's sliver, two points Tekla writes a hair apart) joins its neighbours,
+                // as a family's sketch takes no line that short: the next side starts where the last kept one ends.
+                // An arc too small for a family's chords (it draws an arc in SEGMENTS chords a turn, and takes no two points
+                // a millimetre apart: a 5 mm fillet's are 0.98 mm) comes in as chords of its own, each over a millimetre.
+                let sides: Vec<(P2, P2, Option<f64>)> = sides
+                    .into_iter()
+                    .flat_map(|(a, b, turn)| {
+                        let Some(t) = turn.filter(|t| t.abs() > 1e-9) else { return vec![(a, b, turn)] };
+                        let half = t.to_radians() / 2.0;
+                        let r = a.dist(b) / (2.0 * half.sin().abs());
+                        let chord = 2.0 * r * (std::f64::consts::PI / crate::family::sketch::SEGMENTS as f64).sin();
+                        if chord > 1.1 {
+                            return vec![(a, b, turn)];
+                        }
+                        // Its centre, to the left of a to b for a counter-clockwise turn.
+                        let m = P2((a.0 + b.0) / 2.0, (a.1 + b.1) / 2.0);
+                        let (dx, dy) = ((b.0 - a.0) / a.dist(b), (b.1 - a.1) / a.dist(b));
+                        let c = if t > 0.0 {
+                            P2(m.0 - dy * r * half.cos().abs(), m.1 + dx * r * half.cos().abs())
+                        } else {
+                            P2(m.0 + dy * r * half.cos().abs(), m.1 - dx * r * half.cos().abs())
+                        };
+                        let start = (a.1 - c.1).atan2(a.0 - c.0);
+                        let length = r * t.to_radians().abs();
+                        let n = ((length / 1.2).floor() as usize).clamp(1, 12);
+                        let at = |k: usize| {
+                            let u = start + t.to_radians() * k as f64 / n as f64;
+                            P2(c.0 + r * u.cos(), c.1 + r * u.sin())
+                        };
+                        (0..n).map(|k| (if k == 0 { a } else { at(k) }, if k + 1 == n { b } else { at(k + 1) }, None)).collect()
+                    })
+                    .collect();
+                // Until none is left that short: a side whose start moves may come under it in turn. A little over the
+                // millimetre, as the plane's coordinates are rounded to a tenth of one.
+                let mut sides = sides;
+                for _ in 0..8 {
+                    sides.retain(|(a, b, _)| a.dist(*b) >= 1.1);
+                    if sides.len() < 2 {
+                        return None;
+                    }
+                    for i in 0..sides.len() {
+                        let before = sides[(i + sides.len() - 1) % sides.len()].1;
+                        sides[i].0 = before;
+                    }
+                    if sides.iter().all(|(a, b, _)| a.dist(*b) >= 1.1) {
+                        break;
+                    }
+                }
+                sides
+                    .into_iter()
+                    .map(|(a, b, turn)| {
+                        line(FormCurve::Line { start: in_plane([a.0, a.1, 0.0]), end: in_plane([b.0, b.1, 0.0]), turn: turn.map(turned) })
+                    })
+                    .collect()
+            }
+            "IFCARBITRARYCLOSEDPROFILEDEF" => {
+                let pts = self.profile(Some(it).and(reference(e.args.first())), 0)?;
+                if pts.len() < 3 {
+                    return None;
+                }
+                let ps: Vec<[Expr; 2]> = pts.iter().map(|p| in_plane([p.0, p.1, 0.0])).collect();
+                (0..ps.len())
+                    .map(|i| line(FormCurve::Line { start: ps[i].clone(), end: ps[(i + 1) % ps.len()].clone(), turn: None }))
+                    .collect()
+            }
+            _ => return None,
+        };
+        let key = z.iter().fold(0x5eed_u64, |h, v| crate::model::mix(h ^ v.to_bits()));
+        let guid = Guid::seeded(seed ^ 0x009e_a1e5, key);
+        planes.borrow_mut().entry(guid).or_insert_with(|| crate::family::RefPlane {
+            id: 0,
+            guid,
+            name: String::new(),
+            start: [0.0; 3],
+            end: mul(x, 100.0),
+            up: y,
+            reference: Default::default(),
+            defines_origin: false,
+            subcategory: None,
+            level: false,
+            pivot: None,
+            turned: None,
+        });
+        Some(Form { host: crate::family::PlaneRef::Plane(guid), sketch, from: Expr::Number(from), to: Expr::Number(to), ..Form::default() })
+    }
+
+    /// A closed profile's outline, side by side, in the profile's own axes: each side from one point to the next, and an arc's
+    /// turn, degrees counter-clockwise (clockwise below zero). A polyline, or a composite curve of polylines, lines and
+    /// arcs of circles; none for anything else (an ellipse's arc, an indexed curve), which is drawn in chords instead.
+    fn outline(&self, id: Option<u64>, depth: usize) -> Option<Vec<(P2, P2, Option<f64>)>> {
+        let e = self.get(id?)?;
+        if depth > 16 {
+            return None;
+        }
+        let flat = |p: P3| P2(p[0], p[1]);
+        match e.name.as_str() {
+            "IFCPOLYLINE" => {
+                let pts: Vec<P2> = refs(e.args.first()).into_iter().filter_map(|p| self.point(Some(p))).map(flat).collect();
+                Some(pts.windows(2).filter(|w| w[0] != w[1]).map(|w| (w[0], w[1], None)).collect())
+            }
+            "IFCCOMPOSITECURVE" => {
+                let mut sides = Vec::new();
+                for seg in refs(e.args.first()).into_iter().filter_map(|s| self.get(s)) {
+                    let mut part = self.outline(reference(seg.args.get(2)), depth + 1)?;
+                    if enumeration(seg.args.get(1)) == Some("F") {
+                        part.reverse();
+                        part.iter_mut().for_each(|(a, b, t)| (*a, *b, *t) = (*b, *a, t.map(|t| -t)));
+                    }
+                    sides.extend(part);
+                }
+                Some(sides)
+            }
+            "IFCTRIMMEDCURVE" => {
+                let basis = self.at(e.args.first())?;
+                if basis.name != "IFCCIRCLE" {
+                    let pts = self.trimmed(e)?;
+                    return Some(pts.windows(2).map(|w| (flat(w[0]), flat(w[1]), None)).collect());
+                }
+                let (f, r, _) = self.conic(basis)?;
+                let trim = |v: Option<&V>| {
+                    list(v).iter().find_map(|t| match t {
+                        V::Ref(p) => self.point(Some(*p)).map(|p| dot(sub(p, f.o), f.y).atan2(dot(sub(p, f.o), f.x))),
+                        V::Typed(_, x) => real(Some(x)).map(|x| x * self.rad),
+                        _ => None,
+                    })
+                };
+                let (a1, a2) = (trim(e.args.get(1))?, trim(e.args.get(2))?);
+                let ccw = (a2 - a1).rem_euclid(2.0 * PI);
+                let sweep = if enumeration(e.args.get(3)) == Some("F") { ccw - 2.0 * PI } else { ccw };
+                if sweep.abs() < 1e-9 {
+                    return Some(Vec::new());
+                }
+                let at = |t: f64| flat(f.at([r * t.cos(), r * t.sin(), 0.0]));
+                Some(vec![(at(a1), at(a1 + sweep), Some(sweep.to_degrees()))])
+            }
+            _ => None,
+        }
+    }
+
     /// A trimmed line, or a trimmed circle as an arc.
     fn trimmed(&self, e: &Entity) -> Option<Vec<P3>> {
         let basis = self.at(e.args.first())?;
@@ -1094,6 +1287,19 @@ impl<'a> Reader<'a> {
 
     fn frame(&self, product: &Entity) -> Frame {
         self.placement(reference(product.args.get(5)), 0)
+    }
+
+    /// Where a product's body lies: its frame, then the map of its first body item where that is an `IfcMappedItem` (as
+    /// Tekla places a bolt, its map turning it); its frame where it isn't.
+    fn body_frame(&self, product: &Entity) -> Frame {
+        self.frame(product).then(self.body_map(product).unwrap_or(WORLD))
+    }
+
+    /// The map of a product's first body item, in its own coordinates, where that is an `IfcMappedItem`.
+    fn body_map(&self, product: &Entity) -> Option<Frame> {
+        let item = self.chosen(product).first().and_then(|i| self.get(*i)).filter(|e| e.name == "IFCMAPPEDITEM")?;
+        let map = self.at(item.args.first())?;
+        Some(self.map_frame(map, item))
     }
 
     /// A product's body as faces, in model coordinates: its Body representation, else any but a
@@ -1804,6 +2010,44 @@ fn settled(t: [P3; 3]) -> [P3; 3] {
 }
 
 /// A key for forms' shapes and what they're made of: the same forms, the same key.
+/// `forms` as copies of one shape are told apart by: every length to a tenth of a millimetre (a point of a mesh, a
+/// sketch's, a from or a to), an arc's turn to a thousandth of a degree.
+fn identity(forms: &[Form]) -> Vec<Form> {
+    use crate::family::sketch::FormCurve;
+    let tenth = |v: f64| (v * 1e1).round() / 1e1 + 0.0;
+    let length = |e: &Expr| match e {
+        Expr::Number(v) => Expr::Number(tenth(*v)),
+        other => other.clone(),
+    };
+    forms
+        .iter()
+        .map(|f| {
+            let mut f = f.clone();
+            if !f.mesh.is_empty() {
+                f.mesh = Arc::new(f.mesh.iter().map(|t| t.map(|p| p.map(tenth))).collect());
+            }
+            for l in &mut f.sketch {
+                l.curve = match &l.curve {
+                    FormCurve::Line { start, end, turn } => FormCurve::Line {
+                        start: start.clone().map(|e| length(&e)),
+                        end: end.clone().map(|e| length(&e)),
+                        turn: turn.as_ref().map(|t| match t {
+                            Expr::Number(v) => Expr::Number((v * 1e3).round() / 1e3 + 0.0),
+                            other => other.clone(),
+                        }),
+                    },
+                    FormCurve::Circle { centre, radius } => {
+                        FormCurve::Circle { centre: centre.clone().map(|e| length(&e)), radius: length(radius) }
+                    }
+                };
+                (l.id, l.guid) = (0, Guid::default());
+            }
+            (f.from, f.to) = (length(&f.from), length(&f.to));
+            f
+        })
+        .collect()
+}
+
 fn shape_key(forms: &[Form]) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
@@ -2958,12 +3202,14 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
         ifc: Option<IfcClass>,
         // Which fixture or fitting it is, from the first of its products' predefined types that names one.
         kind: Option<&'static str>,
-        types: Vec<(String, Vec<Form>, u64)>,
+        /// Each type: its name, its forms, and the key and the forms it is told apart by ([`identity`]).
+        types: Vec<(String, Vec<Form>, u64, Vec<Form>)>,
         /// What the product of each type drew, where BIMCraft wrote its connector: the same order as `types`.
         draws: Vec<Option<Draw>>,
         named: HashMap<String, Vec<usize>>,
         names: HashSet<String>,
         forms: usize,
+        planes: HashSet<Guid>,
     }
     // What a device's connector says, as BIMCraft writes it (`Pset_ElectricalDeviceCommon` and `BIMCraft_Connector`): a family
     // gets a connector of it, its type's load a parameter of the type. A device another tool wrote has no such set, and no connector.
@@ -3009,8 +3255,13 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
             );
         }
     }
+    // The planes exact forms are drawn on, by GUID: one GUID for one plane, whichever family draws on it.
+    let proto_planes: RefCell<HashMap<Guid, crate::family::RefPlane>> = RefCell::new(HashMap::new());
+    // A bolt's size, as Tekla names it ("BOLTM20*60" in its `Tekla Bolt` set), names its family after the product's name:
+    // a steel model's bolts in a family for each size, rather than thousands of types in "Bolt assembly", "(2)" and on.
+    let sizes = PropertySets::read(&r, &named(&["IFCRELDEFINESBYPROPERTIES"]), &["Tekla Bolt"]);
     // A product to place: it, its family and type, whether mirrored, where, its angle and its height.
-    type Placed = (u64, String, String, bool, P2, f64, f64);
+    type Placed = (u64, String, String, bool, P2, f64, f64, Option<[P3; 2]>);
     // Reads product `x` as a component of a family of `category` in `made`, its type found or made, and puts it in `placed`; a
     // generic family remembers `class`, its name apart from those `taken` and from a family of another class. Leaves it out
     // where it breaks a rule; false where it has no body BIMCraft can read.
@@ -3025,31 +3276,96 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
                      seen: &mut HashSet<u64>|
      -> bool {
         let f = r.frame(x);
+        // A body that lies tilted (its axes square, its z not up) comes in in its own axes, which its component keeps: each
+        // copy of a bolt is then one type, however it lies.
+        let b = r.body_frame(x);
+        let mapped = r.body_map(x);
+        let map = mapped.unwrap_or(WORLD);
+        let square = |v: P3| (dot(v, v) - 1.0).abs() < 1e-6;
+        let sound = [b.x, b.y, b.z].into_iter().all(square) && dot(b.x, b.y).abs() < 1e-6;
+        let tilted = sound && b.z[2] < 1.0 - 1e-9;
+        // An upright generic body a map places, as Tekla places a bolt standing, also comes in its map's axes, turned by its angle.
+        let in_map = tilted || (sound && class.is_some() && mapped.is_some());
         let flat = |v: P3| unit([v[0], v[1], 0.0]);
         let along = [flat(f.x), flat(f.y), [1.0, 0.0, 0.0]].into_iter().find(|v| dot(*v, *v) > 0.5).unwrap_or([1.0, 0.0, 0.0]);
         let side = cross([0.0, 0.0, 1.0], along);
         let local = |p: P3| {
+            // In the map's axes, taken from the product's own: what the file writes, not a far point's last bits.
+            if in_map {
+                let d = sub(p, map.o);
+                // To the micron, as the import keeps any point; copies a few hundredths apart are found one type by
+                // `identity`, which compares them to a tenth.
+                return [dot(d, map.x), dot(d, map.y), dot(d, map.z)].map(|v| (v * 1e3).round() / 1e3 + 0.0);
+            }
             let d = sub(f.at(p), f.o);
             [dot(d, along), dot(d, side), d[2]].map(|v| (v * 1e3).round() / 1e3 + 0.0)
         };
         let fallback = element_material(&r, &l, id).unwrap_or_default();
         let mut groups: BTreeMap<String, Vec<[P3; 3]>> = BTreeMap::new();
-        for (look, faces) in r.looked_items(x, &looks) {
+        // A straight extrusion inside the body's maps comes in as the form it is (a profile on a plane, from and to), in
+        // the map's axes, as a family drawn by hand holds one, and is meshed only where it is drawn: a bolt's shaft, nut and
+        // washer, by the ten thousand in a steel model. What isn't one comes in as triangles, as before.
+        let (looked, mut exact): (Vec<LookedFaces>, Vec<Form>) =
+            if in_map && class.is_some() {
+                let mut rest = Vec::new();
+                let mut exact = Vec::new();
+                let to_local = |w: P3| [dot(sub(w, map.o), map.x), dot(sub(w, map.o), map.y), dot(sub(w, map.o), map.z)];
+                let dir_local = |v: P3| [dot(v, map.x), dot(v, map.y), dot(v, map.z)];
+                for item in r.chosen(x) {
+                    let Some(e) = r.get(item) else { continue };
+                    let inherited = looks.items.get(&item);
+                    let (inner, mf): (Vec<u64>, Frame) = if e.name == "IFCMAPPEDITEM" {
+                        let Some(mp) = r.at(e.args.first()) else { continue };
+                        let Some(rep) = r.at(mp.args.get(1)) else { continue };
+                        (refs(rep.args.get(3)), r.map_frame(mp, e))
+                    } else {
+                        (vec![item], WORLD)
+                    };
+                    for it in inner {
+                        let look = looks.items.get(&it).or(inherited);
+                        match r.exact_form(it, &mf, &to_local, &dir_local, seed, &proto_planes) {
+                            Some(mut form) => {
+                                form.material = look.map_or_else(|| fallback.clone(), |l| l.material());
+                                exact.push(form);
+                            }
+                            None => {
+                                let mut out = Vec::new();
+                                r.looked(it, 1, look, &looks, &mut out);
+                                rest.extend(out.into_iter().map(|(l, faces)| {
+                                    (l, faces.into_iter().map(|fc| fc.into_iter().map(|p| mf.at(p)).collect()).collect())
+                                }));
+                            }
+                        }
+                    }
+                }
+                (rest, exact)
+            } else {
+                (r.looked_items(x, &looks), Vec::new())
+            };
+        for (look, faces) in looked {
             let tris = groups.entry(look.map_or_else(|| fallback.clone(), |l| l.material())).or_default();
             for face in faces {
                 tris.extend(triangles(&face.into_iter().map(local).collect::<Vec<_>>()).into_iter().map(settled));
             }
         }
         groups.retain(|_, t| !t.is_empty());
-        if groups.is_empty() {
+        if groups.is_empty() && exact.is_empty() {
             return false;
         }
         if groups.values().map(Vec::len).sum::<usize>() > MAX_TRIANGLES {
             leave(skipped, seen, id, &format!("its body has more than {MAX_TRIANGLES} triangles"));
             return true;
         }
-        let forms: Vec<Form> =
+        let mut forms: Vec<Form> =
             groups.into_iter().map(|(material, mesh)| Form { mesh: Arc::new(mesh), material, ..Form::default() }).collect();
+        forms.append(&mut exact);
+        let hosts: HashSet<Guid> = forms
+            .iter()
+            .filter_map(|f| match f.host {
+                crate::family::PlaneRef::Plane(g) if proto_planes.borrow().contains_key(&g) => Some(g),
+                _ => None,
+            })
+            .collect();
         // A product whose object type marks what it is (a lightning terminal) has its family and type in its name.
         let marked = category.ifc().2.is_some();
         let name =
@@ -3057,57 +3373,85 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
         let mut parts = name.splitn(3, ':').map(str::trim);
         let family = clip(parts.next().unwrap_or_default());
         let base = clip(parts.next().unwrap_or(&family));
-        // A generic family of the name but another class is another family, numbered on.
-        let family = match &class {
-            None => family,
-            Some(c) => {
-                let free = (1..=MAX_NAMESAKES)
-                    .map(|n| if n == 1 { family.clone() } else { clip(&format!("{family} ({n})")) })
-                    .find(|k| !taken.contains(k) && made.get(k).is_none_or(|f| f.ifc.as_ref() == Some(c)));
-                let Some(free) = free else {
-                    leave(skipped, seen, id, &format!("more than {MAX_NAMESAKES} families of another IFC class are named `{family}`"));
-                    return true;
-                };
-                free
-            }
+        let family = match sizes.said(id, "Bolt Name").and_then(|p| text(p.args.get(2))) {
+            Some(size) if class.is_some() && !size.trim().is_empty() => clip(&format!("{family} {}", size.trim())),
+            _ => family,
         };
-        let fam = made.entry(family.clone()).or_insert_with(|| Made { category, ifc: class, ..Made::default() });
-        if fam.kind.is_none() {
-            fam.kind = category.kind_of(enumeration(x.args.get(8)));
+        // A generic family of the name but another class is another family, numbered on; so is one of the class with no room
+        // left for another type's forms, its types going on in the next (a steel model's bolts, thousands of sizes).
+        let names: Vec<String> = match &class {
+            None => vec![family.clone()],
+            Some(_) => (1..=MAX_NAMESAKES).map(|n| if n == 1 { family.clone() } else { clip(&format!("{family} ({n})")) }).collect(),
+        };
+        let full = format!("family `{family}` has more shapes than one family holds ({} forms)", crate::family::MAX_FORMS);
+        if forms.len() > crate::family::MAX_FORMS {
+            leave(skipped, seen, id, &full);
+            return true;
         }
         // A type of that name and shape, or its mirror image, found by its shapes' key; a type the
         // file gives another shape is another type, while the family has room for its forms.
-        let flipped = mirrored(&forms);
-        let (key, flipped_key) = (shape_key(&forms), shape_key(&flipped));
-        let same = fam.named.get(&base).into_iter().flatten().find_map(|&i| {
-            let (t, fs, k) = fam.types.get(i)?;
-            (*k == key && *fs == forms)
-                .then(|| (t.clone(), false))
-                .or_else(|| (*k == flipped_key && *fs == flipped).then(|| (t.clone(), true)))
-        });
-        let pick = match same {
-            Some(pick) => pick,
-            None if fam.forms + forms.len() > crate::family::MAX_FORMS => {
-                let why = format!("family `{family}` has more shapes than one family holds ({} forms)", crate::family::MAX_FORMS);
-                leave(skipped, seen, id, &why);
-                return true;
+        let flipped = if forms.iter().any(|f| !f.sketch.is_empty()) { forms.clone() } else { mirrored(&forms) };
+        // In its map's axes, copies of one shape a few hundredths apart (as Tekla writes them) are one type, the first's
+        // values kept as they are: they are told apart to a tenth of a millimetre. Any other body is told apart exactly.
+        let (ident, flipped_ident) = if in_map { (identity(&forms), identity(&flipped)) } else { (forms.clone(), flipped.clone()) };
+        let (key, flipped_key) = (shape_key(&ident), shape_key(&flipped_ident));
+        let mut chosen = None;
+        for name in names {
+            if class.is_some() && (taken.contains(&name) || made.get(&name).is_some_and(|f| f.ifc.as_ref() != class.as_ref())) {
+                continue;
             }
-            None => {
-                let taken = fam.named.get(&base).map_or(0, Vec::len);
-                let t = (taken + 1..)
-                    .map(|n| if n == 1 { base.clone() } else { format!("{base} ({n})") })
-                    .find(|t| !fam.names.contains(t))
-                    .unwrap_or_else(|| base.clone());
-                fam.forms += forms.len();
-                fam.names.insert(t.clone());
-                fam.named.entry(base.clone()).or_default().push(fam.types.len());
-                fam.types.push((t.clone(), forms, key));
-                fam.draws.push(draws.get(&id).cloned());
-                (t, false)
+            let fam = made.entry(name.clone()).or_insert_with(|| Made { category, ifc: class.clone(), ..Made::default() });
+            if fam.kind.is_none() {
+                fam.kind = category.kind_of(enumeration(x.args.get(8)));
             }
+            let same = fam.named.get(&base).into_iter().flatten().find_map(|&i| {
+                let (t, _, k, id) = fam.types.get(i)?;
+                (*k == key && *id == ident)
+                    .then(|| (t.clone(), false))
+                    .or_else(|| (*k == flipped_key && *id == flipped_ident).then(|| (t.clone(), true)))
+            });
+            if let Some(pick) = same {
+                chosen = Some((name, pick));
+                break;
+            }
+            let new_planes = hosts.iter().filter(|g| !fam.planes.contains(*g)).count();
+            if fam.forms + forms.len() > crate::family::MAX_FORMS || fam.planes.len() + new_planes > crate::family::MAX_PLANES - 3 {
+                continue;
+            }
+            fam.planes.extend(hosts.iter().copied());
+            let taken = fam.named.get(&base).map_or(0, Vec::len);
+            let t = (taken + 1..)
+                .map(|n| if n == 1 { base.clone() } else { format!("{base} ({n})") })
+                .find(|t| !fam.names.contains(t))
+                .unwrap_or_else(|| base.clone());
+            fam.forms += forms.len();
+            fam.names.insert(t.clone());
+            fam.named.entry(base.clone()).or_default().push(fam.types.len());
+            fam.types.push((t.clone(), forms, key, ident));
+            fam.draws.push(draws.get(&id).cloned());
+            chosen = Some((name, (t, false)));
+            break;
+        }
+        let Some((family, pick)) = chosen else {
+            let why = match &class {
+                None => full,
+                Some(_) => format!("more than {MAX_NAMESAKES} families are named `{family}`, each full or of another IFC class"),
+            };
+            leave(skipped, seen, id, &why);
+            return true;
         };
+        if tilted {
+            let tilt = [b.x, b.z].map(|v| v.map(|c| (c * 1e9).round() / 1e9 + 0.0));
+            placed.push((id, family, pick.0, pick.1, r.flat(b.o), 0.0, b.o[2], Some(tilt)));
+            return true;
+        }
+        if in_map {
+            let angle = (b.x[1].atan2(b.x[0]).to_degrees() * 1e6).round() / 1e6 + 0.0;
+            placed.push((id, family, pick.0, pick.1, r.flat(b.o), angle, b.o[2], None));
+            return true;
+        }
         let (sin, cos) = (along[1], along[0]);
-        placed.push((id, family, pick.0, pick.1, r.flat(f.o), (sin.atan2(cos).to_degrees() * 1e6).round() / 1e6 + 0.0, f.o[2]));
+        placed.push((id, family, pick.0, pick.1, r.flat(f.o), (sin.atan2(cos).to_degrees() * 1e6).round() / 1e6 + 0.0, f.o[2], None));
         true
     };
     // The families `made`, each a type for each of its types, and the components `placed` of them, in the model; a family that
@@ -3172,7 +3516,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
                     classification: c.classification.clone(),
                 });
             }
-            for (k, (t, forms, _)) in (1..).zip(types) {
+            for (k, (t, forms, _, _)) in (1..).zip(types) {
                 let mut set: BTreeMap<String, serde_json::Value> = BTreeMap::new();
                 if several {
                     set.insert("Variant".to_string(), serde_json::json!(k));
@@ -3190,6 +3534,14 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
                     }
                 }
                 family.types.insert(t, set);
+                for f in &forms {
+                    if let crate::family::PlaneRef::Plane(g) = f.host
+                        && let Some(p) = proto_planes.borrow().get(&g)
+                        && !family.planes.iter().any(|q| q.guid == g)
+                    {
+                        family.planes.push(p.clone());
+                    }
+                }
                 family
                     .forms
                     .extend(forms.into_iter().map(|f| Form { visible: several.then(|| Expr::Formula(format!("Variant = {k}"))), ..f }));
@@ -3199,7 +3551,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
         // Each checked once.
         let unsound: HashMap<String, String> =
             families.iter().filter_map(|(n, f)| f.check(&|_| true).err().map(|e| (n.clone(), e))).collect();
-        for (id, family, type_name, mirrored, at, angle, z) in placed {
+        for (id, family, type_name, mirrored, at, angle, z, tilt) in placed {
             if let Some(why) = unsound.get(&family) {
                 leave(skipped, seen, id, why);
                 continue;
@@ -3215,6 +3567,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
                 angle,
                 offset,
                 mirrored,
+                tilt,
                 params: BTreeMap::new(),
                 host: None,
                 panel: None,

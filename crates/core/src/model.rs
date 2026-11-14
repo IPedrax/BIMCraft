@@ -185,6 +185,8 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// georeference and lose where the project stands; and it would read spot coordinates (a spot's `coordinate`, `type`, `origin`,
 /// `leader`, `shoulder` and `end`) and a level's `elevation_base` as spot elevations from the Project Base Point. A file of 19
 /// needs no step: its georeference is the active site, both points at the internal origin.
+/// And a component may lie tilted on no plane (`tilt`, its family's x and z in the model), as an imported bolt through a brace does;
+/// a build that reads up to 19 would answer one with a serde error, not "saved by a newer BIMCraft".
 pub const FORMAT: u32 = 20;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
@@ -1873,6 +1875,10 @@ pub struct Component {
     pub offset: f64,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub mirrored: bool,
+    /// Where it lies tilted on no plane (a bolt through a brace, as an IFC file places it): the directions in the model of its
+    /// family's x and z, before `angle` turns them about the vertical. None, it stands upright, or as its plane tilts it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tilt: Option<[[f64; 3]; 2]>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
     /// What a work plane-based component stands on, where that isn't its level: its place on a reference plane, which its
@@ -4384,6 +4390,7 @@ impl Model {
         }
         // A column's `top_offset`, `attach_top` and `attach_base` (FORMAT 20 too) need nothing of a file of 19, which holds none: its
         // columns keep the top they had, at their top level or their height.
+        // A component's `tilt` (FORMAT 20 too) needs nothing of a file of 19, whose components all stand upright or on their plane.
         // The project parameters' kinds and settings and `.bimparams` dictionaries (FORMAT 20, with the rooms) need nothing of
         // a file of 19, which holds none of them. The project's information does: a title value under one of its keys
         // (CLIENT, PROJECT_NUMBER, …) moves onto it, and a title block's field of such a key, which every title block has
@@ -8542,6 +8549,21 @@ impl Model {
                 point(&who, c.at)?;
                 coord(&format!("{who} angle"), c.angle)?;
                 coord(&format!("{who} offset"), c.offset)?;
+                // Its tilt, where it has one: two unit directions square to each other, on no plane and placed by no points,
+                // which tilt a component themselves.
+                if let Some([x, z]) = c.tilt {
+                    let unit = |v: [f64; 3]| {
+                        v.iter().all(|k| k.is_finite()) && ((v[0] * v[0] + v[1] * v[1] + v[2] * v[2]).sqrt() - 1.0).abs() < 1e-6
+                    };
+                    if !(unit(x) && unit(z) && (x[0] * z[0] + x[1] * z[1] + x[2] * z[2]).abs() < 1e-6) {
+                        return Err(format!("{who}: its tilt's x and z must be unit directions square to each other, not {x:?} and {z:?}"));
+                    }
+                    if c.host.is_some() || self.placed_by_points(c) {
+                        return Err(format!(
+                            "{who}: it is tilted, and stands on a work plane or is placed by its points, which tilt it themselves"
+                        ));
+                    }
+                }
                 // On a reference plane, only a work plane-based family's component, and never an adaptive one: it is placed
                 // by its own points.
                 if let Some(h) = &c.host {
