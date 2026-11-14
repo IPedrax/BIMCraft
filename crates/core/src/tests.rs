@@ -7340,11 +7340,14 @@ fn the_exit_tests_window_flexes_as_built_schedules_and_goes_to_ifc() {
 
 #[test]
 fn a_file_from_before_toposolids_gets_the_type_a_new_one_is_made_of() {
-    let mut m = Model::new("test");
-    m.format = 19;
-    m.types.toposolid.clear();
-    m.migrate();
-    assert_eq!(m.types.toposolid.keys().collect::<Vec<_>>(), ["Generic - 300mm"]);
+    // 0.12 writes a 20 file, and it holds no toposolid; a 19 file is older still.
+    for format in [19, 20] {
+        let mut m = Model::new("test");
+        m.format = format;
+        m.types.toposolid.clear();
+        m.migrate();
+        assert_eq!(m.types.toposolid.keys().collect::<Vec<_>>(), ["Generic - 300mm"], "a file of {format}");
+    }
 }
 
 /// A 10 m square at the origin, the same in every toposolid test.

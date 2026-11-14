@@ -189,11 +189,11 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// georeference needs no coordinate reference system (`crs` may be left out); a build that reads up to 19 would refuse such a
 /// georeference and lose where the project stands; and it would read spot coordinates (a spot's `coordinate`, `type`, `origin`,
 /// `leader`, `shoulder` and `end`) and a level's `elevation_base` as spot elevations from the Project Base Point. A file of 19
-/// needs no step: its georeference is the active site, both points at the internal origin. And the site's ground is a toposolid
-/// (`toposolid`), a solid element whose type's layers set its thickness (`types.toposolid`, which a file of 19 is given:
-/// `Generic - 300mm`) and whose top its elevation points and split lines shape; a build that reads up to 19 would answer one
-/// with a serde error, not "saved by a newer BIMCraft".
-pub const FORMAT: u32 = 20;
+/// needs no step: its georeference is the active site, both points at the internal origin.
+/// 21 (the toposolid's): the site's ground is a toposolid (`toposolid`), a solid element whose type's layers set its thickness
+/// (`types.toposolid`, which a file of 20 is given: `Generic - 300mm`) and whose top its elevation points and split lines shape;
+/// a build that reads up to 20 (0.12, which writes 20) would answer one with a serde error, not "saved by a newer BIMCraft".
+pub const FORMAT: u32 = 21;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -4425,8 +4425,8 @@ impl Model {
             self.families.values_mut().for_each(crate::family::Family::settle_planes);
             self.families.values_mut().for_each(crate::family::Family::pin_cuts);
         }
-        // A file of 19 has no toposolid type: the one a new toposolid is made of, which `default_type` names.
-        if self.format < 20 {
+        // A file of 20 or before has no toposolid type: the one a new toposolid is made of, which `default_type` names.
+        if self.format < 21 {
             self.types.toposolid.entry("Generic - 300mm".into()).or_insert(FloorType { thickness: 300.0, layers: Vec::new() });
         }
         self.settle_hosts(None);
