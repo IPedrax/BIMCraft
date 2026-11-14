@@ -876,10 +876,6 @@ const CYRILLIC: &[(char, Key)] = &[
 ];
 
 /// The Cyrillic letter a physical key carries on the Russian layout, for the `(Ctrl+В)` hint.
-fn cyrillic_of(key: Key) -> Option<char> {
-    CYRILLIC.iter().find(|(_, k)| *k == key).map(|(c, _)| *c)
-}
-
 pub(crate) fn key_of_char(c: char) -> Option<Key> {
     if c.is_ascii_alphabetic() {
         return Key::from_name(&c.to_ascii_uppercase().to_string());
@@ -964,47 +960,78 @@ pub fn display_binding(b: Binding) -> String {
     }
 }
 
-/// The canonical form with the Russian layout's letter after it, as `Ctrl+D (Ctrl+В)`.
+/// The letter the interface language's keyboard layout prints on the physical `key`, where it is not the US layout's:
+/// a German or Czech QWERTZ swaps `Y` and `Z`, a French AZERTY swaps `A` with `Q` and `Z` with `W`, and puts `M` where
+/// the US has `;`. The other languages' layouts print the US letters, so their hints are the canonical form alone.
+fn layout_letter(key: Key, lang: Lang) -> Option<char> {
+    match lang {
+        Lang::German | Lang::Czech => match key {
+            Key::Y => Some('Z'),
+            Key::Z => Some('Y'),
+            _ => None,
+        },
+        Lang::French => match key {
+            Key::A => Some('Q'),
+            Key::Q => Some('A'),
+            Key::Z => Some('W'),
+            Key::W => Some('Z'),
+            Key::Semicolon => Some('M'),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// A sequence as the interface language's layout prints its letters, `None` when none of them differ from the US ones.
+fn layout_text(keys: &[Key], lang: Lang) -> Option<String> {
+    let mut text = String::new();
+    let mut differs = false;
+    for key in keys {
+        match layout_letter(*key, lang) {
+            Some(letter) => {
+                differs = true;
+                text.push(letter);
+            }
+            None => text.push_str(key_name(*key)),
+        }
+    }
+    differs.then_some(text)
+}
+
+/// The canonical form, followed in parentheses by the letters the interface language's layout prints on the same
+/// physical keys, when any differ: `Ctrl+Z (Ctrl+Y)` on a German or Czech QWERTZ, `WA (ZQ)` on a French AZERTY. A
+/// language whose layout prints the US letters, as English does, shows the canonical form alone.
 pub fn display_binding_localized(b: Binding, lang: Lang) -> String {
     let canonical = display_binding(b);
-    // The interface has no Russian catalog yet, so the hint is shown whenever it can help: the
-    // canonical key stays first, and the ЙЦУКЕН letter follows in parentheses.
-    let _ = lang;
-    match b {
-        Binding::Chord(c) => match cyrillic_of(c.key) {
-            Some(letter) => {
-                let mut hint = String::new();
-                if c.ctrl {
-                    hint.push_str("Ctrl+");
-                }
-                if c.shift {
-                    hint.push_str("Shift+");
-                }
-                if c.alt {
-                    hint.push_str("Alt+");
-                }
-                if c.meta {
-                    hint.push_str("Meta+");
-                }
-                hint.push(letter.to_uppercase().next().unwrap_or(letter));
-                format!("{canonical} ({hint})")
+    let localized = match b {
+        Binding::Chord(c) => {
+            let Some(letter) = layout_letter(c.key, lang) else { return canonical };
+            let mut text = String::new();
+            if c.ctrl {
+                text.push_str("Ctrl+");
             }
-            None => canonical,
+            if c.shift {
+                text.push_str("Shift+");
+            }
+            if c.alt {
+                text.push_str("Alt+");
+            }
+            if c.meta {
+                text.push_str("Meta+");
+            }
+            text.push(letter);
+            text
+        }
+        Binding::Sequence([a, z]) => match layout_text(&[a, z], lang) {
+            Some(text) => text,
+            None => return canonical,
         },
-        Binding::Sequence([a, z]) => match (cyrillic_of(a), cyrillic_of(z)) {
-            (Some(a), Some(z)) => format!("{canonical} ({}{})", a.to_uppercase().next().unwrap_or(a), z.to_uppercase().next().unwrap_or(z)),
-            _ => canonical,
+        Binding::Sequence3([a, z, c]) => match layout_text(&[a, z, c], lang) {
+            Some(text) => text,
+            None => return canonical,
         },
-        Binding::Sequence3([a, z, c]) => match (cyrillic_of(a), cyrillic_of(z), cyrillic_of(c)) {
-            (Some(a), Some(z), Some(c)) => format!(
-                "{canonical} ({}{}{})",
-                a.to_uppercase().next().unwrap_or(a),
-                z.to_uppercase().next().unwrap_or(z),
-                c.to_uppercase().next().unwrap_or(c)
-            ),
-            _ => canonical,
-        },
-    }
+    };
+    format!("{canonical} ({localized})")
 }
 
 /// A binding as a file writes it: `Ctrl+D`, `WA`, `Plus`.
@@ -3128,7 +3155,15 @@ mod tests {
         assert!(parse_binding("Ctrl+№").is_err());
         assert!(parse_binding("D").is_err());
         assert_eq!(display_binding(ctrl_d), "Ctrl+D");
-        assert_eq!(display_binding_localized(ctrl_d, Lang::English), "Ctrl+D (Ctrl+В)");
+        let ctrl_z = Binding::Chord(KeyChord::new(Key::Z, true, false, false, false));
+        let ctrl_w = Binding::Chord(KeyChord::new(Key::W, true, false, false, false));
+        // The hint follows the interface language's keyboard layout, not the Russian one.
+        assert_eq!(display_binding_localized(ctrl_d, Lang::English), "Ctrl+D", "the US layout needs no hint");
+        assert_eq!(display_binding_localized(ctrl_d, Lang::German), "Ctrl+D", "D sits in the same place on a QWERTZ");
+        assert_eq!(display_binding_localized(ctrl_z, Lang::Czech), "Ctrl+Z (Ctrl+Y)");
+        assert_eq!(display_binding_localized(ctrl_w, Lang::French), "Ctrl+W (Ctrl+Z)");
+        assert_eq!(display_binding_localized(Binding::Sequence([Key::W, Key::A]), Lang::French), "WA (ZQ)");
+        assert_eq!(display_binding_localized(Binding::Sequence([Key::W, Key::A]), Lang::German), "WA");
         assert_eq!(display_binding(Binding::Sequence([Key::W, Key::A])), "WA");
     }
 
@@ -3278,7 +3313,10 @@ mod tests {
         }
         assert!(md.contains("| Command | Active |"));
         assert!(md.contains("Ctrl+Alt+B"), "a user's own binding is in Active");
-        assert!(md.contains("Ctrl+В"));
+        assert!(md.contains("Ctrl+D"), "the canonical form is in Active");
+        assert!(!md.contains("(Ctrl+В)"), "the English layout adds no second letter");
+        let de = markdown(&s, &MarkdownOptions { lang: Lang::German, include_date: false, ..MarkdownOptions::default() });
+        assert!(de.contains("Ctrl+Z (Ctrl+Y)"), "a QWERTZ hint follows the canonical form");
         assert!(md.contains("Reserved and system combinations"));
         let again = markdown(&s, &MarkdownOptions { include_date: false, ..MarkdownOptions::default() });
         assert_eq!(md, again);

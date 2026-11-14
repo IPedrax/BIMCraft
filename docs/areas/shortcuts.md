@@ -21,7 +21,7 @@ Chords and sequences are read from the **physical key position**, not from the c
 - `Ctrl+D` on a US layout and `Ctrl+В` on a Russian layout are the same key;
 - `Ctrl+W, A` works on a Russian layout too (physically the same `W` and `A` keys);
 - changing the layout while the window is open changes nothing;
-- the interface shows the canonical form, followed by the localized hint `(Ctrl+В)` when the key has a Cyrillic caption.
+- the interface shows the canonical form, followed in parentheses by the letters the interface language's keyboard layout prints on the same physical keys, when any differ: `Ctrl+Z (Ctrl+Y)` in German or Czech (QWERTZ), `WA (ZQ)` in French (AZERTY). English, Portuguese, Spanish, Polish, Dutch, Italian, Vietnamese and Chinese use the US letters, so they show the canonical form alone; punctuation is never hinted.
 
 Modifiers are matched **exactly**: `Ctrl+D` and `Ctrl+Shift+D` are different bindings. Holding a key down does not repeat the command.
 
@@ -148,7 +148,7 @@ Help (Markdown)… in the Keyboard Shortcuts dialog writes `bimcraft-shortcuts.m
 - one table per category with exactly two columns: **Command** and **Active**;
 - **Active** lists every combination that currently works, including combinations assigned by the user;
 - a separate reference table of reserved and system combinations;
-- localized hints such as `Ctrl+D (Ctrl+В)`.
+- hints in the interface language's layout, such as `Ctrl+Z (Ctrl+Y)` in German or `WA (ZQ)` in French.
 
 After saving, the dialog shows one clickable link to the file. The link opens the file with the application associated with `.md` in the operating system (for example MarkText), not in a browser.
 
