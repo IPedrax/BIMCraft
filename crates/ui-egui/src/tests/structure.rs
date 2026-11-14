@@ -402,3 +402,32 @@ fn a_duplicated_beam_type_keeps_its_shape_and_its_material() {
     assert_eq!((made.width, made.depth, made.round, made.material.as_str()), (200.0, 200.0, true, "Metal"));
     assert_eq!(field(&h, beam, "type"), json!("Steel Tube 200"), "OK puts the selected beam on it");
 }
+
+#[test]
+fn steel_profile_survives_duplicate_edit_type_and_native_reopen() {
+    let mut h = app("beam {\"points\":[[0,0],[4000,0]],\"type\":\"IPE 300\",\"offset\":2800}");
+    let beam = ids(&h, "beam")[0];
+    click(&mut h, P2(2000.0, 0.0));
+    press(&mut h, "Edit Type");
+    press(&mut h, "Duplicate…");
+    type_into(&mut h, "New type", "Custom steel");
+    press(&mut h, "Create");
+    type_into(&mut h, "Width", "1");
+    press(&mut h, "OK");
+    assert!(h.state().type_dialog.is_some(), "invalid plates keep the dialog open");
+    assert_eq!(h.state().session.model.types.runs["beam"]["Custom steel"].width, 150.0);
+    type_into(&mut h, "Width", "180");
+    press(&mut h, "OK");
+    assert_eq!(field(&h, beam, "type"), json!("Custom steel"));
+    let ty = &h.state().session.model.types.runs["beam"]["Custom steel"];
+    let profile = ty.profile.as_ref().expect("duplicating a steel type must retain its section");
+    assert_eq!(profile.shape, bimcraft_core::profiles::Shape::I);
+    assert_eq!((profile.web, profile.flange, profile.radius), (7.1, 10.7, 15.0));
+    assert!(profile.name.is_empty(), "resizing a section removes its catalogue designation");
+    let path = std::env::temp_dir().join(format!("steel-ui-{}.bimcraft", std::process::id()));
+    h.state_mut().session.execute("save", &json!({"path":path})).unwrap();
+    h.state_mut().session.execute("open", &json!({"path":path})).unwrap();
+    std::fs::remove_file(path).unwrap();
+    assert_eq!(field(&h, beam, "width"), json!(180.0));
+    assert!(h.state().session.model.types.runs["beam"]["Custom steel"].profile.is_some());
+}

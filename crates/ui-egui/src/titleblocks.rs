@@ -89,6 +89,8 @@ impl TitleBlocksDialog {
         let mut p = serde_json::to_value(&self.tb).unwrap_or_else(|_| json!({}));
         if let Some(o) = p.as_object_mut() {
             o.insert("name".into(), json!(self.name));
+            o.insert("drawing_area".into(), json!(self.tb.drawing_area));
+            o.insert("template_border".into(), json!(self.tb.template_border));
             for key in ["lines", "fills", "texts", "fields"] {
                 o.entry(key).or_insert(json!([]));
             }
@@ -316,7 +318,20 @@ fn lines_tab(ui: &mut Ui, d: &mut TitleBlocksDialog) {
 
 /// Its box, and its fills.
 fn size_tab(ui: &mut Ui, d: &mut TitleBlocksDialog) {
-    ui.label(t("The title block stands in the sheet's bottom right corner, inside the border; views go above it."));
+    ui.checkbox(&mut d.tb.template_border, t("Template draws the sheet border"));
+    let mut use_area = d.tb.drawing_area.is_some();
+    if ui.checkbox(&mut use_area, t("Use a drawing area for automatic placement")).changed() {
+        d.tb.drawing_area = use_area.then_some([P2(0.0, 0.0), P2(d.tb.width, d.tb.height)]);
+    }
+    if let Some([lo, hi]) = &mut d.tb.drawing_area {
+        for (label, point) in [(msg!("Bottom left"), lo), (msg!("Top right"), hi)] {
+            ui.horizontal(|ui| {
+                ui.label(t(label));
+                ui.add(mm(&mut point.0, 0.0, bimcraft_core::model::MAX_PAPER).prefix("X "));
+                ui.add(mm(&mut point.1, 0.0, bimcraft_core::model::MAX_PAPER).prefix("Y "));
+            });
+        }
+    }
     ui.add_space(4.0);
     Grid::new("title-block-size").num_columns(2).spacing(vec2(8.0, 6.0)).show(ui, |ui| {
         ui.label(t("Width"));
@@ -689,7 +704,7 @@ impl BimApp {
             } else {
                 name
             };
-            match self.session.execute("title_block", &json!({"name": name})) {
+            match self.exec("title_block", &json!({"name": name})) {
                 Ok(_) => d = TitleBlocksDialog::new(&self.session.model, Some(&name)),
                 Err(e) => d.error = Some(e),
             }
@@ -702,13 +717,13 @@ impl BimApp {
             if let Some(o) = p.as_object_mut() {
                 o.remove("rename");
             }
-            match self.session.execute("title_block", &p) {
+            match self.exec("title_block", &p) {
                 Ok(_) => d = TitleBlocksDialog::new(&self.session.model, Some(&name)),
                 Err(e) => d.error = Some(e),
             }
         }
         if delete {
-            match self.session.execute("title_block", &json!({"name": d.name, "delete": true})) {
+            match self.exec("title_block", &json!({"name": d.name, "delete": true})) {
                 Ok(_) => d = TitleBlocksDialog::new(&self.session.model, None),
                 Err(e) => d.error = Some(e),
             }
@@ -734,18 +749,18 @@ mod tests {
     fn the_dialog_gives_the_command_its_title_block_and_only_the_values_that_changed() {
         let mut m = Model::new("P");
         m.title_blocks.insert("T".into(), TitleBlock::default());
-        m.title_values.insert("CLIENT".into(), "A".into());
+        m.title_values.insert("ARCHITECT".into(), "A".into());
         let mut d = TitleBlocksDialog::new(&m, None);
         assert_eq!(d.name, "T");
-        d.tb.fields.push(Field { key: "client".into(), label: String::new(), scope: Scope::Project, default: String::new() });
+        d.tb.fields.push(Field { key: "architect".into(), label: String::new(), scope: Scope::Project, default: String::new() });
         d.tb.fields.push(Field { key: "ART".into(), label: String::new(), scope: Scope::Project, default: String::new() });
         d.values.insert("ART".into(), "123".into());
         let p = d.params();
         assert_eq!(p["name"], "T");
         assert!(p.get("rename").is_none());
         assert_eq!(d.value_params(&m), json!({"values": {"ART": "123"}}));
-        d.values.insert("CLIENT".into(), String::new());
-        assert_eq!(d.value_params(&m), json!({"values": {"ART": "123", "CLIENT": null}}));
+        d.values.insert("ARCHITECT".into(), String::new());
+        assert_eq!(d.value_params(&m), json!({"values": {"ART": "123", "ARCHITECT": null}}));
         d.rename = "U".into();
         assert_eq!(d.params()["rename"], "U");
     }

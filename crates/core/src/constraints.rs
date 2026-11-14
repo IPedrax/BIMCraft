@@ -110,6 +110,11 @@ fn moves(m: &Model, d: &Dimension, fixed: &dyn Fn(Guid) -> bool) -> Result<BTree
 /// The constrained dimensions kept after a command changed `before` into the session's model: what they measure to moved
 /// as they say. An error, saying which and why, when they can't be.
 pub(crate) fn keep(s: &mut Session, before: &Model) -> Result<(), String> {
+    keep_more(s, before, &[])
+}
+
+/// [`keep`], with `also` staying where it is as the command's own changes do: the ends of an equal dimension it spreads.
+pub(crate) fn keep_more(s: &mut Session, before: &Model, also: &[Guid]) -> Result<(), String> {
     let lookup = s.model.lookup();
     let dims: Vec<Id> =
         lookup.dimensions().filter(|id| matches!(s.model.elements.get(*id), Some(Element::Dimension(d)) if constrained(d))).collect();
@@ -127,6 +132,7 @@ pub(crate) fn keep(s: &mut Session, before: &Model) -> Result<(), String> {
             s.model.elements.with_guids().filter(|(id, _, e)| before.elements.get(*id) != Some(*e)).map(|(_, g, _)| g).collect()
         }
     };
+    stays.extend_from_slice(also);
     for _ in 0..PASSES {
         let mut moved = false;
         for &id in &dims {
@@ -254,7 +260,7 @@ mod tests {
         assert_eq!(start_x(&s, b), -1000.0);
         // It isn't drawn: a plan shows nothing of it.
         let level = s.model.levels()[0].0;
-        let view = crate::render::View { scale: 0.1, cx: 0.0, cy: 4000.0, width: 800, height: 1200 };
+        let view = crate::render::View { angle: 0.0, scale: 0.1, cx: 0.0, cy: 4000.0, width: 800, height: 1200 };
         assert!(!crate::render::draw(&s.model, level, view).owners.contains(&Some(lock)), "a lock is a front end's to show");
         // Unlocked (deleted), the walls are free again.
         run(&mut s, "delete", json!({"ids": [lock]}));

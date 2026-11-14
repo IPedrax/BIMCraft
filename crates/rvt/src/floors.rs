@@ -4,22 +4,27 @@
 //! outer loop and the voids in it. Its **type** is the one floor type its reference list names, its layers from the top down
 //! and its thickness the layers' sum. Its **level** is the one level the list names, else the highest level at or below the
 //! top of its box, and its **offset** is how far the top of its box is above that level. A floor is flat only where its box is
-//! as tall as its type is thick: a taller box is a sloped or a stepped floor, whose slopes are not read, so it comes in level at
-//! the bottom of its box, and the report says so. A sketch of several separate loops makes several floors. A sketch whose ends do
-//! not meet, or whose loops cross, still makes a floor — its ends joined by a straight line, or else the footprint of its own box
+//! as tall as its type is thick. A floor edited with Revit's shape tools holds its top's vertices in its data
+//! ([`shape_vertices`]): it comes in shaped by them, its top at the height most of them have. A taller box without them is a
+//! floor sloped another way (by an arrow), whose slope is not read, so it comes in level at the bottom of its box, and the report
+//! says so. A sketch of several separate loops makes several floors. A sketch whose ends do not meet, or whose loops cross, is
+//! read again without the lines that cannot bound it (past its box, or drawn twice), and still makes a floor — its ends joined
+//! by a straight line, or else the footprint of its own box
 //! — and the report says which. A type with no layers has no thickness of its own: the box's height is taken for it. A ceiling is
 //! read the same way, its level and its offset those of the bottom of its box, its underside.
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use bimcraft_core::geom;
 use bimcraft_core::geom::P2;
-use bimcraft_core::model::{Ceiling, CeilingType, Element, Floor, FloorType, Layer};
+use bimcraft_core::model::{Ceiling, CeilingType, Element, Floor, FloorType, Layer, MAX_SHAPE_POINTS, Shape, ShapePoint};
 
 use crate::data::newest;
 use crate::import::{Facts, Import, kind, micron, mm, point};
 use crate::inventory::Gathered;
 use crate::records::Record;
-use crate::sketch::{Edge, Piece, edge_of, from_boxes, from_edges, from_edges_closed, from_edges_open, from_edges_snapped};
+use crate::records::f64_at;
+use crate::sketch::{Edge, Piece, edge_of, from_boxes, from_edges, from_edges_closed, from_edges_open, from_edges_snapped, own_edges};
 use crate::types::unique_type;
 use crate::walls::{LayeredType, layered_type, level_at_or_below, named_levels};
 
@@ -76,15 +81,30 @@ pub(crate) struct Regions {
 /// that do: a line the reader cannot read bounds nothing, and the loops its neighbours make still close.
 pub(crate) fn regions(lines: &[&Record], g: &Gathered, bbox: &[f64; 6]) -> Option<Regions> {
     let mut edges: Vec<Edge> = Vec::with_capacity(lines.len());
+    // The line each edge is read from.
+    let mut read: Vec<u32> = Vec::with_capacity(lines.len());
     let mut unread: Vec<u32> = Vec::new();
     for l in lines {
         match g.data.get(&l.id).and_then(|c| newest(c, |b| edge_of(b, &l.bbox))) {
-            Some((e, _)) => edges.push(e),
+            Some((e, _)) => {
+                edges.push(e);
+                read.push(l.id);
+            }
             None => unread.push(l.id),
         }
     }
     if let Some(pieces) = from_edges(&edges).or_else(|| from_edges_snapped(&edges)) {
         return Some(Regions { pieces, dangling: unread, closed: false, boxed: false });
+    }
+    // Without the lines that cannot be its edges (another sketch's, past its box, and one drawn twice) its sketch may close.
+    let own = own_edges(&edges, bbox);
+    if own.len() < edges.len() {
+        let kept: Vec<Edge> = own.iter().filter_map(|&k| edges.get(k).cloned()).collect();
+        if let Some(pieces) = from_edges(&kept).or_else(|| from_edges_snapped(&kept)) {
+            let mut dangling = unread;
+            dangling.extend(read.iter().enumerate().filter(|(k, _)| !own.contains(k)).map(|(_, id)| *id));
+            return Some(Regions { pieces, dangling, closed: false, boxed: false });
+        }
     }
     // The boxes of the lines make the boundary where their data does not: nothing of them is left out then.
     let boxes: Vec<[f64; 4]> = lines.iter().map(|l| [l.bbox[0], l.bbox[1], l.bbox[3], l.bbox[4]]).collect();
@@ -94,7 +114,7 @@ pub(crate) fn regions(lines: &[&Record], g: &Gathered, bbox: &[f64; 6]) -> Optio
     // A curve that closes nothing is not a boundary: the loops it stands in still close.
     if let Some((pieces, dropped)) = from_edges_open(&edges) {
         let mut dangling = unread;
-        dangling.extend(dropped.iter().filter_map(|i| lines.get(*i).map(|l| l.id)));
+        dangling.extend(dropped.iter().filter_map(|i| read.get(*i).copied()));
         return Some(Regions { pieces, dangling, closed: false, boxed: false });
     }
     // A sketch left open (a gap no snap closes): its ends are joined by a straight line, and the note says so.
@@ -146,6 +166,51 @@ pub(crate) struct Sketched {
     pub offset: f64,
     /// Whether its box is as tall as its type is thick. A sloped or stepped one is not: it comes in level, a stand-in for what it is.
     pub flat: bool,
+    /// A shape-edited floor's vertices, feet, and its top they are over (the height most of them have): none for another.
+    pub vertices: Vec<[f64; 3]>,
+    pub top: f64,
+}
+
+/// The bytes after a vertex's id, and after its point.
+const VERTEX: [u8; 4] = [0x04, 0x00, 0x08, 0x00];
+const VERTEX_TAIL: [u8; 8] = [6, 0, 0, 0, 2, 0, 0, 0];
+
+/// The vertices of a shape-edited floor's top (Revit's Modify Sub Elements) in its data: each eight `ff`, its own id, `04 00 08 00`,
+/// the point (`f64` feet) and `06 00 00 00 02 00 00 00`, the point the height of the top there. Those inside its box `bbox`, each
+/// place once, and at most one past [`MAX_SHAPE_POINTS`], so that a top of too many says so.
+pub(crate) fn shape_vertices(data: &[u8], bbox: &[f64; 6]) -> Vec<[f64; 3]> {
+    let mut out: Vec<[f64; 3]> = Vec::new();
+    for at in memchr::memmem::find_iter(data, &VERTEX) {
+        if out.len() > MAX_SHAPE_POINTS {
+            break;
+        }
+        let framed = at.checked_sub(16).and_then(|s| data.get(s..s + 8)) == Some(&[0xff; 8][..])
+            && data.get(at + 28..at + 36) == Some(&VERTEX_TAIL[..]);
+        let [Some(x), Some(y), Some(z)] = [4, 12, 20].map(|o| f64_at(data, at + o).filter(|v| v.is_finite())) else { continue };
+        let inside = [x, y, z].iter().enumerate().all(|(k, v)| *v >= bbox[k] - 0.01 && *v <= bbox[k + 3] + 0.01);
+        if framed && inside && !out.iter().any(|q| (q[0] - x).abs() < 1e-6 && (q[1] - y).abs() < 1e-6) {
+            out.push([x, y, z]);
+        }
+    }
+    out
+}
+
+/// Piece `p`'s shape from a floor's `vertices` (feet), each `z` mm over its `top` (feet): those in or on its outline and in none of
+/// its holes, a millimetre or more apart, those at 0 on a corner of its outline left out (a corner is at 0 already).
+fn shape_of(vertices: &[[f64; 3]], top: f64, p: &Piece) -> Shape {
+    let (outer, holes): (Vec<P2>, Vec<Vec<P2>>) = (ring(&p.outer), p.holes.iter().map(|h| ring(h)).collect());
+    let near = |r: &[P2], q: P2| geom::ring_edges(r).any(|(a, b)| geom::dist_to_segment(q, a, b) <= 1.0);
+    let mut points: Vec<ShapePoint> = Vec::new();
+    for v in vertices {
+        let (at, z) = (point(v[0], v[1]), micron(mm(v[2]) - mm(top)));
+        let on = geom::contains(&outer, at) || near(&outer, at);
+        let holed = holes.iter().any(|h| geom::contains(h, at) && !near(h, at));
+        let corner = outer.iter().any(|c| c.dist(at) <= 1.0);
+        if on && !holed && !(z == 0.0 && corner) && !points.iter().any(|q| q.at.dist(at) <= 1.0) {
+            points.push(ShapePoint { at, z, ..ShapePoint::default() });
+        }
+    }
+    Shape { points, lines: Vec::new() }
 }
 
 /// Which sketched element is read: its category, and whether its level and offset are those of the box's top (a floor) or of its
@@ -202,7 +267,39 @@ pub(crate) fn sketched(
         }
     };
     let flat = (tall - typ.thickness).abs() <= 1.0;
-    if !flat {
+    // A floor of shape editing: its top is at its vertices' heights, over the one most of them have (the lower of two as common).
+    let mut vertices = match category {
+        OST_FLOORS => g.data.get(&r.id).and_then(|c| newest(c, |b| Some(shape_vertices(b, &r.bbox)).filter(|v| !v.is_empty()))),
+        _ => None,
+    }
+    .map(|(v, _)| v)
+    .unwrap_or_default();
+    let (lo, hi) = vertices.iter().fold((f64::MAX, f64::MIN), |(lo, hi), v| (lo.min(v[2]), hi.max(v[2])));
+    if vertices.len() > MAX_SHAPE_POINTS {
+        cx.note(what, r.id, &format!("its top has more than {MAX_SHAPE_POINTS} points of shape editing: they are not read"));
+        vertices.clear();
+    } else if mm(hi - lo) < 0.5 {
+        vertices.clear();
+    }
+    let mut counts: BTreeMap<i64, usize> = BTreeMap::new();
+    for v in &vertices {
+        *counts.entry((v[2] * 1e6).round() as i64).or_default() += 1;
+    }
+    let top = counts.iter().max_by(|a, b| a.1.cmp(b.1).then(b.0.cmp(a.0))).map_or(r.bbox[5], |(k, _)| *k as f64 / 1e6);
+    if !vertices.is_empty() {
+        cx.note(
+            what,
+            r.id,
+            &format!(
+                "its top is shaped by the {} points of Revit's shape editing; BIMCraft draws its own creases between them",
+                vertices.len()
+            ),
+        );
+        if (mm(r.bbox[2]) - (mm(lo) - typ.thickness)).abs() > 1.0 {
+            cx.note(what, r.id, "its underside is level in the file (a variable layer, which is not read): it comes in following its top");
+        }
+    }
+    if !flat && vertices.is_empty() {
         // A sloped or stepped one: it comes in level, as thick as its type, at the box's bottom, and the note says so.
         cx.note(
             what,
@@ -213,12 +310,16 @@ pub(crate) fn sketched(
             ),
         );
     }
-    let z = if at_top { r.bbox[5] } else { r.bbox[2] };
+    let z = match (at_top, vertices.is_empty()) {
+        (true, true) => r.bbox[5],
+        (true, false) => top,
+        (false, _) => r.bbox[2],
+    };
     let level = level_of(r, &f.elevations, z).ok_or("it stands on no level")?;
     let model_level = cx.levels.get(&level).copied().ok_or("it stands on no level")?;
     let offset = micron(mm(z) - mm(f.elevations.get(&level).copied().unwrap_or(0.0)));
     let type_name = type_named(cx, tid, &typ);
-    Ok(Sketched { pieces, type_name, level: model_level, offset, flat })
+    Ok(Sketched { pieces, type_name, level: model_level, offset, flat, vertices, top })
 }
 
 pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
@@ -255,7 +356,7 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
                         structural: false,
                         params: Default::default(),
                         sketch: Vec::new(),
-                        shape: Default::default(),
+                        shape: shape_of(&s.vertices, s.top, p),
                         pattern_origin: Default::default(),
                         pattern_angle: 0.0,
                     };

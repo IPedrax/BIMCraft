@@ -5,7 +5,8 @@
 
 use crate::geom::{self, P2};
 use crate::model::{Element, Id, Justify, MAX_SLOPE, Model, Run, RunType, TOL, Wall, heading};
-use crate::view3d::{P3, cross, mul, sub, unit};
+use crate::profiles::Piece;
+use crate::view3d::{P3, add, cross, mul, sub, unit};
 use crate::walls::{self, Axis, Plane};
 
 /// Sides a round run's tube is drawn with.
@@ -163,6 +164,63 @@ impl Geom {
         (ring, Plane { z: z - self.half(), g }, Plane { z: z + self.half(), g })
     }
 
+    /// A steel section's pieces (`profiles::Profile::pieces`) swept along it, its x across it (to the left of the way it
+    /// runs) and its y up, square to its line. Its ends are upright, as a prism's are, but for an end `caps` gives (its
+    /// start's and its end's [`joined_cap`], where it joins other runs): there each piece runs on as far as the cap reaches
+    /// and is cut by the planes of its segments, as [`end_cuts`] gives them, so its plates meet the other run's on the
+    /// outline the plan fills, as a rectangular run's prism does. A rectangle is a prism between two planes, which a section cuts as it cuts
+    /// any; a convex piece (a fillet's triangle, a pipe's segment) a closed mesh, which a section cuts where its edges cross
+    /// the plane. None upright.
+    pub fn swept(&self, pieces: &[Piece], caps: [Option<&[P2]>; 2]) -> Vec<Swept> {
+        if self.vertical() {
+            return Vec::new();
+        }
+        let way = self.along();
+        let n = way.perp();
+        let (a, b) = (P2(self.a[0], self.a[1]), P2(self.b[0], self.b[1]));
+        // Each cap's planes, the other end inside them.
+        let cuts: Vec<(P2, P2, P2)> =
+            [(caps[0], b), (caps[1], a)].into_iter().filter_map(|(cap, inside)| Some(cap_cuts(cap?, inside))).flatten().collect();
+        // How far past an end its cap reaches: as far as its pieces run on before the planes cut them.
+        let past = |cap: Option<&[P2]>, end: P2, out: P2| cap.unwrap_or_default().iter().map(|p| (*p - end).dot(out)).fold(0.0, f64::max);
+        let (a, b) = (a - way * past(caps[0], a, way * -1.0), b + way * past(caps[1], b, way));
+        // Up the plane at its start, a section's y is y / cos θ: as far again as the line is longer than its plan.
+        let k = self.length() / self.plan_length();
+        let g = way * ((self.b[2] - self.a[2]) / self.plan_length());
+        let z = self.a[2] - g.dot(P2(self.a[0], self.a[1]));
+        let run = [b.0 - a.0, b.1 - a.1, g.dot(b - a)];
+        pieces
+            .iter()
+            .filter_map(|piece| match piece {
+                Piece::Rect(lo, hi) => {
+                    let ring = vec![a + n * lo.0, b + n * lo.0, b + n * hi.0, a + n * hi.0];
+                    let ring = cuts.iter().fold(ring, |ring, cut| cut_ring(&ring, *cut));
+                    (ring.len() >= 3).then_some(Swept::Prism(ring, Plane { z: z + lo.1 * k, g }, Plane { z: z + hi.1 * k, g }))
+                }
+                Piece::Convex(pts) => {
+                    let start: Vec<P3> = pts.iter().map(|q| [a.0 + n.0 * q.0, a.1 + n.1 * q.0, z + g.dot(a) + q.1 * k]).collect();
+                    let end: Vec<P3> = start.iter().map(|p| add(*p, run)).collect();
+                    let at = |ring: &[P3], i: usize| ring.get(i).copied().unwrap_or_default();
+                    let mut tris = Vec::with_capacity(4 * pts.len());
+                    // Its ends first, the start turned back along it, then its sides.
+                    for i in 1..pts.len().saturating_sub(1) {
+                        tris.push([at(&start, 0), at(&start, i + 1), at(&start, i)]);
+                        tris.push([at(&end, 0), at(&end, i), at(&end, i + 1)]);
+                    }
+                    let caps = tris.len();
+                    for i in 0..pts.len() {
+                        let j = (i + 1) % pts.len();
+                        tris.push([at(&start, i), at(&start, j), at(&end, j)]);
+                        tris.push([at(&start, i), at(&end, j), at(&end, i)]);
+                    }
+                    // A piece is convex, so the planes cut it as they cut a round run's tube.
+                    let (tris, caps) = if cuts.is_empty() { (tris, caps) } else { clip_tube(tris, caps, &cuts) };
+                    (!tris.is_empty()).then_some(Swept::Mesh(tris, caps))
+                }
+            })
+            .collect()
+    }
+
     /// A round run as a tube of triangles turned out: its two caps' first, and how many they are. It is [`unit_tube`]
     /// placed by [`Geom::tube_place`], to the last bit, so the 3D view's card can draw every round run from one tube.
     pub fn tube(&self) -> (Vec<[P3; 3]>, usize) {
@@ -264,19 +322,17 @@ fn arms(m: &Model, id: Id, at_end: bool, g: &Geom, index: Option<&walls::Index>)
     let (lo, hi) = g.z_span();
     // The runs near the node: through the tile index when there is one, else every run, kept only those whose
     // bodies reach within half a width of the node.
-    let near: Vec<(Id, &Element)> = match index {
-        Some(index) => index.runs_near(node, lo, hi).into_iter().filter_map(|oid| Some((oid, m.elements.get(oid)?))).collect(),
-        None => m
-            .elements
-            .iter()
-            .filter(|(oid, oe)| **oid != id && oe.run().is_some())
-            .filter_map(|(oid, oe)| {
-                let og = m.run_geom(oe)?;
-                let (a, b) = (P2(og.a[0], og.a[1]), P2(og.b[0], og.b[1]));
-                (geom::dist_to_segment(node, a, b) <= og.width / 2.0 + TOL).then_some((*oid, oe))
-            })
-            .collect(),
+    // Without one, the model's own, kept with it: scanning every element for each end made a plan of a tower's runs
+    // O(n²), minutes on the interface's thread.
+    let kept;
+    let index = match index {
+        Some(index) => index,
+        None => {
+            kept = m.wall_index();
+            &*kept
+        }
     };
+    let near: Vec<(Id, &Element)> = index.runs_near(node, lo, hi).into_iter().filter_map(|oid| Some((oid, m.elements.get(oid)?))).collect();
     for &(other, o) in &near {
         if other == id {
             continue;
@@ -429,20 +485,30 @@ fn plain(g: &Geom, at_end: bool, cap: &[P2]) -> bool {
     cap.len() == 2 && cap[0].dist(square.cw) <= 1e-6 && cap[1].dist(square.ccw) <= 1e-6
 }
 
+/// One end's cap of run `id` where it joins something: the corners closing it, as [`cap`] gives them. None where the
+/// run doesn't lie flat, or where the cap is its plain square end.
+pub(crate) fn joined_cap(m: &Model, id: Id, at_end: bool, g: &Geom, index: Option<&walls::Index>) -> Option<Vec<P2>> {
+    if !joinable(g) {
+        return None;
+    }
+    let cap = cap(m, id, at_end, g, index);
+    (cap.len() >= 2 && !plain(g, at_end, &cap)).then_some(cap)
+}
+
 /// One end's cap of run `id` as the vertical planes a round run's body is cut by: each segment of the cap,
 /// and the run's point at the other end, which side of the plane is its inside. None where the run doesn't lie
 /// flat, or where the cap is its plain square end — the tube already ends there, and stays the one shape a view
 /// shares between round runs of a material. The same plane twice (a mitre of equal widths, whose cap is one
 /// straight line through the node) is taken once.
 pub(crate) fn end_cuts(m: &Model, id: Id, at_end: bool, g: &Geom, index: Option<&walls::Index>) -> Option<Vec<(P2, P2, P2)>> {
-    if !joinable(g) {
-        return None;
-    }
-    let cap = cap(m, id, at_end, g, index);
-    if cap.len() < 2 || plain(g, at_end, &cap) {
-        return None;
-    }
+    let cap = joined_cap(m, id, at_end, g, index)?;
     let inside = if at_end { P2(g.a[0], g.a[1]) } else { P2(g.b[0], g.b[1]) };
+    let cuts = cap_cuts(&cap, inside);
+    (!cuts.is_empty()).then_some(cuts)
+}
+
+/// The planes of `cap`'s segments, as [`end_cuts`] gives them, each with `inside`, the run's point at its other end.
+fn cap_cuts(cap: &[P2], inside: P2) -> Vec<(P2, P2, P2)> {
     let mut cuts: Vec<(P2, P2, P2)> = Vec::new();
     for seg in cap.windows(2) {
         let (p0, p1) = (seg[0], seg[1]);
@@ -459,7 +525,30 @@ pub(crate) fn end_cuts(m: &Model, id: Id, at_end: bool, g: &Geom, index: Option<
             cuts.push((p0, p1, inside));
         }
     }
-    (!cuts.is_empty()).then_some(cuts)
+    cuts
+}
+
+/// `ring`, a footprint in plan, cut by the upright plane of a cut of [`end_cuts`], (p0, p1, inside): the side `inside`
+/// lies on kept, as [`clip_tube`] keeps it of a mesh.
+fn cut_ring(ring: &[P2], (p0, p1, inside): (P2, P2, P2)) -> Vec<P2> {
+    let n = (p1 - p0).perp();
+    let n = if (inside - p0).dot(n) < 0.0 { n * -1.0 } else { n };
+    let d = |q: P2| (q - p0).dot(n);
+    let mut out = Vec::with_capacity(ring.len() + 1);
+    for (&cur, &next) in ring.iter().zip(ring.iter().cycle().skip(1)) {
+        let (dc, dn) = (d(cur), d(next));
+        if dc >= 0.0 {
+            out.push(cur);
+        }
+        if (dc > 0.0 && dn < 0.0) || (dc < 0.0 && dn > 0.0) {
+            out.push(cur + (next - cur) * (dc / (dc - dn)));
+        }
+    }
+    out.dedup_by(|x, y| x.dist(*y) < 1e-9);
+    if out.len() > 1 && out.first().zip(out.last()).is_some_and(|(f, l)| f.dist(*l) < 1e-9) {
+        out.pop();
+    }
+    out
 }
 
 /// `tris` (a round run's tube, its first `caps` its flat end faces) cut by the planes of `cuts` — (p0, p1,
@@ -594,6 +683,14 @@ pub fn unit_tube() -> (Vec<[P3; 3]>, usize) {
     (tris, 2 * SIDES)
 }
 
+/// A piece of a section swept along a run: a prism, its footprint between a bottom plane and a top one; or a closed mesh of
+/// triangles turned out, its ends' first, and how many they are.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Swept {
+    Prism(Vec<P2>, Plane, Plane),
+    Mesh(Vec<[P3; 3]>, usize),
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -620,7 +717,7 @@ mod tests {
     }
 
     fn rect(width: f64, depth: f64) -> RunType {
-        RunType { width, depth, round: false, material: String::new() }
+        RunType { width, depth, round: false, material: String::new(), profile: None }
     }
 
     fn volume(tris: &[[P3; 3]]) -> f64 {
@@ -694,7 +791,7 @@ mod tests {
     #[test]
     fn a_round_run_is_a_closed_tube_turned_out() {
         let (m, level) = model();
-        let round = RunType { width: 200.0, depth: 200.0, round: true, material: String::new() };
+        let round = RunType { width: 200.0, depth: 200.0, round: true, material: String::new(), profile: None };
         // From a point off the origin, where a cap turned the wrong way doesn't cancel in the volume.
         let from = P2(1000.0, -2000.0);
         for (by, end_offset) in

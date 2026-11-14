@@ -33,7 +33,7 @@ modules:
       - install -Dm755 bin/bimcraft /app/bin/bimcraft
       - install -Dm755 bin/bimcraft-cli /app/bin/bimcraft-cli
       - install -Dm644 share/applications/io.github.ipedrax.bimcraft.desktop /app/share/applications/io.github.ipedrax.bimcraft.desktop
-      # .bimcraft and .ifc.
+      # BIMCraft projects and families (.bimc, .bimf and the rest, and the earlier .bimcraft) and .ifc.
       - install -Dm644 share/mime/packages/io.github.ipedrax.bimcraft.xml /app/share/mime/packages/io.github.ipedrax.bimcraft.xml
       # Already has the release's version and date put in by package.sh.
       - install -Dm644 share/metainfo/io.github.ipedrax.bimcraft.metainfo.xml /app/share/metainfo/io.github.ipedrax.bimcraft.metainfo.xml

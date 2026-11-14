@@ -82,6 +82,7 @@ pub const ACTIONS: &[&str] = &[
     "Unhide Category",
     "Override Graphics by Element",
     "Purge Unused",
+    "Co-Work",
     "Link Model",
     "Duplicate View",
     "Filters",
@@ -281,6 +282,7 @@ impl BimApp {
             "Text" => self.set_tool(Tool::Text),
             "Spot Elevation" => self.set_tool(Tool::Spot),
             "Spot Slope" => self.set_tool(Tool::SpotSlope),
+            "Spot Coordinate" => self.set_tool(Tool::SpotCoordinate(None)),
             "Tag by Category" => self.set_tool(Tool::Tag),
             "Section" => self.set_tool(Tool::Section(None)),
             "Elevation" => self.set_tool(Tool::Elevation),
@@ -303,6 +305,9 @@ impl BimApp {
             "Project Browser" => self.toggle_browser(),
             "Select All Instances" => self.select_all_instances(),
             "Keyboard Shortcuts" => self.show_shortcuts = true,
+            "Location" => self.open_location(),
+            "Specify Coordinates at a Point" => self.specify_coordinates_pick(),
+            "Rotate Project North" => self.set_tool(Tool::RotateNorth { centre: P2(0.0, 0.0), start: None, place: false }),
             "Visibility/Graphics" => self.open_graphics(0),
             "Hide Element" => self.hide_selection(false),
             "Hide Category" => self.hide_selection(true),
@@ -322,6 +327,7 @@ impl BimApp {
             "Unhide Category" => self.unhide_selection(true),
             "Override Graphics by Element" => self.override_selection(),
             "Purge Unused" => self.open_purge(),
+            "Co-Work" => self.open_cowork(),
             "Link Model" => self.link_dialog = true,
             "Duplicate View" => self.duplicate_plan("duplicate"),
             "Filters" => self.filters_dialog = Some(graphics::FiltersDialog::default()),
@@ -389,6 +395,10 @@ impl BimApp {
 
         let r = Modal::new(UiId::new("shortcuts"), t("Keyboard Shortcuts")).width(580.0).show(ctx, |ui| {
             crate::popup::body(ui, |ui| {
+                ui.add_space(4.0);
+                ui.label(
+                    RichText::new(t("Shortcuts are typed with Ctrl held (Cmd on a Mac): Ctrl, then W and A for Wall.")).color(pal().muted),
+                );
                 ui.add_space(4.0);
 
                 // Controls toolbar: Search, Load File, Add Shortcut, Restore Defaults

@@ -1,12 +1,22 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- shared-mime-info has no type for either, so BIMCraft declares both. application/x-bimcraft is
-     the content type the Windows installer registers for .bimcraft. -->
+<!-- shared-mime-info has no type for any of these, so BIMCraft declares them. application/x-bimcraft is
+     the content type the Windows installer registers for a project: .bimc, and .bimt and .bimb, which hold
+     the same JSON, and .bimcraft, which versions before the short names wrote. A family is a .bimf. -->
 <mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
   <mime-type type="application/x-bimcraft">
     <comment>BIMCraft project</comment>
     <sub-class-of type="application/json"/>
     <generic-icon name="io.github.ipedrax.bimcraft"/>
+    <glob pattern="*.bimc"/>
+    <glob pattern="*.bimt"/>
+    <glob pattern="*.bimb"/>
     <glob pattern="*.bimcraft"/>
+  </mime-type>
+  <mime-type type="application/x-bimcraft-family">
+    <comment>BIMCraft family</comment>
+    <sub-class-of type="application/json"/>
+    <generic-icon name="io.github.ipedrax.bimcraft"/>
+    <glob pattern="*.bimf"/>
   </mime-type>
   <mime-type type="application/x-ifc">
     <comment>IFC building model</comment>

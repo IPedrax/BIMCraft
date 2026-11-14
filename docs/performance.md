@@ -9,9 +9,9 @@ Generate another size with `highrise {"storeys": 40}` (1–80).
 
 ```sh
 cargo run --release -p bimcraft -- --highrise
-cargo run --release -p bimcraft-cli -- run --highrise --save dist/highrise.bimcraft
+cargo run --release -p bimcraft-cli -- run --highrise --save dist/highrise.bimc
 # Equivalently, use the small version-controlled script:
-cargo run --release -p bimcraft-cli -- run --script samples/highrise.txt --save dist/highrise.bimcraft
+cargo run --release -p bimcraft-cli -- run --script samples/highrise.txt --save dist/highrise.bimc
 ```
 
 ## Repeatable measurements
@@ -393,9 +393,19 @@ The measured next priorities are:
    speed work; never count skipped source geometry as a performance improvement.
 6. Introduce dependency-aware validation while retaining a full-check oracle and command rollback.
    Keep command mutation ordered; parallelize independent read-only work rather than racing edits.
+7. Opening, saving and checking a project of a million elements. Measured in the window itself (`bimcraft --bench`,
+   [the desktop](areas/desktop.md#benchmarking-the-window)) on the annotated 100-storey tower, 2026-11-14: the open no longer
+   holds the window (it reads on a thread, with a progress box and Cancel), a frame with nothing to do went from 0.9 s to
+   17 ms, a zoom's frames from up to 0.9 s to 38 ms, the 3D view streams within a budget rather than run out of memory, and
+   the file is 316 MB of compact JSON, or 44 MB with Compressed save (455 MB of pretty JSON before). What is still on one core, and the rest, in
+   [large projects: opening, saving and checking](large-project-files-todo.md).
+
+Numbers from a headless test measure the core's work alone. Measure what the user waits for in the window too: on the tower
+the two differed by more than a factor of ten, because the window did work every frame (whole-model scans for dimensions,
+the Properties palette and the browser, a run's joins scanning every element) that no headless path did.
 
 No matched Revit benchmark was run. Outperforming it requires the same represented model,
 operation, view quality, resolution, hardware, warm/cold state and correctness checks in both apps.
 
 The CPU worker implementation uses [Rayon's indexed parallel iterators and disjoint slice chunks](https://docs.rs/rayon/latest/rayon/).
-Rayon and rayon-core are MIT OR Apache-2.0 and require Rust 1.80, below the core's Rust 1.90 minimum.
+Rayon and rayon-core are MIT OR Apache-2.0 and require Rust 1.80, below the core's Rust 1.95 minimum.

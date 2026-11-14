@@ -330,14 +330,68 @@ fn a_file_is_hashed_as_it_is_checked_before_it_runs() {
     assert!(sha256_file(Path::new("/no/such/file")).is_err());
 }
 
+/// The manifests (path from the root, text) that break the network rule: `ureq` and the other HTTP clients belong to the two crates
+/// that reach the network by HTTPS, the updater and the assistant, and those two and Co-Work's transport are dependencies of the
+/// desktop (`apps/bimcraft`, which attaches them, and `crates/ui-egui`, which draws them) and of nothing else.
+fn network_offenders(manifests: &[(String, String)]) -> Vec<String> {
+    let owners = ["crates/update/", "crates/assistant/"];
+    let desktop = ["apps/bimcraft/", "crates/ui-egui/"];
+    let depends = |text: &str, dep: &str| text.lines().any(|l| l.trim_start().starts_with(dep));
+    let mut bad = Vec::new();
+    for (path, text) in manifests {
+        for dep in ["ureq", "rustls", "reqwest", "hyper"] {
+            if depends(text, dep) && !owners.iter().any(|o| path.starts_with(o)) {
+                bad.push(format!("{path} depends on {dep}: only the updater and the assistant reach the network"));
+            }
+        }
+        for dep in ["bimcraft-update", "bimcraft-assistant", "bimcraft-cowork"] {
+            if depends(text, dep) && !desktop.iter().any(|d| path.starts_with(d)) {
+                bad.push(format!("{path} depends on {dep}: the core, the CLI and the MCP server never reach the network"));
+            }
+        }
+    }
+    bad
+}
+
 #[test]
 fn only_the_desktop_app_can_reach_the_network() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
-    for manifest in ["crates/core/Cargo.toml", "apps/bimcraft-cli/Cargo.toml"] {
-        let text = std::fs::read_to_string(root.join(manifest)).unwrap();
-        for dep in ["bimcraft-update", "ureq", "rustls", "reqwest", "hyper"] {
-            assert!(!text.contains(dep), "{manifest} depends on {dep}: the core, the CLI and the MCP server never phone home");
+    let mut manifests = Vec::new();
+    for folder in ["crates", "apps"] {
+        for entry in std::fs::read_dir(root.join(folder)).unwrap() {
+            let dir = entry.unwrap().path();
+            if let Ok(text) = std::fs::read_to_string(dir.join("Cargo.toml")) {
+                manifests.push((format!("{folder}/{}/Cargo.toml", dir.file_name().unwrap().to_string_lossy()), text));
+            }
         }
+    }
+    assert!(manifests.len() > 8, "the manifests were found: {}", manifests.len());
+    assert_eq!(network_offenders(&manifests), Vec::<String>::new());
+}
+
+#[test]
+fn the_network_rule_catches_a_manifest_that_breaks_it() {
+    let m = |path: &str, text: &str| (path.to_string(), text.to_string());
+    let fine = [
+        m("crates/update/Cargo.toml", "[dependencies]\nureq = { workspace = true }\n"),
+        m("crates/assistant/Cargo.toml", "[dependencies]\nureq = { workspace = true }\nbimcraft-core = { workspace = true }\n"),
+        m("crates/ui-egui/Cargo.toml", "bimcraft-update = { workspace = true }\nbimcraft-assistant = { workspace = true }\n"),
+        m("apps/bimcraft/Cargo.toml", "bimcraft-update = { workspace = true }\nbimcraft-assistant = { workspace = true }\n"),
+        m("crates/ui-egui/Cargo.toml", "bimcraft-cowork = { workspace = true }\n"),
+        m("crates/core/Cargo.toml", "name = \"bimcraft-core\"\n"),
+    ];
+    assert!(network_offenders(&fine).is_empty());
+    for (path, text) in [
+        ("crates/core/Cargo.toml", "bimcraft-assistant = { workspace = true }\n"),
+        ("apps/bimcraft-cli/Cargo.toml", "bimcraft-assistant = { workspace = true }\n"),
+        ("apps/bimcraft-cli/Cargo.toml", "bimcraft-update = { workspace = true }\n"),
+        ("crates/core/Cargo.toml", "ureq = \"3\"\n"),
+        ("crates/plugin/Cargo.toml", "reqwest = \"0.12\"\n"),
+        ("apps/bimcraft-cli/Cargo.toml", "  hyper = \"1\"\n"),
+        ("apps/bimcraft-cli/Cargo.toml", "bimcraft-cowork = { workspace = true }\n"),
+        ("crates/core/Cargo.toml", "bimcraft-cowork = { path = \"../cowork\" }\n"),
+    ] {
+        assert_eq!(network_offenders(&[m(path, text)]).len(), 1, "{path}: {text}");
     }
 }
 

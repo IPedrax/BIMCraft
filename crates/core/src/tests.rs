@@ -146,7 +146,7 @@ fn doors_and_windows_find_the_wall_under_a_point() {
 fn a_door_or_window_is_sketched_as_the_command_would_make_it() {
     let mut s = Session::new();
     house(&mut s);
-    let view = crate::render::View { scale: 0.1, cx: 4000.0, cy: 3000.0, width: 1000, height: 800 };
+    let view = crate::render::View { angle: 0.0, scale: 0.1, cx: 4000.0, cy: 3000.0, width: 1000, height: 800 };
     for (is_door, at) in [(true, [2000, 30]), (false, [5000, 0])] {
         let p = json!({"at": at, "level": 100000});
         let sketched = crate::opening_of(&s.model, &p, is_door).unwrap();
@@ -166,7 +166,7 @@ fn a_sketch_draws_its_pens_as_wide_as_the_plan_it_is_in_at_any_zoom() {
     house(&mut s);
     let sketched = crate::opening_of(&s.model, &json!({"at": [2000, 30], "level": 100000}), true).unwrap();
     let widest = |zoom: f64| {
-        let view = crate::render::View { scale: zoom, cx: 4000.0, cy: 3000.0, width: 1000, height: 800 };
+        let view = crate::render::View { angle: 0.0, scale: zoom, cx: 4000.0, cy: 3000.0, width: 1000, height: 800 };
         let d = crate::render::sketch(&s.model, view, 999, &sketched);
         d.prims.iter().filter_map(|p| if let crate::render::Prim::Line { width, .. } = p { Some(*width) } else { None }).fold(0.0, f32::max)
     };
@@ -202,6 +202,29 @@ fn a_point_knows_how_far_it_stands_from_the_nearest_wall_centre_line_or_grid_eac
         [c[0], c[1], c[2], c[3]].map(|c| c.map(|c| c.toward)),
         [Some(P2(1.0, 0.0)), Some(P2(0.0, 1.0)), Some(P2(-1.0, 0.0)), Some(P2(0.0, -1.0))]
     );
+}
+
+#[test]
+fn a_straight_wall_knows_how_far_the_nearest_parallel_wall_or_grid_stands_on_each_side() {
+    let mut s = Session::new();
+    // Walls 100002 (south, running east), 100003 (east), 100004 (north) and 100005 (west).
+    house(&mut s);
+    let reach = |s: &Session, id: u64| {
+        s.model.wall_clearances(id).map(|c| c.map(|c| (c.distance, s.model.elements.id(c.to.id).unwrap(), c.toward)))
+    };
+    // Its left, then its right: the north wall 6000 to the left of the south one, nothing to its right.
+    assert_eq!(reach(&s, 100002), [Some((6000.0, 100004, P2(0.0, 1.0))), None]);
+    // A wall between them is each one's nearest; the crossing east and west walls are no parallel ones.
+    let mid = run(&mut s, "wall", json!({"points": [[0, 2500], [8000, 2500]], "type": "Interior - 100mm"}))["ids"][0].as_u64().unwrap();
+    assert_eq!(reach(&s, 100002)[0], Some((2500.0, mid, P2(0.0, 1.0))));
+    assert_eq!(reach(&s, mid), [Some((3500.0, 100004, P2(0.0, 1.0))), Some((2500.0, 100002, P2(0.0, -1.0)))]);
+    // A grid nearer than the wall takes its place; one beside it, past its ends, is passed over.
+    let g = run(&mut s, "grid", json!({"start": [-500, 1000], "end": [8500, 1000]}))["id"].as_u64().unwrap();
+    run(&mut s, "grid", json!({"start": [9000, 2000], "end": [12000, 2000]}));
+    assert_eq!(reach(&s, mid)[1], Some((1500.0, g, P2(0.0, -1.0))));
+    // A curved wall has none.
+    let arc = run(&mut s, "wall", json!({"points": [[2000, 4000], [6000, 4000]], "arc": 90}))["ids"][0].as_u64().unwrap();
+    assert_eq!(reach(&s, arc), [None, None]);
 }
 
 #[test]
@@ -505,6 +528,50 @@ fn modify_changes_fields_and_refuses_typos() {
     assert_eq!(w["elements"][0]["height"], 2500.0);
 }
 
+#[test]
+fn elements_finds_what_holds_a_fields_value() {
+    let mut s = Session::new();
+    let walls = house(&mut s);
+    run(&mut s, "type", json!({"category": "wall", "name": "Thick", "thickness": 300}));
+    run(&mut s, "modify", json!({"ids": [walls[1], walls[3]], "type": "Thick"}));
+    run(&mut s, "parameter", json!({"name": "Fire Rating", "categories": ["wall"], "kind": "text"}));
+    run(&mut s, "modify", json!({"ids": [walls[0]], "params": {"Fire Rating": "2 h"}}));
+    let found = |s: &mut Session, p: Value| -> Vec<u64> {
+        run(s, "elements", p)["elements"].as_array().unwrap().iter().map(|e| e["id"].as_u64().unwrap()).collect()
+    };
+    // A type's value, in any case, with a category or without one.
+    assert_eq!(found(&mut s, json!({"category": "wall", "field": "Type", "value": "Thick"})), [walls[1], walls[3]]);
+    assert_eq!(found(&mut s, json!({"category": "wall", "field": "Type", "value": "thick"})), [walls[1], walls[3]]);
+    assert_eq!(found(&mut s, json!({"field": "Type", "value": "Thick"})), [walls[1], walls[3]]);
+    // A sheet's number: a category no schedule is of, still with a field.
+    let sheet = run(&mut s, "sheet", json!({}))["id"].as_u64().unwrap();
+    assert!(found(&mut s, json!({"field": "Number", "value": "A101"})).contains(&sheet));
+    // A project parameter's value; the field alone, those holding one; `""`, those holding none.
+    assert_eq!(found(&mut s, json!({"category": "wall", "field": "Fire Rating", "value": "2 h"})), [walls[0]]);
+    assert_eq!(found(&mut s, json!({"category": "wall", "field": "Fire Rating"})), [walls[0]]);
+    assert_eq!(found(&mut s, json!({"category": "wall", "field": "Fire Rating", "value": ""})), [walls[1], walls[2], walls[3]]);
+    // A length as a number, or a number written as text.
+    assert_eq!(found(&mut s, json!({"category": "wall", "field": "Thickness", "value": 300})), [walls[1], walls[3]]);
+    assert_eq!(found(&mut s, json!({"category": "wall", "field": "Thickness", "value": "300.0"})), [walls[1], walls[3]]);
+    // A number is in millimetres, whatever the project shows.
+    run(&mut s, "units", json!({"length": "ft"}));
+    assert_eq!(found(&mut s, json!({"category": "wall", "field": "Thickness", "value": 300})), [walls[1], walls[3]]);
+    // Yes or no; unset, a yes or no parameter holds no.
+    run(&mut s, "parameter", json!({"name": "Load Bearing", "categories": ["wall"], "kind": "yesno"}));
+    run(&mut s, "modify", json!({"ids": [walls[2]], "params": {"Load Bearing": true}}));
+    assert_eq!(found(&mut s, json!({"category": "wall", "field": "Load Bearing", "value": true})), [walls[2]]);
+    assert_eq!(found(&mut s, json!({"category": "wall", "field": "Load Bearing", "value": false})), [walls[0], walls[1], walls[3]]);
+    // A value needs a field, a field is one the category has, and a value is a value.
+    let e = s.execute("elements", &json!({"value": "Thick"})).unwrap_err();
+    assert!(e.contains("field"), "{e}");
+    let e = s.execute("elements", &json!({"category": "door", "field": "Fire Rating"})).unwrap_err();
+    assert!(e.contains("Fire Rating"), "{e}");
+    let e = s.execute("elements", &json!({"field": "Nonsense"})).unwrap_err();
+    assert!(e.contains("Nonsense"), "{e}");
+    let e = s.execute("elements", &json!({"field": "Type", "value": true})).unwrap_err();
+    assert!(e.contains("value"), "{e}");
+}
+
 /// A wall's ends, as `elements` shows them.
 fn ends(s: &mut Session, id: u64) -> (Value, Value) {
     let w = run(s, "elements", json!({"category": "wall"}));
@@ -728,6 +795,89 @@ fn move_and_copy_refuse_levels_and_what_breaks_the_model() {
 }
 
 #[test]
+fn a_pinned_element_keeps_its_place_and_its_pin_until_unpinned() {
+    let mut s = Session::new();
+    let ids = house(&mut s);
+    let wall = ids[0];
+    let before = ends(&mut s, wall);
+    // Pin it: the reply names it and `elements` says so, in one undo step.
+    assert_eq!(run(&mut s, "PN", json!({"ids": [wall]}))["pinned"], json!([wall]));
+    assert_eq!(element(&mut s, wall)["pinned"], json!(true));
+    assert_eq!(s.history().last(), Some(&"Pin"));
+    let steps = s.history().len();
+    run(&mut s, "pin", json!({"ids": [wall]}));
+    assert_eq!(s.history().len(), steps, "pinning a pinned element changes nothing");
+    // A pinned door stops its wall moving, and the wall deleting.
+    let door = run(&mut s, "door", json!({"at": [2000, 0]}))["id"].as_u64().unwrap();
+    run(&mut s, "pin", json!({"ids": [door]}));
+    let e = s.execute("move", &json!({"ids": [wall], "by": [0, 100]})).unwrap_err();
+    assert!(e.contains("door") && e.contains("pinned"), "a pinned door is carried by its wall: {e}");
+    let e = s.execute("delete", &json!({"ids": [wall]})).unwrap_err();
+    assert!(e.contains("door") && e.contains("unpin"), "and goes with it: {e}");
+    // A temporary dimension (and a level or shape grip) goes through `modify`: it refuses a placing field too.
+    let e = s.execute("modify", &json!({"id": door, "offset": 2500})).unwrap_err();
+    assert!(e.contains("pinned") && e.contains("offset"), "{e}");
+    run(&mut s, "unpin", json!({"ids": [door]}));
+    // Moving, turning, mirroring and deleting it are refused, and the model stays as it was.
+    for (cmd, p) in [
+        ("move", json!({"ids": [wall], "by": [0, 100]})),
+        ("rotate", json!({"ids": [wall], "about": [0, 0], "angle": 5})),
+        ("mirror", json!({"ids": [wall], "axis": [[0, 0], [0, 1000]]})),
+        ("delete", json!({"ids": [wall]})),
+    ] {
+        let e = s.execute(cmd, &p).unwrap_err();
+        assert!(e.contains("pinned") && e.contains("unpin"), "{cmd}: {e}");
+    }
+    assert_eq!(ends(&mut s, wall), before);
+    // A copy is a new element and comes unpinned.
+    let made = run(&mut s, "copy", json!({"ids": [wall], "by": [0, -2000]}))["ids"].clone();
+    let twin = made[0].as_u64().unwrap();
+    assert_ne!(twin, wall);
+    assert_eq!(element(&mut s, twin).get("pinned"), None);
+    assert_eq!(element(&mut s, wall)["pinned"], json!(true), "the original keeps its pin");
+    // The pin is in the file: a project opened again still holds it.
+    let guid = s.model.guid(wall);
+    let saved = serde_json::to_value(&*s.model).unwrap();
+    let reopened: Model = serde_json::from_value(saved).unwrap();
+    assert!(reopened.is_pinned(guid), "the pin survives the file");
+    // Unpin it: it moves again.
+    assert_eq!(run(&mut s, "UP", json!({"ids": [wall]}))["unpinned"], json!([wall]));
+    assert_eq!(element(&mut s, wall).get("pinned"), None);
+    run(&mut s, "move", json!({"ids": [wall], "by": [0, 100]}));
+    assert_ne!(ends(&mut s, wall), before);
+    // Undo the move, then the unpin: the pin is back.
+    run(&mut s, "undo", json!({}));
+    run(&mut s, "undo", json!({}));
+    assert_eq!(element(&mut s, wall)["pinned"], json!(true));
+}
+
+#[test]
+fn a_pinned_wall_keeps_its_neighbours_from_dragging_it_and_a_missing_pin_is_refused() {
+    let mut s = Session::new();
+    let ids = house(&mut s);
+    let before = ends(&mut s, ids[1]);
+    run(&mut s, "pin", json!({"ids": [ids[1]]}));
+    let e = s.execute("move", &json!({"ids": [ids[0]], "by": [0, 100]})).unwrap_err();
+    assert!(e.contains("pinned") && e.contains("wall"), "moving the south wall would drag its east neighbour: {e}");
+    assert_eq!(ends(&mut s, ids[1]), before);
+    // A pin that names an element the project no longer has is refused, not kept in the file.
+    let mut m = Model::new("P");
+    m.pinned.insert(Default::default());
+    assert!(m.check().unwrap_err().contains("pinned"));
+}
+
+#[test]
+fn a_pinned_element_a_file_leaves_out_does_not_stop_the_open() {
+    let mut s = Session::new();
+    let ids = house(&mut s);
+    run(&mut s, "pin", json!({"ids": [ids[0]]}));
+    let mut v = serde_json::to_value(&*s.model).unwrap();
+    v["elements"].as_object_mut().unwrap().remove(&ids[0].to_string());
+    let (m, _) = Model::read(&v.to_string()).unwrap();
+    assert!(m.pinned.is_empty(), "the pin of an element the file leaves out is dropped, and the rest opens");
+}
+
+#[test]
 fn deleting_a_wall_takes_its_openings_and_used_levels_stay() {
     let mut s = Session::new();
     let ids = house(&mut s);
@@ -840,6 +990,30 @@ fn a_failed_transaction_puts_back_the_history_the_phase_and_the_path_too() {
     s.script_atomic("new\nlevel {\"elevation\": 3000}\n").unwrap();
     assert_eq!(s.history(), vec!["Level"]);
     assert_eq!(count(&mut s, "level"), 3);
+}
+
+#[test]
+fn the_steps_of_one_label_on_top_merge_into_one_named_step() {
+    let mut s = Session::new();
+    run(&mut s, "level", json!({"elevation": 6000}));
+    // Two transactions of the same label, each a step of its own (what an assistant's batches of tool calls are).
+    for at in [[0, 0], [5000, 0]] {
+        s.transaction("Working", |s| s.execute("wall", &json!({"points": [at, [at[0] + 3000, 3000]]}))).unwrap();
+    }
+    assert_eq!(s.history(), vec!["Level", "Working", "Working"]);
+    s.merge_steps("Working", "Assistant: two walls");
+    assert_eq!(s.history(), vec!["Level", "Assistant: two walls"]);
+    assert_eq!(s.steps(false).first().map(|st| st.made.clone()), Some(vec![("wall", 2)]));
+    // One undo takes back both.
+    run(&mut s, "undo", json!({}));
+    assert_eq!(count(&mut s, "wall"), 0);
+    run(&mut s, "redo", json!({}));
+    assert_eq!(count(&mut s, "wall"), 2);
+    // A run that stops at a step of another label merges only what is on top; none, or one, is only renamed.
+    s.merge_steps("Nothing here", "x");
+    assert_eq!(s.history(), vec!["Level", "Assistant: two walls"]);
+    s.merge_steps("Assistant: two walls", "Renamed");
+    assert_eq!(s.history(), vec!["Level", "Renamed"]);
 }
 
 #[test]
@@ -1628,7 +1802,7 @@ fn patching_one_form_keeps_every_other_guid() {
     // A field given as null is taken away; the ones left alone are as they were.
     run(&mut s, "family", json!({"name": "Shelf", "form": {"id": before[2].0, "material": null}}));
     assert_eq!(s.model.families["Shelf"].forms[2].material, "");
-    assert_eq!(s.model.families["Shelf"].forms[2].circle.as_ref().map(|c| c.radius.clone()), Some(crate::family::Expr::Number(25.0)));
+    assert_eq!(s.model.families["Shelf"].forms[2].circle().as_ref().map(|c| c.radius.clone()), Some(crate::family::Expr::Number(25.0)));
     // One taken away: the others keep their ids and GUIDs, and close up over its place.
     run(&mut s, "family", json!({"name": "Shelf", "delete_form": [before[0].0]}));
     let left: Vec<(u64, String)> = parts(&mut s).into_iter().map(|(id, guid, _)| (id, guid)).collect();
@@ -1683,7 +1857,7 @@ fn warnings_are_collected_not_stopped_at_the_first() {
             ]}),
         )
         .unwrap_err();
-    assert!(e.contains("reads `Nowhere`") && e.contains("`Height / -`"), "{e}");
+    assert!(e.contains("not a valid parameter: Nowhere") && e.contains("`Height / -`"), "{e}");
     // A profile with no area is refused as it always was, and its void is named with it.
     let e = s
         .execute(
@@ -1698,7 +1872,8 @@ fn warnings_are_collected_not_stopped_at_the_first() {
 }
 
 /// What a family is in a file: its own fields, no more and no less, and a project written here read
-/// back whole — the file format didn't grow a field this release (ТЗ-003 §6.8).
+/// back whole (ТЗ-003 §6.8). FORMAT 18 grew its `planes` (the datums, always written), a form's `host`, and its `sketch`
+/// in place of its `profile`.
 #[test]
 fn a_family_is_saved_with_the_fields_it_has_always_had() {
     let mut s = Session::new();
@@ -1709,8 +1884,8 @@ fn a_family_is_saved_with_the_fields_it_has_always_had() {
         keys.sort();
         keys
     }
-    assert_eq!(keys(&f), ["category", "forms", "parameters", "types"], "`symbols` and `operation` are only there when they are");
-    assert_eq!(keys(&f["forms"][0]), ["from", "guid", "id", "material", "plane", "profile", "to"], "every other field is unset");
+    assert_eq!(keys(&f), ["category", "forms", "parameters", "planes", "types"], "`symbols` and `operation` are only there when they are");
+    assert_eq!(keys(&f["forms"][0]), ["from", "guid", "host", "id", "material", "sketch", "to"], "every other field is unset");
     let path = temp("family-format.bimcraft");
     run(&mut s, "save", json!({"path": path}));
     let mut back = Session::new();
@@ -1817,7 +1992,7 @@ fn components_show_in_plan_from_above_in_3d_and_beyond_a_section() {
     let mut s = Session::new();
     table(&mut s);
     let id = run(&mut s, "component", json!({"family": "Table", "at": [1000, 1000]}))["id"].as_u64().unwrap();
-    let view = crate::render::View { scale: 0.5, cx: 1500.0, cy: 1300.0, width: 1000, height: 800 };
+    let view = crate::render::View { angle: 0.0, scale: 0.5, cx: 1500.0, cy: 1300.0, width: 1000, height: 800 };
     let lines = |s: &Session| -> Vec<P2> {
         let d = crate::render::draw(&s.model, 100000, view);
         d.prims
@@ -2012,6 +2187,8 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!([]),
         json!("x"),
         json!({"points": "x"}),
+        json!({"field": 5, "value": true}),
+        json!({"field": "Type", "value": ["Thick"]}),
         json!({"points": [[0, 0]]}),
         json!({"points": [[0, 0, 0], [1000, 0, 0]], "diameter": 12, "count": 1000, "step": [1e9, 1e9, 1e9]}),
         json!({"points": [[0, 0, 0], [1000, 0, 0]], "diameter": f64::MAX, "count": 1e300}),
@@ -2027,6 +2204,10 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"wall": 100002, "offset": -5e8, "sill": 1e9}),
         json!({"id": u64::MAX}),
         json!({"ids": [99999, 100000, 100001, 100002, 100002]}),
+        json!({"name": "Set", "views": [100000, 100000, "x", null], "add": 5, "remove": [[]]}),
+        json!({"name": "Set", "views": [100000, 100002], "rename": "", "print_set": "Set", "format": "pdf"}),
+        json!({"name": "Pub", "folder": 5, "folders": [{"name": "../x", "entries": [{"print_set": "Set", "format": "pdf", "name": "}"}]}]}),
+        json!({"name": "Pub", "folders": [{"name": "a", "entries": [{"print_set": "Set", "format": "pdf"}, {"print_set": "Set", "format": "pdf"}]}], "duplicate": "", "overwrite": []}),
         json!({"point": [f64::MAX, 0]}),
         json!({"point": [2000, 2000], "frozen": "x", "top_level": [], "limit_offset": 1e308, "base_offset": -1e308}),
         json!({"point": [2000, 2000], "frozen": true, "limit_offset": -2500}),
@@ -2040,8 +2221,33 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"boundary": [[0, 0], [1, 0], [0, 0]]}),
         json!({"start": [0, 0], "end": [0, 0]}),
         json!({"level": "nowhere"}),
+        json!({"name": "Level : nowhere", "offset": 1e300}),
+        json!({"name": 5, "ref_plane": [], "dissociate": "x"}),
+        json!({"ref_plane": 100002, "dissociate": true}),
+        json!({"dissociate": true, "offset": -1e300}),
+        json!({"family": "Generic", "form": 1, "host": "Reference Line 99 : Vertical"}),
         json!({"system": 5, "level": [], "tolerance": 1e300}),
         json!({"path": 5}),
+        json!({"ops": "x", "dry_run": 5}),
+        json!({"ops": [{"op": "rename", "names": ["x"], "prefix": 1e300}, {"op": "zap"}, 5, {"op": "duplicate", "name": []}]}),
+        json!({"ops": [{"op": "duplicate", "name": "Rating", "as": "\u{1}"}, {"op": "rename", "names": [5]}], "dry_run": true}),
+        json!({"path": "/nonexistent/x.csv", "map": {"a": 5}, "resolve": {"a": "zap"}, "categories": [1], "names": "x", "replace_categories": 3}),
+        json!({"path": "/nonexistent/x.bimparams", "add": [{"name": 5}], "merge": [1], "remove": {}, "names": 5, "version": []}),
+        json!({"from": [], "into": 5, "overwrite": "x"}),
+        json!({"from": "a", "to": [1], "names": "x", "prefix": 5, "find": []}),
+        json!({"name": "P", "description": 5, "group": [], "read_only": 1, "scope": "x", "dictionary": "d", "kind": "plasma"}),
+        json!({"name": "P", "scope": 5, "categories": ["room"]}),
+        json!({"name": 5, "number": [], "client": "x\n", "address": "a".repeat(5000), "params": {"Nope": 1}, "issue_date": 1e300}),
+        json!({"number": "1", "params": "x", "building": "\u{1}", "status": "a\rb", "organization": {}}),
+        json!({"client": "c", "params": {"P": [], "Phase Created": "x"}, "author": null}),
+        json!({"category": "wall", "type": "x", "values": {"P": 1e300}, "copy_to": 5}),
+        json!({"family": [], "type": {}, "values": 5}),
+        json!({"category": "wall", "type": "Generic - 200mm", "values": {"Nope": []}}),
+        json!({"families": "x", "parameters": 5}),
+        json!({"path": 5, "name": [], "remove": "x"}),
+        json!({"name": "nope", "remove": true}),
+        json!({"families": ["x"], "parameters": [{"name": 5, "kind": "plasma", "definition": "x"}]}),
+        json!({"path": "/nonexistent/x.csv", "definitions": 5, "scopes": {"a": "zap"}}),
         json!({"path": "/nonexistent/scan.las", "units": "furlong", "spacing": -1}),
         json!({"cloud": "nope", "origin": "file", "at": [1e300, 0]}),
         json!({"path": "/nonexistent/plan.dxf", "units": "furlong", "scale": -1, "position": 3}),
@@ -2084,6 +2290,7 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"sheet": "A101", "view": "nowhere", "scale": 0}),
         json!({"size": "A9", "number": ""}),
         json!({"view": 100000, "scale": 1e300, "at": [1e300, 0]}),
+        json!({"id": 100000, "follow_scale": "x"}),
         json!({"at": [0, 0], "height": -5, "angle": 1e300}),
         json!({"start": [0, 0], "end": [0, 0], "width": 0, "tread": 1e300}),
         json!({"slope": 89.99, "overhang": -1e9}),
@@ -2120,6 +2327,39 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"name": "230 V", "nominal": 230, "min": 5e-324, "max": f64::MAX}),
         json!({"name": "230 V", "rename": "400 V", "nominal": [], "volts": 1}),
         json!({"name": "230 V", "delete": true}),
+        json!({"base": [1e300, 0, 0], "survey": [0, 0], "move": 5}),
+        json!({"survey": [9.99e8, -9.99e8, 9.99e8], "move": "point"}),
+        json!({"survey": [1, 2, 3], "move": "system", "base": "x"}),
+        json!({"acquire": 100002}),
+        json!({"angle": 1e300, "about": [f64::MAX, 0]}),
+        json!({"true_north": true, "about": [9.99e8, -9.99e8]}),
+        json!({"angle": 359.99, "true_north": "x", "about": "x"}),
+        json!({"acquire": 999999999, "move": "point"}),
+        json!({"acquire": "x"}),
+        json!({"path": "no/such/folder/nowhere.bimcraft", "by": "shared", "location": "Nowhere"}),
+        json!({"path": "no/such/folder/nowhere.ifc", "by": 5, "location": 5, "at": [1e300, 0], "angle": f64::MAX}),
+        json!({"path": "", "by": "base", "location": ""}),
+        json!({"name": "Internal", "east": 1e11, "north": -1e11, "elevation": 1e11, "angle": 360, "scale": 1.1}),
+        json!({"name": "Internal", "east": 1e300, "angle": f64::MAX, "scale": 5e-324}),
+        json!({"name": "Internal", "rename": "", "activate": "x", "delete": 1}),
+        json!({"name": "Internal", "delete": true}),
+        json!({"shift": [1e11, 1e11, 1e11]}),
+        json!({"shift": [f64::MAX, 0, 0]}),
+        json!({"at": [0, 0, 0], "east": 1e11, "north": 1e11, "elevation": -1e11, "angle": 359.9}),
+        json!({"at": [9.99e8, 9.99e8, 0], "east": -1e11, "north": -1e11, "elevation": 0, "angle": 90}),
+        json!({"points": [[1e11, 1e11, 1e11], [0, 0, 0]], "from": "shared", "to": "base", "location": "Nowhere"}),
+        json!({"points": [[1e11, -1e11, 1e11]], "from": "shared", "to": "internal"}),
+        json!({"points": [[1e11, -1e11, 0]], "from": "shared", "to": "wgs84"}),
+        json!({"points": [[-180.5, 91, 0], [1e300, 0, 0]], "from": "wgs84", "to": "internal"}),
+        json!({"crs": "EPSG:31983", "search": 5, "limit": 1e300}),
+        json!({"search": "a b c d e f g h i j k l m n o p q r s t u v w x y z 0 1 2 3 4 5 6 7 8 9", "limit": 500}),
+        json!({"crs": "EPSG:4326"}),
+        json!({"name": "Internal", "latitude": -23.55, "longitude": -46.633}),
+        json!({"name": "Internal", "latitude": 1e300, "longitude": f64::MAX}),
+        json!({"at": [1e300, 0], "origin": "survey"}),
+        json!({"at": [0, 0], "view": "Section 1", "origin": 5}),
+        json!({"elevation": 1000, "elevation_base": "survey"}),
+        json!({"elevation": 1000, "elevation_base": []}),
         json!({"name": "S", "phases": 300, "wires": -1, "l_l": [], "l_n": 5, "ground": {}}),
         json!({"name": "S", "phases": 255, "wires": 255, "l_l": "400 V"}),
         json!({"name": "230/400 V", "phases": 3, "wires": 4, "l_l": "nope", "ground": "PE"}),
@@ -2129,6 +2369,11 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"name": "W", "material": "copper", "temperature": 70, "insulation": "x", "sizes": [{"section": 1e-300, "ampacity": 5e-324, "label": 5}]}),
         json!({"name": "Cu PVC 70 °C", "sizes": [{"section": 1, "ampacity": 1}], "rename": "Cu THW 75 °C"}),
         json!({"name": "Cu PVC 70 °C", "delete": true}),
+        json!({"id": 100002, "distribution": "230/400 V", "mains": 1e300, "slots": u64::MAX, "supply_from": 100002}),
+        json!({"id": 100002, "distribution": ["x"], "mains": "", "slots": -1, "supply_from": {"a": 1}}),
+        json!({"id": 100002, "supply_from": u64::MAX, "mains": f64::MAX}),
+        json!({"id": u64::MAX, "distribution": "", "mains": 0, "slots": 0}),
+        json!({"id": 100002, "distribution": "nope", "volts": 230}),
         json!({"id": 100007, "segment": 1e300, "prefix": "x", "below": 5}),
         json!({"id": 100007, "segment": -1, "replace": "a\nb", "nope": 1}),
         json!({"id": 100007, "equal": "x", "locked": [1e300, -1, "a"]}),
@@ -2214,9 +2459,73 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"name": "F", "types": {"A": {}}, "forms": [{"profile": [[1, 0], [2, 0], [2, 1]], "axis": [[0, 0], [0, 1]], "to": f64::MAX, "void": "x"}]}),
         json!({"name": "F", "types": {"A": {}}, "forms": [{"profile": [[0, 0], [1e9, 0], [1e9, 1e9]], "to": 1e9}, {"circle": {"centre": [0, 0], "radius": 1e9}, "from": -1e9, "to": 1e9, "void": true}]}),
         json!({"name": "F", "types": {"A": {}}, "forms": [{"circle": {"centre": [0, 0], "radius": 5}, "to": 1}, {"plane": "yz", "circle": {"centre": [0, 0], "radius": 1e-9}, "to": 1, "void": true}]}),
+        // F8: Visibility Settings, hostile: wrong types, unknown keys, a symbol given view flags, everything off, a patch of nulls.
+        json!({"name": "F", "types": {"A": {}}, "forms": [{"circle": {"centre": [0, 0], "radius": 5}, "to": 1, "visibility": {"plan": "x", "coarse": 5}}]}),
+        json!({"name": "F", "types": {"A": {}}, "forms": [{"circle": {"centre": [0, 0], "radius": 5}, "to": 1, "visibility": {"plna": false}}]}),
+        json!({"name": "F", "types": {"A": {}}, "forms": [{"circle": {"centre": [0, 0], "radius": 5}, "to": 1, "visibility": [true, false]}]}),
+        json!({"name": "F", "types": {"A": {}}, "forms": [{"circle": {"centre": [0, 0], "radius": 5}, "to": 1, "visibility": {"plan": false, "front_back": false, "left_right": false, "coarse": false, "medium": false, "fine": false, "only_when_cut": true}}, {"circle": {"centre": [0, 0], "radius": 1}, "from": -1, "to": 2, "void": true, "visibility": {"fine": false}}]}),
+        json!({"name": "F", "types": {"A": {}}, "symbols": [{"line": [[0, 0], [1e300, 0]], "visibility": {"plan": false, "only_when_cut": true}}, {"dot": {"centre": [0, 0], "radius": 1}, "visibility": "coarse"}]}),
+        json!({"name": "F", "types": {"A": {}}, "symbols": [{"arc": {"centre": [0, 0], "radius": 1e300, "from": 0, "to": 90}, "visibility": {"coarse": true, "medium": false, "fine": false}}]}),
+        json!({"name": "Generic", "form": {"id": 1, "visibility": {"plan": null, "fine": [], "x": 1}}}),
+        json!({"name": "Generic", "symbol": {"id": 1, "visibility": {"coarse": "yes"}}, "nested_instance": {"family": "Nope", "type": "A", "visibility": {"plan": 1e300}}}),
+        json!({"view": "{3D}", "detail": "ultra"}),
+        json!({"view": "{3D}", "detail": ["coarse"]}),
+        json!({"view": 999999, "detail": "coarse"}),
         json!({"name": "F", "types": {}, "parameters": [{"name": " ", "kind": "material", "value": 5}]}),
+        json!({"name": "F", "types": {"A": {}}, "ref_planes": [{"start": [0, 0, 0], "end": [1e300, 0, 0], "up": [0, 0, f64::MAX]}, {"start": [0, 0, 0], "end": [0, 0, 0], "up": [0, 0, 0], "reference": "left", "defines_origin": true, "level": true}]}),
+        json!({"name": "F", "types": {"A": {}}, "ref_planes": [{"guid": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a1", "start": [5, 0, 0], "end": [1, 0, 0], "up": [0, 1, 0]}], "ref_plane": {"guid": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a3", "name": "x"}}),
+        json!({"name": "F", "types": {"A": {}}, "ref_planes": "x", "ref_lines": [{"start": [0, 0, 0], "end": [1, 0, 0], "host": {"plane": 5, "line": 5}}], "delete_ref_plane": ["9e3c0a10-1f0b-4d8c-8a5e-0000000000a2", 5]}),
+        json!({"name": "F", "types": {"A": {}}, "ref_lines": [{"guid": "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f809", "start": [0, 0, 0], "end": [1, 0, 0], "host": {"line": "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f809", "face": "end"}}], "forms": [{"host": {"line": "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f809", "face": "up"}, "profile": [[0, 0], [9, 0], [9, 9]], "to": 1}]}),
+        json!({"name": "F", "types": {"A": {}}, "ref_lines": [{"start": [0, 0, 0], "end": [1e9, 1e9, 0]}, {"start": [0, 0, 0], "end": [0, 0, 1e9], "host": {"line": 5, "face": "start"}}], "ref_line": {"id": 5, "start": "x"}, "delete_ref_line": "x"}),
+        json!({"name": "F", "types": {"A": {}}, "ref_planes": [{"guid": "1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8", "start": [0, 0, 1e9], "end": [1e-9, 0, 1e9], "up": [0, 1e-300, 0]}], "forms": [{"host": {"plane": "1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8"}, "plane": "xz", "profile": [[0, 0], [1e9, 0], [0, 1e9]], "from": -1e9, "to": 1e9}]}),
+        json!({"name": "F", "types": {"A": {}}, "ref_planes": [{"guid": "1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8", "start": [0, 0, 0], "end": [1, 1, 1], "up": [-1, 1, 0], "defines_origin": true}], "forms": [{"host": {"plane": "1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8"}, "profile": [[0, 0], [9e8, 0], [0, 9e8]], "axis": [[0, 0], [0, 1]], "to": 360}]}),
+        json!({"name": "F", "types": {"A": {}}, "options": {"room_calculation_point": [f64::MAX, "1e300 * 1e300", "Nope"], "omniclass": {"number": "1".repeat(10_000), "title": "\u{0}"}, "cut_in_views": 5}}),
+        json!({"name": "F", "types": {"A": {}}, "options": {"work_plane_based": "x", "always_vertical": [], "shared": {}, "cut_with_voids_when_loaded": null, "room_calculation_point": [[], {}, null]}}),
+        json!({"name": "F", "types": {"A": {}}, "options": {"omniclass": {"number": "23..", "title": "x".repeat(100_000)}, "nope": true}}),
+        // F7a: dimensions, labels, locks and EQ, solved for every type.
+        json!({"name": "F", "parameters": [{"name": "W", "value": 1e300}], "types": {"A": {}, "B": {"W": -5}}, "ref_planes": [{"guid": "1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8", "start": [5, 0, 0], "end": [5, 1, 0], "up": [0, 0, 1]}], "dimensions": [{"refs": [{"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a3"}, {"plane": "1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8"}], "at": [0, 0, 0], "label": "W", "locked": [{"segment": 0, "length": f64::MAX}], "equal": true}]}),
+        json!({"name": "F", "types": {"A": {}}, "dimensions": [{"refs": [{"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a3"}, {"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a3"}], "at": [1e300, 0, 0], "alignment": true, "view": "front"}], "dimension": {"refs": [{"form": 5, "end": "end"}, {"plane": 5}], "at": [0, 0, 0]}, "delete_dimension": [5, "x"], "invalid_dimensions": "delete"}),
+        json!({"name": "F", "types": {"A": {}}, "forms": [{"guid": "1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f9", "mesh": [[[0, 0, 0], [1, 0, 0], [0, 1, 0]]]}], "dimensions": [{"refs": [{"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a1"}, {"form": "1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f9", "end": "start"}], "at": [0, 0, 0], "locked": [{"segment": 0, "length": 0}], "alignment": true, "view": "front"}], "solve": "A"}),
+        // F7c: angular dimensions, reference lines turned and moved, their ends, arcs' radii and centres, forms on a line's face;
+        // angles past 180, NaN and huge, a rig that can't close (non-convergent), a fan of 64, and lines drawn on lines.
+        json!({"name": "F", "parameters": [{"name": "A", "kind": "angle", "value": 1e300}, {"name": "L", "kind": "length", "value": 10}], "types": {"A": {}, "B": {"A": 179.9999999}, "C": {"A": -1e-300}, "D": {"A": 90, "L": 1e300}}, "ref_lines": [{"guid": "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f809", "start": [0, 0, 0], "end": [1000, 1e-9, 0]}, {"guid": "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f80a", "host": {"line": "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f809", "face": "vertical"}, "start": [10, 0, 0], "end": [10, 0, 500]}], "forms": [{"guid": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f800", "host": {"line": "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f809", "face": "vertical"}, "sketch": [{"guid": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f801", "start": [0, 0], "end": [100, 0], "turn": 359.9999}, {"guid": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f802", "start": [100, 0], "end": [0, 0]}], "to": "L"}], "dimensions": [{"kind": "angular", "refs": [{"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a2"}, {"line": "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f809", "face": "vertical"}], "at": [500, 100, 0], "label": "A", "locked": [{"segment": 0, "length": 1e300}]}, {"refs": [{"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a3"}, {"line": "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f809", "point": "end"}], "at": [0, 0, 0], "locked": [{"segment": 0, "length": 1000}]}, {"refs": [{"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a3"}, {"line": "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f809", "point": "centre"}], "at": [0, 0, 0]}, {"kind": "radial", "refs": [{"form": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f800", "line": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f801"}], "at": [0, 0, 0], "label": "L"}, {"view": "front", "refs": [{"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a1"}, {"form": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f800", "line": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f801", "point": "centre"}], "at": [0, 0, 0], "label": "L"}, {"kind": "angular", "refs": [{"line": "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f80a", "face": "vertical"}, {"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a1"}], "at": [1e300, 0, 0], "equal": true, "alignment": true}], "solve": "D"}),
+        json!({"name": "F", "parameters": [{"name": "A", "kind": "angle", "value": 30}], "types": {"A": {"A": 90}}, "ref_lines": (0..64).map(|k| json!({"guid": format!("2c3d4e5f-6071-4b82-9ca3-{:012x}", k + 1), "start": [0, 0, 0], "end": [1000.0 * (0.01 * f64::from(k) + 0.1).cos(), 1000.0 * (0.01 * f64::from(k) + 0.1).sin(), 0]})).collect::<Vec<_>>(), "dimensions": [{"kind": "angular", "refs": (0..64).map(|k| json!({"line": format!("2c3d4e5f-6071-4b82-9ca3-{:012x}", k + 1), "face": "vertical"})).collect::<Vec<_>>(), "at": [900, 400, 0], "equal": true}, {"kind": "angular", "refs": [{"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a2"}, {"line": "2c3d4e5f-6071-4b82-9ca3-000000000040", "face": "vertical"}], "at": [900, 100, 0], "label": "A"}, {"refs": [{"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a2"}, {"line": "2c3d4e5f-6071-4b82-9ca3-000000000001", "point": "end"}], "at": [0, 0, 0], "locked": [{"segment": 0, "length": 1e-9}]}], "solve": "A"}),
+        // F7d: pivots on themselves, in a cycle, on planes that don't cross or are gone, limits past one another, huge and
+        // non-finite-like angles, planes pivoting on each other's crossings, a pivoted plane dragged and aligned.
+        json!({"name": "F", "parameters": [{"name": "A", "kind": "angle", "value": 1e300}], "types": {"A": {}, "B": {"A": -1e300}, "C": {"A": 359.999999}}, "ref_lines": [{"guid": "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f809", "start": [0, 0, 0], "end": [1000, 0, 0], "pivot": {"to": {"line": "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f809", "point": "end"}, "parameter": "A", "min": 1e300, "max": -1e300}}]}),
+        json!({"name": "F", "types": {"A": {}}, "ref_lines": [{"guid": "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f809", "start": [0, 0, 0], "end": [1000, 0, 0], "pivot": {"to": {"line": "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f80a", "point": "end"}, "angle": 1e300}}, {"guid": "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f80a", "start": [0, 100, 0], "end": [1000, 100, 0], "pivot": {"to": {"line": "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f809", "point": "start"}, "angle": -1e-300, "min": 5, "max": 4}}]}),
+        json!({"name": "F", "types": {"A": {}}, "ref_planes": [{"guid": "1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8", "start": [0, -1000, 0], "end": [0, 1000, 0], "up": [0, 0, 1], "pivot": {"to": {"planes": ["1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f7", "9e3c0a10-1f0b-4d8c-8a5e-0000000000a2"]}, "angle": 90}}, {"guid": "1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f7", "start": [-1000, 5, 0], "end": [1000, 5, 0], "up": [0, 0, 1], "pivot": {"to": {"planes": ["1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8", "9e3c0a10-1f0b-4d8c-8a5e-0000000000a3"]}, "angle": 45}}], "dimensions": [{"refs": [{"plane": "1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8"}, {"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a3"}], "at": [0, 0, 0], "label": "Nope", "locked": [{"segment": 0, "length": 1e300}]}]}),
+        json!({"name": "F", "types": {"A": {}}, "ref_planes": [{"guid": "1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8", "start": [0, -1000, 0], "end": [0, 1000, 0], "up": [0, 0, 1]}], "ref_lines": [{"guid": "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f809", "start": [0, 0, 0], "end": [1000, 0, 0], "pivot": {"to": {"planes": ["1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8", "1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8"]}, "at": {"along": 1e300}, "from": {"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a1"}}}], "delete_ref_plane": ["1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8"]}),
+        json!({"name": "F", "types": {"A": {}}, "ref_lines": [{"guid": "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f809", "start": [0, 0, 0], "end": [1e-9, 0, 0], "pivot": {"to": {"fixed": [1e300, -1e300, 0]}, "at": "end", "from": {"line": "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f809"}}}, {"guid": "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f80a", "host": {"line": "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f809", "face": "vertical"}, "start": [0, 0, 0], "end": [0, 0, 500], "pivot": {"to": {"planes": ["9e3c0a10-1f0b-4d8c-8a5e-0000000000a1", "9e3c0a10-1f0b-4d8c-8a5e-0000000000a2"]}, "angle": 720}}], "solve": "A"}),
+        json!({"name": "F", "parameters": [{"name": "A", "kind": "angle", "value": 30}], "types": {"A": {}}, "ref_planes": [{"guid": "1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8", "start": [0, 0, 0], "end": [1000, 0, 0], "up": [0, 0, 1], "pivot": {"to": {"fixed": [0, 0, 0]}, "parameter": "A", "from": {"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a2"}}}, {"guid": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a1", "start": [0, 0, 0], "end": [1, 0, 0], "up": [0, 1, 0], "pivot": {"to": {"fixed": [0, 0, 0]}}}], "dimensions": [{"refs": [{"plane": "1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8"}, {"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a2"}], "at": [0, 0, 0], "locked": [{"segment": 0, "length": 0}], "alignment": true}, {"view": "plan", "kind": "angular", "refs": [{"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a3"}, {"plane": "1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8"}], "at": [300, 300, 0], "label": "A"}], "ref_plane": {"id": 999999, "pivot": {"to": {"planes": []}}}}),
+        // F7b: dimensions to sketch lines, their points, circles and reference lines' faces.
+        json!({"name": "F", "parameters": [{"name": "W", "value": 1e300}, {"name": "R", "value": -1}], "types": {"A": {}, "B": {"W": 1e-300, "R": 1e300}}, "ref_planes": [{"guid": "1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8", "start": [5, 0, 0], "end": [5, 1, 0], "up": [0, 0, 1]}], "forms": [{"guid": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f800", "sketch": [{"guid": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f801", "start": [0, 0], "end": ["W", 0]}, {"guid": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f802", "start": ["W", 0], "end": [0, "W"], "turn": 1e300}, {"guid": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f803", "start": [0, "W"], "end": [0, 0]}, {"guid": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f804", "centre": [f64::MAX, 0], "radius": "R"}], "to": 1}], "dimensions": [{"refs": [{"plane": "1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8"}, {"form": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f800", "line": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f803"}], "at": [0, 0, 0], "label": "W"}, {"refs": [{"form": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f800", "line": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f804"}], "kind": "diameter", "at": [0, 0, 0], "label": "R", "equal": true}, {"refs": [{"form": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f800", "line": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f802", "point": "centre"}, {"form": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f800", "line": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f801", "point": "start"}], "at": [0, 0, 0], "locked": [{"segment": 0, "length": 0}]}], "solve": "B"}),
+        json!({"name": "F", "types": {"A": {}}, "ref_lines": [{"guid": "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f809", "start": [0, 0, 0], "end": [0, 1e9, 0]}], "forms": [{"guid": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f800", "host": {"line": "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f809", "face": "vertical"}, "sketch": [{"guid": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f801", "start": [0, 0], "end": [0, 0]}, {"start": [0, 0], "end": [1, 0], "axis": true}], "to": 1}], "dimensions": [{"refs": [{"line": "2c3d4e5f-6071-4b82-9ca3-b4c5d6e7f809", "face": "end"}, {"form": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f800", "line": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f801"}, {"form": 5, "line": 7}, {"line": 9, "face": "start"}, {"form": "x", "line": "y", "point": "middle"}], "kind": "radial", "at": [0, 0, 0]}], "invalid_dimensions": "delete"}),
+        json!({"name": "F", "types": {"A": {}}, "forms": [{"guid": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f800", "sketch": (0..1000).map(|k| json!({"start": [k, 0], "end": [k + 1, 0]})).collect::<Vec<_>>(), "to": 1}], "dimensions": (0..64).map(|k| json!({"refs": [{"plane": "9e3c0a10-1f0b-4d8c-8a5e-0000000000a3"}, {"form": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f800", "line": k}], "at": [0, 0, 0], "alignment": true, "locked": [{"segment": 0, "length": 0}]})).collect::<Vec<_>>(), "form": {"guid": "3c4d5e6f-7081-4c92-8da3-b4c5d6e7f800", "sketch": [{"centre": [0, 0], "radius": 1}]}}),
+        json!({"name": "F", "types": {"A": {}}, "parameters": [{"name": "W", "value": 1e300}], "options": {"room_calculation_point": ["W * W", "-W", "if(W > 0, W, 0)"], "omniclass": null, "cut_in_views": true}}),
+        // F6: blends, sweeps and swept blends: degenerate, self-crossing and branching paths, lines of no length, a profile
+        // that crosses itself or folds over a bend, huge counts, NaN-like and huge numbers, a top with a sweep, twists.
+        json!({"name": "F", "types": {"A": {}}, "parameters": [{"name": "W", "value": 1e300}], "forms": [{"sketch": [{"start": [0, 0], "end": [100, 0]}, {"start": [100, 0], "end": [0, 0]}], "top": [{"centre": [0, 0], "radius": "W * W"}], "from": "0/0", "to": f64::MAX, "twist": i32::MAX}]}),
+        json!({"name": "F", "types": {"A": {}}, "forms": [{"sketch": [{"start": [0, 0], "end": [1, 0]}, {"start": [1, 0], "end": [1, 1]}, {"start": [1, 1], "end": [0, 0]}], "top": [{"start": [0, 0], "end": [0, 0]}], "to": 1e-300, "twist": -7}]}),
+        json!({"name": "F", "types": {"A": {}}, "forms": [{"sketch": [{"start": [0, 0], "end": [1000, 0]}, {"start": [1000, 0], "end": [1000, 1000]}, {"start": [1000, 1000], "end": [500, -500]}], "sweep": {"profile": [{"centre": [0, 0], "radius": 10}]}}]}),
+        json!({"name": "F", "types": {"A": {}}, "forms": [{"sketch": [{"start": [0, 0], "end": [0, 0]}, {"start": [0, 0], "end": [1e-12, 0]}], "sweep": {"profile": [{"start": [0, 0], "end": [100, 100]}, {"start": [100, 100], "end": [100, 0]}, {"start": [100, 0], "end": [0, 100]}, {"start": [0, 100], "end": [0, 0]}]}}]}),
+        json!({"name": "F", "types": {"A": {}}, "forms": [{"sketch": (0..1000).map(|k| json!({"start": [k, (k % 2) * 1000], "end": [k + 1, ((k + 1) % 2) * 1000]})).collect::<Vec<_>>(), "sweep": {"profile": (0..1000).map(|k| json!({"centre": [k * 3, 0], "radius": 1})).collect::<Vec<_>>()}}]}),
+        json!({"name": "F", "types": {"A": {}}, "forms": [{"sketch": [{"start": [100, 0], "end": [-100, 0], "turn": 359.999999}], "sweep": {"profile": [{"centre": [0, 0], "radius": 1e9}]}}]}),
+        json!({"name": "F", "types": {"A": {}}, "forms": [{"sketch": [{"centre": [0, 0], "radius": 1e-9}], "sweep": {"profile": [{"centre": [0, 0], "radius": 1e-9}], "end": [{"centre": [f64::MAX, 0], "radius": 1}]}, "top": [], "twist": 3}]}),
+        json!({"name": "F", "types": {"A": {}}, "forms": [{"sketch": [{"start": [0, 0], "end": [1, 0], "axis": true}, {"start": [0, 0], "end": [100, 0]}], "sweep": {"profile": [], "end": []}, "top": [{"start": [0, 0], "end": [1, 1]}]}]}),
+        json!({"name": "F", "types": {"A": {}}, "forms": [{"sketch": [{"start": [0, 0], "end": [1000, 0]}, {"start": [1000, 0], "end": [1000, 1000]}], "sweep": {"profile": [{"centre": [0, 0], "radius": 10}], "end": [{"centre": [0, 0], "radius": 5}]}, "void": true, "mesh": [[[0, 0, 0], [1, 0, 0], [0, 1, 0]]]}]}),
+        json!({"name": "F", "types": {"A": {}}, "forms": [{"sketch": [{"start": [0, 0], "end": [1000, 0]}], "sweep": "x", "top": 5, "twist": 1.5}]}),
+        json!({"name": "F", "types": {"A": {}}, "forms": [{"sketch": [{"start": [0, 0], "end": [1000, 0]}], "sweep": {"profile": [{"start": [-1e300, 0], "end": [1e300, 0]}, {"start": [1e300, 0], "end": [0, 1e300]}, {"start": [0, 1e300], "end": [-1e300, 0]}], "nope": 1}}]}),
+        json!({"name": "F", "options": "x"}),
+        json!({"name": "F", "options": [null, 1]}),
         json!({"name": "", "delete": true, "rename": ""}),
+        json!({"name": "Outlet", "parameter": {"name": "X", "kind": "familytype", "of": "nowhere", "shared": 5, "group": [], "rename": ""}}),
+        json!({"name": "Outlet", "parameter": {"name": "Load", "instance": true, "rename": "Width", "reporting": true, "kind": "integer"}}),
+        json!({"name": "Outlet", "parameter": {"name": "Height", "rename": "1 bad", "kind": "url", "value": "a\nb"}, "delete_parameter": ["Nope", 5]}),
+        json!({"name": "Outlet", "parameter": "x", "delete_parameter": "x"}),
         json!({"path": "/nonexistent/family.json"}),
+        json!({"path": "/nonexistent/shared.txt", "action": "load", "family": "Outlet", "name": "X", "guid": "x", "under": 5}),
+        json!({"path": "/nonexistent/shared.txt", "action": "export", "group": "\u{0}", "kind": "familytype", "of": "rack"}),
         json!({"name": "P", "kind": "length", "categories": ["wall", "wall", "clouds"], "rename": "Q"}),
         json!({"name": "P", "kind": "yesno", "categories": ["door", "component"], "rename": "1 bad"}),
         json!({"name": "Count", "categories": ["room"]}),
@@ -2373,6 +2682,14 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"view": "{3D}", "silhouette": 1e300, "edges": "x", "ambient_shadows": 5}),
         json!({"view": "Level 1", "silhouette": -1, "edges": false}),
         json!({"silhouette": 10, "ambient_shadows": true, "edges": false}),
+        // Work planes: a reference plane of no line, of no `up`, out of reach; hosts that aren't, and a form's host given oddly.
+        json!({"start": [0, 0, 0], "end": [1e300, 0, 0], "up": [0, 0, 0]}),
+        json!({"start": [0, 0], "end": [1000, 0], "up": [1, 0, 0], "name": "a\nb"}),
+        json!({"family": "Chair", "at": [0, 0, 1e300], "host": {"plane": 100002}}),
+        json!({"family": "Chair", "at": [0, 0], "host": {"plane": "nope", "level": 5}}),
+        json!({"ids": [100002, 100003], "host": {"level": "Level 2"}}),
+        json!({"family": "Chair", "form": 1, "host": {"line": 1, "face": "x"}, "keep": 1}),
+        json!({"family": "Chair", "options": {"default_elevation": 1e300, "work_plane_based": "x"}}),
         // Title blocks: sizes and lettering no paper has, a field no key, lines and fills of no points, a title block no sheet
         // can name, and fields' values that aren't text.
         json!({"name": "T", "width": 1e300, "height": -1, "texts": [{"at": [1e300, 0], "text": "{X}", "size": 1e300, "angle": "x"}]}),
@@ -2384,6 +2701,10 @@ fn hostile_params_never_panic_or_break_the_model() {
         // A sheet's title block that's neither a name nor true or false, and a title block that would be called none.
         json!({"number": "Z2", "title_block": [false], "name": "none", "rename": " NONE "}),
         json!({"id": 100000, "title_block": {"none": true}}),
+        // A drawing area out of order, past any paper or not two corners, and a template border that isn't a flag.
+        json!({"name": "T", "drawing_area": [[50, 50], [10, 10]], "template_border": "x"}),
+        json!({"name": "T", "drawing_area": [[0, 0], [f64::MAX, 1e300]]}),
+        json!({"name": "T", "drawing_area": [[0, 0]], "template_border": true}),
     ];
     let mut base = Session::new();
     house(&mut base);
@@ -2392,10 +2713,32 @@ fn hostile_params_never_panic_or_break_the_model() {
     let _ = base.execute("mass", &json!({"boundary": block(), "height": 9000, "lean": [1500, 500]}));
     // Detailing, one of each (detail lines, regions, a group, a repeating detail, a sketch floor, Linework), and the payloads
     // that name them: some for every command, some for the one they are for.
-    let (detailing, targeted) = crate::detail_tests::sweep_payloads(&mut base);
+    let (detailing, mut targeted) = crate::detail_tests::sweep_payloads(&mut base);
+    // A shared parameters file's actions, on files of the sweep's own (`shared_parameter_tests::sweep_payloads`).
+    targeted.extend(crate::shared_parameter_tests::sweep_payloads());
     // A section and an elevation of it, after those, so that no id the payloads name moves: their views are drawn too.
-    let _ = base.execute("section", &json!({"start": [-1000, 3000], "end": [9000, 3000]}));
-    let _ = base.execute("elevation", &json!({"facing": "south"}));
+    let section = base.execute("section", &json!({"start": [-1000, 3000], "end": [9000, 3000]})).map_or(Value::Null, |r| r["id"].clone());
+    let elevation = base.execute("elevation", &json!({"facing": "south"})).map_or(Value::Null, |r| r["id"].clone());
+    // An elevation looking at a wall's edge or at a line given, and a section's or an elevation's parts moved as their grips in
+    // plan move them: what they can't be.
+    let marks = [
+        json!({"on": 100002, "at": [4000, -2000]}),
+        json!({"on": 100002, "at": [1e300, 0]}),
+        json!({"on": "x", "at": [0, 0], "reference": [[0, 0]]}),
+        json!({"on": u64::MAX, "at": [0, 0]}),
+        json!({"on": "00000000-0000-4000-8000-000000000000", "at": [0, 0], "facing": "up"}),
+        json!({"on": 100002, "at": [4000, -2000], "facing": "south", "start": [0, 0], "end": [1, 0]}),
+        json!({"reference": [[0, 0], [8000, 0]], "at": [4000, 0], "depth": -5}),
+        json!({"reference": [[0, 0], [1e300, 0]], "at": [0, -1000]}),
+        json!({"reference": "x"}),
+        json!({"id": elevation, "reference": [[0, 0], [1e300, 0]], "mark": [1e300, 0]}),
+        json!({"id": elevation, "reference": [[0, 0], [8000, 0]], "mark": [0, 9000]}),
+        json!({"ids": [elevation], "by": [1e300, 0], "end": "mark"}),
+        json!({"ids": [elevation], "by": [0, 9000], "end": "mark"}),
+        json!({"ids": [elevation], "by": [0, -1e9], "end": "far"}),
+        json!({"ids": [elevation, section], "by": [5, 5], "end": "line"}),
+        json!({"ids": [section], "by": [0, f64::MAX], "end": "mark"}),
+    ];
     let views = |m: &Model| {
         m.elements.values().filter(|e| matches!(e, crate::model::Element::Section(_) | crate::model::Element::Elevation(_))).count()
     };
@@ -2407,6 +2750,11 @@ fn hostile_params_never_panic_or_break_the_model() {
     let roof = base
         .execute("roof", &json!({"boundary": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]], "slope": 30, "slopes": [30, 45, 30, 45]}))
         .map_or(Value::Null, |r| r["id"].clone());
+    // A sloped reference plane and a work plane-based component on it, after the roof, so that no id moves; and the payloads
+    // that name them.
+    targeted.extend(crate::work_plane_tests::sweep_payloads(&mut base));
+    // A floor and a wall with a component on a face of each, and the payloads that place, move and host them.
+    targeted.extend(crate::face_host_tests::sweep_payloads(&mut base));
     let line = |slope: Value| json!({"start": [0, 0], "end": [8000, 0], "slope": slope});
     let rest = [
         json!({"start": [8000, 0], "end": [8000, 6000]}),
@@ -2457,6 +2805,36 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"ids": [100002, 100003], "top_offset": 1e-300, "top_level": null, "height": -1}),
         wall,
     ];
+    // Nested families (T6a): deep, cyclic, a family nesting itself, huge counts, hostile places and associations.
+    let nested = {
+        let leaf = json!({"types": {"A": {}}, "parameters": [{"name": "W", "value": 10}], "forms": [{"profile": [[0, 0], ["W", 0], ["W", 1], [0, 1]], "to": 1}]});
+        let mut deep = leaf.clone();
+        for k in 0..12 {
+            deep = json!({"types": {"A": {}}, "nested": [{"name": format!("N{k}"), "family": deep}], "nested_instances": [{"family": format!("N{k}"), "type": "A"}]});
+        }
+        let many: Vec<Value> = (0..300).map(|i| json!({"family": "L", "type": "A", "at": [i, 0]})).collect();
+        let wide: Vec<Value> = (0..256).map(|i| json!({"family": "L", "type": "A", "at": [i, 0]})).collect();
+        let fan = json!({"types": {"A": {}}, "nested": [{"name": "L", "family": leaf}], "nested_instances": wide});
+        let fans: Vec<Value> = (0..256).map(|i| json!({"family": "Fan", "type": "A", "at": [0, i]})).collect();
+        vec![
+            json!({"name": "F", "types": {"A": {}}, "nested": [{"name": "D", "family": deep}]}),
+            json!({"name": "F", "types": {"A": {}}, "nested": [{"name": "F", "family": leaf}]}),
+            json!({"name": "F", "nest": {"definition": {"name": "F", "types": {"A": {}}}}}),
+            json!({"name": "F", "types": {"A": {}}, "nested": [{"name": "B", "family": {"types": {"A": {}}, "nested": [{"name": "F", "family": leaf}]}}]}),
+            json!({"name": "F", "types": {"A": {}}, "nested": [{"name": "L", "family": leaf}, {"name": "L", "family": leaf}]}),
+            json!({"name": "F", "types": {"A": {}}, "nested": [{"name": "L", "family": leaf}], "nested_instances": many}),
+            json!({"name": "F", "types": {"A": {}}, "nested": [{"name": "Fan", "family": fan}], "nested_instances": fans}),
+            json!({"name": "F", "types": {"A": {}}, "nested": [{"name": "L", "family": leaf}],
+                   "nested_instances": [{"family": "L", "type": "A", "at": [1e300, "W / 0"], "offset": f64::MAX, "angle": "1e308 * 10",
+                   "params": {"W": "Nope", "X": 1}, "visible": "x", "host": {"plane": "1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8"}}]}),
+            json!({"name": "F", "types": {"A": {}}, "nested": [{"name": "L", "family": leaf}],
+                   "nested_instance": {"family": "L", "type": "A", "host": "Reference Plane : nowhere", "params": {"W": 1e300}}}),
+            json!({"name": "F", "types": {"A": {}}, "nested": [{"name": "", "family": leaf}], "delete_nested": ["L", 5], "delete_nested_instance": "x"}),
+            json!({"name": "F", "types": {"A": {}}, "nest": {"path": "/nonexistent/x.json", "definition": {}, "overwrite": "maybe", "shared_nested": 5}}),
+            json!({"definition": {"name": "S", "types": {"A": {}}, "nested": [{"name": "L", "family": {"shared": true, "types": {"A": {}}}}]}, "shared_nested": {"L": "neither"}}),
+            json!({"name": "F", "types": {"A": {}}, "nested": "x", "nested_instances": [{"family": 5}], "nested_instance": {"id": u64::MAX}}),
+        ]
+    };
     // A strip footing of the runs' own: its gripped end, an end that isn't one, an end for a wall and a
     // run together, and join flags that aren't booleans.
     let footing = base.execute("strip_footing", &json!({"points": [[0, 0], [4000, 0]]})).map_or(Value::Null, |r| r["ids"][0].clone());
@@ -2470,8 +2848,155 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"id": footing, "join": null}),
         json!({"id": 100002, "join": "no"}),
     ];
-    let hostile: Vec<Value> =
-        hostile.into_iter().chain(detailing.into_iter().map(|(_, p)| p)).chain(slopes).chain(offsets).chain(grips).collect();
+    // A property line round the base, last so that no id moves, and payloads that give it a boundary that crosses itself or
+    // move it out of reach; and new ones that cross themselves, reach past any coordinate, have too few corners, a repeated
+    // one or a name or level that isn't one.
+    let plot = base
+        .execute("property_line", &json!({"points": [[-2000, -2000], [12000, -2000], [12000, 9000], [-2000, 9000]], "name": "Lot"}))
+        .map_or(Value::Null, |r| r["id"].clone());
+    let plots = [
+        json!({"id": plot, "points": [[0, 0], [4000, 4000], [4000, 0], [0, 4000]]}),
+        json!({"id": plot, "name": " ", "level": "nowhere"}),
+        json!({"ids": [plot], "by": [1e300, 0.0]}),
+        json!({"points": [[0, 0], [4000, 4000], [4000, 0], [0, 4000]], "name": "Crossed"}),
+        json!({"points": [[0, 0], [1e300, 0], [0, 1e300]], "name": "Far"}),
+        json!({"points": [[0, 0], [4000, 0], [0, 0]], "name": " "}),
+        json!({"points": [[0, 0], [4000, 0], [4000, 3000]], "name": "x".repeat(100_000), "level": 1e300}),
+        json!({"points": [[0, 0], [4000, 0], [4000, 3000], [0, 0]], "name": [], "level": []}),
+        json!({"points": [[0, 0], [4000, 0], [4000, 3000], [0, 3000], [0, 0], [0, 0]], "name": "Doubled"}),
+    ];
+    // A distribution board with a circuit of a luminaire, and a second luminaire and an outlet out of it, which the circuit payloads
+    // name: made after the views, so that no id the other payloads use moves.
+    let place = |s: &mut Session, family: &str| {
+        s.execute("component", &json!({"family": family, "at": [1500, 1500]})).ok().and_then(|r| r["id"].as_u64())
+    };
+    let ids = [
+        place(&mut base, "Distribution Board"),
+        place(&mut base, "Ceiling Luminaire"),
+        place(&mut base, "Ceiling Luminaire"),
+        place(&mut base, "Outlet"),
+    ];
+    let mut circuits: Vec<Value> = Vec::new();
+    if let [Some(b), Some(a), Some(l), Some(o)] = ids {
+        let _ = base.execute("panel", &json!({"id": b, "distribution": "127/220 V", "mains": 63, "slots": 24}));
+        if let Some(c) = base.execute("circuit", &json!({"devices": [a], "panel": b})).ok().and_then(|r| r["id"].as_u64()) {
+            circuits = vec![
+                json!({"id": c, "add": [a]}),
+                json!({"id": c, "add": [l]}),
+                json!({"id": c, "add": [b]}),
+                json!({"id": c, "remove": [l, o]}),
+                json!({"id": c, "rating": 1e300}),
+                json!({"id": c, "rating": 5e-324, "poles": 3}),
+                json!({"id": c, "panel": l}),
+                json!({"id": c, "voltage": "220 V", "demand_factor": 0}),
+                json!({"id": c, "wires": {"hot": {"wire_type": "Cu PVC 70 °C", "section": 1e-9}}}),
+                json!({"id": c, "wires": {"hot": {"wire_type": "Nope", "section": -1}, "neutral": 5}}),
+                json!({"id": c, "delete": true, "add": [l]}),
+                json!({"id": c, "delete": true}),
+                json!({"devices": [a, l, o, b], "panel": b}),
+                json!({"devices": [l], "panel": b, "voltage": "220 V", "poles": 3, "number": u32::MAX}),
+                json!({"devices": [l, l], "panel": b, "name": "x".repeat(300)}),
+                json!({"panel": b}),
+                json!({"list": true}),
+                json!({"id": b, "distribution": "nope"}),
+                json!({"ids": [c], "by": [1000, 0]}),
+            ];
+        }
+    }
+    // A panel schedule of that board, after the circuit, and what is thrown at it and at the demand factors.
+    let mut schedules: Vec<Value> = vec![
+        json!({"class": "lighting", "factor": 1e300}),
+        json!({"class": "lighting", "factor": 0}),
+        json!({"class": "", "factor": 0.5}),
+        json!({"class": "x".repeat(300), "factor": 0.5}),
+        json!({"class": "lighting", "delete": true}),
+    ];
+    if let Some(b) = ids[0] {
+        let v = base.execute("panel_schedule", &json!({"panel": b})).ok().and_then(|r| r["id"].as_u64());
+        schedules.extend([
+            json!({"panel": b, "template": "nope"}),
+            json!({"panel": b, "scale": 1e300}),
+            json!({"panel": b, "scale": 0}),
+            json!({"panel": b, "notes": "x".repeat(5000)}),
+            json!({"panel": b, "name": ""}),
+            json!({"panel": ids[1], "name": "x"}),
+            json!({"circuit": b, "description": "x"}),
+        ]);
+        if let Some(v) = v {
+            let c = circuits.first().and_then(|c| c["id"].as_u64());
+            schedules.extend([
+                json!({"id": v, "slot": u32::MAX, "mark": "spare"}),
+                json!({"id": v, "slot": 0, "mark": "space"}),
+                json!({"id": v, "slot": 1, "mark": "spare", "poles": 255}),
+                json!({"id": v, "slot": 1, "mark": 5}),
+                json!({"id": v, "template": "list", "show_spare": "yes"}),
+                json!({"id": v, "scale": 4, "phase_columns": false, "show_space": false}),
+                json!({"id": v, "panel": ids[1]}),
+                json!({"id": v, "circuit": c, "slot": u32::MAX}),
+                json!({"id": v, "circuit": c, "phase": "Z"}),
+                json!({"id": v, "circuit": c, "phase": 1e300}),
+                json!({"id": v, "circuit": c, "breaker": 1e300}),
+                json!({"id": v, "circuit": c, "demand_factor": -1}),
+                json!({"id": v, "circuit": c, "description": "x".repeat(300)}),
+                json!({"id": v, "circuit": b}),
+                json!({"id": v, "circuit": c, "slot": 2, "mark": "space"}),
+                json!({"id": b}),
+                json!({"id": v}),
+            ]);
+        }
+    }
+    let hostile: Vec<Value> = hostile
+        .into_iter()
+        .chain(detailing.into_iter().map(|(_, p)| p))
+        .chain(slopes)
+        .chain(offsets)
+        .chain(nested)
+        .chain(grips)
+        .chain(plots)
+        .chain(marks)
+        .chain(circuits)
+        .chain(schedules)
+        .collect();
+    // A room with a floor and a ceiling of its own, last so that no id moves: one placed in the house and the starter room
+    // type given both, and the payloads that name a room, its floor and its ceiling.
+    let _ = base.execute("room", &json!({"point": [2000, 2000]}));
+    let _ = base.execute("type", &json!({"category": "room", "name": "Standard", "floor": "Generic - 200mm", "ceiling": "Generic - 20mm"}));
+    let finished = base.model.elements.iter().find_map(|(id, e)| match e {
+        crate::model::Element::Room(r) => {
+            Some((id, base.model.elements.id(r.floor.connected()?)?, base.model.elements.id(r.ceiling.connected()?)?))
+        }
+        _ => None,
+    });
+    let Some((room, floor, ceiling)) = finished else { panic!("the sweep's base has a room with a floor and a ceiling of its own") };
+    let finishes = [
+        json!({"id": room, "part": "floor", "action": "disconnect"}),
+        json!({"id": room, "part": "ceiling", "action": "regenerate"}),
+        json!({"id": room, "part": "wall", "action": []}),
+        json!({"id": room, "action": "disconnect"}),
+        json!({"id": floor, "part": "ceiling", "action": "disconnect"}),
+        json!({"id": ceiling, "action": "disconnect"}),
+        json!({"id": floor, "action": 1e300, "part": null}),
+        json!({"id": floor, "offset": 1e300, "boundary": [[0, 0], [1, 0], [0, 0]]}),
+        json!({"id": room, "floor": {"connected": ceiling}, "ceiling": "disconnected"}),
+        json!({"id": room, "type": "No such", "floor": 5}),
+        json!({"ids": [room, floor], "keep_finishes": "x"}),
+        json!({"ids": [room], "keep_finishes": true}),
+        json!({"ids": [floor, ceiling], "by": [1e8, 0]}),
+        json!({"ids": [room, floor], "by": [5000, 0], "copy": true}),
+        json!({"category": "room", "name": "Standard", "floor": null, "ceiling": 5}),
+        json!({"category": "room", "name": "Standard", "floor": "Generic - 200mm", "floor_offset": 1e300, "ceiling_offset": -1e300}),
+        json!({"category": "room", "name": "Standard", "floor": null, "ceiling": "Tile 600 x 600", "ceiling_offset": f64::MAX}),
+        json!({"category": "room", "name": "", "floor": [], "ceiling": {}, "floor_offset": "x"}),
+        json!({"category": "room", "name": "R", "floor": "Generic - 200mm", "ceiling": "Generic - 20mm", "ceiling_offset": -1e9}),
+        json!({"point": [2000, 2000], "type": 5}),
+        json!({"point": [2000, 2000], "type": "No such"}),
+    ];
+    // A sheet holding the plan, last so that no id moves, and the exports of it, of the plan and of the project.
+    let _ = base.execute("sheet", &json!({"name": "Plans"}));
+    let _ = base.execute("place", &json!({"sheet": "A101", "view": "Level 1"}));
+    let exports = temp("sweep-exports");
+    targeted.extend(crate::export_tests::sweep_payloads(&exports));
+    let hostile: Vec<Value> = hostile.into_iter().chain(finishes).collect();
     // Each command against each value, on a copy of the same session; the commands shared out between the cores.
     let cmds: Vec<_> = commands().iter().filter(|c| !matches!(c.id, "open" | "save")).collect();
     let threads = std::thread::available_parallelism().map_or(4, |n| n.get());
@@ -2514,6 +3039,7 @@ fn hostile_params_never_panic_or_break_the_model() {
             draw_plans(&s.model);
         }
     }
+    let _ = std::fs::remove_dir_all(&exports);
     // A family's connectors, each field of one given every hostile value, on a starter family (placed in the base, if the
     // house has any) and on a new one; and far more connectors than a family may hold.
     let values = [
@@ -2555,6 +3081,27 @@ fn hostile_params_never_panic_or_break_the_model() {
     let many: Vec<Value> = (0..100_000).map(|_| json!({"kind": "switch", "system": "switch"})).collect();
     let mut s = base.clone();
     assert!(s.execute("family", &json!({"name": "Hostile", "types": {"A": {}}, "connectors": many})).is_err());
+    assert_eq!(s.model.check(), Ok(()));
+    // A form's sketch (F5): each field of an arc of it given every hostile value, a revolve's axis line too; and far more lines
+    // than a sketch may hold.
+    for field in ["start", "end", "turn", "centre", "radius", "axis", "id", "guid"] {
+        for v in &values {
+            let mut arc = json!({"start": [100, 0], "end": [0, 0], "turn": 90});
+            arc[field] = v.clone();
+            let sketch = json!([{"start": [0, 0], "end": [100, 0]}, arc, {"start": [200, 0], "end": [200, 10], "axis": true}]);
+            let p = json!({"name": "Hostile", "types": {"A": {}}, "forms": [{"sketch": sketch, "to": 90}]});
+            let mut s = base.clone();
+            let made = s.execute("family", &p).is_ok();
+            assert_eq!(s.model.check(), Ok(()), "family {p} left a broken model");
+            if made {
+                let _ = s.execute("component", &json!({"family": "Hostile", "at": [500, 500]}));
+                draw_plans(&s.model);
+            }
+        }
+    }
+    let many: Vec<Value> = (0..20_000).map(|k| json!({"start": [k, 0], "end": [k + 1, 0]})).collect();
+    let mut s = base.clone();
+    assert!(s.execute("family", &json!({"name": "Hostile", "types": {"A": {}}, "forms": [{"sketch": many, "to": 1}]})).is_err());
     assert_eq!(s.model.check(), Ok(()));
 }
 
@@ -2779,7 +3326,7 @@ fn render_returns_a_png_or_writes_svg_and_png_files() {
     assert_eq!((r["width"].as_u64(), r["view"].as_str()), (Some(320), Some("Level 1")));
     let svg = temp("plan.svg");
     run(&mut s, "render", json!({"view": "Level 1", "path": svg}));
-    assert!(std::fs::read_to_string(&svg).unwrap().starts_with("<svg"));
+    assert!(crate::bimc::read_to_string(&svg).unwrap().starts_with("<svg"));
     let png = temp("plan.png");
     run(&mut s, "save", json!({"path": png}));
     assert!(std::fs::read(&png).unwrap().starts_with(b"\x89PNG"));
@@ -2862,7 +3409,7 @@ fn sheets_hold_views_at_a_scale_and_print_to_pdf() {
     run(&mut s, "save", json!({"path": pdf}));
     let bytes = std::fs::read(&pdf).unwrap();
     assert!(bytes.starts_with(b"%PDF-"));
-    assert_eq!(bytes.windows(6).filter(|w| *w == b"/Page ").count(), 2, "a page a sheet");
+    assert_eq!(bytes.windows(11).filter(|w| *w == b"/Type/Page/").count(), 2, "a page a sheet");
     // Deleting a view takes it off its sheet; deleting a sheet takes its views off.
     run(&mut s, "delete", json!({"ids": [section]}));
     assert_eq!(count(&mut s, "viewport"), 1);
@@ -2927,7 +3474,7 @@ fn roofs_cover_the_walls_below_flat_or_pitched() {
     run(&mut s, "stair", json!({"start": [1000, 1000], "end": [1000, 2000]}));
     let path = temp("roofed.ifc");
     run(&mut s, "save", json!({"path": path}));
-    let ifc = std::fs::read_to_string(&path).unwrap();
+    let ifc = crate::bimc::read_to_string(&path).unwrap();
     assert!(ifc.contains("IFCCOLUMN(") && ifc.contains("IFCSTAIR(") && ifc.matches("IFCROOF(").count() == 3, "{ifc}");
     let _ = std::fs::remove_file(path);
 }
@@ -2941,8 +3488,38 @@ fn schedules_come_back_as_rows_or_csv_files() {
     assert_eq!(t["rows"][0][1], "Living");
     let csv = temp("rooms.csv");
     run(&mut s, "schedule", json!({"category": "rooms", "path": csv}));
-    assert!(std::fs::read_to_string(&csv).unwrap().starts_with("Number,Name,Level"));
+    assert!(crate::bimc::read_to_string(&csv).unwrap().starts_with("Number,Name,Level"));
     let _ = std::fs::remove_file(csv);
+}
+
+/// The sheet list every project has: its sheets in the order of their numbers, on a sheet too.
+#[test]
+fn a_sheet_list_is_the_projects_sheets_by_number() {
+    let mut s = Session::new();
+    run(&mut s, "sheet", json!({"number": "A-102", "name": "Sections"}));
+    run(&mut s, "sheet", json!({"number": "A-101", "name": "Plans"}));
+    let t = run(&mut s, "schedule", json!({"category": "sheet"}));
+    assert_eq!(t["name"], "Sheet List", "one of the views every project has");
+    assert_eq!(t["columns"], json!(["Number", "Name"]));
+    assert_eq!(t["rows"], json!([["A-101", "Plans"], ["A-102", "Sections"]]), "by their numbers, not the order they were made");
+    // On a sheet it is a schedule of the project's own, listed with the sheets it lists.
+    let vp = run(&mut s, "place", json!({"sheet": "A-101", "view": "Sheet List"}));
+    assert!(vp["id"].is_u64());
+    let t = run(&mut s, "schedule", json!({"category": "sheet"}));
+    assert_eq!(t["rows"], json!([["A-101", "Plans"], ["A-102", "Sections"]]));
+    // Sheets aren't built elements: a multi-category schedule can't list them.
+    assert!(
+        s.execute("schedule", &json!({"name": "Everything", "category": "multicategory", "categories": ["sheets"]})).is_err(),
+        "a multi-category schedule lists what's built"
+    );
+    // Saved and opened again it is there, still listing them.
+    let path = temp("sheet-list.bimcraft");
+    run(&mut s, "save", json!({"path": path}));
+    let mut back = Session::new();
+    run(&mut back, "open", json!({"path": path}));
+    let t = run(&mut back, "schedule", json!({"category": "sheet"}));
+    assert_eq!(t["rows"], json!([["A-101", "Plans"], ["A-102", "Sections"]]));
+    let _ = std::fs::remove_file(path);
 }
 
 #[test]
@@ -2986,7 +3563,7 @@ fn saving_to_ifc_exports_without_changing_the_project_file() {
     house(&mut s);
     let path = temp("house.ifc");
     assert_eq!(run(&mut s, "save", json!({"path": path}))["format"], "IFC4");
-    assert!(std::fs::read_to_string(&path).unwrap().contains("FILE_SCHEMA(('IFC4'));"));
+    assert!(crate::bimc::read_to_string(&path).unwrap().contains("FILE_SCHEMA(('IFC4'));"));
     assert_eq!(s.path, None);
     let _ = std::fs::remove_file(path);
 }
@@ -3600,7 +4177,7 @@ fn a_project_in_dutch_names_what_it_makes_in_dutch_and_keeps_its_language_in_a_f
     // The language is the file's `nl`, and a file of it opens in Dutch again.
     let path = temp("dutch.bimcraft");
     run(&mut s, "save", json!({"path": path}));
-    let text = std::fs::read_to_string(&path).unwrap();
+    let text = crate::bimc::read_to_string(&path).unwrap();
     assert_eq!(serde_json::from_str::<Value>(&text).unwrap()["language"], "nl");
     let mut t = Session::new();
     run(&mut t, "open", json!({"path": path}));
@@ -3852,7 +4429,7 @@ fn shafts_cut_the_floors_ceilings_and_roofs_they_pass_through() {
     // In IFC, an opening voids each element it cuts.
     let path = temp("shaft.ifc");
     run(&mut s, "save", json!({"path": path}));
-    let ifc = std::fs::read_to_string(&path).unwrap();
+    let ifc = crate::bimc::read_to_string(&path).unwrap();
     let _ = std::fs::remove_file(path);
     assert_eq!((ifc.matches("IFCOPENINGELEMENT(").count(), ifc.matches("IFCRELVOIDSELEMENT(").count()), (3, 3));
     assert!(ifc.contains(".CEILING.)"), "the ceiling, as a covering");
@@ -4408,9 +4985,9 @@ fn cut_patterns_show_where_a_layer_is_wide_enough_to_hold_them() {
     let mut s = Session::new();
     cavity(&mut s);
     let w = run(&mut s, "wall", json!({"points": [[0, 0], [6000, 0]], "type": "Cavity 300"}))["ids"][0].as_u64().unwrap();
-    // Close in, 2 px a millimetre: its brick (100 mm, to its left, north) holds a brick pattern's lines.
-    let lines = |scale: f64| {
-        let view = crate::render::View { scale, cx: 3000.0, cy: 0.0, width: 1200, height: 800 };
+    // Its brick, 100 mm, to its left (north): at 1 : 100, 1 mm on the paper, wide enough for a brick pattern's lines.
+    let lines = |s: &Session, scale: f64| {
+        let view = crate::render::View { angle: 0.0, scale, cx: 3000.0, cy: 0.0, width: 1200, height: 800 };
         let d = crate::render::draw(&s.model, 100000, view);
         let (north, south) = (view.px(P2(3000.0, 150.0)).1, view.px(P2(3000.0, 50.0)).1);
         d.prims
@@ -4423,9 +5000,14 @@ fn cut_patterns_show_where_a_layer_is_wide_enough_to_hold_them() {
             })
             .count()
     };
-    assert!(lines(2.0) > 20, "close in: {}", lines(2.0));
-    // Far out, too thin for them: the layer is filled as before.
-    assert_eq!(lines(0.02), 0);
+    // The paper decides, not the zoom: near or far, the same lines across as many bricks.
+    let (near, far) = (lines(&s, 2.0), lines(&s, 0.05));
+    assert!(near > 0 && far > 0, "near {near}, far {far}");
+    // So far out its lines would run together: filled.
+    assert_eq!(lines(&s, 0.005), 0);
+    // At 1 : 500 the brick is 0.2 mm on the paper, too thin for them however near.
+    run(&mut s, "scale", json!({"view": 100000, "scale": 500}));
+    assert_eq!(lines(&s, 2.0), 0);
 }
 
 #[test]
@@ -4457,7 +5039,7 @@ fn surface_patterns_keep_their_size_in_the_building() {
     let f = run(&mut s, "floor", json!({"boundary": boundary, "type": "Tiled"}))["id"].as_u64().unwrap();
     // Where the tiles' joints running east cross the plan, px down it.
     let rows = |scale: f64| {
-        let view = crate::render::View { scale, cx: 3000.0, cy: 2000.0, width: 1200, height: 800 };
+        let view = crate::render::View { angle: 0.0, scale, cx: 3000.0, cy: 2000.0, width: 1200, height: 800 };
         let d = crate::render::draw(&s.model, 100000, view);
         let mut ys: Vec<f32> = d
             .prims
@@ -4498,7 +5080,7 @@ fn materials_and_layers_go_to_ifc_and_come_back() {
     run(&mut s, "floor", json!({"type": "Oak 200"}));
     let path = temp("materials.ifc");
     run(&mut s, "save", json!({"path": path}));
-    let ifc = std::fs::read_to_string(&path).unwrap();
+    let ifc = crate::bimc::read_to_string(&path).unwrap();
     assert!(ifc.contains("IFCMATERIAL('Oak'") && ifc.contains("IFCMATERIALLAYERSET(") && ifc.contains("'Oak 200'"), "{ifc}");
     // Its colour, for viewers to shade it.
     assert!(ifc.contains("IFCCOLOURRGB($,0.627") && ifc.contains("IFCMATERIALDEFINITIONREPRESENTATION("), "{ifc}");
@@ -4529,7 +5111,7 @@ fn a_materials_transparency_goes_to_ifc_in_its_surface_style_and_comes_back() {
     run(&mut s, "floor", json!({"type": "Tinted"}));
     let path = temp("transparency.ifc");
     run(&mut s, "save", json!({"path": path}));
-    let ifc = std::fs::read_to_string(&path).unwrap();
+    let ifc = crate::bimc::read_to_string(&path).unwrap();
     assert!(ifc.contains("IFCSURFACESTYLESHADING(#") && ifc.contains(",0.4)"), "{ifc}");
     let mut t = Session::new();
     run(&mut t, "open", json!({"path": path}));
@@ -4545,7 +5127,7 @@ fn a_project_from_before_the_library_brings_its_layers_materials_into_it() {
     let path = temp("old.bimcraft");
     run(&mut s, "save", json!({"path": path}));
     // As an older BIMCraft saved it: no library, its layers' materials free text.
-    let mut v: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    let mut v: Value = serde_json::from_str(&crate::bimc::read_to_string(&path).unwrap()).unwrap();
     v.as_object_mut().unwrap().remove("materials");
     v["types"]["wall"]["Cavity 300"]["layers"][1]["material"] = json!("Rock wool");
     std::fs::write(&path, v.to_string()).unwrap();
@@ -4866,7 +5448,7 @@ fn a_materials_texture_is_set_changed_and_taken_away_and_a_picture_comes_into_th
     assert_eq!((t2.model.images.len(), &t2.model.materials["Oak"]), (1, &s.model.materials["Oak"]));
     assert_eq!(t2.model.images, s.model.images);
     // As a hand might spoil it: a picture's data cut short comes back with its name, and the project isn't opened.
-    let mut v: Value = serde_json::from_str(&std::fs::read_to_string(&project).unwrap()).unwrap();
+    let mut v: Value = serde_json::from_str(&crate::bimc::read_to_string(&project).unwrap()).unwrap();
     let key = v["images"].as_object().unwrap().keys().next().unwrap().clone();
     v["images"][&key]["png"] = json!("iVBORw0KGgo=");
     std::fs::write(&project, v.to_string()).unwrap();
@@ -5044,7 +5626,7 @@ fn favorites_keep_materials_and_families_for_every_project() {
     std::fs::write(&file, "not favorites").unwrap();
     let e = a.execute("favorite", &json!({"action": "save", "name": "My Oak", "path": file})).unwrap_err();
     assert!(e.contains("isn't a favorites file"), "{e}");
-    assert_eq!(std::fs::read_to_string(&file).unwrap(), "not favorites");
+    assert_eq!(crate::bimc::read_to_string(&file).unwrap(), "not favorites");
     // A family goes to a file of its own, and comes back from it.
     let bench_file = temp("bench.json");
     run(&mut a, "family", json!({"name": "Bench", "save": bench_file}));
@@ -5937,13 +6519,34 @@ fn a_file_from_before_guids_opens_with_guids_and_six_digit_ids() {
 }
 
 #[test]
+fn a_file_of_the_family_editors_unreleased_formats_21_to_32_is_refused_as_newer() {
+    // The Family Editor took the format from 17 to 32 a step at a time before it was released, and none of that was. 0.12's
+    // format is 20, which every change since 0.11 shares, so a file of those builds stamped 20 opens as one of 0.12's, and 21
+    // to 32 are refused as any newer file is.
+    use crate::model::{FORMAT, Model};
+    assert_eq!(FORMAT, 20);
+    let mut s = Session::new();
+    house(&mut s);
+    let v = serde_json::to_value(&*s.model).unwrap();
+    for old in 21..=32 {
+        let mut was = v.clone();
+        was["format"] = json!(old);
+        let e = Model::read(&was.to_string()).unwrap_err();
+        assert!(
+            e.contains("saved by a newer BIMCraft") && e.contains(&format!("file format {old}")) && e.contains("reads up to 20"),
+            "{old}: {e}"
+        );
+    }
+}
+
+#[test]
 fn a_project_is_saved_in_the_current_format_and_one_of_format_4_up_opens_as_it_is_and_a_newer_one_is_refused() {
     use crate::model::{FORMAT, Model};
     // 5 added the scans a project holds and the point clouds that place them; 6 added detailing (lines, regions, groups,
     // repeating details, line and fill styles); 7 its CAD drawings and the imports that place them; 8 text types; 9 graphic line patterns; 10 dimensions to points and linear ones; 11 and 12 the project languages Swedish, Czech and French, and Dutch;
     // 13 floors' and flat roofs' shapes; 14 the categories of family components, which the starter view templates name; 15 a roof's slope for each
     // edge and a wall's top offset; 16 dimensions in 3D views and the locks Align leaves; 17 multi-category schedules and Italian projects; 18 a wall or a run
-    // that refuses to join. Nothing in a file of 4
+    // that refuses to join, circuits and panel schedules; 19 a sheet list. Nothing in a file of 4
     // to 7 that holds no notes changes.
     let mut s = Session::new();
     let empty = serde_json::to_value(&*s.model).unwrap();
@@ -6448,7 +7051,7 @@ fn socket(category: &str) -> Value {
 
 /// What component `id` draws in the plan of level 100000 as model points: its open polylines (symbols), and its fills (dots).
 fn symbol_ink(s: &Session, id: u64) -> (Vec<Vec<P2>>, Vec<Vec<P2>>) {
-    let view = crate::render::View { scale: 0.5, cx: 1000.0, cy: 1000.0, width: 1000, height: 800 };
+    let view = crate::render::View { angle: 0.0, scale: 0.5, cx: 1000.0, cy: 1000.0, width: 1000, height: 800 };
     let d = crate::render::draw(&s.model, 100000, view);
     let (mut lines, mut fills) = (Vec::new(), Vec::new());
     for (p, o) in d.prims.iter().zip(&d.owners).filter(|(_, o)| **o == Some(id)) {
@@ -6636,7 +7239,7 @@ fn symbols_draw_in_the_plan_and_ceiling_plan_of_their_level_whatever_height_the_
     let (lines, fills) = symbol_ink(&s, id);
     assert!(lines.iter().all(|l| l.len() != 2 || l[0].1 < 1200.0), "no outline of the form: {}", lines.len());
     assert!(lines.len() >= 3 && fills.len() == 1, "{} {}", lines.len(), fills.len());
-    let view = crate::render::View { scale: 0.5, cx: 1000.0, cy: 1000.0, width: 1000, height: 800 };
+    let view = crate::render::View { angle: 0.0, scale: 0.5, cx: 1000.0, cy: 1000.0, width: 1000, height: 800 };
     let up = crate::render::draw_ceiling(&s.model, 100000, view);
     assert!(
         up.owners.iter().zip(&up.prims).any(|(o, p)| *o == Some(id) && matches!(p, crate::render::Prim::Fill { .. })),
@@ -6675,4 +7278,57 @@ fn an_error_that_repeats_a_huge_value_stays_short() {
     // A short message is left as it is.
     let e = s.execute("graphics", &json!({"view": "Level 1", "hide_elements": [1]})).unwrap_err();
     assert!(!e.contains("more characters"), "{e}");
+}
+
+/// F10, the Family Editor's exit test through commands (`ci/family-window.txt`, which CI writes to IFC for IfcOpenShell): the
+/// window drawn with reference planes, labelled dimensions, a frame locked to them and a void, flexed through its types as built,
+/// scheduled, and written to IFC with its opening. The desktop's twin is `crates/ui-egui/src/tests/family_exit.rs`.
+#[test]
+fn the_exit_tests_window_flexes_as_built_schedules_and_goes_to_ifc() {
+    let mut s = Session::new();
+    s.script(include_str!("../../../ci/family-window.txt")).unwrap();
+    let (window, east) = (100006, 100007);
+    let f = s.model.families["Exit Window"].clone();
+    // The void listed after the frame (F10d), cutting the wall alone; Sill on Ref. Level (F10c), Height measured from it.
+    assert!(!f.forms[0].void && f.forms[1].void && f.forms[1].cuts == Some(crate::family::Cuts::Host));
+    let sill = f.planes.iter().find(|p| p.name == "Sill").map(|p| p.guid).unwrap();
+    let height = f.dimensions.iter().find(|d| d.label.as_deref() == Some("Height")).unwrap();
+    assert_eq!(height.refs[0], crate::family::DimRef::Plane(sill));
+    // Flexed through its types: the frame and the void it cuts the wall with are its Width and Height, whatever was drawn.
+    for (name, w, h) in [("900 x 1200", 900.0, 1200.0), ("1200 x 1500", 1200.0, 1500.0), ("600 x 600", 600.0, 600.0)] {
+        run(&mut s, "modify", json!({"ids": [window], "type": name}));
+        let e = s.model.elements.get(window).unwrap().clone();
+        let bbox = |tris: &mut dyn Iterator<Item = [f64; 3]>| {
+            tris.fold(([f64::INFINITY; 3], [f64::NEG_INFINITY; 3]), |(lo, hi), p| {
+                (std::array::from_fn(|k| lo[k].min(p[k])), std::array::from_fn(|k| hi[k].max(p[k])))
+            })
+        };
+        let pieces = s.model.opening_pieces(&e);
+        let (lo, hi) = bbox(&mut pieces.iter().flat_map(|p| p.tris.iter()).flatten().copied());
+        let want = ([4000.0 - w / 2.0, -40.0, 900.0], [4000.0 + w / 2.0, 40.0, 900.0 + h]);
+        let near = |a: [f64; 3], b: [f64; 3]| a.iter().zip(b).all(|(x, y)| (x - y).abs() < 1e-6);
+        assert!(near(lo, want.0) && near(hi, want.1), "{name}: the frame {lo:?} {hi:?}");
+        let voids = s.model.opening_voids(&e);
+        assert_eq!(voids.len(), 1, "{name}: one void cuts the wall");
+        let (lo, hi) = bbox(&mut voids.iter().flatten().flatten().copied());
+        assert!(near(lo, [want.0[0], -300.0, 900.0]) && near(hi, [want.1[0], 300.0, 900.0 + h]), "{name}: the void {lo:?} {hi:?}");
+        // The frame's light, 50 mm inside the opening all round: its volume.
+        let v = f.values(name, &Default::default()).unwrap();
+        let flexed = f.flexed(&v).unwrap();
+        let z = flexed.planes.iter().find(|p| p.guid == sill).map(|p| p.start[2]).unwrap();
+        assert!(z.abs() < 1e-6, "{name}: Sill stays on Ref. Level, at {z}");
+        let built: f64 = f.pieces(&v).unwrap().iter().map(|p| crate::ifc_geometry_tests::volume(&p.tris)).sum();
+        assert!((built - (w * h - (w - 100.0) * (h - 100.0)) * 80.0).abs() < 1.0, "{name}: the frame's volume {built}");
+    }
+    run(&mut s, "modify", json!({"ids": [window], "type": "1200 x 1500"}));
+    // Its schedule lists both windows with their sizes.
+    let t = run(&mut s, "schedule", json!({"name": "Exit Windows"}));
+    assert_eq!(t["elements"], json!([[window], [east]]));
+    let sizes: Vec<(Value, Value)> = t["rows"].as_array().unwrap().iter().map(|r| (r[2].clone(), r[3].clone())).collect();
+    assert_eq!(sizes, [(json!(1200.0), json!(1500.0)), (json!(600.0), json!(600.0))]);
+    // IFC: two IfcWindows of those sizes, each filling an opening that voids its wall.
+    let ifc = crate::ifc::export(&s.model);
+    let n = |class: &str| ifc.lines().filter(|l| l.contains(&format!("={class}("))).count();
+    assert_eq!((n("IFCWINDOW"), n("IFCOPENINGELEMENT"), n("IFCRELVOIDSELEMENT"), n("IFCRELFILLSELEMENT")), (2, 2, 2, 2));
+    assert!(ifc.contains("'Exit Window:1200 x 1500',#") && ifc.contains(",1500.,1200.,.WINDOW."), "the window's OverallHeight and Width");
 }

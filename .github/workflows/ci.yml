@@ -6,9 +6,11 @@ name: CI
 
 on:
   pull_request:
-  # Pushes to main as well: they go in without a pull request, and a Windows or macOS break shouldn't wait for a tag.
+  # Pushes to main as well: they go in without a pull request, and a Windows or macOS break shouldn't wait for a tag. And pushes to
+  # IPedrax-Test/** branches: work in progress is checked here on all three systems, so a session needn't build and test it all
+  # on the maintainer's own machine before it reaches main.
   push:
-    branches: [main]
+    branches: [main, 'IPedrax-Test/**']
   workflow_dispatch:
 
 permissions:
@@ -23,15 +25,17 @@ jobs:
   check:
     name: ${{ matrix.name }}
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 60
+    # Windows builds and tests the slowest: about 55 minutes before its desktop tests start. Linux and macOS take 55 to 62
+    # minutes with no build cache (a new Rust, or a branch before main has saved one), which 60 left no room for.
+    timeout-minutes: ${{ matrix.timeout }}
     strategy:
       fail-fast: false
       matrix:
         include:
           # The oldest Ubuntu runner, as the release workflow's Linux job.
-          - { name: Linux, runner: ubuntu-22.04 }
-          - { name: Windows, runner: windows-latest }
-          - { name: macOS, runner: macos-15 }
+          - { name: Linux, runner: ubuntu-22.04, timeout: 90 }
+          - { name: Windows, runner: windows-latest, timeout: 100 }
+          - { name: macOS, runner: macos-15, timeout: 90 }
     steps:
       - uses: actions/checkout@v4
 
@@ -46,7 +50,12 @@ jobs:
         shell: bash
         run: rustup update stable && rustup default stable && rustup component add rustfmt clippy
 
-      # shortcut: no build cache, so each run builds egui and wgpu from scratch (about 15 minutes); add actions/cache when that hurts.
+      # The dependencies' builds, kept between runs (egui and wgpu from scratch take about 15 minutes). Only main saves the cache, so
+      # branch runs reuse it without filling the repository's 10 GB of caches with a copy each.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
       - name: Format
         if: runner.os == 'Linux'
         run: cargo fmt --check
@@ -81,6 +90,10 @@ jobs:
       - name: Rust
         run: rustup update stable && rustup default stable
 
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -93,9 +106,16 @@ jobs:
         run: |
           cargo run -q -p bimcraft-cli -- run --sample --save house.ifc
           cargo run -q -p bimcraft-cli -- run --script ci/ifc-coverage.txt --save coverage.ifc
+          cargo run -q -p bimcraft-cli -- run --script ci/family-window.txt --save family-window.ifc
+          cargo run -q -p bimcraft-cli -- run --cmd 'grid {"name":"Solo","start":[100,200],"end":[3100,4200]}' --save grid-single.ifc
+          cargo run -q -p bimcraft-cli -- run --cmd 'grid {"start":[0,0],"end":[0,3000]}' --cmd 'grid {"start":[1000,0],"end":[1000,3000]}' --save grid-parallel.ifc
+          cargo run -q -p bimcraft-cli -- run --script ci/ifc-coverage.txt --cmd 'export {"format": "ifc4x3", "path": "coverage-4x3.ifc"}'
+          cargo run -q -p bimcraft-cli -- run --sample --cmd 'export {"format": "ifc2x3", "path": "house-2x3.ifc"}'
+          cargo run -q -p bimcraft-cli -- run --script ci/ifc-coverage.txt --cmd 'export {"format": "ifc2x3", "path": "coverage-2x3.ifc"}'
 
+      # family-window.ifc: the Family Editor's exit test (F10) as commands, a parametric window placed, flexed and scheduled.
       - name: Validate
-        run: python ci/validate_ifc.py house.ifc coverage.ifc
+        run: python ci/validate_ifc.py house.ifc coverage.ifc family-window.ifc grid-single.ifc grid-parallel.ifc coverage-4x3.ifc house-2x3.ifc coverage-2x3.ifc
 
   # What CLAUDE.md asks after touching packaging/: shellcheck on the scripts and actionlint on the workflows (which runs shellcheck
   # on their `run:` steps too). The runner image has shellcheck; actionlint is a pinned release, checked against its sum.

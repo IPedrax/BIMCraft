@@ -97,7 +97,10 @@ icon_names! {
     Theme,
     Text,
     Spot,
+    Coordinates,
+    ProjectNorth,
     SpotSlope,
+    SpotCoordinate,
     ConvertLines,
     Angular,
     Radial,
@@ -111,8 +114,10 @@ icon_names! {
     Flip,
     Attach,
     Detach,
+    Ai,
     Floor,
     WorkPlane,
+    RefPlane,
     Ceiling,
     Shaft,
     Mass,
@@ -134,6 +139,7 @@ icon_names! {
     ImportCad,
     LinkCad,
     Parameters,
+    ProjectInfo,
     Measure,
     Snaps,
     Visibility,
@@ -195,6 +201,13 @@ icon_names! {
     AddVertex,
     DeleteVertex,
     ConvertSpline,
+    PointElement,
+    MakeAdaptive,
+    CreateForm,
+    FamilyTypes,
+    LoadIntoProject,
+    LoadIntoProjectClose,
+    Cowork,
 }
 
 /// A single unfilled contour in grid coordinates, shared by egui and the catalog.
@@ -880,6 +893,20 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.line(&[(4.0, 20.0), (12.0, 4.0), (20.0, 20.0)]);
             g.line(&[(7.0, 14.0), (17.0, 14.0)]);
         }
+        Icon::Coordinates => {
+            // A survey mark: a ring on cross hairs, and the north it reads from at its top.
+            g.circle((12.0, 13.0), 5.5);
+            g.line(&[(12.0, 9.5), (12.0, 21.0)]);
+            g.line(&[(3.0, 13.0), (21.0, 13.0)]);
+            g.closed(&[(12.0, 2.0), (14.5, 6.0), (9.5, 6.0)]);
+        }
+        Icon::ProjectNorth => {
+            // A north arrowhead inside a turn arrow open at the top, turning counter-clockwise, as Rotate Project North
+            // turns the model.
+            g.arc((12.0, 12.0), 9.5, -58.0, 238.0);
+            g.line(&[(17.03, 3.94), (21.4, 3.37), (18.43, 8.12)]);
+            g.closed(&[(12.0, 1.5), (15.5, 13.0), (12.0, 10.5), (8.5, 13.0)]);
+        }
         Icon::Spot => {
             g.line(&[(3.0, 16.0), (21.0, 16.0)]);
             g.closed(&[(5.0, 8.0), (13.0, 8.0), (9.0, 16.0)]);
@@ -894,6 +921,14 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.line(&[(9.0, 14.2), (11.0, 12.8)]);
             g.line(&[(13.0, 11.4), (19.0, 7.0)]);
             g.circle((19.0, 7.0), 1.6);
+        }
+        Icon::SpotCoordinate => {
+            // A cross on the point, a leader up and right to a shoulder, and two lines of numbers over it.
+            g.line(&[(2.0, 19.0), (8.0, 19.0)]);
+            g.line(&[(5.0, 16.0), (5.0, 22.0)]);
+            g.line(&[(5.0, 19.0), (11.0, 11.0), (22.0, 11.0)]);
+            g.line(&[(12.0, 4.0), (21.0, 4.0)]);
+            g.line(&[(12.0, 8.0), (19.0, 8.0)]);
         }
         Icon::SpotSlope => {
             // A falling top, an arrow down it, and its fall written over.
@@ -983,6 +1018,12 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.line(&[(12.0, 14.0), (12.0, 7.0)]);
             g.line(&[(9.5, 9.5), (12.0, 7.0), (14.5, 9.5)]);
         }
+        Icon::Ai => {
+            // The letters themselves, A then I, as the one sign everyone reads for this.
+            g.line(&[(2.5, 20.0), (9.0, 4.0), (15.5, 20.0)]);
+            g.line(&[(5.0, 14.5), (13.0, 14.5)]);
+            g.line(&[(20.5, 4.0), (20.5, 20.0)]);
+        }
         Icon::Detach => {
             g.line(&[(3.0, 8.0), (12.0, 3.0), (21.0, 8.0)]);
             g.line(&[(7.0, 15.0), (7.0, 21.0), (17.0, 21.0), (17.0, 15.0)]);
@@ -1001,6 +1042,14 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.line(&[(12.0, 10.0), (9.0, 16.0)]);
             g.line(&[(12.0, 13.0), (12.0, 3.0)]);
             g.line(&[(9.5, 5.5), (12.0, 3.0), (14.5, 5.5)]);
+        }
+        Icon::RefPlane => {
+            // A reference plane seen edge on, as a plan draws it: a dashed line, and a grip at its end.
+            let dashes: &[(f32, f32)] = if compact { &[(0.0, 5.0), (7.5, 13.0)] } else { &[(0.0, 3.0), (5.0, 8.0), (10.0, 13.0)] };
+            for &(a, b) in dashes {
+                g.line(&[(3.0 + a, 21.0 - a), (3.0 + b, 21.0 - b)]);
+            }
+            g.closed(&[(17.5, 2.5), (21.5, 2.5), (21.5, 6.5), (17.5, 6.5)]);
         }
         Icon::Ceiling => {
             // A suspended tiled ceiling above a separate floor datum; not a floating pair of bars.
@@ -1162,6 +1211,12 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.circle((16.0, 12.0), 2.0);
             g.circle((8.0, 18.0), 2.0);
         }
+        Icon::ProjectInfo => {
+            // A house's outline with an "i" inside: what the project is.
+            g.closed(&[(4.0, 21.0), (4.0, 9.0), (12.0, 3.0), (20.0, 9.0), (20.0, 21.0)]);
+            g.circle((12.0, 10.5), 1.0);
+            g.line(&[(12.0, 14.0), (12.0, 18.5)]);
+        }
         Icon::Measure => {
             // A diagonal ruler with ticks perpendicular to its top edge, distinct from Units.
             g.closed(&[(3.0, 8.0), (17.0, 3.0), (21.5, 15.6), (7.5, 20.6)]);
@@ -1271,6 +1326,50 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
                 (9.2, 8.7),
             ]);
         }
+        Icon::PointElement => {
+            // A reference point: a dot on a work plane seen at an angle, its normal standing up.
+            g.closed(&[(3.0, 15.0), (12.0, 10.5), (21.0, 15.0), (12.0, 19.5)]);
+            g.circle((12.0, 15.0), 2.0);
+            g.line(&[(12.0, 13.0), (12.0, 3.5)]);
+        }
+        Icon::MakeAdaptive => {
+            // A point numbered 1, the number it takes when made adaptive.
+            g.circle((8.0, 16.0), 3.5);
+            g.line(&[(14.5, 6.5), (17.0, 4.0), (17.0, 13.0)]);
+            g.line(&[(15.0, 13.0), (19.0, 13.0)]);
+            g.line(&[(10.5, 13.5), (13.5, 10.5)]);
+        }
+        Icon::CreateForm => {
+            // A closed profile on its plane, extruded up from it.
+            g.closed(&[(3.0, 17.0), (12.0, 13.5), (21.0, 17.0), (12.0, 20.5)]);
+            g.line(&[(3.0, 17.0), (3.0, 10.0)]);
+            g.line(&[(21.0, 17.0), (21.0, 10.0)]);
+            g.line(&[(12.0, 16.0), (12.0, 4.0)]);
+            g.line(&[(9.0, 7.0), (12.0, 4.0), (15.0, 7.0)]);
+        }
+        Icon::FamilyTypes => {
+            // A sheet of a family's types: a table of their values.
+            g.closed(&[(4.0, 3.0), (20.0, 3.0), (20.0, 21.0), (4.0, 21.0)]);
+            g.line(&[(4.0, 8.0), (20.0, 8.0)]);
+            g.line(&[(4.0, 13.0), (20.0, 13.0)]);
+            g.line(&[(4.0, 17.0), (20.0, 17.0)]);
+            g.line(&[(10.0, 8.0), (10.0, 21.0)]);
+        }
+        Icon::LoadIntoProject => {
+            // The family, a small volume, going down into the project below it.
+            g.closed(&[(3.0, 13.0), (21.0, 13.0), (21.0, 21.0), (3.0, 21.0)]);
+            g.closed(&[(8.0, 3.0), (16.0, 3.0), (16.0, 8.0), (8.0, 8.0)]);
+            g.line(&[(12.0, 8.0), (12.0, 18.0)]);
+            g.line(&[(9.0, 15.0), (12.0, 18.0), (15.0, 15.0)]);
+        }
+        Icon::LoadIntoProjectClose => {
+            // The same, with the family's window closed after: a cross where its volume was.
+            g.closed(&[(3.0, 13.0), (21.0, 13.0), (21.0, 21.0), (3.0, 21.0)]);
+            g.line(&[(12.0, 4.0), (12.0, 18.0)]);
+            g.line(&[(9.0, 15.0), (12.0, 18.0), (15.0, 15.0)]);
+            g.line(&[(16.0, 3.0), (21.0, 8.0)]);
+            g.line(&[(21.0, 3.0), (16.0, 8.0)]);
+        }
         Icon::FamilyEditor => {
             // An editable component: a small volume plus a separate pencil, distinct from View3D.
             g.closed(&[(4.0, 8.0), (11.0, 4.0), (18.0, 8.0), (11.0, 12.0)]);
@@ -1354,6 +1453,13 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.line(&[(12.0, 6.5), (21.0, 6.5)]);
             g.closed(&[(3.0, 15.0), (8.0, 15.0), (8.0, 20.0), (3.0, 20.0)]);
             g.line(&[(12.0, 17.5), (21.0, 17.5)]);
+        }
+        Icon::Cowork => {
+            // Two people, one a step behind the other.
+            g.circle((9.0, 7.0), 3.0);
+            g.line(&[(3.0, 20.0), (3.0, 16.0), (5.0, 12.5), (13.0, 12.5), (15.0, 16.0), (15.0, 20.0)]);
+            g.line(&[(14.5, 4.6), (16.0, 4.0), (18.5, 5.0), (19.0, 7.0), (18.0, 9.5), (16.5, 10.0)]);
+            g.line(&[(17.0, 12.5), (19.0, 12.5), (21.0, 16.0), (21.0, 20.0)]);
         }
         Icon::Home => {
             // Home retains its door, keeping it distinct from the modeling Roof icon.

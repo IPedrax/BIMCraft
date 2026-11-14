@@ -20,7 +20,7 @@ use crate::icons::Icon;
 use crate::lang::{t, tf};
 use crate::properties::number;
 use crate::style::{canvas_pal, pal};
-use crate::{BimApp, Sheet, Status, Tool, big_button, draw, panel, ribbon, small_button};
+use crate::{BimApp, Sheet, Status, Tool, big_button, draw, inked_button, panel, ribbon, small_button};
 
 /// What Finish Edit Mode makes of the lines.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -37,6 +37,9 @@ pub enum Of {
     Region { view: Id, masking: bool },
     /// The element's outline and holes, redrawn.
     Edit(Id),
+    /// A family's form (F5, the family document's own sketch: `editor/sketch.rs`): an extrusion, or a revolve, solid or void;
+    /// `edit`, one it has already, redrawn.
+    Form { revolve: bool, void: bool, edit: bool },
 }
 
 /// A drag with Modify while sketching: a grip at a line's end, or a selection box from a pixel.
@@ -89,6 +92,30 @@ impl Sketch {
             Of::Region { masking: false, .. } => msg!("Create Filled Region Boundary"),
             Of::Region { masking: true, .. } => msg!("Create Masking Region Boundary"),
             Of::Edit(_) => "Edit Boundary",
+            Of::Form { revolve: false, void: false, edit: false } => msg!("Modify | Create Extrusion"),
+            Of::Form { revolve: true, void: false, edit: false } => msg!("Modify | Create Revolve"),
+            Of::Form { revolve: false, void: true, edit: false } => msg!("Modify | Create Void Extrusion"),
+            Of::Form { revolve: true, void: true, edit: false } => msg!("Modify | Create Void Revolve"),
+            Of::Form { revolve: false, edit: true, .. } => msg!("Modify | Edit Extrusion"),
+            Of::Form { revolve: true, edit: true, .. } => msg!("Modify | Edit Revolve"),
+        }
+    }
+
+    /// A sketch of a family's form, `of` saying which: `lines` to begin with, drawn in the family document's view (`plan`, the
+    /// project's, is no part of it).
+    pub(crate) fn of_form(of: Of, lines: Vec<SketchLine>) -> Sketch {
+        Sketch {
+            of,
+            seen: lines.clone(),
+            lines,
+            picked: BTreeSet::new(),
+            wrong: Vec::new(),
+            drag: None,
+            region: (String::new(), None),
+            styled: false,
+            plan: Sheet::View3D,
+            surface: None,
+            history: Vec::new(),
         }
     }
 
@@ -433,6 +460,8 @@ impl BimApp {
                 ("filled_region", json!({"view": view, "sketch": lines, "type": sk.region.0, "line_style": sk.region.1}))
             }
             Of::Edit(id) => ("edit_boundary", json!({"id": id, "sketch": lines})),
+            // A family's form is the family document's to finish (`editor/sketch.rs`), never the project's.
+            Of::Form { .. } => return,
         };
         // Solved, it may still be refused for what it makes (a shaft with a hole): the command says why.
         if let Some(made) = self.run(id, p) {
@@ -748,11 +777,16 @@ impl BimApp {
         });
     }
 
-    /// The Mode panel at the ribbon's right end: Finish and Cancel while sketching, Edit Boundary when one floor, ceiling,
-    /// roof or shaft is selected.
+    /// The Mode panel at the ribbon's right end, as Revit's: Finish and Cancel while sketching, Edit Boundary when one floor,
+    /// ceiling, roof or shaft is selected, Edit Family when a family's instance is (Load Family too while placing one).
     pub(crate) fn mode_panel(&mut self, ui: &mut Ui) {
         let sketching = self.sketch.is_some();
-        if !sketching && !(self.boundary_selected() && self.tool == Tool::Modify) {
+        let boundary = self.boundary_selected() && self.tool == Tool::Modify;
+        // Placing a component: Load Family and Edit Family (Modify | Place Component); a family's instance selected, Edit
+        // Family (Modify | <Category>).
+        let placing = !sketching && matches!(self.tool, Tool::Component | Tool::Fixture(_));
+        let family = if !sketching && (placing || self.tool == Tool::Modify) { self.family_in_hand() } else { None };
+        if !sketching && !boundary && !placing && family.is_none() {
             return;
         }
         // Pushed to the right end by the room the rest leaves: its width as it was last drawn.
@@ -761,17 +795,39 @@ impl BimApp {
             panel(ui, "Mode", |ui| {
                 if sketching {
                     let tip = msg!("Finish Edit Mode: the lines, closed into loops, become the outline and its holes");
-                    if big_button(ui, Icon::Check, "Finish Edit Mode", false, tip).clicked() {
+                    if inked_button(ui, Icon::Check, "Finish Edit Mode", false, tip, Some(pal().context)).clicked() {
                         self.finish_sketch();
                     }
-                    if big_button(ui, Icon::Close, "Cancel Edit Mode", false, "Cancel Edit Mode: drop the lines, keep it as it was")
-                        .clicked()
-                    {
+                    let tip = "Cancel Edit Mode: drop the lines, keep it as it was";
+                    if inked_button(ui, Icon::Close, "Cancel Edit Mode", false, tip, Some(pal().error)).clicked() {
                         self.cancel_sketch();
                     }
-                } else if big_button(ui, Icon::Line, "Edit Boundary", false, "Edit Boundary: sketch its outline and holes again").clicked()
-                {
-                    self.edit_boundary();
+                } else if boundary {
+                    // A floor or a ceiling that follows a room has the room's outline.
+                    let followed = self.follows_a_room(&self.selection);
+                    let tip = "Edit Boundary: sketch its outline and holes again";
+                    let why = msg!("Its outline is its room's: disconnect it in Properties to sketch it");
+                    let r = ui.add_enabled_ui(!followed, |ui| big_button(ui, Icon::Line, "Edit Boundary", false, tip)).inner;
+                    if r.on_disabled_hover_text(t(why)).clicked() {
+                        self.edit_boundary();
+                    }
+                }
+                if placing {
+                    let tip = msg!("Load Family: a family saved as a .bimf file (or an earlier .json), BIMCraft's own");
+                    if big_button(ui, Icon::LoadFamily, "Load Family", false, tip).clicked() {
+                        let dialog = rfd::AsyncFileDialog::new().add_filter(t("BIMCraft family"), &bimcraft_core::files::FAMILIES);
+                        // A family the project has otherwise asks first: Family Already Exists.
+                        self.ask_file(ui.ctx(), dialog, false, |app, path| app.load_family_file(&path));
+                    }
+                }
+                if placing || family.is_some() {
+                    let tip = msg!("Edit Family: the family of what is selected, or of the component being placed");
+                    let r = ui.add_enabled_ui(family.is_some(), |ui| big_button(ui, Icon::FamilyEditor, "Edit Family", false, tip));
+                    if r.inner.clicked()
+                        && let Some(f) = family.as_deref()
+                    {
+                        self.edit_family(f);
+                    }
                 }
             });
         });
@@ -847,8 +903,10 @@ impl BimApp {
         let was = sk.region.1.clone();
         let c = egui::ComboBox::from_id_salt("region-lines").selected_text(shown).width(160.0).show_ui(ui, |ui| {
             ui.selectable_value(&mut sk.region.1, None, &invisible);
-            for n in m.line_styles.keys() {
-                ui.selectable_value(&mut sk.region.1, Some(n.clone()), n);
+            for (n, style) in &m.line_styles {
+                if crate::linestyles::style_row(ui, m, Some(style), sk.region.1.as_ref() == Some(n), n) {
+                    sk.region.1 = Some(n.clone());
+                }
             }
         });
         c.response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::ComboBox, true, t("Line Style")));

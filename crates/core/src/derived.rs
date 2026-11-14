@@ -72,16 +72,18 @@ pub enum Group {
 /// under its ends (`runs::Geom::half`, and its justification).
 const STEEP: f64 = 2.0;
 
-/// The kinds a plan finds by height, by view, by level or by host, or never shows, not in [`Lookup::other`].
+/// The kinds a plan finds by height, by view, by level or by host, or never shows, not in [`Lookup::other`]. A component on a
+/// reference plane isn't banded (it may tilt), so it is among the others.
 fn found_otherwise(e: &Element) -> bool {
     matches!(
         e,
         Element::Wall(_)
             | Element::Door(_)
             | Element::Window(_)
-            | Element::Component(_)
+            | Element::Component(crate::model::Component { host: None, .. })
             | Element::Room(_)
             | Element::RoomSeparator(_)
+            | Element::PropertyLine(_)
             | Element::Ceiling(_)
             | Element::Text(_)
             | Element::DetailLine(_)
@@ -109,7 +111,11 @@ fn elevation_in(elements: &Elements, level: Guid) -> f64 {
 /// The group and own heights of an element banded by height; none for another, or a run too steep.
 fn banding(elements: &Elements, e: &Element) -> Option<(Group, f64, f64)> {
     if let Element::Component(c) = e {
-        let params = serde_json::to_string(&c.params).unwrap_or_default();
+        // On a plane, it may tilt, and its family says whether it does: not banded, looked at wherever heights are asked.
+        if c.host.is_some() {
+            return None;
+        }
+        let params = serde_json::to_string(&(&c.params, &c.adaptive)).unwrap_or_default();
         let group = Group::Component { family: c.family.clone(), type_name: c.type_name.clone(), mirrored: c.mirrored, params };
         let base = elevation_in(elements, c.level) + c.offset;
         return Some((group, base, base));
@@ -131,6 +137,7 @@ const MAX_BANDS: i64 = 64;
 /// among all of them: kept by kind. Its views, sheets and viewports among them: a drawing set of a thousand sheets is a
 /// thousandth of a million elements.
 pub const RARE: &[&str] = &[
+    "refplane",
     "pointcloud",
     "cadimport",
     "mass",
@@ -144,12 +151,13 @@ pub const RARE: &[&str] = &[
     "section",
     "elevation",
     "schedule",
+    "panelschedule",
     "view3d",
 ];
 
 /// The categories of a drawing set: views, sheets and what places a view on a sheet. Their names and numbers are kept
 /// apart, and a view goes on one sheet, so they are checked together ([`crate::model::Model::check_changed`]).
-pub const DRAWING_SET: &[&str] = &["sheet", "viewport", "planview", "section", "elevation", "schedule", "view3d"];
+pub const DRAWING_SET: &[&str] = &["sheet", "viewport", "planview", "section", "elevation", "schedule", "panelschedule", "view3d"];
 
 /// Banded elements' groups and bands, by id.
 type Banded = BTreeMap<Id, (Arc<Group>, [i64; 2])>;
@@ -563,9 +571,26 @@ pub struct Derived {
     parent: Option<(u64, u64, Arc<Lookup>)>,
     /// What a slab asks of each shaft, with the token and version of the elements it is of.
     shafts: Mutex<Option<KeptShafts>>,
+    /// The walls' and runs' tile index ([`crate::walls::Index`]), with the token and version of the elements and the types it
+    /// was made of: what a run's joins ask of its neighbours, kept so a plan of thousands of runs never scans every element.
+    index: Mutex<Option<KeptIndex>>,
+    /// The box round every solid ([`crate::model::Model::model_box`]), with what it was made of: making every solid again for it
+    /// cost a tower's 3D view seconds a frame.
+    model_box: Mutex<Option<KeptBox>>,
 }
 
+/// A model's box, with the token and version of its elements and the types, families and materials it was made of.
+type KeptBox = (
+    u64,
+    u64,
+    crate::shared::Identity<crate::model::Types>,
+    crate::shared::Identity<BTreeMap<String, crate::family::Family>>,
+    crate::shared::Identity<BTreeMap<String, crate::model::Material>>,
+    Option<([f64; 3], [f64; 3])>,
+);
+
 type KeptShafts = (u64, u64, Arc<Vec<ShaftReach>>);
+type KeptIndex = (u64, u64, crate::shared::Identity<crate::model::Types>, Arc<crate::walls::Index>);
 
 /// A shaft as a slab asks of it: its span, its plan box [x0, y0, x1, y1] and its outline.
 #[derive(Debug)]
@@ -594,6 +619,51 @@ impl Derived {
         let made = Arc::new(make());
         if let Ok(mut now) = self.shafts.lock() {
             *now = Some((token, version, Arc::clone(&made)));
+        }
+        made
+    }
+
+    /// The tile index of the walls and runs of `elements` with `types`, made by `make` and kept until either changes.
+    pub(crate) fn index(
+        &self,
+        elements: &Elements,
+        types: &crate::shared::Shared<crate::model::Types>,
+        make: impl FnOnce() -> crate::walls::Index,
+    ) -> Arc<crate::walls::Index> {
+        let (token, version) = elements.state();
+        if let Ok(now) = self.index.lock()
+            && let Some((t, v, of, index)) = now.as_ref()
+            && (*t, *v) == (token, version)
+            && of.is_of(types)
+        {
+            return Arc::clone(index);
+        }
+        let made = Arc::new(make());
+        if let Ok(mut now) = self.index.lock() {
+            *now = Some((token, version, types.identity(), Arc::clone(&made)));
+        }
+        made
+    }
+
+    /// The box round every solid of `m`, made by `make` and kept until what it is made of changes.
+    pub(crate) fn model_box(
+        &self,
+        m: &crate::model::Model,
+        make: impl FnOnce() -> Option<([f64; 3], [f64; 3])>,
+    ) -> Option<([f64; 3], [f64; 3])> {
+        let (token, version) = m.elements.state();
+        if let Ok(now) = self.model_box.lock()
+            && let Some((t, v, types, families, materials, b)) = now.as_ref()
+            && (*t, *v) == (token, version)
+            && types.is_of(&m.types)
+            && families.is_of(&m.families)
+            && materials.is_of(&m.materials)
+        {
+            return *b;
+        }
+        let made = make();
+        if let Ok(mut now) = self.model_box.lock() {
+            *now = Some((token, version, m.types.identity(), m.families.identity(), m.materials.identity(), made));
         }
         made
     }
@@ -628,7 +698,13 @@ impl Clone for Derived {
     /// For the model's copy: what it starts from, this one's lookup. It is the copy's to bring up to date, if its elements
     /// were cloned from the elements this lookup is of, as they were then.
     fn clone(&self) -> Derived {
-        Derived { now: Mutex::new(None), parent: self.current(), shafts: Mutex::new(None) }
+        Derived {
+            now: Mutex::new(None),
+            parent: self.current(),
+            shafts: Mutex::new(None),
+            index: Mutex::new(None),
+            model_box: Mutex::new(None),
+        }
     }
 }
 

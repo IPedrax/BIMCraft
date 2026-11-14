@@ -386,7 +386,7 @@ fn finish(
     let dir = std::path::Path::new(dir);
     std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
     let name = report["fixture"].as_str().unwrap_or("model").trim_start_matches("synthetic-").to_string();
-    std::fs::write(dir.join(format!("{name}.bimcraft")), text).map_err(|e| e.to_string())?;
+    std::fs::write(dir.join(format!("{name}.bimc")), text).map_err(|e| e.to_string())?;
     let skipped = report["skipped"].as_array().is_some_and(|a| a.iter().any(|s| s == "ifc"));
     if !skipped {
         let ifc = timed(report, "ifc_export", || Ok(bimcraft_core::ifc::export(&s.model)))?;

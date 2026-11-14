@@ -249,6 +249,8 @@ impl BimApp {
         }
         let fit = |w, h| render::section_fit(&model, id, w, h);
         let Some((view, local)) = self.canvas.navigate(ui, &response, rect, id, fit) else { return };
+        // Where the pointer is on the section's drawing, for the others in a Co-Work session.
+        self.cowork_seen.pointer = local.map(|q| (id, view.mm(q)));
         let crop = self.crop_grips(ui, &response, rect, &view, id);
         let level_ends = self
             .cut
@@ -346,6 +348,7 @@ impl BimApp {
             p.image(t.id(), image_rect, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
         }
         paint(&p, place, &d, &self.selection, hovered, self.thin, &[]);
+        crate::cowork::paint_plan(&p, &self.cowork, &self.cowork_seen, &model, ("section", id), rect, &view, (&d, place));
         // While a note is written here, the pointer is its editor's.
         if self.writing_in(id) {
             p.extend(crop);
@@ -388,6 +391,17 @@ impl BimApp {
             && let Some(note) = hovered.filter(|h| crate::notes::is_note(&model, *h))
         {
             self.edit_note(note);
+            return;
+        }
+        if let Tool::ExportRegion(first) = self.tool {
+            let cursor = ui.input(|i| i.pointer.latest_pos()).filter(|c| rect.contains(*c));
+            if let Some(cursor) = cursor {
+                let screen = |a: P2| rect.min + egui::vec2(view.px(a).0, view.px(a).1);
+                crate::export::region_band(&ui.painter_at(rect), first.map(screen), cursor);
+            }
+            if let Some(q) = clicked {
+                self.export_region_at(view.mm(q));
+            }
             return;
         }
         match (clicked, &self.tool) {

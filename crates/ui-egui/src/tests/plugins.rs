@@ -178,9 +178,8 @@ fn a_new_project_keeps_the_plugins_their_tab_and_their_commands() {
     folder(dir.path());
     let Some(mut h) = window_with_plugins(dir.path()) else { return };
     assert!(h.query_by_label("Areas").is_some());
-    press(&mut h, "File");
-    h.get_by_label_contains("New").click();
-    h.run();
+    // File > New > Project: New is a list of Project and Family here.
+    new_project(&mut h);
     assert!(h.state().session.model.name == "Project", "a new project");
     assert_eq!(h.state().plugin_tabs.len(), 1, "the plugin's tab stays");
     assert_eq!(h.state().plugins.plugins[0].status, bimcraft_plugin::Status::Loaded);

@@ -31,7 +31,10 @@ pub(crate) struct CadBox {
     all_layers: bool,
     units: &'static str,
     /// Its origin on the project's (Origin to Origin), or its middle (Center to Center).
-    by_origin: bool,
+    /// Positioning: `center`, `origin` or `shared` (the file's coordinates are the map's, placed by the active location).
+    position: &'static str,
+    /// By shared coordinates: the active location taken from the file instead (Acquire Coordinates).
+    acquire: bool,
     /// In the plan on screen only, not in every plan of its level.
     this_view: bool,
     /// Why it couldn't be brought in, shown in the box.
@@ -66,7 +69,8 @@ impl BimApp {
             colors: "preserve",
             all_layers: false,
             units: "auto",
-            by_origin: false,
+            position: "center",
+            acquire: false,
             this_view: false,
             error: None,
         });
@@ -114,10 +118,15 @@ impl BimApp {
                 });
                 ui.add_space(6.0);
                 ui.label(t("Positioning"));
-                ui.radio_value(&mut b.by_origin, false, t("Auto - Center to Center"))
+                ui.radio_value(&mut b.position, "center", t("Auto - Center to Center"))
                     .on_hover_text(t("Its middle on the project's origin"));
-                ui.radio_value(&mut b.by_origin, true, t("Auto - Origin to Origin"))
+                ui.radio_value(&mut b.position, "origin", t("Auto - Origin to Origin"))
                     .on_hover_text(t("Its origin on the project's origin, where its file's coordinates put it"));
+                ui.radio_value(&mut b.position, "shared", t("Auto - By Shared Coordinates")).on_hover_text(t(
+                    "Its coordinates are the site's (a survey's): it goes where the active location puts them, turned to match",
+                ));
+                ui.add_enabled(b.position == "shared", Checkbox::new(&mut b.acquire, t("Acquire coordinates from it")))
+                    .on_hover_text(t("The active location is set from the file's instead, so it lands on the project's origin"));
                 ui.add_space(6.0);
                 ui.add_enabled(plan, Checkbox::new(&mut b.this_view, t("Current view only")))
                     .on_hover_text(t("In this plan only, not in every plan of its level"));
@@ -150,8 +159,11 @@ impl BimApp {
             "colors": b.colors,
             "layers": if b.all_layers { "all" } else { "visible" },
             "units": b.units,
-            "position": if b.by_origin { "origin" } else { "center" },
+            "position": b.position,
         });
+        if b.position == "shared" && b.acquire {
+            p["acquire"] = json!(true);
+        }
         if b.link {
             p["link"] = json!(true);
         }

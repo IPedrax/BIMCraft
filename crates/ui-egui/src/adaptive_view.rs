@@ -1,0 +1,851 @@
+//! The Family Editor's adaptive modelling view, as Revit's: a 3D view over a work plane where Point places reference points
+//! (on a line, hosted on it), Line draws through points (a click on the first closes the profile), Make Adaptive numbers the
+//! points selected in the order it is pressed, and Create Form makes a solid or a void of the profiles selected. A point
+//! selected shows a move gizmo: a drag of an arrow moves it along that axis, a drag of the point over its own height. The view
+//! orbits, pans and zooms as the 3D view does. Every edit changes the family's canonical definition (`adaptive::Definition`,
+//! its edits in `adaptive/edit.rs`); Undo here steps back through this editor's edits, and Apply or OK makes the family the
+//! project's.
+use crate::lang::t;
+use crate::orbit::{Cube, Input, Orbit};
+use crate::style::pal;
+use bimcraft_core::adaptive::{Definition, Evaluated, Evaluation, Host, Operation, Picked, Plane, PointType, Show, WorkPlane, gizmo_end};
+use bimcraft_core::family::{CENTER_FRONT_BACK, CENTER_LEFT_RIGHT, PlaneRef, Planes, REF_LEVEL, Val};
+use bimcraft_core::view3d::{AZIMUTH, Camera, ELEVATION, P3};
+use bimcraft_i18n::msg;
+use egui::{Color32, Key, PointerButton, Pos2, Rect, Sense, Shape, Stroke, StrokeKind, Ui, vec2};
+use std::collections::BTreeMap;
+
+/// The tool the view's clicks are for.
+#[derive(Clone, Debug, Default, PartialEq)]
+pub(crate) enum Draw {
+    #[default]
+    Modify,
+    Point,
+    /// Line, and the points of the chain drawn so far.
+    Line(Vec<String>),
+    /// Move, or with `copy` Copy, of the selection: where it moves from, once clicked.
+    Move {
+        from: Option<P3>,
+        copy: bool,
+    },
+    /// Rotate of the selection about `centre`, square to the work plane: where the angle starts, once clicked.
+    Rotate {
+        centre: P3,
+        start: Option<P3>,
+    },
+}
+
+/// A drag under way in the view.
+#[derive(Clone, Debug)]
+enum Drag {
+    /// A point dragged over the horizontal plane at its height.
+    Plane(String, f64),
+    /// A point dragged along a gizmo axis: which, where the drag began, and where the point was then.
+    Axis(String, usize, Pos2, P3),
+    /// A selection box, from where the drag began: left to right a window, right to left a crossing.
+    Box(Pos2),
+}
+
+/// The modelling view between frames.
+pub(crate) struct Modeller {
+    pub(crate) camera: Option<Camera>,
+    pub(crate) rect: Rect,
+    pub(crate) tool: Draw,
+    pub(crate) selection: Vec<String>,
+    drag: Option<Drag>,
+    /// How the view turns, pans and zooms: the project's 3D view's navigation (`Orbit::navigate`), in the view's points.
+    nav: Orbit,
+    /// The solid or void Create Form makes: its depth, mm.
+    pub(crate) depth: f64,
+    /// Where Point Element and Line draw: Revit's Placement Plane, Ref. Level to begin with.
+    pub(crate) work_plane: WorkPlane,
+    /// Placement Plane's Pick: the next click in the view picks the plane under it.
+    pub(crate) picking_plane: bool,
+    /// Work Plane > Show: the work plane drawn, tinted, with a grid on it.
+    pub(crate) show_work_plane: bool,
+}
+
+impl Default for Modeller {
+    fn default() -> Modeller {
+        Modeller {
+            camera: None,
+            rect: Rect::ZERO,
+            tool: Draw::Modify,
+            selection: Vec::new(),
+            drag: None,
+            nav: Orbit::named("adaptive-view"),
+            depth: 300.,
+            work_plane: WorkPlane::default(),
+            picking_plane: false,
+            show_work_plane: false,
+        }
+    }
+}
+
+/// What the view leaves out for now (the family document's Temporary Hide/Isolate, `editor/temp_hide.rs`): elements by id,
+/// neither drawn nor picked, and the datums and reference planes.
+#[derive(Clone, Debug, Default)]
+pub(crate) struct Hidden {
+    pub(crate) nodes: std::collections::BTreeSet<String>,
+    pub(crate) datums: bool,
+}
+
+impl Hidden {
+    /// Evaluation `r` with what is hidden left out: what the view draws and picks.
+    fn seen(&self, r: &Evaluation) -> Evaluation {
+        if self.nodes.is_empty() {
+            return r.clone();
+        }
+        let mut seen = r.clone();
+        seen.values.retain(|id, _| !self.nodes.contains(id));
+        seen.order.retain(|id| !self.nodes.contains(id));
+        seen
+    }
+}
+
+/// The gizmo's arrows, px long on screen.
+const ARROW: f64 = 60.0;
+
+impl Modeller {
+    /// Where model point `p` shows on screen: where a test clicks it.
+    #[cfg(test)]
+    pub(crate) fn screen(&self, p: P3) -> Pos2 {
+        match self.camera {
+            Some(c) => {
+                let (x, y, _) = c.project(p);
+                self.rect.min + vec2(x as f32, y as f32)
+            }
+            None => self.rect.center(),
+        }
+    }
+}
+
+/// How far the datums reach: a box 300 mm beyond what the family takes up, and at least 1.5 m from its origin, each way but
+/// down: the reference planes stand on the level, as Revit's do, reaching below it only as far as the family does.
+fn room(r: &Evaluation) -> (P3, P3) {
+    let (lo, hi) = extent(r).unwrap_or(([-1000.; 3], [1000.; 3]));
+    (
+        std::array::from_fn(|i| if i == 2 { (lo[i] - 300.).min(0.) } else { (lo[i] - 300.).min(-1500.) }),
+        std::array::from_fn(|i| (hi[i] + 300.).max(1500.)),
+    )
+}
+
+/// How far each of a point's planes reaches from it on screen, px: half the square drawn.
+const PLANE_REACH: f64 = 14.0;
+
+/// Everything an evaluation shows, for fitting the view to it.
+fn extent(r: &Evaluation) -> Option<(P3, P3)> {
+    let mut points: Vec<P3> = vec![[0.; 3]];
+    for v in r.values.values() {
+        match v {
+            Evaluated::Point { frame } => points.push(frame.origin),
+            Evaluated::Curve { curve } => points.extend(curve.samples()),
+            Evaluated::Form { mesh, .. } => points.extend(mesh.vertices.iter().copied()),
+        }
+    }
+    let lo = std::array::from_fn(|i| points.iter().map(|p| p[i]).fold(f64::INFINITY, f64::min));
+    let hi = std::array::from_fn(|i| points.iter().map(|p| p[i]).fold(f64::NEG_INFINITY, f64::max));
+    Some((lo, hi)).filter(|(lo, hi): &(P3, P3)| lo.iter().chain(hi).all(|v| v.is_finite()))
+}
+
+/// A camera from Revit's default 3D orientation that shows all of `r` and its datums in `w` by `h` points.
+fn fit(r: &Evaluation, w: f32, h: f32) -> Camera {
+    // All the datums show, as in Revit's view of a family: what the family takes up and the level and reference planes round it.
+    let (lo, hi) = room(r);
+    let least = 1000.;
+    let size = (0..3).map(|i| hi[i] - lo[i]).fold(0., f64::max).max(least);
+    Camera {
+        azimuth: AZIMUTH,
+        elevation: ELEVATION,
+        lens: None,
+        target: std::array::from_fn(|i| (lo[i] + hi[i]) / 2.),
+        scale: 0.6 * f64::from(w.min(h)) / size,
+        width: w.max(1.) as u32,
+        height: h.max(1.) as u32,
+    }
+}
+
+/// Whether node `id` is a point a drag can move.
+fn movable(d: &Definition, id: &str) -> bool {
+    d.nodes.iter().any(|n| {
+        n.id == id && matches!(&n.operation, Operation::Point { host, .. } if !matches!(host, Host::Face { .. } | Host::Edge { .. } | Host::Vertex { .. }))
+    })
+}
+
+/// The adaptive number of point `id`, if it is adaptive.
+fn number(d: &Definition, id: &str) -> Option<u32> {
+    d.nodes.iter().find(|n| n.id == id).and_then(|n| match &n.operation {
+        Operation::Point { host: Host::Adaptive { number, .. }, .. } => Some(*number),
+        _ => None,
+    })
+}
+
+/// The points and the lines selected.
+pub(crate) fn selected(d: &Definition, m: &Modeller, values: &BTreeMap<String, Val>) -> (Vec<String>, Vec<String>) {
+    let r = d.evaluate(values, &d.preview);
+    let points = m.selection.iter().filter(|id| r.origin(id).is_some()).cloned().collect();
+    let lines = m.selection.iter().filter(|id| matches!(r.values.get(id.as_str()), Some(Evaluated::Curve { .. }))).cloned().collect();
+    (points, lines)
+}
+
+/// Make Adaptive, a toggle as Revit's: points all adaptive already go back to reference points; otherwise the others are made
+/// adaptive, numbered in the order they were selected.
+pub(crate) fn make_adaptive(d: &mut Definition, points: &[String]) {
+    let all = points.iter().all(|id| matches!(d.point_type(id), Some(PointType::Placement | PointType::ShapeHandle)));
+    for id in points {
+        let _ = if all { d.make_reference(id) } else { d.make_adaptive(id).map(|_| ()) };
+    }
+}
+
+/// Create Form, a solid or a `void`, from the lines selected, `m.depth` deep; it is selected after. What went wrong, if it did.
+pub(crate) fn create_form(d: &mut Definition, m: &mut Modeller, lines: &[String], void: bool) -> Result<(), String> {
+    let before = d.clone();
+    let id = d.create_form(lines, m.depth, void).inspect_err(|_| *d = before)?;
+    m.selection = vec![id];
+    Ok(())
+}
+
+/// Delete: what is selected, with what depends on it.
+pub(crate) fn delete(d: &mut Definition, m: &mut Modeller) {
+    d.remove(&m.selection);
+    m.selection.clear();
+}
+
+/// What the tool in hand asks for, as the status bar says it.
+pub(crate) fn prompt(m: &Modeller) -> &'static str {
+    if m.picking_plane {
+        return msg!("Pick a plane: one of a point's planes, the level or a reference plane; Escape gives up.");
+    }
+    match &m.tool {
+        Draw::Modify => msg!(
+            "Click to select, Ctrl adds; drag a box to select (left to right what is inside it, right to left what it touches); drag a point or a gizmo arrow to move it; Shift and the middle button orbit."
+        ),
+        Draw::Point => msg!("Click on the work plane for a reference point, on a line for a point hosted on it."),
+        Draw::Line(chain) if chain.is_empty() => msg!("Click points or the work plane; click the first point again to close the profile."),
+        Draw::Line(_) => msg!("Click the next point; the first again closes the profile; Enter or Escape finishes it open."),
+        Draw::Move { from: None, copy: false } => msg!("Move: click the point to move from."),
+        Draw::Move { from: None, copy: true } => msg!("Copy: click the point to copy from."),
+        Draw::Move { .. } => msg!("Click where it goes."),
+        Draw::Rotate { start: None, .. } => msg!("Rotate: click where the angle starts, about the centre shown."),
+        Draw::Rotate { .. } => msg!("Click where the angle ends."),
+    }
+}
+
+/// Where the points of what is selected are, on average: the centre Rotate turns about.
+pub(crate) fn selection_centre(d: &Definition, m: &Modeller, values: &BTreeMap<String, Val>) -> Option<P3> {
+    let r = d.evaluate(values, &d.preview);
+    let mut points: Vec<P3> = Vec::new();
+    for id in &m.selection {
+        match r.values.get(id.as_str()) {
+            Some(Evaluated::Point { frame }) => points.push(frame.origin),
+            Some(Evaluated::Curve { curve }) => points.extend(curve.samples()),
+            Some(Evaluated::Form { mesh, .. }) => points.extend(mesh.vertices.iter().copied()),
+            None => {}
+        }
+    }
+    (!points.is_empty()).then(|| {
+        let n = points.len() as f64;
+        std::array::from_fn(|i| points.iter().map(|p| p[i]).sum::<f64>() / n)
+    })
+}
+
+/// A click of Move, Copy or Rotate at `p`: the first sets where it moves from (or where the angle starts), the second does it
+/// (Rotate about the work plane's normal `normal`, to the whole degree), and the tool goes back to Modify, as Revit's.
+fn transform_click(d: &mut Definition, m: &mut Modeller, r: &Evaluation, p: P3, normal: P3) -> Result<(), String> {
+    let sub = |a: P3, b: P3| [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+    let dot = |a: P3, b: P3| a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+    let cross = |a: P3, b: P3| [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+    let selection = m.selection.clone();
+    let before = d.clone();
+    let done = match &mut m.tool {
+        Draw::Move { from: from @ None, .. } | Draw::Rotate { start: from @ None, .. } => {
+            *from = Some(p);
+            return Ok(());
+        }
+        Draw::Move { from: Some(from), copy } => {
+            let by = sub(p, *from);
+            if *copy { d.copy_elements(&selection, by, r).map(Some) } else { d.move_elements(&selection, by, r).map(|_| None) }
+        }
+        Draw::Rotate { centre, start: Some(start) } => {
+            let flat = |v: P3| sub(v, [normal[0] * dot(v, normal), normal[1] * dot(v, normal), normal[2] * dot(v, normal)]);
+            let (u, v) = (flat(sub(*start, *centre)), flat(sub(p, *centre)));
+            let degrees = dot(cross(u, v), normal).atan2(dot(u, v)).to_degrees().round();
+            d.rotate_elements(&selection, *centre, normal, degrees, r).map(|_| None)
+        }
+        _ => return Ok(()),
+    };
+    match done {
+        Ok(made) => {
+            if let Some(made) = made {
+                // The copies of what was selected are selected after.
+                m.selection = made.into_iter().filter(|id| d.nodes.iter().any(|n| &n.id == id)).collect();
+            }
+            m.tool = Draw::Modify;
+            Ok(())
+        }
+        Err(e) => {
+            *d = before;
+            m.tool = Draw::Modify;
+            Err(e)
+        }
+    }
+}
+
+/// The modelling view, `size` points, over definition `d` evaluated with `values`, what is `hidden` for now neither drawn nor
+/// picked.
+pub(crate) fn show(
+    ui: &mut Ui,
+    d: &mut Definition,
+    planes: Planes,
+    m: &mut Modeller,
+    values: &BTreeMap<String, Val>,
+    size: egui::Vec2,
+    hidden: &Hidden,
+) {
+    if m.depth <= 0. {
+        m.depth = 300.;
+    }
+    let mut r = d.evaluate(values, &d.preview);
+    let (rect, response) = ui.allocate_exact_size(size, Sense::click_and_drag());
+    m.rect = rect;
+    let mut cam = match m.camera {
+        Some(c) => Camera { width: rect.width().max(1.) as u32, height: rect.height().max(1.) as u32, ..c },
+        None => fit(&r, rect.width(), rect.height()),
+    };
+    let px = |p: Pos2| (f64::from(p.x - rect.min.x), f64::from(p.y - rect.min.y));
+    let (hover, latest, mods) = ui.input(|i| (i.pointer.hover_pos().filter(|p| rect.contains(*p)), i.pointer.latest_pos(), i.modifiers));
+    // The wheel and a pinch zoom toward the cursor, as in the project's 3D view; the view is drawn in points.
+    let input = Input::in_points(ui, rect, &response);
+    cam = m.nav.zoom(ui.ctx(), &input, cam, None);
+    let screen_of = |cam: &Camera, p: P3| -> Option<(f64, f64, f64)> {
+        let (x, y, z) = cam.project(p);
+        (x.is_finite() && y.is_finite()).then_some((x, y, z))
+    };
+    let to_screen = |cam: &Camera, p: P3| {
+        let (x, y, _) = cam.project(p);
+        rect.min + vec2(x as f32, y as f32)
+    };
+    // The gizmo of the one point selected, if it can move: its arrows' ends on screen.
+    let gizmo = match m.selection.as_slice() {
+        [id] if movable(d, id) => r.origin(id).map(|o| (id.clone(), o)),
+        _ => None,
+    };
+    let arrows = |cam: &Camera, o: P3| (0..3).map(|k| to_screen(cam, gizmo_end(o, k, ARROW / cam.scale.max(1e-9)))).collect::<Vec<_>>();
+    if response.drag_started()
+        && let Some(origin) = ui.input(|i| i.pointer.press_origin())
+    {
+        let primary = response.dragged_by(PointerButton::Primary) && !mods.shift;
+        let on_arrow = gizmo.as_ref().and_then(|(id, o)| {
+            let ends = arrows(&cam, *o);
+            let base = to_screen(&cam, *o);
+            (0..3)
+                .find(|k| {
+                    let (a, b) = (base, ends[*k]);
+                    let ab = b - a;
+                    let f = ((origin - a).dot(ab) / ab.length_sq().max(1e-6)).clamp(0.0, 1.0);
+                    f > 0.25 && (a + ab * f).distance(origin) <= 6.0
+                })
+                .map(|k| (id.clone(), k, *o))
+        });
+        let on_cube = Orbit::cube_rect(rect).contains(origin);
+        // Else the view's navigation turns or pans it (below).
+        m.drag = match (primary && !on_cube, m.tool == Draw::Modify, on_arrow) {
+            (true, true, Some((id, k, o))) => Some(Drag::Axis(id, k, origin, o)),
+            (true, true, None) => Some(match hidden.seen(&r).pick(&|p| screen_of(&cam, p), px(origin)) {
+                Some(Picked::Point(id)) if movable(d, &id) => {
+                    m.selection = vec![id.clone()];
+                    let z = r.origin(&id).map_or(0., |o| o[2]);
+                    Drag::Plane(id, z)
+                }
+                // On empty space, as Revit's: a selection box.
+                _ => Drag::Box(origin),
+            }),
+            _ => None,
+        };
+    }
+    // Shift and the middle button, or a drag the tool doesn't take, orbit; the middle button pans.
+    cam = m.nav.navigate(ui, &response, &input, cam, m.drag.is_some(), false, false, None).cam;
+    if response.dragged()
+        && let (Some(drag), Some(now)) = (m.drag.clone(), latest)
+    {
+        match drag {
+            Drag::Plane(id, z) => {
+                if let Some(to) = cam.on_plane(px(now), z) {
+                    let _ = d.move_point(&id, &r, to);
+                }
+            }
+            Drag::Axis(id, k, from, start) => {
+                if let Some(by) = cam.along(k, start, px(from), px(now)) {
+                    let to = gizmo_end(start, k, by);
+                    let _ = d.move_point(&id, &r, to);
+                }
+            }
+            Drag::Box(_) => {}
+        }
+        r = d.evaluate(values, &d.preview);
+    }
+    if response.drag_stopped() {
+        // A box let go selects what it takes: Ctrl adds it to the selection, Shift takes it away, else it is the selection.
+        if let (Some(Drag::Box(from)), Some(to)) = (m.drag.clone(), latest) {
+            let taken = hidden.seen(&r).in_box(&|p| screen_of(&cam, p), px(from), px(to));
+            if mods.ctrl || mods.command {
+                for id in taken {
+                    if !m.selection.contains(&id) {
+                        m.selection.push(id);
+                    }
+                }
+            } else if mods.shift {
+                m.selection.retain(|id| !taken.contains(id));
+            } else {
+                m.selection = taken;
+            }
+        }
+        m.drag = None;
+    }
+    m.camera = Some(cam);
+    let seen = hidden.seen(&r);
+    let hovered = hover.filter(|_| m.drag.is_none() && !m.nav.turning()).and_then(|at| seen.pick(&|p| screen_of(&cam, p), px(at)));
+    // Placement Plane's Pick: the plane under the pointer lights up, and a click makes it the work plane; Escape gives up.
+    let plane_at = |at: Pos2| {
+        let half = PLANE_REACH / cam.scale.max(1e-9);
+        r.pick_plane(planes, &|o, n| cam.on(px(at), o, n), &|p| cam.project(p).2, half, room(&r))
+    };
+    let lit = if m.picking_plane { hover.and_then(plane_at) } else { None };
+    // The ViewCube: a face clicked looks at the family from that side; the house, Revit's default 3D view.
+    let on_cube = response.clicked().then(|| response.interact_pointer_pos()).flatten().filter(|at| Orbit::on_cube(rect, *at));
+    if let Some(at) = on_cube {
+        match Orbit::cube_click(&cam, rect, at) {
+            Some(Cube::Home) => m.camera = None,
+            Some(Cube::Look(azimuth, elevation)) => m.camera = Some(Camera { azimuth, elevation, ..cam }),
+            None => {}
+        }
+    } else if m.picking_plane
+        && response.clicked()
+        && let Some(at) = response.interact_pointer_pos()
+    {
+        if let Some(plane) = plane_at(at) {
+            m.work_plane = plane;
+            m.picking_plane = false;
+        }
+    } else if response.clicked()
+        && let Some(at) = response.interact_pointer_pos()
+    {
+        let mods = crate::canvas::click_modifiers(ui);
+        let picked = seen.pick(&|p| screen_of(&cam, p), px(at));
+        // Where the click falls on the work plane (Ref. Level when the one chosen has gone).
+        let plane = m.work_plane.frame(&r, planes).unwrap_or_default();
+        let on_plane = cam.on(px(at), plane.origin, plane.z);
+        let work_plane = m.work_plane.clone();
+        // Move, Copy and Rotate take clicks on points exactly, else on the work plane.
+        let clicked = match &picked {
+            Some(Picked::Point(id)) => r.origin(id),
+            _ => on_plane,
+        };
+        if let Draw::Move { .. } | Draw::Rotate { .. } = m.tool {
+            if let Some(p) = clicked
+                && let Err(e) = transform_click(d, m, &r, p, plane.z)
+            {
+                ui.ctx().data_mut(|w| w.insert_temp(egui::Id::new("adaptive-view-problem"), e));
+            }
+        } else {
+            match &mut m.tool {
+                Draw::Modify => match picked {
+                    Some(p) if mods.ctrl || mods.shift => {
+                        let id = p.id().to_string();
+                        if let Some(k) = m.selection.iter().position(|s| *s == id) {
+                            m.selection.remove(k);
+                        } else {
+                            m.selection.push(id);
+                        }
+                    }
+                    Some(p) => m.selection = vec![p.id().to_string()],
+                    None => m.selection.clear(),
+                },
+                Draw::Point => {
+                    let made = match picked {
+                        Some(Picked::Curve(curve, t)) => d.add_hosted_point(&curve, t).ok(),
+                        // Snapped onto the point under the pointer: exactly where it falls on the work plane (on that point's own
+                        // plane, on it, at no offset).
+                        Some(Picked::Point(snap)) => r.origin(&snap).and_then(|o| d.add_point_on(&work_plane, o, &r, planes).ok()),
+                        _ => on_plane.and_then(|p| d.add_point_on(&work_plane, p, &r, planes).ok()),
+                    };
+                    if let Some(id) = made {
+                        m.selection = vec![id];
+                    }
+                }
+                Draw::Line(chain) => {
+                    let point = match picked {
+                        Some(Picked::Point(id)) => Some(id),
+                        _ => on_plane.and_then(|p| d.add_point_on(&work_plane, p, &r, planes).ok()),
+                    };
+                    if let Some(id) = point {
+                        let closes = chain.len() >= 3 && chain.first() == Some(&id);
+                        if closes {
+                            if let Ok(line) = d.add_chain(chain, true) {
+                                m.selection = vec![line];
+                            }
+                            chain.clear();
+                        } else if chain.last() != Some(&id) {
+                            chain.push(id);
+                        }
+                    }
+                }
+                Draw::Move { .. } | Draw::Rotate { .. } => {}
+            }
+        }
+    }
+    // Finishing a chain open: Enter, Escape or a right click; Escape again back to Modify.
+    // Undo is the family document's, through its history.
+    let (enter, escape, delete) = ui.input(|i| (i.key_pressed(Key::Enter), i.key_pressed(Key::Escape), i.key_pressed(Key::Delete)));
+    if m.picking_plane && escape {
+        m.picking_plane = false;
+    }
+    let finish = enter || ((escape || response.secondary_clicked()) && hover.is_some());
+    if finish && let Draw::Line(chain) = &mut m.tool {
+        if chain.len() >= 2 {
+            if let Ok(line) = d.add_chain(chain, false) {
+                m.selection = vec![line];
+            }
+            chain.clear();
+        } else if escape {
+            m.tool = Draw::Modify;
+        }
+    } else if escape && hover.is_some() {
+        m.tool = Draw::Modify;
+    }
+    if hover.is_some() && delete && !m.selection.is_empty() {
+        d.remove(&m.selection);
+        m.selection.clear();
+    }
+    m.selection.retain(|id| d.nodes.iter().any(|n| &n.id == id));
+    let r = d.evaluate(values, &d.preview);
+    draw(ui, rect, &cam, d, planes, &r, m, hovered.as_ref().map(Picked::id), hover, lit.as_ref(), hidden);
+}
+
+/// What the view shows: the work plane, the forms shaded, the lines, the points with the adaptive ones numbered, the
+/// selection in the accent, and the gizmo of a point selected.
+#[allow(clippy::too_many_arguments)]
+fn draw(
+    ui: &Ui,
+    rect: Rect,
+    cam: &Camera,
+    d: &Definition,
+    planes: Planes,
+    r: &Evaluation,
+    m: &Modeller,
+    hovered: Option<&str>,
+    hover: Option<Pos2>,
+    lit: Option<&WorkPlane>,
+    hidden: &Hidden,
+) {
+    // The datums are placed round all there is, so they stay where they are as elements are hidden; the rest draws what is seen.
+    let all = r;
+    let seen = hidden.seen(r);
+    let r = &seen;
+    let p = ui.painter_at(rect);
+    // On the drawing's own ground, as the plans and the 3D view: light in a dark interface when the user keeps the canvas light.
+    let cp = crate::style::canvas_pal();
+    let (ink, accent, hover_ink) = (cp.text, cp.accent, cp.hover);
+    // The ground, as Revit's 3D view of a family: grey, lighter towards the bottom.
+    let (top, bottom) = if crate::style::canvas_dark() {
+        (Color32::from_rgb(40, 43, 49), Color32::from_rgb(70, 74, 82))
+    } else {
+        (Color32::from_rgb(150, 152, 155), Color32::from_rgb(206, 207, 209))
+    };
+    let mut ground = egui::Mesh::default();
+    for (q, c) in [(rect.left_top(), top), (rect.right_top(), top), (rect.right_bottom(), bottom), (rect.left_bottom(), bottom)] {
+        ground.colored_vertex(q, c);
+    }
+    ground.add_triangle(0, 1, 2);
+    ground.add_triangle(0, 2, 3);
+    p.add(Shape::mesh(ground));
+    let at = |q: P3| {
+        let (x, y, _) = cam.project(q);
+        rect.min + vec2(x as f32, y as f32)
+    };
+    let tone = |id: &str, base: Color32| {
+        if m.selection.iter().any(|s| s == id) {
+            accent
+        } else if hovered == Some(id) {
+            hover_ink
+        } else {
+            base
+        }
+    };
+    // The work plane Point Element and Line draw on, when Work Plane > Show shows it: a blue tint over it and a grid on it, a
+    // line each metre over what the family takes up there.
+    let (lo, hi) = extent(all).unwrap_or(([-1000.; 3], [1000.; 3]));
+    let plane = m.work_plane.frame(all, planes).unwrap_or_default();
+    let corners: Vec<P3> =
+        (0..8).map(|k| plane.inverse_point([[lo, hi][k & 1][0], [lo, hi][(k >> 1) & 1][1], [lo, hi][k >> 2][2]])).collect();
+    let span = |i: usize| {
+        (corners.iter().map(|c| c[i]).fold(f64::INFINITY, f64::min), corners.iter().map(|c| c[i]).fold(f64::NEG_INFINITY, f64::max))
+    };
+    let ((u0, u1), (v0, v1)) = (span(0), span(1));
+    let step = 1000.0_f64;
+    let (x0, x1) = ((u0 / step).floor() - 1., (u1 / step).ceil() + 1.);
+    let (y0, y1) = ((v0 / step).floor() - 1., (v1 / step).ceil() + 1.);
+    let on = |u: f64, v: f64| at(plane.point([u * step, v * step, 0.]));
+    let blue = Color32::from_rgb(86, 170, 226);
+    if m.show_work_plane && (x1 - x0) < 200. && (y1 - y0) < 200. {
+        p.add(Shape::convex_polygon(
+            vec![on(x0, y0), on(x1, y0), on(x1, y1), on(x0, y1)],
+            blue.gamma_multiply(0.12),
+            Stroke::new(1.0, blue),
+        ));
+        let mut x = x0;
+        while x <= x1 {
+            p.line_segment([on(x, y0), on(x, y1)], Stroke::new(1.0, blue.gamma_multiply(0.45)));
+            x += 1.;
+        }
+        let mut y = y0;
+        while y <= y1 {
+            p.line_segment([on(x0, y), on(x1, y)], Stroke::new(1.0, blue.gamma_multiply(0.45)));
+            y += 1.;
+        }
+    }
+    // The datums, as Revit's template has them and draws them: Ref. Level a dash-dot outline in the ink, the two Center
+    // reference planes dashed green; each 300 mm beyond what the family takes up, named at a corner. The one drawn on is
+    // drawn heavier, the one Pick is over in the hover's colour.
+    let (a, b) = room(all);
+    let green = if crate::style::canvas_dark() { Color32::from_rgb(90, 200, 110) } else { Color32::from_rgb(20, 140, 40) };
+    for (datum, name, quad) in if hidden.datums {
+        Vec::new()
+    } else {
+        vec![
+            (REF_LEVEL, "Ref. Level", [[a[0], a[1], 0.], [b[0], a[1], 0.], [b[0], b[1], 0.], [a[0], b[1], 0.]]),
+            (CENTER_FRONT_BACK, "Center (Front/Back)", [[a[0], 0., a[2]], [b[0], 0., a[2]], [b[0], 0., b[2]], [a[0], 0., b[2]]]),
+            (CENTER_LEFT_RIGHT, "Center (Left/Right)", [[0., a[1], a[2]], [0., b[1], a[2]], [0., b[1], b[2]], [0., a[1], b[2]]]),
+        ]
+    } {
+        let plane = WorkPlane::Plane(PlaneRef::Plane(datum));
+        let active = m.work_plane == plane;
+        let picked = lit == Some(&plane);
+        let own = if datum == REF_LEVEL { ink.gamma_multiply(0.85) } else { green };
+        let ink = if picked { cp.hover } else { own };
+        let stroke = Stroke::new(
+            if picked {
+                2.5
+            } else if active {
+                1.6
+            } else {
+                1.0
+            },
+            ink,
+        );
+        let mut outline: Vec<Pos2> = quad.iter().map(|q| at(*q)).collect();
+        outline.push(outline[0]);
+        if datum == REF_LEVEL {
+            p.extend(Shape::dashed_line_with_offset(&outline, stroke, &[14.0, 2.0], &[4.0, 4.0], 0.0));
+        } else {
+            p.extend(Shape::dashed_line(&outline, stroke, 7.0, 5.0));
+        }
+        p.text(at(quad[3]) + vec2(4.0, 2.0), egui::Align2::LEFT_TOP, t(name), egui::FontId::proportional(11.0), ink);
+    }
+    // The family's own named reference planes, which Placement Plane lists and Pick picks: dashed green as the Center ones,
+    // over as much of each as the room's box spans in it, named at a corner.
+    for (own, label) in planes.listed().into_iter().skip(3).filter(|(own, _)| !hidden.datums && matches!(own, PlaneRef::Plane(_))) {
+        let Ok(f) = planes.frame(&own) else { continue };
+        let f = bimcraft_core::adaptive::Frame::from(f);
+        let plane = WorkPlane::Plane(own);
+        let corners: Vec<P3> = (0..8).map(|k| f.inverse_point([[a, b][k & 1][0], [a, b][(k >> 1) & 1][1], [a, b][k >> 2][2]])).collect();
+        let span = |i: usize| {
+            (corners.iter().map(|c| c[i]).fold(f64::INFINITY, f64::min), corners.iter().map(|c| c[i]).fold(f64::NEG_INFINITY, f64::max))
+        };
+        let ((u0, u1), (v0, v1)) = (span(0), span(1));
+        let quad = [[u0, v0], [u1, v0], [u1, v1], [u0, v1]].map(|[u, v]| f.point([u, v, 0.]));
+        let picked = lit == Some(&plane);
+        let ink = if picked { cp.hover } else { green };
+        let width = if picked {
+            2.5
+        } else if m.work_plane == plane {
+            1.6
+        } else {
+            1.0
+        };
+        let mut outline: Vec<Pos2> = quad.iter().map(|q| at(*q)).collect();
+        outline.push(outline[0]);
+        p.extend(Shape::dashed_line(&outline, Stroke::new(width, ink), 7.0, 5.0));
+        let name = label.split_once(" : ").map_or(label.as_str(), |(_, n)| n);
+        p.text(at(quad[3]) + vec2(4.0, 2.0), egui::Align2::LEFT_TOP, name, egui::FontId::proportional(11.0), ink);
+    }
+    // The forms, far triangles first, each shaded by how squarely it faces a light over the viewer's left shoulder.
+    let light = {
+        let (a, e) = ((cam.azimuth + 40.).to_radians(), (cam.elevation + 25.).to_radians());
+        [e.cos() * a.cos(), e.cos() * a.sin(), e.sin()]
+    };
+    let mut tris: Vec<(f64, [Pos2; 3], Color32)> = Vec::new();
+    for id in &r.order {
+        if let Some(Evaluated::Form { mesh, appearance }) = r.values.get(id) {
+            let base = if appearance.void { Color32::from_rgb(230, 150, 90) } else { Color32::from_rgb(232, 232, 230) };
+            let base = tone(id, base);
+            for t in mesh.triangles() {
+                let e1 = [t[1][0] - t[0][0], t[1][1] - t[0][1], t[1][2] - t[0][2]];
+                let e2 = [t[2][0] - t[0][0], t[2][1] - t[0][1], t[2][2] - t[0][2]];
+                let n = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]];
+                let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt().max(1e-12);
+                let lit = 0.55 + 0.45 * ((n[0] * light[0] + n[1] * light[1] + n[2] * light[2]) / len).abs();
+                let shade = |c: u8| (f64::from(c) * lit).round().clamp(0., 255.) as u8;
+                let mut color = Color32::from_rgb(shade(base.r()), shade(base.g()), shade(base.b()));
+                if appearance.void {
+                    color = color.gamma_multiply(0.55);
+                }
+                let depth = t.iter().map(|q| cam.project(*q).2).sum::<f64>() / 3.;
+                tris.push((depth, t.map(at), color));
+            }
+        }
+    }
+    tris.sort_by(|a, b| a.0.total_cmp(&b.0));
+    let mut mesh = egui::Mesh::default();
+    for (_, [a, b, c], color) in tris {
+        let i = mesh.vertices.len() as u32;
+        for q in [a, b, c] {
+            mesh.colored_vertex(q, color);
+        }
+        mesh.add_triangle(i, i + 1, i + 2);
+    }
+    p.add(Shape::mesh(mesh));
+    // The forms' edges, where their faces fold: thin, in the ink (the selection's colour when selected).
+    for id in &r.order {
+        if let Some(Evaluated::Form { mesh, .. }) = r.values.get(id) {
+            let edge = tone(id, ink.gamma_multiply(0.8));
+            for (a, b) in mesh.folds(20.) {
+                p.line_segment([at(a), at(b)], Stroke::new(1.0, edge));
+            }
+        }
+    }
+    // The lines.
+    for id in &r.order {
+        if let Some(Evaluated::Curve { curve }) = r.values.get(id) {
+            let mut points: Vec<Pos2> = curve.samples().into_iter().map(at).collect();
+            if curve.closed
+                && let Some(first) = points.first().copied()
+            {
+                points.push(first);
+            }
+            let selected = m.selection.iter().any(|s| s == id);
+            p.add(Shape::line(points, Stroke::new(if selected { 2.5 } else { 1.5 }, tone(id, ink))));
+        }
+    }
+    // The selection box being dragged: a solid outline left to right (a window), dashed right to left (a crossing).
+    if let (Some(Drag::Box(from)), Some(to)) = (&m.drag, hover) {
+        let r = Rect::from_two_pos(*from, to);
+        let ink = cp.accent;
+        p.rect_filled(r, 0.0, ink.gamma_multiply(0.08));
+        let corners = [r.left_top(), r.right_top(), r.right_bottom(), r.left_bottom(), r.left_top()];
+        if to.x < from.x {
+            p.extend(Shape::dashed_line(&corners, Stroke::new(1.0, ink), 6.0, 4.0));
+        } else {
+            p.add(Shape::line(corners.to_vec(), Stroke::new(1.0, ink)));
+        }
+    }
+    // Move and Copy: from where the selection moves, to the pointer; Rotate: its centre, where the angle starts, and the pointer.
+    match (&m.tool, hover) {
+        (Draw::Move { from: Some(from), .. }, Some(to)) => {
+            p.line_segment([at(*from), to], Stroke::new(1.5, accent));
+            p.circle_stroke(at(*from), 4.0, Stroke::new(1.5, accent));
+        }
+        (Draw::Rotate { centre, start }, _) => {
+            let c = at(*centre);
+            p.circle_stroke(c, 5.0, Stroke::new(1.5, accent));
+            p.circle_filled(c, 2.0, accent);
+            if let Some(s) = start {
+                p.line_segment([c, at(*s)], Stroke::new(1.5, accent));
+                if let Some(to) = hover {
+                    p.extend(Shape::dashed_line(&[c, to], Stroke::new(1.0, accent), 6.0, 4.0));
+                }
+            }
+        }
+        _ => {}
+    }
+    // The line being drawn, to the pointer.
+    if let (Draw::Line(chain), Some(to)) = (&m.tool, hover)
+        && let Some(last) = chain.last().and_then(|id| r.origin(id))
+    {
+        p.line_segment([at(last), to], Stroke::new(1.0, accent));
+    }
+    // The points: a placement point filled and numbered, a shape handle a filled square, a reference point a ring, a hosted
+    // one a small ring; each with its own planes and axes when Show Reference Planes says so.
+    for id in &r.order {
+        let Some(Evaluated::Point { frame }) = r.values.get(id) else { continue };
+        let o = frame.origin;
+        let s = at(o);
+        let color = tone(id, ink);
+        let selected = m.selection.iter().any(|x| x == id);
+        let shown = |show: Show| show == Show::Always || (show == Show::WhenSelected && selected);
+        let look = d.nodes.iter().find(|n| &n.id == id).map(|n| n.look());
+        // Its three planes and its three axes, light blue, where Show Reference Planes says: each plane the outline of a square
+        // 28 px across centred on it, each axis a short arrow 24 px long. Selected, the axes are the gizmo's long ones (or, for a
+        // point the gizmo does not move, as long and in the selection's colour), and the planes take the selection's colour.
+        let gizmo = selected && m.selection.len() == 1 && movable(d, id);
+        if look.is_some_and(|l| shown(l.planes)) {
+            let px = 1.0 / cam.scale.max(1e-9);
+            let blue = Color32::from_rgb(86, 170, 226);
+            let tone = if color == ink { blue } else { color };
+            let h = PLANE_REACH * px;
+            for (plane, (u, v)) in [(Plane::Xy, (frame.x, frame.y)), (Plane::Xz, (frame.x, frame.z)), (Plane::Yz, (frame.y, frame.z))] {
+                let corner = |a: f64, b: f64| at(std::array::from_fn(|i| o[i] + (u[i] * a + v[i] * b) * h));
+                let square = vec![corner(-1., -1.), corner(1., -1.), corner(1., 1.), corner(-1., 1.)];
+                // The plane Pick is over: lit, and tinted.
+                if lit == Some(&WorkPlane::Point { point: id.clone(), plane }) {
+                    p.add(Shape::convex_polygon(square.clone(), cp.hover.gamma_multiply(0.25), Stroke::new(2.5, cp.hover)));
+                } else {
+                    p.add(Shape::closed_line(square, Stroke::new(1.0, tone.gamma_multiply(0.7))));
+                }
+            }
+            if !gizmo {
+                let length = if selected { ARROW } else { 24.0 } * px;
+                for axis in [frame.x, frame.y, frame.z] {
+                    let end = at(std::array::from_fn(|i| o[i] + axis[i] * length));
+                    p.arrow(s, end - s, Stroke::new(1.3, tone));
+                }
+            }
+        }
+        // The snap a click would take, drawing: a square round the point under the pointer.
+        if matches!(m.tool, Draw::Point | Draw::Line(_)) && hovered == Some(id.as_str()) {
+            p.rect_stroke(Rect::from_center_size(s, vec2(14.0, 14.0)), 0.0, Stroke::new(1.5, cp.hover), StrokeKind::Outside);
+        }
+        match (number(d, id), d.point_type(id)) {
+            (Some(n), _) => {
+                p.circle_filled(s, 5.0, color);
+                if look.is_some_and(|l| shown(l.number)) {
+                    let number = if color == ink { Color32::from_rgb(30, 90, 200) } else { color };
+                    p.text(s + vec2(7.0, -7.0), egui::Align2::LEFT_BOTTOM, n.to_string(), egui::FontId::proportional(13.0), number);
+                }
+            }
+            (None, Some(PointType::ShapeHandle)) => {
+                p.rect_filled(Rect::from_center_size(s, vec2(8.0, 8.0)), 0.0, color);
+            }
+            _ => {
+                let hosted = d
+                    .nodes
+                    .iter()
+                    .any(|n| &n.id == id && matches!(&n.operation, Operation::Point { host, .. } if !matches!(host, Host::World { .. })));
+                p.circle_filled(s, if hosted { 2.5 } else { 3.5 }, color);
+            }
+        }
+    }
+    // The gizmo: an arrow along each axis, red x, green y, blue z.
+    if let [id] = m.selection.as_slice()
+        && movable(d, id)
+        && let Some(o) = r.origin(id)
+    {
+        let base = at(o);
+        for (k, color) in [(0, Color32::from_rgb(220, 60, 50)), (1, Color32::from_rgb(60, 170, 70)), (2, Color32::from_rgb(60, 110, 230))] {
+            let end = at(gizmo_end(o, k, ARROW / cam.scale.max(1e-9)));
+            p.arrow(base, end - base, Stroke::new(2.0, color));
+        }
+    }
+    // The ViewCube, as Revit's: the faces turned to the eye, named, the one under the pointer lit; the house over its corner.
+    Orbit::draw_cube(&p, cam, rect, hover);
+    p.rect_stroke(rect, 2.0, Stroke::new(1.0, pal().border), StrokeKind::Inside);
+    if all.order.is_empty() {
+        p.text(
+            rect.center(),
+            egui::Align2::CENTER_CENTER,
+            t("Choose Point and click on the work plane."),
+            egui::FontId::proportional(14.0),
+            ink,
+        );
+    }
+}

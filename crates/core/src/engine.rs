@@ -109,8 +109,18 @@ pub struct Step {
     pub label: String,
     pub made: Vec<(&'static str, usize)>,
     pub removed: Vec<(&'static str, usize)>,
+    /// Who made it, in a Co-Work session ([`Session::author`]); none outside one.
+    pub by: Option<String>,
     /// Whether the model the step goes back to passed [`Model::check`]: going back to it needs no check.
     checked: bool,
+    /// Its number in the session, which stays its own as the history moves.
+    n: u64,
+    /// The step this one took back, when it is a person's own undo or redo ([`Session::undo_own`]).
+    undoes: Option<u64>,
+    /// Whether it is an undo (and so what a redo takes back), rather than an edit or a redo.
+    inverse: bool,
+    /// Whether a later step of its author's took it back.
+    undone: bool,
 }
 
 impl Step {
@@ -135,7 +145,7 @@ impl Step {
         } else {
             Vec::new()
         };
-        Step { label: label.to_string(), made, removed, checked: false }
+        Step { label: label.to_string(), made, removed, by: None, checked: false, n: 0, undoes: None, inverse: false, undone: false }
     }
 }
 
@@ -166,6 +176,8 @@ pub struct Session {
     resets: usize,
     /// What reads a DWG drawing, when the app has one (`cad::DwgReader`); none says to save it as DXF.
     pub dwg: Option<crate::cad::DwgReader>,
+    /// The formats it exports to (`export`): the core's, and any the app registers (the DWG writer, from the DWG bridge).
+    pub exports: crate::export::Registry,
     /// The commands plugins registered, beside the static [`commands`]. They belong to this session, not the
     /// process, so two sessions and the tests never share them.
     external: Vec<ExternalCommand>,
@@ -176,6 +188,17 @@ pub struct Session {
     /// What reads it (inspect, schedules, render, exports to new files, the sheets to PDF) answers; a copy saved as another file
     /// leaves the session with its own.
     pub read_only: Option<&'static str>,
+    /// Who the commands run now are for, in a Co-Work session: the host's name, or a guest's while their command runs. Each step
+    /// says who made it ([`Step::by`]), and `undo` and `redo` take back only the author's own ([`Session::undo_own`]). None outside a
+    /// session.
+    pub author: Option<String>,
+    /// How far a long command (`open`) has got, and its Cancel: a front end that runs it on a thread of its own reads it.
+    pub progress: Option<Arc<crate::progress::Progress>>,
+    /// Whether a Co-Work guest's command is running ([`crate::cowork::run_for_guest`]): then no command may read or write a file, so a
+    /// guest never reaches the host's disk.
+    pub(crate) no_files: bool,
+    /// How many steps were made, which numbers them.
+    steps_made: u64,
     /// Whether a dry run is under way ([`Session::script_dry_run`]): then each command is looked at as it is about to run, with
     /// the params it is given, and one that would touch a file or the history is refused ([`dry_run_refuses`]).
     dry_run: bool,
@@ -246,8 +269,13 @@ impl Session {
             checks: 0,
             resets: 0,
             dwg: None,
+            exports: crate::export::Registry::default(),
             external: Vec::new(),
             read_only: None,
+            author: None,
+            progress: None,
+            no_files: false,
+            steps_made: 0,
             dry_run: false,
             verified: None,
         }
@@ -264,6 +292,25 @@ impl Session {
         self.path = path;
         (self.phase, self.option) = (None, None);
         self.resets += 1;
+        self.undo.clear();
+        self.redo.clear();
+    }
+
+    /// [`Session::reset`] to a model already shared: one read on another session (a window's open on a thread of its own).
+    pub fn reset_shared(&mut self, model: Arc<Model>, path: Option<PathBuf>) {
+        self.model = model;
+        self.path = path;
+        (self.phase, self.option) = (None, None);
+        self.resets += 1;
+        self.undo.clear();
+        self.redo.clear();
+    }
+
+    /// Takes `model` as the project, with no history of its own: a Co-Work guest's copy taking in the host's
+    /// (`cowork::apply`, which checked it). What the session may do (`read_only`) and its file stay.
+    pub fn adopt(&mut self, model: Model) {
+        self.model = Arc::new(model);
+        self.verified = Some(Arc::clone(&self.model));
         self.undo.clear();
         self.redo.clear();
     }
@@ -349,6 +396,13 @@ impl Session {
                 cmd.id
             ));
         }
+        if self.no_files && (touches_files(cmd, params).is_some() || file_key(params).is_some()) {
+            return Err(format!(
+                "`{}` would read or write a file on the host's machine, which a Co-Work guest never does: the host opens, imports \
+                 and saves",
+                cmd.id
+            ));
+        }
         let Some(how) = self.read_only else { return self.perform(cmd, params) };
         self.may_read(cmd, params).map_err(|what| format!("`{}` would {what}, {READ_ONLY}: {how}", cmd.id))?;
         let kept = Kept::of(self);
@@ -420,11 +474,30 @@ impl Session {
                     }
                     m.forget_cad_layers(&unplaced);
                 }
+                // Each loaded link placed by base points or shared coordinates remembers where it stands, as Revit's file does,
+                // so Reset Coordinates can pin it there when its file is gone.
+                let moved = self.model.links_moved();
+                if !moved.is_empty() {
+                    let m = self.model_mut();
+                    for (id, placed) in moved {
+                        if let Some(Element::Link(l)) = m.elements.get_mut(id) {
+                            l.placed = Some(placed);
+                        }
+                    }
+                }
                 // What a command was given by id points at the element's GUID; what it put in the library has an id and a GUID.
                 if verified {
                     self.model_mut().resolve_changed(&before);
                 } else {
                     self.model_mut().resolve();
+                }
+                // A view deleted leaves the print sets it was in.
+                if self.model.print_sets_dangle() {
+                    self.model_mut().prune_print_sets();
+                }
+                // A print set deleted leaves the publishing sets it was in.
+                if self.model.publish_sets_dangle() {
+                    self.model_mut().prune_publish_sets();
                 }
                 // A library in step needs nothing; after a verified model, what the command changed says whether it is.
                 let in_step = if verified { self.model.library_in_step_since(&before) } else { self.model.library_in_step() };
@@ -460,14 +533,45 @@ impl Session {
                 if unsettled {
                     self.model_mut().keep_rooms();
                 }
+                // A hosted component goes where its plane is, or onto its plane where the command moved it.
+                let unsettled = self.model.unsettled(Some(&before));
+                if !unsettled.is_empty() {
+                    self.model_mut().settle(unsettled);
+                }
+                // A 3D view's work plane on a reference plane goes where the plane is; the plane gone, it stays, dissociated.
+                if !self.model.unsettled_work_planes().is_empty() {
+                    self.model_mut().settle_work_planes();
+                }
+                // An elevation that looks at a reference looks at it from wherever the command left its mark.
+                if cmd.undoable {
+                    crate::elevation::keep(self, &before, verified);
+                }
                 // Locked and equal dimensions moved what they measure to as the command moved it.
                 if cmd.undoable {
                     crate::constraints::keep(self, &before)?;
+                    // A room's own floor and ceiling follow its boundary, on the levels the command changed.
+                    crate::rooms::follow(self, &before)?;
+                    // Tests hold that to what following every level makes.
+                    #[cfg(test)]
+                    {
+                        let mut whole = self.clone();
+                        crate::rooms::follow_all(&mut whole)?;
+                        assert!(
+                            whole.model.elements.iter().eq(self.model.elements.iter()),
+                            "the floors and ceilings of rooms followed by what `{}` changed aren't as following every level makes them",
+                            cmd.id
+                        );
+                    }
                 }
                 // What was made or changed must be as a sketch of it solves too (an outline that is simple), which a file
                 // from before may break; Insert from File brings in what it finds.
                 // (Before the check, which would name a bow tie of no area by that, not by what to redraw.)
-                let edited = if cmd.undoable && cmd.id != "insert" { self.model.check_edits(&before, cmd.id, params) } else { Ok(()) };
+                // A family made or changed says only names it has in its formulas, which a file from before may break.
+                let edited = if cmd.undoable && cmd.id != "insert" {
+                    self.model.check_edits(&before, cmd.id, params).and_then(|()| crate::family::check_family_edits(&self.model, &before))
+                } else {
+                    Ok(())
+                };
                 edited
                     .and_then(|()| {
                         #[cfg(test)]
@@ -495,7 +599,7 @@ impl Session {
             Ok(v) => {
                 self.verified = Some(Arc::clone(&self.model));
                 if cmd.undoable && !Arc::ptr_eq(&before, &self.model) {
-                    let step = Step { checked: verified, ..Step::new(cmd.label, &before, &self.model) };
+                    let step = self.stamped(Step { checked: verified, ..Step::new(cmd.label, &before, &self.model) });
                     self.undo.push((step, before));
                     if self.undo.len() > UNDO_LIMIT {
                         self.undo.remove(0);
@@ -522,6 +626,13 @@ impl Session {
                     return Ok(v);
                 }
                 self.model_mut().resolve();
+                if self.model.print_sets_dangle() {
+                    self.model_mut().prune_print_sets();
+                }
+                // A print set deleted leaves the publishing sets it was in.
+                if self.model.publish_sets_dangle() {
+                    self.model_mut().prune_publish_sets();
+                }
                 self.model_mut().sync_library();
                 self.model.check().map(|()| v)
             });
@@ -566,22 +677,30 @@ impl Session {
         kept.keep(self).map_err(|()| format!("that would change the project, {READ_ONLY}: {how}")).and(result)
     }
 
-    /// Run a script: one command per line, `id` or `id {json params}`; `#` starts a comment.
+    /// Run a script: one command per line, `id` or `id {json params}`; `#` starts a comment. A line may be named,
+    /// `@name = id {json params}`, and a later line's params point at what an earlier one returned ([`refer`]): `@name`,
+    /// `$last` (the line before), `$-2` (the one before that), each its reply's `id`, or a field of it, `@name.ids.0`.
     /// Stops at the first failing line, naming it; the lines before it stay done.
     pub fn script(&mut self, text: &str) -> Result<Vec<Value>, String> {
         let mut out = Vec::new();
+        // Each name, the line it names: its place in `out` and its line number.
+        let mut names: Vec<(&str, usize, usize)> = Vec::new();
         for (n, line) in text.lines().enumerate() {
-            let line = line.trim();
-            if line.is_empty() || line.starts_with('#') {
-                continue;
+            let at = |e: String| format!("line {}: {e}", n + 1);
+            let Some(ScriptLine { name, command: id, params: rest }) = script_line(line).map_err(at)? else { continue };
+            if let Some(&(_, _, first)) = names.iter().find(|(m, _, _)| Some(*m) == name) {
+                return Err(at(format!("`@{}` already names line {first}", reference_text(name.unwrap_or_default()))));
             }
-            let (id, rest) = line.split_once(char::is_whitespace).unwrap_or((line, ""));
             let params = if rest.trim().is_empty() {
                 json!({})
             } else {
-                serde_json::from_str(rest).map_err(|e| format!("line {}: bad JSON after `{id}`: {e}", n + 1))?
+                serde_json::from_str(rest).map_err(|e| at(format!("bad JSON after `{id}`: {e}")))?
             };
+            let params = refer(&params, &out, &names).map_err(|e| format!("line {} ({id}): {e}", n + 1))?;
             out.push(self.execute(id, &params).map_err(|e| format!("line {} ({id}): {e}", n + 1))?);
+            if let Some(name) = name {
+                names.push((name, out.len() - 1, n + 1));
+            }
         }
         Ok(out)
     }
@@ -664,7 +783,8 @@ impl Session {
                 if self.undo.is_empty() {
                     self.redo = redo;
                 } else {
-                    undo.push((Step { checked, ..Step::new(label, &before, &self.model) }, before));
+                    let step = self.stamped(Step { checked, ..Step::new(label, &before, &self.model) });
+                    undo.push((step, before));
                     if undo.len() > UNDO_LIMIT {
                         undo.remove(0);
                     }
@@ -674,6 +794,25 @@ impl Session {
                 Ok(v)
             }
         }
+    }
+
+    /// The undo steps on top of the stack that are named exactly `from`, merged into one named `to`, which goes back to the
+    /// model the first of them did. A front end that works in several transactions and wants one step for the whole (an
+    /// assistant's turn) names each `from`, then renames at the end; a run of none or of one is only renamed.
+    pub fn merge_steps(&mut self, from: &str, to: &str) {
+        let run = self.undo.iter().rev().take_while(|(step, _)| step.label == from).count();
+        let at = self.undo.len() - run;
+        let mut steps = self.undo.drain(at..);
+        let Some((first, before)) = steps.next() else { return };
+        drop(steps);
+        let step = Step { checked: first.checked, by: first.by, ..self.stamped(Step::new(to, &before, &self.model)) };
+        self.undo.push((step, before));
+    }
+
+    /// `step` numbered, and by the session's author.
+    fn stamped(&mut self, step: Step) -> Step {
+        self.steps_made += 1;
+        Step { by: self.author.clone(), n: self.steps_made, ..step }
     }
 
     /// What elements from id `first` on, which a command just made, are made in: the session's phase
@@ -735,6 +874,356 @@ impl Session {
         }
         Ok(json!({ key: label, "count": count }))
     }
+
+    /// Undo (or with `redo`, redo) `count` of `by`'s own steps, all or nothing: what `undo` and `redo` do in a Co-Work session, where
+    /// each person takes back their own edits wherever they are in the history. A step is taken back by a new step on top, which
+    /// puts what it changed (its elements, and the project's settings if it changed them) as they were before it. That is refused,
+    /// and nothing changes, when any of it is no longer as the step left it, since someone else changed it after; the error says
+    /// who and what. It is refused too when the model it leaves fails [`Model::check`] (Bo's door in Ana's wall, which her undo
+    /// would take away), and then names whose steps came after.
+    pub(crate) fn undo_own(&mut self, by: &str, redo: bool, count: usize) -> Result<Value, String> {
+        if count == 0 {
+            return Err("`count` must be 1 or more".into());
+        }
+        let kept = (Arc::clone(&self.model), self.verified.clone(), self.undo.clone(), self.steps_made);
+        let mut label = String::new();
+        for _ in 0..count {
+            match self.own_step(by, redo) {
+                Ok(l) => label = l,
+                Err(e) => {
+                    (self.model, self.verified, self.undo, self.steps_made) = kept;
+                    return Err(e);
+                }
+            }
+        }
+        self.redo.clear();
+        Ok(json!({ if redo { "redone" } else { "undone" }: label, "count": count }))
+    }
+
+    /// What `by`'s undo (or with `redo`, redo) would take back in a Co-Work session, the next first, as [`Session::undo_own`] takes
+    /// them: their edits still standing, or the edits their undos took back, named by those edits. A list's place is the `count`.
+    pub fn own_steps(&self, by: &str, redo: bool) -> Vec<&Step> {
+        let standing = |st: &Step| st.by.as_deref() == Some(by) && !st.undone;
+        let mut list = Vec::new();
+        for (st, _) in self.undo.iter().rev() {
+            if redo && st.by.as_deref() == Some(by) && st.undoes.is_none() {
+                break;
+            }
+            if standing(st) && st.inverse == redo {
+                list.push(self.origin(st));
+            }
+        }
+        list
+    }
+
+    /// The edit an undo or a redo goes back to, through the steps it undid, as far as the history still has them.
+    fn origin<'a>(&'a self, mut st: &'a Step) -> &'a Step {
+        for _ in 0..self.undo.len() {
+            match st.undoes.and_then(|n| self.undo.iter().find(|(o, _)| o.n == n)) {
+                Some((o, _)) => st = o,
+                None => break,
+            }
+        }
+        st
+    }
+
+    /// One of [`Session::undo_own`]'s steps; the new step's label.
+    fn own_step(&mut self, by: &str, redo: bool) -> Result<String, String> {
+        let what = if redo { "redo" } else { "undo" };
+        let standing = |st: &Step| st.by.as_deref() == Some(by) && !st.undone;
+        // Undo takes their last edit still standing (an edit or a redo); redo their last undo still standing, unless an edit of
+        // theirs came after it.
+        let at = if redo {
+            let edited = self.undo.iter().rposition(|(st, _)| st.by.as_deref() == Some(by) && st.undoes.is_none());
+            self.undo.iter().rposition(|(st, _)| standing(st) && st.inverse).filter(|at| edited.is_none_or(|e| e < *at))
+        } else {
+            self.undo.iter().rposition(|(st, _)| standing(st) && !st.inverse)
+        };
+        let at = at.ok_or_else(|| format!("nothing of yours to {what}"))?;
+        let now = Arc::clone(&self.model);
+        let before = Arc::clone(&self.undo[at].1);
+        let after = self.undo.get(at + 1).map_or_else(|| Arc::clone(&now), |(_, m)| Arc::clone(m));
+        let step = &self.undo[at].0;
+        let base = step.label.strip_prefix("Undo ").or_else(|| step.label.strip_prefix("Redo ")).unwrap_or(&step.label).to_string();
+        let (ids, settings) = after.diff(&before);
+        // What it changed, as it left it.
+        let moved: Vec<Id> = ids
+            .iter()
+            .copied()
+            .filter(|id| now.elements.get(*id) != after.elements.get(*id) || now.elements.guid(*id) != after.elements.guid(*id))
+            .collect();
+        let resettled = settings && !now.same_settings(&after);
+        if !moved.is_empty() || resettled {
+            return Err(self.whose(at, &format!("can't {what} your {base}"), &moved, resettled, &now, &after));
+        }
+        let mut m = (*now).clone();
+        if settings {
+            let mut back = (*before).clone();
+            (back.elements, back.next_id) = (m.elements.clone(), m.next_id);
+            // What is worked out from the elements is worked out again.
+            back.derived = Default::default();
+            m = back;
+        }
+        for &id in &ids {
+            match (before.elements.get(id), before.elements.guid(id)) {
+                (Some(e), Some(g)) => m.elements.insert_as(id, g, e.clone())?,
+                _ => {
+                    m.elements.remove(id);
+                }
+            }
+        }
+        if let Err(e) = m.check_changed(&now) {
+            let after_it: Vec<String> = self.undo[at + 1..]
+                .iter()
+                .filter(|(st, _)| st.by.as_deref() != Some(by))
+                .map(|(st, _)| format!("{}'s {}", st.by.as_deref().unwrap_or("someone"), st.label))
+                .take(3)
+                .collect();
+            let after_it = if after_it.is_empty() { String::new() } else { format!(" (after it: {})", after_it.join(", ")) };
+            return Err(format!("can't {what} your {base}: {e}{after_it}"));
+        }
+        let label = format!("{} {base}", if redo { "Redo" } else { "Undo" });
+        let (n, inverse) = (step.n, !step.inverse);
+        self.undo[at].0.undone = true;
+        let checked = self.verified.as_ref().is_some_and(|v| Arc::ptr_eq(v, &now));
+        let step = Step { by: Some(by.into()), undoes: Some(n), inverse, checked, ..self.stamped(Step::new(&label, &now, &m)) };
+        self.undo.push((step, now));
+        if self.undo.len() > UNDO_LIMIT {
+            self.undo.remove(0);
+        }
+        // Checked: the command that called this goes straight on, as after a step back.
+        self.model = Arc::new(m);
+        self.verified = Some(Arc::clone(&self.model));
+        Ok(label)
+    }
+
+    /// Why a person's undo of step `at` is refused, `head` first: who last changed what it changed (`moved`, or the settings
+    /// when `settings`), by the steps after it.
+    fn whose(&self, at: usize, head: &str, moved: &[Id], settings: bool, now: &Model, after: &Model) -> String {
+        let things = |ids: &[Id]| {
+            let named: Vec<String> = ids
+                .iter()
+                .take(5)
+                .map(|id| format!("{} {id}", now.elements.get(*id).or_else(|| after.elements.get(*id)).map_or("element", |e| e.category())))
+                .collect();
+            named.join(", ")
+        };
+        for j in (at + 1..self.undo.len()).rev() {
+            let (st, before_j) = &self.undo[j];
+            let after_j = self.undo.get(j + 1).map_or(now, |(_, m)| &**m);
+            let (ids_j, settings_j) = after_j.diff(before_j);
+            let hit: Vec<Id> = moved.iter().copied().filter(|id| ids_j.contains(id)).collect();
+            let who = st.by.as_deref().unwrap_or("someone");
+            if !hit.is_empty() {
+                return format!("{head}: {who} changed {} after it ({who}'s {})", things(&hit), st.label);
+            }
+            if settings && settings_j {
+                return format!("{head}: {who} changed the project's settings after it ({who}'s {})", st.label);
+            }
+        }
+        let what = if moved.is_empty() { "the project's settings".to_string() } else { things(moved) };
+        format!("{head}: {what} changed after it")
+    }
+}
+
+/// A script's line, read.
+pub struct ScriptLine<'a> {
+    /// The name it is given, `@name = `.
+    pub name: Option<&'a str>,
+    pub command: &'a str,
+    /// The text of its params, JSON, or nothing.
+    pub params: &'a str,
+}
+
+/// A script's line read; none for a blank line or a comment.
+pub fn script_line(line: &str) -> Result<Option<ScriptLine<'_>>, String> {
+    let line = line.trim();
+    if line.is_empty() || line.starts_with('#') {
+        return Ok(None);
+    }
+    let (name, command) = match line.strip_prefix('@') {
+        Some(named) => {
+            let (name, command) = named.split_once('=').ok_or("a named line is `@name = command {params}`: the `=` is missing")?;
+            let name = name.trim();
+            if !is_name(name) {
+                return Err(format!("`@{}` isn't a line's name: one is letters, digits, `_` and `-`", reference_text(name)));
+            }
+            (Some(name), command.trim())
+        }
+        None => (None, line),
+    };
+    if command.is_empty() {
+        return Err("no command after the line's name".into());
+    }
+    let (command, params) = command.split_once(char::is_whitespace).unwrap_or((command, ""));
+    Ok(Some(ScriptLine { name, command, params }))
+}
+
+fn is_name(s: &str) -> bool {
+    !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+}
+
+/// `params` with each string that is a reference put as what it points at, in what the script's lines before returned
+/// (`done`, `names` their names: place in `done`, line number). A reference is a whole string: `@name`, `$last` or `$-n`,
+/// standing for that reply's `id`, or followed by a path into the reply, `.key` or `.index` (`@walls.ids.0`). A string that
+/// begins `@@` or `$$` is itself without the first character; any other string is itself.
+fn refer(params: &Value, done: &[Value], names: &[(&str, usize, usize)]) -> Result<Value, String> {
+    expand(params, done, names, &mut ScriptBudget { remaining: SCRIPT_EXPANSION_LIMIT }, 1)
+}
+
+// A conservative accounting limit for each expanded line: 128 bytes per JSON value plus string/key
+// bytes. Charge a whole selected subtree before cloning it, so repeated small references cannot
+// amplify an earlier reply without bound. The depth limit also applies to replies from external
+// commands, which need not have passed serde_json's input depth limit.
+const SCRIPT_EXPANSION_LIMIT: usize = 16 << 20;
+const SCRIPT_DEPTH_LIMIT: usize = 128;
+
+struct ScriptBudget {
+    remaining: usize,
+}
+
+impl ScriptBudget {
+    fn take(&mut self, bytes: usize) -> Result<(), String> {
+        self.remaining = self
+            .remaining
+            .checked_sub(bytes)
+            .ok_or_else(|| format!("expanded parameters exceed the {SCRIPT_EXPANSION_LIMIT} byte script expansion budget"))?;
+        Ok(())
+    }
+
+    fn enter(&mut self, depth: usize) -> Result<(), String> {
+        if depth > SCRIPT_DEPTH_LIMIT {
+            return Err(format!("expanded parameters exceed the script depth limit of {SCRIPT_DEPTH_LIMIT}"));
+        }
+        self.take(128)
+    }
+
+    fn value(&mut self, value: &Value, depth: usize) -> Result<(), String> {
+        self.enter(depth)?;
+        match value {
+            Value::String(s) => self.take(s.len())?,
+            Value::Array(a) => {
+                for value in a {
+                    self.value(value, depth + 1)?;
+                }
+            }
+            Value::Object(o) => {
+                for (key, value) in o {
+                    self.take(key.len())?;
+                    self.value(value, depth + 1)?;
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+}
+
+/// Keep reference diagnostics independent of the size of an earlier reply or a hostile field name.
+fn reference_text(text: &str) -> String {
+    let mut chars = text.chars();
+    let mut out: String = chars.by_ref().take(80).collect();
+    if chars.next().is_some() {
+        out.push_str("...");
+    }
+    out
+}
+
+fn expand(
+    params: &Value,
+    done: &[Value],
+    names: &[(&str, usize, usize)],
+    budget: &mut ScriptBudget,
+    depth: usize,
+) -> Result<Value, String> {
+    Ok(match params {
+        Value::String(s) if s.starts_with("@@") || s.starts_with("$$") => {
+            budget.enter(depth)?;
+            budget.take(s.len() - 1)?;
+            Value::String(s[1..].to_string())
+        }
+        Value::String(s) => {
+            let reference = reference_text(s);
+            let (head, path) = s.split_once('.').map_or((s.as_str(), None), |(head, path)| (head, Some(path)));
+            let target = if let Some(name) = head.strip_prefix('@').filter(|n| is_name(n)) {
+                let (_, i, line) = names
+                    .iter()
+                    .rev()
+                    .find(|(m, _, _)| *m == name)
+                    .ok_or_else(|| format!("`{reference}`: no line before it is named @{}", reference_text(name)))?;
+                Some((*i, format!("line {line}")))
+            } else {
+                let back = match head {
+                    "$last" => Some(1),
+                    _ => match head.strip_prefix("$-") {
+                        Some(n) => Some(
+                            n.parse::<usize>()
+                                .ok()
+                                .filter(|n| *n > 0)
+                                .ok_or_else(|| format!("`{reference}`: a relative reference needs a positive command count, as `$-2`"))?,
+                        ),
+                        None => None,
+                    },
+                };
+                match back {
+                    Some(b) => {
+                        let i = done.len().checked_sub(b).ok_or_else(|| format!("`{reference}`: lines run before it: {}", done.len()))?;
+                        Some((i, format!("the line {b} back")))
+                    }
+                    None => None,
+                }
+            };
+            match target {
+                None => {
+                    budget.value(params, depth)?;
+                    params.clone()
+                }
+                Some((i, which)) => {
+                    let mut v = done.get(i).ok_or_else(|| format!("`{reference}`: {which} returned nothing"))?;
+                    if path.is_none() {
+                        let id = v.get("id").ok_or_else(|| {
+                            format!("`{reference}`: {which} returned no `id`; name a field of its reply, as `@name.ids.0`")
+                        })?;
+                        budget.value(id, depth)?;
+                        id.clone()
+                    } else {
+                        for key in path.unwrap_or_default().split('.') {
+                            if key.is_empty() {
+                                return Err(format!("`{reference}`: a reference path has an empty field"));
+                            }
+                            v = match v {
+                                Value::Array(a) => key.parse::<usize>().ok().and_then(|k| a.get(k)),
+                                _ => v.get(key),
+                            }
+                            .ok_or_else(|| format!("`{reference}`: what {which} returned has no `{}`", reference_text(key)))?;
+                        }
+                        budget.value(v, depth)?;
+                        v.clone()
+                    }
+                }
+            }
+        }
+        Value::Array(a) => {
+            budget.enter(depth)?;
+            Value::Array(a.iter().map(|x| expand(x, done, names, budget, depth + 1)).collect::<Result<_, _>>()?)
+        }
+        Value::Object(o) => {
+            budget.enter(depth)?;
+            Value::Object(
+                o.iter()
+                    .map(|(k, x)| {
+                        budget.take(k.len())?;
+                        let value = expand(x, done, names, budget, depth + 1)?;
+                        Ok((k.clone(), value))
+                    })
+                    .collect::<Result<_, String>>()?,
+            )
+        }
+        _ => {
+            budget.value(params, depth)?;
+            params.clone()
+        }
+    })
 }
 
 /// What a session that may only read keeps through a command: its project, its history, its file, the phase and option it makes
@@ -748,13 +1237,18 @@ fn dry_run_refuses(cmd: &Command, params: &Value) -> Option<String> {
     if matches!(cmd.id, "save" | "autosave" | "undo" | "redo") {
         return Some(format!("{} the project", if cmd.id == "autosave" { "save" } else { cmd.id }));
     }
-    if let Some(key) = ["path", "save"].into_iter().find(|key| params.get(key).is_some_and(|v| !v.is_null())) {
+    if let Some(key) = file_key(params) {
         return Some(format!("name a file (`{key}`)"));
     }
     touches_files(cmd, params).map(|files| match files {
         Files::Read => "read a file".to_string(),
         _ => "write a file".to_string(),
     })
+}
+
+/// The key of `params` that names a file, whatever the command: `path` or `save`.
+fn file_key(params: &Value) -> Option<&'static str> {
+    ["path", "save"].into_iter().find(|key| params.get(key).is_some_and(|v| !v.is_null()))
 }
 
 struct Kept {
@@ -816,7 +1310,10 @@ fn named(m: &Model, params: &Value) -> Option<Value> {
                 }
             }
             Value::Array(a) => a.iter_mut().for_each(|x| walk(m, x, changed)),
-            Value::Object(o) => o.values_mut().for_each(|x| walk(m, x, changed)),
+            // A `guid` field says which thing it is, as a definition for a dictionary does, and `definition` which one a family's parameter is tied to: they stay GUIDs.
+            Value::Object(o) => {
+                o.iter_mut().filter(|(k, _)| !matches!(k.as_str(), "guid" | "definition")).for_each(|(_, x)| walk(m, x, changed))
+            }
             _ => {}
         }
     }

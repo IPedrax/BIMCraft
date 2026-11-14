@@ -17,7 +17,7 @@ const DITHERING: bool = true;
 /// A vertex as epaint lays it out: position, texture position (unused) and colour.
 const STRIDE: u64 = 20;
 /// The shader's `Locals`.
-const LOCALS: u64 = 24;
+const LOCALS: u64 = 32;
 /// How many primitives a thread tessellates at a time.
 const PRIMS_AT_ONCE: usize = 2048;
 
@@ -26,6 +26,8 @@ pub(crate) struct Pipeline {
     device: wgpu::Device,
     queue: wgpu::Queue,
     pipeline: wgpu::RenderPipeline,
+    /// What draws a drawing while its view zooms: lines that stay sharp (`motion.rs`).
+    motion: wgpu::RenderPipeline,
     layout: wgpu::BindGroupLayout,
 }
 
@@ -51,58 +53,77 @@ impl Pipeline {
             bind_group_layouts: &[Some(&layout)],
             immediate_size: 0,
         });
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("canvas"),
-            layout: Some(&shared),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs_main"),
-                compilation_options: Default::default(),
-                buffers: &[Some(wgpu::VertexBufferLayout {
-                    array_stride: STRIDE,
-                    step_mode: wgpu::VertexStepMode::Vertex,
-                    attributes: &[
-                        wgpu::VertexAttribute { format: wgpu::VertexFormat::Float32x2, offset: 0, shader_location: 0 },
-                        wgpu::VertexAttribute { format: wgpu::VertexFormat::Uint32, offset: 16, shader_location: 2 },
-                    ],
-                })],
-            },
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                unclipped_depth: false,
-                conservative: false,
-                cull_mode: None,
-                front_face: wgpu::FrontFace::default(),
-                polygon_mode: wgpu::PolygonMode::default(),
-                strip_index_format: None,
-            },
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState { alpha_to_coverage_enabled: false, count: 1, mask: !0 },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some(if format.is_srgb() { "fs_main_linear_framebuffer" } else { "fs_main_gamma_framebuffer" }),
-                compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format,
-                    blend: Some(wgpu::BlendState {
-                        color: wgpu::BlendComponent {
-                            src_factor: wgpu::BlendFactor::One,
-                            dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
-                            operation: wgpu::BlendOperation::Add,
-                        },
-                        alpha: wgpu::BlendComponent {
-                            src_factor: wgpu::BlendFactor::OneMinusDstAlpha,
-                            dst_factor: wgpu::BlendFactor::One,
-                            operation: wgpu::BlendOperation::Add,
-                        },
-                    }),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-            }),
-            multiview_mask: None,
-            cache: None,
-        });
-        Pipeline { device: device.clone(), queue: queue.clone(), pipeline, layout }
+        let exact = [
+            wgpu::VertexAttribute { format: wgpu::VertexFormat::Float32x2, offset: 0, shader_location: 0 },
+            wgpu::VertexAttribute { format: wgpu::VertexFormat::Uint32, offset: 16, shader_location: 2 },
+        ];
+        let moving = [
+            wgpu::VertexAttribute { format: wgpu::VertexFormat::Float32x2, offset: 0, shader_location: 0 },
+            wgpu::VertexAttribute { format: wgpu::VertexFormat::Float32x2, offset: 8, shader_location: 1 },
+            wgpu::VertexAttribute { format: wgpu::VertexFormat::Float32, offset: 16, shader_location: 2 },
+            wgpu::VertexAttribute { format: wgpu::VertexFormat::Uint32, offset: 20, shader_location: 3 },
+        ];
+        let linear = format.is_srgb();
+        let make = |label, vs, fs, stride, attributes: &[wgpu::VertexAttribute]| {
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some(label),
+                layout: Some(&shared),
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: Some(vs),
+                    compilation_options: Default::default(),
+                    buffers: &[Some(wgpu::VertexBufferLayout {
+                        array_stride: stride,
+                        step_mode: wgpu::VertexStepMode::Vertex,
+                        attributes,
+                    })],
+                },
+                primitive: wgpu::PrimitiveState {
+                    topology: wgpu::PrimitiveTopology::TriangleList,
+                    unclipped_depth: false,
+                    conservative: false,
+                    cull_mode: None,
+                    front_face: wgpu::FrontFace::default(),
+                    polygon_mode: wgpu::PolygonMode::default(),
+                    strip_index_format: None,
+                },
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState { alpha_to_coverage_enabled: false, count: 1, mask: !0 },
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: Some(fs),
+                    compilation_options: Default::default(),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format,
+                        blend: Some(wgpu::BlendState {
+                            color: wgpu::BlendComponent {
+                                src_factor: wgpu::BlendFactor::One,
+                                dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                                operation: wgpu::BlendOperation::Add,
+                            },
+                            alpha: wgpu::BlendComponent {
+                                src_factor: wgpu::BlendFactor::OneMinusDstAlpha,
+                                dst_factor: wgpu::BlendFactor::One,
+                                operation: wgpu::BlendOperation::Add,
+                            },
+                        }),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                }),
+                multiview_mask: None,
+                cache: None,
+            })
+        };
+        let pipeline =
+            make("canvas", "vs_main", if linear { "fs_main_linear_framebuffer" } else { "fs_main_gamma_framebuffer" }, STRIDE, &exact);
+        let motion = make(
+            "canvas moving",
+            "vs_motion",
+            if linear { "fs_motion_linear_framebuffer" } else { "fs_motion_gamma_framebuffer" },
+            crate::motion::STRIDE,
+            &moving,
+        );
+        Pipeline { device: device.clone(), queue: queue.clone(), pipeline, motion, layout }
     }
 }
 
@@ -113,6 +134,9 @@ pub(crate) struct Mesh {
     count: u32,
     locals: wgpu::Buffer,
     group: wgpu::BindGroup,
+    /// The same drawing as the motion shader draws it while its view zooms: its vertices, indices and their count. None where it
+    /// wouldn't fit, and the triangles are drawn scaled, as before.
+    motion: Option<(wgpu::Buffer, wgpu::Buffer, u32)>,
 }
 
 impl Mesh {
@@ -148,7 +172,37 @@ impl Mesh {
             layout: &pipeline.layout,
             entries: &[wgpu::BindGroupEntry { binding: 0, resource: locals.as_entire_binding() }],
         });
-        Some(Mesh { vertices: vertex_buffer, indices: index_buffer, count, locals, group })
+        Some(Mesh { vertices: vertex_buffer, indices: index_buffer, count, locals, group, motion: None })
+    }
+
+    /// `parts` of the motion shader's on the card beside the triangles; none where they don't fit a buffer.
+    fn with_motion(mut self, pipeline: &Pipeline, parts: &[&crate::motion::Mesh]) -> Mesh {
+        let device = &pipeline.device;
+        let limit = device.limits().max_buffer_size;
+        let (vertices, indices) = parts.iter().fold((0u64, 0u64), |(v, i), m| (v + m.vertices.len() as u64, i + m.indices.len() as u64));
+        let Ok(count) = u32::try_from(indices) else { return self };
+        if (vertices * crate::motion::STRIDE).max(indices * 4) > limit || indices == 0 {
+            return self;
+        }
+        let buffer = |label, size, usage| {
+            device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some(label),
+                size,
+                usage: usage | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            })
+        };
+        let vertex_buffer = buffer("canvas motion vertices", vertices * crate::motion::STRIDE, wgpu::BufferUsages::VERTEX);
+        let index_buffer = buffer("canvas motion indices", indices * 4, wgpu::BufferUsages::INDEX);
+        let (mut v, mut i) = (0, 0);
+        for part in parts {
+            pipeline.queue.write_buffer(&vertex_buffer, v, bytemuck::cast_slice(&part.vertices));
+            pipeline.queue.write_buffer(&index_buffer, i, bytemuck::cast_slice(&part.indices));
+            v += part.vertices.len() as u64 * crate::motion::STRIDE;
+            i += part.indices.len() as u64 * 4;
+        }
+        self.motion = Some((vertex_buffer, index_buffer, count));
+        self
     }
 }
 
@@ -178,6 +232,7 @@ impl egui_wgpu::CallbackTrait for Draw {
         locals[12..16].copy_from_slice(&self.k.to_ne_bytes());
         locals[16..20].copy_from_slice(&self.moved.x.to_ne_bytes());
         locals[20..24].copy_from_slice(&self.moved.y.to_ne_bytes());
+        locals[24..28].copy_from_slice(&screen.pixels_per_point.to_ne_bytes());
         queue.write_buffer(&self.mesh.locals, 0, &locals);
         Vec::new()
     }
@@ -185,11 +240,22 @@ impl egui_wgpu::CallbackTrait for Draw {
     fn paint(&self, info: egui::PaintCallbackInfo, pass: &mut wgpu::RenderPass<'static>, _: &egui_wgpu::CallbackResources) {
         // egui narrows the viewport to the callback's rect; the vertices are of the whole screen, and its scissor is the clip.
         pass.set_viewport(0.0, 0.0, info.screen_size_px[0] as f32, info.screen_size_px[1] as f32, 0.0, 1.0);
-        pass.set_pipeline(&self.pipeline.pipeline);
         pass.set_bind_group(0, &self.mesh.group, &[]);
-        pass.set_vertex_buffer(0, self.mesh.vertices.slice(..));
-        pass.set_index_buffer(self.mesh.indices.slice(..), wgpu::IndexFormat::Uint32);
-        pass.draw_indexed(0..self.mesh.count, 0, 0..1);
+        // Zoomed, the lines that stay sharp; else (still, or panned by whole points) egui's own triangles, exact.
+        match &self.mesh.motion {
+            Some((vertices, indices, count)) if self.k != 1.0 => {
+                pass.set_pipeline(&self.pipeline.motion);
+                pass.set_vertex_buffer(0, vertices.slice(..));
+                pass.set_index_buffer(indices.slice(..), wgpu::IndexFormat::Uint32);
+                pass.draw_indexed(0..*count, 0, 0..1);
+            }
+            _ => {
+                pass.set_pipeline(&self.pipeline.pipeline);
+                pass.set_vertex_buffer(0, self.mesh.vertices.slice(..));
+                pass.set_index_buffer(self.mesh.indices.slice(..), wgpu::IndexFormat::Uint32);
+                pass.draw_indexed(0..self.mesh.count, 0, 0..1);
+            }
+        }
     }
 }
 
@@ -407,6 +473,9 @@ fn tints_hold(kept: &Kept, selected: &[Id], hovered: Option<Id>) -> bool {
     }
 }
 
+/// A part of a drawing's primitives as a thread made them: egui's triangles, each element's pieces of them, and the motion mesh.
+type Part = (epaint::Mesh, Vec<(Id, Piece)>, crate::motion::Mesh);
+
 /// The triangles of `key`; none once `cancelled`.
 fn build(pipeline: &Pipeline, key: &Key, selected: &[Id], hovered: Option<Id>, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<Kept> {
     use rayon::prelude::*;
@@ -416,7 +485,7 @@ fn build(pipeline: &Pipeline, key: &Key, selected: &[Id], hovered: Option<Id>, c
     let prims: Vec<usize> = (0..d.prims.len()).collect();
     // A part of the drawing's primitives at a time, each thread's triangles in their place in the order, so the whole is what one
     // thread would have made.
-    let parts: Vec<(epaint::Mesh, Vec<(Id, Piece)>)> = prims
+    let parts: Vec<Part> = prims
         .par_chunks(PRIMS_AT_ONCE)
         .map(|chunk| {
             if cancelled() {
@@ -427,11 +496,15 @@ fn build(pipeline: &Pipeline, key: &Key, selected: &[Id], hovered: Option<Id>, c
             // The shapes `canvas::paint` makes hold no circles or text, the only things that read the two last.
             let mut tessellator = Tessellator::new(look.pixels_per_point, look.options, [1, 1], Vec::new());
             tessellator.set_clip_rect(reach);
-            let (mut mesh, mut pieces) = (epaint::Mesh::default(), Vec::new());
+            let (mut mesh, mut pieces, mut motion) = (epaint::Mesh::default(), Vec::new(), crate::motion::Mesh::default());
             for &i in chunk {
                 let (Some(prim), Some(owner), Some(part)) = (d.prims.get(i), d.owners.get(i), d.parts.get(i)) else { continue };
                 let (first, indices) = (mesh.vertices.len(), mesh.indices.len());
-                let out = &mut |shape| tessellator.tessellate_shape(shape, &mut mesh);
+                // The same shapes, as the motion shader draws them while the view zooms.
+                let out = &mut |shape: epaint::Shape| {
+                    motion.add(&shape);
+                    tessellator.tessellate_shape(shape, &mut mesh)
+                };
                 canvas::paint_prim(out, reach, at, (prim, *owner, *part), &set, hovered, look.thin, &mut [].iter());
                 if let Some(id) = owner
                     && mesh.vertices.len() > first
@@ -445,7 +518,7 @@ fn build(pipeline: &Pipeline, key: &Key, selected: &[Id], hovered: Option<Id>, c
                     pieces.push((*id, piece));
                 }
             }
-            (mesh, pieces)
+            (mesh, pieces, motion)
         })
         .collect();
     if cancelled() {
@@ -454,24 +527,30 @@ fn build(pipeline: &Pipeline, key: &Key, selected: &[Id], hovered: Option<Id>, c
     // Each part's place in the whole, and its indices and pieces put there. Written straight to the card: no whole on this side.
     let mut parts = parts;
     let mut base = 0;
+    let (mut moving_base, mut moving_bases) = (0u32, Vec::with_capacity(parts.len()));
     let bases: Vec<u32> = parts
         .iter()
-        .map(|(mesh, _)| {
+        .map(|(mesh, _, motion)| {
             let at = base;
             base += mesh.vertices.len() as u32;
+            moving_bases.push(moving_base);
+            moving_base += motion.vertices.len() as u32;
             at
         })
         .collect();
-    parts.par_iter_mut().zip(&bases).for_each(|((mesh, pieces), base)| {
+    parts.par_iter_mut().zip(&bases).zip(&moving_bases).for_each(|(((mesh, pieces, motion), base), moving)| {
         mesh.indices.iter_mut().for_each(|i| *i += base);
         pieces.iter_mut().for_each(|(_, piece)| piece.first += base);
+        motion.offset(*moving);
     });
-    if parts.iter().all(|(mesh, _)| mesh.indices.is_empty()) {
+    if parts.iter().all(|(mesh, _, _)| mesh.indices.is_empty()) {
         return Some(Kept::Nothing);
     }
-    let meshes: Vec<&epaint::Mesh> = parts.iter().map(|(mesh, _)| mesh).collect();
+    let meshes: Vec<&epaint::Mesh> = parts.iter().map(|(mesh, _, _)| mesh).collect();
     let Some(mesh) = Mesh::upload(pipeline, &meshes) else { return Some(Kept::TooBig) };
-    let pieces = parts.into_iter().flat_map(|(_, pieces)| pieces).collect();
+    let moving: Vec<&crate::motion::Mesh> = parts.iter().map(|(_, _, motion)| motion).collect();
+    let mesh = mesh.with_motion(pipeline, &moving);
+    let pieces = parts.into_iter().flat_map(|(_, pieces, _)| pieces).collect();
     Some(Kept::Mesh(Arc::new(mesh), Tinted { pieces, owned: None, selected: selected.to_vec(), hovered }))
 }
 
@@ -800,6 +879,34 @@ mod tests {
         );
         let kept = app.canvas.drawing.retained.built > 0;
         (pixels((&card.0, &card.1), format, &ctx, outputs), kept)
+    }
+
+    #[test]
+    #[ignore = "exports family document pixels for visual inspection"]
+    fn export_family_document_looks() {
+        let card = card().expect("a graphics adapter for visual inspection");
+        let dir = std::path::Path::new("target/a3-verification/looks");
+        std::fs::create_dir_all(dir).unwrap();
+        std::fs::write(dir.join("size.txt"), format!("{} {}", SIDE[0], SIDE[1])).unwrap();
+        for profile in [crate::style::Profile::Rev, crate::style::Profile::BimCraft] {
+            for (look, dark, light_canvas) in [("light", false, false), ("dark", true, false), ("dark-ui-light-canvas", true, true)] {
+                let mut app = crate::BimApp::new(Session::new());
+                app.profile = profile;
+                app.light_canvas = light_canvas;
+                app.theme_wanted = Some(if dark { egui::ThemePreference::Dark } else { egui::ThemePreference::Light });
+                app.new_family(bimcraft_core::family::Category::Generic);
+                let ctx = Context::default();
+                let side = Rect::from_min_size(Pos2::ZERO, vec2(SIDE[0] as f32, SIDE[1] as f32));
+                let mut outputs = Vec::new();
+                for i in 0..6 {
+                    let mut raw = RawInput { screen_rect: Some(side), time: Some(f64::from(i) * 10.), ..RawInput::default() };
+                    raw.viewports.entry(ViewportId::ROOT).or_default().native_pixels_per_point = Some(1.);
+                    outputs.push(ctx.run_ui(raw, |ui| app.show(ui)));
+                }
+                let rgba = pixels((&card.0, &card.1), wgpu::TextureFormat::Rgba8Unorm, &ctx, outputs);
+                std::fs::write(dir.join(format!("{profile:?}-{look}.rgba")), rgba).unwrap();
+            }
+        }
     }
 
     #[test]

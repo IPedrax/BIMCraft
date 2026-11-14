@@ -17,8 +17,22 @@ impl Family {
     /// Conservative local bounds for visible swept profiles and imported meshes.
     /// No triangles or boolean results are constructed. None means unknown/empty;
     /// callers must keep the instance. Visible voids and revolved forms currently
-    /// return unknown. These envelopes must not replace exact framing extrema.
-    pub fn conservative_bounds<'a>(&'a self, values: &BTreeMap<String, Val>) -> Option<[P3; 2]> {
+    /// return unknown, and so does an adaptive family, whose geometry its instances' points decide. These envelopes must
+    /// not replace exact framing extrema.
+    pub fn conservative_bounds(&self, values: &BTreeMap<String, Val>) -> Option<[P3; 2]> {
+        // Where its dimensions put its planes, ends and sketches for the type (F7).
+        match self.flexed(values).ok()? {
+            Cow::Borrowed(f) => f.bounds_as_drawn(values),
+            Cow::Owned(f) => f.bounds_as_drawn(values),
+        }
+    }
+
+    /// [`Family::conservative_bounds`] of what is drawn, as it is drawn.
+    fn bounds_as_drawn<'a>(&'a self, values: &BTreeMap<String, Val>) -> Option<[P3; 2]> {
+        // Nested instances (T6a) are boxed by what they build, as an adaptive family is.
+        if self.adaptive.is_some() || !self.nested_instances.is_empty() {
+            return None;
+        }
         let mut read = HashMap::new();
         let mut num = |e: &'a Expr| number(e, values, &mut read).ok();
         let mut out = None;
@@ -40,12 +54,14 @@ impl Family {
                 }
                 continue;
             }
-            if form.axis.is_some() {
+            // A sweep's solid follows its path: no box of it without building it.
+            if form.revolves() || form.kind().swept() {
                 return None;
             }
-            let profile: Vec<P2> = match &form.circle {
-                Some(circle) => {
-                    let (x, y, r) = (num(&circle.centre[0])?, num(&circle.centre[1])?, num(&circle.radius)?);
+            // A blend's box is its base's and its top's together, between its ends.
+            let profile: Vec<P2> = match form.circle_ref().filter(|_| form.top.is_empty()) {
+                Some((centre, radius)) => {
+                    let (x, y, r) = (num(&centre[0])?, num(&centre[1])?, num(radius)?);
                     if r <= 0.0 {
                         return None;
                     }
@@ -53,19 +69,38 @@ impl Family {
                     vec![P2(x - r, y - r), P2(x + r, y - r), P2(x + r, y + r), P2(x - r, y + r)]
                 }
                 None => {
-                    if form.profile.len() < 3 || form.profile.len() > MAX_PROFILE {
+                    // A sketch of arcs or of several loops: every point its lines reach, an arc by its chords' box.
+                    let mut pts = Vec::new();
+                    for l in form.boundary().chain(&form.top) {
+                        let drawn = l.curve(&mut |e| num(e).ok_or_else(String::new)).ok()?;
+                        let square =
+                            |c: P2, r: f64| [P2(c.0 - r, c.1 - r), P2(c.0 + r, c.1 - r), P2(c.0 + r, c.1 + r), P2(c.0 - r, c.1 + r)];
+                        match &drawn.curve {
+                            crate::curves::Curve::Circle { centre, radius } => pts.extend(square(*centre, *radius)),
+                            crate::curves::Curve::Poly { points, arcs, .. } => {
+                                pts.extend(points.iter().copied());
+                                if let ([a, b], Some(turn)) = (points.as_slice(), arcs.first()) {
+                                    let ax = crate::walls::Axis::new(*a, *b, *turn);
+                                    pts.extend(ax.centre().zip(ax.radius()).map(|(c, r)| square(c, r)).into_iter().flatten());
+                                }
+                            }
+                            _ => return None,
+                        }
+                    }
+                    if pts.is_empty() || pts.len() > 4 * crate::family::sketch::MAX_SKETCH {
                         return None;
                     }
-                    form.profile.iter().map(|[x, y]| Some(P2(num(x)?, num(y)?))).collect::<Option<_>>()?
+                    pts
                 }
             };
             let (from, to) = (num(&form.from)?, num(&form.to)?);
             if to <= from {
                 return None;
             }
+            let frame = self.frame(&form.host).ok()?;
             for p in profile {
-                include(&mut out, embed(form.plane, p, from))?;
-                include(&mut out, embed(form.plane, p, to))?;
+                include(&mut out, frame.point(p, from))?;
+                include(&mut out, frame.point(p, to))?;
             }
         }
         match crate::bounds::padded(out?.into_iter()) {
@@ -94,10 +129,12 @@ mod tests {
         let ring = vec![[n(-100.0), n(-50.0)], [n(700.0), n(-30.0)], [n(800.0), n(400.0)], [n(-80.0), n(300.0)]];
         for plane in [Plane::Xy, Plane::Xz, Plane::Yz] {
             for circle in [None, Some(Circle { centre: [n(-20.0), n(17.0)], radius: n(80.0) })] {
-                let f = Family {
-                    forms: vec![Form { plane, profile: ring.clone(), circle, from: n(-25.0), to: n(900.0), ..Default::default() }],
-                    ..Default::default()
-                };
+                let mut form = Form { host: plane.host(), from: n(-25.0), to: n(900.0), ..Default::default() };
+                match &circle {
+                    Some(c) => form.set_circle(c),
+                    None => form.set_corners(&ring),
+                }
+                let f = Family { forms: vec![form], ..Default::default() };
                 encloses(&f, &BTreeMap::new());
             }
         }
@@ -135,7 +172,7 @@ mod tests {
         unsupported.forms.extend(f.forms.clone());
         encloses(&unsupported, &BTreeMap::new());
         unsupported = f.clone();
-        unsupported.forms[0].axis = Some([[Expr::Number(0.0), Expr::Number(0.0)], [Expr::Number(0.0), Expr::Number(1.0)]]);
+        unsupported.forms[0].set_axis(Some(&[[Expr::Number(0.0), Expr::Number(0.0)], [Expr::Number(0.0), Expr::Number(1.0)]]));
         assert!(unsupported.conservative_bounds(&BTreeMap::new()).is_none());
         unsupported = f;
         unsupported.forms[0].to = Expr::Number(f64::NAN);

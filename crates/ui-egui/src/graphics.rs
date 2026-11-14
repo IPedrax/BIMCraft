@@ -191,7 +191,7 @@ impl BimApp {
             }
             Sheet::Section(id) => Some(json!(id)),
             Sheet::View3D => Some(self.active_3d().map_or_else(|| json!("{3D}"), |id| json!(id))),
-            Sheet::Paper(_) | Sheet::Schedule(_) | Sheet::Table(_) => None,
+            Sheet::Paper(_) | Sheet::Schedule(_) | Sheet::Table(_) | Sheet::Family(..) => None,
         }
     }
 
@@ -581,6 +581,31 @@ impl BimApp {
                     }
                 });
                 ui.end_row();
+                // A plan's north: project north up, or true north, the plan turned on screen by the angle to it.
+                if matches!(self.sheet, Sheet::Plan(_) | Sheet::Ceiling(_)) {
+                    use bimcraft_core::graphics::Orientation;
+                    let label = ui.label(t("Orientation"));
+                    let name = |o: Orientation| match o {
+                        Orientation::ProjectNorth => t("Project North"),
+                        Orientation::TrueNorth => t("True North"),
+                    };
+                    let mut now = own.orientation;
+                    egui::ComboBox::from_id_salt("view-orientation")
+                        .selected_text(name(now))
+                        .width(ui.available_width())
+                        .show_ui(ui, |ui| {
+                            for o in [Orientation::ProjectNorth, Orientation::TrueNorth] {
+                                ui.selectable_value(&mut now, o, name(o));
+                            }
+                        })
+                        .response
+                        .labelled_by(label.id);
+                    if now != own.orientation {
+                        let o = if now == Orientation::TrueNorth { "true_north" } else { "project_north" };
+                        set = Some(("graphics", json!({"view": view, "orientation": o})));
+                    }
+                    ui.end_row();
+                }
             } else if self.sheet == Sheet::View3D {
                 let note = controlled(Group::Style);
                 let label = ui.label(t("Visual Style"));
@@ -588,6 +613,16 @@ impl BimApp {
                 ui.add_enabled_ui(note.is_none(), |ui| {
                     if let Some(v) = style_combo(ui, "visual-style", label.id, shown.style) {
                         set = Some(("visual_style", json!({"view": view, "style": v.name()})));
+                    }
+                });
+                ui.end_row();
+                // F8: the family forms the 3D view draws, as their Visibility Settings say.
+                let note = controlled(Group::Detail);
+                let label = ui.label(t("Detail Level"));
+                let label = if let Some(n) = &note { label.on_hover_text(n) } else { label };
+                ui.add_enabled_ui(note.is_none(), |ui| {
+                    if let Some(level) = detail_combo(ui, "detail-level-3d", label.id, shown.detail) {
+                        set = Some(("detail", json!({"view": view, "detail": level.name()})));
                     }
                 });
                 ui.end_row();
@@ -1382,8 +1417,17 @@ fn line_rows(ui: &mut Ui, section: &str, s: &mut Style, weight: Pen) {
     if let Some(k) = &mut s.dash {
         let name = format!("{}: {}", t(section), t("Line dash"));
         let c = ComboBox::from_id_salt(("vg-dash", section)).selected_text(t(dash_name(*k))).width(110.0).show_ui(ui, |ui| {
+            let ink = ui.visuals().text_color();
             for each in [Dash::Solid, Dash::Dashed, Dash::Dotted] {
-                ui.selectable_value(k, each, t(dash_name(each)));
+                // As the drawing dashes it: on and off, in mm of paper for the sample.
+                let segments: &[bimcraft_core::lines::Segment] = match each {
+                    Dash::Solid => &[],
+                    Dash::Dashed => &[bimcraft_core::lines::Segment::Dash(3.0), bimcraft_core::lines::Segment::Space(1.5)],
+                    Dash::Dotted => &[bimcraft_core::lines::Segment::Dot, bimcraft_core::lines::Segment::Space(1.2)],
+                };
+                if crate::linestyles::sample_row(ui, Some((segments, ink)), *k == each, t(dash_name(each))) {
+                    *k = each;
+                }
             }
         });
         c.response.widget_info(|| WidgetInfo::labeled(WidgetType::ComboBox, true, name.clone()));

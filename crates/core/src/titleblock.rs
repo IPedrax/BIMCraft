@@ -52,6 +52,16 @@ pub const AUTO: &[(&str, &str)] = &[
     ("SHEET_INDEX", "the sheet's place among the project's sheets, by number, from 1 (two digits)"),
     ("SHEET_COUNT", "how many sheets the project has (two digits)"),
     ("REVISION", "the latest revision of the revision clouds on the sheet and on the views placed on it"),
+    // The project's information (`project_info`, `crate::project_info::TITLE_KEYS`).
+    ("CLIENT", "the project information's client"),
+    ("PROJECT_NUMBER", "the project information's number"),
+    ("PROJECT_ADDRESS", "the project information's address"),
+    ("PROJECT_STATUS", "the project information's status"),
+    ("ISSUE_DATE", "the project information's issue date"),
+    ("AUTHOR", "the project information's author"),
+    ("ORGANIZATION", "the project information's organization name"),
+    ("ORGANIZATION_DESCRIPTION", "the project information's organization description"),
+    ("BUILDING", "the project information's building name"),
 ];
 
 /// Whose a field is: the project's, one value for every sheet, or each sheet's own.
@@ -173,6 +183,12 @@ pub struct TitleBlock {
     /// The font its lettering is in, as a text type names one: a font the system has (one it hasn't is stood in for).
     #[serde(default = "arial")]
     pub font: String,
+    /// Opposite corners in millimetres from the bottom left of the paper, for automatic placement.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub drawing_area: Option<[P2; 2]>,
+    /// The family's linework supplies the outer frame. Standard fold marks remain independent.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub template_border: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub lines: Vec<Stroke>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -192,6 +208,8 @@ impl Default for TitleBlock {
             width: w,
             height: h,
             font: arial(),
+            drawing_area: None,
+            template_border: false,
             lines: vec![
                 Stroke { points: vec![P2(0.0, 0.0), P2(w, 0.0), P2(w, h), P2(0.0, h)], closed: true, pen: Pen::BORDER, color: None },
                 Stroke { points: vec![P2(0.0, 26.0), P2(w, 26.0)], closed: false, pen: Pen::PROJECTION, color: None },
@@ -331,6 +349,12 @@ impl TitleBlock {
         let n = self.font.trim().chars().count();
         if n == 0 || n > crate::model::MAX_TEXT || self.font.chars().any(char::is_control) {
             return Err(format!("{who}: a font is named by up to {} characters", crate::model::MAX_TEXT));
+        }
+        let paper = crate::model::MAX_PAPER;
+        if let Some([lo, hi]) = self.drawing_area
+            && !(lo.0 >= 0.0 && lo.1 >= 0.0 && hi.0 <= paper && hi.1 <= paper && lo.0 < hi.0 && lo.1 < hi.1)
+        {
+            return Err(format!("{who}: drawing_area needs ordered bottom-left and top-right paper coordinates in mm, from 0 to {paper}"));
         }
         let items = self.lines.len() + self.fills.len() + self.texts.len();
         if items > MAX_ITEMS {
@@ -614,6 +638,7 @@ pub fn values(m: &Model, id: impl Key, scale: &str) -> BTreeMap<String, String> 
     ] {
         out.insert(k.to_string(), v);
     }
+    out.extend(m.info_title_values());
     let tb = m.title_blocks.get(&sheet.title_block);
     for f in tb.iter().flat_map(|t| t.fields.iter()) {
         let key = f.key.to_ascii_uppercase();
@@ -698,10 +723,20 @@ pub fn draw(d: &mut Drawing, tb: &TitleBlock, at: P2, values: &BTreeMap<String, 
 /// round it, at [`crate::sheet::DENSITY`] px a paper mm, in model `m`'s annotation pens.
 pub fn preview(m: &Model, tb: &TitleBlock, values: &BTreeMap<String, String>) -> Drawing {
     const ROOM: f64 = 2.0;
-    let density = crate::sheet::DENSITY;
-    let side = |mm: f64| ((mm.clamp(1.0, MAX_SIZE) + 2.0 * ROOM) * density).round() as u32;
+    // Frame lines may extend past the block's anchor box, for example into a filing margin.
+    let (mut low, mut high) = (P2(0.0, 0.0), P2(tb.width, tb.height));
+    if tb.template_border {
+        for point in tb.lines.iter().flat_map(|line| &line.points) {
+            low = P2(low.0.min(point.0), low.1.min(point.1));
+            high = P2(high.0.max(point.0), high.1.max(point.1));
+        }
+    }
+    let extent = high - low;
+    let density = crate::sheet::DENSITY * (MAX_SIZE / extent.0.max(extent.1)).min(1.0);
+    let side = |mm: f64| ((mm + 2.0 * ROOM) * density).ceil() as u32;
+    let center = (high + low) * 0.5;
     let view =
-        crate::render::View { scale: density, cx: tb.width / 2.0, cy: tb.height / 2.0, width: side(tb.width), height: side(tb.height) };
+        crate::render::View { angle: 0.0, scale: density, cx: center.0, cy: center.1, width: side(extent.0), height: side(extent.1) };
     let mut d = Drawing::new(view);
     d.weights = m.line_weights().at(m.units.default_scale());
     draw(&mut d, tb, P2(0.0, 0.0), values);
@@ -714,8 +749,17 @@ pub fn preview(m: &Model, tb: &TitleBlock, values: &BTreeMap<String, String>) ->
 /// texts, moved so its extents' bottom left corner is the title block's; its box, those extents; and its fields, each key its
 /// texts name that isn't automatic, as each sheet's. And what was left out, counted by kind.
 pub fn from_dxf(dxf: &Dxf, mm: f64) -> (TitleBlock, BTreeMap<String, usize>) {
-    let mut tb =
-        TitleBlock { width: 0.0, height: 0.0, font: arial(), lines: Vec::new(), fills: Vec::new(), texts: Vec::new(), fields: Vec::new() };
+    let mut tb = TitleBlock {
+        font: arial(),
+        width: 0.0,
+        height: 0.0,
+        drawing_area: None,
+        template_border: false,
+        lines: Vec::new(),
+        fills: Vec::new(),
+        texts: Vec::new(),
+        fields: Vec::new(),
+    };
     let mut left_out: BTreeMap<String, usize> = BTreeMap::new();
     let mut attributes: BTreeMap<String, String> = BTreeMap::new();
     let k = |p: &P2| P2(p.0 * mm, p.1 * mm);
@@ -939,9 +983,13 @@ mod tests {
     fn a_title_block_is_checked() {
         assert!(TitleBlock::default().check("T").is_ok());
         let mut tb = TitleBlock::default();
-        tb.fields.push(Field { key: "client".into(), label: String::new(), scope: Scope::Project, default: String::new() });
-        tb.fields.push(Field { key: "CLIENT".into(), label: String::new(), scope: Scope::Sheet, default: String::new() });
+        tb.fields.push(Field { key: "architect".into(), label: String::new(), scope: Scope::Project, default: String::new() });
+        tb.fields.push(Field { key: "ARCHITECT".into(), label: String::new(), scope: Scope::Sheet, default: String::new() });
         assert!(tb.check("T").unwrap_err().contains("defined twice"));
+        // The project's information fills CLIENT, so a title block needn't define it.
+        let mut tb = TitleBlock::default();
+        tb.fields.push(Field { key: "CLIENT".into(), label: String::new(), scope: Scope::Project, default: String::new() });
+        assert!(tb.check("T").unwrap_err().contains("automatic"));
         let mut tb = TitleBlock::default();
         tb.fields.push(Field { key: "DATE".into(), label: String::new(), scope: Scope::Sheet, default: String::new() });
         assert!(tb.check("T").unwrap_err().contains("automatic"));

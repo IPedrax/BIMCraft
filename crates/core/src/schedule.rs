@@ -114,13 +114,14 @@ pub struct Table {
 
 /// The schedules every project has, as views: each one's category, and its name. Each is the
 /// project's own once it's placed on a sheet or changed.
-pub const VIEWS: [(&str, &str); 6] = [
+pub const VIEWS: [(&str, &str); 7] = [
     ("room", msg!("Room Schedule")),
     ("door", msg!("Door Schedule")),
     ("window", msg!("Window Schedule")),
     ("wall", msg!("Wall Schedule")),
     ("floor", msg!("Floor Schedule")),
     ("level", msg!("Level Schedule")),
+    ("sheet", msg!("Sheet List")),
 ];
 
 /// One of the schedules every project has, by its name (in any of the languages, in any case) or,
@@ -207,10 +208,20 @@ const COUNT: Own = (msg!("Count"), Kind::Number, From::Count);
 const PHASE_CREATED: Own = ("Phase Created", Kind::Text, From::Param);
 const PHASE_DEMOLISHED: Own = ("Phase Demolished", Kind::Text, From::Param);
 const DESIGN_OPTION: Own = ("Design Option", Kind::Text, From::Param);
+// A steel member's take-off: its section's name, its area (cm²), its weight per metre (kg/m) and its weight (kg).
+const PROFILE: Own = (msg!("Profile"), Kind::Text, From::Key("profile"));
+const SECTION_AREA: Own = (msg!("Section Area"), Kind::Number, From::Key("section_area_cm2"));
+const WEIGHT_PER_METRE: Own = (msg!("Weight per Metre"), Kind::Number, From::Key("weight_kg_m"));
+const WEIGHT: Own = (msg!("Weight"), Kind::Number, From::Key("weight_kg"));
+
 /// The room a component stands in (`room_number`, `room_name` in its JSON), as Revit's Room: Number and Room: Name.
 const ROOM_NUMBER: Own = (msg!("Room Number"), Kind::Text, From::Key("room_number"));
 const ROOM_NAME: Own = (msg!("Room Name"), Kind::Text, From::Key("room_name"));
 const VOLUME: Own = (msg!("Volume"), Kind::Number, From::Key("volume_m3"));
+/// Where it stands in the active location's shared coordinates: its point, at its base.
+const SHARED_EAST: Own = (msg!("Shared East"), Kind::Length, From::Key("shared_east"));
+const SHARED_NORTH: Own = (msg!("Shared North"), Kind::Length, From::Key("shared_north"));
+const SHARED_ELEVATION: Own = (msg!("Shared Elevation"), Kind::Length, From::Key("shared_elevation"));
 
 /// A multi-category schedule's category: a row for each element of the categories it lists (`Schedule::categories`),
 /// or of every built one (`built`) where it lists none.
@@ -244,6 +255,7 @@ const SHARED: (&str, usize, &[Own]) = (
 /// Each category's own fields, and how many of them, from the first, its schedule shows unless it
 /// chooses.
 const OWN: &[(&str, usize, &[Own])] = &[
+    ("propertyline", 4, &[NAME, LEVEL, AREA, (msg!("Perimeter"), Kind::Length, From::Metres("perimeter_m")), COUNT]),
     (
         "room",
         5,
@@ -330,9 +342,34 @@ const OWN: &[(&str, usize, &[Own])] = &[
             PHASE_CREATED,
             PHASE_DEMOLISHED,
             DESIGN_OPTION,
+            SHARED_EAST,
+            SHARED_NORTH,
+            SHARED_ELEVATION,
         ],
     ),
-    ("structuralcolumn", 6, &[ID, TYPE, LEVEL, WIDTH, DEPTH, HEIGHT, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION]),
+    (
+        "structuralcolumn",
+        6,
+        &[
+            ID,
+            TYPE,
+            LEVEL,
+            WIDTH,
+            DEPTH,
+            HEIGHT,
+            COUNT,
+            PHASE_CREATED,
+            PHASE_DEMOLISHED,
+            DESIGN_OPTION,
+            PROFILE,
+            SECTION_AREA,
+            WEIGHT_PER_METRE,
+            WEIGHT,
+            SHARED_EAST,
+            SHARED_NORTH,
+            SHARED_ELEVATION,
+        ],
+    ),
     (
         "footing",
         6,
@@ -347,9 +384,32 @@ const OWN: &[(&str, usize, &[Own])] = &[
             PHASE_CREATED,
             PHASE_DEMOLISHED,
             DESIGN_OPTION,
+            SHARED_EAST,
+            SHARED_NORTH,
+            SHARED_ELEVATION,
         ],
     ),
-    ("beam", 6, &[ID, TYPE, LEVEL, LENGTH, WIDTH, DEPTH, SYSTEM, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION]),
+    (
+        "beam",
+        6,
+        &[
+            ID,
+            TYPE,
+            LEVEL,
+            LENGTH,
+            WIDTH,
+            DEPTH,
+            SYSTEM,
+            COUNT,
+            PHASE_CREATED,
+            PHASE_DEMOLISHED,
+            DESIGN_OPTION,
+            PROFILE,
+            SECTION_AREA,
+            WEIGHT_PER_METRE,
+            WEIGHT,
+        ],
+    ),
     (
         "rebar",
         7,
@@ -434,7 +494,51 @@ const OWN: &[(&str, usize, &[Own])] = &[
             DESIGN_OPTION,
         ],
     ),
-    ("component", 4, &[FAMILY, TYPE, LEVEL, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION, ROOM_NUMBER, ROOM_NAME]),
+    (
+        "circuit",
+        6,
+        &[
+            ("Number", Kind::Number, From::Key("number")),
+            NAME,
+            ("Panel", Kind::Number, From::Ref("panel")),
+            ("Rating", Kind::Number, From::Key("rating_a")),
+            ("Poles", Kind::Number, From::Key("poles")),
+            ("Load", Kind::Number, From::Key("installed_va")),
+            ("Demand Load", Kind::Number, From::Key("demand_va")),
+            ("Current", Kind::Number, From::Key("current_a")),
+            ("Voltage", Kind::Number, From::Key("voltage_v")),
+            ("Classification", Kind::Text, From::Key("classification")),
+            COUNT,
+        ],
+    ),
+    (
+        "component",
+        4,
+        &[
+            FAMILY,
+            TYPE,
+            LEVEL,
+            COUNT,
+            PHASE_CREATED,
+            PHASE_DEMOLISHED,
+            DESIGN_OPTION,
+            ROOM_NUMBER,
+            ROOM_NAME,
+            // Its height over its level (its Schedule Level, for one on a plane), what it is on, and how far off that.
+            ("Elevation from Level", Kind::Length, From::Key("offset")),
+            ("Work Plane", Kind::Text, From::Key("work_plane")),
+            ("Offset from Host", Kind::Length, From::Key("offset_from_host")),
+            ("Host", Kind::Number, From::Ref("host_element")),
+            // A distribution board's, by the names of Revit's parameters.
+            ("Distribution System", Kind::Text, From::Key("distribution_system")),
+            ("Mains", Kind::Number, From::Key("mains")),
+            ("Max #1 Pole Breakers", Kind::Number, From::Key("slots")),
+            ("Supply From", Kind::Number, From::Ref("supply_from")),
+            SHARED_EAST,
+            SHARED_NORTH,
+            SHARED_ELEVATION,
+        ],
+    ),
     (
         "stair",
         7,
@@ -496,10 +600,11 @@ const OWN: &[(&str, usize, &[Own])] = &[
         5,
         &[("Mass", Kind::Text, From::Key("mass")), LEVEL, AREA, ("Perimeter", Kind::Length, From::Metres("perimeter_m")), VOLUME, COUNT],
     ),
-    ("level", 2, &[("Elevation", Kind::Length, From::Key("elevation")), NAME, COUNT]),
+    ("level", 2, &[("Elevation", Kind::Length, From::Key("elevation_shown")), NAME, COUNT]),
+    ("sheet", 2, &[("Number", Kind::Text, From::Key("number")), NAME]),
 ];
 
-/// The fields of what schedules aren't of: annotation, views and sheets, what Filter on a selection goes by
+/// The fields of what schedules aren't of: annotation and views, what Filter on a selection goes by
 /// (`selection::common`) and a tag may show. Each one's count is 0: no schedule shows them.
 const MORE: &[(&str, usize, &[Own])] = &[
     ("line", 0, &[("Line Style", Kind::Text, From::Key("style")), LENGTH]),
@@ -512,7 +617,6 @@ const MORE: &[(&str, usize, &[Own])] = &[
     ("grid", 0, &[NAME]),
     ("section", 0, &[NAME]),
     ("elevation", 0, &[NAME]),
-    ("sheet", 0, &[("Number", Kind::Text, From::Key("number")), NAME]),
     ("viewport", 0, &[(ui_msg!("Title"), Kind::Text, From::Key("title"))]),
 ];
 
@@ -521,9 +625,15 @@ pub fn categories() -> Vec<&'static str> {
     OWN.iter().map(|(c, _, _)| *c).collect()
 }
 
-/// The categories a multi-category schedule lists where it names none: what's built, not rooms, levels and masses.
+/// Every category with fields: schedules' own, then what schedules aren't of (`MORE`).
+pub fn all_categories() -> Vec<&'static str> {
+    categories().into_iter().chain(MORE.iter().map(|(c, _, _)| *c)).collect()
+}
+
+/// The categories a multi-category schedule lists where it names none: what's built, not rooms, levels, masses
+/// and sheets.
 pub fn built() -> Vec<&'static str> {
-    categories().into_iter().filter(|c| !matches!(*c, "room" | "level" | "mass" | "massfloor")).collect()
+    categories().into_iter().filter(|c| !matches!(*c, "room" | "level" | "mass" | "massfloor" | "propertyline" | "sheet")).collect()
 }
 
 /// The categories multi-category schedule `sc` lists, as elements name theirs.
@@ -559,8 +669,9 @@ pub fn fields(m: &Model, cat: &str) -> Vec<(String, Kind)> {
             n,
             match p.kind {
                 ParameterKind::Text => Kind::Text,
-                ParameterKind::Number => Kind::Number,
+                ParameterKind::Number | ParameterKind::Integer | ParameterKind::Volume | ParameterKind::Angle => Kind::Number,
                 ParameterKind::Length => Kind::Length,
+                ParameterKind::Area => Kind::Area,
                 ParameterKind::YesNo => Kind::YesNo,
             },
         );
@@ -571,9 +682,10 @@ pub fn fields(m: &Model, cat: &str) -> Vec<(String, Kind)> {
                 &p.name,
                 match p.kind {
                     family::Kind::Length => Kind::Length,
-                    family::Kind::Number | family::Kind::Angle => Kind::Number,
+                    family::Kind::Number | family::Kind::Angle | family::Kind::Integer | family::Kind::Volume => Kind::Number,
+                    family::Kind::Area => Kind::Area,
                     family::Kind::YesNo => Kind::YesNo,
-                    family::Kind::Material => Kind::Text,
+                    family::Kind::Material | family::Kind::Text | family::Kind::Url | family::Kind::FamilyType => Kind::Text,
                 },
             );
         }
@@ -587,8 +699,10 @@ pub fn field_text(m: &Model, id: impl crate::ids::Key, name: &str) -> Option<Str
     field_text_with(m, id, name, &Rooms::new(m))
 }
 
-/// [`field_text`], a room's boundary found among `rooms`.
-pub fn field_text_with(m: &Model, id: impl crate::ids::Key, name: &str, rooms: &Rooms) -> Option<String> {
+/// Field `name` of element `id`, and what it holds, as its category's schedule works it out: a
+/// length in mm, an area in m², a yes or no as a boolean. None where the element has no such
+/// field, or no value for it.
+pub(crate) fn field_value_with(m: &Model, id: impl crate::ids::Key, name: &str, rooms: &Rooms) -> Option<(Kind, Value)> {
     let id = m.elements.id(id)?;
     let e = m.elements.get(id)?;
     let cat = e.category();
@@ -597,8 +711,15 @@ pub fn field_text_with(m: &Model, id: impl crate::ids::Key, name: &str, rooms: &
     let mut row = Row { m, e, cat, json: element_json_with(m, id, rooms), formulas: &formulas, done: BTreeMap::new() };
     match row.get(name) {
         Value::Null => None,
-        v => Some(shown(m.units, kind, &v)),
+        v => Some((kind, v)),
     }
+}
+
+/// [`field_value_with`] as its category's schedule shows it (a length or an area in the project's
+/// units, a yes or no as `Yes` or `No`): what a tag shows.
+pub fn field_text_with(m: &Model, id: impl crate::ids::Key, name: &str, rooms: &Rooms) -> Option<String> {
+    let (kind, v) = field_value_with(m, id, name, rooms)?;
+    Some(shown(m.units, kind, &v))
 }
 
 /// The fields a schedule of category `cat` shows unless it chooses.
@@ -613,7 +734,7 @@ fn chosen(sc: &Schedule, cat: &str) -> Vec<Field> {
 }
 
 /// What `what` holds, said: `text`, `a number`…
-fn holding(k: Kind) -> &'static str {
+pub(crate) fn holding(k: Kind) -> &'static str {
     match k {
         Kind::Text => "text",
         Kind::Number => "a number",
@@ -637,8 +758,12 @@ pub fn check(m: &Model, sc: &Schedule) -> Result<(), String> {
     if sc.categories.len() > MAX_FIELDS {
         return Err(format!("it lists {} categories; a schedule lists up to {MAX_FIELDS}", sc.categories.len()));
     }
-    if let Some(c) = sc.categories.iter().find(|c| !categories().contains(&category(c).as_str()) || category(c) == "massfloor") {
-        let there: Vec<&str> = categories().into_iter().filter(|c| *c != "massfloor").collect();
+    if let Some(c) = sc
+        .categories
+        .iter()
+        .find(|c| !categories().contains(&category(c).as_str()) || matches!(category(c).as_str(), "massfloor" | "sheet"))
+    {
+        let there: Vec<&str> = categories().into_iter().filter(|c| !matches!(*c, "massfloor" | "sheet")).collect();
         return Err(format!("`{c}` isn't a category a multi-category schedule lists; there are: {}", there.join(", ")));
     }
     if let Some((of, name)) = builtin(Some(&sc.name), None).filter(|(of, _)| *of != cat) {
@@ -919,22 +1044,27 @@ impl Row<'_> {
                 From::Shared => self.shared(name, *kind),
             };
         }
-        if let Some(p) = m.parameters.get(name).filter(|p| p.categories.iter().any(|c| c == cat)) {
-            return match self.e.params().and_then(|ps| ps.get(name)) {
-                Some(v) => v.clone(),
-                // Unset, a yes or no is no, as the palette shows it.
-                None if p.kind == ParameterKind::YesNo => Value::Bool(false),
-                None => Value::Null,
-            };
-        }
+        // A family's own first: where a project parameter has the name too, the family's is tied to it, and is its value here.
         if let Some((family, _)) = self.e.family()
             && let Some(p) = m.families.get(family).and_then(|f| f.parameters.iter().find(|p| p.name == name))
         {
             let v = j.get("values").and_then(|v| v.get(name)).cloned().unwrap_or(Value::Null);
             return match (p.kind, v.as_f64()) {
                 (family::Kind::YesNo, Some(x)) => Value::Bool(x != 0.0),
-                (family::Kind::Material, _) if v.as_str() == Some("") => Value::Null,
+                // A family's areas and volumes are in mm² and mm³; schedules show m² and m³.
+                (family::Kind::Area, Some(x)) => serde_json::json!(fine(x / 1e6)),
+                (family::Kind::Volume, Some(x)) => serde_json::json!(fine(x / 1e9)),
+                (k, _) if k.text() && v.as_str() == Some("") => Value::Null,
                 _ => v,
+            };
+        }
+        let cat = self.cat;
+        if let Some(p) = m.parameters.get(name).filter(|p| p.categories.iter().any(|c| c == cat)) {
+            return match crate::parameters::value_of(m, self.e, name, p) {
+                Some(v) => v.clone(),
+                // Unset, a yes or no is no, as the palette shows it.
+                None if p.kind == ParameterKind::YesNo => Value::Bool(false),
+                None => Value::Null,
             };
         }
         Value::Null
@@ -1242,6 +1372,18 @@ pub fn to_csv(t: &Table) -> String {
 /// The table as a workbook of one sheet named `name`: its headings (in metric) in bold, its rows, then its totals. Numbers
 /// go in as numbers, so the spreadsheet sums them; text as text, never a formula.
 pub fn to_xlsx(t: &Table, name: &str) -> Vec<u8> {
+    let (headings, rows) = cells(t);
+    crate::xlsx::workbook(name, &headings, &rows)
+}
+
+/// The table as an OpenDocument spreadsheet (`.ods`) of one sheet named `name`, as [`to_xlsx`] writes it.
+pub fn to_ods(t: &Table, name: &str) -> Vec<u8> {
+    let (headings, rows) = cells(t);
+    crate::ods::spreadsheet(name, &headings, &rows)
+}
+
+/// The table's headings, and its rows and totals as a spreadsheet's cells: numbers as numbers, in millimetres.
+fn cells(t: &Table) -> (Vec<String>, Vec<Vec<crate::xlsx::Cell>>) {
     use crate::xlsx::Cell;
     let headings: Vec<String> = t.columns.iter().map(|c| heading(Units::Millimetres, c)).collect();
     let rows: Vec<Vec<Cell>> = t
@@ -1258,7 +1400,7 @@ pub fn to_xlsx(t: &Table, name: &str) -> Vec<u8> {
                 .collect()
         })
         .collect();
-    crate::xlsx::workbook(name, &headings, &rows)
+    (headings, rows)
 }
 
 #[cfg(test)]

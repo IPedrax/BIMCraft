@@ -12,7 +12,7 @@ mod index;
 pub(crate) use index::{Index, reach};
 
 use crate::geom::{self, P2};
-use crate::model::{Element, Function, Guid, Id, Layer, Location, Model, TOL, Wall};
+use crate::model::{Element, Function, Guid, Id, Layer, Location, Model, Opening, TOL, Wall};
 
 /// A wall's location line, from its start to its end: straight, or an arc.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -205,6 +205,50 @@ pub fn stacked(m: &Model, a: &Wall, b: &Wall) -> bool {
     m.base_z(a) < m.top_z(b) && m.base_z(b) < m.top_z(a)
 }
 
+/// Whether wall `id`'s start, or with `at_end` its end, is joined to another wall there: one whose body reaches the node
+/// and overlaps it in height (see [`stacked`]). A wall refusing to join, a column's or a grid's meeting it, and nothing at
+/// all, are no join.
+pub(crate) fn joined_at(m: &Model, id: Id, at_end: bool, index: Option<&Index>) -> bool {
+    let Some(w) = m.wall(id) else { return false };
+    if !w.join {
+        return false;
+    }
+    let (arms, _) = arms(m, id, at_end, index, &|_| true);
+    arms.iter().any(|a| a.id != id)
+}
+
+/// The wall joined to wall `id` at its start, or with `at_end` its end, that runs square to it, if one does: what a
+/// dimension made permanent there measures to, so that changing it moves that whole wall, not just its joined end.
+pub fn joined_perpendicular(m: &Model, id: Id, at_end: bool) -> Option<Id> {
+    joined_perpendicular_in(m, id, at_end, None)
+}
+
+/// [`joined_perpendicular`], its joins found through `index` when there is one.
+pub(crate) fn joined_perpendicular_in(m: &Model, id: Id, at_end: bool, index: Option<&Index>) -> Option<Id> {
+    let w = m.wall(id)?;
+    if !w.join {
+        return None;
+    }
+    let node = if at_end { w.end } else { w.start };
+    let u = (w.end - w.start).unit();
+    let near: Vec<Id> = match index {
+        Some(index) => index.neighbours_at(id, node),
+        None => {
+            let thickest = m.types.wall.values().map(|t| t.thickness).filter(|t| t.is_finite()).fold(0.0, f64::max);
+            let at = ([node.0, node.1, node.0, node.1], m.base_z(w), m.top_z(w));
+            m.lookup().walls_near_at(&[at], thickest + 1.0).into_iter().collect()
+        }
+    };
+    near.into_iter()
+        .filter_map(|other| Some((other, m.wall(other)?)))
+        .filter(|(other, o)| *other != id && o.join && stacked(m, w, o))
+        .filter(|(_, o)| u.dot((o.end - o.start).unit()).abs() <= 0.05)
+        // Its own end must meet this wall's end: a wall merely running near the free end is no join.
+        .filter(|(_, o)| o.start.dist(node) <= TOL || o.end.dist(node) <= TOL)
+        .map(|(other, _)| other)
+        .min()
+}
+
 /// A wall where it leaves a node: the way it goes, and where its faces' lines and its centre line
 /// are there (each running that way): the face on the counter-clockwise side of that way, the one
 /// on the clockwise side, and which wall's end it is (`id`, `at_end`). A run's arm at its end is one too ([`crate::runs`]),
@@ -235,7 +279,7 @@ pub(crate) fn arm(m: &Model, id: Id, w: &Wall, at_end: bool, mine: bool) -> Arm 
 /// The walls at wall `id`'s start (or `at_end`, its end), round the node counter-clockwise, its own
 /// among them: those ending there, and a wall it ends on, both ways from where it does. Whether it
 /// ends on one, too.
-fn arms(m: &Model, id: Id, at_end: bool, index: Option<&Index>) -> (Vec<Arm>, bool) {
+fn arms(m: &Model, id: Id, at_end: bool, index: Option<&Index>, keep: &impl Fn(&Wall) -> bool) -> (Vec<Arm>, bool) {
     let Some(w) = m.wall(id) else { return (Vec::new(), false) };
     let node = if at_end { w.end } else { w.start };
     let mut arms = vec![arm(m, id, w, at_end, true)];
@@ -260,7 +304,7 @@ fn arms(m: &Model, id: Id, at_end: bool, index: Option<&Index>) -> (Vec<Arm>, bo
     // Where they meet is asked first: whether they overlap in height takes both walls' heights, under any roof or floor
     // they're attached to.
     for (other, o) in candidates {
-        if other == id {
+        if other == id || !keep(o) {
             continue;
         }
         if o.start.dist(node) <= TOL {
@@ -300,7 +344,7 @@ pub fn cap(m: &Model, id: Id, at_end: bool) -> Vec<P2> {
 }
 
 fn cap_in(m: &Model, id: Id, at_end: bool, index: Option<&Index>) -> Vec<P2> {
-    end_geometry(m, id, at_end, index).outline
+    end_geometry(m, id, at_end, index, &|_| true).outline
 }
 
 #[derive(Default)]
@@ -315,9 +359,10 @@ impl WallEnd {
     }
 }
 
-fn end_geometry(m: &Model, id: Id, at_end: bool, index: Option<&Index>) -> WallEnd {
+/// [`cap`] and how a compound corner shares it, joined only to walls `keep` keeps.
+fn end_geometry(m: &Model, id: Id, at_end: bool, index: Option<&Index>, keep: &impl Fn(&Wall) -> bool) -> WallEnd {
     let Some(w) = m.wall(id) else { return WallEnd::default() };
-    let (arms, through) = arms(m, id, at_end, index);
+    let (arms, through) = arms(m, id, at_end, index, keep);
     let n = arms.len();
     let Some(i) = arms.iter().position(|a| a.id == id) else { return WallEnd::default() };
     let (prev, me, next) = (&arms[(i + n - 1) % n], &arms[i], &arms[(i + 1) % n]);
@@ -351,11 +396,16 @@ pub fn centre_line(m: &Model, id: Id) -> Vec<P2> {
 
 /// [`centre_line`], its joins found through `index` when there is one.
 pub(crate) fn centre_line_in(m: &Model, id: Id, index: Option<&Index>) -> Vec<P2> {
+    centre_line_filtered(m, id, index, &|_| true)
+}
+
+/// A centre line joined only to walls kept by the caller, such as those bounding a level at its computation height.
+pub(crate) fn centre_line_filtered(m: &Model, id: Id, index: Option<&Index>, keep: &impl Fn(&Wall) -> bool) -> Vec<P2> {
     let Some(w) = m.wall(id) else { return Vec::new() };
     let axis = Axis::of(w);
     let mut line = axis.points(0.0, axis.length(), centre(m, w));
     for at_end in [false, true] {
-        let (arms, _) = arms(m, id, at_end, index);
+        let (arms, _) = arms(m, id, at_end, index, keep);
         let Some(me) = arms.iter().find(|a| a.id == id) else { continue };
         let reach = 2.0 * arms.iter().map(|a| a.thick).fold(1.0, f64::max);
         let crossing = arms
@@ -377,6 +427,11 @@ pub fn outline(m: &Model, id: Id) -> Vec<P2> {
 }
 
 pub(crate) fn outline_in(m: &Model, id: Id, index: Option<&Index>) -> Vec<P2> {
+    outline_filtered(m, id, index, &|_| true)
+}
+
+/// An outline whose caps join only walls kept by the caller; physical wall geometry still uses every overlapping wall.
+pub(crate) fn outline_filtered(m: &Model, id: Id, index: Option<&Index>, keep: &impl Fn(&Wall) -> bool) -> Vec<P2> {
     let Some(w) = m.wall(id) else { return Vec::new() };
     let axis = Axis::of(w);
     let (ext, int) = faces(m, w);
@@ -385,9 +440,9 @@ pub(crate) fn outline_in(m: &Model, id: Id, index: Option<&Index>) -> Vec<P2> {
         let n = pts.len();
         pts.into_iter().skip(1).take(n.saturating_sub(2))
     };
-    let mut ring = cap_in(m, id, false, index);
+    let mut ring = end_geometry(m, id, false, index, keep).outline;
     ring.extend(between(axis.points(0.0, len, ext)));
-    ring.extend(cap_in(m, id, true, index));
+    ring.extend(end_geometry(m, id, true, index, keep).outline);
     ring.extend(between(axis.points(len, 0.0, int)));
     ring.dedup_by(|a, b| a.dist(*b) < 1e-6);
     ring
@@ -459,7 +514,7 @@ pub(crate) fn layer_geometry(m: &Model, id: Id, index: Option<&Index>) -> LayerG
     let Some(w) = m.wall(id) else { return LayerGeometry::default() };
     let axis = Axis::of(w);
     let len = axis.length();
-    let ends = [end_geometry(m, id, false, index), end_geometry(m, id, true, index)];
+    let ends = [end_geometry(m, id, false, index, &|_| true), end_geometry(m, id, true, index, &|_| true)];
     let lines = boundaries(m, w)
         .into_iter()
         .enumerate()
@@ -663,6 +718,11 @@ fn bounds(m: &Model, w: &Wall) -> (Bound, Bound) {
     (Bound::of(m, w.attach_base, true, m.own_base(w)), Bound::of(m, w.attach_top, false, m.own_top(w)))
 }
 
+/// A wall's base under the point `s` mm along its centre line.
+pub fn base_at(m: &Model, w: &Wall, s: f64) -> f64 {
+    bounds(m, w).0.at(Axis::of(w).at(s, centre(m, w)))
+}
+
 /// A wall's top over the point `s` mm along its centre line.
 pub fn top_at(m: &Model, w: &Wall, s: f64) -> f64 {
     bounds(m, w).1.at(Axis::of(w).at(s, centre(m, w)))
@@ -684,19 +744,72 @@ pub fn heights(m: &Model, w: &Wall) -> (f64, f64) {
     (lo, hi)
 }
 
+/// A door's or a window's hole in its host wall, in the wall's own frame: `s0..s1` along its axis,
+/// its centre line at 0, and `bottom..top` above z 0, its base plus the opening's sill.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Hole {
+    pub s0: f64,
+    pub s1: f64,
+    pub bottom: f64,
+    pub top: f64,
+}
+
+/// The hole `o` cuts in wall `w`: its type's width either side of its offset and its height above its
+/// sill. Which jamb a leaf is hinged on, and which way it opens, is the opening's, not the hole's.
+pub fn hole(m: &Model, w: &Wall, e: &Element, o: &Opening) -> Option<Hole> {
+    let t = m.opening_type(e)?;
+    let bottom = m.own_base(w) + o.sill;
+    Some(Hole { s0: o.offset - t.width / 2.0, s1: o.offset + t.width / 2.0, bottom, top: bottom + t.height })
+}
+
+/// A column's base and top: what it's attached to, or a level plane.
+fn column_bounds(m: &Model, col: &crate::model::Column) -> (Bound, Bound) {
+    (Bound::of(m, col.attach_base, true, m.column_own_base(col)), Bound::of(m, col.attach_top, false, m.column_own_top(col)))
+}
+
+/// A column's lowest base and highest top over its outline, where what it's attached to bends.
+pub(crate) fn column_heights(m: &Model, e: &Element, col: &crate::model::Column) -> (f64, f64) {
+    if col.attach_base.is_none() && col.attach_top.is_none() {
+        return (m.column_own_base(col), m.column_own_top(col));
+    }
+    let (base, top) = column_bounds(m, col);
+    let mut pts = m.column_outline(e);
+    pts.push(col.at);
+    let lo = pts.iter().map(|q| base.at(*q)).fold(f64::INFINITY, f64::min);
+    let hi = pts.iter().map(|q| top.at(*q)).fold(f64::NEG_INFINITY, f64::max);
+    (lo, hi)
+}
+
+/// An attached column's solid: its outline cut where what it stands on or follows changes plane, each part from the one to the
+/// other. None for one attached to nothing, which is a plain slab.
+pub fn column_prisms(m: &Model, e: &Element) -> Vec<Prism> {
+    let Some(col) = e.column().filter(|c| c.attach_base.is_some() || c.attach_top.is_some()) else { return Vec::new() };
+    let (base, top) = column_bounds(m, col);
+    // A tube's pieces round its hole, as an unattached one's are.
+    let pieces = if matches!(e, Element::Column(_)) { vec![m.column_outline(e)] } else { m.column_pieces(e) };
+    let mut out = Vec::new();
+    for outline in pieces {
+        for (part, bottom) in base.parts(outline) {
+            for (ring, up) in top.parts(part) {
+                out.push(Prism { ring, bottom, top: up, curve: None });
+            }
+        }
+    }
+    out
+}
+
 /// The sides of the notches wall `id`'s doors and windows cut where they rise past its top, as Revit lets them: a line across
 /// the wall from face to face at each jamb whose head reaches the top there, which a plan seeing the wall from above draws.
 pub fn notches(m: &Model, id: Id) -> Vec<[P2; 2]> {
     let Some(w) = m.wall(id) else { return Vec::new() };
     let guid = m.guid(id);
-    let (axis, (ext, int), base) = (Axis::of(w), faces(m, w), m.own_base(w));
+    let (axis, (ext, int)) = (Axis::of(w), faces(m, w));
     let mut out = Vec::new();
     for e in m.lookup().referrers(&guid).filter_map(|k| m.elements.get(k)) {
         let (Element::Door(o) | Element::Window(o)) = e else { continue };
-        let Some(t) = m.opening_type(e).filter(|_| o.host == guid) else { continue };
-        let head = base + o.sill + t.height;
-        for s in [o.offset - t.width / 2.0, o.offset + t.width / 2.0] {
-            if head >= top_at(m, w, s) - 1e-6 {
+        let Some(h) = hole(m, w, e, o).filter(|_| o.host == guid) else { continue };
+        for s in [h.s0, h.s1] {
+            if h.top >= top_at(m, w, s) - 1e-6 {
                 out.push([axis.at(s, int), axis.at(s, ext)]);
             }
         }
@@ -716,38 +829,61 @@ pub struct Prism {
 
 /// Wall `id` as prisms: its outline cut across where its doors and windows start and end (with
 /// `openings`) and along an arc into short straight pieces, each piece from its base up to its
-/// top less the openings over it, cut where what it's attached to changes plane.
+/// top less the openings over it, cut where what it's attached to changes plane. An opening whose family cuts its wall
+/// with voids of its own ([`host_voids_in`]) leaves no rectangle: the voids cut what is left, as the 3D view's solids do.
 pub fn prisms(m: &Model, id: Id, openings: bool) -> Vec<Prism> {
     prisms_in(m, id, openings, None)
 }
 
 pub(crate) fn prisms_in(m: &Model, id: Id, openings: bool, index: Option<&Index>) -> Vec<Prism> {
+    prisms_holed(m, id, openings, true, index)
+}
+
+/// [`prisms_in`], every opening its rectangle, voids or none: what stands where cutting by the voids fails.
+pub(crate) fn prisms_rect_in(m: &Model, id: Id, index: Option<&Index>) -> Vec<Prism> {
+    prisms_holed(m, id, true, false, index)
+}
+
+/// The doors and windows in wall `id`, or the openings `index` lists in it.
+fn openings_of<'a>(m: &'a Model, id: Id, index: Option<&'a Index>) -> Box<dyn Iterator<Item = &'a Element> + 'a> {
+    let guid = m.guid(id);
+    match index {
+        Some(index) => Box::new(index.openings(guid).iter().filter_map(|id| m.elements.get(*id))),
+        None => Box::new(m.elements.values().filter(move |e| matches!(e, Element::Door(o) | Element::Window(o) if o.host == guid))),
+    }
+}
+
+/// The voids wall `id`'s doors and windows cut it with, in the model's axes ([`Model::opening_voids`]): those of the
+/// openings whose families have their own, which cut the wall in their shape in place of a rectangle; and those of the
+/// components on its faces ([`Model::hosted_voids`]).
+pub(crate) fn host_voids_in(m: &Model, id: Id, index: Option<&Index>) -> Vec<Vec<[crate::view3d::P3; 3]>> {
+    let mut out: Vec<_> = openings_of(m, id, index).flat_map(|e| m.opening_voids(e)).collect();
+    out.extend(m.hosted_voids(id).into_iter().flat_map(|(_, v)| v));
+    out
+}
+
+fn prisms_holed(m: &Model, id: Id, openings: bool, voided: bool, index: Option<&Index>) -> Vec<Prism> {
     let Some(w) = m.wall(id) else { return Vec::new() };
     let guid = m.guid(id);
     let axis = Axis::of(w);
     let (ext, int) = faces(m, w);
     let len = axis.length();
-    let z0 = m.own_base(w);
-    // The openings: along the wall, and up it.
-    let candidates: Box<dyn Iterator<Item = &Element> + '_> = if !openings {
-        Box::new(std::iter::empty())
-    } else {
-        match index {
-            Some(index) => Box::new(index.openings(guid).iter().filter_map(|id| m.elements.get(*id))),
-            None => Box::new(m.elements.values()),
-        }
-    };
-    let holes: Vec<((f64, f64), (f64, f64))> = candidates
+    // The openings: along the wall, and up it; one whose voids cut the wall leaves its rectangle to them.
+    let candidates: Box<dyn Iterator<Item = &Element> + '_> =
+        if !openings { Box::new(std::iter::empty()) } else { openings_of(m, id, index) };
+    let holes: Vec<Hole> = candidates
         .filter_map(|e| match e {
             Element::Door(o) | Element::Window(o) if o.host == guid => {
-                let t = m.opening_type(e)?;
-                Some(((o.offset - t.width / 2.0, o.offset + t.width / 2.0), (z0 + o.sill, z0 + o.sill + t.height)))
+                if voided && !m.opening_voids_local(e).is_empty() {
+                    return None;
+                }
+                hole(m, w, e, o)
             }
             _ => None,
         })
         .collect();
     let mut cuts = axis.stations(0.0, len);
-    cuts.extend(holes.iter().flat_map(|((s0, s1), _)| [*s0, *s1]).filter(|s| *s > 0.0 && *s < len));
+    cuts.extend(holes.iter().flat_map(|h| [h.s0, h.s1]).filter(|s| *s > 0.0 && *s < len));
     cuts.sort_by(f64::total_cmp);
     cuts.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
     let (start, end) = (cap_in(m, id, false, index), cap_in(m, id, true, index));
@@ -760,7 +896,7 @@ pub(crate) fn prisms_in(m: &Model, id: Id, openings: bool, index: Option<&Index>
         ring.extend(if b >= len { end.clone() } else { vec![axis.at(b, ext), axis.at(b, int)] });
         // Up from its base to its top, past the openings over its middle.
         let mid = (a + b) / 2.0;
-        let mut gaps: Vec<(f64, f64)> = holes.iter().filter(|((s0, s1), _)| *s0 <= mid && mid <= *s1).map(|(_, z)| *z).collect();
+        let mut gaps: Vec<(f64, f64)> = holes.iter().filter(|h| h.s0 <= mid && mid <= h.s1).map(|h| (h.bottom, h.top)).collect();
         gaps.sort_by(|x, y| x.0.total_cmp(&y.0));
         let flat = |z: f64| Bound { regions: Vec::new(), own: z };
         let mut floors: Vec<Bound> = vec![base.clone()];
@@ -951,5 +1087,25 @@ mod tests {
         assert_eq!(whole.len(), 2);
         let tan = 30f64.to_radians().tan();
         assert!(whole.iter().all(|p| (p.top.at(P2(8000.0, 3000.0)) - (3000.0 + 3100.0 * tan)).abs() < 1e-6));
+    }
+
+    #[test]
+    fn an_openings_hole_is_its_type_in_its_hosts_frame() {
+        // A wall 6000 long whose base is 500 above its level, a 900 x 2100 door, and a 1200 x 1500
+        // window with its sill 900 up.
+        let s = session(
+            r#"wall {"points": [[0,0],[6000,0]], "base_offset": 500}
+               door {"wall": 100002, "offset": 2000}
+               window {"wall": 100002, "offset": 4500}"#,
+        );
+        let m = &s.model;
+        let w = m.wall(100002).unwrap_or_else(|| panic!("no wall"));
+        let at = |id: Id| {
+            let e = m.elements.get(id).unwrap_or_else(|| panic!("no element {id}"));
+            let (Element::Door(o) | Element::Window(o)) = e else { panic!("{id} isn't an opening") };
+            hole(m, w, e, o).unwrap_or_else(|| panic!("no hole for {id}"))
+        };
+        assert_eq!(at(100003), Hole { s0: 1550.0, s1: 2450.0, bottom: 500.0, top: 2600.0 });
+        assert_eq!(at(100004), Hole { s0: 3900.0, s1: 5100.0, bottom: 1400.0, top: 2900.0 });
     }
 }

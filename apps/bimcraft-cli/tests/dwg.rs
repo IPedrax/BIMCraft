@@ -87,3 +87,38 @@ fn the_child_gives_dxf_and_a_child_that_fails_or_runs_too_long_says_so() {
     let e = bimcraft_dwg::in_child(&dir.join("nowhere.exe"), &path, Duration::from_secs(5)).unwrap_err();
     assert!(e.contains("couldn't start"), "{e}");
 }
+
+#[test]
+fn export_writes_a_plan_as_dwg_through_a_child_and_it_reads_back() {
+    let dir = dir("export").unwrap();
+    let to = dir.join("plan.dwg");
+    let export = format!("export {}", serde_json::json!({"format": "dwg", "view": "Level 1", "path": to}));
+    let formats = Command::new(EXE).args(["run", "--sample", "--cmd", &export, "--cmd", "export_formats"]).output().unwrap();
+    let said = String::from_utf8_lossy(&formats.stdout);
+    assert!(formats.status.success(), "{said}\n{}", String::from_utf8_lossy(&formats.stderr));
+    // Listed as written, but experimental.
+    let list: serde_json::Value = serde_json::from_str(said.lines().last().unwrap()).unwrap();
+    let dwg = list["formats"].as_array().unwrap().iter().find(|f| f["id"] == "dwg").cloned().unwrap();
+    assert_eq!(dwg["status"], "experimental");
+    let bytes = std::fs::read(&to).unwrap();
+    assert!(bytes.starts_with(b"AC1018"), "{:?}", String::from_utf8_lossy(&bytes[..6.min(bytes.len())]));
+    // And it opens again as any DWG does, its layers by category.
+    let cmd = format!("import_cad {}", serde_json::json!({"path": to, "layers": "all"}));
+    let out = Command::new(EXE).args(["run", "--cmd", &cmd]).output().unwrap();
+    let said = String::from_utf8_lossy(&out.stdout);
+    assert!(out.status.success(), "{said}\n{}", String::from_utf8_lossy(&out.stderr));
+    let reply: serde_json::Value = serde_json::from_str(said.lines().last().unwrap()).unwrap();
+    assert_eq!(reply["unit"].as_str(), Some("mm"), "{reply}");
+    assert!(reply["entities"].as_u64().unwrap_or(0) > 100, "{reply}");
+}
+
+#[test]
+fn the_writing_child_says_why_and_stops_when_asked() {
+    let dir = dir("write-child").unwrap();
+    let e = bimcraft_dwg::write_in_child(Path::new(EXE), b"not a drawing", Duration::from_secs(60), &|| false).unwrap_err();
+    assert!(!e.is_empty() && !e.contains("took longer"), "{e}");
+    let e = bimcraft_dwg::write_in_child(Path::new(EXE), b"0\nEOF\n", Duration::from_secs(60), &|| true).unwrap_err();
+    assert_eq!(e, "cancelled");
+    let e = bimcraft_dwg::write_in_child(&dir.join("nowhere.exe"), b"0\nEOF\n", Duration::from_secs(5), &|| false).unwrap_err();
+    assert!(e.contains("couldn't start"), "{e}");
+}

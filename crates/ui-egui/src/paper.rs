@@ -34,9 +34,11 @@ impl BimApp {
         // The whole paper, 24 points clear of the edges.
         let fit = |w: u32, h: u32| {
             let room = |px: u32, mm: f64| (f64::from(px) - 48.0).max(1.0) / mm;
-            View { scale: room(w, size.0).min(room(h, size.1)), cx: size.0 / 2.0, cy: size.1 / 2.0, width: w, height: h }
+            View { angle: 0.0, scale: room(w, size.0).min(room(h, size.1)), cx: size.0 / 2.0, cy: size.1 / 2.0, width: w, height: h }
         };
         let Some((view, local)) = self.canvas.navigate(ui, &response, rect, id, fit) else { return };
+        // Where the pointer is on the paper, for the others in a Co-Work session.
+        self.cowork_seen.pointer = local.map(|q| (id, view.mm(q)));
         let writing = self.writing();
         let papers = &mut self.paper;
         if !matches!(&papers.drawn, Some((m, s, _)) if Arc::ptr_eq(m, &model) && *s == id) {
@@ -88,6 +90,7 @@ impl BimApp {
         let sheet_rect = Rect::from_two_pos(at.origin, rect.min + vec2(view.px(P2(size.0, 0.0)).0, view.px(P2(size.0, 0.0)).1));
         p.rect(sheet_rect, 0.0, Color32::WHITE, Stroke::new(1.0, pal().border), StrokeKind::Outside);
         paint(&p, at, &d, &self.selection, hovered, self.thin, &pictures);
+        crate::cowork::paint_plan(&p, &self.cowork, &self.cowork_seen, &model, ("sheet", id), rect, &view, (&d, at));
         // While a note is written here, the pointer is its editor's.
         if self.writing_in(id) {
             self.paper.drag = None;
@@ -118,6 +121,7 @@ impl BimApp {
                 Some(Element::Level(_) | Element::PlanView(_)) => model.elements.id(v.view).map(Sheet::Plan),
                 Some(Element::Section(_) | Element::Elevation(_)) => model.elements.id(v.view).map(Sheet::Section),
                 Some(Element::View3D(_)) => Some(Sheet::View3D),
+                Some(Element::PanelSchedule(_)) => model.elements.id(v.view).map(Sheet::Table),
                 Some(Element::Schedule(sc)) => match bimcraft_core::schedule::builtin(Some(&sc.name), None) {
                     Some((cat, _)) => SCHEDULES.iter().find(|(c, _)| *c == cat).map(|(c, _)| Sheet::Schedule(c)),
                     None => model.elements.id(v.view).map(Sheet::Table),
@@ -142,6 +146,16 @@ impl BimApp {
             }) {
                 Some(view) => self.open_3d(Some(view)),
                 None => self.open_sheet(open),
+            }
+            return;
+        }
+        if let Tool::ExportRegion(first) = self.tool {
+            if let Some(cursor) = ui.input(|i| i.pointer.latest_pos()).filter(|c| rect.contains(*c)) {
+                let screen = |a: P2| rect.min + vec2(view.px(a).0, view.px(a).1);
+                crate::export::region_band(&p, first.map(screen), cursor);
+            }
+            if let Some(q) = self.clicked_at(&response) {
+                self.export_region_at(view.mm((q.x - rect.min.x, q.y - rect.min.y)));
             }
             return;
         }

@@ -15,6 +15,12 @@ is in the root `CLAUDE.md`; the write-ups by area are in `docs/areas/`, which th
   would have made, changed and removed).
 - **A new kind of element** is a variant of `Element` and its arms in the places that match on it (`category`, `params`,
   `level_of`, `element_json`, copy and delete, IFC, import, the schedules' `OWN` table): the compiler lists them.
+- **Scripts can reference results**: `@name = command {params}` names a line; later whole-string values `@name`, `$last`,
+  `$-2` use an earlier result's `id`, or a path such as `@walls.ids.0` reads a field. `engine::script_line` reads the same
+  syntax for execution and control-port preflight. Expand parameters before calling `execute`, keeping validation,
+  plugin permissions and read-only checks there. `tests/script_references.rs` covers public session and bridge flows.
+  Expansion charges 128 bytes per value plus UTF-8 string/key bytes against 16 MiB per line before cloning, and limits
+  depth to 128, including external replies. Keep reference diagnostics bounded; never print an entire earlier reply.
 - **References hold GUIDs**, never ids (`ids.rs`, the root rules); library entries are named in memory and held by GUID in a file. The detail is in *Ids and GUIDs* below.
 - **A change to what a file holds** that an older version would misread (not just a field it can do without) bumps `FORMAT` and
   adds its step to `Model::migrate`. `Model::read` leaves out what this version doesn't know (`lenient.rs` walks a file as the
@@ -52,12 +58,13 @@ changes. A copy is a new element: a new id and a new GUID. IFC writes the GUID a
 |---|---|
 | Levels, walls, floors, roofs, ceilings, shafts, stairs | [levels, walls and roofs](../../docs/areas/levels-walls-roofs.md) |
 | Plans, sections, 3D, visibility and graphics, templates, scale and detail | [views and graphics](../../docs/areas/views-and-graphics.md), [performance](../../docs/performance.md) |
-| Schedules and project parameters | [schedules](../../docs/areas/schedules.md) |
+| Schedules and project parameters | [schedules](../../docs/areas/schedules.md), [parameters](../../docs/areas/parameters.md) |
 | Phases and design options | [phasing](../../docs/areas/phasing.md) |
 | Masses and what they make | [masses](../../docs/areas/massing.md) |
 | Families, forms, materials, textures, paint, favorites | [families](../../docs/areas/families.md) |
 | Beams, columns, footings, pipes, conduits, fixtures | [structure and MEP](../../docs/areas/structure-and-mep.md), [disciplines](../../docs/disciplines.md) |
-| IFC export or import | [looking at the result](../../docs/areas/looking-at-results.md): the IfcOpenShell checks |
+| IFC export or import | [looking at the result](../../docs/areas/looking-at-results.md): the IfcOpenShell checks; [grid exchange](../../docs/areas/ifc-exchange.md) |
+| Coordinates: base and survey points, locations, shared coordinates | [coordinates](../../docs/areas/coordinates.md) |
 | Autosave and recovery | [autosave](../../docs/autosave.md) |
 
 ## Testing
@@ -127,7 +134,9 @@ compared with its retained full-scan implementation in unit tests; avoid mutable
 `bounds::BoundsCache` offers lazy column/footing, straight-run and supported component bounds under a configurable
 byte budget (16 MiB by default), including conservative tree-root/node charges. It checks the requested element,
 its levels and used type dimensions without holding a model snapshot or old library data. Components also check
-a weak family-map identity; narrowing this to individual family definitions is pending. `Family::conservative_bounds`
+a weak family-map identity and their own adaptive frames; narrowing this to individual family definitions is pending.
+An adaptive family has no envelope (`Family::conservative_bounds` is unknown): a component of one is boxed by what
+its points make it build. `Family::conservative_bounds`
 handles swept profiles and imported meshes without triangulation. Voids and revolved forms currently return unknown.
 `Unknown` means a query must retain the object; only `Empty` means the id is absent. These conservative boxes must
 not replace exact framing extrema. Hosted geometry, spatial discovery and renderer integration remain further work.

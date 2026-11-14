@@ -1,6 +1,8 @@
 //! Find (Ctrl+K in both profiles, and the Find button on BIMCraft's title bar): every tool and command the window runs by name
 //! (`shortcuts::ACTIONS`, the ones a shortcut can be given) and every view the Project Browser opens, found by the words typed.
-//! Enter takes the first, a click the one clicked; Escape or a click elsewhere closes it.
+//! Enter takes the first, a click the one clicked; Escape or a click elsewhere closes it. On a family tab it lists what the
+//! family document does and its own views, and runs them on the document (`family_find_actions`): never the project's tools,
+//! which would change the project out of sight.
 
 use egui::{Align2, Area, Context, Frame, Id as UiId, Key, Order, RichText, Sense, TextEdit, WidgetInfo, WidgetType, vec2};
 
@@ -21,6 +23,8 @@ pub(crate) enum Found {
     View(Sheet),
     /// A 3D view: the default `{3D}` when none.
     View3D(Option<Id>),
+    /// A view of the active family document: none, its {3D}.
+    FamilyView(Option<bimcraft_core::family::views::Which>),
     /// A function a plugin registered, by its command id (`plugin:<plugin>:<function>`), run as its ribbon button runs it.
     Plugin(String),
 }
@@ -34,7 +38,7 @@ pub(crate) fn matches(label: &str, query: &str) -> bool {
 
 /// The Find button on BIMCraft's title bar: a search icon, its name, and Ctrl K.
 pub(crate) fn button(ui: &mut egui::Ui) -> egui::Response {
-    let (rect, r) = ui.allocate_exact_size(vec2(116.0, 24.0), Sense::click());
+    let (rect, r) = ui.allocate_exact_size(vec2(96.0, 24.0), Sense::click());
     let name = t("Find");
     r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, name));
     let p = ui.painter();
@@ -46,8 +50,12 @@ pub(crate) fn button(ui: &mut egui::Ui) -> egui::Response {
     let icon = egui::Rect::from_center_size(rect.left_center() + vec2(14.0, 0.0), vec2(15.0, 15.0));
     crate::icons::paint(p, crate::icons::Icon::Search, icon, ink);
     let font = egui::FontId::proportional(12.5);
-    p.text(rect.left_center() + vec2(28.0, 0.0), Align2::LEFT_CENTER, name, font.clone(), ink);
-    p.text(rect.right_center() - vec2(8.0, 0.0), Align2::RIGHT_CENTER, "Ctrl K", font, pal().app_bar_muted);
+    let said = p.text(rect.left_center() + vec2(28.0, 0.0), Align2::LEFT_CENTER, name, font.clone(), ink);
+    // Its shortcut where a language's word leaves it room.
+    let hint = p.layout_no_wrap("Ctrl K".to_string(), font, pal().app_bar_muted);
+    if said.right() + 4.0 + hint.size().x <= rect.right() - 6.0 {
+        p.galley(egui::pos2(rect.right() - 6.0 - hint.size().x, rect.center().y - hint.size().y / 2.0), hint, pal().app_bar_muted);
+    }
     r.on_hover_text(t("Find a tool, a view or a setting (Ctrl+K)"))
 }
 
@@ -55,6 +63,9 @@ impl BimApp {
     /// What Find lists for `query`: the tools and commands, then the views, `MOST` at most; each with the shortcut it has.
     pub(crate) fn find_matches(&self, query: &str) -> Vec<(String, Option<&'static str>, Found)> {
         let keys = crate::shortcuts();
+        if self.active_family().is_some() {
+            return self.family_find_matches(query, &keys);
+        }
         let actions = crate::shortcuts::ACTIONS.iter().map(|a| {
             let key = keys.iter().find(|(_, does)| does == a).map(|(k, _)| *k);
             (t(a).to_string(), key, Found::Action(a))
@@ -74,6 +85,20 @@ impl BimApp {
                 .collect::<Vec<_>>()
         });
         actions.chain(plugin_commands).chain(views).filter(|(label, ..)| matches(label, query)).take(MOST).collect()
+    }
+
+    /// What Find lists on a family tab: the family document's commands, then its views.
+    fn family_find_matches(&self, query: &str, keys: &[(&'static str, &'static str)]) -> Vec<(String, Option<&'static str>, Found)> {
+        use bimcraft_core::family::views::{Side, Which};
+        let actions = self.family_find_actions().into_iter().map(|a| {
+            let key = keys.iter().find(|(_, does)| *does == a).map(|(k, _)| *k);
+            (t(a).to_string(), key, Found::Action(a))
+        });
+        let views = [None, Some(Which::Plan), Some(Which::Ceiling)]
+            .into_iter()
+            .chain(Side::ALL.iter().map(|s| Some(Which::Elevation(*s))))
+            .map(|w| (crate::editor::views::view_title(w), None, Found::FamilyView(w)));
+        actions.chain(views).filter(|(label, ..)| matches(label, query)).take(MOST).collect()
     }
 
     /// Find, while it's open: a field across the top of the window, and under it what matches.
@@ -130,8 +155,17 @@ impl BimApp {
         }
         ctx.data_mut(|d| d.insert_temp(was_open, run.is_none() && !close));
         match run {
+            // On a family tab, the family document's own (Find lists nothing else there).
+            Some(Found::Action(a)) if self.active_family().is_some() => {
+                self.family_find_action(a);
+            }
             Some(Found::Action(a)) => {
                 self.execute_shortcut_action(a);
+            }
+            Some(Found::FamilyView(which)) => {
+                if let Some(ed) = self.active_family_mut() {
+                    ed.views.show(which);
+                }
             }
             Some(Found::View(sheet)) => self.open_sheet(sheet),
             Some(Found::View3D(id)) => self.open_3d(id),

@@ -168,7 +168,7 @@ fn a_shape_is_kept_in_the_file_and_goes_to_ifc_as_its_planes() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("shaped.bimcraft");
     run(&mut s, "save", json!({"path": path}));
-    let file: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    let file: Value = serde_json::from_str(&crate::bimc::read_to_string(&path).unwrap()).unwrap();
     assert_eq!(file["format"], crate::model::FORMAT);
     let mut t = Session::new();
     run(&mut t, "open", json!({"path": path}));
@@ -177,7 +177,7 @@ fn a_shape_is_kept_in_the_file_and_goes_to_ifc_as_its_planes() {
     // In IFC, its slab is shells round its four planes, not a profile swept up.
     let ifc = dir.path().join("shaped.ifc");
     run(&mut s, "save", json!({"path": ifc}));
-    let text = std::fs::read_to_string(&ifc).unwrap();
+    let text = crate::bimc::read_to_string(&ifc).unwrap();
     assert!(text.contains("'Body','Brep'") && !text.contains("SweptSolid"), "the slab isn't its planes");
 }
 
@@ -266,7 +266,7 @@ fn a_section_through_a_drain_shows_the_top_falling_to_it() {
     run(&mut s, "edit_shape", json!({"id": f, "points": [{"at": [4000, 3000], "z": -30}]}));
     // West to east through the drain, looking north: along it, the drain is 5 m from its start.
     let id = run(&mut s, "section", json!({"start": [-1000, 3000], "end": [9000, 3000]}))["id"].as_u64().unwrap();
-    let view = crate::render::View { scale: 0.5, cx: 5000.0, cy: -100.0, width: 6000, height: 800 };
+    let view = crate::render::View { angle: 0.0, scale: 0.5, cx: 5000.0, cy: -100.0, width: 6000, height: 800 };
     let d = crate::render::section(&s.model, id, view);
     let corners: Vec<(f32, f32)> = d
         .prims
@@ -341,7 +341,7 @@ fn a_section_shows_the_screed_tapering_over_a_level_structure() {
     let mut s = Session::new();
     let f = drained(&mut s);
     let id = run(&mut s, "section", json!({"start": [-1000, 3000], "end": [9000, 3000]}))["id"].as_u64().unwrap();
-    let view = crate::render::View { scale: 0.5, cx: 5000.0, cy: -150.0, width: 6000, height: 800 };
+    let view = crate::render::View { angle: 0.0, scale: 0.5, cx: 5000.0, cy: -150.0, width: 6000, height: 800 };
     let d = crate::render::section(&s.model, id, view);
     let mine = || d.prims.iter().zip(&d.owners).filter(|(_, o)| **o == Some(f)).map(|(p, _)| p);
     let corners: Vec<(f32, f32)> = mine()
@@ -720,7 +720,7 @@ fn a_section_shows_a_roofs_insulation_tapering_over_its_level_structure() {
     let mut s = Session::new();
     let roof = drained_roof(&mut s);
     let id = run(&mut s, "section", json!({"start": [-1000, 3000], "end": [9000, 3000]}))["id"].as_u64().unwrap();
-    let view = crate::render::View { scale: 0.5, cx: 5000.0, cy: 3150.0, width: 6000, height: 800 };
+    let view = crate::render::View { angle: 0.0, scale: 0.5, cx: 5000.0, cy: 3150.0, width: 6000, height: 800 };
     let d = crate::render::section(&s.model, id, view);
     let mine = || d.prims.iter().zip(&d.owners).filter(|(_, o)| **o == Some(roof)).map(|(p, _)| p);
     let corners: Vec<(f32, f32)> = mine()
@@ -883,7 +883,7 @@ fn a_spot_slope_reads_how_steeply_a_shaped_top_falls_and_which_way() {
     run(&mut s, "add_point", json!({"id": f, "at": [4000, 3000], "z": -60}));
     assert_eq!(element(&mut s, spot)["slope"], json!(1.5));
     // In the plan: an arrow from its point, running east, downhill.
-    let view = crate::render::View { scale: 0.05, cx: 4000.0, cy: 3000.0, width: 800, height: 600 };
+    let view = crate::render::View { angle: 0.0, scale: 0.05, cx: 4000.0, cy: 3000.0, width: 800, height: 600 };
     let d = crate::render::draw(&s.model, 100_000u64, view);
     let (x, y) = view.px(P2(1000.0, 3000.0));
     let pts: Vec<(f32, f32)> = d.prims.iter().zip(&d.owners).filter(|(_, o)| **o == Some(spot)).flat_map(|(p, _)| p.points()).collect();

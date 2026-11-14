@@ -58,6 +58,35 @@ fn press(h: &mut Harness<BimApp>, label: &str) {
     h.run();
 }
 
+/// File > `menu` > `item`, as Revit's New and Open each have a project and a family; `item` as it reads out, its shortcut too.
+fn file_menu(h: &mut Harness<BimApp>, menu: &str, item: &str) {
+    press(h, "File");
+    // A submenu's label carries its arrow.
+    press(h, &format!("{menu} ⏵"));
+    press(h, item);
+}
+
+/// File > New > Family…'s category `name`, then OK: the row in the dialog, under its "Category:", not a ribbon button of the name.
+fn new_family_of(h: &mut Harness<BimApp>, name: &str) {
+    file_menu(h, "New", "Family…");
+    let top = h.get_by_label("Category:").rect().top();
+    let row = h.get_all_by_label(name).map(|n| n.rect()).filter(|r| r.top() > top).min_by(|a, b| a.top().total_cmp(&b.top()));
+    click_at(h, row.expect("the category is listed").center());
+    press_near(h, "OK", "Category:");
+}
+
+/// Ctrl+N (Cmd+N) as the File menu reads it out: what the window's context makes of the shortcut, which a test's context
+/// spells the same on every system.
+fn cmd_n(h: &Harness<BimApp>) -> String {
+    h.ctx.format_shortcut(&egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::N))
+}
+
+/// File > New > Project.
+fn new_project(h: &mut Harness<BimApp>) {
+    let n = cmd_n(h);
+    file_menu(h, "New", &format!("Project {n}"));
+}
+
 /// One of Manage > Annotation Settings' dialogs (Line Weights, Line Styles, Line Patterns, Fill Patterns), from its list.
 fn annotation(h: &mut Harness<BimApp>, item: &str) {
     if h.query_by_label("Annotation Settings").is_none() {
@@ -226,6 +255,14 @@ fn drag_screen(h: &mut Harness<BimApp>, a: Pos2, b: Pos2, button: PointerButton)
     h.run();
 }
 
+/// Shift and a middle drag between points on screen: how the 3D view orbits, as in Revit.
+fn orbit_screen(h: &mut Harness<BimApp>, a: Pos2, b: Pos2) {
+    h.event(Event::ModifiersChanged(Modifiers::SHIFT));
+    drag_screen(h, a, b, PointerButton::Middle);
+    h.event(Event::ModifiersChanged(Modifiers::NONE));
+    h.run();
+}
+
 /// A primary drag on the plan between model points, in steps, as a hand makes it.
 fn drag(h: &mut Harness<BimApp>, from: P2, to: P2) {
     let (a, b) = (h.state().screen(from), h.state().screen(to));
@@ -279,8 +316,11 @@ fn key(h: &mut Harness<BimApp>, k: Key) {
 }
 
 /// Letters typed over the view: a two-letter shortcut.
+/// `letters` typed with Ctrl held, as BIMCraft's shortcuts are, all in one go.
 fn shortcut(h: &mut Harness<BimApp>, letters: &str) {
-    h.event(Event::Text(letters.into()));
+    let keys: Vec<Key> = letters.chars().filter_map(|c| Key::from_name(&c.to_ascii_uppercase().to_string())).collect();
+    assert_eq!(keys.len(), letters.chars().count(), "every letter of {letters} is a key");
+    h.key_combination_modifiers(Modifiers::COMMAND, &keys);
     h.run();
 }
 
@@ -609,6 +649,33 @@ fn a_tool_acts_on_what_lay_under_the_press_not_under_where_the_hand_let_go() {
 }
 
 #[test]
+fn upper_plan_opening_preview_and_placement_use_the_upper_level() {
+    let mut h = app(r#"level {"name":"Upper","elevation":3400}
+wall {"points":[[0,0],[8000,0],[8000,6000],[0,6000]],"closed":true,"height":7200}"#);
+    // The first browser entry is the floor plan; use its accessible action even below the palette's fold.
+    h.get_all_by_label("Upper").min_by(|a, b| a.rect().top().total_cmp(&b.rect().top())).unwrap().click_accesskit();
+    h.run();
+    let upper = find(&h, |e| matches!(e, Element::Level(l) if l.name == "Upper"));
+    assert_eq!(h.state().sheet, Sheet::Plan(upper));
+    for (name, point, expected) in [("Window", P2(4000.0, 0.0), 4300.0), ("Door", P2(8000.0, 3000.0), 3400.0)] {
+        tool(&mut h, name);
+        assert_eq!(h.state().sheet, Sheet::Plan(upper));
+        let s = &h.state().session;
+        let preview = bimcraft_core::opening_of(&s.model, &json!({"at":[point.0,point.1],"level":"Upper"}), name == "Door").unwrap();
+        let (Element::Door(o) | Element::Window(o)) = preview else { panic!("not an opening") };
+        assert_eq!(s.model.opening_frame(&o).unwrap().2, expected, "preview {name}");
+        click(&mut h, point);
+        assert!(!h.state().status.error, "{}", h.state().status.text);
+        let id = ids(&h, &name.to_lowercase())[0];
+        let (Element::Door(o) | Element::Window(o)) = h.state().session.model.elements.get(id).unwrap() else { panic!("not an opening") };
+        assert_eq!(h.state().session.model.opening_frame(o).unwrap().2, expected, "placed {name}");
+        key(&mut h, Key::Escape);
+        click(&mut h, point);
+        assert!(h.state().selection.contains(&id), "placed opening can be picked on Upper");
+    }
+}
+
+#[test]
 fn doors_and_windows_go_into_the_wall_clicked() {
     let mut h = app(BOX);
     let bottom = ids(&h, "wall")[0];
@@ -640,6 +707,30 @@ fn rooms_go_where_clicked_and_their_area_follows_the_walls() {
     key(&mut h, Key::Enter);
     assert_eq!(walls(&h).last(), Some(&(P2(2040.0, 0.0), P2(2040.0, 6000.0))));
     assert_eq!(field(&h, room, "area_m2"), json!(12.24));
+}
+
+#[test]
+fn property_boundary_can_be_selected_edited_in_properties_and_undone() {
+    let mut h = app(r#"property_line {"name":"Synthetic Plot","points":[[0,0],[6000,0],[6000,4000],[0,4000]]}"#);
+    let plot = ids(&h, "propertyline")[0];
+    click(&mut h, P2(0.0, 2000.0));
+    assert_eq!(h.state().selection, [plot]);
+    type_into(&mut h, "Name", "Renamed Plot");
+    key(&mut h, Key::Enter);
+    assert_eq!(field(&h, plot, "name"), json!("Renamed Plot"));
+    assert_eq!(field(&h, plot, "area_m2"), json!(24.0));
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    h.run();
+    assert_eq!(field(&h, plot, "name"), json!("Synthetic Plot"));
+    press(&mut h, "Redo");
+    assert_eq!(field(&h, plot, "name"), json!("Renamed Plot"));
+    type_into(&mut h, "Boundary", "0, 0; 6000, 0; 0, 4000");
+    key(&mut h, Key::Enter);
+    assert_eq!(field(&h, plot, "area_m2"), json!(12.0));
+    type_into(&mut h, "Boundary", "0, 0; 1, 1");
+    key(&mut h, Key::Enter);
+    assert!(h.state().status.error);
+    assert_eq!(field(&h, plot, "area_m2"), json!(12.0), "invalid boundary edits must leave the plot unchanged");
 }
 
 #[test]
@@ -731,6 +822,8 @@ fn the_browser_opens_level_plans_and_schedules() {
     for label in ["Views (all)", "Floor Plans", "Schedules/Quantities (all)"] {
         assert!(h.query_by_label(label).is_some(), "{label}");
     }
+    // The sheet list every project has, with the other six.
+    assert!(h.query_by_label("Sheet List").is_some(), "Sheet List");
     // Its floor plan, over its ceiling plan.
     topmost(&mut h, "Level 2");
     assert_eq!(h.state().sheet, Sheet::Plan(100001));
@@ -772,20 +865,54 @@ fn the_selection_stays_as_views_change_and_a_schedule_shows_and_picks_it() {
 }
 
 #[test]
+fn a_ctrl_key_of_its_own_waits_for_a_second_letter_and_does_its_job_when_none_comes() {
+    let mut h = app("");
+    for y in [0, 3000, 6000] {
+        h.state_mut().session.execute("wall", &json!({"points": [[0, y], [4000, y]]})).unwrap();
+    }
+    h.run();
+    let walls = |h: &Harness<BimApp>| ids(h, "wall").len();
+    // Ctrl held, Z, and still held: Z waits for a second letter.
+    h.input_mut().events.push(Event::ModifiersChanged(Modifiers::COMMAND));
+    h.input_mut().events.push(Event::Key { key: Key::Z, pressed: true, modifiers: Modifiers::COMMAND, repeat: false, physical_key: None });
+    h.step();
+    assert_eq!(walls(&h), 3, "not yet undone");
+    // None comes: after the wait (a step is a quarter of a second here), Z undoes.
+    h.run_steps(3);
+    assert_eq!(walls(&h), 2, "undone once the wait is over");
+    // Z then F with Ctrl held is Zoom to Fit, not undo.
+    h.input_mut().events.push(Event::Key { key: Key::Z, pressed: true, modifiers: Modifiers::COMMAND, repeat: false, physical_key: None });
+    h.input_mut().events.push(Event::Key { key: Key::F, pressed: true, modifiers: Modifiers::COMMAND, repeat: false, physical_key: None });
+    h.step();
+    h.input_mut().events.push(Event::ModifiersChanged(Modifiers::NONE));
+    h.run();
+    assert_eq!(walls(&h), 2, "ZF fits the view and undoes nothing");
+    // Z, Z is no shortcut: the first undoes, and the second does as Ctrl is let go.
+    shortcut(&mut h, "ZZ");
+    assert_eq!(walls(&h), 0, "twice undone");
+}
+
+#[test]
 fn typed_shortcuts_pick_tools_like_revit() {
     let mut h = app(SAMPLE);
-    h.event(Event::Text("W".into()));
-    h.event(Event::Text("A".into()));
+    // Letters typed without Ctrl are no shortcut.
+    h.event(Event::Text("WA".into()));
+    h.run();
+    assert!(matches!(h.state().tool, Tool::Modify));
+    // With Ctrl held they are, a letter a frame as well as together; letting Ctrl go between two ends the first.
+    let down = |key| Event::Key { key, pressed: true, modifiers: Modifiers::COMMAND, repeat: false, physical_key: None };
+    h.input_mut().events.extend([Event::ModifiersChanged(Modifiers::COMMAND), down(Key::W)]);
+    h.step();
+    h.input_mut().events.push(down(Key::A));
+    h.step();
+    h.input_mut().events.push(Event::ModifiersChanged(Modifiers::NONE));
     h.run();
     assert!(matches!(h.state().tool, Tool::Wall(_)));
-    h.event(Event::Text("dr".into()));
-    h.run();
+    shortcut(&mut h, "dr");
     assert!(matches!(h.state().tool, Tool::Door));
-    h.event(Event::Text("DI".into()));
-    h.run();
+    shortcut(&mut h, "DI");
     assert!(matches!(h.state().tool, Tool::Dimension(..)));
-    h.event(Event::Text("tg".into()));
-    h.run();
+    shortcut(&mut h, "tg");
     assert!(matches!(h.state().tool, Tool::Tag));
     shortcut(&mut h, "CR");
     assert!(matches!(h.state().tool, Tool::Section(None)));
@@ -923,7 +1050,7 @@ fn ks_lists_every_shortcut_and_every_one_it_lists_works() {
     }
     use crate::lang::Lang;
     // Names the catalogs don't have yet: KS shows them in English until a translator gives them, as any missing translation.
-    let awaiting = ["Graphic Display Options"];
+    let awaiting = ["Graphic Display Options", "Pin", "Unpin", "Co-Work"];
     for (_, name) in crate::shortcuts().into_iter().filter(|(_, name)| !awaiting.contains(name)) {
         for l in [Lang::Portuguese, Lang::Spanish] {
             assert!(crate::lang::translated_in(l, name).is_some(), "{name} in {l:?}");
@@ -937,7 +1064,7 @@ fn manage_tab_opens_keyboard_shortcuts_dialog() {
     // Wide enough that the Manage tab shows every panel unfolded.
     h.set_size(vec2(1800.0, 900.0));
     press(&mut h, "Manage");
-    press(&mut h, "Shortcuts");
+    from_list(&mut h, "Settings", "Shortcuts");
     assert!(h.state().show_shortcuts);
     assert!(h.query_by_label("Load File...").is_some());
     assert!(h.query_by_label("Add Shortcut").is_some());
@@ -980,7 +1107,7 @@ fn ma_gives_the_walls_selected_after_the_first_its_type_in_one_undo_step() {
 
 #[test]
 fn keys_for_tools_bimcraft_lacks_are_bound_to_nothing_rather_than_to_another_tool() {
-    for keys in ["SU", "LI", "SF", "BR", "BS", "RN", "RP", "CV", "TF", "DA", "FD"] {
+    for keys in ["SU", "LI", "SF", "BR", "BS", "RN", "CV", "TF", "DA", "FD"] {
         let mut app = BimApp::new(Session::new());
         app.typed = keys.into();
         assert!(!app.shortcut(), "{keys}");
@@ -1027,13 +1154,20 @@ fn saving_writes_the_project_and_exports_by_extension() {
 }
 
 #[test]
-fn file_export_lists_the_3d_scene_as_gltf_in_both_profiles_and_an_export_leaves_the_project_unsaved() {
+fn file_export_lists_export_publisher_and_print_set_in_both_profiles_and_an_export_leaves_the_project_unsaved() {
     for (name, mut h) in [("Rev", app(SAMPLE)), ("BIMCraft", bimcraft(SAMPLE))] {
         press(&mut h, "File");
         // The submenu's label carries its arrow too.
         h.get_by_label_contains("Export").click();
         h.run();
-        assert!(h.query_by_label("3D Scene as glTF…").is_some(), "{name}: File > Export lists glTF");
+        for item in ["Export…", "Publisher…", "Print Set…"] {
+            // Export…'s label carries its shortcut too.
+            assert!(h.query_all_by_label_contains(item).next().is_some(), "{name}: File > Export lists {item}");
+        }
+        // The exports that saved at once with the defaults are gone: the dialog and the Publisher write them.
+        for gone in ["IFC…", "View as PNG…", "Plan as SVG…", "Sheets as PDF…", "3D Scene as glTF…", "Print Sets…"] {
+            assert!(h.query_by_label(gone).is_none(), "{name}: File > Export no longer lists {gone}");
+        }
     }
     let mut h = app(SAMPLE);
     let dir = std::env::temp_dir().join(format!("bimcraft-ui-gltf-{}", std::process::id()));
@@ -1045,15 +1179,31 @@ fn file_export_lists_the_3d_scene_as_gltf_in_both_profiles_and_an_export_leaves_
 }
 
 #[test]
+fn import_3d_model_brings_an_objs_objects_in_on_the_plans_level_selected_and_says_what_came_in() {
+    let mut h = app("");
+    let dir = std::env::temp_dir().join(format!("bimcraft-ui-mesh-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let obj = "o Table\nv 0 0 0\nv 1 0 0\nv 1 0 1\nv 0 0 1\nv 0 0.75 0\nf 1 2 3 4\nf 1 2 5\no Lamp\nv 2 0 0\nv 2.2 0 0\nv 2 1.5 0\nf 6 7 8\nl 1 2\n";
+    std::fs::write(dir.join("room.obj"), obj).unwrap();
+    press(&mut h, "Insert");
+    assert!(h.query_by_label("Import 3D Model").is_some(), "Insert > Import lists it");
+    h.state_mut().import_mesh_path(dir.join("room.obj"));
+    h.run();
+    let st = h.state();
+    assert_eq!(st.selection.len(), 2, "{}", st.status.text);
+    assert!(st.session.model.families.contains_key("Table") && st.session.model.families.contains_key("Lamp"));
+    assert!(st.status.text.contains("2 objects") && st.status.text.contains("1 lines and points"), "{}", st.status.text);
+    // One undo step.
+    assert_eq!(st.session.history().last().copied(), Some("Import Mesh"));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+#[test]
 fn new_asks_before_dropping_unsaved_changes() {
     let mut h = app("");
     h.state_mut().session.execute("wall", &json!({"points": [[0, 0], [4000, 0]]})).unwrap();
     // Menu items read out their shortcut too: "New Ctrl+N".
-    let new = |h: &mut Harness<BimApp>| {
-        press(h, "File");
-        h.get_by_label_contains("New").click();
-        h.run();
-    };
+    let new = |h: &mut Harness<BimApp>| new_project(h);
     new(&mut h);
     press(&mut h, "Cancel");
     assert_eq!(walls(&h).len(), 1);
@@ -1248,14 +1398,29 @@ fn typing_a_length_puts_the_next_point_that_far_toward_the_cursor() {
 fn a_selected_walls_temporary_dimension_sets_its_length() {
     let mut h = app(BOX);
     click(&mut h, P2(4000.0, 0.0));
-    h.get_by_label_contains("Temporary dimension").click();
+    h.get_by_label("Temporary dimension 8000").click();
     h.run();
     h.key_press_modifiers(Modifiers::COMMAND, Key::A);
     h.event(Event::Text("9000".into()));
     h.run();
     key(&mut h, Key::Enter);
-    assert_eq!(walls(&h)[0], (P2(0.0, 0.0), P2(9000.0, 0.0)));
-    assert_eq!(walls(&h)[1].0, P2(9000.0, 0.0), "the wall joined at that end followed");
+    // Both ends of the south wall are joined: both move evenly, and the walls joined there follow.
+    assert_eq!(walls(&h)[0], (P2(-500.0, 0.0), P2(8500.0, 0.0)));
+    assert_eq!(walls(&h)[1].0, P2(8500.0, 0.0), "the wall joined at that end followed");
+    assert_eq!(walls(&h)[3].1, P2(-500.0, 0.0), "the wall joined at the other end followed too");
+}
+
+#[test]
+fn a_selected_walls_temporary_dimension_to_a_parallel_wall_moves_it() {
+    let mut h = app(&format!("{BOX}\nwall {{\"points\": [[0, 2500], [8000, 2500]], \"type\": \"Interior - 100mm\"}}"));
+    let mid = ids(&h, "wall")[4];
+    click(&mut h, P2(4000.0, 2500.0));
+    assert_eq!(h.state().selection, [mid]);
+    // Centre line to centre line, square to it (#281): 2500 to the south wall, 3500 to the north one.
+    assert!(h.query_by_label("Temporary dimension 3500").is_some());
+    retype_dimension(&mut h, "2500", "2800");
+    assert_eq!((field(&h, mid, "start"), field(&h, mid, "end")), (json!([0.0, 2800.0]), json!([8000.0, 2800.0])));
+    assert!(h.query_by_label("Temporary dimension 3200").is_some(), "the other side follows");
 }
 
 #[test]
@@ -1474,9 +1639,9 @@ fn the_view_control_bar_sets_the_3d_views_visual_style_and_wf_hl_and_sd_do_too()
     let style = |h: &Harness<BimApp>| Look::of_3d(&h.state().session.model).style();
     press(&mut h, "Default 3D View");
     assert_eq!(h.state().sheet, Sheet::View3D);
-    // Shaded until told otherwise; a 3D view has no scale or detail level.
+    // Shaded until told otherwise; a 3D view has no scale, and (F8) has a detail level, which a family's forms read.
     assert!(painted_text(&h).contains(&"Shaded".to_string()));
-    assert!(h.query_by_label("Scale").is_none() && h.query_by_label("Detail Level").is_none());
+    assert!(h.query_by_label("Scale").is_none() && h.query_all_by_label("Detail Level").count() > 0);
     pick(&mut h, Role::Button, "Visual Style");
     press(&mut h, "Wireframe");
     assert_eq!(style(&h), VisualStyle::Wireframe);
@@ -1566,11 +1731,11 @@ fn properties_of_a_view_show_and_set_its_scale_detail_level_and_visual_style() {
     let g = bimcraft_core::graphics::graphics_of(&h.state().session.model, section).unwrap();
     assert_eq!((g.scale, g.detail), (Some(200.0), Detail::Medium));
     assert_eq!((plan_graphics(&h, 100000).scale, plan_graphics(&h, 100000).detail), (Some(75.0), Detail::Coarse));
-    // The 3D view: a visual style, no scale or detail level.
+    // The 3D view: a visual style and (F8) a detail level, no scale.
     press(&mut h, "Default 3D View");
     assert_eq!(h.state().sheet, Sheet::View3D);
     assert!(h.query_by_role_and_label(Role::ComboBox, "View Scale").is_none());
-    assert!(h.query_by_role_and_label(Role::ComboBox, "Detail Level").is_none());
+    assert_eq!(combo_value(&h, "Detail Level"), "Fine");
     assert_eq!(combo_value(&h, "Visual Style"), "Shaded");
     choose(&mut h, "Visual Style", "Hidden Line");
     assert_eq!(Look::of_3d(&h.state().session.model).style(), VisualStyle::HiddenLine);
@@ -1625,7 +1790,7 @@ fn a_door_pointed_at_a_wall_shows_how_far_it_stands_from_the_ends() {
     let Some(Element::Door(o)) = m.elements.values().find(|e| matches!(e, Element::Door(_))) else { panic!("no door") };
     let ctx = egui::Context::default();
     let painter = egui::Painter::new(ctx, egui::LayerId::background(), egui::Rect::from_min_size(Pos2::ZERO, vec2(800.0, 600.0)));
-    let v = bimcraft_core::render::View { scale: 0.06, cx: 4000.0, cy: 3000.0, width: 800, height: 600 };
+    let v = bimcraft_core::render::View { angle: 0.0, scale: 0.06, cx: 4000.0, cy: 3000.0, width: 800, height: 600 };
     let spans: Vec<String> = crate::canvas::opening_dimensions(&painter, &m, &v, o).into_iter().map(|(_, text, _)| text).collect();
     assert_eq!(spans, ["1900", "5900"]);
 }
@@ -1876,16 +2041,18 @@ fn a_click_made_on_the_move_in_3d_picks_what_was_under_the_press_and_leaves_the_
 }
 
 #[test]
-fn in_3d_a_shift_drag_boxes_shift_and_the_middle_button_orbit_the_middle_button_pans_and_the_wheel_zooms() {
+fn in_3d_a_primary_drag_boxes_shift_and_the_middle_button_orbit_the_middle_button_pans_and_the_wheel_zooms() {
     let mut h = app(BOX);
     press(&mut h, "Default 3D View");
     let cam = |h: &Harness<BimApp>| h.state().orbit.camera.unwrap();
     let (start, mid) = (cam(&h), h.state().orbit.rect.center());
-    // Shift and a primary drag are a selection box, as in a plan: the view stays.
+    // A primary drag is a selection box, as in a plan, with Shift held or not: the view stays.
+    drag_screen(&mut h, mid, mid + vec2(100.0, 0.0), PointerButton::Primary);
+    assert_eq!(cam(&h), start, "the primary button doesn't turn the view");
     h.event(Event::ModifiersChanged(Modifiers::SHIFT));
     drag_screen(&mut h, mid, mid + vec2(100.0, 0.0), PointerButton::Primary);
     h.event(Event::ModifiersChanged(Modifiers::NONE));
-    assert_eq!(cam(&h), start, "Shift and the primary button don't turn the view");
+    assert_eq!(cam(&h), start, "Shift and the primary button don't turn it either");
     drag_screen(&mut h, mid, mid + vec2(0.0, 50.0), PointerButton::Middle);
     let panned = cam(&h);
     assert!(panned.target != start.target && panned.azimuth == start.azimuth, "{panned:?}");
@@ -1924,9 +2091,7 @@ fn in_3d_a_box_from_the_left_picks_what_lies_wholly_inside_and_from_the_right_wh
     let on: Vec<Pos2> = corners.iter().map(|p| h.state().screen3(*p)).collect();
     let (lo, hi) = on.iter().fold((on[0], on[0]), |(lo, hi), p| (lo.min(*p), hi.max(*p)));
     let before = h.state().orbit.camera;
-    h.event(Event::ModifiersChanged(Modifiers::SHIFT));
     drag_screen(&mut h, lo, hi, PointerButton::Primary);
-    h.event(Event::ModifiersChanged(Modifiers::NONE));
     assert_eq!(h.state().selection, [south], "window: wholly inside");
     assert_eq!(h.state().orbit.camera, before);
     key(&mut h, Key::Escape);
@@ -1964,14 +2129,63 @@ fn the_section_tool_draws_a_section_whose_view_opens_from_the_browser_or_a_doubl
 }
 
 #[test]
-fn the_elevation_tool_looks_at_the_building_from_where_it_is_clicked() {
+fn the_elevation_tool_looks_at_the_wall_clicked_and_turns_round_when_dragged_past_it() {
     let mut h = app(BOX);
     press(&mut h, "View");
     press(&mut h, "Elevation");
-    click(&mut h, P2(4000.0, 7000.0));
+    // Beside the building there is nothing to look at: no elevation.
+    click(&mut h, P2(4000.0, 9000.0));
+    assert!(ids(&h, "elevation").is_empty());
+    // The north wall, clicked on its outer half: the mark stands 1.5 m outside its centre line, looking south at it.
+    click(&mut h, P2(4000.0, 6050.0));
     let made = ids(&h, "elevation");
-    assert_eq!((field(&h, made[0], "name"), field(&h, made[0], "looking")), (json!("North"), json!([0.0, -1.0])));
+    assert_eq!(made.len(), 1);
+    assert_eq!((field(&h, made[0], "name"), field(&h, made[0], "looking")), (json!("Elevation 1"), json!([0.0, -1.0])));
+    // The wall's centre line, as far as its mitred corners reach.
+    assert_eq!(field(&h, made[0], "reference"), json!([[8100.0, 6000.0], [-100.0, 6000.0]]));
+    let mid = |h: &Harness<'static, BimApp>| {
+        let v = h.state().session.model.section(made[0]).unwrap().clone();
+        (v.start + v.end) * 0.5
+    };
+    assert_eq!(mid(&h), P2(4000.0, 7500.0));
     assert!(h.query_by_label("Elevations (Building Elevation)").is_some());
+    // Its mark dragged inside the building, to the wall's other side: it looks north at the same wall, and its line comes
+    // over with it, as far from the wall as it was.
+    key(&mut h, Key::Escape);
+    drag(&mut h, P2(4000.0, 7500.0), P2(4000.0, 4000.0));
+    assert_eq!(field(&h, made[0], "mark"), json!([4000.0, 4000.0]));
+    assert_eq!(mid(&h), P2(4000.0, 4500.0));
+    assert_eq!(field(&h, made[0], "looking"), json!([0.0, 1.0]));
+    // Selected, its line shows; dragged off the mark, the line alone moves, the way it looks.
+    drag(&mut h, P2(1000.0, 4500.0), P2(1300.0, 2500.0));
+    assert_eq!(mid(&h), P2(4000.0, 2500.0));
+    assert_eq!(field(&h, made[0], "mark"), json!([4000.0, 4000.0]));
+}
+
+#[test]
+fn a_selected_sections_far_clip_and_cropped_ends_are_grips_in_plan() {
+    let mut h = app(&format!(
+        "{BOX}\nsection {{\"start\": [-1000, 3000], \"end\": [9000, 3000], \"depth\": 2000}}\ncrop {{\"view\": \"Section 1\"}}"
+    ));
+    let section = ids(&h, "section")[0];
+    let line = |h: &Harness<'static, BimApp>| {
+        let v = h.state().session.model.section(section).unwrap().clone();
+        (v.start, v.end, v.depth)
+    };
+    assert_eq!(line(&h), (P2(-1000.0, 3000.0), P2(9000.0, 3000.0), Some(2000.0)));
+    h.state_mut().selection = vec![section];
+    h.run();
+    // The arrows in the middle of the far clip line, 2 m the way it looks (north): dragged, the view sees that much further.
+    drag(&mut h, P2(4000.0, 5000.0), P2(4000.0, 5500.0));
+    assert_eq!(line(&h), (P2(-1000.0, 3000.0), P2(9000.0, 3000.0), Some(2500.0)));
+    // The grip at its end, along the line only.
+    drag(&mut h, P2(9000.0, 3000.0), P2(8500.0, 3400.0));
+    assert_eq!(line(&h), (P2(-1000.0, 3000.0), P2(8500.0, 3000.0), Some(2500.0)));
+    // Uncropped it has no grips at its ends: a drag there moves it whole.
+    h.state_mut().run("crop", json!({"view": section, "region": null}));
+    h.run();
+    drag(&mut h, P2(8500.0, 3000.0), P2(8500.0, 3500.0));
+    assert_eq!(line(&h), (P2(-1000.0, 3500.0), P2(8500.0, 3500.0), Some(2500.0)));
 }
 
 #[test]
@@ -2025,7 +2239,7 @@ fn the_camera_tool_makes_a_perspective_3d_view_from_an_eye_and_a_target() {
     // Orbiting writes the camera's eye and target back, so leaving and returning stands it where it was left.
     let before = field(&h, made[0], "camera");
     let mid = h.state().orbit.rect.center();
-    drag_screen(&mut h, mid, mid + vec2(90.0, 0.0), PointerButton::Primary);
+    orbit_screen(&mut h, mid, mid + vec2(90.0, 0.0));
     h.run();
     let after = field(&h, made[0], "camera");
     assert_ne!(after, before, "the orbit moved the camera's eye and target");
@@ -2192,6 +2406,50 @@ fn sheets_take_views_from_the_view_tab_and_viewports_move_and_open() {
     // A double click on it opens its view.
     double_click(&mut h, P2(x + 40.0, y));
     assert_eq!(h.state().sheet, Sheet::Plan(100000));
+}
+
+#[test]
+fn a_viewport_follows_its_views_scale_until_it_is_given_one() {
+    use egui_kittest::kittest::NodeT;
+    let mut h = app(BOX);
+    press(&mut h, "View");
+    press(&mut h, "Sheet");
+    let sheet = ids(&h, "sheet")[0];
+    press(&mut h, "View");
+    press(&mut h, "Place View");
+    press(&mut h, "Floor Plan: Level 1");
+    let vp = ids(&h, "viewport")[0];
+    let size = |h: &Harness<BimApp>| field(h, vp, "size");
+    let at = field(&h, vp, "at");
+    let (x, y) = (at[0].as_f64().unwrap(), at[1].as_f64().unwrap());
+    let at_a_hundred = size(&h);
+    // The view's own scale, from its control bar: the viewport on the sheet takes it.
+    h.state_mut().open_sheet(Sheet::Plan(100000));
+    h.run();
+    press(&mut h, "Scale");
+    press(&mut h, "1 : 50");
+    h.state_mut().open_sheet(Sheet::Paper(sheet));
+    h.run();
+    assert_ne!(size(&h), at_a_hundred, "the viewport takes the view's new scale");
+    // Its Properties say so: placed at the view's scale, it follows it.
+    click(&mut h, P2(x, y));
+    assert_eq!(
+        h.get_by_role_and_label(Role::CheckBox, "Follow View Scale").accesskit_node().toggled(),
+        Some(egui::accesskit::Toggled::True),
+        "placed at the view's scale, it follows it"
+    );
+    // Given a scale of its own (Follow View Scale unticked): it keeps it, whatever the view's scale.
+    pick(&mut h, Role::CheckBox, "Follow View Scale");
+    assert_eq!(field(&h, vp, "follow_scale"), json!(false));
+    let pinned = size(&h);
+    h.state_mut().run("scale", json!({"view": 100000, "scale": 20}));
+    h.run();
+    assert_eq!(size(&h), pinned, "given a scale of its own, it keeps it");
+    // Told to follow again, it takes the view's scale now.
+    pick(&mut h, Role::CheckBox, "Follow View Scale");
+    assert_eq!(field(&h, vp, "follow_scale"), json!(true));
+    assert_eq!(field(&h, vp, "scale"), json!(20.0));
+    assert_ne!(size(&h), pinned);
 }
 
 #[test]
@@ -2570,6 +2828,34 @@ fn text_notes_go_where_clicked_in_plans_sections_and_sheets() {
     assert_eq!((field(&h, notes[2], "view"), field(&h, notes[2], "at")), (json!(sheet), json!([50.0, 50.0])));
 }
 
+/// Text with Leader ticked (#381): the first click is the point the leader reaches, the next where the note goes, in a plan
+/// and in a section; Esc between them forgets the first.
+#[test]
+fn the_text_tool_with_a_leader_takes_its_point_then_the_notes() {
+    let mut h = app_at(&format!("{BOX}\nsection {{\"start\": [-1000, 3000], \"end\": [9000, 3000]}}"), 0.05);
+    let section = ids(&h, "section")[0];
+    press(&mut h, "Annotate");
+    press(&mut h, "Text");
+    type_into(&mut h, "Text:", "Lintel");
+    press(&mut h, "Leader");
+    click(&mut h, P2(2000.0, 2000.0));
+    assert!(ids(&h, "text").is_empty(), "the first click is the leader's");
+    key(&mut h, Key::Escape);
+    assert_eq!(h.state().tool, Tool::Text, "Esc forgets the point, the tool stays");
+    click(&mut h, P2(3000.0, 2000.0));
+    click(&mut h, P2(4000.0, 2500.0));
+    let notes = ids(&h, "text");
+    assert_eq!((field(&h, notes[0], "at"), field(&h, notes[0], "leader")), (json!([4000.0, 2500.0]), json!([3000.0, 2000.0])));
+    browse(&mut h, "Section 1");
+    click(&mut h, P2(3000.0, 1000.0));
+    click(&mut h, P2(4000.0, 2500.0));
+    let notes = ids(&h, "text");
+    assert_eq!(
+        (field(&h, notes[1], "view"), field(&h, notes[1], "at"), field(&h, notes[1], "leader")),
+        (json!(section), json!([4000.0, 2500.0]), json!([3000.0, 1000.0]))
+    );
+}
+
 #[test]
 fn angular_and_radial_dimensions_and_spot_elevations_from_the_annotate_tab() {
     // Walls 3 to 6, a slanted one 7, a round column 8, the floor 9.
@@ -2683,6 +2969,48 @@ fn a_plans_view_range_is_in_its_properties() {
 }
 
 #[test]
+fn place_view_menu_keeps_long_view_titles_separate_on_the_sheet() {
+    let names = ["A".repeat(80), "B".repeat(80)];
+    let script = format!(
+        r#"wall {{"points":[[0,0],[1000,0],[1000,1000],[0,1000]],"closed":true}}
+        crop {{"view":"Level 1","region":[[0,0],[1000,1000]]}}
+        duplicate_view {{"view":"Level 1","name":"{}"}}
+        duplicate_view {{"view":"Level 1","name":"{}"}}"#,
+        names[0], names[1]
+    );
+    let mut h = app(&script);
+    press(&mut h, "View");
+    press(&mut h, "Sheet");
+    for name in &names {
+        press(&mut h, "View");
+        press(&mut h, "Place View");
+        press(&mut h, &format!("Floor Plan: {name}"));
+    }
+    let viewports = ids(&h, "viewport");
+    assert_eq!(viewports.len(), 2);
+    let Sheet::Paper(id) = h.state().sheet else { panic!("placing a view must keep the sheet open") };
+    let d = bimcraft_core::sheet::draw(&h.state().session.model, id).unwrap();
+    let bounds: Vec<_> = viewports
+        .iter()
+        .map(|id| {
+            d.prims
+                .iter()
+                .zip(&d.owners)
+                .filter(|(_, owner)| **owner == Some(*id))
+                .flat_map(|(prim, _)| prim.points())
+                .fold([f32::INFINITY, f32::INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY], |b, (x, y)| {
+                    [b[0].min(x), b[1].min(y), b[2].max(x), b[3].max(y)]
+                })
+        })
+        .collect();
+    let (a, b) = (bounds[0], bounds[1]);
+    assert!(
+        a[2] < b[0] || b[2] < a[0] || a[3] < b[1] || b[3] < a[1],
+        "the sheet opened through Place View must show separate titles: {a:?}, {b:?}"
+    );
+}
+
+#[test]
 fn place_view_puts_schedules_and_the_3d_view_on_sheets() {
     let mut h = app_at(&format!("{BOX}\nroom {{\"point\": [4000, 3000], \"name\": \"Hall\"}}"), 0.05);
     press(&mut h, "View");
@@ -2763,8 +3091,14 @@ fn the_interface_speaks_portuguese() {
     // A new project, in the interface's language: its levels named in Portuguese.
     key(&mut h, Key::Escape);
     press(&mut h, "Arquivo");
-    // Menu items read out their shortcut too: "Novo Ctrl+N".
+    // New is a submenu, as Revit's: a project or a family.
     h.get_by_label_contains("Novo").click();
+    h.run();
+    // Its Project, in the interface's language, read out with its shortcut.
+    {
+        let n = cmd_n(&h);
+        h.get_by_label_contains(&n).click();
+    }
     h.run();
     let levels: Vec<String> = h.state().session.model.levels().iter().map(|(_, l)| l.name.clone()).collect();
     assert_eq!(levels, ["Nível 1", "Nível 2"]);
@@ -2788,6 +3122,12 @@ fn the_interface_speaks_spanish() {
     press(&mut h, "Archivo");
     h.get_by_label_contains("Nuevo").click();
     h.run();
+    // Its Project, in the interface's language, read out with its shortcut.
+    {
+        let n = cmd_n(&h);
+        h.get_by_label_contains(&n).click();
+    }
+    h.run();
     let levels: Vec<String> = h.state().session.model.levels().iter().map(|(_, l)| l.name.clone()).collect();
     assert_eq!(levels, ["Nivel 1", "Nivel 2"]);
 }
@@ -2807,6 +3147,12 @@ fn the_interface_speaks_dutch() {
     press(&mut h, "Bestand");
     h.get_by_label_contains("Nieuw").click();
     h.run();
+    // Its Project, in the interface's language, read out with its shortcut.
+    {
+        let n = cmd_n(&h);
+        h.get_by_label_contains(&n).click();
+    }
+    h.run();
     let levels: Vec<String> = h.state().session.model.levels().iter().map(|(_, l)| l.name.clone()).collect();
     assert_eq!(levels, ["Niveau 1", "Niveau 2"]);
 }
@@ -2817,9 +3163,12 @@ fn nothing_a_translated_interface_shows_is_left_in_english() {
     use egui_kittest::kittest::{By, NodeT};
     // A label in English that the table translates is a string the window forgot to translate: a
     // widget's name, or a plain label's text, which egui gives screen readers as its value.
+    // A shortcut key (PR, UP) is not English prose: the Keyboard Shortcuts window shows it as it is in every language.
+    let keys: Vec<&str> = crate::shortcuts().into_iter().map(|(k, _)| k).collect();
     let english = |h: &Harness<BimApp>, l: Lang| -> Vec<String> {
         h.query_all(By::new())
             .filter_map(|n| n.accesskit_node().label().or_else(|| n.accesskit_node().value()))
+            .filter(|s| !keys.contains(&s.as_str()))
             .filter(|s| crate::lang::translated_in(l, s).is_some_and(|x| x != s))
             .collect()
     };
@@ -3229,6 +3578,39 @@ fn rotate_centre_shows_a_walls_snap_before_the_click_and_takes_it() {
 }
 
 #[test]
+fn rotate_snaps_the_angle_s_start_and_end_to_what_is_drawn() {
+    let mut h = app(&format!("{BOX}\nwall {{\"points\": [[1000, 3000], [3000, 3000]]}}"));
+    let wall =
+        ids(&h, "wall").into_iter().find(|id| h.state().session.model.wall(*id).is_some_and(|w| w.start == P2(1000.0, 3000.0))).unwrap();
+    click(&mut h, P2(2000.0, 3000.0));
+    press(&mut h, "Rotate");
+    // About the wall's middle, from near one of the box's corners to near another: the rays run to the corners themselves.
+    click(&mut h, P2(8030.0, 25.0));
+    click(&mut h, P2(8030.0, 5975.0));
+    let w = h.state().session.model.wall(wall).cloned().unwrap();
+    let a = 2.0 * 0.5f64.atan();
+    let end = P2(2000.0 + 1000.0 * a.cos(), 3000.0 + 1000.0 * a.sin());
+    assert!(w.end.dist(end) < 0.01, "turned {:.3}°: {:?}, not {:?}", a.to_degrees(), w.end, end);
+}
+
+#[test]
+fn rotate_takes_an_angle_typed_over_the_view() {
+    let mut h = app(BOX);
+    let wall = ids(&h, "wall").into_iter().find(|id| h.state().session.model.wall(*id).is_some_and(|w| w.start == P2(0.0, 0.0))).unwrap();
+    click(&mut h, P2(4000.0, 0.0));
+    press(&mut h, "Rotate");
+    // As Revit takes it: typed straight away (or after the start's click), Enter turns by it.
+    h.event(Event::Text("-90".into()));
+    h.run();
+    assert!(matches!(h.state().tool, Tool::Rotate { .. }), "typing is no shortcut here: {:?}", h.state().tool);
+    h.key_press(Key::Enter);
+    h.run();
+    let w = h.state().session.model.wall(wall).cloned().unwrap();
+    assert!(w.start.dist(P2(4000.0, 4000.0)) < 1e-6 && w.end.dist(P2(4000.0, -4000.0)) < 1e-6, "{:?} {:?}", w.start, w.end);
+    assert_eq!(h.state().tool, Tool::Modify);
+}
+
+#[test]
 fn rotate_centre_snaps_to_a_notes_anchor() {
     use bimcraft_core::snap::Kind;
     let mut h = app(&format!("{BOX}\ntext {{\"text\": \"Note\", \"at\": [4000, 3000], \"leader\": [5000, 3000]}}"));
@@ -3274,7 +3656,8 @@ component {"family": "Stool", "at": [3000, 2000]}"#;
     // Picked by its outline.
     click(&mut h, P2(3200.0, 2000.0));
     assert_eq!(h.state().selection, [c]);
-    assert!(h.query_by_label("Modify | Components").is_some());
+    // Named for its family's category, as Revit's.
+    assert!(h.query_by_label("Modify | Furniture").is_some());
     // Its instance parameter, in Properties.
     type_into(&mut h, "Seat", "500");
     key(&mut h, Key::Enter);
@@ -3710,42 +4093,6 @@ fn a_floor_types_layers_go_from_its_top_down() {
 }
 
 #[test]
-fn project_parameters_are_made_in_their_window_and_given_values_in_properties() {
-    use bimcraft_core::model::ParameterKind;
-    let mut h = app(BOX);
-    press(&mut h, "Manage");
-    press(&mut h, "Project Parameters");
-    assert!(h.query_by_label("No project parameters yet: New makes one.").is_some());
-    press(&mut h, "New");
-    assert_eq!(h.state().session.model.parameters["Parameter 1"].categories, ["wall"]);
-    type_into(&mut h, "Name", "Finish Height");
-    key(&mut h, Key::Enter);
-    pick(&mut h, Role::CheckBox, "Doors");
-    assert_eq!(h.state().session.model.parameters["Finish Height"].categories, ["door", "wall"]);
-    h.get_by_role_and_label(Role::ComboBox, "Type of Parameter").click();
-    h.run();
-    press(&mut h, "Length");
-    assert_eq!(h.state().session.model.parameters["Finish Height"].kind, ParameterKind::Length);
-    press(&mut h, "Close");
-    // The bottom wall's value, typed in the project's units; emptied, it has none.
-    let wall = ids(&h, "wall")[0];
-    click(&mut h, P2(4000.0, 0.0));
-    type_role(&mut h, Role::TextInput, "Finish Height", "2400");
-    assert_eq!(field(&h, wall, "params"), json!({"Finish Height": 2400.0}));
-    type_role(&mut h, Role::TextInput, "Finish Height", "");
-    assert_eq!(field(&h, wall, "params"), Value::Null);
-    // Deleted, it's gone from the palette.
-    key(&mut h, Key::Escape);
-    press(&mut h, "Manage");
-    press(&mut h, "Project Parameters");
-    press(&mut h, "Delete");
-    press(&mut h, "Close");
-    assert!(h.state().session.model.parameters.is_empty());
-    click(&mut h, P2(4000.0, 0.0));
-    assert!(h.query_by_label("Finish Height").is_none() && h.query_by_label("Project Parameters").is_none(), "no group for it");
-}
-
-#[test]
 fn a_multi_category_schedule_is_made_from_the_new_schedule_dialog_and_lists_walls_and_doors() {
     let mut h = app_at(&format!("{BOX}\ndoor {{\"at\": [2000, 0]}}"), 0.05);
     press(&mut h, "View");
@@ -3788,7 +4135,7 @@ fn a_schedule_of_the_projects_own_is_deleted_from_the_browser_and_its_tab_closes
     assert_eq!(ids(&h, "schedule").len(), before - 1, "deleted");
     assert!(!h.state().session.model.elements.contains_key(sc), "it is the one deleted");
     assert_ne!(h.state().sheet, Sheet::Table(sc), "its tab is closed");
-    // The six every project has have no Delete.
+    // The seven every project has have no Delete.
     h.get_by_label("Room Schedule").scroll_to_me();
     h.run();
     let pos = h.get_by_label("Room Schedule").rect().center();
@@ -5116,7 +5463,6 @@ fn a_tool_with_choices_of_its_own_opens_them_from_a_panels_list() {
         (Tab::Manage, "Settings", "Project Units", "Feet and inches"),
         (Tab::Manage, "Settings", "Project Language", "Español"),
         (Tab::Manage, "Settings", "Project Language", "Nederlands"),
-        (Tab::Manage, "Family Editor", "New Family", "Furniture"),
         (Tab::View, "Create", "Schedules", "Schedule/Quantities…"),
         (Tab::View, "Create", "Duplicate View", "Duplicate with Detailing"),
         (Tab::View, "Windows", "User Interface", "Language"),
@@ -5144,6 +5490,21 @@ fn a_tool_with_choices_of_its_own_opens_them_from_a_panels_list() {
     press(&mut h, "Feet and inches");
     assert_eq!(h.state().session.model.units, bimcraft_core::units::Units::FeetInches);
     assert!(!egui::Popup::is_any_open(&h.ctx), "the list and its choices close with it");
+}
+
+/// Manage > Project Language lists every language a project can be in, Vietnamese among them as it is in Settings > Language
+/// (#367), and picking it puts the project in it.
+#[test]
+fn project_language_lists_every_project_language_and_picks_vietnamese() {
+    use bimcraft_core::language::Language;
+    let mut h = app(BOX);
+    h.state_mut().tab = Tab::Manage;
+    h.run();
+    from_list(&mut h, "Settings", "Project Language");
+    let missing: Vec<&str> = Language::ALL.iter().map(|l| l.label()).filter(|l| h.query_all_by_label(l).next().is_none()).collect();
+    assert!(missing.is_empty(), "not in the list: {missing:?}");
+    press(&mut h, "Tiếng Việt");
+    assert_eq!(h.state().session.model.language, Language::Vietnamese);
 }
 
 /// UN (Project Units) at the least a window can be: the tool is in its panel's list by then, which the shortcut opens, and the
@@ -5730,28 +6091,36 @@ fn the_family_editor_edits_a_family_says_what_wont_build_and_starts_a_new_one_of
     click(&mut h, P2(3800.0, 3000.0));
     assert_eq!(h.state().selection, [table]);
     h.set_size(vec2(1800.0, 900.0));
-    press(&mut h, "Manage");
+    // Laid out at the new size: the Mode panel keeps to the ribbon's right end.
+    h.run();
+    // Modify | Furniture's Mode panel, as Revit's.
     press(&mut h, "Edit Family");
-    assert!(h.state().family_editor.is_some(), "the window is open on the table's family");
-    // The table's parameters, a row each: its fourth is its top's thickness, 40 mm.
-    type_into(&mut h, "Parameter Value 4", "55");
-    press_near(&mut h, "Apply", "Cancel");
-    let thickness = |h: &Harness<BimApp>| h.state().session.model.families["Table"].parameters[3].value.clone();
+    assert!(h.state().active_family().is_some(), "the window is open on the table's family");
+    // The table's parameters, a row each: its top's Thickness, 40 mm, here the first type's, 1200 x 800.
+    press(&mut h, "Family Types");
+    type_into(&mut h, "Parameter Value Thickness", "55");
+    press(&mut h, "OK");
+    press(&mut h, "Load into Project");
+    // The project has the table otherwise: its values too, as they were typed.
+    press(&mut h, "Overwrite the existing version and its parameter values");
+    let thickness = |h: &Harness<BimApp>| h.state().session.model.families["Table"].types["1200 x 800"]["Thickness"].clone();
     assert_eq!(thickness(&h), json!(55.0));
-    // A formula naming what isn't there is said, in the window; the project's family is as it was.
-    type_into(&mut h, "Parameter Formula 4", "Nope + 1");
+    // A formula naming what isn't there is refused, said in the window; the project's family is as it was.
+    press(&mut h, "Family Types");
+    type_into(&mut h, "Parameter Formula Thickness", "Nope + 1");
     press_near(&mut h, "Apply", "Cancel");
     assert!(h.state().status.text.is_empty(), "the window says it itself: a box over the view's corner would lie on its buttons");
     assert_eq!(h.query_all_by_label_contains("Nope").count(), 1, "the window says what's wrong, once");
     assert_eq!(h.state().session.model.families["Table"].parameters[3].formula, None);
     press(&mut h, "Cancel");
-    assert!(h.state().family_editor.is_none(), "Cancel closes it");
-    // A new family of a category: its name, then OK; a door's has the opening's Width and Height.
+    assert!(h.state().active_family().is_some(), "Cancel closes Family Types and restores its draft");
+    press(&mut h, "Close Family");
+    assert!(h.state().active_family().is_none());
+    // A new family of a category (File > New > Family…): its name, then OK; a door's has the opening's Width and Height.
     key(&mut h, Key::Escape);
-    press(&mut h, "New Family");
-    press(&mut h, "Door");
+    new_family_of(&mut h, "Door");
     type_into(&mut h, "Family name", "Cupboard Door");
-    press(&mut h, "OK");
+    press(&mut h, "Load into Project and Close");
     let f = &h.state().session.model.families["Cupboard Door"];
     assert_eq!(f.category, bimcraft_core::family::Category::Door);
     assert!(f.parameters.iter().any(|p| p.name == "Width") && !f.forms.is_empty());
@@ -5762,16 +6131,29 @@ fn the_family_editor_shows_a_familys_connectors_and_keeps_them() {
     let mut h = app(&format!("{BOX}\ncomponent {{\"family\": \"WC\", \"at\": [3000, 3000]}}"));
     let wc = find(&h, |e| matches!(e, Element::Component(_)));
     h.state_mut().selection = vec![wc];
+    h.state_mut().tab = Tab::Context;
     h.set_size(vec2(1800.0, 900.0));
-    press(&mut h, "Manage");
+    h.run();
+    // Modify | Plumbing Fixtures' Mode panel; the family document's Project Browser lists its connectors as it does its forms.
     press(&mut h, "Edit Family");
-    press(&mut h, "Connectors");
     assert!(h.query_by_label_contains("pipe · waste · out · Size 100").is_some(), "the waste outlet, its DN");
+    let ed = h.state().active_family().expect("the family document");
+    let waste = (0..9).map(|i| ed.connector_name(i)).find(|n| n.contains("waste")).expect("listed");
     assert!(h.query_by_label_contains("cold · in").is_some(), "the cistern's cold water");
-    // Applied, the family keeps them as they were.
+    // Selected there, Properties show it.
+    h.get_by_label(&waste).scroll_to_me();
+    h.run();
+    press(&mut h, &waste);
+    assert!(h.state().active_family().and_then(|ed| ed.selected_connector()).is_some());
+    assert!(h.query_all_by_label_contains("Connector Domain").next().is_some_and(|n| n.value().as_deref() == Some("waste")));
+    // Loaded into the project, the family keeps them as they were.
     let before = h.state().session.model.families["WC"].connectors.clone();
-    press_near(&mut h, "Apply", "Cancel");
+    press(&mut h, "Load into Project");
+    if h.query_by_label("Overwrite the existing version and its parameter values").is_some() {
+        press(&mut h, "Overwrite the existing version and its parameter values");
+    }
     assert_eq!(h.state().session.model.families["WC"].connectors, before);
+    assert!(h.state().status.text.is_empty() || !h.state().status.error, "{}", h.state().status.text);
 }
 
 #[test]
@@ -5881,13 +6263,17 @@ fn the_massing_tab_makes_floors_walls_a_floor_and_a_roof_from_the_selected_mass(
     assert_eq!(h.state().tool, Tool::Mass(Vec::new()));
 }
 
+mod adaptive_modelling;
 mod align;
+mod assistant;
 mod autosave;
 mod browser;
 mod cad;
 mod chinese;
 mod clouds;
 mod control;
+mod coordinates;
+mod cowork;
 mod dialog;
 mod dimensions;
 mod dims3d;
@@ -5895,6 +6281,9 @@ mod display;
 mod dock;
 mod draw;
 mod electrical;
+mod export;
+mod family_formulas;
+mod file_extensions;
 mod fills;
 mod filter;
 mod fonts;
@@ -5913,14 +6302,19 @@ mod minimap;
 mod notes;
 mod objectstyles;
 mod origin;
+mod parameters;
 mod patterns;
 mod perspective;
 mod planviews;
 mod plugins;
 mod popup;
 mod presets;
+mod printsets;
 mod profile;
+mod projectinfo;
+mod publisher;
 mod purge;
+mod qol;
 mod reinforce;
 mod revit;
 mod rooms;
@@ -5932,6 +6326,7 @@ mod sketch;
 mod sketch3d;
 mod smallest;
 mod spacemouse;
+mod spots;
 mod standards;
 mod start;
 mod templates;
@@ -5945,6 +6340,7 @@ mod typed;
 mod typeprops;
 mod view_controls;
 mod window;
+mod work_plane_based;
 mod working3d;
 mod workplane;
 
@@ -6373,9 +6769,7 @@ mod updates {
     fn the_updater_survives_new_and_open() {
         let mut r = rig("v0.5.0", true);
         r.start();
-        press(&mut r.h, "File");
-        r.h.get_by_label_contains("New").click();
-        r.h.run();
+        new_project(&mut r.h);
         assert!(r.h.state().updates.is_some() && r.h.query_by_label(OFFER).is_some(), "a new project is still in the version offered");
     }
 
@@ -6472,7 +6866,8 @@ fn choose_item(h: &mut Harness<BimApp>, label: &str) {
     h.run();
 }
 
-const MENU: [&str; 8] = ["Cancel", "Zoom to Fit", "Zoom In", "Home View", "Edit Type", "Select All Instances", "Hide Element", "Delete"];
+const MENU: [&str; 10] =
+    ["Cancel", "Zoom to Fit", "Zoom In", "Home View", "Edit Type", "Select All Instances", "Hide Element", "Delete", "Pin", "Unpin"];
 
 #[test]
 fn a_right_click_in_a_plan_opens_a_menu_of_what_the_view_and_the_selection_can_do() {
@@ -6492,11 +6887,45 @@ fn a_right_click_in_a_plan_opens_a_menu_of_what_the_view_and_the_selection_can_d
     let at = h.state().screen(P2(4000.0, 3000.0));
     assert_eq!(
         offered(&mut h, at, &MENU),
-        ["Cancel", "Zoom to Fit", "Zoom In", "Edit Type", "Select All Instances", "Hide Element", "Delete"]
+        ["Cancel", "Zoom to Fit", "Zoom In", "Edit Type", "Select All Instances", "Hide Element", "Delete", "Pin", "Unpin"]
     );
+    // Pin keeps it where it is, and the menu offers to take the pin out again.
+    choose_item(&mut h, "Pin");
+    assert!(h.state().session.model.is_pinned(south));
+    offered(&mut h, at, &MENU);
+    choose_item(&mut h, "Unpin");
+    assert!(!h.state().session.model.is_pinned(south));
     choose_item(&mut h, "Edit Type");
     assert!(h.state().type_dialog.is_some(), "Type Properties is open");
     assert_eq!(h.state().selection, [south], "a right click leaves the selection as it was");
+}
+
+#[test]
+fn a_family_instance_selected_offers_edit_family_on_the_right_click_as_revit_does() {
+    let mut h = app("");
+    h.state_mut()
+        .session
+        .execute("family", &json!({"name":"Adaptive panel","types":{"A":{}},"adaptive":bimcraft_core::adaptive::four_point_panel()}))
+        .unwrap();
+    let result = h.state_mut().session.execute("component", &json!({"family":"Adaptive panel","at":[0,0]})).unwrap();
+    let id = serde_json::from_value(result["id"].clone()).unwrap();
+    // Nothing selected: no family to edit.
+    let at = h.state().screen(P2(4000.0, 3000.0));
+    assert!(offered(&mut h, at, &["Edit Family"]).is_empty());
+    key(&mut h, Key::Escape);
+    // The panel selected: Edit Family opens the Family Editor on it, at its Adaptive tab.
+    h.state_mut().selection = vec![id];
+    h.run();
+    assert_eq!(offered(&mut h, at, &["Edit Family"]), ["Edit Family"]);
+    choose_item(&mut h, "Edit Family");
+    assert!(h.state().active_family().is_some(), "the Family Editor is open");
+    h.set_size(vec2(1800., 1000.));
+    h.run();
+    assert!(h.query_by_label("Load into Project").is_some(), "it opens as a family document");
+    // As Revit's: the family as defined; the instance it was opened from is there to replay.
+    assert_eq!(h.query_all_by_label_contains("Replaying instance").count(), 0, "it opens on the family, not on the instance");
+    press(&mut h, "Replay Instance");
+    assert!(h.query_all_by_label_contains("Replaying instance").count() > 0, "replayed, it shows the instance selected");
 }
 
 #[test]
@@ -6552,7 +6981,7 @@ fn every_view_has_the_right_click_menu() {
     h.get_by_label("Hall").click();
     h.run();
     let at = h.get_by_label("Hall").rect().center();
-    assert_eq!(offered(&mut h, at, &MENU), ["Cancel", "Edit Type", "Select All Instances", "Delete"]);
+    assert_eq!(offered(&mut h, at, &MENU), ["Cancel", "Edit Type", "Select All Instances", "Delete", "Pin", "Unpin"]);
     choose_item(&mut h, "Delete");
     assert!(ids(&h, "room").is_empty());
 }
@@ -6592,6 +7021,37 @@ fn a_selected_levels_plane_has_a_grip_on_each_edge_in_3d_that_drags_it() {
     assert!((extent[1][0].as_f64().unwrap() - 9000.0).abs() <= 10.0, "{extent}");
     assert_eq!((extent[0].clone(), extent[1][1].clone()), (json!([0.0, 0.0]), json!(6000.0)));
     assert_eq!(h.state().orbit.camera, before, "the grip took the drag, not the camera");
+}
+
+#[test]
+fn run_script_tries_a_script_then_runs_it_as_one_undo_step_and_never_touches_a_file() {
+    let mut h = app(BOX);
+    let walls = ids(&h, "wall").len();
+    // Manage grew past what a narrower window shows of it: wide enough for its last panel.
+    h.set_size(vec2(2200.0, 900.0));
+    press(&mut h, "Manage");
+    press(&mut h, "Run Script");
+    let field = "Commands, one a line (id {json params}; # starts a comment):";
+    let script = "# two walls\nwall {\"points\": [[20000, 0], [24000, 0]]}\nwall {\"points\": [[20000, 3000], [24000, 3000]]}";
+    type_into(&mut h, field, script);
+    // Try: what it would make, and nothing made.
+    press(&mut h, "Try");
+    assert!(h.query_by_label("Would make 2, change 0 and remove 0 elements.").is_some());
+    assert_eq!(ids(&h, "wall").len(), walls);
+    // Run: made, as one undo step, and the dialog closes.
+    press(&mut h, "Run");
+    assert_eq!(ids(&h, "wall").len(), walls + 2);
+    assert!(h.state().run_script.is_none());
+    assert!(!h.state().status.error && h.state().status.text.starts_with("Ran 2 lines as one undo step."), "{}", h.state().status.text);
+    assert_eq!(h.state().session.history().last().copied(), Some("Script"));
+    // A line that would write a file is refused before anything runs, and the dialog says which.
+    press(&mut h, "Run Script");
+    type_into(&mut h, field, "wall {\"points\": [[30000, 0], [34000, 0]]}\nsave {\"path\": \"/tmp/x.bimcraft\"}");
+    press(&mut h, "Run");
+    assert_eq!(ids(&h, "wall").len(), walls + 2);
+    assert!(h.state().run_script.as_ref().is_some_and(|d| d.said().is_some_and(|(s, error)| error && s.contains("line 2"))));
+    press(&mut h, "Close");
+    assert!(h.state().run_script.is_none());
 }
 
 #[test]
@@ -6781,4 +7241,124 @@ fn room_area_computation_is_set_from_manage_and_undone() {
     assert_eq!(h.state().session.model.room_area, RoomArea::Centre);
 }
 
+#[test]
+fn adaptive_family_editor_reopens_exact_failed_instance_and_keeps_valid_dependencies() {
+    let mut h = app("");
+    h.state_mut()
+        .session
+        .execute("family", &json!({"name":"Adaptive panel","types":{"A":{}},"adaptive":bimcraft_core::adaptive::four_point_panel()}))
+        .unwrap();
+    let p = bimcraft_core::adaptive::Placement {
+        frames: [(2, bimcraft_core::adaptive::Frame::at([0., 0., 0.]))].into(),
+        context: "Failed panel 7".into(),
+        ..Default::default()
+    };
+    let result = h.state_mut().session.execute("component", &json!({"family":"Adaptive panel","at":[0,0],"adaptive":p})).unwrap();
+    let id = serde_json::from_value(result["id"].clone()).unwrap();
+    h.state_mut().selection = vec![id];
+    h.state_mut().edit_family("Adaptive panel");
+    h.set_size(vec2(1800., 1000.));
+    h.run();
+    assert!(h.query_by_label("Load into Project").is_some());
+    press(&mut h, "Replay Instance");
+    assert!(h.query_all_by_label_contains("Replaying instance").count() > 0);
+    press(&mut h, "Load into Project");
+    // The replayed placement is the family's preview: the project has the family otherwise.
+    press(&mut h, "Overwrite the existing version");
+    let Element::Component(c) = &h.state().session.model.elements[&id] else { panic!() };
+    assert_eq!(c.adaptive.as_ref(), Some(&p));
+    let r = h.state().session.model.component_adaptive_evaluation(c).unwrap();
+    assert!(r.failed());
+    assert!(r.values.contains_key("p1"));
+    press(&mut h, "Close Family");
+    assert!(h.state().active_family().is_none());
+}
+
+#[test]
+fn adaptive_test_frames_place_where_they_are_even_on_a_raised_level() {
+    let mut h = app("");
+    let level = h.state().session.model.levels()[0].0;
+    h.state_mut().session.execute("modify", &json!({"id": level, "elevation": 1000})).unwrap();
+    h.state_mut()
+        .session
+        .execute("family", &json!({"name":"Adaptive panel","types":{"A":{}},"adaptive":bimcraft_core::adaptive::four_point_panel()}))
+        .unwrap();
+    h.set_size(vec2(1800., 1000.));
+    h.state_mut().edit_family("Adaptive panel");
+    h.run();
+    press(&mut h, "Place Instance");
+    let m = &h.state().session.model;
+    let mut placed = m.elements.values().filter_map(|e| if let Element::Component(c) = e { Some(c) } else { None });
+    let problem = h.state().status.text.clone();
+    let c = placed.next().unwrap_or_else(|| panic!("an instance is placed: {problem:?}"));
+    let f = &m.families["Adaptive panel"];
+    let d = f.adaptive.as_ref().unwrap();
+    let low = |pieces: Vec<bimcraft_core::family::Piece>| {
+        pieces.iter().flat_map(|p| p.tris.iter().flatten()).map(|q| q[2]).fold(f64::INFINITY, f64::min)
+    };
+    let want = low(d.evaluate(&f.values("A", &Default::default()).unwrap(), &d.preview).pieces());
+    assert!((low(m.component_pieces(c)) - want).abs() < 1e-6, "the test frames are the project's, whatever the level's elevation");
+}
+
+#[test]
+fn adaptive_editor_visual_preview_in_three_looks() {
+    let Ok(folder) = std::env::var("BIMCRAFT_ADAPTIVE_UI_DUMP") else { return };
+    std::fs::create_dir_all(&folder).unwrap();
+    for (name, dark, light_canvas) in [("light", false, false), ("dark", true, false), ("dark-ui-light-canvas", true, true)] {
+        let mut h = app("");
+        h.ctx.set_theme(if dark { egui::ThemePreference::Dark } else { egui::ThemePreference::Light });
+        h.state_mut().light_canvas = light_canvas;
+        h.state_mut()
+            .session
+            .execute("family", &json!({"name":"Adaptive panel","types":{"A":{}},"adaptive":bimcraft_core::adaptive::four_point_panel()}))
+            .unwrap();
+        h.set_size(vec2(1600., 1000.));
+        h.state_mut().edit_family("Adaptive panel");
+        h.run();
+        h.render().unwrap().save(std::path::Path::new(&folder).join(format!("adaptive-create-{name}.png"))).unwrap();
+        // Point 1 selected, so Properties shows its Revit fields.
+        if let Some(ed) = h.state_mut().active_family_mut() {
+            ed.modeller.selection = vec!["p1".into()];
+        }
+        h.run();
+        h.render().unwrap().save(std::path::Path::new(&folder).join(format!("adaptive-{name}.png"))).unwrap();
+        // Its OffsetZ's "=": Associate Family Parameter.
+        h.get_by_label("Associate Family Parameter: OffsetZ (mm)").scroll_to_me();
+        h.run();
+        h.render().unwrap().save(std::path::Path::new(&folder).join(format!("adaptive-relationship-{name}.png"))).unwrap();
+        press(&mut h, "Associate Family Parameter: OffsetZ (mm)");
+        h.run();
+        h.render().unwrap().save(std::path::Path::new(&folder).join(format!("adaptive-associate-{name}.png"))).unwrap();
+    }
+}
 mod background_grid;
+
+mod extrusion_properties;
+mod family_align_forms;
+mod family_align_turn;
+mod family_already_exists;
+mod family_angles;
+mod family_blend;
+mod family_category_dialog;
+mod family_dimensions;
+mod family_document;
+mod family_exit;
+mod family_nav3d;
+mod family_open;
+mod family_pivots;
+mod family_properties;
+mod family_sketch;
+mod family_sketch_locks;
+mod family_tabs;
+mod family_tabs_async;
+mod family_temporary_hide;
+mod family_types_dialog;
+mod family_views;
+mod family_visibility;
+#[cfg(test)]
+mod family_work_plane;
+mod highlight3d;
+mod industrial_doors;
+mod nested_families;
+mod preview_visibility;
+mod sheet_fit;

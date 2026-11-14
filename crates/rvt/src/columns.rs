@@ -85,7 +85,7 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
                     types,
                     &name,
                     |t| (t.width - width).abs() < 0.05 && (t.depth - depth).abs() < 0.05 && !t.round,
-                    ColumnType { width, depth, round: false },
+                    ColumnType { width, depth, round: false, profile: None },
                 );
                 Ok((
                     Column {
@@ -97,6 +97,9 @@ pub(crate) fn import(cx: &mut Import, f: &Facts, g: &Gathered) {
                         top_level,
                         height: mm(r.bbox[5] - r.bbox[2]),
                         base_offset: micron(mm(r.bbox[2]) - mm(elevation)),
+                        top_offset: 0.0,
+                        attach_top: None,
+                        attach_base: None,
                         params: Default::default(),
                     },
                     fell_back,

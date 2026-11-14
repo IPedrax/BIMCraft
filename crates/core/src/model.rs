@@ -21,10 +21,12 @@ use crate::fills::{self, FillPattern, FilledRegionType};
 use crate::geom::{self, P2, Region};
 use crate::graphics::{self, Graphics, ViewFilter, ViewTemplate};
 pub use crate::groups::{DetailGroup, RepeatingDetail};
+pub use crate::hosting::{FaceRole, HostRef, Hosted, ReferencePlane};
 use crate::language::Language;
 pub use crate::lines::DetailLine;
 use crate::lines::{self, LinePattern, LineStyle};
 use crate::phasing::{self, OptionSet, PhaseFilter, Status};
+pub use crate::profiles::Profile;
 use crate::shared::Shared;
 use crate::texture::{Kind, MAX_IMAGES, Picture, Texture};
 use crate::units::Units;
@@ -70,16 +72,69 @@ pub const CEILING_CUT: f64 = 2300.0;
 pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
-/// The version of the project file this build writes, and the newest it reads. 18: a family's connector may be a `pipe`,
+/// The version of the project file this build writes, and the newest it reads. 19: a schedule may be of sheets, the
+/// sheet list (`of: "sheet"`, as the Room or Level Schedule is); nothing in a file of 18 changes, but a build that reads
+/// up to 18 holds `sheet` as a category schedules aren't of, and would draw its sheet list with no columns, not say
+/// "saved by a newer BIMCraft". 18: a beam's or a structural column's type may
+/// have a steel section (`profile`), which a build that reads up to 17 would leave out as a field it doesn't know, drawing and
+/// scheduling the member as the solid rectangle or circle round its section; a family's connector may be a `pipe`,
 /// `data` or `earthing` one, with no `system` (a pipe's `domain`, `flow`, `size`), and any may have a place (`at`, `direction`);
 /// the starter fixtures and fittings have them; a project may hold title blocks of its own (`title_blocks`, library entries of
-/// kind `title-block`) and its values of their fields (`title_values`), and a sheet may name one (`title_block`) and hold its
-/// values of its fields (`fields`), or name `none` to have no title block at all (no border, title box or folding marks); a
-/// wall or a run may refuse to join its neighbours (`join: false`, written only then); and a dimension may measure to the line
-/// across a column, square to its angle (`across`). Nothing in a file of 17 changes, but a build that reads up to 17 would
-/// answer such a connector or dimension with a serde error ("unknown variant", "missing field `system`"), would leave the
-/// title blocks out as fields it doesn't know, drawing every sheet with the built-in title box, and would silently drop
-/// `join: false` and join the element again, not say "saved by a newer BIMCraft". 17: a schedule may list several categories
+/// kind `title-block`; one may give the paper rectangle views are placed in by default, `drawing_area`, and draw the
+/// sheet's border itself, `template_border`) and its values of their fields (`title_values`), and a sheet may name one
+/// (`title_block`) and hold its values of its fields (`fields`), or name `none` to have no title block at all (no border,
+/// title box or folding marks); a viewport may keep a scale of its own as its view's changes (`follow_scale: false`,
+/// written only then); a wall or a run may refuse to join its neighbours (`join: false`, written only then); a dimension
+/// may measure to the line across a column, square to its angle (`across`); a door's type or family may open as a gate
+/// (`operation`: `sectional` or `roller`); a project may hold property lines (the `propertyline` category, a row of
+/// `graphics::MODEL` that views' graphics and Object Styles may name); it may pin elements where they are (`pinned`, their
+/// GUIDs); an elevation may keep the line it looks at (`reference`) and stand its mark apart from its line (`mark`); a
+/// project's language may be Polish (`pl`) or Vietnamese (`vi`); a distribution board may hold its electrical data (a component's `panel`: its
+/// distribution system, mains, slots and the board that supplies it); and a project may hold circuits (the `circuit`
+/// category, each on its board's slots from its `number`), panel schedules (`panelschedule`) and demand factors by
+/// classification (`demand_factors`). Nothing in a file of 17 changes, but a build that reads up to 17 would answer such a
+/// connector, dimension, operation, property line, circuit or panel schedule, or Polish or Vietnamese, with a serde error ("unknown
+/// variant", "missing field `system`") and graphics or a style of `propertyline` as a category it doesn't have, would leave
+/// the title blocks and a viewport's `follow_scale` out as fields it doesn't know, drawing every sheet with the built-in
+/// title box, and would silently drop `join: false` and join the element again, and the pins, letting what was pinned move,
+/// and would drop an elevation's reference and mark, drawing the mark back on its line, and would leave a board's `panel`
+/// and the `demand_factors` out as fields it doesn't know, a board's supply tree with them, not say "saved by a newer
+/// BIMCraft". 18 also holds the Family Editor's families and what places them in a project, which a build that reads up to
+/// 17 would leave out as fields it doesn't know, drawing a family without them or failing to build it and losing them on
+/// saving, or refuse on opening ("unknown variant", "isn't a category views draw"), not say "saved by a newer BIMCraft"; a
+/// file of 17 is brought up to 18 by [`Model::migrate`]:
+///
+/// - Family parameters: text, whole numbers, areas, volumes, URLs and family types, grouped (`group`), shared (`shared`, a
+///   GUID) or reporting (`reporting`); a family type parameter names its category (`of`).
+/// - Reference planes and lines (F2): a family has reference planes (its three datums and its own, `planes`) and reference
+///   lines (`lines`), and a form is drawn on a `host`, one of them, where it named a `plane` (`xy`, `xz` or `yz`). A form on
+///   `xz` swept along +y and its host, Center (Front/Back), has its normal toward -y, so such a form's `from` and `to` are
+///   read negated and swapped.
+/// - Sketches (F5): a form is drawn by its `sketch`, lines and arcs on its host plane, each with an id and a GUID, a revolve's
+///   axis one of them; its `profile`, `circle` and `axis` are read as such lines and no longer written.
+/// - Blends and sweeps (F6): a form may be a Blend (`top`, its top's sketch), a Sweep (`sweep.profile`, its `sketch` the
+///   path) or a Swept Blend (`sweep.profile` and `sweep.end`), and twist (`twist`).
+/// - Constraints (F7): a family's `dimensions`, with labels, locks, EQ and Align's locks, solved as a type flexes. They may
+///   measure to its forms' sketch lines, their ends, circles' and arcs' centres, and to its reference lines' faces, starts and
+///   ends and the forms drawn on them; measure a circle's or an arc's radius or diameter; and be angular, between reference
+///   lines, reference planes and straight sketch lines, the reference lines turning and moving with them.
+/// - Pivots (F7d): a reference line or a reference plane may carry a `pivot`, a point it is pinned to and turns about, its
+///   swing an Angle parameter or a number of its own, within limits.
+/// - Nested families (T6a): a family may nest families (`nested`, each its whole definition) and place their instances
+///   (`nested_instances`).
+/// - Visibility (F8): a family's forms, symbols and nested instances may carry Visibility Settings (`visibility`): the views
+///   they are drawn in by the way those look, and their detail level.
+/// - Void cuts (F10d): a void's `cuts` says whether it cuts the family's forms, the wall or both, and a door's or a window's
+///   void cuts its wall wherever it reaches into it, whatever its place in the family's list.
+/// - Subcategories: a view's graphics, a view template and the object styles may name `dooropening` and `windowopening`
+///   (Doors > Opening, Windows > Opening), and a family's symbol the subcategory it is drawn in (`subcategory`).
+/// - Adaptive families: a family may be adaptive (`adaptive`: its points, lines and forms), and a component may hold its
+///   adaptive points' frames (`adaptive`).
+/// - Work planes and hosts (T4, T16): the project has reference planes (`refplane`); a work plane-based component may be
+///   hosted on one (`host`), its `at` and `offset` following the plane and its family's axes tilted with it, or on a face of a
+///   wall, a floor, a ceiling or a roof (`host` `{"face": {"element", "face"}}`, Place on Face), its `uv` that face's own.
+///
+/// 17: a schedule may list several categories
 /// (`multicategory`, with `categories`) and a project's language may be Italian (`it`); nothing in a file of 16 changes, but a
 /// build that reads up to 16 would refuse either on opening (no schedule of that category, an unknown variant), not say
 /// "saved by a newer BIMCraft". 16: a 3D view may hold dimensions (the
@@ -117,7 +172,20 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 2: the library has ids and GUIDs too
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
-pub const FORMAT: u32 = 18;
+/// 20 (0.12's, which every change since 19 shares; the Family Editor's unreleased builds wrote 20 to 32 too, and a file of
+/// theirs stamped 20 opens as one of 0.12's, 21 and up as newer): rooms have types (`types.room`), which may name a floor type and a ceiling type, and a room holds the floor and the
+/// ceiling made for it (`floor`, `ceiling`); a build that reads up to 19 would lose the links and leave the finishes behind. And
+/// project parameters may be of kinds 19 doesn't know (`integer`, `area`, `volume`, `angle`), a type's (`scope`, `type_values`),
+/// from a `.bimparams` dictionary (`dictionaries`), grouped under a heading of the project's own, and the project's information
+/// is an element that title blocks read; a build that reads up to 19 would answer such a kind with a serde error. And a column
+/// holds a `top_offset` and the roof or floor its top and its base are attached to (`attach_top`, `attach_base`), as a wall's are;
+/// a build that reads up to 19 would leave them out of a file and stand the column at its own level, not "saved by a newer BIMCraft".
+/// And a project has a Project Base Point, a Survey Point and named sites beside its georeference (`coordinates`), and a
+/// georeference needs no coordinate reference system (`crs` may be left out); a build that reads up to 19 would refuse such a
+/// georeference and lose where the project stands; and it would read spot coordinates (a spot's `coordinate`, `type`, `origin`,
+/// `leader`, `shoulder` and `end`) and a level's `elevation_base` as spot elevations from the Project Base Point. A file of 19
+/// needs no step: its georeference is the active site, both points at the internal origin.
+pub const FORMAT: u32 = 20;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -148,6 +216,9 @@ pub struct Level {
     /// bound them whatever it is.
     #[serde(default = "computation_height", skip_serializing_if = "is_computation_height")]
     pub computation_height: f64,
+    /// What its elevation is shown from: the Project Base Point or the Survey Point. It is stored internal.
+    #[serde(default, skip_serializing_if = "crate::coordinates::Origin::is_default")]
+    pub elevation_base: crate::coordinates::Origin,
 }
 
 fn computation_height() -> f64 {
@@ -169,6 +240,7 @@ impl Level {
             graphics: Graphics::default(),
             section_box: false,
             computation_height: CUT_HEIGHT,
+            elevation_base: Default::default(),
         }
     }
 }
@@ -217,6 +289,16 @@ pub struct RoomSeparator {
     pub level: Guid,
     pub start: P2,
     pub end: P2,
+}
+
+/// A named, simple closed property boundary in a level's plan. Points exclude the repeated closing corner.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PropertyLine {
+    #[serde(default)]
+    pub name: String,
+    pub level: Guid,
+    pub points: Vec<P2>,
 }
 
 /// A reinforcing bar: a round bar of `diameter` mm bent along `path` (mm: x east, y north, z over `level`), of steel `grade`. It
@@ -850,14 +932,18 @@ pub struct Opening {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Room {
+    /// Its room type, which says whether it has a floor and a ceiling of its own, of what types and how far from its level.
+    #[serde(rename = "type", default = "room_type")]
+    pub type_name: String,
     pub level: Guid,
     /// A point inside the room. The boundary is found from the walls around it, so it follows
     /// them when they move.
     pub point: P2,
     pub name: String,
     pub number: String,
-    /// What it is filled with on plans, red, green and blue: none, no fill.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    /// What a file from before format 20 holds, a colour of the room's own on plans: `Model::migrate` moves it to a room
+    /// type (`RoomType::colour`), so a room of the project has none, and `Model::check` refuses one.
+    #[serde(default, skip_serializing)]
     pub colour: Option<[u8; 3]>,
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -878,6 +964,63 @@ pub struct Room {
     /// What a frozen room keeps, given it after the command that froze it (`Model::keep_rooms`).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kept: Option<Kept>,
+    /// The floor made for it, as its type says, which follows its boundary at the walls' faces (`Model::follow_rooms`).
+    #[serde(default, skip_serializing_if = "Finish::is_none")]
+    pub floor: Finish,
+    /// The ceiling made for it, likewise.
+    #[serde(default, skip_serializing_if = "Finish::is_none")]
+    pub ceiling: Finish,
+}
+
+/// The floor or the ceiling a room's type asks for: none made yet (or none asked for), the one that follows the room, or
+/// let go (Disconnect), which stays so until it is made again (Regenerate).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Finish {
+    #[default]
+    None,
+    Connected(Guid),
+    Disconnected,
+}
+
+impl Finish {
+    pub fn is_none(&self) -> bool {
+        *self == Finish::None
+    }
+
+    /// The element that follows the room, while one does.
+    pub fn connected(&self) -> Option<Guid> {
+        match self {
+            Finish::Connected(g) => Some(*g),
+            _ => None,
+        }
+    }
+}
+
+/// Which of a room's finishes: its floor or its ceiling.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Part {
+    Floor,
+    Ceiling,
+}
+
+impl Part {
+    pub const BOTH: [Part; 2] = [Part::Floor, Part::Ceiling];
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Part::Floor => "floor",
+            Part::Ceiling => "ceiling",
+        }
+    }
+}
+
+/// The room type a new project has, and the one a room read from a file without one is of: no floor, no ceiling.
+pub const ROOM_TYPE: &str = "Standard";
+
+fn room_type() -> String {
+    ROOM_TYPE.into()
 }
 
 impl Room {
@@ -885,6 +1028,7 @@ impl Room {
     /// frozen.
     pub fn new(level: Guid, point: P2, name: impl Into<String>, number: impl Into<String>) -> Room {
         Room {
+            type_name: ROOM_TYPE.into(),
             level,
             point,
             name: name.into(),
@@ -896,6 +1040,23 @@ impl Room {
             limit_offset: ROOM_LIMIT_OFFSET,
             frozen: false,
             kept: None,
+            floor: Finish::None,
+            ceiling: Finish::None,
+        }
+    }
+
+    /// Its floor or its ceiling.
+    pub fn finish(&self, part: Part) -> Finish {
+        match part {
+            Part::Floor => self.floor,
+            Part::Ceiling => self.ceiling,
+        }
+    }
+
+    pub fn finish_mut(&mut self, part: Part) -> &mut Finish {
+        match part {
+            Part::Floor => &mut self.floor,
+            Part::Ceiling => &mut self.ceiling,
         }
     }
 }
@@ -1041,12 +1202,26 @@ impl End {
     }
 }
 
-/// How far a point stands from a line `toward` it (a unit vector along x or y): see [`Model::clearances`].
+/// How far a point, `from`, stands from a line `toward` it (a unit vector): see [`Model::clearances`].
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Clearance {
+    pub from: P2,
     pub toward: P2,
     pub distance: f64,
     pub to: Reference,
+}
+
+/// The nearest of `lines` from `at` going `toward` (a unit vector), as far as each runs; a line `at` stands on is no
+/// distance away, so the next one counts.
+fn nearest(lines: &[(Reference, Line)], at: P2, toward: P2) -> Option<Clearance> {
+    lines
+        .iter()
+        .filter_map(|&(to, (a, b))| {
+            let hit = geom::line_intersection(at, at + toward, a, b)?;
+            let distance = (hit - at).dot(toward);
+            (distance > TOL && geom::dist_to_segment(hit, a, b) <= 1e-6).then_some(Clearance { from: at, toward, distance, to })
+        })
+        .min_by(|x, y| x.distance.total_cmp(&y.distance))
 }
 
 /// A dimension in a level's plan. Aligned: the distances between parallel references, along a
@@ -1333,6 +1508,42 @@ pub struct Spot {
     pub host: Option<Guid>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub slope: bool,
+    /// A spot coordinate: in a plan, the north and east of `at`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub coordinate: bool,
+    /// What it measures from: the Project Base Point or the Survey Point. A spot coordinate's type says, and this picks the
+    /// type one from before types takes.
+    #[serde(default, skip_serializing_if = "crate::coordinates::Origin::is_default")]
+    pub origin: crate::coordinates::Origin,
+    /// A spot coordinate's type (`spots`).
+    #[serde(default, rename = "type", skip_serializing_if = "Option::is_none")]
+    pub type_name: Option<String>,
+    /// A spot coordinate's leader, from its point to `end`, and the shoulder its text stands on.
+    #[serde(default = "yes", skip_serializing_if = "is_yes")]
+    pub leader: bool,
+    #[serde(default = "yes", skip_serializing_if = "is_yes")]
+    pub shoulder: bool,
+    /// Where its leader ends: else up and to the right of the point, 8 mm on paper.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub end: Option<P2>,
+}
+
+impl Spot {
+    /// A spot elevation in `view` at `at`, as a command makes one before it says more.
+    pub fn new(view: Guid, at: P2) -> Spot {
+        Spot {
+            view,
+            at,
+            host: None,
+            slope: false,
+            coordinate: false,
+            origin: Default::default(),
+            type_name: None,
+            leader: true,
+            shoulder: true,
+            end: None,
+        }
+    }
 }
 
 /// Another project shown in this one, a reference that can't be edited: Revit's linked model. The file stays where it is;
@@ -1341,13 +1552,35 @@ pub struct Spot {
 #[serde(deny_unknown_fields)]
 pub struct Link {
     pub name: String,
-    /// The `.bimcraft` or `.ifc` it reads, as it was given: a relative one is relative to this project's file.
+    /// The `.bimc` (or earlier `.bimcraft`) or `.ifc` it reads, as it was given: a relative one is relative to this project's file.
     pub path: String,
     /// Where its origin stands in this project, and how far it is turned about it, degrees. Its levels stand at their own
-    /// elevations.
+    /// elevations. By base points or shared coordinates, both are worked out each time it is drawn (`link::placement`).
     pub at: P2,
     #[serde(default, skip_serializing_if = "is_zero")]
     pub angle: f64,
+    /// How it is placed: by hand (`at`, `angle`), base point on base point, or by shared coordinates.
+    #[serde(default, skip_serializing_if = "crate::link::By::is_default")]
+    pub by: crate::link::By,
+    /// By shared coordinates, which of its locations it stands at: its active one where none is named.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub location: Option<String>,
+    /// By hand, how far it is raised, mm: where Reset Coordinates pinned one that stood higher by its coordinates.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub raised: f64,
+    /// By base points or shared coordinates, where it stood when last worked out with its file loaded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub placed: Option<Placed>,
+}
+
+/// Where a link stood when it was last worked out with its file loaded: its origin in plan, its turn, degrees, and how far it
+/// is raised, mm. A link placed by base points or shared coordinates keeps it, so it can be pinned there with its file gone.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Placed {
+    pub at: P2,
+    pub angle: f64,
+    pub raised: f64,
 }
 
 /// A schedule view: the elements of category `of` in rows, as the `schedule` command lists them:
@@ -1536,6 +1769,15 @@ pub struct Column {
     pub height: f64,
     #[serde(default)]
     pub base_offset: f64,
+    /// How far above `top_level` its top is.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub top_offset: f64,
+    /// The roof or floor its top follows from below, as a wall's; a footing has none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attach_top: Option<Guid>,
+    /// The roof or floor its base stands on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub attach_base: Option<Guid>,
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
@@ -1610,10 +1852,16 @@ pub struct Run {
 
 /// A family's type placed: at `at` on `level`, `offset` mm up from it, turned `angle` degrees
 /// (counter-clockwise from east) and, `mirrored`, flipped across its own x axis; `params`, its
-/// instance parameters' values where they aren't the family's.
+/// instance parameters' values where they aren't the family's. Hosted on a reference plane (`host`), `level` is its
+/// Schedule Level, `at` and `offset` follow the plane, and it may tilt with it (`Model::component_placement`).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Component {
+    /// Frames in component-local coordinates; None uses the definition test placement. A component whose frame comes from
+    /// its adaptive points (this set, or its family adaptive: `Model::placed_by_points`) takes no `host`: `Model::check`
+    /// refuses one, and `Model::component_placement` and `Model::settle_hosts` leave it as its points place it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub adaptive: Option<crate::adaptive::Placement>,
     pub family: String,
     #[serde(rename = "type")]
     pub type_name: String,
@@ -1627,6 +1875,13 @@ pub struct Component {
     pub mirrored: bool,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
+    /// What a work plane-based component stands on, where that isn't its level: its place on a reference plane, which its
+    /// `at` and `offset` are worked out from (`crate::hosting`). None, it is on `level`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host: Option<Hosted>,
+    /// A distribution board's electrical data: its distribution system, its mains and slots and the board that supplies it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub panel: Option<crate::electrical::Panel>,
 }
 
 /// A stair from `level` up to `top_level` (or `height` mm), climbing from the middle of its first
@@ -1877,6 +2132,13 @@ pub struct Section {
     pub depth: Option<f64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub crop: Option<[f64; 2]>,
+    /// The line an elevation looks at, square to it from whichever side its mark stands on (`elevation.rs`): the edge it
+    /// was placed on, kept as a line of its own, not a tie to what had the edge. One of FORMAT 18's, as `mark` is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference: Option<[P2; 2]>,
+    /// Where an elevation's mark stands in plan, apart from its line; none: at the line's middle.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mark: Option<P2>,
     /// What it hides and how it draws the rest.
     #[serde(default, skip_serializing_if = "Graphics::is_default")]
     pub graphics: Graphics,
@@ -2008,6 +2270,11 @@ pub struct Viewport {
     pub view: Guid,
     pub at: P2,
     pub scale: f64,
+    /// Whether it takes its view's scale as that changes, as a viewport placed without one does; one placed at a
+    /// scale of its own (`place` with `scale`) keeps it, and `scale` leaves it where it is. Written only when off, one of
+    /// FORMAT 18's.
+    #[serde(default = "yes", skip_serializing_if = "is_yes")]
+    pub follow_scale: bool,
 }
 
 /// A pattern for the element of any run category, its run bound as `$r`: a tab adds its categories here, and every place
@@ -2036,13 +2303,17 @@ macro_rules! visit_refs {
             // A view's graphics, as `views_graphics` gives them.
             Element::Level(_) | Element::Section(_) | Element::Elevation(_) => {}
             Element::View3D(v) => {
-                if let Some(wp) = & $($m)? v.work_plane
-                    && let Some(g) = & $($m)? wp.level
-                {
-                    f(g)
+                if let Some(wp) = & $($m)? v.work_plane {
+                    if let Some(g) = & $($m)? wp.level {
+                        f(g)
+                    }
+                    if let Some(g) = & $($m)? wp.ref_plane {
+                        f(g)
+                    }
                 }
             }
-            Element::Grid(_) | Element::Sheet(_) | Element::Schedule(_) | Element::Link(_) => {}
+            Element::PanelSchedule(ps) => f(& $($m)? ps.panel),
+            Element::Grid(_) | Element::RefPlane(_) | Element::Sheet(_) | Element::Schedule(_) | Element::Link(_) | Element::ProjectInfo(_) => {}
             Element::PlanView(v) => {
                 f(& $($m)? v.level);
                 if let Some(g) = & $($m)? v.parent { f(g) }
@@ -2054,19 +2325,24 @@ macro_rules! visit_refs {
                 if let Some(g) = & $($m)? w.attach_base { f(g) }
             }
             Element::Floor(Floor { level, .. }) | Element::Ceiling(Ceiling { level, .. }) => f(level),
-            Element::Room(Room { level, top_level, .. }) => {
+            Element::Room(Room { level, top_level, floor, ceiling, .. }) => {
                 f(level);
                 if let Some(g) = top_level { f(g) }
+                if let Finish::Connected(g) = floor { f(g) }
+                if let Finish::Connected(g) = ceiling { f(g) }
             }
             Element::Shaft(Shaft { level, top_level, .. })
             | Element::Mass(Mass { level, top_level, .. })
-            | Element::Column(Column { level, top_level, .. })
-            | Element::StructuralColumn(Column { level, top_level, .. })
-            | Element::Footing(Column { level, top_level, .. })
             | Element::Stair(Stair { level, top_level, .. })
             | Element::Ramp(Ramp { level, top_level, .. }) => {
                 f(level);
                 if let Some(g) = top_level { f(g) }
+            }
+            Element::Column(c) | Element::StructuralColumn(c) | Element::Footing(c) => {
+                f(& $($m)? c.level);
+                if let Some(g) = & $($m)? c.top_level { f(g) }
+                if let Some(g) = & $($m)? c.attach_top { f(g) }
+                if let Some(g) = & $($m)? c.attach_base { f(g) }
             }
             Element::Door(o) | Element::Window(o) => f(& $($m)? o.host),
             Element::Dimension(d) => {
@@ -2086,7 +2362,15 @@ macro_rules! visit_refs {
                 f(& $($m)? v.view);
             }
             run_arm!(r) => f(& $($m)? r.level),
-            Element::Component(c) => f(& $($m)? c.level),
+            Element::Component(c) => {
+                f(& $($m)? c.level);
+                if let Some(Hosted { host: HostRef::Plane(g) | HostRef::Face { element: g, .. }, .. }) = & $($m)? c.host { f(g) }
+                if let Some(p) = & $($m)? c.panel
+                    && let Some(g) = & $($m)? p.supply_from
+                {
+                    f(g)
+                }
+            }
             Element::Railing(r) => {
                 f(& $($m)? r.level);
                 if let Some(g) = & $($m)? r.host { f(g) }
@@ -2110,6 +2394,13 @@ macro_rules! visit_refs {
                 if let Some(g) = & $($m)? ci.view { f(g) }
             }
             Element::RoomSeparator(rs) => f(& $($m)? rs.level),
+            Element::PropertyLine(pl) => f(& $($m)? pl.level),
+            Element::Circuit(c) => {
+                f(& $($m)? c.panel);
+                for g in & $($m)? c.devices {
+                    f(g)
+                }
+            }
             Element::Rebar(rb) => {
                 f(& $($m)? rb.level);
                 if let Some(g) = & $($m)? rb.host { f(g) }
@@ -2123,6 +2414,9 @@ macro_rules! visit_refs {
 pub enum Element {
     Level(Level),
     Grid(Grid),
+    /// A reference plane of the project, which work plane-based components are hosted on.
+    #[serde(rename = "refplane")]
+    RefPlane(ReferencePlane),
     Wall(Wall),
     Floor(Floor),
     Ceiling(Ceiling),
@@ -2134,6 +2428,7 @@ pub enum Element {
     /// A room separation line: it bounds rooms and builds nothing.
     #[serde(rename = "roomseparator")]
     RoomSeparator(RoomSeparator),
+    PropertyLine(PropertyLine),
     Dimension(Dimension),
     /// A dimension in a 3D view, between points or edges of the model.
     Dimension3D(Dimension3D),
@@ -2186,6 +2481,13 @@ pub enum Element {
     PointCloud(PointCloud),
     /// A CAD drawing placed in the model.
     CadImport(CadImport),
+    /// An electrical circuit: devices on a distribution board, behind one breaker.
+    Circuit(crate::electrical::Circuit),
+    /// A distribution board's load schedule, a view of its own.
+    PanelSchedule(crate::panel_schedule::PanelSchedule),
+    /// The project's information (Revit's Project Information): one in a project at most.
+    #[serde(rename = "project")]
+    ProjectInfo(crate::project_info::ProjectInfo),
 }
 
 impl Element {
@@ -2207,7 +2509,8 @@ impl Element {
             | Element::Component(Component { params, .. })
             | Element::Stair(Stair { params, .. })
             | Element::Ramp(Ramp { params, .. })
-            | Element::Railing(Railing { params, .. }) => Some(params),
+            | Element::Railing(Railing { params, .. })
+            | Element::ProjectInfo(crate::project_info::ProjectInfo { params, .. }) => Some(params),
             _ => None,
         }
     }
@@ -2230,7 +2533,8 @@ impl Element {
             | Element::Component(Component { params, .. })
             | Element::Stair(Stair { params, .. })
             | Element::Ramp(Ramp { params, .. })
-            | Element::Railing(Railing { params, .. }) => Some(params),
+            | Element::Railing(Railing { params, .. })
+            | Element::ProjectInfo(crate::project_info::ProjectInfo { params, .. }) => Some(params),
             _ => None,
         }
     }
@@ -2361,15 +2665,18 @@ impl Element {
             Element::FilledRegion(_) => "region",
             Element::DetailGroup(_) => "detailgroup",
             Element::RepeatingDetail(_) => "repeatingdetail",
+            Element::Spot(sp) if sp.coordinate => "spotcoordinate",
             Element::Spot(_) => "spot",
             Element::Link(_) => "link",
             Element::PointCloud(_) => "pointcloud",
             Element::CadImport(_) => "cadimport",
+            Element::ProjectInfo(_) => crate::project_info::CATEGORY,
             Element::Schedule(_) => "schedule",
             Element::View3D(_) => "view3d",
             Element::PlanView(_) => "planview",
             Element::Level(_) => "level",
             Element::Grid(_) => "grid",
+            Element::RefPlane(_) => "refplane",
             Element::Wall(_) => "wall",
             Element::Floor(_) => "floor",
             Element::Ceiling(_) => "ceiling",
@@ -2379,10 +2686,13 @@ impl Element {
             Element::Window(_) => "window",
             Element::Room(_) => "room",
             Element::RoomSeparator(_) => "roomseparator",
+            Element::PropertyLine(_) => "propertyline",
             Element::Rebar(_) => "rebar",
             Element::Dimension(_) => "dimension",
             Element::Dimension3D(_) => "dimension3d",
             Element::Tag(_) => "tag",
+            Element::Circuit(_) => "circuit",
+            Element::PanelSchedule(_) => "panelschedule",
             Element::Section(_) => "section",
             Element::Elevation(_) => "elevation",
             Element::Sheet(_) => "sheet",
@@ -2429,6 +2739,54 @@ pub struct FloorType {
     pub layers: Vec<Layer>,
 }
 
+/// A room type: the floor and the ceiling its rooms have of their own, each a type of the project's and its distance from
+/// the room's level (a floor's top, a ceiling's underside); without either, its rooms have none.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct RoomType {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub floor: Option<String>,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub floor_offset: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ceiling: Option<String>,
+    #[serde(default = "ceiling_height", skip_serializing_if = "is_ceiling_height")]
+    pub ceiling_offset: f64,
+    /// The colour its rooms are filled with on plans, and their spaces' bodies styled in in IFC; none, no fill.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub colour: Option<[u8; 3]>,
+}
+
+impl Default for RoomType {
+    /// No floor and no ceiling; one given it starts at the usual ceiling height.
+    fn default() -> Self {
+        RoomType { floor: None, floor_offset: 0.0, ceiling: None, ceiling_offset: CEILING_HEIGHT, colour: None }
+    }
+}
+
+impl RoomType {
+    /// The type of its floor or its ceiling, and how far from the level.
+    pub fn finish(&self, part: Part) -> Option<(&str, f64)> {
+        match part {
+            Part::Floor => self.floor.as_deref().map(|t| (t, self.floor_offset)),
+            Part::Ceiling => self.ceiling.as_deref().map(|t| (t, self.ceiling_offset)),
+        }
+    }
+
+    /// Whether its rooms have a floor or a ceiling of their own.
+    pub fn finishes(&self) -> bool {
+        self.floor.is_some() || self.ceiling.is_some()
+    }
+}
+
+fn ceiling_height() -> f64 {
+    CEILING_HEIGHT
+}
+
+fn is_ceiling_height(x: &f64) -> bool {
+    *x == CEILING_HEIGHT
+}
+
 /// A railing type: how high its rail stands, and how far apart its balusters are (0: none).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -2450,18 +2808,21 @@ pub struct CeilingType {
     pub layers: Vec<Layer>,
 }
 
-/// A column type: `width` by `depth`, or round, `width` across.
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+/// A column type: `width` by `depth`, or round, `width` across. A structural column's may have a steel section in that
+/// box (`profiles.rs`), its width along the column's angle.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ColumnType {
     pub width: f64,
     pub depth: f64,
     #[serde(default)]
     pub round: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile: Option<Profile>,
 }
 
 /// A run's type: a section `width` across by `depth` deep, or round, `width` across; made of `material` (one of the
-/// library's, or none).
+/// library's, or none). A beam's may have a steel section in that box (`profiles.rs`), its x across and its y up.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RunType {
@@ -2471,6 +2832,8 @@ pub struct RunType {
     pub round: bool,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub material: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile: Option<Profile>,
 }
 
 /// The categories whose elements are runs, as `Element::run` returns them.
@@ -2516,11 +2879,23 @@ pub enum Operation {
     Folding,
     /// Nothing opens.
     Fixed,
+    /// Hinged horizontal panels run up and overhead on tracks.
+    Sectional,
+    /// A curtain winds onto a coil above the opening.
+    Roller,
 }
 
 impl Operation {
-    pub const ALL: [Operation; 6] =
-        [Operation::Swing, Operation::DoubleSwing, Operation::Sliding, Operation::DoubleSliding, Operation::Folding, Operation::Fixed];
+    pub const ALL: [Operation; 8] = [
+        Operation::Swing,
+        Operation::DoubleSwing,
+        Operation::Sliding,
+        Operation::DoubleSliding,
+        Operation::Folding,
+        Operation::Fixed,
+        Operation::Sectional,
+        Operation::Roller,
+    ];
 
     /// Its name, as files and commands spell it.
     pub fn name(self) -> &'static str {
@@ -2531,6 +2906,8 @@ impl Operation {
             Operation::DoubleSliding => "double-sliding",
             Operation::Folding => "folding",
             Operation::Fixed => "fixed",
+            Operation::Sectional => "sectional",
+            Operation::Roller => "roller",
         }
     }
 
@@ -2543,11 +2920,23 @@ impl Operation {
             Operation::DoubleSliding => msg!("Double Sliding"),
             Operation::Folding => msg!("Folding"),
             Operation::Fixed => msg!("Fixed"),
+            Operation::Sectional => msg!("Sectional"),
+            Operation::Roller => msg!("Roller"),
         }
     }
 
     pub fn parse(name: &str) -> Option<Operation> {
         Operation::ALL.into_iter().find(|o| o.name().eq_ignore_ascii_case(name.trim()))
+    }
+
+    /// Project-owned industrial door types have generated panels and equipment.
+    pub fn industrial(self) -> bool {
+        matches!(self, Operation::Sectional | Operation::Roller)
+    }
+
+    /// IFC4 has no sectional-door enumeration, so the user-defined operation carries its meaning.
+    pub fn ifc_door_user(self) -> Option<&'static str> {
+        (self == Operation::Sectional).then_some("SECTIONAL")
     }
 
     /// A door's `IfcDoorTypeOperationEnum`, its leaf to the right with `right`; a door that says
@@ -2561,6 +2950,8 @@ impl Operation {
             Operation::DoubleSliding => ".DOUBLE_DOOR_SLIDING.",
             Operation::Folding => side(".FOLDING_TO_LEFT.", ".FOLDING_TO_RIGHT."),
             Operation::Fixed => ".NOTDEFINED.",
+            Operation::Sectional => ".USERDEFINED.",
+            Operation::Roller => ".ROLLINGUP.",
         }
     }
 
@@ -2579,9 +2970,19 @@ impl Operation {
             "SLIDING_TO_LEFT" | "SLIDING_TO_RIGHT" => Operation::Sliding,
             "DOUBLE_DOOR_SLIDING" => Operation::DoubleSliding,
             "FOLDING_TO_LEFT" | "FOLDING_TO_RIGHT" | "DOUBLE_DOOR_FOLDING" => Operation::Folding,
+            "ROLLINGUP" => Operation::Roller,
             _ => return None,
         };
         Some((op, right))
+    }
+
+    /// Read an IFC4 custom operation as well as the standard operation enumeration.
+    pub fn from_ifc_door_with_user(e: &str, user: Option<&str>) -> Option<(Operation, bool)> {
+        if e.trim_matches('.') == "USERDEFINED" && user.is_some_and(|u| u.trim().eq_ignore_ascii_case("SECTIONAL")) {
+            Some((Operation::Sectional, false))
+        } else {
+            Self::from_ifc_door(e)
+        }
     }
 
     /// A window's `IfcWindowTypePartitioningEnum`: two panels side by side where two leaves meet, else one.
@@ -2608,6 +3009,9 @@ pub struct Types {
     pub ceiling: BTreeMap<String, CeilingType>,
     #[serde(default)]
     pub railing: BTreeMap<String, RailingType>,
+    /// Room types: what floor and ceiling a room has of its own.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub room: BTreeMap<String, RoomType>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub structural_column: BTreeMap<String, ColumnType>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -2626,23 +3030,87 @@ pub enum ParameterKind {
     Number,
     Length,
     YesNo,
+    /// A whole number.
+    Integer,
+    /// In m², as a schedule's areas are.
+    Area,
+    /// In m³.
+    Volume,
+    /// In degrees.
+    Angle,
+}
+
+/// Whose value a project parameter is: each element's, or its type's, which every element of the type reads.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Scope {
+    #[default]
+    Instance,
+    Type,
+}
+
+impl Scope {
+    fn is_instance(&self) -> bool {
+        *self == Scope::Instance
+    }
 }
 
 /// A project parameter, as Revit's Manage > Project Parameters makes one: a value of its kind each
-/// element of its categories may have of its own.
+/// element of its categories, or each of their types, may have of its own. There is no separate shared kind: any parameter has a GUID, and can be
+/// scheduled and tagged; one from a dictionary says so in `dictionary`.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProjectParameter {
     #[serde(default)]
     pub kind: ParameterKind,
     pub categories: Vec<String>,
+    /// What it's for: Properties shows it as a tooltip.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub description: String,
+    /// The heading of Properties it shows under (one of Revit's groups, or the project's own); none for Project Parameters.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group: Option<crate::family::Under>,
+    /// Shown in Properties and not changed there; commands still can.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub read_only: bool,
+    /// Each element's, or its type's.
+    #[serde(default, skip_serializing_if = "Scope::is_instance")]
+    pub scope: Scope,
+    /// A type parameter's values, by the GUID of the type (a library entry), so a type renamed keeps its value.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub type_values: BTreeMap<Guid, serde_json::Value>,
+    /// The dictionary it came from, which makes it shared; a name in memory, its GUID in a file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dictionary: Option<String>,
+    /// Other parameters' GUIDs it has been said to be, or merged from: what a file holding one of them means here.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub same_as: Vec<Guid>,
+    /// The property set an IFC export writes each category's values in, by category: the set they came in from another
+    /// program. A category it doesn't name writes them in the project's own, `Project Parameters`.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub sets: BTreeMap<String, String>,
+    /// A classification system's codes, which IFC holds as classification references rather than properties: a text
+    /// parameter whose value is an element's code in the system.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub classification: Option<Classification>,
+}
+
+/// A classification system, as IFC's `IfcClassification` names it: Uniclass, OmniClass, a national table.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Classification {
+    /// Its name.
+    pub system: String,
+    /// Its edition, where the file says.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub edition: Option<String>,
 }
 
 /// The most project parameters a project holds.
-pub const MAX_PROJECT_PARAMETERS: usize = 256;
+pub const MAX_PROJECT_PARAMETERS: usize = 4096;
 
 /// The categories project parameters are for.
-pub const PARAMETER_CATEGORIES: [&str; 25] = [
+pub const PARAMETER_CATEGORIES: [&str; 26] = [
     "wall",
     "floor",
     "ceiling",
@@ -2668,6 +3136,7 @@ pub const PARAMETER_CATEGORIES: [&str; 25] = [
     "downconductor",
     "groundconductor",
     "cable",
+    "project",
 ];
 
 impl ProjectParameter {
@@ -2675,9 +3144,48 @@ impl ProjectParameter {
     pub fn holds(&self, v: &serde_json::Value) -> bool {
         match self.kind {
             ParameterKind::Text => v.as_str().is_some_and(|t| t.chars().count() <= MAX_TEXT),
-            ParameterKind::Number | ParameterKind::Length => v.as_f64().is_some_and(|x| x.is_finite() && x.abs() <= MAX_COORD),
+            ParameterKind::Number | ParameterKind::Length | ParameterKind::Area | ParameterKind::Volume | ParameterKind::Angle => {
+                v.as_f64().is_some_and(|x| x.is_finite() && x.abs() <= MAX_COORD)
+            }
+            ParameterKind::Integer => v.as_f64().is_some_and(|x| x.is_finite() && x.abs() <= MAX_COORD && x.fract() == 0.0),
             ParameterKind::YesNo => v.is_boolean(),
         }
+    }
+
+    /// Whether what it says of IFC is what a file can hold: a set for each of its categories at most, named as no set
+    /// BIMCraft reads into fields of its own; a classification, a text parameter's in no set, with a system named.
+    fn check_ifc(&self) -> Result<(), String> {
+        let named = |what: &str, v: &str| -> Result<(), String> {
+            if v.trim().is_empty() || v.trim() != v {
+                return Err(format!("{what} needs a name, without spaces round it"));
+            }
+            if v.chars().count() > MAX_TEXT {
+                return Err(format!("{what} is longer than {MAX_TEXT} characters"));
+            }
+            Ok(())
+        };
+        for (c, set) in &self.sets {
+            if !self.categories.contains(c) {
+                return Err(format!("it has a set for {c}s, which it isn't for"));
+            }
+            named(&format!("the set for {c}s"), set)?;
+            if !crate::ifc::foreign_set(set) {
+                return Err(format!("BIMCraft reads `{set}` into fields of its own; put {c}s' values in another set"));
+            }
+        }
+        if let Some(cl) = &self.classification {
+            if self.kind != ParameterKind::Text {
+                return Err("a classification's codes are text".into());
+            }
+            if !self.sets.is_empty() {
+                return Err("a classification's codes go in IFC as references, not in a property set".into());
+            }
+            named("its classification system", &cl.system)?;
+            if let Some(e) = &cl.edition {
+                named("its classification's edition", e)?;
+            }
+        }
+        Ok(())
     }
 }
 
@@ -2725,11 +3233,15 @@ pub const MAX_MAP: f64 = 1.0e13;
 
 /// Where the project lies on a map, as IFC's `IfcMapConversion` to a projected coordinate reference system: a point of the
 /// project at (x, y, z) mm is on the map at `eastings + scale * (x cos r - y sin r)`, `northings + scale * (x sin r + y cos r)`,
-/// `height + scale * z`, r the `rotation`. A file keeps it as it is; the drawings and the model's own coordinates don't move.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+/// `height + z`, r the `rotation`: the grid's scale is in plan only, heights stay true. It is the project's active site
+/// (`coordinates.rs`): a site needs no coordinate reference system, any of its numbers makes one. A file keeps it as it is;
+/// the drawings and the model's own coordinates don't move.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Georeference {
-    /// The map's coordinate reference system by its name, as IFC's `IfcProjectedCRS` names it (an EPSG code: `EPSG:31983`).
+    /// The map's coordinate reference system by its name, as IFC's `IfcProjectedCRS` names it (an EPSG code: `EPSG:31983`);
+    /// empty, a local grid with none named.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub crs: String,
     /// What else IFC says of it, where the file did: a description, its geodetic and vertical datums, map projection and zone.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -2761,12 +3273,15 @@ fn one() -> f64 {
     1.0
 }
 
+impl Default for Georeference {
+    fn default() -> Georeference {
+        crate::coordinates::NONE.clone()
+    }
+}
+
 impl Georeference {
-    /// What's wrong with it, if anything: its texts too long or its name empty, a number not finite or out of range.
+    /// What's wrong with it, if anything: its texts too long, a number not finite or out of range.
     pub fn check(&self) -> Result<(), String> {
-        if self.crs.trim().is_empty() {
-            return Err("its coordinate reference system needs a name (`crs`: an EPSG code, `EPSG:31983`)".into());
-        }
         let texts = [
             ("crs", Some(&self.crs)),
             ("description", self.description.as_ref()),
@@ -2836,6 +3351,12 @@ pub struct Model {
     /// Its project parameters, by name: values each element of their categories may have.
     #[serde(default)]
     pub parameters: BTreeMap<String, ProjectParameter>,
+    /// The dictionaries its parameters came from, by name: where each was and the version it was at.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub dictionaries: BTreeMap<String, crate::parameters::DictionaryRef>,
+    /// What the files imported call categories, each to one of ours or, none, left out: asked once.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub parameter_map: BTreeMap<String, Option<String>>,
     /// Its view filters, by name: categories and rules that pick elements out for views to hide
     /// or draw another way.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -2884,6 +3405,9 @@ pub struct Model {
     /// Its dimension types, by name: how the dimensions of each draw and letter their numbers.
     #[serde(default = "crate::dims::types")]
     pub dimension_types: BTreeMap<String, crate::dims::DimensionType>,
+    /// Its spot coordinate types, by name: how the spot coordinates of each draw their leader and read their point.
+    #[serde(default = "crate::spots::types")]
+    pub spot_coordinate_types: BTreeMap<String, crate::spots::SpotCoordinateType>,
     /// Its detail group types, by name: the members each one placed draws.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub detail_groups: BTreeMap<String, crate::groups::GroupType>,
@@ -2897,6 +3421,12 @@ pub struct Model {
     /// Its reinforcement presets, by name: the parameters `reinforce` takes for a kind of host, kept to arm others alike.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub reinforcement: BTreeMap<String, crate::reinforce::Preset>,
+    /// Its print sets, by name: the views and sheets printed or exported together.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub print_sets: BTreeMap<String, crate::printset::PrintSet>,
+    /// Its publishing sets, by name: print sets in folders, each written as a format, published together.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub publish_sets: BTreeMap<String, crate::publish::PublishSet>,
     /// Its electrical voltages, by name, each with the band a device may read within.
     #[serde(default = "crate::electrical::voltages")]
     pub voltages: BTreeMap<String, crate::electrical::Voltage>,
@@ -2910,6 +3440,17 @@ pub struct Model {
     /// opens the rest, so it took no `FORMAT` step.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub georeference: Option<Georeference>,
+    /// The elements pinned where they are, by GUID: commands that place, draw or delete them refuse them until `unpin`. One of
+    /// FORMAT 18's: a build that reads up to 17 would leave it out of a file and let them move.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub pinned: BTreeSet<Guid>,
+    /// The factor that counts of the load of the circuits of a classification (above 0 up to 1), applied in a board's totals and
+    /// its panel schedule on top of each circuit's own; a classification with none counts whole.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub demand_factors: BTreeMap<String, f64>,
+    /// Where it stands in the world: its Project Base Point, its Survey Point and its locations.
+    #[serde(default, skip_serializing_if = "crate::coordinates::Coordinates::is_default")]
+    pub coordinates: crate::coordinates::Coordinates,
     pub elements: Elements,
     /// The ids and GUIDs of the library: its types, materials, pictures, families, parameters, view filters and
     /// templates, phases, phase filters and design options.
@@ -2986,6 +3527,8 @@ impl Model {
             cads: BTreeMap::new(),
             families: BTreeMap::new().into(),
             parameters: BTreeMap::new(),
+            dictionaries: BTreeMap::new(),
+            parameter_map: BTreeMap::new(),
             view_filters: BTreeMap::new(),
             view_templates: graphics::starter_templates(language),
             phases: phasing::phases(language),
@@ -3001,14 +3544,20 @@ impl Model {
             region_types: fills::region_types(language),
             text_types: crate::text::types(language),
             dimension_types: crate::dims::types(),
+            spot_coordinate_types: crate::spots::types(),
             detail_groups: BTreeMap::new(),
             title_blocks: BTreeMap::new(),
             title_values: BTreeMap::new(),
+            pinned: BTreeSet::new(),
             reinforcement: BTreeMap::new(),
+            print_sets: BTreeMap::new(),
+            publish_sets: BTreeMap::new(),
             voltages: crate::electrical::voltages(),
             distribution_systems: crate::electrical::distribution_systems(),
             wire_types: crate::electrical::wire_types(),
             georeference: None,
+            demand_factors: BTreeMap::new(),
+            coordinates: crate::coordinates::Coordinates::named(language.word(crate::coordinates::INTERNAL)),
             elements: Elements::new(),
             library: crate::library::Library::default(),
             loaded: BTreeMap::new(),
@@ -3064,20 +3613,21 @@ impl Model {
         for (n, w, h, s) in [("Fixed 1200 x 1500", 1200.0, 1500.0, 900.0), ("Fixed 600 x 900", 600.0, 900.0, 1100.0)] {
             m.types.window.insert(n.into(), OpeningType { width: w, height: h, sill: s, operation: None });
         }
-        m.types.column.insert("Rectangular 400 x 400".into(), ColumnType { width: 400.0, depth: 400.0, round: false });
-        m.types.column.insert("Round 300".into(), ColumnType { width: 300.0, depth: 300.0, round: true });
+        m.types.column.insert("Rectangular 400 x 400".into(), ColumnType { width: 400.0, depth: 400.0, round: false, profile: None });
+        m.types.column.insert("Round 300".into(), ColumnType { width: 300.0, depth: 300.0, round: true, profile: None });
         // The structure's: concrete columns, footings, beams and strip footings.
         for (n, w, d, round) in [
             ("Concrete 300 x 300", 300.0, 300.0, false),
             ("Concrete 200 x 500", 200.0, 500.0, false),
             ("Concrete Round 400", 400.0, 400.0, true),
         ] {
-            m.types.structural_column.insert(n.into(), ColumnType { width: w, depth: d, round });
+            m.types.structural_column.insert(n.into(), ColumnType { width: w, depth: d, round, profile: None });
         }
         for (n, w) in [("Footing 1200 x 1200", 1200.0), ("Footing 1500 x 1500", 1500.0)] {
-            m.types.footing.insert(n.into(), ColumnType { width: w, depth: w, round: false });
+            m.types.footing.insert(n.into(), ColumnType { width: w, depth: w, round: false, profile: None });
         }
-        let run = |width, depth, round, material: &str| RunType { width, depth, round, material: language.word(material).into() };
+        let run =
+            |width, depth, round, material: &str| RunType { width, depth, round, material: language.word(material).into(), profile: None };
         let beams = [
             ("Beam 200 x 500", run(200.0, 500.0, false, "Concrete")),
             ("Beam 150 x 400", run(150.0, 400.0, false, "Concrete")),
@@ -3162,6 +3712,7 @@ impl Model {
         m.types.ceiling.insert("Generic - 20mm".into(), CeilingType { thickness: 20.0, grid: 0.0, layers: Vec::new() });
         m.types.ceiling.insert("Tile 600 x 600".into(), CeilingType { thickness: 20.0, grid: 600.0, layers: Vec::new() });
         m.types.railing.insert("Railing - 1000mm".into(), RailingType { height: 1000.0, spacing: 120.0 });
+        m.types.room.insert(ROOM_TYPE.into(), RoomType::default());
         let level = language.word("Level");
         m.insert(Element::Level(Level::new(format!("{level} 1"), 0.0)));
         m.insert(Element::Level(Level::new(format!("{level} 2"), 3000.0)));
@@ -3227,6 +3778,35 @@ impl Model {
         self.elements.iter().find(|(_, e)| self.component_materials(e).contains(&name)).map(|(id, _)| format!("component {id}"))
     }
 
+    /// Whether the families' shared parameters agree: a shared GUID is one name and one kind wherever a family holds it, and
+    /// a name is one shared GUID, so a schedule's column of it is one parameter.
+    fn check_shared_parameters(&self) -> Result<(), String> {
+        let mut by_guid: BTreeMap<Guid, (&str, &crate::family::Parameter)> = BTreeMap::new();
+        let mut by_name: BTreeMap<&str, (&str, Guid)> = BTreeMap::new();
+        for (n, f) in &self.families {
+            for p in &f.parameters {
+                let Some(g) = p.shared else { continue };
+                let who = format!("family `{n}`: parameter `{}` is shared as {g}", p.name);
+                if let Some((other, q)) = by_guid.get(&g) {
+                    if q.name != p.name {
+                        return Err(format!("{who}, which family `{other}` calls `{}`; a shared parameter has one name", q.name));
+                    }
+                    if q.kind != p.kind {
+                        return Err(format!("{who}, which family `{other}` holds as {}, not {}", q.kind.said(), p.kind.said()));
+                    }
+                }
+                if let Some((other, h)) = by_name.get(p.name.as_str())
+                    && *h != g
+                {
+                    return Err(format!("{who}, but family `{other}` shares `{}` as {h}: one name is one shared parameter", p.name));
+                }
+                by_guid.entry(g).or_insert((n, p));
+                by_name.entry(p.name.as_str()).or_insert((n, g));
+            }
+        }
+        Ok(())
+    }
+
     /// Whether the values `params` give an element of family `name` are its instance parameters' own: what the
     /// element sets of the family are instance parameters, none worked out by a formula, materials in the library.
     fn family_values_ok(&self, who: &str, name: &str, f: &Family, params: &BTreeMap<String, serde_json::Value>) -> Result<(), String> {
@@ -3235,10 +3815,20 @@ impl Model {
             if !p.instance {
                 return Err(format!("{who}: `{k}` is a type parameter of `{name}`; change it in its type, with `family`"));
             }
-            if p.formula.is_some() {
-                return Err(format!("{who}: `{k}` is worked out by its formula"));
+            if let Some(f) = p.driven() {
+                return Err(format!(
+                    "{who}: `{k}` is worked out by its formula `{f}`; change the formula in family `{name}`, or take it away to set `{k}`"
+                ));
+            }
+            if p.reporting {
+                return Err(format!("{who}: `{k}` is a reporting parameter: its dimension says what it is, and nothing sets it"));
+            }
+            // A pivot's swing within its limits (F7d).
+            if let crate::family::Val::Number(n) = crate::family::read(p, v).map_err(|e| format!("{who}: {e}"))? {
+                f.pivot_value_ok(k, n).map_err(|e| format!("{who}: {e}"))?;
             }
             if let crate::family::Val::Text(m) = crate::family::read(p, v).map_err(|e| format!("{who}: {e}"))?
+                && p.kind == crate::family::Kind::Material
                 && !m.is_empty()
                 && !self.materials.contains_key(&m)
             {
@@ -3273,12 +3863,39 @@ impl Model {
         }
     }
 
+    /// Adaptive component `c`'s family evaluated on its frames (the family's test placement without frames of its own), in
+    /// its own axes, unmirrored.
+    pub fn component_adaptive_evaluation(&self, c: &Component) -> Result<crate::adaptive::Evaluation, String> {
+        let family = self.families.get(&c.family).ok_or("Unknown family")?;
+        let definition = family.adaptive.as_ref().ok_or("Family is not adaptive")?;
+        let values = family.values(&c.type_name, &c.params)?;
+        Ok(definition.evaluate(&values, c.adaptive.as_ref().unwrap_or(&definition.preview)))
+    }
+
+    /// Component `c`'s own axes in the project: at its point, up its level's elevation and its offset, turned by its angle.
+    pub fn component_axes(&self, c: &Component) -> Result<crate::adaptive::Frame, String> {
+        crate::adaptive::Frame::at([c.at.0, c.at.1, self.elevation(c.level) + c.offset]).transformed([0.; 3], [0., 0., c.angle])
+    }
+
+    /// Adaptive component `c`'s placement in its own axes, a frame for every adaptive point: its own, else the family's
+    /// test placement's, else the point's in the family. None for a component of a family that isn't adaptive.
+    pub fn adaptive_placement(&self, c: &Component) -> Option<crate::adaptive::Placement> {
+        let d = self.families.get(&c.family)?.adaptive.as_ref()?;
+        Some(d.completed(c.adaptive.as_ref().unwrap_or(&d.preview)))
+    }
+
+    /// Adaptive component `c`'s adaptive points in the project, by number: where its grips are and what a placement snaps to.
+    pub fn adaptive_points(&self, c: &Component) -> Vec<(u32, crate::adaptive::Frame)> {
+        let (Some(placement), Ok(axes)) = (self.adaptive_placement(c), self.component_axes(c)) else { return Vec::new() };
+        placement.frames.iter().filter_map(|(n, f)| f.from_local(axes, c.mirrored).ok().map(|f| (*n, f))).collect()
+    }
+
     /// Component `c`'s solids in its own axes, mirrored if it is: each visible form's triangles, its
     /// outline seen from above, from its bottom to its top over its base, what it's made of; none
     /// for one that doesn't build.
     pub fn component_local_pieces(&self, c: &Component) -> Vec<Piece> {
         let Some(f) = self.families.get(&c.family) else { return Vec::new() };
-        let Ok(pieces) = f.values(&c.type_name, &c.params).and_then(|v| f.pieces(&v)) else { return Vec::new() };
+        let Ok(pieces) = f.values(&c.type_name, &c.params).and_then(|v| f.pieces_at(&v, c.adaptive.as_ref())) else { return Vec::new() };
         if !c.mirrored {
             return pieces;
         }
@@ -3289,6 +3906,7 @@ impl Model {
             .map(|pc| Piece {
                 tris: pc.tris.iter().map(|[a, b, t]| [flip(*a), flip(*t), flip(*b)]).collect(),
                 outline: pc.outline.iter().rev().map(|q| P2(q.0, -q.1)).collect(),
+                holes: pc.holes.iter().map(|h| h.iter().rev().map(|q| P2(q.0, -q.1)).collect()).collect(),
                 ..pc
             })
             .collect()
@@ -3297,54 +3915,69 @@ impl Model {
     /// Component `c`'s plan marks in the model: its family's symbols in its own axes, mirrored if it is, turned and moved to
     /// where it stands. A label is lettered upright in the family's axes, so it turns (and mirrors) with the component.
     pub fn component_marks(&self, c: &Component) -> Vec<crate::family::Mark> {
+        self.component_marks_at(c, None)
+    }
+
+    /// [`Model::component_marks`] that a plan at detail level `detail` draws ([`crate::family::Family::marks_in`]).
+    pub fn component_marks_in(&self, c: &Component, detail: crate::graphics::Detail) -> Vec<crate::family::Mark> {
+        self.component_marks_at(c, Some(detail))
+    }
+
+    fn component_marks_at(&self, c: &Component, detail: Option<crate::graphics::Detail>) -> Vec<crate::family::Mark> {
         let Some(f) = self.families.get(&c.family) else { return Vec::new() };
         if f.symbols.is_empty() {
             return Vec::new();
         }
-        let Ok(marks) = f.values(&c.type_name, &c.params).and_then(|v| f.marks(&v)) else { return Vec::new() };
+        // Tilted with its plane, it has no plan of its own to draw its symbols in.
+        if !self.component_placement(c).upright {
+            return Vec::new();
+        }
+        let marks = f.values(&c.type_name, &c.params).and_then(|v| match detail {
+            Some(d) => f.marks_in(&v, d).map(|m| m.into_iter().map(|(k, _)| k).collect()),
+            None => f.marks(&v),
+        });
+        let Ok(marks) = marks else { return Vec::new() };
         let (sin, cos) = c.angle.to_radians().sin_cos();
         let flip = if c.mirrored { -1.0 } else { 1.0 };
         marks.iter().map(|k| k.map(|q| P2(c.at.0 + q.0 * cos - flip * q.1 * sin, c.at.1 + q.0 * sin + flip * q.1 * cos))).collect()
     }
 
+    /// Where component `c`'s room is found from: its family's room calculation point for its values, mirrored, turned and
+    /// moved with it to where it stands (x, y and the height over the project's origin); its insertion point where its family
+    /// has none, or the point doesn't work out.
+    pub fn component_room_point(&self, c: &Component) -> [f64; 3] {
+        let placed = self.component_placement(c);
+        let local =
+            self.families.get(&c.family).and_then(|f| f.values(&c.type_name, &c.params).ok().and_then(|v| f.room_point(&v).ok().flatten()));
+        let Some([x, y, z]) = local else { return placed.origin };
+        placed.place([x, if c.mirrored { -y } else { y }, z])
+    }
+
     /// Component `c`'s connectors, worked out for its type and values, with their place and the way they face in the
-    /// model: mirrored if it is, turned and moved to where it stands (a connector without a place has neither). None for a
-    /// component whose family has none or doesn't work out.
+    /// model: mirrored if it is, then placed as its family's axes are ([`Model::component_placement`]), so one hosted on a
+    /// tilted plane or a face carries them with it (a connector without a place has neither). None for a component whose
+    /// family has none or doesn't work out.
     pub fn component_connectors(&self, c: &Component) -> Vec<crate::family::PlacedConnector> {
         let Some(f) = self.families.get(&c.family) else { return Vec::new() };
         let Ok(connectors) = f.connector_values(&c.type_name, &c.params) else { return Vec::new() };
-        let base = self.elevation(c.level) + c.offset;
-        let (sin, cos) = c.angle.to_radians().sin_cos();
-        let flip = if c.mirrored { -1.0 } else { 1.0 };
-        let turn = |p: [f64; 3]| [p[0] * cos - flip * p[1] * sin, p[0] * sin + flip * p[1] * cos, p[2]];
+        let placed = self.component_placement(c);
+        let flip = |p: [f64; 3]| [p[0], if c.mirrored { -p[1] } else { p[1] }, p[2]];
+        let [a, b, z] = placed.axes;
+        let turn = |p: [f64; 3]| -> [f64; 3] { std::array::from_fn(|i| p[0] * a[i] + p[1] * b[i] + p[2] * z[i]) };
         connectors
             .into_iter()
             .map(|k| {
-                let at = k.at.map(|p| {
-                    let q = turn(p);
-                    [c.at.0 + q[0], c.at.1 + q[1], base + q[2]]
-                });
-                let dir = k.direction.map(turn);
+                let at = k.at.map(|p| placed.place(flip(p)));
+                let dir = k.direction.map(|d| turn(flip(d)));
                 (k, at, dir)
             })
             .collect()
     }
 
-    /// Component `c`'s solids in the model: its own, turned and moved to where it stands.
+    /// Component `c`'s solids in the model: its own, placed where it stands ([`Model::component_placement`]).
     pub fn component_pieces(&self, c: &Component) -> Vec<Piece> {
-        let base = self.elevation(c.level) + c.offset;
-        let (sin, cos) = c.angle.to_radians().sin_cos();
-        let place = |p: [f64; 3]| [c.at.0 + p[0] * cos - p[1] * sin, c.at.1 + p[0] * sin + p[1] * cos, base + p[2]];
-        self.component_local_pieces(c)
-            .into_iter()
-            .map(|pc| Piece {
-                tris: pc.tris.iter().map(|t| t.map(place)).collect(),
-                outline: pc.outline.iter().map(|q| place([q.0, q.1, 0.0])).map(|p| P2(p[0], p[1])).collect(),
-                bottom: base + pc.bottom,
-                top: base + pc.top,
-                ..pc
-            })
-            .collect()
+        let placed = self.component_placement(c);
+        self.component_local_pieces(c).iter().map(|pc| placed.piece(pc)).collect()
     }
 
     /// Adds an element unchecked; the engine runs [`Model::check`] after every command.
@@ -3410,9 +4043,113 @@ impl Model {
     /// misspelled one. The fields left out come back as JSON pointers into the file (`/elements/100004/finish`). A file
     /// of a newer format is refused whole, since what changed may be more than a field.
     pub fn read(text: &str) -> Result<(Model, Vec<String>), String> {
+        Model::read_within(text, &crate::memory::Budget::none())
+    }
+
+    /// [`Model::read`], stopped with an error, before it takes more, when the process has allocated past `budget`
+    /// (`memory.rs`): the values, then each element, are checked as they are read.
+    pub fn read_within(text: &str, budget: &crate::memory::Budget) -> Result<(Model, Vec<String>), String> {
+        if let Some(read) = Model::read_on_every_core(text, budget)? {
+            return Ok(read);
+        }
+        Model::read_whole(text, budget)
+    }
+
+    /// [`Model::read_within`] with the elements read on every core: each one strictly, and only one that fails that looked into
+    /// for what this version doesn't know, as [`Model::read_whole`] looks into all of them. None where the file is one the
+    /// whole read must take (from before pens, of a newer format, not an object, or with an element that fails even so), so its
+    /// error, and what it leaves out, are what they always were. The other way is the oracle (`a_file_read_on_every_core_..`).
+    pub(crate) fn read_on_every_core(text: &str, budget: &crate::memory::Budget) -> Result<Option<(Model, Vec<String>)>, String> {
+        use crate::lenient;
+        use rayon::prelude::*;
+        use serde_json::Value;
+        use serde_json::value::RawValue;
+        // One pass over the text: the elements' map read into its entries' raw text, the rest of the top kept as raw text too.
+        let Ok(TopLevel { rest: top, elements }) = serde_json::from_str::<TopLevel>(text) else { return Ok(None) };
+        let format = match top.get("format") {
+            None => 0,
+            Some(raw) => match serde_json::from_str::<u64>(raw.get()) {
+                Ok(f) => f,
+                Err(_) => return Ok(None),
+            },
+        };
+        if !(4..=u64::from(FORMAT)).contains(&format) {
+            return Ok(None);
+        }
+        let Some(raw) = elements else { return Ok(None) };
+        let raw: Vec<(String, &RawValue)> = raw.into_iter().collect();
+        /// An element as a file holds it: its id, its GUID if it has one, it, and the fields of it left out.
+        type Read = (Id, Option<Guid>, Element, Vec<String>);
+        let one = |(key, raw): &(String, &RawValue)| -> Option<Read> {
+            let id: Id = key.parse().ok()?;
+            let mut v: Value = serde_json::from_str(raw.get()).ok()?;
+            let guid = match v.as_object_mut()?.remove("guid") {
+                Some(g) => Some(Guid::deserialize(g).ok()?),
+                None => None,
+            };
+            if let Ok(e) = Element::deserialize(&v) {
+                return Some((id, guid, e, Vec::new()));
+            }
+            // What this version doesn't know of it, left out, as the whole read does.
+            let mut bare = v.clone();
+            let category = bare.as_object_mut().and_then(|o| o.remove("category"));
+            let mut left = Vec::new();
+            for p in lenient::element(category.as_ref().and_then(Value::as_str).unwrap_or(""), &bare) {
+                lenient::remove(&mut v, &p);
+                left.push(format!("/elements/{key}{p}"));
+            }
+            Some((id, guid, Element::deserialize(v).ok()?, left))
+        };
+        let mut items = Vec::with_capacity(raw.len());
+        let mut left_out = Vec::new();
+        if let Some(p) = budget.progress() {
+            p.stage(ui_msg!("Reading elements"), raw.len() as u64);
+        }
+        // In batches, so the memory a read may take is checked as it goes, here, where the budget is.
+        let mut unguided = false;
+        for batch in raw.chunks(16_384) {
+            budget.check()?;
+            if let Some(p) = budget.progress() {
+                p.step(batch.len() as u64);
+            }
+            let read: Option<Vec<Read>> = batch.par_iter().map(one).collect();
+            let Some(read) = read else { return Ok(None) };
+            for (id, guid, e, left) in read {
+                unguided |= guid.is_none();
+                items.push((id, guid.unwrap_or_default(), e));
+                left_out.extend(left);
+            }
+        }
+        drop(raw);
+        // A file whose elements all have their GUIDs (every one since GUIDs) is put together at once; one without is the whole
+        // read's, which gives each a GUID of its own.
+        if unguided {
+            return Ok(None);
+        }
+        let Some(elements) = crate::ids::Elements::of_read(items) else { return Ok(None) };
+        let mut v = serde_json::Map::new();
+        for (key, raw) in top {
+            budget.check()?;
+            v.insert(key, crate::memory::json(raw.get(), budget)?);
+        }
+        v.insert("elements".into(), Value::Object(serde_json::Map::new()));
+        let mut v = Value::Object(v);
+        if let Some(p) = budget.progress() {
+            p.stage(ui_msg!("Bringing the project up to date"), 0);
+        }
+        let Ok(mut rest) = Model::read_rest(&mut v, left_out, budget) else { return Ok(None) };
+        rest.0.elements = elements;
+        Model::after_read(rest).map(Some)
+    }
+
+    /// [`Model::read_within`] the way it always was: the whole file as JSON values, every element looked into.
+    pub(crate) fn read_whole(text: &str, budget: &crate::memory::Budget) -> Result<(Model, Vec<String>), String> {
         use crate::lenient;
         use serde_json::Value;
-        let mut v: Value = serde_json::from_str(text).map_err(|e| e.to_string())?;
+        if let Some(p) = budget.progress() {
+            p.stage(ui_msg!("Reading the project"), 0);
+        }
+        let mut v: Value = crate::memory::json(text, budget)?;
         let format = v.get("format").map_or(Some(0), Value::as_u64).ok_or("`format` must be a whole number")?;
         if format > u64::from(FORMAT) {
             return Err(format!(
@@ -3427,6 +4164,7 @@ impl Model {
         let mut elements = v.get_mut("elements").map_or(Value::Null, Value::take);
         if let Value::Object(es) = &mut elements {
             for (id, e) in es.iter_mut() {
+                budget.check()?;
                 let mut bare = e.clone();
                 let category = bare.as_object_mut().and_then(|o| {
                     o.remove("guid");
@@ -3438,6 +4176,23 @@ impl Model {
                 }
             }
         }
+        // Put back where it was (a file that isn't an object has none, and is refused below for what it is).
+        if let Value::Object(o) = &mut v {
+            o.insert("elements".into(), elements);
+        }
+        let read = Model::read_rest(&mut v, left_out, budget)?;
+        Model::after_read(read)
+    }
+
+    /// A model of what file `v` holds but its elements, kept as they are (the whole read's, or none, the elements being read on
+    /// their own), with what is left out added to `left_out`.
+    fn read_rest(
+        v: &mut serde_json::Value,
+        mut left_out: Vec<String>,
+        budget: &crate::memory::Budget,
+    ) -> Result<(Model, Vec<String>), String> {
+        use crate::lenient;
+        use serde_json::Value;
         // A detail group's members are elements too, held by their type, and are looked into the same way.
         if let Some(Value::Object(groups)) = v.get_mut("detail_groups") {
             for (name, group) in groups.iter_mut() {
@@ -3454,17 +4209,47 @@ impl Model {
             }
         }
         if v.is_object() {
+            let elements = v.get_mut("elements").map_or(Value::Null, Value::take);
             v["elements"] = Value::Object(serde_json::Map::new());
-            let found = lenient::unknown::<Model>(&v);
+            let found = lenient::unknown::<Model>(v);
             for p in found {
-                lenient::remove(&mut v, &p);
+                lenient::remove(v, &p);
                 left_out.push(p);
             }
             v["elements"] = elements;
         }
-        let mut m: Model = serde_json::from_value(v).map_err(|e| e.to_string())?;
+        budget.check()?;
+        let m: Model = serde_json::from_value(v.take()).map_err(|e| e.to_string())?;
+        budget.check()?;
+        Ok((m, left_out))
+    }
+
+    /// A model just read brought up to this version, with what can't stand in it left out.
+    fn after_read((mut m, mut left_out): (Model, Vec<String>)) -> Result<(Model, Vec<String>), String> {
         m.migrate();
         m.names_from_file();
+        // A family's dimension measuring to something it hasn't is left out, as what this version can't read is: a file is
+        // read kindly, and a command that would leave one is refused.
+        for (name, f) in m.families.iter_mut() {
+            let gone = f.dangling_dimensions();
+            for i in gone.iter().rev() {
+                f.dimensions.remove(*i);
+                left_out.push(format!("/families/{}/dimensions/{i}", crate::lenient::escaped(name)));
+            }
+            // A pivot pinned to, or measured from, what the family hasn't: left out too (F7d).
+            for g in f.dangling_pivots() {
+                if let Some(i) = f.lines.iter().position(|l| l.guid == g) {
+                    f.lines[i].pivot = None;
+                    left_out.push(format!("/families/{}/lines/{i}/pivot", crate::lenient::escaped(name)));
+                }
+                if let Some(i) = f.planes.iter().position(|p| p.guid == g) {
+                    f.planes[i].pivot = None;
+                    left_out.push(format!("/families/{}/planes/{i}/pivot", crate::lenient::escaped(name)));
+                }
+            }
+        }
+        // A pin of an element this build left out (a newer one's kind) is dropped, and the rest of the file opens.
+        m.pinned.retain(|g| m.elements.id(*g).is_some());
         Ok((m, left_out))
     }
 
@@ -3527,12 +4312,130 @@ impl Model {
         // 15 to 16 (dimensions in 3D views, a category 15 doesn't know and would refuse; the locks Align leaves, which 15 would
         // read as dimensions of nothing) has no step: a file of 15 holds none.
         // 16 to 17 (multi-category schedules, Italian as a project's language) has none either: a file of 16 holds neither.
-        // 17 to 18 (pipe, data and earthing connectors, a connector's place; title blocks of the project's own, their fields'
-        // values, and sheets with none; walls and runs that refuse to join; a dimension to the line across a column) has none
-        // either: a file of 17's connectors are a power or a switch one, each with its system, which 18 reads as they were; a
-        // file of 17 holds no title blocks, its sheets keeping the built-in one, no `join`, which reads as joining, as it always
-        // did, and none of its dimensions measures `across`.
+        // 17 to 18, for a type's steel section (`profile`), has none either: a file of 17 holds none, its types keeping the
+        // plain rectangle or circle they had.
+        // 17 to 18 (pipe, data and earthing connectors, a connector's place; title blocks of the project's own, with a
+        // drawing area and a border of their own, their fields' values, and sheets with none; viewports that keep a scale
+        // of their own; walls and runs that refuse to join; a dimension to the line across a column; sectional and roller
+        // doors; property lines; pinned elements; an elevation's reference and mark; Polish or Vietnamese as a project's language; a
+        // distribution board's `panel`; circuits, panel schedules and `demand_factors`) has none either: a file of 17's
+        // connectors are a power or a switch one, each with its system, which 18 reads as they were; a file of 17 holds no
+        // title blocks, its sheets keeping the built-in one, no `follow_scale`, so its viewports follow their views' scales
+        // from then on, as one placed without a scale does, no `join`, which reads as joining, as it always did, none of
+        // its dimensions measures `across`, none of its operations is a gate's, it holds no property line and names no
+        // `propertyline` in its graphics or styles, nothing in it is pinned, its elevations have no reference and their
+        // marks on their lines, its language isn't Polish or Vietnamese, none of its components has a `panel`, and it has no circuits,
+        // panel schedules or `demand_factors`.
+        // The Family Editor's part of 18, and what places its families, takes
+        // one step, in this order (it leaves the rest of 18 alone: title blocks, `join` and `across` aren't a family's, and a
+        // connector's `at` is in the family's axes, which the datums are whatever plane `defines_origin`, and it has no `host`
+        // that 1 below would move).
+        // 1. A form's `plane` becomes its `host`, a datum: `xy` Ref. Level and `yz` Center (Left/Right) as they were; `xz`
+        //    Center (Front/Back), its `from` and `to` negated and swapped (a formula wrapped as `-(…)`), since it swept along
+        //    +y and the datum's normal is -y, a revolve's angles as they were. Its `profile`, `circle` and `axis` become lines
+        //    of its `sketch`, given their ids and GUIDs by the library's sync as any new part is, building the triangles they
+        //    did. Reading the file does both, as it reads a command's shorthands (`Form`'s `FormIn`), whatever its format,
+        //    and a family read without its datums is given them (`Family::planes`).
+        // 2. Every family's datums are put first and its origin settled, whatever the file held (`Family::settle_planes`).
+        // 3. A door's or a window's void cuts its wall wherever it reaches into it, whatever its place in the family's list,
+        //    unless its `cuts` says `forms`. Before, only one that cut none of the solid forms listed before it cut the
+        //    wall, in its own shape in place of the opening's rectangle (a rule only unreleased builds of the Family Editor
+        //    had: 17 cut the wall with the opening's rectangle alone, and a file of 17 reads by it). Each void that rule didn't
+        //    cut the wall with, though it reaches into it, says `forms`
+        //    (`Family::pin_cuts`), so it cuts what it did. It runs after 2, as it did, the family flexed on its settled planes.
+        //    A limit: one `cuts` is a void's for every type, and the old rule decided type by type. A void that overlapped a
+        //    solid in any type, or by the default of an instance parameter that moves it, says `forms` for all of them, so a
+        //    type whose void was clear of the solids and cut the wall with the old rule cuts it no more. That is the
+        //    conservative side: the wall keeps the opening's rectangle, as 17 drew it, and one value per
+        //    void can't hold both outcomes.
+        // 18 to 19 (a schedule of sheets, the sheet list) has no step either: a file of 18 holds none.
+        // The rest needs nothing of a file of 17, which holds none of it: an adaptive family and a component's
+        // adaptive frames, a family parameter's group, shared GUID and reporting (each defaults to what a file of 17 means:
+        // grouped by its kind, the family's own, set), Doors > Opening and Windows > Opening, the project's reference planes
+        // and components hosted on them or on faces (a hosted component's `at` and `offset` are worked out from its host
+        // whatever the file says), a family's dimensions of every kind, nested families, Blends and Sweeps (every form of 17
+        // or 18 is an extrusion or a revolve, built as it was), pivots, and Visibility Settings (a part without them draws as it
+        // did, `family::visibility`). An adaptive point's `"datum": "level" | "front_back" | "left_right"`, the name the
+        // Family Editor's first adaptive points gave their work plane, is still read as the datum plane of the same frame
+        // (`Host::World`'s `plane_or_datum`); a file of 17 holds no adaptive family, so it takes no part in this step.
+        if self.format < 18 {
+            self.families.values_mut().for_each(crate::family::Family::settle_planes);
+            self.families.values_mut().for_each(crate::family::Family::pin_cuts);
+        }
+        self.settle_hosts(None);
+        // 19 to 20: rooms have types. A file of 19 has none, so its rooms are of the starter one, with no floor or ceiling.
+        if self.types.room.is_empty() {
+            self.types.room.insert(ROOM_TYPE.into(), RoomType::default());
+        }
+        // And a room's colour on plans is its type's: each room that had one of its own goes on a type of that colour.
+        let coloured: Vec<(Id, String, [u8; 3])> = self
+            .elements
+            .iter()
+            .filter_map(|(id, e)| match e {
+                Element::Room(r) => Some((*id, r.type_name.clone(), r.colour?)),
+                _ => None,
+            })
+            .collect();
+        for (id, like, colour) in coloured {
+            let name = self.coloured_room_type(&like, colour);
+            if let Some(Element::Room(r)) = self.elements.get_mut(id) {
+                (r.type_name, r.colour) = (name, None);
+            }
+        }
+        // A column's `top_offset`, `attach_top` and `attach_base` (FORMAT 20 too) need nothing of a file of 19, which holds none: its
+        // columns keep the top they had, at their top level or their height.
+        // The project parameters' kinds and settings and `.bimparams` dictionaries (FORMAT 20, with the rooms) need nothing of
+        // a file of 19, which holds none of them. The project's information does: a title value under one of its keys
+        // (CLIENT, PROJECT_NUMBER, …) moves onto it, and a title block's field of such a key, which every title block has
+        // now, goes, its project default kept on the information where that says nothing.
+        if self.format < 20 {
+            let keys: Vec<String> = self.title_values.keys().filter(|k| crate::project_info::field_of_key(k).is_some()).cloned().collect();
+            for key in keys {
+                if let (Some(v), Some(field)) = (self.title_values.remove(&key), crate::project_info::field_of_key(&key))
+                    && !v.trim().is_empty()
+                {
+                    self.set_info(field, v);
+                }
+            }
+            let mut defaults = Vec::new();
+            for tb in self.title_blocks.values_mut() {
+                tb.fields.retain(|f| match crate::project_info::field_of_key(&f.key) {
+                    Some(field) => {
+                        if f.scope == crate::titleblock::Scope::Project && !f.default.trim().is_empty() {
+                            defaults.push((field, f.default.clone()));
+                        }
+                        false
+                    }
+                    None => true,
+                });
+            }
+            for (field, v) in defaults {
+                if self.project_info().and_then(|(_, i)| i.get(field)).unwrap_or("").is_empty() {
+                    self.set_info(field, v);
+                }
+            }
+        }
         self.format = FORMAT;
+    }
+
+    /// The room type that is as type `like` and fills its rooms in `colour` on plans: one the project has, or one made,
+    /// named after `like` and the colour (`Standard #D6E5D2`).
+    pub fn coloured_room_type(&mut self, like: &str, colour: [u8; 3]) -> String {
+        let want = RoomType { colour: Some(colour), ..self.types.room.get(like).cloned().unwrap_or_default() };
+        if let Some((name, _)) = self.types.room.iter().find(|(_, t)| **t == want) {
+            return name.clone();
+        }
+        let [r, g, b] = colour;
+        let base = format!("{like} #{r:02X}{g:02X}{b:02X}");
+        let free = |n: &String| !self.types.room.contains_key(n);
+        let name = std::iter::once(base.clone()).chain((2..).map(|i| format!("{base} {i}"))).find(free).unwrap_or(base);
+        self.types.room.insert(name.clone(), want);
+        name
+    }
+
+    /// The colour a room is filled with on plans, its type's; none, no fill.
+    pub fn room_colour(&self, r: &Room) -> Option<[u8; 3]> {
+        self.types.room.get(&r.type_name).and_then(|t| t.colour)
     }
 
     /// Each dimension from before dimension types given the one its kind starts in.
@@ -3678,6 +4581,11 @@ impl Model {
         self.elements.guid(k).unwrap_or_default()
     }
 
+    /// Whether element `k` is pinned where it is (`pin`), so a command that places, draws or deletes it refuses it.
+    pub fn is_pinned(&self, k: impl Key) -> bool {
+        self.pinned.contains(&self.guid(k))
+    }
+
     pub fn level(&self, id: impl Key) -> Option<&Level> {
         match self.elements.get(id) {
             Some(Element::Level(l)) => Some(l),
@@ -3705,17 +4613,21 @@ impl Model {
 
     /// The box round every solid and placed scan, its min and max corners; none in an empty project.
     pub fn model_box(&self) -> Option<([f64; 3], [f64; 3])> {
-        let clouds = self.elements.iter().filter_map(|(id, _)| self.cloud_box(*id)).flat_map(|(lo, hi)| [lo, hi]);
-        let pts = crate::view3d::solids(self).iter().flat_map(|s| s.corners()).chain(clouds).collect::<Vec<_>>();
-        let first = *pts.first()?;
-        Some(
-            pts.iter()
-                .fold((first, first), |(lo, hi), p| (std::array::from_fn(|i| lo[i].min(p[i])), std::array::from_fn(|i| hi[i].max(p[i])))),
-        )
+        // Kept with the model until what it is made of changes: it makes every solid.
+        self.derived.model_box(self, || {
+            let clouds = self.elements.iter().filter_map(|(id, _)| self.cloud_box(*id)).flat_map(|(lo, hi)| [lo, hi]);
+            let pts = crate::view3d::solids(self).iter().flat_map(|s| s.corners()).chain(clouds).collect::<Vec<_>>();
+            let first = *pts.first()?;
+            Some(
+                pts.iter().fold((first, first), |(lo, hi), p| {
+                    (std::array::from_fn(|i| lo[i].min(p[i])), std::array::from_fn(|i| hi[i].max(p[i])))
+                }),
+            )
+        })
     }
 
-    /// What a level stretches over without an extent of its own: every solid and grid in plan,
-    /// [`LEVEL_PAST`] past them (10 m each way of the origin in an empty project).
+    /// What a level stretches over without an extent of its own: every solid, grid and CAD drawing in plan,
+    /// [`LEVEL_PAST`] past them. Scans count only when those are absent (10 m each way of the origin in an empty project).
     pub fn model_extent(&self) -> [P2; 2] {
         self.model_extent_of(crate::view3d::solids(self).iter().flat_map(|s| s.corners()).map(|p| P2(p[0], p[1])))
     }
@@ -3723,18 +4635,24 @@ impl Model {
     /// [`Model::model_extent`], of `corners`, in plan: those of [`crate::view3d::solids`] of this model, or the points
     /// that may be farthest among them.
     pub(crate) fn model_extent_of(&self, corners: impl Iterator<Item = P2>) -> [P2; 2] {
-        // The grids, scans and drawings, in the order of their ids, from the lookup.
+        // The grids and drawings, in the order of their ids, from the lookup.
         let lookup = self.lookup();
-        let others: BTreeSet<Id> = lookup.grids().chain(lookup.rare("pointcloud")).chain(lookup.rare("cadimport")).collect();
-        let pts = corners.chain(others.into_iter().flat_map(|id| match self.elements.get(id) {
+        let others: BTreeSet<Id> = lookup.grids().chain(lookup.rare("cadimport")).collect();
+        let mut pts = corners.chain(others.into_iter().flat_map(|id| match self.elements.get(id) {
             Some(Element::Grid(g)) => vec![g.start, g.end],
-            Some(Element::PointCloud(_)) => self.cloud_box(id).map_or(Vec::new(), |(lo, hi)| vec![P2(lo[0], lo[1]), P2(hi[0], hi[1])]),
             Some(Element::CadImport(_)) => self.cad_box(id).map_or(Vec::new(), |b| b.to_vec()),
             _ => Vec::new(),
         }));
+        // A site survey must not stretch a building's levels; a scan-only project still fits its scans.
+        let first = pts.next();
+        let scans = lookup
+            .rare("pointcloud")
+            .filter(|_| first.is_none())
+            .filter_map(|id| self.cloud_box(id))
+            .flat_map(|(lo, hi)| [P2(lo[0], lo[1]), P2(hi[0], hi[1])]);
         // Folded as they come, the first the start: no list of every corner of every mesh.
         let mut bounds: Option<(P2, P2)> = None;
-        for q in pts {
+        for q in first.into_iter().chain(pts).chain(scans) {
             bounds = Some(match bounds {
                 None => (q, q),
                 Some((lo, hi)) => (P2(lo.0.min(q.0), lo.1.min(q.1)), P2(hi.0.max(q.0), hi.1.max(q.1))),
@@ -3915,15 +4833,15 @@ impl Model {
         self.spans(w, self.plan_range(level).cut)
     }
 
-    /// Whether a plan of `level` cuts column `c` (a structural one, a footing), as the plan draws it cut: it spans the
+    /// Whether a plan of `level` cuts column `e` (a structural one, a footing), as the plan draws it cut: it spans the
     /// plan's cut plane, whatever level it stands on.
-    pub fn column_cut_by(&self, c: &Column, level: impl Key) -> bool {
-        self.column_spans(c, self.plan_range(level).cut)
+    pub fn column_cut_by(&self, e: &Element, level: impl Key) -> bool {
+        self.column_spans(e, self.plan_range(level).cut)
     }
 
-    /// Whether column `c` (a structural one, a footing) spans height `z`: from its bottom, `z` or below, to its top, above.
-    pub(crate) fn column_spans(&self, c: &Column, z: f64) -> bool {
-        let (bottom, top) = self.span(c.level, c.base_offset, c.top_level, c.height);
+    /// Whether column `e` (a structural one, a footing) spans height `z`: from its bottom, `z` or below, to its top, above.
+    pub(crate) fn column_spans(&self, e: &Element, z: f64) -> bool {
+        let (bottom, top) = self.column_span(e);
         bottom <= z && z < top
     }
 
@@ -3950,7 +4868,7 @@ impl Model {
         ids.sort_unstable();
         ids.into_iter()
             .filter_map(|id| self.elements.get(id))
-            .filter(|e| matches!(e, Element::Column(c) | Element::StructuralColumn(c) if c.room_bounding && self.column_spans(c, z)))
+            .filter(|e| matches!(e, Element::Column(c) | Element::StructuralColumn(c) if c.room_bounding && self.column_spans(e, z)))
             .map(|e| self.column_outline(e))
             .filter(|o| o.len() >= 3)
             .collect()
@@ -4105,6 +5023,7 @@ impl Model {
             "region" => names(&self.region_types),
             "text" => names(&self.text_types),
             "dimension" => names(&self.dimension_types),
+            "spotcoordinate" => names(&self.spot_coordinate_types),
             "wall" => names(&self.types.wall),
             "floor" => names(&self.types.floor),
             "door" => names(&self.types.door),
@@ -4115,6 +5034,7 @@ impl Model {
             "roof" => names(&self.types.roof),
             "ceiling" => names(&self.types.ceiling),
             "railing" => names(&self.types.railing),
+            "room" => names(&self.types.room),
             run if RUN_CATEGORIES.contains(&run) => self.types.runs.get(run).map(names).unwrap_or_default(),
             _ => Vec::new(),
         }
@@ -4127,12 +5047,16 @@ impl Model {
             "region" => return fills::default_region_type(&self.region_types, self.language).map(String::as_str),
             "text" => return crate::text::default_type(&self.text_types).map(String::as_str),
             "dimension" => return crate::dims::default_type(&self.dimension_types, DimKind::Aligned).map(String::as_str),
+            "spotcoordinate" => {
+                return crate::spots::default_type(&self.spot_coordinate_types, crate::coordinates::Origin::Survey).map(String::as_str);
+            }
             "wall" | "floor" => "Generic - 200mm",
             "door" => "Single 900 x 2100",
             "column" => "Rectangular 400 x 400",
             "roof" => "Generic - 300mm",
             "ceiling" => "Generic - 20mm",
             "railing" => "Railing - 1000mm",
+            "room" => ROOM_TYPE,
             "structuralcolumn" => "Concrete 300 x 300",
             "footing" => "Footing 1200 x 1200",
             "beam" => "Beam 200 x 500",
@@ -4204,6 +5128,16 @@ impl Model {
         })
     }
 
+    /// Whether this door has one swinging leaf. A door without a declared operation swings by default,
+    /// as it does in IFC. Read the chosen family or project type without building its geometry.
+    pub fn single_swing_door(&self, family: Option<&str>, type_name: &str) -> bool {
+        let operation = match family {
+            Some(name) => self.families.get(name).filter(|f| f.category == crate::family::Category::Door).map(|f| f.operation),
+            None => self.types.door.get(type_name).map(|t| t.operation),
+        };
+        matches!(operation, Some(None | Some(Operation::Swing)))
+    }
+
     /// The type of a door or window.
     pub fn opening_type(&self, e: &Element) -> Option<OpeningType> {
         self.opening_dims(e).ok()
@@ -4219,12 +5153,29 @@ impl Model {
 
     /// A door's or window's family's solids and the lines its plan draws, in the family's own axes, turned out with
     /// the opening's flips as mirror images (its hinge on the other jamb, its swing to the wall's other side);
-    /// none for one that isn't of a family, or doesn't build.
-    pub fn opening_local(&self, e: &Element) -> Option<(Vec<Piece>, Vec<crate::family::Mark>)> {
+    /// Project-owned industrial doors use the same pieces for their generated equipment; none for an ordinary project type
+    /// or a family that doesn't build.
+    pub fn opening_local(&self, e: &Element) -> Option<(Vec<Piece>, Vec<crate::family::Tagged>)> {
+        self.opening_local_at(e, None)
+    }
+
+    /// [`Model::opening_local`], its marks those a plan at `detail` draws if it says.
+    fn opening_local_at(&self, e: &Element, detail: Option<crate::graphics::Detail>) -> Option<(Vec<Piece>, Vec<crate::family::Tagged>)> {
         let (Element::Door(o) | Element::Window(o)) = e else { return None };
-        let f = self.families.get(o.family.as_ref()?)?;
-        let values = f.values_in(&o.type_name, &o.params, self.thickness(self.wall(o.host)?)).ok()?;
-        let (pieces, marks) = (f.pieces(&values).ok()?, f.marks(&values).ok()?);
+        let (pieces, marks) = if let Some(name) = &o.family {
+            let f = self.families.get(name)?;
+            let values = f.values_in(&o.type_name, &o.params, self.thickness(self.wall(o.host)?)).ok()?;
+            let marks = match detail {
+                Some(d) => f.marks_in(&values, d),
+                None => f.marks_tagged(&values),
+            };
+            (f.pieces(&values).ok()?, marks.ok()?)
+        } else {
+            let t = self.opening_type(e)?;
+            let operation = t.operation.filter(|op| matches!(e, Element::Door(_)) && op.industrial())?;
+            let face = self.thickness(self.wall(o.host)?) / 2.0;
+            (crate::doors::pieces(operation, t.width, t.height, face, self.language.word("Metal")).ok()?, Vec::new())
+        };
         let (fx, fy) = (if o.flip_hand { -1.0 } else { 1.0 }, if o.flip_facing { -1.0 } else { 1.0 });
         let mirrored = fx * fy < 0.0;
         let flip = |p: [f64; 3]| [fx * p[0] + 0.0, fy * p[1] + 0.0, p[2]];
@@ -4234,11 +5185,54 @@ impl Model {
                 let tris =
                     pc.tris.iter().map(|[a, b, c]| if mirrored { [flip(*a), flip(*c), flip(*b)] } else { [flip(*a), flip(*b), flip(*c)] });
                 let outline: Vec<P2> = pc.outline.iter().map(|q| P2(fx * q.0 + 0.0, fy * q.1 + 0.0)).collect();
-                Piece { tris: tris.collect(), outline: if mirrored { outline.into_iter().rev().collect() } else { outline }, ..pc }
+                let holes = pc
+                    .holes
+                    .iter()
+                    .map(|h| {
+                        let h: Vec<P2> = h.iter().map(|q| P2(fx * q.0 + 0.0, fy * q.1 + 0.0)).collect();
+                        if mirrored { h.into_iter().rev().collect() } else { h }
+                    })
+                    .collect();
+                Piece { tris: tris.collect(), outline: if mirrored { outline.into_iter().rev().collect() } else { outline }, holes, ..pc }
             })
             .collect();
-        let marks = marks.iter().map(|k| k.map(|q| P2(fx * q.0 + 0.0, fy * q.1 + 0.0))).collect();
+        let marks = marks.iter().map(|(k, sub)| (k.map(|q| P2(fx * q.0 + 0.0, fy * q.1 + 0.0)), *sub)).collect();
         Some((pieces, marks))
+    }
+
+    /// The voids a door's or window's family cuts its wall with ([`crate::family::Family::host_voids`]), in the family's own
+    /// axes turned out with the opening's flips as [`Model::opening_local`]'s solids are; none for one that isn't of a family,
+    /// has none, or doesn't build, whose wall the rectangle of its width and height cuts.
+    pub fn opening_voids_local(&self, e: &Element) -> Vec<Vec<[crate::view3d::P3; 3]>> {
+        let (Element::Door(o) | Element::Window(o)) = e else { return Vec::new() };
+        let Some(f) = o.family.as_ref().and_then(|n| self.families.get(n)) else { return Vec::new() };
+        if !f.category.hosted() || !f.forms.iter().any(|x| x.void) {
+            return Vec::new();
+        }
+        let Some(w) = self.wall(o.host) else { return Vec::new() };
+        let Ok(voids) = f.values_in(&o.type_name, &o.params, self.thickness(w)).and_then(|v| f.host_voids(&v)) else {
+            return Vec::new();
+        };
+        let (fx, fy) = (if o.flip_hand { -1.0 } else { 1.0 }, if o.flip_facing { -1.0 } else { 1.0 });
+        let flip = |p: [f64; 3]| [fx * p[0] + 0.0, fy * p[1] + 0.0, p[2]];
+        let mirrored = fx * fy < 0.0;
+        voids
+            .into_iter()
+            .map(|v| {
+                v.iter().map(|[a, b, c]| if mirrored { [flip(*a), flip(*c), flip(*b)] } else { [flip(*a), flip(*b), flip(*c)] }).collect()
+            })
+            .collect()
+    }
+
+    /// [`Model::opening_voids_local`] where the opening stands, in the model's own axes.
+    pub fn opening_voids(&self, e: &Element) -> Vec<Vec<[crate::view3d::P3; 3]>> {
+        let (Element::Door(o) | Element::Window(o)) = e else { return Vec::new() };
+        let Some((at, u, z)) = self.opening_frame(o) else { return Vec::new() };
+        let place = |p: [f64; 3]| {
+            let q = at + u * p[0] + u.perp() * p[1];
+            [q.0, q.1, z + p[2]]
+        };
+        self.opening_voids_local(e).into_iter().map(|v| v.iter().map(|t| t.map(place)).collect()).collect()
     }
 
     /// A door's or window's family's solids where it stands, in the model's own axes: each form's triangles, its
@@ -4255,6 +5249,7 @@ impl Model {
             .map(|pc| Piece {
                 tris: pc.tris.iter().map(|t| t.map(place)).collect(),
                 outline: pc.outline.iter().map(|q| place([q.0, q.1, 0.0])).map(|p| P2(p[0], p[1])).collect(),
+                holes: pc.holes.iter().map(|h| h.iter().map(|q| place([q.0, q.1, 0.0])).map(|p| P2(p[0], p[1])).collect()).collect(),
                 bottom: z + pc.bottom,
                 top: z + pc.top,
                 ..pc
@@ -4262,11 +5257,21 @@ impl Model {
             .collect()
     }
 
-    /// The marks a door's or window's family draws in plan, where it stands.
-    pub fn opening_marks(&self, e: &Element) -> Vec<crate::family::Mark> {
+    /// The marks a door's or window's family draws in plan, where it stands, each with the subcategory it is drawn in
+    /// (`dooropening`; none, its category).
+    pub fn opening_marks(&self, e: &Element) -> Vec<crate::family::Tagged> {
+        self.opening_marks_at(e, None)
+    }
+
+    /// [`Model::opening_marks`] that a plan at detail level `detail` draws ([`crate::family::Family::marks_in`]).
+    pub fn opening_marks_in(&self, e: &Element, detail: crate::graphics::Detail) -> Vec<crate::family::Tagged> {
+        self.opening_marks_at(e, Some(detail))
+    }
+
+    fn opening_marks_at(&self, e: &Element, detail: Option<crate::graphics::Detail>) -> Vec<crate::family::Tagged> {
         let (Element::Door(o) | Element::Window(o)) = e else { return Vec::new() };
-        let (Some((_, marks)), Some((at, u, _))) = (self.opening_local(e), self.opening_frame(o)) else { return Vec::new() };
-        marks.iter().map(|k| k.map(|q| at + u * q.0 + u.perp() * q.1)).collect()
+        let (Some((_, marks)), Some((at, u, _))) = (self.opening_local_at(e, detail), self.opening_frame(o)) else { return Vec::new() };
+        marks.iter().map(|(k, sub)| (k.map(|q| at + u * q.0 + u.perp() * q.1), *sub)).collect()
     }
 
     /// The level an element stands on: a door's or window's is its wall's, a tag's its door's or
@@ -4283,6 +5288,7 @@ impl Model {
             Element::Mass(ms) => Some(ms.level),
             Element::Room(r) => Some(r.level),
             Element::RoomSeparator(rs) => Some(rs.level),
+            Element::PropertyLine(pl) => Some(pl.level),
             Element::Rebar(rb) => Some(rb.level),
             Element::Dimension(d) => Some(d.level),
             Element::Column(c) | Element::StructuralColumn(c) | Element::Footing(c) => Some(c.level),
@@ -4295,6 +5301,8 @@ impl Model {
             Element::Roof(r) => Some(r.level),
             Element::Door(o) | Element::Window(o) => wall_level(o),
             Element::Tag(t) => self.elements.get(t.host).filter(|h| !matches!(h, Element::Tag(_))).and_then(|h| self.level_of(h)),
+            // On the board's level: its plan is where it is drawn.
+            Element::Circuit(c) => self.elements.get(c.panel).filter(|h| matches!(h, Element::Component(_))).and_then(|h| self.level_of(h)),
             // Notes and spot elevations in a level's plan.
             Element::Text(Note { view, .. })
             | Element::Spot(Spot { view, .. })
@@ -4306,12 +5314,15 @@ impl Model {
             Element::PlanView(v) => Some(v.level),
             Element::Level(_)
             | Element::Grid(_)
+            | Element::RefPlane(_)
             | Element::Section(_)
             | Element::Elevation(_)
             | Element::Sheet(_)
             | Element::Viewport(_)
             | Element::Schedule(_)
+            | Element::PanelSchedule(_)
             | Element::Link(_)
+            | Element::ProjectInfo(_)
             | Element::Dimension3D(_)
             | Element::View3D(_) => None,
         }
@@ -4321,6 +5332,23 @@ impl Model {
     pub fn span(&self, level: impl Key, base_offset: f64, top_level: Option<Guid>, height: f64) -> (f64, f64) {
         let base = self.elevation(level) + base_offset;
         (base, top_level.map_or(base + height, |t| self.elevation(t)))
+    }
+
+    /// Column `e`'s lowest base and highest top (a structural column's, a footing's): by its constraints, or on and under what it's
+    /// attached to. Everything that reads a column's heights comes here. (0, 0) for what isn't one.
+    pub fn column_span(&self, e: &Element) -> (f64, f64) {
+        let Some(col) = e.column() else { return (0.0, 0.0) };
+        walls::column_heights(self, e, col)
+    }
+
+    /// Its base by its level and offset, whatever it's attached to.
+    pub fn column_own_base(&self, col: &Column) -> f64 {
+        self.elevation(col.level) + col.base_offset
+    }
+
+    /// Its top by its top constraint, whatever it's attached to: its top level and offset, or its base and height.
+    pub fn column_own_top(&self, col: &Column) -> f64 {
+        col.top_level.map_or(self.column_own_base(col) + col.height, |t| self.elevation(t) + col.top_offset)
     }
 
     /// Whether the horizontal plane at height `z` passes through mass `ms`.
@@ -5000,14 +6028,40 @@ impl Model {
     }
 
     /// A column's outline in plan (a structural column's, a footing's): its rectangle turned to its angle, or a round one's
-    /// 24-sided polygon. Nothing for another element, or an unknown type.
+    /// 24-sided polygon, or a steel section's outer edge. Nothing for another element, or an unknown type.
     pub fn column_outline(&self, e: &Element) -> Vec<P2> {
         let (Some(col), Some(t)) = (e.column(), self.column_type(e)) else { return Vec::new() };
+        if let Some(p) = &t.profile {
+            return p.rings(t.width, t.depth).into_iter().next().map(|r| self.column_placed(col, &r)).unwrap_or_default();
+        }
         if t.round {
             return (0..24).map(|i| col.at + heading(f64::from(i) * 15.0) * (t.width / 2.0)).collect();
         }
         let (u, w, d) = (heading(col.angle), t.width / 2.0, t.depth / 2.0);
         [(-w, -d), (w, -d), (w, d), (-w, d)].into_iter().map(|(a, c)| col.at + u * a + u.perp() * c).collect()
+    }
+
+    /// A steel column's hole in plan (a tube's, a pipe's): none for another.
+    pub fn column_holes(&self, e: &Element) -> Vec<Vec<P2>> {
+        let (Some(col), Some(t)) = (e.column(), self.column_type(e)) else { return Vec::new() };
+        let Some(p) = &t.profile else { return Vec::new() };
+        p.rings(t.width, t.depth).iter().skip(1).map(|r| self.column_placed(col, r)).collect()
+    }
+
+    /// What a column's solid is made of in plan, each piece a prism up its height: its outline, or a hollow section's pieces
+    /// round its hole.
+    pub fn column_pieces(&self, e: &Element) -> Vec<Vec<P2>> {
+        let (Some(col), Some(t)) = (e.column(), self.column_type(e)) else { return Vec::new() };
+        match &t.profile {
+            Some(p) if p.hollow() => p.pieces(t.width, t.depth).iter().map(|q| self.column_placed(col, &q.ring())).collect(),
+            _ => vec![self.column_outline(e)],
+        }
+    }
+
+    /// A column's section's points, x along its angle and y square to it, placed round where it stands.
+    fn column_placed(&self, col: &Column, pts: &[P2]) -> Vec<P2> {
+        let u = heading(col.angle);
+        pts.iter().map(|q| col.at + u * q.0 + u.perp() * q.1).collect()
     }
 
     /// Sheet `id`.
@@ -5040,7 +6094,8 @@ impl Model {
 
     /// The default 3D view, `{3D}`: the 3D view of that name, once something has made it.
     pub fn default_3d(&self) -> Option<Id> {
-        self.elements.iter().find_map(|(id, e)| matches!(e, Element::View3D(v) if v.name == "{3D}").then_some(*id))
+        // A rare kind, kept by the lookup: the Properties palette asks every frame, and walking a tower's elements cost a frame.
+        self.lookup().rare("view3d").find(|id| matches!(self.elements.get(*id), Some(Element::View3D(v)) if v.name == "{3D}"))
     }
 
     /// The level a point at height `z` stands on: the highest level at or below it, else the lowest. A camera stands on the
@@ -5057,6 +6112,7 @@ impl Model {
             Some(Element::Level(l)) => Some(&l.name),
             Some(Element::Section(v) | Element::Elevation(v)) => Some(&v.name),
             Some(Element::Schedule(sc)) => Some(&sc.name),
+            Some(Element::PanelSchedule(ps)) => Some(&ps.name),
             Some(Element::View3D(v)) => Some(&v.name),
             Some(Element::PlanView(v)) => Some(&v.name),
             _ => None,
@@ -5067,7 +6123,7 @@ impl Model {
     pub fn views(&self) -> BTreeSet<Id> {
         let lookup = self.lookup();
         let mut ids: BTreeSet<Id> = lookup.levels().collect();
-        for cat in ["planview", "section", "elevation", "schedule", "view3d"] {
+        for cat in ["planview", "section", "elevation", "schedule", "panelschedule", "view3d"] {
             ids.extend(lookup.rare(cat));
         }
         ids
@@ -5167,6 +6223,7 @@ impl Model {
             Element::Column(c) | Element::StructuralColumn(c) | Element::Footing(c) => Some(c.at),
             Element::Component(c) => Some(c.at),
             Element::Room(r) => Some(r.point),
+            Element::PropertyLine(pl) => Some(geom::centroid(&pl.points)),
             run_arm!(r) => middle(r.start, r.end),
             Element::Stair(s) => Some(s.start),
             Element::Ramp(r) => Some(r.start),
@@ -5433,8 +6490,36 @@ impl Model {
     /// of it (a straight wall the level's plan cuts, as far as it runs; a grid as far as it is drawn): the temporary
     /// dimensions of a column or a component. A line it stands on is no distance away, so the next one counts.
     pub fn clearances(&self, level: impl Key, at: P2) -> [Option<Clearance>; 4] {
+        let lines = self.plan_lines(level);
+        [P2(1.0, 0.0), P2(0.0, 1.0), P2(-1.0, 0.0), P2(0.0, -1.0)].map(|toward| nearest(&lines, at, toward))
+    }
+
+    /// How far straight wall `id`'s centre line stands from the nearest parallel wall centre line or grid to its left and to
+    /// its right (counter-clockwise from the way it runs, and clockwise), measured square to it from its middle, as
+    /// [`Model::clearances`] finds them on its level's plan: the temporary dimensions a selected wall moves by. None for a
+    /// curved wall, or a side with no such line across from its middle.
+    pub fn wall_clearances(&self, id: impl Key) -> [Option<Clearance>; 2] {
+        let Some(w) = self.wall(id).filter(|w| w.arc == 0.0) else { return [None, None] };
+        let (axis, (ext, int)) = (walls::Axis::of(w), walls::faces(self, w));
+        let length = axis.length();
+        if length <= TOL {
+            return [None, None];
+        }
+        let middle = axis.at(length / 2.0, (ext + int) / 2.0);
+        let u = (w.end - w.start) * (1.0 / w.start.dist(w.end));
+        let me = self.guid(id);
         let lines: Vec<(Reference, Line)> = self
-            .elements
+            .plan_lines(w.level)
+            .into_iter()
+            .filter(|(to, (a, b))| to.id != me && a.dist(*b) > TOL && u.cross((*b - *a) * (1.0 / a.dist(*b))).abs() < 1e-6)
+            .collect();
+        [P2(-u.1, u.0), P2(u.1, -u.0)].map(|toward| nearest(&lines, middle, toward))
+    }
+
+    /// The centre lines of the straight walls `level`'s plan cuts, and the grids, each as a reference to it: what temporary
+    /// dimensions measure to.
+    fn plan_lines(&self, level: impl Key) -> Vec<(Reference, Line)> {
+        self.elements
             .with_guids()
             .filter_map(|(_, id, e)| match e {
                 Element::Grid(g) => Some((Reference::line(id, Face::Centre), (g.start, g.end))),
@@ -5445,17 +6530,7 @@ impl Model {
                 }
                 _ => None,
             })
-            .collect();
-        [P2(1.0, 0.0), P2(0.0, 1.0), P2(-1.0, 0.0), P2(0.0, -1.0)].map(|toward| {
-            lines
-                .iter()
-                .filter_map(|&(to, (a, b))| {
-                    let hit = geom::line_intersection(at, at + toward, a, b)?;
-                    let distance = (hit - at).dot(toward);
-                    (distance > TOL && geom::dist_to_segment(hit, a, b) <= 1e-6).then_some(Clearance { toward, distance, to })
-                })
-                .min_by(|x, y| x.distance.total_cmp(&y.distance))
-        })
+            .collect()
     }
 
     /// The stretch of its wall's location line a door or window stands in, as distances along it: from the nearest face,
@@ -5755,6 +6830,71 @@ impl Model {
         }
     }
 
+    /// What a spot elevation shows: its height from its origin, the Project Base Point or the Survey Point.
+    pub fn spot_reads(&self, sp: &Spot) -> Option<f64> {
+        self.spot_value(sp).map(|z| self.frames().elevation(z, sp.origin))
+    }
+
+    /// What a spot coordinate shows: in a plan, the east and north of its point from its type's origin.
+    pub fn spot_coordinate(&self, sp: &Spot) -> Option<(f64, f64)> {
+        self.spot_coordinate_reads(sp).map(|r| (r.east, r.north))
+    }
+
+    /// The links placed by base points or shared coordinates, loaded, whose remembered place isn't where they stand now, and
+    /// where that is. None without a loaded link, without looking at the elements.
+    pub fn links_moved(&self) -> Vec<(Id, Placed)> {
+        if self.loaded.is_empty() {
+            return Vec::new();
+        }
+        self.elements
+            .iter()
+            .filter_map(|(id, e)| match e {
+                Element::Link(l) if l.by != crate::link::By::Manual => {
+                    let other = self.loaded.get(&l.path)?;
+                    let (at, angle, raised) = crate::link::placement(self, l, other);
+                    let now = Placed { at, angle, raised };
+                    (l.placed != Some(now)).then_some((*id, now))
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// The type spot coordinate `sp` draws in: its own, else (one from before types) the one its origin takes, else one as a
+    /// project starts with.
+    pub fn spot_coordinate_type(&self, sp: &Spot) -> crate::spots::SpotCoordinateType {
+        let types = &self.spot_coordinate_types;
+        sp.type_name
+            .as_ref()
+            .and_then(|n| types.get(n))
+            .or_else(|| crate::spots::default_type(types, sp.origin).and_then(|n| types.get(n)))
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    /// What spot coordinate `sp` reads, from its type's origin: in a plan, the east and north of its point, and the elevation
+    /// of its host's top there (of the plan's level where it has none).
+    pub fn spot_coordinate_reads(&self, sp: &Spot) -> Option<crate::spots::Reads> {
+        let level = self.plan_level(sp.view)?;
+        let origin = self.spot_coordinate_type(sp).origin;
+        let (east, north) = self.frames().plan(sp.at.0, sp.at.1, origin);
+        let z = match sp.host {
+            Some(_) => self.spot_value(sp),
+            None => Some(self.elevation(level)),
+        };
+        Some(crate::spots::Reads { east, north, elevation: z.map(|z| self.frames().elevation(z, origin)) })
+    }
+
+    /// Spot coordinate `sp`'s lines of text, as its type lays them.
+    pub fn spot_coordinate_text(&self, sp: &Spot) -> Vec<String> {
+        self.spot_coordinate_type(sp).lines(self.spot_coordinate_reads(sp), self.units)
+    }
+
+    /// A level's elevation as it is shown: from its elevation base.
+    pub fn level_shown(&self, l: &Level) -> f64 {
+        self.frames().elevation(l.elevation, l.elevation_base)
+    }
+
     /// What a spot slope reads: in a plan, how steeply its host's top falls at its point, %, and which way, a unit vector
     /// downhill in plan (none on the level). None while its host isn't a floor or a roof there, or out of a plan.
     pub fn spot_slope(&self, sp: &Spot) -> Option<(f64, Option<P2>)> {
@@ -5778,7 +6918,7 @@ impl Model {
 
     /// What bounds the rooms of `level`: the centre lines of its walls, arcs as chords, and its room separation lines. A
     /// separation line drawn to a wall's face, as one drawn on a plan usually is, runs on to the wall's centre line, so it
-    /// splits rooms measured there too.
+    /// splits rooms measured there too. A parallel continuation at a straight wall's end joins across its cap instead.
     pub fn bounding_lines(&self, level: impl Key) -> Vec<(P2, P2)> {
         self.bounding_lines_in(level, Some(&walls::Index::new(self)))
     }
@@ -5786,14 +6926,26 @@ impl Model {
     /// [`Model::bounding_lines`], the walls' joins found through `index`, or among every wall without one.
     pub(crate) fn bounding_lines_in(&self, level: impl Key, index: Option<&walls::Index>) -> Vec<(P2, P2)> {
         let walls = self.wall_segments(&level, index, true);
-        let mut lines: Vec<(P2, P2)> = walls.iter().map(|&(a, b, _)| (a, b)).collect();
-        lines.extend(self.separators(level).into_iter().map(|(a, b)| (to_centre(b, a, &walls), to_centre(a, b, &walls))));
+        let mut lines: Vec<(P2, P2)> = walls.iter().map(|s| (s.start, s.end)).collect();
+        for (a, b) in self.separators(level) {
+            let (start, end) = (to_centre(b, a, &walls), to_centre(a, b, &walls));
+            lines.push((start, end));
+            for (from, drawn, extended) in [(b, a, start), (a, b, end)] {
+                // Keep crossing extensions as before. A parallel end gets a short cap connection, so the separator
+                // stays on its drawn line instead of tilting the whole room boundary towards the wall's centre.
+                if drawn == extended
+                    && let Some(centre) = parallel_wall_end(from, drawn, &walls)
+                {
+                    lines.push((drawn, centre));
+                }
+            }
+        }
         lines
     }
 
     /// Centre lines of the walls that bound the rooms of `level`, arcs as chords.
     pub fn wall_lines(&self, level: impl Key) -> Vec<(P2, P2)> {
-        self.wall_segments(&level, Some(&walls::Index::new(self)), false).into_iter().map(|(a, b, _)| (a, b)).collect()
+        self.wall_segments(&level, Some(&walls::Index::new(self)), false).into_iter().map(|s| (s.start, s.end)).collect()
     }
 
     /// The walls that bound the rooms of `level` (with `rooms`, those whose Room Bounding is on), by id.
@@ -5807,14 +6959,29 @@ impl Model {
         candidates.filter(move |&id| self.wall(id).is_some_and(|w| self.bounding(w, level) && (!rooms || w.room_bounding)))
     }
 
-    /// The segments of [`Model::wall_lines`], each with half its wall's thickness.
+    /// The segments of [`Model::wall_lines`], each with half its wall's thickness and its eligible straight-wall end caps.
     /// With `rooms`, of the walls whose Room Bounding is on.
-    fn wall_segments(&self, level: &impl Key, index: Option<&walls::Index>, rooms: bool) -> Vec<(P2, P2, f64)> {
+    fn wall_segments(&self, level: &impl Key, index: Option<&walls::Index>, rooms: bool) -> Vec<WallSegment> {
+        let keep = |w: &Wall| self.bounding(w, level) && (!rooms || w.room_bounding);
         self.bounding_walls(level, rooms)
-            .filter_map(|id| Some((id, self.thickness(self.wall(id)?) / 2.0)))
-            .flat_map(|(id, half)| {
-                let line = walls::centre_line_in(self, id, index);
-                line.windows(2).filter_map(|s| s.first().zip(s.get(1)).map(|(a, b)| (*a, *b, half))).collect::<Vec<_>>()
+            .filter_map(|id| {
+                let wall = self.wall(id)?;
+                Some((id, self.thickness(wall) / 2.0, wall.arc == 0.0))
+            })
+            .flat_map(|(id, half, straight)| {
+                let line = walls::centre_line_filtered(self, id, index, &keep);
+                line.windows(2)
+                    .enumerate()
+                    .filter_map(|(i, s)| {
+                        s.first().zip(s.get(1)).map(|(a, b)| WallSegment {
+                            start: *a,
+                            end: *b,
+                            half,
+                            // A curved wall's chord direction is not its actual end-cap tangent.
+                            caps: [straight && i == 0, straight && i + 2 == line.len()],
+                        })
+                    })
+                    .collect::<Vec<_>>()
             })
             .collect()
     }
@@ -5827,8 +6994,9 @@ impl Model {
 
     /// [`Model::face_lines`] (with `rooms`, of the walls whose Room Bounding is on), the walls' joins found through `index`.
     pub(crate) fn face_lines_in(&self, level: impl Key, index: Option<&walls::Index>, rooms: bool) -> Vec<(P2, P2)> {
+        let keep = |w: &Wall| self.bounding(w, level) && (!rooms || w.room_bounding);
         self.bounding_walls(&level, rooms)
-            .flat_map(|id| geom::ring_edges(&walls::outline_in(self, id, index)).collect::<Vec<_>>())
+            .flat_map(|id| geom::ring_edges(&walls::outline_filtered(self, id, index, &keep)).collect::<Vec<_>>())
             .collect()
     }
 
@@ -6013,7 +7181,7 @@ impl Model {
     }
 
     /// What is amiss in the model but doesn't make it wrong: soft issues, said so they can be fixed. `check` refuses a model;
-    /// these it accepts. A room the walls no longer close; a family of lighting, outlets or switches in use that holds no
+    /// these it accepts. A room the walls no longer close; a component off the face it is hosted on; a family of lighting, outlets or switches in use that holds no
     /// connector, so its devices count as a load of zero (a family of plan symbols alone, a symbol set's, is no device).
     pub fn warnings(&self) -> Vec<String> {
         let rooms = crate::rooms::Rooms::new(self);
@@ -6056,12 +7224,23 @@ impl Model {
                 if k == 1 { "s" } else { "" }
             )
         }));
+        // A face-hosted component its face no longer reaches (Revit's lost association): it keeps to the face's plane.
+        out.extend(self.off_their_faces().into_iter().map(|(id, on)| {
+            format!(
+                "component {id} is off its host's face ({on}): it stays on the face's plane carried on; move it back onto the \
+                 face, or put it on another work plane with `edit_work_plane`"
+            )
+        }));
+        out.extend(crate::electrical::circuit_warnings(self));
         out
     }
 
     /// Everything that must hold between commands: references resolve, geometry is finite and
     /// not degenerate, doors and windows fit their walls and don't overlap.
     pub fn check(&self) -> Result<(), String> {
+        if let Some(g) = self.pinned.iter().find(|g| self.elements.id(**g).is_none()) {
+            return Err(format!("`pinned` names an element that is gone ({g})"));
+        }
         if let Some(lw) = &self.line_weights {
             lw.check()?;
         }
@@ -6097,6 +7276,22 @@ impl Model {
         for (n, p) in &self.reinforcement {
             p.check(n)?;
         }
+        if self.print_sets.len() > crate::printset::MAX_SETS {
+            return Err(format!("the project has {} print sets; it holds up to {}", self.print_sets.len(), crate::printset::MAX_SETS));
+        }
+        for (n, p) in &self.print_sets {
+            p.check(n)?;
+        }
+        if self.publish_sets.len() > crate::publish::MAX_SETS {
+            return Err(format!(
+                "the project has {} publishing sets; it holds up to {}",
+                self.publish_sets.len(),
+                crate::publish::MAX_SETS
+            ));
+        }
+        for (n, p) in &self.publish_sets {
+            p.check(n)?;
+        }
         for (n, t) in &self.dimension_types {
             t.check(n)?;
         }
@@ -6104,10 +7299,21 @@ impl Model {
             t.check(n)?;
         }
         crate::titleblock::check_values("the project's title fields", &self.title_values)?;
+        if self.spot_coordinate_types.len() > crate::spots::MAX_TYPES {
+            return Err(format!(
+                "the project has {} spot coordinate types; it holds up to {}",
+                self.spot_coordinate_types.len(),
+                crate::spots::MAX_TYPES
+            ));
+        }
+        for (n, t) in &self.spot_coordinate_types {
+            t.check(n)?;
+        }
         crate::electrical::check(self)?;
         if let Some(g) = &self.georeference {
             g.check().map_err(|e| format!("the project's georeference: {e}"))?;
         }
+        self.coordinates.check()?;
         for (n, x) in &self.materials {
             for p in [&x.cut_pattern, &x.surface_pattern].into_iter().flatten() {
                 if !self.fill_patterns.contains_key(p) {
@@ -6140,6 +7346,14 @@ impl Model {
                 size(&format!("{cat} type `{n}` width"), t.width)?;
                 size(&format!("{cat} type `{n}` height"), t.height)?;
                 coord(&format!("{cat} type `{n}` sill"), t.sill)?;
+                if cat == "window"
+                    && let Some(op) = t.operation.filter(|op| op.industrial())
+                {
+                    return Err(format!(
+                        "window type `{n}`: `{}` is a door's operation, a gate's; give the window another, or make it a door type",
+                        op.name()
+                    ));
+                }
             }
         }
         if self.images.len() > MAX_IMAGES {
@@ -6185,10 +7399,44 @@ impl Model {
             if n.trim().is_empty() {
                 return Err("a family needs a name".into());
             }
-            f.check(&|m| self.materials.contains_key(m)).map_err(|e| format!("family `{n}`: {e}"))?;
+            f.check_in(&|m| self.materials.contains_key(m), &mut vec![n.clone()], &mut 0).map_err(|e| format!("family `{n}`: {e}"))?;
         }
+        self.check_shared_parameters()?;
         if self.parameters.len() > MAX_PROJECT_PARAMETERS {
             return Err(format!("the project has {} parameters; it holds up to {MAX_PROJECT_PARAMETERS}", self.parameters.len()));
+        }
+        // The dictionaries its parameters came from: as many as a project keeps, each named, with where it was.
+        if self.dictionaries.len() > crate::parameters::MAX_DICTIONARIES {
+            return Err(format!(
+                "the project keeps up to {} dictionaries, not {}",
+                crate::parameters::MAX_DICTIONARIES,
+                self.dictionaries.len()
+            ));
+        }
+        for (n, d) in &self.dictionaries {
+            text(&format!("dictionary `{n}`"), "name", n)?;
+            if n.trim().is_empty() {
+                return Err("a dictionary needs a name".into());
+            }
+            if d.path.chars().count() > MAX_TEXT || d.version.chars().count() > MAX_TEXT {
+                return Err(format!("dictionary `{n}`: its path and its version hold up to {MAX_TEXT} characters each"));
+            }
+        }
+        // What files imported call categories, each to one of a parameter's or none: as many as a project has parameters.
+        if self.parameter_map.len() > MAX_PROJECT_PARAMETERS {
+            return Err(format!(
+                "the project maps up to {MAX_PROJECT_PARAMETERS} categories of other files, not {}",
+                self.parameter_map.len()
+            ));
+        }
+        for (raw, ours) in &self.parameter_map {
+            text("a category of another file", "name", raw)?;
+            if let Some(c) = ours.as_ref().filter(|c| !PARAMETER_CATEGORIES.contains(&c.as_str())) {
+                return Err(format!(
+                    "`{raw}` maps to `{c}`, which isn't a category a parameter is for; one of {}",
+                    PARAMETER_CATEGORIES.join(", ")
+                ));
+            }
         }
         for (n, p) in &self.parameters {
             let who = format!("parameter `{n}`");
@@ -6203,6 +7451,23 @@ impl Model {
             if p.categories.is_empty() {
                 return Err(format!("{who}: it needs a category: one of {}", PARAMETER_CATEGORIES.join(", ")));
             }
+            if p.description.chars().count() > MAX_TEXT {
+                return Err(format!("{who}: a description holds up to {MAX_TEXT} characters"));
+            }
+            if let Some(u) = &p.group {
+                u.check(&who)?;
+            }
+            // Said to be other parameters (merged from them): a GUID once each, never its own.
+            if p.same_as.len() > MAX_PROJECT_PARAMETERS {
+                return Err(format!("{who}: it is said to be up to {MAX_PROJECT_PARAMETERS} other parameters"));
+            }
+            let own = self.library.guid(&crate::library::Kind::Parameter, n);
+            if p.same_as.iter().enumerate().any(|(i, g)| Some(*g) == own || p.same_as[..i].contains(g)) {
+                return Err(format!("{who}: `same_as` holds its own GUID, or one GUID twice"));
+            }
+            if let Some(d) = p.dictionary.as_ref().filter(|d| !self.dictionaries.contains_key(*d)) {
+                return Err(format!("{who}: there's no dictionary `{d}`; make it a project parameter with `dictionary` null"));
+            }
             if let Some(c) = p.categories.iter().find(|c| !PARAMETER_CATEGORIES.contains(&c.as_str())) {
                 return Err(format!("{who}: `{c}` isn't a category it can be for; there are {}", PARAMETER_CATEGORIES.join(", ")));
             }
@@ -6210,9 +7475,22 @@ impl Model {
                 return Err(format!("{who}: {c}s have a `{n}` of their own; name it otherwise"));
             }
             if p.categories.iter().any(|c| c == "component")
-                && let Some((f, _)) = self.families.iter().find(|(_, f)| f.parameters.iter().any(|q| q.name == *n))
+                && let Some(f) = crate::parameters::family_clash(self, n, p)
             {
                 return Err(format!("{who}: family `{f}` has a parameter of that name; name it otherwise"));
+            }
+            p.check_ifc().map_err(|e| format!("{who}: {e}"))?;
+            if p.scope == Scope::Type {
+                if let Some(c) = p.categories.iter().find(|c| crate::parameters::TYPELESS.contains(&c.as_str())) {
+                    return Err(format!(
+                        "{who}: {c}s have no types, so it can't be a type parameter for them; make it an instance parameter or take {c} off"
+                    ));
+                }
+            } else if !p.type_values.is_empty() {
+                return Err(format!("{who}: it holds values of types and isn't a type parameter"));
+            }
+            if let Some(v) = p.type_values.values().find(|v| !p.holds(v)) {
+                return Err(format!("{who}: a type's value {v} isn't what it holds"));
             }
         }
         graphics::check_project(self)?;
@@ -6253,6 +7531,12 @@ impl Model {
             for (n, t) in types {
                 size(&format!("{cat} type `{n}` width"), t.width)?;
                 size(&format!("{cat} type `{n}` depth"), t.depth)?;
+                if let Some(p) = &t.profile {
+                    if cat != "structural column" {
+                        return Err(format!("{cat} type `{n}`: a steel section is a structural column's or a beam's, not a {cat}'s"));
+                    }
+                    p.check(&format!("{cat} type `{n}`"), t.width, t.depth, t.round)?;
+                }
             }
         }
         for (cat, types) in &self.types.runs {
@@ -6266,6 +7550,12 @@ impl Model {
                 if t.round && t.depth != t.width {
                     return Err(format!("{who}: a round section is as deep as it is wide ({} mm), not {} mm", t.width, t.depth));
                 }
+                if let Some(p) = &t.profile {
+                    if cat != "beam" {
+                        return Err(format!("{who}: a steel section is a structural column's or a beam's, not a {cat}'s"));
+                    }
+                    p.check(&who, t.width, t.depth, t.round)?;
+                }
                 text(&who, "material", &t.material)?;
                 if !t.material.is_empty() && !self.materials.contains_key(&t.material) {
                     return Err(format!("{who}: material `{}` isn't in the library; add it with `material`", t.material));
@@ -6278,19 +7568,61 @@ impl Model {
                 return Err(format!("railing type `{n}`: spacing {} mm; balusters stand 50 mm apart or more, or 0 for none", t.spacing));
             }
         }
+        for (n, t) in &self.types.room {
+            let who = format!("room type `{n}`");
+            if let Some(f) = &t.floor {
+                known(&format!("{who}'s floor"), f, &self.types.floor)?;
+            }
+            if let Some(c) = &t.ceiling {
+                known(&format!("{who}'s ceiling"), c, &self.types.ceiling)?;
+            }
+            coord(&format!("{who} floor offset"), t.floor_offset)?;
+            coord(&format!("{who} ceiling offset"), t.ceiling_offset)?;
+        }
         for (n, t) in &self.types.ceiling {
             // A finer grid would draw a line every few pixels, and millions over a large ceiling.
             if !(t.grid == 0.0 || (100.0..=MAX_COORD).contains(&t.grid)) {
                 return Err(format!("ceiling type `{n}`: grid {} mm; its tiles are 100 mm or wider, or 0 for none", t.grid));
             }
         }
-        let mut t = Tally::default();
-        for (&id, e) in &self.elements {
-            self.check_element(id, e, &mut t)?;
-        }
+        let t = match self.tally_on_every_core().filter(|_| !cfg!(test) || !ONE_BY_ONE.with(std::cell::Cell::get)) {
+            Some(t) => t,
+            // The way it always was, which says the first thing wrong in the order of the ids.
+            None => {
+                let mut t = Tally::default();
+                for (&id, e) in &self.elements {
+                    self.check_element(id, e, &mut t)?;
+                }
+                t
+            }
+        };
         self.check_shared(&t)?;
         // Last, so what a rule above says of a reference comes first.
         self.check_ids()
+    }
+
+    /// The elements' tally as [`Model::check`] goes through them, made on every core: each part of the elements checked on its
+    /// own, the parts' tallies then put together in the order of the ids. None for a small project, or wherever anything is
+    /// wrong or two parts hold what the whole may hold once (a name, a view placed, the project's information): the check then
+    /// goes through them one by one, so what it says is what it always said (`a_check_on_every_core_..` holds the two together).
+    fn tally_on_every_core(&self) -> Option<Tally<'_>> {
+        use rayon::prelude::*;
+        if self.elements.len() < 20_000 {
+            return None;
+        }
+        let all: Vec<(Id, &Element)> = self.elements.iter().map(|(id, e)| (*id, e)).collect();
+        let parts: Vec<Option<Tally<'_>>> = all
+            .par_chunks(4096)
+            .map(|chunk| {
+                let mut t = Tally::default();
+                chunk.iter().try_for_each(|(id, e)| self.check_element(*id, e, &mut t)).ok().map(|()| t)
+            })
+            .collect();
+        let mut whole = Tally::default();
+        for part in parts {
+            whole.join(part?)?;
+        }
+        Some(whole)
     }
 
     /// What [`Model::check`] asks of what the elements it went through hold in common.
@@ -6323,6 +7655,10 @@ impl Model {
     /// checked with the whole drawing set.
     pub fn check_changed(&self, before: &Model) -> Result<(), String> {
         let Changed::Ids(changed) = self.changed_since(before) else { return self.check_all() };
+        // Circuits are held to each other, their boards and their devices, so all of them are checked, as `check` does before
+        // the elements.
+        crate::electrical::check_circuits(self)?;
+        crate::electrical::check_demand_factors(self)?;
         let shared = |e: &Element| {
             matches!(
                 e,
@@ -6334,6 +7670,8 @@ impl Model {
                     | Element::Mass(_)
                     | Element::PointCloud(_)
                     | Element::CadImport(_)
+                    // One a project: a second is seen only beside the first.
+                    | Element::ProjectInfo(_)
             )
         };
         // What changed, as GUIDs, and the plan boxes the walls among it took up, before and now.
@@ -6441,7 +7779,19 @@ impl Model {
 
     /// What [`Model::check`] asks of element `id`, `e`, keeping in `t` what it must hold in common with the others.
     fn check_element<'a>(&'a self, id: Id, e: &'a Element, t: &mut Tally<'a>) -> Result<(), String> {
-        let Tally { level_names, grid_names, link_names, view_names, twins, sheet_numbers, placed, spans, members_placed, shapes } = t;
+        let Tally {
+            level_names,
+            grid_names,
+            link_names,
+            view_names,
+            twins,
+            sheet_numbers,
+            placed,
+            spans,
+            members_placed,
+            shapes,
+            project_info,
+        } = t;
         let who = format!("{} {id}", e.category());
         let level_ok = |l: Guid| self.level(l).map(|_| ()).ok_or(format!("{who}: level {} doesn't exist", self.shown(l)));
         // A view annotation is drawn in: a plan, a section or an elevation, or with `sheets`, a sheet.
@@ -6480,18 +7830,48 @@ impl Model {
                 .get(k)
                 .filter(|p| p.categories.iter().any(|c| c == e.category()))
                 .ok_or_else(|| format!("{who}: `{k}` isn't a parameter of {}s; add it with `parameter`", e.category()))?;
+            if p.scope == Scope::Type {
+                return Err(format!("{who}: `{k}` is a type parameter: its value is the type's, set with `type_parameter`"));
+            }
             if !p.holds(v) {
                 let what = match p.kind {
                     ParameterKind::Text => "text",
                     ParameterKind::Number => "a number",
                     ParameterKind::Length => "a length",
                     ParameterKind::YesNo => "yes or no",
+                    ParameterKind::Integer => "a whole number",
+                    ParameterKind::Area => "an area",
+                    ParameterKind::Volume => "a volume",
+                    ParameterKind::Angle => "an angle",
                 };
                 return Err(format!("{who}: `{k}` holds {what}, not {v}"));
             }
         }
         phasing::check_order(self, &who, e)?;
         match e {
+            Element::RefPlane(p) => {
+                p.check(&who)?;
+                // A name is one plane's: there are few planes, so the others are looked at here.
+                if !p.name.is_empty() {
+                    let lookup = self.lookup();
+                    let twin = lookup
+                        .rare("refplane")
+                        .find(|other| *other != id && matches!(self.elements.get(*other), Some(Element::RefPlane(o)) if o.name == p.name));
+                    if let Some(other) = twin {
+                        // Named by both, the same whichever is checked first.
+                        let (a, b) = (id.min(other), id.max(other));
+                        return Err(format!("reference planes {a} and {b} are both named `{}`; a name is one plane's", p.name));
+                    }
+                }
+            }
+            // Its rules are held between circuits, boards and devices, in one place: `electrical::check_circuits`.
+            Element::Circuit(_) => {}
+            Element::PanelSchedule(ps) => {
+                crate::panel_schedule::check(self, &who, ps)?;
+                if !view_names.insert(ps.name.as_str()) {
+                    return Err(format!("{who}: another view is already named `{}`", ps.name));
+                }
+            }
             Element::Level(l) => {
                 text(&who, "name", &l.name)?;
                 coord(&format!("{who} elevation"), l.elevation)?;
@@ -6518,6 +7898,15 @@ impl Model {
                 if !grid_names.insert(g.name.as_str()) {
                     return Err(format!("{who}: another grid is already named `{}`", g.name));
                 }
+            }
+            Element::PropertyLine(pl) => {
+                level_ok(pl.level)?;
+                boundary(&who, &pl.points)?;
+                text(&who, "name", &pl.name)?;
+                if pl.name.trim().is_empty() {
+                    return Err(format!("{who}: a property line needs a name"));
+                }
+                crate::site::check(&who, &pl.points)?;
             }
             Element::RoomSeparator(rs) => {
                 level_ok(rs.level)?;
@@ -6714,6 +8103,23 @@ impl Model {
                 text(&who, "name", &r.name)?;
                 text(&who, "number", &r.number)?;
                 kept(&who, r)?;
+                known(&who, &r.type_name, &self.types.room)?;
+                if r.colour.is_some() {
+                    return Err(format!(
+                        "{who}: a room's colour on plans is its type's; set it with `type {{category: room, name, colour}}`"
+                    ));
+                }
+                for part in Part::BOTH {
+                    let Some(g) = r.finish(part).connected() else { continue };
+                    let level = match (part, self.elements.get(g)) {
+                        (Part::Floor, Some(Element::Floor(f))) => f.level,
+                        (Part::Ceiling, Some(Element::Ceiling(c))) => c.level,
+                        _ => return Err(format!("{who}: its {} {} isn't a {} of the project", part.name(), self.shown(g), part.name())),
+                    };
+                    if !self.same(level, r.level) {
+                        return Err(format!("{who}: its {} {} is on another level", part.name(), self.shown(g)));
+                    }
+                }
                 if let Some(t) = r.top_level {
                     level_ok(t)?;
                 }
@@ -6920,6 +8326,17 @@ impl Model {
                 coord(&format!("{who} offset"), pc.offset)?;
                 coord(&format!("{who} angle"), pc.angle)?;
             }
+            Element::ProjectInfo(info) => {
+                info.check(&who)?;
+                if let Some(k) =
+                    info.params.keys().find(|k| phasing::reserved(k) || crate::paint::reserved(k) || crate::massing::reserved(k))
+                {
+                    return Err(format!("{who}: the project has no `{k}`: phases, design options, paint and masses are its elements'"));
+                }
+                if let Some(first) = project_info.replace(id) {
+                    return Err(format!("{who}: the project's information is element {first}; a project has one, set with `project_info`"));
+                }
+            }
             Element::CadImport(ci) => {
                 if !self.cads.contains_key(&ci.cad) {
                     return Err(format!("{who}: the project holds no CAD drawing named `{}`", ci.cad));
@@ -6966,8 +8383,23 @@ impl Model {
             Element::Spot(sp) => {
                 view_ok(sp.view, false)?;
                 point(&who, sp.at)?;
+                if let Some(e) = sp.end {
+                    point(&who, e)?;
+                }
+                if let Some(t) = &sp.type_name
+                    && !self.spot_coordinate_types.contains_key(t)
+                {
+                    let there: Vec<&str> = self.spot_coordinate_types.keys().map(String::as_str).collect();
+                    return Err(format!("{who}: there's no spot coordinate type `{t}` (there are: {})", there.join(", ")));
+                }
+                if sp.type_name.is_some() && !sp.coordinate {
+                    return Err(format!("{who}: only a spot coordinate has a type"));
+                }
                 match (self.plan_level(sp.view), sp.host) {
-                    (Some(_), None) => return Err(format!("{who}: a spot elevation in a plan reads an element's top; give `host`")),
+                    (None, _) if sp.coordinate => return Err(format!("{who}: a spot coordinate reads north and east: place it in a plan")),
+                    (Some(_), None) if !sp.coordinate => {
+                        return Err(format!("{who}: a spot elevation in a plan reads an element's top; give `host`"));
+                    }
                     (_, Some(h)) if !self.elements.contains_key(h) => return Err(format!("{who}: element {h} doesn't exist")),
                     _ => {}
                 }
@@ -7078,6 +8510,10 @@ impl Model {
                 if let Some(d) = v.depth {
                     size(&format!("{who} depth"), d)?;
                 }
+                for (what, q) in v.mark.iter().map(|q| ("mark", q)).chain(v.reference.iter().flatten().map(|q| ("reference", q))) {
+                    coord(&format!("{who} {what}"), q.0)?;
+                    coord(&format!("{who} {what}"), q.1)?;
+                }
                 if let Some([bottom, top]) = v.crop {
                     coord(&format!("{who} crop"), bottom)?;
                     coord(&format!("{who} crop"), top)?;
@@ -7095,6 +8531,7 @@ impl Model {
                     let names: Vec<&str> = self.families.keys().map(String::as_str).collect();
                     format!("{who}: family `{}` doesn't exist (there are: {})", c.family, names.join(", "))
                 })?;
+                crate::electrical::check_panel(self, id, c)?;
                 if f.category.hosted() {
                     return Err(format!(
                         "{who}: family `{}` is a door's or a window's: it stands in a wall, placed with `door` or `window`",
@@ -7105,7 +8542,71 @@ impl Model {
                 point(&who, c.at)?;
                 coord(&format!("{who} angle"), c.angle)?;
                 coord(&format!("{who} offset"), c.offset)?;
+                // On a reference plane, only a work plane-based family's component, and never an adaptive one: it is placed
+                // by its own points.
+                if let Some(h) = &c.host {
+                    if self.placed_by_points(c) {
+                        return Err(format!(
+                            "{who}: it is hosted on {}, and adaptive components take their place from their points (family \
+                             `{}` is adaptive): move its points (`adaptive_move`, `adaptive_place`) instead, or put it on a level \
+                             (`edit_work_plane` with `host` `level`)",
+                            self.work_plane_name(c),
+                            c.family
+                        ));
+                    }
+                    match (h.host, self.elements.get(h.host.guid())) {
+                        (HostRef::Plane(_), Some(Element::RefPlane(_))) => {}
+                        (HostRef::Plane(_), Some(other)) => {
+                            return Err(format!(
+                                "{who}: its host, {} {}, isn't a reference plane",
+                                other.category(),
+                                self.shown(h.host.guid())
+                            ));
+                        }
+                        (HostRef::Plane(_), None) => {
+                            return Err(format!("{who}: its host, reference plane {}, doesn't exist", self.shown(h.host.guid())));
+                        }
+                        (HostRef::Face { face, .. }, Some(e)) if face.of(e.category()) => {}
+                        (HostRef::Face { face, .. }, Some(e)) if matches!(e.category(), "wall" | "floor" | "ceiling" | "roof") => {
+                            let has = if e.category() == "wall" { "exterior and interior" } else { "top and bottom" };
+                            return Err(format!(
+                                "{who}: its host, {} {}, has no face `{}` to host on; its faces are {has}",
+                                e.category(),
+                                self.shown(h.host.guid()),
+                                face.name()
+                            ));
+                        }
+                        (HostRef::Face { .. }, Some(e)) => {
+                            return Err(format!(
+                                "{who}: its host, {} {}, has no faces to host on: a component goes on a face of a wall, a floor, \
+                                 a ceiling or a roof",
+                                e.category(),
+                                self.shown(h.host.guid())
+                            ));
+                        }
+                        (HostRef::Face { .. }, None) => {
+                            return Err(format!("{who}: its host, element {}, doesn't exist", self.shown(h.host.guid())));
+                        }
+                    }
+                    if !f.work_plane_based {
+                        return Err(format!(
+                            "{who}: it is hosted on {}, and family `{}` isn't work plane-based: turn its `work_plane_based` \
+                             option on, or put the component on a level (`edit_work_plane` with `host` `level`)",
+                            self.work_plane_name(c),
+                            c.family
+                        ));
+                    }
+                    coord(&format!("{who} host uv"), h.uv[0])?;
+                    coord(&format!("{who} host uv"), h.uv[1])?;
+                    coord(&format!("{who} offset from host"), h.offset)?;
+                }
                 self.family_values_ok(&who, &c.family, f, &c.params)?;
+                if let Some(placement) = &c.adaptive {
+                    if f.adaptive.is_none() {
+                        return Err(format!("{who}: adaptive placement requires an adaptive family"));
+                    }
+                    placement.check().map_err(|e| format!("{who}: {e}"))?;
+                }
                 // Its shape, built once for each family, type and values the project's components have.
                 let build = || f.values(&c.type_name, &c.params).and_then(|v| f.pieces(&v).and(f.marks(&v))).map(|_| ());
                 let built = match serde_json::to_string(&c.params) {
@@ -7129,9 +8630,22 @@ impl Model {
                     Some(t) => level_ok(t)?,
                     None => size(&format!("{who} height"), col.height)?,
                 }
-                let (bottom, top) = self.span(col.level, col.base_offset, col.top_level, col.height);
+                coord(&format!("{who} top offset"), col.top_offset)?;
+                for (what, at) in [("attach_top", col.attach_top), ("attach_base", col.attach_base)] {
+                    if let Some(a) = at {
+                        if matches!(e, Element::Footing(_)) {
+                            return Err(format!("{who}: a footing has no {what}"));
+                        }
+                        if !matches!(self.elements.get(a), Some(Element::Roof(_) | Element::Floor(_))) {
+                            return Err(format!("{who}: {what} {} isn't a roof or a floor", self.shown(a)));
+                        }
+                    }
+                }
+                let (bottom, top) = self.column_span(e);
                 if top <= bottom + TOL {
-                    return Err(format!("{who}: its top must be above its base"));
+                    return Err(format!(
+                        "{who}: its top ({top:.0} mm) must be above its base ({bottom:.0} mm); raise its top constraint, or attach it to something over its base"
+                    ));
                 }
             }
             run_arm!(r) => {
@@ -7302,6 +8816,14 @@ impl Model {
                         sh.size
                     ));
                 };
+                if let Some([_, hi]) = self.title_blocks.get(&sh.title_block).and_then(|tb| tb.drawing_area)
+                    && (hi.0 > width || hi.1 > height)
+                {
+                    return Err(format!(
+                        "{who}: title block `{}` drawing area extends outside {width} × {height} mm paper on sheet {}",
+                        sh.title_block, sh.number
+                    ));
+                }
                 // The title block is drawn its standard's size in the bottom right corner, inside the border: paper
                 // smaller than that would squeeze it until the sheet's name runs over its number. A sheet with none has
                 // nothing there to squeeze.
@@ -7403,6 +8925,11 @@ impl Model {
         self.derived.lookup(&self.elements)
     }
 
+    /// The tile index of its walls and runs, kept with it until its elements or its types change.
+    pub(crate) fn wall_index(&self) -> Arc<walls::Index> {
+        self.derived.index(&self.elements, &self.types, || walls::Index::new(self))
+    }
+
     /// What changed from `before` to this model: the elements a command added, changed or removed, when it changed nothing
     /// else (no type, material, family, setting or other entry of the project), and this model is the one it made of
     /// `before`; else everything.
@@ -7413,9 +8940,21 @@ impl Model {
         self.elements.changed_since(&before.elements)
     }
 
+    /// What changed from `before` to this model, exactly: the elements that differ (made, changed, removed, or given another GUID),
+    /// and whether anything but the elements and the ids still to give did. Where [`Model::changed_since`] can only say
+    /// "everything", every element is compared: a person's undo needs the exact list (`Session::undo_own`).
+    pub fn diff(&self, before: &Model) -> (BTreeSet<Id>, bool) {
+        let candidates: BTreeSet<Id> = match self.elements.changed_since(&before.elements) {
+            Changed::Ids(ids) => ids,
+            Changed::All => self.elements.keys().chain(before.elements.keys()).copied().collect(),
+        };
+        let differ = |id: &Id| self.elements.get(*id) != before.elements.get(*id) || self.elements.guid(*id) != before.elements.guid(*id);
+        (candidates.into_iter().filter(differ).collect(), !self.same_settings(before))
+    }
+
     /// Whether everything but the elements and the ids still to give is the same in both. Every field is named, so a new
     /// one must say how it compares.
-    fn same_settings(&self, o: &Model) -> bool {
+    pub(crate) fn same_settings(&self, o: &Model) -> bool {
         let Model {
             format,
             name,
@@ -7431,6 +8970,8 @@ impl Model {
             cads,
             families,
             parameters,
+            dictionaries,
+            parameter_map,
             view_filters,
             view_templates,
             phases,
@@ -7446,14 +8987,20 @@ impl Model {
             region_types,
             text_types,
             dimension_types,
+            spot_coordinate_types,
             detail_groups,
             title_blocks,
             title_values,
             reinforcement,
+            print_sets,
+            publish_sets,
             voltages,
             distribution_systems,
             wire_types,
             georeference,
+            pinned,
+            demand_factors,
+            coordinates,
             elements: _,
             library,
             loaded,
@@ -7472,6 +9019,8 @@ impl Model {
             && *cads == o.cads
             && *families == o.families
             && *parameters == o.parameters
+            && *dictionaries == o.dictionaries
+            && *parameter_map == o.parameter_map
             && *view_filters == o.view_filters
             && *view_templates == o.view_templates
             && *phases == o.phases
@@ -7487,14 +9036,20 @@ impl Model {
             && *region_types == o.region_types
             && *text_types == o.text_types
             && *dimension_types == o.dimension_types
+            && *spot_coordinate_types == o.spot_coordinate_types
             && *detail_groups == o.detail_groups
             && *title_blocks == o.title_blocks
             && *title_values == o.title_values
             && *reinforcement == o.reinforcement
+            && *print_sets == o.print_sets
+            && *publish_sets == o.publish_sets
             && *voltages == o.voltages
             && *distribution_systems == o.distribution_systems
             && *wire_types == o.wire_types
             && *georeference == o.georeference
+            && *pinned == o.pinned
+            && *demand_factors == o.demand_factors
+            && *coordinates == o.coordinates
             && *library == o.library
             && loaded.len() == o.loaded.len()
             && loaded.iter().zip(&o.loaded).all(|((a, x), (b, y))| a == b && Arc::ptr_eq(x, y))
@@ -7537,6 +9092,57 @@ struct Tally<'a> {
     members_placed: BTreeMap<Guid, usize>,
     /// Whether components' shapes build, by family, type and values (as JSON).
     shapes: HashMap<(&'a str, &'a str, String), Result<(), String>>,
+    /// The project's information element, once seen.
+    project_info: Option<Id>,
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Whether [`Model::check`] goes through the elements one by one on this thread, for the tests that hold the two together.
+    pub(crate) static ONE_BY_ONE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+#[cfg(not(test))]
+thread_local! {
+    static ONE_BY_ONE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+impl<'a> Tally<'a> {
+    /// `other`, of the elements after these, added to this; none where the two hold what the whole may hold once.
+    fn join(&mut self, other: Tally<'a>) -> Option<()> {
+        fn once<'a>(into: &mut BTreeSet<&'a str>, from: BTreeSet<&'a str>) -> Option<()> {
+            for n in from {
+                into.insert(n).then_some(())?;
+            }
+            Some(())
+        }
+        once(&mut self.level_names, other.level_names)?;
+        once(&mut self.grid_names, other.grid_names)?;
+        once(&mut self.link_names, other.link_names)?;
+        once(&mut self.view_names, other.view_names)?;
+        once(&mut self.twins, other.twins)?;
+        once(&mut self.sheet_numbers, other.sheet_numbers)?;
+        for (view, sheet) in other.placed {
+            self.placed.insert(view, sheet).is_none().then_some(())?;
+        }
+        for (view, n) in other.members_placed {
+            let total = self.members_placed.entry(view).or_default();
+            *total = total.saturating_add(n);
+            (*total <= crate::groups::MAX_PLACED).then_some(())?;
+        }
+        if let Some(id) = other.project_info {
+            self.project_info.replace(id).is_none().then_some(())?;
+        }
+        // Each wall's openings in the order they start along it, those that start together in the order of their ids: as each,
+        // inserted after those that start where it does or before, leaves them.
+        for (host, spans) in other.spans {
+            let list = self.spans.entry(host).or_default();
+            list.extend(spans);
+            list.sort_by(|a, b| a.start.partial_cmp(&b.start).unwrap_or(std::cmp::Ordering::Equal));
+        }
+        self.shapes.extend(other.shapes);
+        Some(())
+    }
 }
 
 fn coord(what: &str, v: f64) -> Result<(), String> {
@@ -7863,6 +9469,37 @@ fn fresh_uid() -> u64 {
     mix(nanos ^ u64::from(std::process::id()).rotate_left(32))
 }
 
+/// A project file's top object as [`Model::read_on_every_core`] reads it in one pass: each element's raw text by its key, and each
+/// other field's raw text by its name. The last of a key said twice is the one kept, as a JSON value keeps it.
+struct TopLevel<'a> {
+    rest: BTreeMap<String, &'a serde_json::value::RawValue>,
+    elements: Option<BTreeMap<String, &'a serde_json::value::RawValue>>,
+}
+
+impl<'de: 'a, 'a> Deserialize<'de> for TopLevel<'a> {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        struct V<'a>(std::marker::PhantomData<&'a ()>);
+        impl<'de: 'a, 'a> serde::de::Visitor<'de> for V<'a> {
+            type Value = TopLevel<'a>;
+            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                f.write_str("a project's object")
+            }
+            fn visit_map<A: serde::de::MapAccess<'de>>(self, mut map: A) -> Result<TopLevel<'a>, A::Error> {
+                let mut top = TopLevel { rest: BTreeMap::new(), elements: None };
+                while let Some(key) = map.next_key::<String>()? {
+                    if key == "elements" {
+                        top.elements = Some(map.next_value()?);
+                    } else {
+                        top.rest.insert(key, map.next_value()?);
+                    }
+                }
+                Ok(top)
+            }
+        }
+        d.deserialize_map(V(std::marker::PhantomData))
+    }
+}
+
 /// A file from before pens (format 3 and older) as one after: each line weight of a view's, a filter's or a phase's
 /// overrides (the `weight` of a `cut` or `projection` style) was pixels of a sheet's drawing, [`crate::sheet::DENSITY`] to
 /// the mm, and is the pen nearest that wide on paper. A weight that isn't a number is left for reading to refuse.
@@ -7891,28 +9528,70 @@ struct OpeningSpan {
     id: Id,
 }
 
+/// A room-bounding wall's centreline segment. Only straight walls have eligible parallel-connection caps.
+struct WallSegment {
+    start: P2,
+    end: P2,
+    half: f64,
+    caps: [bool; 2],
+}
+
 /// Where the line from `from` through `end` reaches the centre line of a wall that `end` lies inside (within half the wall's
 /// thickness of that line), carrying on the way it points; `end` itself when it lies in no wall or is on a centre line already.
-fn to_centre(from: P2, end: P2, walls: &[(P2, P2, f64)]) -> P2 {
+fn to_centre(from: P2, end: P2, walls: &[WallSegment]) -> P2 {
     let way = (end - from).unit();
     if !way.is_finite() {
         return end;
     }
     walls
         .iter()
-        .filter(|&&(a, b, half)| half > 0.0 && geom::dist_to_segment(end, a, b) <= half + TOL)
-        .filter_map(|&(a, b, half)| {
+        .filter(|s| s.half > 0.0 && geom::dist_to_segment(end, s.start, s.end) <= s.half + TOL)
+        .filter_map(|s| {
             // Far enough to cross a wall met at a slant, short of the wall beyond it.
-            let reach = 4.0 * half + TOL;
-            geom::crossing(end, end + way * reach, a, b).map(|t| t * reach)
+            let reach = 4.0 * s.half + TOL;
+            geom::crossing(end, end + way * reach, s.start, s.end).map(|t| t * reach)
         })
         .min_by(f64::total_cmp)
         .map_or(end, |d| end + way * d)
 }
 
+/// A parallel separator continuing a straight wall's end can meet its cap without ever crossing its centre line.
+/// Join only there, within the wall's thickness: never along its side, across a gap, or pointing back over the wall.
+fn parallel_wall_end(from: P2, end: P2, walls: &[WallSegment]) -> Option<P2> {
+    let way = (end - from).unit();
+    walls
+        .iter()
+        .filter(|s| s.half > 0.0 && (s.end - s.start).unit().cross(way).abs() <= 1e-9)
+        .flat_map(|s| [(s.start, s.end, s.half, s.caps[0]), (s.end, s.start, s.half, s.caps[1])])
+        .filter(|&(cap, other, half, actual_cap)| {
+            let inward = (other - cap).unit();
+            actual_cap && inward.dot(way) > 0.0 && (end - cap).dot(inward).abs() <= TOL && end.dist(cap) <= half + TOL
+        })
+        .map(|(cap, _, _, _)| cap)
+        .filter(|cap| end.dist(*cap) > TOL)
+        .min_by(|a, b| end.dist(*a).total_cmp(&end.dist(*b)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_parallel_separator_does_not_treat_internal_arc_chord_ends_as_wall_caps() {
+        let mut m = Model::new("Arc cap control");
+        let level = m.guid(100000);
+        let id = m.insert(wall(level, P2(0.0, 0.0), P2(8000.0, 0.0)));
+        if let Some(Element::Wall(w)) = m.elements.get_mut(id) {
+            w.arc = 90.0;
+        }
+        let segments = m.wall_segments(&level, None, true);
+        assert!(segments.len() > 3);
+        let s = &segments[1];
+        let (a, b, half) = (s.start, s.end, s.half);
+        let way = (b - a).unit();
+        let end = b + way.perp() * half;
+        assert_eq!(parallel_wall_end(end + way * 1000.0, end, &segments), None);
+    }
 
     fn wall(level: Guid, a: P2, b: P2) -> Element {
         Element::Wall(Wall {
@@ -8143,7 +9822,8 @@ mod tests {
         assert_eq!(m.type_names("doors"), ["Single 800 x 2100", "Single 900 x 2100"], "any case, singular or plural");
         m.types.wall.remove("Generic - 200mm");
         assert_eq!(m.default_type("wall"), Some("Exterior - 300mm"), "else the first by name");
-        assert_eq!(m.default_type("room"), None, "rooms have no types");
+        assert_eq!(m.default_type("room"), Some("Standard"), "the one room type, with no floor or ceiling");
+        assert_eq!(m.default_type("level"), None, "levels have no types");
     }
 
     #[test]

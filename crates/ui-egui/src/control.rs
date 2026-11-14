@@ -24,6 +24,7 @@ use bimcraft_core::bridge::{self, Access, Entry, Error, MAX_LINE, Request};
 use bimcraft_core::ids::Guid;
 use bimcraft_i18n::msg;
 use egui::{Context, RichText, Ui, vec2};
+use serde_json::{Value, json};
 
 use crate::BimApp;
 use crate::lang::{t, tf};
@@ -326,6 +327,33 @@ impl BimApp {
         self.agents.failed.clone().map_or(Ok(()), Err)
     }
 
+    /// Lets agents work on this project, or stops them: Settings' checkbox and the app bar's AI button, kept in the settings.
+    pub(crate) fn set_agents(&mut self, on: bool) {
+        self.agents.listen = on;
+        if on {
+            self.open_control();
+        } else {
+            self.close_control();
+        }
+    }
+
+    /// The app bar's AI button, beside Settings: a click turns Let agents work on this project on or off. What stops it is
+    /// said in the status bar, as Settings is shut.
+    pub(crate) fn agents_toggle(&mut self, ui: &mut egui::Ui) {
+        let on = self.control.is_some();
+        let tip = crate::lang::t(if on {
+            bimcraft_i18n::msg!("Let agents work on this project: on. Click to stop them")
+        } else {
+            bimcraft_i18n::msg!("Let agents work on this project: off. Click to let them")
+        });
+        if crate::toggle_button(ui, crate::icons::Icon::Ai, crate::lang::t("AI agents"), on, tip).clicked() {
+            self.set_agents(!on);
+            if let Some(why) = self.agents.failed.clone() {
+                self.status = crate::Status { text: why, error: true };
+            }
+        }
+    }
+
     /// Opens the port on the one Settings says, in place of one that is open; what stops it is kept in `agents.failed`.
     pub(crate) fn open_control(&mut self) {
         let port = self.agents.port;
@@ -381,6 +409,45 @@ impl BimApp {
         }
     }
 
+    /// A fresh desktop snapshot, read on the UI thread rather than cached in the bridge or the model.
+    fn desktop_context(&self) -> Result<Value, String> {
+        let m = &self.session.model;
+        if m.uid != self.project {
+            return Err("desktop context is not ready: the window is switching projects; retry the request".into());
+        }
+        if self.home.shown {
+            return Ok(json!({"project": m.name, "selection": [], "active_view": null}));
+        }
+        let selection: Vec<Value> = self
+            .selection
+            .iter()
+            .filter_map(|id| m.elements.get(id).map(|e| json!({"id": id, "guid": m.guid(*id), "category": e.category()})))
+            .collect();
+        let (kind, id, exists) = match self.sheet {
+            crate::Sheet::Plan(id) => ("plan", Some(id), m.plan_level(id).is_some()),
+            crate::Sheet::Ceiling(id) => ("ceiling", Some(id), m.plan_level(id).is_some()),
+            crate::Sheet::View3D => ("3d", self.active_3d(), true),
+            crate::Sheet::Section(id) => (
+                if matches!(m.elements.get(id), Some(bimcraft_core::model::Element::Elevation(_))) { "elevation" } else { "section" },
+                Some(id),
+                m.section(id).is_some(),
+            ),
+            crate::Sheet::Paper(id) => ("sheet", Some(id), m.sheet(id).is_some()),
+            crate::Sheet::Schedule(category) => ("schedule", bimcraft_core::schedule::standard(m, category).0, true),
+            crate::Sheet::Table(id) => {
+                ("schedule", Some(id), matches!(m.elements.get(id), Some(bimcraft_core::model::Element::Schedule(_))))
+            }
+            // A family document's view: not the project's, so it has no id here.
+            crate::Sheet::Family(..) => ("family", None, true),
+        };
+        let active_view = if exists {
+            json!({"kind": kind, "name": self.view_name(self.sheet), "id": id, "guid": id.map(|id| m.guid(id))})
+        } else {
+            Value::Null
+        };
+        Ok(json!({"project": m.name, "selection": selection, "active_view": active_view}))
+    }
+
     /// Once a frame: what agents asked of the project since the last one is done, each as a command from a button is, and
     /// answered. While a file is being read or an update installed the project is about to be replaced: they wait.
     pub(crate) fn answer_agents(&mut self, ctx: &Context) {
@@ -395,11 +462,16 @@ impl BimApp {
             if abandoned.load(Ordering::SeqCst) {
                 continue;
             }
-            self.made_in();
-            let access = if self.agents.edit { Access::Edit } else { Access::Read };
-            let result = bridge::run(&mut self.session, &request, access);
-            // The core renames and drops the option with its set.
-            self.active_option = self.session.option.clone();
+            let result = if matches!(request, Request::Context) {
+                self.desktop_context()
+            } else {
+                self.made_in();
+                let access = if self.agents.edit { Access::Edit } else { Access::Read };
+                let result = bridge::run(&mut self.session, &request, access);
+                // The core renames and drops the option with its set.
+                self.active_option = self.session.option.clone();
+                result
+            };
             let _ = reply.send(bridge::reply(result));
             ctx.request_repaint();
         }

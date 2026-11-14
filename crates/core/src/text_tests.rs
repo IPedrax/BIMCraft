@@ -29,7 +29,7 @@ fn note(s: &Session, id: Id) -> Note {
 /// How many dark pixels the plan of the first level draws at 0.1 px a mm round its middle (at 1 : 100, a 5 mm capital
 /// is 50 px high), and the leftmost and rightmost of them.
 fn ink(m: &Model) -> (usize, u32, u32) {
-    let view = View { scale: 0.1, cx: 0.0, cy: 0.0, width: 800, height: 400 };
+    let view = View { angle: 0.0, scale: 0.1, cx: 0.0, cy: 0.0, width: 800, height: 400 };
     let d = render::draw(m, 100_000, view);
     let pm = tiny_skia::Pixmap::decode_png(&render::png(&d).unwrap()).unwrap();
     let (mut n, mut lo, mut hi) = (0, u32::MAX, 0);
@@ -194,7 +194,7 @@ fn letters_no_font_has_are_question_marks_and_every_other_one_is_drawn() {
 #[test]
 fn a_notes_frame_turns_its_layout_into_the_drawing_and_back() {
     let (s, n) = with_note("Turned\nnote", "5mm", json!({"angle": 30}));
-    let view = View { scale: 0.1, cx: 0.0, cy: 0.0, width: 800, height: 400 };
+    let view = View { angle: 0.0, scale: 0.1, cx: 0.0, cy: 0.0, width: 800, height: 400 };
     let d = render::draw(&s.model, 100_000, view);
     let n = note(&s, n);
     let f = d.note_frame(&n);

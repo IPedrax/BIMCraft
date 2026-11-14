@@ -16,13 +16,14 @@ use serde_json::{Value, json};
 
 const USAGE: &str = "USAGE:
   bimcraft-cli run [FILE] [--sample | --highrise] [--cmd 'ID {json}']… [--script FILE]… [--save PATH]…
-      Open FILE (a .bimcraft project, or an .ifc or Revit .rvt file to import) or start empty, then in order: build the sample house, run
+      Open FILE (a .bimc project or an earlier .bimcraft, or an .ifc or Revit .rvt file to import) or start empty, then in order: build the sample house, run
       commands and scripts (one `ID {json}` per line), save. --save writes by extension:
-      .bimcraft (the project), .ifc (IFC4), .glb (the 3D view's scene as glTF), .svg or .png (the lowest level's plan).
+      .bimc (the project; .bimt the same), .ifc (IFC4), .glb (the 3D view's scene as glTF), .svg or .png (the lowest level's plan).
+      Scripts may name a line `@name = ID {json}`; later values use `@name`, `$last`, `$-2` or a field such as `@walls.ids.0`.
       --highrise builds an original 20-storey performance sample (about 10,000 elements).
   bimcraft-cli info FILE         levels, element counts, types and warnings of a project or an IFC file; of a Revit .rvt or
                                  .rfa file, its release, last save, levels and element counts by category
-  bimcraft-cli convert IN OUT    a project, an IFC file or a Revit .rvt file to .ifc, .glb, .svg, .png or .bimcraft
+  bimcraft-cli convert IN OUT    a project, an IFC file or a Revit .rvt file to .ifc, .glb, .svg, .png or .bimc
   bimcraft-cli commands          every command and its parameters
   bimcraft-cli mcp [--read-only] [FILE | --connect [PORT]]
                                  an MCP server on stdio, for agents: on a headless project of its own (FILE, opened first, or an
@@ -71,6 +72,7 @@ pub(crate) fn note_plugins(plugins: &Plugins, seen: &mut usize) {
 fn cli(args: &[String], out: &mut impl Write) -> Result<(), String> {
     let mut s = Session::new();
     s.dwg = dwg_reader();
+    dwg_writer(&mut s);
     let plugins = load_plugins(&mut s);
     let mut seen = plugins.log().len();
     match args {
@@ -187,6 +189,18 @@ fn dwg_reader() -> Option<DwgReader> {
     None
 }
 
+/// The DWG writer a session's exports are given: `bimcraft-dwg`'s, which writes a drawing in a child process of this program,
+/// behind the `dwg` feature. A build without it leaves DWG listed as planned.
+#[cfg(feature = "dwg")]
+pub(crate) fn dwg_writer(session: &mut Session) {
+    if let Some(w) = bimcraft_dwg::writer() {
+        session.exports.register(w);
+    }
+}
+
+#[cfg(not(feature = "dwg"))]
+pub(crate) fn dwg_writer(_: &mut Session) {}
+
 /// What this program does when it's started as the child that reads a DWG (`bimcraft_dwg::CHILD_ARG`): none when it isn't.
 #[cfg(feature = "dwg")]
 fn dwg_child(args: &[String]) -> Option<ExitCode> {
@@ -198,7 +212,25 @@ fn dwg_child(_: &[String]) -> Option<ExitCode> {
     None
 }
 
+/// Counts what this program allocates, so a file being read is held to the memory the machine has free (the core's `memory.rs`).
+#[global_allocator]
+static ALLOC: cap::Cap<std::alloc::System> = cap::Cap::new(std::alloc::System, usize::MAX);
+
+/// What the core measures a file being read by: what this program has allocated, and what the machine has free (less, where a
+/// container holds it to less).
+fn meter() -> bimcraft_core::memory::Meter {
+    bimcraft_core::memory::Meter { used: || ALLOC.allocated(), free: free_memory }
+}
+
+fn free_memory() -> Option<u64> {
+    let mut s = sysinfo::System::new().ok()?;
+    s.refresh_memory();
+    let free = s.cgroup_limits().map_or(s.available_memory(), |c| c.free_memory.min(s.available_memory()));
+    (free > 0).then_some(free)
+}
+
 fn main() -> ExitCode {
+    bimcraft_core::memory::install(meter());
     let args: Vec<String> = std::env::args().skip(1).collect();
     if let Some(code) = dwg_child(&args) {
         return code;
@@ -274,21 +306,51 @@ mod tests {
     }
 
     #[test]
+    fn script_result_references_create_save_and_reopen_a_hosted_door() {
+        let base = std::env::temp_dir().join(format!("bimcraft-cli-script-references-{}", std::process::id()));
+        std::fs::create_dir_all(&base).unwrap();
+        let script = base.join("references.txt");
+        let project = base.join("references.bimcraft");
+        std::fs::write(
+            &script,
+            r#"@walls = wall {"points":[[0,0],[8000,0],[8000,6000]]}
+door {"wall":"@walls.ids.1","offset":3000}
+modify {"id":"$last","mark":"Entry"}"#,
+        )
+        .unwrap();
+        let out = cli_out(&["run", "--script", &script.to_string_lossy(), "--save", &project.to_string_lossy()]).unwrap();
+        let results: Vec<Value> = out.lines().map(|line| serde_json::from_str(line).unwrap()).collect();
+        let host = results[0]["ids"][1].as_u64().unwrap();
+        let query = cli_out(&["run", &project.to_string_lossy(), "--cmd", "elements {\"category\":\"doors\"}"]).unwrap();
+        let doors: Value = serde_json::from_str(query.lines().last().unwrap()).unwrap();
+        assert_eq!(doors["count"], 1);
+        assert_eq!(doors["elements"][0]["mark"], "Entry");
+        let mut reopened = Session::new();
+        reopened.execute("open", &json!({"path":project})).unwrap();
+        let guid: bimcraft_core::model::Guid = serde_json::from_value(doors["elements"][0]["host"].clone()).unwrap();
+        assert!(reopened.model.same(guid, host), "the saved door still belongs to the referenced wall");
+        std::fs::remove_dir_all(&base).unwrap();
+    }
+
+    #[test]
     fn run_builds_the_sample_and_saves_each_format() {
         let base = std::env::temp_dir().join(format!("bimcraft-cli-{}", std::process::id()));
         let path = |ext: &str| base.with_extension(ext).to_string_lossy().into_owned();
-        let (project, ifc, png, svg) = (path("bimcraft"), path("ifc"), path("png"), path("svg"));
+        let (project, old, ifc, png, svg) = (path("bimc"), path("bimcraft"), path("ifc"), path("png"), path("svg"));
         let roof = r#"level {"elevation": 3200, "name": "Roof"}"#;
-        let out = cli_out(&["run", "--sample", "--cmd", roof, "--save", &project, "--save", &ifc, "--save", &png]).unwrap();
+        let out = cli_out(&["run", "--sample", "--cmd", roof, "--save", &project, "--save", &old, "--save", &ifc, "--save", &png]).unwrap();
         assert!(out.contains("\"Roof\""), "{out}");
         assert!(std::fs::read(&png).unwrap().starts_with(b"\x89PNG"));
         assert!(std::fs::read_to_string(&ifc).unwrap().contains("IFCWALL("));
         let info: Value = serde_json::from_str(&cli_out(&["info", &project]).unwrap()).unwrap();
         assert_eq!(info["counts"]["room"], 4);
         assert_eq!(info["levels"][2]["name"], "Roof", "levels sort by elevation");
-        cli_out(&["convert", &project, &svg]).unwrap();
+        // The .bimcraft of earlier versions is the same file under its old name, and still opens.
+        assert_eq!(std::fs::read(&old).unwrap(), std::fs::read(&project).unwrap());
+        assert_eq!(serde_json::from_str::<Value>(&cli_out(&["info", &old]).unwrap()).unwrap()["counts"], info["counts"]);
+        cli_out(&["convert", &old, &svg]).unwrap();
         assert!(std::fs::read_to_string(&svg).unwrap().starts_with("<svg"));
-        for p in [project, ifc, png, svg] {
+        for p in [project, old, ifc, png, svg] {
             let _ = std::fs::remove_file(p);
         }
     }
@@ -364,8 +426,9 @@ mod tests {
         assert_eq!(info["elements"]["total"], 7);
         // The saver's name and the path stay out of everything but the report: the project of the same file has neither.
         let mut opened = Vec::new();
-        cli(&["run".into(), path.clone(), "--save".into(), format!("{path}.bimcraft")], &mut opened).unwrap();
-        let project = std::fs::read_to_string(format!("{path}.bimcraft")).unwrap();
+        cli(&["run".into(), path.clone(), "--save".into(), format!("{path}.bimc")], &mut opened).unwrap();
+        // Zipped, as a project is saved: its JSON read out of the zip.
+        let project = bimcraft_core::bimc::unpack(std::fs::read(format!("{path}.bimc")).unwrap(), u64::MAX).unwrap();
         assert!(!project.contains("jdoe") && !project.contains(&path), "the saver's name or the path got into the project");
         let detail: Value = serde_json::from_str(&cli_out(&["info", &path, "--elements-detail"]).unwrap()).unwrap();
         assert_eq!(detail["elements"]["elements_detail_placed_count"], 4);
@@ -379,7 +442,7 @@ mod tests {
     #[test]
     fn run_and_convert_open_a_revit_file_and_save_it_as_a_project_or_ifc() {
         let path = revit::tests::house("house.rvt");
-        let (project, ifc, converted) = (format!("{path}.bimcraft"), format!("{path}.ifc"), format!("{path}-converted.ifc"));
+        let (project, ifc, converted) = (format!("{path}.bimc"), format!("{path}.ifc"), format!("{path}-converted.ifc"));
         let out = cli_out(&["run", &path, "--cmd", r#"elements {"category": "wall"}"#, "--save", &project, "--save", &ifc]).unwrap();
         let lines: Vec<Value> = out.lines().map(|l| serde_json::from_str(l).unwrap()).collect();
         assert_eq!((lines[0]["format"].as_str(), lines[0]["name"].as_str()), (Some("Revit 2024"), Some("house")), "{out}");

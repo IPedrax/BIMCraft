@@ -12,7 +12,7 @@ fn background_grid_menu_and_instance_editor_change_only_the_active_view() {
     h.run();
     let app = h.state();
     let level = app.plan_key().unwrap();
-    let view = bimcraft_core::render::View { scale: 0.1, cx: 0.0, cy: 0.0, width: 800, height: 600 };
+    let view = bimcraft_core::render::View { angle: 0.0, scale: 0.1, cx: 0.0, cy: 0.0, width: 800, height: 600 };
     let found = app.snap(&app.session.model, level, &view, view.px(P2(1230.0, -670.0)), &[], false);
     assert_eq!(found.at, P2(1000.0, -1000.0));
     let kept = app.background_grid();
@@ -116,7 +116,7 @@ fn background_grid_preferences_live_in_the_project_and_cancel_discards_drafts() 
     let kept: Value = serde_json::from_str(&std::fs::read_to_string(settings).unwrap()).unwrap();
     assert!(kept.get("background_grid").is_none());
     assert_eq!(kept["grid_snapping"], true);
-    let saved: Value = serde_json::from_str(&std::fs::read_to_string(project).unwrap()).unwrap();
+    let saved: Value = serde_json::from_str(&bimcraft_core::bimc::unpack(std::fs::read(project).unwrap(), u64::MAX).unwrap()).unwrap();
     assert!(!saved.to_string().contains("snapping"), "the project does not store the global snap preference");
 }
 
@@ -127,7 +127,7 @@ fn background_grid_snapping_preserves_object_snaps_and_shift_constraints() {
     h.state_mut().run("graphics", json!({"view":"Level 1", "background_grid":{"main":{"enabled":true},"visible":false}}));
     let app = h.state();
     let level = app.plan_key().unwrap();
-    let view = bimcraft_core::render::View { scale: 0.1, cx: 0.0, cy: 0.0, width: 800, height: 600 };
+    let view = bimcraft_core::render::View { angle: 0.0, scale: 0.1, cx: 0.0, cy: 0.0, width: 800, height: 600 };
     let snapped = |p, from: &[P2], square| app.snap(&app.session.model, level, &view, view.px(p), from, square);
     assert_eq!(snapped(P2(1230.0, 670.0), &[], false).at, P2(1230.0, 670.0));
     assert_eq!(snapped(P2(-1340.0, -710.0), &[], false).at, P2(-1000.0, -1000.0));
@@ -149,6 +149,10 @@ impl egui_kittest::TestRenderer for Pictures {
             }
         }
         delta.clear();
+    }
+
+    fn render(&mut self, _: &egui::Context, _: &egui::FullOutput) -> Result<image::RgbaImage, String> {
+        Err("this renderer only keeps pictures".into())
     }
 }
 

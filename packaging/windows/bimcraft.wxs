@@ -9,7 +9,8 @@
 
   It works as CADCraft's installer does. It installs for every user into Program Files\BIMCraft, or into the
   folder chosen on the wizard's folder page (silent: INSTALLFOLDER="D:\Apps\BIMCraft"), which an upgrade keeps:
-  the app, the CLI and the licences, a Start menu shortcut, .bimcraft projects opening in BIMCraft, and
+  the app, the CLI and the licences, a Start menu shortcut, projects (.bimc, .bimt, .bimb and the earlier
+  .bimcraft) and families (.bimf) opening in BIMCraft, and
   BIMCraft offered under "Open with" for .ifc files, without taking over the user's default app. A
   newer version upgrades an older one in place, and so does a rebuild of the same version.
 
@@ -73,8 +74,25 @@
         <File Id="BimcraftExe" Source="$(var.BinDir)\bimcraft.exe" KeyPath="yes">
           <Shortcut Id="StartMenuShortcut" Directory="ProgramMenuFolder" Name="BIMCraft" Description="Building information modeling" WorkingDirectory="INSTALLFOLDER" Icon="BIMCraftIcon.ico" Advertise="yes" />
         </File>
+        <!-- A project is a .bimc. A .bimt (a template) and a .bimb (a backup) open the same way,
+             and so does the .bimcraft of versions before the short names. A content type is registered once, with the
+             first extension. -->
         <ProgId Id="BIMCraft.Project" Description="BIMCraft project" Icon="BIMCraftIcon.ico" Advertise="yes">
-          <Extension Id="bimcraft" ContentType="application/x-bimcraft">
+          <Extension Id="bimc" ContentType="application/x-bimcraft">
+            <Verb Id="open" Command="Open" Argument="&quot;%1&quot;" />
+          </Extension>
+          <Extension Id="bimt">
+            <Verb Id="open" Command="Open" Argument="&quot;%1&quot;" />
+          </Extension>
+          <Extension Id="bimb">
+            <Verb Id="open" Command="Open" Argument="&quot;%1&quot;" />
+          </Extension>
+          <Extension Id="bimcraft">
+            <Verb Id="open" Command="Open" Argument="&quot;%1&quot;" />
+          </Extension>
+        </ProgId>
+        <ProgId Id="BIMCraft.Family" Description="BIMCraft family" Icon="BIMCraftIcon.ico" Advertise="yes">
+          <Extension Id="bimf" ContentType="application/x-bimcraft-family">
             <Verb Id="open" Command="Open" Argument="&quot;%1&quot;" />
           </Extension>
         </ProgId>

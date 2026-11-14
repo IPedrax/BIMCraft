@@ -9,19 +9,19 @@ bottom, or floating windows), apart from its drawing, so tests and the settings 
 `Palette` and its body in `palette_body`. A view's tab floats it in a window (`BimApp::floating`; `views` are the tabs and
 `front` the one the views' area shows): the active view (`BimApp::sheet`) takes the tools, any other on screen draws through
 `view_pane` as it is, with the canvas `at_rest` and `passive` set so it takes no clicks, and a click makes it active. Widget
-ids inside a view are per view (`push_id`), so two views on screen never clash. The start page is `start.rs` (`BimApp::home`; the desktop's `main` shows it when given no file, the quick access bar's Home and Ctrl+D bring it back over a project and go back to it, `BimApp::toggle_home`, and `Home::over` says there is one behind it): its tiles' pictures are drawn on a thread (`start::picture`, a `.bimcraft` file's 3D view) and a test waits for them with `Home::settled`. Its Sample Project button (`Pending::Sample`, `BimApp::open_sample`) builds the sample house, `bimcraft_core::sample::SAMPLE`, as a project with no file, so Save asks where to put it; it goes through `guard` like New and Open, and the script's steps are not undo steps, as with `--sample`. File > Settings is `settings.rs`, the user's
+ids inside a view are per view (`push_id`), so two views on screen never clash. The start page is `start.rs` (`BimApp::home`; the desktop's `main` shows it when given no file, the quick access bar's Home and Ctrl+D bring it back over a project and go back to it, `BimApp::toggle_home`, and `Home::over` says there is one behind it): its tiles' pictures are drawn on a thread (`start::picture`, a project file's 3D view) and a test waits for them with `Home::settled`. Its Sample Project button (`Pending::Sample`, `BimApp::open_sample`) builds the sample house, `bimcraft_core::sample::SAMPLE`, as a project with no file, so Save asks where to put it; it goes through `guard` like New and Open, and the script's steps are not undo steps, as with `--sample`. Its Families group (New Family, its categories dropped down, and Open Family…) opens a family document over the page ([families](families.md)). File > Settings is `settings.rs`, the user's
 `settings.json` beside the favorites (`BimApp::use_settings`, which the desktop's `main` calls; tests never write it unless
 they hand it a file): what it keeps is `Settings`, written when it changes, between drags; a setting still to come goes on
 its page greyed out (`later`).
 
-Two working aids are drawn over a plan's or a ceiling plan's canvas, in `canvas()` right after the drawing: the origin marker
-(`origin_marker`: an arrow east for x in the canvas's red and one north for y in its green, lettered, at the screen point of the
-project's 0, 0, `ORIGIN_ARM` points long at any zoom, left out when the origin is far off the screen) and the view's name in the
+A working aid is drawn over a plan's or a ceiling plan's canvas, in `canvas()` right after the drawing: the view's name in the
 bottom left corner (`BimApp::corner_name`, over the view control bar where that floats over the corner, `bar_cover`; a ceiling plan's
-reads `Level 1 (Ceiling Plan)`, as an image's does). They are the window's alone: `render::draw` has neither, so no PNG, sheet or
-printout does. File > Settings > User Interface > Plans has a box for each (`BimApp::show_origin`, `show_view_name`; kept in
-`settings.json` as `origin_marker` and `view_name`, on when the file doesn't say), and New and Open keep them. The 3D view, sections
-and sheets have neither. Tests: `tests/origin.rs`, in both profiles.
+reads `Level 1 (Ceiling Plan)`, as an image's does). It is the window's alone: `render::draw` hasn't it, so no PNG, sheet or
+printout does. File > Settings > User Interface > Plans has a box for it (`BimApp::show_view_name`; kept in `settings.json` as
+`view_name`, on when the file doesn't say), and New and Open keep it. The screen-only origin marker it once had beside it is gone:
+where the project's 0, 0 is, is the Internal Origin's mark, Site's in Visibility/Graphics ([coordinates](coordinates.md)), so the
+view's graphics alone say whether it shows (`settings.json`'s `origin_marker` is still read and written, and does nothing). Tests:
+`tests/origin.rs`, in both profiles.
 
 The minimap (`minimap.rs`, the same in both profiles) is at the top of the Navigator, Rev's Project Browser, under a header that folds
 it away: folded at first, so the tree keeps its room (the tests that click the tree's entries where they are drawn rely on it), and
@@ -82,6 +82,21 @@ request wakes the window (`Context::request_repaint`, from the context the first
 most; ten seconds, in all, to say the first line whole (a byte now and then does not count), and what is not a request, a web page's
 HTTP say, is answered with an error and closed. A test (`tests/control.rs`) plays the agent on a real connection while the harness runs frames.
 
+A connected agent can read the current desktop context with the MCP tool `desktop_context` (no arguments), or the authenticated
+bridge request `{"token": T, "op": "context"}`. The window answers on its UI thread with `project` (the project name), `selection`
+(an array of `{id, guid, category}` for selected elements still present), and `active_view` (`{kind, name, id, guid}`). View kinds are
+`plan`, `ceiling`, `3d`, `section`, `elevation`, `sheet` and `schedule`; a default view or built-in schedule with no model element has
+null `id` and `guid`. A plan's ID identifies its actual level or plan view, including a dependent view, rather than its parent.
+Selection belongs to the project and can remain selected while navigating to another view. Clearing or deleting it returns `[]`.
+Home reports `selection: []` and `active_view: null`; a view removed before the next frame's cleanup also reports null.
+During replacement of the project between frames, context returns an error asking the agent to retry after the window catches up,
+rather than resolving old selected IDs against the new model. New/Open through the window clear the old context. A snapshot is
+current when answered: agents should request it again after the user selects or navigates. It does not change selection, navigate,
+edit the model, add an undo step, or access files, and is available through both window and connection read-only settings.
+This is desktop state, not a model command or a field saved in the project file: headless MCP returns an explicit error explaining
+`--connect`. Without a listening window the existing connection error applies; an older window without this bridge operation
+reports unknown op. The active view is within the connected window, independent of which operating-system window has focus.
+
 File > Settings > Agents opens the same port without `--control`: Let agents work on this project, and its Port (0 for any free one),
 both kept in `settings.json` (`agents`), so the window opens it again at its next start once `--control` has had its say
 (`listen_as_kept`), with the same bridge file and the same rules. Unticked, the port is closed: a `Control` dropped stops listening
@@ -98,6 +113,10 @@ back and replies with what it would make, change and remove and the warnings the
 undo history are as they were. It only reads, so it answers where agents may only read too, and a line that names a file or
 would save, undo, redo or replace the project is refused, as is a `favorite` other than `list`: saving or deleting one writes the
 user's favorites file, outside the project, even with no `path` given.
+Manage > Macros > Run Script (`script.rs`) is the same for the user: a script typed or pasted in a dialog, one command a line as
+the command line and agents write them. Try is that dry run, said in a line (`script::summary`) with the project untouched; Run takes
+the dry run first, so it refuses what it would refuse, and then runs the script as one undo step, `Script` (`Session::script_atomic`),
+all or nothing, and the status box says what it did.
 
 The interface's language is `lang::Lang`: a project's language, or Simplified Chinese (issue 38), which only the window speaks
 (a drawing's lettering, `font.rs`, is drawn in code and has no hanzi, so a project is never in Chinese and `Lang::project()` gives
@@ -112,13 +131,20 @@ What a view hides or reveals for now (Temporary Hide/Isolate, Reveal Hidden Elem
 project's: the plan, the section and the 3D view draw `BimApp::view_model`, a copy of the model whose view graphics went through the `graphics`
 command on a scratch `Session`, made once for each model and each setting. A tool that needs the view's real model (select all, commands)
 still reads `session.model`. The Door and Window tools preview with `opening_of`, which the `door` and `window` commands insert too, so a
-sketch is the element the click makes (`render::sketch`). A selected door or window shows two temporary dimensions from its middle
+sketch is the element the click makes (`render::sketch`). When placing a single-swing door in plan, Space swaps its hinge jamb
+and moving the pointer across the wall centre swaps its facing. With one such door selected, Space steps through the four Opens
+pictures in Inspector order; each press is one `modify` and one Undo step. A selected door or window shows two temporary dimensions from its middle
 to the faces of the walls meeting its wall either side of it, or to its wall's ends where none does (`Model::opening_span`), as Revit's
 measure to wall faces; typing one counts from that face. Placed or dragged alone within `SNAP` px of the middle between those faces, a
 door or window lands on it (`Model::centred`): the click sends that `offset`, the drag slides by what reaches it.
 A selected column or component, and the Column and Component tools' sketches, show up to four: how far it stands from the nearest wall centre
 line or grid east, north, west and south (`Model::clearances`, which finds them in the core; `standing_dimensions` draws them); a typed one runs
 `move` by the difference along that way.
+A selected straight wall shows, besides its length, how far its centre line stands from the nearest parallel wall centre line or grid on
+each side, square to it from its middle (`Model::wall_clearances`; `wall_dimensions` draws them a little along it): a typed one moves the
+wall by the difference, the walls joined to it stretching (`move`).
+The Text tool's Leader (Options Bar) makes the first click the point the note's leader reaches and the next the note's top left corner,
+in a plan, a section or on a sheet (`write_note`); Esc between them forgets the first.
 
 Align (AL) highlights the exact edge or axis under the cursor before either pick, leaving the selected reference as an
 extended dashed line. It searches the candidates under the pointer for a usable line rather than letting annotation mask
@@ -156,7 +182,10 @@ Annotation adds its anchors (`Kind::Anchor`, switched by `Snaps::annotation`): a
 and, with a leader, its host's anchor, a dimension's line and stations, a spot elevation, section and elevation marks, detail
 groups and repeating details. A camera's mark is not a symbol to snap to: its body, lens and name all land on its eye, its target
 is an endpoint, and its sight line gives no nearest point. Rotate's Place Centre runs its preview through `found` and
-`show_snap`, so its cross and marker stand on the point a click takes.
+`show_snap`, so its cross and marker stand on the point a click takes; so do the angle's start and end (with the angle guides
+running from the centre), and the angle is the exact one between the snapped points. Digits typed over the view while Rotate
+(or Rotate Project North) waits for its angle are the angle (`BimApp::typed_angle`, a leading minus turns clockwise), shown
+on the ghost as "45° (Enter)", and Enter turns by it.
 Revit's Quadrants (SQ) and Tangents (ST) are snaps of their own, in Manage > Snaps with the rest. The desktop's `BimApp::snap` gives
 it the reach in px (`SNAP`, `PICK`) and the snaps in force (Manage > Snaps, kept while the window is open, or for one point
 a shortcut's override: `snap_once`, `Snaps::only`, `Snaps::none`); `found` and
@@ -178,8 +207,9 @@ move and its box, so only a press let go within `QUICK` (0.2 s) is a click where
 finished (`Canvas::quick`, `BimApp::finish_drag`: grips, crop regions, a sheet's views, the plan's move and box) and the selection
 that drag's start replaced comes back (`BimApp::grab`) for the click to pick from. A slower press is the drag it is. In the 3D view
 a quick press is a click whatever the tool, and a camera the hand turned meanwhile goes back (`Orbit::before`). There, as in
-Revit, Shift and the middle button orbit and the middle button alone pans; a primary drag orbits too, round the point under the
-pointer, and with Shift held in Modify it is a selection box, as in a plan (`Orbit::select`, drawn by `canvas::box_shapes`), which picks what `Scene::in_box` finds: from the left what lies wholly
+Revit, Shift and the middle button orbit, round the point under the pointer, and the middle button alone pans; a primary drag never
+moves the camera: in Modify it is a selection box, as in a plan, adding to the selection with Shift held (the family editor's views have no box, so there it still orbits, `Orbit::hand_orbits`); it takes levels by what of
+them is drawn, the far edges of each plane and its head (`Orbit::select`, drawn by `canvas::box_shapes`), which picks what `Scene::in_box` finds: from the left what lies wholly
 inside, from the right what it touches, by where the model is rather than what's in front, so what's behind is boxed too.
 A 3D mouse (a 3Dconnexion SpaceMouse, SpaceNavigator, SpacePilot) moves the active 3D view as 3DxWare's object mode moves a
 model (`spacemouse.rs`): the cap pans, pulling it toward you zooms in, twisting it turns the view about the vertical and tilting
@@ -189,6 +219,19 @@ view's position is written back once the cap rests, and wheel turns 3DxWare may 
 desktop app starts its reader (`BimApp::space_mouse`, Windows only for now), which reads the device's HID reports itself (with
 3DxWare running too, while its profile for BIMCraft passes the axes on as `HIDMultiAxis_*`), the axes found in its report
 descriptor (`spacemouse/descriptor.rs`). With `BIMCRAFT_SPACEMOUSE_LOG=<file>` the reader logs what it found and every report.
+
+A wall or column selected alone in Modify has handles in the 3D view (core `handles.rs`, drawn by `orbit::draw_handle`): a wall's two
+ends at its base on its location line, which is drawn dashed along its base (`handles::location_line`), a column's place, and an arrow on the top and under the base of each, as a section box's faces have. A drag previews the element
+and runs its command when it ends: an end or the place over its level's plane, snapped as a plan snaps; an arrow up or down, landing on
+a level within a few pixels, changing the top offset or unconnected height and the base offset. A base dragged keeps the top where it
+is. A top or base attached to a roof or a floor has no arrow, since it follows that. Attach Top/Base (`Tool::Attach`, `BimApp::attach_to`)
+takes walls and columns, and picks its roof or floor in a plan or the 3D view; a column attached stands on or under what it's attached
+to as a wall does (`walls::column_prisms`), and `Model::column_span` is what everything reads its heights from.
+
+The Measure tool in the 3D view (`measure_point`, `Orbit::chain`) measures a chain of points of the model, corners, edges, the middle
+of an edge or a point on a face, whatever the work plane: each segment's length at its middle, the total, and for one segment its run
+along each axis (`dims3d::reading`). A click on the first point of three or more closes it, and if they lie in one plane its area
+reads too (`dims3d::chain_reading`); Enter ends a chain, Esc clears it. Trim/Extend works in the 3D view as in a plan (`BimApp::trim_click`).
 
 Startup (`apps/bimcraft/src/startup.rs`). A release build on Windows has no console, so a start that fails must say itself: `bimcraft.log`
 and `graphics.json` sit beside the favorites (`startup::Files::beside`). `startup::begin` runs once the arguments are read (never for
@@ -276,9 +319,23 @@ type without layers as one band. A wall's run from its exterior face to its inte
 dashed where it runs (`walls::depth`, the core's own rule) and named under it; a click on the picture sets the line nearest it, through
 `modify`. A floor's, a roof's or a ceiling's run from the top down. Under it, for doors, which way they open (`opening_picker`): four plans of a door in
 its wall (as placed, hand flipped, facing flipped, both), the one the selected doors share lit, a click setting their `flip_hand` and
-`flip_facing` through `modify`. For rooms, their colour on plans (`room_colour`): swatches, No fill first, and any
-other colour; a pick sets the room's `colour` (`Room::colour`, red, green and blue, none for no fill), which plans draw as a fill of
-the room's region under its name (`render.rs`) and a file keeps (an optional field an older version leaves out, so no format step).
+`flip_facing` through `modify`. A room's colour on plans is its type's, so it is set in the room type's Type Properties
+(`properties::RoomRows`, Edit Type with a room selected): under Floor and Ceiling, the floor type and the ceiling type its rooms have
+of their own (None first) and each one's offset from the room's level; under Graphics, Colour on plans and its swatches or any other
+colour (`RoomType::colour`, red, green and blue, none for no fill), which plans draw as a fill of each of its rooms' regions behind
+the model, as Revit's colour fill is (`render.rs`, `Drawing::solid_fills_under`): whatever stands in the room is drawn over it, and so
+are a floor's outline and its pattern's lines, while a floor's solid fill (its material's, or a view's override of its background)
+lies under it and shows only where no coloured room is. A limit: in a plan with a coloured room, every floor's solid fill is under
+every floor's lines, so a floor seen through another's solid fill shows its lines. OK and Apply give them to the `type` command; a file from before format 20, whose rooms held a colour of
+their own, opens with each on a type of its colour (`Model::coloured_room_type`).
+A room that has a floor or a ceiling of its own shows them first in Properties
+(`finishes.rs`, `connected_finishes`, under the Edit Type row): for each, its type, a link of its id that selects it, and Disconnect
+(`room_finish`), after which the row says Disconnected and the button is Regenerate, which makes another; a room with neither has no
+such rows. A floor or a ceiling that follows a room shows Connected to, the room's number and name, its link and Disconnect, and while
+it follows, its Type Selector is off, its level and offset are shown and not typed, and the ribbon's Edit Boundary is off with the
+reason as its tip. Delete (`delete_elements`, from the key, the menu and the browser) asks first when a room among what goes has a
+floor or a ceiling that isn't going with it: Delete Them Too, Keep Them (`keep_finishes`) or Cancel. The Room tool places rooms of
+the type its Type Selector shows.
 For floors, their slope (`floor_slope`): a short section of the slab at its true angle from its slope arrow's tail, a dashed line
 level with the tail, and the angle written on it in degrees and percent (its accessible label too); under it the steps Flat, 1%, 2%
 and 5%, the one they share lit, a click setting `slope` through `modify` as the Slope field does, a falling floor kept falling. A
@@ -373,17 +430,27 @@ Align, which lines up with what a plan shows, says so. A view edge-on to the pla
 Work planes in 3D (`workplane.rs`; the core's in [views and graphics](views-and-graphics.md)). The plane has a patch of its own in
 the view, as ArchiCAD's: a small square of it (`work_plane_ring`, the same size on screen at any zoom), by the model's south-west corner
 on a level plane and about the point it was set through on another, lit with the plane's name under the cursor, that a click in Modify
-opens the dialog from; so do the 3D view's right-click menu (Set Work Plane…, `Action::WorkPlane`) and the Architecture tab's Set, in
-its Datum panel. The 3D view's control bar has Work Plane, a `footer::menu_button` showing the plane (a level's name, `Surface, 90°` or
-`Three points, 14°`, and `+ offset` when moved), which opens its dialog (`workplane::Draft`). It sets the plane three ways (`By`): Pick
-from list, a level; Pick a surface, with Pick Surface; Pick three points, with Pick Points; and one Offset for each, along the plane's
-normal (up from a level, out from a surface). Nothing is typed but the offset. A pick closes the dialog while it's made (`Picking`) and
-brings it back with what it took, Esc going back without it: Pick Surface lights the face under the pointer (`Scene::face_at`, the
-element's triangles in the plane of the one hit) and a click takes it, a point of it and the way it faces; Pick Points takes three
-clicks, each snapping to the corner seen nearest the pointer within the snap's reach (`Scene::corner_near`, a square marking it, as a
-dimension's ends snap in plan), else the surface's point there (a circle), the points taken drawn as dots (`workplane::aim`,
-`draw_aim`). OK runs `work_plane`; what it refuses is said in the dialog. The plane is drawn as a grid over as much of it as the model
-spans while the dialog is up and while a new outline is sketched on it (`workplane::draw_plane`, along the plane's own axes). Floor,
+opens the dialog from (where a wall in front hides it, the click is the wall's); so do the 3D view's right-click menu (Set Work Plane…, `Action::WorkPlane`) and the Architecture tab's Set, in
+its Datum panel. The 3D view's control bar has Work Plane, a `footer::menu_button` showing the plane (`Level : Level 1`, `Reference
+Plane : Ramp`, `Surface, 90°` or `Three points, 14°`, and `+ offset` when moved), which opens Revit's Work Plane dialog (T12,
+`workplane::Draft`, a `popup::Modal`). Current Work Plane names it (a surface by the way it faces), with Show (`BimApp::show_work_plane`:
+the plane drawn in the 3D view whether or not the dialog is up) and Dissociate (enabled only for a work plane on a reference
+plane: `work_plane {dissociate}`, leaving it where the plane is now). Specify a new Work Plane takes it four ways (`By`): Name, a level or
+a named reference plane of the project (`workplane::choices`); Pick a plane, a face of the model; Pick a line and use the work plane it
+was sketched in, a wall, a beam, a pipe or another element drawn along a line, whose level is taken (`workplane::sketched_in`); Pick
+three points (BIMCraft's own); and one Offset for each, along the plane's normal (up from a level, out from a surface). As Revit's, OK
+by name runs `work_plane` at once; OK with a Pick closes the dialog while the pick is made (`Picking`) and the click sets the plane
+(the third, for points), Esc going back to the dialog: Pick a plane and Pick a line light the face under the pointer (`Scene::face_at`,
+the element's triangles in the plane of the one hit); Pick three points snaps each click to the corner seen nearest the pointer within
+the snap's reach (`Scene::corner_near`, a square marking it, as a dimension's ends snap in plan), else the surface's point there (a
+circle), the points taken drawn as dots (`workplane::aim`, `draw_aim`). What `work_plane` refuses is said in the dialog, which comes
+back. The plane is drawn tinted, with a grid (`workplane::grid_step`) and its outline, over as much of it as the model spans and 2 m
+round while the dialog is up, while Show is on and while a new outline is sketched on it, as a family's {3D} draws its own
+(`workplane::plane_mark`). The plane and the patch are drawn into the picture, not over it (`workplane::marks`, core
+`view3d::PlaneMark`): depth tested on the processor (`Image::draw_marks`, laid over the picture as shown, so a change of the marks
+alone, the patch lit or Show turned on, lays them again without drawing the model) and on the card (`gpu.wgsl`'s `fs_marks`, a pass
+over the picture reading the opaque depth): what stands in front of the plane hides it, what is behind it is seen through its
+tint, and a face it lies on (a level's floor top) doesn't hide it, as a surface must be nearer by half a pixel's worth to. Floor,
 Ceiling, Roof and Shaft picked in the 3D view sketch a new one on the work plane at once (`set_tool`, `sketch_on_work_plane`):
 `Sketch::surface` holds the plane, `sketch_surface` gives it to `sketch3d.rs`, and Finish makes it on the level below the plane
 (`workplane::host`), as high above it as the plane is. Each of the four lies level, so on a plane that doesn't (`workplane::is_level`:
@@ -420,7 +487,7 @@ Filter. While something is selected, every tab's Select panel has Filter, and th
 (`filter.rs`): Revit's Filter, the selection counted by category, each checked to keep or cleared to leave out, with Check All,
 Check None and the total kept; OK keeps what is checked selected. Its Filter by list goes further: any parameter every selected
 element has, which `selection::common` finds (the schedules' fields their categories share, Category first, Count left out; what
-schedules aren't of, lines, regions, text, tags, grids, views and sheets, has its fields in `schedule::MORE`: a line's Line Style), and
+schedules aren't of, lines, regions, text, tags, grids and views, has its fields in `schedule::MORE`: a line's Line Style), and
 the list becomes that parameter's values (`selection::groups`, as schedules show them, numbers by value, `(none)` last), to keep or
 leave out the same way. The `filter_selection` command gives agents the same: the groups, the shared fields, and with `keep`, the ids kept.
 
@@ -490,15 +557,24 @@ The ribbon's panels (`ribbon.rs`). A panel's name, under its tools, is a button 
 (`ribbon::list`) draws the same tools again as rows: `ribbon::listing` turns `big_button` and `small_button` into `list_row`. A tab too
 wide for the window makes room from the right, on the last frame's widths (`ribbon::tab`, `ribbon::fits`): a panel hands its last tools
 over to its list (`ribbon::handed_over`: counted, not drawn), and when one tool left isn't room enough it folds to one button that lists
-them all, and the panel before it is asked; what still doesn't fit scrolls sideways. A tool that drops a list of choices down (Project
-Units, Schedules, Duplicate View, New Family...) goes through `ribbon::choices`, never `Popup::menu` on its own button: egui keeps one
+them all, and the panel before it is asked; what still doesn't fit scrolls sideways. A panel drawn with `ribbon::yielding` is asked
+first and hands over all but its first tool at most (the family document's Model and Datum, whose last tools are greyed, not in
+BIMCraft yet); one drawn with `ribbon::kept` is asked last, once every other has folded (the family document's Family Editor, Load
+into Project). Once every panel has made what room it can, `ribbon::tab` asks no frame more. A tool that drops a list of choices down (Project
+Units, Schedules, Duplicate View...) goes through `ribbon::choices`, never `Popup::menu` on its own button: egui keeps one
 popup open, so a popup of a row's own closes the panel's list that holds the row, and with it itself. In a list the choices are a
 submenu of the row; a request to open them at once (UN) opens the panel's list when the tool has no button, and waits for a tab's second
 frame, since its first lays out every tool (`a_tool_with_choices_of_its_own_opens_them_from_a_panels_list`).
 
 Keyboard Shortcuts. Manage > Shortcuts (or KS) opens `shortcuts_window` (`shortcuts.rs`): every shortcut by what it does, from `shortcuts()`
 (`SHORTCUTS`, the fixtures' letters, the commands' aliases), with Add, Edit and Load File. A shortcut is two letters or digits, all that `typed` holds,
-and a custom one is tried before the defaults. Each name in `ACTIONS` is a tool or command the window runs (`execute_shortcut_action`), and a key never
+typed with Ctrl held (Cmd on a Mac; `ctrl_letters` takes them out of the frame's events, in the project's `keys` and the family document's
+`family_typed` alike), and a custom one is tried before the defaults. Letters typed without Ctrl are no shortcut (digits and a unit still make a
+typed length). A letter that is a Ctrl key of its own (`ctrl_key`: S saves, O opens, N new, K Find, P prints to PDF, D the start page, Z undoes, Y
+redoes, 1 Properties) waits for a second letter (`CTRL_WAIT`, half a second): with one it is a shortcut (Ctrl held, S then A: Select All
+Instances); if the two aren't one, the first does its own job and the second waits in its place, so Ctrl held and Z, Z, Z undoes three times; with
+none, or once Ctrl is let go, it does its own job. In a text field Ctrl's keys are the field's, but S, O, N, K, P and 1, which act there at once,
+and no shortcut is typed. The user chose Ctrl, and the wait, on 2026-11-13. Each name in `ACTIONS` is a tool or command the window runs (`execute_shortcut_action`), and a key never
 carries Revit's name for a tool BIMCraft lacks (Sun Settings, Detail and Model Line, Split Face, Brace, Beam System, Reference Plane, the duct tools): it waits
 for the tool. Load File reads JSON (`{"WA": "Wall"}`), Revit's `<Shortcut CommandName=… Shortcuts="WA#W1">` lines, or `KEY - Name` lines, up to 64 KiB;
 a description is an action only by its whole name in one of the interface's languages (`resolve_action`), and a key that is not two characters, names no action or
@@ -559,13 +635,38 @@ seven segment kinds, paper units, text fitting and centerline semantics.
 
 Annotate > Dimension has Aligned (DI) and Linear, and Angular, Radial, Diameter, Arc Length, Spot Elevation and Spot Slope small beside
 them (`BimApp::dimension_panel`); Spot Slope (`Tool::SpotSlope`) runs `spot_slope` where a floor or a roof is clicked in a plan. Aligned and Linear are one tool, `Tool::Dimension(mode, refs)`: a click near an endpoint picks it before the line
-it ends (`canvas::dimension_pick`), marked with a square; after two, a click away places the dimension the Options Bar's Place says (Auto,
+it ends (`canvas::dimension_pick`), marked with a square; a click on a reference already picked takes it out, Backspace the last, and Esc starts the chain over; after two, a click away places the dimension the Options Bar's Place says (Auto,
 Aligned, Horizontal, Vertical; Space steps them), drawn as it would be while the cursor moves. `Tool::Round(kind, picked)` is Radial, Diameter
 and Arc Length; after its arc, Arc Length takes two ends on it to measure between (`dims::arc_point`), or a click places the whole arc's. A new dimension takes the type the Type Selector names, else its kind's (`dimtypes::dimension_type_for`); Edit Type on one opens
 Dimension Type Properties (`dimtypes.rs`), and Properties edits its prefix, suffix, text above and below, Replace With Text and Equality Display.
-A double click on one of its numbers opens Dimension Text for that segment (`DimensionTextDialog`). Selected, an aligned or linear one shows
-a padlock under each segment and, over a string of two or more, EQ past its end (`dimension_constraints`): a click locks or unlocks, or makes
-it equal or not.
+With one element selected, the numbers of the dimensions that measure to it are drawn smaller in `accent_ink`; a click on one opens an empty
+field (`canvas::dimension_highlights`), and Enter moves the selected element, the opposite reference staying (an equal chain's far end stays). A double click on a number, or a click on the Aa button over a selected dimension's numbers, opens Dimension Text for that segment
+(`DimensionTextDialog`); a segment's Replace With Text beats its number, and an equal chain prints its type's Equality Text in every drawing while
+its EQ control appears over the middle of the chain. Selected, an aligned or linear one shows
+a padlock under each segment (open while the segment is free, shut while locked), which a click locks or unlocks, and the EQ over the chain, struck through until a click makes it
+equal or not — its ends staying, the inner references spreading evenly; a value typed into an equal chain makes every segment it. A
+placed dimension's references are changed from the right-click menu's Edit Dimension References or the Modify tab's button (`dimension
+{id, refs, at}`): a picked reference clicked is taken out, another face, axis or corner added, and Enter confirms. A selected wall's
+temporary length dimension (`temporary_dimension`) has a dimension-line button under its number that makes it a permanent dimension between
+the wall's ends or, where an end is joined to a perpendicular wall, between those walls' centre lines (`walls::joined_perpendicular`; a
+wall merely near it isn't a join), so changing it moves that whole wall; typing its number resizes the wall through `wall_length`: both free
+ends or both joined ends move evenly, one joined moves its free end alone. A dimension measured along one wall resizes it wherever its references stand — side
+faces, corner handles, end faces or a mix — the wall being nudged until the measured value is reached (`dimension_value`), so face
+corners at joined ends no longer leave it short. Tab over a dimension chain steps through its segments, a click picks one, and Delete takes only that segment out
+(`dimension_segment`): the chains either side stay on their own references, the left keeping the dimension and the right becoming a new one.
+A dimension selected also offers Edit Dimension References on the Modify tab, as its right-click menu does: a click on a picked reference
+takes it out, a click on another face, axis or corner of the same element adds it (faces are independent), a click in the open confirms
+and leaves the edit (Enter too), and Esc cancels. Tab over an element steps through its faces, axes and corners, highlighting the reference a click would
+bind, while creating a chain or editing one (`dimension_references`). Dragging a dimension moves it only square to its line (`dragged`
+projects onto the line's normal); it never slides along itself.
+
+In the app bar beside Settings, the AI button (`BimApp::agents_toggle`) is Settings > Agents' Let agents work on this project, for a
+quick switch, and is lit while it is on. Finish and Cancel Edit Mode wear green and red, in any theme, through the palette's `context`
+and `error` (`inked_button`). The Line Style lists show a sample of each style (`linestyles::style_row`): the Options Bar's, Properties', and the patterns of the
+Line Styles dialog and Visibility/Graphics' dashes (`sample_row`). A padlock open is hollow with its shackle swung clear; shut, it is
+filled; its tooltip says what it does. The Type Selector's list is as
+wide as the selector, a long name cut short and whole in its tooltip; wall types show their layers by share and material
+(`layer_bands`), and a curtain wall's type, which writes a `curtain` pattern (`curtain_type`), goes under its own heading.
 
 ## Background grids
 
@@ -599,3 +700,43 @@ there is nothing to snap to. Show grids only controls display: snapping can rema
 constraints keep priority; grid snapping replaces the free-point fallback and automatic angle guides. Sections and
 elevations snap annotation placement in their local horizontal/height coordinates. Model validation rejects invalid
 spacing, divisions, pens or rotation, and commands roll back the whole edit.
+
+## Benchmarking the window
+
+`bimcraft --bench SCENARIO [--bench-out REPORT.json] [FILE]` runs a scenario on the real window and times every frame
+(`bench.rs`): what a headless test measures is the core's work alone; this is what the user waits for, the frames the window
+shows on its own thread, with the card, the workers and the compositor as they are. A scenario is a step a line:
+
+```text
+idle 2                       two seconds of frames with nothing asked
+open /path/tower.bimc        File > Open (a big file opens on a thread, with its progress box)
+wait 900                     until nothing is being made (the open, a plan, the 3D scene) for five frames, at most 900 s
+zoom in 8                    eight notches of the wheel over the middle of the view, a frame apart (`out` the other way)
+pan 300 150 30               a middle-button drag, 300 px right and 150 down, over 30 frames
+view 3d                      the default 3D view (`view plan`, the first plan)
+orbit 60                     Shift and the middle button, 6 px a frame for 60 frames
+screenshot /tmp/shot.png     the window as it shows now
+quit
+```
+
+Each step prints a line on standard error (its time, its frames, the median, 95th percentile and longest frame, the memory
+allocated) and the report has every frame's interval. A benchmark sends nothing to the network. Every frame is drawn while it
+runs, as if the user kept moving.
+
+Run it where frames are presented: a locked or hidden window gets no frames from its compositor (Wayland withholds them), so
+on a machine nobody is at, start a virtual one and point the window at it:
+
+```sh
+kwin_wayland --virtual --width 1920 --height 1080 --socket wayland-bench --no-lockscreen &
+WAYLAND_DISPLAY=wayland-bench bimcraft --bench tower.scenario --bench-out run.json
+```
+
+The window still draws on the real card; only the presentation is virtual. To see where a slow frame goes, sample the window's
+main thread while the scenario runs (`eu-stack -p PID`, which needs no privileges where `perf` does): the frames named in the
+samples are the ones to fix. Measured with it on the annotated 100-storey tower (2026-11-14): [large projects](../large-project-files-todo.md).
+
+## Compressed save
+
+File > Settings > Files has **Compressed save** (a tick in the File menu too), off at first and kept in `settings.json`: on, Save
+and Save As write the project as `save {compress: true}` does, its JSON in a zip (`bimcraft_core::bimc`), several times smaller
+and slower to save and open, as the box says; off, plain JSON. Exports take no such choice, and Open reads either.

@@ -429,6 +429,49 @@ fn a_round_runs_body_is_cut_by_the_same_planes_as_its_outline() {
     }
 }
 
+/// Every corner of run `id`'s 3D body, in plan: its prisms' rings and its meshes' points.
+fn body_in_plan(solids: &[crate::view3d::Solid], id: u64) -> Vec<P2> {
+    solids
+        .iter()
+        .filter(|x| x.owner() == id)
+        .flat_map(|x| match x {
+            crate::view3d::Solid::Prism { ring, .. } => ring.clone(),
+            crate::view3d::Solid::Mesh { tris, .. } => tris.iter().flatten().map(|p| P2(p[0], p[1])).collect(),
+            _ => Vec::new(),
+        })
+        .collect()
+}
+
+#[test]
+fn two_joined_steel_beams_mitre_their_plates_where_their_outlines_do() {
+    // Two IPE 300s, 150 wide, leaving the origin east and north: their flanges, web and fillets meet on the corner's
+    // diagonal, as two concrete beams' prisms do, and none runs on into the other or stops short of the corner.
+    let s = session(r#"beam {"points": [[4000, 0], [0, 0], [0, 4000]], "type": "IPE 300"}"#);
+    let [east, north] = runs(&s, "beam")[..] else { panic!("the chain makes two beams") };
+    assert!(s.model.run_type(s.model.elements.get(east).unwrap()).unwrap().profile.is_some());
+    let solids = crate::view3d::solids(&s.model);
+    for (id, side) in [(east, 1.0), (north, -1.0)] {
+        let body = body_in_plan(&solids, id);
+        assert!(body.iter().all(|p| side * (p.0 - p.1) >= -1e-6), "{id} runs past the mitre: {body:?}");
+        assert!(body.iter().any(|p| near(*p, P2(-75.0, -75.0))), "{id} reaches the corner's outer point: {body:?}");
+        // A flange takes the whole width, so its footprint is the beam's mitred outline.
+        let o = outline(&s, id);
+        let flange = solids.iter().filter(|x| x.owner() == id).any(|x| match x {
+            crate::view3d::Solid::Prism { ring, .. } => {
+                (geom::area(ring) - geom::area(&o)).abs() < 1e-6 && ring.iter().all(|p| o.iter().any(|q| near(*p, *q)))
+            }
+            _ => false,
+        });
+        assert!(flange, "{id}: a flange stands on the outline {o:?}");
+    }
+    // Refusing to join, each keeps its upright ends where its line ends.
+    let mut s = s;
+    s.execute("modify", &json!({"id": east, "join": false})).unwrap();
+    let solids = crate::view3d::solids(&s.model);
+    let body = body_in_plan(&solids, east);
+    assert!(body.iter().all(|p| p.0 >= -1e-6) && body.iter().any(|p| near(*p, P2(0.0, 75.0))), "{body:?}");
+}
+
 #[test]
 fn a_runs_ifc_body_is_its_section_swept_along_its_axis_whatever_its_joints() {
     let mut s = session(
@@ -497,7 +540,7 @@ fn snaps_take_the_corners_of_a_runs_joined_outline() {
 fn ifc(s: &mut Session) -> String {
     let path = std::env::temp_dir().join(format!("bimcraft-run-join-{}-{}.ifc", std::process::id(), s.model.uid));
     s.execute("save", &json!({"path": path})).unwrap();
-    let text = std::fs::read_to_string(&path).unwrap();
+    let text = crate::bimc::read_to_string(&path).unwrap();
     let _ = std::fs::remove_file(path);
     text
 }
