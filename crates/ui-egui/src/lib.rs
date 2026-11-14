@@ -3191,7 +3191,7 @@ impl BimApp {
         match self.tool {
             Tool::Door if self.plan_level().is_some() => {
                 let (family, ty) = self.opening_pick("door");
-                if !ty.as_deref().is_some_and(|t| m.single_swing_door(family.as_deref(), t)) {
+                if !ty.as_deref().is_some_and(|t| m.door_flips(family.as_deref(), t).hand) {
                     return false;
                 }
                 self.door_flip_hand = !self.door_flip_hand;

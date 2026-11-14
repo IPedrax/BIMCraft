@@ -2885,6 +2885,21 @@ pub enum Operation {
     Roller,
 }
 
+/// What a door or a window can turn over: a swing door's hinge (`hand`) and the side it opens to (`facing`), a
+/// window's face (`facing`). Computed from its operation, so it is no rule of the model's.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Flips {
+    pub hand: bool,
+    pub facing: bool,
+}
+
+impl Flips {
+    /// Whether it can be flipped at all.
+    pub fn any(self) -> bool {
+        self.hand || self.facing
+    }
+}
+
 impl Operation {
     pub const ALL: [Operation; 8] = [
         Operation::Swing,
@@ -5003,14 +5018,37 @@ impl Model {
         })
     }
 
+    /// How a door of this family or project type opens, when the model knows it.
+    fn door_operation(&self, family: Option<&str>, type_name: &str) -> Option<Option<Operation>> {
+        match family {
+            Some(name) => self.families.get(name).filter(|f| f.category == crate::family::Category::Door).map(|f| f.operation),
+            None => self.types.door.get(type_name).map(|t| t.operation),
+        }
+    }
+
     /// Whether this door has one swinging leaf. A door without a declared operation swings by default,
     /// as it does in IFC. Read the chosen family or project type without building its geometry.
     pub fn single_swing_door(&self, family: Option<&str>, type_name: &str) -> bool {
-        let operation = match family {
-            Some(name) => self.families.get(name).filter(|f| f.category == crate::family::Category::Door).map(|f| f.operation),
-            None => self.types.door.get(type_name).map(|t| t.operation),
-        };
-        matches!(operation, Some(None | Some(Operation::Swing)))
+        matches!(self.door_operation(family, type_name), Some(None | Some(Operation::Swing)))
+    }
+
+    /// What a door of this family or project type can flip: a swing door's hinge and face; another operation's
+    /// leaves slide, fold or stay put, and flip nothing.
+    pub fn door_flips(&self, family: Option<&str>, type_name: &str) -> Flips {
+        match self.door_operation(family, type_name) {
+            Some(Some(operation)) if operation != Operation::Swing => Flips::default(),
+            _ => Flips { hand: true, facing: true },
+        }
+    }
+
+    /// What an element can flip, as `flip` and the Space key offer it: a door's as its type says, a window's face
+    /// until its family's control arrows say more. `None` for what isn't a door or a window.
+    pub fn opening_flips(&self, e: &Element) -> Option<Flips> {
+        match e {
+            Element::Door(o) => Some(self.door_flips(o.family.as_deref(), &o.type_name)),
+            Element::Window(_) => Some(Flips { hand: false, facing: true }),
+            _ => None,
+        }
     }
 
     /// The type of a door or window.
