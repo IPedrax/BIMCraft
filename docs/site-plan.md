@@ -6,6 +6,14 @@ points or contours (and imported DXF or LandXML), pads, property lines with bear
 lines are already in ([property boundaries](areas/property-boundaries.md)). The rules in [CLAUDE.md](../CLAUDE.md) apply to all
 of it: everything is a command, `Model::check` validates, never crash, the core has no UI, test first, clean room.
 
+**Status (2026-11-14).** Slice 1 is #442. The surface engine of slice 2, `crates/core/src/site/surface.rs`, is done: it
+builds, clips and queries a terrain from points, contours and breaklines, as the "Slice 2" section below says, but it is not
+an element yet. The element this plan proposed (approach A) is not built here: #407 adds Revit 2024's Toposolid, a
+shape-editable slab on a level, and the site work now builds on it instead of adding a second terrain element. What stays
+of slice 2 is the import: a CAD import's contours, through this engine, into #407's toposolid as its shape points (one on each
+boundary corner) and split lines. Where this document describes the element itself (its fields, `FORMAT`, drawing,
+schedules, IFC), #407 decides. Slice 3 (pads, cut and fill, excavation) is proposed as its own issue once #407 lands.
+
 ## Why
 
 A building on a slope starts with the ground: where it sits, how high its floor is over the terrain at each corner, and how
@@ -224,8 +232,8 @@ everything. The area write-up says so.
 - DXF: an LWPOLYLINE with 38, a 3D POLYLINE, a LINE and a POINT with z, a mirrored OCS, a DWG through the bridge; an
   existing drawing's rendered PNG unchanged (pixels).
 - Toposolid: a plane `z = a·x + b·y + c` from contours gives the plane's elevation at any point inside (`elevation_at`), its
-  exact surface area and volume; a cone from circular contours stays a cone within the chord error; crossing contours and a
-  repeated point are refused with where; the hostile-params sweep; save, open and migrate; IFC through IfcOpenShell.
+  exact surface area and volume; a cone from circular contours stays a cone within the chord error; crossing contours are
+  demoted to points and a position given twice takes the mean, each with a note; the hostile-params sweep; save, open and migrate; IFC through IfcOpenShell.
 - Per-edge slopes and steps: a pad retained on its downhill edge on a uniform 80 % slope (accepted, its volume analytic);
   the same pad with the default fill slope (refused, naming the edge and both slopes); two pads stepped along a retained
   edge. `strip_m3` exact; `excavation_m3` of footings and columns against their boxes.
