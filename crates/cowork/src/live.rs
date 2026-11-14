@@ -25,6 +25,9 @@ use crate::host::clean;
 use crate::wire;
 use crate::{Code, Guest, GuestEvent, Host, HostConfig, HostEvent, MAX_NAME, Mailer, Timing, Wake};
 
+/// A message packed once for every guest it goes to, or why it couldn't be.
+type Packed = Result<Arc<[u8]>, String>;
+
 /// The version a guest must share with its host.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 /// How long a guest's window waits for the host's answer to a command.
@@ -345,7 +348,7 @@ impl Hosting {
         // The host's own changes since the last pass go out as its own, before a guest's command can be taken for them.
         self.flush(session, 0, &mut said);
         // The welcome, the whole model, made once for everyone who comes in on the same model and number.
-        let mut welcome: Option<(u64, Result<Arc<[u8]>, String>)> = None;
+        let mut welcome: Option<(u64, Packed)> = None;
         while let Some(e) = self.host.try_event() {
             match e {
                 HostEvent::Joined { peer, name, colour, .. } => {
@@ -428,7 +431,7 @@ impl Hosting {
     /// What changed since the guests were last sent the model, sent as `by`'s (0, the host's).
     /// The whole model as an `op` message, packed once to go to any guest: refused when packing it would take more memory than
     /// this machine has free (it takes up to twice the model's text again), so a host never runs out sending its project.
-    fn whole(&self, session: &Session, op: &str) -> Result<Arc<[u8]>, String> {
+    fn whole(&self, session: &Session, op: &str) -> Packed {
         let d = cowork::whole(&session.model)?;
         let size = match &d {
             Delta::Whole { model, links } => model.len() + links.values().map(String::len).sum::<usize>(),
