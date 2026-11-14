@@ -652,7 +652,7 @@ impl<'a> Reader<'a> {
                         (None, None) => (Color::Index(7), false),
                     };
                     self.layers.push(Layer {
-                        name: e.str(2).unwrap_or("0").to_string(),
+                        name: table_name(e.str(2).unwrap_or("0")),
                         color,
                         linetype: e.str(6).filter(|s| !s.is_empty()).unwrap_or("Continuous").to_string(),
                         weight: weight(e.int(370)?),
@@ -815,8 +815,8 @@ struct Style {
 impl Style {
     fn of(e: &Ent, inh: Option<&Inherit>) -> Result<Style, String> {
         let layer = match (e.str(8).unwrap_or("0"), inh) {
-            ("0", Some(i)) => i.layer,
-            (l, _) => l,
+            ("0", Some(i)) => i.layer.to_string(),
+            (l, _) => table_name(l),
         };
         let color = match (e.int(420)?, e.int(62)?) {
             (Some(rgb), _) => true_color(rgb),
@@ -1201,6 +1201,29 @@ fn leading_color(raw: &str) -> Option<Color> {
         }
     }
     color
+}
+
+/// A layer's name as a file writes it: `\U+XXXX` a character, as a file whose header names a code page (ANSI_1252)
+/// writes what isn't in it; the rest as it is.
+fn table_name(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s;
+    while let Some(at) = rest.find("\\U+") {
+        out.push_str(&rest[..at]);
+        let hex = rest.get(at + 3..at + 7).filter(|h| h.chars().all(|c| c.is_ascii_hexdigit()));
+        match hex.and_then(|h| u32::from_str_radix(h, 16).ok()).and_then(char::from_u32) {
+            Some(c) => {
+                out.push(c);
+                rest = &rest[at + 7..];
+            }
+            None => {
+                out.push_str("\\U+");
+                rest = &rest[at + 3..];
+            }
+        }
+    }
+    out.push_str(rest);
+    out
 }
 
 /// A text's words as a file writes them: `%%d` is a degree sign, `%%p` plus or minus, `%%c` a diameter, `%%%` a
@@ -1638,6 +1661,16 @@ mod tests {
         // Extents the wrong way round are none.
         let bad = header("4").replace("10\n10\n20\n5\n", "10\n-10\n20\n5\n");
         assert_eq!(read_text(&file(&bad, "", "", &pairs(&[(0, "POINT"), (10, "1"), (20, "1")]))).unwrap().extents, None);
+    }
+
+    #[test]
+    fn a_layers_name_written_with_unicode_escapes_reads_whole() {
+        // As a DXF 2004 whose header names a code page writes what isn't in it; an escape that isn't one stays as written.
+        let text = "0\nSECTION\n2\nTABLES\n0\nTABLE\n2\nLAYER\n0\nLAYER\n2\nMOBILI\\U+00C1RIO\n70\n0\n62\n7\n0\nLAYER\n2\nA\\U+ZZ\n70\n0\n62\n7\n0\nENDTAB\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n0\nLINE\n8\nMOBILI\\U+00C1RIO\n10\n0\n20\n0\n11\n10\n21\n0\n0\nLINE\n8\n\\U+901A\\U+98CE\n10\n0\n20\n0\n11\n10\n21\n0\n0\nENDSEC\n0\nEOF\n";
+        let f = read_text(text).unwrap();
+        assert!(f.layer("MOBILIÁRIO").is_some() && f.layer("A\\U+ZZ").is_some(), "{:?}", f.layers);
+        let layers: Vec<&str> = f.entities.iter().map(|e| e.layer.as_str()).collect();
+        assert_eq!(layers, ["MOBILIÁRIO", "通风"]);
     }
 
     #[test]

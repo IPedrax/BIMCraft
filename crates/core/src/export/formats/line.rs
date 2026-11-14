@@ -69,10 +69,30 @@ fn weight(mm: f64) -> i32 {
     WEIGHTS.iter().copied().min_by_key(|v| (v - w).abs()).unwrap_or(0)
 }
 
-/// A name a DXF table takes: no character it refuses.
+/// A name a DXF table takes: no character it refuses, and what isn't ASCII as `\U+XXXX`, as a file whose header says
+/// ANSI_1252 writes it (a character past four digits, `_`).
 fn table_name(s: &str) -> String {
-    let n: String = s.chars().map(|c| if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '$') { c } else { '_' }).collect();
+    let mut n = String::new();
+    for c in s.chars() {
+        match c {
+            c if c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '$') => n.push(c),
+            c if !c.is_ascii() && u32::from(c) <= 0xFFFF => {
+                let _ = write!(n, "\\U+{:04X}", u32::from(c));
+            }
+            _ => n.push('_'),
+        }
+    }
     if n.is_empty() { "0".to_string() } else { n }
+}
+
+/// A point as the file holds it, its numbers as [`num`] writes them: what a reader takes back.
+fn written(q: (f64, f64)) -> (f64, f64) {
+    (num(q.0).parse().unwrap_or(0.0), num(q.1).parse().unwrap_or(0.0))
+}
+
+/// Twice the area a ring of points closes.
+fn area2(r: &[(f64, f64)]) -> f64 {
+    r.iter().zip(r.iter().cycle().skip(1)).map(|(a, b)| a.0 * b.1 - b.0 * a.1).sum()
 }
 
 /// A number as DXF writes it: finite, no exponent a reader might not take.
@@ -358,8 +378,10 @@ fn entities(
         let layer = layer_of(i);
         match p {
             Prim::Line { pts, width, color, dash, closed } => {
-                let pts: Vec<(f64, f64)> = pts.iter().map(|q| place(*q)).filter(|q| q.0.is_finite() && q.1.is_finite()).collect();
-                if pts.len() < 2 {
+                let pts: Vec<(f64, f64)> =
+                    pts.iter().map(|q| place(*q)).filter(|q| q.0.is_finite() && q.1.is_finite()).map(written).collect();
+                // A line of no length as it is written, which a reader takes for an empty entity, is left out.
+                if pts.len() < 2 || pts.iter().all(|q| *q == pts[0]) {
                     continue;
                 }
                 let lt = dash.as_ref().and_then(|dash| linetypes.get(&pattern_key(dash, unit))).map(String::as_str);
@@ -385,8 +407,9 @@ fn entities(
             Prim::Fill { rings, color } if *color != Rgb(255, 255, 255) => {
                 let rings: Vec<Vec<(f64, f64)>> = rings
                     .iter()
-                    .map(|r| r.iter().map(|q| place(*q)).filter(|q| q.0.is_finite() && q.1.is_finite()).collect::<Vec<_>>())
-                    .filter(|r| r.len() >= 3)
+                    .map(|r| r.iter().map(|q| place(*q)).filter(|q| q.0.is_finite() && q.1.is_finite()).map(written).collect::<Vec<_>>())
+                    // A ring that closes no area as it is written, likewise.
+                    .filter(|r| r.len() >= 3 && area2(r) != 0.0)
                     .collect();
                 if rings.is_empty() {
                     continue;
@@ -530,5 +553,44 @@ mod tests {
         assert_eq!(num(-0.0), "0");
         assert_eq!(num(f64::NAN), "0");
         assert_eq!(num(1234.5), "1234.5");
+    }
+
+    #[test]
+    fn a_name_in_any_script_is_written_as_the_files_code_page_reads_it() {
+        // The header says ANSI_1252: what isn't ASCII goes as `\U+XXXX`, and our reader takes it back whole.
+        assert_eq!(table_name("Elétrica 电"), "El\\U+00E9trica_\\U+7535");
+        assert_eq!(table_name("MOBILIÁRIO"), "MOBILI\\U+00C1RIO");
+        // A character past the four digits `\U+` holds, and those a table refuses, are `_`.
+        assert_eq!(table_name("a🙂b/c"), "a_b_c");
+        let text = format!(
+            "0\nSECTION\n2\nTABLES\n0\nTABLE\n2\nLAYER\n0\nLAYER\n2\n{0}\n70\n0\n62\n7\n0\nENDTAB\n0\nENDSEC\n0\nSECTION\n2\nENTITIES\n0\nLINE\n8\n{0}\n10\n0\n20\n0\n11\n10\n21\n0\n0\nENDSEC\n0\nEOF\n",
+            table_name("Elétrica 电")
+        );
+        let f = read_text(&text).unwrap();
+        assert!(f.layer("Elétrica_电").is_some(), "{:?}", f.layers);
+        assert_eq!(f.entities[0].layer, "Elétrica_电");
+    }
+
+    #[test]
+    fn a_line_of_no_length_and_a_ring_of_no_area_are_left_out() {
+        let mut d = crate::render::Drawing::new(View { scale: 1.0, cx: 0.0, cy: 0.0, width: 100, height: 100, angle: 0.0 });
+        let line = |pts: Vec<(f32, f32)>| Prim::Line { pts, width: 1.0, color: Rgb(0, 0, 0), dash: None, closed: false };
+        d.prims.push(line(vec![(0.0, 0.0), (10.0, 0.0)]));
+        // The same point twice, and a polyline whose points round to one.
+        d.prims.push(line(vec![(5.0, 5.0), (5.0, 5.0)]));
+        d.prims.push(line(vec![(1.0, 1.0), (1.000_000_1, 1.0), (1.0, 1.000_000_1)]));
+        // A fill with one ring of no area, beside one that has some; and a fill of no area at all.
+        let ring = vec![(0.0, 0.0), (10.0, 0.0), (10.0, 10.0)];
+        let flat = vec![(0.0, 0.0), (5.0, 0.0), (10.0, 0.0)];
+        d.prims.push(Prim::Fill { rings: vec![ring, flat.clone()], color: Rgb(0, 0, 0) });
+        d.prims.push(Prim::Fill { rings: vec![flat], color: Rgb(0, 0, 0) });
+        let mut w = Writer { out: String::new(), next: 0 };
+        let place = |p: (f32, f32)| (f64::from(p.0), f64::from(p.1));
+        let n = entities(&mut w, &d, "1F", &place, 1.0, &|_| "0".to_string(), &BTreeMap::new(), &Ctx::quiet()).unwrap();
+        assert_eq!(n, 2, "{}", w.out);
+        let count = |kind: &str| w.out.matches(&format!("0\n{kind}\n")).count();
+        assert_eq!((count("LINE"), count("LWPOLYLINE"), count("HATCH")), (1, 0, 1), "{}", w.out);
+        // The hatch keeps its ring with an area, only.
+        assert!(w.out.contains("91\n1\n"), "{}", w.out);
     }
 }
