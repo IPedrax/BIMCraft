@@ -1,7 +1,7 @@
 //! DXF, read from the public DXF reference: a drawing's layers and the entities of its model space, each in the
 //! drawing's own unit, which `$INSUNITS` names when the file knows it. What a plan can't draw as it is (a polyline's
 //! bulges, an ellipse, a spline) is flattened to points on the curve; a block is placed where each INSERT puts it, arrays
-//! and nesting included, under a bound; paper space, a binary file and the kinds of entity the reader doesn't draw are
+//! and nesting included, under a bound; paper space (unless model space draws nothing, when it comes in instead), a binary file and the kinds of entity the reader doesn't draw are
 //! left out and named. A `CadImport` element places what is read; this module knows no element.
 
 use std::borrow::Cow;
@@ -242,6 +242,9 @@ pub struct Dxf {
     /// What was left out, by what it was, each with its count: kinds of entity the reader doesn't draw, paper space,
     /// a block nested too deep or not defined, an entity of no size.
     pub left_out: BTreeMap<String, usize>,
+    /// Drawn from paper space: model space draws nothing, as on a sheet laid out there (R12's, or a layout of today's), so
+    /// the entities are the active layout's, in paper units.
+    pub paper: bool,
 }
 
 impl Dxf {
@@ -554,12 +557,36 @@ impl<'a> Reader<'a> {
             let (x, y) = (var(name, 10)?, var(name, 20)?);
             Some(P2(number(0, x).ok()?, number(0, y).ok()?))
         };
-        let extents = match (corner("$EXTMIN"), corner("$EXTMAX")) {
+        let extents_of = |lo: &str, hi: &str| match (corner(lo), corner(hi)) {
             (Some(lo), Some(hi)) if lo.0 <= hi.0 && lo.1 <= hi.1 => Some([lo, hi]),
             _ => None,
         };
-        let mut out = Out { entities: Vec::new(), left_out: BTreeMap::new(), work: 0 };
+        let mut extents = extents_of("$EXTMIN", "$EXTMAX");
+        let mut out = Out { entities: Vec::new(), left_out: BTreeMap::new(), work: 0, paper: false };
         self.place(&mut out, &ents, Xf::ID, None, 0)?;
+        if out.entities.is_empty() {
+            // Nothing in model space: a sheet drawn in paper space, its entities in ENTITIES (R12 and before, or the active
+            // layout's) or, failing those, in the block `*Paper_Space`.
+            let mut paper = Out { entities: Vec::new(), left_out: BTreeMap::new(), work: 0, paper: true };
+            self.place(&mut paper, &ents, Xf::ID, None, 0)?;
+            if paper.entities.is_empty() {
+                paper = Out { entities: Vec::new(), left_out: BTreeMap::new(), work: 0, paper: true };
+                let name = self.blocks.keys().find(|n| n.eq_ignore_ascii_case("*Paper_Space")).cloned();
+                if let Some(name) = name {
+                    let style = Style { layer: "0".into(), color: Color::ByLayer, linetype: None, weight: None };
+                    self.block(&mut paper, &name, &style, Xf::ID, 0)?;
+                }
+            }
+            if !paper.entities.is_empty() {
+                // What model space left out is still said, paper space itself now drawn.
+                out.left_out.remove("paper space");
+                for (what, n) in std::mem::take(&mut out.left_out) {
+                    *paper.left_out.entry(what).or_default() += n;
+                }
+                extents = extents_of("$PEXTMIN", "$PEXTMAX");
+                out = paper;
+            }
+        }
         let mut layers = std::mem::take(&mut self.layers);
         for e in &out.entities {
             if !layers.iter().any(|l| l.name == e.layer) {
@@ -583,6 +610,7 @@ impl<'a> Reader<'a> {
             entities: out.entities,
             extents,
             left_out: out.left_out,
+            paper: out.paper,
         })
     }
 
@@ -783,6 +811,8 @@ struct Out {
     entities: Vec<Entity>,
     left_out: BTreeMap<String, usize>,
     work: usize,
+    /// Placing paper space's entities, not model space's.
+    paper: bool,
 }
 
 impl Out {
@@ -847,8 +877,12 @@ impl<'a> Reader<'a> {
             if out.work > MAX_WORK {
                 return Err(format!("its blocks place more than {MAX_WORK} entities; up to that many"));
             }
-            if e.int(67)?.unwrap_or(0) == 1 {
-                out.left("paper space");
+            // In paper space, the top level is its entities alone; a block it places draws whole.
+            let on_paper = e.int(67)?.unwrap_or(0) == 1;
+            if on_paper != out.paper && (depth == 0 || !out.paper) {
+                if !out.paper {
+                    out.left("paper space");
+                }
                 continue;
             }
             let style = Style::of(e, inh)?;
@@ -939,6 +973,17 @@ impl<'a> Reader<'a> {
                 "DIMENSION" => {
                     if let Some(name) = e.str(2) {
                         self.block(out, name, &style, xf, depth)?;
+                    }
+                    continue;
+                }
+                "ACAD_TABLE" => {
+                    // What a table looks like is kept in its block (`*T…`), drawn from the table's insertion point.
+                    match e.str(2) {
+                        Some(name) => {
+                            let at = e.point(10)?.unwrap_or(P2(0.0, 0.0));
+                            self.block(out, name, &style, xf.then(Xf { o: at, ..Xf::ID }), depth)?;
+                        }
+                        None => out.left("ACAD_TABLE"),
                     }
                     continue;
                 }
@@ -1870,6 +1915,58 @@ mod tests {
     }
 
     #[test]
+    fn a_table_is_drawn_from_its_block_at_its_insertion_point_and_alone_still_draws_something() {
+        // AutoCAD keeps what a table looks like in an anonymous block (`*T…`): its grid as lines, its cells as text,
+        // relative to the table's insertion point.
+        let blocks = pairs(&[
+            (0, "BLOCK"),
+            (2, "*T1"),
+            (10, "0"),
+            (20, "0"),
+            (0, "LINE"),
+            (10, "0"),
+            (20, "0"),
+            (11, "40"),
+            (21, "0"),
+            (0, "TEXT"),
+            (10, "1"),
+            (20, "-4"),
+            (40, "2.5"),
+            (1, "Sala"),
+            (0, "ENDBLK"),
+        ]);
+        let table = pairs(&[
+            (0, "ACAD_TABLE"),
+            (8, "QUADRO"),
+            (100, "AcDbBlockReference"),
+            (2, "*T1"),
+            (10, "100"),
+            (20, "50"),
+            (100, "AcDbTable"),
+            (11, "1"),
+            (21, "0"),
+            (91, "2"),
+            (92, "1"),
+            (141, "8"),
+            (142, "40"),
+        ]);
+        let d = read_text(&file("", "", &blocks, &table)).unwrap();
+        assert!(d.left_out.is_empty(), "{:?}", d.left_out);
+        assert_eq!(d.entities.len(), 2, "{:?}", d.entities);
+        assert!(d.entities.iter().all(|e| e.layer == "QUADRO"), "the block's entities on layer 0 take the table's");
+        let b = union(d.entities.iter().map(|e| e.shape.bounds())).unwrap();
+        assert!(b[0].0 >= 99.9 && b[1].0 <= 140.1 && b[1].1 <= 50.1 && b[0].1 >= 44.0, "{b:?}");
+        assert!(
+            d.entities
+                .iter()
+                .any(|e| matches!(&e.shape, Shape::Text { text, at, .. } if text == "Sala" && at.dist(P2(101.0, 46.0)) < 1e-9))
+        );
+        // A table whose block is missing says so; it never fails the file.
+        let d = read_text(&file("", "", "", &table.replace("*T1", "*T9"))).unwrap();
+        assert_eq!(d.left_out.get("INSERT of a block the file doesn't define"), Some(&1));
+    }
+
+    #[test]
     fn a_block_mirrored_or_stretched_keeps_its_arcs_as_arcs_only_while_they_stay_round() {
         let blocks = pairs(&[
             (0, "BLOCK"),
@@ -2188,6 +2285,9 @@ mod tests {
     #[test]
     fn paper_space_and_the_kinds_not_drawn_are_left_out_and_counted() {
         let d = drawing(&pairs(&[
+            (0, "POINT"),
+            (10, "5"),
+            (20, "5"),
             (0, "LINE"),
             (67, "1"),
             (10, "0"),
@@ -2208,9 +2308,56 @@ mod tests {
             (20, "0"),
             (40, "0"),
         ]));
-        assert!(d.entities.is_empty());
+        assert_eq!(d.entities.len(), 1, "model space has something, so it alone comes in");
+        assert!(!d.paper);
         let left: Vec<(&str, usize)> = d.left_out.iter().map(|(k, v)| (k.as_str(), *v)).collect();
         assert_eq!(left, [("VIEWPORT", 1), ("XLINE", 2), ("empty", 1), ("paper space", 1)]);
+    }
+
+    #[test]
+    fn a_drawing_with_nothing_in_model_space_comes_in_from_its_paper_space() {
+        // A sheet of R12 and before: the drawing is in ENTITIES, marked paper space (67), with a viewport on an empty model.
+        let sheet = pairs(&[
+            (0, "LINE"),
+            (67, "1"),
+            (10, "0"),
+            (20, "0"),
+            (11, "420"),
+            (21, "0"),
+            (0, "VIEWPORT"),
+            (67, "1"),
+            (10, "0"),
+            (20, "0"),
+            (0, "XLINE"),
+            (10, "0"),
+            (20, "0"),
+        ]);
+        let header = pairs(&[(9, "$PEXTMIN"), (10, "0"), (20, "0"), (9, "$PEXTMAX"), (10, "420"), (20, "297")]);
+        let d = read_text(&file(&header, "", "", &sheet)).unwrap();
+        assert!(d.paper, "{:?}", d.left_out);
+        assert_eq!(shapes(&d), [&Shape::Line(P2(0.0, 0.0), P2(420.0, 0.0))]);
+        assert_eq!(d.extents, Some([P2(0.0, 0.0), P2(420.0, 297.0)]), "paper space's own extents");
+        let left: Vec<(&str, usize)> = d.left_out.iter().map(|(k, v)| (k.as_str(), *v)).collect();
+        assert_eq!(left, [("VIEWPORT", 1), ("XLINE", 1)], "what model space left out is still said");
+        // Of 2000 and later: the layout's entities are in the block `*Paper_Space`, none of them in ENTITIES.
+        let block = pairs(&[
+            (0, "BLOCK"),
+            (2, "*Paper_Space"),
+            (10, "0"),
+            (20, "0"),
+            (0, "CIRCLE"),
+            (67, "1"),
+            (10, "10"),
+            (20, "10"),
+            (40, "5"),
+            (0, "ENDBLK"),
+        ]);
+        let d = read_text(&file("", "", &block, "")).unwrap();
+        assert!(d.paper);
+        assert_eq!(shapes(&d), [&Shape::Circle { c: P2(10.0, 10.0), r: 5.0 }]);
+        // Nothing in either: nothing comes in, and the file isn't refused here (Import CAD says it draws nothing).
+        let d = read_text(&file("", "", "", "")).unwrap();
+        assert!(d.entities.is_empty() && !d.paper);
     }
 
     #[test]

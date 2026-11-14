@@ -132,7 +132,7 @@ msgstr ""
 msgid "Demand Factor"
 msgstr ""
 
-#: crates/core/src/commands.rs:13085
+#: crates/core/src/commands.rs:13088
 msgid "Dependent"
 msgstr ""
 
@@ -217,9 +217,9 @@ msgstr ""
 msgid "Electrical Power"
 msgstr ""
 
-#: crates/core/src/commands.rs:12832
-#: crates/core/src/commands.rs:12847
-#: crates/core/src/commands.rs:17269
+#: crates/core/src/commands.rs:12835
+#: crates/core/src/commands.rs:12850
+#: crates/core/src/commands.rs:17272
 msgid "Elevation"
 msgstr ""
 
@@ -390,7 +390,7 @@ msgstr ""
 msgid "Masking"
 msgstr ""
 
-#: crates/core/src/commands.rs:10367
+#: crates/core/src/commands.rs:10370
 msgid "Mass"
 msgstr ""
 
@@ -407,7 +407,7 @@ msgid "Membrane"
 msgstr ""
 
 #: crates/core/src/commands.rs:3527
-#: crates/core/src/commands.rs:15875
+#: crates/core/src/commands.rs:15878
 #: crates/core/src/family.rs:3429
 #: crates/core/src/model.rs:5052
 msgid "Metal"
@@ -507,7 +507,7 @@ msgstr ""
 msgid "Project"
 msgstr ""
 
-#: crates/core/src/commands.rs:8636
+#: crates/core/src/commands.rs:8639
 msgid "Property Line"
 msgstr ""
 
@@ -539,7 +539,7 @@ msgstr ""
 msgid "Roof tiles"
 msgstr ""
 
-#: crates/core/src/commands.rs:10592
+#: crates/core/src/commands.rs:10595
 msgid "Room"
 msgstr ""
 
@@ -575,8 +575,8 @@ msgstr ""
 msgid "Seat Height"
 msgstr ""
 
-#: crates/core/src/commands.rs:12767
-#: crates/core/src/commands.rs:17268
+#: crates/core/src/commands.rs:12770
+#: crates/core/src/commands.rs:17271
 msgid "Section"
 msgstr ""
 
@@ -746,7 +746,7 @@ msgstr ""
 msgid "Unclassified"
 msgstr ""
 
-#: crates/core/src/commands.rs:13256
+#: crates/core/src/commands.rs:13259
 msgid "Unnamed"
 msgstr ""
 
