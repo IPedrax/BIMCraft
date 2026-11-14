@@ -1198,7 +1198,6 @@ const CAD_CANVAS: u32 = 4096;
 /// when the gridlines (or dimensions) come or go. So the view is fitted to what the plan cuts and sees below, none of its
 /// annotation, on a canvas that holds the annotation all the same, and the same layout is written in the same digits with or
 /// without it.
-
 pub fn plan_for_cad(m: &Model, level: impl Key, width: u32, height: u32) -> Drawing {
     let key = m.guid(level);
     let extent = match m.shown_crop(key) {
