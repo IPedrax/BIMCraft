@@ -136,3 +136,20 @@ fn a_walls_levels_and_a_plan_views_level_and_parent_are_named_in_properties() {
     assert_eq!(shown(&h, "Base Constraint").as_deref(), Some("Level 1"));
     assert_eq!(shown(&h, "Top Constraint").as_deref(), Some("Level 2"));
 }
+
+#[test]
+fn link_model_asks_how_to_position_the_file_and_links_it_by_shared_coordinates() {
+    let path = shell("shared");
+    let mut h = app("");
+    h.state_mut().link_box = Some(crate::links::LinkBox::for_test(path.clone()));
+    h.run();
+    assert!(h.query_by_label("Auto - Origin to Origin").is_some(), "the box asks");
+    pick(&mut h, Role::RadioButton, "Auto - By Shared Coordinates");
+    press(&mut h, "OK");
+    let _ = std::fs::remove_file(&path);
+    let made = links(&h);
+    assert_eq!(made.len(), 1, "{}", h.state().status.text);
+    let Some(Element::Link(l)) = h.state().session.model.elements.get(made[0]) else { panic!() };
+    assert_eq!(l.by, bimcraft_core::link::By::Shared);
+    assert!(h.state().link_box.is_none(), "the box closed");
+}

@@ -27,7 +27,7 @@ mod fill_tests;
 /// The categories a plan, a section or a 3D view draws, and so may hide and override: those of the
 /// model, then those of the annotation. A family component is of its family's category (see [`COMPONENTS`]); `component`, which
 /// names them all, is no row of its own (see [`COMPONENT`]).
-pub const MODEL: [&str; 46] = [
+pub const MODEL: [&str; 47] = [
     "wall",
     "floor",
     "ceiling",
@@ -74,6 +74,7 @@ pub const MODEL: [&str; 46] = [
     "ramp",
     "railing",
     "roof",
+    "site",
 ];
 /// What every family component is, named as a whole: an override, a view filter, a view template or a schedule that names
 /// `component` means every one of [`COMPONENTS`], as it did when they were one row. It is no row of Visibility/Graphics or
@@ -101,8 +102,8 @@ pub const COMPONENTS: [&str; 18] = [
     "patchpanel",
     "rack",
 ];
-pub const ANNOTATION: [&str; 11] =
-    ["dimension", "tag", "text", "line", "region", "spot", "grid", "level", "section", "elevation", "circuit"];
+pub const ANNOTATION: [&str; 12] =
+    ["dimension", "tag", "text", "line", "region", "spot", "spotcoordinate", "grid", "level", "section", "elevation", "circuit"];
 /// The point clouds, which views hide and override as Revit's Visibility/Graphics does on a tab of their own: not a model
 /// category, so Object Styles has no row for them.
 pub const SCANS: [&str; 1] = ["pointcloud"];
@@ -131,6 +132,10 @@ pub const SUBCATEGORIES: &[Sub] = &[
     // of the project's own type's swing.
     Sub { key: "dooropening", parent: "door", name: ui_msg!("Opening"), off: false },
     Sub { key: "windowopening", parent: "window", name: ui_msg!("Opening"), off: false },
+    // The three origins, as Revit's Site has them: hidden unless a view shows them.
+    Sub { key: "internalorigin", parent: "site", name: ui_msg!("Internal Origin"), off: true },
+    Sub { key: "projectbasepoint", parent: "site", name: ui_msg!("Project Base Point"), off: true },
+    Sub { key: "surveypoint", parent: "site", name: ui_msg!("Survey Point"), off: true },
 ];
 
 /// The subcategory `key` is, if it is one.
@@ -546,6 +551,25 @@ pub struct Graphics {
     /// The layers of each CAD drawing it hides, by the drawing's name: Revit's Imported Categories, layer by layer.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub layers: BTreeMap<String, BTreeSet<String>>,
+    /// Which north is up in a plan: project north, or true north (turned by the active location's angle to it).
+    #[serde(skip_serializing_if = "Orientation::is_project")]
+    pub orientation: Orientation,
+}
+
+/// Which north a plan has up, as Revit's view Orientation: Project North (the model's y), or True North (the active
+/// location's), the plan turned on screen by the angle between them; the model never moves.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Orientation {
+    #[default]
+    ProjectNorth,
+    TrueNorth,
+}
+
+impl Orientation {
+    pub fn is_project(&self) -> bool {
+        *self == Orientation::ProjectNorth
+    }
 }
 
 /// An edge of `element` as the view draws it, from `from` to `to` (mm in the view's terms), in line style `style` instead
@@ -2340,7 +2364,7 @@ mod tests {
         }
         // Level 1 follows it: its annotation and its detail are the template's, its own settings stay as they were.
         run(&mut s, "scale", json!({"view": 100000, "scale": 50}));
-        let view = View { scale: 0.1, cx: 4000.0, cy: 3000.0, width: 1000, height: 800 };
+        let view = View { angle: 0.0, scale: 0.1, cx: 4000.0, cy: 3000.0, width: 1000, height: 800 };
         let k = |s: &Session| render::annotation(&s.model, 100000, view);
         let layered = |s: &Session| render::draw(&s.model, 100000, view).prims.len();
         let (alone, fine) = (k(&s), layered(&s));

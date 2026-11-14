@@ -439,7 +439,7 @@ fn rooms_without_room_points_export_as_before_but_for_the_references() {
     assert!(placed.iter().all(|n| s.model.families[*n].room_calculation_point.is_none()), "{placed:?}");
     assert!(s.model.families.values().all(|f| f.omniclass.is_none()));
     let now = crate::ifc::export(&s.model);
-    let before = crate::ifc::export_with(&s.model, false);
+    let before = crate::ifc::export_with(&s.model, false, crate::ifc::Origin::Internal, crate::ifc::Schema::Ifc4);
     assert!(now.contains("=IFCRELREFERENCEDINSPATIALSTRUCTURE("), "the sample's furniture stands in its rooms");
     let less: String =
         data(&now).lines().filter(|l| !l.contains("=IFCRELREFERENCEDINSPATIALSTRUCTURE(")).map(|l| format!("{l}\n")).collect();

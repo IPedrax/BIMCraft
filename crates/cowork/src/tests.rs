@@ -392,13 +392,15 @@ fn a_hello_is_read_strictly_and_its_name_made_safe() {
         Guest::join(
             addr,
             &code,
-            json!({"op": "hello", "version": VERSION, "name": "\u{7}Bo\nthe great builder of houses, walls and roofs"}),
+            json!({"op": "hello", "version": VERSION, "name": "\u{7}Bo\u{202e}\nthe great builder of houses, walls and roofs"}),
             quick(),
             Arc::new(|| {}),
         )
     });
     let HostEvent::Joined { peer, name, .. } = event(&host) else { panic!() };
-    assert!(!name.chars().any(char::is_control) && name.chars().count() <= crate::MAX_NAME && name.starts_with("Bo"), "{name:?}");
+    assert!(!name.chars().any(char::is_control), "{name:?}");
+    assert!(!name.contains('\u{202e}'), "a right-to-left override: {name:?}");
+    assert!(name.chars().count() <= crate::MAX_NAME && name.starts_with("Bo"), "{name:?}");
     host.send(peer, &json!({"op": "welcome"}));
     let _bo = joining.join().unwrap().unwrap();
     for first in [json!({"op": "execute"}), json!({"op": "hello", "version": VERSION, "name": ""})] {
@@ -415,6 +417,23 @@ fn a_hello_is_read_strictly_and_its_name_made_safe() {
             assert_eq!(reply["op"], "ended", "{reply}");
         }
     }
+}
+
+#[test]
+fn a_name_keeps_no_invisible_format_characters_and_an_honest_one_is_kept() {
+    // An override, a zero-width space, a soft hyphen and a byte-order mark: none of them shows, all of them deceive.
+    let hidden = "Bo\u{202e}\u{200b}\u{00ad}\u{feff}";
+    assert_eq!(crate::host::clean(Some(hidden), crate::MAX_NAME, "Guest"), "Bo");
+    assert_eq!(crate::host::clean(Some("\u{2066}Bo\u{2069}"), crate::MAX_NAME, "Guest"), "Bo", "an isolate");
+    assert_eq!(crate::host::clean(Some("\u{202e}\u{200b}\u{00ad}\u{feff}"), crate::MAX_NAME, "Guest"), "Guest", "nothing but them");
+    // One from the Arabic marks, the tags and the shorthand: a range left out of the list is caught.
+    assert_eq!(crate::host::clean(Some("Bo\u{06dd}\u{e0041}\u{1bca0}"), crate::MAX_NAME, "Guest"), "Bo");
+    // A name's own letters and signs are its own, and the cut is by characters.
+    for name in ["José", "李", "Ana 🏠"] {
+        assert_eq!(crate::host::clean(Some(name), crate::MAX_NAME, "Guest"), name);
+    }
+    let cut = crate::host::clean(Some(&"李".repeat(crate::MAX_NAME * 2)), crate::MAX_NAME, "Guest");
+    assert_eq!(cut.chars().count(), crate::MAX_NAME);
 }
 
 #[test]
@@ -448,6 +467,23 @@ fn a_guest_finds_a_host_on_the_lan_by_its_code_and_ignores_junk() {
     for _ in 0..3 {
         assert_eq!(discover(&[liar_at], Duration::from_millis(200)), vec![]);
     }
+    answering.join().unwrap();
+    // An answer is a datagram from anyone, with nothing proving who: its name and project are cleaned before the Join row
+    // shows them, so an override in a name cannot turn the address round; an honest name in another script is kept.
+    let forger = UdpSocket::bind((Ipv4Addr::LOCALHOST, 0)).unwrap();
+    let forger_at = forger.local_addr().unwrap();
+    let answering = std::thread::spawn(move || {
+        let mut buf = [0u8; 512];
+        let (_, from) = forger.recv_from(&mut buf).unwrap();
+        for (name, project, tag) in [("An\u{202e}a", "Ho\u{200b}use", "01ab23cd"), ("José", "Casa 李", "01ab23ce")] {
+            let reply = json!({"bimcraft-cowork": 1, "op": "here", "name": name, "project": project, "version": VERSION, "port": 41730, "tag": tag});
+            forger.send_to(reply.to_string().as_bytes(), from).unwrap();
+        }
+    });
+    let found = discover(&[forger_at], Duration::from_millis(300));
+    let rows: Vec<(&str, &str)> = found.iter().map(|f| (f.name.as_str(), f.project.as_str())).collect();
+    assert!(rows.contains(&("Ana", "House")), "a name and a project made safe: {rows:?}");
+    assert!(rows.contains(&("José", "Casa 李")), "an honest one kept: {rows:?}");
     answering.join().unwrap();
     // Out of sight, no answer.
     let hidden = self::host();
