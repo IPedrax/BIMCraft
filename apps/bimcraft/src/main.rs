@@ -44,7 +44,25 @@ fn control_port(mut args: Vec<String>) -> Result<(Vec<String>, Option<u16>), Str
     Ok((args, Some(port)))
 }
 
+/// Counts what this program allocates, so a file being read is held to the memory the machine has free (the core's `memory.rs`).
+#[global_allocator]
+static ALLOC: cap::Cap<std::alloc::System> = cap::Cap::new(std::alloc::System, usize::MAX);
+
+/// What the core measures a file being read by: what this program has allocated, and what the machine has free (less, where a
+/// container holds it to less).
+fn meter() -> bimcraft_core::memory::Meter {
+    bimcraft_core::memory::Meter { used: || ALLOC.allocated(), free: free_memory }
+}
+
+fn free_memory() -> Option<u64> {
+    let mut s = sysinfo::System::new().ok()?;
+    s.refresh_memory();
+    let free = s.cgroup_limits().map_or(s.available_memory(), |c| c.free_memory.min(s.available_memory()));
+    (free > 0).then_some(free)
+}
+
 fn main() -> ExitCode {
+    bimcraft_core::memory::install(meter());
     // An update runs the installer from a copy of this program, once the app has exited: nothing else here applies to it.
     if let Some(finish) = bimcraft_update::install::parse(std::env::args_os().skip(1)) {
         return bimcraft_update::install::run(&finish);
@@ -68,6 +86,7 @@ fn main() -> ExitCode {
     };
     let mut session = Session::new();
     session.dwg = dwg_reader();
+    dwg_writer(&mut session);
     // A blank project starts in the interface's language: its levels named in it.
     if args.is_empty() {
         let _ = session.execute("new", &json!({"language": language.project().code()}));
@@ -251,6 +270,18 @@ fn dwg_reader() -> Option<DwgReader> {
 fn dwg_reader() -> Option<DwgReader> {
     None
 }
+
+/// The DWG writer a session's exports are given: `bimcraft-dwg`'s, which writes a drawing in a child process of this program,
+/// behind the `dwg` feature. A build without it leaves DWG listed as planned.
+#[cfg(feature = "dwg")]
+fn dwg_writer(session: &mut Session) {
+    if let Some(w) = bimcraft_dwg::writer() {
+        session.exports.register(w);
+    }
+}
+
+#[cfg(not(feature = "dwg"))]
+fn dwg_writer(_: &mut Session) {}
 
 /// What this program does when it's started as the child that reads a DWG (`bimcraft_dwg::CHILD_ARG`): none when it isn't.
 #[cfg(feature = "dwg")]

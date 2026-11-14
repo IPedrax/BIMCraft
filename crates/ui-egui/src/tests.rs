@@ -316,8 +316,11 @@ fn key(h: &mut Harness<BimApp>, k: Key) {
 }
 
 /// Letters typed over the view: a two-letter shortcut.
+/// `letters` typed with Ctrl held, as BIMCraft's shortcuts are, all in one go.
 fn shortcut(h: &mut Harness<BimApp>, letters: &str) {
-    h.event(Event::Text(letters.into()));
+    let keys: Vec<Key> = letters.chars().filter_map(|c| Key::from_name(&c.to_ascii_uppercase().to_string())).collect();
+    assert_eq!(keys.len(), letters.chars().count(), "every letter of {letters} is a key");
+    h.key_combination_modifiers(Modifiers::COMMAND, &keys);
     h.run();
 }
 
@@ -862,20 +865,54 @@ fn the_selection_stays_as_views_change_and_a_schedule_shows_and_picks_it() {
 }
 
 #[test]
+fn a_ctrl_key_of_its_own_waits_for_a_second_letter_and_does_its_job_when_none_comes() {
+    let mut h = app("");
+    for y in [0, 3000, 6000] {
+        h.state_mut().session.execute("wall", &json!({"points": [[0, y], [4000, y]]})).unwrap();
+    }
+    h.run();
+    let walls = |h: &Harness<BimApp>| ids(h, "wall").len();
+    // Ctrl held, Z, and still held: Z waits for a second letter.
+    h.input_mut().events.push(Event::ModifiersChanged(Modifiers::COMMAND));
+    h.input_mut().events.push(Event::Key { key: Key::Z, pressed: true, modifiers: Modifiers::COMMAND, repeat: false, physical_key: None });
+    h.step();
+    assert_eq!(walls(&h), 3, "not yet undone");
+    // None comes: after the wait (a step is a quarter of a second here), Z undoes.
+    h.run_steps(3);
+    assert_eq!(walls(&h), 2, "undone once the wait is over");
+    // Z then F with Ctrl held is Zoom to Fit, not undo.
+    h.input_mut().events.push(Event::Key { key: Key::Z, pressed: true, modifiers: Modifiers::COMMAND, repeat: false, physical_key: None });
+    h.input_mut().events.push(Event::Key { key: Key::F, pressed: true, modifiers: Modifiers::COMMAND, repeat: false, physical_key: None });
+    h.step();
+    h.input_mut().events.push(Event::ModifiersChanged(Modifiers::NONE));
+    h.run();
+    assert_eq!(walls(&h), 2, "ZF fits the view and undoes nothing");
+    // Z, Z is no shortcut: the first undoes, and the second does as Ctrl is let go.
+    shortcut(&mut h, "ZZ");
+    assert_eq!(walls(&h), 0, "twice undone");
+}
+
+#[test]
 fn typed_shortcuts_pick_tools_like_revit() {
     let mut h = app(SAMPLE);
-    h.event(Event::Text("W".into()));
-    h.event(Event::Text("A".into()));
+    // Letters typed without Ctrl are no shortcut.
+    h.event(Event::Text("WA".into()));
+    h.run();
+    assert!(matches!(h.state().tool, Tool::Modify));
+    // With Ctrl held they are, a letter a frame as well as together; letting Ctrl go between two ends the first.
+    let down = |key| Event::Key { key, pressed: true, modifiers: Modifiers::COMMAND, repeat: false, physical_key: None };
+    h.input_mut().events.extend([Event::ModifiersChanged(Modifiers::COMMAND), down(Key::W)]);
+    h.step();
+    h.input_mut().events.push(down(Key::A));
+    h.step();
+    h.input_mut().events.push(Event::ModifiersChanged(Modifiers::NONE));
     h.run();
     assert!(matches!(h.state().tool, Tool::Wall(_)));
-    h.event(Event::Text("dr".into()));
-    h.run();
+    shortcut(&mut h, "dr");
     assert!(matches!(h.state().tool, Tool::Door));
-    h.event(Event::Text("DI".into()));
-    h.run();
+    shortcut(&mut h, "DI");
     assert!(matches!(h.state().tool, Tool::Dimension(..)));
-    h.event(Event::Text("tg".into()));
-    h.run();
+    shortcut(&mut h, "tg");
     assert!(matches!(h.state().tool, Tool::Tag));
     shortcut(&mut h, "CR");
     assert!(matches!(h.state().tool, Tool::Section(None)));
@@ -1117,13 +1154,20 @@ fn saving_writes_the_project_and_exports_by_extension() {
 }
 
 #[test]
-fn file_export_lists_the_3d_scene_as_gltf_in_both_profiles_and_an_export_leaves_the_project_unsaved() {
+fn file_export_lists_export_publisher_and_print_set_in_both_profiles_and_an_export_leaves_the_project_unsaved() {
     for (name, mut h) in [("Rev", app(SAMPLE)), ("BIMCraft", bimcraft(SAMPLE))] {
         press(&mut h, "File");
         // The submenu's label carries its arrow too.
         h.get_by_label_contains("Export").click();
         h.run();
-        assert!(h.query_by_label("3D Scene as glTF…").is_some(), "{name}: File > Export lists glTF");
+        for item in ["Export…", "Publisher…", "Print Set…"] {
+            // Export…'s label carries its shortcut too.
+            assert!(h.query_all_by_label_contains(item).next().is_some(), "{name}: File > Export lists {item}");
+        }
+        // The exports that saved at once with the defaults are gone: the dialog and the Publisher write them.
+        for gone in ["IFC…", "View as PNG…", "Plan as SVG…", "Sheets as PDF…", "3D Scene as glTF…", "Print Sets…"] {
+            assert!(h.query_by_label(gone).is_none(), "{name}: File > Export no longer lists {gone}");
+        }
     }
     let mut h = app(SAMPLE);
     let dir = std::env::temp_dir().join(format!("bimcraft-ui-gltf-{}", std::process::id()));
@@ -6237,6 +6281,7 @@ mod display;
 mod dock;
 mod draw;
 mod electrical;
+mod export;
 mod family_formulas;
 mod file_extensions;
 mod fills;
@@ -6264,8 +6309,10 @@ mod planviews;
 mod plugins;
 mod popup;
 mod presets;
+mod printsets;
 mod profile;
 mod projectinfo;
+mod publisher;
 mod purge;
 mod qol;
 mod reinforce;

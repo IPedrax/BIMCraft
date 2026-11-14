@@ -21,6 +21,7 @@ use crate::language::Language;
 use crate::library::Kind as LibKind;
 use crate::lines::{DetailLine, LineStyle};
 use crate::massing;
+use crate::memory;
 use crate::model::{
     CEILING_HEIGHT, CadImport, Ceiling, CeilingType, Column, ColumnType, Component, DEFAULT_HEIGHT, DimKind, Dimension, Dimension3D,
     Element, End, Extrusion, Face, Facing, Floor, FloorType, Grid, Guid, HostRef, Hosted, Id, Key, Landing, Layer, Level, Line, Location,
@@ -32,7 +33,6 @@ use crate::model::{
 use crate::paint;
 use crate::phasing;
 use crate::rebar;
-use crate::render::Drawing;
 use crate::sketch::{self, SketchLine};
 use crate::texture::{self, Kind, Picture, Texture};
 use crate::units::Units;
@@ -109,7 +109,8 @@ pub static ALL: &[Command] = &[
 other_files(
         "open",
         "Open",
-        "{path} a .bimc project (a .bimt file too, and the .bimcraft of earlier versions; under 256 MiB), or an .ifc (under 512 MiB) read into a new one (its `elements` by \
+        "{path} a .bimc project (a .bimt file too, and the .bimcraft of earlier versions), or an .ifc read into a new one, as large as the memory the \
+         machine has free allows (8 times a project's size, 14 times an IFC's; without the apps' meter, under 256 and 512 MiB) (its `elements` by \
          category, `generic` the components of IFC classes BIMCraft has no element for, `skipped` what was left out and why)",
         open,
         Files::Read,
@@ -193,6 +194,46 @@ other_files(
          `triangles`); .svg or .png exports the lowest level's plan; .pdf prints every sheet, a page each",
         save,
         Files::Write,
+    ),
+    other_files(
+        "export",
+        "Export",
+        "{format, view?, views?, print_set?, path?, folder?, name?, folders?: flat|by_format, combine?, overwrite?: false, page?, quality?, \
+         ifc_origin?, selected?, pdf?} \
+         writes views, sheets, schedules or the project out as `format` (an id or an extension from `export_formats`: pdf, svg, \
+         png, ifc4, glb, csv, xlsx…). `view` (or a list, `views`) is an element's id or GUID, a view's name or a sheet's number; \
+         none or `project` is the whole project (model formats only); `print_set` names a set's views and sheets (`print_set`). `path` writes one file there (several views to a PDF go \
+         in it as pages); or `folder` takes a file each, named by the `name` template (`{SheetNumber} - {SheetName}`, `{ViewName}`, \
+         `{ProjectName}`, `{ViewType}`, `{Level}`, `{Scale}`, `{Format}`, `{Date}`, `{Time}`; `/` makes folders), numbered rather \
+         than written over unless `overwrite`; `combine` names the one file each format that holds pages puts them all in. \
+         `page`: {paper?: A3|ARCH D|Letter…, size?: [w,h] mm, orientation?: auto|landscape|portrait, margin?: mm, scale?: \
+         original|fit|{custom: n}, anchor?: centre|top_left…, colour?: colour|grey|black, hairlines?, dpi?: 150, region?: [x1, y1, \
+         x2, y2] (only what lies inside: a plan's model mm, a sheet's paper mm; every drawing format), pages?: [first, \
+         last] or \"1, 3, 5-7\"}. `pdf`: {archive?: none|a1b|a2b|a2u|a3b|a4 (PDF/A, checked as it is written: a file that wouldn't be one \
+         isn't written), version?: \"1.4\" to \"2.0\" (1.7), raster? (each page a picture at `page.dpi`), cut_marks? (the pages \
+         of a tiled drawing get hairlines in the margin where they meet), title?, author?, subject?, keywords?: [..]}. \
+         `ifc_origin` is IFC's, as `save` takes it; `selected` (ids or GUIDs) the elements a BCF topic is about. Returns `written` ({path, format, of}) and `failed` ({of, format, \
+         error})",
+        export,
+        Files::Write,
+    ),
+    other_files(
+        "publish",
+        "Publish",
+        "{name, folder?} writes publishing set `name` (`publish_set`) out: each of its folders' print sets as its format, \
+         under the set's own folder (beside the project's file unless absolute) or under `folder` when given. Returns what \
+         `export` returns: `written` (each file's path, format and what it is of), `failed` (what wasn't written and why; \
+         the rest go on) and `cancelled`",
+        publish,
+        Files::Write,
+    ),
+    other(
+        "export_formats",
+        "Export Formats",
+        "{} the formats `export` writes: each one's `id`, `label`, `extension`, `family`, `status` (stable, experimental or \
+         planned: listed, not written yet), what it `takes` (drawing, table, model), whether it `combines` sources in one \
+         file and lays drawings on pages (`paged`); and the `tokens` a file name template may hold",
+        export_formats,
     ),
     other(
         "undo",
@@ -665,6 +706,33 @@ other_files(
              A refusal changes nothing"
         ),
         panel_schedule,
+    ),
+    edit(
+        "print_set",
+        "View/Sheet Set",
+        &[],
+        "{name?, views?: [id, GUID, view name or sheet number, …], add?: [...], remove?: [...], rename?, delete?: true} a print set, as Revit's View/Sheet \
+         Set: a named list of views and sheets (plans, sections, elevations, 3D views, schedules and sheets, any mix) printed or \
+         exported together, in the order given. `views` gives the whole list (a new set needs it, empty or not), `add` and \
+         `remove` change it. A view deleted leaves every set. Without `name`, lists the sets, each its views' ids and titles",
+        print_set,
+    ),
+    edit(
+        "publish_set",
+        "Publisher",
+        &[],
+        "{name?, folder?, folders?: [{name, entries: [{print_set, format, name?, combine?, options?}]}], overwrite?: true, timings?, rename?, \
+         duplicate?, delete?: true} a publishing set, the Publisher's preset: folders that hold print sets (`print_set`), each \
+         written as a `format` (an id or an extension from `export_formats`). A print set may be in a folder once for each \
+         format. `folder` is where the set is written: beside the project's file unless absolute. A folder's `name` is under \
+         it (a `/` nests, none is the destination itself). An entry's `name` is its files' template (the tokens `export` \
+         takes, and `{PrintSet}`, `{PublishSet}`, Project Information's fields as `{Project Number}`, `{Client Name}`…, and \
+         any project parameter by its name); `combine` names the one file all of the set's views go in (PDF); `options`: \
+         {page?, pdf?, quality?, ifc_origin?} as `export` takes them. `folders` gives them all (a new set may have none); \
+         `duplicate` makes a copy of `name` called that. A print set deleted leaves every folder. Without `name`, lists the \
+         sets. `timings` records completed entry exports, each with folder, print_set, format and time \
+         {started_ms, ended_ms, duration_ms}. `publish` writes one",
+        publish_set,
     ),
     edit(
         "voltage",
@@ -3680,15 +3748,15 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
 
 // ---------- files and history ----------
 
-/// Project files this large or larger are refused.
+/// Project and family files this large or larger are refused when nothing measures memory (`memory.rs`): about 2 GB to read.
 const MAX_FILE: u64 = 256 << 20;
 
-/// IFC files this large or larger are refused. Reading one peaks at about 12 to 14 times its size in memory (measured on
-/// Revit-like, meshed and BIMCraft-written files of 17 to 81 MB), so one just under 512 MiB stays under about 8 GB.
+/// IFC files this large or larger are refused when nothing measures memory. Reading one peaks at about 12 to 14 times its size
+/// ([`memory::IFC`]), so one just under 512 MiB stays under about 8 GB.
 const MAX_IFC: u64 = 512 << 20;
 
-/// Files of `extension` (in lower case) this large or larger are refused by `open`: an IFC file at [`MAX_IFC`], a project at
-/// [`MAX_FILE`].
+/// Files of `extension` (in lower case) this large or larger are refused by `open` when nothing measures memory: an IFC file at
+/// [`MAX_IFC`], a project at [`MAX_FILE`]. With a meter, what the machine has free is the limit ([`memory::Budget`]).
 fn max_file(extension: &str) -> u64 {
     if extension == "ifc" { MAX_IFC } else { MAX_FILE }
 }
@@ -3765,19 +3833,28 @@ fn open_file(s: &mut Session, p: &Value) -> R {
     let c = "open";
     let path = PathBuf::from(string(c, p, "path")?.ok_or_else(|| bad(c, "`path` is required"))?);
     let size = std::fs::metadata(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?.len();
-    let most = max_file(&ext(&path));
-    if size >= most {
-        return Err(bad(c, format!("{} is too large ({size} bytes; `open` takes one under {most})", path.display())));
-    }
+    let ifc = ext(&path) == "ifc";
+    // Held to the memory the machine has free, where the app measures it; else to a fixed size.
+    let budget = match memory::Budget::start(size, if ifc { memory::IFC } else { memory::PROJECT }) {
+        Ok(Some(budget)) => budget,
+        Ok(None) => {
+            let most = max_file(&ext(&path));
+            if size >= most {
+                return Err(bad(c, format!("{} is too large ({size} bytes; `open` takes one under {most})", path.display())));
+            }
+            memory::Budget::none()
+        }
+        Err(e) => return Err(bad(c, format!("{}: {e}", path.display()))),
+    };
     // IFC comes in as a new project: saving it asks where.
-    if ext(&path) == "ifc" {
+    if ifc {
         let bytes = std::fs::read(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
         let stem = path.file_stem().map_or_else(|| "Project".into(), |s| s.to_string_lossy().into_owned());
-        let file = crate::step::parse(&bytes).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+        let file = crate::step::parse_within(&bytes, &budget).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
         let seed = crate::import::seed(&bytes);
         // The text is freed before the model is built from it, so the two are not both held at the peak.
         drop(bytes);
-        let i = crate::import::from_step(file, &stem, seed).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+        let i = crate::import::from_step(file, &stem, seed, &budget).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
         let mut counts: BTreeMap<&str, usize> = BTreeMap::new();
         for e in i.model.elements.values() {
             *counts.entry(e.category()).or_default() += 1;
@@ -3795,7 +3872,11 @@ fn open_file(s: &mut Session, p: &Value) -> R {
         return Ok(reply);
     }
     let text = std::fs::read_to_string(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
-    let (mut m, left_out) = Model::read(&text).map_err(|e| bad(c, format!("{} is not a BIMCraft project: {e}", path.display())))?;
+    let (mut m, left_out) = Model::read_within(&text, &budget).map_err(|e| match budget.check() {
+        Ok(()) => bad(c, format!("{} is not a BIMCraft project: {e}", path.display())),
+        Err(_) => bad(c, format!("{}: {e}", path.display())),
+    })?;
+    drop(text);
     m.adopt_materials();
     // A project parameter named as a phase or a design option is held under is from before they were: it keeps its values, renamed.
     let mut renamed = BTreeMap::new();
@@ -4071,14 +4152,9 @@ fn save(s: &mut Session, p: &Value) -> R {
         None => s.path.clone().ok_or_else(|| bad(c, "`path` is required: this project hasn't been saved yet"))?,
     };
     let format = ext(&path);
-    let ifc_origin = match string(c, p, "ifc_origin")? {
-        None => crate::ifc::Origin::Internal,
-        Some(o) => {
-            crate::ifc::Origin::parse(&o).ok_or_else(|| bad(c, format!("`ifc_origin` is {}, not `{o}`", crate::ifc::Origin::NAMES)))?
-        }
-    };
+    let options = crate::export::Options { ifc_origin: ifc_origin(c, p)?, ..Default::default() };
     if format == "ifc" {
-        std::fs::write(&path, crate::ifc::export_at(&s.model, ifc_origin)).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+        save_through(s, c, "ifc4", &[None], &options, &path)?;
         return Ok(json!({"path": path, "format": "IFC4"}));
     }
     if format == "glb" {
@@ -4087,13 +4163,13 @@ fn save(s: &mut Session, p: &Value) -> R {
         return Ok(json!({"path": path, "format": "glTF 2.0", "elements": out.nodes, "triangles": out.triangles}));
     }
     if format == "pdf" {
+        // Every sheet that can be drawn, a page each on its own paper, in the order of their numbers.
         let seen = crate::link::seen(&s.model);
-        let m = &*seen;
-        let mut sheets: Vec<(&str, Drawing, P2)> = m
+        let mut sheets: Vec<(&str, Id)> = seen
             .elements
             .iter()
             .filter_map(|(id, e)| match e {
-                Element::Sheet(sh) => Some((sh.number.as_str(), sheet::draw(m, *id)?, paper(&sh.size)?)),
+                Element::Sheet(sh) if paper(&sh.size).is_some() && sheet::draw(&seen, *id).is_some() => Some((sh.number.as_str(), *id)),
                 _ => None,
             })
             .collect();
@@ -4101,9 +4177,9 @@ fn save(s: &mut Session, p: &Value) -> R {
             return Err(bad(c, "there are no sheets to print; make one with `sheet` and `place` views on it"));
         }
         sheets.sort_by(|a, b| a.0.cmp(b.0));
-        let pages: Vec<(&Drawing, P2)> = sheets.iter().map(|(_, d, p)| (d, *p)).collect();
-        std::fs::write(&path, pdf::pdf(&pages)).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
-        return Ok(json!({"path": path, "format": "PDF", "pages": pages.len()}));
+        let ids: Vec<Option<Id>> = sheets.iter().map(|(_, id)| Some(*id)).collect();
+        let pages = save_through(s, c, "pdf", &ids, &options, &path)?;
+        return Ok(json!({"path": path, "format": "PDF", "pages": pages}));
     }
     if matches!(format.as_str(), "svg" | "png") {
         let level = level_param(c, &s.model, &json!({}), "view")?;
@@ -4116,15 +4192,187 @@ fn save(s: &mut Session, p: &Value) -> R {
     Ok(json!({"path": path, "format": "bimcraft"}))
 }
 
+/// `ifc_origin`: where an IFC file's coordinates have their origin; internal where it isn't given.
+fn ifc_origin(c: &str, p: &Value) -> Result<crate::ifc::Origin, String> {
+    match string(c, p, "ifc_origin")? {
+        None => Ok(crate::ifc::Origin::Internal),
+        Some(o) => crate::ifc::Origin::parse(&o).ok_or_else(|| bad(c, format!("`ifc_origin` is {}, not `{o}`", crate::ifc::Origin::NAMES))),
+    }
+}
+
+/// `ids` (none: the project) written as the registry's `format` to the one file at `path`, as `save` writes its exports: the
+/// number of sources written.
+fn save_through(
+    s: &Session,
+    c: &str,
+    format: &str,
+    ids: &[Option<Id>],
+    options: &crate::export::Options,
+    path: &Path,
+) -> Result<usize, String> {
+    let f = s.exports.find(format).map_err(|e| bad(c, e))?.clone();
+    let seen = crate::link::seen(&s.model);
+    let prepared = ids
+        .iter()
+        .map(|id| crate::export::prepare_for(&s.model, &seen, *id, f.as_ref()))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| bad(c, e))?;
+    let out = f.write(&prepared, options, &crate::export::Ctx::quiet()).map_err(|e| bad(c, e))?;
+    let [out] = out.as_slice() else {
+        return Err(bad(c, format!("{} made {} files where one was asked for", f.label(), out.len())));
+    };
+    std::fs::write(path, &out.bytes).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+    Ok(prepared.len())
+}
+
+/// What `export` is asked to export: an element by id or GUID, a view by name, a sheet by number; none or `project`, the
+/// project.
+fn export_source(c: &str, m: &Model, v: &Value) -> Result<Option<Id>, String> {
+    match v {
+        Value::Null => Ok(None),
+        Value::String(s) if s.eq_ignore_ascii_case("project") => Ok(None),
+        Value::String(s) if Guid::parse(s).is_none() => m
+            .view_named(s)
+            .or_else(|| m.elements.iter().find_map(|(id, e)| matches!(e, Element::Sheet(sh) if sh.number == *s).then_some(*id)))
+            .map(Some)
+            .ok_or_else(|| bad(c, format!("there's no view or sheet `{s}`"))),
+        v => {
+            let g: Guid = serde_json::from_value(v.clone()).map_err(|_| bad(c, format!("`{v}` isn't a view, a sheet or `project`")))?;
+            m.elements.id(g).map(Some).ok_or_else(|| bad(c, format!("there's no element {v}")))
+        }
+    }
+}
+
+fn export(s: &mut Session, p: &Value) -> R {
+    let c = "export";
+    let m = &s.model;
+    let format = string(c, p, "format")?.ok_or_else(|| bad(c, "`format` is required: an id or an extension from `export_formats`"))?;
+    let format = s.exports.find(&format).map_err(|e| bad(c, e))?.id().to_string();
+    let mut sources = Vec::new();
+    let set = name_param(c, p, "print_set")?;
+    match (p.get("view"), p.get("views")) {
+        _ if set.is_some() && (!absent(p.get("view")) || !absent(p.get("views"))) => {
+            return Err(bad(c, "give `print_set`, `view` or `views`, one of them"));
+        }
+        _ if set.is_some() => {
+            let name = set.unwrap_or_default();
+            let set = m.print_sets.get(&name).ok_or_else(|| bad(c, format!("there's no print set `{name}`")))?;
+            sources.extend(set.views.iter().filter_map(|g| m.elements.id(*g)).map(Some));
+            if sources.is_empty() {
+                return Err(bad(c, format!("print set `{name}` holds no views")));
+            }
+        }
+        (Some(v), Some(vs)) if !v.is_null() && !vs.is_null() => return Err(bad(c, "give `view` or `views`, not both")),
+        (_, Some(Value::Array(vs))) => {
+            if vs.is_empty() || vs.len() > 10_000 {
+                return Err(bad(c, "`views` is a list of 1 to 10000 views and sheets"));
+            }
+            for v in vs {
+                sources.push(export_source(c, m, v)?);
+            }
+        }
+        (_, Some(v)) if !v.is_null() => return Err(bad(c, format!("`views` is a list, not {v}"))),
+        (v, _) => sources.push(export_source(c, m, v.unwrap_or(&Value::Null))?),
+    }
+    let read = |key: &str| p.get(key).filter(|v| !v.is_null()).cloned();
+    let options = crate::export::Options {
+        page: match read("page") {
+            Some(v) => serde_json::from_value(v).map_err(|e| bad(c, format!("`page`: {e}")))?,
+            None => Default::default(),
+        },
+        quality: match num(c, p, "quality")? {
+            Some(q) if (1.0..=100.0).contains(&q) => Some(q as u8),
+            Some(q) => return Err(bad(c, format!("`quality` is 1 to 100, not {q}"))),
+            None => None,
+        },
+        ifc_origin: ifc_origin(c, p)?,
+        pdf: match read("pdf") {
+            Some(v) => serde_json::from_value(v).map_err(|e| bad(c, format!("`pdf`: {e}")))?,
+            None => Default::default(),
+        },
+        selected: match p.get("selected") {
+            None | Some(Value::Null) => Vec::new(),
+            Some(Value::Array(ids)) if ids.len() <= 50_000 => {
+                let mut out = Vec::new();
+                for v in ids {
+                    let g: Guid = serde_json::from_value(v.clone()).map_err(|_| bad(c, format!("`selected`: `{v}` isn't an element")))?;
+                    let id = m.elements.id(g).ok_or_else(|| bad(c, format!("`selected`: there's no element {v}")))?;
+                    out.push(m.guid(id));
+                }
+                out
+            }
+            Some(v) => return Err(bad(c, format!("`selected` is a list of at most 50000 elements, not {v}"))),
+        },
+    };
+    let folders = match read("folders") {
+        Some(v) => serde_json::from_value(v).map_err(|e| bad(c, format!("`folders`: {e}")))?,
+        None => Default::default(),
+    };
+    let items: Vec<crate::export::Item> =
+        sources.iter().map(|id| crate::export::Item { view: id.map(|id| m.guid(id)), format: format.clone() }).collect();
+    // One file at `path`: its folder and its name as they are, a PDF's several sources its pages.
+    let job = match (string(c, p, "path")?, string(c, p, "folder")?) {
+        (Some(_), Some(_)) => return Err(bad(c, "give `path` (one file) or `folder` (a file each), not both")),
+        (Some(path), None) => {
+            let path = PathBuf::from(path);
+            let stem = path.file_stem().map(|s| s.to_string_lossy().replace('{', "{{").replace('}', "}}")).unwrap_or_default();
+            if stem.is_empty() {
+                return Err(bad(c, "`path` names no file"));
+            }
+            let folder = path.parent().filter(|f| !f.as_os_str().is_empty()).map_or_else(|| PathBuf::from("."), PathBuf::from);
+            crate::export::Job {
+                items,
+                folder,
+                name: Some(stem.clone()),
+                combine: Some(stem),
+                overwrite: true,
+                options,
+                ..Default::default()
+            }
+        }
+        (None, Some(folder)) => crate::export::Job {
+            items,
+            folder: PathBuf::from(folder),
+            name: string(c, p, "name")?,
+            folders,
+            combine: string(c, p, "combine")?,
+            overwrite: flag(c, p, "overwrite")?,
+            options,
+            ..Default::default()
+        },
+        (None, None) => return Err(bad(c, "`path` (one file) or `folder` (a file each) is required")),
+    };
+    let report = crate::export::run(&s.model, &s.exports, &job, &crate::export::Ctx::quiet()).map_err(|e| bad(c, e))?;
+    if report.written.is_empty() {
+        let why: Vec<String> = report.failed.iter().map(|f| format!("{}: {}", f.of, f.error)).collect();
+        return Err(bad(c, format!("nothing was written; {}", why.join("; "))));
+    }
+    Ok(json!(report))
+}
+
+fn export_formats(s: &mut Session, _: &Value) -> R {
+    let formats: Vec<Value> = s
+        .exports
+        .all()
+        .iter()
+        .map(|f| {
+            json!({"id": f.id(), "label": f.label(), "extension": f.extension(), "family": f.family(), "status": f.status(),
+                "takes": f.takes(), "combines": f.combines(), "paged": f.paged()})
+        })
+        .collect();
+    let mut tokens: Vec<String> = crate::export::ModelTokens::NAMES.iter().map(|n| n.to_string()).collect();
+    tokens.extend(crate::export::ModelTokens::information().iter().map(|n| n.to_string()));
+    tokens.extend(crate::export::ModelTokens::parameters(&s.model));
+    Ok(json!({"formats": formats, "tokens": tokens}))
+}
+
 fn autosave(s: &mut Session, p: &Value) -> R {
     let path = PathBuf::from(string("autosave", p, "path")?.ok_or_else(|| bad("autosave", "`path` is required"))?);
     if s.path.as_ref() == Some(&path) {
         return Err(bad("autosave", "the recovery file must differ from the saved project"));
     }
+    // As large as the project is: `recover` opens it held to the memory that's free, as `open` does.
     let text = s.model.to_json().map_err(|e| bad("autosave", e))?;
-    if text.len() as u64 >= MAX_FILE {
-        return Err(bad("autosave", "the recovery snapshot exceeds the project file size limit"));
-    }
     crate::autosave::atomic_write(&path, &text).map_err(|e| bad("autosave", e))?;
     Ok(json!({"path": path, "format": "bimcraft"}))
 }
@@ -8612,6 +8860,220 @@ fn reinforcement_preset(s: &mut Session, p: &Value) -> R {
     }
     m.reinforcement.insert(name.clone(), preset.clone());
     Ok(json!({"name": name, "preset": preset}))
+}
+
+fn print_set(s: &mut Session, p: &Value) -> R {
+    let c = "print_set";
+    only(c, p, &["name", "views", "add", "remove", "rename", "delete"])?;
+    let Some(name) = name_param(c, p, "name")? else {
+        let m = &s.model;
+        let sets: Vec<Value> = m
+            .print_sets
+            .iter()
+            .map(|(name, set)| {
+                let views: Vec<Value> = set
+                    .views
+                    .iter()
+                    .filter_map(|g| {
+                        let id = m.elements.id(*g)?;
+                        let kind = crate::export::kind_of(m, Some(id))?;
+                        Some(json!({"id": id, "title": crate::export::title(m, Some(id), kind)}))
+                    })
+                    .collect();
+                json!({"name": name, "id": m.library.id(&LibKind::PrintSet, name), "views": views})
+            })
+            .collect();
+        return Ok(json!({"print_sets": sets}));
+    };
+    // A list of views, each a printable element, as GUIDs.
+    let list = |m: &Model, key: &str| -> Result<Option<Vec<Guid>>, String> {
+        match p.get(key) {
+            v if absent(v) => Ok(None),
+            Some(Value::Array(a)) if a.len() <= crate::printset::MAX_VIEWS => a
+                .iter()
+                .map(|v| {
+                    let id = export_source(c, m, v)?.ok_or_else(|| bad(c, "the whole project isn't a view a print set can hold"))?;
+                    let g = m.elements.guid(id).ok_or_else(|| bad(c, format!("no element {id}")))?;
+                    if !crate::printset::printable(m, g) {
+                        return Err(bad(c, format!("element {id} isn't a view, a sheet or a schedule a print set can hold")));
+                    }
+                    Ok(g)
+                })
+                .collect::<Result<Vec<_>, _>>()
+                .map(Some),
+            Some(v) => Err(bad(c, format!("`{key}` must be a list of up to {} view ids, got {v}", crate::printset::MAX_VIEWS))),
+            None => Ok(None),
+        }
+    };
+    let views = list(&s.model, "views")?;
+    let add = list(&s.model, "add")?;
+    let remove = list(&s.model, "remove")?;
+    let m = s.model_mut();
+    if flag(c, p, "delete")? {
+        if m.print_sets.remove(&name).is_none() {
+            return Err(bad(c, format!("there's no print set `{name}`")));
+        }
+        return Ok(json!({"deleted": name}));
+    }
+    let was = m.print_sets.get(&name).cloned();
+    let mut set = match (views, was) {
+        (Some(views), _) => crate::printset::PrintSet { views },
+        (None, Some(was)) => was,
+        (None, None) => return Err(bad(c, format!("there's no print set `{name}`; a new one needs `views`"))),
+    };
+    for g in add.unwrap_or_default() {
+        if !set.views.contains(&g) {
+            set.views.push(g);
+        }
+    }
+    if let Some(remove) = remove {
+        set.views.retain(|g| !remove.contains(g));
+    }
+    let mut seen = BTreeSet::new();
+    set.views.retain(|g| seen.insert(*g));
+    let name = match name_param(c, p, "rename")? {
+        Some(to) if to != name => {
+            if m.print_sets.contains_key(&to) {
+                return Err(bad(c, format!("there's already a print set `{to}`")));
+            }
+            m.print_sets.remove(&name);
+            rename_entry(m, &LibKind::PrintSet, &name, &to);
+            to
+        }
+        _ => name,
+    };
+    set.check(&name).map_err(|e| bad(c, e))?;
+    if !m.print_sets.contains_key(&name) && m.print_sets.len() >= crate::printset::MAX_SETS {
+        return Err(bad(c, format!("the project holds up to {} print sets", crate::printset::MAX_SETS)));
+    }
+    let count = set.views.len();
+    m.print_sets.insert(name.clone(), set);
+    Ok(json!({"name": name, "views": count}))
+}
+
+fn publish_set(s: &mut Session, p: &Value) -> R {
+    let c = "publish_set";
+    only(c, p, &["name", "folder", "folders", "overwrite", "rename", "duplicate", "delete", "timings"])?;
+    let Some(name) = name_param(c, p, "name")? else {
+        let m = &s.model;
+        let sets: Vec<Value> = m
+            .publish_sets
+            .iter()
+            .map(|(name, set)| {
+                json!({"name": name, "id": m.library.id(&LibKind::PublishSet, name), "folder": set.folder, "overwrite": set.overwrite,
+                    "folders": set.folders})
+            })
+            .collect();
+        return Ok(json!({"publish_sets": sets}));
+    };
+    // The folders given: each print set one the project has, each format one this exports to, by its id.
+    let folders = match p.get("folders") {
+        v if absent(v) => None,
+        Some(v) => {
+            let mut folders: Vec<crate::publish::Folder> =
+                serde_json::from_value(v.clone()).map_err(|e| bad(c, format!("`folders` is a list of {{name, entries}}: {e}")))?;
+            for e in folders.iter_mut().flat_map(|f| &mut f.entries) {
+                e.print_set = e.print_set.trim().to_string();
+                if !s.model.print_sets.contains_key(&e.print_set) {
+                    return Err(bad(c, format!("there's no print set `{}`; `print_set` makes one", e.print_set)));
+                }
+                let format = s.exports.find(&e.format).map_err(|why| bad(c, why))?;
+                if format.status() == crate::export::Status::Planned {
+                    return Err(bad(c, format!("{} export isn't written yet", format.label())));
+                }
+                e.format = format.id().to_string();
+            }
+            Some(folders)
+        }
+        None => None,
+    };
+    let folder = string(c, p, "folder")?;
+    let overwrite = if absent(p.get("overwrite")) { None } else { Some(flag(c, p, "overwrite")?) };
+    let rename = name_param(c, p, "rename")?;
+    let duplicate = name_param(c, p, "duplicate")?;
+    let m = s.model_mut();
+    if flag(c, p, "delete")? {
+        if m.publish_sets.remove(&name).is_none() {
+            return Err(bad(c, format!("there's no publishing set `{name}`")));
+        }
+        return Ok(json!({"deleted": name}));
+    }
+    let room = |m: &Model| {
+        if m.publish_sets.len() >= crate::publish::MAX_SETS {
+            return Err(bad(c, format!("the project holds up to {} publishing sets", crate::publish::MAX_SETS)));
+        }
+        Ok(())
+    };
+    if let Some(to) = duplicate {
+        let set = m.publish_sets.get(&name).cloned().ok_or_else(|| bad(c, format!("there's no publishing set `{name}`")))?;
+        if m.publish_sets.contains_key(&to) {
+            return Err(bad(c, format!("there's already a publishing set `{to}`")));
+        }
+        room(m)?;
+        set.check(&to).map_err(|e| bad(c, e))?;
+        let entries = set.len();
+        m.publish_sets.insert(to.clone(), set);
+        return Ok(json!({"name": to, "entries": entries}));
+    }
+    let mut set = match m.publish_sets.get(&name) {
+        Some(was) => was.clone(),
+        None => {
+            room(m)?;
+            crate::publish::PublishSet::default()
+        }
+    };
+    if let Some(folders) = folders {
+        set.folders = folders;
+    }
+    if let Some(folder) = folder {
+        set.folder = folder.trim().to_string();
+    }
+    if let Some(overwrite) = overwrite {
+        set.overwrite = overwrite;
+    }
+    if let Some(timings) = p.get("timings") {
+        let timings: Vec<crate::publish::TimedEntry> =
+            serde_json::from_value(timings.clone()).map_err(|e| bad(c, format!("`timings` is a list of completed exports: {e}")))?;
+        set.record_times(&timings);
+    }
+    let name = match rename {
+        Some(to) if to != name => {
+            if m.publish_sets.contains_key(&to) {
+                return Err(bad(c, format!("there's already a publishing set `{to}`")));
+            }
+            if m.publish_sets.remove(&name).is_none() {
+                return Err(bad(c, format!("there's no publishing set `{name}` to rename")));
+            }
+            rename_entry(m, &LibKind::PublishSet, &name, &to);
+            to
+        }
+        _ => name,
+    };
+    set.check(&name).map_err(|e| bad(c, e))?;
+    let entries = set.len();
+    m.publish_sets.insert(name.clone(), set);
+    Ok(json!({"name": name, "entries": entries}))
+}
+
+fn publish(s: &mut Session, p: &Value) -> R {
+    let c = "publish";
+    only(c, p, &["name", "folder"])?;
+    let name = name_param(c, p, "name")?.ok_or_else(|| bad(c, "`name` is required: a publishing set (`publish_set` lists them)"))?;
+    let set = s.model.publish_sets.get(&name).ok_or_else(|| bad(c, format!("there's no publishing set `{name}`")))?;
+    let given = string(c, p, "folder")?.map(PathBuf::from);
+    let root = set.root(s.path.as_deref(), given.as_deref()).map_err(|e| bad(c, e))?;
+    let report = crate::publish::run(&s.model, &s.exports, &name, &root, &crate::export::Ctx::quiet()).map_err(|e| bad(c, e))?;
+    if report.written.is_empty() {
+        let why: Vec<String> = report.failed.iter().map(|f| format!("{}: {}", f.of, f.error)).collect();
+        return Err(bad(c, format!("nothing was written; {}", why.join("; "))));
+    }
+    if s.read_only.is_none()
+        && !report.published.is_empty()
+        && let Some(set) = s.model_mut().publish_sets.get_mut(&name)
+    {
+        set.record_times(&report.published);
+    }
+    Ok(json!(report))
 }
 
 /// A number of `unit` under `key`, finite and of any size: the setting's own check says how large it may be.

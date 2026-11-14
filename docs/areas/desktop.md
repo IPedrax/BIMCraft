@@ -568,7 +568,13 @@ frame, since its first lays out every tool (`a_tool_with_choices_of_its_own_open
 
 Keyboard Shortcuts. Manage > Shortcuts (or KS) opens `shortcuts_window` (`shortcuts.rs`): every shortcut by what it does, from `shortcuts()`
 (`SHORTCUTS`, the fixtures' letters, the commands' aliases), with Add, Edit and Load File. A shortcut is two letters or digits, all that `typed` holds,
-and a custom one is tried before the defaults. Each name in `ACTIONS` is a tool or command the window runs (`execute_shortcut_action`), and a key never
+typed with Ctrl held (Cmd on a Mac; `ctrl_letters` takes them out of the frame's events, in the project's `keys` and the family document's
+`family_typed` alike), and a custom one is tried before the defaults. Letters typed without Ctrl are no shortcut (digits and a unit still make a
+typed length). A letter that is a Ctrl key of its own (`ctrl_key`: S saves, O opens, N new, K Find, P prints to PDF, D the start page, Z undoes, Y
+redoes, 1 Properties) waits for a second letter (`CTRL_WAIT`, half a second): with one it is a shortcut (Ctrl held, S then A: Select All
+Instances); if the two aren't one, the first does its own job and the second waits in its place, so Ctrl held and Z, Z, Z undoes three times; with
+none, or once Ctrl is let go, it does its own job. In a text field Ctrl's keys are the field's, but S, O, N, K, P and 1, which act there at once,
+and no shortcut is typed. The user chose Ctrl, and the wait, on 2026-11-13. Each name in `ACTIONS` is a tool or command the window runs (`execute_shortcut_action`), and a key never
 carries Revit's name for a tool BIMCraft lacks (Sun Settings, Detail and Model Line, Split Face, Brace, Beam System, Reference Plane, the duct tools): it waits
 for the tool. Load File reads JSON (`{"WA": "Wall"}`), Revit's `<Shortcut CommandName=… Shortcuts="WA#W1">` lines, or `KEY - Name` lines, up to 64 KiB;
 a description is an action only by its whole name in one of the interface's languages (`resolve_action`), and a key that is not two characters, names no action or

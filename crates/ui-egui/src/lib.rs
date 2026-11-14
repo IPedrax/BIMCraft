@@ -30,6 +30,7 @@ mod dock;
 mod draw;
 mod editor;
 mod electrical;
+mod export;
 mod favorites;
 mod fillpatterns;
 mod filter;
@@ -37,6 +38,8 @@ mod find;
 mod finishes;
 mod footer;
 mod gpu;
+mod printsets;
+mod publisher;
 pub use gpu::limits_for;
 mod graphics;
 mod groups;
@@ -184,6 +187,9 @@ pub enum Tool {
     /// Specify Coordinates at a Point: the point the shared coordinates typed in the Location window are at, picked in the
     /// view (snapped) while the window steps aside.
     SpecifyPoint,
+    /// The rectangle an export is cut to, drawn in the view while the Export dialog steps aside: its first corner, once
+    /// clicked, in the view's own coordinates.
+    ExportRegion(Option<P2>),
     /// Acquire Coordinates: the link or CAD drawing clicked gives the project its shared coordinates.
     Acquire,
     /// Mirror the selection across a line picked, or with `draw`, a line drawn from `start`.
@@ -463,6 +469,32 @@ const SHORTCUTS: [(&str, &str); 58] = [
 ];
 
 /// Every two-letter shortcut and what it does: the desktop's own, then the commands' aliases.
+/// How long a letter typed with Ctrl held waits for a second one before it does its own job as a Ctrl key (S saves, Z
+/// undoes): a second letter in time makes the two a shortcut (Ctrl held, S then A: Select All Instances). Letting Ctrl go
+/// ends the wait at once.
+pub(crate) const CTRL_WAIT: f64 = 0.5;
+
+/// The letters and digits typed this frame with Ctrl held (Cmd on a Mac) and no other modifier, taken out of the frame's
+/// events, upper case: BIMCraft's shortcuts are two of them, as Revit's are two letters.
+pub(crate) fn ctrl_letters(ctx: &Context) -> Vec<char> {
+    ctx.input_mut(|i| {
+        let mut out = Vec::new();
+        i.events.retain(|e| {
+            let Event::Key { key, pressed: true, modifiers, .. } = e else { return true };
+            let name = key.name();
+            let mut chars = name.chars();
+            match (modifiers.command && !modifiers.shift && !modifiers.alt, chars.next(), chars.next()) {
+                (true, Some(c), None) if c.is_ascii_alphanumeric() => {
+                    out.push(c.to_ascii_uppercase());
+                    false
+                }
+                _ => true,
+            }
+        });
+        out
+    })
+}
+
 fn shortcuts() -> Vec<(&'static str, &'static str)> {
     let aliases = engine::commands().iter().flat_map(|c| c.aliases.iter().map(move |a| (*a, c.label)));
     SHORTCUTS
@@ -797,8 +829,10 @@ pub struct BimApp {
     edit: Option<(Id, String, String)>,
     /// The Level tool's elevation and name, as typed in the Options Bar.
     new_level: (String, String),
-    /// The last letters typed over the plan, for two-letter shortcuts.
+    /// The letters typed with Ctrl held, for two-letter shortcuts: one waits for a second ([`CTRL_WAIT`]).
     typed: String,
+    /// When the one letter in `typed` was typed, by the window's clock.
+    typed_at: f64,
     pending: Option<Pending>,
     /// What Delete was asked to take while it asks whether rooms' floors and ceilings go with them.
     deleting_rooms: Option<Vec<Id>>,
@@ -963,6 +997,26 @@ pub struct BimApp {
     dialog: Option<dialog::Dialog>,
     /// What the last Revit import left out and brought in, for as long as its project is the one open.
     revit_report: Option<revit::Report>,
+    /// File > Export…, while it is open.
+    export_dialog: Option<export::Dialog>,
+    /// Print Sets, while it is open.
+    print_sets: Option<printsets::Dialog>,
+    /// The Publisher, while it is open.
+    publisher: Option<publisher::Dialog>,
+    /// The name asked for a print set of the views picked in the Project Browser.
+    name_set: Option<printsets::NameSet>,
+    /// The views and sheets picked in the Project Browser (Ctrl and Shift pick more than one), and the one a Shift-click runs from.
+    browser_picked: Vec<browser::Pick>,
+    browser_anchor: Option<browser::Pick>,
+    /// Expand All or Collapse All, for the next frame's groups.
+    browser_fold: Option<bool>,
+    /// The export being written, on a thread of its own.
+    export_job: Option<export::worker::Running>,
+    /// The format the last export was to, and each format's settings, for the next export while the window is open.
+    export_format: Option<String>,
+    export_last: std::collections::BTreeMap<String, bimcraft_core::export::Options>,
+    /// What prints: the system's spooler, or in a test one that only remembers.
+    spooler: std::sync::Arc<dyn export::print::Spooler>,
 }
 
 /// The Options Bar's Height: up to a level above the plan's `level` (by default the next one up),
@@ -1558,6 +1612,7 @@ impl BimApp {
             edit: None,
             new_level: (String::new(), String::new()),
             typed: String::new(),
+            typed_at: 0.0,
             pending: None,
             deleting_rooms: None,
             type_dialog: None,
@@ -1646,6 +1701,17 @@ impl BimApp {
             cowork_ai: cowork::Ai::default(),
             cowork_quit: None,
             revit_job: None,
+            export_dialog: None,
+            print_sets: None,
+            publisher: None,
+            name_set: None,
+            browser_picked: Vec::new(),
+            browser_anchor: None,
+            browser_fold: None,
+            export_job: None,
+            export_format: None,
+            export_last: Default::default(),
+            spooler: std::sync::Arc::new(export::print::System),
             opens: Vec::new(),
             dialog: None,
             revit_report: None,
@@ -1763,6 +1829,7 @@ impl BimApp {
             | Tool::SketchPick
             | Tool::PatternCorner(_)
             | Tool::SpecifyPoint
+            | Tool::ExportRegion(_)
             | Tool::Acquire => None,
             Tool::Wall(_) => Some(msg!("Place Wall")),
             Tool::Paint => Some("Paint"),
@@ -1914,6 +1981,7 @@ impl BimApp {
         self.tidy();
         self.poll_updates(&ctx);
         self.poll_revit(&ctx);
+        self.poll_export(&ctx);
         self.poll_plugins(&ctx);
         self.poll_autosave(&ctx);
         self.keys(&ctx);
@@ -2232,6 +2300,7 @@ impl BimApp {
             || self.installing()
             || self.importing()
             || self.report_open()
+            || self.export_dialog.as_ref().is_some_and(|d| !d.picking)
             // An open menu takes the keys: Esc closes it, not the tool.
             || egui::Popup::is_any_open(ctx)
     }
@@ -2253,44 +2322,28 @@ impl BimApp {
         let pressed = |m: Modifiers, k: Key| ctx.input_mut(|i| i.consume_key(m, k));
         if pressed(Modifiers::COMMAND | Modifiers::SHIFT, Key::S) {
             self.save_as(ctx, None);
-        } else if pressed(Modifiers::COMMAND, Key::S) {
-            self.save(ctx, None);
-        }
-        if pressed(Modifiers::COMMAND, Key::O) {
-            self.guard(Pending::Open, ctx);
-        }
-        if pressed(Modifiers::COMMAND, Key::N) {
-            self.guard(Pending::New, ctx);
-        }
-        if pressed(Modifiers::COMMAND, Key::K) {
-            self.find = Some(String::new());
         }
         if pressed(Modifiers::COMMAND, Key::Comma) {
             self.settings_page = Some(settings::Page::Interface);
         }
-        if pressed(Modifiers::COMMAND, Key::Num1) {
-            self.toggle_properties();
-        }
-        if pressed(Modifiers::COMMAND, Key::P) {
-            self.export(ctx, "PDF", "pdf");
-        }
-        // The rest belongs to a text field while one has the keyboard.
+        // A text field has the letters: there Ctrl's own keys that aren't a field's act at once, and no shortcut is typed.
         if ctx.egui_wants_keyboard_input() {
+            for (key, letter) in [(Key::S, 'S'), (Key::O, 'O'), (Key::N, 'N'), (Key::K, 'K'), (Key::P, 'P'), (Key::Num1, '1')] {
+                if pressed(Modifiers::COMMAND, key) {
+                    self.ctrl_key(ctx, letter);
+                }
+            }
+            self.typed.clear();
             return;
         }
-        if pressed(Modifiers::COMMAND, Key::D) {
-            self.toggle_home();
-        }
-        if self.sketch.is_some() {
-            // While sketching, Ctrl+Z takes back a line; the model's steps wait until Finish or Cancel.
-            if pressed(Modifiers::COMMAND, Key::Z) {
-                self.unsketch();
-            }
-        } else if pressed(Modifiers::COMMAND | Modifiers::SHIFT, Key::Z) || pressed(Modifiers::COMMAND, Key::Y) {
+        if self.sketch.is_none() && pressed(Modifiers::COMMAND | Modifiers::SHIFT, Key::Z) {
             self.run("redo", json!({}));
-        } else if pressed(Modifiers::COMMAND, Key::Z) {
-            self.run("undo", json!({}));
         }
+        // Shortcuts are two letters typed with Ctrl held; a letter that is a Ctrl key of its own waits for a second.
+        for letter in ctrl_letters(ctx) {
+            self.ctrl_letter(ctx, letter);
+        }
+        self.ctrl_waited(ctx);
         // Esc while a custom fill pattern is picked brings its dialog back.
         if pressed(Modifiers::NONE, Key::Escape) && !self.cancel_pattern_pick() {
             self.escape();
@@ -2386,26 +2439,68 @@ impl BimApp {
                 .collect()
         });
         // A digit starts a length while a tool is picking its next point, and everything typed
-        // after it (feet, inches, fractions, a unit) is the length's until Enter; letters before
-        // one are shortcuts.
-        let mut shortcut = String::new();
+        // after it (feet, inches, fractions, a unit) is the length's until Enter. Letters typed
+        // without Ctrl are no shortcut.
         for ch in typed.chars() {
             let listening = self.base().is_some() || self.filleting() || self.rotating();
             let sign = ch == '-' && self.rotating() && self.typed_length.is_empty();
             if listening && (ch.is_ascii_digit() || ch == '.' || sign || !self.typed_length.is_empty()) {
                 self.typed_length.push(ch);
-            } else {
-                shortcut.push(ch);
             }
         }
-        for ch in shortcut.chars().filter(|c| c.is_ascii_alphanumeric()) {
-            self.typed.push(ch.to_ascii_uppercase());
-            if self.typed.len() > 2 {
-                self.typed.remove(0);
+    }
+
+    /// A letter typed with Ctrl held: with the one before it, a shortcut; if the two aren't one, the first does its own job
+    /// as a Ctrl key ([`BimApp::ctrl_key`]) and the second waits in its place.
+    fn ctrl_letter(&mut self, ctx: &Context, letter: char) {
+        self.typed.push(letter);
+        self.typed_at = ctx.input(|i| i.time);
+        if self.typed.len() < 2 {
+            return;
+        }
+        if self.shortcut() {
+            self.typed.clear();
+            return;
+        }
+        let first = self.typed.remove(0);
+        self.ctrl_key(ctx, first);
+    }
+
+    /// A letter left waiting for a second does its own job once Ctrl is let go, or after [`CTRL_WAIT`] with Ctrl still held.
+    fn ctrl_waited(&mut self, ctx: &Context) {
+        if self.typed.len() != 1 {
+            return;
+        }
+        let (held, now) = ctx.input(|i| (i.modifiers.command, i.time));
+        let left = CTRL_WAIT - (now - self.typed_at);
+        if held && left > 0.0 {
+            ctx.request_repaint_after(std::time::Duration::from_secs_f64(left));
+            return;
+        }
+        let letter = self.typed.remove(0);
+        self.ctrl_key(ctx, letter);
+    }
+
+    /// What a letter typed with Ctrl does on its own: S saves, O opens, N makes a new project, K finds a command, P prints
+    /// to PDF, D shows the start page, Z undoes (a sketch's last line while sketching), Y redoes, 1 shows Properties.
+    fn ctrl_key(&mut self, ctx: &Context, letter: char) {
+        match letter {
+            'S' => self.save(ctx, None),
+            'O' => self.guard(Pending::Open, ctx),
+            'N' => self.guard(Pending::New, ctx),
+            'K' => self.find = Some(String::new()),
+            'P' => self.open_export(Some("pdf")),
+            'D' => self.toggle_home(),
+            // While sketching, Ctrl+Z takes back a line; the model's steps wait until Finish or Cancel.
+            'Z' if self.sketch.is_some() => self.unsketch(),
+            'Z' => {
+                self.run("undo", json!({}));
             }
-            if self.typed.len() == 2 && self.shortcut() {
-                self.typed.clear();
+            'Y' if self.sketch.is_none() => {
+                self.run("redo", json!({}));
             }
+            '1' => self.toggle_properties(),
+            _ => {}
         }
     }
 
@@ -3575,12 +3670,6 @@ impl BimApp {
         });
     }
 
-    fn export(&mut self, ctx: &Context, what: &str, ext: &str) {
-        self.ask_path(ctx, what, &[ext], |app, p| {
-            app.save_to(&p);
-        });
-    }
-
     /// Asks, in the system's file dialog, where to save, and calls `then` with the path in a later frame: the first of `exts` is
     /// what it offers and what a path with none of them gets.
     fn ask_path(&mut self, ctx: &Context, what: &str, exts: &[&str], then: impl FnOnce(&mut BimApp, PathBuf) + 'static) {
@@ -4183,20 +4272,15 @@ impl BimApp {
             self.autosave.show_recovery = true;
         }
         SubMenuButton::new(t("Export")).ui(ui, |ui| {
-            if ui.button(t("IFC…")).clicked() {
-                self.export(ctx, "IFC4", "ifc");
+            let shortcut = ctx.format_shortcut(&KeyboardShortcut::new(Modifiers::COMMAND, Key::P));
+            if ui.add(egui::Button::new(t("Export…")).shortcut_text(shortcut)).clicked() {
+                self.open_export(None);
             }
-            if ui.button(t("View as PNG…")).clicked() {
-                self.export(ctx, msg!("PNG image"), "png");
+            if ui.button(t("Publisher…")).clicked() {
+                self.open_publisher();
             }
-            if ui.button(t("Plan as SVG…")).clicked() {
-                self.export(ctx, msg!("SVG drawing"), "svg");
-            }
-            if ui.button(t("Sheets as PDF…")).clicked() {
-                self.export(ctx, "PDF", "pdf");
-            }
-            if ui.button(t("3D Scene as glTF…")).clicked() {
-                self.export(ctx, msg!("glTF binary"), "glb");
+            if ui.button(t("Print Set…")).clicked() {
+                self.open_print_sets(None);
             }
         });
         self.report_menu(ui);
@@ -4712,6 +4796,12 @@ impl BimApp {
                     }
                 }
             });
+            // Last, so a narrow window hands it to the panel's list before User Interface (File > Export has it too).
+            if big_button(ui, Icon::Sheet, "Publisher", self.publisher.is_some(), "Open publishing sets and export their print sets")
+                .clicked()
+            {
+                self.open_publisher();
+            }
         });
     }
 
@@ -5423,6 +5513,11 @@ impl BimApp {
                         self.stop_specify_pick();
                     }
                 }
+                Tool::ExportRegion(_) => {
+                    if ui.button(t("Back to Export")).clicked() {
+                        self.set_tool(Tool::Modify);
+                    }
+                }
                 Tool::Mirror { .. } => {
                     ui.checkbox(&mut self.mirror_copy, t("Copy"));
                 }
@@ -5766,6 +5861,8 @@ impl BimApp {
             Tool::Acquire => msg!("Click a linked model or a CAD drawing: this project takes its shared coordinates. Esc cancels."),
             Tool::SpotCoordinate(None) => msg!("Click the point the spot coordinate reads; it snaps."),
             Tool::SpotCoordinate(Some(_)) => msg!("Click where its leader ends. Esc cancels."),
+            Tool::ExportRegion(None) => msg!("Click a corner of the region to export. Esc goes back to Export."),
+            Tool::ExportRegion(Some(_)) => msg!("Click the region's opposite corner. Esc goes back to Export."),
             Tool::SpecifyPoint => {
                 msg!(
                     "Click the point the shared coordinates typed are at: it snaps, and a wall's corner is its bottom, a slab's its top. Esc goes back."
@@ -5891,6 +5988,7 @@ impl BimApp {
                 // How many elements are selected, by the selection filter, as Revit shows it.
                 // A click on it filters the selection, as Revit's does.
                 ui.label(format!(":{}", self.selection.len()));
+                self.export_progress(ui);
                 let (r, funnel) = ui.allocate_exact_size(vec2(16.0, 16.0), Sense::click());
                 icons::paint(ui.painter(), Icon::Filter, r, pal().icon);
                 funnel.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, t("Filter Selection")));
@@ -6206,6 +6304,10 @@ impl BimApp {
         self.installing_box(ctx);
         self.importing_box(ctx);
         self.report_window(ctx);
+        self.export_window(ctx);
+        self.publisher_window(ctx);
+        self.print_sets_window(ctx);
+        self.name_set_window(ctx);
         if self.pending.is_none() {
             self.recovery_window(ctx);
         }

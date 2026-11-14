@@ -2204,6 +2204,10 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"wall": 100002, "offset": -5e8, "sill": 1e9}),
         json!({"id": u64::MAX}),
         json!({"ids": [99999, 100000, 100001, 100002, 100002]}),
+        json!({"name": "Set", "views": [100000, 100000, "x", null], "add": 5, "remove": [[]]}),
+        json!({"name": "Set", "views": [100000, 100002], "rename": "", "print_set": "Set", "format": "pdf"}),
+        json!({"name": "Pub", "folder": 5, "folders": [{"name": "../x", "entries": [{"print_set": "Set", "format": "pdf", "name": "}"}]}]}),
+        json!({"name": "Pub", "folders": [{"name": "a", "entries": [{"print_set": "Set", "format": "pdf"}, {"print_set": "Set", "format": "pdf"}]}], "duplicate": "", "overwrite": []}),
         json!({"point": [f64::MAX, 0]}),
         json!({"point": [2000, 2000], "frozen": "x", "top_level": [], "limit_offset": 1e308, "base_offset": -1e308}),
         json!({"point": [2000, 2000], "frozen": true, "limit_offset": -2500}),
@@ -2987,6 +2991,11 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"point": [2000, 2000], "type": 5}),
         json!({"point": [2000, 2000], "type": "No such"}),
     ];
+    // A sheet holding the plan, last so that no id moves, and the exports of it, of the plan and of the project.
+    let _ = base.execute("sheet", &json!({"name": "Plans"}));
+    let _ = base.execute("place", &json!({"sheet": "A101", "view": "Level 1"}));
+    let exports = temp("sweep-exports");
+    targeted.extend(crate::export_tests::sweep_payloads(&exports));
     let hostile: Vec<Value> = hostile.into_iter().chain(finishes).collect();
     // Each command against each value, on a copy of the same session; the commands shared out between the cores.
     let cmds: Vec<_> = commands().iter().filter(|c| !matches!(c.id, "open" | "save")).collect();
@@ -3030,6 +3039,7 @@ fn hostile_params_never_panic_or_break_the_model() {
             draw_plans(&s.model);
         }
     }
+    let _ = std::fs::remove_dir_all(&exports);
     // A family's connectors, each field of one given every hostile value, on a starter family (placed in the base, if the
     // house has any) and on a new one; and far more connectors than a family may hold.
     let values = [
@@ -3399,7 +3409,7 @@ fn sheets_hold_views_at_a_scale_and_print_to_pdf() {
     run(&mut s, "save", json!({"path": pdf}));
     let bytes = std::fs::read(&pdf).unwrap();
     assert!(bytes.starts_with(b"%PDF-"));
-    assert_eq!(bytes.windows(6).filter(|w| *w == b"/Page ").count(), 2, "a page a sheet");
+    assert_eq!(bytes.windows(11).filter(|w| *w == b"/Type/Page/").count(), 2, "a page a sheet");
     // Deleting a view takes it off its sheet; deleting a sheet takes its views off.
     run(&mut s, "delete", json!({"ids": [section]}));
     assert_eq!(count(&mut s, "viewport"), 1);

@@ -57,6 +57,9 @@ pub mod electrical;
 mod electrical_tests;
 pub mod elevation;
 pub mod engine;
+pub mod export;
+#[cfg(test)]
+mod export_tests;
 #[cfg(test)]
 mod face_host_tests;
 #[cfg(test)]
@@ -130,12 +133,14 @@ pub mod lines;
 pub mod link;
 pub mod loads;
 pub mod massing;
+pub mod memory;
 pub mod mesh_in;
 #[cfg(test)]
 mod mesh_in_tests;
 pub mod model;
 pub mod nbr5410;
 pub mod network;
+pub mod ods;
 #[cfg(test)]
 mod opening_subcategory_tests;
 #[cfg(test)]
@@ -153,11 +158,15 @@ pub mod pen;
 pub mod phasing;
 pub mod places;
 pub mod plumbing;
+pub mod printset;
 pub mod project_info;
 #[cfg(test)]
 mod project_info_tests;
 #[cfg(test)]
 mod pset_tests;
+pub mod publish;
+#[cfg(test)]
+mod publish_tests;
 #[cfg(test)]
 mod raised_wall_room_tests;
 #[cfg(test)]

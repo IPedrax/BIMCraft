@@ -13,8 +13,11 @@ use crate::noise::{self, Cipher, PROLOGUE};
 use crate::wire::{self, Out, QUEUE};
 use crate::{Code, Timing, Wake};
 
-/// How long a guest waits for the window's welcome once it is in: the window builds it, the whole model with it.
+/// How long a guest waits for the window's welcome once it is in: the window builds it, the whole model with it. Once a
+/// welcome in parts is coming, as long as it takes while the line lives (the reader's `silence` ends a dead one).
 const WELCOME: Duration = Duration::from_secs(30);
+/// What the reader thread says when a message in parts begins: never one of the host's ops, which are read before it.
+const COMING: &str = "parts coming";
 /// The longest reason for an ending kept, in characters.
 const MAX_WHY: usize = 300;
 
@@ -75,16 +78,32 @@ impl Guest {
         s.set_write_timeout(Some(timing.silence))?;
         let (tx, rx) = sync_channel(QUEUE);
         let w = s.try_clone()?;
-        let writer = std::thread::Builder::new().name("cowork-writer".into()).spawn(move || wire::writer(w, send, rx, timing.ping))?;
+        let writer = std::thread::Builder::new()
+            .name("cowork-writer".into())
+            .spawn(move || wire::writer(w, send, rx, timing.ping, crate::MAX_FRAME))?;
         let (etx, events) = channel();
         let r = s.try_clone()?;
         std::thread::Builder::new().name("cowork-host".into()).spawn(move || read(r, recv, &etx, &wake))?;
         let guest = Guest { tx, events, stream: s.try_clone()?, writer: Some(writer) };
         // What the host sent before its welcome (a change being made as this guest came in) is in the welcome.
-        let until = std::time::Instant::now() + WELCOME;
+        let mut until = Some(std::time::Instant::now() + WELCOME);
+        // Who this guest is comes before the welcome, which is the same for everyone who comes in on it.
+        let mut you = Value::Null;
         let first = loop {
-            match guest.events.recv_timeout(until.saturating_duration_since(std::time::Instant::now())) {
+            let next = match until {
+                Some(t) => guest.events.recv_timeout(t.saturating_duration_since(std::time::Instant::now())),
+                None => guest.events.recv().map_err(|_| RecvTimeoutError::Disconnected),
+            };
+            match next {
+                Ok(GuestEvent::Message(m)) if m["op"] == COMING => until = None,
+                Ok(GuestEvent::Message(m)) if m["op"] == "you" => you = m["you"].clone(),
                 Ok(GuestEvent::Message(m)) if m["op"] != "welcome" => {}
+                Ok(GuestEvent::Message(mut m)) => {
+                    if let Some(o) = m.as_object_mut() {
+                        o.entry("you").or_insert_with(|| std::mem::take(&mut you));
+                    }
+                    break Ok(GuestEvent::Message(m));
+                }
                 Ok(e) => break Ok(e),
                 Err(RecvTimeoutError::Timeout) => break Err("the host's window didn't answer"),
                 Err(RecvTimeoutError::Disconnected) => break Err("the connection to the host closed"),
@@ -124,7 +143,10 @@ impl Drop for Guest {
 /// What the host says, until it ends or goes.
 fn read(mut s: TcpStream, mut recv: Cipher, events: &Sender<GuestEvent>, wake: &Wake) {
     let last = loop {
-        match wire::read_frame(&mut s, &mut recv) {
+        let mut coming = || {
+            let _ = events.send(GuestEvent::Message(json!({"op": COMING})));
+        };
+        match wire::read_message(&mut s, &mut recv, Some(&mut coming)) {
             Ok(msg) => match msg["op"].as_str() {
                 Some("ping") => {}
                 Some("ended") => {
@@ -139,6 +161,7 @@ fn read(mut s: TcpStream, mut recv: Cipher, events: &Sender<GuestEvent>, wake: &
                 }
             },
             Err(e) if wire::timed_out(&e) => break GuestEvent::Lost("no word from the host for a while: the line may have broken".into()),
+            Err(e) if e.kind() == io::ErrorKind::OutOfMemory => break GuestEvent::Lost(e.to_string()),
             Err(_) => break GuestEvent::Lost("the connection to the host closed".into()),
         }
     };

@@ -22,6 +22,7 @@ use crate::family::{
 };
 use crate::geom::{self, P2};
 use crate::library::Kind;
+use crate::memory::Budget;
 use crate::model::{
     Ceiling, CeilingType, Classification, Column, ColumnType, Component, Element, Extrusion, FIRST_ID, Floor, FloorType, Function, Grid,
     Guid, Id, Justify, Landing, Layer, Level, Location, MAX_COORD, MAX_LAYERS, MAX_POINTS, MAX_PROJECT_PARAMETERS, MAX_TEXT, Mass, Model,
@@ -1898,12 +1899,14 @@ pub(crate) fn seed(bytes: &[u8]) -> u64 {
 /// Reads IFC text into a model, named after the project (or `name`).
 pub fn ifc(bytes: &[u8], name: &str) -> Result<Imported, String> {
     let file = step::parse(bytes)?;
-    from_step(file, name, seed(bytes))
+    from_step(file, name, seed(bytes), &Budget::none())
 }
 
 /// What `ifc` does, from a file already parsed: `seed` is the hash of the text it was parsed from,
 /// which names the elements the file leaves unnamed.
-pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, String> {
+/// It stops with an error when the process has allocated past `budget` (`memory.rs`), checked at each element of the kinds a
+/// file holds many of.
+pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> Result<Imported, String> {
     if !file.schema.starts_with("IFC") {
         let schema = if file.schema.is_empty() { "no schema" } else { &file.schema };
         return Err(format!("this STEP file is in {schema}, not IFC"));
@@ -2099,6 +2102,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
     // Walls: the line the faces run along, and how thick they are across it.
     let mut raw: Vec<RawWall> = Vec::new();
     for id in named(WALLS) {
+        budget.check()?;
         let Some(w) = e(id) else { continue };
         let faces = r.body(w);
         let pts: Vec<P3> = faces.iter().flatten().copied().collect();
@@ -2281,6 +2285,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
     let in_whole = |id: u64, names: &[&str]| l.whole.get(&id).and_then(|w| e(*w)).is_some_and(|w| names.contains(&w.name.as_str()));
     let mut roofs: Vec<u64> = named(&["IFCROOF"]).into_iter().filter(|id| !l.whole.contains_key(id)).collect();
     for id in named(SLABS) {
+        budget.check()?;
         let Some(s) = e(id) else { continue };
         if in_whole(id, &["IFCROOF", "IFCSTAIR", "IFCRAMP"]) {
             continue;
@@ -2408,6 +2413,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
     // Ceilings: coverings that are, their outline and the holes in it, their underside's height and
     // their thickness.
     for id in named(&["IFCCOVERING"]) {
+        budget.check()?;
         let Some(c) = e(id).filter(|c| enumeration(c.args.get(8)) == Some("CEILING")) else { continue };
         let faces = r.body(c);
         let Some((z0, z1)) = span(faces.iter().flatten().map(|p| p[2])) else {
@@ -2686,6 +2692,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
         })
         .collect();
     for id in named(&["IFCBUILDINGELEMENTPROXY"]) {
+        budget.check()?;
         let Some(x) = e(id).filter(|x| text(x.args.get(4)) == Some("Mass")) else { continue };
         let faces = r.body(x);
         let Some((z0, z1)) = span(faces.iter().flatten().map(|p| p[2])) else {
@@ -2743,6 +2750,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
     let strip = |id: u64| e(id).is_some_and(|x| matches!(enumeration(x.args.get(8)), Some("STRIP_FOOTING" | "FOOTING_BEAM")));
     let pads: Vec<u64> = named(&["IFCFOOTING"]).into_iter().filter(|id| !strip(*id)).collect();
     for id in named(COLUMNS).into_iter().chain(pads) {
+        budget.check()?;
         let Some(c) = e(id) else { continue };
         let faces = r.body(c);
         let Some((z0, z1)) = span(faces.iter().flatten().map(|p| p[2])) else {
@@ -2853,6 +2861,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
     let classes: Vec<&str> =
         crate::runs::IFC.iter().map(|(_, class, _)| *class).chain(["IFCBEAMSTANDARDCASE", "IFCMEMBER", "IFCMEMBERSTANDARDCASE"]).collect();
     for id in named(&classes).into_iter().filter(|id| e(*id).is_some_and(|x| x.name != "IFCFOOTING") || strip(*id)) {
+        budget.check()?;
         let Some(b) = e(id) else { continue };
         let member = matches!(b.name.as_str(), "IFCMEMBER" | "IFCMEMBERSTANDARDCASE");
         if member && !framing(id, b) {
@@ -3645,6 +3654,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
     let mut marks: [BTreeSet<String>; 2] = Default::default();
     let mut tags: HashMap<u64, String> = HashMap::new();
     for id in named(OPENINGS) {
+        budget.check()?;
         let Some(o) = e(id) else { continue };
         let Some(tag) = text(o.args.get(7)) else { continue };
         let id_only = text(o.args.get(2)).and_then(|n| n.rsplit_once(':')).is_some_and(|(_, last)| last.trim() == tag);
@@ -3743,6 +3753,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
     let mut numbers: BTreeSet<String> = numbers.into_iter().collect();
     let colours = item_colours(&r, &ids);
     for id in named(&["IFCSPACE"]) {
+        budget.check()?;
         let Some(s) = e(id) else { continue };
         let faces = r.body(s);
         let floor = span(faces.iter().flatten().map(|p| p[2])).map(|(z0, _)| z0);
@@ -4088,6 +4099,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
         };
     // Eberick names a beam V1 and a column P1, and BIMCraft names a product by its type (and says so as its object type too).
     for &pid in &ids {
+        budget.check()?;
         let Some(x) = e(pid) else { continue };
         let mark = text(x.args.get(2)).map(clip).filter(|n| {
             !n.is_empty() && text(x.args.get(4)).map(str::trim) != Some(n.as_str()) && l.type_name.get(&pid).is_none_or(|t| t != n)
@@ -5398,10 +5410,10 @@ ENDSEC;END-ISO-10303-21;",
         let hash = seed(text);
         let parsed = step::parse(text).unwrap();
         let from_text = Model { uid: 0, ..ifc(text, "x").unwrap().model };
-        let from_file = Model { uid: 0, ..from_step(parsed, "x", hash).unwrap().model };
+        let from_file = Model { uid: 0, ..from_step(parsed, "x", hash, &Budget::none()).unwrap().model };
         assert_eq!(from_file, from_text);
         // The seed names the elements the file leaves unnamed: another seed is another model.
-        let other = Model { uid: 0, ..from_step(step::parse(text).unwrap(), "x", hash ^ 1).unwrap().model };
+        let other = Model { uid: 0, ..from_step(step::parse(text).unwrap(), "x", hash ^ 1, &Budget::none()).unwrap().model };
         assert_ne!(other, from_text);
     }
 

@@ -3421,6 +3421,12 @@ pub struct Model {
     /// Its reinforcement presets, by name: the parameters `reinforce` takes for a kind of host, kept to arm others alike.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub reinforcement: BTreeMap<String, crate::reinforce::Preset>,
+    /// Its print sets, by name: the views and sheets printed or exported together.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub print_sets: BTreeMap<String, crate::printset::PrintSet>,
+    /// Its publishing sets, by name: print sets in folders, each written as a format, published together.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub publish_sets: BTreeMap<String, crate::publish::PublishSet>,
     /// Its electrical voltages, by name, each with the band a device may read within.
     #[serde(default = "crate::electrical::voltages")]
     pub voltages: BTreeMap<String, crate::electrical::Voltage>,
@@ -3548,6 +3554,8 @@ impl Model {
             title_values: BTreeMap::new(),
             pinned: BTreeSet::new(),
             reinforcement: BTreeMap::new(),
+            print_sets: BTreeMap::new(),
+            publish_sets: BTreeMap::new(),
             voltages: crate::electrical::voltages(),
             distribution_systems: crate::electrical::distribution_systems(),
             wire_types: crate::electrical::wire_types(),
@@ -4040,9 +4048,15 @@ impl Model {
     /// misspelled one. The fields left out come back as JSON pointers into the file (`/elements/100004/finish`). A file
     /// of a newer format is refused whole, since what changed may be more than a field.
     pub fn read(text: &str) -> Result<(Model, Vec<String>), String> {
+        Model::read_within(text, &crate::memory::Budget::none())
+    }
+
+    /// [`Model::read`], stopped with an error, before it takes more, when the process has allocated past `budget`
+    /// (`memory.rs`): the values, then each element, are checked as they are read.
+    pub fn read_within(text: &str, budget: &crate::memory::Budget) -> Result<(Model, Vec<String>), String> {
         use crate::lenient;
         use serde_json::Value;
-        let mut v: Value = serde_json::from_str(text).map_err(|e| e.to_string())?;
+        let mut v: Value = crate::memory::json(text, budget)?;
         let format = v.get("format").map_or(Some(0), Value::as_u64).ok_or("`format` must be a whole number")?;
         if format > u64::from(FORMAT) {
             return Err(format!(
@@ -4057,6 +4071,7 @@ impl Model {
         let mut elements = v.get_mut("elements").map_or(Value::Null, Value::take);
         if let Value::Object(es) = &mut elements {
             for (id, e) in es.iter_mut() {
+                budget.check()?;
                 let mut bare = e.clone();
                 let category = bare.as_object_mut().and_then(|o| {
                     o.remove("guid");
@@ -4092,7 +4107,9 @@ impl Model {
             }
             v["elements"] = elements;
         }
+        budget.check()?;
         let mut m: Model = serde_json::from_value(v).map_err(|e| e.to_string())?;
+        budget.check()?;
         m.migrate();
         m.names_from_file();
         // A family's dimension measuring to something it hasn't is left out, as what this version can't read is: a file is
@@ -7138,6 +7155,22 @@ impl Model {
         for (n, p) in &self.reinforcement {
             p.check(n)?;
         }
+        if self.print_sets.len() > crate::printset::MAX_SETS {
+            return Err(format!("the project has {} print sets; it holds up to {}", self.print_sets.len(), crate::printset::MAX_SETS));
+        }
+        for (n, p) in &self.print_sets {
+            p.check(n)?;
+        }
+        if self.publish_sets.len() > crate::publish::MAX_SETS {
+            return Err(format!(
+                "the project has {} publishing sets; it holds up to {}",
+                self.publish_sets.len(),
+                crate::publish::MAX_SETS
+            ));
+        }
+        for (n, p) in &self.publish_sets {
+            p.check(n)?;
+        }
         for (n, t) in &self.dimension_types {
             t.check(n)?;
         }
@@ -8802,6 +8835,8 @@ impl Model {
             title_blocks,
             title_values,
             reinforcement,
+            print_sets,
+            publish_sets,
             voltages,
             distribution_systems,
             wire_types,
@@ -8850,6 +8885,8 @@ impl Model {
             && *title_blocks == o.title_blocks
             && *title_values == o.title_values
             && *reinforcement == o.reinforcement
+            && *print_sets == o.print_sets
+            && *publish_sets == o.publish_sets
             && *voltages == o.voltages
             && *distribution_systems == o.distribution_systems
             && *wire_types == o.wire_types
