@@ -10,8 +10,9 @@ use std::collections::{BTreeMap, HashMap};
 use crate::geom::P2;
 use crate::render::Rgb;
 
-/// What a file may be before it's refused, bytes.
-pub const MAX_BYTES: usize = 128 << 20;
+/// What a file may be before it's refused, bytes: 512 MB, which the DXF of the largest real drawings measured fits in (a DWG
+/// of 38 MB becomes 301 MB, read in about 4 s with 2.2 GB at most on an M4).
+pub const MAX_BYTES: usize = 512 << 20;
 /// The most shapes a drawing may hold once its blocks are placed.
 pub const MAX_SHAPES: usize = 1_000_000;
 /// How deep a block may be inside a block.
@@ -311,8 +312,8 @@ fn insunits(code: i64) -> (Option<f64>, &'static str) {
 
 /// The drawing a DXF file holds, or what's wrong with it.
 pub fn read(bytes: &[u8]) -> Result<Dxf, String> {
-    if bytes.len() > MAX_BYTES {
-        return Err(format!("it's {} bytes; up to {MAX_BYTES}", bytes.len()));
+    if let Some(e) = too_big(bytes.len()) {
+        return Err(e);
     }
     if bytes.starts_with(b"AutoCAD Binary DXF") {
         return Err("it's a binary DXF; save it as an ASCII DXF (any version) and bring that in".into());
@@ -332,6 +333,11 @@ pub fn read(bytes: &[u8]) -> Result<Dxf, String> {
 pub fn read_text(text: &str) -> Result<Dxf, String> {
     Reader { p: Pairs::new(text), header: HashMap::new(), layers: Vec::new(), linetypes: Vec::new(), blocks: HashMap::new(), ents: None }
         .read()
+}
+
+/// Why a file of `len` bytes is refused before it's read, if it is.
+fn too_big(len: usize) -> Option<String> {
+    (len > MAX_BYTES).then(|| format!("it's {len} bytes; up to {MAX_BYTES}"))
 }
 
 /// The text as Latin-1, byte for byte.
@@ -2227,8 +2233,10 @@ mod tests {
         assert!(e.contains("isn't a number"), "{e}");
         let e = read_text(&file("", "", "", &pairs(&[(0, "LINE"), (10, "1e300"), (20, "0"), (11, "1"), (21, "1")]))).unwrap_err();
         assert!(e.contains("past what a drawing holds"), "{e}");
-        // Too big, before it's read.
-        let e = read(&vec![b' '; MAX_BYTES + 1]).unwrap_err();
+        // Too big, before it's read: past 512 MB, which the largest real drawings' DXF (a DWG of 38 MB became 301 MB) fit in.
+        assert_eq!(MAX_BYTES, 512 << 20);
+        assert!(too_big(MAX_BYTES).is_none());
+        let e = too_big(MAX_BYTES + 1).unwrap_or_default();
         assert!(e.contains("bytes"), "{e}");
     }
 

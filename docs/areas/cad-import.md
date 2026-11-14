@@ -32,7 +32,7 @@ drawing holds"). A file that ends after a group code, a value that isn't a numbe
 The core reads no DWG of its own. `crates/dwg` (`bimcraft-dwg`) is a bridge: the acadrust crate (pure Rust, MPL-2.0, used
 unmodified as a separate library; its DWG code is ported from ACadSharp, MIT, after the Open Design Alliance's published DWG
 specification; NOTICE carries both) reads the file in failsafe mode, and its DXF writer writes what it read as ASCII DXF, which
-`dxf.rs` reads as any other. `Limits` holds a DWG to 64 MB before the decoder runs and its DXF to `dxf::MAX_BYTES` while it is
+`dxf.rs` reads as any other. `Limits` holds a DWG to 128 MB before the decoder runs and its DXF to `dxf::MAX_BYTES` (512 MB) while it is
 written; a read that left object records out says how many, of which kinds, in `import_cad`'s `notes` (the desktop puts them on
 the status bar). The project holds the DXF, so a project file opens where no DWG reader is.
 

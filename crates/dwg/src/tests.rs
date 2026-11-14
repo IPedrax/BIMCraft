@@ -206,3 +206,10 @@ fn what_isnt_a_drawing_or_is_too_large_isnt_written() {
     let roomy = Limits { dwg_bytes: 64, dxf_bytes: 64 << 20 };
     assert!(to_dwg(&plan_dxf(), roomy).unwrap_err().contains("more than"));
 }
+
+#[test]
+fn the_limits_hold_the_largest_real_drawings_and_the_dxf_one_is_the_readers() {
+    // Measured on real projects: a DWG of 77 MB, and 301 MB of DXF from one of 38 MB.
+    assert_eq!(Limits::DEFAULT.dwg_bytes, 128 << 20);
+    assert_eq!(Limits::DEFAULT.dxf_bytes, bimcraft_core::dxf::MAX_BYTES);
+}
