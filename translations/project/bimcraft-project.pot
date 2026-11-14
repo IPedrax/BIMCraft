@@ -3,7 +3,7 @@
 msgid ""
 msgstr "Project-Id-Version: BIMCraft\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\n"
 
-#: crates/core/src/sheet.rs:516
+#: crates/core/src/sheet.rs:518
 msgid "AS INDICATED"
 msgstr ""
 
@@ -11,8 +11,8 @@ msgstr ""
 msgid "Air Terminal"
 msgstr ""
 
-#: crates/core/src/schedule.rs:195
-#: crates/core/src/schedule.rs:244
+#: crates/core/src/schedule.rs:205
+#: crates/core/src/schedule.rs:254
 msgid "Area"
 msgstr ""
 
@@ -48,7 +48,7 @@ msgstr ""
 msgid "Casement Window"
 msgstr ""
 
-#: crates/core/src/schedule.rs:235
+#: crates/core/src/schedule.rs:245
 msgid "Category"
 msgstr ""
 
@@ -103,7 +103,7 @@ msgstr ""
 msgid "Copy"
 msgstr ""
 
-#: crates/core/src/schedule.rs:207
+#: crates/core/src/schedule.rs:217
 msgid "Count"
 msgstr ""
 
@@ -173,7 +173,7 @@ msgstr ""
 msgid "Distribution System"
 msgstr ""
 
-#: crates/core/src/schedule.rs:119
+#: crates/core/src/schedule.rs:129
 msgid "Door Schedule"
 msgstr ""
 
@@ -240,7 +240,7 @@ msgstr ""
 msgid "Fabric"
 msgstr ""
 
-#: crates/core/src/schedule.rs:193
+#: crates/core/src/schedule.rs:203
 msgid "Family"
 msgstr ""
 
@@ -256,7 +256,7 @@ msgstr ""
 msgid "Floor Drain"
 msgstr ""
 
-#: crates/core/src/schedule.rs:122
+#: crates/core/src/schedule.rs:132
 msgid "Floor Schedule"
 msgstr ""
 
@@ -285,7 +285,7 @@ msgstr ""
 msgid "Glass"
 msgstr ""
 
-#: crates/core/src/schedule.rs:590
+#: crates/core/src/schedule.rs:600
 msgid "Gross Floor Area"
 msgstr ""
 
@@ -354,7 +354,7 @@ msgstr ""
 msgid "Level"
 msgstr ""
 
-#: crates/core/src/schedule.rs:123
+#: crates/core/src/schedule.rs:133
 msgid "Level Schedule"
 msgstr ""
 
@@ -394,7 +394,7 @@ msgstr ""
 msgid "Mass"
 msgstr ""
 
-#: crates/core/src/schedule.rs:245
+#: crates/core/src/schedule.rs:255
 msgid "Material"
 msgstr ""
 
@@ -429,7 +429,7 @@ msgstr ""
 msgid "New Construction"
 msgstr ""
 
-#: crates/core/src/schedule.rs:1321
+#: crates/core/src/schedule.rs:1342
 msgid "No"
 msgstr ""
 
@@ -437,15 +437,15 @@ msgstr ""
 msgid "North"
 msgstr ""
 
-#: crates/core/src/schedule.rs:263
+#: crates/core/src/schedule.rs:273
 msgid "Number"
 msgstr ""
 
-#: crates/core/src/schedule.rs:202
+#: crates/core/src/schedule.rs:212
 msgid "Offset"
 msgstr ""
 
-#: crates/core/src/schedule.rs:204
+#: crates/core/src/schedule.rs:214
 msgid "Operation"
 msgstr ""
 
@@ -469,8 +469,8 @@ msgstr ""
 msgid "Patch Panel"
 msgstr ""
 
-#: crates/core/src/schedule.rs:258
-#: crates/core/src/schedule.rs:267
+#: crates/core/src/schedule.rs:268
+#: crates/core/src/schedule.rs:277
 msgid "Perimeter"
 msgstr ""
 
@@ -482,7 +482,7 @@ msgstr ""
 msgid "Phases"
 msgstr ""
 
-#: crates/core/src/schedule.rs:323
+#: crates/core/src/schedule.rs:333
 msgid "Plan Area"
 msgstr ""
 
@@ -499,7 +499,7 @@ msgstr ""
 msgid "Porcelain"
 msgstr ""
 
-#: crates/core/src/schedule.rs:212
+#: crates/core/src/schedule.rs:222
 msgid "Profile"
 msgstr ""
 
@@ -523,11 +523,11 @@ msgstr ""
 msgid "Recessed Luminaire"
 msgstr ""
 
-#: crates/core/src/schedule.rs:551
+#: crates/core/src/schedule.rs:561
 msgid "Riser Height"
 msgstr ""
 
-#: crates/core/src/schedule.rs:550
+#: crates/core/src/schedule.rs:560
 msgid "Risers"
 msgstr ""
 
@@ -543,23 +543,23 @@ msgstr ""
 msgid "Room"
 msgstr ""
 
-#: crates/core/src/schedule.rs:219
+#: crates/core/src/schedule.rs:229
 msgid "Room Name"
 msgstr ""
 
-#: crates/core/src/schedule.rs:218
+#: crates/core/src/schedule.rs:228
 msgid "Room Number"
 msgstr ""
 
-#: crates/core/src/schedule.rs:118
+#: crates/core/src/schedule.rs:128
 msgid "Room Schedule"
 msgstr ""
 
-#: crates/core/src/sheet.rs:505
+#: crates/core/src/sheet.rs:507
 msgid "SCALE"
 msgstr ""
 
-#: crates/core/src/sheet.rs:507
+#: crates/core/src/sheet.rs:509
 msgid "SCALE AS INDICATED"
 msgstr ""
 
@@ -580,7 +580,7 @@ msgstr ""
 msgid "Section"
 msgstr ""
 
-#: crates/core/src/schedule.rs:213
+#: crates/core/src/schedule.rs:223
 msgid "Section Area"
 msgstr ""
 
@@ -588,19 +588,19 @@ msgstr ""
 msgid "Sectional"
 msgstr ""
 
-#: crates/core/src/schedule.rs:222
+#: crates/core/src/schedule.rs:232
 msgid "Shared East"
 msgstr ""
 
-#: crates/core/src/schedule.rs:224
+#: crates/core/src/schedule.rs:234
 msgid "Shared Elevation"
 msgstr ""
 
-#: crates/core/src/schedule.rs:223
+#: crates/core/src/schedule.rs:233
 msgid "Shared North"
 msgstr ""
 
-#: crates/core/src/schedule.rs:124
+#: crates/core/src/schedule.rs:134
 msgid "Sheet List"
 msgstr ""
 
@@ -628,7 +628,7 @@ msgstr ""
 msgid "Shower"
 msgstr ""
 
-#: crates/core/src/schedule.rs:285
+#: crates/core/src/schedule.rs:295
 msgid "Sill"
 msgstr ""
 
@@ -648,7 +648,7 @@ msgstr ""
 msgid "Sliding Window"
 msgstr ""
 
-#: crates/core/src/schedule.rs:322
+#: crates/core/src/schedule.rs:332
 msgid "Slope"
 msgstr ""
 
@@ -717,11 +717,11 @@ msgstr ""
 msgid "Timber"
 msgstr ""
 
-#: crates/core/src/sheet.rs:444
+#: crates/core/src/sheet.rs:446
 msgid "Total"
 msgstr ""
 
-#: crates/core/src/schedule.rs:552
+#: crates/core/src/schedule.rs:562
 msgid "Tread"
 msgstr ""
 
@@ -738,7 +738,7 @@ msgstr ""
 msgid "UP"
 msgstr ""
 
-#: crates/core/src/schedule.rs:269
+#: crates/core/src/schedule.rs:279
 msgid "Unbounded Height"
 msgstr ""
 
@@ -767,7 +767,7 @@ msgstr ""
 msgid "Voltage"
 msgstr ""
 
-#: crates/core/src/schedule.rs:220
+#: crates/core/src/schedule.rs:230
 msgid "Volume"
 msgstr ""
 
@@ -779,7 +779,7 @@ msgstr ""
 msgid "Wall"
 msgstr ""
 
-#: crates/core/src/schedule.rs:121
+#: crates/core/src/schedule.rs:131
 msgid "Wall Schedule"
 msgstr ""
 
@@ -791,12 +791,12 @@ msgstr ""
 msgid "Washbasin"
 msgstr ""
 
-#: crates/core/src/schedule.rs:215
-#: crates/core/src/schedule.rs:423
+#: crates/core/src/schedule.rs:225
+#: crates/core/src/schedule.rs:433
 msgid "Weight"
 msgstr ""
 
-#: crates/core/src/schedule.rs:214
+#: crates/core/src/schedule.rs:224
 msgid "Weight per Metre"
 msgstr ""
 
@@ -812,7 +812,7 @@ msgstr ""
 msgid "Width"
 msgstr ""
 
-#: crates/core/src/schedule.rs:120
+#: crates/core/src/schedule.rs:130
 msgid "Window Schedule"
 msgstr ""
 
@@ -820,7 +820,7 @@ msgstr ""
 msgid "Worktop"
 msgstr ""
 
-#: crates/core/src/schedule.rs:1321
+#: crates/core/src/schedule.rs:1342
 msgid "Yes"
 msgstr ""
 

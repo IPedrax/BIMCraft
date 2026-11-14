@@ -10,6 +10,7 @@ use bimcraft_i18n::{msg, ui_msg};
 
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -110,6 +111,15 @@ pub struct Table {
     pub ids: Vec<Vec<Id>>,
     /// Its total fields' sums, each under its column, `null` under the rest; none without one.
     pub totals: Option<Vec<Value>>,
+}
+
+/// What a table is of: a schedule element, or one every project has, by its category.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub(crate) enum TableKey {
+    /// A schedule element, by its GUID.
+    Element(crate::ids::Guid),
+    /// One every project has, by its category ([`VIEWS`]), while it is not the project's own.
+    Builtin(String),
 }
 
 /// The schedules every project has, as views: each one's category, and its name. Each is the
@@ -1166,6 +1176,17 @@ fn sources<'a>(m: &'a Model, sc: &Schedule, cat: &str) -> Vec<(Id, &'a Element, 
     out
 }
 
+/// [`table`], kept with the model for the state its elements are in: what a view asks of it on every repaint. `view` names
+/// the schedule `sc` is: the element's id, or `None` for a schedule every project has. A command's copy of the model makes
+/// the table again.
+pub fn table_kept(m: &Model, view: Option<Id>, sc: &Schedule) -> Result<Arc<Table>, String> {
+    let key = match view {
+        Some(id) => TableKey::Element(m.guid(id)),
+        None => TableKey::Builtin(sc.of.clone()),
+    };
+    m.derived.kept_table(&m.elements, key, || table(m, sc))
+}
+
 /// Schedule `sc`'s table: a column for each of its fields, a row for each element its filters keep,
 /// sorted by its sort fields (by its first column unless it says; a phase field in the project's
 /// order of phases) or, grouped, a row for each set of their values; its totals under them.
@@ -1443,6 +1464,81 @@ mod tests {
             ]
         );
         assert!(t.totals.is_none());
+    }
+
+    #[test]
+    fn a_schedules_table_is_kept_for_the_model_and_made_again_after_an_edit() {
+        let mut s = house();
+        let sc = of("rooms");
+        let a = table_kept(&s.model, None, &sc).unwrap();
+        let b = table_kept(&s.model, None, &sc).unwrap();
+        assert!(Arc::ptr_eq(&a, &b), "a second look at one model finds the table it found");
+        let t = table(&s.model, &sc).unwrap();
+        assert_eq!(
+            (&a.columns, &a.rows, &a.ids, &a.totals),
+            (&t.columns, &t.rows, &t.ids, &t.totals),
+            "the kept table is the one made again"
+        );
+        let wall = s.model.elements.iter().find_map(|(id, e)| matches!(e, Element::Wall(_)).then_some(*id)).unwrap();
+        s.execute("move", &json!({"ids": [wall], "by": [10.0, 0.0]})).unwrap();
+        let c = table_kept(&s.model, None, &sc).unwrap();
+        assert!(!Arc::ptr_eq(&a, &c), "an edit's model finds the table again");
+        let oracle = table(&s.model, &sc).unwrap();
+        assert_eq!(
+            (&c.columns, &c.rows, &c.ids, &c.totals),
+            (&oracle.columns, &oracle.rows, &oracle.ids, &oracle.totals),
+            "the table made again is the oracle's"
+        );
+    }
+
+    #[test]
+    fn a_kept_table_is_made_again_when_the_same_models_elements_change() {
+        let s = house();
+        let sc = of("rooms");
+        let mut m = (*s.model).clone();
+        let a = table_kept(&m, None, &sc).unwrap();
+        let wall = m.elements.iter().find_map(|(id, e)| matches!(e, Element::Wall(_)).then_some(*id)).unwrap();
+        if let Some(Element::Wall(w)) = m.elements.get_mut(wall) {
+            w.height += 10.0;
+        }
+        let b = table_kept(&m, None, &sc).unwrap();
+        assert!(!Arc::ptr_eq(&a, &b), "the same model's changed elements find the table again");
+        let oracle = table(&m, &sc).unwrap();
+        assert_eq!(
+            (&b.columns, &b.rows, &b.ids, &b.totals),
+            (&oracle.columns, &oracle.rows, &oracle.ids, &oracle.totals),
+            "the table made again is the oracle's"
+        );
+    }
+
+    #[test]
+    fn an_edit_lets_go_of_the_table_its_undo_step_kept() {
+        let mut s = house();
+        let sc = of("rooms");
+        let a = table_kept(&s.model, None, &sc).unwrap();
+        let weak = Arc::downgrade(&a);
+        drop(a);
+        let wall = s.model.elements.iter().find_map(|(id, e)| matches!(e, Element::Wall(_)).then_some(*id)).unwrap();
+        s.execute("move", &json!({"ids": [wall], "by": [10.0, 0.0]})).unwrap();
+        assert!(weak.upgrade().is_none(), "the model in the undo history lets go of its table");
+        let b = table_kept(&s.model, None, &sc).unwrap();
+        let weak = Arc::downgrade(&b);
+        drop(b);
+        s.execute("undo", &json!({})).unwrap();
+        assert!(weak.upgrade().is_none(), "the model a step back leaves lets go of its table");
+    }
+
+    #[test]
+    fn a_built_in_schedule_and_the_projects_own_are_kept_apart() {
+        let mut s = house();
+        s.execute("schedule", &json!({"name": "Rooms", "category": "rooms"})).unwrap();
+        let (id, sc) =
+            s.model.elements.iter().find_map(|(id, e)| if let Element::Schedule(sc) = e { Some((*id, sc.clone())) } else { None }).unwrap();
+        let a = table_kept(&s.model, None, &of("rooms")).unwrap();
+        let b = table_kept(&s.model, Some(id), &sc).unwrap();
+        assert!(!Arc::ptr_eq(&a, &b), "the built-in and the project's own are kept apart");
+        let again = table_kept(&s.model, Some(id), &sc).unwrap();
+        assert!(Arc::ptr_eq(&b, &again), "and each answer is kept");
     }
 
     #[test]

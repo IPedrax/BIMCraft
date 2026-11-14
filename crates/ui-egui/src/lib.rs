@@ -6158,7 +6158,7 @@ impl BimApp {
         if let Some(id) = self.showing_panel_schedule() {
             return self.panel_schedule_view(ui, id);
         }
-        let Some((_, sc)) = self.shown_schedule() else { return };
+        let Some((id, sc)) = self.shown_schedule() else { return };
         // The right-click menu, on the schedule and on each of its cells.
         let groups = self.context_items();
         let mut chosen = None;
@@ -6169,7 +6169,7 @@ impl BimApp {
             let name = self.view_name(self.sheet);
             ui.label(RichText::new(&name).heading());
             ui.add_space(8.0);
-            match schedule::table(&self.session.model, &sc) {
+            match schedule::table_kept(&self.session.model, id, &sc) {
                 Err(e) => {
                     ui.label(e);
                 }

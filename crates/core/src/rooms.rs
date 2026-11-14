@@ -2,9 +2,10 @@
 //!
 //! A room's boundary is the smallest loop of its level's room-bounding lines around its point, less the islands inside it
 //! ([`geom::region_in`]). Finding those lines takes each bounding wall's joins, and arranging them into loops is the costly
-//! part; both are the same for every room of a level. [`Rooms`] does them once a level and a measure, and finds the walls'
-//! joins through a plan index ([`walls::Index`]) rather than among every wall of the project. It borrows the model, so
-//! what it holds can't go stale: the borrow ends before anything can change the model.
+//! part; both are the same for every room of a level. [`Rooms`] does them once a level and a measure, keeps the plan with
+//! the model's [`crate::derived::Derived`], and finds the walls' joins through a plan index ([`walls::Index`]) rather than
+//! among every wall of the project. What it keeps of the model is keyed by the elements' state; a command's copy of the model
+//! makes it again rather than bringing it up to date.
 
 use std::cell::{OnceCell, RefCell};
 use std::collections::{BTreeSet, HashMap};
@@ -18,7 +19,7 @@ use crate::model::{Ceiling, Element, Finish, Floor, Guid, Id, Model, Part, Room,
 use crate::walls::{self, Index};
 
 /// What a level's rooms are found among, at one measure.
-struct Plan {
+pub(crate) struct Plan {
     /// The loops its room-bounding lines make.
     faces: Vec<Vec<P2>>,
     /// At the finish faces, its bounding walls' outlines, by id: a point in one is in a wall, not a room.
@@ -28,11 +29,12 @@ struct Plan {
 /// A level's rooms, in order of id.
 type Placed<'a> = Rc<Vec<(Id, &'a Room)>>;
 
-/// The boundaries of a model's rooms, each level's found once.
+/// The boundaries of a model's rooms, each level's found once for the model.
 pub struct Rooms<'a> {
     m: &'a Model,
     index: OnceCell<Index>,
-    plans: RefCell<HashMap<(Guid, bool), Rc<Plan>>>,
+    /// The plans this look asked for, shared with the model's derived answers.
+    plans: RefCell<HashMap<(Guid, bool), Arc<Plan>>>,
     /// Each level's rooms, in order of id.
     placed: RefCell<HashMap<Guid, Placed<'a>>>,
     /// Each room's boundary at its walls' centre lines, found once: what [`Rooms::room_at`] asks of many points.
@@ -50,11 +52,18 @@ impl<'a> Rooms<'a> {
         }
     }
 
-    fn plan(&self, level: Guid, at: RoomArea) -> Rc<Plan> {
+    fn plan(&self, level: Guid, at: RoomArea) -> Arc<Plan> {
         let key = (level, at == RoomArea::Finish);
         if let Some(plan) = self.plans.borrow().get(&key) {
-            return Rc::clone(plan);
+            return Arc::clone(plan);
         }
+        let made = self.m.derived.room_plan(&self.m.elements, key, || self.find_plan(level, at));
+        self.plans.borrow_mut().insert(key, Arc::clone(&made));
+        made
+    }
+
+    /// The plan itself: the walls' joins and the loops their lines make, found for `level` at `at`.
+    fn find_plan(&self, level: Guid, at: RoomArea) -> Plan {
         // The walls' joins through the model's lookup when it is made (its tiles and heights), else an index of every wall.
         let m = self.m;
         let index = match m.derived.made(&m.elements) {
@@ -87,9 +96,7 @@ impl<'a> Rooms<'a> {
             }
             RoomArea::Centre => lines,
         };
-        let plan = Rc::new(Plan { faces: geom::faces(&lines, TOL), walls });
-        self.plans.borrow_mut().insert(key, Rc::clone(&plan));
-        plan
+        Plan { faces: geom::faces(&lines, TOL), walls }
     }
 
     /// Room `r`'s boundary where the project measures rooms; `None` when it isn't enclosed.
@@ -520,6 +527,66 @@ mod tests {
                 assert_eq!(rooms.bound(r, at), brute(m, r, at), "room {id} ({}) at {at:?}", r.name);
             }
         }
+    }
+
+    #[test]
+    fn a_levels_plan_is_found_once_for_each_model_and_again_after_an_edit() {
+        let mut s = Session::new();
+        s.script(crate::sample::SAMPLE).unwrap();
+        let model = Arc::clone(&s.model);
+        let level = model.guid(model.levels()[0].0);
+        let a = Rooms::new(&model).plan(level, RoomArea::Finish);
+        let b = Rooms::new(&model).plan(level, RoomArea::Finish);
+        assert!(Arc::ptr_eq(&a, &b), "a second look at one model finds the plan it found");
+        let wall = model.elements.iter().find_map(|(id, e)| matches!(e, Element::Wall(_)).then_some(*id)).expect("a wall");
+        s.execute("move", &json!({"ids": [wall], "by": [10.0, 0.0]})).unwrap();
+        let c = Rooms::new(&s.model).plan(level, RoomArea::Finish);
+        assert!(!Arc::ptr_eq(&a, &c), "an edit's model finds the level's plan again");
+        agree(&s.model);
+    }
+
+    #[test]
+    fn an_edit_lets_go_of_the_plan_its_undo_step_kept() {
+        let mut s = Session::new();
+        s.script(crate::sample::SAMPLE).unwrap();
+        let level = s.model.guid(s.model.levels()[0].0);
+        let a = Rooms::new(&s.model).plan(level, RoomArea::Finish);
+        let weak = Arc::downgrade(&a);
+        drop(a);
+        let wall = s.model.elements.iter().find_map(|(id, e)| matches!(e, Element::Wall(_)).then_some(*id)).expect("a wall");
+        s.execute("move", &json!({"ids": [wall], "by": [10.0, 0.0]})).unwrap();
+        assert!(weak.upgrade().is_none(), "the model in the undo history lets go of its plan");
+        let b = Rooms::new(&s.model).plan(level, RoomArea::Finish);
+        let weak = Arc::downgrade(&b);
+        drop(b);
+        s.execute("undo", &json!({})).unwrap();
+        assert!(weak.upgrade().is_none(), "the model a step back leaves lets go of its plan");
+    }
+
+    #[test]
+    fn a_kept_plan_is_made_again_when_the_same_models_elements_change() {
+        let mut s = Session::new();
+        s.script(crate::sample::SAMPLE).unwrap();
+        let mut m = (*s.model).clone();
+        let level = m.guid(m.levels()[0].0);
+        let a = Rooms::new(&m).plan(level, RoomArea::Finish);
+        let wall = m.elements.iter().find_map(|(id, e)| matches!(e, Element::Wall(_)).then_some(*id)).expect("a wall");
+        if let Some(Element::Wall(w)) = m.elements.get_mut(wall) {
+            w.height += 10.0;
+        }
+        let b = Rooms::new(&m).plan(level, RoomArea::Finish);
+        assert!(!Arc::ptr_eq(&a, &b), "the same model's changed elements find the plan again");
+        agree(&m);
+    }
+
+    #[test]
+    fn a_kept_plan_finds_the_rooms_brute_finds() {
+        let mut s = Session::new();
+        s.script(crate::sample::SAMPLE).unwrap();
+        let level = s.model.guid(s.model.levels()[0].0);
+        let _ = Rooms::new(&s.model).plan(level, RoomArea::Finish);
+        let _ = Rooms::new(&s.model).plan(level, RoomArea::Centre);
+        agree(&s.model);
     }
 
     #[test]
