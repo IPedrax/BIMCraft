@@ -718,6 +718,11 @@ fn bounds(m: &Model, w: &Wall) -> (Bound, Bound) {
     (Bound::of(m, w.attach_base, true, m.own_base(w)), Bound::of(m, w.attach_top, false, m.own_top(w)))
 }
 
+/// A wall's base under the point `s` mm along its centre line.
+pub fn base_at(m: &Model, w: &Wall, s: f64) -> f64 {
+    bounds(m, w).0.at(Axis::of(w).at(s, centre(m, w)))
+}
+
 /// A wall's top over the point `s` mm along its centre line.
 pub fn top_at(m: &Model, w: &Wall, s: f64) -> f64 {
     bounds(m, w).1.at(Axis::of(w).at(s, centre(m, w)))
@@ -756,6 +761,42 @@ pub fn hole(m: &Model, w: &Wall, e: &Element, o: &Opening) -> Option<Hole> {
     let (middle, sill) = m.opening_middle(o);
     let bottom = m.own_base(w) + sill;
     Some(Hole { s0: middle - t.width / 2.0, s1: middle + t.width / 2.0, bottom, top: bottom + t.height })
+}
+
+/// A column's base and top: what it's attached to, or a level plane.
+fn column_bounds(m: &Model, col: &crate::model::Column) -> (Bound, Bound) {
+    (Bound::of(m, col.attach_base, true, m.column_own_base(col)), Bound::of(m, col.attach_top, false, m.column_own_top(col)))
+}
+
+/// A column's lowest base and highest top over its outline, where what it's attached to bends.
+pub(crate) fn column_heights(m: &Model, e: &Element, col: &crate::model::Column) -> (f64, f64) {
+    if col.attach_base.is_none() && col.attach_top.is_none() {
+        return (m.column_own_base(col), m.column_own_top(col));
+    }
+    let (base, top) = column_bounds(m, col);
+    let mut pts = m.column_outline(e);
+    pts.push(col.at);
+    let lo = pts.iter().map(|q| base.at(*q)).fold(f64::INFINITY, f64::min);
+    let hi = pts.iter().map(|q| top.at(*q)).fold(f64::NEG_INFINITY, f64::max);
+    (lo, hi)
+}
+
+/// An attached column's solid: its outline cut where what it stands on or follows changes plane, each part from the one to the
+/// other. None for one attached to nothing, which is a plain slab.
+pub fn column_prisms(m: &Model, e: &Element) -> Vec<Prism> {
+    let Some(col) = e.column().filter(|c| c.attach_base.is_some() || c.attach_top.is_some()) else { return Vec::new() };
+    let (base, top) = column_bounds(m, col);
+    // A tube's pieces round its hole, as an unattached one's are.
+    let pieces = if matches!(e, Element::Column(_)) { vec![m.column_outline(e)] } else { m.column_pieces(e) };
+    let mut out = Vec::new();
+    for outline in pieces {
+        for (part, bottom) in base.parts(outline) {
+            for (ring, up) in top.parts(part) {
+                out.push(Prism { ring, bottom, top: up, curve: None });
+            }
+        }
+    }
+    out
 }
 
 /// The sides of the notches wall `id`'s doors and windows cut where they rise past its top, as Revit lets them: a line across

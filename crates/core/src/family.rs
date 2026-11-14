@@ -366,6 +366,94 @@ impl Group {
     }
 }
 
+impl Group {
+    /// Its name in a file and a command, as serde writes it (`identity-data`).
+    pub fn key(self) -> &'static str {
+        match self {
+            Group::Constraints => "constraints",
+            Group::Construction => "construction",
+            Group::Dimensions => "dimensions",
+            Group::Graphics => "graphics",
+            Group::IdentityData => "identity-data",
+            Group::MaterialsAndFinishes => "materials-and-finishes",
+            Group::Text => "text",
+            Group::Visibility => "visibility",
+            Group::Electrical => "electrical",
+            Group::Mechanical => "mechanical",
+            Group::Plumbing => "plumbing",
+            Group::Structural => "structural",
+            Group::Data => "data",
+            Group::Other => "other",
+        }
+    }
+}
+
+/// The heading a parameter is listed under: one of Revit's groups, or one of the project's own, as typed. Written as the
+/// group's name (`identity-data`) or the heading's words, so a file of 19 reads as it did.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Under {
+    Group(Group),
+    Own(String),
+}
+
+impl Under {
+    /// What `text` names: a group by its name or its English heading, in any case, else a heading of the project's own;
+    /// none for blank text.
+    pub fn read(text: &str) -> Option<Under> {
+        let t = text.trim();
+        if t.is_empty() {
+            return None;
+        }
+        let group = Group::ALL.into_iter().find(|g| g.key().eq_ignore_ascii_case(t) || g.label().eq_ignore_ascii_case(t));
+        Some(group.map_or_else(|| Under::Own(t.to_string()), Under::Group))
+    }
+
+    /// Its heading, in English for one of Revit's groups (an interface translates it), as typed for one of the project's.
+    pub fn label(&self) -> &str {
+        match self {
+            Under::Group(g) => g.label(),
+            Under::Own(s) => s,
+        }
+    }
+
+    /// The headings `unders` name, as a palette lists them: Revit's groups in their order, then the project's own by name.
+    pub fn listed(unders: impl IntoIterator<Item = Under>) -> Vec<Under> {
+        let mut all: Vec<Under> = unders.into_iter().collect();
+        all.sort_by_key(|u| match u {
+            Under::Group(g) => (Group::ALL.iter().position(|x| x == g).unwrap_or(0), String::new()),
+            Under::Own(s) => (Group::ALL.len(), s.to_lowercase()),
+        });
+        all.dedup();
+        all
+    }
+
+    /// Whether it is fit to keep: an own heading of one line, up to [`MAX_TEXT`] characters.
+    pub fn check(&self, who: &str) -> Result<(), String> {
+        match self {
+            Under::Own(s) if s.chars().count() > MAX_TEXT || s.contains(['\n', '\r']) => {
+                Err(format!("{who}: a heading of its own is one line, up to {MAX_TEXT} characters"))
+            }
+            _ => Ok(()),
+        }
+    }
+}
+
+impl Serialize for Under {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        match self {
+            Under::Group(g) => s.serialize_str(g.key()),
+            Under::Own(h) => s.serialize_str(h),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Under {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Under, D::Error> {
+        let text = String::deserialize(d)?;
+        Under::read(&text).ok_or_else(|| serde::de::Error::custom("a heading is a group's name or words of its own, not blank"))
+    }
+}
+
 /// The longest URL a parameter holds, in characters.
 pub const MAX_URL: usize = 2048;
 
@@ -387,7 +475,7 @@ pub struct Parameter {
     pub formula: Option<String>,
     /// The heading it is listed under; none, its kind's ([`Parameter::group`]).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub group: Option<Group>,
+    pub group: Option<Under>,
     /// A shared parameter's GUID, which is the same wherever it is used: none, a family parameter.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub shared: Option<crate::ids::Guid>,
@@ -403,12 +491,12 @@ pub struct Parameter {
 impl Parameter {
     /// The heading it is listed under: its own, else its kind's (lengths, areas, volumes and angles under Dimensions,
     /// materials under Materials and Finishes, the rest under Other).
-    pub fn group(&self) -> Group {
-        self.group.unwrap_or(match self.kind {
+    pub fn group(&self) -> Under {
+        self.group.clone().unwrap_or(Under::Group(match self.kind {
             Kind::Length | Kind::Area | Kind::Volume | Kind::Angle => Group::Dimensions,
             Kind::Material => Group::MaterialsAndFinishes,
             _ => Group::Other,
-        })
+        }))
     }
 
     /// The formula that works it out, when one does: then no type or component sets it, and Family Types and Properties
@@ -438,6 +526,9 @@ impl Parameter {
             if self.formula.is_some() {
                 return Err(format!("{who}: a reporting parameter takes no formula: its dimension says what it is"));
             }
+        }
+        if let Some(u) = &self.group {
+            u.check(who)?;
         }
         if let Some(g) = self.shared
             && g.pending().is_some()

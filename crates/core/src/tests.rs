@@ -146,7 +146,7 @@ fn doors_and_windows_find_the_wall_under_a_point() {
 fn a_door_or_window_is_sketched_as_the_command_would_make_it() {
     let mut s = Session::new();
     house(&mut s);
-    let view = crate::render::View { scale: 0.1, cx: 4000.0, cy: 3000.0, width: 1000, height: 800 };
+    let view = crate::render::View { angle: 0.0, scale: 0.1, cx: 4000.0, cy: 3000.0, width: 1000, height: 800 };
     for (is_door, at) in [(true, [2000, 30]), (false, [5000, 0])] {
         let p = json!({"at": at, "level": 100000});
         let sketched = crate::opening_of(&s.model, &p, is_door).unwrap();
@@ -166,7 +166,7 @@ fn a_sketch_draws_its_pens_as_wide_as_the_plan_it_is_in_at_any_zoom() {
     house(&mut s);
     let sketched = crate::opening_of(&s.model, &json!({"at": [2000, 30], "level": 100000}), true).unwrap();
     let widest = |zoom: f64| {
-        let view = crate::render::View { scale: zoom, cx: 4000.0, cy: 3000.0, width: 1000, height: 800 };
+        let view = crate::render::View { angle: 0.0, scale: zoom, cx: 4000.0, cy: 3000.0, width: 1000, height: 800 };
         let d = crate::render::sketch(&s.model, view, 999, &sketched);
         d.prims.iter().filter_map(|p| if let crate::render::Prim::Line { width, .. } = p { Some(*width) } else { None }).fold(0.0, f32::max)
     };
@@ -1992,7 +1992,7 @@ fn components_show_in_plan_from_above_in_3d_and_beyond_a_section() {
     let mut s = Session::new();
     table(&mut s);
     let id = run(&mut s, "component", json!({"family": "Table", "at": [1000, 1000]}))["id"].as_u64().unwrap();
-    let view = crate::render::View { scale: 0.5, cx: 1500.0, cy: 1300.0, width: 1000, height: 800 };
+    let view = crate::render::View { angle: 0.0, scale: 0.5, cx: 1500.0, cy: 1300.0, width: 1000, height: 800 };
     let lines = |s: &Session| -> Vec<P2> {
         let d = crate::render::draw(&s.model, 100000, view);
         d.prims
@@ -2204,6 +2204,10 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"wall": 100002, "offset": -5e8, "sill": 1e9}),
         json!({"id": u64::MAX}),
         json!({"ids": [99999, 100000, 100001, 100002, 100002]}),
+        json!({"name": "Set", "views": [100000, 100000, "x", null], "add": 5, "remove": [[]]}),
+        json!({"name": "Set", "views": [100000, 100002], "rename": "", "print_set": "Set", "format": "pdf"}),
+        json!({"name": "Pub", "folder": 5, "folders": [{"name": "../x", "entries": [{"print_set": "Set", "format": "pdf", "name": "}"}]}]}),
+        json!({"name": "Pub", "folders": [{"name": "a", "entries": [{"print_set": "Set", "format": "pdf"}, {"print_set": "Set", "format": "pdf"}]}], "duplicate": "", "overwrite": []}),
         json!({"point": [f64::MAX, 0]}),
         json!({"point": [2000, 2000], "frozen": "x", "top_level": [], "limit_offset": 1e308, "base_offset": -1e308}),
         json!({"point": [2000, 2000], "frozen": true, "limit_offset": -2500}),
@@ -2224,6 +2228,26 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"family": "Generic", "form": 1, "host": "Reference Line 99 : Vertical"}),
         json!({"system": 5, "level": [], "tolerance": 1e300}),
         json!({"path": 5}),
+        json!({"ops": "x", "dry_run": 5}),
+        json!({"ops": [{"op": "rename", "names": ["x"], "prefix": 1e300}, {"op": "zap"}, 5, {"op": "duplicate", "name": []}]}),
+        json!({"ops": [{"op": "duplicate", "name": "Rating", "as": "\u{1}"}, {"op": "rename", "names": [5]}], "dry_run": true}),
+        json!({"path": "/nonexistent/x.csv", "map": {"a": 5}, "resolve": {"a": "zap"}, "categories": [1], "names": "x", "replace_categories": 3}),
+        json!({"path": "/nonexistent/x.bimparams", "add": [{"name": 5}], "merge": [1], "remove": {}, "names": 5, "version": []}),
+        json!({"from": [], "into": 5, "overwrite": "x"}),
+        json!({"from": "a", "to": [1], "names": "x", "prefix": 5, "find": []}),
+        json!({"name": "P", "description": 5, "group": [], "read_only": 1, "scope": "x", "dictionary": "d", "kind": "plasma"}),
+        json!({"name": "P", "scope": 5, "categories": ["room"]}),
+        json!({"name": 5, "number": [], "client": "x\n", "address": "a".repeat(5000), "params": {"Nope": 1}, "issue_date": 1e300}),
+        json!({"number": "1", "params": "x", "building": "\u{1}", "status": "a\rb", "organization": {}}),
+        json!({"client": "c", "params": {"P": [], "Phase Created": "x"}, "author": null}),
+        json!({"category": "wall", "type": "x", "values": {"P": 1e300}, "copy_to": 5}),
+        json!({"family": [], "type": {}, "values": 5}),
+        json!({"category": "wall", "type": "Generic - 200mm", "values": {"Nope": []}}),
+        json!({"families": "x", "parameters": 5}),
+        json!({"path": 5, "name": [], "remove": "x"}),
+        json!({"name": "nope", "remove": true}),
+        json!({"families": ["x"], "parameters": [{"name": 5, "kind": "plasma", "definition": "x"}]}),
+        json!({"path": "/nonexistent/x.csv", "definitions": 5, "scopes": {"a": "zap"}}),
         json!({"path": "/nonexistent/scan.las", "units": "furlong", "spacing": -1}),
         json!({"cloud": "nope", "origin": "file", "at": [1e300, 0]}),
         json!({"path": "/nonexistent/plan.dxf", "units": "furlong", "scale": -1, "position": 3}),
@@ -2303,6 +2327,39 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"name": "230 V", "nominal": 230, "min": 5e-324, "max": f64::MAX}),
         json!({"name": "230 V", "rename": "400 V", "nominal": [], "volts": 1}),
         json!({"name": "230 V", "delete": true}),
+        json!({"base": [1e300, 0, 0], "survey": [0, 0], "move": 5}),
+        json!({"survey": [9.99e8, -9.99e8, 9.99e8], "move": "point"}),
+        json!({"survey": [1, 2, 3], "move": "system", "base": "x"}),
+        json!({"acquire": 100002}),
+        json!({"angle": 1e300, "about": [f64::MAX, 0]}),
+        json!({"true_north": true, "about": [9.99e8, -9.99e8]}),
+        json!({"angle": 359.99, "true_north": "x", "about": "x"}),
+        json!({"acquire": 999999999, "move": "point"}),
+        json!({"acquire": "x"}),
+        json!({"path": "no/such/folder/nowhere.bimcraft", "by": "shared", "location": "Nowhere"}),
+        json!({"path": "no/such/folder/nowhere.ifc", "by": 5, "location": 5, "at": [1e300, 0], "angle": f64::MAX}),
+        json!({"path": "", "by": "base", "location": ""}),
+        json!({"name": "Internal", "east": 1e11, "north": -1e11, "elevation": 1e11, "angle": 360, "scale": 1.1}),
+        json!({"name": "Internal", "east": 1e300, "angle": f64::MAX, "scale": 5e-324}),
+        json!({"name": "Internal", "rename": "", "activate": "x", "delete": 1}),
+        json!({"name": "Internal", "delete": true}),
+        json!({"shift": [1e11, 1e11, 1e11]}),
+        json!({"shift": [f64::MAX, 0, 0]}),
+        json!({"at": [0, 0, 0], "east": 1e11, "north": 1e11, "elevation": -1e11, "angle": 359.9}),
+        json!({"at": [9.99e8, 9.99e8, 0], "east": -1e11, "north": -1e11, "elevation": 0, "angle": 90}),
+        json!({"points": [[1e11, 1e11, 1e11], [0, 0, 0]], "from": "shared", "to": "base", "location": "Nowhere"}),
+        json!({"points": [[1e11, -1e11, 1e11]], "from": "shared", "to": "internal"}),
+        json!({"points": [[1e11, -1e11, 0]], "from": "shared", "to": "wgs84"}),
+        json!({"points": [[-180.5, 91, 0], [1e300, 0, 0]], "from": "wgs84", "to": "internal"}),
+        json!({"crs": "EPSG:31983", "search": 5, "limit": 1e300}),
+        json!({"search": "a b c d e f g h i j k l m n o p q r s t u v w x y z 0 1 2 3 4 5 6 7 8 9", "limit": 500}),
+        json!({"crs": "EPSG:4326"}),
+        json!({"name": "Internal", "latitude": -23.55, "longitude": -46.633}),
+        json!({"name": "Internal", "latitude": 1e300, "longitude": f64::MAX}),
+        json!({"at": [1e300, 0], "origin": "survey"}),
+        json!({"at": [0, 0], "view": "Section 1", "origin": 5}),
+        json!({"elevation": 1000, "elevation_base": "survey"}),
+        json!({"elevation": 1000, "elevation_base": []}),
         json!({"name": "S", "phases": 300, "wires": -1, "l_l": [], "l_n": 5, "ground": {}}),
         json!({"name": "S", "phases": 255, "wires": 255, "l_l": "400 V"}),
         json!({"name": "230/400 V", "phases": 3, "wires": 4, "l_l": "nope", "ground": "PE"}),
@@ -2900,6 +2957,46 @@ fn hostile_params_never_panic_or_break_the_model() {
         .chain(circuits)
         .chain(schedules)
         .collect();
+    // A room with a floor and a ceiling of its own, last so that no id moves: one placed in the house and the starter room
+    // type given both, and the payloads that name a room, its floor and its ceiling.
+    let _ = base.execute("room", &json!({"point": [2000, 2000]}));
+    let _ = base.execute("type", &json!({"category": "room", "name": "Standard", "floor": "Generic - 200mm", "ceiling": "Generic - 20mm"}));
+    let finished = base.model.elements.iter().find_map(|(id, e)| match e {
+        crate::model::Element::Room(r) => {
+            Some((id, base.model.elements.id(r.floor.connected()?)?, base.model.elements.id(r.ceiling.connected()?)?))
+        }
+        _ => None,
+    });
+    let Some((room, floor, ceiling)) = finished else { panic!("the sweep's base has a room with a floor and a ceiling of its own") };
+    let finishes = [
+        json!({"id": room, "part": "floor", "action": "disconnect"}),
+        json!({"id": room, "part": "ceiling", "action": "regenerate"}),
+        json!({"id": room, "part": "wall", "action": []}),
+        json!({"id": room, "action": "disconnect"}),
+        json!({"id": floor, "part": "ceiling", "action": "disconnect"}),
+        json!({"id": ceiling, "action": "disconnect"}),
+        json!({"id": floor, "action": 1e300, "part": null}),
+        json!({"id": floor, "offset": 1e300, "boundary": [[0, 0], [1, 0], [0, 0]]}),
+        json!({"id": room, "floor": {"connected": ceiling}, "ceiling": "disconnected"}),
+        json!({"id": room, "type": "No such", "floor": 5}),
+        json!({"ids": [room, floor], "keep_finishes": "x"}),
+        json!({"ids": [room], "keep_finishes": true}),
+        json!({"ids": [floor, ceiling], "by": [1e8, 0]}),
+        json!({"ids": [room, floor], "by": [5000, 0], "copy": true}),
+        json!({"category": "room", "name": "Standard", "floor": null, "ceiling": 5}),
+        json!({"category": "room", "name": "Standard", "floor": "Generic - 200mm", "floor_offset": 1e300, "ceiling_offset": -1e300}),
+        json!({"category": "room", "name": "Standard", "floor": null, "ceiling": "Tile 600 x 600", "ceiling_offset": f64::MAX}),
+        json!({"category": "room", "name": "", "floor": [], "ceiling": {}, "floor_offset": "x"}),
+        json!({"category": "room", "name": "R", "floor": "Generic - 200mm", "ceiling": "Generic - 20mm", "ceiling_offset": -1e9}),
+        json!({"point": [2000, 2000], "type": 5}),
+        json!({"point": [2000, 2000], "type": "No such"}),
+    ];
+    // A sheet holding the plan, last so that no id moves, and the exports of it, of the plan and of the project.
+    let _ = base.execute("sheet", &json!({"name": "Plans"}));
+    let _ = base.execute("place", &json!({"sheet": "A101", "view": "Level 1"}));
+    let exports = temp("sweep-exports");
+    targeted.extend(crate::export_tests::sweep_payloads(&exports));
+    let hostile: Vec<Value> = hostile.into_iter().chain(finishes).collect();
     // Each command against each value, on a copy of the same session; the commands shared out between the cores.
     let cmds: Vec<_> = commands().iter().filter(|c| !matches!(c.id, "open" | "save")).collect();
     let threads = std::thread::available_parallelism().map_or(4, |n| n.get());
@@ -2942,6 +3039,7 @@ fn hostile_params_never_panic_or_break_the_model() {
             draw_plans(&s.model);
         }
     }
+    let _ = std::fs::remove_dir_all(&exports);
     // A family's connectors, each field of one given every hostile value, on a starter family (placed in the base, if the
     // house has any) and on a new one; and far more connectors than a family may hold.
     let values = [
@@ -3311,7 +3409,7 @@ fn sheets_hold_views_at_a_scale_and_print_to_pdf() {
     run(&mut s, "save", json!({"path": pdf}));
     let bytes = std::fs::read(&pdf).unwrap();
     assert!(bytes.starts_with(b"%PDF-"));
-    assert_eq!(bytes.windows(6).filter(|w| *w == b"/Page ").count(), 2, "a page a sheet");
+    assert_eq!(bytes.windows(11).filter(|w| *w == b"/Type/Page/").count(), 2, "a page a sheet");
     // Deleting a view takes it off its sheet; deleting a sheet takes its views off.
     run(&mut s, "delete", json!({"ids": [section]}));
     assert_eq!(count(&mut s, "viewport"), 1);
@@ -4887,9 +4985,9 @@ fn cut_patterns_show_where_a_layer_is_wide_enough_to_hold_them() {
     let mut s = Session::new();
     cavity(&mut s);
     let w = run(&mut s, "wall", json!({"points": [[0, 0], [6000, 0]], "type": "Cavity 300"}))["ids"][0].as_u64().unwrap();
-    // Close in, 2 px a millimetre: its brick (100 mm, to its left, north) holds a brick pattern's lines.
-    let lines = |scale: f64| {
-        let view = crate::render::View { scale, cx: 3000.0, cy: 0.0, width: 1200, height: 800 };
+    // Its brick, 100 mm, to its left (north): at 1 : 100, 1 mm on the paper, wide enough for a brick pattern's lines.
+    let lines = |s: &Session, scale: f64| {
+        let view = crate::render::View { angle: 0.0, scale, cx: 3000.0, cy: 0.0, width: 1200, height: 800 };
         let d = crate::render::draw(&s.model, 100000, view);
         let (north, south) = (view.px(P2(3000.0, 150.0)).1, view.px(P2(3000.0, 50.0)).1);
         d.prims
@@ -4902,9 +5000,14 @@ fn cut_patterns_show_where_a_layer_is_wide_enough_to_hold_them() {
             })
             .count()
     };
-    assert!(lines(2.0) > 20, "close in: {}", lines(2.0));
-    // Far out, too thin for them: the layer is filled as before.
-    assert_eq!(lines(0.02), 0);
+    // The paper decides, not the zoom: near or far, the same lines across as many bricks.
+    let (near, far) = (lines(&s, 2.0), lines(&s, 0.05));
+    assert!(near > 0 && far > 0, "near {near}, far {far}");
+    // So far out its lines would run together: filled.
+    assert_eq!(lines(&s, 0.005), 0);
+    // At 1 : 500 the brick is 0.2 mm on the paper, too thin for them however near.
+    run(&mut s, "scale", json!({"view": 100000, "scale": 500}));
+    assert_eq!(lines(&s, 2.0), 0);
 }
 
 #[test]
@@ -4936,7 +5039,7 @@ fn surface_patterns_keep_their_size_in_the_building() {
     let f = run(&mut s, "floor", json!({"boundary": boundary, "type": "Tiled"}))["id"].as_u64().unwrap();
     // Where the tiles' joints running east cross the plan, px down it.
     let rows = |scale: f64| {
-        let view = crate::render::View { scale, cx: 3000.0, cy: 2000.0, width: 1200, height: 800 };
+        let view = crate::render::View { angle: 0.0, scale, cx: 3000.0, cy: 2000.0, width: 1200, height: 800 };
         let d = crate::render::draw(&s.model, 100000, view);
         let mut ys: Vec<f32> = d
             .prims
@@ -6416,21 +6519,21 @@ fn a_file_from_before_guids_opens_with_guids_and_six_digit_ids() {
 }
 
 #[test]
-fn a_file_of_the_family_editors_unreleased_formats_20_to_32_is_refused_as_newer() {
-    // The Family Editor took the format from 17 to 32 a step at a time before it was released, and then became part of 18,
-    // which every change since 0.11 shares; 19 is the sheet list's (the Family Editor's 19 was never released either).
-    // Nothing of 20 to 32 was released, so this build reads none of them: each is refused as any newer file is.
+fn a_file_of_the_family_editors_unreleased_formats_21_to_32_is_refused_as_newer() {
+    // The Family Editor took the format from 17 to 32 a step at a time before it was released, and none of that was. 0.12's
+    // format is 20, which every change since 0.11 shares, so a file of those builds stamped 20 opens as one of 0.12's, and 21
+    // to 32 are refused as any newer file is.
     use crate::model::{FORMAT, Model};
-    assert_eq!(FORMAT, 19);
+    assert_eq!(FORMAT, 20);
     let mut s = Session::new();
     house(&mut s);
     let v = serde_json::to_value(&*s.model).unwrap();
-    for old in 20..=32 {
+    for old in 21..=32 {
         let mut was = v.clone();
         was["format"] = json!(old);
         let e = Model::read(&was.to_string()).unwrap_err();
         assert!(
-            e.contains("saved by a newer BIMCraft") && e.contains(&format!("file format {old}")) && e.contains("reads up to 19"),
+            e.contains("saved by a newer BIMCraft") && e.contains(&format!("file format {old}")) && e.contains("reads up to 20"),
             "{old}: {e}"
         );
     }
@@ -6948,7 +7051,7 @@ fn socket(category: &str) -> Value {
 
 /// What component `id` draws in the plan of level 100000 as model points: its open polylines (symbols), and its fills (dots).
 fn symbol_ink(s: &Session, id: u64) -> (Vec<Vec<P2>>, Vec<Vec<P2>>) {
-    let view = crate::render::View { scale: 0.5, cx: 1000.0, cy: 1000.0, width: 1000, height: 800 };
+    let view = crate::render::View { angle: 0.0, scale: 0.5, cx: 1000.0, cy: 1000.0, width: 1000, height: 800 };
     let d = crate::render::draw(&s.model, 100000, view);
     let (mut lines, mut fills) = (Vec::new(), Vec::new());
     for (p, o) in d.prims.iter().zip(&d.owners).filter(|(_, o)| **o == Some(id)) {
@@ -7136,7 +7239,7 @@ fn symbols_draw_in_the_plan_and_ceiling_plan_of_their_level_whatever_height_the_
     let (lines, fills) = symbol_ink(&s, id);
     assert!(lines.iter().all(|l| l.len() != 2 || l[0].1 < 1200.0), "no outline of the form: {}", lines.len());
     assert!(lines.len() >= 3 && fills.len() == 1, "{} {}", lines.len(), fills.len());
-    let view = crate::render::View { scale: 0.5, cx: 1000.0, cy: 1000.0, width: 1000, height: 800 };
+    let view = crate::render::View { angle: 0.0, scale: 0.5, cx: 1000.0, cy: 1000.0, width: 1000, height: 800 };
     let up = crate::render::draw_ceiling(&s.model, 100000, view);
     assert!(
         up.owners.iter().zip(&up.prims).any(|(o, p)| *o == Some(id) && matches!(p, crate::render::Prim::Fill { .. })),

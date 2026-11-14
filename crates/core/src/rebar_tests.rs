@@ -284,7 +284,7 @@ fn a_section_draws_the_bars_it_cuts_as_dots_over_the_concrete_they_are_in() {
     // 20 mm bar through the middle of the beam, 250 under its top.
     let bar = ids(&run(&mut s, "rebar", json!({"points": [[50, 0, -250], [5950, 0, -250]], "diameter": 20, "host": beam})))[0];
     let section = run(&mut s, "section", json!({"start": [3000, -2000], "end": [3000, 2000]}))["id"].as_u64().unwrap();
-    let d = render::section(&s.model, section, View { scale: 0.1, cx: 2000.0, cy: 0.0, width: 1000, height: 800 });
+    let d = render::section(&s.model, section, View { angle: 0.0, scale: 0.1, cx: 2000.0, cy: 0.0, width: 1000, height: 800 });
     let dots: Vec<_> = d.prims.iter().zip(&d.owners).filter(|(_, o)| **o == Some(bar)).map(|(p, _)| p).collect();
     assert!(dots.iter().any(|p| matches!(p, Prim::Fill { color, .. } if *color != render::POCHE)), "{} prims", dots.len());
     // Where it is: 2000 along the line, 250 under the level, 20 across.

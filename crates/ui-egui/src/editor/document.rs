@@ -1543,11 +1543,16 @@ impl BimApp {
             let pressed = |m: egui::Modifiers, k: egui::Key| ctx.input_mut(|i| i.consume_key(m, k));
             if pressed(egui::Modifiers::COMMAND | egui::Modifiers::SHIFT, egui::Key::S) {
                 self.family_save(true);
-            } else if pressed(egui::Modifiers::COMMAND, egui::Key::S) {
-                self.family_save(false);
             }
-            if pressed(egui::Modifiers::COMMAND, egui::Key::K) {
-                self.find = Some(String::new());
+            // In a text field Ctrl's keys are the field's but S and K, which act at once; elsewhere they are letters typed
+            // with Ctrl (`family_typed`), which wait for a second.
+            if ctx.text_edit_focused() {
+                if pressed(egui::Modifiers::COMMAND, egui::Key::S) {
+                    self.family_save(false);
+                }
+                if pressed(egui::Modifiers::COMMAND, egui::Key::K) {
+                    self.find = Some(String::new());
+                }
             }
         }
         if ctx.text_edit_focused() {
@@ -1571,9 +1576,6 @@ impl BimApp {
             }
             if ctx.input(|i| i.key_pressed(egui::Key::Delete)) {
                 s.delete_picked();
-            }
-            if ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::Z)) {
-                ed.undo_sketch();
             }
             return;
         }
@@ -1608,10 +1610,9 @@ impl BimApp {
         {
             refused = Some(e);
         }
-        if pressed(egui::Modifiers::COMMAND | egui::Modifiers::SHIFT, egui::Key::Z) || pressed(egui::Modifiers::COMMAND, egui::Key::Y) {
+        // Ctrl+Z and Ctrl+Y are letters typed with Ctrl (`family_ctrl_key`); Ctrl+Shift+Z redoes at once.
+        if pressed(egui::Modifiers::COMMAND | egui::Modifiers::SHIFT, egui::Key::Z) {
             ed.ask.redo = true;
-        } else if pressed(egui::Modifiers::COMMAND, egui::Key::Z) {
-            ed.ask.undo = true;
         }
         if let Some(text) = refused {
             self.status = Status { text, error: true };
@@ -2099,7 +2100,16 @@ impl BimApp {
                 mesh
             }
         };
-        let shot = crate::orbit::Shown { model: &model, scene: &scene, cam, tints: &tints, marks: &plane_marks, dragged: None, cut: None };
+        let shot = crate::orbit::Shown {
+            model: &model,
+            scene: &scene,
+            cam,
+            tints: &tints,
+            marks: &plane_marks,
+            dragged: None,
+            cut: None,
+            caps: None,
+        };
         if let Some(status) = ed.orbit.paint(ui.ctx(), &p, &mut self.card, mesh.as_ref(), shot) {
             self.status = status;
         }

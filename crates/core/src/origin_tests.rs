@@ -146,7 +146,7 @@ fn placed(m: &Model, id: Id) -> Value {
 /// The project's plan at level 1, as an SVG, its numbers rounded.
 fn plan(m: &Model) -> String {
     let level = m.levels()[0].0;
-    let view = crate::render::View { scale: 0.1, cx: 4000.0, cy: 3000.0, width: 1000, height: 800 };
+    let view = crate::render::View { angle: 0.0, scale: 0.1, cx: 4000.0, cy: 3000.0, width: 1000, height: 800 };
     numbers_rounded(&crate::render::svg(&crate::render::draw(m, level, view)))
 }
 
@@ -229,7 +229,7 @@ fn moving_the_origin_keeps_every_instance_where_it_stands_turned_and_mirrored_wi
     assert_eq!(table(&s.model), table(&before));
     // Picked in the plan where it was.
     let level = s.model.levels()[0].0;
-    let view = crate::render::View { scale: 0.1, cx: 4000.0, cy: 3000.0, width: 1000, height: 800 };
+    let view = crate::render::View { angle: 0.0, scale: 0.1, cx: 4000.0, cy: 3000.0, width: 1000, height: 800 };
     for &id in &ids[..3] {
         let at = s.model.component_pieces(component(&s.model, id))[0].outline[0];
         let near = |m: &Model| crate::render::draw(m, level, view).pick(view.px(at), 3.0);

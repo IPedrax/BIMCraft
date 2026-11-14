@@ -234,7 +234,7 @@ struct How<'a> {
     weak: bool,
 }
 
-fn parameter_name(raw: &str) -> Option<String> {
+pub(crate) fn parameter_name(raw: &str) -> Option<String> {
     let spaced: String = raw.chars().map(|c| if c.is_alphanumeric() || c == '_' { c } else { ' ' }).collect();
     Some(spaced.split_whitespace().collect::<Vec<_>>().join(" ")).filter(|n| crate::family::nameable(n))
 }
@@ -1334,14 +1334,39 @@ fn unit_of(f: &File, id: Option<u64>, depth: usize) -> Option<(String, f64)> {
 /// factor) to a projected coordinate reference system that has a name. Its eastings, northings and height in mm of the map, which
 /// is the CRS's map unit, else the project's length unit; its scale a distance on the map over the same in the project (the file's
 /// scale takes the project's length unit to the map's, as IFC4 and IfcOpenShell read it). The model is moved near the origin by
-/// `r.shift`, so the map point of its origin is the one the file's origin put that far along.
+/// `r.shift`, so the map point of its origin is the one the file's origin put that far along. A file with none still has a
+/// site where its context's true north is turned from its y, or where the model was moved near the origin: the turn, and the
+/// shift as the map point of its origin, so what came in at map coordinates keeps them.
 fn georeference(r: &Reader, ids: &[u64]) -> Option<crate::model::Georeference> {
     let named = |e: &&Entity| r.at(e.args.get(1)).is_some_and(|c| c.name == "IFCPROJECTEDCRS" && text(c.args.first()).is_some());
     let conversion = ids
         .iter()
         .filter_map(|id| r.get(*id))
         .filter(|e| matches!(e.name.as_str(), "IFCMAPCONVERSION" | "IFCMAPCONVERSIONSCALED"))
-        .find(named)?;
+        .find(named);
+    let Some(conversion) = conversion else {
+        // True north alone: turned from the file's y, the model's project north.
+        let context = ids.iter().filter_map(|id| r.get(*id)).find(|e| e.name == "IFCGEOMETRICREPRESENTATIONCONTEXT");
+        let ratios: Vec<f64> = context
+            .and_then(|c| r.at(c.args.get(5)))
+            .map(|d| list(d.args.first()).iter().filter_map(|v| real(Some(v))).collect())
+            .unwrap_or_default();
+        let rotation = match ratios.as_slice() {
+            [x, y, ..] if x.hypot(*y) > 1e-12 => x.atan2(*y).to_degrees(),
+            _ => 0.0,
+        };
+        if rotation.abs() < 1e-9 && r.shift == P2(0.0, 0.0) {
+            return None;
+        }
+        let (sin, cos) = rotation.to_radians().sin_cos();
+        let (dx, dy) = (r.shift.0, r.shift.1);
+        return Some(crate::model::Georeference {
+            eastings: cos * dx - sin * dy,
+            northings: sin * dx + cos * dy,
+            rotation,
+            ..Default::default()
+        });
+    };
     let crs = r.at(conversion.args.get(1))?;
     let a = |i: usize| conversion.args.get(i);
     let map = reference(crs.args.get(6))
@@ -2795,6 +2820,9 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
             top_level,
             height: (height * 1000.0).round() / 1000.0,
             base_offset: ((z0 - elevation(level)) * 1000.0).round() / 1000.0,
+            top_offset: 0.0,
+            attach_top: None,
+            attach_base: None,
         };
         let cid = m.insert(make(column));
         from.insert(cid, who(id));
@@ -3741,7 +3769,10 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
         let level = level_for(id, floor.unwrap_or(0.0));
         let mut room = Room::new(level, micron(point), clip(&room_name), clip(&number));
         // Its colour on plans: the colour its body is styled in.
-        room.colour = r.reps(s).into_iter().flat_map(|(_, items)| items).find_map(|item| colours.get(&item).copied());
+        // (A room type's, so a type of that colour.)
+        if let Some(colour) = r.reps(s).into_iter().flat_map(|(_, items)| items).find_map(|item| colours.get(&item).copied()) {
+            room.type_name = m.coloured_room_type(&room.type_name, colour);
+        }
         let rid = m.insert(Element::Room(room));
         from.insert(rid, who(id));
         origin.entry(id).or_insert(rid);
@@ -3947,6 +3978,54 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
     // program's, named for the property (less what a formula can't say, as the brackets of "Cargas (G2)"). Each one's kind from
     // its first value's, for the categories of the elements holding one; up to as many as a project holds, and as many values
     // as `MAX_VALUES`.
+    // The project's information: its phase is its status, its building's name and address are its own; what BIMCraft wrote
+    // in its set, all of it as it was typed. Its element stands for the project, so the project's parameters come in on it.
+    if let Some(pid) = ids.iter().copied().find(|id| e(*id).is_some_and(|x| x.name == "IFCPROJECT")) {
+        let has_sets = |pid: u64| {
+            named(&["IFCRELDEFINESBYPROPERTIES"]).into_iter().filter_map(e).any(|rel| {
+                refs(rel.args.get(4)).contains(&pid)
+                    && reference(rel.args.get(5)).and_then(e).is_some_and(|x| text(x.args.get(2)) == Some(crate::ifc::PARAMETERS))
+            })
+        };
+        let mut info = crate::project_info::ProjectInfo::default();
+        let one_line = |t: &str| clip(&t.split_whitespace().collect::<Vec<_>>().join(" "));
+        if let Some(phase) = e(pid).and_then(|p| text(p.args.get(6))) {
+            info.status = one_line(phase);
+        }
+        let title = m.name.clone();
+        if let Some(b) = named(&["IFCBUILDING"]).into_iter().filter_map(e).next() {
+            if let Some(n) = text(b.args.get(2)).filter(|n| clip(n) != title) {
+                info.building = one_line(n);
+            }
+            if let Some(a) = reference(b.args.get(11)).and_then(e).filter(|a| a.name == "IFCPOSTALADDRESS") {
+                let mut lines: Vec<String> = list(a.args.get(4)).iter().filter_map(|l| text(Some(l))).map(str::to_string).collect();
+                let town = [text(a.args.get(8)), text(a.args.get(6))].into_iter().flatten().collect::<Vec<_>>().join(" ");
+                lines.extend(Some(town).filter(|t| !t.is_empty()));
+                lines.extend([text(a.args.get(7)), text(a.args.get(9))].into_iter().flatten().map(str::to_string));
+                info.address = lines.join("\n").chars().take(crate::project_info::MAX_ADDRESS).collect();
+            }
+        }
+        for rel in named(&["IFCRELDEFINESBYPROPERTIES"]).into_iter().filter_map(e).filter(|rel| refs(rel.args.get(4)).contains(&pid)) {
+            let Some(set) = reference(rel.args.get(5))
+                .and_then(e)
+                .filter(|x| x.name == "IFCPROPERTYSET" && text(x.args.get(2)) == Some(crate::ifc::PROJECT_INFO))
+            else {
+                continue;
+            };
+            for prop in refs(set.args.get(4)).into_iter().filter_map(e).filter(|x| x.name == "IFCPROPERTYSINGLEVALUE") {
+                let (Some(name), Some(v)) = (text(prop.args.first()), text(prop.args.get(2))) else { continue };
+                let Some((key, _)) = crate::project_info::FIELDS.iter().find(|(_, label)| *label == name) else { continue };
+                let v = if *key == "address" { v.chars().take(crate::project_info::MAX_ADDRESS).collect() } else { one_line(v) };
+                if let Some(slot) = info.get_mut(key) {
+                    *slot = v;
+                }
+            }
+        }
+        if info != crate::project_info::ProjectInfo::default() || has_sets(pid) {
+            let id = m.insert(Element::ProjectInfo(info));
+            elements_from.entry(pid).or_default().push(id);
+        }
+    }
     let (mut over, mut clash, mut values) = (BTreeSet::new(), BTreeSet::new(), 0);
     // The set each parameter's values came in, by category (none: the project's own): a category's values of a name come in
     // one set, the first; the others' are left out, said in `elsewhere`.
@@ -4057,6 +4136,23 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
                     ("IFCBOOLEAN" | "IFCLOGICAL", V::Enum(b)) if b == "T" || b == "F" => (ParameterKind::YesNo, json!(b == "T")),
                     ("IFCLENGTHMEASURE" | "IFCPOSITIVELENGTHMEASURE", v) => match real(Some(v)) {
                         Some(x) => (ParameterKind::Length, json!((x * mm * 1e6).round() / 1e6)),
+                        None => continue,
+                    },
+                    // What BIMCraft writes has its units fixed: m², m³ and radians.
+                    ("IFCINTEGER", v) if ours => match real(Some(v)) {
+                        Some(x) => (ParameterKind::Integer, json!(x)),
+                        None => continue,
+                    },
+                    ("IFCAREAMEASURE", v) if ours => match real(Some(v)) {
+                        Some(x) => (ParameterKind::Area, json!(x)),
+                        None => continue,
+                    },
+                    ("IFCVOLUMEMEASURE", v) if ours => match real(Some(v)) {
+                        Some(x) => (ParameterKind::Volume, json!(x)),
+                        None => continue,
+                    },
+                    ("IFCPLANEANGLEMEASURE", v) if ours => match real(Some(v)) {
+                        Some(x) => (ParameterKind::Angle, json!((x.to_degrees() * 1e6).round() / 1e6)),
                         None => continue,
                     },
                     ("IFCREAL" | "IFCINTEGER" | "IFCNUMERICMEASURE" | "IFCCOUNTMEASURE", v) => match real(Some(v)) {
@@ -4220,7 +4316,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64) -> Result<Imported, S
     // Where it lies on a map, where the file says and the project can keep it.
     if let Some(g) = georeference(&r, &ids) {
         match g.check() {
-            Ok(()) => m.georeference = Some(g),
+            Ok(()) => m.set_site(g),
             Err(why) => skipped.push(format!("its map conversion: {why}; the project has no georeference")),
         }
     }
@@ -5062,13 +5158,14 @@ ENDSEC;END-ISO-10303-21;",
         )
         .unwrap();
         let kitchen = s.model.elements.iter().find(|(_, e)| matches!(e, Element::Room(r) if r.name == "Kitchen")).map(|(id, _)| *id);
-        s.execute("modify", &json!({"id": kitchen, "colour": [214, 229, 210]})).unwrap();
+        s.execute("type", &json!({"category": "room", "name": "Sage", "colour": [214, 229, 210]})).unwrap();
+        s.execute("modify", &json!({"id": kitchen, "type": "Sage"})).unwrap();
         let i = ifc(crate::ifc::export(&s.model).as_bytes(), "x").unwrap();
         let colours: BTreeMap<String, Option<[u8; 3]>> = i
             .model
             .elements
             .values()
-            .filter_map(|e| if let Element::Room(r) = e { Some((r.name.clone(), r.colour)) } else { None })
+            .filter_map(|e| if let Element::Room(r) = e { Some((r.name.clone(), i.model.room_colour(r))) } else { None })
             .collect();
         assert_eq!(colours, BTreeMap::from([("Kitchen".to_string(), Some([214, 229, 210])), ("Hall".to_string(), None)]));
     }

@@ -15,12 +15,22 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 tiny-skia = { workspace = true }
 flate2 = { workspace = true }
+krilla = { workspace = true }
 zune-jpeg = { workspace = true }
+zune-jpegxl = { workspace = true }
+zune-core = { workspace = true }
+jpeg-encoder = { workspace = true }
 encoding_rs = { workspace = true }
 getrandom = { workspace = true }
 tempfile = { workspace = true }
 rayon = { workspace = true }
 ttf-parser = { workspace = true }
+proj4rs = { workspace = true }
+crs-definitions = { workspace = true }
 
 [build-dependencies]
 bimcraft-i18n = { workspace = true, features = ["catalog"] }
+
+[dev-dependencies]
+# Decodes the JPEG XL pictures exports write, to check they are lossless.
+jxl-oxide = { version = "0.12", default-features = false }

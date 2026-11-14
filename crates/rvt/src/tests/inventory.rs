@@ -613,3 +613,16 @@ fn a_building_story_setting_may_come_some_bytes_after_the_levels_name() {
         assert_eq!(seen, [Some(false), Some(true), None], "Revit {release}");
     }
 }
+
+#[test]
+fn an_element_table_may_start_at_element_id_zero() {
+    // Autodesk's Snowdon Towers structural sample (2024): 16,571 records of 40 bytes, the first of them ElementId 0.
+    let mut table = vec![0x83, 0x05, 3, 0, 0, 0];
+    for id in 0u64..3 {
+        let mut record = [0u8; 40];
+        record[..8].copy_from_slice(&id.to_le_bytes());
+        record[20..28].copy_from_slice(&id.to_le_bytes());
+        table.extend(record);
+    }
+    assert_eq!(crate::elem_table::parse(&table).unwrap(), vec![1, 2]);
+}

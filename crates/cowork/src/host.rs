@@ -340,11 +340,43 @@ fn accept(listener: &TcpListener, shared: &Arc<Shared>) {
     }
 }
 
-/// A name as the session shows it: no control characters, at most [`MAX_NAME`] characters, "Guest" for none.
-fn clean(name: Option<&str>) -> String {
-    let name: String = name.unwrap_or("").chars().filter(|c| !c.is_control()).take(MAX_NAME).collect();
+/// A name as the session shows it: no control characters and none of Unicode's format ones, at most `max` characters,
+/// `fallback` for one left with nothing. A format character can be invisible while it reorders or joins what is drawn, so
+/// two people's names can be made to look alike.
+pub(crate) fn clean(name: Option<&str>, max: usize, fallback: &str) -> String {
+    let name: String = name.unwrap_or("").chars().filter(|c| !c.is_control() && !is_format(*c)).take(max).collect();
     let name = name.trim();
-    if name.is_empty() { "Guest".into() } else { name.to_string() }
+    if name.is_empty() { fallback.into() } else { name.to_string() }
+}
+
+/// Unicode's format characters (`\p{Cf}`), which std has no test for: overrides, isolates, zero-width spaces and joiners,
+/// soft hyphens, tags. Most render as nothing but can reorder or join what is drawn, so one name can be made to look like
+/// another's; the few that do show (U+0600, U+06DD, U+070F) go with them, because a name needs none of them.
+fn is_format(c: char) -> bool {
+    matches!(
+        c,
+        '\u{00AD}'
+            | '\u{0600}'..='\u{0605}'
+            | '\u{061C}'
+            | '\u{06DD}'
+            | '\u{070F}'
+            | '\u{0890}'..='\u{0891}'
+            | '\u{08E2}'
+            | '\u{180E}'
+            | '\u{200B}'..='\u{200F}'
+            | '\u{202A}'..='\u{202E}'
+            | '\u{2060}'..='\u{2064}'
+            | '\u{2066}'..='\u{206F}'
+            | '\u{FEFF}'
+            | '\u{FFF9}'..='\u{FFFB}'
+            | '\u{110BD}'
+            | '\u{110CD}'
+            | '\u{13430}'..='\u{1343F}'
+            | '\u{1BCA0}'..='\u{1BCA3}'
+            | '\u{1D173}'..='\u{1D17A}'
+            | '\u{E0001}'
+            | '\u{E0020}'..='\u{E007F}'
+    )
 }
 
 /// One connection: the handshake and the hello, then what the guest says until it goes. `joined` is its number once it is in.
@@ -390,7 +422,7 @@ fn serve(mut s: TcpStream, shared: &Shared, joined: &mut Option<u32>) -> io::Res
     } else {
         None
     };
-    let name = clean(hello["name"].as_str());
+    let name = clean(hello["name"].as_str(), MAX_NAME, "Guest");
     // In, under the lock so two can't take the last place, unless refused or full.
     let mut peers = lock(&shared.peers);
     if let Some(why) = refused.or_else(|| (peers.len() >= MAX_GUESTS).then(|| format!("the session is full: it takes {MAX_GUESTS} guests")))
@@ -435,7 +467,7 @@ fn answer_knock(s: &mut TcpStream, mut t: noise::Transport, shared: &Shared, ip:
         }
         knocking.insert(ip);
     }
-    let result = knocked(s, &mut t, shared, ip, commitment, clean(said["name"].as_str()));
+    let result = knocked(s, &mut t, shared, ip, commitment, clean(said["name"].as_str(), MAX_NAME, "Guest"));
     lock(&shared.knocking).remove(&ip);
     result
 }

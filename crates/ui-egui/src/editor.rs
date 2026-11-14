@@ -1844,7 +1844,7 @@ mod tests {
             name: "Fire Rating".into(),
             kind: Holds::Text,
             value: json!("EI 60"),
-            group: Some(bimcraft_core::family::Group::IdentityData),
+            group: Some(bimcraft_core::family::Under::Group(bimcraft_core::family::Group::IdentityData)),
             shared: bimcraft_core::model::Guid::parse("6f1c2a3b-4d5e-4f60-8a71-92b3c4d5e6f7"),
             ..Parameter::default()
         };
