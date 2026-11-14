@@ -562,7 +562,9 @@ impl Lookup {
     }
 }
 
-/// A model's [`Lookup`], once asked for, and the one of the model it was copied from.
+/// What a model derives, once asked for: its lookup, its levels' room plans and its schedules' tables. A command's copy
+/// starts with none of the plans or tables — it makes them again — and with the lookup of the model it was copied from,
+/// which it can bring up to date.
 #[derive(Default)]
 pub struct Derived {
     /// The lookup, with the elements' token and version it is of.
@@ -571,9 +573,15 @@ pub struct Derived {
     parent: Option<(u64, u64, Arc<Lookup>)>,
     /// What a slab asks of each shaft, with the token and version of the elements it is of.
     shafts: Mutex<Option<KeptShafts>>,
+    /// Each level's rooms' plan, with the token and version of the elements it is of.
+    plans: Mutex<Option<KeptPlans>>,
+    /// Each schedule's table, with the token and version of the elements it is of.
+    tables: Mutex<Option<KeptTables>>,
 }
 
 type KeptShafts = (u64, u64, Arc<Vec<ShaftReach>>);
+type KeptPlans = (u64, u64, HashMap<(Guid, bool), Arc<crate::rooms::Plan>>);
+type KeptTables = (u64, u64, HashMap<crate::schedule::TableKey, Arc<crate::schedule::Table>>);
 
 /// A shaft as a slab asks of it: its span, its plan box [x0, y0, x1, y1] and its outline.
 #[derive(Debug)]
@@ -606,6 +614,60 @@ impl Derived {
         made
     }
 
+    /// What `make` finds of the plan of `key`'s level, kept until the elements change.
+    pub(crate) fn room_plan(
+        &self,
+        elements: &Elements,
+        key: (Guid, bool),
+        make: impl FnOnce() -> crate::rooms::Plan,
+    ) -> Arc<crate::rooms::Plan> {
+        let (token, version) = elements.state();
+        if let Ok(now) = self.plans.lock()
+            && let Some((t, v, plans)) = now.as_ref()
+            && (*t, *v) == (token, version)
+            && let Some(plan) = plans.get(&key)
+        {
+            return Arc::clone(plan);
+        }
+        let made = Arc::new(make());
+        if let Ok(mut now) = self.plans.lock() {
+            if now.as_ref().is_none_or(|(t, v, _)| (*t, *v) != (token, version)) {
+                *now = Some((token, version, HashMap::new()));
+            }
+            if let Some((_, _, plans)) = now.as_mut() {
+                plans.insert(key, Arc::clone(&made));
+            }
+        }
+        made
+    }
+
+    /// What `make` finds of the table of `key`'s schedule, kept until the elements change.
+    pub(crate) fn table(
+        &self,
+        elements: &Elements,
+        key: crate::schedule::TableKey,
+        make: impl FnOnce() -> Result<crate::schedule::Table, String>,
+    ) -> Result<Arc<crate::schedule::Table>, String> {
+        let (token, version) = elements.state();
+        if let Ok(now) = self.tables.lock()
+            && let Some((t, v, tables)) = now.as_ref()
+            && (*t, *v) == (token, version)
+            && let Some(table) = tables.get(&key)
+        {
+            return Ok(Arc::clone(table));
+        }
+        let made = Arc::new(make()?);
+        if let Ok(mut now) = self.tables.lock() {
+            if now.as_ref().is_none_or(|(t, v, _)| (*t, *v) != (token, version)) {
+                *now = Some((token, version, HashMap::new()));
+            }
+            if let Some((_, _, tables)) = now.as_mut() {
+                tables.insert(key, Arc::clone(&made));
+            }
+        }
+        Ok(made)
+    }
+
     /// The lookup of `elements` if it is made already: what asks only where it costs nothing.
     pub fn made(&self, elements: &Elements) -> Option<Arc<Lookup>> {
         let state = elements.state();
@@ -636,7 +698,13 @@ impl Clone for Derived {
     /// For the model's copy: what it starts from, this one's lookup. It is the copy's to bring up to date, if its elements
     /// were cloned from the elements this lookup is of, as they were then.
     fn clone(&self) -> Derived {
-        Derived { now: Mutex::new(None), parent: self.current(), shafts: Mutex::new(None) }
+        Derived {
+            now: Mutex::new(None),
+            parent: self.current(),
+            shafts: Mutex::new(None),
+            plans: Mutex::new(None),
+            tables: Mutex::new(None),
+        }
     }
 }
 
