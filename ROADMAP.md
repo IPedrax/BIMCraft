@@ -85,7 +85,7 @@ The goal is the editing tools a working architect reaches for every hour.
 | Arrays, linear and radial, optionally kept as a group | M |
 | Groups (model groups) with group types, edit group, and exclude a member | L |
 | Pin and unpin: done (`pin` and `unpin`, PN and UP, keep elements where they are, and the commands that place, draw or delete them refuse them, `modify`'s placing fields included); a selection filter (`selection.rs`) and match type properties (`match_properties`, MA): done | S |
-| Locked and equal dimension constraints: done (`constraints.rs`: padlocks and EQ on aligned and linear dimensions, kept after every command); dimensions bound to parameters (labels): done in the Family Editor | M |
+| Locked and equal dimension constraints: done (`constraints.rs`: padlocks and EQ on aligned and linear dimensions, kept after every command); ~~dimensions bound to parameters (labels)~~: done in the Family Editor | M |
 | Copy to the clipboard, and paste aligned to the same place, to selected levels or to the current view | M |
 | Join and cut geometry (wall to floor, column to wall cleanups in plan and section) | M |
 | Wall openings (rectangular cuts) and wall profile editing (an elevation sketch) | M |
@@ -136,11 +136,11 @@ left is mostly content.
 | Item | Size |
 |---|---|
 | Family editor sketch mode: done (sketches drawn on screen, extrusions, blends, revolves, sweeps and swept blends and their voids; reference planes and lines drawn in the family's views; a work plane per form; Pick Lines with Lock); left: 3D sweep paths and constraints on a sweep's profile | XL |
-| 2D sketch constraint solver: done (dimensions labelled with parameters, EQ, Align and padlocks, angular dimensions, pivots) | L |
-| Hosted families on floors, ceilings and faces: Place on Face (T16) done, on the sides of walls and the tops and bottoms of floors, ceilings and roofs; their voids cut the host (T16b) | L |
+| ~~2D sketch constraint solver~~: done (dimensions labelled with parameters, EQ, Align and padlocks, angular dimensions, pivots) | L |
+| ~~Hosted families on floors, ceilings and faces~~: Place on Face (T16) done, on the sides of walls and the tops and bottoms of floors, ceilings and roofs; their voids cut the host (T16b) | L |
 | Nested and shared families: done; left: type catalogs (CSV), arrays of nested instances, a Family Type parameter choosing a nested type | M |
 | Shared parameters file (Manage > Shared Parameters): done in the core (`shared_parameters` command: Revit's tab-separated layout read and written, parameters loaded into families by GUID and exported from them); left: the desktop dialog, and shared parameters as project parameters and in schedules by GUID | S |
-| Visibility per view direction and detail level for a family's forms and symbols: done | M |
+| ~~Visibility per view direction and detail level for a family's forms and symbols~~: done | M |
 | Sections that cut family forms: done for doors, windows, casework, generic models, equipment, racks and pipe fittings and accessories (poché in the form's own shape, holes left open); furniture and fixtures are shown beyond the cut, as in Revit; left: a form's material's cut pattern in place of poché | S |
 | A starter content library: original, openly licensed (CC0 or CC-BY) doors, windows, furniture, casework, fixtures and profiles (32 families ship today: furniture, casework, doors, windows, and the Plumbing, Electrical, SPDA and Data tabs' fixtures) | L (ongoing) |
 | A curated GitHub repository of openly licensed families, browsed, previewed and loaded from inside BIMCraft (search, categories, thumbnails, versions). Clean-room content only, checked before it's accepted; the download goes through the same rules as the updater (capped, digest-checked, never run) | M |
