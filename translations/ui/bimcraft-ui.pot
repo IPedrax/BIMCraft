@@ -4708,7 +4708,7 @@ msgstr ""
 msgid "Elev"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:4402
+#: crates/ui-egui/src/canvas.rs:4403
 #: crates/ui-egui/src/coordinates.rs:576
 #: crates/ui-egui/src/coordinates.rs:793
 #: crates/ui-egui/src/coordinates.rs:1192
@@ -10090,8 +10090,8 @@ msgstr ""
 msgid "Project Name"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:4498
-#: crates/ui-egui/src/canvas.rs:4510
+#: crates/ui-egui/src/canvas.rs:4499
+#: crates/ui-egui/src/canvas.rs:4511
 #: crates/ui-egui/src/graphics.rs:589
 msgid "Project North"
 msgstr ""
@@ -13671,8 +13671,8 @@ msgstr ""
 msgid "Trip"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:4499
-#: crates/ui-egui/src/canvas.rs:4511
+#: crates/ui-egui/src/canvas.rs:4500
+#: crates/ui-egui/src/canvas.rs:4512
 #: crates/ui-egui/src/graphics.rs:590
 msgid "True North"
 msgstr ""
@@ -14818,8 +14818,8 @@ msgstr ""
 #: crates/ui-egui/src/canvas.rs:3771
 #: crates/ui-egui/src/canvas.rs:4133
 #: crates/ui-egui/src/canvas.rs:4148
-#: crates/ui-egui/src/canvas.rs:4241
-#: crates/ui-egui/src/canvas.rs:4261
+#: crates/ui-egui/src/canvas.rs:4242
+#: crates/ui-egui/src/canvas.rs:4262
 #: crates/ui-egui/src/draw.rs:270
 #: crates/ui-egui/src/draw.rs:271
 #: crates/ui-egui/src/draw.rs:272
@@ -15337,7 +15337,7 @@ msgstr ""
 msgid "the next free name"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:4240
+#: crates/ui-egui/src/canvas.rs:4241
 msgid "the opening has to stay on its wall"
 msgstr ""
 
@@ -15672,7 +15672,7 @@ msgstr ""
 msgid "{} of {} pages ({} × {})"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:4332
+#: crates/ui-egui/src/canvas.rs:4333
 msgid "{} of {} risers"
 msgstr ""
 
@@ -15751,7 +15751,7 @@ msgstr ""
 msgid "{} triangles, from a file"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:4334
+#: crates/ui-egui/src/canvas.rs:4335
 msgid "{} up"
 msgstr ""
 
