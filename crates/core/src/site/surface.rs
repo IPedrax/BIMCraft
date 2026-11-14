@@ -41,6 +41,9 @@ impl Default for Options {
     }
 }
 
+/// Contours by elevation: each level's polylines.
+pub type Contours = Vec<(f64, Vec<Vec<P2>>)>;
+
 /// A triangulated surface: corners in plan, each with its elevation, and triangles counter-clockwise.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Surface {
@@ -184,7 +187,7 @@ fn check_point(p: P2, z: f64) -> Result<(), String> {
 
 /// A line's points and elevations with its repeats left out: a vertex within `TOL` of the last one kept, and a closed
 /// line's last vertex where it is its first. None when fewer than two are left.
-fn cleaned(line: &Line) -> Result<Option<(Vec<P2>, Vec<f64>, bool)>, String> {
+fn cleaned(line: &Line) -> Result<Option<Ready>, String> {
     if line.z.len() != line.points.len() {
         return Err(format!("a line has {} points but {} elevations", line.points.len(), line.z.len()));
     }
@@ -547,7 +550,8 @@ fn build_in(points: &[[f64; 3]], lines: &[Line], options: &Options, outline: Opt
             }
         }
         segments.extend(at_corners.windows(2).map(|w| (w[0], w[1])));
-        if closed && let (Some(&a), Some(&b)) = (at_corners.last(), at_corners.first())
+        if closed
+            && let (Some(&a), Some(&b)) = (at_corners.last(), at_corners.first())
             && a != b
             && at_corners.len() > 2
         {
@@ -730,7 +734,7 @@ impl Surface {
             let (l1, l2) = ((c - b).cross(at - b) / area, (a - c).cross(at - c) / area);
             let l3 = 1.0 - l1 - l2;
             let eps = -1e-9;
-            (l1 >= eps && l2 >= eps && l3 >= eps).then(|| l1 * za + l2 * zb + l3 * zc)
+            (l1 >= eps && l2 >= eps && l3 >= eps).then_some(l1 * za + l2 * zb + l3 * zc)
         })
     }
 
@@ -766,7 +770,7 @@ impl Surface {
     /// order of elevation, each joined across triangles (a closed one ends where it starts). A corner exactly at a level
     /// counts as above it, so a level along triangles' edges (a given contour's) is drawn once. Refused: an interval not
     /// finite or not above 0, and one making more than 10 000 levels.
-    pub fn contours(&self, interval: f64) -> Result<Vec<(f64, Vec<Vec<P2>>)>, String> {
+    pub fn contours(&self, interval: f64) -> Result<Contours, String> {
         if !(interval.is_finite() && interval > 0.0) {
             return Err(format!("a contour interval is a length above 0, mm, not {interval}"));
         }
@@ -781,7 +785,7 @@ impl Surface {
             let level = k * interval;
             k += 1.0;
             // Each triangle crossing the level gives a segment between two of its edges, keyed by their corners.
-            let mut ends: BTreeMap<(usize, usize), Vec<((usize, usize), P2, P2)>> = BTreeMap::new();
+            let mut ends = Ends::new();
             for t in &self.triangles {
                 let Some((_, zs)) = self.corners(t) else { continue };
                 let above = zs.map(|z| z >= level);
@@ -1068,17 +1072,20 @@ mod tests {
         // line that replaces it, however many are left out in a row.
         let r = 100_000.0;
         let n = (r * std::f64::consts::FRAC_PI_2 / 100.0) as usize;
-        let arc: Vec<P2> = (0..=n).map(|i| {
-            let a = std::f64::consts::FRAC_PI_2 * i as f64 / n as f64;
-            P2(r * a.cos(), r * a.sin())
-        }).collect();
+        let arc: Vec<P2> = (0..=n)
+            .map(|i| {
+                let a = std::f64::consts::FRAC_PI_2 * i as f64 / n as f64;
+                P2(r * a.cos(), r * a.sin())
+            })
+            .collect();
         let corners = vec![[0.0, 0.0, 0.0], [120_000.0, 0.0, 0.0], [120_000.0, 120_000.0, 0.0], [0.0, 120_000.0, 0.0]];
         let s = build(&corners, &[Line::contour(100.0, arc.clone(), false)], &Options { simplify: 50.0, ..Options::default() }).unwrap();
         // The kept vertices: the surface's corners at elevation 100.
         let mut kept: Vec<P2> = s.points.iter().zip(&s.z).filter(|(_, z)| **z == 100.0).map(|(p, _)| *p).collect();
         kept.sort_by(|a, b| a.1.atan2(a.0).total_cmp(&b.1.atan2(b.0)));
         assert!(kept.len() < arc.len() / 4, "{} of {}", kept.len(), arc.len());
-        let worst = arc.iter().map(|&p| kept.windows(2).map(|w| geom::dist_to_segment(p, w[0], w[1])).fold(f64::MAX, f64::min)).fold(0.0, f64::max);
+        let worst =
+            arc.iter().map(|&p| kept.windows(2).map(|w| geom::dist_to_segment(p, w[0], w[1])).fold(f64::MAX, f64::min)).fold(0.0, f64::max);
         assert!(worst <= 50.0 + 1e-6, "{worst}");
     }
 
