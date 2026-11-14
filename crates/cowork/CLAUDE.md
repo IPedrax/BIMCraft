@@ -12,7 +12,11 @@ It talks only to peers the user chose, by a code or an address, never to a serve
   byte (fixed ephemeral keys through `ring::test::rand::FixedSliceRandom`); a change to it keeps that test passing, or it is no
   longer Noise. Don't change the protocol name, the prologue or the order of the tokens.
 - **Every length is checked before anything is read** (`wire.rs`): a handshake message at most 1 KB, a frame at most
-  `MAX_FRAME`. A frame that fails to open, isn't JSON or has no `op` ends the connection.
+  `MAX_FRAME`. A host's message longer than a frame (a big whole model) goes in parts, the first saying the whole's length; only
+  a guest reads parts, held to the memory its machine has free (the core's `memory.rs`), and a host refuses them (issue #438).
+  A message is packed (deflated) once when it's queued, and every writer only splits and seals what it shares. A welcome is the
+  same for everyone who joins on one model (each is told `you` first), made once a pass and held to the host's budget, as a
+  resync's whole model is, so a host never runs out sending its project. A frame that fails to open, isn't JSON or has no `op` ends the connection.
 - **A guest is dropped** when it floods (`MAX_RATE` messages a second), falls silent for `Timing::silence`, or stops taking what
   it is sent (`QUEUE`). An address that gets the code wrong `LOCKOUT_AFTER` times waits `Timing::lockout`. At most
   `MAX_GUESTS` are in, and `MAX_PENDING` in their handshake.

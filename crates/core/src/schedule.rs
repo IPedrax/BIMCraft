@@ -218,6 +218,10 @@ const WEIGHT: Own = (msg!("Weight"), Kind::Number, From::Key("weight_kg"));
 const ROOM_NUMBER: Own = (msg!("Room Number"), Kind::Text, From::Key("room_number"));
 const ROOM_NAME: Own = (msg!("Room Name"), Kind::Text, From::Key("room_name"));
 const VOLUME: Own = (msg!("Volume"), Kind::Number, From::Key("volume_m3"));
+/// Where it stands in the active location's shared coordinates: its point, at its base.
+const SHARED_EAST: Own = (msg!("Shared East"), Kind::Length, From::Key("shared_east"));
+const SHARED_NORTH: Own = (msg!("Shared North"), Kind::Length, From::Key("shared_north"));
+const SHARED_ELEVATION: Own = (msg!("Shared Elevation"), Kind::Length, From::Key("shared_elevation"));
 
 /// A multi-category schedule's category: a row for each element of the categories it lists (`Schedule::categories`),
 /// or of every built one (`built`) where it lists none.
@@ -339,6 +343,9 @@ const OWN: &[(&str, usize, &[Own])] = &[
             PHASE_CREATED,
             PHASE_DEMOLISHED,
             DESIGN_OPTION,
+            SHARED_EAST,
+            SHARED_NORTH,
+            SHARED_ELEVATION,
         ],
     ),
     (
@@ -359,6 +366,9 @@ const OWN: &[(&str, usize, &[Own])] = &[
             SECTION_AREA,
             WEIGHT_PER_METRE,
             WEIGHT,
+            SHARED_EAST,
+            SHARED_NORTH,
+            SHARED_ELEVATION,
         ],
     ),
     (
@@ -375,6 +385,9 @@ const OWN: &[(&str, usize, &[Own])] = &[
             PHASE_CREATED,
             PHASE_DEMOLISHED,
             DESIGN_OPTION,
+            SHARED_EAST,
+            SHARED_NORTH,
+            SHARED_ELEVATION,
         ],
     ),
     (
@@ -522,6 +535,9 @@ const OWN: &[(&str, usize, &[Own])] = &[
             ("Mains", Kind::Number, From::Key("mains")),
             ("Max #1 Pole Breakers", Kind::Number, From::Key("slots")),
             ("Supply From", Kind::Number, From::Ref("supply_from")),
+            SHARED_EAST,
+            SHARED_NORTH,
+            SHARED_ELEVATION,
         ],
     ),
     (
@@ -585,7 +601,7 @@ const OWN: &[(&str, usize, &[Own])] = &[
         5,
         &[("Mass", Kind::Text, From::Key("mass")), LEVEL, AREA, ("Perimeter", Kind::Length, From::Metres("perimeter_m")), VOLUME, COUNT],
     ),
-    ("level", 2, &[("Elevation", Kind::Length, From::Key("elevation")), NAME, COUNT]),
+    ("level", 2, &[("Elevation", Kind::Length, From::Key("elevation_shown")), NAME, COUNT]),
     ("sheet", 2, &[("Number", Kind::Text, From::Key("number")), NAME]),
 ];
 
@@ -654,8 +670,9 @@ pub fn fields(m: &Model, cat: &str) -> Vec<(String, Kind)> {
             n,
             match p.kind {
                 ParameterKind::Text => Kind::Text,
-                ParameterKind::Number => Kind::Number,
+                ParameterKind::Number | ParameterKind::Integer | ParameterKind::Volume | ParameterKind::Angle => Kind::Number,
                 ParameterKind::Length => Kind::Length,
+                ParameterKind::Area => Kind::Area,
                 ParameterKind::YesNo => Kind::YesNo,
             },
         );
@@ -1028,14 +1045,7 @@ impl Row<'_> {
                 From::Shared => self.shared(name, *kind),
             };
         }
-        if let Some(p) = m.parameters.get(name).filter(|p| p.categories.iter().any(|c| c == cat)) {
-            return match self.e.params().and_then(|ps| ps.get(name)) {
-                Some(v) => v.clone(),
-                // Unset, a yes or no is no, as the palette shows it.
-                None if p.kind == ParameterKind::YesNo => Value::Bool(false),
-                None => Value::Null,
-            };
-        }
+        // A family's own first: where a project parameter has the name too, the family's is tied to it, and is its value here.
         if let Some((family, _)) = self.e.family()
             && let Some(p) = m.families.get(family).and_then(|f| f.parameters.iter().find(|p| p.name == name))
         {
@@ -1047,6 +1057,15 @@ impl Row<'_> {
                 (family::Kind::Volume, Some(x)) => serde_json::json!(fine(x / 1e9)),
                 (k, _) if k.text() && v.as_str() == Some("") => Value::Null,
                 _ => v,
+            };
+        }
+        let cat = self.cat;
+        if let Some(p) = m.parameters.get(name).filter(|p| p.categories.iter().any(|c| c == cat)) {
+            return match crate::parameters::value_of(m, self.e, name, p) {
+                Some(v) => v.clone(),
+                // Unset, a yes or no is no, as the palette shows it.
+                None if p.kind == ParameterKind::YesNo => Value::Bool(false),
+                None => Value::Null,
             };
         }
         Value::Null
@@ -1355,6 +1374,18 @@ pub fn to_csv(t: &Table) -> String {
 /// The table as a workbook of one sheet named `name`: its headings (in metric) in bold, its rows, then its totals. Numbers
 /// go in as numbers, so the spreadsheet sums them; text as text, never a formula.
 pub fn to_xlsx(t: &Table, name: &str) -> Vec<u8> {
+    let (headings, rows) = cells(t);
+    crate::xlsx::workbook(name, &headings, &rows)
+}
+
+/// The table as an OpenDocument spreadsheet (`.ods`) of one sheet named `name`, as [`to_xlsx`] writes it.
+pub fn to_ods(t: &Table, name: &str) -> Vec<u8> {
+    let (headings, rows) = cells(t);
+    crate::ods::spreadsheet(name, &headings, &rows)
+}
+
+/// The table's headings, and its rows and totals as a spreadsheet's cells: numbers as numbers, in millimetres.
+fn cells(t: &Table) -> (Vec<String>, Vec<Vec<crate::xlsx::Cell>>) {
     use crate::xlsx::Cell;
     let headings: Vec<String> = t.columns.iter().map(|c| heading(Units::Millimetres, c)).collect();
     let rows: Vec<Vec<Cell>> = t
@@ -1371,7 +1402,7 @@ pub fn to_xlsx(t: &Table, name: &str) -> Vec<u8> {
                 .collect()
         })
         .collect();
-    crate::xlsx::workbook(name, &headings, &rows)
+    (headings, rows)
 }
 
 #[cfg(test)]

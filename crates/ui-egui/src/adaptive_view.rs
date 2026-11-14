@@ -73,7 +73,7 @@ impl Default for Modeller {
             tool: Draw::Modify,
             selection: Vec::new(),
             drag: None,
-            nav: Orbit::default(),
+            nav: Orbit::named("adaptive-view"),
             depth: 300.,
             work_plane: WorkPlane::default(),
             picking_plane: false,

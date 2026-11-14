@@ -45,6 +45,7 @@ pub fn element(category: &str, v: &Value) -> Vec<String> {
         "planview" => PlanView, "link" => Link, "pointcloud" => PointCloud, "cadimport" => CadImport,
         "circuit" => crate::electrical::Circuit,
         "panelschedule" => crate::panel_schedule::PanelSchedule,
+        "project" => crate::project_info::ProjectInfo,
     }
 }
 

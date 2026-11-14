@@ -4,7 +4,7 @@ description = "BIMCraft desktop app"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-rust-version = "1.95"
+rust-version.workspace = true
 publish = false
 
 [lints]
@@ -19,6 +19,8 @@ rvt = ["dep:bimcraft-rvt"]
 dwg = ["dep:bimcraft-dwg"]
 
 [dependencies]
+cap = { workspace = true }
+sysinfo = { workspace = true }
 bimcraft-i18n = { workspace = true }
 bimcraft-core = { workspace = true }
 bimcraft-plugin = { workspace = true }

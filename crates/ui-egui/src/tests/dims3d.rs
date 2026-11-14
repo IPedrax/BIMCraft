@@ -80,7 +80,7 @@ fn a_dimension_in_the_3d_view_stays_as_the_view_orbits_and_is_picked_where_it_is
     // Turned round the background's target.
     let before = h.state().orbit.camera.unwrap();
     let corner = h.state().orbit.rect.min + vec2(6.0, 6.0);
-    drag_screen(&mut h, corner, corner + vec2(80.0, 30.0), PointerButton::Primary);
+    orbit_screen(&mut h, corner, corner + vec2(80.0, 30.0));
     assert!((h.state().orbit.camera.unwrap().azimuth - before.azimuth).abs() > 10.0, "it turned");
     assert_eq!(dims(&h), vec![(id, d.clone())], "the same dimension, where it was in the model");
     // A click on its line, where the turned view draws it, picks it.
