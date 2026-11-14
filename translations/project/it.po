@@ -40,7 +40,7 @@ msgstr "Mattone"
 msgid "Brick 225 x 75"
 msgstr "Mattone 225 x 75"
 
-#: crates/core/src/commands.rs:5340
+#: crates/core/src/commands.rs:5383
 msgid "Camera"
 msgstr ""
 
@@ -56,7 +56,7 @@ msgstr ""
 msgid "Ceiling Luminaire"
 msgstr "Plafoniera"
 
-#: crates/core/src/render.rs:3686
+#: crates/core/src/render.rs:3694
 msgid "Ceiling Plan"
 msgstr "Pianta controsoffitti"
 
@@ -99,7 +99,7 @@ msgstr ""
 msgid "Copper"
 msgstr "Rame"
 
-#: crates/core/src/commands.rs:1896
+#: crates/core/src/commands.rs:1901
 msgid "Copy"
 msgstr "Copia"
 
@@ -111,7 +111,7 @@ msgstr "Numero"
 msgid "Crosshatch"
 msgstr "Tratteggio incrociato"
 
-#: crates/core/src/render.rs:4632
+#: crates/core/src/render.rs:4640
 msgid "DN"
 msgstr "GIÙ"
 
@@ -132,7 +132,7 @@ msgstr "Presa dati"
 msgid "Demand Factor"
 msgstr ""
 
-#: crates/core/src/commands.rs:13093
+#: crates/core/src/commands.rs:13136
 msgid "Dependent"
 msgstr "Dipendente"
 
@@ -217,9 +217,9 @@ msgstr ""
 msgid "Electrical Power"
 msgstr ""
 
-#: crates/core/src/commands.rs:12840
-#: crates/core/src/commands.rs:12855
-#: crates/core/src/commands.rs:17277
+#: crates/core/src/commands.rs:12883
+#: crates/core/src/commands.rs:12898
+#: crates/core/src/commands.rs:17320
 msgid "Elevation"
 msgstr "Prospetto"
 
@@ -281,7 +281,7 @@ msgid "Gate Valve"
 msgstr "Saracinesca"
 
 #: crates/core/src/family.rs:3429
-#: crates/core/src/view3d.rs:1313
+#: crates/core/src/view3d.rs:1322
 msgid "Glass"
 msgstr "Vetro"
 
@@ -321,7 +321,7 @@ msgstr "Orizzontale"
 msgid "Inspection Box"
 msgstr "Pozzetto di ispezione"
 
-#: crates/core/src/import.rs:1693
+#: crates/core/src/import.rs:1694
 msgid "Insulation"
 msgstr "Isolante"
 
@@ -349,7 +349,7 @@ msgstr "Larghezza gamba"
 msgid "Length"
 msgstr "Lunghezza"
 
-#: crates/core/src/commands.rs:7916
+#: crates/core/src/commands.rs:7959
 #: crates/core/src/model.rs:3722
 msgid "Level"
 msgstr "Piano"
@@ -390,7 +390,7 @@ msgstr "ID"
 msgid "Masking"
 msgstr "Mascheramento"
 
-#: crates/core/src/commands.rs:10375
+#: crates/core/src/commands.rs:10418
 msgid "Mass"
 msgstr "Volume"
 
@@ -402,14 +402,14 @@ msgstr ""
 msgid "Medium Lines"
 msgstr "Linee medie"
 
-#: crates/core/src/import.rs:1696
+#: crates/core/src/import.rs:1697
 msgid "Membrane"
 msgstr "Membrana"
 
-#: crates/core/src/commands.rs:3525
-#: crates/core/src/commands.rs:15883
+#: crates/core/src/commands.rs:3530
+#: crates/core/src/commands.rs:15926
 #: crates/core/src/family.rs:3429
-#: crates/core/src/model.rs:5050
+#: crates/core/src/model.rs:5184
 msgid "Metal"
 msgstr "Metallo"
 
@@ -417,7 +417,7 @@ msgstr "Metallo"
 msgid "Mounting Height"
 msgstr "Altezza di installazione"
 
-#: crates/core/src/render.rs:3494
+#: crates/core/src/render.rs:3502
 msgid "NOT ENCLOSED"
 msgstr "NON CHIUSA"
 
@@ -503,15 +503,15 @@ msgstr "Porcellana"
 msgid "Profile"
 msgstr ""
 
-#: crates/core/src/commands.rs:3802
+#: crates/core/src/commands.rs:3793
 msgid "Project"
 msgstr "Progetto"
 
-#: crates/core/src/commands.rs:8644
+#: crates/core/src/commands.rs:8687
 msgid "Property Line"
 msgstr ""
 
-#: crates/core/src/render.rs:3494
+#: crates/core/src/render.rs:3502
 msgid "REDUNDANT"
 msgstr ""
 
@@ -539,7 +539,7 @@ msgstr ""
 msgid "Roof tiles"
 msgstr "Tegole"
 
-#: crates/core/src/commands.rs:10600
+#: crates/core/src/commands.rs:10643
 msgid "Room"
 msgstr "Zona"
 
@@ -575,8 +575,8 @@ msgstr "Massetto"
 msgid "Seat Height"
 msgstr "Altezza seduta"
 
-#: crates/core/src/commands.rs:12775
-#: crates/core/src/commands.rs:17276
+#: crates/core/src/commands.rs:12818
+#: crates/core/src/commands.rs:17319
 msgid "Section"
 msgstr "Sezione"
 
@@ -734,7 +734,7 @@ msgstr ""
 msgid "Type"
 msgstr "Tipo"
 
-#: crates/core/src/render.rs:4632
+#: crates/core/src/render.rs:4640
 msgid "UP"
 msgstr "SU"
 
@@ -746,7 +746,7 @@ msgstr ""
 msgid "Unclassified"
 msgstr ""
 
-#: crates/core/src/commands.rs:13264
+#: crates/core/src/commands.rs:13307
 msgid "Unnamed"
 msgstr "Senza nome"
 
@@ -775,7 +775,7 @@ msgstr "Volume"
 msgid "WC"
 msgstr "WC"
 
-#: crates/core/src/commands.rs:360
+#: crates/core/src/commands.rs:365
 msgid "Wall"
 msgstr "Muro"
 

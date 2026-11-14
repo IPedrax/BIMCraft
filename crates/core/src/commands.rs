@@ -21,6 +21,7 @@ use crate::language::Language;
 use crate::library::Kind as LibKind;
 use crate::lines::{DetailLine, LineStyle};
 use crate::massing;
+use crate::memory;
 use crate::model::{
     CEILING_HEIGHT, CadImport, Ceiling, CeilingType, Column, ColumnType, Component, DEFAULT_HEIGHT, DimKind, Dimension, Dimension3D,
     Element, End, Extrusion, Face, Facing, Floor, FloorType, Grid, Guid, HostRef, Hosted, Id, Key, Landing, Layer, Level, Line, Location,
@@ -108,7 +109,8 @@ pub static ALL: &[Command] = &[
 other_files(
         "open",
         "Open",
-        "{path} a .bimc project (a .bimt file too, and the .bimcraft of earlier versions; under 256 MiB), or an .ifc (under 512 MiB) read into a new one (its `elements` by \
+        "{path} a .bimc project (a .bimt file too, and the .bimcraft of earlier versions), or an .ifc read into a new one, as large as the memory the \
+         machine has free allows (8 times a project's size, 14 times an IFC's; without the apps' meter, under 256 and 512 MiB) (its `elements` by \
          category, `generic` the components of IFC classes BIMCraft has no element for, `skipped` what was left out and why)",
         open,
         Files::Read,
@@ -129,7 +131,8 @@ other_files(
     other_files(
         "autosave",
         ui_msg!("Autosave"),
-        "{path} atomically write a recovery snapshot, keeping the project path and undo history",
+        "{path, compress?} atomically write a recovery snapshot, keeping the project path and undo history: plain JSON, or zipped \
+         with `compress: true`, as `save` writes",
         autosave,
         Files::Write,
     ),
@@ -184,7 +187,9 @@ other_files(
     other_files(
         "save",
         "Save",
-        "{path?, ifc_origin?} .bimc saves the project (Save As with a path), as does .bimt (a template); .ifc exports IFC4, its \
+        "{path?, ifc_origin?, compress?} .bimc saves the project (Save As with a path), as does .bimt (a template): compact JSON, \
+         or with `compress: true` the same JSON in a zip of one entry, `project.json`, deflated on every core (several times \
+         smaller, slower to save and open; a .json path is always plain; `open` reads either); .ifc exports IFC4, its \
          coordinates' origin at `ifc_origin`: internal (the default), base (the Project Base Point), survey (the Survey Point) or \
          shared (the map's coordinates themselves), with the active location's IfcMapConversion and IfcProjectedCRS, true north, \
          and the site's latitude and longitude where the project has a CRS; .glb exports the default 3D view's scene as \
@@ -3746,15 +3751,16 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
 
 // ---------- files and history ----------
 
-/// Project files this large or larger are refused.
-const MAX_FILE: u64 = 256 << 20;
+/// Project and family files this large or larger (a project's JSON, inflated) are refused when nothing measures memory
+/// (`memory.rs`): about 8 GB to read. The annotated 100-storey reference tower is about 340 MB of JSON.
+const MAX_FILE: u64 = 1 << 30;
 
-/// IFC files this large or larger are refused. Reading one peaks at about 12 to 14 times its size in memory (measured on
-/// Revit-like, meshed and BIMCraft-written files of 17 to 81 MB), so one just under 512 MiB stays under about 8 GB.
+/// IFC files this large or larger are refused when nothing measures memory. Reading one peaks at about 12 to 14 times its size
+/// ([`memory::IFC`]), so one just under 512 MiB stays under about 8 GB.
 const MAX_IFC: u64 = 512 << 20;
 
-/// Files of `extension` (in lower case) this large or larger are refused by `open`: an IFC file at [`MAX_IFC`], a project at
-/// [`MAX_FILE`].
+/// Files of `extension` (in lower case) this large or larger are refused by `open` when nothing measures memory: an IFC file at
+/// [`MAX_IFC`], a project at [`MAX_FILE`]. With a meter, what the machine has free is the limit ([`memory::Budget`]).
 fn max_file(extension: &str) -> u64 {
     if extension == "ifc" { MAX_IFC } else { MAX_FILE }
 }
@@ -3772,21 +3778,6 @@ mod max_file_tests {
             assert_eq!(max_file(other), MAX_FILE, "{other}");
         }
     }
-}
-
-/// What `save` writes a project under: what `open` reads, [`MAX_FILE`]; a test sets it lower ([`SAVE_LIMIT`]).
-fn save_limit() -> u64 {
-    #[cfg(test)]
-    if let Some(most) = SAVE_LIMIT.with(std::cell::Cell::get) {
-        return most;
-    }
-    MAX_FILE
-}
-
-#[cfg(test)]
-thread_local! {
-    /// A lower limit for `save`, so a test needn't build a project of 256 MiB.
-    pub(crate) static SAVE_LIMIT: std::cell::Cell<Option<u64>> = const { std::cell::Cell::new(None) };
 }
 
 fn ext(p: &Path) -> String {
@@ -3846,19 +3837,35 @@ fn open_file(s: &mut Session, p: &Value) -> R {
     let c = "open";
     let path = PathBuf::from(string(c, p, "path")?.ok_or_else(|| bad(c, "`path` is required"))?);
     let size = std::fs::metadata(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?.len();
-    let most = max_file(&ext(&path));
-    if size >= most {
-        return Err(bad(c, format!("{} is too large ({size} bytes; `open` takes one under {most})", path.display())));
-    }
+    let ifc = ext(&path) == "ifc";
+    // Held to the memory the machine has free, where the app measures it; else to a fixed size.
+    let budget = match memory::Budget::start(size, if ifc { memory::IFC } else { memory::PROJECT }) {
+        Ok(Some(budget)) => budget,
+        Ok(None) => {
+            let most = max_file(&ext(&path));
+            if size >= most {
+                return Err(bad(c, format!("{} is too large ({size} bytes; `open` takes one under {most})", path.display())));
+            }
+            memory::Budget::none()
+        }
+        Err(e) => return Err(bad(c, format!("{}: {e}", path.display()))),
+    };
+    let progress = s.progress.clone();
+    let stage = |name: &'static str| {
+        if let Some(p) = &progress {
+            p.stage(name, 0);
+        }
+    };
+    let budget = budget.watched(progress.clone());
     // IFC comes in as a new project: saving it asks where.
-    if ext(&path) == "ifc" {
+    if ifc {
         let bytes = std::fs::read(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
         let stem = path.file_stem().map_or_else(|| "Project".into(), |s| s.to_string_lossy().into_owned());
-        let file = crate::step::parse(&bytes).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+        let file = crate::step::parse_within(&bytes, &budget).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
         let seed = crate::import::seed(&bytes);
         // The text is freed before the model is built from it, so the two are not both held at the peak.
         drop(bytes);
-        let i = crate::import::from_step(file, &stem, seed).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+        let i = crate::import::from_step(file, &stem, seed, &budget).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
         let mut counts: BTreeMap<&str, usize> = BTreeMap::new();
         for e in i.model.elements.values() {
             *counts.entry(e.category()).or_default() += 1;
@@ -3875,8 +3882,30 @@ fn open_file(s: &mut Session, p: &Value) -> R {
         s.reset(i.model, None);
         return Ok(reply);
     }
-    let text = std::fs::read_to_string(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
-    let (mut m, left_out) = Model::read(&text).map_err(|e| bad(c, format!("{} is not a BIMCraft project: {e}", path.display())))?;
+    stage(ui_msg!("Reading the file"));
+    let bytes = std::fs::read(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+    // A project in its container takes what its JSON does: held to the memory there is for that, or to the fixed size.
+    let inflated = crate::bimc::is_zip(&bytes).then(|| crate::bimc::inflated_size(&bytes)).flatten();
+    let budget = match inflated {
+        Some(json) => match memory::Budget::start(json, memory::PROJECT) {
+            Ok(Some(b)) => b,
+            Ok(None) if json >= MAX_FILE => {
+                return Err(bad(c, format!("{} is too large ({json} bytes of JSON; `open` takes one under {MAX_FILE})", path.display())));
+            }
+            Ok(None) => memory::Budget::none(),
+            Err(e) => return Err(bad(c, format!("{}: {e}", path.display()))),
+        },
+        None => budget,
+    };
+    let budget = budget.watched(progress.clone());
+    let most = budget.left().unwrap_or(MAX_FILE);
+    stage(ui_msg!("Unpacking the project"));
+    let text = crate::bimc::unpack(bytes, most).map_err(|e| bad(c, format!("{} is not a BIMCraft project: {e}", path.display())))?;
+    let (mut m, left_out) = Model::read_within(&text, &budget).map_err(|e| match budget.check() {
+        Ok(()) => bad(c, format!("{} is not a BIMCraft project: {e}", path.display())),
+        Err(_) => bad(c, format!("{}: {e}", path.display())),
+    })?;
+    drop(text);
     m.adopt_materials();
     // A project parameter named as a phase or a design option is held under is from before they were: it keeps its values, renamed.
     let mut renamed = BTreeMap::new();
@@ -3895,8 +3924,11 @@ fn open_file(s: &mut Session, p: &Value) -> R {
         }
         m = Arc::unwrap_or_clone(t.model);
     }
+    budget.check().map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+    stage(ui_msg!("Checking the model"));
     m.sync_library();
     m.check().map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+    budget.check().map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
     let name = m.name.clone();
     s.reset(m, Some(path.clone()));
     let mut reply = json!({"path": path, "name": name});
@@ -4186,15 +4218,29 @@ fn save(s: &mut Session, p: &Value) -> R {
         write_plan(&render::plan(&crate::link::seen(&s.model), level, 1600, 1000), &path)?;
         return Ok(json!({"path": path, "format": format}));
     }
-    let text = s.model.to_json().map_err(|e| bad(c, e))?;
-    // A file `open` would refuse isn't written: saved, it could not be opened again.
-    let most = save_limit();
-    if text.len() as u64 >= most {
-        return Err(bad(c, format!("the project would be {} bytes, and `open` takes one under {most}; it isn't saved", text.len())));
-    }
-    crate::autosave::atomic_write(&path, &text).map_err(|e| bad(c, e))?;
+    let compressed = write_project(s, c, p, &path)?;
     s.path = Some(path.clone());
-    Ok(json!({"path": path, "format": "bimcraft"}))
+    Ok(json!({"path": path, "format": "bimcraft", "compressed": compressed}))
+}
+
+/// The project written to `path` as `save` and `autosave` write it: its JSON compact, zipped where `p` says `compress: true` and
+/// the path isn't a `.json`; whether it was.
+fn write_project(s: &Session, c: &str, p: &Value, path: &Path) -> Result<bool, String> {
+    let compress = match p.get("compress") {
+        v if absent(v) => false,
+        Some(Value::Bool(b)) => *b && ext(path) != "json",
+        Some(v) => return Err(bad(c, format!("`compress` is true or false, not {v}"))),
+        None => false,
+    };
+    let text = s.model.to_json().map_err(|e| bad(c, e))?;
+    if compress {
+        let bytes = crate::bimc::pack(&text, 6).map_err(|e| bad(c, e))?;
+        drop(text);
+        crate::bimc::write(path, &bytes).map_err(|e| bad(c, e))?;
+    } else {
+        crate::autosave::atomic_write(path, &text).map_err(|e| bad(c, e))?;
+    }
+    Ok(compress)
 }
 
 /// `ifc_origin`: where an IFC file's coordinates have their origin; internal where it isn't given.
@@ -4376,12 +4422,9 @@ fn autosave(s: &mut Session, p: &Value) -> R {
     if s.path.as_ref() == Some(&path) {
         return Err(bad("autosave", "the recovery file must differ from the saved project"));
     }
-    let text = s.model.to_json().map_err(|e| bad("autosave", e))?;
-    if text.len() as u64 >= MAX_FILE {
-        return Err(bad("autosave", "the recovery snapshot exceeds the project file size limit"));
-    }
-    crate::autosave::atomic_write(&path, &text).map_err(|e| bad("autosave", e))?;
-    Ok(json!({"path": path, "format": "bimcraft"}))
+    // As large as the project is: `recover` opens it held to the memory that's free, as `open` does.
+    let compressed = write_project(s, "autosave", p, &path)?;
+    Ok(json!({"path": path, "format": "bimcraft", "compressed": compressed}))
 }
 
 fn recover(s: &mut Session, p: &Value) -> R {

@@ -12,6 +12,7 @@ pub mod autosave;
 mod autosave_tests;
 pub mod background_grid;
 pub mod bath;
+pub mod bimc;
 pub mod bounds;
 pub mod bridge;
 pub mod cad;
@@ -93,6 +94,8 @@ mod family_visibility_tests;
 pub mod favorites;
 #[cfg(test)]
 mod file_extension_tests;
+#[cfg(test)]
+mod file_tests;
 pub mod files;
 pub mod fills;
 mod fixtures;
@@ -128,7 +131,6 @@ mod ifc_member_tests;
 pub mod import;
 pub mod inquiry;
 pub mod insert;
-pub mod json_text;
 pub mod language;
 pub mod lenient;
 pub mod library;
@@ -136,6 +138,7 @@ pub mod lines;
 pub mod link;
 pub mod loads;
 pub mod massing;
+pub mod memory;
 pub mod mesh_in;
 #[cfg(test)]
 mod mesh_in_tests;
@@ -161,8 +164,7 @@ pub mod phasing;
 pub mod places;
 pub mod plumbing;
 pub mod printset;
-#[cfg(test)]
-mod project_file_tests;
+pub mod progress;
 pub mod project_info;
 #[cfg(test)]
 mod project_info_tests;
@@ -224,6 +226,8 @@ pub mod stairs;
 pub mod standards;
 pub mod step;
 pub mod storm;
+#[cfg(test)]
+mod stream_tests;
 pub mod styles;
 pub mod symbol_set;
 pub mod text;

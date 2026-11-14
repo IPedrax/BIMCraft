@@ -212,7 +212,25 @@ fn dwg_child(_: &[String]) -> Option<ExitCode> {
     None
 }
 
+/// Counts what this program allocates, so a file being read is held to the memory the machine has free (the core's `memory.rs`).
+#[global_allocator]
+static ALLOC: cap::Cap<std::alloc::System> = cap::Cap::new(std::alloc::System, usize::MAX);
+
+/// What the core measures a file being read by: what this program has allocated, and what the machine has free (less, where a
+/// container holds it to less).
+fn meter() -> bimcraft_core::memory::Meter {
+    bimcraft_core::memory::Meter { used: || ALLOC.allocated(), free: free_memory }
+}
+
+fn free_memory() -> Option<u64> {
+    let mut s = sysinfo::System::new().ok()?;
+    s.refresh_memory();
+    let free = s.cgroup_limits().map_or(s.available_memory(), |c| c.free_memory.min(s.available_memory()));
+    (free > 0).then_some(free)
+}
+
 fn main() -> ExitCode {
+    bimcraft_core::memory::install(meter());
     let args: Vec<String> = std::env::args().skip(1).collect();
     if let Some(code) = dwg_child(&args) {
         return code;
@@ -409,7 +427,8 @@ modify {"id":"$last","mark":"Entry"}"#,
         // The saver's name and the path stay out of everything but the report: the project of the same file has neither.
         let mut opened = Vec::new();
         cli(&["run".into(), path.clone(), "--save".into(), format!("{path}.bimc")], &mut opened).unwrap();
-        let project = std::fs::read_to_string(format!("{path}.bimc")).unwrap();
+        // Zipped, as a project is saved: its JSON read out of the zip.
+        let project = bimcraft_core::bimc::unpack(std::fs::read(format!("{path}.bimc")).unwrap(), u64::MAX).unwrap();
         assert!(!project.contains("jdoe") && !project.contains(&path), "the saver's name or the path got into the project");
         let detail: Value = serde_json::from_str(&cli_out(&["info", &path, "--elements-detail"]).unwrap()).unwrap();
         assert_eq!(detail["elements"]["elements_detail_placed_count"], 4);

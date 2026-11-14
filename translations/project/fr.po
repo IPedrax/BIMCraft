@@ -40,7 +40,7 @@ msgstr "Brique"
 msgid "Brick 225 x 75"
 msgstr "Brique 225 x 75"
 
-#: crates/core/src/commands.rs:5340
+#: crates/core/src/commands.rs:5383
 msgid "Camera"
 msgstr "Caméra"
 
@@ -56,7 +56,7 @@ msgstr ""
 msgid "Ceiling Luminaire"
 msgstr "Luminaire de plafond"
 
-#: crates/core/src/render.rs:3686
+#: crates/core/src/render.rs:3694
 msgid "Ceiling Plan"
 msgstr "Plan de plafond"
 
@@ -99,7 +99,7 @@ msgstr ""
 msgid "Copper"
 msgstr "Cuivre"
 
-#: crates/core/src/commands.rs:1896
+#: crates/core/src/commands.rs:1901
 msgid "Copy"
 msgstr "Copie"
 
@@ -111,7 +111,7 @@ msgstr "Nombre"
 msgid "Crosshatch"
 msgstr "Hachures croisées"
 
-#: crates/core/src/render.rs:4632
+#: crates/core/src/render.rs:4640
 msgid "DN"
 msgstr "DESCEND"
 
@@ -132,7 +132,7 @@ msgstr "Prise de données"
 msgid "Demand Factor"
 msgstr ""
 
-#: crates/core/src/commands.rs:13093
+#: crates/core/src/commands.rs:13136
 msgid "Dependent"
 msgstr "Dépendant"
 
@@ -217,9 +217,9 @@ msgstr "Éclairage électrique"
 msgid "Electrical Power"
 msgstr "Alimentation électrique"
 
-#: crates/core/src/commands.rs:12840
-#: crates/core/src/commands.rs:12855
-#: crates/core/src/commands.rs:17277
+#: crates/core/src/commands.rs:12883
+#: crates/core/src/commands.rs:12898
+#: crates/core/src/commands.rs:17320
 msgid "Elevation"
 msgstr "Élévation"
 
@@ -281,7 +281,7 @@ msgid "Gate Valve"
 msgstr "Vanne à opercule"
 
 #: crates/core/src/family.rs:3429
-#: crates/core/src/view3d.rs:1313
+#: crates/core/src/view3d.rs:1322
 msgid "Glass"
 msgstr "Verre"
 
@@ -321,7 +321,7 @@ msgstr "Horizontal"
 msgid "Inspection Box"
 msgstr "Regard de visite"
 
-#: crates/core/src/import.rs:1693
+#: crates/core/src/import.rs:1694
 msgid "Insulation"
 msgstr "Isolant"
 
@@ -349,7 +349,7 @@ msgstr "Largeur du pied"
 msgid "Length"
 msgstr "Longueur"
 
-#: crates/core/src/commands.rs:7916
+#: crates/core/src/commands.rs:7959
 #: crates/core/src/model.rs:3722
 msgid "Level"
 msgstr "Niveau"
@@ -390,7 +390,7 @@ msgstr "Repère"
 msgid "Masking"
 msgstr "Masque"
 
-#: crates/core/src/commands.rs:10375
+#: crates/core/src/commands.rs:10418
 msgid "Mass"
 msgstr "Volume"
 
@@ -402,14 +402,14 @@ msgstr ""
 msgid "Medium Lines"
 msgstr "Lignes moyennes"
 
-#: crates/core/src/import.rs:1696
+#: crates/core/src/import.rs:1697
 msgid "Membrane"
 msgstr "Membrane"
 
-#: crates/core/src/commands.rs:3525
-#: crates/core/src/commands.rs:15883
+#: crates/core/src/commands.rs:3530
+#: crates/core/src/commands.rs:15926
 #: crates/core/src/family.rs:3429
-#: crates/core/src/model.rs:5050
+#: crates/core/src/model.rs:5184
 msgid "Metal"
 msgstr "Métal"
 
@@ -417,7 +417,7 @@ msgstr "Métal"
 msgid "Mounting Height"
 msgstr "Hauteur de pose"
 
-#: crates/core/src/render.rs:3494
+#: crates/core/src/render.rs:3502
 msgid "NOT ENCLOSED"
 msgstr "NON DÉLIMITÉE"
 
@@ -503,15 +503,15 @@ msgstr "Porcelaine"
 msgid "Profile"
 msgstr ""
 
-#: crates/core/src/commands.rs:3802
+#: crates/core/src/commands.rs:3793
 msgid "Project"
 msgstr "Projet"
 
-#: crates/core/src/commands.rs:8644
+#: crates/core/src/commands.rs:8687
 msgid "Property Line"
 msgstr ""
 
-#: crates/core/src/render.rs:3494
+#: crates/core/src/render.rs:3502
 msgid "REDUNDANT"
 msgstr "REDONDANTE"
 
@@ -539,7 +539,7 @@ msgstr ""
 msgid "Roof tiles"
 msgstr "Tuiles"
 
-#: crates/core/src/commands.rs:10600
+#: crates/core/src/commands.rs:10643
 msgid "Room"
 msgstr "Pièce"
 
@@ -575,8 +575,8 @@ msgstr "Chape"
 msgid "Seat Height"
 msgstr "Hauteur assise"
 
-#: crates/core/src/commands.rs:12775
-#: crates/core/src/commands.rs:17276
+#: crates/core/src/commands.rs:12818
+#: crates/core/src/commands.rs:17319
 msgid "Section"
 msgstr "Coupe"
 
@@ -734,7 +734,7 @@ msgstr ""
 msgid "Type"
 msgstr "Type"
 
-#: crates/core/src/render.rs:4632
+#: crates/core/src/render.rs:4640
 msgid "UP"
 msgstr "MONTE"
 
@@ -746,7 +746,7 @@ msgstr "Hauteur non délimitée"
 msgid "Unclassified"
 msgstr ""
 
-#: crates/core/src/commands.rs:13264
+#: crates/core/src/commands.rs:13307
 msgid "Unnamed"
 msgstr "Sans nom"
 
@@ -775,7 +775,7 @@ msgstr "Volume"
 msgid "WC"
 msgstr "WC"
 
-#: crates/core/src/commands.rs:360
+#: crates/core/src/commands.rs:365
 msgid "Wall"
 msgstr "Mur"
 

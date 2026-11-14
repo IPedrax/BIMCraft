@@ -262,10 +262,14 @@ impl Host {
         Mailer(Arc::clone(&self.shared))
     }
 
-    /// Sends `msg` to every guest but `except`.
+    /// Sends a message already packed ([`wire::packed`]) to one guest: one packed for several, which share it.
+    pub(crate) fn send_packed(&self, peer: u32, bytes: Arc<[u8]>) -> bool {
+        lock(&self.shared.peers).iter().find(|p| p.person.id == peer).is_some_and(|p| Shared::queue(p, Out::Frame(bytes)))
+    }
+
+    /// Sends `msg` to every guest but `except`, packed once for all of them.
     pub fn broadcast(&self, msg: &Value, except: Option<u32>) {
-        let bytes = msg.to_string().into_bytes();
-        let bytes: Arc<[u8]> = bytes.into();
+        let bytes = wire::packed(msg);
         for p in lock(&self.shared.peers).iter().filter(|p| Some(p.person.id) != except) {
             Shared::queue(p, Out::Frame(Arc::clone(&bytes)));
         }
@@ -433,8 +437,8 @@ fn serve(mut s: TcpStream, shared: &Shared, joined: &mut Option<u32>) -> io::Res
     let colour = (1..).find(|c| peers.iter().all(|p| p.person.colour != *c)).unwrap_or(0);
     let person = Person { id: shared.next.fetch_add(1, Ordering::SeqCst), name: name.clone(), colour };
     let (tx, rx) = sync_channel(QUEUE);
-    let (w, ping) = (s.try_clone()?, timing.ping);
-    let writer = std::thread::Builder::new().name("cowork-writer".into()).spawn(move || wire::writer(w, t.send, rx, ping))?;
+    let (w, ping, frame) = (s.try_clone()?, timing.ping, timing.frame);
+    let writer = std::thread::Builder::new().name("cowork-writer".into()).spawn(move || wire::writer(w, t.send, rx, ping, frame))?;
     peers.push(Peer { person: person.clone(), ip, tx: tx.clone(), stream: s.try_clone()?, writer: Some(writer) });
     drop(peers);
     let id = person.id;

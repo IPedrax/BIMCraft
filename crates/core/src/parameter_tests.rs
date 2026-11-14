@@ -147,7 +147,7 @@ fn renaming_a_parameter_reaches_tags_formulas_and_files() {
     // A tag's label is the parameter's GUID in a file, and its name again when read.
     let text = s.model.to_json().unwrap();
     let guid = s.model.library.guid(&Kind::Parameter, "Dado").unwrap().to_string();
-    assert!(text.contains(&format!("\"label\": \"{guid}\"")), "by GUID in a file");
+    assert!(text.contains(&format!("\"label\":\"{guid}\"")), "by GUID in a file");
     let (back, _) = crate::model::Model::read(&text).unwrap();
     let Some(Element::Tag(t)) = back.elements.get(tag) else { panic!() };
     assert_eq!(t.label.as_deref(), Some("Dado"));
@@ -168,7 +168,7 @@ fn the_new_kinds_hold_their_values_and_go_through_a_file_and_ifc() {
 
     let ifc = file("kinds.ifc");
     run(&mut s, "save", json!({"path": ifc}));
-    let text = std::fs::read_to_string(&ifc).unwrap();
+    let text = crate::bimc::read_to_string(&ifc).unwrap();
     for needle in ["IFCINTEGER(3)", "IFCAREAMEASURE(12.5", "IFCVOLUMEMEASURE(2", "IFCPLANEANGLEMEASURE(0.5235"] {
         assert!(text.contains(needle), "{needle}");
     }
@@ -338,8 +338,8 @@ fn a_dictionary_is_made_shared_followed_and_opened_without_its_file() {
 
     // The project opens with the dictionary gone, and its name goes by GUID in the file.
     let saved_at = saved(&mut s, "p.bimcraft");
-    let text = std::fs::read_to_string(&saved_at).unwrap();
-    assert!(text.contains(&format!("\"dictionary\": \"{}\"", dict_guid.unwrap())), "by GUID in a file");
+    let text = crate::bimc::read_to_string(&saved_at).unwrap();
+    assert!(text.contains(&format!("\"dictionary\":\"{}\"", dict_guid.unwrap())), "by GUID in a file");
     let moved = file("elsewhere.bimparams");
     std::fs::rename(&path, &moved).unwrap();
     let mut opened = Session::new();
@@ -347,7 +347,7 @@ fn a_dictionary_is_made_shared_followed_and_opened_without_its_file() {
     assert_eq!(opened.model.parameters["Cost"].dictionary.as_deref(), Some("office"));
 
     // A new version: nothing changes until it's imported, then a rename and a new description follow, by GUID.
-    let d: Value = serde_json::from_str(&std::fs::read_to_string(&moved).unwrap()).unwrap();
+    let d: Value = serde_json::from_str(&crate::bimc::read_to_string(&moved).unwrap()).unwrap();
     let cost = d["parameters"].as_array().unwrap().iter().find(|p| p["name"] == "Cost").unwrap()["guid"].clone();
     run(
         &mut opened,
@@ -701,7 +701,7 @@ fn a_type_parameter_goes_out_in_ifc_on_each_element_of_the_type() {
     typed(&mut s, "A", json!("EI60"));
     let path = file("typed.ifc");
     run(&mut s, "save", json!({"path": path}));
-    let text = std::fs::read_to_string(&path).unwrap();
+    let text = crate::bimc::read_to_string(&path).unwrap();
     assert!(text.contains("IFCPROPERTYSINGLEVALUE('Rating',$,IFCTEXT('EI60'),$)"), "its value, in the property set");
 }
 
@@ -775,7 +775,7 @@ fn hidden_and_hide_when_empty_are_gone_and_editable_stays() {
     assert!(s.model.parameters["Rating"].read_only);
     let path = file("columns.csv");
     run(&mut s, "parameter_export", json!({"path": path}));
-    let text = std::fs::read_to_string(&path).unwrap();
+    let text = crate::bimc::read_to_string(&path).unwrap();
     let head = text.lines().next().unwrap();
     assert!(head.contains("Instance/Type") && head.contains("User Modifiable"), "{head}");
     assert!(!head.contains("Visible") && !head.contains("Hide"), "{head}");

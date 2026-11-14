@@ -39,12 +39,12 @@ fn ctrl_p_opens_the_export_dialog_on_the_plan_and_export_writes_the_pdf_on_a_thr
     // As tall as its form, not the window: the button sits under the form, not at the screen's foot.
     let (top, bottom) = (h.get_by_label("Format").rect().top(), h.get_by_label("Export…").rect().bottom());
     assert!(bottom - top < 600.0, "the dialog is {} tall", bottom - top);
-    h.get_by_role_and_label(Role::RadioButton, "Fit to page").click();
+    h.get_by_role_and_label(Role::RadioButton, "Fit to page").click_accesskit();
     h.step();
     assert_eq!(h.state().export_dialog.as_ref().unwrap().options.page.scale, bimcraft_core::export::page::Scale::Fit);
     let dir = tempfile::tempdir().unwrap();
     let file = dir.path().join("plan {1}.pdf");
-    h.get_by_label("Export…").click();
+    h.get_by_label("Export…").click_accesskit();
     h.step();
     assert!(h.state().export_dialog.is_none(), "Export… closes the dialog and asks where");
     let tx = crate::dialog::BEGUN.with(|b| b.borrow_mut().pop()).expect("a file dialog was begun");
