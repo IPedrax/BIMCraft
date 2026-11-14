@@ -239,71 +239,99 @@ impl BimApp {
         }
     }
 
-    /// The family document's two-letter keys: HH, HC, HI, IC and HR, or what Keyboard Shortcuts made them.
+    /// The family document's two-letter keys, typed with Ctrl held as the project's are: HH, HC, HI, IC and HR, or what
+    /// Keyboard Shortcuts made them. (The document's own Ctrl keys, S, K and a sketch's Z, are taken before these.)
     pub(super) fn family_typed(&mut self, ctx: &Context) {
-        let typed: String = ctx.input(|i| {
-            i.events
-                .iter()
-                .filter_map(|e| match e {
-                    egui::Event::Text(t) => Some(t.as_str()),
-                    _ => None,
-                })
-                .collect()
-        });
-        for ch in typed.chars().filter(char::is_ascii_alphanumeric) {
-            self.typed.push(ch.to_ascii_uppercase());
-            if self.typed.len() > 2 {
-                self.typed.remove(0);
-            }
+        for ch in crate::ctrl_letters(ctx) {
+            self.typed.push(ch);
+            self.typed_at = ctx.input(|i| i.time);
             if self.typed.len() < 2 {
                 continue;
             }
-            let action = match self.custom_shortcuts.get(&self.typed) {
-                Some(action) => Some(action.as_str()),
-                None => crate::SHORTCUTS.iter().find(|(k, _)| *k == self.typed).map(|(_, a)| *a),
-            };
-            // Reference Plane, in a family's plan or elevation (F4): the family document's own.
-            if self.typed == "RP"
-                && let Some(ed) = super::tabs::active_in(&mut self.families, self.sheet)
-                && ed.editing_2d()
-            {
-                self.typed.clear();
-                ed.reference_plane_tool();
-                continue;
-            }
-            // Trim/Extend to Corner while a form is sketched (F10a).
-            if self.typed == "TR"
-                && let Some(ed) = super::tabs::active_in(&mut self.families, self.sheet)
-                && let Some(s) = ed.sketch.as_mut()
-            {
-                s.trim_tool();
-                ed.views.aligning = None;
+            if self.family_shortcut() {
                 self.typed.clear();
                 continue;
             }
-            // Aligned Dimension and Align there too (F7).
-            if matches!(self.typed.as_str(), "DI" | "AL")
-                && let Some(ed) = super::tabs::active_in(&mut self.families, self.sheet)
-                && ed.editing_2d()
-            {
-                if self.typed == "DI" {
-                    ed.dimension_tool();
-                } else {
-                    ed.align_tool();
+            // Not a shortcut: the first does its own job as a Ctrl key, and the second waits in its place.
+            let first = self.typed.remove(0);
+            self.family_ctrl_key(first);
+        }
+        // A letter left waiting does its own job once Ctrl is let go, or after the wait with Ctrl still held.
+        if self.typed.len() == 1 {
+            let (held, now) = ctx.input(|i| (i.modifiers.command, i.time));
+            let left = crate::CTRL_WAIT - (now - self.typed_at);
+            if held && left > 0.0 {
+                ctx.request_repaint_after(std::time::Duration::from_secs_f64(left));
+            } else {
+                let letter = self.typed.remove(0);
+                self.family_ctrl_key(letter);
+            }
+        }
+    }
+
+    /// Whether the two letters in `typed` are one of the family document's shortcuts, which it then does.
+    fn family_shortcut(&mut self) -> bool {
+        let action = match self.custom_shortcuts.get(&self.typed) {
+            Some(action) => Some(action.as_str()),
+            None => crate::SHORTCUTS.iter().find(|(k, _)| *k == self.typed).map(|(_, a)| *a),
+        };
+        // Reference Plane, in a family's plan or elevation (F4): the family document's own.
+        if self.typed == "RP"
+            && let Some(ed) = super::tabs::active_in(&mut self.families, self.sheet)
+            && ed.editing_2d()
+        {
+            ed.reference_plane_tool();
+            return true;
+        }
+        // Trim/Extend to Corner while a form is sketched (F10a).
+        if self.typed == "TR"
+            && let Some(ed) = super::tabs::active_in(&mut self.families, self.sheet)
+            && let Some(s) = ed.sketch.as_mut()
+        {
+            s.trim_tool();
+            ed.views.aligning = None;
+            return true;
+        }
+        // Aligned Dimension and Align there too (F7).
+        if matches!(self.typed.as_str(), "DI" | "AL")
+            && let Some(ed) = super::tabs::active_in(&mut self.families, self.sheet)
+            && ed.editing_2d()
+        {
+            if self.typed == "DI" {
+                ed.dimension_tool();
+            } else {
+                ed.align_tool();
+            }
+            return true;
+        }
+        let asked = match action {
+            Some("Temporary Hide Element") => Asked::Hide { category: false },
+            Some("Temporary Hide Category") => Asked::Hide { category: true },
+            Some("Temporary Isolate Element") => Asked::Isolate { category: false },
+            Some("Temporary Isolate Category") => Asked::Isolate { category: true },
+            Some("Reset Temporary Hide/Isolate") => Asked::Reset,
+            _ => return false,
+        };
+        self.family_temp(asked);
+        true
+    }
+
+    /// What a letter typed with Ctrl does on its own in a family document: S saves it, K finds a command, Z undoes (a sketch's
+    /// last change while sketching; the document's history waits for Finish), Y redoes.
+    fn family_ctrl_key(&mut self, letter: char) {
+        match letter {
+            'S' => self.family_save(false),
+            'K' => self.find = Some(String::new()),
+            'Z' | 'Y' => {
+                let Some(ed) = self.active_family_mut() else { return };
+                match (letter, ed.sketch.is_some()) {
+                    ('Z', true) => ed.undo_sketch(),
+                    ('Z', false) => ed.ask.undo = true,
+                    ('Y', false) => ed.ask.redo = true,
+                    _ => {}
                 }
-                self.typed.clear();
-                continue;
             }
-            let asked = match action {
-                Some("Temporary Hide Element") => Asked::Hide { category: false },
-                Some("Temporary Hide Category") => Asked::Hide { category: true },
-                Some("Temporary Isolate Element") => Asked::Isolate { category: false },
-                Some("Temporary Isolate Category") => Asked::Isolate { category: true },
-                Some("Reset Temporary Hide/Isolate") => Asked::Reset,
-                _ => continue,
-            };
-            self.typed.clear();
-            self.family_temp(asked);
+            _ => {}
         }
     }
 }

@@ -581,6 +581,31 @@ impl BimApp {
                     }
                 });
                 ui.end_row();
+                // A plan's north: project north up, or true north, the plan turned on screen by the angle to it.
+                if matches!(self.sheet, Sheet::Plan(_) | Sheet::Ceiling(_)) {
+                    use bimcraft_core::graphics::Orientation;
+                    let label = ui.label(t("Orientation"));
+                    let name = |o: Orientation| match o {
+                        Orientation::ProjectNorth => t("Project North"),
+                        Orientation::TrueNorth => t("True North"),
+                    };
+                    let mut now = own.orientation;
+                    egui::ComboBox::from_id_salt("view-orientation")
+                        .selected_text(name(now))
+                        .width(ui.available_width())
+                        .show_ui(ui, |ui| {
+                            for o in [Orientation::ProjectNorth, Orientation::TrueNorth] {
+                                ui.selectable_value(&mut now, o, name(o));
+                            }
+                        })
+                        .response
+                        .labelled_by(label.id);
+                    if now != own.orientation {
+                        let o = if now == Orientation::TrueNorth { "true_north" } else { "project_north" };
+                        set = Some(("graphics", json!({"view": view, "orientation": o})));
+                    }
+                    ui.end_row();
+                }
             } else if self.sheet == Sheet::View3D {
                 let note = controlled(Group::Style);
                 let label = ui.label(t("Visual Style"));

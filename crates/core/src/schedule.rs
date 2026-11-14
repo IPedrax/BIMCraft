@@ -218,6 +218,10 @@ const WEIGHT: Own = (msg!("Weight"), Kind::Number, From::Key("weight_kg"));
 const ROOM_NUMBER: Own = (msg!("Room Number"), Kind::Text, From::Key("room_number"));
 const ROOM_NAME: Own = (msg!("Room Name"), Kind::Text, From::Key("room_name"));
 const VOLUME: Own = (msg!("Volume"), Kind::Number, From::Key("volume_m3"));
+/// Where it stands in the active location's shared coordinates: its point, at its base.
+const SHARED_EAST: Own = (msg!("Shared East"), Kind::Length, From::Key("shared_east"));
+const SHARED_NORTH: Own = (msg!("Shared North"), Kind::Length, From::Key("shared_north"));
+const SHARED_ELEVATION: Own = (msg!("Shared Elevation"), Kind::Length, From::Key("shared_elevation"));
 
 /// A multi-category schedule's category: a row for each element of the categories it lists (`Schedule::categories`),
 /// or of every built one (`built`) where it lists none.
@@ -338,6 +342,9 @@ const OWN: &[(&str, usize, &[Own])] = &[
             PHASE_CREATED,
             PHASE_DEMOLISHED,
             DESIGN_OPTION,
+            SHARED_EAST,
+            SHARED_NORTH,
+            SHARED_ELEVATION,
         ],
     ),
     (
@@ -358,6 +365,9 @@ const OWN: &[(&str, usize, &[Own])] = &[
             SECTION_AREA,
             WEIGHT_PER_METRE,
             WEIGHT,
+            SHARED_EAST,
+            SHARED_NORTH,
+            SHARED_ELEVATION,
         ],
     ),
     (
@@ -374,6 +384,9 @@ const OWN: &[(&str, usize, &[Own])] = &[
             PHASE_CREATED,
             PHASE_DEMOLISHED,
             DESIGN_OPTION,
+            SHARED_EAST,
+            SHARED_NORTH,
+            SHARED_ELEVATION,
         ],
     ),
     (
@@ -521,6 +534,9 @@ const OWN: &[(&str, usize, &[Own])] = &[
             ("Mains", Kind::Number, From::Key("mains")),
             ("Max #1 Pole Breakers", Kind::Number, From::Key("slots")),
             ("Supply From", Kind::Number, From::Ref("supply_from")),
+            SHARED_EAST,
+            SHARED_NORTH,
+            SHARED_ELEVATION,
         ],
     ),
     (
@@ -584,7 +600,7 @@ const OWN: &[(&str, usize, &[Own])] = &[
         5,
         &[("Mass", Kind::Text, From::Key("mass")), LEVEL, AREA, ("Perimeter", Kind::Length, From::Metres("perimeter_m")), VOLUME, COUNT],
     ),
-    ("level", 2, &[("Elevation", Kind::Length, From::Key("elevation")), NAME, COUNT]),
+    ("level", 2, &[("Elevation", Kind::Length, From::Key("elevation_shown")), NAME, COUNT]),
     ("sheet", 2, &[("Number", Kind::Text, From::Key("number")), NAME]),
 ];
 
@@ -1356,6 +1372,18 @@ pub fn to_csv(t: &Table) -> String {
 /// The table as a workbook of one sheet named `name`: its headings (in metric) in bold, its rows, then its totals. Numbers
 /// go in as numbers, so the spreadsheet sums them; text as text, never a formula.
 pub fn to_xlsx(t: &Table, name: &str) -> Vec<u8> {
+    let (headings, rows) = cells(t);
+    crate::xlsx::workbook(name, &headings, &rows)
+}
+
+/// The table as an OpenDocument spreadsheet (`.ods`) of one sheet named `name`, as [`to_xlsx`] writes it.
+pub fn to_ods(t: &Table, name: &str) -> Vec<u8> {
+    let (headings, rows) = cells(t);
+    crate::ods::spreadsheet(name, &headings, &rows)
+}
+
+/// The table's headings, and its rows and totals as a spreadsheet's cells: numbers as numbers, in millimetres.
+fn cells(t: &Table) -> (Vec<String>, Vec<Vec<crate::xlsx::Cell>>) {
     use crate::xlsx::Cell;
     let headings: Vec<String> = t.columns.iter().map(|c| heading(Units::Millimetres, c)).collect();
     let rows: Vec<Vec<Cell>> = t
@@ -1372,7 +1400,7 @@ pub fn to_xlsx(t: &Table, name: &str) -> Vec<u8> {
                 .collect()
         })
         .collect();
-    crate::xlsx::workbook(name, &headings, &rows)
+    (headings, rows)
 }
 
 #[cfg(test)]

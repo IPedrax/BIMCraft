@@ -125,7 +125,7 @@ fn a_steel_column_is_cut_in_plan_as_its_section_and_a_tube_shows_its_hole() {
     );
     let c = made(&mut s, "structural_column", json!({"at": [0, 0], "type": "IPE 550"}));
     made(&mut s, "structural_column", json!({"at": [1000, 0], "type": "RHS 200x100x8"}));
-    let d = render::draw(&s.model, 100000, View { scale: 1.0, cx: 500.0, cy: 0.0, width: 1400, height: 800 });
+    let d = render::draw(&s.model, 100000, View { angle: 0.0, scale: 1.0, cx: 500.0, cy: 0.0, width: 1400, height: 800 });
     // The flanges along east, 210 wide, 17.2 thick at the ends of its 550 depth; the web up the middle.
     assert_ne!(pixel(&d, P2(60.0, 266.0)), PAPER, "the north flange is cut");
     assert_ne!(pixel(&d, P2(-60.0, -266.0)), PAPER, "the south flange is cut");
@@ -157,7 +157,7 @@ fn a_section_cuts_a_steel_beam_as_its_i() {
     // Hung under 3000: its top flange's top at 3000, 300 deep.
     let beam = made(&mut s, "beam", json!({"points": [[0, 0], [6000, 0]], "type": "IPE 300", "offset": 3000}));
     let section = made(&mut s, "section", json!({"start": [3000, -2000], "end": [3000, 2000]}));
-    let d = render::section(&s.model, section, View { scale: 1.0, cx: 2000.0, cy: 2850.0, width: 600, height: 600 });
+    let d = render::section(&s.model, section, View { angle: 0.0, scale: 1.0, cx: 2000.0, cy: 2850.0, width: 600, height: 600 });
     assert!(d.owners.contains(&Some(beam)));
     // Across the line at 2000 along it; the flanges 150 wide and 10.7 thick, the web 7.1.
     assert_ne!(pixel(&d, P2(2000.0, 2850.0)), PAPER, "the web");
@@ -179,7 +179,7 @@ fn a_section_cuts_a_t_with_its_flange_on_top_and_one_turned_over_with_it_below()
     made(&mut s, "beam", json!({"points": [[0, -1000], [6000, -1000]], "type": "T", "offset": 3000}));
     made(&mut s, "beam", json!({"points": [[0, 1000], [6000, 1000]], "type": "Inverted T", "offset": 3000}));
     let section = made(&mut s, "section", json!({"start": [3000, -2000], "end": [3000, 2000]}));
-    let d = render::section(&s.model, section, View { scale: 0.1, cx: 2000.0, cy: 2500.0, width: 600, height: 300 });
+    let d = render::section(&s.model, section, View { angle: 0.0, scale: 0.1, cx: 2000.0, cy: 2500.0, width: 600, height: 300 });
     assert_ne!(pixel(&d, P2(400.0, 2750.0)), PAPER, "the T's flange, on top");
     assert_ne!(pixel(&d, P2(1000.0, 2250.0)), PAPER, "the T's web");
     assert_eq!(pixel(&d, P2(400.0, 2250.0)), PAPER, "beside the T's web");

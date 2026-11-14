@@ -18,6 +18,8 @@ rvt = ["dep:bimcraft-rvt"]
 dwg = ["dep:bimcraft-dwg"]
 
 [dependencies]
+cap = { workspace = true }
+sysinfo = { workspace = true }
 bimcraft-core = { workspace = true }
 bimcraft-plugin = { workspace = true }
 bimcraft-rvt = { workspace = true, optional = true }

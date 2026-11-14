@@ -735,7 +735,8 @@ pub fn preview(m: &Model, tb: &TitleBlock, values: &BTreeMap<String, String>) ->
     let density = crate::sheet::DENSITY * (MAX_SIZE / extent.0.max(extent.1)).min(1.0);
     let side = |mm: f64| ((mm + 2.0 * ROOM) * density).ceil() as u32;
     let center = (high + low) * 0.5;
-    let view = crate::render::View { scale: density, cx: center.0, cy: center.1, width: side(extent.0), height: side(extent.1) };
+    let view =
+        crate::render::View { angle: 0.0, scale: density, cx: center.0, cy: center.1, width: side(extent.0), height: side(extent.1) };
     let mut d = Drawing::new(view);
     d.weights = m.line_weights().at(m.units.default_scale());
     draw(&mut d, tb, P2(0.0, 0.0), values);
