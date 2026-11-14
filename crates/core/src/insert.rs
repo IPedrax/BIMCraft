@@ -446,6 +446,7 @@ fn copy_definition(to: &mut Model, from: &Model, kind: &Kind, name: &str) -> boo
             "footing" => one(&mut t.footing, Some(&f.footing), name),
             "railing" => one(&mut t.railing, Some(&f.railing), name),
             "room" => one(&mut t.room, Some(&f.room), name),
+            "stair" => one(&mut t.stair, Some(&f.stair), name),
             run => one(t.runs.entry(run.to_string()).or_default(), f.runs.get(run), name),
         },
         Kind::Material => one(&mut to.materials, Some(&from.materials), name),

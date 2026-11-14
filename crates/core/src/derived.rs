@@ -153,6 +153,9 @@ pub const RARE: &[&str] = &[
     "schedule",
     "panelschedule",
     "view3d",
+    "stair",
+    // A storey's ceilings, which a stair's headroom is measured to.
+    "ceiling",
 ];
 
 /// The categories of a drawing set: views, sheets and what places a view on a sheet. Their names and numbers are kept

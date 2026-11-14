@@ -91,3 +91,22 @@ impl BimApp {
         self.edit_type();
     }
 }
+
+#[test]
+fn a_stair_type_shows_its_model_then_its_graphics_and_only_the_sizes_its_construction_uses() {
+    let mut h = app(r#"stair {"start": [0, 0], "angle": 0, "type": "Monolithic 150mm"}"#);
+    let of = ids(&h, "stair")[0];
+    h.state_mut().select_and_edit_type(of);
+    h.run();
+    for label in ["Model", "Graphics", "Slab Thickness", "Walk Line Arrow", "Cut Mark", "Finish Edge Profile"] {
+        assert!(h.query_by_label(label).is_some(), "no `{label}`");
+    }
+    // A monolithic stair has no stringers to size.
+    assert!(h.query_by_label("Stringer Width").is_none());
+    h.state_mut().type_dialog.as_mut().unwrap().set_construction("stringers");
+    h.run();
+    assert!(h.query_by_label("Stringer Width").is_some() && h.query_by_label("Slab Thickness").is_none());
+    press(&mut h, "OK");
+    let m = &h.state().session.model;
+    assert_eq!(m.types.stair["Monolithic 150mm"].built(), bimcraft_core::model::Construction::Stringers);
+}

@@ -354,11 +354,24 @@ fn rows(category: &str) -> &'static [Row] {
             ("Constraints", "level", "Base Level", Level),
             ("Constraints", "top_level", "Top Level", TopLevel),
             ("Constraints", "height", "Unconnected Height", Height),
+            ("Constraints", "base_offset", msg!("Base Offset"), Length),
+            ("Constraints", "top_offset", msg!("Top Offset"), Length),
+            (
+                "Constraints",
+                "line",
+                msg!("Location Line"),
+                Choice(&[("left", "Run: Left"), ("centre", "Run: Center"), ("right", "Run: Right")]),
+            ),
+            ("Constraints", "offset", msg!("Location Line Offset"), Length),
+            ("Constraints", "multistorey", msg!("Multistorey"), Flag),
+            ("Dimensions", "lock_going", msg!("Lock Tread Depth"), Flag),
             ("Dimensions", "width", msg!("Actual Run Width"), Length),
+            ("Dimensions", "spiral.radius", msg!("Spiral Radius"), LengthIf),
             ("Dimensions", "riser", msg!("Maximum Riser Height"), Length),
             ("Dimensions", "tread", msg!("Actual Tread Depth"), Length),
             ("Dimensions", "risers", msg!("Actual Number of Risers"), Shown),
             ("Dimensions", "riser_height", msg!("Actual Riser Height"), LengthShown),
+            ("Dimensions", "code_check", msg!("Building Code"), Shown),
             ("Other", "start", "Start", Point),
         ],
         "ramp" => &[
@@ -539,6 +552,7 @@ fn type_json<'a>(types: &'a Value, category: &str, name: &str) -> &'a Value {
 fn type_rows(category: &str) -> &'static [(&'static str, &'static str, &'static str)] {
     const C: &str = msg!("Construction");
     const D: &str = msg!("Dimensions");
+    const F: &str = msg!("Finishes");
     match category {
         "wall" => &[(C, "thickness", msg!("Width"))],
         "floor" => &[(C, "thickness", msg!("Default Thickness"))],
@@ -549,6 +563,21 @@ fn type_rows(category: &str) -> &'static [(&'static str, &'static str, &'static 
         "roof" => &[(C, "thickness", msg!("Thickness"))],
         "ceiling" => &[(C, "thickness", msg!("Thickness")), (C, "grid", msg!("Tile Size"))],
         "railing" => &[(C, "height", msg!("Height")), (C, "spacing", msg!("Baluster Spacing"))],
+        "stair" => &[
+            (C, "waist", msg!("Monolithic Slab Thickness")),
+            (C, "tread_thickness", msg!("Tread Thickness")),
+            (C, "riser_thickness", msg!("Riser Thickness")),
+            (C, "nosing", msg!("Nosing Length")),
+            (C, "stringer_width", msg!("Stringer Width")),
+            (C, "stringer_depth", msg!("Stringer Depth")),
+            (C, "carriage_width", msg!("Middle Stringer Width")),
+            (C, "carriage_depth", msg!("Middle Stringer Depth")),
+            (C, "post", msg!("Spiral Post Diameter")),
+            (F, "tread_cover", msg!("Tread Cover Thickness")),
+            (F, "riser_cover", msg!("Riser Cover Thickness")),
+            (F, "cover_nosing", msg!("Cover Nosing")),
+            (F, "cover_side", msg!("Cover Side Overhang")),
+        ],
         _ => &[],
     }
 }
@@ -871,7 +900,7 @@ fn function_name(f: Function) -> &'static str {
 }
 
 /// A type's parameter as typed: its group, its field, its label, the text.
-type TypeField = (&'static str, &'static str, &'static str, String);
+pub(crate) type TypeField = (&'static str, &'static str, &'static str, String);
 
 /// A type's value of one of the project's type parameters, as typed.
 #[derive(Clone, Debug, PartialEq)]
@@ -1007,6 +1036,8 @@ pub(crate) struct TypeDialog {
     pub(crate) room: Option<RoomRows>,
     /// The type's values of the project's type parameters, as typed.
     project: Vec<TypeValue>,
+    /// A stair type's rules and how its stairs show in plan.
+    stair: Option<crate::stairtype::StairDraft>,
 }
 
 /// A room type's parameters, as picked and typed: the floor type and the ceiling type its rooms have of their own ("" for
@@ -1112,6 +1143,7 @@ impl TypeDialog {
         });
         let name_of = name.clone();
         let project = type_values(m, category, m.library.guid(&LibKind::Type(category.to_string()), &name));
+        let stair = (category == "stair").then(|| crate::stairtype::StairDraft::new(m, &name_of));
         TypeDialog {
             category,
             name,
@@ -1124,6 +1156,15 @@ impl TypeDialog {
             shape,
             room: (category == "room").then(|| RoomRows::new(m, &name_of)),
             project,
+            stair,
+        }
+    }
+
+    /// What a stair type is built as, as the core names it (in tests, as the drop-down would set it).
+    #[cfg(test)]
+    pub(crate) fn set_construction(&mut self, to: &str) {
+        if let Some(st) = &mut self.stair {
+            st.set_construction(to);
         }
     }
 
@@ -1135,7 +1176,12 @@ impl TypeDialog {
     /// A type's sizes, as typed: lengths in the project's units.
     fn fields(m: &Model, category: &str, name: &str) -> Vec<TypeField> {
         let types = serde_json::to_value(&m.types).unwrap_or_default();
-        type_rows(category).iter().map(|(g, k, l)| (*g, *k, *l, shown(Length, &type_json(&types, category, name)[k], m.units))).collect()
+        // A size the file leaves out (a finish of none) is 0.
+        let size = |k: &str| match &type_json(&types, category, name)[k] {
+            Value::Null => json!(0.0),
+            v => v.clone(),
+        };
+        type_rows(category).iter().map(|(g, k, l)| (*g, *k, *l, shown(Length, &size(k), m.units))).collect()
     }
 
     /// A layered type's layers, as typed: one structure layer as thick as it, without any.
@@ -1165,9 +1211,9 @@ impl TypeDialog {
             p["layers"] = Value::Array(layers.collect::<Result<_, String>>()?);
         }
         let round = self.shape.as_ref().is_some_and(|(round, _)| *round);
-        for (_, key, label, typed) in
-            self.fields.iter().filter(|(_, key, ..)| !(layered && *key == "thickness") && !(round && *key == "depth"))
-        {
+        for (_, key, label, typed) in self.fields.iter().filter(|(_, key, ..)| {
+            !(layered && *key == "thickness") && !(round && *key == "depth") && self.stair.as_ref().is_none_or(|s| s.used(key))
+        }) {
             p[*key] = json!(units.parse(typed).ok_or_else(|| tf("{}: `{}` is not a length", &[t(label), typed]))?);
         }
         if let Some((round, material)) = &self.shape {
@@ -1176,6 +1222,9 @@ impl TypeDialog {
         }
         if let Some(room) = &self.room {
             room.params(&mut p, units)?;
+        }
+        if let Some(stair) = &self.stair {
+            stair.params(&mut p, units)?;
         }
         Ok(p)
     }
@@ -1491,6 +1540,8 @@ impl BimApp {
         if !ids.is_empty() {
             self.parameters(ui, &model, &ids, rows);
             if let Subject::Element(id) = subject {
+                self.stair_turns(ui, &model, id);
+                self.stair_flights(ui, &model, id);
                 self.ties(ui, &model, id);
             }
             self.component_parameters(ui, &model, &ids);
@@ -1992,6 +2043,8 @@ impl BimApp {
         let mut crop = None;
         // An element a link was clicked for: the selection.
         let mut select = None;
+        // A stair's sign clicked: the rules it is outside of, in a window of their own.
+        let mut findings = false;
         let units = model.units;
         // A note on a sheet sits in paper mm.
         let paper = matches!(model.elements.get(id), Some(Element::Text(n)) if model.sheet(n.view).is_some());
@@ -2033,6 +2086,21 @@ impl BimApp {
                             let said = text(val);
                             let said = said.split_once(" : ").map_or(said.clone(), |(what, name)| format!("{} : {name}", t(what)));
                             ui.label(RichText::new(said).color(pal().muted));
+                        }
+                        // A stair outside its building code: how many rules, and a click lists them.
+                        Shown
+                            if key == "code_check"
+                                && ids.len() == 1
+                                && first["code_findings"].as_array().is_some_and(|f| !f.is_empty()) =>
+                        {
+                            let n = first["code_findings"].as_array().map_or(0, Vec::len);
+                            let said = if n == 1 { t("Outside 1 rule").to_string() } else { tf("Outside {} rules", &[&n.to_string()]) };
+                            let r = ui
+                                .add(Button::new(RichText::new(said).color(crate::codes::OUTSIDE)).small())
+                                .on_hover_text(t("Click to see which rules, and what would bring the stair inside them"));
+                            if r.clicked() {
+                                findings = true;
+                            }
                         }
                         Shown => {
                             let said = text(val);
@@ -2191,6 +2259,9 @@ impl BimApp {
         if let (Some(on), &[view]) = (crop, ids) {
             self.run("crop", if on { json!({"view": view}) } else { json!({"view": view, "region": null}) });
         }
+        if findings {
+            self.code_findings = Some(id);
+        }
         match change {
             Some((key, Ok(val))) => {
                 let mut p = nested(key, val);
@@ -2245,6 +2316,259 @@ impl BimApp {
         });
         if let Some(other) = select {
             self.selection = vec![other];
+        }
+    }
+
+    /// A stair drawn along a path, part by part from its foot: each flight and landing and how wide it is, the one picked
+    /// on its own on the canvas first. A width typed is that part's own; empty, it is as wide as the stair.
+    fn stair_flights(&mut self, ui: &mut Ui, model: &Model, id: Id) {
+        let Some(Element::Stair(st)) = model.elements.get(id) else { return };
+        if st.path.is_empty() {
+            return;
+        }
+        let group = msg!("Flights and Landings");
+        let open = !self.collapsed.contains(group);
+        if group_header(ui, t(group), open) && !self.collapsed.remove(group) {
+            self.collapsed.insert(group);
+        }
+        if !open {
+            return;
+        }
+        let parts = bimcraft_core::stairs::stair_parts(st);
+        let picked = self.canvas.stair_part.filter(|(s, _)| *s == id).map(|(_, i)| i);
+        // The one picked first, then the rest in order.
+        let mut order: Vec<usize> = (0..parts.len()).collect();
+        if let Some(i) = picked.filter(|i| *i < parts.len()) {
+            order.retain(|j| *j != i);
+            order.insert(0, i);
+        }
+        let units = model.units;
+        let mut path = st.path.clone();
+        let (mut changed, mut failed) = (false, None);
+        grid(ui, ("stair-flights", id), |ui| {
+            let (mut flights, mut landings) = (0, 0);
+            let names: Vec<String> = parts
+                .iter()
+                .map(|p| {
+                    if p.landing {
+                        landings += 1;
+                        tf("Landing {}", &[&landings.to_string()])
+                    } else {
+                        flights += 1;
+                        tf("Flight {}", &[&flights.to_string()])
+                    }
+                })
+                .collect();
+            for i in order {
+                let (Some(part), Some(name)) = (parts.get(i), names.get(i)) else { continue };
+                let label = RichText::new(name).strong();
+                ui.label(if picked == Some(i) { label.color(pal().accent) } else { label });
+                ui.end_row();
+                let own = path.get(part.segs.0).and_then(|s| s.width);
+                let name = ui.label(t("Width")).on_hover_text(t("How wide this flight or landing is; empty for as wide as the stair"));
+                let now = own.map_or(String::new(), |w| units.length(w));
+                if let Some(typed) = self.field(ui, id, &format!("part-{i}-width"), now, name.id, &units.length(st.width)) {
+                    let width = match (typed.trim().is_empty(), units.parse(&typed)) {
+                        (true, _) => Some(None),
+                        (_, Some(x)) if x > 0.0 => Some(Some(x)),
+                        _ => {
+                            failed = Some(tf("`{}` is not a length", &[typed.trim()]));
+                            None
+                        }
+                    };
+                    if let Some(w) = width {
+                        for seg in path.iter_mut().take(part.segs.1 + 1).skip(part.segs.0) {
+                            seg.width = w;
+                        }
+                        changed = true;
+                    }
+                }
+                ui.end_row();
+            }
+        });
+        if let Some(e) = failed {
+            self.status = Status { text: e, error: true };
+        } else if changed {
+            self.run("modify", json!({"id": id, "path": path}));
+        }
+    }
+
+    /// A stair's landings and turns, one after another going up: after how many risers, which way the next run goes,
+    /// whether the turn is winders and how many, and how long the landing is. A landing is added (where the longest run
+    /// is halved), taken away, or all of them placed as the building code asks.
+    fn stair_turns(&mut self, ui: &mut Ui, model: &Model, id: Id) {
+        use bimcraft_core::model::Landing;
+        let Some(Element::Stair(st)) = model.elements.get(id) else { return };
+        // A stair drawn along a path, by hand or as a spiral has its landings in what was drawn.
+        if !st.path.is_empty() || !st.sketch.is_empty() || st.spiral.is_some() {
+            return;
+        }
+        let group = msg!("Landings and Turns");
+        let open = !self.collapsed.contains(group);
+        if group_header(ui, t(group), open) && !self.collapsed.remove(group) {
+            self.collapsed.insert(group);
+        }
+        if !open {
+            return;
+        }
+        const TURNS: [(f64, &str); 5] =
+            [(0.0, "Straight On"), (90.0, "Left"), (-90.0, "Right"), (180.0, "Back, to the Left"), (-180.0, "Back, to the Right")];
+        let (n, each, _) = model.flight(st);
+        let rules = model.stair_rules();
+        let units = model.units;
+        let mut landings = st.landings.clone();
+        let mut changed = false;
+        let mut failed = None;
+        grid(ui, ("stair-turns", id), |ui| {
+            let mut gone = None;
+            for (i, l) in landings.iter_mut().enumerate() {
+                let nth = (i + 1).to_string();
+                ui.label(RichText::new(tf("Turn {}", &[&nth])).strong());
+                if ui.small_button(t("Remove")).on_hover_text(t("Take this landing away: the runs on its two sides become one")).clicked() {
+                    gone = Some(i);
+                }
+                ui.end_row();
+
+                let name = ui.label(t("After Risers"));
+                if let Some(typed) = self.field(ui, id, &format!("landing-{i}-at"), l.at.to_string(), name.id, "") {
+                    match number(&typed) {
+                        Some(x) => (l.at, changed) = (x.round(), true),
+                        None => failed = Some(tf("`{}` is not a number", &[&typed])),
+                    }
+                }
+                ui.end_row();
+
+                let name = ui.label(t("Next Run Goes"));
+                // A turn by an angle of its own reads as the angle, to the side it goes.
+                let own = if l.turn > 0.0 {
+                    tf("{}° to the Left", &[&l.turn.to_string()])
+                } else {
+                    tf("{}° to the Right", &[&(-l.turn).to_string()])
+                };
+                let now = TURNS.iter().find(|(a, _)| *a == l.turn).map_or(own, |(_, s)| t(s).to_string());
+                let options: Vec<String> = TURNS.iter().map(|(_, s)| t(s).to_string()).collect();
+                if let Some(picked) = combo(ui, (id, &format!("landing-{i}-turn")), name.id, &now, &options)
+                    && let Some((a, _)) = TURNS.iter().find(|(_, s)| t(s) == picked)
+                {
+                    l.turn = *a;
+                    if l.turn == 0.0 {
+                        (l.winders, l.balance) = (0, 0);
+                    }
+                    changed = true;
+                }
+                ui.end_row();
+
+                if l.turn != 0.0 && l.turn.abs() != 180.0 {
+                    let name = ui.label(t("Turn Angle")).on_hover_text(t("Degrees, 5 to 135: to the left, or with a minus to the right"));
+                    if let Some(typed) = self.field(ui, id, &format!("landing-{i}-angle"), l.turn.to_string(), name.id, "°") {
+                        match number(typed.trim().trim_end_matches('°')) {
+                            Some(x) => (l.turn, changed) = (x, true),
+                            None => failed = Some(tf("`{}` is not a number", &[&typed])),
+                        }
+                    }
+                    ui.end_row();
+                }
+                if l.turn != 0.0 {
+                    let name = ui.label(t("Winders")).on_hover_text(t("How many winder treads the turn is made of; 0 turns on a landing"));
+                    if let Some(typed) = self.field(ui, id, &format!("landing-{i}-winders"), l.winders.to_string(), name.id, "") {
+                        match typed.trim().parse::<u32>() {
+                            Ok(x) => {
+                                (l.winders, changed) = (x, true);
+                                if x == 0 {
+                                    l.balance = 0;
+                                }
+                            }
+                            Err(_) => failed = Some(tf("`{}` is not a number", &[&typed])),
+                        }
+                    }
+                    ui.end_row();
+                    if l.winders > 0 {
+                        let name = ui.label(t("Balanced Treads")).on_hover_text(t(
+                            "How many treads of the flight on each side the winders run into, so that none comes to a point; 0 fans them round the corner",
+                        ));
+                        if let Some(typed) = self.field(ui, id, &format!("landing-{i}-balance"), l.balance.to_string(), name.id, "") {
+                            match typed.trim().parse::<u32>() {
+                                Ok(x) => (l.balance, changed) = (x, true),
+                                Err(_) => failed = Some(tf("`{}` is not a number", &[&typed])),
+                            }
+                        }
+                        ui.end_row();
+                    } else {
+                        l.balance = 0;
+                    }
+                }
+                if l.winders == 0 && matches!(l.turn.abs(), 0.0 | 90.0 | 180.0) {
+                    let name = ui
+                        .label(t("Next Run Width"))
+                        .on_hover_text(t("How wide the run after this landing is; empty for as wide as the run before"));
+                    let now = if l.width > 0.0 { units.length(l.width) } else { String::new() };
+                    if let Some(typed) = self.field(ui, id, &format!("landing-{i}-width"), now, name.id, &units.length(st.width)) {
+                        match (typed.trim().is_empty(), units.parse(&typed)) {
+                            (true, _) => (l.width, changed) = (0.0, true),
+                            (_, Some(x)) => (l.width, changed) = (x, true),
+                            _ => failed = Some(tf("`{}` is not a length", &[typed.trim()])),
+                        }
+                    }
+                    ui.end_row();
+                } else {
+                    l.width = 0.0;
+                }
+                if l.winders == 0 {
+                    let name = ui
+                        .label(t("Landing Length"))
+                        .on_hover_text(t("Along the run that climbs onto it; empty for as deep as the stair is wide"));
+                    let now = if l.length > 0.0 { units.length(l.length) } else { String::new() };
+                    let hint = units.length(st.width);
+                    if let Some(typed) = self.field(ui, id, &format!("landing-{i}-length"), now, name.id, &hint) {
+                        match (typed.trim().is_empty(), units.parse(&typed)) {
+                            (true, _) => (l.length, changed) = (0.0, true),
+                            (_, Some(x)) => (l.length, changed) = (x, true),
+                            _ => failed = Some(tf("`{}` is not a length", &[typed.trim()])),
+                        }
+                    }
+                    ui.end_row();
+                }
+            }
+            if let Some(i) = gone {
+                landings.remove(i);
+                changed = true;
+            }
+            // A landing more, where the longest run is halved.
+            if wide_button(ui, t("Add Landing")).clicked() {
+                let mut ends: Vec<(f64, f64)> = Vec::new();
+                let mut from = 0.0;
+                for l in &landings {
+                    ends.push((from, l.at));
+                    from = l.at + f64::from(l.wound());
+                }
+                ends.push((from, f64::from(n)));
+                if let Some((a, b)) = ends.into_iter().max_by(|x, y| (x.1 - x.0).total_cmp(&(y.1 - y.0))) {
+                    let at = ((a + b) / 2.0).round();
+                    let length = rules.landing_length_for(st.width, each, st.tread);
+                    let place = landings.iter().position(|l| l.at > at).unwrap_or(landings.len());
+                    landings.insert(place, Landing { at, length, ..Landing::default() });
+                    changed = true;
+                }
+            }
+            // The landings the building code still asks of it, with the ones it has kept where they are.
+            if wide_button(ui, t("Add Landings Due"))
+                .on_hover_text(t(
+                    "Adds the landings the building code asks where a flight is too long; the landings it has stay as they are",
+                ))
+                .clicked()
+            {
+                let locks = bimcraft_core::codes::Locks { risers: true, tread: true, width: true, landings: false };
+                match bimcraft_core::codes::solve(model, st, locks).into_iter().find(|p| p.landings.len() > landings.len()) {
+                    Some(p) => (landings, changed) = (p.landings, true),
+                    None => failed = Some(t("No landing is due: every flight is within what the building code allows.").to_string()),
+                }
+            }
+            ui.end_row();
+        });
+        if let Some(e) = failed {
+            self.status = Status { text: e, error: true };
+        } else if changed {
+            self.run("modify", json!({"id": id, "landings": landings}));
         }
     }
 
@@ -2800,7 +3124,33 @@ impl BimApp {
                         groups.push(g);
                     }
                 }
+                // A stair type's sizes that do nothing as it is typed: greyed, with why.
+                let monolithic = d.category == "stair"
+                    && d.fields.iter().find(|f| f.1 == "waist").and_then(|f| model.units.parse(&f.3)).is_some_and(|w| w > 0.0);
+                let slanted = d.stair.as_ref().is_some_and(|s| s.slanted());
+                let unused = |key: &str| -> Option<&'static str> {
+                    if d.category != "stair" {
+                        return None;
+                    }
+                    match key {
+                        "tread_thickness" | "riser_thickness" | "stringer_width" | "stringer_depth" | "carriage_width"
+                        | "carriage_depth"
+                            if monolithic =>
+                        {
+                            Some(msg!("Not used: a stair with a Monolithic Slab Thickness is one slab, with no treads, risers or stringers of their own"))
+                        }
+                        "nosing" if monolithic && !slanted => {
+                            Some(msg!("Used by a monolithic stair only with the Slanted Riser profile, as how far the riser leans back"))
+                        }
+                        _ => None,
+                    }
+                };
                 typeprops::table(ui, "type", below, |tb| {
+                    // A stair type lays out its own table: the model, then the graphics.
+                    if let Some(stair) = &mut d.stair {
+                        stair.show(tb, &model, &mut d.fields);
+                        return;
+                    }
                     for g in groups {
                         tb.group(g);
                         for (_, key, label, typed) in d.fields.iter_mut().filter(|f| f.0 == g) {
@@ -2808,7 +3158,17 @@ impl BimApp {
                             if round && *key == "depth" {
                                 continue;
                             }
-                            tb.text(t(if round && *key == "width" { "Diameter" } else { label }), typed, model.units.name());
+                            let label = t(if round && *key == "width" { "Diameter" } else { label });
+                            match unused(key) {
+                                Some(why) => {
+                                    tb.row(label, |ui, l| {
+                                        ui.add_enabled(false, TextEdit::singleline(typed).desired_width(ui.available_width()))
+                                            .on_disabled_hover_text(t(why))
+                                            .labelled_by(l)
+                                    });
+                                }
+                                None => tb.text(label, typed, model.units.name()),
+                            }
                         }
                         match (g, &mut d.shape) {
                             ("Dimensions", Some((round, _))) => tb.check(t("Round"), round),
