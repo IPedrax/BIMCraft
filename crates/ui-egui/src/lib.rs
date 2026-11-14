@@ -3197,8 +3197,7 @@ impl BimApp {
     fn opening_space(&mut self) -> bool {
         match self.tool {
             Tool::Door if self.plan_level().is_some() => {
-                let (family, ty) = self.opening_pick("door");
-                if !ty.as_deref().is_some_and(|t| self.session.model.door_flips(family.as_deref(), t).hand) {
+                if !self.picked_door_swings() {
                     return false;
                 }
                 self.door_flip_hand = !self.door_flip_hand;
@@ -3214,6 +3213,29 @@ impl BimApp {
             _ => return false,
         }
         true
+    }
+
+    /// Whether the Door tool's picked type is a swing door, whose hinge Space can turn.
+    fn picked_door_swings(&self) -> bool {
+        let (family, ty) = self.opening_pick("door");
+        ty.as_deref().is_some_and(|t| self.session.model.door_flips(family.as_deref(), t).hand)
+    }
+
+    /// Whether every selected element is an opening that Space can turn, so the status can say what Space does.
+    fn selection_flips(&self) -> bool {
+        let m = &self.session.model;
+        !self.selection.is_empty()
+            && self.selection.iter().all(|id| m.elements.get(*id).and_then(|e| m.opening_flips(e)).is_some_and(|flips| flips.any()))
+    }
+
+    /// Whether the selection is only doors with no Opens positions, so Space has no swing to turn.
+    fn selection_has_no_swing(&self) -> bool {
+        let m = &self.session.model;
+        !self.selection.is_empty()
+            && self
+                .selection
+                .iter()
+                .all(|id| matches!(m.elements.get(*id), Some(Element::Door(o)) if !m.door_flips(o.family.as_deref(), &o.type_name).any()))
     }
 
     /// The selected elements Space and Flip turn over: walls, and doors and windows whose type flips.
@@ -5852,13 +5874,22 @@ impl BimApp {
             );
         }
         match &self.tool {
+            Tool::Modify if self.selection_flips() => {
+                msg!("Space flips the hand or facing; the flip controls on the plan do the same.")
+            }
+            Tool::Modify if self.selection_has_no_swing() => msg!("This door has no swing to flip."),
             Tool::Modify => msg!("Click to select, Tab for what's underneath, Ctrl adds, Shift takes away; drag to box or to move."),
             Tool::Wall(chain) if chain.is_empty() => msg!("Click to enter the wall's start point."),
             Tool::Wall(_) => msg!("Click to build the wall to the next point. Enter or Esc ends the chain, Shift keeps it square."),
             Tool::Attach if self.attach_base => msg!("Pick a roof or a floor: the bases of what's selected stand on it."),
             Tool::Attach => msg!("Pick a roof or a floor: the tops of what's selected follow its underside."),
-            Tool::Door => msg!("Click a wall to place the door."),
-            Tool::Window => msg!("Click a wall to place the window."),
+            Tool::Door if !self.picked_door_swings() => msg!("This door has no swing to flip. Click a wall to place it."),
+            Tool::Door => {
+                msg!("Click a wall to place the door. Space flips the hinge; the pointer's side of the wall sets the swing.")
+            }
+            Tool::Window => {
+                msg!("Click a wall to place the window. Space flips its face; the pointer's side sets which face is out.")
+            }
             Tool::Room => msg!("Click inside walls to place a room; the outline shows the room you'd get."),
             Tool::RoomSeparator(None) => msg!("Click the separation line's start."),
             Tool::RoomSeparator(Some(_)) => msg!("Click the line's next point; each click places a line. Esc ends the chain."),

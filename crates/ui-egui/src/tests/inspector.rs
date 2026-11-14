@@ -348,6 +348,36 @@ fn a_door_and_a_wall_space_turn_both_in_one_undo_and_keep_the_selection() {
 }
 
 #[test]
+fn the_status_bar_tells_the_user_about_space_for_doors_windows_and_opening_selections() {
+    let mut h = app(&format!("{BOX}\ndoor {{\"at\":[2000,0]}}\nwindow {{\"at\":[6000,0]}}"));
+    tool(&mut h, "Door");
+    assert!(h.state().prompt().contains("Space"), "{}", h.state().prompt());
+    tool(&mut h, "Window");
+    assert!(h.state().prompt().contains("Space"), "{}", h.state().prompt());
+    key(&mut h, Key::Escape);
+    click(&mut h, P2(2000.0, 0.0));
+    assert!(h.state().prompt().contains("Space"), "{}", h.state().prompt());
+    click(&mut h, P2(6000.0, 0.0));
+    assert!(h.state().prompt().contains("Space"), "{}", h.state().prompt());
+    // A door whose leaves slide has no swing for Space to turn.
+    let mut h = app(&format!("{BOX}\ndoor {{\"at\":[2000,0],\"family\":\"Sliding Door\"}}"));
+    click(&mut h, P2(2000.0, 0.0));
+    assert!(h.state().prompt().contains("no swing"), "{}", h.state().prompt());
+}
+
+#[test]
+fn a_sliding_door_shows_no_opens_pictures_and_a_swing_door_does() {
+    let mut h = app(&format!("{BOX}\ndoor {{\"at\":[2000,0],\"family\":\"Sliding Door\"}}"));
+    click(&mut h, P2(2000.0, 0.0));
+    assert_eq!(h.state().selection, [ids(&h, "door")[0]]);
+    assert!(h.query_by_label("Opens").is_none(), "a sliding door has no Opens positions");
+    let mut h = app(&format!("{BOX}\ndoor {{\"at\":[2000,0]}}"));
+    click(&mut h, P2(2000.0, 0.0));
+    assert_eq!(h.state().selection, [ids(&h, "door")[0]]);
+    assert!(h.query_by_label("Opens").is_some(), "a swing door picks one of four");
+}
+
+#[test]
 fn a_column_beside_a_selected_door_is_left_alone_when_space_turns_the_door() {
     let mut h = app(&format!("{BOX}\ndoor {{\"at\":[2000,0]}}\ncolumn {{\"at\":[4000,3000]}}"));
     let door = ids(&h, "door")[0];
