@@ -45,6 +45,8 @@ pub enum AlignmentAxis {
     /// A direction borrowed from a line the cursor is near, through the point being drawn from:
     /// parallel to that line, or square to it.
     Inferred { along: P2, of: Inference },
+    /// A marked edge's own line, extended: the cursor rides it, on the line or on its extension.
+    Collinear { along: P2 },
 }
 
 /// Which way an [`AlignmentAxis::Inferred`] guide runs against the line it came from.
@@ -63,6 +65,7 @@ impl AlignmentAxis {
             AlignmentAxis::Angle45 => P2(std::f64::consts::FRAC_1_SQRT_2, std::f64::consts::FRAC_1_SQRT_2),
             AlignmentAxis::Angle135 => P2(-std::f64::consts::FRAC_1_SQRT_2, std::f64::consts::FRAC_1_SQRT_2),
             AlignmentAxis::Inferred { along, .. } => along,
+            AlignmentAxis::Collinear { along } => along,
         }
     }
 
@@ -75,6 +78,7 @@ impl AlignmentAxis {
             AlignmentAxis::Angle135 => "135°",
             AlignmentAxis::Inferred { of: Inference::Parallel, .. } => ui_msg!("Parallel"),
             AlignmentAxis::Inferred { of: Inference::Perpendicular, .. } => ui_msg!("Perpendicular"),
+            AlignmentAxis::Collinear { .. } => ui_msg!("On Line"),
         }
     }
 }
@@ -196,6 +200,28 @@ impl Guide {
     }
 }
 
+/// A line a marked reference, a grid or the drawing's own chain lends to the guides: its direction (parallel and
+/// perpendicular) and, extended, the line itself (collinear).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct GuideSource {
+    pub a: P2,
+    pub b: P2,
+    /// The element it came from, when it is one (a wall, a grid, a detail line); none for the chain's own segment.
+    pub id: Option<Id>,
+}
+
+/// What the drawing's own context gives the guides, instead of the whole model: the points of its chain, the lines it
+/// is near or started on, and the references the user marked.
+#[derive(Clone, Debug, Default)]
+pub struct GuideContext {
+    /// The points already placed, first first.
+    pub chain: Vec<P2>,
+    /// The segment just placed, the wall edge the chain started on, grids near the cursor, and marked edges.
+    pub lines: Vec<GuideSource>,
+    /// Marked points: corners, midpoints, grid ends.
+    pub points: Vec<ReferencePoint>,
+}
+
 /// Service that indexes wall reference points and detects alignment guides.
 #[derive(Clone, Debug, Default)]
 pub struct AlignmentGuideService {
@@ -207,6 +233,8 @@ pub struct AlignmentGuideService {
     by_y: Vec<usize>,
     /// The straight runs of what's drawn: a direction the cursor can borrow for a guide.
     lines: Vec<(P2, P2)>,
+    /// The marked and contextual lines whose own extension is a guide too (a wall face, a grid, a chain segment).
+    sources: Vec<GuideSource>,
 }
 
 impl AlignmentGuideService {
@@ -225,7 +253,22 @@ impl AlignmentGuideService {
         let mut by_y: Vec<usize> = (0..references.len()).collect();
         by_y.sort_by(|&a, &b| references[a].point.1.total_cmp(&references[b].point.1));
 
-        Self { config, references, by_x, by_y, lines: Vec::new() }
+        Self { config, references, by_x, by_y, lines: Vec::new(), sources: Vec::new() }
+    }
+
+    /// The guides the drawing's own context gives, without walking the model: the chain's points and lines, grids near
+    /// the cursor, and the references the user marked. A wall across the plan casts nothing.
+    pub fn from_context(ctx: &GuideContext, config: AlignmentConfig) -> Self {
+        let mut references = ctx.points.clone();
+        if config.endpoints {
+            for &p in &ctx.chain {
+                references.push(ReferencePoint { point: p, kind: ReferenceType::Endpoint, wall_id: None });
+            }
+        }
+        let mut service = Self::new(references, config);
+        service.sources = ctx.lines.iter().copied().filter(|s| s.a.dist(s.b) > TOL).collect();
+        service.lines = service.sources.iter().map(|s| (s.a, s.b)).collect();
+        service
     }
 
     /// Extracts reference points from all elements visible/present on `level` in `model`,
@@ -464,7 +507,11 @@ impl AlignmentGuideService {
     /// Finds alignments for `cursor`: the axis guides of the reference points near it, and a direction
     /// borrowed from the lines drawn, all through `start_point` where they are borrowed ones.
     pub fn find_alignments(&self, cursor: P2, start_point: Option<P2>, tolerance: f64) -> Vec<AlignmentResult> {
-        if !self.config.enabled || (self.references.is_empty() && self.lines.is_empty()) || !tolerance.is_finite() || tolerance <= 0.0 {
+        if !self.config.enabled
+            || (self.references.is_empty() && self.lines.is_empty() && self.sources.is_empty())
+            || !tolerance.is_finite()
+            || tolerance <= 0.0
+        {
             return Vec::new();
         }
 
@@ -527,6 +574,19 @@ impl AlignmentGuideService {
             && let Some(g) = self.inferred(cursor, start, tolerance)
         {
             guides.push(g);
+        }
+        // 4. A marked edge's, a grid's or the chain's own line, extended: its collinear guide, when the cursor is near
+        //    the line. The same sources lend their directions to `inferred` above.
+        for s in &self.sources {
+            let len = s.a.dist(s.b);
+            if len <= TOL {
+                continue;
+            }
+            let along = (s.b - s.a) * (1.0 / len);
+            let g = Guide { axis: AlignmentAxis::Collinear { along }, anchor: s.a, kind: ReferenceType::Face, wall_id: s.id };
+            if g.deviation(cursor) <= tolerance {
+                guides.push(g);
+            }
         }
         if guides.is_empty() {
             return if self.config.angles { self.find_diagonal_alignment(cursor, start_point, tolerance) } else { Vec::new() };
@@ -962,6 +1022,96 @@ mod why_tests {
         let cursor = start + P2(sixty.cos(), sixty.sin()) * 1000.0;
 
         assert!(service.find_alignments(cursor, Some(start), 80.0).is_empty());
+    }
+
+    /// A marked wall face extends along its own line, not the wall's centre line: the shaft's inner face is a face.
+    #[test]
+    fn a_marked_face_extends_along_its_own_line() {
+        let (s, c) = (std::f64::consts::FRAC_1_SQRT_2, std::f64::consts::FRAC_1_SQRT_2);
+        let u = P2(s, c);
+        // The inner face of a 45° wall whose centre line is 100 mm to its right: the face is the one marked.
+        let face = P2(-s, c) * 100.0;
+        let source = GuideSource { a: face - u * 3000.0, b: face + u * 3000.0, id: None };
+        let service =
+            AlignmentGuideService::from_context(&GuideContext { lines: vec![source], ..Default::default() }, AlignmentConfig::default());
+        // On the face's extension, past either end of the drawn segment.
+        let cursor = face + u * 8000.0 + P2(-s, c) * 4.0;
+        let found = service.find_alignments(cursor, None, 80.0);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(matches!(found[0].axis, AlignmentAxis::Collinear { .. }), "{found:?}");
+        assert!(found[0].snapped_point.dist(face + u * 8000.0) < 0.01, "the face's extension, not the centre line: {found:?}");
+        // 100 mm off the face's line either way is too far for the guide.
+        assert!(service.find_alignments(face + u * 8000.0 + P2(-s, c) * 120.0, None, 80.0).is_empty());
+    }
+
+    /// A pinned rotated corner lends the directions of the walls that meet there, so a shaft can run along them;
+    /// world X and Y alone would be useless on a 45° building.
+    #[test]
+    fn a_pinned_rotated_corner_lends_its_walls_directions() {
+        let (s, c) = (std::f64::consts::FRAC_1_SQRT_2, std::f64::consts::FRAC_1_SQRT_2);
+        let corner = P2(5000.0, 5000.0);
+        let u = P2(s, c);
+        let v = P2(-s, c);
+        let ctx = GuideContext {
+            points: vec![ReferencePoint { point: corner, kind: ReferenceType::Endpoint, wall_id: None }],
+            lines: vec![
+                GuideSource { a: corner, b: corner + u * 4000.0, id: None },
+                GuideSource { a: corner, b: corner + v * 4000.0, id: None },
+            ],
+            ..Default::default()
+        };
+        let service = AlignmentGuideService::from_context(&ctx, AlignmentConfig::default());
+        // Far along one wall's direction, 6 mm off it: only that direction answers.
+        let cursor = corner + u * 3000.0 + v * 6.0;
+        let found = service.find_alignments(cursor, None, 80.0);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(matches!(found[0].axis, AlignmentAxis::Collinear { along } if along.dist(u) < 1e-9), "{found:?}");
+        assert!(found[0].snapped_point.dist(corner + u * 3000.0) < 0.01, "{found:?}");
+    }
+
+    /// The real 45°-rotated building: start on the upper-right wall's inner face, draw square off it, mark the inner
+    /// re-entrant wall's face, and the two meet at the shaft's corner. The outer peaks and corners of the building
+    /// cast nothing, because the context holds only what the drawing touches and what the user marked.
+    #[test]
+    fn the_shaft_off_a_rotated_wall_meets_the_marked_inner_face() {
+        let s = std::f64::consts::FRAC_1_SQRT_2;
+        let u = P2(s, s);
+        let n = P2(-s, s);
+        let start = P2(20_000.0, 30_000.0);
+        let start_face = GuideSource { a: start - u * 6000.0, b: start + u * 6000.0, id: None };
+        // The inner re-entrant wall's face runs on the other diagonal; its extension crosses the shaft's line at `q`.
+        let q = start + n * 4000.0;
+        let inner_face = GuideSource { a: q - u * 5000.0, b: q + u * 5000.0, id: None };
+
+        // Before marking, the shaft is square to the wall it started on, and nothing else.
+        let ctx = GuideContext { chain: vec![start], lines: vec![start_face], ..Default::default() };
+        let service = AlignmentGuideService::from_context(&ctx, AlignmentConfig::default());
+        let cursor = q + u * 12.0;
+        let found = service.find_alignments(cursor, Some(start), 80.0);
+        assert_eq!(found.len(), 1, "one perpendicular, no outer rays: {found:?}");
+        assert!(matches!(found[0].axis, AlignmentAxis::Inferred { of: Inference::Perpendicular, .. }), "{:?}", found[0].axis);
+
+        // Mark the inner face: the shaft's line and the face's extension cross, and the point takes both.
+        let ctx = GuideContext { chain: vec![start], lines: vec![start_face, inner_face], ..Default::default() };
+        let service = AlignmentGuideService::from_context(&ctx, AlignmentConfig::default());
+        let found = service.find_alignments(q + u * 8.0, Some(start), 80.0);
+        assert_eq!(found.len(), 2, "the crossing names both guides: {found:?}");
+        assert!(found.iter().any(|a| matches!(a.axis, AlignmentAxis::Inferred { of: Inference::Perpendicular, .. })), "{found:?}");
+        assert!(found.iter().any(|a| matches!(a.axis, AlignmentAxis::Collinear { .. })), "{found:?}");
+        assert!(!found.iter().any(|a| matches!(a.axis, AlignmentAxis::X | AlignmentAxis::Y)), "no world rays: {found:?}");
+        for a in &found {
+            assert!(a.snapped_point.dist(q) < 0.01, "the shaft's corner is where they cross: {found:?}");
+        }
+    }
+
+    /// Nothing the drawing never touched gives a guide: the local context never walks the model.
+    #[test]
+    fn a_model_of_other_walls_casts_nothing() {
+        let mut s = Session::new();
+        s.script(r#"wall {"points": [[0, 0], [9000, 9000]]}"#).unwrap();
+        let service = AlignmentGuideService::from_context(&GuideContext::default(), AlignmentConfig::default());
+        let found = service.find_alignments(P2(2000.0, 8000.0), Some(P2(0.0, 0.0)), 80.0);
+        assert!(found.is_empty(), "{found:?}");
     }
 
     /// An alignment says which wall it lines up with, so the window can say why a point snapped.
