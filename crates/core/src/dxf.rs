@@ -513,6 +513,15 @@ impl<'a> Ent<'a> {
         self.str(code).map(|v| number(self.line, v)).transpose()
     }
 
+    /// An elevation at `code`: none where the file gives none, and none, with `bad` set, where it gives one no drawing can
+    /// hold. Drawing never needed one, so a file that drew before elevations were read still does.
+    fn z(&self, code: i32, bad: &mut bool) -> Option<f64> {
+        self.num(code).unwrap_or_else(|_| {
+            *bad = true;
+            None
+        })
+    }
+
     fn int(&self, code: i32) -> Result<Option<i64>, String> {
         Ok(self.num(code)?.map(|x| x as i64))
     }
@@ -910,16 +919,20 @@ impl<'a> Reader<'a> {
                 continue;
             }
             let style = Style::of(e, inh)?;
-            let xf = if e.num(230)?.is_some_and(|z| z < 0.0) { xf.then(Xf::MIRROR_X) } else { xf };
+            let down = e.num(230)?.is_some_and(|z| z < 0.0);
+            let xf = if down { xf.then(Xf::MIRROR_X) } else { xf };
+            // An INSERT is in its own coordinate system too: extruded down, its z and its block's run along -z.
+            let xf = if down && e.kind == "INSERT" { xf.then(Xf { zs: -1.0, ..Xf::ID }) } else { xf };
+            let mut bad = false;
             let mut z = match e.kind {
-                "LWPOLYLINE" => e.num(38)?.map(Z::Flat),
-                "LINE" => match (e.num(30)?, e.num(31)?) {
+                "LWPOLYLINE" => e.z(38, &mut bad).map(Z::Flat),
+                "LINE" => match (e.z(30, &mut bad), e.z(31, &mut bad)) {
                     (None, None) => None,
                     (a, b) => Some(Z::of(vec![a.unwrap_or(0.0), b.unwrap_or(0.0)])),
                 },
-                "POINT" => e.num(30)?.map(Z::Flat),
+                "POINT" => e.z(30, &mut bad).map(Z::Flat),
                 // A 2D polyline's elevation is its own point's z; a 3D one's, its vertices' (below).
-                "POLYLINE" => e.num(30)?.map(Z::Flat),
+                "POLYLINE" => e.z(30, &mut bad).map(Z::Flat),
                 _ => None,
             };
             // An LWPOLYLINE's and a 2D polyline's elevation is in its object coordinate system, which a downward
@@ -966,7 +979,7 @@ impl<'a> Reader<'a> {
                         if let Some(p) = v.point(10)? {
                             // A 3D polyline's segments are straight: a bulge on its vertex means nothing.
                             pts.push((p, if three_d { 0.0 } else { v.num(42)?.unwrap_or(0.0) }));
-                            each.push(v.num(30)?.unwrap_or(0.0));
+                            each.push(v.z(30, &mut bad).unwrap_or(0.0));
                         }
                     }
                     if ents.get(i).is_some_and(|v| v.kind == "SEQEND") {
@@ -1034,6 +1047,10 @@ impl<'a> Reader<'a> {
                     continue;
                 }
             };
+            if bad {
+                z = None;
+                out.left("an elevation it can't read");
+            }
             match shape {
                 Some(shape) => out.push(Entity {
                     layer: style.layer,
@@ -1812,10 +1829,57 @@ mod tests {
     }
 
     #[test]
+    fn a_mirrored_insert_turns_its_blocks_elevations_over() {
+        // An INSERT is in its own coordinate system: extruded down (230 -1), its z and its block's are along -z.
+        let blocks = pairs(&[
+            (0, "BLOCK"),
+            (8, "0"),
+            (2, "B"),
+            (70, "0"),
+            (10, "0"),
+            (20, "0"),
+            (0, "POINT"),
+            (8, "0"),
+            (10, "1"),
+            (20, "1"),
+            (30, "2"),
+            (0, "ENDBLK"),
+        ]);
+        let entities = pairs(&[(0, "INSERT"), (8, "0"), (2, "B"), (10, "0"), (20, "0"), (30, "10"), (210, "0"), (220, "0"), (230, "-1")]);
+        let d = read_text(&file("", "", &blocks, &entities)).unwrap();
+        assert_eq!(d.entities[0].z, Some(Z::Flat(-12.0)), "{d:?}");
+    }
+
+    #[test]
     fn a_hostile_elevation_is_refused_or_left_out() {
-        assert!(read_text(&file("", "", "", &pairs(&[(0, "POINT"), (10, "0"), (20, "0"), (30, "nan")]))).is_err());
-        let huge = pairs(&[(0, "LWPOLYLINE"), (90, "2"), (38, "1e400"), (10, "0"), (20, "0"), (10, "1"), (20, "0")]);
-        assert!(read_text(&file("", "", "", &huge)).is_err());
+        // An elevation no number a drawing holds (as a buggy exporter writes) loses the elevation, not the file: these drew
+        // before elevations were read, and still do.
+        let bad = pairs(&[
+            (0, "POINT"),
+            (10, "0"),
+            (20, "0"),
+            (30, "nan"),
+            (0, "LWPOLYLINE"),
+            (90, "2"),
+            (38, "1e400"),
+            (10, "0"),
+            (20, "0"),
+            (10, "1"),
+            (20, "0"),
+            (0, "LINE"),
+            (10, "0"),
+            (20, "0"),
+            (30, "-1.#IND"),
+            (11, "1"),
+            (21, "0"),
+            (31, "3"),
+        ]);
+        let d = read_text(&file("", "", "", &bad)).unwrap();
+        assert_eq!(d.entities.len(), 3, "{d:?}");
+        assert!(d.entities.iter().all(|e| e.z.is_none()), "{d:?}");
+        assert_eq!(d.left_out.get("an elevation it can't read"), Some(&3), "{d:?}");
+        // A plan point that isn't a number still refuses the file, as it did.
+        assert!(read_text(&file("", "", "", &pairs(&[(0, "POINT"), (10, "nan"), (20, "0")]))).is_err());
         // Within the file's limit, scaled past it by an INSERT: left out, not kept.
         let blocks = pairs(&[
             (0, "BLOCK"),
