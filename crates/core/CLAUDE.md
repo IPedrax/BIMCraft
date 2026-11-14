@@ -92,9 +92,11 @@ repeated. A new area's tests go in their own file or module, not on the end of `
 The core caches what it works out from the model and keeps the whole computation as the oracle of each cache
 ([the plan](../../docs/spatial-core-plan.md), [performance](../../docs/performance.md)). Its modules:
 
-- `derived.rs`: what elements point at, both ways, the walls by plan tile and height, components and runs by height band, and the
-  kinds a project has few of, kept with each model and brought up to date by what changed (`Model::lookup`).
-- `rooms.rs`: rooms' boundaries, each level's found once. `shared.rs`: copy-on-write geometry definitions and allocation identities.
+- `derived.rs`: what elements point at, both ways, the walls by plan tile and height, components and runs by height band, the
+  kinds a project has few of, and each level's room plan and each schedule's table kept for the elements' state (a command's
+  copy makes them again). The lookup is brought up to date by what changed (`Model::lookup`).
+- `rooms.rs`: rooms' boundaries, each level's found once for the model, its plan kept with `derived`. `shared.rs`: copy-on-write
+  geometry definitions and allocation identities.
 - `ids/revisions.rs`: runtime revision columns. `bounds.rs`: byte-budgeted conservative primitive bounds. `family/bounds.rs`:
   conservative form envelopes without triangulation.
 - `view3d/update.rs`: a scene brought up to date by what an edit changed. `view3d/fragments.rs`: bounded primitive fragment reuse.

@@ -82,6 +82,10 @@ For example, a space-only coordination file may yield levels but no usable build
   failure falls back to serial work. No model mutations run concurrently.
 * An IFC railing with a nonpositive/unmeasurable height is skipped with a diagnostic before a bad
   type enters the library. It no longer invalidates the entire project import.
+* A level's room plan and a schedule's table are kept with the model's derived answers, keyed by the
+  elements' state: a repaint of one model asks the answer it already made, and a command's model makes
+  it again. The full computation stays the oracle the kept answer is tested against, and a model's copy
+  starts with none of them, so a view's cache lives only as long as the snapshot that asked.
 
 Regression tests compare parallel geometry and raster depth, picking and smooth-light buffers
 with the serial implementation. Existing rendering tests cover transparent materials, textures,
