@@ -47,6 +47,8 @@ pub struct Request {
     pub rooms: i64,
     pub tolerance: i64,
     pub shape: Option<String>,
+    /// Draw gridlines at the outline's corners.
+    pub gridlines: bool,
 }
 
 /// The `building` of a plan: the family's name and the first 12 hex digits of a hash of its layout (types, families, walls,
@@ -162,7 +164,7 @@ pub fn build_family(fam: &Family, req: &Request, allow_unreviewed: bool) -> Resu
                 continue;
             }
         };
-        match emit::verify(fam, &rooms, &laid, &shape.id, req.seed) {
+        match emit::verify(fam, &rooms, &laid, &shape.id, req.seed, req.gridlines) {
             Ok(done) => return finish(fam, req, &shape.id, &rooms, &laid, done),
             Err(emit::Trouble::Readback(e)) => {
                 last = e;
@@ -241,6 +243,7 @@ fn finish(fam: &Family, req: &Request, shape: &str, rooms: &[plan::Room], laid: 
         "seed": req.seed,
         "rooms": {"requested": req.rooms, "tolerance": req.tolerance, "actual": rooms.len()},
         "shape": shape,
+        "gridlines": req.gridlines,
         "mirror": laid.mirror,
         "quarter_turns": laid.quarter_turns,
         "net_area_m2": round2(net),

@@ -15,7 +15,7 @@ use super::{Built, MANIFEST, Refusal, fnv1a64, pretty, refuse, shape_graph};
 /// The most rooms a delivery plan numbers: `101` to `999`.
 const MAX_NUMBERED: usize = 899;
 
-fn text_of<'a>(built: &'a Built, name: &str) -> Result<&'a str, Refusal> {
+pub(super) fn text_of<'a>(built: &'a Built, name: &str) -> Result<&'a str, Refusal> {
     built
         .files
         .iter()
@@ -24,7 +24,7 @@ fn text_of<'a>(built: &'a Built, name: &str) -> Result<&'a str, Refusal> {
         .ok_or_else(|| refuse("generation_failed", format!("the plan has no {name}")))
 }
 
-fn json_of(built: &Built, name: &str) -> Result<Value, Refusal> {
+pub(super) fn json_of(built: &Built, name: &str) -> Result<Value, Refusal> {
     serde_json::from_str(text_of(built, name)?).map_err(|e| refuse("generation_failed", format!("{name} is not JSON: {e}")))
 }
 

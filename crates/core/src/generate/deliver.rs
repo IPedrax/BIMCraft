@@ -240,6 +240,7 @@ fn make_one(job: &Job, writer: &crate::cad::DwgWriter, dir: &Path) -> Result<Out
                 rooms: job.rooms,
                 tolerance: job.tol,
                 shape: None,
+                gridlines: false,
             };
             match shape_graph::build(&request, job.unreviewed) {
                 Ok(b) => b,

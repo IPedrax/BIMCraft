@@ -19,6 +19,11 @@ pub enum Archetype {
 }
 
 impl Archetype {
+    /// Whether the archetype's plan draws gridlines unless told otherwise: all but the medical-day department.
+    pub fn draws_grid(self) -> bool {
+        self != Archetype::MedicalDay
+    }
+
     pub const ALL: [Archetype; 7] = [
         Archetype::Office,
         Archetype::Clinic,

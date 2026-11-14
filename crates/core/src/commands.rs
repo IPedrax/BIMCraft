@@ -84,6 +84,10 @@ pub static ALL: &[Command] = &[
          the same plan to the delivery drawing rules: its script carries `cad_profile {name: delivery}`, rooms are numbered 101 \
          upward in the order of the graph's nodes (each node of topology-graph.json has its `number`), doors and windows have marks D1 \
          and W1 upward and no dimension is drawn, and the manifest has `delivery: true` and a `building`; the layout is the same. \
+         `gridlines: on|off` (either form) draws the plan's gridlines or leaves them out: with `rooms` the default is `off` and `on` \
+         puts a numbered vertical line at each distinct x of the outline's corners and a lettered horizontal line at each distinct y, \
+         1500 mm past the bounding box (the manifest has `gridlines`); with an area the default is what the archetype draws (on, \
+         except medical-day), `on` is then byte for byte that, and `off` takes the `grid` lines out and changes nothing else. \
          `invalid_params` for any other value. The project is not touched",
         crate::generate::generate,
     ),

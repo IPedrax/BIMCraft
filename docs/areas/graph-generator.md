@@ -305,6 +305,20 @@ saved model's entry is (the corridor generators name the lobby, while their main
 plain notes are TEXT without a typeface run. `deliver` takes batches by `area: [lo, hi]` (square metres): a seed's whole-number area is
 `lo + mix(seed ^ AREA_SALT) % (hi - lo + 1)`, pinned by a test, and its plan is what `generate --delivery on` writes.
 
+### Gridlines
+
+`generate --gridlines on|off`, in both forms. With `--rooms` the default is `off`; `on` puts a `grid` line at each distinct x of the
+outline's corners (numbered 1.. left to right) and at each distinct y (lettered A.. up), 1,500 mm past the bounding box. The corners come
+from the exterior walls (`script::segment_corners`: a point where a horizontal and a vertical exterior segment meet, so the collinear joins
+where an interior wall meets the shell are not corners). The lines go after the types and families, before the first wall, in
+`emit::compile`; grids change neither the topology, nor `building`, nor the tags. The manifest has `gridlines`.
+
+With `--area` the default is what the archetype draws (on, except medical-day: `Archetype::draws_grid`). A value equal to the default
+touches nothing, so the default files stay byte for byte. A value that departs goes through `generate/gridlines.rs`, a post-pass run before
+`delivery::apply`: `off` takes the `grid` lines out of the script, `on` (medical-day) puts the outline's grid after the `level` line from
+the `floor` boundary (`script::ring_corners`). It runs the result in a scratch session, leaves the three graph files alone, adds a note to
+`report.json` and re-hashes the manifest. Only then does the manifest gain `gridlines` (the default `--area` manifests are pinned and gain no key).
+
 ## Delivery folder
 
 `bimcraft-cli deliver --brief BRIEF.json --delivery-id ID --rights (FILE | emailed) --out ROOT [--rerun N] [--jobs J]` (`generate/deliver.rs`)
