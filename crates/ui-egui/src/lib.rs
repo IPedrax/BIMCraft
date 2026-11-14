@@ -499,20 +499,30 @@ pub(crate) const CTRL_WAIT: f64 = 0.5;
 /// key, so a Russian layout types the same shortcuts; the family document's own keys come this way.
 pub(crate) fn ctrl_letters(ctx: &Context) -> Vec<char> {
     ctx.input_mut(|i| {
+        let events = std::mem::take(&mut i.events);
         let mut out = Vec::new();
-        i.events.retain(|e| {
-            let Event::Key { key, physical_key, pressed: true, modifiers, .. } = e else { return true };
-            let physical = physical_key.unwrap_or(*key);
-            let name = physical.name();
-            let mut chars = name.chars();
-            match (modifiers.command && !modifiers.shift && !modifiers.alt, chars.next(), chars.next()) {
-                (true, Some(c), None) if c.is_ascii_alphanumeric() => {
-                    out.push(c.to_ascii_uppercase());
-                    false
+        let mut kept = Vec::with_capacity(events.len());
+        for event in events {
+            match &event {
+                Event::Key { key, physical_key, pressed: true, modifiers, .. }
+                    if modifiers.command && !modifiers.shift && !modifiers.alt =>
+                {
+                    let name = physical_key.unwrap_or(*key).name();
+                    let mut chars = name.chars();
+                    match (chars.next(), chars.next()) {
+                        (Some(c), None) if c.is_ascii_alphanumeric() => out.push(c.to_ascii_uppercase()),
+                        _ => kept.push(event),
+                    }
                 }
-                _ => true,
+                // egui-winit sends the primary modifier's C, X and V as these events, not key events; the family
+                // document's keys come from the same registry, so they are its letters too.
+                Event::Copy => out.push('C'),
+                Event::Cut => out.push('X'),
+                Event::Paste(_) => out.push('V'),
+                _ => kept.push(event),
             }
-        });
+        }
+        i.events = kept;
         out
     })
 }
@@ -2535,20 +2545,41 @@ impl BimApp {
                 self.ctrl_key(ctx, letter);
             }
         }
+        let waiting = !self.typed.is_empty();
         let letters = ctx.input_mut(|i| {
+            let events = std::mem::take(&mut i.events);
             let mut out = Vec::new();
-            i.events.retain(|e| {
-                let Event::Key { key, physical_key, pressed: true, repeat: false, modifiers, .. } = e else { return true };
-                if !(modifiers.command && !modifiers.shift && !modifiers.alt) {
-                    return true;
+            let mut kept = Vec::with_capacity(events.len());
+            for event in events {
+                let letter = match &event {
+                    Event::Key { key, physical_key, pressed: true, repeat: false, modifiers, .. }
+                        if modifiers.command && !modifiers.shift && !modifiers.alt =>
+                    {
+                        let physical = physical_key.unwrap_or(*key);
+                        crate::shortcuts::is_sequence_key(physical).then_some((physical, false))
+                    }
+                    // egui-winit turns the primary modifier's C, X and V into these events, not key events, so on a
+                    // view they are the letters a sequence needs. A text field or a note takes the frame before this
+                    // path, so its clipboard is left alone.
+                    Event::Copy if sequences => Some((Key::C, true)),
+                    Event::Cut if sequences => Some((Key::X, true)),
+                    Event::Paste(_) if sequences => Some((Key::V, true)),
+                    _ => None,
+                };
+                let Some((letter, clipboard)) = letter else {
+                    kept.push(event);
+                    continue;
+                };
+                // A clipboard event is a letter only where this sequence can use it: it starts one, or completes the
+                // letter before it in this frame or the one waiting from the last; elsewhere it stays as it is.
+                let starts = self.typed.is_empty() && self.shortcuts.sequence_starts_with(letter);
+                if clipboard && !(waiting || !out.is_empty() || starts) {
+                    kept.push(event);
+                    continue;
                 }
-                let physical = physical_key.unwrap_or(*key);
-                if !crate::shortcuts::is_sequence_key(physical) {
-                    return true;
-                }
-                out.push(physical);
-                false
-            });
+                out.push(letter);
+            }
+            i.events = kept;
             out
         });
         for physical in letters {

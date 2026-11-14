@@ -31,6 +31,8 @@ Modifiers are matched **exactly**: `Ctrl+D` and `Ctrl+Shift+D` are different bin
 
 Sequences are typed with Ctrl held (Cmd on a Mac): Ctrl, then `W` and `A` for Wall. Letters typed without Ctrl are no shortcut; digits and a unit still make a typed length.
 
+The window hands Ctrl+C, Ctrl+X and Ctrl+V to the system as Copy, Cut and Paste, so on a view those three count as the letters `C`, `X` and `V` for a sequence: `CO` Copy, `MV` Move, `TX` Text. A text field and the note editor keep the clipboard: Ctrl+C copies there, and no sequence is typed.
+
 A letter that is also a chord of its own — `S` (Save), `O` (Open), `N` (New), `K` (Find), `P` (Export PDF), `Z` (Undo), `D` (Home), `1` (Properties) — waits half a second for a second letter, and runs its chord when none comes or Ctrl is let go. So Ctrl+S then A is Select All Instances, and Ctrl+Z, Z, Z undoes three times. A Ctrl key that begins no sequence (`Ctrl+Y`, `Ctrl+1`) runs at once and needs no second letter.
 
 If the two letters are no shortcut, the first does its own job and the second waits in its place. In a text field Ctrl's keys belong to the field but for Save, Save As, Open, New, Find, Settings, Export PDF and Properties, which act there at once, and no sequence is typed.
@@ -158,7 +160,7 @@ The file can be opened in GitHub, VS Code, Obsidian, or printed. It cannot be im
 
 ## Reserved keys
 
-These cannot be assigned: `Esc`, `Enter`, `Tab`, `Backspace`, `Space`, and the arrow keys.
+These cannot be assigned: `Esc`, `Enter`, `Tab`, `Backspace`, `Space`, the arrow keys, and the system's clipboard chords `Ctrl+C`, `Ctrl+X` and `Ctrl+V` (`Cmd` on macOS). A sequence may still use those letters (`CO`, `MV`, `TX`); the dialog, an import and a hand-edited `settings.json` all refuse the chord.
 
 These can be assigned with a warning: `Delete`, `F1`–`F12`, `Ctrl+Alt+…` (AltGr), `Ctrl+Shift+Esc`, `Alt+F4`, `Alt+Tab`, `Ctrl+Esc`; on macOS, `Cmd+Tab`, `Cmd+Space`, and other combinations intercepted by the system.
 

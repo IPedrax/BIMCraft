@@ -575,8 +575,10 @@ second letter (`CTRL_WAIT`, half a second): with one it is a shortcut (Ctrl held
 does its own job (`ctrl_key`, the chord its key has in the registry) and the second waits in its place, so Ctrl held and Z, Z, Z undoes three times;
 with none, or once Ctrl is let go, it does its own job. Letters typed without Ctrl are no shortcut (digits and a unit still make a typed length).
 Bindings are read from `Event::Key`'s `physical_key`, never from `Event::Text`, so `Ctrl+D` and `Ctrl+В` are the same key and the two letters work on a
-Russian layout; modifiers match exactly (`matches_exact`), so `Ctrl+Shift+D` never runs `Ctrl+D`. The family document's keys come the same way,
-through `ctrl_letters`, and its two-letter actions are looked up in the same registry (`family_shortcut`). The registry's actions have stable ids
+Russian layout; modifiers match exactly (`matches_exact`), so `Ctrl+Shift+D` never runs `Ctrl+D`. On a view Ctrl+C, Ctrl+X and Ctrl+V are the letters
+`C`, `X` and `V` of a sequence (`CO`, `MV`, `TX`), because egui-winit turns them into Copy, Cut and Paste events; a text field and the note editor keep
+the clipboard, since `keys` hands them the frame before the shortcut path. The family document's keys come the same way,
+through `ctrl_letters` (Ctrl+C/X/V included, and never while a text field has the keys), and its two-letter actions are looked up in the same registry (`family_shortcut`). The registry's actions have stable ids
 (`cmd.move`, `ui.file.save_as`, `legacy.…`) and are saved in `settings.json` as `Settings::shortcuts` (`version`, `profile`, `bindings`), a full effective
 set, so a default the user deleted does not creep back. Controls: All, Assigned, Without keys and Changed; category and profile; Import (`bks`, `txt`, `json`, Revit XML),
 Export (`txt`/`json`), Help (Markdown) and Reset All. The text format is `action = binding`, one line per binding, `#` comments; the same parser reads the old

@@ -934,6 +934,64 @@ fn typed_shortcuts_pick_tools_like_revit() {
 }
 
 #[test]
+fn copy_cut_and_paste_are_shortcut_letters_on_the_view_itself() {
+    fn press(h: &mut Harness<BimApp>, command: Modifiers, key: Key) {
+        for pressed in [true, false] {
+            h.input_mut().events.push(Event::Key { key, pressed, modifiers: command, repeat: false, physical_key: None });
+        }
+    }
+    let mut h = app(SAMPLE);
+    let command = Modifiers::COMMAND;
+    // The window turns Ctrl+C, Ctrl+X and Ctrl+V into Copy, Cut and Paste events, not key events: on a view they are
+    // the letters a sequence needs.
+    h.input_mut().events.extend([Event::ModifiersChanged(command), Event::Copy]);
+    press(&mut h, command, Key::W);
+    h.input_mut().events.push(Event::ModifiersChanged(Modifiers::NONE));
+    h.run();
+    assert!(h.state().cowork_dialog.is_some(), "Ctrl+C, W is CW");
+    h.state_mut().cowork_dialog = None;
+    h.run();
+    h.input_mut().events.extend([Event::ModifiersChanged(command), Event::Paste("x".into())]);
+    press(&mut h, command, Key::V);
+    h.input_mut().events.push(Event::ModifiersChanged(Modifiers::NONE));
+    h.run();
+    assert!(h.state().vg_dialog.is_some(), "Ctrl+V, V is VV");
+    h.state_mut().vg_dialog = None;
+    h.run();
+    h.input_mut().events.push(Event::ModifiersChanged(command));
+    press(&mut h, command, Key::T);
+    h.input_mut().events.push(Event::Cut);
+    h.input_mut().events.push(Event::ModifiersChanged(Modifiers::NONE));
+    h.run();
+    assert!(matches!(h.state().tool, Tool::Text), "T, Ctrl+X is TX");
+}
+
+#[test]
+fn copy_and_paste_stay_the_clipboard_in_a_text_field() {
+    let mut h = app(SAMPLE);
+    h.state_mut().find = Some("ab".into());
+    h.run();
+    // The Find field has the keys: Ctrl+A selects what it holds and Copy puts it on the system's clipboard.
+    h.key_press_modifiers(Modifiers::COMMAND, Key::A);
+    h.run();
+    h.input_mut().events.extend([Event::ModifiersChanged(Modifiers::COMMAND), Event::Copy]);
+    h.input_mut().events.push(Event::ModifiersChanged(Modifiers::NONE));
+    h.step();
+    let copied: Vec<String> = h
+        .output()
+        .platform_output
+        .commands
+        .iter()
+        .filter_map(|c| match c {
+            egui::OutputCommand::CopyText(text) => Some(text.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(copied, ["ab"], "the field's selection is copied, not taken as the letter C");
+    assert!(matches!(h.state().tool, Tool::Modify), "nothing in a field types a sequence");
+}
+
+#[test]
 fn create_similar_starts_the_selected_elements_tool_placing_its_type() {
     let mut h = app(&format!(
         "{BOX}\ndoor {{\"at\": [2000, 0], \"type\": \"Single 800 x 2100\"}}\n\

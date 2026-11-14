@@ -1281,6 +1281,12 @@ pub(crate) fn is_sequence_key(key: Key) -> bool {
 
 /// Whether a binding may be assigned: the reserved keys are refused, and a system shortcut is
 /// accepted with a warning.
+/// Whether a chord is the system's copy, cut or paste: the primary modifier with C, X or V alone. A sequence may use
+/// those letters (`CO`, `MV`, `TX`), but no action may take the chord itself.
+fn is_clipboard_chord(c: &KeyChord) -> bool {
+    c.ctrl && !c.shift && !c.alt && !c.meta && matches!(c.key, Key::C | Key::X | Key::V)
+}
+
 pub fn check_assignable(b: Binding) -> Result<Option<&'static str>, String> {
     if let Binding::Chord(c) = b {
         let bare = modifier_count(c) == 0;
@@ -1298,6 +1304,9 @@ pub fn check_assignable(b: Binding) -> Result<Option<&'static str>, String> {
         );
         if bare && reserved {
             return Err(tf("\"{}\" is reserved by the application", &[key_name(c.key)]).to_string());
+        }
+        if is_clipboard_chord(&c) {
+            return Err(tf("\"{}\" is reserved by the application", &[&display_binding(b)]).to_string());
         }
         if is_sequence_key(c.key) && bare {
             return Err(t("A letter or digit needs a modifier or a second key").to_string());
@@ -1693,6 +1702,10 @@ impl Shortcuts {
             }
             for key in keys.iter().take(MAX_PER_ACTION) {
                 let Ok(b) = parse_binding(key) else { continue };
+                // A reserved combination in a hand-edited file is dropped, as the dialog would refuse it.
+                if check_assignable(b).is_err() {
+                    continue;
+                }
                 let _ = s.add_binding(action, b, false);
             }
         }
@@ -3077,6 +3090,17 @@ impl BimApp {
                 if self.shortcuts_dialog.capture.is_none() {
                     break;
                 }
+            } else if let Event::Copy | Event::Cut | Event::Paste(_) = event {
+                // The system's clipboard chords are no action's to take; say why instead of ignoring the press.
+                let key = match event {
+                    Event::Copy => Key::C,
+                    Event::Cut => Key::X,
+                    _ => Key::V,
+                };
+                self.finish_capture(&mut capture, Binding::Chord(KeyChord::new(key, true, false, false, false)));
+                if self.shortcuts_dialog.capture.is_none() {
+                    break;
+                }
             }
         }
         if !handled.is_empty() {
@@ -3376,8 +3400,25 @@ mod tests {
         assert!(check_assignable(parse_binding("Space").unwrap()).is_err());
         assert!(check_assignable(parse_binding("Delete").unwrap()).is_ok());
         assert!(check_assignable(parse_binding("Alt+F4").unwrap()).is_ok());
+        // The system's copy, cut and paste are no action's chord, though a sequence may use their letters.
+        for key in ["Ctrl+C", "Ctrl+X", "Ctrl+V", "Primary+C"] {
+            let refused = check_assignable(parse_binding(key).unwrap());
+            assert!(refused.is_err(), "{key} is the clipboard's");
+            assert!(refused.unwrap_err().contains("reserved"), "{key}");
+        }
+        assert!(check_assignable(parse_binding("Ctrl+Shift+C").unwrap()).is_ok(), "another binding");
+        assert!(check_assignable(parse_binding("CO").unwrap()).is_ok(), "a sequence, not the chord");
         assert!(system_warning(parse_binding("Alt+F4").unwrap().chord().unwrap()).is_some());
         assert!(system_warning(parse_binding("Ctrl+Alt+E").unwrap().chord().unwrap()).is_some());
+    }
+
+    #[test]
+    fn a_clipboard_chord_in_the_settings_is_dropped() {
+        let id = registry().resolve("cmd.move").unwrap();
+        let config =
+            Config { version: 2, profile: Profile::Custom, bindings: vec![(id.to_string(), vec!["Ctrl+C".to_string(), "MV".to_string()])] };
+        let loaded = Shortcuts::from_config(&config);
+        assert_eq!(loaded.bindings(&id), [parse_binding("MV").unwrap()], "Ctrl+C is not loaded");
     }
 
     impl Binding {
