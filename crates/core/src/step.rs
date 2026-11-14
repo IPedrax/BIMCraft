@@ -367,7 +367,7 @@ mod tests {
         let text = format!("ISO-10303-21;\nHEADER;\nFILE_SCHEMA(('IFC4'));\nENDSEC;\nDATA;\n#1=IFCX({values});\nENDSEC;\n");
         assert!(parse(text.as_bytes()).is_ok());
         let e = parse_within(text.as_bytes(), &crate::memory::testing::budget(8_000_000)).err().unwrap_or_default();
-        assert!(e.starts_with("reading it took more than the 8 MB of memory this machine had free, so it was stopped"), "{e}");
+        assert!(e.starts_with("it took more than the 8 MB of memory this machine had free, so it was stopped"), "{e}");
     }
 
     #[test]

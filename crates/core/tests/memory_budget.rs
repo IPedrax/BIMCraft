@@ -42,7 +42,7 @@ mod tests {
         // A kilobyte to spare: refused before it's read, and the open project stays.
         free(MARGIN + 1_000);
         let e = s.execute("open", &json!({"path": saved})).unwrap_err();
-        assert!(e.contains("house.bimc: reading it needs about"), "{e}");
+        assert!(e.contains("house.bimc: it needs about"), "{e}");
         assert_eq!(s.model.to_json().unwrap(), before);
 
         // A file whose size says it fits, eight times over, but that unpacks into far more: four million values at 32 bytes
@@ -51,7 +51,7 @@ mod tests {
         std::fs::write(&crafted, format!("{{\"format\": 1, \"x\": [{}]}}", vec!["0"; 4_000_000].join(","))).unwrap();
         free(MARGIN + 100_000_000);
         let e = s.execute("open", &json!({"path": crafted})).unwrap_err();
-        assert!(e.contains("crafted.bimc: reading it took more than the 100 MB of memory this machine had free, so it was stopped"), "{e}");
+        assert!(e.contains("crafted.bimc: it took more than the 100 MB of memory this machine had free, so it was stopped"), "{e}");
         assert_eq!(s.model.to_json().unwrap(), before);
 
         // An IFC file is measured at fourteen times its size.
@@ -60,7 +60,7 @@ mod tests {
         let size = std::fs::metadata(&ifc).unwrap().len();
         free(MARGIN + size * 13);
         let e = s.execute("open", &json!({"path": ifc})).unwrap_err();
-        assert!(e.contains("house.ifc: reading it needs about"), "{e}");
+        assert!(e.contains("house.ifc: it needs about"), "{e}");
         free(64 << 30);
         s.execute("open", &json!({"path": ifc})).unwrap();
 

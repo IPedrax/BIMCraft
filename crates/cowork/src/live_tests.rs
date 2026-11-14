@@ -190,6 +190,27 @@ fn a_guest_edits_the_hosts_model_and_both_keep_the_same_one() {
 }
 
 #[test]
+fn guests_coming_in_at_once_share_one_welcome_and_each_knows_who_it_is() {
+    // The welcome is the same for everyone who comes in on one model, packed once; who each guest is goes ahead of it.
+    let host = Host::start();
+    let (at, code) = (host.at(), host.code.clone());
+    let coming = ["Bo", "Cy"].map(|name| {
+        let code = code.clone();
+        std::thread::spawn(move || Joined::join_with(at, &code, name, quick(), Arc::new(|| {})).unwrap())
+    });
+    let model = host.model();
+    for ((me, other), joining) in [("Bo", "Cy"), ("Cy", "Bo")].into_iter().zip(coming) {
+        let (mut joined, copy) = joining.join().unwrap();
+        assert_eq!(json_of(&copy), json_of(&model));
+        let mut s = Session::new();
+        s.adopt(copy);
+        pump_until(&mut joined, &mut s, |j| j.others().values().any(|o| o.name == other));
+        assert!(joined.others().values().all(|o| o.name != me), "{me} isn't one of the others: {:?}", joined.others());
+    }
+    host.end("done");
+}
+
+#[test]
 fn guests_see_each_other_by_name_and_a_taken_name_gets_a_number() {
     let host = Host::start();
     let (mut a, mut sa) = join(&host, "Bo");

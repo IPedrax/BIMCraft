@@ -87,6 +87,8 @@ impl Guest {
         let guest = Guest { tx, events, stream: s.try_clone()?, writer: Some(writer) };
         // What the host sent before its welcome (a change being made as this guest came in) is in the welcome.
         let mut until = Some(std::time::Instant::now() + WELCOME);
+        // Who this guest is comes before the welcome, which is the same for everyone who comes in on it.
+        let mut you = Value::Null;
         let first = loop {
             let next = match until {
                 Some(t) => guest.events.recv_timeout(t.saturating_duration_since(std::time::Instant::now())),
@@ -94,7 +96,14 @@ impl Guest {
             };
             match next {
                 Ok(GuestEvent::Message(m)) if m["op"] == COMING => until = None,
+                Ok(GuestEvent::Message(m)) if m["op"] == "you" => you = m["you"].clone(),
                 Ok(GuestEvent::Message(m)) if m["op"] != "welcome" => {}
+                Ok(GuestEvent::Message(mut m)) => {
+                    if let Some(o) = m.as_object_mut() {
+                        o.entry("you").or_insert_with(|| std::mem::take(&mut you));
+                    }
+                    break Ok(GuestEvent::Message(m));
+                }
                 Ok(e) => break Ok(e),
                 Err(RecvTimeoutError::Timeout) => break Err("the host's window didn't answer"),
                 Err(RecvTimeoutError::Disconnected) => break Err("the connection to the host closed"),

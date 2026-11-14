@@ -66,7 +66,7 @@ impl Budget {
         let need = size.saturating_mul(factor);
         if need > room {
             return Err(format!(
-                "reading it needs about {} of memory and this machine has {} free: close other programs and try again, or use a \
+                "it needs about {} of memory and this machine has {} free: close other programs and try again, or use a \
                  machine with more memory",
                 bytes(need),
                 bytes(free)
@@ -81,7 +81,7 @@ impl Budget {
         self.stopped.set(self.stopped.get() || self.meter.is_some_and(|(used, stop)| used() > stop));
         match self.stopped.get() {
             true => Err(format!(
-                "reading it took more than the {} of memory this machine had free, so it was stopped: close other programs and try \
+                "it took more than the {} of memory this machine had free, so it was stopped: close other programs and try \
                  again, or use a machine with more memory",
                 bytes(self.room)
             )),
@@ -227,7 +227,7 @@ mod tests {
         let meter = fake(Some(4 << 30));
         // 4.3 GB free leaves 3.9 GB: 524 MB of project at 8 times its size is too much, 419 MB isn't.
         let e = Budget::with(&meter, 500 << 20, PROJECT).err().unwrap();
-        assert!(e.starts_with("reading it needs about 4.2 GB of memory and this machine has 4.3 GB free"), "{e}");
+        assert!(e.starts_with("it needs about 4.2 GB of memory and this machine has 4.3 GB free"), "{e}");
         assert!(Budget::with(&meter, 400 << 20, PROJECT).unwrap().is_some());
         // A machine that can't say what's free keeps the caller's fixed limit.
         assert!(Budget::with(&fake(None), u64::MAX, PROJECT).unwrap().is_none());
@@ -238,7 +238,7 @@ mod tests {
         // The fake counts a megabyte each time it is asked, so a budget of a few megabytes runs out within a few values.
         let text = format!("[{}]", vec!["0"; 1000].join(","));
         let e = json(&text, &budget(8_000_000)).unwrap_err();
-        assert!(e.starts_with("reading it took more than the 8 MB of memory this machine had free, so it was stopped"), "{e}");
+        assert!(e.starts_with("it took more than the 8 MB of memory this machine had free, so it was stopped"), "{e}");
         assert!(Budget::none().check().is_ok() && Budget::none().left().is_none());
     }
 

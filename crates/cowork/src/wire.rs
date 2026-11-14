@@ -33,10 +33,29 @@ const PARTS: u8 = 2;
 /// The first byte of each part after the first.
 const PART: u8 = 3;
 
+/// What [`pack`] deflates, for the tests to measure.
+#[cfg(test)]
 pub(crate) fn deflate(bytes: &[u8]) -> io::Result<Vec<u8>> {
     let mut e = flate2::write::DeflateEncoder::new(Vec::new(), flate2::Compression::fast());
     e.write_all(bytes)?;
     e.finish()
+}
+
+/// `msg` as it goes on the wire: deflated when it's long, marked so. Done once for a message, whoever it goes to.
+fn pack(msg: Vec<u8>) -> Vec<u8> {
+    if msg.len() <= DEFLATE_OVER {
+        return msg;
+    }
+    let mut e = flate2::write::DeflateEncoder::new(vec![DEFLATED], flate2::Compression::fast());
+    match e.write_all(&msg).and_then(|()| e.finish()) {
+        Ok(packed) => packed,
+        Err(_) => msg,
+    }
+}
+
+/// `msg` packed, to queue for one guest or several: their writers share it.
+pub(crate) fn packed(msg: &Value) -> Arc<[u8]> {
+    pack(msg.to_string().into_bytes()).into()
 }
 
 /// `bytes` inflated, or an error past `limit` bytes: a small message may not unpack into a huge one.
@@ -83,13 +102,11 @@ pub(crate) fn write_bytes(w: &mut impl Write, cipher: &mut Cipher, msg: &[u8]) -
 
 /// [`write_bytes`] in frames of at most `most` bytes (the tests' are small): a message longer goes in parts.
 pub(crate) fn write_in(w: &mut impl Write, cipher: &mut Cipher, msg: &[u8], most: usize) -> io::Result<()> {
-    let packed;
-    let msg = if msg.len() > DEFLATE_OVER {
-        packed = [&[DEFLATED][..], &deflate(msg)?].concat();
-        &packed
-    } else {
-        msg
-    };
+    write_packed(w, cipher, &pack(msg.to_vec()), most)
+}
+
+/// A message already packed ([`packed`]), in frames of at most `most` bytes.
+fn write_packed(w: &mut impl Write, cipher: &mut Cipher, msg: &[u8], most: usize) -> io::Result<()> {
     if msg.len() <= most {
         return write_sealed(w, cipher, msg);
     }
@@ -206,7 +223,7 @@ pub(crate) fn timed_out(e: &io::Error) -> bool {
 
 /// What a writer thread is given.
 pub(crate) enum Out {
-    /// A message, as JSON: made once for every peer it goes to.
+    /// A message, packed ([`packed`]): made once for every peer it goes to.
     Frame(Arc<[u8]>),
     /// Hang up, after what was queued before.
     End,
@@ -214,7 +231,7 @@ pub(crate) enum Out {
 
 impl Out {
     pub(crate) fn of(msg: &Value) -> Out {
-        Out::Frame(msg.to_string().into_bytes().into())
+        Out::Frame(packed(msg))
     }
 }
 
@@ -228,7 +245,7 @@ pub(crate) fn writer(mut stream: TcpStream, mut cipher: Cipher, rx: Receiver<Out
             Err(RecvTimeoutError::Timeout) => Arc::clone(&pinged),
             Ok(Out::End) | Err(RecvTimeoutError::Disconnected) => break,
         };
-        if write_in(&mut stream, &mut cipher, &bytes, frame.min(MAX_FRAME)).is_err() {
+        if write_packed(&mut stream, &mut cipher, &bytes, frame.min(MAX_FRAME)).is_err() {
             break;
         }
     }
