@@ -2255,14 +2255,14 @@ mod tests {
             (0..400).map(|i| P2(i as f64 * 400.0, 900.0 * ((i as f64) * 0.7).sin() + 300.0 * ((i as f64) * 2.9).cos())).collect();
         let fit = Curve::Fit { points: pts.clone(), tangents: [None, None] };
         let control = Curve::Spline { control: pts, knots: None };
-        let t = std::time::Instant::now();
+        let t = web_time::Instant::now();
         let (t0, t1) = fit.domain();
         let Some((a, Some(b))) = fit.split(t0 + (t1 - t0) * 0.37) else { panic!("split") };
         let split = t.elapsed().as_secs_f64();
-        let t = std::time::Instant::now();
+        let t = web_time::Instant::now();
         let converted = control.converted();
         let convert = t.elapsed().as_secs_f64();
-        let t = std::time::Instant::now();
+        let t = web_time::Instant::now();
         let off = offset_fit(&fit, 150.0);
         let offset = t.elapsed().as_secs_f64();
         eprintln!("split {split:.3} s, convert {convert:.3} s, offset {offset:.3} s");

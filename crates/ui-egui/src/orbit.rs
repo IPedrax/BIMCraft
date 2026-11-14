@@ -204,7 +204,7 @@ pub(crate) enum Waiting {
 
 impl Waiting {
     /// How a wait `elapsed` long shows: with a last `picture` or none, and whether it has something to say `now`.
-    pub(crate) fn after(elapsed: std::time::Duration, picture: bool, now: bool) -> Waiting {
+    pub(crate) fn after(elapsed: web_time::Duration, picture: bool, now: bool) -> Waiting {
         match (picture, now || elapsed >= WAIT_QUIET) {
             (false, _) => Waiting::Bare,
             (true, false) => Waiting::Quiet,
@@ -214,7 +214,7 @@ impl Waiting {
 }
 
 /// How long a wait shows the last picture as it was, before it fades and says why.
-const WAIT_QUIET: std::time::Duration = std::time::Duration::from_millis(200);
+const WAIT_QUIET: web_time::Duration = web_time::Duration::from_millis(200);
 /// How much of the paper lies over the last picture in a longer wait.
 const WAIT_FADE: u8 = 150;
 
@@ -358,7 +358,7 @@ pub struct Orbit {
     pub(crate) hot_grip: Option<usize>,
     /// What the view is showing while its scene or mesh is made, and since when it has been waiting.
     pub(crate) waiting: Option<Waiting>,
-    pub(crate) waiting_since: Option<std::time::Instant>,
+    pub(crate) waiting_since: Option<web_time::Instant>,
     /// Holds a scene being made back, for a test to see the view wait.
     pub(crate) hold_build: bool,
     /// A section box's grip being dragged: which face (as `view3d::box_grips` orders them), and where the drag began.
@@ -821,7 +821,7 @@ impl Orbit {
     /// flicker, then faded with `words` over it. With none yet, or with something wrong (`now`), the words at once.
     pub(crate) fn wait(&mut self, ctx: &egui::Context, p: &egui::Painter, card: &crate::gpu::Card, rect: Rect, words: &str, now: bool) {
         p.rect_filled(rect, 0.0, color(render::PAPER));
-        let since = *self.waiting_since.get_or_insert_with(std::time::Instant::now);
+        let since = *self.waiting_since.get_or_insert_with(web_time::Instant::now);
         let picture = match self.picture_size {
             Some(size) if self.on_card => card.gpu.as_ref().and_then(|g| g.texture()).map(|id| (id, size)),
             Some(size) => self.texture.as_ref().map(|t| (t.id(), size)),
@@ -907,7 +907,7 @@ impl Orbit {
             let _ = worker.start();
             let _ = worker.take_error();
             if worker.busy() {
-                ctx.request_repaint_after(std::time::Duration::from_millis(16));
+                ctx.request_repaint_after(web_time::Duration::from_millis(16));
             }
         }
         None
@@ -985,7 +985,7 @@ impl Orbit {
                     self.loading_error = Some(error);
                 }
                 if worker.busy() {
-                    ctx.request_repaint_after(std::time::Duration::from_millis(16));
+                    ctx.request_repaint_after(web_time::Duration::from_millis(16));
                 }
             }
         }
@@ -1053,7 +1053,7 @@ impl Orbit {
                 return Some(error);
             }
             if worker.busy() {
-                ctx.request_repaint_after(std::time::Duration::from_millis(16));
+                ctx.request_repaint_after(web_time::Duration::from_millis(16));
             }
         }
         None
@@ -2389,7 +2389,7 @@ impl BimApp {
 mod edits {
     use super::*;
     use std::sync::mpsc;
-    use std::time::Duration;
+    use web_time::Duration;
 
     #[test]
     fn after_an_edit_the_worker_brings_the_last_scene_up_to_date_and_draws_the_whole_scene_s_picture() {
@@ -2437,7 +2437,7 @@ mod edits {
 mod worker_measurements {
     use super::*;
     use std::sync::mpsc;
-    use std::time::{Duration, Instant};
+    use web_time::{Duration, Instant};
 
     #[test]
     #[ignore]

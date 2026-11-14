@@ -1,5 +1,5 @@
 use super::*;
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 /// The app on its start page, its recent files kept in `dir`.
 fn home(dir: &std::path::Path, files: &[&std::path::Path]) -> Harness<'static, BimApp> {

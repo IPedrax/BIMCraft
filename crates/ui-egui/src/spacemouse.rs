@@ -19,7 +19,7 @@ mod descriptor;
 
 use std::io::Write as _;
 use std::sync::{Arc, Mutex, OnceLock};
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 use bimcraft_core::view3d::Camera;
 
@@ -177,7 +177,7 @@ impl SpaceMouse {
 #[cfg(windows)]
 mod hid {
     use std::sync::Mutex;
-    use std::time::{Duration, Instant};
+    use web_time::{Duration, Instant};
 
     use hidapi::{HidApi, HidDevice};
 

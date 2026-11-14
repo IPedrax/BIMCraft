@@ -23,6 +23,10 @@ mod context;
 pub mod control;
 mod coordinates;
 pub mod cowork;
+#[cfg(not(target_arch = "wasm32"))]
+mod dialog;
+#[cfg(target_arch = "wasm32")]
+#[path = "web/dialog.rs"]
 mod dialog;
 mod dimtypes;
 mod display;
@@ -93,6 +97,10 @@ mod titlebar;
 mod titleblocks;
 mod triad;
 mod typeprops;
+#[cfg(not(target_arch = "wasm32"))]
+mod updates;
+#[cfg(target_arch = "wasm32")]
+#[path = "web/updates.rs"]
 mod updates;
 mod view_worker;
 pub mod window;
@@ -967,7 +975,11 @@ pub struct BimApp {
     title: String,
     styled: bool,
     /// The updater, which the desktop app attaches: a window starts without one, and so never phones home.
+    #[cfg(not(target_arch = "wasm32"))]
     pub updates: Option<bimcraft_update::Updater>,
+    /// In a browser there is no updater: the page is the version the site serves.
+    #[cfg(target_arch = "wasm32")]
+    pub updates: Option<std::convert::Infallible>,
     /// The Assistant palette's: the user's provider, model and key, and the chat, which the desktop app gives a network (`assistant::State::attach`): a window starts without one.
     pub assistant: assistant::State,
     /// The 3D mouse's reader, which the desktop app attaches: a window starts without one, so a test never opens a device.
@@ -2474,7 +2486,7 @@ impl BimApp {
         let (held, now) = ctx.input(|i| (i.modifiers.command, i.time));
         let left = CTRL_WAIT - (now - self.typed_at);
         if held && left > 0.0 {
-            ctx.request_repaint_after(std::time::Duration::from_secs_f64(left));
+            ctx.request_repaint_after(web_time::Duration::from_secs_f64(left));
             return;
         }
         let letter = self.typed.remove(0);

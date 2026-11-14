@@ -210,7 +210,7 @@ impl PlanCache {
         if worker.start().is_err() {
             return self.drawing(model, level, view, ceiling);
         }
-        ctx.request_repaint_after(std::time::Duration::from_millis(16));
+        ctx.request_repaint_after(web_time::Duration::from_millis(16));
         drawing
     }
 

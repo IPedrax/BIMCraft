@@ -182,7 +182,7 @@ component {"family":"Desk","type":"1400 x 700","at":[30000,3000],"angle":37,"off
         latest.start().unwrap();
         let last = request_with_desks();
         latest.request(last.clone());
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(120);
+        let deadline = web_time::Instant::now() + web_time::Duration::from_secs(120);
         let frame = loop {
             latest.start().unwrap();
             if !latest.busy()
@@ -190,8 +190,8 @@ component {"family":"Desk","type":"1400 x 700","at":[30000,3000],"angle":37,"off
             {
                 break frame;
             }
-            assert!(std::time::Instant::now() < deadline, "the worker did not publish: {:?}", latest.take_error());
-            std::thread::sleep(std::time::Duration::from_millis(1));
+            assert!(web_time::Instant::now() < deadline, "the worker did not publish: {:?}", latest.take_error());
+            std::thread::sleep(web_time::Duration::from_millis(1));
         };
         assert!(Arc::ptr_eq(&frame.request.model, &last.model), "a replaced job must not publish");
         assert_fresh(&frame);

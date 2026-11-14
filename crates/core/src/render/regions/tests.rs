@@ -1,6 +1,6 @@
 //! The ink a non-masking region keeps above it: in elevations, on sheets, along a region's edge, and what it costs.
 
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 use serde_json::{Value, json};
 

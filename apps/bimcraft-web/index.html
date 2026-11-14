@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BIMCraft</title>
+    <link data-trunk rel="rust" data-bin="bimcraft-web" data-wasm-opt="2" />
+    <link data-trunk rel="icon" href="../../assets/app-icon/bimcraft-256.png" />
+    <style>
+      html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #f4f4f2; }
+      @media (prefers-color-scheme: dark) { html, body { background: #1e1f22; } }
+      canvas#bimcraft { display: block; width: 100%; height: 100%; outline: none; }
+      #loading { position: fixed; inset: 0; display: grid; place-items: center; font: 15px system-ui, sans-serif; color: #777; pointer-events: none; }
+    </style>
+  </head>
+  <body>
+    <!-- The window draws on this canvas; the note under it says the page is loading, or why it couldn't start. -->
+    <p id="loading">Loading BIMCraft…</p>
+    <canvas id="bimcraft"></canvas>
+  </body>
+</html>

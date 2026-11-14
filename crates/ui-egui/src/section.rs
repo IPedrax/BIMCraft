@@ -93,7 +93,7 @@ impl Cut {
                 return Err(error);
             }
             if worker.busy() {
-                ctx.request_repaint_after(std::time::Duration::from_millis(16));
+                ctx.request_repaint_after(web_time::Duration::from_millis(16));
             }
         }
         Ok(())
@@ -434,7 +434,7 @@ mod worker_tests {
     use super::*;
     use crate::Sheet;
     use bimcraft_core::engine::Session;
-    use std::time::{Duration, Instant};
+    use web_time::{Duration, Instant};
 
     fn harness() -> (egui_kittest::Harness<'static, BimApp>, Id) {
         let mut session = Session::new();

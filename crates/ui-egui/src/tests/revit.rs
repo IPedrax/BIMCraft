@@ -5,7 +5,7 @@ use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 use std::sync::Mutex;
-use std::time::Duration;
+use web_time::Duration;
 
 use bimcraft_core::import::Imported;
 
@@ -206,7 +206,7 @@ fn gated() -> (Rig, std::sync::mpsc::Sender<()>) {
 fn while_a_revit_file_is_read_the_window_says_so_stays_alive_and_holds_still() {
     let (mut r, release) = gated();
     let model = Arc::clone(&r.h.state().session.model);
-    let started = std::time::Instant::now();
+    let started = web_time::Instant::now();
     r.open("/projects/house.rvt");
     r.h.step();
     assert!(r.h.state().importing());

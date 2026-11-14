@@ -482,16 +482,16 @@ mod measurements {
         let m = crate::sample::highrise(30).unwrap();
         let (lo, hi) = m.model_box().unwrap();
         let mid: P3 = std::array::from_fn(|k| (lo[k] + hi[k]) / 2.0);
-        let at = std::time::Instant::now();
+        let at = web_time::Instant::now();
         let source = CapSource::new(&m);
         println!("{} pieces found in {:?}", source.pieces.len(), at.elapsed());
         let look = Look::default().with_section_box(Some((lo, mid)));
-        let at = std::time::Instant::now();
+        let at = web_time::Instant::now();
         let caps = source.caps(&m, &look, (100.0, Detail::Fine));
         println!("six faces cut: {} triangles, {} lines in {:?}", caps.tris.len(), caps.lines.len(), at.elapsed());
         for step in 1..=3 {
             let top = [mid[0], mid[1], mid[2] - 500.0 * f64::from(step)];
-            let at = std::time::Instant::now();
+            let at = web_time::Instant::now();
             let caps = source.caps(&m, &Look::default().with_section_box(Some((lo, top))), (100.0, Detail::Fine));
             println!("top moved: {} triangles, {} lines in {:?}", caps.tris.len(), caps.lines.len(), at.elapsed());
         }

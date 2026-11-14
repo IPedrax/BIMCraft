@@ -205,7 +205,7 @@ fn pipes_kilometres_across_are_refused_saying_what_to_fix_not_run_out_of_memory(
     let ids = pipe(&mut s, json!(points), json!({"offset": 500}));
     assert_eq!(ids.len(), 2999);
     let before = s.model.clone();
-    let t = std::time::Instant::now();
+    let t = web_time::Instant::now();
     let e = s.execute("network", &json!({})).unwrap_err();
     assert!(t.elapsed().as_secs_f64() < 10.0, "{} s: a hang, not a slow machine", t.elapsed().as_secs_f64());
     assert!(e.contains(&crate::network::MAX_CELLS.to_string()) && e.contains("`level`"), "{e}");
@@ -225,7 +225,7 @@ fn a_drain_as_long_as_a_query_takes_is_checked_in_time() {
         let points: Vec<Value> = (0..10_000).map(|i| json!([(k * 9_999 + i) * 1000, -300])).collect();
         pipe(&mut s, json!(points), json!({"offset": 0}));
     }
-    let t = std::time::Instant::now();
+    let t = web_time::Instant::now();
     let n = net(&mut s, json!({}));
     assert!(t.elapsed().as_secs_f64() < 10.0, "{} s: a hang, not a slow machine", t.elapsed().as_secs_f64());
     assert_eq!(n["groups"][0]["elements"].as_array().map(Vec::len), Some(99_991), "the WC and its drain");

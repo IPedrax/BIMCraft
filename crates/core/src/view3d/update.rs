@@ -600,7 +600,7 @@ mod tests {
 #[ignore]
 fn update_speed() {
     use serde_json::json;
-    use std::time::Instant;
+    use web_time::Instant;
     let model = crate::sample::tower::annotated(crate::sample::tower::Plate::REFERENCE, 10).unwrap();
     let mut s = crate::engine::Session::new();
     s.reset(model, None);

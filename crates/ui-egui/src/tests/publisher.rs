@@ -3,7 +3,7 @@
 
 use super::*;
 use egui_kittest::kittest::NodeT;
-use std::time::Duration;
+use web_time::Duration;
 
 const PROJECT: &str = r#"wall {"points": [[0,0],[8000,0],[8000,6000],[0,6000]], "closed": true}
 sheet {"name": "Plans"}

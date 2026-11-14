@@ -363,7 +363,7 @@ fn arcs_that_reach_past_the_model_and_polylines_that_would_take_millions_of_poin
         (wiggle(10_000, 350.0), "points to draw within"),
     ];
     for (p, says) in hostile {
-        let t = std::time::Instant::now();
+        let t = web_time::Instant::now();
         let r = s.execute("detail_line", &p);
         assert!(t.elapsed().as_secs_f64() < 10.0, "{} s: a hang, not a slow machine", t.elapsed().as_secs_f64());
         if says.is_empty() {

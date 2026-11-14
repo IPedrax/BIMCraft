@@ -3,7 +3,7 @@
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
-use std::time::Duration;
+use web_time::Duration;
 
 use super::*;
 use crate::control::Control;
@@ -172,7 +172,7 @@ fn a_port_in_use_is_an_error_and_the_bridge_file_is_left_alone() {
 
 #[test]
 fn a_connection_that_trickles_its_first_line_or_speaks_another_protocol_is_closed() {
-    use std::time::Instant;
+    use web_time::Instant;
     // A short time for the first line, so that the test is short.
     let control = Control::start_within(0, None, Duration::from_millis(400)).unwrap();
     let port = control.entry.port;
@@ -237,7 +237,7 @@ fn agents_page(h: &mut Harness<BimApp>) {
 
 /// Frames until `done` holds of the window, or ten seconds.
 fn until(h: &mut Harness<BimApp>, done: impl Fn(&Harness<BimApp>) -> bool) -> bool {
-    let start = std::time::Instant::now();
+    let start = web_time::Instant::now();
     while !done(h) && start.elapsed() < Duration::from_secs(10) {
         h.step();
         std::thread::sleep(Duration::from_millis(5));
@@ -283,7 +283,7 @@ fn settings_open_the_port_and_close_it_and_the_view_control_bar_says_how_it_is_i
         assert!(h.state().control.is_none() && !h.state().agents.listen);
         press(&mut h, "Close");
         assert!(h.query_by_label("Agents: off").is_some());
-        let start = std::time::Instant::now();
+        let start = web_time::Instant::now();
         while TcpStream::connect(("127.0.0.1", port)).is_ok() {
             assert!(start.elapsed() < Duration::from_secs(10), "port {port} still listens");
             std::thread::sleep(Duration::from_millis(20));

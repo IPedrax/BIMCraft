@@ -16,8 +16,11 @@ testing = []
 [dependencies]
 bimcraft-core = { workspace = true }
 serde_json = { workspace = true }
-ureq = { workspace = true }
 # The folder the files sent with a message are copied into, removed as it is dropped.
 tempfile = { workspace = true }
 # The saved key's encryption: the same ring the updater's SHA-256 is.
 ring = { workspace = true }
+
+# The network is the desktop's and the CLI's: a browser has its own way out, and the assistant isn't attached there.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+ureq = { workspace = true }
