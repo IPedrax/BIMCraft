@@ -2421,7 +2421,10 @@ other_files(
         "{name?, category?, categories?, fields?, filters?, sort?, grouped?, path?} a schedule view, as Revit's View > Schedules makes one, \
          and its table: columns, rows, the `elements` each row lists, and totals (and a .csv file with a path, or an .xlsx workbook for a path ending .xlsx). A new one needs `name` and `category`: rooms, \
          doors, windows, walls, floors, ceilings, roofs, columns, structural columns, footings, beams, strip footings, components, \
-         stairs, ramps, railings, levels or sheets, or `multicategory`, as Revit's Multi-Category Schedule: a row for each element of \
+         stairs, ramps, railings, levels or sheets; `framingmembers`, a row for each member of every framed wall (Host, Host Type, \
+         Framing Type, Role, Section as `38 x 89` or `2 x 38 x 184`, Length cut to the mm, Stock Length, 0 when spliced; Level, \
+         Key, Count; grouped by Role, Section and Length it is the cut list); or `multicategory`, as Revit's Multi-Category \
+         Schedule: a row for each element of \
          `categories` ([\"walls\", \"doors\"…]; none, every built one but rooms, levels, masses and sheets), with the fields they share \
          (Category, Family, Type, Level, Count, Width, Height, Length, Thickness, Area: a wall's length by its height, a door's \
          width by its height; Material: its type's structure layer's, a run's type's, a family's), each empty where its \
@@ -2458,7 +2461,8 @@ other_files(
          see-through solid. Subcategories are hidden and shown as categories are, and go with their category: under rooms, `roomreference` (the \
          cross at each room's point, hidden unless shown, as Revit's Rooms > Reference) and `roomseparator` (room separation \
          lines); under doors and windows, `dooropening` and `windowopening` (a door's swing, a window's opening lines: the \
-         family symbols that name the subcategory `Opening`). An \
+         family symbols that name the subcategory `Opening`); under walls, `framing` (a framed wall's studs, plates and \
+         headers: hidden, its structure layer is drawn whole, as an unframed wall's). An \
          override is {hidden?, projection?: style, cut?: style, halftone?, transparency?}, a style {color?, weight? (a pen, \
          0 to 16: 0 a hairline, the thinnest line the screen or printer draws at any scale; 1 to 16 widths on paper from 0.10 to \
          4 mm, 4 being 0.18 mm and 10 0.35 mm, a cut wall's outline), dash? (solid, dashed, dotted), fill?, foreground?, background?}, a colour [r, g, b] or \"#rrggbb\". \
@@ -3411,9 +3415,10 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
     if m.is_pinned(id) {
         extra.insert("pinned".into(), json!(true));
     }
-    // Its type's and its family's GUIDs, beside their names.
+    // Its type's and its family's GUIDs, beside their names; a framed wall's framing type's too.
     e.clone().lib_refs_mut(&mut |kind, name| {
         let key = match kind {
+            LibKind::Type(c) if c == "framing" => "framing_guid",
             LibKind::Type(_) => "type_guid",
             LibKind::Family => "family_guid",
             _ => return,

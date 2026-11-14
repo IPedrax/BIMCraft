@@ -88,3 +88,10 @@ type {"category":"structuralcolumn","name":"RHS steel","shape":"RHS","width":200
 structural_column {"at":[3000,14000],"type":"RHS steel","height":3000}
 type {"category":"beam","name":"CHS steel","shape":"CHS","width":168.3,"thickness":6}
 beam {"points":[[0,17000],[6000,17000]],"type":"CHS steel","offset":3000,"end_offset":4000}
+
+# A framed wall with a window: its studs, plates, header and sill IfcMembers aggregated to it, the wall keeping its body.
+type {"category":"wall","name":"2x4 Framed","layers":[{"function":"finish","material":"Plaster","thickness":13},{"function":"structure","material":"Timber","thickness":89},{"function":"finish","material":"Plaster","thickness":13}]}
+@framed = wall {"points":[[0,20000],[6000,20000]],"type":"2x4 Framed","height":2448}
+type {"category":"window","name":"Framed 1200 x 1200","width":1200,"height":1200,"sill":832}
+window {"wall":"@framed.ids.0","offset":3000,"type":"Framed 1200 x 1200"}
+frame {"id":"@framed.ids.0"}
