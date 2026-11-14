@@ -4568,6 +4568,34 @@ fn a_point_held_by_guides_says_so_whatever_else_it_snapped_to() {
     assert_eq!(lock_glyph(Kind::Free, Lock::Cross, false), None, "the classic look has its own markers");
 }
 
+/// The live reading sits clear of its own segment and its badge: a wide horizontal pill beside a steep one is pushed
+/// out by its box's projection on the normal, where a fixed offset let it cross back over the line.
+#[test]
+fn a_reading_pill_stays_off_its_segment_and_its_badge() {
+    use crate::canvas::reading_spot;
+    // 1969 mm at 74.38°: near vertical, so the pill lies almost across the line. Its own width decides the offset.
+    let (from, to) = (pos2(400.0, 100.0), pos2(410.0, 400.0));
+    let size = vec2(110.0, 22.0);
+    let at = reading_spot(from, to, None, size, None);
+    let rect = egui::Rect::from_center_size(at, size);
+    let d = to - from;
+    let n = vec2(d.y, -d.x) / d.length();
+    let clearance = [rect.left_top(), rect.right_top(), rect.left_bottom(), rect.right_bottom()]
+        .iter()
+        .map(|q| (*q - from).dot(n).abs())
+        .fold(f32::INFINITY, f32::min);
+    assert!(clearance >= 5.0, "the pill crosses its line: {clearance} px of clearance, {rect:?}");
+
+    // A badge over where the reading would go steps it farther out, so the two pills never sit on each other.
+    let badge = egui::Rect::from_center_size(at, vec2(90.0, 20.0));
+    let moved = reading_spot(from, to, None, size, Some(badge));
+    assert!(!egui::Rect::from_center_size(moved, size).intersects(badge), "the pills collide at {moved:?}");
+
+    // The pill keeps to the outside of the turn: a path coming from below turns right, so the reading goes below.
+    let turned = reading_spot(pos2(0.0, 0.0), pos2(100.0, 0.0), Some(pos2(0.0, 50.0)), size, None);
+    assert!(turned.y > 0.0, "the reading took the inside of the corner: {turned:?}");
+}
+
 #[test]
 fn manage_snaps_picks_the_guide_style() {
     use crate::style::GuideStyle;

@@ -363,6 +363,8 @@ pub struct Canvas {
     prior: Option<Vec<Id>>,
     /// What the last point a tool previewed snapped to this frame, if one did.
     pub(crate) found: Cell<Option<Found>>,
+    /// Where the last inference badge was drawn this frame, for the live reading to keep off it.
+    badge: Cell<Option<Rect>>,
     /// The cached alignment service (see [`AlignmentCache`]). A command gives the
     /// session a model of its own to change while the history keeps the one before, so a moved element, an undo and a redo
     /// change the address though they change neither count. shortcut: an address freed and taken again by a model of the same
@@ -392,6 +394,7 @@ impl Default for Canvas {
             lifted: None,
             prior: None,
             found: Cell::new(None),
+            badge: Cell::new(None),
             alignment_cache: RefCell::new(None),
         }
     }
@@ -889,7 +892,7 @@ pub(crate) fn alignment_tag(alignments: &[bimcraft_core::alignment::AlignmentRes
 
 /// A badge: `text` in a compact pill beside the glyph at `at`, in the guide ink, kept inside the
 /// painter's edge and off the guide lines through the glyph (`lines`, their screen angles).
-pub(crate) fn badge(p: &Painter, at: Pos2, text: impl Into<String>, ink: GuideInk, lines: &[f32]) {
+pub(crate) fn badge(p: &Painter, at: Pos2, text: impl Into<String>, ink: GuideInk, lines: &[f32]) -> Rect {
     let galley = p.layout_no_wrap(text.into(), FontId::proportional(11.5), ink.badge_text);
     let size = galley.size() + vec2(12.0, 6.0);
     let rect = badge_rect(at, size, p.clip_rect(), lines);
@@ -897,6 +900,7 @@ pub(crate) fn badge(p: &Painter, at: Pos2, text: impl Into<String>, ink: GuideIn
     p.rect_filled(rect, radius, ink.badge);
     p.rect_stroke(rect, radius, Stroke::new(1.0, ink.badge_edge), StrokeKind::Inside);
     p.galley(rect.min + vec2(6.0, 3.0), galley, ink.badge_text);
+    rect
 }
 
 /// Where a badge of `size` goes beside the glyph at `at`, inside `clip`: of the four corners round the glyph, the one
@@ -1555,6 +1559,7 @@ impl BimApp {
     /// Renders visual alignment guide lines, reference markers, and alignment tags: what holds the point, for the cursor's own
     /// glyph to say. `from` is the point being drawn from, whose segment the badge keeps off as it keeps off the rays.
     fn show_alignments(&self, sc: &Scene, alignments: &[AlignmentResult], from: Option<P2>) -> Lock {
+        self.canvas.badge.set(None);
         let refined = self.refined_guides();
         // A guide runs edge to edge, as Plasticity's do: the painter's own rectangle ends it.
         let reach = sc.p.clip_rect().size().length();
@@ -1578,7 +1583,7 @@ impl BimApp {
                 if let Some(a) = from {
                     lines.push((at - sc.screen(a)).angle());
                 }
-                badge(sc.p, at, text, guide_ink(), &lines);
+                self.canvas.badge.set(Some(badge(sc.p, at, text, guide_ink(), &lines)));
             } else {
                 tag(sc.p, at + vec2(12.0, 14.0), Align2::LEFT_TOP, text);
             }
@@ -5111,22 +5116,14 @@ impl BimApp {
             if !self.typed_length.is_empty() {
                 label(sc.screen(next), format!("{} (Enter)", self.typed_length.trim()));
             } else if refined {
-                // Beside the segment's middle, on the outside of the corner it turns at, and far enough along the normal
-                // that the dotted arc at the corner and the cursor's badge both stay clear of it.
+                // Beside the segment's middle, on the outside of the corner it turns at, and clear of the line by the pill's
+                // own width so a wide pill never crosses back over a steep segment; the badge it must keep off is known.
                 let (pl, pn) = (sc.screen(*last), sc.screen(next));
-                let d = pn - pl;
-                let len = d.length();
-                let dir = if len > f32::EPSILON { d / len } else { vec2(1.0, 0.0) };
-                let mut n = vec2(dir.y, -dir.x);
-                if let [.., prev, _] = chain
-                    && n.dot(sc.screen(*prev) - pl) < 0.0
-                {
-                    n = -n;
-                }
-                // The arc reaches 26 px about the corner; a badge sits 12 px off the cursor. Forty-five px from both is outside
-                // them, and a long segment's middle is farther still.
-                let off = (45.0f32.powi(2) - (len * 0.5).powi(2)).max(0.0).sqrt().max(18.0);
-                reading_pill(sc.p, pl + dir * (len * 0.5) + n * off, reading(*last), guide_ink());
+                let prev = match chain {
+                    [.., prev, _] => Some(sc.screen(*prev)),
+                    _ => None,
+                };
+                reading_pill(sc.p, pl, pn, prev, reading(*last), guide_ink(), self.canvas.badge.get());
             } else {
                 label(sc.screen(next), reading(*last));
             }
@@ -5134,11 +5131,12 @@ impl BimApp {
     }
 }
 
-/// A live reading in a pill of its own: the length and angle on the guide ink's paper, centred on `at` and kept inside
-/// the painter's edge, so a guide or the angle arc behind it never cuts the number.
-fn reading_pill(p: &Painter, at: Pos2, text: String, ink: GuideInk) -> Rect {
+/// A live reading in a pill of its own: the length and angle on the guide ink's paper, on the outside of the segment it
+/// measures and kept inside the painter's edge, so neither the line, the corner's arc nor the badge behind it cuts the number.
+fn reading_pill(p: &Painter, from: Pos2, to: Pos2, prev: Option<Pos2>, text: String, ink: GuideInk, avoid: Option<Rect>) -> Rect {
     let galley = p.layout_no_wrap(text, FontId::proportional(11.5), ink.badge_text);
     let size = galley.size() + vec2(10.0, 5.0);
+    let at = reading_spot(from, to, prev, size, avoid);
     let clip = p.clip_rect();
     let c = pos2(
         at.x.clamp(clip.left() + 4.0 + size.x / 2.0, (clip.right() - 4.0 - size.x / 2.0).max(clip.left() + 4.0 + size.x / 2.0)),
@@ -5150,6 +5148,31 @@ fn reading_pill(p: &Painter, at: Pos2, text: String, ink: GuideInk) -> Rect {
     p.rect_stroke(rect, radius, Stroke::new(1.0, ink.badge_edge), StrokeKind::Inside);
     p.galley(rect.min + vec2(5.0, 2.5), galley, ink.badge_text);
     rect
+}
+
+/// Where a reading pill of `size` goes for the segment `from` → `to`, turning at `prev`: past the segment's middle on the
+/// outside of the turn, far enough along the normal that the pill's own box projected on the normal clears the line (a
+/// fixed offset lets a wide pill cross back over a steep segment), and farther out again where the badge at `avoid` or the
+/// corner's arc would reach it.
+pub(crate) fn reading_spot(from: Pos2, to: Pos2, prev: Option<Pos2>, size: Vec2, avoid: Option<Rect>) -> Pos2 {
+    let d = to - from;
+    let len = d.length();
+    let dir = if len > f32::EPSILON { d / len } else { vec2(1.0, 0.0) };
+    let mut n = vec2(dir.y, -dir.x);
+    if let Some(prev) = prev
+        && n.dot(prev - from) < 0.0
+    {
+        n = -n;
+    }
+    let half = 0.5 * (n.x.abs() * size.x + n.y.abs() * size.y);
+    let middle = from + dir * (len * 0.5);
+    let mut off = (6.0 + half).max((45.0f32.powi(2) - (len * 0.5).powi(2)).max(0.0).sqrt());
+    if let Some(avoid) = avoid {
+        // The badge sits by the cursor, at the segment's other end: step along the normal until the two boxes part.
+        let beyond = (avoid.center() - middle).dot(n) + 0.5 * (n.x.abs() * avoid.width() + n.y.abs() * avoid.height()) + half + 6.0;
+        off = off.max(beyond);
+    }
+    middle + n * off
 }
 
 impl BimApp {
