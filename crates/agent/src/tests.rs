@@ -32,10 +32,23 @@ fn a_program_is_found_on_the_path_or_where_installers_put_it_and_a_path_is_itsel
     assert_eq!(resolve_in("", vec![bin], vec![]), None);
 }
 
+/// Held while a fake agent is written and while one is run. A process forked by another test while a script is still open for
+/// writing holds it open until it execs, and Linux then refuses to run that script ("Text file busy").
+#[cfg(unix)]
+static SPAWN: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// The crate's [`super::run`], under [`SPAWN`].
+#[cfg(unix)]
+fn run(call: &Call, stop: &Arc<AtomicBool>) -> Result<Output, String> {
+    let _held = SPAWN.lock().unwrap_or_else(|e| e.into_inner());
+    super::run(call, stop)
+}
+
 /// A fake agent: a script that prints `printed` and writes `file` to answer.json when given.
 #[cfg(unix)]
 fn fake(dir: &std::path::Path, body: &str) -> String {
     use std::os::unix::fs::PermissionsExt;
+    let _held = SPAWN.lock().unwrap_or_else(|e| e.into_inner());
     let p = dir.join("agent.sh");
     std::fs::write(&p, format!("#!/bin/sh\n{body}\n")).unwrap();
     std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
