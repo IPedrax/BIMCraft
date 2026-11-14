@@ -236,6 +236,9 @@ fn bring_library(to: &mut Model, from: &Model, take: &BTreeSet<Id>, out: &mut In
                 for l in layers.into_iter().flatten() {
                     here(&Kind::Material, &mut l.material);
                 }
+                if let Some(m) = (c == "framing").then(|| t.framing.get_mut(&name)).flatten().and_then(|x| x.material.as_mut()) {
+                    here(&Kind::Material, m);
+                }
                 if let Some(r) = (c == "room").then(|| t.room.get_mut(&name)).flatten() {
                     if let Some(floor) = &mut r.floor {
                         here(&Kind::Type("floor".into()), floor);
@@ -446,6 +449,7 @@ fn copy_definition(to: &mut Model, from: &Model, kind: &Kind, name: &str) -> boo
             "footing" => one(&mut t.footing, Some(&f.footing), name),
             "railing" => one(&mut t.railing, Some(&f.railing), name),
             "room" => one(&mut t.room, Some(&f.room), name),
+            "framing" => one(&mut t.framing, Some(&f.framing), name),
             run => one(t.runs.entry(run.to_string()).or_default(), f.runs.get(run), name),
         },
         Kind::Material => one(&mut to.materials, Some(&from.materials), name),

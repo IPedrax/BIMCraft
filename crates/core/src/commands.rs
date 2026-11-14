@@ -1360,9 +1360,21 @@ other_files(
         "type",
         "Edit Type",
         &[],
-        "{category: wall|floor|ceiling|door|window|column|structuralcolumn|footing|roof|railing|room|beam|stripfooting|pipe|duct|conduit|\
+        "{category: wall|floor|ceiling|door|window|column|structuralcolumn|footing|roof|railing|room|framing|beam|stripfooting|pipe|duct|conduit|\
          cabletray|wire|downconductor|groundconductor|cable, name, thickness? | width?, height?, sill?, operation? | width?, depth?, round?, \
-         material?, profile?, shape?, web?, flange?, radius? | height?, spacing? | floor?, floor_offset?, ceiling?, ceiling_offset?, colour?} creates the type, or changes it everywhere it's used. \
+         material?, profile?, shape?, web?, flange?, radius? | height?, spacing? | floor?, floor_offset?, ceiling?, ceiling_offset?, colour? \
+         | spacing?, layout?, thickness?, material?, bottom_plates?, top_plates?, kings?, jacks?, window_rough?, door_rough?, headers?, \
+         sill_plates?, corner?, tee?, blocking?, stock?} creates the type, or changes it everywhere it's used. \
+         A framing type (see `frame`; all mm, every field optional, a new one starting from 2x4 at 16\" for a bearing wall) has \
+         `spacing` (406.4; the grid's stud centres apart), `layout` (start | end | centre: where the grid is measured from along \
+         the framed length), `thickness` (38: a stud's and a plate's; their depth across the wall is its type's structure \
+         layer's), `material` (null: the structure layer's), `bottom_plates` (1), `top_plates` (2), `kings` and `jacks` (1 each \
+         side of an opening), `window_rough` [25, 13] and `door_rough` [50, 41] (what the rough opening adds to the opening's \
+         width and on top of its height), `headers` ([{up_to: 1250, depth: 184, plies: 2}, {depth: 235, plies: 2}]: the first \
+         whose `up_to` holds the rough opening's width is used, `plies` side by side on edge, or `flat: true` laid flat as wide \
+         as the layer: a partition's [{depth: 38, flat: true}]), `sill_plates` (1), `corner` (three_stud | two_stud | none), \
+         `tee` (studs | none), `blocking` (heights over the wall's base of rows of flat blocking, []) and `stock` (the lengths a \
+         cut list picks from, shortest first). Fields given replace the type's; others are kept. \
          A room type may name a `floor` type and a `ceiling` type (null, none; a new project's Standard has neither): each of its \
          rooms then has a floor (its top `floor_offset` mm over the room's level, 0) and a ceiling (its underside \
          `ceiling_offset` mm over it, 2600) of its own, made when the room is bounded and kept along its boundary at the walls' \
@@ -2329,6 +2341,46 @@ other_files(
         standard,
     )
     .menu("Manage > Technical Standards"),
+    edit(
+        "frame",
+        "Framing",
+        &[],
+        "{ids | id, type?} frames walls: gives each a framing type (`type`, one of the project's, see `type` {category: \
+         framing}; else the project's default, `2x4 @ 406`, made when the project has no framing type). Its studs, plates, \
+         kings, jacks, headers, sills, cripples and blocking are then worked out from the wall whenever they're asked for \
+         (`framing`), never stored: moving a window, changing a height, attaching the top to a roof or editing the framing \
+         type changes them. A framed wall is straight, of a wall type with a structure layer (the members stand in its \
+         thickest one, as deep across the wall as it is thick: an 89 mm layer for 2x4s), and its headers' plies fit that \
+         layer; otherwise it's refused, saying why. An opening that leaves no room for its kings, jacks, header and sill, or \
+         overlaps one framed before it along the wall, is left unframed, and no stud stands in its rough opening. At a square \
+         corner of two framed walls the one of the lower GUID runs through. `modify` {id, framing: name | null} does the same \
+         for one wall. Replies with the walls, the type and how many members they have",
+        crate::framing::frame,
+    )
+    .menu("Structure > Framing"),
+    edit(
+        "unframe",
+        "Remove Framing",
+        &[],
+        "{ids | id} walls framed no more: their framing type is left in the project",
+        crate::framing::unframe,
+    ),
+    other(
+        "framing",
+        "Framing Members",
+        "{id} a framed wall's members and cut list, read and never built: {host, type, layer (the structure layer's GUID), \
+         material, origin [x, y] (the wall's start), x_axis (along it), depth_axis (to its left), members: [{key, role \
+         (bottom_plate, top_plate, stud, king, jack, cripple, header, sill, blocking), section [thickness, depth] of one ply as \
+         sawn, plies, length (the cut length: up an upright's longest edge, along a lying one's slope), stock (the shortest \
+         stock length it's cut from; null, longer than all of them), s [from, to] along the wall from its start, across \
+         [from, to] to its left of the location line, z [bottom at s from, bottom at s to, top at s from, top at s to], \
+         absolute}], cut_list: [{role, section, plies, length (to the mm), stock, count}]}. Keys stay while what they belong \
+         to does: grid studs `stud/<station>` (counted from the layout's origin), end studs `stud/start` and `stud/end`, \
+         `corner/start`, `tee/<wall GUID>/0`, an opening's `<GUID>/king/left/0`, `<GUID>/header`, `<GUID>/cripple/top/<station>`, \
+         plates `bottom_plate/<ply>/<start or the door GUID it follows>/<piece>` and `top_plate/<ply>/<piece>` (ply 0 the \
+         lowest bottom plate, the highest top plate), `blocking/<row>/<key of the stud it starts at>`",
+        crate::framing::query,
+    ),
     other(
         "timber_framing",
         "Timber Wall Framing",
@@ -3026,7 +3078,7 @@ fn element_id(c: &str, m: &Model, v: &Value) -> Result<Id, String> {
 }
 
 /// `ids` [id, …], or one `id`: elements of the model, by id or GUID, each once, in the order given.
-fn ids_param(c: &str, m: &Model, p: &Value) -> Result<Vec<Id>, String> {
+pub(crate) fn ids_param(c: &str, m: &Model, p: &Value) -> Result<Vec<Id>, String> {
     let as_id = |v: &Value| element_id(c, m, v);
     let ids: Vec<Id> = match (p.get("ids"), p.get("id")) {
         (Some(Value::Array(a)), _) if a.len() <= MAX_POINTS => a.iter().map(as_id).collect::<Result<_, _>>()?,
@@ -10103,6 +10155,7 @@ fn wall(s: &mut Session, p: &Value) -> R {
                 attach_base,
                 room_bounding,
                 join: true,
+                framing: None,
             }))),
             _ => None,
         })
@@ -12237,6 +12290,7 @@ fn dormer(s: &mut Session, p: &Value) -> R {
             attach_base: Some(host),
             room_bounding: true,
             join: true,
+            framing: None,
         })
     };
     let (l, r) = (micron(at + n * (w / 2.0)), micron(at - n * (w / 2.0)));
@@ -15861,12 +15915,23 @@ fn edit_type(s: &mut Session, p: &Value) -> R {
             m.types.ceiling.insert(name.clone(), t.clone());
             json!(t)
         }
+        // A framing type: the fields given, over the type's own (a new one's, the defaults).
+        "framing" => {
+            let mut v = json!(m.types.framing.get(&name).cloned().unwrap_or_default());
+            for (k, val) in p.as_object().into_iter().flatten().filter(|(k, _)| !matches!(k.as_str(), "category" | "name")) {
+                v[k] = val.clone();
+            }
+            let t: crate::framing::FramingType = serde_json::from_value(v).map_err(|e| bad(c, format!("a framing type: {e}")))?;
+            m.types.framing.insert(name.clone(), t.clone());
+            json!(t)
+        }
         other => {
             return Err(bad(
                 c,
                 format!(
                     "`{other}` has no types; use wall, floor, ceiling, door, window, column, structural column, footing, beam, \
-                     strip footing, pipe, conduit, cable tray, wire, down conductor, earthing conductor, cable, roof, railing or room"
+                     strip footing, pipe, conduit, cable tray, wire, down conductor, earthing conductor, cable, roof, railing, room \
+                     or framing"
                 ),
             ));
         }
@@ -18452,7 +18517,8 @@ fn delete_type(s: &mut Session, p: &Value) -> R {
         ));
     }
     match &kind {
-        LibKind::Type(cat) if m.type_names(cat).len() <= 1 => {
+        // A project needs no framing type: `frame` makes one again.
+        LibKind::Type(cat) if cat != "framing" && m.type_names(cat).len() <= 1 => {
             return Err(bad(c, format!("`{name}` is the last {label}: a {cat} needs one; make another first")));
         }
         LibKind::FamilyType if name.split_once(": ").and_then(|(f, _)| m.families.get(f)).is_some_and(|f| f.types.len() <= 1) => {
@@ -19831,6 +19897,7 @@ fn inspect(s: &mut Session, p: &Value) -> R {
             + m.types.roof.len()
             + m.types.ceiling.len()
             + m.types.railing.len()
+            + m.types.framing.len()
             + m.types.structural_column.len()
             + m.types.footing.len()
             + m.types.runs.values().map(BTreeMap::len).sum::<usize>();
