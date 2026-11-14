@@ -329,7 +329,14 @@ impl Staged {
             }
         }
         let scale = fit(lo, hi) * zoom.clamp(0.05, 50.0);
-        View { scale, cx: (lo.0 + hi.0) / 2.0 + pan.0, cy: (lo.1 + hi.1) / 2.0 + pan.1, width: width.max(16), height: height.max(16) }
+        View {
+            angle: 0.0,
+            scale,
+            cx: (lo.0 + hi.0) / 2.0 + pan.0,
+            cy: (lo.1 + hi.1) / 2.0 + pan.1,
+            width: width.max(16),
+            height: height.max(16),
+        }
     }
 
     /// View `which`, `width` by `height` pixels, `zoom` times as close as fitted, moved `pan` mm. Its scale is the one at
@@ -728,7 +735,7 @@ mod tests {
         let family = st.draw(Which::Plan, 600, 400, 1.0, P2(0.0, 0.0)).unwrap().drawing;
         let staged_window =
             st.model.elements.iter().find(|(_, e)| matches!(e, crate::model::Element::Window(_))).map(|(id, _)| *id).unwrap();
-        let view = render::View { scale: 0.2, cx: 0.0, cy: 0.0, width: 600, height: 400 };
+        let view = render::View { angle: 0.0, scale: 0.2, cx: 0.0, cy: 0.0, width: 600, height: 400 };
         let project = render::draw(&s.model, 100000, view);
         for (d, owner, which) in [(&family, staged_window, "family"), (&project, window, "project")] {
             let lines = seen_lines(d, owner);

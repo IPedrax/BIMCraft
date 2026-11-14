@@ -56,6 +56,8 @@ pub enum Kind {
     /// A named set of parameters for `reinforce`, for one kind of host.
     ReinforcementPreset,
     DimensionType,
+    /// A spot coordinate type: how a spot coordinate draws and reads.
+    SpotCoordinateType,
     /// A voltage the electrical settings define, with the band a device may read within.
     Voltage,
     /// A distribution system, which names the voltages it supplies.
@@ -64,6 +66,16 @@ pub enum Kind {
     WireType,
     /// A title block a sheet may be drawn with.
     TitleBlock,
+    /// A dictionary project parameters came from.
+    Dictionary,
+    /// A location: one position of the building in the shared coordinates.
+    Location,
+    /// The Project Base Point or the Survey Point.
+    CoordinatePoint,
+    /// A print set: views and sheets printed together.
+    PrintSet,
+    /// A publishing set: print sets in folders, each written as a format.
+    PublishSet,
 }
 
 impl Kind {
@@ -93,10 +105,16 @@ impl Kind {
             Kind::TextType => "text type".into(),
             Kind::ReinforcementPreset => "reinforcement preset".into(),
             Kind::DimensionType => "dimension type".into(),
+            Kind::SpotCoordinateType => "spot coordinate type".into(),
             Kind::Voltage => "voltage".into(),
             Kind::DistributionSystem => "distribution system".into(),
             Kind::WireType => "wire type".into(),
             Kind::TitleBlock => "title block".into(),
+            Kind::Dictionary => "parameter dictionary".into(),
+            Kind::Location => ui_msg!("location").into(),
+            Kind::CoordinatePoint => "coordinate point".into(),
+            Kind::PrintSet => ui_msg!("print set").into(),
+            Kind::PublishSet => ui_msg!("publishing set").into(),
         }
     }
 
@@ -108,6 +126,7 @@ impl Kind {
             "cad" => Kind::Cad,
             "family" => Kind::Family,
             "parameter" => Kind::Parameter,
+            "dictionary" => Kind::Dictionary,
             "view-filter" => Kind::ViewFilter,
             "view-template" => Kind::ViewTemplate,
             "phase" => Kind::Phase,
@@ -124,10 +143,15 @@ impl Kind {
             "text-type" => Kind::TextType,
             "reinforcement-preset" => Kind::ReinforcementPreset,
             "dimension-type" => Kind::DimensionType,
+            "spot-coordinate-type" => Kind::SpotCoordinateType,
             "voltage" => Kind::Voltage,
             "distribution-system" => Kind::DistributionSystem,
             "wire-type" => Kind::WireType,
             "title-block" => Kind::TitleBlock,
+            "location" => Kind::Location,
+            "coordinate-point" => Kind::CoordinatePoint,
+            "print-set" => Kind::PrintSet,
+            "publish-set" => Kind::PublishSet,
             _ => Kind::Type(s.strip_prefix("type:")?.to_string()),
         })
     }
@@ -159,10 +183,16 @@ impl fmt::Display for Kind {
             Kind::TextType => f.write_str("text-type"),
             Kind::ReinforcementPreset => f.write_str("reinforcement-preset"),
             Kind::DimensionType => f.write_str("dimension-type"),
+            Kind::SpotCoordinateType => f.write_str("spot-coordinate-type"),
             Kind::Voltage => f.write_str("voltage"),
             Kind::DistributionSystem => f.write_str("distribution-system"),
             Kind::WireType => f.write_str("wire-type"),
             Kind::TitleBlock => f.write_str("title-block"),
+            Kind::Dictionary => f.write_str("dictionary"),
+            Kind::Location => f.write_str("location"),
+            Kind::CoordinatePoint => f.write_str("coordinate-point"),
+            Kind::PrintSet => f.write_str("print-set"),
+            Kind::PublishSet => f.write_str("publish-set"),
         }
     }
 }
@@ -654,6 +684,7 @@ impl Model {
                 "roof" => self.types.roof.remove(name).is_some(),
                 "ceiling" => self.types.ceiling.remove(name).is_some(),
                 "railing" => self.types.railing.remove(name).is_some(),
+                "room" => self.types.room.remove(name).is_some(),
                 "structuralcolumn" => self.types.structural_column.remove(name).is_some(),
                 "footing" => self.types.footing.remove(name).is_some(),
                 run if RUN_CATEGORIES.contains(&run) => self.types.runs.get_mut(run).is_some_and(|t| t.remove(name).is_some()),
@@ -695,6 +726,7 @@ impl Model {
                 "roof" => mv(&mut self.types.roof, from, to),
                 "ceiling" => mv(&mut self.types.ceiling, from, to),
                 "railing" => mv(&mut self.types.railing, from, to),
+                "room" => mv(&mut self.types.room, from, to),
                 "structuralcolumn" => mv(&mut self.types.structural_column, from, to),
                 "footing" => mv(&mut self.types.footing, from, to),
                 run if RUN_CATEGORIES.contains(&run) => self.types.runs.get_mut(run).is_some_and(|t| mv(t, from, to)),
@@ -787,6 +819,7 @@ impl Model {
         add(Kind::Type("roof".into()), &mut t.roof.keys());
         add(Kind::Type("ceiling".into()), &mut t.ceiling.keys());
         add(Kind::Type("railing".into()), &mut t.railing.keys());
+        add(Kind::Type("room".into()), &mut t.room.keys());
         add(Kind::Type("structuralcolumn".into()), &mut t.structural_column.keys());
         add(Kind::Type("footing".into()), &mut t.footing.keys());
         for (cat, types) in &t.runs {
@@ -798,6 +831,7 @@ impl Model {
         add(Kind::Cad, &mut self.cads.keys());
         add(Kind::Family, &mut self.families.keys());
         add(Kind::Parameter, &mut self.parameters.keys());
+        add(Kind::Dictionary, &mut self.dictionaries.keys());
         add(Kind::ViewFilter, &mut self.view_filters.keys());
         add(Kind::ViewTemplate, &mut self.view_templates.keys());
         add(Kind::Phase, &mut self.phases.iter());
@@ -819,10 +853,16 @@ impl Model {
         add(Kind::TextType, &mut self.text_types.keys());
         add(Kind::ReinforcementPreset, &mut self.reinforcement.keys());
         add(Kind::DimensionType, &mut self.dimension_types.keys());
+        add(Kind::SpotCoordinateType, &mut self.spot_coordinate_types.keys());
         add(Kind::Voltage, &mut self.voltages.keys());
         add(Kind::DistributionSystem, &mut self.distribution_systems.keys());
         add(Kind::WireType, &mut self.wire_types.keys());
         add(Kind::TitleBlock, &mut self.title_blocks.keys());
+        add(Kind::Location, &mut std::iter::once(&self.coordinates.active).chain(self.coordinates.sites.keys()));
+        let points = crate::coordinates::Point::ALL.map(|p| p.name().to_string());
+        add(Kind::CoordinatePoint, &mut points.iter());
+        add(Kind::PrintSet, &mut self.print_sets.keys());
+        add(Kind::PublishSet, &mut self.publish_sets.keys());
         out
     }
 
@@ -1259,6 +1299,12 @@ impl Model {
         let keep: std::collections::BTreeSet<&(Kind, String)> = now.iter().collect();
         let gone: Vec<Id> =
             self.library.entries().filter(|(_, e)| !keep.contains(&(e.kind.clone(), e.name.clone()))).map(|(id, _)| id).collect();
+        // A type's values of project parameters go with it.
+        let gone_guids: Vec<Guid> =
+            gone.iter().filter_map(|id| self.library.entries().find(|(i, _)| i == id).map(|(_, e)| e.guid)).collect();
+        for q in self.parameters.values_mut().filter(|q| !q.type_values.is_empty()) {
+            q.type_values.retain(|g, _| !gone_guids.contains(g));
+        }
         for id in gone {
             self.library.remove(id);
         }
@@ -1453,6 +1499,7 @@ impl crate::model::Element {
             Element::Ceiling(x) => f(&Kind::Type(category), &mut x.type_name),
             Element::Roof(x) => f(&Kind::Type(category), &mut x.type_name),
             Element::Railing(x) => f(&Kind::Type(category), &mut x.type_name),
+            Element::Room(x) => f(&Kind::Type(category), &mut x.type_name),
             Element::Column(c) | Element::StructuralColumn(c) | Element::Footing(c) => f(&Kind::Type(category), &mut c.type_name),
             run_arm!(r) => f(&Kind::Type(category), &mut r.type_name),
             Element::Door(o) | Element::Window(o) => match &mut o.family {
@@ -1476,6 +1523,11 @@ impl crate::model::Element {
                 }
             }
             Element::PointCloud(pc) => f(&Kind::Cloud, &mut pc.cloud),
+            Element::Tag(t) => {
+                if let Some(label) = &mut t.label {
+                    f(&Kind::Parameter, label);
+                }
+            }
             Element::DetailLine(l) => f(&Kind::LineStyle, &mut l.style),
             Element::DetailGroup(g) => f(&Kind::DetailGroup, &mut g.type_name),
             Element::RepeatingDetail(r) => f(&Kind::DetailGroup, &mut r.type_name),
@@ -1494,6 +1546,11 @@ impl crate::model::Element {
             Element::Dimension3D(d) => f(&Kind::DimensionType, &mut d.type_name),
             // Neither the built-in one nor none is an entry of the library.
             Element::Sheet(sh) if !sh.title_block.is_empty() && !sh.has_no_title_block() => f(&Kind::TitleBlock, &mut sh.title_block),
+            Element::Spot(sp) => {
+                if let Some(t) = &mut sp.type_name {
+                    f(&Kind::SpotCoordinateType, t);
+                }
+            }
             Element::Schedule(sc) => {
                 let mut fields: Vec<&mut String> =
                     sc.fields.iter_mut().map(|x| &mut x.name).chain(sc.sort.iter_mut().map(|x| &mut x.field)).collect();
@@ -1534,6 +1591,9 @@ impl Model {
         for e in self.elements.values_mut() {
             e.lib_refs_mut(f);
         }
+        for d in self.parameters.values_mut().filter_map(|p| p.dictionary.as_mut()) {
+            f(&Kind::Dictionary, d);
+        }
         let t = &mut *self.types;
         let layers = t
             .wall
@@ -1547,6 +1607,15 @@ impl Model {
         }
         for r in t.runs.values_mut().flat_map(|x| x.values_mut()).filter(|r| !r.material.is_empty()) {
             f(&Kind::Material, &mut r.material);
+        }
+        // A room type's floor and ceiling are types of the project's.
+        for r in t.room.values_mut() {
+            if let Some(floor) = &mut r.floor {
+                f(&Kind::Type("floor".into()), floor);
+            }
+            if let Some(ceiling) = &mut r.ceiling {
+                f(&Kind::Type("ceiling".into()), ceiling);
+            }
         }
         for m in self.materials.values_mut() {
             if let Some(tx) = m.texture.as_mut().filter(|tx| !tx.image.is_empty()) {
@@ -1585,6 +1654,10 @@ impl Model {
             for p in [&mut x.cut_pattern, &mut x.surface_pattern].into_iter().flatten() {
                 f(&Kind::FillPattern, p);
             }
+        }
+        f(&Kind::Location, &mut self.coordinates.active);
+        for e in self.publish_sets.values_mut().flat_map(|s| &mut s.folders).flat_map(|x| &mut x.entries) {
+            f(&Kind::PrintSet, &mut e.print_set);
         }
         for d in self.distribution_systems.values_mut() {
             for v in d.voltages_mut() {

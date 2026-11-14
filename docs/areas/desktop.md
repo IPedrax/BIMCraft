@@ -14,14 +14,14 @@ ids inside a view are per view (`push_id`), so two views on screen never clash. 
 they hand it a file): what it keeps is `Settings`, written when it changes, between drags; a setting still to come goes on
 its page greyed out (`later`).
 
-Two working aids are drawn over a plan's or a ceiling plan's canvas, in `canvas()` right after the drawing: the origin marker
-(`origin_marker`: an arrow east for x in the canvas's red and one north for y in its green, lettered, at the screen point of the
-project's 0, 0, `ORIGIN_ARM` points long at any zoom, left out when the origin is far off the screen) and the view's name in the
+A working aid is drawn over a plan's or a ceiling plan's canvas, in `canvas()` right after the drawing: the view's name in the
 bottom left corner (`BimApp::corner_name`, over the view control bar where that floats over the corner, `bar_cover`; a ceiling plan's
-reads `Level 1 (Ceiling Plan)`, as an image's does). They are the window's alone: `render::draw` has neither, so no PNG, sheet or
-printout does. File > Settings > User Interface > Plans has a box for each (`BimApp::show_origin`, `show_view_name`; kept in
-`settings.json` as `origin_marker` and `view_name`, on when the file doesn't say), and New and Open keep them. The 3D view, sections
-and sheets have neither. Tests: `tests/origin.rs`, in both profiles.
+reads `Level 1 (Ceiling Plan)`, as an image's does). It is the window's alone: `render::draw` hasn't it, so no PNG, sheet or
+printout does. File > Settings > User Interface > Plans has a box for it (`BimApp::show_view_name`; kept in `settings.json` as
+`view_name`, on when the file doesn't say), and New and Open keep it. The screen-only origin marker it once had beside it is gone:
+where the project's 0, 0 is, is the Internal Origin's mark, Site's in Visibility/Graphics ([coordinates](coordinates.md)), so the
+view's graphics alone say whether it shows (`settings.json`'s `origin_marker` is still read and written, and does nothing). Tests:
+`tests/origin.rs`, in both profiles.
 
 The minimap (`minimap.rs`, the same in both profiles) is at the top of the Navigator, Rev's Project Browser, under a header that folds
 it away: folded at first, so the tree keeps its room (the tests that click the tree's entries where they are drawn rely on it), and
@@ -182,7 +182,10 @@ Annotation adds its anchors (`Kind::Anchor`, switched by `Snaps::annotation`): a
 and, with a leader, its host's anchor, a dimension's line and stations, a spot elevation, section and elevation marks, detail
 groups and repeating details. A camera's mark is not a symbol to snap to: its body, lens and name all land on its eye, its target
 is an endpoint, and its sight line gives no nearest point. Rotate's Place Centre runs its preview through `found` and
-`show_snap`, so its cross and marker stand on the point a click takes.
+`show_snap`, so its cross and marker stand on the point a click takes; so do the angle's start and end (with the angle guides
+running from the centre), and the angle is the exact one between the snapped points. Digits typed over the view while Rotate
+(or Rotate Project North) waits for its angle are the angle (`BimApp::typed_angle`, a leading minus turns clockwise), shown
+on the ghost as "45° (Enter)", and Enter turns by it.
 Revit's Quadrants (SQ) and Tangents (ST) are snaps of their own, in Manage > Snaps with the rest. The desktop's `BimApp::snap` gives
 it the reach in px (`SNAP`, `PICK`) and the snaps in force (Manage > Snaps, kept while the window is open, or for one point
 a shortcut's override: `snap_once`, `Snaps::only`, `Snaps::none`); `found` and
@@ -316,9 +319,23 @@ type without layers as one band. A wall's run from its exterior face to its inte
 dashed where it runs (`walls::depth`, the core's own rule) and named under it; a click on the picture sets the line nearest it, through
 `modify`. A floor's, a roof's or a ceiling's run from the top down. Under it, for doors, which way they open (`opening_picker`): four plans of a door in
 its wall (as placed, hand flipped, facing flipped, both), the one the selected doors share lit, a click setting their `flip_hand` and
-`flip_facing` through `modify`. For rooms, their colour on plans (`room_colour`): swatches, No fill first, and any
-other colour; a pick sets the room's `colour` (`Room::colour`, red, green and blue, none for no fill), which plans draw as a fill of
-the room's region under its name (`render.rs`) and a file keeps (an optional field an older version leaves out, so no format step).
+`flip_facing` through `modify`. A room's colour on plans is its type's, so it is set in the room type's Type Properties
+(`properties::RoomRows`, Edit Type with a room selected): under Floor and Ceiling, the floor type and the ceiling type its rooms have
+of their own (None first) and each one's offset from the room's level; under Graphics, Colour on plans and its swatches or any other
+colour (`RoomType::colour`, red, green and blue, none for no fill), which plans draw as a fill of each of its rooms' regions behind
+the model, as Revit's colour fill is (`render.rs`, `Drawing::solid_fills_under`): whatever stands in the room is drawn over it, and so
+are a floor's outline and its pattern's lines, while a floor's solid fill (its material's, or a view's override of its background)
+lies under it and shows only where no coloured room is. A limit: in a plan with a coloured room, every floor's solid fill is under
+every floor's lines, so a floor seen through another's solid fill shows its lines. OK and Apply give them to the `type` command; a file from before format 20, whose rooms held a colour of
+their own, opens with each on a type of its colour (`Model::coloured_room_type`).
+A room that has a floor or a ceiling of its own shows them first in Properties
+(`finishes.rs`, `connected_finishes`, under the Edit Type row): for each, its type, a link of its id that selects it, and Disconnect
+(`room_finish`), after which the row says Disconnected and the button is Regenerate, which makes another; a room with neither has no
+such rows. A floor or a ceiling that follows a room shows Connected to, the room's number and name, its link and Disconnect, and while
+it follows, its Type Selector is off, its level and offset are shown and not typed, and the ribbon's Edit Boundary is off with the
+reason as its tip. Delete (`delete_elements`, from the key, the menu and the browser) asks first when a room among what goes has a
+floor or a ceiling that isn't going with it: Delete Them Too, Keep Them (`keep_finishes`) or Cancel. The Room tool places rooms of
+the type its Type Selector shows.
 For floors, their slope (`floor_slope`): a short section of the slab at its true angle from its slope arrow's tail, a dashed line
 level with the tail, and the angle written on it in degrees and percent (its accessible label too); under it the steps Flat, 1%, 2%
 and 5%, the one they share lit, a click setting `slope` through `modify` as the Slope field does, a falling floor kept falling. A
@@ -551,7 +568,13 @@ frame, since its first lays out every tool (`a_tool_with_choices_of_its_own_open
 
 Keyboard Shortcuts. Manage > Shortcuts (or KS) opens `shortcuts_window` (`shortcuts.rs`): every shortcut by what it does, from `shortcuts()`
 (`SHORTCUTS`, the fixtures' letters, the commands' aliases), with Add, Edit and Load File. A shortcut is two letters or digits, all that `typed` holds,
-and a custom one is tried before the defaults. Each name in `ACTIONS` is a tool or command the window runs (`execute_shortcut_action`), and a key never
+typed with Ctrl held (Cmd on a Mac; `ctrl_letters` takes them out of the frame's events, in the project's `keys` and the family document's
+`family_typed` alike), and a custom one is tried before the defaults. Letters typed without Ctrl are no shortcut (digits and a unit still make a
+typed length). A letter that is a Ctrl key of its own (`ctrl_key`: S saves, O opens, N new, K Find, P prints to PDF, D the start page, Z undoes, Y
+redoes, 1 Properties) waits for a second letter (`CTRL_WAIT`, half a second): with one it is a shortcut (Ctrl held, S then A: Select All
+Instances); if the two aren't one, the first does its own job and the second waits in its place, so Ctrl held and Z, Z, Z undoes three times; with
+none, or once Ctrl is let go, it does its own job. In a text field Ctrl's keys are the field's, but S, O, N, K, P and 1, which act there at once,
+and no shortcut is typed. The user chose Ctrl, and the wait, on 2026-11-13. Each name in `ACTIONS` is a tool or command the window runs (`execute_shortcut_action`), and a key never
 carries Revit's name for a tool BIMCraft lacks (Sun Settings, Detail and Model Line, Split Face, Brace, Beam System, Reference Plane, the duct tools): it waits
 for the tool. Load File reads JSON (`{"WA": "Wall"}`), Revit's `<Shortcut CommandName=… Shortcuts="WA#W1">` lines, or `KEY - Name` lines, up to 64 KiB;
 a description is an action only by its whole name in one of the interface's languages (`resolve_action`), and a key that is not two characters, names no action or

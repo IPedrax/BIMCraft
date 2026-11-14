@@ -97,7 +97,10 @@ icon_names! {
     Theme,
     Text,
     Spot,
+    Coordinates,
+    ProjectNorth,
     SpotSlope,
+    SpotCoordinate,
     ConvertLines,
     Angular,
     Radial,
@@ -136,6 +139,7 @@ icon_names! {
     ImportCad,
     LinkCad,
     Parameters,
+    ProjectInfo,
     Measure,
     Snaps,
     Visibility,
@@ -889,6 +893,20 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.line(&[(4.0, 20.0), (12.0, 4.0), (20.0, 20.0)]);
             g.line(&[(7.0, 14.0), (17.0, 14.0)]);
         }
+        Icon::Coordinates => {
+            // A survey mark: a ring on cross hairs, and the north it reads from at its top.
+            g.circle((12.0, 13.0), 5.5);
+            g.line(&[(12.0, 9.5), (12.0, 21.0)]);
+            g.line(&[(3.0, 13.0), (21.0, 13.0)]);
+            g.closed(&[(12.0, 2.0), (14.5, 6.0), (9.5, 6.0)]);
+        }
+        Icon::ProjectNorth => {
+            // A north arrowhead inside a turn arrow open at the top, turning counter-clockwise, as Rotate Project North
+            // turns the model.
+            g.arc((12.0, 12.0), 9.5, -58.0, 238.0);
+            g.line(&[(17.03, 3.94), (21.4, 3.37), (18.43, 8.12)]);
+            g.closed(&[(12.0, 1.5), (15.5, 13.0), (12.0, 10.5), (8.5, 13.0)]);
+        }
         Icon::Spot => {
             g.line(&[(3.0, 16.0), (21.0, 16.0)]);
             g.closed(&[(5.0, 8.0), (13.0, 8.0), (9.0, 16.0)]);
@@ -903,6 +921,14 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.line(&[(9.0, 14.2), (11.0, 12.8)]);
             g.line(&[(13.0, 11.4), (19.0, 7.0)]);
             g.circle((19.0, 7.0), 1.6);
+        }
+        Icon::SpotCoordinate => {
+            // A cross on the point, a leader up and right to a shoulder, and two lines of numbers over it.
+            g.line(&[(2.0, 19.0), (8.0, 19.0)]);
+            g.line(&[(5.0, 16.0), (5.0, 22.0)]);
+            g.line(&[(5.0, 19.0), (11.0, 11.0), (22.0, 11.0)]);
+            g.line(&[(12.0, 4.0), (21.0, 4.0)]);
+            g.line(&[(12.0, 8.0), (19.0, 8.0)]);
         }
         Icon::SpotSlope => {
             // A falling top, an arrow down it, and its fall written over.
@@ -1184,6 +1210,12 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             g.circle((11.0, 6.0), 2.0);
             g.circle((16.0, 12.0), 2.0);
             g.circle((8.0, 18.0), 2.0);
+        }
+        Icon::ProjectInfo => {
+            // A house's outline with an "i" inside: what the project is.
+            g.closed(&[(4.0, 21.0), (4.0, 9.0), (12.0, 3.0), (20.0, 9.0), (20.0, 21.0)]);
+            g.circle((12.0, 10.5), 1.0);
+            g.line(&[(12.0, 14.0), (12.0, 18.5)]);
         }
         Icon::Measure => {
             // A diagonal ruler with ticks perpendicular to its top edge, distinct from Units.

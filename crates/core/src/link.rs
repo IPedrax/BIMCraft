@@ -54,6 +54,55 @@ fn built(e: &Element) -> bool {
     )
 }
 
+/// How a link is placed, as Revit's positioning: by hand, its Project Base Point on this project's, or by shared
+/// coordinates, its active location's (or a named one's) map coordinates where this project's active location puts them.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum By {
+    #[default]
+    Manual,
+    Base,
+    Shared,
+}
+
+impl By {
+    pub const NAMES: &str =
+        "manual (at `at`, turned `angle`), base (its Project Base Point on this project's) or shared (by shared coordinates)";
+
+    pub fn parse(s: &str) -> Option<By> {
+        Some(match s {
+            "manual" | "origin" => By::Manual,
+            "base" => By::Base,
+            "shared" => By::Shared,
+            _ => return None,
+        })
+    }
+
+    pub fn is_default(&self) -> bool {
+        *self == By::Manual
+    }
+}
+
+/// Where link `l` of project `to`, reading `from`, stands: its origin in plan, its turn about it (degrees, counter-clockwise)
+/// and how far it is raised. By hand, as it says; base point on base point, turned `angle` about it; by shared coordinates,
+/// the link's location carried to this project's active one (a link has no scale: the two locations' scales are taken as one).
+pub fn placement(to: &Model, l: &crate::model::Link, from: &Model) -> (P2, f64, f64) {
+    match l.by {
+        By::Manual => (l.at, l.angle, l.raised),
+        By::Base => {
+            let (hb, lb) = (to.coordinates.base, from.coordinates.base);
+            let (sin, cos) = l.angle.to_radians().sin_cos();
+            let turned = P2(lb[0] * cos - lb[1] * sin, lb[0] * sin + lb[1] * cos);
+            (P2(hb[0] - turned.0, hb[1] - turned.1), l.angle, hb[2] - lb[2])
+        }
+        By::Shared => {
+            let theirs = l.location.as_deref().and_then(|n| from.site_named(n)).unwrap_or(from.site());
+            let here = to.site().to_internal(theirs.to_shared([0.0; 3]));
+            (P2(here[0], here[1]), theirs.rotation - to.site().rotation, here[2])
+        }
+    }
+}
+
 /// The model the views draw: `m`, with what each of its loaded links builds. The model itself where it links nothing.
 /// A link that can't be brought in is left out.
 pub fn seen(m: &Arc<Model>) -> Arc<Model> {
@@ -77,14 +126,32 @@ pub fn seen(m: &Arc<Model>) -> Arc<Model> {
     Arc::new(out)
 }
 
+/// The link (this project's element) element `id` of the views' [`seen`] model comes from; none for one of the project's own.
+pub fn link_of(m: &Arc<Model>, id: Id) -> Option<Id> {
+    if !is_linked(id) {
+        return None;
+    }
+    let mut out = (**m).clone();
+    for (lid, e) in &m.elements {
+        let Element::Link(l) = e else { continue };
+        let Some(other) = m.loaded.get(&l.path) else { continue };
+        let before: BTreeSet<Id> = out.elements.keys().copied().collect();
+        if bring(&mut out, l, other).is_ok() && !before.contains(&id) && out.elements.contains_key(id) {
+            return Some(*lid);
+        }
+    }
+    None
+}
+
 /// What link `l` builds, in `to`: turned and moved as the link says, on `to`'s levels where they stand at the same height.
 fn bring(to: &mut Model, l: &crate::model::Link, from: &Model) -> Result<(), String> {
     let mut other = from.clone();
     other.elements.retain(|_, e| matches!(e, Element::Level(_)) || built(e));
     let all: BTreeSet<Id> = other.elements.keys().copied().collect();
-    // Turned about its origin, then moved to where it stands.
-    let (sin, cos) = l.angle.to_radians().sin_cos();
-    let map = |p: P2| P2(p.0 * cos - p.1 * sin + l.at.0, p.0 * sin + p.1 * cos + l.at.1);
+    // Turned about its origin, then moved to where it stands, and raised.
+    let (at, angle, dz) = placement(to, l, from);
+    let (sin, cos) = angle.to_radians().sin_cos();
+    let map = |p: P2| P2(p.0 * cos - p.1 * sin + at.0, p.0 * sin + p.1 * cos + at.1);
     let motion = Motion { map: &map, slide: None, mirror: false };
     for id in &all {
         if matches!(other.elements.get(*id), Some(Element::Level(_))) {
@@ -97,6 +164,7 @@ fn bring(to: &mut Model, l: &crate::model::Link, from: &Model) -> Result<(), Str
     let mut matched = BTreeSet::new();
     for id in &all {
         let Some(Element::Level(lv)) = other.elements.get_mut(*id) else { continue };
+        lv.elevation += dz;
         let here = to.levels().into_iter().find(|(_, t)| (t.elevation - lv.elevation).abs() < SAME_LEVEL);
         match here {
             Some((_, t)) => {
@@ -110,7 +178,7 @@ fn bring(to: &mut Model, l: &crate::model::Link, from: &Model) -> Result<(), Str
     if ask.is_empty() {
         return Ok(());
     }
-    crate::insert::insert_as(to, &other, &ask, true).map(|_| ())
+    crate::insert::insert_as(to, &other, &ask, true, &BTreeSet::new()).map(|_| ())
 }
 
 #[cfg(test)]
@@ -168,6 +236,21 @@ mod tests {
     }
 
     #[test]
+    fn a_linked_element_names_its_link() {
+        let path = architect("owner");
+        let mut s = Session::new();
+        let a = run(&mut s, "link", json!({"path": path, "name": "A"}))["id"].as_u64().unwrap();
+        let b = run(&mut s, "link", json!({"path": path, "name": "B", "at": [20_000, 0]}))["id"].as_u64().unwrap();
+        let _ = std::fs::remove_file(&path);
+        let seen = seen(&s.model);
+        for (id, w) in walls(&seen) {
+            let want = if w.start.0 >= 19_000.0 { b } else { a };
+            assert_eq!(link_of(&s.model, id), Some(want));
+        }
+        assert_eq!(link_of(&s.model, a), None, "the link itself is the project's own");
+    }
+
+    #[test]
     fn a_link_turns_about_its_origin() {
         let path = architect("turned");
         let mut s = Session::new();
@@ -212,7 +295,7 @@ mod tests {
         let mut s = Session::new();
         run(&mut s, "link", json!({"path": path}));
         let _ = std::fs::remove_file(&path);
-        let view = View { scale: 0.08, cx: 4000.0, cy: 3000.0, width: 800, height: 600 };
+        let view = View { angle: 0.0, scale: 0.08, cx: 4000.0, cy: 3000.0, width: 800, height: 600 };
         let level = s.model.levels()[0].0;
         let own = render::draw(&direct.model, level, view);
         let linked = render::draw(&seen(&s.model), level, view);
@@ -435,7 +518,7 @@ mod tests {
         run(&mut s, "wall", json!({"points": [[1000, 1000], [7000, 1000]]}));
         run(&mut s, "link", json!({"path": path}));
         let _ = std::fs::remove_file(&path);
-        let view = View { scale: 0.08, cx: 4000.0, cy: 3000.0, width: 800, height: 600 };
+        let view = View { angle: 0.0, scale: 0.08, cx: 4000.0, cy: 3000.0, width: 800, height: 600 };
         let level = s.model.levels()[0].0;
         let d = render::draw(&seen(&s.model), level, view);
         let first_own = d.owners.iter().position(|o| o.is_some_and(|id| !is_linked(id)));
@@ -448,7 +531,7 @@ mod tests {
     fn a_line_keeps_its_pen_when_a_link_goes_under_the_projects() {
         use crate::pen::Pen;
         use crate::render::{Drawing, Rgb, View};
-        let mut d = Drawing::new(View { scale: 1.0, cx: 0.0, cy: 0.0, width: 10, height: 10 });
+        let mut d = Drawing::new(View { angle: 0.0, scale: 1.0, cx: 0.0, cy: 0.0, width: 10, height: 10 });
         d.own(Some(7));
         d.stroke(vec![(0.0, 0.0), (1.0, 1.0)], Pen::CUT, Rgb(0, 0, 0), None, false);
         d.own(Some(LINKED));
@@ -482,7 +565,7 @@ mod tests {
         assert!(!kinds.contains(&"line") && !kinds.contains(&"region"), "its annotation stays in it: {kinds:?}");
         // A masking region of the link's would hide this project's wall.
         run(&mut s, "wall", json!({"points": [[500, 1500], [2500, 1500]]}));
-        let view = View { scale: 0.08, cx: 3000.0, cy: 1500.0, width: 600, height: 400 };
+        let view = View { angle: 0.0, scale: 0.08, cx: 3000.0, cy: 1500.0, width: 600, height: 400 };
         let level = s.model.levels()[0].0;
         let d = render::draw(&seen, level, view);
         let linked_fills = d
