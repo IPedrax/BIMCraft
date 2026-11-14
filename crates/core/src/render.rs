@@ -1197,6 +1197,14 @@ pub(crate) fn fit_turned(pts: &[P2], width: u32, height: u32, n: f64, angle: f64
     View { cx: c.0, cy: c.1, angle, ..v }
 }
 
+/// Where [`plan`] and [`ceiling_plan`] stand the view of `level` to fit it into `width` x `height` px, without drawing it: what
+/// a window asks of a plan it fits, a tower's storey being a drawing of a hundred thousand primitives.
+pub fn plan_fit(m: &Model, level: impl Key, width: u32, height: u32, ceiling: bool) -> View {
+    let level = m.guid(level);
+    let shows = if ceiling { plan_shows(m, level) } else { plan_extent(m, level) };
+    fit_turned(&shows, width, height, scale_of(m, level), view_angle(m, level))
+}
+
 /// The plan of `level` fitted into `width` x `height` px, as an image of it is made: with its name lettered at its bottom left.
 pub fn plan(m: &Model, level: impl Key, width: u32, height: u32) -> Drawing {
     let level = m.guid(level);
@@ -5631,6 +5639,14 @@ pub(crate) fn family_plan(m: &Model, level: Id, view: View) -> Drawing {
     d
 }
 
+/// A picture of `width` x `height` premultiplied RGBA pixels as a PNG: what a front end's screenshot is written as.
+pub fn rgba_png(width: u32, height: u32, rgba: &[u8]) -> Result<Vec<u8>, String> {
+    if rgba.len() as u64 != u64::from(width) * u64::from(height) * 4 {
+        return Err(format!("{} bytes aren't a picture of {width} x {height}", rgba.len()));
+    }
+    picture(width, height, rgba).ok_or("the image size is out of range")?.encode_png().map_err(|e| e.to_string())
+}
+
 pub fn png(d: &Drawing) -> Result<Vec<u8>, String> {
     let mut pm = Pixmap::new(d.view.width, d.view.height).ok_or("the image size is out of range")?;
     pm.fill(Color::from_rgba8(PAPER.0, PAPER.1, PAPER.2, 255));
@@ -5716,6 +5732,17 @@ fn paint(pm: &mut Pixmap, d: &Drawing, t: Transform, clip: Option<&tiny_skia::Ma
 mod tests {
     use super::*;
     use crate::engine::Session;
+
+    #[test]
+    fn a_plan_is_fitted_where_its_drawing_stands_without_being_drawn() {
+        let s = house();
+        for (id, _) in s.model.levels() {
+            for (w, h) in [(800, 600), (1600, 1000), (240, 160)] {
+                assert_eq!(plan_fit(&s.model, id, w, h, false), plan(&s.model, id, w, h).view, "{id} {w} x {h}");
+                assert_eq!(plan_fit(&s.model, id, w, h, true), ceiling_plan(&s.model, id, w, h).view, "{id} {w} x {h} up");
+            }
+        }
+    }
 
     /// A room type's colour fills its rooms' regions on the plan, under their names, and a project file keeps it.
     #[test]

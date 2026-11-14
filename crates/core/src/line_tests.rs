@@ -629,7 +629,7 @@ fn a_filled_regions_boundary_lines_each_take_a_line_style_or_none() {
     // A rename follows into the line that names it, and a file holds it by GUID.
     run(&mut s, "line_style", json!({"name": "Wide Lines", "rename": "Heavy"}));
     let file = s.model.to_json().unwrap_or_default();
-    assert!(!file.contains("\"style\": \"Heavy\""), "by GUID");
+    assert!(!file.contains("\"style\":\"Heavy\""), "by GUID");
     let (back, _) = Model::read(&file).unwrap_or_else(|e| panic!("{e}"));
     let Some(Element::FilledRegion(fr)) = back.elements.get(id) else { panic!("region") };
     assert_eq!((fr.sketch[0].style.as_deref(), fr.sketch[1].invisible), (Some("Heavy"), true));

@@ -485,6 +485,38 @@ impl Elements {
         Ok(())
     }
 
+    /// Elements read from a file, all at once: what [`Elements::insert_as`] of each in turn into new elements makes, without the
+    /// cost of each insert (a million elements' journal, revisions and GUIDs built a step at a time took seconds). None where two
+    /// share an id or a GUID, or one is an id where a GUID belongs, which the caller reads the slow way to say which.
+    pub fn of_read(mut items: Vec<(Id, Guid, Element)>) -> Option<Elements> {
+        items.sort_unstable_by_key(|(id, _, _)| *id);
+        if items.windows(2).any(|w| w[0].0 == w[1].0) || items.iter().any(|(_, g, _)| g.pending().is_some()) {
+            return None;
+        }
+        let mut ids: BTreeMap<u16, HashMap<Guid, Id>> = BTreeMap::new();
+        for (id, g, _) in &items {
+            if ids.entry(bucket(g)).or_default().insert(*g, *id).is_some() {
+                return None;
+            }
+        }
+        let len = items.len();
+        let revisions = RevisionSnapshot::of_sorted(items.iter().map(|(id, _, _)| *id));
+        let journal = Journal { ids: items.iter().map(|(id, _, _)| *id).collect(), from: None, all: false };
+        let mut chunks: BTreeMap<Id, Chunk> = BTreeMap::new();
+        for (id, g, e) in items {
+            chunks.entry(chunk_of(id)).or_default().insert(id, (g, e));
+        }
+        Some(Elements {
+            revisions,
+            chunks: chunks.into_iter().map(|(k, c)| (k, Arc::new(c))).collect(),
+            len,
+            ids: ids.into_iter().map(|(k, m)| (k, Arc::new(m))).collect(),
+            version: len as u64,
+            journal,
+            ..Elements::new()
+        })
+    }
+
     /// A GUID no element here has.
     pub fn fresh(&self) -> Guid {
         loop {
@@ -679,6 +711,28 @@ mod tests {
 
     fn grid() -> Element {
         Element::Grid(Grid { name: "A".into(), start: P2(0.0, 0.0), end: P2(0.0, 1000.0) })
+    }
+
+    #[test]
+    fn elements_read_all_at_once_are_those_inserted_one_by_one_and_two_of_one_id_or_guid_are_refused() {
+        let items: Vec<(Id, Guid, Element)> = (0..3000u64).rev().map(|i| (FIRST_ID + i * 7, Guid::new(), grid())).collect();
+        let mut one_by_one = Elements::new();
+        for (id, g, e) in items.clone() {
+            one_by_one.insert_as(id, g, e).unwrap();
+        }
+        let at_once = Elements::of_read(items.clone()).unwrap();
+        assert_eq!(at_once, one_by_one);
+        assert_eq!(at_once.len(), 3000);
+        for (id, g, _) in &items {
+            assert_eq!((at_once.id(*g), at_once.guid(*id)), (Some(*id), Some(*g)));
+            assert!(at_once.revision(*id).is_some());
+        }
+        let mut twice = items.clone();
+        twice.push((items[0].0, Guid::new(), grid()));
+        assert!(Elements::of_read(twice).is_none(), "an id twice");
+        let mut shared = items.clone();
+        shared.push((FIRST_ID + 1, items[0].1, grid()));
+        assert!(Elements::of_read(shared).is_none(), "a GUID twice");
     }
 
     #[test]
