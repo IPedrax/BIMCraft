@@ -562,7 +562,7 @@ mod tests {
 
     fn plan(s: &Session) -> Drawing {
         let level = s.model.levels()[0].0;
-        crate::render::draw(&s.model, level, View { scale: 0.1, cx: 2000.0, cy: 2000.0, width: 600, height: 600 })
+        crate::render::draw(&s.model, level, View { angle: 0.0, scale: 0.1, cx: 2000.0, cy: 2000.0, width: 600, height: 600 })
     }
 
     /// The prims `id` draws, with where each is in the drawing's order.
@@ -786,7 +786,7 @@ mod tests {
             json!({"view": section, "type": "Blue", "line_style": null,
             "sketch": [[[3000,1000],[8000,1000]],[[8000,1000],[8000,2000]],[[8000,2000],[3000,2000]],[[3000,2000],[3000,1000]]]}),
         );
-        let v = View { scale: 0.08, cx: 5000.0, cy: 1500.0, width: 800, height: 400 };
+        let v = View { angle: 0.0, scale: 0.08, cx: 5000.0, cy: 1500.0, width: 800, height: 400 };
         let sample = |pm: &tiny_skia::Pixmap, p: P2| {
             let (x, y) = v.px(p);
             (-3..=3)
@@ -958,10 +958,10 @@ mod tests {
         run(&mut s, "filled_region_type", json!({"name": "Meshed", "foreground": "Mesh"}));
         run(&mut s, "filled_region", json!({"sketch": lines_of_square(-100_000.0, 200_000.0), "type": "Meshed", "line_style": null}));
         let level = s.model.levels()[0].0;
-        let near = crate::render::draw(&s.model, level, View { scale: 0.05, cx: 0.0, cy: 0.0, width: 8192, height: 8192 });
+        let near = crate::render::draw(&s.model, level, View { angle: 0.0, scale: 0.05, cx: 0.0, cy: 0.0, width: 8192, height: 8192 });
         assert_eq!(near.notes.len(), 1, "{:?}", near.notes);
         assert!(near.notes[0].contains("more lines"), "{}", near.notes[0]);
-        let far = crate::render::draw(&s.model, level, View { scale: 0.05, cx: 0.0, cy: 0.0, width: 800, height: 800 });
+        let far = crate::render::draw(&s.model, level, View { angle: 0.0, scale: 0.05, cx: 0.0, cy: 0.0, width: 800, height: 800 });
         assert!(far.notes.is_empty() && far.prims.len() > 1000, "{} prims, {:?}", far.prims.len(), far.notes);
         // The command that draws it says it too.
         let path = std::env::temp_dir().join(format!("bimcraft-dense-{}.svg", std::process::id()));
@@ -1041,7 +1041,7 @@ mod tests {
         run(&mut s, "filled_region", json!({"sketch": lines(6000.0, 0.0, 4000.0), "type": "Brick", "line_style": null}));
         let level = s.model.levels()[0].0;
         let at = |n: f64| {
-            let view = View { scale: crate::sheet::DENSITY / n, cx: 5000.0, cy: 2000.0, width: 2000, height: 600 };
+            let view = View { angle: 0.0, scale: crate::sheet::DENSITY / n, cx: 5000.0, cy: 2000.0, width: 2000, height: 600 };
             crate::render::draw_at(&s.model, level, view, 1.0)
         };
         // Perpendicular distances between neighbouring lines of the 45 degree hatch, in px, and how many lines each has.
@@ -1106,8 +1106,13 @@ mod tests {
         }
         // Drawn once in each: the source's own are the only ones there, and the copy's are its own.
         let owners = |d: &Drawing| -> std::collections::BTreeSet<Id> { d.owners.iter().flatten().copied().collect() };
-        let a = owners(&crate::render::draw(&s.model, 100000, View { scale: 0.1, cx: 1000.0, cy: 1000.0, width: 400, height: 300 }));
-        let b = owners(&crate::render::draw(&s.model, view, View { scale: 0.1, cx: 1000.0, cy: 1000.0, width: 400, height: 300 }));
+        let a = owners(&crate::render::draw(
+            &s.model,
+            100000,
+            View { angle: 0.0, scale: 0.1, cx: 1000.0, cy: 1000.0, width: 400, height: 300 },
+        ));
+        let b =
+            owners(&crate::render::draw(&s.model, view, View { angle: 0.0, scale: 0.1, cx: 1000.0, cy: 1000.0, width: 400, height: 300 }));
         assert!(a.contains(&line) && a.contains(&region), "the source keeps its own");
         assert!(
             !b.contains(&line) && !b.contains(&region) && b.iter().filter(|id| **id > region).count() >= 2,
