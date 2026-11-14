@@ -185,7 +185,7 @@ msgstr ""
 msgid "A chat is kept for each saved project, on this computer, beside settings.json (never in the project). A picture sent in it is not kept."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:3087
+#: crates/ui-egui/src/shortcuts.rs:3095
 msgid "A chord such as Ctrl+D, or two keys such as WA. Esc cancels; Backspace clears."
 msgstr ""
 
@@ -449,7 +449,7 @@ msgstr ""
 msgid "Acquire from {}"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:2795
+#: crates/ui-egui/src/shortcuts.rs:2803
 msgid "Actions"
 msgstr ""
 
@@ -627,7 +627,7 @@ msgstr "添加电压"
 msgid "Add Wire Type"
 msgstr "添加导线类型"
 
-#: crates/ui-egui/src/shortcuts.rs:2911
+#: crates/ui-egui/src/shortcuts.rs:2919
 msgid "Add a binding"
 msgstr ""
 
@@ -668,7 +668,7 @@ msgstr ""
 msgid "Add to Project"
 msgstr "添加到项目"
 
-#: crates/ui-egui/src/shortcuts.rs:3168
+#: crates/ui-egui/src/shortcuts.rs:3176
 msgid "Add to the current set"
 msgstr ""
 
@@ -1085,7 +1085,7 @@ msgstr "适用于所有视图；捕捉到当前视图中已启用的主网格或
 msgid "Apply"
 msgstr "应用"
 
-#: crates/ui-egui/src/shortcuts.rs:2968
+#: crates/ui-egui/src/shortcuts.rs:2976
 msgid "Apply Changes"
 msgstr ""
 
@@ -1094,7 +1094,7 @@ msgstr ""
 msgid "Apply Hide/Isolate to View"
 msgstr "将隐藏/隔离应用到视图"
 
-#: crates/ui-egui/src/shortcuts.rs:3182
+#: crates/ui-egui/src/shortcuts.rs:3190
 msgid "Apply Import"
 msgstr ""
 
@@ -1236,7 +1236,7 @@ msgstr "如有未保存的更改，会先询问是否保存，然后关闭 BIMCr
 msgid "Assign View Template"
 msgstr "指定视图样板"
 
-#: crates/ui-egui/src/shortcuts.rs:2962
+#: crates/ui-egui/src/shortcuts.rs:2970
 msgid "Assigned {} of {}"
 msgstr ""
 
@@ -1832,10 +1832,10 @@ msgstr "相机：单击视点所在位置，再单击其观察的目标：创建
 #: crates/ui-egui/src/purge.rs:77
 #: crates/ui-egui/src/reinforce.rs:536
 #: crates/ui-egui/src/shortcuts.rs:2711
-#: crates/ui-egui/src/shortcuts.rs:2971
-#: crates/ui-egui/src/shortcuts.rs:3118
-#: crates/ui-egui/src/shortcuts.rs:3124
-#: crates/ui-egui/src/shortcuts.rs:3209
+#: crates/ui-egui/src/shortcuts.rs:2979
+#: crates/ui-egui/src/shortcuts.rs:3126
+#: crates/ui-egui/src/shortcuts.rs:3132
+#: crates/ui-egui/src/shortcuts.rs:3217
 #: crates/ui-egui/src/standards.rs:334
 #: crates/ui-egui/src/templates.rs:757
 #: crates/ui-egui/src/titleblocks.rs:653
@@ -1923,7 +1923,7 @@ msgstr ""
 #: crates/ui-egui/src/editor/document.rs:1918
 #: crates/ui-egui/src/objectstyles.rs:65
 #: crates/ui-egui/src/properties.rs:2743
-#: crates/ui-egui/src/shortcuts.rs:2762
+#: crates/ui-egui/src/shortcuts.rs:2770
 #: crates/ui-egui/src/standards.rs:193
 msgid "Category"
 msgstr "类别"
@@ -2893,7 +2893,7 @@ msgstr ""
 #: crates/ui-egui/src/revit.rs:261
 #: crates/ui-egui/src/script.rs:103
 #: crates/ui-egui/src/settings.rs:489
-#: crates/ui-egui/src/shortcuts.rs:2974
+#: crates/ui-egui/src/shortcuts.rs:2982
 msgid "Close"
 msgstr "关闭"
 
@@ -3027,7 +3027,7 @@ msgstr "合并：此阶段中创建、拆除和显示的内容归入相邻阶段
 msgid "Coming in a later version"
 msgstr "将在后续版本中推出"
 
-#: crates/ui-egui/src/shortcuts.rs:2751
+#: crates/ui-egui/src/shortcuts.rs:2759
 msgid "Command"
 msgstr ""
 
@@ -3361,8 +3361,8 @@ msgstr ""
 msgid "Could not open the file: {}"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:3275
-#: crates/ui-egui/src/shortcuts.rs:3290
+#: crates/ui-egui/src/shortcuts.rs:3283
+#: crates/ui-egui/src/shortcuts.rs:3298
 msgid "Could not write the file: {}"
 msgstr ""
 
@@ -5027,7 +5027,7 @@ msgstr "导出..."
 msgid "Exported {} to {}."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:3272
+#: crates/ui-egui/src/shortcuts.rs:3280
 msgid "Exported."
 msgstr ""
 
@@ -6229,7 +6229,7 @@ msgstr ""
 msgid "Import units"
 msgstr "导入单位"
 
-#: crates/ui-egui/src/shortcuts.rs:3160
+#: crates/ui-egui/src/shortcuts.rs:3168
 msgid "Import {}"
 msgstr ""
 
@@ -6256,7 +6256,7 @@ msgstr "导入的类别"
 msgid "Imported from this file"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:3201
+#: crates/ui-egui/src/shortcuts.rs:3209
 msgid "Imported {} bindings ({} skipped)."
 msgstr ""
 
@@ -6268,7 +6268,7 @@ msgstr "已导入 {}：{}。"
 msgid "Imported: {} made, {} changed."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:3205
+#: crates/ui-egui/src/shortcuts.rs:3213
 msgid "Imported; the old profile is in {}."
 msgstr ""
 
@@ -6629,7 +6629,7 @@ msgstr ""
 msgid "Key"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:2773
+#: crates/ui-egui/src/shortcuts.rs:2781
 msgid "Key combinations"
 msgstr ""
 
@@ -7461,11 +7461,11 @@ msgstr ""
 msgid "Mark as Spare"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:3287
+#: crates/ui-egui/src/shortcuts.rs:3295
 msgid "Markdown help written."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:3260
+#: crates/ui-egui/src/shortcuts.rs:3268
 msgid "Markdown is a help file; use Help (Markdown)… to write it."
 msgstr ""
 
@@ -10083,7 +10083,7 @@ msgstr "模板：名称"
 msgid "Presets"
 msgstr "预设"
 
-#: crates/ui-egui/src/shortcuts.rs:3086
+#: crates/ui-egui/src/shortcuts.rs:3094
 msgid "Press a combination…"
 msgstr ""
 
@@ -10690,7 +10690,8 @@ msgstr ""
 msgid "Remove"
 msgstr "移除"
 
-#: crates/ui-egui/src/shortcuts.rs:2934
+#: crates/ui-egui/src/shortcuts.rs:2749
+#: crates/ui-egui/src/shortcuts.rs:2942
 msgid "Remove All"
 msgstr ""
 
@@ -10816,7 +10817,7 @@ msgstr "重复详图：单击起点和终点；选项栏中的组沿其按间距
 
 #: crates/ui-egui/src/parameters.rs:798
 #: crates/ui-egui/src/parameters.rs:1450
-#: crates/ui-egui/src/shortcuts.rs:3110
+#: crates/ui-egui/src/shortcuts.rs:3118
 msgid "Replace"
 msgstr ""
 
@@ -10828,7 +10829,7 @@ msgstr "以文字替换"
 msgid "Replace With Text:"
 msgstr "以文字替换："
 
-#: crates/ui-egui/src/shortcuts.rs:3167
+#: crates/ui-egui/src/shortcuts.rs:3175
 msgid "Replace everything"
 msgstr ""
 
@@ -10867,7 +10868,8 @@ msgstr ""
 #: crates/ui-egui/src/lineweights.rs:146
 #: crates/ui-egui/src/objectstyles.rs:82
 #: crates/ui-egui/src/shortcuts.rs:2707
-#: crates/ui-egui/src/shortcuts.rs:2931
+#: crates/ui-egui/src/shortcuts.rs:2749
+#: crates/ui-egui/src/shortcuts.rs:2939
 msgid "Reset"
 msgstr "重设"
 
@@ -10994,7 +10996,7 @@ msgstr ""
 msgid "Revision:"
 msgstr "修订："
 
-#: crates/ui-egui/src/shortcuts.rs:3264
+#: crates/ui-egui/src/shortcuts.rs:3272
 msgid "Revit XML import is supported; export it from Revit."
 msgstr ""
 
@@ -12217,7 +12219,7 @@ msgstr "排序/成组"
 #: crates/ui-egui/src/parameters.rs:821
 #: crates/ui-egui/src/parameters.rs:1308
 #: crates/ui-egui/src/parameters.rs:1793
-#: crates/ui-egui/src/shortcuts.rs:2784
+#: crates/ui-egui/src/shortcuts.rs:2792
 msgid "Source"
 msgstr ""
 
@@ -12992,7 +12994,7 @@ msgstr "这不是 IP 地址：0.0.0.0 会监听本机的所有地址"
 msgid "That is the reference: pick what moves onto it."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:3233
+#: crates/ui-egui/src/shortcuts.rs:3241
 msgid "That is too big to be a shortcuts file."
 msgstr "这个文件太大，不是快捷键文件。"
 
@@ -13139,7 +13141,7 @@ msgstr "您正在载入的族 {} 已存在于此族中，但定义不同。您�
 msgid "The family {} you are loading is already in this project, defined differently. What would you like to do?"
 msgstr "您正在载入的族 {} 已存在于此项目中，但定义不同。您想要执行什么操作？"
 
-#: crates/ui-egui/src/shortcuts.rs:3244
+#: crates/ui-egui/src/shortcuts.rs:3252
 msgid "The file has no usable bindings."
 msgstr ""
 
@@ -13507,7 +13509,7 @@ msgstr "此端点关联到参数或由公式计算：请在“族类型”中修
 msgid "This format has no settings."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:3227
+#: crates/ui-egui/src/shortcuts.rs:3235
 msgid "This is a help file to read. Use .bks, .txt or .json to import."
 msgstr ""
 
@@ -15682,7 +15684,7 @@ msgstr "{} 请求不用代码加入你的 Co-Work 会话。"
 msgid "{} at x {}, y {}"
 msgstr "{} 位于 x {}，y {}"
 
-#: crates/ui-egui/src/shortcuts.rs:3162
+#: crates/ui-egui/src/shortcuts.rs:3170
 msgid "{} bindings read; {} errors."
 msgstr ""
 
@@ -16089,11 +16091,11 @@ msgstr "{}；另有 {} 处"
 msgid "{}; the file can't be read"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:3150
+#: crates/ui-egui/src/shortcuts.rs:3158
 msgid "“{}” assigned to “{}”."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:3104
+#: crates/ui-egui/src/shortcuts.rs:3112
 msgid "“{}” is already assigned to “{}”."
 msgstr ""
 
@@ -16165,7 +16167,7 @@ msgstr "• 特粗线 (0.70 mm — 12号笔)：被剖切的突出钢筋混凝土
 msgid "• Wide / Heavy (0.50 mm — 0.70 mm): Cut walls and structural sections."
 msgstr "• 粗线 (0.50 mm — 0.70 mm)：剖切墙体与结构剖面。"
 
-#: crates/ui-egui/src/shortcuts.rs:3179
+#: crates/ui-egui/src/shortcuts.rs:3187
 msgid "…and {} more"
 msgstr ""
 

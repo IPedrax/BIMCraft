@@ -2621,7 +2621,7 @@ impl BimApp {
         let mut discard = false;
         let mut escape_closes = false;
 
-        let r = Modal::new(UiId::new("shortcuts"), t("Keyboard Shortcuts")).width(1120.0).show(ctx, |ui| {
+        let r = Modal::new(UiId::new("shortcuts"), t("Keyboard Shortcuts")).width(1280.0).show(ctx, |ui| {
             crate::popup::body(ui, |ui| {
                 ui.add_space(4.0);
                 ui.label(
@@ -2739,7 +2739,15 @@ impl BimApp {
 
                 ui.add_space(6.0);
                 let full = (ui.available_width() - 26.0).max(600.0);
-                let (command_w, category_w, source_w, actions_w, gap) = (260.0, 95.0, 85.0, 170.0, 8.0);
+                let gap = 8.0;
+                let (command_w, category_w, source_w) = (260.0, 95.0, 85.0);
+                // The rightmost column holds two small buttons: as wide as their words in this language need, so "Tout
+                // supprimer" or "Obnovit výchozí" never wrap. On a window too narrow for both the key combinations keep
+                // their least room and the buttons wrap as they did.
+                let button_font = egui::TextStyle::Button.resolve(ui.style());
+                let word = |text: &str| ui.painter().layout_no_wrap(text.to_owned(), button_font.clone(), pal().text).size().x;
+                let actions_needed = word(t("Reset")) + word(t("Remove All")) + 4.0 * ui.spacing().button_padding.x + gap + 4.0;
+                let actions_w = actions_needed.max(170.0).min((full - command_w - category_w - source_w - gap * 4.0 - 220.0).max(170.0));
                 let bindings_w = (full - command_w - category_w - source_w - actions_w - gap * 4.0).max(220.0);
                 let mut picked_sort: Option<SortColumn> = None;
                 let mut edges: Vec<f32> = Vec::new();
