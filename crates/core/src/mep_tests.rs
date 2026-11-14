@@ -425,7 +425,7 @@ fn a_run_of_the_mep_has_a_schedule_by_system_hides_by_category_and_holds_project
 fn ifc(s: &mut Session) -> String {
     let path = std::env::temp_dir().join(format!("bimcraft-test-{}-{}.ifc", std::process::id(), s.model.uid));
     run(s, "save", json!({"path": path}));
-    let text = std::fs::read_to_string(&path).unwrap();
+    let text = crate::bimc::read_to_string(&path).unwrap();
     let _ = std::fs::remove_file(path);
     text
 }
@@ -545,7 +545,7 @@ fn a_system_an_ifc_file_names_comes_back_on_its_runs_and_a_class_alone_says_the_
         made(&mut s, c.command, json!({"points": [[0, 0], [3000, 0]], "system": "Cold water"}));
         let path = std::env::temp_dir().join(format!("bimcraft-test-{}-mep-system-{}.ifc", std::process::id(), c.category));
         run(&mut s, "save", json!({"path": path}));
-        let text = std::fs::read_to_string(&path).unwrap();
+        let text = crate::bimc::read_to_string(&path).unwrap();
         // Another tool's file: the run and its system, with BIMCraft's own property set taken out.
         let other: String = text.lines().filter(|l| !l.contains("BIMCraft_Run")).collect::<Vec<_>>().join("\n");
         std::fs::write(&path, other).unwrap();

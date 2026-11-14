@@ -154,7 +154,7 @@ fn a_title_block_is_named_by_its_sheets_through_renames_undo_and_a_file() {
     let path = dir.path().join("p.bimcraft");
     run(&mut s, "save", json!({"path": path}));
     // The file names the title block by its GUID.
-    let text = std::fs::read_to_string(&path).unwrap();
+    let text = crate::bimc::read_to_string(&path).unwrap();
     let file: Value = serde_json::from_str(&text).unwrap();
     let named = file["elements"].as_object().unwrap().values().find(|e| e["category"] == "sheet").unwrap()["title_block"].clone();
     assert_ne!(named, json!("ESCRITORIO"), "{named}");

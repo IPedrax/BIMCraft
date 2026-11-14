@@ -76,7 +76,8 @@ pub fn picture(path: &Path) -> Option<ColorImage> {
     if !is_project || !meta.is_file() || meta.len() > MAX_THUMB_FILE {
         return None;
     }
-    let text = std::fs::read_to_string(path).ok()?;
+    // A project is zipped (`bimc.rs`): its JSON is held to the same size, which is what says how long its picture takes.
+    let text = bimcraft_core::bimc::unpack(std::fs::read(path).ok()?, MAX_THUMB_FILE).ok()?;
     std::panic::catch_unwind(|| {
         let m = Model::from_json(&text).ok()?;
         let scene = Scene::new(&m);

@@ -231,7 +231,7 @@ fn ifc_leaves_scans_out_as_revit_does() {
     let entities = |s: &mut Session, name: &str| {
         let file = std::env::temp_dir().join(format!("bimcraft-cloud-{}-{name}.ifc", std::process::id()));
         run(s, "save", json!({"path": file}));
-        let text = std::fs::read_to_string(&file).unwrap();
+        let text = crate::bimc::read_to_string(&file).unwrap();
         assert!(text.starts_with("ISO-10303-21;") && text.contains("IFCPROJECT"));
         text.lines().filter(|l| l.starts_with('#')).count()
     };

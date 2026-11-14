@@ -427,7 +427,8 @@ modify {"id":"$last","mark":"Entry"}"#,
         // The saver's name and the path stay out of everything but the report: the project of the same file has neither.
         let mut opened = Vec::new();
         cli(&["run".into(), path.clone(), "--save".into(), format!("{path}.bimc")], &mut opened).unwrap();
-        let project = std::fs::read_to_string(format!("{path}.bimc")).unwrap();
+        // Zipped, as a project is saved: its JSON read out of the zip.
+        let project = bimcraft_core::bimc::unpack(std::fs::read(format!("{path}.bimc")).unwrap(), u64::MAX).unwrap();
         assert!(!project.contains("jdoe") && !project.contains(&path), "the saver's name or the path got into the project");
         let detail: Value = serde_json::from_str(&cli_out(&["info", &path, "--elements-detail"]).unwrap()).unwrap();
         assert_eq!(detail["elements"]["elements_detail_placed_count"], 4);

@@ -105,7 +105,7 @@ fn no_title_block_keeps_viewports_and_sheet_annotations_and_round_trips() {
     let dir = tempfile::tempdir().unwrap();
     let file = dir.path().join("sheet.bimcraft");
     session.execute("save", &json!({"path": file})).unwrap();
-    let stored: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    let stored: Value = serde_json::from_str(&bimcraft_core::bimc::read_to_string(&file).unwrap()).unwrap();
     assert_eq!(stored["format"], FORMAT);
     assert_eq!(stored["elements"][id.to_string()]["title_block"], "none");
     let mut reopened = Session::new();
