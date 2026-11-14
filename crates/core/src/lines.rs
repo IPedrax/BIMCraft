@@ -513,7 +513,7 @@ mod tests {
         let Some(Element::DetailLine(l)) = s.model.elements.get(line) else { panic!("no line") };
         assert_eq!(l.style, "Boundary Line");
         let file = s.model.to_json().unwrap();
-        assert!(!file.contains("\"Boundary Line\"\n") && !file.contains("\"style\": \"Boundary Line\""), "a file names a style by GUID");
+        assert!(!file.contains("\"Boundary Line\"\n") && !file.contains("\"style\":\"Boundary Line\""), "a file names a style by GUID");
         let (m, _) = Model::read(&file).unwrap();
         assert_eq!((&m.line_styles, &m.line_patterns, &m.elements), (&s.model.line_styles, &s.model.line_patterns, &s.model.elements));
         // In use, kept; once not, deleted.

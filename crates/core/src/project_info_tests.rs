@@ -119,7 +119,7 @@ fn the_projects_information_goes_to_ifc_and_comes_back() {
     );
     let ifc = file("info.ifc");
     run(&mut s, "save", json!({"path": ifc}));
-    let text = std::fs::read_to_string(&ifc).unwrap();
+    let text = crate::bimc::read_to_string(&ifc).unwrap();
     let line = |start: &str| text.lines().find(|l| l.contains(start)).unwrap_or_else(|| panic!("no {start}")).to_string();
     let id = |l: &str| l.split('=').next().unwrap().to_string();
     // IFC's own attributes: the project's phase is its status, the building's name and address.

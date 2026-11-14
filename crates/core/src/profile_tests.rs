@@ -37,7 +37,7 @@ fn pixel(d: &Drawing, p: P2) -> Rgb {
 fn ifc(s: &mut Session) -> String {
     let path = std::env::temp_dir().join(format!("bimcraft-profiles-{}-{}.ifc", std::process::id(), s.model.uid));
     run(s, "save", json!({"path": path}));
-    let text = std::fs::read_to_string(&path).unwrap();
+    let text = crate::bimc::read_to_string(&path).unwrap();
     let _ = std::fs::remove_file(path);
     text
 }

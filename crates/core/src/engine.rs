@@ -192,6 +192,8 @@ pub struct Session {
     /// says who made it ([`Step::by`]), and `undo` and `redo` take back only the author's own ([`Session::undo_own`]). None outside a
     /// session.
     pub author: Option<String>,
+    /// How far a long command (`open`) has got, and its Cancel: a front end that runs it on a thread of its own reads it.
+    pub progress: Option<Arc<crate::progress::Progress>>,
     /// Whether a Co-Work guest's command is running ([`crate::cowork::run_for_guest`]): then no command may read or write a file, so a
     /// guest never reaches the host's disk.
     pub(crate) no_files: bool,
@@ -271,6 +273,7 @@ impl Session {
             external: Vec::new(),
             read_only: None,
             author: None,
+            progress: None,
             no_files: false,
             steps_made: 0,
             dry_run: false,
@@ -286,6 +289,16 @@ impl Session {
     /// Replace the model (new, open), forgetting the history.
     pub fn reset(&mut self, model: Model, path: Option<PathBuf>) {
         self.model = Arc::new(model);
+        self.path = path;
+        (self.phase, self.option) = (None, None);
+        self.resets += 1;
+        self.undo.clear();
+        self.redo.clear();
+    }
+
+    /// [`Session::reset`] to a model already shared: one read on another session (a window's open on a thread of its own).
+    pub fn reset_shared(&mut self, model: Arc<Model>, path: Option<PathBuf>) {
+        self.model = model;
         self.path = path;
         (self.phase, self.option) = (None, None);
         self.resets += 1;
