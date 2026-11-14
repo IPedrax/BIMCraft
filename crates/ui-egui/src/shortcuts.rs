@@ -398,6 +398,8 @@ const UI_ACTIONS: &[(&str, &str, Category, ActionKind, &str)] = &[
     ("ui.view.templates", "View Templates", Category::View, ActionKind::Dialog, "View Templates"),
     ("ui.manage.phasing", "Phasing", Category::Manage, ActionKind::Dialog, "Phasing"),
     ("ui.manage.design_options", "Design Options", Category::Manage, ActionKind::Dialog, "Design Options"),
+    // The Location window has no command of its own: the core's `location` needs its values, so the window is a row.
+    ("ui.view.location", "Location", Category::Manage, ActionKind::Immediate, "Location"),
     ("ui.palette.properties", "Properties", Category::Palettes, ActionKind::Immediate, "Properties"),
     ("ui.palette.browser", "Project Browser", Category::Palettes, ActionKind::Immediate, "Project Browser"),
     ("ui.assistant", "Assistant", Category::Palettes, ActionKind::Immediate, "Assistant"),
