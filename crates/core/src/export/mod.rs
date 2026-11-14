@@ -137,6 +137,123 @@ pub struct Paged {
     pub drawn: Vec<Option<Id>>,
     /// The category of each element drawn, for a line format's layers.
     pub categories: BTreeMap<Id, &'static str>,
+    /// The imported CAD drawings a plan shows, from their own entities in the model's mm, so a line format writes them on
+    /// their own layers and their text as text rather than as what the plan draws of them. Empty for other drawings.
+    pub cad: Vec<CadDrawn>,
+}
+
+/// One entity of an imported CAD drawing as a plan shows it: on its own layer, in the model's mm.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CadDrawn {
+    /// The element that places the drawing.
+    pub owner: Id,
+    pub layer: String,
+    pub color: crate::render::Rgb,
+    pub shape: CadShape,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum CadShape {
+    /// A line or a ring, with its pen's width on paper (mm) and its dash and gap in the model's mm.
+    Path {
+        pts: Vec<P2>,
+        closed: bool,
+        pen: f64,
+        dash: Option<[f64; 2]>,
+    },
+    Fill {
+        rings: Vec<Vec<P2>>,
+    },
+    /// One line of lettering: its height in the model's mm, its angle in degrees, its alignment as the drawing gave it.
+    Text {
+        at: P2,
+        height: f64,
+        angle: f64,
+        text: String,
+        align: crate::dxf::Align,
+    },
+}
+
+impl CadShape {
+    /// Whether any of it lies in `b`, a view's extent in mm.
+    fn within(&self, [lo, hi]: [P2; 2]) -> bool {
+        let inside = |p: &P2| p.0 >= lo.0 && p.0 <= hi.0 && p.1 >= lo.1 && p.1 <= hi.1;
+        match self {
+            CadShape::Path { pts, .. } => pts.iter().any(inside),
+            CadShape::Fill { rings } => rings.iter().flatten().any(inside),
+            CadShape::Text { at, .. } => inside(at),
+        }
+    }
+}
+
+/// A view's extent in the model's mm: its corners, the lowest and the highest.
+fn extent_mm(v: &crate::render::View) -> [P2; 2] {
+    let corners = [(0.0, 0.0), (v.width as f32, 0.0), (0.0, v.height as f32), (v.width as f32, v.height as f32)].map(|q| {
+        let p = v.mm(q);
+        P2(p.0, p.1)
+    });
+    let lo = P2(corners.iter().map(|p| p.0).fold(f64::INFINITY, f64::min), corners.iter().map(|p| p.1).fold(f64::INFINITY, f64::min));
+    let hi =
+        P2(corners.iter().map(|p| p.0).fold(f64::NEG_INFINITY, f64::max), corners.iter().map(|p| p.1).fold(f64::NEG_INFINITY, f64::max));
+    [lo, hi]
+}
+
+/// The imported drawings view `id` of `m` shows (those that own something `drawn`), each entity it shows of them as
+/// [`CadDrawn`]: less the layers the import or the view hides, and what lies outside `seen`, the view's extent in mm.
+fn cad_drawn(m: &Model, id: Id, drawn: &[Option<Id>], seen: Option<[P2; 2]>) -> Vec<CadDrawn> {
+    use crate::dxf::Shape;
+    let look = crate::graphics::Look::of(m, id);
+    let mut placed: Vec<Id> =
+        drawn.iter().flatten().copied().filter(|id| matches!(m.elements.get(*id), Some(Element::CadImport(_)))).collect();
+    placed.sort_unstable();
+    placed.dedup();
+    let pale = |v: u8| v + (255 - v) / 4 * 3;
+    let mut out = Vec::new();
+    for owner in placed {
+        let Some(Element::CadImport(ci)) = m.elements.get(owner) else { continue };
+        let Some(cad) = m.cads.get(&ci.cad) else { continue };
+        let place = crate::model::cad_place(ci);
+        let hidden = look.hidden_layers(&ci.cad);
+        for ent in &cad.dxf().entities {
+            if !cad.shows(ent, &ci.hidden) || hidden.is_some_and(|l| l.contains(&ent.layer)) {
+                continue;
+            }
+            let mut color = cad.color(ent, ci.colors).unwrap_or(crate::render::Rgb(0, 0, 0));
+            let shape = match &ent.shape {
+                Shape::Text { at, height, angle, text, align, .. } => {
+                    let height = height * ci.scale;
+                    if !(height.is_finite() && height > 0.0) || text.trim().is_empty() {
+                        continue;
+                    }
+                    vec![CadShape::Text { at: place(*at), height, angle: angle + ci.angle, text: text.clone(), align: *align }]
+                }
+                Shape::Point(_) => continue,
+                Shape::Fill { rings, solid } => {
+                    let rings: Vec<Vec<P2>> = rings.iter().map(|r| r.iter().map(|p| place(*p)).collect()).collect();
+                    // A patterned hatch as the plan draws it: filled pale.
+                    if !*solid {
+                        color = crate::render::Rgb(pale(color.0), pale(color.1), pale(color.2));
+                    }
+                    vec![CadShape::Fill { rings }]
+                }
+                shape => {
+                    let dash = cad.dash(ent).map(|[a, b]| [a * ci.scale, b * ci.scale]).filter(|[a, b]| *a > 0.0 && *b > 0.0);
+                    let pen = cad.pen(ent).mm();
+                    crate::cad::paths(shape)
+                        .into_iter()
+                        .map(|(pts, closed)| CadShape::Path { pts: pts.iter().map(|p| place(*p)).collect(), closed, pen, dash })
+                        .collect()
+                }
+            };
+            out.extend(shape.into_iter().filter(|s| seen.is_none_or(|b| s.within(b))).map(|shape| CadDrawn {
+                owner,
+                layer: ent.layer.clone(),
+                color,
+                shape,
+            }));
+        }
+    }
+    out
 }
 
 /// The category of each element in `drawn`.
@@ -181,6 +298,10 @@ impl Paged {
             world: self.world.map(|v| v.cropped(lo, hi)),
             drawn,
             categories: self.categories.clone(),
+            cad: match self.world.map(|v| v.cropped(lo, hi)) {
+                Some(v) => self.cad.iter().filter(|c| c.shape.within(extent_mm(&v))).cloned().collect(),
+                None => Vec::new(),
+            },
         })
     }
 
@@ -357,7 +478,7 @@ pub fn prepare(project: &Arc<Model>, m: &Arc<Model>, id: Option<Id>, takes: Take
                 }
             }
             let categories = categories(m, &drawn);
-            Content::Drawing(Box::new(Paged { drawing, n: 1.0, own, world: None, drawn, categories }))
+            Content::Drawing(Box::new(Paged { drawing, n: 1.0, own, world: None, drawn, categories, cad: Vec::new() }))
         }
         (Takes::Drawing, Some(id)) => {
             // A schedule keeps its own size; a view is drawn at its scale.
@@ -370,7 +491,12 @@ pub fn prepare(project: &Arc<Model>, m: &Arc<Model>, id: Option<Id>, takes: Take
             };
             let drawn = drawing.owners.clone();
             let categories = categories(m, &drawn);
-            Content::Drawing(Box::new(Paged { drawing, n, own: None, world, drawn, categories }))
+            // A plan's imported drawings, from their own entities, for a line format.
+            let cad = match (kind, world) {
+                (Kind::Plan, Some(v)) => cad_drawn(m, id, &drawn, Some(extent_mm(&v))),
+                _ => Vec::new(),
+            };
+            Content::Drawing(Box::new(Paged { drawing, n, own: None, world, drawn, categories, cad }))
         }
         (_, None) => return Err("the whole project exports only as a model (IFC, glTF, OBJ, STL)".to_string()),
     };

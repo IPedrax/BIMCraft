@@ -23,6 +23,8 @@ use crate::sheet::DENSITY;
 
 /// How often, in primitives, the writer asks whether to stop.
 const ASK_EVERY: usize = 4096;
+/// The most characters a TEXT's value is written with.
+const MAX_TEXT: usize = 1000;
 /// The line weights a file may hold, hundredths of a mm (DXF's group 370 takes only these).
 const WEIGHTS: [i32; 24] = [0, 5, 9, 13, 15, 18, 20, 25, 30, 35, 40, 50, 53, 60, 70, 80, 90, 100, 106, 120, 140, 158, 200, 211];
 
@@ -182,11 +184,27 @@ fn dxf(paged: &Paged, options: &Options, ctx: &Ctx) -> Result<String, String> {
     let layer_of = |i: usize| {
         paged.drawn.get(i).copied().flatten().and_then(|id| paged.categories.get(&id)).map_or_else(|| "0".to_string(), |c| table_name(c))
     };
+    // An imported drawing the plan shows goes out from its own entities, not from what the plan draws of it.
+    let cad_owners: std::collections::BTreeSet<crate::ids::Id> = paged.cad.iter().map(|c| c.owner).collect();
+    let skip = |i: usize| !cad_owners.is_empty() && paged.drawn.get(i).copied().flatten().is_some_and(|id| cad_owners.contains(&id));
     let mut layers: BTreeMap<String, ()> = BTreeMap::from([("0".to_string(), ())]);
     let mut linetypes: BTreeMap<Vec<i64>, String> = BTreeMap::new();
+    for c in &paged.cad {
+        layers.insert(table_name(&c.layer), ());
+        if let super::super::CadShape::Path { dash: Some(dash), .. } = c.shape {
+            let key = mm_key(dash);
+            if !key.is_empty() && !linetypes.contains_key(&key) {
+                let name = format!("BIMCRAFT_{}", linetypes.len() + 1);
+                linetypes.insert(key, name);
+            }
+        }
+    }
     for (i, p) in d.prims.iter().enumerate() {
         if i.is_multiple_of(ASK_EVERY) && (ctx.cancelled)() {
             return Err("cancelled".to_string());
+        }
+        if skip(i) {
+            continue;
         }
         layers.insert(layer_of(i), ());
         if let Prim::Line { dash: Some(dash), .. } = p {
@@ -200,7 +218,7 @@ fn dxf(paged: &Paged, options: &Options, ctx: &Ctx) -> Result<String, String> {
     let mut w = Writer { out: String::new(), next: 0 };
     // CLASSES, TABLES, BLOCKS and OBJECTS name handles; the header, written last, says the next one.
     let model_record = tables(&mut w, &layers, &linetypes);
-    entities(&mut w, d, &model_record, place, unit, &layer_of, &linetypes, ctx)?;
+    entities(&mut w, d, &model_record, place, unit, &layer_of, &linetypes, &skip, &paged.cad, ctx)?;
     let body = std::mem::take(&mut w.out);
     // The extents, for a reader that zooms to them.
     let pts: Vec<(f64, f64)> = d
@@ -357,6 +375,127 @@ fn tables(w: &mut Writer, layers: &BTreeMap<String, ()>, linetypes: &BTreeMap<Ve
 }
 
 /// The ENTITIES and OBJECTS sections: how many entities were written.
+/// A line or a polyline of points as written (model or paper mm); false, written not at all, when it has no length.
+#[allow(clippy::too_many_arguments)]
+fn path(w: &mut Writer, owner: &str, layer: &str, lt: Option<&str>, color: Rgb, lw: i32, pts: &[(f64, f64)], closed: bool) -> bool {
+    // A line of no length as it is written, which a reader takes for an empty entity, is left out.
+    if pts.len() < 2 || pts.iter().all(|q| *q == pts[0]) {
+        return false;
+    }
+    if pts.len() == 2 && !closed {
+        w.entity("LINE", owner, layer, lt, color, Some(lw));
+        w.pair(100, "AcDbLine");
+        for (code, v) in [(10, pts[0].0), (20, pts[0].1), (30, 0.0), (11, pts[1].0), (21, pts[1].1), (31, 0.0)] {
+            w.pair(code, num(v));
+        }
+    } else {
+        w.entity("LWPOLYLINE", owner, layer, lt, color, Some(lw));
+        w.pair(100, "AcDbPolyline");
+        w.pair(90, pts.len());
+        w.pair(70, if closed { 1 } else { 0 } | 128);
+        for q in pts {
+            w.pair(10, num(q.0));
+            w.pair(20, num(q.1));
+        }
+    }
+    true
+}
+
+/// A solid hatch of rings as written; false, written not at all, when none of them closes an area.
+fn hatch(w: &mut Writer, owner: &str, layer: &str, color: Rgb, rings: Vec<Vec<(f64, f64)>>) -> bool {
+    // A ring that closes no area as it is written, likewise.
+    let rings: Vec<Vec<(f64, f64)>> = rings.into_iter().filter(|r| r.len() >= 3 && area2(r) != 0.0).collect();
+    if rings.is_empty() {
+        return false;
+    }
+    w.entity("HATCH", owner, layer, None, color, None);
+    w.pair(100, "AcDbHatch");
+    for (code, v) in [(10, 0), (20, 0), (30, 0), (210, 0), (220, 0), (230, 1)] {
+        w.pair(code, v);
+    }
+    w.pair(2, "SOLID");
+    w.pair(70, 1);
+    w.pair(71, 0);
+    w.pair(91, rings.len());
+    for r in &rings {
+        w.pair(92, 2);
+        w.pair(72, 0);
+        w.pair(73, 1);
+        w.pair(93, r.len());
+        for q in r {
+            w.pair(10, num(q.0));
+            w.pair(20, num(q.1));
+        }
+        w.pair(97, 0);
+    }
+    w.pair(75, 0);
+    w.pair(76, 1);
+    w.pair(98, 0);
+    true
+}
+
+/// A text's words as a DXF 2004 string in ANSI_1252: what isn't ASCII as `\U+XXXX` (past four digits, `?`), no control.
+fn text_value(s: &str) -> String {
+    let mut out = String::new();
+    for c in s.chars().filter(|c| !c.is_control()).take(MAX_TEXT) {
+        match u32::from(c) {
+            0x20..=0x7e => out.push(c),
+            n if n <= 0xFFFF => {
+                let _ = write!(out, "\\U+{n:04X}");
+            }
+            _ => out.push('?'),
+        }
+    }
+    out
+}
+
+/// One line of an imported drawing's lettering as TEXT, at `at` in its alignment.
+#[allow(clippy::too_many_arguments)]
+fn text(
+    w: &mut Writer,
+    owner: &str,
+    layer: &str,
+    color: Rgb,
+    at: (f64, f64),
+    height: f64,
+    angle: f64,
+    words: &str,
+    align: crate::dxf::Align,
+) {
+    use crate::dxf::{Horizontal, Vertical};
+    let h = match align.h {
+        Horizontal::Left => 0,
+        Horizontal::Center => 1,
+        Horizontal::Right => 2,
+    };
+    let v = match align.v {
+        Vertical::Baseline => 0,
+        Vertical::Bottom => 1,
+        Vertical::Middle => 2,
+        Vertical::Top => 3,
+    };
+    w.entity("TEXT", owner, layer, None, color, None);
+    w.pair(100, "AcDbText");
+    for (code, x) in [(10, at.0), (20, at.1), (30, 0.0), (40, height)] {
+        w.pair(code, num(x));
+    }
+    w.pair(1, text_value(words));
+    w.pair(50, num(angle.rem_euclid(360.0)));
+    w.pair(72, h);
+    // Aligned other than at its baseline's left, a reader places it by its alignment point.
+    for (code, x) in [(11, at.0), (21, at.1), (31, 0.0)] {
+        w.pair(code, num(x));
+    }
+    w.pair(100, "AcDbText");
+    w.pair(73, v);
+}
+
+/// A dash and gap in mm as a linetype's key, as [`pattern_key`] makes one.
+fn mm_key([a, b]: [f64; 2]) -> Vec<i64> {
+    let key = vec![(a * 100.0).round() as i64, (b * 100.0).round() as i64];
+    if key.iter().all(|v| *v <= 0) { Vec::new() } else { key }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn entities(
     w: &mut Writer,
@@ -366,80 +505,68 @@ fn entities(
     unit: f64,
     layer_of: &dyn Fn(usize) -> String,
     linetypes: &BTreeMap<Vec<i64>, String>,
+    skip: &dyn Fn(usize) -> bool,
+    cad: &[super::super::CadDrawn],
     ctx: &Ctx,
 ) -> Result<usize, String> {
+    use super::super::CadShape;
     w.pair(0, "SECTION");
     w.pair(2, "ENTITIES");
     let mut n = 0;
+    let finite = |q: &(f64, f64)| q.0.is_finite() && q.1.is_finite();
     for (i, p) in d.prims.iter().enumerate() {
         if i.is_multiple_of(ASK_EVERY) && (ctx.cancelled)() {
             return Err("cancelled".to_string());
         }
+        // An imported drawing is written from its own entities, below.
+        if skip(i) {
+            continue;
+        }
         let layer = layer_of(i);
         match p {
             Prim::Line { pts, width, color, dash, closed } => {
-                let pts: Vec<(f64, f64)> =
-                    pts.iter().map(|q| place(*q)).filter(|q| q.0.is_finite() && q.1.is_finite()).map(written).collect();
-                // A line of no length as it is written, which a reader takes for an empty entity, is left out.
-                if pts.len() < 2 || pts.iter().all(|q| *q == pts[0]) {
-                    continue;
-                }
+                let pts: Vec<(f64, f64)> = pts.iter().map(|q| place(*q)).filter(finite).map(written).collect();
                 let lt = dash.as_ref().and_then(|dash| linetypes.get(&pattern_key(dash, unit))).map(String::as_str);
-                let lw = weight(f64::from(*width) / DENSITY);
-                if pts.len() == 2 && !closed {
-                    w.entity("LINE", owner, &layer, lt, *color, Some(lw));
-                    w.pair(100, "AcDbLine");
-                    for (code, v) in [(10, pts[0].0), (20, pts[0].1), (30, 0.0), (11, pts[1].0), (21, pts[1].1), (31, 0.0)] {
-                        w.pair(code, num(v));
-                    }
-                } else {
-                    w.entity("LWPOLYLINE", owner, &layer, lt, *color, Some(lw));
-                    w.pair(100, "AcDbPolyline");
-                    w.pair(90, pts.len());
-                    w.pair(70, if *closed { 1 } else { 0 } | 128);
-                    for q in &pts {
-                        w.pair(10, num(q.0));
-                        w.pair(20, num(q.1));
-                    }
+                if path(w, owner, &layer, lt, *color, weight(f64::from(*width) / DENSITY), &pts, *closed) {
+                    n += 1;
                 }
-                n += 1;
             }
             Prim::Fill { rings, color } if *color != Rgb(255, 255, 255) => {
-                let rings: Vec<Vec<(f64, f64)>> = rings
-                    .iter()
-                    .map(|r| r.iter().map(|q| place(*q)).filter(|q| q.0.is_finite() && q.1.is_finite()).map(written).collect::<Vec<_>>())
-                    // A ring that closes no area as it is written, likewise.
-                    .filter(|r| r.len() >= 3 && area2(r) != 0.0)
-                    .collect();
-                if rings.is_empty() {
-                    continue;
+                let rings = rings.iter().map(|r| r.iter().map(|q| place(*q)).filter(finite).map(written).collect()).collect();
+                if hatch(w, owner, &layer, *color, rings) {
+                    n += 1;
                 }
-                w.entity("HATCH", owner, &layer, None, *color, None);
-                w.pair(100, "AcDbHatch");
-                for (code, v) in [(10, 0), (20, 0), (30, 0), (210, 0), (220, 0), (230, 1)] {
-                    w.pair(code, v);
-                }
-                w.pair(2, "SOLID");
-                w.pair(70, 1);
-                w.pair(71, 0);
-                w.pair(91, rings.len());
-                for r in &rings {
-                    w.pair(92, 2);
-                    w.pair(72, 0);
-                    w.pair(73, 1);
-                    w.pair(93, r.len());
-                    for q in r {
-                        w.pair(10, num(q.0));
-                        w.pair(20, num(q.1));
-                    }
-                    w.pair(97, 0);
-                }
-                w.pair(75, 0);
-                w.pair(76, 1);
-                w.pair(98, 0);
-                n += 1;
             }
             Prim::Fill { .. } | Prim::Image { .. } => {}
+        }
+    }
+    // The imported drawings, on their own layers, already in the model's mm.
+    for (i, c) in cad.iter().enumerate() {
+        if i.is_multiple_of(ASK_EVERY) && (ctx.cancelled)() {
+            return Err("cancelled".to_string());
+        }
+        let layer = table_name(&c.layer);
+        let at = |p: &crate::geom::P2| written((p.0, p.1));
+        let wrote = match &c.shape {
+            CadShape::Path { pts, closed, pen, dash } => {
+                let pts: Vec<(f64, f64)> = pts.iter().map(at).filter(finite).collect();
+                let lt = dash.and_then(|d| linetypes.get(&mm_key(d))).map(String::as_str);
+                path(w, owner, &layer, lt, c.color, weight(*pen), &pts, *closed)
+            }
+            CadShape::Fill { rings } => {
+                hatch(w, owner, &layer, c.color, rings.iter().map(|r| r.iter().map(at).filter(finite).collect()).collect())
+            }
+            CadShape::Text { at: p, height, angle, text: words, align } => {
+                let q = at(p);
+                let ok = finite(&q) && height.is_finite() && angle.is_finite();
+                if ok {
+                    text(w, owner, &layer, c.color, q, *height, *angle, words, *align);
+                }
+                ok
+            }
+        };
+        if wrote {
+            n += 1;
         }
     }
     w.pair(0, "ENDSEC");
@@ -586,11 +713,43 @@ mod tests {
         d.prims.push(Prim::Fill { rings: vec![flat], color: Rgb(0, 0, 0) });
         let mut w = Writer { out: String::new(), next: 0 };
         let place = |p: (f32, f32)| (f64::from(p.0), f64::from(p.1));
-        let n = entities(&mut w, &d, "1F", &place, 1.0, &|_| "0".to_string(), &BTreeMap::new(), &Ctx::quiet()).unwrap();
+        let n = entities(&mut w, &d, "1F", &place, 1.0, &|_| "0".to_string(), &BTreeMap::new(), &|_| false, &[], &Ctx::quiet()).unwrap();
         assert_eq!(n, 2, "{}", w.out);
         let count = |kind: &str| w.out.matches(&format!("0\n{kind}\n")).count();
         assert_eq!((count("LINE"), count("LWPOLYLINE"), count("HATCH")), (1, 0, 1), "{}", w.out);
         // The hatch keeps its ring with an area, only.
         assert!(w.out.contains("91\n1\n"), "{}", w.out);
+    }
+
+    #[test]
+    fn an_imported_drawing_goes_out_on_its_own_layers_with_its_text_as_text() {
+        // A drawing in mm with a line on a layer named with an accent, written as a 2004 file writes it, and a turned text.
+        let source = "0\nSECTION\n2\nHEADER\n9\n$ACADVER\n1\nAC1018\n9\n$DWGCODEPAGE\n3\nANSI_1252\n9\n$INSUNITS\n70\n4\n0\nENDSEC\n\
+            0\nSECTION\n2\nTABLES\n0\nTABLE\n2\nLAYER\n0\nLAYER\n2\nMOBILI\\U+00C1RIO\n70\n0\n62\n1\n0\nLAYER\n2\nTEXTO\n70\n0\n62\n3\n0\nENDTAB\n0\nENDSEC\n\
+            0\nSECTION\n2\nENTITIES\n0\nLINE\n8\nMOBILI\\U+00C1RIO\n10\n0\n20\n0\n11\n1000\n21\n0\n\
+            0\nTEXT\n8\nTEXTO\n10\n100\n20\n200\n40\n250\n50\n30\n1\nSala \\U+00E9\n0\nENDSEC\n0\nEOF\n";
+        let dir = std::env::temp_dir().join(format!("bimcraft-test-{}-cad-own-layers", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("planta.dxf");
+        std::fs::write(&path, source).unwrap();
+        let mut s = Session::new();
+        s.execute("import_cad", &serde_json::json!({"path": path, "position": "origin", "at": [5000, 3000]})).unwrap();
+        let f = write(&s, "Level 1");
+        let _ = std::fs::remove_dir_all(&dir);
+        // Its own layers, the accent whole, and nothing of it on one `cadimport` layer.
+        assert!(f.layer("MOBILIÁRIO").is_some() && f.layer("TEXTO").is_some(), "{:?}", f.layers);
+        assert!(f.entities.iter().all(|e| e.layer != "cadimport"), "{:?}", f.entities);
+        // The line where the drawing is placed.
+        let lines: Vec<&crate::dxf::Entity> = f.entities.iter().filter(|e| e.layer == "MOBILIÁRIO").collect();
+        assert_eq!(lines.len(), 1, "{lines:?}");
+        let [lo, hi] = lines[0].shape.bounds();
+        assert!(lo.dist(P2(5000.0, 3000.0)) < 0.01 && hi.dist(P2(6000.0, 3000.0)) < 0.01, "{lo:?} {hi:?}");
+        // Its text as TEXT: its words, height and angle, where it was.
+        let texts: Vec<&crate::dxf::Entity> = f.entities.iter().filter(|e| e.layer == "TEXTO").collect();
+        let [Shape::Text { at, height, angle, text, .. }] = texts.iter().map(|e| &e.shape).collect::<Vec<_>>()[..] else {
+            panic!("one text: {texts:?}")
+        };
+        assert_eq!((text.as_str(), *height, *angle), ("Sala é", 250.0, 30.0));
+        assert!(at.dist(P2(5100.0, 3200.0)) < 0.01, "{at:?}");
     }
 }
