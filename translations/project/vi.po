@@ -321,7 +321,7 @@ msgstr "Ngang"
 msgid "Inspection Box"
 msgstr "Hộp kiểm tra"
 
-#: crates/core/src/import.rs:1768
+#: crates/core/src/import.rs:1806
 msgid "Insulation"
 msgstr "Lớp cách nhiệt"
 
@@ -402,7 +402,7 @@ msgstr "Vật liệu"
 msgid "Medium Lines"
 msgstr "Nét trung bình"
 
-#: crates/core/src/import.rs:1771
+#: crates/core/src/import.rs:1809
 msgid "Membrane"
 msgstr "Màng"
 

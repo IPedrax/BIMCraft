@@ -286,3 +286,21 @@ fn a_side_under_a_millimetre_joins_its_neighbours_so_the_profile_still_comes_in(
     let v = volume(&mesh(m, "Plate"));
     assert!((v / 9000.0 - 1.0).abs() < 0.01, "{v}");
 }
+
+#[test]
+fn an_arc_too_small_for_a_familys_chords_comes_in_as_chords_of_its_own() {
+    let mut g = G::new();
+    // A slot whose half circles are 5 mm across: a family draws an arc in 32 chords a turn, 0.98 mm each here, and takes
+    // no two points under a millimetre apart.
+    let hole = slot(&mut g, 40.0, 5.0, 12.0);
+    let map = shape(&mut g, &[hole]);
+    bolt(&mut g, "Small slot", map, [0.0, 0.0, 0.0], UP, EAST);
+    let i = g.import();
+    let m = &i.model;
+    assert!(m.families.contains_key("Small slot"), "{:?}", i.skipped);
+    let form = &m.families["Small slot"].forms[0];
+    assert!(form.sketch.iter().all(|l| matches!(l.curve, FormCurve::Line { turn: None, .. })), "chords, no arcs");
+    let v = volume(&mesh(m, "Small slot"));
+    let solid = (10.0 * 40.0 + std::f64::consts::PI * 25.0) * 12.0;
+    assert!((v / solid - 1.0).abs() < 0.02, "{v} for {solid}");
+}

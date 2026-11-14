@@ -839,13 +839,51 @@ impl<'a> Reader<'a> {
                 let turned = |t: f64| Expr::Number((t * 1e6).round() / 1e6 + 0.0);
                 // A side under a millimetre (a fillet's sliver, two points Tekla writes a hair apart) joins its neighbours,
                 // as a family's sketch takes no line that short: the next side starts where the last kept one ends.
-                let mut sides: Vec<(P2, P2, Option<f64>)> = sides.into_iter().filter(|(a, b, _)| a.dist(*b) >= 1.0).collect();
-                if sides.len() < 2 {
-                    return None;
-                }
-                for i in 0..sides.len() {
-                    let before = sides[(i + sides.len() - 1) % sides.len()].1;
-                    sides[i].0 = before;
+                // An arc too small for a family's chords (it draws an arc in SEGMENTS chords a turn, and takes no two points
+                // a millimetre apart: a 5 mm fillet's are 0.98 mm) comes in as chords of its own, each over a millimetre.
+                let sides: Vec<(P2, P2, Option<f64>)> = sides
+                    .into_iter()
+                    .flat_map(|(a, b, turn)| {
+                        let Some(t) = turn.filter(|t| t.abs() > 1e-9) else { return vec![(a, b, turn)] };
+                        let half = t.to_radians() / 2.0;
+                        let r = a.dist(b) / (2.0 * half.sin().abs());
+                        let chord = 2.0 * r * (std::f64::consts::PI / crate::family::sketch::SEGMENTS as f64).sin();
+                        if chord > 1.1 {
+                            return vec![(a, b, turn)];
+                        }
+                        // Its centre, to the left of a to b for a counter-clockwise turn.
+                        let m = P2((a.0 + b.0) / 2.0, (a.1 + b.1) / 2.0);
+                        let (dx, dy) = ((b.0 - a.0) / a.dist(b), (b.1 - a.1) / a.dist(b));
+                        let c = if t > 0.0 {
+                            P2(m.0 - dy * r * half.cos().abs(), m.1 + dx * r * half.cos().abs())
+                        } else {
+                            P2(m.0 + dy * r * half.cos().abs(), m.1 - dx * r * half.cos().abs())
+                        };
+                        let start = (a.1 - c.1).atan2(a.0 - c.0);
+                        let length = r * t.to_radians().abs();
+                        let n = ((length / 1.2).floor() as usize).clamp(1, 12);
+                        let at = |k: usize| {
+                            let u = start + t.to_radians() * k as f64 / n as f64;
+                            P2(c.0 + r * u.cos(), c.1 + r * u.sin())
+                        };
+                        (0..n).map(|k| (if k == 0 { a } else { at(k) }, if k + 1 == n { b } else { at(k + 1) }, None)).collect()
+                    })
+                    .collect();
+                // Until none is left that short: a side whose start moves may come under it in turn. A little over the
+                // millimetre, as the plane's coordinates are rounded to a tenth of one.
+                let mut sides = sides;
+                for _ in 0..8 {
+                    sides.retain(|(a, b, _)| a.dist(*b) >= 1.1);
+                    if sides.len() < 2 {
+                        return None;
+                    }
+                    for i in 0..sides.len() {
+                        let before = sides[(i + sides.len() - 1) % sides.len()].1;
+                        sides[i].0 = before;
+                    }
+                    if sides.iter().all(|(a, b, _)| a.dist(*b) >= 1.1) {
+                        break;
+                    }
                 }
                 sides
                     .into_iter()

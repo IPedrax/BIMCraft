@@ -321,7 +321,7 @@ msgstr "Poziome"
 msgid "Inspection Box"
 msgstr "Studzienka rewizyjna"
 
-#: crates/core/src/import.rs:1768
+#: crates/core/src/import.rs:1806
 msgid "Insulation"
 msgstr "Izolacja"
 
@@ -402,7 +402,7 @@ msgstr "Materiał"
 msgid "Medium Lines"
 msgstr "Linie średnie"
 
-#: crates/core/src/import.rs:1771
+#: crates/core/src/import.rs:1809
 msgid "Membrane"
 msgstr "Membrana"
 

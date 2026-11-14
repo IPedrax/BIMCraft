@@ -5346,7 +5346,7 @@ msgstr "Najde {}; žádný prvek nemá tyto vlastnosti: {}"
 msgid "Fine"
 msgstr "Jemná"
 
-#: crates/core/src/import.rs:1769
+#: crates/core/src/import.rs:1807
 #: crates/ui-egui/src/notes.rs:451
 #: crates/ui-egui/src/properties.rs:866
 msgid "Finish"
@@ -6335,7 +6335,7 @@ msgstr ""
 msgid "Instances of {} are placed in the family: delete them first."
 msgstr "V rodině jsou umístěny instance {}: nejprve je odstraňte."
 
-#: crates/core/src/import.rs:1768
+#: crates/core/src/import.rs:1806
 #: crates/ui-egui/src/draw.rs:664
 msgid "Insulation"
 msgstr "Tepelná izolace"
@@ -7516,7 +7516,7 @@ msgstr "Střední"
 msgid "Medium Lines"
 msgstr "Střední čáry"
 
-#: crates/core/src/import.rs:1771
+#: crates/core/src/import.rs:1809
 #: crates/ui-egui/src/properties.rs:865
 msgid "Membrane"
 msgstr "Hydroizolační fólie"
@@ -12436,7 +12436,7 @@ msgstr "Pero podmřížky"
 msgid "Subject"
 msgstr ""
 
-#: crates/core/src/import.rs:1770
+#: crates/core/src/import.rs:1808
 #: crates/ui-egui/src/properties.rs:863
 msgid "Substrate"
 msgstr "Podkladní vrstva"
