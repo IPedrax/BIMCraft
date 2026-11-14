@@ -120,7 +120,7 @@ fn plumb(s: &Session, owner: Id, x: f64, y: f64) -> Vec<f64> {
 fn ifc(s: &mut Session) -> String {
     let path = std::env::temp_dir().join(format!("bimcraft-face-void-{}-{:?}.ifc", std::process::id(), std::thread::current().id()));
     run(s, "save", json!({"path": path}));
-    let text = std::fs::read_to_string(&path).unwrap();
+    let text = crate::bimc::read_to_string(&path).unwrap();
     let _ = std::fs::remove_file(&path);
     text
 }

@@ -14,6 +14,7 @@ mod adaptive_place;
 mod adaptive_view;
 mod assistant;
 mod background_grid;
+pub mod bench;
 mod browser;
 mod cad;
 mod camera;
@@ -52,8 +53,10 @@ mod links;
 mod mep;
 mod mesh;
 mod minimap;
+mod motion;
 mod notes;
 mod objectstyles;
+mod opening;
 mod orbit;
 mod panelsched;
 mod paper;
@@ -86,6 +89,7 @@ mod standards;
 mod start;
 mod structure;
 mod style;
+mod swap;
 mod templates;
 #[cfg(test)]
 mod tests;
@@ -536,6 +540,8 @@ type KeptJson = (Weak<Model>, HashMap<Id, Arc<Value>>);
 
 pub struct BimApp {
     pub session: Session,
+    /// A scenario being run on the window (`bimcraft --bench`): it drives the window and times its frames.
+    pub bench: Option<bench::Bench>,
     /// The system's requests since the last frame, read once a frame. None where it sends none.
     pub os_events: Option<Box<dyn FnMut() -> Vec<OsEvent>>>,
     /// The window draws its own title bar (`titlebar.rs`): the desktop's `main` says so where the system lets it (Windows and
@@ -584,6 +590,8 @@ pub struct BimApp {
     background_grid_dialog: Option<background_grid::GridDialog>,
     /// Global grid snapping preference, independent of view graphics and templates.
     grid_snapping: bool,
+    /// Whether Save and Save As write the project zipped (File > Settings > Files, the File menu): off, plain JSON.
+    pub(crate) compressed_save: bool,
     /// Whether the 3D view's section box shows what it cuts filled (Settings > Performance): off, its faces are left hollow,
     /// which spares cutting the model each time the box moves.
     pub(crate) cut_fills_3d: bool,
@@ -991,6 +999,10 @@ pub struct BimApp {
     cowork_quit: Option<bool>,
     /// The Revit file being read, on a thread of its own.
     revit_job: Option<revit::Job>,
+    /// A big project being read on a thread of its own (`opening.rs`).
+    opening: Option<opening::Opening>,
+    /// Whether the machine has started to swap, and the banner that says so (`swap.rs`).
+    swapping: swap::Swapping,
     /// Files to open at the next frame: the command line's, and what the system asked for while a Revit file was being read.
     opens: Vec<PathBuf>,
     /// The file dialog that is open, if one is: it is on a thread of its own, and answers in a later frame.
@@ -1477,6 +1489,7 @@ impl BimApp {
             scan_contrast: footer::HIGH_CONTRAST,
             background_grid_dialog: None,
             grid_snapping: false,
+            compressed_save: false,
             cut_fills_3d: true,
             show_origin: true,
             show_view_name: true,
@@ -1603,6 +1616,7 @@ impl BimApp {
             open_units: false,
             options_rect: Rect::NOTHING,
             canvas: canvas::Canvas::default(),
+            bench: None,
             orbit: orbit::Orbit::default(),
             active_3d: None,
             card: gpu::Card::default(),
@@ -1701,6 +1715,8 @@ impl BimApp {
             cowork_ai: cowork::Ai::default(),
             cowork_quit: None,
             revit_job: None,
+            opening: None,
+            swapping: swap::Swapping::default(),
             export_dialog: None,
             print_sets: None,
             publisher: None,
@@ -1981,6 +1997,8 @@ impl BimApp {
         self.tidy();
         self.poll_updates(&ctx);
         self.poll_revit(&ctx);
+        self.poll_opening(&ctx);
+        self.poll_swap(&ctx);
         self.poll_export(&ctx);
         self.poll_plugins(&ctx);
         self.poll_autosave(&ctx);
@@ -2068,6 +2086,9 @@ impl BimApp {
         }
         if self.has_update_banner() {
             Panel::top("update").frame(Frame::NONE).show_separator_line(false).show(ui, |ui| self.update_banner(ui));
+        }
+        if self.has_swap_banner() {
+            Panel::top("swap").frame(Frame::NONE).show_separator_line(false).show(ui, |ui| self.swap_banner(ui));
         }
         let status = style::card([true, true, false, true]).inner_margin(Margin::symmetric(10, 2));
         Panel::bottom("status").frame(status).show_separator_line(false).show(ui, |ui| self.status_bar(ui));
@@ -3457,6 +3478,18 @@ impl BimApp {
         self.active_3d.filter(|id| matches!(m.elements.get(id), Some(Element::View3D(_)))).or_else(|| m.default_3d())
     }
 
+    /// Whether nothing is being made for what the window shows: no plan or 3D scene on a worker, nothing waited for.
+    pub(crate) fn settled(&self) -> bool {
+        !self.canvas.drawing.busy() && self.orbit.waiting.is_none() && !self.orbit.busy() && !self.opening_busy()
+    }
+
+    /// The first plan in a tab, as the Project Browser opens it.
+    pub(crate) fn open_first_plan(&mut self) {
+        if let Some((id, _)) = self.session.model.levels().first() {
+            self.open_sheet(Sheet::Plan(*id));
+        }
+    }
+
     /// Open a 3D view in the 3D tab: the default `{3D}` (none), or a camera view by id. Its camera stands the view where
     /// it looks from the next time it is drawn.
     pub(crate) fn open_3d(&mut self, id: Option<Id>) {
@@ -3635,7 +3668,12 @@ impl BimApp {
             }
             return self.run("render", p).is_some();
         }
-        let saved = self.run("save", json!({"path": file})).is_some();
+        // A project as the user keeps them (Settings > Files): zipped, or plain JSON; an export takes no such choice.
+        let mut p = json!({"path": file});
+        if files::is_project(path) {
+            p["compress"] = json!(self.compressed_save);
+        }
+        let saved = self.run("save", p).is_some();
         // Exports (IFC, glTF, the sheets' PDF) leave the project unsaved.
         if saved && !matches!(ext.as_str(), "ifc" | "glb" | "pdf") {
             self.saved = Arc::clone(&self.session.model);
@@ -3692,21 +3730,38 @@ impl BimApp {
             }
             return self.active_family().is_some();
         }
+        // A big file is read on a thread of its own, the window drawing meanwhile, with a box and Cancel (`opening.rs`). A Co-Work
+        // guest's commands go to the host, so it opens as it always did.
+        let big = std::fs::metadata(path).is_ok_and(|m| m.len() >= opening::IN_BACKGROUND);
+        if big && !matches!(self.cowork, Some(cowork::Live::Guest(_))) {
+            return self.open_in_background(path);
+        }
         let Some(reply) = self.run("open", json!({"path": path.to_string_lossy()})) else {
-            self.forget_recent_if_gone(path);
-            // Even a damaged original can have a healthy recovery copy.
-            if !path.extension().is_some_and(|e| e.eq_ignore_ascii_case("ifc")) {
-                self.inspect_recovery(path.to_path_buf());
-            }
+            self.open_failed(path);
             return false;
         };
+        self.opened(path, &reply);
+        true
+    }
+
+    /// What a failed open leaves: the file forgotten from the recent ones if it's gone, and its recovery copy looked at.
+    pub(crate) fn open_failed(&mut self, path: &Path) {
+        self.forget_recent_if_gone(path);
+        // Even a damaged original can have a healthy recovery copy.
+        if !path.extension().is_some_and(|e| e.eq_ignore_ascii_case("ifc")) {
+            self.inspect_recovery(path.to_path_buf());
+        }
+    }
+
+    /// The window on a project just opened from `path`, `reply` being what `open` said.
+    pub(crate) fn opened(&mut self, path: &Path, reply: &Value) {
         self.retire_autosave();
         self.reopened();
         self.note_recent(path);
         self.autosave_document();
         let name = path.file_name().map_or_else(String::new, |n| n.to_string_lossy().into_owned());
         if reply["format"].is_string() {
-            self.status = Status { text: import_note(&name, &reply), error: false };
+            self.status = Status { text: import_note(&name, reply), error: false };
         } else if let Some(left_out) = reply["left_out"].as_array() {
             let count = reply["left_out_count"].as_u64().map_or(left_out.len(), |n| n as usize);
             // A newer BIMCraft's fields: what this one doesn't know, it can't keep.
@@ -3714,7 +3769,6 @@ impl BimApp {
                 tf("{} opened without {} fields this version doesn't know; saving it leaves them out.", &[&name, &count.to_string()]);
             self.status = Status { text, error: false };
         }
-        true
     }
 
     /// The sample house, the model `bimcraft --sample` builds, as a project with no file: Save asks where to put it. Built
@@ -3745,6 +3799,7 @@ impl BimApp {
         fresh.font_finder = self.font_finder;
         fresh.scan_contrast = self.scan_contrast;
         fresh.grid_snapping = self.grid_snapping;
+        fresh.compressed_save = self.compressed_save;
         fresh.cut_fills_3d = self.cut_fills_3d;
         (fresh.show_origin, fresh.show_view_name) = (self.show_origin, self.show_view_name);
         fresh.custom_shortcuts = std::mem::take(&mut self.custom_shortcuts);
@@ -3767,6 +3822,8 @@ impl BimApp {
         fresh.cowork = fresh.cowork_kept(self.cowork.take());
         fresh.cowork_ai = std::mem::take(&mut self.cowork_ai);
         fresh.opens = std::mem::take(&mut self.opens);
+        (fresh.bench, fresh.opening) = (self.bench.take(), self.opening.take());
+        fresh.swapping = std::mem::take(&mut self.swapping);
         (fresh.recent, fresh.recent_path) = (std::mem::take(&mut self.recent), self.recent_path.take());
         fresh.autosave = std::mem::take(&mut self.autosave);
         fresh.card = std::mem::take(&mut self.card);
@@ -4267,6 +4324,9 @@ impl BimApp {
             if item(ui, msg!("Save As…"), save_as) {
                 self.save_as(ctx, None);
             }
+            // As in Settings > Files: kept for every save after.
+            ui.checkbox(&mut self.compressed_save, t("Compressed save"))
+                .on_hover_text(t("⚠ A compressed project is much smaller, but saving and opening it take longer."));
         }
         if !self.autosave.candidates.is_empty() && item(ui, msg!("Recover Autosave…"), None) {
             self.autosave.show_recovery = true;
@@ -6303,6 +6363,7 @@ impl BimApp {
         self.background_grid_window(ctx);
         self.installing_box(ctx);
         self.importing_box(ctx);
+        self.opening_box(ctx);
         self.report_window(ctx);
         self.export_window(ctx);
         self.publisher_window(ctx);
@@ -6365,7 +6426,11 @@ impl BimApp {
 impl eframe::App for BimApp {
     /// Runs before each pass, and while the window is hidden too: agents and a Co-Work session's guests are answered when the
     /// window is minimised.
-    fn logic(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
+    fn logic(&mut self, ctx: &Context, frame: &mut eframe::Frame) {
+        if let Some(mut bench) = self.bench.take() {
+            bench.step(self, ctx, frame.info().cpu_usage.unwrap_or(0.0));
+            self.bench = Some(bench);
+        }
         self.pump(ctx);
     }
 
@@ -6376,6 +6441,9 @@ impl eframe::App for BimApp {
     /// Tab over the plan cycles through what's under the cursor, as in Revit (or moves between a shape's numbers),
     /// rather than moving the keyboard between widgets.
     fn raw_input_hook(&mut self, ctx: &Context, raw: &mut egui::RawInput) {
+        if let Some(bench) = self.bench.as_mut() {
+            bench.input(raw);
+        }
         self.pace(&mut raw.events);
         // The family document's views take Tab themselves (F10c), the project's canvas being out of sight.
         if self.canvas.hovering() && self.active_family().is_none() && !ctx.egui_wants_keyboard_input() {

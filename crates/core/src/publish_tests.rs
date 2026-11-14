@@ -162,8 +162,8 @@ fn a_set_is_a_library_entry_renamed_duplicated_saved_and_listed() {
     std::fs::create_dir_all(&dir).unwrap();
     let file = dir.join("p.bimcraft");
     run(&mut s, "save", json!({"path": file}));
-    let text = std::fs::read_to_string(&file).unwrap_or_default();
-    assert!(!text.contains("\"print_set\": \"All Sheets\""), "a file holds the print set's GUID, not its name");
+    let text = crate::bimc::read_to_string(&file).unwrap_or_default();
+    assert!(!text.contains("\"print_set\":\"All Sheets\""), "a file holds the print set's GUID, not its name");
     let mut t = Session::new();
     run(&mut t, "open", json!({"path": file}));
     assert_eq!(t.model.publish_sets, s.model.publish_sets);

@@ -475,7 +475,7 @@ checksum = "ac07cdecf99051d9a5238b80f35af32cdeba5b336e55d957b318b50137e18da5"
 
 [[package]]
 name = "bimcraft"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "bimcraft-assistant",
  "bimcraft-core",
@@ -495,7 +495,7 @@ dependencies = [
 
 [[package]]
 name = "bimcraft-assistant"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "bimcraft-core",
  "ring",
@@ -506,7 +506,7 @@ dependencies = [
 
 [[package]]
 name = "bimcraft-cli"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "bimcraft-core",
  "bimcraft-dwg",
@@ -519,7 +519,7 @@ dependencies = [
 
 [[package]]
 name = "bimcraft-core"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "bimcraft-i18n",
  "cap",
@@ -544,7 +544,7 @@ dependencies = [
 
 [[package]]
 name = "bimcraft-cowork"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "bimcraft-core",
  "flate2",
@@ -554,7 +554,7 @@ dependencies = [
 
 [[package]]
 name = "bimcraft-dwg"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "acadrust",
  "bimcraft-core",
@@ -562,7 +562,7 @@ dependencies = [
 
 [[package]]
 name = "bimcraft-i18n"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "proc-macro2",
  "syn 2.0.119",
@@ -571,7 +571,7 @@ dependencies = [
 
 [[package]]
 name = "bimcraft-plugin"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "bimcraft-core",
  "serde",
@@ -583,14 +583,14 @@ dependencies = [
 
 [[package]]
 name = "bimcraft-plugin-sdk"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "serde_json",
 ]
 
 [[package]]
 name = "bimcraft-rvt"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "bimcraft-core",
  "cfb",
@@ -601,7 +601,7 @@ dependencies = [
 
 [[package]]
 name = "bimcraft-ui-egui"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "bimcraft-assistant",
  "bimcraft-core",
@@ -627,7 +627,7 @@ dependencies = [
 
 [[package]]
 name = "bimcraft-update"
-version = "0.11.0"
+version = "0.12.0"
 dependencies = [
  "ring",
  "semver",

@@ -12,6 +12,7 @@ pub mod autosave;
 mod autosave_tests;
 pub mod background_grid;
 pub mod bath;
+pub mod bimc;
 pub mod bounds;
 pub mod bridge;
 pub mod cad;
@@ -93,6 +94,8 @@ mod family_visibility_tests;
 pub mod favorites;
 #[cfg(test)]
 mod file_extension_tests;
+#[cfg(test)]
+mod file_tests;
 pub mod files;
 pub mod fills;
 mod fixtures;
@@ -161,6 +164,7 @@ pub mod phasing;
 pub mod places;
 pub mod plumbing;
 pub mod printset;
+pub mod progress;
 pub mod project_info;
 #[cfg(test)]
 mod project_info_tests;
@@ -222,6 +226,8 @@ pub mod stairs;
 pub mod standards;
 pub mod step;
 pub mod storm;
+#[cfg(test)]
+mod stream_tests;
 pub mod styles;
 pub mod symbol_set;
 pub mod text;
