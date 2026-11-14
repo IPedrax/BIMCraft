@@ -179,21 +179,35 @@ fn is_contour(line: &Ready) -> bool {
     line.1.windows(2).all(|w| w[0] == w[1])
 }
 
-/// A contour's points without those within `tol` of the segment from the last point kept to the next: a wiggle of
-/// photogrammetry's left out, a bend kept. Its ends stay; a closed one keeps at least three.
+/// A contour's points without those within `tol` of the line that replaces them (Douglas–Peucker): a wiggle of
+/// photogrammetry's left out, a bend kept, and no point of the contour ever further than `tol` from what is left. Its ends
+/// stay; a closed one keeps at least three.
 fn simplified(pts: &[P2], closed: bool, tol: f64) -> Vec<P2> {
-    let (Some(&first), Some(&last)) = (pts.first(), pts.last()) else { return pts.to_vec() };
     if pts.len() < 3 {
         return pts.to_vec();
     }
-    let mut kept = vec![first];
-    for w in pts.windows(3) {
-        let prev = kept.last().copied().unwrap_or(first);
-        if geom::dist_to_segment(w[1], prev, w[2]) >= tol {
-            kept.push(w[1]);
+    // A closed contour runs back to its first point, so it is simplified as a path that ends where it starts.
+    let path: Vec<P2> = if closed { pts.iter().chain(pts.first()).copied().collect() } else { pts.to_vec() };
+    let last = path.len() - 1;
+    let mut keep = vec![false; path.len()];
+    keep[0] = true;
+    keep[last] = true;
+    let mut todo = vec![(0, last)];
+    while let Some((i, j)) = todo.pop() {
+        let (a, b) = (path[i], path[j]);
+        let far = (i + 1..j).map(|k| (k, geom::dist_to_segment(path[k], a, b))).max_by(|x, y| x.1.total_cmp(&y.1));
+        if let Some((k, d)) = far
+            && d > tol
+        {
+            keep[k] = true;
+            todo.push((i, k));
+            todo.push((k, j));
         }
     }
-    kept.push(last);
+    let mut kept: Vec<P2> = path.iter().zip(&keep).filter(|(_, k)| **k).map(|(p, _)| *p).collect();
+    if closed {
+        kept.pop();
+    }
     if closed && kept.len() < 3 { pts.to_vec() } else { kept }
 }
 
@@ -923,16 +937,36 @@ mod tests {
 
     #[test]
     fn simplifying_never_makes_lines_cross() {
-        // A dips 45 mm at x = 500, which simplifying at 50 mm would straighten; B, 30 mm above, dips 50 mm into where A's
-        // straightened line would run. Apart they never cross; A keeps its dip.
+        // A dips 45 mm at x = 500, which simplifying at 50 mm would straighten; B, 30 mm above, dips 60 mm (kept) into
+        // where A's straightened line would run. Apart they never cross; A keeps its dip.
         let a = Line::contour(100.0, vec![P2(0.0, 0.0), P2(400.0, 0.0), P2(500.0, -45.0), P2(600.0, 0.0), P2(1_000.0, 0.0)], false);
-        let b = Line::contour(200.0, vec![P2(0.0, 30.0), P2(400.0, 30.0), P2(500.0, -20.0), P2(600.0, 30.0), P2(1_000.0, 30.0)], false);
+        let b = Line::contour(200.0, vec![P2(0.0, 30.0), P2(400.0, 30.0), P2(500.0, -30.0), P2(600.0, 30.0), P2(1_000.0, 30.0)], false);
         let corners = vec![[0.0, -1_000.0, 0.0], [1_000.0, -1_000.0, 0.0], [1_000.0, 1_000.0, 300.0], [0.0, 1_000.0, 300.0]];
         let s = build(&corners, &[a.clone(), b.clone()], &Options { simplify: 50.0, ..Options::default() }).unwrap();
         assert!(s.notes.iter().any(|n| n.contains("kept every vertex")), "{:?}", s.notes);
         assert!(s.notes.iter().all(|n| !n.contains("kept as points")), "{:?}", s.notes);
         assert!(crosses_none(&s, &[a, b]));
         assert!((s.elevation_at(P2(500.0, -45.0)).unwrap() - 100.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn simplifying_a_dense_arc_stays_within_its_tolerance() {
+        // A quarter of a 100 m circle, a vertex every 100 mm: every original vertex must stay within `simplify` of the
+        // line that replaces it, however many are left out in a row.
+        let r = 100_000.0;
+        let n = (r * std::f64::consts::FRAC_PI_2 / 100.0) as usize;
+        let arc: Vec<P2> = (0..=n).map(|i| {
+            let a = std::f64::consts::FRAC_PI_2 * i as f64 / n as f64;
+            P2(r * a.cos(), r * a.sin())
+        }).collect();
+        let corners = vec![[0.0, 0.0, 0.0], [120_000.0, 0.0, 0.0], [120_000.0, 120_000.0, 0.0], [0.0, 120_000.0, 0.0]];
+        let s = build(&corners, &[Line::contour(100.0, arc.clone(), false)], &Options { simplify: 50.0, ..Options::default() }).unwrap();
+        // The kept vertices: the surface's corners at elevation 100.
+        let mut kept: Vec<P2> = s.points.iter().zip(&s.z).filter(|(_, z)| **z == 100.0).map(|(p, _)| *p).collect();
+        kept.sort_by(|a, b| a.1.atan2(a.0).total_cmp(&b.1.atan2(b.0)));
+        assert!(kept.len() < arc.len() / 4, "{} of {}", kept.len(), arc.len());
+        let worst = arc.iter().map(|&p| kept.windows(2).map(|w| geom::dist_to_segment(p, w[0], w[1])).fold(f64::MAX, f64::min)).fold(0.0, f64::max);
+        assert!(worst <= 50.0 + 1e-6, "{worst}");
     }
 
     #[test]
