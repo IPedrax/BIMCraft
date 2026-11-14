@@ -3195,35 +3195,42 @@ impl BimApp {
     /// pending face. With one door selected, step through the four Opens tiles in order with the same instance edit
     /// as a tile click.
     fn opening_space(&mut self) -> bool {
-        let m = &self.session.model;
         match self.tool {
             Tool::Door if self.plan_level().is_some() => {
                 let (family, ty) = self.opening_pick("door");
-                if !ty.as_deref().is_some_and(|t| m.door_flips(family.as_deref(), t).hand) {
+                if !ty.as_deref().is_some_and(|t| self.session.model.door_flips(family.as_deref(), t).hand) {
                     return false;
                 }
                 self.door_flip_hand = !self.door_flip_hand;
             }
-            Tool::Window if self.plan_level().is_some() => {
-                self.window_flip_facing = !self.window_flip_facing;
-            }
+            Tool::Window if self.plan_level().is_some() => self.window_flip_facing = !self.window_flip_facing,
             Tool::Modify if self.sketch.is_none() => {
-                let &[id] = self.selection.as_slice() else { return false };
-                if !m.elements.get(id).and_then(|e| m.opening_flips(e)).is_some_and(|flips| flips.any()) {
+                let ids = self.flippable();
+                if ids.is_empty() {
                     return false;
                 }
-                self.run("flip", json!({"ids": [id], "cycle": "auto"}));
+                self.run("flip", json!({"ids": ids, "cycle": "auto"}));
             }
             _ => return false,
         }
         true
     }
 
-    /// The selected walls turned round about their location lines: Revit's flip arrows, or Space.
+    /// The selected elements Space and Flip turn over: walls, and doors and windows whose type flips.
+    fn flippable(&self) -> Vec<Id> {
+        let m = &self.session.model;
+        self.selection
+            .iter()
+            .copied()
+            .filter(|id| m.wall(*id).is_some() || m.elements.get(*id).and_then(|e| m.opening_flips(e)).is_some_and(|flips| flips.any()))
+            .collect()
+    }
+
+    /// The selected walls and openings turned over, in one Undo step: Revit's flip arrows, or Space.
     fn flip(&mut self) {
-        let walls = self.selected_walls();
-        if !walls.is_empty() {
-            self.run("flip", json!({"ids": walls}));
+        let ids = self.flippable();
+        if !ids.is_empty() {
+            self.run("flip", json!({"ids": ids, "cycle": "auto"}));
         }
     }
 

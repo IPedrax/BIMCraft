@@ -244,9 +244,13 @@ fn door_space_cycles_the_opens_choices_with_one_undo_each_and_reopens() {
 }
 
 #[test]
-fn door_space_leaves_typing_other_operations_and_multiple_doors_alone() {
+fn door_space_leaves_typing_and_other_operations_alone_and_turns_every_flippable_door() {
     let mut h = app(&format!("{BOX}\ndoor {{\"at\":[2000,0]}}\ndoor {{\"at\":[6000,0],\"family\":\"Sliding Door\"}}"));
     let [single, sliding] = ids(&h, "door")[..] else { panic!("two doors") };
+    let state_of = |h: &Harness<BimApp>, id: Id| {
+        let Element::Door(o) = &h.state().session.model.elements[&id] else { panic!("door") };
+        (o.flip_hand, o.flip_facing)
+    };
     click(&mut h, P2(2000.0, 0.0));
     let before = h.state().session.model.clone();
     h.key_press_modifiers(Modifiers::SHIFT, Key::Space);
@@ -257,22 +261,105 @@ fn door_space_leaves_typing_other_operations_and_multiple_doors_alone() {
     key(&mut h, Key::Space);
     assert!(h.get_by_role_and_label(Role::TextInput, "Mark").value().unwrap().contains(' '));
     assert!(std::sync::Arc::ptr_eq(&before, &h.state().session.model));
-    // Discard the uncommitted field edit and select the sliding door, then both doors.
+    // Discard the uncommitted field edit and select the sliding door: it has no Opens positions.
     key(&mut h, Key::Escape);
     click(&mut h, P2(6000.0, 0.0));
     assert_eq!(h.state().selection, [sliding]);
     let before = h.state().session.model.clone();
     key(&mut h, Key::Space);
+    assert!(std::sync::Arc::ptr_eq(&before, &h.state().session.model));
+    // Both selected: the sliding one stays and the swing one steps its Opens, one press one Undo.
     click_with(&mut h, P2(2000.0, 0.0), Modifiers::COMMAND);
     assert_eq!(h.state().selection, [sliding, single]);
+    let steps = h.state().session.history().len();
     key(&mut h, Key::Space);
-    assert!(std::sync::Arc::ptr_eq(&before, &h.state().session.model));
+    assert_eq!(state_of(&h, sliding), (false, false));
+    assert_eq!(state_of(&h, single), (true, false));
+    assert_eq!(h.state().session.history().len(), steps + 1);
     // A wall keeps its original Space shortcut.
     click(&mut h, P2(4000.0, 6000.0));
     let wall = h.state().selection[0];
     let end = field(&h, wall, "end");
     key(&mut h, Key::Space);
     assert_eq!(field(&h, wall, "start"), end);
+}
+
+#[test]
+fn a_selected_window_space_turns_its_face_with_one_undo_each() {
+    let mut h = app(&format!("{BOX}\nwindow {{\"at\": [2000,0]}}"));
+    click(&mut h, P2(2000.0, 0.0));
+    let window = ids(&h, "window")[0];
+    assert_eq!(h.state().selection, [window]);
+    let facing = |h: &Harness<BimApp>| {
+        let Element::Window(o) = &h.state().session.model.elements[&window] else { panic!("window") };
+        o.flip_facing
+    };
+    let steps = h.state().session.history().len();
+    key(&mut h, Key::Space);
+    assert!(facing(&h));
+    assert_eq!(h.state().session.history().len(), steps + 1);
+    key(&mut h, Key::Space);
+    assert!(!facing(&h));
+    assert_eq!(h.state().session.history().len(), steps + 2);
+}
+
+#[test]
+fn two_selected_doors_space_turns_each_by_its_own_cycle_in_one_undo() {
+    let mut h = app(&format!("{BOX}\ndoor {{\"at\":[2000,0]}}\ndoor {{\"at\":[6000,0],\"flip_hand\":true}}"));
+    let [first, second] = ids(&h, "door")[..] else { panic!("two doors") };
+    let state_of = |h: &Harness<BimApp>, id: Id| {
+        let Element::Door(o) = &h.state().session.model.elements[&id] else { panic!("door") };
+        (o.flip_hand, o.flip_facing)
+    };
+    click(&mut h, P2(2000.0, 0.0));
+    click_with(&mut h, P2(6000.0, 0.0), Modifiers::COMMAND);
+    assert_eq!(h.state().selection, [first, second]);
+    let steps = h.state().session.history().len();
+    key(&mut h, Key::Space);
+    assert_eq!(state_of(&h, first), (true, false));
+    assert_eq!(state_of(&h, second), (false, true));
+    assert_eq!(h.state().session.history().len(), steps + 1);
+}
+
+#[test]
+fn a_door_and_a_wall_space_turn_both_in_one_undo_and_keep_the_selection() {
+    let mut h = app(&format!("{BOX}\ndoor {{\"at\":[2000,0]}}"));
+    let door = ids(&h, "door")[0];
+    let flips = |h: &Harness<BimApp>| {
+        let Element::Door(o) = &h.state().session.model.elements[&door] else { panic!("door") };
+        (o.flip_hand, o.flip_facing)
+    };
+    click(&mut h, P2(2000.0, 0.0));
+    click_with(&mut h, P2(4000.0, 0.0), Modifiers::COMMAND);
+    let [_, wall] = h.state().selection[..] else { panic!("a door and a wall") };
+    assert_eq!((h.state().selection.len(), h.state().selection[0]), (2, door));
+    let (start, end) = (field(&h, wall, "start"), field(&h, wall, "end"));
+    let steps = h.state().session.history().len();
+    key(&mut h, Key::Space);
+    assert_eq!(field(&h, wall, "start"), end);
+    assert_eq!(field(&h, wall, "end"), start);
+    assert_eq!(flips(&h), (true, false));
+    assert_eq!(h.state().session.history().len(), steps + 1);
+    assert_eq!(h.state().selection.len(), 2);
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    h.run();
+    assert_eq!((field(&h, wall, "start"), field(&h, wall, "end")), (start, end));
+    assert_eq!(flips(&h), (false, false));
+}
+
+#[test]
+fn a_column_beside_a_selected_door_is_left_alone_when_space_turns_the_door() {
+    let mut h = app(&format!("{BOX}\ndoor {{\"at\":[2000,0]}}\ncolumn {{\"at\":[4000,3000]}}"));
+    let door = ids(&h, "door")[0];
+    let column = ids(&h, "column")[0];
+    click(&mut h, P2(2000.0, 0.0));
+    click_with(&mut h, P2(4000.0, 3000.0), Modifiers::COMMAND);
+    assert_eq!(h.state().selection, [door, column]);
+    let (at, angle) = (field(&h, column, "at"), field(&h, column, "angle"));
+    key(&mut h, Key::Space);
+    assert_eq!((field(&h, column, "at"), field(&h, column, "angle")), (at, angle));
+    let Element::Door(o) = &h.state().session.model.elements[&door] else { panic!("door") };
+    assert_eq!((o.flip_hand, o.flip_facing), (true, false));
 }
 
 #[test]
