@@ -4613,7 +4613,8 @@ fn render_view(s: &mut Session, p: &Value) -> R {
     if let Some(three) = three_d {
         let (azimuth, elevation) = (num(c, p, "azimuth")?.unwrap_or(view3d::AZIMUTH), num(c, p, "elevation")?.unwrap_or(view3d::ELEVATION));
         let scene = view3d::Scene::new(m);
-        let look = Look::of_3d(m);
+        // As the view asked for says: what it hides, its filters and template, its section box.
+        let look = Look::of_3d_view(m, three);
         // Through the view's lens, if it's in perspective, and from as high as the eye is put.
         let held = three.and_then(|v| match m.elements.get(v) {
             Some(Element::View3D(v3)) => Some(v3.clone()),
@@ -4636,7 +4637,7 @@ fn render_view(s: &mut Session, p: &Value) -> R {
         let mut image = scene.render_in(&cam, &[], &look);
         // What its section box cuts, filled.
         if look.section_box().is_some() {
-            image.capped(&cam, &view3d::CapSource::new(m).caps_in(m, m.default_3d(), &look), &[], &look);
+            image.capped(&cam, &view3d::CapSource::new(m).caps_in(m, three, &look), &[], &look);
         }
         // Its dimensions, over the picture.
         if let Some(v) = three {

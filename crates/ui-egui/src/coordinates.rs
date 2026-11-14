@@ -1410,7 +1410,7 @@ impl BimApp {
     /// Site's points the 3D view shows (as its Visibility/Graphics says), and where each is.
     pub(crate) fn points_in_3d(&self) -> Vec<(Point, [f64; 3])> {
         let m = &self.session.model;
-        let Some(v) = m.default_3d() else { return Vec::new() };
+        let Some(v) = self.active_3d() else { return Vec::new() };
         let Some(g) = bimcraft_core::graphics::graphics_of(m, v) else { return Vec::new() };
         let g = g.resolved(m);
         Point::ALL.into_iter().filter(|p| !g.hides(p.subcategory())).map(|p| (p, p.at(&m.coordinates))).collect()

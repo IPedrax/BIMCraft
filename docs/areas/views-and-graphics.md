@@ -419,7 +419,10 @@ Bar, and opens the new view: `BimApp::active_3d` is the 3D view the 3D tab shows
 view it shows, and a camera view picked on a plan passes the picked one, so both show the same Name, Eye, Target and Focal Length
 and edit it the same way (`camera` for the camera, `modify` for the name). Graphics, phasing and the section box stay with the view
 on screen (`graphic_view`), not with a camera view picked on a plan: its mark shows its camera, its project parameters and its
-phase. A camera view shows no Azimuth or Elevation: those
+phase. Each 3D view is drawn, picked, fitted and capped as its own Visibility/Graphics say (`Look::of_3d_view`): `render` with a
+camera view's name, and the 3D tab through `Orbit::show_view`, which carries the view to its scene, fit and cap jobs and makes the
+mesh again when another view is shown (`view3d::scene_kept_in` keeps it only while that view looks as it did). A camera view
+shows no Azimuth or Elevation: those
 (`View3D::azimuth`, `View3D::elevation`) only frame a 3D view **without** a camera on a sheet (`sheet::framing`, `camera_of`), so a
 view on a sheet whose view has a camera shows its name alone. A camera edit while its view is on screen drops the on-screen
 camera (`Orbit::camera`), so the next frame stands the view from the model and the settled hand has nothing old to write back. A
