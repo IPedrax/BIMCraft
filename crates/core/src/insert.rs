@@ -130,6 +130,25 @@ pub(crate) fn insert_as(to: &mut Model, from: &Model, ids: &[Id], linked: bool, 
         }
         out.ids.insert(id, new);
     }
+    // A component or a door or a window of a family this project has otherwise (by name, with its own GUID) stands by this
+    // project's family: moved by the difference of their origins, so it stays where it stood there (O1).
+    let mut moved = Vec::new();
+    for (&there, &here) in &out.ids {
+        let (Some(a), Some(b)) =
+            (from.elements.get(there).and_then(Model::placed_family), to.elements.get(here).and_then(Model::placed_family))
+        else {
+            continue;
+        };
+        if let (Some(fa), Some(fb)) = (from.families.get(a), to.families.get(b)) {
+            let (oa, ob) = (fa.origin(), fb.origin());
+            if oa != ob {
+                moved.push((here, std::array::from_fn::<f64, 3, _>(|k| ob[k] - oa[k])));
+            }
+        }
+    }
+    for (id, by) in moved {
+        to.instance_origin_moved(id, by);
+    }
     tidy_graphics(to);
     Ok(out)
 }

@@ -1713,7 +1713,9 @@ other_files(
          `start` to `end` it is drawn as and `up`, its other direction (normal (end - start) × up; its axes x along the line, y \
          up made square to it, its origin the point of it nearest the family's origin); names are unique, each of left \
          through top is one plane's or line's, and `defines_origin` (one plane square to each of x, y and z; the datums \
-         until another takes it) is kept but doesn't move the origin yet. `ref_lines` are reference lines drawn on a `host` \
+         until another takes it) makes where those planes cross the insertion point the family is placed by, its forms left \
+         where they are and what is placed of it (components, nested instances, doors and windows) moved so it stays put. \
+         `ref_lines` are reference lines drawn on a `host` \
          (lying on it), each with four planes a form may be drawn on: `horizontal` (its host's, through it), `vertical` \
          (square to that through it), `start` and `end` (square to it at each end), their origin its start (`end`'s its \
          end). A line or a plane may carry a `pivot` (F7d; `ref_line`/`ref_plane` patch it, `null` takes it off): it keeps \
@@ -4544,6 +4546,9 @@ fn family_preview(s: &mut Session, p: &Value) -> R {
         if !box_[0].is_finite() || box_[2] < box_[0] || box_[3] < box_[1] {
             box_ = [-1000.0, -1000.0, 1000.0, 1000.0];
         }
+        // The component stands by its insertion point, its family's origin, at the project's (O1).
+        let [ox, oy, _] = family.origin();
+        box_ = [box_[0] - ox, box_[1] - oy, box_[2] - ox, box_[3] - oy];
         let pad = 500.0;
         let (x0, y0, x1, y1) = (box_[0] - pad, box_[1] - pad, box_[2] + pad, box_[3] + pad);
         made(scratch.execute("floor", &json!({"boundary": [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]})), "a floor under it")?;
@@ -14385,6 +14390,8 @@ fn nested_edits(c: &str, name: &str, f: &mut crate::family::Family, p: &Value, p
 
 /// Explicit reloads retain part identities and project-only types. Instance overrides stay on their elements.
 pub(crate) fn family_reload(mut incoming: crate::family::Family, old: &crate::family::Family, keep_values: bool) -> crate::family::Family {
+    // What stands of the family was placed against its origin as it was: kept, so it stays put where the origin moves (O1).
+    incoming.placed_origin = old.placed_origin;
     let compatible = |p: &crate::family::Parameter| {
         old.parameters.iter().find(|q| {
             q.name == p.name
@@ -18078,10 +18085,11 @@ fn split(s: &mut Session, p: &Value) -> R {
             continue;
         }
         let half = m.opening_type(e).map_or(0.0, |t| t.width / 2.0);
-        if o.offset + half <= along + TOL {
+        let (middle, _) = m.opening_middle(o);
+        if middle + half <= along + TOL {
             continue;
         }
-        if o.offset - half < along - TOL {
+        if middle - half < along - TOL {
             return Err(bad(c, format!("{} {oid} is in the way; split elsewhere", e.category())));
         }
         later.push(oid);

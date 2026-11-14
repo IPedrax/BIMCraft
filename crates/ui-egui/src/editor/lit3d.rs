@@ -155,6 +155,7 @@ impl FamilyEditor {
                 (place["at"], place["offset"], place["params"]) = (json!([p.0, p.1]), json!(z), json!({}));
             }
         }
+        super::at_origin(&shown, &mut place);
         let parts = (0..shown.forms.len())
             .filter(|i| shown.forms.get(*i).is_some_and(|form| (!form.void || void == Some(*i)) && !hides(&form.visible)))
             .map(Part::Form)

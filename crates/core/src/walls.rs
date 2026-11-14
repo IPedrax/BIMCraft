@@ -754,12 +754,13 @@ pub struct Hole {
     pub top: f64,
 }
 
-/// The hole `o` cuts in wall `w`: its type's width either side of its offset and its height above its
-/// sill. Which jamb a leaf is hinged on, and which way it opens, is the opening's, not the hole's.
+/// The hole `o` cuts in wall `w`: its type's width either side of its middle and its height above its bottom
+/// (`Model::opening_middle`). Which jamb a leaf is hinged on, and which way it opens, is the opening's, not the hole's.
 pub fn hole(m: &Model, w: &Wall, e: &Element, o: &Opening) -> Option<Hole> {
     let t = m.opening_type(e)?;
-    let bottom = m.own_base(w) + o.sill;
-    Some(Hole { s0: o.offset - t.width / 2.0, s1: o.offset + t.width / 2.0, bottom, top: bottom + t.height })
+    let (middle, sill) = m.opening_middle(o);
+    let bottom = m.own_base(w) + sill;
+    Some(Hole { s0: middle - t.width / 2.0, s1: middle + t.width / 2.0, bottom, top: bottom + t.height })
 }
 
 /// A column's base and top: what it's attached to, or a level plane.
