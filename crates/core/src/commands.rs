@@ -625,7 +625,8 @@ other_files(
     edit(
         "toposolid",
         ui_msg!("Toposolid"),
-        &["TS"],
+        // No `TS` until the Massing tab's Toposolid tool lands: a shortcut the keyboard lists has to do something.
+        &[],
         "{type?, boundary?: [[x,y],…], sketch?: […], points?: [[x,y,z],…], level?, offset?, interval?, name?} a solid \
          topographic element (Revit's Toposolid): its boundary in plan, as `sketch` (the Editor's lines, solved into one \
          ring as a floor's are) or `boundary`, its `type` (the layers it is made of, and so how thick it is), \
