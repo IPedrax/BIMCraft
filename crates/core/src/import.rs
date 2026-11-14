@@ -809,22 +809,22 @@ impl<'a> Reader<'a> {
         }
         let sign = along[2].signum();
         let profile = self.get(reference(e.args.first())?)?;
-        // The plane: the solid's x and y in the family's axes; its origin, the point of it nearest the family's.
+        // The plane: one for each direction a form is square to, through the family's origin, its axes the same for every form
+        // on it (x the family's x, or y, made square to the direction), so a bolt's shank, washer and nut share one; how far
+        // up the direction a form stands is its from and to, as a family drawn by hand has it.
         let at = |q: P3| to_local(mf.at(pos.at(q)));
-        let x = unit(dir_local(mf.dir(pos.x)));
-        let y = unit(dir_local(mf.dir(pos.y)));
-        let z = cross(x, y);
         let r1 = |v: f64| (v * 1e1).round() / 1e1 + 0.0;
         let r6 = |v: f64| (v * 1e6).round() / 1e6 + 0.0;
-        let (x, y, z) = (x.map(r6), y.map(r6), z.map(r6));
+        let z = unit(cross(unit(dir_local(mf.dir(pos.x))), unit(dir_local(mf.dir(pos.y))))).map(r6);
+        let across = if z[0].abs() < 0.9 { [1.0, 0.0, 0.0] } else { [0.0, 1.0, 0.0] };
+        let x = unit(sub(across, mul(z, dot(across, z)))).map(r6);
+        let y = cross(z, x).map(r6);
         let o = at([0.0, 0.0, 0.0]);
-        let offset = r1(dot(o, z));
-        let base = mul(z, offset);
         let in_plane = |q: P3| {
-            let d = sub(at(q), base);
+            let d = at(q);
             [Expr::Number(r1(dot(d, x))), Expr::Number(r1(dot(d, y)))]
         };
-        let start = r1(dot(sub(o, base), z));
+        let start = r1(dot(o, z));
         let (from, to) = if sign > 0.0 { (start, r1(start + depth)) } else { (r1(start - depth), start) };
         let line = |curve| FormLine { id: 0, guid: Guid::default(), curve, axis: false };
         let sketch: Vec<FormLine> = match profile.name.as_str() {
@@ -904,14 +904,14 @@ impl<'a> Reader<'a> {
             }
             _ => return None,
         };
-        let key = [x, y, [offset, 0.0, 0.0]].concat().iter().fold(0x5eed_u64, |h, v| crate::model::mix(h ^ v.to_bits()));
+        let key = z.iter().fold(0x5eed_u64, |h, v| crate::model::mix(h ^ v.to_bits()));
         let guid = Guid::seeded(seed ^ 0x009e_a1e5, key);
         planes.borrow_mut().entry(guid).or_insert_with(|| crate::family::RefPlane {
             id: 0,
             guid,
             name: String::new(),
-            start: base,
-            end: add(base, mul(x, 100.0)),
+            start: [0.0; 3],
+            end: mul(x, 100.0),
             up: y,
             reference: Default::default(),
             defines_origin: false,

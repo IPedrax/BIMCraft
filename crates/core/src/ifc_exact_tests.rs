@@ -304,3 +304,53 @@ fn an_arc_too_small_for_a_familys_chords_comes_in_as_chords_of_its_own() {
     let solid = (10.0 * 40.0 + std::f64::consts::PI * 25.0) * 12.0;
     assert!((v / solid - 1.0).abs() < 0.02, "{v} for {solid}");
 }
+
+/// `profile` (a profile entity) extruded `depth` up the map's z, from `z0` over the map's origin, its x turned `turn`
+/// degrees about z.
+fn placed(g: &mut G, profile: u32, z0: f64, turn: f64, depth: f64) -> u32 {
+    let o = g.add(&format!("IFCCARTESIANPOINT((0.,0.,{z0:?}))"));
+    let (c, s) = (turn.to_radians().cos(), turn.to_radians().sin());
+    let x = g.add(&format!("IFCDIRECTION(({c:?},{s:?},0.))"));
+    let at = g.add(&format!("IFCAXIS2PLACEMENT3D(#{o},#8,#{x})"));
+    g.add(&format!("IFCEXTRUDEDAREASOLID(#{profile},#{at},#8,{depth:?})"))
+}
+
+#[test]
+fn forms_square_to_one_direction_share_one_plane_whatever_their_height_or_turn() {
+    let mut g = G::new();
+    // A bolt's shank, a washer 50 mm up it, and a nut turned 30°: three forms, all square to the map's z.
+    let shank = g.add("IFCCIRCLEPROFILEDEF(.AREA.,$,$,8.)");
+    let washer = g.add("IFCCIRCLEPROFILEDEF(.AREA.,$,$,15.)");
+    let pts: Vec<u32> = (0..=6)
+        .map(|k| {
+            let a = std::f64::consts::PI / 3.0 * f64::from(k % 6);
+            g.add(&format!("IFCCARTESIANPOINT(({:?},{:?}))", 14.0 * a.cos(), 14.0 * a.sin()))
+        })
+        .collect();
+    let list = pts.iter().map(|p| format!("#{p}")).collect::<Vec<_>>().join(",");
+    let ring = g.add(&format!("IFCPOLYLINE(({list}))"));
+    let nut = g.add(&format!("IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#{ring})"));
+    let items = [placed(&mut g, shank, 0.0, 0.0, 60.0), placed(&mut g, washer, 50.0, 0.0, 3.0), placed(&mut g, nut, 53.0, 30.0, 16.0)];
+    let map = shape(&mut g, &items);
+    bolt(&mut g, "Bolt", map, [0.0, 0.0, 0.0], UP, EAST);
+    let i = g.import();
+    let m = &i.model;
+    let f = &m.families["Bolt"];
+    assert_eq!(f.forms.len(), 3, "{:?}", i.skipped);
+    // The three datums, and one plane for the three forms.
+    assert_eq!(f.planes.len(), 4, "{:?}", f.planes.iter().map(|p| (&p.start, &p.up)).collect::<Vec<_>>());
+    // Each where the file has it: the washer from 50 to 53, the nut from 53 to 69.
+    let spans: Vec<(f64, f64)> = f
+        .forms
+        .iter()
+        .map(|fo| match (&fo.from, &fo.to) {
+            (Expr::Number(a), Expr::Number(b)) => (*a, *b),
+            _ => panic!("{:?}", fo.from),
+        })
+        .collect();
+    assert!(spans.contains(&(0.0, 60.0)) && spans.contains(&(50.0, 53.0)) && spans.contains(&(53.0, 69.0)), "{spans:?}");
+    // Drawn, the three solids' volume: two cylinders and a hexagon, within what chords take off.
+    let v = volume(&mesh(m, "Bolt"));
+    let solid = std::f64::consts::PI * (64.0 * 60.0 + 225.0 * 3.0) + 1.5 * 3f64.sqrt() * 196.0 * 16.0;
+    assert!((v / solid - 1.0).abs() < 0.02, "{v} for {solid}");
+}
