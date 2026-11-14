@@ -37,7 +37,7 @@ pub struct Triangulation {
 /// The constrained Delaunay triangulation of the region inside `outline` and outside each of `holes` (either way round),
 /// with a corner at each of `points` and every one of `lines` along triangles' edges. Corners within `TOL` of each other
 /// are one, the first in order of x and then y; a point or a line's end within `TOL` of an edge cuts it there. Refused,
-/// saying why: more than `MAX_CORNERS` corners, one not finite or past `MAX_COORD`, a region more than `MAX_ACROSS`
+/// saying why: more than `MAX_CORNERS` corners once merged (or more than four times that given, line ends included), one not finite or past `MAX_COORD`, a region more than `MAX_ACROSS`
 /// across, an outline or a hole with no area, a hole outside the outline or over another, a point or a line outside the
 /// region or in a hole, a line shorter than `TOL`, and edges that cross.
 pub fn constrained(outline: &[P2], holes: &[Vec<P2>], points: &[P2], lines: &[(P2, P2)]) -> Result<Triangulation, String> {
@@ -48,8 +48,10 @@ pub fn constrained(outline: &[P2], holes: &[Vec<P2>], points: &[P2], lines: &[(P
         .chain(lines.iter().flat_map(|(a, b)| [a, b]))
         .copied()
         .collect();
-    if given.len() > MAX_CORNERS {
-        return Err(format!("it has {} corners, more than the {MAX_CORNERS} a triangulation takes", given.len()));
+    // Lines that meet give their shared corner once for each: what is given may be several times the corners it makes,
+    // within a bound, so sorting it stays quick.
+    if given.len() > 4 * MAX_CORNERS {
+        return Err(format!("it gives {} corners and line ends, more than the {} a triangulation reads", given.len(), 4 * MAX_CORNERS));
     }
     if let Some(p) = given.iter().find(|p| !(p.is_finite() && p.0.abs() <= MAX_COORD && p.1.abs() <= MAX_COORD)) {
         return Err(format!("{} is not a finite point within {MAX_COORD} mm of the origin", at(*p)));
@@ -59,6 +61,9 @@ pub fn constrained(outline: &[P2], holes: &[Vec<P2>], points: &[P2], lines: &[(P
     let mut corners = Corners::default();
     for p in sorted {
         corners.add(p);
+    }
+    if corners.points.len() > MAX_CORNERS {
+        return Err(format!("it has {} corners, more than the {MAX_CORNERS} a triangulation takes", corners.points.len()));
     }
     let pts = corners.points.clone();
     let (lo, hi) = pts.iter().fold((P2(f64::INFINITY, f64::INFINITY), P2(f64::NEG_INFINITY, f64::NEG_INFINITY)), |(lo, hi), p| {
@@ -691,6 +696,22 @@ mod tests {
             }
         }
         (outline, holes, points)
+    }
+
+    #[test]
+    fn shared_line_ends_count_once() {
+        // A polyline of 15 001 corners is 15 000 lines whose ends meet: 30 000 ends as given, but 15 001 corners, which a
+        // triangulation takes.
+        let n = 15_000;
+        let pts: Vec<P2> = (0..=n).map(|i| P2(1_000.0 + 10.0 * i as f64, 500.0 + if i % 2 == 0 { 0.0 } else { 3.0 })).collect();
+        let lines: Vec<(P2, P2)> = pts.windows(2).map(|w| (w[0], w[1])).collect();
+        let outline = [P2(0.0, 0.0), P2(152_000.0, 0.0), P2(152_000.0, 1_000.0), P2(0.0, 1_000.0)];
+        let t = constrained(&outline, &[], &[], &lines).unwrap();
+        assert_eq!(t.points.len(), n + 1 + 4);
+        // Past the limit in corners, it is still refused, saying how many.
+        let many: Vec<P2> = (0..=MAX_CORNERS).map(|i| P2(1_000.0 + 7.0 * i as f64, 200.0)).collect();
+        let e = constrained(&[P2(0.0, 0.0), P2(200_000.0, 0.0), P2(200_000.0, 1_000.0), P2(0.0, 1_000.0)], &[], &many, &[]).unwrap_err();
+        assert!(e.contains("corners"), "{e}");
     }
 
     #[test]

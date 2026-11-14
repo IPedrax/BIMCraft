@@ -305,8 +305,8 @@ fn near_key(keys: &std::collections::BTreeSet<(i64, i64)>, p: P2) -> bool {
 /// and what the triangulation refuses (more than `triangulation::MAX_CORNERS` corners as given, a region past
 /// `triangulation::MAX_ACROSS`).
 pub fn build(points: &[[f64; 3]], lines: &[Line], options: &Options) -> Result<Surface, String> {
-    let Some(boundary) = &options.boundary else { return build_in(points, lines, options, None) };
-    let whole = build_in(points, lines, &Options { boundary: None, ..options.clone() }, None)?;
+    let Some(boundary) = &options.boundary else { return build_in(points, lines, options, None, triangulation::MAX_CORNERS) };
+    let whole = build_in(points, lines, &Options { boundary: None, ..options.clone() }, None, triangulation::MAX_CORNERS)?;
     let ring = checked_boundary(boundary)?;
     let mut corners = Vec::with_capacity(ring.len());
     for &p in &ring {
@@ -321,7 +321,7 @@ pub fn build(points: &[[f64; 3]], lines: &[Line], options: &Options) -> Result<S
         }
     }
     let left = (points.len() - inside.len(), lines.len());
-    let mut s = build_in(&[inside, corners].concat(), &pieces, options, Some(&ring))?;
+    let mut s = build_in(&[inside, corners].concat(), &pieces, options, Some(&ring), triangulation::MAX_CORNERS)?;
     s.notes.insert(
         0,
         format!("clipped to the boundary: {} points outside the boundary were left out, and lines were cut where they cross it", left.0),
@@ -411,7 +411,7 @@ fn clipped(pts: &[P2], zs: &[f64], closed: bool, ring: &[P2]) -> Vec<Line> {
 }
 
 /// A surface made inside `outline` (the convex hull of its points when none is given).
-fn build_in(points: &[[f64; 3]], lines: &[Line], options: &Options, outline: Option<&[P2]>) -> Result<Surface, String> {
+fn build_in(points: &[[f64; 3]], lines: &[Line], options: &Options, outline: Option<&[P2]>, cap: usize) -> Result<Surface, String> {
     let ok = |v: f64| v.is_finite() && v >= 0.0;
     if !ok(options.simplify) {
         return Err(format!(
@@ -571,7 +571,14 @@ fn build_in(points: &[[f64; 3]], lines: &[Line], options: &Options, outline: Opt
         return Err("its points are all on one line, so they make no surface".into());
     }
     let mut added = 0;
+    // Points added to flat ground stop where the triangulation's limit would be passed: a surface with some flat
+    // triangles left is better than none.
+    let mut skipped = 0;
     for (p, lift) in poles {
+        if heights.len() >= cap {
+            skipped += 1;
+            continue;
+        }
         if heights.near(p).is_none() {
             isolated.push(heights.add(p, lift));
             added += 1;
@@ -607,6 +614,10 @@ fn build_in(points: &[[f64; 3]], lines: &[Line], options: &Options, outline: Opt
         }
         let before = added;
         for (p, lift) in more {
+            if heights.len() >= cap {
+                skipped += 1;
+                continue;
+            }
             if heights.near(p).is_none() {
                 isolated.push(heights.add(p, lift));
                 added += 1;
@@ -619,6 +630,11 @@ fn build_in(points: &[[f64; 3]], lines: &[Line], options: &Options, outline: Opt
     }
     if added > 0 {
         notes.push(format!("{added} points added where contours made flat ground at summits, pits and valleys"));
+    }
+    if skipped > 0 {
+        notes.push(format!(
+            "{skipped} more points would have been added to flat ground, but the surface reached the limit of {cap} corners"
+        ));
     }
     Ok(Surface { points: t.points, z, triangles: t.triangles, notes })
 }
@@ -1104,6 +1120,15 @@ mod tests {
         let s = build(&[[2_000.0, 1_000.0, 4_800.0]], &cone(1.0), &exact()).unwrap();
         assert!(s.points.iter().all(|p| p.dist(P2(0.0, 0.0)) > 1.0), "a pole was added at the ring's middle");
         assert!((s.elevation_at(P2(2_000.0, 1_000.0)).unwrap() - 4_800.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn added_points_stop_at_the_triangulations_limit() {
+        // The cone's 320 contour vertices and no room for its summit's point: the surface is still made, with what fits,
+        // and says so.
+        let s = build_in(&[], &cone(1.0), &exact(), None, 320).unwrap();
+        assert_eq!(s.points.len(), 320);
+        assert!(s.notes.iter().any(|n| n.contains("limit")), "{:?}", s.notes);
     }
 
     #[test]
