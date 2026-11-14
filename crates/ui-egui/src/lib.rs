@@ -2365,6 +2365,11 @@ impl BimApp {
             self.ctrl_letter(ctx, letter);
         }
         self.ctrl_waited(ctx);
+        if self.orbit.placement_drag_active() && (pressed(Modifiers::SHIFT, Key::Escape) || pressed(Modifiers::NONE, Key::Escape)) {
+            self.orbit.cancel_placement_drag();
+            self.status = Status::default();
+            return;
+        }
         // Esc while a custom fill pattern is picked brings its dialog back.
         if pressed(Modifiers::NONE, Key::Escape) && !self.cancel_pattern_pick() {
             self.escape();

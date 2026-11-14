@@ -7362,3 +7362,5 @@ mod industrial_doors;
 mod nested_families;
 mod preview_visibility;
 mod sheet_fit;
+
+mod window_drag;
