@@ -101,6 +101,8 @@ const MAP: u64 = 86;
 const MAP_DEFINES: u64 = 87;
 const CRS: u64 = 88;
 const CRS_DEFINES: u64 = 89;
+const FRAMING_MEMBER: u64 = 90;
+const FRAMING_MATERIALS: u64 = 91;
 
 /// Site footprint metadata in curve order: Names, Guids and Levels (native GUIDs).
 pub const PROPERTY_LINES: &str = "BIMCraft_PropertyLines";
@@ -933,6 +935,49 @@ impl Step {
         self.shell(&b, &t)
     }
 
+    /// Framing `f`'s members, wall `id`'s, each an `IfcMember` placed in the wall's placement `at` (its start, along it, at
+    /// `base`): a box swept up, or a bevelled one's closed shell; a stud, a king, a jack or a cripple a STUD, a plate or a sill
+    /// a PLATE, a header or blocking a MEMBER, its role its name and object type and its key its tag. Its GlobalId comes from
+    /// the wall's GUID and its key, so it stays while the member does. All in the framing's material.
+    fn members(&mut self, m: &Model, id: Id, f: &crate::framing::Framing, at: u64, base: f64) -> Vec<u64> {
+        use crate::framing::Role;
+        let wall = self.own.get(&id).map_or(id, |g| fold(*g));
+        let mut out = Vec::new();
+        for member in &f.members {
+            let ([s0, s1], [a0, a1], [b0, b1], [t0, t1]) = (member.s, member.across, member.bottom, member.top);
+            let shape = if b0 == b1 && t0 == t1 {
+                let profile = self.rectangle(P2((s0 + s1) / 2.0, (a0 + a1) / 2.0), P2(s1 - s0, a1 - a0));
+                self.body(profile, b0 - base, t0 - b0, &[])
+            } else {
+                let plane = |z0: f64, z1: f64| {
+                    let k = (z1 - z0) / (s1 - s0).max(1e-9);
+                    walls::Plane { z: z0 - k * s0, g: P2(k, 0.0) }
+                };
+                let ring = [P2(s0, a0), P2(s1, a0), P2(s1, a1), P2(s0, a1)];
+                let brep = self.prism(&ring, &plane(b0, b1), &plane(t0, t1), base);
+                self.solid(&[brep], &[])
+            };
+            let kind = match member.role {
+                Role::Stud | Role::King | Role::Jack | Role::Cripple => "STUD",
+                Role::BottomPlate | Role::TopPlate | Role::Sill => "PLATE",
+                Role::Header | Role::Blocking => "MEMBER",
+            };
+            let place = self.place(Some(at), (0.0, 0.0, 0.0), None);
+            let key = member.key.bytes().fold(0xCBF2_9CE4_8422_2325u64, |h, b| (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01B3));
+            let role = s(member.role.name());
+            out.push(self.add(format!(
+                "IFCMEMBER({},$,{role},$,{role},#{place},#{shape},{},.{kind}.)",
+                self.guid(FRAMING_MEMBER, mix(wall ^ key)),
+                s(&member.key)
+            )));
+        }
+        if !out.is_empty() && !f.material.is_empty() {
+            let material = self.material(m, &f.material);
+            self.add(format!("IFCRELASSOCIATESMATERIAL({},$,$,$,({}),#{material})", self.guid(FRAMING_MATERIALS, id), refs(&out)));
+        }
+        out
+    }
+
     /// Landings: each a slab from `base` up to its top, placed in `at`.
     fn landings(&mut self, l: &stairs::Layout, at: u64, base: f64, id: Id) -> Vec<u64> {
         l.pads
@@ -1440,6 +1485,8 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
     let mut wholes: BTreeMap<Id, (u64, u64, f64, Vec<u64>)> = BTreeMap::new();
     // Reinforcing bars as (level, host, entity): aggregated to their host, else in their level.
     let mut bars: Vec<(Guid, Option<Id>, u64)> = Vec::new();
+    // Framed walls' members, by their wall: its parts.
+    let mut framed: Vec<(Id, Vec<u64>)> = Vec::new();
     // The runs in each system, by its name, for the IfcSystem they are assigned to.
     let mut systems: BTreeMap<&str, Vec<u64>> = BTreeMap::new();
     // The boards on each distribution system, by its name, for the IfcDistributionSystem they are assigned to.
@@ -1510,6 +1557,12 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
                 w.typed("IFCWALLTYPE", ".STANDARD.", &wl.type_name, ent);
                 let values = wall_quantities(m, id, wl, holes.get(&id).map_or(&[][..], |h| h.as_slice()));
                 w.quantities(ent, "Qto_WallBaseQuantities", &values, id);
+                // Framed, its members are its parts; it keeps its own body, the whole wall, as an assembly's does.
+                if wl.framing.is_some()
+                    && let Ok(Some(f)) = crate::framing::wall(m, id)
+                {
+                    framed.push((id, w.members(m, id, &f, at, base)));
+                }
             }
             Element::Floor(f) => {
                 let Some(&(_, storey)) = storeys.get(&f.level) else { continue };
@@ -2057,8 +2110,9 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
     for (id, (ent, _, _, parts)) in &wholes {
         w.add(format!("IFCRELAGGREGATES({},$,$,$,#{ent},({}))", w.guid(PARTS, *id), refs(parts)));
     }
-    // A bar is a part of the element it reinforces; one with none, or whose host isn't written, is in its level.
-    let mut reinforced: BTreeMap<Id, Vec<u64>> = BTreeMap::new();
+    // A bar is a part of the element it reinforces; one with none, or whose host isn't written, is in its level. A framed
+    // wall's members are its parts with them.
+    let mut reinforced: BTreeMap<Id, Vec<u64>> = framed.into_iter().collect();
     for (level, host, ent) in bars {
         match host.filter(|h| products.contains_key(h)) {
             Some(h) => reinforced.entry(h).or_default().push(ent),

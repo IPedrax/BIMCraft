@@ -200,6 +200,25 @@ pub struct Member {
 }
 
 impl Member {
+    /// Where a level plane at height `z` passes through it: from where to where along its host. None where it doesn't.
+    pub fn cut_at(&self, z: f64) -> Option<[f64; 2]> {
+        // Where a straight height from `a` (at 0) to `b` (at 1) lies under `z`, as fractions of the way.
+        let under = |a: f64, b: f64| match (a < z, b < z) {
+            (true, true) => Some([0.0, 1.0]),
+            (false, false) => None,
+            (first, _) => {
+                let t = (z - a) / (b - a);
+                Some(if first { [0.0, t] } else { [t, 1.0] })
+            }
+        };
+        let [b0, b1] = under(self.bottom[0], self.bottom[1])?;
+        // Its top over `z` is that top mirrored about `z` under it.
+        let [t0, t1] = under(2.0 * z - self.top[0], 2.0 * z - self.top[1])?;
+        let (from, to) = (b0.max(t0), b1.min(t1));
+        let along = |t: f64| self.s[0] + (self.s[1] - self.s[0]) * t;
+        (to - from > EPS).then(|| [along(from), along(to)])
+    }
+
     /// From `z`: its bottom and its top.
     fn new(key: String, role: Role, section: [f64; 2], plies: u32, s: [f64; 2], across: [f64; 2], z: [[f64; 2]; 2]) -> Self {
         let [bottom, top] = z;
@@ -289,7 +308,7 @@ pub fn stock(length: f64, stock: &[f64]) -> Option<f64> {
 
 /// The thickest structure layer of wall `w`'s type (the first of the thickest): its index and where it lies across the
 /// wall, `[interior side, exterior side]` to the left of its location line.
-fn structure(m: &Model, w: &Wall) -> Option<(usize, [f64; 2])> {
+pub(crate) fn structure(m: &Model, w: &Wall) -> Option<(usize, [f64; 2])> {
     let t = m.types.wall.get(&w.type_name)?;
     let (k, _) = t
         .layers
@@ -299,6 +318,11 @@ fn structure(m: &Model, w: &Wall) -> Option<(usize, [f64; 2])> {
         .max_by(|(i, a), (j, b)| a.thickness.total_cmp(&b.thickness).then(j.cmp(i)))?;
     let b = walls::boundaries(m, w);
     Some((k, [*b.get(k + 1)?, *b.get(k)?]))
+}
+
+/// The material wall `w`'s framing type names for its members, if it names one: else they're its structure layer's.
+pub(crate) fn material<'a>(m: &'a Model, w: &Wall) -> Option<&'a str> {
+    m.types.framing.get(w.framing.as_ref()?)?.material.as_deref()
 }
 
 /// A framing type's own rules, which `Model::check` asks of each.

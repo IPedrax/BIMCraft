@@ -34,6 +34,20 @@ fn pick(s: &Session, dice: &mut Dice, categories: &[&str]) -> Option<Id> {
     ids.get(dice.below(ids.len())).copied()
 }
 
+/// Frames the walls of the tower's type with a structure layer (`framing.rs`), so random edits move, copy and delete framed
+/// walls and the windows in them: their members are worked out from them, and every cache must follow.
+pub(crate) fn frame_some(s: &mut Session) {
+    let walls: Vec<Id> = s
+        .model
+        .elements
+        .iter()
+        .filter(|(_, e)| matches!(e, Element::Wall(w) if w.type_name == "Exterior - 300mm"))
+        .map(|(id, _)| *id)
+        .collect();
+    assert!(!walls.is_empty(), "the tower has walls to frame");
+    s.execute("frame", &json!({"ids": walls})).unwrap_or_else(|e| panic!("{e}"));
+}
+
 pub(crate) fn edit(s: &mut Session, dice: &mut Dice) -> (String, Value) {
     let any = ["wall", "door", "window", "component", "structuralcolumn", "beam", "pipe", "conduit", "room", "ceiling", "tag"];
     let by = |dice: &mut Dice| json!([dice.mm(3000), dice.mm(3000)]);
@@ -65,7 +79,7 @@ fn random_edits_of_a_tower_check_the_same_by_what_changed_as_whole() {
         let mut s = Session::new();
         s.reset(model.clone(), None);
         // The first command checks the whole tower; from then on, the engine checks what each changes and, here, both.
-        s.execute("move", &json!({"ids": [], "by": [0, 0]})).ok();
+        frame_some(&mut s);
         let mut dice = Dice(0x9e37_79b9_7f4a_7c15 ^ seed);
         let (mut done, mut refused) = (0, 0);
         for _ in 0..60 {

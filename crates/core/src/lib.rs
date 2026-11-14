@@ -104,6 +104,8 @@ mod font;
 mod formula_visibility_tests;
 pub mod framing;
 #[cfg(test)]
+mod framing_output_tests;
+#[cfg(test)]
 mod framing_tests;
 pub mod geom;
 #[cfg(test)]

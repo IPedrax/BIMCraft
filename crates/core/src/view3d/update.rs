@@ -546,12 +546,47 @@ mod tests {
         assert!(s.model.elements.values().filter(|e| matches!(e, crate::model::Element::Window(_))).count() == 1, "the copy's");
     }
 
+    /// Framed walls' members are their walls' triangles: an edit of a window in one, of a wall it meets, of the roof its top
+    /// is attached to or of the framing type (the library alone) brings them up to date, as the scene made whole has them.
+    #[test]
+    fn a_framed_walls_members_follow_its_window_its_neighbours_its_roof_and_its_framing_type() {
+        let mut s = Session::new();
+        s.script(
+            r#"type {"category": "wall", "name": "2x4", "layers": [{"function": "finish", "material": "Plaster", "thickness": 13}, {"function": "structure", "material": "Timber", "thickness": 89}]}
+               wall {"points": [[0,0],[6000,0],[6000,4000],[0,4000]], "closed": true, "type": "2x4", "height": 2448}
+               window {"wall": 100002, "offset": 2000}
+               door {"wall": 100003, "offset": 2000}
+               roof {"boundary": [[-600, -600], [6600, -600], [6600, 4600], [-600, 4600]], "level": "Level 1", "offset": 2448, "slope": 20}"#,
+        )
+        .unwrap();
+        let walls = of(&s, "wall");
+        s.execute("frame", &json!({"ids": walls})).unwrap();
+        let mut scene = Scene::new(&s.model);
+        let (window, roof) = (of(&s, "window")[0], of(&s, "roof")[0]);
+        let edits = [
+            ("move", json!({"ids": [window], "by": [700, 0]})),
+            ("modify", json!({"id": window, "sill": 400})),
+            ("type", json!({"category": "framing", "name": "2x4 @ 406", "spacing": 609.6})),
+            ("move", json!({"ids": [walls[1]], "by": [400, 0]})),
+            ("modify", json!({"ids": walls, "attach_top": roof})),
+            ("modify", json!({"id": roof, "slope": 30})),
+            ("wall", json!({"points": [[3000, 0], [3000, 4000]], "type": "2x4", "height": 2448})),
+            ("unframe", json!({"id": walls[2]})),
+            ("graphics", json!({"view": "{3D}", "hide": ["framing"]})),
+            ("delete", json!({"ids": [window]})),
+        ];
+        for (cmd, p) in &edits {
+            scene = held(&mut s, scene, cmd, p);
+        }
+    }
+
     #[test]
     fn random_edits_of_a_tower_bring_its_scene_up_to_date_as_made_whole() {
         let model = crate::sample::tower::tower_on(crate::sample::tower::Plate::SMALL, 1).unwrap();
         for seed in [1u64, 2] {
             let mut s = Session::new();
             s.reset(model.clone(), None);
+            crate::oracle_tests::frame_some(&mut s);
             let mut scene = Scene::new(&s.model);
             let mut dice = Dice(0x9e37_79b9_7f4a_7c15 ^ seed);
             for _ in 0..25 {
