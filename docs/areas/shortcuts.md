@@ -33,6 +33,8 @@ A letter that is also a chord of its own — `S` (Save), `O` (Open), `N` (New), 
 
 If the two letters are no shortcut, the first does its own job and the second waits in its place. In a text field Ctrl's keys belong to the field but for Save, Save As, Open, New, Find, Settings, Export PDF and Properties, which act there at once, and no sequence is typed.
 
+The interface names a sequence by its keys alone (`WA`, `SA`, `KS`), as Revit does; Ctrl is what you hold to type it, and the dialog, the tooltips and the Markdown help show the pair.
+
 ## Where to edit them
 
 Manage > Shortcuts, the `KS` sequence, or `Ctrl+Shift+K`.
