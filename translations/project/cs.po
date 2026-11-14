@@ -40,7 +40,7 @@ msgstr "Cihla"
 msgid "Brick 225 x 75"
 msgstr "Cihla 225 x 75"
 
-#: crates/core/src/commands.rs:5320
+#: crates/core/src/commands.rs:5383
 msgid "Camera"
 msgstr "Kamera"
 
@@ -56,7 +56,7 @@ msgstr ""
 msgid "Ceiling Luminaire"
 msgstr "Stropní svítidlo"
 
-#: crates/core/src/render.rs:3686
+#: crates/core/src/render.rs:3694
 msgid "Ceiling Plan"
 msgstr "Půdorys podhledu"
 
@@ -99,7 +99,7 @@ msgstr ""
 msgid "Copper"
 msgstr "Měď"
 
-#: crates/core/src/commands.rs:1896
+#: crates/core/src/commands.rs:1901
 msgid "Copy"
 msgstr "Kopie"
 
@@ -111,7 +111,7 @@ msgstr "Počet"
 msgid "Crosshatch"
 msgstr "Křížové šrafování"
 
-#: crates/core/src/render.rs:4632
+#: crates/core/src/render.rs:4640
 msgid "DN"
 msgstr "DOLŮ"
 
@@ -132,7 +132,7 @@ msgstr "Datová zásuvka"
 msgid "Demand Factor"
 msgstr ""
 
-#: crates/core/src/commands.rs:13072
+#: crates/core/src/commands.rs:13135
 msgid "Dependent"
 msgstr "Závislý"
 
@@ -217,9 +217,9 @@ msgstr "Elektroinstalace – osvětlení"
 msgid "Electrical Power"
 msgstr "Elektroinstalace – napájení"
 
-#: crates/core/src/commands.rs:12819
-#: crates/core/src/commands.rs:12834
-#: crates/core/src/commands.rs:17256
+#: crates/core/src/commands.rs:12882
+#: crates/core/src/commands.rs:12897
+#: crates/core/src/commands.rs:17319
 msgid "Elevation"
 msgstr "Pohled"
 
@@ -281,7 +281,7 @@ msgid "Gate Valve"
 msgstr "Šoupátko"
 
 #: crates/core/src/family.rs:3429
-#: crates/core/src/view3d.rs:1313
+#: crates/core/src/view3d.rs:1322
 msgid "Glass"
 msgstr "Sklo"
 
@@ -321,7 +321,7 @@ msgstr "Vodorovná"
 msgid "Inspection Box"
 msgstr "Revizní šachta"
 
-#: crates/core/src/import.rs:1599
+#: crates/core/src/import.rs:1600
 msgid "Insulation"
 msgstr "Tepelná izolace"
 
@@ -349,7 +349,7 @@ msgstr "Šířka nohy"
 msgid "Length"
 msgstr "Délka"
 
-#: crates/core/src/commands.rs:7896
+#: crates/core/src/commands.rs:7959
 #: crates/core/src/model.rs:3716
 msgid "Level"
 msgstr "Podlaží"
@@ -390,7 +390,7 @@ msgstr "Označení"
 msgid "Masking"
 msgstr "Maskovací"
 
-#: crates/core/src/commands.rs:10354
+#: crates/core/src/commands.rs:10417
 msgid "Mass"
 msgstr "Objem"
 
@@ -402,14 +402,14 @@ msgstr ""
 msgid "Medium Lines"
 msgstr "Střední čáry"
 
-#: crates/core/src/import.rs:1602
+#: crates/core/src/import.rs:1603
 msgid "Membrane"
 msgstr "Hydroizolační fólie"
 
-#: crates/core/src/commands.rs:3525
-#: crates/core/src/commands.rs:15862
+#: crates/core/src/commands.rs:3530
+#: crates/core/src/commands.rs:15925
 #: crates/core/src/family.rs:3429
-#: crates/core/src/model.rs:5043
+#: crates/core/src/model.rs:5177
 msgid "Metal"
 msgstr "Kov"
 
@@ -417,7 +417,7 @@ msgstr "Kov"
 msgid "Mounting Height"
 msgstr "Montážní výška"
 
-#: crates/core/src/render.rs:3494
+#: crates/core/src/render.rs:3502
 msgid "NOT ENCLOSED"
 msgstr "NEUZAVŘENÝ OBVOD"
 
@@ -503,15 +503,15 @@ msgstr "Porcelán"
 msgid "Profile"
 msgstr ""
 
-#: crates/core/src/commands.rs:3787
+#: crates/core/src/commands.rs:3793
 msgid "Project"
 msgstr "Projekt"
 
-#: crates/core/src/commands.rs:8623
+#: crates/core/src/commands.rs:8686
 msgid "Property Line"
 msgstr ""
 
-#: crates/core/src/render.rs:3494
+#: crates/core/src/render.rs:3502
 msgid "REDUNDANT"
 msgstr "NADBYTEČNÁ"
 
@@ -539,7 +539,7 @@ msgstr ""
 msgid "Roof tiles"
 msgstr "Střešní tašky"
 
-#: crates/core/src/commands.rs:10579
+#: crates/core/src/commands.rs:10642
 msgid "Room"
 msgstr "Místnost"
 
@@ -575,8 +575,8 @@ msgstr "Potěr"
 msgid "Seat Height"
 msgstr "Výška sedáku"
 
-#: crates/core/src/commands.rs:12754
-#: crates/core/src/commands.rs:17255
+#: crates/core/src/commands.rs:12817
+#: crates/core/src/commands.rs:17318
 msgid "Section"
 msgstr "Řez"
 
@@ -734,7 +734,7 @@ msgstr ""
 msgid "Type"
 msgstr "Typ"
 
-#: crates/core/src/render.rs:4632
+#: crates/core/src/render.rs:4640
 msgid "UP"
 msgstr "NAHORU"
 
@@ -746,7 +746,7 @@ msgstr "Neohraničená výška"
 msgid "Unclassified"
 msgstr ""
 
-#: crates/core/src/commands.rs:13243
+#: crates/core/src/commands.rs:13306
 msgid "Unnamed"
 msgstr "Nepojmenovaný"
 
@@ -775,7 +775,7 @@ msgstr "Objem"
 msgid "WC"
 msgstr "WC"
 
-#: crates/core/src/commands.rs:360
+#: crates/core/src/commands.rs:365
 msgid "Wall"
 msgstr "Stěna"
 

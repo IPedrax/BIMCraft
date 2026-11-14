@@ -30,6 +30,7 @@ use bimcraft_core::handles::{self, Handle};
 use bimcraft_core::model::{Dimension3D, Id, Model, Ref3, TOL, ViewCamera};
 use bimcraft_core::render::{self, Rgb};
 use bimcraft_core::snap::{self, Found, Kind, Reach, Snaps};
+use bimcraft_core::view3d;
 use bimcraft_core::view3d::gpu::{Hit, Mesh};
 use bimcraft_core::view3d::{
     AZIMUTH, Camera, CapSource, Caps, ELEVATION, Image, MAX_SIDE, P3, PlaneMark, Scene, Surface, box_grips, move_box_face, on_floor_top,
@@ -58,7 +59,16 @@ type Shot = (Arc<Model>, Camera, Vec<(Id, Rgb)>, Color32, bool, Option<(P3, P3)>
 /// A model's mesh for the card, or why the card can't draw it.
 pub(crate) type Meshed = (Arc<Model>, Result<Arc<Mesh>, String>);
 
+/// Whether a scene job may hold only part of a big model ([`view3d::stream`]): the part the scene shown holds, kept as it is,
+/// or what fits `budget` bytes looking at height `focus`.
+#[derive(Clone)]
+enum Stream {
+    Kept(Option<view3d::Streamed>),
+    Ask { budget: u64, focus: f64 },
+}
+
 struct SceneJob {
+    stream: Stream,
     model: Arc<Model>,
     scene: Option<Arc<Scene>>,
     /// The scene of a model before this one, which an edit brings up to date instead of making the whole scene again.
@@ -70,6 +80,8 @@ struct SceneJob {
 }
 
 struct SceneDone {
+    /// What part of the model its scene holds: none, all of it.
+    streamed: Option<view3d::Streamed>,
     model: Arc<Model>,
     scene: Arc<Scene>,
     fitted: Camera,
@@ -77,10 +89,16 @@ struct SceneDone {
 }
 
 fn build_scene(job: SceneJob, cancel: &crate::view_worker::Cancel) -> Option<SceneDone> {
-    let scene = match (job.scene, job.from) {
-        (Some(scene), _) => scene,
-        (None, Some((model, scene))) => Arc::new(scene.update_cancellable(&model, &job.model, &|| cancel.cancelled())?),
-        (None, None) => Arc::new(Scene::new_cancellable(&job.model, &|| cancel.cancelled())?),
+    let streamed = match job.stream {
+        Stream::Kept(kept) => kept,
+        Stream::Ask { budget, focus } => view3d::stream(&job.model, budget, focus),
+    };
+    let scene = match (job.scene, job.from, &streamed) {
+        (Some(scene), _, _) => scene,
+        // Part of a model too big to hold whole: made afresh, of the part that fits, each element as the whole scene has it.
+        (None, _, Some(part)) => Arc::new(Scene::new_among_cancellable(&job.model, Some(&part.among), &|| cancel.cancelled())?),
+        (None, Some((model, scene)), None) => Arc::new(scene.update_cancellable(&model, &job.model, &|| cancel.cancelled())?),
+        (None, None, None) => Arc::new(Scene::new_cancellable(&job.model, &|| cancel.cancelled())?),
     };
     if cancel.cancelled() {
         return None;
@@ -107,7 +125,7 @@ fn build_scene(job: SceneJob, cancel: &crate::view_worker::Cancel) -> Option<Sce
     if cancel.cancelled() {
         return None;
     }
-    Some(SceneDone { model: job.model, scene, fitted, mesh })
+    Some(SceneDone { streamed, model: job.model, scene, fitted, mesh })
 }
 
 /// Caps made: of which model, for which box.
@@ -318,6 +336,12 @@ pub struct Orbit {
     pub(crate) ppp: f32,
     /// The scene of the model shown last, in the 3D view or a section's.
     pub(crate) scene: Option<(Arc<Model>, Arc<Scene>)>,
+    /// What part of its model the scene shown holds, where the model is too big to hold whole (`view3d::stream`); and the height
+    /// a job was last asked to stream round.
+    pub(crate) streamed: Option<view3d::Streamed>,
+    restream: Option<f64>,
+    /// The box round the scene shown, found once as it is put in place: what the work plane is drawn over.
+    extent: Option<(P3, P3)>,
     /// The scene of a model before, kept while the scene of the model now is made from it.
     last: Option<(Arc<Model>, Arc<Scene>)>,
     /// What picks in the picture on screen, and what the picture is of.
@@ -420,6 +444,9 @@ impl Default for Orbit {
             rect: Rect::ZERO,
             ppp: 1.0,
             scene: None,
+            streamed: None,
+            restream: None,
+            extent: None,
             last: None,
             picker: None,
             shown: None,
@@ -847,6 +874,19 @@ impl Orbit {
         }
     }
 
+    /// The box round the scene shown, of every solid in it (its fabric at least, of a streamed one): none before there is one.
+    pub(crate) fn extent(&self) -> Option<(P3, P3)> {
+        self.extent.filter(|_| self.scene.is_some())
+    }
+
+    /// Whether a worker is making its scene, its fit or its caps.
+    pub(crate) fn busy(&self) -> bool {
+        use crate::view_worker::Latest;
+        self.worker.as_ref().is_some_and(Latest::busy)
+            || self.fit_worker.as_ref().is_some_and(Latest::busy)
+            || self.cap_worker.as_ref().is_some_and(Latest::busy)
+    }
+
     pub(crate) fn suspend(&mut self) {
         self.worker = None;
         self.requested = None;
@@ -936,20 +976,41 @@ impl Orbit {
             self.install(done);
         }
         let current = self.scene.as_ref().is_some_and(|(m, _)| Arc::ptr_eq(m, model));
+        // A streamed scene the camera has left the storeys of is made again round where it looks now, the old one shown meanwhile.
+        let target = self.camera.map(|c| c.target[2]);
+        let away = current
+            && self.streamed.as_ref().zip(target).is_some_and(|(part, z)| !part.covers(z))
+            && self.restream.zip(target).is_none_or(|(asked, z)| (asked - z).abs() > 1.0);
         let needs_mesh = card && !self.mesh.as_ref().is_some_and(|(m, _)| Arc::ptr_eq(m, model));
-        if !current || needs_mesh || self.camera.is_none() {
+        if !current || needs_mesh || self.camera.is_none() || away {
             if !self.requested.as_ref().is_some_and(|m| Arc::ptr_eq(m, model))
                 || (needs_mesh && !self.requested_card)
                 || (self.camera.is_none() && !self.fitting)
+                || away
             {
+                // What the machine has free says how much of a big model the view may hold: a quarter, at most 8 GB, the rest
+                // for the model itself, the window and everything else. Where nothing measures it (the tests), the whole model.
+                let ask = |focus: f64| match bimcraft_core::memory::free() {
+                    Some(free) => Stream::Ask { budget: (free / 4).min(8 << 30), focus },
+                    None => Stream::Kept(None),
+                };
+                let stream = if current && !away {
+                    Stream::Kept(self.streamed.clone())
+                } else {
+                    let lowest = model.levels().first().map_or(0.0, |(_, l)| l.elevation + 1.0);
+                    let focus = target.unwrap_or(lowest);
+                    self.restream = Some(focus);
+                    ask(focus)
+                };
                 let job = SceneJob {
+                    stream,
                     model: Arc::clone(model),
-                    scene: self.scene.as_ref().filter(|(m, _)| Arc::ptr_eq(m, model)).map(|(_, s)| Arc::clone(s)),
-                    from: if current { None } else { self.scene.clone().or_else(|| self.last.clone()) },
+                    scene: self.scene.as_ref().filter(|(m, _)| Arc::ptr_eq(m, model) && !away).map(|(_, s)| Arc::clone(s)),
+                    from: if current || away { None } else { self.scene.clone().or_else(|| self.last.clone()) },
                     width,
                     height,
                     lens,
-                    card: needs_mesh,
+                    card: needs_mesh || (away && card),
                 };
                 if !current {
                     self.last = self.scene.take().or_else(|| self.last.take());
@@ -1001,6 +1062,13 @@ impl Orbit {
         if let Some(mesh) = done.mesh {
             self.mesh = Some((Arc::clone(&done.model), mesh));
         }
+        // A part of the model streamed round another height replaces the scene of the same model: the picture follows it.
+        if self.streamed != done.streamed {
+            self.shown = None;
+            self.picker = None;
+        }
+        self.streamed = done.streamed;
+        self.extent = done.scene.bounds();
         self.scene = Some((done.model, done.scene));
         self.last = None;
         self.fitting = false;
@@ -1552,6 +1620,20 @@ impl BimApp {
         if let Some(error) = o.prepare_fit(ui.ctx(), &model) {
             self.status = Status { text: crate::lang::tf("Could not fit the 3D view: {}", &[&error]), error: true };
         }
+        // A big model's view holds the detail of the storeys round where it looks (`view3d::stream`): it says so, in its corner.
+        if let Some(part) = &o.streamed {
+            let words = crate::lang::tf(
+                "Detail shown from {} to {}; {} elements farther away are left out to fit the memory there is.",
+                &[&part.levels.0, &part.levels.1, &part.left_out.to_string()],
+            );
+            // Over the picture, which is painted after this.
+            let layer = egui::LayerId::new(egui::Order::Foreground, egui::Id::new("streamed-3d-note"));
+            let p = ui.ctx().layer_painter(layer).with_clip_rect(rect);
+            let galley = p.layout(words.to_string(), egui::FontId::proportional(12.0), crate::style::pal().muted, rect.width() * 0.6);
+            let at = rect.left_top() + vec2(12.0, 44.0);
+            p.rect_filled(Rect::from_min_size(at, galley.size()).expand2(vec2(8.0, 4.0)), 6.0, crate::style::pal().surface);
+            p.galley(at, galley, crate::style::pal().muted);
+        }
         // A prepared view has both; without them there's nothing to draw this frame.
         let (Some((_, scene)), Some(camera)) = (o.scene.as_ref(), o.camera) else { return };
         let scene = Arc::clone(scene);
@@ -1802,7 +1884,8 @@ impl BimApp {
         let on_patch =
             |picker: &Option<Picker>, at: Pos2| patch.is_some_and(|ring| crate::workplane::on_patch(&ring, at)) && patch_seen(picker, at);
         let patch_lit = hover.is_some_and(|at| on_patch(&o.picker, at));
-        let plane_marks = crate::workplane::marks(m, &cam, ppp, planed, new_sketch.map(Frame::from), patch.is_some(), patch_lit);
+        let plane_marks =
+            crate::workplane::marks(m, &cam, ppp, planed, new_sketch.map(Frame::from), patch.is_some(), patch_lit, o.extent());
         // What the section box cuts, filled (Settings > Performance), once the worker has cut it: hollow meanwhile.
         let cut_now = reboxed.or(boxed).filter(|_| self.cut_fills_3d && look3.style() != VisualStyle::Wireframe);
         let caps = cut_now.and_then(|cut| o.caps_for(ui.ctx(), &model, cut));
@@ -2410,6 +2493,7 @@ mod edits {
             let _ = send.send(());
         });
         worker.request(SceneJob {
+            stream: Stream::Kept(None),
             model: Arc::clone(&after),
             scene: None,
             from: Some((before, scene)),
@@ -2703,7 +2787,16 @@ mod worker_measurements {
             let _ = send.send(());
         });
         let started = Instant::now();
-        worker.request(SceneJob { model, scene: None, from: None, width: 1920, height: 1080, lens: None, card: true });
+        worker.request(SceneJob {
+            stream: Stream::Kept(None),
+            model,
+            scene: None,
+            from: None,
+            width: 1920,
+            height: 1080,
+            lens: None,
+            card: true,
+        });
         worker.start().unwrap();
         eprintln!("scene request and start: {:.2} ms", started.elapsed().as_secs_f64() * 1000.0);
         let done = loop {

@@ -266,7 +266,7 @@ fn settings_are_kept_through_a_file_and_read_back_by_the_family_command() {
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("door.bimcraft");
     run(&mut s, "save", json!({"path": path}));
-    let text = std::fs::read_to_string(&path).unwrap();
+    let text = crate::bimc::read_to_string(&path).unwrap();
     let format = crate::model::FORMAT;
     assert!(text.contains(&format!("\"format\": {format}")) || text.contains(&format!("\"format\":{format}")), "FORMAT {format}");
     let mut t = Session::new();
@@ -296,7 +296,7 @@ fn a_file_of_17_reads_with_no_settings_and_draws_as_it_did() {
     std::fs::create_dir_all(&dir).unwrap();
     let path = dir.join("seventeen.bimcraft");
     run(&mut s, "save", json!({"path": path}));
-    let mut file: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    let mut file: Value = serde_json::from_str(&crate::bimc::read_to_string(&path).unwrap()).unwrap();
     let _ = std::fs::remove_dir_all(&dir);
     file["format"] = json!(17);
     assert!(!file.to_string().contains("\"visibility\""));

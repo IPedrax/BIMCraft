@@ -1731,7 +1731,9 @@ impl Model {
             }
         });
         m.rekey_params(&|n| lib.guid(&Kind::Parameter, n).map(|g| g.to_string()));
-        serde_json::to_string_pretty(&m).map_err(|e| e.to_string())
+        // Compact, its elements written on every core (`bimc::json`): pretty JSON made a file a third bigger, and slower to read.
+        let elements = std::mem::take(&mut m.elements);
+        crate::bimc::json(&m, &elements)
     }
 
     /// What a file's GUIDs name, named again, and what has no id and GUID given them: what [`Model::to_json`] did, undone.
