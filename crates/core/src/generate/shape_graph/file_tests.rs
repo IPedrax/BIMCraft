@@ -15,6 +15,7 @@ fn toy_request(k: u64) -> Request {
         rooms: 7 + (k % 12) as i64,
         tolerance: 0,
         shape: Some(ids[(k as usize) % ids.len()].clone()),
+        gridlines: false,
     }
 }
 

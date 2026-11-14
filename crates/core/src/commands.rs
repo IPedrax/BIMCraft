@@ -84,6 +84,10 @@ pub static ALL: &[Command] = &[
          the same plan to the delivery drawing rules: its script carries `cad_profile {name: delivery}`, rooms are numbered 101 \
          upward in the order of the graph's nodes (each node of topology-graph.json has its `number`), doors and windows have marks D1 \
          and W1 upward and no dimension is drawn, and the manifest has `delivery: true` and a `building`; the layout is the same. \
+         `gridlines: on|off` (either form) draws the plan's gridlines or leaves them out: with `rooms` the default is `off` and `on` \
+         puts a numbered vertical line at each distinct x of the outline's corners and a lettered horizontal line at each distinct y, \
+         1500 mm past the bounding box (the manifest has `gridlines`); with an area the default is what the archetype draws (on, \
+         except medical-day), `on` is then byte for byte that, and `off` takes the `grid` lines out and changes nothing else. \
          `invalid_params` for any other value. The project is not touched",
         crate::generate::generate,
     ),
@@ -3253,8 +3257,13 @@ fn save(s: &mut Session, p: &Value) -> R {
             return Ok(with_notes(reply, &notes));
         }
         let level = level_param(c, &s.model, p, "view")?;
-        let notes = write_drawing(&render::plan(&seen, level, 1600, 1000), &seen, &path, s.dwg_writer.as_ref(), version, 0, true)
-            .map_err(|e| bad(c, e))?;
+        // A CAD file is written from a drawing fitted for it; a picture, from the plan as it shows.
+        let drawing = if matches!(format.as_str(), "dxf" | "dwg") {
+            render::plan_for_cad(&seen, level, 1600, 1000)
+        } else {
+            render::plan(&seen, level, 1600, 1000)
+        };
+        let notes = write_drawing(&drawing, &seen, &path, s.dwg_writer.as_ref(), version, 0, true).map_err(|e| bad(c, e))?;
         return Ok(with_notes(json!({"path": path, "format": format}), &notes));
     }
     let text = s.model.to_json().map_err(|e| bad(c, e))?;

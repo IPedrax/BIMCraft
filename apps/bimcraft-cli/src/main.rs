@@ -19,14 +19,14 @@ const USAGE: &str = "USAGE:
       commands and scripts (one `ID {json}` per line), save. --save writes by extension:
       .bimcraft (the project), .ifc (IFC4), .glb (the 3D view's scene as glTF), .svg or .png (the lowest level's plan).
       --highrise builds an original 20-storey performance sample (about 10,000 elements).
-  bimcraft-cli generate --archetype office|clinic|hospital|house|studio-office|office-pattern|medical-day --seed N (--area M2 | --area-sqft SQFT) [--delivery on|off] --out DIR
+  bimcraft-cli generate --archetype office|clinic|hospital|house|studio-office|office-pattern|medical-day --seed N (--area M2 | --area-sqft SQFT) [--delivery on|off] [--gridlines on|off] --out DIR
                                  write a generated plan's run directory: program, topology and building graphs, a script for
                                  `run --script`, a report and a manifest. The same brief gives the same files; a brief that
                                  can't be met (an area too small) exits non-zero with a JSON error (`error`, a code, and `message`) on stderr, and writes nothing
   bimcraft-cli deliver --brief BRIEF.json --delivery-id ID --rights (FILE | emailed) --out ROOT [--rerun N] [--jobs J]
                                  write ROOT/<generator_version>/ID/ (manifest.csv, RIGHTS.txt, dwg/) for the brief's seeds, and
                                  ID-rerun/ for N seeds (50) spread through them, made again; J threads. Never overwrites
-  bimcraft-cli generate (--archetype house | --family-file FILE) --seed N --rooms R [--rooms-tol T] [--shape ID] [--interior aligned] [--bumps off] --out DIR
+  bimcraft-cli generate (--archetype house | --family-file FILE) --seed N --rooms R [--rooms-tol T] [--shape ID] [--interior aligned] [--bumps off] [--gridlines on|off] --out DIR
                                  the shape graph engine: R rooms (between R-T and R+T) laid out in one of nine outlines (bar, narrow_bar,
                                  l_shape, corner_notch, stepped, t_shape, side_nub, opposite_wings, court; --shape pins one) by the
                                  family file of the archetype (crates/core/data/shape-families), or the family file given with
@@ -194,7 +194,7 @@ fn generate_params(args: &[String]) -> Result<Value, String> {
     let (mut archetype, mut seed, mut area, mut area_sqft, mut out) = (None, None, None, None, None);
     // The shape graph engine's options: `--rooms` selects it, and the core refuses the rest without it (as JSON).
     let (mut rooms, mut rooms_tol, mut shape, mut interior, mut bumps) = (None, None, None, None, None);
-    let (mut family_file, mut delivery) = (None, None);
+    let (mut family_file, mut delivery, mut gridlines) = (None, None, None);
     let mut rest = args.iter();
     while let Some(arg) = rest.next() {
         let value = rest.next().ok_or_else(|| format!("{arg} needs a value\n\n{USAGE}"))?;
@@ -211,6 +211,7 @@ fn generate_params(args: &[String]) -> Result<Value, String> {
             "--bumps" => &mut bumps,
             "--family-file" => &mut family_file,
             "--delivery" => &mut delivery,
+            "--gridlines" => &mut gridlines,
             other => return Err(format!("unknown option `{other}` for generate\n\n{USAGE}")),
         };
         if slot.replace(value).is_some() {
@@ -256,6 +257,7 @@ fn generate_params(args: &[String]) -> Result<Value, String> {
         ("interior", interior),
         ("bumps", bumps),
         ("delivery", delivery),
+        ("gridlines", gridlines),
     ] {
         if let Some(v) = value {
             p[key] = json!(v);
@@ -669,6 +671,20 @@ mod tests {
         let script = std::fs::read_to_string(dir.join("script.bimcraft.txt")).unwrap();
         assert!(script.contains("cad_profile {\"name\":\"delivery\"}"));
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn generate_takes_gridlines_and_the_core_refuses_other_values() {
+        let args = |text: &str| text.split_whitespace().map(String::from).collect::<Vec<_>>();
+        let p = generate_params(&args("--archetype house --seed 1 --rooms 10 --gridlines on --out d")).unwrap();
+        assert_eq!(p["gridlines"], "on");
+        let dir = std::env::temp_dir().join(format!("bimcraft-cli-gridlines-{}", std::process::id()));
+        let at = dir.to_string_lossy().into_owned();
+        let e = cli_out(&["generate", "--archetype", "house", "--seed", "1", "--area", "115", "--gridlines", "maybe", "--out", &at])
+            .unwrap_err();
+        let refusal: Value = serde_json::from_str(&e).unwrap_or_else(|_| panic!("not JSON: {e}"));
+        assert_eq!(refusal["error"], "invalid_params", "{e}");
+        assert!(!dir.exists());
     }
 
     #[test]

@@ -1190,6 +1190,66 @@ pub fn plan(m: &Model, level: impl Key, width: u32, height: u32) -> Drawing {
     draw_plan(m, level, view, false, annotation(m, level, view), scale_of(m, level), true)
 }
 
+/// The side of the canvas a CAD file's plan is drawn on, pixels.
+const CAD_CANVAS: u32 = 4096;
+
+/// [`plan`] as a CAD file is written from it. The file's coordinates are the picture's pixels mapped back to mm, so they carry
+/// the rounding of the view they were drawn in; a view fitted to the plan with its gridlines would move every wall's last digits
+/// when the gridlines (or dimensions) come or go. So the view is fitted to what the plan cuts and sees below, none of its
+/// annotation, on a canvas that holds the annotation all the same, and the same layout is written in the same digits with or
+/// without it. A plan with no cut walls, or with content the canvas wouldn't hold, is [`plan`] as it shows.
+pub fn plan_for_cad(m: &Model, level: impl Key, width: u32, height: u32) -> Drawing {
+    let key = m.guid(level);
+    let extent = match m.shown_crop(key) {
+        None => plan_body(m, key),
+        Some(_) => plan_extent(m, key),
+    };
+    let n = scale_of(m, key);
+    // With no cut walls to frame the plan on there is nothing to hold the digits steady, so the plan is written as it shows.
+    if extent.is_empty() {
+        return plan(m, key, width, height);
+    }
+    // The scale and the middle are the cut walls' alone. The canvas round them is wide enough that none of the annotation (what
+    // is past its edge isn't drawn) falls off it, with the middle at a fixed pixel, so that a pixel's rounding is the same
+    // however far the annotation reaches.
+    let fitted = fit(&extent, width, height, n);
+    let view = View { width: CAD_CANVAS, height: CAD_CANVAS, ..fitted };
+    // Whatever the plan shows must lie on that canvas, or the file would lose it: then the plan is written as it shows.
+    let side = CAD_CANVAS as f32;
+    let on_canvas = |p: &P2| {
+        let (x, y) = view.px(*p);
+        (0.0..=side).contains(&x) && (0.0..=side).contains(&y)
+    };
+    if !plan_extent(m, key).iter().all(on_canvas) {
+        return plan(m, key, width, height);
+    }
+    let mut d = draw_plan(m, key, view, false, annotation(m, key, view), n, false);
+    // The plan's name stands where the picture of the plan puts it (the corner of the view fitted to all it shows), in the same
+    // size on the sheet, so the file reads as the picture does.
+    let shown = fit(&plan_extent(m, key), width, height, n);
+    let title = m.view_name(key).map_or_else(String::new, str::to_string);
+    let corner = shown.mm((24.0 + font::width(&title, 16.0) / 2.0, shown.height as f32 - 26.0));
+    let size = (16.0 * view.scale / shown.scale) as f32;
+    d.text_turned(&title, view.px(corner), size, 0.0, INK);
+    d
+}
+
+/// What a plan cuts and sees below, with none of its annotation: [`plan_shows_among`]'s first part.
+fn plan_body(m: &Model, key: Guid) -> Vec<P2> {
+    let level = m.plan_level(key).map_or(key, |l| m.guid(l));
+    let r = m.shown_range(key);
+    let look = Look::of(m, key);
+    let index = match m.derived.made(&m.elements) {
+        Some(_) => None,
+        None => Some(walls::Index::new(m)),
+    };
+    let mut components = crate::component_geometry::Components::new(m);
+    let elements = plan_elements(m, key, level, &r, false, &mut components);
+    let mut extent: Vec<P2> = cut_outlines(m, &elements, r.cut, &look, index.as_ref()).into_iter().flat_map(|(_, o)| o).collect();
+    extent.extend(seen_below(m, &elements, &r, &look, index.as_ref()).into_iter().flat_map(|(_, o, _)| o));
+    extent
+}
+
 /// What a plan of `level` takes on paper: all it shows, or cropped, its crop region and the grids'
 /// ends at its edges.
 pub(crate) fn plan_extent(m: &Model, level: impl Key) -> Vec<P2> {

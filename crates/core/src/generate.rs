@@ -12,6 +12,9 @@ mod delivery_tests;
 #[cfg(test)]
 mod family_file_tests;
 pub(crate) mod graph;
+pub(crate) mod gridlines;
+#[cfg(test)]
+mod gridlines_tests;
 pub(crate) mod house;
 mod layout;
 #[cfg(test)]
@@ -120,6 +123,8 @@ struct Params {
     bumps: Option<String>,
     /// `on` draws the plan to the delivery drawing rules; `--area` plans only.
     delivery: Option<String>,
+    /// `on` or `off`: the plan's gridlines. `off` with `rooms`, what the archetype draws today with an area.
+    gridlines: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -338,6 +343,17 @@ fn run(p: &Value) -> Result<Value, Refusal> {
             ));
         }
     };
+    let gridlines = match given.gridlines.as_deref() {
+        None => None,
+        Some("on") => Some(true),
+        Some("off") => Some(false),
+        Some(other) => {
+            return Err(refuse(
+                "invalid_params",
+                format!("`gridlines` is `on` or `off`; got {:?}", other.chars().take(40).collect::<String>()),
+            ));
+        }
+    };
     if given.delivery.is_some() && given.rooms.is_some() {
         return Err(refuse(
             "invalid_params",
@@ -345,7 +361,7 @@ fn run(p: &Value) -> Result<Value, Refusal> {
         ));
     }
     if let Some(rooms) = given.rooms {
-        return run_shaped(&given, rooms);
+        return run_shaped(&given, rooms, gridlines.unwrap_or(false));
     }
     let Some(archetype) = archetype else {
         return Err(refuse("invalid_params", "`generate` takes `archetype` or `family_file`"));
@@ -367,7 +383,15 @@ fn run(p: &Value) -> Result<Value, Refusal> {
         (None, Some(sqft)) => AreaRequest::sqft(sqft),
         (None, None) => return Err(refuse("invalid_params", "`generate` needs one of `area_m2` or `area_sqft`")),
     };
-    let built = if delivery { build_for_delivery(archetype, given.seed, area)? } else { build_with_area(archetype, given.seed, area)? };
+    let mut built = build_with_area(archetype, given.seed, area)?;
+    // The gridlines are edited first, so the delivery pass runs on the script that ships. A value that is the archetype's
+    // default changes nothing, so the default files stay as they were.
+    if let Some(on) = gridlines.filter(|on| *on != archetype.draws_grid()) {
+        built = gridlines::apply(built, on)?;
+    }
+    if delivery {
+        built = delivery::apply(built)?;
+    }
     written(&given.path, archetype.name(), &built)
 }
 
@@ -389,7 +413,7 @@ fn written(path: &str, archetype: &str, built: &Built) -> Result<Value, Refusal>
 }
 
 /// A plan by `rooms`: the shape graph engine. Everything but the options is checked before anything is made or written.
-fn run_shaped(given: &Params, rooms: i64) -> Result<Value, Refusal> {
+fn run_shaped(given: &Params, rooms: i64, gridlines: bool) -> Result<Value, Refusal> {
     if given.area_m2.is_some() || given.area_sqft.is_some() {
         return Err(refuse(
             "invalid_params",
@@ -413,6 +437,7 @@ fn run_shaped(given: &Params, rooms: i64) -> Result<Value, Refusal> {
         rooms,
         tolerance: tol,
         shape: given.shape.clone(),
+        gridlines,
     };
     match (&given.archetype, &given.family_file) {
         (Some(name), _) => {

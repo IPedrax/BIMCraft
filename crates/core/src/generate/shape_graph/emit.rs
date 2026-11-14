@@ -256,7 +256,7 @@ pub fn room_points(rooms: &[Room], laid: &Laid) -> Vec<[i64; 2]> {
 }
 
 /// The script of a plan; `tags` has, for a room whose tag does not fit, where its tag stands and its point.
-pub fn compile(fam: &Family, rooms: &[Room], laid: &Laid, d: &Drawn, seed: u64, tags: &[Option<TagAt>]) -> Script {
+pub fn compile(fam: &Family, rooms: &[Room], laid: &Laid, d: &Drawn, seed: u64, tags: &[Option<TagAt>], gridlines: bool) -> Script {
     let title = format!("{} {} rooms, seed {seed}", fam.name, rooms.len());
     let mut lines: Vec<(&'static str, Value)> = vec![
         ("new", json!({"name": title, "seed": seed})),
@@ -279,6 +279,13 @@ pub fn compile(fam: &Family, rooms: &[Room], laid: &Laid, d: &Drawn, seed: u64, 
             lines.push(("family", folding_types(set)));
         } else {
             lines.push(("family", json!({"name": family, "types": set})));
+        }
+    }
+    if gridlines {
+        // One line at each distinct x and y of the outline's corners; the exterior walls are the outline.
+        let segments: Vec<([i64; 2], [i64; 2])> = d.walls.iter().filter(|w| w.exterior).map(|w| (w.a, w.b)).collect();
+        for grid in super::super::script::outline_grids(&super::super::script::segment_corners(&segments)) {
+            lines.push(("grid", grid));
         }
     }
     for w in &d.walls {
@@ -487,7 +494,7 @@ pub enum Trouble {
 }
 
 /// Builds the plan in a scratch project and reads it back: its graph is what was generated, or why not.
-pub fn verify(fam: &Family, rooms: &[Room], laid: &Laid, shape: &str, seed: u64) -> Result<Done, Trouble> {
+pub fn verify(fam: &Family, rooms: &[Room], laid: &Laid, shape: &str, seed: u64, gridlines: bool) -> Result<Done, Trouble> {
     let drawn = draw(fam, rooms, laid).map_err(Trouble::Plan)?;
     let label = names(fam, rooms);
     let read = |script: &Script| -> Result<(Vec<Value>, Value), Trouble> {
@@ -507,13 +514,13 @@ pub fn verify(fam: &Family, rooms: &[Room], laid: &Laid, shape: &str, seed: u64)
         compare(fam, rooms, laid, &drawn, &extracted).map_err(Trouble::Readback)?;
         Ok((replies, extracted))
     };
-    let mut script = compile(fam, rooms, laid, &drawn, seed, &[]);
+    let mut script = compile(fam, rooms, laid, &drawn, seed, &[], gridlines);
     let (mut replies, mut extracted) = read(&script)?;
     // A room whose tag does not fit in it has the tag outside the plan, with a leader: the script says where. What fits is
     // known only once the rooms are measured, so the script runs again with the tags in it.
     let at = tags::plan(fam, rooms, laid, &drawn, &extracted, &room_points(rooms, laid)).map_err(Trouble::Plan)?;
     if at.iter().any(Option::is_some) {
-        script = compile(fam, rooms, laid, &drawn, seed, &at);
+        script = compile(fam, rooms, laid, &drawn, seed, &at, gridlines);
         (replies, extracted) = read(&script)?;
     }
     let areas: BTreeMap<String, f64> = extracted["nodes"]

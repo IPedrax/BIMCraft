@@ -268,6 +268,28 @@ fn a_drawing_is_saved_with_the_project_and_opens_as_it_was_and_insert_brings_it(
 }
 
 #[test]
+fn a_cad_file_of_a_plan_with_no_cut_walls_keeps_what_the_plan_shows() {
+    let mut s = Session::new();
+    run(&mut s, "import_cad", json!({"path": file("nowalls", "plan.dxf", &plan())}));
+    let level = s.model.levels().first().map(|(id, _)| *id).expect("a level");
+    let cad = crate::render::dxf(&crate::render::plan_for_cad(&s.model, level, 1600, 1000), &s.model);
+    let shown = crate::render::dxf(&crate::render::plan(&s.model, level, 1600, 1000), &s.model);
+    assert_eq!(cad, shown, "a plan of only a CAD import is written as it shows");
+}
+
+#[test]
+fn a_cad_file_of_a_plan_with_content_past_its_walls_keeps_it() {
+    let mut s = Session::new();
+    run(&mut s, "wall", json!({"points": [[0, 0], [4000, 0]]}));
+    let far = line("WALLS", (0.0, 0.0), (400.0, 0.0));
+    run(&mut s, "import_cad", json!({"path": file("farcad", "far.dxf", &dxf("6", &[("WALLS", "1", false)], &far))}));
+    let level = s.model.levels().first().map(|(id, _)| *id).expect("a level");
+    let cad = crate::render::dxf(&crate::render::plan_for_cad(&s.model, level, 1600, 1000), &s.model);
+    let shown = crate::render::dxf(&crate::render::plan(&s.model, level, 1600, 1000), &s.model);
+    assert_eq!(cad, shown, "content that would fall off the CAD canvas is written as the plan shows");
+}
+
+#[test]
 fn a_file_of_5_opens_and_what_a_file_holds_of_a_drawing_is_checked_as_it_is_read() {
     // A file of 5 or 6 holds no drawing: it opens, and is this build's format once read.
     let mut s = Session::new();
