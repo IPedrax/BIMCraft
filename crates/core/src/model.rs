@@ -185,7 +185,11 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// georeference and lose where the project stands; and it would read spot coordinates (a spot's `coordinate`, `type`, `origin`,
 /// `leader`, `shoulder` and `end`) and a level's `elevation_base` as spot elevations from the Project Base Point. A file of 19
 /// needs no step: its georeference is the active site, both points at the internal origin.
-pub const FORMAT: u32 = 20;
+/// 21: a wall may be framed (`framing`, the name of a framing type, held by its GUID) and a project holds framing types
+/// (`types.framing`, library entries of kind `type:framing`); nothing in a file of 20 changes, but a build that reads up to
+/// 20 would leave a wall's `framing` and the project's framing types out of a file, unframing its walls without a word, not
+/// "saved by a newer BIMCraft". A file the Family Editor's unreleased builds stamped 21 opens as one of 21: it holds no framing.
+pub const FORMAT: u32 = 21;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -367,6 +371,10 @@ pub struct Wall {
     /// its ends stretch with what they meet; an unjoined wall's ends stay square and follow no one.
     #[serde(default = "yes", skip_serializing_if = "is_yes")]
     pub join: bool,
+    /// Its framing type (`types.framing`), whose studs, plates and headers are worked out from it ([`crate::framing`]);
+    /// none, it isn't framed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub framing: Option<String>,
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
@@ -3019,6 +3027,9 @@ pub struct Types {
     /// The types of the runs, by category, then name: `runs["beam"]["Beam 200 x 500"]`.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub runs: BTreeMap<String, BTreeMap<String, RunType>>,
+    /// Framing types: how a framed wall's studs, plates and headers go. A new project has none; `frame` makes one.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub framing: BTreeMap<String, crate::framing::FramingType>,
 }
 
 /// What a project parameter holds: text, a number, a length (mm), or yes or no.
@@ -4415,6 +4426,7 @@ impl Model {
                 }
             }
         }
+        // 20 to 21 (framed walls and framing types) has no step: a file of 20 holds none.
         self.format = FORMAT;
     }
 
@@ -5035,6 +5047,7 @@ impl Model {
             "ceiling" => names(&self.types.ceiling),
             "railing" => names(&self.types.railing),
             "room" => names(&self.types.room),
+            "framing" => names(&self.types.framing),
             run if RUN_CATEGORIES.contains(&run) => self.types.runs.get(run).map(names).unwrap_or_default(),
             _ => Vec::new(),
         }
@@ -5057,6 +5070,7 @@ impl Model {
             "ceiling" => "Generic - 20mm",
             "railing" => "Railing - 1000mm",
             "room" => ROOM_TYPE,
+            "framing" => crate::framing::DEFAULT_TYPE,
             "structuralcolumn" => "Concrete 300 x 300",
             "footing" => "Footing 1200 x 1200",
             "beam" => "Beam 200 x 500",
@@ -7568,6 +7582,9 @@ impl Model {
                 return Err(format!("railing type `{n}`: spacing {} mm; balusters stand 50 mm apart or more, or 0 for none", t.spacing));
             }
         }
+        for (n, t) in &self.types.framing {
+            crate::framing::check_type(self, n, t)?;
+        }
         for (n, t) in &self.types.room {
             let who = format!("room type `{n}`");
             if let Some(f) = &t.floor {
@@ -7983,6 +8000,7 @@ impl Model {
                         "{who}: its top ({top:.0} mm) must be above its base ({base:.0} mm); it comes out {tall} mm tall, so raise its top constraint, top offset or height by more than {short} mm"
                     ));
                 }
+                crate::framing::check(self, w).map_err(|e| format!("{who}: {e}"))?;
             }
             Element::Floor(f) => {
                 point(&format!("{who} pattern origin"), f.pattern_origin)?;
@@ -9610,6 +9628,7 @@ mod tests {
             attach_base: None,
             room_bounding: true,
             join: true,
+            framing: None,
         })
     }
 
