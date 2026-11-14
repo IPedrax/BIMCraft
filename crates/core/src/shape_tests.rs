@@ -622,7 +622,7 @@ fn only_a_flat_roof_by_footprint_takes_a_shape_and_a_shaped_one_keeps_flat() {
     // Other elements still say what has a shape.
     let wall = run(&mut s, "wall", json!({"points": [[0, 0], [1000, 0]]}))["ids"][0].as_u64().unwrap();
     let e = fails(&mut s, "add_point", json!({"id": wall, "at": [500, 0]}));
-    assert!(e.contains("floors and flat roofs"), "{e}");
+    assert!(e.contains("floors, flat roofs and toposolids have shapes"), "{e}");
 }
 
 #[test]

@@ -687,6 +687,7 @@ impl Model {
                 "room" => self.types.room.remove(name).is_some(),
                 "structuralcolumn" => self.types.structural_column.remove(name).is_some(),
                 "footing" => self.types.footing.remove(name).is_some(),
+                "toposolid" => self.types.toposolid.remove(name).is_some(),
                 run if RUN_CATEGORIES.contains(&run) => self.types.runs.get_mut(run).is_some_and(|t| t.remove(name).is_some()),
                 _ => false,
             },
@@ -729,6 +730,7 @@ impl Model {
                 "room" => mv(&mut self.types.room, from, to),
                 "structuralcolumn" => mv(&mut self.types.structural_column, from, to),
                 "footing" => mv(&mut self.types.footing, from, to),
+                "toposolid" => mv(&mut self.types.toposolid, from, to),
                 run if RUN_CATEGORIES.contains(&run) => self.types.runs.get_mut(run).is_some_and(|t| mv(t, from, to)),
                 _ => false,
             },
@@ -964,6 +966,9 @@ impl Model {
         for (n, x) in &t.floor {
             add("layer", "floor type", n, x.layers.iter().map(|l| (l.id, l.guid)).collect());
         }
+        for (n, x) in &t.toposolid {
+            add("layer", "toposolid type", n, x.layers.iter().map(|l| (l.id, l.guid)).collect());
+        }
         for (n, x) in &t.roof {
             add("layer", "roof type", n, x.layers.iter().map(|l| (l.id, l.guid)).collect());
         }
@@ -1100,6 +1105,9 @@ impl Model {
             x.layers.iter_mut().for_each(|l| give(&mut l.id, &mut l.guid));
         }
         for x in t.floor.values_mut() {
+            x.layers.iter_mut().for_each(|l| give(&mut l.id, &mut l.guid));
+        }
+        for x in t.toposolid.values_mut() {
             x.layers.iter_mut().for_each(|l| give(&mut l.id, &mut l.guid));
         }
         for x in t.roof.values_mut() {
@@ -1338,7 +1346,8 @@ impl Model {
             .flat_map(|x| x.layers.iter_mut())
             .chain(t.floor.values_mut().flat_map(|x| x.layers.iter_mut()))
             .chain(t.roof.values_mut().flat_map(|x| x.layers.iter_mut()))
-            .chain(t.ceiling.values_mut().flat_map(|x| x.layers.iter_mut()));
+            .chain(t.ceiling.values_mut().flat_map(|x| x.layers.iter_mut()))
+            .chain(t.toposolid.values_mut().flat_map(|x| x.layers.iter_mut()));
         for l in layers {
             (l.id, l.guid) = (0, Guid::default());
         }
@@ -1498,6 +1507,7 @@ impl crate::model::Element {
             Element::Floor(x) => f(&Kind::Type(category), &mut x.type_name),
             Element::Ceiling(x) => f(&Kind::Type(category), &mut x.type_name),
             Element::Roof(x) => f(&Kind::Type(category), &mut x.type_name),
+            Element::Toposolid(x) => f(&Kind::Type(category), &mut x.type_name),
             Element::Railing(x) => f(&Kind::Type(category), &mut x.type_name),
             Element::Room(x) => f(&Kind::Type(category), &mut x.type_name),
             Element::Column(c) | Element::StructuralColumn(c) | Element::Footing(c) => f(&Kind::Type(category), &mut c.type_name),
@@ -1601,7 +1611,8 @@ impl Model {
             .flat_map(|x| x.layers.iter_mut())
             .chain(t.floor.values_mut().flat_map(|x| x.layers.iter_mut()))
             .chain(t.roof.values_mut().flat_map(|x| x.layers.iter_mut()))
-            .chain(t.ceiling.values_mut().flat_map(|x| x.layers.iter_mut()));
+            .chain(t.ceiling.values_mut().flat_map(|x| x.layers.iter_mut()))
+            .chain(t.toposolid.values_mut().flat_map(|x| x.layers.iter_mut()));
         for l in layers.filter(|l| !l.material.is_empty()) {
             f(&Kind::Material, &mut l.material);
         }

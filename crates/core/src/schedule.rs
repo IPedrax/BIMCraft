@@ -312,6 +312,7 @@ const OWN: &[(&str, usize, &[Own])] = &[
         ],
     ),
     ("ceiling", 5, &[ID, TYPE, LEVEL, OFFSET, AREA, THICKNESS, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION]),
+    ("toposolid", 5, &[NAME, LEVEL, AREA, VOLUME, THICKNESS, COUNT, PHASE_CREATED, PHASE_DEMOLISHED, DESIGN_OPTION]),
     (
         "roof",
         4,
@@ -1098,6 +1099,7 @@ impl Row<'_> {
             "floor" => m.types.floor.get(ty).map(|t| &t.layers),
             "roof" => m.types.roof.get(ty).map(|t| &t.layers),
             "ceiling" => m.types.ceiling.get(ty).map(|t| &t.layers),
+            "toposolid" => m.types.toposolid.get(ty).map(|t| &t.layers),
             _ => None,
         };
         let named = |l: &&crate::model::Layer| !l.material.trim().is_empty();

@@ -13,7 +13,8 @@ use std::collections::{BTreeSet, HashMap};
 use std::sync::Arc;
 
 use super::{
-    P3, Scene, ShapeKey, Span, Tri, bounds, corner_normals, layered, local_curves, painted, rules_of, skins_for, solids_in, whole_model,
+    P3, Scene, ShapeKey, Span, Tri, bounds, corner_normals, layered, local_curves, painted, pattern_frames, rules_of, skins_for, solids_in,
+    whole_model,
 };
 use crate::component_geometry::ComponentInstance;
 use crate::ids::Changed;
@@ -188,6 +189,7 @@ impl Scene {
             smooth: out.smooth,
             faces: Arc::new(out.faces),
             skins,
+            frames: pattern_frames(after),
             edges: std::sync::OnceLock::new(),
             masses,
             levels,
@@ -299,6 +301,7 @@ fn draws(e: &Element) -> bool {
                 | Element::Footing(_)
                 | Element::Rebar(_)
                 | Element::Mass(_)
+                | Element::Toposolid(_)
                 | Element::Component(_)
                 | Element::Stair(_)
                 | Element::Ramp(_)
