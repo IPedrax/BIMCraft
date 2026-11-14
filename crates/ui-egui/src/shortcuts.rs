@@ -960,37 +960,188 @@ pub fn display_binding(b: Binding) -> String {
     }
 }
 
-/// The letter the interface language's keyboard layout prints on the physical `key`, where it is not the US layout's:
-/// a German or Czech QWERTZ swaps `Y` and `Z`, a French AZERTY swaps `A` with `Q` and `Z` with `W`, and puts `M` where
-/// the US has `;`. The other languages' layouts print the US letters, so their hints are the canonical form alone.
-fn layout_letter(key: Key, lang: Lang) -> Option<char> {
-    match lang {
-        Lang::German | Lang::Czech => match key {
-            Key::Y => Some('Z'),
-            Key::Z => Some('Y'),
-            _ => None,
-        },
-        Lang::French => match key {
-            Key::A => Some('Q'),
-            Key::Q => Some('A'),
-            Key::Z => Some('W'),
-            Key::W => Some('Z'),
-            Key::Semicolon => Some('M'),
-            _ => None,
-        },
-        _ => None,
-    }
+/// The glyphs the interface language's keyboard layout prints on the physical keys where they differ from the US
+/// layout's, at the layout's base level and with letters upper case, as a key's cap shows them. The layouts were read
+/// from the system's XKB symbols: a German or Czech QWERTZ swaps `Y` with `Z`; a French AZERTY swaps `A` with `Q` and
+/// `Z` with `W` and moves the digits and the punctuation; a Spanish, Italian, Dutch or Brazilian layout moves `Ñ` or
+/// `Ç`, `À`, `Ò`, `´` and the like; a Vietnamese layout puts `Ă`, `Â`, `Ê`, `Ô`, `Đ`, `Ư` and `Ơ` on the digits and the
+/// brackets. English, Polish and Chinese print the US keys at that level, so they have no entry: their hints are the
+/// canonical form alone.
+const LAYOUTS: &[(Lang, &[(Key, char)])] = &[
+    (
+        Lang::German,
+        &[
+            (Key::Backslash, '#'),
+            (Key::Backtick, '^'),
+            (Key::CloseBracket, '+'),
+            (Key::Equals, '´'),
+            (Key::Minus, 'ß'),
+            (Key::OpenBracket, 'Ü'),
+            (Key::Quote, 'Ä'),
+            (Key::Semicolon, 'Ö'),
+            (Key::Slash, '-'),
+            (Key::Y, 'Z'),
+            (Key::Z, 'Y'),
+        ],
+    ),
+    (
+        Lang::Czech,
+        &[
+            (Key::Backslash, '¨'),
+            (Key::Backtick, ';'),
+            (Key::CloseBracket, ')'),
+            (Key::Equals, '´'),
+            (Key::Minus, '='),
+            (Key::Num0, 'É'),
+            (Key::Num1, '+'),
+            (Key::Num2, 'Ě'),
+            (Key::Num3, 'Š'),
+            (Key::Num4, 'Č'),
+            (Key::Num5, 'Ř'),
+            (Key::Num6, 'Ž'),
+            (Key::Num7, 'Ý'),
+            (Key::Num8, 'Á'),
+            (Key::Num9, 'Í'),
+            (Key::OpenBracket, 'Ú'),
+            (Key::Semicolon, 'Ů'),
+            (Key::Slash, '-'),
+            (Key::Y, 'Z'),
+            (Key::Z, 'Y'),
+        ],
+    ),
+    (
+        Lang::French,
+        &[
+            (Key::A, 'Q'),
+            (Key::Backslash, '*'),
+            (Key::CloseBracket, '$'),
+            (Key::Comma, ';'),
+            (Key::M, ','),
+            (Key::Minus, ')'),
+            (Key::Num0, 'À'),
+            (Key::Num1, '&'),
+            (Key::Num2, 'É'),
+            (Key::Num3, '"'),
+            (Key::Num4, '\''),
+            (Key::Num5, '('),
+            (Key::Num6, '-'),
+            (Key::Num7, 'È'),
+            (Key::Num8, '_'),
+            (Key::Num9, 'Ç'),
+            (Key::OpenBracket, '^'),
+            (Key::Period, ':'),
+            (Key::Q, 'A'),
+            (Key::Quote, 'Ù'),
+            (Key::Semicolon, 'M'),
+            (Key::Slash, '!'),
+            (Key::W, 'Z'),
+            (Key::Z, 'W'),
+        ],
+    ),
+    (
+        Lang::Spanish,
+        &[
+            (Key::Backslash, 'Ç'),
+            (Key::Backtick, 'º'),
+            (Key::CloseBracket, '+'),
+            (Key::Minus, '\''),
+            (Key::OpenBracket, '`'),
+            (Key::Quote, '´'),
+            (Key::Semicolon, 'Ñ'),
+            (Key::Slash, '-'),
+        ],
+    ),
+    (
+        Lang::Italian,
+        &[
+            (Key::Backslash, 'Ù'),
+            (Key::Backtick, '\\'),
+            (Key::CloseBracket, '+'),
+            (Key::Equals, 'Ì'),
+            (Key::Minus, '\''),
+            (Key::OpenBracket, 'È'),
+            (Key::Quote, 'À'),
+            (Key::Semicolon, 'Ò'),
+            (Key::Slash, '-'),
+        ],
+    ),
+    (
+        Lang::Dutch,
+        &[
+            (Key::Backslash, '<'),
+            (Key::Backtick, '@'),
+            (Key::CloseBracket, '*'),
+            (Key::Minus, '/'),
+            (Key::OpenBracket, '¨'),
+            (Key::Quote, '´'),
+            (Key::Semicolon, '+'),
+            (Key::Slash, '-'),
+        ],
+    ),
+    (
+        Lang::Portuguese,
+        &[
+            (Key::Backslash, ']'),
+            (Key::Backtick, '\''),
+            (Key::CloseBracket, '['),
+            (Key::OpenBracket, '´'),
+            (Key::Quote, '~'),
+            (Key::Semicolon, 'Ç'),
+            (Key::Slash, ';'),
+        ],
+    ),
+    (
+        Lang::Vietnamese,
+        &[
+            (Key::CloseBracket, 'Ơ'),
+            (Key::Equals, '₫'),
+            (Key::Num0, 'Đ'),
+            (Key::Num1, 'Ă'),
+            (Key::Num2, 'Â'),
+            (Key::Num3, 'Ê'),
+            (Key::Num4, 'Ô'),
+            (Key::OpenBracket, 'Ư'),
+        ],
+    ),
+];
+
+/// The national letters a Polish layout puts on the AltGr level (`right Alt`, `Ctrl+Alt` on Windows), where a key's cap
+/// shows them beside the US letter: `AltGr+A` is `Ą`, `AltGr+C` is `Ć`, and so on. Unlike the base-level layouts above,
+/// they are not a second way to type the shortcut: a hint says where the key's letter lives, not that `Ctrl+A` types it.
+const ALTGR_LETTERS: &[(Lang, &[(Key, char)])] = &[(
+    Lang::Polish,
+    &[
+        (Key::A, 'Ą'),
+        (Key::C, 'Ć'),
+        (Key::E, 'Ę'),
+        (Key::L, 'Ł'),
+        (Key::N, 'Ń'),
+        (Key::O, 'Ó'),
+        (Key::S, 'Ś'),
+        (Key::X, 'Ź'),
+        (Key::Z, 'Ż'),
+    ],
+)];
+
+/// What the interface language's layout prints on a physical key, where it is not the US glyph.
+fn layout_glyph(key: Key, lang: Lang) -> Option<char> {
+    LAYOUTS.iter().find(|(l, _)| *l == lang)?.1.iter().find(|(k, _)| *k == key).map(|(_, glyph)| *glyph)
 }
 
-/// A sequence as the interface language's layout prints its letters, `None` when none of them differ from the US ones.
+/// The national letter a Polish layout puts on the key's AltGr level, if the layout has one there.
+fn altgr_glyph(key: Key, lang: Lang) -> Option<char> {
+    ALTGR_LETTERS.iter().find(|(l, _)| *l == lang)?.1.iter().find(|(k, _)| *k == key).map(|(_, glyph)| *glyph)
+}
+
+/// A sequence as the interface language's layout prints it, `None` when none of its keys differ from the US ones.
 fn layout_text(keys: &[Key], lang: Lang) -> Option<String> {
     let mut text = String::new();
     let mut differs = false;
     for key in keys {
-        match layout_letter(*key, lang) {
-            Some(letter) => {
+        match layout_glyph(*key, lang) {
+            Some(glyph) => {
                 differs = true;
-                text.push(letter);
+                text.push(glyph);
             }
             None => text.push_str(key_name(*key)),
         }
@@ -998,14 +1149,24 @@ fn layout_text(keys: &[Key], lang: Lang) -> Option<String> {
     differs.then_some(text)
 }
 
-/// The canonical form, followed in parentheses by the letters the interface language's layout prints on the same
-/// physical keys, when any differ: `Ctrl+Z (Ctrl+Y)` on a German or Czech QWERTZ, `WA (ZQ)` on a French AZERTY. A
-/// language whose layout prints the US letters, as English does, shows the canonical form alone.
+/// The canonical form, followed in parentheses by what the interface language's layout prints on the same physical
+/// keys, when any differ: `Ctrl+Z (Ctrl+Y)` on a German or Czech QWERTZ, `WA (ZQ)` on a French AZERTY, `Ctrl+1
+/// (Ctrl+Ă)` on a Vietnamese one. A Polish layout prints the US keys but names the national letter a key carries on
+/// `AltGr`, as `Ctrl+A (AltGr+Ą)`; a language whose layout prints the US keys, as English and Chinese do, shows the
+/// canonical form alone.
 pub fn display_binding_localized(b: Binding, lang: Lang) -> String {
     let canonical = display_binding(b);
     let localized = match b {
         Binding::Chord(c) => {
-            let Some(letter) = layout_letter(c.key, lang) else { return canonical };
+            let glyph = match layout_glyph(c.key, lang) {
+                Some(glyph) => glyph,
+                None => {
+                    return match altgr_glyph(c.key, lang) {
+                        Some(letter) => format!("{canonical} (AltGr+{letter})"),
+                        None => canonical,
+                    };
+                }
+            };
             let mut text = String::new();
             if c.ctrl {
                 text.push_str("Ctrl+");
@@ -1019,7 +1180,7 @@ pub fn display_binding_localized(b: Binding, lang: Lang) -> String {
             if c.meta {
                 text.push_str("Meta+");
             }
-            text.push(letter);
+            text.push(glyph);
             text
         }
         Binding::Sequence([a, z]) => match layout_text(&[a, z], lang) {
@@ -3157,13 +3318,38 @@ mod tests {
         assert_eq!(display_binding(ctrl_d), "Ctrl+D");
         let ctrl_z = Binding::Chord(KeyChord::new(Key::Z, true, false, false, false));
         let ctrl_w = Binding::Chord(KeyChord::new(Key::W, true, false, false, false));
-        // The hint follows the interface language's keyboard layout, not the Russian one.
+        let ctrl_1 = Binding::Chord(KeyChord::new(Key::Num1, true, false, false, false));
+        let ctrl_semicolon = Binding::Chord(KeyChord::new(Key::Semicolon, true, false, false, false));
+        let ctrl_quote = Binding::Chord(KeyChord::new(Key::Quote, true, false, false, false));
+        let ctrl_backtick = Binding::Chord(KeyChord::new(Key::Backtick, true, false, false, false));
+        // The hint follows the interface language's keyboard layout, not the Russian one, and is left out when the
+        // layout prints the US keys.
         assert_eq!(display_binding_localized(ctrl_d, Lang::English), "Ctrl+D", "the US layout needs no hint");
         assert_eq!(display_binding_localized(ctrl_d, Lang::German), "Ctrl+D", "D sits in the same place on a QWERTZ");
+        assert_eq!(display_binding_localized(ctrl_z, Lang::German), "Ctrl+Z (Ctrl+Y)");
         assert_eq!(display_binding_localized(ctrl_z, Lang::Czech), "Ctrl+Z (Ctrl+Y)");
+        assert_eq!(
+            display_binding_localized(Binding::Chord(KeyChord::new(Key::Num2, true, false, false, false)), Lang::Czech),
+            "Ctrl+2 (Ctrl+Ě)",
+            "a Czech layout keeps its letters on the number row"
+        );
         assert_eq!(display_binding_localized(ctrl_w, Lang::French), "Ctrl+W (Ctrl+Z)");
         assert_eq!(display_binding_localized(Binding::Sequence([Key::W, Key::A]), Lang::French), "WA (ZQ)");
         assert_eq!(display_binding_localized(Binding::Sequence([Key::W, Key::A]), Lang::German), "WA");
+        assert_eq!(display_binding_localized(ctrl_semicolon, Lang::Spanish), "Ctrl+; (Ctrl+Ñ)");
+        assert_eq!(display_binding_localized(ctrl_quote, Lang::Italian), "Ctrl+' (Ctrl+À)");
+        assert_eq!(display_binding_localized(ctrl_backtick, Lang::Dutch), "Ctrl+` (Ctrl+@)");
+        assert_eq!(display_binding_localized(ctrl_semicolon, Lang::Portuguese), "Ctrl+; (Ctrl+Ç)");
+        assert_eq!(display_binding_localized(ctrl_1, Lang::Vietnamese), "Ctrl+1 (Ctrl+Ă)");
+        assert_eq!(display_binding_localized(Binding::Sequence([Key::W, Key::A]), Lang::Vietnamese), "WA");
+        assert_eq!(display_binding_localized(ctrl_z, Lang::Polish), "Ctrl+Z (AltGr+Ż)", "a Polish AltGr letter");
+        assert_eq!(
+            display_binding_localized(Binding::Chord(KeyChord::new(Key::A, true, false, false, false)), Lang::Polish),
+            "Ctrl+A (AltGr+Ą)"
+        );
+        assert_eq!(display_binding_localized(Binding::Sequence([Key::W, Key::A]), Lang::Polish), "WA", "no AltGr in a sequence");
+        assert_eq!(display_binding_localized(ctrl_1, Lang::Chinese), "Ctrl+1", "a Chinese layout prints the US keys");
+        assert_eq!(display_binding_localized(ctrl_1, Lang::TraditionalChinese), "Ctrl+1");
         assert_eq!(display_binding(Binding::Sequence([Key::W, Key::A])), "WA");
     }
 

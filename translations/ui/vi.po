@@ -11,15 +11,15 @@ msgstr " Bỏ qua: {}{}."
 msgid " Moved {}, {} mm to bring it near the origin."
 msgstr " Đã dời {}, {} mm để đưa lại gần gốc tọa độ."
 
-#: crates/ui-egui/src/shortcuts.rs:1773
+#: crates/ui-egui/src/shortcuts.rs:1934
 msgid "\"{}\" is already assigned to \"{}\""
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:1137
+#: crates/ui-egui/src/shortcuts.rs:1298
 msgid "\"{}\" is reserved by the application"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:1109
+#: crates/ui-egui/src/shortcuts.rs:1270
 msgid "\"{}\" needs a modifier or a second key"
 msgstr ""
 
@@ -185,7 +185,7 @@ msgstr ""
 msgid "A chat is kept for each saved project, on this computer, beside settings.json (never in the project). A picture sent in it is not kept."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:2926
+#: crates/ui-egui/src/shortcuts.rs:3087
 msgid "A chord such as Ctrl+D, or two keys such as WA. Esc cancels; Backspace clears."
 msgstr ""
 
@@ -249,7 +249,7 @@ msgstr ""
 msgid "A hairline in the margin where pages meet, to show where to cut them to put them together"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:1140
+#: crates/ui-egui/src/shortcuts.rs:1301
 msgid "A letter or digit needs a modifier or a second key"
 msgstr ""
 
@@ -281,8 +281,8 @@ msgstr "Vòng kín cần ba đường: hãy nhấp một điểm không phải �
 msgid "A mesh from a file has no sketch to edit."
 msgstr "Lưới từ tệp không có phác thảo để sửa."
 
-#: crates/ui-egui/src/shortcuts.rs:1072
-#: crates/ui-egui/src/shortcuts.rs:1106
+#: crates/ui-egui/src/shortcuts.rs:1233
+#: crates/ui-egui/src/shortcuts.rs:1267
 msgid "A modifier alone is not a binding"
 msgstr ""
 
@@ -449,7 +449,7 @@ msgstr ""
 msgid "Acquire from {}"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:2634
+#: crates/ui-egui/src/shortcuts.rs:2795
 msgid "Actions"
 msgstr ""
 
@@ -627,7 +627,7 @@ msgstr "Thêm điện áp"
 msgid "Add Wire Type"
 msgstr "Thêm loại dây"
 
-#: crates/ui-egui/src/shortcuts.rs:2750
+#: crates/ui-egui/src/shortcuts.rs:2911
 msgid "Add a binding"
 msgstr ""
 
@@ -668,7 +668,7 @@ msgstr ""
 msgid "Add to Project"
 msgstr "Thêm vào dự án"
 
-#: crates/ui-egui/src/shortcuts.rs:3007
+#: crates/ui-egui/src/shortcuts.rs:3168
 msgid "Add to the current set"
 msgstr ""
 
@@ -828,8 +828,8 @@ msgstr "Đã bật đường dóng căn chỉnh"
 msgid "All"
 msgstr "Tất cả"
 
-#: crates/ui-egui/src/shortcuts.rs:2478
-#: crates/ui-egui/src/shortcuts.rs:2480
+#: crates/ui-egui/src/shortcuts.rs:2639
+#: crates/ui-egui/src/shortcuts.rs:2641
 msgid "All categories"
 msgstr ""
 
@@ -944,8 +944,8 @@ msgstr "Một tác tử có thể làm việc trên dự án này: bimcraft-cli 
 msgid "An archive has its standard's version"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:1041
-#: crates/ui-egui/src/shortcuts.rs:1048
+#: crates/ui-egui/src/shortcuts.rs:1202
+#: crates/ui-egui/src/shortcuts.rs:1209
 msgid "An empty binding"
 msgstr ""
 
@@ -1085,7 +1085,7 @@ msgstr "Áp dụng cho mọi khung nhìn; bắt điểm vào lưới chính ho�
 msgid "Apply"
 msgstr "Áp dụng"
 
-#: crates/ui-egui/src/shortcuts.rs:2807
+#: crates/ui-egui/src/shortcuts.rs:2968
 msgid "Apply Changes"
 msgstr ""
 
@@ -1094,7 +1094,7 @@ msgstr ""
 msgid "Apply Hide/Isolate to View"
 msgstr "Áp dụng Ẩn/Cô lập cho khung nhìn"
 
-#: crates/ui-egui/src/shortcuts.rs:3021
+#: crates/ui-egui/src/shortcuts.rs:3182
 msgid "Apply Import"
 msgstr ""
 
@@ -1102,7 +1102,7 @@ msgstr ""
 msgid "Apply Overrides"
 msgstr "Áp dụng ghi đè"
 
-#: crates/ui-egui/src/shortcuts.rs:2501
+#: crates/ui-egui/src/shortcuts.rs:2662
 msgid "Apply Profile"
 msgstr ""
 
@@ -1236,7 +1236,7 @@ msgstr "Sẽ hỏi lưu trước nếu có thay đổi chưa lưu, rồi đóng 
 msgid "Assign View Template"
 msgstr "Gán mẫu khung nhìn"
 
-#: crates/ui-egui/src/shortcuts.rs:2801
+#: crates/ui-egui/src/shortcuts.rs:2962
 msgid "Assigned {} of {}"
 msgstr ""
 
@@ -1831,11 +1831,11 @@ msgstr "Camera: nhấp chỗ đặt mắt nhìn, rồi chỗ nó nhìn tới: m�
 #: crates/ui-egui/src/publisher.rs:967
 #: crates/ui-egui/src/purge.rs:77
 #: crates/ui-egui/src/reinforce.rs:536
-#: crates/ui-egui/src/shortcuts.rs:2550
-#: crates/ui-egui/src/shortcuts.rs:2810
-#: crates/ui-egui/src/shortcuts.rs:2957
-#: crates/ui-egui/src/shortcuts.rs:2963
-#: crates/ui-egui/src/shortcuts.rs:3048
+#: crates/ui-egui/src/shortcuts.rs:2711
+#: crates/ui-egui/src/shortcuts.rs:2971
+#: crates/ui-egui/src/shortcuts.rs:3118
+#: crates/ui-egui/src/shortcuts.rs:3124
+#: crates/ui-egui/src/shortcuts.rs:3209
 #: crates/ui-egui/src/standards.rs:334
 #: crates/ui-egui/src/templates.rs:757
 #: crates/ui-egui/src/titleblocks.rs:653
@@ -1923,7 +1923,7 @@ msgstr ""
 #: crates/ui-egui/src/editor/document.rs:1918
 #: crates/ui-egui/src/objectstyles.rs:65
 #: crates/ui-egui/src/properties.rs:2743
-#: crates/ui-egui/src/shortcuts.rs:2601
+#: crates/ui-egui/src/shortcuts.rs:2762
 #: crates/ui-egui/src/standards.rs:193
 msgid "Category"
 msgstr "Danh mục"
@@ -2893,7 +2893,7 @@ msgstr ""
 #: crates/ui-egui/src/revit.rs:261
 #: crates/ui-egui/src/script.rs:103
 #: crates/ui-egui/src/settings.rs:489
-#: crates/ui-egui/src/shortcuts.rs:2813
+#: crates/ui-egui/src/shortcuts.rs:2974
 msgid "Close"
 msgstr "Đóng"
 
@@ -3027,7 +3027,7 @@ msgstr "Gộp: những gì được tạo, phá dỡ và hiển thị trong giai
 msgid "Coming in a later version"
 msgstr "Sẽ có trong phiên bản sau"
 
-#: crates/ui-egui/src/shortcuts.rs:2590
+#: crates/ui-egui/src/shortcuts.rs:2751
 msgid "Command"
 msgstr ""
 
@@ -3357,12 +3357,12 @@ msgstr "Mặt lõi: phía trong"
 msgid "Could not fit the 3D view: {}"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:2536
+#: crates/ui-egui/src/shortcuts.rs:2697
 msgid "Could not open the file: {}"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:3114
-#: crates/ui-egui/src/shortcuts.rs:3129
+#: crates/ui-egui/src/shortcuts.rs:3275
+#: crates/ui-egui/src/shortcuts.rs:3290
 msgid "Could not write the file: {}"
 msgstr ""
 
@@ -4173,7 +4173,7 @@ msgid "Disallow Join"
 msgstr ""
 
 #: crates/ui-egui/src/autosave.rs:307
-#: crates/ui-egui/src/shortcuts.rs:2561
+#: crates/ui-egui/src/shortcuts.rs:2722
 msgid "Discard"
 msgstr "Loại bỏ"
 
@@ -4181,7 +4181,7 @@ msgstr "Loại bỏ"
 msgid "Discard Changes"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:2559
+#: crates/ui-egui/src/shortcuts.rs:2720
 msgid "Discard the changes made here?"
 msgstr ""
 
@@ -5027,7 +5027,7 @@ msgstr "Xuất..."
 msgid "Exported {} to {}."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:3111
+#: crates/ui-egui/src/shortcuts.rs:3272
 msgid "Exported."
 msgstr ""
 
@@ -5037,7 +5037,7 @@ msgstr ""
 
 #: crates/ui-egui/src/export/mod.rs:365
 #: crates/ui-egui/src/lib.rs:4129
-#: crates/ui-egui/src/shortcuts.rs:2513
+#: crates/ui-egui/src/shortcuts.rs:2674
 msgid "Export…"
 msgstr ""
 
@@ -5992,7 +5992,7 @@ msgstr "Chiều cao:"
 msgid "Held by Dimensions"
 msgstr "Bị giữ bởi kích thước"
 
-#: crates/ui-egui/src/shortcuts.rs:2516
+#: crates/ui-egui/src/shortcuts.rs:2677
 msgid "Help (Markdown)…"
 msgstr ""
 
@@ -6229,7 +6229,7 @@ msgstr ""
 msgid "Import units"
 msgstr "Đơn vị nhập"
 
-#: crates/ui-egui/src/shortcuts.rs:2999
+#: crates/ui-egui/src/shortcuts.rs:3160
 msgid "Import {}"
 msgstr ""
 
@@ -6256,7 +6256,7 @@ msgstr "Danh mục được nhập"
 msgid "Imported from this file"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:3040
+#: crates/ui-egui/src/shortcuts.rs:3201
 msgid "Imported {} bindings ({} skipped)."
 msgstr ""
 
@@ -6268,11 +6268,11 @@ msgstr "Đã nhập {}: {}."
 msgid "Imported: {} made, {} changed."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:3044
+#: crates/ui-egui/src/shortcuts.rs:3205
 msgid "Imported; the old profile is in {}."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:2510
+#: crates/ui-egui/src/shortcuts.rs:2671
 msgid "Import…"
 msgstr ""
 
@@ -6600,7 +6600,7 @@ msgstr ""
 msgid "Justification:"
 msgstr "Căn chỉnh:"
 
-#: crates/ui-egui/src/shortcuts.rs:2564
+#: crates/ui-egui/src/shortcuts.rs:2725
 msgid "Keep Editing"
 msgstr ""
 
@@ -6629,11 +6629,11 @@ msgstr ""
 msgid "Key"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:2612
+#: crates/ui-egui/src/shortcuts.rs:2773
 msgid "Key combinations"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:2463
+#: crates/ui-egui/src/shortcuts.rs:2624
 msgid "Keyboard Shortcuts"
 msgstr "Phím tắt"
 
@@ -6641,7 +6641,7 @@ msgstr "Phím tắt"
 msgid "Keyboard Shortcuts (KS): customize, edit, and load shortcut keys"
 msgstr "Phím tắt (KS): tùy chỉnh, sửa và nạp phím tắt"
 
-#: crates/ui-egui/src/shortcuts.rs:2176
+#: crates/ui-egui/src/shortcuts.rs:2337
 msgid "Keyboard shortcuts applied."
 msgstr ""
 
@@ -7461,11 +7461,11 @@ msgstr ""
 msgid "Mark as Spare"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:3126
+#: crates/ui-egui/src/shortcuts.rs:3287
 msgid "Markdown help written."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:3099
+#: crates/ui-egui/src/shortcuts.rs:3260
 msgid "Markdown is a help file; use Help (Markdown)… to write it."
 msgstr ""
 
@@ -8464,15 +8464,15 @@ msgstr "Không có biên"
 msgid "Not Displayed"
 msgstr "Không hiển thị"
 
-#: crates/ui-egui/src/shortcuts.rs:1737
+#: crates/ui-egui/src/shortcuts.rs:1898
 msgid "Not a binding: \"{}\""
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:1046
+#: crates/ui-egui/src/shortcuts.rs:1207
 msgid "Not a key: \"{}\""
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:1818
+#: crates/ui-egui/src/shortcuts.rs:1979
 msgid "Not a shortcuts file"
 msgstr ""
 
@@ -8794,7 +8794,7 @@ msgstr "Mở khung nhìn 3D mặc định"
 msgid "Open the last project at startup"
 msgstr "Mở dự án cuối cùng khi khởi động"
 
-#: crates/ui-egui/src/shortcuts.rs:2532
+#: crates/ui-egui/src/shortcuts.rs:2693
 msgid "Open the saved file"
 msgstr ""
 
@@ -10083,7 +10083,7 @@ msgstr "Thiết lập sẵn: tên"
 msgid "Presets"
 msgstr "Thiết lập sẵn"
 
-#: crates/ui-egui/src/shortcuts.rs:2925
+#: crates/ui-egui/src/shortcuts.rs:3086
 msgid "Press a combination…"
 msgstr ""
 
@@ -10132,7 +10132,7 @@ msgstr ""
 #: crates/core/src/schedule.rs:212
 #: crates/ui-egui/src/editor/extrusion.rs:200
 #: crates/ui-egui/src/settings.rs:548
-#: crates/ui-egui/src/shortcuts.rs:2495
+#: crates/ui-egui/src/shortcuts.rs:2656
 msgid "Profile"
 msgstr "Biên dạng"
 
@@ -10156,7 +10156,7 @@ msgstr "Biên dạng 2"
 msgid "Profile 2: sketch the profile at the path's end, square to it"
 msgstr "Biên dạng 2: phác thảo biên dạng tại điểm cuối của đường dẫn, vuông góc với nó"
 
-#: crates/ui-egui/src/shortcuts.rs:2504
+#: crates/ui-egui/src/shortcuts.rs:2665
 msgid "Profile “{}” applied to the pending set."
 msgstr ""
 
@@ -10690,7 +10690,7 @@ msgstr ""
 msgid "Remove"
 msgstr "Gỡ bỏ"
 
-#: crates/ui-egui/src/shortcuts.rs:2773
+#: crates/ui-egui/src/shortcuts.rs:2934
 msgid "Remove All"
 msgstr ""
 
@@ -10816,7 +10816,7 @@ msgstr "Chi tiết lặp: nhấp điểm đầu và điểm cuối; nhóm có tr
 
 #: crates/ui-egui/src/parameters.rs:798
 #: crates/ui-egui/src/parameters.rs:1450
-#: crates/ui-egui/src/shortcuts.rs:2949
+#: crates/ui-egui/src/shortcuts.rs:3110
 msgid "Replace"
 msgstr ""
 
@@ -10828,7 +10828,7 @@ msgstr "Thay bằng văn bản"
 msgid "Replace With Text:"
 msgstr "Thay bằng văn bản:"
 
-#: crates/ui-egui/src/shortcuts.rs:3006
+#: crates/ui-egui/src/shortcuts.rs:3167
 msgid "Replace everything"
 msgstr ""
 
@@ -10858,7 +10858,7 @@ msgstr ""
 msgid "Reporting Parameter"
 msgstr "Tham số báo cáo"
 
-#: crates/ui-egui/src/shortcuts.rs:1708
+#: crates/ui-egui/src/shortcuts.rs:1869
 msgid "Reserved key: \"{}\""
 msgstr ""
 
@@ -10866,8 +10866,8 @@ msgstr ""
 #: crates/ui-egui/src/graphics.rs:1343
 #: crates/ui-egui/src/lineweights.rs:146
 #: crates/ui-egui/src/objectstyles.rs:82
-#: crates/ui-egui/src/shortcuts.rs:2546
-#: crates/ui-egui/src/shortcuts.rs:2770
+#: crates/ui-egui/src/shortcuts.rs:2707
+#: crates/ui-egui/src/shortcuts.rs:2931
 msgid "Reset"
 msgstr "Đặt lại"
 
@@ -10875,7 +10875,7 @@ msgstr "Đặt lại"
 msgid "Reset Accent"
 msgstr "Đặt lại màu nhấn"
 
-#: crates/ui-egui/src/shortcuts.rs:2519
+#: crates/ui-egui/src/shortcuts.rs:2680
 msgid "Reset All"
 msgstr ""
 
@@ -10953,7 +10953,7 @@ msgstr "Khởi động lại và cài đặt"
 msgid "Restore Down"
 msgstr "Khôi phục kích thước"
 
-#: crates/ui-egui/src/shortcuts.rs:2544
+#: crates/ui-egui/src/shortcuts.rs:2705
 msgid "Return every action to the starting profile?"
 msgstr ""
 
@@ -10994,7 +10994,7 @@ msgstr ""
 msgid "Revision:"
 msgstr "Sửa đổi:"
 
-#: crates/ui-egui/src/shortcuts.rs:3103
+#: crates/ui-egui/src/shortcuts.rs:3264
 msgid "Revit XML import is supported; export it from Revit."
 msgstr ""
 
@@ -11431,7 +11431,7 @@ msgstr ""
 #: crates/ui-egui/src/editor/types_dialog.rs:204
 #: crates/ui-egui/src/printsets.rs:169
 #: crates/ui-egui/src/publisher.rs:884
-#: crates/ui-egui/src/shortcuts.rs:2471
+#: crates/ui-egui/src/shortcuts.rs:2632
 msgid "Search…"
 msgstr "Tìm kiếm…"
 
@@ -11794,7 +11794,7 @@ msgstr ""
 msgid "Shortcuts"
 msgstr "Phím tắt"
 
-#: crates/ui-egui/src/shortcuts.rs:2467
+#: crates/ui-egui/src/shortcuts.rs:2628
 msgid "Shortcuts are typed with Ctrl held (Cmd on a Mac): Ctrl, then W and A for Wall."
 msgstr ""
 
@@ -12217,7 +12217,7 @@ msgstr "Sắp xếp/Nhóm"
 #: crates/ui-egui/src/parameters.rs:821
 #: crates/ui-egui/src/parameters.rs:1308
 #: crates/ui-egui/src/parameters.rs:1793
-#: crates/ui-egui/src/shortcuts.rs:2623
+#: crates/ui-egui/src/shortcuts.rs:2784
 msgid "Source"
 msgstr ""
 
@@ -12992,7 +12992,7 @@ msgstr "Đó không phải địa chỉ IP: 0.0.0.0 lắng nghe trên mọi đ�
 msgid "That is the reference: pick what moves onto it."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:3072
+#: crates/ui-egui/src/shortcuts.rs:3233
 msgid "That is too big to be a shortcuts file."
 msgstr "Tệp quá lớn để là tệp phím tắt."
 
@@ -13139,15 +13139,15 @@ msgstr "Họ {} bạn đang nạp đã có trong họ này nhưng được đị
 msgid "The family {} you are loading is already in this project, defined differently. What would you like to do?"
 msgstr "Họ {} bạn đang nạp đã có trong dự án này nhưng được định nghĩa khác. Bạn muốn làm gì?"
 
-#: crates/ui-egui/src/shortcuts.rs:3083
+#: crates/ui-egui/src/shortcuts.rs:3244
 msgid "The file has no usable bindings."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:1777
+#: crates/ui-egui/src/shortcuts.rs:1938
 msgid "The file has too many bindings"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:1681
+#: crates/ui-egui/src/shortcuts.rs:1842
 msgid "The file has too many lines"
 msgstr ""
 
@@ -13507,7 +13507,7 @@ msgstr "Đầu này gắn với một tham số hoặc được tính bằng cô
 msgid "This format has no settings."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:3066
+#: crates/ui-egui/src/shortcuts.rs:3227
 msgid "This is a help file to read. Use .bks, .txt or .json to import."
 msgstr ""
 
@@ -14083,20 +14083,20 @@ msgstr "Đơn vị"
 msgid "Units Format"
 msgstr "Định dạng đơn vị"
 
-#: crates/ui-egui/src/shortcuts.rs:1702
-#: crates/ui-egui/src/shortcuts.rs:1758
-#: crates/ui-egui/src/shortcuts.rs:1760
-#: crates/ui-egui/src/shortcuts.rs:1793
+#: crates/ui-egui/src/shortcuts.rs:1863
+#: crates/ui-egui/src/shortcuts.rs:1919
+#: crates/ui-egui/src/shortcuts.rs:1921
+#: crates/ui-egui/src/shortcuts.rs:1954
 msgid "Unknown action: \"{}\""
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:1060
-#: crates/ui-egui/src/shortcuts.rs:1089
-#: crates/ui-egui/src/shortcuts.rs:1094
+#: crates/ui-egui/src/shortcuts.rs:1221
+#: crates/ui-egui/src/shortcuts.rs:1250
+#: crates/ui-egui/src/shortcuts.rs:1255
 msgid "Unknown key: \"{}\""
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:1056
+#: crates/ui-egui/src/shortcuts.rs:1217
 msgid "Unknown modifier: \"{}\""
 msgstr ""
 
@@ -14249,7 +14249,7 @@ msgstr ""
 msgid "Version {}"
 msgstr "Phiên bản {}"
 
-#: crates/ui-egui/src/shortcuts.rs:1722
+#: crates/ui-egui/src/shortcuts.rs:1883
 msgid "Version {} is not supported"
 msgstr ""
 
@@ -15682,7 +15682,7 @@ msgstr "{} xin tham gia phiên Co-Work của bạn mà không cần mã."
 msgid "{} at x {}, y {}"
 msgstr "{} tại x {}, y {}"
 
-#: crates/ui-egui/src/shortcuts.rs:3001
+#: crates/ui-egui/src/shortcuts.rs:3162
 msgid "{} bindings read; {} errors."
 msgstr ""
 
@@ -16089,11 +16089,11 @@ msgstr "{}; và {} mục khác"
 msgid "{}; the file can't be read"
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:2989
+#: crates/ui-egui/src/shortcuts.rs:3150
 msgid "“{}” assigned to “{}”."
 msgstr ""
 
-#: crates/ui-egui/src/shortcuts.rs:2943
+#: crates/ui-egui/src/shortcuts.rs:3104
 msgid "“{}” is already assigned to “{}”."
 msgstr ""
 
@@ -16165,7 +16165,7 @@ msgstr "• Nét rất đậm (0,70 mm — Bút 12): cột và dầm bê tông c
 msgid "• Wide / Heavy (0.50 mm — 0.70 mm): Cut walls and structural sections."
 msgstr "• Đậm (0,50 mm — 0,70 mm): tường bị cắt và mặt cắt kết cấu."
 
-#: crates/ui-egui/src/shortcuts.rs:3018
+#: crates/ui-egui/src/shortcuts.rs:3179
 msgid "…and {} more"
 msgstr ""
 
