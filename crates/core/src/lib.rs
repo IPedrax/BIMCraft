@@ -15,6 +15,7 @@ pub mod bath;
 pub mod bimc;
 pub mod bounds;
 pub mod bridge;
+pub mod building_demand;
 pub mod cad;
 #[cfg(test)]
 mod cad_tests;

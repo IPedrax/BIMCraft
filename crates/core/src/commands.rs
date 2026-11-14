@@ -2813,6 +2813,27 @@ other_files(
         demand,
     ),
     other(
+        "building_demand",
+        "Building Demand",
+        "{utility | standard, dwellings: [{count, area | demand | grade}], common?: {class: kW}, common_demand?, special?, commercial?, \
+         premises?: {use: m²}, as_printed?} the demand of a building of dwellings, for its supply, by the method of a `utility` or a \
+         `standard` (data/building-demand.json: CELESC N-321.0003, CEMIG ND-5.2, FECOERGS REGD 035.01.06, HIDROPAN RIC BT 2014, and \
+         Spain's ITC-BT-10; any other is refused until its entry is added). D = factor · F(n) · d + common + special + commercial + \
+         premises: d is one dwelling's demand, by the `area` (m²) of each group (the mean area weighted by `count`, looked up in the \
+         method's table, an area between two rows taking the next one up) or, where the method takes it, each group's `demand` or a \
+         `grade` naming one (ITC-BT-10: basic, elevated); F(n) the method's diversity factor, an equivalent number of dwellings; factor \
+         its constant (1.2 for Celesc, Fecoergs and Hidropan, 1.4 for Cemig), on the common areas too where the method says (Celesc). \
+         `common` is the common areas' installed load in kW by class (Celesc: lighting, outlets), turned into demand by the method's \
+         bands; `common_demand` the common areas' demand worked out apart (lifts, pumps), `special` loads that count whole (an electric \
+         vehicle charging station), `commercial` the shops' demand and `premises` floor areas by use where the method gives a load \
+         per m² (ITC-BT-10: commercial, garage_natural, garage_forced), all in the method's `unit` (kVA, or kW for ITC-BT-10). Tables \
+         are as printed, with errata where other standards print the same table otherwise (`errata` says which were taken; \
+         `as_printed` uses the printed values). It replies each term, the demand, the `entrance` its table gives for it (breaker and \
+         conductors; `null` without a table or outside it), the `sources`, `notes` and `not_covered`. It has no shortcut: Revit has \
+         no tool for it. It changes nothing",
+        building_demand,
+    ),
+    other(
         "water_size",
         "Size Cold Water Pipes",
         "{fixtures?: {wc, lav, sink, shower, laundry: count}, flow?, method?: weights|sum, dn?, length?, fittings?: {elbow90, elbow45, \
@@ -6735,7 +6756,111 @@ fn demand_celesc(p: &Value, utility: &str, source: &str) -> R {
         "category_note": note,
         "demand_kva": demand_kva,
         "demand_note": "N-321.0001 gives no demand formula for a unit: Tabela 01 goes by the installed load, and a demand where one is needed is the designer's, carried as given",
-        "not_covered": "Tabela 01's conduits, galvanized steel mast and load branch, Tabela 02 (220 V without a neutral), and the probable demand of a building of several units (N-321.0003)",
+        "not_covered": "Tabela 01's conduits, galvanized steel mast and load branch, Tabela 02 (220 V without a neutral), and the probable demand of a building of several units (N-321.0003: `building_demand`)",
+    }))
+}
+
+fn building_demand(_: &mut Session, p: &Value) -> R {
+    use crate::building_demand::{self as bd, Group, Input};
+    let c = "building_demand";
+    if !p.is_object() {
+        return Err(bad(c, "params must be an object"));
+    }
+    only(c, p, &["standard", "utility", "dwellings", "common", "common_demand", "special", "commercial", "premises", "as_printed"])?;
+    let names = || bd::methods().iter().map(|m| m.standard.as_str()).collect::<Vec<_>>().join(", ");
+    let utilities = || bd::methods().iter().flat_map(|m| m.utilities.iter().map(String::as_str)).collect::<Vec<_>>().join(", ");
+    let m = match (string(c, p, "standard")?, string(c, p, "utility")?) {
+        (Some(_), Some(_)) => return Err(bad(c, "give `standard` or `utility`, not both")),
+        (Some(s), None) => bd::methods()
+            .iter()
+            .find(|m| m.standard == s)
+            .ok_or_else(|| bad(c, format!("no method `{s}` in data/building-demand.json: {}", names())))?,
+        (None, Some(u)) => bd::methods()
+            .iter()
+            .find(|m| m.utilities.iter().any(|x| x.eq_ignore_ascii_case(&u)))
+            .ok_or_else(|| bad(c, format!("no method for the utility `{u}` yet: {}; or a `standard`: {}", utilities(), names())))?,
+        (None, None) => return Err(bad(c, format!("give the `utility` ({}) or the `standard` ({})", utilities(), names()))),
+    };
+    let list = match p.get("dwellings") {
+        Some(Value::Array(a)) if !a.is_empty() && a.len() <= 1000 => a,
+        _ => return Err(bad(c, "`dwellings` is a list of 1 to 1000 groups of dwellings alike, each {count, area | demand | grade}")),
+    };
+    let mut dwellings = Vec::new();
+    for (i, g) in list.iter().enumerate() {
+        let at = |e: String| format!("dwellings[{i}]: {e}");
+        if !g.is_object() {
+            return Err(bad(c, at("it must be an object".into())));
+        }
+        only(c, g, &["count", "area", "demand", "grade"]).map_err(at)?;
+        let count = g
+            .get("count")
+            .and_then(Value::as_u64)
+            .filter(|n| (1..=100_000).contains(n))
+            .and_then(|n| u32::try_from(n).ok())
+            .ok_or_else(|| bad(c, at("`count` is a whole number from 1 to 100000".into())))?;
+        let number = |key: &str, hi: f64| -> Result<Option<f64>, String> {
+            match g.get(key).filter(|v| !v.is_null()) {
+                None => Ok(None),
+                Some(_) => within(c, g, key, 0.0, f64::MIN_POSITIVE, hi).map(Some).map_err(at),
+            }
+        };
+        dwellings.push(Group {
+            count,
+            area: number("area", 1.0e5)?,
+            demand: number("demand", 1.0e4)?,
+            grade: string(c, g, "grade").map_err(at)?,
+        });
+    }
+    let by_key = |key: &str, hi: f64| -> Result<Vec<(String, f64)>, String> {
+        match p.get(key) {
+            v if absent(v) => Ok(Vec::new()),
+            Some(Value::Object(o)) if o.len() <= 100 => {
+                o.keys().map(|k| within(c, &p[key], k, 0.0, 0.0, hi).map(|x| (k.clone(), x)).map_err(|e| format!("{key}: {e}"))).collect()
+            }
+            _ => Err(bad(c, format!("`{key}` is an object of at most 100 entries, each a name and a number"))),
+        }
+    };
+    let input = Input {
+        dwellings,
+        common: by_key("common", 1.0e6)?,
+        common_demand: within(c, p, "common_demand", 0.0, 0.0, 1.0e6)?,
+        special: within(c, p, "special", 0.0, 0.0, 1.0e6)?,
+        commercial: within(c, p, "commercial", 0.0, 0.0, 1.0e6)?,
+        premises: by_key("premises", 1.0e7)?,
+        as_printed: flag(c, p, "as_printed")?,
+    };
+    let o = bd::compute(m, &input).map_err(|e| bad(c, e))?;
+    let r3 = |x: f64| (x * 1000.0).round() / 1000.0 + 0.0;
+    let mut sources = vec![m.source.clone(), m.dwelling.source.clone(), m.diversity.source.clone(), m.factor_source.clone()];
+    if o.mean_area.is_some_and(|a| m.dwelling.by_area.last().is_some_and(|l| a > l.0)) {
+        sources.extend(m.dwelling.above.iter().map(|a| a.source.clone()));
+    }
+    sources.extend(m.common.iter().filter(|x| input.common.iter().any(|(k, _)| *k == x.class)).map(|x| x.source.clone()));
+    sources.extend(m.premises.iter().filter(|x| input.premises.iter().any(|(k, _)| *k == x.use_)).map(|x| x.source.clone()));
+    sources.extend(m.entrance.iter().map(|e| e.source.clone()));
+    Ok(json!({
+        "standard": m.standard,
+        "country": m.country,
+        "unit": m.unit,
+        "dwellings": o.dwellings,
+        "mean_area": o.mean_area.map(r3),
+        "per_dwelling": r3(o.per_dwelling),
+        "raised_to_least": o.raised,
+        "diversity": r3(o.diversity),
+        "factor": m.factor,
+        "terms": {
+            "dwellings": r3(o.terms.dwellings),
+            "common": r3(o.terms.common),
+            "special": r3(o.terms.special),
+            "commercial": r3(o.terms.commercial),
+            "premises": r3(o.terms.premises),
+        },
+        "demand": r3(o.demand),
+        "entrance": o.entrance.map(|e| json!({"over": e.over, "up_to": e.up_to, "breaker_a": e.breaker_a, "columns": e.columns})),
+        "errata": o.errata.iter().map(|e| json!({"at": e.at, "printed": e.printed, "value": e.value, "why": e.why})).collect::<Vec<_>>(),
+        "sources": sources,
+        "notes": m.notes,
+        "not_covered": m.not_covered,
     }))
 }
 

@@ -2073,7 +2073,7 @@ msgstr "Verificação: fck"
 msgid "Checking for updates…"
 msgstr "Procurando atualizações…"
 
-#: crates/core/src/commands.rs:3928
+#: crates/core/src/commands.rs:3949
 msgid "Checking the model"
 msgstr ""
 
@@ -3850,7 +3850,7 @@ msgstr "Demolido"
 msgid "Demolition"
 msgstr "Demolição"
 
-#: crates/core/src/commands.rs:13135
+#: crates/core/src/commands.rs:13260
 msgid "Dependent"
 msgstr "Dependente"
 
@@ -4721,7 +4721,7 @@ msgstr "Configurações elétricas"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "Configurações elétricas: as tensões, os sistemas de distribuição e os tipos de fio a que circuitos e quadros se referem; seções em mm²"
 
-#: crates/core/src/commands.rs:2903
+#: crates/core/src/commands.rs:2924
 msgid "Elements"
 msgstr "Elementos"
 
@@ -10215,7 +10215,7 @@ msgid "Properties over the Project Browser, on the left, as at first"
 msgstr "Propriedades sobre o Navegador de projeto, à esquerda, como no início"
 
 #: crates/core/src/commands.rs:618
-#: crates/core/src/commands.rs:8686
+#: crates/core/src/commands.rs:8811
 msgid "Property Line"
 msgstr ""
 
@@ -10383,7 +10383,7 @@ msgstr "Lê um carimbo desenhado em tamanho real (em mm do papel) no espaço do 
 msgid "Reading elements"
 msgstr ""
 
-#: crates/core/src/commands.rs:3885
+#: crates/core/src/commands.rs:3906
 msgid "Reading the file"
 msgstr ""
 
@@ -14002,11 +14002,11 @@ msgstr "Desbloquear"
 msgid "Unlock alignment"
 msgstr "Desbloquear alinhamento"
 
-#: crates/core/src/commands.rs:13306
+#: crates/core/src/commands.rs:13431
 msgid "Unnamed"
 msgstr "Sem nome"
 
-#: crates/core/src/commands.rs:3902
+#: crates/core/src/commands.rs:3923
 msgid "Unpacking the project"
 msgstr ""
 
