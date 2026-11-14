@@ -837,6 +837,16 @@ impl<'a> Reader<'a> {
             // can't follow (an ellipse's arc, an indexed curve) as the chords the import draws it with.
             "IFCARBITRARYCLOSEDPROFILEDEF" if let Some(sides) = self.outline(reference(profile.args.get(2)), 0) => {
                 let turned = |t: f64| Expr::Number((t * 1e6).round() / 1e6 + 0.0);
+                // A side under a millimetre (a fillet's sliver, two points Tekla writes a hair apart) joins its neighbours,
+                // as a family's sketch takes no line that short: the next side starts where the last kept one ends.
+                let mut sides: Vec<(P2, P2, Option<f64>)> = sides.into_iter().filter(|(a, b, _)| a.dist(*b) >= 1.0).collect();
+                if sides.len() < 2 {
+                    return None;
+                }
+                for i in 0..sides.len() {
+                    let before = sides[(i + sides.len() - 1) % sides.len()].1;
+                    sides[i].0 = before;
+                }
                 sides
                     .into_iter()
                     .map(|(a, b, turn)| {

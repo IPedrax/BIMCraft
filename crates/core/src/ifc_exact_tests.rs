@@ -263,3 +263,26 @@ fn a_profile_with_arcs_comes_in_with_its_arcs_not_their_chords() {
     let solid = (22.0 * 40.0 + std::f64::consts::PI * 121.0) * 12.0;
     assert!((v / solid - 1.0).abs() < 0.01, "{v} for {solid}");
 }
+
+#[test]
+fn a_side_under_a_millimetre_joins_its_neighbours_so_the_profile_still_comes_in() {
+    let mut g = G::new();
+    // A 30 mm square with one corner written twice, 0.4 mm apart, as a fillet's sliver comes out of Tekla.
+    let pts: Vec<u32> = [(0.0, 0.0), (30.0, 0.0), (30.0, 30.0), (0.4, 30.0), (0.0, 30.0), (0.0, 0.0)]
+        .iter()
+        .map(|(x, y)| g.add(&format!("IFCCARTESIANPOINT(({x:?},{y:?}))")))
+        .collect();
+    let list = pts.iter().map(|p| format!("#{p}")).collect::<Vec<_>>().join(",");
+    let line = g.add(&format!("IFCPOLYLINE(({list}))"));
+    let profile = g.add(&format!("IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#{line})"));
+    let plate = g.add(&format!("IFCEXTRUDEDAREASOLID(#{profile},#5,#8,10.)"));
+    let map = shape(&mut g, &[plate]);
+    bolt(&mut g, "Plate", map, [0.0, 0.0, 0.0], UP, EAST);
+    let i = g.import();
+    let m = &i.model;
+    assert!(m.families.contains_key("Plate"), "{:?}", i.skipped);
+    assert_eq!(m.families["Plate"].forms[0].sketch.len(), 4, "the sliver joined its neighbour");
+    // Drawn, the square less the sliver's 0.4 mm corner: within 1%.
+    let v = volume(&mesh(m, "Plate"));
+    assert!((v / 9000.0 - 1.0).abs() < 0.01, "{v}");
+}
