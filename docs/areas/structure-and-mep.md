@@ -245,7 +245,103 @@ piece 6.
 
 **The fixtures library** (`plumbing.rs`, `data/plumbing.json`) holds what the sizing commands know of each kind of fixture, the way `data/electrical.json` holds the electrical settings: its design flows in L/s (cold, and hot where a source gives one; `hot_flow` is `null` until one does, never guessed), its weight (the method of weights of `water_size`), its units of contribution and the smallest DN of its drain (`drain_size`), each with the source it comes from (`water_source`, `drain_source`). `plumbing::validate` refuses a row with no source, an empty or repeated kind, or a number that is not positive and finite, and a test runs it over the shipped file; the library reads as empty if the file fails it, so a bad row shows as "no fixture" and never as a wrong number. `water::fixture` and `drain_size`'s `drainage::fixture` are views of it, and the commands list its kinds in their errors. A project's own values are a later step.
 
+### Wood framing
+
+`framing.rs` frames walls in wood, as a light-frame house is built: a wall holds `framing`, the name of a framing type (a
+library reference, held by its GUID in a file, renamed and removed as other type references are), and its plates, studs,
+kings, jacks, headers, sills, cripples and blocking are worked out from the wall whenever they are asked for (`framing::wall`)
+and never stored, as a railing's balusters are. Moving a window, changing a height, attaching the top to a roof or editing the
+framing type changes them with nothing to regenerate, and a file holds no member to go stale.
+
+A framing type is `Types::framing[name]`, a `FramingType` (all mm; every field has its default, so `type {category: framing,
+name}` alone is 2x4 framing 16 inches on centre for a bearing wall): `spacing` 406.4 (the grid's stud centres apart);
+`layout` `start`, `end` or `centre` (where the grid is measured from); `thickness` 38 (a stud's or a plate's); `material`, a
+material of the library, none for the structure layer's; `bottom_plates` 1 and `top_plates` 2; `kings` 1 and `jacks` 1 each side
+of an opening; `window_rough` [25, 13] and `door_rough` [50, 41], what a rough opening adds to the opening's width (half each
+side) and to its height (on top); `headers`, `{up_to?, depth, plies, flat?}` in order, the first whose `up_to` holds the rough
+opening's width (or the last) its header, by default 2 plies 184 deep up to 1250 and 2 plies 235 deep above; `sill_plates` 1;
+`corner` `three_stud`, `two_stud` or `none`; `tee` `studs` or `none`; `blocking`, heights over the wall's base of rows of flat
+blocking, none by default; and `stock`, the stock lengths a cut list takes members from, shortest first (2440, 3050, 3660,
+4270, 4880, 6100). `Model::check` holds each to its range (`framing::check_type`): thickness 10 to 300 and spacing wider than
+it (up to 3000), 0 to 4 plates of each kind, 0 to 3 kings and jacks, rough allowances 0 to 500, 1 to 8 headers of 1 to 3 plies
+and 1 to 1000 deep, 8 rows of blocking and 16 stock lengths at most, each longer than the last, and a material the library has.
+A new project has no framing type: `frame` makes `2x4 @ 406` when there is none, so a project that frames nothing doesn't change.
+
+The members stand in the wall type's structure layer, the thickest where it has several (the first of those): as deep across the
+wall as that layer is thick, so a 2x4 wall is one with an 89 mm structure layer and a 2x6 one with a 140, never a second number
+that could disagree. `framing::check`, which `Model::check` asks of each framed wall, refuses a framing type that doesn't exist,
+a wall that isn't straight, a wall type with no structure layer, a wall longer than 1024 spacings (`MAX_STATIONS`) and a header
+whose plies are wider together than the layer; each error says what to change, and `frame`, `modify` or `type` rolls back.
+Nothing an opening or a join does is refused: moving a window must never be, so what doesn't fit is left unframed.
+
+The rules, in the wall's own frame (`s` along its location line from its start, `across` to its left, `z` up):
+
+- The framed length is the structure layer's along the wall. A free end is square. At a square L corner of two walls each with a
+  structure layer, the wall of the lower GUID (the one whose compound core runs through, `walls/compound.rs`) runs to the
+  other's far structure face and the other stops at its near one, so their members neither overlap nor leave a gap. At any other
+  join (not square, three walls, a tee at the end) the layer's shorter edge ends it.
+- A stud stands flush with each end; `three_stud` adds one beside the end stud of the wall that runs through an L corner (the
+  butting wall's end stud is the third), and `two_stud` and `none` add none. Grid stations are stud centres `k` spacings from
+  the framed length's start, end or middle; a grid stud is left out where it would stand in a rough opening or nearer than its
+  thickness to another upright. An upright shorter than it is thick is left out.
+- Each door and window hosted in the wall has a rough opening as wide as it plus the allowance, centred on it, from a window's sill
+  (a door's: the wall's base) up to its head plus the allowance. Jacks stand beside it from the bottom plates to its top, kings
+  outside them full height, a header on the jacks from the outer face of one to the other's (its plies side by side, centred in
+  the layer; a `flat` one as wide as the layer, its plies stacked), a window's sill plates under it between the jacks, and
+  cripples at the grid stations inside it, over the header up to the top plates and, under a window, from the bottom plates
+  up to the sill. The bottom plates are cut across a door's rough opening. An opening whose kings would run past the framed
+  length or into an end or corner stud, overlap an opening framed before it along the wall, or leave no room for its header
+  under the top plates or its sill over the bottom ones, is left unframed, and still no stud stands in its rough opening.
+- Plates follow the wall's base and top (`walls::profile`): a top attached to a sloped roof makes sloped top plates, a piece for
+  each slope, each as thick square to its slope as `thickness`, with plumb ends; the studs are cut each to its own length with a
+  bevelled top. A top plate that would come down onto the bottom plates (a wall too low) is left out.
+- Where another wall ends on this one's side, `studs` puts a stud each side of its structure layer (else its whole thickness),
+  backing for its end stud, unless it would stand in an opening or against another upright.
+- Blocking is laid flat, as thick as a stud and as wide as the layer, centred at each height between neighbouring full-height
+  members (studs, kings, corner and tee studs), never across a rough opening nor through the plates.
+
+Each member has a `key` that lasts while what it belongs to does: grid studs by their station from the layout's origin
+(`stud/<station>`), end and corner studs `stud/start`, `stud/end`, `corner/start`, backing `tee/<wall GUID>/0`, an opening's
+members by its GUID (`<GUID>/king/left/0`, `<GUID>/header`, `<GUID>/cripple/top/<station>`), plates by ply and piece, blocking by
+row and the stud it starts at; moving a window keeps the far studs' keys. Its `section` is one ply as sawn (38 x 89; each ply of a
+header 38 x 184), its `length` the cut length (up an upright's longest edge, along a lying one's slope).
+
+`frame {ids | id, type?}` frames walls (Structure > Framing) with `type` or the project's default framing type; `unframe {ids |
+id}` takes it off, leaving the type in the project; `modify {id, framing: name | null}` does either for one wall; `framing {id}`
+reads a framed wall's members and its cut list (role, section, plies, length to the mm, stock length, count) and builds nothing;
+`type {category: framing, name, ...}` makes or edits a framing type from the fields given over its own.
+
+A framed wall's members are solids of the wall in the framing's material (`view3d.rs`), so a pick takes the wall and a section
+cuts them as it cuts any solid; its structure layer is split off its body and drawn only where a view hides Walls > Framing
+(`framing`, a subcategory of walls in Visibility/Graphics, `graphics::SUBCATEGORIES`), which brings the layer back as it was. A
+plan at medium or fine detail clears the structure layer's band and draws the members its cut plane crosses, filled in their
+material's cut pattern and outlined (`render::members_cut`); at coarse detail the wall draws as before. A schedule of
+`framingmembers` (Framing Members, `schedule::framing_members`) has a row for each member of each framed wall: Host, Host Type,
+Framing Type, Role, Section (`38 x 89`, a header of two plies `2 x 38 x 184`), Length (cut, to the mm), Stock Length (the
+shortest stock it is cut from; 0 where it is longer than every stock length, to be spliced), Level, Key and Count; grouped by
+Role, Section and Length it is the cut list. IFC writes each member as an `IfcMember`, `STUD` for studs, kings, jacks and
+cripples, `PLATE` for plates and sills, `MEMBER` for headers and blocking, its role its Name and ObjectType and its key its Tag,
+its GlobalId made from the wall's GUID and its key (so it lasts while the member does), in the framing's material, and aggregated
+to its wall (`IfcRelAggregates`, with any bars that reinforce it), in no storey of its own; the wall keeps its own body. IFC2x3
+writes them without a predefined type. An IFC import brings the wall back unframed: the members, being its parts, are left out.
+A file with a framed wall or a framing type is FORMAT 21 (an older build would drop `framing` without a word).
+
+In the window, the Structure tab's Framing panel has Frame and Remove Framing for the walls of the selection, each one undo step
+(the status box says when no wall is selected; Frame drops the project's framing types down when it has several); Find (Ctrl+K)
+has both. A wall's Properties have Framing under Structural, None or one of the project's types (`modify`), with a button beside
+it to its Type Properties, where every field but the headers is typed or picked (spacing, thickness, plates, blocking heights and
+stock lengths as lengths parted by commas, layout, corner and tee, rough allowances, kings, jacks, sill plates and material) and
+Duplicate and Rename work as for any type; the headers are shown and set with `type`. The Project Browser lists framing types
+under Families, a click opens one's Type Properties and its right-click menu deletes one nothing uses.
+
+Not yet: floors (joists) and roofs (rafters), which will reuse `Member`, the schedule, the graphics and IFC; framing elevations;
+picking or tagging a single member; sheathing; span checks; connectors; plates split at a stock length (a plate longer than every
+stock length is scheduled with 0); and at non-square corners and joins of three walls the framed length falls back to the
+layer's shorter edge, which may leave a gap or an overlap between two framed walls' members.
+
 ### Timber wall framing
+
+`timber_framing` is the older read-only query, kept as it was; `frame` (above) is the feature.
 
 `timber_framing` reads one isolated straight wall, its chosen structural layer and its only hosted rectangular window.
 Supply their ids or GUIDs as `wall`, `layer` and `window`. Supply `spacing`, stud/plate `thickness`, layer `depth` and
