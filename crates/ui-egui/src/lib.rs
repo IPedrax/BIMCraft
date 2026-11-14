@@ -939,6 +939,8 @@ pub struct BimApp {
     component_angle: f64,
     /// Hinge hand for this run of the Door tool. Facing follows the pointer.
     door_flip_hand: bool,
+    /// Face for this run of the Window tool, over the one the pointer's side picks.
+    window_flip_facing: bool,
     /// An adaptive component's points clicked so far, in the project, before the last one places it.
     pub(crate) adaptive_clicks: Vec<[f64; 3]>,
     /// An adaptive instance's grip being dragged in a plan: the instance, and its point's number.
@@ -1674,6 +1676,7 @@ impl BimApp {
             component: None,
             component_angle: 0.0,
             door_flip_hand: false,
+            window_flip_facing: false,
             adaptive_clicks: Vec::new(),
             adaptive_grip: None,
             placement_plane: None,
@@ -2399,15 +2402,15 @@ impl BimApp {
         if pressed(Modifiers::NONE, Key::Delete) {
             self.delete();
         }
-        // consume_key also matches Alt/Shift and key repeats. Only an unmodified downstroke
-        // changes a door, so holding Space cannot fill the Undo history.
+        // consume_key also matches Alt/Shift and key repeats. Only an unmodified downstroke turns a wall,
+        // a door or a window, so holding Shift or Space cannot fill the Undo history.
         let plain_space =
             |e: &Event| matches!(e, Event::Key { key: Key::Space, pressed: true, repeat: false, modifiers: Modifiers::NONE, .. });
-        if matches!(self.tool, Tool::Door | Tool::Modify) && ctx.input(|i| i.events.iter().any(plain_space)) && self.door_space() {
+        if matches!(self.tool, Tool::Door | Tool::Window | Tool::Modify)
+            && ctx.input(|i| i.events.iter().any(plain_space))
+            && self.opening_space()
+        {
             pressed(Modifiers::NONE, Key::Space);
-        }
-        if self.tool == Tool::Modify && pressed(Modifiers::NONE, Key::Space) {
-            self.flip();
         }
         // Space while rotating: the next click places the centre, as Revit's Space does.
         if let Tool::Rotate { place, start, .. } | Tool::RotateNorth { place, start, .. } = &mut self.tool
@@ -3042,6 +3045,7 @@ impl BimApp {
         }
         self.snap_once = None;
         self.door_flip_hand = false;
+        self.window_flip_facing = false;
         self.tool = tool;
         // Floor sketches its outline at once, as Revit's does (Walls' Outline puts the walls' in the sketch).
         if self.tool == Tool::Floor
@@ -3184,37 +3188,68 @@ impl BimApp {
         }
     }
 
-    /// While placing a swinging door Space changes only its pending hand. With one selected,
-    /// step through the four Opens tiles in order with the same instance edit as a tile click.
-    fn door_space(&mut self) -> bool {
-        let m = &self.session.model;
+    /// While placing a swinging door Space changes only its pending hand; while placing a window it changes the
+    /// pending face. With one door selected, step through the four Opens tiles in order with the same instance edit
+    /// as a tile click.
+    fn opening_space(&mut self) -> bool {
         match self.tool {
             Tool::Door if self.plan_level().is_some() => {
-                let (family, ty) = self.opening_pick("door");
-                if !ty.as_deref().is_some_and(|t| m.single_swing_door(family.as_deref(), t)) {
+                if !self.picked_door_swings() {
                     return false;
                 }
                 self.door_flip_hand = !self.door_flip_hand;
             }
+            Tool::Window if self.plan_level().is_some() => self.window_flip_facing = !self.window_flip_facing,
             Tool::Modify if self.sketch.is_none() => {
-                let &[id] = self.selection.as_slice() else { return false };
-                let Some(Element::Door(o)) = m.elements.get(id) else { return false };
-                if !m.single_swing_door(o.family.as_deref(), &o.type_name) {
+                let ids = self.flippable();
+                if ids.is_empty() {
                     return false;
                 }
-                // Hand alternates every step; facing changes when hand wraps back to as placed.
-                self.run("modify", json!({"id": id, "flip_hand": !o.flip_hand, "flip_facing": o.flip_facing ^ o.flip_hand}));
+                self.run("flip", json!({"ids": ids, "cycle": "auto"}));
             }
             _ => return false,
         }
         true
     }
 
-    /// The selected walls turned round about their location lines: Revit's flip arrows, or Space.
+    /// Whether the Door tool's picked type is a swing door, whose hinge Space can turn.
+    fn picked_door_swings(&self) -> bool {
+        let (family, ty) = self.opening_pick("door");
+        ty.as_deref().is_some_and(|t| self.session.model.door_flips(family.as_deref(), t).hand)
+    }
+
+    /// Whether every selected element is an opening that Space can turn, so the status can say what Space does.
+    fn selection_flips(&self) -> bool {
+        let m = &self.session.model;
+        !self.selection.is_empty()
+            && self.selection.iter().all(|id| m.elements.get(*id).and_then(|e| m.opening_flips(e)).is_some_and(|flips| flips.any()))
+    }
+
+    /// Whether the selection is only doors with no Opens positions, so Space has no swing to turn.
+    fn selection_has_no_swing(&self) -> bool {
+        let m = &self.session.model;
+        !self.selection.is_empty()
+            && self
+                .selection
+                .iter()
+                .all(|id| matches!(m.elements.get(*id), Some(Element::Door(o)) if !m.door_flips(o.family.as_deref(), &o.type_name).any()))
+    }
+
+    /// The selected elements Space and Flip turn over: walls, and doors and windows whose type flips.
+    fn flippable(&self) -> Vec<Id> {
+        let m = &self.session.model;
+        self.selection
+            .iter()
+            .copied()
+            .filter(|id| m.wall(*id).is_some() || m.elements.get(*id).and_then(|e| m.opening_flips(e)).is_some_and(|flips| flips.any()))
+            .collect()
+    }
+
+    /// The selected walls and openings turned over, in one Undo step: Revit's flip arrows, or Space.
     fn flip(&mut self) {
-        let walls = self.selected_walls();
-        if !walls.is_empty() {
-            self.run("flip", json!({"ids": walls}));
+        let ids = self.flippable();
+        if !ids.is_empty() {
+            self.run("flip", json!({"ids": ids, "cycle": "auto"}));
         }
     }
 
@@ -5836,13 +5871,22 @@ impl BimApp {
             );
         }
         match &self.tool {
+            Tool::Modify if self.selection_flips() => {
+                msg!("Space flips the hand or facing; the flip controls on the plan do the same.")
+            }
+            Tool::Modify if self.selection_has_no_swing() => msg!("This door has no swing to flip."),
             Tool::Modify => msg!("Click to select, Tab for what's underneath, Ctrl adds, Shift takes away; drag to box or to move."),
             Tool::Wall(chain) if chain.is_empty() => msg!("Click to enter the wall's start point."),
             Tool::Wall(_) => msg!("Click to build the wall to the next point. Enter or Esc ends the chain, Shift keeps it square."),
             Tool::Attach if self.attach_base => msg!("Pick a roof or a floor: the bases of what's selected stand on it."),
             Tool::Attach => msg!("Pick a roof or a floor: the tops of what's selected follow its underside."),
-            Tool::Door => msg!("Click a wall to place the door."),
-            Tool::Window => msg!("Click a wall to place the window."),
+            Tool::Door if !self.picked_door_swings() => msg!("This door has no swing to flip. Click a wall to place it."),
+            Tool::Door => {
+                msg!("Click a wall to place the door. Space flips the hinge; the pointer's side of the wall sets the swing.")
+            }
+            Tool::Window => {
+                msg!("Click a wall to place the window. Space flips its face; the pointer's side sets which face is out.")
+            }
             Tool::Room => msg!("Click inside walls to place a room; the outline shows the room you'd get."),
             Tool::RoomSeparator(None) => msg!("Click the separation line's start."),
             Tool::RoomSeparator(Some(_)) => msg!("Click the line's next point; each click places a line. Esc ends the chain."),

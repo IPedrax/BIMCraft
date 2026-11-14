@@ -2153,12 +2153,17 @@ impl BimApp {
             if let Some(middle) = m.centred(&o, SNAP / v.scale) {
                 params["offset"] = json!(middle);
             }
-            if door
-                && m.single_swing_door(o.family.as_deref(), &o.type_name)
-                && let Some(w) = m.wall(o.host)
-            {
-                params["flip_hand"] = json!(self.door_flip_hand);
-                params["flip_facing"] = json!(Axis::of(w).project(cursor).1 < walls::centre(m, w));
+            if let Some(w) = m.wall(o.host) {
+                let side = Axis::of(w).project(cursor).1 < walls::centre(m, w);
+                if door {
+                    if m.door_flips(o.family.as_deref(), &o.type_name).hand {
+                        params["flip_hand"] = json!(self.door_flip_hand);
+                        params["flip_facing"] = json!(side);
+                    }
+                } else {
+                    // The window's face is the pointer's side, or the other way round while Space asks for it.
+                    params["flip_facing"] = json!(side ^ self.window_flip_facing);
+                }
             }
         }
         params
@@ -2210,7 +2215,11 @@ impl BimApp {
                 let door = matches!(self.tool, Tool::Door);
                 let cat = if door { "door" } else { "window" };
                 let p = self.opening_params(m, v, level, at, door);
-                self.run(cat, p);
+                // The placement takes the pending hinge or face; the next one starts as placed.
+                if self.run(cat, p).is_some() {
+                    self.door_flip_hand = false;
+                    self.window_flip_facing = false;
+                }
             }
             Tool::Room => {
                 let p = self.typed("room", json!({"point": point(round(v.mm(at))), "level": level}));

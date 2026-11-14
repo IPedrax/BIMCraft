@@ -132,8 +132,11 @@ project's: the plan, the section and the 3D view draw `BimApp::view_model`, a co
 command on a scratch `Session`, made once for each model and each setting. A tool that needs the view's real model (select all, commands)
 still reads `session.model`. The Door and Window tools preview with `opening_of`, which the `door` and `window` commands insert too, so a
 sketch is the element the click makes (`render::sketch`). When placing a single-swing door in plan, Space swaps its hinge jamb
-and moving the pointer across the wall centre swaps its facing. With one such door selected, Space steps through the four Opens
-pictures in Inspector order; each press is one `modify` and one Undo step. A selected door or window shows two temporary dimensions from its middle
+and moving the pointer across the wall centre swaps its facing; a window's face follows the pointer's side, and Space turns it over.
+A click takes the pending hinge or face and the next one starts as placed. With doors or windows selected, Space turns every one it
+can: a swing door steps through the four Opens pictures in Inspector order, a window turns its face, and a sliding or fixed door
+is left alone. Walls in the selection turn as Space always did, and each press is one `flip` and one Undo step. A door's or a window's
+flip capabilities are `Model::opening_flips`, from its operation; the flip arrows on the plan do the same. A selected door or window shows two temporary dimensions from its middle
 to the faces of the walls meeting its wall either side of it, or to its wall's ends where none does (`Model::opening_span`), as Revit's
 measure to wall faces; typing one counts from that face. Placed or dragged alone within `SNAP` px of the middle between those faces, a
 door or window lands on it (`Model::centred`): the click sends that `offset`, the drag slides by what reaches it.
@@ -317,9 +320,9 @@ The Inspector's pictures, the same in both profiles. Under the filter row, the t
 (`properties::layer_picture`, for walls, floors, roofs and ceilings, `LAYERED`): each layer to its thickness in its material's colour, a
 type without layers as one band. A wall's run from its exterior face to its interior one, with the location line the selected walls share
 dashed where it runs (`walls::depth`, the core's own rule) and named under it; a click on the picture sets the line nearest it, through
-`modify`. A floor's, a roof's or a ceiling's run from the top down. Under it, for doors, which way they open (`opening_picker`): four plans of a door in
-its wall (as placed, hand flipped, facing flipped, both), the one the selected doors share lit, a click setting their `flip_hand` and
-`flip_facing` through `modify`. A room's colour on plans is its type's, so it is set in the room type's Type Properties
+`modify`. A floor's, a roof's or a ceiling's run from the top down. Under it, for doors that swing, which way they open (`opening_picker`): four
+plans of a door in its wall (as placed, hand flipped, facing flipped, both), the one the selected doors share lit, a click setting
+their `flip_hand` and `flip_facing` through `flip`; a door whose leaves slide, fold or stay put has no such pictures. A room's colour on plans is its type's, so it is set in the room type's Type Properties
 (`properties::RoomRows`, Edit Type with a room selected): under Floor and Ceiling, the floor type and the ceiling type its rooms have
 of their own (None first) and each one's offset from the room's level; under Graphics, Colour on plans and its swatches or any other
 colour (`RoomType::colour`, red, green and blue, none for no fill), which plans draw as a fill of each of its rooms' regions behind

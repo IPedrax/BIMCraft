@@ -1645,6 +1645,11 @@ impl BimApp {
     /// flipped, both. The one they share is lit; a click sets their `flip_hand` and `flip_facing` to another.
     fn opening_picker(&mut self, ui: &mut Ui, model: &Model) {
         let Some(("door", _, ids)) = self.type_subject() else { return };
+        // A door whose leaves slide, fold or stay put has no Opens positions to pick from.
+        let ids: Vec<Id> = ids
+            .into_iter()
+            .filter(|id| model.elements.get(*id).and_then(|e| model.opening_flips(e)).is_some_and(|flips| flips.any()))
+            .collect();
         if ids.is_empty() {
             return;
         }
@@ -1689,7 +1694,7 @@ impl BimApp {
             }
         });
         if let Some((hand, facing)) = pick {
-            self.run("modify", json!({"ids": ids, "flip_hand": hand, "flip_facing": facing}));
+            self.run("flip", json!({"ids": ids, "hand": hand, "facing": facing}));
         }
     }
 
