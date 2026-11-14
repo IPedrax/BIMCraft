@@ -3257,7 +3257,7 @@ fn save(s: &mut Session, p: &Value) -> R {
             return Ok(with_notes(reply, &notes));
         }
         let level = level_param(c, &s.model, p, "view")?;
-        let notes = write_drawing(&render::plan(&seen, level, 1600, 1000), &seen, &path, s.dwg_writer.as_ref(), version, 0, true)
+        let notes = write_drawing(&render::plan_for_cad(&seen, level, 1600, 1000), &seen, &path, s.dwg_writer.as_ref(), version, 0, true)
             .map_err(|e| bad(c, e))?;
         return Ok(with_notes(json!({"path": path, "format": format}), &notes));
     }

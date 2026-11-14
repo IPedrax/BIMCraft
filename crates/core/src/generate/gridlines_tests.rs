@@ -254,3 +254,43 @@ fn ring_and_segment_corners_agree_on_an_l() {
     assert_eq!(a, b);
     assert_eq!(a.len(), 6);
 }
+
+/// The coordinates of what a DXF draws on `layer`, entity by entity.
+fn layer_coordinates(dxf: &str, layer: &str) -> Vec<Vec<String>> {
+    let lines: Vec<&str> = dxf.lines().collect();
+    let mut out: Vec<Vec<String>> = Vec::new();
+    let (mut entity, mut on): (Vec<String>, bool) = (Vec::new(), false);
+    for pair in lines.chunks(2) {
+        let (code, value) = (pair[0].trim(), pair.get(1).map_or("", |v| v.trim()));
+        if code == "0" {
+            if on && !entity.is_empty() {
+                out.push(std::mem::take(&mut entity));
+            }
+            (entity, on) = (Vec::new(), false);
+        } else if code == "8" {
+            on = value == layer;
+        } else if ["10", "20", "11", "21"].contains(&code) {
+            entity.push(value.to_string());
+        }
+    }
+    out.sort();
+    out
+}
+
+#[test]
+fn the_cad_export_writes_the_walls_in_the_same_digits_with_or_without_the_grid() {
+    let on = files("cad", 0, with(rooms_brief("l_shape", 1), "gridlines", "on"));
+    let off = files("cad", 1, with(rooms_brief("l_shape", 1), "gridlines", "off"));
+    let dxf = |f: &BTreeMap<String, String>| {
+        let mut s = crate::engine::Session::new();
+        s.script(&f["script.bimcraft.txt"]).expect("the script runs");
+        let level = s.model.levels().first().map(|(id, _)| *id).expect("a level");
+        crate::render::dxf(&crate::render::plan_for_cad(&s.model, level, 1600, 1000), &s.model)
+    };
+    let (a, b) = (dxf(&on), dxf(&off));
+    let walls = layer_coordinates(&b, "A-WALL");
+    assert!(!walls.is_empty());
+    assert_eq!(layer_coordinates(&a, "A-WALL"), walls);
+    assert!(!layer_coordinates(&a, "A-GRID").is_empty());
+    assert!(layer_coordinates(&b, "A-GRID").is_empty());
+}
