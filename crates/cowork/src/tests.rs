@@ -263,6 +263,8 @@ fn a_message_longer_than_a_frame_goes_in_parts_which_only_a_guest_reads() {
         })
         .collect();
     let msg = json!({"op": "welcome", "delta": text});
+    // Each case's frames are sealed from the first nonce, as a fresh receiver opens them.
+    let mut fresh = i.send.clone();
     let mut sent = Vec::new();
     wire::write_in(&mut sent, &mut i.send, msg.to_string().as_bytes(), 100_000).unwrap();
     assert!(sent.len() > 10 * 100_000);
@@ -275,7 +277,7 @@ fn a_message_longer_than_a_frame_goes_in_parts_which_only_a_guest_reads() {
     // Parts that say they are more than this machine takes are refused as they begin, saying how much, not as a closed line.
     let mut claimed = Vec::new();
     let head = [&[2u8][..], &(300u64 << 20).to_be_bytes(), b"x"].concat();
-    wire::write_in(&mut claimed, &mut i.send, &head, 100_000).unwrap();
+    wire::write_in(&mut claimed, &mut fresh, &head, 100_000).unwrap();
     let e = wire::read_message(&mut claimed.as_slice(), &mut r.recv.clone(), Some(&mut || {})).unwrap_err();
     assert_eq!(e.kind(), std::io::ErrorKind::OutOfMemory);
     assert!(e.to_string().starts_with("the host's project: it is 315 MB to receive, past the 269 MB a session sends"), "{e}");
