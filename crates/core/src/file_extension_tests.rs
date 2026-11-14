@@ -79,7 +79,7 @@ fn every_project_extension_saves_and_opens_and_an_old_file_is_left_as_it_was() {
     for ext in ["bimc", "bimt", "bimcraft"] {
         let path = dir.join(format!("house.{ext}"));
         s.execute("save", &json!({"path": path})).unwrap();
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), text, "{ext}");
+        assert_eq!(crate::bimc::read_to_string(&path).unwrap(), text, "{ext}");
         let mut opened = Session::new();
         opened.execute("open", &json!({"path": path})).unwrap();
         assert_eq!(opened.model.to_json().unwrap(), text, "{ext}");

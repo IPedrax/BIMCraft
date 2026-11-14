@@ -160,7 +160,7 @@ fn a_plan_cuts_the_wall_where_the_void_is_at_its_cut_plane() {
     let mut s = Session::new();
     arched(&mut s);
     let (_, window) = wall_with(&mut s, 500.0, "Arched");
-    let view = View { scale: 0.5, cx: 3000.0, cy: 0.0, width: 1200, height: 1200 };
+    let view = View { angle: 0.0, scale: 0.5, cx: 3000.0, cy: 0.0, width: 1200, height: 1200 };
     let pixel = |s: &Session, p: P2| {
         let pm = tiny_skia::Pixmap::decode_png(&render::png(&render::draw(&s.model, 100000, view)).unwrap()).unwrap();
         let (x, y) = view.px(p);
@@ -192,7 +192,7 @@ fn a_plan_cuts_the_wall_where_the_void_is_at_its_cut_plane() {
 fn ifc(s: &mut Session) -> String {
     let path = std::env::temp_dir().join(format!("bimcraft-host-void-{}-{:?}.ifc", std::process::id(), std::thread::current().id()));
     run(s, "save", json!({"path": path}));
-    let text = std::fs::read_to_string(&path).unwrap();
+    let text = crate::bimc::read_to_string(&path).unwrap();
     let _ = std::fs::remove_file(&path);
     text
 }

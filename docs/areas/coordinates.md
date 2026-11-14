@@ -1,0 +1,336 @@
+# Coordinates
+
+Where a project stands in the world: Revit's Project Base Point, Survey Point and shared coordinates, with the traps its
+users complain of taken out. Why and what comes next: [the research](../coordinates-research.md) and
+[the plan](../coordinates-plan.md).
+
+## The model
+
+One location model: main's `Georeference` (`model.rs`, IFC's map conversion) is the project's **active site**, and
+`coordinates.rs` adds what Revit has round it. #284 brought its own `Location` anchored at the Survey Point; it was folded
+onto the georeference when it came onto main (2026-11-13), keeping its math and its commands, so IFC stays a straight
+write.
+
+- `Model::georeference`, the active site: the map point of the **internal origin** (`eastings`, `northings`, `height`,
+  mm), `rotation` (degrees counterclockwise from the map's east to project x, which is the angle from project north to true
+  north, clockwise: #284's `angle`) and `scale` (grid over ground, in plan only: heights stay true). A site needs no
+  coordinate reference system (`crs` empty): any field makes one. None is the internal coordinates as they are
+  (`coordinates::NONE`); `Model::set_site` keeps it none when a site comes back to that.
+- `Model::coordinates` (`Coordinates`), left out of a file while it is the default:
+  - `base`: the **Project Base Point**, internal mm. A reference people move anywhere, which elevations, spot coordinates
+    and links measure from; moving it moves no geometry.
+  - `survey`: the **Survey Point**, internal mm. A control point, usually a benchmark near the building. A site as Revit shows
+    it, a `Location`, is the Survey Point's `east`, `north` and `elevation` in it, with its `angle` and `scale`
+    (`Georeference::location`). Every site is anchored at the internal origin, so `Model::move_survey` with `Move::Point` (the
+    point alone) changes only the point and the building stays where it is in the world; with `Move::System` every site is
+    solved again (`Georeference::specify`) so the point keeps its numbers, and the building moves in the world.
+  - `active` and `sites`: the active site's name (`INTERNAL`, "Internal" in the project's language, as a project starts) and
+    Revit's other **named sites**, each a `Georeference` where it would put the project. `Model::activate_site` swaps one in
+    as the georeference and keeps the one that was active beside it.
+
+The transform, from internal `p` to shared, a the rotation and k the scale:
+
+    east  = eastings  + k (x cos a - y sin a)
+    north = northings + k (x sin a + y cos a)
+    elev  = height + z
+
+`Georeference::to_internal` undoes it; `Frames` (the coordinates read through a site, `Model::frames` for the active one)
+converts between the frames `Internal`, `Base` (from the Project Base Point, along the project's axes) and `Shared`.
+`Georeference::specify` solves a site so that one internal point has the shared coordinates given (Revit's Specify
+Coordinates at a Point), its rotation and scale kept.
+
+**Why the bias.** Geometry is kept near the internal origin, and map coordinates (a UTM northing is 7.5e9 mm) only ever
+pass through the transform. f64 would hold such a number to a micrometre, but the math on geometry wouldn't hold it: the
+graphics card's f32 steps are half a metre that far out, squared lengths lose their digits, and `TOL` and the
+triangulation's grid assume small numbers. Shared values are bounded by `MAX_MAP` (1e13 mm, `on_map`), internal ones by
+`MAX_COORD`.
+
+**Ids.** Each site is a library entry (`Kind::Location`), and so are the three points (`Kind::CoordinatePoint`, named
+`INTERNAL_ORIGIN`, `BASE_POINT` and `SURVEY_POINT`), so all have an id and a GUID. `active` is a name reference in
+`Model::lib_refs_mut`, so a file holds its GUID and a rename follows.
+
+`Coordinates::check` (from `Model::check`) refuses a point out of range, more than `MAX_LOCATIONS` sites, a name that is empty
+or more than a line, the active name listed again among the others, and a site out of bounds (`Georeference::check`).
+
+**FORMAT 34.** A build that reads up to 33 would refuse a georeference without a CRS and lose the points and sites, so files
+with coordinates are 34. Files of 19 and 33 need no step: their georeference is the active site, both points at the
+internal origin. #284's own files (its unreleased builds wrote 19) keep their points; its `locations` and `crs` are left
+out and `open` lists them (`left_out`).
+
+## A map's CRS and WGS84
+
+A site's map system is its georeference's `crs` where that names an EPSG code (`EPSG:31983`) of a projected CRS
+(`Georeference::map`, `crs::code`): the shared coordinates are a grid of it. A name this version doesn't know is kept, as
+IFC files name their own, and has no WGS84; a known geographic code is refused. `crs.rs` looks it up in
+`crs-definitions` (EPSG's definitions as proj strings, CC0; `lookup` refuses a code it lacks and a geographic one), names
+it by its WKT's name, and gives its grid unit (metre, foot, US survey foot: shared coordinates stay mm, and the grid's own
+numbers are the mm over `Info::mm`). `to_wgs84` and `from_wgs84` go through `proj4rs`, pure Rust PROJ.4: 2D, with the
+definition's Helmert shift, so within centimetres of PROJ on a UTM or Lambert grid and metres where PROJ would use a grid
+shift. That is what WGS84 is for here, the map and the sun; survey numbers never go through it. `search` scans every code
+(a match, fast) for a code or all words of a name. EPSG's terms ask for the attribution in `NOTICE`.
+
+### Finding a system by place
+
+People know where the site is, not which EPSG code its survey is in. `places.rs` finds countries and cities by name offline
+(Natural Earth's countries, with their names in English, Portuguese, Spanish, French, German and Italian, and its ~7,300
+populated places, biggest first: `assets/map/places.tsv`, 318 KB, written by `places.py`), accents aside (`fold`: "sao
+paulo"), and later words may name the state or country ("paulo brasil"). Each place is paired with the systems surveys
+there use, the one to pick first: the country's national grid (`grids`: British National Grid, Lambert-93, RD New, LV95…),
+the place's UTM zone (or Gauss-Krüger band, MGA zone, Lo zone) on the country's datum (`zones`: SIRGAS 2000, ETRS89,
+NAD83(2011), NAD83(CSRS), GDA2020, JGD2011, CGCS2000, POSGAR 2007, Hartebeesthoek94, Mexico ITRF2008), then the zone on
+WGS 84, which is anywhere's. Zones are named as EPSG names them and looked up by that name, so one this version lacks is left
+out, never invented; `every_country_s_systems_are_known` holds each pattern to the dataset. Which systems a country uses is
+ours, a starting list: a country not in it gets the WGS 84 zone, and the name search finds the rest. `georeference {search}` (the `crs` command of
+#284, folded into it) returns the places beside the systems found by name: `places: [{kind, name, region, country, iso, longitude, latitude, systems:
+[{code, name, unit, why}]}]`.
+
+`Frame::Wgs84` is [longitude, latitude, elevation mm]; `Frames::convert` returns an error without a map system. The
+`coordinates` report adds each point's `wgs84` and the `crs`. `location` takes `latitude` and `longitude` for the Survey
+Point's east and north. Setting a known code names the georeference after it where no `description` is given. IFC
+export writes the map's unit (a foot as a conversion-based unit) and the site's RefLatitude, RefLongitude and RefElevation
+where the map system is known; `import_cad` reads a drawing whose file says inches at map coordinates in its unit.
+
+## Elevations, spots and schedules
+
+`Origin` (base, survey, internal) says what a reading measures from: `Frames::elevation` turns an internal height into one
+from the Project Base Point (`z - base.z`), the Survey Point (the site's shared elevation of it: its height plus `z`, never
+scaled) or the internal origin, and `Frames::plan` a plan point into east and north from the base point, along the
+project's axes, in shared coordinates, or as it is. A `Spot` has an `origin` (`Model::spot_reads`, what its text and the `elements` and `spot` replies say;
+`spot_value` stays the internal height, which sections place it by) and, with `coordinate`, is a spot coordinate (below). A
+`Level` has an `elevation_base`; its head in sections and elevations and the level schedule's Elevation show
+`Model::level_shown`, and `elements` gives `elevation_shown` beside the internal `elevation` commands take. Columns, structural
+columns, footings and components give `shared_east`, `shared_north` and `shared_elevation` (their point at their base), which
+their schedules offer as Shared East, Shared North and Shared Elevation.
+
+## Spot coordinates
+
+A spot coordinate is a `Spot` with `coordinate`, in a plan only, of its own category (`spotcoordinate`, Spot Coordinates in
+Visibility/Graphics, beside Spot Elevations). It has a type (`type`, `spots::SpotCoordinateType`, the project's
+`spot_coordinate_types`, a library entry `Kind::SpotCoordinateType`), `leader` and `shoulder` (both on by default), and
+`end`, where its leader ends (else 8 mm on paper up and right of its point, `render::leader_end`). Its elevation reads the top
+of `host` at its point (what stands there when it is placed), else its level's. The type holds Revit's type parameters:
+Rotate with Component; the leader's arrowhead (`filled`, `empty`, `dot`, `empty_dot`, `none`), the arrowhead's size, the
+leader's and the arrowhead's pens, the leader's colour, the symbol on the point (none, a cross, a target) and its size; the
+lettering (font, size, bold, italic, underline, width factor), the text's colour, its offsets from the leader and from the
+symbol, above or below the leader, an opaque or transparent background; the Coordinate Origin (`base`, `survey`, `internal`;
+`Origin::Internal` is the file's own numbers), the Top and Bottom Values (north/south, east/west, none), the indicators, the
+elevation and its indicator, prefix or suffix, units and decimals, and alternate units (none, right of each number, or below
+it) with their units, decimals, prefix and suffix. `SpotCoordinateType::lines` lays the text; `Model::spot_coordinate_text`
+gives it, and `elements` replies with `text`, `east`, `north`, `elevation`, `type`, `leader` and `shoulder`.
+`render/spots.rs` draws it, sizes in mm on paper: the symbol, the leader from the point to its end with the arrowhead on the
+point (an empty one filled with paper so the leader doesn't show through), the shoulder as long as the text on the side the
+leader leaves to, and the lines over it. Without a leader, the text stands beside the symbol.
+
+A project starts with `Spot Coordinate - Project Base Point` and `Spot Coordinate - Survey Point` (in metres to four places,
+as a surveyor's CAD reads a point out); `spot_coordinate` takes `type`, or without one the type that reads from `origin`
+(`spots::default_type`), the Survey Point's when it gives none: after Acquire Coordinates, a spot coordinate reads what the
+drawing's program says of its point. One from before types keeps reading from where it did. `spot_coordinate_type` lists, makes (`like`), changes, renames and deletes them.
+
+Tests: `spot_coordinate_tests.rs`, `coordinates_tests.rs`; the desktop's below.
+
+## IFC: one map conversion
+
+`save` to `.ifc` takes `ifc_origin` (`ifc::Origin`: internal, the default; base; survey; shared) and writes through
+`ifc::export_at`. The site's placement puts the file's origin at that internal point, or (shared) the map's own coordinates,
+turned to true north. There is one `IfcMapConversion`, always the active site at the file's origin: its eastings, northings
+and height are the site's shared coordinates of that point, in the map's unit (metres, or a foot where the map system is
+in feet); its x axis is the site's rotation; and its scale, as
+IFC4 has it, carries the unit with the ground-to-grid scale (0.9996 in metres is 0.0009996, as IfcOpenShell's `xyz2enh`
+takes it). For `shared` the conversion turns and moves nothing, its scale only the unit; the site's placement can move and
+turn but not scale, so there a point lies at its ground distance from the origin, not its grid one. The conversion and its
+`IfcProjectedCRS` (named and described by the georeference's `crs` and texts) are written only when a coordinate reference
+system is named. The context's `TrueNorth` is written whenever the project has a site, from its rotation (straight up for
+`shared`). IFC4's single Scale scales heights too, which the model never does, so a reader drifts heights by the grid
+factor; IFC4.3's FactorZ is written 1.
+
+This fixes #342's merge, which kept main's conversion beside #284's: main's was anchored at the internal origin whatever
+`ifc_origin` said, so it was off by the origin's offset (and twice for shared).
+
+Import (`import::georeference`) reads the first conversion to a named CRS back as the site, composed with the shift a far
+model is moved by; without one, the context's `TrueNorth` and that shift make a site with no CRS, so what went out at map
+coordinates comes back keeping them. Tests: `coordinates_io_tests.rs` (`one_map_conversion_is_placed_at_the_files_origin`,
+and the round trip from every origin), `georef_tests.rs`.
+
+## Far coordinates at import and export (the bias)
+
+Geometry stays near the internal origin; what comes in at map coordinates goes through the active site.
+
+A civil drawing in metres often keeps AutoCAD's imperial default in its header (`$INSUNITS` inches). With units auto,
+`import_cad` reads a drawing whose file says inches and whose middle is more than 50 000 units off its origin
+(`looks_like_map`) in the unit of the active site's map system, else in metres, and says so in `notes`; one that says feet
+(US State Plane drawings are) is read in the map system's unit when that is metric, else in feet with a `warning`. Units given
+are always kept. Placed origin to origin past what a model reaches, it is refused with the ways to bring it in.
+
+- **CAD** (`import_cad`, `position: shared`): the drawing's coordinates are the map's, in its units. Its middle goes where
+  `to_internal` puts it, turned `-angle` and scaled `scale / location.scale`, so every point of it is where the transform
+  says. Past `MAX_COORD` it is refused with a message naming `acquire`; `acquire: true` first solves the active site
+  (`Coordinates::acquire`, angle and scale kept) so the drawing's middle, rounded to the metre, is the internal origin.
+- **Point clouds** (`point_cloud`, `origin: shared`): the scan's middle by `to_internal`, its height too, turned `-angle`;
+  a scan has no scale, so a site's scale isn't applied to it. `acquire` takes the middle in plan and the lowest point's
+  height, to the metre, so it stands on 0.
+
+## Links
+
+A link (`model::Link`) is placed `by` (`link::By`): `manual`, at `at` turned `angle` (origin to origin, as before); `base`,
+its Project Base Point on this project's, turned `angle` about it and raised to it; or `shared`, where its shared
+coordinates say: its active site (or the named site `location` names), carried to this project's active site. Its
+origin's map coordinates go through this project's `to_internal`, its turn is the two angles' difference, and its levels
+are raised by the difference in elevation. `link::placement` works this out each time the link is drawn (`bring`), so a
+change to either project's site moves it, and nothing is written into the linked file. A link has no scale: where the
+two locations' scales differ, `link` says so in a `warning` and places it by origin and turn alone. `link` replies with
+where it stands (`at`, `angle`, `raised`). A link placed by `base` or `shared` isn't moved or turned by hand: `move` and
+`rotate` refuse it and say to `modify` it with `by: manual` first.
+
+`coordinates {acquire: <id>}` is Revit's Acquire Coordinates. From a link (a BIMCraft project, or an IFC file, whose
+`IfcMapConversion` the import reads as its location): this project's active site is solved, rotation and scale from the
+link's site, so that the link's origin, where it stands now, has the link's map coordinates here, and its map system
+comes with it. From a CAD drawing placed in the project: its file's coordinates are taken for the map's, so where its origin
+stands the shared coordinates are its (in mm, by its scale), its axes are the map's (the angle is less its turn), and the
+elevation stays. The reply adds `acquired: {from, location}`. A Revit file can't be linked yet, and the Revit reader doesn't
+read a file's survey or base point, so a Revit project's coordinates come over through its IFC export. In the desktop,
+it is on the Location window's Manage tab: an Acquire button for each link and drawing, and Pick in the View, a tool
+(`Tool::Acquire`) whose click takes a linked model's element (`link::link_of` finds its link) or a drawing.
+
+`coordinates {reset: true}` is Reset Coordinates: the active site back on the internal origin (no offset, no turn, a scale
+of 1), both points on it; the other sites and the map system stay. No link moves: each placed by base points or shared
+coordinates is switched to `by: manual` where it stands, its height kept in `raised`. As Revit's file does, a link
+remembers where it stands (`Link::placed`, kept up after every command while its file is loaded, `Model::links_moved`), so
+a reset pins one whose file is gone where it last stood; one never loaded is refused.
+Tests: the link tests in `coordinates_io_tests.rs`.
+
+## Rotate Project North
+
+`rotate_project_north` (`angle`, or `true_north: true` for the active site's rotation; about `about`, else the Project
+Base Point) turns every element with a place in plan, through `relocate` as `rotate` does, and both points; every
+site's rotation goes back by as much (wrapped to -180..180), solved again about the point that stays, and a link placed by base points turns with it, so nothing
+moves in the world, only the project's axes. Levels, sheets, schedules, 3D views and links by shared coordinates stay (the
+last follow the sites). Plan crops stay as they are.
+
+## Site's three origins
+
+Visibility/Graphics has a **Site** model category with three subcategories, `internalorigin`, `projectbasepoint` and
+`surveypoint` (`graphics::SUBCATEGORIES`), hidden unless a view shows them, as Revit's are: `graphics {"view": …, "show":
+["projectbasepoint"]}`, or their rows under Site in the dialog. Plans, sections and elevations draw them
+(`render::origin_marks`, through a projection from a model point to the drawing: a plan's x and y, a section's distance along
+its line and height), annotation-sized: the Internal Origin as a red x arrow and a green y arrow, the Project Base Point as
+a circle with a cross in it, the Survey Point as a circle with a triangle in it. Hiding Site hides all three.
+
+They are picked as elements are, by the library ids of their entries (`coordinates::Point`, `Point::of`, `Point::id`):
+each mark's primitives are owned by its point, and a pick takes a point before what's under it (`Drawing::on_top`; the
+Internal Origin stands on walls' corners), in a plan, a section or the 3D view. ## Orientation: plans turned to true north
+
+A plan's graphics hold `orientation`, `project_north` (the default) or `true_north` (`graphics::Orientation`; `graphics
+{view, orientation}`, or `modify` of the view's `graphics`; a view's own, not a template's). Oriented to true north, a plan is
+turned on screen by the active site's rotation (its angle to true north) (`render::view_angle`), so true north is up; the model never
+moves. `render::View` has an `angle`: `px` and `mm` turn about the view's middle, `along` turns a direction and `shown` is the
+whole box the view sees, which culling, hatching and patterns clip to. `render::plan` and the ceiling plan fit the plan as it
+lies turned (`fit_turned`), and so does a sheet's viewport of it (`sheet::framing_in`). Dimension numbers run along their
+turned lines and never upside down; elevation and section heads point the way they look on screen; CAD text turns with its
+drawing; a spot coordinate's shoulder and text stay level on the sheet. The desktop's canvas keeps each view's turn (`Canvas::turn`, set each frame from the plan), so zoom, pan, picking and snapping
+go through it, and the minimap draws the plan turned too. Properties' Graphics group has **Orientation** (Project North, True
+North) under Detail Level for a plan and a ceiling plan. Tests: `coordinates_tests.rs` (the angle, the fit, the sheet),
+`tests/coordinates.rs` (the dropdown, a click through the turned canvas).
+
+The north arrow annotation, and the map and the sun (the plan's stage 8), are on the [roadmap](../../ROADMAP.md) (0.9).
+
+## The desktop: Manage > Project Location
+
+`crates/ui-egui/src/coordinates.rs`. The panel has **Coordinates**, which opens the window. **Rotate Project North** is on
+the window's Manage tab: its button closes the window for a tool on the plan that works as Rotate does (`Tool::RotateNorth`, in `canvas.rs` beside `Tool::Rotate`): it starts on
+the Project Base Point (Place Centre moves the centre), a click is the angle's start and the next its end, and between them
+the whole plan turns as a ghost, with project north (up, muted) and true north (in the accent, as it will be once turned)
+drawn from the centre and the angle at the cursor. The Options Bar takes an angle typed (Enter) and has **Align with True
+North** (the active angle, in its name). It runs `rotate_project_north` with `about` the centre, one undo step, and goes
+back to Modify. Its icon is a north arrowhead in a counter-clockwise turn arrow.
+
+The window is designed to answer "where is this building?" at a glance, and to remove Revit's traps:
+
+- **The summary**, always in sight above the tabs: a dial with project north straight up and true north as the accent's
+  arrow at the active angle; the active location, switched in place; the Survey Point's shared East, North and Elevation in
+  large monospace figures in the map's own unit; the angle; the map system as a chip (`EPSG:31983`) with its name; and,
+  with one, the latitude and longitude.
+- **Locations**: every site in a striped table, typed into (Revit's can only be made by moving things): an Active
+  radio, the name, East, North and Elevation in the grid's unit, the angle and the scale. Add Location copies the active
+  one. Delete is off for the active one and for the last one. **Shift every location** adds the same amounts to all of
+  them, the "+5 m from the survey" case.
+- **Points**: the Internal Origin, the Project Base Point and the Survey Point. Each shows its internal X, Y and Z, typed in
+  the project's units, and its shared coordinates beside them, worked out live. Revit's two ways of moving the Survey Point
+  (clipped and unclipped) are two named choices, each saying what it does to the building. Under them is **Specify
+  Coordinates at a Point**: shared coordinates only (east, north, elevation, and the angle if it's set too), typed, then
+  **Pick Point and Specify**: the window steps aside (`CoordinatesDialog::picking`, `Tool::SpecifyPoint`) and the point is
+  picked in the active view, snapped, with the shared coordinates it will get at the cursor. In a plan its height is
+  `coordinates::picked_z`'s, by what the snap came from: a wall's bottom (a wall's corner is set out at its base), a floor's,
+  roof's or ceiling's top there, else the top of what stands on the level there, else the level. In the 3D view it is the
+  corner, edge or face picked, as a 3D dimension's end snaps: a wall's top corner is its top. The window comes back with the
+  draft worked out, to review before OK or Apply; Esc (or Back to Coordinates in the Options Bar, or another tool) brings it
+  back unchanged. Agents do the same with `specify_coordinates {at: [x, y], on | level}`.
+- **Map System**: an offline **world map** (`world.rs`: Natural Earth's 1:110m coastlines and borders, public domain, 34 KB
+  in `assets/map/world.bin`), a placeholder until stage 8's tiles: a plain latitude and longitude grid, dragged to pan and
+  scrolled to zoom about the cursor, every location a pin (the active one in the accent), the latitude and longitude typed as
+  a cross, and a click picks them for Place. Above it the map system is a dropdown: the button shows the one picked (its code as a chip, its name and unit) or
+  none, and opens a search of places and systems as you type. **Places** lists each country or city found (a pin, its
+  state and country, its latitude and longitude) with its systems under it, the first tagged Recommended and each saying
+  why (national grid, the national datum's zone, WGS 84's); **Systems** lists EPSG's projected systems whose code or name
+  matches. A system picked under a place also takes the place's latitude and longitude for Place and flies the map there
+  (a country wide, a city close); the Survey Point waits for Place, since a city's middle is rarely the site. Clear beside
+  it takes the map system away. **Place by latitude and longitude** puts the Survey Point on the globe.
+- Dubai's grid is EPSG:3997, `WGS 84 / Dubai Local TM` (DLTM): the search reads EPSG's "TM" and "UTM" as transverse
+  Mercator and knows "DLTM", and a place in the emirate offers it first (`places::local`).
+- **Convert**: a calculator, changing nothing: a point between the internal, base, shared and WGS84 frames, with Swap and
+  Copy.
+
+It is a draft (`CoordinatesDialog`): a row for each site, its numbers at the Survey Point and its own map system, worked
+out with the core's own `Georeference` (`site_of`), and OK or Apply runs it as one undo step named "Coordinates": the site
+renames (`renames::plan`), then `coordinates` with `move: system` (the draft has already worked out what moving the point
+did to the sites), then each site changed (`location`, with `crs` where its map system changed), then `activate`, then the
+deletes. The map system the window picks is the active row's. A refusal stays in the window and says why. It looks the same in the three looks: only the theme's tokens
+(`pal()`, `card`). Tests: `crates/ui-egui/src/tests/coordinates.rs`.
+
+### The rest of the desktop
+
+The selection keeps the three points as it keeps elements.
+Selected, Properties shows the point (`BimApp::point_properties`): its name and id, where it is internal (X, Y, Z typed move
+it, the Internal Origin's fixed) and shared, in the map's unit (with latitude and longitude under a map system), the angle to
+true north at the Project Base Point (typed, the active location's), and for the Survey Point its clip, Revit's paperclip:
+**Move the point only** (the default; the world stays) or **Move the shared coordinates with it** (`BimApp::survey_moves`).
+Dragged, or moved with Move, a point runs `coordinates` with `base` or `survey` (and `move` as the clip says), never `move`
+(`BimApp::move_point`); the Internal Origin refuses, saying it is the file's own 0, 0, 0.
+
+The status bar reads the cursor out in shared coordinates beside its x and y, in the map's unit (`BimApp::shared_readout`),
+once they are not the file's own.
+
+Link Model asks how to position the file, as Revit's link dialog does (`links::LinkBox`): Origin to Origin, Project Base
+Point to Project Base Point, or By Shared Coordinates (with which of its locations, its active one by default), as `link`'s
+`by` and `location`. Import CAD, Link CAD and Point Cloud have By Shared Coordinates beside Center to Center and Origin to
+Origin, with **Acquire coordinates from it** (`acquire: true`).
+
+In the desktop, Annotate > Dimension > Spot Coordinate places one with two clicks, both snapped: the point, then the
+leader's end, as the Type Selector's type (`BimApp::spot_type`). Selected, its Properties show Leader, Has Shoulder and what it
+reads; Edit Type opens Spot Coordinate Type Properties (`spots::SpotTypeDialog`), every parameter in Revit's groups, with
+Duplicate and Rename; the leader's end is a grip (`BimApp::spot_grip_drag`), which `modify` moves. Tests:
+`spot_coordinate_tests.rs`, `crates/ui-egui/src/tests/spots.rs`.
+
+Shortcuts: Location LO, Specify Coordinates at a Point CP (the window steps aside at once for the point), Rotate Project
+North TN (Revit's RN is its Reinforcement Numbers, kept for that), Spot Coordinate PC; Keyboard Shortcuts (KS) lists them.
+
+## Commands
+
+- `georeference`: the active site as IFC has it, at the internal origin; any field makes one, `clear` takes it away.
+- `coordinates`: reports everything (the three points, internal and shared, each with its id and GUID, the active site,
+  every site as Revit shows it, and the georeference); `base` and `survey` move the points, `move: point|system` how the
+  Survey Point goes.
+- `location`: makes (a copy of the active site), edits, renames, activates and deletes a site, its numbers the Survey
+  Point's; `shift` adds to one, or to every site when no `name` is given (the survey says +5 m: one command).
+- `specify_coordinates`: the active site solved for a point.
+- `convert_coordinates`: points between `internal`, `base`, `shared` and `wgs84`, of the active site or the one named.
+- `georeference {search, limit}`: map systems by code, name or place.
+- `coordinates {acquire}` and `coordinates {reset}`: Acquire Coordinates from a link or a placed drawing, Reset Coordinates.
+- `link`: `by: manual|base|shared` and `location`; `import_cad` (`position: shared`, `acquire`) and `point_cloud`
+  (`origin: shared`, `acquire`).
+- `spot_coordinate` (`type`, `end`, `leader`, `shoulder`, `host`, `origin`) and `spot_coordinate_type`; `origin` on `spot`
+  and `elevation_base` on `level` (and `modify`).
+- `rotate_project_north`: the model turned, the world kept.
+
+Every change is a command and so one undo step. Tests: `coordinates_tests.rs`, and the payloads in the hostile sweep.
+
+In the desktop: below and in [the desktop](desktop.md).

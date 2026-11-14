@@ -53,7 +53,7 @@ and at 1 : 100 the pens' own widths, `Pen::mm`). A drawing keeps each line's pen
 (`Look::dress`), and the last step of drawing a plan, a section, a sketch or a sheet's own lines sizes each line (`Drawing::weigh`),
 as annotation where its owner is a dimension, tag, text, spot elevation, grid, level, room or mark (`annotates`), else as the model;
 a view on a sheet takes the line weights at its viewport's scale. Cut outlines are inked over the poché: `cut_edges` keeps of each
-outline what isn't against another's on its outer side, so joins stay clean. Where two runs meet (two walls at a corner), `turn_corners` carries each a pixel on round the corner into the other, so the corner is a join inside a line, mitred square, not two ends with a notch between them; an outline nothing lies against is one closed line (`ink_cut`), no corner of it an end. A column the plan cuts is solid poché: a compound wall's layers (their fills and patterns, and the lines between them) are cut back to outside its outline (`outside_columns`, `geom::subtract_convex` and `geom::line_outside_convex`, for outlines are convex), so a wall that runs into or through a column shows nothing of itself inside it. PNG, SVG and PDF join a pen's lines mitred and lettering's round (`Part::mitred`), so a V's point doesn't stick out. A pen is as wide as on the paper however far the view is zoomed (`paper_of`, not clamped as lettering's size is), and a tool's preview draws its pens as the plan it is in does. The desktop draws a line its pixels at the zoom, at least one (`canvas::on_screen`); Thin Lines draws every line one. A
+outline what isn't against another's on its outer side, so joins stay clean. Where two runs meet (two walls at a corner), `turn_corners` carries each a pixel on round the corner into the other, so the corner is a join inside a line, mitred square, not two ends with a notch between them; an outline nothing lies against is one closed line (`ink_cut`), no corner of it an end. A column the plan cuts is solid poché: a compound wall's layers (their fills and patterns, and the lines between them) are cut back to outside its outline (`outside_columns`, `geom::subtract_convex` and `geom::line_outside_convex`, for outlines are convex), so a wall that runs into or through a column shows nothing of itself inside it. PNG, SVG and PDF join a pen's lines mitred and lettering's round (`Part::mitred`), so a V's point doesn't stick out. A pen is as wide as on the paper however far the view is zoomed (`paper_of`, not clamped as lettering's size is), and a tool's preview draws its pens as the plan it is in does. So are a model line's dashes (a beam's or a pipe's centre line, what's overhead, an override's Dashed and Dotted: `Drawing::dash`, `render::on_paper`; an annotation line's, a grid's, a level's, a section's mark, are as big as its lettering) and a material's cut hatch, its lines 1.2 mm apart on the paper (`GAP`) where its layer is 0.8 mm across it or more (`PATTERN_ROOM`), so the scale, not the zoom, decides whether a layer is hatched; a repeat under two pixels draws solid and a hatch whose lines would run together is filled. The desktop draws a line its pixels at the zoom, at least one (`canvas::on_screen`); Thin Lines draws every line one. A
 file from before pens (format 3) held weights in pixels of a sheet's drawing, and opens with each the nearest pen (`pens_from_pixels`).
 Which pen each kind of line draws with is named once, in `pen.rs` (`Pen::CUT`, `Pen::PROJECTION`, `Pen::HEAVY` and the rest), never a number at the draw site: a cut is `Pen::CUT` in plan and in section alike. A category's own lines are its Object Styles'
 (`styles.rs`, `Model::object_styles`, the `object_styles` command, Manage > Object Styles in the desktop, `objectstyles.rs`): the
@@ -343,10 +343,25 @@ it's on (`Look::section_box`; `with_section_box` puts another in, for a box bein
 is square on, so `Boxed` turns a pixel and its depth into a model point with one sum, and `raster` keeps a pixel only where that point
 is in the box (a triangle wholly past one plane is passed over first), `dots` a scan's point only where it is, and the wireframe each
 edge as far as it runs inside (`within`, Liang and Barsky's clipping). What it cuts away isn't drawn, so it isn't picked; the edge
-where a cut face meets paper is drawn as any edge is, and cut faces aren't capped yet. A level whose plane is above or below the box is
+where a cut face meets paper is drawn as any edge is. A level whose plane is above or below the box is
 left out, and the rest are cut to its sides. A section's picture has its own clip and ignores the box. The card cuts to it too: the mesh holds all it would hold without a box
 (`Mesh::section_box`), a pixel outside it is discarded by the point it shows (`fs_scene_cut`, `fs_clear`), `Mesh::visible_cut` leaves out what lies wholly past a side,
-and a pick asks `Boxed` as the picture does. So a face being dragged is a uniform (`Gpu::draw_cut`), and builds nothing. Its grips are the core's: `box_grips` (the middle of each face: west,
+and a pick asks `Boxed` as the picture does. So a face being dragged is a uniform (`Gpu::draw_cut`), and builds nothing.
+
+What the box cuts is capped, as Revit fills it (`view3d/caps.rs`): `CapSource` holds the solids a section cuts (no mass, no
+component's form), in their layers (`layered_with`, which says which layer each piece is), found once for a model, and each face's
+cut is made once for where it stands (`CapSource::face`, kept for the last `KEPT` faces): a level face by `level`, an upright one
+by `Solid::cuts`, a section's own, so the caps match what a section at the face would show. `CapSource::caps` clips each ring to
+the face, fills it as a section at the view's scale and detail fills it (`render::cap_fill`: the view's or its template's cut
+pattern override, else the layer's material's cut pattern, drawn by the 2D code into a drawing as dense as a sheet and read back
+as strokes; a solid pattern is the cap's colour, else the cut fill override, else the layer's material colour) and outlines it in
+the edge colour. The processor draws them over its picture (`Image::capped`: each cap where nothing nearer is, picking its
+element, then its lines where nothing nearer hides them); the card draws their triangles in the opaque pass with the uncut
+pipeline (`Gpu::draw_capped`; each cap a plane of its own from `CAP_PLANE`, so its edges come from the post pass) and their lines
+with the levels' marks. Moving a face keeps the scene and the mesh: the window (`Orbit::caps_for`) asks a worker for the caps of
+the new box, with the source kept while `scene_kept` holds, so only the moved face is cut again; the picture is hollow until they
+come back. Settings > Performance > Fill what the section box cuts turns it off (`cut_fills_3d`); a 3D view's PNG and a sheet's
+3D viewport are capped too. A mesh that isn't closed (some imports) or a component's form stays hollow. Its grips are the core's: `box_grips` (the middle of each face: west,
 east, south, north, bottom, top), `box_edges`, `move_box_face` (a face moved along its axis to 10 mm, stopping short of the face across
 from it) and `Camera::along` (how far, mm, a drag on the picture moves a point along an axis; none for an axis pointing at the camera).
 A plan may follow the box (`section_box` on a `Level` or a `PlanView`, set by `modify`; a dependent view follows its parent's,
@@ -787,7 +802,9 @@ drawn as before, and a view placed by default goes above its height (`sheet::spo
 title block defines (`fields`: a key, a label for the desktop, a default) is the project's (`scope: project`, one value in
 `Model::title_values`, the same on every sheet) or each sheet's (`scope: sheet`, `Sheet::fields`); the automatic ones (`titleblock::AUTO`:
 PROJECT, SHEET_NAME, SHEET_NUMBER, SCALE (`1 : 100`, or AS INDICATED when the views' differ), DATE in the project's language, SHEET_INDEX and SHEET_COUNT by
-sheet number in reading order, and REVISION, the latest of the revision clouds on the sheet and on the views placed on it) need no
+sheet number in reading order, REVISION, the latest of the revision clouds on the sheet and on the views placed on it, and the project's
+information (`project_info`, Manage > Project Information): CLIENT, PROJECT_NUMBER, PROJECT_ADDRESS, PROJECT_STATUS, ISSUE_DATE, AUTHOR,
+ORGANIZATION, ORGANIZATION_DESCRIPTION and BUILDING, which `title_values` sets there too) need no
 definition, and a value given to one (DATE, to issue on) is said instead. A key no value fills stays as written, so a missing field
 shows on the sheet. `titleblock::values` works them out, `sheet::title_values` with the sheet's scale, and `elements` gives a sheet's
 as `title_values`, with the keys that are its own to give as `sheet_fields`.

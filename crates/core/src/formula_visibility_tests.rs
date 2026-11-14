@@ -274,7 +274,7 @@ fn cabinet(ty: &str) -> (Session, Id) {
 
 /// Level 1's plan round the cabinet: 0.25 px a mm.
 fn plan_view() -> View {
-    View { scale: 0.25, cx: 1500.0, cy: 250.0, width: 1200, height: 600 }
+    View { angle: 0.0, scale: 0.25, cx: 1500.0, cy: 250.0, width: 1200, height: 600 }
 }
 
 /// The pixels of Level 1's plan that aren't paper within the box `x0…x1`, `y0…y1` mm.
@@ -307,7 +307,7 @@ fn triangles(s: &Session, id: Id) -> usize {
 fn section_ink(s: &mut Session) -> usize {
     let sec = id_of(&run(s, "section", json!({"start": [-500, 250], "end": [3500, 250]})));
     // Along the line from its start and up from Level 1, mm: the same picture of either project, whatever it holds.
-    let view = View { scale: 0.25, cx: 2000.0, cy: 300.0, width: 1200, height: 600 };
+    let view = View { angle: 0.0, scale: 0.25, cx: 2000.0, cy: 300.0, width: 1200, height: 600 };
     let png = render::section_png(&s.model, sec, view).unwrap_or_default();
     let pm = tiny_skia::Pixmap::decode_png(&png).unwrap();
     let n = pm.pixels().iter().filter(|c| Rgb(c.red(), c.green(), c.blue()) != PAPER).count();

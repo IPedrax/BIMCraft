@@ -11,7 +11,7 @@ use crate::adaptive_editor::{Associating, Field, NestedSlot, Tied, associating, 
 use crate::icons::Icon;
 use crate::ribbon;
 use bimcraft_core::family::nested::{self, Nesting};
-use bimcraft_core::family::{Group, Keep, NestedInstance, Val};
+use bimcraft_core::family::{Keep, NestedInstance, Under, Val};
 use bimcraft_core::units::Units;
 
 /// The largest number a row takes, mm or degrees.
@@ -319,7 +319,7 @@ impl BimApp {
         // Its family's parameters, as Revit lists a nested instance's: under their groups, those that may be set from here.
         if let Some(n) = nested::find(&nested, &inst.family) {
             let own = n.family.values(&inst.type_name, &BTreeMap::new()).unwrap_or_default();
-            for g in Group::ALL {
+            for g in Under::listed(n.family.parameters.iter().map(|p| p.group())) {
                 let settable: Vec<&Parameter> = n
                     .family
                     .parameters

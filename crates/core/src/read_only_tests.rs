@@ -80,6 +80,7 @@ fn a_session_that_may_only_read_refuses_what_would_change_the_project_and_change
         ("save", json!({"path": file.parent().unwrap().join(".").join("house.bimcraft")})),
         ("render", json!({"view": "Level 1", "width": 16, "height": 16, "path": file})),
         ("schedule", json!({"category": "doors", "path": file})),
+        ("export", json!({"format": "pdf", "view": "A101", "path": file})),
     ] {
         let e = s.execute(command, &params).unwrap_err();
         assert!(e.contains("read-only for agents") && e.ends_with(HOW), "{command} {params}: {e}");
@@ -118,7 +119,7 @@ fn a_session_that_may_only_read_reads_schedules_renders_and_exports_to_new_files
     // A schedule of the project's is read, and its quantities written to a file of their own.
     let doors = s.execute("schedule", &json!({"category": "doors", "path": dir.join("doors.csv")})).unwrap();
     assert_eq!(doors["rows"].as_array().map(Vec::len), Some(1), "{doors}");
-    assert!(std::fs::read_to_string(dir.join("doors.csv")).unwrap().lines().count() >= 2);
+    assert!(crate::bimc::read_to_string(dir.join("doors.csv")).unwrap().lines().count() >= 2);
     let plan = s.execute("render", &json!({"view": "Level 1", "width": 64, "height": 64})).unwrap();
     assert!(plan["pngBase64"].is_string(), "{plan}");
     // Exports, the sheets to PDF among them; a copy of the project saved as another file leaves the session with its own.
@@ -128,6 +129,11 @@ fn a_session_that_may_only_read_reads_schedules_renders_and_exports_to_new_files
         assert!(std::fs::metadata(&to).is_ok_and(|m| m.len() > 0), "{name} is written");
     }
     assert!(std::fs::read(dir.join("sheets.pdf")).unwrap().starts_with(b"%PDF"));
+    // Views and sheets exported to new files: one at a path, a file each in a folder.
+    s.execute("export", &json!({"format": "pdf", "view": "A101", "path": dir.join("a101.pdf")})).unwrap();
+    let r = s.execute("export", &json!({"format": "svg", "views": ["Level 1", "A101"], "folder": dir.join("out")})).unwrap();
+    assert_eq!(r["written"].as_array().map(Vec::len), Some(2), "{r}");
+    assert!(s.execute("export_formats", &json!({})).is_ok());
     // What only reports reads: the project's families, its technical standard, its phases.
     for (command, params) in
         [("family", json!({})), ("standard", json!({})), ("phase", json!({})), ("measure", json!({"from": [0, 0], "to": [3000, 4000]}))]

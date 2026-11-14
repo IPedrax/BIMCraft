@@ -47,7 +47,7 @@ mod tests {
     fn plan() -> (Drawing, Id, Id) {
         let (session, h, v) = fixture(CORNER);
         // Include both free ends. At this scale the Fine plan draws both core hatches.
-        let view = View { scale: 1.0, cx: -1950.0, cy: -1950.0, width: 4300, height: 4300 };
+        let view = View { angle: 0.0, scale: 1.0, cx: -1950.0, cy: -1950.0, width: 4300, height: 4300 };
         (render::draw(&session.model, session.model.levels()[0].0, view), h, v)
     }
 
@@ -115,7 +115,8 @@ mod tests {
     fn only_different_core_materials_draw_a_seam() {
         for (material, seams) in [("Concrete", 1), ("Masonry", 0)] {
             let (s, h, v) = fixture(&CORNER.replace(r#""material":"Concrete""#, &format!(r#""material":"{material}""#)));
-            let d = render::draw(&s.model, s.model.levels()[0].0, View { scale: 1.0, cx: 0.0, cy: 0.0, width: 400, height: 400 });
+            let d =
+                render::draw(&s.model, s.model.levels()[0].0, View { angle: 0.0, scale: 1.0, cx: 0.0, cy: 0.0, width: 400, height: 400 });
             let count = |a, b| segment_count(&d, h, a, b) + segment_count(&d, v, a, b);
             assert_eq!(count(P2(-60.0, -80.0), P2(60.0, -80.0)), seams);
             assert_eq!(count(P2(100.0, 100.0), P2(60.0, 80.0)), 0);
@@ -366,7 +367,7 @@ mod tests {
     fn a_section_along_the_return_cuts_both_cores_at_the_same_station() {
         let (mut s, h, v) = fixture(CORNER);
         let id = s.execute("section", &serde_json::json!({"start":[0,300],"end":[0,-4200],"depth":1})).unwrap()["id"].as_u64().unwrap();
-        let d = render::section(&s.model, id, View { scale: 1.0, cx: 2150.0, cy: 1500.0, width: 4500, height: 3100 });
+        let d = render::section(&s.model, id, View { angle: 0.0, scale: 1.0, cx: 2150.0, cy: 1500.0, width: 4500, height: 3100 });
         // The section starts at y=300 and looks along the return: y=-80 is station 380.
         for (id, lo, hi) in [(h, 220., 380.), (v, 380., 4300.)] {
             let rings = core_rings(&d, id);

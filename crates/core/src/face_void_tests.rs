@@ -120,7 +120,7 @@ fn plumb(s: &Session, owner: Id, x: f64, y: f64) -> Vec<f64> {
 fn ifc(s: &mut Session) -> String {
     let path = std::env::temp_dir().join(format!("bimcraft-face-void-{}-{:?}.ifc", std::process::id(), std::thread::current().id()));
     run(s, "save", json!({"path": path}));
-    let text = std::fs::read_to_string(&path).unwrap();
+    let text = crate::bimc::read_to_string(&path).unwrap();
     let _ = std::fs::remove_file(&path);
     text
 }
@@ -189,7 +189,7 @@ fn a_drain_on_a_floors_top_cuts_a_hole_in_section_3d_plan_and_ifc() {
     let beside = plumb(&s, f, 1000.0, 2000.0);
     assert!(beside.len() == 2 && (beside[0] + 200.0).abs() < 1e-6 && beside[1].abs() < 1e-6, "{beside:?}");
     // The floor's plan, which sees its top: the hole's edge.
-    let view = View { scale: 0.2, cx: 3000.0, cy: 2000.0, width: 1600, height: 1200 };
+    let view = View { angle: 0.0, scale: 0.2, cx: 3000.0, cy: 2000.0, width: 1600, height: 1200 };
     let d = render::draw(&s.model, LEVEL, view);
     assert!(drawn_near(&d, f, P2(3150.0, 2000.0)) && drawn_near(&d, f, P2(3000.0, 1850.0)), "the hole drawn in plan");
     // IFC: an opening, the void's body, voiding the slab.
@@ -254,7 +254,7 @@ fn a_drain_on_a_walls_side_cuts_through_the_wall_as_a_doors_voids_do() {
         "cut through T22's path, a mesh a section cuts"
     );
     // In plan the cut plane passes through it: the wall open there, poché beside it.
-    let view = View { scale: 0.5, cx: 3000.0, cy: 0.0, width: 1200, height: 1200 };
+    let view = View { angle: 0.0, scale: 0.5, cx: 3000.0, cy: 0.0, width: 1200, height: 1200 };
     let pm = tiny_skia::Pixmap::decode_png(&render::png(&render::draw(&s.model, LEVEL, view)).unwrap()).unwrap();
     let pixel = |p: P2| {
         let (x, y) = view.px(p);

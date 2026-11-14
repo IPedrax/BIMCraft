@@ -260,7 +260,7 @@ mod tests {
         assert_eq!(start_x(&s, b), -1000.0);
         // It isn't drawn: a plan shows nothing of it.
         let level = s.model.levels()[0].0;
-        let view = crate::render::View { scale: 0.1, cx: 0.0, cy: 4000.0, width: 800, height: 1200 };
+        let view = crate::render::View { angle: 0.0, scale: 0.1, cx: 0.0, cy: 4000.0, width: 800, height: 1200 };
         assert!(!crate::render::draw(&s.model, level, view).owners.contains(&Some(lock)), "a lock is a front end's to show");
         // Unlocked (deleted), the walls are free again.
         run(&mut s, "delete", json!({"ids": [lock]}));

@@ -45,9 +45,10 @@ pub const MAX_GUESTS: usize = 8;
 pub const MAX_NAME: usize = 40;
 /// The most messages a guest may send in a second, presence and pings included; past it, the host drops it.
 pub const MAX_RATE: u32 = 100;
-/// The longest message on the wire, in bytes: a big project's whole model, deflated, fits.
+/// The longest frame on the wire, in bytes: a message longer (a big project's whole model) goes in parts (`wire.rs`).
 pub const MAX_FRAME: usize = 64 << 20;
-/// The longest a message unpacks to: the biggest project file opens (the core's `MAX_FILE`).
+/// The longest a message unpacks to, where nothing measures memory: a host's to its guest, where the app does, as long as the
+/// guest's machine has memory free for (the core's `memory.rs`).
 pub const MAX_INFLATED: usize = 256 << 20;
 /// The port a host listens on unless the user says another, and the one it answers "who hosts?" on.
 pub const PORT: u16 = 41730;
@@ -61,7 +62,7 @@ pub fn lan_address() -> Option<std::net::IpAddr> {
     s.local_addr().ok().map(|a| a.ip()).filter(|ip| !ip.is_unspecified())
 }
 
-/// How long things may take. The tests shorten them.
+/// How long things may take, and how long a frame is. The tests shorten them.
 #[derive(Clone, Copy, Debug)]
 pub struct Timing {
     /// A side that has sent nothing for this long sends a ping.
@@ -72,6 +73,9 @@ pub struct Timing {
     pub handshake: Duration,
     /// How long an address waits after five wrong codes.
     pub lockout: Duration,
+    /// The longest frame a host writes, at most [`MAX_FRAME`]: a message longer goes in parts. A guest writes whole frames, all a
+    /// host reads (what a guest sends is held well under one).
+    pub frame: usize,
 }
 
 impl Default for Timing {
@@ -81,6 +85,7 @@ impl Default for Timing {
             silence: Duration::from_secs(15),
             handshake: Duration::from_secs(10),
             lockout: Duration::from_secs(30),
+            frame: MAX_FRAME,
         }
     }
 }
