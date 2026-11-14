@@ -28,7 +28,10 @@ POLYLINE's (its own point's z) for the whole of it, a 3D POLYLINE's (flag 8) for
 `Z::Flat` is one elevation for all of an entity, `Z::Each` one for each point of its shape; an entity whose file gives no z has
 none (not 0). A downward extrusion (code 230 below 0) turns an LWPOLYLINE's and a 2D polyline's elevation over, since theirs is
 in the entity's own coordinate system; lines, points and 3D polylines are in the world's. A block's elevations go through each
-INSERT's z (code 30) and z scale (43). A 3D polyline's segments are straight, so a bulge on its vertices is ignored. Drawing,
+INSERT's z (code 30) and z scale (43), turned over too by an INSERT extruded downward; a block's own base point's z is not
+read. An elevation that isn't a number a drawing can hold leaves that entity without one (counted in `left_out` as "an
+elevation it can't read") rather than refusing the file, since drawing never needed it. Most programs write a flat
+drawing's lines and polylines at z 0, so `elevations` counts them; a range that isn't all 0 is what marks a contour map. A 3D polyline's segments are straight, so a bulge on its vertices is ignored. Drawing,
 extents, picking and snapping stay in plan: only `import_cad`'s reply (`elevations`, how many have one and their range, mm, by
 layer) and `cad_query` (`z`) read elevations. They are what a contour map carries, for terrain made from it.
 

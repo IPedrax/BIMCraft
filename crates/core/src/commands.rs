@@ -333,7 +333,8 @@ other_files(
          and opening the project read it again. Returns its id, the drawing's name, its unit, entities and layers, its extents \
          in the model, how many entities lie far from the rest (they're left out of its extents) and what was left out, with `notes` on what a DWG's read left out, \
          and `elevations`: how many of its lines, polylines and points have an elevation (z) and their range, mm, by layer \
-         (`{\"count\": 0}` when none has), which tells a contour map from a flat drawing",
+         (`{\"count\": 0}` when none has). Most programs write a flat drawing's lines at 0, so a range that isn't all 0 is \
+         what tells a contour map",
         import_cad,
         Files::Read,
     ),
