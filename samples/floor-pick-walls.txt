@@ -1,0 +1,5 @@
+material {"name":"Render"}
+material {"name":"Masonry"}
+material {"name":"Plaster"}
+type {"category":"wall","name":"Asymmetric","layers":[{"function":"finish","material":"Render","thickness":30},{"function":"structure","material":"Masonry","thickness":160},{"function":"finish","material":"Plaster","thickness":10}]}
+wall {"points":[[0,0],[0,6000],[8000,6000],[8000,0]],"closed":true,"location":"centre","type":"Asymmetric","height":3000}

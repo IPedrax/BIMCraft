@@ -8,7 +8,7 @@ use bimcraft_i18n::msg;
 use std::collections::BTreeSet;
 
 use bimcraft_core::geom::{self, P2};
-use bimcraft_core::model::{Element, Id, Line, Model, TOL};
+use bimcraft_core::model::{Element, Id, Line, Location, Model, TOL};
 use bimcraft_core::render::View;
 use bimcraft_core::sketch::{self as solver, Problem, SketchLine};
 use bimcraft_core::units::Units;
@@ -54,6 +54,8 @@ pub enum Drag {
 #[derive(Clone, Debug, PartialEq)]
 pub struct Sketch {
     pub of: Of,
+    /// Pick Walls in a floor sketch: None follows the wall's authored location line.
+    wall_face: Option<Location>,
     pub lines: Vec<SketchLine>,
     pub picked: BTreeSet<usize>,
     pub wrong: Vec<usize>,
@@ -106,6 +108,7 @@ impl Sketch {
     pub(crate) fn of_form(of: Of, lines: Vec<SketchLine>) -> Sketch {
         Sketch {
             of,
+            wall_face: None,
             seen: lines.clone(),
             lines,
             picked: BTreeSet::new(),
@@ -356,6 +359,7 @@ impl BimApp {
         let plan = self.sheet;
         self.sketch = Some(Sketch {
             of,
+            wall_face: None,
             lines,
             picked: BTreeSet::new(),
             wrong: Vec::new(),
@@ -646,15 +650,15 @@ impl BimApp {
                 Some(_) => {}
                 None => chain.push(p),
             },
-            // A line along the wall's location line, round with it where it's an arc.
             Tool::SketchPick => {
                 if let Some(w) = wall.and_then(|id| m.wall(id)) {
-                    let axis = bimcraft_core::walls::Axis::of(w);
-                    let line = match w.arc {
-                        a if a != 0.0 => SketchLine::arc(w.start, w.end, axis.at(axis.length() / 2.0, 0.0)),
-                        _ => SketchLine::new(w.start, w.end),
-                    };
-                    sk.add(line);
+                    match solver::picked_wall(m, w, sk.wall_face) {
+                        Ok(line) => {
+                            sk.add(line);
+                            self.status = Status::default();
+                        }
+                        Err(text) => self.status = Status { text: t(text).into(), error: true },
+                    }
                 }
             }
             _ => {}
@@ -761,7 +765,7 @@ impl BimApp {
             ui.vertical(|ui| {
                 ui.spacing_mut().item_spacing.y = 2.0;
                 for row in tools.chunks(3) {
-                    ui.horizontal(|ui| {
+                    ribbon::tool_row(ui, |ui| {
                         for (icon, label, tip, tool) in row {
                             let active = match (&self.tool, tool) {
                                 (Tool::TrimTo { many: a, .. }, Tool::TrimTo { many: b, .. }) => a == b,
@@ -891,11 +895,20 @@ impl BimApp {
         });
     }
 
-    /// The Options Bar while sketching a region: the line style the lines drawn take (or invisible lines), which the lines
-    /// picked take at once.
+    /// A floor's Pick Walls reference or a region's sketch line style.
     pub(crate) fn sketch_options(&mut self, ui: &mut Ui) {
         let m = &self.session.model;
-        let Some(sk) = self.sketch.as_mut().filter(|sk| sk.styled) else { return };
+        let Some(sk) = self.sketch.as_mut() else { return };
+        let floor = matches!(sk.of, Of::Floor(_)) || matches!(sk.of, Of::Edit(id) if matches!(m.elements.get(id), Some(Element::Floor(_))));
+        if self.tool == Tool::SketchPick && floor {
+            ui.radio_value(&mut sk.wall_face, None, t("Location Line"));
+            for face in [Location::ExteriorCore, Location::InteriorCore] {
+                ui.radio_value(&mut sk.wall_face, Some(face), t(face.label()));
+            }
+        }
+        if !sk.styled {
+            return;
+        }
         // The region's type is the Type Selector's, in the Properties palette: one place to set it.
         let l = ui.label(t("Line Style:"));
         let invisible = t("<Invisible lines>").to_string();

@@ -183,7 +183,7 @@ fn a_picked_lines_end_is_a_grip_that_takes_the_lines_joined_there_with_it() {
 }
 
 #[test]
-fn arcs_and_picked_walls_close_loops_too() {
+fn an_arc_and_a_line_close_a_floor_loop() {
     let mut h = app(BOX);
     press(&mut h, "Floor");
     click(&mut h, P2(1000.0, 1000.0));
@@ -199,16 +199,90 @@ fn arcs_and_picked_walls_close_loops_too() {
     assert_eq!(half.len(), 1, "{}", h.state().status.text);
     let area = field(&h, half[0], "area_m2").as_f64().unwrap();
     assert!((area - std::f64::consts::TAU).abs() < 0.1, "{area}");
-    // Pick Walls: a line along each wall clicked.
-    press(&mut h, "Architecture");
+}
+
+#[test]
+fn pick_walls_closes_a_floor_on_the_authored_location_lines() {
+    let mut h = app(include_str!("../../../../samples/floor-pick-walls.txt"));
     press(&mut h, "Floor");
     press(&mut h, "Pick Walls");
-    for p in [P2(4000.0, 0.0), P2(8000.0, 3000.0), P2(4000.0, 6000.0), P2(0.0, 3000.0)] {
-        click(&mut h, p);
+    // Click alternately just inside and just outside the reference rectangle.
+    for (pick, a, b) in [
+        (P2(4000., 50.), P2(0., 0.), P2(8000., 0.)),
+        (P2(8050., 3000.), P2(8000., 0.), P2(8000., 6000.)),
+        (P2(4000., 5950.), P2(8000., 6000.), P2(0., 6000.)),
+        (P2(-50., 3000.), P2(0., 6000.), P2(0., 0.)),
+    ] {
+        click(&mut h, pick);
+        assert!(line_of(&h, a, b).is_some(), "picked at {pick:?}");
     }
     assert_eq!(lines(&h).len(), 4);
     press(&mut h, "Finish Edit Mode");
-    assert_eq!(ids(&h, "floor").len(), 2, "{}", h.state().status.text);
+    let floors = ids(&h, "floor");
+    assert_eq!(floors.len(), 1, "{}", h.state().status.text);
+    assert_eq!(field(&h, floors[0], "area_m2"), json!(48.0));
+}
+
+#[test]
+fn floor_core_picks_can_be_trimmed_and_finished_on_either_face() {
+    for (face, inset, area) in [("Core Face: Exterior", -70., 49.98), ("Core Face: Interior", 90., 45.51)] {
+        let mut h = app(include_str!("../../../../samples/floor-pick-walls.txt"));
+        press(&mut h, "Floor");
+        press(&mut h, "Pick Walls");
+        press(&mut h, face);
+        for p in [P2(4000., 25.), P2(7975., 3000.), P2(4000., 5975.), P2(25., 3000.)] {
+            click(&mut h, p);
+        }
+        assert_eq!(lines(&h).len(), 4);
+        assert!(line_of(&h, P2(0., inset), P2(8000., inset)).is_some());
+        press(&mut h, "Trim/Extend to Corner");
+        let midpoints = [P2(4000., inset), P2(8000. - inset, 3000.), P2(4000., 6000. - inset), P2(inset, 3000.)];
+        for i in 0..4 {
+            click(&mut h, midpoints[i]);
+            click(&mut h, midpoints[(i + 1) % 4]);
+        }
+        let steps = h.state().session.history().len();
+        press(&mut h, "Finish Edit Mode");
+        let floors = ids(&h, "floor");
+        assert_eq!(floors.len(), 1, "{}", h.state().status.text);
+        assert_eq!(field(&h, floors[0], "area_m2"), json!(area));
+        assert_eq!(h.state().session.history().len(), steps + 1);
+        let boundary = field(&h, floors[0], "boundary");
+        let points = boundary.as_array().unwrap();
+        assert_eq!(points.len(), 4);
+        for x in [inset, 8000. - inset] {
+            for y in [inset, 6000. - inset] {
+                assert!(points.contains(&json!([x, y])), "{boundary}");
+            }
+        }
+        h.state_mut().session.execute("undo", &json!({})).unwrap();
+        assert!(ids(&h, "floor").is_empty());
+        h.state_mut().session.execute("redo", &json!({})).unwrap();
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("floor.bimcraft");
+        h.state_mut().session.execute("save", &json!({"path":path})).unwrap();
+        h.state_mut().session.execute("open", &json!({"path":path})).unwrap();
+        assert_eq!(field(&h, floors[0], "boundary"), boundary);
+    }
+}
+
+#[test]
+fn the_tools_palette_offers_the_same_floor_pick_references() {
+    let mut h = bimcraft(include_str!("../../../../samples/floor-pick-walls.txt"));
+    tool(&mut h, "Floor");
+    let press_row = |h: &mut Harness<BimApp>, label| {
+        let rect = h.get_by_label(label).rect();
+        assert!(rect.width() > 100. && rect.right() <= h.state().view_rect.left(), "{label} needs a row in the Tools palette: {rect:?}");
+        h.get_by_label(label).scroll_to_me();
+        h.run();
+        press(h, label);
+    };
+    press_row(&mut h, "Pick Walls");
+    press(&mut h, "Core Face: Exterior");
+    click(&mut h, P2(4000., 25.));
+    assert!(line_of(&h, P2(0., -70.), P2(8000., -70.)).is_some());
+    press_row(&mut h, "Trim/Extend to Corner");
+    assert!(matches!(h.state().tool, Tool::Trim(None)));
 }
 
 #[test]

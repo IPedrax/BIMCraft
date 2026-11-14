@@ -5091,10 +5091,17 @@ impl BimApp {
     fn modify_tab(&mut self, ui: &mut Ui) {
         self.select_panel(ui);
         if self.sketch.is_some() {
+            // Finish and Cancel near the top of the scrolling Tools palette, at the right end of the ribbon.
+            let palette = ribbon::in_palette();
+            if palette {
+                self.mode_panel(ui);
+            }
             self.sketch_draw(ui);
             self.walls_outline_panel(ui);
             self.sketch_modify_panel(ui);
-            self.mode_panel(ui);
+            if !palette {
+                self.mode_panel(ui);
+            }
             return;
         }
         self.sketch_starters(ui);

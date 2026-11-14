@@ -9,8 +9,9 @@
 mod tests {
     use bimcraft_core::engine::Session;
     use bimcraft_core::geom::{self, P2};
-    use bimcraft_core::model::Id;
+    use bimcraft_core::model::{Id, Location, Model};
     use bimcraft_core::render::{self, Drawing, PAPER, Prim, View};
+    use bimcraft_core::sketch::{self, SketchLine};
     use bimcraft_core::walls;
 
     const CORNER: &str = include_str!("../../../samples/compound-corner.txt");
@@ -211,6 +212,114 @@ mod tests {
         let cap = walls::cap(&s.model, h, true);
         assert_eq!(cap, [P2(100., 100.), P2(60., 80.), P2(60., -80.), P2(-60., -80.), P2(-100., -100.)]);
         assert_eq!(walls::cap(&s.model, v, true), cap.into_iter().rev().collect::<Vec<_>>());
+        // The same floor corner now uses the opposite named face on V, at its end.
+        let horizontal = walls::layer_lines(&s.model, h);
+        let reversed = walls::layer_lines(&s.model, v);
+        for (hi, vi, turn) in [(1, 2, P2(60., 80.)), (2, 1, P2(-60., -80.))] {
+            assert_eq!((horizontal[hi][1], reversed[vi][1]), (turn, turn));
+        }
+    }
+
+    // A straight reference measured from the chosen face, still ending at the wall's authored stations.
+    // The additional offset is signed towards the wall's left, in mm.
+    fn reference(m: &Model, id: Id, face: Location, offset: f64) -> (P2, P2) {
+        let wall = m.wall(id).unwrap();
+        let ty = &m.types.wall[&wall.type_name];
+        let from_location = walls::faces(m, wall).0 - walls::depth(ty.thickness, &ty.layers, face);
+        let axis = walls::Axis::of(wall);
+        (axis.at(0.0, from_location + offset), axis.at(axis.length(), from_location + offset))
+    }
+
+    #[test]
+    fn sketch_returns_the_picked_wall_face_without_editing_the_model() {
+        use serde_json::json;
+        let (mut s, h, _) = fixture(CORNER);
+        let steps = s.history().len();
+        for (face, y) in [("exterior-core", 80.), ("interior-core", -80.)] {
+            let reply = s.execute("sketch", &json!({"wall":h,"face":face})).unwrap();
+            let line: SketchLine = serde_json::from_value(reply["line"].clone()).unwrap();
+            assert_eq!((line.start(), line.end()), (P2(-4000., y), P2(0., y)));
+        }
+        assert_eq!(s.history().len(), steps);
+        s.execute("flip", &json!({"id":h})).unwrap();
+        let reply = s.execute("sketch", &json!({"wall":h,"face":"exterior-core"})).unwrap();
+        let line: SketchLine = serde_json::from_value(reply["line"].clone()).unwrap();
+        assert_eq!((line.start(), line.end()), (P2(0., -80.), P2(-4000., -80.)));
+        assert!(s.execute("sketch", &json!({"wall":h,"face":"west"})).is_err());
+        assert!(s.execute("sketch", &json!({"wall":h,"lines":[]})).is_err());
+        assert!(s.execute("sketch", &json!({"face":"exterior-core"})).is_err());
+        let generic = s.execute("wall", &json!({"points":[[0,2000],[4000,2000]]})).unwrap()["ids"][0].clone();
+        assert!(s.execute("sketch", &json!({"wall":generic,"face":"interior-core"})).is_err());
+        assert!(s.execute("sketch", &json!({"wall":generic})).is_ok());
+        let curved = s.execute("wall", &json!({"type":"H","points":[[0,4000],[4000,4000]],"arc":30})).unwrap()["ids"][0].clone();
+        assert!(s.execute("sketch", &json!({"wall":curved,"face":"exterior-core"})).is_err());
+        let arc: SketchLine = serde_json::from_value(s.execute("sketch", &json!({"wall":curved})).unwrap()["line"].clone()).unwrap();
+        assert_eq!(arc.curve.kind(), "arc");
+        let at_finish =
+            s.execute("wall", &json!({"type":"H","points":[[0,8000],[4000,8000]],"location":"exterior-finish"})).unwrap()["ids"][0].clone();
+        let reply = s.execute("sketch", &json!({"wall":at_finish,"face":"exterior-core"})).unwrap();
+        let line: SketchLine = serde_json::from_value(reply["line"].clone()).unwrap();
+        assert_eq!((line.start(), line.end()), (P2(0., 7980.), P2(4000., 7980.)));
+    }
+
+    #[test]
+    fn floor_core_turns_on_the_compound_l() {
+        // Change only a finish material to make the same geometry take the ordinary cap.
+        let ordinary = CORNER.replacen(r#""material":"Inner plaster""#, r#""material":"Outer render""#, 1);
+        for (script, butt) in [(CORNER, true), (ordinary.as_str(), false)] {
+            let (s, h, v) = fixture(script);
+            let m = &s.model;
+            assert_eq!(walls::cap(m, h, true).len(), if butt { 5 } else { 3 });
+            for (face, layer, sign) in [(Location::ExteriorCore, 1, 1.), (Location::InteriorCore, 2, -1.)] {
+                let turn = P2(sign * 60., sign * 80.);
+                let h_end = walls::layer_lines(m, h)[layer][1];
+                let v_start = walls::layer_lines(m, v)[layer][0];
+                if butt {
+                    assert_eq!((h_end, v_start), (turn, turn));
+                } else {
+                    assert_eq!((h_end, v_start), (P2(sign * 80., sign * 80.), P2(sign * 60., sign * 60.)));
+                }
+                for offset in [0., sign * 25.] {
+                    let (a, b) = reference(m, h, face, offset);
+                    let (c, d) = reference(m, v, face, offset);
+                    assert_eq!((b, c), (P2(0., turn.1 + offset), P2(turn.0 + offset, 0.)));
+                    let corner = geom::line_intersection(a, b, c, d).unwrap();
+                    assert!(corner.dist(turn + P2(offset, offset)) < 1e-6, "{corner:?}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn floor_core_faces_close_the_asymmetric_rectangle() {
+        let mut s = Session::new();
+        let result = s.script(include_str!("../../../samples/floor-pick-walls.txt")).unwrap();
+        let ids = result.last().unwrap()["ids"].as_array().unwrap();
+        assert_eq!(ids.len(), 4);
+        // Clockwise axes: exterior is left. The 30/160/10 stack puts the core at +70 and -90 mm.
+        for (face, layer, inset, area_m2) in [(Location::ExteriorCore, 1, -70., 49.98), (Location::InteriorCore, 2, 90., 45.51)] {
+            let corners = [P2(inset, inset), P2(inset, 6000. - inset), P2(8000. - inset, 6000. - inset), P2(8000. - inset, inset)];
+            let mut lines = Vec::new();
+            let mut untrimmed = Vec::new();
+            for (i, id) in ids.iter().enumerate() {
+                let id = id.as_u64().unwrap();
+                let (a, b) = reference(&s.model, id, face, 0.);
+                untrimmed.push(SketchLine::new(a, b));
+                let joined = &walls::layer_lines(&s.model, id)[layer];
+                assert_eq!(joined, &[corners[i], corners[(i + 1) % 4]]);
+                lines.push(SketchLine::new(joined[0], joined[1]));
+            }
+            assert!(sketch::solve_one(&untrimmed).is_err());
+            let region = sketch::solve_one(&lines).unwrap();
+            assert_eq!(region.area(), (8000. - 2. * inset) * (6000. - 2. * inset));
+            let floor = s.execute("floor", &serde_json::json!({ "sketch": lines })).unwrap();
+            assert_eq!(floor["area_m2"], area_m2);
+        }
+        // Flipping just the west wall turns its asymmetric stack around in the model.
+        let west = ids[0].as_u64().unwrap();
+        s.execute("flip", &serde_json::json!({ "id": west })).unwrap();
+        assert_eq!(reference(&s.model, west, Location::ExteriorCore, 0.), (P2(70., 6000.), P2(70., 0.)));
+        assert_eq!(reference(&s.model, west, Location::InteriorCore, 0.), (P2(-90., 6000.), P2(-90., 0.)));
     }
 
     #[test]
