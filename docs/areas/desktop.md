@@ -198,8 +198,10 @@ borrowed one is anchored at the point being drawn from and runs parallel or squa
 parallel to it. Manage > Snaps picks how they are drawn (`GuideStyle`): Refined, the default, draws one-physical-pixel
 solid plum hairlines in the canvas's own ink (`style::guide_ink`) — a quiet ray edge to edge, the stronger segment from
 the source to the point it locks, a dot and ring on the source, a crosshair on a free cursor, a dot and a perpendicular
-tick on one guide, a bullseye where two cross, a pill badge and the live length beside the segment's middle; Classic
-keeps the dashed magenta, the blue squares and the tag at the cursor. The live ruler's graduations and the angle arc are
+tick on one guide, a bullseye where two cross (even on a point an angle step also holds), a pill badge and the live length
+beside the segment's middle; Classic keeps the dashed magenta, the blue squares and the tag at the cursor. The badge takes the
+corner round the glyph farthest from the guides through it, so a ray is never cut by the pill, and the live reading sits
+outside the corner's dotted arc in a pill of its own, on the guide ink's paper. The live ruler's graduations and the angle arc are
 finer in the refined look, and Measure's own ruler keeps its weight. Guides are drawn over the plan, never under it: the
 retained plan is one mesh, so there is no seam to hide a guide pass behind. A selected wall's ends are
 grips (`grip_drag`): a drag runs `move` with `end`, Ctrl keeps the length; the angle beside each end runs `rotate` about it. A

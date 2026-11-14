@@ -888,25 +888,45 @@ pub(crate) fn alignment_tag(alignments: &[bimcraft_core::alignment::AlignmentRes
 }
 
 /// A badge: `text` in a compact pill beside the glyph at `at`, in the guide ink, kept inside the
-/// painter's edge by flipping to the other side of the glyph.
-pub(crate) fn badge(p: &Painter, at: Pos2, text: impl Into<String>, ink: GuideInk) {
+/// painter's edge and off the guide lines through the glyph (`lines`, their screen angles).
+pub(crate) fn badge(p: &Painter, at: Pos2, text: impl Into<String>, ink: GuideInk, lines: &[f32]) {
     let galley = p.layout_no_wrap(text.into(), FontId::proportional(11.5), ink.badge_text);
     let size = galley.size() + vec2(12.0, 6.0);
-    let rect = badge_rect(at, size, p.clip_rect());
+    let rect = badge_rect(at, size, p.clip_rect(), lines);
     let radius = rect.height() / 2.0;
     p.rect_filled(rect, radius, ink.badge);
     p.rect_stroke(rect, radius, Stroke::new(1.0, ink.badge_edge), StrokeKind::Inside);
     p.galley(rect.min + vec2(6.0, 3.0), galley, ink.badge_text);
 }
 
-/// Where a badge of `size` goes beside the glyph at `at`, inside `clip`: to its right and below, or
-/// to its left or above when the view's edge is near, and never past the edge.
-pub(crate) fn badge_rect(at: Pos2, size: Vec2, clip: Rect) -> Rect {
+/// Where a badge of `size` goes beside the glyph at `at`, inside `clip`: of the four corners round the glyph, the one
+/// whose middle lies farthest from the guide lines through it (`lines`, screen angles), so a ray never runs under it.
+/// Right and below when nothing runs through the glyph, and never past the view's edge.
+pub(crate) fn badge_rect(at: Pos2, size: Vec2, clip: Rect, lines: &[f32]) -> Rect {
     let (gap, edge) = (12.0, 6.0);
-    let x = if at.x + gap + size.x <= clip.right() - edge { at.x + gap } else { at.x - gap - size.x };
-    let y = if at.y + gap + size.y <= clip.bottom() - edge { at.y + gap } else { at.y - gap - size.y };
-    let x = x.clamp(clip.left() + edge, (clip.right() - edge - size.x).max(clip.left() + edge));
-    let y = y.clamp(clip.top() + edge, (clip.bottom() - edge - size.y).max(clip.top() + edge));
+    let corners = [vec2(gap, gap), vec2(-gap - size.x, gap), vec2(gap, -gap - size.y), vec2(-gap - size.x, -gap - size.y)];
+    // How far a corner's middle is from the nearest guide line: a line runs both ways, so the angle is taken modulo a
+    // half turn, and its nearer side is the distance.
+    let clearance = |offset: Vec2| {
+        let c = offset + size * 0.5;
+        let a = c.y.atan2(c.x);
+        lines.iter().fold(f32::INFINITY, |nearest, &line| {
+            let d = (a - line).rem_euclid(std::f32::consts::PI);
+            nearest.min(d.min(std::f32::consts::PI - d))
+        })
+    };
+    let mut offset = vec2(gap, gap);
+    let mut best = f32::NEG_INFINITY;
+    for c in corners {
+        let d = clearance(c);
+        // Only a corner appreciably clearer than the ones before it takes the badge: a crossing at a right angle leaves
+        // every corner as far, and the default (right and below) is the one to keep.
+        if d > best + 0.02 {
+            (offset, best) = (c, d);
+        }
+    }
+    let x = (at.x + offset.x).clamp(clip.left() + edge, (clip.right() - edge - size.x).max(clip.left() + edge));
+    let y = (at.y + offset.y).clamp(clip.top() + edge, (clip.bottom() - edge - size.y).max(clip.top() + edge));
     Rect::from_min_size(pos2(x, y), size)
 }
 
@@ -918,6 +938,29 @@ pub(crate) enum Lock {
     Free,
     One(Vec2),
     Cross,
+}
+
+/// The glyph a refined cursor takes when guides hold the point: a crosshair with nothing on it, a dot with a tick
+/// square across one guide, or a bullseye where two cross.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum LockGlyph {
+    Crosshair,
+    Slide(Vec2),
+    Bullseye,
+}
+
+/// What the guides hold `kind` with, if they hold it: `None` leaves the point its own marker (an angle step's dot, a
+/// wall's square). The lock wins over an angle step, so a point both a step and two guides hold says which guides.
+pub(crate) fn lock_glyph(kind: Kind, lock: Lock, refined: bool) -> Option<LockGlyph> {
+    if !refined || !matches!(kind, Kind::Free | Kind::Angle) {
+        return None;
+    }
+    match lock {
+        Lock::Cross => Some(LockGlyph::Bullseye),
+        Lock::One(d) => Some(LockGlyph::Slide(d)),
+        Lock::Free if kind == Kind::Free => Some(LockGlyph::Crosshair),
+        Lock::Free => None,
+    }
 }
 
 /// The shapes the guides at a point draw: each guide's ray to the view's edge, the stronger segment from
@@ -1510,36 +1553,32 @@ impl BimApp {
     }
 
     /// Renders visual alignment guide lines, reference markers, and alignment tags: what holds the point, for the cursor's own
-    /// glyph to say.
-    fn show_alignments(&self, sc: &Scene, alignments: &[AlignmentResult]) -> Lock {
+    /// glyph to say. `from` is the point being drawn from, whose segment the badge keeps off as it keeps off the rays.
+    fn show_alignments(&self, sc: &Scene, alignments: &[AlignmentResult], from: Option<P2>) -> Lock {
         let refined = self.refined_guides();
         // A guide runs edge to edge, as Plasticity's do: the painter's own rectangle ends it.
         let reach = sc.p.clip_rect().size().length();
         let hair = 1.0 / sc.p.pixels_per_point();
-        sc.p.extend(alignment_shapes(
-            alignments,
-            |p| sc.screen(p),
-            |d| {
-                let (x, y) = sc.v.along(d);
-                vec2(x as f32, y as f32)
-            },
-            reach,
-            hair,
-            refined,
-        ));
+        let along = |d: P2| {
+            let (x, y) = sc.v.along(d);
+            vec2(x as f32, y as f32)
+        };
+        sc.p.extend(alignment_shapes(alignments, |p| sc.screen(p), along, reach, hair, refined));
         let lock = match alignments {
             [] => Lock::Free,
-            [one] => {
-                let (x, y) = sc.v.along(one.axis.direction());
-                Lock::One(vec2(x as f32, y as f32).normalized())
-            }
+            [one] => Lock::One(along(one.axis.direction()).normalized()),
             _ => Lock::Cross,
         };
         if let Some(first) = alignments.first() {
             let at = sc.screen(first.snapped_point);
             let text = alignment_tag(alignments);
             if refined {
-                badge(sc.p, at, text, guide_ink());
+                // What runs through the glyph: the rays, and the segment being drawn, so the pill sits in a clear corner.
+                let mut lines: Vec<f32> = alignments.iter().map(|r| along(r.axis.direction()).angle()).collect();
+                if let Some(a) = from {
+                    lines.push((at - sc.screen(a)).angle());
+                }
+                badge(sc.p, at, text, guide_ink(), &lines);
             } else {
                 tag(sc.p, at + vec2(12.0, 14.0), Align2::LEFT_TOP, text);
             }
@@ -1594,7 +1633,7 @@ impl BimApp {
         if let Some(first) = alignments.first() {
             f.at = first.snapped_point;
         }
-        let lock = self.show_alignments(sc, &alignments);
+        let lock = self.show_alignments(sc, &alignments, from.last().copied());
         self.show_snap(sc, &f, lock);
         self.canvas.found.set(Some(f));
         f.at
@@ -5069,18 +5108,48 @@ impl BimApp {
             format!("{}  {}", m.units.with_unit(last.dist(next)), degrees(angle.unwrap_or_else(|| snap::ruler(last, next).angle)))
         };
         if let Some(last) = chain.last() {
-            let text = if self.typed_length.is_empty() { reading(*last) } else { format!("{} (Enter)", self.typed_length.trim()) };
-            let d = sc.screen(next) - sc.screen(*last);
-            if refined && d.length() >= 36.0 {
-                // Beside the segment's middle, along its normal: clear of its ruler and of the cursor's badge. A short
-                // segment keeps the reading at the cursor, where the middle would be under the hand anyway.
-                let n = vec2(d.y, -d.x) / d.length();
-                tag(sc.p, sc.screen(*last + (next - *last) * 0.5) + n * 18.0, Align2::CENTER_BOTTOM, text);
+            if !self.typed_length.is_empty() {
+                label(sc.screen(next), format!("{} (Enter)", self.typed_length.trim()));
+            } else if refined {
+                // Beside the segment's middle, on the outside of the corner it turns at, and far enough along the normal
+                // that the dotted arc at the corner and the cursor's badge both stay clear of it.
+                let (pl, pn) = (sc.screen(*last), sc.screen(next));
+                let d = pn - pl;
+                let len = d.length();
+                let dir = if len > f32::EPSILON { d / len } else { vec2(1.0, 0.0) };
+                let mut n = vec2(dir.y, -dir.x);
+                if let [.., prev, _] = chain
+                    && n.dot(sc.screen(*prev) - pl) < 0.0
+                {
+                    n = -n;
+                }
+                // The arc reaches 26 px about the corner; a badge sits 12 px off the cursor. Forty-five px from both is outside
+                // them, and a long segment's middle is farther still.
+                let off = (45.0f32.powi(2) - (len * 0.5).powi(2)).max(0.0).sqrt().max(18.0);
+                reading_pill(sc.p, pl + dir * (len * 0.5) + n * off, reading(*last), guide_ink());
             } else {
-                label(sc.screen(next), text);
+                label(sc.screen(next), reading(*last));
             }
         }
     }
+}
+
+/// A live reading in a pill of its own: the length and angle on the guide ink's paper, centred on `at` and kept inside
+/// the painter's edge, so a guide or the angle arc behind it never cuts the number.
+fn reading_pill(p: &Painter, at: Pos2, text: String, ink: GuideInk) -> Rect {
+    let galley = p.layout_no_wrap(text, FontId::proportional(11.5), ink.badge_text);
+    let size = galley.size() + vec2(10.0, 5.0);
+    let clip = p.clip_rect();
+    let c = pos2(
+        at.x.clamp(clip.left() + 4.0 + size.x / 2.0, (clip.right() - 4.0 - size.x / 2.0).max(clip.left() + 4.0 + size.x / 2.0)),
+        at.y.clamp(clip.top() + 4.0 + size.y / 2.0, (clip.bottom() - 4.0 - size.y / 2.0).max(clip.top() + 4.0 + size.y / 2.0)),
+    );
+    let rect = Rect::from_center_size(c, size);
+    let radius = rect.height() / 2.0;
+    p.rect_filled(rect, radius, ink.badge);
+    p.rect_stroke(rect, radius, Stroke::new(1.0, ink.badge_edge), StrokeKind::Inside);
+    p.galley(rect.min + vec2(5.0, 2.5), galley, ink.badge_text);
+    rect
 }
 
 impl BimApp {
@@ -5216,26 +5285,29 @@ pub(crate) fn snap_mark(p: &Painter, at: Pos2, from: Option<Pos2>, kind: Kind, l
         };
         p.extend(Shape::dashed_line(&[at - u * back, at + u * 28.0], stroke, dash, gap));
     }
-    match kind {
-        // What holds a free point, by the guides on it: a slide along one, or two crossing.
-        Kind::Free if refined => match lock {
-            Lock::Cross => {
+    // The guides' glyph comes first: a point both an angle step and two guides hold says which guides, not the step.
+    if let Some(glyph) = lock_glyph(kind, lock, refined) {
+        match glyph {
+            LockGlyph::Bullseye => {
                 p.circle_stroke(at, 7.0, Stroke::new(hair, ink.core));
                 p.circle_stroke(at, 3.9, Stroke::new(hair, ink.anchor.gamma_multiply(0.5)));
                 p.circle_filled(at, 1.5, ink.core);
             }
-            Lock::One(d) => {
+            LockGlyph::Slide(d) => {
                 p.circle_filled(at, 2.5, ink.core);
                 // Square on the guide: the way the point can still slide.
                 let n = vec2(-d.y, d.x) * 3.5;
                 p.line_segment([at - n, at + n], Stroke::new(hair, ink.core));
             }
-            Lock::Free => {
+            LockGlyph::Crosshair => {
                 p.line_segment([at - vec2(5.0, 0.0), at + vec2(5.0, 0.0)], Stroke::new(hair, ink.cursor));
                 p.line_segment([at - vec2(0.0, 5.0), at + vec2(0.0, 5.0)], Stroke::new(hair, ink.cursor));
                 p.circle_filled(at, 1.2, ink.cursor);
             }
-        },
+        }
+        return;
+    }
+    match kind {
         Kind::Endpoint => {
             p.rect_stroke(Rect::from_center_size(at, vec2(11.0, 11.0)), 0.0, stroke, StrokeKind::Middle);
         }

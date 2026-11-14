@@ -4522,22 +4522,50 @@ fn a_guide_draws_a_ray_a_relation_and_its_source() {
     );
 }
 
-/// A badge sits right and below its glyph, and turns to the other side rather than cross the view's edge.
+/// A badge sits right and below its glyph when nothing runs through it, turns to the other side rather than cross
+/// the view's edge, and keeps off a guide line through its glyph.
 #[test]
-fn a_badge_stays_inside_the_view() {
+fn a_badge_stays_inside_the_view_and_off_its_guides() {
     let clip = egui::Rect::from_min_size(pos2(0.0, 0.0), vec2(800.0, 600.0));
     let size = vec2(100.0, 20.0);
     let at = pos2(400.0, 300.0);
-    assert_eq!(crate::canvas::badge_rect(at, size, clip).min, pos2(412.0, 312.0));
-    let right = crate::canvas::badge_rect(pos2(790.0, 300.0), size, clip);
+    assert_eq!(crate::canvas::badge_rect(at, size, clip, &[]).min, pos2(412.0, 312.0));
+    let right = crate::canvas::badge_rect(pos2(790.0, 300.0), size, clip, &[]);
     assert!(right.right() <= clip.right() - 6.0 + 0.01, "{right:?}");
     assert!(right.left() < 790.0 - 12.0, "flipped to the left of its glyph: {right:?}");
-    let bottom = crate::canvas::badge_rect(pos2(400.0, 590.0), size, clip);
+    let bottom = crate::canvas::badge_rect(pos2(400.0, 590.0), size, clip, &[]);
     assert!(bottom.bottom() <= clip.bottom() - 6.0 + 0.01, "{bottom:?}");
     assert!(bottom.top() < 590.0 - 12.0, "flipped above its glyph: {bottom:?}");
-    let corner = crate::canvas::badge_rect(pos2(4.0, 4.0), size, clip);
+    let corner = crate::canvas::badge_rect(pos2(4.0, 4.0), size, clip, &[]);
     assert!(corner.min.x >= 6.0 - 0.01 && corner.min.y >= 6.0 - 0.01, "{corner:?}");
     assert!(clip.contains_rect(corner), "{corner:?}");
+
+    // A diagonal guide runs through the glyph's right-below corner, where the badge goes by default: it takes the
+    // corner across the line instead, so the ray is not cut by the pill.
+    let diagonal = std::f32::consts::FRAC_PI_4;
+    let rect = crate::canvas::badge_rect(at, size, clip, &[diagonal]);
+    let c = rect.center() - at;
+    let d = (c.y.atan2(c.x) - diagonal).rem_euclid(std::f32::consts::PI);
+    assert!(d.min(std::f32::consts::PI - d) > 0.6, "the badge lies on the guide: {rect:?}");
+    assert!(clip.contains_rect(rect), "{rect:?}");
+    // Two guides crossing at a right angle leave every corner as far, so the default corner stays.
+    let square = crate::canvas::badge_rect(at, size, clip, &[0.0, std::f32::consts::FRAC_PI_2]);
+    assert_eq!(square.min, pos2(412.0, 312.0), "{square:?}");
+}
+
+/// A point held by two guides is the bullseye even on an angle step, whose own marker is a dot; one guide's glyph is
+/// the dot and tick, and a point nothing holds keeps the crosshair, or its angle dot.
+#[test]
+fn a_point_held_by_guides_says_so_whatever_else_it_snapped_to() {
+    use crate::canvas::{Lock, LockGlyph, lock_glyph};
+    use bimcraft_core::snap::Kind;
+    assert_eq!(lock_glyph(Kind::Angle, Lock::Cross, true), Some(LockGlyph::Bullseye), "the lock wins over the step's dot");
+    assert_eq!(lock_glyph(Kind::Free, Lock::Cross, true), Some(LockGlyph::Bullseye));
+    assert_eq!(lock_glyph(Kind::Angle, Lock::One(vec2(1.0, 0.0)), true), Some(LockGlyph::Slide(vec2(1.0, 0.0))));
+    assert_eq!(lock_glyph(Kind::Free, Lock::Free, true), Some(LockGlyph::Crosshair));
+    assert_eq!(lock_glyph(Kind::Angle, Lock::Free, true), None, "an angle step nothing holds keeps its dot");
+    assert_eq!(lock_glyph(Kind::Endpoint, Lock::Cross, true), None, "real geometry keeps its own marker");
+    assert_eq!(lock_glyph(Kind::Free, Lock::Cross, false), None, "the classic look has its own markers");
 }
 
 #[test]
