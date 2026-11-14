@@ -1,0 +1,76 @@
+# Groups: model groups, detail groups and forgiving groups
+
+Revit's groups, in `crates/core/src/groups.rs` and `groups/`: a group type is a set of elements kept about an origin, and each
+group placed is an instance of it whose members are ordinary elements of the project, drawn, scheduled, exported and picked as any
+other. A change to the type is a change to every instance. Model groups and detail groups are separate, as in Revit's Project
+Browser:
+
+- **Model groups** (`Model::model_groups`, `Element::ModelGroup`) hold model elements: walls (and their doors and windows), floors,
+  ceilings, roofs, shafts, rooms and room separation lines, columns, footings, beams, pipes, ducts and the other runs, stairs,
+  ramps, railings, masses, rebar, property lines and components that stand on a level. A model group stands on a level.
+- **Detail groups** (`Model::detail_groups`, `Element::DetailGroup`) hold what is drawn in one view: detail lines, filled regions,
+  text notes and dimensions. A detail group stands in a view.
+
+A selection all of one kind can be grouped (`groups::kind_of`); one with both kinds, or with something that is in no kind (levels,
+grids, views, sheets, tags, links, scans, CAD), cannot, and says what is in the way. A member that points at another element
+(a door at its wall, a railing at its stair, a wall attached to a roof, a room at its own floor, a bar at its host, a dimension at
+what it measures) may be grouped only with that element: a dimension of a detail group measures only the group's own lines and
+regions. Elements outside a group may point into it (a tag on a grouped door, a dimension to a grouped wall): members keep their
+GUIDs, so those keep pointing.
+
+## How a type holds its members
+
+A type's members (`Member`, parts with an id and a GUID, as before) are elements in the group's own frame: about its origin,
+unturned, and with what they point at made tokens: another member by that member's GUID, the group's levels by
+`groups::level_token(k)` and, for a detail group, its view and that view's level by `VIEW` and `LEVEL`. A model group type lists
+its levels (`GroupType::levels`): for each token, how many storeys above the group's own level it is (`above`) and how far above
+it (`height`, mm). Members keep the parameters they were made with.
+
+An instance (`ModelGroup`, `DetailGroup`) is its type's name, its origin `at`, its `angle` and `mirrored`, the level it stands on
+(or the view), the levels its tokens stand for (`levels`, worked out when it is placed: the level that many storeys above its own)
+and its `members`: for each member of the type, the element that is it in this instance (`Slot`), or that it is excluded.
+`groups::place` makes an instance's member from the type's: tokens to the instance's elements and levels, then moved, turned and
+mirrored as `commands::transform` takes elements, a door's place along its wall and its hand flipped by a mirror as Mirror does.
+Marks and room numbers are each instance's own (`groups::OWN`): placed anew, and never a change to the group.
+
+## A group changes as a whole
+
+After every command (`groups::keep`, in `Session::perform` after constraints and rooms), each instance the command touched is
+looked at:
+
+- **Its placement changed** (moved, turned, mirrored, copied, given another level or type): its members are placed again from the
+  type, keeping their ids and GUIDs. Move, Copy, Rotate, Mirror and Delete given an instance take its members with it.
+- **A member changed, or went, outside Edit Group**: a conflict. The command is refused with an error that starts
+  `groups::CONFLICT` and names the group and what changed, and that says how to go on: `resolve_group {fix, command, params}`
+  runs the same command again with `fix: ungroup` (the instances it changes are ungrouped first, their members kept as they
+  are) or `fix: new_type` (each changed instance becomes a group type of its own, as it now stands). The desktop asks with
+  Revit's three choices: Ungroup, Create New Type, Cancel.
+- **A level it stands on moved**: a group's members don't move with a level they don't stand on, but they may be taller. A
+  group that isn't forgiving keeps its storeys: a level of it whose height above the group's level isn't the type's is a
+  conflict too. A **forgiving** group (`forgiving: true`, an instance property: Properties' Forgiving check box) lets a
+  member stretch: a level that is only some member's top (a wall to Level 2, Level 2 moved up) may be at any height, so long as
+  everything else of the member stays where it was: the level it stands on, its plan and its offsets. A level a member stands on,
+  moved, still moves all of it, and is still a conflict.
+
+Placed on another level (`model_group {level}` or `{levels: [...]}`, Revit's Paste Aligned to Selected Levels), a group's
+tokens go that many storeys up from there. A group that isn't forgiving is placed only where those storeys are the type's
+heights; a forgiving one is placed wherever the levels it stands on are, its tops reaching the levels there, however tall.
+
+## Picking, Tab and excluding
+
+A click on a member picks its group (`Model::group_picks`, which front ends run on what a pick finds): the instance comes first,
+its member second, so Tab steps from the group to the element in it. Selecting an instance highlights its members
+(`Model::with_members`). `exclude_member {ids}` takes members out of their instances (Revit's Exclude): the elements go, the
+slot remembers them, and `restore_excluded {id}` puts every excluded member of an instance back as its type has it.
+
+## Edit Group
+
+`edit_group {id}` starts editing an instance (Revit's Edit Group): while it is on, its members change freely, `edit_group {add:
+[ids]}` and `{remove: [ids]}` add elements to it and take members out (the elements stay, ungrouped), `{finish: true}` makes the
+type what the instance now is and places every other instance again, and `{cancel: true}` puts the project back as it was when
+the edit started.
+
+## Files
+
+FORMAT 21. A detail group of a file from before had no members of its own (its type's were drawn in its place): `Model::migrate`
+places them, so each becomes an instance with real members. Repeating details still draw their type's members, as before.
