@@ -871,6 +871,16 @@ pub(crate) fn tag(p: &Painter, at: Pos2, align: Align2, text: impl Into<String>)
     p.galley(rect.min, galley, pal().accent);
 }
 
+/// What the guides at a point say: the one inference, or the two that cross there, so a point both
+/// of them lock says which two.
+pub(crate) fn alignment_tag(alignments: &[bimcraft_core::alignment::AlignmentResult]) -> String {
+    match alignments {
+        [] => String::new(),
+        [one] => t(one.axis.name()).to_string(),
+        [a, b, ..] => tf("Intersection: {}, {}", &[t(a.axis.name()), t(b.axis.name())]),
+    }
+}
+
 impl BimApp {
     /// The view's name in the bottom left corner of the canvas `rect`, over the view control bar where that floats over the corner.
     fn corner_name(&self, ctx: &egui::Context, p: &Painter, rect: Rect, name: &str) {
@@ -1396,21 +1406,22 @@ impl BimApp {
         let magenta = Color32::from_rgb(255, 0, 255);
         let magenta_stroke = Stroke::new(1.0, magenta);
         let marker_stroke = Stroke::new(1.5, Color32::from_rgb(0, 160, 255));
+        // A guide runs edge to edge, as Plasticity's do: the painter's own rectangle ends it.
+        let reach = sc.p.clip_rect().size().length();
         for res in alignments {
-            let a = sc.screen(res.reference_point);
-            let b = sc.screen(res.snapped_point);
-            if a.distance(b) > 0.5 {
-                let dir = (b - a).normalized();
-                let ext_a = a - dir * 24.0;
-                let ext_b = b + dir * 24.0;
-                sc.p.extend(Shape::dashed_line(&[ext_a, ext_b], magenta_stroke, 6.0, 4.0));
-            }
-            sc.p.rect_stroke(Rect::from_center_size(a, vec2(7.0, 7.0)), 0.0, marker_stroke, StrokeKind::Middle);
+            let d = res.axis.direction();
+            let at = sc.screen(res.snapped_point);
+            let step = vec2(d.0 as f32, -(d.1 as f32)) * reach;
+            sc.p.extend(Shape::dashed_line(&[at - step, at + step], magenta_stroke, 6.0, 4.0));
+            sc.p.rect_stroke(
+                Rect::from_center_size(sc.screen(res.reference_point), vec2(7.0, 7.0)),
+                0.0,
+                marker_stroke,
+                StrokeKind::Middle,
+            );
         }
         if let Some(first) = alignments.first() {
-            // Why it lined up: with which wall, by its id, as Select by ID finds it.
-            let why = first.wall_id.map_or_else(|| t("align").to_string(), |w| tf("Lines up with wall {}", &[&w.to_string()]));
-            tag(sc.p, sc.screen(first.snapped_point) + vec2(12.0, 14.0), Align2::LEFT_TOP, &why);
+            tag(sc.p, sc.screen(first.snapped_point) + vec2(12.0, 14.0), Align2::LEFT_TOP, alignment_tag(alignments));
         }
     }
 

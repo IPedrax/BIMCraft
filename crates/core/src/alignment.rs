@@ -1,8 +1,11 @@
 //! Alignment guides (smart snapping) for tools such as wall drawing.
 //!
 //! Detects when the cursor aligns with reference points of existing walls (endpoints, midpoints,
-//! faces, and axis intersections) along horizontal (Y), vertical (X), and diagonal axes,
-//! providing visual guide lines, reference markers, and magnetic snapping.
+//! faces, and axis intersections) along horizontal (Y), vertical (X), and diagonal axes, and when the
+//! direction being drawn is parallel or square to a line already drawn, providing visual guide lines,
+//! reference markers, and magnetic snapping.
+
+use bimcraft_i18n::ui_msg;
 
 use crate::geom::{self, P2};
 use crate::model::{Element, Id, Model, TOL};
@@ -29,7 +32,7 @@ impl ReferenceType {
 }
 
 /// The axis of the alignment guide.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum AlignmentAxis {
     /// Vertical guide: cursor x-coordinate aligns with reference point's x.
     X,
@@ -39,6 +42,41 @@ pub enum AlignmentAxis {
     Angle45,
     /// 135-degree diagonal guide (y + x = constant).
     Angle135,
+    /// A direction borrowed from a line the cursor is near, through the point being drawn from:
+    /// parallel to that line, or square to it.
+    Inferred { along: P2, of: Inference },
+}
+
+/// Which way an [`AlignmentAxis::Inferred`] guide runs against the line it came from.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum Inference {
+    Parallel,
+    Perpendicular,
+}
+
+impl AlignmentAxis {
+    /// The direction the guide runs in, a unit vector.
+    pub fn direction(self) -> P2 {
+        match self {
+            AlignmentAxis::X => P2(0.0, 1.0),
+            AlignmentAxis::Y => P2(1.0, 0.0),
+            AlignmentAxis::Angle45 => P2(std::f64::consts::FRAC_1_SQRT_2, std::f64::consts::FRAC_1_SQRT_2),
+            AlignmentAxis::Angle135 => P2(-std::f64::consts::FRAC_1_SQRT_2, std::f64::consts::FRAC_1_SQRT_2),
+            AlignmentAxis::Inferred { along, .. } => along,
+        }
+    }
+
+    /// What it's called, in English: what the cursor says it is lining up with.
+    pub fn name(self) -> &'static str {
+        match self {
+            AlignmentAxis::X => ui_msg!("Vertical"),
+            AlignmentAxis::Y => ui_msg!("Horizontal"),
+            AlignmentAxis::Angle45 => "45°",
+            AlignmentAxis::Angle135 => "135°",
+            AlignmentAxis::Inferred { of: Inference::Parallel, .. } => ui_msg!("Parallel"),
+            AlignmentAxis::Inferred { of: Inference::Perpendicular, .. } => ui_msg!("Perpendicular"),
+        }
+    }
 }
 
 /// A line segment for visual guide overlay rendering.
@@ -63,7 +101,8 @@ pub struct AlignmentResult {
     pub snapped_point: P2,
     /// The line connecting the reference point to the snapped point.
     pub guide_line: GuideLine,
-    /// The original reference point on the existing wall that produced this alignment.
+    /// The point the guide runs through: the reference point on the existing element that produced it,
+    /// or the point being drawn from when the direction was borrowed.
     pub reference_point: P2,
     /// The axis of this alignment.
     pub axis: AlignmentAxis,
@@ -122,6 +161,39 @@ fn dedup_references(refs: &mut Vec<ReferencePoint>) {
     });
 }
 
+/// A guide the cursor is riding: which way it runs, and the point it runs through.
+#[derive(Clone, Copy, Debug)]
+struct Guide {
+    axis: AlignmentAxis,
+    anchor: P2,
+    kind: ReferenceType,
+    wall_id: Option<Id>,
+}
+
+impl Guide {
+    /// How far the cursor is off it, mm.
+    fn deviation(self, p: P2) -> f64 {
+        (p - self.anchor).cross(self.axis.direction()).abs()
+    }
+
+    /// The cursor's own point on it.
+    fn project(self, p: P2) -> P2 {
+        let d = self.axis.direction();
+        self.anchor + d * ((p - self.anchor).dot(d))
+    }
+
+    fn result(self, snapped_point: P2) -> AlignmentResult {
+        AlignmentResult {
+            snapped_point,
+            guide_line: GuideLine { from: self.anchor, to: snapped_point },
+            reference_point: self.anchor,
+            axis: self.axis,
+            kind: self.kind,
+            wall_id: self.wall_id,
+        }
+    }
+}
+
 /// Service that indexes wall reference points and detects alignment guides.
 #[derive(Clone, Debug, Default)]
 pub struct AlignmentGuideService {
@@ -131,6 +203,8 @@ pub struct AlignmentGuideService {
     by_x: Vec<usize>,
     /// Indices of `references` sorted by Y coordinate for fast O(log N) range queries.
     by_y: Vec<usize>,
+    /// The straight runs of what's drawn: a direction the cursor can borrow for a guide.
+    lines: Vec<(P2, P2)>,
 }
 
 impl AlignmentGuideService {
@@ -149,7 +223,7 @@ impl AlignmentGuideService {
         let mut by_y: Vec<usize> = (0..references.len()).collect();
         by_y.sort_by(|&a, &b| references[a].point.1.total_cmp(&references[b].point.1));
 
-        Self { config, references, by_x, by_y }
+        Self { config, references, by_x, by_y, lines: Vec::new() }
     }
 
     /// Extracts reference points from all elements visible/present on `level` in `model`,
@@ -289,7 +363,9 @@ impl AlignmentGuideService {
         }
 
         dedup_references(&mut refs);
-        Self::new(refs, config)
+        let mut service = Self::new(refs, config);
+        service.lines = straight_lines;
+        service
     }
 
     /// Extracts reference points from a list of wall tuples (id, axis, faces).
@@ -362,9 +438,10 @@ impl AlignmentGuideService {
         refs
     }
 
-    /// Finds alignments for `cursor` relative to existing wall references, excluding `start_point`.
+    /// Finds alignments for `cursor`: the axis guides of the reference points near it, and a direction
+    /// borrowed from the lines drawn, all through `start_point` where they are borrowed ones.
     pub fn find_alignments(&self, cursor: P2, start_point: Option<P2>, tolerance: f64) -> Vec<AlignmentResult> {
-        if !self.config.enabled || self.references.is_empty() || !tolerance.is_finite() || tolerance <= 0.0 {
+        if !self.config.enabled || (self.references.is_empty() && self.lines.is_empty()) || !tolerance.is_finite() || tolerance <= 0.0 {
             return Vec::new();
         }
 
@@ -414,58 +491,81 @@ impl AlignmentGuideService {
             }
         }
 
-        match (best_x, best_y) {
-            (Some((rx, _, _)), Some((ry, _, _))) => {
-                let snapped_point = micron(P2(rx.point.0, ry.point.1));
-                vec![
-                    AlignmentResult {
-                        snapped_point,
-                        guide_line: GuideLine { from: rx.point, to: snapped_point },
-                        reference_point: rx.point,
-                        axis: AlignmentAxis::X,
-                        kind: rx.kind,
-                        wall_id: rx.wall_id,
-                    },
-                    AlignmentResult {
-                        snapped_point,
-                        guide_line: GuideLine { from: ry.point, to: snapped_point },
-                        reference_point: ry.point,
-                        axis: AlignmentAxis::Y,
-                        kind: ry.kind,
-                        wall_id: ry.wall_id,
-                    },
-                ]
-            }
-            (Some((rx, _, _)), None) => {
-                let snapped_point = micron(P2(rx.point.0, cursor.1));
-                vec![AlignmentResult {
-                    snapped_point,
-                    guide_line: GuideLine { from: rx.point, to: snapped_point },
-                    reference_point: rx.point,
-                    axis: AlignmentAxis::X,
-                    kind: rx.kind,
-                    wall_id: rx.wall_id,
-                }]
-            }
-            (None, Some((ry, _, _))) => {
-                let snapped_point = micron(P2(cursor.0, ry.point.1));
-                vec![AlignmentResult {
-                    snapped_point,
-                    guide_line: GuideLine { from: ry.point, to: snapped_point },
-                    reference_point: ry.point,
-                    axis: AlignmentAxis::Y,
-                    kind: ry.kind,
-                    wall_id: ry.wall_id,
-                }]
-            }
-            (None, None) => {
-                if self.config.angles {
-                    self.find_diagonal_alignment(cursor, start_point, tolerance)
-                } else {
-                    Vec::new()
+        // 3. A direction borrowed from a straight run, through the point being drawn from: a line
+        //    drawn beside a slanted wall comes out parallel to it.
+        let mut guides: Vec<Guide> = Vec::with_capacity(3);
+        if let Some((r, _, _)) = best_x {
+            guides.push(Guide { axis: AlignmentAxis::X, anchor: r.point, kind: r.kind, wall_id: r.wall_id });
+        }
+        if let Some((r, _, _)) = best_y {
+            guides.push(Guide { axis: AlignmentAxis::Y, anchor: r.point, kind: r.kind, wall_id: r.wall_id });
+        }
+        if let Some(start) = start_point
+            && let Some(g) = self.inferred(cursor, start, tolerance)
+        {
+            guides.push(g);
+        }
+        if guides.is_empty() {
+            return if self.config.angles { self.find_diagonal_alignment(cursor, start_point, tolerance) } else { Vec::new() };
+        }
+
+        // Two guides crossing say where the point goes, and both are named; one says only one of its
+        // coordinates, so the other stays under the cursor.
+        let mut best: Option<(usize, usize, P2, f64)> = None;
+        for (i, a) in guides.iter().enumerate() {
+            for (j, b) in guides.iter().enumerate().skip(i + 1) {
+                let Some(q) = geom::line_intersection(a.anchor, a.anchor + a.axis.direction(), b.anchor, b.anchor + b.axis.direction())
+                else {
+                    continue;
+                };
+                // Nearly parallel guides meet far away: that is not the point the cursor is choosing.
+                if q.dist(cursor) > tolerance * 2.0 {
+                    continue;
+                }
+                let cost = a.deviation(cursor) + b.deviation(cursor);
+                if best.is_none_or(|(.., cheapest)| cost < cheapest) {
+                    best = Some((i, j, q, cost));
                 }
             }
         }
+        if let Some((i, j, q, _)) = best {
+            let snapped_point = micron(q);
+            return vec![guides[i].result(snapped_point), guides[j].result(snapped_point)];
+        }
+        let Some(g) = guides.iter().copied().min_by(|a, b| a.deviation(cursor).total_cmp(&b.deviation(cursor))) else {
+            return Vec::new();
+        };
+        vec![g.result(micron(g.project(cursor)))]
+    }
+
+    /// The guide borrowed from the lines drawn, through `start`: the one whose direction the line
+    /// being drawn is nearest, parallel to it or square to it. Only a direction is borrowed, never a
+    /// place, so a wall across the plan makes as good a parallel as the one under the cursor.
+    fn inferred(&self, cursor: P2, start: P2, tolerance: f64) -> Option<Guide> {
+        let mut best: Option<(f64, AlignmentAxis)> = None;
+        let v = cursor - start;
+        for &(a, b) in &self.lines {
+            let len = a.dist(b);
+            if len <= TOL {
+                continue;
+            }
+            let along = (b - a) * (1.0 / len);
+            let square = P2(-along.1, along.0);
+            for (off, axis) in [
+                (v.cross(along).abs(), AlignmentAxis::Inferred { along, of: Inference::Parallel }),
+                (v.cross(square).abs(), AlignmentAxis::Inferred { along: square, of: Inference::Perpendicular }),
+            ] {
+                // East and north are X's and Y's own guides, always on: a wall along one adds nothing.
+                let d = axis.direction();
+                if d.0.abs() < 0.02 || d.1.abs() < 0.02 {
+                    continue;
+                }
+                if off <= tolerance && best.is_none_or(|(nearest, _)| off < nearest) {
+                    best = Some((off, axis));
+                }
+            }
+        }
+        best.map(|(_, axis)| Guide { axis, anchor: start, kind: ReferenceType::Endpoint, wall_id: None })
     }
 
     /// Checks 45° and 135° diagonal alignments if enabled.
@@ -694,6 +794,89 @@ mod tests {
 mod why_tests {
     use super::*;
     use crate::engine::Session;
+
+    /// A slanted wall, a level, and the service over them: what a line drawn beside it borrows.
+    fn beside_a_slanted_wall() -> (Session, Id) {
+        let mut s = Session::new();
+        s.script(r#"wall {"points": [[0, 0], [4000, 2309]]}"#).unwrap();
+        let level = s.model.levels()[0].0;
+        (s, level)
+    }
+
+    /// A guide the cursor is near runs through the point being drawn from, parallel to the wall beside
+    /// it: Plasticity's `Parallel`, the direction taken and made exact.
+    #[test]
+    fn a_line_borrows_the_direction_of_the_wall_beside_it() {
+        let (s, level) = beside_a_slanted_wall();
+        let config = AlignmentConfig { angles: false, ..AlignmentConfig::default() };
+        let service = AlignmentGuideService::from_model(&s.model, level, config);
+        let start = P2(0.0, 2000.0);
+        let along = P2(4000.0, 2309.0) * (1.0 / P2(4000.0, 2309.0).length());
+        // A thousand millimetres out along the wall's direction, 7 mm off it.
+        let cursor = start + along * 1000.0 + P2(-along.1, along.0) * 7.0;
+
+        let found = service.find_alignments(cursor, Some(start), 80.0);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(matches!(found[0].axis, AlignmentAxis::Inferred { of: Inference::Parallel, .. }), "{found:?}");
+        assert!(found[0].axis.direction().cross(along).abs() < 1e-9, "the wall's own direction");
+        assert_eq!(found[0].reference_point, start, "through the point being drawn from");
+        assert!(found[0].snapped_point.dist(cursor) <= 80.0, "on the guide");
+        assert!((found[0].snapped_point - start).cross(along).abs() < 1e-3, "the snapped point is on it");
+    }
+
+    /// Square to the line beside it, the same guide turned by ninety degrees.
+    #[test]
+    fn a_line_borrows_the_direction_square_to_the_wall_beside_it() {
+        let (s, level) = beside_a_slanted_wall();
+        let config = AlignmentConfig { angles: false, ..AlignmentConfig::default() };
+        let service = AlignmentGuideService::from_model(&s.model, level, config);
+        let start = P2(0.0, 2000.0);
+        let along = P2(4000.0, 2309.0) * (1.0 / P2(4000.0, 2309.0).length());
+        let square = P2(-along.1, along.0);
+        let cursor = start + square * 1000.0 + along * 7.0;
+
+        let found = service.find_alignments(cursor, Some(start), 80.0);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(matches!(found[0].axis, AlignmentAxis::Inferred { of: Inference::Perpendicular, .. }), "{found:?}");
+        assert!(found[0].snapped_point.dist(cursor) <= 80.0);
+        assert!((found[0].snapped_point - start).dot(along).abs() < 1e-3, "square to the wall, through the start");
+    }
+
+    /// A borrowed direction and an axis guide crossing: the point is where they meet, as Plasticity's
+    /// `Intersection, Parallel` locks both degrees of freedom at once.
+    #[test]
+    fn a_borrowed_direction_crosses_an_axis_guide_where_the_two_meet() {
+        let mut s = Session::new();
+        s.script(r#"wall {"points": [[0, 0], [4000, 2309]]}"#).unwrap();
+        s.script(r#"wall {"points": [[1000, 6000], [1000, 7000]]}"#).unwrap();
+        let level = s.model.levels()[0].0;
+        let config = AlignmentConfig { angles: false, ..AlignmentConfig::default() };
+        let service = AlignmentGuideService::from_model(&s.model, level, config);
+        let start = P2(0.0, 2000.0);
+        // Near the vertical wall's end (x = 1000) and near the slanted wall's parallel through `start`.
+        let cursor = P2(1005.0, 2580.0);
+
+        let found = service.find_alignments(cursor, Some(start), 80.0);
+        assert_eq!(found.len(), 2, "{found:?}");
+        assert_eq!(found[0].axis, AlignmentAxis::X);
+        assert!(matches!(found[1].axis, AlignmentAxis::Inferred { of: Inference::Parallel, .. }), "{found:?}");
+        assert_eq!(found[0].snapped_point, found[1].snapped_point, "one point, both guides");
+        assert!((found[0].snapped_point.0 - 1000.0).abs() < 1e-3, "on the vertical guide");
+        assert!((found[0].snapped_point.1 - 2577.35).abs() < 0.1, "and on the borrowed one");
+    }
+
+    /// A direction a wall does not run in is not borrowed: no jump onto a line the cursor is nowhere near.
+    #[test]
+    fn a_direction_no_line_runs_in_is_not_borrowed() {
+        let (s, level) = beside_a_slanted_wall();
+        let config = AlignmentConfig { angles: false, ..AlignmentConfig::default() };
+        let service = AlignmentGuideService::from_model(&s.model, level, config);
+        let start = P2(0.0, 2000.0);
+        let sixty = 60.0_f64.to_radians();
+        let cursor = start + P2(sixty.cos(), sixty.sin()) * 1000.0;
+
+        assert!(service.find_alignments(cursor, Some(start), 80.0).is_empty());
+    }
 
     /// An alignment says which wall it lines up with, so the window can say why a point snapped.
     #[test]

@@ -4418,6 +4418,52 @@ fn walls_drawn_near_alignment_guide_snap_to_other_walls_reference_points() {
     assert!((w[1].1.1 - 3000.0).abs() < 1e-2);
 }
 
+/// A guide says what it is, not which wall it came from, and a crossing names both of them, the way
+/// a constraint badge stacks what is locked.
+#[test]
+fn a_guide_names_the_inference_and_a_crossing_names_both() {
+    use bimcraft_core::alignment::{AlignmentAxis, AlignmentResult, GuideLine, Inference, ReferenceType};
+    let guide = |axis| AlignmentResult {
+        snapped_point: P2(1000.0, 2000.0),
+        guide_line: GuideLine { from: P2(0.0, 1000.0), to: P2(1000.0, 2000.0) },
+        reference_point: P2(0.0, 1000.0),
+        axis,
+        kind: ReferenceType::Endpoint,
+        wall_id: Some(100231),
+    };
+    assert_eq!(crate::canvas::alignment_tag(&[guide(AlignmentAxis::Y)]), "Horizontal");
+    assert_eq!(crate::canvas::alignment_tag(&[guide(AlignmentAxis::X)]), "Vertical");
+    let parallel = AlignmentAxis::Inferred { along: P2(0.5, 0.866), of: Inference::Parallel };
+    assert_eq!(crate::canvas::alignment_tag(&[guide(parallel)]), "Parallel");
+    assert_eq!(crate::canvas::alignment_tag(&[guide(AlignmentAxis::Y), guide(parallel)]), "Intersection: Horizontal, Parallel");
+}
+
+/// A wall drawn beside a slanted one comes out parallel to it: the guide runs through the point the
+/// wall starts from, so the second click lands on that line however far off it the pointer is.
+#[test]
+fn a_wall_drawn_beside_a_slanted_one_comes_out_parallel_to_it() {
+    let rise = 4000.0 * 20.0_f64.to_radians().tan();
+    let mut h = app(&format!("wall {{\"points\": [[0, 0], [4000, {rise}]]}}"));
+    tool(&mut h, "Wall");
+    // South of the wall beside it, well inside the view it is fitted to, and clear of the Options Bar at the view's top.
+    let start = P2(800.0, -200.0);
+    click(&mut h, start);
+    let level = h.state().session.model.levels()[0].0;
+    let scale = h.state().canvas.current_view(level).map_or(0.2, |v| v.scale);
+    let turn = 20.0_f64.to_radians();
+    let along = P2(turn.cos(), turn.sin());
+    // 1500 mm out along the wall's direction, four pixels off the parallel through the start.
+    let end = start + along * 1500.0 + P2(-along.1, along.0) * (4.0 / scale);
+    let f = hover(&mut h, end).expect("the cursor is over the plan");
+    assert!((f.at - start).cross(along).abs() < 0.01, "{:?}: on the borrowed direction, not under the pointer", f.at);
+    click(&mut h, end);
+    key(&mut h, Key::Enter);
+
+    let made = walls(&h).last().copied().expect("the wall");
+    assert!(made.0.dist(start) < 1.0, "{made:?}");
+    assert!((made.1 - made.0).cross(along).abs() < 0.01, "{made:?}: parallel to the wall it was drawn beside");
+}
+
 #[test]
 fn manage_snaps_toggles_alignment_guides() {
     let mut h = app("");
