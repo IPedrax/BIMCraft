@@ -6274,6 +6274,7 @@ mod clouds;
 mod control;
 mod coordinates;
 mod cowork;
+mod curtain;
 mod dialog;
 mod dimensions;
 mod dims3d;

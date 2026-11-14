@@ -24,6 +24,7 @@ mod context;
 pub mod control;
 mod coordinates;
 pub mod cowork;
+mod curtain;
 mod dialog;
 mod dimtypes;
 mod display;
@@ -172,6 +173,15 @@ pub enum Tool {
     ReferencePlane(Option<P2>),
     /// Move the selection: its base point, once clicked.
     Move(Option<P2>),
+    /// Place grid lines on a curtain wall: hover to see where, click to place, Esc to stop.
+    CurtainGrid {
+        wall: Id,
+        way: bimcraft_core::curtain::GridWay,
+    },
+    /// Take stretches of a curtain wall's grid lines off, or put them back: hover to see which, click, Esc to stop.
+    CurtainSegment {
+        wall: Id,
+    },
     /// Copy the selection: its base point, once clicked.
     Copy(Option<P2>),
     /// Rotate the selection about `centre`: the start of the angle, once clicked; with `place`, the
@@ -747,6 +757,21 @@ pub struct BimApp {
     spot_type_dialog: Option<spots::SpotTypeDialog>,
     /// The spot coordinate whose leader's end is being dragged.
     spot_grip: Option<Id>,
+    curtain_editor: Option<curtain::CurtainEditor>,
+    /// The one part of the selected curtain wall Tab has gone to: what Properties and Delete then act on.
+    curtain_part: Option<(Id, bimcraft_core::curtain::Address)>,
+    /// With a mullion's whole grid picked, the other places on it.
+    curtain_more: Vec<bimcraft_core::curtain::Address>,
+    /// Where the Curtain Grid tool would place a line: the wall, how far, and the way.
+    curtain_hover: Option<(Id, f64, bimcraft_core::curtain::GridWay)>,
+    /// The part of the selected curtain wall a Tab would go to next, under the cursor.
+    curtain_aim: Option<(Id, bimcraft_core::curtain::Address)>,
+    /// The stretch of a grid line Add/Remove Segments would take off or put back.
+    curtain_segment_hover: Option<(Id, bimcraft_core::curtain::Address)>,
+    /// The model the malformed curtain walls were last looked for in, those it had, and those being asked about.
+    curtain_seen: Option<Arc<Model>>,
+    curtain_known: std::collections::BTreeSet<Id>,
+    curtain_asking: std::collections::BTreeSet<Id>,
     dimension_text_dialog: Option<dimtypes::DimensionTextDialog>,
     /// The line style the Detail Line tool draws in; blank for the project's Thin Lines.
     line_style: String,
@@ -1446,6 +1471,9 @@ fn rail_button(ui: &mut Ui, icon: Icon, label: &str, open: bool) -> Response {
     r.on_hover_text(label)
 }
 
+/// The ribbon's name for the Wall tool drawing a curtain wall type.
+const CURTAIN_TOOL: &str = msg!("Curtain Wall");
+
 impl BimApp {
     pub fn new(session: Session) -> BimApp {
         let first = Sheet::Plan(session.model.levels().first().map_or(0, |(id, _)| *id));
@@ -1575,6 +1603,15 @@ impl BimApp {
             dimension_type_dialog: None,
             spot_type_dialog: None,
             spot_grip: None,
+            curtain_editor: None,
+            curtain_part: None,
+            curtain_more: Vec::new(),
+            curtain_hover: None,
+            curtain_aim: None,
+            curtain_segment_hover: None,
+            curtain_seen: None,
+            curtain_known: Default::default(),
+            curtain_asking: Default::default(),
             dimension_text_dialog: None,
             line_style: String::new(),
             linework_style: String::new(),
@@ -1847,6 +1884,8 @@ impl BimApp {
             | Tool::SpecifyPoint
             | Tool::ExportRegion(_)
             | Tool::Acquire => None,
+            Tool::CurtainGrid { .. } => Some(msg!("Place Curtain Grid")),
+            Tool::CurtainSegment { .. } => Some(msg!("Add/Remove Segments")),
             Tool::Wall(_) => Some(msg!("Place Wall")),
             Tool::Paint => Some("Paint"),
             Tool::Unpaint => Some("Remove Paint"),
@@ -2243,6 +2282,16 @@ impl BimApp {
         let m = &self.session.model;
         // What's selected is the model's elements, and Site's points (by their library ids).
         self.selection.retain(|id| m.elements.contains_key(id) || bimcraft_core::coordinates::Point::of(m, *id).is_some());
+        let selected = self.selection.as_slice();
+        self.curtain_part =
+            self.curtain_part.filter(|(id, at)| selected == [*id] && m.wall(*id).is_some_and(|w| curtain::part_is_there(m, w, *at)));
+        if self.curtain_part.is_none() {
+            self.curtain_more.clear();
+        }
+        if matches!(self.tool, Tool::CurtainGrid { wall, .. } | Tool::CurtainSegment { wall } if !m.wall(wall).is_some_and(|w| bimcraft_core::curtain::pattern(m, w).is_some()))
+        {
+            self.tool = Tool::Modify;
+        }
         self.active_option = self.active_option.take().filter(|o| bimcraft_core::phasing::option_exists(m, o));
         let docs: Vec<editor::tabs::DocId> = self.families.iter().map(|d| d.id).collect();
         let exists = |s: &Sheet| match s {
@@ -2284,6 +2333,8 @@ impl BimApp {
             || self.text_type_dialog.is_some()
             || self.dimension_type_dialog.is_some()
             || self.spot_type_dialog.is_some()
+            || self.curtain_editor.is_some()
+            || !self.curtain_asking.is_empty()
             || self.dimension_text_dialog.is_some()
             || self.materials_dialog.is_some()
             || self.family_dialog.is_some()
@@ -3038,7 +3089,8 @@ impl BimApp {
             self.new_level = (self.session.model.units.length(top + 3000.0), String::new());
         }
         let shaping = matches!(tool, Tool::SlopeArrow(_) | Tool::ModifySubElements | Tool::AddPoint | Tool::AddSplitLine(_));
-        if tool != Tool::Modify && tool != Tool::Attach && tool != Tool::GableEdge && !shaping && !edits {
+        let placing_grid = matches!(tool, Tool::CurtainGrid { .. } | Tool::CurtainSegment { .. });
+        if tool != Tool::Modify && tool != Tool::Attach && tool != Tool::GableEdge && !shaping && !edits && !placing_grid {
             self.selection.clear();
         }
         if tool != Tool::Modify && !picks {
@@ -3427,6 +3479,11 @@ impl BimApp {
             }
             return;
         }
+        // With one part of a curtain wall picked, that part, and never the wall.
+        if let Some((id, at)) = self.curtain_part {
+            self.delete_curtain_part(id, at);
+            return;
+        }
         // Under Modify Sub Elements, what of the shape is selected.
         if self.shape_delete() {
             return;
@@ -3540,8 +3597,12 @@ impl BimApp {
         // Elevation in sections, Demolish in sections and 3D); any other view takes clicks to select.
         let works = match sheet {
             Sheet::Plan(_) | Sheet::Ceiling(_) => true,
-            Sheet::Section(_) => matches!(self.tool, Tool::Text | Tool::Spot | Tool::Demolish),
-            Sheet::View3D => matches!(self.tool, Tool::Demolish | Tool::Paint | Tool::Unpaint),
+            Sheet::Section(_) => {
+                matches!(self.tool, Tool::Text | Tool::Spot | Tool::Demolish | Tool::CurtainGrid { .. } | Tool::CurtainSegment { .. })
+            }
+            Sheet::View3D => {
+                matches!(self.tool, Tool::Demolish | Tool::Paint | Tool::Unpaint | Tool::CurtainGrid { .. } | Tool::CurtainSegment { .. })
+            }
             Sheet::Paper(_) => self.tool == Tool::Text,
             _ => false,
         };
@@ -4381,8 +4442,28 @@ impl BimApp {
     fn tools(&mut self, ui: &mut Ui, name: &str, tools: Tools) {
         panel(ui, name, |ui| {
             for (icon, label, tip, tool) in tools {
-                let active = structure::same_tool(&self.tool, tool);
+                // In the panel's list and the palette only: the ribbon has no width to spare for it, and the Wall tool's Type
+                // Selector offers the same types.
+                if *label == CURTAIN_TOOL && !ribbon::listing() {
+                    continue;
+                }
+                // Wall and Curtain Wall are one tool, told apart by the type it draws.
+                let curtain_type =
+                    self.types.get("wall").is_some_and(|n| self.session.model.types.wall.get(n).is_some_and(|t| t.curtain.is_some()));
+                let wall = matches!(tool, Tool::Wall(_));
+                let active = structure::same_tool(&self.tool, tool) && (!wall || curtain_type == (*label == CURTAIN_TOOL));
                 if big_button(ui, *icon, label, active, tip).clicked() {
+                    if wall && curtain_type != (*label == CURTAIN_TOOL) {
+                        let m = &self.session.model;
+                        let name = if *label == CURTAIN_TOOL {
+                            m.types.wall.iter().find(|(_, t)| t.curtain.is_some()).map(|(n, _)| n.clone())
+                        } else {
+                            m.default_type("wall").map(String::from)
+                        };
+                        if let Some(name) = name {
+                            self.types.insert("wall", name);
+                        }
+                    }
                     self.set_tool(tool.clone());
                 }
             }
@@ -4462,6 +4543,12 @@ impl BimApp {
             msg!("Build"),
             &[
                 (Icon::Wall, "Wall", msg!("Wall (WA): each click builds a wall; Enter or Esc ends the chain"), Tool::Wall(Vec::new())),
+                (
+                    Icon::Wall,
+                    CURTAIN_TOOL,
+                    msg!("Curtain Wall: a wall divided by its type's pattern into panels and mullions"),
+                    Tool::Wall(Vec::new()),
+                ),
                 (Icon::Door, "Door", msg!("Door (DR): click a wall"), Tool::Door),
                 (Icon::Window, "Window", msg!("Window (WN): click a wall"), Tool::Window),
                 (Icon::Column, "Column", msg!("Column (CL): click where it stands"), Tool::Column),
@@ -5271,6 +5358,7 @@ impl BimApp {
                 self.vertex_buttons(ui);
             });
         }
+        self.curtain_grid_panel(ui);
         // Walls selected: Revit's Modify Wall panel.
         let walls = self.selected_walls();
         let attachable = self.selected_attachable();
@@ -5911,6 +5999,15 @@ impl BimApp {
             Tool::Grid(Some(_)) => msg!("Click to enter the grid's end point."),
             Tool::ReferencePlane(None) => msg!("Click to enter the reference plane's start point."),
             Tool::ReferencePlane(Some(_)) => msg!("Click to enter the reference plane's end point."),
+            Tool::CurtainGrid { way: bimcraft_core::curtain::GridWay::Vertical, .. } => {
+                msg!("Click on the curtain wall to place a vertical grid. Esc ends.")
+            }
+            Tool::CurtainGrid { .. } => {
+                msg!("Click on the curtain wall in a section, an elevation or the 3D view to place a horizontal grid. Esc ends.")
+            }
+            Tool::CurtainSegment { .. } => {
+                msg!("Click a stretch of a grid line in a section, an elevation or the 3D view to take it off or put it back. Esc ends.")
+            }
             Tool::Move(None) | Tool::Copy(None) => msg!("Click a base point to measure from."),
             Tool::Move(Some(_)) => msg!("Click where the base point goes, or type a distance and press Enter. Esc cancels."),
             Tool::Copy(Some(_)) => msg!("Click where the copy's base point goes, or type a distance and press Enter. Esc cancels."),
@@ -6329,6 +6426,8 @@ impl BimApp {
         self.text_type_window(ctx);
         self.dimension_type_window(ctx);
         self.spot_type_window(ctx);
+        self.curtain_editor_window(ctx);
+        self.curtain_message(ctx);
         self.dimension_text_window(ctx);
         self.standards_window(ctx);
         self.electrical_window(ctx);

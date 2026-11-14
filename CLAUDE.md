@@ -107,6 +107,7 @@ One line per module: what it owns. Read its file and, for the areas it names, th
 - `link.rs`: linked models, other projects' built elements drawn in, never edited; `elevation.rs`: elevations looking at a picked edge ([views and graphics](docs/areas/views-and-graphics.md)).
 - `dxf.rs`: DXF drawings read from the public reference. `cad.rs`: the drawings a project holds, and how an import colours, pens and dashes them ([CAD import](docs/areas/cad-import.md)). `mesh_in.rs`: OBJ and glTF read as families ([families](docs/areas/families.md#imported-3d-models)).
 - `family.rs`, `family/*.rs`, `csg.rs`, `fixtures.rs`, `favorites.rs`, `shared_parameters.rs`: families, their checks, solids cut from solids, starter fixtures, favorites, shared parameters ([each module](docs/areas/families.md#where-the-code-lives)). `texture.rs`, `paint.rs`: textures and paint.
+- `curtain.rs`: curtain walls ([curtain walls](docs/areas/curtain-walls.md)).
 - `parameters.rs`, `parameters/table.rs`: project parameters' kinds, scopes and types' values, `.bimparams` dictionaries, and parameter tables read and written (CSV, .xlsx) ([parameters](docs/areas/parameters.md)). `project_info.rs`: the project's information (Revit's Project Information), which title blocks and IFC read.
 - `adaptive/`: adaptive families ([each module](docs/areas/adaptive-families.md)).
 - `files.rs`: the extensions of BIMCraft's files: `.bimc` projects, `.bimb` backups, `.bimt` templates, `.bimf` families, and the older `.bimcraft` and `.json` still read ([packaging](docs/areas/packaging.md)).
