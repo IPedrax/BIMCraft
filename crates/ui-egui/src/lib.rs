@@ -3209,12 +3209,10 @@ impl BimApp {
             }
             Tool::Modify if self.sketch.is_none() => {
                 let &[id] = self.selection.as_slice() else { return false };
-                let Some(Element::Door(o)) = m.elements.get(id) else { return false };
-                if !m.single_swing_door(o.family.as_deref(), &o.type_name) {
+                if !m.elements.get(id).and_then(|e| m.opening_flips(e)).is_some_and(|flips| flips.any()) {
                     return false;
                 }
-                // Hand alternates every step; facing changes when hand wraps back to as placed.
-                self.run("modify", json!({"id": id, "flip_hand": !o.flip_hand, "flip_facing": o.flip_facing ^ o.flip_hand}));
+                self.run("flip", json!({"ids": [id], "cycle": "auto"}));
             }
             _ => return false,
         }

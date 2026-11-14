@@ -24,11 +24,11 @@ use crate::massing;
 use crate::memory;
 use crate::model::{
     CEILING_HEIGHT, CadImport, Ceiling, CeilingType, Column, ColumnType, Component, DEFAULT_HEIGHT, DimKind, Dimension, Dimension3D,
-    Element, End, Extrusion, Face, Facing, Floor, FloorType, Grid, Guid, HostRef, Hosted, Id, Key, Landing, Layer, Level, Line, Location,
-    MAX_COORD, MAX_POINTS, MAX_SLOPE, MAX_TEXT, Mass, Model, Note, Opening, OpeningType, Orient, PARAMETER_CATEGORIES, ParameterKind,
-    Pattern, Perspective, PlanView, PointCloud, ProjectParameter, PropertyLine, RAMP_SLOPE, RAMP_WIDTH, RISER, Railing, RailingType, Ramp,
-    Rebar, Ref3, Reference, Roof, RoofType, Room, RoomArea, RoomSeparator, STAIR_WIDTH, Schedule, Scope, Section, SectionBox, Shaft, Sheet,
-    Side, Spot, Stair, TOL, TREAD, Tag, Unbound, View3D, Viewport, Wall, WallType, heading, paper,
+    Element, End, Extrusion, Face, Facing, Flips, Floor, FloorType, Grid, Guid, HostRef, Hosted, Id, Key, Landing, Layer, Level, Line,
+    Location, MAX_COORD, MAX_POINTS, MAX_SLOPE, MAX_TEXT, Mass, Model, Note, Opening, OpeningType, Orient, PARAMETER_CATEGORIES,
+    ParameterKind, Pattern, Perspective, PlanView, PointCloud, ProjectParameter, PropertyLine, RAMP_SLOPE, RAMP_WIDTH, RISER, Railing,
+    RailingType, Ramp, Rebar, Ref3, Reference, Roof, RoofType, Room, RoomArea, RoomSeparator, STAIR_WIDTH, Schedule, Scope, Section,
+    SectionBox, Shaft, Sheet, Side, Spot, Stair, TOL, TREAD, Tag, Unbound, View3D, Viewport, Wall, WallType, heading, paper,
 };
 use crate::paint;
 use crate::phasing;
@@ -1805,8 +1805,12 @@ other_files(
         "flip",
         "Flip",
         &[],
-        "{ids: [wall,…]} turns walls round about their location lines, as Revit's flip arrows do: their exterior sides go to the \
-         other side, their doors and windows stay where they are",
+        "{ids: [wall, door, window, …], hand?, facing?, cycle?} turns walls round about their location lines, as Revit's flip \
+         arrows do: their exterior sides go to the other side, and their doors and windows stay where they are. A door or a \
+         window in `ids` turns over as `hand` (the hinge) or `facing` (the side it opens to or faces) says, or by `cycle`: \
+         `hand` steps a door's four Opens positions, `facing` turns its face, `auto` turns each opening by what it can flip (a \
+         swing door's hand, a window's face); a sliding or fixed door flips nothing. One call is one Undo step. Returns \
+         {flipped: [id,…], states: {id: {hand, facing}}}",
         flip,
     ),
     edit(
@@ -2983,11 +2987,16 @@ fn num(c: &str, p: &Value, key: &str) -> Result<Option<f64>, String> {
 }
 
 pub(crate) fn flag(c: &str, p: &Value, key: &str) -> Result<bool, String> {
+    Ok(optional_flag(c, p, key)?.unwrap_or(false))
+}
+
+/// [`flag`], or `None` where it isn't given.
+pub(crate) fn optional_flag(c: &str, p: &Value, key: &str) -> Result<Option<bool>, String> {
     match p.get(key) {
-        v if absent(v) => Ok(false),
-        Some(Value::Bool(b)) => Ok(*b),
+        v if absent(v) => Ok(None),
+        Some(Value::Bool(b)) => Ok(Some(*b)),
         Some(v) => Err(bad(c, format!("`{key}` must be true or false, got {v}"))),
-        None => Ok(false),
+        None => Ok(None),
     }
 }
 
@@ -10065,31 +10074,101 @@ fn location_names(n: &str) -> String {
     format!("`location` is one of {}, not `{n}`", names.join(", "))
 }
 
+/// Which way `flip` turns an opening: the hand cycle, the face, or each opening's own rule.
+#[derive(Clone, Copy)]
+enum Cycle {
+    Hand,
+    Facing,
+    Auto,
+}
+
+/// `cycle`, one of `hand`, `facing` or `auto`: relative on, or each opening by what it can flip.
+fn cycle_param(c: &str, p: &Value) -> Result<Option<Cycle>, String> {
+    let Some(name) = string(c, p, "cycle")? else { return Ok(None) };
+    match name.trim() {
+        "hand" => Ok(Some(Cycle::Hand)),
+        "facing" => Ok(Some(Cycle::Facing)),
+        "auto" => Ok(Some(Cycle::Auto)),
+        other => Err(bad(c, format!("`cycle` is one of `hand`, `facing` or `auto`, not `{other}`"))),
+    }
+}
+
+/// Why an opening can't flip `flag`, and what it can flip instead.
+fn unsupported(name: &str, id: Id, flag: &str, flips: Flips) -> String {
+    let can = match flips {
+        Flips { hand: true, facing: true } => "`hand` and `facing`",
+        Flips { hand: false, facing: true } => "`facing`",
+        Flips { hand: true, facing: false } => "`hand`",
+        _ => "nothing",
+    };
+    format!("{name} {id} can't flip `{flag}`: it can flip {can}")
+}
+
 /// Walls turned round about their location lines: they run the other way, so their exterior sides
 /// go to the other side; their doors and windows stay where they are, swinging and hinged as they were.
+/// Doors and windows in `ids` are turned over as `hand`, `facing` or `cycle` say.
 fn flip(s: &mut Session, p: &Value) -> R {
     let c = "flip";
+    only(c, p, &["ids", "hand", "facing", "cycle"])?;
     let m = &s.model;
     let ids = ids_param(c, m, p)?;
-    if let Some(id) = ids.iter().find(|id| m.wall(**id).is_none()) {
-        return Err(bad(c, format!("{} {id} isn't a wall", m.elements.get(id).map_or("element", Element::category))));
+    let hand = optional_flag(c, p, "hand")?;
+    let facing = optional_flag(c, p, "facing")?;
+    let cycle = cycle_param(c, p)?;
+    if cycle.is_some() && (hand.is_some() || facing.is_some()) {
+        return Err(bad(c, "`cycle` turns an opening by its own rule, so it takes neither `hand` nor `facing`"));
+    }
+    let walls: Vec<Id> = ids.iter().copied().filter(|id| m.wall(*id).is_some()).collect();
+    let openings: Vec<Id> = ids.iter().copied().filter(|id| m.wall(*id).is_none()).collect();
+    if let Some(id) = openings.iter().find(|id| m.elements.get(**id).is_none_or(|e| m.opening_flips(e).is_none())) {
+        let what = m.elements.get(*id).map_or("nothing", Element::category);
+        return Err(bad(c, format!("{what} {id} isn't a wall, a door or a window")));
+    }
+    // What each opening can turn: a flag it doesn't have is refused, and one given without `cycle` needs its own.
+    let mut capable: BTreeMap<Id, Flips> = BTreeMap::new();
+    for &id in &openings {
+        let Some(e) = m.elements.get(id) else { continue };
+        let flips = m.opening_flips(e).unwrap_or_default();
+        let name = e.category();
+        if cycle.is_none() && hand.is_none() && facing.is_none() {
+            return Err(bad(c, format!("{name} {id}: give `hand`, `facing` or `cycle` to flip it")));
+        }
+        if hand.is_some() && !flips.hand {
+            return Err(bad(c, unsupported(name, id, "hand", flips)));
+        }
+        if facing.is_some() && !flips.facing {
+            return Err(bad(c, unsupported(name, id, "facing", flips)));
+        }
+        match cycle {
+            Some(Cycle::Hand) if !flips.hand => return Err(bad(c, unsupported(name, id, "hand", flips))),
+            Some(Cycle::Facing) if !flips.facing => return Err(bad(c, unsupported(name, id, "facing", flips))),
+            _ => {}
+        }
+        capable.insert(id, flips);
+    }
+    if ids.is_empty() {
+        return Ok(json!({"flipped": [], "states": {}}));
     }
     // A flipped wall's doors and windows turn round with it: a pinned one stops it.
-    let guids: BTreeSet<Guid> = ids.iter().map(|id| m.guid(*id)).collect();
+    let guids: BTreeSet<Guid> = walls.iter().map(|id| m.guid(*id)).collect();
     let mut blocked = ids.clone();
     blocked.extend(hosted_openings(m, &guids));
     refuse_pinned(c, m, &blocked, "flip")?;
+    let explicit: BTreeSet<Id> = openings.iter().copied().collect();
     let m = s.model_mut();
-    let lengths: BTreeMap<Guid, f64> = ids.iter().filter_map(|id| Some((m.guid(*id), Axis::of(m.wall(*id)?).length()))).collect();
+    let lengths: BTreeMap<Guid, f64> = walls.iter().filter_map(|id| Some((m.guid(*id), Axis::of(m.wall(*id)?).length()))).collect();
     for (id, e) in m.elements.iter_mut() {
         match e {
-            Element::Wall(w) if ids.contains(id) => {
+            Element::Wall(w) if walls.contains(id) => {
                 std::mem::swap(&mut w.start, &mut w.end);
                 w.arc = -w.arc + 0.0;
             }
             Element::Door(o) | Element::Window(o) if lengths.contains_key(&o.host) => {
                 o.offset = lengths.get(&o.host).copied().unwrap_or_default() - o.offset;
-                (o.flip_facing, o.flip_hand) = (!o.flip_facing, !o.flip_hand);
+                // One listed as well takes its own flip below: the wall moves it, but doesn't turn it.
+                if !explicit.contains(id) {
+                    (o.flip_facing, o.flip_hand) = (!o.flip_facing, !o.flip_hand);
+                }
             }
             // On a side of the flipped wall: the same face, which is now its other side, as far from its other end.
             Element::Component(cp) => {
@@ -10126,7 +10205,41 @@ fn flip(s: &mut Session, p: &Value) -> R {
             }
         }
     }
-    Ok(json!({"flipped": ids}))
+    // The listed openings turn by the rule asked for, their own where `cycle` is `auto`.
+    let mut states = Map::new();
+    for &id in &openings {
+        let Some(Element::Door(o) | Element::Window(o)) = m.elements.get_mut(id) else { continue };
+        let flips = capable.get(&id).copied().unwrap_or_default();
+        match cycle {
+            Some(Cycle::Auto) => {
+                if flips.hand {
+                    let was = o.flip_hand;
+                    o.flip_hand = !was;
+                    if flips.facing {
+                        o.flip_facing ^= was;
+                    }
+                } else if flips.facing {
+                    o.flip_facing = !o.flip_facing;
+                }
+            }
+            Some(Cycle::Hand) => {
+                let was = o.flip_hand;
+                o.flip_hand = !was;
+                o.flip_facing ^= was;
+            }
+            Some(Cycle::Facing) => o.flip_facing = !o.flip_facing,
+            None => {
+                if let Some(hand) = hand {
+                    o.flip_hand = hand;
+                }
+                if let Some(facing) = facing {
+                    o.flip_facing = facing;
+                }
+            }
+        }
+        states.insert(id.to_string(), json!({"hand": o.flip_hand, "facing": o.flip_facing}));
+    }
+    Ok(json!({"flipped": ids, "states": states}))
 }
 
 fn door(s: &mut Session, p: &Value) -> R {
