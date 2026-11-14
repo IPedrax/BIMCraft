@@ -159,6 +159,17 @@ line cuts in two (an edge lying along an old one), the lines' own `slope` (0 set
 Over the walls (`floor_outline`, which `roof_footprint` grows by the overhang), a loop of them standing free inside the outer
 ones, joined to none of them and with no room in it, is a courtyard, open through the floor and the roof; one joined to them,
 or with a room in it, is rooms, and both run over it.
+`floor_outline_faces` (the `floor` command's `outline` and `outline_offset`, and Walls' Outline in the desktop's floor
+sketch) runs the outline along a face of each wall instead: `interior-...` is the side the floor is on and `exterior-...` the
+other, and `-finish` is the finish face while `-core` is the structural core's (`walls::core_faces`), which a wall type with
+no structural layer has not, and asks for a finish face instead. `-core` is what the desktop picks first, as Revit's Pick
+Walls does with Extend into wall (to core); the centre line is still `floor {}`'s default, so a project from before this
+change keeps its floor. Pick Walls and Walls' Outline take an Offset as well, and an `outline_offset`: a positive one moves
+the line away from the wall, through its thickness, and a negative one toward its inside. The line Pick Walls places in a
+sketch remembers its wall, face and offset only while that sketch is open: selecting it in Modify shows the wall, Extend
+into wall (to core) and Offset, and Flip (or a double click) puts it on the other side of the wall. A line changed by hand
+(a grip, a trim, a fillet, an offset or a split) stops following its wall. After Finish the floor is its outline's
+coordinates like any other: a wall moved later does not move the floor under it, unlike Revit's line kept tied to its wall.
 `Model::roof_faces` are its slopes, each the loops round it in plan (a slope can close round a courtyard whose far side is a
 gable) with the plane of its underside, trimmed where it `join`s another; `Model::roof_pieces` are those less their holes
 and its `openings`, convex where cut. A floor's top is at its level plus `offset`,
