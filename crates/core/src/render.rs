@@ -1197,7 +1197,7 @@ const CAD_CANVAS: u32 = 4096;
 /// the rounding of the view they were drawn in; a view fitted to the plan with its gridlines would move every wall's last digits
 /// when the gridlines (or dimensions) come or go. So the view is fitted to what the plan cuts and sees below, none of its
 /// annotation, on a canvas that holds the annotation all the same, and the same layout is written in the same digits with or
-/// without it.
+/// without it. A plan with no cut walls, or with content the canvas wouldn't hold, is [`plan`] as it shows.
 pub fn plan_for_cad(m: &Model, level: impl Key, width: u32, height: u32) -> Drawing {
     let key = m.guid(level);
     let extent = match m.shown_crop(key) {
@@ -1205,11 +1205,24 @@ pub fn plan_for_cad(m: &Model, level: impl Key, width: u32, height: u32) -> Draw
         Some(_) => plan_extent(m, key),
     };
     let n = scale_of(m, key);
+    // With no cut walls to frame the plan on there is nothing to hold the digits steady, so the plan is written as it shows.
+    if extent.is_empty() {
+        return plan(m, key, width, height);
+    }
     // The scale and the middle are the cut walls' alone. The canvas round them is wide enough that none of the annotation (what
     // is past its edge isn't drawn) falls off it, with the middle at a fixed pixel, so that a pixel's rounding is the same
     // however far the annotation reaches.
     let fitted = fit(&extent, width, height, n);
     let view = View { width: CAD_CANVAS, height: CAD_CANVAS, ..fitted };
+    // Whatever the plan shows must lie on that canvas, or the file would lose it: then the plan is written as it shows.
+    let side = CAD_CANVAS as f32;
+    let on_canvas = |p: &P2| {
+        let (x, y) = view.px(*p);
+        (0.0..=side).contains(&x) && (0.0..=side).contains(&y)
+    };
+    if !plan_extent(m, key).iter().all(on_canvas) {
+        return plan(m, key, width, height);
+    }
     let mut d = draw_plan(m, key, view, false, annotation(m, key, view), n, false);
     // The plan's name stands where the picture of the plan puts it (the corner of the view fitted to all it shows), in the same
     // size on the sheet, so the file reads as the picture does.
