@@ -4187,7 +4187,7 @@ fn save(s: &mut Session, p: &Value) -> R {
         return Ok(json!({"path": path, "format": format}));
     }
     let text = s.model.to_json().map_err(|e| bad(c, e))?;
-    crate::autosave::atomic_write(&path, &text).map_err(|e| bad(c, e))?;
+    crate::disk::replace(&path, &text).map_err(|e| bad(c, e))?;
     s.path = Some(path.clone());
     Ok(json!({"path": path, "format": "bimcraft"}))
 }

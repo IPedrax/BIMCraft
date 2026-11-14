@@ -12,7 +12,6 @@ use wasm_bindgen::JsCast;
 use wasm_bindgen::closure::Closure;
 use wasm_bindgen_futures::JsFuture;
 
-use crate::lang::tf;
 use crate::{BimApp, Status};
 
 /// The largest file the page takes in: what the core opens.
@@ -74,6 +73,11 @@ impl BimApp {
         self.begin(ctx, dialog, false, first(then));
     }
 
+    /// A browser has no folders to choose: a command that needs one says so.
+    pub(crate) fn ask_folder(&mut self, _: &Context, _: rfd::AsyncFileDialog, _: impl FnOnce(&mut BimApp, PathBuf) + 'static) {
+        self.status = Status { text: "Folders aren't available in a browser.".into(), error: true };
+    }
+
     /// Asks for one file or several to open, and calls `then` with their paths in a later frame.
     pub(crate) fn ask_files(
         &mut self,
@@ -99,7 +103,7 @@ impl BimApp {
                     for path in paths {
                         bimcraft_core::disk::take(path);
                     }
-                    let _ = tx.send(Err(tf("{} is too large to open here", &[&name])));
+                    let _ = tx.send(Err(format!("{name} is too large to open here")));
                     ctx.request_repaint();
                     return;
                 }
@@ -110,7 +114,7 @@ impl BimApp {
                     for path in paths {
                         bimcraft_core::disk::take(path);
                     }
-                    let _ = tx.send(Err(tf("Couldn't open {}: {}", &[&name, &e])));
+                    let _ = tx.send(Err(format!("Couldn't open {name}: {e}")));
                     ctx.request_repaint();
                     return;
                 }
@@ -129,7 +133,7 @@ impl BimApp {
             if let Some(bytes) = bimcraft_core::disk::take(&path) {
                 let name = path.file_name().map_or_else(|| "file".into(), |n| n.to_string_lossy().into_owned());
                 if let Err(e) = download(&name, &bytes) {
-                    self.status = Status { text: tf("Couldn't download {}: {}", &[&name, &e]), error: true };
+                    self.status = Status { text: format!("Couldn't download {name}: {e}"), error: true };
                 }
             }
         }

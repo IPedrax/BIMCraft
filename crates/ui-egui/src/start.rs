@@ -7,7 +7,7 @@ use bimcraft_i18n::msg;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::mpsc::{Receiver, channel};
-use web_time::{Duration, SystemTime};
+use web_time::Duration;
 
 use bimcraft_core::model::Model;
 use bimcraft_core::view3d::{AZIMUTH, ELEVATION, Scene};
@@ -112,10 +112,10 @@ fn back(ui: &mut Ui) -> Response {
 }
 
 /// How long ago `when` was, in words.
-fn ago(when: SystemTime) -> String {
+fn ago(when: std::time::SystemTime) -> String {
     // The file's time is std's; the clock is read through web_time, which a browser can read too.
     let now = web_time::SystemTime::now().duration_since(web_time::UNIX_EPOCH).unwrap_or(Duration::ZERO);
-    let secs = now.saturating_sub(when.duration_since(SystemTime::UNIX_EPOCH).unwrap_or(Duration::ZERO)).as_secs();
+    let secs = now.saturating_sub(when.duration_since(std::time::UNIX_EPOCH).unwrap_or(std::time::Duration::ZERO)).as_secs();
     let (minutes, hours, days) = (secs / 60, secs / 3600, secs / 86_400);
     match () {
         _ if minutes < 1 => t("Just now").to_string(),
@@ -672,6 +672,7 @@ fn logo(ui: &Ui, r: Rect) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::SystemTime;
 
     #[test]
     fn time_since_reads_as_words() {
