@@ -1192,26 +1192,34 @@ pub fn plan(m: &Model, level: impl Key, width: u32, height: u32) -> Drawing {
 
 /// [`plan`] as a CAD file is written from it. The file's coordinates are the picture's pixels mapped back to mm, so they carry
 /// the rounding of the view they were drawn in; a view fitted to the plan with its gridlines would move every wall's last digits
-/// when the gridlines come or go. So the view is fitted to all the plan shows but its gridlines (nothing is cut at the picture's
-/// edge, so the grids and their bubbles are written all the same), and the same layout is written in the same digits with or
-/// without them.
+/// when the gridlines (or dimensions) come or go. So the view is fitted to what the plan cuts and sees below, none of its
+/// annotation (nothing is cut at the picture's edge, so the annotation is written all the same), and the same layout is
+/// written in the same digits with or without it.
 pub fn plan_for_cad(m: &Model, level: impl Key, width: u32, height: u32) -> Drawing {
     let key = m.guid(level);
-    let mut extent = plan_extent(m, key);
-    if m.shown_crop(key).is_none() {
-        for (_, e) in m.elements.iter() {
-            if let Element::Grid(g) = e {
-                for end in [g.start, g.end] {
-                    if let Some(i) = extent.iter().position(|p| *p == end) {
-                        extent.swap_remove(i);
-                    }
-                }
-            }
-        }
-    }
+    let extent = match m.shown_crop(key) {
+        None => plan_body(m, key),
+        Some(_) => plan_extent(m, key),
+    };
     let n = scale_of(m, key);
     let view = fit(&extent, width, height, n);
     draw_plan(m, key, view, false, annotation(m, key, view), n, true)
+}
+
+/// What a plan cuts and sees below, with none of its annotation: [`plan_shows_among`]'s first part.
+fn plan_body(m: &Model, key: Guid) -> Vec<P2> {
+    let level = m.plan_level(key).map_or(key, |l| m.guid(l));
+    let r = m.shown_range(key);
+    let look = Look::of(m, key);
+    let index = match m.derived.made(&m.elements) {
+        Some(_) => None,
+        None => Some(walls::Index::new(m)),
+    };
+    let mut components = crate::component_geometry::Components::new(m);
+    let elements = plan_elements(m, key, level, &r, false, &mut components);
+    let mut extent: Vec<P2> = cut_outlines(m, &elements, r.cut, &look, index.as_ref()).into_iter().flat_map(|(_, o)| o).collect();
+    extent.extend(seen_below(m, &elements, &r, &look, index.as_ref()).into_iter().flat_map(|(_, o, _)| o));
+    extent
 }
 
 /// What a plan of `level` takes on paper: all it shows, or cropped, its crop region and the grids'
