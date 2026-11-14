@@ -354,3 +354,29 @@ fn forms_square_to_one_direction_share_one_plane_whatever_their_height_or_turn()
     let solid = std::f64::consts::PI * (64.0 * 60.0 + 225.0 * 3.0) + 1.5 * 3f64.sqrt() * 196.0 * 16.0;
     assert!((v / solid - 1.0).abs() < 0.02, "{v} for {solid}");
 }
+
+#[test]
+fn copies_a_few_hundredths_apart_are_one_type_that_keeps_the_first_ones_exact_size() {
+    let mut g = G::new();
+    // The first bolt's shank 8.03 mm across and 50.02 long; the second's 8 and 50, as Tekla writes copies of one bolt.
+    let first = rod(&mut g, 8.03, 50.02);
+    let a = shape(&mut g, &[first]);
+    let second = rod(&mut g, 8.0, 50.0);
+    let b = shape(&mut g, &[second]);
+    bolt(&mut g, "Bolt", a, [0.0, 0.0, 0.0], UP, EAST);
+    bolt(&mut g, "Bolt", b, [1000.0, 0.0, 0.0], UP, EAST);
+    let i = g.import();
+    let m = &i.model;
+    let f = &m.families["Bolt"];
+    assert_eq!(f.types.len(), 1, "a tenth of a millimetre tells copies apart");
+    // What is kept is the first one's, exactly: no tenth of a millimetre taken off it.
+    let form = &f.forms[0];
+    assert!(
+        matches!(&form.sketch[..], [l] if matches!(l.curve, FormCurve::Circle { radius: Expr::Number(r), .. } if r == 8.03)),
+        "{:?}",
+        form.sketch
+    );
+    let (Expr::Number(from), Expr::Number(to)) = (&form.from, &form.to) else { panic!() };
+    assert!((to - from - 50.02).abs() < 1e-9, "{from} {to}");
+    assert_eq!(copies(m, "Bolt").len(), 2);
+}

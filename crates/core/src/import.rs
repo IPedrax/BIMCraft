@@ -813,7 +813,7 @@ impl<'a> Reader<'a> {
         // on it (x the family's x, or y, made square to the direction), so a bolt's shank, washer and nut share one; how far
         // up the direction a form stands is its from and to, as a family drawn by hand has it.
         let at = |q: P3| to_local(mf.at(pos.at(q)));
-        let r1 = |v: f64| (v * 1e1).round() / 1e1 + 0.0;
+        let r1 = |v: f64| (v * 1e3).round() / 1e3 + 0.0;
         let r6 = |v: f64| (v * 1e6).round() / 1e6 + 0.0;
         let z = unit(cross(unit(dir_local(mf.dir(pos.x))), unit(dir_local(mf.dir(pos.y))))).map(r6);
         let across = if z[0].abs() < 0.9 { [1.0, 0.0, 0.0] } else { [0.0, 1.0, 0.0] };
@@ -2010,6 +2010,44 @@ fn settled(t: [P3; 3]) -> [P3; 3] {
 }
 
 /// A key for forms' shapes and what they're made of: the same forms, the same key.
+/// `forms` as copies of one shape are told apart by: every length to a tenth of a millimetre (a point of a mesh, a
+/// sketch's, a from or a to), an arc's turn to a thousandth of a degree.
+fn identity(forms: &[Form]) -> Vec<Form> {
+    use crate::family::sketch::FormCurve;
+    let tenth = |v: f64| (v * 1e1).round() / 1e1 + 0.0;
+    let length = |e: &Expr| match e {
+        Expr::Number(v) => Expr::Number(tenth(*v)),
+        other => other.clone(),
+    };
+    forms
+        .iter()
+        .map(|f| {
+            let mut f = f.clone();
+            if !f.mesh.is_empty() {
+                f.mesh = Arc::new(f.mesh.iter().map(|t| t.map(|p| p.map(tenth))).collect());
+            }
+            for l in &mut f.sketch {
+                l.curve = match &l.curve {
+                    FormCurve::Line { start, end, turn } => FormCurve::Line {
+                        start: start.clone().map(|e| length(&e)),
+                        end: end.clone().map(|e| length(&e)),
+                        turn: turn.as_ref().map(|t| match t {
+                            Expr::Number(v) => Expr::Number((v * 1e3).round() / 1e3 + 0.0),
+                            other => other.clone(),
+                        }),
+                    },
+                    FormCurve::Circle { centre, radius } => {
+                        FormCurve::Circle { centre: centre.clone().map(|e| length(&e)), radius: length(radius) }
+                    }
+                };
+                (l.id, l.guid) = (0, Guid::default());
+            }
+            (f.from, f.to) = (length(&f.from), length(&f.to));
+            f
+        })
+        .collect()
+}
+
 fn shape_key(forms: &[Form]) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
@@ -3164,7 +3202,8 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
         ifc: Option<IfcClass>,
         // Which fixture or fitting it is, from the first of its products' predefined types that names one.
         kind: Option<&'static str>,
-        types: Vec<(String, Vec<Form>, u64)>,
+        /// Each type: its name, its forms, and the key and the forms it is told apart by ([`identity`]).
+        types: Vec<(String, Vec<Form>, u64, Vec<Form>)>,
         /// What the product of each type drew, where BIMCraft wrote its connector: the same order as `types`.
         draws: Vec<Option<Draw>>,
         named: HashMap<String, Vec<usize>>,
@@ -3254,8 +3293,9 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
             // In the map's axes, taken from the product's own: what the file writes, not a far point's last bits.
             if in_map {
                 let d = sub(p, map.o);
-                // To the tenth of a mm: copies an exporter writes a few microns apart are one shape.
-                return [dot(d, map.x), dot(d, map.y), dot(d, map.z)].map(|v| (v * 1e1).round() / 1e1 + 0.0);
+                // To the micron, as the import keeps any point; copies a few hundredths apart are found one type by
+                // `identity`, which compares them to a tenth.
+                return [dot(d, map.x), dot(d, map.y), dot(d, map.z)].map(|v| (v * 1e3).round() / 1e3 + 0.0);
             }
             let d = sub(f.at(p), f.o);
             [dot(d, along), dot(d, side), d[2]].map(|v| (v * 1e3).round() / 1e3 + 0.0)
@@ -3351,7 +3391,10 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
         // A type of that name and shape, or its mirror image, found by its shapes' key; a type the
         // file gives another shape is another type, while the family has room for its forms.
         let flipped = if forms.iter().any(|f| !f.sketch.is_empty()) { forms.clone() } else { mirrored(&forms) };
-        let (key, flipped_key) = (shape_key(&forms), shape_key(&flipped));
+        // In its map's axes, copies of one shape a few hundredths apart (as Tekla writes them) are one type, the first's
+        // values kept as they are: they are told apart to a tenth of a millimetre. Any other body is told apart exactly.
+        let (ident, flipped_ident) = if in_map { (identity(&forms), identity(&flipped)) } else { (forms.clone(), flipped.clone()) };
+        let (key, flipped_key) = (shape_key(&ident), shape_key(&flipped_ident));
         let mut chosen = None;
         for name in names {
             if class.is_some() && (taken.contains(&name) || made.get(&name).is_some_and(|f| f.ifc.as_ref() != class.as_ref())) {
@@ -3362,10 +3405,10 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
                 fam.kind = category.kind_of(enumeration(x.args.get(8)));
             }
             let same = fam.named.get(&base).into_iter().flatten().find_map(|&i| {
-                let (t, fs, k) = fam.types.get(i)?;
-                (*k == key && *fs == forms)
+                let (t, _, k, id) = fam.types.get(i)?;
+                (*k == key && *id == ident)
                     .then(|| (t.clone(), false))
-                    .or_else(|| (*k == flipped_key && *fs == flipped).then(|| (t.clone(), true)))
+                    .or_else(|| (*k == flipped_key && *id == flipped_ident).then(|| (t.clone(), true)))
             });
             if let Some(pick) = same {
                 chosen = Some((name, pick));
@@ -3384,7 +3427,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
             fam.forms += forms.len();
             fam.names.insert(t.clone());
             fam.named.entry(base.clone()).or_default().push(fam.types.len());
-            fam.types.push((t.clone(), forms, key));
+            fam.types.push((t.clone(), forms, key, ident));
             fam.draws.push(draws.get(&id).cloned());
             chosen = Some((name, (t, false)));
             break;
@@ -3473,7 +3516,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
                     classification: c.classification.clone(),
                 });
             }
-            for (k, (t, forms, _)) in (1..).zip(types) {
+            for (k, (t, forms, _, _)) in (1..).zip(types) {
                 let mut set: BTreeMap<String, serde_json::Value> = BTreeMap::new();
                 if several {
                     set.insert("Variant".to_string(), serde_json::json!(k));
