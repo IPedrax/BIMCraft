@@ -219,6 +219,56 @@ pub struct Entity {
     /// Its line weight, mm, when it has one of its own.
     pub weight: Option<f64>,
     pub shape: Shape,
+    /// Its elevation, drawing units, when its file gives one: a contour's height. Drawing stays in plan; only what reads
+    /// heights (an import's report, a query) looks at it.
+    pub z: Option<Z>,
+}
+
+/// An entity's elevation in drawing units: one for all of it, or one for each of its shape's points, in order.
+#[derive(Clone, Debug, PartialEq)]
+pub enum Z {
+    Flat(f64),
+    Each(Vec<f64>),
+}
+
+impl Z {
+    /// One elevation when they are all the same, else each.
+    fn of(each: Vec<f64>) -> Z {
+        match each.first() {
+            Some(&first) if each.iter().all(|&z| z == first) => Z::Flat(first),
+            _ => Z::Each(each),
+        }
+    }
+
+    /// The lowest and the highest; none when there is no elevation at all.
+    pub fn range(&self) -> Option<(f64, f64)> {
+        match self {
+            Z::Flat(z) => Some((*z, *z)),
+            Z::Each(each) => each.iter().fold(None, |r, &z| match r {
+                None => Some((z, z)),
+                Some((lo, hi)) => Some((lo.min(z), hi.max(z))),
+            }),
+        }
+    }
+
+    /// Whether every elevation is finite and within [`MAX_FILE_COORD`].
+    fn fits(&self) -> bool {
+        let ok = |z: &f64| z.is_finite() && z.abs() <= MAX_FILE_COORD;
+        match self {
+            Z::Flat(z) => ok(z),
+            Z::Each(each) => each.iter().all(ok),
+        }
+    }
+}
+
+impl Entity {
+    /// The elevation of its shape's `i`th point, when it has one.
+    pub fn z_at(&self, i: usize) -> Option<f64> {
+        match self.z.as_ref()? {
+            Z::Flat(z) => Some(*z),
+            Z::Each(each) => each.get(i).copied(),
+        }
+    }
 }
 
 /// A DXF file read: what it draws, in its own unit.
@@ -792,7 +842,7 @@ impl Out {
 
     fn push(&mut self, e: Entity) -> Result<(), String> {
         // Blocks scaled inside blocks can carry a point past any drawing, or past any number.
-        if !e.shape.fits() {
+        if !e.shape.fits() || e.z.as_ref().is_some_and(|z| !z.fits()) {
             self.left("past what a drawing holds");
             return Ok(());
         }
@@ -853,6 +903,15 @@ impl<'a> Reader<'a> {
             }
             let style = Style::of(e, inh)?;
             let xf = if e.num(230)?.is_some_and(|z| z < 0.0) { xf.then(Xf::MIRROR_X) } else { xf };
+            let z = match e.kind {
+                "LWPOLYLINE" => e.num(38)?.map(Z::Flat),
+                "LINE" => match (e.num(30)?, e.num(31)?) {
+                    (None, None) => None,
+                    (a, b) => Some(Z::of(vec![a.unwrap_or(0.0), b.unwrap_or(0.0)])),
+                },
+                "POINT" => e.num(30)?.map(Z::Flat),
+                _ => None,
+            };
             let shape = match e.kind {
                 "LINE" => match (e.point(10)?, e.point(11)?) {
                     (Some(a), Some(b)) => Some(Shape::Line(a, b)),
@@ -916,6 +975,7 @@ impl<'a> Reader<'a> {
                             linetype: style.linetype.clone(),
                             weight: style.weight,
                             shape: transformed(line, xf),
+                            z: None,
                         })?;
                     }
                     continue;
@@ -955,6 +1015,7 @@ impl<'a> Reader<'a> {
                     linetype: style.linetype,
                     weight: style.weight,
                     shape: transformed(shape, xf),
+                    z,
                 })?,
                 None => out.left("empty"),
             }
@@ -1551,6 +1612,84 @@ mod tests {
 
     fn shapes(d: &Dxf) -> Vec<&Shape> {
         d.entities.iter().map(|e| &e.shape).collect()
+    }
+
+    #[test]
+    fn an_lwpolylines_elevation_is_kept_for_all_its_points() {
+        // 38 = 2881.5, two vertices, one bulge: the arc's points all share it.
+        let d = drawing(&pairs(&[
+            (0, "LWPOLYLINE"),
+            (90, "2"),
+            (70, "0"),
+            (38, "2881.5"),
+            (10, "0"),
+            (20, "0"),
+            (42, "1"),
+            (10, "100"),
+            (20, "0"),
+        ]));
+        assert_eq!(d.entities[0].z, Some(Z::Flat(2881.5)));
+        let Shape::Polyline { pts, .. } = &d.entities[0].shape else { panic!("{:?}", d.entities[0]) };
+        assert!(pts.len() > 10, "{pts:?}");
+        assert_eq!(d.entities[0].z_at(pts.len() - 1), Some(2881.5));
+        assert_eq!(d.entities[0].z.as_ref().and_then(Z::range), Some((2881.5, 2881.5)));
+    }
+
+    #[test]
+    fn a_line_keeps_both_ends_elevations_and_a_point_its_own() {
+        let d = drawing(&pairs(&[
+            (0, "LINE"),
+            (10, "0"),
+            (20, "0"),
+            (30, "10"),
+            (11, "5"),
+            (21, "0"),
+            (31, "12"),
+            (0, "LINE"),
+            (10, "0"),
+            (20, "0"),
+            (30, "7"),
+            (11, "5"),
+            (21, "0"),
+            (31, "7"),
+            (0, "POINT"),
+            (10, "9"),
+            (20, "9"),
+            (30, "-3.25"),
+        ]));
+        assert_eq!(d.entities[0].z, Some(Z::Each(vec![10.0, 12.0])));
+        assert_eq!(d.entities[0].z_at(1), Some(12.0));
+        assert_eq!(d.entities[0].z.as_ref().and_then(Z::range), Some((10.0, 12.0)));
+        // Equal ends are one elevation.
+        assert_eq!(d.entities[1].z, Some(Z::Flat(7.0)));
+        assert_eq!(d.entities[2].z, Some(Z::Flat(-3.25)));
+    }
+
+    #[test]
+    fn an_entity_without_a_third_coordinate_has_no_elevation() {
+        let d = drawing(&pairs(&[
+            (0, "LWPOLYLINE"),
+            (90, "2"),
+            (70, "0"),
+            (10, "0"),
+            (20, "0"),
+            (10, "1"),
+            (20, "0"),
+            (0, "LINE"),
+            (10, "0"),
+            (20, "0"),
+            (11, "5"),
+            (21, "0"),
+            // Circles carry none in this slice, whatever their centre's z.
+            (0, "CIRCLE"),
+            (10, "0"),
+            (20, "0"),
+            (30, "4"),
+            (40, "1"),
+        ]));
+        assert_eq!(d.entities.len(), 3);
+        assert!(d.entities.iter().all(|e| e.z.is_none()), "{:?}", d.entities);
+        assert_eq!(d.entities[0].z_at(0), None);
     }
 
     #[test]
