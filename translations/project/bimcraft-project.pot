@@ -3,7 +3,7 @@
 msgid ""
 msgstr "Project-Id-Version: BIMCraft\nMIME-Version: 1.0\nContent-Type: text/plain; charset=UTF-8\nContent-Transfer-Encoding: 8bit\n"
 
-#: crates/core/src/sheet.rs:519
+#: crates/core/src/sheet.rs:518
 msgid "AS INDICATED"
 msgstr ""
 
@@ -429,7 +429,7 @@ msgstr ""
 msgid "New Construction"
 msgstr ""
 
-#: crates/core/src/schedule.rs:1337
+#: crates/core/src/schedule.rs:1342
 msgid "No"
 msgstr ""
 
@@ -555,11 +555,11 @@ msgstr ""
 msgid "Room Schedule"
 msgstr ""
 
-#: crates/core/src/sheet.rs:508
+#: crates/core/src/sheet.rs:507
 msgid "SCALE"
 msgstr ""
 
-#: crates/core/src/sheet.rs:510
+#: crates/core/src/sheet.rs:509
 msgid "SCALE AS INDICATED"
 msgstr ""
 
@@ -717,7 +717,7 @@ msgstr ""
 msgid "Timber"
 msgstr ""
 
-#: crates/core/src/sheet.rs:447
+#: crates/core/src/sheet.rs:446
 msgid "Total"
 msgstr ""
 
@@ -820,7 +820,7 @@ msgstr ""
 msgid "Worktop"
 msgstr ""
 
-#: crates/core/src/schedule.rs:1337
+#: crates/core/src/schedule.rs:1342
 msgid "Yes"
 msgstr ""
 

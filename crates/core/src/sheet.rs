@@ -13,7 +13,6 @@ use crate::language::Language;
 use crate::model::{Element, Guid, Id, Key, Model, Schedule, Sheet, Viewport, paper};
 use crate::pen::Pen;
 use crate::render::{self, Drawing, PAPER, Part, Prim, Rgb, View};
-use crate::schedule::TableKey;
 use crate::{font, schedule, view3d};
 
 mod panel;
@@ -64,7 +63,7 @@ fn framing_in(m: &Model, work: &Work, view: impl Key, scale: f64) -> Option<View
             render::section_extent(m, work.get_or_init(|| render::SectionWork::new(m)), view, k, 1.0)?.to_vec()
         }
         Element::Schedule(sc) => {
-            let (width, height) = table_size(&sc.name, &table_of(m, TableKey::Element(view), sc));
+            let (width, height) = table_size(&sc.name, &table_of(m, m.elements.id(view), sc));
             return Some(View { angle: 0.0, scale: 1.0, cx: 0.0, cy: 0.0, width, height });
         }
         Element::PanelSchedule(ps) => {
@@ -432,9 +431,9 @@ struct Table {
     totals: bool,
 }
 
-fn table_of(m: &Model, key: TableKey, sc: &Schedule) -> Table {
+fn table_of(m: &Model, view: Option<Id>, sc: &Schedule) -> Table {
     let empty = schedule::Table { columns: Vec::new(), rows: Vec::new(), ids: Vec::new(), totals: None };
-    let kept = schedule::table_kept(m, key, sc).ok();
+    let kept = schedule::table_kept(m, view, sc).ok();
     let t = kept.as_deref().unwrap_or(&empty);
     let said = |c: &schedule::Column, v: &serde_json::Value| {
         let s = schedule::shown(m.units, c.kind, v);
@@ -469,8 +468,8 @@ fn table_size(name: &str, t: &Table) -> (u32, u32) {
 
 /// Schedule `sc` as a ruled table from its top left corner at `(x, y)` px: its title, then its
 /// headings and its rows, a column each, its totals under a heavier rule.
-fn table(d: &mut Drawing, m: &Model, key: TableKey, sc: &Schedule, (x, y): (f32, f32)) {
-    let t = table_of(m, key, sc);
+fn table(d: &mut Drawing, m: &Model, view: Option<Id>, sc: &Schedule, (x, y): (f32, f32)) {
+    let t = table_of(m, view, sc);
     let (w, h) = table_size(&sc.name, &t);
     // On whole pixels, so its rules come out crisp.
     let (x, y, w, h) = (x.round(), y.round(), w as f32, h as f32);
@@ -567,7 +566,7 @@ fn view_into(
         }
         // Its title is its first row; it has no view title under it.
         Some(Element::Schedule(sc)) => {
-            table(d, m, TableKey::Element(m.guid(id)), sc, (ox, oy));
+            table(d, m, m.elements.id(id), sc, (ox, oy));
             return Some(false);
         }
         Some(Element::PanelSchedule(ps)) => {
@@ -846,7 +845,7 @@ mod tests {
         .unwrap();
         let (id, sc) =
             s.model.elements.iter().find_map(|(id, e)| if let Element::Schedule(sc) = e { Some((*id, sc.clone())) } else { None }).unwrap();
-        let t = table_of(&s.model, TableKey::Element(s.model.guid(id)), &sc);
+        let t = table_of(&s.model, Some(id), &sc);
         assert_eq!(t.headings, ["Name", "Area (m²)", "Big"]);
         assert_eq!(t.rows, [vec!["Living", "48.00", "Yes"], vec!["Total", "48.00", ""]]);
         assert!(t.totals);
@@ -855,7 +854,7 @@ mod tests {
         let (frame, _) = frame(&s.model, vp).unwrap();
         assert_eq!(frame.height as f32, TITLE_ROW + 3.0 * ROW);
         s.execute("language", &serde_json::json!({"code": "pt"})).unwrap();
-        let t = table_of(&s.model, TableKey::Element(s.model.guid(id)), &sc);
+        let t = table_of(&s.model, Some(id), &sc);
         assert_eq!((t.headings[1].as_str(), t.rows[0][2].as_str(), t.rows[1][0].as_str()), ("Área (m²)", "Sim", "Total"));
     }
 

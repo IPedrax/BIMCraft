@@ -564,7 +564,8 @@ impl Lookup {
 
 /// What a model derives, once asked for: its lookup, its levels' room plans and its schedules' tables. A command's copy
 /// starts with none of the plans or tables — it makes them again — and with the lookup of the model it was copied from,
-/// which it can bring up to date.
+/// which it can bring up to date. The plans and tables are keyed by the elements' state and read the project's settings and
+/// types too: a `&mut Model` change to any of those, outside a command, must reset `Derived` or replace the model.
 #[derive(Default)]
 pub struct Derived {
     /// The lookup, with the elements' token and version it is of.
@@ -642,7 +643,7 @@ impl Derived {
     }
 
     /// What `make` finds of the table of `key`'s schedule, kept until the elements change.
-    pub(crate) fn table(
+    pub(crate) fn kept_table(
         &self,
         elements: &Elements,
         key: crate::schedule::TableKey,
@@ -666,6 +667,16 @@ impl Derived {
             }
         }
         Ok(made)
+    }
+
+    /// Let go of the kept plans and tables: what a model on its way into the undo history need not carry.
+    pub(crate) fn forget(&self) {
+        if let Ok(mut plans) = self.plans.lock() {
+            *plans = None;
+        }
+        if let Ok(mut tables) = self.tables.lock() {
+            *tables = None;
+        }
     }
 
     /// The lookup of `elements` if it is made already: what asks only where it costs nothing.

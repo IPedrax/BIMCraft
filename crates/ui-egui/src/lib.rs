@@ -108,7 +108,6 @@ use bimcraft_core::engine::{self, Session};
 use bimcraft_core::files;
 use bimcraft_core::geom::P2;
 use bimcraft_core::model::{CEILING_HEIGHT, DimKind, Element, Id, Justify, Location, Model, RAMP_WIDTH, Reference, RoomArea, STAIR_WIDTH};
-use bimcraft_core::schedule::TableKey;
 use bimcraft_core::snap::{Kind as Snap, Snaps};
 use bimcraft_core::units::Units;
 use bimcraft_core::{element_json, render, schedule, stairs};
@@ -6170,11 +6169,7 @@ impl BimApp {
             let name = self.view_name(self.sheet);
             ui.label(RichText::new(&name).heading());
             ui.add_space(8.0);
-            let key = match id {
-                Some(id) => TableKey::Element(self.session.model.guid(id)),
-                None => TableKey::Builtin(sc.of.clone()),
-            };
-            match schedule::table_kept(&self.session.model, key, &sc) {
+            match schedule::table_kept(&self.session.model, id, &sc) {
                 Err(e) => {
                     ui.label(e);
                 }

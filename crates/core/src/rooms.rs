@@ -542,6 +542,20 @@ mod tests {
         s.execute("move", &json!({"ids": [wall], "by": [10.0, 0.0]})).unwrap();
         let c = Rooms::new(&s.model).plan(level, RoomArea::Finish);
         assert!(!Arc::ptr_eq(&a, &c), "an edit's model finds the level's plan again");
+        agree(&s.model);
+    }
+
+    #[test]
+    fn an_edit_lets_go_of_the_plan_its_undo_step_kept() {
+        let mut s = Session::new();
+        s.script(crate::sample::SAMPLE).unwrap();
+        let level = s.model.guid(s.model.levels()[0].0);
+        let a = Rooms::new(&s.model).plan(level, RoomArea::Finish);
+        let weak = Arc::downgrade(&a);
+        drop(a);
+        let wall = s.model.elements.iter().find_map(|(id, e)| matches!(e, Element::Wall(_)).then_some(*id)).expect("a wall");
+        s.execute("move", &json!({"ids": [wall], "by": [10.0, 0.0]})).unwrap();
+        assert!(weak.upgrade().is_none(), "the model in the undo history lets go of its plan");
     }
 
     #[test]
@@ -557,6 +571,7 @@ mod tests {
         }
         let b = Rooms::new(&m).plan(level, RoomArea::Finish);
         assert!(!Arc::ptr_eq(&a, &b), "the same model's changed elements find the plan again");
+        agree(&m);
     }
 
     #[test]
