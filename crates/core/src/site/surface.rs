@@ -272,6 +272,113 @@ fn near_key(keys: &std::collections::BTreeSet<(i64, i64)>, p: P2) -> bool {
 /// and what the triangulation refuses (more than `triangulation::MAX_CORNERS` corners as given, a region past
 /// `triangulation::MAX_ACROSS`).
 pub fn build(points: &[[f64; 3]], lines: &[Line], options: &Options) -> Result<Surface, String> {
+    let Some(boundary) = &options.boundary else { return build_in(points, lines, options, None) };
+    let whole = build_in(points, lines, &Options { boundary: None, ..options.clone() }, None)?;
+    let ring = checked_boundary(boundary)?;
+    let mut corners = Vec::with_capacity(ring.len());
+    for &p in &ring {
+        let z = whole.elevation_at(p).ok_or_else(|| format!("the boundary's corner at {} is past the survey", at(p)))?;
+        corners.push([p.0, p.1, z]);
+    }
+    let inside: Vec<[f64; 3]> = points.iter().copied().filter(|&[x, y, _]| geom::contains(&ring, P2(x, y))).collect();
+    let mut pieces = Vec::new();
+    for line in lines {
+        if let Some((pts, zs, closed)) = cleaned(line)? {
+            pieces.extend(clipped(&pts, &zs, closed, &ring));
+        }
+    }
+    let left = (points.len() - inside.len(), lines.len());
+    let mut s = build_in(&[inside, corners].concat(), &pieces, options, Some(&ring))?;
+    s.notes.insert(
+        0,
+        format!("clipped to the boundary: {} points outside the boundary were left out, and lines were cut where they cross it", left.0),
+    );
+    Ok(s)
+}
+
+/// A boundary checked: at least three corners, finite, with an area, and not crossing itself.
+fn checked_boundary(boundary: &[P2]) -> Result<Vec<P2>, String> {
+    let mut ring: Vec<P2> = Vec::with_capacity(boundary.len());
+    for &p in boundary {
+        check_point(p, 0.0)?;
+        if ring.last().is_none_or(|q: &P2| q.dist(p) >= TOL) {
+            ring.push(p);
+        }
+    }
+    if ring.len() > 2 && ring.first().zip(ring.last()).is_some_and(|(a, b)| a.dist(*b) < TOL) {
+        ring.pop();
+    }
+    if ring.len() < 3 {
+        return Err("the boundary needs at least three corners round an area".into());
+    }
+    let n = ring.len();
+    for i in 0..n {
+        for j in i + 2..n {
+            if i == 0 && j == n - 1 {
+                continue;
+            }
+            let (a, b, c, d) = (ring[i], ring[(i + 1) % n], ring[j], ring[(j + 1) % n]);
+            if proper_cross(a, b, c, d) {
+                let x = geom::line_intersection(a, b, c, d).unwrap_or(a);
+                return Err(format!("the boundary crosses itself at {}", at(x)));
+            }
+        }
+    }
+    if geom::area(&ring).abs() < TOL * TOL {
+        return Err("the boundary needs at least three corners round an area".into());
+    }
+    Ok(ring)
+}
+
+/// The pieces of a line inside `ring`: each segment cut where it crosses the ring, the pieces whose middle is inside
+/// kept and joined, their elevations interpolated along the segment.
+fn clipped(pts: &[P2], zs: &[f64], closed: bool, ring: &[P2]) -> Vec<Line> {
+    let mut segs: Vec<(P2, f64, P2, f64)> = pts.windows(2).zip(zs.windows(2)).map(|(p, z)| (p[0], z[0], p[1], z[1])).collect();
+    if closed && let (Some(&a), Some(&b), Some(&za), Some(&zb)) = (pts.last(), pts.first(), zs.last(), zs.first()) {
+        segs.push((a, za, b, zb));
+    }
+    let mut out: Vec<Line> = Vec::new();
+    let mut run: Option<Line> = None;
+    for (a, za, b, zb) in segs {
+        let d = b - a;
+        let mut cuts = vec![0.0, 1.0];
+        for (c, e) in geom::ring_edges(ring) {
+            let den = d.cross(e - c);
+            if den.abs() <= 1e-12 * d.length() * (e - c).length() {
+                continue;
+            }
+            let (t, u) = ((c - a).cross(e - c) / den, (c - a).cross(d) / den);
+            if (0.0..=1.0).contains(&t) && (0.0..=1.0).contains(&u) {
+                cuts.push(t);
+            }
+        }
+        cuts.sort_by(f64::total_cmp);
+        cuts.dedup_by(|x, y| (*x - *y).abs() * d.length() < TOL);
+        for w in cuts.windows(2) {
+            let (p, q) = (a + d * w[0], a + d * w[1]);
+            let (zp, zq) = (za + (zb - za) * w[0], za + (zb - za) * w[1]);
+            if geom::contains(ring, (p + q) * 0.5) {
+                match run.as_mut().filter(|r| r.points.last().is_some_and(|l| l.dist(p) < TOL)) {
+                    Some(r) => {
+                        r.points.push(q);
+                        r.z.push(zq);
+                    }
+                    None => {
+                        out.extend(run.take());
+                        run = Some(Line { points: vec![p, q], z: vec![zp, zq], closed: false });
+                    }
+                }
+            } else {
+                out.extend(run.take());
+            }
+        }
+    }
+    out.extend(run);
+    out
+}
+
+/// A surface made inside `outline` (the convex hull of its points when none is given).
+fn build_in(points: &[[f64; 3]], lines: &[Line], options: &Options, outline: Option<&[P2]>) -> Result<Surface, String> {
     let ok = |v: f64| v.is_finite() && v >= 0.0;
     if !ok(options.simplify) {
         return Err(format!(
@@ -411,7 +518,10 @@ pub fn build(points: &[[f64; 3]], lines: &[Line], options: &Options) -> Result<S
             at(hi)
         ));
     }
-    let outline = geom::hull(positions);
+    let outline = match outline {
+        Some(o) => o.to_vec(),
+        None => geom::hull(positions),
+    };
     if outline.len() < 3 || geom::area(&outline).abs() < TOL * TOL {
         return Err("its points are all on one line, so they make no surface".into());
     }
@@ -863,6 +973,35 @@ mod tests {
         // Points all at one elevation are flat ground, not a contour's artefact.
         let s = build(&[[0.0, 0.0, 7.0], [1_000.0, 0.0, 7.0], [1_000.0, 1_000.0, 7.0], [0.0, 1_000.0, 7.0]], &[], &exact()).unwrap();
         assert_eq!(s.points.len(), 4);
+    }
+
+    fn square(lo: f64, hi: f64) -> Vec<P2> {
+        vec![P2(lo, lo), P2(hi, lo), P2(hi, hi), P2(lo, hi)]
+    }
+
+    #[test]
+    fn a_boundary_clips_the_surface() {
+        let options = Options { boundary: Some(square(5_000.0, 15_000.0)), ..Options::default() };
+        let s = build(&plane_corners(), &plane_contours(), &options).unwrap();
+        assert!((s.area() - 1e8).abs() < 1e-3, "{}", s.area());
+        assert_eq!(s.elevation_at(P2(4_000.0, 10_000.0)), None);
+        for at in [P2(10_000.0, 10_000.0), P2(5_000.0, 5_000.0), P2(15_000.0, 15_000.0), P2(5_001.0, 14_999.0)] {
+            let z = s.elevation_at(at).unwrap();
+            assert!((z - plane(at)).abs() < 1e-6, "{at:?}: {z}");
+        }
+        assert!(s.notes.iter().any(|n| n.contains("outside the boundary")), "{:?}", s.notes);
+    }
+
+    #[test]
+    fn a_boundary_must_be_a_simple_ring_inside_the_data() {
+        let bow_tie = vec![P2(5_000.0, 5_000.0), P2(15_000.0, 15_000.0), P2(15_000.0, 5_000.0), P2(5_000.0, 15_000.0)];
+        let e = build(&plane_corners(), &plane_contours(), &Options { boundary: Some(bow_tie), ..Options::default() }).unwrap_err();
+        assert!(e.contains("crosses itself"), "{e}");
+        let past = build(&plane_corners(), &plane_contours(), &Options { boundary: Some(square(5_000.0, 25_000.0)), ..Options::default() })
+            .unwrap_err();
+        assert!(past.contains("past the survey") && past.contains("(25000, 5000)"), "{past}");
+        let line = vec![P2(0.0, 0.0), P2(1_000.0, 0.0), P2(2_000.0, 0.0)];
+        assert!(build(&plane_corners(), &plane_contours(), &Options { boundary: Some(line), ..Options::default() }).is_err());
     }
 
     #[test]
