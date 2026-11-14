@@ -481,7 +481,7 @@ mod tests {
     }
 
     fn plan(m: &Model, level: Id, scale: f64) -> Drawing {
-        crate::render::draw(m, level, View { scale, cx: 500.0, cy: 0.0, width: 800, height: 600 })
+        crate::render::draw(m, level, View { angle: 0.0, scale, cx: 500.0, cy: 0.0, width: 800, height: 600 })
     }
 
     #[test]

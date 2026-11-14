@@ -77,7 +77,7 @@ fn leaf_hidden() -> Value {
 
 /// Level 1's plan round the door: 0.5 px a mm.
 fn plan_view() -> View {
-    View { scale: 0.5, cx: 3000.0, cy: 300.0, width: 1200, height: 1200 }
+    View { angle: 0.0, scale: 0.5, cx: 3000.0, cy: 300.0, width: 1200, height: 1200 }
 }
 
 /// Level 1's plan at detail level `detail`.
@@ -345,7 +345,7 @@ fn a_nested_instances_settings_and_with_its_familys() {
     let pieces = s.model.component_pieces(c);
     assert_eq!(pieces.len(), 2, "the nested box is built into the host");
     assert_eq!(pieces[1].vis.map(|v| v.plan), Some(false), "with its instance's settings");
-    let view = View { scale: 0.5, cx: 1900.0, cy: 2500.0, width: 1200, height: 800 };
+    let view = View { angle: 0.0, scale: 0.5, cx: 1900.0, cy: 2500.0, width: 1200, height: 800 };
     let pm = tiny_skia::Pixmap::decode_png(&render::png(&render::draw(&s.model, 100000, view)).unwrap()).unwrap();
     assert!(ink(&pm, view, P2(990.0, 1990.0), P2(1110.0, 2110.0)) > 0, "the host's own form");
     assert_eq!(ink(&pm, view, P2(1550.0, 2490.0), P2(2250.0, 2550.0)), 0, "the nested box, hidden in plan");

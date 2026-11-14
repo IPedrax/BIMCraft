@@ -17,7 +17,8 @@ fn printed(session: &mut Session) -> Result<(Vec<u8>, String), String> {
     let length: usize = header
         .rsplit("/Length ")
         .next()
-        .and_then(|s| s.split_whitespace().next())
+        .map(|s| s.chars().take_while(char::is_ascii_digit).collect::<String>())
+        .filter(|d| !d.is_empty())
         .ok_or("PDF stream has no length")?
         .parse::<usize>()
         .map_err(|e| e.to_string())?;
@@ -25,6 +26,16 @@ fn printed(session: &mut Session) -> Result<(Vec<u8>, String), String> {
     let mut contents = String::new();
     ZlibDecoder::new(compressed).read_to_string(&mut contents).map_err(|e| e.to_string())?;
     Ok((bytes, contents))
+}
+
+/// The stream's operators and operands one space apart, whatever lines the writer breaks them into.
+fn ops(stream: &str) -> String {
+    format!(" {} ", stream.split_whitespace().collect::<Vec<_>>().join(" "))
+}
+
+/// Whether the stream paints anything: a stroke, a fill, text, an image or a shading.
+fn paints(stream: &str) -> bool {
+    stream.split_whitespace().any(|t| matches!(t, "S" | "s" | "f" | "F" | "f*" | "B" | "B*" | "b" | "b*" | "Tj" | "TJ" | "Do" | "sh"))
 }
 
 /// A sheet S101 given `title_block` (left out when none), and with `decorated` a view, a note and a detail line on it.
@@ -53,9 +64,8 @@ fn listed(session: &mut Session) -> Result<Value, String> {
 fn no_title_block_means_no_stock_pdf_painting_and_the_built_in_one_remains_the_default() {
     let (mut off, _) = fixture(Some(json!("none")), false).unwrap();
     let (none_pdf, empty) = printed(&mut off).unwrap();
-    // Exactly the page transform and line-cap/join setup: no paths, fills, text or images at all.
-    assert_eq!(empty.lines().count(), 1, "unexpected content: {empty}");
-    assert!(empty.ends_with("cm 1 J 0 j\n"), "{empty}");
+    // The page's own setup (its clip), and no paths painted, fills, text or images at all.
+    assert!(!paints(&empty), "unexpected content: {empty}");
     // `false` is `none`, in any case.
     for same in [json!(false), json!("None"), json!(" NONE ")] {
         assert_eq!(printed(&mut fixture(Some(same.clone()), false).unwrap().0).unwrap().0, none_pdf, "{same}");
@@ -63,9 +73,9 @@ fn no_title_block_means_no_stock_pdf_painting_and_the_built_in_one_remains_the_d
     // An NBR A3 has NBR 17067's folding marks, drawn with the built-in title box and with a project's own; none has none.
     let (mut nbr, _) = fixture(Some(json!("none")), false).unwrap();
     nbr.execute("standard", &json!({"set": "nbr", "adapt_all": true})).unwrap();
-    assert_eq!(printed(&mut nbr).unwrap().1, empty, "no folding marks either");
+    assert!(!paints(&printed(&mut nbr).unwrap().1), "no folding marks either");
     nbr.execute("modify", &json!({"id": nbr.model.sheets()[0], "title_block": ""})).unwrap();
-    assert_ne!(printed(&mut nbr).unwrap().1, empty);
+    assert!(paints(&printed(&mut nbr).unwrap().1));
     for decorated in [false, true] {
         let (mut default, _) = fixture(None, decorated).unwrap();
         let (default_pdf, default_stream) = printed(&mut default).unwrap();
@@ -73,7 +83,7 @@ fn no_title_block_means_no_stock_pdf_painting_and_the_built_in_one_remains_the_d
         for on in [json!(""), json!(true)] {
             assert_eq!(printed(&mut fixture(Some(on), decorated).unwrap().0).unwrap().0, default_pdf, "leaving it out keeps its look");
         }
-        assert!(default_stream.contains("h S\n"), "the default still prints its closed frame");
+        assert!(ops(&default_stream).contains(" h S "), "the default still prints its closed frame");
     }
 }
 
@@ -85,8 +95,10 @@ fn no_title_block_keeps_viewports_and_sheet_annotations_and_round_trips() {
     session.execute("modify", &json!({"id": id, "title_block": "none"})).unwrap();
     let (off_pdf, off) = printed(&mut session).unwrap();
     let (_, empty) = printed(&mut fixture(Some(json!("none")), false).unwrap().0).unwrap();
-    let retained = off.strip_prefix(&empty).unwrap();
-    assert!(!retained.is_empty() && retained.contains(" S\n"), "the note, line and view must print");
+    // What follows the page's own setup, an empty sheet's stream short of its closing Q: the view, the note and the line.
+    let setup = empty.trim_end().strip_suffix('Q').unwrap_or(&empty);
+    let retained = off.strip_prefix(setup).unwrap();
+    assert!(paints(retained) && ops(retained).contains(" S "), "the note, line and view must print");
     assert!(on.ends_with(retained), "all viewport and annotation operators must be unchanged");
     assert_ne!(off_pdf, on_pdf);
     assert_eq!(session.model.on_sheet(id), views);

@@ -255,6 +255,14 @@ fn drag_screen(h: &mut Harness<BimApp>, a: Pos2, b: Pos2, button: PointerButton)
     h.run();
 }
 
+/// Shift and a middle drag between points on screen: how the 3D view orbits, as in Revit.
+fn orbit_screen(h: &mut Harness<BimApp>, a: Pos2, b: Pos2) {
+    h.event(Event::ModifiersChanged(Modifiers::SHIFT));
+    drag_screen(h, a, b, PointerButton::Middle);
+    h.event(Event::ModifiersChanged(Modifiers::NONE));
+    h.run();
+}
+
 /// A primary drag on the plan between model points, in steps, as a hand makes it.
 fn drag(h: &mut Harness<BimApp>, from: P2, to: P2) {
     let (a, b) = (h.state().screen(from), h.state().screen(to));
@@ -308,15 +316,11 @@ fn key(h: &mut Harness<BimApp>, k: Key) {
 }
 
 /// Letters typed over the view: a two-letter shortcut, read from the physical keys as the window does.
+/// `letters` typed with Ctrl held, as BIMCraft's shortcuts are, all in one go.
 fn shortcut(h: &mut Harness<BimApp>, letters: &str) {
-    for c in letters.chars() {
-        let key = Key::from_name(&c.to_ascii_uppercase().to_string()).expect("a letter");
-        h.key_press(key);
-    }
-    // Family tabs still read Event::Text for their own keys; project tabs read the physical keys.
-    if h.state().active_family().is_some() {
-        h.event(Event::Text(letters.into()));
-    }
+    let keys: Vec<Key> = letters.chars().filter_map(|c| Key::from_name(&c.to_ascii_uppercase().to_string())).collect();
+    assert_eq!(keys.len(), letters.chars().count(), "every letter of {letters} is a key");
+    h.key_combination_modifiers(Modifiers::COMMAND, &keys);
     h.run();
 }
 
@@ -861,17 +865,54 @@ fn the_selection_stays_as_views_change_and_a_schedule_shows_and_picks_it() {
 }
 
 #[test]
+fn a_ctrl_key_of_its_own_waits_for_a_second_letter_and_does_its_job_when_none_comes() {
+    let mut h = app("");
+    for y in [0, 3000, 6000] {
+        h.state_mut().session.execute("wall", &json!({"points": [[0, y], [4000, y]]})).unwrap();
+    }
+    h.run();
+    let walls = |h: &Harness<BimApp>| ids(h, "wall").len();
+    // Ctrl held, Z, and still held: Z waits for a second letter.
+    h.input_mut().events.push(Event::ModifiersChanged(Modifiers::COMMAND));
+    h.input_mut().events.push(Event::Key { key: Key::Z, pressed: true, modifiers: Modifiers::COMMAND, repeat: false, physical_key: None });
+    h.step();
+    assert_eq!(walls(&h), 3, "not yet undone");
+    // None comes: after the wait (a step is a quarter of a second here), Z undoes.
+    h.run_steps(3);
+    assert_eq!(walls(&h), 2, "undone once the wait is over");
+    // Z then F with Ctrl held is Zoom to Fit, not undo.
+    h.input_mut().events.push(Event::Key { key: Key::Z, pressed: true, modifiers: Modifiers::COMMAND, repeat: false, physical_key: None });
+    h.input_mut().events.push(Event::Key { key: Key::F, pressed: true, modifiers: Modifiers::COMMAND, repeat: false, physical_key: None });
+    h.step();
+    h.input_mut().events.push(Event::ModifiersChanged(Modifiers::NONE));
+    h.run();
+    assert_eq!(walls(&h), 2, "ZF fits the view and undoes nothing");
+    // Z, Z is no shortcut: the first undoes, and the second does as Ctrl is let go.
+    shortcut(&mut h, "ZZ");
+    assert_eq!(walls(&h), 0, "twice undone");
+}
+
+#[test]
 fn typed_shortcuts_pick_tools_like_revit() {
     let mut h = app(SAMPLE);
-    shortcut(&mut h, "WA");
+    // Letters typed without Ctrl are no shortcut.
+    h.event(Event::Text("WA".into()));
+    h.run();
+    assert!(matches!(h.state().tool, Tool::Modify));
+    // With Ctrl held they are, a letter a frame as well as together; letting Ctrl go between two ends the first.
+    let down = |key| Event::Key { key, pressed: true, modifiers: Modifiers::COMMAND, repeat: false, physical_key: None };
+    h.input_mut().events.extend([Event::ModifiersChanged(Modifiers::COMMAND), down(Key::W)]);
+    h.step();
+    h.input_mut().events.push(down(Key::A));
+    h.step();
+    h.input_mut().events.push(Event::ModifiersChanged(Modifiers::NONE));
+    h.run();
     assert!(matches!(h.state().tool, Tool::Wall(_)));
-    shortcut(&mut h, "DR");
+    shortcut(&mut h, "dr");
     assert!(matches!(h.state().tool, Tool::Door));
     shortcut(&mut h, "DI");
     assert!(matches!(h.state().tool, Tool::Dimension(..)));
-    shortcut(&mut h, "TG");
-
-    h.run();
+    shortcut(&mut h, "tg");
     assert!(matches!(h.state().tool, Tool::Tag));
     shortcut(&mut h, "CR");
     assert!(matches!(h.state().tool, Tool::Section(None)));
@@ -1037,7 +1078,7 @@ fn manage_tab_opens_keyboard_shortcuts_dialog() {
     // Wide enough that the Manage tab shows every panel unfolded.
     h.set_size(vec2(1800.0, 900.0));
     press(&mut h, "Manage");
-    press(&mut h, "Shortcuts");
+    from_list(&mut h, "Settings", "Shortcuts");
     assert!(h.state().show_shortcuts);
     assert!(h.query_by_label("Import…").is_some());
     assert!(h.query_by_label("Export…").is_some());
@@ -1128,13 +1169,20 @@ fn saving_writes_the_project_and_exports_by_extension() {
 }
 
 #[test]
-fn file_export_lists_the_3d_scene_as_gltf_in_both_profiles_and_an_export_leaves_the_project_unsaved() {
+fn file_export_lists_export_publisher_and_print_set_in_both_profiles_and_an_export_leaves_the_project_unsaved() {
     for (name, mut h) in [("Rev", app(SAMPLE)), ("BIMCraft", bimcraft(SAMPLE))] {
         press(&mut h, "File");
         // The submenu's label carries its arrow too.
         h.get_by_label_contains("Export").click();
         h.run();
-        assert!(h.query_by_label("3D Scene as glTF…").is_some(), "{name}: File > Export lists glTF");
+        for item in ["Export…", "Publisher…", "Print Set…"] {
+            // Export…'s label carries its shortcut too.
+            assert!(h.query_all_by_label_contains(item).next().is_some(), "{name}: File > Export lists {item}");
+        }
+        // The exports that saved at once with the defaults are gone: the dialog and the Publisher write them.
+        for gone in ["IFC…", "View as PNG…", "Plan as SVG…", "Sheets as PDF…", "3D Scene as glTF…", "Print Sets…"] {
+            assert!(h.query_by_label(gone).is_none(), "{name}: File > Export no longer lists {gone}");
+        }
     }
     let mut h = app(SAMPLE);
     let dir = std::env::temp_dir().join(format!("bimcraft-ui-gltf-{}", std::process::id()));
@@ -1757,7 +1805,7 @@ fn a_door_pointed_at_a_wall_shows_how_far_it_stands_from_the_ends() {
     let Some(Element::Door(o)) = m.elements.values().find(|e| matches!(e, Element::Door(_))) else { panic!("no door") };
     let ctx = egui::Context::default();
     let painter = egui::Painter::new(ctx, egui::LayerId::background(), egui::Rect::from_min_size(Pos2::ZERO, vec2(800.0, 600.0)));
-    let v = bimcraft_core::render::View { scale: 0.06, cx: 4000.0, cy: 3000.0, width: 800, height: 600 };
+    let v = bimcraft_core::render::View { angle: 0.0, scale: 0.06, cx: 4000.0, cy: 3000.0, width: 800, height: 600 };
     let spans: Vec<String> = crate::canvas::opening_dimensions(&painter, &m, &v, o).into_iter().map(|(_, text, _)| text).collect();
     assert_eq!(spans, ["1900", "5900"]);
 }
@@ -2008,16 +2056,18 @@ fn a_click_made_on_the_move_in_3d_picks_what_was_under_the_press_and_leaves_the_
 }
 
 #[test]
-fn in_3d_a_shift_drag_boxes_shift_and_the_middle_button_orbit_the_middle_button_pans_and_the_wheel_zooms() {
+fn in_3d_a_primary_drag_boxes_shift_and_the_middle_button_orbit_the_middle_button_pans_and_the_wheel_zooms() {
     let mut h = app(BOX);
     press(&mut h, "Default 3D View");
     let cam = |h: &Harness<BimApp>| h.state().orbit.camera.unwrap();
     let (start, mid) = (cam(&h), h.state().orbit.rect.center());
-    // Shift and a primary drag are a selection box, as in a plan: the view stays.
+    // A primary drag is a selection box, as in a plan, with Shift held or not: the view stays.
+    drag_screen(&mut h, mid, mid + vec2(100.0, 0.0), PointerButton::Primary);
+    assert_eq!(cam(&h), start, "the primary button doesn't turn the view");
     h.event(Event::ModifiersChanged(Modifiers::SHIFT));
     drag_screen(&mut h, mid, mid + vec2(100.0, 0.0), PointerButton::Primary);
     h.event(Event::ModifiersChanged(Modifiers::NONE));
-    assert_eq!(cam(&h), start, "Shift and the primary button don't turn the view");
+    assert_eq!(cam(&h), start, "Shift and the primary button don't turn it either");
     drag_screen(&mut h, mid, mid + vec2(0.0, 50.0), PointerButton::Middle);
     let panned = cam(&h);
     assert!(panned.target != start.target && panned.azimuth == start.azimuth, "{panned:?}");
@@ -2056,9 +2106,7 @@ fn in_3d_a_box_from_the_left_picks_what_lies_wholly_inside_and_from_the_right_wh
     let on: Vec<Pos2> = corners.iter().map(|p| h.state().screen3(*p)).collect();
     let (lo, hi) = on.iter().fold((on[0], on[0]), |(lo, hi), p| (lo.min(*p), hi.max(*p)));
     let before = h.state().orbit.camera;
-    h.event(Event::ModifiersChanged(Modifiers::SHIFT));
     drag_screen(&mut h, lo, hi, PointerButton::Primary);
-    h.event(Event::ModifiersChanged(Modifiers::NONE));
     assert_eq!(h.state().selection, [south], "window: wholly inside");
     assert_eq!(h.state().orbit.camera, before);
     key(&mut h, Key::Escape);
@@ -2206,7 +2254,7 @@ fn the_camera_tool_makes_a_perspective_3d_view_from_an_eye_and_a_target() {
     // Orbiting writes the camera's eye and target back, so leaving and returning stands it where it was left.
     let before = field(&h, made[0], "camera");
     let mid = h.state().orbit.rect.center();
-    drag_screen(&mut h, mid, mid + vec2(90.0, 0.0), PointerButton::Primary);
+    orbit_screen(&mut h, mid, mid + vec2(90.0, 0.0));
     h.run();
     let after = field(&h, made[0], "camera");
     assert_ne!(after, before, "the orbit moved the camera's eye and target");
@@ -3557,6 +3605,39 @@ fn rotate_centre_shows_a_walls_snap_before_the_click_and_takes_it() {
 }
 
 #[test]
+fn rotate_snaps_the_angle_s_start_and_end_to_what_is_drawn() {
+    let mut h = app(&format!("{BOX}\nwall {{\"points\": [[1000, 3000], [3000, 3000]]}}"));
+    let wall =
+        ids(&h, "wall").into_iter().find(|id| h.state().session.model.wall(*id).is_some_and(|w| w.start == P2(1000.0, 3000.0))).unwrap();
+    click(&mut h, P2(2000.0, 3000.0));
+    press(&mut h, "Rotate");
+    // About the wall's middle, from near one of the box's corners to near another: the rays run to the corners themselves.
+    click(&mut h, P2(8030.0, 25.0));
+    click(&mut h, P2(8030.0, 5975.0));
+    let w = h.state().session.model.wall(wall).cloned().unwrap();
+    let a = 2.0 * 0.5f64.atan();
+    let end = P2(2000.0 + 1000.0 * a.cos(), 3000.0 + 1000.0 * a.sin());
+    assert!(w.end.dist(end) < 0.01, "turned {:.3}°: {:?}, not {:?}", a.to_degrees(), w.end, end);
+}
+
+#[test]
+fn rotate_takes_an_angle_typed_over_the_view() {
+    let mut h = app(BOX);
+    let wall = ids(&h, "wall").into_iter().find(|id| h.state().session.model.wall(*id).is_some_and(|w| w.start == P2(0.0, 0.0))).unwrap();
+    click(&mut h, P2(4000.0, 0.0));
+    press(&mut h, "Rotate");
+    // As Revit takes it: typed straight away (or after the start's click), Enter turns by it.
+    h.event(Event::Text("-90".into()));
+    h.run();
+    assert!(matches!(h.state().tool, Tool::Rotate { .. }), "typing is no shortcut here: {:?}", h.state().tool);
+    h.key_press(Key::Enter);
+    h.run();
+    let w = h.state().session.model.wall(wall).cloned().unwrap();
+    assert!(w.start.dist(P2(4000.0, 4000.0)) < 1e-6 && w.end.dist(P2(4000.0, -4000.0)) < 1e-6, "{:?} {:?}", w.start, w.end);
+    assert_eq!(h.state().tool, Tool::Modify);
+}
+
+#[test]
 fn rotate_centre_snaps_to_a_notes_anchor() {
     use bimcraft_core::snap::Kind;
     let mut h = app(&format!("{BOX}\ntext {{\"text\": \"Note\", \"at\": [4000, 3000], \"leader\": [5000, 3000]}}"));
@@ -4036,42 +4117,6 @@ fn a_floor_types_layers_go_from_its_top_down() {
     assert_eq!((t.thickness, t.layers.len()), (210.0, 2));
     assert_eq!((t.layers[0].material.as_str(), t.layers[0].thickness), ("Ceramic tile", 10.0));
     assert_eq!((t.layers[0].variable, t.layers[1].variable), (true, false));
-}
-
-#[test]
-fn project_parameters_are_made_in_their_window_and_given_values_in_properties() {
-    use bimcraft_core::model::ParameterKind;
-    let mut h = app(BOX);
-    press(&mut h, "Manage");
-    press(&mut h, "Project Parameters");
-    assert!(h.query_by_label("No project parameters yet: New makes one.").is_some());
-    press(&mut h, "New");
-    assert_eq!(h.state().session.model.parameters["Parameter 1"].categories, ["wall"]);
-    type_into(&mut h, "Name", "Finish Height");
-    key(&mut h, Key::Enter);
-    pick(&mut h, Role::CheckBox, "Doors");
-    assert_eq!(h.state().session.model.parameters["Finish Height"].categories, ["door", "wall"]);
-    h.get_by_role_and_label(Role::ComboBox, "Type of Parameter").click();
-    h.run();
-    press(&mut h, "Length");
-    assert_eq!(h.state().session.model.parameters["Finish Height"].kind, ParameterKind::Length);
-    press(&mut h, "Close");
-    // The bottom wall's value, typed in the project's units; emptied, it has none.
-    let wall = ids(&h, "wall")[0];
-    click(&mut h, P2(4000.0, 0.0));
-    type_role(&mut h, Role::TextInput, "Finish Height", "2400");
-    assert_eq!(field(&h, wall, "params"), json!({"Finish Height": 2400.0}));
-    type_role(&mut h, Role::TextInput, "Finish Height", "");
-    assert_eq!(field(&h, wall, "params"), Value::Null);
-    // Deleted, it's gone from the palette.
-    key(&mut h, Key::Escape);
-    press(&mut h, "Manage");
-    press(&mut h, "Project Parameters");
-    press(&mut h, "Delete");
-    press(&mut h, "Close");
-    assert!(h.state().session.model.parameters.is_empty());
-    click(&mut h, P2(4000.0, 0.0));
-    assert!(h.query_by_label("Finish Height").is_none() && h.query_by_label("Project Parameters").is_none(), "no group for it");
 }
 
 #[test]
@@ -6254,6 +6299,7 @@ mod cad;
 mod chinese;
 mod clouds;
 mod control;
+mod coordinates;
 mod cowork;
 mod dialog;
 mod dimensions;
@@ -6262,6 +6308,7 @@ mod display;
 mod dock;
 mod draw;
 mod electrical;
+mod export;
 mod family_formulas;
 mod file_extensions;
 mod fills;
@@ -6282,14 +6329,19 @@ mod minimap;
 mod notes;
 mod objectstyles;
 mod origin;
+mod parameters;
 mod patterns;
 mod perspective;
 mod planviews;
 mod plugins;
 mod popup;
 mod presets;
+mod printsets;
 mod profile;
+mod projectinfo;
+mod publisher;
 mod purge;
+mod qol;
 mod reinforce;
 mod revit;
 mod rooms;
@@ -6301,6 +6353,7 @@ mod sketch;
 mod sketch3d;
 mod smallest;
 mod spacemouse;
+mod spots;
 mod standards;
 mod start;
 mod templates;

@@ -880,7 +880,7 @@ fn cyrillic_of(key: Key) -> Option<char> {
     CYRILLIC.iter().find(|(_, k)| *k == key).map(|(c, _)| *c)
 }
 
-fn key_of_char(c: char) -> Option<Key> {
+pub(crate) fn key_of_char(c: char) -> Option<Key> {
     if c.is_ascii_alphabetic() {
         return Key::from_name(&c.to_ascii_uppercase().to_string());
     }
@@ -906,6 +906,11 @@ fn key_of_char(c: char) -> Option<Key> {
         '+' => Some(Key::Plus),
         _ => Key::from_name(&c.to_string()),
     }
+}
+
+/// The physical keys a sequence's text names (`WA`, `3D`), its letters and digits alone.
+fn keys_of_text(text: &str) -> Option<Vec<Key>> {
+    text.chars().filter(|c| c.is_ascii_alphanumeric()).map(|c| key_of_char(c.to_ascii_uppercase())).collect()
 }
 
 /// The canonical name of a key, for a file and the dialog.
@@ -1320,12 +1325,23 @@ impl Shortcuts {
 
     /// The action a two- or three-character text names, for the family document and the tests.
     pub fn action_for_text(&self, text: &str) -> Option<ActionId> {
-        let keys: Option<Vec<Key>> =
-            text.chars().filter(|c| c.is_ascii_alphanumeric()).map(|c| key_of_char(c.to_ascii_uppercase())).collect();
-        match keys?.as_slice() {
+        match keys_of_text(text)?.as_slice() {
             [a, z] => self.by_sequence.get(&[*a, *z]).cloned(),
             [a, z, c] => self.by_sequence3.get(&[*a, *z, *c]).cloned(),
             _ => None,
+        }
+    }
+
+    /// Whether a physical key starts a two- or three-key binding, so a letter typed with Ctrl held begins a shortcut.
+    pub fn sequence_starts_with(&self, key: Key) -> bool {
+        self.by_sequence.keys().any(|k| k[0] == key) || self.by_sequence3.keys().any(|k| k[0] == key)
+    }
+
+    /// Whether a two-character text starts a three-key binding, so a third letter may still come.
+    pub fn text_starts_three(&self, text: &str) -> bool {
+        match keys_of_text(text).as_deref() {
+            Some([a, z]) => self.by_sequence3.keys().any(|k| k[0] == *a && k[1] == *z),
+            _ => false,
         }
     }
 
@@ -2145,7 +2161,7 @@ impl BimApp {
                 true
             }
             "ui.file.export_pdf" => {
-                self.export(ctx, "PDF", "pdf");
+                self.open_export(Some("pdf"));
                 true
             }
             "ui.settings" => {
@@ -2276,6 +2292,7 @@ impl BimApp {
             "Text" => self.set_tool(Tool::Text),
             "Spot Elevation" => self.set_tool(Tool::Spot),
             "Spot Slope" => self.set_tool(Tool::SpotSlope),
+            "Spot Coordinate" => self.set_tool(Tool::SpotCoordinate(None)),
             "Tag by Category" => self.set_tool(Tool::Tag),
             "Section" => self.set_tool(Tool::Section(None)),
             "Elevation" => self.set_tool(Tool::Elevation),
@@ -2302,6 +2319,9 @@ impl BimApp {
             "Co-Work" => self.open_cowork(),
             "Pin" => self.set_pinned(true),
             "Unpin" => self.set_pinned(false),
+            "Location" => self.open_location(),
+            "Specify Coordinates at a Point" => self.specify_coordinates_pick(),
+            "Rotate Project North" => self.set_tool(Tool::RotateNorth { centre: P2(0.0, 0.0), start: None, place: false }),
             "Visibility/Graphics" => self.open_graphics(0),
             "Hide Element" => self.hide_selection(false),
             "Hide Category" => self.hide_selection(true),
@@ -2415,6 +2435,10 @@ impl BimApp {
 
         let r = Modal::new(UiId::new("shortcuts"), t("Keyboard Shortcuts")).width(1120.0).show(ctx, |ui| {
             crate::popup::body(ui, |ui| {
+                ui.add_space(4.0);
+                ui.label(
+                    RichText::new(t("Shortcuts are typed with Ctrl held (Cmd on a Mac): Ctrl, then W and A for Wall.")).color(pal().muted),
+                );
                 ui.add_space(4.0);
                 ui.horizontal(|ui| {
                     ui.add(TextEdit::singleline(&mut self.shortcuts_dialog.search).hint_text(t("Search…")).desired_width(170.0));

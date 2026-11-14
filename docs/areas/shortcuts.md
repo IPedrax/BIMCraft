@@ -4,7 +4,7 @@ Keyboard shortcuts are application settings, not project settings: they live in 
 
 ## What can be assigned
 
-A binding is either a **chord** (`Ctrl+D`, `Ctrl+Shift+D`, `Alt+F3`, `F8`) or a **sequence** of two or three keys (`WA`, `MV`, `KS`, `BMM`). One action may have several bindings (up to 32), and all of them work.
+A binding is either a **chord** (`Ctrl+D`, `Ctrl+Shift+D`, `Alt+F3`, `F8`) or a **sequence** of two or three keys (`WA`, `MV`, `KS`, `BMM`), typed with Ctrl held. One action may have several bindings (up to 32), and all of them work.
 
 Every action has a stable identifier:
 
@@ -19,11 +19,19 @@ The label in the interface may be translated; the identifier never is. Files and
 Chords and sequences are read from the **physical key position**, not from the character produced by the active layout. Therefore:
 
 - `Ctrl+D` on a US layout and `Ctrl+В` on a Russian layout are the same key;
-- `WA` works on a Russian layout too (physically the same `W` and `A` keys);
+- `Ctrl+W, A` works on a Russian layout too (physically the same `W` and `A` keys);
 - changing the layout while the window is open changes nothing;
 - the interface shows the canonical form, followed by the localized hint `(Ctrl+В)` when the key has a Cyrillic caption.
 
 Modifiers are matched **exactly**: `Ctrl+D` and `Ctrl+Shift+D` are different bindings. Holding a key down does not repeat the command.
+
+## Typing a sequence
+
+Sequences are typed with Ctrl held (Cmd on a Mac): Ctrl, then `W` and `A` for Wall. Letters typed without Ctrl are no shortcut; digits and a unit still make a typed length.
+
+A letter that is also a chord of its own — `S` (Save), `O` (Open), `N` (New), `K` (Find), `P` (Export PDF), `Z` (Undo), `D` (Home), `1` (Properties) — waits half a second for a second letter, and runs its chord when none comes or Ctrl is let go. So Ctrl+S then A is Select All Instances, and Ctrl+Z, Z, Z undoes three times. A Ctrl key that begins no sequence runs at once, so `Ctrl+Y`, `Ctrl+1` and `Ctrl+P` need no second letter.
+
+If the two letters are no shortcut, the first does its own job and the second waits in its place. In a text field Ctrl's keys belong to the field but for Save, Save As, Open, New, Find, Settings, Export PDF and Properties, which act there at once, and no sequence is typed.
 
 ## Where to edit them
 

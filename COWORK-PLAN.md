@@ -266,8 +266,8 @@ Colours come from eight distinct ones, given in join order with the host first, 
 
 Guests have the code, but everything they send is still hostile, and so is everything a host sends:
 
-- A frame is capped before it's read; a deflated snapshot is capped once inflated at the size `open` takes (`MAX_FILE` in
-  `commands.rs`, 256 MB).
+- A frame is capped before it's read (`MAX_FRAME`); a host's message longer than one goes in parts, which a guest gathers and
+  inflates no further than the memory its machine has free (`memory.rs`; `MAX_INFLATED`, 256 MB, where nothing measures it).
 - Floats are checked finite and within `model::MAX_COORD`; a selection holds at most 10,000 GUIDs; a name is at most 40
   characters with no control characters; a chat message is at most the assistant's `MAX_TEXT` (8,000 characters).
 - A guest may send at most 100 messages a second of any kind (presence, at 15 a second, included); past it, it is dropped. The
