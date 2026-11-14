@@ -13,7 +13,7 @@ use serde_json::{Value, json};
 use crate::DimMode;
 use crate::icons::Icon;
 use crate::lang::{t, tf};
-use crate::{BimApp, Status, Tool, big_button, panel, top_params};
+use crate::{BimApp, Status, Tool, big_button, panel, ribbon, top_params};
 
 /// The command that makes elements of `category`.
 pub(crate) fn command(category: &str) -> &'static str {
@@ -105,6 +105,27 @@ impl BimApp {
                 self.open_reinforce();
             }
         });
+        panel(ui, msg!("Framing"), |ui| {
+            let tip = msg!("Frame: the selected walls framed, their studs, plates and headers worked out from each wall");
+            let r = big_button(ui, Icon::Frame, "Frame", false, tip);
+            // Of several framing types, the button drops them down; of one or none, it frames with the project's default.
+            let types: Vec<String> = self.session.model.types.framing.keys().cloned().collect();
+            if types.len() > 1 {
+                ribbon::choices(ui, &r, false, |ui| {
+                    for name in &types {
+                        if ui.button(name).clicked() {
+                            self.frame_selection(Some(name));
+                        }
+                    }
+                });
+            } else if r.clicked() {
+                self.frame_selection(None);
+            }
+            let tip = msg!("Remove Framing: the selected walls framed no more; their framing type stays in the project");
+            if big_button(ui, Icon::Unframe, "Remove Framing", false, tip).clicked() {
+                self.unframe_selection();
+            }
+        });
         panel(ui, msg!("Foundation"), |ui| {
             let tools: [(Icon, &str, &str, Tool); 2] = [
                 (Icon::Footing, "Isolated Footing", msg!("Isolated Footing (FI): click where the footing goes"), Tool::Stand("footing")),
@@ -121,6 +142,35 @@ impl BimApp {
                 }
             }
         });
+    }
+
+    /// Structure > Frame: the selected walls framed by `ty`, else by the project's default framing type (made when it has none),
+    /// as one step.
+    pub(crate) fn frame_selection(&mut self, ty: Option<&str>) {
+        let walls = self.selected_walls();
+        if walls.is_empty() {
+            self.status = Status { text: t("Select the walls to frame first.").into(), error: true };
+            return;
+        }
+        let mut p = json!({"ids": walls});
+        if let Some(ty) = ty {
+            p["type"] = json!(ty);
+        }
+        if let Some(done) = self.run("frame", p) {
+            let (n, members) = (walls.len().to_string(), done["members"].as_u64().unwrap_or(0).to_string());
+            let ty = done["type"].as_str().unwrap_or_default();
+            self.status = Status { text: tf("{} walls framed as {}: {} members.", &[&n, ty, &members]), error: false };
+        }
+    }
+
+    /// Structure > Remove Framing: the selected walls framed no more, as one step.
+    pub(crate) fn unframe_selection(&mut self) {
+        let walls = self.selected_walls();
+        if walls.is_empty() {
+            self.status = Status { text: t("Select the walls to remove framing from first.").into(), error: true };
+            return;
+        }
+        self.run("unframe", json!({"ids": walls}));
     }
 
     /// The Floor tool, making structural floors (SB).

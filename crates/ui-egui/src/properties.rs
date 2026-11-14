@@ -89,6 +89,8 @@ enum Kind {
     Link,
     /// One of these values (as the command names it, and its label): a drop-down, the first when it has none.
     Choice(&'static [(&'static str, &'static str)]),
+    /// A wall's framing type: None or one of the project's, a drop-down, and beside it its Type Properties.
+    Framing,
 }
 
 use Kind::*;
@@ -147,6 +149,7 @@ fn rows(category: &str) -> &'static [Row] {
             ("Constraints", "height", msg!("Unconnected Height"), Height),
             ("Constraints", "attach_top", msg!("Top is Attached"), Attached),
             ("Constraints", "room_bounding", msg!("Room Bounding"), Flag),
+            ("Structural", "framing", msg!("Framing"), Framing),
             ("Dimensions", "length", "Length", LengthShown),
             ("Dimensions", "radius", "Radius", LengthShown),
             (msg!("Other"), "start", msg!("Start"), Point),
@@ -996,7 +999,7 @@ pub(crate) struct TypeDialog {
     /// A new name being typed, for a duplicate or a rename.
     naming: Naming,
     /// What stopped OK, Apply, Duplicate or Rename.
-    error: Option<String>,
+    pub(crate) error: Option<String>,
     /// A layered type's layers, exterior or top first, as typed, and as they were: changed, they
     /// make it.
     layers: Vec<LayerRow>,
@@ -1005,6 +1008,8 @@ pub(crate) struct TypeDialog {
     shape: Option<(bool, String)>,
     /// A room type's own: its rooms' floor and ceiling, and their colour on plans.
     pub(crate) room: Option<RoomRows>,
+    /// A framing type's own: its spacing, plates, openings, joins, material and stock.
+    framing: Option<FramingRows>,
     /// The type's values of the project's type parameters, as typed.
     project: Vec<TypeValue>,
 }
@@ -1099,6 +1104,165 @@ impl RoomRows {
     }
 }
 
+/// The groups a framing type's parameters are under, in order.
+const FRAMING_GROUPS: [&str; 5] = ["Construction", msg!("Openings"), msg!("Joins"), "Materials and Finishes", "Other"];
+
+/// What a framing type's field holds, as typed.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Typed {
+    Length,
+    /// A whole number of pieces.
+    Count,
+    /// Lengths parted by commas, or none.
+    Lengths,
+}
+
+/// A framing type's typed fields: its group, its key, which of the key's pair it is (none for the key itself), its label and
+/// what it holds.
+const FRAMING_FIELDS: [(&str, &str, Option<usize>, &str, Typed); 13] = [
+    ("Construction", "spacing", None, msg!("Stud Spacing"), Typed::Length),
+    ("Construction", "thickness", None, msg!("Thickness"), Typed::Length),
+    ("Construction", "bottom_plates", None, msg!("Bottom Plates"), Typed::Count),
+    ("Construction", "top_plates", None, msg!("Top Plates"), Typed::Count),
+    ("Construction", "blocking", None, msg!("Blocking Heights"), Typed::Lengths),
+    ("Openings", "kings", None, msg!("Kings"), Typed::Count),
+    ("Openings", "jacks", None, msg!("Jacks"), Typed::Count),
+    ("Openings", "sill_plates", None, msg!("Sill Plates"), Typed::Count),
+    ("Openings", "window_rough", Some(0), msg!("Window Rough Opening: Added Width"), Typed::Length),
+    ("Openings", "window_rough", Some(1), msg!("Window Rough Opening: Added Height"), Typed::Length),
+    ("Openings", "door_rough", Some(0), msg!("Door Rough Opening: Added Width"), Typed::Length),
+    ("Openings", "door_rough", Some(1), msg!("Door Rough Opening: Added Height"), Typed::Length),
+    ("Other", "stock", None, msg!("Stock Lengths"), Typed::Lengths),
+];
+
+/// A framing type's choices: its key, its group, its label, and each value with its label.
+type FramingChoice = (&'static str, &'static str, &'static str, &'static [(&'static str, &'static str)]);
+const FRAMING_CHOICES: [FramingChoice; 3] = [
+    ("layout", "Construction", msg!("Layout"), &[("start", "Start"), ("end", "End"), ("centre", "Centre")]),
+    ("corner", "Joins", msg!("Corner"), &[("three_stud", msg!("Three Studs")), ("two_stud", msg!("Two Studs")), ("none", "None")]),
+    ("tee", "Joins", msg!("Tee Junction"), &[("studs", msg!("Backing Studs")), ("none", "None")]),
+];
+
+/// A framing type's parameters, as typed and picked. Its headers aren't edited here (the `type` command does), only shown: what
+/// the dialog doesn't change goes back as it was, and a number is read back only once it is typed over, so a spacing of 406.4
+/// shown as 406 stays 406.4.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct FramingRows {
+    was: Value,
+    /// `FRAMING_FIELDS` as shown, and as typed.
+    shown: Vec<String>,
+    typed: Vec<String>,
+    /// `FRAMING_CHOICES`' values, by their keys.
+    picked: Vec<String>,
+    /// Its members' material, "" for their structure layer's.
+    material: String,
+}
+
+impl FramingRows {
+    fn new(m: &Model, name: &str) -> FramingRows {
+        let was = json!(m.types.framing.get(name).cloned().unwrap_or_default());
+        let units = m.units;
+        let shown: Vec<String> = FRAMING_FIELDS
+            .iter()
+            .map(|(_, key, at, _, kind)| {
+                let v = at.map_or(&was[*key], |i| &was[*key][i]);
+                match kind {
+                    Typed::Length => v.as_f64().map_or_else(String::new, |x| units.length(x)),
+                    Typed::Count => v.as_u64().map_or_else(String::new, |n| n.to_string()),
+                    Typed::Lengths => {
+                        v.as_array().into_iter().flatten().filter_map(Value::as_f64).map(|x| units.length(x)).collect::<Vec<_>>().join(", ")
+                    }
+                }
+            })
+            .collect();
+        let picked = FRAMING_CHOICES.iter().map(|(key, ..)| was[*key].as_str().unwrap_or_default().to_string()).collect();
+        let material = was["material"].as_str().unwrap_or_default().to_string();
+        FramingRows { typed: shown.clone(), shown, picked, material, was }
+    }
+
+    /// Its rows under `group`.
+    fn rows(&mut self, tb: &mut typeprops::Table, group: &str, materials: &[String], units: Units) {
+        for ((g, _, _, label, kind), typed) in FRAMING_FIELDS.iter().zip(&mut self.typed) {
+            if *g == group {
+                tb.text(t(label), typed, if *kind == Typed::Count { "" } else { units.name() });
+            }
+        }
+        for ((_, g, label, values), picked) in FRAMING_CHOICES.iter().zip(&mut self.picked) {
+            if *g != group {
+                continue;
+            }
+            let options: Vec<String> = values.iter().map(|(_, n)| t(n).to_string()).collect();
+            let mut shown = values.iter().find(|(k, _)| k == picked).or(values.first()).map_or("", |(_, n)| t(n)).to_string();
+            tb.pick(t(label), &mut shown, &options);
+            if let Some((k, _)) = values.iter().find(|(_, n)| t(n) == shown) {
+                *picked = k.to_string();
+            }
+        }
+        if group == "Openings" {
+            tb.shown(t("Headers"), &headers(&self.was["headers"], units));
+        }
+        if group == "Materials and Finishes" {
+            let layer = t("By Structure Layer").to_string();
+            let options: Vec<String> = std::iter::once(layer.clone()).chain(materials.iter().cloned()).collect();
+            let mut shown = if self.material.is_empty() { layer.clone() } else { self.material.clone() };
+            tb.pick(t("Material"), &mut shown, &options);
+            self.material = if shown == layer { String::new() } else { shown };
+        }
+    }
+
+    /// The type as the `type` command takes it, every field of it, or why what was typed isn't a number.
+    fn params(&self, p: &mut Value, units: Units) -> Result<(), String> {
+        let mut v = self.was.clone();
+        for ((_, key, at, label, kind), (typed, shown)) in FRAMING_FIELDS.iter().zip(self.typed.iter().zip(&self.shown)) {
+            if typed == shown {
+                continue;
+            }
+            let length = |s: &str| units.parse(s).ok_or_else(|| tf("{}: `{}` is not a length", &[t(label), s.trim()]));
+            let value = match kind {
+                Typed::Length => json!(length(typed)?),
+                Typed::Count => {
+                    json!(typed.trim().parse::<u32>().map_err(|_| tf("{}: `{}` is not a whole number", &[t(label), typed.trim()]))?)
+                }
+                Typed::Lengths if typed.trim().is_empty() => json!([]),
+                Typed::Lengths => json!(typed.split(',').map(length).collect::<Result<Vec<_>, _>>()?),
+            };
+            match at {
+                Some(i) => {
+                    if let Some(slot) = v.get_mut(*key).and_then(|pair| pair.get_mut(*i)) {
+                        *slot = value;
+                    }
+                }
+                None => v[*key] = value,
+            }
+        }
+        for ((key, ..), picked) in FRAMING_CHOICES.iter().zip(&self.picked) {
+            v[*key] = json!(picked);
+        }
+        v["material"] = if self.material.is_empty() { Value::Null } else { json!(self.material) };
+        for (k, val) in v.as_object().into_iter().flatten() {
+            p[k] = val.clone();
+        }
+        Ok(())
+    }
+}
+
+/// A framing type's headers as its dialog shows them: each its plies by its depth, laid flat or not, and the widest rough
+/// opening it spans; the last, any.
+fn headers(v: &Value, units: Units) -> String {
+    let each = v.as_array().into_iter().flatten().map(|h| {
+        let plies = h["plies"].as_u64().unwrap_or(1).to_string();
+        let mut said = tf("{} x {}", &[&plies, &units.length(h["depth"].as_f64().unwrap_or(0.0))]);
+        if h["flat"].as_bool() == Some(true) {
+            said = tf("{}, flat", &[&said]);
+        }
+        match h["up_to"].as_f64() {
+            Some(up_to) => tf("{} up to {}", &[&said, &units.length(up_to)]),
+            None => said,
+        }
+    });
+    each.collect::<Vec<_>>().join("; ")
+}
+
 /// The groups a room type's parameters are under.
 const ROOM_FINISHES: &str = msg!("Floor and Ceiling");
 const GRAPHICS: &str = msg!("Graphics");
@@ -1123,6 +1287,7 @@ impl TypeDialog {
             layers,
             shape,
             room: (category == "room").then(|| RoomRows::new(m, &name_of)),
+            framing: (category == "framing").then(|| FramingRows::new(m, &name_of)),
             project,
         }
     }
@@ -1176,6 +1341,9 @@ impl TypeDialog {
         }
         if let Some(room) = &self.room {
             room.params(&mut p, units)?;
+        }
+        if let Some(framing) = &self.framing {
+            framing.params(&mut p, units)?;
         }
         Ok(p)
     }
@@ -1992,6 +2160,8 @@ impl BimApp {
         let mut crop = None;
         // An element a link was clicked for: the selection.
         let mut select = None;
+        // A framing type whose Type Properties were asked for.
+        let mut edit_framing = None;
         let units = model.units;
         // A note on a sheet sits in paper mm.
         let paper = matches!(model.elements.get(id), Some(Element::Text(n)) if model.sheet(n.view).is_some());
@@ -2145,6 +2315,26 @@ impl BimApp {
                                 change = Some((key, Ok(json!(k))));
                             }
                         }
+                        Framing => {
+                            let none = t("None").to_string();
+                            let options: Vec<String> = std::iter::once(none.clone()).chain(model.types.framing.keys().cloned()).collect();
+                            let framed = val.as_str().filter(|n| model.types.framing.contains_key(*n));
+                            let now = framed.map_or(none.clone(), str::to_string);
+                            ui.horizontal(|ui| {
+                                let tall = ui.spacing().interact_size.y;
+                                let wide = (ui.available_width() - tall - ui.spacing().item_spacing.x).max(40.0);
+                                let picked = ui.allocate_ui(vec2(wide, tall), |ui| combo(ui, (id, key), name.id, &now, &options)).inner;
+                                if let Some(n) = picked {
+                                    change = Some((key, Ok(if n == none { Value::Null } else { json!(n) })));
+                                }
+                                let edit = t("Edit Framing Type");
+                                let r = ui.add_enabled(framed.is_some(), Button::new("…").min_size(vec2(tall, tall)));
+                                r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, framed.is_some(), edit));
+                                if r.on_hover_text(edit).clicked() {
+                                    edit_framing = framed.map(str::to_string);
+                                }
+                            });
+                        }
                         // Revit's greyed checkbox: Attach Top/Base and Detach Top/Base change it. Beside it, what it's attached to.
                         Attached => {
                             ui.horizontal(|ui| {
@@ -2186,6 +2376,9 @@ impl BimApp {
         }
         if let Some(other) = select {
             self.selection = vec![other];
+        }
+        if let Some(name) = edit_framing {
+            self.type_dialog = Some(TypeDialog::new(model, "framing", name, ids.to_vec()));
         }
         // A view's crop: on to all it shows, or off.
         if let (Some(on), &[view]) = (crop, ids) {
@@ -2795,7 +2988,10 @@ impl BimApp {
                     (d.room.is_some(), ROOM_FINISHES),
                     (d.room.is_some(), GRAPHICS),
                 ];
-                for g in d.fields.iter().map(|f| f.0).chain(extra.iter().filter(|(on, _)| *on).map(|(_, g)| *g)) {
+                let framing = d.framing.as_ref().map_or(&[][..], |_| &FRAMING_GROUPS[..]);
+                for g in
+                    d.fields.iter().map(|f| f.0).chain(extra.iter().filter(|(on, _)| *on).map(|(_, g)| *g)).chain(framing.iter().copied())
+                {
                     if !groups.contains(&g) {
                         groups.push(g);
                     }
@@ -2817,6 +3013,9 @@ impl BimApp {
                         }
                         if let Some(room) = &mut d.room {
                             room.rows(tb, g, &model);
+                        }
+                        if let Some(framing) = &mut d.framing {
+                            framing.rows(tb, g, &materials, model.units);
                         }
                         if g == "Construction" && layered {
                             let (out, inward) = if d.category == "wall" { (msg!("Out"), msg!("In")) } else { ("Up", "Down") };
@@ -2870,7 +3069,7 @@ impl BimApp {
                             }
                         }
                     }
-                    if d.shape.is_none() {
+                    if d.shape.is_none() && d.framing.is_none() {
                         for key in ["round", "material"] {
                             if !from[key].is_null() {
                                 p[key] = from[key].clone();
@@ -2912,10 +3111,12 @@ impl BimApp {
         }
         if ok {
             let m = &self.session.model;
+            // The walls a framing type was opened from are framed by it; other elements are of their type.
+            let key = if d.category == "framing" { "framing" } else { "type" };
             if d.elements.is_empty() {
                 self.types.insert(d.category, d.name.clone());
-            } else if self.elements_json(m, &d.elements).iter().any(|j| j["type"].as_str() != Some(d.name.as_str())) {
-                self.run("modify", json!({"ids": d.elements, "type": d.name}));
+            } else if self.elements_json(m, &d.elements).iter().any(|j| j[key].as_str() != Some(d.name.as_str())) {
+                self.run("modify", json!({"ids": d.elements, key: d.name}));
             }
         }
         if !(ok || cancel || r.should_close()) {
