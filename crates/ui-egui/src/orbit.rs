@@ -70,6 +70,8 @@ enum Stream {
 struct SceneJob {
     stream: Stream,
     model: Arc<Model>,
+    /// The 3D view it is drawn as (none: the default `{3D}`), whose look the mesh is made in and the camera fitted by.
+    view: Option<Id>,
     scene: Option<Arc<Scene>>,
     /// The scene of a model before this one, which an edit brings up to date instead of making the whole scene again.
     from: Option<(Arc<Model>, Arc<Scene>)>,
@@ -83,6 +85,7 @@ struct SceneDone {
     /// What part of the model its scene holds: none, all of it.
     streamed: Option<view3d::Streamed>,
     model: Arc<Model>,
+    view: Option<Id>,
     scene: Arc<Scene>,
     fitted: Camera,
     mesh: Option<Result<Arc<Mesh>, String>>,
@@ -103,7 +106,7 @@ fn build_scene(job: SceneJob, cancel: &crate::view_worker::Cancel) -> Option<Sce
     if cancel.cancelled() {
         return None;
     }
-    let look = Look::of_3d(&job.model);
+    let look = Look::of_3d_view(&job.model, job.view);
     let fitted = scene.fit_from(Camera { lens: job.lens, ..scene.fit_in(AZIMUTH, ELEVATION, job.width, job.height, &look) }, &look);
     if cancel.cancelled() {
         return None;
@@ -125,7 +128,7 @@ fn build_scene(job: SceneJob, cancel: &crate::view_worker::Cancel) -> Option<Sce
     if cancel.cancelled() {
         return None;
     }
-    Some(SceneDone { streamed, model: job.model, scene, fitted, mesh })
+    Some(SceneDone { streamed, model: job.model, view: job.view, scene, fitted, mesh })
 }
 
 /// Caps made: of which model, for which box.
@@ -134,18 +137,21 @@ type Capped = (Arc<Model>, (P3, P3), Arc<Caps>);
 /// The caps of a section box: of which model, cut from the solids found before where they are still the model's, and the box.
 struct CapJob {
     model: Arc<Model>,
+    /// The 3D view whose box it is (none: the default `{3D}`).
+    view: Option<Id>,
     source: Option<Arc<CapSource>>,
     cut: (P3, P3),
 }
 
 struct CapDone {
     model: Arc<Model>,
+    view: Option<Id>,
     source: Arc<CapSource>,
     cut: (P3, P3),
     caps: Arc<Caps>,
 }
 
-/// The caps of a job's box, as the default 3D view fills them: its solids found, unless the job has them, and each face cut.
+/// The caps of a job's box, as its 3D view fills them: its solids found, unless the job has them, and each face cut.
 fn build_caps(job: CapJob, cancel: &crate::view_worker::Cancel) -> Option<CapDone> {
     let source = match job.source {
         Some(source) => source,
@@ -154,13 +160,15 @@ fn build_caps(job: CapJob, cancel: &crate::view_worker::Cancel) -> Option<CapDon
     if cancel.cancelled() {
         return None;
     }
-    let look = Look::of_3d(&job.model).with_section_box(Some(job.cut));
-    let caps = Arc::new(source.caps_in(&job.model, job.model.default_3d(), &look));
-    (!cancel.cancelled()).then_some(CapDone { model: job.model, source, cut: job.cut, caps })
+    let look = Look::of_3d_view(&job.model, job.view).with_section_box(Some(job.cut));
+    let caps = Arc::new(source.caps_in(&job.model, job.view.or_else(|| job.model.default_3d()), &look));
+    (!cancel.cancelled()).then_some(CapDone { model: job.model, view: job.view, source, cut: job.cut, caps })
 }
 
 struct FitJob {
     model: Arc<Model>,
+    /// The 3D view it is fitted as (none: the default `{3D}`).
+    view: Option<Id>,
     scene: Arc<Scene>,
     from: Camera,
     camera: Camera,
@@ -178,7 +186,7 @@ fn fit_scene(job: FitJob, cancel: &crate::view_worker::Cancel) -> Option<FitDone
     if cancel.cancelled() {
         return None;
     }
-    let look = Look::of_3d(&job.model);
+    let look = Look::of_3d_view(&job.model, job.view);
     let camera = job.scene.fit_from(job.camera, &look);
     (!cancel.cancelled()).then_some(FitDone { model: job.model, scene: job.scene, from: job.from, target: job.camera, camera })
 }
@@ -393,6 +401,9 @@ pub struct Orbit {
     /// The view and the camera its model held when the picture on screen was built from it or written back as: a difference
     /// means the camera changed elsewhere (dragged on a plan, a command, undo), so the picture stands from the model anew.
     pub(crate) built: Option<(Id, ViewCamera, Option<f64>)>,
+    /// The 3D view it shows (none: the default `{3D}`, as a family's view does): what it hides, its filters and template,
+    /// its section box. Set by [`Orbit::show_view`].
+    pub(crate) view: Option<Id>,
     /// Each room's solid as the model shown last has it: its outline, bottom and top. Found once for each model.
     rooms: Option<(Arc<Model>, std::collections::BTreeMap<Id, RoomSolid>)>,
     /// The last point a drawing tool clicked here, in plan, and the plane it went on: a wall chain under way stays on it, and
@@ -476,6 +487,7 @@ impl Default for Orbit {
             boxing: None,
             lift: None,
             built: None,
+            view: None,
             rooms: None,
             plane: None,
             wall_base: None,
@@ -887,6 +899,33 @@ impl Orbit {
             || self.cap_worker.as_ref().is_some_and(Latest::busy)
     }
 
+    /// Show 3D view `view` of `model` (none: the default `{3D}`). Another view looks as its own graphics say, so the mesh, the
+    /// caps and the picture made for the one before are made again; its scene, which no view's graphics change, is kept. The
+    /// default view named by its id once it is made is the same view.
+    pub(crate) fn show_view(&mut self, model: &Model, view: Option<Id>) {
+        let shown = |v: Option<Id>| {
+            v.filter(|v| matches!(model.elements.get(*v), Some(bimcraft_core::model::Element::View3D(_)))).or_else(|| model.default_3d())
+        };
+        if shown(self.view) == shown(view) {
+            return;
+        }
+        self.view = view;
+        self.suspend();
+        self.requested = None;
+        self.requested_card = false;
+        self.mesh = None;
+        self.picker = None;
+        self.shown = None;
+        self.caps = None;
+        self.caps_requested = None;
+        self.cap_worker = None;
+    }
+
+    /// What the 3D view it shows looks like, in `model`.
+    pub(crate) fn look(&self, model: &Model) -> Look {
+        Look::of_3d_view(model, self.view)
+    }
+
     pub(crate) fn suspend(&mut self) {
         self.worker = None;
         self.requested = None;
@@ -902,7 +941,7 @@ impl Orbit {
     /// is nothing to make again, or to wait for.
     fn keep_for_a_new_box(&mut self, model: &Arc<Model>) {
         let Some((before, scene)) = &self.scene else { return };
-        if Arc::ptr_eq(before, model) || !bimcraft_core::view3d::scene_kept(before, model) {
+        if Arc::ptr_eq(before, model) || !bimcraft_core::view3d::scene_kept_in(before, model, self.view) {
             return;
         }
         let scene = Arc::clone(scene);
@@ -916,11 +955,14 @@ impl Orbit {
     /// The caps of section box `cut` on `model`: those made already, else asked of the worker (with the solids found for a model
     /// they are still the solids of, so a box moved only cuts its faces again); none until they come back.
     fn caps_for(&mut self, ctx: &egui::Context, model: &Arc<Model>, cut: (P3, P3)) -> Option<Arc<Caps>> {
-        if let Some(done) = self.cap_worker.as_ref().and_then(crate::view_worker::Latest::take) {
+        if let Some(done) = self.cap_worker.as_ref().and_then(crate::view_worker::Latest::take)
+            && done.view == self.view
+        {
             self.cap_source = Some((Arc::clone(&done.model), done.source));
             self.caps = Some((done.model, done.cut, done.caps));
         }
-        let same = |m: &Arc<Model>| Arc::ptr_eq(m, model) || bimcraft_core::view3d::scene_kept(m, model);
+        let view = self.view;
+        let same = |m: &Arc<Model>| Arc::ptr_eq(m, model) || bimcraft_core::view3d::scene_kept_in(m, model, view);
         if let Some((m, c, caps)) = &mut self.caps
             && *c == cut
             && same(m)
@@ -930,7 +972,7 @@ impl Orbit {
         }
         if !self.caps_requested.as_ref().is_some_and(|(m, c)| Arc::ptr_eq(m, model) && *c == cut) {
             let source = self.cap_source.as_ref().filter(|(m, _)| same(m)).map(|(_, s)| Arc::clone(s));
-            let job = CapJob { model: Arc::clone(model), source, cut };
+            let job = CapJob { model: Arc::clone(model), view: self.view, source, cut };
             self.caps_requested = Some((Arc::clone(model), cut));
             if cfg!(test) {
                 let done = build_caps(job, &crate::view_worker::Cancel::default())?;
@@ -972,6 +1014,7 @@ impl Orbit {
     ) -> bool {
         if let Some(done) = self.worker.as_ref().and_then(crate::view_worker::Latest::take)
             && Arc::ptr_eq(&done.model, model)
+            && done.view == self.view
         {
             self.install(done);
         }
@@ -1005,6 +1048,7 @@ impl Orbit {
                 let job = SceneJob {
                     stream,
                     model: Arc::clone(model),
+                    view: self.view,
                     scene: self.scene.as_ref().filter(|(m, _)| Arc::ptr_eq(m, model) && !away).map(|(_, s)| Arc::clone(s)),
                     from: if current || away { None } else { self.scene.clone().or_else(|| self.last.clone()) },
                     width,
@@ -1096,7 +1140,7 @@ impl Orbit {
         }
         let (Some(target), Some(from), Some((_, scene))) = (self.fit_target, self.camera, &self.scene) else { return None };
         if self.fit_requested != Some(target) {
-            let job = FitJob { model: Arc::clone(model), scene: Arc::clone(scene), from, camera: target };
+            let job = FitJob { model: Arc::clone(model), view: self.view, scene: Arc::clone(scene), from, camera: target };
             if cfg!(test) {
                 if let Some(done) = fit_scene(job, &crate::view_worker::Cancel::default()) {
                     self.camera = Some(done.camera);
@@ -1310,8 +1354,8 @@ impl Orbit {
             }
             self.on_card = drawn;
             if !drawn {
-                // As the default 3D view says: what it hides, and the colours it draws in.
-                let look = Look::of_3d(model);
+                // As the view shown says: what it hides, and the colours it draws in.
+                let look = self.look(model);
                 let look = if reboxed.is_some() { look.with_section_box(reboxed) } else { look };
                 let mut image = scene.render_in(&cam, tints, &look);
                 if let Some(caps) = &caps {
@@ -1588,6 +1632,7 @@ impl BimApp {
         let lit_ids = self.selection.clone();
         let o = &mut self.orbit;
         (o.rect, o.ppp) = (rect, ppp);
+        o.show_view(&model, active);
         // The camera changed elsewhere than by the hand in this view (dragged on a plan, a command, undo): the picture stands
         // from the model afresh, so the old one it showed isn't written back over the change.
         let elsewhere = match (o.built, active, stored) {
@@ -1678,7 +1723,7 @@ impl BimApp {
         }
         // The section box, while it's on; in Modify a drag from one of its grips moves that face along its axis, and the view
         // shows the cut as it goes. The command runs when the drag ends.
-        let boxed = Look::of_3d(&model).section_box();
+        let boxed = o.look(&model).section_box();
         if let Some(b) = boxed
             && modify
             && o.grip.is_none()
@@ -1817,7 +1862,7 @@ impl BimApp {
         // A box let go: what it picks, as the picture is now.
         let boxed_ids = selected_box
             .filter(|_| sketch_z.is_none())
-            .map(|(from, to)| scene.in_box(&cam, px(from), px(to), to.x < from.x, &Look::of_3d(&model)));
+            .map(|(from, to)| scene.in_box(&cam, px(from), px(to), to.x < from.x, &o.look(&model)));
         // On the card when the user asked for it and it can draw what the view shows; else on the processor.
         let mesh = match o.card_mesh(ui.ctx(), &mut self.card, card_ready) {
             OnCard::Loading => {
@@ -1837,7 +1882,7 @@ impl BimApp {
         };
         // The view's dimensions, as the core draws them through this camera: over the picture, whichever painter drew it, and
         // picked where they are drawn.
-        let look3 = Look::of_3d(&model);
+        let look3 = o.look(&model);
         let marks = active.map(|v| dims3d::marks(&model, v, &cam, &look3, dims3d::SCREEN * f64::from(ppp))).unwrap_or_default();
         let dim_at = |at: Pos2| dims3d::pick(&marks, px(at), f64::from(PICK) * f64::from(ppp));
         let lit_dim = hover.filter(|_| modify && o.drag.is_none() && sketch_z.is_none() && !picking).and_then(dim_at);
@@ -1994,11 +2039,9 @@ impl BimApp {
         // Rooms aren't seen in 3D but while selected: then a see-through solid in the selection's colour, from their bottom to
         // their top, over their boundary (an unbounded one's square).
         // With Rooms shown in the view's Visibility/Graphics (they are off in every new 3D view), all of them so.
-        let all_rooms = model
-            .default_3d()
-            .and_then(|v| bimcraft_core::graphics::graphics_of(&model, v))
-            .is_some_and(|g| g.resolved(&model).shows_in_3d("room"));
-        let look = all_rooms.then(|| Look::of_3d(&model));
+        let all_rooms =
+            active.and_then(|v| bimcraft_core::graphics::graphics_of(&model, v)).is_some_and(|g| g.resolved(&model).shows_in_3d("room"));
+        let look = all_rooms.then(|| o.look(&model));
         if !o.rooms.as_ref().is_some_and(|(m, _)| Arc::ptr_eq(m, &model)) {
             o.rooms = None;
         }
@@ -2341,7 +2384,7 @@ impl BimApp {
         // What a Pick of the work plane would take.
         let m = &self.session.model;
         if let (Some(picking), Some((_, scene))) = (self.work_plane_picking(), &self.orbit.scene) {
-            let look = Look::of_3d(m);
+            let look = Look::of_3d_view(m, self.active_3d());
             let aim = |at: Pos2| crate::workplane::aim(scene, &cam, px(at), picking, &look, ppp);
             if let Picking::Points(picked) = picking {
                 for q in picked {
@@ -2360,8 +2403,13 @@ impl BimApp {
         if let Some((id, [lo, hi])) = moved {
             self.run("modify", json!({"id": id, "extent": [[lo.0, lo.1], [hi.0, hi.1]]}));
         }
+        // The box of the view shown, which is the one drawn.
         if let Some((lo, hi)) = boxed_to {
-            self.run("section_box", json!({"min": lo, "max": hi}));
+            let mut params = json!({"min": lo, "max": hi});
+            if let Some(v) = active {
+                params["view"] = json!(v);
+            }
+            self.run("section_box", params);
         }
         if let Some((command, params)) = handled {
             self.run(command, params);
@@ -2495,6 +2543,7 @@ mod edits {
         worker.request(SceneJob {
             stream: Stream::Kept(None),
             model: Arc::clone(&after),
+            view: None,
             scene: None,
             from: Some((before, scene)),
             width: 320,
@@ -2514,6 +2563,62 @@ mod edits {
         assert!(Arc::ptr_eq(&done.model, &after));
         let cam = whole.fit(AZIMUTH, ELEVATION, 320, 240);
         assert_eq!(done.scene.render(&cam, &[]).png().unwrap(), whole.render(&cam, &[]).png().unwrap());
+    }
+
+    #[test]
+    fn the_worker_makes_the_mesh_of_the_3d_view_asked_for_as_its_own_graphics_say() {
+        let mut s = bimcraft_core::engine::Session::new();
+        s.script(
+            r#"wall {"points": [[0,0],[8000,0],[8000,6000],[0,6000]], "closed": true}
+               camera {"name": "Walk", "eye": [4000, -8000, 1500], "target": [4000, 3000, 1500]}
+               graphics {"view": "Walk", "hide": ["walls"]}"#,
+        )
+        .unwrap();
+        let walk = s
+            .model
+            .elements
+            .iter()
+            .find_map(|(id, e)| matches!(e, bimcraft_core::model::Element::View3D(v) if v.name == "Walk").then_some(*id))
+            .unwrap();
+        let model = Arc::clone(&s.model);
+        let made = |view: Option<Id>| {
+            let (send, receive) = mpsc::channel();
+            let worker = crate::view_worker::Latest::new(build_scene, move || {
+                let _ = send.send(());
+            });
+            let job = SceneJob {
+                stream: Stream::Kept(None),
+                model: Arc::clone(&model),
+                view,
+                scene: None,
+                from: None,
+                width: 320,
+                height: 240,
+                lens: None,
+                card: true,
+            };
+            worker.request(job);
+            worker.start().unwrap();
+            loop {
+                receive.recv_timeout(Duration::from_secs(60)).unwrap();
+                assert!(worker.take_error().is_none());
+                if let Some(done) = worker.take() {
+                    break done;
+                }
+            }
+        };
+        let triangles = |done: &SceneDone| match &done.mesh {
+            Some(Ok(mesh)) => mesh.vertices.len() + mesh.shape_vertices.len(),
+            _ => panic!("no mesh"),
+        };
+        let (own, default) = (made(Some(walk)), made(None));
+        assert_eq!((own.view, default.view), (Some(walk), None), "each comes back for the view it was asked for");
+        assert!(
+            triangles(&own) < triangles(&default),
+            "the camera view hides its walls: {} against {}",
+            triangles(&own),
+            triangles(&default)
+        );
     }
 }
 
@@ -2790,6 +2895,7 @@ mod worker_measurements {
         worker.request(SceneJob {
             stream: Stream::Kept(None),
             model,
+            view: None,
             scene: None,
             from: None,
             width: 1920,

@@ -1154,6 +1154,15 @@ impl Look {
         m.default_3d().map_or_else(|| Look::with(m, &Graphics::default()), |id| Look::of(m, id))
     }
 
+    /// What 3D view `view` looks like: as its own graphics say when it is a 3D view (a camera view, or `{3D}` itself), else
+    /// as the default 3D view looks ([`Look::of_3d`]).
+    pub fn of_3d_view(m: &Model, view: Option<Id>) -> Look {
+        match view {
+            Some(v) if matches!(m.elements.get(v), Some(Element::View3D(_))) => Look::of(m, v),
+            _ => Look::of_3d(m),
+        }
+    }
+
     /// What a view with graphics `own` looks like.
     /// ponytail: worked out on every draw; cache it per model and view if a filter on a slow field
     /// (a room's area) makes redraws slow.

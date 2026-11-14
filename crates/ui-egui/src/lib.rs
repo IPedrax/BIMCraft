@@ -2963,9 +2963,9 @@ impl BimApp {
                 let seen = render::section_picture(&m, id, view, &[]).map(|i| i.shows()).unwrap_or_default();
                 owners(render::section(&m, id, view)).into_iter().chain(seen).collect()
             }
-            // The whole model, but for what the default 3D view hides.
+            // The whole model, but for what the 3D view open hides.
             Sheet::View3D => {
-                let look = bimcraft_core::graphics::Look::of_3d(&m);
+                let look = bimcraft_core::graphics::Look::of_3d_view(&m, self.active_3d());
                 m.elements.keys().copied().filter(|id| look.shows(*id)).collect()
             }
             Sheet::Paper(_) | Sheet::Schedule(_) | Sheet::Table(_) | Sheet::Family(..) => BTreeSet::new(),
