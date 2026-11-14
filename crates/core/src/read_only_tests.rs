@@ -119,7 +119,7 @@ fn a_session_that_may_only_read_reads_schedules_renders_and_exports_to_new_files
     // A schedule of the project's is read, and its quantities written to a file of their own.
     let doors = s.execute("schedule", &json!({"category": "doors", "path": dir.join("doors.csv")})).unwrap();
     assert_eq!(doors["rows"].as_array().map(Vec::len), Some(1), "{doors}");
-    assert!(std::fs::read_to_string(dir.join("doors.csv")).unwrap().lines().count() >= 2);
+    assert!(crate::bimc::read_to_string(dir.join("doors.csv")).unwrap().lines().count() >= 2);
     let plan = s.execute("render", &json!({"view": "Level 1", "width": 64, "height": 64})).unwrap();
     assert!(plan["pngBase64"].is_string(), "{plan}");
     // Exports, the sheets to PDF among them; a copy of the project saved as another file leaves the session with its own.

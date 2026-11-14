@@ -116,7 +116,7 @@ fn background_grid_preferences_live_in_the_project_and_cancel_discards_drafts() 
     let kept: Value = serde_json::from_str(&std::fs::read_to_string(settings).unwrap()).unwrap();
     assert!(kept.get("background_grid").is_none());
     assert_eq!(kept["grid_snapping"], true);
-    let saved: Value = serde_json::from_str(&std::fs::read_to_string(project).unwrap()).unwrap();
+    let saved: Value = serde_json::from_str(&bimcraft_core::bimc::unpack(std::fs::read(project).unwrap(), u64::MAX).unwrap()).unwrap();
     assert!(!saved.to_string().contains("snapping"), "the project does not store the global snap preference");
 }
 

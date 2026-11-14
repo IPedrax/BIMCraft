@@ -4049,8 +4049,106 @@ impl Model {
     /// [`Model::read`], stopped with an error, before it takes more, when the process has allocated past `budget`
     /// (`memory.rs`): the values, then each element, are checked as they are read.
     pub fn read_within(text: &str, budget: &crate::memory::Budget) -> Result<(Model, Vec<String>), String> {
+        if let Some(read) = Model::read_on_every_core(text, budget)? {
+            return Ok(read);
+        }
+        Model::read_whole(text, budget)
+    }
+
+    /// [`Model::read_within`] with the elements read on every core: each one strictly, and only one that fails that looked into
+    /// for what this version doesn't know, as [`Model::read_whole`] looks into all of them. None where the file is one the
+    /// whole read must take (from before pens, of a newer format, not an object, or with an element that fails even so), so its
+    /// error, and what it leaves out, are what they always were. The other way is the oracle (`a_file_read_on_every_core_..`).
+    pub(crate) fn read_on_every_core(text: &str, budget: &crate::memory::Budget) -> Result<Option<(Model, Vec<String>)>, String> {
+        use crate::lenient;
+        use rayon::prelude::*;
+        use serde_json::Value;
+        use serde_json::value::RawValue;
+        // One pass over the text: the elements' map read into its entries' raw text, the rest of the top kept as raw text too.
+        let Ok(TopLevel { rest: top, elements }) = serde_json::from_str::<TopLevel>(text) else { return Ok(None) };
+        let format = match top.get("format") {
+            None => 0,
+            Some(raw) => match serde_json::from_str::<u64>(raw.get()) {
+                Ok(f) => f,
+                Err(_) => return Ok(None),
+            },
+        };
+        if !(4..=u64::from(FORMAT)).contains(&format) {
+            return Ok(None);
+        }
+        let Some(raw) = elements else { return Ok(None) };
+        let raw: Vec<(String, &RawValue)> = raw.into_iter().collect();
+        /// An element as a file holds it: its id, its GUID if it has one, it, and the fields of it left out.
+        type Read = (Id, Option<Guid>, Element, Vec<String>);
+        let one = |(key, raw): &(String, &RawValue)| -> Option<Read> {
+            let id: Id = key.parse().ok()?;
+            let mut v: Value = serde_json::from_str(raw.get()).ok()?;
+            let guid = match v.as_object_mut()?.remove("guid") {
+                Some(g) => Some(Guid::deserialize(g).ok()?),
+                None => None,
+            };
+            if let Ok(e) = Element::deserialize(&v) {
+                return Some((id, guid, e, Vec::new()));
+            }
+            // What this version doesn't know of it, left out, as the whole read does.
+            let mut bare = v.clone();
+            let category = bare.as_object_mut().and_then(|o| o.remove("category"));
+            let mut left = Vec::new();
+            for p in lenient::element(category.as_ref().and_then(Value::as_str).unwrap_or(""), &bare) {
+                lenient::remove(&mut v, &p);
+                left.push(format!("/elements/{key}{p}"));
+            }
+            Some((id, guid, Element::deserialize(v).ok()?, left))
+        };
+        let mut items = Vec::with_capacity(raw.len());
+        let mut left_out = Vec::new();
+        if let Some(p) = budget.progress() {
+            p.stage(ui_msg!("Reading elements"), raw.len() as u64);
+        }
+        // In batches, so the memory a read may take is checked as it goes, here, where the budget is.
+        let mut unguided = false;
+        for batch in raw.chunks(16_384) {
+            budget.check()?;
+            if let Some(p) = budget.progress() {
+                p.step(batch.len() as u64);
+            }
+            let read: Option<Vec<Read>> = batch.par_iter().map(one).collect();
+            let Some(read) = read else { return Ok(None) };
+            for (id, guid, e, left) in read {
+                unguided |= guid.is_none();
+                items.push((id, guid.unwrap_or_default(), e));
+                left_out.extend(left);
+            }
+        }
+        drop(raw);
+        // A file whose elements all have their GUIDs (every one since GUIDs) is put together at once; one without is the whole
+        // read's, which gives each a GUID of its own.
+        if unguided {
+            return Ok(None);
+        }
+        let Some(elements) = crate::ids::Elements::of_read(items) else { return Ok(None) };
+        let mut v = serde_json::Map::new();
+        for (key, raw) in top {
+            budget.check()?;
+            v.insert(key, crate::memory::json(raw.get(), budget)?);
+        }
+        v.insert("elements".into(), Value::Object(serde_json::Map::new()));
+        let mut v = Value::Object(v);
+        if let Some(p) = budget.progress() {
+            p.stage(ui_msg!("Bringing the project up to date"), 0);
+        }
+        let Ok(mut rest) = Model::read_rest(&mut v, left_out, budget) else { return Ok(None) };
+        rest.0.elements = elements;
+        Model::after_read(rest).map(Some)
+    }
+
+    /// [`Model::read_within`] the way it always was: the whole file as JSON values, every element looked into.
+    pub(crate) fn read_whole(text: &str, budget: &crate::memory::Budget) -> Result<(Model, Vec<String>), String> {
         use crate::lenient;
         use serde_json::Value;
+        if let Some(p) = budget.progress() {
+            p.stage(ui_msg!("Reading the project"), 0);
+        }
         let mut v: Value = crate::memory::json(text, budget)?;
         let format = v.get("format").map_or(Some(0), Value::as_u64).ok_or("`format` must be a whole number")?;
         if format > u64::from(FORMAT) {
@@ -4078,6 +4176,23 @@ impl Model {
                 }
             }
         }
+        // Put back where it was (a file that isn't an object has none, and is refused below for what it is).
+        if let Value::Object(o) = &mut v {
+            o.insert("elements".into(), elements);
+        }
+        let read = Model::read_rest(&mut v, left_out, budget)?;
+        Model::after_read(read)
+    }
+
+    /// A model of what file `v` holds but its elements, kept as they are (the whole read's, or none, the elements being read on
+    /// their own), with what is left out added to `left_out`.
+    fn read_rest(
+        v: &mut serde_json::Value,
+        mut left_out: Vec<String>,
+        budget: &crate::memory::Budget,
+    ) -> Result<(Model, Vec<String>), String> {
+        use crate::lenient;
+        use serde_json::Value;
         // A detail group's members are elements too, held by their type, and are looked into the same way.
         if let Some(Value::Object(groups)) = v.get_mut("detail_groups") {
             for (name, group) in groups.iter_mut() {
@@ -4094,17 +4209,23 @@ impl Model {
             }
         }
         if v.is_object() {
+            let elements = v.get_mut("elements").map_or(Value::Null, Value::take);
             v["elements"] = Value::Object(serde_json::Map::new());
-            let found = lenient::unknown::<Model>(&v);
+            let found = lenient::unknown::<Model>(v);
             for p in found {
-                lenient::remove(&mut v, &p);
+                lenient::remove(v, &p);
                 left_out.push(p);
             }
             v["elements"] = elements;
         }
         budget.check()?;
-        let mut m: Model = serde_json::from_value(v).map_err(|e| e.to_string())?;
+        let m: Model = serde_json::from_value(v.take()).map_err(|e| e.to_string())?;
         budget.check()?;
+        Ok((m, left_out))
+    }
+
+    /// A model just read brought up to this version, with what can't stand in it left out.
+    fn after_read((mut m, mut left_out): (Model, Vec<String>)) -> Result<(Model, Vec<String>), String> {
         m.migrate();
         m.names_from_file();
         // A family's dimension measuring to something it hasn't is left out, as what this version can't read is: a file is
@@ -4492,13 +4613,17 @@ impl Model {
 
     /// The box round every solid and placed scan, its min and max corners; none in an empty project.
     pub fn model_box(&self) -> Option<([f64; 3], [f64; 3])> {
-        let clouds = self.elements.iter().filter_map(|(id, _)| self.cloud_box(*id)).flat_map(|(lo, hi)| [lo, hi]);
-        let pts = crate::view3d::solids(self).iter().flat_map(|s| s.corners()).chain(clouds).collect::<Vec<_>>();
-        let first = *pts.first()?;
-        Some(
-            pts.iter()
-                .fold((first, first), |(lo, hi), p| (std::array::from_fn(|i| lo[i].min(p[i])), std::array::from_fn(|i| hi[i].max(p[i])))),
-        )
+        // Kept with the model until what it is made of changes: it makes every solid.
+        self.derived.model_box(self, || {
+            let clouds = self.elements.iter().filter_map(|(id, _)| self.cloud_box(*id)).flat_map(|(lo, hi)| [lo, hi]);
+            let pts = crate::view3d::solids(self).iter().flat_map(|s| s.corners()).chain(clouds).collect::<Vec<_>>();
+            let first = *pts.first()?;
+            Some(
+                pts.iter().fold((first, first), |(lo, hi), p| {
+                    (std::array::from_fn(|i| lo[i].min(p[i])), std::array::from_fn(|i| hi[i].max(p[i])))
+                }),
+            )
+        })
     }
 
     /// What a level stretches over without an extent of its own: every solid, grid and CAD drawing in plan,
@@ -5969,7 +6094,8 @@ impl Model {
 
     /// The default 3D view, `{3D}`: the 3D view of that name, once something has made it.
     pub fn default_3d(&self) -> Option<Id> {
-        self.elements.iter().find_map(|(id, e)| matches!(e, Element::View3D(v) if v.name == "{3D}").then_some(*id))
+        // A rare kind, kept by the lookup: the Properties palette asks every frame, and walking a tower's elements cost a frame.
+        self.lookup().rare("view3d").find(|id| matches!(self.elements.get(*id), Some(Element::View3D(v)) if v.name == "{3D}"))
     }
 
     /// The level a point at height `z` stands on: the highest level at or below it, else the lowest. A camera stands on the
@@ -7459,13 +7585,44 @@ impl Model {
                 return Err(format!("ceiling type `{n}`: grid {} mm; its tiles are 100 mm or wider, or 0 for none", t.grid));
             }
         }
-        let mut t = Tally::default();
-        for (&id, e) in &self.elements {
-            self.check_element(id, e, &mut t)?;
-        }
+        let t = match self.tally_on_every_core().filter(|_| !cfg!(test) || !ONE_BY_ONE.with(std::cell::Cell::get)) {
+            Some(t) => t,
+            // The way it always was, which says the first thing wrong in the order of the ids.
+            None => {
+                let mut t = Tally::default();
+                for (&id, e) in &self.elements {
+                    self.check_element(id, e, &mut t)?;
+                }
+                t
+            }
+        };
         self.check_shared(&t)?;
         // Last, so what a rule above says of a reference comes first.
         self.check_ids()
+    }
+
+    /// The elements' tally as [`Model::check`] goes through them, made on every core: each part of the elements checked on its
+    /// own, the parts' tallies then put together in the order of the ids. None for a small project, or wherever anything is
+    /// wrong or two parts hold what the whole may hold once (a name, a view placed, the project's information): the check then
+    /// goes through them one by one, so what it says is what it always said (`a_check_on_every_core_..` holds the two together).
+    fn tally_on_every_core(&self) -> Option<Tally<'_>> {
+        use rayon::prelude::*;
+        if self.elements.len() < 20_000 {
+            return None;
+        }
+        let all: Vec<(Id, &Element)> = self.elements.iter().map(|(id, e)| (*id, e)).collect();
+        let parts: Vec<Option<Tally<'_>>> = all
+            .par_chunks(4096)
+            .map(|chunk| {
+                let mut t = Tally::default();
+                chunk.iter().try_for_each(|(id, e)| self.check_element(*id, e, &mut t)).ok().map(|()| t)
+            })
+            .collect();
+        let mut whole = Tally::default();
+        for part in parts {
+            whole.join(part?)?;
+        }
+        Some(whole)
     }
 
     /// What [`Model::check`] asks of what the elements it went through hold in common.
@@ -8768,6 +8925,11 @@ impl Model {
         self.derived.lookup(&self.elements)
     }
 
+    /// The tile index of its walls and runs, kept with it until its elements or its types change.
+    pub(crate) fn wall_index(&self) -> Arc<walls::Index> {
+        self.derived.index(&self.elements, &self.types, || walls::Index::new(self))
+    }
+
     /// What changed from `before` to this model: the elements a command added, changed or removed, when it changed nothing
     /// else (no type, material, family, setting or other entry of the project), and this model is the one it made of
     /// `before`; else everything.
@@ -8932,6 +9094,55 @@ struct Tally<'a> {
     shapes: HashMap<(&'a str, &'a str, String), Result<(), String>>,
     /// The project's information element, once seen.
     project_info: Option<Id>,
+}
+
+#[cfg(test)]
+thread_local! {
+    /// Whether [`Model::check`] goes through the elements one by one on this thread, for the tests that hold the two together.
+    pub(crate) static ONE_BY_ONE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+#[cfg(not(test))]
+thread_local! {
+    static ONE_BY_ONE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+impl<'a> Tally<'a> {
+    /// `other`, of the elements after these, added to this; none where the two hold what the whole may hold once.
+    fn join(&mut self, other: Tally<'a>) -> Option<()> {
+        fn once<'a>(into: &mut BTreeSet<&'a str>, from: BTreeSet<&'a str>) -> Option<()> {
+            for n in from {
+                into.insert(n).then_some(())?;
+            }
+            Some(())
+        }
+        once(&mut self.level_names, other.level_names)?;
+        once(&mut self.grid_names, other.grid_names)?;
+        once(&mut self.link_names, other.link_names)?;
+        once(&mut self.view_names, other.view_names)?;
+        once(&mut self.twins, other.twins)?;
+        once(&mut self.sheet_numbers, other.sheet_numbers)?;
+        for (view, sheet) in other.placed {
+            self.placed.insert(view, sheet).is_none().then_some(())?;
+        }
+        for (view, n) in other.members_placed {
+            let total = self.members_placed.entry(view).or_default();
+            *total = total.saturating_add(n);
+            (*total <= crate::groups::MAX_PLACED).then_some(())?;
+        }
+        if let Some(id) = other.project_info {
+            self.project_info.replace(id).is_none().then_some(())?;
+        }
+        // Each wall's openings in the order they start along it, those that start together in the order of their ids: as each,
+        // inserted after those that start where it does or before, leaves them.
+        for (host, spans) in other.spans {
+            let list = self.spans.entry(host).or_default();
+            list.extend(spans);
+            list.sort_by(|a, b| a.start.partial_cmp(&b.start).unwrap_or(std::cmp::Ordering::Equal));
+        }
+        self.shapes.extend(other.shapes);
+        Some(())
+    }
 }
 
 fn coord(what: &str, v: f64) -> Result<(), String> {
@@ -9256,6 +9467,37 @@ pub fn mix(mut z: u64) -> u64 {
 fn fresh_uid() -> u64 {
     let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos() as u64);
     mix(nanos ^ u64::from(std::process::id()).rotate_left(32))
+}
+
+/// A project file's top object as [`Model::read_on_every_core`] reads it in one pass: each element's raw text by its key, and each
+/// other field's raw text by its name. The last of a key said twice is the one kept, as a JSON value keeps it.
+struct TopLevel<'a> {
+    rest: BTreeMap<String, &'a serde_json::value::RawValue>,
+    elements: Option<BTreeMap<String, &'a serde_json::value::RawValue>>,
+}
+
+impl<'de: 'a, 'a> Deserialize<'de> for TopLevel<'a> {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        struct V<'a>(std::marker::PhantomData<&'a ()>);
+        impl<'de: 'a, 'a> serde::de::Visitor<'de> for V<'a> {
+            type Value = TopLevel<'a>;
+            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+                f.write_str("a project's object")
+            }
+            fn visit_map<A: serde::de::MapAccess<'de>>(self, mut map: A) -> Result<TopLevel<'a>, A::Error> {
+                let mut top = TopLevel { rest: BTreeMap::new(), elements: None };
+                while let Some(key) = map.next_key::<String>()? {
+                    if key == "elements" {
+                        top.elements = Some(map.next_value()?);
+                    } else {
+                        top.rest.insert(key, map.next_value()?);
+                    }
+                }
+                Ok(top)
+            }
+        }
+        d.deserialize_map(V(std::marker::PhantomData))
+    }
 }
 
 /// A file from before pens (format 3 and older) as one after: each line weight of a view's, a filter's or a phase's

@@ -599,10 +599,11 @@ impl BimApp {
                     Some(id) => Node::leaf("{3D}", Act::Open3D(Some(id)), active == Some(id)),
                     None => Node::leaf("{3D}", Act::Open3D(None), active.is_none()),
                 }];
-                three.extend(m.elements.iter().filter_map(|(id, e)| match e {
+                // A rare kind, kept by the lookup: the browser is built every frame.
+                three.extend(m.lookup().rare("view3d").filter_map(|id| Some((id, m.elements.get(id)?))).filter_map(|(id, e)| match e {
                     Element::View3D(v) if v.name != "{3D}" => {
-                        let leaf = Node::leaf(&v.name, Act::Open3D(Some(*id)), active == Some(*id));
-                        Some(leaf.with_menu(vec![("Delete", Act::Delete(vec![*id]))]))
+                        let leaf = Node::leaf(&v.name, Act::Open3D(Some(id)), active == Some(id));
+                        Some(leaf.with_menu(vec![("Delete", Act::Delete(vec![id]))]))
                     }
                     _ => None,
                 }));

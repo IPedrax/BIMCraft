@@ -80,7 +80,7 @@ fn ifc_of(s: &mut Session, test: &str, origin: Option<&str>) -> String {
         p["ifc_origin"] = json!(o);
     }
     run(s, "save", p);
-    std::fs::read_to_string(&path).unwrap()
+    crate::bimc::read_to_string(&path).unwrap()
 }
 
 /// The wall's start in a project read from `text`, in its shared coordinates, and its site.
@@ -621,7 +621,7 @@ fn ifc4x3_scales_the_grid_in_plan_only_and_reads_back_the_same() {
     let mut s = surveyed();
     let path = file("ifc-4x3-scaled", "out.ifc", "");
     run(&mut s, "export", json!({"format": "ifc4x3", "path": path}));
-    let text = std::fs::read_to_string(&path).unwrap();
+    let text = crate::bimc::read_to_string(&path).unwrap();
     let line = text.lines().find(|l| l.contains("IFCMAPCONVERSIONSCALED(")).unwrap_or_else(|| panic!("no scaled conversion:\n{text}"));
     assert!(!text.contains("IFCMAPCONVERSION("), "one conversion only");
     assert!(line.ends_with(",0.001,0.9996,0.9996,1.);"), "{line}");

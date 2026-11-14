@@ -3331,7 +3331,7 @@ fn render_returns_a_png_or_writes_svg_and_png_files() {
     assert_eq!((r["width"].as_u64(), r["view"].as_str()), (Some(320), Some("Level 1")));
     let svg = temp("plan.svg");
     run(&mut s, "render", json!({"view": "Level 1", "path": svg}));
-    assert!(std::fs::read_to_string(&svg).unwrap().starts_with("<svg"));
+    assert!(crate::bimc::read_to_string(&svg).unwrap().starts_with("<svg"));
     let png = temp("plan.png");
     run(&mut s, "save", json!({"path": png}));
     assert!(std::fs::read(&png).unwrap().starts_with(b"\x89PNG"));
@@ -3479,7 +3479,7 @@ fn roofs_cover_the_walls_below_flat_or_pitched() {
     run(&mut s, "stair", json!({"start": [1000, 1000], "end": [1000, 2000]}));
     let path = temp("roofed.ifc");
     run(&mut s, "save", json!({"path": path}));
-    let ifc = std::fs::read_to_string(&path).unwrap();
+    let ifc = crate::bimc::read_to_string(&path).unwrap();
     assert!(ifc.contains("IFCCOLUMN(") && ifc.contains("IFCSTAIR(") && ifc.matches("IFCROOF(").count() == 3, "{ifc}");
     let _ = std::fs::remove_file(path);
 }
@@ -3493,7 +3493,7 @@ fn schedules_come_back_as_rows_or_csv_files() {
     assert_eq!(t["rows"][0][1], "Living");
     let csv = temp("rooms.csv");
     run(&mut s, "schedule", json!({"category": "rooms", "path": csv}));
-    assert!(std::fs::read_to_string(&csv).unwrap().starts_with("Number,Name,Level"));
+    assert!(crate::bimc::read_to_string(&csv).unwrap().starts_with("Number,Name,Level"));
     let _ = std::fs::remove_file(csv);
 }
 
@@ -3568,7 +3568,7 @@ fn saving_to_ifc_exports_without_changing_the_project_file() {
     house(&mut s);
     let path = temp("house.ifc");
     assert_eq!(run(&mut s, "save", json!({"path": path}))["format"], "IFC4");
-    assert!(std::fs::read_to_string(&path).unwrap().contains("FILE_SCHEMA(('IFC4'));"));
+    assert!(crate::bimc::read_to_string(&path).unwrap().contains("FILE_SCHEMA(('IFC4'));"));
     assert_eq!(s.path, None);
     let _ = std::fs::remove_file(path);
 }
@@ -4182,7 +4182,7 @@ fn a_project_in_dutch_names_what_it_makes_in_dutch_and_keeps_its_language_in_a_f
     // The language is the file's `nl`, and a file of it opens in Dutch again.
     let path = temp("dutch.bimcraft");
     run(&mut s, "save", json!({"path": path}));
-    let text = std::fs::read_to_string(&path).unwrap();
+    let text = crate::bimc::read_to_string(&path).unwrap();
     assert_eq!(serde_json::from_str::<Value>(&text).unwrap()["language"], "nl");
     let mut t = Session::new();
     run(&mut t, "open", json!({"path": path}));
@@ -4434,7 +4434,7 @@ fn shafts_cut_the_floors_ceilings_and_roofs_they_pass_through() {
     // In IFC, an opening voids each element it cuts.
     let path = temp("shaft.ifc");
     run(&mut s, "save", json!({"path": path}));
-    let ifc = std::fs::read_to_string(&path).unwrap();
+    let ifc = crate::bimc::read_to_string(&path).unwrap();
     let _ = std::fs::remove_file(path);
     assert_eq!((ifc.matches("IFCOPENINGELEMENT(").count(), ifc.matches("IFCRELVOIDSELEMENT(").count()), (3, 3));
     assert!(ifc.contains(".CEILING.)"), "the ceiling, as a covering");
@@ -5085,7 +5085,7 @@ fn materials_and_layers_go_to_ifc_and_come_back() {
     run(&mut s, "floor", json!({"type": "Oak 200"}));
     let path = temp("materials.ifc");
     run(&mut s, "save", json!({"path": path}));
-    let ifc = std::fs::read_to_string(&path).unwrap();
+    let ifc = crate::bimc::read_to_string(&path).unwrap();
     assert!(ifc.contains("IFCMATERIAL('Oak'") && ifc.contains("IFCMATERIALLAYERSET(") && ifc.contains("'Oak 200'"), "{ifc}");
     // Its colour, for viewers to shade it.
     assert!(ifc.contains("IFCCOLOURRGB($,0.627") && ifc.contains("IFCMATERIALDEFINITIONREPRESENTATION("), "{ifc}");
@@ -5116,7 +5116,7 @@ fn a_materials_transparency_goes_to_ifc_in_its_surface_style_and_comes_back() {
     run(&mut s, "floor", json!({"type": "Tinted"}));
     let path = temp("transparency.ifc");
     run(&mut s, "save", json!({"path": path}));
-    let ifc = std::fs::read_to_string(&path).unwrap();
+    let ifc = crate::bimc::read_to_string(&path).unwrap();
     assert!(ifc.contains("IFCSURFACESTYLESHADING(#") && ifc.contains(",0.4)"), "{ifc}");
     let mut t = Session::new();
     run(&mut t, "open", json!({"path": path}));
@@ -5132,7 +5132,7 @@ fn a_project_from_before_the_library_brings_its_layers_materials_into_it() {
     let path = temp("old.bimcraft");
     run(&mut s, "save", json!({"path": path}));
     // As an older BIMCraft saved it: no library, its layers' materials free text.
-    let mut v: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    let mut v: Value = serde_json::from_str(&crate::bimc::read_to_string(&path).unwrap()).unwrap();
     v.as_object_mut().unwrap().remove("materials");
     v["types"]["wall"]["Cavity 300"]["layers"][1]["material"] = json!("Rock wool");
     std::fs::write(&path, v.to_string()).unwrap();
@@ -5453,7 +5453,7 @@ fn a_materials_texture_is_set_changed_and_taken_away_and_a_picture_comes_into_th
     assert_eq!((t2.model.images.len(), &t2.model.materials["Oak"]), (1, &s.model.materials["Oak"]));
     assert_eq!(t2.model.images, s.model.images);
     // As a hand might spoil it: a picture's data cut short comes back with its name, and the project isn't opened.
-    let mut v: Value = serde_json::from_str(&std::fs::read_to_string(&project).unwrap()).unwrap();
+    let mut v: Value = serde_json::from_str(&crate::bimc::read_to_string(&project).unwrap()).unwrap();
     let key = v["images"].as_object().unwrap().keys().next().unwrap().clone();
     v["images"][&key]["png"] = json!("iVBORw0KGgo=");
     std::fs::write(&project, v.to_string()).unwrap();
@@ -5631,7 +5631,7 @@ fn favorites_keep_materials_and_families_for_every_project() {
     std::fs::write(&file, "not favorites").unwrap();
     let e = a.execute("favorite", &json!({"action": "save", "name": "My Oak", "path": file})).unwrap_err();
     assert!(e.contains("isn't a favorites file"), "{e}");
-    assert_eq!(std::fs::read_to_string(&file).unwrap(), "not favorites");
+    assert_eq!(crate::bimc::read_to_string(&file).unwrap(), "not favorites");
     // A family goes to a file of its own, and comes back from it.
     let bench_file = temp("bench.json");
     run(&mut a, "family", json!({"name": "Bench", "save": bench_file}));
