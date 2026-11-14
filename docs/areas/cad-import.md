@@ -23,6 +23,15 @@ its anonymous block. What the reader doesn't know (3DFACE, a viewport, an image,
 `$DWGCODEPAGE`: the East Asian pages and the Windows ones decode through `encoding_rs`, and a page without a decoder here (the DOS
 ones) reads as Latin-1, as it always has.
 
+Lines, polylines and points keep their elevation, `Entity::z`, where the file gives one: an LWPOLYLINE's (code 38) and a 2D
+POLYLINE's (its own point's z) for the whole of it, a 3D POLYLINE's (flag 8) for each vertex, and a LINE's ends and a POINT's z.
+`Z::Flat` is one elevation for all of an entity, `Z::Each` one for each point of its shape; an entity whose file gives no z has
+none (not 0). A downward extrusion (code 230 below 0) turns an LWPOLYLINE's and a 2D polyline's elevation over, since theirs is
+in the entity's own coordinate system; lines, points and 3D polylines are in the world's. A block's elevations go through each
+INSERT's z (code 30) and z scale (43). A 3D polyline's segments are straight, so a bulge on its vertices is ignored. Drawing,
+extents, picking and snapping stay in plan: only `import_cad`'s reply (`elevations`, how many have one and their range, mm, by
+layer) and `cad_query` (`z`) read elevations. They are what a contour map carries, for terrain made from it.
+
 A file is hostile: `MAX_BYTES` caps its size, `MAX_PAIRS` its pairs, `MAX_SHAPES` the shapes, `MAX_WORK` the points the blocks
 may multiply into, and every coordinate is a finite number within `MAX_FILE_COORD` (one past that is left out as "past what a
 drawing holds"). A file that ends after a group code, a value that isn't a number, a binary DXF and a DWG each say why.
@@ -73,7 +82,7 @@ The engine removes a drawing nothing places after each command, and forgets the 
   everywhere or, with `view`, in that view (its Visibility/Graphics, which `graphics` also sets with `layers`).
 - `reload_cad` reads a linked drawing's file again; opening a project does so for each (`cads_not_reloaded` names those whose
   file is gone, which keep what they had).
-- `cad_query` names the entity nearest a point: its layer, kind, colour and linetype (Revit's Query).
+- `cad_query` names the entity nearest a point: its layer, kind, colour and linetype (Revit's Query), and its elevation, mm, when it has one.
 - `move`, `rotate`, `copy` and `delete` take an import as any element; `mirror` is refused, since a drawing's text would read
   backwards; `modify` changes its level, `at`, `angle`, `scale` and `colors`.
 
