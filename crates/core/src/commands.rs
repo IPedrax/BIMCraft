@@ -1583,6 +1583,70 @@ other_files(
          the same category the values this one has. With neither, answers the values it has",
         crate::parameters::type_parameter,
     ),
+    other(
+        "classification_systems",
+        "Classification Systems",
+        "{system?: uniclass|omniclass|uniformat|masterformat|nbr15965|coclass|cci|nlsfb|cobie} the classification systems BIMCraft \
+         knows: their tables, which parameters each fills, whether those are each element's or each type's and why, how a code is \
+         written; COBie's fields. No table is shipped: the user loads the edition they hold with `classification_table`. Also \
+         answers the tables loaded and the parameters bound to them",
+        crate::classification::systems,
+    ),
+    edit(
+        "classification_table",
+        "Load Classification Table",
+        &[],
+        "{path, system, table?, name?, edition?, prefix?, dry_run?} a classification table read into the project from its .csv or \
+         .xlsx (columns by heading: Code or Number, Title or Description, Parent optional; or the first two), kept in the project. \
+         `table` is the system's key (Ss, Pr, 23, 3E…); `system` custom with a `name` loads a table of your own. A file holding \
+         several tables is cut to the one asked (`prefix`, by default the key when its codes begin with it). Again with a newer \
+         edition replaces it: `dry_run` says what it adds, removes and retitles. {name, remove: true} takes it out",
+        crate::classification::load_table,
+    ),
+    edit(
+        "classification_parameters",
+        "Load Classification Parameters",
+        &[],
+        "{system, tables?: [keys], scopes?: {key: instance|type}, categories?: {key: [categories]}, cobie?: {Type: table, Space: \
+         table}, sheets?: [Type, Component, Space], dry_run?} a system's parameters made in the project, with the same GUIDs in every \
+         project, and bound to its tables: each table's `<table> Number` and `<table> Title` (Uniclass Ss Number…). COBie's fields \
+         are made by sheet, and its Category fields take codes from the tables `cobie` names, written code: title. A table's scope \
+         and categories are the system's own unless given (`classification_systems` says why each is)",
+        crate::classification::make_parameters,
+    ),
+    edit(
+        "classify",
+        "Classify",
+        &[],
+        "{assign: [{target, table? | parameter?, code | null}], dry_run?} codes written from the tables: `target` is an element's id \
+         or GUID, or a type's GUID; a type parameter's code goes on the element's type. The code must be in the table its parameter \
+         is bound to, and its title is written with it from the table. All or none: `dry_run` says what each would write and what \
+         can't be",
+        crate::classification::classify,
+    ),
+    other(
+        "classification_brief",
+        "Classification Brief",
+        "{tables?: [names], rows?: unclassified|all, elements?: [ids], candidates?: 60, files?: true} what an AI agent is handed to \
+         classify the project: one row per type (per element for a table of each element's) with its category, family, type, \
+         materials, levels, hosts, sizes and count, and for each table and category the codes most like them; its instructions and \
+         the JSON Schema of the answer. Read the answer back with `classification_answer`, then write it with `classify`",
+        crate::classification::brief_command,
+    ),
+    other(
+        "classification_answer",
+        "Read Classification Answer",
+        "{answer} an agent's answer (`{rows: [{key, table, code, confidence, reason}]}`, as JSON or the text holding it) checked \
+         against the project: what can be applied, with what each holds now, and what can't and why. Nothing is written",
+        crate::classification::answer_command,
+    ),
+    other(
+        "classification_check",
+        "Check Classification",
+        "{table?} for each parameter a table fills: how many of its elements or types are classified, which aren't, and which hold \
+         a code the table doesn't (after a new edition)",
+        crate::classification::check_command,
+    ),
     edit(
         "project_info",
         ui_msg!("Project Information"),
@@ -13937,6 +14001,13 @@ pub(crate) fn parameter(s: &mut Session, p: &Value) -> R {
             }
             m.parameters.remove(&name);
             m.library.renamed(&LibKind::Parameter, &name, &to);
+            for b in &mut m.classification.bindings {
+                for slot in std::iter::once(&mut b.parameter).chain(b.title.as_mut()) {
+                    if *slot == name {
+                        *slot = to.clone();
+                    }
+                }
+            }
             for f in m.view_filters.values_mut().filter(|f| f.categories.iter().any(|k| param.categories.contains(k))) {
                 f.rules.iter_mut().filter(|r| r.field == name).for_each(|r| r.field = to.clone());
             }

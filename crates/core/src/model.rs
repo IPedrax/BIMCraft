@@ -3357,6 +3357,9 @@ pub struct Model {
     /// What the files imported call categories, each to one of ours or, none, left out: asked once.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub parameter_map: BTreeMap<String, Option<String>>,
+    /// The classification tables it holds and the parameters they fill ([`crate::classification`]).
+    #[serde(default, skip_serializing_if = "crate::classification::Classification::is_empty")]
+    pub classification: crate::classification::Classification,
     /// Its view filters, by name: categories and rules that pick elements out for views to hide
     /// or draw another way.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -3528,6 +3531,7 @@ impl Model {
             families: BTreeMap::new().into(),
             parameters: BTreeMap::new(),
             dictionaries: BTreeMap::new(),
+            classification: Default::default(),
             parameter_map: BTreeMap::new(),
             view_filters: BTreeMap::new(),
             view_templates: graphics::starter_templates(language),
@@ -7241,6 +7245,7 @@ impl Model {
         if let Some(g) = self.pinned.iter().find(|g| self.elements.id(**g).is_none()) {
             return Err(format!("`pinned` names an element that is gone ({g})"));
         }
+        self.classification.check()?;
         if let Some(lw) = &self.line_weights {
             lw.check()?;
         }
@@ -9001,6 +9006,7 @@ impl Model {
             pinned,
             demand_factors,
             coordinates,
+            classification,
             elements: _,
             library,
             loaded,
@@ -9050,6 +9056,7 @@ impl Model {
             && *pinned == o.pinned
             && *demand_factors == o.demand_factors
             && *coordinates == o.coordinates
+            && *classification == o.classification
             && *library == o.library
             && loaded.len() == o.loaded.len()
             && loaded.iter().zip(&o.loaded).all(|((a, x), (b, y))| a == b && Arc::ptr_eq(x, y))

@@ -101,6 +101,8 @@ const MAP: u64 = 86;
 const MAP_DEFINES: u64 = 87;
 const CRS: u64 = 88;
 const CRS_DEFINES: u64 = 89;
+/// The project's classification tables' codes (`classify`).
+const CODES_CLASSIFIED: u64 = 90;
 
 /// Site footprint metadata in curve order: Names, Guids and Levels (native GUIDs).
 pub const PROPERTY_LINES: &str = "BIMCraft_PropertyLines";
@@ -186,6 +188,54 @@ fn shape_of(landings: &[crate::model::Landing], kind: &str) -> String {
         _ => return ".NOTDEFINED.".into(),
     };
     format!(".{shape}_{kind}.")
+}
+
+/// The codes elements and their types hold from the project's classification tables, as ISO 16739's classification resource
+/// has them: an `IfcClassification` for each system (its publisher, edition and name), an `IfcClassificationReference` for
+/// each code held (its code, title and system), and an `IfcRelAssociatesClassification` from each code to the elements
+/// that hold it, theirs or their type's.
+fn classify(w: &mut Step, m: &Model, products: &BTreeMap<Id, u64>) {
+    use crate::classification::{self as cls, Target};
+    let mut codes: BTreeMap<(String, String), (u64, Vec<u64>)> = BTreeMap::new();
+    for b in &m.classification.bindings {
+        let (Some(table), Some(q)) = (m.classification.tables.get(&b.table), m.parameters.get(&b.parameter)) else { continue };
+        let def = cls::system(&table.system);
+        // One classification a system: Uniclass's Ss and Pr are both Uniclass 2015.
+        let name = def.map_or_else(|| b.table.clone(), |d| d.name.to_string());
+        for (&id, &ent) in products {
+            let Some(e) = m.elements.get(id) else { continue };
+            if !q.categories.iter().any(|c| c == e.category()) {
+                continue;
+            }
+            let Some(item) = cls::current(m, b, &Target::Element(id)).and_then(|c| table.find(c)) else { continue };
+            // One for each system, shared with a family's OmniClass and a parameter's own classification; one edition for
+            // it, or none when its tables disagree: NBR 15965's parts came out years apart.
+            let mut editions = m
+                .classification
+                .tables
+                .values()
+                .filter(|t| if def.is_some() { t.system == table.system } else { std::ptr::eq(*t, table) })
+                .map(|t| t.edition.as_str());
+            let first = editions.next().unwrap_or_default();
+            let edition = (!first.is_empty() && editions.all(|e| e == first)).then_some(first);
+            let system = w.classification_by(&name, def.map(|d| d.publisher), edition);
+            let entry = codes.entry((name.clone(), item.code.clone())).or_insert_with(|| {
+                let r = w.add(format!("IFCCLASSIFICATIONREFERENCE($,{},{},#{system},$,$)", s(&item.code), s(&item.title)));
+                (r, Vec::new())
+            });
+            if !entry.1.contains(&ent) {
+                entry.1.push(ent);
+            }
+        }
+    }
+    for ((name, code), (r, ents)) in codes {
+        let key = name
+            .bytes()
+            .chain([0])
+            .chain(code.bytes())
+            .fold(0xcbf2_9ce4_8422_2325_u64, |h, b| (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3));
+        w.add(format!("IFCRELASSOCIATESCLASSIFICATION({},$,$,$,({}),#{r})", w.guid(CODES_CLASSIFIED, key), refs(&ents)));
+    }
 }
 
 /// A STEP string literal: `'` doubled, `\` doubled, anything outside printable ASCII as `\X2\…\X0\`
@@ -645,11 +695,17 @@ impl Step {
 
     /// The `IfcClassification` named `system`, one for each name whichever writer asks first; `edition` is the first asker's.
     fn classification(&mut self, system: &str, edition: Option<&str>) -> u64 {
+        self.classification_by(system, None, edition)
+    }
+
+    /// [`Step::classification`], with its publisher (`Source`) where the first asker knows it.
+    fn classification_by(&mut self, system: &str, source: Option<&str>, edition: Option<&str>) -> u64 {
         if let Some(&written) = self.systems.get(system) {
             return written;
         }
+        let source = source.map_or_else(|| "$".to_string(), s);
         let edition = edition.map_or_else(|| "$".to_string(), s);
-        let written = self.add(format!("IFCCLASSIFICATION($,{edition},$,{},$,$,$)", s(system)));
+        let written = self.add(format!("IFCCLASSIFICATION({source},{edition},$,{},$,$,$)", s(system)));
         self.systems.insert(system.to_string(), written);
         written
     }
@@ -2437,6 +2493,7 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
         let key = key_of(&format!("{name}\u{0}{code}"));
         w.add(format!("IFCRELASSOCIATESCLASSIFICATION({},$,$,$,({}),#{reference})", w.guid(CLASSIFIED, key), refs(ents)));
     }
+    classify(&mut w, m, &products);
     // A placed device's connector (the power one, else the first electrical one; a pipe's waits for IFC's ports): `Pset_ElectricalDeviceCommon`, with the poles, and for a power
     // connector the power factor and the voltage (IFC4's types: a ratio, and a bounded value with its set point), and `BIMCraft_Connector` with what IFC has no property for.
     for (&id, &ent) in &products {

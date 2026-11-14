@@ -4210,6 +4210,10 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
             Some(Classification { system: said(3)?.to_string(), edition: said(1).map(String::from) })
         });
         let Some(c) = c.clone() else { continue };
+        // A system the classification tables know comes in as its own number and title parameters, below.
+        if crate::classification::known_system(&c.system).is_some() {
+            continue;
+        }
         let Some(name) = parameter_name(&c.system) else { continue };
         // A type's code is its occurrences', unless they have their own: the associations with the occurrences first.
         let related = refs(rel.args.get(4));
@@ -4220,6 +4224,41 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
             if !on.is_empty() && !put(&mut m, &mut skipped, &on, &name, ParameterKind::Text, &json!(code), &how) {
                 break 'classified;
             }
+        }
+    }
+
+    // Each code of a system the classification tables know, as that system's number and title parameters (`Uniclass Ss
+    // Number`); another system's codes came in above, as the parameter named for it. IFC2x3's reference has the same first
+    // four attributes.
+    'codes: for rel in named(&["IFCRELASSOCIATESCLASSIFICATION"]).into_iter().filter_map(e) {
+        let Some(r) = reference(rel.args.get(5)).and_then(e).filter(|x| x.name == "IFCCLASSIFICATIONREFERENCE") else { continue };
+        let Some(code) =
+            text(r.args.get(1)).map(str::trim).filter(|c| !c.is_empty() && c.chars().count() <= crate::classification::MAX_CODE)
+        else {
+            continue;
+        };
+        // The classification it is of, up through references of references.
+        let mut source = reference(r.args.get(3)).and_then(e);
+        for _ in 0..8 {
+            match source {
+                Some(x) if x.name == "IFCCLASSIFICATIONREFERENCE" => source = reference(x.args.get(3)).and_then(e),
+                _ => break,
+            }
+        }
+        let system = source.filter(|x| x.name == "IFCCLASSIFICATION").and_then(|x| text(x.args.get(3))).unwrap_or("Classification");
+        if crate::classification::known_system(system).is_none() {
+            continue;
+        }
+        let (number, title) = crate::classification::imported_parameters(system, code);
+        let on = refs(rel.args.get(4));
+        let Some(number) = parameter_name(&number) else { continue };
+        if !put(&mut m, &mut skipped, &on, &number, ParameterKind::Text, &json!(clip(code)), &How::default()) {
+            break 'codes;
+        }
+        if let (Some(t), Some(title)) = (text(r.args.get(2)).filter(|t| !t.trim().is_empty()), parameter_name(&title))
+            && !put(&mut m, &mut skipped, &on, &title, ParameterKind::Text, &json!(clip(t)), &How::default())
+        {
+            break 'codes;
         }
     }
 

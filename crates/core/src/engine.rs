@@ -1311,9 +1311,11 @@ fn named(m: &Model, params: &Value) -> Option<Value> {
             }
             Value::Array(a) => a.iter_mut().for_each(|x| walk(m, x, changed)),
             // A `guid` field says which thing it is, as a definition for a dictionary does, and `definition` which one a family's parameter is tied to: they stay GUIDs.
-            Value::Object(o) => {
-                o.iter_mut().filter(|(k, _)| !matches!(k.as_str(), "guid" | "definition")).for_each(|(_, x)| walk(m, x, changed))
-            }
+            // So do a classification's `target` and an agent's `key`, which may be a type's.
+            Value::Object(o) => o
+                .iter_mut()
+                .filter(|(k, _)| !matches!(k.as_str(), "guid" | "definition" | "target" | "key"))
+                .for_each(|(_, x)| walk(m, x, changed)),
             _ => {}
         }
     }

@@ -37,6 +37,8 @@ bimcraft-update = { path = "crates/update" }
 # The assistant: an AI chat on the user's own key; the second code that reaches the network, desktop only.
 bimcraft-assistant = { path = "crates/assistant" }
 bimcraft-cowork = { path = "crates/cowork" }
+# The AI agent a user has, run on a task: the desktop's and the command line's, never the core's.
+bimcraft-agent = { path = "crates/agent" }
 # The Revit reader: Apache-2.0 only, so the command line and the desktop take it through an optional feature.
 bimcraft-rvt = { path = "crates/rvt" }
 # The DWG bridge: MIT OR Apache-2.0 itself, over acadrust (MPL-2.0, unmodified); the core never depends on it.
