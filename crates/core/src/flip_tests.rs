@@ -71,13 +71,12 @@ fn flip_cycles_a_swing_door_through_four_states_one_undo_each() {
     let mut s = Session::new();
     let w = wall(&mut s);
     let door = run(&mut s, "door", json!({"wall": w, "offset": 2000}))["id"].as_u64().unwrap();
-    let mut steps = s.history().len();
     for want in [(true, false), (false, true), (true, true), (false, false)] {
+        let steps = s.history().len();
         let r = run(&mut s, "flip", json!({"ids": [door], "cycle": "auto"}));
         assert_eq!(flips_of(&s, door), want);
         assert_eq!(r["states"][door.to_string()], json!({"hand": want.0, "facing": want.1}));
         assert_eq!(s.history().len(), steps + 1, "one press is one Undo step");
-        steps += 1;
         run(&mut s, "undo", json!({}));
         assert_ne!(flips_of(&s, door), want, "one undo takes back just this press");
         run(&mut s, "redo", json!({}));
