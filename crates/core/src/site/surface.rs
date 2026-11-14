@@ -580,6 +580,54 @@ fn build_in(points: &[[f64; 3]], lines: &[Line], options: &Options, outline: Opt
     Ok(Surface { points: t.points, z, triangles: t.triangles, notes })
 }
 
+/// Contour segments joined into polylines: each segment is keyed by the two triangle edges it ends on, and segments
+/// sharing an edge meet there. Open chains first, from an edge only one segment ends on; then the closed ones.
+type Ends = BTreeMap<(usize, usize), Vec<((usize, usize), P2, P2)>>;
+
+fn joined(mut ends: Ends) -> Vec<Vec<P2>> {
+    let mut lines = Vec::new();
+    let take = |ends: &mut Ends, from: (usize, usize)| -> Option<((usize, usize), P2, P2)> {
+        let next = ends.get_mut(&from)?.pop()?;
+        // The same segment, seen from its other end, goes too.
+        if let Some(back) = ends.get_mut(&next.0)
+            && let Some(i) = back.iter().position(|(k, _, _)| *k == from)
+        {
+            back.swap_remove(i);
+        }
+        Some(next)
+    };
+    let walk = |ends: &mut Ends, start: (usize, usize)| -> Vec<P2> {
+        let mut line: Vec<P2> = Vec::new();
+        let mut at = start;
+        while let Some((next, p, q)) = take(ends, at) {
+            if line.last().is_none_or(|l: &P2| l.dist(p) > 1e-9) {
+                line.push(p);
+            }
+            if line.last().is_none_or(|l: &P2| l.dist(q) > 1e-9) {
+                line.push(q);
+            }
+            at = next;
+        }
+        line
+    };
+    let starts: Vec<(usize, usize)> = ends.iter().filter(|(_, v)| v.len() == 1).map(|(k, _)| *k).collect();
+    for start in starts {
+        if ends.get(&start).is_some_and(|v| v.len() == 1) {
+            let line = walk(&mut ends, start);
+            if line.len() > 1 {
+                lines.push(line);
+            }
+        }
+    }
+    while let Some(start) = ends.iter().find(|(_, v)| !v.is_empty()).map(|(k, _)| *k) {
+        let line = walk(&mut ends, start);
+        if line.len() > 1 {
+            lines.push(line);
+        }
+    }
+    lines
+}
+
 impl Surface {
     /// A triangle's corners in plan and their elevations.
     fn corners(&self, t: &[usize; 3]) -> Option<([P2; 3], [f64; 3])> {
@@ -629,6 +677,59 @@ impl Surface {
             .filter_map(|t| self.corners(t))
             .map(|([a, b, c], [za, zb, zc])| (b - a).cross(c - a).abs() / 2.0 * ((za + zb + zc) / 3.0 - base))
             .sum()
+    }
+
+    /// Its contours: for each multiple of `interval` (mm) within its range, the polylines where it has that elevation, in
+    /// order of elevation, each joined across triangles (a closed one ends where it starts). A corner exactly at a level
+    /// counts as above it, so a level along triangles' edges (a given contour's) is drawn once. Refused: an interval not
+    /// finite or not above 0, and one making more than 10 000 levels.
+    pub fn contours(&self, interval: f64) -> Result<Vec<(f64, Vec<Vec<P2>>)>, String> {
+        if !(interval.is_finite() && interval > 0.0) {
+            return Err(format!("a contour interval is a length above 0, mm, not {interval}"));
+        }
+        let Some((lo, hi)) = self.range() else { return Ok(Vec::new()) };
+        let (first, last) = ((lo / interval).ceil(), (hi / interval).floor());
+        if last - first + 1.0 > 10_000.0 {
+            return Err(format!("an interval of {interval} mm makes more than 10 000 contours over {} mm", hi - lo));
+        }
+        let mut out = Vec::new();
+        let mut k = first;
+        while k <= last {
+            let level = k * interval;
+            k += 1.0;
+            // Each triangle crossing the level gives a segment between two of its edges, keyed by their corners.
+            let mut ends: BTreeMap<(usize, usize), Vec<((usize, usize), P2, P2)>> = BTreeMap::new();
+            for t in &self.triangles {
+                let Some((_, zs)) = self.corners(t) else { continue };
+                let above = zs.map(|z| z >= level);
+                if above.iter().all(|&a| a) || above.iter().all(|&a| !a) {
+                    continue;
+                }
+                let mut cuts = Vec::with_capacity(2);
+                for i in 0..3 {
+                    let (a, b) = (t[i], t[(i + 1) % 3]);
+                    if above[i] == above[(i + 1) % 3] {
+                        continue;
+                    }
+                    let (Some(&pa), Some(&pb), Some(&za), Some(&zb)) =
+                        (self.points.get(a), self.points.get(b), self.z.get(a), self.z.get(b))
+                    else {
+                        continue;
+                    };
+                    let p = pa + (pb - pa) * ((level - za) / (zb - za));
+                    cuts.push(((a.min(b), a.max(b)), p));
+                }
+                if let [(ka, pa), (kb, pb)] = cuts[..] {
+                    ends.entry(ka).or_default().push((kb, pa, pb));
+                    ends.entry(kb).or_default().push((ka, pb, pa));
+                }
+            }
+            let lines = joined(ends);
+            if !lines.is_empty() {
+                out.push((level, lines));
+            }
+        }
+        Ok(out)
     }
 
     /// Its lowest and highest elevation.
@@ -1002,6 +1103,48 @@ mod tests {
         assert!(past.contains("past the survey") && past.contains("(25000, 5000)"), "{past}");
         let line = vec![P2(0.0, 0.0), P2(1_000.0, 0.0), P2(2_000.0, 0.0)];
         assert!(build(&plane_corners(), &plane_contours(), &Options { boundary: Some(line), ..Options::default() }).is_err());
+    }
+
+    #[test]
+    fn a_planes_contours_are_its_straight_lines() {
+        let s = plane_surface();
+        let c = s.contours(500.0).unwrap();
+        let levels: Vec<f64> = c.iter().map(|(z, _)| *z).collect();
+        assert_eq!(levels, [500.0, 1000.0, 1500.0, 2000.0, 2500.0, 3000.0]);
+        let on_side = |p: P2| [p.0, p.1].iter().any(|&v| v.abs() < 1e-6 || (v - SIDE).abs() < 1e-6);
+        for (z, lines) in &c {
+            assert_eq!(lines.len(), 1, "{z}: {lines:?}");
+            let line = &lines[0];
+            assert!(line.iter().all(|&p| (plane(p) - z).abs() < 1e-6), "{z}: {line:?}");
+            assert!(line.first().is_some_and(|&p| on_side(p)) && line.last().is_some_and(|&p| on_side(p)), "{z}: {line:?}");
+        }
+        // A level along the given contours' own edges is drawn once, not twice.
+        let fine = s.contours(100.0).unwrap();
+        let at_600 = fine.iter().find(|(z, _)| *z == 600.0).map(|(_, l)| l.clone()).unwrap();
+        assert_eq!(at_600.len(), 1, "{at_600:?}");
+    }
+
+    #[test]
+    fn a_cones_contours_are_closed_rings_at_their_radii() {
+        let s = build(&[], &cone(1.0), &exact()).unwrap();
+        let c = s.contours(1000.0).unwrap();
+        for (k, r) in [(1, 32_000.0), (2, 24_000.0), (3, 16_000.0), (4, 8_000.0)] {
+            let level = 1000.0 * k as f64;
+            let lines = &c.iter().find(|(z, _)| *z == level).unwrap_or_else(|| panic!("no {level}")).1;
+            assert_eq!(lines.len(), 1, "{level}: {} lines", lines.len());
+            let ring = &lines[0];
+            assert!(ring.first().zip(ring.last()).is_some_and(|(a, b)| a.dist(*b) < 1e-6), "{level} isn't closed");
+            let chord = r * (1.0 - (std::f64::consts::PI / 64.0).cos());
+            assert!(ring.iter().all(|p| (p.length() - r).abs() <= chord + 1e-6), "{level}");
+        }
+    }
+
+    #[test]
+    fn bad_intervals_are_refused() {
+        let s = plane_surface();
+        for bad in [0.0, -1.0, f64::NAN, f64::INFINITY, 0.001] {
+            assert!(s.contours(bad).is_err(), "{bad}");
+        }
     }
 
     #[test]
