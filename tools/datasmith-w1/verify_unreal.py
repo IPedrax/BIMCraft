@@ -79,6 +79,13 @@ def wall_gap(vertices, indices):
     return [merged[0][1],merged[1][0]]
 
 def capture(phase):
+    revision = 'original' if phase == 'before' else 'moved'
+    model = json.loads((fixture/(revision+'.bimcraft')).read_bytes())
+    native = {
+        'Exterior_Wall' if element['category'] == 'wall' else element['mark']: (identifier, element['guid'])
+        for identifier, element in model['elements'].items()
+        if element['category'] in ('wall', 'window')
+    }
     mesh_actors = [a for a in actors.get_all_level_actors() if isinstance(a,ue.StaticMeshActor)]
     roots = [a for a in actors.get_all_level_actors() if isinstance(a,ue.DatasmithSceneActor)]
     assert len(mesh_actors) == 2 and len(roots) == 1, [a.get_actor_label() for a in mesh_actors]
@@ -97,7 +104,10 @@ def capture(phase):
         assert vertices and len(idx) in (36,144)
         key = ue.DatasmithContentLibrary.get_datasmith_user_data_value_for_key(a,'Datasmith_UniqueId')
         assert key == source_keys[label], (key,source_keys[label])
-        row = dict(datasmith_id=key, actor=a.get_path_name(), guid=a.get_editor_property('actor_guid').to_string(),
+        native_id, native_guid = native[label]
+        assert key == f"A_{model['uid']:016x}_" + native_guid.replace('-', '')
+        row = dict(document_uid=model['uid'], native_id=native_id, native_guid=native_guid,
+                   datasmith_id=key, actor=a.get_path_name(), guid=a.get_editor_property('actor_guid').to_string(),
                    mesh=mesh.get_path_name(), material=c.get_material(0).get_path_name(),
                    slot_count=c.get_num_materials(), triangles=len(idx)//3, uv_count=len(uvs),
                    x_cm=[min(p[0] for p in world),max(p[0] for p in world)],
@@ -154,7 +164,7 @@ for a in actors.get_all_level_actors():
 assert levels.load_level(level)
 reopened = capture('reopened')
 for name in before:
-    for field in ('actor','datasmith_id','mesh','material','triangles','slot_count'):
+    for field in ('document_uid','native_id','native_guid','actor','datasmith_id','mesh','material','triangles','slot_count'):
         assert before[name][field] == after[name][field] == reopened[name][field], (name,field)
     assert after[name]['guid'] == reopened[name]['guid']
 for state, expected in [(before,182.88),(after,223.52),(reopened,223.52)]:
