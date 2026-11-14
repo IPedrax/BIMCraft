@@ -939,6 +939,8 @@ pub struct BimApp {
     component_angle: f64,
     /// Hinge hand for this run of the Door tool. Facing follows the pointer.
     door_flip_hand: bool,
+    /// Face for this run of the Window tool, over the one the pointer's side picks.
+    window_flip_facing: bool,
     /// An adaptive component's points clicked so far, in the project, before the last one places it.
     pub(crate) adaptive_clicks: Vec<[f64; 3]>,
     /// An adaptive instance's grip being dragged in a plan: the instance, and its point's number.
@@ -1674,6 +1676,7 @@ impl BimApp {
             component: None,
             component_angle: 0.0,
             door_flip_hand: false,
+            window_flip_facing: false,
             adaptive_clicks: Vec::new(),
             adaptive_grip: None,
             placement_plane: None,
@@ -2403,7 +2406,10 @@ impl BimApp {
         // changes a door, so holding Space cannot fill the Undo history.
         let plain_space =
             |e: &Event| matches!(e, Event::Key { key: Key::Space, pressed: true, repeat: false, modifiers: Modifiers::NONE, .. });
-        if matches!(self.tool, Tool::Door | Tool::Modify) && ctx.input(|i| i.events.iter().any(plain_space)) && self.door_space() {
+        if matches!(self.tool, Tool::Door | Tool::Window | Tool::Modify)
+            && ctx.input(|i| i.events.iter().any(plain_space))
+            && self.opening_space()
+        {
             pressed(Modifiers::NONE, Key::Space);
         }
         if self.tool == Tool::Modify && pressed(Modifiers::NONE, Key::Space) {
@@ -3042,6 +3048,7 @@ impl BimApp {
         }
         self.snap_once = None;
         self.door_flip_hand = false;
+        self.window_flip_facing = false;
         self.tool = tool;
         // Floor sketches its outline at once, as Revit's does (Walls' Outline puts the walls' in the sketch).
         if self.tool == Tool::Floor
@@ -3184,9 +3191,10 @@ impl BimApp {
         }
     }
 
-    /// While placing a swinging door Space changes only its pending hand. With one selected,
-    /// step through the four Opens tiles in order with the same instance edit as a tile click.
-    fn door_space(&mut self) -> bool {
+    /// While placing a swinging door Space changes only its pending hand; while placing a window it changes the
+    /// pending face. With one door selected, step through the four Opens tiles in order with the same instance edit
+    /// as a tile click.
+    fn opening_space(&mut self) -> bool {
         let m = &self.session.model;
         match self.tool {
             Tool::Door if self.plan_level().is_some() => {
@@ -3195,6 +3203,9 @@ impl BimApp {
                     return false;
                 }
                 self.door_flip_hand = !self.door_flip_hand;
+            }
+            Tool::Window if self.plan_level().is_some() => {
+                self.window_flip_facing = !self.window_flip_facing;
             }
             Tool::Modify if self.sketch.is_none() => {
                 let &[id] = self.selection.as_slice() else { return false };

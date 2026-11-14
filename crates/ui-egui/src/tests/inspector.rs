@@ -276,6 +276,28 @@ fn door_space_leaves_typing_other_operations_and_multiple_doors_alone() {
 }
 
 #[test]
+fn window_space_flips_the_face_shown_before_the_click_and_a_click_places_that_face() {
+    let mut h = app(BOX);
+    tool(&mut h, "Window");
+    let before = h.state().session.model.clone();
+    h.hover_at(h.state().screen(P2(2000.0, 60.0)));
+    h.run();
+    key(&mut h, Key::Space);
+    assert!(ids(&h, "window").is_empty(), "Space places nothing");
+    assert!(std::sync::Arc::ptr_eq(&before, &h.state().session.model), "the preview changes no model");
+    click(&mut h, P2(2000.0, 60.0));
+    let first = ids(&h, "window")[0];
+    let Element::Window(o) = &h.state().session.model.elements[&first] else { panic!("window") };
+    assert!(o.flip_facing);
+    assert!(!h.state().window_flip_facing, "the placement takes the pending face");
+    // Without Space the pointer's side puts the face the other way.
+    click(&mut h, P2(4000.0, 60.0));
+    let second = ids(&h, "window")[1];
+    let Element::Window(o) = &h.state().session.model.elements[&second] else { panic!("window") };
+    assert!(!o.flip_facing);
+}
+
+#[test]
 fn door_space_placement_uses_the_physical_wall_centre_and_escape_discards_the_pending_hand() {
     let mut h = app(&format!("{BOX}\nwall {{\"points\":[[1000,2500],[7000,2500]],\"location\":\"exterior-finish\"}}"));
     tool(&mut h, "Door");
