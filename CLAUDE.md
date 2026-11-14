@@ -134,6 +134,8 @@ One line per module: what it owns. Read its file and, for the areas it names, th
 
 Plugins: [notes](crates/plugin/CLAUDE.md), [sdk](crates/plugin-sdk/CLAUDE.md), [area](docs/areas/plugins.md), one `unsafe`.
 
+PyAddins, the user's Python scripts: [notes](crates/pyaddins/CLAUDE.md), [area](docs/areas/pyaddins.md); projects never carry code.
+
 `crates/ui-egui` (`bimcraft-ui-egui`, a thin shell over the core; notes: [crates/ui-egui/CLAUDE.md](crates/ui-egui/CLAUDE.md); area: [the desktop](docs/areas/desktop.md)):
 
 - Its module map, a line for each file, is in [crates/ui-egui/CLAUDE.md](crates/ui-egui/CLAUDE.md): a new module of the window adds its line there.
@@ -149,15 +151,9 @@ Plugins: [notes](crates/plugin/CLAUDE.md), [sdk](crates/plugin-sdk/CLAUDE.md), [
 
 `crates/dwg` (`bimcraft-dwg`, the DWG bridge, which the core never depends on; notes: [crates/dwg/CLAUDE.md](crates/dwg/CLAUDE.md); area: [CAD import](docs/areas/cad-import.md)): a DWG as the DXF the core reads, through acadrust (MPL-2.0, unmodified), in a child process of the app (`in_child`, `child_main`); the apps hand a `Session` its `reader`.
 
-`crates/pyaddins` (`bimcraft-pyaddins`, the user's Python scripts, run in their own Python as a process of its own; notes:
-[crates/pyaddins/CLAUDE.md](crates/pyaddins/CLAUDE.md); area: [PyAddins](docs/areas/pyaddins.md)): `store.rs` the folder,
-`python.rs` finding Python, `inputs.rs` what a script asks for, `run.rs` a run, `editor.rs` Edit, `skill.rs` the agent
-skill, `bimcraft.py` the module scripts import. A
-project never carries code.
-
 `crates/rvt` (the Revit file reader, Apache-2.0 only; notes: [crates/rvt/CLAUDE.md](crates/rvt/CLAUDE.md); area: [Revit files](docs/areas/revit-import.md)): one module for each part of a file (`container`, `gzip`, `records`, `schema`, `inventory`) and for each element kind it imports (`walls`, `floors`, `roofs`, `columns`, `openings`, `rooms`, `pipes`, `ducts`, `framing`, `generic`), joined by `import.rs`.
 
-`apps/bimcraft` (the desktop: `main.rs`, `startup.rs`: the log and the graphics fallback) and `apps/bimcraft-cli` (`main.rs`; `mcp.rs` the MCP server; `pyaddins.rs` its PyAddins tools; `window.rs`: `mcp --connect`; `revit.rs`); notes: [apps/CLAUDE.md](apps/CLAUDE.md). More: `packaging/` (installers: [packaging](docs/areas/packaging.md)), `docs/` (design notes), `.github/workflows/` (CI on every pull request, and the release).
+`apps/bimcraft` (the desktop: `main.rs`, `startup.rs`: the log and the graphics fallback) and `apps/bimcraft-cli` (`main.rs`; `mcp.rs` the MCP server; `pyaddins.rs` PyAddins; `window.rs`: `mcp --connect`; `revit.rs`); notes: [apps/CLAUDE.md](apps/CLAUDE.md). More: `packaging/` (installers: [packaging](docs/areas/packaging.md)), `docs/` (design notes), `.github/workflows/` (CI on every pull request, and the release).
 
 ## Keep the agent docs layered
 
