@@ -206,9 +206,9 @@ sheets take their clicks), and what lay under it is read there (`under_at`), not
 move and its box, so only a press let go within `QUICK` (0.2 s) is a click wherever the hand went: the drag it began is not
 finished (`Canvas::quick`, `BimApp::finish_drag`: grips, crop regions, a sheet's views, the plan's move and box) and the selection
 that drag's start replaced comes back (`BimApp::grab`) for the click to pick from. A slower press is the drag it is. In the 3D view
-a quick press is a click whatever the tool, and a camera the hand turned meanwhile goes back (`Orbit::before`). There, as in
+a captured window or wall placement drag commits even when quick; another quick press is a click, and a camera the hand turned meanwhile goes back (`Orbit::before`). There, as in
 Revit, Shift and the middle button orbit, round the point under the pointer, and the middle button alone pans; a primary drag never
-moves the camera: in Modify it is a selection box, as in a plan, adding to the selection with Shift held (the family editor's views have no box, so there it still orbits, `Orbit::hand_orbits`); it takes levels by what of
+moves the camera: in Modify an uncaptured drag is a selection box, as in a plan, adding to the selection with Shift held (the family editor's views have no box, so there it still orbits, `Orbit::hand_orbits`); it takes levels by what of
 them is drawn, the far edges of each plane and its head (`Orbit::select`, drawn by `canvas::box_shapes`), which picks what `Scene::in_box` finds: from the left what lies wholly
 inside, from the right what it touches, by where the model is rather than what's in front, so what's behind is boxed too.
 A 3D mouse (a 3Dconnexion SpaceMouse, SpaceNavigator, SpacePilot) moves the active 3D view as 3DxWare's object mode moves a
@@ -219,6 +219,21 @@ view's position is written back once the cap rests, and wheel turns 3DxWare may 
 desktop app starts its reader (`BimApp::space_mouse`, Windows only for now), which reads the device's HID reports itself (with
 3DxWare running too, while its profile for BIMCraft passes the axes on as `HIDMultiAxis_*`), the axes found in its report
 descriptor (`spacemouse/descriptor.rs`). With `BIMCRAFT_SPACEMOUSE_LOG=<file>` the reader logs what it found and every report.
+
+A window selected alone in Modify has a contrasting perimeter and its mark above the head in 3D.
+Dragging its body slides it along and up its straight host wall. Shift holds the sill at its starting height,
+including when pressed during a drag or recorded on mouse-up. The preview shows the sill and lock state.
+Release the button before releasing Shift to place at that height. Escape cancels and keeps the selection.
+The selected straight wall's dotted location line is also a drag target on its base plane when its base is unattached.
+On a free wall Shift constrains the move perpendicular to its axis; an end joined to another wall defaults to
+perpendicular movement and Shift releases that constraint. End/height grips, section-box grips, sketch tools,
+dimensions and the visible work-plane patch take precedence. The window keeps its host, type, mark and GUID;
+moving the wall uses the core's Move command to carry its openings and maintain joins.
+
+Both gestures (`orbit/placement.rs`) preview the existing `modify` or `move` command against a snapshot and
+commit once through `BimApp::run`. An invalid placement, lost focus, changed selection or intervening model edit
+drops the pending gesture. A valid release adds one Undo step. Curved-host window dragging, rehosting, multiple
+selection dragging, drag-time numeric entry and snapping are outside this interaction.
 
 A wall or column selected alone in Modify has handles in the 3D view (core `handles.rs`, drawn by `orbit::draw_handle`): a wall's two
 ends at its base on its location line, which is drawn dashed along its base (`handles::location_line`), a column's place, and an arrow on the top and under the base of each, as a section box's faces have. A drag previews the element

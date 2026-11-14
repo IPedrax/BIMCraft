@@ -91,7 +91,7 @@ fn crosses(r: Rect, a: Pos2, b: Pos2) -> bool {
 }
 
 /// How far `p` is from the segment from `a` to `b`, on screen.
-fn to_segment(p: Pos2, a: Pos2, b: Pos2) -> f32 {
+pub(crate) fn to_segment(p: Pos2, a: Pos2, b: Pos2) -> f32 {
     let ab = b - a;
     let t = if ab.length_sq() > 0.0 { ((p - a).dot(ab) / ab.length_sq()).clamp(0.0, 1.0) } else { 0.0 };
     p.distance(a + ab * t)
