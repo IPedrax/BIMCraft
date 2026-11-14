@@ -3144,11 +3144,9 @@ impl Scene {
             let [across, up, n] = basis(tri, turn);
             let (x, y) = ((k % w) as f64 + 0.5, (k / w) as f64 + 0.5);
             let at = cam.point_at((x, y), f64::from(z));
-            // A face seen edge-on spreads a pixel over more of it: a coarser level, or its courses alias into moiré.
-            let facing = dot(n, cam.toward(at)).abs().max(0.15);
             // A ground's pattern starts where a plan's does; a wall's or a roof's is anchored to the world.
             let p = if n[2] > PAVED { [at[0] - ox, at[1] - oy, at[2]] } else { at };
-            Some(sampler.at(dot(p, across), dot(p, up), foot / facing))
+            Some(sampler.at(dot(p, across), dot(p, up), foot))
         };
         // What triangle `t` shows at pixel `k`, whose surface is `depths` there: a curve's, the blend of its corners' lighting; a
         // flat face's, its own shade; a texture's colour lit as the face is.

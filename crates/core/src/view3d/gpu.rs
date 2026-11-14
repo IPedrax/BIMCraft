@@ -300,6 +300,9 @@ pub struct Owner {
     pub id: Id,
     pub edge: Rgb,
     pub transparency: u8,
+    /// The element's pattern frame as the card takes it: where its surface pattern starts (x, y) and its turn's sine and
+    /// cosine, so a ground's top is textured on the plan's axes, as the processor draws it ([`crate::view3d::basis`]).
+    pub frame: [f32; 4],
 }
 
 struct Node {
@@ -608,6 +611,7 @@ impl Mesh {
         let mut owners: BTreeMap<(Id, u8), u32> = BTreeMap::new();
         // The last asked: the triangles of an element come together.
         let mut last: Option<((Id, u8), u32)> = None;
+        let frames = &scene.frames;
         let mut owner_of = |mesh: &mut Mesh, id: Id, alpha: u8| {
             if let Some((key, n)) = last
                 && key == (id, alpha)
@@ -615,7 +619,14 @@ impl Mesh {
                 return n;
             }
             let n = *owners.entry((id, alpha)).or_insert_with(|| {
-                mesh.owners.push(Owner { id, edge: look.edge(id, EDGE), transparency: alpha });
+                let [ox, oy, turn] = frames.get(&id).copied().unwrap_or([0.0, 0.0, 0.0]);
+                let (sin, cos) = turn.to_radians().sin_cos();
+                mesh.owners.push(Owner {
+                    id,
+                    edge: look.edge(id, EDGE),
+                    transparency: alpha,
+                    frame: [ox as f32, oy as f32, sin as f32, cos as f32],
+                });
                 mesh.owners.len() as u32
             });
             last = Some(((id, alpha), n));
