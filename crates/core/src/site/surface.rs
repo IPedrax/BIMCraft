@@ -119,17 +119,26 @@ fn some(points: &[P2]) -> String {
     if points.len() > 3 { format!("{} and {} more", shown.join(", "), points.len() - 3) } else { shown.join(", ") }
 }
 
+/// The most steps looking for crossings may take: a survey's take a few hundred thousand; lines laid to make every pair
+/// meet in one place would take their square.
+const MAX_CROSSING_WORK: usize = 50_000_000;
+
+fn tangled() -> String {
+    format!("its lines are too tangled to check for crossings in time (more than {MAX_CROSSING_WORK} steps): give fewer, or thin them")
+}
+
 /// Which of `segments` properly cross another (each crossing's two), found through a grid of cells about as many as
-/// the segments, so a survey's thousands take a moment, not their square.
-fn crossing(segments: &[(P2, P2)]) -> Vec<bool> {
+/// the segments, so a survey's thousands take a moment, not their square. Refused past `MAX_CROSSING_WORK` steps.
+fn crossing(segments: &[(P2, P2)]) -> Result<Vec<bool>, String> {
     let mut out = vec![false; segments.len()];
+    let mut work = 0usize;
     let (mut lo, mut hi) = (P2(f64::MAX, f64::MAX), P2(f64::MIN, f64::MIN));
     for (a, b) in segments {
         lo = P2(lo.0.min(a.0).min(b.0), lo.1.min(a.1).min(b.1));
         hi = P2(hi.0.max(a.0).max(b.0), hi.1.max(a.1).max(b.1));
     }
     if segments.is_empty() {
-        return out;
+        return Ok(out);
     }
     let cell = ((hi.0 - lo.0).max(hi.1 - lo.1) / (segments.len() as f64).sqrt()).max(TOL);
     let index = |v: f64, o: f64| ((v - o) / cell).floor() as i64;
@@ -137,6 +146,10 @@ fn crossing(segments: &[(P2, P2)]) -> Vec<bool> {
     for (i, (a, b)) in segments.iter().enumerate() {
         for gx in index(a.0.min(b.0), lo.0)..=index(a.0.max(b.0), lo.0) {
             for gy in index(a.1.min(b.1), lo.1)..=index(a.1.max(b.1), lo.1) {
+                work += 1;
+                if work > MAX_CROSSING_WORK {
+                    return Err(tangled());
+                }
                 grid.entry((gx, gy)).or_default().push(i);
             }
         }
@@ -145,6 +158,10 @@ fn crossing(segments: &[(P2, P2)]) -> Vec<bool> {
     for ids in grid.values() {
         for (n, &i) in ids.iter().enumerate() {
             for &j in &ids[n + 1..] {
+                work += 1;
+                if work > MAX_CROSSING_WORK {
+                    return Err(tangled());
+                }
                 let ((a, b), (c, d)) = (segments[i], segments[j]);
                 if side(c, d, a) * side(c, d, b) < 0.0 && side(a, b, c) * side(a, b, d) < 0.0 {
                     out[i] = true;
@@ -153,7 +170,7 @@ fn crossing(segments: &[(P2, P2)]) -> Vec<bool> {
             }
         }
     }
-    out
+    Ok(out)
 }
 
 fn check_point(p: P2, z: f64) -> Result<(), String> {
@@ -231,7 +248,7 @@ fn simplified(pts: &[P2], closed: bool, tol: f64) -> Vec<P2> {
 }
 
 /// Which lines have a segment that crosses another line's.
-fn lines_crossing(lines: &[Ready]) -> Vec<bool> {
+fn lines_crossing(lines: &[Ready]) -> Result<Vec<bool>, String> {
     let mut owner = Vec::new();
     let mut segments = Vec::new();
     for (i, (pts, _, closed)) in lines.iter().enumerate() {
@@ -245,12 +262,12 @@ fn lines_crossing(lines: &[Ready]) -> Vec<bool> {
         }
     }
     let mut out = vec![false; lines.len()];
-    for (i, c) in crossing(&segments).into_iter().enumerate() {
+    for (i, c) in crossing(&segments)?.into_iter().enumerate() {
         if c && let Some(&o) = owner.get(i) {
             out[o] = true;
         }
     }
-    out
+    Ok(out)
 }
 
 /// The nearest point to `p` on the segment from `a` to `b`.
@@ -305,6 +322,13 @@ fn near_key(keys: &std::collections::BTreeSet<(i64, i64)>, p: P2) -> bool {
 /// and what the triangulation refuses (more than `triangulation::MAX_CORNERS` corners as given, a region past
 /// `triangulation::MAX_ACROSS`).
 pub fn build(points: &[[f64; 3]], lines: &[Line], options: &Options) -> Result<Surface, String> {
+    let given = points.len() + lines.iter().map(|l| l.points.len()).sum::<usize>();
+    if given > 4 * triangulation::MAX_CORNERS {
+        return Err(format!(
+            "it gives {given} points and line vertices, more than the {} a surface reads; thin them first",
+            4 * triangulation::MAX_CORNERS
+        ));
+    }
     let Some(boundary) = &options.boundary else { return build_in(points, lines, options, None, triangulation::MAX_CORNERS) };
     let whole = build_in(points, lines, &Options { boundary: None, ..options.clone() }, None, triangulation::MAX_CORNERS)?;
     let ring = checked_boundary(boundary)?;
@@ -448,10 +472,10 @@ fn build_in(points: &[[f64; 3]], lines: &[Line], options: &Options, outline: Opt
             r.0 = pts;
         }
         // A contour that crosses another only once simplified keeps every vertex; again, in case that made another cross.
-        let crossed_raw = lines_crossing(&raw);
+        let crossed_raw = lines_crossing(&raw)?;
         let mut reverted = 0;
         for _ in 0..3 {
-            let now = lines_crossing(&ready);
+            let now = lines_crossing(&ready)?;
             let back: Vec<usize> = (0..ready.len()).filter(|&i| now[i] && !crossed_raw[i] && ready[i].0.len() != raw[i].0.len()).collect();
             if back.is_empty() {
                 break;
@@ -539,7 +563,7 @@ fn build_in(points: &[[f64; 3]], lines: &[Line], options: &Options, outline: Opt
         let n = torn.len();
         notes.push(format!("{n} point{} given at two elevations took their mean: {}", if n == 1 { "" } else { "s" }, some(&torn)));
     }
-    let crossed = crossing(&segments);
+    let crossed = crossing(&segments)?;
     if crossed.iter().any(|&c| c) {
         let (mut lo, mut hi) = (P2(f64::MAX, f64::MAX), P2(f64::MIN, f64::MIN));
         let mut kept = Vec::with_capacity(segments.len());
@@ -967,6 +991,28 @@ mod tests {
         assert!(s.notes.iter().any(|n| n.contains("two elevations")), "{:?}", s.notes);
         let z = s.points.iter().zip(&s.z).find(|(p, _)| p.dist(P2(500.5, 500.0)) < 1.0).map(|(_, z)| *z).unwrap();
         assert!((z - 150.0).abs() < 1e-6, "{z}");
+    }
+
+    #[test]
+    fn too_many_vertices_are_refused_before_any_work() {
+        let pts: Vec<P2> = (0..=4 * triangulation::MAX_CORNERS).map(|i| P2(i as f64 * 10.0, (i % 2) as f64 * 5.0)).collect();
+        let e = build(&[], &[Line::contour(0.0, pts, false)], &exact()).unwrap_err();
+        // Refused up front, before cleaning, crossings or the triangulation look at them.
+        assert!(e.contains("80001") && e.contains("80000") && e.contains("a surface reads"), "{e}");
+    }
+
+    #[test]
+    fn lines_too_tangled_to_check_are_refused_not_ground_through() {
+        // Ten thousand diameters of one circle, all through its middle: each pair would have to be looked at there.
+        let lines: Vec<Line> = (0..10_000)
+            .map(|i| {
+                let a = std::f64::consts::PI * i as f64 / 10_000.0;
+                let d = P2(a.cos(), a.sin()) * 50_000.0;
+                Line::contour(i as f64, vec![d * -1.0, d], false)
+            })
+            .collect();
+        let e = build(&[], &lines, &exact()).unwrap_err();
+        assert!(e.contains("tangled"), "{e}");
     }
 
     #[test]
