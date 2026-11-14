@@ -4,15 +4,15 @@
 //! edition. CPFL works out a demand; ENEL and CELESC leave it to the designer and frame a supply by the installed load:
 //!
 //! - **CPFL** (CPFL Paulista, Piratininga, Santa Cruz and RGE): Norma Técnica GED 13, "Fornecimento em Tensão Secundária de
-//!   Distribuição", version 2.24, 18/09/2020. `D = a + b + c + d + e + f + g + h + i` (item 6.25.1): a lighting and outlets
-//!   (Tabelas 2 and 3, or 18), b showers, taps, instant heaters and irons (Tabela 4), c boilers (Tabela 5), d dryers, ovens,
-//!   dishwashers and microwaves (Tabela 6), e electric stoves (Tabela 7), f window air conditioners (Tabelas 8 and 9), g motors
-//!   (Tabelas 14, 15 and 10), h special equipment (Tabela 11, power factor 0.75), i hydromassage (Tabela 10). The category comes
-//!   of the installed load up to 25 kW and of the demand above it (Tabelas 1A and 1B).
+//!   Distribuição" (DIST-13-2026-RE-NOR), version 46.0, 19/03/2026. `D = a + b + c + d + e + f + g + h + i` (item 6.22.1): a
+//!   lighting and outlets (Tabelas 2 and 3, or 15), b showers, taps, instant heaters and irons (Tabela 4), c boilers (Tabela 5), d
+//!   dryers, ovens, dishwashers and microwaves (Tabela 6), e electric stoves (Tabela 7), f window air conditioners (Tabelas 8 and
+//!   9), g motors (Tabelas 13, 14 and 10), h special equipment (Tabela 11, power factor 0.75), i hydromassage (Tabela 10). The
+//!   category comes of the installed load up to 25 kW and of the demand above it (Tabelas 1A, 1B and 1C).
 //!
-//! What is not applied: the cables, conduits and breakers of Tabelas 1D and 1E (EPR and aluminium), the poles and the other
-//! columns of Tabela 1, the motor starting rules of Tabela 13, and the power factors of discharge lighting in Tabela 18's buildings
-//! beyond the one given.
+//! What is not applied: the poles, boxes and the earthing conduit of Tabela 1 and its motor limits, Tabela 1D (two clients on one
+//! pole), the motor starting rules of Tabela 12, and the power factors of discharge lighting in Tabela 15's buildings beyond the
+//! one given.
 
 /// The utilities there are tables for.
 pub const UTILITIES: &[&str] = &["CPFL", "ENEL", "CELESC"];
@@ -20,9 +20,11 @@ pub const UTILITIES: &[&str] = &["CPFL", "ENEL", "CELESC"];
 /// Where the numbers come from, for each utility.
 pub fn source(utility: &str) -> Option<&'static str> {
     match utility {
-        "CPFL" => Some("CPFL Energia, Norma Técnica GED 13 'Fornecimento em Tensão Secundária de Distribuição', version 2.24, 18/09/2020"),
+        "CPFL" => Some(
+            "CPFL Energia, Norma Técnica GED 13 (DIST-13-2026-RE-NOR) 'Fornecimento em Tensão Secundária de Distribuição', version 46.0, 19/03/2026",
+        ),
         "ENEL" => Some(
-            "Enel Grids Brasil, Especificação Técnica 1569 (CNC-OMBR-MAT-24-1569-EDBR) 'Fornecimento de Energia Elétrica em Tensão Secundária de Distribuição até 1 kV - Conexão Individual', version 01, 29/01/2024: Anexos A and D",
+            "Enel Grids Brasil, Especificação Técnica GRI-0017 (GRI-EDBR-CNC-GRI-0017 / CNC-NDBR-DBR-24-1569-EDBR) 'Fornecimento de Energia Elétrica em Tensão Secundária de Distribuição até 1 kV - Conexão Individual', version 02, 06/03/2025: Anexos A to E",
         ),
         "CELESC" => Some(
             "Celesc Distribuição, Norma Técnica N-321.0001 'Fornecimento de Energia Elétrica em Tensão de Distribuição Baixa Tensão', revision of December 2025 (RES. DCL nº 143/2025, 12/11/2025): Tabela 01",
@@ -99,7 +101,7 @@ pub struct Special {
     pub count: u32,
 }
 
-/// What a building that is not a dwelling declares for its lighting and outlets: its use (Tabela 18), the kW and the power factor.
+/// What a building that is not a dwelling declares for its lighting and outlets: its use (Tabela 15), the kW and the power factor.
 #[derive(Clone, Debug)]
 pub struct OtherUse {
     pub kind: String,
@@ -270,7 +272,8 @@ pub fn window_air(btu: f64) -> Option<(f64, f64)> {
     ROWS.iter().find(|r| r.0 == btu).map(|r| (r.1, r.2))
 }
 
-/// Tabelas 14 (single-phase) and 15 (three-phase): a motor by its cv, its kVA and its kW. Single-phase stops at 15 cv.
+/// Tabelas 13 (single-phase) and 14 (three-phase): a motor by its cv, its kVA and its kW. Single-phase stops at 15 cv, three-phase
+/// at 300 cv (above 50 cv the supply is at medium voltage, Tabela 14's note 3).
 pub fn motor(cv: f64, phases: u32) -> Option<(f64, f64)> {
     // (cv, kW, kVA)
     const ONE: &[(f64, f64, f64)] = &[
@@ -311,12 +314,19 @@ pub fn motor(cv: f64, phases: u32) -> Option<(f64, f64)> {
         (50.0, 40.93, 48.73),
         (60.0, 49.42, 58.15),
         (75.0, 61.44, 72.28),
+        (100.0, 80.55, 97.05),
+        (125.0, 96.23, 114.56),
+        (150.0, 106.25, 128.02),
+        (175.0, 140.13, 170.89),
+        (200.0, 159.08, 196.39),
+        (250.0, 196.69, 242.82),
+        (300.0, 232.44, 286.97),
     ];
     let rows = if phases == 1 { ONE } else { THREE };
     rows.iter().find(|r| (r.0 - cv).abs() < 1e-6).map(|r| (r.2, r.1))
 }
 
-/// Tabela 18: a building's lighting and outlets, the least W/m² and the demand (kW) of a declared load of `kw`; `None` for a use
+/// Tabela 15: a building's lighting and outlets, the least W/m² and the demand (kW) of a declared load of `kw`; `None` for a use
 /// the table does not have.
 pub fn commercial_demand(kind: &str, kw: f64) -> Option<f64> {
     // Tiers: (up to kW, factor), the last factor for what is over.
@@ -341,23 +351,25 @@ pub fn commercial_demand(kind: &str, kw: f64) -> Option<f64> {
     Some(total)
 }
 
-/// The uses of Tabela 18, as a command gives them.
+/// The uses of Tabela 15, as a command gives them.
 pub const USES: &[&str] =
     &["auditorium", "shop", "barbershop", "club", "school", "office", "garage", "hospital", "hotel", "church", "industry", "restaurant"];
 
 /// Whether Tabela 4 (not a factor of 1) applies to the showers and taps of a building of this use: hotels, motels, hospitals,
-/// commercial houses and churches, as item 6.25.1 b) names.
+/// commercial houses and churches, as item 6.22.1 b) names.
 fn heaters_by_table(kind: &str) -> bool {
     matches!(kind, "hotel" | "hospital" | "shop" | "church")
 }
 
-/// One category of Tabela 1A or 1B.
+/// One category of Tabela 1A, 1B or 1C.
 #[derive(Clone, Copy, Debug)]
 pub struct Category {
     pub name: &'static str,
-    /// The breaker (A), the copper PVC cable (mm²), the conduit (mm) and the earthing conductor (mm²).
+    /// The breaker (A), the copper PVC cable and its aluminium alternative (mm²), the conduit (mm) and the earthing conductor
+    /// (mm²).
     pub breaker: f64,
     pub cable: f64,
+    pub aluminium: f64,
     pub conduit: f64,
     pub earth: f64,
     /// The phases: 1 (one phase and the neutral), 2 or 3.
@@ -366,34 +378,36 @@ pub struct Category {
 
 /// The category of service for an installed load `c` (kW) and a demand `d` (kVA), `None` above the table.
 pub fn category(system: System, c: f64, d: f64) -> Option<Category> {
-    let k = |name, breaker, cable, conduit, earth, phases| Some(Category { name, breaker, cable, conduit, earth, phases });
+    let k = |name, breaker, cable, aluminium, conduit, earth, phases| {
+        Some(Category { name, breaker, cable, aluminium, conduit, earth, phases })
+    };
     match system {
         System::S127_220 => match c {
-            c if c <= 6.0 => k("A1", 32.0, 6.0, 32.0, 6.0, 1),
-            c if c <= 12.0 => k("A2", 63.0, 16.0, 32.0, 10.0, 1),
-            c if c <= 18.0 => k("B1", 63.0, 16.0, 40.0, 10.0, 2),
-            c if c <= 25.0 => k("B2", 80.0, 25.0, 40.0, 10.0, 2),
+            c if c <= 6.0 => k("A1", 32.0, 6.0, 10.0, 32.0, 6.0, 1),
+            c if c <= 12.0 => k("A2", 63.0, 16.0, 16.0, 32.0, 10.0, 1),
+            c if c <= 18.0 => k("B1", 63.0, 16.0, 16.0, 32.0, 10.0, 2),
+            c if c <= 25.0 => k("B2", 80.0, 25.0, 25.0, 40.0, 10.0, 2),
             c if c <= 75.0 => match d {
-                d if d <= 23.0 => k("C1", 63.0, 16.0, 40.0, 10.0, 3),
-                d if d <= 30.0 => k("C2", 80.0, 25.0, 40.0, 10.0, 3),
-                d if d <= 38.0 => k("C3", 100.0, 35.0, 40.0, 10.0, 3),
-                d if d <= 47.0 => k("C4", 125.0, 50.0, 50.0, 16.0, 3),
-                d if d <= 57.0 => k("C5", 150.0, 70.0, 60.0, 25.0, 3),
-                d if d <= 76.0 => k("C6", 200.0, 95.0, 60.0, 35.0, 3),
+                d if d <= 23.0 => k("C1", 63.0, 16.0, 25.0, 40.0, 10.0, 3),
+                d if d <= 30.0 => k("C2", 80.0, 25.0, 25.0, 40.0, 10.0, 3),
+                d if d <= 38.0 => k("C3", 100.0, 35.0, 35.0, 40.0, 10.0, 3),
+                d if d <= 47.0 => k("C4", 125.0, 50.0, 50.0, 50.0, 16.0, 3),
+                d if d <= 57.0 => k("C5", 150.0, 70.0, 70.0, 60.0, 25.0, 3),
+                d if d <= 76.0 => k("C6", 200.0, 95.0, 95.0, 60.0, 35.0, 3),
                 _ => None,
             },
             _ => None,
         },
         System::S220_380 => match c {
-            c if c <= 10.0 => k("A3", 32.0, 6.0, 32.0, 6.0, 1),
-            c if c <= 15.0 => k("A4", 63.0, 16.0, 32.0, 10.0, 1),
-            c if c <= 25.0 => k("B3", 63.0, 16.0, 40.0, 10.0, 2),
+            c if c <= 10.0 => k("A3", 32.0, 6.0, 10.0, 32.0, 6.0, 1),
+            c if c <= 15.0 => k("A4", 63.0, 16.0, 16.0, 32.0, 10.0, 1),
+            c if c <= 25.0 => k("B3", 63.0, 16.0, 16.0, 32.0, 10.0, 2),
             c if c <= 75.0 => match d {
-                d if d <= 26.0 => k("C7", 40.0, 10.0, 40.0, 10.0, 3),
-                d if d <= 40.0 => k("C8", 63.0, 16.0, 40.0, 10.0, 3),
-                d if d <= 46.0 => k("C9", 80.0, 25.0, 40.0, 10.0, 3),
-                d if d <= 66.0 => k("C10", 100.0, 35.0, 40.0, 10.0, 3),
-                d if d <= 82.0 => k("C11", 125.0, 50.0, 50.0, 16.0, 3),
+                d if d <= 26.0 => k("C7", 40.0, 10.0, 16.0, 40.0, 6.0, 3),
+                d if d <= 40.0 => k("C8", 63.0, 16.0, 16.0, 40.0, 10.0, 3),
+                d if d <= 52.0 => k("C9", 80.0, 25.0, 25.0, 40.0, 10.0, 3),
+                d if d <= 66.0 => k("C10", 100.0, 35.0, 35.0, 40.0, 10.0, 3),
+                d if d <= 82.0 => k("C11", 125.0, 50.0, 50.0, 50.0, 16.0, 3),
                 _ => None,
             },
             _ => None,
@@ -428,7 +442,7 @@ impl Network {
         }
     }
 
-    /// The annex of ET 1569 that holds its table.
+    /// The annex of GRI-0017 that holds its table.
     pub fn annex(self) -> &'static str {
         match self {
             Network::Aerial => "A",
@@ -448,15 +462,13 @@ impl Network {
     }
 }
 
-/// One row of Enel's Anexo A or D (ET 1569): a category of supply for a range of installed load.
+/// One row of Enel's Anexo A, C, D or E (GRI-0017): a category of supply for a range of installed load.
 #[derive(Clone, Copy, Debug)]
 pub struct EnelRow {
     pub name: &'static str,
     /// The installed load (kW) it covers: over `lo`, up to `hi`.
     pub lo: f64,
     pub hi: f64,
-    /// The power it makes available, kW.
-    pub available_kw: f64,
     /// The general breaker, A.
     pub breaker: f64,
     /// The connection branch: the number of conductors a phase has (`None` where the annex prints none), the phase's section and the
@@ -476,53 +488,55 @@ const fn row(
     name: &'static str,
     lo: f64,
     hi: f64,
-    available_kw: f64,
     breaker: f64,
     connection: (Option<u8>, f64, f64),
     entry: (f64, f64),
     earth: f64,
     measurement: &'static str,
 ) -> EnelRow {
-    EnelRow { name, lo, hi, available_kw, breaker, connection, entry, earth, measurement, junction_box: None }
+    EnelRow { name, lo, hi, breaker, connection, entry, earth, measurement, junction_box: None }
 }
 
-/// Anexo A: aerial network, 127/220 V.
+/// Anexo A: aerial network, 127/220 V (Enel Rio). Version 02 prints a range as `5,1 < C ≤ 8`; here a range starts where the one
+/// before ends.
 const ENEL_A: &[EnelRow] = &[
-    row("A1", 0.0, 3.0, 5.0, 40.0, (Some(1), 10.0, 10.0), (10.0, 10.0), 10.0, "direct"),
-    row("A2", 4.0, 6.0, 8.0, 63.0, (Some(1), 16.0, 10.0), (16.0, 10.0), 16.0, "direct"),
-    row("B1", 6.0, 10.0, 10.0, 50.0, (Some(2), 10.0, 10.0), (10.0, 10.0), 16.0, "direct"),
-    row("B2", 10.0, 14.0, 14.0, 63.0, (Some(2), 16.0, 10.0), (16.0, 10.0), 16.0, "direct"),
-    row("C1", 10.0, 15.0, 15.0, 40.0, (Some(3), 10.0, 10.0), (10.0, 10.0), 16.0, "direct"),
-    row("C2", 15.0, 19.0, 19.0, 50.0, (Some(3), 10.0, 10.0), (10.0, 10.0), 16.0, "direct"),
-    row("C3", 19.0, 20.0, 24.0, 63.0, (Some(3), 16.0, 16.0), (25.0, 25.0), 16.0, "direct"),
-    row("C4", 21.0, 24.0, 30.0, 80.0, (Some(3), 35.0, 54.6), (35.0, 25.0), 16.0, "direct"),
-    row("C5", 25.0, 30.0, 38.0, 100.0, (Some(3), 35.0, 54.6), (35.0, 25.0), 16.0, "direct"),
-    row("C6", 31.0, 38.0, 48.0, 125.0, (Some(3), 35.0, 54.6), (50.0, 25.0), 25.0, "direct or indirect"),
-    row("C7", 39.0, 45.0, 57.0, 150.0, (Some(3), 50.0, 54.6), (70.0, 35.0), 35.0, "direct or indirect"),
-    row("C8", 46.0, 63.0, 75.0, 200.0, (Some(3), 95.0, 54.6), (95.0, 50.0), 50.0, "direct or indirect"),
+    row("A1", 0.0, 5.0, 40.0, (Some(1), 10.0, 10.0), (10.0, 10.0), 10.0, "direct"),
+    row("A2", 5.0, 8.0, 63.0, (Some(1), 16.0, 10.0), (16.0, 10.0), 16.0, "direct"),
+    row("B1", 0.0, 11.0, 50.0, (Some(2), 10.0, 10.0), (10.0, 10.0), 10.0, "direct"),
+    row("B2", 11.0, 14.0, 63.0, (Some(2), 16.0, 10.0), (16.0, 10.0), 16.0, "direct"),
+    row("C1", 10.0, 15.0, 40.0, (Some(3), 10.0, 10.0), (10.0, 10.0), 10.0, "direct"),
+    row("C2", 15.0, 19.1, 50.0, (Some(3), 10.0, 10.0), (10.0, 10.0), 10.0, "direct"),
+    row("C3", 19.1, 24.0, 63.0, (Some(3), 16.0, 16.0), (25.0, 25.0), 16.0, "direct"),
+    row("C4", 24.0, 30.0, 80.0, (Some(3), 35.0, 54.6), (25.0, 25.0), 16.0, "direct"),
+    row("C5", 30.0, 38.0, 100.0, (Some(3), 35.0, 54.6), (35.0, 25.0), 16.0, "direct"),
+    row("C6", 38.0, 48.0, 125.0, (Some(3), 35.0, 54.6), (50.0, 25.0), 25.0, "direct or indirect"),
+    row("C7", 48.0, 57.1, 150.0, (Some(3), 50.0, 54.6), (70.0, 35.0), 35.0, "direct or indirect"),
+    row("C8", 57.1, 67.0, 175.0, (Some(3), 50.0, 54.6), (95.0, 50.0), 50.0, "direct or indirect"),
+    row("C9", 67.0, 75.0, 200.0, (Some(3), 95.0, 54.6), (95.0, 50.0), 50.0, "direct or indirect"),
 ];
 
-/// Anexo D: underground network, surface standard, 127/220 V.
+/// Anexo D: underground network, surface standard, 127/220 V (Enel Rio and São Paulo).
 const ENEL_D: &[EnelRow] = &[
-    row("A1", 0.0, 7.0, 8.0, 63.0, (None, 16.0, 16.0), (16.0, 16.0), 16.0, "direct"),
-    row("A2", 8.0, 9.0, 10.0, 80.0, (None, 25.0, 16.0), (25.0, 16.0), 16.0, "direct"),
-    row("B1", 10.0, 12.0, 14.0, 63.0, (None, 16.0, 16.0), (16.0, 16.0), 16.0, "direct"),
-    row("B2", 13.0, 16.0, 18.0, 80.0, (None, 25.0, 25.0), (25.0, 25.0), 16.0, "direct"),
-    row("C1", 17.0, 22.0, 24.0, 63.0, (None, 16.0, 16.0), (16.0, 16.0), 16.0, "direct"),
-    row("C2", 23.0, 28.0, 30.0, 80.0, (None, 25.0, 16.0), (25.0, 16.0), 16.0, "direct"),
-    row("C3", 29.0, 42.0, 48.0, 125.0, (None, 50.0, 25.0), (50.0, 25.0), 25.0, "indirect"),
-    row("C4", 43.0, 53.0, 57.0, 150.0, (None, 95.0, 25.0), (50.0, 25.0), 50.0, "indirect"),
-    row("C5", 54.0, 72.0, 75.0, 200.0, (None, 150.0, 95.0), (150.0, 95.0), 95.0, "direct (a 200 A meter) or indirect"),
+    row("A1", 0.0, 8.0, 63.0, (None, 16.0, 16.0), (16.0, 16.0), 16.0, "direct"),
+    row("A2", 8.0, 10.0, 80.0, (None, 25.0, 16.0), (25.0, 16.0), 16.0, "direct"),
+    row("B1", 10.0, 14.0, 63.0, (None, 16.0, 16.0), (16.0, 16.0), 16.0, "direct"),
+    row("B2", 14.0, 18.0, 80.0, (None, 25.0, 25.0), (25.0, 25.0), 16.0, "direct"),
+    row("C1", 18.0, 24.0, 63.0, (None, 16.0, 16.0), (16.0, 16.0), 16.0, "direct"),
+    row("C2", 24.0, 30.0, 80.0, (None, 25.0, 16.0), (25.0, 16.0), 16.0, "direct"),
+    row("C3", 30.0, 48.0, 125.0, (None, 50.0, 25.0), (50.0, 25.0), 25.0, "indirect"),
+    row("C4", 48.0, 57.1, 150.0, (None, 95.0, 25.0), (50.0, 25.0), 50.0, "indirect"),
+    row("C5", 57.1, 67.0, 175.0, (None, 95.0, 25.0), (95.0, 25.0), 95.0, "direct (a 200 A meter) or indirect"),
+    row("C6", 67.0, 75.0, 200.0, (None, 150.0, 95.0), (150.0, 95.0), 95.0, "direct (a 200 A meter) or indirect"),
 ];
 
-/// Anexo C: aerial network, 120/240 V.
+/// Anexo C: aerial network, 120/240 V (Enel Rio).
 const ENEL_C: &[EnelRow] = &[
-    row("A1", 0.0, 3.0, 5.0, 40.0, (Some(1), 10.0, 10.0), (10.0, 10.0), 10.0, "direct"),
-    row("A2", 4.0, 5.0, 6.0, 50.0, (Some(1), 16.0, 16.0), (16.0, 16.0), 16.0, "direct"),
-    row("B1", 6.0, 11.0, 12.0, 50.0, (Some(2), 16.0, 16.0), (16.0, 16.0), 16.0, "direct"),
+    row("A1", 0.0, 5.0, 40.0, (Some(1), 10.0, 10.0), (10.0, 10.0), 10.0, "direct"),
+    row("A2", 5.0, 6.0, 50.0, (Some(1), 16.0, 16.0), (16.0, 16.0), 16.0, "direct"),
+    row("B1", 6.0, 12.0, 50.0, (Some(2), 16.0, 16.0), (16.0, 16.0), 16.0, "direct"),
 ];
 
-/// A row of Anexo E: it prints no power made available, and its junction box.
+/// A row of Anexo E, with its junction box.
 #[allow(clippy::too_many_arguments)]
 const fn row_e(
     name: &'static str,
@@ -539,7 +553,6 @@ const fn row_e(
         name,
         lo,
         hi,
-        available_kw: f64::NAN,
         breaker,
         connection: (None, conn, conn),
         entry: (entry, entry),
@@ -549,7 +562,7 @@ const fn row_e(
     }
 }
 
-/// Anexo E: underground network, submersible.
+/// Anexo E: underground network, submersible (Enel São Paulo).
 const ENEL_E: &[EnelRow] = &[
     row_e("B1", 10.0, 12.0, 63.0, "type 2", 16.0, 16.0, 16.0, "direct"),
     row_e("B2", 13.0, 16.0, 80.0, "type 2", 25.0, 25.0, 16.0, "direct"),
@@ -621,20 +634,20 @@ const fn delta(names: &'static [&'static str], breaker: f64, conn: (u8, f64, f64
     DeltaRow { names, breaker, connection: (Some(conn.0), conn.1, conn.2), entry, earth, measurement: m }
 }
 
-/// Anexo B.
+/// Anexo B (Enel São Paulo).
 const ENEL_B: &[DeltaRow] = &[
     delta(&["A1"], 50.0, (1, 10.0, 10.0), 10.0, 10.0, "direct"),
     delta(&["B3"], 50.0, (2, 10.0, 10.0), 10.0, 10.0, "direct"),
     delta(&["C3"], 50.0, (3, 10.0, 10.0), 10.0, 10.0, "direct"),
     delta(&["A2"], 63.0, (1, 16.0, 10.0), 16.0, 16.0, "direct"),
-    delta(&["B4"], 63.0, (2, 25.0, 25.0), 16.0, 16.0, "direct"),
-    delta(&["C4"], 63.0, (3, 25.0, 25.0), 16.0, 16.0, "direct"),
+    delta(&["B4"], 63.0, (2, 16.0, 16.0), 16.0, 16.0, "direct"),
+    delta(&["C4"], 63.0, (3, 16.0, 16.0), 16.0, 16.0, "direct"),
     delta(&["B5"], 80.0, (2, 25.0, 25.0), 25.0, 16.0, "direct"),
     delta(&["C5"], 80.0, (3, 25.0, 25.0), 25.0, 16.0, "direct"),
     delta(&["B6", "C6"], 100.0, (3, 35.0, 54.6), 35.0, 16.0, "direct"),
     delta(&["B7", "C7"], 125.0, (3, 35.0, 54.6), 50.0, 25.0, "indirect"),
     delta(&["B8", "C8"], 160.0, (3, 50.0, 54.6), 70.0, 35.0, "indirect"),
-    delta(&["B9", "C9"], 200.0, (3, 95.0, 54.6), 95.0, 70.0, "indirect"),
+    delta(&["B9", "C9"], 200.0, (3, 95.0, 54.6), 95.0, 50.0, "indirect"),
     delta(&["B10", "C10"], 225.0, (3, 95.0, 54.6), 120.0, 70.0, "indirect"),
     delta(&["B11", "C11"], 275.0, (3, 150.0, 80.0), 150.0, 95.0, "indirect"),
     delta(&["B12", "C12"], 300.0, (3, 150.0, 80.0), 185.0, 95.0, "indirect"),
@@ -661,7 +674,7 @@ fn total(loads: &[Load]) -> (u32, f64) {
     (loads.iter().map(|l| l.count).sum(), loads.iter().map(|l| l.w * f64::from(l.count)).sum::<f64>() / 1000.0)
 }
 
-/// The demand of an installation (item 6.25.1 of the GED) and the load it installs.
+/// The demand of an installation (item 6.22.1 of the GED) and the load it installs.
 pub fn compute(i: &Input) -> Result<Output, String> {
     // a) lighting and outlets.
     let (lighting_outlets_w, a, kind) = if i.residential {
@@ -678,7 +691,7 @@ pub fn compute(i: &Input) -> Result<Output, String> {
         (w, w / 1000.0 * lighting_factor(w / 1000.0), "")
     } else {
         let o = i.other.as_ref().ok_or("a building that is not a dwelling declares its lighting and outlets: give `lighting_outlets`")?;
-        let d = commercial_demand(&o.kind, o.kw).ok_or_else(|| format!("no use `{}` in Tabela 18", o.kind))?;
+        let d = commercial_demand(&o.kind, o.kw).ok_or_else(|| format!("no use `{}` in Tabela 15", o.kind))?;
         (o.kw * 1000.0, d / o.pf, o.kind.as_str())
     };
     let mut t = Terms { a, ..Terms::default() };

@@ -2785,30 +2785,29 @@ other_files(
          count?}], air_use?: residential|commercial, motors?: [{cv, phases: 1|3 | kva and kw, count?}], special?: [{kind: arc_weld|\
          resistance_weld|xray, kw, count?}], hydromassage?: [{w, count?}]} the demand D (kVA) of an installation and the category of \
          service it asks of the `utility`, by that utility's own standard, since NBR 5410 gives no demand factors. `utility` is \
-         required: CPFL (GED 13 version 2.24, 18/09/2020: CPFL Paulista, Piratininga, Santa Cruz and RGE) or ENEL (ET 1569 version 01, \
-         29/01/2024) or CELESC (N-321.0001, revision of December 2025); any other is refused until its tables are added. \
+         required: CPFL (GED 13 version 46.0, 19/03/2026: CPFL Paulista, Piratininga, Santa Cruz and RGE) or ENEL (GRI-0017 version 02, \
+         06/03/2025) or CELESC (N-321.0001, revision of December 2025); any other is refused until its tables are added. \
          CELESC, too, leaves the demand to the designer: `{utility: CELESC, network?: 220/380|220/440, installed_kw, phases?: \
          1|2|3, demand_kva?}` gives the category of Tabela 01 by the installed load (A single-phase 220 V, M single-phase \
          220/440 V, B two-phase, C three-phase), its breaker, phases and wires, the connection and entry branches and the \
          earthing conductor; `phases` picks the supply an appliance asks for whatever the load. ENEL does not work out a \
          demand, for its specification leaves it \
-         to the designer (item 7.7.2): `{utility: ENEL, network: aerial|aerial_120_240|underground|underground_submersible, installed_kw, \
+         to the designer (Anexo A, note 11): `{utility: ENEL, network: aerial|aerial_120_240|underground|underground_submersible, installed_kw, \
          phases?: 1|2|3, demand_kva?}` frames the supply by the installed load in kW: Anexo A (aerial, 127/220 V), C (aerial, 120/240 V), \
-         D (underground, surface, 127/220 V) or E (underground, submersible): the category, the power it makes available (E prints none and \
-         gives the junction box), the breaker, the connection and entry branches, the earthing conductor and the measurement; where two \
-         categories hold the load (B2 and C1 of A) `candidates` names both and `phases` picks one. `network: aerial_delta` (Anexo B, 120/240 V \
+         D (underground, surface, 127/220 V) or E (underground, submersible): the category (E with its junction box), the breaker, the connection and entry branches, the earthing conductor and the measurement; where two \
+         categories hold the load (B1 and C1 of A, from 10 to 11 kW) `candidates` names both and `phases` picks one. `network: aerial_delta` (Anexo B, 120/240 V \
          delta with a neutral) goes by `demand_current_a`, the designer's demand current in A, and gives the smallest breaker that holds it. \
          `demand_kva` is carried as the designer gives it. For CPFL: `D = a + b + c + d + e + f + g + h + i`: a lighting and outlets (in a dwelling, `area` m² \
          gives the least outlets of Tabela 2, or `outlets` above 250 m² (100 W each, and the kitchen's 3 of 600 W), and `lighting_points` of \
          100 W; in another building `lighting_outlets` declares its `use` (auditorium, shop, barbershop, club, school, office, garage, hospital, \
-         hotel, church, industry, restaurant), kW and power factor, by Tabela 18), b `heaters` (showers, taps, instant heaters, irons: Tabela 4 \
+         hotel, church, industry, restaurant), kW and power factor, by Tabela 15), b `heaters` (showers, taps, instant heaters, irons: Tabela 4 \
          by their number in all), c `boilers` (Tabela 5), d `appliances` (dryers, ovens, dishwashers, microwaves: Tabela 6), e `stoves` \
          (Tabela 7), f `air_conditioners` (a `btu` of Tabela 8, or `va` and `w`; a factor of 1, or Tabela 9 for `air_use` commercial), g \
-         `motors` (a `cv` of Tabela 14 or 15 with its `phases`, or `kva` and `kw`; Tabela 10 by rank, the biggest first), h `special` \
+         `motors` (a `cv` of Tabela 13 or 14 with its `phases`, or `kva` and `kw`; Tabela 10 by rank, the biggest first), h `special` \
          equipment (Tabela 11, power factor 0.75), i `hydromassage` (Tabela 10). `w` is the power of one appliance in watts. It replies the \
-         installed load (kW), each term, D, and the `category` of Tabela 1A (`system` 127/220, the default) or 1B (220/380) with its breaker, \
-         cable, conduit and earthing conductor: by the installed load up to 25 kW, by D above, `null` where the table ends (75 kW; D of 76 \
-         or 82 kVA). Not covered: the other columns of Tabela 1, the cables of Tabelas 1D and 1E, and the starting of motors (Tabela 13) \
+         installed load (kW), each term, D, and the `category` of Tabelas 1A to 1C (`system` 127/220, the default, or 220/380) with its breaker, \
+         copper cable and its aluminium alternative, conduit and earthing conductor: by the installed load up to 25 kW, by D above, `null` where the table ends (75 kW; D of 76 \
+         or 82 kVA). Not covered: the poles, boxes and motor limits of Tabela 1, Tabela 1D, and the starting of motors (Tabela 12) \
          (`not_covered`). It has no shortcut: Revit has no tool for it. It changes nothing",
         demand,
     ),
@@ -6538,8 +6537,8 @@ fn vent_size(_: &mut Session, p: &Value) -> R {
     Ok(Value::Object(out))
 }
 
-/// `demand` for Enel: ET 1569 leaves the demand to the designer (item 7.7.2), so it frames the supply by the installed load, in its
-/// Anexo A (aerial) or D (underground), and carries the designer's demand if one is given.
+/// `demand` for Enel: GRI-0017 leaves the demand to the designer (Anexo A, note 11), so it frames the supply by the installed load,
+/// in its Anexos A, C, D and E (B by the demand current), and carries the designer's demand if one is given.
 fn demand_enel(p: &Value, utility: &str, source: &str) -> R {
     use crate::demand::{self as d, NETWORKS, Network};
     let c = "demand";
@@ -6562,8 +6561,8 @@ fn demand_enel(p: &Value, utility: &str, source: &str) -> R {
         None => None,
         Some(_) => Some(within(c, p, "demand_kva", 0.0, 0.0, 1.0e6)?),
     };
-    let note_demand = "ET 1569 (item 7.7.2) leaves the demand to the designer, who may use the methods the utilities recommend: it is carried as given, never worked out here";
-    let not_covered = "the conduits, the poles and the type of meter box of the annexes, Anexo A to E's other columns, and the limits of supply of Tabela 2 by motors, welding machines and X-ray sets";
+    let note_demand = "GRI-0017 leaves a three-phase supply's demand to the designer, up to 75 kW of installed load (Anexo A, note 11): it is carried as given, never worked out here";
+    let not_covered = "the conduits, the poles and the type of meter box of the annexes, the point of connection, Anexo A to E's other columns, Anexos F to H (Enel Ceará) and the limits of supply by motors, welding machines and X-ray sets";
     if name == "aerial_delta" {
         // Anexo B goes by the current the designer's demand draws, not by the installed load.
         if p.get("installed_kw").is_some_and(|v| !v.is_null()) {
@@ -6622,7 +6621,6 @@ fn demand_enel(p: &Value, utility: &str, source: &str) -> R {
             let conn = json!({"conductors_per_phase": r.connection.0, "phase": r.connection.1, "neutral": r.connection.2});
             let cat = json!({
                 "name": r.name,
-                "available_kw": if r.available_kw.is_nan() { Value::Null } else { json!(r.available_kw) },
                 "breaker_a": r.breaker,
                 "connection_mm2": conn,
                 "entry_mm2": {"phase": r.entry.0, "neutral": r.entry.1},
@@ -6635,13 +6633,13 @@ fn demand_enel(p: &Value, utility: &str, source: &str) -> R {
         None if kw > 75.0 && network != Network::Submersible => (
             Value::Null,
             json!([]),
-            json!("above 75 kW the unit is served at primary voltage (item 7.3.2), which this specification does not cover"),
+            json!("above 75 kW the unit is served at primary voltage (item 7.4), which this specification does not cover"),
         ),
         None => {
             let last = match network {
-                Network::Aerial => 63,
-                Network::Aerial120240 => 11,
-                Network::Underground => 72,
+                Network::Aerial => 75,
+                Network::Aerial120240 => 12,
+                Network::Underground => 75,
                 Network::Submersible => 100,
             };
             (
@@ -6914,7 +6912,7 @@ fn demand(_: &mut Session, p: &Value) -> R {
         } else {
             let (kva, kw) = (within(c, &v, "kva", f64::NAN, 0.0, 1.0e6)?, within(c, &v, "kw", f64::NAN, 0.0, 1.0e6)?);
             if kva.is_nan() || kw.is_nan() {
-                return Err(bad(c, "`motors`: give `cv` and `phases` (Tabela 14 or 15), or `kva` and `kw`"));
+                return Err(bad(c, "`motors`: give `cv` and `phases` (Tabela 13 or 14), or `kva` and `kw`"));
             }
             motors.push(Motor { kva, kw, count: n });
         }
@@ -6954,7 +6952,7 @@ fn demand(_: &mut Session, p: &Value) -> R {
     let cat = d::category(system, o.installed_kw, o.demand_kva);
     let (category, note) = match cat {
         Some(k) => (
-            json!({"name": k.name, "breaker_a": k.breaker, "cable_mm2": k.cable, "conduit_mm": k.conduit, "earthing_mm2": k.earth, "phases": k.phases}),
+            json!({"name": k.name, "breaker_a": k.breaker, "cable_mm2": k.cable, "aluminium_mm2": k.aluminium, "conduit_mm": k.conduit, "earthing_mm2": k.earth, "phases": k.phases}),
             Value::Null,
         ),
         None if o.installed_kw > 75.0 => {
@@ -6975,7 +6973,7 @@ fn demand(_: &mut Session, p: &Value) -> R {
         "category": category,
         "category_note": note,
         "system": if system == System::S127_220 { "127/220" } else { "220/380" },
-        "not_covered": "the other columns of Tabela 1 (poles, pontalete, ramal de ligação), the cables of Tabelas 1D and 1E, the starting of motors (Tabela 13) and the DPS and other requirements of the entry",
+        "not_covered": "the poles, boxes, earthing conduit and motor limits of Tabelas 1A to 1C, Tabela 1D (two clients on one pole), the starting of motors (Tabela 12) and the DPS and other requirements of the entry",
     }))
 }
 
