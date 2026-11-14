@@ -439,7 +439,7 @@ fn rooms_without_room_points_export_as_before_but_for_the_references() {
     assert!(placed.iter().all(|n| s.model.families[*n].room_calculation_point.is_none()), "{placed:?}");
     assert!(s.model.families.values().all(|f| f.omniclass.is_none()));
     let now = crate::ifc::export(&s.model);
-    let before = crate::ifc::export_with(&s.model, false);
+    let before = crate::ifc::export_with(&s.model, false, crate::ifc::Origin::Internal, crate::ifc::Schema::Ifc4);
     assert!(now.contains("=IFCRELREFERENCEDINSPATIALSTRUCTURE("), "the sample's furniture stands in its rooms");
     let less: String =
         data(&now).lines().filter(|l| !l.contains("=IFCRELREFERENCEDINSPATIALSTRUCTURE(")).map(|l| format!("{l}\n")).collect();
@@ -464,4 +464,24 @@ fn omniclass_shows_in_elements_and_classifies_the_type_in_ifc() {
     cabinet(&mut plain);
     run(&mut plain, "component", json!({"family": "Cabinet", "at": [0, 0]}));
     assert!(!crate::ifc::export(&plain.model).contains("IFCCLASSIFICATION"));
+}
+
+#[test]
+fn each_classification_system_goes_out_as_one_ifc_classification_whoever_writes_it() {
+    let mut s = Session::new();
+    cabinet(&mut s);
+    run(&mut s, "family", json!({"name": "Cabinet", "options": {"omniclass": {"number": "23.40.20.14", "title": "Casework"}}}));
+    let c = id_of(&run(&mut s, "component", json!({"family": "Cabinet", "at": [0, 0]})));
+    // Two parameters of one system, and one of OmniClass, which the family's number is in too.
+    for (name, system) in [("Uniclass Ss", "Uniclass 2015"), ("Uniclass Pr", "Uniclass 2015"), ("Table 23", "OmniClass")] {
+        run(&mut s, "parameter", json!({"name": name, "categories": ["component"], "classification": {"system": system}}));
+    }
+    run(&mut s, "modify", json!({"id": c, "params": {"Uniclass Ss": "Ss_25", "Uniclass Pr": "Pr_40", "Table 23": "23.40.20.17"}}));
+    let f = crate::ifc::export(&s.model);
+    let systems: Vec<&str> = f.lines().filter(|l| l.contains("=IFCCLASSIFICATION(")).collect();
+    assert_eq!(systems.len(), 2, "{systems:?}");
+    let omniclass = entity(&f, &["=IFCCLASSIFICATION(", "'OmniClass'"]);
+    for code in ["'23.40.20.14'", "'23.40.20.17'"] {
+        entity(&f, &["=IFCCLASSIFICATIONREFERENCE(", code, &format!("{omniclass},")]);
+    }
 }

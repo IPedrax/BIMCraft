@@ -114,7 +114,12 @@ fn a_model_brought_near_the_origin_keeps_where_it_lies_on_the_map() {
 fn the_georeference_command_says_sets_and_clears_it_and_refuses_what_it_cannot_be() {
     let mut s = Session::new();
     assert_eq!(run(&mut s, "georeference", json!({})), json!({"georeference": null}));
-    assert!(s.execute("georeference", &json!({"eastings": 5})).unwrap_err().contains("crs"));
+    // Any field makes one: a site needs no coordinate reference system.
+    assert_eq!(
+        run(&mut s, "georeference", json!({"eastings": 5}))["georeference"],
+        json!({"eastings": 5.0, "northings": 0.0, "height": 0.0, "rotation": 0.0, "scale": 1.0})
+    );
+    run(&mut s, "georeference", json!({"clear": true}));
     let set = run(&mut s, "georeference", json!({"crs": "EPSG:31983", "eastings": 333780500, "northings": 7394820250.0, "rotation": 30}));
     assert_eq!(set["georeference"]["crs"], "EPSG:31983");
     assert_eq!(set["georeference"]["scale"], 1.0);
@@ -129,7 +134,6 @@ fn the_georeference_command_says_sets_and_clears_it_and_refuses_what_it_cannot_b
         json!({"scale": -1}),
         json!({"eastings": 1e300}),
         json!({"rotation": "north"}),
-        json!({"crs": ""}),
         json!({"crs": "x".repeat(crate::model::MAX_TEXT + 1)}),
         json!({"datum": "SIRGAS2000"}),
     ] {

@@ -56,7 +56,7 @@ mod tests {
         for operation in ["sectional", "roller"] {
             let (mut s, door) = gate(operation);
             let level = s.model.levels()[0].0;
-            let view = View { scale: 0.08, cx: 6000.0, cy: 0.0, width: 1100, height: 650 };
+            let view = View { angle: 0.0, scale: 0.08, cx: 6000.0, cy: 0.0, width: 1100, height: 650 };
             for (hand, facing) in [(false, false), (true, false), (false, true), (true, true)] {
                 s.execute("modify", &json!({"id":door,"flip_hand":hand,"flip_facing":facing})).unwrap();
                 let drawing = render::draw(&s.model, level, view);

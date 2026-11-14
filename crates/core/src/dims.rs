@@ -280,20 +280,24 @@ impl DimensionType {
 
     /// A length as it shows one, in `project` units unless it has its own.
     pub fn length(&self, project: Units, mm: f64) -> String {
-        let units = self.units.unwrap_or(project);
-        let Some(places) = self.decimals else { return units.length(mm) };
-        let (per, mark) = match units {
-            Units::Millimetres => (1.0, ""),
-            Units::Centimetres => (10.0, ""),
-            Units::Metres => (1000.0, ""),
-            Units::Feet => (304.8, "'"),
-            // Inches and feet and inches round to sixteenths.
-            Units::Inches | Units::FeetInches => return units.length(mm),
-        };
-        let x = mm / per;
-        let k = 10f64.powi(i32::from(places));
-        format!("{:.*}{mark}", usize::from(places), (x * k).round() / k + 0.0)
+        rounded(self.units.unwrap_or(project), self.decimals, mm)
     }
+}
+
+/// A length in `units`, to `decimals` places after the point in mm, cm, m or decimal feet; else as the units show it.
+pub fn rounded(units: Units, decimals: Option<u8>, mm: f64) -> String {
+    let Some(places) = decimals else { return units.length(mm) };
+    let (per, mark) = match units {
+        Units::Millimetres => (1.0, ""),
+        Units::Centimetres => (10.0, ""),
+        Units::Metres => (1000.0, ""),
+        Units::Feet => (304.8, "'"),
+        // Inches and feet and inches round to sixteenths.
+        Units::Inches | Units::FeetInches => return units.length(mm),
+    };
+    let x = mm / per;
+    let k = 10f64.powi(i32::from(places));
+    format!("{:.*}{mark}", usize::from(places), (x * k).round() / k + 0.0)
 }
 
 /// An error unless `t`, a dimension's or a type's `what`, is up to [`MAX_DIM_TEXT`] characters on one line.

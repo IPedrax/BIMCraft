@@ -19,7 +19,7 @@ fn id_of(v: Value) -> Id {
 
 /// A plan of Level 1 round the opening at (3000, 0): 0.5 px a mm, 3 m square.
 fn view() -> View {
-    View { scale: 0.5, cx: 3000.0, cy: 0.0, width: 1500, height: 1500 }
+    View { angle: 0.0, scale: 0.5, cx: 3000.0, cy: 0.0, width: 1500, height: 1500 }
 }
 
 fn picture(s: &Session) -> tiny_skia::Pixmap {

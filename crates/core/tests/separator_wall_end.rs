@@ -167,8 +167,11 @@ mod tests {
         let mut s = fixture([4200.0, 3200.0], false, false, true);
         let got = rooms(&mut s);
         let colours = [[235, 130, 120], [120, 170, 235]];
-        for (room, colour) in got.iter().zip(colours) {
-            run(&mut s, "modify", json!({"id": room["id"], "colour": colour}));
+        // A room's colour on plans is its type's: one type of each colour.
+        for (i, (room, colour)) in got.iter().zip(colours).enumerate() {
+            let name = format!("Coloured {i}");
+            run(&mut s, "type", json!({"category": "room", "name": name, "colour": colour}));
+            run(&mut s, "modify", json!({"id": room["id"], "type": name}));
         }
         let dir = tempfile::tempdir().unwrap();
         let png = dir.path().join("rooms.png");

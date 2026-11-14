@@ -21,18 +21,18 @@ use crate::language::Language;
 use crate::library::Kind as LibKind;
 use crate::lines::{DetailLine, LineStyle};
 use crate::massing;
+use crate::memory;
 use crate::model::{
     CEILING_HEIGHT, CadImport, Ceiling, CeilingType, Column, ColumnType, Component, DEFAULT_HEIGHT, DimKind, Dimension, Dimension3D,
     Element, End, Extrusion, Face, Facing, Floor, FloorType, Grid, Guid, HostRef, Hosted, Id, Key, Landing, Layer, Level, Line, Location,
     MAX_COORD, MAX_POINTS, MAX_SLOPE, MAX_TEXT, Mass, Model, Note, Opening, OpeningType, Orient, PARAMETER_CATEGORIES, ParameterKind,
     Pattern, Perspective, PlanView, PointCloud, ProjectParameter, PropertyLine, RAMP_SLOPE, RAMP_WIDTH, RISER, Railing, RailingType, Ramp,
-    Rebar, Ref3, Reference, Roof, RoofType, Room, RoomArea, RoomSeparator, STAIR_WIDTH, Schedule, Section, SectionBox, Shaft, Sheet, Side,
-    Spot, Stair, TOL, TREAD, Tag, Unbound, View3D, Viewport, Wall, WallType, heading, paper,
+    Rebar, Ref3, Reference, Roof, RoofType, Room, RoomArea, RoomSeparator, STAIR_WIDTH, Schedule, Scope, Section, SectionBox, Shaft, Sheet,
+    Side, Spot, Stair, TOL, TREAD, Tag, Unbound, View3D, Viewport, Wall, WallType, heading, paper,
 };
 use crate::paint;
 use crate::phasing;
 use crate::rebar;
-use crate::render::Drawing;
 use crate::sketch::{self, SketchLine};
 use crate::texture::{self, Kind, Picture, Texture};
 use crate::units::Units;
@@ -109,7 +109,8 @@ pub static ALL: &[Command] = &[
 other_files(
         "open",
         "Open",
-        "{path} a .bimc project (a .bimt file too, and the .bimcraft of earlier versions; under 256 MiB), or an .ifc (under 512 MiB) read into a new one (its `elements` by \
+        "{path} a .bimc project (a .bimt file too, and the .bimcraft of earlier versions), or an .ifc read into a new one, as large as the memory the \
+         machine has free allows (8 times a project's size, 14 times an IFC's; without the apps' meter, under 256 and 512 MiB) (its `elements` by \
          category, `generic` the components of IFC classes BIMCraft has no element for, `skipped` what was left out and why)",
         open,
         Files::Read,
@@ -145,7 +146,7 @@ other_files(
         "insert",
         "Insert from File",
         &[],
-        "{path, ids?: [id, …]} elements of another project (.bimc, .bimcraft or .ifc) brought into this one: those `ids` names \
+        "{path, ids?: [id, …], same_parameters?: [name, …]} elements of another project (.bimc, .bimcraft or .ifc) brought into this one: those `ids` names \
          (their ids there), else all of them, and what they point at that this project hasn't (a level they stand on is \
          this project's of the same name, where it has one). Each keeps its id unless this project has that id, and its GUID \
          unless this project has that GUID: then it's a copy, with a GUID of its own (the same file inserted into itself is \
@@ -160,12 +161,16 @@ other_files(
         "link",
         "Link Model",
         &["LK"],
-        "{path, name?, at?: [x, y], angle?: degrees} another project (.bimc, .bimcraft or .ifc) shown in this one as a reference that \
+        "{path, name?, at?: [x, y], angle?: degrees, by?: manual|base|shared, location?} another project (.bimc, .bimcraft or .ifc) \
+         shown in this one as a reference that \
          can't be edited, as Revit's Link Revit: its walls, floors, roofs, columns, stairs and the rest of what it builds are \
          drawn in the plans, sections and 3D views, halftone, and snapped to; nothing of it is selected, scheduled, checked or \
          exported. It stands with its origin at `at` (default [0, 0]) turned `angle` about it; its levels stand at their own \
          elevations, on this project's levels at the same height. `path` is read now and again by `reload`, and kept as given: \
-         a relative one is relative to this project's file. `name` defaults to the file's. Returns `id`, `name`, `elements`",
+         a relative one is relative to this project's file. `name` defaults to the file's. `by: base` puts its Project Base Point \
+         on this project's (turned `angle` about it, and raised to it); `by: shared` stands it where its shared coordinates say \
+         (its active location, or `location`), by this project's active location: worked out each time it is drawn, never \
+         written into its file. Returns `id`, `name`, `elements`, and where it stands: `at`, `angle`, `raised`",
         link_model,
         Files::Read,
     )
@@ -181,11 +186,54 @@ other_files(
     other_files(
         "save",
         "Save",
-        "{path?} .bimc saves the project (Save As with a path), as does .bimt (a template); .ifc exports IFC4; .glb exports the default 3D view's scene as \
+        "{path?, ifc_origin?} .bimc saves the project (Save As with a path), as does .bimt (a template); .ifc exports IFC4, its \
+         coordinates' origin at `ifc_origin`: internal (the default), base (the Project Base Point), survey (the Survey Point) or \
+         shared (the map's coordinates themselves), with the active location's IfcMapConversion and IfcProjectedCRS, true north, \
+         and the site's latitude and longitude where the project has a CRS; .glb exports the default 3D view's scene as \
          glTF 2.0 (metres, y up, a node for each element named by its id, GUID and category in `extras`; returns `elements` and \
          `triangles`); .svg or .png exports the lowest level's plan; .pdf prints every sheet, a page each",
         save,
         Files::Write,
+    ),
+    other_files(
+        "export",
+        "Export",
+        "{format, view?, views?, print_set?, path?, folder?, name?, folders?: flat|by_format, combine?, overwrite?: false, page?, quality?, \
+         ifc_origin?, selected?, pdf?} \
+         writes views, sheets, schedules or the project out as `format` (an id or an extension from `export_formats`: pdf, svg, \
+         png, ifc4, glb, csv, xlsx…). `view` (or a list, `views`) is an element's id or GUID, a view's name or a sheet's number; \
+         none or `project` is the whole project (model formats only); `print_set` names a set's views and sheets (`print_set`). `path` writes one file there (several views to a PDF go \
+         in it as pages); or `folder` takes a file each, named by the `name` template (`{SheetNumber} - {SheetName}`, `{ViewName}`, \
+         `{ProjectName}`, `{ViewType}`, `{Level}`, `{Scale}`, `{Format}`, `{Date}`, `{Time}`; `/` makes folders), numbered rather \
+         than written over unless `overwrite`; `combine` names the one file each format that holds pages puts them all in. \
+         `page`: {paper?: A3|ARCH D|Letter…, size?: [w,h] mm, orientation?: auto|landscape|portrait, margin?: mm, scale?: \
+         original|fit|{custom: n}, anchor?: centre|top_left…, colour?: colour|grey|black, hairlines?, dpi?: 150, region?: [x1, y1, \
+         x2, y2] (only what lies inside: a plan's model mm, a sheet's paper mm; every drawing format), pages?: [first, \
+         last] or \"1, 3, 5-7\"}. `pdf`: {archive?: none|a1b|a2b|a2u|a3b|a4 (PDF/A, checked as it is written: a file that wouldn't be one \
+         isn't written), version?: \"1.4\" to \"2.0\" (1.7), raster? (each page a picture at `page.dpi`), cut_marks? (the pages \
+         of a tiled drawing get hairlines in the margin where they meet), title?, author?, subject?, keywords?: [..]}. \
+         `ifc_origin` is IFC's, as `save` takes it; `selected` (ids or GUIDs) the elements a BCF topic is about. Returns `written` ({path, format, of}) and `failed` ({of, format, \
+         error})",
+        export,
+        Files::Write,
+    ),
+    other_files(
+        "publish",
+        "Publish",
+        "{name, folder?} writes publishing set `name` (`publish_set`) out: each of its folders' print sets as its format, \
+         under the set's own folder (beside the project's file unless absolute) or under `folder` when given. Returns what \
+         `export` returns: `written` (each file's path, format and what it is of), `failed` (what wasn't written and why; \
+         the rest go on) and `cancelled`",
+        publish,
+        Files::Write,
+    ),
+    other(
+        "export_formats",
+        "Export Formats",
+        "{} the formats `export` writes: each one's `id`, `label`, `extension`, `family`, `status` (stable, experimental or \
+         planned: listed, not written yet), what it `takes` (drawing, table, model), whether it `combines` sources in one \
+         file and lays drawings on pages (`paged`); and the `tokens` a file name template may hold",
+        export_formats,
     ),
     other(
         "undo",
@@ -204,9 +252,10 @@ other_files(
         "level",
         ui_msg!("Level"),
         &["LL"],
-        "{elevation, name?, extent?: [[x,y],[x,y]]} a level at an elevation in mm; `extent`, the rectangle in plan its \
-         plane stretches over (south-west corner, then north-east), where sections, elevations and the 3D view show it \
-         (without one, the model's, a metre past it)",
+        "{elevation, name?, extent?: [[x,y],[x,y]], elevation_base?: base|survey} a level at an elevation in mm (internal); \
+         `extent`, the rectangle in plan its plane stretches over (south-west corner, then north-east), where sections, \
+         elevations and the 3D view show it (without one, the model's, a metre past it); `elevation_base`, what its head shows \
+         its elevation from: the Project Base Point (the default) or the Survey Point, the shared coordinates",
         level,
     )
     .menu("Architecture > Level"),
@@ -240,11 +289,12 @@ other_files(
         "point_cloud",
         "Point Cloud",
         &[],
-        "{path | cloud, name?, level?, at?: [x, y], offset?, angle?, units?, spacing?, origin?} brings in a laser scan (`path`: \
+        "{path | cloud, name?, level?, at?: [x, y], offset?, angle?, units?, spacing?, origin?, acquire?} brings in a laser scan (`path`: \
          PTS, XYZ, PLY, LAS or E57 (each of its scans placed by its pose), or a list of the files of one scan's stations, brought in as one; `units` of its coordinates mm, \
          cm, m (the default), in or ft; one point kept in each cube `spacing` mm wide) or places one the project holds again \
          (`cloud`, its name), as an element: its middle on `at` (the origin) and its foot on the level, or with `origin: file` \
-         where its file's coordinates put it; `offset` raises its middle over the level, `angle` turns it. Returns its id, the \
+         where its file's coordinates put it, or with `origin: shared` where they put it as the map's, by the active location \
+         (`acquire: true` first sets the location from the scan, so its middle lands at the origin and its foot on 0); `offset` raises its middle over the level, `angle` turns it. Returns its id, the \
          scan's name, the points kept and read, and where its middle was in the file",
         point_cloud,
         Files::Read,
@@ -268,11 +318,13 @@ other_files(
         "import_cad",
         "Import CAD",
         &[],
-        "{path | cad, name?, level?, view?, at?: [x, y], position?, units?, scale?, angle?, layers?, colors?, link?} brings in a \
+        "{path | cad, name?, level?, view?, at?: [x, y], position?, acquire?, units?, scale?, angle?, layers?, colors?, link?} brings in a \
          DXF drawing (`path`: an ASCII DXF of any version, or a DWG, which the desktop and the command line read as DXF) or places one the project holds again (`cad`, \
          its name), as an element in every plan of `level`, or with `view` (a plan) in that view only. `units` of the drawing: \
          auto (the default: what its file says, else mm), mm, cm, m, in or ft; or `scale`, mm to each of its units. `position`: \
-         center (the default: the middle of the drawing on `at`, the origin unless given) or origin (its origin on `at`); \
+         center (the default: the middle of the drawing on `at`, the origin unless given), origin (its origin on `at`) or \
+         shared (where its coordinates, the map's, put it by the active location, turned and scaled to match; `acquire: true` \
+         first sets the location from the drawing, so its middle lands at the origin); \
          `angle` turns it about `at`, degrees. `layers`: visible (the default: those its file has on and thawed), all, or a list \
          of those to show. `colors`: preserve (the default), invert or black. `link: true` remembers the file, so `reload_cad` \
          and opening the project read it again. Returns its id, the drawing's name, its unit, entities and layers, its extents \
@@ -403,6 +455,19 @@ other_files(
         edit_boundary,
     ),
     edit(
+        "room_finish",
+        "Room Finish",
+        &[],
+        "{id, part?: floor|ceiling, action: disconnect|regenerate} a room's own floor or ceiling, the one its type makes for it \
+         (`type {category: room, floor, ceiling}`) and keeps along its boundary at the walls' faces. `id` is the room (then \
+         `part` says which) or the floor or the ceiling itself. `disconnect` lets it go: it stays as it is, an ordinary floor \
+         or ceiling that can be edited freely, and nothing connects it again. `regenerate` makes a new one for a room whose \
+         own was disconnected or deleted. While connected, its outline, level, type and offset are the room's: `edit_boundary` \
+         and `modify` of those are refused, and moved, it is put back. `elements` gives a room's `floor` and `ceiling` \
+         ({connected: guid}, or disconnected) and a connected floor's or ceiling's `room`",
+        room_finish,
+    ),
+    edit(
         "edit_shape",
         "Modify Sub Elements",
         &[],
@@ -531,7 +596,7 @@ other_files(
         "room",
         ui_msg!("Room"),
         &["RM"],
-        "{point: [x,y], level?, name?, number?, top_level?, limit_offset?, base_offset?, frozen?} bounded by the walls and the \
+        "{point: [x,y], level?, type?, name?, number?, top_level?, limit_offset?, base_offset?, frozen?} bounded by the walls and the \
          room separation lines around the point (walls the level's `computation_height` cuts; separation lines whatever their \
          height). Placed where nothing encloses it, or in a space another room has (two rooms can't share one; the first \
          keeps it), it is placed unbounded, a 1000 mm square, and the reply has a `warning`. Its height is Revit's: from \
@@ -643,6 +708,33 @@ other_files(
         panel_schedule,
     ),
     edit(
+        "print_set",
+        "View/Sheet Set",
+        &[],
+        "{name?, views?: [id, GUID, view name or sheet number, …], add?: [...], remove?: [...], rename?, delete?: true} a print set, as Revit's View/Sheet \
+         Set: a named list of views and sheets (plans, sections, elevations, 3D views, schedules and sheets, any mix) printed or \
+         exported together, in the order given. `views` gives the whole list (a new set needs it, empty or not), `add` and \
+         `remove` change it. A view deleted leaves every set. Without `name`, lists the sets, each its views' ids and titles",
+        print_set,
+    ),
+    edit(
+        "publish_set",
+        "Publisher",
+        &[],
+        "{name?, folder?, folders?: [{name, entries: [{print_set, format, name?, combine?, options?}]}], overwrite?: true, timings?, rename?, \
+         duplicate?, delete?: true} a publishing set, the Publisher's preset: folders that hold print sets (`print_set`), each \
+         written as a `format` (an id or an extension from `export_formats`). A print set may be in a folder once for each \
+         format. `folder` is where the set is written: beside the project's file unless absolute. A folder's `name` is under \
+         it (a `/` nests, none is the destination itself). An entry's `name` is its files' template (the tokens `export` \
+         takes, and `{PrintSet}`, `{PublishSet}`, Project Information's fields as `{Project Number}`, `{Client Name}`…, and \
+         any project parameter by its name); `combine` names the one file all of the set's views go in (PDF); `options`: \
+         {page?, pdf?, quality?, ifc_origin?} as `export` takes them. `folders` gives them all (a new set may have none); \
+         `duplicate` makes a copy of `name` called that. A print set deleted leaves every folder. Without `name`, lists the \
+         sets. `timings` records completed entry exports, each with folder, print_set, format and time \
+         {started_ms, ended_ms, duration_ms}. `publish` writes one",
+        publish_set,
+    ),
+    edit(
         "voltage",
         "Voltage Definitions",
         &[],
@@ -683,6 +775,70 @@ other_files(
          by id or GUID: boards make a tree, and a supply loop is refused. What isn't given stays; \"\" takes one away. Without `id`, \
          lists the boards with what each feeds. A board's `12 circuits`, `24 circuits` and `36 circuits` are its size, not its slots",
         panel,
+    ),
+    edit(
+        "coordinates",
+        "Coordinates",
+        &[],
+        "{base?: [x,y,z], survey?: [x,y,z], move?: point|system, acquire?: link or CAD id, reset?: true} the project's \
+         coordinates. `reset` puts the active location back on the internal origin (shared coordinates the file's own) and both \
+         points on it, and pins every link placed by base points or shared coordinates by hand where it stands, so none moves. `acquire` takes \
+         the shared coordinates of a link (its id; a BIMCraft project or an IFC file) or of a CAD drawing placed in the \
+         project (its coordinates taken for the map's) where it stands now, as Revit's Acquire Coordinates: this project's active \
+         location is solved so that the link's origin has the link's map coordinates here and its true north agrees. Without parameters, reports them: the \
+         internal origin, the Project Base Point and the Survey Point, each `internal` (the file's own mm, where geometry is) and \
+         `shared` (the active location's map coordinates, mm), the `active` location and every location. `base` moves the Project \
+         Base Point, the reference elevations and spot coordinates measure from; it moves no geometry. `survey` moves the Survey \
+         Point: `move: point` (the default) moves it alone, so the building stays where it is in the world and the point's shared \
+         coordinates change; `move: system` carries the shared system with it, so it keeps its shared coordinates and the building \
+         moves in the world",
+        coordinates,
+    ),
+    edit(
+        "location",
+        "Location",
+        &[],
+        "{name?, east?, north?, elevation?, latitude?, longitude?, angle?, scale?, crs?, rename?, activate?: true, delete?: true, \
+         shift?: [de, dn, dz]} a named site of the project (Revit's), one position of the building in the shared coordinates: \
+         the Survey Point's shared `east`, `north` and `elevation` (mm), or its `latitude` and `longitude` through the site's map \
+         system, the `angle` from project north to true north (degrees, east positive) and the `scale` from ground to grid (1 \
+         unless a map projection's; heights are not scaled), and its map system (`crs`, as `georeference` takes it). The active \
+         site is the georeference; the others are kept beside it, each where it would put the project. A new one starts as a \
+         copy of the active one. `activate` makes it the active one, the georeference. `shift` adds to its east, north and \
+         elevation, or to every site's when no `name` is given (the survey says the site is 5 m higher: shift [0, 0, 5000]). The \
+         active site can't be deleted. Without `name` or `shift`, lists them",
+        location,
+    ),
+    edit(
+        "specify_coordinates",
+        "Specify Coordinates at a Point",
+        &["CP"],
+        "{at: [x,y,z] | [x,y], on?, level?, east, north, elevation, angle?} sets the active site so that internal point `at` \
+         has the shared coordinates given (mm), turned to `angle` (degrees from project north to true north, east positive) when \
+         given. A point picked in plan, `at: [x, y]`, takes its height from `on`, the element picked: a wall's bottom, a floor's, \
+         roof's or ceiling's top there; else from `level` (the lowest by default): the top of what stands on it there, else the \
+         level",
+        specify_coordinates,
+    ),
+    edit(
+        "rotate_project_north",
+        "Rotate Project North",
+        &["TN"],
+        "{angle?: degrees, true_north?: true, about?: [x, y]} turns the whole model `angle` degrees counter-clockwise about \
+         `about` (default the Project Base Point), as Revit's Rotate Project North: every element that has a place in plan, \
+         the Project Base Point and the Survey Point, and links placed by hand or by base points; and turns every location's \
+         angle back by as much, so nothing moves in the world, only the project's axes. `true_north: true` turns it by the \
+         active location's angle, so project north is true north. Returns the `angle` turned and the elements `rotated`",
+        rotate_project_north,
+    ),
+    other(
+        "convert_coordinates",
+        "Convert Coordinates",
+        "{points: [[x,y,z], …], from: internal|base|shared|wgs84, to: internal|base|shared|wgs84, location?} each point from one \
+         frame to another, mm: `internal`, the file's own, where geometry is; `base`, from the Project Base Point; `shared`, the \
+         map coordinates of the active site (or of the site `location` names); `wgs84`, [longitude, latitude, elevation mm], \
+         through the site's map system (its `crs`, a projected EPSG code). Returns points",
+        convert_coordinates,
     ),
     edit(
         "column",
@@ -998,10 +1154,45 @@ other_files(
         "spot",
         ui_msg!("Spot Elevation"),
         &["EL"],
-        "{at: [x, y], view?, host?} a spot elevation: in a level's plan (the lowest by default), the height of the top of \
-         what stands on the level at `at` (or of `host`), following it; in a section or an elevation, of its point `at`, \
-         along and up",
+        "{at: [x, y], view?, host?, origin?: base|survey} a spot elevation: in a level's plan (the lowest by default), the \
+         height of the top of what stands on the level at `at` (or of `host`), following it; in a section or an elevation, \
+         of its point `at`, along and up. It reads from `origin`: the Project Base Point (the default) or the Survey Point, \
+         the shared elevation",
         spot,
+    ),
+    edit(
+        "spot_coordinate",
+        ui_msg!("Spot Coordinate"),
+        &["PC"],
+        "{at: [x, y], view?, type?, origin?: base|survey|internal, host?, end?: [x, y], leader?, shoulder?} a spot \
+         coordinate in a level's plan (the lowest by default): the north and east of `at`, and its elevation, as its type \
+         (`spot_coordinate_type`) says. Without `type`, the project's type that reads from `origin`: the Survey Point (the \
+         shared coordinates of the active location, in metres) by default; `base`, the Project Base Point; `internal`. Its elevation is of the top of `host` (else of \
+         what stands at `at`, else of the level). Its leader runs from `at` to `end` (else up and to the right, 8 mm on \
+         paper), its text on a shoulder there; `leader: false` puts the text beside the point, `shoulder: false` leaves the \
+         shoulder out. `modify` changes `type`, `end`, `leader` and `shoulder`. The reply gives `north`, `east` (mm) and \
+         `text`, its lines",
+        spot_coordinate,
+    ),
+    edit(
+        "spot_coordinate_type",
+        "Spot Coordinate Types",
+        &[],
+        "{name?, like?, rename?, delete?: true, …values} a spot coordinate type of the project's, as Revit's type \
+         parameters, lengths mm on paper. Constraints: `rotate_with_component` (its text turns with the component it reads). \
+         Graphics: `leader_arrowhead` filled|empty|dot|empty_dot|none, `arrowhead_size` (2.5), `leader_pen` and \
+         `arrowhead_pen` (0 to 16; 1), `leader_color` (\"#rrggbb\" or [r, g, b]), `symbol` none|cross|target, \
+         `symbol_size` (3). Text: `font` (Arial), `text_size` (2.5), `bold`, `italic`, `underline`, `width_factor` (1), \
+         `text_color`, `text_offset_leader` (1), `text_offset_symbol` (1), `text_location` above_leader|below_leader, \
+         `background` opaque|transparent, `origin` base|survey|internal (Coordinate Origin), `top` and `bottom` \
+         north_south|east_west|none (Top Value, Bottom Value), `north_south_indicator` (\"N \"), `east_west_indicator` \
+         (\"E \"), `include_elevation`, `elevation_indicator` (\"EL \"), `indicator` prefix|suffix, `units` (mm, cm, m, in, \
+         ft, ft-in; null for the project's) and `decimals` (0 to 6), `alternate` none|right|below with \
+         `alternate_units`, `alternate_decimals`, `alternate_prefix` and `alternate_suffix`. A new one starts as `like` \
+         says, else as the default. A project starts with `Spot Coordinate - Project Base Point` and `Spot Coordinate - \
+         Survey Point`. `rename` renames it, its spot coordinates following; `delete` takes it away while none is of it. \
+         Without `name`, it lists every type",
+        spot_coordinate_type,
     ),
     edit(
         "spot_slope",
@@ -1082,10 +1273,12 @@ other_files(
     ),
     edit(
         "title_values",
-        "Project Information",
+        "Title Block Values",
         &[],
         "{values?: {KEY: text or null}} the project's values of its title blocks' project fields (and of an automatic field, \
-         DATE say, to give every sheet that instead): a key's null clears it. Without `values`, what they are",
+         DATE say, to give every sheet that instead): a key's null clears it. A key of the project's information (CLIENT, \
+         PROJECT_NUMBER, PROJECT_ADDRESS, PROJECT_STATUS, ISSUE_DATE, AUTHOR, ORGANIZATION, ORGANIZATION_DESCRIPTION, BUILDING) \
+         sets that field of it, as `project_info` does. Without `values`, what they are, the information's among them",
         title_values,
     ),
     edit(
@@ -1164,9 +1357,16 @@ other_files(
         "type",
         "Edit Type",
         &[],
-        "{category: wall|floor|ceiling|door|window|column|structuralcolumn|footing|roof|railing|beam|stripfooting|pipe|duct|conduit|\
+        "{category: wall|floor|ceiling|door|window|column|structuralcolumn|footing|roof|railing|room|beam|stripfooting|pipe|duct|conduit|\
          cabletray|wire|downconductor|groundconductor|cable, name, thickness? | width?, height?, sill?, operation? | width?, depth?, round?, \
-         material?, profile?, shape?, web?, flange?, radius? | height?, spacing?} creates the type, or changes it everywhere it's used. A column's, a structural column's or \
+         material?, profile?, shape?, web?, flange?, radius? | height?, spacing? | floor?, floor_offset?, ceiling?, ceiling_offset?, colour?} creates the type, or changes it everywhere it's used. \
+         A room type may name a `floor` type and a `ceiling` type (null, none; a new project's Standard has neither): each of its \
+         rooms then has a floor (its top `floor_offset` mm over the room's level, 0) and a ceiling (its underside \
+         `ceiling_offset` mm over it, 2600) of its own, made when the room is bounded and kept along its boundary at the walls' \
+         faces after every command, wherever the project measures rooms (`room_area`); a room not enclosed keeps the ones it has \
+         as they are until it is enclosed again, and a frozen room's stay as it was frozen. At the centre lines that is a second \
+         boundary found for each level a command changes. See `room_finish`. A room type's `colour` ([red, green, blue], or null \
+         for none) fills its rooms on plans and styles their spaces in IFC. A column's, a structural column's or \
          a footing's type is a `width` by `depth`, or `round` (`width` across); a run's (a beam's, a pipe's, a cable tray's…) too, \
          made of a `material` of the library. Steel beam/structural-column types accept `profile` (IPE 80-600, HEA/HEB 100-600, \
          e.g. IPE 300) or `shape` I/H, U, L, T, RHS/SHS or CHS plus `width`, `depth` and plates. I/U/T take `web`, `flange`, \
@@ -1259,17 +1459,140 @@ other_files(
         "parameter",
         "Project Parameters",
         &[],
-        "{name, kind?: text|number|length|yesno, categories?: [wall|floor|ceiling|roof|door|window|room|column|component|stair|\
-         ramp|railing|mass, …], sets?: {category: property set name|null}, classification?: {system, edition?}|null, rename?, \
-         delete?: true} a project parameter, as Revit's Manage > Project Parameters makes one: a value \
-         of its kind each element of its categories may have of its own, set with `modify {id, params: {name: value}}` (lengths \
-         in mm, yes or no as true or false). Off a category, that category's elements lose their values of it; deleted, every \
-         element does; renamed, they follow it. `sets` names the IFC property set a category's values go in (an import keeps \
-         the one they came in; none: `Project Parameters`); `classification` makes a text parameter a classification \
-         system's codes, which IFC holds as classification references. `inspect` lists them",
+        "{name, kind?: text|number|integer|length|area|volume|angle|yesno, categories?: [wall|floor|ceiling|roof|door|window|room|\
+         column|component|stair|ramp|railing|mass, …], sets?: {category: property set name|null}, classification?: {system, \
+         edition?}|null, rename?, delete?: true, description?, group?, read_only?: bool, scope?: instance|type, dictionary?: null} \
+         a project parameter, as Revit's Manage > Project Parameters makes one: a value of its kind each element of its \
+         categories may have of its own, set with `modify {id, params: {name: value}}`, or, `scope` type, each of their types, \
+         set with `type_parameter`. Rooms, stairs, ramps and masses have no types. Made a type parameter, its elements' values \
+         are wiped (answers `wiped`); made an instance parameter, each type's value is copied to its elements (`copied`). \
+         (Lengths in mm, areas in m², volumes in m³, angles in degrees, yes or no as true or false.) Off a category, that \
+         category's elements lose their values of it; deleted, every element does; renamed, they follow it, as schedules, their \
+         formulas, filters and tags do. `sets` names the IFC property set a category's values go in (an import keeps the one \
+         they came in; none: `Project Parameters`); `classification` makes a text parameter a classification system's codes, \
+         which IFC holds as classification references. `group` (one of Revit's, or a name of the project's own) and \
+         `read_only` are how Properties shows it. `dictionary` null makes one from a dictionary a project parameter again. \
+         `parameter_list` lists them",
         parameter,
     )
     .menu("Manage > Project Parameters"),
+    other(
+        "parameter_list",
+        "Parameter List",
+        "{} every project parameter with its id, GUID, whether it is shared (from a dictionary), its settings and what uses it \
+         (values, schedules, view filters, tags, calculated fields); the dictionaries in use and the category mapping kept",
+        crate::parameters::list,
+    ),
+    edit(
+        "parameter_batch",
+        "Parameter Batch",
+        &[],
+        "{ops: [{op?: set, …`parameter`'s params} | {op: delete, name} | {op: duplicate, name, as?} | {op: rename, names: [..], \
+         prefix?, suffix?, find?, replace?}], dry_run?: true} several changes to project parameters, all or none and one undo step. \
+         A duplicate is a parameter of its own, with its own GUID; its values don't come with it. `dry_run` says what would be done \
+         and changes nothing",
+        crate::parameters::batch,
+    ),
+    edit(
+        "parameter_import",
+        "Import Parameters",
+        &[],
+        "{path, dry_run?: true, map?: {their category: ours | null}, categories?: [..], resolve?: {name: same|separate|skip}, \
+         scopes?: {name: instance|type}, names?: [..], replace_categories?: true, skip_conflicts?: true} parameter definitions from a .xlsx \
+         or .csv table (columns GUID, Name, Kind, Categories, Group, Description, Instance/Type, User Modifiable), a .bimparams dictionary or a Revit \
+         shared parameter .txt. Answers each row's status: `create`, `modify`, `existing`, `conflict` or `skip`, with notes; `dry_run` \
+         stops there. A row is matched by GUID first, so it follows a rename; one of a name taken by another GUID is a conflict until \
+         `resolve` says `same` (the file's GUID means that parameter from now on), `separate` (it comes in as `name 2`) or `skip`. \
+         The file's categories are matched by name, Revit's among them, and `map` settles the ones listed as `unmapped` and is kept \
+         with the project; `broad` lists those that land on a wider category (all components). `categories` is for rows that name none, \
+         as a shared parameter file's. A file adds categories unless `replace_categories`. A conflict stops the import unless \
+         `skip_conflicts`. No element's values come from the file",
+        crate::parameters::import,
+    ),
+    other(
+        "parameter_export",
+        "Export Parameters",
+        "{path, names?: [..], definitions?: [..], name?, version?} the project's parameters, those named, or the `definitions` given, to a .xlsx or .csv table or a .bimparams \
+         dictionary (with its `name` and `version`). Definitions only, not values. Revit's shared parameter .txt is read, not written",
+        crate::parameters::export,
+    ),
+    other(
+        "dictionary",
+        "Parameter Dictionary",
+        "{path, name?, version?, add?: [{name, kind?, description?, group?, categories?, guid?, read_only?, scope?: instance|type}], \
+         names?: [project parameters], merge?: [paths], remove?: [names or GUIDs], skip_conflicts?: true} makes or changes the \
+         dictionary file at `path` (.bimparams); the project isn't changed. A definition with a GUID the file has replaces it; a new one \
+         gets a GUID; another GUID under a name the file has stops it unless `skip_conflicts`. `merge` takes in other files of any kind \
+         `parameter_import` reads. A change counts up its `revision` and dates it `changed`. `version` is a label of the team's own. \
+         Answers what the file now holds",
+        crate::parameters::dictionary,
+    ),
+    edit(
+        "dictionary_mount",
+        "Load Parameter Dictionary",
+        &[],
+        "{path} or {name, remove: true}: a dictionary's file loaded in the project, which remembers it and saves it as part of the \
+         project; several can be. Nothing comes into the project until `parameter_import`. A dictionary moved is found by its GUID, and \
+         takes its new path; another dictionary of a name already loaded is refused. `remove` is refused while a parameter comes from it",
+        crate::parameters::dictionary_mount,
+    ),
+    edit(
+        "parameter_merge",
+        "Merge Parameters",
+        &[],
+        "{from, into, overwrite?: true} parameter `from`'s values, and the schedules, filters, tags and formulas that name it, moved to \
+         `into`, of the same kind; `from` goes, and files holding its GUID mean `into` from then on. Elements holding both with different \
+         values stop it unless `overwrite` takes `from`'s",
+        crate::parameters::merge,
+    ),
+    edit(
+        "parameter_purge",
+        "Purge Parameters",
+        &[],
+        "{dry_run?: true} takes out the project parameters nothing uses (no value, schedule, view filter, tag or calculated field); \
+         answers the names",
+        crate::parameters::purge,
+    ),
+    edit(
+        "family_parameter_transfer",
+        "Transfer Family Parameters",
+        &[],
+        "{from, to: [families], names: [..], prefix?, suffix?, find?, replace?} a family's parameters copied to other families, with the \
+         parameters their formulas read, optionally renamed. A name a family has already is skipped and listed",
+        crate::parameters::family_transfer,
+    ),
+    edit(
+        "family_parameter_add",
+        "Add Family Parameters",
+        &[],
+        "{families: [..], parameters: [{name, kind?: length|number|angle|yesno|material|text, instance?: true, value?, formula?, group?, \
+         definition?: GUID}]} new parameters added to each family, all or none. A type parameter's `value` is every type's until a type \
+         sets its own. `definition` ties it to a dictionary's or a project parameter's GUID, so a family's and the project's are one \
+         parameter. A name a family has already is skipped and listed",
+        crate::parameters::family_add,
+    ),
+    edit(
+        "type_parameter",
+        "Type Parameter Values",
+        &[],
+        "{category, type, values?: {parameter: value | null}, copy_to?: type} or {family, type, ...}: a type's values of the project's \
+         type parameters (scope `type`), which every element of the type reads; null takes one away. `copy_to` gives another type of \
+         the same category the values this one has. With neither, answers the values it has",
+        crate::parameters::type_parameter,
+    ),
+    edit(
+        "project_info",
+        ui_msg!("Project Information"),
+        &[],
+        "{name?, number?, client?, address?, status?, issue_date?, author?, organization?, organization_description?, building?, \
+         params?: {parameter: value | null}}: the project's information, as Revit's Project Information. Each field is text (`\"\"` \
+         empties it; only `address` has lines, by `\\n`); `name` is the project's name. `params` sets its values of the project \
+         parameters for category `project` (null takes one away), as `modify` does on its element. With nothing, answers what it holds: \
+         {id (none until something is set), name, the fields, params}. Sheets' title blocks show the number, client, status and issue \
+         date; IFC writes the status as the project's phase, the building's name and address, and the rest in property sets",
+        crate::project_info::project_info,
+    )
+    .menu("Manage > Project Information"),
     edit_files(
         "family",
         "Load Family",
@@ -1677,8 +2000,9 @@ other_files(
         "delete",
         "Delete",
         &["DE"],
-        "{ids: [id,…]} deleting a wall deletes its doors and windows, deleting those their tags; a view takes its notes and \
-         spot elevations, and what a spot elevation reads takes it; dimensions lose what's deleted",
+        "{ids: [id,…], keep_finishes?} deleting a wall deletes its doors and windows, deleting those their tags; a view takes its notes and \
+         spot elevations, and what a spot elevation reads takes it; dimensions lose what's deleted. A room takes the floor and \
+         the ceiling connected to it (see `room_finish`), unless `keep_finishes`: then they stay, as ordinary ones",
         delete,
     ),
     edit(
@@ -1964,10 +2288,18 @@ other_files(
         &[],
         "{crs?, eastings?, northings?, height?, rotation?, scale?, description?, geodetic_datum?, vertical_datum?, map_projection?, \
          map_zone?, clear?: true} where the project lies on a map, as IFC's map conversion to a projected coordinate reference \
-         system: the CRS by name (an EPSG code, `EPSG:31983`) and what else is known of it, the map point of the project's origin \
-         (`eastings`, `northings`, `height`, mm), how far the project's x axis is turned from the map's east (`rotation`, degrees \
-         counterclockwise) and a distance on the map over the same in the project (`scale`, 1 as it starts). A project with none \
-         takes one with `crs`; what isn't given keeps its value. `clear` takes it away. With nothing, it says it (null for none). \
+         system: the CRS by name (an EPSG code, `EPSG:31983`; \"\" for none, a local grid) and what else is known of it, the map \
+         point of the project's internal origin (`eastings`, `northings`, `height`, mm), how far the project's x axis is turned \
+         from the map's east (`rotation`, degrees counterclockwise: true north east of project north) and a distance on the map \
+         over the same in the project (`scale`, 1 as it starts; in plan only, heights stay true). It is the active site: \
+         `location` names it and keeps others, and says it at the Survey Point. Any field makes one; what isn't given keeps its \
+         value. `clear` takes it away. With nothing, it says it (null for none). A projected EPSG code this version knows is the \
+         site's map system: it names itself as the description, and WGS84 (`convert_coordinates`, `location`'s `latitude` and \
+         `longitude`) and a map unit other than the metre go through it. `search` (with `limit`, 20 by default) finds systems \
+         whose code it is or whose name has all its words (`found`), and the countries and cities it names (`places`: \
+         \"São Paulo\", \"paulo brasil\", \"Alemania\", accents aside), each with its `longitude`, `latitude` and the `systems` \
+         surveys there use, the one to pick first: the national grid, the place's zone on the country's datum, the zone on WGS 84, \
+         each with `why`; it changes nothing. \
          IFC import keeps the file's (moved with the model where the import brings it near the origin) and export writes it back as \
          IfcMapConversion to an IfcProjectedCRS in metres; the model's own coordinates and drawings don't move",
         georeference,
@@ -2063,7 +2395,8 @@ other_files(
          | null, phase_filter?: name | null, options?: {set: option | null, …}, layers?: {drawing: [layer, …] | null, …}, template?: name | null, \
          background_grid?: {visible?, main?: {enabled?, color?: [r,g,b], pen?: 0..16}, sub?: {enabled?, color?, pen?}, \
          spacing?: [X,Y] (mm), divisions?: [X,Y] (1..1000), rotation?: degrees (-360..360)} | null, \
-         reset?: true} what a view hides and how it draws the rest, as Revit's Visibility/Graphics does; with \
+         orientation?: project_north|true_north (a plan's: which north is up; true north turns it on screen by the active \
+         location's angle to true north, never the model), reset?: true} what a view hides and how it draws the rest, as Revit's Visibility/Graphics does; with \
          none of those, the view's settings as they are. A category hidden (walls, floors, rooms, grids, dimensions, levels…, \
          in any case, singular or plural) leaves all its elements out of that view, and `hide_elements` the elements given. \
          In a 3D view rooms are hidden unless shown (`show: [rooms]`), every new 3D view so; shown, each is a \
@@ -2581,7 +2914,7 @@ other_files(
 /// is cut, and says by how much.
 const MAX_MESSAGE: usize = 2000;
 
-fn bad(cmd: &str, msg: impl std::fmt::Display) -> String {
+pub(crate) fn bad(cmd: &str, msg: impl std::fmt::Display) -> String {
     let text = format!("{cmd}: {msg}");
     match text.char_indices().nth(MAX_MESSAGE) {
         Some((cut, _)) => format!("{}… ({} more characters)", &text[..cut], text[cut..].chars().count()),
@@ -2649,7 +2982,7 @@ fn num(c: &str, p: &Value, key: &str) -> Result<Option<f64>, String> {
     }
 }
 
-fn flag(c: &str, p: &Value, key: &str) -> Result<bool, String> {
+pub(crate) fn flag(c: &str, p: &Value, key: &str) -> Result<bool, String> {
     match p.get(key) {
         v if absent(v) => Ok(false),
         Some(Value::Bool(b)) => Ok(*b),
@@ -2658,7 +2991,12 @@ fn flag(c: &str, p: &Value, key: &str) -> Result<bool, String> {
     }
 }
 
-fn string(c: &str, p: &Value, key: &str) -> Result<Option<String>, String> {
+/// [`flag`], `or` where it isn't given.
+fn flag_or(c: &str, p: &Value, key: &str, or: bool) -> Result<bool, String> {
+    if absent(p.get(key)) { Ok(or) } else { flag(c, p, key) }
+}
+
+pub(crate) fn string(c: &str, p: &Value, key: &str) -> Result<Option<String>, String> {
     match p.get(key) {
         v if absent(v) => Ok(None),
         Some(Value::String(s)) if s.chars().count() <= MAX_TEXT => Ok(Some(s.clone())),
@@ -3161,16 +3499,18 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
             if let Some(h) = cp.host {
                 extra.insert("host_element".into(), json!(h.host.guid()));
             }
+            shared_at(m, &mut extra, cp.at, base);
         }
-        Element::Column(_) | Element::StructuralColumn(_) | Element::Footing(_) => {
+        Element::Column(col) | Element::StructuralColumn(col) | Element::Footing(col) => {
             let (bottom, top) = m.column_span(e);
             extra.insert("height".into(), json!(top - bottom));
+            shared_at(m, &mut extra, col.at, bottom);
             if let Some(t) = m.column_type(e) {
                 extra.insert("width".into(), json!(t.width));
                 extra.insert("depth".into(), json!(t.depth));
                 extra.insert("round".into(), json!(t.round));
                 if let Some(pr) = &t.profile {
-                    steel_take_off(&mut extra, pr, (t.width, t.depth), top - bottom);
+                    steel_take_off(&mut extra, pr, (t.width, t.depth), top - bottom, true);
                 }
             }
         }
@@ -3183,7 +3523,9 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
                 extra.insert("length".into(), json!(hundredth(g.length())));
                 extra.insert("axis".into(), json!([g.a, g.b].map(|p| p.map(hundredth))));
                 if let Some(pr) = &t.profile {
-                    steel_take_off(&mut extra, pr, (t.width, t.depth), g.length());
+                    // shortcut: a beam of no material is weighed as steel too, until materials carry a density.
+                    let steel = t.material.is_empty() || t.material == m.language.word("Metal");
+                    steel_take_off(&mut extra, pr, (t.width, t.depth), g.length(), steel);
                 }
             }
         }
@@ -3264,6 +3606,10 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
             // Where its top's model pattern starts and how far it's turned: shown at their defaults too, to be set by modify.
             extra.insert("pattern_origin".into(), json!(f.pattern_origin));
             extra.insert("pattern_angle".into(), json!(f.pattern_angle));
+            // The room it follows, when it is a room's own.
+            if let Some((room, _)) = m.finish_of(id) {
+                extra.insert("room".into(), json!(room));
+            }
         }
         Element::Ceiling(cl) => {
             let left: f64 = m.ceiling_slabs(cl).iter().map(|(face, rise)| area(&m.less_shafts(face, *rise).0)).sum();
@@ -3271,6 +3617,9 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
             if let Some(t) = m.types.ceiling.get(&cl.type_name) {
                 extra.insert("thickness".into(), json!(t.thickness));
                 extra.insert("grid".into(), json!(t.grid));
+            }
+            if let Some((room, _)) = m.finish_of(id) {
+                extra.insert("room".into(), json!(room));
             }
         }
         Element::Shaft(sh) => {
@@ -3331,8 +3680,22 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
             extra.insert("toward".into(), json!(read.and_then(|(_, d)| d).map(|d| [hundredth(d.0), hundredth(d.1)])));
             extra.insert("level".into(), json!(m.level_of(e)));
         }
+        Element::Spot(sp) if sp.coordinate => {
+            let read = m.spot_coordinate_reads(sp);
+            extra.insert("east".into(), json!(read.map(|r| hundredth(r.east))));
+            extra.insert("north".into(), json!(read.map(|r| hundredth(r.north))));
+            extra.insert("elevation".into(), json!(read.and_then(|r| r.elevation).map(hundredth)));
+            extra.insert("text".into(), json!(m.spot_coordinate_text(sp)));
+            extra.insert(
+                "type".into(),
+                json!(sp.type_name.clone().or_else(|| crate::spots::default_type(&m.spot_coordinate_types, sp.origin).cloned())),
+            );
+            extra.insert("leader".into(), json!(sp.leader));
+            extra.insert("shoulder".into(), json!(sp.shoulder));
+            extra.insert("level".into(), json!(m.level_of(e)));
+        }
         Element::Spot(sp) => {
-            extra.insert("elevation".into(), json!(m.spot_value(sp).map(hundredth)));
+            extra.insert("elevation".into(), json!(m.spot_reads(sp).map(hundredth)));
             extra.insert("level".into(), json!(m.level_of(e)));
         }
         Element::Link(l) => {
@@ -3342,6 +3705,7 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
         // Its Computation Height, which its JSON leaves out at the usual 1200 mm.
         Element::Level(l) => {
             extra.insert("computation_height".into(), json!(l.computation_height));
+            extra.insert("elevation_shown".into(), json!(hundredth(m.level_shown(l))));
         }
         Element::Dimension3D(d) => {
             extra.insert("length".into(), json!(hundredth(crate::dims3d::length(d))));
@@ -3368,7 +3732,12 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
                 extra.insert("slots".into(), json!(crate::electrical::slot_count(m, b)));
             }
         }
-        Element::Grid(_) | Element::RefPlane(_) | Element::Schedule(_) | Element::View3D(_) | Element::PlanView(_) => {}
+        Element::Grid(_)
+        | Element::RefPlane(_)
+        | Element::Schedule(_)
+        | Element::View3D(_)
+        | Element::PlanView(_)
+        | Element::ProjectInfo(_) => {}
     }
     let mut v = serde_json::to_value(e).unwrap_or_default();
     if let Some(o) = v.as_object_mut() {
@@ -3379,15 +3748,15 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
 
 // ---------- files and history ----------
 
-/// Project files this large or larger are refused.
+/// Project and family files this large or larger are refused when nothing measures memory (`memory.rs`): about 2 GB to read.
 const MAX_FILE: u64 = 256 << 20;
 
-/// IFC files this large or larger are refused. Reading one peaks at about 12 to 14 times its size in memory (measured on
-/// Revit-like, meshed and BIMCraft-written files of 17 to 81 MB), so one just under 512 MiB stays under about 8 GB.
+/// IFC files this large or larger are refused when nothing measures memory. Reading one peaks at about 12 to 14 times its size
+/// ([`memory::IFC`]), so one just under 512 MiB stays under about 8 GB.
 const MAX_IFC: u64 = 512 << 20;
 
-/// Files of `extension` (in lower case) this large or larger are refused by `open`: an IFC file at [`MAX_IFC`], a project at
-/// [`MAX_FILE`].
+/// Files of `extension` (in lower case) this large or larger are refused by `open` when nothing measures memory: an IFC file at
+/// [`MAX_IFC`], a project at [`MAX_FILE`]. With a meter, what the machine has free is the limit ([`memory::Budget`]).
 fn max_file(extension: &str) -> u64 {
     if extension == "ifc" { MAX_IFC } else { MAX_FILE }
 }
@@ -3464,19 +3833,28 @@ fn open_file(s: &mut Session, p: &Value) -> R {
     let c = "open";
     let path = PathBuf::from(string(c, p, "path")?.ok_or_else(|| bad(c, "`path` is required"))?);
     let size = std::fs::metadata(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?.len();
-    let most = max_file(&ext(&path));
-    if size >= most {
-        return Err(bad(c, format!("{} is too large ({size} bytes; `open` takes one under {most})", path.display())));
-    }
+    let ifc = ext(&path) == "ifc";
+    // Held to the memory the machine has free, where the app measures it; else to a fixed size.
+    let budget = match memory::Budget::start(size, if ifc { memory::IFC } else { memory::PROJECT }) {
+        Ok(Some(budget)) => budget,
+        Ok(None) => {
+            let most = max_file(&ext(&path));
+            if size >= most {
+                return Err(bad(c, format!("{} is too large ({size} bytes; `open` takes one under {most})", path.display())));
+            }
+            memory::Budget::none()
+        }
+        Err(e) => return Err(bad(c, format!("{}: {e}", path.display()))),
+    };
     // IFC comes in as a new project: saving it asks where.
-    if ext(&path) == "ifc" {
+    if ifc {
         let bytes = std::fs::read(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
         let stem = path.file_stem().map_or_else(|| "Project".into(), |s| s.to_string_lossy().into_owned());
-        let file = crate::step::parse(&bytes).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+        let file = crate::step::parse_within(&bytes, &budget).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
         let seed = crate::import::seed(&bytes);
         // The text is freed before the model is built from it, so the two are not both held at the peak.
         drop(bytes);
-        let i = crate::import::from_step(file, &stem, seed).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+        let i = crate::import::from_step(file, &stem, seed, &budget).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
         let mut counts: BTreeMap<&str, usize> = BTreeMap::new();
         for e in i.model.elements.values() {
             *counts.entry(e.category()).or_default() += 1;
@@ -3494,7 +3872,11 @@ fn open_file(s: &mut Session, p: &Value) -> R {
         return Ok(reply);
     }
     let text = std::fs::read_to_string(&path).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
-    let (mut m, left_out) = Model::read(&text).map_err(|e| bad(c, format!("{} is not a BIMCraft project: {e}", path.display())))?;
+    let (mut m, left_out) = Model::read_within(&text, &budget).map_err(|e| match budget.check() {
+        Ok(()) => bad(c, format!("{} is not a BIMCraft project: {e}", path.display())),
+        Err(_) => bad(c, format!("{}: {e}", path.display())),
+    })?;
+    drop(text);
     m.adopt_materials();
     // A project parameter named as a phase or a design option is held under is from before they were: it keeps its values, renamed.
     let mut renamed = BTreeMap::new();
@@ -3649,9 +4031,14 @@ fn insert_from(s: &mut Session, p: &Value) -> R {
         Some(_) => ids_param(c, &other.model, p)?,
         None => Vec::new(),
     };
-    let made = crate::insert::insert(s.model_mut(), &other.model, &ids).map_err(|e| bad(c, e))?;
+    let same: BTreeSet<String> = match p.get("same_parameters") {
+        v if absent(v) => BTreeSet::new(),
+        Some(v) => serde_json::from_value(v.clone()).map_err(|_| bad(c, "`same_parameters` is a list of parameters' names"))?,
+        None => BTreeSet::new(),
+    };
+    let made = crate::insert::insert_with(s.model_mut(), &other.model, &ids, &same).map_err(|e| bad(c, e))?;
     let there: BTreeMap<String, Id> = made.ids.iter().map(|(a, b)| (a.to_string(), *b)).collect();
-    Ok(json!({"ids": there, "copies": made.copies, "library": made.library, "left_out": made.left_out}))
+    Ok(json!({"ids": there, "copies": made.copies, "library": made.library, "left_out": made.left_out, "parameters": made.parameters}))
 }
 
 /// The project a link's `path` names, read as `open` reads it: its own links are not followed.
@@ -3698,11 +4085,33 @@ fn link_model(s: &mut Session, p: &Value) -> R {
     };
     let at = point_opt(c, p, "at")?.unwrap_or(P2(0.0, 0.0));
     let angle = num(c, p, "angle")?.unwrap_or(0.0);
+    let by = match string(c, p, "by")? {
+        None => crate::link::By::Manual,
+        Some(b) => crate::link::By::parse(&b).ok_or_else(|| bad(c, format!("`by` is {}, not `{b}`", crate::link::By::NAMES)))?,
+    };
+    let location = name_param(c, p, "location")?;
+    if let Some(l) = &location
+        && other.site_named(l).is_none()
+    {
+        return Err(bad(c, format!("the linked project has no location `{l}`; it has {}", other.coordinates.names().join(", "))));
+    }
     let elements = other.elements.len();
+    let link = crate::model::Link { name: name.clone(), path: path.clone(), at, angle, by, location, raised: 0.0, placed: None };
+    let (placed, turned, raised) = crate::link::placement(&s.model, &link, &other);
+    let mut reply = json!({"name": name, "elements": elements, "at": placed, "angle": turned, "raised": raised});
+    let theirs = link.location.as_deref().and_then(|n| other.site_named(n)).unwrap_or(other.site());
+    let scales = (s.model.site().scale, theirs.scale);
+    if by == crate::link::By::Shared && (scales.0 - scales.1).abs() > 1e-9 {
+        reply["warning"] = json!(format!(
+            "its location's scale ({}) isn't this project's ({}): a link isn't scaled, so it stands by its origin and turn alone",
+            scales.1, scales.0
+        ));
+    }
     let m = s.model_mut();
-    let id = m.insert(Element::Link(crate::model::Link { name: name.clone(), path: path.clone(), at, angle }));
+    let id = m.insert(Element::Link(link));
     m.loaded.insert(path, other);
-    Ok(json!({"id": id, "name": name, "elements": elements}))
+    reply["id"] = json!(id);
+    Ok(reply)
 }
 
 fn reload(s: &mut Session, p: &Value) -> R {
@@ -3743,8 +4152,9 @@ fn save(s: &mut Session, p: &Value) -> R {
         None => s.path.clone().ok_or_else(|| bad(c, "`path` is required: this project hasn't been saved yet"))?,
     };
     let format = ext(&path);
+    let options = crate::export::Options { ifc_origin: ifc_origin(c, p)?, ..Default::default() };
     if format == "ifc" {
-        std::fs::write(&path, crate::ifc::export(&s.model)).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+        save_through(s, c, "ifc4", &[None], &options, &path)?;
         return Ok(json!({"path": path, "format": "IFC4"}));
     }
     if format == "glb" {
@@ -3753,13 +4163,13 @@ fn save(s: &mut Session, p: &Value) -> R {
         return Ok(json!({"path": path, "format": "glTF 2.0", "elements": out.nodes, "triangles": out.triangles}));
     }
     if format == "pdf" {
+        // Every sheet that can be drawn, a page each on its own paper, in the order of their numbers.
         let seen = crate::link::seen(&s.model);
-        let m = &*seen;
-        let mut sheets: Vec<(&str, Drawing, P2)> = m
+        let mut sheets: Vec<(&str, Id)> = seen
             .elements
             .iter()
             .filter_map(|(id, e)| match e {
-                Element::Sheet(sh) => Some((sh.number.as_str(), sheet::draw(m, *id)?, paper(&sh.size)?)),
+                Element::Sheet(sh) if paper(&sh.size).is_some() && sheet::draw(&seen, *id).is_some() => Some((sh.number.as_str(), *id)),
                 _ => None,
             })
             .collect();
@@ -3767,9 +4177,9 @@ fn save(s: &mut Session, p: &Value) -> R {
             return Err(bad(c, "there are no sheets to print; make one with `sheet` and `place` views on it"));
         }
         sheets.sort_by(|a, b| a.0.cmp(b.0));
-        let pages: Vec<(&Drawing, P2)> = sheets.iter().map(|(_, d, p)| (d, *p)).collect();
-        std::fs::write(&path, pdf::pdf(&pages)).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
-        return Ok(json!({"path": path, "format": "PDF", "pages": pages.len()}));
+        let ids: Vec<Option<Id>> = sheets.iter().map(|(_, id)| Some(*id)).collect();
+        let pages = save_through(s, c, "pdf", &ids, &options, &path)?;
+        return Ok(json!({"path": path, "format": "PDF", "pages": pages}));
     }
     if matches!(format.as_str(), "svg" | "png") {
         let level = level_param(c, &s.model, &json!({}), "view")?;
@@ -3782,15 +4192,187 @@ fn save(s: &mut Session, p: &Value) -> R {
     Ok(json!({"path": path, "format": "bimcraft"}))
 }
 
+/// `ifc_origin`: where an IFC file's coordinates have their origin; internal where it isn't given.
+fn ifc_origin(c: &str, p: &Value) -> Result<crate::ifc::Origin, String> {
+    match string(c, p, "ifc_origin")? {
+        None => Ok(crate::ifc::Origin::Internal),
+        Some(o) => crate::ifc::Origin::parse(&o).ok_or_else(|| bad(c, format!("`ifc_origin` is {}, not `{o}`", crate::ifc::Origin::NAMES))),
+    }
+}
+
+/// `ids` (none: the project) written as the registry's `format` to the one file at `path`, as `save` writes its exports: the
+/// number of sources written.
+fn save_through(
+    s: &Session,
+    c: &str,
+    format: &str,
+    ids: &[Option<Id>],
+    options: &crate::export::Options,
+    path: &Path,
+) -> Result<usize, String> {
+    let f = s.exports.find(format).map_err(|e| bad(c, e))?.clone();
+    let seen = crate::link::seen(&s.model);
+    let prepared = ids
+        .iter()
+        .map(|id| crate::export::prepare_for(&s.model, &seen, *id, f.as_ref()))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| bad(c, e))?;
+    let out = f.write(&prepared, options, &crate::export::Ctx::quiet()).map_err(|e| bad(c, e))?;
+    let [out] = out.as_slice() else {
+        return Err(bad(c, format!("{} made {} files where one was asked for", f.label(), out.len())));
+    };
+    std::fs::write(path, &out.bytes).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+    Ok(prepared.len())
+}
+
+/// What `export` is asked to export: an element by id or GUID, a view by name, a sheet by number; none or `project`, the
+/// project.
+fn export_source(c: &str, m: &Model, v: &Value) -> Result<Option<Id>, String> {
+    match v {
+        Value::Null => Ok(None),
+        Value::String(s) if s.eq_ignore_ascii_case("project") => Ok(None),
+        Value::String(s) if Guid::parse(s).is_none() => m
+            .view_named(s)
+            .or_else(|| m.elements.iter().find_map(|(id, e)| matches!(e, Element::Sheet(sh) if sh.number == *s).then_some(*id)))
+            .map(Some)
+            .ok_or_else(|| bad(c, format!("there's no view or sheet `{s}`"))),
+        v => {
+            let g: Guid = serde_json::from_value(v.clone()).map_err(|_| bad(c, format!("`{v}` isn't a view, a sheet or `project`")))?;
+            m.elements.id(g).map(Some).ok_or_else(|| bad(c, format!("there's no element {v}")))
+        }
+    }
+}
+
+fn export(s: &mut Session, p: &Value) -> R {
+    let c = "export";
+    let m = &s.model;
+    let format = string(c, p, "format")?.ok_or_else(|| bad(c, "`format` is required: an id or an extension from `export_formats`"))?;
+    let format = s.exports.find(&format).map_err(|e| bad(c, e))?.id().to_string();
+    let mut sources = Vec::new();
+    let set = name_param(c, p, "print_set")?;
+    match (p.get("view"), p.get("views")) {
+        _ if set.is_some() && (!absent(p.get("view")) || !absent(p.get("views"))) => {
+            return Err(bad(c, "give `print_set`, `view` or `views`, one of them"));
+        }
+        _ if set.is_some() => {
+            let name = set.unwrap_or_default();
+            let set = m.print_sets.get(&name).ok_or_else(|| bad(c, format!("there's no print set `{name}`")))?;
+            sources.extend(set.views.iter().filter_map(|g| m.elements.id(*g)).map(Some));
+            if sources.is_empty() {
+                return Err(bad(c, format!("print set `{name}` holds no views")));
+            }
+        }
+        (Some(v), Some(vs)) if !v.is_null() && !vs.is_null() => return Err(bad(c, "give `view` or `views`, not both")),
+        (_, Some(Value::Array(vs))) => {
+            if vs.is_empty() || vs.len() > 10_000 {
+                return Err(bad(c, "`views` is a list of 1 to 10000 views and sheets"));
+            }
+            for v in vs {
+                sources.push(export_source(c, m, v)?);
+            }
+        }
+        (_, Some(v)) if !v.is_null() => return Err(bad(c, format!("`views` is a list, not {v}"))),
+        (v, _) => sources.push(export_source(c, m, v.unwrap_or(&Value::Null))?),
+    }
+    let read = |key: &str| p.get(key).filter(|v| !v.is_null()).cloned();
+    let options = crate::export::Options {
+        page: match read("page") {
+            Some(v) => serde_json::from_value(v).map_err(|e| bad(c, format!("`page`: {e}")))?,
+            None => Default::default(),
+        },
+        quality: match num(c, p, "quality")? {
+            Some(q) if (1.0..=100.0).contains(&q) => Some(q as u8),
+            Some(q) => return Err(bad(c, format!("`quality` is 1 to 100, not {q}"))),
+            None => None,
+        },
+        ifc_origin: ifc_origin(c, p)?,
+        pdf: match read("pdf") {
+            Some(v) => serde_json::from_value(v).map_err(|e| bad(c, format!("`pdf`: {e}")))?,
+            None => Default::default(),
+        },
+        selected: match p.get("selected") {
+            None | Some(Value::Null) => Vec::new(),
+            Some(Value::Array(ids)) if ids.len() <= 50_000 => {
+                let mut out = Vec::new();
+                for v in ids {
+                    let g: Guid = serde_json::from_value(v.clone()).map_err(|_| bad(c, format!("`selected`: `{v}` isn't an element")))?;
+                    let id = m.elements.id(g).ok_or_else(|| bad(c, format!("`selected`: there's no element {v}")))?;
+                    out.push(m.guid(id));
+                }
+                out
+            }
+            Some(v) => return Err(bad(c, format!("`selected` is a list of at most 50000 elements, not {v}"))),
+        },
+    };
+    let folders = match read("folders") {
+        Some(v) => serde_json::from_value(v).map_err(|e| bad(c, format!("`folders`: {e}")))?,
+        None => Default::default(),
+    };
+    let items: Vec<crate::export::Item> =
+        sources.iter().map(|id| crate::export::Item { view: id.map(|id| m.guid(id)), format: format.clone() }).collect();
+    // One file at `path`: its folder and its name as they are, a PDF's several sources its pages.
+    let job = match (string(c, p, "path")?, string(c, p, "folder")?) {
+        (Some(_), Some(_)) => return Err(bad(c, "give `path` (one file) or `folder` (a file each), not both")),
+        (Some(path), None) => {
+            let path = PathBuf::from(path);
+            let stem = path.file_stem().map(|s| s.to_string_lossy().replace('{', "{{").replace('}', "}}")).unwrap_or_default();
+            if stem.is_empty() {
+                return Err(bad(c, "`path` names no file"));
+            }
+            let folder = path.parent().filter(|f| !f.as_os_str().is_empty()).map_or_else(|| PathBuf::from("."), PathBuf::from);
+            crate::export::Job {
+                items,
+                folder,
+                name: Some(stem.clone()),
+                combine: Some(stem),
+                overwrite: true,
+                options,
+                ..Default::default()
+            }
+        }
+        (None, Some(folder)) => crate::export::Job {
+            items,
+            folder: PathBuf::from(folder),
+            name: string(c, p, "name")?,
+            folders,
+            combine: string(c, p, "combine")?,
+            overwrite: flag(c, p, "overwrite")?,
+            options,
+            ..Default::default()
+        },
+        (None, None) => return Err(bad(c, "`path` (one file) or `folder` (a file each) is required")),
+    };
+    let report = crate::export::run(&s.model, &s.exports, &job, &crate::export::Ctx::quiet()).map_err(|e| bad(c, e))?;
+    if report.written.is_empty() {
+        let why: Vec<String> = report.failed.iter().map(|f| format!("{}: {}", f.of, f.error)).collect();
+        return Err(bad(c, format!("nothing was written; {}", why.join("; "))));
+    }
+    Ok(json!(report))
+}
+
+fn export_formats(s: &mut Session, _: &Value) -> R {
+    let formats: Vec<Value> = s
+        .exports
+        .all()
+        .iter()
+        .map(|f| {
+            json!({"id": f.id(), "label": f.label(), "extension": f.extension(), "family": f.family(), "status": f.status(),
+                "takes": f.takes(), "combines": f.combines(), "paged": f.paged()})
+        })
+        .collect();
+    let mut tokens: Vec<String> = crate::export::ModelTokens::NAMES.iter().map(|n| n.to_string()).collect();
+    tokens.extend(crate::export::ModelTokens::information().iter().map(|n| n.to_string()));
+    tokens.extend(crate::export::ModelTokens::parameters(&s.model));
+    Ok(json!({"formats": formats, "tokens": tokens}))
+}
+
 fn autosave(s: &mut Session, p: &Value) -> R {
     let path = PathBuf::from(string("autosave", p, "path")?.ok_or_else(|| bad("autosave", "`path` is required"))?);
     if s.path.as_ref() == Some(&path) {
         return Err(bad("autosave", "the recovery file must differ from the saved project"));
     }
+    // As large as the project is: `recover` opens it held to the memory that's free, as `open` does.
     let text = s.model.to_json().map_err(|e| bad("autosave", e))?;
-    if text.len() as u64 >= MAX_FILE {
-        return Err(bad("autosave", "the recovery snapshot exceeds the project file size limit"));
-    }
     crate::autosave::atomic_write(&path, &text).map_err(|e| bad("autosave", e))?;
     Ok(json!({"path": path, "format": "bimcraft"}))
 }
@@ -4257,7 +4839,7 @@ fn merged_override(c: &str, what: &str, from: Option<&Override>, patch: &Value) 
 /// categories' and its filters' alone.
 fn edit_graphics(c: &str, m: &Model, p: &Value, g: &mut Graphics, of_template: bool) -> Result<(), String> {
     let given = |k: &str| !absent(p.get(k));
-    let views_own = ["hide_elements", "show_elements", "elements", "layers"];
+    let views_own = ["hide_elements", "show_elements", "elements", "layers", "orientation"];
     if of_template && let Some(k) = views_own.iter().find(|k| given(k)).or(p.get("template").map(|_| &"template")) {
         return Err(bad(c, format!("`{k}` is a view's own; a template holds categories, filters, a phase and design options")));
     }
@@ -4291,6 +4873,13 @@ fn edit_graphics(c: &str, m: &Model, p: &Value, g: &mut Graphics, of_template: b
     }
     if flag(c, p, "reset")? {
         *g = Graphics::default();
+    }
+    match p.get("orientation") {
+        v if absent(v) => {}
+        Some(Value::String(o)) if o == "project_north" || o == "project" => g.orientation = graphics::Orientation::ProjectNorth,
+        Some(Value::String(o)) if o == "true_north" || o == "true" => g.orientation = graphics::Orientation::TrueNorth,
+        Some(v) => return Err(bad(c, format!("`orientation` is project_north or true_north, not {v}"))),
+        None => {}
     }
     if let Some(patch) = p.get("background_grid") {
         if patch.is_null() {
@@ -4455,7 +5044,7 @@ fn graphics_reply(g: &Graphics) -> Value {
         "hidden": hidden, "categories": g.categories, "filters": g.filters, "layers": g.layers,
         "phase": g.phase, "phase_filter": g.phase_filter, "options": g.options,
         "scale": g.scale, "detail": g.detail, "visual_style": g.style,
-        "background_grid": g.background_grid,
+        "background_grid": g.background_grid, "orientation": g.orientation,
     })
 }
 
@@ -5414,7 +6003,7 @@ fn design_options(s: &mut Session, p: &Value) -> R {
 }
 
 /// Delete elements `ids` as the `delete` command does: what hangs on them goes too. The reply's ids.
-fn delete_elements(s: &mut Session, ids: &[Id]) -> Result<Value, String> {
+pub(crate) fn delete_elements(s: &mut Session, ids: &[Id]) -> Result<Value, String> {
     delete(s, &json!({"ids": ids})).map(|r| r["deleted"].clone())
 }
 
@@ -7328,7 +7917,8 @@ fn level(s: &mut Session, p: &Value) -> R {
             _ => return Err(bad(c, "`extent` is two corners, [[x, y], [x, y]]: south-west, then north-east")),
         },
     };
-    let id = s.model_mut().insert(Element::Level(Level { extent, ..Level::new(name.clone(), elevation) }));
+    let elevation_base = origin_param(c, p)?;
+    let id = s.model_mut().insert(Element::Level(Level { extent, elevation_base, ..Level::new(name.clone(), elevation) }));
     Ok(json!({"id": id, "name": name}))
 }
 
@@ -7432,8 +8022,25 @@ fn point_cloud(s: &mut Session, p: &Value) -> R {
     };
     let (lo, _) = scan.bounds();
     let origin = scan.origin();
+    let mut site = m.site().clone();
+    let mut acquired = None;
+    let mut angle = 0.0;
     let (mut at, mut offset) = match string(c, p, "origin")?.as_deref() {
         None | Some("centre" | "center") => (P2(0.0, 0.0), -lo[2]),
+        Some("shared") => {
+            // Its file's coordinates are the map's: its middle goes where the active location puts it, turned to match.
+            if flag(c, p, "acquire")? {
+                site.acquire([origin[0], origin[1], origin[2] + lo[2]]);
+                site.check().map_err(|e| bad(c, e))?;
+                acquired = Some(site.location(m.coordinates.survey));
+            }
+            let here = site.to_internal(origin);
+            if !here.iter().all(|x| x.abs() <= MAX_COORD) {
+                return Err(bad(c, far_message(here)));
+            }
+            angle = -site.rotation;
+            (P2(here[0], here[1]), here[2] - m.elevation(level))
+        }
         Some("file") => {
             let z = origin[2] - m.elevation(level);
             if !(origin[0].abs() <= MAX_COORD && origin[1].abs() <= MAX_COORD && z.abs() <= MAX_COORD) {
@@ -7449,7 +8056,10 @@ fn point_cloud(s: &mut Session, p: &Value) -> R {
         Some(o) => {
             return Err(bad(
                 c,
-                format!("`origin` is centre (its middle on `at`, its foot on the level) or file (where its file puts it), not {o}"),
+                format!(
+                    "`origin` is centre (its middle on `at`, its foot on the level), file (where its file puts it) or shared (where \
+                     its coordinates, the map's, put it by the active location), not {o}"
+                ),
             ));
         }
     };
@@ -7459,14 +8069,19 @@ fn point_cloud(s: &mut Session, p: &Value) -> R {
     if let Some(o) = num(c, p, "offset")? {
         offset = o;
     }
-    let angle = num(c, p, "angle")?.unwrap_or(0.0);
+    if let Some(a) = num(c, p, "angle")? {
+        angle = a;
+    }
     let (points, read) = (scan.len(), scan.read());
     let m = s.model_mut();
     if new {
         m.clouds.insert(name.clone(), scan);
     }
+    if acquired.is_some() {
+        m.set_site(site);
+    }
     let id = m.insert(Element::PointCloud(PointCloud { cloud: name.clone(), level, at, offset, angle }));
-    Ok(json!({"id": id, "cloud": name, "points": points, "read": read, "origin": origin}))
+    Ok(json!({"id": id, "cloud": name, "points": points, "read": read, "origin": origin, "acquired": acquired}))
 }
 
 // ---------- CAD drawings ----------
@@ -7753,22 +8368,68 @@ fn import_cad(s: &mut Session, p: &Value) -> R {
             let (lo, hi) = (crate::model::CAD_SCALE.start(), crate::model::CAD_SCALE.end());
             return Err(bad(c, format!("`scale` is mm to each of the drawing's units, from {lo} to {hi}, not {k}")));
         }
-        (None | Some("auto"), None) => dxf.scale.unwrap_or(1.0),
+        (None | Some("auto"), None) => {
+            let bulk = cad.bulk().unwrap_or_default();
+            let (k, note) = auto_scale(&s.model, dxf.scale, &dxf.unit, (bulk[0] + bulk[1]) * 0.5);
+            notes.extend(note);
+            k
+        }
         (Some(u), None) => cloud::unit(u).ok_or_else(|| bad(c, format!("`units` is auto, mm, cm, m, in or ft, not {u}")))?,
     };
+    let unit_warning = (absent(p.get("units")) || string(c, p, "units")?.as_deref() == Some("auto"))
+        && absent(p.get("scale"))
+        && s.model.site().map().is_none()
+        && looks_like_map(dxf.scale, (cad.bulk().unwrap_or_default()[0] + cad.bulk().unwrap_or_default()[1]) * 0.5) == Some(false);
+    let file_unit = dxf.unit.clone();
     let bulk = cad.bulk().unwrap_or_default();
-    let origin = match string(c, p, "position")?.as_deref() {
-        None | Some("center" | "centre") => (bulk[0] + bulk[1]) * 0.5,
-        Some("origin") => P2(0.0, 0.0),
+    let middle = (bulk[0] + bulk[1]) * 0.5;
+    let acquire = flag(c, p, "acquire")?;
+    let mut site = s.model.site().clone();
+    let mut acquired = None;
+    let (origin, at, angle, scale) = match string(c, p, "position")?.as_deref() {
+        None | Some("center" | "centre") => {
+            (middle, point_opt(c, p, "at")?.unwrap_or(P2(0.0, 0.0)), num(c, p, "angle")?.unwrap_or(0.0), scale)
+        }
+        Some("origin") => {
+            // Its origin on `at`: refused where that puts the drawing past what a model reaches, saying how to bring it in.
+            let at = point_opt(c, p, "at")?.unwrap_or(P2(0.0, 0.0));
+            let here = [at.0 + middle.0 * scale, at.1 + middle.1 * scale, 0.0];
+            if !(here[0].abs() <= MAX_COORD && here[1].abs() <= MAX_COORD) {
+                return Err(bad(
+                    c,
+                    format!(
+                        "{}; or place it by shared coordinates (`position`: shared), or by its middle (`position`: center) and then take the project's coordinates from it \
+                         (`coordinates` with `acquire`)",
+                        far_message(here)
+                    ),
+                ));
+            }
+            (P2(0.0, 0.0), at, num(c, p, "angle")?.unwrap_or(0.0), scale)
+        }
+        Some("shared") => {
+            // Its file's coordinates are the map's: its middle goes where the active location puts it, turned and scaled to match.
+            let q = [middle.0 * scale, middle.1 * scale, 0.0];
+            if acquire {
+                site.acquire(q);
+                site.check().map_err(|e| bad(c, e))?;
+                acquired = Some(site.location(s.model.coordinates.survey));
+            }
+            let here = site.to_internal(q);
+            if !(here[0].abs() <= MAX_COORD && here[1].abs() <= MAX_COORD) {
+                return Err(bad(c, far_message(here)));
+            }
+            (middle, P2(here[0], here[1]), -site.rotation, scale / site.scale)
+        }
         Some(o) => {
             return Err(bad(
                 c,
-                format!("`position` is center (the middle of the drawing on `at`) or origin (its origin on `at`), not {o}"),
+                format!(
+                    "`position` is center (the middle of the drawing on `at`), origin (its origin on `at`) or shared (where its \
+                     coordinates, the map's, put it by the active location), not {o}"
+                ),
             ));
         }
     };
-    let at = point_opt(c, p, "at")?.unwrap_or(P2(0.0, 0.0));
-    let angle = num(c, p, "angle")?.unwrap_or(0.0);
     let hidden: BTreeSet<String> = match p.get("layers") {
         None | Some(Value::Null) => off_layers(&cad),
         Some(Value::String(w)) if w == "visible" => off_layers(&cad),
@@ -7792,6 +8453,7 @@ fn import_cad(s: &mut Session, p: &Value) -> R {
     let unit = match string(c, p, "units")?.filter(|u| u != "auto") {
         Some(u) => format!("{u} (its file says {})", dxf.unit),
         None if p.get("scale").is_some_and(|v| !v.is_null()) => format!("a scale of its own (its file says {})", dxf.unit),
+        None if dxf.scale.is_some_and(|k| (k - scale).abs() > 1e-9) => format!("the map system's (its file says {})", dxf.unit),
         None if dxf.scale.is_some() => dxf.unit.clone(),
         None => format!("{} (read as mm unless `units` says)", dxf.unit),
     };
@@ -7801,6 +8463,9 @@ fn import_cad(s: &mut Session, p: &Value) -> R {
     if new {
         m.cads.insert(name.clone(), cad);
     }
+    if acquired.is_some() {
+        m.set_site(site);
+    }
     let id = m.insert(Element::CadImport(CadImport { cad: name.clone(), level, at, origin, scale, angle, view, hidden, colors }));
     let extents = m.cad_box(id);
     let mut reply = json!({
@@ -7809,6 +8474,16 @@ fn import_cad(s: &mut Session, p: &Value) -> R {
     });
     if !notes.is_empty() {
         reply["notes"] = json!(notes);
+    }
+    if let Some(l) = acquired {
+        reply["acquired"] = json!(l);
+    }
+    if unit_warning {
+        reply["warning"] = json!(format!(
+            "its file says its units are {}, and its coordinates look like map coordinates: if they are in metres, bring it in \
+             again with units m (Import units: m), or set the project's map system first and it is read in its unit",
+            spelled(&file_unit)
+        ));
     }
     if far > 0 {
         reply["warning"] = json!(format!(
@@ -8185,6 +8860,220 @@ fn reinforcement_preset(s: &mut Session, p: &Value) -> R {
     }
     m.reinforcement.insert(name.clone(), preset.clone());
     Ok(json!({"name": name, "preset": preset}))
+}
+
+fn print_set(s: &mut Session, p: &Value) -> R {
+    let c = "print_set";
+    only(c, p, &["name", "views", "add", "remove", "rename", "delete"])?;
+    let Some(name) = name_param(c, p, "name")? else {
+        let m = &s.model;
+        let sets: Vec<Value> = m
+            .print_sets
+            .iter()
+            .map(|(name, set)| {
+                let views: Vec<Value> = set
+                    .views
+                    .iter()
+                    .filter_map(|g| {
+                        let id = m.elements.id(*g)?;
+                        let kind = crate::export::kind_of(m, Some(id))?;
+                        Some(json!({"id": id, "title": crate::export::title(m, Some(id), kind)}))
+                    })
+                    .collect();
+                json!({"name": name, "id": m.library.id(&LibKind::PrintSet, name), "views": views})
+            })
+            .collect();
+        return Ok(json!({"print_sets": sets}));
+    };
+    // A list of views, each a printable element, as GUIDs.
+    let list = |m: &Model, key: &str| -> Result<Option<Vec<Guid>>, String> {
+        match p.get(key) {
+            v if absent(v) => Ok(None),
+            Some(Value::Array(a)) if a.len() <= crate::printset::MAX_VIEWS => a
+                .iter()
+                .map(|v| {
+                    let id = export_source(c, m, v)?.ok_or_else(|| bad(c, "the whole project isn't a view a print set can hold"))?;
+                    let g = m.elements.guid(id).ok_or_else(|| bad(c, format!("no element {id}")))?;
+                    if !crate::printset::printable(m, g) {
+                        return Err(bad(c, format!("element {id} isn't a view, a sheet or a schedule a print set can hold")));
+                    }
+                    Ok(g)
+                })
+                .collect::<Result<Vec<_>, _>>()
+                .map(Some),
+            Some(v) => Err(bad(c, format!("`{key}` must be a list of up to {} view ids, got {v}", crate::printset::MAX_VIEWS))),
+            None => Ok(None),
+        }
+    };
+    let views = list(&s.model, "views")?;
+    let add = list(&s.model, "add")?;
+    let remove = list(&s.model, "remove")?;
+    let m = s.model_mut();
+    if flag(c, p, "delete")? {
+        if m.print_sets.remove(&name).is_none() {
+            return Err(bad(c, format!("there's no print set `{name}`")));
+        }
+        return Ok(json!({"deleted": name}));
+    }
+    let was = m.print_sets.get(&name).cloned();
+    let mut set = match (views, was) {
+        (Some(views), _) => crate::printset::PrintSet { views },
+        (None, Some(was)) => was,
+        (None, None) => return Err(bad(c, format!("there's no print set `{name}`; a new one needs `views`"))),
+    };
+    for g in add.unwrap_or_default() {
+        if !set.views.contains(&g) {
+            set.views.push(g);
+        }
+    }
+    if let Some(remove) = remove {
+        set.views.retain(|g| !remove.contains(g));
+    }
+    let mut seen = BTreeSet::new();
+    set.views.retain(|g| seen.insert(*g));
+    let name = match name_param(c, p, "rename")? {
+        Some(to) if to != name => {
+            if m.print_sets.contains_key(&to) {
+                return Err(bad(c, format!("there's already a print set `{to}`")));
+            }
+            m.print_sets.remove(&name);
+            rename_entry(m, &LibKind::PrintSet, &name, &to);
+            to
+        }
+        _ => name,
+    };
+    set.check(&name).map_err(|e| bad(c, e))?;
+    if !m.print_sets.contains_key(&name) && m.print_sets.len() >= crate::printset::MAX_SETS {
+        return Err(bad(c, format!("the project holds up to {} print sets", crate::printset::MAX_SETS)));
+    }
+    let count = set.views.len();
+    m.print_sets.insert(name.clone(), set);
+    Ok(json!({"name": name, "views": count}))
+}
+
+fn publish_set(s: &mut Session, p: &Value) -> R {
+    let c = "publish_set";
+    only(c, p, &["name", "folder", "folders", "overwrite", "rename", "duplicate", "delete", "timings"])?;
+    let Some(name) = name_param(c, p, "name")? else {
+        let m = &s.model;
+        let sets: Vec<Value> = m
+            .publish_sets
+            .iter()
+            .map(|(name, set)| {
+                json!({"name": name, "id": m.library.id(&LibKind::PublishSet, name), "folder": set.folder, "overwrite": set.overwrite,
+                    "folders": set.folders})
+            })
+            .collect();
+        return Ok(json!({"publish_sets": sets}));
+    };
+    // The folders given: each print set one the project has, each format one this exports to, by its id.
+    let folders = match p.get("folders") {
+        v if absent(v) => None,
+        Some(v) => {
+            let mut folders: Vec<crate::publish::Folder> =
+                serde_json::from_value(v.clone()).map_err(|e| bad(c, format!("`folders` is a list of {{name, entries}}: {e}")))?;
+            for e in folders.iter_mut().flat_map(|f| &mut f.entries) {
+                e.print_set = e.print_set.trim().to_string();
+                if !s.model.print_sets.contains_key(&e.print_set) {
+                    return Err(bad(c, format!("there's no print set `{}`; `print_set` makes one", e.print_set)));
+                }
+                let format = s.exports.find(&e.format).map_err(|why| bad(c, why))?;
+                if format.status() == crate::export::Status::Planned {
+                    return Err(bad(c, format!("{} export isn't written yet", format.label())));
+                }
+                e.format = format.id().to_string();
+            }
+            Some(folders)
+        }
+        None => None,
+    };
+    let folder = string(c, p, "folder")?;
+    let overwrite = if absent(p.get("overwrite")) { None } else { Some(flag(c, p, "overwrite")?) };
+    let rename = name_param(c, p, "rename")?;
+    let duplicate = name_param(c, p, "duplicate")?;
+    let m = s.model_mut();
+    if flag(c, p, "delete")? {
+        if m.publish_sets.remove(&name).is_none() {
+            return Err(bad(c, format!("there's no publishing set `{name}`")));
+        }
+        return Ok(json!({"deleted": name}));
+    }
+    let room = |m: &Model| {
+        if m.publish_sets.len() >= crate::publish::MAX_SETS {
+            return Err(bad(c, format!("the project holds up to {} publishing sets", crate::publish::MAX_SETS)));
+        }
+        Ok(())
+    };
+    if let Some(to) = duplicate {
+        let set = m.publish_sets.get(&name).cloned().ok_or_else(|| bad(c, format!("there's no publishing set `{name}`")))?;
+        if m.publish_sets.contains_key(&to) {
+            return Err(bad(c, format!("there's already a publishing set `{to}`")));
+        }
+        room(m)?;
+        set.check(&to).map_err(|e| bad(c, e))?;
+        let entries = set.len();
+        m.publish_sets.insert(to.clone(), set);
+        return Ok(json!({"name": to, "entries": entries}));
+    }
+    let mut set = match m.publish_sets.get(&name) {
+        Some(was) => was.clone(),
+        None => {
+            room(m)?;
+            crate::publish::PublishSet::default()
+        }
+    };
+    if let Some(folders) = folders {
+        set.folders = folders;
+    }
+    if let Some(folder) = folder {
+        set.folder = folder.trim().to_string();
+    }
+    if let Some(overwrite) = overwrite {
+        set.overwrite = overwrite;
+    }
+    if let Some(timings) = p.get("timings") {
+        let timings: Vec<crate::publish::TimedEntry> =
+            serde_json::from_value(timings.clone()).map_err(|e| bad(c, format!("`timings` is a list of completed exports: {e}")))?;
+        set.record_times(&timings);
+    }
+    let name = match rename {
+        Some(to) if to != name => {
+            if m.publish_sets.contains_key(&to) {
+                return Err(bad(c, format!("there's already a publishing set `{to}`")));
+            }
+            if m.publish_sets.remove(&name).is_none() {
+                return Err(bad(c, format!("there's no publishing set `{name}` to rename")));
+            }
+            rename_entry(m, &LibKind::PublishSet, &name, &to);
+            to
+        }
+        _ => name,
+    };
+    set.check(&name).map_err(|e| bad(c, e))?;
+    let entries = set.len();
+    m.publish_sets.insert(name.clone(), set);
+    Ok(json!({"name": name, "entries": entries}))
+}
+
+fn publish(s: &mut Session, p: &Value) -> R {
+    let c = "publish";
+    only(c, p, &["name", "folder"])?;
+    let name = name_param(c, p, "name")?.ok_or_else(|| bad(c, "`name` is required: a publishing set (`publish_set` lists them)"))?;
+    let set = s.model.publish_sets.get(&name).ok_or_else(|| bad(c, format!("there's no publishing set `{name}`")))?;
+    let given = string(c, p, "folder")?.map(PathBuf::from);
+    let root = set.root(s.path.as_deref(), given.as_deref()).map_err(|e| bad(c, e))?;
+    let report = crate::publish::run(&s.model, &s.exports, &name, &root, &crate::export::Ctx::quiet()).map_err(|e| bad(c, e))?;
+    if report.written.is_empty() {
+        let why: Vec<String> = report.failed.iter().map(|f| format!("{}: {}", f.of, f.error)).collect();
+        return Err(bad(c, format!("nothing was written; {}", why.join("; "))));
+    }
+    if s.read_only.is_none()
+        && !report.published.is_empty()
+        && let Some(set) = s.model_mut().publish_sets.get_mut(&name)
+    {
+        set.record_times(&report.published);
+    }
+    Ok(json!(report))
 }
 
 /// A number of `unit` under `key`, finite and of any size: the setting's own check says how large it may be.
@@ -8715,6 +9604,400 @@ fn board_json(m: &Model, id: Id) -> Value {
         "installed_va": totals.as_ref().map(|t| t.installed_va), "demand_va": totals.as_ref().map(|t| t.demand_va),
         "current_a": totals.as_ref().and_then(|t| t.current_a),
     })
+}
+
+/// `[x, y, z]` under `key`, mm, within the map's bounds.
+fn shared3(c: &str, p: &Value, key: &str) -> Result<Option<[f64; 3]>, String> {
+    use crate::model::MAX_MAP;
+    match p.get(key) {
+        v if absent(v) => Ok(None),
+        Some(v) => v
+            .as_array()
+            .and_then(|a| match a.as_slice() {
+                [x, y, z] => Some([x.as_f64()?, y.as_f64()?, z.as_f64()?]),
+                _ => None,
+            })
+            .filter(|q| q.iter().all(|x| crate::coordinates::on_map(*x)))
+            .map(Some)
+            .ok_or_else(|| bad(c, format!("`{key}` must be [x, y, z] in mm, each within ±{MAX_MAP:e}, got {v}"))),
+        None => Ok(None),
+    }
+}
+
+/// A shared coordinate under `key`, mm.
+fn shared1(c: &str, p: &Value, key: &str) -> Result<Option<f64>, String> {
+    use crate::model::MAX_MAP;
+    match p.get(key) {
+        v if absent(v) => Ok(None),
+        Some(v) => v
+            .as_f64()
+            .filter(|x| crate::coordinates::on_map(*x))
+            .map(Some)
+            .ok_or_else(|| bad(c, format!("`{key}` must be a number of mm within ±{MAX_MAP:e}, got {v}"))),
+        None => Ok(None),
+    }
+}
+
+/// An angle to true north under `key`, degrees.
+fn north_angle(c: &str, p: &Value, key: &str) -> Result<Option<f64>, String> {
+    match amount(c, p, key, "degrees")? {
+        Some(a) if a.abs() > 360.0 => Err(bad(c, format!("`{key}` must be degrees from -360 to 360, got {a}"))),
+        a => Ok(a),
+    }
+}
+
+/// Reset Coordinates: the active location back on the internal origin (no offset, no turn, a scale of 1), both points on it,
+/// and every link placed by base points or by shared coordinates pinned by hand where it stands now, so none moves.
+fn reset_coordinates(s: &mut Session) -> R {
+    let c = "coordinates";
+    let m = &s.model;
+    let mut pinned = Vec::new();
+    for (id, e) in &m.elements {
+        let Element::Link(l) = e else { continue };
+        if l.by == crate::link::By::Manual {
+            continue;
+        }
+        // Where it stands: worked out from its file, else where it stood when it was last loaded, as the project remembers.
+        let (at, angle, raised) = match (m.loaded.get(&l.path), l.placed) {
+            (Some(other), _) => crate::link::placement(m, l, other),
+            (None, Some(p)) => (p.at, p.angle, p.raised),
+            (None, None) => {
+                return Err(bad(
+                    c,
+                    format!("link `{}` has never been loaded, so where it stands isn't known: `reload` it first, or delete it", l.name),
+                ));
+            }
+        };
+        pinned
+            .push((*id, crate::model::Link { by: crate::link::By::Manual, at, angle, raised, location: None, placed: None, ..l.clone() }));
+    }
+    let m = s.model_mut();
+    for (id, l) in pinned {
+        m.elements.insert(id, Element::Link(l));
+    }
+    m.coordinates.base = [0.0; 3];
+    m.coordinates.survey = [0.0; 3];
+    // The active site on the internal origin, its map system kept.
+    let g = crate::model::Georeference { eastings: 0.0, northings: 0.0, height: 0.0, rotation: 0.0, scale: 1.0, ..m.site().clone() };
+    m.set_site(g);
+    Ok(s.model.coordinates_report())
+}
+
+fn coordinates(s: &mut Session, p: &Value) -> R {
+    use crate::coordinates::Move;
+    let c = "coordinates";
+    only(c, p, &["base", "survey", "move", "acquire", "reset"])?;
+    if flag(c, p, "reset")? {
+        return reset_coordinates(s);
+    }
+    if let Some(from) = id_opt(c, p, "acquire")? {
+        let m = &s.model;
+        let mut g = m.site().clone();
+        match m.elements.get(from) {
+            Some(Element::CadImport(ci)) => {
+                // A drawing's own coordinates are the map's: where its origin stands, the shared coordinates are its, in mm,
+                // and its axes the map's. The elevation stays.
+                let z = m.elevation(ci.level);
+                let shared = [ci.origin.0 * ci.scale, ci.origin.1 * ci.scale, g.to_shared([ci.at.0, ci.at.1, z])[2]];
+                g.rotation = -ci.angle;
+                g.specify([ci.at.0, ci.at.1, z], shared);
+            }
+            Some(Element::Link(l)) => {
+                let other = m.loaded.get(&l.path).ok_or_else(|| bad(c, format!("link `{}` isn't loaded: `reload` it first", l.name)))?;
+                // Where its origin stands here, its shared coordinates are this project's from now on.
+                let (at, angle, dz) = crate::link::placement(m, l, other);
+                let theirs = l.location.as_deref().and_then(|n| other.site_named(n)).unwrap_or(other.site());
+                (g.rotation, g.scale) = (theirs.rotation - angle, theirs.scale);
+                // Its map system comes with it, where it names one.
+                if !theirs.crs.is_empty() {
+                    g = crate::model::Georeference { eastings: 0.0, northings: 0.0, height: 0.0, ..theirs.clone() };
+                    (g.rotation, g.scale) = (theirs.rotation - angle, theirs.scale);
+                }
+                g.specify([at.0, at.1, dz], theirs.to_shared([0.0; 3]));
+            }
+            _ => {
+                return Err(bad(
+                    c,
+                    format!("`acquire` takes a link or a CAD drawing placed in the project, and element {from} is neither"),
+                ));
+            }
+        }
+        g.rotation = (g.rotation + 180.0).rem_euclid(360.0) - 180.0;
+        g.check().map_err(|e| bad(c, e))?;
+        let m = s.model_mut();
+        m.set_site(g);
+        let mut r = m.coordinates_report();
+        r["acquired"] = json!({"from": from, "location": m.frames().location()});
+        return Ok(r);
+    }
+    let base = match p.get("base") {
+        v if absent(v) => None,
+        Some(v) => Some(point3(v).ok_or_else(|| bad(c, format!("`base` must be [x, y, z] in mm, got {v}")))?),
+        None => None,
+    };
+    let survey = match p.get("survey") {
+        v if absent(v) => None,
+        Some(v) => Some(point3(v).ok_or_else(|| bad(c, format!("`survey` must be [x, y, z] in mm, got {v}")))?),
+        None => None,
+    };
+    let how = match string(c, p, "move")?.as_deref() {
+        None | Some("point") => Move::Point,
+        Some("system") => Move::System,
+        Some(other) => {
+            return Err(bad(c, format!("`move` is point (the point alone) or system (the shared system with it), not `{other}`")));
+        }
+    };
+    if base.is_some() || survey.is_some() {
+        let m = s.model_mut();
+        if let Some(b) = base {
+            m.coordinates.base = b;
+        }
+        if let Some(sv) = survey {
+            m.move_survey(sv, how);
+        }
+    }
+    Ok(s.model.coordinates_report())
+}
+
+fn location(s: &mut Session, p: &Value) -> R {
+    use crate::coordinates::MAX_LOCATIONS;
+    let c = "location";
+    only(
+        c,
+        p,
+        &["name", "east", "north", "elevation", "angle", "scale", "rename", "activate", "delete", "shift", "latitude", "longitude", "crs"],
+    )?;
+    let name = name_param(c, p, "name")?;
+    let shift = shared3(c, p, "shift")?;
+    let shifted = |g: &mut crate::model::Georeference, d: [f64; 3]| {
+        g.eastings += d[0];
+        g.northings += d[1];
+        g.height += d[2];
+    };
+    let Some(name) = name else {
+        if let Some(d) = shift {
+            let m = s.model_mut();
+            let mut g = m.site().clone();
+            shifted(&mut g, d);
+            g.check().map_err(|e| bad(c, e))?;
+            m.set_site(g);
+            for (n, g) in &mut m.coordinates.sites {
+                shifted(g, d);
+                g.check().map_err(|e| bad(c, format!("site `{n}`: {e}")))?;
+            }
+        }
+        let r = s.model.coordinates_report();
+        return Ok(json!({"active": r["active"], "locations": r["locations"]}));
+    };
+    let m = s.model_mut();
+    let active = m.coordinates.active == name;
+    if flag(c, p, "delete")? {
+        if active {
+            return Err(bad(c, format!("`{name}` is the active site; activate another first")));
+        }
+        if m.coordinates.sites.remove(&name).is_none() {
+            return Err(bad(c, format!("there's no location `{name}`")));
+        }
+        return Ok(json!({"deleted": name}));
+    }
+    let was = m.site_named(&name).cloned();
+    let rename = name_param(c, p, "rename")?;
+    if was.is_none() && rename.is_some() {
+        return Err(bad(c, format!("there's no location `{name}` to rename")));
+    }
+    // A new one starts as a copy of the active one.
+    let mut g = was.clone().unwrap_or_else(|| m.site().clone());
+    // Its map system, as `georeference` takes one.
+    if let Some(crs) = string(c, p, "crs")? {
+        g.crs = crs.trim().to_string();
+        if let Some(code) = crate::crs::code(&g.crs).filter(|code| crate::crs::known(*code)) {
+            g.description = Some(crate::crs::lookup(code).map_err(|e| bad(c, e))?.name);
+        } else if g.crs.is_empty() {
+            g.description = None;
+        }
+    }
+    if let Some(a) = north_angle(c, p, "angle")? {
+        g.rotation = a;
+    }
+    if let Some(x) = amount(c, p, "scale", "grid over ground")? {
+        g.scale = x;
+    }
+    // East, north and elevation are the Survey Point's, as Revit shows a site; the georeference is the internal origin's.
+    let survey = m.coordinates.survey;
+    let mut at = g.to_shared(survey);
+    for (i, key) in ["east", "north", "elevation"].into_iter().enumerate() {
+        if let Some(x) = shared1(c, p, key)? {
+            at[i] = x;
+        }
+    }
+    // Or put on the globe, through the site's map system.
+    match (amount(c, p, "longitude", "degrees")?, amount(c, p, "latitude", "degrees")?) {
+        (None, None) => {}
+        (Some(lon), Some(lat)) => {
+            let map = g.map().ok_or_else(|| {
+                bad(c, "`latitude` and `longitude` need the site's map system: name a projected EPSG code with `georeference` (`crs`)")
+            })?;
+            (at[0], at[1]) = crate::crs::from_wgs84(map.code, lon, lat).map_err(|e| bad(c, e))?;
+        }
+        _ => return Err(bad(c, "`latitude` and `longitude` go together")),
+    }
+    g.specify(survey, at);
+    if let Some(d) = shift {
+        shifted(&mut g, d);
+    }
+    let name = match rename {
+        Some(to) if to != name => {
+            if m.site_named(&to).is_some() {
+                return Err(bad(c, format!("there's already a location `{to}`")));
+            }
+            if let Some(kept) = m.coordinates.sites.remove(&name) {
+                m.coordinates.sites.insert(to.clone(), kept);
+            }
+            // The active name is a reference to its library entry, so it follows.
+            rename_entry(m, &LibKind::Location, &name, &to);
+            to
+        }
+        _ => name,
+    };
+    g.check().map_err(|e| bad(c, format!("location `{name}`: {e}")))?;
+    if was.is_none() && m.coordinates.sites.len() + 1 >= MAX_LOCATIONS {
+        return Err(bad(c, format!("the project holds up to {MAX_LOCATIONS} locations")));
+    }
+    if active {
+        m.set_site(g.clone());
+    } else {
+        m.coordinates.sites.insert(name.clone(), g.clone());
+    }
+    if flag(c, p, "activate")? {
+        m.activate_site(&name);
+    }
+    let active = m.coordinates.active.clone();
+    m.sync_library();
+    let (id, guid) = (m.library.id(&LibKind::Location, &name), m.library.guid(&LibKind::Location, &name));
+    Ok(json!({"name": name, "location": g.location(survey), "georeference": g, "active": active, "id": id, "guid": guid}))
+}
+
+fn rotate_project_north(s: &mut Session, p: &Value) -> R {
+    let c = "rotate_project_north";
+    only(c, p, &["angle", "true_north", "about"])?;
+    let angle = match (num(c, p, "angle")?, flag(c, p, "true_north")?) {
+        (Some(a), false) if a.abs() <= 360.0 => a,
+        (Some(a), false) => return Err(bad(c, format!("`angle` is degrees from -360 to 360, not {a}"))),
+        (None, true) => s.model.site().rotation,
+        (Some(_), true) => return Err(bad(c, "give `angle` or `true_north`, not both")),
+        (None, false) => return Err(bad(c, "give `angle` (degrees, counter-clockwise) or `true_north: true`")),
+    };
+    let base = s.model.coordinates.base;
+    let about = point_opt(c, p, "about")?.unwrap_or(P2(base[0], base[1]));
+    let (sin, cos) = angle.to_radians().sin_cos();
+    let turn = move |q: P2| {
+        let d = q - about;
+        about + P2(d.0 * cos - d.1 * sin, d.0 * sin + d.1 * cos)
+    };
+    let micro = |q: P2| micron(turn(q));
+    let mo = Motion { map: &micro, slide: None, mirror: false };
+    // What has a place in plan turns; what hasn't (levels, sheets, links worked out from the points) stays.
+    let m = &s.model;
+    let all: BTreeSet<Id> = m.elements.keys().copied().collect();
+    let ids: Vec<Id> = all.iter().copied().filter(|id| transformed(c, m, *id, &mo, &all).is_ok()).collect();
+    relocate(c, s, &ids, &mo, None)?;
+    let m = s.model_mut();
+    let co = &mut m.coordinates;
+    for pt in [&mut co.base, &mut co.survey] {
+        let q = turn(P2(pt[0], pt[1]));
+        (pt[0], pt[1]) = (q.0, q.1);
+    }
+    let wrap = |a: f64| {
+        let a = (a + 180.0).rem_euclid(360.0) - 180.0;
+        if a.abs() < 1e-9 { 0.0 } else { a }
+    };
+    // Every site turns back by as much about the point that stays, so every point keeps its place in the world.
+    let fixed = [about.0, about.1, 0.0];
+    let turned = |g: &mut crate::model::Georeference| {
+        let q = g.to_shared(fixed);
+        g.rotation = wrap(g.rotation - angle);
+        g.specify(fixed, q);
+    };
+    co.sites.values_mut().for_each(turned);
+    let mut g = m.site().clone();
+    turned(&mut g);
+    m.set_site(g);
+    for e in m.elements.values_mut() {
+        if let Element::Link(l) = e
+            && l.by == crate::link::By::Base
+        {
+            l.angle = wrap(l.angle + angle);
+        }
+    }
+    Ok(json!({"angle": angle, "rotated": ids}))
+}
+
+fn specify_coordinates(s: &mut Session, p: &Value) -> R {
+    let c = "specify_coordinates";
+    only(c, p, &["at", "east", "north", "elevation", "angle", "on", "level"])?;
+    let picked = !absent(p.get("on")) || !absent(p.get("level"));
+    let at = match p.get("at").and_then(Value::as_array).map(Vec::len) {
+        Some(2) => {
+            let q = point_req(c, p, "at")?;
+            let on = match p.get("on") {
+                v if absent(v) => None,
+                Some(v) => Some(element_id(c, &s.model, v)?),
+                None => None,
+            };
+            let level = match (on.and_then(|id| s.model.elements.get(id)).and_then(|e| s.model.level_of(e)), absent(p.get("level"))) {
+                (Some(l), true) => l,
+                _ => level_param(c, &s.model, p, "level")?,
+            };
+            let z = crate::coordinates::picked_z(&s.model, level, q, on);
+            [q.0, q.1, z]
+        }
+        _ if picked => {
+            return Err(bad(c, "`on` and `level` work out the height of a point picked in plan: give `at` as [x, y] with them"));
+        }
+        _ => point3_req(c, p, "at")?,
+    };
+    let need = |key: &str| shared1(c, p, key)?.ok_or_else(|| bad(c, format!("`{key}` (mm) is required")));
+    let shared = [need("east")?, need("north")?, need("elevation")?];
+    let mut g = s.model.site().clone();
+    if let Some(a) = north_angle(c, p, "angle")? {
+        g.rotation = a;
+    }
+    g.specify(at, shared);
+    g.check().map_err(|e| bad(c, e))?;
+    let m = s.model_mut();
+    m.set_site(g);
+    Ok(json!({"active": m.coordinates.active, "location": m.frames().location(), "georeference": m.georeference}))
+}
+
+fn convert_coordinates(s: &mut Session, p: &Value) -> R {
+    use crate::coordinates::{Frame, Frames};
+    let c = "convert_coordinates";
+    only(c, p, &["points", "from", "to", "location"])?;
+    let frame = |key: &str| -> Result<Frame, String> {
+        let f = string(c, p, key)?.ok_or_else(|| bad(c, format!("`{key}` ({}) is required", Frame::NAMES)))?;
+        Frame::parse(&f).ok_or_else(|| bad(c, format!("`{key}` is one of {}, not `{f}`", Frame::NAMES)))
+    };
+    let (from, to) = (frame("from")?, frame("to")?);
+    let a = p.get("points").and_then(Value::as_array).ok_or_else(|| bad(c, "`points` [[x, y, z], …] is required"))?;
+    if a.len() > MAX_POINTS {
+        return Err(bad(c, format!("`points` has more than {MAX_POINTS} points")));
+    }
+    let pts = a
+        .iter()
+        .map(|v| shared3(c, &json!({"p": v}), "p")?.ok_or_else(|| bad(c, format!("`points`: {v} is not a point [x, y, z] in mm"))))
+        .collect::<Result<Vec<_>, _>>()?;
+    let m = &s.model;
+    let name = name_param(c, p, "location")?.unwrap_or_else(|| m.coordinates.active.clone());
+    let site = m.site_named(&name).ok_or_else(|| {
+        let names: Vec<&str> = std::iter::once(&m.coordinates.active).chain(m.coordinates.sites.keys()).map(String::as_str).collect();
+        bad(c, format!("there's no location `{name}`; the project has {}", names.join(", ")))
+    })?;
+    let f = Frames { co: &m.coordinates, site };
+    let out: Vec<[f64; 3]> = pts.into_iter().map(|q| f.convert(q, from, to)).collect::<Result<_, _>>().map_err(|e| bad(c, e))?;
+    if out.iter().flatten().any(|x| !crate::coordinates::on_map(*x)) {
+        return Err(bad(c, "a point lands past the coordinates' bounds"));
+    }
+    Ok(json!({"points": out, "from": string(c, p, "from")?, "to": string(c, p, "to")?, "location": name}))
 }
 
 fn wall(s: &mut Session, p: &Value) -> R {
@@ -9315,6 +10598,11 @@ fn room(s: &mut Session, p: &Value) -> R {
         })),
     };
     let mut r = Room::new(level, point, name, number.clone());
+    r.type_name = type_param(c, p, m, "room")?;
+    if !m.types.room.contains_key(&r.type_name) {
+        let names: Vec<&str> = m.types.room.keys().map(String::as_str).collect();
+        return Err(bad(c, format!("there is no room type `{}` (there are: {}); `type` makes one", r.type_name, names.join(", "))));
+    }
     r.frozen = flag(c, p, "frozen")?;
     r.base_offset = num(c, p, "base_offset")?.unwrap_or(0.0);
     let limit_offset = num(c, p, "limit_offset")?;
@@ -10132,11 +11420,205 @@ fn spot(s: &mut Session, p: &Value) -> R {
         })?)),
         (None, None) => None,
     };
-    let sp = Spot { view: m.guid(view), at, host, slope: false };
-    let elevation = m.spot_value(&sp).map(hundredth);
+    let sp = Spot { host, origin: origin_param(c, p)?, ..Spot::new(m.guid(view), at) };
+    let elevation = m.spot_reads(&sp).map(hundredth);
     let host = host.and_then(|h| m.elements.id(h));
     let id = s.model_mut().insert(Element::Spot(sp));
     Ok(json!({"id": id, "elevation": elevation, "host": host}))
+}
+
+/// Where point `at`, at height `z`, stands in the active location's shared coordinates, as `shared_east`, `shared_north` and
+/// `shared_elevation`.
+fn shared_at(m: &Model, extra: &mut Map<String, Value>, at: P2, z: f64) {
+    let q = m.frames().to_shared([at.0, at.1, z]);
+    for (k, v) in ["shared_east", "shared_north", "shared_elevation"].into_iter().zip(q) {
+        extra.insert(k.into(), json!(hundredth(v)));
+    }
+}
+
+/// Whether a drawing whose file says it is drawn at `scale` mm to its unit, its middle at `middle` in that unit, looks like map
+/// coordinates in a unit its file gets wrong: its file says inches or feet, and its middle is more than 50 000 units off its
+/// origin (a civil drawing in metres whose header was left at AutoCAD's imperial default). Some(true) for inches, which
+/// map coordinates never are; Some(false) for feet, which US State Plane coordinates are.
+fn looks_like_map(scale: Option<f64>, middle: P2) -> Option<bool> {
+    let far = middle.0.abs().max(middle.1.abs()) > 50_000.0;
+    match scale {
+        Some(k) if far && (k - 25.4).abs() < 1e-6 => Some(true),
+        Some(k) if far && (k - 304.8).abs() < 0.01 => Some(false),
+        _ => None,
+    }
+}
+
+/// The scale an import whose units are auto reads a drawing at, and a note when it isn't its file's: a file that says inches
+/// for map coordinates (`looks_like_map`) is read in the unit of the active site's map system, else in metres; one that says
+/// feet, in the map system's unit when that is metric. Else its file's.
+fn auto_scale(m: &Model, scale: Option<f64>, unit: &str, middle: P2) -> (f64, Option<String>) {
+    let file = scale.unwrap_or(1.0);
+    let unit = spelled(unit);
+    let info = m.site().map();
+    let (k, why) = match (looks_like_map(scale, middle), &info) {
+        // Inches, or feet where the map system is metric: the map system's unit.
+        (Some(inches), Some(i)) if inches || i.mm() >= 1000.0 => {
+            (i.mm(), format!("{}s, the unit of the project's map system ({})", i.unit, i.name))
+        }
+        (Some(true), _) => (1000.0, "metres, as map coordinates are".to_string()),
+        _ => return (file, None),
+    };
+    if (k - file).abs() < 1e-9 {
+        return (file, None);
+    }
+    let note = format!(
+        "its file says its units are {unit}, but its coordinates are map coordinates: read in {why}; give `units` to read it otherwise"
+    );
+    (k, Some(note))
+}
+
+/// A unit's short name (`in`, `ft`) as a sentence says it.
+fn spelled(unit: &str) -> &str {
+    match unit {
+        "in" => "inches",
+        "ft" => "feet",
+        "mm" => "millimetres",
+        "cm" => "centimetres",
+        "m" => "metres",
+        u => u,
+    }
+}
+
+/// Why something far off can't come in where its coordinates put it, and what to do.
+fn far_message(here: [f64; 3]) -> String {
+    format!(
+        "where its coordinates put it, by the active location, is {:.0}, {:.0} mm from the internal origin, past the {MAX_COORD} mm \
+         a model reaches: set the location (`location`, `specify_coordinates`) or give `acquire: true`, which sets it from the \
+         file so it lands at the origin",
+        here[0], here[1]
+    )
+}
+
+/// What `origin` names: the Project Base Point unless it says the Survey Point.
+fn origin_param(c: &str, p: &Value) -> Result<crate::coordinates::Origin, String> {
+    use crate::coordinates::Origin;
+    let key = if p.get("elevation_base").is_some() { "elevation_base" } else { "origin" };
+    match string(c, p, key)? {
+        None => Ok(Origin::Base),
+        Some(t) => Origin::parse(&t).ok_or_else(|| bad(c, format!("`{key}` is {}, not `{t}`", Origin::NAMES))),
+    }
+}
+
+/// A spot coordinate: in a plan, the north and east of a point, and its elevation, as its type says.
+fn spot_coordinate(s: &mut Session, p: &Value) -> R {
+    let c = "spot_coordinate";
+    only(c, p, &["at", "view", "origin", "type", "host", "end", "leader", "shoulder"])?;
+    let m = &s.model;
+    let at = point_req(c, p, "at")?;
+    let view = view_param(c, m, p, false)?;
+    let Some(level) = m.plan_level(view) else {
+        return Err(bad(c, "a spot coordinate reads north and east: place it in a plan"));
+    };
+    // Without `origin`, the shared coordinates: what a spot coordinate is for once the project stands somewhere.
+    let origin = if absent(p.get("origin")) { crate::coordinates::Origin::Survey } else { origin_param(c, p)? };
+    let type_name = match name_param(c, p, "type")? {
+        Some(t) if m.spot_coordinate_types.contains_key(&t) => t,
+        Some(t) => return Err(bad(c, format!("there's no spot coordinate type `{t}`; `spot_coordinate_type` lists them"))),
+        None => crate::spots::default_type(&m.spot_coordinate_types, origin)
+            .cloned()
+            .ok_or_else(|| bad(c, "the project has no spot coordinate type; make one with `spot_coordinate_type`"))?,
+    };
+    // What it stands on, for its elevation: the element given, else what is at its point, else nothing (the level's).
+    let host = match id_opt(c, p, "host")? {
+        Some(h) => Some(m.guid(h)),
+        None => m.spot_host(level, at).map(|h| m.guid(h)),
+    };
+    let sp = Spot {
+        host,
+        coordinate: true,
+        type_name: Some(type_name.clone()),
+        leader: flag_or(c, p, "leader", true)?,
+        shoulder: flag_or(c, p, "shoulder", true)?,
+        end: point_opt(c, p, "end")?,
+        ..Spot::new(m.guid(view), at)
+    };
+    let read = m.spot_coordinate(&sp);
+    let text = m.spot_coordinate_text(&sp);
+    let host = host.and_then(|h| m.elements.id(h));
+    let id = s.model_mut().insert(Element::Spot(sp));
+    Ok(json!({"id": id, "type": type_name, "east": read.map(|(e, _)| hundredth(e)), "north": read.map(|(_, n)| hundredth(n)),
+        "text": text, "host": host}))
+}
+
+fn spot_coordinate_type(s: &mut Session, p: &Value) -> R {
+    use crate::spots::SpotCoordinateType;
+    let c = "spot_coordinate_type";
+    let Some(name) = name_param(c, p, "name")? else {
+        return Ok(json!({"types": s.model.spot_coordinate_types, "fonts": crate::text::families()}));
+    };
+    let m = s.model_mut();
+    if flag(c, p, "delete")? {
+        if let Some((id, _)) =
+            m.elements.iter().find(|(_, e)| matches!(e, Element::Spot(sp) if sp.type_name.as_deref() == Some(name.as_str())))
+        {
+            return Err(bad(c, format!("spot coordinate {id} is of `{name}`; give it another type first")));
+        }
+        if m.spot_coordinate_types.remove(&name).is_none() {
+            return Err(bad(c, format!("there's no spot coordinate type `{name}`")));
+        }
+        return Ok(json!({"deleted": name}));
+    }
+    let t = match (m.spot_coordinate_types.get(&name), name_param(c, p, "like")?) {
+        (Some(t), _) => t.clone(),
+        (None, Some(like)) => m
+            .spot_coordinate_types
+            .get(&like)
+            .cloned()
+            .ok_or_else(|| bad(c, format!("there's no spot coordinate type `{like}` to start from")))?,
+        (None, None) => SpotCoordinateType::default(),
+    };
+    // What it is, with the values given over it, read as a file reads one: a key it hasn't is an error.
+    let mut v = serde_json::to_value(&t).map_err(|e| bad(c, e.to_string()))?;
+    let mut font = None;
+    if let Some(o) = v.as_object_mut() {
+        for (key, value) in p.as_object().into_iter().flatten() {
+            match key.as_str() {
+                "name" | "like" | "rename" | "delete" => {}
+                "font" => font = name_param(c, p, "font")?,
+                "leader_color" | "text_color" if !value.is_null() => {
+                    let rgb =
+                        colour(value).ok_or_else(|| bad(c, format!("`{key}` is \"#rrggbb\" or [r, g, b], each 0 to 255, not {value}")))?;
+                    o.insert(key.clone(), json!(rgb));
+                }
+                "origin" if value.is_string() => {
+                    let t = value.as_str().unwrap_or_default();
+                    let origin = crate::coordinates::Origin::parse(t)
+                        .ok_or_else(|| bad(c, format!("`origin` is {}, not `{t}`", crate::coordinates::Origin::NAMES)))?;
+                    o.insert(key.clone(), json!(origin));
+                }
+                _ => {
+                    o.insert(key.clone(), value.clone());
+                }
+            }
+        }
+    }
+    let mut t: SpotCoordinateType = serde_json::from_value(v).map_err(|e| bad(c, e.to_string()))?;
+    if let Some(f) = font.filter(|f| !f.trim().eq_ignore_ascii_case(t.font.trim())) {
+        t.font = crate::text::known(&f)
+            .ok_or_else(|| bad(c, format!("this system has no font `{f}`; `spot_coordinate_type` without `name` lists them")))?;
+    }
+    let name = match name_param(c, p, "rename")? {
+        Some(to) if to != name => {
+            if m.spot_coordinate_types.contains_key(&to) {
+                return Err(bad(c, format!("there's already a spot coordinate type `{to}`")));
+            }
+            m.spot_coordinate_types.remove(&name);
+            rename_entry(m, &LibKind::SpotCoordinateType, &name, &to);
+            to
+        }
+        _ => name,
+    };
+    t.check(&name).map_err(|e| bad(c, e))?;
+    if m.spot_coordinate_types.get(&name) != Some(&t) {
+        m.spot_coordinate_types.insert(name.clone(), t.clone());
+    }
+    Ok(json!({"name": name, "type": t}))
 }
 
 /// A spot slope: in a plan, how steeply the top of the floor or roof at `at` (or `host`) falls there, and which way.
@@ -10155,7 +11637,7 @@ fn spot_slope(s: &mut Session, p: &Value) -> R {
         let place = format!("[{}, {}] on {}", at.0, at.1, level_name(m, level));
         bad(c, format!("no slope to read at {place}; place it on a floor or a roof"))
     })?;
-    let sp = Spot { view: m.guid(view), at, host: Some(m.guid(host)), slope: true };
+    let sp = Spot { host: Some(m.guid(host)), slope: true, ..Spot::new(m.guid(view), at) };
     let read = m.spot_slope(&sp);
     let id = s.model_mut().insert(Element::Spot(sp));
     Ok(
@@ -10292,9 +11774,9 @@ fn chain(s: &mut Session, p: &Value, category: &str) -> R {
     Ok(json!({"ids": ids}))
 }
 
-/// A steel member's take-off for its JSON (and so its schedule): its section's name, its area (cm²), its weight per metre
-/// (kg/m, in steel) and its weight (kg) over `length` mm.
-fn steel_take_off(extra: &mut Map<String, Value>, p: &crate::model::Profile, (width, depth): (f64, f64), length: f64) {
+/// A profiled member's take-off for its JSON (and so its schedule): its section's name, its area (cm²) and, when it is
+/// `steel`, its weight per metre (kg/m) and its weight (kg) over `length` mm.
+fn steel_take_off(extra: &mut Map<String, Value>, p: &crate::model::Profile, (width, depth): (f64, f64), length: f64, steel: bool) {
     let name = if p.name.is_empty() {
         let size = |x: f64| format!("{}", hundredth(x));
         format!("{} {} x {}", p.shape.word(), size(depth), size(width))
@@ -10305,8 +11787,10 @@ fn steel_take_off(extra: &mut Map<String, Value>, p: &crate::model::Profile, (wi
     let per_metre = area * 1e-6 * crate::profiles::STEEL_DENSITY;
     extra.insert("profile".into(), json!(name));
     extra.insert("section_area_cm2".into(), json!(hundredth(area / 100.0)));
-    extra.insert("weight_kg_m".into(), json!(hundredth(per_metre)));
-    extra.insert("weight_kg".into(), json!(hundredth(per_metre * length / 1000.0)));
+    if steel {
+        extra.insert("weight_kg_m".into(), json!(hundredth(per_metre)));
+        extra.insert("weight_kg".into(), json!(hundredth(per_metre * length / 1000.0)));
+    }
 }
 
 /// A structural column's or a beam's `type` that the project hasn't got and the catalogue has (`IPE 300`): made, under the
@@ -10866,6 +12350,12 @@ fn edit_boundary(s: &mut Session, p: &Value) -> R {
     }
     let now =
         boundary_now(&e).ok_or_else(|| bad(c, format!("{id} isn't a floor, a ceiling, a roof's footprint, a shaft or a filled region")))?;
+    if !absent(p.get("sketch"))
+        && let Some((room, part)) = m.finish_of(id)
+    {
+        let at = m.elements.id(id).unwrap_or_default();
+        return Err(bad(c, connected(m, at, part, room, "its outline is the room's boundary at the walls' faces")));
+    }
     let Some((r, lines)) = sketched(c, p, "", &now)? else {
         return Ok(json!({"id": id, "sketch": now}));
     };
@@ -10911,7 +12401,12 @@ fn edit_boundary(s: &mut Session, p: &Value) -> R {
 /// or enters an opening, the pieces inside kept; and at each end of a piece, and each new corner of the outline or an
 /// opening, a point at the height the top had there, unless one is there or it was 0. And what changed, as `dropped`
 /// (`{points: [[x, y], …], lines: [[[x, y], [x, y]], …]}`, what went), `cut` (the lines cut) and `added` (the points made).
-fn shape_within(m: &Model, old: &Floor, outline: &[P2], holes: &[Vec<P2>]) -> (crate::model::Shape, serde_json::Map<String, Value>) {
+pub(crate) fn shape_within(
+    m: &Model,
+    old: &Floor,
+    outline: &[P2],
+    holes: &[Vec<P2>],
+) -> (crate::model::Shape, serde_json::Map<String, Value>) {
     let sh = &old.shape;
     let mut said = serde_json::Map::new();
     if sh.is_empty() {
@@ -11820,15 +13315,38 @@ fn title_values(s: &mut Session, p: &Value) -> R {
     only(c, p, &["values"])?;
     match p.get("values") {
         v if absent(v) => {}
-        Some(v) => {
-            let values = field_values(c, "values", v, &s.model.title_values)?;
+        Some(Value::Object(given)) => {
+            // A field of the project's information (CLIENT, PROJECT_NUMBER, …) goes to it, where title blocks read it; any other
+            // key is a title value.
+            let (mut info, mut rest) = (Vec::new(), Map::new());
+            for (k, v) in given {
+                match (crate::project_info::field_of_key(k), v) {
+                    (Some(f), Value::Null) => info.push((f, String::new())),
+                    (Some(f), Value::String(t)) => info.push((f, t.trim().to_string())),
+                    (Some(_), v) => return Err(bad(c, format!("`values`: `{k}` is text or null, not {v}"))),
+                    (None, v) => {
+                        rest.insert(k.clone(), v.clone());
+                    }
+                }
+            }
+            let values = field_values(c, "values", &Value::Object(rest), &s.model.title_values)?;
             if values != s.model.title_values {
                 s.model_mut().title_values = values;
             }
+            for (f, v) in info {
+                if s.model.project_info().and_then(|(_, i)| i.get(f)).unwrap_or("") != v {
+                    s.model_mut().set_info(f, v);
+                }
+            }
+        }
+        Some(v) => {
+            field_values(c, "values", v, &s.model.title_values)?;
         }
         None => {}
     }
-    Ok(json!({"values": s.model.title_values}))
+    let mut all = s.model.title_values.clone();
+    all.extend(s.model.info_title_values().into_iter().filter(|(_, v)| !v.is_empty()));
+    Ok(json!({"values": all}))
 }
 
 fn title_block(s: &mut Session, p: &Value) -> R {
@@ -12203,8 +13721,26 @@ fn paint(s: &mut Session, p: &Value) -> R {
     Ok(json!({"painted": ids}))
 }
 
-fn parameter(s: &mut Session, p: &Value) -> R {
+pub(crate) fn parameter(s: &mut Session, p: &Value) -> R {
     let c = "parameter";
+    only(
+        c,
+        p,
+        &[
+            "name",
+            "kind",
+            "categories",
+            "sets",
+            "classification",
+            "rename",
+            "delete",
+            "description",
+            "group",
+            "read_only",
+            "scope",
+            "dictionary",
+        ],
+    )?;
     let name = string(c, p, "name")?.map(|n| n.trim().to_string()).filter(|n| !n.is_empty()).ok_or_else(|| bad(c, "`name` is required"))?;
     let m = s.model_mut();
     // Off the categories `gone`, the ones it was for: their elements' values of `name`, and their
@@ -12249,16 +13785,38 @@ fn parameter(s: &mut Session, p: &Value) -> R {
         return Ok(json!({"deleted": name}));
     }
     let mut param: ProjectParameter = m.parameters.get(&name).cloned().unwrap_or_default();
+    if let Some(v) = p.get("description").filter(|v| !v.is_null()) {
+        param.description = v.as_str().ok_or_else(|| bad(c, "`description` is text"))?.to_string();
+    }
+    // One of Revit's groups by its name or heading, else a heading of the project's own; blank, none.
+    if let Some(v) = p.get("group").filter(|v| !v.is_null()) {
+        param.group = crate::family::Under::read(v.as_str().ok_or_else(|| bad(c, "`group` is text"))?);
+    }
+    if let Some(v) = p.get("read_only").filter(|v| !v.is_null()) {
+        param.read_only = v.as_bool().ok_or_else(|| bad(c, "`read_only` is true or false"))?;
+    }
+    match p.get("dictionary") {
+        Some(Value::Null) => param.dictionary = None,
+        Some(v) => {
+            return Err(bad(
+                c,
+                format!(
+                    "`dictionary` only takes null, which makes it a project parameter, not {v}; `parameter_import` brings a dictionary's"
+                ),
+            ));
+        }
+        None => {}
+    }
     if let Some(v) = p.get("kind").filter(|v| !v.is_null()) {
-        let kind: ParameterKind =
-            serde_json::from_value(v.clone()).map_err(|_| bad(c, format!("`kind`: {v} isn't one of text, number, length, yesno")))?;
+        let kind: ParameterKind = serde_json::from_value(v.clone())
+            .map_err(|_| bad(c, format!("`kind`: {v} isn't one of text, number, integer, length, area, volume, angle, yesno")))?;
         // Values of it: its categories' elements' own (a component's of its family's parameter of
         // that name aren't).
         let Model { families, elements, .. } = &*m;
         let valued = elements.values().any(|e| {
             let theirs = e.family().and_then(|(f, _)| families.get(f)).is_some_and(|f| f.parameters.iter().any(|q| q.name == name));
             param.categories.iter().any(|k| k == e.category()) && !theirs && e.params().is_some_and(|ps| ps.contains_key(&name))
-        });
+        }) || !param.type_values.is_empty();
         if kind != param.kind && valued {
             return Err(bad(c, format!("`{name}` has values of its kind; take them away before it holds another")));
         }
@@ -12280,6 +13838,15 @@ fn parameter(s: &mut Session, p: &Value) -> R {
         clear(m, &name, &gone);
         param.sets.retain(|k, _| list.contains(k));
         param.categories = list;
+        crate::parameters::keep_type_values_of_categories(m, &mut param);
+    }
+    let mut reply = json!({});
+    if let Some(v) = p.get("scope").filter(|v| !v.is_null()) {
+        let scope: Scope = serde_json::from_value(v.clone()).map_err(|_| bad(c, format!("`scope` is instance or type, not {v}")))?;
+        if scope != param.scope {
+            let (word, n) = crate::parameters::switch_scope(m, &name, &mut param, scope);
+            reply[word] = json!(n);
+        }
     }
     if let Some(v) = p.get("sets").filter(|v| !v.is_null()) {
         let map = v
@@ -12313,14 +13880,29 @@ fn parameter(s: &mut Session, p: &Value) -> R {
             if to != name && m.parameters.contains_key(&to) {
                 return Err(bad(c, format!("there's a parameter `{to}` already")));
             }
+            if to != name
+                && let Some(f) = crate::parameters::family_tied(m, &name)
+            {
+                return Err(bad(c, format!("family `{f}` has `{name}` tied to its definition, under this name; it has to keep it")));
+            }
             m.parameters.remove(&name);
             m.library.renamed(&LibKind::Parameter, &name, &to);
             for f in m.view_filters.values_mut().filter(|f| f.categories.iter().any(|k| param.categories.contains(k))) {
                 f.rules.iter_mut().filter(|r| r.field == name).for_each(|r| r.field = to.clone());
             }
             for e in m.elements.values_mut() {
+                if let Element::Tag(t) = e
+                    && t.label.as_deref() == Some(name.as_str())
+                {
+                    t.label = Some(to.clone());
+                }
                 if let Element::Schedule(sc) = e {
                     if param.categories.contains(&category(&sc.of)) {
+                        for f in &mut sc.fields {
+                            if let Some(text) = &mut f.formula {
+                                *text = crate::parameters::rename_in_formula(text, &name, &to);
+                            }
+                        }
                         let swap = |n: &mut String| {
                             if *n == name {
                                 *n = to.clone();
@@ -12345,7 +13927,9 @@ fn parameter(s: &mut Session, p: &Value) -> R {
         None => name,
     };
     m.parameters.insert(name.clone(), param.clone());
-    Ok(json!({"name": name, "parameter": param}))
+    reply["name"] = json!(name);
+    reply["parameter"] = json!(param);
+    Ok(reply)
 }
 
 /// What `form`, `symbol`, `delete_form` and `delete_symbol` did, for `dry_run`'s `changes`.
@@ -12445,11 +14029,18 @@ fn patch_parameter(
         Some(Value::String(to)) if !to.trim().is_empty() => Some(to.trim().to_string()),
         Some(v) => return Err(bad(c, format!("`parameter`: `rename` is the parameter's new name, not {v}"))),
     };
+    // One of Revit's groups, or a heading of the family's own: one line of text.
     if let Some(g) = fields.get("group").filter(|g| !g.is_null())
-        && serde_json::from_value::<crate::family::Group>(g.clone()).is_err()
+        && !g.as_str().and_then(crate::family::Under::read).is_some_and(|u| u.check("").is_ok())
     {
-        let groups: Vec<String> = crate::family::Group::ALL.iter().map(|g| json!(g).as_str().unwrap_or_default().to_string()).collect();
-        return Err(bad(c, format!("parameter `{name}`: `group` is one of {}, not {g}", groups.join(", "))));
+        let groups: Vec<&str> = crate::family::Group::ALL.iter().map(|g| g.key()).collect();
+        return Err(bad(
+            c,
+            format!(
+                "parameter `{name}`: `group` is one of {}, or a heading of its own up to {MAX_TEXT} characters on one line, not {g}",
+                groups.join(", ")
+            ),
+        ));
     }
     let at = f.parameters.iter().position(|q| q.name == name);
     let was = at.and_then(|i| f.parameters.get(i).cloned());
@@ -13716,10 +15307,9 @@ fn shared_parameters(s: &mut Session, p: &Value) -> R {
             let instance = flag(c, p, "instance")?;
             let under = match p.get("under") {
                 v if absent(v) => None,
-                Some(v) => Some(serde_json::from_value::<crate::family::Group>(v.clone()).map_err(|_| {
-                    let groups: Vec<String> =
-                        crate::family::Group::ALL.iter().map(|g| json!(g).as_str().unwrap_or_default().to_string()).collect();
-                    bad(c, format!("`under` is one of {}, not {v}", groups.join(", ")))
+                Some(v) => Some(v.as_str().and_then(crate::family::Under::read).filter(|u| u.check("").is_ok()).ok_or_else(|| {
+                    let groups: Vec<&str> = crate::family::Group::ALL.iter().map(|g| g.key()).collect();
+                    bad(c, format!("`under` is one of {}, or a heading of its own on one line, not {v}", groups.join(", ")))
                 })?),
                 None => None,
             };
@@ -14188,6 +15778,32 @@ fn edit_type(s: &mut Session, p: &Value) -> R {
             m.types.railing.insert(name.clone(), t.clone());
             json!(t)
         }
+        // A room type: the floor and the ceiling its rooms have of their own (`null`, none), and how far from their level.
+        "room" => {
+            let mut t = m.types.room.get(&name).cloned().unwrap_or_default();
+            for (key, types, of) in [("floor", m.type_names("floor"), &mut t.floor), ("ceiling", m.type_names("ceiling"), &mut t.ceiling)] {
+                match p.get(key) {
+                    None => {}
+                    Some(Value::Null) => *of = None,
+                    Some(Value::String(n)) if types.contains(&n.as_str()) => *of = Some(n.clone()),
+                    Some(v) => {
+                        return Err(bad(
+                            c,
+                            format!("`{key}` is a {key} type of the project ({}) or null for none, not {v}", types.join(", ")),
+                        ));
+                    }
+                }
+            }
+            // The colour its rooms are filled with on plans: red, green and blue, or null for no fill.
+            if let Some(v) = p.get("colour") {
+                t.colour = serde_json::from_value(v.clone())
+                    .map_err(|_| bad(c, format!("`colour` is [red, green, blue], each 0 to 255, or null for no fill, not {v}")))?;
+            }
+            t.floor_offset = num(c, p, "floor_offset")?.unwrap_or(t.floor_offset);
+            t.ceiling_offset = num(c, p, "ceiling_offset")?.unwrap_or(t.ceiling_offset);
+            m.types.room.insert(name.clone(), t.clone());
+            json!(t)
+        }
         "ceiling" => {
             let old = m.types.ceiling.get(&name).cloned();
             let (thickness, layers) = layered(c, p, old.as_ref().map(|t| (t.thickness, t.layers.as_slice())), thickness, &need)?;
@@ -14200,7 +15816,7 @@ fn edit_type(s: &mut Session, p: &Value) -> R {
                 c,
                 format!(
                     "`{other}` has no types; use wall, floor, ceiling, door, window, column, structural column, footing, beam, \
-                     strip footing, pipe, conduit, cable tray, wire, down conductor, earthing conductor, cable, roof or railing"
+                     strip footing, pipe, conduit, cable tray, wire, down conductor, earthing conductor, cable, roof, railing or room"
                 ),
             ));
         }
@@ -14450,6 +16066,74 @@ const PLACED_BY: &[&str] = &[
     "parent",
 ];
 
+/// What a floor or a ceiling that follows a room has from the room: `modify` leaves them alone.
+const FOLLOWED: [&str; 6] = ["boundary", "openings", "sketch", "offset", "level", "type"];
+
+/// Why a floor or a ceiling that follows a room can't be changed that way, and what to do first.
+fn connected(m: &Model, id: Id, part: crate::model::Part, room: Id, why: &str) -> String {
+    let name = match m.elements.get(room) {
+        Some(Element::Room(r)) => format!("{} {}", r.number, r.name),
+        _ => String::new(),
+    };
+    format!(
+        "{} {id} is connected to room {room} ({}): {why}; disconnect it first (`room_finish {{id: {id}, action: disconnect}}`), \
+         or change the room's type",
+        part.name(),
+        name.trim()
+    )
+}
+
+fn room_finish(s: &mut Session, p: &Value) -> R {
+    use crate::model::{Finish, Part};
+    let c = "room_finish";
+    only(c, p, &["id", "part", "action"])?;
+    let m = &s.model;
+    let id =
+        id_opt(c, p, "id")?.and_then(|g| m.elements.id(g)).ok_or_else(|| bad(c, "`id`, a room or its floor or ceiling, is required"))?;
+    let part = match choice(c, p, "part", &["floor", "ceiling", ""], "")? {
+        "floor" => Some(Part::Floor),
+        "ceiling" => Some(Part::Ceiling),
+        _ => None,
+    };
+    // A floor or a ceiling names its room, and which of the two it is.
+    let (room, part) = match (m.elements.get(id), m.finish_of(id), part) {
+        (Some(Element::Room(_)), _, Some(part)) => (id, part),
+        (Some(Element::Room(_)), _, None) => return Err(bad(c, "`part` is required with a room: floor or ceiling")),
+        (_, Some((room, own)), given) if given.is_none_or(|g| g == own) => (room, own),
+        (_, Some((_, own)), _) => return Err(bad(c, format!("{id} is its room's {}", own.name()))),
+        _ => return Err(bad(c, format!("{id} is not a room, nor a floor or a ceiling connected to one"))),
+    };
+    let Some(Element::Room(r)) = m.elements.get(room) else { return Err(bad(c, format!("no room {room}"))) };
+    let wanted = m.types.room.get(&r.type_name).and_then(|t| t.finish(part)).is_some();
+    let now = r.finish(part);
+    let then = match (choice(c, p, "action", &["disconnect", "regenerate", ""], "")?, now) {
+        ("disconnect", Finish::Connected(_)) => Finish::Disconnected,
+        ("disconnect", _) => return Err(bad(c, format!("room {room} has no {} connected to it", part.name()))),
+        ("regenerate", Finish::Disconnected) if wanted => Finish::None,
+        ("regenerate", Finish::Disconnected) => {
+            return Err(bad(c, format!("room {room}'s type `{}` has no {} to make", r.type_name, part.name())));
+        }
+        ("regenerate", Finish::Connected(g)) => {
+            return Err(bad(c, format!("room {room} has its {} already ({}); disconnect it first", part.name(), m.shown(g))));
+        }
+        ("regenerate", Finish::None) if wanted => {
+            return Err(bad(
+                c,
+                format!("room {room} isn't enclosed, so it has no {} yet: it is made when walls close round it", part.name()),
+            ));
+        }
+        ("regenerate", Finish::None) => return Err(bad(c, format!("room {room}'s type `{}` has no {}", r.type_name, part.name()))),
+        _ => return Err(bad(c, "`action` is required: disconnect or regenerate")),
+    };
+    let was = now.connected().and_then(|g| m.elements.id(g));
+    if let Some(Element::Room(r)) = s.model_mut().elements.get_mut(room) {
+        *r.finish_mut(part) = then;
+    }
+    Ok(
+        json!({"room": room, "part": part.name(), "was": was, "state": if then == Finish::Disconnected { "disconnected" } else { "regenerating" }}),
+    )
+}
+
 fn modify(s: &mut Session, p: &Value) -> R {
     let c = "modify";
     let fields = p.as_object().ok_or_else(|| bad(c, "params must be {id | ids, …fields}"))?;
@@ -14471,6 +16155,18 @@ fn modify(s: &mut Session, p: &Value) -> R {
             ));
         }
         let e = m.elements.get(id).ok_or_else(|| bad(c, format!("no element {id}")))?;
+        // A room's floor and ceiling are its room's: `room_finish` lets one go or makes it again, and one that follows a
+        // room is where and what the room's type says.
+        if matches!(e, Element::Room(_))
+            && let Some(k) = ["floor", "ceiling"].into_iter().find(|k| fields.contains_key(*k))
+        {
+            return Err(bad(c, format!("room {id}: its `{k}` is made by its type; use `room_finish` to disconnect it or make it again")));
+        }
+        if let Some((room, part)) = m.finish_of(id)
+            && let Some(k) = FOLLOWED.iter().find(|k| fields.contains_key(**k))
+        {
+            return Err(bad(c, connected(m, id, part, room, &format!("its `{k}` is its room's"))));
+        }
         let mut v = serde_json::to_value(e).map_err(|e| bad(c, e))?;
         let obj = v.as_object_mut().ok_or_else(|| bad(c, format!("element {id} can't be edited")))?;
         for (k, val) in fields {
@@ -14695,6 +16391,9 @@ pub(crate) fn transform(c: &str, m: &Model, mut e: Element, id: Id, mo: &Motion,
         Element::Schedule(_) | Element::PanelSchedule(_) | Element::PlanView(_) => {
             return Err(bad(c, format!("{category} {id} has no place in plan; move its viewport on its sheet")));
         }
+        Element::ProjectInfo(_) => {
+            return Err(bad(c, format!("{id} is the project's information, which has no place in plan; a project has one")));
+        }
         // A camera view has a place in plan: its mark. The camera goes as a whole (the plan point of its eye and its
         // target, each keeping its height), so moving, copying, turning or mirroring it keeps it looking the same way.
         Element::View3D(v) => match v.camera {
@@ -14728,7 +16427,10 @@ pub(crate) fn transform(c: &str, m: &Model, mut e: Element, id: Id, mo: &Motion,
             (n.at, n.angle) = (at, if mo.mirror { n.angle } else { angle });
             n.leader = n.leader.map(f);
         }
-        Element::Spot(sp) => sp.at = f(sp.at),
+        Element::Spot(sp) => {
+            sp.at = f(sp.at);
+            sp.end = sp.end.map(f);
+        }
         Element::DetailLine(l) => l.curve = l.curve.map(|p| micron(f(p))),
         // Its sketch went with it, above; its pattern goes too.
         Element::FilledRegion(r) => (r.pattern_origin, r.pattern_angle) = turned(f, r.pattern_origin, r.pattern_angle),
@@ -14742,6 +16444,17 @@ pub(crate) fn transform(c: &str, m: &Model, mut e: Element, id: Id, mo: &Motion,
             r.mirrored ^= mo.mirror;
         }
         // A link is moved and turned as a whole; its file stays as it is.
+        // Placed by base points or shared coordinates, where it stands is worked out, never moved by hand.
+        Element::Link(l) if !l.by.is_default() => {
+            return Err(bad(
+                c,
+                format!(
+                    "link `{}` stands by {}, worked out each time: `modify` it with `by: manual` (and `at`, `angle`) to place it by hand",
+                    l.name,
+                    if l.by == crate::link::By::Shared { "shared coordinates" } else { "base points" }
+                ),
+            ));
+        }
         Element::Link(l) => (l.at, l.angle) = turned(f, l.at, l.angle),
         Element::Viewport(v) => v.at = f(v.at),
         Element::Column(col) | Element::StructuralColumn(col) | Element::Footing(col) => (col.at, col.angle) = turned(f, col.at, col.angle),
@@ -16770,6 +18483,9 @@ fn purge(s: &mut Session, p: &Value) -> R {
 }
 
 fn delete(s: &mut Session, p: &Value) -> R {
+    // A room's own floor and ceiling go with it, unless they are to be kept: then they stay, ordinary ones.
+    let with = with_finishes(s, p)?;
+    let p = with.as_ref().unwrap_or(p);
     #[cfg(test)]
     let mut twin = s.clone();
     let result = delete_indexed(s, p);
@@ -16782,9 +18498,43 @@ fn delete(s: &mut Session, p: &Value) -> R {
     result
 }
 
+/// `delete`'s params with the floors and ceilings of the rooms among them added, when there are any and `keep_finishes`
+/// isn't given.
+fn with_finishes(s: &Session, p: &Value) -> Result<Option<Value>, String> {
+    let c = "delete";
+    let keep = flag(c, p, "keep_finishes")?;
+    let m = &s.model;
+    let Ok(mut ids) = ids_param(c, m, p) else { return Ok(None) };
+    let own: Vec<Id> = ids
+        .iter()
+        .filter_map(|id| match m.elements.get(*id) {
+            Some(Element::Room(r)) => Some([r.floor, r.ceiling]),
+            _ => None,
+        })
+        .flatten()
+        .filter_map(|f| m.elements.id(f.connected()?))
+        .filter(|id| !ids.contains(id))
+        .collect();
+    if own.is_empty() || keep {
+        // (The key is `delete`'s own: what deletes is given the ids alone.)
+        return Ok(keep.then(|| json!({"ids": ids})));
+    }
+    ids.extend(own);
+    Ok(Some(json!({"ids": ids})))
+}
+
+/// Refused for the project's information, which a project keeps: emptied, it says nothing.
+fn deletable(c: &str, m: &Model, ids: &[Id]) -> Result<(), String> {
+    match ids.iter().find(|id| matches!(m.elements.get(**id), Some(Element::ProjectInfo(_)))) {
+        Some(id) => Err(bad(c, format!("{id} is the project's information, which a project keeps; empty its fields with `project_info`"))),
+        None => Ok(()),
+    }
+}
+
 fn delete_indexed(s: &mut Session, p: &Value) -> R {
     let m = &s.model;
     let ids = ids_param("delete", m, p)?;
+    deletable("delete", m, &ids)?;
     let lookup = m.lookup();
     let mut gone: BTreeSet<Guid> = ids.iter().map(|id| m.guid(*id)).collect();
     let mut frontier = gone.clone();
@@ -16941,6 +18691,7 @@ fn delete_from_scratch(s: &mut Session, p: &Value) -> R {
     let c = "delete";
     let m = &s.model;
     let ids = ids_param(c, m, p)?;
+    deletable(c, m, &ids)?;
     let mut gone: BTreeSet<Guid> = ids.iter().map(|id| m.guid(*id)).collect();
     // What hangs on what goes, goes: a wall's doors and windows, and their tags.
     loop {
@@ -17147,7 +18898,20 @@ fn georeference(s: &mut Session, p: &Value) -> R {
     const TEXTS: [&str; 5] = ["description", "geodetic_datum", "vertical_datum", "map_projection", "map_zone"];
     const NUMBERS: [&str; 5] = ["eastings", "northings", "height", "rotation", "scale"];
     let keys: Vec<&str> = ["crs", "clear"].into_iter().chain(TEXTS).chain(NUMBERS).collect();
-    only(c, p, &keys)?;
+    only(c, p, &[&keys[..], &["search", "limit"]].concat())?;
+    // A map system found by its code, by the words of its name, or by a place: changing nothing.
+    if let Some(text) = string(c, p, "search")? {
+        let limit = match p.get("limit") {
+            v if absent(v) => 20,
+            Some(v) => {
+                v.as_u64().filter(|n| (1..=500).contains(n)).ok_or_else(|| bad(c, format!("`limit` must be 1 to 500, got {v}")))? as usize
+            }
+            None => 20,
+        };
+        let found: Vec<Value> = crate::crs::search(&text, limit).iter().map(crate::crs::Info::json).collect();
+        let places: Vec<Value> = crate::places::find(&text, limit).iter().map(crate::places::Place::json).collect();
+        return Ok(json!({"found": found, "places": places}));
+    }
     let given = keys.iter().filter(|k| **k != "clear").any(|k| !absent(p.get(*k)));
     match p.get("clear") {
         None | Some(Value::Null) => {}
@@ -17162,16 +18926,17 @@ fn georeference(s: &mut Session, p: &Value) -> R {
         Some(_) => return Err(bad(c, "`clear` is true or false")),
     }
     if given {
-        let crs = string(c, p, "crs")?;
-        let mut g = match (&s.model.georeference, &crs) {
-            (Some(g), _) => g.clone(),
-            (None, Some(_)) => crate::model::Georeference { scale: 1.0, ..Default::default() },
-            (None, None) => {
-                return Err(bad(c, "the project has no georeference yet: give its coordinate reference system's name, `crs` (EPSG:31983)"));
+        // Any of its numbers makes one: a site needs no coordinate reference system.
+        let mut g = s.model.site().clone();
+        if let Some(crs) = string(c, p, "crs")? {
+            g.crs = crs.trim().to_string();
+            // A known EPSG code must be a map grid, and names itself where no description is given.
+            if let Some(code) = crate::crs::code(&g.crs).filter(|code| crate::crs::known(*code)) {
+                let map = crate::crs::lookup(code).map_err(|e| bad(c, e))?;
+                if absent(p.get("description")) {
+                    g.description = Some(map.name);
+                }
             }
-        };
-        if let Some(crs) = crs {
-            g.crs = crs;
         }
         let mut texts = [&mut g.description, &mut g.geodetic_datum, &mut g.vertical_datum, &mut g.map_projection, &mut g.map_zone];
         for (key, field) in TEXTS.into_iter().zip(texts.iter_mut()) {
@@ -17187,8 +18952,8 @@ fn georeference(s: &mut Session, p: &Value) -> R {
             }
         }
         g.check().map_err(|e| bad(c, e))?;
-        if s.model.georeference.as_ref() != Some(&g) {
-            s.model_mut().georeference = Some(g);
+        if s.model.site() != &g {
+            s.model_mut().set_site(g);
         }
     }
     Ok(json!({"georeference": s.model.georeference}))
@@ -17205,7 +18970,7 @@ fn rename_entry(m: &mut Model, kind: &LibKind, from: &str, to: &str) {
 }
 
 /// An error naming the first key of `p` that isn't one of `keys`, the ones command `c` takes.
-fn only(c: &str, p: &Value, keys: &[&str]) -> Result<(), String> {
+pub(crate) fn only(c: &str, p: &Value, keys: &[&str]) -> Result<(), String> {
     match p.as_object().and_then(|o| o.keys().find(|k| !keys.contains(&k.as_str()))) {
         Some(k) => Err(bad(c, format!("`{k}` isn't one of its parameters: {}", keys.join(", ")))),
         None => Ok(()),

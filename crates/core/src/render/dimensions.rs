@@ -91,7 +91,12 @@ impl Ink {
         let tt = self.t.lettering();
         let layout = crate::text::layout(&tt, text, &crate::text::styles(&tt, text, false, &[]));
         // Clockwise on screen, y down.
-        let angle = -(along.1.atan2(along.0) as f32);
+        // As it runs on screen; never right to left, upside down, which a turned view would make of some.
+        let (mut x, mut y) = d.view.along(along);
+        if x < -1e-9 * x.abs().max(y.abs()).max(1.0) && d.view.angle != 0.0 {
+            (x, y) = (-x, -y);
+        }
+        let angle = y.atan2(x) as f32;
         let k = d.px(sheet::DENSITY as f32);
         let [l, top, r, b] = layout.frame(0.0);
         let centre = ((l + r) / 2.0, (top + b) / 2.0);
