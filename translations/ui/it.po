@@ -5347,7 +5347,7 @@ msgstr "Trova {}; nessun elemento ha questi: {}"
 msgid "Fine"
 msgstr "Alto"
 
-#: crates/core/src/import.rs:1695
+#: crates/core/src/import.rs:1759
 #: crates/ui-egui/src/notes.rs:451
 #: crates/ui-egui/src/properties.rs:866
 msgid "Finish"
@@ -6336,7 +6336,7 @@ msgstr ""
 msgid "Instances of {} are placed in the family: delete them first."
 msgstr "Nella famiglia sono posizionate istanze di {}: eliminale prima."
 
-#: crates/core/src/import.rs:1694
+#: crates/core/src/import.rs:1758
 #: crates/ui-egui/src/draw.rs:664
 msgid "Insulation"
 msgstr "Isolante"
@@ -7517,7 +7517,7 @@ msgstr "Medio"
 msgid "Medium Lines"
 msgstr "Linee medie"
 
-#: crates/core/src/import.rs:1697
+#: crates/core/src/import.rs:1761
 #: crates/ui-egui/src/properties.rs:865
 msgid "Membrane"
 msgstr "Membrana"
@@ -12437,7 +12437,7 @@ msgstr ""
 msgid "Subject"
 msgstr ""
 
-#: crates/core/src/import.rs:1696
+#: crates/core/src/import.rs:1760
 #: crates/ui-egui/src/properties.rs:863
 msgid "Substrate"
 msgstr "Supporto"

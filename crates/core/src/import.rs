@@ -833,6 +833,17 @@ impl<'a> Reader<'a> {
                 let c = self.axes(reference(profile.args.get(2))).o;
                 vec![line(FormCurve::Circle { centre: in_plane([c[0], c[1], 0.0]), radius: Expr::Number(r1(r)) })]
             }
+            // Its outline as the file has it, an arc an arc (two lines and two half circles, a slotted hole's); one this
+            // can't follow (an ellipse's arc, an indexed curve) as the chords the import draws it with.
+            "IFCARBITRARYCLOSEDPROFILEDEF" if let Some(sides) = self.outline(reference(profile.args.get(2)), 0) => {
+                let turned = |t: f64| Expr::Number((t * 1e6).round() / 1e6 + 0.0);
+                sides
+                    .into_iter()
+                    .map(|(a, b, turn)| {
+                        line(FormCurve::Line { start: in_plane([a.0, a.1, 0.0]), end: in_plane([b.0, b.1, 0.0]), turn: turn.map(turned) })
+                    })
+                    .collect()
+            }
             "IFCARBITRARYCLOSEDPROFILEDEF" => {
                 let pts = self.profile(Some(it).and(reference(e.args.first())), 0)?;
                 if pts.len() < 3 {
@@ -862,6 +873,59 @@ impl<'a> Reader<'a> {
             turned: None,
         });
         Some(Form { host: crate::family::PlaneRef::Plane(guid), sketch, from: Expr::Number(from), to: Expr::Number(to), ..Form::default() })
+    }
+
+    /// A closed profile's outline, side by side, in the profile's own axes: each side from one point to the next, and an arc's
+    /// turn, degrees counter-clockwise (clockwise below zero). A polyline, or a composite curve of polylines, lines and
+    /// arcs of circles; none for anything else (an ellipse's arc, an indexed curve), which is drawn in chords instead.
+    fn outline(&self, id: Option<u64>, depth: usize) -> Option<Vec<(P2, P2, Option<f64>)>> {
+        let e = self.get(id?)?;
+        if depth > 16 {
+            return None;
+        }
+        let flat = |p: P3| P2(p[0], p[1]);
+        match e.name.as_str() {
+            "IFCPOLYLINE" => {
+                let pts: Vec<P2> = refs(e.args.first()).into_iter().filter_map(|p| self.point(Some(p))).map(flat).collect();
+                Some(pts.windows(2).filter(|w| w[0] != w[1]).map(|w| (w[0], w[1], None)).collect())
+            }
+            "IFCCOMPOSITECURVE" => {
+                let mut sides = Vec::new();
+                for seg in refs(e.args.first()).into_iter().filter_map(|s| self.get(s)) {
+                    let mut part = self.outline(reference(seg.args.get(2)), depth + 1)?;
+                    if enumeration(seg.args.get(1)) == Some("F") {
+                        part.reverse();
+                        part.iter_mut().for_each(|(a, b, t)| (*a, *b, *t) = (*b, *a, t.map(|t| -t)));
+                    }
+                    sides.extend(part);
+                }
+                Some(sides)
+            }
+            "IFCTRIMMEDCURVE" => {
+                let basis = self.at(e.args.first())?;
+                if basis.name != "IFCCIRCLE" {
+                    let pts = self.trimmed(e)?;
+                    return Some(pts.windows(2).map(|w| (flat(w[0]), flat(w[1]), None)).collect());
+                }
+                let (f, r, _) = self.conic(basis)?;
+                let trim = |v: Option<&V>| {
+                    list(v).iter().find_map(|t| match t {
+                        V::Ref(p) => self.point(Some(*p)).map(|p| dot(sub(p, f.o), f.y).atan2(dot(sub(p, f.o), f.x))),
+                        V::Typed(_, x) => real(Some(x)).map(|x| x * self.rad),
+                        _ => None,
+                    })
+                };
+                let (a1, a2) = (trim(e.args.get(1))?, trim(e.args.get(2))?);
+                let ccw = (a2 - a1).rem_euclid(2.0 * PI);
+                let sweep = if enumeration(e.args.get(3)) == Some("F") { ccw - 2.0 * PI } else { ccw };
+                if sweep.abs() < 1e-9 {
+                    return Some(Vec::new());
+                }
+                let at = |t: f64| flat(f.at([r * t.cos(), r * t.sin(), 0.0]));
+                Some(vec![(at(a1), at(a1 + sweep), Some(sweep.to_degrees()))])
+            }
+            _ => None,
+        }
     }
 
     /// A trimmed line, or a trimmed circle as an arc.

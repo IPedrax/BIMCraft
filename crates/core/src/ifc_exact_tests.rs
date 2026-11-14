@@ -210,3 +210,56 @@ fn a_tilt_that_isnt_two_square_unit_directions_is_refused() {
     let e = m.check().unwrap_err();
     assert!(e.contains("tilt"), "{e}");
 }
+
+/// A slot `length` between its arcs' centres and `2 r` across, `depth` deep, as a slotted hole's outline: two lines and two
+/// half circles in a composite curve, as Tekla writes one.
+fn slot(g: &mut G, length: f64, r: f64, depth: f64) -> u32 {
+    let h = length / 2.0;
+    let mut pt = |x: f64, y: f64| g.add(&format!("IFCCARTESIANPOINT(({x:?},{y:?}))"));
+    let (a, b, c, d) = (pt(-h, -r), pt(h, -r), pt(h, r), pt(-h, r));
+    let (right, left) = (pt(h, 0.0), pt(-h, 0.0));
+    let arc = |g: &mut G, centre: u32, from: f64, to: f64| {
+        let axes = g.add(&format!("IFCAXIS2PLACEMENT2D(#{centre},$)"));
+        let circle = g.add(&format!("IFCCIRCLE(#{axes},{r:?})"));
+        let t = g.add(&format!("IFCTRIMMEDCURVE(#{circle},(IFCPARAMETERVALUE({from:?})),(IFCPARAMETERVALUE({to:?})),.T.,.PARAMETER.)"));
+        g.add(&format!("IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#{t})"))
+    };
+    let straight = |g: &mut G, p: u32, q: u32| {
+        let l = g.add(&format!("IFCPOLYLINE((#{p},#{q}))"));
+        g.add(&format!("IFCCOMPOSITECURVESEGMENT(.CONTINUOUS.,.T.,#{l})"))
+    };
+    let half = std::f64::consts::FRAC_PI_2;
+    let s1 = straight(g, a, b);
+    let s2 = arc(g, right, -half, half);
+    let s3 = straight(g, c, d);
+    let s4 = arc(g, left, half, 3.0 * half);
+    let curve = g.add(&format!("IFCCOMPOSITECURVE((#{s1},#{s2},#{s3},#{s4}),.F.)"));
+    let profile = g.add(&format!("IFCARBITRARYCLOSEDPROFILEDEF(.AREA.,$,#{curve})"));
+    g.add(&format!("IFCEXTRUDEDAREASOLID(#{profile},#5,#8,{depth:?})"))
+}
+
+#[test]
+fn a_profile_with_arcs_comes_in_with_its_arcs_not_their_chords() {
+    let mut g = G::new();
+    let hole = slot(&mut g, 40.0, 11.0, 12.0);
+    let map = shape(&mut g, &[hole]);
+    bolt(&mut g, "Slot", map, [0.0, 0.0, 0.0], UP, EAST);
+    let i = g.import();
+    let m = &i.model;
+    let form = &m.families["Slot"].forms[0];
+    // Two lines and two half circles, each an arc of the sketch: not the twelve chords of each.
+    assert_eq!(form.sketch.len(), 4, "{:?}", form.sketch);
+    let turns: Vec<f64> = form
+        .sketch
+        .iter()
+        .filter_map(|l| match &l.curve {
+            FormCurve::Line { turn: Some(Expr::Number(t)), .. } => Some(*t),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(turns, [180.0, 180.0]);
+    // Drawn, it is the slot: two half circles and the rectangle between, within what the family's chords take off.
+    let v = volume(&mesh(m, "Slot"));
+    let solid = (22.0 * 40.0 + std::f64::consts::PI * 121.0) * 12.0;
+    assert!((v / solid - 1.0).abs() < 0.01, "{v} for {solid}");
+}
