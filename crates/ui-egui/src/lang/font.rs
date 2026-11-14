@@ -1,5 +1,5 @@
-//! Fonts of the system's with Chinese and Korean glyphs, for the window to draw hanzi and Hangul with: egui's own have none,
-//! and a CJK font is too big to bundle. The places each system keeps its fonts are tried in turn, then the folders of the fonts
+//! Fonts of the system's with Chinese, Korean and Thai glyphs, for the window to draw hanzi, Hangul and Thai with: egui's own
+//! have none, and a CJK font is too big to bundle. The places each system keeps its fonts are tried in turn, then the folders of the fonts
 //! a Linux desktop has installed are looked through.
 
 use std::path::{Path, PathBuf};
@@ -16,12 +16,14 @@ pub enum Script {
     Hangul,
     /// Both of them.
     Both,
+    /// The Thai letters, as the Thai interface and Thai content need.
+    Thai,
 }
 
 impl Script {
     /// Whether this font serves a window looking for `wanted`.
     fn has(self, wanted: Script) -> bool {
-        self == Script::Both || self == wanted
+        self == wanted || (self == Script::Both && wanted != Script::Thai)
     }
 }
 
@@ -34,6 +36,8 @@ const KNOWN: &[(&str, u32, Script)] = &[
     (r"C:\Windows\Fonts\simsun.ttc", 0, Script::Han),
     (r"C:\Windows\Fonts\simhei.ttf", 0, Script::Han),
     (r"C:\Windows\Fonts\malgun.ttf", 0, Script::Hangul),
+    (r"C:\Windows\Fonts\LeelawUI.ttf", 0, Script::Thai),
+    (r"C:\Windows\Fonts\tahoma.ttf", 0, Script::Thai),
     (r"C:\Windows\Fonts\gulim.ttc", 0, Script::Hangul),
     (r"C:\Windows\Fonts\batang.ttc", 0, Script::Hangul),
     (r"C:\Windows\Fonts\dotum.ttc", 0, Script::Hangul),
@@ -43,6 +47,12 @@ const KNOWN: &[(&str, u32, Script)] = &[
     ("/System/Library/Fonts/AppleSDGothicNeo.ttc", 0, Script::Hangul),
     ("/System/Library/Fonts/Supplemental/Apple SD Gothic Neo.ttc", 0, Script::Hangul),
     ("/Library/Fonts/Arial Unicode.ttf", 0, Script::Both),
+    ("/System/Library/Fonts/Thonburi.ttc", 0, Script::Thai),
+    ("/System/Library/Fonts/Supplemental/Tahoma.ttf", 0, Script::Thai),
+    ("/usr/share/fonts/truetype/noto/NotoSansThai-Regular.ttf", 0, Script::Thai),
+    ("/usr/share/fonts/noto/NotoSansThai-Regular.ttf", 0, Script::Thai),
+    ("/usr/share/fonts/google-noto/NotoSansThai-Regular.ttf", 0, Script::Thai),
+    ("/usr/share/fonts/truetype/tlwg/Loma.ttf", 0, Script::Thai),
     ("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", 2, Script::Both),
     ("/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc", 2, Script::Both),
     ("/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc", 2, Script::Both),
@@ -67,6 +77,9 @@ const NAMES: &[(&str, Script)] = &[
     ("nanumgothic", Script::Hangul),
     ("notosanskr-regular", Script::Hangul),
     ("applesdgothicneo", Script::Hangul),
+    ("notosansthai-regular", Script::Thai),
+    ("loma", Script::Thai),
+    ("garuda", Script::Thai),
 ];
 
 /// The CJK fonts the system has: the first that draws the hanzi and the first that draws the Hangul, each read once (a font
@@ -76,20 +89,23 @@ pub struct Fonts {
     pub fonts: Vec<(Vec<u8>, u32, Script)>,
     /// Whether one of the fonts has the hanzi.
     pub hanzi: bool,
+    /// Whether one of the fonts has the Thai letters.
+    pub thai: bool,
 }
 
 /// None of the system's fonts: what a window without any CJK font on the machine is told it has.
 #[cfg(test)]
 pub(crate) fn no_fonts() -> Fonts {
-    Fonts { fonts: Vec::new(), hanzi: false }
+    Fonts { fonts: Vec::new(), hanzi: false, thai: false }
 }
 
 pub(super) fn find() -> Fonts {
     let known = KNOWN.iter().map(|&(path, face, script)| (PathBuf::from(path), face, script));
     // Only the fonts the machine has are candidates: a Windows path that is not here is not the hanzi font either.
     let (picked, hanzi) = pick(known.chain(scan()).filter(|(path, _, _)| path.is_file()));
-    let fonts = picked.into_iter().filter_map(|(path, face, script)| read_font(&path).map(|bytes| (bytes, face, script))).collect();
-    Fonts { fonts, hanzi }
+    let fonts: Vec<_> = picked.into_iter().filter_map(|(path, face, script)| read_font(&path).map(|bytes| (bytes, face, script))).collect();
+    let thai = fonts.iter().any(|(_, _, script)| *script == Script::Thai);
+    Fonts { fonts, hanzi, thai }
 }
 
 /// The bytes of a font the system has, none where the file is not there or too big to read.
@@ -98,29 +114,23 @@ fn read_font(path: &Path) -> Option<Vec<u8>> {
     (size <= MAX_FONT).then(|| std::fs::read(path).ok())?
 }
 
-/// The first candidates for each script, best first: the walk stops when both are had, and a font wanted for neither is not
-/// read.
+/// The first candidates for each script, best first: the walk stops when all are had, and a font wanted for none is not read.
+/// True when one with the hanzi was among them.
 fn pick<I: Iterator<Item = (PathBuf, u32, Script)>>(candidates: I) -> (Vec<(PathBuf, u32, Script)>, bool) {
     let mut picked: Vec<(PathBuf, u32, Script)> = Vec::new();
-    let mut want_hanzi = true;
-    let mut want_hangul = true;
-    let mut hanzi = false;
+    let mut wanted = vec![Script::Han, Script::Hangul, Script::Thai];
     for (path, face, script) in candidates {
-        if !(want_hanzi && script.has(Script::Han)) && !(want_hangul && script.has(Script::Hangul)) {
+        let before = wanted.len();
+        wanted.retain(|w| !script.has(*w));
+        if wanted.len() == before {
             continue;
         }
-        if want_hanzi && script.has(Script::Han) {
-            want_hanzi = false;
-            hanzi = true;
-        }
-        if want_hangul && script.has(Script::Hangul) {
-            want_hangul = false;
-        }
         picked.push((path, face, script));
-        if !want_hanzi && !want_hangul {
+        if wanted.is_empty() {
             break;
         }
     }
+    let hanzi = picked.iter().any(|(_, _, script)| script.has(Script::Han));
     (picked, hanzi)
 }
 
@@ -224,5 +234,27 @@ mod tests {
         let (picked, hanzi) = pick([of("wqy-microhei.ttc", Script::Han), of("NotoSansCJK-Regular.ttc", Script::Both)].into_iter());
         assert_eq!(picked, [of("wqy-microhei.ttc", Script::Han), of("NotoSansCJK-Regular.ttc", Script::Both)]);
         assert!(hanzi);
+    }
+
+    #[test]
+    fn a_thai_font_is_picked_as_well_and_a_cjk_one_with_both_does_not_stand_for_it() {
+        let of = |name: &str, script: Script| (PathBuf::from(name), 0, script);
+        let (picked, hanzi) = pick(
+            [
+                of("PingFang.ttc", Script::Han),
+                of("NotoSansCJK-Regular.ttc", Script::Both),
+                of("Thonburi.ttc", Script::Thai),
+                of("Tahoma.ttf", Script::Thai),
+            ]
+            .into_iter(),
+        );
+        assert_eq!(
+            picked,
+            [of("PingFang.ttc", Script::Han), of("NotoSansCJK-Regular.ttc", Script::Both), of("Thonburi.ttc", Script::Thai)],
+            "the second Thai font is not read"
+        );
+        assert!(hanzi);
+        assert!(!Script::Both.has(Script::Thai) && Script::Thai.has(Script::Thai) && !Script::Thai.has(Script::Han));
+        assert!(KNOWN.iter().any(|(p, _, s)| *s == Script::Thai && p.ends_with("Thonburi.ttc")), "macOS's Thai font is known");
     }
 }

@@ -131,6 +131,7 @@ fn some_font() -> lang::Fonts {
             Script::Han,
         )],
         hanzi: true,
+        thai: false,
     }
 }
 

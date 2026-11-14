@@ -6330,6 +6330,7 @@ mod spots;
 mod standards;
 mod start;
 mod templates;
+mod thai;
 mod themes;
 mod titlebar;
 mod titleblocks;

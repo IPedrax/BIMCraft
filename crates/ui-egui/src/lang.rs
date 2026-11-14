@@ -1,5 +1,5 @@
 //! The interface's language: English, as the code writes it, Brazilian Portuguese, Spanish, Polish, Czech, French, German, Dutch,
-//! Italian, Vietnamese or Simplified Chinese. What
+//! Italian, Vietnamese, Simplified or Traditional Chinese, or Thai. What
 //! the window shows goes through [`t`], English being its own key; the widget helpers translate
 //! their labels and tips, so most call sites pass English and read it back translated. What a
 //! project holds (names, what its drawings say) follows the project's language instead, and the
@@ -8,6 +8,8 @@
 //! Chinese is the window's alone ([`Lang`]): a drawing's lettering is drawn in code and has no hanzi, so a project is never
 //! in it. Chinese interface translations, including schedule headings, live in `translations/ui/zh.po`, one entry for each of
 //! the interface's messages: an entry it lacks shows in English. The window draws hanzi with a system font (`font.rs`).
+//!
+//! Thai is the window's alone too, for the same reason: `translations/ui/th.po`, drawn with a system font with the Thai letters.
 //!
 //! Vietnamese is a project's language too: the window's catalog is `translations/ui/vi.po`, the drawings'
 //! `translations/project/vi.po`, and the window's own fonts and a drawing's lettering both have its letters.
@@ -40,7 +42,7 @@ use bimcraft_core::language::Language;
 use egui::epaint::text::{FontInsert, FontPriority, InsertFontFamily};
 use egui::{Context, FontData, Id};
 
-/// The interface's language: one of a project's languages, or Vietnamese, or Simplified or Traditional Chinese.
+/// The interface's language: one of a project's languages, or Vietnamese, Simplified or Traditional Chinese, or Thai.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Lang {
     #[default]
@@ -56,10 +58,11 @@ pub enum Lang {
     Vietnamese,
     Chinese,
     TraditionalChinese,
+    Thai,
 }
 
 impl Lang {
-    pub const ALL: [Lang; 12] = [
+    pub const ALL: [Lang; 13] = [
         Lang::English,
         Lang::Portuguese,
         Lang::Spanish,
@@ -72,6 +75,7 @@ impl Lang {
         Lang::Vietnamese,
         Lang::Chinese,
         Lang::TraditionalChinese,
+        Lang::Thai,
     ];
 
     /// Whether it is drawn in hanzi, which the window's own fonts have none of.
@@ -79,10 +83,11 @@ impl Lang {
         matches!(self, Lang::Chinese | Lang::TraditionalChinese)
     }
 
-    /// The project language that goes with it, which new projects are named in: Chinese, either kind, has none, so English.
+    /// The project language that goes with it, which new projects are named in: Chinese, either kind, and Thai have none, so
+    /// English.
     pub fn project(self) -> Language {
         match self {
-            Lang::English | Lang::Chinese | Lang::TraditionalChinese => Language::English,
+            Lang::English | Lang::Chinese | Lang::TraditionalChinese | Lang::Thai => Language::English,
             Lang::Portuguese => Language::Portuguese,
             Lang::Spanish => Language::Spanish,
             Lang::Polish => Language::Polish,
@@ -95,11 +100,12 @@ impl Lang {
         }
     }
 
-    /// Its code in the settings file: en, pt, es, pl, vi, zh, zh_TW (also the name of its catalog).
+    /// Its code in the settings file: en, pt, es, pl, vi, zh, zh_TW, th (also the name of its catalog).
     pub fn code(self) -> &'static str {
         match self {
             Lang::Chinese => "zh",
             Lang::TraditionalChinese => "zh_TW",
+            Lang::Thai => "th",
             other => other.project().code(),
         }
     }
@@ -111,6 +117,8 @@ impl Lang {
             Lang::Chinese => "Chinese (Simplified)",
             Lang::TraditionalChinese if get() == Lang::TraditionalChinese => "繁體中文",
             Lang::TraditionalChinese => "Chinese (Traditional)",
+            Lang::Thai if get() == Lang::Thai => "ไทย",
+            Lang::Thai => "Thai",
             other => other.project().label(),
         }
     }
@@ -122,6 +130,9 @@ impl Lang {
         let parts: Vec<&str> = lower.split(['-', '_', '.', '@']).collect();
         if matches!(parts[0], "vi" | "vietnamese") || lower == "tiếng việt" {
             return Some(Lang::Vietnamese);
+        }
+        if matches!(parts[0], "th" | "thai") || lower == "ไทย" {
+            return Some(Lang::Thai);
         }
         if matches!(parts[0], "zh" | "chinese") || matches!(lower.as_str(), "简体中文" | "繁體中文") {
             let traditional = lower == "繁體中文" || parts.iter().any(|p| matches!(*p, "tw" | "hk" | "mo" | "hant"));
@@ -200,18 +211,40 @@ pub fn use_cjk_font(ctx: &Context, find: FontFinder) -> bool {
             Script::Han => "cjk-han",
             Script::Hangul => "cjk-hangul",
             Script::Both => "cjk",
+            Script::Thai => "thai",
         };
         let families = crate::style::families().map(|family| InsertFontFamily { family, priority: FontPriority::Lowest });
         ctx.add_font(FontInsert::new(name, data, families.into()));
     }
-    ctx.data_mut(|d| d.insert_temp(Id::new("cjk-font"), Some(fonts.hanzi)));
+    ctx.data_mut(|d| {
+        d.insert_temp(Id::new("cjk-font"), Some(fonts.hanzi));
+        d.insert_temp(Id::new("thai-font"), fonts.thai);
+    });
     fonts.hanzi
+}
+
+/// Said when the window cannot be put in Thai.
+pub const NO_THAI_FONT: &str =
+    msg!("No font with Thai letters was found on this system: install one (such as Noto Sans Thai) and choose Thai again.");
+
+/// What to warn of when the window, its fonts put behind its own ([`use_cjk_font`]), cannot draw `lang`'s letters.
+pub fn missing_font(ctx: &Context, find: FontFinder, lang: Lang) -> Option<&'static str> {
+    let hanzi = use_cjk_font(ctx, find);
+    let thai = ctx.data(|d| d.get_temp::<bool>(Id::new("thai-font"))).unwrap_or(false);
+    match lang {
+        _ if lang.is_chinese() && !hanzi => Some(NO_CHINESE_FONT),
+        Lang::Thai if !thai => Some(NO_THAI_FONT),
+        _ => None,
+    }
 }
 
 /// Tests have no say in which fonts a machine has: a window is told it has one.
 #[cfg(test)]
 pub(crate) fn assume_cjk_font(ctx: &Context) {
-    ctx.data_mut(|d| d.insert_temp(Id::new("cjk-font"), Some(true)));
+    ctx.data_mut(|d| {
+        d.insert_temp(Id::new("cjk-font"), Some(true));
+        d.insert_temp(Id::new("thai-font"), true);
+    });
 }
 
 /// `english` in the interface's language.
@@ -222,7 +255,9 @@ pub fn t(english: &str) -> &str {
 /// `english` in `lang`, when a non-English interface catalog has a finished translation.
 pub fn translated_in(lang: Lang, english: &str) -> Option<&'static str> {
     match lang {
-        Lang::Vietnamese | Lang::Chinese | Lang::TraditionalChinese => bimcraft_i18n::translated(CATALOGS, lang.code(), "", english),
+        Lang::Vietnamese | Lang::Chinese | Lang::TraditionalChinese | Lang::Thai => {
+            bimcraft_i18n::translated(CATALOGS, lang.code(), "", english)
+        }
         other => translated(other.project(), english),
     }
 }
@@ -397,6 +432,21 @@ mod tests {
         assert_eq!(Lang::from(Language::Vietnamese), Lang::Vietnamese);
         for code in ["vi", "vi-VN", "vi_VN.UTF-8", "VI", "vietnamese", "Tiếng Việt"] {
             assert_eq!(Lang::from_code(code), Some(Lang::Vietnamese), "{code}");
+        }
+    }
+
+    #[test]
+    fn thai_has_its_own_words_and_a_project_is_never_in_thai() {
+        set(Lang::Thai);
+        assert_eq!((t("Copy"), t("Wall")), ("คัดลอก", "ผนัง"));
+        assert_eq!((category("wall", false), category("wall", true)), ("ผนัง".to_string(), "ผนัง".to_string()), "Thai has no plural");
+        assert_eq!(Lang::Thai.label(), "ไทย");
+        set(Lang::English);
+        assert_eq!((t("Copy"), Lang::Thai.label()), ("Copy", "Thai"), "Thai letters only once the window can draw them");
+        // A drawing's lettering is drawn in code and has no Thai, so a project stays English.
+        assert_eq!((Lang::Thai.code(), Lang::Thai.project()), ("th", Language::English));
+        for code in ["th", "th-TH", "th_TH.UTF-8", "TH", "thai", "ไทย"] {
+            assert_eq!(Lang::from_code(code), Some(Lang::Thai), "{code}");
         }
     }
 

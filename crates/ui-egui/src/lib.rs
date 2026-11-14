@@ -1984,13 +1984,12 @@ impl BimApp {
         };
         style::follow(&ctx, look);
         ribbon::tool_rules(self.tools_hidden.clone(), self.scale, self.editing_tools);
-        // The fonts with the hanzi and the Hangul go behind the window's own whatever language it speaks: content — a floor's
-        // name from a Korean file — is not the interface's. Chinese needs its glyphs, which the system may not have: then the
-        // window stays in English and says why.
-        let hanzi = lang::use_cjk_font(&ctx, self.font_finder);
-        if self.lang.is_chinese() && !hanzi {
+        // The fonts with the hanzi, the Hangul and the Thai letters go behind the window's own whatever language it speaks:
+        // content — a floor's name from a Korean file — is not the interface's. Chinese and Thai need their glyphs, which the
+        // system may not have: then the window stays in English and says why.
+        if let Some(warning) = lang::missing_font(&ctx, self.font_finder, self.lang) {
             self.lang = Lang::English;
-            self.status = updates::failed(t(lang::NO_CHINESE_FONT).to_string());
+            self.status = updates::failed(t(warning).to_string());
         }
         lang::set(self.lang);
         self.pump(&ctx);
