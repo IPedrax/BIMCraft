@@ -1098,7 +1098,7 @@ impl FamilyEditor {
             && let Some(at) = screen(f.at)
         {
             let from = f.guide.and_then(|g| screen(g.from));
-            crate::canvas::snap_mark(painter, at, from, f.kind, t(f.kind.name()).to_string());
+            crate::canvas::snap_mark(painter, at, from, f.kind, crate::canvas::Lock::Free, false, t(f.kind.name()).to_string());
         }
         problem
     }

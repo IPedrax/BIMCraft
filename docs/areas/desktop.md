@@ -195,7 +195,13 @@ Enter places the point along it; an alignment guide runs edge to edge and says w
 moves with the cursor goes through them. A guide along an axis is anchored at a reference point of what's drawn; a
 borrowed one is anchored at the point being drawn from and runs parallel or square to a straight run near it
 (`AlignmentAxis::Inferred`, `AlignmentGuideService::inferred`), so a line drawn beside a slanted wall comes out
-parallel to it. A selected wall's ends are
+parallel to it. Manage > Snaps picks how they are drawn (`GuideStyle`): Refined, the default, draws one-physical-pixel
+solid plum hairlines in the canvas's own ink (`style::guide_ink`) — a quiet ray edge to edge, the stronger segment from
+the source to the point it locks, a dot and ring on the source, a crosshair on a free cursor, a dot and a perpendicular
+tick on one guide, a bullseye where two cross, a pill badge and the live length beside the segment's middle; Classic
+keeps the dashed magenta, the blue squares and the tag at the cursor. The live ruler's graduations and the angle arc are
+finer in the refined look, and Measure's own ruler keeps its weight. Guides are drawn over the plan, never under it: the
+retained plan is one mesh, so there is no seam to hide a guide pass behind. A selected wall's ends are
 grips (`grip_drag`): a drag runs `move` with `end`, Ctrl keeps the length; the angle beside each end runs `rotate` about it. A
 wall joined at the end that moves keeps its joint, which slides along the wall it meets, so lengths change. At a corner where
 a strip footing ends with it and another element also ends there, the footing's end goes with the wall's, as another wall's would.

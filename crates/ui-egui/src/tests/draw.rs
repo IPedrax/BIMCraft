@@ -51,6 +51,9 @@ fn a_detail_line_takes_the_alignment_guide_its_preview_draws() {
 #[test]
 fn each_shape_of_the_draw_panel_makes_its_detail_lines_from_its_clicks() {
     let mut h = detailing();
+    // The shapes alone: detail lines are guide references, and the circle's radius point beside the polygon drawn
+    // just before it would take a guide (the guides have their own tests, in `tests.rs`).
+    h.state_mut().snaps.alignment_guides = false;
     let cases: [(&str, &[P2], &[&str]); 9] = [
         ("Rectangle", &[P2(1000.0, 1000.0), P2(3000.0, 2000.0)], &["line"; 4]),
         ("Inscribed Polygon", &[P2(4000.0, 3000.0), P2(5000.0, 3000.0)], &["line"; 6]),

@@ -4476,6 +4476,130 @@ fn manage_snaps_toggles_alignment_guides() {
     assert!(!h.state().snaps.alignment_guides);
 }
 
+/// The refined guide is a hairline: a quiet ray, the stronger relation from its source to the point it locks, and a dot
+/// and ring on the source. The classic one keeps the dashed magenta and its blue square.
+#[test]
+fn a_guide_draws_a_ray_a_relation_and_its_source() {
+    use bimcraft_core::alignment::{AlignmentAxis, AlignmentResult, GuideLine, ReferenceType};
+    use egui::Shape;
+    let guide = AlignmentResult {
+        snapped_point: P2(1000.0, 2000.0),
+        guide_line: GuideLine { from: P2(0.0, 2000.0), to: P2(1000.0, 2000.0) },
+        reference_point: P2(0.0, 2000.0),
+        axis: AlignmentAxis::Y,
+        kind: ReferenceType::Endpoint,
+        wall_id: Some(100231),
+    };
+    let to = |p: P2| pos2(p.0 as f32, 3000.0 - p.1 as f32);
+    let along = |d: P2| vec2(d.0 as f32, -d.1 as f32);
+    let shapes = crate::canvas::alignment_shapes(&[guide], to, along, 1000.0, 1.0, true);
+    let segments: Vec<[Pos2; 2]> = shapes
+        .iter()
+        .filter_map(|s| match s {
+            Shape::LineSegment { points, .. } => Some(*points),
+            _ => None,
+        })
+        .collect();
+    // The horizontal guide is put on the physical pixel grid: y = 1000.5, a pixel's centre, so it is one crisp pixel.
+    let (snapped, source) = (pos2(1000.0, 1000.5), pos2(0.0, 1000.5));
+    assert_eq!(segments.len(), 2, "{shapes:?}");
+    // The ray runs through the point it locks, edge to edge.
+    assert!(segments.iter().any(|[a, b]| ((*a + (*b - *a) * 0.5).distance(snapped) < 0.01) && a.distance(*b) > 1000.0), "{segments:?}");
+    // And the relation runs from its source to that point.
+    assert!(segments.iter().any(|[a, b]| a.distance(source) < 0.01 && b.distance(snapped) < 0.01), "{segments:?}");
+    let circles: Vec<_> = shapes.iter().filter_map(|s| if let Shape::Circle(c) = s { Some(c) } else { None }).collect();
+    assert_eq!(circles.len(), 2, "{shapes:?}");
+    assert!(circles.iter().any(|c| (c.radius - 2.5).abs() < 0.01 && c.center.distance(source) < 0.01), "the dot");
+    assert!(circles.iter().any(|c| (c.radius - 4.5).abs() < 0.01 && c.center.distance(source) < 0.01), "and its ring");
+
+    let classic = crate::canvas::alignment_shapes(&[guide], to, along, 1000.0, 1.0, false);
+    assert!(classic.iter().all(|s| !matches!(s, Shape::Circle(_))), "no dot in the classic guide");
+    assert!(
+        classic
+            .iter()
+            .any(|s| matches!(s, Shape::Rect(r) if (r.rect.width() - 7.0).abs() < 0.01 && r.rect.center().distance(source) < 0.01)),
+        "{classic:?}"
+    );
+}
+
+/// A badge sits right and below its glyph, and turns to the other side rather than cross the view's edge.
+#[test]
+fn a_badge_stays_inside_the_view() {
+    let clip = egui::Rect::from_min_size(pos2(0.0, 0.0), vec2(800.0, 600.0));
+    let size = vec2(100.0, 20.0);
+    let at = pos2(400.0, 300.0);
+    assert_eq!(crate::canvas::badge_rect(at, size, clip).min, pos2(412.0, 312.0));
+    let right = crate::canvas::badge_rect(pos2(790.0, 300.0), size, clip);
+    assert!(right.right() <= clip.right() - 6.0 + 0.01, "{right:?}");
+    assert!(right.left() < 790.0 - 12.0, "flipped to the left of its glyph: {right:?}");
+    let bottom = crate::canvas::badge_rect(pos2(400.0, 590.0), size, clip);
+    assert!(bottom.bottom() <= clip.bottom() - 6.0 + 0.01, "{bottom:?}");
+    assert!(bottom.top() < 590.0 - 12.0, "flipped above its glyph: {bottom:?}");
+    let corner = crate::canvas::badge_rect(pos2(4.0, 4.0), size, clip);
+    assert!(corner.min.x >= 6.0 - 0.01 && corner.min.y >= 6.0 - 0.01, "{corner:?}");
+    assert!(clip.contains_rect(corner), "{corner:?}");
+}
+
+#[test]
+fn manage_snaps_picks_the_guide_style() {
+    use crate::style::GuideStyle;
+    let mut h = app("");
+    assert_eq!(h.state().guide_style, GuideStyle::Refined, "the refined look is the one to see");
+    press(&mut h, "Manage");
+    press(&mut h, "Snaps");
+    assert!(h.query_by_label("Guide style").is_some());
+    choose(&mut h, "Guide style", "Classic");
+    assert_eq!(h.state().guide_style, GuideStyle::Classic);
+    press(&mut h, "Close");
+    assert_eq!(h.state().guide_style, GuideStyle::Classic, "kept when the window closes");
+}
+
+/// The look changes only what is drawn: a click takes the guide's point in either style.
+#[test]
+fn a_guide_locks_the_point_in_both_guide_styles() {
+    use crate::style::GuideStyle;
+    for style in GuideStyle::ALL {
+        let mut h = app("wall {\"points\": [[0, 0], [5000, 0]]}");
+        h.state_mut().guide_style = style;
+        tool(&mut h, "Wall");
+        click(&mut h, P2(1000.0, -1000.0));
+        let level = h.state().session.model.levels()[0].0;
+        let scale = h.state().canvas.current_view(level).map_or(0.2, |v| v.scale);
+        let f = hover(&mut h, P2(5000.0 + 4.0 / scale, -1000.0)).expect("the cursor is over the plan");
+        assert!((f.at.0 - 5000.0).abs() < 0.01, "{style:?}: on the guide, not under the pointer");
+    }
+}
+
+/// What the guides look like in both styles, for a person to look at: `BIMCRAFT_GUIDES_DUMP=<folder>` writes a wall being
+/// drawn to the crossing of two guides, once with each.
+#[test]
+fn guides_screenshots() {
+    use crate::style::GuideStyle;
+    let Ok(folder) = std::env::var("BIMCRAFT_GUIDES_DUMP") else { return };
+    std::fs::create_dir_all(&folder).unwrap();
+    for style in GuideStyle::ALL {
+        // A crossing of two guides in open space: x from the end of the wall above, y from the end of the wall to the
+        // left, and the cursor clear of every wall, so the snap stays `Free` (a snap to real geometry suppresses guides).
+        let mut h = app(concat!(
+            "wall {\"points\": [[0, 0], [5000, 0]]}\n",
+            "wall {\"points\": [[0, 5000], [2500, 6000]]}\n",
+            "wall {\"points\": [[3000, 4500], [3000, 6000]]}\n",
+            "wall {\"points\": [[0, 3000], [1500, 3000]]}"
+        ));
+        h.state_mut().guide_style = style;
+        tool(&mut h, "Wall");
+        click(&mut h, P2(500.0, 1200.0));
+        let found = hover(&mut h, P2(3006.0, 3006.0)).expect("the cursor is over the plan");
+        assert!(
+            (found.at.0 - 3000.0).abs() < 0.01 && (found.at.1 - 3000.0).abs() < 0.01,
+            "{style:?}: the crossing, not the pointer: {:?}",
+            found.at
+        );
+        h.run();
+        h.render().unwrap().save(std::path::Path::new(&folder).join(format!("guides-{}.png", style.code()))).unwrap();
+    }
+}
+
 #[test]
 fn grids_drawn_near_alignment_guide_snap_to_other_grids_reference_points() {
     let mut h = app("");

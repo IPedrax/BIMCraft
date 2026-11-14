@@ -10,6 +10,7 @@
 use std::cell::Cell;
 use std::sync::Arc;
 
+use bimcraft_i18n::msg;
 use egui::epaint::text::VariationCoords;
 use egui::{
     Color32, Context, CornerRadius, FontData, FontDefinitions, FontFamily, FontId, Frame, Margin, Shadow, Stroke, TextStyle, Theme,
@@ -401,6 +402,99 @@ pub fn canvas_pal() -> &'static Palette {
     if canvas_dark() { &DARK } else { &CANVAS_LIGHT }
 }
 
+/// The guide and live-drawing ink, which follows the drawing's ground rather than the interface's: plum on a light paper,
+/// lavender on a dark one, so a hairline reads without shouting over the walls.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct GuideInk {
+    /// The segment from a guide's source to the point it locks: the relation being made.
+    pub core: Color32,
+    /// The same guide running on to the edge of the view, quieter.
+    pub ray: Color32,
+    /// A guide's source: the dot, and its ring.
+    pub anchor: Color32,
+    /// The crosshair of a free cursor.
+    pub cursor: Color32,
+    /// A badge's ground, edge and lettering.
+    pub badge: Color32,
+    pub badge_edge: Color32,
+    pub badge_text: Color32,
+    /// The angle arc, and the live ruler's spine and graduations.
+    pub arc: Color32,
+    pub ruler: Color32,
+    pub tick: Color32,
+}
+
+/// [`GuideInk`] for the canvas drawn now.
+pub fn guide_ink() -> GuideInk {
+    let p = canvas_pal();
+    if canvas_dark() {
+        let lavender = Color32::from_rgb(0xC7, 0xA3, 0xEE);
+        GuideInk {
+            core: lavender.gamma_multiply(0.95),
+            ray: lavender.gamma_multiply(0.55),
+            anchor: lavender.gamma_multiply(0.9),
+            cursor: lavender.gamma_multiply(0.6),
+            badge: p.surface,
+            badge_edge: p.border.gamma_multiply(0.8),
+            badge_text: Color32::from_rgb(0xE7, 0xD6, 0xF7),
+            arc: p.muted.gamma_multiply(0.6),
+            ruler: p.accent.gamma_multiply(0.9),
+            tick: p.accent.gamma_multiply(0.55),
+        }
+    } else {
+        let plum = Color32::from_rgb(0x7B, 0x3F, 0xA0);
+        GuideInk {
+            core: plum.gamma_multiply(0.85),
+            ray: plum.gamma_multiply(0.42),
+            anchor: plum.gamma_multiply(0.9),
+            cursor: plum.gamma_multiply(0.55),
+            badge: p.surface.gamma_multiply(0.92),
+            badge_edge: p.border.gamma_multiply(0.55),
+            badge_text: plum,
+            arc: p.muted.gamma_multiply(0.55),
+            ruler: p.accent.gamma_multiply(0.70),
+            tick: p.accent.gamma_multiply(0.55),
+        }
+    }
+}
+
+/// How the guides and the live drawing's aids are drawn: the dashed magenta of old, or the thin plum of the refined look.
+/// A temporary choice while the two are compared.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum GuideStyle {
+    Classic,
+    #[default]
+    Refined,
+}
+
+impl GuideStyle {
+    pub const ALL: [GuideStyle; 2] = [GuideStyle::Refined, GuideStyle::Classic];
+
+    /// What the settings file keeps.
+    pub fn code(self) -> &'static str {
+        match self {
+            GuideStyle::Classic => "classic",
+            GuideStyle::Refined => "refined",
+        }
+    }
+
+    pub fn from_code(code: &str) -> Option<GuideStyle> {
+        match code {
+            "classic" => Some(GuideStyle::Classic),
+            "refined" => Some(GuideStyle::Refined),
+            _ => None,
+        }
+    }
+
+    /// Its name, as the Snaps window shows it.
+    pub fn name(self) -> &'static str {
+        match self {
+            GuideStyle::Classic => msg!("Classic"),
+            GuideStyle::Refined => msg!("Refined"),
+        }
+    }
+}
+
 /// Which interface the window wears: BIMCraft's own (the default), its tools a palette, or Rev, the ribbon tool its users know:
 /// the ribbon in place of the palette, Revit's palette layout and names. One look: the same cards, colours and Layout.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -639,6 +733,22 @@ mod tests {
         assert!((contrast(Color32::WHITE, Color32::WHITE) - 1.0).abs() < 0.001);
         // What the Dark theme's open contextual tab once was, white on that green.
         assert!((contrast(Color32::WHITE, rgb(0x4ADE80)) - 1.74).abs() < 0.01);
+    }
+
+    /// The guides are plum on the light paper and lavender on the dark one, and the badge's lettering reads on its pill.
+    #[test]
+    fn the_guide_ink_follows_the_papers_ground() {
+        set_canvas(false, None);
+        let light = guide_ink();
+        assert_eq!(light.badge_text.to_srgba_unmultiplied(), [0x7B, 0x3F, 0xA0, 255]);
+        assert!(contrast(light.badge_text, Color32::WHITE) >= 4.5, "the badge's letters read on the paper");
+        assert!(contrast(light.badge_text, light.badge) >= 4.5, "and on their own ground");
+        // The ray is the guide at a lower alpha, so it stays out of the walls' way.
+        assert!(light.ray.to_srgba_unmultiplied()[3] < light.core.to_srgba_unmultiplied()[3]);
+        set_canvas(true, None);
+        let dark = guide_ink();
+        assert!(dark.core.to_srgba_unmultiplied()[0] > 0xB0, "{dark:?}: lavender on a dark paper");
+        set_canvas(false, None);
     }
 
     /// What the window draws one colour over another, in both themes. Text holds 4.5:1 (WCAG 1.4.3); an icon, a focus ring and

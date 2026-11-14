@@ -28,7 +28,7 @@ use serde_json::{Value, json};
 
 use crate::icons::{self, Icon};
 use crate::lang::{self, t, tf};
-use crate::style::pal;
+use crate::style::{GuideStyle, pal};
 use crate::typeprops::{self, Head, Naming};
 use crate::{BimApp, Sheet, Status, Tool};
 
@@ -3448,6 +3448,17 @@ impl BimApp {
                 ui.horizontal(|ui| {
                     ui.label(t("Snap tolerance"));
                     ui.add(egui::Slider::new(&mut s.alignment_tolerance, 2.0..=32.0).suffix(" px"));
+                });
+                ui.horizontal(|ui| {
+                    let label = ui.label(t("Guide style"));
+                    ComboBox::from_id_salt("guide-style").selected_text(t(self.guide_style.name())).width(110.0).show_ui(ui, |ui| {
+                        for style in GuideStyle::ALL {
+                            ui.selectable_value(&mut self.guide_style, style, t(style.name()));
+                        }
+                    })
+                    .response
+                    .labelled_by(label.id)
+                    .on_hover_text(t("Refined draws solid plum guides and a pill badge; Classic the dashed magenta and its squares"));
                 });
                 }
                 ui.separator();

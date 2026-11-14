@@ -26,7 +26,7 @@ use crate::assistant::Secret;
 use crate::dock::{Docking, Palette};
 use crate::lang::{Lang, t, tf};
 use crate::presets::{Preset, Scale, hidden_from_json, presets_from_json};
-use crate::style::{Profile, Scheme, pal};
+use crate::style::{GuideStyle, Profile, Scheme, pal};
 use crate::updates::failed;
 use std::collections::BTreeSet;
 
@@ -120,6 +120,8 @@ pub struct Settings {
     pub high_contrast: [u8; 3],
     /// Grid snapping applies to every view, using the active view's enabled lattice.
     pub grid_snapping: bool,
+    /// How guides and the live drawing's aids are drawn: the refined look, or the classic one to compare it with.
+    pub guide_style: GuideStyle,
     /// The plans' old origin marker (now the Internal Origin, Site's in Visibility/Graphics: kept so a settings file reads
     /// back as it was written), and the view's name in their corner, a working aid on the screen.
     pub origin_marker: bool,
@@ -181,6 +183,7 @@ impl Settings {
             "window": self.window.to_json(),
             "high_contrast": self.high_contrast,
             "grid_snapping": self.grid_snapping,
+            "guide_style": self.guide_style.code(),
             "origin_marker": self.origin_marker,
             "view_name": self.view_name,
             "shortcuts": self.shortcuts,
@@ -229,6 +232,7 @@ impl Settings {
             window: Window::from_json(&v["window"], base.window),
             high_contrast: colour(&v["high_contrast"]).unwrap_or(base.high_contrast),
             grid_snapping: v["grid_snapping"].as_bool().unwrap_or(base.grid_snapping),
+            guide_style: v["guide_style"].as_str().and_then(GuideStyle::from_code).unwrap_or(base.guide_style),
             origin_marker: v["origin_marker"].as_bool().unwrap_or(base.origin_marker),
             view_name: v["view_name"].as_bool().unwrap_or(base.view_name),
             shortcuts: shortcuts_from(&v["shortcuts"], base.shortcuts),
@@ -368,6 +372,7 @@ impl BimApp {
         self.window.kept = kept.window;
         self.scan_contrast = kept.high_contrast;
         self.grid_snapping = kept.grid_snapping;
+        self.guide_style = kept.guide_style;
         (self.show_origin, self.show_view_name) = (kept.origin_marker, kept.view_name);
         self.custom_shortcuts = kept.shortcuts.clone();
         self.system_title_bar = kept.system_title_bar;
@@ -419,6 +424,7 @@ impl BimApp {
             window: self.window.kept,
             high_contrast: self.scan_contrast,
             grid_snapping: self.grid_snapping,
+            guide_style: self.guide_style,
             origin_marker: self.show_origin,
             view_name: self.show_view_name,
             shortcuts: self.custom_shortcuts.clone(),
