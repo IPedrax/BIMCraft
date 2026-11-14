@@ -220,6 +220,51 @@ fn lines_crossing(lines: &[Ready]) -> Vec<bool> {
     out
 }
 
+/// The nearest point to `p` on the segment from `a` to `b`.
+fn nearest_on(p: P2, a: P2, b: P2) -> P2 {
+    a + (b - a) * geom::param_on_segment(p, a, b)
+}
+
+/// Whether segments a–b and c–d cross at a point inside both.
+fn proper_cross(a: P2, b: P2, c: P2, d: P2) -> bool {
+    let side = |p: P2, q: P2, r: P2| (q - p).cross(r - p);
+    side(c, d, a) * side(c, d, b) < 0.0 && side(a, b, c) * side(a, b, d) < 0.0
+}
+
+/// The elevation for a point `c` of flat ground at `z0` that contours made: from the contour of `z0` nearest it (at
+/// `d_own`) toward the nearest contour of another elevation (`z_q`, at `d_q`). Where the way there crosses a contour of
+/// `z0`, `c` is inside a closed contour with nothing else in it (a summit or a pit), so the slope outside carries on in:
+/// `z0 + (z0 − z_q)·d_own / (d_q − d_own)`. Otherwise it lies between the two (a valley's head, a ridge's nose):
+/// `z0 + (z_q − z0)·d_own / (d_own + d_q)`. Either way within one interval, `|z0 − z_q|`, of `z0`. None when there is no
+/// contour of another elevation.
+fn lifted(c: P2, z0: f64, contours: &[(P2, P2, f64)]) -> Option<f64> {
+    let same = |z: f64| (z - z0).abs() <= 1e-6;
+    let mut own: Option<f64> = None;
+    let mut other: Option<(f64, P2, f64)> = None;
+    for &(a, b, z) in contours {
+        let q = nearest_on(c, a, b);
+        let d = c.dist(q);
+        if same(z) {
+            own = Some(own.map_or(d, |o| o.min(d)));
+        } else if other.is_none_or(|(od, _, _)| d < od) {
+            other = Some((d, q, z));
+        }
+    }
+    let (d_own, (d_q, q, z_q)) = (own?, other?);
+    let enclosed = contours.iter().any(|&(a, b, z)| same(z) && proper_cross(c, q, a, b));
+    let z = if enclosed { z0 + (z0 - z_q) * d_own / (d_q - d_own).max(TOL) } else { z0 + (z_q - z0) * d_own / (d_own + d_q) };
+    // Ground stays within one contour interval of the contour round it, or another contour would have been drawn; noisy
+    // contours almost touching would otherwise send a summit's slope up without end.
+    let interval = (z0 - z_q).abs();
+    Some(z.clamp(z0 - interval, z0 + interval))
+}
+
+/// Whether `p` is at one of `keys`, or next to one (corners within `TOL` merge, so the one kept may round beside it).
+fn near_key(keys: &std::collections::BTreeSet<(i64, i64)>, p: P2) -> bool {
+    let (x, y) = key(p);
+    (-1..=1).any(|dx| (-1..=1).any(|dy| keys.contains(&(x + dx, y + dy))))
+}
+
 /// The surface through `points` (`[x, y, z]`) and `lines`, the lines kept as triangles' edges. Data a noisy survey has
 /// still makes a surface, and its `notes` say what was done: a position given at two elevations takes their mean, and
 /// segments that cross another are not kept as edges (their vertices stay as points). Refused, saying why: a point not
@@ -286,6 +331,34 @@ pub fn build(points: &[[f64; 3]], lines: &[Line], options: &Options) -> Result<S
             notes.push(format!("contours simplified within {} mm: {was} vertices became {now}", options.simplify));
         }
     }
+    // Contours as segments, with their elevation, and where their vertices are: what flat triangles are found by.
+    let mut contour_segs: Vec<(P2, P2, f64)> = Vec::new();
+    let mut contour_keys = std::collections::BTreeSet::new();
+    let mut rings: Vec<(usize, f64)> = Vec::new();
+    for (i, r) in ready.iter().enumerate().filter(|(_, r)| is_contour(r)) {
+        let z = r.1.first().copied().unwrap_or(0.0);
+        contour_segs.extend(r.0.windows(2).map(|w| (w[0], w[1], z)));
+        if r.2
+            && let (Some(&a), Some(&b)) = (r.0.last(), r.0.first())
+        {
+            contour_segs.push((a, b, z));
+            rings.push((i, z));
+        }
+        contour_keys.extend(r.0.iter().map(|&p| key(p)));
+    }
+    // A summit or a pit: a closed contour with no other line's vertex inside it gets a point at its middle.
+    let mut poles: Vec<(P2, f64)> = Vec::new();
+    for &(i, z0) in &rings {
+        let Some(ring) = ready.get(i).map(|r| &r.0) else { continue };
+        let inner = ready.iter().enumerate().any(|(j, r)| j != i && r.0.iter().any(|&p| geom::contains(ring, p)));
+        let mid = geom::centroid(ring);
+        if inner || !geom::contains(ring, mid) {
+            continue;
+        }
+        if let Some(z) = lifted(mid, z0, &contour_segs) {
+            poles.push((mid, z));
+        }
+    }
     let mut heights = Heights::default();
     let mut isolated: Vec<P2> = Vec::with_capacity(points.len());
     for &[x, y, z] in points {
@@ -342,13 +415,58 @@ pub fn build(points: &[[f64; 3]], lines: &[Line], options: &Options) -> Result<S
     if outline.len() < 3 || geom::area(&outline).abs() < TOL * TOL {
         return Err("its points are all on one line, so they make no surface".into());
     }
-    let t = triangulation::constrained(&outline, &[], &isolated, &segments)
-        .map_err(|e| if e.contains("cross") { format!("contours or breaklines cross: {e}") } else { e })?;
-    let z = t
-        .points
-        .iter()
-        .map(|&p| heights.of(p).ok_or_else(|| format!("the triangulation made a corner at {} that no point was given at", at(p))))
-        .collect::<Result<Vec<f64>, String>>()?;
+    let mut added = 0;
+    for (p, lift) in poles {
+        if !heights.at.contains_key(&key(p)) {
+            heights.add(p, lift);
+            isolated.push(p);
+            added += 1;
+        }
+    }
+    let triangulate = |isolated: &[P2], heights: &Heights| -> Result<(triangulation::Triangulation, Vec<f64>), String> {
+        let t = triangulation::constrained(&outline, &[], isolated, &segments)
+            .map_err(|e| if e.contains("cross") { format!("contours or breaklines cross: {e}") } else { e })?;
+        let z = t
+            .points
+            .iter()
+            .map(|&p| heights.of(p).ok_or_else(|| format!("the triangulation made a corner at {} that no point was given at", at(p))))
+            .collect::<Result<Vec<f64>, String>>()?;
+        Ok((t, z))
+    };
+    let (mut t, mut z) = triangulate(&isolated, &heights)?;
+    // Flat triangles: three corners on contours of one elevation. Each gets a point at its middle, lifted toward the
+    // next contour, and the surface is triangulated again, up to three times.
+    for _ in 0..3 {
+        let mut more = Vec::new();
+        for tri in &t.triangles {
+            let (Some(&a), Some(&b), Some(&c)) = (t.points.get(tri[0]), t.points.get(tri[1]), t.points.get(tri[2])) else {
+                continue;
+            };
+            let (Some(&za), Some(&zb), Some(&zc)) = (z.get(tri[0]), z.get(tri[1]), z.get(tri[2])) else { continue };
+            if za != zb || zb != zc || ![a, b, c].iter().all(|&p| near_key(&contour_keys, p)) {
+                continue;
+            }
+            let mid = P2((a.0 + b.0 + c.0) / 3.0, (a.1 + b.1 + c.1) / 3.0);
+            if let Some(lift) = lifted(mid, za, &contour_segs) {
+                more.push((mid, lift));
+            }
+        }
+        let before = added;
+        for (p, lift) in more {
+            if !heights.at.contains_key(&key(p)) {
+                heights.add(p, lift);
+                isolated.push(p);
+                added += 1;
+            }
+        }
+        if added == before {
+            break;
+        }
+        (t, z) = triangulate(&isolated, &heights)?;
+    }
+    if added > 0 {
+        notes.push(format!("{added} points added where contours made flat ground at summits, pits and valleys"));
+    }
     Ok(Surface { points: t.points, z, triangles: t.triangles, notes })
 }
 
@@ -628,8 +746,9 @@ mod tests {
         let s = build(&plane_corners(), &lines, &Options { ignore_loops_under: 1e6, ..Options::default() }).unwrap();
         assert_eq!(s.range(), Some((100.0, 3100.0)));
         assert!(s.notes.iter().any(|n| n.contains("3 closed contours")), "{:?}", s.notes);
+        // Kept, each loop is a summit: its middle rises past 5000.
         let kept = build(&plane_corners(), &lines, &Options::default()).unwrap();
-        assert_eq!(kept.range(), Some((100.0, 5000.0)));
+        assert!(kept.range().is_some_and(|(lo, hi)| lo == 100.0 && hi > 5000.0), "{:?}", kept.range());
     }
 
     #[test]
@@ -644,6 +763,106 @@ mod tests {
             let e = build(&corners, &lines, &options).unwrap_err();
             assert!(e.contains(name), "{e}");
         }
+    }
+
+    /// A cone of apex 5000 at the origin, drawn by 64-gon contours of radius 40, 32, 24, 16 and 8 m at 0 to 4000 (`sign` −1
+    /// for a pit).
+    fn cone(sign: f64) -> Vec<Line> {
+        (0..5)
+            .map(|k| {
+                let r = 40_000.0 - 8_000.0 * k as f64;
+                let pts = (0..64).map(|i| {
+                    let a = std::f64::consts::TAU * i as f64 / 64.0;
+                    P2(r * a.cos(), r * a.sin())
+                });
+                Line::contour(sign * 1000.0 * k as f64, pts.collect(), true)
+            })
+            .collect()
+    }
+
+    fn exact() -> Options {
+        Options { simplify: 0.0, ..Options::default() }
+    }
+
+    fn flat(s: &Surface) -> usize {
+        s.triangles.iter().filter(|t| s.z[t[0]] == s.z[t[1]] && s.z[t[1]] == s.z[t[2]]).count()
+    }
+
+    #[test]
+    fn a_cones_summit_rises_and_no_triangle_is_flat() {
+        let s = build(&[], &cone(1.0), &exact()).unwrap();
+        assert_eq!(flat(&s), 0);
+        let top = s.elevation_at(P2(0.0, 0.0)).unwrap();
+        assert!((top - 5000.0).abs() < 100.0, "{top}");
+        // The 64-gon's pyramid: a third of its base's area times its height.
+        let base = 0.5 * 64.0 * 40_000.0f64.powi(2) * (std::f64::consts::TAU / 64.0).sin();
+        let want = base * 5000.0 / 3.0;
+        let got = s.volume_above(0.0);
+        assert!((got - want).abs() / want < 0.005, "{got} {want}");
+        assert!(s.notes.iter().any(|n| n.contains("points added")), "{:?}", s.notes);
+    }
+
+    #[test]
+    fn a_pits_bottom_sinks() {
+        let s = build(&[], &cone(-1.0), &exact()).unwrap();
+        assert_eq!(flat(&s), 0);
+        let bottom = s.elevation_at(P2(0.0, 0.0)).unwrap();
+        assert!((bottom + 5000.0).abs() < 100.0, "{bottom}");
+    }
+
+    #[test]
+    fn a_valleys_tongue_slopes_down_to_the_next_contour() {
+        // A valley's head: a U at 1000 open toward +x, 4 m wide and 20 m long, a vertex every metre; beyond its mouth the
+        // contour at 0; behind it, ground at 1000.
+        let mut u: Vec<P2> = (0..=20).rev().map(|i| P2(i as f64 * 1000.0, -2_000.0)).collect();
+        u.extend((0..=20).map(|i| P2(i as f64 * 1000.0, 2_000.0)));
+        let lines = vec![Line::contour(1000.0, u, false), Line::contour(0.0, vec![P2(30_000.0, -10_000.0), P2(30_000.0, 10_000.0)], false)];
+        let corners = [[-10_000.0, -10_000.0, 1000.0], [-10_000.0, 10_000.0, 1000.0]];
+        let s = build(&corners, &lines, &exact()).unwrap();
+        let inside: Vec<(f64, f64)> =
+            s.points.iter().zip(&s.z).filter(|(p, _)| p.0 > 1.0 && p.0 < 19_999.0 && p.1.abs() < 1_999.0).map(|(p, z)| (p.0, *z)).collect();
+        assert!(!inside.is_empty());
+        assert!(inside.iter().all(|&(_, z)| z > 0.0 && z < 1000.0), "{inside:?}");
+        let mean = |f: &dyn Fn(f64) -> bool| {
+            let v: Vec<f64> = inside.iter().filter(|(x, _)| f(*x)).map(|(_, z)| *z).collect();
+            v.iter().sum::<f64>() / v.len().max(1) as f64
+        };
+        assert!(mean(&|x| x > 10_000.0) < mean(&|x| x < 10_000.0), "{inside:?}");
+    }
+
+    #[test]
+    fn a_summit_never_rises_past_the_next_contour_interval() {
+        // A ring at 100 with one at 0 just 1.5 mm outside it, as noise draws them: extrapolating the slope between them
+        // would put the middle tens of metres up. Ground inside a contour stays within one interval of it, or another
+        // contour would have been drawn.
+        let ring = |r: f64, z: f64| {
+            Line::contour(
+                z,
+                (0..32)
+                    .map(|i| {
+                        let a = std::f64::consts::TAU * i as f64 / 32.0;
+                        P2(r * a.cos(), r * a.sin())
+                    })
+                    .collect(),
+                true,
+            )
+        };
+        let s = build(&[], &[ring(1_000.0, 100.0), ring(1_001.5, 0.0)], &exact()).unwrap();
+        let (lo, hi) = s.range().unwrap();
+        assert!(lo >= 0.0 && hi <= 200.0, "{lo} {hi}");
+    }
+
+    #[test]
+    fn a_surface_with_no_flat_triangle_is_left_as_it_is() {
+        let s = plane_surface();
+        assert!(s.notes.iter().all(|n| !n.contains("added")), "{:?}", s.notes);
+    }
+
+    #[test]
+    fn flat_ground_made_of_points_is_left_flat() {
+        // Points all at one elevation are flat ground, not a contour's artefact.
+        let s = build(&[[0.0, 0.0, 7.0], [1_000.0, 0.0, 7.0], [1_000.0, 1_000.0, 7.0], [0.0, 1_000.0, 7.0]], &[], &exact()).unwrap();
+        assert_eq!(s.points.len(), 4);
     }
 
     #[test]
