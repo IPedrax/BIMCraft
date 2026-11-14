@@ -671,7 +671,7 @@ fn a_columns_bars_end_in_hooks_turned_into_the_section() {
 use crate::render::{self, Drawing, Prim, View};
 
 fn plan_view() -> View {
-    View { scale: 0.1, cx: 3000.0, cy: 2000.0, width: 1400, height: 800 }
+    View { angle: 0.0, scale: 0.1, cx: 3000.0, cy: 2000.0, width: 1400, height: 800 }
 }
 
 /// What a drawing draws of element `id`.

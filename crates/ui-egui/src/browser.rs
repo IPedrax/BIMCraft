@@ -67,6 +67,24 @@ impl Tab {
 const SYSTEM_FAMILIES: [&str; 10] =
     ["wall", "floor", "roof", "ceiling", "door", "window", "column", "railing", "structuralcolumn", "footing"];
 
+/// A view or sheet picked in the browser: Ctrl adds or takes one, Shift a run of them, as in any list of the system's.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Pick {
+    View(Sheet),
+    /// A 3D view: the default `{3D}` when none.
+    View3D(Option<Id>),
+}
+
+impl Pick {
+    /// The element it is, as a print set holds it: none for what isn't one yet.
+    pub(crate) fn element(self) -> Option<Id> {
+        crate::printsets::element_of(&match self {
+            Pick::View(s) => crate::find::Found::View(s),
+            Pick::View3D(id) => crate::find::Found::View3D(id),
+        })
+    }
+}
+
 /// What a click on an entry does.
 #[derive(Clone, Debug, PartialEq)]
 enum Act {
@@ -87,6 +105,14 @@ enum Act {
     Pick(&'static str, String),
     /// A link: it is the selection, for Properties.
     Select(Id),
+    /// A Ctrl-click (toggles it) or a Shift-click (picks the run to it from the last picked; with Ctrl, adds the run).
+    Choose(Pick, bool, bool),
+    /// Create Print Set…, of these.
+    NewSet(Vec<Pick>),
+    /// Open the Publisher from the browser's right-click menu.
+    Publisher,
+    /// Expand All, or Collapse All.
+    Fold(bool),
 }
 
 /// An entry of the tree, or a group of them.
@@ -115,6 +141,27 @@ impl Node {
     fn with_menu(mut self, menu: Vec<(&'static str, Act)>) -> Node {
         self.menu = menu;
         self
+    }
+
+    /// What picking it picks: a view or sheet.
+    fn pick(&self) -> Option<Pick> {
+        match self.act {
+            Act::Open(s) => Some(Pick::View(s)),
+            Act::Open3D(id) => Some(Pick::View3D(id)),
+            _ => None,
+        }
+    }
+
+    /// The views and sheets in it and under it, in order, as far as they show for `words`.
+    fn picks(&self, words: &[String], out: &mut Vec<Pick>) {
+        if !self.shows(words) {
+            return;
+        }
+        let left: Vec<String> = words.iter().filter(|w| spans(&self.label, w).is_none()).cloned().collect();
+        out.extend(self.pick());
+        for k in &self.kids {
+            k.picks(&left, out);
+        }
     }
 
     /// Whether it shows for the words still to match (those its groups didn't): it matches all of them, or, a group,
@@ -289,12 +336,68 @@ impl BimApp {
             return;
         }
         let mut act = None;
-        for node in shown {
+        for node in &shown {
             self.browser_node(ui, node, &words, "", &mut act);
+        }
+        self.browser_fold = None;
+        // A plain click on a view picks it alone, and opens it.
+        if let Some(pick) = act.as_ref().and_then(|a| Node::leaf("", a.clone(), false).pick()) {
+            self.browser_picked = vec![pick];
+            self.browser_anchor = Some(pick);
         }
         match act {
             Some(Act::Open(sheet)) => self.open_sheet(sheet),
             Some(Act::Open3D(id)) => self.open_3d(id),
+            Some(Act::Choose(pick, shift, ctrl)) => {
+                let mut order = Vec::new();
+                for node in &shown {
+                    node.picks(&words, &mut order);
+                }
+                let at = |p: &Pick| order.iter().position(|o| o == p);
+                match (shift, self.browser_anchor.as_ref().and_then(at), at(&pick)) {
+                    (true, Some(a), Some(b)) => {
+                        let run = order[a.min(b)..=a.max(b)].to_vec();
+                        if ctrl {
+                            for p in run {
+                                if !self.browser_picked.contains(&p) {
+                                    self.browser_picked.push(p);
+                                }
+                            }
+                        } else {
+                            self.browser_picked = run;
+                        }
+                    }
+                    _ => {
+                        // Ctrl adds what the window shows first, as the one picked before it.
+                        if self.browser_picked.is_empty()
+                            && let Some(open) = order.iter().find(|p| matches!(p, Pick::View(s) if *s == self.sheet))
+                        {
+                            self.browser_picked.push(*open);
+                        }
+                        if let Some(i) = self.browser_picked.iter().position(|p| *p == pick) {
+                            self.browser_picked.remove(i);
+                        } else {
+                            self.browser_picked.push(pick);
+                        }
+                        self.browser_anchor = Some(pick);
+                    }
+                }
+            }
+            Some(Act::NewSet(picks)) => {
+                let mut views: Vec<Id> = Vec::new();
+                for id in picks.into_iter().filter_map(Pick::element) {
+                    if !views.contains(&id) {
+                        views.push(id);
+                    }
+                }
+                if views.is_empty() {
+                    self.status = crate::Status { text: t("None of these can be printed yet.").into(), error: true };
+                } else {
+                    self.name_set = Some(crate::printsets::NameSet { name: self.free_set_name(), views, error: None });
+                }
+            }
+            Some(Act::Fold(open)) => self.browser_fold = Some(open),
+            Some(Act::Publisher) => self.open_publisher(),
             Some(Act::Place(family, ty)) => {
                 self.component = Some((family, ty));
                 self.set_tool(Tool::Component);
@@ -318,43 +421,87 @@ impl BimApp {
     fn browser_node(&self, ui: &mut Ui, node: &Node, words: &[String], path: &str, act: &mut Option<Act>) {
         let left: Vec<String> = words.iter().filter(|w| spans(&node.label, w).is_none()).cloned().collect();
         let text = marked(ui, &node.label, words);
-        if node.act != Act::Group {
-            let r = ui.selectable_label(node.on, text);
-            if r.clicked() {
-                *act = Some(node.act.clone());
+        // Its right-click menu: its own items, a print set of what is picked (or of what it holds), and folding.
+        let menu = |ui: &mut Ui, act: &mut Option<Act>, picks: Vec<Pick>| {
+            for (label, item) in &node.menu {
+                if ui.button(t(label)).clicked() {
+                    *act = Some(item.clone());
+                    ui.close();
+                }
             }
             if !node.menu.is_empty() {
-                r.context_menu(|ui| {
-                    for (label, item) in &node.menu {
-                        if ui.button(t(label)).clicked() {
-                            *act = Some(item.clone());
-                            ui.close();
-                        }
-                    }
+                ui.separator();
+            }
+            if !picks.is_empty() {
+                let label = if picks.len() > 1 {
+                    tf("Create Print Set of {}…", &[&picks.len().to_string()])
+                } else {
+                    t("Create Print Set…").to_string()
+                };
+                if ui.button(label).clicked() {
+                    *act = Some(Act::NewSet(picks));
+                    ui.close();
+                }
+                ui.separator();
+            }
+            if ui.button(t("Publisher…")).clicked() {
+                *act = Some(Act::Publisher);
+                ui.close();
+            }
+            ui.separator();
+            if ui.button(t("Expand All")).clicked() {
+                *act = Some(Act::Fold(true));
+                ui.close();
+            }
+            if ui.button(t("Collapse All")).clicked() {
+                *act = Some(Act::Fold(false));
+                ui.close();
+            }
+        };
+        if node.act != Act::Group {
+            let pick = node.pick();
+            let on = match pick {
+                Some(p) if self.browser_picked.len() > 1 => self.browser_picked.contains(&p),
+                _ => node.on,
+            };
+            let r = ui.selectable_label(on, text);
+            if r.clicked() {
+                let mods = ui.input(|i| i.modifiers);
+                *act = Some(match pick {
+                    Some(p) if mods.command || mods.shift => Act::Choose(p, mods.shift, mods.command),
+                    _ => node.act.clone(),
                 });
             }
+            // Of the picked when it is one of them, else of itself.
+            let picks = match pick {
+                Some(p) if self.browser_picked.len() > 1 && self.browser_picked.contains(&p) => self.browser_picked.clone(),
+                Some(p) => vec![p],
+                None => Vec::new(),
+            };
+            r.context_menu(|ui| menu(ui, act, picks));
             return;
         }
         let path = format!("{path}/{}", node.label);
         let mut header = CollapsingHeader::new(text).id_salt(("browser", &path)).default_open(node.open);
         if !words.is_empty() {
             header = header.open(Some(true));
+        } else if let Some(open) = self.browser_fold {
+            header = header.open(Some(open));
         }
         let shown = header.show(ui, |ui| {
             for kid in node.kids.iter().filter(|k| k.shows(&left)) {
                 self.browser_node(ui, kid, &left, &path, act);
             }
         });
-        if !node.menu.is_empty() {
-            shown.header_response.context_menu(|ui| {
-                for (label, item) in &node.menu {
-                    if ui.button(t(label)).clicked() {
-                        *act = Some(item.clone());
-                        ui.close();
-                    }
-                }
-            });
-        }
+        let mut picks = Vec::new();
+        node.picks(words, &mut picks);
+        shown.header_response.context_menu(|ui| menu(ui, act, picks));
+    }
+
+    /// A name for a new print set that no set has: Print Set 1, 2…
+    fn free_set_name(&self) -> String {
+        let sets = &self.session.model.print_sets;
+        (1..).map(|n| tf("Print Set {}", &[&n.to_string()])).find(|n| !sets.contains_key(n)).unwrap_or_default()
     }
 
     /// What the browser lists under the tab in force.

@@ -1515,6 +1515,9 @@ impl BimApp {
         };
         // Place on Face: the Component tool placing a work plane-based family on the face clicked.
         let placing_on_face = matches!(self.tool, Tool::Component) && self.place_on_face && self.placing_on_work_plane();
+        // Site's points the view shows, and which is selected: read before the view's state is borrowed.
+        let shown_points = self.points_in_3d();
+        let lit_ids = self.selection.clone();
         let o = &mut self.orbit;
         (o.rect, o.ppp) = (rect, ppp);
         // The camera changed elsewhere than by the hand in this view (dragged on a plan, a command, undo): the picture stands
@@ -1833,6 +1836,18 @@ impl BimApp {
             o.dim3.clear();
         }
         let dim_pick = |at: Pos2| dim_ref(scene, &cam, px(at), surface(&o.picker, &cam, at), ppp, &look3);
+        // Specify Coordinates at a Point: the corner, edge or face a click would take, as a dimension's end snaps.
+        let specifying = self.tool == Tool::SpecifyPoint && sketch_z.is_none() && !picking;
+        if let Some(r) = hover.filter(|_| specifying && o.drag.is_none()).and_then(dim_pick) {
+            let q = on_screen(&cam, rect, ppp, r.at);
+            if let Some([a, b]) = r.edge {
+                p.line_segment([on_screen(&cam, rect, ppp, a), on_screen(&cam, rect, ppp, b)], Stroke::new(3.0, pal().accent));
+            }
+            p.circle_stroke(q, 5.0, Stroke::new(1.5, pal().accent));
+            if let Some(d) = &self.coordinates_dialog {
+                crate::canvas::tag(&p, q + vec2(10.0, -10.0), egui::Align2::LEFT_BOTTOM, d.pick_label());
+            }
+        }
         if let Some(at) = hover.filter(|_| dimming && o.drag.is_none()) {
             let accent = Stroke::new(1.5, pal().accent);
             let screen = |q: P3| on_screen(&cam, rect, ppp, q);
@@ -2133,13 +2148,26 @@ impl BimApp {
         // While sketching here a click is the sketch's, with what's under it for Pick Walls and Pick Lines.
         let under = click.filter(|_| sketch_z.is_some()).and_then(|at| pick(&o.picker, at)).map(|h| h.id);
         // A dimension's lines are picked before what the picture shows under them.
+        // Site's points the view shows, as marks over the picture; a click on one picks it before what's under it.
+        let points: Vec<(bimcraft_core::coordinates::Point, Pos2)> =
+            shown_points.into_iter().map(|(pt, q)| (pt, on_screen(&cam, rect, ppp, q))).collect();
+        for (pt, c) in &points {
+            let lit = pt.id(&model).is_some_and(|id| lit_ids.contains(&id));
+            crate::coordinates::paint_point(&p, *c, *pt, lit);
+        }
+        let point_hit = click
+            .filter(|_| modify && sketch_z.is_none() && !picking)
+            .and_then(|at| points.iter().find(|(_, c)| c.distance(at) <= 10.0))
+            .and_then(|(pt, _)| pt.id(&model));
         let clicked = click
-            .filter(|_| sketch_z.is_none() && !picking)
+            .filter(|_| sketch_z.is_none() && !picking && point_hit.is_none())
             .map(|at| dim_at(at).filter(|_| modify).or_else(|| pick(&o.picker, at).map(|h| h.id)));
+
         let dim_click = click.filter(|_| dimming).map(|at| (px(at), dim_pick(at)));
         let measure_click = click.filter(|_| measuring).map(measure_pick);
         // Where on the face a Trim click is: the side of the wall it keeps.
         let trim_at = click.filter(|_| trimming).and_then(|at| surface(&o.picker, &cam, at)).map(|s| s.at);
+        let specify_click = click.filter(|_| specifying).and_then(dim_pick);
         // The face of what's clicked, as paint names the faces of an element.
         let face = click.and_then(|at| pick(&o.picker, at).map(|h| h.face).filter(|f| !f.is_empty()));
         // Place on Face: the face under the click, of what hosts components, by its role.
@@ -2166,7 +2194,7 @@ impl BimApp {
                 Some((q, plane, _)) => self.draw3d(q, plane),
                 None => self.status = Status { text: self.needs_face(), error: true },
             },
-            Some(_) if dimming || measuring => {}
+            Some(_) if dimming || measuring || specifying => {}
             Some(Some(id)) if attaching && attach_target(&model, id) => self.attach_to(id),
             Some(Some(id)) if trimming && model.wall(id).is_some() => {
                 let on = trim_at.map_or_else(|| model.wall(id).map_or(P2(0.0, 0.0), |w| (w.start + w.end) * 0.5), |q| P2(q[0], q[1]));
@@ -2179,6 +2207,12 @@ impl BimApp {
                     Status { text: crate::lang::t("this tool works in plan views: open one from the Project Browser").into(), error: true }
             }
             None => {}
+        }
+        if let Some(r) = specify_click {
+            self.specify_at(r.at);
+        }
+        if let Some(id) = point_hit {
+            self.pick_up(vec![id], click_modifiers(ui));
         }
         if let Some((at, r)) = dim_click {
             self.dim3_click(&cam, at, r);

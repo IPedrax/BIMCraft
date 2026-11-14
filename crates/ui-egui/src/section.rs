@@ -393,6 +393,17 @@ impl BimApp {
             self.edit_note(note);
             return;
         }
+        if let Tool::ExportRegion(first) = self.tool {
+            let cursor = ui.input(|i| i.pointer.latest_pos()).filter(|c| rect.contains(*c));
+            if let Some(cursor) = cursor {
+                let screen = |a: P2| rect.min + egui::vec2(view.px(a).0, view.px(a).1);
+                crate::export::region_band(&ui.painter_at(rect), first.map(screen), cursor);
+            }
+            if let Some(q) = clicked {
+                self.export_region_at(view.mm(q));
+            }
+            return;
+        }
         match (clicked, &self.tool) {
             (Some(q), Tool::Modify) => {
                 let found = pick(&self.cut, &d, q);

@@ -250,6 +250,15 @@ fn rows(category: &str) -> &'static [Row] {
             ("Other", "host", msg!("Host"), Link),
             ("Other", "at", "Location", Point),
         ],
+        "spotcoordinate" => &[
+            ("Graphics", "leader", msg!("Leader"), Flag),
+            ("Graphics", "shoulder", msg!("Has Shoulder"), Flag),
+            ("Dimensions", "north", msg!("North / South"), LengthShown),
+            ("Dimensions", "east", msg!("East / West"), LengthShown),
+            ("Dimensions", "elevation", "Elevation", LengthShown),
+            ("Other", "host", msg!("Host"), Link),
+            ("Other", "at", "Location", Point),
+        ],
         "line" => &[
             ("Graphics", "style", "Line Style", LineStyle),
             ("Dimensions", "length", "Length", LengthShown),
@@ -585,6 +594,7 @@ fn icon(category: &str) -> Icon {
         "line" => Icon::Line,
         "region" => Icon::FilledRegion,
         "spot" => Icon::Spot,
+        "spotcoordinate" => Icon::SpotCoordinate,
         "view3d" => Icon::View3D,
         "pointcloud" => Icon::PointCloud,
         "cadimport" => Icon::ImportCad,
@@ -1235,6 +1245,7 @@ impl BimApp {
             ([], Tool::Text, _) => Subject::New("text"),
             ([], Tool::DetailLine(_), _) => Subject::New("line"),
             ([], Tool::Spot | Tool::SpotSlope, _) => Subject::New("spot"),
+            ([], Tool::SpotCoordinate(_), _) => Subject::New("spotcoordinate"),
             ([], Tool::Tag, _) => Subject::New("tag"),
             ([], Tool::Section(_), _) => Subject::New("section"),
             ([], Tool::Elevation, _) => Subject::New("elevation"),
@@ -1372,6 +1383,10 @@ impl BimApp {
                 self.dimension_type_dialog = Some(crate::dimtypes::DimensionTypeDialog::new(&self.session.model, name, elements));
                 return;
             }
+            if category == "spotcoordinate" {
+                self.spot_type_dialog = Some(crate::spots::SpotTypeDialog::new(&self.session.model, name, elements));
+                return;
+            }
             let pair = if category == "component" {
                 self.component_type()
             } else {
@@ -1388,6 +1403,16 @@ impl BimApp {
         // A new selection starts the filter over.
         if self.palette_filter.as_ref().is_some_and(|(_, picked_for)| *picked_for != self.selection) {
             self.palette_filter = None;
+        }
+        // Site's points, picked in a view, are no elements: their own Properties.
+        if let Some(p) = self.selected_point() {
+            self.point_properties(ui, p);
+            return;
+        }
+        // Views picked in the Project Browser, several of them: what they share.
+        if self.selection.is_empty() && self.browser_picked.len() > 1 {
+            self.picked_views_properties(ui);
+            return;
         }
         let model = Arc::clone(&self.session.model);
         let subject = self.subject();
@@ -1500,6 +1525,61 @@ impl BimApp {
         if view_shown {
             self.graphics_properties(ui);
             self.phasing_properties(ui);
+        }
+        ui.add_space(8.0);
+        ui.with_layout(Layout::right_to_left(Align::Min), apply);
+    }
+
+    /// Several views picked in the Project Browser: of one kind, its parameters, those they share filled in and a change
+    /// made to all of them; of several, how many of each.
+    fn picked_views_properties(&mut self, ui: &mut Ui) {
+        let model = Arc::clone(&self.session.model);
+        // Each one's kind, as the palette names it, its element and its rows.
+        let mut kinds: BTreeMap<&'static str, (Vec<Id>, Vec<&'static [Row]>)> = BTreeMap::new();
+        let mut other = 0;
+        for pick in &self.browser_picked {
+            let (kind, id, rows): (&'static str, Option<Id>, &'static [Row]) = match *pick {
+                crate::browser::Pick::View(Sheet::Plan(id)) => match model.plan_view(id) {
+                    Some(v) if v.parent.is_some() => (msg!("Floor Plans"), Some(id), PLAN_DEPENDENT),
+                    Some(_) => (msg!("Floor Plans"), Some(id), PLAN_VIEW),
+                    None => (msg!("Floor Plans"), Some(id), PLAN),
+                },
+                crate::browser::Pick::View(Sheet::Ceiling(id)) => (msg!("Ceiling Plans"), Some(id), &[]),
+                crate::browser::Pick::View(Sheet::Section(id)) => match model.elements.get(id).map(|e| e.category()) {
+                    Some("elevation") => (msg!("Elevations"), Some(id), rows("elevation")),
+                    _ => (msg!("Sections"), Some(id), rows("section")),
+                },
+                crate::browser::Pick::View(Sheet::Paper(id)) => (msg!("Sheets"), Some(id), rows("sheet")),
+                crate::browser::Pick::View(Sheet::Table(id)) => (msg!("Schedules"), Some(id), rows("schedule")),
+                crate::browser::Pick::View3D(Some(id)) => (msg!("3D Views"), Some(id), rows("view3d")),
+                _ => (msg!("Schedules"), None, &[]),
+            };
+            match id {
+                Some(id) => {
+                    let entry = kinds.entry(kind).or_default();
+                    entry.0.push(id);
+                    entry.1.push(rows);
+                }
+                None => other += 1,
+            }
+        }
+        let n = self.browser_picked.len();
+        if kinds.len() != 1 || other > 0 {
+            ui.label(tf("Multiple Categories ({})", &[&n.to_string()]));
+            ui.add_space(4.0);
+            for (kind, (ids, _)) in &kinds {
+                ui.label(RichText::new(format!("{} ({})", t(kind), ids.len())).color(pal().muted));
+            }
+            return;
+        }
+        let Some((kind, (ids, all_rows))) = kinds.into_iter().next() else { return };
+        ui.label(format!("{} ({})", t(kind), ids.len()));
+        ui.add_space(4.0);
+        // The rows every one of them has: a level's own plan and a plan view share most, not their level's.
+        let first = all_rows.first().copied().unwrap_or_default();
+        let shared: Vec<Row> = first.iter().copied().filter(|r| all_rows.iter().all(|rs| rs.iter().any(|o| o.1 == r.1))).collect();
+        if !shared.is_empty() {
+            self.parameters(ui, &model, &ids, &shared);
         }
         ui.add_space(8.0);
         ui.with_layout(Layout::right_to_left(Align::Min), apply);
