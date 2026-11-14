@@ -61,36 +61,55 @@ fn key(p: P2) -> (i64, i64) {
     ((p.0 / TOL).round() as i64, (p.1 / TOL).round() as i64)
 }
 
-/// Elevations by position: each given point's and line vertex's. A position given at two elevations (contours that
-/// touch, as a noisy survey's do) takes their mean, and is remembered so the reply can say where.
+/// The corners a surface is made of, each with its elevations: a position given within `TOL` of a corner already
+/// there is that corner (the triangulation would merge them anyway, so they are merged here first, where their
+/// elevations can be kept and a line between them dropped). A corner given at two elevations (contours that touch, as a
+/// noisy survey's do) takes their mean, and is remembered so the reply can say where.
 #[derive(Default)]
 struct Heights {
-    /// By position: the sum of its elevations, how many, the lowest and the highest.
-    at: BTreeMap<(i64, i64), (f64, usize, f64, f64)>,
+    /// Each corner: where it is, the sum of its elevations, how many, the lowest and the highest.
+    corners: Vec<(P2, f64, usize, f64, f64)>,
+    /// The corners by their `TOL` cell, to find one within `TOL` of a position.
+    grid: BTreeMap<(i64, i64), Vec<usize>>,
 }
 
 impl Heights {
-    fn add(&mut self, p: P2, z: f64) {
-        let e = self.at.entry(key(p)).or_insert((0.0, 0, z, z));
-        *e = (e.0 + z, e.1 + 1, e.2.min(z), e.3.max(z));
+    /// The corner within `TOL` of `p`, the nearest when there are several.
+    fn near(&self, p: P2) -> Option<usize> {
+        let (x, y) = key(p);
+        (-1..=1)
+            .flat_map(|dx| (-1..=1).map(move |dy| (x + dx, y + dy)))
+            .filter_map(|k| self.grid.get(&k))
+            .flatten()
+            .filter_map(|&i| self.corners.get(i).map(|c| (i, c.0.dist(p))))
+            .filter(|(_, d)| *d <= TOL)
+            .min_by(|a, b| a.1.total_cmp(&b.1).then(a.0.cmp(&b.0)))
+            .map(|(i, _)| i)
+    }
+
+    /// `p` at elevation `z`: the corner it is, where that corner stands.
+    fn add(&mut self, p: P2, z: f64) -> P2 {
+        if let Some(c) = self.near(p).and_then(|i| self.corners.get_mut(i)) {
+            *c = (c.0, c.1 + z, c.2 + 1, c.3.min(z), c.4.max(z));
+            return c.0;
+        }
+        self.grid.entry(key(p)).or_default().push(self.corners.len());
+        self.corners.push((p, z, 1, z, z));
+        p
     }
 
     fn len(&self) -> usize {
-        self.at.len()
+        self.corners.len()
     }
 
-    /// The positions given at more than one elevation, in order.
+    /// The corners given at more than one elevation, in the order they came.
     fn torn(&self) -> Vec<P2> {
-        self.at.iter().filter(|(_, e)| e.3 - e.2 > 1e-6).map(|((x, y), _)| P2(*x as f64 * TOL, *y as f64 * TOL)).collect()
+        self.corners.iter().filter(|c| c.4 - c.3 > 1e-6).map(|c| c.0).collect()
     }
 
-    /// The elevation at a corner the triangulation made from the positions given: at its key, or the next one round it
-    /// (corners within `TOL` merge, so the one kept may round to a neighbouring key).
+    /// The elevation of the corner at (or within `TOL` of) a corner the triangulation made.
     fn of(&self, p: P2) -> Option<f64> {
-        let (x, y) = key(p);
-        [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)]
-            .iter()
-            .find_map(|(dx, dy)| self.at.get(&(x + dx, y + dy)).map(|e| e.0 / e.1 as f64))
+        self.near(p).and_then(|i| self.corners.get(i)).map(|c| c.1 / c.2 as f64)
     }
 }
 
@@ -465,7 +484,6 @@ fn build_in(points: &[[f64; 3]], lines: &[Line], options: &Options, outline: Opt
             contour_segs.push((a, b, z));
             rings.push((i, z));
         }
-        contour_keys.extend(r.0.iter().map(|&p| key(p)));
     }
     // A summit or a pit: a closed contour with nothing else inside it gets a point at its middle.
     let mut poles: Vec<(P2, f64)> = Vec::new();
@@ -487,20 +505,31 @@ fn build_in(points: &[[f64; 3]], lines: &[Line], options: &Options, outline: Opt
     for &[x, y, z] in points {
         let p = P2(x, y);
         check_point(p, z)?;
-        heights.add(p, z);
-        isolated.push(p);
+        isolated.push(heights.add(p, z));
     }
     let mut segments: Vec<(P2, P2)> = Vec::new();
     let mut positions: Vec<P2> = isolated.clone();
     for (pts, zs, closed) in ready {
+        let contour = zs.windows(2).all(|w| w[0] == w[1]);
+        // Each vertex as the corner it is; two in a row that are one corner make no segment.
+        let mut at_corners: Vec<P2> = Vec::with_capacity(pts.len());
         for (&p, &z) in pts.iter().zip(&zs) {
-            heights.add(p, z);
+            let c = heights.add(p, z);
+            if at_corners.last() != Some(&c) {
+                at_corners.push(c);
+            }
+            if contour {
+                contour_keys.insert(key(c));
+            }
         }
-        segments.extend(pts.windows(2).map(|w| (w[0], w[1])));
-        if closed && let (Some(&a), Some(&b)) = (pts.last(), pts.first()) {
+        segments.extend(at_corners.windows(2).map(|w| (w[0], w[1])));
+        if closed && let (Some(&a), Some(&b)) = (at_corners.last(), at_corners.first())
+            && a != b
+            && at_corners.len() > 2
+        {
             segments.push((a, b));
         }
-        positions.extend(pts);
+        positions.extend(at_corners);
     }
     if heights.len() < 3 {
         return Err(format!("a surface needs at least three points; it has {}", heights.len()));
@@ -543,9 +572,8 @@ fn build_in(points: &[[f64; 3]], lines: &[Line], options: &Options, outline: Opt
     }
     let mut added = 0;
     for (p, lift) in poles {
-        if !heights.at.contains_key(&key(p)) {
-            heights.add(p, lift);
-            isolated.push(p);
+        if heights.near(p).is_none() {
+            isolated.push(heights.add(p, lift));
             added += 1;
         }
     }
@@ -579,9 +607,8 @@ fn build_in(points: &[[f64; 3]], lines: &[Line], options: &Options, outline: Opt
         }
         let before = added;
         for (p, lift) in more {
-            if !heights.at.contains_key(&key(p)) {
-                heights.add(p, lift);
-                isolated.push(p);
+            if heights.near(p).is_none() {
+                isolated.push(heights.add(p, lift));
                 added += 1;
             }
         }
@@ -902,6 +929,28 @@ mod tests {
         ];
         let s = build(&[], &lines, &Options::default()).unwrap();
         assert!((s.elevation_at(P2(500.0, 0.0)).unwrap() - 100.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn ends_closer_than_a_millimetre_merge_without_failing() {
+        // B's segment is 1.6 mm long, but both its ends lie within a millimetre of A's end, which comes first: as one
+        // corner, B is nothing, and the surface is made without it rather than refused.
+        let lines = vec![
+            Line::contour(100.0, vec![P2(0.0, 0.0), P2(1_000.0, 0.0)], false),
+            Line::contour(100.0, vec![P2(1_000.5, 0.8), P2(1_000.5, -0.8)], false),
+        ];
+        let s = build(&[[0.0, 1_000.0, 200.0], [1_000.0, 1_000.0, 200.0]], &lines, &exact()).unwrap();
+        assert!((s.elevation_at(P2(500.0, 0.0)).unwrap() - 100.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn positions_within_a_millimetre_meet_at_their_mean_and_say_so() {
+        // 0.2 mm apart, so one corner, but rounding would key them apart: their elevations still meet, and are noted.
+        let pts = [[500.4, 500.0, 100.0], [500.6, 500.0, 200.0], [0.0, 0.0, 0.0], [1_000.0, 0.0, 0.0], [500.0, 1_000.0, 0.0]];
+        let s = build(&pts, &[], &exact()).unwrap();
+        assert!(s.notes.iter().any(|n| n.contains("two elevations")), "{:?}", s.notes);
+        let z = s.points.iter().zip(&s.z).find(|(p, _)| p.dist(P2(500.5, 500.0)) < 1.0).map(|(_, z)| *z).unwrap();
+        assert!((z - 150.0).abs() < 1e-6, "{z}");
     }
 
     #[test]
