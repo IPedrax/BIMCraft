@@ -29,7 +29,8 @@ fn loaded() -> Harness<'static, BimApp> {
     std::fs::write(&file, SS).unwrap();
     let mut h = app(BOX);
     press(&mut h, "Manage");
-    press(&mut h, "Classification Manager");
+    // Settings is full at this width: the tool is in its list.
+    from_list(&mut h, "Settings", "Classification Manager");
     assert!(h.query_by_label("Ss_25 — Systems").is_none());
     // SL, EF, Ss, Pr: the third row's.
     let load: Vec<_> = h.get_all_by_label("Load Table…").collect();

@@ -4961,12 +4961,6 @@ impl BimApp {
                     self.open_purge();
                 }
             });
-            let tip = msg!(
-                "Classification Manager: a classification system's tables and parameters, codes picked by hand for the selection, or proposed by your AI agent"
-            );
-            if big_button(ui, Icon::Classify, "Classification Manager", self.classification.is_some(), tip).clicked() {
-                self.classification = Some(classification::ClassificationManager::new(&self.session.model));
-            }
             // What annotation draws with: pens, line styles and patterns, fill patterns; one button that lists them.
             let open = self.line_weights_dialog.is_some() || self.line_styles_dialog.is_some() || self.fill_patterns_dialog.is_some();
             let tip = msg!("Annotation Settings: line weights, line styles, line patterns and fill patterns");
@@ -5054,6 +5048,13 @@ impl BimApp {
                     }
                 }
             });
+            // New and seldom wanted: the first of Settings' tools handed over when the window is narrow.
+            let tip = msg!(
+                "Classification Manager: a classification system's tables and parameters, codes picked by hand for the selection, or proposed by your AI agent"
+            );
+            if big_button(ui, Icon::Classify, "Classification Manager", self.classification.is_some(), tip).clicked() {
+                self.classification = Some(classification::ClassificationManager::new(&self.session.model));
+            }
         });
         // Revit's Project Location: where the project stands, and what stands with it by shared coordinates.
         // Yielding: Location goes into the panel's list before any other panel gives way, so the tab is no wider than it was.
