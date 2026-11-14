@@ -78,6 +78,10 @@ fn ctrl_d_and_the_back_arrow_go_between_the_start_page_and_the_project() {
     h.run();
     assert!(!h.state().home.shown, "and so does Ctrl+D");
     assert_eq!(walls(&h).len(), 1);
+    // Ctrl+U is free: it does not open the start page any more.
+    h.key_press_modifiers(Modifiers::COMMAND, Key::U);
+    h.run();
+    assert!(!h.state().home.shown, "Ctrl+U is not Home");
     // In a field the keys are the field's: Ctrl+D there doesn't leave the project.
     h.get_by_label("View Name").focus();
     h.run();

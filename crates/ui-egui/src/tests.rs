@@ -315,12 +315,19 @@ fn key(h: &mut Harness<BimApp>, k: Key) {
     h.run();
 }
 
-/// Letters typed over the view: a two-letter shortcut.
-/// `letters` typed with Ctrl held, as BIMCraft's shortcuts are, all in one go.
+/// Letters typed over the view: a two-letter shortcut, read from the physical keys as the window does.
+/// `letters` typed with Ctrl held, as BIMCraft's shortcuts are: each key goes down and up in turn, as a hand does,
+/// so the second `P` of `PP` is no key repeat.
 fn shortcut(h: &mut Harness<BimApp>, letters: &str) {
     let keys: Vec<Key> = letters.chars().filter_map(|c| Key::from_name(&c.to_ascii_uppercase().to_string())).collect();
     assert_eq!(keys.len(), letters.chars().count(), "every letter of {letters} is a key");
-    h.key_combination_modifiers(Modifiers::COMMAND, &keys);
+    h.input_mut().events.push(Event::ModifiersChanged(Modifiers::COMMAND));
+    for key in keys {
+        for pressed in [true, false] {
+            h.input_mut().events.push(Event::Key { key, pressed, modifiers: Modifiers::COMMAND, repeat: false, physical_key: None });
+        }
+    }
+    h.input_mut().events.push(Event::ModifiersChanged(Modifiers::NONE));
     h.run();
 }
 
@@ -876,6 +883,7 @@ fn a_ctrl_key_of_its_own_waits_for_a_second_letter_and_does_its_job_when_none_co
     h.input_mut().events.push(Event::ModifiersChanged(Modifiers::COMMAND));
     h.input_mut().events.push(Event::Key { key: Key::Z, pressed: true, modifiers: Modifiers::COMMAND, repeat: false, physical_key: None });
     h.step();
+    h.input_mut().events.push(Event::Key { key: Key::Z, pressed: false, modifiers: Modifiers::COMMAND, repeat: false, physical_key: None });
     assert_eq!(walls(&h), 3, "not yet undone");
     // None comes: after the wait (a step is a quarter of a second here), Z undoes.
     h.run_steps(3);
@@ -884,6 +892,8 @@ fn a_ctrl_key_of_its_own_waits_for_a_second_letter_and_does_its_job_when_none_co
     h.input_mut().events.push(Event::Key { key: Key::Z, pressed: true, modifiers: Modifiers::COMMAND, repeat: false, physical_key: None });
     h.input_mut().events.push(Event::Key { key: Key::F, pressed: true, modifiers: Modifiers::COMMAND, repeat: false, physical_key: None });
     h.step();
+    h.input_mut().events.push(Event::Key { key: Key::Z, pressed: false, modifiers: Modifiers::COMMAND, repeat: false, physical_key: None });
+    h.input_mut().events.push(Event::Key { key: Key::F, pressed: false, modifiers: Modifiers::COMMAND, repeat: false, physical_key: None });
     h.input_mut().events.push(Event::ModifiersChanged(Modifiers::NONE));
     h.run();
     assert_eq!(walls(&h), 2, "ZF fits the view and undoes nothing");
@@ -901,11 +911,12 @@ fn typed_shortcuts_pick_tools_like_revit() {
     assert!(matches!(h.state().tool, Tool::Modify));
     // With Ctrl held they are, a letter a frame as well as together; letting Ctrl go between two ends the first.
     let down = |key| Event::Key { key, pressed: true, modifiers: Modifiers::COMMAND, repeat: false, physical_key: None };
+    let up = |key| Event::Key { key, pressed: false, modifiers: Modifiers::COMMAND, repeat: false, physical_key: None };
     h.input_mut().events.extend([Event::ModifiersChanged(Modifiers::COMMAND), down(Key::W)]);
     h.step();
     h.input_mut().events.push(down(Key::A));
     h.step();
-    h.input_mut().events.push(Event::ModifiersChanged(Modifiers::NONE));
+    h.input_mut().events.extend([up(Key::W), up(Key::A), Event::ModifiersChanged(Modifiers::NONE)]);
     h.run();
     assert!(matches!(h.state().tool, Tool::Wall(_)));
     shortcut(&mut h, "dr");
@@ -920,6 +931,64 @@ fn typed_shortcuts_pick_tools_like_revit() {
     assert!(matches!(h.state().tool, Tool::Demolish));
     key(&mut h, Key::Escape);
     assert!(matches!(h.state().tool, Tool::Modify));
+}
+
+#[test]
+fn copy_cut_and_paste_are_shortcut_letters_on_the_view_itself() {
+    fn press(h: &mut Harness<BimApp>, command: Modifiers, key: Key) {
+        for pressed in [true, false] {
+            h.input_mut().events.push(Event::Key { key, pressed, modifiers: command, repeat: false, physical_key: None });
+        }
+    }
+    let mut h = app(SAMPLE);
+    let command = Modifiers::COMMAND;
+    // The window turns Ctrl+C, Ctrl+X and Ctrl+V into Copy, Cut and Paste events, not key events: on a view they are
+    // the letters a sequence needs.
+    h.input_mut().events.extend([Event::ModifiersChanged(command), Event::Copy]);
+    press(&mut h, command, Key::W);
+    h.input_mut().events.push(Event::ModifiersChanged(Modifiers::NONE));
+    h.run();
+    assert!(h.state().cowork_dialog.is_some(), "Ctrl+C, W is CW");
+    h.state_mut().cowork_dialog = None;
+    h.run();
+    h.input_mut().events.extend([Event::ModifiersChanged(command), Event::Paste("x".into())]);
+    press(&mut h, command, Key::V);
+    h.input_mut().events.push(Event::ModifiersChanged(Modifiers::NONE));
+    h.run();
+    assert!(h.state().vg_dialog.is_some(), "Ctrl+V, V is VV");
+    h.state_mut().vg_dialog = None;
+    h.run();
+    h.input_mut().events.push(Event::ModifiersChanged(command));
+    press(&mut h, command, Key::T);
+    h.input_mut().events.push(Event::Cut);
+    h.input_mut().events.push(Event::ModifiersChanged(Modifiers::NONE));
+    h.run();
+    assert!(matches!(h.state().tool, Tool::Text), "T, Ctrl+X is TX");
+}
+
+#[test]
+fn copy_and_paste_stay_the_clipboard_in_a_text_field() {
+    let mut h = app(SAMPLE);
+    h.state_mut().find = Some("ab".into());
+    h.run();
+    // The Find field has the keys: Ctrl+A selects what it holds and Copy puts it on the system's clipboard.
+    h.key_press_modifiers(Modifiers::COMMAND, Key::A);
+    h.run();
+    h.input_mut().events.extend([Event::ModifiersChanged(Modifiers::COMMAND), Event::Copy]);
+    h.input_mut().events.push(Event::ModifiersChanged(Modifiers::NONE));
+    h.step();
+    let copied: Vec<String> = h
+        .output()
+        .platform_output
+        .commands
+        .iter()
+        .filter_map(|c| match c {
+            egui::OutputCommand::CopyText(text) => Some(text.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(copied, ["ab"], "the field's selection is copied, not taken as the letter C");
+    assert!(matches!(h.state().tool, Tool::Modify), "nothing in a field types a sequence");
 }
 
 #[test]
@@ -1020,7 +1089,7 @@ fn sa_selects_every_element_of_the_selected_ones_type_the_view_shows() {
 fn ks_lists_every_shortcut_and_every_one_it_lists_works() {
     let mut h = app(BOX);
     shortcut(&mut h, "KS");
-    for label in ["Create Similar", "CS", "Select All Instances", "SA", "CR", "WA", "KS", "ZF, ZE, ZA", "Demolish", "DW"] {
+    for label in ["Create Similar", "CS", "Select All Instances", "SA", "CR", "WA", "KS", "ZF", "ZE", "ZA", "Demolish", "DW"] {
         assert!(h.query_by_label(label).is_some(), "{label}");
     }
     shortcut(&mut h, "WA");
@@ -1050,7 +1119,21 @@ fn ks_lists_every_shortcut_and_every_one_it_lists_works() {
     }
     use crate::lang::Lang;
     // Names the catalogs don't have yet: KS shows them in English until a translator gives them, as any missing translation.
-    let awaiting = ["Graphic Display Options", "Pin", "Unpin", "Co-Work"];
+    let awaiting = [
+        "Graphic Display Options",
+        "Pin",
+        "Unpin",
+        "Duct",
+        "Down Conductor",
+        "Earthing Conductor",
+        "Cabling",
+        "Filled Region",
+        "Detail Line",
+        "Join into Polyline",
+        "Explode Polyline",
+        "Wall Footing",
+        "Co-Work",
+    ];
     for (_, name) in crate::shortcuts().into_iter().filter(|(_, name)| !awaiting.contains(name)) {
         for l in [Lang::Portuguese, Lang::Spanish] {
             assert!(crate::lang::translated_in(l, name).is_some(), "{name} in {l:?}");
@@ -1066,8 +1149,9 @@ fn manage_tab_opens_keyboard_shortcuts_dialog() {
     press(&mut h, "Manage");
     from_list(&mut h, "Settings", "Shortcuts");
     assert!(h.state().show_shortcuts);
-    assert!(h.query_by_label("Load File...").is_some());
-    assert!(h.query_by_label("Add Shortcut").is_some());
+    assert!(h.query_by_label("Import…").is_some());
+    assert!(h.query_by_label("Export…").is_some());
+    assert!(h.query_by_label("Help (Markdown)…").is_some());
     press(&mut h, "Close");
     assert!(!h.state().show_shortcuts);
 }
@@ -3164,11 +3248,23 @@ fn nothing_a_translated_interface_shows_is_left_in_english() {
     // A label in English that the table translates is a string the window forgot to translate: a
     // widget's name, or a plain label's text, which egui gives screen readers as its value.
     // A shortcut key (PR, UP) is not English prose: the Keyboard Shortcuts window shows it as it is in every language.
-    let keys: Vec<&str> = crate::shortcuts().into_iter().map(|(k, _)| k).collect();
+    let mut keys: Vec<String> = crate::shortcuts().into_iter().map(|(k, _)| k.to_string()).collect();
+    for a in crate::shortcuts::registry().actions() {
+        for b in &a.defaults {
+            if let Ok(b) = crate::shortcuts::parse_binding(b) {
+                keys.push(crate::shortcuts::display_binding(b));
+            }
+        }
+    }
+    for (_, list) in crate::shortcuts::Shortcuts::defaults(crate::shortcuts::Profile::BimCraft).actions() {
+        for b in list {
+            keys.push(crate::shortcuts::display_binding(*b));
+        }
+    }
     let english = |h: &Harness<BimApp>, l: Lang| -> Vec<String> {
         h.query_all(By::new())
             .filter_map(|n| n.accesskit_node().label().or_else(|| n.accesskit_node().value()))
-            .filter(|s| !keys.contains(&s.as_str()))
+            .filter(|s| !keys.contains(s))
             .filter(|s| crate::lang::translated_in(l, s).is_some_and(|x| x != s))
             .collect()
     };

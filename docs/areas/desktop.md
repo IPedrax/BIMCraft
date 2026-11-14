@@ -566,23 +566,33 @@ popup open, so a popup of a row's own closes the panel's list that holds the row
 submenu of the row; a request to open them at once (UN) opens the panel's list when the tool has no button, and waits for a tab's second
 frame, since its first lays out every tool (`a_tool_with_choices_of_its_own_opens_them_from_a_panels_list`).
 
-Keyboard Shortcuts. Manage > Shortcuts (or KS) opens `shortcuts_window` (`shortcuts.rs`): every shortcut by what it does, from `shortcuts()`
-(`SHORTCUTS`, the fixtures' letters, the commands' aliases), with Add, Edit and Load File. A shortcut is two letters or digits, all that `typed` holds,
-typed with Ctrl held (Cmd on a Mac; `ctrl_letters` takes them out of the frame's events, in the project's `keys` and the family document's
-`family_typed` alike), and a custom one is tried before the defaults. Letters typed without Ctrl are no shortcut (digits and a unit still make a
-typed length). A letter that is a Ctrl key of its own (`ctrl_key`: S saves, O opens, N new, K Find, P prints to PDF, D the start page, Z undoes, Y
-redoes, 1 Properties) waits for a second letter (`CTRL_WAIT`, half a second): with one it is a shortcut (Ctrl held, S then A: Select All
-Instances); if the two aren't one, the first does its own job and the second waits in its place, so Ctrl held and Z, Z, Z undoes three times; with
-none, or once Ctrl is let go, it does its own job. In a text field Ctrl's keys are the field's, but S, O, N, K, P and 1, which act there at once,
-and no shortcut is typed. The user chose Ctrl, and the wait, on 2026-11-13. Each name in `ACTIONS` is a tool or command the window runs (`execute_shortcut_action`), and a key never
-carries Revit's name for a tool BIMCraft lacks (Sun Settings, Detail and Model Line, Split Face, Brace, Beam System, Reference Plane, the duct tools): it waits
-for the tool. Load File reads JSON (`{"WA": "Wall"}`), Revit's `<Shortcut CommandName=… Shortcuts="WA#W1">` lines, or `KEY - Name` lines, up to 64 KiB;
-a description is an action only by its whole name in one of the interface's languages (`resolve_action`), and a key that is not two characters, names no action or
-is another action's is skipped and counted in the message. Custom shortcuts are kept in `settings.json` (`shortcuts`: key to the action's English name, as `Settings::shortcuts`), written when one is added, edited or loaded and
-read into `BimApp::custom_shortcuts` at startup (`use_settings`), so they last past the window; Restore Defaults is kept too, as an empty object, and New and Open keep them.
-`Settings::from_json` keeps only what the dialog could have made (a key of two letters or digits, in upper case whatever its case in the file, and a name in `ACTIONS`),
-at most `MAX_SHORTCUTS`; a value that isn't an object leaves what the window had. Tests: `tests/shortcuts_kept.rs`. Match Properties (MA) is the `match_properties`
+Keyboard Shortcuts. Manage > Shortcuts (or KS, or Ctrl+Shift+K) opens `shortcuts_window` (`shortcuts.rs`): every action in the registry
+(`ui_actions` plus `engine::commands()`, and the old names kept as legacy actions), with the bindings it has. A binding is a chord
+(`Ctrl+D`, `Ctrl+Shift+D`, `F8`) or a two-key sequence (`WA`, `MV`); an action may have several, and the dialog's chips add, edit and remove them.
+Sequences are typed with Ctrl held (Cmd on a Mac), as the user chose on 2026-11-13: `ctrl_letters` takes the letters and digits out of the frame's
+events, and `BimApp::ctrl_shortcuts` feeds them to the registry's sequences; a letter that is a Ctrl key of its own (S saves, Z undoes) waits for a
+second letter (`CTRL_WAIT`, half a second): with one it is a shortcut (Ctrl held, S then A: Select All Instances); if the two aren't one, the first
+does its own job (`ctrl_key`, the chord its key has in the registry) and the second waits in its place, so Ctrl held and Z, Z, Z undoes three times;
+with none, or once Ctrl is let go, it does its own job. Letters typed without Ctrl are no shortcut (digits and a unit still make a typed length).
+Bindings are read from `Event::Key`'s `physical_key`, never from `Event::Text`, so `Ctrl+D` and `Ctrl+В` are the same key and the two letters work on a
+Russian layout; modifiers match exactly (`matches_exact`), so `Ctrl+Shift+D` never runs `Ctrl+D`. On a view Ctrl+C, Ctrl+X and Ctrl+V are the letters
+`C`, `X` and `V` of a sequence (`CO`, `MV`, `TX`), because egui-winit turns them into Copy, Cut and Paste events; a text field and the note editor keep
+the clipboard, since `keys` hands them the frame before the shortcut path. The family document's keys come the same way,
+through `ctrl_letters` (Ctrl+C/X/V included, and never while a text field has the keys), and its two-letter actions are looked up in the same registry (`family_shortcut`). The registry's actions have stable ids
+(`cmd.move`, `ui.file.save_as`, `legacy.…`) and are saved in `settings.json` as `Settings::shortcuts` (`version`, `profile`, `bindings`), a full effective
+set, so a default the user deleted does not creep back. Controls: All, Assigned, Without keys and Changed; category and profile; Import (`bks`, `txt`, `json`, Revit XML),
+Export (`txt`/`json`), Help (Markdown) and Reset All. The text format is `action = binding`, one line per binding, `#` comments; the same parser reads the old
+`{"WA": "Wall"}` JSON, `<Shortcut … Shortcuts="WA#W1"/>` and `WA - Wall` / `WA = Wall` lines. Import has a preview with line-numbered errors and conflicts,
+replace and merge modes, and writes `shortcuts.bak` beside the settings before applying; Markdown is a read-only cheat sheet and is refused on import.
+The BIMCraft profile keeps the Revit-style sequences and adds chords; Home is `Ctrl+D`, `Ctrl+U` is free, and the guides are
+`F8` only. A text field keeps its letters but allows Save, Save As, Open, New, Find, Settings, Export PDF and Properties (Ctrl+P and Ctrl+1); dialogs and
+menus keep all global bindings away. One exception to the wait: a Ctrl key that begins no sequence runs its chord at once, so Ctrl+Y
+and Ctrl+1 need no second letter. A key never carries Revit's name for a tool BIMCraft lacks (Sun Settings, Detail and Model Line, Split Face, Brace, Beam System,
+Reference Plane, the duct tools): it waits for the tool.
+`BimApp::keys` checks bindings before the tool's contextual keys, and a binding that finds nothing to run reports it in the status bar rather than falling through.
+Tests: `tests/shortcuts_kept.rs` and the unit tests in `shortcuts.rs`. Match Properties (MA) is the `match_properties`
 command; with one element selected the window remembers its type for the next one drawn, with several it gives the others of the first's category its type.
+The user-facing format, the ЙЦУКЕН table and the migration are described in [`shortcuts.md`](shortcuts.md).
 
 Annotation dialogs and draw tools. Manage > Annotation Settings lists Line Weights, Line Styles, Line Patterns (Line Styles on its
 Patterns tab) and Fill Patterns. Fill Patterns (`fillpatterns.rs`, also Edit Type of a filled region) and Line Styles

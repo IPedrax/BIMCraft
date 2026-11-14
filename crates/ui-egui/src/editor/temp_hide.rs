@@ -271,10 +271,7 @@ impl BimApp {
 
     /// Whether the two letters in `typed` are one of the family document's shortcuts, which it then does.
     fn family_shortcut(&mut self) -> bool {
-        let action = match self.custom_shortcuts.get(&self.typed) {
-            Some(action) => Some(action.as_str()),
-            None => crate::SHORTCUTS.iter().find(|(k, _)| *k == self.typed).map(|(_, a)| *a),
-        };
+        let action = self.shortcuts.action_for_text(&self.typed);
         // Reference Plane, in a family's plan or elevation (F4): the family document's own.
         if self.typed == "RP"
             && let Some(ed) = super::tabs::active_in(&mut self.families, self.sheet)
@@ -304,12 +301,12 @@ impl BimApp {
             }
             return true;
         }
-        let asked = match action {
-            Some("Temporary Hide Element") => Asked::Hide { category: false },
-            Some("Temporary Hide Category") => Asked::Hide { category: true },
-            Some("Temporary Isolate Element") => Asked::Isolate { category: false },
-            Some("Temporary Isolate Category") => Asked::Isolate { category: true },
-            Some("Reset Temporary Hide/Isolate") => Asked::Reset,
+        let asked = match action.as_deref() {
+            Some("ui.view.temp_hide_element") => Asked::Hide { category: false },
+            Some("ui.view.temp_hide_category") => Asked::Hide { category: true },
+            Some("ui.view.temp_isolate_element") => Asked::Isolate { category: false },
+            Some("ui.view.temp_isolate_category") => Asked::Isolate { category: true },
+            Some("ui.view.temp_reset") => Asked::Reset,
             _ => return false,
         };
         self.family_temp(asked);

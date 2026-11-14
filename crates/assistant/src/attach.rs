@@ -72,7 +72,7 @@ pub fn image_mime(name: &str) -> Option<&'static str> {
 
 /// A file's name as the model and the palette see it: no quotes, angle brackets or control characters, which would end the
 /// `<file name="…">` block early.
-fn clean(name: &str) -> String {
+pub(crate) fn clean(name: &str) -> String {
     name.chars().map(|c| if c.is_control() || matches!(c, '"' | '<' | '>' | '/' | '\\') { '_' } else { c }).collect()
 }
 
