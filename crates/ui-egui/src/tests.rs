@@ -316,11 +316,18 @@ fn key(h: &mut Harness<BimApp>, k: Key) {
 }
 
 /// Letters typed over the view: a two-letter shortcut, read from the physical keys as the window does.
-/// `letters` typed with Ctrl held, as BIMCraft's shortcuts are, all in one go.
+/// `letters` typed with Ctrl held, as BIMCraft's shortcuts are: each key goes down and up in turn, as a hand does,
+/// so the second `P` of `PP` is no key repeat.
 fn shortcut(h: &mut Harness<BimApp>, letters: &str) {
     let keys: Vec<Key> = letters.chars().filter_map(|c| Key::from_name(&c.to_ascii_uppercase().to_string())).collect();
     assert_eq!(keys.len(), letters.chars().count(), "every letter of {letters} is a key");
-    h.key_combination_modifiers(Modifiers::COMMAND, &keys);
+    h.input_mut().events.push(Event::ModifiersChanged(Modifiers::COMMAND));
+    for key in keys {
+        for pressed in [true, false] {
+            h.input_mut().events.push(Event::Key { key, pressed, modifiers: Modifiers::COMMAND, repeat: false, physical_key: None });
+        }
+    }
+    h.input_mut().events.push(Event::ModifiersChanged(Modifiers::NONE));
     h.run();
 }
 
@@ -876,6 +883,7 @@ fn a_ctrl_key_of_its_own_waits_for_a_second_letter_and_does_its_job_when_none_co
     h.input_mut().events.push(Event::ModifiersChanged(Modifiers::COMMAND));
     h.input_mut().events.push(Event::Key { key: Key::Z, pressed: true, modifiers: Modifiers::COMMAND, repeat: false, physical_key: None });
     h.step();
+    h.input_mut().events.push(Event::Key { key: Key::Z, pressed: false, modifiers: Modifiers::COMMAND, repeat: false, physical_key: None });
     assert_eq!(walls(&h), 3, "not yet undone");
     // None comes: after the wait (a step is a quarter of a second here), Z undoes.
     h.run_steps(3);
@@ -884,6 +892,8 @@ fn a_ctrl_key_of_its_own_waits_for_a_second_letter_and_does_its_job_when_none_co
     h.input_mut().events.push(Event::Key { key: Key::Z, pressed: true, modifiers: Modifiers::COMMAND, repeat: false, physical_key: None });
     h.input_mut().events.push(Event::Key { key: Key::F, pressed: true, modifiers: Modifiers::COMMAND, repeat: false, physical_key: None });
     h.step();
+    h.input_mut().events.push(Event::Key { key: Key::Z, pressed: false, modifiers: Modifiers::COMMAND, repeat: false, physical_key: None });
+    h.input_mut().events.push(Event::Key { key: Key::F, pressed: false, modifiers: Modifiers::COMMAND, repeat: false, physical_key: None });
     h.input_mut().events.push(Event::ModifiersChanged(Modifiers::NONE));
     h.run();
     assert_eq!(walls(&h), 2, "ZF fits the view and undoes nothing");
@@ -901,11 +911,12 @@ fn typed_shortcuts_pick_tools_like_revit() {
     assert!(matches!(h.state().tool, Tool::Modify));
     // With Ctrl held they are, a letter a frame as well as together; letting Ctrl go between two ends the first.
     let down = |key| Event::Key { key, pressed: true, modifiers: Modifiers::COMMAND, repeat: false, physical_key: None };
+    let up = |key| Event::Key { key, pressed: false, modifiers: Modifiers::COMMAND, repeat: false, physical_key: None };
     h.input_mut().events.extend([Event::ModifiersChanged(Modifiers::COMMAND), down(Key::W)]);
     h.step();
     h.input_mut().events.push(down(Key::A));
     h.step();
-    h.input_mut().events.push(Event::ModifiersChanged(Modifiers::NONE));
+    h.input_mut().events.extend([up(Key::W), up(Key::A), Event::ModifiersChanged(Modifiers::NONE)]);
     h.run();
     assert!(matches!(h.state().tool, Tool::Wall(_)));
     shortcut(&mut h, "dr");
