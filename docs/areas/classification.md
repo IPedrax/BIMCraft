@@ -1,7 +1,7 @@
 # Classification
 
 Manage > Classification Manager classifies a project's elements by the systems the industry uses, by hand or with the
-user's own AI agent. The core is `crates/core/src/classification.rs`; the window and Settings > AI Agent are
+user's own AI agent. The core is `crates/core/src/classification.rs`; the window and Settings > Agents are
 `crates/ui-egui/src/classification.rs`; the agent is run by `crates/agent`; `bimcraft-cli classify` does the agent's part
 with no window (`apps/bimcraft-cli/src/classify.rs`). The plan and the owner's decisions: [the plan](../classification-plan.md).
 
@@ -93,7 +93,7 @@ An agent that reads files gets the full table as `.csv` too, and searches it whe
 (Ollama) gets the candidates in its prompt, in smaller batches. `Brief::chunks` cuts a brief into batches, and `handover`
 writes each batch's files.
 
-`crates/agent` runs the command the user set in Settings > AI Agent, in a fresh folder holding those files:
+`crates/agent` runs the command the user set in Settings > Agents, in a fresh folder holding those files:
 
 - **Claude Code:** `claude -p --output-format json --tools Read,Grep,Glob --strict-mcp-config --no-session-persistence
   --json-schema …`. Its structured output is the answer.
@@ -130,13 +130,15 @@ default.
 
 - **Export** (`ifc::classify`, ISO 16739's classification resource):
   - an `IfcClassification` for each system (its publisher, its tables' edition, left out when they disagree, as NBR
-    15965's parts, published from 2011 to 2022, do; its name)
+    15965's parts, published from 2011 to 2022, do; its name), the same one a family's OmniClass number and a project
+    parameter's own classification are of (`Step::classification_by`)
   - an `IfcClassificationReference` for each code held (code, title, system)
   - an `IfcRelAssociatesClassification` from each code to the elements holding it, their own or their type's
 - IfcOpenShell validates the file and reads the references back (`ifcopenshell.util.classification.get_references`).
-- **Import** reads each element's references, through references of references, into the system's own parameters
-  (`imported_parameters`): `Uniclass Pr Number` for `Pr_…`, `OmniClass 23 Number` for `23-…`. Another program's system
-  comes in as `<name> Number` and `<name> Title`.
+- **Import** reads each element's references of a system this module knows (`known_system`), through references of
+  references, into the system's own parameters (`imported_parameters`): `Uniclass Pr Number` for `Pr_…`, `OmniClass 23
+  Number` for `23-…`. Any other system's codes come in as the IFC import has them: one text parameter named for the system,
+  which remembers it and its edition and goes back out as its references.
 
 ## Left for later
 
