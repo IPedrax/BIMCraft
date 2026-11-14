@@ -2402,8 +2402,8 @@ impl BimApp {
         if pressed(Modifiers::NONE, Key::Delete) {
             self.delete();
         }
-        // consume_key also matches Alt/Shift and key repeats. Only an unmodified downstroke
-        // changes a door, so holding Space cannot fill the Undo history.
+        // consume_key also matches Alt/Shift and key repeats. Only an unmodified downstroke turns a wall,
+        // a door or a window, so holding Shift or Space cannot fill the Undo history.
         let plain_space =
             |e: &Event| matches!(e, Event::Key { key: Key::Space, pressed: true, repeat: false, modifiers: Modifiers::NONE, .. });
         if matches!(self.tool, Tool::Door | Tool::Window | Tool::Modify)
@@ -2411,9 +2411,6 @@ impl BimApp {
             && self.opening_space()
         {
             pressed(Modifiers::NONE, Key::Space);
-        }
-        if self.tool == Tool::Modify && pressed(Modifiers::NONE, Key::Space) {
-            self.flip();
         }
         // Space while rotating: the next click places the centre, as Revit's Space does.
         if let Tool::Rotate { place, start, .. } | Tool::RotateNorth { place, start, .. } = &mut self.tool
