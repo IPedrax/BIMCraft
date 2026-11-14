@@ -773,7 +773,7 @@ msgstr "Cote alignée (DI): choisir des faces de murs parallèles, des extrémit
 msgid "Aligned Dimension in 3D"
 msgstr "Cote alignée en 3D"
 
-#: crates/ui-egui/src/orbit.rs:1472
+#: crates/ui-egui/src/orbit.rs:1516
 msgid "Aligned dimension: {}"
 msgstr "Cote alignée: {}"
 
@@ -1105,7 +1105,7 @@ msgstr ""
 msgid "Area"
 msgstr "Surface"
 
-#: crates/ui-egui/src/orbit.rs:630
+#: crates/ui-egui/src/orbit.rs:642
 msgid "Area {}"
 msgstr ""
 
@@ -1313,7 +1313,7 @@ msgstr "Axonométrique"
 msgid "Azimuth (°)"
 msgstr "Azimut (°)"
 
-#: crates/ui-egui/src/orbit.rs:713
+#: crates/ui-egui/src/orbit.rs:725
 msgid "BACK"
 msgstr ""
 
@@ -1368,7 +1368,7 @@ msgstr "BIMCraft {} est à jour."
 msgid "BIMCraft's own: the tools in a palette, the Inspector and the Navigator on the right"
 msgstr ""
 
-#: crates/ui-egui/src/orbit.rs:711
+#: crates/ui-egui/src/orbit.rs:723
 msgid "BOTTOM"
 msgstr ""
 
@@ -1644,7 +1644,7 @@ msgid "Build"
 msgstr "Construire"
 
 #: crates/ui-egui/src/editor/document.rs:2004
-#: crates/ui-egui/src/orbit.rs:1617
+#: crates/ui-egui/src/orbit.rs:1662
 msgid "Building 3D view…"
 msgstr ""
 
@@ -3307,7 +3307,7 @@ msgid "Core Face: Interior"
 msgstr "Face du noyau: intérieur"
 
 #: crates/ui-egui/src/editor/document.rs:2008
-#: crates/ui-egui/src/orbit.rs:1621
+#: crates/ui-egui/src/orbit.rs:1666
 msgid "Could not fit the 3D view: {}"
 msgstr ""
 
@@ -3850,7 +3850,7 @@ msgstr "Démoli"
 msgid "Demolition"
 msgstr "Démolition"
 
-#: crates/core/src/commands.rs:13135
+#: crates/core/src/commands.rs:13136
 msgid "Dependent"
 msgstr "Dépendante"
 
@@ -3964,7 +3964,7 @@ msgstr "Ligne de détail"
 msgid "Detail Line (DL): each click makes a line from the one before, in the Options Bar's line style; the Draw panel has the other shapes"
 msgstr "Ligne de détail (DL): chaque clic trace une ligne depuis le précédent, dans le style de ligne de la barre des options; le panneau Dessiner propose les autres formes"
 
-#: crates/ui-egui/src/orbit.rs:1626
+#: crates/ui-egui/src/orbit.rs:1671
 msgid "Detail shown from {} to {}; {} elements farther away are left out to fit the memory there is."
 msgstr ""
 
@@ -5022,7 +5022,7 @@ msgstr "Élévation de l'œil"
 msgid "Eye Height:"
 msgstr "Hauteur de l'œil:"
 
-#: crates/ui-egui/src/orbit.rs:712
+#: crates/ui-egui/src/orbit.rs:724
 msgid "FRONT"
 msgstr ""
 
@@ -6013,7 +6013,7 @@ msgstr "Mettre en surbrillance ce qui est sous le curseur"
 msgid "Home"
 msgstr "Accueil"
 
-#: crates/ui-egui/src/orbit.rs:2454
+#: crates/ui-egui/src/orbit.rs:2502
 msgid "Home View"
 msgstr "Vue d'accueil"
 
@@ -6576,7 +6576,7 @@ msgstr "Évier de cuisine"
 msgid "Know the survey coordinates of one spot, such as a site corner or a benchmark? Type them here, press Pick Point and Specify, and click that spot in the view. The window hides while you pick and comes back so you can check before OK. A wall's corner gives its bottom; a floor, roof or ceiling gives its top."
 msgstr ""
 
-#: crates/ui-egui/src/orbit.rs:715
+#: crates/ui-egui/src/orbit.rs:727
 msgid "LEFT"
 msgstr ""
 
@@ -7108,7 +7108,7 @@ msgid "Loaded; nothing taken from it yet"
 msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:2073
-#: crates/ui-egui/src/orbit.rs:1824
+#: crates/ui-egui/src/orbit.rs:1869
 msgid "Loading 3D view onto the card…"
 msgstr ""
 
@@ -8181,7 +8181,7 @@ msgstr ""
 msgid "No Clip"
 msgstr "Pas de détourage"
 
-#: crates/ui-egui/src/orbit.rs:632
+#: crates/ui-egui/src/orbit.rs:644
 msgid "No area: its points aren't in one plane"
 msgstr ""
 
@@ -9244,11 +9244,11 @@ msgstr "Sélectionner des murs: une ligne de limite le long de chaque mur cliqu�
 msgid "Pick a circle or an arc, then click where the dimension goes."
 msgstr "Sélectionner un cercle ou un arc, puis cliquer à l'emplacement de la cote."
 
-#: crates/ui-egui/src/orbit.rs:1476
+#: crates/ui-egui/src/orbit.rs:1520
 msgid "Pick a corner, an edge or a face of the model to dimension."
 msgstr "Sélectionner un coin, une arête ou une face du modèle à coter."
 
-#: crates/ui-egui/src/orbit.rs:2316
+#: crates/ui-egui/src/orbit.rs:2359
 msgid "Pick a corner, an edge or a face of the model to measure."
 msgstr ""
 
@@ -9256,7 +9256,7 @@ msgstr ""
 msgid "Pick a curved wall or an arc."
 msgstr "Sélectionner un mur courbe ou un arc."
 
-#: crates/ui-egui/src/orbit.rs:2273
+#: crates/ui-egui/src/orbit.rs:2316
 msgid "Pick a face of a wall, a floor, a ceiling or a roof to place it on."
 msgstr "Sélectionner une face d'un mur, d'un sol, d'un plafond ou d'un toit où le placer."
 
@@ -9580,12 +9580,12 @@ msgid "Place Centre"
 msgstr "Placer le centre"
 
 #: crates/ui-egui/src/lib.rs:1875
-#: crates/ui-egui/src/orbit.rs:1491
+#: crates/ui-egui/src/orbit.rs:1535
 msgid "Place Column"
 msgstr "Placer une colonne"
 
 #: crates/ui-egui/src/lib.rs:1877
-#: crates/ui-egui/src/orbit.rs:1493
+#: crates/ui-egui/src/orbit.rs:1537
 msgid "Place Component"
 msgstr "Placer un composant"
 
@@ -9730,7 +9730,7 @@ msgid "Place Voice Outlet"
 msgstr "Placer une prise téléphonique"
 
 #: crates/ui-egui/src/lib.rs:1850
-#: crates/ui-egui/src/orbit.rs:1490
+#: crates/ui-egui/src/orbit.rs:1534
 msgid "Place Wall"
 msgstr "Placer un mur"
 
@@ -10215,7 +10215,7 @@ msgid "Properties over the Project Browser, on the left, as at first"
 msgstr "Propriétés au-dessus du Navigateur de projet, à gauche, comme au départ"
 
 #: crates/core/src/commands.rs:618
-#: crates/core/src/commands.rs:8686
+#: crates/core/src/commands.rs:8687
 msgid "Property Line"
 msgstr ""
 
@@ -10294,7 +10294,7 @@ msgstr ""
 msgid "REDUNDANT"
 msgstr "REDONDANTE"
 
-#: crates/ui-egui/src/orbit.rs:714
+#: crates/ui-egui/src/orbit.rs:726
 msgid "RIGHT"
 msgstr ""
 
@@ -12656,7 +12656,7 @@ msgstr "Câbles du système {}"
 msgid "Systems"
 msgstr ""
 
-#: crates/ui-egui/src/orbit.rs:710
+#: crates/ui-egui/src/orbit.rs:722
 msgid "TOP"
 msgstr ""
 
@@ -13069,7 +13069,7 @@ msgstr "Le premier invité héberge la session; les autres s'y rendent"
 msgid "The foot of the perpendicular from the last point to a wall or grid"
 msgstr "Le pied de la perpendiculaire du dernier point à un mur ou un quadrillage"
 
-#: crates/ui-egui/src/orbit.rs:327
+#: crates/ui-egui/src/orbit.rs:335
 msgid "The graphics card couldn't draw the 3D view ({}): it is drawn on the processor"
 msgstr "La carte graphique n'a pas pu dessiner la vue 3D ({}): elle est dessinée sur le processeur"
 
@@ -13301,7 +13301,7 @@ msgstr ""
 msgid "The view is edge-on to the sketch's plane: turn it to pick on it."
 msgstr "La vue est de chant par rapport au plan de l'esquisse: la tourner pour y sélectionner."
 
-#: crates/ui-egui/src/orbit.rs:1462
+#: crates/ui-egui/src/orbit.rs:1506
 msgid "The view runs along the dimension: turn it to place its line."
 msgstr "La vue est dans l'axe de la cote: la tourner pour placer sa ligne."
 
@@ -13649,7 +13649,7 @@ msgstr "Total"
 msgid "Total selected items: {}"
 msgstr "Total des éléments sélectionnés: {}"
 
-#: crates/ui-egui/src/orbit.rs:623
+#: crates/ui-egui/src/orbit.rs:635
 msgid "Total {}"
 msgstr ""
 
@@ -14002,7 +14002,7 @@ msgstr ""
 msgid "Unlock alignment"
 msgstr "Déverrouiller l'alignement"
 
-#: crates/core/src/commands.rs:13306
+#: crates/core/src/commands.rs:13307
 msgid "Unnamed"
 msgstr "Sans nom"
 
@@ -14865,7 +14865,7 @@ msgstr "Zoom arrière"
 
 #: crates/ui-egui/src/canvas.rs:2003
 #: crates/ui-egui/src/editor/document.rs:1245
-#: crates/ui-egui/src/orbit.rs:2457
+#: crates/ui-egui/src/orbit.rs:2505
 msgid "Zoom to Fit"
 msgstr "Zoom adapté"
 
@@ -15028,7 +15028,7 @@ msgstr "cercle"
 msgid "click its line's end"
 msgstr "cliquer sur l'extrémité de sa ligne"
 
-#: crates/ui-egui/src/orbit.rs:2390
+#: crates/ui-egui/src/orbit.rs:2438
 msgid "click on the floor's top"
 msgstr "cliquer sur le dessus du sol"
 
@@ -15416,7 +15416,7 @@ msgstr "il existe déjà un paramètre `{}`"
 msgid "there's no detail group yet: select detail lines and Create Group"
 msgstr "aucun groupe de détails pour l'instant: sélectionner des lignes de détail puis Créer un groupe"
 
-#: crates/ui-egui/src/orbit.rs:1410
+#: crates/ui-egui/src/orbit.rs:1454
 msgid "there's no face to paint there"
 msgstr "aucune face à peindre à cet endroit"
 
@@ -15428,7 +15428,7 @@ msgstr "aucun dossier pour conserver les favoris ici"
 msgid "this machine"
 msgstr "cette machine"
 
-#: crates/ui-egui/src/orbit.rs:2290
+#: crates/ui-egui/src/orbit.rs:2333
 #: crates/ui-egui/src/paper.rs:172
 #: crates/ui-egui/src/section.rs:423
 msgid "this tool works in plan views: open one from the Project Browser"
@@ -15744,7 +15744,7 @@ msgstr "{} sur {} contremarches"
 
 #: crates/ui-egui/src/canvas.rs:1483
 #. what a point snapped to, then the category and id of its element: "Endpoint of Wall 100231".
-#: crates/ui-egui/src/orbit.rs:2093
+#: crates/ui-egui/src/orbit.rs:2136
 msgid "{} of {} {}"
 msgstr "{} de {} {}"
 
@@ -15953,11 +15953,11 @@ msgstr ""
 msgid "{}: `{}` isn't a number"
 msgstr "{}: `{}` n'est pas un nombre"
 
-#: crates/ui-egui/src/orbit.rs:1504
+#: crates/ui-egui/src/orbit.rs:1548
 msgid "{}: in the 3D view it stands on a level face (the top of a floor, a flat roof or a level): point at one"
 msgstr "{}: dans la vue 3D, l'élément se pose sur une face horizontale (le dessus d'un sol, d'un toit plat ou d'un niveau): viser l'une d'elles"
 
-#: crates/ui-egui/src/orbit.rs:1500
+#: crates/ui-egui/src/orbit.rs:1544
 msgid "{}: in the 3D view its points go on a level face (the top of a floor, a column, a flat roof or a level): point at one"
 msgstr "{}: dans la vue 3D, ses points se placent sur une face horizontale (le dessus d'un sol, d'une colonne, d'un toit plat ou d'un niveau): viser l'une d'elles"
 

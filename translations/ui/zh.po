@@ -773,7 +773,7 @@ msgstr "对齐尺寸标注 (DI)：拾取平行的墙面、墙端、门、窗、�
 msgid "Aligned Dimension in 3D"
 msgstr "三维对齐尺寸标注"
 
-#: crates/ui-egui/src/orbit.rs:1472
+#: crates/ui-egui/src/orbit.rs:1516
 msgid "Aligned dimension: {}"
 msgstr "对齐尺寸标注：{}"
 
@@ -1105,7 +1105,7 @@ msgstr ""
 msgid "Area"
 msgstr "面积"
 
-#: crates/ui-egui/src/orbit.rs:630
+#: crates/ui-egui/src/orbit.rs:642
 msgid "Area {}"
 msgstr ""
 
@@ -1313,7 +1313,7 @@ msgstr "轴测"
 msgid "Azimuth (°)"
 msgstr "方位角 (°)"
 
-#: crates/ui-egui/src/orbit.rs:713
+#: crates/ui-egui/src/orbit.rs:725
 msgid "BACK"
 msgstr ""
 
@@ -1368,7 +1368,7 @@ msgstr "BIMCraft {} 已是最新版本。"
 msgid "BIMCraft's own: the tools in a palette, the Inspector and the Navigator on the right"
 msgstr ""
 
-#: crates/ui-egui/src/orbit.rs:711
+#: crates/ui-egui/src/orbit.rs:723
 msgid "BOTTOM"
 msgstr ""
 
@@ -1644,7 +1644,7 @@ msgid "Build"
 msgstr "构建"
 
 #: crates/ui-egui/src/editor/document.rs:2004
-#: crates/ui-egui/src/orbit.rs:1617
+#: crates/ui-egui/src/orbit.rs:1662
 msgid "Building 3D view…"
 msgstr ""
 
@@ -3307,7 +3307,7 @@ msgid "Core Face: Interior"
 msgstr "核心面：内部"
 
 #: crates/ui-egui/src/editor/document.rs:2008
-#: crates/ui-egui/src/orbit.rs:1621
+#: crates/ui-egui/src/orbit.rs:1666
 msgid "Could not fit the 3D view: {}"
 msgstr ""
 
@@ -3850,7 +3850,7 @@ msgstr "已拆除"
 msgid "Demolition"
 msgstr "拆除"
 
-#: crates/core/src/commands.rs:13135
+#: crates/core/src/commands.rs:13136
 msgid "Dependent"
 msgstr "相关"
 
@@ -3964,7 +3964,7 @@ msgstr "详图线"
 msgid "Detail Line (DL): each click makes a line from the one before, in the Options Bar's line style; the Draw panel has the other shapes"
 msgstr "详图线 (DL)：每次单击都从上一点画一条线，使用选项栏中的线样式；绘制面板中有其他形状"
 
-#: crates/ui-egui/src/orbit.rs:1626
+#: crates/ui-egui/src/orbit.rs:1671
 msgid "Detail shown from {} to {}; {} elements farther away are left out to fit the memory there is."
 msgstr ""
 
@@ -5022,7 +5022,7 @@ msgstr "视点高度"
 msgid "Eye Height:"
 msgstr "视点高度："
 
-#: crates/ui-egui/src/orbit.rs:712
+#: crates/ui-egui/src/orbit.rs:724
 msgid "FRONT"
 msgstr ""
 
@@ -6013,7 +6013,7 @@ msgstr "高亮显示光标下的对象"
 msgid "Home"
 msgstr "主页"
 
-#: crates/ui-egui/src/orbit.rs:2454
+#: crates/ui-egui/src/orbit.rs:2502
 msgid "Home View"
 msgstr "主视图"
 
@@ -6576,7 +6576,7 @@ msgstr "厨房水槽"
 msgid "Know the survey coordinates of one spot, such as a site corner or a benchmark? Type them here, press Pick Point and Specify, and click that spot in the view. The window hides while you pick and comes back so you can check before OK. A wall's corner gives its bottom; a floor, roof or ceiling gives its top."
 msgstr ""
 
-#: crates/ui-egui/src/orbit.rs:715
+#: crates/ui-egui/src/orbit.rs:727
 msgid "LEFT"
 msgstr ""
 
@@ -7108,7 +7108,7 @@ msgid "Loaded; nothing taken from it yet"
 msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:2073
-#: crates/ui-egui/src/orbit.rs:1824
+#: crates/ui-egui/src/orbit.rs:1869
 msgid "Loading 3D view onto the card…"
 msgstr ""
 
@@ -8181,7 +8181,7 @@ msgstr ""
 msgid "No Clip"
 msgstr "不剪裁"
 
-#: crates/ui-egui/src/orbit.rs:632
+#: crates/ui-egui/src/orbit.rs:644
 msgid "No area: its points aren't in one plane"
 msgstr ""
 
@@ -9244,11 +9244,11 @@ msgstr "拾取墙：沿每面单击的墙绘制一条边界线"
 msgid "Pick a circle or an arc, then click where the dimension goes."
 msgstr "拾取一个圆或圆弧，然后单击尺寸标注的放置位置。"
 
-#: crates/ui-egui/src/orbit.rs:1476
+#: crates/ui-egui/src/orbit.rs:1520
 msgid "Pick a corner, an edge or a face of the model to dimension."
 msgstr "请拾取模型的一个角点、一条边或一个面来标注尺寸。"
 
-#: crates/ui-egui/src/orbit.rs:2316
+#: crates/ui-egui/src/orbit.rs:2359
 msgid "Pick a corner, an edge or a face of the model to measure."
 msgstr ""
 
@@ -9256,7 +9256,7 @@ msgstr ""
 msgid "Pick a curved wall or an arc."
 msgstr "拾取一面弧形墙或一段圆弧。"
 
-#: crates/ui-egui/src/orbit.rs:2273
+#: crates/ui-egui/src/orbit.rs:2316
 msgid "Pick a face of a wall, a floor, a ceiling or a roof to place it on."
 msgstr "选取墙、楼板、天花板或屋顶的一个面以将其放置在上面。"
 
@@ -9580,12 +9580,12 @@ msgid "Place Centre"
 msgstr "放置于中心"
 
 #: crates/ui-egui/src/lib.rs:1875
-#: crates/ui-egui/src/orbit.rs:1491
+#: crates/ui-egui/src/orbit.rs:1535
 msgid "Place Column"
 msgstr "放置柱"
 
 #: crates/ui-egui/src/lib.rs:1877
-#: crates/ui-egui/src/orbit.rs:1493
+#: crates/ui-egui/src/orbit.rs:1537
 msgid "Place Component"
 msgstr "放置构件"
 
@@ -9730,7 +9730,7 @@ msgid "Place Voice Outlet"
 msgstr "放置语音插座"
 
 #: crates/ui-egui/src/lib.rs:1850
-#: crates/ui-egui/src/orbit.rs:1490
+#: crates/ui-egui/src/orbit.rs:1534
 msgid "Place Wall"
 msgstr "放置墙"
 
@@ -10215,7 +10215,7 @@ msgid "Properties over the Project Browser, on the left, as at first"
 msgstr "“属性”在“项目浏览器”之上、位于左侧，与最初一样"
 
 #: crates/core/src/commands.rs:618
-#: crates/core/src/commands.rs:8686
+#: crates/core/src/commands.rs:8687
 msgid "Property Line"
 msgstr ""
 
@@ -10294,7 +10294,7 @@ msgstr ""
 msgid "REDUNDANT"
 msgstr "冗余"
 
-#: crates/ui-egui/src/orbit.rs:714
+#: crates/ui-egui/src/orbit.rs:726
 msgid "RIGHT"
 msgstr ""
 
@@ -12656,7 +12656,7 @@ msgstr "系统 {} 导线数"
 msgid "Systems"
 msgstr ""
 
-#: crates/ui-egui/src/orbit.rs:710
+#: crates/ui-egui/src/orbit.rs:722
 msgid "TOP"
 msgstr ""
 
@@ -13069,7 +13069,7 @@ msgstr "第一位访客主持会话；其他人转到那里"
 msgid "The foot of the perpendicular from the last point to a wall or grid"
 msgstr "从上一点向墙或轴网所作垂线的垂足"
 
-#: crates/ui-egui/src/orbit.rs:327
+#: crates/ui-egui/src/orbit.rs:335
 msgid "The graphics card couldn't draw the 3D view ({}): it is drawn on the processor"
 msgstr "显卡无法绘制三维视图（{}）：改由处理器绘制"
 
@@ -13301,7 +13301,7 @@ msgstr ""
 msgid "The view is edge-on to the sketch's plane: turn it to pick on it."
 msgstr "视图与草图平面平行：请旋转视图后再在其上拾取。"
 
-#: crates/ui-egui/src/orbit.rs:1462
+#: crates/ui-egui/src/orbit.rs:1506
 msgid "The view runs along the dimension: turn it to place its line."
 msgstr "视图与尺寸标注方向一致：请先旋转视图，再放置尺寸线。"
 
@@ -13649,7 +13649,7 @@ msgstr "总计"
 msgid "Total selected items: {}"
 msgstr "选中图元总数：{}"
 
-#: crates/ui-egui/src/orbit.rs:623
+#: crates/ui-egui/src/orbit.rs:635
 msgid "Total {}"
 msgstr ""
 
@@ -14002,7 +14002,7 @@ msgstr ""
 msgid "Unlock alignment"
 msgstr "解锁对齐"
 
-#: crates/core/src/commands.rs:13306
+#: crates/core/src/commands.rs:13307
 msgid "Unnamed"
 msgstr "未命名"
 
@@ -14865,7 +14865,7 @@ msgstr "缩小"
 
 #: crates/ui-egui/src/canvas.rs:2003
 #: crates/ui-egui/src/editor/document.rs:1245
-#: crates/ui-egui/src/orbit.rs:2457
+#: crates/ui-egui/src/orbit.rs:2505
 msgid "Zoom to Fit"
 msgstr "缩放以适应"
 
@@ -15028,7 +15028,7 @@ msgstr "圆"
 msgid "click its line's end"
 msgstr "单击其直线的终点"
 
-#: crates/ui-egui/src/orbit.rs:2390
+#: crates/ui-egui/src/orbit.rs:2438
 msgid "click on the floor's top"
 msgstr "请单击楼板的顶面"
 
@@ -15416,7 +15416,7 @@ msgstr "已存在参数 `{}`"
 msgid "there's no detail group yet: select detail lines and Create Group"
 msgstr "还没有详图组：请选择详图线并创建组"
 
-#: crates/ui-egui/src/orbit.rs:1410
+#: crates/ui-egui/src/orbit.rs:1454
 msgid "there's no face to paint there"
 msgstr "该处没有可上漆的面"
 
@@ -15428,7 +15428,7 @@ msgstr "这里没有可存放收藏夹的文件夹"
 msgid "this machine"
 msgstr "本机"
 
-#: crates/ui-egui/src/orbit.rs:2290
+#: crates/ui-egui/src/orbit.rs:2333
 #: crates/ui-egui/src/paper.rs:172
 #: crates/ui-egui/src/section.rs:423
 msgid "this tool works in plan views: open one from the Project Browser"
@@ -15744,7 +15744,7 @@ msgstr "{} 个踢面（共 {} 个）"
 
 #: crates/ui-egui/src/canvas.rs:1483
 #. what a point snapped to, then the category and id of its element: "Endpoint of Wall 100231".
-#: crates/ui-egui/src/orbit.rs:2093
+#: crates/ui-egui/src/orbit.rs:2136
 msgid "{} of {} {}"
 msgstr "{}：{} {}"
 
@@ -15953,11 +15953,11 @@ msgstr ""
 msgid "{}: `{}` isn't a number"
 msgstr "{}：`{}` 不是数字"
 
-#: crates/ui-egui/src/orbit.rs:1504
+#: crates/ui-egui/src/orbit.rs:1548
 msgid "{}: in the 3D view it stands on a level face (the top of a floor, a flat roof or a level): point at one"
 msgstr "{}：在三维视图中，它立于水平面上（楼板、平屋顶或标高的顶面）：请指向其中之一"
 
-#: crates/ui-egui/src/orbit.rs:1500
+#: crates/ui-egui/src/orbit.rs:1544
 msgid "{}: in the 3D view its points go on a level face (the top of a floor, a column, a flat roof or a level): point at one"
 msgstr "{}：在三维视图中，其各点落在水平面上（楼板、柱、平屋顶或标高的顶面）：请指向其中之一"
 
