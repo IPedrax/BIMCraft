@@ -34,8 +34,6 @@ use crate::{BimApp, Sheet, Status, Tool, icon_button, top_params};
 pub(crate) const PICK: f32 = 6.0;
 /// How near the cursor a click snaps to a wall's end or a point of the chain, in px.
 pub(crate) const SNAP: f64 = 10.0;
-/// How long the arms of the origin marker are, in points.
-pub(crate) const ORIGIN_ARM: f32 = 34.0;
 /// Zoom limits, px per mm: from 1000 km to 2 cm across 1000 px.
 const SCALE: (f64, f64) = (1e-6, 50.0);
 /// How long a press may last and still be a click, wherever the hand went meanwhile, in seconds: a
@@ -322,6 +320,9 @@ struct AlignmentCache {
 pub struct Canvas {
     pub(crate) drawing: PlanCache,
     cams: BTreeMap<Id, Camera>,
+    /// How far each view is turned on screen, degrees counter-clockwise: a plan oriented to true north
+    /// (`render::view_angle`); none, not turned.
+    turns: BTreeMap<Id, f64>,
     /// Where the plan was last shown, in points.
     rect: Rect,
     /// How much of its height the cards floating over the view (its tabs at the top, its view control bar at the foot) take
@@ -368,6 +369,7 @@ impl Default for Canvas {
         Canvas {
             drawing: PlanCache::default(),
             cams: BTreeMap::new(),
+            turns: BTreeMap::new(),
             rect: Rect::ZERO,
             room: 0.0,
             level: None,
@@ -394,6 +396,7 @@ impl Canvas {
     pub(crate) fn view(&self, level: Id) -> Option<View> {
         let c = self.cams.get(&level)?;
         Some(View {
+            angle: self.turns.get(&level).copied().unwrap_or(0.0),
             scale: c.scale,
             cx: c.cx,
             cy: c.cy,
@@ -432,6 +435,7 @@ impl Canvas {
         Canvas {
             drawing: self.drawing.clone(),
             cams: self.cams.clone(),
+            turns: self.turns.clone(),
             rect: self.rect,
             room: self.room,
             level: self.level,
@@ -553,12 +557,27 @@ impl Canvas {
         }
     }
 
+    /// How far view `id` is turned on screen, degrees counter-clockwise: what its plan's orientation says, each frame.
+    pub(crate) fn turn(&mut self, id: Id, angle: f64) {
+        if angle == 0.0 {
+            self.turns.remove(&id);
+        } else if angle.is_finite() {
+            self.turns.insert(id, angle);
+        }
+    }
+
     /// Keep model point `p` at pixel `at` (canvas coordinates) with `scale` px per mm.
     fn hold(&mut self, level: Id, p: P2, at: Vec2, scale: f64) {
         let scale = scale.clamp(SCALE.0, SCALE.1);
+        // Where pixel `at` is from the middle, mm, turned back as the view is turned: the middle is `p` less that.
         let (w, h) = (f64::from(self.rect.width()), f64::from(self.rect.height()));
-        let cx = (p.0 - (f64::from(at.x) - w / 2.0) / scale).clamp(-MAX_COORD, MAX_COORD);
-        let cy = (p.1 + (f64::from(at.y) - h / 2.0) / scale).clamp(-MAX_COORD, MAX_COORD);
+        let (mut dx, mut dy) = ((f64::from(at.x) - w / 2.0) / scale, -(f64::from(at.y) - h / 2.0) / scale);
+        if let Some(&angle) = self.turns.get(&level) {
+            let (sin, cos) = angle.to_radians().sin_cos();
+            (dx, dy) = (dx * cos + dy * sin, -dx * sin + dy * cos);
+        }
+        let cx = (p.0 - dx).clamp(-MAX_COORD, MAX_COORD);
+        let cy = (p.1 - dy).clamp(-MAX_COORD, MAX_COORD);
         if cx.is_finite() && cy.is_finite() {
             self.cams.insert(level, Camera { scale, cx, cy });
         }
@@ -850,30 +869,6 @@ pub(crate) fn tag(p: &Painter, at: Pos2, align: Align2, text: impl Into<String>)
     let rect = align.anchor_size(at, galley.size());
     p.rect_filled(rect.expand2(vec2(3.0, 1.0)), 2.0, pal().surface.gamma_multiply(0.85));
     p.galley(rect.min, galley, pal().accent);
-}
-
-/// The origin marker at the screen point `at`, the project's 0, 0: an arrow east for x in the canvas's red and one north (up the
-/// screen) for y in its green, each lettered at its tip. Its arrows keep their size at any zoom. Not in the drawing: a PNG, a sheet
-/// or a printout is made without it.
-fn origin_marker(p: &Painter, at: Pos2) {
-    // Not drawn where neither it nor its arms are on the screen: the plan may be anywhere.
-    if !p.clip_rect().expand(2.0).intersects(Rect::from_min_max(at - vec2(4.0, ORIGIN_ARM + 16.0), at + vec2(ORIGIN_ARM + 16.0, 4.0))) {
-        return;
-    }
-    let colours = canvas_pal();
-    for (arm, colour, letter, align, off) in [
-        (vec2(ORIGIN_ARM, 0.0), colours.error, "X", Align2::LEFT_CENTER, vec2(4.0, 0.0)),
-        (vec2(0.0, -ORIGIN_ARM), colours.context, "Y", Align2::CENTER_BOTTOM, vec2(0.0, -4.0)),
-    ] {
-        let (stroke, tip) = (Stroke::new(1.5, colour), at + arm);
-        let (along, across) = (arm / ORIGIN_ARM, vec2(-arm.y, arm.x) / ORIGIN_ARM);
-        p.line_segment([at, tip], stroke);
-        for side in [-1.0, 1.0] {
-            p.line_segment([tip, tip - along * 7.0 + across * (3.5 * side)], stroke);
-        }
-        p.text(tip + off, align, letter, FontId::proportional(11.0), colour);
-    }
-    p.circle_filled(at, 2.5, colours.text);
 }
 
 impl BimApp {
@@ -1496,6 +1491,8 @@ impl BimApp {
         let level = model.plan_level(key).unwrap_or(key);
         let up = matches!(self.sheet, Sheet::Ceiling(_));
         let fit = |w, h| if up { render::ceiling_plan(&model, key, w, h).view } else { render::plan(&model, key, w, h).view };
+        // Oriented to true north, the plan turns on screen.
+        self.canvas.turn(key, render::view_angle(&model, key));
         let Some((view, local)) = self.canvas.navigate(ui, &response, rect, key, fit) else { return };
         // Where the pointer is, for the others in a Co-Work session.
         self.cowork_seen.pointer = local.map(|q| (key, view.mm(q)));
@@ -1669,6 +1666,13 @@ impl BimApp {
                 .spot_host(level, view.mm(q))
                 .filter(|id| matches!(model.elements.get(*id), Some(Element::Floor(_) | Element::Roof(_)))),
             Tool::Tag => d.pick(q, PICK).filter(|id| model.anchor(*id).is_some()),
+            // A linked model's element (its link gives the coordinates) or a CAD drawing.
+            Tool::Acquire => d
+                .pick_all(q, PICK)
+                .into_iter()
+                .find(|id| bimcraft_core::link::is_linked(*id) || matches!(model.elements.get(id), Some(Element::CadImport(_)))),
+            // What a spot coordinate's elevation would read.
+            Tool::SpotCoordinate(None) => model.spot_host(level, view.mm(q)),
             Tool::Attach => {
                 d.pick_all(q, PICK).into_iter().find(|id| matches!(model.elements.get(id), Some(Element::Roof(_) | Element::Floor(_))))
             }
@@ -1694,6 +1698,7 @@ impl BimApp {
         self.line_grip_drag(ui, &response, rect, &view, level);
         self.adaptive_grip_drag(ui, &response, rect, &view, level);
         self.view_grip_drag(ui, &response, rect, &view);
+        self.spot_grip_drag(ui, &response, rect, &view, level);
         let dragged = self.shape_grip_drag(ui, &response, rect, &view, level) || dragged;
         // A drag from an element moves the selection; from empty floor, it draws a selection box.
         if response.drag_started_by(PointerButton::Primary)
@@ -1705,6 +1710,7 @@ impl BimApp {
             && self.canvas.view_grip.is_none()
             && self.drawing.grip.is_none()
             && self.adaptive_grip.is_none()
+            && self.spot_grip.is_none()
             && let Some(o) = ui.input(|i| i.pointer.press_origin())
         {
             let o = (o.x - rect.min.x, o.y - rect.min.y);
@@ -1725,7 +1731,7 @@ impl BimApp {
             match drag {
                 Drag::Move(from) => {
                     let by = self.dragged(&model, &view, from, view.mm(q));
-                    if by.length() > 0.0 {
+                    if by.length() > 0.0 && !self.move_point(by) {
                         // An elevation taken alone is taken by its mark, which goes apart from its line.
                         match self.selection.as_slice() {
                             &[id] if matches!(model.elements.get(id), Some(Element::Elevation(_))) => {
@@ -1832,11 +1838,8 @@ impl BimApp {
         }
         let kind = if up { "ceiling" } else { "plan" };
         crate::cowork::paint_plan(&p, &self.cowork, &self.cowork_seen, &model, (kind, key), rect, &view, (&d.drawing, d.place));
-        // The working aids: where the project's 0, 0 is, and which view this is. On the screen only; no drawing is made of them.
-        if self.show_origin {
-            let (x, y) = view.px(P2(0.0, 0.0));
-            origin_marker(&p, pos(rect.min, (x, y)));
-        }
+        // The working aid: which view this is. On the screen only; no drawing is made of it. (Where the project's 0, 0 is, is
+        // the Internal Origin's mark, Site's in Visibility/Graphics.)
         if self.show_view_name {
             let name = model.view_name(key).unwrap_or_default();
             let name = if up { format!("{name} ({})", t("Ceiling Plan")) } else { name.to_string() };
@@ -1938,6 +1941,11 @@ impl BimApp {
             .and_then(|_| ui.input(|i| i.pointer.latest_pos()))
             .map(|q| self.snap(&model, level, &view, (q.x - rect.min.x, q.y - rect.min.y), &[], false).at);
         self.line_grip_overlay(&ui.painter_at(rect), rect, &view, cursor);
+        let spot_cursor = self
+            .spot_grip
+            .and_then(|_| ui.input(|i| i.pointer.latest_pos()))
+            .map(|q| self.snap(&model, level, &view, (q.x - rect.min.x, q.y - rect.min.y), &[], false).at);
+        self.spot_grip_overlay(&ui.painter_at(rect), rect, &view, spot_cursor);
         self.shape_overlay(ui, &model, &view, rect, level);
         self.temporary_dimension(ui, &model, &view, rect);
         self.dimension_overlays(ui, &model, &view, rect, key);
@@ -2276,8 +2284,33 @@ impl BimApp {
             &Tool::Rotate { centre, start, place } => {
                 self.tool = match (place, start) {
                     (true, _) => Tool::Rotate { centre: self.snap_point(m, level, v, at, &[], false), start: None, place: false },
-                    (false, None) => Tool::Rotate { centre, start: Some(v.mm(at)), place: false },
-                    (false, Some(from)) => return self.turn(centre, angle_between(centre, from, v.mm(at), self.snaps.angle)),
+                    // The angle's rays snap as any point does, with the angle guides running from the centre.
+                    (false, None) => Tool::Rotate { centre, start: Some(self.snap_point(m, level, v, at, &[centre], false)), place: false },
+                    (false, Some(from)) => {
+                        let to = self.snap_point(m, level, v, at, &[centre], false);
+                        return self.turn(centre, angle_between(centre, from, to, 0.0));
+                    }
+                };
+            }
+            Tool::ExportRegion(_) => self.export_region_at(v.mm(at)),
+            Tool::SpecifyPoint => {
+                // Snapped as any point; its height by what it snapped to.
+                let f = self.snap(m, level, v, at, &[], false);
+                let p = self.alignments_for(m, level, v, &f, &[]).first().map_or(f.at, |a| a.snapped_point);
+                let z = bimcraft_core::coordinates::picked_z(m, level, p, f.source);
+                self.specify_at([p.0, p.1, z]);
+            }
+            &Tool::RotateNorth { centre, start, place } => {
+                self.tool = match (place, start) {
+                    (true, _) => Tool::RotateNorth { centre: self.snap_point(m, level, v, at, &[], false), start: None, place: false },
+                    (false, None) => {
+                        Tool::RotateNorth { centre, start: Some(self.snap_point(m, level, v, at, &[centre], false)), place: false }
+                    }
+                    (false, Some(from)) => {
+                        let to = self.snap_point(m, level, v, at, &[centre], false);
+                        let angle = angle_between(centre, from, to, 0.0);
+                        return self.rotate_project_north(Some(angle), Some(centre));
+                    }
                 };
             }
             // A ruler: its start, then its end, which stays on show until Esc or another start.
@@ -2466,6 +2499,17 @@ impl BimApp {
             }
             Tool::SpotSlope => {
                 self.run("spot_slope", json!({"at": point(round(v.mm(at))), "view": key}));
+            }
+            Tool::SpotCoordinate(first) => {
+                let first = *first;
+                let from: Vec<P2> = first.into_iter().collect();
+                let p = self.snap(m, level, v, at, &from, mods.shift).at;
+                self.spot_coordinate_click(key, first, p);
+            }
+            Tool::Acquire => {
+                if let Some(id) = hovered {
+                    self.acquire_from(id);
+                }
             }
             Tool::Tag => {
                 if let Some(id) = hovered {
@@ -3134,6 +3178,10 @@ impl BimApp {
         let again = if copy { Tool::Copy(Some(from)) } else { Tool::Move(Some(from)) };
         if from.dist(to) <= TOL {
             self.tool = again;
+            return;
+        }
+        if !copy && self.move_point(to - from) {
+            self.tool = Tool::Modify;
             return;
         }
         let params = json!({"ids": self.selection, "by": point(to - from)});
@@ -4230,7 +4278,8 @@ impl BimApp {
         // What a dimension or a tag made here says it is in: the plan view, when the plan on screen is one.
         let in_view = || m.plan_view(key).map(|_| m.guid(key));
         let sketched = |e: &Element| ghost(p, Place::at(origin), &render::sketch(m, *v, m.next_id, e), &[m.next_id], &|pt| pt);
-        let ghost = |f: &dyn Fn(Pos2) -> Pos2| ghost(p, sc.place, sc.d, &self.selection, f);
+        let ghost_of = |ids: &[Id], f: &dyn Fn(Pos2) -> Pos2| ghost(p, sc.place, sc.d, ids, f);
+        let ghost = |f: &dyn Fn(Pos2) -> Pos2| ghost_of(&self.selection, f);
         let chain = match &self.tool {
             Tool::Wall(chain) | Tool::Railing(chain) | Tool::Mass(chain) | Tool::DetailLine(chain) | Tool::SketchLine(chain) => {
                 chain.as_slice()
@@ -4382,12 +4431,85 @@ impl BimApp {
                 p.circle_stroke(c, 5.0, stroke);
                 p.line_segment([c - vec2(8.0, 0.0), c + vec2(8.0, 0.0)], thin);
                 p.line_segment([c - vec2(0.0, 8.0), c + vec2(0.0, 8.0)], thin);
-                if let (Some(from), false) = (start, place) {
-                    let angle = angle_between(centre, from, v.mm(q), self.snaps.angle);
-                    p.line_segment([c, sc.screen(from)], thin);
-                    p.line_segment([c, cursor], stroke);
-                    ghost(&turned(c, angle));
-                    label(cursor, format!("{}°", (angle * 100.0).round() / 100.0));
+                if place {
+                    return;
+                }
+                // The ray a click would take, snapped, with its marker; or the angle typed.
+                let to = self.found(sc, q, &[centre], false);
+                let typed = self.typed_angle();
+                match (start, typed) {
+                    (_, Some(angle)) => {
+                        ghost(&turned(c, angle));
+                        label(cursor, format!("{}° (Enter)", self.typed_length.trim()));
+                    }
+                    (Some(from), None) => {
+                        let angle = angle_between(centre, from, to, 0.0);
+                        p.line_segment([c, sc.screen(from)], thin);
+                        p.line_segment([c, sc.screen(to)], stroke);
+                        ghost(&turned(c, angle));
+                        label(cursor, format!("{}°", (angle * 100.0).round() / 100.0));
+                    }
+                    (None, None) => {}
+                }
+                return;
+            }
+            &Tool::ExportRegion(first) => {
+                crate::export::region_band(p, first.map(|a| sc.screen(a)), cursor);
+                return;
+            }
+            Tool::SpecifyPoint => {
+                let at = self.found(sc, q, &[], false);
+                if let Some(d) = &self.coordinates_dialog {
+                    label(sc.screen(at), d.pick_label());
+                }
+                return;
+            }
+            &Tool::RotateNorth { centre, start, place } => {
+                let at = if place { self.found(sc, q, &[], false) } else { centre };
+                let c = sc.screen(at);
+                p.circle_stroke(c, 5.0, stroke);
+                p.line_segment([c - vec2(8.0, 0.0), c + vec2(8.0, 0.0)], thin);
+                p.line_segment([c - vec2(0.0, 8.0), c + vec2(0.0, 8.0)], thin);
+                // Project north (up the plan) and true north (the active location's angle), as long arrows from the centre.
+                let true_north = m.site().rotation;
+                let north = |deg: f64, ink: Color32, label: &str, p: &Painter| {
+                    let (sn, cs) = (deg.to_radians() as f32).sin_cos();
+                    let dir = vec2(sn, -cs);
+                    let tip = c + dir * 96.0;
+                    p.line_segment([c, tip], Stroke::new(1.5, ink));
+                    let side = vec2(-dir.y, dir.x);
+                    p.add(Shape::convex_polygon(
+                        vec![tip + dir * 3.0, tip - dir * 8.0 + side * 4.0, tip - dir * 8.0 - side * 4.0],
+                        ink,
+                        Stroke::NONE,
+                    ));
+                    tag(p, tip + dir * 14.0, Align2::CENTER_CENTER, label);
+                };
+                // The point a click would take, snapped, with its marker, whatever the click is for.
+                let to = (!place).then(|| self.found(sc, q, &[centre], false));
+                let turning = match (place, self.typed_angle()) {
+                    (true, _) => None,
+                    (false, Some(a)) => Some(a),
+                    (false, None) => start.zip(to).map(|(from, to)| angle_between(centre, from, to, 0.0)),
+                };
+                match turning {
+                    Some(angle) => {
+                        // As it will be: the model turned, true north turned back; project north stays up.
+                        north(0.0, pal().muted, t("Project North"), p);
+                        north(true_north - angle, pal().accent, t("True North"), p);
+                        if let Some(from) = start {
+                            p.line_segment([c, sc.screen(from)], thin);
+                            p.line_segment([c, cursor], stroke);
+                        }
+                        let everything: Vec<Id> = sc.d.owners.iter().flatten().copied().collect::<HashSet<_>>().into_iter().collect();
+                        ghost_of(&everything, &turned(c, angle));
+                        let typed = if self.typed_length.is_empty() { String::new() } else { " (Enter)".into() };
+                        label(cursor, format!("{}°{typed}", (angle * 100.0).round() / 100.0));
+                    }
+                    None => {
+                        north(0.0, pal().muted, t("Project North"), p);
+                        north(true_north, pal().accent, t("True North"), p);
+                    }
                 }
                 return;
             }
@@ -4539,12 +4661,37 @@ impl BimApp {
             }
             Tool::Spot => {
                 let at = round(v.mm(q));
-                sketched(&Element::Spot(Spot { view: m.guid(key), at, host: m.spot_host(level, at).map(|h| m.guid(h)), slope: false }));
+                sketched(&Element::Spot(Spot {
+                    host: m.spot_host(level, at).map(|h| m.guid(h)),
+                    slope: false,
+                    ..Spot::new(m.guid(key), at)
+                }));
                 return;
             }
             Tool::SpotSlope => {
                 let at = round(v.mm(q));
-                sketched(&Element::Spot(Spot { view: m.guid(key), at, host: m.spot_host(level, at).map(|h| m.guid(h)), slope: true }));
+                sketched(&Element::Spot(Spot {
+                    host: m.spot_host(level, at).map(|h| m.guid(h)),
+                    slope: true,
+                    ..Spot::new(m.guid(key), at)
+                }));
+                return;
+            }
+            // The spot coordinate as it would be: on the cursor, then from its point to the cursor.
+            Tool::SpotCoordinate(first) => {
+                let from: Vec<P2> = first.iter().copied().collect();
+                let p = self.snap(m, level, v, q, &from, false).at;
+                let (at, end) = match *first {
+                    None => (p, None),
+                    Some(a) => (a, Some(p)),
+                };
+                sketched(&Element::Spot(Spot {
+                    host: m.spot_host(level, at).map(|h| m.guid(h)),
+                    coordinate: true,
+                    type_name: self.spot_type(),
+                    end,
+                    ..Spot::new(m.guid(key), at)
+                }));
                 return;
             }
             // The door or window a click would put in the wall, as the command makes it, and how far it stands from

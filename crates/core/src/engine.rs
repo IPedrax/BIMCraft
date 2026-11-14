@@ -176,6 +176,8 @@ pub struct Session {
     resets: usize,
     /// What reads a DWG drawing, when the app has one (`cad::DwgReader`); none says to save it as DXF.
     pub dwg: Option<crate::cad::DwgReader>,
+    /// The formats it exports to (`export`): the core's, and any the app registers (the DWG writer, from the DWG bridge).
+    pub exports: crate::export::Registry,
     /// The commands plugins registered, beside the static [`commands`]. They belong to this session, not the
     /// process, so two sessions and the tests never share them.
     external: Vec<ExternalCommand>,
@@ -265,6 +267,7 @@ impl Session {
             checks: 0,
             resets: 0,
             dwg: None,
+            exports: crate::export::Registry::default(),
             external: Vec::new(),
             read_only: None,
             author: None,
@@ -458,11 +461,30 @@ impl Session {
                     }
                     m.forget_cad_layers(&unplaced);
                 }
+                // Each loaded link placed by base points or shared coordinates remembers where it stands, as Revit's file does,
+                // so Reset Coordinates can pin it there when its file is gone.
+                let moved = self.model.links_moved();
+                if !moved.is_empty() {
+                    let m = self.model_mut();
+                    for (id, placed) in moved {
+                        if let Some(Element::Link(l)) = m.elements.get_mut(id) {
+                            l.placed = Some(placed);
+                        }
+                    }
+                }
                 // What a command was given by id points at the element's GUID; what it put in the library has an id and a GUID.
                 if verified {
                     self.model_mut().resolve_changed(&before);
                 } else {
                     self.model_mut().resolve();
+                }
+                // A view deleted leaves the print sets it was in.
+                if self.model.print_sets_dangle() {
+                    self.model_mut().prune_print_sets();
+                }
+                // A print set deleted leaves the publishing sets it was in.
+                if self.model.publish_sets_dangle() {
+                    self.model_mut().prune_publish_sets();
                 }
                 // A library in step needs nothing; after a verified model, what the command changed says whether it is.
                 let in_step = if verified { self.model.library_in_step_since(&before) } else { self.model.library_in_step() };
@@ -591,6 +613,13 @@ impl Session {
                     return Ok(v);
                 }
                 self.model_mut().resolve();
+                if self.model.print_sets_dangle() {
+                    self.model_mut().prune_print_sets();
+                }
+                // A print set deleted leaves the publishing sets it was in.
+                if self.model.publish_sets_dangle() {
+                    self.model_mut().prune_publish_sets();
+                }
                 self.model_mut().sync_library();
                 self.model.check().map(|()| v)
             });

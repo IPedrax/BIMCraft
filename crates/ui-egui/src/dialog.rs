@@ -47,6 +47,21 @@ impl BimApp {
         );
     }
 
+    /// Asks for a folder, and calls `then` with its path in a later frame, as [`BimApp::ask_file`] does.
+    pub(crate) fn ask_folder(&mut self, ctx: &Context, dialog: rfd::AsyncFileDialog, then: impl FnOnce(&mut BimApp, PathBuf) + 'static) {
+        let future: Pin<Box<dyn Future<Output = Option<Vec<rfd::FileHandle>>> + Send>> =
+            Box::pin(async move { dialog.pick_folder().await.map(|f| vec![f]) });
+        self.begin(
+            ctx,
+            future,
+            Box::new(|app, paths| {
+                if let Some(path) = paths.into_iter().next() {
+                    then(app, path);
+                }
+            }),
+        );
+    }
+
     /// Asks for one file or several to open, and calls `then` with their paths in a later frame, as [`BimApp::ask_file`] does.
     pub(crate) fn ask_files(
         &mut self,

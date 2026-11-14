@@ -180,6 +180,11 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// is an element that title blocks read; a build that reads up to 19 would answer such a kind with a serde error. And a column
 /// holds a `top_offset` and the roof or floor its top and its base are attached to (`attach_top`, `attach_base`), as a wall's are;
 /// a build that reads up to 19 would leave them out of a file and stand the column at its own level, not "saved by a newer BIMCraft".
+/// And a project has a Project Base Point, a Survey Point and named sites beside its georeference (`coordinates`), and a
+/// georeference needs no coordinate reference system (`crs` may be left out); a build that reads up to 19 would refuse such a
+/// georeference and lose where the project stands; and it would read spot coordinates (a spot's `coordinate`, `type`, `origin`,
+/// `leader`, `shoulder` and `end`) and a level's `elevation_base` as spot elevations from the Project Base Point. A file of 19
+/// needs no step: its georeference is the active site, both points at the internal origin.
 /// And a component may lie tilted on no plane (`tilt`, its family's x and z in the model), as an imported bolt through a brace does;
 /// a build that reads up to 19 would answer one with a serde error, not "saved by a newer BIMCraft".
 pub const FORMAT: u32 = 20;
@@ -213,6 +218,9 @@ pub struct Level {
     /// bound them whatever it is.
     #[serde(default = "computation_height", skip_serializing_if = "is_computation_height")]
     pub computation_height: f64,
+    /// What its elevation is shown from: the Project Base Point or the Survey Point. It is stored internal.
+    #[serde(default, skip_serializing_if = "crate::coordinates::Origin::is_default")]
+    pub elevation_base: crate::coordinates::Origin,
 }
 
 fn computation_height() -> f64 {
@@ -234,6 +242,7 @@ impl Level {
             graphics: Graphics::default(),
             section_box: false,
             computation_height: CUT_HEIGHT,
+            elevation_base: Default::default(),
         }
     }
 }
@@ -1501,6 +1510,42 @@ pub struct Spot {
     pub host: Option<Guid>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub slope: bool,
+    /// A spot coordinate: in a plan, the north and east of `at`.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub coordinate: bool,
+    /// What it measures from: the Project Base Point or the Survey Point. A spot coordinate's type says, and this picks the
+    /// type one from before types takes.
+    #[serde(default, skip_serializing_if = "crate::coordinates::Origin::is_default")]
+    pub origin: crate::coordinates::Origin,
+    /// A spot coordinate's type (`spots`).
+    #[serde(default, rename = "type", skip_serializing_if = "Option::is_none")]
+    pub type_name: Option<String>,
+    /// A spot coordinate's leader, from its point to `end`, and the shoulder its text stands on.
+    #[serde(default = "yes", skip_serializing_if = "is_yes")]
+    pub leader: bool,
+    #[serde(default = "yes", skip_serializing_if = "is_yes")]
+    pub shoulder: bool,
+    /// Where its leader ends: else up and to the right of the point, 8 mm on paper.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub end: Option<P2>,
+}
+
+impl Spot {
+    /// A spot elevation in `view` at `at`, as a command makes one before it says more.
+    pub fn new(view: Guid, at: P2) -> Spot {
+        Spot {
+            view,
+            at,
+            host: None,
+            slope: false,
+            coordinate: false,
+            origin: Default::default(),
+            type_name: None,
+            leader: true,
+            shoulder: true,
+            end: None,
+        }
+    }
 }
 
 /// Another project shown in this one, a reference that can't be edited: Revit's linked model. The file stays where it is;
@@ -1512,10 +1557,32 @@ pub struct Link {
     /// The `.bimc` (or earlier `.bimcraft`) or `.ifc` it reads, as it was given: a relative one is relative to this project's file.
     pub path: String,
     /// Where its origin stands in this project, and how far it is turned about it, degrees. Its levels stand at their own
-    /// elevations.
+    /// elevations. By base points or shared coordinates, both are worked out each time it is drawn (`link::placement`).
     pub at: P2,
     #[serde(default, skip_serializing_if = "is_zero")]
     pub angle: f64,
+    /// How it is placed: by hand (`at`, `angle`), base point on base point, or by shared coordinates.
+    #[serde(default, skip_serializing_if = "crate::link::By::is_default")]
+    pub by: crate::link::By,
+    /// By shared coordinates, which of its locations it stands at: its active one where none is named.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub location: Option<String>,
+    /// By hand, how far it is raised, mm: where Reset Coordinates pinned one that stood higher by its coordinates.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub raised: f64,
+    /// By base points or shared coordinates, where it stood when last worked out with its file loaded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub placed: Option<Placed>,
+}
+
+/// Where a link stood when it was last worked out with its file loaded: its origin in plan, its turn, degrees, and how far it
+/// is raised, mm. A link placed by base points or shared coordinates keeps it, so it can be pinned there with its file gone.
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Placed {
+    pub at: P2,
+    pub angle: f64,
+    pub raised: f64,
 }
 
 /// A schedule view: the elements of category `of` in rows, as the `schedule` command lists them:
@@ -2604,6 +2671,7 @@ impl Element {
             Element::FilledRegion(_) => "region",
             Element::DetailGroup(_) => "detailgroup",
             Element::RepeatingDetail(_) => "repeatingdetail",
+            Element::Spot(sp) if sp.coordinate => "spotcoordinate",
             Element::Spot(_) => "spot",
             Element::Link(_) => "link",
             Element::PointCloud(_) => "pointcloud",
@@ -3171,11 +3239,15 @@ pub const MAX_MAP: f64 = 1.0e13;
 
 /// Where the project lies on a map, as IFC's `IfcMapConversion` to a projected coordinate reference system: a point of the
 /// project at (x, y, z) mm is on the map at `eastings + scale * (x cos r - y sin r)`, `northings + scale * (x sin r + y cos r)`,
-/// `height + scale * z`, r the `rotation`. A file keeps it as it is; the drawings and the model's own coordinates don't move.
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+/// `height + z`, r the `rotation`: the grid's scale is in plan only, heights stay true. It is the project's active site
+/// (`coordinates.rs`): a site needs no coordinate reference system, any of its numbers makes one. A file keeps it as it is;
+/// the drawings and the model's own coordinates don't move.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Georeference {
-    /// The map's coordinate reference system by its name, as IFC's `IfcProjectedCRS` names it (an EPSG code: `EPSG:31983`).
+    /// The map's coordinate reference system by its name, as IFC's `IfcProjectedCRS` names it (an EPSG code: `EPSG:31983`);
+    /// empty, a local grid with none named.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
     pub crs: String,
     /// What else IFC says of it, where the file did: a description, its geodetic and vertical datums, map projection and zone.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -3207,12 +3279,15 @@ fn one() -> f64 {
     1.0
 }
 
+impl Default for Georeference {
+    fn default() -> Georeference {
+        crate::coordinates::NONE.clone()
+    }
+}
+
 impl Georeference {
-    /// What's wrong with it, if anything: its texts too long or its name empty, a number not finite or out of range.
+    /// What's wrong with it, if anything: its texts too long, a number not finite or out of range.
     pub fn check(&self) -> Result<(), String> {
-        if self.crs.trim().is_empty() {
-            return Err("its coordinate reference system needs a name (`crs`: an EPSG code, `EPSG:31983`)".into());
-        }
         let texts = [
             ("crs", Some(&self.crs)),
             ("description", self.description.as_ref()),
@@ -3336,6 +3411,9 @@ pub struct Model {
     /// Its dimension types, by name: how the dimensions of each draw and letter their numbers.
     #[serde(default = "crate::dims::types")]
     pub dimension_types: BTreeMap<String, crate::dims::DimensionType>,
+    /// Its spot coordinate types, by name: how the spot coordinates of each draw their leader and read their point.
+    #[serde(default = "crate::spots::types")]
+    pub spot_coordinate_types: BTreeMap<String, crate::spots::SpotCoordinateType>,
     /// Its detail group types, by name: the members each one placed draws.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub detail_groups: BTreeMap<String, crate::groups::GroupType>,
@@ -3349,6 +3427,12 @@ pub struct Model {
     /// Its reinforcement presets, by name: the parameters `reinforce` takes for a kind of host, kept to arm others alike.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub reinforcement: BTreeMap<String, crate::reinforce::Preset>,
+    /// Its print sets, by name: the views and sheets printed or exported together.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub print_sets: BTreeMap<String, crate::printset::PrintSet>,
+    /// Its publishing sets, by name: print sets in folders, each written as a format, published together.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub publish_sets: BTreeMap<String, crate::publish::PublishSet>,
     /// Its electrical voltages, by name, each with the band a device may read within.
     #[serde(default = "crate::electrical::voltages")]
     pub voltages: BTreeMap<String, crate::electrical::Voltage>,
@@ -3370,6 +3454,9 @@ pub struct Model {
     /// its panel schedule on top of each circuit's own; a classification with none counts whole.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub demand_factors: BTreeMap<String, f64>,
+    /// Where it stands in the world: its Project Base Point, its Survey Point and its locations.
+    #[serde(default, skip_serializing_if = "crate::coordinates::Coordinates::is_default")]
+    pub coordinates: crate::coordinates::Coordinates,
     pub elements: Elements,
     /// The ids and GUIDs of the library: its types, materials, pictures, families, parameters, view filters and
     /// templates, phases, phase filters and design options.
@@ -3463,16 +3550,20 @@ impl Model {
             region_types: fills::region_types(language),
             text_types: crate::text::types(language),
             dimension_types: crate::dims::types(),
+            spot_coordinate_types: crate::spots::types(),
             detail_groups: BTreeMap::new(),
             title_blocks: BTreeMap::new(),
             title_values: BTreeMap::new(),
             pinned: BTreeSet::new(),
             reinforcement: BTreeMap::new(),
+            print_sets: BTreeMap::new(),
+            publish_sets: BTreeMap::new(),
             voltages: crate::electrical::voltages(),
             distribution_systems: crate::electrical::distribution_systems(),
             wire_types: crate::electrical::wire_types(),
             georeference: None,
             demand_factors: BTreeMap::new(),
+            coordinates: crate::coordinates::Coordinates::named(language.word(crate::coordinates::INTERNAL)),
             elements: Elements::new(),
             library: crate::library::Library::default(),
             loaded: BTreeMap::new(),
@@ -4805,6 +4896,7 @@ impl Model {
             "region" => names(&self.region_types),
             "text" => names(&self.text_types),
             "dimension" => names(&self.dimension_types),
+            "spotcoordinate" => names(&self.spot_coordinate_types),
             "wall" => names(&self.types.wall),
             "floor" => names(&self.types.floor),
             "door" => names(&self.types.door),
@@ -4828,6 +4920,9 @@ impl Model {
             "region" => return fills::default_region_type(&self.region_types, self.language).map(String::as_str),
             "text" => return crate::text::default_type(&self.text_types).map(String::as_str),
             "dimension" => return crate::dims::default_type(&self.dimension_types, DimKind::Aligned).map(String::as_str),
+            "spotcoordinate" => {
+                return crate::spots::default_type(&self.spot_coordinate_types, crate::coordinates::Origin::Survey).map(String::as_str);
+            }
             "wall" | "floor" => "Generic - 200mm",
             "door" => "Single 900 x 2100",
             "column" => "Rectangular 400 x 400",
@@ -6607,6 +6702,71 @@ impl Model {
         }
     }
 
+    /// What a spot elevation shows: its height from its origin, the Project Base Point or the Survey Point.
+    pub fn spot_reads(&self, sp: &Spot) -> Option<f64> {
+        self.spot_value(sp).map(|z| self.frames().elevation(z, sp.origin))
+    }
+
+    /// What a spot coordinate shows: in a plan, the east and north of its point from its type's origin.
+    pub fn spot_coordinate(&self, sp: &Spot) -> Option<(f64, f64)> {
+        self.spot_coordinate_reads(sp).map(|r| (r.east, r.north))
+    }
+
+    /// The links placed by base points or shared coordinates, loaded, whose remembered place isn't where they stand now, and
+    /// where that is. None without a loaded link, without looking at the elements.
+    pub fn links_moved(&self) -> Vec<(Id, Placed)> {
+        if self.loaded.is_empty() {
+            return Vec::new();
+        }
+        self.elements
+            .iter()
+            .filter_map(|(id, e)| match e {
+                Element::Link(l) if l.by != crate::link::By::Manual => {
+                    let other = self.loaded.get(&l.path)?;
+                    let (at, angle, raised) = crate::link::placement(self, l, other);
+                    let now = Placed { at, angle, raised };
+                    (l.placed != Some(now)).then_some((*id, now))
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// The type spot coordinate `sp` draws in: its own, else (one from before types) the one its origin takes, else one as a
+    /// project starts with.
+    pub fn spot_coordinate_type(&self, sp: &Spot) -> crate::spots::SpotCoordinateType {
+        let types = &self.spot_coordinate_types;
+        sp.type_name
+            .as_ref()
+            .and_then(|n| types.get(n))
+            .or_else(|| crate::spots::default_type(types, sp.origin).and_then(|n| types.get(n)))
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    /// What spot coordinate `sp` reads, from its type's origin: in a plan, the east and north of its point, and the elevation
+    /// of its host's top there (of the plan's level where it has none).
+    pub fn spot_coordinate_reads(&self, sp: &Spot) -> Option<crate::spots::Reads> {
+        let level = self.plan_level(sp.view)?;
+        let origin = self.spot_coordinate_type(sp).origin;
+        let (east, north) = self.frames().plan(sp.at.0, sp.at.1, origin);
+        let z = match sp.host {
+            Some(_) => self.spot_value(sp),
+            None => Some(self.elevation(level)),
+        };
+        Some(crate::spots::Reads { east, north, elevation: z.map(|z| self.frames().elevation(z, origin)) })
+    }
+
+    /// Spot coordinate `sp`'s lines of text, as its type lays them.
+    pub fn spot_coordinate_text(&self, sp: &Spot) -> Vec<String> {
+        self.spot_coordinate_type(sp).lines(self.spot_coordinate_reads(sp), self.units)
+    }
+
+    /// A level's elevation as it is shown: from its elevation base.
+    pub fn level_shown(&self, l: &Level) -> f64 {
+        self.frames().elevation(l.elevation, l.elevation_base)
+    }
+
     /// What a spot slope reads: in a plan, how steeply its host's top falls at its point, %, and which way, a unit vector
     /// downhill in plan (none on the level). None while its host isn't a floor or a roof there, or out of a plan.
     pub fn spot_slope(&self, sp: &Spot) -> Option<(f64, Option<P2>)> {
@@ -6988,6 +7148,22 @@ impl Model {
         for (n, p) in &self.reinforcement {
             p.check(n)?;
         }
+        if self.print_sets.len() > crate::printset::MAX_SETS {
+            return Err(format!("the project has {} print sets; it holds up to {}", self.print_sets.len(), crate::printset::MAX_SETS));
+        }
+        for (n, p) in &self.print_sets {
+            p.check(n)?;
+        }
+        if self.publish_sets.len() > crate::publish::MAX_SETS {
+            return Err(format!(
+                "the project has {} publishing sets; it holds up to {}",
+                self.publish_sets.len(),
+                crate::publish::MAX_SETS
+            ));
+        }
+        for (n, p) in &self.publish_sets {
+            p.check(n)?;
+        }
         for (n, t) in &self.dimension_types {
             t.check(n)?;
         }
@@ -6995,10 +7171,21 @@ impl Model {
             t.check(n)?;
         }
         crate::titleblock::check_values("the project's title fields", &self.title_values)?;
+        if self.spot_coordinate_types.len() > crate::spots::MAX_TYPES {
+            return Err(format!(
+                "the project has {} spot coordinate types; it holds up to {}",
+                self.spot_coordinate_types.len(),
+                crate::spots::MAX_TYPES
+            ));
+        }
+        for (n, t) in &self.spot_coordinate_types {
+            t.check(n)?;
+        }
         crate::electrical::check(self)?;
         if let Some(g) = &self.georeference {
             g.check().map_err(|e| format!("the project's georeference: {e}"))?;
         }
+        self.coordinates.check()?;
         for (n, x) in &self.materials {
             for p in [&x.cut_pattern, &x.surface_pattern].into_iter().flatten() {
                 if !self.fill_patterns.contains_key(p) {
@@ -8037,8 +8224,23 @@ impl Model {
             Element::Spot(sp) => {
                 view_ok(sp.view, false)?;
                 point(&who, sp.at)?;
+                if let Some(e) = sp.end {
+                    point(&who, e)?;
+                }
+                if let Some(t) = &sp.type_name
+                    && !self.spot_coordinate_types.contains_key(t)
+                {
+                    let there: Vec<&str> = self.spot_coordinate_types.keys().map(String::as_str).collect();
+                    return Err(format!("{who}: there's no spot coordinate type `{t}` (there are: {})", there.join(", ")));
+                }
+                if sp.type_name.is_some() && !sp.coordinate {
+                    return Err(format!("{who}: only a spot coordinate has a type"));
+                }
                 match (self.plan_level(sp.view), sp.host) {
-                    (Some(_), None) => return Err(format!("{who}: a spot elevation in a plan reads an element's top; give `host`")),
+                    (None, _) if sp.coordinate => return Err(format!("{who}: a spot coordinate reads north and east: place it in a plan")),
+                    (Some(_), None) if !sp.coordinate => {
+                        return Err(format!("{who}: a spot elevation in a plan reads an element's top; give `host`"));
+                    }
                     (_, Some(h)) if !self.elements.contains_key(h) => return Err(format!("{who}: element {h} doesn't exist")),
                     _ => {}
                 }
@@ -8636,16 +8838,20 @@ impl Model {
             region_types,
             text_types,
             dimension_types,
+            spot_coordinate_types,
             detail_groups,
             title_blocks,
             title_values,
             reinforcement,
+            print_sets,
+            publish_sets,
             voltages,
             distribution_systems,
             wire_types,
             georeference,
             pinned,
             demand_factors,
+            coordinates,
             elements: _,
             library,
             loaded,
@@ -8681,16 +8887,20 @@ impl Model {
             && *region_types == o.region_types
             && *text_types == o.text_types
             && *dimension_types == o.dimension_types
+            && *spot_coordinate_types == o.spot_coordinate_types
             && *detail_groups == o.detail_groups
             && *title_blocks == o.title_blocks
             && *title_values == o.title_values
             && *reinforcement == o.reinforcement
+            && *print_sets == o.print_sets
+            && *publish_sets == o.publish_sets
             && *voltages == o.voltages
             && *distribution_systems == o.distribution_systems
             && *wire_types == o.wire_types
             && *georeference == o.georeference
             && *pinned == o.pinned
             && *demand_factors == o.demand_factors
+            && *coordinates == o.coordinates
             && *library == o.library
             && loaded.len() == o.loaded.len()
             && loaded.iter().zip(&o.loaded).all(|((a, x), (b, y))| a == b && Arc::ptr_eq(x, y))

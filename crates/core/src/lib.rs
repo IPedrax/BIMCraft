@@ -26,10 +26,16 @@ mod commands;
 mod component_geometry;
 pub mod conduit;
 mod constraints;
+pub mod coordinates;
+#[cfg(test)]
+mod coordinates_io_tests;
+#[cfg(test)]
+mod coordinates_tests;
 pub mod cowork;
 #[cfg(test)]
 mod cowork_tests;
 pub mod crosscheck;
+pub mod crs;
 mod csg;
 pub mod curves;
 pub mod demand;
@@ -51,6 +57,9 @@ pub mod electrical;
 mod electrical_tests;
 pub mod elevation;
 pub mod engine;
+pub mod export;
+#[cfg(test)]
+mod export_tests;
 #[cfg(test)]
 mod face_host_tests;
 #[cfg(test)]
@@ -133,6 +142,7 @@ mod mesh_in_tests;
 pub mod model;
 pub mod nbr5410;
 pub mod network;
+pub mod ods;
 #[cfg(test)]
 mod opening_subcategory_tests;
 #[cfg(test)]
@@ -148,7 +158,9 @@ pub mod pat;
 pub mod pdf;
 pub mod pen;
 pub mod phasing;
+pub mod places;
 pub mod plumbing;
+pub mod printset;
 #[cfg(test)]
 mod project_file_tests;
 pub mod project_info;
@@ -156,6 +168,9 @@ pub mod project_info;
 mod project_info_tests;
 #[cfg(test)]
 mod pset_tests;
+pub mod publish;
+#[cfg(test)]
+mod publish_tests;
 #[cfg(test)]
 mod raised_wall_room_tests;
 #[cfg(test)]
@@ -202,6 +217,9 @@ pub mod site;
 pub mod skeleton;
 pub mod sketch;
 pub mod snap;
+#[cfg(test)]
+mod spot_coordinate_tests;
+pub mod spots;
 pub mod stairs;
 pub mod standards;
 pub mod step;
@@ -229,6 +247,7 @@ mod work_plane_tests;
 pub mod workplane;
 #[cfg(test)]
 mod workplane_tests;
+pub mod world;
 pub mod xlsx;
 
 pub use commands::{

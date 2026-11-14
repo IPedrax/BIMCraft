@@ -643,7 +643,7 @@ fn a_devices_connector_comes_back_from_ifc_with_the_load_of_its_type_in_each_pol
 // ---------- plans ----------
 
 fn plan_view() -> crate::render::View {
-    crate::render::View { scale: 0.1, cx: 3000.0, cy: 1000.0, width: 1000, height: 800 }
+    crate::render::View { angle: 0.0, scale: 0.1, cx: 3000.0, cy: 1000.0, width: 1000, height: 800 }
 }
 
 /// The primitives of the plan of Level 1 that `id` draws.

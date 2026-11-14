@@ -144,7 +144,7 @@ fn the_categories_follow_the_kind_of_device() {
 
 /// What component `id` draws in the plan of Level 1: open lines and filled rings, in model mm.
 fn ink(s: &Session, id: u64) -> (Vec<Vec<P2>>, Vec<Vec<P2>>) {
-    let view = crate::render::View { scale: 0.5, cx: 1000.0, cy: 1000.0, width: 1000, height: 800 };
+    let view = crate::render::View { angle: 0.0, scale: 0.5, cx: 1000.0, cy: 1000.0, width: 1000, height: 800 };
     let d = crate::render::draw(&s.model, 100000, view);
     let (mut lines, mut fills) = (Vec::new(), Vec::new());
     for (p, _) in d.prims.iter().zip(&d.owners).filter(|(_, o)| **o == Some(id)) {
