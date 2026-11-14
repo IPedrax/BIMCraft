@@ -32,7 +32,7 @@ msgstr ""
 msgid "Bed"
 msgstr ""
 
-#: crates/core/src/model.rs:3568
+#: crates/core/src/model.rs:3573
 msgid "Brick"
 msgstr ""
 
@@ -68,7 +68,7 @@ msgstr ""
 msgid "Centre Lines"
 msgstr ""
 
-#: crates/core/src/model.rs:3576
+#: crates/core/src/model.rs:3581
 msgid "Ceramic tile"
 msgstr ""
 
@@ -86,7 +86,7 @@ msgstr ""
 msgid "Concrete"
 msgstr ""
 
-#: crates/core/src/model.rs:3570
+#: crates/core/src/model.rs:3575
 msgid "Concrete block"
 msgstr ""
 
@@ -95,7 +95,7 @@ msgstr ""
 msgid "Connected Load (VA)"
 msgstr ""
 
-#: crates/core/src/model.rs:3584
+#: crates/core/src/model.rs:3589
 msgid "Copper"
 msgstr ""
 
@@ -289,7 +289,7 @@ msgstr ""
 msgid "Gross Floor Area"
 msgstr ""
 
-#: crates/core/src/model.rs:3575
+#: crates/core/src/model.rs:3580
 msgid "Gypsum board"
 msgstr ""
 
@@ -350,7 +350,7 @@ msgid "Length"
 msgstr ""
 
 #: crates/core/src/commands.rs:7909
-#: crates/core/src/model.rs:3716
+#: crates/core/src/model.rs:3721
 msgid "Level"
 msgstr ""
 
@@ -409,7 +409,7 @@ msgstr ""
 #: crates/core/src/commands.rs:3527
 #: crates/core/src/commands.rs:15875
 #: crates/core/src/family.rs:3429
-#: crates/core/src/model.rs:5052
+#: crates/core/src/model.rs:5057
 msgid "Metal"
 msgstr ""
 
@@ -535,7 +535,7 @@ msgstr ""
 msgid "Roller"
 msgstr ""
 
-#: crates/core/src/model.rs:3577
+#: crates/core/src/model.rs:3582
 msgid "Roof tiles"
 msgstr ""
 
@@ -567,7 +567,7 @@ msgstr ""
 msgid "Sand"
 msgstr ""
 
-#: crates/core/src/model.rs:3573
+#: crates/core/src/model.rs:3578
 msgid "Screed"
 msgstr ""
 

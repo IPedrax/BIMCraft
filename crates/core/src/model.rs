@@ -3440,6 +3440,10 @@ pub struct Model {
     /// opens the rest, so it took no `FORMAT` step.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub georeference: Option<Georeference>,
+    /// The GlobalIds of the IFC project, site and building it was read from, which its IFC export writes back. A project of
+    /// BIMCraft's own has none and its file leaves them out, so it took no `FORMAT` step.
+    #[serde(default, skip_serializing_if = "crate::ifc::SpatialGuids::is_empty")]
+    pub spatial_guids: crate::ifc::SpatialGuids,
     /// The elements pinned where they are, by GUID: commands that place, draw or delete them refuse them until `unpin`. One of
     /// FORMAT 18's: a build that reads up to 17 would leave it out of a file and let them move.
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
@@ -3556,6 +3560,7 @@ impl Model {
             distribution_systems: crate::electrical::distribution_systems(),
             wire_types: crate::electrical::wire_types(),
             georeference: None,
+            spatial_guids: Default::default(),
             demand_factors: BTreeMap::new(),
             coordinates: crate::coordinates::Coordinates::named(language.word(crate::coordinates::INTERNAL)),
             elements: Elements::new(),
@@ -8836,6 +8841,7 @@ impl Model {
             distribution_systems,
             wire_types,
             georeference,
+            spatial_guids,
             pinned,
             demand_factors,
             coordinates,
@@ -8885,6 +8891,7 @@ impl Model {
             && *distribution_systems == o.distribution_systems
             && *wire_types == o.wire_types
             && *georeference == o.georeference
+            && *spatial_guids == o.spatial_guids
             && *pinned == o.pinned
             && *demand_factors == o.demand_factors
             && *coordinates == o.coordinates
