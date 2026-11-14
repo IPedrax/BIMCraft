@@ -1521,6 +1521,11 @@ mod tests {
         let wall = s.model.elements.iter().find_map(|(id, e)| matches!(e, Element::Wall(_)).then_some(*id)).unwrap();
         s.execute("move", &json!({"ids": [wall], "by": [10.0, 0.0]})).unwrap();
         assert!(weak.upgrade().is_none(), "the model in the undo history lets go of its table");
+        let b = table_kept(&s.model, None, &sc).unwrap();
+        let weak = Arc::downgrade(&b);
+        drop(b);
+        s.execute("undo", &json!({})).unwrap();
+        assert!(weak.upgrade().is_none(), "the model a step back leaves lets go of its table");
     }
 
     #[test]

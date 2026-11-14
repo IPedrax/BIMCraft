@@ -556,6 +556,11 @@ mod tests {
         let wall = s.model.elements.iter().find_map(|(id, e)| matches!(e, Element::Wall(_)).then_some(*id)).expect("a wall");
         s.execute("move", &json!({"ids": [wall], "by": [10.0, 0.0]})).unwrap();
         assert!(weak.upgrade().is_none(), "the model in the undo history lets go of its plan");
+        let b = Rooms::new(&s.model).plan(level, RoomArea::Finish);
+        let weak = Arc::downgrade(&b);
+        drop(b);
+        s.execute("undo", &json!({})).unwrap();
+        assert!(weak.upgrade().is_none(), "the model a step back leaves lets go of its plan");
     }
 
     #[test]
