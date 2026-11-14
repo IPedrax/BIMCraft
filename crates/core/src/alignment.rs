@@ -346,7 +346,28 @@ impl AlignmentGuideService {
             }
         }
 
-        // 7. Intersections between straight lines across all element types
+        // 7. Detail lines in this plan: something to line up with, as a wall is, and a direction to borrow.
+        for (id, e) in m.elements.iter() {
+            let Element::DetailLine(l) = e else { continue };
+            if !m.same(l.view, level_guid) {
+                continue;
+            }
+            for seg in l.curve.segments() {
+                if seg.centre().is_some() || seg.start.dist(seg.end) <= TOL {
+                    continue;
+                }
+                if config.endpoints {
+                    refs.push(ReferencePoint { point: seg.start, kind: ReferenceType::Endpoint, wall_id: Some(*id) });
+                    refs.push(ReferencePoint { point: seg.end, kind: ReferenceType::Endpoint, wall_id: Some(*id) });
+                }
+                if config.midpoints {
+                    refs.push(ReferencePoint { point: (seg.start + seg.end) * 0.5, kind: ReferenceType::Midpoint, wall_id: Some(*id) });
+                }
+                straight_lines.push((seg.start, seg.end));
+            }
+        }
+
+        // 8. Intersections between straight lines across all element types
         if config.intersections && straight_lines.len() >= 2 {
             for (i, &(a1, b1)) in straight_lines.iter().enumerate() {
                 for &(a2, b2) in straight_lines.iter().skip(i + 1) {
@@ -872,6 +893,30 @@ mod why_tests {
         assert_eq!(found[0].snapped_point, found[1].snapped_point, "one point, both guides");
         assert!((found[0].snapped_point.0 - 1000.0).abs() < 1e-3, "on the vertical guide");
         assert!((found[0].snapped_point.1 - 2577.35).abs() < 0.1, "and on the borrowed one");
+    }
+
+    /// A detail line is something to line up with, as a wall is: its ends and the direction it runs.
+    #[test]
+    fn a_detail_line_is_something_to_line_up_with() {
+        let mut s = Session::new();
+        s.script(r#"detail_line {"points": [[0, 0], [4000, 2309]]}"#).unwrap();
+        let level = s.model.levels()[0].0;
+        let config = AlignmentConfig { angles: false, ..AlignmentConfig::default() };
+        let service = AlignmentGuideService::from_model(&s.model, level, config);
+
+        // Its far end's x, as a vertical guide.
+        let found = service.find_alignments(P2(4005.0, 1000.0), None, 80.0);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert_eq!(found[0].axis, AlignmentAxis::X);
+        assert!((found[0].snapped_point.0 - 4000.0).abs() < 1e-3);
+
+        // And its direction, borrowed for a line drawn from elsewhere.
+        let start = P2(0.0, 3000.0);
+        let along = P2(4000.0, 2309.0) * (1.0 / P2(4000.0, 2309.0).length());
+        let cursor = start + along * 1000.0 + P2(-along.1, along.0) * 7.0;
+        let found = service.find_alignments(cursor, Some(start), 80.0);
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert!(matches!(found[0].axis, AlignmentAxis::Inferred { of: Inference::Parallel, .. }), "{found:?}");
     }
 
     /// Every direction is within tolerance of a cursor still on its start point, so none is borrowed.

@@ -36,7 +36,10 @@ fn a_detail_line_takes_the_alignment_guide_its_preview_draws() {
     let level = h.state().session.model.levels()[0].0;
     let scale = h.state().canvas.current_view(level).map_or(0.2, |v| v.scale);
     // Four pixels to the right of the wall end's vertical guide, level with the start.
-    click(&mut h, P2(5000.0 + 4.0 / scale, -1000.0));
+    let off = P2(5000.0 + 4.0 / scale, -1000.0);
+    let shown = hover(&mut h, off).expect("the cursor is over the plan");
+    assert!((shown.at.0 - 5000.0).abs() < 0.01, "{:?}: the preview is on the guide it draws", shown.at);
+    click(&mut h, off);
     key(&mut h, Key::Enter);
 
     let line = ids(&h, "line").last().copied().expect("the detail line");
