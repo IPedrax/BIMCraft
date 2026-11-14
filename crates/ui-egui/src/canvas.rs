@@ -214,6 +214,11 @@ impl PlanCache {
         drawing
     }
 
+    /// Whether a worker is making the next drawing.
+    pub(crate) fn busy(&self) -> bool {
+        self.work.0.as_ref().is_some_and(crate::view_worker::Latest::busy)
+    }
+
     /// The drawing shown now.
     #[cfg(test)]
     pub(crate) fn shown_drawing(&self) -> Option<Arc<Drawing>> {
@@ -1490,7 +1495,8 @@ impl BimApp {
         let model = self.view_model();
         let level = model.plan_level(key).unwrap_or(key);
         let up = matches!(self.sheet, Sheet::Ceiling(_));
-        let fit = |w, h| if up { render::ceiling_plan(&model, key, w, h).view } else { render::plan(&model, key, w, h).view };
+        // Only where the view stands: drawing the whole plan to read its view cost a tower's storey a drawing more.
+        let fit = |w, h| render::plan_fit(&model, key, w, h, up);
         // Oriented to true north, the plan turns on screen.
         self.canvas.turn(key, render::view_angle(&model, key));
         let Some((view, local)) = self.canvas.navigate(ui, &response, rect, key, fit) else { return };
@@ -3732,10 +3738,12 @@ impl BimApp {
         let screen = |q: P2| pos(rect.min, v.px(q));
         let pointer = ui.input(|i| i.pointer.hover_pos());
         let p = ui.painter_at(rect);
-        let dims: Vec<(Id, Dimension)> = m
-            .elements
-            .iter()
-            .filter_map(|(&id, e)| match e {
+        // The dimensions that point at it, through the lookup: walking every element each frame cost a tower a second a frame.
+        let lookup = m.lookup();
+        let dims: Vec<(Id, Dimension)> = lookup
+            .referrers(&sel_guid)
+            .filter_map(|id| Some((id, m.elements.get(id)?)))
+            .filter_map(|(id, e)| match e {
                 Element::Dimension(d)
                     if matches!(d.kind, DimKind::Aligned | DimKind::Linear)
                         && !d.alignment
@@ -3812,22 +3820,30 @@ impl BimApp {
             return;
         }
         self.dimension_segment_highlight(ui, m, v, rect);
-        self.dimension_eq_hint(ui, m, v, rect);
+        self.dimension_eq_hint(ui, m, v, rect, key);
         self.dimension_highlights(ui, m, v, rect, key);
     }
 
     /// The equality control over the middle of a dimension's chain: over an equal chain while the pointer is near it, and
     /// always while the dimension is selected. A click makes the chain equal or not, as Revit's EQ; one that isn't equal
     /// wears it struck through. Screen only: never drawn in a plan, a PNG or on paper.
-    fn dimension_eq_hint(&mut self, ui: &mut Ui, m: &Model, v: &View, rect: Rect) {
+    fn dimension_eq_hint(&mut self, ui: &mut Ui, m: &Model, v: &View, rect: Rect, key: Id) {
         let cursor = ui.input(|i| i.pointer.hover_pos()).filter(|p| rect.contains(*p));
         let q = cursor.map(|p| v.mm((p.x - rect.min.x, p.y - rect.min.y)));
         let near = 25.0 / v.scale;
         let mut toggle: Option<(Id, bool)> = None;
         let p = ui.painter_at(rect);
-        for (&id, e) in m.elements.iter() {
-            let Element::Dimension(d) = e else { continue };
+        // Only the dimensions of this view that may show the control: the one selected, and equal ones. Each dimension's stations
+        // are its references' geometry, walls' outlines among them, so finding them for every dimension of a tower every frame
+        // took most of a second.
+        let lookup = m.lookup();
+        for id in lookup.dimensions() {
+            let Some(e @ Element::Dimension(d)) = m.elements.get(id) else { continue };
             if d.alignment || !matches!(d.kind, DimKind::Aligned | DimKind::Linear) {
+                continue;
+            }
+            let selected = matches!(self.selection.as_slice(), [one] if *one == id) && self.tool == Tool::Modify;
+            if !(selected || d.equal && cursor.is_some()) || !m.annotation_in(e, key) {
                 continue;
             }
             let (n, st) = m.stations(d);
@@ -3835,7 +3851,6 @@ impl BimApp {
                 continue;
             }
             let (first, last) = (st[0].0, st[st.len() - 1].0);
-            let selected = matches!(self.selection.as_slice(), [one] if *one == id) && self.tool == Tool::Modify;
             let hovered = q.is_some_and(|q| {
                 let s = (q - d.at).dot(n);
                 s >= first - near && s <= last + near && (q - (d.at + n * s)).length() <= near
@@ -3976,8 +3991,10 @@ impl BimApp {
         };
         let mut unlock = None;
         let mut unlocked: Vec<(Id, usize)> = Vec::new();
-        for (&id, e) in m.elements.iter() {
-            let Element::Dimension(d) = e else { continue };
+        // The dimensions through the lookup, which keeps them: a tower's every element walked each frame cost a frame.
+        let lookup = m.lookup();
+        for id in lookup.dimensions() {
+            let Some(e @ Element::Dimension(d)) = m.elements.get(id) else { continue };
             if d.locked.is_empty() || Some(id) == alone || !m.annotation_in(e, key) {
                 continue;
             }

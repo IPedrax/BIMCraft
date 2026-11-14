@@ -700,3 +700,43 @@ there is nothing to snap to. Show grids only controls display: snapping can rema
 constraints keep priority; grid snapping replaces the free-point fallback and automatic angle guides. Sections and
 elevations snap annotation placement in their local horizontal/height coordinates. Model validation rejects invalid
 spacing, divisions, pens or rotation, and commands roll back the whole edit.
+
+## Benchmarking the window
+
+`bimcraft --bench SCENARIO [--bench-out REPORT.json] [FILE]` runs a scenario on the real window and times every frame
+(`bench.rs`): what a headless test measures is the core's work alone; this is what the user waits for, the frames the window
+shows on its own thread, with the card, the workers and the compositor as they are. A scenario is a step a line:
+
+```text
+idle 2                       two seconds of frames with nothing asked
+open /path/tower.bimc        File > Open (a big file opens on a thread, with its progress box)
+wait 900                     until nothing is being made (the open, a plan, the 3D scene) for five frames, at most 900 s
+zoom in 8                    eight notches of the wheel over the middle of the view, a frame apart (`out` the other way)
+pan 300 150 30               a middle-button drag, 300 px right and 150 down, over 30 frames
+view 3d                      the default 3D view (`view plan`, the first plan)
+orbit 60                     Shift and the middle button, 6 px a frame for 60 frames
+screenshot /tmp/shot.png     the window as it shows now
+quit
+```
+
+Each step prints a line on standard error (its time, its frames, the median, 95th percentile and longest frame, the memory
+allocated) and the report has every frame's interval. A benchmark sends nothing to the network. Every frame is drawn while it
+runs, as if the user kept moving.
+
+Run it where frames are presented: a locked or hidden window gets no frames from its compositor (Wayland withholds them), so
+on a machine nobody is at, start a virtual one and point the window at it:
+
+```sh
+kwin_wayland --virtual --width 1920 --height 1080 --socket wayland-bench --no-lockscreen &
+WAYLAND_DISPLAY=wayland-bench bimcraft --bench tower.scenario --bench-out run.json
+```
+
+The window still draws on the real card; only the presentation is virtual. To see where a slow frame goes, sample the window's
+main thread while the scenario runs (`eu-stack -p PID`, which needs no privileges where `perf` does): the frames named in the
+samples are the ones to fix. Measured with it on the annotated 100-storey tower (2026-11-14): [large projects](../large-project-files-todo.md).
+
+## Compressed save
+
+File > Settings > Files has **Compressed save** (a tick in the File menu too), off at first and kept in `settings.json`: on, Save
+and Save As write the project as `save {compress: true}` does, its JSON in a zip (`bimcraft_core::bimc`), several times smaller
+and slower to save and open, as the box says; off, plain JSON. Exports take no such choice, and Open reads either.

@@ -338,7 +338,7 @@ fn circuits_are_saved_by_guid_and_open_again_in_the_inspect_with_their_load() {
     assert_eq!(r["counts"]["circuit"], json!(1));
     let path = std::env::temp_dir().join(format!("bimcraft-circuit-{}.bimcraft", std::process::id()));
     run(&mut s, "save", json!({"path": path.to_str().unwrap()}));
-    let file: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    let file: Value = serde_json::from_str(&crate::bimc::read_to_string(&path).unwrap()).unwrap();
     assert_eq!(file["format"], json!(crate::model::FORMAT));
     let mut t = Session::new();
     let r = run(&mut t, "open", json!({"path": path.to_str().unwrap()}));
@@ -349,8 +349,8 @@ fn circuits_are_saved_by_guid_and_open_again_in_the_inspect_with_their_load() {
     }
     assert_eq!(t.model.check(), Ok(()));
     // The voltage and the wire type are the file's GUIDs, so a rename in the project follows.
-    let text = std::fs::read_to_string(&path).unwrap();
-    assert!(!text.contains("\"voltage\": \"127 V\""), "a name of the library is its GUID in a file");
+    let text = crate::bimc::read_to_string(&path).unwrap();
+    assert!(!text.contains("\"voltage\":\"127 V\""), "a name of the library is its GUID in a file");
     let _ = std::fs::remove_file(&path);
 }
 
@@ -445,7 +445,7 @@ fn ifc_path(tag: &str) -> std::path::PathBuf {
 fn written(s: &mut Session, tag: &str) -> String {
     let path = ifc_path(tag);
     run(s, "save", json!({"path": path}));
-    let text = std::fs::read_to_string(&path).unwrap();
+    let text = crate::bimc::read_to_string(&path).unwrap();
     let _ = std::fs::remove_file(&path);
     text
 }

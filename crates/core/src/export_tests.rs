@@ -122,7 +122,7 @@ fn schedules_export_as_tables_and_a_plan_as_a_table_says_why_not() {
         assert_eq!(r["written"].as_array().map(Vec::len), Some(1), "{format}: {r}");
     }
     let csv = std::fs::read_dir(&dir).unwrap().filter_map(Result::ok).find(|e| e.path().extension().is_some_and(|x| x == "csv"));
-    assert!(std::fs::read_to_string(csv.unwrap().path()).unwrap_or_default().contains("Living"));
+    assert!(crate::bimc::read_to_string(csv.unwrap().path()).unwrap_or_default().contains("Living"));
     let e = s.execute("export", &json!({"format": "csv", "view": "Level 1", "folder": dir})).unwrap_err();
     assert!(e.contains("nothing was written") && e.contains("schedules"), "{e}");
     let _ = std::fs::remove_dir_all(dir);
@@ -134,13 +134,13 @@ fn the_project_exports_as_ifc_from_the_origin_asked_for() {
     let dir = folder("ifc");
     let to = dir.join("house.ifc");
     run(&mut s, "export", json!({"format": "ifc4", "path": to, "ifc_origin": "survey"}));
-    let text = std::fs::read_to_string(&to).unwrap_or_default();
+    let text = crate::bimc::read_to_string(&to).unwrap_or_default();
     assert!(text.contains("FILE_SCHEMA(('IFC4'))") && text.contains("IFCWALL"), "{text}");
     // As `save` writes it, from the same origin: the same file but for its time stamp.
     let saved = dir.join("saved.ifc");
     assert_eq!(run(&mut s, "save", json!({"path": saved, "ifc_origin": "survey"}))["format"], "IFC4");
     let data = |t: &str| t.split("DATA;").nth(1).map(String::from).unwrap_or_default();
-    assert_eq!(data(&text), data(&std::fs::read_to_string(&saved).unwrap_or_default()));
+    assert_eq!(data(&text), data(&crate::bimc::read_to_string(&saved).unwrap_or_default()));
     for c in ["export", "save"] {
         let p = if c == "export" {
             json!({"format": "ifc", "path": to, "ifc_origin": "moon"})
@@ -161,7 +161,7 @@ fn the_project_exports_as_ifc4x3_with_the_attributes_it_added() {
     let dir = folder("ifc4x3");
     let to = dir.join("house.ifc");
     run(&mut s, "export", json!({"format": "ifc4x3", "path": to}));
-    let text = std::fs::read_to_string(&to).unwrap_or_default();
+    let text = crate::bimc::read_to_string(&to).unwrap_or_default();
     assert!(text.contains("FILE_SCHEMA(('IFC4X3_ADD2'))"), "{text}");
     // A point list's tags, none; a room separation line a boundary.
     let lists: Vec<&str> = text.lines().filter(|l| l.contains("=IFCCARTESIANPOINTLIST3D(")).collect();
@@ -169,7 +169,7 @@ fn the_project_exports_as_ifc4x3_with_the_attributes_it_added() {
     assert!(text.lines().any(|l| l.contains("=IFCVIRTUALELEMENT(") && l.ends_with(",.BOUNDARY.);")), "{text}");
     // IFC4's has neither.
     run(&mut s, "export", json!({"format": "ifc", "path": to}));
-    let text = std::fs::read_to_string(&to).unwrap_or_default();
+    let text = crate::bimc::read_to_string(&to).unwrap_or_default();
     assert!(text.contains("FILE_SCHEMA(('IFC4'))") && !text.contains(".BOUNDARY."));
     let _ = std::fs::remove_dir_all(dir);
 }
@@ -189,7 +189,7 @@ fn the_project_exports_as_ifc2x3_with_what_that_schema_has() {
     let dir = folder("ifc2x3");
     let to = dir.join("house.ifc");
     run(&mut s, "export", json!({"format": "ifc2x3", "path": to}));
-    let text = std::fs::read_to_string(&to).unwrap_or_default();
+    let text = crate::bimc::read_to_string(&to).unwrap_or_default();
     assert!(text.contains("FILE_SCHEMA(('IFC2X3'))") && text.contains("ViewDefinition [CoordinationView_V2.0]"), "{text}");
     // Nothing only IFC4 has: its face sets, material sets, map conversion and type objects.
     for class in [
@@ -244,7 +244,7 @@ fn a_bar_and_a_structural_frame_export_as_ifc2x3() {
     let dir = folder("ifc2x3-frame");
     let to = dir.join("frame.ifc");
     run(&mut s, "export", json!({"format": "ifc2x3", "path": to}));
-    let text = std::fs::read_to_string(&to).unwrap_or_default();
+    let text = crate::bimc::read_to_string(&to).unwrap_or_default();
     let disks = entities(&text, "IFCSWEPTDISKSOLID");
     assert!(!disks.is_empty() && disks.iter().all(|l| l.ends_with(",$,0.,1.);")), "{:?}", disks.first());
     let bars = entities(&text, "IFCREINFORCINGBAR");
@@ -376,7 +376,7 @@ fn a_region_of_a_view_is_all_an_export_holds_and_a_region_outside_it_is_refused(
         "export",
         json!({"format": "dxf", "view": "Level 1", "path": dir.join("half.dxf"), "page": {"region": [-1000, -1000, 4000, 7000]}}),
     );
-    let dxf = std::fs::read_to_string(r["written"][0]["path"].as_str().unwrap()).unwrap();
+    let dxf = crate::bimc::read_to_string(r["written"][0]["path"].as_str().unwrap()).unwrap();
     let max_x: f64 = dxf[dxf.find("$EXTMAX").unwrap()..].lines().nth(2).unwrap().trim().parse().unwrap();
     assert!(max_x <= 4000.0 + 1e-6, "{max_x}");
     let e = s

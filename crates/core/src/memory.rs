@@ -38,6 +38,86 @@ pub fn install(meter: Meter) {
     let _ = METER.set(meter);
 }
 
+/// What the process has allocated now, bytes, by the meter the app installed; none without one.
+pub fn used() -> Option<usize> {
+    METER.get().map(|m| (m.used)())
+}
+
+/// What the machine has free now, bytes, by the meter the app installed; none without one, or when it can't say.
+pub fn free() -> Option<u64> {
+    METER.get().and_then(|m| (m.free)())
+}
+
+/// What the machine's memory is doing: how much swap (a pagefile, on Windows) is in use, and how much memory is free, of all.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Pressure {
+    pub swap_used: u64,
+    pub available: u64,
+    pub total: u64,
+}
+
+static PRESSURE: OnceLock<fn() -> Option<Pressure>> = OnceLock::new();
+
+/// Reads the machine's [`Pressure`] with `read` from now on, in this whole process (the desktop's, through sysinfo).
+pub fn install_pressure(read: fn() -> Option<Pressure>) {
+    let _ = PRESSURE.set(read);
+}
+
+/// The machine's memory now, where the app reads it.
+pub fn pressure() -> Option<Pressure> {
+    PRESSURE.get().and_then(|read| read())
+}
+
+/// How much more swap than when it started a machine may use before it is said to be swapping: past what a system pages out
+/// of programs left idle anyway.
+const SWAPPING: u64 = 512 << 20;
+
+/// Whether a machine is swapping, from samples of its [`Pressure`]: when the swap in use has grown by [`SWAPPING`] since the
+/// first sample, and less than a tenth of its memory is free. Said once, until the swap shrinks back or memory frees up, so a
+/// window warns once and not every frame.
+#[derive(Debug, Default)]
+pub struct SwapWatch {
+    baseline: Option<u64>,
+    swapping: bool,
+}
+
+/// What [`SwapWatch::sample`] says.
+#[derive(Debug, PartialEq, Eq)]
+pub enum Swap {
+    /// It began swapping: this much more swap is in use than when the watch began.
+    Began(u64),
+    /// It isn't any more.
+    Ended,
+}
+
+impl SwapWatch {
+    pub fn sample(&mut self, p: Pressure) -> Option<Swap> {
+        let base = *self.baseline.get_or_insert(p.swap_used);
+        // Swap freed below where it began is the new floor: what grows from there is what this session pushed out.
+        if p.swap_used < base {
+            self.baseline = Some(p.swap_used);
+        }
+        let grown = p.swap_used.saturating_sub(self.baseline.unwrap_or(base));
+        let short = p.total > 0 && p.available < p.total / 10;
+        match (self.swapping, grown >= SWAPPING && short) {
+            (false, true) => {
+                self.swapping = true;
+                Some(Swap::Began(grown))
+            }
+            // Ended once it is well clear, so it doesn't flicker on and off at the edge.
+            (true, false) if grown < SWAPPING / 2 || p.available > p.total / 5 => {
+                self.swapping = false;
+                Some(Swap::Ended)
+            }
+            _ => None,
+        }
+    }
+
+    pub fn swapping(&self) -> bool {
+        self.swapping
+    }
+}
+
 /// What a read may take: it stops when the process has allocated past `stop`.
 pub struct Budget {
     meter: Option<(fn() -> usize, usize)>,
@@ -45,12 +125,14 @@ pub struct Budget {
     room: u64,
     /// Whether it ran out: what the read had made is freed by the time its caller asks why it stopped.
     stopped: Cell<bool>,
+    /// Who waits for the read: it stops where it checks its memory once they cancel.
+    progress: Option<std::sync::Arc<crate::progress::Progress>>,
 }
 
 impl Budget {
     /// No limit, for a read the caller has limited some other way.
     pub fn none() -> Budget {
-        Budget { meter: None, room: 0, stopped: Cell::new(false) }
+        Budget { meter: None, room: 0, stopped: Cell::new(false), progress: None }
     }
 
     /// For reading `size` bytes that take about `factor` times that in memory, measured by the meter the app installed: none
@@ -73,11 +155,25 @@ impl Budget {
             ));
         }
         let stop = (meter.used)().saturating_add(usize::try_from(room).unwrap_or(usize::MAX));
-        Ok(Some(Budget { meter: Some((meter.used, stop)), room, stopped: Cell::new(false) }))
+        Ok(Some(Budget { meter: Some((meter.used, stop)), room, stopped: Cell::new(false), progress: None }))
     }
 
-    /// An error once the process has allocated past what the read may take, and every time after.
+    /// This budget, the read stopping where it checks it once `progress` is cancelled.
+    pub fn watched(mut self, progress: Option<std::sync::Arc<crate::progress::Progress>>) -> Budget {
+        self.progress = progress;
+        self
+    }
+
+    /// What the read reports its progress to, if anyone waits for it.
+    pub fn progress(&self) -> Option<&crate::progress::Progress> {
+        self.progress.as_deref()
+    }
+
+    /// An error once the process has allocated past what the read may take, and every time after; or once it is cancelled.
     pub fn check(&self) -> Result<(), String> {
+        if let Some(p) = &self.progress {
+            p.check()?;
+        }
         self.stopped.set(self.stopped.get() || self.meter.is_some_and(|(used, stop)| used() > stop));
         match self.stopped.get() {
             true => Err(format!(
@@ -220,6 +316,30 @@ mod tests {
         for bad in ["", "{", "[1,]", "{} {}", "nul"] {
             assert_eq!(json(bad, &Budget::none()).unwrap_err(), serde_json::from_str::<Value>(bad).unwrap_err().to_string(), "{bad}");
         }
+    }
+
+    #[test]
+    fn a_machine_is_said_to_swap_once_when_its_swap_grows_and_memory_runs_short_and_once_more_when_it_stops() {
+        let gb = 1u64 << 30;
+        let at = |swap: u64, available: u64| Pressure { swap_used: swap, available, total: 16 * gb };
+        let mut w = SwapWatch::default();
+        // Swap in use already when it starts, plenty free: nothing to say.
+        assert_eq!(w.sample(at(2 * gb, 8 * gb)), None);
+        // It grows, but memory isn't short: still nothing.
+        assert_eq!(w.sample(at(3 * gb, 8 * gb)), None);
+        // Short of memory, and a gigabyte more swap than at the start: said once.
+        assert_eq!(w.sample(at(3 * gb, gb)), Some(Swap::Began(gb)));
+        assert_eq!(w.sample(at(3 * gb + 100, gb / 2)), None);
+        assert!(w.swapping());
+        // Memory freed: said once more.
+        assert_eq!(w.sample(at(3 * gb, 6 * gb)), Some(Swap::Ended));
+        assert_eq!(w.sample(at(3 * gb, 6 * gb)), None);
+        // Swap freed below where it began is the floor from then on.
+        let mut w = SwapWatch::default();
+        w.sample(at(4 * gb, 8 * gb));
+        w.sample(at(gb, 8 * gb));
+        assert_eq!(w.sample(at(gb + gb / 4, gb)), None, "a quarter of a gigabyte is not swapping");
+        assert_eq!(w.sample(at(2 * gb, gb)), Some(Swap::Began(gb)));
     }
 
     #[test]

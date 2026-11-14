@@ -394,7 +394,7 @@ fn the_commands_refuse_what_they_cant_do_and_leave_the_file_as_it_was() {
         assert!(e.contains(said), "{p}: {e}");
     }
     assert_eq!(std::fs::read(&path).unwrap_or_default(), before, "the file is as it was");
-    assert_eq!(std::fs::read_to_string(&garbage).unwrap_or_default(), "not a shared parameters file", "never written over");
+    assert_eq!(crate::bimc::read_to_string(&garbage).unwrap_or_default(), "not a shared parameters file", "never written over");
     // A family parameter of the name already there, and the parameter itself already there.
     run(&mut s, "family", json!({"name": "Cabinet", "parameter": {"name": "Fire Rating", "kind": "text"}}));
     let e = err(&mut s, "shared_parameters", json!({"path": path, "action": "load", "family": "Cabinet", "name": "Fire Rating"}));
@@ -485,19 +485,19 @@ fn one_shared_parameter_in_two_families_is_one_guid_and_another_name_for_it_is_r
     assert_eq!(r["groups"][0]["parameters"][0]["families"], json!(["Cabinet", "Shelf"]), "{r}");
     // Another file says the same GUID under another name, or of another kind: refused, saying which family holds it as what.
     let renamed = d.join("renamed.txt");
-    let text = std::fs::read_to_string(&path).unwrap_or_default().replace("\tFire Rating\tTEXT", "\tFire Resistance\tTEXT");
+    let text = crate::bimc::read_to_string(&path).unwrap_or_default().replace("\tFire Rating\tTEXT", "\tFire Resistance\tTEXT");
     std::fs::write(&renamed, text).unwrap_or_else(|e| panic!("{e}"));
     run(&mut s, "family", json!({"name": "Bench", "parameters": [{"name": "Seats", "kind": "integer", "value": 2}], "types": {"A": {}}}));
     let e = err(&mut s, "shared_parameters", json!({"path": renamed, "action": "load", "family": "Bench", "name": "Fire Resistance"}));
     assert!(e.contains(FIRE) && e.contains("Fire Resistance") && e.contains("`Fire Rating`") && e.contains("Cabinet"), "{e}");
     let retyped = d.join("retyped.txt");
-    let text = std::fs::read_to_string(&path).unwrap_or_default().replace("\tFire Rating\tTEXT", "\tFire Rating\tINTEGER");
+    let text = crate::bimc::read_to_string(&path).unwrap_or_default().replace("\tFire Rating\tTEXT", "\tFire Rating\tINTEGER");
     std::fs::write(&retyped, text).unwrap_or_else(|e| panic!("{e}"));
     let e = err(&mut s, "shared_parameters", json!({"path": retyped, "action": "load", "family": "Bench", "name": "Fire Rating"}));
     assert!(e.contains(FIRE) && e.contains("a whole number") && e.contains("text") && e.contains("Cabinet"), "{e}");
     // And one name the project shares as another GUID.
     let regiud = d.join("reguid.txt");
-    let text = std::fs::read_to_string(&path).unwrap_or_default().replace(FIRE, COST);
+    let text = crate::bimc::read_to_string(&path).unwrap_or_default().replace(FIRE, COST);
     std::fs::write(&regiud, text).unwrap_or_else(|e| panic!("{e}"));
     let e = err(&mut s, "shared_parameters", json!({"path": regiud, "action": "load", "family": "Bench", "name": "Fire Rating"}));
     assert!(e.contains(FIRE) && e.contains(COST) && e.contains("Cabinet"), "{e}");
@@ -534,7 +534,7 @@ fn a_familys_shared_parameters_go_out_to_a_file() {
     assert_eq!((ps[0]["guid"].clone(), ps[0]["kind"].clone()), (json!(FIRE), json!("text")));
     assert_eq!((ps[2]["datatype"].clone(), ps[2]["of"].clone()), (json!("FAMILYTYPE"), json!("door")));
     // What the file has already is kept as the file says it (its description too); every family's, into a group given.
-    let text = std::fs::read_to_string(&path)
+    let text = crate::bimc::read_to_string(&path)
         .unwrap_or_default()
         .replace("\tFire Rating\tTEXT\t\t1\t1\t\t", "\tFire Rating\tTEXT\t\t1\t1\tIn minutes\t");
     std::fs::write(&path, text).unwrap_or_else(|e| panic!("{e}"));
@@ -555,16 +555,16 @@ fn a_familys_shared_parameters_go_out_to_a_file() {
     assert_eq!((p.kind, p.shared.map(|g| g.to_string())), (Kind::Integer, Some(LOAD.to_string())));
     // A file that holds one of the GUIDs as something else is refused, naming its line, and isn't written.
     let clash = d.join("clash.txt");
-    let text = std::fs::read_to_string(&path).unwrap_or_default().replace("\tLoad Class\tINTEGER", "\tLoad Class\tTEXT");
+    let text = crate::bimc::read_to_string(&path).unwrap_or_default().replace("\tLoad Class\tINTEGER", "\tLoad Class\tTEXT");
     std::fs::write(&clash, &text).unwrap_or_else(|e| panic!("{e}"));
     let e = err(&mut s, "shared_parameters", json!({"path": clash, "action": "export", "family": "Shelf"}));
     assert!(e.contains("Load Class") && e.contains("line 11"), "{e}");
     let named = d.join("named.txt");
-    let text = std::fs::read_to_string(&path).unwrap_or_default().replace(LOAD, COST);
+    let text = crate::bimc::read_to_string(&path).unwrap_or_default().replace(LOAD, COST);
     std::fs::write(&named, &text).unwrap_or_else(|e| panic!("{e}"));
     let e = err(&mut s, "shared_parameters", json!({"path": named, "action": "export", "family": "Shelf"}));
     assert!(e.contains("Load Class") && e.contains(COST), "{e}");
-    assert_eq!(std::fs::read_to_string(&named).unwrap_or_default(), text);
+    assert_eq!(crate::bimc::read_to_string(&named).unwrap_or_default(), text);
     // A family type parameter of a category whose number BIMCraft doesn't know can't be written.
     run(&mut s, "family", json!({"name": "Shelf", "parameter": {"name": "Rack Type", "kind": "familytype", "of": "rack", "shared": COST}}));
     let e = err(&mut s, "shared_parameters", json!({"path": d.join("rack.txt"), "action": "export", "family": "Shelf"}));

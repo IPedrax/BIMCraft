@@ -118,6 +118,16 @@ The whole window's frame, 1600 × 1000, the plan's 52,351 primitives, on the car
 Left: what a selection still costs each frame, 10 ms past none and 169 ms for the whole model, was not looked into. Selecting past a quarter of
 the plan makes its triangles again on the interface's thread. Without a card, frames stay at about 165 ms (egui tessellating the plan).
 
+## Sharp while zooming (2026-11-14)
+
+Zooming showed the last triangles scaled until a worker's drawing came: egui bakes a line's width and its one-pixel fade into
+its triangles, so at four times a hairline was four pixels wide and blurred four more each side, for as long as the wheel turned
+on a big plan. The research is in [sharp zoom](sharp-zoom-research.md). Now `retained.rs` keeps a second mesh of the same shapes
+(`motion.rs`): each line a quad round its centre line, as wide on screen as it was drawn, its one-pixel fade worked out in the
+shader on screen. Lettering keeps its width at any zoom in the exact drawing as well; a model line's pen widens with the zoom
+there, which the worker's exact drawing shows a moment later. (Widening every line by the zoom made small lettering run together.) A frame that zooms draws it; a frame that only
+pans, and the view once still, draw egui's own triangles as before, so what this plan holds the pixels to is unchanged.
+
 ## Status
 
 - [x] Measure
@@ -125,7 +135,7 @@ the plan makes its triangles again on the interface's thread. Without a card, fr
 - [x] 2. Hover and selection in place
 - [x] 3. Pan as a transform
 - [x] 4. Plans on the view workers (for moving; opening a plan and edits stay in the frame)
-- [ ] 5. Geometry apart from the view
+- [ ] 5. Geometry apart from the view (zooming draws the kept lines sharp meanwhile: above)
 - [ ] 6. Fragments by element
 - [ ] 7. Section overlays and sheets
 - [x] 8. Selecting many elements

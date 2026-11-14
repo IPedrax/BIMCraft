@@ -367,7 +367,7 @@ mod tests {
         // A relative path is read from the project's folder, and kept as it was given.
         run(&mut s, "link", json!({"path": "arch.bimcraft", "name": "Arch"}));
         run(&mut s, "save", json!({"path": project}));
-        let text = std::fs::read_to_string(&project).unwrap();
+        let text = crate::bimc::read_to_string(&project).unwrap();
         assert!(
             text.contains("arch.bimcraft") && !text.contains("\"loaded\"") && !text.contains("\"Wall\""),
             "the file holds the path alone"
