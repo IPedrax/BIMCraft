@@ -171,6 +171,55 @@ fn cleaned(line: &Line) -> Result<Option<(Vec<P2>, Vec<f64>, bool)>, String> {
     Ok((pts.len() >= 2).then_some((pts, zs, closed)))
 }
 
+/// A line made ready: its points, their elevations, and whether it closes.
+type Ready = (Vec<P2>, Vec<f64>, bool);
+
+/// Whether a line is a contour: one elevation all along.
+fn is_contour(line: &Ready) -> bool {
+    line.1.windows(2).all(|w| w[0] == w[1])
+}
+
+/// A contour's points without those within `tol` of the segment from the last point kept to the next: a wiggle of
+/// photogrammetry's left out, a bend kept. Its ends stay; a closed one keeps at least three.
+fn simplified(pts: &[P2], closed: bool, tol: f64) -> Vec<P2> {
+    let (Some(&first), Some(&last)) = (pts.first(), pts.last()) else { return pts.to_vec() };
+    if pts.len() < 3 {
+        return pts.to_vec();
+    }
+    let mut kept = vec![first];
+    for w in pts.windows(3) {
+        let prev = kept.last().copied().unwrap_or(first);
+        if geom::dist_to_segment(w[1], prev, w[2]) >= tol {
+            kept.push(w[1]);
+        }
+    }
+    kept.push(last);
+    if closed && kept.len() < 3 { pts.to_vec() } else { kept }
+}
+
+/// Which lines have a segment that crosses another line's.
+fn lines_crossing(lines: &[Ready]) -> Vec<bool> {
+    let mut owner = Vec::new();
+    let mut segments = Vec::new();
+    for (i, (pts, _, closed)) in lines.iter().enumerate() {
+        for w in pts.windows(2) {
+            segments.push((w[0], w[1]));
+            owner.push(i);
+        }
+        if *closed && let (Some(&a), Some(&b)) = (pts.last(), pts.first()) {
+            segments.push((a, b));
+            owner.push(i);
+        }
+    }
+    let mut out = vec![false; lines.len()];
+    for (i, c) in crossing(&segments).into_iter().enumerate() {
+        if c && let Some(&o) = owner.get(i) {
+            out[o] = true;
+        }
+    }
+    out
+}
+
 /// The surface through `points` (`[x, y, z]`) and `lines`, the lines kept as triangles' edges. Data a noisy survey has
 /// still makes a surface, and its `notes` say what was done: a position given at two elevations takes their mean, and
 /// segments that cross another are not kept as edges (their vertices stay as points). Refused, saying why: a point not
@@ -178,7 +227,65 @@ fn cleaned(line: &Line) -> Result<Option<(Vec<P2>, Vec<f64>, bool)>, String> {
 /// and what the triangulation refuses (more than `triangulation::MAX_CORNERS` corners as given, a region past
 /// `triangulation::MAX_ACROSS`).
 pub fn build(points: &[[f64; 3]], lines: &[Line], options: &Options) -> Result<Surface, String> {
-    let _ = options;
+    let ok = |v: f64| v.is_finite() && v >= 0.0;
+    if !ok(options.simplify) {
+        return Err(format!(
+            "`simplify` is how far, mm, a contour's vertex may lie from the line through its neighbours and be left out: 0 or more, not {}",
+            options.simplify
+        ));
+    }
+    if !ok(options.ignore_loops_under) {
+        return Err(format!(
+            "`ignore_loops_under` is the area, mm², under which a closed contour is left out: 0 or more, not {}",
+            options.ignore_loops_under
+        ));
+    }
+    let mut notes = Vec::new();
+    let mut ready: Vec<Ready> = Vec::with_capacity(lines.len());
+    for line in lines {
+        if let Some(r) = cleaned(line)? {
+            ready.push(r);
+        }
+    }
+    if options.ignore_loops_under > 0.0 {
+        let before = ready.len();
+        ready.retain(|r| !(r.2 && is_contour(r) && geom::area(&r.0).abs() < options.ignore_loops_under));
+        let n = before - ready.len();
+        if n > 0 {
+            notes.push(format!("{n} closed contours enclosing less than {} m² were left out", options.ignore_loops_under / 1e6));
+        }
+    }
+    if options.simplify > 0.0 {
+        let raw = ready.clone();
+        for r in ready.iter_mut().filter(|r| is_contour(r)) {
+            let pts = simplified(&r.0, r.2, options.simplify);
+            r.1 = vec![r.1.first().copied().unwrap_or(0.0); pts.len()];
+            r.0 = pts;
+        }
+        // A contour that crosses another only once simplified keeps every vertex; again, in case that made another cross.
+        let crossed_raw = lines_crossing(&raw);
+        let mut reverted = 0;
+        for _ in 0..3 {
+            let now = lines_crossing(&ready);
+            let back: Vec<usize> = (0..ready.len()).filter(|&i| now[i] && !crossed_raw[i] && ready[i].0.len() != raw[i].0.len()).collect();
+            if back.is_empty() {
+                break;
+            }
+            for i in back {
+                if let (Some(r), Some(w)) = (ready.get_mut(i), raw.get(i)) {
+                    *r = w.clone();
+                    reverted += 1;
+                }
+            }
+        }
+        if reverted > 0 {
+            notes.push(format!("simplifying would have made {reverted} contours cross, so they kept every vertex"));
+        }
+        let (was, now): (usize, usize) = (raw.iter().map(|r| r.0.len()).sum(), ready.iter().map(|r| r.0.len()).sum());
+        if now < was {
+            notes.push(format!("contours simplified within {} mm: {was} vertices became {now}", options.simplify));
+        }
+    }
     let mut heights = Heights::default();
     let mut isolated: Vec<P2> = Vec::with_capacity(points.len());
     for &[x, y, z] in points {
@@ -189,8 +296,7 @@ pub fn build(points: &[[f64; 3]], lines: &[Line], options: &Options) -> Result<S
     }
     let mut segments: Vec<(P2, P2)> = Vec::new();
     let mut positions: Vec<P2> = isolated.clone();
-    for line in lines {
-        let Some((pts, zs, closed)) = cleaned(line)? else { continue };
+    for (pts, zs, closed) in ready {
         for (&p, &z) in pts.iter().zip(&zs) {
             heights.add(p, z);
         }
@@ -203,7 +309,6 @@ pub fn build(points: &[[f64; 3]], lines: &[Line], options: &Options) -> Result<S
     if heights.len() < 3 {
         return Err(format!("a surface needs at least three points; it has {}", heights.len()));
     }
-    let mut notes = Vec::new();
     let torn = heights.torn();
     if !torn.is_empty() {
         let n = torn.len();
@@ -467,6 +572,78 @@ mod tests {
         let bad = Line { points: vec![P2(0.0, 0.0), P2(1_000.0, 0.0), P2(1_000.0, 1_000.0)], z: vec![0.0, 1.0], closed: false };
         let e = build(&[], &[bad], &Options::default()).unwrap_err();
         assert!(e.contains("elevation"), "{e}");
+    }
+
+    /// A contour along y = 0 from x = 0 to 99 900, a vertex every 100 mm wiggling ±10 mm, inside a 100 m by 10 m box.
+    fn wiggly() -> (Vec<[f64; 3]>, Vec<Line>) {
+        let corners = vec![[0.0, -5_000.0, 0.0], [100_000.0, -5_000.0, 0.0], [100_000.0, 5_000.0, 0.0], [0.0, 5_000.0, 0.0]];
+        let pts: Vec<P2> = (0..1000).map(|i| P2(i as f64 * 100.0, if i % 2 == 0 { 10.0 } else { -10.0 })).collect();
+        (corners, vec![Line::contour(100.0, pts, false)])
+    }
+
+    #[test]
+    fn simplifying_drops_vertices_near_the_line_through_their_neighbours() {
+        let (corners, lines) = wiggly();
+        let s = build(&corners, &lines, &Options { simplify: 50.0, ..Options::default() }).unwrap();
+        assert!(s.points.len() <= 4 + 10, "{}", s.points.len());
+        assert!(s.notes.iter().any(|n| n.contains("simplified")), "{:?}", s.notes);
+        let all = build(&corners, &lines, &Options { simplify: 0.0, ..Options::default() }).unwrap();
+        assert!(all.points.len() >= 1000, "{}", all.points.len());
+        assert!(all.notes.iter().all(|n| !n.contains("simplified")), "{:?}", all.notes);
+    }
+
+    #[test]
+    fn simplifying_never_makes_lines_cross() {
+        // A dips 45 mm at x = 500, which simplifying at 50 mm would straighten; B, 30 mm above, dips 50 mm into where A's
+        // straightened line would run. Apart they never cross; A keeps its dip.
+        let a = Line::contour(100.0, vec![P2(0.0, 0.0), P2(400.0, 0.0), P2(500.0, -45.0), P2(600.0, 0.0), P2(1_000.0, 0.0)], false);
+        let b = Line::contour(200.0, vec![P2(0.0, 30.0), P2(400.0, 30.0), P2(500.0, -20.0), P2(600.0, 30.0), P2(1_000.0, 30.0)], false);
+        let corners = vec![[0.0, -1_000.0, 0.0], [1_000.0, -1_000.0, 0.0], [1_000.0, 1_000.0, 300.0], [0.0, 1_000.0, 300.0]];
+        let s = build(&corners, &[a.clone(), b.clone()], &Options { simplify: 50.0, ..Options::default() }).unwrap();
+        assert!(s.notes.iter().any(|n| n.contains("kept every vertex")), "{:?}", s.notes);
+        assert!(s.notes.iter().all(|n| !n.contains("kept as points")), "{:?}", s.notes);
+        assert!(crosses_none(&s, &[a, b]));
+        assert!((s.elevation_at(P2(500.0, -45.0)).unwrap() - 100.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn a_breaklines_vertices_are_never_simplified() {
+        // Leaving out a vertex of a line whose elevation varies would change the ground along it.
+        let corners = vec![[0.0, -5_000.0, 0.0], [10_000.0, -5_000.0, 0.0], [10_000.0, 5_000.0, 0.0], [0.0, 5_000.0, 0.0]];
+        let road = Line { points: vec![P2(0.0, 0.0), P2(5_000.0, 10.0), P2(10_000.0, 0.0)], z: vec![0.0, 900.0, 0.0], closed: false };
+        let s = build(&corners, &[road], &Options { simplify: 50.0, ..Options::default() }).unwrap();
+        assert!((s.elevation_at(P2(5_000.0, 10.0)).unwrap() - 900.0).abs() < 1e-6);
+    }
+
+    /// A closed square contour of half a square metre at `at`, at elevation 5000.
+    fn tree(at: P2) -> Line {
+        let d = 0.5e6f64.sqrt();
+        Line::contour(5_000.0, vec![at, at + P2(d, 0.0), at + P2(d, d), at + P2(0.0, d)], true)
+    }
+
+    #[test]
+    fn small_closed_loops_are_left_out_when_asked() {
+        let mut lines = plane_contours();
+        lines.extend([P2(1_000.0, 1_000.0), P2(18_000.0, 18_000.0), P2(5_000.0, 5_000.0)].map(tree));
+        let s = build(&plane_corners(), &lines, &Options { ignore_loops_under: 1e6, ..Options::default() }).unwrap();
+        assert_eq!(s.range(), Some((100.0, 3100.0)));
+        assert!(s.notes.iter().any(|n| n.contains("3 closed contours")), "{:?}", s.notes);
+        let kept = build(&plane_corners(), &lines, &Options::default()).unwrap();
+        assert_eq!(kept.range(), Some((100.0, 5000.0)));
+    }
+
+    #[test]
+    fn bad_options_are_refused_naming_them() {
+        let (corners, lines) = wiggly();
+        for (options, name) in [
+            (Options { simplify: -1.0, ..Options::default() }, "simplify"),
+            (Options { simplify: f64::NAN, ..Options::default() }, "simplify"),
+            (Options { ignore_loops_under: -1.0, ..Options::default() }, "ignore_loops_under"),
+            (Options { ignore_loops_under: f64::INFINITY, ..Options::default() }, "ignore_loops_under"),
+        ] {
+            let e = build(&corners, &lines, &options).unwrap_err();
+            assert!(e.contains(name), "{e}");
+        }
     }
 
     #[test]
