@@ -112,9 +112,11 @@ toposolid {points?: [[x,y,z],…], contours?: [{z, points: [[x,y],…], closed?}
   on and the neighbouring contours (or, at a summit or a pit with no neighbour, extrapolated from the slope around it), and
   the surface triangulated again. The reply counts the points added. Tested with a cone from circular contours: no flat
   triangle remains, and its volume is the cone's within the chord error.
-- Contour segments are breaklines. Contours that cross each other, or a point repeated in plan with two elevations, are
-  refused with where (a crossing's plan point, the elevations), as `sketch` reports its problems. Points closer than 1 mm in
-  plan with the same elevation are merged.
+- Contour segments are breaklines, and so are 3D polylines whose elevation varies along them. Points closer than 1 mm in
+  plan are one. Noisy data still makes a surface, and the reply's `notes` say what was done (design call, after the first
+  user's drone survey had 6,941 crossings among the contours round its trees, all between neighbouring elevations, which a
+  refusal would have left with no terrain at all): segments that cross another are not kept as edges, their vertices stay
+  as points, with how many and the box they lie in; a position given at two elevations takes their mean, with where.
 - Limits: at least three points not on one line; at most the triangulation's own limit (`MAX_CORNERS` in
   `triangulation.rs`, 20,000 today, after simplifying; the first user's survey has 7,817 vertices), so a toposolid stays as
   fast in `Model::check` as a shaped floor; raising that shared limit, or a faster triangulator for big surveys, is a later

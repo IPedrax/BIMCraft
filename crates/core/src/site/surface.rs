@@ -61,22 +61,27 @@ fn key(p: P2) -> (i64, i64) {
     ((p.0 / TOL).round() as i64, (p.1 / TOL).round() as i64)
 }
 
-/// Elevations by position: each given point's and line vertex's, refusing one position with two.
+/// Elevations by position: each given point's and line vertex's. A position given at two elevations (contours that
+/// touch, as a noisy survey's do) takes their mean, and is remembered so the reply can say where.
 #[derive(Default)]
-struct Heights(BTreeMap<(i64, i64), f64>);
+struct Heights {
+    /// By position: the sum of its elevations, how many, the lowest and the highest.
+    at: BTreeMap<(i64, i64), (f64, usize, f64, f64)>,
+}
 
 impl Heights {
-    fn add(&mut self, p: P2, z: f64) -> Result<(), String> {
-        match self.0.get(&key(p)) {
-            Some(&was) if (was - z).abs() > 1e-6 => {
-                Err(format!("{} is on contours or points of two elevations, {} and {} mm", at(p), was.min(z), was.max(z)))
-            }
-            Some(_) => Ok(()),
-            None => {
-                self.0.insert(key(p), z);
-                Ok(())
-            }
-        }
+    fn add(&mut self, p: P2, z: f64) {
+        let e = self.at.entry(key(p)).or_insert((0.0, 0, z, z));
+        *e = (e.0 + z, e.1 + 1, e.2.min(z), e.3.max(z));
+    }
+
+    fn len(&self) -> usize {
+        self.at.len()
+    }
+
+    /// The positions given at more than one elevation, in order.
+    fn torn(&self) -> Vec<P2> {
+        self.at.iter().filter(|(_, e)| e.3 - e.2 > 1e-6).map(|((x, y), _)| P2(*x as f64 * TOL, *y as f64 * TOL)).collect()
     }
 
     /// The elevation at a corner the triangulation made from the positions given: at its key, or the next one round it
@@ -85,8 +90,51 @@ impl Heights {
         let (x, y) = key(p);
         [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1)]
             .iter()
-            .find_map(|(dx, dy)| self.0.get(&(x + dx, y + dy)).copied())
+            .find_map(|(dx, dy)| self.at.get(&(x + dx, y + dy)).map(|e| e.0 / e.1 as f64))
     }
+}
+
+/// A few positions as a message lists them.
+fn some(points: &[P2]) -> String {
+    let shown: Vec<String> = points.iter().take(3).map(|&p| at(p)).collect();
+    if points.len() > 3 { format!("{} and {} more", shown.join(", "), points.len() - 3) } else { shown.join(", ") }
+}
+
+/// Which of `segments` properly cross another (each crossing's two), found through a grid of cells about as many as
+/// the segments, so a survey's thousands take a moment, not their square.
+fn crossing(segments: &[(P2, P2)]) -> Vec<bool> {
+    let mut out = vec![false; segments.len()];
+    let (mut lo, mut hi) = (P2(f64::MAX, f64::MAX), P2(f64::MIN, f64::MIN));
+    for (a, b) in segments {
+        lo = P2(lo.0.min(a.0).min(b.0), lo.1.min(a.1).min(b.1));
+        hi = P2(hi.0.max(a.0).max(b.0), hi.1.max(a.1).max(b.1));
+    }
+    if segments.is_empty() {
+        return out;
+    }
+    let cell = ((hi.0 - lo.0).max(hi.1 - lo.1) / (segments.len() as f64).sqrt()).max(TOL);
+    let index = |v: f64, o: f64| ((v - o) / cell).floor() as i64;
+    let mut grid: BTreeMap<(i64, i64), Vec<usize>> = BTreeMap::new();
+    for (i, (a, b)) in segments.iter().enumerate() {
+        for gx in index(a.0.min(b.0), lo.0)..=index(a.0.max(b.0), lo.0) {
+            for gy in index(a.1.min(b.1), lo.1)..=index(a.1.max(b.1), lo.1) {
+                grid.entry((gx, gy)).or_default().push(i);
+            }
+        }
+    }
+    let side = |p: P2, q: P2, r: P2| (q - p).cross(r - p);
+    for ids in grid.values() {
+        for (n, &i) in ids.iter().enumerate() {
+            for &j in &ids[n + 1..] {
+                let ((a, b), (c, d)) = (segments[i], segments[j]);
+                if side(c, d, a) * side(c, d, b) < 0.0 && side(a, b, c) * side(a, b, d) < 0.0 {
+                    out[i] = true;
+                    out[j] = true;
+                }
+            }
+        }
+    }
+    out
 }
 
 fn check_point(p: P2, z: f64) -> Result<(), String> {
@@ -123,10 +171,12 @@ fn cleaned(line: &Line) -> Result<Option<(Vec<P2>, Vec<f64>, bool)>, String> {
     Ok((pts.len() >= 2).then_some((pts, zs, closed)))
 }
 
-/// The surface through `points` (`[x, y, z]`) and `lines`, the lines kept as triangles' edges. Refused, saying where: a
-/// point not finite or past `MAX_COORD`, a line with as many elevations as points, one position at two elevations,
-/// lines that cross, fewer than three points or all on one line, and what the triangulation refuses (more than
-/// `triangulation::MAX_CORNERS` corners as given, a region past `triangulation::MAX_ACROSS`).
+/// The surface through `points` (`[x, y, z]`) and `lines`, the lines kept as triangles' edges. Data a noisy survey has
+/// still makes a surface, and its `notes` say what was done: a position given at two elevations takes their mean, and
+/// segments that cross another are not kept as edges (their vertices stay as points). Refused, saying why: a point not
+/// finite or past `MAX_COORD`, a line without an elevation for each point, fewer than three points or all on one line,
+/// and what the triangulation refuses (more than `triangulation::MAX_CORNERS` corners as given, a region past
+/// `triangulation::MAX_ACROSS`).
 pub fn build(points: &[[f64; 3]], lines: &[Line], options: &Options) -> Result<Surface, String> {
     let _ = options;
     let mut heights = Heights::default();
@@ -134,7 +184,7 @@ pub fn build(points: &[[f64; 3]], lines: &[Line], options: &Options) -> Result<S
     for &[x, y, z] in points {
         let p = P2(x, y);
         check_point(p, z)?;
-        heights.add(p, z)?;
+        heights.add(p, z);
         isolated.push(p);
     }
     let mut segments: Vec<(P2, P2)> = Vec::new();
@@ -142,7 +192,7 @@ pub fn build(points: &[[f64; 3]], lines: &[Line], options: &Options) -> Result<S
     for line in lines {
         let Some((pts, zs, closed)) = cleaned(line)? else { continue };
         for (&p, &z) in pts.iter().zip(&zs) {
-            heights.add(p, z)?;
+            heights.add(p, z);
         }
         segments.extend(pts.windows(2).map(|w| (w[0], w[1])));
         if closed && let (Some(&a), Some(&b)) = (pts.last(), pts.first()) {
@@ -150,8 +200,38 @@ pub fn build(points: &[[f64; 3]], lines: &[Line], options: &Options) -> Result<S
         }
         positions.extend(pts);
     }
-    if heights.0.len() < 3 {
-        return Err(format!("a surface needs at least three points; it has {}", heights.0.len()));
+    if heights.len() < 3 {
+        return Err(format!("a surface needs at least three points; it has {}", heights.len()));
+    }
+    let mut notes = Vec::new();
+    let torn = heights.torn();
+    if !torn.is_empty() {
+        let n = torn.len();
+        notes.push(format!("{n} point{} given at two elevations took their mean: {}", if n == 1 { "" } else { "s" }, some(&torn)));
+    }
+    let crossed = crossing(&segments);
+    if crossed.iter().any(|&c| c) {
+        let (mut lo, mut hi) = (P2(f64::MAX, f64::MAX), P2(f64::MIN, f64::MIN));
+        let mut kept = Vec::with_capacity(segments.len());
+        let mut n = 0;
+        for (&(a, b), &c) in segments.iter().zip(&crossed) {
+            if c {
+                n += 1;
+                isolated.extend([a, b]);
+                lo = P2(lo.0.min(a.0).min(b.0), lo.1.min(a.1).min(b.1));
+                hi = P2(hi.0.max(a.0).max(b.0), hi.1.max(a.1).max(b.1));
+            } else {
+                kept.push((a, b));
+            }
+        }
+        segments = kept;
+        isolated.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.total_cmp(&b.1)));
+        isolated.dedup_by(|a, b| a.dist(*b) < TOL);
+        notes.push(format!(
+            "{n} segments of contours or breaklines that cross another were kept as points, not edges, between {} and {}",
+            at(lo),
+            at(hi)
+        ));
     }
     let outline = geom::hull(positions);
     if outline.len() < 3 || geom::area(&outline).abs() < TOL * TOL {
@@ -164,7 +244,7 @@ pub fn build(points: &[[f64; 3]], lines: &[Line], options: &Options) -> Result<S
         .iter()
         .map(|&p| heights.of(p).ok_or_else(|| format!("the triangulation made a corner at {} that no point was given at", at(p))))
         .collect::<Result<Vec<f64>, String>>()?;
-    Ok(Surface { points: t.points, z, triangles: t.triangles, notes: Vec::new() })
+    Ok(Surface { points: t.points, z, triangles: t.triangles, notes })
 }
 
 impl Surface {
@@ -330,23 +410,38 @@ mod tests {
     }
 
     #[test]
-    fn touching_contours_of_two_elevations_are_refused_saying_where() {
+    fn touching_contours_of_two_elevations_meet_halfway_and_say_so() {
+        // Noisy surveys do this; a surface is still made, at the mean, and the reply says where.
         let lines = vec![
             Line::contour(100.0, vec![P2(0.0, 0.0), P2(1_000.0, 0.0)], false),
             Line::contour(200.0, vec![P2(1_000.0, 0.0), P2(1_000.0, 1_000.0)], false),
         ];
-        let e = build(&[[0.0, 1_000.0, 150.0]], &lines, &Options::default()).unwrap_err();
-        assert!(e.contains("(1000, 0)") && e.contains("100") && e.contains("200"), "{e}");
+        let s = build(&[[0.0, 1_000.0, 150.0]], &lines, &Options::default()).unwrap();
+        assert!((s.elevation_at(P2(1_000.0, 0.0)).unwrap() - 150.0).abs() < 1e-6);
+        assert!(s.notes.iter().any(|n| n.contains("1 point") && n.contains("two elevations") && n.contains("(1000, 0)")), "{:?}", s.notes);
     }
 
     #[test]
-    fn crossing_contours_are_refused_saying_where() {
+    fn crossing_contours_lose_their_edges_there_not_the_surface() {
+        // Contours of one ground never cross; photogrammetry's often do, round trees. Where they cross they stop being
+        // edges the triangles must keep, their vertices stay as points, and the reply says how many and where.
         let lines = vec![
             Line::contour(100.0, vec![P2(0.0, 500.0), P2(1_000.0, 500.0)], false),
             Line::contour(200.0, vec![P2(500.0, 0.0), P2(500.0, 1_000.0)], false),
         ];
-        let e = build(&[], &lines, &Options::default()).unwrap_err();
-        assert!(e.contains("cross") && e.contains("(500, 500)"), "{e}");
+        let s = build(&[], &lines, &Options::default()).unwrap();
+        for (p, z) in [(P2(0.0, 500.0), 100.0), (P2(1_000.0, 500.0), 100.0), (P2(500.0, 0.0), 200.0), (P2(500.0, 1_000.0), 200.0)] {
+            assert!((s.elevation_at(p).unwrap() - z).abs() < 1e-6, "{p:?}");
+        }
+        assert!(
+            s.notes.iter().any(|n| n.contains("2 segments") && n.contains("cross") && n.contains("(0, 0)") && n.contains("(1000, 1000)")),
+            "{:?}",
+            s.notes
+        );
+        // Lines that don't cross stay edges.
+        let clean = plane_contours();
+        assert!(plane_surface().notes.iter().all(|n| !n.contains("cross")));
+        assert!(crosses_none(&plane_surface(), &clean));
     }
 
     #[test]
