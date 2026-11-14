@@ -654,6 +654,10 @@ pub struct BimApp {
     /// The Floor tool makes structural floors; the Beam tool's justification and height over the level; the footing tools'
     /// thickness and the height of their tops.
     floor_structural: bool,
+    /// Pick Walls' Options Bar: whether a boundary line goes on a wall's core face (else its finish) and how far out
+    /// from the face it lies, in the project's units. They last while the sketch is open.
+    pub(crate) pick_core: bool,
+    pub(crate) pick_offset: String,
     run_justify: Justify,
     beam_offset: String,
     /// The Options Bar's justification and offset of the run tools not on screen, by category, and whose are.
@@ -1516,6 +1520,8 @@ impl BimApp {
             column_top: None,
             column_height: units.length(3000.0),
             floor_structural: false,
+            pick_core: true,
+            pick_offset: String::new(),
             run_justify: Justify::Top,
             beam_offset: units.length(0.0),
             run_kept: BTreeMap::new(),

@@ -16,7 +16,7 @@ use bimcraft_core::render::{self, Drawing, Prim, Rgb, View};
 use bimcraft_core::snap::{self, Found, Kind, Reach};
 use bimcraft_core::view3d::shape_snap_plan;
 use bimcraft_core::walls::{self, Axis};
-use bimcraft_core::{floor_outline, opening_of, roof_footprint};
+use bimcraft_core::{floor_outline_faces, opening_of, roof_footprint};
 use egui::{
     Align, Align2, Color32, ColorImage, Event, FontId, Key, Layout, Mesh, Modifiers, Painter, PointerButton, Pos2, Rect, Response, Sense,
     Shape, Stroke, StrokeKind, TextEdit, TextureHandle, TextureId, TextureOptions, Ui, UiBuilder, Vec2, WidgetInfo, WidgetType, pos2, vec2,
@@ -1781,6 +1781,20 @@ impl BimApp {
             self.dimension_text_dialog = Some(crate::dimtypes::DimensionTextDialog::new(&model, id, segment));
             return;
         }
+        // A double click on a boundary line Pick Walls placed flips it to the other side of its wall.
+        if response.double_clicked()
+            && !writing
+            && matches!(self.tool, Tool::Modify)
+            && let Some(q) = local
+            && let Some(i) = self
+                .sketch
+                .as_ref()
+                .and_then(|sk| sk.line_at(view.mm(q), f64::from(PICK) / view.scale))
+                .filter(|i| self.sketch.as_ref().is_some_and(|sk| sk.picks.contains_key(i)))
+        {
+            self.flip_pick(i);
+            return;
+        }
         // A click on a shape point's height label is the label's.
         let on_label = |at: &Pos2| self.shape_label_rects.iter().any(|r| r.contains(*at));
         if let Some(at) = self.clicked_at(&response).filter(|at| !dragged && !writing && !on_label(at)) {
@@ -1868,7 +1882,7 @@ impl BimApp {
             let cursor = local.filter(|_| wanted).map(|q| self.snap(&model, level, &view, q, from, shift).at);
             sk.paint(&p, |q| pos(rect.min, view.px(q)), over, cursor, &self.sketch_lit());
             if let (Some(q), Some(c)) = (local, cursor) {
-                self.sketch_preview(&p, &view, rect.min, q, c);
+                self.sketch_preview(&p, &view, rect.min, q, c, hovered);
             }
         }
         p.extend(crop);
@@ -4798,9 +4812,17 @@ impl BimApp {
                 }
                 return;
             }
-            // The floor a click would make, under the walls, open over their courtyards.
+            // The floor a click would make, under the walls, along the faces Pick Walls' options choose.
             Tool::Floor => {
-                if let Some((ring, courtyards)) = floor_outline(m, level) {
+                let face =
+                    if self.pick_core { bimcraft_core::walls::Face::InteriorCore } else { bimcraft_core::walls::Face::InteriorFinish };
+                let offset = match self.pick_offset.trim() {
+                    "" => Some(0.0),
+                    text => m.units.parse(text),
+                };
+                if let Some(offset) = offset
+                    && let Ok((ring, courtyards)) = floor_outline_faces(m, level, face, offset)
+                {
                     for r in std::iter::once(&ring).chain(&courtyards) {
                         p.add(Shape::closed_line(r.iter().map(|pt| sc.screen(*pt)).collect(), stroke));
                     }

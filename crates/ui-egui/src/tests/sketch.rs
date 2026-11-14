@@ -334,6 +334,106 @@ fn a_sketch_line_picked_alone_has_a_palette_of_what_can_be_done_to_it() {
     assert!(matches!(h.state().tool, Tool::Vertex { delete: false }));
 }
 
+/// A box of 200 mm walls with a 100 mm core between 50 mm finishes: Pick Walls' faces are 50 and 100 mm from the
+/// centre line.
+fn core_box() -> String {
+    r#"type {"category": "wall", "name": "C60", "layers": [{"function": "finish", "thickness": 50}, {"function": "structure", "thickness": 100}, {"function": "finish", "thickness": 50}]}
+wall {"points": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]], "closed": true, "type": "C60"}"#
+        .to_string()
+}
+
+/// Where the sketch's one line lies across the y axis, by its middle.
+fn line_y(h: &Harness<BimApp>, i: usize) -> f64 {
+    lines(h).get(i).map_or(f64::NAN, |l| l.middle().1)
+}
+
+#[test]
+fn pick_walls_puts_a_line_on_the_core_or_the_finish_face_under_the_cursor() {
+    let mut h = app(&core_box());
+    press(&mut h, "Floor");
+    press(&mut h, "Pick Walls");
+    // From inside the room, the south wall's core face is 50 mm into it.
+    click(&mut h, P2(4000.0, 50.0));
+    assert_eq!(lines(&h).len(), 1);
+    assert!((line_y(&h, 0) - 50.0).abs() < 1e-6, "{:?}", lines(&h));
+    // From outside, the other core face.
+    click(&mut h, P2(4000.0, -50.0));
+    assert_eq!(lines(&h).len(), 2);
+    assert!((line_y(&h, 1) + 50.0).abs() < 1e-6, "{:?}", lines(&h));
+    // The finish instead of the core.
+    press(&mut h, "Extend into wall (to core)");
+    click(&mut h, P2(4000.0, 50.0));
+    assert_eq!(lines(&h).len(), 3);
+    assert!((line_y(&h, 2) - 100.0).abs() < 1e-6, "{:?}", lines(&h));
+}
+
+#[test]
+fn pick_walls_offset_moves_the_line_away_from_the_wall() {
+    let mut h = app(&core_box());
+    press(&mut h, "Floor");
+    press(&mut h, "Pick Walls");
+    type_into(&mut h, "Offset:", "100");
+    click(&mut h, P2(4000.0, 50.0));
+    assert!((line_y(&h, 0) - 150.0).abs() < 1e-6, "{:?}", lines(&h));
+    type_into(&mut h, "Offset:", "-100");
+    click(&mut h, P2(4000.0, 50.0));
+    assert!((line_y(&h, 1) + 50.0).abs() < 1e-6, "{:?}", lines(&h));
+}
+
+#[test]
+fn walls_outline_follows_the_face_options_and_finish_makes_the_floor() {
+    let mut h = app(&core_box());
+    press(&mut h, "Floor");
+    press(&mut h, "Walls' Outline");
+    let ls = lines(&h);
+    assert_eq!(ls.len(), 4, "{ls:?}");
+    assert!(ls.iter().all(|l| [l.start(), l.end()].iter().all(|p| p.0 == 50.0 || p.0 == 7950.0 || p.1 == 50.0 || p.1 == 5950.0)), "{ls:?}");
+    press(&mut h, "Finish Edit Mode");
+    assert!(h.state().sketch.is_none(), "{}", h.state().status.text);
+    let f = ids(&h, "floor")[0];
+    assert_eq!(field(&h, f, "area_m2"), json!(46.61));
+}
+
+#[test]
+fn a_picked_boundary_line_shows_its_wall_face_and_flips_and_undoes() {
+    let mut h = app(&core_box());
+    press(&mut h, "Floor");
+    press(&mut h, "Pick Walls");
+    click(&mut h, P2(4000.0, 50.0));
+    key(&mut h, Key::Escape);
+    assert_eq!(h.state().tool, Tool::Modify);
+    click(&mut h, P2(4000.0, 50.0));
+    assert!(h.query_by_role_and_label(Role::Checkbox, "Extend into wall (to core)").is_some());
+    // The checkbox in Properties puts it on the finish, and Ctrl+Z takes that back as one step.
+    {
+        let checkbox = h.get_all_by_label("Extend into wall (to core)").last().expect("the line's own checkbox");
+        checkbox.click();
+    }
+    h.run();
+    assert!((line_y(&h, 0) - 100.0).abs() < 1e-6, "{:?}", lines(&h));
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    h.run();
+    assert!((line_y(&h, 0) - 50.0).abs() < 1e-6, "{:?}", lines(&h));
+    // Flip, from the palette over the line, puts it on the other side.
+    press(&mut h, "Flip");
+    assert!((line_y(&h, 0) + 50.0).abs() < 1e-6, "{:?}", lines(&h));
+}
+
+#[test]
+fn a_grip_moved_on_a_picked_boundary_line_makes_it_an_ordinary_line() {
+    let mut h = app(&core_box());
+    press(&mut h, "Floor");
+    press(&mut h, "Pick Walls");
+    click(&mut h, P2(4000.0, 50.0));
+    key(&mut h, Key::Escape);
+    click(&mut h, P2(4000.0, 50.0));
+    assert_eq!(h.state().sketch.as_ref().map(|sk| sk.picks.len()), Some(1));
+    drag(&mut h, P2(50.0, 50.0), P2(-500.0, -500.0));
+    assert_eq!(h.state().sketch.as_ref().map(|sk| sk.picks.len()), Some(0), "{:?}", lines(&h));
+    // It is a line like any other: the wall's face no longer has a say in it.
+    assert!(line_of(&h, P2(-500.0, -500.0), P2(7950.0, 50.0)).is_some(), "{:?}", lines(&h));
+}
+
 /// A roof over the box's footprint, its east and west edges at 45° and the others at the roof's 30°.
 const SLOPED: &str = r#"roof {"boundary": [[0,0],[8000,0],[8000,6000],[0,6000]], "slope": 30, "slopes": [0, 45, 0, 45]}"#;
 

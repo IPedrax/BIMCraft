@@ -5,14 +5,15 @@
 
 use bimcraft_i18n::msg;
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use bimcraft_core::geom::{self, P2};
-use bimcraft_core::model::{Element, Id, Line, Model, TOL};
+use bimcraft_core::model::{Element, Id, Line, Model, TOL, Wall};
 use bimcraft_core::render::View;
 use bimcraft_core::sketch::{self as solver, Problem, SketchLine};
 use bimcraft_core::units::Units;
-use egui::{Align2, Color32, Modifiers, Painter, PointerButton, Pos2, Rect, Response, Shape, Stroke, StrokeKind, Ui, vec2};
+use bimcraft_core::walls::{self, Axis, Face};
+use egui::{Align2, Color32, Modifiers, Painter, PointerButton, Pos2, Rect, Response, Shape, Stroke, StrokeKind, TextEdit, Ui, vec2};
 use serde_json::json;
 
 use crate::canvas::{box_shapes, tag};
@@ -49,6 +50,22 @@ pub enum Drag {
     Box((f32, f32)),
 }
 
+/// A line Pick Walls placed: the wall it was taken from, the face of that wall and how far out from it the line lies.
+/// It lives only in the sketch, never in the project: after Finish the boundary is coordinates like any other.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Pick {
+    pub wall: Id,
+    pub face: Face,
+    pub offset: f64,
+}
+
+/// A step Ctrl+Z takes back: the lines as they were, and the walls their lines were picked from, by their place in them.
+#[derive(Clone, Debug, PartialEq)]
+struct Snapshot {
+    lines: Vec<SketchLine>,
+    picks: BTreeMap<usize, Pick>,
+}
+
 /// A sketch being drawn: its lines, those picked (Modify, for Delete and the grips), those the last Finish found wrong, and
 /// the drag under way.
 #[derive(Clone, Debug, PartialEq)]
@@ -58,6 +75,8 @@ pub struct Sketch {
     pub picked: BTreeSet<usize>,
     pub wrong: Vec<usize>,
     pub drag: Option<Drag>,
+    /// The lines Pick Walls placed, by their place in `lines`, and the wall's face each was taken from.
+    pub picks: BTreeMap<usize, Pick>,
     /// A new region's type and its boundary's line style (none, invisible), as the Options Bar sets them.
     pub region: (String, Option<String>),
     /// A region's sketch: each line drawn takes the Options Bar's line style.
@@ -67,9 +86,12 @@ pub struct Sketch {
     /// The work plane a new one begun in the 3D view lies on (`workplane.rs`): what it makes stands on the level below it.
     pub surface: Option<bimcraft_core::walls::Plane>,
     /// The lines as they were before each change, oldest first, and as the last frame saw them: Ctrl+Z takes back one change
-    /// (a line drawn, a trim, a fillet, a grip moved), not one line.
-    history: Vec<Vec<SketchLine>>,
+    /// (a line drawn, a trim, a fillet, a grip moved), not one line. The picks go with them, so a line taken back keeps its
+    /// wall while it is still at that face.
+    history: Vec<Snapshot>,
     seen: Vec<SketchLine>,
+    /// The picks as the last frame saw them, with `seen`: they go into the step a change makes.
+    seen_picks: BTreeMap<usize, Pick>,
 }
 
 /// How many changes of a sketch Ctrl+Z can take back.
@@ -111,11 +133,13 @@ impl Sketch {
             picked: BTreeSet::new(),
             wrong: Vec::new(),
             drag: None,
+            picks: BTreeMap::new(),
             region: (String::new(), None),
             styled: false,
             plan: Sheet::View3D,
             surface: None,
             history: Vec::new(),
+            seen_picks: BTreeMap::new(),
         }
     }
 
@@ -185,8 +209,8 @@ impl Sketch {
             .collect()
     }
 
-    /// A line added, unless it's too short to be one.
-    pub(crate) fn add(&mut self, mut l: SketchLine) {
+    /// A line added, unless it's too short to be one: its place in the sketch.
+    pub(crate) fn add(&mut self, mut l: SketchLine) -> Option<usize> {
         if self.styled {
             l.invisible = self.region.1.is_none();
             l.style = self.region.1.clone();
@@ -194,7 +218,9 @@ impl Sketch {
         if l.curve.check("").is_ok() {
             self.lines.push(l);
             self.changed();
+            return Some(self.lines.len() - 1);
         }
+        None
     }
 
     pub(crate) fn changed(&mut self) {
@@ -202,13 +228,71 @@ impl Sketch {
         self.wrong.clear();
     }
 
+    /// The line `i` was picked from a wall, if it still is.
+    pub fn pick(&self, i: usize) -> Option<Pick> {
+        self.picks.get(&i).copied()
+    }
+
+    /// Every picked line put back on its wall's face, as the Options Bar's face and offset now say; the walls whose
+    /// line could not be placed (a wall gone) and whose picks are dropped, each once.
+    pub(crate) fn refit_picks(&mut self, m: &Model) -> Vec<Id> {
+        let mut gone: Vec<Id> = Vec::new();
+        let mut updates: Vec<(usize, _)> = Vec::new();
+        let mut lost: Vec<usize> = Vec::new();
+        for (&i, p) in &self.picks {
+            match walls::face_line(m, p.wall, p.face, p.offset).filter(|_| self.lines.get(i).is_some()) {
+                Some(c) => updates.push((i, c)),
+                None => {
+                    if !gone.contains(&p.wall) {
+                        gone.push(p.wall);
+                    }
+                    lost.push(i);
+                }
+            }
+        }
+        for (i, curve) in updates {
+            if let Some(line) = self.lines.get_mut(i) {
+                line.curve = curve;
+            }
+        }
+        for i in lost {
+            self.picks.remove(&i);
+        }
+        gone
+    }
+
+    /// Picks dropped from lines whose geometry was changed by something other than their pick (a grip, a trim, a fillet,
+    /// an offset, a split, a vertex, a box moving them): a line drawn on by hand is an ordinary line, as in Revit.
+    pub(crate) fn forget_moved_picks(&mut self, m: &Model) {
+        let lines = &self.lines;
+        self.picks
+            .retain(|&i, p| walls::face_line(m, p.wall, p.face, p.offset).is_some_and(|c| lines.get(i).is_some_and(|l| l.curve == c)));
+        // The frame's step is made; the picks now are what the next change starts from.
+        self.seen_picks = self.picks.clone();
+    }
+
+    /// The picked line `i` flipped to the other side of its wall, its offset kept; false when its wall can't place it.
+    pub(crate) fn flip_pick(&mut self, m: &Model, i: usize) -> bool {
+        let Some(p) = self.picks.get(&i).copied() else { return false };
+        let face = p.face.flipped();
+        let Some(curve) = walls::face_line(m, p.wall, face, p.offset) else { return false };
+        if let Some(line) = self.lines.get_mut(i) {
+            line.curve = curve;
+        }
+        if let Some(p) = self.picks.get_mut(&i) {
+            p.face = face;
+        }
+        true
+    }
+
     /// Notes the lines if they are not as the last frame saw them: the change is a step Ctrl+Z takes back. True for a change.
     pub(crate) fn track(&mut self) -> bool {
         if self.lines == self.seen {
             return false;
         }
-        let before = std::mem::replace(&mut self.seen, self.lines.clone());
-        self.history.push(before);
+        let lines = std::mem::replace(&mut self.seen, self.lines.clone());
+        let picks = std::mem::replace(&mut self.seen_picks, self.picks.clone());
+        self.history.push(Snapshot { lines, picks });
         if self.history.len() > UNDO {
             self.history.remove(0);
         }
@@ -219,8 +303,10 @@ impl Sketch {
     pub(crate) fn undo(&mut self) -> bool {
         self.track();
         let Some(before) = self.history.pop() else { return false };
-        self.lines.clone_from(&before);
-        self.seen = before;
+        self.lines.clone_from(&before.lines);
+        self.seen.clone_from(&before.lines);
+        self.picks = before.picks;
+        self.seen_picks = self.picks.clone();
         self.changed();
         true
     }
@@ -262,6 +348,30 @@ impl Sketch {
 /// Whether `x`, on the line through `a` and `b`, lies between them.
 fn on(x: P2, a: P2, b: P2) -> bool {
     geom::dist_to_segment(x, a, b) <= 1e-6 * a.dist(b).max(1.0)
+}
+
+/// The face of wall `id` a Pick Walls click at `at` takes: the side the cursor is on (its left is the exterior one), or,
+/// on the location line, the side of an earlier pick of the same wall, and the interior side when there is none. `core`
+/// takes the core face rather than the finish.
+fn picked_face(m: &Model, id: Id, w: &Wall, at: P2, picks: &BTreeMap<usize, Pick>, core: bool) -> Face {
+    let side = Axis::of(w).project(at).1;
+    let centre = walls::centre(m, w);
+    let left = if (side - centre).abs() <= TOL {
+        picks.iter().rev().find(|(_, p)| p.wall == id).is_none_or(|(_, p)| !matches!(p.face, Face::InteriorFinish | Face::InteriorCore))
+    } else {
+        side > centre
+    };
+    (if left { Face::ExteriorFinish } else { Face::InteriorFinish }).with_core(core)
+}
+
+/// What a picked line's face is called, for the status bar and a tooltip: `Core — interior, Offset 0`.
+fn face_said(face: Face, offset: f64, units: Units) -> String {
+    let side = match face {
+        Face::InteriorFinish | Face::InteriorCore => t("interior"),
+        _ => t("exterior"),
+    };
+    let kind = if face.is_core() { t("Core") } else { t("Finish") };
+    tf("{} — {}, Offset {}", &[kind, side, &units.length(offset)])
 }
 
 /// What a line is called to whoever draws it: by its id once it has one, else new.
@@ -354,18 +464,28 @@ impl BimApp {
         };
         let seen = lines.clone();
         let plan = self.sheet;
+        // Pick Walls starts on the core for a floor, as Revit's does, and on the finish for a roof; an edit of a floor
+        // keeps the floor's. A new sketch starts again with no offset.
+        self.pick_core = match of {
+            Of::Floor(_) => true,
+            Of::Edit(id) => matches!(m.elements.get(id), Some(Element::Floor(_))),
+            _ => false,
+        };
+        self.pick_offset.clear();
         self.sketch = Some(Sketch {
             of,
             lines,
             picked: BTreeSet::new(),
             wrong: Vec::new(),
             drag: None,
+            picks: BTreeMap::new(),
             region,
             styled,
             plan,
             surface: None,
             history: Vec::new(),
             seen,
+            seen_picks: BTreeMap::new(),
         });
         self.forget_picks();
         self.selection.clear();
@@ -495,6 +615,8 @@ impl BimApp {
         let keep_trim = matches!(self.tool, Tool::TrimTo { many: true, .. })
             && self.drawing.trim.is_some_and(|(i, _)| sk.lines.get(i).is_some() && sk.lines.get(i) == sk.seen.get(i));
         if sk.track() {
+            let m = std::sync::Arc::clone(&self.session.model);
+            sk.forget_moved_picks(&m);
             self.drawing.fillet.retain(|(l, _)| matches!(l, draw::Picked::Element(_)));
             if !keep_trim {
                 self.drawing.trim = None;
@@ -558,11 +680,23 @@ impl BimApp {
     pub(crate) fn delete_sketch_lines(&mut self) {
         if let Some(sk) = &mut self.sketch {
             let picked = std::mem::take(&mut sk.picked);
+            let mut kept = BTreeMap::new();
+            let mut to = 0;
+            for from in 0..sk.lines.len() {
+                if picked.contains(&from) {
+                    continue;
+                }
+                if let Some(p) = sk.picks.get(&from) {
+                    kept.insert(to, *p);
+                }
+                to += 1;
+            }
             let mut i = 0;
             sk.lines.retain(|_| {
                 i += 1;
                 !picked.contains(&(i - 1))
             });
+            sk.picks = kept;
             sk.changed();
         }
     }
@@ -615,6 +749,8 @@ impl BimApp {
             }
         }
         let Some(sk) = &mut self.sketch else { return };
+        // Pick Walls' face and offset, read before the sketch is borrowed mutably.
+        let (pick_core, pick_offset) = (self.pick_core, self.pick_offset.clone());
         match &mut self.tool {
             Tool::Modify => {
                 let hit = sk.line_at(raw, reach);
@@ -646,15 +782,32 @@ impl BimApp {
                 Some(_) => {}
                 None => chain.push(p),
             },
-            // A line along the wall's location line, round with it where it's an arc.
+            // A line on the wall's face under the cursor: its core or its finish, out by the Options Bar's offset.
             Tool::SketchPick => {
-                if let Some(w) = wall.and_then(|id| m.wall(id)) {
-                    let axis = bimcraft_core::walls::Axis::of(w);
-                    let line = match w.arc {
-                        a if a != 0.0 => SketchLine::arc(w.start, w.end, axis.at(axis.length() / 2.0, 0.0)),
-                        _ => SketchLine::new(w.start, w.end),
+                let Some(id) = wall else { return };
+                let Some(w) = m.wall(id) else { return };
+                let offset = match pick_offset.trim() {
+                    "" => Some(0.0),
+                    text => m.units.parse(text),
+                };
+                let Some(offset) = offset else {
+                    self.status = Status { text: tf("Offset: a number in {}", &[m.units.name()]), error: true };
+                    return;
+                };
+                let mut face = picked_face(m, id, w, raw, &sk.picks, pick_core);
+                let no_core = face.is_core() && walls::core_faces(m, w).is_none();
+                if no_core {
+                    face = face.with_core(false);
+                }
+                if let Some(curve) = walls::face_line(m, id, face, offset) {
+                    if let Some(i) = sk.add(SketchLine::from(curve)) {
+                        sk.picks.insert(i, Pick { wall: id, face, offset });
+                    }
+                    self.status = if no_core {
+                        Status { text: msg!("This wall has no core: its faces are its finish faces.").into(), error: false }
+                    } else {
+                        Status::default()
                     };
-                    sk.add(line);
                 }
             }
             _ => {}
@@ -709,14 +862,35 @@ impl BimApp {
         true
     }
 
-    /// What a sketch tool or drag shows under the cursor at `q`: Rectangle's rectangle, Arc's arc, a selection box.
-    pub(crate) fn sketch_preview(&self, p: &Painter, view: &View, origin: Pos2, q: (f32, f32), cursor: P2) {
+    /// What a sketch tool or drag shows under the cursor at `q`: Rectangle's rectangle, Arc's arc, a selection box, and
+    /// Pick Walls' line on the face of the wall under it (`wall`).
+    pub(crate) fn sketch_preview(&self, p: &Painter, view: &View, origin: Pos2, q: (f32, f32), cursor: P2, wall: Option<Id>) {
         let stroke = Stroke::new(2.0, pal().accent);
         let at = |pt: P2| {
             let (x, y) = view.px(pt);
             origin + vec2(x, y)
         };
         match (&self.tool, self.sketch.as_ref().and_then(|sk| sk.drag)) {
+            (Tool::SketchPick, _) => {
+                let m = &self.session.model;
+                let Some(id) = wall else { return };
+                let Some(w) = m.wall(id) else { return };
+                let Some(offset) = (match self.pick_offset.trim() {
+                    "" => Some(0.0),
+                    text => m.units.parse(text),
+                }) else {
+                    return;
+                };
+                let picks = self.sketch.as_ref().map(|sk| &sk.picks);
+                let mut face = picked_face(m, id, w, cursor, picks.unwrap_or(&BTreeMap::new()), self.pick_core);
+                if face.is_core() && walls::core_faces(m, w).is_none() {
+                    face = face.with_core(false);
+                }
+                if let Some(line) = walls::face_line(m, id, face, offset) {
+                    p.add(Shape::line(line.points().into_iter().map(at).collect(), stroke));
+                    tag(p, at(line.middle()) + vec2(10.0, -10.0), Align2::LEFT_BOTTOM, face_said(face, offset, m.units));
+                }
+            }
             (Tool::SketchLine(_), _) => {
                 for c in self.shape_preview(cursor) {
                     p.add(Shape::line(c.points().into_iter().map(at).collect(), stroke));
@@ -843,18 +1017,51 @@ impl BimApp {
     pub(crate) fn walls_outline_panel(&mut self, ui: &mut Ui) {
         let Some(Of::Floor(level)) = self.sketch.as_ref().map(|sk| sk.of) else { return };
         panel(ui, msg!("Walls"), |ui| {
-            let tip = msg!("Walls' Outline: the outline the level's walls enclose, along their centre lines, as sketch lines to edit");
+            let tip = msg!("Walls' Outline: the outline the level's walls enclose, along their faces, as sketch lines to edit");
             if big_button(ui, Icon::Wall, msg!("Walls' Outline"), false, tip).clicked() {
                 self.walls_outline(level);
             }
         });
     }
 
-    /// The outline level `level`'s walls enclose, and its courtyards, added to the sketch as lines; or why there's none.
+    /// The picked lines put back on their walls' faces, after the Options Bar's face or offset changed; a wall that can no
+    /// longer place its line is said once, and the line stays as it was drawn.
+    pub(crate) fn refit_picks(&mut self) {
+        let m = std::sync::Arc::clone(&self.session.model);
+        let gone = self.sketch.as_mut().map(|sk| sk.refit_picks(&m)).unwrap_or_default();
+        if !gone.is_empty() {
+            self.status = Status { text: msg!("Wall of a boundary line is gone: the line stays as drawn.").into(), error: true };
+        }
+    }
+
+    /// A picked boundary line flipped to the other side of its wall, its offset kept.
+    pub(crate) fn flip_pick(&mut self, i: usize) {
+        let m = std::sync::Arc::clone(&self.session.model);
+        let flipped = self.sketch.as_mut().is_some_and(|sk| sk.flip_pick(&m, i));
+        if flipped {
+            self.status = Status::default();
+        } else {
+            self.status = Status { text: msg!("Wall of a boundary line is gone: the line stays as drawn.").into(), error: true };
+        }
+    }
+
+    /// The outline level `level`'s walls enclose, along the faces Pick Walls' options choose, and its courtyards, added
+    /// to the sketch as lines; or why there's none.
     pub(crate) fn walls_outline(&mut self, level: Id) {
-        let Some((outline, courtyards)) = bimcraft_core::floor_outline(&self.session.model, level) else {
-            self.status = Status { text: t("No walls on this level enclose an area: sketch the outline.").into(), error: true };
+        let face = if self.pick_core { Face::InteriorCore } else { Face::InteriorFinish };
+        let Some(offset) = (match self.pick_offset.trim() {
+            "" => Some(0.0),
+            text => self.session.model.units.parse(text),
+        }) else {
+            self.status = Status { text: tf("Offset: a number in {}", &[self.session.model.units.name()]), error: true };
             return;
+        };
+        let (outline, courtyards) = match bimcraft_core::floor_outline_faces(&self.session.model, level, face, offset) {
+            Ok(outline) => outline,
+            Err(why) => {
+                self.status = Status { text: why, error: true };
+                return;
+            }
         };
         let Some(sk) = &mut self.sketch else { return };
         for ring in std::iter::once(&outline).chain(&courtyards) {
@@ -891,36 +1098,93 @@ impl BimApp {
         });
     }
 
-    /// The Options Bar while sketching a region: the line style the lines drawn take (or invisible lines), which the lines
-    /// picked take at once.
+    /// The Options Bar while sketching: a region's line style, and for a floor or a roof sketch, the face Pick Walls
+    /// takes and its offset, which the lines picked from walls follow at once.
     pub(crate) fn sketch_options(&mut self, ui: &mut Ui) {
-        let m = &self.session.model;
-        let Some(sk) = self.sketch.as_mut().filter(|sk| sk.styled) else { return };
-        // The region's type is the Type Selector's, in the Properties palette: one place to set it.
-        let l = ui.label(t("Line Style:"));
-        let invisible = t("<Invisible lines>").to_string();
-        let shown = sk.region.1.clone().unwrap_or_else(|| invisible.clone());
-        let was = sk.region.1.clone();
-        let c = egui::ComboBox::from_id_salt("region-lines").selected_text(shown).width(160.0).show_ui(ui, |ui| {
-            ui.selectable_value(&mut sk.region.1, None, &invisible);
-            for (n, style) in &m.line_styles {
-                if crate::linestyles::style_row(ui, m, Some(style), sk.region.1.as_ref() == Some(n), n) {
-                    sk.region.1 = Some(n.clone());
+        let Some(of) = self.sketch.as_ref().map(|sk| sk.of) else { return };
+        if self.sketch.as_ref().is_some_and(|sk| sk.styled) {
+            let m = &self.session.model;
+            let Some(sk) = self.sketch.as_mut() else { return };
+            // The region's type is the Type Selector's, in the Properties palette: one place to set it.
+            let l = ui.label(t("Line Style:"));
+            let invisible = t("<Invisible lines>").to_string();
+            let shown = sk.region.1.clone().unwrap_or_else(|| invisible.clone());
+            let was = sk.region.1.clone();
+            let c = egui::ComboBox::from_id_salt("region-lines").selected_text(shown).width(160.0).show_ui(ui, |ui| {
+                ui.selectable_value(&mut sk.region.1, None, &invisible);
+                for (n, style) in &m.line_styles {
+                    if crate::linestyles::style_row(ui, m, Some(style), sk.region.1.as_ref() == Some(n), n) {
+                        sk.region.1 = Some(n.clone());
+                    }
+                }
+            });
+            c.response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::ComboBox, true, t("Line Style")));
+            c.response.labelled_by(l.id);
+            // A style picked restyles the lines picked.
+            if sk.region.1 != was {
+                let (style, picked) = (sk.region.1.clone(), sk.picked.clone());
+                for i in picked {
+                    if let Some(line) = sk.lines.get_mut(i) {
+                        line.invisible = style.is_none();
+                        line.style = style.clone();
+                    }
                 }
             }
-        });
-        c.response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::ComboBox, true, t("Line Style")));
-        c.response.labelled_by(l.id);
-        // A style picked restyles the lines picked.
-        if sk.region.1 != was {
-            let (style, picked) = (sk.region.1.clone(), sk.picked.clone());
+            return;
+        }
+        let floor = match of {
+            Of::Floor(_) => true,
+            Of::Roof(_) => true,
+            Of::Edit(id) => matches!(self.session.model.elements.get(id), Some(Element::Floor(_))),
+            _ => false,
+        };
+        if !floor {
+            return;
+        }
+        // The lines picked that Pick Walls placed: the options apply to them at once.
+        let picked: Vec<usize> =
+            self.sketch.as_ref().map(|sk| sk.picked.iter().filter(|i| sk.picks.contains_key(i)).copied().collect()).unwrap_or_default();
+        let enabled = matches!(self.tool, Tool::SketchPick) || !picked.is_empty();
+        let units = self.session.model.units.name().to_string();
+        let (mut core, mut offset) = (self.pick_core, self.pick_offset.clone());
+        let (checkbox, field) = ui
+            .add_enabled_ui(enabled, |ui| {
+                let checkbox = ui.checkbox(&mut core, t("Extend into wall (to core)"));
+                let l = ui.label(t("Offset:"));
+                let field = ui.add(TextEdit::singleline(&mut offset).desired_width(70.0).hint_text(&units)).labelled_by(l.id);
+                (checkbox, field)
+            })
+            .inner;
+        self.pick_core = core;
+        let core_changed = checkbox.changed();
+        let offset_changed = field.changed();
+        if offset_changed {
+            self.pick_offset = offset;
+        }
+        if !(core_changed || offset_changed) {
+            return;
+        }
+        let Some(offset) = (match self.pick_offset.trim() {
+            "" => Some(0.0),
+            text => self.session.model.units.parse(text),
+        }) else {
+            self.status = Status { text: tf("Offset: a number in {}", &[self.session.model.units.name()]), error: true };
+            return;
+        };
+        if let Some(sk) = &mut self.sketch {
             for i in picked {
-                if let Some(line) = sk.lines.get_mut(i) {
-                    line.invisible = style.is_none();
-                    line.style = style.clone();
+                if let Some(p) = sk.picks.get_mut(&i) {
+                    if core_changed {
+                        p.face = p.face.with_core(core);
+                    }
+                    if offset_changed {
+                        p.offset = offset;
+                    }
                 }
             }
         }
+        self.status = Status::default();
+        self.refit_picks();
     }
 
     /// Annotate's Region panel: Filled Region, Masking Region, sketched in the plan on screen.
@@ -963,7 +1227,10 @@ impl BimApp {
             Tool::SketchLine(_) if self.shape() != draw::Shape::Line => return self.shape_prompt(),
             Tool::SketchLine(chain) if chain.is_empty() => "Click where the line starts.",
             Tool::SketchLine(_) => msg!("Click the line's end; the next starts there. The first point again closes the loop; Esc stops."),
-            Tool::SketchPick => msg!("Click a wall: a boundary line along it."),
+            Tool::SketchPick if self.pick_core => {
+                msg!("Pick Walls: a boundary line on the wall's core face under the pointer.")
+            }
+            Tool::SketchPick => msg!("Pick Walls: a boundary line on the wall's finish face under the pointer."),
             Tool::Modify if self.sketch_surface().is_some() => {
                 msg!(
                     "Pick sketch lines (a box picks several); drag a picked line's end over its plane to move it; Shift and the middle button orbit; Delete removes them. Finish Edit Mode when every loop is closed."
@@ -1012,6 +1279,8 @@ impl BimApp {
             return;
         }
         let mut pick = None;
+        let can_flip = sk.picks.contains_key(&i);
+        let mut flip = false;
         egui::Area::new(egui::Id::new("edge-palette")).order(egui::Order::Middle).fixed_pos(at).show(ctx, |ui| {
             egui::Frame::popup(ui.style()).fill(crate::style::pal().surface).show(ui, |ui| {
                 ui.horizontal(|ui| {
@@ -1025,9 +1294,15 @@ impl BimApp {
                             pick = Some(tool);
                         }
                     }
+                    if can_flip && crate::icon_button(ui, crate::icons::Icon::Flip, bimcraft_i18n::msg!("Flip")).clicked() {
+                        flip = true;
+                    }
                 });
             });
         });
+        if flip {
+            self.flip_pick(i);
+        }
         if let Some(tool) = pick {
             self.set_tool(tool);
         }
