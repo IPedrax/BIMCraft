@@ -8,6 +8,7 @@
 //! so the `unsafe` stays in those crates). Without a meter (the tests, a program using the core as a library) a read keeps the
 //! fixed limits it had.
 
+use std::cell::Cell;
 use std::fmt;
 use std::sync::OnceLock;
 
@@ -42,12 +43,14 @@ pub struct Budget {
     meter: Option<(fn() -> usize, usize)>,
     /// What the read had to work in, for the message.
     room: u64,
+    /// Whether it ran out: what the read had made is freed by the time its caller asks why it stopped.
+    stopped: Cell<bool>,
 }
 
 impl Budget {
     /// No limit, for a read the caller has limited some other way.
     pub fn none() -> Budget {
-        Budget { meter: None, room: 0 }
+        Budget { meter: None, room: 0, stopped: Cell::new(false) }
     }
 
     /// For reading `size` bytes that take about `factor` times that in memory, measured by the meter the app installed: none
@@ -70,18 +73,19 @@ impl Budget {
             ));
         }
         let stop = (meter.used)().saturating_add(usize::try_from(room).unwrap_or(usize::MAX));
-        Ok(Some(Budget { meter: Some((meter.used, stop)), room }))
+        Ok(Some(Budget { meter: Some((meter.used, stop)), room, stopped: Cell::new(false) }))
     }
 
-    /// An error once the process has allocated past what the read may take.
+    /// An error once the process has allocated past what the read may take, and every time after.
     pub fn check(&self) -> Result<(), String> {
-        match self.meter {
-            Some((used, stop)) if used() > stop => Err(format!(
+        self.stopped.set(self.stopped.get() || self.meter.is_some_and(|(used, stop)| used() > stop));
+        match self.stopped.get() {
+            true => Err(format!(
                 "reading it took more than the {} of memory this machine had free, so it was stopped: close other programs and try \
                  again, or use a machine with more memory",
                 bytes(self.room)
             )),
-            _ => Ok(()),
+            false => Ok(()),
         }
     }
 
@@ -236,5 +240,14 @@ mod tests {
         let e = json(&text, &budget(8_000_000)).unwrap_err();
         assert!(e.starts_with("reading it took more than the 8 MB of memory this machine had free, so it was stopped"), "{e}");
         assert!(Budget::none().check().is_ok() && Budget::none().left().is_none());
+    }
+
+    #[test]
+    fn a_read_that_was_stopped_still_says_so_once_what_it_made_is_freed() {
+        let budget = budget(8_000_000);
+        while budget.check().is_ok() {}
+        // Its values are dropped as the error comes back, and the caller asks why: the process is under the budget again.
+        fake(Some(0));
+        assert!(budget.check().is_err());
     }
 }
