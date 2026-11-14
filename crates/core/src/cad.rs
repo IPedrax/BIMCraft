@@ -258,6 +258,29 @@ pub fn nearest<'c>(cad: &'c Cad, ci: &crate::model::CadImport, at: P2, reach: f6
         .map(|(e, d)| (e, d * ci.scale))
 }
 
+/// How many of a drawing's entities have an elevation, and their range, mm (drawing units times `scale`), all together and
+/// by layer: what tells an agent a drawing is a contour map. With none, only `{"count": 0}`.
+pub fn elevations(cad: &Cad, scale: f64) -> serde_json::Value {
+    use std::collections::BTreeMap;
+    let mm = |z: f64| crate::commands::hundredth(z * scale);
+    let mut all: Option<(usize, f64, f64)> = None;
+    let mut layers: BTreeMap<&str, (usize, f64, f64)> = BTreeMap::new();
+    let add = |(n, a, b): (usize, f64, f64), (lo, hi): (f64, f64)| (n + 1, a.min(lo), b.max(hi));
+    for e in &cad.dxf().entities {
+        let Some(range) = e.z.as_ref().and_then(dxf::Z::range) else { continue };
+        let first = (0, range.0, range.1);
+        all = Some(add(all.unwrap_or(first), range));
+        let layer = layers.entry(&e.layer).or_insert(first);
+        *layer = add(*layer, range);
+    }
+    let Some((count, lo, hi)) = all else { return serde_json::json!({"count": 0}) };
+    let by_layer: serde_json::Map<String, serde_json::Value> = layers
+        .into_iter()
+        .map(|(name, (n, a, b))| (name.to_string(), serde_json::json!({"count": n, "min": mm(a), "max": mm(b)})))
+        .collect();
+    serde_json::json!({"count": count, "min": mm(lo), "max": mm(hi), "layers": by_layer})
+}
+
 /// The box round a drawing's bulk, and how many of its entities lie far from it: past [`FAR`] times the span of the middle
 /// of its entities (the 2nd to the 98th of each hundred, along each axis) beyond it.
 fn bulk(d: &Dxf) -> (Option<[P2; 2]>, usize) {

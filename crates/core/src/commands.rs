@@ -331,7 +331,10 @@ other_files(
          `angle` turns it about `at`, degrees. `layers`: visible (the default: those its file has on and thawed), all, or a list \
          of those to show. `colors`: preserve (the default), invert or black. `link: true` remembers the file, so `reload_cad` \
          and opening the project read it again. Returns its id, the drawing's name, its unit, entities and layers, its extents \
-         in the model, how many entities lie far from the rest (they're left out of its extents) and what was left out, with `notes` on what a DWG's read left out",
+         in the model, how many entities lie far from the rest (they're left out of its extents) and what was left out, with `notes` on what a DWG's read left out, \
+         and `elevations`: how many of its lines, polylines and points have an elevation (z) and their range, mm, by layer \
+         (`{\"count\": 0}` when none has). Most programs write a flat drawing's lines at 0, so a range that isn't all 0 is \
+         what tells a contour map",
         import_cad,
         Files::Read,
     ),
@@ -357,7 +360,8 @@ other_files(
         "cad_query",
         "Query",
         "{id, at: [x, y], reach?} what of a CAD import lies nearest `at`, within `reach` mm (100 unless given): its kind, layer, \
-         colour, linetype and weight, as Revit's Query",
+         colour, linetype and weight, as Revit's Query, and its `z`, mm, when it has an elevation: one number, or one for \
+         each of its points (a 3D polyline)",
         cad_query,
     ),
     edit(
@@ -3157,7 +3161,7 @@ fn area(rings: &[Vec<P2>]) -> f64 {
     rings.iter().map(|r| geom::area(r).abs()).sum()
 }
 
-fn hundredth(x: f64) -> f64 {
+pub(crate) fn hundredth(x: f64) -> f64 {
     (x * 100.0).round() / 100.0
 }
 
@@ -8508,6 +8512,7 @@ fn import_cad(s: &mut Session, p: &Value) -> R {
         None => format!("{} (read as mm unless `units` says)", dxf.unit),
     };
     let (entities, layers, far, left_out) = (dxf.entities.len(), dxf.layers.len(), cad.far(), dxf.left_out.clone());
+    let elevations = crate::cad::elevations(&cad, scale);
     let source = cad.source().to_string();
     let m = s.model_mut();
     if new {
@@ -8520,7 +8525,7 @@ fn import_cad(s: &mut Session, p: &Value) -> R {
     let extents = m.cad_box(id);
     let mut reply = json!({
         "id": id, "cad": name, "source": source, "unit": unit, "scale": scale, "entities": entities, "layers": layers,
-        "extents": extents, "far": far, "left_out": left_out,
+        "extents": extents, "far": far, "left_out": left_out, "elevations": elevations,
     });
     if !notes.is_empty() {
         reply["notes"] = json!(notes);
@@ -8654,10 +8659,16 @@ fn cad_query(s: &mut Session, p: &Value) -> R {
     let Some((e, d)) = crate::cad::nearest(cad, ci, at, reach) else { return Ok(json!({"id": id, "found": false})) };
     let color = cad.color(e, Colors::Preserve).map(|c| json!([c.0, c.1, c.2]));
     let linetype = e.linetype.clone().or_else(|| cad.dxf().layer(&e.layer).map(|l| l.linetype.clone()));
-    Ok(json!({
+    let mut reply = json!({
         "id": id, "found": true, "kind": crate::cad::kind(&e.shape), "layer": e.layer, "color": color,
         "linetype": linetype, "weight": e.weight, "distance": hundredth(d),
-    }))
+    });
+    match &e.z {
+        Some(crate::dxf::Z::Flat(z)) => reply["z"] = json!(hundredth(z * ci.scale)),
+        Some(crate::dxf::Z::Each(each)) => reply["z"] = json!(each.iter().map(|z| hundredth(z * ci.scale)).collect::<Vec<_>>()),
+        None => {}
+    }
+    Ok(reply)
 }
 
 fn grid(s: &mut Session, p: &Value) -> R {

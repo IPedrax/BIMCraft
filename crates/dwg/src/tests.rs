@@ -206,3 +206,72 @@ fn what_isnt_a_drawing_or_is_too_large_isnt_written() {
     let roomy = Limits { dwg_bytes: 64, dxf_bytes: 64 << 20 };
     assert!(to_dwg(&plan_dxf(), roomy).unwrap_err().contains("more than"));
 }
+
+/// Contours as a survey draws them (an AutoCAD 2004 file, metres): two LWPOLYLINEs at their elevations and a 3D polyline.
+fn contours_dxf() -> String {
+    let header = pairs(&[(9, "$ACADVER"), (1, "AC1018"), (9, "$INSUNITS"), (70, "6")]);
+    let lw = |z: &str, y: &str| {
+        pairs(&[
+            (0, "LWPOLYLINE"),
+            (100, "AcDbEntity"),
+            (8, "CONTOURS"),
+            (100, "AcDbPolyline"),
+            (90, "2"),
+            (70, "0"),
+            (38, z),
+            (10, "0"),
+            (20, y),
+            (10, "10"),
+            (20, y),
+        ])
+    };
+    let vertex = |x: &str, z: &str| {
+        pairs(&[
+            (0, "VERTEX"),
+            (100, "AcDbEntity"),
+            (8, "CONTOURS"),
+            (100, "AcDbVertex"),
+            (100, "AcDb3dPolylineVertex"),
+            (10, x),
+            (20, "2"),
+            (30, z),
+            (70, "32"),
+        ])
+    };
+    let table = pairs(&[(0, "TABLE"), (2, "LAYER"), (70, "1")])
+        + &pairs(&[
+            (0, "LAYER"),
+            (100, "AcDbSymbolTableRecord"),
+            (100, "AcDbLayerTableRecord"),
+            (2, "CONTOURS"),
+            (70, "0"),
+            (62, "3"),
+            (6, "Continuous"),
+        ])
+        + &pairs(&[(0, "ENDTAB")]);
+    let mut entities = lw("2881", "0") + &lw("2882", "1");
+    entities += &pairs(&[
+        (0, "POLYLINE"),
+        (100, "AcDbEntity"),
+        (8, "CONTOURS"),
+        (100, "AcDb3dPolyline"),
+        (66, "1"),
+        (10, "0"),
+        (20, "0"),
+        (30, "0"),
+        (70, "8"),
+    ]);
+    entities += &(vertex("0", "2883") + &vertex("10", "2883.5"));
+    entities += &pairs(&[(0, "SEQEND"), (100, "AcDbEntity"), (8, "CONTOURS")]);
+    let section = |name: &str, body: &str| format!("{}{body}{}", pairs(&[(0, "SECTION"), (2, name)]), pairs(&[(0, "ENDSEC")]));
+    section("HEADER", &header) + &section("TABLES", &table) + &section("ENTITIES", &entities) + &pairs(&[(0, "EOF")])
+}
+
+#[test]
+fn a_dwgs_contours_keep_their_elevations() {
+    let dwg = dwg_from_dxf(&contours_dxf()).unwrap();
+    let read = to_dxf(&dwg, Limits::DEFAULT).unwrap();
+    let d = dxf::read(&read.dxf).unwrap();
+    let z: Vec<_> = d.entities.iter().filter(|e| e.layer == "CONTOURS").map(|e| e.z.clone()).collect();
+    assert_eq!(z, [Some(dxf::Z::Flat(2881.0)), Some(dxf::Z::Flat(2882.0)), Some(dxf::Z::Each(vec![2883.0, 2883.5]))], "{:?}", d.entities);
+}

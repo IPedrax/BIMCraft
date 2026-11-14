@@ -610,3 +610,110 @@ fn a_plan_fits_to_its_imports_as_to_the_rest_it_shows() {
     assert!(!render::plan_shows(&t.model, other_t).is_empty());
     assert!(!render::plan_shows(&s.model, other).is_empty());
 }
+
+/// An LWPOLYLINE on `layer` through `pts` (drawing units), at elevation `z` when given.
+fn lwpolyline(layer: &str, z: Option<&str>, pts: &[(f64, f64)]) -> String {
+    let n = pts.len().to_string();
+    let mut list = vec![(0, "LWPOLYLINE".to_string()), (8, layer.to_string()), (90, n), (70, "0".to_string())];
+    if let Some(z) = z {
+        list.push((38, z.to_string()));
+    }
+    for (x, y) in pts {
+        list.push((10, x.to_string()));
+        list.push((20, y.to_string()));
+    }
+    list.iter().map(|(c, v)| format!("{c}\n{v}\n")).collect()
+}
+
+/// A survey in metres: three contours on TOPO (2881, 2882 and 2885 m), a 3D polyline on TOPO3D, and a note on TEXT.
+fn survey(with_z: bool) -> String {
+    let z = |v: &'static str| with_z.then_some(v);
+    let mut ents = lwpolyline("TOPO", z("2881"), &[(0.0, 0.0), (10.0, 0.0)])
+        + &lwpolyline("TOPO", z("2882"), &[(0.0, 1.0), (10.0, 1.0)])
+        + &lwpolyline("TOPO", z("2885"), &[(0.0, 4.0), (10.0, 4.0)]);
+    if with_z {
+        ents += &pairs(&[
+            (0, "POLYLINE"),
+            (8, "TOPO3D"),
+            (66, "1"),
+            (70, "8"),
+            (0, "VERTEX"),
+            (8, "TOPO3D"),
+            (10, "0"),
+            (20, "6"),
+            (30, "2883"),
+            (0, "VERTEX"),
+            (8, "TOPO3D"),
+            (10, "10"),
+            (20, "6"),
+            (30, "2883.5"),
+            (0, "SEQEND"),
+        ]);
+    }
+    ents += &pairs(&[(0, "TEXT"), (8, "TEXT"), (10, "1"), (20, "8"), (40, "0.25"), (1, "Survey")]);
+    dxf("6", &[("TOPO", "3", false), ("TOPO3D", "3", false), ("TEXT", "7", false)], &ents)
+}
+
+#[test]
+fn an_import_reports_its_contours_elevations() {
+    let mut s = Session::new();
+    let r = run(&mut s, "import_cad", json!({"path": file("elevations", "survey.dxf", &survey(true))}));
+    assert_eq!(
+        r["elevations"],
+        json!({"count": 4, "min": 2881000.0, "max": 2885000.0, "layers": {
+            "TOPO": {"count": 3, "min": 2881000.0, "max": 2885000.0},
+            "TOPO3D": {"count": 1, "min": 2883000.0, "max": 2883500.0},
+        }}),
+        "{r}"
+    );
+}
+
+#[test]
+fn a_flat_drawing_reports_no_elevations_or_a_flat_zero() {
+    let mut s = Session::new();
+    let r = run(&mut s, "import_cad", json!({"path": file("flat", "plan.dxf", &plan())}));
+    assert_eq!(r["elevations"], json!({"count": 0}), "{r}");
+    // Lines a program wrote with their z at 0, as most do.
+    let zero = |a: (&str, &str), b: (&str, &str)| {
+        pairs(&[(0, "LINE"), (8, "WALLS"), (10, a.0), (20, a.1), (30, "0"), (11, b.0), (21, b.1), (31, "0")])
+    };
+    let walls =
+        zero(("0", "0"), ("10", "0")) + &zero(("10", "0"), ("10", "6")) + &zero(("10", "6"), ("0", "6")) + &zero(("0", "6"), ("0", "0"));
+    let mut t = Session::new();
+    let path = file("flat", "zero.dxf", &dxf("6", &[("WALLS", "1", false)], &walls));
+    let r = run(&mut t, "import_cad", json!({"path": path}));
+    assert_eq!(
+        r["elevations"],
+        json!({"count": 4, "min": 0.0, "max": 0.0, "layers": {"WALLS": {"count": 4, "min": 0.0, "max": 0.0}}}),
+        "{r}"
+    );
+}
+
+#[test]
+fn query_says_the_elevation_of_what_it_found() {
+    let mut s = Session::new();
+    let path = file("query-z", "survey.dxf", &survey(true));
+    let id = run(&mut s, "import_cad", json!({"path": path, "position": "origin"}))["id"].as_u64().unwrap();
+    let r = run(&mut s, "cad_query", json!({"id": id, "at": [5000, 1000]}));
+    assert_eq!((r["layer"].as_str(), &r["z"]), (Some("TOPO"), &json!(2882000.0)), "{r}");
+    let r = run(&mut s, "cad_query", json!({"id": id, "at": [5000, 6000]}));
+    assert_eq!((r["layer"].as_str(), &r["z"]), (Some("TOPO3D"), &json!([2883000.0, 2883500.0])), "{r}");
+    let r = run(&mut s, "cad_query", json!({"id": id, "at": [1000, 8000]}));
+    assert_eq!(r["kind"], "text", "{r}");
+    assert!(r.get("z").is_none(), "{r}");
+}
+
+#[test]
+fn elevations_dont_change_how_a_drawing_draws() {
+    // The 3D polyline is only in the file with elevations; leave it out of the comparison by hiding its layer.
+    let draw = |with_z: bool| {
+        let name = if with_z { "with-hidden" } else { "without-hidden" };
+        let mut s = Session::new();
+        let path = file("draws", &format!("{name}.dxf"), &survey(with_z));
+        run(&mut s, "import_cad", json!({"path": path, "position": "origin", "layers": ["TOPO", "TEXT"]}));
+        let out = dir("draws").join(format!("{name}.png"));
+        run(&mut s, "save", json!({"path": out.to_string_lossy()}));
+        std::fs::read(out).unwrap()
+    };
+    assert!(draw(true) == draw(false), "a drawing's elevations changed its plan");
+}
