@@ -2895,23 +2895,32 @@ impl BimApp {
         self.floor_structural = matches!(picked.map(|(_, e)| e), Some(Element::Floor(f)) if f.structural);
     }
 
-    /// Select All Instances (SA): every element the open view shows of a type selected, a
-    /// component's type being its family's.
+    /// SA retains the visible-in-view scope; the menus also offer the entire project.
     fn select_all_instances(&mut self) {
-        let m = Arc::clone(&self.session.model);
-        // One look at every element the view shows: a component's room is found among its level's rooms once.
-        let rooms = bimcraft_core::rooms::Rooms::new(&m);
-        let type_of = |id: &Id| {
-            let e = bimcraft_core::element_json_with(&m, *id, &rooms);
-            e["type"].is_string().then(|| [e["category"].clone(), e["family"].clone(), e["type"].clone()])
-        };
-        let types: Vec<[Value; 3]> = self.selection.iter().filter_map(type_of).collect();
-        if types.is_empty() {
+        if !self
+            .selection
+            .iter()
+            .filter_map(|id| self.session.model.elements.get(*id))
+            .any(|e| bimcraft_core::selection::instance_type(e).is_some())
+        {
             self.status = Status { text: t("select an element that has a type first").into(), error: true };
             return;
         }
-        let found = self.shown().into_iter().filter(|id| type_of(id).is_some_and(|k| types.contains(&k))).collect();
-        self.pick_up(found, Modifiers::NONE);
+        self.select_instances(json!({"ids": self.selection}), context::InstanceScope::View);
+    }
+
+    /// Both menus query the same core matching logic. View candidates come from the
+    /// active view, including temporary visibility; the project scope omits that limit.
+    fn select_instances(&mut self, mut params: Value, scope: context::InstanceScope) {
+        if scope == context::InstanceScope::View {
+            // The linked view model may draw linked ids; project selection contains only local instances.
+            params["within"] =
+                json!(self.shown().into_iter().filter(|id| self.session.model.elements.contains_key(id)).collect::<Vec<_>>());
+        }
+        if let Some(reply) = self.run("select_instances", params) {
+            let found = reply["ids"].as_array().map(|ids| ids.iter().filter_map(Value::as_u64).collect()).unwrap_or_default();
+            self.pick_up(found, Modifiers::NONE);
+        }
     }
 
     /// Match Properties (MA): with one element selected, its type is the one the next element drawn
@@ -2949,7 +2958,7 @@ impl BimApp {
     /// section or an elevation cuts and what its picture shows past its line; in 3D, the whole
     /// model but for what is hidden. Nothing on a sheet or in a schedule has a type to select.
     fn shown(&mut self) -> BTreeSet<Id> {
-        let m = Arc::clone(&self.session.model);
+        let m = self.view_model();
         let owners = |d: render::Drawing| d.owners.into_iter().flatten().collect::<BTreeSet<Id>>();
         // Fitted at any size: what a view shows doesn't depend on it.
         let (w, h) = (1600, 1000);
@@ -2963,9 +2972,11 @@ impl BimApp {
                 let seen = render::section_picture(&m, id, view, &[]).map(|i| i.shows()).unwrap_or_default();
                 owners(render::section(&m, id, view)).into_iter().chain(seen).collect()
             }
-            // The whole model, but for what the default 3D view hides.
+            // What the active 3D view hides, including temporary hide/isolate.
             Sheet::View3D => {
-                let look = bimcraft_core::graphics::Look::of_3d(&m);
+                let look = self
+                    .active_3d()
+                    .map_or_else(|| bimcraft_core::graphics::Look::of_3d(&m), |id| bimcraft_core::graphics::Look::of(&m, id));
                 m.elements.keys().copied().filter(|id| look.shows(*id)).collect()
             }
             Sheet::Paper(_) | Sheet::Schedule(_) | Sheet::Table(_) | Sheet::Family(..) => BTreeSet::new(),

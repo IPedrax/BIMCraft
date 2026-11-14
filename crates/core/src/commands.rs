@@ -2889,6 +2889,15 @@ other_files(
     )
     .menu("Manage > IDs of Selection"),
     other(
+        "select_instances",
+        "Select All Instances",
+        "{ids?: [id or GUID, ...], category?, family?, type?, within?: [id or GUID, ...]} \
+         instances of the selected elements' types, or of a browser type (`category` and `type`, or `family` and `type`). \
+         Returns `ids` in model order. With `within`, only those candidates are considered (empty means none); \
+         omit it for the entire project. This query changes neither the model nor undo history",
+        select_instances,
+    ),
+    other(
         "filter_selection",
         "Filter",
         "{ids: [id or GUID, …], by?, keep?: [value, …]} Revit's Filter on a selection: `groups` [{value, count, ids}, …], \
@@ -3027,10 +3036,15 @@ fn element_id(c: &str, m: &Model, v: &Value) -> Result<Id, String> {
 
 /// `ids` [id, …], or one `id`: elements of the model, by id or GUID, each once, in the order given.
 fn ids_param(c: &str, m: &Model, p: &Value) -> Result<Vec<Id>, String> {
+    ids_param_with_limit(c, m, p, MAX_POINTS)
+}
+
+/// Queries may name an entire large project's selection rather than a drawing's points.
+fn ids_param_with_limit(c: &str, m: &Model, p: &Value, limit: usize) -> Result<Vec<Id>, String> {
     let as_id = |v: &Value| element_id(c, m, v);
     let ids: Vec<Id> = match (p.get("ids"), p.get("id")) {
-        (Some(Value::Array(a)), _) if a.len() <= MAX_POINTS => a.iter().map(as_id).collect::<Result<_, _>>()?,
-        (Some(Value::Array(_)), _) => return Err(bad(c, format!("`ids` lists more than {MAX_POINTS} elements"))),
+        (Some(Value::Array(a)), _) if a.len() <= limit => a.iter().map(as_id).collect::<Result<_, _>>()?,
+        (Some(Value::Array(_)), _) => return Err(bad(c, format!("`ids` lists more than {limit} elements"))),
         (v, Some(one)) if absent(v) => vec![as_id(one)?],
         _ => return Err(bad(c, "`ids` [id, …] is required")),
     };
@@ -3967,6 +3981,35 @@ fn select_by_id(s: &mut Session, p: &Value) -> R {
         "plan": shown.map(|(level, _)| level),
         "extent": shown.map(|(_, [lo, hi])| [micron(lo), micron(hi)]),
     }))
+}
+
+fn select_instances(s: &mut Session, p: &Value) -> R {
+    let c = "select_instances";
+    let m = &s.model;
+    let limit = m.elements.len().max(MAX_POINTS);
+    let explicit = ["category", "family", "type"].iter().any(|key| !absent(p.get(key)));
+    let types = if explicit {
+        if !absent(p.get("ids")) || !absent(p.get("id")) {
+            return Err(bad(c, "give selected ids or a library type, not both"));
+        }
+        let entry = entry_of(c, m, p)?;
+        if !matches!(entry.0, LibKind::Type(_) | LibKind::FamilyType) {
+            return Err(bad(c, "give a type as well as its family"));
+        }
+        BTreeSet::from([entry])
+    } else {
+        let ids = ids_param_with_limit(c, m, p, limit)?;
+        let types: BTreeSet<_> = ids.iter().filter_map(|id| m.elements.get(*id)).filter_map(crate::selection::instance_type).collect();
+        if types.is_empty() {
+            return Err(bad(c, "select an element that has a type first"));
+        }
+        types
+    };
+    let within = match p.get("within") {
+        None | Some(Value::Null) => None,
+        Some(v) => Some(ids_param_with_limit(c, m, &json!({"ids": v}), limit)?),
+    };
+    Ok(json!({"ids": crate::selection::instances(m, &types, within.as_deref())}))
 }
 
 fn filter_selection(s: &mut Session, p: &Value) -> R {

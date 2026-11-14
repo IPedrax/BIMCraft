@@ -2716,6 +2716,11 @@ fn hostile_params_never_panic_or_break_the_model() {
     let (detailing, mut targeted) = crate::detail_tests::sweep_payloads(&mut base);
     // A shared parameters file's actions, on files of the sweep's own (`shared_parameter_tests::sweep_payloads`).
     targeted.extend(crate::shared_parameter_tests::sweep_payloads());
+    targeted.extend([
+        ("select_instances", json!({"category":"wall", "type":"Generic - 200mm", "within":[100000]})),
+        ("select_instances", json!({"ids":[100000], "within":"invalid"})),
+        ("select_instances", json!({"family":[], "type":true})),
+    ]);
     // A section and an elevation of it, after those, so that no id the payloads name moves: their views are drawn too.
     let section = base.execute("section", &json!({"start": [-1000, 3000], "end": [9000, 3000]})).map_or(Value::Null, |r| r["id"].clone());
     let elevation = base.execute("elevation", &json!({"facing": "south"})).map_or(Value::Null, |r| r["id"].clone());
