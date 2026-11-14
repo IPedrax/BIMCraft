@@ -3257,8 +3257,13 @@ fn save(s: &mut Session, p: &Value) -> R {
             return Ok(with_notes(reply, &notes));
         }
         let level = level_param(c, &s.model, p, "view")?;
-        let notes = write_drawing(&render::plan_for_cad(&seen, level, 1600, 1000), &seen, &path, s.dwg_writer.as_ref(), version, 0, true)
-            .map_err(|e| bad(c, e))?;
+        // A CAD file is written from a drawing fitted for it; a picture, from the plan as it shows.
+        let drawing = if matches!(format.as_str(), "dxf" | "dwg") {
+            render::plan_for_cad(&seen, level, 1600, 1000)
+        } else {
+            render::plan(&seen, level, 1600, 1000)
+        };
+        let notes = write_drawing(&drawing, &seen, &path, s.dwg_writer.as_ref(), version, 0, true).map_err(|e| bad(c, e))?;
         return Ok(with_notes(json!({"path": path, "format": format}), &notes));
     }
     let text = s.model.to_json().map_err(|e| bad(c, e))?;
