@@ -133,6 +133,7 @@ pub mod lines;
 pub mod link;
 pub mod loads;
 pub mod massing;
+pub mod memory;
 pub mod mesh_in;
 #[cfg(test)]
 mod mesh_in_tests;

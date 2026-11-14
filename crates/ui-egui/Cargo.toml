@@ -4,8 +4,7 @@ description = "BIMCraft's desktop front end in egui: a thin shell over the core'
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-# egui 0.36 needs Rust 1.95; the core and the CLI still build with 1.90.
-rust-version = "1.95"
+rust-version.workspace = true
 
 [lints]
 workspace = true

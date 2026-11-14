@@ -44,7 +44,25 @@ fn control_port(mut args: Vec<String>) -> Result<(Vec<String>, Option<u16>), Str
     Ok((args, Some(port)))
 }
 
+/// Counts what this program allocates, so a file being read is held to the memory the machine has free (the core's `memory.rs`).
+#[global_allocator]
+static ALLOC: cap::Cap<std::alloc::System> = cap::Cap::new(std::alloc::System, usize::MAX);
+
+/// What the core measures a file being read by: what this program has allocated, and what the machine has free (less, where a
+/// container holds it to less).
+fn meter() -> bimcraft_core::memory::Meter {
+    bimcraft_core::memory::Meter { used: || ALLOC.allocated(), free: free_memory }
+}
+
+fn free_memory() -> Option<u64> {
+    let mut s = sysinfo::System::new().ok()?;
+    s.refresh_memory();
+    let free = s.cgroup_limits().map_or(s.available_memory(), |c| c.free_memory.min(s.available_memory()));
+    (free > 0).then_some(free)
+}
+
 fn main() -> ExitCode {
+    bimcraft_core::memory::install(meter());
     // An update runs the installer from a copy of this program, once the app has exited: nothing else here applies to it.
     if let Some(finish) = bimcraft_update::install::parse(std::env::args_os().skip(1)) {
         return bimcraft_update::install::run(&finish);

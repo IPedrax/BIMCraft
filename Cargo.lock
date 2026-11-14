@@ -485,10 +485,12 @@ dependencies = [
  "bimcraft-rvt",
  "bimcraft-ui-egui",
  "bimcraft-update",
+ "cap",
  "eframe",
  "fmv-macos-events",
  "rfd",
  "serde_json",
+ "sysinfo",
 ]
 
 [[package]]
@@ -510,7 +512,9 @@ dependencies = [
  "bimcraft-dwg",
  "bimcraft-plugin",
  "bimcraft-rvt",
+ "cap",
  "serde_json",
+ "sysinfo",
 ]
 
 [[package]]
@@ -518,6 +522,7 @@ name = "bimcraft-core"
 version = "0.11.0"
 dependencies = [
  "bimcraft-i18n",
+ "cap",
  "crs-definitions",
  "encoding_rs",
  "flate2",
@@ -791,6 +796,12 @@ dependencies = [
  "wayland-backend",
  "wayland-client",
 ]
+
+[[package]]
+name = "cap"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6f125eb85b84a24c36b02ed1d22c9dd8632f53b3cde6e4d23512f94021030003"
 
 [[package]]
 name = "cc"
@@ -2523,6 +2534,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ntapi"
+version = "0.4.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c3b335231dfd352ffb0f8017f3b6027a4917f7df785ea2143d8af2adc66980ae"
+dependencies = [
+ "winapi",
+]
+
+[[package]]
 name = "num-traits"
 version = "0.2.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2721,6 +2741,16 @@ dependencies = [
  "bitflags 2.13.2",
  "block2 0.6.2",
  "objc2 0.6.5",
+ "objc2-core-foundation",
+]
+
+[[package]]
+name = "objc2-io-kit"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "33fafba39597d6dc1fb709123dfa8289d39406734be322956a69f0931c73bb15"
+dependencies = [
+ "libc",
  "objc2-core-foundation",
 ]
 
@@ -3872,6 +3902,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "sysinfo"
+version = "0.40.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a86bac2f7d06e6384984118ad727f5694110f0ec44d924d05c8fdec3d030bee6"
+dependencies = [
+ "libc",
+ "memchr",
+ "ntapi",
+ "objc2-core-foundation",
+ "objc2-io-kit",
+ "windows",
+]
+
+[[package]]
 name = "tempfile"
 version = "3.27.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4775,6 +4819,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "winapi"
+version = "0.3.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5c839a674fcd7a98952e593242ea400abe93992746761e38641405d28b00f419"
+dependencies = [
+ "winapi-i686-pc-windows-gnu",
+ "winapi-x86_64-pc-windows-gnu",
+]
+
+[[package]]
+name = "winapi-i686-pc-windows-gnu"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ac3b87c63620426dd9b991e5ce0329eff545bccbbb34f3be09ff6fb6ab51b7b6"
+
+[[package]]
 name = "winapi-util"
 version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4782,6 +4842,12 @@ checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
  "windows-sys 0.61.2",
 ]
+
+[[package]]
+name = "winapi-x86_64-pc-windows-gnu"
+version = "0.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
 
 [[package]]
 name = "windows"

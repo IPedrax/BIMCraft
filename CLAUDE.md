@@ -8,7 +8,8 @@ and MCP server, and milestone 2, the egui desktop app, are done. What works and 
 
 - **Never crash.** No `unwrap`, `expect`, `panic!`, `todo!`, `unimplemented!` or `unreachable!` outside tests (the workspace
   lints deny them), and no `unsafe`. Parameters, files and MCP input are hostile: check that numbers are finite and in range,
-  and cap sizes (`MAX_POINTS`, `MAX_TEXT`, `MAX_COORD`, `MAX_FILE`). `Session::execute` runs every command under
+  and cap sizes (`MAX_POINTS`, `MAX_TEXT`, `MAX_COORD`); a whole file read is held to the memory the machine has free
+  (`memory.rs`), since running out of it is a crash nothing catches. `Session::execute` runs every command under
   `catch_unwind` and restores the model on any failure; `hostile_params_never_panic_or_break_the_model` sweeps every command.
 - **Everything is a command** (`ALL` in `crates/core/src/commands.rs`): an id after Revit's tool name, a Revit-style shortcut,
   a params doc written for agents, and a JSON `run`. The CLI, scripts and MCP all go through `Session::execute`, so new
@@ -94,6 +95,8 @@ One line per module: what it owns. Read its file and, for the areas it names, th
 - `model.rs`: the model: elements, types, `Model::check` and the queries on it. `ids.rs`: element ids and GUIDs. `library.rs`: types, materials and families as entries with ids and GUIDs.
 - `doors.rs`: generated sectional and roller equipment, using the model's operations and shared opening pieces ([families](docs/areas/families.md)).
 - `walls.rs` (`walls/index.rs`): wall axes, faces, mitred caps, outlines; `walls/compound.rs`: which core runs through a square corner of compound walls. `skeleton.rs`: the straight skeleton (roofs by footprint). `stairs.rs`: stairs, ramps, railings. `rebar.rs`: reinforcing bars, their lengths, weights and tubes. `reinforce.rs`: bars by rules for a beam, a column, a footing and a floor (`reinforce/norm.rs`: NBR 6118's usual limits, as notes). `runs.rs`: beams, pipes, conduits and the other straight runs. `glue.rs`: a strip footing glued to the wall over it, read from their lines and heights. `profiles.rs`: steel sections and catalogue sizes ([structure and MEP](docs/areas/structure-and-mep.md#steel-sections)). `geom.rs`: plan geometry. `align.rs`: pickable alignment edges and the motion between lines. `alignment.rs`: the temporary guides a point being drawn lines up with (smart snapping). `standards.rs`: technical standards (NBR, ISO, ANSI, EU, JIS): line weights, sheets, object styles; their numbers are the contributor's and unchecked. `snap.rs`: where a picked point lands. `sketch.rs`: sketches, lines solved into outlines and holes for floors, ceilings, roofs and shafts. `curves.rs`: the shapes a line takes (polylines, circles, ellipses, splines), split and joined. `draw.rs`: the Draw panel's shapes, what clicks make. Areas: [levels, walls and roofs](docs/areas/levels-walls-roofs.md), [structure and MEP](docs/areas/structure-and-mep.md). `triangulation.rs`: constrained Delaunay triangulation in plan, exact on a 0.01 mm grid (shaped floors' tops: [shape editing](docs/shape-editing.md)).
+- `memory.rs`: what reading a file may take of the machine's memory: a budget from what's free (the apps' meter, `install`),
+  refused up front by the file's size and checked as the reader goes; without a meter, the fixed sizes.
 - `site.rs`: property boundary bearings and validation ([property boundaries](docs/areas/property-boundaries.md)).
 - `background_grid.rs`: view-owned canvas lattices, rotated drawing and grid snapping ([the desktop](docs/areas/desktop.md)).
 - `handles.rs`: the handles a selected wall or column has in a 3D view: where they stand, the command a drag makes, how it would stand meanwhile ([the desktop](docs/areas/desktop.md)).

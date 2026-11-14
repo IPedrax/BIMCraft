@@ -6,7 +6,7 @@ members = ["crates/*", "apps/*"]
 version = "0.11.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
-rust-version = "1.92"
+rust-version = "1.95"
 
 [workspace.dependencies]
 # GUIDs: the system's random numbers.
@@ -54,6 +54,10 @@ ring = "0.17"
 # The Revit reader's: Revit's files are Compound Files (OLE), and a byte search that scans the partitions fast.
 cfb = "0.15"
 memchr = "2"
+# What reading a file may take of the machine's memory (the core's `memory.rs`): the apps count what they allocate with cap and
+# read what the machine has free with sysinfo, so neither holds an `unsafe` of ours.
+cap = "0.1"
+sysinfo = { version = "0.40", default-features = false, features = ["system"] }
 # Text notes' fonts: IBM Plex's outlines, its weights too, read from the files the packages carry.
 ttf-parser = { version = "0.25", features = ["gvar-alloc"] }
 
