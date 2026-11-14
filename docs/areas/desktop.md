@@ -584,8 +584,8 @@ Export (`txt`/`json`), Help (Markdown) and Reset All. The text format is `action
 replace and merge modes, and writes `shortcuts.bak` beside the settings before applying; Markdown is a read-only cheat sheet and is refused on import.
 The BIMCraft profile keeps the Revit-style sequences and adds chords; Home is `Ctrl+D`, `Ctrl+U` is free, and the guides are
 `F8` only. A text field keeps its letters but allows Save, Save As, Open, New, Find, Settings, Export PDF and Properties (Ctrl+P and Ctrl+1); dialogs and
-menus keep all global bindings away. One exception to the wait: a Ctrl key that begins no sequence runs its chord at once, so Ctrl+Y, Ctrl+1 and Ctrl+P
-need no second letter. A key never carries Revit's name for a tool BIMCraft lacks (Sun Settings, Detail and Model Line, Split Face, Brace, Beam System,
+menus keep all global bindings away. One exception to the wait: a Ctrl key that begins no sequence runs its chord at once, so Ctrl+Y
+and Ctrl+1 need no second letter. A key never carries Revit's name for a tool BIMCraft lacks (Sun Settings, Detail and Model Line, Split Face, Brace, Beam System,
 Reference Plane, the duct tools): it waits for the tool.
 `BimApp::keys` checks bindings before the tool's contextual keys, and a binding that finds nothing to run reports it in the status bar rather than falling through.
 Tests: `tests/shortcuts_kept.rs` and the unit tests in `shortcuts.rs`. Match Properties (MA) is the `match_properties`

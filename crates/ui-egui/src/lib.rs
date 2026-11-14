@@ -2567,9 +2567,10 @@ impl BimApp {
         }
     }
 
-    /// A letter left waiting for a second does its own job once Ctrl is let go, or after [`CTRL_WAIT`] with Ctrl still held.
+    /// A letter left waiting for a second does its own job once Ctrl is let go, or after [`CTRL_WAIT`] with Ctrl still held; so
+    /// do the letters of a pair that a third would have completed.
     fn ctrl_waited(&mut self, ctx: &Context) {
-        if self.typed.len() != 1 {
+        if self.typed.is_empty() {
             return;
         }
         let (held, now) = ctx.input(|i| (i.modifiers.command, i.time));
@@ -2578,8 +2579,10 @@ impl BimApp {
             ctx.request_repaint_after(std::time::Duration::from_secs_f64(left));
             return;
         }
-        let letter = self.typed.remove(0);
-        self.ctrl_key(ctx, letter);
+        while let Some(letter) = self.typed.chars().next() {
+            self.typed.remove(0);
+            self.ctrl_key(ctx, letter);
+        }
     }
 
     /// What a letter typed with Ctrl does on its own: the chord its key has in the registry (S saves, O opens, N makes a

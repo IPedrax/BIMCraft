@@ -29,7 +29,7 @@ Modifiers are matched **exactly**: `Ctrl+D` and `Ctrl+Shift+D` are different bin
 
 Sequences are typed with Ctrl held (Cmd on a Mac): Ctrl, then `W` and `A` for Wall. Letters typed without Ctrl are no shortcut; digits and a unit still make a typed length.
 
-A letter that is also a chord of its own — `S` (Save), `O` (Open), `N` (New), `K` (Find), `P` (Export PDF), `Z` (Undo), `D` (Home), `1` (Properties) — waits half a second for a second letter, and runs its chord when none comes or Ctrl is let go. So Ctrl+S then A is Select All Instances, and Ctrl+Z, Z, Z undoes three times. A Ctrl key that begins no sequence runs at once, so `Ctrl+Y`, `Ctrl+1` and `Ctrl+P` need no second letter.
+A letter that is also a chord of its own — `S` (Save), `O` (Open), `N` (New), `K` (Find), `P` (Export PDF), `Z` (Undo), `D` (Home), `1` (Properties) — waits half a second for a second letter, and runs its chord when none comes or Ctrl is let go. So Ctrl+S then A is Select All Instances, and Ctrl+Z, Z, Z undoes three times. A Ctrl key that begins no sequence (`Ctrl+Y`, `Ctrl+1`) runs at once and needs no second letter.
 
 If the two letters are no shortcut, the first does its own job and the second waits in its place. In a text field Ctrl's keys belong to the field but for Save, Save As, Open, New, Find, Settings, Export PDF and Properties, which act there at once, and no sequence is typed.
 
