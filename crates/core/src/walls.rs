@@ -1234,14 +1234,15 @@ mod tests {
                wall {"points": [[0, 6000], [5000, 6000]], "type": "C60", "location": "exterior-core"}"#,
         );
         let m = &s.model;
+        let ids: Vec<Id> = m.elements.keys().copied().filter(|id| m.wall(*id).is_some()).collect();
         let at = |id| {
             let w = m.wall(id).unwrap_or_else(|| panic!("no wall {id}"));
             (core_faces(m, w), face_offset(m, w, Face::Centre), faces(m, w))
         };
-        assert_eq!(at(100003), (Some((50.0, -50.0)), Some(0.0), (100.0, -100.0)));
-        assert_eq!(at(100004), (Some((-50.0, -150.0)), Some(-100.0), (0.0, -200.0)));
-        assert_eq!(at(100005), (Some((100.0, 0.0)), Some(50.0), (150.0, -50.0)));
-        assert_eq!(at(100006), (Some((0.0, -100.0)), Some(-50.0), (50.0, -150.0)));
+        assert_eq!(at(ids[0]), (Some((50.0, -50.0)), Some(0.0), (100.0, -100.0)));
+        assert_eq!(at(ids[1]), (Some((-50.0, -150.0)), Some(-100.0), (0.0, -200.0)));
+        assert_eq!(at(ids[2]), (Some((100.0, 0.0)), Some(50.0), (150.0, -50.0)));
+        assert_eq!(at(ids[3]), (Some((0.0, -100.0)), Some(-50.0), (50.0, -150.0)));
     }
 
     #[test]
@@ -1263,8 +1264,9 @@ mod tests {
                wall {"points": [[0, 0], [0, 4000]], "type": "C60"}"#,
         );
         let m = &s.model;
-        let a = face_line(m, 100003, Face::ExteriorCore, 0.0).unwrap_or_else(|| panic!("no line"));
-        let b = face_line(m, 100004, Face::ExteriorCore, 0.0).unwrap_or_else(|| panic!("no line"));
+        let ids: Vec<Id> = m.elements.keys().copied().filter(|id| m.wall(*id).is_some()).collect();
+        let a = face_line(m, ids[0], Face::ExteriorCore, 0.0).unwrap_or_else(|| panic!("no line"));
+        let b = face_line(m, ids[1], Face::ExteriorCore, 0.0).unwrap_or_else(|| panic!("no line"));
         // The core faces meet on the corner's bisector, 50 mm out from each location line.
         assert!(near(a.start(), P2(50.0, 50.0)) && near(b.start(), P2(50.0, 50.0)), "{a:?} {b:?}");
     }

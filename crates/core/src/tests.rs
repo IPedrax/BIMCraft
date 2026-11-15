@@ -515,15 +515,19 @@ fn a_floor_can_follow_a_face_of_the_walls() {
     let area = |s: &mut Session, p: Value| run(s, "floor", p)["area_m2"].as_f64().unwrap_or_default();
     assert!((area(&mut s, json!({})) - 48.0).abs() < 1e-6, "the centre lines");
     assert!((area(&mut s, json!({"outline": "centre"})) - 48.0).abs() < 1e-6, "said, the centre lines");
-    let core = area(&mut s, json!({"outline": "interior-core"}));
+    let core = run(&mut s, "floor", json!({"outline": "interior-core"}));
+    let core_id = core["id"].as_u64();
+    let core_area = core["area_m2"].as_f64().unwrap_or_default();
     let finish = area(&mut s, json!({"outline": "interior-finish"}));
-    assert!((core - 7.9 * 5.9).abs() < 1e-6, "{core}");
+    assert!((core_area - 7.9 * 5.9).abs() < 1e-6, "{core_area}");
     assert!((finish - 7.8 * 5.8).abs() < 1e-6, "{finish}");
-    assert!(finish < core && core < 48.0, "{finish} {core}");
+    assert!(finish < core_area && core_area < 48.0, "{finish} {core_area}");
     assert!((area(&mut s, json!({"outline": "exterior-core"})) - 8.1 * 6.1).abs() < 1e-6);
     let f = run(&mut s, "elements", json!({"category": "floor"}));
-    let boundary: Vec<P2> = f["elements"][1]["boundary"]
+    let boundary: Vec<P2> = f["elements"]
         .as_array()
+        .and_then(|a| a.iter().find(|e| e["id"].as_u64() == core_id))
+        .and_then(|e| e["boundary"].as_array())
         .map(|a| a.iter().filter_map(|p| Some(P2(p[0].as_f64()?, p[1].as_f64()?))).collect())
         .unwrap_or_default();
     assert!(boundary.iter().any(|p| p.dist(P2(50.0, 50.0)) < 1e-6), "{boundary:?}");
