@@ -73,6 +73,64 @@ impl Family {
             _ => None,
         }
     }
+
+    /// The plan footprint `[x0, y0, x1, y1]` of what the family's visible solid forms draw, with no padding, in the family's own
+    /// axes. A void only takes material away, so it is skipped: the box is a sound envelope of what is left. None when a solid
+    /// form is of a kind this does not read (a revolved form, a mesh) or the family draws nothing.
+    pub fn plan_footprint<'a>(&'a self, values: &BTreeMap<String, Val>) -> Option<[f64; 4]> {
+        let mut read = HashMap::new();
+        let mut num = |e: &'a Expr| number(e, values, &mut read).ok();
+        let mut out: Option<[f64; 4]> = None;
+        let mut add = |x: f64, y: f64| -> Option<()> {
+            if !x.is_finite() || !y.is_finite() {
+                return None;
+            }
+            out = Some(match out {
+                None => [x, y, x, y],
+                Some([x0, y0, x1, y1]) => [x0.min(x), y0.min(y), x1.max(x), y1.max(y)],
+            });
+            Some(())
+        };
+        for form in &self.forms {
+            if let Some(visible) = &form.visible
+                && num(visible)? == 0.0
+            {
+                continue;
+            }
+            if form.void {
+                continue;
+            }
+            if !form.mesh.is_empty() || form.axis.is_some() {
+                return None;
+            }
+            let profile: Vec<P2> = match &form.circle {
+                Some(circle) => {
+                    let (x, y, r) = (num(&circle.centre[0])?, num(&circle.centre[1])?, num(&circle.radius)?);
+                    if r <= 0.0 {
+                        return None;
+                    }
+                    vec![P2(x - r, y - r), P2(x + r, y - r), P2(x + r, y + r), P2(x - r, y + r)]
+                }
+                None => {
+                    if form.profile.len() < 3 || form.profile.len() > MAX_PROFILE {
+                        return None;
+                    }
+                    form.profile.iter().map(|[x, y]| Some(P2(num(x)?, num(y)?))).collect::<Option<_>>()?
+                }
+            };
+            let (from, to) = (num(&form.from)?, num(&form.to)?);
+            if to <= from {
+                return None;
+            }
+            for p in profile {
+                for z in [from, to] {
+                    let q = embed(form.plane, p, z);
+                    add(q[0], q[1])?;
+                }
+            }
+        }
+        out
+    }
 }
 
 #[cfg(test)]
@@ -121,6 +179,24 @@ mod tests {
             }
         }
         assert!(supported >= 20, "the library must exercise supported geometry, not only unknown bounds");
+    }
+
+    #[test]
+    fn plan_footprints_of_the_library_match_what_is_drawn() {
+        let lib = library(crate::language::Language::English);
+        let of = |family: &str, ty: &str| {
+            let f = &lib[family];
+            f.plan_footprint(&f.values(ty, &BTreeMap::new()).unwrap()).unwrap_or_else(|| panic!("{family} {ty}"))
+        };
+        let close = |a: [f64; 4], b: [f64; 4]| a.iter().zip(&b).all(|(x, y)| (x - y).abs() < 0.01);
+        assert!(close(of("Bed", "1600 x 2000"), [-800.0, -2000.0, 800.0, 0.0]));
+        assert!(close(of("Bed", "900 x 2000"), [-450.0, -2000.0, 450.0, 0.0]));
+        assert!(close(of("WC", "400 x 650"), [-200.0, -650.0, 200.0, 0.0]));
+        assert!(close(of("Table", "1200 x 800"), [-600.0, -400.0, 600.0, 400.0]));
+        // A sink has a void form; its footprint is that of what stays.
+        assert!(close(of("Kitchen Sink", "800 x 500"), [-400.0, -500.0, 400.0, 0.0]));
+        assert!(close(of("Washbasin", "500 x 400"), [-250.0, -400.0, 250.0, 0.0]));
+        assert!(close(of("Sofa", "2000 x 900"), [-1000.0, -900.0, 1000.0, 0.0]));
     }
 
     #[test]

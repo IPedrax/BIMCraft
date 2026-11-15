@@ -149,7 +149,49 @@ struct RoomFile {
     #[serde(default)]
     #[allow(dead_code)]
     source: Option<JsonValue>,
+    /// Whether the room gets windows in its exterior walls.
+    #[serde(default)]
+    window: Option<bool>,
+    /// The components placed in the room.
+    #[serde(default)]
+    contents: Option<Vec<ContentFile>>,
 }
+
+/// Where a component stands in its room.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Against {
+    /// Its back on a wall.
+    Wall,
+    /// Two adjacent sides on two walls that meet in a corner.
+    Corner,
+    /// Away from the walls, in the middle.
+    Centre,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ContentFile {
+    family: String,
+    #[serde(default)]
+    types: Option<Vec<String>>,
+    count: [i64; 2],
+    against: Against,
+}
+
+/// What a room type holds: one family of built-in component, the types it may be, how many, and where.
+#[derive(Clone, Debug)]
+pub struct Content {
+    pub family: String,
+    /// The family's types the room may hold, in the order they are tried.
+    pub types: Vec<String>,
+    pub count: (i64, i64),
+    pub against: Against,
+}
+
+/// The most of one family in one room type, and the most entries a room type lists.
+const MAX_CONTENT_COUNT: i64 = 8;
+const MAX_CONTENT_ENTRIES: usize = 16;
 
 /// The rooms object, its order kept: the order of the room types in the file is the order the engine takes them in.
 #[derive(Debug)]
@@ -235,6 +277,9 @@ pub struct Ty {
     pub ratio: Option<f64>,
     pub min_side: i64,
     pub max_links: usize,
+    /// Whether the room gets windows in its exterior walls.
+    pub window: bool,
+    pub contents: Vec<Content>,
 }
 
 #[derive(Clone, Debug)]
@@ -334,6 +379,7 @@ impl Family {
             return Err("`rooms` holds 1 to 64 room types".into());
         }
         let index = |key: &str| rooms.iter().position(|(k, _)| k == key);
+        let library = crate::family::library(crate::language::Language::English);
         let mut types = Vec::new();
         for (key, r) in rooms {
             let bad = |what: &str| format!("room type `{key}`: {what}");
@@ -383,6 +429,8 @@ impl Family {
                 ratio: r.max_side_ratio,
                 min_side: r.min_side_mm,
                 max_links: r.max_links as usize,
+                window: r.window.unwrap_or(false),
+                contents: contents(key, r.contents.as_deref().unwrap_or_default(), &library)?,
             });
         }
         if !types.iter().any(|t| t.place == Place::Spine) {
@@ -502,6 +550,39 @@ impl Family {
             .sum();
         (lo, hi)
     }
+}
+
+/// A room type's contents, checked against the built-in families: each is a piece of furniture or a plumbing fixture BIMCraft has,
+/// of types it has, in a count that is a small range.
+fn contents(
+    key: &str,
+    list: &[ContentFile],
+    library: &std::collections::BTreeMap<String, crate::family::Family>,
+) -> Result<Vec<Content>, String> {
+    use crate::family::Category;
+    if list.len() > MAX_CONTENT_ENTRIES {
+        return Err(format!("room type `{key}`: `contents` lists at most {MAX_CONTENT_ENTRIES} entries"));
+    }
+    let mut out = Vec::new();
+    for (i, e) in list.iter().enumerate() {
+        let bad = |what: &str| format!("room type `{key}`: contents entry {i}: {what}");
+        let fam = library.get(&e.family).filter(|f| matches!(f.category, Category::Furniture | Category::Plumbing)).ok_or_else(|| {
+            bad(&format!("`family` {:?} is not a built-in piece of furniture or fixture", e.family.chars().take(40).collect::<String>()))
+        })?;
+        let types = match &e.types {
+            Some(t) if t.is_empty() => return Err(bad("`types` lists at least one type, or is left out")),
+            Some(t) => t.clone(),
+            None => fam.types.keys().cloned().collect(),
+        };
+        if let Some(t) = types.iter().find(|t| !fam.types.contains_key(*t)) {
+            return Err(bad(&format!("the family `{}` has no type {:?}", e.family, t.chars().take(40).collect::<String>())));
+        }
+        if e.count[0] < 0 || e.count[0] > e.count[1] || e.count[1] > MAX_CONTENT_COUNT {
+            return Err(bad(&format!("`count` is two whole numbers, fewest first, from 0 to {MAX_CONTENT_COUNT}")));
+        }
+        out.push(Content { family: e.family.clone(), types, count: (e.count[0], e.count[1]), against: e.against });
+    }
+    Ok(out)
 }
 
 fn title_case(key: &str) -> String {
