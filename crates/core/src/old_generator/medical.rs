@@ -110,7 +110,7 @@ pub struct Room {
     pub name: String,
     pub kind: Kind,
     /// The room's rectangle in the plan as drawn (before it is turned).
-    pub rect: crate::generate::house::place::Rect,
+    pub rect: crate::old_generator::house::place::Rect,
 }
 
 #[derive(Clone, Copy, Debug)]

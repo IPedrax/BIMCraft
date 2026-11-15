@@ -76,7 +76,7 @@ fn legacy_reports_keep_their_bytes() {
 #[test]
 fn corridor_fields_stay_in_layout() {
     let corridor = regex_lite_hits;
-    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/generate");
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/old_generator");
     let mut hits = Vec::new();
     for name in ["lift.rs", "openings.rs", "script.rs", "report.rs"] {
         let text = std::fs::read_to_string(root.join(name)).unwrap();

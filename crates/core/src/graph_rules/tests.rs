@@ -79,7 +79,7 @@ fn every_embedded_pack_parses_and_each_rule_has_an_evaluator() {
         let mut rules: Vec<&str> = pack.rules.iter().map(|r| r.id.as_str()).collect();
         if archetype == "house" {
             // The swing rules follow the pack's own.
-            rules.extend(crate::generate::house::swing::rules().unwrap().iter().map(|r| r.id.as_str()));
+            rules.extend(crate::generate::swing::rules().unwrap().iter().map(|r| r.id.as_str()));
         }
         assert_eq!(said, rules, "{archetype}: one check for each rule, in the pack's order");
     }
@@ -114,7 +114,7 @@ fn the_legacy_packs_are_hard_and_say_who_approved_them() {
 #[test]
 fn the_traced_house_passes_every_rule() {
     let checks = house(&traced());
-    assert_eq!(checks.len(), 13 + crate::generate::house::swing::rules().unwrap().len());
+    assert_eq!(checks.len(), 13 + crate::generate::swing::rules().unwrap().len());
     assert!(failing(&checks).is_empty(), "{checks:?}");
 }
 
@@ -366,7 +366,7 @@ fn a_garage_with_no_door_to_a_hall_or_the_entry_fails() {
 
 #[test]
 fn the_judged_swing_rules_leave_a_side_alone_where_the_two_traces_disagree() {
-    use crate::generate::house::swing;
+    use crate::generate::swing;
     for id in ["SW-001", "SW-002"] {
         let r = swing::judged_rules().unwrap().iter().find(|r| r.id == id).unwrap();
         assert_eq!(r.hinge, "either", "{id}: the traced house hangs these from the start, Unit 1's from both");
@@ -493,7 +493,7 @@ fn the_command_reads_a_graph_given_inline_or_by_path_and_never_touches_the_proje
     assert_eq!(r["pass"], true);
     assert_eq!(r["archetype"], "house");
     assert_eq!(r["pack_id"], "house.graph-rules/1");
-    let n = 13 + crate::generate::house::swing::rules().unwrap().len();
+    let n = 13 + crate::generate::swing::rules().unwrap().len();
     assert_eq!(r["checks"].as_array().unwrap().len(), n);
     assert_eq!(r["summary"], json!({"pass": n, "fail": 0}));
 

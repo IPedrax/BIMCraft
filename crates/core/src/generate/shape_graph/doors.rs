@@ -80,7 +80,7 @@ pub fn definition(family: &str, types: Map<String, Value>) -> Option<Value> {
         })
     };
     match family {
-        super::super::house::FOLDING_FAMILY => Some(super::super::house::folding_family(types)),
+        super::super::swing::FOLDING_FAMILY => Some(super::super::swing::folding_family(types)),
         "Unequal Double Door" => {
             // A wide leaf (two thirds of the scheduled width) on the left jamb and a narrow one (a third) on the right.
             let (wide, narrow) = ("Width * 2 / 3", "Width / 3");

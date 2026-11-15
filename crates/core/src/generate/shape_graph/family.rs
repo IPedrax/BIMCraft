@@ -87,7 +87,7 @@ impl Conn {
             Conn::UnequalDouble => Some(("Unequal Double Door", "double-swing")),
             Conn::DoubleSliding => Some(("Double Sliding Door", "double-sliding")),
             Conn::Pocket => Some(("Pocket Door", "sliding")),
-            Conn::Bifold => Some((super::super::house::FOLDING_FAMILY, "folding")),
+            Conn::Bifold => Some((super::super::swing::FOLDING_FAMILY, "folding")),
             Conn::OpenFull | Conn::Cased => None,
         }
     }

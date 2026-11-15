@@ -1,7 +1,7 @@
 # The graph building generator
 
 `bimcraft-cli generate --archetype office|clinic|hospital --seed N (--area M2 | --area-sqft SQFT) --out DIR` (the `generate`
-command, `crates/core/src/generate.rs`)
+command, `crates/core/src/generate.rs`; the area-driven generator is in `crates/core/src/old_generator/`)
 turns a brief into a run directory. Deterministic code owns the geometry and the pass/fail; nothing in it is asked of a model. The
 spec is `specs/graph-building-generator.md`; the first shipped slices cover office, clinic and a larger hospital archetype.
 
@@ -37,7 +37,7 @@ the script and exported drawings instead of only four outside grids.
 
 ## Door and window symbols
 
-Each brief takes an `opening_symbol_profile` from its seed and archetype (`generate/openings.rs`): `classic_punched`,
+Each brief takes an `opening_symbol_profile` from its seed and archetype (`old_generator/openings.rs`): `classic_punched`,
 `storefront_ribbon`, `service_secure` or `slot_clerestory`. It is exported in the manifest, program graph, topology graph, building
 graph and report (the manifest and the report also count `opening_symbols`, doors and windows apart). A profile fixes the symbol of
 each opening by the room's kind and role:
@@ -124,7 +124,7 @@ comparison and never holds it, so `--out` gives the same bytes with or without `
 
 ## House: graph first
 
-`generate --archetype house` (`generate/house.rs`, `house/{sample,place,emit}.rs`) goes the other way round from the corridor
+`generate --archetype house` (`old_generator/house.rs`, `house/{sample,place,emit}.rs`) goes the other way round from the corridor
 archetypes: a graph first, then geometry for it. It writes the same six files; `manifest.json` also has `shell`, and
 `topology-graph.json` has no `adjacent` edges (the extractor finds them, and its comparison reads them only when the generated graph
 has any).
@@ -150,7 +150,7 @@ has any).
   side only is exterior (300 mm), one between two rooms an interior wall (100 mm) unless the graph opens the pair, when it is a
   room separation line. Doors are the built-in `Single Door` and `Sliding Door` families (the sliding family gets a 1200 type), so
   a sliding door is drawn as one; a door sits at the middle of its shared run.
-- **Swing** (`house/swing.rs`, `data/house-swing.json`): `swing::orient` finds each swing door's host wall in the layout and the room
+- **Swing** (`old_generator/house/swing.rs`, the rules in `generate/swing.rs` and `generate/data/house-swing.json`): `swing::orient` finds each swing door's host wall in the layout and the room
   either side of it, then sets `flip_facing` (to open into the rule's room) and `flip_hand` (hinge `end`) from the traced house's
   rules: `SW-001` to `SW-004`, all `exploratory`, one for each kind pair (a sorted pair, `opens_into` a kind, `hinge`) and one for the
   exterior door. The exterior object applies to every exterior swing door whatever its room's kind: `opens_into: exterior` means it
@@ -190,7 +190,7 @@ has any).
 
 `generate --archetype studio-office` is its own family, not an alias of `office`: the program is the approved trace
 `done/fixtures/studio-office/traced-studio`, a reception, a corridor with a meeting room and a store off it, a passage of WCs, and
-a large studio. `generate/studio.rs` samples the graph by the seed (`studio/sample.rs`: 2 to 5 WCs, 1 to 2 meeting rooms and stores
+a large studio. `old_generator/studio.rs` samples the graph by the seed (`studio/sample.rs`: 2 to 5 WCs, 1 to 2 meeting rooms and stores
 in a shuffled order, the corridor 1500, 2000 or 2400 mm wide, double-swing doors where a door is wide enough, a studio way out or
 not), `studio/place.rs` finds geometry (the studio the south band, the core of the other rooms against it: `bar`, `flush_west`,
 `flush_east` or `inset`, turned and mirrored by the seed; windows are Fixed Windows on the studio, reception and meeting
@@ -330,7 +330,7 @@ clusters and groups), `fit.rs` (fitting a cluster in a cell, `share`, the attemp
 `verify`: no overlap, one loop with the shape's corner count, every room inside its limits and reached), `emit.rs` (walls, doors, separators,
 the script, the scratch run read back by the topology extractor, the graph and the pack's rules on both graphs). With no shape pinned the seed
 orders the nine shapes and each gets 80 attempts; 400 attempts at most, then `unplaceable_shape` or `unplaceable_graph`. Three read-backs that
-disagree with the plan also end it. Swing doors take their side and jamb from `house/swing.rs`'s rules by room kind, read from the family.
+disagree with the plan also end it. Swing doors take their side and jamb from `generate/swing.rs`'s rules by room kind, read from the family.
 
 Two things a script of this engine does that others don't: its `new` carries a `seed`, which makes the project's uid and every GUID the
 seed's, so a script saves the same file again; and its wall material has no solid cut pattern, because that lays paper over the wall lines
@@ -373,7 +373,7 @@ delivery drawing rules ([CAD export](cad-import.md#export)). The other generator
 ### Delivery rules for the existing generators
 
 `generate --archetype A --area M2 --delivery on` (also `--area-sqft`; `off` is the default, and with `--rooms` it is `invalid_params`) draws the same
-plan, walls, doors, windows and rooms as without it, to the delivery drawing rules (`generate/delivery.rs`, run after the generator's own build and
+plan, walls, doors, windows and rooms as without it, to the delivery drawing rules (`old_generator/delivery.rs`, run after the generator's own build and
 checks, so the default files keep their bytes). `delivery::apply` rewrites the script (one `cad_profile` line after `drawing_property`; no
 `dimension`; each room numbered `101` upward in the order of the graph's nodes; doors and windows marked `D1`, `W1`…; a door of a type by `operation`
 alone becomes a door of the family that draws that operation, Single, Double or Sliding, so its swing is one quarter-circle ARC, two, or none), puts each
@@ -392,7 +392,7 @@ where an interior wall meets the shell are not corners). The lines go after the 
 `emit::compile`; grids change neither the topology, nor `building`, nor the tags. The manifest has `gridlines`.
 
 With `--area` the default is what the archetype draws (on, except medical-day: `Archetype::draws_grid`). A value equal to the default
-touches nothing, so the default files stay byte for byte. A value that departs goes through `generate/gridlines.rs`, a post-pass run before
+touches nothing, so the default files stay byte for byte. A value that departs goes through `old_generator/gridlines.rs`, a post-pass run before
 `delivery::apply`: `off` takes the `grid` lines out of the script, `on` (medical-day) puts the outline's grid after the `level` line from
 the `floor` boundary (`script::ring_corners`). It runs the result in a scratch session, leaves the three graph files alone, adds a note to
 `report.json` and re-hashes the manifest. Only then does the manifest gain `gridlines` (the default `--area` manifests are pinned and gain no key).

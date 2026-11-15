@@ -360,7 +360,10 @@ fn an_area_batch_delivers_named_files_and_skips_what_its_archetype_refuses() {
     }
     let skipped = reply["skipped"].as_array().expect("skipped");
     assert_eq!(skipped.iter().map(|s| s["seed"].as_u64().unwrap()).collect::<Vec<_>>(), [31, 32]);
-    let want = super::build_for_delivery(super::program::Archetype::House, 31, super::AreaRequest::m2(12.0)).err().expect("refused").code;
+    let want = crate::old_generator::build_for_delivery(super::program::Archetype::House, 31, crate::old_generator::AreaRequest::m2(12.0))
+        .err()
+        .expect("refused")
+        .code;
     assert!(skipped.iter().all(|s| s["error"] == want), "{skipped:?} {want}");
     // The sources are the house family's alone: the area batches have none.
     let sources = reply["sources"].as_object().expect("sources");
@@ -385,7 +388,8 @@ fn an_area_seeds_file_is_what_its_delivery_script_saves() {
     s_deliver(&d, &brief, &rights, &root);
     let got = std::fs::read(root.join(GV).join("sk").join("dwg").join("hospital_s3.dwg")).expect("dwg");
     let area = super::deliver::area_for(3, 1800, 2000);
-    let built = super::build_for_delivery(Archetype::Hospital, 3, super::AreaRequest::m2(area as f64)).expect("built");
+    let built = crate::old_generator::build_for_delivery(Archetype::Hospital, 3, crate::old_generator::AreaRequest::m2(area as f64))
+        .expect("built");
     let script = built.files.iter().find(|(n, _)| *n == "script.bimcraft.txt").expect("script").1.clone();
     let at = d.join("again.dwg");
     crate::ids::keeping_reproducible(|| {

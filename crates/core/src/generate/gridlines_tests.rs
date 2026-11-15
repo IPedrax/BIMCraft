@@ -285,9 +285,9 @@ fn medical_day_default_is_off_and_on_adds_the_outline_grid_only() {
 #[test]
 fn ring_and_segment_corners_agree_on_an_l() {
     let ring = [[0, 0], [4000, 0], [4000, 2000], [2000, 2000], [2000, 4000], [0, 4000], [0, 2000]];
-    let mut a = script::ring_corners(&ring);
+    let mut a = grid::ring_corners(&ring);
     let segs: Vec<([i64; 2], [i64; 2])> = (0..ring.len()).map(|i| (ring[i], ring[(i + 1) % ring.len()])).collect();
-    let mut b = script::segment_corners(&segs);
+    let mut b = grid::segment_corners(&segs);
     a.sort();
     b.sort();
     assert_eq!(a, b);

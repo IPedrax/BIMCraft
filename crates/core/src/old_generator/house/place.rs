@@ -567,7 +567,7 @@ fn door_for(means: Means, run: i64, pick: u64, porch: bool) -> Option<(&'static 
             widths.iter().copied().find(|w| fits(*w)).map(|w| ("Sliding Door", format!("{w} x 2100"), w, "sliding"))
         }
         Means::Folding => {
-            [900, 800, 600].into_iter().find(|w| fits(*w)).map(|w| (super::emit::FOLDING_FAMILY, format!("{w} x 2100"), w, "folding"))
+            [900, 800, 600].into_iter().find(|w| fits(*w)).map(|w| (super::FOLDING_FAMILY, format!("{w} x 2100"), w, "folding"))
         }
         Means::Open => None,
     }
