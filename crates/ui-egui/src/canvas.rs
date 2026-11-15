@@ -840,6 +840,41 @@ fn letter(rings: &[Vec<(f32, f32)>]) -> Triangles {
     t
 }
 
+/// A dashed frame round the members of each group among `lit` (the first `hovered` of them hovered, the rest selected), and a
+/// cross at its origin.
+fn group_frames(p: &Painter, m: &Model, d: &Shown, lit: &[Id], hovered: usize) {
+    for (i, id) in lit.iter().enumerate() {
+        let Some(inst) = m.elements.get(*id).and_then(bimcraft_core::groups::instance) else { continue };
+        let members: HashSet<Id> = bimcraft_core::groups::members(m, *id).into_iter().collect();
+        let mut lo = Pos2::new(f32::INFINITY, f32::INFINITY);
+        let mut hi = Pos2::new(f32::NEG_INFINITY, f32::NEG_INFINITY);
+        let mut take = |q: &(f32, f32)| {
+            let q = d.place.pos(*q);
+            (lo, hi) = (lo.min(q), hi.max(q));
+        };
+        for (prim, owner) in d.prims.iter().zip(&d.owners) {
+            if !owner.is_some_and(|o| members.contains(&o)) {
+                continue;
+            }
+            match prim {
+                Prim::Fill { rings, .. } => rings.iter().flatten().for_each(&mut take),
+                Prim::Line { pts, .. } => pts.iter().for_each(&mut take),
+                _ => {}
+            }
+        }
+        let colour = if i < hovered { canvas_pal().hover } else { canvas_pal().accent };
+        let stroke = Stroke::new(1.0, colour);
+        if lo.x.is_finite() && hi.x.is_finite() {
+            let r = Rect::from_min_max(lo, hi).expand(6.0);
+            let ring = [r.left_top(), r.right_top(), r.right_bottom(), r.left_bottom(), r.left_top()];
+            p.extend(Shape::dashed_line(&ring, stroke, 6.0, 4.0));
+        }
+        let o = d.place.pos(d.view.px(inst.placement.at));
+        p.line_segment([o - vec2(6.0, 0.0), o + vec2(6.0, 0.0)], Stroke::new(1.5, colour));
+        p.line_segment([o - vec2(0.0, 6.0), o + vec2(0.0, 6.0)], Stroke::new(1.5, colour));
+    }
+}
+
 /// The selected elements' outlines taken by `f` (on screen): where a move, a turn or a mirror
 /// puts them.
 fn ghost(p: &Painter, place: Place, d: &Drawing, selected: &[Id], f: &dyn Fn(Pos2) -> Pos2) {
@@ -1517,8 +1552,10 @@ impl BimApp {
         // What's under the cursor; Tab steps through it. (Without the app's input hook, as in
         // tests, egui moved the keyboard to a widget on that Tab: give it back.)
         let sketching = self.sketch.is_some();
+        // A member of a group is picked as its group first; Tab steps on to the member (Revit's groups).
+        let editing = self.session.editing_group();
         let under = match (&self.tool, local) {
-            (Tool::Modify, Some(q)) if !sketching => d.pick_all(q, PICK),
+            (Tool::Modify, Some(q)) if !sketching => bimcraft_core::groups::group_picks(&model, &d.pick_all(q, PICK), editing),
             _ => Vec::new(),
         };
         // A dimension under the cursor: Tab steps through its segments before its element.
@@ -1611,7 +1648,7 @@ impl BimApp {
         let tool = self.tool.clone();
         let under_at = |q: (f32, f32)| match &tool {
             Tool::Modify if sketching => None,
-            Tool::Modify => d.pick(q, PICK),
+            Tool::Modify => d.pick(q, PICK).and_then(|id| bimcraft_core::groups::group_picks(&model, &[id], editing).first().copied()),
             Tool::SketchPick => d.pick(q, PICK).filter(|id| model.wall(*id).is_some()),
             // A line to draw along, or to round.
             Tool::DetailLine(_) | Tool::Wall(_) | Tool::SketchLine(_) if shape == draw::Shape::PickLines => {
@@ -1747,7 +1784,10 @@ impl BimApp {
                         };
                     }
                 }
-                Drag::Box(from) => self.pick_up(d.in_box(from, q, q.0 < from.0), click_modifiers(ui)),
+                Drag::Box(from) => {
+                    let found = bimcraft_core::groups::as_picked(&model, &d.in_box(from, q, q.0 < from.0), self.session.editing_group());
+                    self.pick_up(found, click_modifiers(ui))
+                }
             }
         }
         // A double click on a section's or an elevation's mark opens its view, as in Revit; on a note, writes in it.
@@ -1823,7 +1863,9 @@ impl BimApp {
         self.paint_background_grid(&p, rect, view);
         // The floor or roof being shaped is drawn as it is, not in the selection's colour: edit mode's marks are what's lit.
         let shaped = self.shaping();
-        let mut marked: Vec<Id> = self.selection.iter().copied().filter(|id| Some(*id) != shaped).collect();
+        // A group selected lights its members.
+        let mut marked: Vec<Id> =
+            bimcraft_core::groups::with_members(&model, &self.selection).into_iter().filter(|id| Some(*id) != shaped).collect();
         if let Tool::Trim(Some((first, _))) | Tool::TrimTo { boundary: Some(first), .. } = self.tool {
             marked.push(first);
         }
@@ -1888,6 +1930,8 @@ impl BimApp {
                 }
             }
         }
+        // A group hovered or selected: a dashed frame round its members and a cross at its origin, as Revit draws one.
+        group_frames(&p, &model, &d, &lit, hover_lit);
         match (self.canvas.drag, local) {
             (Some(Drag::Move(from)), Some(q)) => {
                 let by = self.dragged(&model, &view, from, view.mm(q));
@@ -2489,6 +2533,7 @@ impl BimApp {
             }
             Tool::Text => self.write_note(key, round(v.mm(at))),
             Tool::DetailGroup => self.place_group(key, self.snap(m, level, v, at, &[], false).at),
+            Tool::ModelGroup => self.place_model_group(level, self.snap(m, level, v, at, &[], false).at),
             &Tool::RepeatingDetail(start) => {
                 let p = self.snap(m, level, v, at, start.as_slice(), mods.shift).at;
                 match start {
@@ -4304,7 +4349,13 @@ impl BimApp {
             Tool::SketchPick => &[],
             // The group a click would place.
             Tool::DetailGroup => {
-                if let Some(e) = self.group_at(m, key, self.found(sc, q, &[], false)) {
+                for e in self.group_at(m, key, self.found(sc, q, &[], false)) {
+                    sketched(&e);
+                }
+                return;
+            }
+            Tool::ModelGroup => {
+                for e in self.model_group_at(m, level, self.found(sc, q, &[], false)) {
                     sketched(&e);
                 }
                 return;

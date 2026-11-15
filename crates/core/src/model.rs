@@ -20,7 +20,7 @@ pub use crate::fills::FilledRegion;
 use crate::fills::{self, FillPattern, FilledRegionType};
 use crate::geom::{self, P2, Region};
 use crate::graphics::{self, Graphics, ViewFilter, ViewTemplate};
-pub use crate::groups::{DetailGroup, RepeatingDetail};
+pub use crate::groups::{DetailGroup, ModelGroup, RepeatingDetail};
 pub use crate::hosting::{FaceRole, HostRef, Hosted, ReferencePlane};
 use crate::language::Language;
 pub use crate::lines::DetailLine;
@@ -72,7 +72,12 @@ pub const CEILING_CUT: f64 = 2300.0;
 pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
-/// The version of the project file this build writes, and the newest it reads. 19: a schedule may be of sheets, the
+/// The version of the project file this build writes, and the newest it reads. 33 (after 20; 21 to 32 were the Family
+/// Editor's unreleased steps, [`UNRELEASED`]): model groups (`model_groups`, library entries of kind `model-group`, and the
+/// `modelgroup` category) and detail groups whose members are elements of their own (a group's `members`, each a slot of its
+/// type's member and the element that is it); a build that reads up to 20 would leave the members out as a field it doesn't
+/// know and draw each detail group's type over its own elements, twice over, and leave model groups out, not say "saved by a
+/// newer BIMCraft"; a file of 20 gets its detail groups' members made after it is read (`Model::place_old_groups`). 19: a schedule may be of sheets, the
 /// sheet list (`of: "sheet"`, as the Room or Level Schedule is); nothing in a file of 18 changes, but a build that reads
 /// up to 18 holds `sheet` as a category schedules aren't of, and would draw its sheet list with no columns, not say
 /// "saved by a newer BIMCraft". 18: a beam's or a structural column's type may
@@ -185,7 +190,10 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// georeference and lose where the project stands; and it would read spot coordinates (a spot's `coordinate`, `type`, `origin`,
 /// `leader`, `shoulder` and `end`) and a level's `elevation_base` as spot elevations from the Project Base Point. A file of 19
 /// needs no step: its georeference is the active site, both points at the internal origin.
-pub const FORMAT: u32 = 20;
+pub const FORMAT: u32 = 33;
+/// The formats the Family Editor took a step at a time before it was released, none of which was: a file stamped one of them
+/// is refused as one from a newer BIMCraft, as before 33.
+pub const UNRELEASED: std::ops::RangeInclusive<u32> = 21..=32;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -2382,7 +2390,21 @@ macro_rules! visit_refs {
             Element::Text(n) => f(& $($m)? n.view),
             Element::DetailLine(l) => f(& $($m)? l.view),
             Element::FilledRegion(r) => f(& $($m)? r.view),
-            Element::DetailGroup(g) => f(& $($m)? g.view),
+            Element::DetailGroup(g) => {
+                f(& $($m)? g.view);
+                for s in & $($m)? g.members {
+                    if !s.element.is_nil() { f(& $($m)? s.element) }
+                }
+            }
+            Element::ModelGroup(g) => {
+                f(& $($m)? g.level);
+                for l in & $($m)? g.levels {
+                    f(l)
+                }
+                for s in & $($m)? g.members {
+                    if !s.element.is_nil() { f(& $($m)? s.element) }
+                }
+            }
             Element::RepeatingDetail(r) => f(& $($m)? r.view),
             Element::Spot(s) => {
                 f(& $($m)? s.view);
@@ -2469,6 +2491,9 @@ pub enum Element {
     /// A detail group placed in one view: its type's lines, regions and notes, moved and turned; of Revit's Detail Groups.
     #[serde(rename = "detailgroup")]
     DetailGroup(DetailGroup),
+    /// A model group placed on a level: its members model elements, held to its type; of Revit's Model Groups.
+    #[serde(rename = "modelgroup")]
+    ModelGroup(ModelGroup),
     /// A detail group repeated along a line in one view; of Revit's Repeating Detail.
     #[serde(rename = "repeatingdetail")]
     RepeatingDetail(RepeatingDetail),
@@ -2664,6 +2689,7 @@ impl Element {
             Element::DetailLine(_) => "line",
             Element::FilledRegion(_) => "region",
             Element::DetailGroup(_) => "detailgroup",
+            Element::ModelGroup(_) => "modelgroup",
             Element::RepeatingDetail(_) => "repeatingdetail",
             Element::Spot(sp) if sp.coordinate => "spotcoordinate",
             Element::Spot(_) => "spot",
@@ -3408,9 +3434,12 @@ pub struct Model {
     /// Its spot coordinate types, by name: how the spot coordinates of each draw their leader and read their point.
     #[serde(default = "crate::spots::types")]
     pub spot_coordinate_types: BTreeMap<String, crate::spots::SpotCoordinateType>,
-    /// Its detail group types, by name: the members each one placed draws.
+    /// Its detail group types, by name: the members each one placed holds.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub detail_groups: BTreeMap<String, crate::groups::GroupType>,
+    /// Its model group types, by name: the members each one placed holds.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub model_groups: BTreeMap<String, crate::groups::GroupType>,
     /// Its title blocks, by name: what a sheet that names one draws in its bottom right corner, and the fields it fills in.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub title_blocks: BTreeMap<String, crate::titleblock::TitleBlock>,
@@ -3546,6 +3575,7 @@ impl Model {
             dimension_types: crate::dims::types(),
             spot_coordinate_types: crate::spots::types(),
             detail_groups: BTreeMap::new(),
+            model_groups: BTreeMap::new(),
             title_blocks: BTreeMap::new(),
             title_values: BTreeMap::new(),
             pinned: BTreeSet::new(),
@@ -4073,7 +4103,7 @@ impl Model {
                 Err(_) => return Ok(None),
             },
         };
-        if !(4..=u64::from(FORMAT)).contains(&format) {
+        if !(4..=u64::from(FORMAT)).contains(&format) || u32::try_from(format).is_ok_and(|f| UNRELEASED.contains(&f)) {
             return Ok(None);
         }
         let Some(raw) = elements else { return Ok(None) };
@@ -4151,9 +4181,11 @@ impl Model {
         }
         let mut v: Value = crate::memory::json(text, budget)?;
         let format = v.get("format").map_or(Some(0), Value::as_u64).ok_or("`format` must be a whole number")?;
-        if format > u64::from(FORMAT) {
+        if format > u64::from(FORMAT) || u32::try_from(format).is_ok_and(|f| UNRELEASED.contains(&f)) {
             return Err(format!(
-                "it was saved by a newer BIMCraft (file format {format}; this one reads up to {FORMAT}): update BIMCraft to open it"
+                "it was saved by a newer BIMCraft (file format {format}; this one reads up to {FORMAT}, not {}–{}): update BIMCraft to open it",
+                UNRELEASED.start(),
+                UNRELEASED.end()
             ));
         }
         if format < 4 {
@@ -4194,7 +4226,8 @@ impl Model {
         use crate::lenient;
         use serde_json::Value;
         // A detail group's members are elements too, held by their type, and are looked into the same way.
-        if let Some(Value::Object(groups)) = v.get_mut("detail_groups") {
+        for key in ["detail_groups", "model_groups"] {
+            let Some(Value::Object(groups)) = v.get_mut(key) else { continue };
             for (name, group) in groups.iter_mut() {
                 let Some(Value::Array(members)) = group.get_mut("members") else { continue };
                 for (i, member) in members.iter_mut().enumerate() {
@@ -4203,7 +4236,7 @@ impl Model {
                     let category = bare.as_object_mut().and_then(|o| o.remove("category"));
                     for p in lenient::element(category.as_ref().and_then(Value::as_str).unwrap_or(""), &bare) {
                         lenient::remove(e, &p);
-                        left_out.push(format!("/detail_groups/{}/members/{i}/element{p}", lenient::escaped(name)));
+                        left_out.push(format!("/{key}/{}/members/{i}/element{p}", lenient::escaped(name)));
                     }
                 }
             }
@@ -4224,10 +4257,26 @@ impl Model {
         Ok((m, left_out))
     }
 
+    /// Each detail group with no members (of a file from before FORMAT 21) given its members, made from its type.
+    fn place_old_groups(&mut self) {
+        let placed: Vec<Id> =
+            self.elements.iter().filter(|(_, e)| matches!(e, Element::DetailGroup(g) if g.members.is_empty())).map(|(id, _)| *id).collect();
+        for id in placed {
+            // One whose type is gone is said by the check.
+            let _ = crate::groups::regenerate(self, id);
+        }
+    }
+
     /// A model just read brought up to this version, with what can't stand in it left out.
     fn after_read((mut m, mut left_out): (Model, Vec<String>)) -> Result<(Model, Vec<String>), String> {
+        let was = m.format;
         m.migrate();
         m.names_from_file();
+        // A detail group of a file of 20 had no members of its own, its type's being drawn in its place (FORMAT 21, with model
+        // groups): its members are made, elements of its view where it drew them, once its type is named.
+        if was <= 20 {
+            m.place_old_groups();
+        }
         // A family's dimension measuring to something it hasn't is left out, as what this version can't read is: a file is
         // read kindly, and a command that would leave one is refused.
         for (name, f) in m.families.iter_mut() {
@@ -5281,6 +5330,7 @@ impl Model {
         match e {
             Element::PointCloud(pc) => Some(pc.level),
             Element::CadImport(ci) => Some(ci.level),
+            Element::ModelGroup(g) => Some(g.level),
             Element::Wall(w) => Some(w.level),
             Element::Floor(f) => Some(f.level),
             Element::Ceiling(c) => Some(c.level),
@@ -7321,24 +7371,40 @@ impl Model {
                 }
             }
         }
-        for (n, g) in &self.detail_groups {
-            text(&format!("detail group `{n}`"), "name", n)?;
-            if g.members.is_empty() || g.members.len() > crate::groups::MAX_MEMBERS {
-                return Err(format!(
-                    "detail group `{n}`: it holds {} members; it holds 1 to {}",
-                    g.members.len(),
-                    crate::groups::MAX_MEMBERS
-                ));
-            }
-            for (i, m) in g.members.iter().enumerate() {
-                let who = format!("detail group `{n}` member {i}");
-                if !crate::groups::holds(&m.element) {
-                    return Err(format!(
-                        "{who}: a {} can't be in a detail group; it holds detail lines, filled regions and text",
-                        m.element.category()
-                    ));
+        for (kind, groups) in [(crate::groups::Kind::Detail, &self.detail_groups), (crate::groups::Kind::Model, &self.model_groups)] {
+            for (n, g) in groups {
+                let what = format!("{} group `{n}`", kind.name());
+                text(&what, "name", n)?;
+                if g.members.is_empty() || g.members.len() > crate::groups::MAX_MEMBERS {
+                    return Err(format!("{what}: it holds {} members; it holds 1 to {}", g.members.len(), crate::groups::MAX_MEMBERS));
                 }
-                self.annotation_ok(&who, &m.element)?;
+                let mut seen = BTreeSet::new();
+                for (i, m) in g.members.iter().enumerate() {
+                    let who = format!("{what} member {i}");
+                    match crate::groups::kind_of(&m.element) {
+                        Ok(k) if k == kind => {}
+                        Ok(_) => return Err(format!("{who}: a {} can't be in a {} group", m.element.category(), kind.name())),
+                        Err(why) => return Err(format!("{who}: a {} can't be in a group: {why}", m.element.category())),
+                    }
+                    if !m.guid.is_nil() && !seen.insert(m.guid) {
+                        return Err(format!("{who}: its GUID {} is another member's", m.guid));
+                    }
+                    if kind == crate::groups::Kind::Detail {
+                        self.annotation_ok(&who, &m.element)?;
+                    }
+                }
+                if kind == crate::groups::Kind::Detail && !g.levels.is_empty() {
+                    return Err(format!("{what}: a detail group stands in a view, and has no storeys"));
+                }
+                for (k, st) in g.levels.iter().enumerate() {
+                    coord(&format!("{what} storey {k}"), st.height)?;
+                    if st.above > 10_000 {
+                        return Err(format!("{what} storey {k}: {} levels above is past any project", st.above));
+                    }
+                }
+                if g.levels.first().is_some_and(|st| st.above != 0 || st.height != 0.0) {
+                    return Err(format!("{what}: its first storey is its own level, 0 above it"));
+                }
             }
         }
         for (cat, map) in [("door", &self.types.door), ("window", &self.types.window)] {
@@ -7666,6 +7732,7 @@ impl Model {
                     | Element::Grid(_)
                     | Element::Link(_)
                     | Element::DetailGroup(_)
+                    | Element::ModelGroup(_)
                     | Element::RepeatingDetail(_)
                     | Element::Mass(_)
                     | Element::PointCloud(_)
@@ -7791,6 +7858,7 @@ impl Model {
             members_placed,
             shapes,
             project_info,
+            grouped,
         } = t;
         let who = format!("{} {id}", e.category());
         let level_ok = |l: Guid| self.level(l).map(|_| ()).ok_or(format!("{who}: level {} doesn't exist", self.shown(l)));
@@ -8292,11 +8360,16 @@ impl Model {
                 view_ok(g.view, true)?;
                 point(&who, g.at)?;
                 coord(&format!("{who} angle"), g.angle)?;
-                let Some(t) = self.detail_groups.get(&g.type_name) else {
-                    let there: Vec<&str> = self.detail_groups.keys().map(String::as_str).collect();
-                    return Err(format!("{who}: there's no detail group `{}` (there are: {})", g.type_name, there.join(", ")));
-                };
-                placing(&who, members_placed, g.view, t.members.len())?;
+                crate::groups::check_instance(self, id, &who, e, grouped)?;
+            }
+            Element::ModelGroup(g) => {
+                level_ok(g.level)?;
+                point(&who, g.at)?;
+                coord(&format!("{who} angle"), g.angle)?;
+                for l in &g.levels {
+                    level_ok(*l)?;
+                }
+                crate::groups::check_instance(self, id, &who, e, grouped)?;
             }
             Element::RepeatingDetail(r) => {
                 view_ok(r.view, true)?;
@@ -8989,6 +9062,7 @@ impl Model {
             dimension_types,
             spot_coordinate_types,
             detail_groups,
+            model_groups,
             title_blocks,
             title_values,
             reinforcement,
@@ -9038,6 +9112,7 @@ impl Model {
             && *dimension_types == o.dimension_types
             && *spot_coordinate_types == o.spot_coordinate_types
             && *detail_groups == o.detail_groups
+            && *model_groups == o.model_groups
             && *title_blocks == o.title_blocks
             && *title_values == o.title_values
             && *reinforcement == o.reinforcement
@@ -9094,6 +9169,8 @@ struct Tally<'a> {
     shapes: HashMap<(&'a str, &'a str, String), Result<(), String>>,
     /// The project's information element, once seen.
     project_info: Option<Id>,
+    /// Each group member: its group.
+    grouped: BTreeMap<Guid, Id>,
 }
 
 #[cfg(test)]
@@ -9132,6 +9209,9 @@ impl<'a> Tally<'a> {
         }
         if let Some(id) = other.project_info {
             self.project_info.replace(id).is_none().then_some(())?;
+        }
+        for (member, group) in other.grouped {
+            self.grouped.insert(member, group).is_none().then_some(())?;
         }
         // Each wall's openings in the order they start along it, those that start together in the order of their ids: as each,
         // inserted after those that start where it does or before, leaves them.

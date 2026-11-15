@@ -36,7 +36,7 @@ pub fn lines(m: &Model, id: Id) -> Vec<Line> {
     out.into_iter().filter(|(a, b)| a.dist(*b) > TOL).collect()
 }
 
-fn element_lines(m: &Model, e: &Element) -> Vec<Line> {
+pub(crate) fn element_lines(m: &Model, e: &Element) -> Vec<Line> {
     if let Some(sketch) = e.sketch().filter(|s| !s.is_empty()) {
         return sketch.iter().filter(|l| !l.invisible).flat_map(|l| curve_lines(&l.curve)).collect();
     }
@@ -71,10 +71,9 @@ fn element_lines(m: &Model, e: &Element) -> Vec<Line> {
         Element::Mass(ms) => path(&ms.boundary, true),
         Element::DetailLine(l) => curve_lines(&l.curve),
         Element::FilledRegion(r) => r.sketch.iter().filter(|l| !l.invisible).flat_map(|l| curve_lines(&l.curve)).collect(),
-        Element::DetailGroup(g) => crate::groups::placed(m, g).iter().flat_map(|e| element_lines(m, e)).collect(),
-        Element::RepeatingDetail(r) => {
-            r.groups().iter().flat_map(|g| crate::groups::placed(m, g)).flat_map(|e| element_lines(m, &e)).collect()
-        }
+        // A group's members are elements of their own, with their own lines.
+        Element::DetailGroup(_) | Element::ModelGroup(_) => Vec::new(),
+        Element::RepeatingDetail(r) => r.members(m).iter().flat_map(|e| element_lines(m, e)).collect(),
         Element::Stair(_) | Element::Ramp(_) => crate::stairs::layout(m, e).map_or_else(Vec::new, |l| {
             l.runs.iter().flat_map(|r| path(&r.ring(l.width), true)).chain(l.pads.iter().flat_map(|p| path(&p.ring, true))).collect()
         }),

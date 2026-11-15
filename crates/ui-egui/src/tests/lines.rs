@@ -190,7 +190,7 @@ fn detail_lines_selected_become_a_group_placed_again_from_the_detail_panel_and_u
     click_with(&mut h, P2(1000.0, 1600.0), Modifiers::COMMAND);
     assert_eq!(h.state().selection.len(), 2);
     shortcut(&mut h, "GP");
-    assert_eq!((ids(&h, "line").len(), groups(&h).len()), (0, 1));
+    assert_eq!((ids(&h, "line").len(), groups(&h).len()), (2, 1), "its lines stay, as its members");
     assert_eq!(h.state().selection, groups(&h));
     assert!(h.state().session.model.detail_groups.contains_key("Group 1"));
     // Annotate > Detail Group places another where clicked, the Options Bar naming it.
@@ -211,7 +211,7 @@ fn detail_lines_selected_become_a_group_placed_again_from_the_detail_panel_and_u
     let at = h.state().screen(P2(5500.0, 2500.0));
     right_click_at(&mut h, at);
     choose_item(&mut h, "Ungroup");
-    assert_eq!((groups(&h).len(), ids(&h, "line").len()), (1, 2));
+    assert_eq!((groups(&h).len(), ids(&h, "line").len()), (1, 4));
     assert_eq!(h.state().selection.len(), 2, "its lines, selected");
 }
 

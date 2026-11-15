@@ -1672,7 +1672,7 @@ mod tests {
                 revision: None,
             }),
         };
-        s.model_mut().detail_groups.insert("G".into(), crate::groups::GroupType { members: vec![member] });
+        s.model_mut().detail_groups.insert("G".into(), crate::groups::GroupType { members: vec![member], ..Default::default() });
         s.model_mut().sync_library();
         s.execute("detail_group", &serde_json::json!({"type": "G", "at": [1000, 1000]})).unwrap();
         s.execute("repeating_detail", &serde_json::json!({"type": "G", "start": [2000, 3000], "end": [4000, 3000], "spacing": 1000}))
@@ -1681,10 +1681,10 @@ mod tests {
         let group_id = *s.model.elements.iter().find(|(_, e)| matches!(e, Element::DetailGroup(_))).unwrap().0;
         let repeating_id = *s.model.elements.iter().find(|(_, e)| matches!(e, Element::RepeatingDetail(_))).unwrap().0;
         assert_eq!(at(&s.model, P2(3020.0, 2020.0), &[], &o).kind, Kind::Anchor);
-        assert_eq!(
-            at(&s.model, P2(1020.0, 1020.0), &[], &o),
-            Found { at: P2(1000.0, 1000.0), kind: Kind::Anchor, guide: None, source: Some(group_id) }
-        );
+        // The group's origin is its member line's end too: either snaps there.
+        let found = at(&s.model, P2(1010.0, 990.0), &[], &o);
+        assert_eq!(found.at, P2(1000.0, 1000.0), "{found:?}");
+        assert!(found.source == Some(group_id) || crate::groups::group_of(&s.model, found.source.unwrap_or(0)) == Some(group_id));
         assert_eq!(
             at(&s.model, P2(2020.0, 3020.0), &[], &o),
             Found { at: P2(2000.0, 3000.0), kind: Kind::Anchor, guide: None, source: Some(repeating_id) }

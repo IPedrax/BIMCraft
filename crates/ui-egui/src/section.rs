@@ -236,7 +236,7 @@ impl BimApp {
                         size: [rect.width().max(1.0) as u32, rect.height().max(1.0) as u32],
                         fit_height: (rect.height() - self.canvas.room).max(1.0) as u32,
                         ppp: f64::from(ui.ctx().pixels_per_point()),
-                        tints: self.selection.iter().map(|id| (*id, rgb(canvas_pal().accent))).collect(),
+                        tints: self.lit_selection().iter().map(|id| (*id, rgb(canvas_pal().accent))).collect(),
                     };
                     if let Err(error) = self.cut.request(ui.ctx(), request) {
                         self.status = Status { text: error, error: true };
@@ -303,8 +303,8 @@ impl BimApp {
                 .or_else(|| cut.image.as_ref().filter(|_| displaying)?.pick(f64::from(x) * source_ppp[0], f64::from(y) * source_ppp[1]))
         };
         let hovered = local.filter(|_| matches!(self.tool, Tool::Modify | Tool::Demolish)).and_then(|q| pick(&self.cut, &d, q));
-        let tints: Vec<(Id, Rgb)> = self
-            .selection
+        let lit = self.lit_selection();
+        let tints: Vec<(Id, Rgb)> = lit
             .iter()
             .map(|id| (*id, rgb(canvas_pal().accent)))
             .chain(hovered.filter(|h| !self.selection.contains(h)).map(|h| (h, rgb(canvas_pal().hover))))
@@ -347,7 +347,7 @@ impl BimApp {
             let image_rect = Rect::from_min_size(place.origin, egui::vec2(source.width as f32, source.height as f32) * k);
             p.image(t.id(), image_rect, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
         }
-        paint(&p, place, &d, &self.selection, hovered, self.thin, &[]);
+        paint(&p, place, &d, &lit, hovered, self.thin, &[]);
         crate::cowork::paint_plan(&p, &self.cowork, &self.cowork_seen, &model, ("section", id), rect, &view, (&d, place));
         // While a note is written here, the pointer is its editor's.
         if self.writing_in(id) {
@@ -406,8 +406,10 @@ impl BimApp {
         }
         match (clicked, &self.tool) {
             (Some(q), Tool::Modify) => {
-                let found = pick(&self.cut, &d, q);
-                self.pick_up(found.into_iter().collect(), click_modifiers(ui));
+                // A member of a group is picked as its group, as in a plan.
+                let found: Vec<Id> = pick(&self.cut, &d, q).into_iter().collect();
+                let found = bimcraft_core::groups::as_picked(&self.session.model, &found, self.session.editing_group());
+                self.pick_up(found, click_modifiers(ui));
             }
             (Some(q), Tool::Demolish) => {
                 if let Some(id) = pick(&self.cut, &d, q) {

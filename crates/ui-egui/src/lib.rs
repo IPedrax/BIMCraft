@@ -225,6 +225,8 @@ pub enum Tool {
     Linework,
     /// Place Detail Group: the Options Bar's group type where clicked.
     DetailGroup,
+    /// Place Model Group: the Options Bar's model group type where clicked, on the view's level.
+    ModelGroup,
     /// Repeating Detail: the Options Bar's group along a line, its start once clicked.
     RepeatingDetail(Option<P2>),
     /// Lay the material in the Options Bar over the face clicked in the 3D view, as Revit's Paint does.
@@ -754,6 +756,11 @@ pub struct BimApp {
     linework_style: String,
     /// The detail group type Place Detail Group places.
     group_type: String,
+    /// The model group type Place Model Group places, and whether what it places is forgiving.
+    model_group_type: String,
+    group_forgiving: bool,
+    /// A command refused because it would change a group from inside, while the window asks what to do with it.
+    group_conflict: Option<groups::Conflict>,
     /// The Repeating Detail tool's spacing, as typed.
     repeat_spacing: String,
     /// The Detail Line tool's Chain: each click ends a line and starts the next; off, two clicks make one line.
@@ -1579,6 +1586,9 @@ impl BimApp {
             line_style: String::new(),
             linework_style: String::new(),
             group_type: String::new(),
+            model_group_type: String::new(),
+            group_forgiving: false,
+            group_conflict: None,
             repeat_spacing: "200".into(),
             line_chain: true,
             drawing: draw::Drawing::default(),
@@ -1788,6 +1798,10 @@ impl BimApp {
         if let (Err(e), true) = (&result, matches!(id, "undo" | "redo")) {
             self.light_refused(e);
         }
+        // A change that would break a group from inside: the window asks what to do (Ungroup, Create New Type, Cancel).
+        if let Err(e) = &result {
+            self.conflict_refused(id, params, e);
+        }
         // The core renames and drops the option with its set.
         self.active_option = self.session.option.clone();
         result
@@ -1860,6 +1874,7 @@ impl BimApp {
             Tool::Dimension(..) | Tool::Angular(_) | Tool::Round(..) => Some(msg!("Place Dimensions")),
             Tool::Text => Some(msg!("Place Text")),
             Tool::DetailGroup => Some(msg!("Place Detail Group")),
+            Tool::ModelGroup => Some(msg!("Place Model Group")),
             Tool::RepeatingDetail(_) => Some(msg!("Place Repeating Detail")),
             Tool::DetailLine(_) if self.drawing.insulation.is_some() => Some(msg!("Place Insulation")),
             Tool::DetailLine(_) if self.drawing.cloud.is_some() => Some(msg!("Place Revision Cloud")),
@@ -2718,6 +2733,7 @@ impl BimApp {
                 Some("split") => Tool::Split,
                 Some("linework") => Tool::Linework,
                 Some("detail_group") => Tool::DetailGroup,
+                Some("model_group") => Tool::ModelGroup,
                 Some("repeating_detail") => Tool::RepeatingDetail(None),
                 Some("create_group") => {
                     self.create_group();
@@ -4376,6 +4392,8 @@ impl BimApp {
                 }
             }
         });
+        // Edit Group's Add, Remove, Finish and Cancel, beside Select on every tab while a group is edited.
+        self.edit_group_panel(ui);
     }
 
     fn tools(&mut self, ui: &mut Ui, name: &str, tools: Tools) {
@@ -4533,6 +4551,16 @@ impl BimApp {
                     Tool::Dormer,
                 ),
             ],
+        );
+        self.tools(
+            ui,
+            msg!("Model"),
+            &[(
+                Icon::ModelGroup,
+                msg!("Model Group"),
+                msg!("Place Model Group: the model group on the Options Bar where you click, on this level"),
+                Tool::ModelGroup,
+            )],
         );
         // Datum, and the Work Plane's Set and Ref Plane beside its levels and grids, as Revit's Work Plane panel has them.
         let datum: Tools = &[
@@ -5112,6 +5140,8 @@ impl BimApp {
                 self.edit_type();
             }
         });
+        // Create Group, and with a group or a member selected, Revit's Group panel.
+        self.group_panels(ui);
         // A dimension selected: its references are picked again from the Modify tab, as from its right-click menu.
         let dimension = matches!(self.selection.as_slice(), [id]
             if matches!(self.session.model.elements.get(*id), Some(Element::Dimension(d)) if !d.alignment));
@@ -5446,6 +5476,7 @@ impl BimApp {
                 Tool::Wall(_) => self.wall_options(ui),
                 Tool::Linework => self.linework_options(ui),
                 Tool::DetailGroup => self.group_options(ui),
+                Tool::ModelGroup => self.model_group_options(ui),
                 Tool::RepeatingDetail(_) => {
                     self.group_options(ui);
                     let l = ui.label(t("Spacing:"));
@@ -5952,7 +5983,7 @@ impl BimApp {
             Tool::Offset => msg!("Point to a wall or a line: the offset goes to the cursor's side. Click to place it."),
             Tool::Demolish => msg!("Click an element to take it down in the view's phase; click it again to take it back."),
             Tool::Linework => msg!("Click an edge to draw it in the line style in the Options Bar; <By Category> puts it back."),
-            Tool::DetailGroup => msg!("Click where the group's origin goes."),
+            Tool::DetailGroup | Tool::ModelGroup => msg!("Click where the group's origin goes."),
             Tool::RepeatingDetail(None) => msg!("Click where the repeating detail starts."),
             Tool::RepeatingDetail(Some(_)) => msg!("Click where it ends: the group repeats along the line every spacing."),
             Tool::Paint => msg!("Click a face to paint it with the material in the Options Bar; the 3D view orbits as ever."),
@@ -6298,6 +6329,7 @@ impl BimApp {
     fn dialogs(&mut self, ctx: &Context) {
         self.type_properties(ctx);
         self.delete_rooms_window(ctx);
+        self.group_conflict_window(ctx);
         self.family_type_properties(ctx);
         self.materials_window(ctx);
         self.favorites_window(ctx);

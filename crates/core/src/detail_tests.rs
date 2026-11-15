@@ -41,7 +41,7 @@ fn with_group(members: usize) -> Session {
             revision: None,
         }),
     };
-    s.model_mut().detail_groups.insert("G".into(), GroupType { members: (0..members).map(line).collect() });
+    s.model_mut().detail_groups.insert("G".into(), GroupType { members: (0..members).map(line).collect(), ..Default::default() });
     s.model_mut().sync_library();
     s
 }
@@ -76,10 +76,12 @@ fn what_a_view_places_is_counted_over_all_its_groups_and_repeats_and_not_over_ot
     let max = crate::groups::MAX_PLACED;
     let mut s = with_group(100);
     run(&mut s, "repeating_detail", repeat(max / 100, 10.0));
-    // The view is full: one more group of 100 members in it is over, and in the other level's plan it isn't.
-    let e = err(&mut s, "detail_group", json!({"type": "G", "at": [0, 0], "view": 100000}));
+    // The view is full: one more repeat of 100 members in it is over, and in the other level's plan it isn't. (A detail group
+    // placed makes elements of its own, which the view draws as it draws any.)
+    let one = |view: u64| json!({"type": "G", "start": [0, 0], "end": [0, 0], "spacing": 10, "view": view});
+    let e = err(&mut s, "repeating_detail", one(100000));
     assert!(e.contains("members"), "{e}");
-    run(&mut s, "detail_group", json!({"type": "G", "at": [0, 0], "view": 100001}));
+    run(&mut s, "repeating_detail", one(100001));
     // A repeat made fewer, then more again by `modify`: the rule holds for edits too.
     let mut s = with_group(100);
     let id = id_of(&run(&mut s, "repeating_detail", repeat(10, 100.0)));
@@ -293,7 +295,8 @@ fn a_line_style_a_group_member_or_a_region_uses_is_kept_and_the_error_says_which
     let a = id_of(&run(&mut s, "detail_line", json!({"start": [0, 0], "end": [1000, 0], "style": "Thick"})));
     run(&mut s, "create_group", json!({"ids": [a], "name": "Section Mark"}));
     let e = err(&mut s, "line_style", json!({"name": "Thick", "delete": true}));
-    assert!(e.contains("detail group `Section Mark` has a member drawn in `Thick`"), "{e}");
+    // The group's member is an element of its own now, and named as one.
+    assert!(e.contains(&format!("detail line {a} is drawn in `Thick`")), "{e}");
     // A region of the project, bounded in a style.
     let sq = json!([[[0, 0], [1000, 0]], [[1000, 0], [1000, 1000]], [[1000, 1000], [0, 1000]], [[0, 1000], [0, 0]]]);
     let r = id_of(&run(&mut s, "filled_region", json!({"sketch": sq, "line_style": "Edge"})));
@@ -302,7 +305,7 @@ fn a_line_style_a_group_member_or_a_region_uses_is_kept_and_the_error_says_which
     // In a group, the region's style is named with the group too.
     run(&mut s, "create_group", json!({"ids": [r], "name": "Boxes"}));
     let e = err(&mut s, "line_style", json!({"name": "Edge", "delete": true}));
-    assert!(e.contains("detail group `Boxes` has a member drawn in `Edge`"), "{e}");
+    assert!(e.contains(&format!("filled region {r} is bounded in `Edge`")), "{e}");
     // A style nothing uses is deleted as ever.
     run(&mut s, "line_style", json!({"name": "Overhead Lines", "delete": true}));
 }
@@ -314,9 +317,8 @@ fn a_mirrored_group_turns_its_notes_with_it_and_keeps_them_readable() {
     let note = id_of(&run(&mut s, "text", json!({"text": "Fix", "at": [0, 0], "angle": 30})));
     run(&mut s, "create_group", json!({"ids": [note], "name": "Note"}));
     let angle = |s: &Session, turn: f64, mirrored: bool| {
-        let g =
-            crate::groups::DetailGroup { view: s.model.guid(100000), type_name: "Note".into(), at: P2(0.0, 0.0), angle: turn, mirrored };
-        match crate::groups::placed(&s.model, &g).first() {
+        let p = crate::groups::Placement { at: P2(0.0, 0.0), angle: turn, mirrored };
+        match crate::groups::placed_type(&s.model, "Note", s.model.guid(100000), p).first() {
             Some(Element::Text(n)) => n.angle,
             e => panic!("{e:?}"),
         }

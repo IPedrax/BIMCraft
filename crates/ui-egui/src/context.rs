@@ -34,6 +34,11 @@ pub(crate) enum Action {
     OverrideGraphics,
     CreateGroup,
     Ungroup,
+    /// The group selected in Edit Group.
+    EditGroup,
+    /// The members selected excluded from their groups, or every excluded member of the groups selected back.
+    ExcludeMember,
+    RestoreExcluded,
     Delete,
     /// The linked CAD drawings selected, read again from their files.
     ReloadCad,
@@ -70,6 +75,9 @@ impl Action {
             Action::OverrideGraphics => "Override Graphics",
             Action::CreateGroup => msg!("Create Group"),
             Action::Ungroup => msg!("Ungroup"),
+            Action::EditGroup => msg!("Edit Group"),
+            Action::ExcludeMember => msg!("Exclude"),
+            Action::RestoreExcluded => msg!("Restore All Excluded"),
             Action::Delete => "Delete",
             Action::ReloadCad => msg!("Reload CAD"),
             Action::OpenView => msg!("Open Camera View"),
@@ -172,10 +180,20 @@ impl BimApp {
                 // What is pinned stays where it is until it is unpinned.
                 let pinned: Vec<bool> = self.selection.iter().map(|id| m.is_pinned(*id)).collect();
                 groups.push(vec![Item::new(Action::Pin, pinned.iter().any(|p| !*p)), Item::new(Action::Unpin, pinned.iter().any(|p| *p))]);
-                // Detail lines, regions and notes group; a group comes apart.
-                let groupable = self.selection.iter().all(|id| m.elements.get(*id).is_some_and(bimcraft_core::groups::holds));
-                if groupable || self.group_selected() {
-                    groups.push(vec![Item::new(Action::CreateGroup, groupable), Item::new(Action::Ungroup, self.group_selected())]);
+                // A selection of one kind groups; a group comes apart, is edited, or gets its excluded members back; a member
+                // Tab picked is excluded.
+                let groupable = self.groupable().is_some();
+                let (grouped, members) = (self.groups_selected(), self.members_selected());
+                if groupable || !grouped.is_empty() || !members.is_empty() {
+                    let mut items = vec![Item::new(Action::CreateGroup, groupable), Item::new(Action::Ungroup, !grouped.is_empty())];
+                    if !grouped.is_empty() {
+                        items.push(Item::new(Action::EditGroup, grouped.len() == 1 && self.editing_group().is_none()));
+                        items.push(Item::new(Action::RestoreExcluded, !self.groups_excluding().is_empty()));
+                    }
+                    if !members.is_empty() {
+                        items.push(Item::new(Action::ExcludeMember, true));
+                    }
+                    groups.push(items);
                 }
             }
             // Walls and runs mitre against what they meet; any of them may refuse (Revit's Disallow
@@ -248,6 +266,9 @@ impl BimApp {
             Action::OverrideGraphics => self.override_selection(),
             Action::CreateGroup => self.create_group(),
             Action::Ungroup => self.ungroup(),
+            Action::EditGroup => self.edit_group(),
+            Action::ExcludeMember => self.exclude_selected(),
+            Action::RestoreExcluded => self.restore_excluded(),
             Action::Delete => self.delete(),
             Action::WorkPlane => self.open_work_plane(),
             Action::ReloadCad => {

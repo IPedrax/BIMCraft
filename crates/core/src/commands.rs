@@ -2143,19 +2143,35 @@ other_files(
         "create_group",
         "Create Group",
         &["GP"],
-        "{ids, name?} a detail group made of detail lines, filled regions and text notes of one view, as Revit's Create \
-         Group: they become type `name`'s members (Group 1, 2… unless told), and one group of it takes their place, its \
-         origin the middle of them. Place it again with detail_group; ungroup gives its members back. Returns {id, name}",
-        create_group,
+        "{ids, name?, origin?: [x,y], level?} a group made of elements `ids`, as Revit's Create Group: all model elements make a \
+         model group (walls with their doors and windows, floors, ceilings, roofs, rooms, columns, beams, pipes and the other runs, \
+         stairs, ramps, railings, components on a level…), standing on the lowest level they name (or `level`); all of one view's \
+         detail lines, filled regions, text notes and dimensions make a detail group in that view. Both kinds at once, or anything \
+         else, are refused, saying what is in the way; so is what points at an element outside the group (a door without its \
+         wall, a dimension to a line not grouped). They become type `name`'s members (Model Group 1 / Group 1… unless told) and \
+         stay where they are as the members of one group of it, its origin the middle of them (or `origin`). A click on a member \
+         picks the group, Tab the member (`Model::group_picks`). Returns {id, name, kind, members}",
+        crate::groups::commands::create_group,
     ),
     edit(
         "detail_group",
         "Place Detail Group",
         &[],
         "{type, at: [x,y], angle?, mirrored?, view?} a detail group of type `type` placed in a view (the lowest plan by \
-         default): its members drawn with their origin at `at`, turned `angle` degrees counter-clockwise, mirrored across \
-         their x axis first when `mirrored`. Move, copy, rotate and mirror take it whole",
-        detail_group,
+         default): its members made there with their origin at `at`, turned `angle` degrees counter-clockwise, mirrored across \
+         their x axis first when `mirrored`. Move, copy, rotate, mirror and delete take it whole. Returns {id, members}",
+        crate::groups::commands::detail_group,
+    ),
+    edit(
+        "model_group",
+        "Place Model Group",
+        &[],
+        "{type, at: [x,y], angle?, mirrored?, level? | levels?: [level, …], forgiving?} a model group of type `type` placed \
+         with its origin at `at`, turned and mirrored as `detail_group`, on `level` (the lowest by default), or one on each of \
+         `levels`, as Revit's Paste Aligned to Selected Levels. A member naming a level above the group's own names the level as \
+         many storeys up from where it is placed. A group that isn't `forgiving` is placed only where those storeys are as high \
+         as its type's; a forgiving one anywhere, its members' tops reaching the levels there. Returns {id | ids, members}",
+        crate::groups::commands::model_group,
     ),
     edit(
         "repeating_detail",
@@ -2171,17 +2187,77 @@ other_files(
         "ungroup",
         "Ungroup",
         &["UG"],
-        "{id} the members of detail group `id` as detail lines, filled regions and text notes of its view again, where it \
-         drew them; the group goes, its type stays. Returns {ids}",
-        ungroup,
+        "{id | ids} each group's members as plain elements again, where they are; the group goes, its type stays. Returns {ids}",
+        crate::groups::commands::ungroup,
     ),
     edit(
         "group_type",
-        "Detail Groups",
+        "Groups",
         &[],
-        "{name?, rename?, delete?: true} a detail group type: `rename` renames it, its groups following; `delete` takes it \
-         away while none of it is placed. Without `name`, it lists each with its members and how many are placed",
-        group_type,
+        "{name?, kind?: model|detail, rename?, delete?: true} a group type (detail unless `kind` or the name says model): \
+         `rename` renames it, its groups following; `delete` takes it away while none of it is placed. Without `name`, it lists \
+         each kind's types with their members and how many are placed: {groups (detail), model_groups}",
+        crate::groups::commands::group_type,
+    ),
+    edit(
+        "exclude_member",
+        "Exclude",
+        &[],
+        "{ids} members of groups taken out of their groups here, as Revit's Exclude: each element goes (a wall with its doors \
+         and windows), and its group remembers it, never a change to its type; `restore_excluded` puts it back. Returns {excluded}",
+        crate::groups::commands::exclude_member,
+    ),
+    edit(
+        "restore_excluded",
+        "Restore All Excluded",
+        &[],
+        "{id | ids} every excluded member of groups `ids` put back as their type has it. Returns {restored, ids}",
+        crate::groups::commands::restore_excluded,
+    ),
+    other(
+        "edit_group",
+        "Edit Group",
+        "{id} starts editing group `id`, as Revit's Edit Group: its members change freely (one changed outside it is a conflict), \
+         and what is made meanwhile of its kind (in its view, for a detail group) joins it; `add_to_group` and \
+         `remove_from_group` add elements and take members out, `finish_group` makes its type what it now is and places every \
+         other group of it again, `cancel_group` puts the project back as it was. Returns {editing, members}",
+        crate::groups::commands::edit_group,
+    ),
+    other(
+        "add_to_group",
+        "Add to Group",
+        "{ids} in Edit Group: elements of the group's kind (and view) that join it at Finish. Returns {adding}",
+        crate::groups::commands::add_to_group,
+    ),
+    other(
+        "remove_from_group",
+        "Remove from Group",
+        "{ids} in Edit Group: members that leave it at Finish, staying as plain elements; the same members of every other group \
+         of its type go. Returns {removing}",
+        crate::groups::commands::remove_from_group,
+    ),
+    edit(
+        "finish_group",
+        "Finish Group",
+        &[],
+        "{} ends Edit Group: the group's type becomes what the group now is (what was removed out, what was added in), and every \
+         other group of the type is placed again. Returns {finished, members, removed, updated}",
+        crate::groups::commands::finish_group,
+    ),
+    other(
+        "cancel_group",
+        "Cancel Group",
+        "{} ends Edit Group with the project as it was when it began; the steps meanwhile are forgotten",
+        crate::groups::commands::cancel_group,
+    ),
+    other(
+        "resolve_group",
+        "Resolve Group Conflict",
+        "{fix: ungroup|new_type, command, params} runs `command` with `params` doing `fix` with every group it would change from \
+         inside (an error starting `group conflict` refuses it otherwise), as Revit asks: `ungroup` makes those groups plain \
+         elements first, keeping the change; `new_type` makes each a group type of its own as it now stands (Create New Type). \
+         One undo step, the command's. Returns what the command returns",
+        crate::groups::commands::resolve_group,
     ),
     edit(
         "detail_line",
@@ -2938,7 +3014,7 @@ fn point(v: &Value) -> Option<P2> {
     (p.is_finite() && p.0.abs() <= MAX_COORD && p.1.abs() <= MAX_COORD).then_some(p)
 }
 
-fn point_opt(c: &str, p: &Value, key: &str) -> Result<Option<P2>, String> {
+pub(crate) fn point_opt(c: &str, p: &Value, key: &str) -> Result<Option<P2>, String> {
     match p.get(key) {
         v if absent(v) => Ok(None),
         Some(v) => point(v).map(Some).ok_or_else(|| bad(c, format!("`{key}` must be a point [x, y] in mm, got {v}"))),
@@ -2973,7 +3049,7 @@ fn points3(c: &str, p: &Value, key: &str) -> Result<Vec<[f64; 3]>, String> {
     a.iter().map(|v| point3(v).ok_or_else(|| bad(c, format!("`{key}`: {v} is not a point [x, y, z] in mm")))).collect()
 }
 
-fn num(c: &str, p: &Value, key: &str) -> Result<Option<f64>, String> {
+pub(crate) fn num(c: &str, p: &Value, key: &str) -> Result<Option<f64>, String> {
     match p.get(key) {
         v if absent(v) => Ok(None),
         Some(v) => v
@@ -3020,13 +3096,13 @@ fn operation(c: &str, name: &str) -> Result<Option<crate::model::Operation>, Str
 }
 
 /// An element of `m` by its id, or its GUID.
-fn element_id(c: &str, m: &Model, v: &Value) -> Result<Id, String> {
+pub(crate) fn element_id(c: &str, m: &Model, v: &Value) -> Result<Id, String> {
     let g = serde_json::from_value::<Guid>(v.clone()).map_err(|_| bad(c, format!("{v} is not an element id or GUID")))?;
     m.elements.id(g).ok_or_else(|| bad(c, format!("no element {g}")))
 }
 
 /// `ids` [id, …], or one `id`: elements of the model, by id or GUID, each once, in the order given.
-fn ids_param(c: &str, m: &Model, p: &Value) -> Result<Vec<Id>, String> {
+pub(crate) fn ids_param(c: &str, m: &Model, p: &Value) -> Result<Vec<Id>, String> {
     let as_id = |v: &Value| element_id(c, m, v);
     let ids: Vec<Id> = match (p.get("ids"), p.get("id")) {
         (Some(Value::Array(a)), _) if a.len() <= MAX_POINTS => a.iter().map(as_id).collect::<Result<_, _>>()?,
@@ -3063,7 +3139,7 @@ fn count_opt(c: &str, p: &Value, key: &str, default: usize) -> Result<usize, Str
 }
 
 /// `level` by name, id or GUID, as its GUID; the lowest level when not given. A plan view of a level names the level too.
-fn level_param(c: &str, m: &Model, p: &Value, key: &str) -> Result<Guid, String> {
+pub(crate) fn level_param(c: &str, m: &Model, p: &Value, key: &str) -> Result<Guid, String> {
     plan_param(c, m, p, key).map(|(level, _)| level)
 }
 
@@ -3095,7 +3171,7 @@ fn plan_param(c: &str, m: &Model, p: &Value, key: &str) -> Result<(Guid, Option<
 
 /// `view` by name, id or GUID: a level's plan, a section, an elevation, a schedule or a 3D view, or with `sheets` a sheet
 /// by its number; when not given, the plan of `level` (the lowest by default).
-fn view_param(c: &str, m: &Model, p: &Value, sheets: bool) -> Result<Id, String> {
+pub(crate) fn view_param(c: &str, m: &Model, p: &Value, sheets: bool) -> Result<Id, String> {
     let plan = || plan_param(c, m, p, "level").map(|(level, view)| m.elements.id(view.unwrap_or(level)).unwrap_or_default());
     match p.get("view") {
         v if absent(v) => plan(),
@@ -3280,6 +3356,23 @@ pub(crate) fn tidy(ring: &[P2]) -> Vec<P2> {
 /// counts as a series once two marks share it and they outnumber the plain numbers, so a lone "D2"
 /// among numbered doors stays an exception. Zero padding is kept ("P09" → "P10"), and the result
 /// is never one already taken. A mark longer than a name may be (`MAX_TEXT`) is no part of a series.
+/// The next free mark of doors (`door`) or windows.
+pub(crate) fn next_mark(m: &Model, door: bool) -> String {
+    next_number(m.elements.values().filter_map(|e| match e {
+        Element::Door(o) if door => Some(o.mark.as_str()),
+        Element::Window(o) if !door => Some(o.mark.as_str()),
+        _ => None,
+    }))
+}
+
+/// The next free room number.
+pub(crate) fn next_room_number(m: &Model) -> String {
+    next_number(m.elements.values().filter_map(|e| match e {
+        Element::Room(r) => Some(r.number.as_str()),
+        _ => None,
+    }))
+}
+
 pub(crate) fn next_number<'a>(taken: impl Iterator<Item = &'a str>) -> String {
     let taken: Vec<&str> = taken.map(str::trim).collect();
     // Each series by its prefix: how many marks it has, its largest number and the width its zero-padded ones keep.
@@ -3656,8 +3749,12 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
             extra.insert("level".into(), json!(m.level_of(e)));
             extra.insert("size".into(), json!(m.text_types.get(&n.type_name).map(|t| t.size)));
         }
-        Element::DetailGroup(g) => {
-            extra.insert("members".into(), json!(m.detail_groups.get(&g.type_name).map_or(0, |t| t.members.len())));
+        Element::DetailGroup(_) | Element::ModelGroup(_) => {
+            extra.insert("member_ids".into(), json!(crate::groups::members(m, id)));
+            extra.insert(
+                "excluded".into(),
+                json!(crate::groups::instance(e).map_or(0, |i| i.members.iter().filter(|s| s.excluded).count())),
+            );
             extra.insert("level".into(), json!(m.level_of(e)));
         }
         Element::RepeatingDetail(r) => {
@@ -11707,7 +11804,7 @@ fn top_param(c: &str, m: &Model, p: &Value, level: impl Key) -> Result<(Option<G
 }
 
 /// Degrees to a billionth, so a quarter turn reads 90.
-fn degrees(a: f64) -> f64 {
+pub(crate) fn degrees(a: f64) -> f64 {
     (a * 1e9).round() / 1e9
 }
 
@@ -16217,6 +16314,12 @@ fn modify(s: &mut Session, p: &Value) -> R {
         {
             return Err(bad(c, connected(m, id, part, room, &format!("its `{k}` is its room's"))));
         }
+        // A group's members and levels are its type's: they change in Edit Group, and with its level.
+        if crate::groups::instance(e).is_some()
+            && let Some(k) = ["members", "levels"].into_iter().find(|k| fields.contains_key(*k))
+        {
+            return Err(bad(c, format!("{} {id}: its `{k}` follow its type; change them in Edit Group (`edit_group`)", e.category())));
+        }
         let mut v = serde_json::to_value(e).map_err(|e| bad(c, e))?;
         let obj = v.as_object_mut().ok_or_else(|| bad(c, format!("element {id} can't be edited")))?;
         for (k, val) in fields {
@@ -16486,6 +16589,10 @@ pub(crate) fn transform(c: &str, m: &Model, mut e: Element, id: Id, mo: &Motion,
         Element::FilledRegion(r) => (r.pattern_origin, r.pattern_angle) = turned(f, r.pattern_origin, r.pattern_angle),
         // Its members go with it; a mirror image is its type's, flipped.
         Element::DetailGroup(g) => {
+            (g.at, g.angle) = turned(f, g.at, g.angle);
+            g.mirrored ^= mo.mirror;
+        }
+        Element::ModelGroup(g) => {
             (g.at, g.angle) = turned(f, g.at, g.angle);
             g.mirrored ^= mo.mirror;
         }
@@ -17354,6 +17461,8 @@ fn duplicate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion) -> R {
         if let Some(params) = e.params_mut() {
             massing::detach(params);
         }
+        // A group's copy places its members anew (`groups::keep`).
+        crate::groups::commands::as_copy(&mut e);
         let id = m.insert(e);
         hosts.insert(m.guid(from), m.guid(id));
         made.push(id);
@@ -17941,7 +18050,9 @@ fn move_elements(s: &mut Session, p: &Value) -> R {
     if end.is_some() && !matches!(ids.as_slice(), [one] if s.model.wall(*one).is_some() || s.model.run_of(*one).is_some()) {
         return Err(bad(c, "`end` moves an end of one wall or one run, or a part of one section or elevation; give `ids` one of those"));
     }
-    relocate(c, s, &ids, &Motion { map: &|q| q + by, slide: Some(by), mirror: false }, end)?;
+    // A group goes with its members.
+    let taken = if end.is_none() { crate::groups::with_members(&s.model, &ids) } else { ids.clone() };
+    relocate(c, s, &taken, &Motion { map: &|q| q + by, slide: Some(by), mirror: false }, end)?;
     Ok(json!({"moved": ids}))
 }
 
@@ -17966,7 +18077,7 @@ fn rotate(s: &mut Session, p: &Value) -> R {
     if flag(c, p, "copy")? {
         return duplicate(c, s, &ids, &mo);
     }
-    relocate(c, s, &ids, &mo, None)?;
+    relocate(c, s, &crate::groups::with_members(&s.model, &ids), &mo, None)?;
     Ok(json!({"rotated": ids}))
 }
 
@@ -17987,7 +18098,7 @@ fn mirror(s: &mut Session, p: &Value) -> R {
     if flag(c, p, "copy")? {
         return duplicate(c, s, &ids, &mo);
     }
-    relocate(c, s, &ids, &mo, None)?;
+    relocate(c, s, &crate::groups::with_members(&s.model, &ids), &mo, None)?;
     Ok(json!({"mirrored": ids}))
 }
 
@@ -18533,6 +18644,9 @@ fn purge(s: &mut Session, p: &Value) -> R {
 }
 
 fn delete(s: &mut Session, p: &Value) -> R {
+    // A group goes with its members.
+    let grouped = with_members_param(s, p)?;
+    let p = grouped.as_ref().unwrap_or(p);
     // A room's own floor and ceiling go with it, unless they are to be kept: then they stay, ordinary ones.
     let with = with_finishes(s, p)?;
     let p = with.as_ref().unwrap_or(p);
@@ -18546,6 +18660,26 @@ fn delete(s: &mut Session, p: &Value) -> R {
         assert_eq!(s.model, twin.model, "indexed deletion left a different model");
     }
     result
+}
+
+/// `delete`'s params with the members of the groups among them added, when there are any.
+fn with_members_param(s: &Session, p: &Value) -> Result<Option<Value>, String> {
+    let m = &s.model;
+    let Ok(ids) = ids_param("delete", m, p) else { return Ok(None) };
+    if crate::groups::commands::instances_in(m, &ids).is_empty() {
+        return Ok(None);
+    }
+    let mut q = p.clone();
+    q["ids"] = json!(crate::groups::with_members(m, &ids));
+    if let Some(o) = q.as_object_mut() {
+        o.remove("id");
+    }
+    Ok(Some(q))
+}
+
+/// Deletes elements `ids` as `delete` does, for the commands that delete on their way.
+pub(crate) fn delete_ids(s: &mut Session, ids: &[Id]) -> Result<(), String> {
+    delete_indexed(s, &json!({"ids": ids})).map(|_| ())
 }
 
 /// `delete`'s params with the floors and ceilings of the rooms among them added, when there are any and `keep_finishes`
@@ -19010,7 +19144,7 @@ fn georeference(s: &mut Session, p: &Value) -> R {
 }
 
 /// `kind` `from` is called `to` now: its library entry, and everything that names it.
-fn rename_entry(m: &mut Model, kind: &LibKind, from: &str, to: &str) {
+pub(crate) fn rename_entry(m: &mut Model, kind: &LibKind, from: &str, to: &str) {
     m.library.renamed(kind, from, to);
     m.lib_refs_mut(&mut |k, n| {
         if k == kind && n == from {
@@ -19028,7 +19162,7 @@ pub(crate) fn only(c: &str, p: &Value, keys: &[&str]) -> Result<(), String> {
 }
 
 /// The name `p` gives under `key`, trimmed, unless it gives none or only spaces.
-fn name_param(c: &str, p: &Value, key: &str) -> Result<Option<String>, String> {
+pub(crate) fn name_param(c: &str, p: &Value, key: &str) -> Result<Option<String>, String> {
     Ok(string(c, p, key)?.map(|n| n.trim().to_string()).filter(|n| !n.is_empty()))
 }
 
@@ -19467,91 +19601,6 @@ fn make_fill_pattern(s: &mut Session, p: &Value) -> R {
     Ok(json!({"name": name, "pattern": pattern}))
 }
 
-fn create_group(s: &mut Session, p: &Value) -> R {
-    let c = "create_group";
-    only(c, p, &["ids", "name"])?;
-    let m = &s.model;
-    let ids = ids_param(c, m, p)?;
-    if ids.is_empty() {
-        return Err(bad(c, "`ids`: the detail lines, filled regions and text notes to group"));
-    }
-    if ids.len() > crate::groups::MAX_MEMBERS {
-        return Err(bad(c, format!("{} elements; a group holds at most {}", ids.len(), crate::groups::MAX_MEMBERS)));
-    }
-    let mut view = None;
-    let mut members = Vec::new();
-    let mut extent: Vec<P2> = Vec::new();
-    for &id in &ids {
-        let e = m.elements.get(id).ok_or_else(|| bad(c, format!("no element {id}")))?;
-        if !crate::groups::holds(e) {
-            return Err(bad(
-                c,
-                format!("{} {id} can't be in a detail group: it holds detail lines, filled regions and text notes", e.category()),
-            ));
-        }
-        let v = m.annotation_plan(e);
-        if view.is_some_and(|w| Some(w) != v) {
-            return Err(bad(c, "the elements are in different views; a group's members are all in one"));
-        }
-        view = v;
-        match e {
-            Element::DetailLine(l) => extent.extend(l.curve.points()),
-            Element::FilledRegion(r) => extent.extend(r.sketch.iter().flat_map(|l| l.points())),
-            Element::Text(n) => extent.push(n.at),
-            _ => {}
-        }
-        members.push(e.clone());
-    }
-    let view = view.ok_or_else(|| bad(c, "the elements are in no view"))?;
-    let (lo, hi) = extent.iter().fold((P2(f64::INFINITY, f64::INFINITY), P2(f64::NEG_INFINITY, f64::NEG_INFINITY)), |(lo, hi), q| {
-        (P2(lo.0.min(q.0), lo.1.min(q.1)), P2(hi.0.max(q.0), hi.1.max(q.1)))
-    });
-    if extent.is_empty() {
-        return Err(bad(c, "the elements have no extent"));
-    }
-    let origin = micron((lo + hi) * 0.5);
-    let name = match name_param(c, p, "name")? {
-        Some(n) if m.detail_groups.contains_key(&n) => return Err(bad(c, format!("there's already a detail group `{n}`"))),
-        Some(n) => n,
-        None => (1..).map(|k| format!("Group {k}")).find(|n| !m.detail_groups.contains_key(n)).unwrap_or_default(),
-    };
-    // About the origin, in no view; a region's boundary lines get ids of their own again when they're elements' once more.
-    let back = move |q: P2| q - origin;
-    let mo = Motion { map: &back, slide: None, mirror: false };
-    let mut held = Vec::new();
-    for (e, id) in members.into_iter().zip(&ids) {
-        let mut e = transform(c, m, e, *id, &mo, &BTreeSet::new())?;
-        crate::groups::set_view(&mut e, Guid::default());
-        if let Some(lines) = e.sketch_mut() {
-            lines.iter_mut().for_each(|l| (l.id, l.guid) = (0, Guid::default()));
-        }
-        held.push(crate::groups::Member { id: 0, guid: Guid::default(), element: e });
-    }
-    delete(s, &json!({"ids": ids}))?;
-    let m = s.model_mut();
-    m.detail_groups.insert(name.clone(), crate::groups::GroupType { members: held });
-    let g = crate::groups::DetailGroup { view, type_name: name.clone(), at: origin, angle: 0.0, mirrored: false };
-    let id = m.insert(Element::DetailGroup(g));
-    Ok(json!({"id": id, "name": name}))
-}
-
-fn detail_group(s: &mut Session, p: &Value) -> R {
-    let c = "detail_group";
-    only(c, p, &["type", "at", "angle", "mirrored", "view", "level"])?;
-    let m = &s.model;
-    let type_name = name_param(c, p, "type")?.ok_or_else(|| bad(c, "`type`, the detail group to place, is required"))?;
-    if !m.detail_groups.contains_key(&type_name) {
-        let there: Vec<&str> = m.detail_groups.keys().map(String::as_str).collect();
-        return Err(bad(c, format!("there's no detail group `{type_name}` (there are: {})", there.join(", "))));
-    }
-    let at = point_req(c, p, "at")?;
-    let angle = degrees(num(c, p, "angle")?.unwrap_or(0.0));
-    let view = m.guid(view_param(c, m, p, true)?);
-    let g = crate::groups::DetailGroup { view, type_name, at, angle, mirrored: flag(c, p, "mirrored")? };
-    let id = s.model_mut().insert(Element::DetailGroup(g));
-    Ok(json!({"id": id}))
-}
-
 fn repeating_detail(s: &mut Session, p: &Value) -> R {
     let c = "repeating_detail";
     only(c, p, &["type", "start", "end", "spacing", "mirrored", "view", "level"])?;
@@ -19564,65 +19613,6 @@ fn repeating_detail(s: &mut Session, p: &Value) -> R {
     let count = r.places().map_or(0, |v| v.len());
     let id = s.model_mut().insert(Element::RepeatingDetail(r));
     Ok(json!({"id": id, "count": count}))
-}
-
-fn ungroup(s: &mut Session, p: &Value) -> R {
-    let c = "ungroup";
-    only(c, p, &["id"])?;
-    let m = &s.model;
-    let id = element_id(c, m, p.get("id").unwrap_or(&Value::Null))?;
-    let Some(Element::DetailGroup(g)) = m.elements.get(id) else {
-        return Err(bad(c, format!("element {id} isn't a detail group")));
-    };
-    let members = crate::groups::placed(m, g);
-    delete(s, &json!({"ids": [id]}))?;
-    let m = s.model_mut();
-    let ids: Vec<Id> = members.into_iter().map(|e| m.insert(e)).collect();
-    Ok(json!({"ids": ids}))
-}
-
-fn group_type(s: &mut Session, p: &Value) -> R {
-    let c = "group_type";
-    only(c, p, &["name", "rename", "delete"])?;
-    let placed = |m: &Model, name: &str| -> Vec<Id> {
-        let of = |e: &Element| match e {
-            Element::DetailGroup(g) => g.type_name == name,
-            Element::RepeatingDetail(r) => r.type_name == name,
-            _ => false,
-        };
-        m.elements.iter().filter(|(_, e)| of(e)).map(|(id, _)| *id).collect()
-    };
-    let Some(name) = name_param(c, p, "name")? else {
-        let m = &s.model;
-        let all: Map<String, Value> =
-            m.detail_groups.iter().map(|(n, g)| (n.clone(), json!({"members": g.members.len(), "placed": placed(m, n).len()}))).collect();
-        return Ok(json!({"groups": all}));
-    };
-    if !s.model.detail_groups.contains_key(&name) {
-        return Err(bad(c, format!("there's no detail group `{name}`")));
-    }
-    if flag(c, p, "delete")? {
-        if let Some(id) = placed(&s.model, &name).first() {
-            return Err(bad(c, format!("detail group {id} is of `{name}`; delete or ungroup it first")));
-        }
-        s.model_mut().detail_groups.remove(&name);
-        return Ok(json!({"deleted": name}));
-    }
-    let name = match name_param(c, p, "rename")? {
-        Some(to) if to != name => {
-            let m = s.model_mut();
-            if m.detail_groups.contains_key(&to) {
-                return Err(bad(c, format!("there's already a detail group `{to}`")));
-            }
-            if let Some(g) = m.detail_groups.remove(&name) {
-                m.detail_groups.insert(to.clone(), g);
-            }
-            rename_entry(m, &LibKind::DetailGroup, &name, &to);
-            to
-        }
-        _ => name,
-    };
-    Ok(json!({"name": name}))
 }
 
 fn filled_region_type(s: &mut Session, p: &Value) -> R {

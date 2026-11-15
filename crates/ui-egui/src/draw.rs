@@ -684,7 +684,7 @@ impl BimApp {
                 if crate::stacked_button(ui, Icon::RepeatingDetail, msg!("Repeating Detail"), on, tip).clicked() {
                     self.set_tool(Tool::RepeatingDetail(None));
                 }
-                let tip = msg!("Create Group (GP): the selected detail lines, filled regions and text made one detail group");
+                let tip = msg!("Create Group (GP): the selected detail lines, filled regions, notes and dimensions made one detail group");
                 if crate::stacked_button(ui, Icon::CreateGroup, "Create Group", false, tip).clicked() {
                     self.create_group();
                 }

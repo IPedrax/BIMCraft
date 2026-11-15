@@ -247,25 +247,26 @@ and which the desktop's editor reads for its caret, its selection and a click's 
 A file of format 7 has notes with a `size`: reading it gives each a type of that size (`Model::typed_notes`), and `Model::check`
 refuses a `size` left on one. A note holds up to `MAX_NOTE` (4,000) characters and `MAX_RUNS` (1,000) runs.
 
-Detail groups (`groups.rs`) are Revit's: `create_group` (GP) makes the detail lines, filled regions and text notes given,
-all of one view, into a group type (`Model::detail_groups`) holding them as `Member`s about the middle of them, in no
-view, and puts one `DetailGroup` element in their place. Members are parts (`HasPart`, `parts_now`): each has its own id
-and GUID, and their line styles and region types are library references like an element's (`lib_refs_mut`), so renames
-reach them; `Model::check` holds each to what the same element in a view must be (`annotation_ok`). A placed group is an
-origin, an angle and `mirrored`; `groups::placed` gives its members as elements of its view (through
-`commands::transform`, as Move and Rotate take elements), which `render::detail_group` draws, regions under lines and notes,
-all owned by the group, so it picks, moves, rotates and mirrors as one. `ungroup` (UG) puts those elements back in the view;
-`group_type` renames a type (its groups follow) or deletes it while nothing is of it. A `RepeatingDetail` places a group
+Detail groups (`groups.rs`) are Revit's, and so are model groups: both are written up in [groups](groups.md). `create_group`
+(GP) makes the detail lines, filled regions, text notes and dimensions given, all of one view (a dimension only with what it
+measures), into a group type (`Model::detail_groups`) holding them as `Member`s about the middle of them, with their view a
+token, and puts one `DetailGroup` element in their place whose members are those elements, kept as they are. Members are parts
+(`HasPart`, `parts_now`): each has its own id and GUID, and their line styles and region types are library references like an
+element's (`lib_refs_mut`), so renames reach them; `Model::check` holds each to what the same element in a view must be
+(`annotation_ok`). A placed group is an origin, an angle and `mirrored`; `groups::place` makes its members from its type
+(through `commands::transform`, as Move and Rotate take elements), and they are drawn, picked and snapped to as any element:
+a click on one picks its group (`groups::group_picks`), Tab the member. `ungroup` (UG) leaves its members as plain elements;
+`group_type` renames a type (its groups follow) or deletes it while nothing is of it. A `RepeatingDetail` places a group's type
 along a line every `spacing` from its start, each turned along it (at most `MAX_REPEATS`), as Revit's Repeating Detail
-Component does with a detail component. A view draws every member of every group and repeat in it each time, so
-`Model::check` caps what one view places: a group counts its type's members, a repeating detail its members once for each
-repeat, and `MAX_PLACED` (10,000) is the most in a view (measured with the probe `probe_the_cost_of_the_most_hatched_regions_a_view_may_place`,
+Component does with a detail component; those are drawn, never elements. A view draws every member of every repeat in it each
+time, so `Model::check` caps what one view's repeating details place: each its members once for each repeat, and `MAX_PLACED`
+(10,000) is the most in a view (measured with the probe `probe_the_cost_of_the_most_hatched_regions_a_view_may_place`,
 10,000 hatched regions take about 0.1 s to draw at 3 m across and 0.5 s at 30 m across, 2.8 million primitives, on a machine that
 is not busy, in a dev build (the core is built at opt-level 2 there) and in release alike, and up to 0.29 s and 1.10 s in the dev
 build on a busy one; the 200,000 it once allowed took 6 s and 30 million primitives). A placed member that is a huge circle costs
 more (the probe `probe_the_cost_of_placed_members_that_are_huge_circles`: 8,192 points each, about 0.2 ms to draw and 3 to 5 ms to
 rasterize, 8 ms on a busy machine), so a view at the cap of them can take a minute or more to render; the cap stays. A member note keeps its own angle under a pure mirror
-(it still reads the right way round) and turns with the group's angle. The file holds a group's members as elements, and
+(it still reads the right way round) and turns with the group's angle. The file holds a group type's members as elements, and
 `Model::read` leaves out of them what this build doesn't know, as it does for any element
 (`/detail_groups/<name>/members/<i>/element/...`). Deleting a line style that a filled region or a group's member is drawn in
 is refused with the region's or the group's name. On the desktop, Annotate > Detail has Detail Group, Repeating Detail and

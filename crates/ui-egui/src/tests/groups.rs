@@ -16,7 +16,7 @@ fn ug_takes_every_group_selected_apart_in_one_undo_step() {
     ));
     grouped(&mut h, P2(2000.0, 1000.0));
     grouped(&mut h, P2(6000.0, 3000.0));
-    assert_eq!((ids(&h, "detailgroup").len(), ids(&h, "line").len()), (2, 0));
+    assert_eq!((ids(&h, "detailgroup").len(), ids(&h, "line").len()), (2, 2));
     click(&mut h, P2(2000.0, 1000.0));
     click_with(&mut h, P2(6000.0, 3000.0), Modifiers::COMMAND);
     assert_eq!(h.state().selection.len(), 2);
@@ -27,7 +27,7 @@ fn ug_takes_every_group_selected_apart_in_one_undo_step() {
     assert_eq!(h.state().selection.len(), 2, "their lines, selected");
     h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
     h.run();
-    assert_eq!((ids(&h, "detailgroup").len(), ids(&h, "line").len()), (2, 0), "one Ctrl+Z puts both back");
+    assert_eq!((ids(&h, "detailgroup").len(), ids(&h, "line").len()), (2, 2), "one Ctrl+Z puts both back");
 }
 
 #[test]
@@ -108,4 +108,130 @@ fn the_materials_window_offers_the_projects_fill_patterns_besides_its_own() {
     assert_eq!(h.state().session.model.materials["Material 1"].surface_pattern.as_deref(), Some("Tile 300"));
     // And the combo shows the one it has.
     assert_eq!(combo_value(&h, "Cut Pattern"), "Sand");
+}
+
+/// Three walls of a corner, up to Level 2, made a model group.
+const CORNER: &str =
+    "@w = wall {\"points\": [[0, 3000], [0, 0], [4000, 0], [4000, 3000]], \"top_level\": \"Level 2\"}\ncreate_group {\"ids\": \"@w.ids\"}";
+
+#[test]
+fn a_click_picks_the_group_and_tab_its_member() {
+    let mut h = app(CORNER);
+    let group = ids(&h, "modelgroup");
+    assert_eq!(group.len(), 1);
+    let walls = ids(&h, "wall");
+    h.state_mut().selection.clear();
+    h.run();
+    click(&mut h, P2(2000.0, 0.0));
+    assert_eq!(h.state().selection, group, "the group, not its wall");
+    // Over the wall, Tab steps from the group to the wall in it, and a click takes that.
+    h.hover_at(h.state().screen(P2(2000.0, 0.0)));
+    h.run();
+    key(&mut h, Key::Tab);
+    click(&mut h, P2(2000.0, 0.0));
+    assert_eq!(h.state().selection, [walls[1]]);
+    // A box round it takes the group whole.
+    key(&mut h, Key::Escape);
+    drag(&mut h, P2(-1000.0, -1000.0), P2(5000.0, 4000.0));
+    assert_eq!(h.state().selection, group);
+}
+
+#[test]
+fn exclude_and_restore_all_excluded_from_the_group_panel() {
+    let mut h = app(CORNER);
+    let group = ids(&h, "modelgroup");
+    let walls = ids(&h, "wall");
+    h.state_mut().selection = vec![walls[0]];
+    h.run();
+    press(&mut h, "Modify");
+    press(&mut h, "Exclude");
+    assert_eq!(ids(&h, "wall").len(), 2, "the excluded wall goes");
+    assert_eq!(ids(&h, "modelgroup"), group, "the group stays");
+    h.state_mut().selection = group.clone();
+    h.run();
+    press(&mut h, "Restore All Excluded");
+    assert_eq!(ids(&h, "wall").len(), 3);
+}
+
+#[test]
+fn edit_group_finish_changes_every_group_of_the_type() {
+    let mut h = app(&format!("{CORNER}\ncopy {{\"ids\": [\"$last\"], \"by\": [10000, 0]}}"));
+    let groups = ids(&h, "modelgroup");
+    assert_eq!(groups.len(), 2, "two of one type");
+    h.state_mut().selection = vec![groups[0]];
+    h.run();
+    press(&mut h, "Modify");
+    press(&mut h, "Edit Group");
+    assert!(h.state().session.editing_group().is_some());
+    // In Edit Group a click on a member takes the member.
+    click(&mut h, P2(2000.0, 0.0));
+    let wall = h.state().selection.clone();
+    assert_eq!(wall.len(), 1);
+    assert!(h.state().session.model.wall(wall[0]).is_some());
+    let r = h.state_mut().run("move", serde_json::json!({"ids": wall, "by": [0, -500]}));
+    assert!(r.is_some(), "{}", h.state().status.text);
+    press(&mut h, "Finish");
+    assert!(h.state().session.editing_group().is_none());
+    // The copy's wall moved too.
+    let m = &h.state().session.model;
+    assert!(m.elements.values().any(|e| matches!(e, Element::Wall(w) if w.start == P2(10000.0, -500.0))), "the other group follows");
+}
+
+#[test]
+fn a_member_changed_on_its_own_asks_ungroup_create_new_type_or_cancel() {
+    let mut h = app(CORNER);
+    let walls = ids(&h, "wall");
+    let r = h.state_mut().run("move", serde_json::json!({"ids": [walls[0]], "by": [0, 500]}));
+    assert!(r.is_none());
+    h.run();
+    assert!(h.state().group_conflict.is_some());
+    assert!(h.query_by_label("Create New Type").is_some());
+    press(&mut h, "Ungroup");
+    assert!(h.state().group_conflict.is_none());
+    assert!(ids(&h, "modelgroup").is_empty(), "ungrouped");
+    assert_eq!(field(&h, walls[0], "start"), json!([0.0, 3500.0]), "the change kept");
+    // Undone, the group is back; Create New Type makes it a type of its own.
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    h.run();
+    assert_eq!(ids(&h, "modelgroup").len(), 1);
+    h.state_mut().run("move", serde_json::json!({"ids": [walls[0]], "by": [0, 500]}));
+    h.run();
+    press(&mut h, "Create New Type");
+    assert_eq!(h.state().session.model.model_groups.len(), 2);
+    // Cancel leaves everything as it was.
+    h.state_mut().run("move", serde_json::json!({"ids": [walls[1]], "by": [0, 500]}));
+    h.run();
+    press(&mut h, "Cancel");
+    assert!(h.state().group_conflict.is_none());
+    assert_eq!(field(&h, walls[1], "start"), json!([0.0, 0.0]));
+}
+
+#[test]
+fn create_group_is_offered_for_a_selection_of_one_kind_only() {
+    let mut h = app(&format!("{BOX}\ndetail_line {{\"start\": [1000, 1000], \"end\": [3000, 1000]}}"));
+    let walls = ids(&h, "wall");
+    let line = ids(&h, "line");
+    h.state_mut().selection = vec![walls[0], line[0]];
+    h.run();
+    assert_eq!(h.state().groupable(), None, "a wall and a line are two kinds");
+    h.state_mut().selection = walls.clone();
+    h.run();
+    assert_eq!(h.state().groupable(), Some(bimcraft_core::groups::Kind::Model));
+    shortcut(&mut h, "GP");
+    assert_eq!(ids(&h, "modelgroup").len(), 1);
+    assert_eq!(ids(&h, "wall"), walls, "its walls stay");
+    h.state_mut().selection = line.clone();
+    h.run();
+    assert_eq!(h.state().groupable(), Some(bimcraft_core::groups::Kind::Detail));
+}
+
+#[test]
+fn place_model_group_puts_one_where_clicked_and_on_another_level_when_forgiving() {
+    let mut h = app(CORNER);
+    press(&mut h, "Architecture");
+    press(&mut h, "Model Group");
+    assert_eq!(h.state().tool, Tool::ModelGroup);
+    click(&mut h, P2(20000.0, 0.0));
+    assert_eq!(ids(&h, "modelgroup").len(), 2);
+    assert_eq!(ids(&h, "wall").len(), 6);
 }

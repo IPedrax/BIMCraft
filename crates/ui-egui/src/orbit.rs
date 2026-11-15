@@ -1585,7 +1585,7 @@ impl BimApp {
         let placing_on_face = matches!(self.tool, Tool::Component) && self.place_on_face && self.placing_on_work_plane();
         // Site's points the view shows, and which is selected: read before the view's state is borrowed.
         let shown_points = self.points_in_3d();
-        let lit_ids = self.selection.clone();
+        let lit_ids = self.lit_selection();
         let o = &mut self.orbit;
         (o.rect, o.ppp) = (rect, ppp);
         // The camera changed elsewhere than by the hand in this view (dragged on a plan, a command, undo): the picture stands
@@ -2261,7 +2261,11 @@ impl BimApp {
         });
         let target = click.filter(|_| drawing && !on_face).and_then(|at| aimed(&o.picker, at));
         match clicked {
-            Some(found) if modify => self.pick_up(found.into_iter().collect(), click_modifiers(ui)),
+            // A member of a group is picked as its group, as in a plan.
+            Some(found) if modify => {
+                let found = bimcraft_core::groups::as_picked(&model, &found.into_iter().collect::<Vec<_>>(), self.session.editing_group());
+                self.pick_up(found, click_modifiers(ui))
+            }
             Some(Some(id)) if demolish => self.demolish(id),
             Some(Some(id)) if paint || unpaint => self.paint_face(id, face, unpaint),
             // Nothing under the cursor: nothing to take down, or to paint.
@@ -2322,6 +2326,7 @@ impl BimApp {
             p.extend(crate::canvas::box_shapes(rect, local(from), local(now)));
         }
         if let Some(found) = boxed_ids {
+            let found = bimcraft_core::groups::as_picked(&model, &found, self.session.editing_group());
             self.pick_up(found, click_modifiers(ui));
         }
         if let Some(surface) = sketch_z {

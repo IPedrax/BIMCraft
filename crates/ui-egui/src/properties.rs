@@ -278,6 +278,16 @@ fn rows(category: &str) -> &'static [Row] {
             ("Other", "angle", "Rotation (°)", Number),
             ("Other", "mirrored", msg!("Mirrored"), Flag),
             ("Other", "at", "Origin", Point),
+            ("Other", "excluded", msg!("Excluded Members"), Shown),
+        ],
+        "modelgroup" => &[
+            ("Constraints", "level", msg!("Reference Level"), Level),
+            ("Constraints", "forgiving", msg!("Forgiving"), Flag),
+            ("Identity Data", "type", "Group", Shown),
+            ("Other", "angle", "Rotation (°)", Number),
+            ("Other", "mirrored", msg!("Mirrored"), Flag),
+            ("Other", "at", "Origin", Point),
+            ("Other", "excluded", msg!("Excluded Members"), Shown),
         ],
         "repeatingdetail" => &[
             ("Identity Data", "type", "Group", Shown),
