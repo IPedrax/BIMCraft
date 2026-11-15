@@ -287,15 +287,16 @@ impl BimApp {
                 }
             }
         }
+        // Selected as soon as it says so: Python's pipes may close a frame or more after its last word, and the run is kept until then.
+        if let Some(ids) = select {
+            self.selection = ids.into_iter().filter(|id| self.session.model.elements.contains_key(*id)).collect();
+        }
         if !running.run.finished() {
             self.pyaddins.running = Some(running);
             ctx.request_repaint_after(Duration::from_millis(30));
             return;
         }
         self.session.squash(&running.mark, "PyAddin");
-        if let Some(ids) = select {
-            self.selection = ids.into_iter().filter(|id| self.session.model.elements.contains_key(*id)).collect();
-        }
         let script = running.script;
         self.status = match self.pyaddins.last.as_ref().and_then(|l| l.result.clone()) {
             Some(Ok(Some(message))) => Status { text: format!("{script}: {message}"), error: false },
