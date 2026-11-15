@@ -44,6 +44,7 @@ mod publisher;
 pub use gpu::limits_for;
 mod graphics;
 mod groups;
+mod guide_refs;
 pub mod icons;
 mod inquiry;
 pub mod lang;
@@ -2453,6 +2454,11 @@ impl BimApp {
         if pressed(Modifiers::NONE, Key::F8) {
             self.toggle_alignment_guides();
         }
+        // Q marks the point or edge under the pointer as a temporary snap reference, before the first point too.
+        if pressed(Modifiers::NONE, Key::Q) && matches!(self.sheet, Sheet::Plan(_) | Sheet::Ceiling(_)) {
+            self.pin_under_cursor();
+            ctx.request_repaint();
+        }
         let typed: String = ctx.input(|i| {
             i.events
                 .iter()
@@ -3320,6 +3326,10 @@ impl BimApp {
     /// Escape: dismiss the error, drop the chain being drawn, else leave the tool, else clear the
     /// selection.
     fn escape(&mut self) {
+        // Esc drops the drawing's marked references with the points they were marked for.
+        self.canvas.pins.borrow_mut().clear();
+        self.canvas.start_edge = None;
+        self.canvas.wall_face = None;
         // A note's leader point clicked goes first, the Text tool staying on.
         if self.note_arrow.take().is_some() {
             self.status = Status::default();

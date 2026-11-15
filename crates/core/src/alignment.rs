@@ -583,7 +583,10 @@ impl AlignmentGuideService {
                 continue;
             }
             let along = (s.b - s.a) * (1.0 / len);
-            let g = Guide { axis: AlignmentAxis::Collinear { along }, anchor: s.a, kind: ReferenceType::Face, wall_id: s.id };
+            // The stronger segment runs from the end of the marked edge nearest the cursor: a face's extension is read
+            // from the face itself, not from some far corner of the building.
+            let anchor = if cursor.dist(s.a) <= cursor.dist(s.b) { s.a } else { s.b };
+            let g = Guide { axis: AlignmentAxis::Collinear { along }, anchor, kind: ReferenceType::Face, wall_id: s.id };
             if g.deviation(cursor) <= tolerance {
                 guides.push(g);
             }

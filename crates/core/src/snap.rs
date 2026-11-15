@@ -9,8 +9,8 @@ use bimcraft_i18n::ui_msg;
 use crate::curves::Curve;
 use crate::geom::{self, P2};
 use crate::graphics::Look;
-use crate::model::{Ceiling, Element, Floor, Id, Model, TOL};
-use crate::walls::Axis;
+use crate::model::{Ceiling, Element, Face, Floor, Id, Model, TOL};
+use crate::walls::{self, Axis};
 
 /// How far off a guide, degrees, a direction may be and still snap to it (less where guides lie
 /// closer together than that).
@@ -97,6 +97,16 @@ pub struct Snaps {
     pub alignment_guides: bool,
     /// Alignment snap tolerance in screen pixels (default 8.0 px).
     pub alignment_tolerance: f32,
+    /// Whether structural grids near the cursor lend guides: on, and the grid is a reference only within reach.
+    pub guides_from_grids: bool,
+    /// Whether resting the pointer on a point or an edge marks it as a temporary snap reference.
+    pub mark_on_hover: bool,
+    /// Whether the guides are found across the whole model rather than in the drawing's own context: off, the
+    /// context is the chain, the wall it started on, the grids near the cursor and the marked references.
+    pub guides_from_whole_model: bool,
+    /// The wall face `Tab` chose under the pointer: while the pointer stays on that wall, a pick snaps to that face, whatever
+    /// line is nearest. None takes the nearest of the wall's three lines.
+    pub preferred_face: Option<(Id, Face)>,
 }
 
 impl Snaps {
@@ -116,6 +126,10 @@ impl Snaps {
             angle: 0.0,
             alignment_guides: false,
             alignment_tolerance: 8.0,
+            guides_from_grids: false,
+            mark_on_hover: false,
+            guides_from_whole_model: false,
+            preferred_face: None,
         }
     }
 
@@ -155,6 +169,10 @@ impl Default for Snaps {
             angle: 15.0,
             alignment_guides: true,
             alignment_tolerance: 8.0,
+            guides_from_grids: true,
+            mark_on_hover: true,
+            guides_from_whole_model: false,
+            preferred_face: None,
         }
     }
 }
@@ -184,6 +202,9 @@ pub struct Found {
     /// The element it came from, by the id Select by ID finds it by: none for a sketch's own lines, the points picked so far,
     /// a scan, a guide's angle or nothing.
     pub source: Option<Id>,
+    /// Which line of a wall it landed on — its exterior face, its centre line or its interior face — when the snap is to a
+    /// wall's own line. None for every other snap, and for an arc, whose faces are arcs and not references.
+    pub face: Option<Face>,
 }
 
 /// `a` degrees turned into [0, 360).
@@ -212,8 +233,8 @@ struct Scene<'a> {
     points: Vec<(P2, Kind, Option<Id>)>,
     /// Straight lines: walls' centre lines, and grids.
     lines: Vec<(P2, P2, Option<Id>)>,
-    /// The walls, with their thickness and their ids.
-    walls: Vec<(Axis, f64, Id)>,
+    /// The walls, with the exterior face's distance from the location line, their thickness and their ids.
+    walls: Vec<(Axis, f64, f64, Id)>,
     /// The detail lines near, of any shape.
     curves: Vec<(Curve, Option<Id>)>,
     /// Their chords near, each with its line's place in `curves`: crossed with other lines, never with their own.
@@ -366,7 +387,7 @@ impl<'a> Scene<'a> {
                         Some(c) => s.points.push((c, Kind::Centre, of)),
                         None => s.lines.push((a.start, a.end, of)),
                     }
-                    s.walls.push((a, m.thickness(w), id));
+                    s.walls.push((a, walls::faces(m, w).0, m.thickness(w), id));
                 }
                 Element::Grid(g) if near(&[g.start, g.end]) => {
                     s.points.extend([(g.start, Kind::Endpoint, of), (g.end, Kind::Endpoint, of)]);
@@ -773,6 +794,14 @@ fn solve(scene: Scene, p: P2, reach: Reach, from: &[P2], square: bool, o: &Snaps
             (p.0, pinned) = (f.0, Some((false, f.0)));
         }
     }
+    // A wall face `Tab` chose holds the pick while the pointer stays on that wall, even at its ends where an end would
+    // otherwise win: a Tab that moved nothing you can see would be a Tab you cannot follow.
+    if o.nearest
+        && o.preferred_face.is_some()
+        && let Some(found) = wall_face_snap(&scene, o.preferred_face, p, reach.line)
+    {
+        return found;
+    }
     let by_distance = |a: &P2, b: &P2| a.dist(p).total_cmp(&b.dist(p));
     // The lines that pass near the cursor: what it can cross, or stand square to.
     let mut near: Vec<(P2, P2, Option<Id>)> =
@@ -827,14 +856,14 @@ fn solve(scene: Scene, p: P2, reach: Reach, from: &[P2], square: bool, o: &Snaps
         .filter(|(q, _, _)| q.dist(p) <= reach.point)
         .min_by(|a, b| by_distance(&a.0, &b.0).then(rank(a.1).cmp(&rank(b.1))));
     if let Some((at, kind, source)) = hit {
-        return Found { at, kind, guide: None, source };
+        return Found { at, kind, guide: None, source, face: None };
     }
     // Else a scan's point where the cut plane cuts it.
     if o.cloud
         && let Some((m, level, look)) = scene.cloud
         && let Some(at) = cloud_point(m, level, p, reach.point, look)
     {
-        return Found { at: micron(at), kind: Kind::Point, guide: None, source: None };
+        return Found { at: micron(at), kind: Kind::Point, guide: None, source: None, face: None };
     }
 
     // The foot of the perpendicular from the last point.
@@ -852,7 +881,7 @@ fn solve(scene: Scene, p: P2, reach: Reach, from: &[P2], square: bool, o: &Snaps
             .min_by(|x, y| by_distance(&x.0, &y.0));
         if let Some((f, source)) = foot {
             let guide = Guide { from: l, angle: bearing(f - l), corner: corner_on(from, f - l) };
-            return Found { at: micron(f), kind: Kind::Perpendicular, guide: Some(guide), source };
+            return Found { at: micron(f), kind: Kind::Perpendicular, guide: Some(guide), source, face: None };
         }
     }
 
@@ -883,9 +912,15 @@ fn solve(scene: Scene, p: P2, reach: Reach, from: &[P2], square: bool, o: &Snaps
             let grid = round(p);
             let on_grid = u.cross(grid - l).abs() <= 1e-3 && u.dot(grid - l) > 0.0;
             return match cross {
-                Some((q, source)) if o.intersection => Found { at: micron(q), kind: Kind::Intersection, guide, source },
-                _ if on_grid => Found { at: grid, kind: Kind::Angle, guide, source: None },
-                _ => Found { at: micron(l + u * ((along / STEP).round().max(1.0) * STEP)), kind: Kind::Angle, guide, source: None },
+                Some((q, source)) if o.intersection => Found { at: micron(q), kind: Kind::Intersection, guide, source, face: None },
+                _ if on_grid => Found { at: grid, kind: Kind::Angle, guide, source: None, face: None },
+                _ => Found {
+                    at: micron(l + u * ((along / STEP).round().max(1.0) * STEP)),
+                    kind: Kind::Angle,
+                    guide,
+                    source: None,
+                    face: None,
+                },
             };
         }
     }
@@ -906,23 +941,19 @@ fn solve(scene: Scene, p: P2, reach: Reach, from: &[P2], square: bool, o: &Snaps
             .filter(|(q, _)| q.dist(p) <= reach.line)
             .min_by(|x, y| by_distance(&x.0, &y.0));
         if let Some((at, source)) = nearest {
-            return Found { at: micron(at), kind: Kind::Nearest, guide: None, source };
+            return Found { at: micron(at), kind: Kind::Nearest, guide: None, source, face: None };
         }
     }
 
-    // A wall's centre line, to the nearest 10 mm along it from its start, else the nearest 10 mm.
+    // A wall is three references — its exterior face, its centre line and its interior face — and the pointer takes the
+    // nearest of them.
+    if o.nearest
+        && let Some(found) = wall_face_snap(&scene, None, p, reach.line)
+    {
+        return found;
+    }
+    // A line: the point of it nearest the cursor.
     if o.nearest {
-        let on = scene
-            .walls
-            .iter()
-            .map(|(a, t, id)| (a, a.distance(p, 0.0) - t / 2.0, *id))
-            .filter(|(_, d, _)| *d <= reach.line)
-            .min_by(|x, y| x.1.total_cmp(&y.1));
-        if let Some((a, _, id)) = on {
-            let at = micron(a.at((a.project(p).0 / STEP).round() * STEP, 0.0));
-            return Found { at, kind: Kind::Nearest, guide: None, source: Some(id) };
-        }
-        // A line: the point of it nearest the cursor.
         let on = scene
             .curves
             .iter()
@@ -930,7 +961,7 @@ fn solve(scene: Scene, p: P2, reach: Reach, from: &[P2], square: bool, o: &Snaps
             .filter(|(_, (_, d), _)| *d <= reach.line)
             .min_by(|x, y| x.1.1.total_cmp(&y.1.1));
         if let Some((c, (t, _), source)) = on {
-            return Found { at: micron(c.at(t)), kind: Kind::Nearest, guide: None, source };
+            return Found { at: micron(c.at(t)), kind: Kind::Nearest, guide: None, source, face: None };
         }
     }
     // Rounded, but not off the line a square step keeps to.
@@ -940,7 +971,52 @@ fn solve(scene: Scene, p: P2, reach: Reach, from: &[P2], square: bool, o: &Snaps
         Some((false, x)) => at.0 = x,
         None => {}
     }
-    Found { at, kind: Kind::Free, guide: None, source: None }
+    Found { at, kind: Kind::Free, guide: None, source: None, face: None }
+}
+
+/// Where a pick lands on a wall: its exterior face, its centre line or its interior face — `chosen` when `Tab` named one,
+/// else the one nearest the pointer — with the point rounded along it as a pick is. `None` when the pointer is off every
+/// wall: `reach` is how far outside a wall's body it still takes the pick. An arc has no reference faces, so it lends only
+/// its centre line.
+fn wall_face_snap(scene: &Scene, chosen: Option<(Id, Face)>, p: P2, reach: f64) -> Option<Found> {
+    let band = |w: &(Axis, f64, f64, Id)| w.0.distance(p, 0.0) - w.2 / 2.0;
+    let (a, ext, t, id) = scene
+        .walls
+        .iter()
+        .filter(|w| chosen.is_none_or(|(want, _)| want == w.3) && band(w) <= reach)
+        .min_by(|x, y| band(x).total_cmp(&band(y)))?;
+    let (face, off) = match (chosen, a.centre()) {
+        // An arc's faces are arcs: its centre line is the only reference it lends.
+        (_, Some(_)) => (Face::Centre, 0.0),
+        (Some((_, face)), None) => (face, wall_face_offset(*ext, *t, face)),
+        (None, None) => nearest_face(*a, *ext, *t, p),
+    };
+    let s = (a.project(p).0 / STEP).round() * STEP;
+    Some(Found { at: micron(a.at(s, off)), kind: Kind::Nearest, guide: None, source: Some(*id), face: Some(face) })
+}
+
+/// How far a wall's `face` stands from its location line: its exterior face on the left, its interior face a thickness to
+/// the right, its centre line between them.
+fn wall_face_offset(ext: f64, t: f64, face: Face) -> f64 {
+    match face {
+        Face::Left => ext,
+        Face::Right => ext - t,
+        _ => ext - t / 2.0,
+    }
+}
+
+/// Which of `wall`'s three lines passes nearest `p`, with the offset of that line: the centre line first on a tie, so a
+/// wall whose faces cannot be told apart still takes the middle.
+fn nearest_face(wall: Axis, ext: f64, t: f64, p: P2) -> (Face, f64) {
+    [Face::Centre, Face::Left, Face::Right]
+        .into_iter()
+        .map(|face| {
+            let off = wall_face_offset(ext, t, face);
+            (face, off, wall.distance(p, off))
+        })
+        .min_by(|x, y| x.2.total_cmp(&y.2))
+        .map(|(face, off, _)| (face, off))
+        .unwrap_or((Face::Centre, ext - t / 2.0))
 }
 
 /// A length, its parts and its angle.
@@ -1080,7 +1156,7 @@ mod tests {
         let f = at(&m, P2(2030.0, 3020.0), &[], &o);
         assert_eq!((f.kind, (f.at.dist(P2(2000.0, 5000.0)) * 1e3).round() / 1e3), (Kind::Midpoint, 2000.0));
         // Beyond their reach, a wall's centre line, then the nearest 10 mm.
-        let f = at(&m, P2(1234.0, 40.0), &[], &o);
+        let f = at(&m, P2(1234.0, 0.0), &[], &o);
         assert_eq!((f.at, f.kind), (P2(1230.0, 0.0), Kind::Nearest));
         let f = at(&m, P2(1234.0, 900.0), &[], &o);
         assert_eq!((f.at, f.kind), (P2(1230.0, 900.0), Kind::Free));
@@ -1257,6 +1333,75 @@ mod tests {
         assert!(f.guide.is_some());
     }
 
+    /// A wall is three references — its exterior face, its centre line and its interior face — and the pointer takes the one
+    /// nearest it. Its left face is its exterior one, as its dimensions have it.
+    #[test]
+    fn a_wall_snaps_to_the_line_nearest_the_pointer() {
+        let m = model(r#"wall {"points": [[0,0],[6000,0]]}"#);
+        let (id, w) = m
+            .elements
+            .iter()
+            .find_map(|(id, e)| match e {
+                Element::Wall(w) => Some((*id, w.clone())),
+                _ => None,
+            })
+            .expect("the wall");
+        let axis = Axis::of(&w);
+        let (ext, int) = walls::faces(&m, &w);
+        // Only the wall's own line: the points are their own test.
+        let o = Snaps::only(Kind::Nearest);
+        // Just inside the exterior face: that face, not the centre line.
+        let f = at(&m, P2(2970.0, ext - 10.0), &[], &o);
+        assert_eq!((f.kind, f.source, f.face), (Kind::Nearest, Some(id), Some(Face::Left)), "{f:?}");
+        assert!(f.at.dist(axis.at(2970.0, ext)) < 1e-6, "on the face, along it to the 10 mm: {:?}", f.at);
+        // Its middle: the centre line.
+        let f = at(&m, P2(2970.0, (ext + int) / 2.0 + 10.0), &[], &o);
+        assert_eq!(f.face, Some(Face::Centre), "{f:?}");
+        assert!(f.at.dist(axis.at(2970.0, (ext + int) / 2.0)) < 1e-6, "{:?}", f.at);
+        // Just inside the interior face: that one, a thickness to the right of the location line.
+        let f = at(&m, P2(2970.0, int + 10.0), &[], &o);
+        assert_eq!(f.face, Some(Face::Right), "{f:?}");
+        assert!(f.at.dist(axis.at(2970.0, int)) < 1e-6, "{:?}", f.at);
+    }
+
+    /// A face `Tab` chose holds the pick while the pointer stays on that wall, even at its end, where an end would otherwise
+    /// win: a Tab that changed nothing visible would be a Tab the user cannot see.
+    #[test]
+    fn a_chosen_wall_face_holds_the_pick_even_at_its_end() {
+        let m = model(r#"wall {"points": [[0,0],[6000,0]]}"#);
+        let (id, w) = m
+            .elements
+            .iter()
+            .find_map(|(id, e)| match e {
+                Element::Wall(w) => Some((*id, w.clone())),
+                _ => None,
+            })
+            .expect("the wall");
+        let (ext, _) = walls::faces(&m, &w);
+        let o = Snaps::default();
+        // Near the end, the end is what a pick takes.
+        let f = at(&m, P2(5990.0, ext - 10.0), &[], &o);
+        assert_eq!((f.kind, f.source), (Kind::Endpoint, Some(id)), "{f:?}");
+        // Tab's choice holds the exterior face there instead.
+        let chosen = Snaps { preferred_face: Some((id, Face::Left)), ..o };
+        let f = at(&m, P2(5990.0, ext - 10.0), &[], &chosen);
+        assert_eq!((f.kind, f.face), (Kind::Nearest, Some(Face::Left)), "{f:?}");
+        // Off the wall, the choice does nothing: the face is no reference there.
+        let f = at(&m, P2(2990.0, ext + 400.0), &[], &chosen);
+        assert_ne!(f.face, Some(Face::Left), "{f:?}");
+    }
+
+    /// An arc's faces are arcs, which no reference line is: its centre line is the one line it lends.
+    #[test]
+    fn an_arcs_only_reference_is_its_centre_line() {
+        let m = model(r#"wall {"points": [[0,0],[6000,0]], "arc": 30}"#);
+        let w = m.elements.values().find_map(|e| if let Element::Wall(w) = e { Some(w.clone()) } else { None }).expect("the wall");
+        let axis = Axis::of(&w);
+        let mid = axis.at(axis.length() / 2.0, 0.0);
+        let f = at(&m, mid + P2(0.0, 10.0), &[], &Snaps::only(Kind::Nearest));
+        assert_eq!((f.kind, f.face), (Kind::Nearest, Some(Face::Centre)), "{f:?}");
+    }
+
     #[test]
     fn a_snap_names_the_element_it_came_from() {
         let m = model(
@@ -1324,7 +1469,7 @@ mod tests {
             r#"wall {"points": [[0,0],[60000,0]]}
                wall {"points": [[0,30000],[10000,30000]], "arc": 180}"#,
         );
-        let f = at(&m, P2(31234.0, 40.0), &[], &Snaps::default());
+        let f = at(&m, P2(31234.0, 0.0), &[], &Snaps::default());
         assert_eq!((f.at, f.kind), (P2(31230.0, 0.0), Kind::Nearest));
         // Out where the arc bulges, 5000 mm from its chord: past the reach and the thickest wall.
         let want = m
@@ -1565,19 +1710,19 @@ mod tests {
         assert_eq!(at(&s.model, P2(1030.0, 1020.0), &[], &o).kind, Kind::Anchor);
         assert_eq!(
             at(&s.model, P2(2030.0, 1520.0), &[], &o),
-            Found { at: P2(2000.0, 1500.0), kind: Kind::Anchor, guide: None, source: Some(text_id) }
+            Found { at: P2(2000.0, 1500.0), kind: Kind::Anchor, guide: None, source: Some(text_id), face: None }
         );
         assert_eq!(
             at(&s.model, P2(-980.0, 3020.0), &[], &o),
-            Found { at: P2(-1000.0, 3000.0), kind: Kind::Anchor, guide: None, source: Some(section_id) }
+            Found { at: P2(-1000.0, 3000.0), kind: Kind::Anchor, guide: None, source: Some(section_id), face: None }
         );
         assert_eq!(
             at(&s.model, P2(5030.0, 5020.0), &[], &o),
-            Found { at: P2(5000.0, 5000.0), kind: Kind::Endpoint, guide: None, source: Some(camera_id) }
+            Found { at: P2(5000.0, 5000.0), kind: Kind::Endpoint, guide: None, source: Some(camera_id), face: None }
         );
         assert_eq!(
             at(&s.model, P2(6030.0, 5020.0), &[], &o),
-            Found { at: P2(6000.0, 5000.0), kind: Kind::Endpoint, guide: None, source: Some(camera_id) }
+            Found { at: P2(6000.0, 5000.0), kind: Kind::Endpoint, guide: None, source: Some(camera_id), face: None }
         );
         // The annotation's switch turns its anchors off; endpoints keep the camera's eye and target.
         let off = Snaps { annotation: false, ..o };
@@ -1601,15 +1746,15 @@ mod tests {
         let dimension_id = *m.elements.iter().find(|(_, e)| matches!(e, Element::Dimension(_))).unwrap().0;
         assert_eq!(
             at(&m, P2(30.0, 5020.0), &[], &o),
-            Found { at: P2(0.0, 5000.0), kind: Kind::Anchor, guide: None, source: Some(dimension_id) }
+            Found { at: P2(0.0, 5000.0), kind: Kind::Anchor, guide: None, source: Some(dimension_id), face: None }
         );
         assert_eq!(
             at(&m, P2(2000.0, 5010.0), &[], &o),
-            Found { at: P2(2000.0, 5000.0), kind: Kind::Anchor, guide: None, source: Some(dimension_id) }
+            Found { at: P2(2000.0, 5000.0), kind: Kind::Anchor, guide: None, source: Some(dimension_id), face: None }
         );
         assert_eq!(
             at(&m, P2(4030.0, 5020.0), &[], &o),
-            Found { at: P2(4000.0, 5000.0), kind: Kind::Anchor, guide: None, source: Some(dimension_id) }
+            Found { at: P2(4000.0, 5000.0), kind: Kind::Anchor, guide: None, source: Some(dimension_id), face: None }
         );
         assert_eq!(at(&m, P2(2000.0, 5010.0), &[], &Snaps { annotation: false, ..o }).kind, Kind::Free);
     }
@@ -1636,8 +1781,14 @@ mod tests {
         let host = s.model.anchor(tag.host).unwrap();
         let head = host + tag.offset;
         let o = Snaps::default();
-        assert_eq!(at(&s.model, host + P2(20.0, 20.0), &[], &o), Found { at: host, kind: Kind::Anchor, guide: None, source: Some(tag_id) });
-        assert_eq!(at(&s.model, head + P2(20.0, 20.0), &[], &o), Found { at: head, kind: Kind::Anchor, guide: None, source: Some(tag_id) });
+        assert_eq!(
+            at(&s.model, host + P2(20.0, 20.0), &[], &o),
+            Found { at: host, kind: Kind::Anchor, guide: None, source: Some(tag_id), face: None }
+        );
+        assert_eq!(
+            at(&s.model, head + P2(20.0, 20.0), &[], &o),
+            Found { at: head, kind: Kind::Anchor, guide: None, source: Some(tag_id), face: None }
+        );
         // Without a leader the place it holds is not drawn, so it is no anchor.
         let mut s = Session::new();
         s.script(
@@ -1683,15 +1834,15 @@ mod tests {
         assert_eq!(at(&s.model, P2(3020.0, 2020.0), &[], &o).kind, Kind::Anchor);
         assert_eq!(
             at(&s.model, P2(1020.0, 1020.0), &[], &o),
-            Found { at: P2(1000.0, 1000.0), kind: Kind::Anchor, guide: None, source: Some(group_id) }
+            Found { at: P2(1000.0, 1000.0), kind: Kind::Anchor, guide: None, source: Some(group_id), face: None }
         );
         assert_eq!(
             at(&s.model, P2(2020.0, 3020.0), &[], &o),
-            Found { at: P2(2000.0, 3000.0), kind: Kind::Anchor, guide: None, source: Some(repeating_id) }
+            Found { at: P2(2000.0, 3000.0), kind: Kind::Anchor, guide: None, source: Some(repeating_id), face: None }
         );
         assert_eq!(
             at(&s.model, P2(3020.0, 3020.0), &[], &o),
-            Found { at: P2(3000.0, 3000.0), kind: Kind::Anchor, guide: None, source: Some(repeating_id) }
+            Found { at: P2(3000.0, 3000.0), kind: Kind::Anchor, guide: None, source: Some(repeating_id), face: None }
         );
     }
 

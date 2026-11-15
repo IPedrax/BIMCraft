@@ -3460,6 +3460,12 @@ impl BimApp {
                     .labelled_by(label.id)
                     .on_hover_text(t("Refined draws solid plum guides and a pill badge; Classic the dashed magenta and its squares"));
                 });
+                ui.checkbox(&mut s.guides_from_grids, t("Guides from grids"))
+                    .on_hover_text(t("A structural grid near the cursor lends its own line and direction; off, grids cast nothing"));
+                ui.checkbox(&mut s.mark_on_hover, t("Mark on hover (0.45 s)"))
+                    .on_hover_text(t("Resting the pointer on a point or an edge marks it as a snap reference; Q does it at once"));
+                ui.checkbox(&mut s.guides_from_whole_model, t("Guides from the whole model"))
+                    .on_hover_text(t("Find guides from every wall and corner in the model, not only the drawing's own context and marked references"));
                 }
                 ui.separator();
                 ui.checkbox(&mut self.grid_snapping, t("Grid snapping"))

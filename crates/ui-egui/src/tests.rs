@@ -1289,7 +1289,7 @@ fn the_options_bar_sets_the_wall_height_and_chain() {
     let wall = ids(&h, "wall");
     assert_eq!(wall.len(), 1, "without Chain, two clicks make a wall");
     assert_eq!((field(&h, wall[0], "top_level"), field(&h, wall[0], "height")), (json!(null), json!(2500.0)));
-    click(&mut h, P2(0.0, 3000.0));
+    click(&mut h, P2(0.0, 1000.0));
     click(&mut h, P2(4000.0, 3000.0));
     assert_eq!(ids(&h, "wall").len(), 2, "and the next two another");
 }
@@ -1959,14 +1959,14 @@ fn aligned_dimensions_pick_parallel_references_then_place_the_line() {
     assert_eq!((dims.len(), field(&h, dims[0], "values")), (1, json!([7800.0])));
     assert_eq!(h.state().tool, Tool::Dimension(DimMode::Aligned, Vec::new()), "the tool stays on for the next one");
     // A wall across the first isn't picked; centre lines are, where the cursor is on them.
-    click(&mut h, P2(0.0, 3000.0));
+    click(&mut h, P2(0.0, 1000.0));
     click(&mut h, P2(4000.0, 0.0));
     click(&mut h, P2(8000.0, 3000.0));
     click(&mut h, P2(4000.0, 3000.0));
     let dims = ids(&h, "dimension");
     assert_eq!((dims.len(), field(&h, dims[1], "values")), (2, json!([8000.0])));
     // Esc drops the references picked, then leaves the tool.
-    click(&mut h, P2(0.0, 3000.0));
+    click(&mut h, P2(0.0, 1000.0));
     key(&mut h, Key::Escape);
     assert_eq!(h.state().tool, Tool::Dimension(DimMode::Aligned, Vec::new()));
     key(&mut h, Key::Escape);
@@ -3405,7 +3405,7 @@ fn the_wall_tool_draws_arcs_and_walls_on_the_location_line_picked() {
     h.get_by_role_and_label(Role::ComboBox, "Location Line:").click();
     h.run();
     press(&mut h, "Finish Face: Exterior");
-    click(&mut h, P2(0.0, 3000.0));
+    click(&mut h, P2(0.0, 1000.0));
     click(&mut h, P2(4000.0, 3000.0));
     key(&mut h, Key::Enter);
     let line = ids(&h, "wall")[1];
@@ -4405,7 +4405,7 @@ fn walls_drawn_near_alignment_guide_snap_to_other_walls_reference_points() {
 
     // Second wall starting at (0, 3000)
     tool(&mut h, "Wall");
-    click(&mut h, P2(0.0, 3000.0));
+    click(&mut h, P2(0.0, 1000.0));
     // Click near X = 5000 (e.g. 5005, 3000) within tolerance
     click(&mut h, P2(5005.0, 3000.0));
     key(&mut h, Key::Enter);
@@ -4444,6 +4444,8 @@ fn a_guide_names_the_inference_and_a_crossing_names_both() {
 fn a_wall_drawn_beside_a_slanted_one_comes_out_parallel_to_it() {
     let rise = 4000.0 * 20.0_f64.to_radians().tan();
     let mut h = app(&format!("wall {{\"points\": [[0, 0], [4000, {rise}]]}}"));
+    // A wall across the plan is a model-wide reference: the borrowing is what this test shows, and the context has its own.
+    h.state_mut().snaps.guides_from_whole_model = true;
     tool(&mut h, "Wall");
     // South of the wall beside it, well inside the view it is fitted to, and clear of the Options Bar at the view's top.
     let start = P2(800.0, -200.0);
@@ -4492,7 +4494,7 @@ fn a_guide_draws_a_ray_a_relation_and_its_source() {
     };
     let to = |p: P2| pos2(p.0 as f32, 3000.0 - p.1 as f32);
     let along = |d: P2| vec2(d.0 as f32, -d.1 as f32);
-    let shapes = crate::canvas::alignment_shapes(&[guide], to, along, 1000.0, 1.0, true);
+    let shapes = crate::canvas::alignment_shapes(&[guide], to, along, 100.0, 1.0, true);
     let segments: Vec<[Pos2; 2]> = shapes
         .iter()
         .filter_map(|s| match s {
@@ -4502,11 +4504,13 @@ fn a_guide_draws_a_ray_a_relation_and_its_source() {
         .collect();
     // The horizontal guide is put on the physical pixel grid: y = 1000.5, a pixel's centre, so it is one crisp pixel.
     let (snapped, source) = (pos2(1000.0, 1000.5), pos2(0.0, 1000.5));
-    assert_eq!(segments.len(), 2, "{shapes:?}");
-    // The ray runs through the point it locks, edge to edge.
-    assert!(segments.iter().any(|[a, b]| ((*a + (*b - *a) * 0.5).distance(snapped) < 0.01) && a.distance(*b) > 1000.0), "{segments:?}");
-    // And the relation runs from its source to that point.
+    assert_eq!(segments.len(), 4, "the relation and its three fading tail pieces: {shapes:?}");
+    // The relation runs from its source to the point it locks.
     assert!(segments.iter().any(|[a, b]| a.distance(source) < 0.01 && b.distance(snapped) < 0.01), "{segments:?}");
+    // The tail runs on past the point, 100 px in all, and no ray crosses the view.
+    let tail: f32 = segments.iter().map(|[a, b]| a.distance(*b)).filter(|len| *len != 0.0).sum();
+    assert!((tail - (1000.0 + 100.0)).abs() < 0.1, "the relation and a 100 px tail: {segments:?}");
+    assert!(segments.iter().all(|[a, b]| a.distance(*b) <= 1000.0 + 0.01), "{segments:?}");
     let circles: Vec<_> = shapes.iter().filter_map(|s| if let Shape::Circle(c) = s { Some(c) } else { None }).collect();
     assert_eq!(circles.len(), 2, "{shapes:?}");
     assert!(circles.iter().any(|c| (c.radius - 2.5).abs() < 0.01 && c.center.distance(source) < 0.01), "the dot");
@@ -4520,6 +4524,16 @@ fn a_guide_draws_a_ray_a_relation_and_its_source() {
             .any(|s| matches!(s, Shape::Rect(r) if (r.rect.width() - 7.0).abs() < 0.01 && r.rect.center().distance(source) < 0.01)),
         "{classic:?}"
     );
+    // The two looks' inks stay apart: refined has no classic magenta and no classic blue square; classic has both.
+    let classic_ink = |shapes: &[Shape]| {
+        shapes.iter().any(|s| match s {
+            Shape::LineSegment { stroke, .. } => stroke.color == crate::canvas::CLASSIC_GUIDE,
+            Shape::Rect(r) => r.stroke.color == crate::canvas::CLASSIC_ANCHOR,
+            _ => false,
+        })
+    };
+    assert!(!classic_ink(&shapes), "the refined look has no classic ink: {shapes:?}");
+    assert!(classic_ink(&classic), "the classic look draws its magenta and its square");
 }
 
 /// A badge sits right and below its glyph when nothing runs through it, turns to the other side rather than cross
@@ -4596,6 +4610,304 @@ fn a_reading_pill_stays_off_its_segment_and_its_badge() {
     assert!(turned.y > 0.0, "the reading took the inside of the corner: {turned:?}");
 }
 
+/// The dwell ring waits out a 150 ms dead zone, fills over 300 ms, and is full at 0.45 s: a quick sweep marks nothing.
+#[test]
+fn the_dwell_ring_waits_150_ms_and_marks_at_450() {
+    use crate::guide_refs::{Dwell, PinKey};
+    let d = Dwell { key: PinKey::Edge { id: None, face: bimcraft_core::model::Face::Centre }, from: (0.0, 0.0), start: 0.0, marked: false };
+    assert!(!d.filling(0.10), "nothing is drawn in the dead zone");
+    assert_eq!(d.progress(0.10), 0.0);
+    assert!(d.filling(0.20));
+    assert!((d.progress(0.30) - 0.5).abs() < 0.01, "halfway through the fill: {}", d.progress(0.30));
+    assert_eq!(d.progress(0.45), 1.0, "full at 0.45 s");
+}
+
+/// `Q` marks the wall face under the pointer, not the centre line its snap lands on, and does it before Point 1.
+#[test]
+fn q_marks_a_wall_face_before_the_first_point() {
+    use crate::guide_refs::PinTarget;
+    let s = std::f64::consts::FRAC_1_SQRT_2;
+    let u = P2(s, s);
+    let n = P2(-s, s);
+    let face = P2(20_000.0, 30_000.0);
+    let line = (face - n * 100.0 - u * 4000.0, face - n * 100.0 + u * 4000.0);
+    let mut h = app(&format!("wall {{\"points\": [[{}, {}], [{}, {}]]}}", line.0.0, line.0.1, line.1.0, line.1.1));
+    h.state_mut().snaps.mark_on_hover = false;
+    tool(&mut h, "Wall");
+    let at = h.state().screen(face);
+    h.hover_at(at);
+    h.run();
+    key(&mut h, Key::Q);
+    let view = match h.state().sheet {
+        crate::Sheet::Plan(id) | crate::Sheet::Ceiling(id) => id,
+        _ => panic!("a plan"),
+    };
+    let pins = h.state().canvas.pins.borrow();
+    let pin = pins.at(view).first().expect("Q marked the face before Point 1");
+    let PinTarget::Edge { a, b, face: line, .. } = pin.target else { panic!("an edge, not a point: {:?}", pin.target) };
+    assert_eq!(line, bimcraft_core::model::Face::Left, "the exterior face is its left one");
+    assert!(bimcraft_core::geom::dist_to_segment(face, a, b) < 0.01, "the face itself, not the centre line");
+}
+
+/// The 45°-rotated building's shaft: start square off the upper-right wall's face, mark the inner wall's face, and the
+/// two cross where the shaft's corner goes. No outer peak or far corner takes part.
+#[test]
+fn the_rotated_shaft_marks_the_inner_face_and_snaps_to_their_crossing() {
+    use crate::guide_refs::PinTarget;
+    let s = std::f64::consts::FRAC_1_SQRT_2;
+    let u = P2(s, s);
+    let n = P2(-s, s);
+    let start_face = P2(20_000.0, 30_000.0);
+    let q = start_face + n * 4000.0;
+    let a = (start_face - n * 100.0 - u * 2000.0, start_face - n * 100.0 + u * 10_000.0);
+    let b = (q - n * 100.0 - u * 3000.0, q - n * 100.0 + u * 3000.0);
+    let mut h = app(&format!(
+        "wall {{\"points\": [[{}, {}], [{}, {}]]}}\nwall {{\"points\": [[{}, {}], [{}, {}]]}}",
+        a.0.0, a.0.1, a.1.0, a.1.1, b.0.0, b.0.1, b.1.0, b.1.1
+    ));
+    h.state_mut().snaps.mark_on_hover = false;
+    tool(&mut h, "Wall");
+    click(&mut h, start_face);
+    let view = match h.state().sheet {
+        crate::Sheet::Plan(id) | crate::Sheet::Ceiling(id) => id,
+        _ => panic!("a plan"),
+    };
+    // The wall the chain started on: its face, not its centre line, and only it.
+    let start_edge = h.state().canvas.start_edge.expect("the starting wall's edge");
+    assert!(bimcraft_core::geom::dist_to_segment(start_face, start_edge.a, start_edge.b) < 0.01, "{start_edge:?}");
+
+    // Mark the inner re-entrant wall's face under the pointer.
+    let at = h.state().screen(q);
+    h.hover_at(at);
+    h.run();
+    key(&mut h, Key::Q);
+    {
+        let pins = h.state().canvas.pins.borrow();
+        let pin = pins.at(view).first().expect("the inner face is marked");
+        let PinTarget::Edge { a, b, face, .. } = pin.target else { panic!("an edge: {:?}", pin.target) };
+        assert_eq!(face, bimcraft_core::model::Face::Left, "the exterior face is its left one");
+        assert!(bimcraft_core::geom::dist_to_segment(q, a, b) < 0.01, "the face itself, not the centre line");
+    }
+
+    // Seven and a half pixels off the face, on the shaft's line: a free point near both guides, not a `Nearest` snap.
+    let level = h.state().session.model.levels()[0].0;
+    let scale = h.state().canvas.current_view(level).map_or(0.2, |v| v.scale);
+    let found = hover(&mut h, q + n * (7.5 / scale)).expect("the cursor is over the plan");
+    assert!(found.at.dist(q) < 0.1, "the crossing of the perpendicular and the face's extension: {:?}", found.at);
+}
+
+/// The 45° building's shaft, for a person to look at: `BIMCRAFT_GUIDES_DUMP=<folder>` writes the ring filling on the
+/// inner wall's face, the face marked, and the crossing of the shaft's perpendicular with its extension.
+#[test]
+fn shaft_screenshots() {
+    let Ok(folder) = std::env::var("BIMCRAFT_GUIDES_DUMP") else { return };
+    std::fs::create_dir_all(&folder).unwrap();
+    let s = std::f64::consts::FRAC_1_SQRT_2;
+    let u = P2(s, s);
+    let n = P2(-s, s);
+    let start_face = P2(20_000.0, 30_000.0);
+    let q = start_face + n * 4000.0;
+    let a = (start_face - n * 100.0 - u * 2000.0, start_face - n * 100.0 + u * 10_000.0);
+    let b = (q - n * 100.0 - u * 3000.0, q - n * 100.0 + u * 3000.0);
+    let mut h = app_at(
+        &format!(
+            "wall {{\"points\": [[{}, {}], [{}, {}]]}}\nwall {{\"points\": [[{}, {}], [{}, {}]]}}",
+            a.0.0, a.0.1, a.1.0, a.1.1, b.0.0, b.0.1, b.1.0, b.1.1
+        ),
+        0.1,
+    );
+    tool(&mut h, "Wall");
+    // The click alone must not mark the wall it starts on: the dwell is for a deliberate rest, not a click.
+    h.state_mut().snaps.mark_on_hover = false;
+    click(&mut h, start_face);
+    h.state_mut().snaps.mark_on_hover = true;
+    let view = match h.state().sheet {
+        crate::Sheet::Plan(id) | crate::Sheet::Ceiling(id) => id,
+        _ => panic!("a plan"),
+    };
+    // The ring filling on the inner face: stage it half full, so the frame shows the ring rather than waiting for the
+    // harness's clock to stop in the dead zone.
+    let at = h.state().screen(q);
+    h.hover_at(at);
+    h.run_steps(3);
+    let level = h.state().session.model.levels()[0].0;
+    let v = h.state().canvas.current_view(level).expect("a view");
+    let found = h.state().canvas.found.get().expect("the hover's snap");
+    let target = crate::guide_refs::target_at(&h.state().session.model, level, view, &v, v.px(q), &found, &h.state().canvas.under_cursor)
+        .expect("the face under the pointer");
+    let now = h.state().canvas.now.get();
+    h.state_mut().canvas.dwell.set(Some(crate::guide_refs::Dwell {
+        key: target.key(),
+        from: (at.x, at.y),
+        start: now - 0.30,
+        marked: false,
+    }));
+    h.run_steps(1);
+    h.render().unwrap().save(std::path::Path::new(&folder).join("shaft-dwell.png")).unwrap();
+    // The face marked: the dwell may have closed already; Q does it at once otherwise.
+    if h.state().canvas.pins.borrow().at(view).is_empty() {
+        key(&mut h, Key::Q);
+    }
+    h.run();
+    h.render().unwrap().save(std::path::Path::new(&folder).join("shaft-marked.png")).unwrap();
+    // Just off the face and on the shaft's line: the perpendicular and the face's extension cross. The dwell is off,
+    // so moving to the crossing does not toggle the face it has just marked.
+    h.state_mut().snaps.mark_on_hover = false;
+    let level = h.state().session.model.levels()[0].0;
+    let scale = h.state().canvas.current_view(level).map_or(0.2, |v| v.scale);
+    hover(&mut h, q + n * (7.5 / scale));
+    h.run();
+    h.render().unwrap().save(std::path::Path::new(&folder).join("shaft-intersection.png")).unwrap();
+}
+
+/// A guide is entered at 8 px and left at 12: the ray does not blink on and off as the hand shakes at the tolerance's edge.
+#[test]
+fn a_guide_is_entered_at_8_px_and_left_at_12() {
+    use bimcraft_core::alignment::AlignmentAxis;
+    let h = app("wall {\"points\": [[0, 0], [0, 5000]]}");
+    let m = &h.state().session.model;
+    let level = m.levels()[0].0;
+    let v = h.state().canvas.current_view(level).expect("a view");
+    // The chain's last point is the one being drawn from, so it is not its own reference: the point before it is.
+    let chain = [P2(0.0, 0.0), P2(0.0, 2500.0)];
+    let at = |px: f64| P2(px / v.scale, 2500.0);
+    // Six pixels beside the chain's point: within the 8 the guide enters at.
+    let found = h.state().alignments(m, level, &v, at(6.0), &chain);
+    assert!(found.iter().any(|a| matches!(a.axis, AlignmentAxis::X)), "the chain's x holds at 6 px: {found:?}");
+    // Ten pixels: past the entry, but the guide it held last frame is kept to 12.
+    let held = h.state().alignments(m, level, &v, at(10.0), &chain);
+    assert!(held.iter().any(|a| matches!(a.axis, AlignmentAxis::X)), "held on to 12 px: {held:?}");
+    // Thirteen: gone.
+    assert!(h.state().alignments(m, level, &v, at(13.0), &chain).is_empty(), "left past 12 px");
+}
+
+/// A wall is three references, and the snap names the one its pointer is on — not a bare "Nearest of Wall" that could be
+/// any of them.
+#[test]
+fn the_snap_names_the_wall_line_its_pointer_is_on() {
+    use bimcraft_core::model::Face;
+    let h = app(r#"wall {"points": [[0,0],[6000,0]]}"#);
+    let m = &h.state().session.model;
+    let id = ids(&h, "wall")[0];
+    let (ext, int) = bimcraft_core::walls::faces(m, m.wall(id).expect("the wall"));
+    let level = m.levels()[0].0;
+    let v = h.state().canvas.current_view(level).expect("a view");
+    let near = |y: f64| h.state().snap(m, level, &v, v.px(P2(2000.0, y)), &[], false);
+    let f = near(ext - 10.0);
+    assert_eq!(f.face, Some(Face::Left), "{f:?}");
+    assert_eq!(crate::canvas::snap_name(m, &f), format!("Exterior Face of Wall {id}"));
+    let f = near((ext + int) / 2.0 + 10.0);
+    assert_eq!(crate::canvas::snap_name(m, &f), format!("Centreline of Wall {id}"), "{f:?}");
+    let f = near(int + 10.0);
+    assert_eq!(crate::canvas::snap_name(m, &f), format!("Interior Face of Wall {id}"), "{f:?}");
+}
+
+/// Tab over a wall steps its pick through the exterior face, the centre line and the interior face, from the line the pick
+/// has now; a number already typed keeps Tab for the field it belongs to.
+#[test]
+fn tab_cycles_a_walls_three_lines_until_a_number_is_typed() {
+    use bimcraft_core::model::Face;
+    let mut h = app(r#"wall {"points": [[0,0],[6000,0]]}"#);
+    let (id, ext, int) = {
+        let m = &h.state().session.model;
+        let id = ids(&h, "wall")[0];
+        let (ext, int) = bimcraft_core::walls::faces(m, m.wall(id).expect("the wall"));
+        (id, ext, int)
+    };
+    tool(&mut h, "Wall");
+    // A chain started away from the wall, so its length and angle can be typed.
+    click(&mut h, P2(0.0, 1000.0));
+    let over = P2(2000.0, ext - 10.0);
+    assert!(hover(&mut h, over).is_some(), "the pointer is over the plan");
+    assert_eq!(h.state().canvas.found.get().and_then(|f| f.face), Some(Face::Left), "the nearest line first");
+    key(&mut h, Key::Tab);
+    assert_eq!(h.state().canvas.wall_face, Some((id, Face::Centre)), "the next line along");
+    hover(&mut h, over);
+    assert_eq!(h.state().canvas.found.get().and_then(|f| f.face), Some(Face::Centre), "and the pick follows it");
+    key(&mut h, Key::Tab);
+    hover(&mut h, over);
+    assert_eq!(h.state().canvas.found.get().and_then(|f| f.face), Some(Face::Right));
+    // A number typed keeps Tab: the field swaps, and the wall's line stays where it was.
+    h.state_mut().typed_length = "3000".into();
+    key(&mut h, Key::Tab);
+    assert_eq!(h.state().canvas.wall_face, Some((id, Face::Right)), "the lines stay where they were");
+    assert_eq!(h.state().drawing.other, "3000", "the number moved to the angle field, as Tab does");
+    let _ = int;
+}
+
+/// One edge pin per wall: marking another of its faces moves the pin rather than spending a second of the three, and the
+/// face marked again unmarks it.
+#[test]
+fn one_pin_per_wall_moves_to_the_face_marked_last() {
+    use bimcraft_core::model::Face;
+    let mut h = app(r#"wall {"points": [[0,0],[6000,0]]}"#);
+    let (ext, int) = {
+        let m = &h.state().session.model;
+        let id = ids(&h, "wall")[0];
+        bimcraft_core::walls::faces(m, m.wall(id).expect("the wall"))
+    };
+    tool(&mut h, "Wall");
+    // The rest marks nothing here: this test is what Q does, once, per wall.
+    h.state_mut().snaps.mark_on_hover = false;
+    let view = match h.state().sheet {
+        crate::Sheet::Plan(id) | crate::Sheet::Ceiling(id) => id,
+        _ => panic!("a plan"),
+    };
+    hover(&mut h, P2(2000.0, ext - 10.0));
+    key(&mut h, Key::Q);
+    assert_eq!(h.state().canvas.pins.borrow().at(view).len(), 1, "the exterior face marked");
+    hover(&mut h, P2(2000.0, int + 10.0));
+    key(&mut h, Key::Q);
+    {
+        let pins = h.state().canvas.pins.borrow();
+        assert_eq!(pins.at(view).len(), 1, "one reference per wall, however many of its lines are marked");
+        let crate::guide_refs::PinTarget::Edge { face, .. } = pins.at(view)[0].target else { panic!("an edge") };
+        assert_eq!(face, Face::Right, "it moved to the face marked last");
+    }
+    assert!(h.state().status.text.contains("moved"), "{}", h.state().status.text);
+    hover(&mut h, P2(2000.0, int + 10.0));
+    key(&mut h, Key::Q);
+    assert!(h.state().canvas.pins.borrow().at(view).is_empty(), "the same face again unmarks it");
+}
+
+/// Resting on one wall marks it once, even when the hand drifts across its lines: the element, not the line, is what stays
+/// quiet after a mark.
+#[test]
+fn a_wall_swept_over_is_marked_once() {
+    let mut h = app_at(r#"wall {"points": [[0,0],[6000,0]]}"#, 0.1);
+    let (ext, int) = {
+        let m = &h.state().session.model;
+        let id = ids(&h, "wall")[0];
+        bimcraft_core::walls::faces(m, m.wall(id).expect("the wall"))
+    };
+    tool(&mut h, "Wall");
+    let view = match h.state().sheet {
+        crate::Sheet::Plan(id) | crate::Sheet::Ceiling(id) => id,
+        _ => panic!("a plan"),
+    };
+    h.hover_at(h.state().screen(P2(2000.0, ext - 10.0)));
+    h.run_steps(7);
+    assert_eq!(h.state().canvas.pins.borrow().at(view).len(), 1, "half a second closes the ring");
+    h.hover_at(h.state().screen(P2(2000.0, int + 10.0)));
+    h.run_steps(8);
+    assert_eq!(h.state().canvas.pins.borrow().at(view).len(), 1, "one wall, one mark");
+}
+
+/// A pin is its line or its dot and ring, never the classic guide's filled square.
+#[test]
+fn a_pin_is_a_line_or_a_dot_and_never_a_square() {
+    use crate::guide_refs::{Pin, PinTarget};
+    use bimcraft_core::model::Face;
+    use egui::Shape;
+    let edge = PinTarget::Edge { a: P2(0.0, 0.0), b: P2(1000.0, 0.0), id: Some(100002), face: Face::Left, near: None };
+    let point = PinTarget::Point { at: P2(0.0, 500.0), kind: bimcraft_core::snap::Kind::Endpoint, id: Some(100002) };
+    let pins = vec![Pin { target: edge, lines: Vec::new() }, Pin { target: point, lines: Vec::new() }];
+    let shapes = crate::canvas::pin_shapes(&pins, |p| pos2(p.0 as f32, p.1 as f32), 1.0);
+    assert!(shapes.iter().any(|s| matches!(s, Shape::LineSegment { .. })), "the face is its line");
+    assert_eq!(shapes.iter().filter(|s| matches!(s, Shape::Circle(_))).count(), 2, "a dot and its ring");
+    assert!(!shapes.iter().any(|s| matches!(s, Shape::Rect(_))), "never a square: {shapes:?}");
+}
+
 #[test]
 fn manage_snaps_picks_the_guide_style() {
     use crate::style::GuideStyle;
@@ -4617,6 +4929,8 @@ fn a_guide_locks_the_point_in_both_guide_styles() {
     for style in GuideStyle::ALL {
         let mut h = app("wall {\"points\": [[0, 0], [5000, 0]]}");
         h.state_mut().guide_style = style;
+        // The wall's end is a model-wide reference: this test is the look, and the whole-model fallback gives it one.
+        h.state_mut().snaps.guides_from_whole_model = true;
         tool(&mut h, "Wall");
         click(&mut h, P2(1000.0, -1000.0));
         let level = h.state().session.model.levels()[0].0;
@@ -4643,6 +4957,8 @@ fn guides_screenshots() {
             "wall {\"points\": [[0, 3000], [1500, 3000]]}"
         ));
         h.state_mut().guide_style = style;
+        // This A/B shows the whole-model look; the local context has its own screenshots.
+        h.state_mut().snaps.guides_from_whole_model = true;
         tool(&mut h, "Wall");
         click(&mut h, P2(500.0, 1200.0));
         let found = hover(&mut h, P2(3006.0, 3006.0)).expect("the cursor is over the plan");
@@ -5412,7 +5728,7 @@ fn reveal_hidden_elements_shows_what_the_view_hides_for_good_and_apply_makes_a_h
     assert!(h.state().temporary().is_none(), "nothing left to hide for now");
     assert!(h.state().dirty(), "it is a change to the project now");
     // A category hidden for now goes in with it.
-    click(&mut h, P2(0.0, 3000.0));
+    click(&mut h, P2(0.0, 1000.0));
     shortcut(&mut h, "HC");
     press(&mut h, "Temporary Hide/Isolate");
     press(&mut h, "Apply Hide/Isolate to View");
@@ -5447,12 +5763,12 @@ fn unhide_element_and_unhide_category_bring_back_what_the_selection_hides_while_
     // A category hidden whole: Unhide Category (VU) brings back all its elements.
     shortcut(&mut h, "VH");
     assert!(plan_graphics(&h, 100000).hides("wall"));
-    click(&mut h, P2(0.0, 3000.0));
+    click(&mut h, P2(0.0, 1000.0));
     assert!(h.query_by_label("Unhide Category").is_some());
     press(&mut h, "Unhide Category");
     assert!(!plan_graphics(&h, 100000).hides("wall"));
     shortcut(&mut h, "VH");
-    click(&mut h, P2(0.0, 3000.0));
+    click(&mut h, P2(0.0, 1000.0));
     shortcut(&mut h, "VU");
     assert!(!plan_graphics(&h, 100000).hides("wall"));
     // With nothing the selection hides, VU says so and changes nothing.
@@ -5485,7 +5801,7 @@ fn hide_element_hide_category_and_the_elements_tab_work_on_the_selection() {
     shortcut(&mut h, "VV");
     pick(&mut h, Role::CheckBox, "Walls");
     press(&mut h, "OK");
-    click(&mut h, P2(0.0, 3000.0));
+    click(&mut h, P2(0.0, 1000.0));
     press(&mut h, "Hide Element");
     assert!(plan_graphics(&h, 100000).elements[&gid(&h, walls[3])].hidden);
     // Override Graphics by Element (EO): the selection goes on the Elements tab, picked, to be drawn its own way.

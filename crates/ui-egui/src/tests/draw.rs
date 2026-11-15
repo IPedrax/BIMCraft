@@ -29,6 +29,8 @@ fn kinds(h: &Harness<BimApp>) -> Vec<&'static str> {
 #[test]
 fn a_detail_line_takes_the_alignment_guide_its_preview_draws() {
     let mut h = app("wall {\"points\": [[0, 0], [5000, 0]]}");
+    // The wall's end is a model-wide reference: the detail line's guide is the preview's own look, tested here.
+    h.state_mut().snaps.guides_from_whole_model = true;
     press(&mut h, "Annotate");
     press(&mut h, "Detail Line");
     let start = P2(1000.0, -1000.0);
