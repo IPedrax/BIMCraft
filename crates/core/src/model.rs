@@ -185,6 +185,8 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// georeference and lose where the project stands; and it would read spot coordinates (a spot's `coordinate`, `type`, `origin`,
 /// `leader`, `shoulder` and `end`) and a level's `elevation_base` as spot elevations from the Project Base Point. A file of 19
 /// needs no step: its georeference is the active site, both points at the internal origin.
+/// After 0.12, a PDF publishing entry may set or omit its Creator and Producer (`creator`, `producer`, written only
+/// then); 0.12 leaves them out as fields it doesn't know, lists them as left out and writes its own.
 pub const FORMAT: u32 = 20;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;

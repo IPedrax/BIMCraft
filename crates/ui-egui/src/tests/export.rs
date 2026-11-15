@@ -222,3 +222,46 @@ fn a_pdf_can_be_an_archive_with_cut_marks_and_the_dialog_says_so() {
     assert!(text.contains("<pdfaid:part>2</pdfaid:part>") && text.contains("<pdfaid:conformance>B</pdfaid:conformance>"));
     assert!(text.matches("/Type/Page/").count() > 1, "tiled at 1 : 20");
 }
+
+#[test]
+fn pdf_creator_and_producer_can_be_set_omitted_and_reset_in_the_dialog() {
+    let mut h = app(SAMPLE);
+    h.key_press_modifiers(Modifiers::COMMAND, Key::P);
+    h.run();
+    press(&mut h, "PDF Settings…");
+    h.get_by_role_and_label(Role::TextInput, "Creator");
+    assert!(h.state().export_dialog.as_ref().unwrap().options.pdf.creator.is_none());
+    h.get_by_role_and_label(Role::CheckBox, "Default Creator").click();
+    h.run();
+    assert_eq!(h.state().export_dialog.as_ref().unwrap().options.pdf.creator.as_deref(), Some(""));
+    h.get_by_role_and_label(Role::TextInput, "Creator").focus();
+    h.run();
+    h.get_by_role_and_label(Role::TextInput, "Creator").type_text("Drawing tool");
+    h.run();
+    assert_eq!(h.state().export_dialog.as_ref().unwrap().options.pdf.creator.as_deref(), Some("Drawing tool"));
+    h.get_by_role_and_label(Role::CheckBox, "Default Producer").click();
+    h.run();
+    assert_eq!(h.state().export_dialog.as_ref().unwrap().options.pdf.producer.as_deref(), Some(""));
+    h.get_by_role_and_label(Role::CheckBox, "Default Creator").click();
+    h.run();
+    assert!(h.state().export_dialog.as_ref().unwrap().options.pdf.creator.is_none());
+    assert_eq!(h.state().export_dialog.as_ref().unwrap().options.pdf.producer.as_deref(), Some(""));
+}
+
+/// The PDF Settings form in both profiles and three looks, saved only when BIMCRAFT_PDF_DUMP names a folder.
+#[test]
+fn pdf_settings_screenshots() {
+    let Ok(folder) = std::env::var("BIMCRAFT_PDF_DUMP") else { return };
+    std::fs::create_dir_all(&folder).unwrap();
+    for profile in crate::style::Profile::ALL {
+        for (dark, light_canvas, look) in [(false, false, "light"), (true, false, "dark"), (true, true, "dark-light-canvas")] {
+            let mut h = if profile == crate::style::Profile::Rev { app(SAMPLE) } else { bimcraft(SAMPLE) };
+            h.ctx.set_theme(if dark { egui::Theme::Dark } else { egui::Theme::Light });
+            h.state_mut().light_canvas = light_canvas;
+            h.key_press_modifiers(Modifiers::COMMAND, Key::P);
+            h.run();
+            press(&mut h, "PDF Settings…");
+            h.render().unwrap().save(std::path::Path::new(&folder).join(format!("pdf-{profile:?}-{look}.png"))).unwrap();
+        }
+    }
+}

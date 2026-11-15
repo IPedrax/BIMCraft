@@ -1214,11 +1214,11 @@ msgstr ""
 msgid "At least {} characters"
 msgstr ""
 
-#: crates/core/src/model.rs:3220
+#: crates/core/src/model.rs:3222
 msgid "At wall centre line"
 msgstr ""
 
-#: crates/core/src/model.rs:3221
+#: crates/core/src/model.rs:3223
 msgid "At wall finish"
 msgstr ""
 
@@ -1554,7 +1554,7 @@ msgstr ""
 msgid "Border Line Weight"
 msgstr ""
 
-#: crates/ui-egui/src/export/mod.rs:979
+#: crates/ui-egui/src/export/mod.rs:988
 #: crates/ui-egui/src/properties.rs:443
 #: crates/ui-egui/src/reinforce.rs:182
 #: crates/ui-egui/src/templates.rs:744
@@ -1573,12 +1573,12 @@ msgstr ""
 msgid "Bottom ends turned up"
 msgstr ""
 
-#: crates/ui-egui/src/export/mod.rs:978
+#: crates/ui-egui/src/export/mod.rs:987
 #: crates/ui-egui/src/titleblocks.rs:327
 msgid "Bottom left"
 msgstr ""
 
-#: crates/ui-egui/src/export/mod.rs:980
+#: crates/ui-egui/src/export/mod.rs:989
 msgid "Bottom right"
 msgstr ""
 
@@ -1619,7 +1619,7 @@ msgstr ""
 msgid "Branch Panel"
 msgstr ""
 
-#: crates/core/src/model.rs:3568
+#: crates/core/src/model.rs:3570
 msgid "Brick"
 msgstr ""
 
@@ -1627,7 +1627,7 @@ msgstr ""
 msgid "Brick 225 x 75"
 msgstr ""
 
-#: crates/core/src/model.rs:4138
+#: crates/core/src/model.rs:4140
 msgid "Bringing the project up to date"
 msgstr ""
 
@@ -1969,7 +1969,7 @@ msgstr ""
 #: crates/core/src/lines.rs:182
 #: crates/ui-egui/src/editor.rs:1078
 #: crates/ui-egui/src/editor.rs:1112
-#: crates/ui-egui/src/export/mod.rs:976
+#: crates/ui-egui/src/export/mod.rs:985
 msgid "Centre"
 msgstr ""
 
@@ -1977,7 +1977,7 @@ msgstr ""
 msgid "Centre Lines"
 msgstr ""
 
-#: crates/core/src/model.rs:3576
+#: crates/core/src/model.rs:3578
 msgid "Ceramic tile"
 msgstr ""
 
@@ -3022,7 +3022,7 @@ msgstr ""
 msgid "Concrete"
 msgstr ""
 
-#: crates/core/src/model.rs:3570
+#: crates/core/src/model.rs:3572
 msgid "Concrete block"
 msgstr ""
 
@@ -3237,7 +3237,7 @@ msgstr ""
 msgid "Copies"
 msgstr ""
 
-#: crates/core/src/model.rs:3584
+#: crates/core/src/model.rs:3586
 msgid "Copper"
 msgstr ""
 
@@ -3294,15 +3294,15 @@ msgstr ""
 msgid "Copy: click the point to copy from."
 msgstr ""
 
-#: crates/core/src/model.rs:472
+#: crates/core/src/model.rs:474
 msgid "Core Centreline"
 msgstr ""
 
-#: crates/core/src/model.rs:475
+#: crates/core/src/model.rs:477
 msgid "Core Face: Exterior"
 msgstr ""
 
-#: crates/core/src/model.rs:476
+#: crates/core/src/model.rs:478
 msgid "Core Face: Interior"
 msgstr ""
 
@@ -3509,6 +3509,10 @@ msgstr ""
 msgid "Create {}"
 msgstr ""
 
+#: crates/ui-egui/src/export/mod.rs:947
+msgid "Creator"
+msgstr ""
+
 #: crates/ui-egui/src/lib.rs:4746
 msgid "Crop View"
 msgstr ""
@@ -3684,8 +3688,16 @@ msgstr ""
 msgid "Default 3D View"
 msgstr ""
 
+#: crates/ui-egui/src/export/mod.rs:947
+msgid "Default Creator"
+msgstr ""
+
 #: crates/ui-egui/src/editor/options.rs:25
 msgid "Default Elevation"
+msgstr ""
+
+#: crates/ui-egui/src/export/mod.rs:951
+msgid "Default Producer"
 msgstr ""
 
 #: crates/ui-egui/src/standards.rs:55
@@ -4285,11 +4297,11 @@ msgstr ""
 msgid "Double Door"
 msgstr ""
 
-#: crates/core/src/model.rs:2920
+#: crates/core/src/model.rs:2922
 msgid "Double Sliding"
 msgstr ""
 
-#: crates/core/src/model.rs:2918
+#: crates/core/src/model.rs:2920
 msgid "Double Swing"
 msgstr ""
 
@@ -4365,7 +4377,7 @@ msgstr ""
 msgid "Drawing"
 msgstr ""
 
-#: crates/ui-egui/src/export/mod.rs:1117
+#: crates/ui-egui/src/export/mod.rs:1126
 msgid "Drawing the preview…"
 msgstr ""
 
@@ -4479,7 +4491,7 @@ msgstr ""
 msgid "Earthing Electrodes"
 msgstr ""
 
-#: crates/core/src/model.rs:2170
+#: crates/core/src/model.rs:2172
 #: crates/ui-egui/src/coordinates.rs:576
 #: crates/ui-egui/src/coordinates.rs:793
 msgid "East"
@@ -5369,11 +5381,11 @@ msgstr ""
 msgid "Finish Edit Mode: the lines, closed into loops, become the outline and its holes"
 msgstr ""
 
-#: crates/core/src/model.rs:473
+#: crates/core/src/model.rs:475
 msgid "Finish Face: Exterior"
 msgstr ""
 
-#: crates/core/src/model.rs:474
+#: crates/core/src/model.rs:476
 msgid "Finish Face: Interior"
 msgstr ""
 
@@ -5398,7 +5410,7 @@ msgstr ""
 msgid "Fit to page"
 msgstr ""
 
-#: crates/core/src/model.rs:2922
+#: crates/core/src/model.rs:2924
 msgid "Fixed"
 msgstr ""
 
@@ -5546,7 +5558,7 @@ msgstr ""
 msgid "Folder {}"
 msgstr ""
 
-#: crates/core/src/model.rs:2921
+#: crates/core/src/model.rs:2923
 msgid "Folding"
 msgstr ""
 
@@ -5862,7 +5874,7 @@ msgstr ""
 msgid "Guests without an AI key may use mine"
 msgstr ""
 
-#: crates/core/src/model.rs:3575
+#: crates/core/src/model.rs:3577
 msgid "Gypsum board"
 msgstr ""
 
@@ -6683,8 +6695,12 @@ msgstr ""
 msgid "Leave Out"
 msgstr ""
 
+#: crates/ui-egui/src/export/mod.rs:1192
+msgid "Leave blank to omit this entry."
+msgstr ""
+
 #: crates/ui-egui/src/editor.rs:1112
-#: crates/ui-egui/src/export/mod.rs:975
+#: crates/ui-egui/src/export/mod.rs:984
 #: crates/ui-egui/src/titleblocks.rs:233
 #: crates/ui-egui/src/titleblocks.rs:238
 #: crates/ui-egui/src/titleblocks.rs:474
@@ -7372,7 +7388,7 @@ msgstr ""
 msgid "Margin"
 msgstr ""
 
-#: crates/core/src/model.rs:1748
+#: crates/core/src/model.rs:1750
 msgid "Mark"
 msgstr ""
 
@@ -7977,7 +7993,7 @@ msgstr ""
 msgid "NOT ENCLOSED"
 msgstr ""
 
-#: crates/core/src/model.rs:1749
+#: crates/core/src/model.rs:1751
 #: crates/ui-egui/src/adaptive_editor.rs:665
 #: crates/ui-egui/src/adaptive_editor.rs:804
 #: crates/ui-egui/src/cad.rs:89
@@ -8351,7 +8367,7 @@ msgstr ""
 msgid "Normalized Segment Length"
 msgstr ""
 
-#: crates/core/src/model.rs:2168
+#: crates/core/src/model.rs:2170
 #: crates/ui-egui/src/coordinates.rs:576
 #: crates/ui-egui/src/coordinates.rs:793
 msgid "North"
@@ -10033,6 +10049,10 @@ msgstr ""
 msgid "Print set {} saved."
 msgstr ""
 
+#: crates/ui-egui/src/export/mod.rs:950
+msgid "Producer"
+msgstr ""
+
 #: crates/core/src/schedule.rs:212
 #: crates/ui-egui/src/editor/extrusion.rs:200
 #: crates/ui-egui/src/settings.rs:551
@@ -10379,7 +10399,7 @@ msgstr ""
 msgid "Read a title block drawn at full size (in mm on paper) in the model space of a DXF or DWG: its lines, solid hatches and texts; each {KEY} its texts name becomes a field"
 msgstr ""
 
-#: crates/core/src/model.rs:4106
+#: crates/core/src/model.rs:4108
 msgid "Reading elements"
 msgstr ""
 
@@ -10387,7 +10407,7 @@ msgstr ""
 msgid "Reading the file"
 msgstr ""
 
-#: crates/core/src/model.rs:4150
+#: crates/core/src/model.rs:4152
 msgid "Reading the project"
 msgstr ""
 
@@ -10919,7 +10939,7 @@ msgid "Ribbon"
 msgstr ""
 
 #: crates/ui-egui/src/editor.rs:1112
-#: crates/ui-egui/src/export/mod.rs:977
+#: crates/ui-egui/src/export/mod.rs:986
 #: crates/ui-egui/src/spots.rs:355
 #: crates/ui-egui/src/titleblocks.rs:235
 #: crates/ui-egui/src/titleblocks.rs:240
@@ -10936,7 +10956,7 @@ msgstr ""
 msgid "Risers"
 msgstr ""
 
-#: crates/core/src/model.rs:2924
+#: crates/core/src/model.rs:2926
 msgid "Roller"
 msgstr ""
 
@@ -10964,7 +10984,7 @@ msgstr ""
 msgid "Roof by Footprint: click inside the walls to roof them, on the level above"
 msgstr ""
 
-#: crates/core/src/model.rs:3577
+#: crates/core/src/model.rs:3579
 msgid "Roof tiles"
 msgstr ""
 
@@ -11296,7 +11316,7 @@ msgstr ""
 msgid "Scope"
 msgstr ""
 
-#: crates/core/src/model.rs:3573
+#: crates/core/src/model.rs:3575
 msgid "Screed"
 msgstr ""
 
@@ -11366,7 +11386,7 @@ msgstr ""
 msgid "Section: {}"
 msgstr ""
 
-#: crates/core/src/model.rs:2923
+#: crates/core/src/model.rs:2925
 msgid "Sectional"
 msgstr ""
 
@@ -11964,7 +11984,7 @@ msgstr ""
 msgid "Sky"
 msgstr ""
 
-#: crates/core/src/model.rs:2919
+#: crates/core/src/model.rs:2921
 msgid "Sliding"
 msgstr ""
 
@@ -12143,7 +12163,7 @@ msgstr ""
 msgid "Source code on GitHub"
 msgstr ""
 
-#: crates/core/src/model.rs:2169
+#: crates/core/src/model.rs:2171
 msgid "South"
 msgstr ""
 
@@ -12520,7 +12540,7 @@ msgstr ""
 msgid "Swept Blend: a path of one line or arc, and a profile at each end, blended along it"
 msgstr ""
 
-#: crates/core/src/model.rs:2917
+#: crates/core/src/model.rs:2919
 msgid "Swing"
 msgstr ""
 
@@ -13576,7 +13596,7 @@ msgstr ""
 msgid "Tools"
 msgstr ""
 
-#: crates/ui-egui/src/export/mod.rs:973
+#: crates/ui-egui/src/export/mod.rs:982
 #: crates/ui-egui/src/lib.rs:5617
 #: crates/ui-egui/src/reinforce.rs:182
 #: crates/ui-egui/src/templates.rs:744
@@ -13620,11 +13640,11 @@ msgstr ""
 msgid "Top is Attached"
 msgstr ""
 
-#: crates/ui-egui/src/export/mod.rs:972
+#: crates/ui-egui/src/export/mod.rs:981
 msgid "Top left"
 msgstr ""
 
-#: crates/ui-egui/src/export/mod.rs:974
+#: crates/ui-egui/src/export/mod.rs:983
 #: crates/ui-egui/src/titleblocks.rs:327
 msgid "Top right"
 msgstr ""
@@ -13791,7 +13811,7 @@ msgstr ""
 msgid "Two {} are called {}."
 msgstr ""
 
-#: crates/core/src/model.rs:1750
+#: crates/core/src/model.rs:1752
 #: crates/ui-egui/src/adaptive_editor.rs:724
 #: crates/ui-egui/src/editor/dimensions.rs:1010
 #: crates/ui-egui/src/editor/nested.rs:273
@@ -14411,7 +14431,7 @@ msgstr ""
 msgid "Wall (WA): each click builds a wall; Enter or Esc ends the chain"
 msgstr ""
 
-#: crates/core/src/model.rs:471
+#: crates/core/src/model.rs:473
 msgid "Wall Centreline"
 msgstr ""
 
@@ -14477,7 +14497,7 @@ msgstr ""
 msgid "Weight per Metre"
 msgstr ""
 
-#: crates/core/src/model.rs:2171
+#: crates/core/src/model.rs:2173
 msgid "West"
 msgstr ""
 
