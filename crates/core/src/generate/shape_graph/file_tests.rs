@@ -16,6 +16,8 @@ fn toy_request(k: u64) -> Request {
         tolerance: 0,
         shape: Some(ids[(k as usize) % ids.len()].clone()),
         gridlines: false,
+        interior: super::Interior::Aligned,
+        bumps: false,
     }
 }
 

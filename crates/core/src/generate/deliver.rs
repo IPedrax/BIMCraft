@@ -234,14 +234,7 @@ fn make_one(job: &Job, writer: &crate::cad::DwgWriter, dir: &Path) -> Result<Out
             Err(Refusal { code, message }) => return Ok(Outcome::Skipped { seed: job.seed, code, message }),
         },
         None => {
-            let request = shape_graph::Request {
-                archetype: job.archetype.clone(),
-                seed: job.seed,
-                rooms: job.rooms,
-                tolerance: job.tol,
-                shape: None,
-                gridlines: false,
-            };
+            let request = shape_graph::Request::new(job.archetype.clone(), job.seed, job.rooms, job.tol, None, false);
             match shape_graph::build(&request, job.unreviewed) {
                 Ok(b) => b,
                 Err(Refusal { code, message }) => return Ok(Outcome::Skipped { seed: job.seed, code, message }),

@@ -13,6 +13,8 @@ pub(crate) mod family;
 #[cfg(test)]
 mod file_tests;
 mod fit;
+#[cfg(test)]
+mod interior_tests;
 mod layout;
 mod links;
 mod plan;
@@ -52,6 +54,36 @@ pub struct Request {
     pub shape: Option<String>,
     /// Draw gridlines at the outline's corners.
     pub gridlines: bool,
+    /// Whether neighbours facing a spine room line up (`Aligned`), some are set back (`Jogged`), or the seed chooses.
+    pub interior: Interior,
+    /// Whether one to three rooms push out past the outline or pull in from it.
+    pub bumps: bool,
+}
+
+/// `--interior`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Interior {
+    Aligned,
+    Jogged,
+    Mixed,
+}
+
+impl Interior {
+    pub fn parse(text: &str) -> Option<Interior> {
+        match text {
+            "aligned" => Some(Interior::Aligned),
+            "jogged" => Some(Interior::Jogged),
+            "mixed" => Some(Interior::Mixed),
+            _ => None,
+        }
+    }
+}
+
+impl Request {
+    /// A request with the options' defaults, which `generate` and `deliver` share: a mixed interior and bumps on.
+    pub fn new(archetype: String, seed: u64, rooms: i64, tolerance: i64, shape: Option<String>, gridlines: bool) -> Request {
+        Request { archetype, seed, rooms, tolerance, shape, gridlines, interior: Interior::Mixed, bumps: true }
+    }
 }
 
 /// The `building` of a plan: the family's name and the first 12 hex digits of a hash of its layout (types, families, walls,
