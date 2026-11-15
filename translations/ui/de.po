@@ -164,7 +164,7 @@ msgstr "Ein BIMCraft-Projekt oder eine IFC-Datei."
 msgid "A BIMCraft project, an IFC or a Revit file."
 msgstr "Ein BIMCraft-Projekt, eine IFC- oder eine Revit-Datei."
 
-#: crates/ui-egui/src/pyaddins.rs:726
+#: crates/ui-egui/src/pyaddins.rs:727
 msgid "A button on the PyAddins tab that runs this script with the values in the form now"
 msgstr ""
 
@@ -312,7 +312,7 @@ msgstr ""
 msgid "A scan's points where the plan's cut plane cuts it, to trace what was measured"
 msgstr "Die Punkte einer Messung, wo die Schnittebene des Grundrisses sie schneidet, um das Gemessene nachzuzeichnen"
 
-#: crates/ui-egui/src/pyaddins.rs:311
+#: crates/ui-egui/src/pyaddins.rs:312
 msgid "A script is running: stop it first."
 msgstr ""
 
@@ -353,7 +353,7 @@ msgid "A {} needs a name."
 msgstr "{}: Es fehlt ein Name."
 
 #: crates/ui-egui/src/control.rs:349
-#: crates/ui-egui/src/pyaddins.rs:818
+#: crates/ui-egui/src/pyaddins.rs:819
 msgid "AI agents"
 msgstr ""
 
@@ -669,8 +669,8 @@ msgstr "Adresse:"
 msgid "Address: {}, port {}"
 msgstr "Adresse: {}, Port {}"
 
-#: crates/ui-egui/src/pyaddins.rs:711
 #: crates/ui-egui/src/pyaddins.rs:712
+#: crates/ui-egui/src/pyaddins.rs:713
 msgid "Advanced Settings"
 msgstr ""
 
@@ -1673,7 +1673,7 @@ msgstr "Building Information Modeling – offen und kostenlos."
 msgid "Built-in"
 msgstr ""
 
-#: crates/ui-egui/src/pyaddins.rs:722
+#: crates/ui-egui/src/pyaddins.rs:723
 msgid "Button label"
 msgstr ""
 
@@ -1795,8 +1795,8 @@ msgstr "Kamera: den Augpunkt anklicken, dann das Ziel: eine perspektivische 3D-A
 #: crates/ui-egui/src/publisher.rs:920
 #: crates/ui-egui/src/publisher.rs:967
 #: crates/ui-egui/src/purge.rs:77
-#: crates/ui-egui/src/pyaddins.rs:848
-#: crates/ui-egui/src/pyaddins.rs:882
+#: crates/ui-egui/src/pyaddins.rs:849
+#: crates/ui-egui/src/pyaddins.rs:883
 #: crates/ui-egui/src/reinforce.rs:536
 #: crates/ui-egui/src/shortcuts.rs:412
 #: crates/ui-egui/src/shortcuts.rs:540
@@ -2146,7 +2146,7 @@ msgstr "Umschriebenes Vieleck: Mittelpunkt und dann Seitenmitte anklicken; Seite
 msgid "Classification"
 msgstr "Klassifizierung"
 
-#: crates/ui-egui/src/pyaddins.rs:820
+#: crates/ui-egui/src/pyaddins.rs:821
 msgid "Claude Code and Codex write PyAddins for you with BIMCraft's skill: install it, then give the agent BIMCraft's tools."
 msgstr ""
 
@@ -2862,7 +2862,7 @@ msgstr ""
 #: crates/ui-egui/src/properties.rs:3458
 #: crates/ui-egui/src/properties.rs:3959
 #: crates/ui-egui/src/publisher.rs:476
-#: crates/ui-egui/src/pyaddins.rs:507
+#: crates/ui-egui/src/pyaddins.rs:508
 #: crates/ui-egui/src/revit.rs:261
 #: crates/ui-egui/src/script.rs:103
 #: crates/ui-egui/src/settings.rs:492
@@ -3424,7 +3424,7 @@ msgstr "Betondeckung"
 #: crates/ui-egui/src/parameters.rs:1068
 #: crates/ui-egui/src/printsets.rs:147
 #: crates/ui-egui/src/publisher.rs:616
-#: crates/ui-egui/src/pyaddins.rs:881
+#: crates/ui-egui/src/pyaddins.rs:882
 #: crates/ui-egui/src/templates.rs:497
 #: crates/ui-egui/src/typeprops.rs:100
 msgid "Create"
@@ -3795,7 +3795,7 @@ msgstr "Voreinstellung löschen"
 msgid "Delete Rooms"
 msgstr ""
 
-#: crates/ui-egui/src/pyaddins.rs:746
+#: crates/ui-egui/src/pyaddins.rs:747
 msgid "Delete Script"
 msgstr ""
 
@@ -4267,7 +4267,7 @@ msgstr "Fertig"
 msgid "Done Editing Tools"
 msgstr "Werkzeugbearbeitung beenden"
 
-#: crates/ui-egui/src/pyaddins.rs:777
+#: crates/ui-egui/src/pyaddins.rs:778
 msgid "Done."
 msgstr ""
 
@@ -4538,7 +4538,7 @@ msgstr ""
 
 #: crates/ui-egui/src/linestyles.rs:245
 #: crates/ui-egui/src/parameters.rs:1607
-#: crates/ui-egui/src/pyaddins.rs:741
+#: crates/ui-egui/src/pyaddins.rs:742
 #: crates/ui-egui/src/shortcuts.rs:543
 msgid "Edit"
 msgstr "Bearbeiten"
@@ -4711,7 +4711,7 @@ msgstr ""
 msgid "Editing"
 msgstr "Bearbeitung"
 
-#: crates/ui-egui/src/pyaddins.rs:809
+#: crates/ui-egui/src/pyaddins.rs:810
 msgid "Editor"
 msgstr ""
 
@@ -5355,7 +5355,7 @@ msgstr "Filter (FT): Regeln, die Elemente für eine Ansicht herausgreifen, um si
 msgid "Find"
 msgstr "Suchen"
 
-#: crates/ui-egui/src/pyaddins.rs:847
+#: crates/ui-egui/src/pyaddins.rs:848
 msgid "Find Again"
 msgstr ""
 
@@ -6343,7 +6343,7 @@ msgstr "Abzweigdosen"
 msgid "Inspector"
 msgstr "Inspektor"
 
-#: crates/ui-egui/src/pyaddins.rs:824
+#: crates/ui-egui/src/pyaddins.rs:825
 msgid "Install Skill"
 msgstr ""
 
@@ -7330,7 +7330,7 @@ msgstr ""
 msgid "Make All:"
 msgstr ""
 
-#: crates/ui-egui/src/pyaddins.rs:727
+#: crates/ui-egui/src/pyaddins.rs:728
 msgid "Make Button"
 msgstr ""
 
@@ -8054,7 +8054,7 @@ msgstr "NICHT UMSCHLOSSEN"
 #: crates/ui-egui/src/properties.rs:2486
 #: crates/ui-egui/src/properties.rs:2970
 #: crates/ui-egui/src/properties.rs:3863
-#: crates/ui-egui/src/pyaddins.rs:874
+#: crates/ui-egui/src/pyaddins.rs:875
 #: crates/ui-egui/src/titleblocks.rs:597
 #: crates/ui-egui/src/workplane.rs:294
 msgid "Name"
@@ -8161,12 +8161,12 @@ msgstr "Neues Projekt"
 msgid "New Schedule"
 msgstr "Neue Tabelle"
 
-#: crates/ui-egui/src/pyaddins.rs:474
-#: crates/ui-egui/src/pyaddins.rs:872
+#: crates/ui-egui/src/pyaddins.rs:475
+#: crates/ui-egui/src/pyaddins.rs:873
 msgid "New Script"
 msgstr ""
 
-#: crates/ui-egui/src/pyaddins.rs:391
+#: crates/ui-egui/src/pyaddins.rs:392
 msgid "New Script: a script to start from, in the Player"
 msgstr ""
 
@@ -8337,11 +8337,11 @@ msgstr ""
 msgid "No rows yet: the {} is empty."
 msgstr "Noch keine Zeilen: {} ist leer."
 
-#: crates/ui-egui/src/pyaddins.rs:486
+#: crates/ui-egui/src/pyaddins.rs:487
 msgid "No script matches."
 msgstr ""
 
-#: crates/ui-egui/src/pyaddins.rs:484
+#: crates/ui-egui/src/pyaddins.rs:485
 msgid "No scripts yet: New Script starts one, and an agent can write them (pyaddin_save)."
 msgstr ""
 
@@ -8532,7 +8532,7 @@ msgstr "Nichts ist ungenutzt."
 msgid "Nothing matches the search."
 msgstr "Keine Treffer für die Suche."
 
-#: crates/ui-egui/src/pyaddins.rs:634
+#: crates/ui-egui/src/pyaddins.rs:635
 msgid "Nothing selected"
 msgstr ""
 
@@ -8593,7 +8593,7 @@ msgstr "Anzahl der Pole"
 #: crates/ui-egui/src/properties.rs:3880
 #: crates/ui-egui/src/publisher.rs:921
 #: crates/ui-egui/src/publisher.rs:968
-#: crates/ui-egui/src/pyaddins.rs:846
+#: crates/ui-egui/src/pyaddins.rs:847
 #: crates/ui-egui/src/reinforce.rs:537
 #: crates/ui-egui/src/standards.rs:335
 #: crates/ui-egui/src/templates.rs:758
@@ -8721,7 +8721,7 @@ msgstr "Undurchsichtig"
 
 #: crates/ui-egui/src/lib.rs:3941
 #: crates/ui-egui/src/lib.rs:4313
-#: crates/ui-egui/src/pyaddins.rs:507
+#: crates/ui-egui/src/pyaddins.rs:508
 #: crates/ui-egui/src/start.rs:381
 msgid "Open"
 msgstr "Öffnen"
@@ -8775,7 +8775,7 @@ msgstr "Standard-3D-Ansicht öffnen"
 msgid "Open the last project at startup"
 msgstr "Beim Start das letzte Projekt öffnen"
 
-#: crates/ui-egui/src/pyaddins.rs:741
+#: crates/ui-egui/src/pyaddins.rs:742
 msgid "Open the script in your editor"
 msgstr ""
 
@@ -9140,7 +9140,7 @@ msgstr "Patchpanels"
 msgid "Path"
 msgstr "Pfad"
 
-#: crates/ui-egui/src/pyaddins.rs:806
+#: crates/ui-egui/src/pyaddins.rs:807
 msgid "Path to Python"
 msgstr ""
 
@@ -9901,11 +9901,11 @@ msgstr "Grundrisse"
 msgid "Plaster"
 msgstr "Putz"
 
-#: crates/ui-egui/src/pyaddins.rs:368
+#: crates/ui-egui/src/pyaddins.rs:369
 msgid "Player"
 msgstr ""
 
-#: crates/ui-egui/src/pyaddins.rs:367
+#: crates/ui-egui/src/pyaddins.rs:368
 msgid "Player: your Python scripts, each with a form of what it asks for, to run on the model"
 msgstr ""
 
@@ -10376,11 +10376,11 @@ msgstr "{} nicht verwendete gelöscht."
 msgid "Put a view on this sheet: one not on a sheet yet"
 msgstr "Eine Ansicht auf diesen Plan legen: eine, die noch auf keinem Plan liegt"
 
-#: crates/ui-egui/src/pyaddins.rs:794
+#: crates/ui-egui/src/pyaddins.rs:795
 msgid "Python"
 msgstr ""
 
-#: crates/ui-egui/src/pyaddins.rs:386
+#: crates/ui-egui/src/pyaddins.rs:387
 msgid "Python: the Python scripts run in; BIMCraft has none of its own (3.9 or newer)"
 msgstr ""
 
@@ -10668,7 +10668,7 @@ msgstr "Bewehrt: {} Stäbe, {} kg Stahl."
 msgid "Reinforcement"
 msgstr "Bewehrung"
 
-#: crates/ui-egui/src/pyaddins.rs:824
+#: crates/ui-egui/src/pyaddins.rs:825
 msgid "Reinstall Skill"
 msgstr ""
 
@@ -10688,7 +10688,7 @@ msgstr "Alle neu laden"
 msgid "Reload CAD"
 msgstr "CAD neu laden"
 
-#: crates/ui-egui/src/pyaddins.rs:373
+#: crates/ui-egui/src/pyaddins.rs:374
 msgid "Reload: read the scripts and buttons again, and look for Python again"
 msgstr ""
 
@@ -10715,7 +10715,7 @@ msgstr "Entfernen"
 msgid "Remove Bars"
 msgstr "Stäbe entfernen"
 
-#: crates/ui-egui/src/pyaddins.rs:443
+#: crates/ui-egui/src/pyaddins.rs:444
 msgid "Remove Button"
 msgstr ""
 
@@ -10955,11 +10955,11 @@ msgstr ""
 msgid "Restart and install"
 msgstr "Neu starten und installieren"
 
-#: crates/ui-egui/src/pyaddins.rs:408
+#: crates/ui-egui/src/pyaddins.rs:409
 msgid "Restart: run the last script again, with the same values"
 msgstr ""
 
-#: crates/ui-egui/src/pyaddins.rs:407
+#: crates/ui-egui/src/pyaddins.rs:408
 msgid "Restart: run {} again, with the same values"
 msgstr ""
 
@@ -11040,7 +11040,7 @@ msgstr "Gedrehter Kreis"
 msgid "Ribbon"
 msgstr "Menüband"
 
-#: crates/ui-egui/src/pyaddins.rs:724
+#: crates/ui-egui/src/pyaddins.rs:725
 msgid "Ribbon panel"
 msgstr ""
 
@@ -11227,14 +11227,14 @@ msgstr ""
 msgid "Round"
 msgstr "Rund"
 
-#: crates/ui-egui/src/pyaddins.rs:397
-#: crates/ui-egui/src/pyaddins.rs:515
+#: crates/ui-egui/src/pyaddins.rs:398
+#: crates/ui-egui/src/pyaddins.rs:516
 #: crates/ui-egui/src/script.rs:104
 msgid "Run"
 msgstr ""
 
 #: crates/ui-egui/src/lib.rs:5096
-#: crates/ui-egui/src/pyaddins.rs:691
+#: crates/ui-egui/src/pyaddins.rs:692
 #: crates/ui-egui/src/script.rs:70
 msgid "Run Script"
 msgstr ""
@@ -11243,11 +11243,11 @@ msgstr ""
 msgid "Run Script: commands, one a line as agents and the command line write them, tried first and run as one undo step"
 msgstr ""
 
-#: crates/ui-egui/src/pyaddins.rs:329
+#: crates/ui-egui/src/pyaddins.rs:330
 msgid "Running {}…"
 msgstr ""
 
-#: crates/ui-egui/src/pyaddins.rs:771
+#: crates/ui-egui/src/pyaddins.rs:772
 msgid "Running…"
 msgstr ""
 
@@ -11255,7 +11255,7 @@ msgstr ""
 msgid "Runs the plugin's command"
 msgstr ""
 
-#: crates/ui-egui/src/pyaddins.rs:428
+#: crates/ui-egui/src/pyaddins.rs:429
 msgid "Runs {}"
 msgstr ""
 
@@ -11445,15 +11445,15 @@ msgstr "Estrich"
 msgid "Script Automation"
 msgstr ""
 
-#: crates/ui-egui/src/pyaddins.rs:365
+#: crates/ui-egui/src/pyaddins.rs:366
 msgid "Scripts"
 msgstr ""
 
-#: crates/ui-egui/src/pyaddins.rs:814
+#: crates/ui-egui/src/pyaddins.rs:815
 msgid "Scripts are kept in {}"
 msgstr ""
 
-#: crates/ui-egui/src/pyaddins.rs:797
+#: crates/ui-egui/src/pyaddins.rs:798
 msgid "Scripts run in your own Python, 3.9 or newer: BIMCraft has none of its own. Leave the path empty to use the one found."
 msgstr ""
 
@@ -11472,7 +11472,7 @@ msgstr "Schriften suchen"
 msgid "Search parameters"
 msgstr "Parameter suchen"
 
-#: crates/ui-egui/src/pyaddins.rs:472
+#: crates/ui-egui/src/pyaddins.rs:473
 msgid "Search scripts…"
 msgstr ""
 
@@ -11719,7 +11719,7 @@ msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:597
 #: crates/ui-egui/src/lib.rs:3983
-#: crates/ui-egui/src/pyaddins.rs:514
+#: crates/ui-egui/src/pyaddins.rs:515
 #: crates/ui-egui/src/settings.rs:463
 msgid "Settings"
 msgstr "Einstellungen"
@@ -11966,7 +11966,7 @@ msgstr "Hintergrundraster anzeigen, ihre Einstellungen ändern oder den Rasterfa
 msgid "Show grids"
 msgstr "Raster anzeigen"
 
-#: crates/ui-egui/src/pyaddins.rs:438
+#: crates/ui-egui/src/pyaddins.rs:439
 msgid "Show in Player"
 msgstr ""
 
@@ -12537,12 +12537,12 @@ msgid "Stirrups"
 msgstr "Bügel"
 
 #: crates/ui-egui/src/assistant.rs:583
-#: crates/ui-egui/src/pyaddins.rs:515
-#: crates/ui-egui/src/pyaddins.rs:691
+#: crates/ui-egui/src/pyaddins.rs:516
+#: crates/ui-egui/src/pyaddins.rs:692
 msgid "Stop"
 msgstr ""
 
-#: crates/ui-egui/src/pyaddins.rs:401
+#: crates/ui-egui/src/pyaddins.rs:402
 msgid "Stop the script running"
 msgstr ""
 
@@ -13444,7 +13444,7 @@ msgstr "Das Tastenkürzel '{}' ist bereits für '{}' belegt."
 msgid "The sketch has too many lines."
 msgstr "Die Skizze enthält zu viele Linien."
 
-#: crates/ui-egui/src/pyaddins.rs:834
+#: crates/ui-egui/src/pyaddins.rs:835
 msgid "The skill is installed."
 msgstr ""
 
@@ -13514,7 +13514,7 @@ msgstr "Design"
 msgid "Then by:"
 msgstr "Dann nach:"
 
-#: crates/ui-egui/src/pyaddins.rs:839
+#: crates/ui-egui/src/pyaddins.rs:840
 msgid "Then, in a terminal, with the window started as bimcraft --control 0:"
 msgstr ""
 
@@ -13522,11 +13522,11 @@ msgstr ""
 msgid "There are no lines yet: draw the outline."
 msgstr "Es sind noch keine Linien vorhanden: Umriss zeichnen."
 
-#: crates/ui-egui/src/pyaddins.rs:891
+#: crates/ui-egui/src/pyaddins.rs:892
 msgid "There is a script named {} already."
 msgstr ""
 
-#: crates/ui-egui/src/pyaddins.rs:464
+#: crates/ui-egui/src/pyaddins.rs:465
 msgid "There is no PyAddins folder: BIMCraft found no home folder to keep scripts in."
 msgstr ""
 
@@ -15595,7 +15595,7 @@ msgstr "die Öffnung muss auf ihrer Wand bleiben"
 msgid "the plane can't go while {} is drawn on it"
 msgstr "die Ebene kann nicht entfernt werden, solange {} darauf gezeichnet ist"
 
-#: crates/ui-egui/src/pyaddins.rs:810
+#: crates/ui-egui/src/pyaddins.rs:811
 msgid "the system's editor for Python, else for text"
 msgstr ""
 
@@ -15870,7 +15870,7 @@ msgstr "{} ist keine Adresse zum Abhören"
 msgid "{} is not {}: `{}`"
 msgstr "{} ist nicht {}: `{}`"
 
-#: crates/ui-egui/src/pyaddins.rs:735
+#: crates/ui-egui/src/pyaddins.rs:736
 msgid "{} is on the PyAddins tab."
 msgstr ""
 
@@ -15997,7 +15997,7 @@ msgstr ""
 msgid "{} px"
 msgstr "{} px"
 
-#: crates/ui-egui/src/pyaddins.rs:302
+#: crates/ui-egui/src/pyaddins.rs:303
 msgid "{} ran."
 msgstr ""
 
@@ -16005,11 +16005,11 @@ msgstr ""
 msgid "{} redefined from lines"
 msgstr "{} aus Linien neu definiert"
 
-#: crates/ui-egui/src/pyaddins.rs:380
+#: crates/ui-egui/src/pyaddins.rs:381
 msgid "{} scripts, {} buttons."
 msgstr ""
 
-#: crates/ui-egui/src/pyaddins.rs:634
+#: crates/ui-egui/src/pyaddins.rs:635
 msgid "{} selected"
 msgstr ""
 
@@ -16041,7 +16041,7 @@ msgstr ""
 msgid "{} views and sheets, in one file"
 msgstr ""
 
-#: crates/ui-egui/src/pyaddins.rs:304
+#: crates/ui-egui/src/pyaddins.rs:305
 msgid "{} was stopped."
 msgstr ""
 
