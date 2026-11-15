@@ -19,6 +19,8 @@ mod interior_tests;
 mod layout;
 mod links;
 #[cfg(test)]
+mod medical_day_tests;
+#[cfg(test)]
 mod office_family_tests;
 #[cfg(test)]
 mod pack_tables_tests;
