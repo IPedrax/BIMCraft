@@ -270,7 +270,7 @@ has no `connections`; `hospital` and `clinic` have neither), and the family file
 still refuses everything. Either way the pack's rules judge every graph: `emit::verify` runs `graph_rules::check` on the generated graph
 and on the extracted one (given the generated kinds and roles, which the extractor does not know), an attempt that fails a rule is thrown
 away, and `report.json` has a check for each rule by its id. A pack whose rules read roles (the GR rules) needs roles `Role::parse` knows.
-The toy families the tests read are in
+`manifest.json` has `family_review`, the family file's `review.status`. The toy families the tests read are in
 `crates/core/src/generate/testdata/shape-graph/`, outside the engine's directory, where no file may quote a kind of any pack
 (`register_tests::the_engine_quotes_no_room_kind`): their `building_type` is a word one pack also uses for a kind.
 

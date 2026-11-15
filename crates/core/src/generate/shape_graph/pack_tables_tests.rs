@@ -203,3 +203,25 @@ fn a_graph_that_fails_a_rule_of_a_pack_with_no_tables_is_thrown_away() {
     assert_eq!(refused.code, "unplaceable_graph");
     assert!(refused.message.contains("fails the hospital rules") && refused.message.contains("PR-001"), "{}", refused.message);
 }
+
+#[test]
+fn the_manifest_says_whether_the_family_was_reviewed() {
+    let req = Request::new("house".into(), 1, 12, 0, None, false);
+    let reviewed = Family::parse(house_family()).expect("the house family");
+    assert_eq!(reviewed.review.status, "reviewed");
+    let built = build_family(&reviewed, &req, false).expect("a plan");
+    assert_eq!(file(&built.files, "manifest.json")["family_review"], "reviewed");
+
+    let text = house_family().replace("\"status\": \"reviewed\"", "\"status\": \"unreviewed\"");
+    let unreviewed = Family::parse(&text).expect("the copy parses");
+    assert!(unreviewed.unreviewed());
+    assert_eq!(build_family(&unreviewed, &req, false).err().map(|r| r.code), Some("unreviewed_family"));
+    let allowed = build_family(&unreviewed, &req, true).expect("a plan, with `--unreviewed allow`");
+    assert_eq!(file(&allowed.files, "manifest.json")["family_review"], "unreviewed");
+    // The review changes nothing else: the same plan is written.
+    let text = |files: &[(&'static str, String)], name: &str| files.iter().find(|(n, _)| *n == name).map(|(_, t)| t.clone());
+    for name in ["topology-graph.json", "script.bimcraft.txt", "report.json"] {
+        assert!(text(&built.files, name).is_some(), "{name} is written");
+        assert_eq!(text(&allowed.files, name), text(&built.files, name), "{name}");
+    }
+}

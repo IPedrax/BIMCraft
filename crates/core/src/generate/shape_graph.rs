@@ -310,6 +310,7 @@ fn finish(
         "engine": "shape-graph",
         "generator_version": GENERATOR_VERSION,
         "family": fam.name,
+        "family_review": fam.review.status,
         "building":building_id(&fam.name, &done.script.lines),
         "seed": req.seed,
         "rooms": {"requested": req.rooms, "tolerance": req.tolerance, "actual": rooms.len()},
