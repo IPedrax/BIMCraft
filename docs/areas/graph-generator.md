@@ -274,6 +274,14 @@ away, and `report.json` has a check for each rule by its id. A pack whose rules 
 `crates/core/src/generate/testdata/shape-graph/`, outside the engine's directory, where no file may quote a kind of any pack
 (`register_tests::the_engine_quotes_no_room_kind`): their `building_type` is a word one pack also uses for a kind.
 
+**The clinic family** (`clinic.json`; `shape_graph/clinic_family_tests.rs`) names the `clinic` pack, so each of its plans has a check for
+GR-001 to GR-006 and PR-001 in `report.json`. It has 8 room types and makes 8 to 25 rooms, one outside door into the lobby. Windows go in
+the lobby, the waiting rooms, the exam rooms and the staff rooms; a restroom holds a `WC` and a `Washbasin`, a waiting room one or two
+`Sofa`s, an exam room a `Washbasin`, a staff room up to one `Table`. Nothing stands in for an exam couch or a reception desk. Every value
+in it is a model's proposal (`fill/clinic-claude-fable-5-2.json`): there is no clinic trace, and nothing compares it with a real plan. What
+the spec lists for each room type is in `generate/testdata/shape-graph/clinic-windows-contents.json`, which the tests read so that they
+quote no kind.
+
 **Jogs and bumps** (Slice 3; `shape_graph/layout/interior.rs`). `--interior` is `aligned`, `jogged` or `mixed` (the default: the seed
 chooses, and only a mixed call draws a number for it, so an aligned plan is what it was before the option); `--bumps` is `on` (the
 default) or `off`. `deliver` and `generate` take the defaults from one place (`Request::new`). The cells the layout places are kept
