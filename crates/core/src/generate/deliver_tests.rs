@@ -101,6 +101,46 @@ fn a_delivery_writes_the_folder_and_nothing_else() {
 }
 
 #[test]
+fn every_delivered_dwg_carries_the_generator_version_as_a_drawing_property() {
+    let d = dir("property");
+    let root = d.join("root");
+    std::fs::create_dir_all(&root).expect("root");
+    let brief = brief3(&d);
+    session().execute("deliver", &params(&d, &brief, "p", Some("emailed"), &root)).expect("deliver");
+    let want = format!("  9\n$CUSTOMPROPERTYTAG\n  1\ngenerator_version\n  9\n$CUSTOMPROPERTY\n  1\n{GV}\n");
+    let mut n = 0;
+    for folder in ["p", "p-rerun"] {
+        for e in std::fs::read_dir(root.join(GV).join(folder).join("dwg")).expect("ls").flatten() {
+            let dwg = std::fs::read_to_string(e.path()).expect("the fake writer's DXF text");
+            assert!(dwg.contains(&want), "{} has no generator_version property", e.path().display());
+            n += 1;
+        }
+    }
+    assert_eq!(n, 4 + 2);
+}
+
+#[test]
+fn rerun_0_makes_no_rerun_folder_and_no_rerun_dwg() {
+    let d = dir("rerun0");
+    let root = d.join("root");
+    std::fs::create_dir_all(&root).expect("root");
+    let brief = brief3(&d);
+    let mut s = session();
+    let mut p = params(&d, &brief, "z", Some("emailed"), &root);
+    p["rerun"] = json!(0);
+    let reply = s.execute("deliver", &p).expect("deliver");
+    assert_eq!(reply["files"], 4);
+    assert_eq!(reply["rerun_folder"], Value::Null);
+    let inner: Vec<String> =
+        std::fs::read_dir(root.join(GV)).expect("ls").flatten().map(|e| e.file_name().to_string_lossy().into()).collect();
+    assert_eq!(inner, ["z"]);
+    assert!(tree(&root).keys().all(|k| !k.contains("rerun")), "{:?}", tree(&root).keys());
+    p["rerun"] = json!(-1);
+    p["delivery_id"] = json!("z2");
+    refused(&mut s, &p, "invalid_params");
+}
+
+#[test]
 fn the_manifest_names_each_file_by_its_hash_in_seed_order() {
     let d = dir("manifest");
     let root = d.join("root");

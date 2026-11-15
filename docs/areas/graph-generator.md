@@ -443,8 +443,10 @@ and prints one JSON summary (`folder`, `rerun_folder`, `generator_version`, `fil
 
 - **Version.** `Session::generator_version` is `bimcraft-<release>+<commit>[.dirty]`, put into the CLI by `apps/bimcraft-cli/build.rs` (`git rev-parse`,
   `git status --porcelain --untracked-files=no`; `BIMCRAFT_COMMIT` for a build with no `.git`). Without it, or without a DWG writer, `deliver` refuses
-  with `invalid_params`. Commit before the release build you deliver from, or the version says `.dirty`.
-- **A seed** is built in memory (`shape_graph::build`), its script run in a fresh `Session` and saved as DWG, so its bytes are what `generate` then `run` write.
+  with `invalid_params`. Commit before the release build you deliver from, or the version says `.dirty`. `BIMCRAFT_GENERATOR_VERSION`
+  set for the build replaces the whole version (`BIMCRAFT_GENERATOR_VERSION_FROM` is then `env`, else `git`); it still needs a `+`.
+  Every DWG is saved with the version as its `generator_version` drawing property (DWGPROPS > Custom).
+- **A seed** is built in memory (`shape_graph::build`), its script run in a fresh `Session`, given the property and saved as DWG, so its bytes are what `generate` then `run` write with that `drawing_property` line added.
   A batch's `rooms: [lo, hi]` gives each seed `lo + mix(seed ^ SALT) % (hi - lo + 1)` rooms: the seed alone, pinned by a test, because past deliveries
   depend on it. A seed `build` refuses is in `skipped` with the refusal's code and has no row and no file. When every seed is skipped there is no summary: the call is refused as `empty_delivery`, nothing is written, and the message says how many seeds were skipped with each code and gives the first one's own message (a batch of rooms no family can meet reads `all 2 seeds of the brief were skipped (2 with `unsatisfiable_rooms`)`). A batch by `area` makes the seed's plan with `build_for_delivery`; `sources` lists only the families of batches by `rooms`.
 - **`building`** is `<family>-` and 12 hex digits of the SHA-256 of the script's `type`, `family`, `wall`, `door` (without `mark`), `room_separator` and
@@ -452,6 +454,7 @@ and prints one JSON summary (`folder`, `rerun_folder`, `generator_version`, `fil
 - **Threads.** `--jobs` plain threads pull seeds from an atomic counter (the reproducible-GUID state is thread-local, so no rayon here); results go by position
   and the manifest is written when every seed is done, so the tree does not depend on J. DWGs stream to their files.
 - **The rerun** repeats `k = min(N, rows)` seeds, index `i` being row `floor((2i+1)·rows/2k)`, made again from the brief; a different byte is `nondeterministic`.
+  `rerun: 0` (for a caller that checks determinism itself) makes no `ID-rerun/` at all, and `rerun_folder` is null.
 - **Refusals** (`invalid_brief`, `missing_rights`, `delivery_exists`, `invalid_params`) are all checked before anything is created, and a failure later removes
   what the run made. The command can run for minutes, also through MCP.
 - Not done by `deliver`: writing `RIGHTS.txt`, uploading, telling the receiver the counts.

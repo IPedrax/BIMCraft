@@ -1,6 +1,8 @@
 //! Puts the commit the CLI is built from into the build: `BIMCRAFT_GENERATOR_VERSION` is `bimcraft-<release>+<commit>`, with
 //! `.dirty` after the commit when tracked files have uncommitted changes. `BIMCRAFT_COMMIT` stands in for a build with no `.git`.
-//! It is empty when neither is known, and `deliver` then refuses. The version is fixed here, at build time, never read at run time.
+//! `BIMCRAFT_GENERATOR_VERSION` set for the build replaces the whole version (a pipeline naming its own releases); `deliver`
+//! still refuses one without a `+`. It is empty when nothing is known, and `deliver` then refuses. The version is fixed here,
+//! at build time, never read at run time.
 
 use std::path::Path;
 use std::process::Command;
@@ -20,6 +22,14 @@ fn watch(path: &str) {
 }
 
 fn main() {
+    println!("cargo:rerun-if-env-changed=BIMCRAFT_GENERATOR_VERSION");
+    if let Ok(v) = std::env::var("BIMCRAFT_GENERATOR_VERSION")
+        && !v.trim().is_empty()
+    {
+        println!("cargo:rustc-env=BIMCRAFT_GENERATOR_VERSION={}", v.trim());
+        println!("cargo:rustc-env=BIMCRAFT_GENERATOR_VERSION_FROM=env");
+        return;
+    }
     println!("cargo:rerun-if-env-changed=BIMCRAFT_COMMIT");
     let release = std::env::var("CARGO_PKG_VERSION").unwrap_or_default();
     let commit = match std::env::var("BIMCRAFT_COMMIT") {
@@ -48,4 +58,5 @@ fn main() {
         _ => String::new(),
     };
     println!("cargo:rustc-env=BIMCRAFT_GENERATOR_VERSION={version}");
+    println!("cargo:rustc-env=BIMCRAFT_GENERATOR_VERSION_FROM=git");
 }
