@@ -935,8 +935,9 @@ impl Step {
         self.shell(&b, &t)
     }
 
-    /// Framing `f`'s members, wall or floor `id`'s, each placed in the placement `at` of the framing's frame (its origin, its
-    /// `s` axis, at `base`), or a member's own frame in that: a box swept up, or a bevelled one's closed shell. A wall's are each
+    /// Framing `f`'s members, wall or floor `id`'s, each in its own placement in `at`: a wall's placement, which is the
+    /// framing's frame (its origin, its `s` axis, at `base`), or a floor's, which is in plan, the member's frame (or the
+    /// framing's) placed in it directly; a box swept up, or a bevelled one's closed shell. A wall's are each
     /// an `IfcMember`, a stud, a king, a jack or a cripple a STUD, a plate or a sill a PLATE, a header or blocking a MEMBER; a
     /// floor's joists, rims, trimmers and headers each an `IfcBeam`, a JOIST, and its blocking an `IfcMember`, a MEMBER. Each
     /// has its role for its name and object type and its key for its tag; its GlobalId comes from the host's GUID and its key,
@@ -966,13 +967,17 @@ impl Step {
                 Role::BottomPlate | Role::TopPlate | Role::Sill => ("IFCMEMBER", "PLATE"),
                 Role::Header | Role::Blocking | Role::Joist | Role::Rim | Role::Trimmer => ("IFCMEMBER", "MEMBER"),
             };
-            // In its own frame, that frame's origin and axis in the framing's.
-            let place = match member.frame {
-                Some([o, x]) => {
+            // A wall's in its wall's placement, which is the framing's frame. A floor's in its slab's, which is in plan: the
+            // member's own frame, or the framing's, placed there directly, since IFC2x3 lets a placement place one product
+            // and no more, so no placement of the framing's frame alone.
+            let place = match (member.frame, floor) {
+                (Some([o, x]), true) => self.place(Some(at), (o.0, o.1, 0.0), Some(x)),
+                (None, true) => self.place(Some(at), (f.origin.0, f.origin.1, 0.0), Some(f.x_axis)),
+                (Some([o, x]), false) => {
                     let (d, y) = (o - f.origin, f.x_axis.perp());
                     self.place(Some(at), (d.dot(f.x_axis), d.dot(y), 0.0), Some(P2(x.dot(f.x_axis), x.dot(y))))
                 }
-                None => self.place(Some(at), (0.0, 0.0, 0.0), None),
+                (None, false) => self.place(Some(at), (0.0, 0.0, 0.0), None),
             };
             let key = member.key.bytes().fold(0xCBF2_9CE4_8422_2325u64, |h, b| (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01B3));
             let role = s(member.role.name());
@@ -1631,12 +1636,11 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
                     vec![("Width", "LENGTH", depth), ("GrossVolume", "VOLUME", gross / 1e9), ("NetVolume", "VOLUME", net / 1e9)]
                 };
                 w.quantities(ent, "Qto_SlabBaseQuantities", &values, id);
-                // Framed, its members are its parts, placed in its framing's frame; it keeps its own body, the whole slab.
+                // Framed, its members are its parts, placed in its own placement; it keeps its own body, the whole slab.
                 if f.framing.is_some()
                     && let Ok(Some(framing)) = crate::framing::floor::floor(m, id)
                 {
-                    let frame = w.place(Some(storey), (framing.origin.0, framing.origin.1, 0.0), Some(framing.x_axis));
-                    framed.push((id, w.members(m, id, &framing, frame, m.elevation(f.level))));
+                    framed.push((id, w.members(m, id, &framing, at, m.elevation(f.level))));
                 }
             }
             Element::Ceiling(c) => {

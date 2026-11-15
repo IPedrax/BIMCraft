@@ -221,6 +221,28 @@ fn each_joist_rim_trimmer_and_header_goes_to_ifc_as_a_joist_of_its_slab() {
 }
 
 #[test]
+fn in_ifc2x3_every_placement_a_framed_floor_writes_places_a_product() {
+    // IFC2x3's IfcLocalPlacement places exactly one product (PlacesObject SET [1:1]); a placement that only others are
+    // placed relative to is invalid there.
+    let mut s = Session::new();
+    let id = cabin(&mut s);
+    run(&mut s, "frame", json!({"id": id}));
+    let f = crate::ifc::export_as(&s.model, Default::default(), crate::ifc::Schema::Ifc2x3);
+    let placements: Vec<&str> = of_class(&f, "IFCLOCALPLACEMENT").into_iter().map(ref_of).collect();
+    assert!(placements.len() > 10);
+    let orphans: Vec<&&str> = placements
+        .iter()
+        .filter(|p| {
+            !f.lines().any(|l| {
+                let entity = l.split_once('=').map_or("", |(_, e)| e);
+                !entity.starts_with("IFCLOCALPLACEMENT(") && (l.contains(&format!("{p},")) || l.contains(&format!("{p})")))
+            })
+        })
+        .collect();
+    assert!(orphans.is_empty(), "placements that place nothing: {orphans:?}");
+}
+
+#[test]
 fn a_framed_floors_ifc_opens_as_one_floor_and_no_beams() {
     let mut s = Session::new();
     run(
