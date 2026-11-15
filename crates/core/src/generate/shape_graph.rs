@@ -7,6 +7,7 @@
 mod building_tests;
 #[cfg(test)]
 mod connection_tests;
+mod contents;
 mod doors;
 mod emit;
 pub(crate) mod family;
@@ -27,6 +28,8 @@ mod required_tests;
 mod tags;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod window_tests;
 
 use serde_json::{Value, json};
 
