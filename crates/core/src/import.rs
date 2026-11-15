@@ -2332,6 +2332,8 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
                 params: Default::default(),
                 sketch: Vec::new(),
                 shape,
+                framing: None,
+                framing_angle: None,
                 type_name,
                 level,
                 boundary: outer.into_iter().map(flat).collect(),
@@ -2393,6 +2395,8 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
             params: Default::default(),
             sketch: Vec::new(),
             shape: Default::default(),
+            framing: None,
+            framing_angle: None,
             type_name,
             level,
             boundary: ring.into_iter().map(flat).collect(),
@@ -2866,6 +2870,11 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
         let Some(b) = e(id) else { continue };
         let member = matches!(b.name.as_str(), "IFCMEMBER" | "IFCMEMBERSTANDARDCASE");
         if member && !framing(id, b) {
+            continue;
+        }
+        // A beam that is a part of a slab or a wall (a framed floor's joist, as BIMCraft writes one) is that element's
+        // framing: left out, as a framed wall's members are.
+        if l.whole.get(&id).and_then(|w| e(*w)).is_some_and(|w| matches!(w.name.as_str(), "IFCSLAB" | "IFCWALL" | "IFCWALLSTANDARDCASE")) {
             continue;
         }
         let declared = run_props.get(&id).and_then(|(_, c)| c.as_deref());

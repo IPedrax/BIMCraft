@@ -580,6 +580,51 @@ mod tests {
         }
     }
 
+    /// A framed floor's members are its triangles: a beam moved under it or away, a wall raised to bear it, a partition put on
+    /// it, an opening cut, the framing type or the floor type edited (the library alone) bring them up to date, as the scene
+    /// made whole has them.
+    #[test]
+    fn a_framed_floors_members_follow_the_beams_and_walls_under_it_the_walls_on_it_its_openings_and_its_types() {
+        let mut s = Session::new();
+        s.script(
+            r#"type {"category": "floor", "name": "2x8", "layers": [{"function": "substrate", "material": "Timber", "thickness": 18}, {"function": "structure", "material": "Timber", "thickness": 184}]}
+               type {"category": "wall", "name": "2x4", "layers": [{"function": "structure", "material": "Timber", "thickness": 89}]}
+               type {"category": "beam", "name": "3-2x10", "width": 114, "depth": 235}
+               beam {"points": [[0, 3000], [7000, 3000]], "type": "3-2x10", "offset": -202}
+               beam {"points": [[0, 9000], [7000, 9000]], "type": "3-2x10", "offset": -202}
+               wall {"points": [[0, -2000], [7000, -2000]], "type": "2x4", "base_offset": -2000, "height": 1500}
+               floor {"boundary": [[0, 0], [7000, 0], [7000, 6000], [0, 6000]], "type": "2x8"}"#,
+        )
+        .unwrap();
+        let floor = of(&s, "floor")[0];
+        s.execute("frame", &json!({"id": floor, "angle": 90})).unwrap();
+        let mut scene = Scene::new(&s.model);
+        let (beams, wall) = (of(&s, "beam"), of(&s, "wall")[0]);
+        let edits = [
+            ("move", json!({"ids": [beams[0]], "by": [0, 900]})),
+            ("move", json!({"ids": [beams[1]], "by": [0, -6000]})),
+            ("modify", json!({"id": beams[0], "offset": -400})),
+            ("move", json!({"ids": [wall], "by": [0, 3500]})),
+            ("modify", json!({"id": wall, "height": 1798})),
+            ("wall", json!({"points": [[3500, 200], [3500, 5800]], "type": "2x4", "height": 2448})),
+            ("modify", json!({"id": floor, "openings": [[[1000, 1000], [2000, 1000], [2000, 2200], [1000, 2200]]]})),
+            ("type", json!({"category": "framing", "name": "2x4 @ 406", "spacing": 609.6, "bridging": 1500})),
+            ("type", json!({"category": "framing", "name": "2x4 @ 406", "lap": 300})),
+            ("frame", json!({"id": floor, "angle": 0})),
+            (
+                "type",
+                json!({"category": "floor", "name": "2x8", "layers": [{"function": "structure", "material": "Timber", "thickness": 235}]}),
+            ),
+            ("graphics", json!({"view": "{3D}", "hide": ["floorframing"]})),
+            ("graphics", json!({"view": "{3D}", "show": ["floorframing"]})),
+            ("delete", json!({"ids": [beams[0]]})),
+            ("unframe", json!({"id": floor})),
+        ];
+        for (cmd, p) in &edits {
+            scene = held(&mut s, scene, cmd, p);
+        }
+    }
+
     #[test]
     fn random_edits_of_a_tower_bring_its_scene_up_to_date_as_made_whole() {
         let model = crate::sample::tower::tower_on(crate::sample::tower::Plate::SMALL, 1).unwrap();

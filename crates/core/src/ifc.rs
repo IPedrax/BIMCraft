@@ -935,13 +935,16 @@ impl Step {
         self.shell(&b, &t)
     }
 
-    /// Framing `f`'s members, wall `id`'s, each an `IfcMember` placed in the wall's placement `at` (its start, along it, at
-    /// `base`): a box swept up, or a bevelled one's closed shell; a stud, a king, a jack or a cripple a STUD, a plate or a sill
-    /// a PLATE, a header or blocking a MEMBER, its role its name and object type and its key its tag. Its GlobalId comes from
-    /// the wall's GUID and its key, so it stays while the member does. All in the framing's material.
+    /// Framing `f`'s members, wall or floor `id`'s, each placed in the placement `at` of the framing's frame (its origin, its
+    /// `s` axis, at `base`), or a member's own frame in that: a box swept up, or a bevelled one's closed shell. A wall's are each
+    /// an `IfcMember`, a stud, a king, a jack or a cripple a STUD, a plate or a sill a PLATE, a header or blocking a MEMBER; a
+    /// floor's joists, rims, trimmers and headers each an `IfcBeam`, a JOIST, and its blocking an `IfcMember`, a MEMBER. Each
+    /// has its role for its name and object type and its key for its tag; its GlobalId comes from the host's GUID and its key,
+    /// so it stays while the member does. All in the framing's material.
     fn members(&mut self, m: &Model, id: Id, f: &crate::framing::Framing, at: u64, base: f64) -> Vec<u64> {
         use crate::framing::Role;
-        let wall = self.own.get(&id).map_or(id, |g| fold(*g));
+        let host = self.own.get(&id).map_or(id, |g| fold(*g));
+        let floor = matches!(m.elements.get(id), Some(Element::Floor(_)));
         let mut out = Vec::new();
         for member in &f.members {
             let ([s0, s1], [a0, a1], [b0, b1], [t0, t1]) = (member.s, member.across, member.bottom, member.top);
@@ -957,17 +960,25 @@ impl Step {
                 let brep = self.prism(&ring, &plane(b0, b1), &plane(t0, t1), base);
                 self.solid(&[brep], &[])
             };
-            let kind = match member.role {
-                Role::Stud | Role::King | Role::Jack | Role::Cripple => "STUD",
-                Role::BottomPlate | Role::TopPlate | Role::Sill => "PLATE",
-                Role::Header | Role::Blocking => "MEMBER",
+            let (class, kind) = match member.role {
+                Role::Joist | Role::Rim | Role::Trimmer | Role::Header if floor => ("IFCBEAM", "JOIST"),
+                Role::Stud | Role::King | Role::Jack | Role::Cripple => ("IFCMEMBER", "STUD"),
+                Role::BottomPlate | Role::TopPlate | Role::Sill => ("IFCMEMBER", "PLATE"),
+                Role::Header | Role::Blocking | Role::Joist | Role::Rim | Role::Trimmer => ("IFCMEMBER", "MEMBER"),
             };
-            let place = self.place(Some(at), (0.0, 0.0, 0.0), None);
+            // In its own frame, that frame's origin and axis in the framing's.
+            let place = match member.frame {
+                Some([o, x]) => {
+                    let (d, y) = (o - f.origin, f.x_axis.perp());
+                    self.place(Some(at), (d.dot(f.x_axis), d.dot(y), 0.0), Some(P2(x.dot(f.x_axis), x.dot(y))))
+                }
+                None => self.place(Some(at), (0.0, 0.0, 0.0), None),
+            };
             let key = member.key.bytes().fold(0xCBF2_9CE4_8422_2325u64, |h, b| (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01B3));
             let role = s(member.role.name());
             out.push(self.add(format!(
-                "IFCMEMBER({},$,{role},$,{role},#{place},#{shape},{},.{kind}.)",
-                self.guid(FRAMING_MEMBER, mix(wall ^ key)),
+                "{class}({},$,{role},$,{role},#{place},#{shape},{},.{kind}.)",
+                self.guid(FRAMING_MEMBER, mix(host ^ key)),
                 s(&member.key)
             )));
         }
@@ -1485,7 +1496,7 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
     let mut wholes: BTreeMap<Id, (u64, u64, f64, Vec<u64>)> = BTreeMap::new();
     // Reinforcing bars as (level, host, entity): aggregated to their host, else in their level.
     let mut bars: Vec<(Guid, Option<Id>, u64)> = Vec::new();
-    // Framed walls' members, by their wall: its parts.
+    // Framed walls' and floors' members, by their host: its parts.
     let mut framed: Vec<(Id, Vec<u64>)> = Vec::new();
     // The runs in each system, by its name, for the IfcSystem they are assigned to.
     let mut systems: BTreeMap<&str, Vec<u64>> = BTreeMap::new();
@@ -1620,6 +1631,13 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
                     vec![("Width", "LENGTH", depth), ("GrossVolume", "VOLUME", gross / 1e9), ("NetVolume", "VOLUME", net / 1e9)]
                 };
                 w.quantities(ent, "Qto_SlabBaseQuantities", &values, id);
+                // Framed, its members are its parts, placed in its framing's frame; it keeps its own body, the whole slab.
+                if f.framing.is_some()
+                    && let Ok(Some(framing)) = crate::framing::floor::floor(m, id)
+                {
+                    let frame = w.place(Some(storey), (framing.origin.0, framing.origin.1, 0.0), Some(framing.x_axis));
+                    framed.push((id, w.members(m, id, &framing, frame, m.elevation(f.level))));
+                }
             }
             Element::Ceiling(c) => {
                 let Some(&(_, storey)) = storeys.get(&c.level) else { continue };

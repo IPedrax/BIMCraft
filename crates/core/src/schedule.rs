@@ -600,7 +600,8 @@ const OWN: &[(&str, usize, &[Own])] = &[
         5,
         &[("Mass", Kind::Text, From::Key("mass")), LEVEL, AREA, ("Perimeter", Kind::Length, From::Metres("perimeter_m")), VOLUME, COUNT],
     ),
-    // A row for each member of each framed wall (`sources`): grouped by Role, Section and Length with Count, the cut list.
+    // A row for each member of each framed wall and floor (`sources`): grouped by Role, Section and Length with Count, the
+    // cut list.
     (
         "framingmember",
         10,
@@ -1192,19 +1193,20 @@ fn sources<'a>(m: &'a Model, sc: &Schedule, cat: &str) -> Vec<(Id, &'a Element, 
     out
 }
 
-/// A row for each member of each framed wall, each its wall's: what the member is, its section as sawn (`38 x 89`, a header
-/// of two plies `2 x 38 x 184`, in mm whatever the project's units), its cut length to the millimetre and the stock length it
-/// is cut from (0 where it is longer than all of them).
+/// A row for each member of each framed wall and floor, each its host's: what the member is, its section as sawn (`38 x 89`,
+/// a header of two plies `2 x 38 x 184`, in mm whatever the project's units), its cut length to the millimetre and the stock
+/// length it is cut from (0 where it is longer than all of them).
 fn framing_members(m: &Model) -> Vec<(Id, &Element, Value)> {
     // To the millimetre, as the cut list has them: a header cut to fit is 153.4567 deep.
     let number = |x: f64| format!("{:.0}", x.round());
     let mut out = Vec::new();
     for (&id, e) in &m.elements {
-        let Element::Wall(w) = e else { continue };
-        if w.framing.is_none() {
-            continue;
-        }
-        let Ok(Some(f)) = crate::framing::wall(m, id) else { continue };
+        let (type_name, level) = match e {
+            Element::Wall(w) if w.framing.is_some() => (&w.type_name, w.level),
+            Element::Floor(f) if f.framing.is_some() => (&f.type_name, f.level),
+            _ => continue,
+        };
+        let Ok(Some(f)) = crate::framing::of(m, id) else { continue };
         for member in &f.members {
             let [t, d] = member.section;
             let section = match member.plies {
@@ -1216,8 +1218,8 @@ fn framing_members(m: &Model) -> Vec<(Id, &Element, Value)> {
                 id,
                 e,
                 serde_json::json!({
-                    "id": id, "host": f.host, "host_type": w.type_name, "framing_type": f.type_name, "role": member.role.name(),
-                    "section": section, "length": length, "stock": crate::framing::stock(member.length, &f.stock), "level": w.level,
+                    "id": id, "host": f.host, "host_type": type_name, "framing_type": f.type_name, "role": member.role.name(),
+                    "section": section, "length": length, "stock": crate::framing::stock(member.length, &f.stock), "level": level,
                     "key": member.key,
                 }),
             ));
