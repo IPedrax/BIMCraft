@@ -1,0 +1,19 @@
+{
+  "note": "What the clinic family's room types hold, by room type key, as the shape graph spec's Slice 10 lists it. A room type not named here has no window and no contents. Read by shape_graph/clinic_family_tests.rs, which may quote no room kind itself.",
+  "window": ["lobby", "waiting", "exam", "staff_room"],
+  "contents": {
+    "restroom": [
+      {"family": "WC", "count": [1, 1]},
+      {"family": "Washbasin", "count": [1, 1]}
+    ],
+    "waiting": [
+      {"family": "Sofa", "count": [1, 2]}
+    ],
+    "exam": [
+      {"family": "Washbasin", "count": [1, 1]}
+    ],
+    "staff_room": [
+      {"family": "Table", "count": [0, 1]}
+    ]
+  }
+}
