@@ -93,10 +93,10 @@ pub struct Cl {
     pub goal: Option<(usize, Wall)>,
 }
 
-/// A wall of a cell, in its own frame: the front (v = 0), the back, the left (u = 0) and the right.
+/// A wall of a cell, in its own frame, that a room may be asked to touch: the back (v = max), the left (u = 0) and the right. The
+/// front is the head's own.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Wall {
-    Front,
     Back,
     Left,
     Right,
@@ -190,15 +190,14 @@ impl<'a> Fitter<'a> {
                     }
                 } else {
                     let Some(ki) = cl.kids.iter().position(|k| k.holds(room)) else { continue };
-                    let last = ki + 1 == cl.kids.len();
                     let first = ki == 0;
+                    let last = ki + 1 == cl.kids.len();
                     let w = match (mode, wall) {
                         (0, Wall::Back) => Some(Wall::Back),
                         (0, Wall::Left) if first => Some(Wall::Left),
                         (0, Wall::Right) if last => Some(Wall::Right),
                         (1, Wall::Right) => Some(Wall::Back),
                         (2, Wall::Left) => Some(Wall::Back),
-                        (1 | 2, Wall::Front) if first => Some(Wall::Left),
                         (1 | 2, Wall::Back) if last => Some(Wall::Right),
                         _ => None,
                     };

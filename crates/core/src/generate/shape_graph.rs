@@ -19,9 +19,11 @@ mod layout;
 mod links;
 mod plan;
 #[cfg(test)]
+pub(crate) mod register_tests;
+#[cfg(test)]
 mod required_tests;
 #[cfg(test)]
-pub(crate) mod register_tests;
+mod office_family_tests;
 mod tags;
 #[cfg(test)]
 mod tests;

@@ -306,13 +306,11 @@ pub fn layout(fam: &Family, rooms: &[Room], g: &Graph, fx: &Fitter, shape: &Shap
     let fr = [fr_a, fr_b];
     let k = lv[0].len();
     // Steered: one side holds the far end room's cell from the start end room to the end wall, the other side everything else.
-    let span_group: Option<Group> = steer.and_then(|room| {
-        cap1.as_ref().map(|c| vec![(Cl { goal: Some((room, Wall::Left)), ..c.clone() }, false, false)])
-    });
+    let span_group: Option<Group> =
+        steer.and_then(|room| cap1.as_ref().map(|c| vec![(Cl { goal: Some((room, Wall::Left)), ..c.clone() }, false, false)]));
     let span_side = if span_group.is_some() {
-        let ok: Vec<usize> = (0..2)
-            .filter(|sd| lv[*sd][k - 1] == 0 && lv[*sd][..k - 1].iter().enumerate().all(|(j, l)| *l == 0 || j == 0))
-            .collect();
+        let ok: Vec<usize> =
+            (0..2).filter(|sd| lv[*sd][k - 1] == 0 && lv[*sd][..k - 1].iter().enumerate().all(|(j, l)| *l == 0 || j == 0)).collect();
         Some(rng.pick(&ok).map_err(|_| Fail("no side for the end room"))?)
     } else {
         None

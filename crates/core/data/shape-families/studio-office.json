@@ -1,28 +1,20 @@
 {
   "schema_version": 1,
   "family": "studio-office",
-  "pack_id": null,
+  "pack_id": "studio-office",
   "building_type": "office (studio)",
   "review": {
     "status": "reviewed",
-    "note": "Converted from crates/core/data/graph-rules/studio-office.json for the shape-graph engine. Ranges narrow the exploratory rule pack and add side-ratio limits."
+    "note": "Written for the studio-office pack (SO-001 to SO-012), inside its kinds, areas and connections, and fitted to the traced studio. The reception is joined to the passage by a required link, so the studio's cell runs the whole core from the reception to the end wall. Ranges narrow the exploratory pack and add side-ratio limits."
   },
   "sources": [
     "BIMCraft/crates/core/data/graph-rules/studio-office.json",
     "done/fixtures/studio-office/traced-studio"
   ],
   "entry": {
-    "rooms": [
-      "reception"
-    ],
-    "doors": [
-      1,
-      1
-    ],
-    "types": [
-      "single",
-      "double"
-    ]
+    "rooms": ["reception"],
+    "doors": [1, 1],
+    "types": ["double", "single"]
   },
   "rooms": {
     "reception": {
@@ -30,31 +22,19 @@
       "name": "Reception",
       "role": "public",
       "place": "entry_end",
-      "count": [
-        1,
-        1
-      ],
-      "area_m2": [
-        8.0,
-        55.0
-      ],
-      "max_side_ratio": 2.6,
-      "min_side_mm": 2800,
-      "max_links": 4
+      "count": [1, 1],
+      "area_m2": [8.0, 55.0],
+      "max_side_ratio": 5.0,
+      "min_side_mm": 2400,
+      "max_links": 3
     },
     "corridor": {
       "kind": "hall",
       "name": "Corridor",
       "role": "circulation",
       "place": "spine",
-      "count": [
-        1,
-        1
-      ],
-      "area_m2": [
-        3.0,
-        40.0
-      ],
+      "count": [1, 1],
+      "area_m2": [3.0, 55.0],
       "max_side_ratio": null,
       "min_side_mm": 1200,
       "max_links": 80
@@ -63,144 +43,67 @@
       "kind": "hall",
       "name": "Passage",
       "role": "circulation",
-      "place": "off_spine",
-      "count": [
-        1,
-        1
-      ],
-      "area_m2": [
-        3.0,
-        24.0
-      ],
-      "max_side_ratio": 3.5,
+      "place": "beside_parent",
+      "count": [1, 1],
+      "area_m2": [3.0, 55.0],
+      "max_side_ratio": 20.0,
       "min_side_mm": 1200,
-      "max_links": 8
-    },
-    "storage": {
-      "kind": "storage",
-      "name": "Storage",
-      "role": "support",
-      "place": "off_spine",
-      "count": [
-        1,
-        2
-      ],
-      "area_m2": [
-        2.0,
-        18.0
-      ],
-      "max_side_ratio": 3.0,
-      "min_side_mm": 1200,
-      "max_links": 1
+      "max_links": 10
     },
     "meeting": {
       "kind": "meeting",
       "name": "Meeting",
       "role": "shared",
       "place": "off_spine",
-      "count": [
-        1,
-        2
-      ],
-      "area_m2": [
-        8.0,
-        45.0
-      ],
+      "count": [1, 3],
+      "area_m2": [8.0, 45.0],
       "max_side_ratio": 2.5,
       "min_side_mm": 2600,
       "max_links": 1
     },
-    "bath": {
-      "kind": "bath",
-      "name": "Bath",
-      "role": "private",
+    "store": {
+      "kind": "storage",
+      "name": "Storage",
+      "role": "support",
       "place": "off_spine",
+      "count": [1, 3],
+      "area_m2": [2.0, 18.0],
+      "max_side_ratio": 3.0,
+      "min_side_mm": 1200,
+      "max_links": 1
+    },
+    "wc": {
+      "kind": "bath",
+      "name": "WC",
+      "role": "private",
+      "place": "beside_parent",
       "weight": 2,
-      "count": [
-        1,
-        2
-      ],
-      "area_m2": [
-        2.0,
-        10.0
-      ],
+      "count": [1, 6],
+      "per": {"room": "passage", "count": [1, 6]},
+      "area_m2": [2.0, 10.0],
       "max_side_ratio": 3.0,
       "min_side_mm": 1500,
       "max_links": 1
     },
-    "office": {
+    "studio": {
       "kind": "office",
       "name": "Studio",
       "role": "work",
-      "place": "off_spine",
-      "count": [
-        1,
-        1
-      ],
-      "area_m2": [
-        60.0,
-        180.0
-      ],
-      "max_side_ratio": 3.2,
+      "place": "spine_end",
+      "count": [1, 1],
+      "area_m2": [60.0, 300.0],
+      "max_side_ratio": 5.0,
       "min_side_mm": 4200,
       "max_links": 4
     }
   },
   "links": [
-    {
-      "from": "reception",
-      "to": "corridor",
-      "use": "parent",
-      "types": [
-        "single",
-        "double"
-      ]
-    },
-    {
-      "from": "corridor",
-      "to": "passage",
-      "use": "parent",
-      "types": [
-        "open_full",
-        "cased",
-        "single"
-      ]
-    },
-    {
-      "from": "corridor",
-      "to": "meeting",
-      "use": "parent",
-      "types": [
-        "single",
-        "double"
-      ]
-    },
-    {
-      "from": "corridor",
-      "to": "storage",
-      "use": "parent",
-      "types": [
-        "single"
-      ]
-    },
-    {
-      "from": "passage",
-      "to": "bath",
-      "use": "parent",
-      "types": [
-        "single"
-      ]
-    },
-    {
-      "from": "corridor",
-      "to": "office",
-      "use": "parent",
-      "types": [
-        "single",
-        "double",
-        "open_full",
-        "cased"
-      ]
-    }
+    {"from": "reception", "to": "corridor", "use": "parent", "types": ["double", "single"]},
+    {"from": "corridor", "to": "meeting", "use": "parent", "types": ["single", "double"]},
+    {"from": "corridor", "to": "store", "use": "parent", "types": ["single"]},
+    {"from": "corridor", "to": "studio", "use": "parent", "types": ["single"]},
+    {"from": "studio", "to": "passage", "use": "parent", "types": ["open_full", "cased"]},
+    {"from": "passage", "to": "wc", "use": "parent", "types": ["single"]},
+    {"from": "reception", "to": "passage", "use": "required", "types": ["single"]}
   ]
 }
