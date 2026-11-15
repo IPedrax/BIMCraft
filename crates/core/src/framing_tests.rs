@@ -439,3 +439,67 @@ pub(crate) fn sweep_payloads(base: &mut Session) -> Vec<(&'static str, Value)> {
         ("rename_type", json!({"category": "framing", "type": "Sweep", "name": ""})),
     ]
 }
+
+/// A window type `width` x `height` with its sill at `sill`, placed `offset` along wall `w`.
+fn window_at(s: &mut Session, w: u64, width: f64, height: f64, sill: f64, offset: f64) -> u64 {
+    let name = format!("{width} x {height} @ {sill}");
+    run(s, "type", json!({"category": "window", "name": name, "width": width, "height": height, "sill": sill}));
+    first(&run(s, "window", json!({"wall": w, "offset": offset, "type": name})))
+}
+
+#[test]
+fn a_window_too_tall_for_its_header_is_still_framed_with_a_shallower_header_and_a_warning() {
+    let mut s = Session::new();
+    let w = cabin(&mut s);
+    // Rough top 900 + 1300 + 13 = 2213: 159 mm under the top plates (2372), less than the 2x8's 184.
+    let win = window_at(&mut s, w, 1200.0, 1300.0, 900.0, 1250.0);
+    let g = s.model.guid(win).to_string();
+    let r = run(&mut s, "framing", json!({"id": w}));
+    let ms = r["members"].as_array().cloned().unwrap_or_default();
+    for side in ["left", "right"] {
+        keyed(&ms, &format!("{g}/king/{side}/0"));
+        keyed(&ms, &format!("{g}/jack/{side}/0"));
+    }
+    keyed(&ms, &format!("{g}/sill/0"));
+    let header = keyed(&ms, &format!("{g}/header"));
+    close(f(&header["z"], 0), 2213.0, "header on the jacks");
+    close(f(&header["z"], 2), 2372.0, "header up to the top plates");
+    let warnings = r["warnings"].as_array().cloned().unwrap_or_default();
+    assert!(warnings.iter().any(|w| w.as_str().is_some_and(|t| t.contains("159") && t.contains("184"))), "{warnings:?}");
+}
+
+#[test]
+fn a_window_whose_head_reaches_the_top_plates_keeps_its_kings_jacks_and_sill_with_no_header_and_a_warning() {
+    let mut s = Session::new();
+    let w = cabin(&mut s);
+    // The demo's 1200 x 1500 at 900: rough top 2413, past the top plates' underside at 2372.
+    let win = window_at(&mut s, w, 1200.0, 1500.0, 900.0, 1250.0);
+    let g = s.model.guid(win).to_string();
+    let r = run(&mut s, "framing", json!({"id": w}));
+    let ms = r["members"].as_array().cloned().unwrap_or_default();
+    for side in ["left", "right"] {
+        keyed(&ms, &format!("{g}/king/{side}/0"));
+        let jack = keyed(&ms, &format!("{g}/jack/{side}/0"));
+        close(f(&jack["z"], 2), 2372.0, "the jack up to the top plates");
+    }
+    keyed(&ms, &format!("{g}/sill/0"));
+    assert!(!ms.iter().any(|m| m["key"] == format!("{g}/header")), "no room for a header");
+    assert!(!ms.iter().any(|m| m["key"].as_str().is_some_and(|k| k.starts_with(&format!("{g}/cripple/top")))));
+    assert_eq!(role(&ms, "cripple").len(), 3, "the lower cripples stay");
+    let warnings = r["warnings"].as_array().cloned().unwrap_or_default();
+    assert!(warnings.iter().any(|w| w.as_str().is_some_and(|t| t.contains("top plates"))), "{warnings:?}");
+    // `frame` says so too.
+    let done = run(&mut s, "frame", json!({"id": w, "type": "Cabin"}));
+    assert!(!done["warnings"].as_array().cloned().unwrap_or_default().is_empty(), "{done}");
+}
+
+#[test]
+fn an_opening_that_cant_be_framed_is_never_left_without_a_warning() {
+    let mut s = Session::new();
+    let w = cabin(&mut s);
+    // So near the start that its kings would run past the wall's end.
+    window_at(&mut s, w, 600.0, 900.0, 1000.0, 330.0);
+    let r = run(&mut s, "framing", json!({"id": w}));
+    let warnings = r["warnings"].as_array().cloned().unwrap_or_default();
+    assert!(warnings.iter().any(|w| w.as_str().is_some_and(|t| t.contains("isn't framed"))), "{warnings:?}");
+}

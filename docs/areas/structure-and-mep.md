@@ -311,6 +311,12 @@ id}` takes it off, leaving the type in the project; `modify {id, framing: name |
 reads a framed wall's members and its cut list (role, section, plies, length to the mm, stock length, count) and builds nothing;
 `type {category: framing, name, ...}` makes or edits a framing type from the fields given over its own.
 
+An opening is never left unframed without a word: `framing` and `frame` return `warnings`, and Frame says them in the status bar.
+A header deeper than the room between the rough opening and the top plates is cut to that room (a flat one loses plies first); with
+less room than a member's thickness there is no header, and the jacks run up to the top plates. An opening whose kings would run
+past the wall's framed end, stand on a corner's or another opening's members, or whose sill would be under the bottom plates isn't
+framed, and the warning says which and why.
+
 A framed wall's members are solids of the wall in the framing's material (`view3d.rs`), so a pick takes the wall and a section
 cuts them as it cuts any solid; its structure layer is split off its body and drawn only where a view hides Walls > Framing
 (`framing`, a subcategory of walls in Visibility/Graphics, `graphics::SUBCATEGORIES`), which brings the layer back as it was. A

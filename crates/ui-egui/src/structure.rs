@@ -159,7 +159,13 @@ impl BimApp {
         if let Some(done) = self.run("frame", p) {
             let (n, members) = (walls.len().to_string(), done["members"].as_u64().unwrap_or(0).to_string());
             let ty = done["type"].as_str().unwrap_or_default();
-            self.status = Status { text: tf("{} walls framed as {}: {} members.", &[&n, ty, &members]), error: false };
+            let mut text = tf("{} walls framed as {}: {} members.", &[&n, ty, &members]);
+            // What couldn't be framed as the type says is the core's own words, as its diagnostics are.
+            let warnings: Vec<&str> = done["warnings"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
+            if let Some(first) = warnings.first() {
+                text = format!("{text} {} {first}", tf("{} openings to check:", &[&warnings.len().to_string()]));
+            }
+            self.status = Status { text, error: !warnings.is_empty() };
         }
     }
 

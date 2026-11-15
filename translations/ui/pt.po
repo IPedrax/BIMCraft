@@ -2000,7 +2000,7 @@ msgstr "Cerâmica"
 #: crates/ui-egui/src/editor/sketch.rs:1330
 #: crates/ui-egui/src/lib.rs:5763
 #: crates/ui-egui/src/linestyles.rs:431
-#: crates/ui-egui/src/structure.rs:202
+#: crates/ui-egui/src/structure.rs:208
 msgid "Chain"
 msgstr "Cadeia"
 
@@ -6591,7 +6591,7 @@ msgstr "Agora mesmo"
 msgid "Justification"
 msgstr "Alinhamento"
 
-#: crates/ui-egui/src/structure.rs:186
+#: crates/ui-egui/src/structure.rs:192
 msgid "Justification:"
 msgstr "Alinhamento:"
 
@@ -8669,7 +8669,7 @@ msgstr "Deslocamento da superfície:"
 
 #: crates/ui-egui/src/draw.rs:350
 #: crates/ui-egui/src/lib.rs:5743
-#: crates/ui-egui/src/structure.rs:196
+#: crates/ui-egui/src/structure.rs:202
 msgid "Offset:"
 msgstr "Deslocamento:"
 
@@ -11586,7 +11586,7 @@ msgstr "Selecione os dispositivos do circuito junto com o quadro."
 msgid "Select the walls to frame first."
 msgstr "Selecione primeiro as paredes a estruturar."
 
-#: crates/ui-egui/src/structure.rs:170
+#: crates/ui-egui/src/structure.rs:176
 msgid "Select the walls to remove framing from first."
 msgstr "Selecione primeiro as paredes das quais remover a estrutura de madeira."
 
@@ -13501,7 +13501,7 @@ msgstr ""
 msgid "Thickness"
 msgstr "Espessura"
 
-#: crates/ui-egui/src/structure.rs:221
+#: crates/ui-egui/src/structure.rs:227
 msgid "Thickness:"
 msgstr "Espessura:"
 
@@ -13718,8 +13718,8 @@ msgstr "Nível superior"
 msgid "Top Offset"
 msgstr "Deslocamento superior"
 
-#: crates/ui-egui/src/structure.rs:199
-#: crates/ui-egui/src/structure.rs:223
+#: crates/ui-egui/src/structure.rs:205
+#: crates/ui-egui/src/structure.rs:229
 msgid "Top Offset:"
 msgstr "Deslocamento do topo:"
 
@@ -15175,7 +15175,7 @@ msgstr "clique no topo do piso"
 msgid "click where its run ends"
 msgstr "clique onde o lance termina"
 
-#: crates/ui-egui/src/structure.rs:326
+#: crates/ui-egui/src/structure.rs:332
 msgid "column: {}"
 msgstr "pilar: {}"
 
@@ -15899,6 +15899,10 @@ msgstr "{} abriu outro projeto"
 msgid "{} opened without {} fields this version doesn't know; saving it leaves them out."
 msgstr "{} foi aberto sem {} campos que esta versão não conhece; ao salvar, eles ficam de fora."
 
+#: crates/ui-egui/src/structure.rs:166
+msgid "{} openings to check:"
+msgstr "Vãos a verificar ({}):"
+
 #: crates/ui-egui/src/parameters.rs:570
 #: crates/ui-egui/src/parameters.rs:620
 msgid "{} parameters exported."
@@ -16072,8 +16076,8 @@ msgstr "{}: Início"
 msgid "{}: Type"
 msgstr "{}: Tipo"
 
-#: crates/ui-egui/src/structure.rs:231
-#: crates/ui-egui/src/structure.rs:253
+#: crates/ui-egui/src/structure.rs:237
+#: crates/ui-egui/src/structure.rs:259
 msgid "{}: `{}` is not a height"
 msgstr "{}: `{}` não é uma altura"
 
@@ -16127,7 +16131,7 @@ msgid "{}: valid"
 msgstr ""
 
 #: crates/ui-egui/src/favorites.rs:162
-#: crates/ui-egui/src/structure.rs:247
+#: crates/ui-egui/src/structure.rs:253
 msgid "{}: {}"
 msgstr "{}: {}"
 
