@@ -33,6 +33,9 @@ const GAP: f64 = 50.0;
 /// The band in front of a door or an opening, mm, and what is added to it.
 const FRONT: f64 = 600.0;
 const FRONT_PLUS: f64 = 20.0;
+/// A swing door's leaf is as long as the door is wide and hinged this far inside its jamb (the families' `Frame Width`), so its
+/// swing passes the far jamb by this much.
+const DOOR_FRAME: f64 = 50.0;
 /// What a window keeps clear of components: its span and this much each side, and this far into the room. A window's sill and
 /// frame are drawn over what stands under them, which would cut the piece's outline short of the wall.
 const WINDOW_SIDE: f64 = 100.0;
@@ -311,7 +314,7 @@ fn door_boxes(walls: &[WallAt], doors: &[DoorAt]) -> Vec<DoorBox> {
             let w = d.width as f64;
             Some(DoorBox {
                 span: (sub(at, mul(s.u, w / 2.0)), add(at, mul(s.u, w / 2.0))),
-                zone: rect(at, s.u, w / 2.0 + FRONT_PLUS, t / 2.0 + FRONT.max(w) + FRONT_PLUS),
+                zone: rect(at, s.u, w / 2.0 + DOOR_FRAME + FRONT_PLUS, t / 2.0 + FRONT.max(w) + FRONT_PLUS),
             })
         })
         .collect()
