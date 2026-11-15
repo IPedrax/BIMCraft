@@ -446,7 +446,7 @@ msgstr "Nome"
 msgid "New Construction"
 msgstr "Nova construção"
 
-#: crates/core/src/schedule.rs:1380
+#: crates/core/src/schedule.rs:1381
 msgid "No"
 msgstr "Não"
 
@@ -846,7 +846,7 @@ msgstr "Tabela de janelas"
 msgid "Worktop"
 msgstr "Bancada"
 
-#: crates/core/src/schedule.rs:1380
+#: crates/core/src/schedule.rs:1381
 msgid "Yes"
 msgstr "Sim"
 
