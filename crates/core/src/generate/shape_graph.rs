@@ -145,16 +145,9 @@ pub fn build(req: &Request, allow_unreviewed: bool) -> Result<Built, Refusal> {
 
 /// A built-in family by name.
 pub fn builtin_family(name: &str) -> Result<Family, Refusal> {
-    let text = family::builtin(name).ok_or_else(|| {
-        refuse(
-            "unknown_archetype",
-            format!(
-                "`archetype` is one of {} for a plan by `--rooms`; got {:?}",
-                family::builtin_names(),
-                name.chars().take(40).collect::<String>()
-            ),
-        )
-    })?;
+    // The message lists the families there are and does not repeat the name asked for.
+    let text = family::builtin(name)
+        .ok_or_else(|| refuse("unknown_archetype", format!("`archetype` is one of {} for a plan by `--rooms`", family::builtin_names())))?;
     Family::parse(text).map_err(|e| refuse("invalid_family", e))
 }
 
