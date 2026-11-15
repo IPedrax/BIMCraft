@@ -4781,6 +4781,36 @@ fn a_guide_is_entered_at_8_px_and_left_at_12() {
     assert!(h.state().alignments(m, level, &v, at(13.0), &chain).is_empty(), "left past 12 px");
 }
 
+/// A structural grid near the cursor lends its own line, unless Manage > Snaps says otherwise; a grid out of reach lends
+/// nothing, so a plan is not crossed by every grid in it.
+#[test]
+fn a_grid_near_the_cursor_lends_a_guide_until_its_switch_is_off() {
+    use bimcraft_core::alignment::AlignmentAxis;
+    let mut h = app("grid {\"start\": [0, 0], \"end\": [0, 5000]}");
+    let (level, scale) = {
+        let m = &h.state().session.model;
+        let level = m.levels()[0].0;
+        (level, h.state().canvas.current_view(level).expect("a view").scale)
+    };
+    let chain = [P2(4000.0, 2000.0)];
+    let six_px = P2(6.0 / scale, 2000.0);
+    {
+        let m = &h.state().session.model;
+        let v = h.state().canvas.current_view(level).expect("a view");
+        let found = h.state().alignments(m, level, &v, six_px, &chain);
+        // A grid is a line, so it lends a collinear guide along itself, not a bare X.
+        let on = found.iter().any(|a| a.snapped_point.0.abs() < 1e-6 && matches!(a.axis, AlignmentAxis::Collinear { .. }));
+        assert!(on, "the grid's own line at 6 px: {found:?}");
+        // Far from it, the grid casts nothing.
+        let far = P2(4000.0, 2000.0);
+        assert!(h.state().alignments(m, level, &v, far, &chain).is_empty(), "nothing lines up 4 m away");
+    }
+    h.state_mut().snaps.guides_from_grids = false;
+    let m = &h.state().session.model;
+    let v = h.state().canvas.current_view(level).expect("a view");
+    assert!(h.state().alignments(m, level, &v, six_px, &chain).is_empty(), "the switch turns the grid off");
+}
+
 /// A wall is three references, and the snap names the one its pointer is on — not a bare "Nearest of Wall" that could be
 /// any of them.
 #[test]

@@ -1006,15 +1006,16 @@ fn wall_face_offset(ext: f64, t: f64, face: Face) -> f64 {
 /// Which of `wall`'s three lines passes nearest `p`, with the offset of that line: the centre line first on a tie, so a
 /// wall whose faces cannot be told apart still takes the middle.
 fn nearest_face(wall: Axis, ext: f64, t: f64, p: P2) -> (Face, f64) {
-    [Face::Centre, Face::Left, Face::Right]
-        .into_iter()
-        .map(|face| {
-            let off = wall_face_offset(ext, t, face);
-            (face, off, wall.distance(p, off))
-        })
-        .min_by(|x, y| x.2.total_cmp(&y.2))
-        .map(|(face, off, _)| (face, off))
-        .unwrap_or((Face::Centre, ext - t / 2.0))
+    let middle = wall_face_offset(ext, t, Face::Centre);
+    let mut best = (Face::Centre, middle, wall.distance(p, middle));
+    for face in [Face::Left, Face::Right] {
+        let off = wall_face_offset(ext, t, face);
+        let d = wall.distance(p, off);
+        if d < best.2 {
+            best = (face, off, d);
+        }
+    }
+    (best.0, best.1)
 }
 
 /// A length, its parts and its angle.

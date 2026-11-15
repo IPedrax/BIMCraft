@@ -375,14 +375,15 @@ pub(crate) fn grids_near(m: &Model, v: &View, cursor: P2, reach: f32) -> Vec<Gui
         .collect()
 }
 
-/// The points a marked reference lends the alignment service: its own point, with the kind that says what it is.
+/// The points a marked reference lends the alignment service: its own point, and the kind it is ranked by there — an
+/// endpoint ahead of a middle, a centre among the middles, a crossing last. A pin is used whatever the snap switches say:
+/// `from_context` hands its points over as they are, and only the chain's are gated.
 pub(crate) fn reference(target: PinTarget) -> Option<(P2, ReferenceType)> {
     match target {
         PinTarget::Point { at, kind, .. } => Some((
             at,
             match kind {
-                Kind::Endpoint => ReferenceType::Endpoint,
-                Kind::Midpoint => ReferenceType::Midpoint,
+                Kind::Midpoint | Kind::Centre | Kind::Quadrant => ReferenceType::Midpoint,
                 Kind::Intersection => ReferenceType::Intersection,
                 _ => ReferenceType::Endpoint,
             },
