@@ -170,14 +170,18 @@ again inside. Walls' Outline on the desktop
 opens the Options Bar instead of putting lines in at once: it chooses the line the outline follows (Wall Centre Line,
 Interior Face or Exterior Face), the wall component that face is (Finish or Core), an Outline Offset from it and DRAW, which
 puts the outline in the sketch as another one: DRAW adds a contour, it does not replace the ones already there, and one whose
-lines are exactly those of a contour already in the sketch is refused with a message instead of drawn twice. A corner of
+lines are exactly those of a contour already in the sketch is refused with a message instead of drawn twice. If a core face is
+asked for and a wall has no structural layer, the outline follows that wall's finish face and the status says so; the
+`floor {outline: "*core"}` command still refuses such a wall by name. A corner of
 the contour follows the lines of its two walls on to where they cross (a square corner, never a 45° cut) whatever the
-offset. Walls' Outline takes the Modify arrow: a wall
+offset. Individual Pick Walls lines of the same Offset are joined the same way at the corners they share, including the
+closing corner of a loop. Walls' Outline takes the Modify arrow: a wall
 clicked is picked or unpicked, and a box drawn round walls picks them as a box does in Modify (left to right what it
 encloses, right to left what it crosses). DRAW follows just the picked walls; with none picked it follows every wall of the
 level. The panel stays open after DRAW, so the line or the walls can be changed and drawn again; Esc clears the walls
 picked, the Modify arrow keeps the mode on, and another tool, Finish or Cancel leaves it (choosing a Draw tool puts that
-tool on instead). Pick Walls and Walls' Outline take an Offset as well, and an
+tool on instead). `sketch {"wall": ..., "face": ..., "offset": ...}` gives one wall's face line for MCP and scripts, using
+the same line, face names and finish fallback as the UI. Pick Walls and Walls' Outline take an Offset as well, and an
 `outline_offset`: a positive one moves the line away from the wall, through its thickness, and a negative one toward its
 inside. The line Pick Walls places in a
 sketch remembers its wall, face and offset only while that sketch is open: while Pick Walls is on, the line the click would
