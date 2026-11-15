@@ -1257,7 +1257,7 @@ mod tests {
     }
 
     #[test]
-    fn face_lines_of_walls_meeting_at_a_corner_end_on_the_same_point() {
+    fn face_lines_of_walls_meeting_at_a_corner_cross_on_the_same_point() {
         let s = session(
             r#"type {"category": "wall", "name": "C60", "layers": [{"function": "finish", "thickness": 50}, {"function": "structure", "thickness": 100}, {"function": "finish", "thickness": 50}]}
                wall {"points": [[0, 0], [4000, 0]], "type": "C60"}
@@ -1267,8 +1267,10 @@ mod tests {
         let ids: Vec<Id> = m.elements.keys().copied().filter(|id| m.wall(*id).is_some()).collect();
         let a = face_line(m, ids[0], Face::ExteriorCore, 0.0).unwrap_or_else(|| panic!("no line"));
         let b = face_line(m, ids[1], Face::ExteriorCore, 0.0).unwrap_or_else(|| panic!("no line"));
-        // The core faces meet on the corner's bisector, 50 mm out from each location line.
-        assert!(near(a.start(), P2(50.0, 50.0)) && near(b.start(), P2(50.0, 50.0)), "{a:?} {b:?}");
+        // Each face line is cut at its wall's cap; their lines cross on the corner's bisector, 50 mm out from
+        // each location line, where the floor outline miters them.
+        let cross = geom::line_intersection(a.start(), a.end(), b.start(), b.end()).unwrap_or_else(|| panic!("parallel"));
+        assert!(near(cross, P2(50.0, 50.0)), "{a:?} {b:?} {cross:?}");
     }
 
     #[test]
