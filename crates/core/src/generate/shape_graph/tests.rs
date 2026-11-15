@@ -69,8 +69,12 @@ fn outline_corners(script: &str) -> usize {
 fn the_house_family_file_reads_in_order_and_stays_inside_its_pack() {
     let fam = Family::parse(house_family()).expect("the house family parses");
     assert_eq!(fam.types.len(), 13);
-    assert_eq!(fam.types[0].place, super::family::Place::EntryEnd, "the file's order is the engine's order");
-    assert_eq!(fam.types[3].place, super::family::Place::Spine);
+    // The file's order is the engine's order, and it is the alphabetical one: a copy saved with sorted keys is the same family.
+    let keys: Vec<&str> = fam.types.iter().map(|t| t.key.as_str()).collect();
+    assert!(keys.windows(2).all(|w| w[0] < w[1]), "{keys:?}");
+    let at = |place| fam.types.iter().position(|t| t.place == place).expect("a room type");
+    assert_eq!(fam.entry.as_ref().map(|e| e.rooms.clone()), Some(vec![at(super::family::Place::EntryEnd)]));
+    assert!(at(super::family::Place::Spine) > 0, "the spine room is not the first room type");
     assert_eq!(fam.count_limits(), (5, 30));
     assert_eq!(fam.pack_id.as_deref(), Some("house"));
 }

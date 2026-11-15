@@ -356,6 +356,28 @@ touches nothing, so the default files stay byte for byte. A value that departs g
 the `floor` boundary (`script::ring_corners`). It runs the result in a scratch session, leaves the three graph files alone, adds a note to
 `report.json` and re-hashes the manifest. Only then does the manifest gain `gridlines` (the default `--area` manifests are pinned and gain no key).
 
+### Windows and room contents
+
+A room type of a family file may have `"window": true` and `"contents"`, a list of `{"family", "types"?, "count": [lo, hi], "against"}`
+(`against` is `wall`, `corner` or `centre`; the families are the built-in furniture and plumbing ones, checked against
+`family::library` in `Family::parse`, which refuses an unknown family, type or place with `invalid_family` naming the room type and the
+entry). They are placed by `shape_graph/contents.rs`, a pure step with no random number, after the layout and the tags: `emit::verify` reads
+the rooms' measured boundaries from the extracted graph, places the windows and components, compiles the script again with them (`window`
+lines after the doors, `component` lines after the rooms) and reads it back. They change no wall, door or room, so the topology hash, the
+program graph and `building` are those of the same family file without the fields. A script that does not read back with them is drawn
+without them and `report.json` says so (`SG-004` warns); what does not fit a room is left out, never a failure.
+
+- **Windows:** per room of a `window` type, `ceil(L / 4 m)` for `L` of exterior face (a room edge parallel to a 250 mm wall, 125 mm from its
+  centre line), each 1200 wide (600 where the face is short), at least 300 mm from the face's ends, from every door and from every other window,
+  spread by farthest point. `at` is on the wall's centre line.
+- **Components:** the footprint is the plan box of the family type's solid forms (`Family::plan_footprint`, voids skipped, unpadded; a wall piece's
+  back is at local y 0). A candidate (`wall`: each edge, longest first, back to the wall first, sliding from the middle; `corner`: each convex right
+  angle; `centre`: the points furthest from the walls first) is taken when its box lies wholly in the room, clears every door's zone (the door's width
+  by `max(600, width)` each side of the wall, which covers the swing), every opening's 600 mm, every window's span (the sill is drawn over what
+  stands under it and cuts the piece's outline short of the wall) and every placed component by 50 mm.
+- **The house file's room types are in alphabetical order**, because a copy saved with sorted keys is the same family (the engine takes room types in
+  file order); a test holds it.
+
 ## Delivery folder
 
 `bimcraft-cli deliver --brief BRIEF.json --delivery-id ID --rights (FILE | emailed) --out ROOT [--rerun N] [--jobs J]` (`generate/deliver.rs`)

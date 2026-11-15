@@ -90,8 +90,8 @@ fn the_new_types_have_their_door_rows() {
 #[test]
 fn house_plans_draw_the_new_types_and_read_them_back() {
     let mut seen = BTreeMap::new();
-    // Seed 25 at 17 rooms draws every type the house family lists.
-    let built = house(25, 17);
+    // Seed 5 at 17 rooms draws every type the house family lists (found again when its room types were put in alphabetical order).
+    let built = house(5, 17);
     count(&graph(&built.files), &mut seen);
     // The script runs, and the extractor finds each door as the table says.
     let mut s = Session::new();

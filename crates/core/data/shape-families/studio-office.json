@@ -26,7 +26,11 @@
       "area_m2": [8.0, 55.0],
       "max_side_ratio": 5.0,
       "min_side_mm": 2400,
-      "max_links": 3
+      "max_links": 3,
+      "window": true,
+      "contents": [
+        {"family": "Sofa", "types": ["2000 x 900", "1600 x 900"], "count": [1, 1], "against": "wall"}
+      ]
     },
     "corridor": {
       "kind": "hall",
@@ -59,7 +63,11 @@
       "area_m2": [8.0, 45.0],
       "max_side_ratio": 2.5,
       "min_side_mm": 2600,
-      "max_links": 1
+      "max_links": 1,
+      "window": true,
+      "contents": [
+        {"family": "Table", "types": ["2000 x 1000", "1600 x 900"], "count": [1, 1], "against": "centre"}
+      ]
     },
     "store": {
       "kind": "storage",
@@ -83,7 +91,11 @@
       "area_m2": [2.0, 10.0],
       "max_side_ratio": 3.0,
       "min_side_mm": 1500,
-      "max_links": 1
+      "max_links": 1,
+      "contents": [
+        {"family": "WC", "types": ["400 x 650"], "count": [1, 1], "against": "wall"},
+        {"family": "Washbasin", "types": ["500 x 400", "600 x 450"], "count": [0, 1], "against": "wall"}
+      ]
     },
     "studio": {
       "kind": "office",
@@ -94,7 +106,11 @@
       "area_m2": [60.0, 300.0],
       "max_side_ratio": 5.0,
       "min_side_mm": 4200,
-      "max_links": 4
+      "max_links": 4,
+      "window": true,
+      "contents": [
+        {"family": "Table", "types": ["2000 x 1000", "1600 x 900"], "count": [0, 4], "against": "centre"}
+      ]
     }
   },
   "links": [

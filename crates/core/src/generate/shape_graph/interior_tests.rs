@@ -22,10 +22,11 @@ fn manifest(f: &BTreeMap<&'static str, String>) -> Value {
     serde_json::from_str(&f[MANIFEST]).expect("the manifest is JSON")
 }
 
-/// The hashes of the five files that are not the manifest, for a plan.
+/// The hashes of the program and the topology graph of a plan: the files the rooms' windows and contents (which the script, the
+/// building and the report show) never touch, so they say whether the layout is the one recorded.
 fn hashes(r: &Request) -> Vec<String> {
     let built = build(r, false).unwrap_or_else(|e| panic!("{r:?}: {e}"));
-    built.files.iter().filter(|(n, _)| *n != MANIFEST).map(|(_, t)| fnv1a64(t)).collect()
+    built.files.iter().filter(|(n, _)| matches!(*n, "program-graph.json" | "topology-graph.json")).map(|(_, t)| fnv1a64(t)).collect()
 }
 
 type P = (f64, f64);
@@ -157,24 +158,14 @@ fn base_of(m: &Value) -> Vec<P> {
 
 #[test]
 fn aligned_off_plans_are_unchanged() {
-    // Recorded on the commit before jogs and bumps: the aligned path draws no extra random number.
+    // Recorded on the commit before jogs and bumps: the aligned path draws no extra random number. Re-recorded when the house
+    // family's room types were put in alphabetical order (the order a copy of the file saved with sorted keys has), which
+    // changes every house plan; the hashes are of the program and topology graphs, which windows and contents never touch.
     let cases = [
-        (
-            req(3, 16, Some("court"), Interior::Aligned, false),
-            ["c36b3c33d64dff7b", "05ea4bc8a6cea27e", "1187c8a0a9d8d525", "6e5fc0d9167f6cbe", "c03f9a83f0400961"],
-        ),
-        (
-            req(5, 12, Some("t_shape"), Interior::Aligned, false),
-            ["aa6796588871ca0b", "a46555c0b80c65fe", "1c480414afee010b", "82e1e538b623a22f", "c7f9a5ba99aff147"],
-        ),
-        (
-            req(7, 8, None, Interior::Aligned, false),
-            ["6afef852bced675f", "706e0145a7492e95", "b931c960257077ca", "f373253228428faf", "230af99a51e8c526"],
-        ),
-        (
-            req(2, 5, Some("bar"), Interior::Aligned, false),
-            ["df3ac3dd197662dc", "18bda057fbdaf7fa", "1545ba332882d5da", "a269548fe13cdc38", "874abb5809d413c0"],
-        ),
+        (req(3, 16, Some("court"), Interior::Aligned, false), ["0dd8c91051cab912", "401a2c07cc8b8b81"]),
+        (req(5, 12, Some("t_shape"), Interior::Aligned, false), ["61b4a045e1d80632", "db807ccc910b081f"]),
+        (req(7, 8, None, Interior::Aligned, false), ["9e9fa8d8dd00c37d", "a12f2ef81e5786b6"]),
+        (req(2, 5, Some("bar"), Interior::Aligned, false), ["249fb326a84431a0", "ba786ad67fde9599"]),
     ];
     for (r, want) in &cases {
         assert_eq!(&hashes(r), want, "{r:?}");
