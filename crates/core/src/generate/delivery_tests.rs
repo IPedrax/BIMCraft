@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use serde_json::{Value, json};
 
 use super::program::Archetype;
-use super::tests::{doc, text};
+use super::tests::{built_once, doc, text};
 use super::*;
 use crate::engine::Session;
 
@@ -19,12 +19,12 @@ const ARCHETYPES: [(&str, f64); 7] = [
     ("medical-day", 900.0),
 ];
 
-fn on(name: &str, seed: u64, area: f64) -> Built {
-    build_for_delivery(Archetype::parse(name).unwrap(), seed, AreaRequest::m2(area)).unwrap_or_else(|e| panic!("{name} {seed}: {e}"))
+fn on(name: &str, seed: u64, area: f64) -> &'static Built {
+    built_once(Archetype::parse(name).unwrap(), seed, AreaRequest::m2(area), true)
 }
 
-fn off(name: &str, seed: u64, area: f64) -> Built {
-    build(Archetype::parse(name).unwrap(), seed, area).unwrap_or_else(|e| panic!("{name} {seed}: {e}"))
+fn off(name: &str, seed: u64, area: f64) -> &'static Built {
+    built_once(Archetype::parse(name).unwrap(), seed, AreaRequest::m2(area), false)
 }
 
 fn dir(test: &str) -> std::path::PathBuf {
@@ -92,7 +92,7 @@ fn the_delivery_script_numbers_rooms_and_names_the_profile() {
     for (name, area) in ARCHETYPES {
         for seed in [1, 2] {
             let b = on(name, seed, area);
-            let lines = script_lines(&b);
+            let lines = script_lines(b);
             let ids: Vec<&str> = lines.iter().map(|(i, _)| i.as_str()).collect();
             assert_eq!(ids.iter().filter(|i| **i == "cad_profile").count(), 1, "{name}");
             let at = ids.iter().position(|i| *i == "drawing_property").unwrap();
@@ -109,7 +109,7 @@ fn the_delivery_script_numbers_rooms_and_names_the_profile() {
                 .filter(|t| t.contains(" m2 gross, seed "))
                 .collect();
             assert_eq!(notes.len(), 1, "{name}: {notes:?}");
-            let topology = doc(&b, "topology-graph.json");
+            let topology = doc(b, "topology-graph.json");
             let nodes = topology["nodes"].as_array().unwrap();
             let numbers: Vec<&str> = lines.iter().filter(|(i, _)| i == "room").map(|(_, p)| p["number"].as_str().unwrap()).collect();
             assert_eq!(numbers.len(), nodes.len(), "{name}");
@@ -128,7 +128,7 @@ fn the_delivery_script_numbers_rooms_and_names_the_profile() {
 fn the_delivery_graph_has_the_nodes_and_edges_of_the_plain_one() {
     for (name, area) in ARCHETYPES {
         let (d, p) = (on(name, 1, area), off(name, 1, area));
-        let (dt, pt) = (doc(&d, "topology-graph.json"), doc(&p, "topology-graph.json"));
+        let (dt, pt) = (doc(d, "topology-graph.json"), doc(p, "topology-graph.json"));
         let ids = |t: &Value| t["nodes"].as_array().unwrap().iter().map(|n| n["id"].clone()).collect::<Vec<_>>();
         assert_eq!(ids(&dt), ids(&pt), "{name}");
         assert_eq!(dt["edges"], pt["edges"], "{name}");
@@ -139,46 +139,85 @@ fn the_delivery_graph_has_the_nodes_and_edges_of_the_plain_one() {
 fn the_delivery_manifest_names_the_building_and_matches_its_files() {
     for (name, area) in ARCHETYPES {
         let b = on(name, 1, area);
-        let m = doc(&b, "manifest.json");
+        let m = doc(b, "manifest.json");
         assert_eq!(m["delivery"], json!(true), "{name}");
         let building = m["building"].as_str().unwrap();
         let rest = building.strip_prefix(&format!("{name}-")).unwrap_or_else(|| panic!("{name}: {building}"));
         assert!(is_hex12(rest), "{building}");
         for f in m["files"].as_array().unwrap() {
-            assert_eq!(f["hash"].as_str().unwrap(), fnv1a64(&text(&b, f["path"].as_str().unwrap())), "{name} {f}");
+            assert_eq!(f["hash"].as_str().unwrap(), fnv1a64(&text(b, f["path"].as_str().unwrap())), "{name} {f}");
         }
-        assert_eq!(m["topology_hash"].as_str().unwrap(), fnv1a64(&text(&b, "topology-graph.json")));
-        assert_eq!(doc(&b, "building-ir.json")["source_2d"]["topology_hash"], m["topology_hash"]);
+        assert_eq!(m["topology_hash"].as_str().unwrap(), fnv1a64(&text(b, "topology-graph.json")));
+        assert_eq!(doc(b, "building-ir.json")["source_2d"]["topology_hash"], m["topology_hash"]);
         assert_eq!(b.topology_hash, m["topology_hash"].as_str().unwrap());
     }
 }
 
-#[test]
-fn the_building_is_the_layout() {
-    for (name, area) in ARCHETYPES {
-        let a = doc(&on(name, 1, area), "manifest.json")["building"].clone();
-        assert_eq!(a, doc(&on(name, 1, area), "manifest.json")["building"], "{name}");
-        let other = doc(&on(name, 3, area), "manifest.json")["building"].clone();
-        let (one, three) = (off(name, 1, area), off(name, 3, area));
-        let same_layout = |l: &Built, r: &Built| {
-            let walls = |b: &Built| script_lines(b).into_iter().filter(|(i, _)| i == "wall").collect::<Vec<_>>();
-            walls(l) == walls(r)
-        };
-        if !same_layout(&one, &three) {
-            assert_ne!(a, other, "{name}");
-        }
+/// The building is named for its layout: a second build gives the same name, and another layout another. One archetype a test.
+fn the_building_is_the_layout(name: &str) {
+    let area = ARCHETYPES.iter().find(|(n, _)| *n == name).unwrap_or_else(|| panic!("{name}")).1;
+    let a = doc(on(name, 1, area), "manifest.json")["building"].clone();
+    // A second build of the same brief, not the first one again.
+    let again = build_for_delivery(Archetype::parse(name).unwrap(), 1, AreaRequest::m2(area)).unwrap();
+    assert_eq!(a, doc(&again, "manifest.json")["building"], "{name}");
+    let other = doc(on(name, 3, area), "manifest.json")["building"].clone();
+    let (one, three) = (off(name, 1, area), off(name, 3, area));
+    let same_layout = |l: &Built, r: &Built| {
+        let walls = |b: &Built| script_lines(b).into_iter().filter(|(i, _)| i == "wall").collect::<Vec<_>>();
+        walls(l) == walls(r)
+    };
+    if !same_layout(one, three) {
+        assert_ne!(a, other, "{name}");
     }
 }
+
+#[test]
+fn the_building_is_the_layout_house() {
+    the_building_is_the_layout("house");
+}
+
+#[test]
+fn the_building_is_the_layout_office() {
+    the_building_is_the_layout("office");
+}
+
+#[test]
+fn the_building_is_the_layout_clinic() {
+    the_building_is_the_layout("clinic");
+}
+
+#[test]
+fn the_building_is_the_layout_hospital() {
+    the_building_is_the_layout("hospital");
+}
+
+#[test]
+fn the_building_is_the_layout_studio_office() {
+    the_building_is_the_layout("studio-office");
+}
+
+#[test]
+fn the_building_is_the_layout_office_pattern() {
+    the_building_is_the_layout("office-pattern");
+}
+
+#[test]
+fn the_building_is_the_layout_medical_day() {
+    the_building_is_the_layout("medical-day");
+}
+
+// Every archetype in the table has its test above: one more in the table needs one more here.
+const _: () = assert!(ARCHETYPES.len() == 7);
 
 #[test]
 fn the_delivery_script_runs_and_extracts_to_the_generated_graph() {
     for (name, area) in ARCHETYPES {
         let b = on(name, 1, area);
         let mut session = Session::new();
-        session.script(&text(&b, "script.bimcraft.txt")).unwrap_or_else(|e| panic!("{name}: {e}"));
+        session.script(&text(b, "script.bimcraft.txt")).unwrap_or_else(|e| panic!("{name}: {e}"));
         let got = crate::topology::extract(&session.model);
         assert_eq!(got["diagnostics"].as_array().map_or(0, Vec::len), 0, "{name}: {}", got["diagnostics"]);
-        let want = doc(&b, "topology-graph.json");
+        let want = doc(b, "topology-graph.json");
         let number_of: BTreeMap<String, String> = want["nodes"]
             .as_array()
             .unwrap()

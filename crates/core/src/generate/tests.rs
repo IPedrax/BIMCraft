@@ -1,7 +1,8 @@
 //! The generator through its command and its files: what a brief writes, what it refuses, and that what it writes runs.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::PathBuf;
+use std::sync::{LazyLock, Mutex, OnceLock};
 
 use serde_json::{Value, json};
 
@@ -12,8 +13,22 @@ use super::*;
 use crate::engine::Session;
 use crate::model::Element;
 
-pub(super) fn built(archetype: Archetype, seed: u64, area: f64) -> Built {
-    build(archetype, seed, area).unwrap_or_else(|e| panic!("{} {seed} {area}: {e}", archetype.name()))
+/// A brief's files, built once for all the tests that read them: no test changes what it is handed. A test of what a
+/// second build gives calls `build` itself.
+pub(super) fn built(archetype: Archetype, seed: u64, area: f64) -> &'static Built {
+    built_once(archetype, seed, AreaRequest::m2(area), false)
+}
+
+pub(super) fn built_once(archetype: Archetype, seed: u64, area: AreaRequest, delivery: bool) -> &'static Built {
+    type Key = (&'static str, u64, &'static str, u64, bool);
+    static BUILT: LazyLock<Mutex<HashMap<Key, &'static OnceLock<Built>>>> = LazyLock::new(Mutex::default);
+    let key = (archetype.name(), seed, area.unit, area.value.to_bits(), delivery);
+    // The map is held only to find the brief's place, so two briefs build side by side and one brief builds once.
+    let place = *BUILT.lock().unwrap().entry(key).or_insert_with(|| Box::leak(Box::default()));
+    place.get_or_init(|| {
+        let made = if delivery { build_for_delivery(archetype, seed, area) } else { build_with_area(archetype, seed, area) };
+        made.unwrap_or_else(|e| panic!("{} {seed} {} {}: {e}", archetype.name(), area.value, area.unit))
+    })
 }
 
 pub(super) fn text(b: &Built, name: &str) -> String {
@@ -224,7 +239,7 @@ fn a_brief_writes_the_six_files_and_the_manifest_names_them_with_their_hashes() 
     assert_eq!(topology_doc["layout_family"], manifest["layout_family"]);
     assert_eq!(topology_doc["layout_strategy"], manifest["layout_strategy"]);
     assert_eq!(topology_doc["boundary_shape"], manifest["boundary_shape"]);
-    let building_doc = doc(&build(Archetype::Office, 1, 900.0).unwrap(), "building-ir.json");
+    let building_doc = doc(built(Archetype::Office, 1, 900.0), "building-ir.json");
     assert_eq!(building_doc["layout_family"], manifest["layout_family"]);
     assert_eq!(building_doc["layout_strategy"], manifest["layout_strategy"]);
     assert_eq!(building_doc["boundary_shape"], manifest["boundary_shape"]);
@@ -254,7 +269,7 @@ fn square_foot_briefs_are_converted_and_area_flags_are_exclusive() {
 #[test]
 fn seeds_choose_different_layout_strategies() {
     let strategies: BTreeSet<String> = (0..3)
-        .map(|seed| doc(&built(Archetype::Hospital, seed, 1800.0), "manifest.json")["layout_strategy"].as_str().unwrap().to_string())
+        .map(|seed| doc(built(Archetype::Hospital, seed, 1800.0), "manifest.json")["layout_strategy"].as_str().unwrap().to_string())
         .collect();
     assert_eq!(strategies.len(), 3, "{strategies:?}");
 }
@@ -262,7 +277,7 @@ fn seeds_choose_different_layout_strategies() {
 #[test]
 fn seeds_choose_different_boundary_shapes() {
     let shapes: BTreeSet<String> = (0..5)
-        .map(|seed| doc(&built(Archetype::Hospital, seed, 1800.0), "manifest.json")["boundary_shape"].as_str().unwrap().to_string())
+        .map(|seed| doc(built(Archetype::Hospital, seed, 1800.0), "manifest.json")["boundary_shape"].as_str().unwrap().to_string())
         .collect();
     assert_eq!(shapes.len(), 5, "{shapes:?}");
 }
@@ -271,7 +286,7 @@ fn seeds_choose_different_boundary_shapes() {
 fn seeds_choose_different_layout_families() {
     let families: BTreeSet<String> = [1, 4, 7, 10]
         .into_iter()
-        .map(|seed| doc(&built(Archetype::Hospital, seed, 1800.0), "manifest.json")["layout_family"].as_str().unwrap().to_string())
+        .map(|seed| doc(built(Archetype::Hospital, seed, 1800.0), "manifest.json")["layout_family"].as_str().unwrap().to_string())
         .collect();
     assert_eq!(families.len(), 4, "{families:?}");
 }
@@ -282,7 +297,7 @@ fn the_graphs_meet_the_rules_as_a_reader_of_the_files_sees_them() {
     let open = ["circulation", "shared", "public"];
     for (name, seed, area) in BRIEFS {
         let b = built(archetype(name), seed, area);
-        let (nodes, access, entry) = read_topology(&doc(&b, "topology-graph.json"));
+        let (nodes, access, entry) = read_topology(&doc(b, "topology-graph.json"));
         let label = format!("{name} {seed} {area}");
         let ids: BTreeSet<String> = nodes.keys().cloned().collect();
         assert_eq!(ids.len(), nodes.len(), "{label}: ids are unique");
@@ -300,7 +315,7 @@ fn the_graphs_meet_the_rules_as_a_reader_of_the_files_sees_them() {
         assert_eq!(reach(&access, BTreeSet::from([entry])), ids, "{label}: everything is reached from the entry");
         // Adjacency is in the file, kept apart from access, and no rule reads it.
         let kinds: BTreeSet<String> =
-            doc(&b, "topology-graph.json")["edges"].as_array().unwrap().iter().map(|e| e["kind"].as_str().unwrap().to_string()).collect();
+            doc(b, "topology-graph.json")["edges"].as_array().unwrap().iter().map(|e| e["kind"].as_str().unwrap().to_string()).collect();
         assert!(kinds.contains("door") && kinds.contains("adjacent"), "{label}: {kinds:?}");
     }
 }
@@ -309,13 +324,13 @@ fn the_graphs_meet_the_rules_as_a_reader_of_the_files_sees_them() {
 fn the_minimum_programs_are_present() {
     let kinds = |b: &Built| -> Vec<String> { read_topology(&doc(b, "topology-graph.json")).0.values().map(|(k, _)| k.clone()).collect() };
     for seed in 0..2 {
-        let office = kinds(&built(Archetype::Office, seed, 900.0));
+        let office = kinds(built(Archetype::Office, seed, 900.0));
         for need in ["entry_lobby", "corridor", "open_office", "conference", "restroom"] {
             assert!(office.iter().any(|k| k == need), "office {seed}: {need}");
         }
         assert!(office.iter().any(|k| k == "private_office" || k == "focus_room"), "office {seed}");
         assert!(office.iter().any(|k| k == "it_storage" || k == "pantry"), "office {seed}");
-        let clinic = kinds(&built(Archetype::Clinic, seed, 650.0));
+        let clinic = kinds(built(Archetype::Clinic, seed, 650.0));
         for need in ["entry_lobby", "waiting", "corridor", "restroom", "clean_storage"] {
             assert!(clinic.iter().any(|k| k == need), "clinic {seed}: {need}");
         }
@@ -412,8 +427,8 @@ fn the_reports_and_rule_checks_are_the_same_bytes_as_when_the_rules_were_hard_co
     let (mut reports, mut graphs, mut checks) = (String::new(), String::new(), String::new());
     for (name, seed, area) in BRIEFS {
         let b = built(archetype(name), seed, area);
-        reports.push_str(&text(&b, "report.json"));
-        graphs.push_str(&format!("{name} {seed} {}\n", fnv(&text(&b, "topology-graph.json"))));
+        reports.push_str(&text(b, "report.json"));
+        graphs.push_str(&format!("{name} {seed} {}\n", fnv(&text(b, "topology-graph.json"))));
         for c in &b.checks {
             checks.push_str(&format!("{}|{}|{:?}|{}\n", c.id, c.name, c.status, c.detail));
         }
@@ -433,7 +448,7 @@ pub(super) fn count(s: &Session, f: impl Fn(&Element) -> bool) -> usize {
 fn the_script_runs_in_a_fresh_project_and_makes_a_plan_with_bounded_rooms() {
     for (name, seed, area) in BRIEFS {
         let b = built(archetype(name), seed, area);
-        let script = text(&b, "script.bimcraft.txt");
+        let script = text(b, "script.bimcraft.txt");
         let mut ids = BTreeSet::new();
         let mut commands = 0;
         for l in script.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with('#')) {
@@ -472,7 +487,7 @@ fn the_script_runs_in_a_fresh_project_and_makes_a_plan_with_bounded_rooms() {
 fn generated_gridlines_cover_footprint_corridor_and_room_modules() {
     for (name, seed, area) in [("office", 1, 900.0), ("clinic", 9, 650.0), ("hospital", 8, 1800.0)] {
         let b = built(archetype(name), seed, area);
-        let script = text(&b, "script.bimcraft.txt");
+        let script = text(b, "script.bimcraft.txt");
         let mut xs = BTreeSet::new();
         let mut ys = BTreeSet::new();
         let mut labels = 0;
@@ -491,7 +506,7 @@ fn generated_gridlines_cover_footprint_corridor_and_room_modules() {
             }
             labels += usize::from(params["name"].as_str().is_some_and(|n| !n.is_empty()));
         }
-        let building = doc(&b, "building-ir.json");
+        let building = doc(b, "building-ir.json");
         let fp = &building["footprint"];
         let (width, depth) = (fp["width"].as_i64().unwrap(), fp["depth"].as_i64().unwrap());
         assert!([0, width].into_iter().all(|x| xs.contains(&x)), "{name} {seed}: {xs:?}");
@@ -515,7 +530,7 @@ fn the_script_is_saved_as_a_project_a_picture_and_a_drawing() {
         let out = dir(&format!("export-{name}"));
         std::fs::create_dir_all(&out).unwrap();
         let mut s = Session::new();
-        s.script(&text(&b, "script.bimcraft.txt")).unwrap();
+        s.script(&text(b, "script.bimcraft.txt")).unwrap();
         for file in ["model.bimcraft", "plan.png", "plan.dxf"] {
             s.execute("save", &json!({"path": out.join(file)})).unwrap_or_else(|e| panic!("{name} {file}: {e}"));
             assert!(std::fs::metadata(out.join(file)).unwrap().len() > 0, "{file}");
@@ -539,7 +554,7 @@ fn the_script_is_saved_as_a_project_a_picture_and_a_drawing() {
 #[test]
 fn the_same_brief_gives_the_same_bytes_and_other_seeds_give_other_plans() {
     for (name, seed, area) in [("office", 1, 900.0), ("clinic", 3, 650.0)] {
-        let (a, b) = (built(archetype(name), seed, area), built(archetype(name), seed, area));
+        let (a, b) = (built(archetype(name), seed, area), build(archetype(name), seed, area).unwrap());
         assert_eq!(a.files, b.files);
         assert_eq!(a.topology_hash, b.topology_hash);
     }
@@ -550,23 +565,23 @@ fn the_same_brief_gives_the_same_bytes_and_other_seeds_give_other_plans() {
             "clinic" => 650.0,
             _ => 1800.0,
         };
-        let runs: Vec<Built> = (1..=3).map(|seed| built(a, seed, area)).collect();
+        let runs: Vec<&Built> = (1..=3).map(|seed| built(a, seed, area)).collect();
         let scripts: BTreeSet<String> = runs.iter().map(|b| text(b, "script.bimcraft.txt")).collect();
         let hashes: BTreeSet<&str> = runs.iter().map(|b| b.topology_hash.as_str()).collect();
         assert_eq!(scripts.len(), 3, "{name}: scripts differ by seed");
         assert_eq!(hashes.len(), 3, "{name}: topologies differ by seed");
         // The seed is in the files it made.
-        assert_eq!(doc(&runs[2], "manifest.json")["seed"], 3);
+        assert_eq!(doc(runs[2], "manifest.json")["seed"], 3);
     }
     // A seed is any 64-bit number, written whole.
     let big = built(Archetype::Office, u64::MAX, 900.0);
-    assert_eq!(doc(&big, "manifest.json")["seed"].as_u64(), Some(u64::MAX));
+    assert_eq!(doc(big, "manifest.json")["seed"].as_u64(), Some(u64::MAX));
 }
 
 #[test]
 fn the_report_says_what_was_checked_and_what_the_generator_cannot_do() {
     let b = built(Archetype::Clinic, 3, 650.0);
-    let r = doc(&b, "report.json");
+    let r = doc(b, "report.json");
     assert_eq!((r["archetype"].as_str(), r["seed"].as_u64()), (Some("clinic"), Some(3)));
     let checks = r["checks"].as_array().unwrap();
     let ids: Vec<&str> = checks.iter().map(|c| c["id"].as_str().unwrap()).collect();
@@ -588,7 +603,7 @@ fn the_report_says_what_was_checked_and_what_the_generator_cannot_do() {
     assert!(r["measured_rooms"].as_array().unwrap().iter().all(|m| m["net_area_m2"].as_f64().unwrap_or(0.0) > 0.0));
     // A plan far from the area asked for says so rather than passing quietly: the depth is held, so the length can't make up.
     let wide = built(Archetype::Office, 1, 5000.0);
-    let wide_report = doc(&wide, "report.json");
+    let wide_report = doc(wide, "report.json");
     let drift: Vec<&str> = wide_report["warnings"].as_array().unwrap().iter().map(|w| w.as_str().unwrap()).collect();
     assert!(drift.iter().all(|w| w.starts_with("GM-001")), "{drift:?}");
 }
@@ -596,10 +611,10 @@ fn the_report_says_what_was_checked_and_what_the_generator_cannot_do() {
 #[test]
 fn opening_symbol_profiles_are_exported_for_training_labels() {
     let b = built(Archetype::Hospital, 3, 1800.0);
-    let manifest = doc(&b, "manifest.json");
-    let topology = doc(&b, "topology-graph.json");
-    let building = doc(&b, "building-ir.json");
-    let report = doc(&b, "report.json");
+    let manifest = doc(b, "manifest.json");
+    let topology = doc(b, "topology-graph.json");
+    let building = doc(b, "building-ir.json");
+    let report = doc(b, "report.json");
     for doc in [&topology, &building, &report] {
         assert_eq!(doc["opening_symbol_profile"], manifest["opening_symbol_profile"]);
     }
@@ -617,7 +632,7 @@ fn opening_symbol_profiles_are_exported_for_training_labels() {
     assert!(door_symbols.len() >= 3, "{door_symbols:?}");
     assert!(window_symbols.len() >= 2, "{window_symbols:?}");
     assert!(openings.iter().all(|o| o["width_mm"].as_i64().unwrap_or(0) > 0));
-    let script = text(&b, "script.bimcraft.txt");
+    let script = text(b, "script.bimcraft.txt");
     assert!(
         script.contains("\ntype ") && script.contains("\"category\":\"door\"") && script.contains("\"category\":\"window\""),
         "{script}"
@@ -665,7 +680,7 @@ fn every_archetypes_script_says_its_building_type_as_a_drawing_property() {
         (Archetype::MedicalDay, 1, 780.0, "hospital"),
     ] {
         let b = built(archetype, seed, area);
-        let script = text(&b, "script.bimcraft.txt");
+        let script = text(b, "script.bimcraft.txt");
         let line = format!("drawing_property {}", json!({"name": "building_type", "value": kind}));
         assert_eq!(
             script.lines().filter(|l| l.starts_with("drawing_property ")).collect::<Vec<_>>(),

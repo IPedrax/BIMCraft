@@ -1,7 +1,8 @@
 //! `generate --gridlines`: the grid by `--rooms` at the outline's corners, and by `--area` what the archetype draws, left out or put in.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::PathBuf;
+use std::sync::{LazyLock, Mutex, OnceLock};
 
 use serde_json::{Value, json};
 
@@ -28,8 +29,14 @@ fn call(test: &str, n: usize, mut params: Value) -> Result<BTreeMap<String, Stri
     out
 }
 
-fn files(test: &str, n: usize, params: Value) -> BTreeMap<String, String> {
-    call(test, n, params).unwrap_or_else(|e| panic!("{params_note}: {e}", params_note = test))
+/// The files of a brief, made once for all the tests that read them: a brief with other params is another call.
+fn files(test: &str, n: usize, params: Value) -> &'static BTreeMap<String, String> {
+    type Files = BTreeMap<String, String>;
+    static MADE: LazyLock<Mutex<HashMap<String, &'static OnceLock<Files>>>> = LazyLock::new(Mutex::default);
+    let brief = params.to_string();
+    let place = *MADE.lock().unwrap().entry(brief.clone()).or_insert_with(|| Box::leak(Box::default()));
+    // The directory is the brief's own, so tests that run side by side do not share one.
+    place.get_or_init(|| call(&format!("{test}-{}", fnv1a64(&brief)), n, params).unwrap_or_else(|e| panic!("{test}: {e}")))
 }
 
 /// The commands of a script: its id and params.
@@ -187,7 +194,7 @@ fn rooms_on_and_off_are_the_same_plan() {
                 })
                 .collect::<Vec<_>>()
         };
-        assert_eq!(key(&on), key(&off), "{shape}");
+        assert_eq!(key(on), key(off), "{shape}");
         let (mon, moff): (Value, Value) =
             (serde_json::from_str(&on["manifest.json"]).unwrap(), serde_json::from_str(&off["manifest.json"]).unwrap());
         assert_eq!(mon["topology_hash"], moff["topology_hash"], "{shape}");
@@ -195,34 +202,66 @@ fn rooms_on_and_off_are_the_same_plan() {
     }
 }
 
-#[test]
-fn area_on_is_the_default_byte_for_byte_and_off_leaves_only_the_grid_out() {
-    for (name, area) in AREA_ARCHETYPES {
-        let base = json!({"archetype": name, "seed": 1, "area_m2": area});
-        for delivery in [false, true] {
-            let mut b = base.clone();
-            if delivery {
-                b["delivery"] = json!("on");
-            }
-            let default = files("ao", 0, b.clone());
-            assert!(!grids(&default["script.bimcraft.txt"]).is_empty(), "{name} draws a grid by default");
-            assert_eq!(default, files("ao", 1, with(b.clone(), "gridlines", "on")), "{name} delivery {delivery}");
-            let off = files("ao", 2, with(b, "gridlines", "off"));
-            assert!(grids(&off["script.bimcraft.txt"]).is_empty(), "{name}");
-            let rest = |f: &BTreeMap<String, String>| {
-                commands(&f["script.bimcraft.txt"])
-                    .into_iter()
-                    .filter(|(c, _)| c != "grid")
-                    .map(|(c, p)| format!("{c} {p}"))
-                    .collect::<Vec<_>>()
-            };
-            assert_eq!(rest(&default), rest(&off), "{name} delivery {delivery}");
-            for f in ["program-graph.json", "topology-graph.json", "building-ir.json"] {
-                assert_eq!(default[f], off[f], "{name} {f}");
-            }
+/// By area the default is the grid on, byte for byte, and off leaves only the grid out. One archetype a test.
+fn area_on_is_the_default_and_off_leaves_only_the_grid_out(name: &str) {
+    let area = AREA_ARCHETYPES.iter().find(|(n, _)| *n == name).unwrap_or_else(|| panic!("{name}")).1;
+    let base = json!({"archetype": name, "seed": 1, "area_m2": area});
+    for delivery in [false, true] {
+        let mut b = base.clone();
+        if delivery {
+            b["delivery"] = json!("on");
+        }
+        let default = files("ao", 0, b.clone());
+        assert!(!grids(&default["script.bimcraft.txt"]).is_empty(), "{name} draws a grid by default");
+        assert_eq!(default, files("ao", 1, with(b.clone(), "gridlines", "on")), "{name} delivery {delivery}");
+        let off = files("ao", 2, with(b, "gridlines", "off"));
+        assert!(grids(&off["script.bimcraft.txt"]).is_empty(), "{name}");
+        let rest = |f: &BTreeMap<String, String>| {
+            commands(&f["script.bimcraft.txt"])
+                .into_iter()
+                .filter(|(c, _)| c != "grid")
+                .map(|(c, p)| format!("{c} {p}"))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(rest(default), rest(off), "{name} delivery {delivery}");
+        for f in ["program-graph.json", "topology-graph.json", "building-ir.json"] {
+            assert_eq!(default[f], off[f], "{name} {f}");
         }
     }
 }
+
+#[test]
+fn area_on_is_the_default_byte_for_byte_and_off_leaves_only_the_grid_out_house() {
+    area_on_is_the_default_and_off_leaves_only_the_grid_out("house");
+}
+
+#[test]
+fn area_on_is_the_default_byte_for_byte_and_off_leaves_only_the_grid_out_office() {
+    area_on_is_the_default_and_off_leaves_only_the_grid_out("office");
+}
+
+#[test]
+fn area_on_is_the_default_byte_for_byte_and_off_leaves_only_the_grid_out_clinic() {
+    area_on_is_the_default_and_off_leaves_only_the_grid_out("clinic");
+}
+
+#[test]
+fn area_on_is_the_default_byte_for_byte_and_off_leaves_only_the_grid_out_hospital() {
+    area_on_is_the_default_and_off_leaves_only_the_grid_out("hospital");
+}
+
+#[test]
+fn area_on_is_the_default_byte_for_byte_and_off_leaves_only_the_grid_out_studio_office() {
+    area_on_is_the_default_and_off_leaves_only_the_grid_out("studio-office");
+}
+
+#[test]
+fn area_on_is_the_default_byte_for_byte_and_off_leaves_only_the_grid_out_office_pattern() {
+    area_on_is_the_default_and_off_leaves_only_the_grid_out("office-pattern");
+}
+
+// Every archetype in the table has its test above: one more in the table needs one more here.
+const _: () = assert!(AREA_ARCHETYPES.len() == 6);
 
 #[test]
 fn medical_day_default_is_off_and_on_adds_the_outline_grid_only() {
@@ -237,7 +276,7 @@ fn medical_day_default_is_off_and_on_adds_the_outline_grid_only() {
     let rest = |f: &BTreeMap<String, String>| {
         commands(&f["script.bimcraft.txt"]).into_iter().filter(|(c, _)| c != "grid").map(|(c, p)| format!("{c} {p}")).collect::<Vec<_>>()
     };
-    assert_eq!(rest(&default), rest(&on));
+    assert_eq!(rest(default), rest(on));
     for f in ["program-graph.json", "topology-graph.json", "building-ir.json"] {
         assert_eq!(default[f], on[f], "{f}");
     }
@@ -287,7 +326,7 @@ fn the_cad_export_writes_the_walls_in_the_same_digits_with_or_without_the_grid()
         let level = s.model.levels().first().map(|(id, _)| *id).expect("a level");
         crate::render::dxf(&crate::render::plan_for_cad(&s.model, level, 1600, 1000), &s.model)
     };
-    let (a, b) = (dxf(&on), dxf(&off));
+    let (a, b) = (dxf(on), dxf(off));
     let walls = layer_coordinates(&b, "A-WALL");
     assert!(!walls.is_empty());
     assert_eq!(layer_coordinates(&a, "A-WALL"), walls);

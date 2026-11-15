@@ -30,9 +30,9 @@ const SCRIPTS: [(&str, &str, u64, &str, f64, &str); 20] = [
     ("hospital-m2-s10", "hospital", 10, "m2", 1800.0, "dc156386e7d877d6"),
 ];
 
-fn built(archetype: &str, seed: u64, unit: &str, value: f64) -> Built {
+fn built(archetype: &str, seed: u64, unit: &str, value: f64) -> &'static Built {
     let area = if unit == "sqft" { AreaRequest::sqft(value) } else { AreaRequest::m2(value) };
-    build_with_area(Archetype::parse(archetype).unwrap(), seed, area).unwrap()
+    super::tests::built_once(Archetype::parse(archetype).unwrap(), seed, area, false)
 }
 
 fn file<'a>(b: &'a Built, name: &str) -> &'a str {
@@ -43,7 +43,7 @@ fn file<'a>(b: &'a Built, name: &str) -> &'a str {
 fn legacy_scripts_keep_their_bytes() {
     let mut wrong = Vec::new();
     for (name, archetype, seed, unit, value, hash) in SCRIPTS {
-        let got = fnv1a64(file(&built(archetype, seed, unit, value), "script.bimcraft.txt"));
+        let got = fnv1a64(file(built(archetype, seed, unit, value), "script.bimcraft.txt"));
         if got != hash {
             wrong.push(format!("(\"{name}\", {got})"));
         }
@@ -64,7 +64,7 @@ fn legacy_reports_keep_their_bytes() {
     for (archetype, seed, m2, hashes) in FILES {
         let b = built(archetype, seed, "m2", m2);
         for (name, hash) in ["report.json", "topology-graph.json", "building-ir.json"].into_iter().zip(hashes) {
-            let got = fnv1a64(file(&b, name));
+            let got = fnv1a64(file(b, name));
             if got != hash {
                 wrong.push(format!("{archetype} {name} {got}"));
             }
