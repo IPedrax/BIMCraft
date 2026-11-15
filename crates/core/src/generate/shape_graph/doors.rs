@@ -82,8 +82,8 @@ pub fn definition(family: &str, types: Map<String, Value>) -> Option<Value> {
     match family {
         super::super::house::FOLDING_FAMILY => Some(super::super::house::folding_family(types)),
         "Unequal Double Door" => {
-            // A wide leaf (two thirds of the clear width) on the left jamb and a narrow one (a third) on the right.
-            let (wide, narrow) = ("(Width - 2 * Frame Width) * 2 / 3", "(Width - 2 * Frame Width) / 3");
+            // A wide leaf (two thirds of the scheduled width) on the left jamb and a narrow one (a third) on the right.
+            let (wide, narrow) = ("Width * 2 / 3", "Width / 3");
             Some(make(
                 "double-swing",
                 vec![leaf_form(left, "-Width / 2 + Frame Width + 1", "20"), leaf_form(right, "Width / 2 - Frame Width - 1", "20")],
@@ -155,8 +155,7 @@ mod tests {
         assert_eq!(def["operation"], "double-swing");
         assert_eq!(def["category"], "door");
         assert_eq!(def["symbols"].as_array().map(Vec::len), Some(4));
-        // At the narrowest width (1200) the leaves are 733 and 367.
-        let clear = 1200.0 - 100.0;
-        assert!(clear * 2.0 / 3.0 - clear / 3.0 >= 200.0 && clear / 3.0 >= 300.0);
+        let text = def["symbols"].to_string();
+        assert!(text.contains("Width * 2 / 3") && text.contains("Width / 3"), "{text}");
     }
 }

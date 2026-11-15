@@ -4562,8 +4562,8 @@ fn a_door_familys_swing_is_drawn_in_plan_and_flips_with_the_door() {
         let lines = swing(s);
         assert_eq!(lines.len(), 1, "one arc");
         for p in &lines[0] {
-            // 700 from the hinge (the 800 opening less two 50 frames), on the side of the wall it swings to.
-            assert!((p.dist(hinge) - 700.0).abs() < 1.5, "{p:?} from {hinge:?}");
+            // 800 from the hinge: the plan leaf and swing show the scheduled door width, not the frame-clear gap.
+            assert!((p.dist(hinge) - 800.0).abs() < 1.5, "{p:?} from {hinge:?}");
             assert!((p.0 - hinge.0) * sign.0 >= -1.5 && (p.1 - hinge.1) * sign.1 >= -1.5, "{p:?} on the side {sign:?} of {hinge:?}");
         }
     };
