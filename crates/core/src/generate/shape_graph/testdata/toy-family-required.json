@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "family": "atelier",
+  "pack_id": null,
+  "building_type": "office",
+  "review": {
+    "status": "reviewed",
+    "note": "An invented family with kinds no built-in family has: its entry room must be joined to a room of the far end's cluster by a required link (Slice 6)."
+  },
+  "entry": {
+    "rooms": ["foyer"],
+    "doors": [1, 1],
+    "types": ["double"]
+  },
+  "rooms": {
+    "foyer": {
+      "kind": "foyer",
+      "role": "public",
+      "place": "entry_end",
+      "count": [1, 1],
+      "area_m2": [8.0, 55.0],
+      "max_side_ratio": 5.0,
+      "min_side_mm": 2800,
+      "max_links": 3
+    },
+    "lane": {
+      "kind": "lane",
+      "role": "circulation",
+      "place": "spine",
+      "count": [1, 1],
+      "area_m2": [3.0, 55.0],
+      "max_side_ratio": null,
+      "min_side_mm": 1200,
+      "max_links": 80
+    },
+    "arcade": {
+      "kind": "arcade",
+      "role": "circulation",
+      "place": "beside_parent",
+      "count": [1, 1],
+      "area_m2": [3.0, 55.0],
+      "max_side_ratio": 20.0,
+      "min_side_mm": 1200,
+      "max_links": 8
+    },
+    "cabinet": {
+      "kind": "cabinet",
+      "role": "shared",
+      "place": "off_spine",
+      "count": [1, 3],
+      "area_m2": [8.0, 45.0],
+      "max_side_ratio": 2.5,
+      "min_side_mm": 2600,
+      "max_links": 1
+    },
+    "closet": {
+      "kind": "closet",
+      "role": "private",
+      "place": "beside_parent",
+      "count": [1, 6],
+      "per": {"room": "arcade", "count": [1, 6]},
+      "area_m2": [2.0, 10.0],
+      "max_side_ratio": 3.0,
+      "min_side_mm": 1500,
+      "max_links": 1
+    },
+    "workroom": {
+      "kind": "workroom",
+      "role": "work",
+      "place": "spine_end",
+      "count": [1, 1],
+      "area_m2": [60.0, 300.0],
+      "max_side_ratio": 5.0,
+      "min_side_mm": 4200,
+      "max_links": 4
+    }
+  },
+  "links": [
+    {"from": "foyer", "to": "lane", "use": "parent", "types": ["double", "single"]},
+    {"from": "lane", "to": "cabinet", "use": "parent", "types": ["single"]},
+    {"from": "lane", "to": "workroom", "use": "parent", "types": ["single"]},
+    {"from": "workroom", "to": "arcade", "use": "parent", "types": ["open_full", "cased"]},
+    {"from": "arcade", "to": "closet", "use": "parent", "types": ["single"]},
+    {"from": "foyer", "to": "arcade", "use": "required", "types": ["single"]}
+  ]
+}

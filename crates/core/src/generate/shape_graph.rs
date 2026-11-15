@@ -19,6 +19,8 @@ mod layout;
 mod links;
 mod plan;
 #[cfg(test)]
+mod required_tests;
+#[cfg(test)]
 pub(crate) mod register_tests;
 mod tags;
 #[cfg(test)]

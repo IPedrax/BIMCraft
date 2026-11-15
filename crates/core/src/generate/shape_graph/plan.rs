@@ -226,6 +226,7 @@ pub fn clusters(g: &Graph) -> (Option<Cl>, Option<Cl>, Vec<Group>) {
             head: i,
             kids: g.strip[i].iter().map(|k| mk(g, *k)).collect(),
             need: g.ltypes.get(&i).and_then(|t| t.iter().map(|c| c.need()).min()).unwrap_or(0),
+            goal: None,
         }
     }
     fn chain(g: &Graph, mut j: usize) -> Vec<usize> {

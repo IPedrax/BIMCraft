@@ -88,6 +88,25 @@ pub struct Cl {
     pub kids: Vec<Cl>,
     /// The shortest wall the head's link needs.
     pub need: i64,
+    /// A room of the cluster (the head, or one inside its cell) that must touch the named wall of the cell: a `required` link
+    /// with a room across that wall.
+    pub goal: Option<(usize, Wall)>,
+}
+
+/// A wall of a cell, in its own frame: the front (v = 0), the back, the left (u = 0) and the right.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Wall {
+    Front,
+    Back,
+    Left,
+    Right,
+}
+
+impl Cl {
+    /// Whether `room` is the head or stands inside this cluster's cell.
+    pub fn holds(&self, room: usize) -> bool {
+        self.head == room || self.kids.iter().any(|k| k.holds(room))
+    }
 }
 
 /// A cluster, and whether its head must reach its left and its right wall (a neighbour it is linked to).
@@ -101,7 +120,7 @@ pub type Local = (usize, i64, i64, i64, i64);
 pub type Range = (i64, i64);
 
 /// A cluster's front range by its head, the depth and the walls it must reach.
-type Cache = BTreeMap<(usize, i64, bool, bool), Option<Range>>;
+type Cache = BTreeMap<(usize, i64, bool, bool, Option<Wall>), Option<Range>>;
 
 pub struct Fitter<'a> {
     pub types: &'a [Ty],
@@ -157,6 +176,36 @@ impl<'a> Fitter<'a> {
                 continue;
             }
             let (length, across) = if mode == 0 { (f, d) } else { (d, f) };
+            // Which wall of a child's cell is the wanted wall of this one, if a room must touch it.
+            let mut kid_goal: Vec<Option<(usize, Wall)>> = vec![None; cl.kids.len()];
+            if let Some((room, wall)) = cl.goal {
+                if room == cl.head {
+                    let lost = match mode {
+                        0 => Wall::Back,
+                        1 => Wall::Right,
+                        _ => Wall::Left,
+                    };
+                    if wall == lost {
+                        continue;
+                    }
+                } else {
+                    let Some(ki) = cl.kids.iter().position(|k| k.holds(room)) else { continue };
+                    let last = ki + 1 == cl.kids.len();
+                    let first = ki == 0;
+                    let w = match (mode, wall) {
+                        (0, Wall::Back) => Some(Wall::Back),
+                        (0, Wall::Left) if first => Some(Wall::Left),
+                        (0, Wall::Right) if last => Some(Wall::Right),
+                        (1, Wall::Right) => Some(Wall::Back),
+                        (2, Wall::Left) => Some(Wall::Back),
+                        (1 | 2, Wall::Front) if first => Some(Wall::Left),
+                        (1 | 2, Wall::Back) if last => Some(Wall::Right),
+                        _ => None,
+                    };
+                    let Some(w) = w else { continue };
+                    kid_goal[ki] = Some((room, w));
+                }
+            }
             let mut lens = Vec::new();
             let mut used = 0;
             for (i, gi) in g.iter().enumerate() {
@@ -201,8 +250,9 @@ impl<'a> Fitter<'a> {
                 let mut out = Vec::new();
                 let mut pos = 0;
                 let mut ok = true;
-                for (k, li) in cl.kids.iter().zip(&lens) {
-                    let Some(sub) = self.fit(k, *li, t, (false, false), None, 0) else {
+                for ((k, li), goal) in cl.kids.iter().zip(&lens).zip(&kid_goal) {
+                    let kid = Cl { goal: *goal, ..k.clone() };
+                    let Some(sub) = self.fit(&kid, *li, t, (false, false), None, 0) else {
                         ok = false;
                         break;
                     };
@@ -232,16 +282,18 @@ impl<'a> Fitter<'a> {
 
     /// The fronts a cluster can have in a cell `d` deep: the shortest and the longest.
     pub fn frange(&self, cl: &Cl, d: i64, lat: (bool, bool)) -> Option<Range> {
-        let key = (cl.head, d, lat.0, lat.1);
+        let key = (cl.head, d, lat.0, lat.1, cl.goal.map(|g| g.1));
         if let Some(hit) = self.cache.borrow().get(&key) {
             return *hit;
         }
         let found = if cl.kids.is_empty() {
             Self::other(self.spec(cl.head), d)
         } else {
-            let mut ok = (900..=14_000).step_by(100).filter(|f| self.fit(cl, *f, d, lat, None, 0).is_some());
-            let first = ok.next();
-            first.map(|a| (a, ok.last().unwrap_or(a)))
+            // A cluster that must reach a wall may fill a whole side of the plan: its fronts are scanned further.
+            let most = if cl.goal.is_some() { 40_000 } else { 14_000 };
+            let fits = |f: &i64| self.fit(cl, *f, d, lat, None, 0).is_some();
+            let first = (900..=most).step_by(100).find(fits);
+            first.map(|a| (a, (a..=most).rev().step_by(100).find(fits).unwrap_or(a)))
         };
         self.cache.borrow_mut().insert(key, found);
         found
