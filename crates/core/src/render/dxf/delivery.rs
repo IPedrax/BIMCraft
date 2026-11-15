@@ -88,7 +88,7 @@ fn is_swing(chords: &[P2], pts: &[P2]) -> bool {
 
 /// `ink` as the arc it is the chords of, if one of `arcs` (moved by `shift` like the drawing) is: counter-clockwise from the
 /// angle of its first end to its last, or the other way round for one drawn clockwise (a mirrored door). A swing that something
-/// has cut short is the arc it still covers.
+/// has cut into pieces is the whole arc in each piece: the pieces make one arc ([`super::blocks`] keeps it once).
 pub(super) fn as_arc(ink: &Ink, arcs: &[(P2, Vec<P2>)], shift: P2) -> Option<Ink> {
     let Shape::Line { pts, closed: false, weight } = &ink.shape else { return None };
     arcs.iter().find_map(|(centre, chords)| {
@@ -98,9 +98,9 @@ pub(super) fn as_arc(ink: &Ink, arcs: &[(P2, Vec<P2>)], shift: P2) -> Option<Ink
             return None;
         }
         let c = moved(centre);
-        let (a, b, z) = (pts[0] - c, pts[1] - c, pts[pts.len() - 1] - c);
-        let r = chords[0] - c;
-        let radius = r.0.hypot(r.1);
+        // The whole swing's ends, not the stroke's: whatever cut a piece off (a room's lettering over it) does not shorten the arc.
+        let (a, b, z) = (chords[0] - c, chords[1] - c, chords[chords.len() - 1] - c);
+        let radius = a.0.hypot(a.1);
         if !(radius.is_finite() && radius > 0.0) {
             return None;
         }
@@ -141,18 +141,21 @@ mod tests {
         assert!((from - 90.0).abs() < 0.1 && (to - 180.0).abs() < 0.1 && (radius - 800.0).abs() < 0.1, "{from} {to} {radius}");
     }
 
-    /// A swing that something drawn over it has cut short (a wall it swings into) is still that swing's arc, to where it stops.
+    /// A swing something drawn over it has cut into pieces (a room's lettering) is the whole arc in each piece, so a block keeps one.
     #[test]
-    fn a_swing_cut_short_is_the_arc_it_still_covers() {
+    fn a_swing_cut_into_pieces_is_one_whole_arc() {
         let (c, chords) = swing();
-        // From the middle of the fourth chord to the end: the first points are gone, and the first stroke point is not a vertex.
-        let mid = P2((chords[3].0 + chords[4].0) / 2.0, (chords[3].1 + chords[4].1) / 2.0);
-        let mut cut = vec![mid];
-        cut.extend(chords[4..].iter().copied());
-        let got = as_arc(&ink(cut), &[(c, chords)], P2(0.0, 0.0)).expect("an arc");
-        let Shape::Arc { from, to, .. } = got.shape else { panic!("not an arc") };
-        let start = 90.0 + 90.0 * 3.5 / 24.0;
-        assert!((from - start).abs() < 0.2 && (to - 180.0).abs() < 0.1, "{from} {to}");
+        let mid = |i: usize| P2((chords[i].0 + chords[i + 1].0) / 2.0, (chords[i].1 + chords[i + 1].1) / 2.0);
+        // The first piece ends in the middle of the fourth chord; the second begins in the middle of the tenth.
+        let mut first: Vec<P2> = chords[..=3].to_vec();
+        first.push(mid(3));
+        let mut second = vec![mid(9)];
+        second.extend(chords[10..].iter().copied());
+        for piece in [first, second] {
+            let got = as_arc(&ink(piece), &[(c, chords.clone())], P2(0.0, 0.0)).expect("an arc");
+            let Shape::Arc { from, to, radius, .. } = got.shape else { panic!("not an arc") };
+            assert!((from - 90.0).abs() < 0.1 && (to - 180.0).abs() < 0.1 && (radius - 800.0).abs() < 0.1, "{from} {to} {radius}");
+        }
     }
 
     #[test]

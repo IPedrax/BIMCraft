@@ -1,6 +1,6 @@
 //! The built-in office families are data: each is read with its pack, and the studio's nine pinned plans are built from the file.
 
-use super::family::{self, Family};
+use super::family::{self, Family, Use};
 use super::{Interior, Request, build};
 
 const STUDIO_PLANS: [(&str, i64); 9] = [
@@ -40,10 +40,15 @@ fn the_studio_office_builds_in_every_shape_with_its_reception_joined_to_the_pass
         assert_eq!(built.rooms, rooms as usize, "{shape}");
         let graph = built.files.iter().find(|(n, _)| *n == "topology-graph.json").map(|(_, t)| t.clone()).unwrap_or_default();
         let g: serde_json::Value = serde_json::from_str(&graph).expect("a graph");
+        // The pair the file's one required link names (each of those types has one room, whose id is the type's key).
+        let fam = Family::parse(family::builtin("studio-office").expect("built in")).expect("parses");
+        let required: Vec<_> = fam.links.iter().filter(|l| l.use_ == Use::Required).collect();
+        assert_eq!(required.len(), 1);
+        let (a, b) = (fam.types[required[0].from].key.as_str(), fam.types[required[0].to].key.as_str());
         let joined = g["edges"].as_array().into_iter().flatten().any(|e| {
             let ends = [e["from"].as_str().unwrap_or(""), e["to"].as_str().unwrap_or("")];
-            ends.contains(&"reception") && ends.contains(&"passage")
+            ends.contains(&a) && ends.contains(&b)
         });
-        assert!(joined, "{shape} {rooms}: reception and passage share no link");
+        assert!(joined, "{shape} {rooms}: {a} and {b} share no link");
     }
 }
