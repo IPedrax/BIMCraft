@@ -474,7 +474,7 @@ const SHORTCUTS: [(&str, &str); 58] = [
 
 /// Removes the key events a shortcut took, so no other handler runs the same command. Matching is
 /// on the event's logical key, its physical key and its exact modifiers.
-fn consume_key_events(ctx: &Context, handled: &[(Key, Option<Key>, Modifiers)]) {
+pub(crate) fn consume_key_events(ctx: &Context, handled: &[(Key, Option<Key>, Modifiers)]) {
     if handled.is_empty() {
         return;
     }
@@ -489,23 +489,23 @@ fn consume_key_events(ctx: &Context, handled: &[(Key, Option<Key>, Modifiers)]) 
     });
 }
 
-/// How long a letter typed with Ctrl held waits for a second one before it does its own job as a Ctrl key (S saves, Z
-/// undoes): a second letter in time makes the two a shortcut (Ctrl held, S then A: Select All Instances). Letting Ctrl go
-/// ends the wait at once.
-pub(crate) const CTRL_WAIT: f64 = 0.5;
+/// How long a letter typed without a modifier waits for the next one of its sequence (W for Wall): past it the letter is
+/// forgotten, so a stray key never completes a pair much later.
+pub(crate) const SEQUENCE_WAIT: f64 = 2.0;
 
-/// The letters and digits typed this frame with Ctrl held (Cmd on a Mac) and no other modifier, taken out of the frame's
-/// events, upper case: BIMCraft's shortcuts are two of them, as Revit's are two letters. They are read by their physical
-/// key, so a Russian layout types the same shortcuts; the family document's own keys come this way.
-pub(crate) fn ctrl_letters(ctx: &Context) -> Vec<char> {
+/// The letters and digits typed this frame without Ctrl, Alt or Cmd, taken out of the frame's events, upper case: a
+/// sequence is two or three of them, typed as Revit's are (`WA` for Wall), with or without Shift. They are read by their
+/// physical key, so a Russian layout types the same sequences; the family document's own keys come this way. A key held
+/// with Ctrl is no part of a sequence: it is the combination Keyboard Shortcuts gave it, or nothing at all.
+pub(crate) fn sequence_letters(ctx: &Context) -> Vec<char> {
     ctx.input_mut(|i| {
         let events = std::mem::take(&mut i.events);
         let mut out = Vec::new();
         let mut kept = Vec::with_capacity(events.len());
         for event in events {
             match &event {
-                Event::Key { key, physical_key, pressed: true, modifiers, .. }
-                    if modifiers.command && !modifiers.shift && !modifiers.alt =>
+                Event::Key { key, physical_key, pressed: true, repeat: false, modifiers, .. }
+                    if !modifiers.ctrl && !modifiers.alt && !modifiers.mac_cmd && !modifiers.command =>
                 {
                     let name = physical_key.unwrap_or(*key).name();
                     let mut chars = name.chars();
@@ -514,11 +514,6 @@ pub(crate) fn ctrl_letters(ctx: &Context) -> Vec<char> {
                         _ => kept.push(event),
                     }
                 }
-                // egui-winit sends the primary modifier's C, X and V as these events, not key events; the family
-                // document's keys come from the same registry, so they are its letters too.
-                Event::Copy => out.push('C'),
-                Event::Cut => out.push('X'),
-                Event::Paste(_) => out.push('V'),
                 _ => kept.push(event),
             }
         }
@@ -877,7 +872,8 @@ pub struct BimApp {
     edit: Option<(Id, String, String)>,
     /// The Level tool's elevation and name, as typed in the Options Bar.
     new_level: (String, String),
-    /// The letters typed with Ctrl held, for two-letter shortcuts: one waits for a second ([`CTRL_WAIT`]).
+    /// The letters typed without a modifier, for the two- and three-key sequences (`WA` for Wall): one waits for the next
+    /// ([`SEQUENCE_WAIT`]).
     typed: String,
     /// When the one letter in `typed` was typed, by the window's clock.
     typed_at: f64,
@@ -2386,20 +2382,20 @@ impl BimApp {
             return;
         }
         if ctx.input(|i| i.pointer.any_click()) {
-            self.shortcuts.clear_sequence();
+            self.typed.clear();
         }
         let events: Vec<Event> = ctx.input(|i| i.events.clone());
         // A text field keeps its letters, but Save, Save As, Open, New, Find and Settings may be
         // pressed there: they do not take text away.
         if ctx.egui_wants_keyboard_input() {
-            self.shortcuts.clear_sequence();
             self.typed.clear();
             self.global_shortcuts(ctx, &events);
             return;
         }
 
         // Chords first: an exact match, on the physical key, so Ctrl+D and Ctrl+Shift+D are two
-        // different bindings and a Russian layout still gives Ctrl+D.
+        // different bindings and a Russian layout still gives Ctrl+D. Ctrl is never part of a sequence:
+        // a combination runs only when Keyboard Shortcuts assigned it.
         let mut handled: Vec<(Key, Option<Key>, Modifiers)> = Vec::new();
         for event in &events {
             let Event::Key { key, physical_key, pressed: true, repeat: false, modifiers, .. } = event else { continue };
@@ -2407,18 +2403,14 @@ impl BimApp {
             // While sketching, Ctrl+Z takes back a line; the model's Undo waits for Finish.
             if self.sketch.is_some() && modifiers.command && !modifiers.shift && !modifiers.alt && physical == Key::Z {
                 handled.push((*key, *physical_key, *modifiers));
-                self.shortcuts.clear_sequence();
+                self.typed.clear();
                 self.unsketch();
-                continue;
-            }
-            // A letter typed with Ctrl alone is a shortcut's first key, and waits for its second ([`BimApp::ctrl_shortcuts`]).
-            if modifiers.command && !modifiers.shift && !modifiers.alt && shortcuts::is_sequence_key(physical) {
                 continue;
             }
             let chord = shortcuts::KeyChord::from_event(physical, *modifiers);
             if let Some(action) = self.shortcuts.action_for_chord(&chord).cloned() {
                 handled.push((*key, *physical_key, *modifiers));
-                self.shortcuts.clear_sequence();
+                self.typed.clear();
                 self.run_shortcut(ctx, &action);
             }
         }
@@ -2427,7 +2419,7 @@ impl BimApp {
         // Contextual keys of a tool: Esc, Enter, Tab, Backspace, Space and the arrows are reserved.
         let pressed = |m: Modifiers, k: Key| ctx.input_mut(|i| i.consume_key(m, k));
         if pressed(Modifiers::NONE, Key::Escape) {
-            self.shortcuts.clear_sequence();
+            self.typed.clear();
             if !self.cancel_pattern_pick() {
                 self.escape();
             }
@@ -2529,23 +2521,18 @@ impl BimApp {
             }
         }
 
-        // Shortcuts are typed with Ctrl held (Cmd on a Mac), as Revit's two letters are two on a keyboard's row: two
-        // letters, or the chord a key has on its own. A tool's length input keeps the letters, so only chords act then.
-        self.ctrl_shortcuts(ctx, self.typed_length.is_empty());
-        self.ctrl_waited(ctx);
+        // A sequence is typed on the keyboard's row without Ctrl (W and A for Wall), as Revit's are; a tool taking a
+        // typed length keeps the digits and the letters after them, so a length never becomes a sequence.
+        let listening = self.base().is_some() || self.filleting() || self.rotating();
+        self.sequences(ctx, listening);
+        self.sequence_waited(ctx);
     }
 
-    /// The letters and digits typed this frame with Ctrl held and no other modifier: one that starts a sequence waits
-    /// for its second letter, and one that does not runs the chord its key has at once. `sequences` is false while a
-    /// tool's typed length takes the letters, when only the chords act.
-    fn ctrl_shortcuts(&mut self, ctx: &Context, sequences: bool) {
-        if !sequences {
-            while let Some(letter) = self.typed.chars().next() {
-                self.typed.remove(0);
-                self.ctrl_key(ctx, letter);
-            }
-        }
-        let waiting = !self.typed.is_empty();
+    /// The sequence keys typed this frame: one that starts a two- or three-key binding waits for the next, and one that
+    /// starts none is dropped. Only Ctrl-free keys come here, so a combination runs solely as Keyboard Shortcuts
+    /// assigned it; `listening` is true while a tool takes a typed length, when a digit is the length's and no sequence's.
+    fn sequences(&mut self, ctx: &Context, listening: bool) {
+        let taking = !self.typed_length.is_empty();
         let letters = ctx.input_mut(|i| {
             let events = std::mem::take(&mut i.events);
             let mut out = Vec::new();
@@ -2553,55 +2540,46 @@ impl BimApp {
             for event in events {
                 let letter = match &event {
                     Event::Key { key, physical_key, pressed: true, repeat: false, modifiers, .. }
-                        if modifiers.command && !modifiers.shift && !modifiers.alt =>
+                        if !modifiers.ctrl && !modifiers.alt && !modifiers.mac_cmd && !modifiers.command =>
                     {
                         let physical = physical_key.unwrap_or(*key);
-                        crate::shortcuts::is_sequence_key(physical).then_some((physical, false))
+                        crate::shortcuts::is_sequence_key(physical).then_some(physical)
                     }
-                    // egui-winit turns the primary modifier's C, X and V into these events, not key events, so on a
-                    // view they are the letters a sequence needs. A text field or a note takes the frame before this
-                    // path, so its clipboard is left alone.
-                    Event::Copy if sequences => Some((Key::C, true)),
-                    Event::Cut if sequences => Some((Key::X, true)),
-                    Event::Paste(_) if sequences => Some((Key::V, true)),
                     _ => None,
                 };
-                let Some((letter, clipboard)) = letter else {
+                let Some(physical) = letter else {
                     kept.push(event);
                     continue;
                 };
-                // A clipboard event is a letter only where this sequence can use it: it starts one, or completes the
-                // letter before it in this frame or the one waiting from the last; elsewhere it stays as it is.
-                let starts = self.typed.is_empty() && self.shortcuts.sequence_starts_with(letter);
-                if clipboard && !(waiting || !out.is_empty() || starts) {
+                // A digit is a typed length while a tool takes one, and a letter after one is the length's too.
+                let digit = physical.name().chars().next().is_some_and(|c| c.is_ascii_digit());
+                if taking || (listening && digit) {
                     kept.push(event);
                     continue;
                 }
-                out.push(letter);
+                out.push(physical);
             }
             i.events = kept;
             out
         });
         for physical in letters {
-            // A letter that starts a sequence, or continues the one waiting, is part of it.
-            if !sequences || (self.typed.is_empty() && !self.shortcuts.sequence_starts_with(physical)) {
-                let chord = crate::shortcuts::KeyChord::new(physical, true, false, false, false);
-                if let Some(action) = self.shortcuts.action_for_chord(&chord).cloned() {
-                    self.run_shortcut(ctx, &action);
-                }
-                continue;
-            }
             let Some(letter) = physical.name().chars().next() else { continue };
-            self.ctrl_letter(ctx, letter);
+            self.sequence_letter(ctx, letter);
         }
     }
 
-    /// A letter typed with Ctrl held: with the one before it, a shortcut; if the two aren't one, the first does its own job
-    /// as a Ctrl key ([`BimApp::ctrl_key`]) and the second waits in its place.
-    fn ctrl_letter(&mut self, ctx: &Context, letter: char) {
+    /// A sequence key typed: with the one before it, a shortcut; if the two are no binding, the first is dropped and the
+    /// second waits in its place. A plain letter that no sequence names does nothing at all.
+    fn sequence_letter(&mut self, ctx: &Context, letter: char) {
         self.typed.push(letter);
         self.typed_at = ctx.input(|i| i.time);
         loop {
+            // A letter that begins no binding is no part of a sequence, and is dropped at once.
+            let first_started = self.typed.chars().next().and_then(crate::shortcuts::key_of_char);
+            if first_started.is_some_and(|k| !self.shortcuts.sequence_starts_with(k)) {
+                self.typed.remove(0);
+                continue;
+            }
             if self.typed.len() < 2 {
                 return;
             }
@@ -2614,36 +2592,24 @@ impl BimApp {
             if self.typed.len() == 2 && self.shortcuts.text_starts_three(&self.typed) {
                 return;
             }
-            let first = self.typed.remove(0);
-            self.ctrl_key(ctx, first);
+            // The first letter began no binding: it is dropped, and the one after it waits in its place.
+            self.typed.remove(0);
         }
     }
 
-    /// A letter left waiting for a second does its own job once Ctrl is let go, or after [`CTRL_WAIT`] with Ctrl still held; so
-    /// do the letters of a pair that a third would have completed.
-    fn ctrl_waited(&mut self, ctx: &Context) {
+    /// A letter left waiting for its second is forgotten after [`SEQUENCE_WAIT`], so a stray key never completes a pair
+    /// much later.
+    fn sequence_waited(&mut self, ctx: &Context) {
         if self.typed.is_empty() {
             return;
         }
-        let (held, now) = ctx.input(|i| (i.modifiers.command, i.time));
-        let left = CTRL_WAIT - (now - self.typed_at);
-        if held && left > 0.0 {
+        let now = ctx.input(|i| i.time);
+        let left = SEQUENCE_WAIT - (now - self.typed_at);
+        if left > 0.0 {
             ctx.request_repaint_after(std::time::Duration::from_secs_f64(left));
             return;
         }
-        while let Some(letter) = self.typed.chars().next() {
-            self.typed.remove(0);
-            self.ctrl_key(ctx, letter);
-        }
-    }
-
-    /// What a letter typed with Ctrl does on its own: the chord its key has in the registry (S saves, O opens, N makes a
-    /// new project, K finds a command, P exports a PDF, D shows the start page, Z undoes, Y redoes, 1 shows Properties).
-    fn ctrl_key(&mut self, ctx: &Context, letter: char) {
-        let Some(key) = crate::shortcuts::key_of_char(letter) else { return };
-        let chord = crate::shortcuts::KeyChord::new(key, true, false, false, false);
-        let Some(action) = self.shortcuts.action_for_chord(&chord).cloned() else { return };
-        self.run_shortcut(ctx, &action);
+        self.typed.clear();
     }
 
     /// Runs the action a shortcut names, saying so in the status bar when it has nothing to do here.
@@ -2676,7 +2642,7 @@ impl BimApp {
                 continue;
             }
             handled.push((*key, *physical_key, *modifiers));
-            self.shortcuts.clear_sequence();
+            self.typed.clear();
             self.execute_action(ctx, &action);
         }
         consume_key_events(ctx, &handled);

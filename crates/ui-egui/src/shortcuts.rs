@@ -10,7 +10,6 @@ use crate::popup::Modal;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock, RwLock};
-use std::time::{Duration, Instant};
 
 use bimcraft_core::geom::P2;
 use bimcraft_core::snap::Kind as Snap;
@@ -1429,8 +1428,6 @@ pub struct Shortcuts {
     by_chord: HashMap<KeyChord, ActionId>,
     by_sequence: HashMap<[Key; 2], ActionId>,
     by_sequence3: HashMap<[Key; 3], ActionId>,
-    sequence: Vec<Key>,
-    sequence_at: Option<Instant>,
 }
 
 impl Default for Shortcuts {
@@ -1453,8 +1450,6 @@ impl Shortcuts {
             by_chord: HashMap::new(),
             by_sequence: HashMap::new(),
             by_sequence3: HashMap::new(),
-            sequence: Vec::new(),
-            sequence_at: None,
         };
         for a in registry().actions() {
             if !a.kind.bindable() {
@@ -1501,8 +1496,6 @@ impl Shortcuts {
             by_chord: HashMap::new(),
             by_sequence: HashMap::new(),
             by_sequence3: HashMap::new(),
-            sequence: Vec::new(),
-            sequence_at: None,
         }
     }
 
@@ -1531,7 +1524,7 @@ impl Shortcuts {
         }
     }
 
-    /// Whether a physical key starts a two- or three-key binding, so a letter typed with Ctrl held begins a shortcut.
+    /// Whether a physical key starts a two- or three-key binding, so a letter typed plainly begins a shortcut.
     pub fn sequence_starts_with(&self, key: Key) -> bool {
         self.by_sequence.keys().any(|k| k[0] == key) || self.by_sequence3.keys().any(|k| k[0] == key)
     }
@@ -1710,45 +1703,6 @@ impl Shortcuts {
             }
         }
         s
-    }
-
-    /// Starts a two-key sequence with `key`; a complete pair returns the action it names.
-    pub fn push_sequence(&mut self, key: Key) -> Option<ActionId> {
-        if self.sequence_at.is_some_and(|at| at.elapsed() > Duration::from_secs(2)) {
-            self.sequence.clear();
-        }
-        self.sequence_at = Some(Instant::now());
-        if self.sequence.len() >= 3 {
-            self.sequence.clear();
-        }
-        self.sequence.push(key);
-        match self.sequence.len() {
-            2 => {
-                let pair = [self.sequence[0], self.sequence[1]];
-                if let Some(action) = self.by_sequence.get(&pair) {
-                    let action = action.clone();
-                    self.sequence.clear();
-                    return Some(action);
-                }
-                // A three-key binding may still follow (`BMM`): keep the pair only when one starts so.
-                let starts_three = self.by_sequence3.keys().any(|k| k[0] == pair[0] && k[1] == pair[1]);
-                if !starts_three {
-                    self.sequence.clear();
-                }
-                None
-            }
-            3 => {
-                let keys = [self.sequence[0], self.sequence[1], self.sequence[2]];
-                self.sequence.clear();
-                self.by_sequence3.get(&keys).cloned()
-            }
-            _ => None,
-        }
-    }
-
-    pub fn clear_sequence(&mut self) {
-        self.sequence.clear();
-        self.sequence_at = None;
     }
 
     /// The first `n` bindings, as the dialog, Find and tooltips show them.
@@ -2640,7 +2594,7 @@ impl BimApp {
             crate::popup::body(ui, |ui| {
                 ui.add_space(4.0);
                 ui.label(
-                    RichText::new(t("Shortcuts are typed with Ctrl held (Cmd on a Mac): Ctrl, then W and A for Wall.")).color(pal().muted),
+                    RichText::new(t("Two- and three-key shortcuts are typed plainly, W then A for Wall. A combination runs only as it is assigned here: Ctrl+D does nothing until it is.")).color(pal().muted),
                 );
                 ui.add_space(4.0);
                 ui.horizontal(|ui| {
@@ -3486,9 +3440,8 @@ mod tests {
         let mut s = Shortcuts::empty(Profile::Custom);
         let id = registry().resolve("cmd.beam").unwrap();
         s.add_binding(&id, parse_binding("BMM").unwrap(), true).unwrap();
-        assert!(s.push_sequence(Key::B).is_none());
-        assert!(s.push_sequence(Key::M).is_none(), "the pair waits for a third key");
-        assert_eq!(s.push_sequence(Key::M), Some(id));
+        assert!(s.text_starts_three("BM"), "the pair waits for a third key");
+        assert_eq!(s.action_for_text("BMM"), Some(id));
     }
 
     #[test]

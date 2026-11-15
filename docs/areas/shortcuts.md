@@ -4,7 +4,7 @@ Keyboard shortcuts are application settings, not project settings: they live in 
 
 ## What can be assigned
 
-A binding is either a **chord** (`Ctrl+D`, `Ctrl+Shift+D`, `Alt+F3`, `F8`) or a **sequence** of two or three keys (`WA`, `MV`, `KS`, `BMM`), typed with Ctrl held. One action may have several bindings (up to 32), and all of them work.
+A binding is either a **chord** (`Ctrl+D`, `Ctrl+Shift+D`, `Alt+F3`, `F8`) or a **sequence** of two or three keys (`WA`, `MV`, `KS`, `BMM`), typed plainly on the keyboard. One action may have several bindings (up to 32), and all of them work.
 
 Every action has a stable identifier:
 
@@ -19,7 +19,7 @@ The label in the interface may be translated; the identifier never is. Files and
 Chords and sequences are read from the **physical key position**, not from the character produced by the active layout. Therefore:
 
 - `Ctrl+D` on a US layout and `Ctrl+В` on a Russian layout are the same key;
-- `Ctrl+W, A` works on a Russian layout too (physically the same `W` and `A` keys);
+- `Ctrl+W, A` is not a chord: `W` and `A` are two plain keys, and Ctrl is held for neither;
 - changing the layout while the window is open changes nothing;
 - the interface shows the canonical form, followed in parentheses by what the interface language's keyboard layout prints on the same physical keys, when any differ: `Ctrl+Z (Ctrl+Y)` in German or Czech (QWERTZ), `WA (ZQ)` in French (AZERTY), `Ctrl+; (Ctrl+Ñ)` in Spanish, `Ctrl+' (Ctrl+À)` in Italian, `Ctrl+; (Ctrl+Ç)` in Portuguese (Brazil) and `Ctrl+1 (Ctrl+Ă)` in Vietnamese;
 - English and Chinese print the US keys, so their hints are the canonical form alone; a binding whose keys all print what the US layout prints never gets parentheses;
@@ -29,15 +29,15 @@ Modifiers are matched **exactly**: `Ctrl+D` and `Ctrl+Shift+D` are different bin
 
 ## Typing a sequence
 
-Sequences are typed with Ctrl held (Cmd on a Mac): Ctrl, then `W` and `A` for Wall. Letters typed without Ctrl are no shortcut; digits and a unit still make a typed length.
+Sequences are typed plainly, without Ctrl (Cmd on a Mac): `W` and `A` for Wall, a letter at a time. A key held with Ctrl, Alt or Cmd is never part of a sequence: it runs only the chord Keyboard Shortcuts assigned it, and does nothing when none was assigned. Digits and a unit still make a typed length while a tool takes one, and a letter typed after them belongs to the length.
 
-The window hands Ctrl+C, Ctrl+X and Ctrl+V to the system as Copy, Cut and Paste, so on a view those three count as the letters `C`, `X` and `V` for a sequence: `CO` Copy, `MV` Move, `TX` Text. A text field and the note editor keep the clipboard: Ctrl+C copies there, and no sequence is typed.
+Ctrl+C, Ctrl+X and Ctrl+V stay the system's clipboard: a text field, the note editor and the view all copy, cut and paste with them, and they never type a sequence. The letters `C`, `X` and `V` are typed plainly instead (`CO` Copy, `MV` Move, `TX` Text).
 
-A letter that is also a chord of its own — `S` (Save), `O` (Open), `N` (New), `K` (Find), `P` (Export PDF), `Z` (Undo), `D` (Home), `1` (Properties) — waits half a second for a second letter, and runs its chord when none comes or Ctrl is let go. So Ctrl+S then A is Select All Instances, and Ctrl+Z, Z, Z undoes three times. A Ctrl key that begins no sequence (`Ctrl+Y`, `Ctrl+1`) runs at once and needs no second letter.
+A plain letter that begins no sequence does nothing on the view. A letter that begins one waits for the next for two seconds; if the second makes no binding, the first is dropped and the second waits in its place.
 
-If the two letters are no shortcut, the first does its own job and the second waits in its place. In a text field Ctrl's keys belong to the field but for Save, Save As, Open, New, Find, Settings, Export PDF and Properties, which act there at once, and no sequence is typed.
+In a text field the letters belong to the field and no sequence is typed; the chords assigned there still act — Save, Save As, Open, New, Find, Settings, Export PDF and Properties.
 
-The interface names a sequence by its keys alone (`WA`, `SA`, `KS`), as Revit does; Ctrl is what you hold to type it, and the dialog, the tooltips and the Markdown help show the pair.
+The interface names a sequence by its keys alone (`WA`, `SA`, `KS`), as Revit does; nothing is held to type it, and the dialog, the tooltips and the Markdown help show the pair.
 
 ## Where to edit them
 

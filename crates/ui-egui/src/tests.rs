@@ -316,18 +316,16 @@ fn key(h: &mut Harness<BimApp>, k: Key) {
 }
 
 /// Letters typed over the view: a two-letter shortcut, read from the physical keys as the window does.
-/// `letters` typed with Ctrl held, as BIMCraft's shortcuts are: each key goes down and up in turn, as a hand does,
-/// so the second `P` of `PP` is no key repeat.
+/// The keys go down and up in turn, as a hand does, with no modifier: a sequence is typed plainly, and Ctrl is left to the
+/// combinations Keyboard Shortcuts assigned.
 fn shortcut(h: &mut Harness<BimApp>, letters: &str) {
     let keys: Vec<Key> = letters.chars().filter_map(|c| Key::from_name(&c.to_ascii_uppercase().to_string())).collect();
     assert_eq!(keys.len(), letters.chars().count(), "every letter of {letters} is a key");
-    h.input_mut().events.push(Event::ModifiersChanged(Modifiers::COMMAND));
     for key in keys {
         for pressed in [true, false] {
-            h.input_mut().events.push(Event::Key { key, pressed, modifiers: Modifiers::COMMAND, repeat: false, physical_key: None });
+            h.input_mut().events.push(Event::Key { key, pressed, modifiers: Modifiers::NONE, repeat: false, physical_key: None });
         }
     }
-    h.input_mut().events.push(Event::ModifiersChanged(Modifiers::NONE));
     h.run();
 }
 
@@ -872,51 +870,90 @@ fn the_selection_stays_as_views_change_and_a_schedule_shows_and_picks_it() {
 }
 
 #[test]
-fn a_ctrl_key_of_its_own_waits_for_a_second_letter_and_does_its_job_when_none_comes() {
+fn a_ctrl_chord_runs_at_once_and_ctrl_is_never_part_of_a_sequence() {
     let mut h = app("");
     for y in [0, 3000, 6000] {
         h.state_mut().session.execute("wall", &json!({"points": [[0, y], [4000, y]]})).unwrap();
     }
     h.run();
     let walls = |h: &Harness<BimApp>| ids(h, "wall").len();
-    // Ctrl held, Z, and still held: Z waits for a second letter.
+    // Ctrl+Z is the Undo chord: it runs the moment the key goes down, with no wait for a second letter.
+    let chord = |h: &mut Harness<BimApp>, key: Key, command: Modifiers| {
+        for pressed in [true, false] {
+            h.input_mut().events.push(Event::Key { key, pressed, modifiers: command, repeat: false, physical_key: None });
+        }
+    };
     h.input_mut().events.push(Event::ModifiersChanged(Modifiers::COMMAND));
-    h.input_mut().events.push(Event::Key { key: Key::Z, pressed: true, modifiers: Modifiers::COMMAND, repeat: false, physical_key: None });
+    chord(&mut h, Key::Z, Modifiers::COMMAND);
     h.step();
-    h.input_mut().events.push(Event::Key { key: Key::Z, pressed: false, modifiers: Modifiers::COMMAND, repeat: false, physical_key: None });
-    assert_eq!(walls(&h), 3, "not yet undone");
-    // None comes: after the wait (a step is a quarter of a second here), Z undoes.
-    h.run_steps(3);
-    assert_eq!(walls(&h), 2, "undone once the wait is over");
-    // Z then F with Ctrl held is Zoom to Fit, not undo.
-    h.input_mut().events.push(Event::Key { key: Key::Z, pressed: true, modifiers: Modifiers::COMMAND, repeat: false, physical_key: None });
-    h.input_mut().events.push(Event::Key { key: Key::F, pressed: true, modifiers: Modifiers::COMMAND, repeat: false, physical_key: None });
-    h.step();
-    h.input_mut().events.push(Event::Key { key: Key::Z, pressed: false, modifiers: Modifiers::COMMAND, repeat: false, physical_key: None });
-    h.input_mut().events.push(Event::Key { key: Key::F, pressed: false, modifiers: Modifiers::COMMAND, repeat: false, physical_key: None });
+    assert_eq!(walls(&h), 2, "undone at once");
+    // Ctrl held and F is Ctrl+F, which no action has: nothing happens, and no sequence is typed either.
+    chord(&mut h, Key::F, Modifiers::COMMAND);
     h.input_mut().events.push(Event::ModifiersChanged(Modifiers::NONE));
     h.run();
-    assert_eq!(walls(&h), 2, "ZF fits the view and undoes nothing");
-    // Z, Z is no shortcut: the first undoes, and the second does as Ctrl is let go.
-    shortcut(&mut h, "ZZ");
-    assert_eq!(walls(&h), 0, "twice undone");
+    assert_eq!(walls(&h), 2, "Ctrl+F does nothing");
+    // A sequence is typed plainly: W and A are Wall, with no Ctrl.
+    shortcut(&mut h, "WA");
+    assert!(matches!(h.state().tool, Tool::Wall(_)));
+}
+
+#[test]
+fn a_ctrl_combination_assigned_in_the_dialog_runs_and_one_that_was_never_assigned_does_nothing() {
+    let mut h = app(BOX);
+    // Ctrl+J is no action's: it touches nothing, and W after it is no sequence either.
+    h.input_mut().events.push(Event::ModifiersChanged(Modifiers::COMMAND));
+    for pressed in [true, false] {
+        h.input_mut().events.push(Event::Key { key: Key::J, pressed, modifiers: Modifiers::COMMAND, repeat: false, physical_key: None });
+        h.input_mut().events.push(Event::Key { key: Key::W, pressed, modifiers: Modifiers::COMMAND, repeat: false, physical_key: None });
+    }
+    h.input_mut().events.push(Event::ModifiersChanged(Modifiers::NONE));
+    h.run();
+    assert!(matches!(h.state().tool, Tool::Modify), "Ctrl+J, Ctrl+W is nothing");
+
+    // Assigned in the dialog, the same combination runs: Door on Ctrl+J.
+    let door = crate::shortcuts::resolve_action("Door").unwrap();
+    let ctrl_j = crate::shortcuts::Binding::Chord(crate::shortcuts::KeyChord::new(Key::J, true, false, false, false));
+    h.state_mut().shortcuts.add_binding(&door, ctrl_j, true).unwrap();
+    h.run();
+    h.input_mut().events.push(Event::ModifiersChanged(Modifiers::COMMAND));
+    for pressed in [true, false] {
+        h.input_mut().events.push(Event::Key { key: Key::J, pressed, modifiers: Modifiers::COMMAND, repeat: false, physical_key: None });
+    }
+    h.input_mut().events.push(Event::ModifiersChanged(Modifiers::NONE));
+    h.run();
+    assert!(matches!(h.state().tool, Tool::Door), "the combination assigned runs at once");
+}
+
+#[test]
+fn a_plain_letter_that_begins_no_sequence_does_nothing() {
+    let mut h = app(BOX);
+    // Q begins no sequence: typed with another key that would make one, it is dropped, so QW is no Wall.
+    h.input_mut().events.push(Event::Key { key: Key::Q, pressed: true, modifiers: Modifiers::NONE, repeat: false, physical_key: None });
+    h.input_mut().events.push(Event::Key { key: Key::Q, pressed: false, modifiers: Modifiers::NONE, repeat: false, physical_key: None });
+    h.input_mut().events.push(Event::Key { key: Key::W, pressed: true, modifiers: Modifiers::NONE, repeat: false, physical_key: None });
+    h.input_mut().events.push(Event::Key { key: Key::W, pressed: false, modifiers: Modifiers::NONE, repeat: false, physical_key: None });
+    h.run();
+    assert!(matches!(h.state().tool, Tool::Modify), "QW is no shortcut");
+    // W alone begins Wall and waits; A completes it.
+    shortcut(&mut h, "WA");
+    assert!(matches!(h.state().tool, Tool::Wall(_)));
 }
 
 #[test]
 fn typed_shortcuts_pick_tools_like_revit() {
     let mut h = app(SAMPLE);
-    // Letters typed without Ctrl are no shortcut.
+    // Text events are no shortcut: the keys themselves are, read from their physical keys.
     h.event(Event::Text("WA".into()));
     h.run();
     assert!(matches!(h.state().tool, Tool::Modify));
-    // With Ctrl held they are, a letter a frame as well as together; letting Ctrl go between two ends the first.
-    let down = |key| Event::Key { key, pressed: true, modifiers: Modifiers::COMMAND, repeat: false, physical_key: None };
-    let up = |key| Event::Key { key, pressed: false, modifiers: Modifiers::COMMAND, repeat: false, physical_key: None };
-    h.input_mut().events.extend([Event::ModifiersChanged(Modifiers::COMMAND), down(Key::W)]);
+    // Two letters, a letter a frame as well as together, without Ctrl.
+    let down = |key| Event::Key { key, pressed: true, modifiers: Modifiers::NONE, repeat: false, physical_key: None };
+    let up = |key| Event::Key { key, pressed: false, modifiers: Modifiers::NONE, repeat: false, physical_key: None };
+    h.input_mut().events.push(down(Key::W));
     h.step();
     h.input_mut().events.push(down(Key::A));
     h.step();
-    h.input_mut().events.extend([up(Key::W), up(Key::A), Event::ModifiersChanged(Modifiers::NONE)]);
+    h.input_mut().events.extend([up(Key::W), up(Key::A)]);
     h.run();
     assert!(matches!(h.state().tool, Tool::Wall(_)));
     shortcut(&mut h, "dr");
@@ -934,7 +971,7 @@ fn typed_shortcuts_pick_tools_like_revit() {
 }
 
 #[test]
-fn copy_cut_and_paste_are_shortcut_letters_on_the_view_itself() {
+fn copy_cut_and_paste_are_no_letters_of_a_sequence() {
     fn press(h: &mut Harness<BimApp>, command: Modifiers, key: Key) {
         for pressed in [true, false] {
             h.input_mut().events.push(Event::Key { key, pressed, modifiers: command, repeat: false, physical_key: None });
@@ -942,28 +979,29 @@ fn copy_cut_and_paste_are_shortcut_letters_on_the_view_itself() {
     }
     let mut h = app(SAMPLE);
     let command = Modifiers::COMMAND;
-    // The window turns Ctrl+C, Ctrl+X and Ctrl+V into Copy, Cut and Paste events, not key events: on a view they are
-    // the letters a sequence needs.
+    // A key held with Ctrl is no part of a sequence, and the window turns Ctrl+C, Ctrl+X and Ctrl+V into Copy, Cut and
+    // Paste events, not key events: none of them types a letter, so CW, VV and TX are not reached this way.
     h.input_mut().events.extend([Event::ModifiersChanged(command), Event::Copy]);
     press(&mut h, command, Key::W);
     h.input_mut().events.push(Event::ModifiersChanged(Modifiers::NONE));
     h.run();
-    assert!(h.state().cowork_dialog.is_some(), "Ctrl+C, W is CW");
-    h.state_mut().cowork_dialog = None;
-    h.run();
+    assert!(h.state().cowork_dialog.is_none(), "Ctrl+C, W is no sequence");
     h.input_mut().events.extend([Event::ModifiersChanged(command), Event::Paste("x".into())]);
     press(&mut h, command, Key::V);
     h.input_mut().events.push(Event::ModifiersChanged(Modifiers::NONE));
     h.run();
-    assert!(h.state().vg_dialog.is_some(), "Ctrl+V, V is VV");
+    assert!(h.state().vg_dialog.is_none(), "Ctrl+V, V is no sequence");
+    // Typed plainly, the same letters are the sequences they name.
+    shortcut(&mut h, "CW");
+    assert!(h.state().cowork_dialog.is_some(), "CW is Co-Work");
+    h.state_mut().cowork_dialog = None;
+    h.run();
+    shortcut(&mut h, "VV");
+    assert!(h.state().vg_dialog.is_some(), "VV is Visibility/Graphics");
     h.state_mut().vg_dialog = None;
     h.run();
-    h.input_mut().events.push(Event::ModifiersChanged(command));
-    press(&mut h, command, Key::T);
-    h.input_mut().events.push(Event::Cut);
-    h.input_mut().events.push(Event::ModifiersChanged(Modifiers::NONE));
-    h.run();
-    assert!(matches!(h.state().tool, Tool::Text), "T, Ctrl+X is TX");
+    shortcut(&mut h, "TX");
+    assert!(matches!(h.state().tool, Tool::Text), "TX is Text");
 }
 
 #[test]
