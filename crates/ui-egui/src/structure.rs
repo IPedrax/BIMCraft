@@ -106,7 +106,9 @@ impl BimApp {
             }
         });
         panel(ui, msg!("Framing"), |ui| {
-            let tip = msg!("Frame: the selected walls framed, their studs, plates and headers worked out from each wall");
+            let tip = msg!(
+                "Frame: the selected walls and floors framed, a wall's studs, plates and headers and a floor's joists, rims and trimmers worked out from each"
+            );
             let r = big_button(ui, Icon::Frame, "Frame", false, tip);
             // Of several framing types, the button drops them down; of one or none, it frames with the project's default.
             let types: Vec<String> = self.session.model.types.framing.keys().cloned().collect();
@@ -121,7 +123,7 @@ impl BimApp {
             } else if r.clicked() {
                 self.frame_selection(None);
             }
-            let tip = msg!("Remove Framing: the selected walls framed no more; their framing type stays in the project");
+            let tip = msg!("Remove Framing: the selected walls and floors framed no more; their framing type stays in the project");
             if big_button(ui, Icon::Unframe, "Remove Framing", false, tip).clicked() {
                 self.unframe_selection();
             }
@@ -144,39 +146,55 @@ impl BimApp {
         });
     }
 
-    /// Structure > Frame: the selected walls framed by `ty`, else by the project's default framing type (made when it has none),
-    /// as one step.
-    pub(crate) fn frame_selection(&mut self, ty: Option<&str>) {
+    /// The walls and floors selected: what Frame and Remove Framing act on.
+    fn selected_hosts(&self) -> (Vec<Id>, usize) {
+        let m = &self.session.model;
         let walls = self.selected_walls();
-        if walls.is_empty() {
-            self.status = Status { text: t("Select the walls to frame first.").into(), error: true };
+        let floors = self.selection.iter().copied().filter(|id| matches!(m.elements.get(*id), Some(Element::Floor(_))));
+        let n = walls.len();
+        (walls.into_iter().chain(floors).collect(), n)
+    }
+
+    /// Structure > Frame: the selected walls and floors framed by `ty`, else by the project's default framing type (made when
+    /// it has none), as one step.
+    pub(crate) fn frame_selection(&mut self, ty: Option<&str>) {
+        let (hosts, walls) = self.selected_hosts();
+        if hosts.is_empty() {
+            self.status = Status { text: t("Select the walls or floors to frame first.").into(), error: true };
             return;
         }
-        let mut p = json!({"ids": walls});
+        let mut p = json!({"ids": hosts});
         if let Some(ty) = ty {
             p["type"] = json!(ty);
         }
         if let Some(done) = self.run("frame", p) {
-            let (n, members) = (walls.len().to_string(), done["members"].as_u64().unwrap_or(0).to_string());
-            let ty = done["type"].as_str().unwrap_or_default();
-            let mut text = tf("{} walls framed as {}: {} members.", &[&n, ty, &members]);
+            let floors = hosts.len() - walls;
+            let (w, f) = (walls.to_string(), floors.to_string());
+            let (ty, members) = (done["type"].as_str().unwrap_or_default(), done["members"].as_u64().unwrap_or(0).to_string());
+            let mut text = if floors == 0 {
+                tf("{} walls framed as {}: {} members.", &[&w, ty, &members])
+            } else if walls == 0 {
+                tf("{} floors framed as {}: {} members.", &[&f, ty, &members])
+            } else {
+                tf("{} walls and {} floors framed as {}: {} members.", &[&w, &f, ty, &members])
+            };
             // What couldn't be framed as the type says is the core's own words, as its diagnostics are.
             let warnings: Vec<&str> = done["warnings"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
             if let Some(first) = warnings.first() {
-                text = format!("{text} {} {first}", tf("{} openings to check:", &[&warnings.len().to_string()]));
+                text = format!("{text} {} {first}", tf("Warnings ({}):", &[&warnings.len().to_string()]));
             }
             self.status = Status { text, error: !warnings.is_empty() };
         }
     }
 
-    /// Structure > Remove Framing: the selected walls framed no more, as one step.
+    /// Structure > Remove Framing: the selected walls and floors framed no more, as one step.
     pub(crate) fn unframe_selection(&mut self) {
-        let walls = self.selected_walls();
-        if walls.is_empty() {
-            self.status = Status { text: t("Select the walls to remove framing from first.").into(), error: true };
+        let (hosts, _) = self.selected_hosts();
+        if hosts.is_empty() {
+            self.status = Status { text: t("Select the walls or floors to remove framing from first.").into(), error: true };
             return;
         }
-        self.run("unframe", json!({"ids": walls}));
+        self.run("unframe", json!({"ids": hosts}));
     }
 
     /// The Floor tool, making structural floors (SB).

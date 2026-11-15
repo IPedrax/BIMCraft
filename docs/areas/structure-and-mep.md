@@ -247,7 +247,7 @@ piece 6.
 
 ### Wood framing
 
-`framing.rs` frames walls in wood, as a light-frame house is built: a wall holds `framing`, the name of a framing type (a
+`framing.rs` frames walls in wood, as a light-frame house is built, and `framing/floor.rs` floors ([below](#floors)): a wall holds `framing`, the name of a framing type (a
 library reference, held by its GUID in a file, renamed and removed as other type references are), and its plates, studs,
 kings, jacks, headers, sills, cripples and blocking are worked out from the wall whenever they are asked for (`framing::wall`)
 and never stored, as a railing's balusters are. Moving a window, changing a height, attaching the top to a roof or editing the
@@ -262,9 +262,11 @@ side) and to its height (on top); `headers`, `{up_to?, depth, plies, flat?}` in 
 opening's width (or the last) its header, by default 2 plies 184 deep up to 1250 and 2 plies 235 deep above; `sill_plates` 1;
 `corner` `three_stud`, `two_stud` or `none`; `tee` `studs` or `none`; `blocking`, heights over the wall's base of rows of flat
 blocking, none by default; and `stock`, the stock lengths a cut list takes members from, shortest first (2440, 3050, 3660,
-4270, 4880, 6100). `Model::check` holds each to its range (`framing::check_type`): thickness 10 to 300 and spacing wider than
+4270, 4880, 6100); and the floors' fields (`rim`, `lap`, `bridging`, `trimmers`, `under_partitions`, [below](#floors)), which a
+wall doesn't read. `Model::check` holds each to its range (`framing::check_type`): thickness 10 to 300 and spacing wider than
 it (up to 3000), 0 to 4 plates of each kind, 0 to 3 kings and jacks, rough allowances 0 to 500, 1 to 8 headers of 1 to 3 plies
-and 1 to 1000 deep, 8 rows of blocking and 16 stock lengths at most, each longer than the last, and a material the library has.
+and 1 to 1000 deep, 8 rows of blocking and 16 stock lengths at most, each longer than the last, a lap of 0 to 2000, bridging
+of 0 or 300 to 100000, 1 to 3 trimmers, and a material the library has.
 A new project has no framing type: `frame` makes `2x4 @ 406` when there is none, so a project that frames nothing doesn't change.
 
 The members stand in the wall type's structure layer, the thickest where it has several (the first of those): as deep across the
@@ -373,7 +375,108 @@ stock lengths as lengths parted by commas, layout, corner and tee, rough allowan
 Duplicate and Rename work as for any type; the headers are shown and set with `type`. The Project Browser lists framing types
 under Families, a click opens one's Type Properties and its right-click menu deletes one nothing uses.
 
-Not yet: floors (joists) and roofs (rafters), which will reuse `Member`, the schedule, the graphics and IFC; framing elevations;
+#### Floors
+
+A floor holds `framing` too, a framing type's name as a wall's is (renamed, refused deletion while in use, brought in by
+Insert from File, held by its GUID in a file), and `framing_angle`, the way its joists run in degrees from +x (east); none, the
+default, runs them square to its outline's longest edge (the first of the longest), so they span the short way. Both are left
+out of a file while none. Its joists, rims, trimmers, headers and blocking are worked out from the floor whenever they're asked
+for (`framing::floor::floor`), from its outline, its openings and the shafts through it, the beams and walls under it, the walls
+standing on it and its framing type, and never stored: moving a beam, an opening, a wall on it, or editing either type, changes
+them. FORMAT stays 21, unreleased, which holds them with the walls'.
+
+The framing type is the walls' (one category, `framing`, serves both): its `spacing` (406.4) is the joists' centres apart, its
+`thickness` (38) theirs, its `layout` (`start`, `end`, `centre`) and `stock` as for studs, and five fields only a floor reads:
+`rim` (true: a rim joist along each edge the joists end on), `lap` (0: joist pieces butt over a support; more, each runs that
+far past its centre line, 0 to 2000), `bridging` (0: none; else the longest a joist runs between rows of solid blocking, 300 to
+100000), `trimmers` (2, 1 to 3: plies of trimmer each side of an opening and of header across each end of it) and
+`under_partitions` (true: a pair of joists under a wall standing on the floor along them). The joists are as deep as the floor
+type's structure layer (the thickest, the first of those) is thick, from its underside to its top, so a 2x8 floor is one with a
+184 mm structure layer; the layers over it (a subfloor, a finish) stay drawn as layers.
+
+`framing::floor::check`, which `Model::check` asks of each framed floor, refuses a framing type that doesn't exist, a
+`framing_angle` that isn't a number from -3600 to 3600, a sloped floor and one whose shape is edited (points or split lines on
+its top: only a flat floor is framed; sloped members come with roofs), a floor type with no structure layer, a floor wider
+across its joists than 1024 spacings (`MAX_STATIONS`) and rows of blocking of more than 65536 blocks; each error says what to
+change, and the command rolls back. Nothing an opening, a support or a wall does is refused: what the rules can't frame is
+framed more simply or left out with a warning that names it and says why.
+
+The rules, in the floor's frame (`s` the way the joists run, `across` to its left, both from the outline's first corner, `z` up):
+
+- A rim joist lies along each edge the joists end on (each not parallel to them), one thickness thick inside it and the whole
+  edge long. Where two rims meet at a corner, the one of the lower edge index runs through and the other stops where its nearer
+  corner meets the first's inner face. An edge parallel to the joists has an edge joist flush with it instead, running between
+  the rims; one that would overlap another (a floor narrower there than two joists) is left out with a warning. Every joist ends
+  square where its nearer corner meets a rim's inner face, so on a skewed edge (its rim in a frame of its own, `frame` in the
+  reply) its far corner falls short of the rim. With `rim` off the joists run to the edges themselves.
+- Grid joists are centred at stations `spacing` apart across the outline from the layout's origin: `start` the outline's least
+  `across`, `end` its most, `centre` its middle. The lines are laid in order, edge joists, trimmers, pairs under walls, then the
+  grid, and a grid joist that would overlap one laid before it is left out. Each line runs in pieces where the outline, less
+  the holes, lets it (a concave outline gives several), each piece keyed by its order along the line.
+- A beam (not upright) or a straight wall under the floor whose top lies within 10 mm (`BEARING`) of the joists' underside
+  where it crosses them bears them (a wall's top read along it by `walls::top_at`, so a sloped top bears where it reaches).
+  Where one crosses a joist away from its ends (more than the support's half width, or a thickness, from each), the joist is in
+  pieces that butt on its centre line; with `lap`, each grid joist's pieces run `lap` past the centre line and every other piece
+  lies a thickness over (to its left, else its right, wherever it clears the other members and stays on the floor), beside the
+  one before; with room on neither side its pieces butt, with a warning. Edge joists, trimmers and pairs under walls always
+  butt. A curved wall under the floor at that height isn't taken to bear it, with a warning. A floor that nothing bears
+  warns that its joists span the whole floor, and how far. A piece shorter than it is thick is left out, with a warning.
+- Each hole (an opening, by its index, or a shaft through the floor, by its GUID, found as the floor's solid finds the shafts that
+  cut it, `Model::less_shafts`, so framing and solid agree) is framed by the box round it in the joists' frame: `trimmers` plies of trimmer along each side,
+  running the joists' whole length (as its line lets them, round other holes), `trimmers` plies of header across each end
+  between the inner trimmers, and the joists it cuts become tails from what they start on to a header. A hole that isn't a
+  rectangle square to the joists is framed by that box, with a warning giving its size. A hole whose box, grown by its trimmers
+  and headers, doesn't lie inside the rims and clear of the edge joists (one touching or near the floor's edge), or whose
+  trimmers would run into another's, isn't trimmed: its joists end at its own outline, with a warning naming it.
+- A straight wall standing on the floor (its level's, its base within 10 mm of the floor's top) and running along the joists
+  (within 1°, its middle inside the outline) gets two joists side by side under its centre line, the floor's whole length
+  (`under/<wall GUID>/0` and `/1`), and the grid joists they overlap are left out. A wall square to the joists needs nothing;
+  one over an edge joist stands on that; one over an opening, or whose pair would overlap a trimmer or another pair, gets none,
+  with a warning.
+- With `bridging`, rows of solid blocking are laid between each two neighbouring lines of joists, as thick as a joist and as
+  deep, dividing each span between what bears them evenly, no bay longer than `bridging`; none across a hole or its trimmed box.
+
+A floor's keys: grid joists `joist/<station>/<piece>` (the station counted from the layout's origin), edge joists
+`edge/<edge index>/<piece>`, rims `rim/<edge index>` (edges numbered as the outline has them), an opening's members
+`opening/<index or shaft GUID>/trimmer/<left or right>/<ply>/<piece>` and `opening/<…>/header/<start or end>/<ply>`, a pair
+under a wall `under/<wall GUID>/<0 or 1>/<piece>`, blocking `blocking/<key of the line on its right>/<row>`. Roles are `joist`,
+`rim` and `trimmer`, with `header` and `blocking` as a wall's; each member says its `grain`, the way its length runs (`along`
+for joists and trimmers, `across` for a rim square to them, headers and blocking).
+
+`frame {ids | id, type?, angle?}` frames floors with walls, `angle` setting each floor's `framing_angle` where given; `unframe`
+takes it off; `modify {id, framing, framing_angle}` sets either for one floor; `framing {id}` reads a floor's members, cut list
+and `warnings` as a wall's, and also `supports` (the ids of the beams and walls that bear its joists), `span` (the longest clear
+span of a joist between what bears it, face to face, mm) and `angle` (the way they run, degrees). `frame` and `framing` say
+every warning, each naming its host (`floor 100005: …`).
+
+Output follows the walls'. In the 3D view and sections a framed floor's members are solids of the floor (picking it) in the
+framing's material, and its structure layer is drawn only where the view hides Floors > Framing (`floorframing`), which brings
+the layer back whole; a section cuts each member filled in its material's pattern, the layers over it drawn as layers. A plan
+draws no member by default: Floors > Framing Lines (`floorframingline`, off unless a view shows it) draws each member's outline
+dashed, as hidden lines under the floor's top, the framing plan a framer builds the floor from. It is off by default because on
+an ordinary plan the joists 406 apart hatch the whole floor; a second subcategory is needed because one key can't be shown in
+3D and sections and hidden in plans. The Framing Members schedule lists a floor's members with the floor as Host, its type as
+Host Type and its level as Level; the cabin's cut list is 38 joists 38 x 184 x 3012 from 3050 stock and 2 rims 7320 long (0
+stock: longer than every length, to be spliced). IFC writes each joist, rim, trimmer and header as an `IfcBeam` of predefined
+type `JOIST` and each block as an `IfcMember` `MEMBER`, aggregated to the slab (which keeps its whole body) in no storey of its
+own, with GlobalIds from the floor's GUID and the key; IFC2x3 writes the beams without a predefined type; an IFC import of the
+file brings the floor back unframed, its beams, being the slab's parts, left out. `ci/ifc-coverage.txt` has a framed floor.
+
+In the window, Frame and Remove Framing act on the selection's walls and floors together, as one undo step, the status bar
+saying how many of each and the first warning (Warnings (n): …). A floor's Properties have Framing under Structural, as a
+wall's, and, once it is framed, Joist Direction (°), its `framing_angle`: blank is automatic (square to the longest edge), and
+clearing it returns to that. A framing type's Type Properties group its fields: Construction (Spacing, Thickness, Layout, which
+walls and floors share), Walls, Wall Openings, Wall Joins, Floors (Lap at Supports, Bridging Spacing, Trimmer and Header Plies,
+Rim Joists, Joists Under Partitions), Materials and Finishes, and Other (Stock Lengths).
+
+Not yet, for floors: sloped and shaped floors (refused); blocking over supports and at the rims; joist hangers and other
+connectors; cantilevers past a support (the joists end at the outline, wherever the supports are); splitting a member longer
+than every stock length (a long rim is scheduled with 0 stock); blocking where a concave outline leaves a bay between lines
+that don't face each other along their whole length; a curved wall as a support; span checks against a species or a table;
+trimmers and headers sized by the opening; and rims meeting at a reflex (inward) corner of the outline, which each run to the corner, leaving a sliver of a wedge
+between them unfilled.
+
+Not yet, for walls: roofs (rafters), which will reuse `Member`, the schedule, the graphics and IFC; framing elevations;
 picking or tagging a single member; sheathing; span checks; connectors; a plate's splices placed by hand; and at non-square corners and joins of three walls the framed length falls back to the
 layer's shorter edge, which may leave a gap or an overlap between two framed walls' members.
 

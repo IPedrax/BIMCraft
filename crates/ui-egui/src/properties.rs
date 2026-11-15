@@ -89,8 +89,10 @@ enum Kind {
     Link,
     /// One of these values (as the command names it, and its label): a drop-down, the first when it has none.
     Choice(&'static [(&'static str, &'static str)]),
-    /// A wall's framing type: None or one of the project's, a drop-down, and beside it its Type Properties.
+    /// A wall's or a floor's framing type: None or one of the project's, a drop-down, and beside it its Type Properties.
     Framing,
+    /// A number, or nothing, which its hint names when blank (a floor's joists' direction, automatic): typed, or cleared.
+    NumberOr(&'static str),
 }
 
 use Kind::*;
@@ -118,6 +120,8 @@ fn relevant(e: &Value, key: &str) -> bool {
         (Some(_), "revision") => !e["cloud"].is_null(),
         // A wall's Top Offset is from its top constraint: an unconnected wall stands `height` tall and has none.
         (_, "top_offset") => !e["top_level"].is_null(),
+        // A floor's joists run some way only once it's framed.
+        (_, "framing_angle") => !e["framing"].is_null(),
         _ => true,
     }
 }
@@ -192,6 +196,8 @@ fn rows(category: &str) -> &'static [Row] {
             ("Dimensions", "area_m2", "Area", AreaShown),
             ("Dimensions", "thickness", "Thickness", LengthShown),
             ("Structural", "structural", "Structural", Flag),
+            ("Structural", "framing", "Framing", Framing),
+            ("Structural", "framing_angle", msg!("Joist Direction (°)"), NumberOr(msg!("Automatic"))),
             ("Graphics", "pattern_angle", msg!("Pattern Angle (°)"), Number),
         ],
         "ceiling" => &[
@@ -687,6 +693,8 @@ fn parse(kind: Kind, s: &str, units: Units) -> Result<Value, String> {
         Length | LengthIf | Height => length(s).map(|x| json!(x)),
         Limit(_) if s.trim().is_empty() => Ok(Value::Null),
         Limit(_) => length(s).map(|x| json!(x)),
+        NumberOr(_) if s.trim().is_empty() => Ok(Value::Null),
+        NumberOr(_) => parse(Number, s, units),
         Outline if s.trim().is_empty() => Ok(Value::Null),
         Outline => s.split(';').map(|corner| parse(Point, corner, units)).collect::<Result<Vec<_>, _>>().map(Value::Array),
         // Lengths with feet and inches hold spaces: a comma parts x from y.
@@ -1104,8 +1112,9 @@ impl RoomRows {
     }
 }
 
-/// The groups a framing type's parameters are under, in order.
-const FRAMING_GROUPS: [&str; 5] = ["Construction", msg!("Openings"), msg!("Joins"), "Materials and Finishes", "Other"];
+/// The groups a framing type's parameters are under, in order: what walls and floors share, a wall's, a floor's, and the rest.
+const FRAMING_GROUPS: [&str; 7] =
+    ["Construction", "Walls", msg!("Wall Openings"), msg!("Wall Joins"), msg!("Floors"), "Materials and Finishes", "Other"];
 
 /// What a framing type's field holds, as typed.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -1119,28 +1128,36 @@ enum Typed {
 
 /// A framing type's typed fields: its group, its key, which of the key's pair it is (none for the key itself), its label and
 /// what it holds.
-const FRAMING_FIELDS: [(&str, &str, Option<usize>, &str, Typed); 13] = [
-    ("Construction", "spacing", None, msg!("Stud Spacing"), Typed::Length),
+const FRAMING_FIELDS: [(&str, &str, Option<usize>, &str, Typed); 16] = [
+    // A wall's studs and a floor's joists alike.
+    ("Construction", "spacing", None, msg!("Spacing"), Typed::Length),
     ("Construction", "thickness", None, msg!("Thickness"), Typed::Length),
-    ("Construction", "bottom_plates", None, msg!("Bottom Plates"), Typed::Count),
-    ("Construction", "top_plates", None, msg!("Top Plates"), Typed::Count),
-    ("Construction", "blocking", None, msg!("Blocking Heights"), Typed::Lengths),
-    ("Openings", "kings", None, msg!("Kings"), Typed::Count),
-    ("Openings", "jacks", None, msg!("Jacks"), Typed::Count),
-    ("Openings", "sill_plates", None, msg!("Sill Plates"), Typed::Count),
-    ("Openings", "window_rough", Some(0), msg!("Window Rough Opening: Added Width"), Typed::Length),
-    ("Openings", "window_rough", Some(1), msg!("Window Rough Opening: Added Height"), Typed::Length),
-    ("Openings", "door_rough", Some(0), msg!("Door Rough Opening: Added Width"), Typed::Length),
-    ("Openings", "door_rough", Some(1), msg!("Door Rough Opening: Added Height"), Typed::Length),
+    ("Walls", "bottom_plates", None, msg!("Bottom Plates"), Typed::Count),
+    ("Walls", "top_plates", None, msg!("Top Plates"), Typed::Count),
+    ("Walls", "blocking", None, msg!("Blocking Heights"), Typed::Lengths),
+    ("Wall Openings", "kings", None, msg!("Kings"), Typed::Count),
+    ("Wall Openings", "jacks", None, msg!("Jacks"), Typed::Count),
+    ("Wall Openings", "sill_plates", None, msg!("Sill Plates"), Typed::Count),
+    ("Wall Openings", "window_rough", Some(0), msg!("Window Rough Opening: Added Width"), Typed::Length),
+    ("Wall Openings", "window_rough", Some(1), msg!("Window Rough Opening: Added Height"), Typed::Length),
+    ("Wall Openings", "door_rough", Some(0), msg!("Door Rough Opening: Added Width"), Typed::Length),
+    ("Wall Openings", "door_rough", Some(1), msg!("Door Rough Opening: Added Height"), Typed::Length),
+    ("Floors", "lap", None, msg!("Lap at Supports"), Typed::Length),
+    ("Floors", "bridging", None, msg!("Bridging Spacing"), Typed::Length),
+    ("Floors", "trimmers", None, msg!("Trimmer and Header Plies"), Typed::Count),
     ("Other", "stock", None, msg!("Stock Lengths"), Typed::Lengths),
 ];
+
+/// A framing type's yes-or-no fields: its group, its key and its label.
+const FRAMING_FLAGS: [(&str, &str, &str); 2] =
+    [("Floors", "rim", msg!("Rim Joists")), ("Floors", "under_partitions", msg!("Joists Under Partitions"))];
 
 /// A framing type's choices: its key, its group, its label, and each value with its label.
 type FramingChoice = (&'static str, &'static str, &'static str, &'static [(&'static str, &'static str)]);
 const FRAMING_CHOICES: [FramingChoice; 3] = [
     ("layout", "Construction", msg!("Layout"), &[("start", "Start"), ("end", "End"), ("centre", "Centre")]),
-    ("corner", "Joins", msg!("Corner"), &[("three_stud", msg!("Three Studs")), ("two_stud", msg!("Two Studs")), ("none", "None")]),
-    ("tee", "Joins", msg!("Tee Junction"), &[("studs", msg!("Backing Studs")), ("none", "None")]),
+    ("corner", "Wall Joins", msg!("Corner"), &[("three_stud", msg!("Three Studs")), ("two_stud", msg!("Two Studs")), ("none", "None")]),
+    ("tee", "Wall Joins", msg!("Tee Junction"), &[("studs", msg!("Backing Studs")), ("none", "None")]),
 ];
 
 /// A framing type's parameters, as typed and picked. Its headers aren't edited here (the `type` command does), only shown: what
@@ -1154,6 +1171,8 @@ pub(crate) struct FramingRows {
     typed: Vec<String>,
     /// `FRAMING_CHOICES`' values, by their keys.
     picked: Vec<String>,
+    /// `FRAMING_FLAGS`' values.
+    flags: Vec<bool>,
     /// Its members' material, "" for their structure layer's.
     material: String,
 }
@@ -1176,8 +1195,9 @@ impl FramingRows {
             })
             .collect();
         let picked = FRAMING_CHOICES.iter().map(|(key, ..)| was[*key].as_str().unwrap_or_default().to_string()).collect();
+        let flags = FRAMING_FLAGS.iter().map(|(_, key, _)| was[*key].as_bool().unwrap_or_default()).collect();
         let material = was["material"].as_str().unwrap_or_default().to_string();
-        FramingRows { typed: shown.clone(), shown, picked, material, was }
+        FramingRows { typed: shown.clone(), shown, picked, flags, material, was }
     }
 
     /// Its rows under `group`.
@@ -1198,7 +1218,12 @@ impl FramingRows {
                 *picked = k.to_string();
             }
         }
-        if group == "Openings" {
+        for ((g, _, label), on) in FRAMING_FLAGS.iter().zip(&mut self.flags) {
+            if *g == group {
+                tb.check(t(label), on);
+            }
+        }
+        if group == "Wall Openings" {
             tb.shown(t("Headers"), &headers(&self.was["headers"], units));
         }
         if group == "Materials and Finishes" {
@@ -1237,6 +1262,9 @@ impl FramingRows {
         }
         for ((key, ..), picked) in FRAMING_CHOICES.iter().zip(&self.picked) {
             v[*key] = json!(picked);
+        }
+        for ((_, key, _), on) in FRAMING_FLAGS.iter().zip(&self.flags) {
+            v[*key] = json!(on);
         }
         v["material"] = if self.material.is_empty() { Value::Null } else { json!(self.material) };
         for (k, val) in v.as_object().into_iter().flatten() {
@@ -2356,10 +2384,10 @@ impl BimApp {
                                 select = Some(other);
                             }
                         }
-                        Text | Number | Length | LengthIf | Point | PaperPoint | Outline | Height | Limit(_) => {
+                        Text | Number | Length | LengthIf | Point | PaperPoint | Outline | Height | Limit(_) | NumberOr(_) => {
                             // Blank across a selection may be values that differ, not nothing.
                             let hint = match kind {
-                                Limit(hint) if ids.len() == 1 => t(hint),
+                                Limit(hint) | NumberOr(hint) if ids.len() == 1 => t(hint),
                                 _ => "",
                             };
                             if let Some(typed) = self.field(ui, id, key, shown(kind, val, units), name.id, hint) {

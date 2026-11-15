@@ -32,7 +32,7 @@ msgstr "Bad"
 msgid "Bed"
 msgstr "Bed"
 
-#: crates/core/src/model.rs:3579
+#: crates/core/src/model.rs:3588
 msgid "Brick"
 msgstr "Baksteen"
 
@@ -40,7 +40,7 @@ msgstr "Baksteen"
 msgid "Brick 225 x 75"
 msgstr "Baksteen 225 x 75"
 
-#: crates/core/src/commands.rs:5440
+#: crates/core/src/commands.rs:5465
 msgid "Camera"
 msgstr "Camera"
 
@@ -56,7 +56,7 @@ msgstr ""
 msgid "Ceiling Luminaire"
 msgstr "Plafondarmatuur"
 
-#: crates/core/src/render.rs:3718
+#: crates/core/src/render.rs:3784
 msgid "Ceiling Plan"
 msgstr "Plafondplan"
 
@@ -68,7 +68,7 @@ msgstr "Hartlijn"
 msgid "Centre Lines"
 msgstr "Hartlijnen"
 
-#: crates/core/src/model.rs:3587
+#: crates/core/src/model.rs:3596
 msgid "Ceramic tile"
 msgstr "Keramische tegel"
 
@@ -86,7 +86,7 @@ msgstr ""
 msgid "Concrete"
 msgstr "Beton"
 
-#: crates/core/src/model.rs:3581
+#: crates/core/src/model.rs:3590
 msgid "Concrete block"
 msgstr "Betonblok"
 
@@ -95,11 +95,11 @@ msgstr "Betonblok"
 msgid "Connected Load (VA)"
 msgstr ""
 
-#: crates/core/src/model.rs:3595
+#: crates/core/src/model.rs:3604
 msgid "Copper"
 msgstr "Koper"
 
-#: crates/core/src/commands.rs:1913
+#: crates/core/src/commands.rs:1920
 msgid "Copy"
 msgstr "Kopie"
 
@@ -111,7 +111,7 @@ msgstr "Aantal"
 msgid "Crosshatch"
 msgstr "Kruisarcering"
 
-#: crates/core/src/render.rs:4696
+#: crates/core/src/render.rs:4762
 msgid "DN"
 msgstr "DN"
 
@@ -132,7 +132,7 @@ msgstr "Data-aansluiting"
 msgid "Demand Factor"
 msgstr ""
 
-#: crates/core/src/commands.rs:13194
+#: crates/core/src/commands.rs:13221
 msgid "Dependent"
 msgstr "Afhankelijk"
 
@@ -185,11 +185,11 @@ msgstr "Punt"
 msgid "Double Door"
 msgstr "Dubbele deur"
 
-#: crates/core/src/model.rs:2928
+#: crates/core/src/model.rs:2937
 msgid "Double Sliding"
 msgstr "Dubbele schuifdeur"
 
-#: crates/core/src/model.rs:2926
+#: crates/core/src/model.rs:2935
 msgid "Double Swing"
 msgstr "Dubbele draaideur"
 
@@ -197,7 +197,7 @@ msgstr "Dubbele draaideur"
 msgid "Earthing Electrode"
 msgstr "Aardingselektrode"
 
-#: crates/core/src/model.rs:2178
+#: crates/core/src/model.rs:2187
 msgid "East"
 msgstr "Oost"
 
@@ -205,21 +205,21 @@ msgstr "Oost"
 msgid "Elbow 90"
 msgstr "Bocht 90"
 
-#: crates/core/src/graphics.rs:968
+#: crates/core/src/graphics.rs:974
 msgid "Electrical Ceiling"
 msgstr "Elektrisch plafond"
 
-#: crates/core/src/graphics.rs:967
+#: crates/core/src/graphics.rs:973
 msgid "Electrical Lighting"
 msgstr "Elektrische verlichting"
 
-#: crates/core/src/graphics.rs:966
+#: crates/core/src/graphics.rs:972
 msgid "Electrical Power"
 msgstr "Elektrische voeding"
 
-#: crates/core/src/commands.rs:12941
-#: crates/core/src/commands.rs:12956
-#: crates/core/src/commands.rs:17389
+#: crates/core/src/commands.rs:12968
+#: crates/core/src/commands.rs:12983
+#: crates/core/src/commands.rs:17416
 msgid "Elevation"
 msgstr "Gevel"
 
@@ -244,7 +244,7 @@ msgstr "Stof"
 msgid "Family"
 msgstr "Familie"
 
-#: crates/core/src/model.rs:2930
+#: crates/core/src/model.rs:2939
 msgid "Fixed"
 msgstr "Vast"
 
@@ -260,7 +260,7 @@ msgstr "Vloerputje"
 msgid "Floor Schedule"
 msgstr "Vloerenlijst"
 
-#: crates/core/src/model.rs:2929
+#: crates/core/src/model.rs:2938
 msgid "Folding"
 msgstr "Vouwend"
 
@@ -276,7 +276,7 @@ msgstr "Kozijnmateriaal"
 msgid "Frame Width"
 msgstr "Kozijnbreedte"
 
-#: crates/core/src/schedule.rs:610
+#: crates/core/src/schedule.rs:611
 msgid "Framing Type"
 msgstr ""
 
@@ -285,7 +285,7 @@ msgid "Gate Valve"
 msgstr "Schuifafsluiter"
 
 #: crates/core/src/family.rs:3429
-#: crates/core/src/view3d.rs:1398
+#: crates/core/src/view3d.rs:1462
 msgid "Glass"
 msgstr "Glas"
 
@@ -293,7 +293,7 @@ msgstr "Glas"
 msgid "Gross Floor Area"
 msgstr "Bruto vloeroppervlakte"
 
-#: crates/core/src/model.rs:3586
+#: crates/core/src/model.rs:3595
 msgid "Gypsum board"
 msgstr "Gipsplaat"
 
@@ -322,11 +322,11 @@ msgid "Horizontal"
 msgstr "Horizontaal"
 
 #: crates/core/src/schedule.rs:424
-#: crates/core/src/schedule.rs:608
+#: crates/core/src/schedule.rs:609
 msgid "Host"
 msgstr ""
 
-#: crates/core/src/schedule.rs:609
+#: crates/core/src/schedule.rs:610
 msgid "Host Type"
 msgstr ""
 
@@ -342,7 +342,7 @@ msgstr "Isolatie"
 msgid "Internal"
 msgstr "Intern"
 
-#: crates/core/src/schedule.rs:616
+#: crates/core/src/schedule.rs:617
 msgid "Key"
 msgstr ""
 
@@ -366,8 +366,8 @@ msgstr "Breedte poot"
 msgid "Length"
 msgstr "Lengte"
 
-#: crates/core/src/commands.rs:8016
-#: crates/core/src/model.rs:3727
+#: crates/core/src/commands.rs:8041
+#: crates/core/src/model.rs:3736
 msgid "Level"
 msgstr "Niveau"
 
@@ -399,7 +399,7 @@ msgstr "Lange streep"
 msgid "Mains"
 msgstr ""
 
-#: crates/core/src/model.rs:1756
+#: crates/core/src/model.rs:1765
 msgid "Mark"
 msgstr "Merkteken"
 
@@ -407,7 +407,7 @@ msgstr "Merkteken"
 msgid "Masking"
 msgstr "Maskering"
 
-#: crates/core/src/commands.rs:10475
+#: crates/core/src/commands.rs:10502
 msgid "Mass"
 msgstr "Massa"
 
@@ -423,10 +423,10 @@ msgstr "Middeldikke lijnen"
 msgid "Membrane"
 msgstr "Membraan"
 
-#: crates/core/src/commands.rs:3587
-#: crates/core/src/commands.rs:15995
+#: crates/core/src/commands.rs:3612
+#: crates/core/src/commands.rs:16022
 #: crates/core/src/family.rs:3429
-#: crates/core/src/model.rs:5191
+#: crates/core/src/model.rs:5200
 msgid "Metal"
 msgstr "Metaal"
 
@@ -434,11 +434,11 @@ msgstr "Metaal"
 msgid "Mounting Height"
 msgstr "Montagehoogte"
 
-#: crates/core/src/render.rs:3526
+#: crates/core/src/render.rs:3592
 msgid "NOT ENCLOSED"
 msgstr "NIET OMSLOTEN"
 
-#: crates/core/src/model.rs:1757
+#: crates/core/src/model.rs:1766
 msgid "Name"
 msgstr "Naam"
 
@@ -446,11 +446,11 @@ msgstr "Naam"
 msgid "New Construction"
 msgstr "Nieuwbouw"
 
-#: crates/core/src/schedule.rs:1381
+#: crates/core/src/schedule.rs:1383
 msgid "No"
 msgstr "Nee"
 
-#: crates/core/src/model.rs:2176
+#: crates/core/src/model.rs:2185
 msgid "North"
 msgstr "Noord"
 
@@ -520,15 +520,15 @@ msgstr "Porselein"
 msgid "Profile"
 msgstr ""
 
-#: crates/core/src/commands.rs:3850
+#: crates/core/src/commands.rs:3875
 msgid "Project"
 msgstr "Project"
 
-#: crates/core/src/commands.rs:8743
+#: crates/core/src/commands.rs:8768
 msgid "Property Line"
 msgstr ""
 
-#: crates/core/src/render.rs:3526
+#: crates/core/src/render.rs:3592
 msgid "REDUNDANT"
 msgstr "OVERBODIG"
 
@@ -548,19 +548,19 @@ msgstr "Hoogte optrede"
 msgid "Risers"
 msgstr "Optreden"
 
-#: crates/core/src/schedule.rs:611
+#: crates/core/src/schedule.rs:612
 msgid "Role"
 msgstr ""
 
-#: crates/core/src/model.rs:2932
+#: crates/core/src/model.rs:2941
 msgid "Roller"
 msgstr ""
 
-#: crates/core/src/model.rs:3588
+#: crates/core/src/model.rs:3597
 msgid "Roof tiles"
 msgstr "Dakpannen"
 
-#: crates/core/src/commands.rs:10700
+#: crates/core/src/commands.rs:10727
 msgid "Room"
 msgstr "Ruimte"
 
@@ -588,7 +588,7 @@ msgstr "SCHAAL ZOALS AANGEGEVEN"
 msgid "Sand"
 msgstr "Zand"
 
-#: crates/core/src/model.rs:3584
+#: crates/core/src/model.rs:3593
 msgid "Screed"
 msgstr "Chape"
 
@@ -596,9 +596,9 @@ msgstr "Chape"
 msgid "Seat Height"
 msgstr "Zithoogte"
 
-#: crates/core/src/commands.rs:12876
-#: crates/core/src/commands.rs:17388
-#: crates/core/src/schedule.rs:612
+#: crates/core/src/commands.rs:12903
+#: crates/core/src/commands.rs:17415
+#: crates/core/src/schedule.rs:613
 msgid "Section"
 msgstr "Doorsnede"
 
@@ -606,7 +606,7 @@ msgstr "Doorsnede"
 msgid "Section Area"
 msgstr ""
 
-#: crates/core/src/model.rs:2931
+#: crates/core/src/model.rs:2940
 msgid "Sectional"
 msgstr ""
 
@@ -658,7 +658,7 @@ msgstr "Vensterbank"
 msgid "Single Door"
 msgstr "Enkele deur"
 
-#: crates/core/src/model.rs:2927
+#: crates/core/src/model.rs:2936
 msgid "Sliding"
 msgstr "Schuivend"
 
@@ -691,7 +691,7 @@ msgstr "Effen zwart"
 msgid "Solid fill"
 msgstr "Effen vulling"
 
-#: crates/core/src/model.rs:2177
+#: crates/core/src/model.rs:2186
 msgid "South"
 msgstr "Zuid"
 
@@ -703,11 +703,11 @@ msgstr ""
 msgid "Spare"
 msgstr ""
 
-#: crates/core/src/schedule.rs:614
+#: crates/core/src/schedule.rs:615
 msgid "Stock Length"
 msgstr ""
 
-#: crates/core/src/model.rs:2925
+#: crates/core/src/model.rs:2934
 msgid "Swing"
 msgstr "Draaiend"
 
@@ -756,11 +756,11 @@ msgstr "Aantrede"
 msgid "Trip"
 msgstr ""
 
-#: crates/core/src/model.rs:1758
+#: crates/core/src/model.rs:1767
 msgid "Type"
 msgstr "Type"
 
-#: crates/core/src/render.rs:4696
+#: crates/core/src/render.rs:4762
 msgid "UP"
 msgstr "OMHOOG"
 
@@ -772,7 +772,7 @@ msgstr "Onbegrensde hoogte"
 msgid "Unclassified"
 msgstr ""
 
-#: crates/core/src/commands.rs:13365
+#: crates/core/src/commands.rs:13392
 msgid "Unnamed"
 msgstr "Naamloos"
 
@@ -826,7 +826,7 @@ msgstr "Gewicht"
 msgid "Weight per Metre"
 msgstr ""
 
-#: crates/core/src/model.rs:2179
+#: crates/core/src/model.rs:2188
 msgid "West"
 msgstr "West"
 
@@ -846,7 +846,7 @@ msgstr "Ramenlijst"
 msgid "Worktop"
 msgstr "Werkblad"
 
-#: crates/core/src/schedule.rs:1381
+#: crates/core/src/schedule.rs:1383
 msgid "Yes"
 msgstr "Ja"
 
