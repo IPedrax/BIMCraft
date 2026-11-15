@@ -20,6 +20,8 @@ mod layout;
 mod links;
 #[cfg(test)]
 mod office_family_tests;
+#[cfg(test)]
+mod pack_tables_tests;
 mod plan;
 #[cfg(test)]
 pub(crate) mod register_tests;
@@ -308,7 +310,7 @@ fn finish(
         "engine": "shape-graph",
         "generator_version": GENERATOR_VERSION,
         "family": fam.name,
-        "building": building_id(&fam.name, &done.script.lines),
+        "building":building_id(&fam.name, &done.script.lines),
         "seed": req.seed,
         "rooms": {"requested": req.rooms, "tolerance": req.tolerance, "actual": rooms.len()},
         "shape": shape,

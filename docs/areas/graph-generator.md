@@ -262,6 +262,18 @@ compiles them in, sorted by name, into `family::BUILTIN`; `builtin`, `builtin_na
 all follow that table, and no code names a family. Adding a family is adding the file, whose `family` is its file name; taking one away is deleting it
 (`shape_graph/register_tests.rs` keeps the code from naming one).
 
+**A family and its pack** (`Family::within`; `shape_graph/pack_tables_tests.rs`). A family that names a pack is narrowed by the tables the
+pack's file has, and by no other: `Pack::parse` records whether the file holds the key (`has_kinds`; `has_connections`, for `connections`
+or `folding_connections`). With a `kinds` table each kind and its role are the pack's, and the counts and areas lie inside its ranges; with a
+`connections` table each link's types map to a means it lists for the pair of kinds. A table that is absent narrows nothing (`medical-day`
+has no `connections`; `hospital` and `clinic` have neither), and the family file is the only source for it; a table that is there and empty
+still refuses everything. Either way the pack's rules judge every graph: `emit::verify` runs `graph_rules::check` on the generated graph
+and on the extracted one (given the generated kinds and roles, which the extractor does not know), an attempt that fails a rule is thrown
+away, and `report.json` has a check for each rule by its id. A pack whose rules read roles (the GR rules) needs roles `Role::parse` knows.
+The toy families the tests read are in
+`crates/core/src/generate/testdata/shape-graph/`, outside the engine's directory, where no file may quote a kind of any pack
+(`register_tests::the_engine_quotes_no_room_kind`): their `building_type` is a word one pack also uses for a kind.
+
 **Jogs and bumps** (Slice 3; `shape_graph/layout/interior.rs`). `--interior` is `aligned`, `jogged` or `mixed` (the default: the seed
 chooses, and only a mixed call draws a number for it, so an aligned plan is what it was before the option); `--bumps` is `on` (the
 default) or `off`. `deliver` and `generate` take the defaults from one place (`Request::new`). The cells the layout places are kept

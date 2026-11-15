@@ -645,11 +645,14 @@ pub fn verify(
     if let Some(pack_id) = &fam.pack_id {
         rules = rules_pass(pack_id, &graph).map_err(|e| Trouble::Plan(format!("the generated graph fails the {pack_id} rules: {e}")))?;
         let mut built = extracted.clone();
-        let kinds: BTreeMap<&str, &str> = label.iter().zip(rooms).map(|((_, n), r)| (n.as_str(), fam.types[r.ty].kind.as_str())).collect();
+        // The extractor knows no kind and no role: a pack's rules read one or the other, so the built plan is judged with the
+        // generated ones.
+        let types: BTreeMap<&str, &super::family::Ty> = label.iter().zip(rooms).map(|((_, n), r)| (n.as_str(), &fam.types[r.ty])).collect();
         if let Some(nodes) = built["nodes"].as_array_mut() {
             for n in nodes {
-                let kind = n["id"].as_str().and_then(|i| kinds.get(i)).copied();
-                n["kind"] = json!(kind);
+                let ty = n["id"].as_str().and_then(|i| types.get(i)).copied();
+                n["kind"] = json!(ty.map(|t| t.kind.as_str()));
+                n["role"] = json!(ty.map(|t| t.role.as_str()));
             }
         }
         built["archetype"] = json!(pack_id);

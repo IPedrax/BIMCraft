@@ -117,16 +117,32 @@ pub struct Pack {
     #[serde(default)]
     pub folding_connections: Vec<Connection>,
     pub rules: Vec<Rule>,
+    /// Whether the pack's file has a `kinds` table. One it does not have is read as empty, and narrows nothing in a family
+    /// that names the pack (`Pack::parse` sets it; it is no key of the file).
+    #[serde(skip)]
+    pub has_kinds: bool,
+    /// Whether the pack's file has a `connections` or a `folding_connections` table.
+    #[serde(skip)]
+    pub has_connections: bool,
 }
 
 impl Pack {
+    /// A pack file read, with which of its tables the file has: a key that is absent is a table the pack does not have.
+    pub fn parse(text: &str) -> Result<Pack, String> {
+        let mut pack: Pack = serde_json::from_str(text).map_err(|e| e.to_string())?;
+        let file: Value = serde_json::from_str(text).map_err(|e| e.to_string())?;
+        pack.has_kinds = file.get("kinds").is_some();
+        pack.has_connections = file.get("connections").is_some() || file.get("folding_connections").is_some();
+        Ok(pack)
+    }
+
     /// The pack of `archetype` (house, office, clinic or hospital), parsed once.
     pub fn embedded(archetype: &str) -> Result<&'static Pack, String> {
         static PACKS: OnceLock<Vec<(&'static str, Result<Pack, String>)>> = OnceLock::new();
         let all = PACKS.get_or_init(|| {
             SOURCES
                 .iter()
-                .map(|(name, text)| (*name, serde_json::from_str(text).map_err(|e| format!("the embedded {name} rule pack: {e}"))))
+                .map(|(name, text)| (*name, Pack::parse(text).map_err(|e| format!("the embedded {name} rule pack: {e}"))))
                 .collect()
         });
         match all.iter().find(|(name, _)| *name == archetype) {

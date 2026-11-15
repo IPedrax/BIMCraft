@@ -358,6 +358,23 @@ fn finite_pair(p: [f64; 2]) -> bool {
 impl Family {
     /// A family file read and checked: its schema, and, with a pack, that it does not widen the pack.
     pub fn parse(text: &str) -> Result<Family, String> {
+        let fam = Family::read(text)?;
+        if let Some(id) = &fam.pack_id {
+            fam.within(id, Pack::embedded(id)?)?;
+        }
+        Ok(fam)
+    }
+
+    /// `parse`, with the pack given: what a family may hold under a pack that lacks a table, which no test changes a pack file for.
+    #[cfg(test)]
+    pub fn parse_within(text: &str, pack: &Pack) -> Result<Family, String> {
+        let fam = Family::read(text)?;
+        fam.within(fam.pack_id.as_deref().unwrap_or_default(), pack)?;
+        Ok(fam)
+    }
+
+    /// A family file read and its schema checked.
+    fn read(text: &str) -> Result<Family, String> {
         let file: FamilyFile = serde_json::from_str(text).map_err(|e| format!("the family file: {e}"))?;
         if file.schema_version != 1 {
             return Err(format!("`schema_version` is 1, not {}", file.schema_version));
@@ -475,7 +492,7 @@ impl Family {
         if let Some(c) = file.entry.iter().flat_map(|e| &e.types).find(|c| c.door().is_none()) {
             return Err(format!("`entry.types`: the connection type `{}` is not a door, and the way in is one", c.id()));
         }
-        let fam = Family {
+        Ok(Family {
             name: file.family,
             pack_id: file.pack_id,
             building_type: file.building_type,
@@ -484,15 +501,23 @@ impl Family {
             entry,
             types,
             links,
-        };
-        fam.within_pack()?;
-        Ok(fam)
+        })
     }
 
-    /// With a pack: each kind is the pack's, counts add up inside its ranges, areas inside its, link means are its.
-    fn within_pack(&self) -> Result<(), String> {
-        let Some(id) = &self.pack_id else { return Ok(()) };
-        let pack = Pack::embedded(id)?;
+    /// With a pack: each kind is the pack's, counts add up inside its ranges, areas inside its, link means are its. A table the
+    /// pack's file does not have narrows nothing: the family file is then the only source for it, and the pack's rules still
+    /// judge every graph.
+    fn within(&self, id: &str, pack: &Pack) -> Result<(), String> {
+        if pack.has_kinds {
+            self.within_kinds(id, pack)?;
+        }
+        if pack.has_connections {
+            self.within_connections(pack)?;
+        }
+        Ok(())
+    }
+
+    fn within_kinds(&self, id: &str, pack: &Pack) -> Result<(), String> {
         for t in &self.types {
             let k =
                 pack.kinds.get(&t.kind).ok_or_else(|| format!("room type `{}`: the kind `{}` is not in the `{id}` pack", t.key, t.kind))?;
@@ -514,6 +539,10 @@ impl Family {
                 return Err(format!("the counts of kind `{kind}` add up to {lo} to {hi}, which is wider than the pack's"));
             }
         }
+        Ok(())
+    }
+
+    fn within_connections(&self, pack: &Pack) -> Result<(), String> {
         for l in &self.links {
             let (a, b) = (&self.types[l.from].kind, &self.types[l.to].kind);
             for c in &l.types {
