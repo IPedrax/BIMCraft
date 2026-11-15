@@ -323,15 +323,6 @@ fn run(p: &Value) -> Result<Value, Refusal> {
     if given.family_file.is_some() && given.rooms.is_none() {
         return Err(refuse("invalid_params", "`family_file` belongs to the plan by `rooms`; give `rooms` too"));
     }
-    let archetype = match &given.archetype {
-        Some(name) => Some(Archetype::parse(name).ok_or_else(|| {
-            refuse(
-                "unknown_archetype",
-                format!("`archetype` is one of {}; got {:?}", Archetype::names(), name.chars().take(40).collect::<String>()),
-            )
-        })?),
-        None => None,
-    };
     if given.path.trim().is_empty() || given.path.len() > MAX_PATH || given.path.contains('\0') {
         return Err(refuse("invalid_params", format!("`path` is the run directory to write: not empty, at most {MAX_PATH} bytes")));
     }
@@ -362,11 +353,18 @@ fn run(p: &Value) -> Result<Value, Refusal> {
             "`delivery` belongs to the plan by an area (`area_m2` or `area_sqft`); leave it out with `rooms`",
         ));
     }
+    // A plan by rooms names a built-in family file. That name need not be an area archetype: a school is not.
     if let Some(rooms) = given.rooms {
         return run_shaped(&given, rooms, gridlines.unwrap_or(false));
     }
-    let Some(archetype) = archetype else {
-        return Err(refuse("invalid_params", "`generate` takes `archetype` or `family_file`"));
+    let archetype = match &given.archetype {
+        Some(name) => Archetype::parse(name).ok_or_else(|| {
+            refuse(
+                "unknown_archetype",
+                format!("`archetype` is one of {}; got {:?}", Archetype::names(), name.chars().take(40).collect::<String>()),
+            )
+        })?,
+        None => return Err(refuse("invalid_params", "`generate` takes `archetype` or `family_file`")),
     };
     if let Some(option) = [
         ("rooms_tol", given.rooms_tol.is_some()),

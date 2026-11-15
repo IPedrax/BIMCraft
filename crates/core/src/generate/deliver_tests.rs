@@ -406,7 +406,7 @@ fn a_batch_with_both_rooms_and_area_or_neither_is_invalid() {
     for (i, text) in [
         r#"{"schema_version": 1, "batches": [{"archetype": "clinic", "first_seed": 1, "count": 1, "rooms": [8, 12], "area": [600, 700]}]}"#,
         r#"{"schema_version": 1, "batches": [{"archetype": "clinic", "first_seed": 1, "count": 1}]}"#,
-        r#"{"schema_version": 1, "batches": [{"archetype": "clinic", "first_seed": 1, "count": 1, "rooms": [8, 12]}]}"#,
+        r#"{"schema_version": 1, "batches": [{"archetype": "office", "first_seed": 1, "count": 1, "rooms": [8, 12]}]}"#,
     ]
     .iter()
     .enumerate()

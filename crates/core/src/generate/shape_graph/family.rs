@@ -14,6 +14,7 @@ pub const CLINIC_FAMILY: &str = include_str!("../../../data/shape-families/clini
 pub const HOSPITAL_FAMILY: &str = include_str!("../../../data/shape-families/hospital.json");
 pub const HOUSE_FAMILY: &str = include_str!("../../../data/shape-families/house.json");
 pub const OFFICE_PATTERN_FAMILY: &str = include_str!("../../../data/shape-families/office-pattern.json");
+pub const SCHOOL_FAMILY: &str = include_str!("../../../data/shape-families/school.json");
 pub const SHAPES: &str = include_str!("../../../data/shape-families/shapes.json");
 pub const STUDIO_OFFICE_FAMILY: &str = include_str!("../../../data/shape-families/studio-office.json");
 
@@ -24,6 +25,7 @@ pub fn builtin(archetype: &str) -> Option<&'static str> {
         ("hospital", HOSPITAL_FAMILY),
         ("house", HOUSE_FAMILY),
         ("office-pattern", OFFICE_PATTERN_FAMILY),
+        ("school", SCHOOL_FAMILY),
         ("studio-office", STUDIO_OFFICE_FAMILY),
     ]
     .iter()
@@ -33,7 +35,7 @@ pub fn builtin(archetype: &str) -> Option<&'static str> {
 
 /// The names of the built-in families, for messages.
 pub fn builtin_names() -> &'static str {
-    "clinic, hospital, house, office-pattern, studio-office"
+    "clinic, hospital, house, office-pattern, school, studio-office"
 }
 
 /// A connection type (the spec's table): what it needs of a shared wall and how the extractor reports it.
