@@ -434,3 +434,52 @@ fn a_rooms_batch_is_accepted_for_every_family_file_and_refused_for_none() {
     std::fs::create_dir_all(&root2).expect("root");
     refused(&mut session(), &params(&d, &none, "none", Some(&rights), &root2), "invalid_brief");
 }
+
+/// A family marked unreviewed is delivered only by a batch that says `"unreviewed": "allow"`: without it each of its seeds is
+/// skipped with `unreviewed_family`, and a brief of nothing else is refused, naming that code, with nothing written.
+#[test]
+fn an_unreviewed_family_is_skipped_unless_the_batch_allows_it() {
+    let d = dir("unreviewed");
+    let rights = put(&d, "rights.txt", RIGHTS);
+    let batch = |allow: bool| {
+        let mut b = json!({"archetype": "medical-day", "first_seed": 701, "count": 3, "rooms": [24, 30], "rooms_tol": 3});
+        if allow {
+            b["unreviewed"] = json!("allow");
+        }
+        b
+    };
+    let house = json!({"archetype": "house", "first_seed": 1, "count": 1, "rooms": [10, 10], "rooms_tol": 2});
+    let brief = |name: &str, batches: Value| put(&d, name, json!({"schema_version": 1, "batches": batches}).to_string().as_bytes());
+    let root = |name: &str| {
+        let r = d.join(name);
+        std::fs::create_dir_all(&r).expect("root");
+        r
+    };
+
+    let allowed = root("allowed");
+    let reply = s_deliver(&d, &brief("allowed.json", json!([batch(true)])), &rights, &allowed);
+    assert_eq!(reply["files"], 3, "{reply}");
+    assert_eq!(reply["skipped"], json!([]));
+    assert!(allowed.join(GV).join("sk").join("dwg").join("medical-day_s701.dwg").exists());
+
+    // Beside a batch that delivers, the summary lists each seed with its code.
+    let mixed = root("mixed");
+    let reply = s_deliver(&d, &brief("mixed.json", json!([house, batch(false)])), &rights, &mixed);
+    assert_eq!(reply["files"], 1);
+    let skipped: Vec<(i64, &str)> = reply["skipped"]
+        .as_array()
+        .expect("skipped")
+        .iter()
+        .map(|s| (s["seed"].as_i64().unwrap_or(0), s["error"].as_str().unwrap_or("")))
+        .collect();
+    assert_eq!(skipped, [(701, "unreviewed_family"), (702, "unreviewed_family"), (703, "unreviewed_family")]);
+
+    // Alone, there is nothing to deliver: the refusal says how many seeds were skipped and with which code.
+    let alone = root("alone");
+    let p = params(&d, &brief("alone.json", json!([batch(false)])), "sk", Some(&rights), &alone);
+    let e = session().execute("deliver", &p).expect_err("refused");
+    assert!(e.starts_with("empty_delivery: "), "{e}");
+    assert!(e.contains("all 3 seeds of the brief were skipped (3 with `unreviewed_family`)"), "{e}");
+    assert!(e.contains("seed 701") && e.contains("`--unreviewed allow`"), "the first skip's own message: {e}");
+    assert_eq!(std::fs::read_dir(&alone).expect("ls").count(), 0);
+}
