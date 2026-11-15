@@ -1,4 +1,5 @@
-//! `deliver` through the real binary and its real DWG writer: a seed's delivered DWG is what `generate` then `run` write.
+//! `deliver` through the real binary and its real DWG writer: a seed's delivered DWG is what `generate` then `run` write, with
+//! the `generator_version` drawing property.
 
 use std::path::PathBuf;
 use std::process::{Command, Output};
@@ -20,8 +21,9 @@ fn cli(cwd: &std::path::Path, args: &[&str]) -> Result<Output, String> {
 fn the_version_is_the_release_and_a_commit() {
     let v = env!("BIMCRAFT_GENERATOR_VERSION");
     let release = env!("CARGO_PKG_VERSION");
-    // A build with no git has none, and `deliver` then refuses; a build in the repository has a short commit.
-    if !v.is_empty() {
+    // A build with no git has none, and `deliver` then refuses; a build in the repository has a short commit. A version
+    // given by BIMCRAFT_GENERATOR_VERSION at build time is the caller's own.
+    if !v.is_empty() && env!("BIMCRAFT_GENERATOR_VERSION_FROM") == "git" {
         let rest = v.strip_prefix(&format!("bimcraft-{release}+")).expect("bimcraft-<release>+<commit>");
         let commit = rest.strip_suffix(".dirty").unwrap_or(rest);
         assert!(commit.len() >= 7 && commit.bytes().all(|c| c.is_ascii_digit() || (b'a'..=b'f').contains(&c)), "{v}");
@@ -29,7 +31,7 @@ fn the_version_is_the_release_and_a_commit() {
 }
 
 #[test]
-fn a_delivered_dwg_is_what_generate_then_run_write() {
+fn a_delivered_dwg_is_what_generate_then_run_write_with_the_version_property() {
     let d = dir("bytes").unwrap();
     let brief = d.join("brief.json");
     std::fs::write(
@@ -84,6 +86,13 @@ fn a_delivered_dwg_is_what_generate_then_run_write() {
             if !o.status.success() {
                 continue;
             }
+            let script = g.join("script.bimcraft.txt");
+            let mut text = std::fs::read_to_string(&script).expect("script");
+            text.push_str(&format!(
+                "\ndrawing_property {{\"name\": \"generator_version\", \"value\": {:?}}}\n",
+                env!("BIMCRAFT_GENERATOR_VERSION")
+            ));
+            std::fs::write(&script, text).expect("script");
             let run = cli(&g, &["run", "--script", "script.bimcraft.txt", "--save", "plan.dwg"]).unwrap();
             assert!(run.status.success(), "{}", String::from_utf8_lossy(&run.stderr));
             if std::fs::read(g.join("plan.dwg")).expect("dwg") == std::fs::read(folder.join("dwg/house_s1.dwg")).expect("delivered") {

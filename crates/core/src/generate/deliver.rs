@@ -223,8 +223,9 @@ fn valid_version(v: &str) -> bool {
     v.contains('+') && valid_id(&v.replace('+', "-"))
 }
 
-/// One seed: built in memory, run in a scratch session as `run --script` runs it, saved as DWG at `dwg`, read back for its hash.
-fn make_one(job: &Job, writer: &crate::cad::DwgWriter, dir: &Path) -> Result<Outcome, String> {
+/// One seed: built in memory, run in a scratch session as `run --script` runs it, given the `generator_version` drawing property,
+/// saved as DWG at `dwg`, read back for its hash.
+fn make_one(job: &Job, writer: &crate::cad::DwgWriter, gv: &str, dir: &Path) -> Result<Outcome, String> {
     let built = match job.area {
         // A plan by area: the generator's own, drawn to the delivery rules, as `generate --delivery on` makes it.
         Some(area) => match Archetype::parse(&job.archetype)
@@ -252,6 +253,9 @@ fn make_one(job: &Job, writer: &crate::cad::DwgWriter, dir: &Path) -> Result<Out
         let mut scratch = Session::new();
         scratch.dwg_writer = Some(writer.clone());
         scratch.script(script).map_err(|e| format!("generation_failed: the plan's script does not run: {e}"))?;
+        scratch
+            .execute("drawing_property", &json!({"name": "generator_version", "value": gv}))
+            .map_err(|e| format!("generation_failed: {e}"))?;
         scratch.execute("save", &json!({"path": at.display().to_string()})).map_err(|e| format!("output_unwritable: {e}"))?;
         Ok(())
     })?;
@@ -267,7 +271,7 @@ fn make_one(job: &Job, writer: &crate::cad::DwgWriter, dir: &Path) -> Result<Out
 
 /// Every job on `threads` plain threads, each pulling the next index, results by position. The reproducible-GUID state is
 /// thread-local, so a seed's job never shares a thread's state with another's while it runs.
-fn run_all(jobs: &[Job], dir: &Path, writer: &crate::cad::DwgWriter, threads: usize) -> Result<Vec<Outcome>, String> {
+fn run_all(jobs: &[Job], dir: &Path, writer: &crate::cad::DwgWriter, gv: &str, threads: usize) -> Result<Vec<Outcome>, String> {
     let next = AtomicUsize::new(0);
     let failed = AtomicBool::new(false);
     let slots: Mutex<Vec<Option<Result<Outcome, String>>>> = Mutex::new((0..jobs.len()).map(|_| None).collect());
@@ -280,7 +284,7 @@ fn run_all(jobs: &[Job], dir: &Path, writer: &crate::cad::DwgWriter, threads: us
                     }
                     let i = next.fetch_add(1, Ordering::Relaxed);
                     let Some(job) = jobs.get(i) else { return };
-                    let done = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| make_one(job, writer, dir)))
+                    let done = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| make_one(job, writer, gv, dir)))
                         .unwrap_or_else(|_| Err(format!("generation_failed: seed {} stopped the generator", job.seed)));
                     if done.is_err() {
                         failed.store(true, Ordering::Relaxed);
@@ -358,8 +362,8 @@ fn run(s: &Session, p: &Value) -> Result<Value, Refusal> {
         return Err(params_error("`delivery_id` is up to 100 letters, digits, `.`, `_` and `-`, and does not start with `.`"));
     }
     let rerun = given.rerun.unwrap_or(DEFAULT_RERUN);
-    if !(1..=MAX_RERUN).contains(&rerun) {
-        return Err(params_error(format!("`rerun` is from 1 to {MAX_RERUN}")));
+    if !(0..=MAX_RERUN).contains(&rerun) {
+        return Err(params_error(format!("`rerun` is from 0 to {MAX_RERUN}")));
     }
     let threads = match given.jobs {
         Some(j) if (1..=MAX_JOBS).contains(&j) => j as usize,
@@ -393,8 +397,10 @@ fn run(s: &Session, p: &Value) -> Result<Value, Refusal> {
         .ok_or_else(|| params_error("this build has no generator version (`bimcraft-<release>+<commit>`), so it can't deliver"))?;
     let writer = s.dwg_writer.clone().ok_or_else(|| params_error("this build can't write DWG, so it can't deliver"))?;
     let version_dir = Path::new(&given.path).join(gv);
-    let (dfold, rfold) = (version_dir.join(&given.delivery_id), version_dir.join(format!("{}-rerun", given.delivery_id)));
-    for f in [&dfold, &rfold] {
+    let dfold = version_dir.join(&given.delivery_id);
+    // `rerun: 0` is for callers that check determinism themselves: no rerun folder at all.
+    let rfold = (rerun > 0).then(|| version_dir.join(format!("{}-rerun", given.delivery_id)));
+    for f in std::iter::once(&dfold).chain(&rfold) {
         if std::fs::symlink_metadata(f).is_ok() {
             return Err(refuse("delivery_exists", format!("{} is already there; a fix is a new `delivery_id`", f.display())));
         }
@@ -402,7 +408,8 @@ fn run(s: &Session, p: &Value) -> Result<Value, Refusal> {
 
     let made_version = std::fs::symlink_metadata(&version_dir).is_err();
     let mut made = Made { folders: Vec::new(), version_dir: made_version.then(|| version_dir.clone()) };
-    let result = write_delivery(&given, &jobs, rights.as_deref(), gv, &writer, threads, rerun as usize, (&dfold, &rfold), &mut made);
+    let result =
+        write_delivery(&given, &jobs, rights.as_deref(), gv, &writer, threads, rerun as usize, (&dfold, rfold.as_deref()), &mut made);
     if result.is_err() {
         made.undo();
     }
@@ -432,17 +439,17 @@ fn write_delivery(
     writer: &crate::cad::DwgWriter,
     threads: usize,
     rerun: usize,
-    (dfold, rfold): (&Path, &Path),
+    (dfold, rfold): (&Path, Option<&Path>),
     made: &mut Made,
 ) -> Result<Value, Refusal> {
     let version_dir = dfold.parent().ok_or_else(|| params_error("`path` has no parent"))?;
     std::fs::create_dir_all(version_dir).map_err(|e| io(version_dir, e))?;
-    for f in [dfold, rfold] {
+    for f in std::iter::once(dfold).chain(rfold) {
         std::fs::create_dir(f).map_err(|e| io(f, e))?;
         made.folders.push(f.to_path_buf());
         std::fs::create_dir(f.join("dwg")).map_err(|e| io(f, e))?;
     }
-    let outcomes = run_all(jobs, dfold, writer, threads).map_err(from_message)?;
+    let outcomes = run_all(jobs, dfold, writer, gv, threads).map_err(from_message)?;
     let mut rows: Vec<&Row> = Vec::new();
     let mut skipped: Vec<Value> = Vec::new();
     for o in &outcomes {
@@ -480,7 +487,10 @@ fn write_delivery(
         .into_iter()
         .filter_map(|i| by_seed.get(&rows[i].seed).map(|j| (*j).clone()))
         .collect();
-    let again = run_all(&picked, rfold, writer, threads).map_err(from_message)?;
+    let again = match rfold {
+        Some(rfold) => run_all(&picked, rfold, writer, gv, threads).map_err(from_message)?,
+        None => Vec::new(),
+    };
     let mut rerun_rows: Vec<&Row> = Vec::new();
     for o in &again {
         match o {
@@ -496,7 +506,7 @@ fn write_delivery(
             return Err(refuse("nondeterministic", format!("seed {} made a different file the second time", r.seed)));
         }
     }
-    for (folder, list) in [(dfold, &rows), (rfold, &rerun_rows)] {
+    for (folder, list) in std::iter::once((dfold, &rows)).chain(rfold.map(|r| (r, &rerun_rows))) {
         let at = folder.join("manifest.csv");
         std::fs::write(&at, manifest(list, gv)).map_err(|e| io(&at, e))?;
         if let Some(bytes) = rights {
@@ -517,7 +527,7 @@ fn write_delivery(
     let _ = &given.brief;
     Ok(json!({
         "folder": dfold.display().to_string(),
-        "rerun_folder": rfold.display().to_string(),
+        "rerun_folder": rfold.map(|r| r.display().to_string()),
         "generator_version": gv,
         "files": files,
         "buildings": buildings,

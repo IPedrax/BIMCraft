@@ -25,7 +25,8 @@ const USAGE: &str = "USAGE:
                                  can't be met (an area too small) exits non-zero with a JSON error (`error`, a code, and `message`) on stderr, and writes nothing
   bimcraft-cli deliver --brief BRIEF.json --delivery-id ID --rights (FILE | emailed) --out ROOT [--rerun N] [--jobs J]
                                  write ROOT/<generator_version>/ID/ (manifest.csv, RIGHTS.txt, dwg/) for the brief's seeds, and
-                                 ID-rerun/ for N seeds (50) spread through them, made again; J threads. Never overwrites
+                                 ID-rerun/ for N seeds (50; 0 for none) spread through them, made again; J threads. Each DWG
+                                 holds the generator_version drawing property. Never overwrites
   bimcraft-cli generate (--archetype clinic|hospital|house|medical-day|office-pattern|school|studio-office | --family-file FILE) --seed N --rooms R [--rooms-tol T] [--shape ID] [--interior aligned|jogged|mixed] [--bumps on|off] [--gridlines on|off] [--ext-pen 8..14] [--ext-light 0..45] [--int-pen 3..9] [--int-light 0..65] [--unreviewed allow] --out DIR
                                  the shape graph engine: R rooms (between R-T and R+T) laid out in one of nine outlines (bar, narrow_bar,
                                  l_shape, corner_notch, stepped, t_shape, side_nub, opposite_wings, court; --shape pins one) by the
