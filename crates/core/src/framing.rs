@@ -247,6 +247,8 @@ pub struct Framing {
     /// The framing type's stock lengths.
     pub stock: Vec<f64>,
     pub members: Vec<Member>,
+    /// What couldn't be framed as the type says: an opening left unframed, a header made shallower or left out.
+    pub warnings: Vec<String>,
 }
 
 /// A line of a cut list: `count` members alike.
@@ -437,6 +439,7 @@ impl Profile {
 /// An opening's rough opening, in the wall's frame.
 struct Rough {
     guid: Guid,
+    id: Id,
     door: bool,
     left: f64,
     right: f64,
@@ -535,6 +538,7 @@ pub fn wall(m: &Model, id: Id) -> Result<Option<Framing>, String> {
         x_axis: axis.tangent(0.0),
         stock: t.stock.clone(),
         members: Vec::new(),
+        warnings: Vec::new(),
     };
     let ((a, through_start), (b, through_end)) = (end(m, id, w, k, mid, false), end(m, id, w, k, mid, true));
     if b - a <= EPS {
@@ -560,6 +564,7 @@ pub fn wall(m: &Model, id: Id) -> Result<Option<Framing>, String> {
     let lowest_ceiling = |s0: f64, s1: f64| top.stations(s0, s1).map(ceiling).fold(f64::INFINITY, f64::min);
     let own_base = m.own_base(w);
     let members = &mut out.members;
+    let warnings = &mut out.warnings;
 
     // The openings' rough openings, along the wall.
     let guid = m.guid(id);
@@ -579,6 +584,7 @@ pub fn wall(m: &Model, id: Id) -> Result<Option<Framing>, String> {
             let sill = own_base + op.sill;
             Some(Rough {
                 guid: m.guid(o),
+                id: o,
                 door,
                 left: op.offset - half,
                 right: op.offset + half,
@@ -663,23 +669,60 @@ pub fn wall(m: &Model, id: Id) -> Result<Option<Framing>, String> {
 
     // Each opening that fits, the first along the wall first: kings, jacks, a header on the jacks and a window's sill.
     let (kings, jacks) = (f64::from(t.kings), f64::from(t.jacks));
-    let mut framed: Vec<(&Rough, [f64; 2], &Header)> = Vec::new();
+    let mut framed: Vec<(&Rough, [f64; 2], Option<Header>)> = Vec::new();
     for r in &roughs {
+        let what = if r.door { "door" } else { "window" };
         let span = [r.left - (jacks + kings) * th, r.right + (jacks + kings) * th];
         let width = r.right - r.left;
-        let Some(header) = t.headers.iter().find(|h| h.up_to.is_none_or(|u| u >= width - EPS)).or(t.headers.last()) else { continue };
+        let Some(wanted) = t.headers.iter().find(|h| h.up_to.is_none_or(|u| u >= width - EPS)).or(t.headers.last()) else { continue };
         let ends = [r.left - jacks * th, r.right + jacks * th];
         let sill_under = r.bottom - f64::from(t.sill_plates) * th;
-        let fits = span[0] >= a - EPS
-            && span[1] <= b + EPS
-            && taken.iter().all(|v| v + th / 2.0 <= span[0] + EPS || v - th / 2.0 >= span[1] - EPS)
-            && framed.iter().all(|(_, o, _)| o[1] <= span[0] + EPS || o[0] >= span[1] - EPS)
-            && r.top + header.height() <= lowest_ceiling(ends[0], ends[1]) + EPS
-            && r.top > highest_floor(ends[0], ends[1]) + EPS
-            && (r.door || sill_under >= highest_floor(r.left, r.right) - EPS);
-        if !fits {
+        let why = if span[0] < a - EPS || span[1] > b + EPS {
+            Some("its kings and jacks would run past the framed end of the wall".to_string())
+        } else if !taken.iter().all(|v| v + th / 2.0 <= span[0] + EPS || v - th / 2.0 >= span[1] - EPS) {
+            Some("its kings and jacks would stand on a corner's or the wall's end studs".to_string())
+        } else if let Some((o, _, _)) = framed.iter().find(|(_, o, _)| o[1] > span[0] + EPS && o[0] < span[1] - EPS) {
+            Some(format!("its kings and jacks would overlap those of {} {}", if o.door { "door" } else { "window" }, o.id))
+        } else if r.top <= highest_floor(ends[0], ends[1]) + EPS {
+            Some("it stands below the bottom plates".to_string())
+        } else if !r.door && sill_under < highest_floor(r.left, r.right) - EPS {
+            Some(format!("its sill would be under the bottom plates (its rough opening starts {:.0} mm up)", r.bottom - own_base))
+        } else {
+            None
+        };
+        if let Some(why) = why {
+            warnings.push(format!("{what} {} isn't framed: {why}; move it or change its size", r.id));
             continue;
         }
+        // The header, as deep as the type says when it fits under the top plates; shallower, or none, when it doesn't.
+        let ceiling_over = lowest_ceiling(ends[0], ends[1]);
+        let room = ceiling_over - r.top;
+        let header = if wanted.height() <= room + EPS {
+            Some(wanted.clone())
+        } else if room >= th - EPS {
+            warnings.push(format!(
+                "{what} {}: only {room:.0} mm between its rough opening and the top plates, less than its {:.0} mm header; \
+                 the header is cut to {room:.0} mm: lower the opening or check the header's span",
+                r.id,
+                wanted.height()
+            ));
+            Some(if wanted.flat {
+                let plies = ((room / wanted.depth + EPS).floor() as u32).max(1);
+                Header { depth: (room / f64::from(plies)).min(wanted.depth), plies, ..wanted.clone() }
+            } else {
+                Header { depth: room, ..wanted.clone() }
+            })
+        } else {
+            warnings.push(format!(
+                "{what} {}: its rough opening reaches the top plates (its head at {:.0} mm, their underside at {ceiling_over:.0} mm): \
+                 no room for a header; lower the opening or make the wall taller",
+                r.id,
+                r.top - own_base
+            ));
+            None
+        };
+        // A head into the top plates is framed up to them.
+        let r_top = r.top.min(ceiling_over);
         let g = r.guid;
         for (side, sign, edge) in [("left", -1.0, r.left), ("right", 1.0, r.right)] {
             for i in 0..t.kings {
@@ -690,17 +733,19 @@ pub fn wall(m: &Model, id: Id) -> Result<Option<Framing>, String> {
             }
             for i in 0..t.jacks {
                 let c = edge + sign * ((f64::from(i) + 0.5) * th);
-                upright(members, format!("{g}/jack/{side}/{i}"), Role::Jack, c, &floor, &|_| r.top);
+                upright(members, format!("{g}/jack/{side}/{i}"), Role::Jack, c, &floor, &|_| r_top);
             }
         }
-        let (h_across, h_section) = if header.flat {
-            (across, [header.depth, depth])
-        } else {
-            let half = f64::from(header.plies) * th / 2.0;
-            ([mid - half, mid + half], [th, header.depth])
-        };
-        let (z0, z1) = (r.top, r.top + header.height());
-        members.push(Member::new(format!("{g}/header"), Role::Header, h_section, header.plies, ends, h_across, [[z0; 2], [z1; 2]]));
+        if let Some(header) = &header {
+            let (h_across, h_section) = if header.flat {
+                (across, [header.depth, depth])
+            } else {
+                let half = f64::from(header.plies) * th / 2.0;
+                ([mid - half, mid + half], [th, header.depth])
+            };
+            let (z0, z1) = (r_top, r_top + header.height());
+            members.push(Member::new(format!("{g}/header"), Role::Header, h_section, header.plies, ends, h_across, [[z0; 2], [z1; 2]]));
+        }
         if !r.door {
             for i in 0..t.sill_plates {
                 let z = r.bottom - f64::from(i) * th;
@@ -754,8 +799,10 @@ pub fn wall(m: &Model, id: Id) -> Result<Option<Framing>, String> {
     for (i, c) in grid {
         if let Some((r, _, header)) = framed.iter().find(|(_, s, _)| c > s[0] - th / 2.0 && c < s[1] + th / 2.0) {
             if c >= r.left + th / 2.0 - EPS && c <= r.right - th / 2.0 + EPS {
-                let over = r.top + header.height();
-                upright(members, format!("{}/cripple/top/{i}", r.guid), Role::Cripple, c, &|_| over, &ceiling);
+                if let Some(header) = header {
+                    let over = r.top + header.height();
+                    upright(members, format!("{}/cripple/top/{i}", r.guid), Role::Cripple, c, &|_| over, &ceiling);
+                }
                 if !r.door {
                     let under = r.bottom - f64::from(t.sill_plates) * th;
                     upright(members, format!("{}/cripple/bottom/{i}", r.guid), Role::Cripple, c, &floor, &|_| under);
@@ -832,11 +879,14 @@ pub(crate) fn frame(s: &mut Session, p: &Value) -> Result<Value, String> {
             w.framing = Some(name.clone());
         }
     }
-    let mut total = 0;
+    let (mut total, mut warnings) = (0, Vec::new());
     for id in &ids {
-        total += wall(m, *id).map_err(|e| bad(c, format!("wall {id}: {e}")))?.map_or(0, |f| f.members.len());
+        if let Some(f) = wall(m, *id).map_err(|e| bad(c, format!("wall {id}: {e}")))? {
+            total += f.members.len();
+            warnings.extend(f.warnings.into_iter().map(|w| format!("wall {id}: {w}")));
+        }
     }
-    Ok(json!({"ids": ids, "type": name, "members": total}))
+    Ok(json!({"ids": ids, "type": name, "members": total, "warnings": warnings}))
 }
 
 /// `unframe`: walls framed no more.
@@ -870,6 +920,6 @@ pub(crate) fn query(s: &mut Session, p: &Value) -> Result<Value, String> {
     Ok(json!({
         "units": "mm", "host": f.host, "id": id, "type": f.type_name, "layer": f.layer, "material": f.material,
         "origin": [f.origin.0, f.origin.1], "x_axis": [f.x_axis.0, f.x_axis.1], "depth_axis": [f.depth_axis().0, f.depth_axis().1],
-        "members": f.members.iter().map(|m| member_json(&f, m)).collect::<Vec<_>>(), "cut_list": cuts,
+        "members": f.members.iter().map(|m| member_json(&f, m)).collect::<Vec<_>>(), "cut_list": cuts, "warnings": f.warnings,
     }))
 }

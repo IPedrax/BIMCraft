@@ -297,3 +297,17 @@ fn framing_screenshots() {
         save(&mut h, "tools");
     }
 }
+
+#[test]
+fn frame_says_which_openings_it_couldnt_frame_as_the_type_says() {
+    // The default 1200 x 1500 window at 900 in a wall 2440 tall: its head reaches the top plates.
+    let mut h = app(&format!(
+        "{STUDS}\nwall {{\"points\": [[0,8000],[6000,8000]], \"type\": \"2x4\", \"height\": 2440}}\nwindow {{\"at\": [3000, 8000]}}"
+    ));
+    let walls = ids(&h, "wall");
+    let last = *walls.last().unwrap();
+    select(&mut h, &[last]);
+    structural(&mut h, "Frame");
+    let said = &h.state().status;
+    assert!(said.error && said.text.contains("1 openings to check:") && said.text.contains("top plates"), "{}", said.text);
+}

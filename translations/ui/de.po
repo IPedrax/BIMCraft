@@ -1999,7 +1999,7 @@ msgstr "Keramikfliese"
 #: crates/ui-egui/src/editor/sketch.rs:1330
 #: crates/ui-egui/src/lib.rs:5763
 #: crates/ui-egui/src/linestyles.rs:431
-#: crates/ui-egui/src/structure.rs:202
+#: crates/ui-egui/src/structure.rs:208
 msgid "Chain"
 msgstr "Kette"
 
@@ -6590,7 +6590,7 @@ msgstr "Gerade eben"
 msgid "Justification"
 msgstr ""
 
-#: crates/ui-egui/src/structure.rs:186
+#: crates/ui-egui/src/structure.rs:192
 msgid "Justification:"
 msgstr "Ausrichtung:"
 
@@ -8668,7 +8668,7 @@ msgstr "Versatz von der Oberfläche:"
 
 #: crates/ui-egui/src/draw.rs:350
 #: crates/ui-egui/src/lib.rs:5743
-#: crates/ui-egui/src/structure.rs:196
+#: crates/ui-egui/src/structure.rs:202
 msgid "Offset:"
 msgstr "Versatz:"
 
@@ -11585,7 +11585,7 @@ msgstr ""
 msgid "Select the walls to frame first."
 msgstr ""
 
-#: crates/ui-egui/src/structure.rs:170
+#: crates/ui-egui/src/structure.rs:176
 msgid "Select the walls to remove framing from first."
 msgstr ""
 
@@ -13500,7 +13500,7 @@ msgstr ""
 msgid "Thickness"
 msgstr "Dicke"
 
-#: crates/ui-egui/src/structure.rs:221
+#: crates/ui-egui/src/structure.rs:227
 msgid "Thickness:"
 msgstr "Dicke:"
 
@@ -13717,8 +13717,8 @@ msgstr "Oberes Geschoss"
 msgid "Top Offset"
 msgstr "Oberer Versatz"
 
-#: crates/ui-egui/src/structure.rs:199
-#: crates/ui-egui/src/structure.rs:223
+#: crates/ui-egui/src/structure.rs:205
+#: crates/ui-egui/src/structure.rs:229
 msgid "Top Offset:"
 msgstr "Oberer Versatz:"
 
@@ -15174,7 +15174,7 @@ msgstr "auf die Oberseite des Bodens klicken"
 msgid "click where its run ends"
 msgstr "dort anklicken, wo der Lauf endet"
 
-#: crates/ui-egui/src/structure.rs:326
+#: crates/ui-egui/src/structure.rs:332
 msgid "column: {}"
 msgstr "Stütze: {}"
 
@@ -15898,6 +15898,10 @@ msgstr "{} hat ein anderes Projekt geöffnet"
 msgid "{} opened without {} fields this version doesn't know; saving it leaves them out."
 msgstr "{} geöffnet ohne {} Felder, die diese Version nicht kennt; beim Speichern werden sie weggelassen."
 
+#: crates/ui-egui/src/structure.rs:166
+msgid "{} openings to check:"
+msgstr ""
+
 #: crates/ui-egui/src/parameters.rs:570
 #: crates/ui-egui/src/parameters.rs:620
 msgid "{} parameters exported."
@@ -16071,8 +16075,8 @@ msgstr "{}: Anfang"
 msgid "{}: Type"
 msgstr "{}: Typ"
 
-#: crates/ui-egui/src/structure.rs:231
-#: crates/ui-egui/src/structure.rs:253
+#: crates/ui-egui/src/structure.rs:237
+#: crates/ui-egui/src/structure.rs:259
 msgid "{}: `{}` is not a height"
 msgstr "{}: `{}` ist keine Höhe"
 
@@ -16126,7 +16130,7 @@ msgid "{}: valid"
 msgstr ""
 
 #: crates/ui-egui/src/favorites.rs:162
-#: crates/ui-egui/src/structure.rs:247
+#: crates/ui-egui/src/structure.rs:253
 msgid "{}: {}"
 msgstr "{}: {}"
 
