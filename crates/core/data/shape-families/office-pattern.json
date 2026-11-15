@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "family": "office-pattern",
+  "pack_id": "office-pattern",
+  "building_type": "office",
+  "review": {
+    "status": "reviewed",
+    "note": "Converted from crates/core/data/graph-rules/office-pattern.json for the shape-graph engine. Ranges narrow the exploratory rule pack and add side-ratio limits."
+  },
+  "sources": [
+    "BIMCraft/crates/core/data/graph-rules/office-pattern.json",
+    "generated/office-variations-20261112/generate.py"
+  ],
+  "entry": {"rooms": ["lobby"], "doors": [1, 1], "types": ["single", "double"]},
+  "rooms": {
+    "lobby": {
+      "kind": "lobby", "name": "Lobby", "role": "public", "place": "entry_end",
+      "count": [1, 1], "area_m2": [12.0, 60.0], "max_side_ratio": 2.6, "min_side_mm": 3000, "max_links": 3
+    },
+    "hall": {
+      "kind": "hall", "name": "Corridor", "role": "circulation", "place": "spine",
+      "count": [1, 1], "area_m2": [8.0, 80.0], "max_side_ratio": null, "min_side_mm": 1200, "max_links": 80
+    },
+    "private_office": {
+      "kind": "private_office", "name": "Private Office", "role": "private", "place": "off_spine", "weight": 3,
+      "count": [1, 20], "area_m2": [6.0, 28.0], "max_side_ratio": 2.4, "min_side_mm": 2200, "max_links": 1
+    },
+    "conference": {
+      "kind": "conference", "name": "Conference", "role": "shared", "place": "off_spine",
+      "count": [1, 8], "area_m2": [8.0, 45.0], "max_side_ratio": 2.5, "min_side_mm": 2600, "max_links": 1
+    },
+    "restroom": {
+      "kind": "restroom", "name": "Restroom", "role": "service", "place": "off_spine", "weight": 2,
+      "count": [1, 12], "area_m2": [4.0, 16.0], "max_side_ratio": 3.0, "min_side_mm": 1500, "max_links": 1
+    },
+    "pantry": {
+      "kind": "pantry", "name": "Pantry", "role": "support", "place": "off_spine",
+      "count": [1, 6], "area_m2": [6.0, 28.0], "max_side_ratio": 2.6, "min_side_mm": 2200, "max_links": 1
+    },
+    "focus_room": {
+      "kind": "focus_room", "name": "Focus Room", "role": "private", "place": "off_spine",
+      "count": [0, 10], "area_m2": [4.0, 18.0], "max_side_ratio": 2.8, "min_side_mm": 1800, "max_links": 1
+    },
+    "open_office": {
+      "kind": "open_office", "name": "Open Office", "role": "shared", "place": "spine_end",
+      "count": [1, 1], "area_m2": [30.0, 180.0], "max_side_ratio": 3.0, "min_side_mm": 3600, "max_links": 2
+    }
+  },
+  "links": [
+    {"from": "lobby", "to": "hall", "use": "parent", "types": ["single", "double"]},
+    {"from": "hall", "to": "open_office", "use": "parent", "types": ["single", "double"]},
+    {"from": "hall", "to": "conference", "use": "parent", "types": ["single", "double"]},
+    {"from": "hall", "to": "private_office", "use": "parent", "types": ["single"]},
+    {"from": "hall", "to": "restroom", "use": "parent", "types": ["single"]},
+    {"from": "hall", "to": "pantry", "use": "parent", "types": ["single"]},
+    {"from": "hall", "to": "focus_room", "use": "parent", "types": ["single"]}
+  ]
+}

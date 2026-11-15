@@ -1,0 +1,89 @@
+{
+  "model": "claude-fable-5-2",
+  "family": "school",
+  "written": "2026-11-14",
+  "basis": "No school trace and no school rule pack. pack_id is null. Every count, area, side limit and connection is an estimate by the model, from general knowledge of single-storey schools with classrooms along one corridor. Nothing is measured from a drawing.",
+  "building_type": "educational (school)",
+  "program": {
+    "storeys": 1,
+    "smallest_rooms": 10,
+    "largest_rooms": 30,
+    "note": "Smallest: lobby 1, corridor 1, classroom 4, restroom 2, office 1, staff_room 1. Largest: lobby 1, corridor 1, classroom 12, restroom 4, office 3, staff_room 2, library 1, storage 6."
+  },
+  "entry": {"rooms": ["lobby"], "doors": [1, 1], "types": ["single"], "confidence": "medium"},
+  "rooms": {
+    "lobby": {
+      "kind": "lobby", "name": "Lobby", "role": "public", "place": "entry_end",
+      "count": {"value": [1, 1], "confidence": "high"},
+      "area_m2": {"value": [12.0, 100.0], "confidence": "low"},
+      "max_side_ratio": {"value": 3.5, "confidence": "low"},
+      "min_side_mm": {"value": 3000, "confidence": "medium"},
+      "max_links": {"value": 3, "confidence": "medium"}
+    },
+    "corridor": {
+      "kind": "corridor", "name": "Corridor", "role": "circulation", "place": "spine",
+      "count": {"value": [1, 1], "confidence": "high"},
+      "area_m2": {"value": [15.0, 220.0], "confidence": "low"},
+      "max_side_ratio": {"value": null, "confidence": "high"},
+      "min_side_mm": {"value": 2400, "confidence": "medium"},
+      "max_links": {"value": 30, "confidence": "medium"}
+    },
+    "classroom": {
+      "kind": "classroom", "name": "Classroom", "role": "shared", "place": "off_spine", "weight": 4,
+      "count": {"value": [4, 12], "confidence": "medium"},
+      "area_m2": {"value": [35.0, 85.0], "confidence": "medium"},
+      "max_side_ratio": {"value": 1.8, "confidence": "medium"},
+      "min_side_mm": {"value": 5000, "confidence": "medium"},
+      "max_links": {"value": 1, "confidence": "high"}
+    },
+    "restroom": {
+      "kind": "restroom", "name": "Restroom", "role": "support", "place": "off_spine",
+      "count": {"value": [2, 4], "confidence": "medium"},
+      "area_m2": {"value": [6.0, 30.0], "confidence": "medium"},
+      "max_side_ratio": {"value": 4.0, "confidence": "low"},
+      "min_side_mm": {"value": 1800, "confidence": "medium"},
+      "max_links": {"value": 1, "confidence": "high"}
+    },
+    "office": {
+      "kind": "office", "name": "Office", "role": "private", "place": "off_spine",
+      "count": {"value": [1, 3], "confidence": "medium"},
+      "area_m2": {"value": [9.0, 30.0], "confidence": "medium"},
+      "max_side_ratio": {"value": 3.0, "confidence": "low"},
+      "min_side_mm": {"value": 2400, "confidence": "medium"},
+      "max_links": {"value": 1, "confidence": "high"}
+    },
+    "staff_room": {
+      "kind": "staff_room", "name": "Staff Room", "role": "private", "place": "off_spine",
+      "count": {"value": [1, 2], "confidence": "medium"},
+      "area_m2": {"value": [15.0, 50.0], "confidence": "medium"},
+      "max_side_ratio": {"value": 2.5, "confidence": "low"},
+      "min_side_mm": {"value": 3000, "confidence": "medium"},
+      "max_links": {"value": 1, "confidence": "high"}
+    },
+    "library": {
+      "kind": "library", "name": "Library", "role": "shared", "place": "spine_end",
+      "count": {"value": [0, 1], "confidence": "medium"},
+      "area_m2": {"value": [30.0, 160.0], "confidence": "low"},
+      "max_side_ratio": {"value": 3.0, "confidence": "low"},
+      "min_side_mm": {"value": 4500, "confidence": "medium"},
+      "max_links": {"value": 1, "confidence": "high"}
+    },
+    "storage": {
+      "kind": "storage", "name": "Storage", "role": "support", "place": "off_spine",
+      "count": {"value": [0, 6], "confidence": "low"},
+      "area_m2": {"value": [3.0, 20.0], "confidence": "low"},
+      "max_side_ratio": {"value": 4.5, "confidence": "low"},
+      "min_side_mm": {"value": 1500, "confidence": "medium"},
+      "max_links": {"value": 1, "confidence": "high"}
+    }
+  },
+  "links": [
+    {"from": "lobby", "to": "corridor", "use": "parent", "types": ["open_full", "cased", "double"], "confidence": "medium"},
+    {"from": "corridor", "to": "classroom", "use": "parent", "types": ["single"], "confidence": "high"},
+    {"from": "corridor", "to": "restroom", "use": "parent", "types": ["single"], "confidence": "high"},
+    {"from": "corridor", "to": "office", "use": "parent", "types": ["single"], "confidence": "high"},
+    {"from": "corridor", "to": "staff_room", "use": "parent", "types": ["single"], "confidence": "high"},
+    {"from": "corridor", "to": "library", "use": "parent", "types": ["double", "single"], "confidence": "medium"},
+    {"from": "corridor", "to": "storage", "use": "parent", "types": ["single"], "confidence": "medium"}
+  ]
+}

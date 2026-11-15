@@ -26,7 +26,7 @@ const USAGE: &str = "USAGE:
   bimcraft-cli deliver --brief BRIEF.json --delivery-id ID --rights (FILE | emailed) --out ROOT [--rerun N] [--jobs J]
                                  write ROOT/<generator_version>/ID/ (manifest.csv, RIGHTS.txt, dwg/) for the brief's seeds, and
                                  ID-rerun/ for N seeds (50) spread through them, made again; J threads. Never overwrites
-  bimcraft-cli generate (--archetype house | --family-file FILE) --seed N --rooms R [--rooms-tol T] [--shape ID] [--interior aligned] [--bumps off] [--gridlines on|off] --out DIR
+  bimcraft-cli generate (--archetype clinic|hospital|house|office-pattern|studio-office | --family-file FILE) --seed N --rooms R [--rooms-tol T] [--shape ID] [--interior aligned] [--bumps off] [--gridlines on|off] [--unreviewed allow] --out DIR
                                  the shape graph engine: R rooms (between R-T and R+T) laid out in one of nine outlines (bar, narrow_bar,
                                  l_shape, corner_notch, stepped, t_shape, side_nub, opposite_wings, court; --shape pins one) by the
                                  family file of the archetype (crates/core/data/shape-families), or the family file given with
@@ -194,7 +194,7 @@ fn generate_params(args: &[String]) -> Result<Value, String> {
     let (mut archetype, mut seed, mut area, mut area_sqft, mut out) = (None, None, None, None, None);
     // The shape graph engine's options: `--rooms` selects it, and the core refuses the rest without it (as JSON).
     let (mut rooms, mut rooms_tol, mut shape, mut interior, mut bumps) = (None, None, None, None, None);
-    let (mut family_file, mut delivery, mut gridlines) = (None, None, None);
+    let (mut family_file, mut delivery, mut gridlines, mut unreviewed) = (None, None, None, None);
     let mut rest = args.iter();
     while let Some(arg) = rest.next() {
         let value = rest.next().ok_or_else(|| format!("{arg} needs a value\n\n{USAGE}"))?;
@@ -212,6 +212,7 @@ fn generate_params(args: &[String]) -> Result<Value, String> {
             "--family-file" => &mut family_file,
             "--delivery" => &mut delivery,
             "--gridlines" => &mut gridlines,
+            "--unreviewed" => &mut unreviewed,
             other => return Err(format!("unknown option `{other}` for generate\n\n{USAGE}")),
         };
         if slot.replace(value).is_some() {
@@ -258,6 +259,7 @@ fn generate_params(args: &[String]) -> Result<Value, String> {
         ("bumps", bumps),
         ("delivery", delivery),
         ("gridlines", gridlines),
+        ("unreviewed", unreviewed),
     ] {
         if let Some(v) = value {
             p[key] = json!(v);

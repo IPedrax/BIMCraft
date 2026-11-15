@@ -1,0 +1,136 @@
+{
+  "model": "claude-fable-5-2",
+  "family": "hospital",
+  "written": "2026-11-14",
+  "note": "The proposal the hospital family file was written from. Every value marked `model` in hospital.json is this file's value for it. `why` is the model's reason, for the reviewer. Values marked `trace` are door types seen in the unreviewed traces; no count or size is taken from a trace, because both are drawn at assumed scales.",
+  "inputs": [
+    "specs/shape-graph-generator.md",
+    "BIMCraft/crates/core/data/shape-families/house.json",
+    "done/fixtures/shape-graph/examples/medical-day-family.json",
+    "BIMCraft/crates/core/data/graph-rules/hospital.json",
+    "prototypes/hospital-1-measured-20261113/expected-topology.json",
+    "prototypes/icu-floor-plan-measured-20261113/expected-topology.json"
+  ],
+  "pack_id": null,
+  "entry": {
+    "rooms": ["entry_lobby"], "doors": [1, 2], "types": ["single"],
+    "why": "Asked for as a single door on the lobby. The ICU trace's one outside door is a single swing; hospital-1's main entrance is two pairs, which this does not follow."
+  },
+  "rooms": {
+    "entry_lobby": {
+      "kind": "entry_lobby", "name": "Lobby", "role": "public", "place": "entry_end",
+      "count": [1, 1], "area_m2": [20.0, 90.0], "max_side_ratio": 2.5, "min_side_mm": 3600, "max_links": 8,
+      "source": {"count": {"from": "model", "confidence": "high"}, "area_m2": {"from": "model", "confidence": "low"}, "max_side_ratio": {"from": "model", "confidence": "medium"}, "min_side_mm": {"from": "model", "confidence": "medium"}, "max_links": {"from": "model", "confidence": "low"}},
+      "why": "PR-001 asks for one. The hospital-1 trace enters through one large hall; its size there rests on an assumed scale, so the area is a guess, wide enough to stand across the end of a bar."
+    },
+    "corridor": {
+      "kind": "corridor", "name": "Corridor", "role": "circulation", "place": "spine",
+      "count": [1, 5], "area_m2": [10.0, 180.0], "max_side_ratio": null, "min_side_mm": 2400, "max_links": 40,
+      "source": {"count": {"from": "model", "confidence": "medium"}, "area_m2": {"from": "model", "confidence": "low"}, "max_side_ratio": {"from": "model", "confidence": "high"}, "min_side_mm": {"from": "model", "confidence": "medium"}, "max_links": {"from": "model", "confidence": "medium"}},
+      "why": "The hospital-1 trace has five corridor spaces, the busiest with 14 links; 40 leaves room for a long ward corridor. 2400 mm is a usual clear width where beds pass; the trace's 2.3 m rests on an assumed scale."
+    },
+    "waiting_reception": {
+      "kind": "waiting_reception", "name": "Waiting", "role": "public", "place": "off_spine",
+      "count": [1, 3], "area_m2": [10.0, 60.0], "max_side_ratio": 2.5, "min_side_mm": 3000, "max_links": 3,
+      "source": {"count": {"from": "model", "confidence": "medium"}, "area_m2": {"from": "model", "confidence": "low"}, "max_side_ratio": {"from": "model", "confidence": "medium"}, "min_side_mm": {"from": "model", "confidence": "medium"}, "max_links": {"from": "model", "confidence": "medium"}},
+      "why": "PR-001 asks for one; a department may have its own."
+    },
+    "exam": {
+      "kind": "exam", "name": "Exam Room", "role": "clinical", "place": "off_spine", "weight": 4,
+      "count": [2, 12], "area_m2": [8.0, 16.0], "max_side_ratio": 1.8, "min_side_mm": 2400, "max_links": 1,
+      "source": {"count": {"from": "model", "confidence": "medium"}, "area_m2": {"from": "model", "confidence": "medium"}, "max_side_ratio": {"from": "model", "confidence": "medium"}, "min_side_mm": {"from": "model", "confidence": "medium"}, "max_links": {"from": "model", "confidence": "high"}},
+      "why": "With consult's minimum of two this meets PR-001's four. One door, from the corridor, as the four in the hospital-1 trace have to theirs."
+    },
+    "consult": {
+      "kind": "consult", "name": "Consult Room", "role": "clinical", "place": "off_spine", "weight": 2,
+      "count": [2, 8], "area_m2": [9.0, 18.0], "max_side_ratio": 1.8, "min_side_mm": 2700, "max_links": 1,
+      "source": {"count": {"from": "model", "confidence": "medium"}, "area_m2": {"from": "model", "confidence": "medium"}, "max_side_ratio": {"from": "model", "confidence": "medium"}, "min_side_mm": {"from": "model", "confidence": "medium"}, "max_links": {"from": "model", "confidence": "high"}},
+      "why": "A desk and a couch; a little larger than an exam room."
+    },
+    "patient_room": {
+      "kind": "patient_room", "name": "Patient Room", "role": "clinical", "place": "off_spine", "weight": 4,
+      "count": [1, 16], "area_m2": [7.0, 30.0], "max_side_ratio": 2.0, "min_side_mm": 2400, "max_links": 1,
+      "source": {"count": {"from": "model", "confidence": "medium"}, "area_m2": {"from": "model", "confidence": "low"}, "max_side_ratio": {"from": "model", "confidence": "medium"}, "min_side_mm": {"from": "model", "confidence": "medium"}, "max_links": {"from": "model", "confidence": "high"}},
+      "why": "With treatment_bay's minimum of one this meets PR-001's two. The low end of the area holds the ICU trace's small single rooms (7.3 to 8.8 m2 at an assumed scale); the high end a two-bed room. No en-suite: a private room off a clinical one breaks GR-005."
+    },
+    "treatment_bay": {
+      "kind": "treatment_bay", "name": "Treatment Bay", "role": "clinical", "place": "off_spine", "weight": 2,
+      "count": [1, 10], "area_m2": [6.0, 14.0], "max_side_ratio": 2.0, "min_side_mm": 2400, "max_links": 1,
+      "source": {"count": {"from": "model", "confidence": "medium"}, "area_m2": {"from": "model", "confidence": "medium"}, "max_side_ratio": {"from": "model", "confidence": "medium"}, "min_side_mm": {"from": "model", "confidence": "medium"}, "max_links": {"from": "model", "confidence": "high"}},
+      "why": "A bay open to its corridor or behind a sliding front."
+    },
+    "nurse_station": {
+      "kind": "nurse_station", "name": "Nurse Station", "role": "shared", "place": "off_spine",
+      "count": [1, 3], "area_m2": [6.0, 25.0], "max_side_ratio": 3.0, "min_side_mm": 2100, "max_links": 2,
+      "source": {"count": {"from": "model", "confidence": "medium"}, "area_m2": {"from": "model", "confidence": "low"}, "max_side_ratio": {"from": "model", "confidence": "low"}, "min_side_mm": {"from": "model", "confidence": "medium"}, "max_links": {"from": "model", "confidence": "medium"}},
+      "why": "Kept at a minimum of one so PR-001's staff group is met without staff_support. Open to the corridor it watches. The ICU trace draws its stations inside the ward floor, not as rooms, so nothing is taken from it."
+    },
+    "staff_support": {
+      "kind": "staff_support", "name": "Staff Room", "role": "private", "place": "off_spine",
+      "count": [0, 4], "area_m2": [8.0, 30.0], "max_side_ratio": 2.5, "min_side_mm": 2400, "max_links": 1,
+      "source": {"count": {"from": "model", "confidence": "medium"}, "area_m2": {"from": "model", "confidence": "low"}, "max_side_ratio": {"from": "model", "confidence": "medium"}, "min_side_mm": {"from": "model", "confidence": "medium"}, "max_links": {"from": "model", "confidence": "high"}},
+      "why": "The staff rooms, offices and changing rooms of the hospital-1 trace all map here; here each has one door, to a corridor."
+    },
+    "clean_utility": {
+      "kind": "clean_utility", "name": "Clean Utility", "role": "private", "place": "off_spine",
+      "count": [1, 2], "area_m2": [6.0, 16.0], "max_side_ratio": 2.5, "min_side_mm": 2100, "max_links": 1,
+      "source": {"count": {"from": "model", "confidence": "high"}, "area_m2": {"from": "model", "confidence": "medium"}, "max_side_ratio": {"from": "model", "confidence": "medium"}, "min_side_mm": {"from": "model", "confidence": "medium"}, "max_links": {"from": "model", "confidence": "high"}},
+      "why": "PR-001 asks for one."
+    },
+    "dirty_utility": {
+      "kind": "dirty_utility", "name": "Soiled Utility", "role": "private", "place": "off_spine",
+      "count": [1, 2], "area_m2": [6.0, 16.0], "max_side_ratio": 2.5, "min_side_mm": 2100, "max_links": 1,
+      "source": {"count": {"from": "model", "confidence": "high"}, "area_m2": {"from": "model", "confidence": "medium"}, "max_side_ratio": {"from": "model", "confidence": "medium"}, "min_side_mm": {"from": "model", "confidence": "medium"}, "max_links": {"from": "model", "confidence": "high"}},
+      "why": "PR-001 asks for one."
+    },
+    "med_supply": {
+      "kind": "med_supply", "name": "Medication", "role": "private", "place": "off_spine",
+      "count": [1, 2], "area_m2": [5.0, 16.0], "max_side_ratio": 2.5, "min_side_mm": 1800, "max_links": 1,
+      "source": {"count": {"from": "model", "confidence": "medium"}, "area_m2": {"from": "model", "confidence": "medium"}, "max_side_ratio": {"from": "model", "confidence": "medium"}, "min_side_mm": {"from": "model", "confidence": "medium"}, "max_links": {"from": "model", "confidence": "high"}},
+      "why": "Kept at a minimum of one so PR-001's supply group is met without equipment_storage."
+    },
+    "equipment_storage": {
+      "kind": "equipment_storage", "name": "Storage", "role": "private", "place": "off_spine",
+      "count": [0, 3], "area_m2": [4.0, 25.0], "max_side_ratio": 3.0, "min_side_mm": 1500, "max_links": 1,
+      "source": {"count": {"from": "model", "confidence": "medium"}, "area_m2": {"from": "model", "confidence": "low"}, "max_side_ratio": {"from": "model", "confidence": "medium"}, "min_side_mm": {"from": "model", "confidence": "medium"}, "max_links": {"from": "model", "confidence": "medium"}},
+      "why": "The hospital-1 trace has ten stores, some chained to each other; here each has one door, to a corridor, since a private room may not open into another (GR-003)."
+    },
+    "restroom": {
+      "kind": "restroom", "name": "Restroom", "role": "private", "place": "off_spine", "weight": 2,
+      "count": [1, 6], "area_m2": [3.0, 12.0], "max_side_ratio": 2.5, "min_side_mm": 1500, "max_links": 1,
+      "source": {"count": {"from": "model", "confidence": "medium"}, "area_m2": {"from": "model", "confidence": "medium"}, "max_side_ratio": {"from": "model", "confidence": "medium"}, "min_side_mm": {"from": "model", "confidence": "medium"}, "max_links": {"from": "model", "confidence": "high"}},
+      "why": "PR-001 asks for one. The trace's washrooms off offices and stores are not followed (GR-003)."
+    },
+    "imaging_diagnostic": {
+      "kind": "imaging_diagnostic", "name": "Imaging", "role": "clinical", "place": "off_spine",
+      "count": [1, 4], "area_m2": [18.0, 50.0], "max_side_ratio": 1.8, "min_side_mm": 3600, "max_links": 1,
+      "source": {"count": {"from": "model", "confidence": "medium"}, "area_m2": {"from": "model", "confidence": "low"}, "max_side_ratio": {"from": "model", "confidence": "medium"}, "min_side_mm": {"from": "model", "confidence": "medium"}, "max_links": {"from": "model", "confidence": "high"}},
+      "why": "Kept at a minimum of one so PR-001's diagnostic group is met without procedure_lab. The hospital-1 trace enters each X-ray room through an exam room; that breaks GR-004, so the door is to the corridor."
+    },
+    "procedure_lab": {
+      "kind": "procedure_lab", "name": "Laboratory", "role": "clinical", "place": "off_spine",
+      "count": [0, 4], "area_m2": [12.0, 45.0], "max_side_ratio": 2.0, "min_side_mm": 3000, "max_links": 1,
+      "source": {"count": {"from": "model", "confidence": "medium"}, "area_m2": {"from": "model", "confidence": "low"}, "max_side_ratio": {"from": "model", "confidence": "medium"}, "min_side_mm": {"from": "model", "confidence": "medium"}, "max_links": {"from": "model", "confidence": "high"}},
+      "why": "The hospital-1 trace has four labs, three of them off a corridor."
+    }
+  },
+  "links": [
+    {"from": "entry_lobby", "to": "corridor", "use": "parent", "types": ["double", "open_full", "cased"], "source": {"from": "model", "confidence": "medium"}, "why": "The hospital-1 trace joins its hall to a corridor by a pair of doors; the open forms are added."},
+    {"from": "corridor", "to": "corridor", "use": "parent", "types": ["open_full", "double"], "source": {"from": "model", "confidence": "medium"}, "why": "Corridors run into each other, or meet at a cross-corridor pair."},
+    {"from": "corridor", "to": "waiting_reception", "use": "parent", "types": ["double", "open_full", "cased"], "source": {"from": "model", "confidence": "medium"}, "why": "The hospital-1 trace has a waiting room on a pair of doors to its corridor; the open forms are added."},
+    {"from": "corridor", "to": "exam", "use": "parent", "types": ["single"], "source": {"from": "trace"}, "why": "Four of four in the hospital-1 trace."},
+    {"from": "corridor", "to": "consult", "use": "parent", "types": ["single"], "source": {"from": "model", "confidence": "high"}, "why": "As an exam room."},
+    {"from": "corridor", "to": "patient_room", "use": "parent", "types": ["single", "double", "sliding"], "source": {"from": "model", "confidence": "medium"}, "why": "The ICU trace's rooms have pairs and one sliding door, but onto a ward floor, not a corridor."},
+    {"from": "corridor", "to": "treatment_bay", "use": "parent", "types": ["open_full", "cased", "sliding"], "source": {"from": "model", "confidence": "medium"}, "why": "A bay has no swing door."},
+    {"from": "corridor", "to": "nurse_station", "use": "parent", "types": ["open_full", "cased"], "source": {"from": "model", "confidence": "medium"}, "why": "A station is open to what it watches."},
+    {"from": "corridor", "to": "staff_support", "use": "parent", "types": ["single"], "source": {"from": "trace"}, "why": "The eight staff rooms and ten of the offices of the hospital-1 trace."},
+    {"from": "corridor", "to": "clean_utility", "use": "parent", "types": ["single"], "source": {"from": "model", "confidence": "high"}, "why": "One door."},
+    {"from": "corridor", "to": "dirty_utility", "use": "parent", "types": ["single"], "source": {"from": "model", "confidence": "high"}, "why": "One door."},
+    {"from": "corridor", "to": "med_supply", "use": "parent", "types": ["single"], "source": {"from": "model", "confidence": "high"}, "why": "One door, lockable."},
+    {"from": "corridor", "to": "equipment_storage", "use": "parent", "types": ["single", "double"], "source": {"from": "trace"}, "why": "Both are in the hospital-1 trace between a store and a corridor."},
+    {"from": "corridor", "to": "restroom", "use": "parent", "types": ["single"], "source": {"from": "trace"}, "why": "Two in the hospital-1 trace."},
+    {"from": "corridor", "to": "imaging_diagnostic", "use": "parent", "types": ["single", "double"], "source": {"from": "model", "confidence": "medium"}, "why": "A pair where a bed comes in."},
+    {"from": "corridor", "to": "procedure_lab", "use": "parent", "types": ["single", "double"], "source": {"from": "trace"}, "why": "Both are in the hospital-1 trace between a lab and a corridor."},
+    {"from": "entry_lobby", "to": "waiting_reception", "use": "extra", "chance": 0.5, "types": ["open_full", "cased", "double"], "source": {"from": "model", "confidence": "low"}, "why": "Where the two share a wall; the hospital-1 trace has a pair of doors between a waiting room and its hall."}
+  ]
+}

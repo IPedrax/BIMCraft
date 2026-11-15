@@ -83,6 +83,23 @@ fn a_family_that_widens_its_pack_or_breaks_its_schema_is_refused() {
 }
 
 #[test]
+fn residential_kinds_use_the_bracket_form() {
+    let kinds = [
+        ("residential-single-family", "residential (single family)"),
+        ("residential-duplex", "residential (duplex)"),
+        ("residential-townhouse", "residential (townhouse)"),
+        ("residential-multifamily-low-rise", "residential (multifamily low-rise)"),
+        ("residential-multifamily-mid-rise", "residential (multifamily mid-rise)"),
+        ("residential-multifamily-high-rise", "residential (multifamily high-rise)"),
+    ];
+    assert_eq!(super::family::RESIDENTIAL_KINDS, kinds);
+    for (family, building_type) in kinds {
+        assert!(super::family::building_type_ok(building_type), "{building_type}");
+        assert!(!super::family::building_type_ok(family), "{family} is a family name, not a building type");
+    }
+}
+
+#[test]
 fn the_catalogue_has_nine_shapes_with_their_corners_levels_and_raises() {
     let all = shapes().expect("the catalogue reads");
     let ids: Vec<&str> = all.iter().map(|s| s.id.as_str()).collect();

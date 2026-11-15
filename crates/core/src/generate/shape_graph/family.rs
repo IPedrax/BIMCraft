@@ -6,20 +6,34 @@ use std::fmt;
 
 use serde::de::{MapAccess, Visitor};
 use serde::{Deserialize, Deserializer};
+use serde_json::Value as JsonValue;
 
 use crate::graph_rules::Pack;
 
+pub const CLINIC_FAMILY: &str = include_str!("../../../data/shape-families/clinic.json");
+pub const HOSPITAL_FAMILY: &str = include_str!("../../../data/shape-families/hospital.json");
 pub const HOUSE_FAMILY: &str = include_str!("../../../data/shape-families/house.json");
+pub const OFFICE_PATTERN_FAMILY: &str = include_str!("../../../data/shape-families/office-pattern.json");
 pub const SHAPES: &str = include_str!("../../../data/shape-families/shapes.json");
+pub const STUDIO_OFFICE_FAMILY: &str = include_str!("../../../data/shape-families/studio-office.json");
 
 /// The built-in family files, by archetype.
 pub fn builtin(archetype: &str) -> Option<&'static str> {
-    [("house", HOUSE_FAMILY)].iter().find(|(name, _)| *name == archetype).map(|(_, text)| *text)
+    [
+        ("clinic", CLINIC_FAMILY),
+        ("hospital", HOSPITAL_FAMILY),
+        ("house", HOUSE_FAMILY),
+        ("office-pattern", OFFICE_PATTERN_FAMILY),
+        ("studio-office", STUDIO_OFFICE_FAMILY),
+    ]
+    .iter()
+    .find(|(name, _)| *name == archetype)
+    .map(|(_, text)| *text)
 }
 
 /// The names of the built-in families, for messages.
 pub fn builtin_names() -> &'static str {
-    "house"
+    "clinic, hospital, house, office-pattern, studio-office"
 }
 
 /// A connection type (the spec's table): what it needs of a shared wall and how the extractor reports it.
@@ -143,6 +157,9 @@ struct RoomFile {
     max_side_ratio: Option<f64>,
     min_side_mm: i64,
     max_links: i64,
+    #[serde(default)]
+    #[allow(dead_code)]
+    source: Option<JsonValue>,
 }
 
 /// The rooms object, its order kept: the order of the room types in the file is the order the engine takes them in.
@@ -192,6 +209,9 @@ struct LinkFile {
     #[serde(default)]
     chance: Option<f64>,
     types: Vec<Conn>,
+    #[serde(default)]
+    #[allow(dead_code)]
+    source: Option<JsonValue>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -263,6 +283,19 @@ pub struct Family {
 /// The receiver's 16 building categories and 5 aliases, one word each.
 const CATEGORIES: &str = "residential office commercial mixed-use educational research library assembly sports dining healthcare agricultural industrial utility parking university";
 const ALIASES: &str = "clinic hospital house home school";
+
+/// Residential kinds this project writes. Each pair is the family name and the `building_type`: the category plus
+/// the kind in brackets. The receiver still accepts any other kind; these are the ones we use. The house family
+/// stays the bare category `residential`.
+#[allow(dead_code)]
+pub const RESIDENTIAL_KINDS: [(&str, &str); 6] = [
+    ("residential-single-family", "residential (single family)"),
+    ("residential-duplex", "residential (duplex)"),
+    ("residential-townhouse", "residential (townhouse)"),
+    ("residential-multifamily-low-rise", "residential (multifamily low-rise)"),
+    ("residential-multifamily-mid-rise", "residential (multifamily mid-rise)"),
+    ("residential-multifamily-high-rise", "residential (multifamily high-rise)"),
+];
 
 /// Whether the receiver accepts a `building_type`: a category, optionally with a generic kind in brackets, or an alias.
 pub fn building_type_ok(text: &str) -> bool {

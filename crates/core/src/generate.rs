@@ -125,6 +125,8 @@ struct Params {
     delivery: Option<String>,
     /// `on` or `off`: the plan's gridlines. `off` with `rooms`, what the archetype draws today with an area.
     gridlines: Option<String>,
+    /// `allow` lets a family file marked unreviewed run through the shape graph engine.
+    unreviewed: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -431,6 +433,11 @@ fn run_shaped(given: &Params, rooms: i64, gridlines: bool) -> Result<Value, Refu
     if given.bumps.as_deref().is_some_and(|b| b != "off") {
         return Err(refuse("invalid_params", "`bumps` is `off`: bumps come in a later slice"));
     }
+    let allow_unreviewed = match given.unreviewed.as_deref() {
+        None => false,
+        Some("allow") => true,
+        Some(_) => return Err(refuse("invalid_params", "`unreviewed` is `allow`, or left out")),
+    };
     let mut request = shape_graph::Request {
         archetype: given.archetype.clone().unwrap_or_default(),
         seed: given.seed,
@@ -441,14 +448,14 @@ fn run_shaped(given: &Params, rooms: i64, gridlines: bool) -> Result<Value, Refu
     };
     match (&given.archetype, &given.family_file) {
         (Some(name), _) => {
-            let built = shape_graph::build(&request, false)?;
+            let built = shape_graph::build(&request, allow_unreviewed)?;
             written(&given.path, name, &built)
         }
         (None, Some(file)) => {
             // Read before anything is made; only the family's name, never the file's path, reaches the files.
             let fam = read_family_file(file)?;
             request.archetype = fam.name.clone();
-            let built = shape_graph::build_family(&fam, &request, false)?;
+            let built = shape_graph::build_family(&fam, &request, allow_unreviewed)?;
             written(&given.path, &fam.name, &built)
         }
         (None, None) => Err(refuse("invalid_params", "`generate` takes `archetype` or `family_file`")),

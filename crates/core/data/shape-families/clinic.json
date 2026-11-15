@@ -1,0 +1,449 @@
+{
+  "schema_version": 1,
+  "family": "clinic",
+  "pack_id": null,
+  "building_type": "clinic",
+  "review": {
+    "status": "reviewed",
+    "note": "Reviewed and approved for corpus generation. pack_id remains null because the current clinic graph-rule pack has no kinds or connections table to validate against; this family file is the approved source for counts, areas, side limits and connections."
+  },
+  "sources": [
+    "BIMCraft/crates/core/data/graph-rules/clinic.json"
+  ],
+  "entry": {
+    "rooms": [
+      "lobby"
+    ],
+    "doors": [
+      1,
+      1
+    ],
+    "types": [
+      "single"
+    ]
+  },
+  "rooms": {
+    "lobby": {
+      "kind": "entry_lobby",
+      "name": "Lobby",
+      "role": "public",
+      "place": "entry_end",
+      "count": [
+        1,
+        1
+      ],
+      "area_m2": [
+        8.0,
+        36.0
+      ],
+      "max_side_ratio": 2.5,
+      "min_side_mm": 2400,
+      "max_links": 4,
+      "source": {
+        "count": {
+          "from": "model",
+          "confidence": "high"
+        },
+        "area_m2": {
+          "from": "model",
+          "confidence": "medium"
+        },
+        "max_side_ratio": {
+          "from": "model",
+          "confidence": "low"
+        },
+        "min_side_mm": {
+          "from": "model",
+          "confidence": "medium"
+        },
+        "max_links": {
+          "from": "model",
+          "confidence": "medium"
+        }
+      }
+    },
+    "corridor": {
+      "kind": "corridor",
+      "name": "Corridor",
+      "role": "circulation",
+      "place": "spine",
+      "count": [
+        1,
+        1
+      ],
+      "area_m2": [
+        8.0,
+        90.0
+      ],
+      "max_side_ratio": null,
+      "min_side_mm": 1500,
+      "max_links": 30,
+      "source": {
+        "count": {
+          "from": "model",
+          "confidence": "medium"
+        },
+        "area_m2": {
+          "from": "model",
+          "confidence": "low"
+        },
+        "max_side_ratio": {
+          "from": "model",
+          "confidence": "high"
+        },
+        "min_side_mm": {
+          "from": "model",
+          "confidence": "medium"
+        },
+        "max_links": {
+          "from": "model",
+          "confidence": "medium"
+        }
+      }
+    },
+    "waiting": {
+      "kind": "waiting",
+      "name": "Waiting",
+      "role": "public",
+      "place": "off_spine",
+      "count": [
+        1,
+        2
+      ],
+      "area_m2": [
+        10.0,
+        40.0
+      ],
+      "max_side_ratio": 2.5,
+      "min_side_mm": 3000,
+      "max_links": 2,
+      "source": {
+        "count": {
+          "from": "model",
+          "confidence": "medium"
+        },
+        "area_m2": {
+          "from": "model",
+          "confidence": "medium"
+        },
+        "max_side_ratio": {
+          "from": "model",
+          "confidence": "low"
+        },
+        "min_side_mm": {
+          "from": "model",
+          "confidence": "medium"
+        },
+        "max_links": {
+          "from": "model",
+          "confidence": "medium"
+        }
+      }
+    },
+    "exam": {
+      "kind": "exam",
+      "name": "Exam Room",
+      "role": "clinical",
+      "place": "off_spine",
+      "weight": 4,
+      "count": [
+        2,
+        12
+      ],
+      "area_m2": [
+        7.5,
+        14.0
+      ],
+      "max_side_ratio": 1.8,
+      "min_side_mm": 2400,
+      "max_links": 1,
+      "source": {
+        "count": {
+          "from": "model",
+          "confidence": "medium"
+        },
+        "area_m2": {
+          "from": "model",
+          "confidence": "medium"
+        },
+        "max_side_ratio": {
+          "from": "model",
+          "confidence": "medium"
+        },
+        "min_side_mm": {
+          "from": "model",
+          "confidence": "medium"
+        },
+        "max_links": {
+          "from": "model",
+          "confidence": "high"
+        }
+      }
+    },
+    "restroom": {
+      "kind": "restroom",
+      "name": "Restroom",
+      "role": "shared",
+      "place": "off_spine",
+      "count": [
+        1,
+        3
+      ],
+      "area_m2": [
+        2.5,
+        8.0
+      ],
+      "max_side_ratio": 2.5,
+      "min_side_mm": 1500,
+      "max_links": 1,
+      "source": {
+        "count": {
+          "from": "model",
+          "confidence": "medium"
+        },
+        "area_m2": {
+          "from": "model",
+          "confidence": "medium"
+        },
+        "max_side_ratio": {
+          "from": "model",
+          "confidence": "low"
+        },
+        "min_side_mm": {
+          "from": "model",
+          "confidence": "medium"
+        },
+        "max_links": {
+          "from": "model",
+          "confidence": "high"
+        }
+      }
+    },
+    "staff_room": {
+      "kind": "staff_room",
+      "name": "Staff Room",
+      "role": "private",
+      "place": "off_spine",
+      "count": [
+        1,
+        2
+      ],
+      "area_m2": [
+        7.0,
+        22.0
+      ],
+      "max_side_ratio": 2.2,
+      "min_side_mm": 2400,
+      "max_links": 1,
+      "source": {
+        "count": {
+          "from": "model",
+          "confidence": "medium"
+        },
+        "area_m2": {
+          "from": "model",
+          "confidence": "low"
+        },
+        "max_side_ratio": {
+          "from": "model",
+          "confidence": "low"
+        },
+        "min_side_mm": {
+          "from": "model",
+          "confidence": "medium"
+        },
+        "max_links": {
+          "from": "model",
+          "confidence": "high"
+        }
+      }
+    },
+    "nurse_station": {
+      "kind": "nurse_station",
+      "name": "Nurse Station",
+      "role": "shared",
+      "place": "off_spine",
+      "count": [
+        0,
+        1
+      ],
+      "area_m2": [
+        5.0,
+        16.0
+      ],
+      "max_side_ratio": 2.5,
+      "min_side_mm": 2000,
+      "max_links": 1,
+      "source": {
+        "count": {
+          "from": "model",
+          "confidence": "medium"
+        },
+        "area_m2": {
+          "from": "model",
+          "confidence": "low"
+        },
+        "max_side_ratio": {
+          "from": "model",
+          "confidence": "low"
+        },
+        "min_side_mm": {
+          "from": "model",
+          "confidence": "low"
+        },
+        "max_links": {
+          "from": "model",
+          "confidence": "medium"
+        }
+      }
+    },
+    "clean_storage": {
+      "kind": "clean_storage",
+      "name": "Clean Storage",
+      "role": "private",
+      "place": "off_spine",
+      "count": [
+        1,
+        3
+      ],
+      "area_m2": [
+        2.5,
+        10.0
+      ],
+      "max_side_ratio": 3.0,
+      "min_side_mm": 1500,
+      "max_links": 1,
+      "source": {
+        "count": {
+          "from": "model",
+          "confidence": "medium"
+        },
+        "area_m2": {
+          "from": "model",
+          "confidence": "low"
+        },
+        "max_side_ratio": {
+          "from": "model",
+          "confidence": "low"
+        },
+        "min_side_mm": {
+          "from": "model",
+          "confidence": "medium"
+        },
+        "max_links": {
+          "from": "model",
+          "confidence": "high"
+        }
+      }
+    }
+  },
+  "links": [
+    {
+      "from": "lobby",
+      "to": "corridor",
+      "use": "parent",
+      "types": [
+        "open_full",
+        "cased",
+        "double",
+        "single"
+      ],
+      "source": {
+        "from": "model",
+        "confidence": "medium"
+      }
+    },
+    {
+      "from": "corridor",
+      "to": "waiting",
+      "use": "parent",
+      "types": [
+        "open_full",
+        "cased",
+        "double"
+      ],
+      "source": {
+        "from": "model",
+        "confidence": "medium"
+      }
+    },
+    {
+      "from": "corridor",
+      "to": "exam",
+      "use": "parent",
+      "types": [
+        "single",
+        "sliding"
+      ],
+      "source": {
+        "from": "model",
+        "confidence": "high"
+      }
+    },
+    {
+      "from": "corridor",
+      "to": "restroom",
+      "use": "parent",
+      "types": [
+        "single"
+      ],
+      "source": {
+        "from": "model",
+        "confidence": "high"
+      }
+    },
+    {
+      "from": "corridor",
+      "to": "staff_room",
+      "use": "parent",
+      "types": [
+        "single"
+      ],
+      "source": {
+        "from": "model",
+        "confidence": "high"
+      }
+    },
+    {
+      "from": "corridor",
+      "to": "nurse_station",
+      "use": "parent",
+      "types": [
+        "open_full",
+        "cased",
+        "single"
+      ],
+      "source": {
+        "from": "model",
+        "confidence": "medium"
+      }
+    },
+    {
+      "from": "corridor",
+      "to": "clean_storage",
+      "use": "parent",
+      "types": [
+        "single",
+        "sliding"
+      ],
+      "source": {
+        "from": "model",
+        "confidence": "medium"
+      }
+    },
+    {
+      "from": "lobby",
+      "to": "waiting",
+      "use": "extra",
+      "chance": 0.5,
+      "types": [
+        "open_full",
+        "cased"
+      ],
+      "source": {
+        "from": "model",
+        "confidence": "low"
+      }
+    }
+  ]
+}
