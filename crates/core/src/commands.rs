@@ -1383,7 +1383,8 @@ other_files(
          `under_partitions` (true: a pair of joists under each wall standing on the floor along its joists); for a roof (its \
          rafters `spacing` apart up each slope, `thickness` thick and as deep square to the slope as its type's structure \
          layer), `rim` (a sub-fascia along each eave), `lap` (where a rafter longer than the longest `stock` is spliced over \
-         a wall or beam), `bridging` and `trimmers` as a floor's, and `ridge` (true: a ridge board where two slopes meet at a \
+         walls or beams, into the fewest pieces that stock holds and of those the split whose longest piece is shortest), \
+         `bridging` and `trimmers` as a floor's, and `ridge` (true: a ridge board where two slopes meet at a \
          ridge, the rafters stopping at its faces). Fields given replace the type's; others are kept. \
          A room type may name a `floor` type and a `ceiling` type (null, none; a new project's Standard has neither): each of its \
          rooms then has a floor (its top `floor_offset` mm over the room's level, 0) and a ceiling (its underside \
@@ -2371,11 +2372,13 @@ other_files(
          why. What the rules can't frame is framed more simply or left out, never without a warning: an opening with no room \
          for its kings, jacks, header and sill; a floor's or roof's opening too near its edge, another opening or its \
          trimmers (its joists or rafters end at it), a wall over one, a piece too short, nothing bearing them; a roof's hips \
-         and valleys (no hip or valley rafter is made: the rafters end at them), a rafter longer than the longest stock with \
-         nothing in reach to splice it over. A floor's joists are cut over each beam or straight wall under it whose top is \
+         and valleys (no hip or valley rafter is made: the rafters end at them), a piece of rafter longer than the longest \
+         stock that no splice over what bears it avoids. A floor's joists are cut over each beam or straight wall under it whose top is \
          within 10 mm of their underside; a roof's rafters rest on each wall and beam under them so (at either face of it, or \
          at its centre within that and half its width times the slope) and are cut only where longer than the longest stock: \
-         from the eave up, each piece over the farthest support it reaches. At a square corner of two framed walls the one of \
+         over those supports into the fewest pieces it holds (each along the slope with its laps), of those splits the one \
+         whose longest piece is shortest (ties: nearest the eave), or where none keeps to the stock the one whose longest \
+         piece is shortest, each piece too long warned of. At a square corner of two framed walls the one of \
          the lower GUID runs through. `modify` {id, framing: name | null, framing_angle?} does the same for one. Replies with \
          the walls, floors and roofs, the type, how many members they have and the `warnings`, each naming its host",
         crate::framing::frame,

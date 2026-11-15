@@ -89,7 +89,7 @@ enum Kind {
     Link,
     /// One of these values (as the command names it, and its label): a drop-down, the first when it has none.
     Choice(&'static [(&'static str, &'static str)]),
-    /// A wall's or a floor's framing type: None or one of the project's, a drop-down, and beside it its Type Properties.
+    /// A wall's, a floor's or a roof's framing type: None or one of the project's, a drop-down, and beside it its Type Properties.
     Framing,
     /// A number, or nothing, which its hint names when blank (a floor's joists' direction, automatic): typed, or cleared.
     NumberOr(&'static str),
@@ -391,6 +391,7 @@ fn rows(category: &str) -> &'static [Row] {
             ("Constraints", "offset", "Base Offset", Length),
             ("Constraints", "extrusion.from", msg!("Extrusion Start"), LengthIf),
             ("Constraints", "extrusion.to", msg!("Extrusion End"), LengthIf),
+            ("Structural", "framing", "Framing", Framing),
             ("Dimensions", "slope", "Slope (°)", Number),
             ("Dimensions", "ridge", msg!("Max Ridge Height"), LengthShown),
             ("Dimensions", "area_m2", "Area", AreaShown),
@@ -1112,9 +1113,19 @@ impl RoomRows {
     }
 }
 
-/// The groups a framing type's parameters are under, in order: what walls and floors share, a wall's, a floor's, and the rest.
-const FRAMING_GROUPS: [&str; 7] =
-    ["Construction", "Walls", msg!("Wall Openings"), msg!("Wall Joins"), msg!("Floors"), "Materials and Finishes", "Other"];
+/// The groups a framing type's parameters are under, in order: what walls, floors and roofs share, a wall's, what floors and
+/// roofs share, a floor's, a roof's, and the rest.
+const FRAMING_GROUPS: [&str; 9] = [
+    "Construction",
+    "Walls",
+    msg!("Wall Openings"),
+    msg!("Wall Joins"),
+    msg!("Floors and Roofs"),
+    msg!("Floors"),
+    msg!("Roofs"),
+    "Materials and Finishes",
+    "Other",
+];
 
 /// What a framing type's field holds, as typed.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -1129,7 +1140,7 @@ enum Typed {
 /// A framing type's typed fields: its group, its key, which of the key's pair it is (none for the key itself), its label and
 /// what it holds.
 const FRAMING_FIELDS: [(&str, &str, Option<usize>, &str, Typed); 16] = [
-    // A wall's studs and a floor's joists alike.
+    // A wall's studs, a floor's joists and a roof's rafters alike.
     ("Construction", "spacing", None, msg!("Spacing"), Typed::Length),
     ("Construction", "thickness", None, msg!("Thickness"), Typed::Length),
     ("Walls", "bottom_plates", None, msg!("Bottom Plates"), Typed::Count),
@@ -1142,15 +1153,18 @@ const FRAMING_FIELDS: [(&str, &str, Option<usize>, &str, Typed); 16] = [
     ("Wall Openings", "window_rough", Some(1), msg!("Window Rough Opening: Added Height"), Typed::Length),
     ("Wall Openings", "door_rough", Some(0), msg!("Door Rough Opening: Added Width"), Typed::Length),
     ("Wall Openings", "door_rough", Some(1), msg!("Door Rough Opening: Added Height"), Typed::Length),
-    ("Floors", "lap", None, msg!("Lap at Supports"), Typed::Length),
-    ("Floors", "bridging", None, msg!("Bridging Spacing"), Typed::Length),
-    ("Floors", "trimmers", None, msg!("Trimmer and Header Plies"), Typed::Count),
+    ("Floors and Roofs", "lap", None, msg!("Lap at Supports"), Typed::Length),
+    ("Floors and Roofs", "bridging", None, msg!("Bridging Spacing"), Typed::Length),
+    ("Floors and Roofs", "trimmers", None, msg!("Trimmer and Header Plies"), Typed::Count),
     ("Other", "stock", None, msg!("Stock Lengths"), Typed::Lengths),
 ];
 
 /// A framing type's yes-or-no fields: its group, its key and its label.
-const FRAMING_FLAGS: [(&str, &str, &str); 2] =
-    [("Floors", "rim", msg!("Rim Joists")), ("Floors", "under_partitions", msg!("Joists Under Partitions"))];
+const FRAMING_FLAGS: [(&str, &str, &str); 3] = [
+    ("Floors and Roofs", "rim", msg!("Rim Joists and Eave Boards")),
+    ("Floors", "under_partitions", msg!("Joists Under Partitions")),
+    ("Roofs", "ridge", msg!("Ridge Board")),
+];
 
 /// A framing type's choices: its key, its group, its label, and each value with its label.
 type FramingChoice = (&'static str, &'static str, &'static str, &'static [(&'static str, &'static str)]);

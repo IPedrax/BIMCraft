@@ -28,10 +28,12 @@
 //! - A wall under the roof bears the rafters where its top, at either face of it, is within [`BEARING`] of their underside,
 //!   or at its centre line within that and half its width along the rafters times the slope (a level beam's top under a
 //!   sloping rafter); a beam the same. A line of rafters the longest `stock` length holds is one piece, eave to top,
-//!   continuous over what bears it. A longer one is spliced: from the eave up each piece ends over the farthest support it
-//!   reaches within that length, the pieces butting on its centre line (`lap` 0) or each running `lap` past it, every other
-//!   one a thickness over beside the one before; a line that reaches no support within it runs to the next one anyway, with a
-//!   warning of its length. `span` is the longest clear span between what bears a rafter, in plan.
+//!   continuous over what bears it. A longer one is spliced over what bears it into the fewest pieces that length holds,
+//!   each measured along the slope with its laps, and of those splits the one whose longest piece is shortest (ties: the
+//!   splices nearest the eave), the pieces butting on a support's centre line (`lap` 0) or each running `lap` past it, every
+//!   other one a thickness over beside the one before. Where no split keeps every piece within it, the split whose longest
+//!   piece is shortest, with a warning of each piece too long. `span` is the longest clear span between what bears a
+//!   rafter, in plan.
 //! - Openings and the shafts through a slope are framed as a floor's are: trimmer rafters each side, headers across each end,
 //!   tail rafters between; rows of blocking (`bridging`) between neighbouring rafters, square to them.
 //!

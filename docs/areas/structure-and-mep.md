@@ -247,7 +247,7 @@ piece 6.
 
 ### Wood framing
 
-`framing.rs` frames walls in wood, as a light-frame house is built, and `framing/floor.rs` floors ([below](#floors)): a wall holds `framing`, the name of a framing type (a
+`framing.rs` frames walls in wood, as a light-frame house is built, `framing/floor.rs` floors ([below](#floors)) and `framing/roof.rs` roofs ([below](#roofs)): a wall holds `framing`, the name of a framing type (a
 library reference, held by its GUID in a file, renamed and removed as other type references are), and its plates, studs,
 kings, jacks, headers, sills, cripples and blocking are worked out from the wall whenever they are asked for (`framing::wall`)
 and never stored, as a railing's balusters are. Moving a window, changing a height, attaching the top to a roof or editing the
@@ -262,8 +262,8 @@ side) and to its height (on top); `headers`, `{up_to?, depth, plies, flat?}` in 
 opening's width (or the last) its header, by default 2 plies 184 deep up to 1250 and 2 plies 235 deep above; `sill_plates` 1;
 `corner` `three_stud`, `two_stud` or `none`; `tee` `studs` or `none`; `blocking`, heights over the wall's base of rows of flat
 blocking, none by default; and `stock`, the stock lengths a cut list takes members from, shortest first (2440, 3050, 3660,
-4270, 4880, 6100); and the floors' fields (`rim`, `lap`, `bridging`, `trimmers`, `under_partitions`, [below](#floors)), which a
-wall doesn't read. `Model::check` holds each to its range (`framing::check_type`): thickness 10 to 300 and spacing wider than
+4270, 4880, 6100); the floors' fields (`rim`, `lap`, `bridging`, `trimmers`, `under_partitions`, [below](#floors)), which roofs
+share but `under_partitions`; and the roofs' own, `ridge` ([below](#roofs)), none of which a wall reads. `Model::check` holds each to its range (`framing::check_type`): thickness 10 to 300 and spacing wider than
 it (up to 3000), 0 to 4 plates of each kind, 0 to 3 kings and jacks, rough allowances 0 to 500, 1 to 8 headers of 1 to 3 plies
 and 1 to 1000 deep, 8 rows of blocking and 16 stock lengths at most, each longer than the last, a lap of 0 to 2000, bridging
 of 0 or 300 to 100000, 1 to 3 trimmers, and a material the library has.
@@ -385,8 +385,9 @@ for (`framing::floor::floor`), from its outline, its openings and the shafts thr
 standing on it and its framing type, and never stored: moving a beam, an opening, a wall on it, or editing either type, changes
 them. FORMAT stays 21, unreleased, which holds them with the walls'.
 
-The framing type is the walls' (one category, `framing`, serves both): its `spacing` (406.4) is the joists' centres apart, its
-`thickness` (38) theirs, its `layout` (`start`, `end`, `centre`) and `stock` as for studs, and five fields only a floor reads:
+The framing type is the walls' (one category, `framing`, serves walls, floors and roofs): its `spacing` (406.4) is the joists'
+centres apart, its `thickness` (38) theirs, its `layout` (`start`, `end`, `centre`) and `stock` as for studs, and five fields a
+wall doesn't read (a roof reads all but `under_partitions`, [below](#roofs)):
 `rim` (true: a rim joist along each edge the joists end on), `lap` (0: joist pieces butt over a support; more, each runs that
 far past its centre line, 0 to 2000), `bridging` (0: none; else the longest a joist runs between rows of solid blocking, 300 to
 100000), `trimmers` (2, 1 to 3: plies of trimmer each side of an opening and of header across each end of it) and
@@ -396,7 +397,7 @@ type's structure layer (the thickest, the first of those) is thick, from its und
 
 `framing::floor::check`, which `Model::check` asks of each framed floor, refuses a framing type that doesn't exist, a
 `framing_angle` that isn't a number from -3600 to 3600, a sloped floor and one whose shape is edited (points or split lines on
-its top: only a flat floor is framed; sloped members come with roofs), a floor type with no structure layer, a floor wider
+its top: only a flat floor is framed; sloped members are a roof's, [below](#roofs)), a floor type with no structure layer, a floor wider
 across its joists than 1024 spacings (`MAX_STATIONS`) and rows of blocking of more than 65536 blocks; each error says what to
 change, and the command rolls back. Nothing an opening, a support or a wall does is refused: what the rules can't frame is
 framed more simply or left out with a warning that names it and says why.
@@ -480,12 +481,13 @@ type `JOIST` and each block as an `IfcMember` `MEMBER`, aggregated to the slab (
 own, with GlobalIds from the floor's GUID and the key; IFC2x3 writes the beams without a predefined type; an IFC import of the
 file brings the floor back unframed, its beams, being the slab's parts, left out. `ci/ifc-coverage.txt` has a framed floor.
 
-In the window, Frame and Remove Framing act on the selection's walls and floors together, as one undo step, the status bar
-saying how many of each and the first warning (Warnings (n): …). A floor's Properties have Framing under Structural, as a
+In the window, Frame and Remove Framing act on the selection's walls, floors and roofs together, as one undo step, the status
+bar saying how many of each and the first warning (Warnings (n): …). A floor's Properties have Framing under Structural, as a
 wall's, and, once it is framed, Joist Direction (°), its `framing_angle`: blank is automatic (square to the longest edge), and
 clearing it returns to that. A framing type's Type Properties group its fields: Construction (Spacing, Thickness, Layout, which
-walls and floors share), Walls, Wall Openings, Wall Joins, Floors (Lap at Supports, Bridging Spacing, Trimmer and Header Plies,
-Rim Joists, Joists Under Partitions), Materials and Finishes, and Other (Stock Lengths).
+walls, floors and roofs share), Walls, Wall Openings, Wall Joins, Floors and Roofs (Lap at Supports, Bridging Spacing, Trimmer
+and Header Plies, Rim Joists and Eave Boards), Floors (Joists Under Partitions), Roofs (Ridge Board), Materials and Finishes,
+and Other (Stock Lengths).
 
 Not yet, for floors: sloped and shaped floors (refused); blocking over supports and at the rims; joist hangers and other
 connectors; cantilevers past a support (the joists end at the outline, wherever the supports are); splicing a joist between
@@ -494,7 +496,132 @@ that don't face each other along their whole length; a curved wall as a support;
 trimmers and headers sized by the opening; at an inward corner of the outline that isn't square, the wedge between the two rims
 (warned of, with its width); and the tip of a sharp corner past where its rims stop.
 
-Not yet, for walls: roofs (rafters), which will reuse `Member`, the schedule, the graphics and IFC; framing elevations;
+#### Roofs
+
+A roof by footprint holds `framing` too, a framing type's name as a wall's and a floor's is (renamed with it, refused deletion
+while in use, brought in by Insert from File, held by its GUID in a file, left out of a file while none). Its rafters, edge
+rafters, eave boards, ridge boards, trimmers, headers and blocking are worked out from the roof whenever they're asked for
+(`framing::roof::roof`), from its slopes, its openings and the shafts through it, the walls and beams under it and its framing
+type, and never stored: moving a wall or a beam under it, changing its slope or its footprint, or editing either type changes
+them. FORMAT stays 21, unreleased, which holds them with the walls' and floors'.
+
+The framing type is the same (`framing`): `spacing`, `thickness`, `layout` and `stock` as for joists; `rim`, `lap`, `bridging`
+and `trimmers` as a floor's, read for a roof as below; and one field only a roof reads, `ridge` (true: a ridge board where two
+slopes meet at a ridge). The members stand in the roof type's structure layer (the thickest, the first of those). The roof's
+solid lays its layers by shares of its plumb depth (`Model::roof_rise`: its type's thickness square to the slope, so the plumb
+depth is that times the secant of the slope), and the members follow it: a rafter fills that layer from its underside to its
+top, as deep square to the slope as the layer is thick, so a 2x10 roof is one with a 235 mm structure layer; its `section` is
+[thickness, that depth]. The layers over it (sheathing, roofing) and under it stay drawn as layers.
+
+`framing::roof::check`, which `Model::check` asks of each framed roof, refuses a framing type that doesn't exist, a roof by
+extrusion and one whose shape is edited (points or split lines on its top: only a roof by footprint is framed), a roof type
+with no structure layer, a roof whose slopes can't be worked out, a slope wider across its rafters than 1024 spacings
+(`MAX_STATIONS`) and rows of blocking of more than 65536 blocks in a slope; each error says what to change, and the command
+rolls back. Nothing an opening, a support, a hip or a join does is refused: what the rules can't frame is framed more simply
+or left out, with a warning that names it and says why.
+
+Each slope (`Model::roof_faces`, numbered as it gives them; a gable's upright face, which has no area in plan, frames nothing)
+is framed in a frame of its own: `s` runs up the slope in plan from the first corner of its outline, `across` to its left
+along the eave. Every member carries that frame (`frame` in `framing`'s reply), and its bottom and top follow the slope along
+`s`: its ends are plumb cuts and its `length` is along the slope. A level slope (a flat roof) has its rafters square to its
+outline's longest edge (the first of the longest), as a floor's joists, and is framed as a floor is but for the splices below.
+In that frame each slope is framed by the floor's region framer (`framing::floor::region`), so the floor's rules hold, with these:
+
+- Rafters are centred at stations `spacing` apart across the slope from the layout's origin (`start` its least `across`, `end`
+  its most, `centre` its middle), each running from the eave, the footprint's edge, so an overhang is part of the rafter, up to
+  whatever bounds the slope: a ridge board, a hip or a valley, the upright gable edge at the top of a shed. An edge of the
+  slope along the rafters on the roof's edge (a rake) has an edge rafter flush with it, where the edge lies farthest in (the
+  cabin's are centred 19 in from each rake); an edge along a hip, a valley or a ridge has none.
+- With `rim`, an eave board (a sub-fascia, role `rim`) lies along each edge of the slope on the roof's edge square to the
+  rafters, one thickness inside it, the rafters stopping at its inner face: the eaves, and a shed's high edge. A sloped slope
+  has none along an edge skewed to its rafters (they end at it square, with a warning to frame it by hand), and no slope has one
+  round a courtyard (its eaves inside the footprint; a warning says so). A level slope takes them along skewed edges too, as a
+  floor's rims. Without `rim` the rafters run to the edges.
+- With `ridge`, where two slopes meet along a level line at their tops, each falling away from it, a ridge board (role `ridge`)
+  is one thickness thick, centred on the line and as long as it, less the holes through the roof and any ridge board made
+  before it (a piece shorter than it is thick left out, with a warning). It is a level box, as deep as the rafters' plumb depth
+  (the deeper's, where the slopes differ) from their underside on the line (the lower of the two's): so it never reaches under
+  the roof's underside, its top edges stand over the structure layer's top at its faces by half its thickness times the slope,
+  and the bottom of each rafter's plumb cut against it is that much below its own. The rafters of both slopes stop at its
+  faces. Without `ridge` the rafters run to the line, and a warning says the ridge isn't framed. A shed has no ridge.
+- No hip or valley rafter is made. The jack rafters end at a hip or a valley line, square where their nearer corner meets it,
+  and each hip, valley, seam (two slopes in one plane) and each line where a slope ends inside the footprint (where a joined
+  roof meets the roof it joins) gives one warning, naming its ends and slopes: nothing there bears the rafters, so put a beam
+  along it or frame it by hand.
+- What bears the rafters: each straight wall under the roof and each beam (not upright, level or sloped) whose top, at either
+  face of it, lies within 10 mm (`BEARING`) of the rafters' underside, or at its centre line within that plus half its width
+  along the rafters times the slope (so a level beam bears a sloping rafter that touches its edge). A wall's top is read at the
+  point (`walls::top_over`), so a wall attached to the roof bears it. A curved wall under it isn't taken to bear it, with a
+  warning. A slope that nothing bears warns that its rafters span the whole slope, and how far in plan.
+- A line of rafters the longest `stock` length holds is one piece, eave to top, continuous over every support (unlike a
+  floor's joists, which break over each). A longer one is spliced over its supports (those clear of its ends) into **the fewest
+  pieces the longest stock length holds and, of those splits, the one whose longest piece is shortest**; where two splits are
+  as good, the one whose splices lie nearest the eave, the first splice first (`framing::floor::spliced`, a dynamic programme
+  over the line's supports, O(n²)). A piece's length is along the slope and counts its laps. The pieces butt on a support's
+  centre line (`lap` 0) or each runs `lap` past it (no more than halfway to the next support, with a warning), every other piece
+  a thickness over beside the one before (to its left, else its right, wherever it clears the other members), as a floor's
+  lapped joists do; edge rafters lap as the grid does. Where no split keeps every piece within the stock, the split whose
+  longest piece is shortest is made, in the fewest pieces, and each piece longer than every stock length gets a warning with
+  its length along the slope and the stock (and no stock in the cut list). The cabin's shed (below) splits each line into three:
+  from the low (north) eave to 230 past the LVL, 3895 along the slope; from 230 before the LVL to 230 past the south wall, a
+  thickness over; from 230 before the south wall to the high (south) eave. The north wall and the deck beam bear the rafters
+  and split nothing. The rule from the eave up that came before (each piece to the farthest support it reached) split them as
+  3890, 5879 and a stub of 898 in plan. With `lap` 0 each line is two pieces butting on the LVL, 3665 and 6095 along the slope,
+  the one split in two that 6100 holds; with a stock of 9800 each line is one piece 9760 long.
+- Openings (`Roof.openings`, a skylight) and the shafts through a slope (found as its solid finds them) are framed as a floor's
+  are, in the slope's frame: `trimmers` plies of trimmer rafter each side, `trimmers` plies of header across each end, the
+  rafters it cuts tails from the eave to a header and from a header up; one that can't be trimmed has its rafters end at it,
+  with a warning.
+- With `bridging`, rows of blocking between neighbouring rafters, square to them, dividing each span between what bears them
+  evenly, as a floor's.
+
+A roof's keys are a floor's under `face/<slope>/`: `face/<i>/rafter/<station>/<piece>`, edge rafters `face/<i>/edge/<edge>/<piece>`,
+eave boards `face/<i>/rim/<edge>`, an opening's `face/<i>/opening/<index or shaft GUID>/trimmer/…` and `…/header/…`, blocking
+`face/<i>/blocking/…`, and a ridge board `face/<i>/ridge/<edge>` (`…/<edge>/<piece>` when holes cut it), of the lower numbered
+of its two slopes, its edge counted round that slope's loops. Slopes are numbered as `roof_faces` gives them and edges counted
+round each slope's outline, so an edit to the footprint that changes how the slopes meet (a corner added, an edge made a gable)
+may number the slopes and their edges anew; stations are counted from a slope's least `across` and stay while it does, so moving
+a beam or a wall under it keeps every key. Roles are `rafter` and `ridge`, with `rim`, `trimmer`, `header` and `blocking` as a
+floor's.
+
+`frame {ids | id, type?}` frames roofs with walls and floors (a roof's rafters run up its slopes: `angle` is a floor's); `unframe`
+takes it off; `modify {id, framing}` sets it for one roof; `framing {id}` reads a roof's members, cut list and `warnings` as a
+floor's, with `supports` (the ids of the walls and beams that bear its rafters), `span` (the longest clear span of a rafter
+between what bears it, in plan, mm) and `faces` (`[{index, origin, x_axis, slope}]`, each slope as it is framed, `slope` in
+degrees); its `origin` and `x_axis` are its first slope's, and each member's `s` and `across` are in its own slope's `frame`.
+
+Output follows the floors'. In the 3D view and sections a framed roof's members are solids of the roof (picking it) in the
+framing's material, and its structure layer is drawn (as solids, a section's hatch and the section box's caps) only where the
+view hides Roofs > Framing (`roofframing`), which brings the layer back whole; the layers over and under it are drawn as layers.
+A plan of the roof's level draws no member by default: Roofs > Framing Lines (`roofframingline`, off unless a view shows it)
+draws each member's outline dashed, the roof framing plan. The Framing Members schedule lists a roof's members with the roof as
+Host, its type as Host Type and its level as Level. IFC writes each rafter and trimmer as an `IfcMember` of predefined type
+`RAFTER` and each ridge board, eave board, header and block as an `IfcMember` `MEMBER` (IFC4 has no kind of member for them),
+each placed in its slope's frame, aggregated to the `IfcRoof` (which keeps its whole body) in no storey of its own, with
+GlobalIds from the roof's GUID and the key; IFC2x3 writes them without a predefined type. An IFC import of the file brings the
+roof back unframed, its shape from its own body: the members, being its parts, are neither added to its shape nor brought in.
+`ci/ifc-coverage.txt` has a framed gable roof with a skylight.
+
+In the window, Frame and Remove Framing act on the selection's roofs with its walls and floors, as one undo step, the status bar
+saying how many of each and the first warning; a roof's Properties have Framing under Structural, as a wall's (no direction: its
+rafters run up its slopes), with the button to its Type Properties, where Floors and Roofs holds what both read (Lap at Supports,
+Bridging Spacing, Trimmer and Header Plies, Rim Joists and Eave Boards) and Roofs the Ridge Board.
+
+The acceptance test is the user's cabin (`framing_roof_tests.rs`, as its reference framing has it): a shed sloping 5 %, its low
+eave north at y 6658.65 and its high eave south 9760 along the slope, 8540 wide with 610 overhangs at the rakes, over framed 2x4
+walls along the south and north sides (tops attached to it), the LVL along y 2998.65 and the deck beam along y -2421.35 under
+the high end: 22 lines of 38 x 235 rafters, each in the three pieces above, none overlapping, every piece within 6100, and the
+rafters on the walls' top plates.
+
+Not yet, for roofs: hip and valley rafters (warned, with a beam along the line as the way round); birdsmouths and seat cuts (a
+rafter is a box with plumb ends, resting on the top plate's edge); collar ties, ceiling joists and rafter ties; trusses;
+lookouts and outriggers under a rake's overhang, and ladder blocking over a partition along the rafters; blocking over bearing
+walls and at the eaves; eave boards along a sloped slope's skewed eaves and round courtyards (warned); a ridge beam that bears
+the rafters (the ridge board bears nothing); roofs by extrusion and shaped roofs (refused); a curved wall as a support; a
+splice placed by hand; span checks against a species or a table; connectors (hurricane ties, hangers); and keys that last
+through an edit that renumbers the slopes.
+
+Not yet, for walls: framing elevations;
 picking or tagging a single member; sheathing; span checks; connectors; a plate's splices placed by hand; and at non-square corners and joins of three walls the framed length falls back to the
 layer's shorter edge, which may leave a gap or an overlap between two framed walls' members.
 
