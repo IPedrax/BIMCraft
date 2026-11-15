@@ -1,0 +1,173 @@
+{
+  "model": "claude-fable-5-2",
+  "family": "medical-day",
+  "written": "2026-11-15",
+  "note": "The proposal the medical-day family file is written from. Every value marked `model` in medical-day.json is this file's value for it. `why` is the model's reason, for the reviewer. One trace, A112, is behind it: a value marked `trace` is exactly what A112 holds (a door type, or the most links a room of that kind has); every range is `model`, because one plan gives no range, and contains what A112 holds. `entry` is null: a department cropped out of a building has no outside door (MD-011). The structure follows the example family; staff work is made open (MD-008), the isolation room gets a required door to a corridor (MD-003), and `shell`, `shell_annex`, `staff_station` and the treatment-room washroom door are added so that A112 fits.",
+  "inputs": [
+    "specs/shape-graph-generator.md",
+    "BIMCraft/crates/core/data/graph-rules/medical-day.json",
+    "done/fixtures/medical-day/README.md",
+    "done/fixtures/medical-day/a112-expected-topology.json",
+    "done/fixtures/medical-day/a112-kinds.json",
+    "done/fixtures/medical-day/a112-room-areas.json",
+    "done/fixtures/shape-graph/examples/medical-day-family.json",
+    "BIMCraft/crates/core/data/shape-families/fill/hospital-claude-fable-5-2.json",
+    "BIMCraft/crates/core/data/shape-families/hospital.json"
+  ],
+  "pack_id": "medical-day",
+  "building_type": "hospital",
+  "entry": null,
+  "rooms": {
+    "corridor": {
+      "kind": "corridor", "name": "Corridor", "role": "circulation", "place": "spine",
+      "count": [1, 7], "area_m2": [10.0, 160.0], "max_side_ratio": null, "min_side_mm": 2100, "max_links": 40,
+      "source": {"count": {"from": "model", "confidence": "medium"}, "area_m2": {"from": "model", "confidence": "low"}, "max_side_ratio": {"from": "model", "confidence": "high"}, "min_side_mm": {"from": "model", "confidence": "low"}, "max_links": {"from": "model", "confidence": "medium"}},
+      "why": "A112 has seven corridor spaces of 19.9 to 58.9 m2, the busiest with 11 links. A small plan needs only one, and that one must be able to carry a 20-room plan, hence the long top of the area and 40 links. The trace gives no widths; 2100 mm is a guess for a unit where recliners and wheelchairs pass, not beds."
+    },
+    "waiting": {
+      "kind": "waiting", "name": "Waiting", "role": "public", "place": "off_spine",
+      "count": [1, 2], "area_m2": [10.0, 45.0], "max_side_ratio": 2.5, "min_side_mm": 3000, "max_links": 2,
+      "source": {"count": {"from": "model", "confidence": "medium"}, "area_m2": {"from": "model", "confidence": "low"}, "max_side_ratio": {"from": "model", "confidence": "medium"}, "min_side_mm": {"from": "model", "confidence": "medium"}, "max_links": {"from": "model", "confidence": "medium"}},
+      "why": "A112 has one, 11.95 m2, open to its corridor and nothing else. A larger unit may have a second; the top of the area is a guess for one."
+    },
+    "treatment_bay": {
+      "kind": "treatment_bay", "name": "Treatment Bay", "role": "clinical", "place": "off_spine", "weight": 5,
+      "count": [2, 14], "area_m2": [8.0, 20.0], "max_side_ratio": 2.0, "min_side_mm": 2400, "max_links": 1,
+      "source": {"count": {"from": "model", "confidence": "medium"}, "area_m2": {"from": "model", "confidence": "medium"}, "max_side_ratio": {"from": "model", "confidence": "medium"}, "min_side_mm": {"from": "model", "confidence": "medium"}, "max_links": {"from": "trace"}},
+      "why": "A112 has seven: five of 12.3 to 12.5 m2 and two of about 18.2 m2, each with one link, open to a corridor. The bays are the point of the unit, so at least two and the heaviest weight. 2400 mm takes a recliner or stretcher with a chair beside it."
+    },
+    "treatment_room": {
+      "kind": "treatment_room", "name": "Treatment Room", "role": "clinical", "place": "off_spine", "weight": 2,
+      "count": [0, 6], "area_m2": [10.0, 22.0], "max_side_ratio": 2.0, "min_side_mm": 2700, "max_links": 2,
+      "source": {"count": {"from": "model", "confidence": "medium"}, "area_m2": {"from": "model", "confidence": "medium"}, "max_side_ratio": {"from": "model", "confidence": "medium"}, "min_side_mm": {"from": "model", "confidence": "medium"}, "max_links": {"from": "trace"}},
+      "why": "A112 has two, 14.2 and 14.5 m2. One has a second link, a door to a washroom that also opens to the corridor, so two links."
+    },
+    "anteroom": {
+      "kind": "anteroom", "name": "Anteroom", "role": "support", "place": "off_spine", "weight": 2,
+      "count": [0, 2], "area_m2": [3.0, 9.0], "max_side_ratio": 3.0, "min_side_mm": 1500, "max_links": 2,
+      "source": {"count": {"from": "model", "confidence": "medium"}, "area_m2": {"from": "model", "confidence": "medium"}, "max_side_ratio": {"from": "model", "confidence": "medium"}, "min_side_mm": {"from": "model", "confidence": "medium"}, "max_links": {"from": "trace"}},
+      "why": "A112 has one, 3.88 m2, with a door to a corridor and a door to its isolation room. Weight 2 so that plans with an isolation suite are not rare; a suite is three rooms, so the minimum stays 0."
+    },
+    "isolation": {
+      "kind": "isolation", "name": "Isolation Room", "role": "clinical", "place": "beside_parent",
+      "count": [0, 2], "per": {"room": "anteroom", "count": [1, 1]}, "area_m2": [12.0, 26.0], "max_side_ratio": 2.0, "min_side_mm": 2700, "max_links": 3,
+      "source": {"count": {"from": "model", "confidence": "medium"}, "area_m2": {"from": "model", "confidence": "medium"}, "max_side_ratio": {"from": "model", "confidence": "medium"}, "min_side_mm": {"from": "model", "confidence": "medium"}, "max_links": {"from": "trace"}},
+      "why": "A112 has one, 19.98 m2, with three links: its anteroom, its washroom and a pair of doors to a corridor (MD-003). One for each anteroom, never without."
+    },
+    "iso_washroom": {
+      "kind": "washroom", "name": "Washroom", "role": "service", "place": "beside_parent",
+      "count": [0, 2], "per": {"room": "isolation", "count": [1, 1]}, "area_m2": [3.0, 8.0], "max_side_ratio": 2.5, "min_side_mm": 1500, "max_links": 1,
+      "source": {"count": {"from": "model", "confidence": "medium"}, "area_m2": {"from": "model", "confidence": "medium"}, "max_side_ratio": {"from": "model", "confidence": "medium"}, "min_side_mm": {"from": "model", "confidence": "medium"}, "max_links": {"from": "trace"}},
+      "why": "The isolation room's own washroom: 5.72 m2 in A112, one link. MD-003 lets it have no other link. One for each isolation room."
+    },
+    "washroom": {
+      "kind": "washroom", "name": "Washroom", "role": "service", "place": "off_spine",
+      "count": [1, 5], "area_m2": [3.0, 8.0], "max_side_ratio": 2.5, "min_side_mm": 1500, "max_links": 2,
+      "source": {"count": {"from": "model", "confidence": "medium"}, "area_m2": {"from": "model", "confidence": "medium"}, "max_side_ratio": {"from": "model", "confidence": "medium"}, "min_side_mm": {"from": "model", "confidence": "medium"}, "max_links": {"from": "trace"}},
+      "why": "A112 has four off a corridor, 5.69 to 6.28 m2 (accessible single washrooms). One of them has a second door, from the treatment room next to it, which MD-006 allows, so two links. With the isolation washrooms the kind sums to 1 to 7; A112 has five."
+    },
+    "medication": {
+      "kind": "medication", "name": "Medication", "role": "support", "place": "off_spine",
+      "count": [1, 1], "area_m2": [6.0, 16.0], "max_side_ratio": 2.5, "min_side_mm": 2100, "max_links": 1,
+      "source": {"count": {"from": "model", "confidence": "medium"}, "area_m2": {"from": "model", "confidence": "medium"}, "max_side_ratio": {"from": "model", "confidence": "medium"}, "min_side_mm": {"from": "model", "confidence": "medium"}, "max_links": {"from": "trace"}},
+      "why": "A112 has one, 9.79 m2, behind one door (MD-005 allows no second link). One for a unit of this size."
+    },
+    "clean_utility": {
+      "kind": "clean_utility", "name": "Clean Utility", "role": "support", "place": "off_spine",
+      "count": [1, 1], "area_m2": [6.0, 16.0], "max_side_ratio": 2.5, "min_side_mm": 2100, "max_links": 1,
+      "source": {"count": {"from": "model", "confidence": "medium"}, "area_m2": {"from": "model", "confidence": "medium"}, "max_side_ratio": {"from": "model", "confidence": "medium"}, "min_side_mm": {"from": "model", "confidence": "medium"}, "max_links": {"from": "trace"}},
+      "why": "A112 has one, 12.2 m2, one door to a corridor (MD-004)."
+    },
+    "soiled_utility": {
+      "kind": "soiled_utility", "name": "Soiled Utility", "role": "support", "place": "off_spine",
+      "count": [1, 1], "area_m2": [6.0, 16.0], "max_side_ratio": 2.5, "min_side_mm": 2100, "max_links": 1,
+      "source": {"count": {"from": "model", "confidence": "medium"}, "area_m2": {"from": "model", "confidence": "medium"}, "max_side_ratio": {"from": "model", "confidence": "medium"}, "min_side_mm": {"from": "model", "confidence": "medium"}, "max_links": {"from": "trace"}},
+      "why": "A112 has one, 13.46 m2, one door to a corridor. No link to clean utility is listed (MD-004)."
+    },
+    "staff_work": {
+      "kind": "staff_work", "name": "Staff Work", "role": "support", "place": "off_spine",
+      "count": [1, 2], "area_m2": [8.0, 30.0], "max_side_ratio": 2.5, "min_side_mm": 2400, "max_links": 3,
+      "source": {"count": {"from": "model", "confidence": "medium"}, "area_m2": {"from": "model", "confidence": "medium"}, "max_side_ratio": {"from": "model", "confidence": "medium"}, "min_side_mm": {"from": "model", "confidence": "medium"}, "max_links": {"from": "trace"}},
+      "why": "A112 has two open work areas, 14.45 and 16.19 m2, each open to two corridors; one also has a small station open to it, so three links. The engine gives a room one link to the spine, so the second corridor side is not drawn."
+    },
+    "staff_station": {
+      "kind": "staff_work", "name": "Staff Station", "role": "support", "place": "beside_parent",
+      "count": [0, 2], "per": {"room": "staff_work", "count": [0, 1]}, "area_m2": [1.0, 4.0], "max_side_ratio": 3.0, "min_side_mm": 900, "max_links": 1,
+      "source": {"count": {"from": "model", "confidence": "medium"}, "area_m2": {"from": "model", "confidence": "low"}, "max_side_ratio": {"from": "model", "confidence": "low"}, "min_side_mm": {"from": "model", "confidence": "low"}, "max_links": {"from": "trace"}},
+      "why": "A112 has one staff work space of 1.22 m2 (a tube station) open only to the larger staff work area; MD-008 lets staff work open to staff work. A second type of the kind so that the main one is never this small. At most one to a staff work area."
+    },
+    "office": {
+      "kind": "office", "name": "Office", "role": "private", "place": "off_spine",
+      "count": [0, 6], "area_m2": [8.0, 16.0], "max_side_ratio": 2.0, "min_side_mm": 2400, "max_links": 1,
+      "source": {"count": {"from": "model", "confidence": "medium"}, "area_m2": {"from": "model", "confidence": "medium"}, "max_side_ratio": {"from": "model", "confidence": "medium"}, "min_side_mm": {"from": "model", "confidence": "medium"}, "max_links": {"from": "trace"}},
+      "why": "A112 has four, 10.45 to 10.6 m2, each with one door to a corridor (MD-007). The office band is optional in the pattern, so the minimum is 0."
+    },
+    "meeting": {
+      "kind": "meeting", "name": "Meeting", "role": "shared", "place": "off_spine",
+      "count": [0, 2], "area_m2": [12.0, 36.0], "max_side_ratio": 2.2, "min_side_mm": 3000, "max_links": 1,
+      "source": {"count": {"from": "model", "confidence": "medium"}, "area_m2": {"from": "model", "confidence": "medium"}, "max_side_ratio": {"from": "model", "confidence": "medium"}, "min_side_mm": {"from": "model", "confidence": "medium"}, "max_links": {"from": "trace"}},
+      "why": "A112 has one, 32.22 m2, with a pair of doors to a corridor. The bottom of the area is a small huddle room."
+    },
+    "storage": {
+      "kind": "storage", "name": "Storage", "role": "support", "place": "off_spine",
+      "count": [1, 4], "area_m2": [4.0, 14.0], "max_side_ratio": 3.0, "min_side_mm": 1500, "max_links": 1,
+      "source": {"count": {"from": "model", "confidence": "medium"}, "area_m2": {"from": "model", "confidence": "medium"}, "max_side_ratio": {"from": "model", "confidence": "medium"}, "min_side_mm": {"from": "model", "confidence": "medium"}, "max_links": {"from": "trace"}},
+      "why": "A112 has two, 4.23 and 11.2 m2, each with one link, open to a corridor. The shaft stands in a store's cell, so at least one; the store's link limit does not count the shaft, which has no link."
+    },
+    "alcove": {
+      "kind": "alcove", "name": "Alcove", "role": "support", "place": "off_spine",
+      "count": [0, 3], "area_m2": [2.0, 7.0], "max_side_ratio": 3.0, "min_side_mm": 1200, "max_links": 1,
+      "source": {"count": {"from": "model", "confidence": "medium"}, "area_m2": {"from": "model", "confidence": "medium"}, "max_side_ratio": {"from": "model", "confidence": "medium"}, "min_side_mm": {"from": "model", "confidence": "medium"}, "max_links": {"from": "trace"}},
+      "why": "A112 has one, 4.79 m2, open to a corridor (equipment parked off the corridor)."
+    },
+    "shell": {
+      "kind": "shell", "name": "Shell Space", "role": "support", "place": "off_spine",
+      "count": [0, 3], "area_m2": [15.0, 50.0], "max_side_ratio": 2.5, "min_side_mm": 3000, "max_links": 2,
+      "source": {"count": {"from": "model", "confidence": "medium"}, "area_m2": {"from": "model", "confidence": "low"}, "max_side_ratio": {"from": "model", "confidence": "medium"}, "min_side_mm": {"from": "model", "confidence": "medium"}, "max_links": {"from": "trace"}},
+      "why": "Unfitted space kept for later. A112 has two entered from a corridor by a door, 21.45 and 43.15 m2; the larger is also open to a third, so two links. Such space is left over, not planned, so the area range is wide and a guess."
+    },
+    "shell_annex": {
+      "kind": "shell", "name": "Shell Space", "role": "support", "place": "off_spine",
+      "count": [0, 1], "per": {"room": "shell", "count": [0, 1]}, "area_m2": [15.0, 50.0], "max_side_ratio": 2.5, "min_side_mm": 3000, "max_links": 1,
+      "source": {"count": {"from": "model", "confidence": "low"}, "area_m2": {"from": "model", "confidence": "low"}, "max_side_ratio": {"from": "model", "confidence": "medium"}, "min_side_mm": {"from": "model", "confidence": "medium"}, "max_links": {"from": "trace"}},
+      "why": "A112's third shell space, 41.44 m2, is reached only through another, open to it. A second type of the kind whose parent is a shell room, so it stands in the next cell of that room's group; at most one in a plan."
+    },
+    "plant": {
+      "kind": "plant", "name": "Plant", "role": "service", "place": "off_spine",
+      "count": [0, 2], "area_m2": [8.0, 32.0], "max_side_ratio": 2.5, "min_side_mm": 2400, "max_links": 1,
+      "source": {"count": {"from": "model", "confidence": "medium"}, "area_m2": {"from": "model", "confidence": "medium"}, "max_side_ratio": {"from": "model", "confidence": "medium"}, "min_side_mm": {"from": "model", "confidence": "medium"}, "max_links": {"from": "trace"}},
+      "why": "A112 has two, 23.46 and 28.68 m2, each on a pair of doors to a corridor. The bottom of the area is an electrical or communications closet."
+    },
+    "shaft": {
+      "kind": "shaft", "name": "Shaft", "role": "service", "place": "beside_parent",
+      "count": [0, 2], "per": {"room": "storage", "count": [0, 1]}, "area_m2": [2.0, 11.0], "max_side_ratio": 3.0, "min_side_mm": 1200, "max_links": 0,
+      "source": {"count": {"from": "model", "confidence": "medium"}, "area_m2": {"from": "model", "confidence": "low"}, "max_side_ratio": {"from": "model", "confidence": "low"}, "min_side_mm": {"from": "model", "confidence": "medium"}, "max_links": {"from": "trace"}},
+      "why": "A112 has one, 10.02 m2 (a lift shaft with no door on this floor), with no link. Smaller ones are risers. It has no opening, so it is cut out of a store's cell, as the example does; which room the shaft stands beside in A112 is not in the trace."
+    }
+  },
+  "links": [
+    {"from": "corridor", "to": "corridor", "use": "parent", "types": ["open_full", "double", "single"], "source": {"from": "model", "confidence": "medium"}, "why": "A112's nine corridor-to-corridor links are four open, three pairs of doors and two single doors. Open first, as the commonest. MD-009 counts all three."},
+    {"from": "corridor", "to": "waiting", "use": "parent", "types": ["open_full", "cased", "double"], "source": {"from": "model", "confidence": "medium"}, "why": "Open in A112. A pair of doors is added for a waiting room closed off from a treatment corridor."},
+    {"from": "corridor", "to": "treatment_bay", "use": "parent", "types": ["open_full", "cased"], "source": {"from": "model", "confidence": "high"}, "why": "Seven of seven are open in A112, and MD-001 allows no door. Both open forms: no front at all, or a cubicle front with a wide gap."},
+    {"from": "corridor", "to": "treatment_room", "use": "parent", "types": ["single", "double", "unequal_double"], "source": {"from": "model", "confidence": "medium"}, "why": "A112 has one on a single door and one on a pair (MD-002 wants a door). The unequal pair is the usual stretcher door."},
+    {"from": "corridor", "to": "anteroom", "use": "parent", "types": ["single"], "source": {"from": "trace"}, "why": "A single swing door in A112 (MD-003: the anteroom has a door to a corridor)."},
+    {"from": "corridor", "to": "washroom", "use": "parent", "types": ["single"], "source": {"from": "trace"}, "why": "Four of four in A112 (MD-006: doors only)."},
+    {"from": "corridor", "to": "medication", "use": "parent", "types": ["single"], "source": {"from": "trace"}, "why": "One single door in A112, and MD-005 allows nothing else."},
+    {"from": "corridor", "to": "clean_utility", "use": "parent", "types": ["single"], "source": {"from": "trace"}, "why": "A single door in A112 (MD-004)."},
+    {"from": "corridor", "to": "soiled_utility", "use": "parent", "types": ["single"], "source": {"from": "trace"}, "why": "A single door in A112 (MD-004)."},
+    {"from": "corridor", "to": "staff_work", "use": "parent", "types": ["open_full", "cased"], "source": {"from": "model", "confidence": "high"}, "why": "Open in A112 on all four corridor sides, and MD-008 allows no door. The example's door here is what made every plan fail MD-008."},
+    {"from": "staff_work", "to": "staff_station", "use": "parent", "types": ["open_full"], "source": {"from": "model", "confidence": "medium"}, "why": "Open in A112; a station is a corner of the work area, so no wall is drawn between them."},
+    {"from": "corridor", "to": "office", "use": "parent", "types": ["single"], "source": {"from": "trace"}, "why": "Four of four in A112 (MD-007: a door, no open link)."},
+    {"from": "corridor", "to": "meeting", "use": "parent", "types": ["double", "single"], "source": {"from": "model", "confidence": "medium"}, "why": "A pair of doors in A112; a small meeting room has one leaf. No open form (MD-007)."},
+    {"from": "corridor", "to": "storage", "use": "parent", "types": ["open_full", "cased", "single"], "source": {"from": "model", "confidence": "medium"}, "why": "Both of A112's stores are open to their corridor. A door is added because most stores have one, and no rule speaks of storage."},
+    {"from": "corridor", "to": "alcove", "use": "parent", "types": ["open_full", "cased"], "source": {"from": "model", "confidence": "high"}, "why": "Open in A112; an alcove with a door is a store."},
+    {"from": "corridor", "to": "shell", "use": "parent", "types": ["single"], "source": {"from": "trace"}, "why": "Two of two in A112."},
+    {"from": "shell", "to": "shell_annex", "use": "parent", "types": ["open_full", "cased"], "source": {"from": "model", "confidence": "medium"}, "why": "Open in A112 between two shell spaces."},
+    {"from": "corridor", "to": "plant", "use": "parent", "types": ["double", "single"], "source": {"from": "model", "confidence": "medium"}, "why": "Two of two are pairs in A112; a small closet has one leaf."},
+    {"from": "anteroom", "to": "isolation", "use": "parent", "types": ["single"], "source": {"from": "trace"}, "why": "A single swing door in A112 (MD-003)."},
+    {"from": "isolation", "to": "iso_washroom", "use": "parent", "types": ["single"], "source": {"from": "trace"}, "why": "A single swing door in A112 (MD-003)."},
+    {"from": "storage", "to": "shaft", "use": "parent", "types": [], "source": {"from": "model", "confidence": "high"}, "why": "No opening: the A112 shaft has no link, and a shaft is not a room anyone enters on this floor."},
+    {"from": "corridor", "to": "isolation", "use": "required", "types": ["double", "single"], "source": {"from": "model", "confidence": "medium"}, "why": "MD-003 wants a door from every isolation room to a corridor; in A112 it is a pair, for a bed or stretcher. The single door is what the engine was measured with."},
+    {"from": "treatment_room", "to": "washroom", "use": "extra", "chance": 0.3, "types": ["single"], "source": {"from": "model", "confidence": "low"}, "why": "In A112 one corridor washroom also has a single door from the treatment room beside it. MD-006 allows a washroom one door to a corridor and one to the single room it serves; both rooms have a limit of two links, so a washroom never serves two rooms. One of two treatment rooms has it in A112; 0.3 is a guess from that."}
+  ]
+}
