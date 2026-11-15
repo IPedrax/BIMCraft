@@ -2465,7 +2465,11 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
         let mut faces = r.body(roof);
         for part in l.parts.get(&id).into_iter().flatten() {
             if let Some(p) = e(*part) {
-                faces.extend(r.body(p));
+                // A member that is a part of it (a framed roof's rafter, as BIMCraft writes one) is its framing, not its shape:
+                // left out, as a framed wall's members are.
+                if !matches!(p.name.as_str(), "IFCMEMBER" | "IFCMEMBERSTANDARDCASE") {
+                    faces.extend(r.body(p));
+                }
                 seen.insert(*part);
             }
         }
@@ -2545,6 +2549,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
                             .map(|(a, b)| crate::model::SplitLine { a: flat(a), b: flat(b), ..Default::default() })
                             .collect(),
                     },
+                    framing: None,
                 };
                 let proxy = m.roof_as_floor(&roof);
                 let meets = |p: &P3| {
@@ -2597,6 +2602,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
                     join: None,
                     extrusion: rd.extrusion,
                     shape: Default::default(),
+                    framing: None,
                 };
                 match m.roof_faces(&roof) {
                     Ok(_) => {

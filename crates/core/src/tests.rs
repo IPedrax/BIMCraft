@@ -2759,6 +2759,8 @@ fn hostile_params_never_panic_or_break_the_model() {
     targeted.extend(crate::framing_tests::sweep_payloads(&mut base));
     // A framed floor with an opening over a beam, and the payloads that frame it at an angle, query it and retype it.
     targeted.extend(crate::framing_floor_tests::sweep_payloads(&mut base));
+    // A framed gable roof open through a skylight, and the payloads that frame, query and retype it.
+    targeted.extend(crate::framing_roof_tests::sweep_payloads(&mut base));
     let line = |slope: Value| json!({"start": [0, 0], "end": [8000, 0], "slope": slope});
     let rest = [
         json!({"start": [8000, 0], "end": [8000, 6000]}),

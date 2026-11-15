@@ -172,6 +172,8 @@ pub const MEMBER: u32 = 1 << 30;
 pub const FRAMED: u32 = 1 << 29;
 /// With [`MEMBER`] or [`FRAMED`]: a framed floor's piece, which Floors > Framing shows and hides in place of Walls > Framing.
 pub const FLOOR: u32 = 1 << 28;
+/// With [`MEMBER`] or [`FRAMED`]: a framed roof's piece, which Roofs > Framing shows and hides in place of Walls > Framing.
+pub const ROOF: u32 = 1 << 27;
 
 /// Of a piece packed as `bits`: whether it is a framing member (true) or the structure layer they stand in (false); none for
 /// anything else.

@@ -935,17 +935,19 @@ impl Step {
         self.shell(&b, &t)
     }
 
-    /// Framing `f`'s members, wall or floor `id`'s, each in its own placement in `at`: a wall's placement, which is the
-    /// framing's frame (its origin, its `s` axis, at `base`), or a floor's, which is in plan, the member's frame (or the
-    /// framing's) placed in it directly; a box swept up, or a bevelled one's closed shell. A wall's are each
-    /// an `IfcMember`, a stud, a king, a jack or a cripple a STUD, a plate or a sill a PLATE, a header or blocking a MEMBER; a
-    /// floor's joists, rims, trimmers and headers each an `IfcBeam`, a JOIST, and its blocking an `IfcMember`, a MEMBER. Each
+    /// Framing `f`'s members, wall, floor or roof `id`'s, each placed in the placement `at` of the framing's frame (its origin,
+    /// its `s` axis, at `base`), or a member's own frame in that: a box swept up, or a bevelled or sloped one's closed shell. A
+    /// wall's are each an `IfcMember`, a stud, a king, a jack or a cripple a STUD, a plate or a sill a PLATE, a header or
+    /// blocking a MEMBER; a floor's joists, rims, trimmers and headers each an `IfcBeam`, a JOIST, and its blocking an
+    /// `IfcMember`, a MEMBER; a roof's rafters and trimmers each an `IfcMember`, a RAFTER, and its ridge boards, rims, headers
+    /// and blocking `IfcMember`s, MEMBERs (IFC4 has no kind of member for them). Each
     /// has its role for its name and object type and its key for its tag; its GlobalId comes from the host's GUID and its key,
     /// so it stays while the member does. All in the framing's material.
     fn members(&mut self, m: &Model, id: Id, f: &crate::framing::Framing, at: u64, base: f64) -> Vec<u64> {
         use crate::framing::Role;
         let host = self.own.get(&id).map_or(id, |g| fold(*g));
         let floor = matches!(m.elements.get(id), Some(Element::Floor(_)));
+        let roof = matches!(m.elements.get(id), Some(Element::Roof(_)));
         let mut out = Vec::new();
         for member in &f.members {
             let ([s0, s1], [a0, a1], [b0, b1], [t0, t1]) = (member.s, member.across, member.bottom, member.top);
@@ -963,14 +965,16 @@ impl Step {
             };
             let (class, kind) = match member.role {
                 Role::Joist | Role::Rim | Role::Trimmer | Role::Header if floor => ("IFCBEAM", "JOIST"),
+                Role::Rafter | Role::Trimmer if roof => ("IFCMEMBER", "RAFTER"),
+                Role::Rafter => ("IFCMEMBER", "RAFTER"),
                 Role::Stud | Role::King | Role::Jack | Role::Cripple => ("IFCMEMBER", "STUD"),
                 Role::BottomPlate | Role::TopPlate | Role::Sill => ("IFCMEMBER", "PLATE"),
-                Role::Header | Role::Blocking | Role::Joist | Role::Rim | Role::Trimmer => ("IFCMEMBER", "MEMBER"),
+                Role::Header | Role::Blocking | Role::Joist | Role::Rim | Role::Trimmer | Role::Ridge => ("IFCMEMBER", "MEMBER"),
             };
-            // A wall's in its wall's placement, which is the framing's frame. A floor's in its slab's, which is in plan: the
-            // member's own frame, or the framing's, placed there directly, since IFC2x3 lets a placement place one product
-            // and no more, so no placement of the framing's frame alone.
-            let place = match (member.frame, floor) {
+            // A wall's in its wall's placement, which is the framing's frame. A floor's or a roof's in its own placement,
+            // which is in plan: the member's own frame, or the framing's, placed there directly, since IFC2x3 lets a
+            // placement place one product and no more, so no placement of the framing's frame alone.
+            let place = match (member.frame, floor || roof) {
                 (Some([o, x]), true) => self.place(Some(at), (o.0, o.1, 0.0), Some(x)),
                 (None, true) => self.place(Some(at), (f.origin.0, f.origin.1, 0.0), Some(f.x_axis)),
                 (Some([o, x]), false) => {
@@ -2085,6 +2089,12 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
                 let flat = r.extrusion.is_none() && r.slope == 0.0;
                 w.typed("IFCROOFTYPE", if flat { ".FLAT_ROOF." } else { ".NOTDEFINED." }, &r.type_name, ent);
                 hosts.insert(id, (ent, at, m.elevation(r.level)));
+                // Framed, its members are its parts, each placed in its slope's frame; it keeps its own body, the whole roof.
+                if r.framing.is_some()
+                    && let Ok(Some(framing)) = crate::framing::roof::roof(m, id)
+                {
+                    framed.push((id, w.members(m, id, &framing, at, m.elevation(r.level))));
+                }
                 // Gross follows the actual planes with authored openings filled; courtyards and joins remain.
                 // Net follows the same roof geometry used for export, less its openings and intersecting shafts.
                 // A roof whose faces can't be found (a gable edge its footprint doesn't have) has no area to say: none is written.
@@ -2133,7 +2143,7 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
         w.add(format!("IFCRELAGGREGATES({},$,$,$,#{ent},({}))", w.guid(PARTS, *id), refs(parts)));
     }
     // A bar is a part of the element it reinforces; one with none, or whose host isn't written, is in its level. A framed
-    // wall's members are its parts with them.
+    // wall's, floor's or roof's members are its parts with them.
     let mut reinforced: BTreeMap<Id, Vec<u64>> = framed.into_iter().collect();
     for (level, host, ent) in bars {
         match host.filter(|h| products.contains_key(h)) {

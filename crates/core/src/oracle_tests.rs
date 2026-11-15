@@ -34,9 +34,10 @@ fn pick(s: &Session, dice: &mut Dice, categories: &[&str]) -> Option<Id> {
     ids.get(dice.below(ids.len())).copied()
 }
 
-/// Frames the walls of the tower's type with a structure layer (`framing.rs`), and its first slab on joists over a beam
-/// (`framing/floor.rs`), so random edits move, copy and delete framed walls, the windows in them, the walls standing on the
-/// floor and the beams under it: their members are worked out from them, and every cache must follow.
+/// Frames the walls of the tower's type with a structure layer (`framing.rs`), its first slab on joists over a beam
+/// (`framing/floor.rs`) and a gable roof beside it on rafters over another (`framing/roof.rs`), so random edits move, copy and
+/// delete framed walls, the windows in them, the walls standing on the floor, the beams under it and the roof: their members
+/// are worked out from them, and every cache must follow.
 pub(crate) fn frame_some(s: &mut Session) {
     let walls: Vec<Id> = s
         .model
@@ -56,6 +57,25 @@ pub(crate) fn frame_some(s: &mut Session) {
         ("beam", json!({"points": [[0, 15_000], [36_000, 15_000]], "offset": -184})),
         ("frame", json!({"id": floor, "angle": 90})),
     ] {
+        s.execute(cmd, &p).unwrap_or_else(|e| panic!("{cmd} {p}: {e}"));
+    }
+    // A gable roof beside it on rafters over a beam under its south slope (`framing/roof.rs`).
+    let level = s.model.levels().first().map(|(id, _)| *id).expect("the tower has a level");
+    let rafters =
+        json!({"category": "roof", "name": "Rafters 235", "layers": [{"function": "structure", "material": "Timber", "thickness": 235}]});
+    s.execute("type", &rafters).unwrap_or_else(|e| panic!("{e}"));
+    let roof = s
+        .execute(
+            "roof",
+            &json!({"boundary": [[40_000, 0], [48_000, 0], [48_000, 6000], [40_000, 6000]], "gables": [1, 3], "slope": 30,
+                    "type": "Rafters 235", "level": level, "offset": 3000, "overhang": 0}),
+        )
+        .unwrap_or_else(|e| panic!("{e}"))["id"]
+        .clone();
+    let top = 3000.0 + 1500.0 * 30f64.to_radians().tan();
+    for (cmd, p) in
+        [("beam", json!({"points": [[40_000, 1500], [48_000, 1500]], "level": level, "offset": top})), ("frame", json!({"id": roof}))]
+    {
         s.execute(cmd, &p).unwrap_or_else(|e| panic!("{cmd} {p}: {e}"));
     }
 }

@@ -190,7 +190,8 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 20 would leave a wall's `framing` and the project's framing types out of a file, unframing its walls without a word, not
 /// "saved by a newer BIMCraft". A file the Family Editor's unreleased builds stamped 21 opens as one of 21: it holds no framing.
 /// 21 also: a floor's `framing` and `framing_angle` (its joists worked out as a wall's studs are), and a framing type's `rim`,
-/// `lap`, `bridging`, `trimmers` and `under_partitions`; 21 isn't released, so it holds them with the walls'.
+/// `lap`, `bridging`, `trimmers` and `under_partitions`; 21 isn't released, so it holds them with the walls'. And a roof's
+/// `framing` (its rafters worked out as a floor's joists are) and a framing type's `ridge`, held with them.
 pub const FORMAT: u32 = 21;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
@@ -2034,6 +2035,10 @@ pub struct Roof {
     /// underside following its top.
     #[serde(default, skip_serializing_if = "Shape::is_empty")]
     pub shape: Shape,
+    /// Its framing type (`types.framing`), whose rafters, ridge boards, rims, trimmers and blocking are worked out from it
+    /// ([`crate::framing::roof`]); none, it isn't framed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub framing: Option<String>,
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
@@ -8830,6 +8835,7 @@ impl Model {
                     shape_ok(&who, &self.roof_as_floor(r), Variable::of(self.type_layers("roof", &r.type_name)))?;
                 }
                 self.roof_pieces(r).map_err(|e| format!("{who}: {e}"))?;
+                crate::framing::roof::check(self, r).map_err(|e| format!("{who}: {e}"))?;
             }
             Element::Sheet(sh) => {
                 text(&who, "number", &sh.number)?;

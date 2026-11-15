@@ -1364,7 +1364,7 @@ other_files(
          cabletray|wire|downconductor|groundconductor|cable, name, thickness? | width?, height?, sill?, operation? | width?, depth?, round?, \
          material?, profile?, shape?, web?, flange?, radius? | height?, spacing? | floor?, floor_offset?, ceiling?, ceiling_offset?, colour? \
          | spacing?, layout?, thickness?, material?, bottom_plates?, top_plates?, kings?, jacks?, window_rough?, door_rough?, headers?, \
-         sill_plates?, corner?, tee?, blocking?, stock?, rim?, lap?, bridging?, trimmers?, under_partitions?} creates the type, or \
+         sill_plates?, corner?, tee?, blocking?, stock?, rim?, lap?, bridging?, trimmers?, under_partitions?, ridge?} creates the type, or \
          changes it everywhere it's used. \
          A framing type (see `frame`; all mm, every field optional, a new one starting from 2x4 at 16\" for a bearing wall) has \
          `spacing` (406.4; the grid's stud centres apart), `layout` (start | end | centre: where the grid is measured from along \
@@ -1380,8 +1380,11 @@ other_files(
          the centre line of a beam or wall they're cut over; more, each runs that far past it, at most halfway to the next, \
          and every other piece lies a thickness over, side by side), `bridging` (0: none; else the longest a joist runs between rows of solid blocking, 300 \
          or more), `trimmers` (2, 1 to 3: plies of trimmer each side of an opening and of header across each end) and \
-         `under_partitions` (true: a pair of joists under each wall standing on the floor along its joists). Fields given \
-         replace the type's; others are kept. \
+         `under_partitions` (true: a pair of joists under each wall standing on the floor along its joists); for a roof (its \
+         rafters `spacing` apart up each slope, `thickness` thick and as deep square to the slope as its type's structure \
+         layer), `rim` (a sub-fascia along each eave), `lap` (where a rafter longer than the longest `stock` is spliced over \
+         a wall or beam), `bridging` and `trimmers` as a floor's, and `ridge` (true: a ridge board where two slopes meet at a \
+         ridge, the rafters stopping at its faces). Fields given replace the type's; others are kept. \
          A room type may name a `floor` type and a `ceiling` type (null, none; a new project's Standard has neither): each of its \
          rooms then has a floor (its top `floor_offset` mm over the room's level, 0) and a ceiling (its underside \
          `ceiling_offset` mm over it, 2600) of its own, made when the room is bounded and kept along its boundary at the walls' \
@@ -2352,22 +2355,29 @@ other_files(
         "frame",
         "Framing",
         &[],
-        "{ids | id, type?, angle?} frames walls and floors: gives each a framing type (`type`, one of the project's, see `type` \
-         {category: framing}; else the project's default, `2x4 @ 406`, made when the project has no framing type), and each \
-         floor its joists' direction where `angle` is given (degrees from +x, the way they run; none, square to the floor's \
-         longest edge, spanning the short way). A wall's studs, plates, kings, jacks, headers, sills, cripples and blocking, \
-         and a floor's joists, rims, trimmers, headers and blocking, are then worked out from it whenever they're asked for \
-         (`framing`), never stored: moving a window, an opening, a beam under a floor or a wall on it, changing a height or \
-         editing the framing type changes them. A framed wall is straight, of a wall type with a structure layer (the members \
-         stand in its thickest one, as deep across the wall as it is thick: an 89 mm layer for 2x4s), and its headers' plies \
-         fit that layer; a framed floor is flat (no slope, no edited shape) and of a floor type with a structure layer (its \
-         joists as deep as it is thick: 184 mm for 2x8s); otherwise it's refused, saying why. What the rules can't frame is \
-         framed more simply or left out, never without a warning: an opening with no room for its kings, jacks, header and \
-         sill; a floor's opening too near its edge, another opening or its trimmers (its joists end at it), a wall over one, a \
-         joist piece too short, nothing bearing the joists. A floor's joists are cut over each beam or straight wall under it \
-         whose top is within 10 mm of their underside. At a square corner of two framed walls the one of the lower GUID runs \
-         through. `modify` {id, framing: name | null, framing_angle?} does the same for one. Replies with the walls and floors, \
-         the type, how many members they have and the `warnings`, each naming its host",
+        "{ids | id, type?, angle?} frames walls, floors and roofs: gives each a framing type (`type`, one of the project's, see \
+         `type` {category: framing}; else the project's default, `2x4 @ 406`, made when the project has no framing type), and \
+         each floor its joists' direction where `angle` is given (degrees from +x, the way they run; none, square to the \
+         floor's longest edge, spanning the short way; a roof's rafters run up each of its slopes, and a flat roof's square to \
+         its longest edge). A wall's studs, plates, kings, jacks, headers, sills, cripples and blocking, a floor's joists, \
+         rims, trimmers, headers and blocking, and a roof's rafters, ridge boards, rims, trimmers, headers and blocking, are \
+         then worked out from it whenever they're asked for (`framing`), never stored: moving a window, an opening, a beam \
+         under a floor or a roof or a wall on it, changing a height or a slope or editing the framing type changes them. A \
+         framed wall is straight, of a wall type with a structure layer (the members stand in its thickest one, as deep \
+         across the wall as it is thick: an 89 mm layer for 2x4s), and its headers' plies fit that layer; a framed floor is \
+         flat (no slope, no edited shape) and of a floor type with a structure layer (its joists as deep as it is thick: 184 \
+         mm for 2x8s); a framed roof is by footprint (not by extrusion, no edited shape) and of a roof type with a structure \
+         layer (its rafters as deep square to the slope as it is thick: 235 mm for 2x10s); otherwise it's refused, saying \
+         why. What the rules can't frame is framed more simply or left out, never without a warning: an opening with no room \
+         for its kings, jacks, header and sill; a floor's or roof's opening too near its edge, another opening or its \
+         trimmers (its joists or rafters end at it), a wall over one, a piece too short, nothing bearing them; a roof's hips \
+         and valleys (no hip or valley rafter is made: the rafters end at them), a rafter longer than the longest stock with \
+         nothing in reach to splice it over. A floor's joists are cut over each beam or straight wall under it whose top is \
+         within 10 mm of their underside; a roof's rafters rest on each wall and beam under them so (at either face of it, or \
+         at its centre within that and half its width times the slope) and are cut only where longer than the longest stock: \
+         from the eave up, each piece over the farthest support it reaches. At a square corner of two framed walls the one of \
+         the lower GUID runs through. `modify` {id, framing: name | null, framing_angle?} does the same for one. Replies with \
+         the walls, floors and roofs, the type, how many members they have and the `warnings`, each naming its host",
         crate::framing::frame,
     )
     .menu("Structure > Framing"),
@@ -2375,23 +2385,26 @@ other_files(
         "unframe",
         "Remove Framing",
         &[],
-        "{ids | id} walls and floors framed no more: their framing type is left in the project",
+        "{ids | id} walls, floors and roofs framed no more: their framing type is left in the project",
         crate::framing::unframe,
     ),
     other(
         "framing",
         "Framing Members",
-        "{id} a framed wall's or floor's members and cut list, read and never built: {host, type, layer (the structure layer's \
-         GUID), material, origin [x, y] (a wall's start; a floor's outline's first corner), x_axis (along the wall; the way \
-         the floor's joists run), depth_axis (to its left), members: [{key, role (bottom_plate, top_plate, stud, king, jack, \
-         cripple, header, sill, blocking; joist, rim, trimmer), section [thickness, depth] of one ply as sawn, plies, grain \
+        "{id} a framed wall's, floor's or roof's members and cut list, read and never built: {host, type, layer (the structure \
+         layer's GUID), material, origin [x, y] (a wall's start; a floor's outline's first corner; a roof's first slope's), \
+         x_axis (along the wall; the way the floor's joists run; up the roof's first slope), depth_axis (to its left), \
+         members: [{key, role (bottom_plate, top_plate, stud, king, jack, cripple, header, sill, blocking; joist, rim, trimmer; \
+         rafter, ridge), section [thickness, depth] of one ply as sawn (a rafter's depth square to its slope), plies, grain \
          (up, along or across: the way its length runs), length (the cut length: up an upright's longest edge, along a lying \
          one's slope, across one lying across), stock (the shortest stock length it's cut from; null, longer than all of \
          them), s [from, to] along x_axis from origin, across [from, to] to its left, z [bottom at s from, bottom at s to, top \
          at s from, top at s to], absolute, frame? {origin, x_axis} (a member not square to its host's frame, a rim along a \
-         floor's skewed edge: its s and across are in this frame)}], cut_list: [{role, section, plies, length (to the mm), \
-         stock, count}], warnings; a floor's also supports (the ids of the beams and walls bearing its joists), span (the \
-         longest clear span of a joist between them, mm) and angle (the way its joists run, degrees)}. Keys stay while what \
+         floor's skewed edge, every member of a roof in its slope's frame, up the slope: its s and across are in this frame)}], \
+         cut_list: [{role, section, plies, length (to the mm), stock, count}], warnings; a floor's and a roof's also supports \
+         (the ids of the beams and walls bearing its joists or rafters) and span (the longest clear span of one between them, \
+         in plan, mm); a floor's angle (the way its joists run, degrees); a roof's faces [{index, origin, x_axis, slope \
+         (degrees)}], its slopes as framed}. Keys stay while what \
          they belong to does: a wall's grid studs `stud/<station>` (counted from the layout's origin), end studs `stud/start` \
          and `stud/end`, `corner/start`, `tee/<wall GUID>/0`, an opening's `<GUID>/king/left/0`, `<GUID>/header`, \
          `<GUID>/cripple/top/<station>`, plates `bottom_plate/<ply>/<start or the door GUID it follows>/<piece>` and \
@@ -2401,7 +2414,10 @@ other_files(
          `start` the outline's least across, `end` its most), edge joists `edge/<edge index>/<piece>`, rims `rim/<edge \
          index>`, an opening's `opening/<index or shaft GUID>/trimmer/<left or right>/<ply>/<piece>` and \
          `opening/<…>/header/<start or end>/<ply>`, a pair under a wall `under/<wall GUID>/<0 or 1>/<piece>`, blocking \
-         `blocking/<key of the line on its right, at less across>/<row>`",
+         `blocking/<key of the line on its right, at less across>/<row>`; a roof's are a floor's under `face/<slope>/` (`rafter` \
+         for `joist`: `face/0/rafter/<station>/<piece>`, `face/0/edge/<edge>/<piece>`, `face/0/rim/<edge>`), a ridge board \
+         `face/<lower slope>/ridge/<edge>`; slopes are numbered as the roof's faces are, so an edit to its footprint that \
+         changes how they meet may number them anew",
         crate::framing::query,
     ),
     other(
@@ -2488,7 +2504,9 @@ other_files(
          headers: hidden, its structure layer is drawn whole, as an unframed wall's); under floors, `floorframing` (a framed \
          floor's joists, rims and trimmers in 3D and sections: hidden, its structure layer is drawn whole) and \
          `floorframingline` (their outlines in a plan, dashed under the floor's top: hidden unless the plan shows them, as a \
-         framing plan does). An \
+         framing plan does); under roofs, `roofframing` (a framed roof's rafters, ridge boards, rims, trimmers, headers and \
+         blocking in 3D and sections: hidden, its structure layer is drawn whole) and `roofframingline` (their outlines, \
+         dashed, in a plan of the roof's level: hidden unless the plan shows them). An \
          override is {hidden?, projection?: style, cut?: style, halftone?, transparency?}, a style {color?, weight? (a pen, \
          0 to 16: 0 a hairline, the thinnest line the screen or printer draws at any scale; 1 to 16 widths on paper from 0.10 to \
          4 mm, 4 being 0.18 mm and 10 0.35 mm, a cut wall's outline), dash? (solid, dashed, dotted), fill?, foreground?, background?}, a colour [r, g, b] or \"#rrggbb\". \
@@ -12188,6 +12206,7 @@ fn roof(s: &mut Session, p: &Value) -> R {
         extrusion,
         sketch,
         shape: Default::default(),
+        framing: None,
     };
     // Its sketch lines' slopes are its edges', unless it is given `slopes`.
     if absent(p.get("slopes")) {
@@ -12304,6 +12323,7 @@ fn dormer(s: &mut Session, p: &Value) -> R {
         extrusion: None,
         sketch: Vec::new(),
         shape: Default::default(),
+        framing: None,
     }));
     let roof_guid = model.guid(roof);
     let wall = |start: P2, end: P2| {

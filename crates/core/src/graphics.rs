@@ -140,6 +140,11 @@ pub const SUBCATEGORIES: &[Sub] = &[
     // framing plan a framer builds the floor from does.
     Sub { key: "floorframing", parent: "floor", name: ui_msg!("Framing"), off: false },
     Sub { key: "floorframingline", parent: "floor", name: ui_msg!("Framing Lines"), off: true },
+    // A framed roof's rafters, ridge boards, rims, trimmers, headers and blocking (`crate::framing::roof`) in 3D and sections:
+    // hidden, its structure layer is drawn as an unframed roof's. In a plan of its level, their outlines, dashed, are
+    // `roofframingline`, off unless a plan shows them, as a roof framing plan does.
+    Sub { key: "roofframing", parent: "roof", name: ui_msg!("Framing"), off: false },
+    Sub { key: "roofframingline", parent: "roof", name: ui_msg!("Framing Lines"), off: true },
     // The three origins, as Revit's Site has them: hidden unless a view shows them.
     Sub { key: "internalorigin", parent: "site", name: ui_msg!("Internal Origin"), off: true },
     Sub { key: "projectbasepoint", parent: "site", name: ui_msg!("Project Base Point"), off: true },
@@ -1088,6 +1093,8 @@ pub struct Look {
     unframed: bool,
     /// Floors > Framing hidden: a framed floor's structure layer is drawn in place of its members.
     unframed_floors: bool,
+    /// Roofs > Framing hidden: a framed roof's structure layer is drawn in place of its members.
+    unframed_roofs: bool,
 }
 
 /// `c` halfway to the paper.
@@ -1144,6 +1151,7 @@ impl Look {
     pub fn forms_show(&self, vis: u32, cut: bool) -> bool {
         match crate::family::visibility::framing(vis) {
             Some(member) if vis & crate::family::visibility::FLOOR != 0 => member != self.unframed_floors,
+            Some(member) if vis & crate::family::visibility::ROOF != 0 => member != self.unframed_roofs,
             Some(member) => member != self.unframed,
             None => vis == 0 || self.forms.shows(vis, cut),
         }
@@ -1157,6 +1165,11 @@ impl Look {
     /// Whether it draws a framed floor's structure layer in place of its members: Floors > Framing hidden.
     pub fn unframed_floors(&self) -> bool {
         self.unframed_floors
+    }
+
+    /// Whether it draws a framed roof's structure layer in place of its members: Roofs > Framing hidden.
+    pub fn unframed_roofs(&self) -> bool {
+        self.unframed_roofs
     }
 
     /// How a 3D view draws its edges and shadows: its Graphic Display Options.
@@ -1192,6 +1205,7 @@ impl Look {
             forms,
             unframed: g.hides("framing"),
             unframed_floors: g.hides("floorframing"),
+            unframed_roofs: g.hides("roofframing"),
             ..Look::default()
         };
         // Nothing to look for: no graphics of its own, and nothing in the project phased or in an option.

@@ -1510,7 +1510,12 @@ impl crate::model::Element {
                 }
             }
             Element::Ceiling(x) => f(&Kind::Type(category), &mut x.type_name),
-            Element::Roof(x) => f(&Kind::Type(category), &mut x.type_name),
+            Element::Roof(x) => {
+                f(&Kind::Type(category), &mut x.type_name);
+                if let Some(framing) = &mut x.framing {
+                    f(&Kind::Type("framing".into()), framing);
+                }
+            }
             Element::Railing(x) => f(&Kind::Type(category), &mut x.type_name),
             Element::Room(x) => f(&Kind::Type(category), &mut x.type_name),
             Element::Column(c) | Element::StructuralColumn(c) | Element::Footing(c) => f(&Kind::Type(category), &mut c.type_name),

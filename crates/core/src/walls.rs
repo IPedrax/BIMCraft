@@ -733,6 +733,11 @@ pub fn base_at(m: &Model, w: &Wall, s: f64) -> f64 {
     bounds(m, w).0.at(Axis::of(w).at(s, centre(m, w)))
 }
 
+/// A wall's top over plan point `q`: what it's attached to there, else its own top.
+pub(crate) fn top_over(m: &Model, w: &Wall, q: P2) -> f64 {
+    bounds(m, w).1.at(q)
+}
+
 /// A wall's top over the point `s` mm along its centre line.
 pub fn top_at(m: &Model, w: &Wall, s: f64) -> f64 {
     bounds(m, w).1.at(Axis::of(w).at(s, centre(m, w)))
