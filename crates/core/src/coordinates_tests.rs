@@ -322,8 +322,7 @@ fn a_georeference_needs_no_coordinate_reference_system() {
 }
 
 #[test]
-fn coordinates_share_0_12s_format_20_and_a_file_of_19_needs_no_step() {
-    assert_eq!(crate::model::FORMAT, 20);
+fn coordinates_are_in_the_current_format_and_a_file_of_19_needs_no_step() {
     let mut s = Session::new();
     run(&mut s, "georeference", json!({"crs": "EPSG:31983", "eastings": 1000.0}));
     let mut v: Value = serde_json::from_str(&s.model.to_json().unwrap()).unwrap();
@@ -333,7 +332,7 @@ fn coordinates_share_0_12s_format_20_and_a_file_of_19_needs_no_step() {
     assert!(left_out.is_empty(), "{left_out:?}");
     assert_eq!(m.georeference, s.model.georeference, "the georeference is the active site");
     assert_eq!(m.coordinates.survey, [0.0; 3]);
-    assert_eq!(m.format, 20);
+    assert_eq!(m.format, crate::model::FORMAT);
 }
 
 #[test]

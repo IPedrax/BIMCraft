@@ -177,8 +177,8 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// 2: the library has ids and GUIDs too
 /// (`library`), and what names a library entry holds its GUID. 1: elements have GUIDs, ids six digits, and what points at
 /// an element holds its GUID. None (0): a file from before.
-/// 20 (0.12's, which every change since 19 shares; the Family Editor's unreleased builds wrote 20 to 32 too, and a file of
-/// theirs stamped 20 opens as one of 0.12's, 21 and up as newer): rooms have types (`types.room`), which may name a floor type and a ceiling type, and a room holds the floor and the
+/// 20 (0.12's, which every change since 19 shares; the Family Editor's unreleased builds wrote 21 to 32 too, and a file of
+/// theirs stamped 20 opens as one of 0.12's, 21 to 32 are refused as another build's, and 33 and up as newer): rooms have types (`types.room`), which may name a floor type and a ceiling type, and a room holds the floor and the
 /// ceiling made for it (`floor`, `ceiling`); a build that reads up to 19 would lose the links and leave the finishes behind. And
 /// project parameters may be of kinds 19 doesn't know (`integer`, `area`, `volume`, `angle`), a type's (`scope`, `type_values`),
 /// from a `.bimparams` dictionary (`dictionaries`), grouped under a heading of the project's own, and the project's information
@@ -190,10 +190,11 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// georeference and lose where the project stands; and it would read spot coordinates (a spot's `coordinate`, `type`, `origin`,
 /// `leader`, `shoulder` and `end`) and a level's `elevation_base` as spot elevations from the Project Base Point. A file of 19
 /// needs no step: its georeference is the active site, both points at the internal origin.
-/// 21 (the toposolid's): the site's ground is a toposolid (`toposolid`), a solid element whose type's layers set its thickness
-/// (`types.toposolid`, which a file of 20 is given: `Generic - 300mm`) and whose top its elevation points and split lines shape;
-/// a build that reads up to 20 (0.12, which writes 20) would answer one with a serde error, not "saved by a newer BIMCraft".
-pub const FORMAT: u32 = 21;
+/// 33 (the toposolid's; 21 to 32 are the Family Editor's unreleased builds, which no release read): the site's ground is a
+/// toposolid (`toposolid`), a solid element whose type's layers set its thickness (`types.toposolid`, which a file of 20 is
+/// given: `Generic - 300mm`) and whose top its elevation points and split lines shape; a build that reads up to 20 (0.12,
+/// which writes 20) would answer one with a serde error, not "saved by a newer BIMCraft".
+pub const FORMAT: u32 = 33;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -4136,7 +4137,9 @@ impl Model {
                 Err(_) => return Ok(None),
             },
         };
-        if !(4..=u64::from(FORMAT)).contains(&format) {
+        // 21 to 32 are the Family Editor's unreleased builds' formats: not this line's, so the slow path refuses them with a
+        // message rather than this one reading them as older files.
+        if !(4..=u64::from(FORMAT)).contains(&format) || (21..=32).contains(&format) {
             return Ok(None);
         }
         let Some(raw) = elements else { return Ok(None) };
@@ -4217,6 +4220,15 @@ impl Model {
         if format > u64::from(FORMAT) {
             return Err(format!(
                 "it was saved by a newer BIMCraft (file format {format}; this one reads up to {FORMAT}): update BIMCraft to open it"
+            ));
+        }
+        // The Family Editor took the format from 21 to 32 a step at a time before it was released, and none of that was: a
+        // file stamped one of those is that build's, not an older one of this line, so it is refused rather than read with
+        // its families' fields left out.
+        if (21..=32).contains(&format) {
+            return Err(format!(
+                "its file format {format} is one of the Family Editor's unreleased builds, which no released BIMCraft reads: \
+                 this one reads up to 20, and {FORMAT}"
             ));
         }
         if format < 4 {

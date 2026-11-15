@@ -296,14 +296,13 @@ fn pivots_that_repeat_other_constraints_are_named_as_over_constrained() {
 }
 
 #[test]
-fn a_file_keeps_its_pivots_and_a_file_of_28_reads_unchanged() {
+fn a_file_keeps_its_pivots_and_an_older_one_reads_unchanged() {
     let mut s = session(swing());
     run(&mut s, "family", panel());
     let text = s.model.to_json().unwrap();
     assert!(
         text.contains(&format!("\"format\": {}", crate::model::FORMAT)) || text.contains(&format!("\"format\":{}", crate::model::FORMAT))
     );
-    assert_eq!(crate::model::FORMAT, 20);
     let (back, left_out) = Model::read(&text).unwrap();
     assert!(left_out.is_empty(), "{left_out:?}");
     assert_eq!(back.families["Swing"].lines, s.model.families["Swing"].lines);

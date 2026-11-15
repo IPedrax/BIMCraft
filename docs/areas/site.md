@@ -18,7 +18,7 @@ from the top down: each layer a `function`, a `material` and a `thickness`. Its 
 **Default Thickness**, and that is how thick every toposolid of the type is: the instance's Thickness is read-only. The
 project starts with `Generic - 300mm`, so a toposolid is 300 mm thick until its type says otherwise; `type {category:
 toposolid, name, thickness? | layers?}` makes or changes one, and every toposolid of it follows. `Model::migrate` gives a file
-from before `FORMAT` 21 that type.
+from before `FORMAT` 33 that type.
 
 A point's `z` is above the flat top, as a floor's shape points are. `toposolid`'s `points` are survey points whose z is in
 project coordinates, and the command stores them relative to `elevation(level) + offset`. `add_point {absolute}` does the same
@@ -63,7 +63,7 @@ The triangulation is the floor shape editor's (`triangulation::constrained`), no
   axes turned by the same angle from the same origin: a paving meets itself at a fold, and turns as the plan's pattern does.
 - **Schedules**: category `toposolid`: Name, Level, Area, Volume, Thickness.
 - **IFC**: an `IfcSlab` with `.BASESLAB.`, a closed faceted Brep, in the level's storey, with `Qto_SlabBaseQuantities`.
-- **File**: `FORMAT` 21 (0.12 reads a 20 file, and would answer a toposolid with a serde error rather than "saved by a newer BIMCraft").
+- **File**: `FORMAT` 33 (0.12 reads a 20 file, and would answer a toposolid with a serde error rather than "saved by a newer BIMCraft"; 21 to 32 are the Family Editor's unreleased formats and are refused).
 - **Visibility/Graphics and Object Styles**: the `toposolid` category.
 
 ## Not yet
