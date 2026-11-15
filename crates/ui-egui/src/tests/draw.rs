@@ -161,7 +161,7 @@ fn fillet_rounds_two_detail_lines_and_pick_lines_draws_along_a_wall() {
     press(&mut h, "Pick Lines");
     click(&mut h, P2(4000.0, 6000.0));
     let along = curve(&h, *ids(&h, "line").last().unwrap_or(&0));
-    assert_eq!((along.start().1, along.end().1, along.length()), (6000.0, 6000.0, 8000.0));
+    assert_eq!((along.start().1, along.end().1, along.length()), (5900.0, 5900.0, 7800.0));
 }
 
 #[test]

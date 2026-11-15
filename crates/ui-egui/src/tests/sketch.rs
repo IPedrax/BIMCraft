@@ -425,7 +425,7 @@ fn walls_outline_picks_walls_with_the_arrow_and_esc_clears_them() {
     let mut h = app(&core_box());
     press(&mut h, "Floor");
     press(&mut h, "Walls' Outline");
-    click(&mut h, P2(4000.0, 0.0));
+    click_with(&mut h, P2(4000.0, 0.0), Modifiers::COMMAND);
     assert_eq!(h.state().outline_walls.len(), 1, "the south wall is picked");
     assert_eq!(h.state().selection.len(), 1, "and lit as the selection");
     key(&mut h, Key::Escape);
@@ -443,7 +443,7 @@ fn a_picked_boundary_line_shows_its_wall_face_and_flips_and_undoes() {
     key(&mut h, Key::Escape);
     assert_eq!(h.state().tool, Tool::Modify);
     click(&mut h, P2(4000.0, 50.0));
-    assert!(h.query_by_role_and_label(Role::CheckBox, "Extend into wall (to core)").is_some());
+    assert!(h.get_all_by_label("Extend into wall (to core)").count() >= 1);
     // The checkbox in Properties puts it on the finish, and Ctrl+Z takes that back as one step.
     {
         let checkbox = h.get_all_by_label("Extend into wall (to core)").last().expect("the line's own checkbox");

@@ -1304,14 +1304,26 @@ impl BimApp {
             return false;
         };
         let only = (!self.outline_walls.is_empty()).then(|| self.outline_walls.clone());
-        let (outline, courtyards) =
-            match bimcraft_core::floor_outline_faces_of(&self.session.model, level, face, offset, only.as_ref(), self.outline_flip) {
-                Ok(outline) => outline,
-                Err(why) => {
-                    self.status = Status { text: why, error: true };
-                    return false;
-                }
-            };
+        let mut made = bimcraft_core::floor_outline_faces_of(&self.session.model, level, face, offset, only.as_ref(), self.outline_flip);
+        // A core face needs every wall to have a core. Walls without a structural layer keep the old Walls' Outline:
+        // its centre lines, rather than refusing the whole contour.
+        let mut fell_back = false;
+        if made.is_err() && face.is_core() {
+            made =
+                bimcraft_core::floor_outline_faces_of(&self.session.model, level, Face::Centre, offset, only.as_ref(), self.outline_flip);
+            fell_back = made.is_ok();
+        }
+        let (outline, courtyards) = match made {
+            Ok(outline) => outline,
+            Err(why) => {
+                self.status = Status { text: why, error: true };
+                return false;
+            }
+        };
+        if fell_back {
+            self.status =
+                Status { text: msg!("A wall has no core: the outline follows the level's wall centre lines.").into(), error: false };
+        }
         let mut lines = Vec::new();
         for ring in std::iter::once(&outline).chain(&courtyards) {
             for (a, b) in geom::ring_edges(ring) {
