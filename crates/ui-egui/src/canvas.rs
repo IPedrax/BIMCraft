@@ -2715,11 +2715,6 @@ impl BimApp {
                 };
                 let square = mods.shift || (self.constrain && matches!(self.tool, Tool::Move(_) | Tool::Copy(_)));
                 let pt = self.snap_point(m, level, v, at, &chain, square);
-                // The wall face under the pointer, not the centre line its snap lands on: a chain started on a face
-                // extends that face.
-                if self.canvas.start_edge.is_none() && matches!(&self.tool, Tool::Wall(chain) if chain.is_empty()) {
-                    self.canvas.start_edge = crate::guide_refs::wall_edge_at(m, level, v.mm(at), 8.0 / v.scale);
-                }
                 self.place(level, pt);
             }
             &Tool::Rotate { centre, start, place } => {
@@ -3326,6 +3321,9 @@ impl BimApp {
             }
             self.run("railing", p);
         }
+        self.canvas.start_edge = None;
+        self.canvas.wall_face = None;
+        self.canvas.pins.borrow_mut().clear();
     }
 
     /// The Detail Line tool's next point. A line a click, as walls are: each click after the first makes a line from the
@@ -3386,6 +3384,7 @@ impl BimApp {
         }
         self.canvas.pins.borrow_mut().clear();
         self.canvas.wall_face = None;
+        self.canvas.start_edge = None;
     }
 
     /// A detail line through the points clicked, round to the first again where `closed`, in the Options Bar's line
@@ -3417,6 +3416,9 @@ impl BimApp {
             }
             Err(e) => self.status = Status { text: tf("mass: {}", &[&e]), error: true },
         }
+        self.canvas.start_edge = None;
+        self.canvas.wall_face = None;
+        self.canvas.pins.borrow_mut().clear();
     }
 
     /// The Text tool's click: a note saying what the Options Bar says, its top left at `at` in
@@ -3563,9 +3565,10 @@ impl BimApp {
                 (Some(_), _) => {}
                 (None, _) => {
                     chain.push(p);
-                    // The wall face or line the chain started on lends its direction and extension while it draws.
+                    // A chain whose first point the snap put on a wall — one of its faces or its centre line — draws with
+                    // that line's direction and extension for as long as it runs.
                     if self.canvas.start_edge.is_none() {
-                        self.canvas.start_edge = crate::guide_refs::wall_edge_at(&self.session.model, level, p, 300.0);
+                        self.canvas.start_edge = crate::guide_refs::wall_edge_at(&self.session.model, level, p, TOL);
                     }
                 }
             },

@@ -1289,7 +1289,7 @@ fn the_options_bar_sets_the_wall_height_and_chain() {
     let wall = ids(&h, "wall");
     assert_eq!(wall.len(), 1, "without Chain, two clicks make a wall");
     assert_eq!((field(&h, wall[0], "top_level"), field(&h, wall[0], "height")), (json!(null), json!(2500.0)));
-    click(&mut h, P2(0.0, 1000.0));
+    click(&mut h, P2(0.0, 3000.0));
     click(&mut h, P2(4000.0, 3000.0));
     assert_eq!(ids(&h, "wall").len(), 2, "and the next two another");
 }
@@ -1959,14 +1959,14 @@ fn aligned_dimensions_pick_parallel_references_then_place_the_line() {
     assert_eq!((dims.len(), field(&h, dims[0], "values")), (1, json!([7800.0])));
     assert_eq!(h.state().tool, Tool::Dimension(DimMode::Aligned, Vec::new()), "the tool stays on for the next one");
     // A wall across the first isn't picked; centre lines are, where the cursor is on them.
-    click(&mut h, P2(0.0, 1000.0));
+    click(&mut h, P2(0.0, 3000.0));
     click(&mut h, P2(4000.0, 0.0));
     click(&mut h, P2(8000.0, 3000.0));
     click(&mut h, P2(4000.0, 3000.0));
     let dims = ids(&h, "dimension");
     assert_eq!((dims.len(), field(&h, dims[1], "values")), (2, json!([8000.0])));
     // Esc drops the references picked, then leaves the tool.
-    click(&mut h, P2(0.0, 1000.0));
+    click(&mut h, P2(0.0, 3000.0));
     key(&mut h, Key::Escape);
     assert_eq!(h.state().tool, Tool::Dimension(DimMode::Aligned, Vec::new()));
     key(&mut h, Key::Escape);
@@ -3405,7 +3405,7 @@ fn the_wall_tool_draws_arcs_and_walls_on_the_location_line_picked() {
     h.get_by_role_and_label(Role::ComboBox, "Location Line:").click();
     h.run();
     press(&mut h, "Finish Face: Exterior");
-    click(&mut h, P2(0.0, 1000.0));
+    click(&mut h, P2(0.0, 3000.0));
     click(&mut h, P2(4000.0, 3000.0));
     key(&mut h, Key::Enter);
     let line = ids(&h, "wall")[1];
@@ -4405,7 +4405,7 @@ fn walls_drawn_near_alignment_guide_snap_to_other_walls_reference_points() {
 
     // Second wall starting at (0, 3000)
     tool(&mut h, "Wall");
-    click(&mut h, P2(0.0, 1000.0));
+    click(&mut h, P2(0.0, 3000.0));
     // Click near X = 5000 (e.g. 5005, 3000) within tolerance
     click(&mut h, P2(5005.0, 3000.0));
     key(&mut h, Key::Enter);
@@ -4808,14 +4808,14 @@ fn the_snap_names_the_wall_line_its_pointer_is_on() {
 fn tab_cycles_a_walls_three_lines_until_a_number_is_typed() {
     use bimcraft_core::model::Face;
     let mut h = app(r#"wall {"points": [[0,0],[6000,0]]}"#);
-    let (id, ext, int) = {
+    let (id, ext) = {
         let m = &h.state().session.model;
         let id = ids(&h, "wall")[0];
-        let (ext, int) = bimcraft_core::walls::faces(m, m.wall(id).expect("the wall"));
-        (id, ext, int)
+        let (ext, _) = bimcraft_core::walls::faces(m, m.wall(id).expect("the wall"));
+        (id, ext)
     };
     tool(&mut h, "Wall");
-    // A chain started away from the wall, so its length and angle can be typed.
+    // A chain started away from the wall, and inside the plan's fit, so its length and angle can be typed.
     click(&mut h, P2(0.0, 1000.0));
     let over = P2(2000.0, ext - 10.0);
     assert!(hover(&mut h, over).is_some(), "the pointer is over the plan");
@@ -4828,11 +4828,16 @@ fn tab_cycles_a_walls_three_lines_until_a_number_is_typed() {
     hover(&mut h, over);
     assert_eq!(h.state().canvas.found.get().and_then(|f| f.face), Some(Face::Right));
     // A number typed keeps Tab: the field swaps, and the wall's line stays where it was.
-    h.state_mut().typed_length = "3000".into();
+    h.event(Event::Text("3000".into()));
+    h.run();
+    assert_eq!(h.state().typed_length, "3000", "the number is being typed");
     key(&mut h, Key::Tab);
     assert_eq!(h.state().canvas.wall_face, Some((id, Face::Right)), "the lines stay where they were");
-    assert_eq!(h.state().drawing.other, "3000", "the number moved to the angle field, as Tab does");
-    let _ = int;
+    assert_eq!(
+        (h.state().typed_length.as_str(), h.state().drawing.other.as_str()),
+        ("", "3000"),
+        "the number moved to the angle field, as Tab does"
+    );
 }
 
 /// One edge pin per wall: marking another of its faces moves the pin rather than spending a second of the three, and the
@@ -4906,6 +4911,30 @@ fn a_pin_is_a_line_or_a_dot_and_never_a_square() {
     assert!(shapes.iter().any(|s| matches!(s, Shape::LineSegment { .. })), "the face is its line");
     assert_eq!(shapes.iter().filter(|s| matches!(s, Shape::Circle(_))).count(), 2, "a dot and its ring");
     assert!(!shapes.iter().any(|s| matches!(s, Shape::Rect(_))), "never a square: {shapes:?}");
+}
+
+/// A view keeps three references, a fourth letting the oldest go, and a point marked at a wall's end is a reference of
+/// its own beside that wall's edge pin.
+#[test]
+fn a_view_keeps_three_references_and_a_point_is_one_of_its_own() {
+    use crate::guide_refs::{Marked, PinTarget, Pins};
+    use bimcraft_core::model::Face;
+    let edge = |id: Id| PinTarget::Edge { a: P2(0.0, 0.0), b: P2(1000.0, 0.0), id: Some(id), face: Face::Left, near: None };
+    let mut pins = Pins::default();
+    for id in [1, 2, 3] {
+        assert_eq!(pins.toggle(9, edge(id), Vec::new()), Marked::New);
+    }
+    assert_eq!(pins.toggle(9, edge(4), Vec::new()), Marked::New, "the fourth comes in");
+    assert_eq!(pins.at(9).len(), 3, "and three is what a view keeps");
+    assert!(pins.at(9).iter().all(|p| p.target.id() != Some(1)), "the oldest went");
+    // A point marked at one wall's end sits beside that wall's edge pin rather than moving it.
+    let point = PinTarget::Point { at: P2(0.0, 0.0), kind: bimcraft_core::snap::Kind::Endpoint, id: Some(2) };
+    let mut pins = Pins::default();
+    assert_eq!(pins.toggle(9, edge(2), Vec::new()), Marked::New);
+    assert_eq!(pins.toggle(9, point, Vec::new()), Marked::New, "a point is a reference of its own");
+    assert_eq!(pins.at(9).len(), 2);
+    assert_eq!(pins.toggle(9, point, Vec::new()), Marked::Cleared, "and Q on it again clears it");
+    assert_eq!(pins.toggle(9, edge(2), Vec::new()), Marked::Cleared, "the wall's own line goes too");
 }
 
 #[test]
@@ -5728,7 +5757,7 @@ fn reveal_hidden_elements_shows_what_the_view_hides_for_good_and_apply_makes_a_h
     assert!(h.state().temporary().is_none(), "nothing left to hide for now");
     assert!(h.state().dirty(), "it is a change to the project now");
     // A category hidden for now goes in with it.
-    click(&mut h, P2(0.0, 1000.0));
+    click(&mut h, P2(0.0, 3000.0));
     shortcut(&mut h, "HC");
     press(&mut h, "Temporary Hide/Isolate");
     press(&mut h, "Apply Hide/Isolate to View");
@@ -5763,12 +5792,12 @@ fn unhide_element_and_unhide_category_bring_back_what_the_selection_hides_while_
     // A category hidden whole: Unhide Category (VU) brings back all its elements.
     shortcut(&mut h, "VH");
     assert!(plan_graphics(&h, 100000).hides("wall"));
-    click(&mut h, P2(0.0, 1000.0));
+    click(&mut h, P2(0.0, 3000.0));
     assert!(h.query_by_label("Unhide Category").is_some());
     press(&mut h, "Unhide Category");
     assert!(!plan_graphics(&h, 100000).hides("wall"));
     shortcut(&mut h, "VH");
-    click(&mut h, P2(0.0, 1000.0));
+    click(&mut h, P2(0.0, 3000.0));
     shortcut(&mut h, "VU");
     assert!(!plan_graphics(&h, 100000).hides("wall"));
     // With nothing the selection hides, VU says so and changes nothing.
@@ -5801,7 +5830,7 @@ fn hide_element_hide_category_and_the_elements_tab_work_on_the_selection() {
     shortcut(&mut h, "VV");
     pick(&mut h, Role::CheckBox, "Walls");
     press(&mut h, "OK");
-    click(&mut h, P2(0.0, 1000.0));
+    click(&mut h, P2(0.0, 3000.0));
     press(&mut h, "Hide Element");
     assert!(plan_graphics(&h, 100000).elements[&gid(&h, walls[3])].hidden);
     // Override Graphics by Element (EO): the selection goes on the Elements tab, picked, to be drawn its own way.

@@ -980,11 +980,9 @@ fn solve(scene: Scene, p: P2, reach: Reach, from: &[P2], square: bool, o: &Snaps
 /// its centre line.
 fn wall_face_snap(scene: &Scene, chosen: Option<(Id, Face)>, p: P2, reach: f64) -> Option<Found> {
     let band = |w: &(Axis, f64, f64, Id)| w.0.distance(p, 0.0) - w.2 / 2.0;
-    let (a, ext, t, id) = scene
-        .walls
-        .iter()
-        .filter(|w| chosen.is_none_or(|(want, _)| want == w.3) && band(w) <= reach)
-        .min_by(|x, y| band(x).total_cmp(&band(y)))?;
+    let (a, ext, t, id) = scene.walls.iter().filter(|w| band(w) <= reach).min_by(|x, y| band(x).total_cmp(&band(y)))?;
+    // `Tab`'s choice holds while its wall is the one under the pointer: on the wall beside it, the nearest line wins again.
+    let chosen = chosen.filter(|(want, _)| want == id);
     let (face, off) = match (chosen, a.centre()) {
         // An arc's faces are arcs: its centre line is the only reference it lends.
         (_, Some(_)) => (Face::Centre, 0.0),
@@ -1389,6 +1387,30 @@ mod tests {
         // Off the wall, the choice does nothing: the face is no reference there.
         let f = at(&m, P2(2990.0, ext + 400.0), &[], &chosen);
         assert_ne!(f.face, Some(Face::Left), "{f:?}");
+    }
+
+    /// `Tab`'s choice belongs to one wall: on the wall beside it, that wall's own nearest line wins, so a choice made a
+    /// moment ago cannot hold a pick two walls away.
+    #[test]
+    fn a_chosen_face_does_not_hold_a_pick_on_the_wall_beside_it() {
+        let m = model(
+            r#"wall {"points": [[0,0],[6000,0]]}
+               wall {"points": [[0,200],[6000,200]]}"#,
+        );
+        let mut walls: Vec<(Id, P2)> = m
+            .elements
+            .iter()
+            .filter_map(|(id, e)| match e {
+                Element::Wall(w) => Some((*id, w.start)),
+                _ => None,
+            })
+            .collect();
+        walls.sort_by(|a, b| a.1.1.total_cmp(&b.1.1));
+        let (first, second) = (walls[0].0, walls[1].0);
+        // `Tab` chose the far wall's exterior face; the pointer is on the wall in front, 20 mm inside its interior one.
+        let o = Snaps { preferred_face: Some((first, Face::Left)), ..Snaps::only(Kind::Nearest) };
+        let f = at(&m, P2(2000.0, 120.0), &[], &o);
+        assert_eq!((f.source, f.face), (Some(second), Some(Face::Right)), "{f:?}");
     }
 
     /// An arc's faces are arcs, which no reference line is: its centre line is the one line it lends.

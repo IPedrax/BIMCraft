@@ -206,9 +206,10 @@ hover ink before a click, so a face and a centre line are told apart before they
 Tab for the field it belongs to. A marked wall is that same line: `Q` and a rest mark exactly what the tag names, and one
 wall lends one edge pin — marking another of its faces moves the pin (`Marked::Moved`) rather than spending a second of
 the three — while a point marked at a corner is a reference of its own. A marked edge lends its own line (a `Collinear`
-guide, "On Line"), its
-direction parallel or square, and its middle; a marked point lends its X and Y and the directions of the walls joined
-there, so a rotated corner gives its walls' directions and not the world's. `Snaps::mark_on_hover` turns the ring off;
+guide, "On Line"), its direction parallel or square, and its middle; a marked point lends its X and Y and the directions
+of the walls joined there, so a rotated corner gives its walls' directions and not the world's. A chain whose first point
+the snap put on a wall draws with that line's direction and extension (`Canvas::start_edge`). `Snaps::mark_on_hover` turns
+the ring off;
 `Q` stays. The rays are drawn only near the cursor: one enters at 8 px and leaves at 12 (`Canvas::alignments`), at most
 two run at once (`find_alignments`), and each fades out 100 px past the point it locks, so a plan is never crossed by a
 ray from an edge the hand has long left. Shift still squares the point against a collinear or grid ray, and the crossing
