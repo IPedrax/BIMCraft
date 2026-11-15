@@ -107,7 +107,7 @@ impl BimApp {
         });
         panel(ui, msg!("Framing"), |ui| {
             let tip = msg!(
-                "Frame: the selected walls and floors framed, a wall's studs, plates and headers and a floor's joists, rims and trimmers worked out from each"
+                "Frame: the selected walls, floors and roofs framed, a wall's studs, plates and headers, a floor's joists, rims and trimmers and a roof's rafters and ridge boards worked out from each"
             );
             let r = big_button(ui, Icon::Frame, "Frame", false, tip);
             // Of several framing types, the button drops them down; of one or none, it frames with the project's default.
@@ -123,7 +123,7 @@ impl BimApp {
             } else if r.clicked() {
                 self.frame_selection(None);
             }
-            let tip = msg!("Remove Framing: the selected walls and floors framed no more; their framing type stays in the project");
+            let tip = msg!("Remove Framing: the selected walls, floors and roofs framed no more; their framing type stays in the project");
             if big_button(ui, Icon::Unframe, "Remove Framing", false, tip).clicked() {
                 self.unframe_selection();
             }
@@ -146,21 +146,25 @@ impl BimApp {
         });
     }
 
-    /// The walls and floors selected: what Frame and Remove Framing act on.
-    fn selected_hosts(&self) -> (Vec<Id>, usize) {
+    /// The walls, floors and roofs selected: what Frame and Remove Framing act on, and how many of each.
+    fn selected_hosts(&self) -> (Vec<Id>, [usize; 3]) {
         let m = &self.session.model;
         let walls = self.selected_walls();
-        let floors = self.selection.iter().copied().filter(|id| matches!(m.elements.get(*id), Some(Element::Floor(_))));
-        let n = walls.len();
-        (walls.into_iter().chain(floors).collect(), n)
+        let of = |floor: bool| -> Vec<Id> {
+            let wanted = |e: &Element| if floor { matches!(e, Element::Floor(_)) } else { matches!(e, Element::Roof(_)) };
+            self.selection.iter().copied().filter(|id| m.elements.get(*id).is_some_and(wanted)).collect()
+        };
+        let (floors, roofs) = (of(true), of(false));
+        let n = [walls.len(), floors.len(), roofs.len()];
+        (walls.into_iter().chain(floors).chain(roofs).collect(), n)
     }
 
-    /// Structure > Frame: the selected walls and floors framed by `ty`, else by the project's default framing type (made when
-    /// it has none), as one step.
+    /// Structure > Frame: the selected walls, floors and roofs framed by `ty`, else by the project's default framing type (made
+    /// when it has none), as one step.
     pub(crate) fn frame_selection(&mut self, ty: Option<&str>) {
-        let (hosts, walls) = self.selected_hosts();
+        let (hosts, [walls, floors, roofs]) = self.selected_hosts();
         if hosts.is_empty() {
-            self.status = Status { text: t("Select the walls or floors to frame first.").into(), error: true };
+            self.status = Status { text: t("Select the walls, floors or roofs to frame first.").into(), error: true };
             return;
         }
         let mut p = json!({"ids": hosts});
@@ -168,15 +172,16 @@ impl BimApp {
             p["type"] = json!(ty);
         }
         if let Some(done) = self.run("frame", p) {
-            let floors = hosts.len() - walls;
-            let (w, f) = (walls.to_string(), floors.to_string());
+            let (w, f, r) = (walls.to_string(), floors.to_string(), roofs.to_string());
             let (ty, members) = (done["type"].as_str().unwrap_or_default(), done["members"].as_u64().unwrap_or(0).to_string());
-            let mut text = if floors == 0 {
-                tf("{} walls framed as {}: {} members.", &[&w, ty, &members])
-            } else if walls == 0 {
-                tf("{} floors framed as {}: {} members.", &[&f, ty, &members])
-            } else {
-                tf("{} walls and {} floors framed as {}: {} members.", &[&w, &f, ty, &members])
+            let mut text = match [walls, floors, roofs] {
+                [_, 0, 0] => tf("{} walls framed as {}: {} members.", &[&w, ty, &members]),
+                [0, _, 0] => tf("{} floors framed as {}: {} members.", &[&f, ty, &members]),
+                [0, 0, _] => tf("{} roofs framed as {}: {} members.", &[&r, ty, &members]),
+                [_, _, 0] => tf("{} walls and {} floors framed as {}: {} members.", &[&w, &f, ty, &members]),
+                [_, 0, _] => tf("{} walls and {} roofs framed as {}: {} members.", &[&w, &r, ty, &members]),
+                [0, _, _] => tf("{} floors and {} roofs framed as {}: {} members.", &[&f, &r, ty, &members]),
+                _ => tf("{} walls, {} floors and {} roofs framed as {}: {} members.", &[&w, &f, &r, ty, &members]),
             };
             // What couldn't be framed as the type says is the core's own words, as its diagnostics are.
             let warnings: Vec<&str> = done["warnings"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
@@ -187,11 +192,11 @@ impl BimApp {
         }
     }
 
-    /// Structure > Remove Framing: the selected walls and floors framed no more, as one step.
+    /// Structure > Remove Framing: the selected walls, floors and roofs framed no more, as one step.
     pub(crate) fn unframe_selection(&mut self) {
         let (hosts, _) = self.selected_hosts();
         if hosts.is_empty() {
-            self.status = Status { text: t("Select the walls or floors to remove framing from first.").into(), error: true };
+            self.status = Status { text: t("Select the walls, floors or roofs to remove framing from first.").into(), error: true };
             return;
         }
         self.run("unframe", json!({"ids": hosts}));

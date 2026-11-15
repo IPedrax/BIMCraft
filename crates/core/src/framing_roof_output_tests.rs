@@ -89,7 +89,7 @@ fn capped(s: &Session, x: f64, y: f64, z: f64) -> usize {
 fn a_section_box_through_the_rafters_caps_each_and_nothing_between_them() {
     let mut s = Session::new();
     let _ = cabin(&mut s, json!({}));
-    // Level with the rafters' middle at y 4500, over the top pieces, which no lap shifts.
+    // Level with the rafters' middle at y 4500, over the low pieces, which no lap shifts.
     let mid = under(4500.0) + 100.0;
     run(&mut s, "section_box", json!({"min": [-1000, -4000, 0], "max": [8000, 7000, mid]}));
     assert!(capped(&s, RAFTER, 4500.0, mid) > 0, "a rafter capped");
@@ -128,18 +128,18 @@ fn a_section_across_the_rafters_cuts_each_and_the_sheathing_over_them_and_one_do
     assert!(fills(at(BAY), under(4500.0) + 235.0 / 0.99875 + 5.0), "the sheathing over them");
     run(&mut s, "graphics", json!({"view": sec, "hide": ["roofframing"]}));
     assert!(section_fills(&s, sec, id)(at(BAY), z), "framing hidden, the layer whole");
-    // Down the slope along a rafter, north to south: its top and bottom pieces, and the middle one beside them not cut.
+    // Up the slope along a rafter, north to south: its low and high pieces, and the middle one beside them not cut.
     let sec = first(&run(&mut s, "section", json!({"start": [RAFTER, YN + 100.0], "end": [RAFTER, -3200.0]})));
     let along = |y: f64| YN + 100.0 - y;
     let fills = section_fills(&s, sec, id);
-    assert!(fills(along(YL + 600.0), under(YL + 600.0) + 100.0), "the top piece");
-    assert!(fills(along(YSW - 100.0), under(YSW - 100.0) + 100.0), "the bottom piece over the south wall");
+    assert!(fills(along(YL + 600.0), under(YL + 600.0) + 100.0), "the low piece");
+    assert!(fills(along(YSW - 100.0), under(YSW - 100.0) + 100.0), "the high piece over the south wall");
     assert!(!fills(along(1500.0), under(1500.0) + 100.0), "the middle piece lies beside the line");
-    // Across them over the south wall: each lapped pair side by side.
+    // Across them over the south wall: each lapped pair side by side, the middle piece a thickness to its slope's left (east).
     let sec = first(&run(&mut s, "section", json!({"start": [X0 - 100.0, YSW + 100.0], "end": [X1 + 100.0, YSW + 100.0]})));
     let fills = section_fills(&s, sec, id);
     let z = under(YSW + 100.0) + 100.0;
-    assert!(fills(at(RAFTER), z) && fills(at(RAFTER - 38.0), z), "the pieces side by side");
+    assert!(fills(at(RAFTER), z) && fills(at(RAFTER + 38.0), z), "the pieces side by side");
 }
 
 #[test]

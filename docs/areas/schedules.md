@@ -29,7 +29,7 @@ area), and Material, its type's structure layer's (or its thickest's), a run's t
 parameter's. Its filters, sorting, grouping, totals and calculated fields are any schedule's; only it lists categories.
 Two categories have rows that are no elements, made in `schedule::sources`: `massfloor`, a mass at each level it crosses
 ([masses](massing.md)), and `framingmember` (`schedule {category: framingmembers}`, Framing Members), a row for each member of
-each framed wall and floor, worked out as it is read and pointing at its host: Host, Host Type, Framing Type, Role, Section (one ply as
+each framed wall, floor and roof, worked out as it is read and pointing at its host: Host, Host Type, Framing Type, Role, Section (one ply as
 sawn, `38 x 89`; plies before it, `2 x 38 x 184`), Length (the cut length to the mm), Stock Length (0 where it is longer than
 every stock length of its framing type), Level, Key and Count. Grouped by Role, Section and Length with Count, it is the cut list
 ([structure and MEP](structure-and-mep.md#wood-framing)).

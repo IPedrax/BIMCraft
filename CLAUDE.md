@@ -128,7 +128,7 @@ One line per module: what it owns. Read its file and, for the areas it names, th
 - `panel_schedule.rs`, `sheet/panel.rs`: panel schedules, drawn on sheets.
 - `electrical.rs`: the electrical settings: voltages, distribution systems, wire types, panels and circuits (the `voltage`, `distribution_system`, `wire_type`, `panel` and `circuit` commands; starter set in `data/electrical.json`; [structure and MEP](docs/areas/structure-and-mep.md)).
 - `nbr5410.rs`: the `circuit` command's sizing by NBR 5410 (tables in `nbr5410/tables.rs`; [structure and MEP](docs/areas/structure-and-mep.md)).
-- `framing.rs`: wood framing, a framed wall's (`framing/floor.rs`: a floor's) members worked out from it and never stored (`frame`); `timber.rs`: `timber_framing`, the older read-only query ([structure and MEP](docs/areas/structure-and-mep.md#wood-framing)).
+- `framing.rs`: wood framing, a framed wall's (`framing/floor.rs`: a floor's; `framing/roof.rs`: a roof's) members worked out from it and never stored (`frame`); `timber.rs`: `timber_framing`, the older read-only query ([structure and MEP](docs/areas/structure-and-mep.md#wood-framing)).
 - `coordinates.rs`: the Project Base Point, the Survey Point and the project's locations, and the transform to shared coordinates ([coordinates](docs/areas/coordinates.md)).
 - `tests.rs`, `mep_tests.rs`, `structure_tests.rs`, `eberick_tests.rs`, `reinforce_tests.rs`, `autosave_tests.rs`: the engine driven through commands, as a front end drives it.
 

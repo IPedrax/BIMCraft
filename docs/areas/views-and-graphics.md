@@ -83,6 +83,9 @@ Floors > Framing (`floorframing`) is a framed floor's joists, rims, trimmers, he
 place of its structure layer (hidden, the layer comes back whole); Floors > Framing Lines (`floorframingline`), off unless a view
 shows it, draws their outlines dashed in a plan, as hidden lines under the floor's top: the framing plan. It is a subcategory of
 its own because the joists drawn on every plan would hatch the floor, and one key can't be on in 3D and off in plans.
+Roofs > Framing (`roofframing`) and Roofs > Framing Lines (`roofframingline`, off unless a view shows it) are the same for a
+framed roof's rafters, ridge boards, eave boards, trimmers, headers and blocking ([roofs](structure-and-mep.md#roofs)): in place
+of its structure layer in 3D and sections, and dashed in a plan of the roof's level, the roof framing plan.
 The `sheet` command takes a named `size` (A3 by default), landscape: ISO A0–A4 and B1–B4, ARCH A–E and E1–E3, ANSI A–E and Super B
 (13 × 19 in). ISO, ARCH and ANSI accept a space or none (`ISO A4`, `ISOA4`, `ARCH E2`, `ARCHE2`); ISO also accepts the bare name
 (`A4`, `B1`). ANSI A also accepts `LETTER`, ANSI B `TABLOID` or `LEDGER`. Super B accepts `SUPER B`, `SUPERB` or `SUPER-B`. Names

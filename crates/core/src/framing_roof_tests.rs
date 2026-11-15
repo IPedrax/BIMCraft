@@ -6,8 +6,8 @@ use crate::engine::Session;
 use crate::framing_roof_hunt_tests::{M, check, first, outputs_agree, read, run};
 use crate::library::Kind;
 
-/// The cabin roof: a shed sloping 5 %, its high eave north at `YN`, 9760 along the slope down to its low eave at `YS`, from
-/// `X0` to `X1` (610 past the walls' faces each side).
+/// The cabin roof, as the user's reference has it: a shed sloping 5 %, its low eave north at `YN`, 9760 along the slope up to
+/// its high eave south at `ys()`, from `X0` to `X1` (610 past the walls' faces each side).
 pub(crate) const X0: f64 = -661.35;
 pub(crate) const X1: f64 = 7878.65;
 pub(crate) const YN: f64 = 6658.65;
@@ -26,9 +26,9 @@ pub(crate) fn ys() -> f64 {
     YN - 9760.0 * cos()
 }
 
-/// The rafters' underside over plan y: 2448 at the south wall's outer face (y -51.35), rising 5 % north.
+/// The rafters' underside over plan y: 2448 at the north wall's outer face (y 6048.65), rising 5 % south.
 pub(crate) fn under(y: f64) -> f64 {
-    2448.0 + (y + 51.35) * 0.05
+    2448.0 + (6048.65 - y) * 0.05
 }
 
 fn close(a: f64, b: f64, what: &str) {
@@ -66,11 +66,11 @@ pub(crate) fn cabin_from(s: &mut Session, extra: Value, [x0, x1]: [f64; 2]) -> (
     run(s, "type", json!({"category": "framing", "name": "Cabin Walls", "spacing": 1220.0 / 3.0}));
     run(s, "type", json!({"category": "beam", "name": "LVL", "width": 89, "depth": 302}));
     run(s, "type", json!({"category": "beam", "name": "2-2x10", "width": 76, "depth": 235}));
-    // A shed: its south edge the eave, the other three upright; its underside at the low eave `under(ys())`.
+    // A shed: its north edge the eave, the other three upright; its underside at the low eave `under(YN)`.
     let roof = first(&run(
         s,
         "roof",
-        json!({"boundary": [[X0, ys()], [X1, ys()], [X1, YN], [X0, YN]], "level": "Level 1", "offset": under(ys()),
+        json!({"boundary": [[X1, YN], [X0, YN], [X0, ys()], [X1, ys()]], "level": "Level 1", "offset": under(YN),
                "slope": 0.05f64.atan().to_degrees(), "gables": [1, 2, 3], "overhang": 0, "type": "2x10 Roof"}),
     ));
     let lines = [
@@ -127,8 +127,10 @@ fn the_cabin_roof_has_22_lines_of_rafters_each_lapped_over_the_south_wall_and_th
     }
     let sec = 1.0 / cos();
     for (line, ps) in &lines {
+        // Up the slope from the low eave: to 230 past the LVL; from 230 before it to 230 past the south wall, a thickness
+        // over; from 230 before that to the high eave. The north wall and the deck beam split nothing.
         assert_eq!(ps.len(), 3, "{line}: three pieces");
-        let want = [[ys(), YSW + 230.0], [YSW - 230.0, YL + 230.0], [YL - 230.0, YN]];
+        let want = [[YL - 230.0, YN], [YSW - 230.0, YL + 230.0], [ys(), YSW + 230.0]];
         for (p, [y0, y1]) in ps.iter().zip(want) {
             let [a, b] = ys_of(p);
             close(a, y0, &format!("{} starts", p.key));
@@ -141,7 +143,9 @@ fn the_cabin_roof_has_22_lines_of_rafters_each_lapped_over_the_south_wall_and_th
         close(ps[0].across[0], ps[2].across[0], &format!("{line}: the outer pieces in line"));
         close((ps[1].across[0] - ps[0].across[0]).abs(), 38.0, &format!("{line}: the middle piece beside them"));
     }
-    close(lines[11].1[2].length, 3890.0 * sec, "the top piece, about 3890 along the slope");
+    close(lines[11].1[0].length, 3890.0 * sec, "the low piece, the longest, about 3890 along the slope");
+    let longest = r.role("rafter").iter().map(|m| m.length).fold(0.0, f64::max);
+    close(longest, 3890.0 * sec, "no piece longer");
     // Borne by the south and north walls, the LVL and the deck beam; the span in plan between the south wall and the LVL.
     let supports = r.raw["supports"].as_array().map_or(0, Vec::len);
     assert_eq!(supports, 4, "{}", r.raw["supports"]);
@@ -159,11 +163,12 @@ fn without_a_lap_the_cabins_rafters_butt_on_the_supports_and_long_stock_makes_ea
     let mut s = Session::new();
     let (roof, walls) = cabin(&mut s, json!({"lap": 0}));
     let r = check(&mut s, roof, &walls);
-    // Butting, a piece needs no lap past the support: from the eave the LVL is in reach of 6100 (6095.6 along the slope).
+    // Butting, the fewest pieces are two, and the one split in two that 6100 holds is over the LVL: 3664.6 along the slope
+    // from the low eave, 6095.4 on to the high one.
     for (line, ps) in lines(&r.members) {
         let ends: Vec<[f64; 2]> = ps.iter().map(|p| ys_of(p)).collect();
         assert_eq!(ends.len(), 2, "{line}");
-        for (e, [y0, y1]) in ends.iter().zip([[ys(), YL], [YL, YN]]) {
+        for (e, [y0, y1]) in ends.iter().zip([[YL, YN], [ys(), YL]]) {
             close(e[0], y0, &line);
             close(e[1], y1, &line);
         }
@@ -184,6 +189,54 @@ fn without_a_lap_the_cabins_rafters_butt_on_the_supports_and_long_stock_makes_ea
 }
 
 #[test]
+fn where_no_split_keeps_every_piece_within_the_stock_the_cabins_lines_split_where_their_longest_piece_is_shortest() {
+    // Stock no longer than 3050: the shortest the longest piece can be is between the walls and the LVL, 3465.5 in plan with
+    // its laps (3470 along the slope), so each line is split over the north wall, the LVL and the south wall, the fewest
+    // pieces that keep to that; the deck beam splits nothing, and each of the three pieces longer than the stock is warned of.
+    let mut s = Session::new();
+    let (roof, walls) = cabin(&mut s, json!({"stock": [2440, 3050]}));
+    let r = check(&mut s, roof, &walls);
+    let sec = 1.0 / cos();
+    let lines = lines(&r.members);
+    assert_eq!(lines.len(), 22);
+    for (line, ps) in &lines {
+        let want = [[YNW - 230.0, YN], [YL - 230.0, YNW + 230.0], [YSW - 230.0, YL + 230.0], [ys(), YSW + 230.0]];
+        assert_eq!(ps.len(), 4, "{line}");
+        for (p, [y0, y1]) in ps.iter().zip(want) {
+            let [a, b] = ys_of(p);
+            close(a, y0, &format!("{} starts", p.key));
+            close(b, y1, &format!("{} ends", p.key));
+        }
+        close(ps[1].length, 3465.5 * sec, &format!("{line}: the longest piece"));
+        let warned = |len: &str| r.warnings.iter().filter(|w| w.contains(&format!("{line} has a piece {len} mm along its slope"))).count();
+        assert_eq!((warned("3470"), warned("3316")), (2, 1), "{line}: {:?}", r.warnings);
+        assert!(r.warned("longest stock length, 3050 mm"), "{:?}", r.warnings);
+    }
+}
+
+#[test]
+fn a_line_is_split_into_the_fewest_pieces_the_stock_holds_its_longest_as_short_as_can_be_ties_nearest_the_eave() {
+    let split = |over: &[f64], iv: [f64; 2], longest: f64, reach: f64| {
+        let mut long = Vec::new();
+        let at = crate::framing::floor::spliced(over, iv, longest, 1.0, reach, |l| long.push(l.round()));
+        (at, long)
+    };
+    // Held whole: no split, whatever bears it.
+    assert_eq!(split(&[1000.0, 2000.0], [0.0, 6000.0], 6100.0, 0.0), (vec![], vec![]));
+    // Two pieces, over the support that makes the longer of them shortest, not the farthest one in reach.
+    assert_eq!(split(&[3000.0, 4500.0, 5500.0], [0.0, 9000.0], 6100.0, 0.0), (vec![4500.0], vec![]));
+    // Laps count: 200 past 4800 is 5000, past 4000 makes the second piece 6200, too long.
+    assert_eq!(split(&[4000.0, 4800.0], [0.0, 10000.0], 6100.0, 200.0), (vec![4800.0], vec![]));
+    // Two splits as good: the one nearest the eave.
+    assert_eq!(split(&[4000.0, 6000.0], [0.0, 10000.0], 6100.0, 0.0), (vec![4000.0], vec![]));
+    // Fewer pieces before a shorter longest one: two pieces of 6000 and 4000, not three of 4000.
+    assert_eq!(split(&[4000.0, 6000.0, 8000.0], [0.0, 12000.0], 6100.0, 0.0), (vec![6000.0], vec![]));
+    // None keeps to the stock: the split whose longest piece is shortest, with the fewest pieces, each too long one told.
+    assert_eq!(split(&[3000.0, 6000.0, 8000.0], [0.0, 9000.0], 2000.0, 0.0), (vec![3000.0, 6000.0], vec![3000.0, 3000.0, 3000.0]));
+    assert_eq!(split(&[], [0.0, 9000.0], 6100.0, 0.0), (vec![], vec![9000.0]));
+}
+
+#[test]
 fn the_cabins_walls_frame_with_bevelled_studs_and_its_rafters_sit_on_their_top_plates() {
     let mut s = Session::new();
     let (roof, walls) = cabin(&mut s, json!({}));
@@ -192,14 +245,14 @@ fn the_cabins_walls_frame_with_bevelled_studs_and_its_rafters_sit_on_their_top_p
     let south = read(&mut s, walls[0]);
     let plate = south.members.iter().filter(|m| m.role == "top_plate").max_by(|a, b| a.z[2].total_cmp(&b.z[2])).expect("a top plate");
     let rafter = r.role("rafter").into_iter().find(|m| ys_of(m)[1] > YSW + 100.0 && ys_of(m)[0] < YSW - 100.0).expect("one over it");
-    let p = crate::geom::P2(rafter.middle().0, YSW - 44.5 + 0.1);
-    close(rafter.heights(p)[0], plate.heights(p)[1], "the rafter on the plate at its low face");
+    let p = crate::geom::P2(rafter.middle().0, YSW + 44.5 - 0.1);
+    close(rafter.heights(p)[0], plate.heights(p)[1], "the rafter on the plate at its low (north) face");
     // An east wall's studs are bevelled, their tops along the slope.
     let east = read(&mut s, walls[2]);
     let studs: Vec<&M> = east.members.iter().filter(|m| m.role == "stud").collect();
     assert!(studs.len() > 10);
     for st in studs {
-        close(st.z[3] - st.z[2], 38.0 * 0.05, &format!("{} bevelled", st.key));
+        close((st.z[3] - st.z[2]).abs(), 38.0 * 0.05, &format!("{} bevelled", st.key));
     }
 }
 
@@ -218,7 +271,7 @@ fn where_the_walls_and_beams_stop_at_the_walls_faces_the_lines_over_the_rakes_ar
     for (line, ps) in &alone {
         close(ps[0].length, 9760.0, line);
         assert_eq!(ps[0].stock, None);
-        assert!(r.warned(&format!("{line} runs 9760 mm along its slope")), "{line}: {:?}", r.warnings);
+        assert!(r.warned(&format!("{line} has a piece 9760 mm along its slope")), "{line}: {:?}", r.warnings);
     }
 }
 

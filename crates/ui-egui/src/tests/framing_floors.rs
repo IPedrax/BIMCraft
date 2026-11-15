@@ -67,7 +67,7 @@ fn frame_and_remove_framing_act_on_the_selected_walls_and_floors_each_as_one_ste
     select(&mut h, &beams);
     structural(&mut h, "Frame");
     let said = &h.state().status;
-    assert!(said.error && said.text.contains("walls or floors"), "{}", said.text);
+    assert!(said.error && said.text.contains("walls, floors or roofs"), "{}", said.text);
 }
 
 #[test]
@@ -148,7 +148,7 @@ fn a_framing_types_floor_fields_are_edited_in_type_properties_under_floors() {
     h.run();
     press(&mut h, "Edit Framing Type");
     // The wall's fields and the floor's are under groups of their own.
-    for group in ["Walls", "Wall Openings", "Wall Joins", "Floors"] {
+    for group in ["Walls", "Wall Openings", "Wall Joins", "Floors and Roofs", "Floors"] {
         assert!(h.query_all_by_label(group).next().is_some(), "the group {group}");
     }
     let was = framing_type(&h, "2x4 @ 406");
@@ -162,7 +162,7 @@ fn a_framing_types_floor_fields_are_edited_in_type_properties_under_floors() {
     type_into(&mut h, "Lap at Supports", "300");
     type_into(&mut h, "Bridging Spacing", "1200");
     type_into(&mut h, "Trimmer and Header Plies", "3");
-    for label in ["Rim Joists", "Joists Under Partitions"] {
+    for label in ["Rim Joists and Eave Boards", "Joists Under Partitions"] {
         h.get_by_role_and_label(Role::CheckBox, label).scroll_to_me();
         h.run();
         pick(&mut h, Role::CheckBox, label);
@@ -228,8 +228,15 @@ fn floor_framing_speaks_portuguese_and_spanish_and_leaves_no_english() {
         press(&mut h, edit);
         assert!(h.state().type_dialog.is_some(), "{l:?}");
         missed.extend(english(&h, l));
-        for label in ["Floors", "Rim Joists", "Lap at Supports", "Bridging Spacing", "Trimmer and Header Plies", "Joists Under Partitions"]
-        {
+        for label in [
+            "Floors",
+            "Floors and Roofs",
+            "Rim Joists and Eave Boards",
+            "Lap at Supports",
+            "Bridging Spacing",
+            "Trimmer and Header Plies",
+            "Joists Under Partitions",
+        ] {
             assert!(crate::lang::translated_in(l, label).is_some_and(|x| x != label), "{l:?}: {label}");
         }
         missed.sort();
