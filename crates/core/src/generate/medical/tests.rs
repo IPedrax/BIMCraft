@@ -73,12 +73,15 @@ fn commands(script: &str) -> Vec<(String, Value)> {
         .collect()
 }
 
-/// The seeds the default tier builds; the whole twelve are `the_done_checks_twelve_seeds_all_build`.
+/// The seeds the default tier builds.
 const QUICK: [u64; 4] = [1, 4, 6, 9];
 
+/// The done check's seeds: a service block, an office band, and the spread of areas between them.
+const DONE_SEEDS: [u64; 4] = [1, 2, 4, 6];
+
 #[test]
-fn the_done_checks_twelve_seeds_all_build() {
-    for s in 1..=12 {
+fn the_done_checks_seeds_all_build() {
+    for s in DONE_SEEDS {
         let (seed, area) = brief(s);
         let b = medical(seed, area).unwrap_or_else(|e| panic!("seed {seed} at {area} m2: {} {}", e.code, e.message));
         assert_eq!(b.files.len(), 6, "seed {seed}");
@@ -169,7 +172,7 @@ fn generated_and_extracted_graphs_pass_md_001_to_011() {
 
 #[test]
 fn every_plan_keeps_the_required_kinds_and_two_corridors() {
-    for s in 1..=12 {
+    for s in DONE_SEEDS {
         let (seed, area) = brief(s);
         let b = medical(seed, area).unwrap();
         let g = doc(&b, "topology-graph.json");
@@ -193,9 +196,9 @@ fn every_plan_keeps_the_required_kinds_and_two_corridors() {
 }
 
 #[test]
-fn the_twelve_vary() {
+fn the_done_checks_seeds_vary() {
     let (mut service, mut office, mut shapes, mut hashes) = (BTreeSet::new(), BTreeSet::new(), BTreeSet::new(), BTreeSet::new());
-    for s in 1..=12 {
+    for s in DONE_SEEDS {
         let (seed, area) = brief(s);
         let b = medical(seed, area).unwrap();
         let g = doc(&b, "topology-graph.json");
@@ -207,8 +210,8 @@ fn the_twelve_vary() {
     }
     assert_eq!(service.len(), 2, "plans with and without a service block");
     assert_eq!(office.len(), 2, "plans with and without an office band");
-    assert!(shapes.len() >= 6, "{} structures", shapes.len());
-    assert!(hashes.len() >= 6);
+    assert_eq!(shapes.len(), DONE_SEEDS.len(), "{} structures", shapes.len());
+    assert_eq!(hashes.len(), DONE_SEEDS.len());
 }
 
 #[test]

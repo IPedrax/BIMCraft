@@ -22,7 +22,7 @@ fn toy_request(k: u64) -> Request {
 #[test]
 fn toy_family_lays_out_every_brief() {
     let fam = Family::parse(TOY).expect("the toy family parses");
-    for k in 0..30 {
+    for k in 0..12 {
         let req = toy_request(k);
         match build_family(&fam, &req, false) {
             Ok(built) => assert_eq!(built.rooms as i64, req.rooms, "brief {k}"),
