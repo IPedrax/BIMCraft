@@ -451,9 +451,26 @@ fn write_delivery(
         }
     }
     if rows.is_empty() {
+        // No summary is printed for a refusal, so the refusal itself says why each seed was skipped: how many with each
+        // code, and the first one's own message.
+        let mut codes: BTreeMap<&str, usize> = BTreeMap::new();
+        let mut first = String::new();
+        for o in &outcomes {
+            if let Outcome::Skipped { seed, code, message } = o {
+                *codes.entry(*code).or_default() += 1;
+                if first.is_empty() {
+                    first = format!(" The first, seed {seed}: {message}");
+                }
+            }
+        }
+        let codes: Vec<String> = codes.iter().map(|(code, n)| format!("{n} with `{code}`")).collect();
         return Err(refuse(
             "empty_delivery",
-            "every seed of the brief was skipped, so there is nothing to deliver (see the summary's `skipped` in the first error)",
+            format!(
+                "all {} seeds of the brief were skipped ({}), so there is nothing to deliver.{first}",
+                outcomes.len(),
+                codes.join(", ")
+            ),
         ));
     }
     // The rerun: a spread of the delivered seeds, made again from the brief.

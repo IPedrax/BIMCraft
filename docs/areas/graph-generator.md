@@ -248,6 +248,18 @@ the same open links, no exterior door, null entry, no diagnostics); both pass th
 refused as `unsatisfiable_area`, and a brief no draw fits as `unplaceable_graph`. Windows, grids, dimensions, symbols and a title
 block are later slices.
 
+**The same word by rooms.** `generate --archetype medical-day --rooms R --unreviewed allow` is not this generator: it is the
+[shape graph engine](#shape-graph-engine) reading `crates/core/data/shape-families/medical-day.json` (20 to 45 rooms measured; a `bar`
+holds about 20 and a `narrow_bar` about 30). That file names the medical-day pack, whose rules judge every graph and which has no
+`connections` table, so the file is the only source for counts, areas and links. It is the proposal
+`fill/medical-day-claude-fable-5-2.json` with each value's `why` left out: a room type's `source` says, for each of `count`, `area_m2`,
+`max_side_ratio`, `min_side_mm` and `max_links`, `{"from": "trace"}` (what A112 holds) or `{"from": "model", "confidence": C}` (the
+proposal's value), and a link has one `source`; the test `shape_graph/medical_day_tests.rs` keeps the two files equal. `entry` is null,
+`building_type` is `hospital`, bays, alcoves and staff work are open to a corridor, an isolation room is a `beside_parent` room of its
+anteroom with its own washroom and a `required` door to a corridor (MD-003), and a shaft is cut from a store's cell with no opening.
+`review.status` is `unreviewed` until a person reads it, so the call without `--unreviewed allow` (and a `deliver` batch without
+`"unreviewed": "allow"`) is refused as `unreviewed_family`, and the manifest's `family_review` says so.
+
 ## Shape graph engine
 
 `generate --archetype house --seed N --rooms R [--rooms-tol T] [--shape ID] [--interior aligned|jogged|mixed] [--bumps on|off]` (spec: `specs/shape-graph-generator.md`,
@@ -261,6 +273,18 @@ A built-in family is any `crates/core/data/shape-families/<name>.json` other tha
 compiles them in, sorted by name, into `family::BUILTIN`; `builtin`, `builtin_names`, `--archetype` with `--rooms`, and `deliver`'s rooms batches
 all follow that table, and no code names a family. Adding a family is adding the file, whose `family` is its file name; taking one away is deleting it
 (`shape_graph/register_tests.rs` keeps the code from naming one).
+
+**A family and its pack** (`Family::within`; `shape_graph/pack_tables_tests.rs`). A family that names a pack is narrowed by the tables the
+pack's file has, and by no other: `Pack::parse` records whether the file holds the key (`has_kinds`; `has_connections`, for `connections`
+or `folding_connections`). With a `kinds` table each kind and its role are the pack's, and the counts and areas lie inside its ranges; with a
+`connections` table each link's types map to a means it lists for the pair of kinds. A table that is absent narrows nothing (`medical-day`
+has no `connections`; `hospital` and `clinic` have neither), and the family file is the only source for it; a table that is there and empty
+still refuses everything. Either way the pack's rules judge every graph: `emit::verify` runs `graph_rules::check` on the generated graph
+and on the extracted one (given the generated kinds and roles, which the extractor does not know), an attempt that fails a rule is thrown
+away, and `report.json` has a check for each rule by its id. A pack whose rules read roles (the GR rules) needs roles `Role::parse` knows.
+`manifest.json` has `family_review`, the family file's `review.status`. The toy families the tests read are in
+`crates/core/src/generate/testdata/shape-graph/`, outside the engine's directory, where no file may quote a kind of any pack
+(`register_tests::the_engine_quotes_no_room_kind`): their `building_type` is a word one pack also uses for a kind.
 
 **Jogs and bumps** (Slice 3; `shape_graph/layout/interior.rs`). `--interior` is `aligned`, `jogged` or `mixed` (the default: the seed
 chooses, and only a mixed call draws a number for it, so an aligned plan is what it was before the option); `--bumps` is `on` (the
@@ -407,7 +431,7 @@ and prints one JSON summary (`folder`, `rerun_folder`, `generator_version`, `fil
   with `invalid_params`. Commit before the release build you deliver from, or the version says `.dirty`.
 - **A seed** is built in memory (`shape_graph::build`), its script run in a fresh `Session` and saved as DWG, so its bytes are what `generate` then `run` write.
   A batch's `rooms: [lo, hi]` gives each seed `lo + mix(seed ^ SALT) % (hi - lo + 1)` rooms: the seed alone, pinned by a test, because past deliveries
-  depend on it. A seed `build` refuses is in `skipped` with the refusal's code and has no row and no file. A batch by `area` makes the seed's plan with `build_for_delivery`; `sources` lists only the families of batches by `rooms`.
+  depend on it. A seed `build` refuses is in `skipped` with the refusal's code and has no row and no file. When every seed is skipped there is no summary: the call is refused as `empty_delivery`, nothing is written, and the message says how many seeds were skipped with each code and gives the first one's own message (a batch of an unreviewed family without `"unreviewed": "allow"` reads `all 30 seeds of the brief were skipped (30 with `unreviewed_family`)`). A batch by `area` makes the seed's plan with `build_for_delivery`; `sources` lists only the families of batches by `rooms`.
 - **`building`** is `<family>-` and 12 hex digits of the SHA-256 of the script's `type`, `family`, `wall`, `door` (without `mark`), `room_separator` and
   `room` lines, each kind sorted: the same layout is the same building however the script numbered its doors, and `generate`'s `manifest.json` carries it.
 - **Threads.** `--jobs` plain threads pull seeds from an atomic counter (the reproducible-GUID state is thread-local, so no rayon here); results go by position

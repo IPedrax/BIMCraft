@@ -5,7 +5,7 @@ use serde_json::Value;
 use super::family::{Family, shapes};
 use super::{Interior, Request, build_family};
 
-const TOY: &str = include_str!("testdata/toy-family-required.json");
+const TOY: &str = include_str!("../testdata/shape-graph/toy-family-required.json");
 
 fn request(seed: u64, rooms: i64, shape: &str) -> Request {
     Request {

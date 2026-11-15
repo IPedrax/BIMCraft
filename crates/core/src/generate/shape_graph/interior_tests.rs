@@ -8,7 +8,7 @@ use super::family::Family;
 use super::{Interior, Request, build, build_family};
 use crate::generate::{MANIFEST, fnv1a64};
 
-const TOY: &str = include_str!("testdata/toy-family.json");
+const TOY: &str = include_str!("../testdata/shape-graph/toy-family.json");
 
 fn req(seed: u64, rooms: i64, shape: Option<&str>, interior: Interior, bumps: bool) -> Request {
     Request { archetype: "house".into(), seed, rooms, tolerance: 0, shape: shape.map(String::from), gridlines: false, interior, bumps }
