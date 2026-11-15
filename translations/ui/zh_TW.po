@@ -185,7 +185,7 @@ msgstr ""
 msgid "A conductor's material, insulation and working temperature, and the ampacity of each section, in mm²."
 msgstr "導線的材質、絕緣和工作溫度，以及各截面積的載流量；截面積以 mm² 計。"
 
-#: crates/ui-egui/src/groups.rs:124
+#: crates/ui-egui/src/groups.rs:148
 msgid "A detail group of the lines, regions, notes and dimensions selected in one view; the rest is left out"
 msgstr ""
 
@@ -193,7 +193,7 @@ msgstr ""
 msgid "A dictionary is a file of parameter definitions to share between projects: keep it on a shared drive or in a Git repository."
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:4016
+#: crates/ui-egui/src/canvas.rs:4038
 msgid "A dimension has two references at least."
 msgstr ""
 
@@ -233,7 +233,7 @@ msgstr ""
 msgid "A form made of a mesh has no faces Align can take: pick a reference plane, an extrusion's end or a line of a form."
 msgstr ""
 
-#: crates/ui-egui/src/groups.rs:111
+#: crates/ui-egui/src/groups.rs:135
 msgid "A group holds model elements, or one view's detail lines, regions, notes and dimensions: not both, and nothing that is in a group already or that no group holds (levels, grids, views, tags, links). Which do you want to group?"
 msgstr ""
 
@@ -269,7 +269,7 @@ msgstr "閉合輪廓至少需要三條線：請單擊起點以外的點。"
 msgid "A mesh from a file has no sketch to edit."
 msgstr "來自檔案的網格沒有可編輯的草圖。"
 
-#: crates/ui-egui/src/groups.rs:119
+#: crates/ui-egui/src/groups.rs:143
 msgid "A model group of the walls, floors, doors, components and the like selected; the rest is left out"
 msgstr ""
 
@@ -494,7 +494,7 @@ msgstr ""
 msgid "Adaptive point {} placed: click point {} of {}."
 msgstr ""
 
-#: crates/ui-egui/src/groups.rs:300
+#: crates/ui-egui/src/groups.rs:324
 #: crates/ui-egui/src/properties.rs:3784
 #: crates/ui-egui/src/shortcuts.rs:449
 msgid "Add"
@@ -666,7 +666,7 @@ msgstr "添加到選擇集"
 msgid "Add {}"
 msgstr ""
 
-#: crates/ui-egui/src/groups.rs:299
+#: crates/ui-egui/src/groups.rs:323
 msgid "Add: click elements (greyed now) to add them to the group; click Add again to stop. They join at Finish"
 msgstr ""
 
@@ -674,7 +674,7 @@ msgstr ""
 msgid "Added {} to the project"
 msgstr "已將 {} 添加到項目"
 
-#: crates/ui-egui/src/groups.rs:224
+#: crates/ui-egui/src/groups.rs:248
 msgid "Adding: click greyed elements to add them"
 msgstr ""
 
@@ -798,7 +798,7 @@ msgstr "對齊尺寸標注 (DI)：拾取平行的牆面、牆端、門、窗、�
 msgid "Aligned Dimension in 3D"
 msgstr "3D對齊尺寸標注"
 
-#: crates/ui-egui/src/orbit.rs:1472
+#: crates/ui-egui/src/orbit.rs:1478
 msgid "Aligned dimension: {}"
 msgstr "對齊尺寸標注：{}"
 
@@ -1669,7 +1669,7 @@ msgid "Build"
 msgstr "構建"
 
 #: crates/ui-egui/src/editor/document.rs:2004
-#: crates/ui-egui/src/orbit.rs:1617
+#: crates/ui-egui/src/orbit.rs:1625
 msgid "Building 3D view…"
 msgstr ""
 
@@ -1787,8 +1787,8 @@ msgstr "相機：單擊視點所在位置，再單擊其注視的目標：由該
 #: crates/ui-egui/src/finishes.rs:155
 #: crates/ui-egui/src/graphics.rs:391
 #: crates/ui-egui/src/graphics.rs:1048
-#: crates/ui-egui/src/groups.rs:141
-#: crates/ui-egui/src/groups.rs:532
+#: crates/ui-egui/src/groups.rs:165
+#: crates/ui-egui/src/groups.rs:556
 #: crates/ui-egui/src/inquiry.rs:143
 #: crates/ui-egui/src/linestyles.rs:344
 #: crates/ui-egui/src/lineweights.rs:151
@@ -1816,7 +1816,7 @@ msgstr "相機：單擊視點所在位置，再單擊其注視的目標：由該
 msgid "Cancel"
 msgstr "取消"
 
-#: crates/ui-egui/src/groups.rs:324
+#: crates/ui-egui/src/groups.rs:348
 msgid "Cancel Edit Group"
 msgstr ""
 
@@ -1840,7 +1840,7 @@ msgstr ""
 msgid "Cancel Pattern"
 msgstr "取消線型圖案"
 
-#: crates/ui-egui/src/groups.rs:323
+#: crates/ui-egui/src/groups.rs:347
 msgid "Cancel: the group and everything else as it was when the edit began"
 msgstr ""
 
@@ -1942,7 +1942,7 @@ msgstr ""
 msgid "Ceiling Luminaire"
 msgstr "吸頂燈"
 
-#: crates/ui-egui/src/canvas.rs:1922
+#: crates/ui-egui/src/canvas.rs:1944
 #: crates/ui-egui/src/properties.rs:1872
 msgid "Ceiling Plan"
 msgstr "天花板平面"
@@ -2031,7 +2031,7 @@ msgstr "椅子"
 msgid "Changes to a type affect every filled region of that type."
 msgstr "修改類型會影響使用該類型的所有填充區域。"
 
-#: crates/ui-egui/src/groups.rs:518
+#: crates/ui-egui/src/groups.rs:542
 msgid "Changes to groups are made in Edit Group. This change would make a group unlike the others of its type."
 msgstr ""
 
@@ -2312,7 +2312,7 @@ msgstr "在屋頂坡面上單擊老虎窗前牆的位置，橫跨坡面。"
 msgid "Click a stair or a ramp for a railing down each side, or the start of a path."
 msgstr "單擊樓梯或坡道，在兩側各創建一道欄杆扶手；或單擊路徑的起點。"
 
-#: crates/ui-egui/src/canvas.rs:2309
+#: crates/ui-egui/src/canvas.rs:2331
 #: crates/ui-egui/src/lib.rs:6035
 msgid "Click a straight wall, a line or a slab's edge for the elevation to look at."
 msgstr ""
@@ -2818,7 +2818,7 @@ msgstr "單擊定位線應通過的位置"
 msgid "Click where the middle of a side goes. Esc cancels."
 msgstr "單擊一條邊中點的位置。按 Esc 取消。"
 
-#: crates/ui-egui/src/canvas.rs:3067
+#: crates/ui-egui/src/canvas.rs:3089
 msgid "Click where the note goes: its top left corner."
 msgstr ""
 
@@ -3346,7 +3346,7 @@ msgid "Core Face: Interior"
 msgstr "核心面：內部"
 
 #: crates/ui-egui/src/editor/document.rs:2008
-#: crates/ui-egui/src/orbit.rs:1621
+#: crates/ui-egui/src/orbit.rs:1629
 msgid "Could not fit the 3D view: {}"
 msgstr ""
 
@@ -3435,7 +3435,7 @@ msgid "Cover"
 msgstr "保護層"
 
 #: crates/ui-egui/src/editor/document.rs:354
-#: crates/ui-egui/src/groups.rs:340
+#: crates/ui-egui/src/groups.rs:364
 #: crates/ui-egui/src/lib.rs:5850
 #: crates/ui-egui/src/parameters.rs:1068
 #: crates/ui-egui/src/printsets.rs:147
@@ -3482,12 +3482,12 @@ msgid "Create Form: a solid or a void of the lines selected: one closed profile 
 msgstr ""
 
 #: crates/ui-egui/src/context.rs:76
-#: crates/ui-egui/src/groups.rs:108
-#: crates/ui-egui/src/groups.rs:350
+#: crates/ui-egui/src/groups.rs:132
+#: crates/ui-egui/src/groups.rs:374
 msgid "Create Group"
 msgstr "創建組"
 
-#: crates/ui-egui/src/groups.rs:345
+#: crates/ui-egui/src/groups.rs:369
 msgid "Create Group (GP): select model elements, or a view's detail lines, regions, notes and dimensions; of a mixed selection, it asks which kind to group"
 msgstr ""
 
@@ -3495,11 +3495,11 @@ msgstr ""
 msgid "Create Group (GP): the selected detail lines, filled regions, notes and dimensions made one detail group"
 msgstr ""
 
-#: crates/ui-egui/src/groups.rs:343
+#: crates/ui-egui/src/groups.rs:367
 msgid "Create Group (GP): the selected lines, regions, notes and dimensions made one detail group"
 msgstr ""
 
-#: crates/ui-egui/src/groups.rs:342
+#: crates/ui-egui/src/groups.rs:366
 msgid "Create Group (GP): the selected model elements made one model group"
 msgstr ""
 
@@ -3511,7 +3511,7 @@ msgstr "創建遮罩區域邊界"
 msgid "Create Mass"
 msgstr "創建體量"
 
-#: crates/ui-egui/src/groups.rs:529
+#: crates/ui-egui/src/groups.rs:553
 msgid "Create New Type"
 msgstr ""
 
@@ -4022,11 +4022,11 @@ msgstr "詳圖線"
 msgid "Detail Line (DL): each click makes a line from the one before, in the Options Bar's line style; the Draw panel has the other shapes"
 msgstr "詳圖線 (DL)：每次單擊都從上一點畫一條線，使用選項欄中的線樣式；繪製面板中有其他形狀"
 
-#: crates/ui-egui/src/groups.rs:123
+#: crates/ui-egui/src/groups.rs:147
 msgid "Detail elements only ({})"
 msgstr ""
 
-#: crates/ui-egui/src/orbit.rs:1626
+#: crates/ui-egui/src/orbit.rs:1634
 msgid "Detail shown from {} to {}; {} elements farther away are left out to fit the memory there is."
 msgstr ""
 
@@ -4149,12 +4149,12 @@ msgstr "尺寸標注值"
 msgid "Dimension lines, witness lines, terminators, text placement, and level marker symbols."
 msgstr "尺寸線、尺寸界線、端點符號、文字對齊及標高符號。"
 
-#: crates/ui-egui/src/canvas.rs:3782
+#: crates/ui-egui/src/canvas.rs:3804
 msgid "Dimension text"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:3791
-#: crates/ui-egui/src/canvas.rs:3853
+#: crates/ui-egui/src/canvas.rs:3813
+#: crates/ui-egui/src/canvas.rs:3875
 msgid "Dimension {}"
 msgstr "尺寸標注 {}"
 
@@ -4626,12 +4626,12 @@ msgid "Edit Family: the nested family opens over this one; its Load into Project
 msgstr "編輯族：巢狀族在此族之上開啟；其“載入到項目”會將其載回此處"
 
 #: crates/ui-egui/src/context.rs:78
-#: crates/ui-egui/src/groups.rs:297
-#: crates/ui-egui/src/groups.rs:370
+#: crates/ui-egui/src/groups.rs:321
+#: crates/ui-egui/src/groups.rs:394
 msgid "Edit Group"
 msgstr ""
 
-#: crates/ui-egui/src/groups.rs:369
+#: crates/ui-egui/src/groups.rs:393
 msgid "Edit Group: change its members; Finish changes every group of its type"
 msgstr ""
 
@@ -4749,11 +4749,11 @@ msgstr ""
 msgid "Editing"
 msgstr "編輯"
 
-#: crates/ui-egui/src/groups.rs:222
+#: crates/ui-egui/src/groups.rs:246
 msgid "Editing detail group"
 msgstr ""
 
-#: crates/ui-egui/src/groups.rs:222
+#: crates/ui-egui/src/groups.rs:246
 msgid "Editing model group"
 msgstr ""
 
@@ -4813,7 +4813,7 @@ msgstr "圖元"
 msgid "Elev"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:4503
+#: crates/ui-egui/src/canvas.rs:4525
 #: crates/ui-egui/src/coordinates.rs:576
 #: crates/ui-egui/src/coordinates.rs:793
 #: crates/ui-egui/src/coordinates.rs:1192
@@ -4947,7 +4947,7 @@ msgstr ""
 msgid "Entities"
 msgstr "圖元數"
 
-#: crates/ui-egui/src/canvas.rs:3947
+#: crates/ui-egui/src/canvas.rs:3969
 msgid "Equal"
 msgstr "相等"
 
@@ -5007,11 +5007,11 @@ msgid "Excel workbook"
 msgstr ""
 
 #: crates/ui-egui/src/context.rs:79
-#: crates/ui-egui/src/groups.rs:386
+#: crates/ui-egui/src/groups.rs:410
 msgid "Exclude"
 msgstr ""
 
-#: crates/ui-egui/src/groups.rs:385
+#: crates/ui-egui/src/groups.rs:409
 msgid "Exclude: the selected member out of this group only; Restore All Excluded brings it back"
 msgstr ""
 
@@ -5455,7 +5455,7 @@ msgstr "面層"
 msgid "Finish Drawing"
 msgstr "完成繪製"
 
-#: crates/ui-egui/src/groups.rs:317
+#: crates/ui-egui/src/groups.rs:341
 msgid "Finish Edit Group"
 msgstr ""
 
@@ -5487,7 +5487,7 @@ msgstr "離開草圖所在平面之前，請先完成或取消草圖。"
 msgid "Finish or cancel the sketch first: a pattern's lines are picked in the plan."
 msgstr "請先完成或取消草圖：圖案的線需在平面中拾取。"
 
-#: crates/ui-egui/src/groups.rs:316
+#: crates/ui-egui/src/groups.rs:340
 msgid "Finish: the group's type becomes what it now is, and every group of it changes with it"
 msgstr ""
 
@@ -5524,7 +5524,7 @@ msgstr "平坦"
 msgid "Flat: it has no slope arrow. Draw one from where its top stays toward where it rises."
 msgstr "平坦：沒有坡度箭頭。請從頂面保持原高度處向其升高的方向繪製一個。"
 
-#: crates/ui-egui/src/groups.rs:450
+#: crates/ui-egui/src/groups.rs:474
 #: crates/ui-egui/src/properties.rs:285
 msgid "Flexible"
 msgstr ""
@@ -5943,12 +5943,12 @@ msgstr "網格在每個視圖中都從 0, 0 開始，並一起旋轉。"
 msgid "Gross Floor Area"
 msgstr "建築面積"
 
-#: crates/ui-egui/src/groups.rs:366
-#: crates/ui-egui/src/groups.rs:431
+#: crates/ui-egui/src/groups.rs:390
+#: crates/ui-egui/src/groups.rs:455
 msgid "Group"
 msgstr "組"
 
-#: crates/ui-egui/src/groups.rs:515
+#: crates/ui-egui/src/groups.rs:539
 msgid "Group Changed"
 msgstr ""
 
@@ -5968,8 +5968,8 @@ msgstr ""
 msgid "Group parameter under:"
 msgstr "參數分組方式："
 
-#: crates/ui-egui/src/groups.rs:424
-#: crates/ui-egui/src/groups.rs:440
+#: crates/ui-egui/src/groups.rs:448
+#: crates/ui-egui/src/groups.rs:464
 msgid "Group:"
 msgstr "組："
 
@@ -6134,7 +6134,7 @@ msgstr "高亮顯示游標下的對象"
 msgid "Home"
 msgstr "主頁"
 
-#: crates/ui-egui/src/orbit.rs:2459
+#: crates/ui-egui/src/orbit.rs:2472
 msgid "Home View"
 msgstr "主視圖"
 
@@ -7077,7 +7077,7 @@ msgstr "{} 的線"
 msgid "Lines overlap ({}): one lies along another, or a line is drawn twice."
 msgstr "線重疊（{}）：一條線沿另一條線放置，或一條線畫了兩次。"
 
-#: crates/ui-egui/src/canvas.rs:1473
+#: crates/ui-egui/src/canvas.rs:1490
 msgid "Lines up with wall {}"
 msgstr "與牆 {} 對齊"
 
@@ -7229,7 +7229,7 @@ msgid "Loaded; nothing taken from it yet"
 msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:2073
-#: crates/ui-egui/src/orbit.rs:1824
+#: crates/ui-egui/src/orbit.rs:1832
 msgid "Loading 3D view onto the card…"
 msgstr ""
 
@@ -7300,7 +7300,7 @@ msgstr ""
 msgid "Lock"
 msgstr "鎖定"
 
-#: crates/ui-egui/src/canvas.rs:4124
+#: crates/ui-egui/src/canvas.rs:4146
 msgid "Lock alignment"
 msgstr "鎖定對齊"
 
@@ -7308,11 +7308,11 @@ msgstr "鎖定對齊"
 msgid "Lock locks a line picked with no Offset, in a plan or an elevation"
 msgstr "鎖定僅鎖定在無偏移時拾取的線，適用於平面或立面"
 
-#: crates/ui-egui/src/canvas.rs:3746
+#: crates/ui-egui/src/canvas.rs:3768
 msgid "Lock segment {}"
 msgstr "鎖定第 {} 段"
 
-#: crates/ui-egui/src/canvas.rs:3759
+#: crates/ui-egui/src/canvas.rs:3781
 msgid "Lock segment {} at its length, so what it measures to moves together"
 msgstr ""
 
@@ -7324,7 +7324,7 @@ msgstr "鎖定：每條拾取的線都鎖定到其拾取來源上，如同“對
 msgid "Lock: the dimensions this parameter labels keep its value when planes are dragged"
 msgstr "鎖定：拖動平面時，此參數所標記的尺寸標注保持其值"
 
-#: crates/ui-egui/src/canvas.rs:4103
+#: crates/ui-egui/src/canvas.rs:4125
 msgid "Locked segment {}"
 msgstr "已鎖定第 {} 段"
 
@@ -7409,7 +7409,7 @@ msgstr ""
 msgid "Make Checked Type"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:4198
+#: crates/ui-egui/src/canvas.rs:4220
 msgid "Make Dimension Permanent"
 msgstr ""
 
@@ -7459,7 +7459,7 @@ msgstr "創建明細表，或開啟已有的明細表"
 msgid "Make and change the sets of views and sheets"
 msgstr ""
 
-#: crates/ui-egui/src/groups.rs:528
+#: crates/ui-egui/src/groups.rs:552
 msgid "Make each changed group a group type of its own, as it now stands"
 msgstr ""
 
@@ -7771,8 +7771,8 @@ msgstr "模型類別"
 msgid "Model Display"
 msgstr "模型顯示"
 
-#: crates/ui-egui/src/groups.rs:356
-#: crates/ui-egui/src/groups.rs:447
+#: crates/ui-egui/src/groups.rs:380
+#: crates/ui-egui/src/groups.rs:471
 msgid "Model Group"
 msgstr ""
 
@@ -7788,7 +7788,7 @@ msgstr ""
 msgid "Model by Face"
 msgstr "面模型"
 
-#: crates/ui-egui/src/groups.rs:118
+#: crates/ui-egui/src/groups.rs:142
 msgid "Model elements only ({})"
 msgstr ""
 
@@ -8768,7 +8768,7 @@ msgstr "只有標記了尺寸標注且不由公式計算的參數才能鎖定。
 msgid "Only a polyline or a spline takes a vertex, and a line keeps its two ends."
 msgstr "只有多段線和樣條曲線可以添加頂點，直線保留其兩個端點。"
 
-#: crates/ui-egui/src/groups.rs:226
+#: crates/ui-egui/src/groups.rs:250
 msgid "Only its members can be picked and changed; the rest is greyed"
 msgstr ""
 
@@ -9342,7 +9342,7 @@ msgstr "重新拾取"
 msgid "Pick Faces"
 msgstr "拾取面"
 
-#: crates/ui-egui/src/canvas.rs:2332
+#: crates/ui-egui/src/canvas.rs:2354
 msgid "Pick Faces: click a face of a mass"
 msgstr "拾取面：請單擊體量的一個面"
 
@@ -9383,11 +9383,11 @@ msgstr "拾取牆：沿每面單擊的牆繪製一條邊界線"
 msgid "Pick a circle or an arc, then click where the dimension goes."
 msgstr "拾取一個圓或圓弧，然後單擊尺寸標注的放置位置。"
 
-#: crates/ui-egui/src/orbit.rs:1476
+#: crates/ui-egui/src/orbit.rs:1482
 msgid "Pick a corner, an edge or a face of the model to dimension."
 msgstr "請拾取模型的角點、邊或面以進行尺寸標注。"
 
-#: crates/ui-egui/src/orbit.rs:2320
+#: crates/ui-egui/src/orbit.rs:2333
 msgid "Pick a corner, an edge or a face of the model to measure."
 msgstr ""
 
@@ -9395,7 +9395,7 @@ msgstr ""
 msgid "Pick a curved wall or an arc."
 msgstr "拾取一面弧形牆或一段圓弧。"
 
-#: crates/ui-egui/src/orbit.rs:2277
+#: crates/ui-egui/src/orbit.rs:2290
 msgid "Pick a face of a wall, a floor, a ceiling or a roof to place it on."
 msgstr "選取牆、樓板、天花板或屋頂的一個面以將其放置在上面。"
 
@@ -9719,12 +9719,12 @@ msgid "Place Centre"
 msgstr "放置於中心"
 
 #: crates/ui-egui/src/lib.rs:1898
-#: crates/ui-egui/src/orbit.rs:1491
+#: crates/ui-egui/src/orbit.rs:1497
 msgid "Place Column"
 msgstr "放置柱"
 
 #: crates/ui-egui/src/lib.rs:1900
-#: crates/ui-egui/src/orbit.rs:1493
+#: crates/ui-egui/src/orbit.rs:1499
 msgid "Place Component"
 msgstr "放置構件"
 
@@ -9812,7 +9812,7 @@ msgstr "放置照明設備"
 msgid "Place Model Group"
 msgstr ""
 
-#: crates/ui-egui/src/groups.rs:354
+#: crates/ui-egui/src/groups.rs:378
 msgid "Place Model Group: the model group on the Options Bar where you click, on this level"
 msgstr ""
 
@@ -9877,7 +9877,7 @@ msgid "Place Voice Outlet"
 msgstr "放置語音插座"
 
 #: crates/ui-egui/src/lib.rs:1872
-#: crates/ui-egui/src/orbit.rs:1490
+#: crates/ui-egui/src/orbit.rs:1496
 msgid "Place Wall"
 msgstr "放置牆"
 
@@ -10267,8 +10267,8 @@ msgstr ""
 msgid "Project Name"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:4599
-#: crates/ui-egui/src/canvas.rs:4611
+#: crates/ui-egui/src/canvas.rs:4621
+#: crates/ui-egui/src/canvas.rs:4633
 #: crates/ui-egui/src/graphics.rs:589
 msgid "Project North"
 msgstr ""
@@ -10738,7 +10738,7 @@ msgstr ""
 #: crates/ui-egui/src/favorites.rs:165
 #: crates/ui-egui/src/graphics.rs:1179
 #: crates/ui-egui/src/graphics.rs:1234
-#: crates/ui-egui/src/groups.rs:308
+#: crates/ui-egui/src/groups.rs:332
 #: crates/ui-egui/src/properties.rs:3568
 #: crates/ui-egui/src/properties.rs:3793
 #: crates/ui-egui/src/properties.rs:3946
@@ -10815,7 +10815,7 @@ msgstr ""
 msgid "Remove the text"
 msgstr ""
 
-#: crates/ui-egui/src/groups.rs:305
+#: crates/ui-egui/src/groups.rs:329
 msgid "Remove: click members to take them out of the group, staying as they are; click Remove again to stop. Members selected leave at once"
 msgstr ""
 
@@ -10823,7 +10823,7 @@ msgstr ""
 msgid "Removed {} bars."
 msgstr "已刪除 {} 根鋼筋。"
 
-#: crates/ui-egui/src/groups.rs:225
+#: crates/ui-egui/src/groups.rs:249
 msgid "Removing: click members to take them out"
 msgstr ""
 
@@ -11003,11 +11003,11 @@ msgid "Restart and install"
 msgstr "重啟並安裝"
 
 #: crates/ui-egui/src/context.rs:80
-#: crates/ui-egui/src/groups.rs:379
+#: crates/ui-egui/src/groups.rs:403
 msgid "Restore All Excluded"
 msgstr ""
 
-#: crates/ui-egui/src/groups.rs:378
+#: crates/ui-egui/src/groups.rs:402
 msgid "Restore All Excluded: every member excluded from the group back, as its type has it"
 msgstr ""
 
@@ -11585,7 +11585,7 @@ msgstr "段 {} 間距"
 msgid "Segment {} Text"
 msgstr "段 {} 文字"
 
-#: crates/ui-egui/src/canvas.rs:3757
+#: crates/ui-egui/src/canvas.rs:3779
 msgid "Segment {} is locked at its length: what it measures to moves together. Click to unlock it"
 msgstr ""
 
@@ -12830,7 +12830,7 @@ msgstr ""
 msgid "TOP"
 msgstr ""
 
-#: crates/ui-egui/src/groups.rs:250
+#: crates/ui-egui/src/groups.rs:274
 msgid "Tab to a member of a group and select it to exclude it"
 msgstr ""
 
@@ -12968,7 +12968,7 @@ msgstr "臨時隔離類別"
 msgid "Temporary Isolate Element"
 msgstr "臨時隔離圖元"
 
-#: crates/ui-egui/src/canvas.rs:3676
+#: crates/ui-egui/src/canvas.rs:3698
 msgid "Temporary dimension {}"
 msgstr "臨時尺寸標注 {}"
 
@@ -13475,7 +13475,7 @@ msgstr ""
 msgid "The view is edge-on to the sketch's plane: turn it to pick on it."
 msgstr "視圖正對草圖平面的邊緣：請旋轉視圖後再在其上拾取。"
 
-#: crates/ui-egui/src/orbit.rs:1462
+#: crates/ui-egui/src/orbit.rs:1468
 msgid "The view runs along the dimension: turn it to place its line."
 msgstr "視圖與尺寸標注同向：請旋轉視圖後再放置尺寸線。"
 
@@ -13903,8 +13903,8 @@ msgstr "修剪/延伸為角 (TR)：拾取兩面牆或兩條線，在要保留的
 msgid "Trip"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:4600
-#: crates/ui-egui/src/canvas.rs:4612
+#: crates/ui-egui/src/canvas.rs:4622
+#: crates/ui-egui/src/canvas.rs:4634
 #: crates/ui-egui/src/graphics.rs:590
 msgid "True North"
 msgstr ""
@@ -13929,7 +13929,7 @@ msgstr "拒絕"
 msgid "Turn Snap Override Off"
 msgstr "關閉捕捉替換"
 
-#: crates/ui-egui/src/canvas.rs:3640
+#: crates/ui-egui/src/canvas.rs:3662
 msgid "Turn the wall about its {}: {}"
 msgstr "繞牆的{}旋轉牆：{}"
 
@@ -14132,16 +14132,16 @@ msgid "Unfold"
 msgstr "展開"
 
 #: crates/ui-egui/src/context.rs:77
-#: crates/ui-egui/src/groups.rs:374
-#: crates/ui-egui/src/groups.rs:525
+#: crates/ui-egui/src/groups.rs:398
+#: crates/ui-egui/src/groups.rs:549
 msgid "Ungroup"
 msgstr "解組"
 
-#: crates/ui-egui/src/groups.rs:373
+#: crates/ui-egui/src/groups.rs:397
 msgid "Ungroup (UG): its members as plain elements, where they are"
 msgstr ""
 
-#: crates/ui-egui/src/groups.rs:525
+#: crates/ui-egui/src/groups.rs:549
 msgid "Ungroup the changed groups and keep the change"
 msgstr ""
 
@@ -14182,7 +14182,7 @@ msgstr "單位格式"
 msgid "Unlock"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:4085
+#: crates/ui-egui/src/canvas.rs:4107
 msgid "Unlock alignment"
 msgstr "解鎖對齊"
 
@@ -15039,17 +15039,17 @@ msgstr ""
 msgid "Zoom"
 msgstr "縮放"
 
-#: crates/ui-egui/src/canvas.rs:2079
+#: crates/ui-egui/src/canvas.rs:2101
 msgid "Zoom In"
 msgstr "放大"
 
-#: crates/ui-egui/src/canvas.rs:2082
+#: crates/ui-egui/src/canvas.rs:2104
 msgid "Zoom Out"
 msgstr "縮小"
 
-#: crates/ui-egui/src/canvas.rs:2076
+#: crates/ui-egui/src/canvas.rs:2098
 #: crates/ui-egui/src/editor/document.rs:1245
-#: crates/ui-egui/src/orbit.rs:2462
+#: crates/ui-egui/src/orbit.rs:2475
 msgid "Zoom to Fit"
 msgstr "縮放以適應"
 
@@ -15059,13 +15059,13 @@ msgstr "`{}` 不是有效的高度"
 
 #: crates/ui-egui/src/camera.rs:91
 #: crates/ui-egui/src/camera.rs:103
-#: crates/ui-egui/src/canvas.rs:3318
-#: crates/ui-egui/src/canvas.rs:3798
-#: crates/ui-egui/src/canvas.rs:3857
-#: crates/ui-egui/src/canvas.rs:4228
-#: crates/ui-egui/src/canvas.rs:4243
-#: crates/ui-egui/src/canvas.rs:4336
-#: crates/ui-egui/src/canvas.rs:4356
+#: crates/ui-egui/src/canvas.rs:3340
+#: crates/ui-egui/src/canvas.rs:3820
+#: crates/ui-egui/src/canvas.rs:3879
+#: crates/ui-egui/src/canvas.rs:4250
+#: crates/ui-egui/src/canvas.rs:4265
+#: crates/ui-egui/src/canvas.rs:4358
+#: crates/ui-egui/src/canvas.rs:4378
 #: crates/ui-egui/src/draw.rs:270
 #: crates/ui-egui/src/draw.rs:271
 #: crates/ui-egui/src/draw.rs:272
@@ -15107,12 +15107,12 @@ msgstr "`{}` 不是有效的比例"
 msgid "`{}` is not a size, an angle or an offset"
 msgstr "`{}` 不是有效的尺寸、角度或偏移"
 
-#: crates/ui-egui/src/groups.rs:456
+#: crates/ui-egui/src/groups.rs:480
 msgid "`{}` is not a spacing"
 msgstr "`{}` 不是間距"
 
-#: crates/ui-egui/src/canvas.rs:3303
-#: crates/ui-egui/src/canvas.rs:3667
+#: crates/ui-egui/src/canvas.rs:3325
+#: crates/ui-egui/src/canvas.rs:3689
 msgid "`{}` is not an angle"
 msgstr "`{}` 不是有效的角度"
 
@@ -15164,7 +15164,7 @@ msgstr "整數"
 msgid "add point: `{}` is not {}"
 msgstr "添加點：`{}` 不是 {}"
 
-#: crates/ui-egui/src/canvas.rs:1473
+#: crates/ui-egui/src/canvas.rs:1490
 msgid "align"
 msgstr "對齊"
 
@@ -15200,7 +15200,7 @@ msgstr ""
 msgid "begins with"
 msgstr "開頭是"
 
-#: crates/ui-egui/src/canvas.rs:2797
+#: crates/ui-egui/src/canvas.rs:2819
 msgid "ceiling: `{}` is not a height"
 msgstr "天花板：`{}` 不是有效的高度"
 
@@ -15208,15 +15208,15 @@ msgstr "天花板：`{}` 不是有效的高度"
 msgid "circle"
 msgstr "圓"
 
-#: crates/ui-egui/src/canvas.rs:2868
+#: crates/ui-egui/src/canvas.rs:2890
 msgid "click its line's end"
 msgstr "單擊其直線的終點"
 
-#: crates/ui-egui/src/orbit.rs:2395
+#: crates/ui-egui/src/orbit.rs:2408
 msgid "click on the floor's top"
 msgstr "請在樓板的頂面上單擊"
 
-#: crates/ui-egui/src/canvas.rs:2892
+#: crates/ui-egui/src/canvas.rs:2914
 msgid "click where its run ends"
 msgstr "單擊其梯段終點"
 
@@ -15272,7 +15272,7 @@ msgstr "結尾不是"
 msgid "does not equal"
 msgstr "不等於"
 
-#: crates/ui-egui/src/canvas.rs:2761
+#: crates/ui-egui/src/canvas.rs:2783
 msgid "dormer: the width `{}`, the height `{}` and the slope `{}` must be numbers"
 msgstr "老虎窗：寬度 `{}`、高度 `{}` 和坡度 `{}` 必須是數字"
 
@@ -15372,7 +15372,7 @@ msgstr "直線"
 msgid "location"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:3055
+#: crates/ui-egui/src/canvas.rs:3077
 msgid "mass: {}"
 msgstr "體量：{}"
 
@@ -15400,12 +15400,12 @@ msgstr "西北"
 msgid "not defined"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:2452
-#: crates/ui-egui/src/canvas.rs:3155
+#: crates/ui-egui/src/canvas.rs:2474
+#: crates/ui-egui/src/canvas.rs:3177
 msgid "offset: `{}` is not a distance"
 msgstr "偏移：`{}` 不是有效的距離"
 
-#: crates/ui-egui/src/canvas.rs:3151
+#: crates/ui-egui/src/canvas.rs:3173
 msgid "offset: it offsets straight walls"
 msgstr "偏移：僅可偏移直牆"
 
@@ -15449,23 +15449,23 @@ msgstr ""
 msgid "publishing set"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:2910
+#: crates/ui-egui/src/canvas.rs:2932
 msgid "ramp: `{}` is not a slope"
 msgstr "坡道：`{}` 不是有效的坡度"
 
-#: crates/ui-egui/src/canvas.rs:2911
+#: crates/ui-egui/src/canvas.rs:2933
 msgid "ramp: `{}` is not a width"
 msgstr "坡道：`{}` 不是有效的寬度"
 
-#: crates/ui-egui/src/canvas.rs:2912
+#: crates/ui-egui/src/canvas.rs:2934
 msgid "ramp: {}"
 msgstr "坡道：{}"
 
-#: crates/ui-egui/src/canvas.rs:2869
+#: crates/ui-egui/src/canvas.rs:2891
 msgid "roof: `{}` is not a slope"
 msgstr "屋頂：`{}` 不是有效的坡度"
 
-#: crates/ui-egui/src/canvas.rs:2713
+#: crates/ui-egui/src/canvas.rs:2735
 msgid "roof: the slope `{}` and the overhang `{}` must be numbers"
 msgstr "屋頂：坡度 `{}` 和懸挑 `{}` 必須是數字"
 
@@ -15474,11 +15474,11 @@ msgstr "屋頂：坡度 `{}` 和懸挑 `{}` 必須是數字"
 msgid "rotate: `{}` is not an angle in degrees"
 msgstr "旋轉：`{}` 不是以度為單位的角度"
 
-#: crates/ui-egui/src/groups.rs:278
+#: crates/ui-egui/src/groups.rs:302
 msgid "select a group to edit"
 msgstr ""
 
-#: crates/ui-egui/src/groups.rs:167
+#: crates/ui-egui/src/groups.rs:191
 msgid "select a group to ungroup"
 msgstr ""
 
@@ -15494,7 +15494,7 @@ msgstr "請先選擇一個有類型的圖元"
 msgid "select one element to create one like it first"
 msgstr "請先選擇一個圖元，以創建與其類似的圖元"
 
-#: crates/ui-egui/src/groups.rs:65
+#: crates/ui-egui/src/groups.rs:89
 msgid "select the elements to group first"
 msgstr ""
 
@@ -15519,11 +15519,11 @@ msgstr "請先選擇要隱藏或隔離的對象"
 msgid "select what to move, copy, rotate or mirror first"
 msgstr "請先選擇要移動、複製、旋轉或鏡像的對象"
 
-#: crates/ui-egui/src/canvas.rs:2821
+#: crates/ui-egui/src/canvas.rs:2843
 msgid "shaft: {}"
 msgstr "豎井：{}"
 
-#: crates/ui-egui/src/canvas.rs:2839
+#: crates/ui-egui/src/canvas.rs:2861
 msgid "slope arrow: `{}` is not a slope"
 msgstr "坡度箭頭：`{}` 不是有效的坡度"
 
@@ -15543,7 +15543,7 @@ msgstr "西南"
 msgid "spline"
 msgstr "樣條曲線"
 
-#: crates/ui-egui/src/canvas.rs:2933
+#: crates/ui-egui/src/canvas.rs:2955
 msgid "stair: `{}` is not a width"
 msgstr "樓梯：`{}` 不是有效的寬度"
 
@@ -15587,7 +15587,7 @@ msgstr "模型中沒有標高"
 msgid "the next free name"
 msgstr "下一個可用名稱"
 
-#: crates/ui-egui/src/canvas.rs:4335
+#: crates/ui-egui/src/canvas.rs:4357
 msgid "the opening has to stay on its wall"
 msgstr "洞口必須保留在其所在的牆上"
 
@@ -15599,12 +15599,12 @@ msgstr "平面上繪有 {}，無法刪除該平面"
 msgid "there's a parameter `{}` already"
 msgstr "已存在參數 `{}`"
 
-#: crates/ui-egui/src/groups.rs:470
-#: crates/ui-egui/src/groups.rs:487
+#: crates/ui-egui/src/groups.rs:494
+#: crates/ui-egui/src/groups.rs:511
 msgid "there's no detail group yet: select detail lines and Create Group"
 msgstr "還沒有詳圖組：請選擇詳圖線並創建組"
 
-#: crates/ui-egui/src/orbit.rs:1410
+#: crates/ui-egui/src/orbit.rs:1416
 msgid "there's no face to paint there"
 msgstr "該處沒有可上漆的面"
 
@@ -15612,7 +15612,7 @@ msgstr "該處沒有可上漆的面"
 msgid "there's no folder to keep favorites in here"
 msgstr "這裡沒有可存放收藏夾的資料夾"
 
-#: crates/ui-egui/src/groups.rs:496
+#: crates/ui-egui/src/groups.rs:520
 msgid "there's no model group yet: select model elements and Create Group"
 msgstr ""
 
@@ -15620,9 +15620,9 @@ msgstr ""
 msgid "this machine"
 msgstr "本機"
 
-#: crates/ui-egui/src/orbit.rs:2294
+#: crates/ui-egui/src/orbit.rs:2307
 #: crates/ui-egui/src/paper.rs:172
-#: crates/ui-egui/src/section.rs:425
+#: crates/ui-egui/src/section.rs:433
 msgid "this tool works in plan views: open one from the Project Browser"
 msgstr "此工具適用於平面視圖：請從項目瀏覽器中開啟一個"
 
@@ -15662,7 +15662,7 @@ msgstr "電壓"
 msgid "voltages"
 msgstr "電壓"
 
-#: crates/ui-egui/src/canvas.rs:3357
+#: crates/ui-egui/src/canvas.rs:3379
 msgid "wall: {}"
 msgstr "牆：{}"
 
@@ -15670,7 +15670,7 @@ msgstr "牆：{}"
 msgid "west"
 msgstr "西"
 
-#: crates/ui-egui/src/groups.rs:77
+#: crates/ui-egui/src/groups.rs:101
 msgid "what is selected is in a group already: ungroup it, or exclude it from its group, first"
 msgstr ""
 
@@ -15930,7 +15930,7 @@ msgstr "A2-A4 為 {} mm"
 msgid "{} months ago"
 msgstr "{} 個月前"
 
-#: crates/ui-egui/src/groups.rs:135
+#: crates/ui-egui/src/groups.rs:159
 msgid "{} of the selection left out"
 msgstr ""
 
@@ -15938,13 +15938,13 @@ msgstr ""
 msgid "{} of {} pages ({} × {})"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:4433
+#: crates/ui-egui/src/canvas.rs:4455
 msgid "{} of {} risers"
 msgstr "{} 個踢面（共 {} 個）"
 
-#: crates/ui-egui/src/canvas.rs:1539
+#: crates/ui-egui/src/canvas.rs:1556
 #. what a point snapped to, then the category and id of its element: "Endpoint of Wall 100231".
-#: crates/ui-egui/src/orbit.rs:2093
+#: crates/ui-egui/src/orbit.rs:2106
 msgid "{} of {} {}"
 msgstr "{}：{} {}"
 
@@ -16017,7 +16017,7 @@ msgstr "{} 停止了助手"
 msgid "{} triangles, from a file"
 msgstr "來自檔案的 {} 個三角形"
 
-#: crates/ui-egui/src/canvas.rs:4435
+#: crates/ui-egui/src/canvas.rs:4457
 msgid "{} up"
 msgstr "上行 {}"
 
@@ -16153,11 +16153,11 @@ msgstr ""
 msgid "{}: `{}` isn't a number"
 msgstr "{}：`{}` 不是數字"
 
-#: crates/ui-egui/src/orbit.rs:1504
+#: crates/ui-egui/src/orbit.rs:1510
 msgid "{}: in the 3D view it stands on a level face (the top of a floor, a flat roof or a level): point at one"
 msgstr "{}：在3D視圖中它立於水平面上（樓板頂面、平屋頂或標高）：請指向其中之一"
 
-#: crates/ui-egui/src/orbit.rs:1500
+#: crates/ui-egui/src/orbit.rs:1506
 msgid "{}: in the 3D view its points go on a level face (the top of a floor, a column, a flat roof or a level): point at one"
 msgstr "{}：在3D視圖中其各點位於水平面上（樓板頂面、柱頂、平屋頂或標高）：請指向其中之一"
 
