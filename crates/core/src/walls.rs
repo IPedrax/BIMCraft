@@ -1261,7 +1261,7 @@ mod tests {
         let s = session(
             r#"type {"category": "wall", "name": "C60", "layers": [{"function": "finish", "thickness": 50}, {"function": "structure", "thickness": 100}, {"function": "finish", "thickness": 50}]}
                wall {"points": [[0, 0], [4000, 0]], "type": "C60"}
-               wall {"points": [[0, 0], [0, 4000]], "type": "C60"}"#,
+               wall {"points": [[0, 0], [0, -4000]], "type": "C60"}"#,
         );
         let m = &s.model;
         let ids: Vec<Id> = m.elements.keys().copied().filter(|id| m.wall(*id).is_some()).collect();
