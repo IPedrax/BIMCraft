@@ -6,6 +6,8 @@
 #[cfg(test)]
 mod building_tests;
 #[cfg(test)]
+mod clinic_family_tests;
+#[cfg(test)]
 mod connection_tests;
 mod contents;
 mod doors;
