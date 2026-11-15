@@ -97,3 +97,30 @@ fn it_is_refused_until_allowed_and_then_passes_every_rule_of_its_pack() {
     }
     assert_eq!(report["summary"]["fail"], 0);
 }
+
+#[test]
+fn room_types_that_share_a_name_are_numbered_together() {
+    let fam = Family::parse(text()).unwrap_or_else(|e| panic!("{e}"));
+    let shared = |name: &str| fam.types.iter().filter(|t| t.name == name).count() > 1;
+    assert!(fam.types.iter().any(|t| shared(&t.name)), "the family has room types that share a name");
+    let mut both = false;
+    for seed in 1..=12 {
+        let built = build(&Request::new(NAME.into(), seed, 36, 3, None, false), true).unwrap_or_else(|r| panic!("{r}"));
+        let graph = file(&built.files, "topology-graph.json");
+        let nodes = graph["nodes"].as_array().expect("nodes");
+        let mut names: Vec<&str> = nodes.iter().filter_map(|n| n["name"].as_str()).collect();
+        names.sort();
+        let count = names.len();
+        names.dedup();
+        assert_eq!(names.len(), count, "seed {seed}: a name is drawn twice");
+        both |= fam.types.iter().filter(|t| shared(&t.name)).any(|t| {
+            let of_name = |n: &&Value| fam.types.iter().any(|u| u.key == n["room_type"] && u.name == t.name);
+            let types: std::collections::BTreeSet<&str> = nodes.iter().filter(of_name).filter_map(|n| n["room_type"].as_str()).collect();
+            types.len() > 1
+        });
+        if both {
+            return;
+        }
+    }
+    panic!("no plan of 36 rooms in twelve seeds has two room types of one name");
+}
