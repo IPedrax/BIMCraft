@@ -2082,7 +2082,7 @@ fn hosted_library(language: crate::language::Language) -> Vec<(String, Value)> {
     let mut out = Vec::new();
 
     // A single door, hinged on the jamb toward the wall's start and swinging to its exterior.
-    let run = format!("{width} - 2 * {frame}");
+    let run = width.to_string();
     let mut forms = door_frame(&block);
     forms.push(block([&left, &right], [&leaf_y[0], &leaf_y[1]], ["0", &under_head], &leaf_mat));
     forms.extend(handle([&format!("{width} / 2 - {frame} - 120"), &format!("{width} / 2 - {frame} - 40")], &block));
@@ -2102,7 +2102,7 @@ fn hosted_library(language: crate::language::Language) -> Vec<(String, Value)> {
     ));
 
     // A double door: two leaves, each hinged on its jamb, meeting in the middle.
-    let each = format!("({width} - 2 * {frame}) / 2");
+    let each = format!("{width} / 2");
     let mut forms = door_frame(&block);
     forms.push(block([&left, "-1"], [&leaf_y[0], &leaf_y[1]], ["0", &under_head], &leaf_mat));
     forms.push(block(["1", &right], [&leaf_y[0], &leaf_y[1]], ["0", &under_head], &leaf_mat));

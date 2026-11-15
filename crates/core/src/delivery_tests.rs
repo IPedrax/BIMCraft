@@ -255,13 +255,13 @@ fn a_single_door_swing_is_one_quarter_circle_arc_however_it_is_flipped() {
         let markers: Vec<&str> = a.codes.iter().filter(|(k, _)| k == "100").map(|(_, v)| v.as_str()).collect();
         assert_eq!(markers, ["AcDbEntity", "AcDbCircle", "AcDbArc"]);
         assert!(((a.num("51") - a.num("50")).rem_euclid(360.0) - 90.0).abs() < 0.01, "{flags}: {} {}", a.num("50"), a.num("51"));
-        assert!((a.num("40") - 800.0).abs() < 0.01);
+        assert!((a.num("40") - 900.0).abs() < 0.01);
         let c = (a.num("10"), a.num("20"));
         let leaf = block.iter().filter(|e| e.kind == "LWPOLYLINE").any(|e| {
             let p = e.pts();
             p.len() == 2
                 && p.iter().any(|q| (q.0 - c.0).hypot(q.1 - c.1) < 0.5)
-                && ((p[0].0 - p[1].0).hypot(p[0].1 - p[1].1) - 800.0).abs() < 0.5
+                && ((p[0].0 - p[1].0).hypot(p[0].1 - p[1].1) - 900.0).abs() < 0.5
         });
         assert!(leaf, "{flags}: a leaf line from the arc's centre");
         assert!(block.iter().all(|e| e.kind != "LWPOLYLINE" || e.pts().len() <= 4));
