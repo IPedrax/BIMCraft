@@ -840,6 +840,27 @@ fn letter(rings: &[Vec<(f32, f32)>]) -> Triangles {
     t
 }
 
+/// Edit Group's plan: everything washed with the paper's colour, so it reads greyed, and the primitives of `keep` drawn again
+/// over the wash as they are (`selected` and `hovered` lit as ever).
+#[allow(clippy::too_many_arguments)]
+fn grey_outside(p: &Painter, rect: Rect, at: Place, d: &Drawing, keep: &HashSet<Id>, selected: &[Id], hovered: Option<Id>, thin: bool) {
+    p.rect_filled(rect, 0.0, color(render::PAPER).gamma_multiply(GREYED));
+    let set: HashSet<Id> = selected.iter().copied().collect();
+    let clip = p.clip_rect();
+    let mut out = |shape| {
+        p.add(shape);
+    };
+    for ((prim, owner), part) in d.prims.iter().zip(&d.owners).zip(&d.parts) {
+        // A picture (a scan's) isn't drawn again: none is a group's.
+        if owner.is_some_and(|o| keep.contains(&o)) && !matches!(prim, Prim::Image { .. }) {
+            paint_prim(&mut out, clip, at, (prim, *owner, *part), &set, hovered, thin, &mut [].iter());
+        }
+    }
+}
+
+/// How much of the paper's colour Edit Group washes the rest of a plan with: enough to read as greyed, not gone.
+const GREYED: f32 = 0.72;
+
 /// A dashed frame round the members of each group among `lit` (the first `hovered` of them hovered, the rest selected), and a
 /// cross at its origin.
 fn group_frames(p: &Painter, m: &Model, d: &Shown, lit: &[Id], hovered: usize) {
@@ -1553,9 +1574,12 @@ impl BimApp {
         // tests, egui moved the keyboard to a widget on that Tab: give it back.)
         let sketching = self.sketch.is_some();
         // A member of a group is picked as its group first; Tab steps on to the member (Revit's groups).
-        let editing = self.session.editing_group();
+        // In Edit Group only the group's own pick (and with Add, only what may join it).
+        let scope = self.session.group_scope();
+        let pick_mode = self.group_pick.filter(|_| scope.is_some());
+        let picks = |ids: &[Id], boxed: bool| crate::groups::picks(&model, ids, scope.as_ref(), pick_mode, boxed);
         let under = match (&self.tool, local) {
-            (Tool::Modify, Some(q)) if !sketching => bimcraft_core::groups::group_picks(&model, &d.pick_all(q, PICK), editing),
+            (Tool::Modify, Some(q)) if !sketching => picks(&d.pick_all(q, PICK), false),
             _ => Vec::new(),
         };
         // A dimension under the cursor: Tab steps through its segments before its element.
@@ -1648,7 +1672,7 @@ impl BimApp {
         let tool = self.tool.clone();
         let under_at = |q: (f32, f32)| match &tool {
             Tool::Modify if sketching => None,
-            Tool::Modify => d.pick(q, PICK).and_then(|id| bimcraft_core::groups::group_picks(&model, &[id], editing).first().copied()),
+            Tool::Modify => picks(&d.pick_all(q, PICK), false).first().copied(),
             Tool::SketchPick => d.pick(q, PICK).filter(|id| model.wall(*id).is_some()),
             // A line to draw along, or to round.
             Tool::DetailLine(_) | Tool::Wall(_) | Tool::SketchLine(_) if shape == draw::Shape::PickLines => {
@@ -1785,7 +1809,7 @@ impl BimApp {
                     }
                 }
                 Drag::Box(from) => {
-                    let found = bimcraft_core::groups::as_picked(&model, &d.in_box(from, q, q.0 < from.0), self.session.editing_group());
+                    let found = picks(&d.in_box(from, q, q.0 < from.0), true);
                     self.pick_up(found, click_modifiers(ui))
                 }
             }
@@ -1883,6 +1907,11 @@ impl BimApp {
         });
         if !kept {
             paint(&p, place, &d, &marked, painted_hover, self.thin, &pictures);
+        }
+        // Edit Group: the rest of the plan greyed under a wash of the paper, the group's own (and what Add points at) over it.
+        if let Some(scope) = &scope {
+            let keep: HashSet<Id> = scope.members.iter().copied().chain(painted_hover).collect();
+            grey_outside(&p, rect, place, &d, &keep, &marked, painted_hover, self.thin);
         }
         let kind = if up { "ceiling" } else { "plan" };
         crate::cowork::paint_plan(&p, &self.cowork, &self.cowork_seen, &model, (kind, key), rect, &view, (&d.drawing, d.place));
@@ -2161,6 +2190,10 @@ impl BimApp {
 
     /// Add `found` to the selection with Ctrl, take it away with Shift, else select just it.
     pub(crate) fn pick_up(&mut self, found: Vec<Id>, mods: Modifiers) {
+        // Edit Group's Add or Remove: what is picked joins the group or leaves it, and isn't selected.
+        if self.group_pick_up(&found) {
+            return;
+        }
         if mods.shift {
             self.selection.retain(|id| !found.contains(id));
         } else if mods.command {

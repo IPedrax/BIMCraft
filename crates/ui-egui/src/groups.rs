@@ -4,7 +4,7 @@
 //! group: Revit's Ungroup, Create New Type or Cancel. The core makes and keeps them (`bimcraft_core::groups`).
 
 use bimcraft_core::geom::P2;
-use bimcraft_core::groups::{self as core_groups, Kind, Placement, RepeatingDetail};
+use bimcraft_core::groups::{self as core_groups, Kind, Placement, RepeatingDetail, Scope};
 use bimcraft_core::model::{Element, Id, Model};
 use bimcraft_i18n::msg;
 use egui::{ComboBox, Context, Id as UiId, Ui, WidgetInfo, WidgetType};
@@ -14,6 +14,31 @@ use crate::icons::Icon;
 use crate::lang::{t, tf};
 use crate::popup::Modal;
 use crate::{BimApp, Status, big_button, panel};
+
+/// What Flexible means, said where it is set: on Place Model Group's Options Bar and in a model group's Properties.
+pub(crate) const FLEXIBLE_TIP: &str = msg!(
+    "Flexible: the group may stand where the storeys are of other heights. A member reaching up to a level (a wall to the level \
+     above) stretches or shrinks to reach it there; what it stands on, its place in plan and its offsets stay as the group's type \
+     has them. Off, the group stands only where the storeys are as high as its type's, and moving a level it reaches asks first."
+);
+
+/// Edit Group's Add or Remove as a pick: a click (or a box) takes elements into the group, or out of it, at once.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum GroupPick {
+    Add,
+    Remove,
+}
+
+/// What a pick of `ids` (nearest first) takes: in Edit Group (`scope`), only what is the group's, or with Add (`mode`) only what
+/// may join it; else a member's group first ([`core_groups::group_picks`]), or for a box ([`core_groups::as_picked`]) in its
+/// place.
+pub(crate) fn picks(m: &Model, ids: &[Id], scope: Option<&Scope>, mode: Option<GroupPick>, boxed: bool) -> Vec<Id> {
+    match (mode, scope) {
+        (Some(GroupPick::Add), Some(sc)) => sc.addable(m, ids),
+        _ if boxed => core_groups::as_picked(m, ids, scope),
+        _ => core_groups::group_picks(m, ids, scope),
+    }
+}
 
 /// A command the core refused because it would change a group from inside: run again as the user chooses.
 #[derive(Clone, Debug)]
@@ -33,17 +58,37 @@ impl BimApp {
         core_groups::kind_of_all(m, &self.selection).ok()
     }
 
-    /// Create Group: the selection, all model elements or all of one view's annotation, made one group, selected.
+    /// Create Group: the selection, all model elements or all of one view's annotation, made one group, selected. A selection
+    /// that can't make one group (both kinds, or with what no group holds) asks which kind to make of it, the rest left out.
     pub(crate) fn create_group(&mut self) {
         if self.selection.is_empty() {
             self.status = Status { text: t("select the elements to group first").into(), error: true };
             return;
         }
-        if let Err(e) = core_groups::kind_of_all(&self.session.model, &self.selection) {
-            self.status = Status { text: e, error: true };
+        if self.groupable().is_some() {
+            self.make_group(None);
             return;
         }
-        if let Some(r) = self.run("create_group", json!({"ids": self.selection})) {
+        let m = &self.session.model;
+        let split = core_groups::split(m, &self.selection);
+        if split.model.is_empty() && split.detail.is_empty() {
+            let why = match core_groups::kind_of_all(m, &self.selection) {
+                Err(e) => e,
+                Ok(_) => t("what is selected is in a group already: ungroup it, or exclude it from its group, first").into(),
+            };
+            self.status = Status { text: why, error: true };
+            return;
+        }
+        self.group_split = Some(split);
+    }
+
+    /// The group made of the selection, of `only` that kind if told, selected.
+    fn make_group(&mut self, only: Option<Kind>) {
+        let mut p = json!({"ids": self.selection});
+        if let Some(k) = only {
+            p["only"] = json!(k.name());
+        }
+        if let Some(r) = self.run("create_group", p) {
             let name = r["name"].as_str().unwrap_or_default().to_string();
             if r["kind"] == "model" {
                 self.model_group_type = name;
@@ -51,6 +96,56 @@ impl BimApp {
                 self.group_type = name;
             }
             self.selection = r["id"].as_u64().into_iter().collect();
+        }
+    }
+
+    /// Create Group's question for a selection that can't make one group: model elements only, or detail elements only.
+    pub(crate) fn group_split_window(&mut self, ctx: &Context) {
+        let Some(split) = self.group_split.clone() else { return };
+        let all = self.selection.len();
+        let mut chosen = None;
+        let mut cancel = false;
+        let r = Modal::new(UiId::new("group-split"), t("Create Group")).width(460.0).show(ctx, |ui| {
+            crate::popup::body(ui, |ui| {
+                ui.label(t(msg!(
+                    "A group holds model elements, or one view's detail lines, regions, notes and dimensions: not both, and nothing \
+                     that is in a group already or that no group holds (levels, grids, views, tags, links). Which do you want to group?"
+                )));
+                ui.add_space(8.0);
+                for (kind, label, tip) in [
+                    (
+                        Kind::Model,
+                        msg!("Model elements only ({})"),
+                        msg!("A model group of the walls, floors, doors, components and the like selected; the rest is left out"),
+                    ),
+                    (
+                        Kind::Detail,
+                        msg!("Detail elements only ({})"),
+                        msg!("A detail group of the lines, regions, notes and dimensions selected in one view; the rest is left out"),
+                    ),
+                ] {
+                    let n = split.of(kind).len();
+                    let text = tf(label, &[&n.to_string()]);
+                    let b = ui.add_enabled(n > 0, egui::Button::new(text).min_size(egui::vec2(260.0, 26.0)));
+                    if b.on_hover_text(t(tip)).clicked() {
+                        chosen = Some(kind);
+                    }
+                    if n > 0 {
+                        let out = all.saturating_sub(n);
+                        ui.label(egui::RichText::new(tf(msg!("{} of the selection left out"), &[&out.to_string()])).small().weak());
+                    }
+                    ui.add_space(4.0);
+                }
+            });
+            crate::popup::footer(ui, |ui| {
+                cancel = ui.button(t("Cancel")).clicked();
+            });
+        });
+        if chosen.is_some() || cancel || r.should_close() {
+            self.group_split = None;
+        }
+        if let Some(kind) = chosen {
+            self.make_group(Some(kind));
         }
     }
 
@@ -75,6 +170,70 @@ impl BimApp {
         if let Some(r) = self.run("ungroup", json!({"ids": groups})) {
             self.selection = r["ids"].as_array().into_iter().flatten().filter_map(Value::as_u64).collect();
         }
+    }
+
+    /// Add or Remove picking in Edit Group, if one is on.
+    pub(crate) fn group_pick(&self) -> Option<GroupPick> {
+        self.group_pick.filter(|_| self.session.editing_group().is_some())
+    }
+
+    /// What a pick of `ids` takes now ([`picks`]).
+    pub(crate) fn group_picks(&self, m: &Model, ids: &[Id], boxed: bool) -> Vec<Id> {
+        picks(m, ids, self.session.group_scope().as_ref(), self.group_pick(), boxed)
+    }
+
+    /// Add or Remove picking: `found` joins the group or leaves it, at once. Whether a pick was taken so.
+    pub(crate) fn group_pick_up(&mut self, found: &[Id]) -> bool {
+        let Some(mode) = self.group_pick() else { return false };
+        if !found.is_empty() {
+            let command = if mode == GroupPick::Add { "add_to_group" } else { "remove_from_group" };
+            self.run(command, json!({"ids": found}));
+        }
+        true
+    }
+
+    /// In Edit Group, the selection keeps only what is the group's: whatever picked it (the browser, a schedule, Select All),
+    /// nothing else may be changed there.
+    pub(crate) fn keep_to_group(&mut self) {
+        if self.session.editing_group().is_none() {
+            self.group_pick = None;
+            return;
+        }
+        if let Some(scope) = self.session.group_scope() {
+            self.selection.retain(|id| scope.editable(*id));
+        }
+    }
+
+    /// The name of the group in Edit Group, and its kind: what the canvas says it is editing.
+    pub(crate) fn editing_name(&self) -> Option<(String, Kind)> {
+        let m = &self.session.model;
+        let i = m.elements.get(self.editing_group()?).and_then(core_groups::instance)?;
+        Some((i.type_name.to_string(), i.kind))
+    }
+
+    /// Edit Group, said over every view while it is on: a frame in the edit's colour round the view, and a banner at its top
+    /// naming the group, what may be changed, and how to finish.
+    pub(crate) fn edit_group_frame(&self, ui: &Ui) {
+        let Some((name, kind)) = self.editing_name() else { return };
+        let rect = self.view_rect;
+        let p = ui.painter_at(rect);
+        let ink = crate::style::pal().context;
+        p.rect_stroke(rect.shrink(2.0), 0.0, egui::Stroke::new(4.0, ink), egui::StrokeKind::Inside);
+        let what = if kind == Kind::Model { t(msg!("Editing model group")) } else { t(msg!("Editing detail group")) };
+        let said = match self.group_pick() {
+            Some(GroupPick::Add) => t(msg!("Adding: click greyed elements to add them")),
+            Some(GroupPick::Remove) => t(msg!("Removing: click members to take them out")),
+            None => t(msg!("Only its members can be picked and changed; the rest is greyed")),
+        };
+        let title = p.layout_no_wrap(format!("{what}: {name}"), egui::FontId::proportional(14.0), crate::style::pal().on_context);
+        let line = p.layout_no_wrap(said.to_string(), egui::FontId::proportional(12.0), crate::style::pal().on_context);
+        let size = egui::vec2(title.size().x.max(line.size().x), title.size().y + line.size().y + 2.0);
+        let at = egui::pos2(rect.center().x - size.x / 2.0, rect.top() + 10.0);
+        let banner = egui::Rect::from_min_size(at, size).expand2(egui::vec2(14.0, 7.0));
+        p.rect_filled(banner, 6.0, ink);
+        let title_h = title.size().y;
+        p.galley(at, title, crate::style::pal().on_context);
+        p.galley(at + egui::vec2(0.0, title_h + 2.0), line, crate::style::pal().on_context);
     }
 
     /// The selected elements that are members of a group (Tab picked them), for Exclude.
@@ -136,28 +295,37 @@ impl BimApp {
             return;
         }
         panel(ui, msg!("Edit Group"), |ui| {
-            let some = !self.selection.is_empty();
-            let tip = msg!("Add: the selected elements join the group at Finish");
-            if ui.add_enabled_ui(some, |ui| big_button(ui, Icon::AddToGroup, msg!("Add"), false, tip)).inner.clicked() {
-                let ids = self.selection.clone();
-                self.run("add_to_group", json!({"ids": ids}));
+            let mode = self.group_pick();
+            let tip = msg!("Add: click elements (greyed now) to add them to the group; click Add again to stop. They join at Finish");
+            if big_button(ui, Icon::AddToGroup, msg!("Add"), mode == Some(GroupPick::Add), tip).clicked() {
+                self.selection.clear();
+                self.group_pick = (mode != Some(GroupPick::Add)).then_some(GroupPick::Add);
             }
-            let tip = msg!("Remove: the selected members leave the group at Finish, staying as they are");
-            if ui.add_enabled_ui(some, |ui| big_button(ui, Icon::RemoveFromGroup, msg!("Remove"), false, tip)).inner.clicked() {
-                let ids = self.selection.clone();
-                self.run("remove_from_group", json!({"ids": ids}));
+            let tip = msg!(
+                "Remove: click members to take them out of the group, staying as they are; click Remove again to stop. Members \
+                 selected leave at once"
+            );
+            if big_button(ui, Icon::RemoveFromGroup, msg!("Remove"), mode == Some(GroupPick::Remove), tip).clicked() {
+                if self.selection.is_empty() {
+                    self.group_pick = (mode != Some(GroupPick::Remove)).then_some(GroupPick::Remove);
+                } else {
+                    let ids = std::mem::take(&mut self.selection);
+                    self.run("remove_from_group", json!({"ids": ids}));
+                }
             }
             let tip = msg!("Finish: the group's type becomes what it now is, and every group of it changes with it");
             if crate::inked_button(ui, Icon::Check, msg!("Finish Edit Group"), false, tip, Some(crate::style::pal().context)).clicked()
                 && self.run("finish_group", json!({})).is_some()
             {
                 self.selection.clear();
+                self.group_pick = None;
             }
             let tip = msg!("Cancel: the group and everything else as it was when the edit began");
             if crate::inked_button(ui, Icon::Close, msg!("Cancel Edit Group"), false, tip, Some(crate::style::pal().error)).clicked()
                 && self.run("cancel_group", json!({})).is_some()
             {
                 self.selection.clear();
+                self.group_pick = None;
             }
         });
     }
@@ -174,10 +342,12 @@ impl BimApp {
                 Some(Kind::Model) => msg!("Create Group (GP): the selected model elements made one model group"),
                 Some(Kind::Detail) => msg!("Create Group (GP): the selected lines, regions, notes and dimensions made one detail group"),
                 None => msg!(
-                    "Create Group (GP): select model elements, or a view's detail lines, regions, notes and dimensions, all of one kind"
+                    "Create Group (GP): select model elements, or a view's detail lines, regions, notes and dimensions; of a mixed \
+                     selection, it asks which kind to group"
                 ),
             };
-            if ui.add_enabled_ui(kind.is_some(), |ui| big_button(ui, Icon::CreateGroup, "Create Group", false, tip)).inner.clicked() {
+            // Always offered: a selection that can't make one group is asked which kind to make of it.
+            if big_button(ui, Icon::CreateGroup, "Create Group", false, tip).clicked() {
                 self.create_group();
             }
             if !self.session.model.model_groups.is_empty() {
@@ -263,7 +433,7 @@ impl BimApp {
         self.group_type = chosen;
     }
 
-    /// Place Model Group's Options Bar: the type it places, and whether the group placed is forgiving.
+    /// Place Model Group's Options Bar: the type it places, and whether the group placed is flexible.
     pub(crate) fn model_group_options(&mut self, ui: &mut Ui) {
         let m = &self.session.model;
         let now = self.placing_model_group().unwrap_or_default();
@@ -277,9 +447,7 @@ impl BimApp {
         c.response.widget_info(|| WidgetInfo::labeled(WidgetType::ComboBox, true, t("Model Group")));
         c.response.labelled_by(l.id);
         self.model_group_type = chosen;
-        ui.checkbox(&mut self.group_forgiving, t("Forgiving")).on_hover_text(t(msg!(
-            "A forgiving group may stand where the storeys are another height: its members' tops follow the levels there"
-        )));
+        ui.checkbox(&mut self.group_flexible, t("Flexible")).on_hover_text(t(FLEXIBLE_TIP));
     }
 
     /// The Options Bar's spacing, in millimetres; none typed as one, a message why.
@@ -328,7 +496,7 @@ impl BimApp {
             self.status = Status { text: t("there's no model group yet: select model elements and Create Group").into(), error: true };
             return;
         };
-        let p = json!({"type": type_name, "at": [at.0, at.1], "level": level, "forgiving": self.group_forgiving});
+        let p = json!({"type": type_name, "at": [at.0, at.1], "level": level, "flexible": self.group_flexible});
         self.run("model_group", p);
     }
 

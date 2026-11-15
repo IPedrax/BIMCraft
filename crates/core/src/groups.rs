@@ -153,6 +153,102 @@ pub fn kind_of_all(m: &Model, ids: &[Id]) -> Result<Kind, String> {
     kind.map(|(k, _)| k).ok_or_else(|| "nothing to group".into())
 }
 
+/// What of a selection each kind of group could hold: its model elements, and its detail elements in the view of the first
+/// of them; neither holds what is in a group already or what no group holds. What Create Group offers for a selection that is
+/// not all of one kind (`create_group {only}`).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Split {
+    pub model: Vec<Id>,
+    pub detail: Vec<Id>,
+}
+
+impl Split {
+    /// The elements of `kind`.
+    pub fn of(&self, kind: Kind) -> &[Id] {
+        match kind {
+            Kind::Model => &self.model,
+            Kind::Detail => &self.detail,
+        }
+    }
+}
+
+/// [`Split`] of `ids` in `m`, each kept in the order given.
+pub fn split(m: &Model, ids: &[Id]) -> Split {
+    let mut out = Split::default();
+    let mut view = None;
+    for &id in ids {
+        let Some(e) = m.elements.get(id) else { continue };
+        if group_of(m, id).is_some() {
+            continue;
+        }
+        match kind_of(e) {
+            Ok(Kind::Model) if !out.model.contains(&id) => out.model.push(id),
+            Ok(Kind::Detail) => {
+                let here = m.annotation_plan(e);
+                if here.is_some() && *view.get_or_insert(here) == here && !out.detail.contains(&id) {
+                    out.detail.push(id);
+                }
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
+/// What Edit Group lets a front end pick: the group being edited (`group`, of `kind`, on its level or in its view `on`) and the
+/// elements that are its now, its members less those removed and with those added or drawn meanwhile. Everything else is
+/// greyed and doesn't pick, but for Add, which picks what may join ([`Scope::addable`]).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Scope {
+    pub group: Id,
+    pub kind: Kind,
+    pub on: Guid,
+    pub members: BTreeSet<Id>,
+}
+
+impl Scope {
+    /// The scope of Edit Group `ed` in `m`; none when its group is gone.
+    pub fn of(m: &Model, ed: &commands::GroupEdit) -> Option<Scope> {
+        let group = m.elements.id(ed.group)?;
+        let inst = m.elements.get(group).and_then(instance)?;
+        let removed: BTreeSet<Guid> = ed.removed.iter().copied().collect();
+        let members = inst
+            .members
+            .iter()
+            .filter(|x| !x.excluded && !removed.contains(&x.element))
+            .map(|x| x.element)
+            .chain(ed.added.iter().copied())
+            .filter_map(|g| m.elements.id(g))
+            .collect();
+        Some(Scope { group, kind: inst.kind, on: inst.on, members })
+    }
+
+    /// Whether element `id` is the group's to change: drawn as it is, picked, moved.
+    pub fn editable(&self, id: Id) -> bool {
+        self.members.contains(&id)
+    }
+
+    /// What of `ids` (in order, each once) Add may take into the group: elements of its kind (in its view, for a detail group)
+    /// in no other group and not its own already.
+    pub fn addable(&self, m: &Model, ids: &[Id]) -> Vec<Id> {
+        let mut out: Vec<Id> = Vec::new();
+        for &id in ids {
+            if self.editable(id) || id == self.group || out.contains(&id) {
+                continue;
+            }
+            let Some(e) = m.elements.get(id) else { continue };
+            if kind_of(e) != Ok(self.kind) || (self.kind == Kind::Detail && m.annotation_plan(e) != Some(self.on)) {
+                continue;
+            }
+            if group_of(m, id).is_some_and(|g| g != self.group) {
+                continue;
+            }
+            out.push(id);
+        }
+        out
+    }
+}
+
 /// A storey of a model group type: how many levels above the group's own a level its members name is, and how far above it.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -219,7 +315,7 @@ pub struct DetailGroup {
 }
 
 /// A model group placed on `level`: as a [`DetailGroup`], and the levels its type's level tokens stand for here (`levels`,
-/// the first `level`). A `forgiving` one lets a member's top follow a level that moved, while the rest of it stays.
+/// the first `level`). A `flexible` one lets a member's top follow a level that moved, while the rest of it stays.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ModelGroup {
@@ -236,7 +332,7 @@ pub struct ModelGroup {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub members: Vec<Slot>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
-    pub forgiving: bool,
+    pub flexible: bool,
 }
 
 fn is_zero(x: &f64) -> bool {
@@ -289,7 +385,7 @@ pub struct Instance<'a> {
     pub on: Guid,
     pub levels: &'a [Guid],
     pub members: &'a [Slot],
-    pub forgiving: bool,
+    pub flexible: bool,
 }
 
 /// `e` as a group instance, if it is one.
@@ -302,7 +398,7 @@ pub fn instance(e: &Element) -> Option<Instance<'_>> {
             on: g.level,
             levels: &g.levels,
             members: &g.members,
-            forgiving: g.forgiving,
+            flexible: g.flexible,
         }),
         Element::DetailGroup(g) => Some(Instance {
             kind: Kind::Detail,
@@ -311,7 +407,7 @@ pub fn instance(e: &Element) -> Option<Instance<'_>> {
             on: g.view,
             levels: &[],
             members: &g.members,
-            forgiving: false,
+            flexible: false,
         }),
         _ => None,
     }
@@ -393,14 +489,23 @@ pub fn with_members(m: &Model, ids: &[Id]) -> Vec<Id> {
 }
 
 /// What a pick of `picks` (nearest first) takes, as Revit's groups pick: a member's group before the member, so a click takes
-/// the group and Tab steps on to the element in it. A member of `editing` (the instance in Edit Group) is picked as itself.
-pub fn group_picks(m: &Model, picks: &[Id], editing: Option<Guid>) -> Vec<Id> {
+/// the group and Tab steps on to the element in it. In Edit Group (`editing`), only what is the group's picks, as itself.
+pub fn group_picks(m: &Model, picks: &[Id], editing: Option<&Scope>) -> Vec<Id> {
+    if let Some(scope) = editing {
+        let mut out: Vec<Id> = Vec::with_capacity(picks.len());
+        for &id in picks {
+            if scope.editable(id) && !out.contains(&id) {
+                out.push(id);
+            }
+        }
+        return out;
+    }
     if !any(m) {
         return picks.to_vec();
     }
     let mut out: Vec<Id> = Vec::with_capacity(picks.len() + 1);
     for &id in picks {
-        if let Some(g) = group_of(m, id).filter(|g| Some(m.guid(*g)) != editing)
+        if let Some(g) = group_of(m, id)
             && !out.contains(&g)
         {
             out.push(g);
@@ -412,14 +517,18 @@ pub fn group_picks(m: &Model, picks: &[Id], editing: Option<Guid>) -> Vec<Id> {
     out
 }
 
-/// What a box selection of `ids` takes: a member's group in its place (once), but the members of `editing`, as themselves.
-pub fn as_picked(m: &Model, ids: &[Id], editing: Option<Guid>) -> Vec<Id> {
+/// What a box selection of `ids` takes: a member's group in its place (once); in Edit Group (`editing`), only what is the
+/// group's, as itself.
+pub fn as_picked(m: &Model, ids: &[Id], editing: Option<&Scope>) -> Vec<Id> {
+    if editing.is_some() {
+        return group_picks(m, ids, editing);
+    }
     if !any(m) {
         return ids.to_vec();
     }
     let mut out: Vec<Id> = Vec::with_capacity(ids.len());
     for &id in ids {
-        let one = group_of(m, id).filter(|g| Some(m.guid(*g)) != editing).unwrap_or(id);
+        let one = group_of(m, id).unwrap_or(id);
         if !out.contains(&one) {
             out.push(one);
         }
@@ -440,7 +549,7 @@ pub fn preview(m: &Model, kind: Kind, name: &str, on: Guid, p: Placement) -> Vec
     };
     // Its members point at one another by stand-ins that are no elements yet: what draws on its own still draws.
     let elements: BTreeMap<Guid, Guid> = t.members.iter().map(|x| (x.guid, Guid::new())).collect();
-    let inst = Instance { kind, type_name: name, placement: p, on, levels: &levels, members: &[], forgiving: true };
+    let inst = Instance { kind, type_name: name, placement: p, on, levels: &levels, members: &[], flexible: true };
     let f = frame_of(m, &inst, &elements);
     t.members.iter().filter_map(|x| place(m, t, x, &f).ok()).collect()
 }
@@ -493,7 +602,7 @@ fn level_name(m: &Model, g: Guid) -> String {
     m.level(g).map_or_else(|| m.shown(g), |l| format!("`{}`", l.name))
 }
 
-/// The tokens of type `t` some member stands on (its base level): what even a forgiving group keeps at its storey's height.
+/// The tokens of type `t` some member stands on (its base level): what even a flexible group keeps at its storey's height.
 fn base_tokens(t: &GroupType) -> BTreeSet<usize> {
     let tokens: BTreeMap<Guid, usize> = (0..t.levels.len()).map(|k| (level_token(k), k)).collect();
     t.members
@@ -928,8 +1037,8 @@ fn elements_of(inst: &Instance) -> BTreeMap<Guid, Guid> {
     inst.members.iter().filter(|s| !s.element.is_nil()).map(|s| (s.member, s.element)).collect()
 }
 
-/// What is wrong with instance `id` of `m` against its type: each member changed or gone, and the storeys a non-forgiving one
-/// no longer keeps (or a forgiving one's members stand on). Empty when it is as its type places it.
+/// What is wrong with instance `id` of `m` against its type: each member changed or gone, and the storeys a non-flexible one
+/// no longer keeps (or a flexible one's members stand on). Empty when it is as its type places it.
 pub fn conflicts(m: &Model, id: Id) -> Vec<String> {
     let Some(e) = m.elements.get(id) else { return Vec::new() };
     let Some(inst) = instance(e) else { return Vec::new() };
@@ -954,14 +1063,14 @@ pub fn conflicts(m: &Model, id: Id) -> Vec<String> {
         }
     }
     if inst.kind == Kind::Model {
-        for (k, h) in storeys_off(m, t, inst.levels, !inst.forgiving) {
+        for (k, h) in storeys_off(m, t, inst.levels, !inst.flexible) {
             let (Some(g), Some(s)) = (inst.levels.get(k), t.levels.get(k)) else { continue };
             out.push(format!(
                 "{} is {h:.0} mm above {}, where its type has {:.0} mm{}",
                 level_name(m, *g),
                 level_name(m, inst.on),
                 s.height,
-                if inst.forgiving { ", and a member stands on it" } else { "" }
+                if inst.flexible { ", and a member stands on it" } else { "" }
             ));
         }
     }
@@ -990,10 +1099,10 @@ pub fn regenerate(m: &mut Model, id: Id) -> Result<Vec<Guid>, String> {
     let mut slots: Vec<Slot> = inst.members.to_vec();
     let mut levels: Vec<Guid> = inst.levels.to_vec();
     let on = inst.on;
-    let forgiving = inst.forgiving;
+    let flexible = inst.flexible;
     if kind == Kind::Model && (levels.len() != t.levels.len() || levels.first() != Some(&on)) {
         levels = levels_for(m, &type_name, &t, on).map_err(|e| format!("{who}: {e}"))?;
-        let off = storeys_off(m, &t, &levels, !forgiving);
+        let off = storeys_off(m, &t, &levels, !flexible);
         if let Some((k, h)) = off.first() {
             let s = t.levels.get(*k).map_or(0.0, |s| s.height);
             return Err(format!(
@@ -1001,10 +1110,10 @@ pub fn regenerate(m: &mut Model, id: Id) -> Result<Vec<Guid>, String> {
                 levels.get(*k).map_or_else(String::new, |g| level_name(m, *g)),
                 s,
                 level_name(m, on),
-                if forgiving {
-                    "a forgiving group's members still stand where they stood"
+                if flexible {
+                    "a flexible group's members still stand where they stood"
                 } else {
-                    "place it where the storeys are its type's, or make it forgiving (`forgiving: true`), so its members' tops follow the levels there"
+                    "place it where the storeys are its type's, or make it flexible (`flexible: true`), so its members' tops follow the levels there"
                 }
             ));
         }
@@ -1097,7 +1206,7 @@ pub fn placing(at: P2, angle: f64, mirrored: bool) -> impl Fn(P2) -> P2 {
 /// view `view`: what a repeating detail draws for each repeat.
 pub fn placed_type(m: &Model, type_name: &str, view: Guid, p: Placement) -> Vec<Element> {
     let Some(t) = m.detail_groups.get(type_name) else { return Vec::new() };
-    let inst = Instance { kind: Kind::Detail, type_name, placement: p, on: view, levels: &[], members: &[], forgiving: false };
+    let inst = Instance { kind: Kind::Detail, type_name, placement: p, on: view, levels: &[], members: &[], flexible: false };
     let f = frame_of(m, &inst, &BTreeMap::new());
     t.members.iter().filter_map(|x| place(m, t, x, &f).ok()).collect()
 }

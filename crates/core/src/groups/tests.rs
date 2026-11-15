@@ -78,7 +78,6 @@ fn create_group_keeps_the_elements_where_they_are_as_the_members_of_a_model_grou
     // A click on a member picks the group first, Tab the member.
     let wall = ids[1];
     assert_eq!(crate::groups::group_picks(&s.model, &[wall], None), [gid, wall]);
-    assert_eq!(crate::groups::group_picks(&s.model, &[wall], Some(s.model.guid(gid))), [wall]);
     assert_eq!(crate::groups::with_members(&s.model, &[gid]).len(), 5);
     // An element is in one group.
     let e = err(&mut s, "create_group", json!({"ids": [wall]}));
@@ -297,7 +296,7 @@ fn edit_group_adds_and_finishes_with_an_element_drawn_meanwhile_and_one_added() 
 }
 
 #[test]
-fn a_group_reaching_a_level_above_follows_its_storeys_and_a_forgiving_one_stretches() {
+fn a_group_reaching_a_level_above_follows_its_storeys_and_a_flexible_one_stretches() {
     let mut s = Session::new();
     run(&mut s, "level", json!({"name": "Level 3", "elevation": 6000}));
     run(&mut s, "level", json!({"name": "Level 4", "elevation": 9500}));
@@ -309,34 +308,34 @@ fn a_group_reaching_a_level_above_follows_its_storeys_and_a_forgiving_one_stretc
     let level3 = s.model.levels().iter().find(|(_, l)| l.name == "Level 3").map(|(id, _)| s.model.guid(*id));
     assert_eq!(wall(&s, on2).top_level, level3);
     assert_eq!(s.model.base_z(&wall(&s, on2)), 3000.0);
-    // Level 3 to 4 is taller: a group that isn't forgiving isn't placed there…
+    // Level 3 to 4 is taller: a group that isn't flexible isn't placed there…
     let e = err(&mut s, "model_group", json!({"type": "Model Group 1", "at": [2000, 0], "level": "Level 3"}));
-    assert!(e.contains("forgiving"), "{e}");
-    // …and a forgiving one is, its wall reaching Level 4.
-    let r = run(&mut s, "model_group", json!({"type": "Model Group 1", "at": [2000, 0], "level": "Level 3", "forgiving": true}));
+    assert!(e.contains("flexible"), "{e}");
+    // …and a flexible one is, its wall reaching Level 4.
+    let r = run(&mut s, "model_group", json!({"type": "Model Group 1", "at": [2000, 0], "level": "Level 3", "flexible": true}));
     let on3 = ids_of(&r, "members")[0];
     assert_eq!(s.model.top_z(&wall(&s, on3)), 9500.0);
     // On every level at once: Paste Aligned to Selected Levels.
     let e = err(&mut s, "model_group", json!({"type": "Model Group 1", "at": [8000, 0], "levels": ["Level 1", "Level 2", "Level 3"]}));
-    assert!(e.contains("forgiving"), "{e}");
+    assert!(e.contains("flexible"), "{e}");
     let r = run(
         &mut s,
         "model_group",
-        json!({"type": "Model Group 1", "at": [8000, 0], "levels": ["Level 1", "Level 2", "Level 3"], "forgiving": true}),
+        json!({"type": "Model Group 1", "at": [8000, 0], "levels": ["Level 1", "Level 2", "Level 3"], "flexible": true}),
     );
     assert_eq!(ids_of(&r, "ids").len(), 3);
     // Nothing above Level 4.
-    let e = err(&mut s, "model_group", json!({"type": "Model Group 1", "at": [2000, 0], "level": "Level 4", "forgiving": true}));
+    let e = err(&mut s, "model_group", json!({"type": "Model Group 1", "at": [2000, 0], "level": "Level 4", "flexible": true}));
     assert!(e.contains("reaches 1 level above"), "{e}");
-    // Level 2 moved up: the group on Level 1 isn't forgiving, so its storey breaks…
+    // Level 2 moved up: the group on Level 1 isn't flexible, so its storey breaks…
     let level2 = s.model.levels().iter().find(|(_, l)| l.name == "Level 2").map(|(id, _)| *id).unwrap_or(0);
     let e = err(&mut s, "modify", json!({"id": level2, "elevation": 3500}));
     assert!(is_conflict(&e) && e.contains("3500 mm above"), "{e}");
-    // …and made forgiving, it lets its wall stretch. (The groups on Level 2 stand on it, and move with it whole.)
-    run(&mut s, "modify", json!({"id": g, "forgiving": true}));
-    let first = instances(&s).into_iter().find(|i| matches!(s.model.elements.get(*i), Some(Element::ModelGroup(mg)) if !mg.forgiving));
+    // …and made flexible, it lets its wall stretch. (The groups on Level 2 stand on it, and move with it whole.)
+    run(&mut s, "modify", json!({"id": g, "flexible": true}));
+    let first = instances(&s).into_iter().find(|i| matches!(s.model.elements.get(*i), Some(Element::ModelGroup(mg)) if !mg.flexible));
     if let Some(i) = first {
-        run(&mut s, "modify", json!({"id": i, "forgiving": true}));
+        run(&mut s, "modify", json!({"id": i, "flexible": true}));
     }
     run(&mut s, "modify", json!({"id": level2, "elevation": 3500}));
     assert_eq!(s.model.top_z(&wall(&s, w[0])), 3500.0);
@@ -344,14 +343,14 @@ fn a_group_reaching_a_level_above_follows_its_storeys_and_a_forgiving_one_stretc
 }
 
 #[test]
-fn a_forgiving_group_still_refuses_a_level_its_member_stands_on_moving() {
+fn a_flexible_group_still_refuses_a_level_its_member_stands_on_moving() {
     let mut s = Session::new();
     run(&mut s, "level", json!({"name": "Level 3", "elevation": 6000}));
     // A wall on Level 2 grouped with one on Level 1: the group stands on Level 1 and its second storey is a member's base.
     let a = ids_of(&run(&mut s, "wall", json!({"points": [[0, 0], [4000, 0]]})), "ids");
     let b = ids_of(&run(&mut s, "wall", json!({"points": [[0, 0], [4000, 0]], "level": "Level 2"})), "ids");
     let g = id_of(&run(&mut s, "create_group", json!({"ids": [a[0], b[0]]})));
-    run(&mut s, "modify", json!({"id": g, "forgiving": true}));
+    run(&mut s, "modify", json!({"id": g, "flexible": true}));
     let level2 = s.model.levels().iter().find(|(_, l)| l.name == "Level 2").map(|(id, _)| *id).unwrap_or(0);
     let e = err(&mut s, "modify", json!({"id": level2, "elevation": 3500}));
     assert!(is_conflict(&e) && e.contains("a member stands on it"), "{e}");
@@ -377,6 +376,71 @@ fn a_selection_of_both_kinds_or_of_what_no_group_holds_is_refused() {
     assert!(e.contains("the elements to group"), "{e}");
     let e = err(&mut s, "create_group", json!({"ids": ids, "bogus": 1}));
     assert!(e.contains("isn't one of its parameters"), "{e}");
+}
+
+#[test]
+fn create_group_only_of_one_kind_leaves_the_rest_of_a_mixed_selection_out() {
+    let (mut s, ids) = corner();
+    let line = id_of(&run(&mut s, "detail_line", json!({"points": [[0, -1000], [1000, -1000]]})));
+    let note = id_of(&run(&mut s, "text", json!({"text": "Corner", "at": [500, -1500]})));
+    // A level, two kinds and a wall already grouped: what each kind would take of them.
+    let (_, grouped) = {
+        let w = ids_of(&run(&mut s, "wall", json!({"points": [[0, -5000], [4000, -5000]]})), "ids");
+        let g = run(&mut s, "create_group", json!({"ids": w}));
+        (id_of(&g), w[0])
+    };
+    let mixed: Vec<Id> = [100000].into_iter().chain(ids.iter().copied()).chain([line, note, grouped]).collect();
+    let split = crate::groups::split(&s.model, &mixed);
+    assert_eq!(split.model, ids);
+    assert_eq!(split.detail, [line, note]);
+    // Model elements only: the walls and the door, and the rest said to be left out.
+    let mut a = s.clone();
+    let g = run(&mut a, "create_group", json!({"ids": mixed, "only": "model"}));
+    assert_eq!(g["kind"], "model");
+    assert_eq!(ids_of(&g, "members"), ids);
+    assert_eq!(ids_of(&g, "left_out"), [100000, line, note, grouped]);
+    // Detail elements only: the line and the note.
+    let g = run(&mut s, "create_group", json!({"ids": mixed, "only": "detail"}));
+    assert_eq!(g["kind"], "detail");
+    assert_eq!(ids_of(&g, "members"), [line, note]);
+    // None of that kind.
+    let e = err(&mut s, "create_group", json!({"ids": [100000, ids[0]], "only": "detail"}));
+    assert!(e.contains("no detail element"), "{e}");
+    let e = err(&mut s, "create_group", json!({"ids": ids, "only": "both"}));
+    assert!(e.contains("`only`"), "{e}");
+}
+
+#[test]
+fn in_edit_group_only_its_members_pick_and_add_picks_what_may_join() {
+    let (mut s, gid, ids) = grouped();
+    let loose = ids_of(&run(&mut s, "wall", json!({"points": [[0, -2000], [4000, -2000]]})), "ids")[0];
+    let line = id_of(&run(&mut s, "detail_line", json!({"points": [[0, -3000], [100, -3000]]})));
+    // Not in Edit Group: a member picks its group first.
+    assert!(s.group_scope().is_none());
+    assert_eq!(crate::groups::group_picks(&s.model, &[ids[0], loose], None), [gid, ids[0], loose]);
+    run(&mut s, "edit_group", json!({"id": gid}));
+    let scope = s.group_scope().unwrap_or_else(|| panic!("no scope in Edit Group"));
+    assert_eq!(scope.group, gid);
+    // The members pick as themselves; the rest of the project (a loose wall, a line, a level) doesn't pick at all.
+    for id in &ids {
+        assert!(scope.editable(*id), "member {id}");
+    }
+    assert!(!scope.editable(loose) && !scope.editable(line) && !scope.editable(100000));
+    assert_eq!(crate::groups::group_picks(&s.model, &[loose, ids[0], line, 100000], Some(&scope)), [ids[0]]);
+    assert_eq!(crate::groups::as_picked(&s.model, &[loose, ids[1], ids[2]], Some(&scope)), [ids[1], ids[2]]);
+    // Add picks what may join: a model element in no group, not a detail line, not a level, not a member.
+    assert_eq!(scope.addable(&s.model, &[loose, line, 100000, ids[0]]), [loose]);
+    // Added, it is the group's to edit; removed, a member isn't.
+    run(&mut s, "add_to_group", json!({"ids": [loose]}));
+    run(&mut s, "remove_from_group", json!({"ids": [ids[0]]}));
+    let scope = s.group_scope().unwrap_or_else(|| panic!("no scope in Edit Group"));
+    assert!(scope.editable(loose) && !scope.editable(ids[0]));
+    assert_eq!(scope.addable(&s.model, &[ids[0], loose]), [ids[0]], "a member removed may be added back");
+    // A wall drawn in Edit Group joins it, so it picks.
+    let drawn = ids_of(&run(&mut s, "wall", json!({"points": [[0, 6000], [4000, 6000]]})), "ids")[0];
+    assert!(s.group_scope().is_some_and(|sc| sc.editable(drawn)));
+    run(&mut s, "cancel_group", json!({}));
+    assert!(s.group_scope().is_none());
 }
 
 #[test]
@@ -582,13 +646,16 @@ pub(crate) fn sweep_payloads(base: &mut Session) -> Vec<(&'static str, Value)> {
     let g = run(base, "create_group", json!({"ids": [w[0], w[1], d], "name": "Sweep"}));
     let gid = id_of(&g);
     vec![
-        ("model_group", json!({"type": "Sweep", "at": [60000, 0], "levels": ["Level 1", "Level 2"], "forgiving": true})),
+        ("model_group", json!({"type": "Sweep", "at": [60000, 0], "levels": ["Level 1", "Level 2"], "flexible": true})),
         ("model_group", json!({"type": "Sweep", "at": [60000, 0], "angle": 45, "mirrored": true})),
-        ("model_group", json!({"type": "Sweep", "at": [1e300, 0], "levels": [null, 5, "x"], "forgiving": "yes"})),
+        ("model_group", json!({"type": "Sweep", "at": [1e300, 0], "levels": [null, 5, "x"], "flexible": "yes"})),
         ("model_group", json!({"type": "Sweep", "at": [0, 0], "levels": vec![100000; 500]})),
         ("create_group", json!({"ids": [w[1], d]})),
         ("create_group", json!({"ids": [d]})),
         ("create_group", json!({"ids": [gid]})),
+        ("create_group", json!({"ids": [w[2], d, 100000], "only": "model"})),
+        ("create_group", json!({"ids": [w[2], 100000], "only": "detail"})),
+        ("create_group", json!({"ids": [w[2]], "only": 7})),
         ("exclude_member", json!({"ids": [w[0]]})),
         ("exclude_member", json!({"ids": [gid, d]})),
         ("restore_excluded", json!({"id": gid})),
@@ -607,7 +674,7 @@ pub(crate) fn sweep_payloads(base: &mut Session) -> Vec<(&'static str, Value)> {
         ("ungroup", json!({"ids": [gid, w[0]]})),
         ("group_type", json!({"name": "Sweep", "kind": "model", "rename": "Swept"})),
         ("group_type", json!({"name": "Sweep", "kind": "model", "delete": true})),
-        ("modify", json!({"id": gid, "forgiving": true, "level": "Level 2"})),
+        ("modify", json!({"id": gid, "flexible": true, "level": "Level 2"})),
         ("modify", json!({"id": gid, "type": "Nope", "members": [], "levels": 5})),
         ("move", json!({"ids": [gid], "by": [1e300, 0]})),
         ("rotate", json!({"ids": [gid], "about": [0, 0], "angle": 33, "copy": true})),

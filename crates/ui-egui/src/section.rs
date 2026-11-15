@@ -408,7 +408,7 @@ impl BimApp {
             (Some(q), Tool::Modify) => {
                 // A member of a group is picked as its group, as in a plan.
                 let found: Vec<Id> = pick(&self.cut, &d, q).into_iter().collect();
-                let found = bimcraft_core::groups::as_picked(&self.session.model, &found, self.session.editing_group());
+                let found = self.group_picks(&self.session.model, &found, true);
                 self.pick_up(found, click_modifiers(ui));
             }
             (Some(q), Tool::Demolish) => {

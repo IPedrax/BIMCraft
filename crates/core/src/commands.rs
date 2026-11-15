@@ -2143,14 +2143,16 @@ other_files(
         "create_group",
         "Create Group",
         &["GP"],
-        "{ids, name?, origin?: [x,y], level?} a group made of elements `ids`, as Revit's Create Group: all model elements make a \
+        "{ids, name?, origin?: [x,y], level?, only?: model|detail} a group made of elements `ids`, as Revit's Create Group: all model elements make a \
          model group (walls with their doors and windows, floors, ceilings, roofs, rooms, columns, beams, pipes and the other runs, \
          stairs, ramps, railings, components on a level…), standing on the lowest level they name (or `level`); all of one view's \
          detail lines, filled regions, text notes and dimensions make a detail group in that view. Both kinds at once, or anything \
-         else, are refused, saying what is in the way; so is what points at an element outside the group (a door without its \
+         else, are refused, saying what is in the way, unless `only` says which kind to make: then the rest (the other kind, what \
+         no group holds, what is grouped already, and detail elements of other views than the first) is left out and listed as \
+         `left_out`. So is what points at an element outside the group (a door without its \
          wall, a dimension to a line not grouped). They become type `name`'s members (Model Group 1 / Group 1… unless told) and \
          stay where they are as the members of one group of it, its origin the middle of them (or `origin`). A click on a member \
-         picks the group, Tab the member (`Model::group_picks`). Returns {id, name, kind, members}",
+         picks the group, Tab the member (`Model::group_picks`). Returns {id, name, kind, members, left_out?}",
         crate::groups::commands::create_group,
     ),
     edit(
@@ -2166,11 +2168,11 @@ other_files(
         "model_group",
         "Place Model Group",
         &[],
-        "{type, at: [x,y], angle?, mirrored?, level? | levels?: [level, …], forgiving?} a model group of type `type` placed \
+        "{type, at: [x,y], angle?, mirrored?, level? | levels?: [level, …], flexible?} a model group of type `type` placed \
          with its origin at `at`, turned and mirrored as `detail_group`, on `level` (the lowest by default), or one on each of \
          `levels`, as Revit's Paste Aligned to Selected Levels. A member naming a level above the group's own names the level as \
-         many storeys up from where it is placed. A group that isn't `forgiving` is placed only where those storeys are as high \
-         as its type's; a forgiving one anywhere, its members' tops reaching the levels there. Returns {id | ids, members}",
+         many storeys up from where it is placed. A group that isn't `flexible` is placed only where those storeys are as high \
+         as its type's; a flexible one anywhere, its members' tops reaching the levels there. Returns {id | ids, members}",
         crate::groups::commands::model_group,
     ),
     edit(

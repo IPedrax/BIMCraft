@@ -309,6 +309,11 @@ impl Session {
         self.group_edit.as_ref().map(|e| e.group)
     }
 
+    /// What Edit Group lets a front end pick and change, if a group is in it ([`crate::groups::Scope`]).
+    pub fn group_scope(&self) -> Option<crate::groups::Scope> {
+        self.group_edit.as_ref().and_then(|ed| crate::groups::Scope::of(&self.model, ed))
+    }
+
     /// Back to `model`, a model a command left that passed, with the undo steps after the first `undo_len` forgotten: Cancel
     /// of Edit Group.
     pub(crate) fn rewind(&mut self, model: Arc<Model>, undo_len: usize) {

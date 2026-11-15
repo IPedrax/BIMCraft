@@ -79,12 +79,34 @@ pub(crate) fn own_type(m: &mut Model, id: Id) -> Result<(), String> {
 /// are its members.
 pub(crate) fn create_group(s: &mut Session, p: &Value) -> R {
     let c = "create_group";
-    only(c, p, &["ids", "name", "origin", "level"])?;
+    only(c, p, &["ids", "name", "origin", "level", "only"])?;
     let m = &s.model;
-    let ids = ids_param(c, m, p)?;
-    if ids.is_empty() {
+    let given = ids_param(c, m, p)?;
+    if given.is_empty() {
         return Err(bad(c, "`ids`: the elements to group"));
     }
+    // `only`: the elements of that kind, the rest of a mixed selection left out (and said).
+    let (ids, left_out) = match p.get("only") {
+        None | Some(Value::Null) => (given, Vec::new()),
+        Some(v) => {
+            let kind = match v.as_str() {
+                Some("model") => Kind::Model,
+                Some("detail") => Kind::Detail,
+                _ => {
+                    return Err(bad(
+                        c,
+                        "`only`: \"model\" (the model elements) or \"detail\" (one view's lines, regions, notes and dimensions)",
+                    ));
+                }
+            };
+            let keep = super::split(m, &given).of(kind).to_vec();
+            if keep.is_empty() {
+                return Err(bad(c, format!("there's no {} element among `ids` that a group may hold", kind.name())));
+            }
+            let rest = given.into_iter().filter(|id| !keep.contains(id)).collect();
+            (keep, rest)
+        }
+    };
     if let Some(id) = ids.iter().find(|id| super::group_of(m, **id).is_some()) {
         return Err(bad(
             c,
@@ -126,7 +148,7 @@ pub(crate) fn create_group(s: &mut Session, p: &Value) -> R {
             angle: 0.0,
             mirrored: false,
             members: slots,
-            forgiving: false,
+            flexible: false,
         }),
         Kind::Detail => {
             Element::DetailGroup(DetailGroup { view: on, type_name: name.clone(), at: origin, angle: 0.0, mirrored: false, members: slots })
@@ -135,7 +157,11 @@ pub(crate) fn create_group(s: &mut Session, p: &Value) -> R {
     let m = s.model_mut();
     types_mut(m, kind).insert(name.clone(), t);
     let id = m.insert(element);
-    Ok(json!({"id": id, "name": name, "kind": kind.name(), "members": ids}))
+    let mut out = json!({"id": id, "name": name, "kind": kind.name(), "members": ids});
+    if !left_out.is_empty() {
+        out["left_out"] = json!(left_out);
+    }
+    Ok(out)
 }
 
 /// The lowest level elements `ids` name.
@@ -193,7 +219,7 @@ pub(crate) fn detail_group(s: &mut Session, p: &Value) -> R {
 /// Paste Aligned to Selected Levels places copies.
 pub(crate) fn model_group(s: &mut Session, p: &Value) -> R {
     let c = "model_group";
-    only(c, p, &["type", "at", "angle", "mirrored", "level", "levels", "forgiving"])?;
+    only(c, p, &["type", "at", "angle", "mirrored", "level", "levels", "flexible"])?;
     let m = &s.model;
     let type_name = name_param(c, p, "type")?.ok_or_else(|| bad(c, "`type`, the model group to place, is required"))?;
     if !m.model_groups.contains_key(&type_name) {
@@ -219,7 +245,7 @@ pub(crate) fn model_group(s: &mut Session, p: &Value) -> R {
         }
         Some(v) => return Err(bad(c, format!("`levels` is a list of levels by name, id or GUID, not {v}"))),
     };
-    let forgiving = flag(c, p, "forgiving")?;
+    let flexible = flag(c, p, "flexible")?;
     let mut ids = Vec::new();
     let mut all = Vec::new();
     for level in levels {
@@ -231,7 +257,7 @@ pub(crate) fn model_group(s: &mut Session, p: &Value) -> R {
             angle: pl.angle,
             mirrored: pl.mirrored,
             members: Vec::new(),
-            forgiving,
+            flexible,
         };
         let id = s.model_mut().insert(Element::ModelGroup(g));
         all.extend(fill(c, s, id)?);
@@ -428,15 +454,22 @@ pub(crate) fn add_to_group(s: &mut Session, p: &Value) -> R {
         if k == Kind::Detail && m.annotation_plan(e) != Some(inst.on) {
             return Err(bad(c, format!("{} {id} is in another view than the group", e.category())));
         }
-        if let Some(other) = super::group_of(m, id) {
-            return Err(bad(c, format!("{} {id} is in group {other} already", e.category())));
+        let removed = s.group_edit.as_ref().is_some_and(|ed| ed.removed.contains(&m.guid(id)));
+        match super::group_of(m, id) {
+            // A member removed in this edit comes back.
+            Some(g) if g == group && removed => {}
+            Some(g) if g == group => return Err(bad(c, format!("{} {id} is a member of this group already", e.category()))),
+            Some(other) => return Err(bad(c, format!("{} {id} is in group {other} already", e.category()))),
+            None => {}
         }
     }
     let guids: Vec<Guid> = ids.iter().map(|id| m.guid(*id)).collect();
     if let Some(ed) = &mut s.group_edit {
         for g in guids {
-            ed.removed.retain(|x| *x != g);
-            if !ed.added.contains(&g) {
+            // One removed is a member again; anything else joins at Finish.
+            if ed.removed.contains(&g) {
+                ed.removed.retain(|x| *x != g);
+            } else if !ed.added.contains(&g) {
                 ed.added.push(g);
             }
         }

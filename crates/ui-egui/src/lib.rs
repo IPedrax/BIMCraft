@@ -756,9 +756,13 @@ pub struct BimApp {
     linework_style: String,
     /// The detail group type Place Detail Group places.
     group_type: String,
-    /// The model group type Place Model Group places, and whether what it places is forgiving.
+    /// The model group type Place Model Group places, and whether what it places is flexible.
     model_group_type: String,
-    group_forgiving: bool,
+    group_flexible: bool,
+    /// Create Group's question for a selection that can't make one group: what each kind would take of it.
+    group_split: Option<bimcraft_core::groups::Split>,
+    /// Edit Group's Add or Remove, picking.
+    group_pick: Option<groups::GroupPick>,
     /// A command refused because it would change a group from inside, while the window asks what to do with it.
     group_conflict: Option<groups::Conflict>,
     /// The Repeating Detail tool's spacing, as typed.
@@ -1587,7 +1591,9 @@ impl BimApp {
             linework_style: String::new(),
             group_type: String::new(),
             model_group_type: String::new(),
-            group_forgiving: false,
+            group_flexible: false,
+            group_split: None,
+            group_pick: None,
             group_conflict: None,
             repeat_spacing: "200".into(),
             line_chain: true,
@@ -2217,6 +2223,7 @@ impl BimApp {
             self.view_control_bar(ui);
         }
         self.temp_frame(ui);
+        self.edit_group_frame(ui);
     }
 
     /// Properties (PP): shown, or hidden.
@@ -3348,6 +3355,10 @@ impl BimApp {
         }
         // Edit Dimension References goes next: the dimension stays as it was.
         if self.dimension_refs_edit.take().is_some() {
+            return;
+        }
+        // Edit Group's Add or Remove picking stops, the edit going on.
+        if self.group_pick.take().is_some() {
             return;
         }
         // A dimension segment picked goes, leaving its dimension as it was.
@@ -5862,6 +5873,20 @@ impl BimApp {
         if let Some(hint) = self.sketch_prompt() {
             return hint;
         }
+        match self.group_pick() {
+            Some(groups::GroupPick::Add) if self.tool == Tool::Modify => {
+                return msg!("Add to Group: click a greyed element, or drag a box, to add it to the group. Esc or Add again stops.");
+            }
+            Some(groups::GroupPick::Remove) if self.tool == Tool::Modify => {
+                return msg!("Remove from Group: click a member, or drag a box, to take it out of the group. Esc or Remove again stops.");
+            }
+            _ if self.editing_group().is_some() && self.tool == Tool::Modify => {
+                return msg!(
+                    "Edit Group: only the group's members can be picked and changed; the rest is greyed. Finish Edit Group keeps it."
+                );
+            }
+            _ => {}
+        }
         if self.picking_pattern_lines() {
             return msg!("Select fill pattern lines then press Enter");
         }
@@ -6322,6 +6347,8 @@ impl BimApp {
         self.type_properties(ctx);
         self.delete_rooms_window(ctx);
         self.group_conflict_window(ctx);
+        self.group_split_window(ctx);
+        self.keep_to_group();
         self.family_type_properties(ctx);
         self.materials_window(ctx);
         self.favorites_window(ctx);

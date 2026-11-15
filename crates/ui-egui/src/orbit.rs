@@ -2263,7 +2263,7 @@ impl BimApp {
         match clicked {
             // A member of a group is picked as its group, as in a plan.
             Some(found) if modify => {
-                let found = bimcraft_core::groups::as_picked(&model, &found.into_iter().collect::<Vec<_>>(), self.session.editing_group());
+                let found = self.group_picks(&model, &found.into_iter().collect::<Vec<_>>(), true);
                 self.pick_up(found, click_modifiers(ui))
             }
             Some(Some(id)) if demolish => self.demolish(id),
@@ -2326,7 +2326,7 @@ impl BimApp {
             p.extend(crate::canvas::box_shapes(rect, local(from), local(now)));
         }
         if let Some(found) = boxed_ids {
-            let found = bimcraft_core::groups::as_picked(&model, &found, self.session.editing_group());
+            let found = self.group_picks(&model, &found, true);
             self.pick_up(found, click_modifiers(ui));
         }
         if let Some(surface) = sketch_z {

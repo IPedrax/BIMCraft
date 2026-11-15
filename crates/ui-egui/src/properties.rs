@@ -282,7 +282,7 @@ fn rows(category: &str) -> &'static [Row] {
         ],
         "modelgroup" => &[
             ("Constraints", "level", msg!("Reference Level"), Level),
-            ("Constraints", "forgiving", msg!("Forgiving"), Flag),
+            ("Constraints", "flexible", msg!("Flexible"), Flag),
             ("Identity Data", "type", "Group", Shown),
             ("Other", "angle", "Rotation (°)", Number),
             ("Other", "mirrored", msg!("Mirrored"), Flag),
@@ -2037,6 +2037,11 @@ impl BimApp {
                     };
                     let label = t(label);
                     let name = ui.label(label);
+                    // A row whose name doesn't say all it does: what it means, on hover.
+                    let name = match model.elements.get(id) {
+                        Some(Element::ModelGroup(_)) if key == "flexible" => name.on_hover_text(t(crate::groups::FLEXIBLE_TIP)),
+                        _ => name,
+                    };
                     match kind {
                         // A component's Work Plane, `Level : Level 1`: what it is on in the interface's words, its name as it is.
                         Shown if key == "work_plane" => {

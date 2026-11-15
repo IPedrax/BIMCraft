@@ -234,6 +234,82 @@ fn create_group_is_offered_for_a_selection_of_one_kind_only() {
 }
 
 #[test]
+fn create_group_of_a_mixed_selection_asks_which_kind_and_leaves_the_rest_out() {
+    let mut h = app(&format!("{BOX}\ndetail_line {{\"start\": [1000, 1000], \"end\": [3000, 1000]}}"));
+    let walls = ids(&h, "wall");
+    let line = ids(&h, "line");
+    // Both kinds and a level: Create Group is still offered, and asks.
+    let mixed: Vec<Id> = walls.iter().copied().chain(line.iter().copied()).chain([100000]).collect();
+    h.state_mut().selection = mixed.clone();
+    h.state_mut().tab = crate::Tab::Modify;
+    h.run();
+    press(&mut h, "Create Group");
+    let split = h.state().group_split.clone().unwrap_or_else(|| panic!("no question: {}", h.state().status.text));
+    assert_eq!((split.model.clone(), split.detail.clone()), (walls.clone(), line.clone()));
+    assert!(ids(&h, "modelgroup").is_empty(), "nothing made before the answer");
+    press(&mut h, &format!("Model elements only ({})", walls.len()));
+    assert!(h.state().group_split.is_none());
+    assert_eq!(ids(&h, "modelgroup").len(), 1);
+    assert_eq!(bimcraft_core::groups::group_of(&h.state().session.model, line[0]), None, "the line left out");
+    // Undone, GP asks the same, and the detail elements make a detail group.
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    h.run();
+    h.state_mut().selection = mixed;
+    h.run();
+    shortcut(&mut h, "GP");
+    press(&mut h, "Detail elements only (1)");
+    assert_eq!((ids(&h, "detailgroup").len(), ids(&h, "modelgroup").len()), (1, 0));
+    // Cancel makes nothing.
+    h.state_mut().selection = walls.iter().copied().chain([100000]).collect();
+    h.run();
+    shortcut(&mut h, "GP");
+    assert!(h.state().group_split.is_some());
+    press(&mut h, "Cancel");
+    assert!(h.state().group_split.is_none() && ids(&h, "modelgroup").is_empty());
+}
+
+#[test]
+fn in_edit_group_only_members_pick_and_add_and_remove_are_picks() {
+    let mut h = app(&format!("{CORNER}\nwall {{\"points\": [[0, -3000], [4000, -3000]]}}"));
+    let group = ids(&h, "modelgroup");
+    let walls = ids(&h, "wall");
+    let loose = *walls.last().unwrap_or_else(|| panic!("no wall"));
+    h.state_mut().selection = group.clone();
+    h.state_mut().tab = crate::Tab::Modify;
+    h.run();
+    press(&mut h, "Edit Group");
+    // The wall outside the group doesn't pick; a member does, as itself.
+    click(&mut h, P2(2000.0, -3000.0));
+    assert!(h.state().selection.is_empty(), "the loose wall is greyed: {:?}", h.state().selection);
+    drag(&mut h, P2(-1000.0, -4000.0), P2(5000.0, -2000.0));
+    assert!(h.state().selection.is_empty(), "a box round it takes nothing");
+    click(&mut h, P2(2000.0, 0.0));
+    assert_eq!(h.state().selection, [walls[1]]);
+    // Whatever selects it elsewhere, the selection keeps only the group's.
+    h.state_mut().selection = vec![loose, walls[1]];
+    h.run();
+    assert_eq!(h.state().selection, [walls[1]]);
+    // Add picks the loose wall into the group.
+    press(&mut h, "Add");
+    assert_eq!(h.state().group_pick, Some(crate::groups::GroupPick::Add));
+    assert!(h.state().selection.is_empty());
+    click(&mut h, P2(2000.0, -3000.0));
+    assert!(h.state().session.group_scope().is_some_and(|s| s.editable(loose)), "{}", h.state().status.text);
+    assert!(h.state().selection.is_empty(), "added, not selected");
+    // Esc stops adding, the edit going on; Remove picks a member out.
+    key(&mut h, Key::Escape);
+    assert_eq!(h.state().group_pick, None);
+    assert!(h.state().session.editing_group().is_some());
+    press(&mut h, "Remove");
+    click(&mut h, P2(0.0, 1500.0));
+    assert!(h.state().session.group_scope().is_some_and(|s| !s.editable(walls[0])));
+    press(&mut h, "Finish Edit Group");
+    assert_eq!(h.state().group_pick, None);
+    let members = bimcraft_core::groups::members(&h.state().session.model, group[0]);
+    assert!(members.contains(&loose) && !members.contains(&walls[0]), "{members:?}");
+}
+
+#[test]
 fn place_model_group_puts_one_where_clicked() {
     let mut h = app(CORNER);
     h.state_mut().selection.clear();
@@ -270,7 +346,18 @@ fn group_screenshots() {
         h.state_mut().edit_group();
         h.state_mut().selection = vec![ids(&h, "wall")[1]];
         save(&mut h, "editing");
+        h.state_mut().selection.clear();
+        h.state_mut().group_pick = Some(crate::groups::GroupPick::Add);
+        save(&mut h, "adding");
+        h.state_mut().group_pick = None;
+        // A mixed selection: Create Group asks which kind.
         h.state_mut().run("cancel_group", json!({}));
+        h.state_mut().run("detail_line", json!({"start": [1000, -2000], "end": [3000, -2000]}));
+        h.state_mut().selection = ids(&h, "wall").into_iter().chain(ids(&h, "line")).collect();
+        h.state_mut().create_group();
+        save(&mut h, "mixed");
+        h.state_mut().group_split = None;
+        h.state_mut().selection.clear();
         let walls = ids(&h, "wall");
         h.state_mut().run("move", json!({"ids": [walls[0]], "by": [0, 500]}));
         save(&mut h, "conflict");

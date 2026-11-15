@@ -182,7 +182,11 @@ impl BimApp {
                 groups.push(vec![Item::new(Action::Pin, pinned.iter().any(|p| !*p)), Item::new(Action::Unpin, pinned.iter().any(|p| *p))]);
                 // A selection of one kind groups; a group comes apart, is edited, or gets its excluded members back; a member
                 // Tab picked is excluded.
-                let groupable = self.groupable().is_some();
+                // A mixed selection groups too: Create Group asks which kind to make of it.
+                let groupable = self.groupable().is_some() || {
+                    let split = bimcraft_core::groups::split(&self.session.model, &self.selection);
+                    !split.model.is_empty() || !split.detail.is_empty()
+                };
                 let (grouped, members) = (self.groups_selected(), self.members_selected());
                 if groupable || !grouped.is_empty() || !members.is_empty() {
                     let mut items = vec![Item::new(Action::CreateGroup, groupable), Item::new(Action::Ungroup, !grouped.is_empty())];
