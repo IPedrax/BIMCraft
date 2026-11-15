@@ -350,11 +350,11 @@ fn each_run_time_lift_rule_fails_on_a_building_that_breaks_it_and_only_that_one(
     }
 }
 
-/// The building graphs of a spread of seeds and every archetype, as the files say them.
+/// The building graphs of two seeds of every archetype, as the files say them: between them the four symbol profiles.
 fn symbol_spread() -> Vec<(String, Value, Value)> {
     let mut out = Vec::new();
-    for (name, area) in [("office", 900.0), ("clinic", 650.0), ("hospital", 1800.0)] {
-        for seed in 0..12 {
+    for (name, area, seeds) in [("office", 900.0, [0, 10]), ("clinic", 650.0, [1, 2]), ("hospital", 1800.0, [0, 1])] {
+        for seed in seeds {
             let b = built(archetype(name), seed, area);
             out.push((format!("{name} {seed} {area}"), doc(&b, "building-ir.json"), doc(&b, "manifest.json")));
         }

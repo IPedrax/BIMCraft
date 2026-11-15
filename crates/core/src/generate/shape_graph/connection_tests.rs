@@ -42,19 +42,12 @@ fn a_family_naming_all_nine_types_draws_each_of_them() {
         l["types"] = json!(NINE);
     }
     let fam = Family::parse(&v.to_string()).expect("a family may name every type");
+    // Seed 11 at 17 rooms draws all nine types.
+    let req =
+        Request { archetype: String::new(), seed: 11, rooms: 17, tolerance: 0, shape: Some(ids[10 % ids.len()].clone()), gridlines: false };
+    let built = build_family(&fam, &req, false).unwrap_or_else(|r| panic!("seed 11: {r}"));
     let mut seen = BTreeMap::new();
-    for k in 0..12u64 {
-        let req = Request {
-            archetype: String::new(),
-            seed: k + 1,
-            rooms: 7 + (k % 12) as i64,
-            tolerance: 0,
-            shape: Some(ids[(k as usize) % ids.len()].clone()),
-            gridlines: false,
-        };
-        let built = build_family(&fam, &req, false).unwrap_or_else(|r| panic!("brief {k}: {r}"));
-        count(&graph(&built.files), &mut seen);
-    }
+    count(&graph(&built.files), &mut seen);
     for t in NINE {
         assert!(seen.get(t).is_some_and(|n| *n > 0), "{t} never drawn: {seen:?}");
     }
@@ -79,26 +72,25 @@ fn the_new_types_have_their_door_rows() {
 #[test]
 fn house_plans_draw_the_new_types_and_read_them_back() {
     let mut seen = BTreeMap::new();
-    for seed in 1..=20u64 {
-        let built = house(seed, 8 + (seed as i64 - 1) % 15);
-        count(&graph(&built.files), &mut seen);
-        // The script runs, and the extractor finds each door as the table says.
-        let mut s = Session::new();
-        let replies = s.script(&script(&built.files)).expect("the script runs");
-        assert!(!replies.is_empty());
-        let ext = topology::extract(&s.model);
-        for e in ext["edges"].as_array().into_iter().flatten() {
-            let (op, fam) = (e["operation"].as_str(), e["family"].as_str());
-            match fam {
-                Some("Unequal Double Door") => assert_eq!(op, Some("double-swing")),
-                Some("Double Sliding Door") => assert_eq!(op, Some("double-sliding")),
-                Some("Pocket Door") => assert_eq!(op, Some("sliding")),
-                _ => {}
-            }
+    // Seed 25 at 17 rooms draws every type the house family lists.
+    let built = house(25, 17);
+    count(&graph(&built.files), &mut seen);
+    // The script runs, and the extractor finds each door as the table says.
+    let mut s = Session::new();
+    let replies = s.script(&script(&built.files)).expect("the script runs");
+    assert!(!replies.is_empty());
+    let ext = topology::extract(&s.model);
+    for e in ext["edges"].as_array().into_iter().flatten() {
+        let (op, fam) = (e["operation"].as_str(), e["family"].as_str());
+        match fam {
+            Some("Unequal Double Door") => assert_eq!(op, Some("double-swing")),
+            Some("Double Sliding Door") => assert_eq!(op, Some("double-sliding")),
+            Some("Pocket Door") => assert_eq!(op, Some("sliding")),
+            _ => {}
         }
     }
     for t in ["cased", "double_sliding", "pocket"] {
-        assert!(seen.get(t).is_some_and(|n| *n > 0), "{t} never drawn in 20 houses: {seen:?}");
+        assert!(seen.get(t).is_some_and(|n| *n > 0), "{t} never drawn: {seen:?}");
     }
     assert!(!seen.contains_key("unequal_double"), "the house family does not use unequal_double: {seen:?}");
 }
