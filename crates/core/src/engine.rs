@@ -197,6 +197,8 @@ pub struct Session {
     /// Whether a Co-Work guest's command is running ([`crate::cowork::run_for_guest`]): then no command may read or write a file, so a
     /// guest never reaches the host's disk.
     pub(crate) no_files: bool,
+    /// What Copy to Clipboard or Cut last kept (`clipboard.rs`'s text), which `paste` takes when it isn't given one.
+    pub clipboard: Option<Arc<str>>,
     /// How many steps were made, which numbers them.
     steps_made: u64,
     /// Whether a dry run is under way ([`Session::script_dry_run`]): then each command is looked at as it is about to run, with
@@ -275,6 +277,7 @@ impl Session {
             author: None,
             progress: None,
             no_files: false,
+            clipboard: None,
             steps_made: 0,
             dry_run: false,
             verified: None,
