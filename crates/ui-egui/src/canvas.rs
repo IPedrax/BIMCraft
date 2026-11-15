@@ -341,7 +341,7 @@ pub struct Canvas {
     grab: Option<P2>,
     drag: Option<Drag>,
     /// What's under the cursor, as `Drawing::pick_all` orders it, and how far Tab has gone.
-    under: Vec<Id>,
+    pub(crate) under: Vec<Id>,
     cycle: usize,
     /// A crop region's grip being dragged: the view, and which edge (see [`grips`]).
     crop_drag: Option<(Id, usize)>,
@@ -854,6 +854,23 @@ fn grey_outside(p: &Painter, rect: Rect, at: Place, d: &Drawing, keep: &HashSet<
         // A picture (a scan's) isn't drawn again: none is a group's.
         if owner.is_some_and(|o| keep.contains(&o)) && !matches!(prim, Prim::Image { .. }) {
             paint_prim(&mut out, clip, at, (prim, *owner, *part), &set, hovered, thin, &mut [].iter());
+        }
+    }
+}
+
+/// The primitives of `ids` drawn again in the hover colour: a hovered group's members, which the drawing doesn't own as the group.
+fn paint_hovered(p: &Painter, at: Place, d: &Drawing, ids: &HashSet<Id>, thin: bool) {
+    if ids.is_empty() {
+        return;
+    }
+    let clip = p.clip_rect();
+    let none = HashSet::new();
+    let mut out = |shape| {
+        p.add(shape);
+    };
+    for ((prim, owner), part) in d.prims.iter().zip(&d.owners).zip(&d.parts) {
+        if owner.is_some_and(|o| ids.contains(&o)) && !matches!(prim, Prim::Image { .. }) {
+            paint_prim(&mut out, clip, at, (prim, *owner, *part), &none, *owner, thin, &mut [].iter());
         }
     }
 }
@@ -1912,6 +1929,11 @@ impl BimApp {
         if let Some(scope) = &scope {
             let keep: HashSet<Id> = scope.members.iter().copied().chain(painted_hover).collect();
             grey_outside(&p, rect, place, &d, &keep, &marked, painted_hover, self.thin);
+        }
+        // A group under the pointer (a click takes it, Tab steps into it) has no lines of its own: its members light instead.
+        if let Some(g) = painted_hover.filter(|g| model.elements.get(*g).and_then(bimcraft_core::groups::instance).is_some()) {
+            let members: HashSet<Id> = bimcraft_core::groups::members(&model, g).into_iter().filter(|id| !marked.contains(id)).collect();
+            paint_hovered(&p, place, &d, &members, self.thin);
         }
         let kind = if up { "ceiling" } else { "plan" };
         crate::cowork::paint_plan(&p, &self.cowork, &self.cowork_seen, &model, (kind, key), rect, &view, (&d.drawing, d.place));

@@ -93,11 +93,14 @@ In Edit Group the window says so: a frame in the edit's colour round every view 
 may be changed (`edit_group_frame`), and the prompt line. Only the group's own picks, in plans, sections and the 3D view
 (`groups::picks`, through `Session::group_scope`), and the selection keeps only those whatever else selects (`keep_to_group`). A
 plan draws the rest greyed: washed with the paper's colour and the group's members drawn again over it (`canvas::grey_outside`);
-sections and the 3D view don't grey yet. A panel beside Select on every tab has Add and Remove, which are picks (`GroupPick`): with
+sections and the 3D view tint the rest nearly the paper's colour (`groups::greyed`, `groups::grey`), their shading and edges
+still showing it. A panel beside Select on every tab has Add and Remove, which are picks (`GroupPick`): with
 Add on, what may join is what picks, and a click or a box adds it at once; with Remove on, a click takes a member out (Remove
 with members selected takes those at once). Esc or the button again stops picking. Finish Edit Group and Cancel Edit Group end
 it. The right-click menu offers the same. A selected group lights its members, with a dashed frame round them and a cross at its
-origin (`canvas::group_frames`); sections and the 3D view pick a member's group too. A command the core refuses as a group
+origin (`canvas::group_frames`); sections and the 3D view pick a member's group too, and light its members. A group under the
+pointer lights its members in the hover colour (`groups::hover_lit`; in a plan, `canvas::paint_hovered`), so what a click takes
+is seen before Tab steps into it. A command the core refuses as a group
 conflict opens Group Changed (`groups::Conflict`): Ungroup, Create New Type or Cancel, which run it again through
 `resolve_group`. `BIMCRAFT_GROUPS_DUMP=<folder>` with the test
 `group_screenshots` writes pictures of these, light and dark.

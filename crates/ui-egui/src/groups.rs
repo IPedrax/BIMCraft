@@ -40,6 +40,30 @@ pub(crate) fn picks(m: &Model, ids: &[Id], scope: Option<&Scope>, mode: Option<G
     }
 }
 
+/// What the element under the pointer (`raw`, as the picture picks it) lights: what a click would take ([`picks`]), and if that is a
+/// group, its members, since a group has no lines or faces of its own. In Edit Group, nothing outside it (but for Add, what may
+/// join).
+pub(crate) fn hover_lit(m: &Model, raw: Option<Id>, scope: Option<&Scope>, mode: Option<GroupPick>) -> Vec<Id> {
+    let Some(raw) = raw else { return Vec::new() };
+    let first: Vec<Id> = picks(m, &[raw], scope, mode, false).into_iter().take(1).collect();
+    core_groups::with_members(m, &first)
+}
+
+/// In Edit Group, what a picture greys: every element but the group's own and `lit` (what is selected or under the pointer).
+pub(crate) fn greyed(m: &Model, scope: Option<&Scope>, lit: &[Id]) -> Vec<Id> {
+    let Some(scope) = scope else { return Vec::new() };
+    let lit: std::collections::HashSet<Id> = lit.iter().copied().collect();
+    m.elements.iter().map(|(id, _)| *id).filter(|id| !scope.editable(*id) && !lit.contains(id)).collect()
+}
+
+/// The colour a picture greys what is outside the group in Edit Group: nearly the paper's, a shade darker (or, on a dark canvas,
+/// lighter), so it is there and faint, its shading and edges still showing its shape.
+pub(crate) fn grey() -> bimcraft_core::render::Rgb {
+    let p = crate::canvas::color(bimcraft_core::render::PAPER);
+    let toward = |c: u8| if c > 128 { c.saturating_sub(12) } else { c.saturating_add(14) };
+    bimcraft_core::render::Rgb(toward(p.r()), toward(p.g()), toward(p.b()))
+}
+
 /// A command the core refused because it would change a group from inside: run again as the user chooses.
 #[derive(Clone, Debug)]
 pub(crate) struct Conflict {

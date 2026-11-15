@@ -309,6 +309,82 @@ fn in_edit_group_only_members_pick_and_add_and_remove_are_picks() {
     assert!(members.contains(&loose) && !members.contains(&walls[0]), "{members:?}");
 }
 
+/// The colours of the fills the last frame painted.
+fn fills(h: &Harness<BimApp>) -> Vec<egui::Color32> {
+    fn walk(s: &egui::Shape, out: &mut Vec<egui::Color32>) {
+        match s {
+            egui::Shape::Path(p) => out.push(p.fill),
+            egui::Shape::Mesh(m) => out.extend(m.vertices.iter().map(|v| v.color)),
+            egui::Shape::Vec(v) => v.iter().for_each(|s| walk(s, out)),
+            _ => {}
+        }
+    }
+    let mut out = Vec::new();
+    h.output().shapes.iter().for_each(|c| walk(&c.shape, &mut out));
+    out
+}
+
+#[test]
+fn a_group_under_the_pointer_lights_its_members_before_tab_steps_into_it() {
+    let mut h = app(CORNER);
+    let group = ids(&h, "modelgroup");
+    let walls = ids(&h, "wall");
+    h.state_mut().selection.clear();
+    h.run();
+    let lit = crate::style::canvas_pal().hover_fill;
+    h.hover_at(h.state().screen(P2(2000.0, 4500.0)));
+    h.run();
+    assert!(!fills(&h).contains(&lit), "nothing under the pointer, nothing lit");
+    h.hover_at(h.state().screen(P2(2000.0, 0.0)));
+    h.run();
+    h.run();
+    assert_eq!(h.state().canvas.under.first(), group.first(), "the group is what a click takes");
+    assert!(fills(&h).contains(&lit), "its walls light in the hover colour");
+    key(&mut h, Key::Tab);
+    click(&mut h, P2(2000.0, 0.0));
+    assert_eq!(h.state().selection, [walls[1]]);
+}
+
+#[test]
+fn in_3d_a_click_takes_a_group_lit_whole_and_edit_group_greys_and_blocks_the_rest() {
+    let mut h = app(&format!("{CORNER}\ncopy {{\"ids\": [\"$last\"], \"by\": [10000, 0]}}"));
+    let groups = ids(&h, "modelgroup");
+    h.state_mut().selection.clear();
+    press(&mut h, "Default 3D View");
+    let mine = bimcraft_core::groups::members(&h.state().session.model, groups[0]);
+    let other = bimcraft_core::groups::members(&h.state().session.model, groups[1]);
+    let at = h.state().screen3([2000.0, -100.0, 1500.0]);
+    click_at(&mut h, at);
+    assert_eq!(h.state().selection, [groups[0]], "the group, not its wall");
+    h.hover_at(h.state().orbit.rect.min + vec2(4.0, 4.0));
+    h.run();
+    h.run();
+    let accent = crate::orbit::rgb(crate::style::canvas_pal().accent);
+    let tints = h.state().orbit.tints_shown();
+    for id in &mine {
+        assert!(tints.contains(&(*id, accent)), "member {id} lit: {tints:?}");
+    }
+    // In Edit Group the other group's walls are greyed, and a click on one takes nothing.
+    h.state_mut().tab = crate::Tab::Modify;
+    h.run();
+    press(&mut h, "Edit Group");
+    h.run();
+    h.run();
+    let tints = h.state().orbit.tints_shown();
+    let grey = crate::groups::grey();
+    for id in &other {
+        assert!(tints.contains(&(*id, grey)), "the other group's {id} greyed: {tints:?}");
+    }
+    assert!(mine.iter().all(|id| !tints.iter().any(|(t, c)| t == id && *c == grey)), "the group's own not greyed");
+    let at = h.state().screen3([12000.0, -100.0, 1500.0]);
+    click_at(&mut h, at);
+    assert!(h.state().selection.is_empty(), "the other group doesn't pick: {:?}", h.state().selection);
+    let at = h.state().screen3([2000.0, -100.0, 1500.0]);
+    click_at(&mut h, at);
+    assert_eq!(h.state().selection.len(), 1);
+    assert!(mine.contains(&h.state().selection[0]), "a member picks as itself");
+}
+
 #[test]
 fn place_model_group_puts_one_where_clicked() {
     let mut h = app(CORNER);
@@ -350,6 +426,10 @@ fn group_screenshots() {
         h.state_mut().group_pick = Some(crate::groups::GroupPick::Add);
         save(&mut h, "adding");
         h.state_mut().group_pick = None;
+        // The 3D view in Edit Group: the rest greyed.
+        h.state_mut().open_3d(None);
+        save(&mut h, "editing-3d");
+        h.state_mut().sheet = crate::Sheet::Plan(h.state().session.model.levels()[0].0);
         // A mixed selection: Create Group asks which kind.
         h.state_mut().run("cancel_group", json!({}));
         h.state_mut().run("detail_line", json!({"start": [1000, -2000], "end": [3000, -2000]}));

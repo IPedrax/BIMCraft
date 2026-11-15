@@ -304,11 +304,19 @@ impl BimApp {
         };
         let hovered = local.filter(|_| matches!(self.tool, Tool::Modify | Tool::Demolish)).and_then(|q| pick(&self.cut, &d, q));
         let lit = self.lit_selection();
-        let tints: Vec<(Id, Rgb)> = lit
+        // A group under the pointer lights its members, as a click would take it; in Edit Group the rest is greyed.
+        let scope = self.session.group_scope();
+        let hover_lit = match self.tool {
+            Tool::Modify => crate::groups::hover_lit(&model, hovered, scope.as_ref(), self.group_pick()),
+            _ => hovered.into_iter().collect(),
+        };
+        let mut tints: Vec<(Id, Rgb)> = lit
             .iter()
             .map(|id| (*id, rgb(canvas_pal().accent)))
-            .chain(hovered.filter(|h| !self.selection.contains(h)).map(|h| (h, rgb(canvas_pal().hover))))
+            .chain(hover_lit.iter().filter(|h| !lit.contains(h)).map(|h| (*h, rgb(canvas_pal().hover))))
             .collect();
+        let lit_now: Vec<Id> = tints.iter().map(|(id, _)| *id).collect();
+        tints.extend(crate::groups::greyed(&model, scope.as_ref(), &lit_now).into_iter().map(|id| (id, crate::groups::grey())));
         if self.cut.mode.0 {
             let request = Request {
                 model: Arc::clone(&model),
