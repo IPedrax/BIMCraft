@@ -17,9 +17,13 @@ pub(crate) mod family;
 mod file_tests;
 mod fit;
 #[cfg(test)]
+mod hospital_family_tests;
+#[cfg(test)]
 mod interior_tests;
 mod layout;
 mod links;
+#[cfg(test)]
+mod medical_day_tests;
 #[cfg(test)]
 mod office_family_tests;
 #[cfg(test)]
