@@ -401,12 +401,15 @@ fn top_level_key(json: &str, key: &str) -> Option<usize> {
 
 /// The JSON of the project file at `path`, zipped or not: what a test or a tool that reads a saved project as text reads.
 pub fn read_to_string(path: impl AsRef<std::path::Path>) -> std::io::Result<String> {
-    let bytes = std::fs::read(path)?;
+    let bytes = crate::disk::read(path)?;
     unpack(bytes, u64::MAX).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
 }
 
 /// `bytes` written to `path` in the way [`crate::autosave::atomic_write`] writes text: a file beside it first, then moved over it.
 pub fn write(path: &std::path::Path, bytes: &[u8]) -> Result<(), String> {
+    if cfg!(target_arch = "wasm32") {
+        return crate::disk::write(path, bytes).map_err(|e| format!("{}: {e}", path.display()));
+    }
     let dir = path.parent().filter(|d| !d.as_os_str().is_empty()).unwrap_or(std::path::Path::new("."));
     let mut tmp = tempfile::NamedTempFile::new_in(dir).map_err(|e| format!("{}: {e}", path.display()))?;
     tmp.write_all(bytes).and_then(|()| tmp.as_file().sync_all()).map_err(|e| format!("{}: {e}", path.display()))?;

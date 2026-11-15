@@ -3744,7 +3744,7 @@ impl BimApp {
         }
         // A big file is read on a thread of its own, the window drawing meanwhile, with a box and Cancel (`opening.rs`). A Co-Work
         // guest's commands go to the host, so it opens as it always did.
-        let big = std::fs::metadata(path).is_ok_and(|m| m.len() >= opening::IN_BACKGROUND);
+        let big = !cfg!(target_arch = "wasm32") && bimcraft_core::disk::len(path).is_ok_and(|len| len >= opening::IN_BACKGROUND);
         if big && !matches!(self.cowork, Some(cowork::Live::Guest(_))) {
             return self.open_in_background(path);
         }

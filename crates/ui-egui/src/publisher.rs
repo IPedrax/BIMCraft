@@ -269,7 +269,7 @@ impl BimApp {
     }
 
     pub(crate) fn import_publisher_xml(&mut self, path: &std::path::Path) -> Result<(Option<String>, usize), String> {
-        let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
+        let bytes = bimcraft_core::disk::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
         if bytes.len() > 10 * 1024 * 1024 {
             return Err("The Publisher XML file is too large".to_string());
         }

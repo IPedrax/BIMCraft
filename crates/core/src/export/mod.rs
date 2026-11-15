@@ -584,6 +584,9 @@ pub fn default_name(kind: Kind) -> &'static str {
 
 /// `bytes` written to `path` whole or not at all: to a file beside it first, then put in its place.
 pub fn write_file(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    if cfg!(target_arch = "wasm32") {
+        return crate::disk::write(path, bytes).map_err(|e| format!("{}: {e}", path.display()));
+    }
     use std::io::Write as _;
     let parent = path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
     std::fs::create_dir_all(parent).map_err(|e| format!("{}: {e}", parent.display()))?;
@@ -621,6 +624,7 @@ pub fn run(model: &Arc<Model>, registry: &Registry, job: &Job, ctx: &Ctx) -> Res
     if job.folder.as_os_str().is_empty() {
         return Err("`folder` is required: where the files go".to_string());
     }
+    #[cfg(not(target_arch = "wasm32"))]
     std::fs::create_dir_all(&job.folder).map_err(|e| format!("{}: {e}", job.folder.display()))?;
     let m = crate::link::seen(model);
     let now = web_time::SystemTime::now().duration_since(web_time::UNIX_EPOCH).map_or(0, |d| d.as_secs());

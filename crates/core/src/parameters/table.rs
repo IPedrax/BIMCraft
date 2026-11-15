@@ -57,11 +57,11 @@ pub fn stem(path: &str) -> String {
 }
 
 fn bytes_of(path: &str) -> Result<Vec<u8>, String> {
-    let size = std::fs::metadata(path).map_err(|e| format!("{path}: {e}"))?.len();
+    let size = crate::disk::len(path).map_err(|e| format!("{path}: {e}"))?;
     if size >= MAX_FILE {
         return Err(format!("{path} is {size} bytes; a parameter file holds up to {MAX_FILE}"));
     }
-    std::fs::read(path).map_err(|e| format!("{path}: {e}"))
+    crate::disk::read(path).map_err(|e| format!("{path}: {e}"))
 }
 
 /// The definitions in the file at `path`, by its extension.

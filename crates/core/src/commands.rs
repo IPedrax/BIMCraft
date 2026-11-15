@@ -4238,7 +4238,7 @@ fn write_project(s: &Session, c: &str, p: &Value, path: &Path) -> Result<bool, S
         drop(text);
         crate::bimc::write(path, &bytes).map_err(|e| bad(c, e))?;
     } else {
-        crate::autosave::atomic_write(path, &text).map_err(|e| bad(c, e))?;
+        crate::disk::replace(path, &text).map_err(|e| bad(c, e))?;
     }
     Ok(compress)
 }
