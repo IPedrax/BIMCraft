@@ -130,7 +130,7 @@ pub fn measure(rects: &[Rc], linked: &Linked, i: usize) -> (f64, (f64, f64)) {
     let (mut area, mut dims) = (0.0, None::<(f64, f64)>);
     for rect in rects.iter().filter(|r| r.0 == i).map(boxed) {
         let free_pieces = outside(rects, rect);
-        let mut loss = [0.0; 4];
+        let (mut loss, mut solid) = ([0.0; 4], [0.0; 4]);
         for (k, side) in sides(rect).iter().enumerate() {
             let free: i64 = free_pieces.iter().filter(|p| p.vertical == side.vertical && p.at == side.at).map(Edge::len).sum();
             let mut none = 0;
@@ -148,6 +148,9 @@ pub fn measure(rects: &[Rc], linked: &Linked, i: usize) -> (f64, (f64, f64)) {
                     }
                 }
             }
+            let len = side.len() as f64;
+            // The sides a room is said to have are between wall faces: a cased gap does not widen them.
+            solid[k] = (free as f64 * TE as f64 / 2.0 + (side.len() - free - none) as f64 * TI as f64 / 2.0) / len;
             for (other, e, (g0, g1)) in &cased {
                 if e.vertical == side.vertical && e.at == side.at {
                     for r in rects.iter().filter(|r| r.0 == *other) {
@@ -160,11 +163,10 @@ pub fn measure(rects: &[Rc], linked: &Linked, i: usize) -> (f64, (f64, f64)) {
                     }
                 }
             }
-            let len = side.len() as f64;
             loss[k] = (free as f64 * TE as f64 / 2.0 + (side.len() - free - none) as f64 * TI as f64 / 2.0) / len;
         }
-        let (w, h) = (rect.2 as f64 - loss[2] - loss[3], rect.3 as f64 - loss[0] - loss[1]);
-        area += w * h / 1e6;
+        area += (rect.2 as f64 - loss[2] - loss[3]) * (rect.3 as f64 - loss[0] - loss[1]) / 1e6;
+        let (w, h) = (rect.2 as f64 - solid[2] - solid[3], rect.3 as f64 - solid[0] - solid[1]);
         if dims.is_none_or(|d| w * h > d.0 * d.1) {
             dims = Some((w, h));
         }
