@@ -3899,6 +3899,17 @@ impl Model {
     /// Component `c`'s solids in its own axes, mirrored if it is: each visible form's triangles, its
     /// outline seen from above, from its bottom to its top over its base, what it's made of; none
     /// for one that doesn't build.
+    /// What component `c`'s shape in its own axes is built from: its family, type, mirroring, and of its own values those its
+    /// family evaluates, with its adaptive placement. Paint, phase, design-option and project parameters' values live in
+    /// `params` too, but no form reads them ([`crate::family::Family::values`] reads its own parameters by name), so copies
+    /// differing only in them, as an IFC's copies of one shape do, are built once.
+    pub(crate) fn shape_key(&self, c: &Component) -> crate::component_geometry::Key {
+        let params = self.families.get(&c.family).map(|family| {
+            c.params.iter().filter(|(name, _)| family.parameters.iter().any(|p| p.name == **name)).collect::<BTreeMap<_, _>>()
+        });
+        (c.family.clone(), c.type_name.clone(), c.mirrored, serde_json::to_string(&(&params, &c.adaptive)).unwrap_or_default())
+    }
+
     pub fn component_local_pieces(&self, c: &Component) -> Vec<Piece> {
         let Some(f) = self.families.get(&c.family) else { return Vec::new() };
         let Ok(pieces) = f.values(&c.type_name, &c.params).and_then(|v| f.pieces_at(&v, c.adaptive.as_ref())) else { return Vec::new() };
@@ -8631,10 +8642,7 @@ impl Model {
                 }
                 // Its shape, built once for each family, type and values the project's components have.
                 let build = || f.values(&c.type_name, &c.params).and_then(|v| f.pieces(&v).and(f.marks(&v))).map(|_| ());
-                let built = match serde_json::to_string(&c.params) {
-                    Ok(values) => shapes.entry((c.family.as_str(), c.type_name.as_str(), values)).or_insert_with(build).clone(),
-                    Err(_) => build(),
-                };
+                let built = shapes.entry(self.shape_key(c)).or_insert_with(build).clone();
                 built.map_err(|e| format!("{who}: {e}"))?;
             }
             Element::Column(col) | Element::StructuralColumn(col) | Element::Footing(col) => {
@@ -9113,7 +9121,7 @@ struct Tally<'a> {
     /// The members each view's detail groups and repeating details place.
     members_placed: BTreeMap<Guid, usize>,
     /// Whether components' shapes build, by family, type and values (as JSON).
-    shapes: HashMap<(&'a str, &'a str, String), Result<(), String>>,
+    shapes: HashMap<crate::component_geometry::Key, Result<(), String>>,
     /// The project's information element, once seen.
     project_info: Option<Id>,
 }

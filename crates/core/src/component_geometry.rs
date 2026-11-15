@@ -79,12 +79,7 @@ impl ComponentInstance {
 
 impl SharedComponents {
     pub(crate) fn key(model: &Model, c: &Component) -> Key {
-        // Paint, phase and design-option metadata live in `params` too. Only names that the family
-        // evaluates can change its local geometry; appearance is resolved per placement later.
-        let params = model.families.get(&c.family).map(|family| {
-            c.params.iter().filter(|(name, _)| family.parameters.iter().any(|p| p.name == **name)).collect::<BTreeMap<_, _>>()
-        });
-        (c.family.clone(), c.type_name.clone(), c.mirrored, serde_json::to_string(&(&params, &c.adaptive)).unwrap_or_default())
+        model.shape_key(c)
     }
 
     /// Build each local shape once. No triangles are placed or copied for the instances here.
@@ -160,11 +155,20 @@ pub(crate) struct Components<'a> {
     /// The points of each geometry's triangles that may be its farthest any way across or up ([`Components::extremes`]).
     extremes: BTreeMap<Key, Vec<[f64; 3]>>,
     envelopes: BTreeMap<Key, Option<[[f64; 3]; 2]>>,
+    /// Each piece's corners, each once, by geometry: what a tilted copy's heights and outline in plan are found from.
+    corners: BTreeMap<Key, Vec<Vec<[f64; 3]>>>,
 }
 
 impl<'a> Components<'a> {
     pub(crate) fn new(model: &'a Model) -> Self {
-        Self { model, local: BTreeMap::new(), plain: Default::default(), extremes: BTreeMap::new(), envelopes: BTreeMap::new() }
+        Self {
+            model,
+            local: BTreeMap::new(),
+            plain: Default::default(),
+            extremes: BTreeMap::new(),
+            envelopes: BTreeMap::new(),
+            corners: BTreeMap::new(),
+        }
     }
 
     /// Supported local form envelopes, placed without building any triangles.
@@ -172,7 +176,7 @@ impl<'a> Components<'a> {
         let model = self.model;
         let local = match plain.get(&(c.family.as_str(), c.type_name.as_str())).filter(|_| c.params.is_empty()) {
             Some(local) => *local,
-            None => *self.envelopes.entry(Self::key(c)).or_insert_with(|| local_envelope(model, c)),
+            None => *self.envelopes.entry(self.key(c)).or_insert_with(|| local_envelope(model, c)),
         };
         match crate::bounds::place_component(model, c, local?) {
             crate::bounds::Bounds::Box(bounds) => Some(bounds),
@@ -198,12 +202,12 @@ impl<'a> Components<'a> {
         (base + lo, base + hi)
     }
 
-    fn key(c: &Component) -> Key {
-        (c.family.clone(), c.type_name.clone(), c.mirrored, serde_json::to_string(&(&c.params, &c.adaptive)).unwrap_or_default())
+    fn key(&self, c: &Component) -> Key {
+        self.model.shape_key(c)
     }
 
     fn local(&mut self, c: &Component) -> &[Piece] {
-        self.local.entry(Self::key(c)).or_insert_with(|| self.model.component_local_pieces(c))
+        self.local.entry(self.key(c)).or_insert_with(|| self.model.component_local_pieces(c))
     }
 
     /// The points of its pieces' triangles, where it is placed, that may be the farthest any way: across (along any line
@@ -211,7 +215,7 @@ impl<'a> Components<'a> {
     /// points [`Components::pieces`] places, by the same sums, so the farthest of them any way is the farthest of every
     /// point of its pieces, to the last bit.
     pub(crate) fn extremes(&mut self, c: &Component) -> Vec<[f64; 3]> {
-        let key = Self::key(c);
+        let key = self.key(c);
         if !self.extremes.contains_key(&key) {
             let points: Vec<[f64; 3]> = self.local(c).iter().flat_map(|pc| pc.tris.iter().flatten().copied()).collect();
             let finite = |p: &[f64; 3]| p.iter().all(|v| v.is_finite());
@@ -245,10 +249,39 @@ impl<'a> Components<'a> {
         self.local(c).iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| (lo.min(p.bottom), hi.max(p.top)))
     }
 
+    /// Its pieces' corners, each once ([`Components::corners`]).
+    fn corners(&mut self, c: &Component) -> &[Vec<[f64; 3]>] {
+        let key = self.key(c);
+        if !self.corners.contains_key(&key) {
+            let corners = self
+                .local(c)
+                .iter()
+                .map(|pc| {
+                    let mut bits: Vec<[u64; 3]> = pc.tris.iter().flatten().map(|p| p.map(f64::to_bits)).collect();
+                    bits.sort_unstable();
+                    bits.dedup();
+                    let mut points: Vec<[f64; 3]> = bits.into_iter().map(|b| b.map(f64::from_bits)).collect();
+                    // Collected in place, it would keep room for every triangle's.
+                    points.shrink_to_fit();
+                    points
+                })
+                .collect();
+            self.corners.insert(key.clone(), corners);
+        }
+        self.corners.get(&key).map_or(&[], Vec::as_slice)
+    }
+
     pub(crate) fn heights(&mut self, c: &Component) -> (f64, f64) {
         let placed = self.model.component_placement(c);
         if !placed.upright {
-            return self.pieces(c).iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| (lo.min(p.bottom), hi.max(p.top)));
+            // Tilted, its lowest and highest corners where it is placed, as [`Placement::piece`] finds them: no triangles
+            // placed, no outline found.
+            return self
+                .corners(c)
+                .iter()
+                .flatten()
+                .map(|p| placed.place(*p)[2])
+                .fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), z| (lo.min(z), hi.max(z)));
         }
         let base = placed.origin[2];
         self.local(c).iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| (lo.min(base + p.bottom), hi.max(base + p.top)))
@@ -258,7 +291,19 @@ impl<'a> Components<'a> {
     pub(crate) fn outlines(&mut self, c: &Component) -> Vec<P2> {
         let placed = self.model.component_placement(c);
         if !placed.upright {
-            return self.pieces(c).into_iter().flat_map(|p| p.outline).collect();
+            // Tilted, each piece's hull in plan of its corners placed, as [`Placement::piece`] finds it: a corner of several
+            // triangles once, which the hull, dropping points it already has, comes to the same with.
+            let outlines: Vec<P2> = self
+                .corners(c)
+                .iter()
+                .flat_map(|points| {
+                    let placed = points.iter().map(|p| placed.place(*p)).filter(|p| p.iter().all(|v| v.is_finite()));
+                    crate::geom::hull(placed.map(|p| P2(p[0], p[1])).collect())
+                })
+                .collect();
+            #[cfg(test)]
+            assert_eq!(outlines, self.model.component_pieces(c).into_iter().flat_map(|p| p.outline).collect::<Vec<_>>());
+            return outlines;
         }
         let outlines: Vec<P2> =
             self.local(c).iter().flat_map(|pc| pc.outline.iter().map(|q| placed.place([q.0, q.1, 0.0])).map(|p| P2(p[0], p[1]))).collect();
@@ -361,5 +406,104 @@ mod tests {
             unique
         );
         assert!(placed > unique * 10);
+    }
+
+    #[test]
+    fn copies_differing_only_in_values_their_family_doesnt_read_share_one_shape_in_the_plan_and_the_check() {
+        let mut s = Session::new();
+        s.execute(
+            "family",
+            &json!({"name": "Probe", "parameters": [{"name": "Height", "instance": true, "value": 750}],
+            "types": {"A": {}}, "forms": [{"profile": [[0,0],[800,0],[800,400],[0,400]], "to": "Height"}]}),
+        )
+        .unwrap();
+        for k in 0..6 {
+            s.execute("component", &json!({"family": "Probe", "at": [k * 1000, 0]})).unwrap();
+        }
+        s.execute("component", &json!({"family": "Probe", "at": [0, 5000], "params": {"Height": 1200}})).unwrap();
+        let ids: Vec<_> = s
+            .model
+            .elements
+            .iter()
+            .filter(|(_, e)| matches!(e, crate::model::Element::Component(c) if c.params.is_empty()))
+            .map(|(id, _)| *id)
+            .collect();
+        s.execute("material", &json!({"name": "Test paint", "color": [90, 120, 150]})).unwrap();
+        s.execute("paint", &json!({"id": ids[0], "face": "all", "material": "Test paint"})).unwrap();
+        // And each of the six its own value of a project's parameter: a bolt's name, as an IFC's copies bring.
+        s.execute("parameter", &json!({"name": "Bolt Name", "kind": "text", "categories": ["component"]})).unwrap();
+        for (k, id) in ids.iter().enumerate() {
+            s.execute("modify", &json!({"id": id, "params": {"Bolt Name": format!("BOLTM{k}")}})).unwrap();
+        }
+        let model = &*s.model;
+        let distinct: std::collections::BTreeSet<String> = ids
+            .iter()
+            .filter_map(|id| match model.elements.get(*id) {
+                Some(crate::model::Element::Component(c)) => Some(serde_json::to_string(&c.params).unwrap()),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(distinct.len(), 6);
+        let mut cache = Components::new(model);
+        for e in model.elements.values() {
+            if let crate::model::Element::Component(c) = e {
+                assert_eq!(cache.pieces(c), model.component_pieces(c));
+            }
+        }
+        // Two shapes, as the 3D view has: the six alike, and the taller one.
+        assert_eq!(cache.local.len(), 2);
+        assert_eq!(SharedComponents::new(model, &|| false).unwrap().shapes.len(), 2);
+        // The check builds each shape once by the same key: two of them.
+        let keys: std::collections::BTreeSet<Key> = model
+            .elements
+            .values()
+            .filter_map(|e| match e {
+                crate::model::Element::Component(c) => Some(model.shape_key(c)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(keys.len(), 2);
+        model.check().unwrap();
+    }
+
+    #[test]
+    fn a_tilted_components_heights_and_outline_in_the_plan_are_those_of_its_placed_pieces() {
+        let mut s = Session::new();
+        s.execute(
+            "family",
+            &json!({"name": "Probe", "types": {"A": {}},
+            "forms": [{"profile": [[0,0],[800,0],[800,400],[0,400]], "to": 300}, {"circle": {"centre": [400, 200], "radius": 90}, "from": 300, "to": 900}]}),
+        )
+        .unwrap();
+        for k in 0..4 {
+            s.execute("component", &json!({"family": "Probe", "at": [k * 2000, 500], "angle": 30 * k, "mirrored": k == 3})).unwrap();
+        }
+        let mut model = (*s.model).clone();
+        let h = std::f64::consts::FRAC_1_SQRT_2;
+        let tilts = [
+            [[1.0, 0.0, 0.0], [0.0, -1.0, 0.0]],
+            [[0.0, 0.0, 1.0], [1.0, 0.0, 0.0]],
+            [[h, 0.0, h], [-h, 0.0, h]],
+            [[0.6, 0.8, 0.0], [0.0, 0.0, -1.0]],
+        ];
+        let ids: Vec<_> =
+            model.elements.iter().filter(|(_, e)| matches!(e, crate::model::Element::Component(_))).map(|(id, _)| *id).collect();
+        for (id, tilt) in ids.iter().zip(tilts) {
+            if let Some(crate::model::Element::Component(c)) = model.elements.get_mut(*id) {
+                c.tilt = Some(tilt);
+            }
+        }
+        model.check().unwrap();
+        let mut cache = Components::new(&model);
+        for _ in 0..2 {
+            for id in &ids {
+                let Some(crate::model::Element::Component(c)) = model.elements.get(*id) else { panic!("component") };
+                assert!(!model.component_placement(c).upright);
+                let placed = model.component_pieces(c);
+                let heights = placed.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| (lo.min(p.bottom), hi.max(p.top)));
+                assert_eq!(cache.heights(c), heights);
+                assert_eq!(cache.outlines(c), placed.iter().flat_map(|p| p.outline.clone()).collect::<Vec<_>>());
+            }
+        }
     }
 }
