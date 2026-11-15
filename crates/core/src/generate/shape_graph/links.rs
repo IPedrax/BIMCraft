@@ -310,6 +310,16 @@ pub fn connect(fam: &Family, rooms: &[Room], g: &Graph, rects: &[Rc], n_main: us
             closed.push(i);
         }
     }
+    // A required link is there whenever both rooms exist: the rooms must share a wall long enough for one of its types.
+    for l in fam.links.iter().filter(|l| l.use_ == Use::Required) {
+        for a in 0..rooms.len() {
+            for b in 0..rooms.len() {
+                if ty(a) == l.from && ty(b) == l.to && a != b && !links.contains_key(&(a.min(b), a.max(b))) {
+                    join(a, b, &l.types, rng, &mut links)?;
+                }
+            }
+        }
+    }
     let mut count: BTreeMap<usize, usize> = BTreeMap::new();
     for (a, b) in links.keys() {
         *count.entry(*a).or_default() += 1;

@@ -315,6 +315,17 @@ rows 1,100 mm, then 1,100 + box + 300 mm, ... from the nearest side and sliding 
 the attempt is given up (`Trouble::Plan`). `emit::verify` runs the script twice when any room has a tag: the first run measures the areas
 the tag lines need, the second is the script as written. A plan with no leader is byte for byte what it was.
 
+**Required links and the two ends** (Slice 6; `links::connect`, `layout::steer_target`). A `"use": "required"` link is made whenever both
+room types are in the plan: `connect` joins each pair of rooms of its types (after the parent links, before the extra ones) and fails the
+attempt when they share no wall long enough. When a required link joins the start end room (`entry_end`) and a room in the far end room's
+cluster (`spine_end`), the plan is steered, whatever the family: the start end room always stands across the end of the bar, the far end
+room stands alone on one side of the core as one cell the length of the core (`Mode::Span`; the side must be level 0 in its last piece and
+in every piece but a raised first one, which the start end room covers), every other room goes to the other side, and the cluster is fitted
+with a goal (`Cl::goal`, `Fitter::fit`): the room named must touch the cell's start-facing wall, so a child of the far end room (a passage)
+reaches the start end room. The far end cluster's fronts are scanned to 40 m, not 14. A plan that is not steered draws no number more than it
+did. The reference layout has no such rule; the spec's reference wins where they disagree, so this is an addition to ask the spec's owner
+about. The studio-office family is the one that uses it (the reception to the passage, SO-011).
+
 Every `--rooms` script has one `cad_profile {"name":"delivery"}` line, straight after `drawing_property`: its DXF and DWG keep the
 delivery drawing rules ([CAD export](cad-import.md#export)). The other generators' scripts have none and export as before.
 

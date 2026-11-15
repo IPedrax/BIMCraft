@@ -17,9 +17,13 @@ mod fit;
 mod interior_tests;
 mod layout;
 mod links;
+#[cfg(test)]
+mod office_family_tests;
 mod plan;
 #[cfg(test)]
 pub(crate) mod register_tests;
+#[cfg(test)]
+mod required_tests;
 mod tags;
 #[cfg(test)]
 mod tests;

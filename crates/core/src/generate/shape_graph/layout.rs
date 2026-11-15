@@ -4,8 +4,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 mod interior;
 
-use super::family::{Family, Shape};
-use super::fit::{Cl, Fail, Fitter, Group, LOSS_MAX, LOSS_MIN, Local, R, Range, Rnd, dn, rnd, share, up};
+use super::family::{Family, Shape, Use};
+use super::fit::{Cl, Fail, Fitter, Group, LOSS_MAX, LOSS_MIN, Local, R, Range, Rnd, Wall, dn, rnd, share, up};
 use super::links::{Linked, Rc, Verified, connect, outline, verify};
 use super::plan::{Graph, Room, clusters};
 
@@ -26,6 +26,8 @@ enum Mode {
     Free,
     /// A branch.
     Sub,
+    /// One cell the length of the core: the end room's, which a required link ties to the start end room.
+    Span,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -253,9 +255,26 @@ fn mid(fx: &Fitter, group: &Group, d: i64) -> R<f64> {
     Ok((iv.0 + iv.1) as f64 / 2.0)
 }
 
+/// The room of the far end room's cluster that a required link ties to the start end room, when there is one: the plan is then
+/// steered so that the two ends share a wall.
+fn steer_target(fam: &Family, rooms: &[Room], cap0: &Option<Cl>, cap1: &Option<Cl>) -> Option<usize> {
+    let (c0, c1) = (cap0.as_ref()?, cap1.as_ref()?);
+    for l in fam.links.iter().filter(|l| l.use_ == Use::Required) {
+        for (a, b) in [(l.from, l.to), (l.to, l.from)] {
+            if rooms[c0.head].ty == a
+                && let Some(j) = (0..rooms.len()).find(|j| rooms[*j].ty == b && c1.holds(*j))
+            {
+                return Some(j);
+            }
+        }
+    }
+    None
+}
+
 pub fn layout(fam: &Family, rooms: &[Room], g: &Graph, fx: &Fitter, shape: &Shape, opts: Options, rng: &mut Rnd) -> R<Laid> {
     let cx = Ctx { fam, rooms, g, fx };
     let (mut cap0, mut cap1, groups) = clusters(g);
+    let steer = steer_target(fam, rooms, &cap0, &cap1);
     let mut pool = Pool { pool: (0..groups.len()).collect(), groups };
     rng.shuffle(&mut pool.pool);
     let sp = &fam.types[rooms[g.spines[0]].ty];
@@ -286,7 +305,19 @@ pub fn layout(fam: &Family, rooms: &[Room], g: &Graph, fx: &Fitter, shape: &Shap
     let lv = [lv_a, lv_b];
     let fr = [fr_a, fr_b];
     let k = lv[0].len();
-    let single = lv[1].iter().copied().max().unwrap_or(0) == 0 && rng.random() < if shape.id == "narrow_bar" { 0.6 } else { 0.08 };
+    // Steered: one side holds the far end room's cell from the start end room to the end wall, the other side everything else.
+    let span_group: Option<Group> =
+        steer.and_then(|room| cap1.as_ref().map(|c| vec![(Cl { goal: Some((room, Wall::Left)), ..c.clone() }, false, false)]));
+    let span_side = if span_group.is_some() {
+        let ok: Vec<usize> =
+            (0..2).filter(|sd| lv[*sd][k - 1] == 0 && lv[*sd][..k - 1].iter().enumerate().all(|(j, l)| *l == 0 || j == 0)).collect();
+        Some(rng.pick(&ok).map_err(|_| Fail("no side for the end room"))?)
+    } else {
+        None
+    };
+    let single = span_side.is_none()
+        && lv[1].iter().copied().max().unwrap_or(0) == 0
+        && rng.random() < if shape.id == "narrow_bar" { 0.6 } else { 0.08 };
     // A side with a raised piece starts shallower, so that some rooms can still stand in the raised depth.
     let mut base = [0i64; 2];
     for side in 0..2 {
@@ -298,12 +329,31 @@ pub fn layout(fam: &Family, rooms: &[Room], g: &Graph, fx: &Fitter, shape: &Shap
             rng.pick(&good)?
         };
     }
+    if let (Some(x), Some(gr)) = (span_side, &span_group) {
+        // A depth the end room can stand in, and the start end room can still stand across the whole width.
+        let fits: Vec<i64> = DEPTHS
+            .iter()
+            .copied()
+            .filter(|d| {
+                let (b0, b1) = if x == 0 { (*d, base[1]) } else { (base[0], *d) };
+                fx.grange(gr, *d).is_some() && cap0.as_ref().is_some_and(|c| fx.drange(c, b0 + s + b1, (b1, b1 + s)).is_some())
+            })
+            .collect();
+        let a = rng.pick(&fits).map_err(|_| Fail("no depth for the end room"))?;
+        base[x] = if lv[x].iter().copied().max().unwrap_or(0) > 0 { a.min(rng.pick(&fits)?) } else { a };
+    }
     let d0 = base[0] + s + base[1];
     // An end room stands across the end of the bar when it can be that long. Otherwise, and now and then for variety, it is a
     // corner room: the first or the last cell of one row, with the spine running on to the end wall.
     let mut corner: Vec<(bool, usize, usize)> = Vec::new(); // (is the first, group, side)
     for (first, cl, i) in [(true, &cap0, 0), (false, &cap1, k - 1)] {
         let Some(cl) = cl else { continue };
+        if span_side.is_some() {
+            if first && fx.drange(cl, d0, (base[1], base[1] + s)).is_none() {
+                return Err(Fail("end room"));
+            }
+            continue;
+        }
         let gr: Group = vec![(cl.clone(), false, false)];
         let homes: Vec<usize> = (0..2).filter(|sd| base[*sd] > 0 && lv[*sd][i] == 0 && fx.grange(&gr, base[*sd]).is_some()).collect();
         let across = fx.drange(cl, d0, (base[1], base[1] + s)).is_some();
@@ -316,6 +366,11 @@ pub fn layout(fam: &Family, rooms: &[Room], g: &Graph, fx: &Fitter, shape: &Shap
             corner.push((first, pool.groups.len() - 1, side));
         }
     }
+    let span = span_side.zip(span_group).map(|(side, gr)| {
+        pool.groups.push(gr);
+        cap1 = None;
+        (side, pool.groups.len() - 1)
+    });
     if corner.iter().any(|c| c.0) {
         cap0 = None;
     }
@@ -333,7 +388,9 @@ pub fn layout(fam: &Family, rooms: &[Room], g: &Graph, fx: &Fitter, shape: &Shap
         for (i, &level) in lv[side].iter().enumerate() {
             let has_cap = (i == 0 && cap0.is_some()) || (i == k - 1 && cap1.is_some());
             let mut own = false;
-            let mode = if level > 0 {
+            let mode = if span_side == Some(side) {
+                if level > 0 { Mode::None } else { Mode::Span }
+            } else if level > 0 {
                 let turn = sp_len.1 / 2 >= base[side] + e_lo;
                 let mut opts: Vec<Mode> = Vec::new();
                 if deepest >= base[side] + e_lo {
@@ -498,7 +555,7 @@ pub fn layout(fam: &Family, rooms: &[Room], g: &Graph, fx: &Fitter, shape: &Shap
     for &gr in &pool.pool {
         pool_mid += mid(fx, &pool.groups[gr], base[0])?;
     }
-    let core_est = (pool_mid + subs as f64) / if single { 1.0 } else { 2.0 };
+    let core_est = (pool_mid + subs as f64) / if single || span.is_some() { 1.0 } else { 2.0 };
     let cap_est = [(rc0.0 + rc0.1) as f64 / 2.0, (rc1.0 + rc1.1) as f64 / 2.0];
     let w_est = cap_est[0] + core_est + cap_est[1];
     let want: Vec<Vec<f64>> = (0..2)
@@ -585,7 +642,7 @@ pub fn layout(fam: &Family, rooms: &[Room], g: &Graph, fx: &Fitter, shape: &Shap
         for (i, p) in sides[side].iter().enumerate() {
             ranges.push(match p.mode {
                 Mode::Sub => (p.len, p.len),
-                Mode::Free => (0, 1_000_000_000),
+                Mode::Free | Mode::Span => (0, 1_000_000_000),
                 _ => {
                     let (mut lo, mut hi) = (0, 0);
                     for &gr in &p.groups {
@@ -601,8 +658,13 @@ pub fn layout(fam: &Family, rooms: &[Room], g: &Graph, fx: &Fitter, shape: &Shap
     }
     let n_main = (spare + 1).max(1) as usize;
     let sum = |side: usize, hi: bool| -> i64 { rg[side].iter().map(|r| if hi { r.1 } else { r.0 }).sum() };
-    let lo = up(sum(0, false).max(sum(1, false)).max(n_main as i64 * sp_len.0) as f64);
-    let hi = dn(sum(0, true).min(sum(1, true)).min(n_main as i64 * sp_len.1) as f64);
+    let mut lo = up(sum(0, false).max(sum(1, false)).max(n_main as i64 * sp_len.0) as f64);
+    let mut hi = dn(sum(0, true).min(sum(1, true)).min(n_main as i64 * sp_len.1) as f64);
+    if let Some((x, gr)) = span {
+        let first = (0..k).find(|i| sides[x][*i].mode == Mode::Span).ok_or(Fail("no span"))?;
+        let iv = fx.grange(&pool.groups[gr], depth[x][first]).ok_or(Fail("the end room fits no depth"))?;
+        (lo, hi) = (lo.max(iv.0), hi.min(iv.1));
+    }
     if lo > hi {
         return Err(Fail("sides disagree"));
     }
@@ -611,7 +673,18 @@ pub fn layout(fam: &Family, rooms: &[Room], g: &Graph, fx: &Fitter, shape: &Shap
         let mut ls: Vec<Vec<i64>> = Vec::new();
         for side in 0..2 {
             let free: Vec<usize> = (0..k).filter(|i| sides[side][*i].mode == Mode::Free).collect();
-            let got = if free.is_empty() {
+            let got = if span.is_some_and(|(x, _)| x == side) {
+                // The span's pieces share the core as the outline's fractions say; the pieces the end room alone stands in have none.
+                let idx: Vec<usize> = (0..k).filter(|i| sides[side][*i].mode == Mode::Span).collect();
+                let whole: f64 = idx.iter().map(|i| fr[side][*i]).sum();
+                let mut v = vec![0; k];
+                let mut used = 0;
+                for (n, &i) in idx.iter().enumerate() {
+                    v[i] = if n + 1 < idx.len() { rnd(core as f64 * fr[side][i] / whole) } else { core - used };
+                    used += v[i];
+                }
+                Some(v)
+            } else if free.is_empty() {
                 share(core, &rg[side])
             } else {
                 let fixed: Vec<Range> = (0..k).map(|i| if free.contains(&i) { (0, 0) } else { rg[side][i] }).collect();
@@ -662,6 +735,7 @@ pub fn layout(fam: &Family, rooms: &[Room], g: &Graph, fx: &Fitter, shape: &Shap
             cover1,
             n_main,
             opts,
+            span,
         };
         if let Ok(laid) = built.run(rng) {
             return Ok(laid);
@@ -709,6 +783,8 @@ struct Build<'a> {
     cover1: Option<Range>,
     n_main: usize,
     opts: Options,
+    /// The side the end room's span is on, and its group.
+    span: Option<(usize, usize)>,
 }
 
 /// The rectangles laid so far, and the cells they came from.
@@ -796,6 +872,26 @@ impl Build<'_> {
                         self.cells(rng, &mut acc, &p.left, p.delta, p.p, x + p.p, y0, Orient::L)?;
                         self.cells(rng, &mut acc, &p.right, p.delta, p.q, x + p.p + s, y0, Orient::R)?;
                         branches.push((p.own, (0, x + p.p, y0, s, p.delta)));
+                    }
+                    Mode::Span => {
+                        if let Some((_, gr)) = self.span
+                            && !self.sides[side][..i].iter().any(|q| q.mode == Mode::Span)
+                        {
+                            let len: i64 = (i..self.sides[side].len())
+                                .filter(|j| self.sides[side][*j].mode == Mode::Span)
+                                .map(|j| self.ls[side][j])
+                                .sum();
+                            self.cells(
+                                rng,
+                                &mut acc,
+                                &[gr],
+                                len,
+                                self.depth[side][i],
+                                x,
+                                if side == 0 { s } else { 0 },
+                                if side == 0 { Orient::A } else { Orient::B },
+                            )?;
+                        }
                     }
                     _ => {}
                 }

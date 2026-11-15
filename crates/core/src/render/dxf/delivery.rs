@@ -60,17 +60,46 @@ pub(super) fn swings(m: &Model, owner: Id) -> Vec<(P2, Vec<P2>)> {
         .collect()
 }
 
+/// Whether `pts` is `chords` drawn, or the part of them something drawn over the swing has left: every point on the chords (to
+/// within [`NEAR`]), in order along them one way. A cut stroke may begin and end between two chords' ends.
+fn is_swing(chords: &[P2], pts: &[P2]) -> bool {
+    if chords.len() == pts.len() && chords.iter().zip(pts).all(|(c, p)| c.dist(*p) <= NEAR) {
+        return true;
+    }
+    // Where a point stands along the chords: the index of the chord it is nearest, and how far along that chord.
+    let along = |p: P2| -> Option<f64> {
+        let mut best: Option<(f64, f64)> = None;
+        for (i, w) in chords.windows(2).enumerate() {
+            let d = crate::geom::dist_to_segment(p, w[0], w[1]);
+            let (u, v) = (p - w[0], w[1] - w[0]);
+            let len2 = v.0 * v.0 + v.1 * v.1;
+            let t = if len2 > 0.0 { ((u.0 * v.0 + u.1 * v.1) / len2).clamp(0.0, 1.0) } else { 0.0 };
+            if best.is_none_or(|b| d < b.0) {
+                best = Some((d, i as f64 + t));
+            }
+        }
+        best.filter(|b| b.0 <= NEAR).map(|b| b.1)
+    };
+    let at: Option<Vec<f64>> = pts.iter().map(|p| along(*p)).collect();
+    let Some(at) = at else { return false };
+    let eps = 1e-3;
+    pts.len() >= 2 && (at.windows(2).all(|w| w[1] >= w[0] - eps) || at.windows(2).all(|w| w[1] <= w[0] + eps))
+}
+
 /// `ink` as the arc it is the chords of, if one of `arcs` (moved by `shift` like the drawing) is: counter-clockwise from the
-/// angle of its first end to its last, or the other way round for one drawn clockwise (a mirrored door).
+/// angle of its first end to its last, or the other way round for one drawn clockwise (a mirrored door). A swing that something
+/// has cut into pieces is the whole arc in each piece: the pieces make one arc ([`super::blocks`] keeps it once).
 pub(super) fn as_arc(ink: &Ink, arcs: &[(P2, Vec<P2>)], shift: P2) -> Option<Ink> {
     let Shape::Line { pts, closed: false, weight } = &ink.shape else { return None };
     arcs.iter().find_map(|(centre, chords)| {
         let moved = |p: &P2| P2(p.0 + shift.0, p.1 + shift.1);
-        if chords.len() != pts.len() || !chords.iter().zip(pts).all(|(c, p)| moved(c).dist(*p) <= NEAR) {
+        let chords: Vec<P2> = chords.iter().map(moved).collect();
+        if !is_swing(&chords, pts) {
             return None;
         }
         let c = moved(centre);
-        let (a, b, z) = (pts[0] - c, pts[1] - c, pts[pts.len() - 1] - c);
+        // The whole swing's ends, not the stroke's: whatever cut a piece off (a room's lettering over it) does not shorten the arc.
+        let (a, b, z) = (chords[0] - c, chords[1] - c, chords[chords.len() - 1] - c);
         let radius = a.0.hypot(a.1);
         if !(radius.is_finite() && radius > 0.0) {
             return None;
@@ -85,4 +114,54 @@ pub(super) fn as_arc(ink: &Ink, arcs: &[(P2, Vec<P2>)], shift: P2) -> Option<Ink
             shape: Shape::Arc { centre: c, radius, from, to, weight: *weight },
         })
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A quarter circle of 25 chords about the origin, radius 800, from 90 degrees round to 180.
+    fn swing() -> (P2, Vec<P2>) {
+        let pts = (0..=24).map(|i| {
+            let a = (90.0 + 90.0 * i as f64 / 24.0f64).to_radians();
+            P2(800.0 * a.cos(), 800.0 * a.sin())
+        });
+        (P2(0.0, 0.0), pts.collect())
+    }
+
+    fn ink(pts: Vec<P2>) -> Ink {
+        Ink { layer: "A-DOOR".into(), ltype: None, color: Rgb(0, 0, 0), shape: Shape::Line { pts, closed: false, weight: 18 } }
+    }
+
+    #[test]
+    fn a_whole_swing_is_an_arc() {
+        let (c, chords) = swing();
+        let got = as_arc(&ink(chords.clone()), &[(c, chords)], P2(0.0, 0.0)).expect("an arc");
+        let Shape::Arc { from, to, radius, .. } = got.shape else { panic!("not an arc") };
+        assert!((from - 90.0).abs() < 0.1 && (to - 180.0).abs() < 0.1 && (radius - 800.0).abs() < 0.1, "{from} {to} {radius}");
+    }
+
+    /// A swing something drawn over it has cut into pieces (a room's lettering) is the whole arc in each piece, so a block keeps one.
+    #[test]
+    fn a_swing_cut_into_pieces_is_one_whole_arc() {
+        let (c, chords) = swing();
+        let mid = |i: usize| P2((chords[i].0 + chords[i + 1].0) / 2.0, (chords[i].1 + chords[i + 1].1) / 2.0);
+        // The first piece ends in the middle of the fourth chord; the second begins in the middle of the tenth.
+        let mut first: Vec<P2> = chords[..=3].to_vec();
+        first.push(mid(3));
+        let mut second = vec![mid(9)];
+        second.extend(chords[10..].iter().copied());
+        for piece in [first, second] {
+            let got = as_arc(&ink(piece), &[(c, chords.clone())], P2(0.0, 0.0)).expect("an arc");
+            let Shape::Arc { from, to, radius, .. } = got.shape else { panic!("not an arc") };
+            assert!((from - 90.0).abs() < 0.1 && (to - 180.0).abs() < 0.1 && (radius - 800.0).abs() < 0.1, "{from} {to} {radius}");
+        }
+    }
+
+    #[test]
+    fn a_stroke_off_the_circle_is_not_an_arc() {
+        let (c, chords) = swing();
+        let line = vec![P2(0.0, 0.0), P2(-500.0, 500.0), P2(-800.0, 0.0)];
+        assert!(as_arc(&ink(line), &[(c, chords)], P2(0.0, 0.0)).is_none());
+    }
 }

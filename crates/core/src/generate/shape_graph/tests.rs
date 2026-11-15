@@ -241,7 +241,7 @@ fn a_call_is_refused_with_its_code() {
     assert_eq!(code(build(&request(1, 2, 0, None), false)), Some("unsatisfiable_rooms"));
     assert_eq!(code(build(&request(1, 12, 0, Some("blob")), false)), Some("unknown_shape"));
     let mut other = request(1, 12, 0, None);
-    other.archetype = "office".into();
+    other.archetype = "no-such-family".into();
     assert_eq!(code(build(&other, false)), Some("unknown_archetype"));
     let e = build(&request(1, 2, 0, None), false).err().expect("refused");
     assert!(e.message.contains('5') && e.message.contains("30"), "{}", e.message);

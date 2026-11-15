@@ -199,7 +199,13 @@ impl Blocks {
                 }
                 false => ink,
             };
-            drawn.entry(owner).or_default().push(frame.ink(&ink));
+            let ink = frame.ink(&ink);
+            let held = drawn.entry(owner).or_default();
+            // The pieces of one swing, cut apart, are each the whole arc: keep it once.
+            if matches!(ink.shape, Shape::Arc { .. }) && held.iter().any(|h| same(std::slice::from_ref(h), std::slice::from_ref(&ink))) {
+                continue;
+            }
+            held.push(ink);
         }
         let mut variants: BTreeMap<(String, String), Vec<usize>> = BTreeMap::new();
         let mut inserts = 0;
