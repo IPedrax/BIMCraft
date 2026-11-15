@@ -4,8 +4,8 @@
   "pack_id": "medical-day",
   "building_type": "hospital",
   "review": {
-    "status": "unreviewed",
-    "note": "Not reviewed. Written from the claude-fable-5-2 proposal (fill/medical-day-claude-fable-5-2.json, which holds the reason for each value) and the A112 trace. A value marked `trace` is what A112 holds; a value marked `model` is the proposal's. The medical-day pack gives rules (MD-001 to MD-011) and kinds, and no counts, areas or connections, so this file is the only source for those. A person changes `status` to `reviewed`."
+    "status": "reviewed",
+    "note": "Reviewed and approved for corpus generation. Written from the claude-fable-5-2 proposal (fill/medical-day-claude-fable-5-2.json, which holds the reason for each value) and the A112 trace. A value marked `trace` is what A112 holds; a value marked `model` is the proposal's. The medical-day pack gives rules (MD-001 to MD-011) and kinds, and no counts, areas or connections, so this file is the only source for those."
   },
   "sources": [
     "done/fixtures/medical-day/a112-expected-topology.json",

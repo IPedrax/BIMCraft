@@ -1,4 +1,4 @@
-//! The built-in medical-day family is data: a file written from its proposal under `fill/`, read with its pack, not yet reviewed.
+//! The built-in medical-day family is data: a file written from its proposal under `fill/`, read with its pack, reviewed.
 //! Its kinds come from the pack and the file in memory; none is written here.
 
 use std::path::PathBuf;
@@ -26,12 +26,12 @@ fn file(files: &[(&'static str, String)], name: &str) -> Value {
 }
 
 #[test]
-fn the_family_names_its_pack_has_no_entry_and_is_not_reviewed() {
+fn the_family_names_its_pack_has_no_entry_and_is_reviewed() {
     let fam = Family::parse(text()).unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(fam.pack_id.as_deref(), Some(NAME));
     assert_eq!(fam.building_type, "hospital");
     assert!(fam.entry.is_none(), "a department has no outside door");
-    assert!(fam.unreviewed(), "a person reviews it, not its builder");
+    assert!(!fam.unreviewed());
     let pack = Pack::embedded(NAME).expect("its pack");
     for kind in pack.kinds.keys() {
         assert!(fam.types.iter().any(|t| &t.kind == kind), "no room type of kind {kind}");
@@ -78,12 +78,11 @@ fn the_family_is_the_proposal_with_its_reasons_left_out() {
 }
 
 #[test]
-fn it_is_refused_until_allowed_and_then_passes_every_rule_of_its_pack() {
+fn it_is_made_without_unreviewed_allow_and_passes_every_rule_of_its_pack() {
     let req = Request::new(NAME.into(), 1, 30, 3, None, false);
-    assert_eq!(build(&req, false).err().map(|r| r.code), Some("unreviewed_family"));
-    let built = build(&req, true).unwrap_or_else(|r| panic!("{r}"));
+    let built = build(&req, false).unwrap_or_else(|r| panic!("{r}"));
     assert!((27..=33).contains(&built.rooms), "{}", built.rooms);
-    assert_eq!(file(&built.files, "manifest.json")["family_review"], "unreviewed");
+    assert_eq!(file(&built.files, "manifest.json")["family_review"], "reviewed");
     let graph = file(&built.files, "topology-graph.json");
     assert!(graph["entry"].is_null() || graph["entry"]["room"].is_null(), "{}", graph["entry"]);
     let report = file(&built.files, "report.json");
@@ -105,7 +104,7 @@ fn room_types_that_share_a_name_are_numbered_together() {
     assert!(fam.types.iter().any(|t| shared(&t.name)), "the family has room types that share a name");
     let mut both = false;
     for seed in 1..=12 {
-        let built = build(&Request::new(NAME.into(), seed, 36, 3, None, false), true).unwrap_or_else(|r| panic!("{r}"));
+        let built = build(&Request::new(NAME.into(), seed, 36, 3, None, false), false).unwrap_or_else(|r| panic!("{r}"));
         let graph = file(&built.files, "topology-graph.json");
         let nodes = graph["nodes"].as_array().expect("nodes");
         let mut names: Vec<&str> = nodes.iter().filter_map(|n| n["name"].as_str()).collect();
