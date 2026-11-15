@@ -8242,7 +8242,7 @@ msgstr "Nový typ"
 msgid "New {}"
 msgstr "Nový {}"
 
-#: crates/core/src/schedule.rs:1380
+#: crates/core/src/schedule.rs:1381
 #: crates/ui-egui/src/properties.rs:895
 msgid "No"
 msgstr "Ne"
@@ -14909,7 +14909,7 @@ msgstr ""
 msgid "Y axis"
 msgstr ""
 
-#: crates/core/src/schedule.rs:1380
+#: crates/core/src/schedule.rs:1381
 #: crates/ui-egui/src/properties.rs:894
 msgid "Yes"
 msgstr "Ano"
@@ -15661,7 +15661,7 @@ msgstr ""
 msgid "{} (primary)"
 msgstr "{} (hlavní)"
 
-#: crates/core/src/schedule.rs:1370
+#: crates/core/src/schedule.rs:1371
 msgid "{} ({})"
 msgstr "{} ({})"
 
