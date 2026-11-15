@@ -443,7 +443,7 @@ fn a_picked_boundary_line_shows_its_wall_face_and_flips_and_undoes() {
     key(&mut h, Key::Escape);
     assert_eq!(h.state().tool, Tool::Modify);
     click(&mut h, P2(4000.0, 50.0));
-    assert!(h.query_by_role_and_label(Role::Checkbox, "Extend into wall (to core)").is_some());
+    assert!(h.query_by_role_and_label(Role::CheckBox, "Extend into wall (to core)").is_some());
     // The checkbox in Properties puts it on the finish, and Ctrl+Z takes that back as one step.
     {
         let checkbox = h.get_all_by_label("Extend into wall (to core)").last().expect("the line's own checkbox");
