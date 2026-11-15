@@ -535,6 +535,20 @@ fn a_floor_can_follow_a_face_of_the_walls() {
 }
 
 #[test]
+fn sketch_can_read_one_walls_face_line() {
+    let mut s = Session::new();
+    let ids = core_house(&mut s);
+    let r = run(&mut s, "sketch", json!({"wall": ids[0], "face": "exterior-core", "offset": 25}));
+    assert_eq!((r["wall"].clone(), r["face"].clone(), r["offset"].clone()), (json!(ids[0]), json!("exterior-core"), json!(25.0)));
+    assert!(r["line"]["start"].is_array() && r["line"]["end"].is_array(), "{r}");
+    // A core face of a wall with no structural layer falls back to its finish face.
+    let mut s = Session::new();
+    let ids = house(&mut s);
+    let r = run(&mut s, "sketch", json!({"wall": ids[0], "face": "interior-core"}));
+    assert_eq!(r["face"], json!("interior-finish"), "{r}");
+}
+
+#[test]
 fn a_core_outline_says_which_wall_has_no_core_and_an_offset_needs_an_outline() {
     let mut s = Session::new();
     house(&mut s);

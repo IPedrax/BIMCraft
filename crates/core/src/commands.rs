@@ -430,15 +430,18 @@ other_files(
     other(
         "sketch",
         "Sketch",
-        "{lines: [[[x,y],[x,y]],…]} solves a sketch without making anything, as Finish Edit Mode does: lines in any order, \
-         either way round, joined end to end (within 1 mm) into closed loops; a loop inside no other (or inside a hole) an \
-         outline, counter-clockwise, one inside an outline a hole in it, clockwise. Gives each region's `outline`, `holes` and \
-         `area_m2`, or every problem with the lines it's about (numbered from 0): ends no other line meets, lines that \
-         intersect or overlap (a line too: a polyline round a bow tie crosses itself), three or more lines at a point. \
-         A sketch is solved as the straight pieces its lines are drawn with (an arc, a circle or a curve is cut into chords, \
-         a circle into up to 8,193): past 200,000 of them, or when they lie so close together that telling which cross \
-         takes more than six million steps, it is refused at once. `sketch` on floor, ceiling, roof and shaft, and \
-         edit_boundary, take the same lines for one outline and its holes",
+        "{lines: [[[x,y],[x,y]],…] | wall: id|guid, face: \"centre\" | \"exterior-finish\" | \"interior-finish\" | \
+         \"exterior-core\" | \"interior-core\", offset?: mm} solves a sketch without making anything, as Finish Edit Mode \
+         does: lines in any order, either way round, joined end to end (within 1 mm) into closed loops; a loop inside no \
+         other (or inside a hole) an outline, counter-clockwise, one inside an outline a hole in it, clockwise. Gives each \
+         region's `outline`, `holes` and `area_m2`, or every problem with the lines it's about (numbered from 0): ends no \
+         other line meets, lines that intersect or overlap (a line too: a polyline round a bow tie crosses itself), three \
+         or more lines at a point. With `wall`, gives that wall's line on `face`, `offset` mm from it, instead: the line \
+         Pick Walls would place; a core face of a wall with no core falls back to its finish face. A sketch is solved as \
+         the straight pieces its lines are drawn with (an arc, a circle or a curve is cut into chords, a circle into up to \
+         8,193): past 200,000 of them, or when they lie so close together that telling which cross takes more than six \
+         million steps, it is refused at once. `sketch` on floor, ceiling, roof and shaft, and edit_boundary, take the same \
+         lines for one outline and its holes",
         sketch_lines,
     ),
     edit(
@@ -12559,8 +12562,28 @@ fn rings(c: &str, p: &Value, key: &str) -> Result<Option<Vec<Vec<P2>>>, String> 
     Ok(Some(given.into_iter().map(ring).collect()))
 }
 
-fn sketch_lines(_: &mut Session, p: &Value) -> R {
+fn sketch_lines(s: &mut Session, p: &Value) -> R {
     let c = "sketch";
+    if let Some(wall) = p.get("wall").filter(|v| !v.is_null()) {
+        let m = &s.model;
+        let id = element_id(c, m, wall)?;
+        let w = m.wall(id).ok_or_else(|| bad(c, format!("element {id} is not a wall")))?;
+        let name = string(c, p, "face")?.ok_or_else(|| bad(c, "`face` is required with `wall`"))?;
+        let mut face = WallFace::parse(&name).ok_or_else(|| {
+            let names: Vec<&str> = WallFace::ALL.iter().map(|f| f.named()).collect();
+            bad(c, format!("`face` is one of {}, not `{name}`", names.join(", ")))
+        })?;
+        let offset = num(c, p, "offset")?.unwrap_or(0.0);
+        if !offset.is_finite() {
+            return Err(bad(c, "`offset` must be a finite length"));
+        }
+        if face.is_core() && walls::core_faces(m, w).is_none() {
+            face = face.with_core(false);
+        }
+        let line = walls::face_line(m, id, face, offset).ok_or_else(|| bad(c, format!("wall {id} has no line on {}", face.named())))?;
+        let line = serde_json::to_value(crate::curves::Fields::of(&line)).unwrap_or_default();
+        return Ok(json!({"wall": id, "face": face.named(), "offset": offset, "line": line}));
+    }
     let lines = sketch_param(c, p, "lines", &[])?.ok_or_else(|| bad(c, "`lines` [[[x,y],[x,y]],…] is required"))?;
     let profile = sketch::solve(&lines)
         .map_err(|e| bad(c, format!("the lines don't make closed loops: {}", sketch::say(&e, &sketch::namer(&lines)))))?;

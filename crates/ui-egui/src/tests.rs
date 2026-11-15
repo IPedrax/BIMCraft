@@ -3681,6 +3681,7 @@ fn floors_go_under_the_walls_and_a_slope_arrow_slopes_them() {
     let mut h = app(BOX);
     tool(&mut h, "Floor");
     press(&mut h, "Walls' Outline");
+    choose(&mut h, "Location Line:", "Wall Centre Line");
     press(&mut h, "DRAW");
     press(&mut h, "Finish Edit Mode");
     let floor = ids(&h, "floor");
@@ -3875,6 +3876,7 @@ fn the_floor_tool_leaves_a_courtyard_open_inside_a_loop_of_walls_standing_free()
 wall {"points": [[6000, 6000], [10000, 6000], [10000, 10000], [6000, 10000]], "closed": true}"#);
     tool(&mut h, "Floor");
     press(&mut h, "Walls' Outline");
+    choose(&mut h, "Location Line:", "Wall Centre Line");
     press(&mut h, "DRAW");
     press(&mut h, "Finish Edit Mode");
     let floor = ids(&h, "floor");

@@ -303,6 +303,7 @@ impl Sketch {
         for i in lost {
             self.picks.remove(&i);
         }
+        self.join_picked_corners(m);
         gone
     }
 
@@ -327,7 +328,61 @@ impl Sketch {
         if let Some(p) = self.picks.get_mut(&i) {
             p.face = face;
         }
+        self.join_picked_corners(m);
         true
+    }
+
+    /// Picked lines of the same Offset are run on to their neighbours' lines at the corners they share, as the Draw
+    /// Line chain does: a picked contour closes instead of leaving gaps or crossing at its ends.
+    pub(crate) fn join_picked_corners(&mut self, m: &Model) {
+        let picks: Vec<(usize, Pick)> = self.picks.iter().map(|(&i, &p)| (i, p)).collect();
+        for a in 0..picks.len() {
+            for b in a + 1..picks.len() {
+                let (ia, pa) = picks[a];
+                let (ib, pb) = picks[b];
+                if (pa.offset - pb.offset).abs() > TOL {
+                    continue;
+                }
+                let Some(la) = self.lines.get(ia).cloned() else { continue };
+                let Some(lb) = self.lines.get(ib).cloned() else { continue };
+                if la.curve.kind() != "line" || lb.curve.kind() != "line" {
+                    continue;
+                }
+                let thick = [pa.wall, pb.wall]
+                    .into_iter()
+                    .filter_map(|id| m.wall(id))
+                    .map(|w| {
+                        let (ext, int) = walls::faces(m, w);
+                        (ext - int).abs()
+                    })
+                    .fold(TOL, f64::max);
+                let reach = thick + 2.0 * pa.offset.abs() + TOL;
+                let (as_, ae, bs, be) = (la.curve.start(), la.curve.end(), lb.curve.start(), lb.curve.end());
+                let mut best: Option<(f64, bool, bool)> = None;
+                for (a_start, b_start) in [(true, true), (true, false), (false, true), (false, false)] {
+                    let ap = if a_start { as_ } else { ae };
+                    let bp = if b_start { bs } else { be };
+                    let d = ap.dist(bp);
+                    if d <= reach && best.is_none_or(|(best, _, _)| d < best) {
+                        best = Some((d, a_start, b_start));
+                    }
+                }
+                let Some((_, a_start, b_start)) = best else { continue };
+                let (ap, bp) = (if a_start { as_ } else { ae }, if b_start { bs } else { be });
+                let Some(x) = geom::line_intersection(as_, ae, bs, be) else { continue };
+                if x.dist(ap) > reach || x.dist(bp) > reach {
+                    continue;
+                }
+                let a_curve = if a_start { bimcraft_core::curves::Curve::line(x, ae) } else { bimcraft_core::curves::Curve::line(as_, x) };
+                let b_curve = if b_start { bimcraft_core::curves::Curve::line(x, be) } else { bimcraft_core::curves::Curve::line(bs, x) };
+                if let Some(line) = self.lines.get_mut(ia) {
+                    line.curve = a_curve;
+                }
+                if let Some(line) = self.lines.get_mut(ib) {
+                    line.curve = b_curve;
+                }
+            }
+        }
     }
 
     /// The lines at `drop` taken out, the picks after them moved to their new places.
@@ -961,6 +1016,7 @@ impl BimApp {
                 if let Some(curve) = walls::face_line(m, id, face, offset) {
                     if let Some(i) = sk.add(SketchLine::from(curve)) {
                         sk.picks.insert(i, Pick { wall: id, face, offset });
+                        sk.join_picked_corners(m);
                     }
                     self.status = if no_core {
                         Status { text: msg!("This wall has no core: its faces are its finish faces.").into(), error: false }
@@ -1305,12 +1361,18 @@ impl BimApp {
         };
         let only = (!self.outline_walls.is_empty()).then(|| self.outline_walls.clone());
         let mut made = bimcraft_core::floor_outline_faces_of(&self.session.model, level, face, offset, only.as_ref(), self.outline_flip);
-        // A core face needs every wall to have a core. Walls without a structural layer keep the old Walls' Outline:
-        // its centre lines, rather than refusing the whole contour.
+        // A core face needs every wall to have a core. Walls without a structural layer follow their finish face, as
+        // individual Pick Walls lines do; Wall Centre Line stays for the user who asks for it.
         let mut fell_back = false;
         if made.is_err() && face.is_core() {
-            made =
-                bimcraft_core::floor_outline_faces_of(&self.session.model, level, Face::Centre, offset, only.as_ref(), self.outline_flip);
+            made = bimcraft_core::floor_outline_faces_of(
+                &self.session.model,
+                level,
+                face.with_core(false),
+                offset,
+                only.as_ref(),
+                self.outline_flip,
+            );
             fell_back = made.is_ok();
         }
         let (outline, courtyards) = match made {
@@ -1321,8 +1383,7 @@ impl BimApp {
             }
         };
         if fell_back {
-            self.status =
-                Status { text: msg!("A wall has no core: the outline follows the level's wall centre lines.").into(), error: false };
+            self.status = Status { text: msg!("A wall has no core: the outline follows its finish face.").into(), error: false };
         }
         let mut lines = Vec::new();
         for ring in std::iter::once(&outline).chain(&courtyards) {

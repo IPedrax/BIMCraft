@@ -435,6 +435,29 @@ fn walls_outline_picks_walls_with_the_arrow_and_esc_clears_them() {
 }
 
 #[test]
+fn picked_walls_with_offset_close_their_corners() {
+    let mut h = app(&core_box());
+    press(&mut h, "Floor");
+    press(&mut h, "Pick Walls");
+    type_into(&mut h, "Offset:", "25");
+    for p in [P2(4000.0, 0.0), P2(8000.0, 3000.0), P2(4000.0, 6000.0), P2(0.0, 3000.0)] {
+        click(&mut h, p);
+    }
+    let ls = lines(&h);
+    assert_eq!(ls.len(), 4, "{ls:?}");
+    for l in &ls {
+        for q in [l.start(), l.end()] {
+            assert!(
+                ls.iter().any(|other| other != l && (other.start().dist(q) < 1e-6 || other.end().dist(q) < 1e-6)),
+                "every end meets another line: {ls:?}"
+            );
+        }
+    }
+    press(&mut h, "Finish Edit Mode");
+    assert_eq!(ids(&h, "floor").len(), 1, "{}", h.state().status.text);
+}
+
+#[test]
 fn a_picked_boundary_line_shows_its_wall_face_and_flips_and_undoes() {
     let mut h = app(&core_box());
     press(&mut h, "Floor");
