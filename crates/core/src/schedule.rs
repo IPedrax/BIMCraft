@@ -1196,7 +1196,8 @@ fn sources<'a>(m: &'a Model, sc: &Schedule, cat: &str) -> Vec<(Id, &'a Element, 
 /// of two plies `2 x 38 x 184`, in mm whatever the project's units), its cut length to the millimetre and the stock length it
 /// is cut from (0 where it is longer than all of them).
 fn framing_members(m: &Model) -> Vec<(Id, &Element, Value)> {
-    let number = |x: f64| if x.fract() == 0.0 { format!("{x:.0}") } else { format!("{x}") };
+    // To the millimetre, as the cut list has them: a header cut to fit is 153.4567 deep.
+    let number = |x: f64| format!("{:.0}", x.round());
     let mut out = Vec::new();
     for (&id, e) in &m.elements {
         let Element::Wall(w) = e else { continue };
@@ -1216,7 +1217,7 @@ fn framing_members(m: &Model) -> Vec<(Id, &Element, Value)> {
                 e,
                 serde_json::json!({
                     "id": id, "host": f.host, "host_type": w.type_name, "framing_type": f.type_name, "role": member.role.name(),
-                    "section": section, "length": length, "stock": crate::framing::stock(length, &f.stock), "level": w.level,
+                    "section": section, "length": length, "stock": crate::framing::stock(member.length, &f.stock), "level": w.level,
                     "key": member.key,
                 }),
             ));

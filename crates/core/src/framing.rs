@@ -8,9 +8,10 @@
 //! location line from its start, `across` to its left (as `walls::boundaries` measures) and `z` up, absolute. The framed
 //! length is the structure layer's along the wall: at a free end, square; at a square corner of two walls with a structure
 //! layer each, the wall of the lower GUID (the one whose compound core runs through, `walls/compound.rs`) runs to the other's
-//! far structure face and the other stops at its near one, so the two never overlap or leave a gap; at any other join, where
-//! the layer's shorter edge ends. A key names each member for as long as what it belongs to stays: grid studs by their
-//! station from the layout's origin, an opening's members by its GUID.
+//! far structure face and the other stops at its near one, so the two never overlap or leave a gap; butting into another's
+//! side, at that one's near structure face; at any other join, where the layer's shorter edge ends. Where two framed walls
+//! with double top plates meet square at one height, the upper plates lap (`laps`). A key names each member for as long as
+//! what it belongs to stays: grid studs by their station from the layout's origin, an opening's members by its GUID.
 
 use std::collections::BTreeMap;
 
@@ -289,19 +290,28 @@ impl Framing {
 
     /// The members alike by role, section, plies and length to the millimetre, each with the stock length it is cut from.
     pub fn cut_list(&self) -> Vec<Cut> {
-        let mut rows: BTreeMap<(Role, [i64; 2], u32, i64), usize> = BTreeMap::new();
+        // Each row's count and its longest member as cut, which its stock length is chosen by (2440.3 isn't cut from 2440).
+        let mut rows: BTreeMap<CutKey, (usize, f64)> = BTreeMap::new();
         for m in &self.members {
             let mm = |x: f64| x.round() as i64;
-            *rows.entry((m.role, [mm(m.section[0]), mm(m.section[1])], m.plies, mm(m.length))).or_default() += 1;
+            let row = rows.entry((m.role, [mm(m.section[0]), mm(m.section[1])], m.plies, mm(m.length))).or_insert((0, 0.0));
+            *row = (row.0 + 1, row.1.max(m.length));
         }
         rows.into_iter()
-            .map(|((role, section, plies, length), count)| {
-                let length = length as f64;
-                Cut { role, section: section.map(|x| x as f64), plies, length, stock: stock(length, &self.stock), count }
+            .map(|((role, section, plies, length), (count, longest))| Cut {
+                role,
+                section: section.map(|x| x as f64),
+                plies,
+                length: length as f64,
+                stock: stock(longest, &self.stock),
+                count,
             })
             .collect()
     }
 }
+
+/// A cut list row's members alike: role, section and length to the millimetre, and plies.
+type CutKey = (Role, [i64; 2], u32, i64);
 
 /// The shortest of `stock` a member `length` long is cut from; none when it is longer than all of them (spliced).
 pub fn stock(length: f64, stock: &[f64]) -> Option<f64> {
@@ -436,6 +446,54 @@ impl Profile {
     }
 }
 
+/// Of two profiles over one run, the lower (with `low`) or the higher at every point: pieces split where the two cross.
+fn envelope(p: &[[f64; 4]], q: &[[f64; 4]], low: bool) -> Vec<[f64; 4]> {
+    // A profile's height at `s`, on its piece that holds `inside` (a point of the span asked about, not its end).
+    let z = |pr: &[[f64; 4]], inside: f64, s: f64| {
+        let Some(piece) = pr.iter().find(|x| inside <= x[1]).or(pr.last()) else { return f64::NAN };
+        piece[2] + (piece[3] - piece[2]) * (s - piece[0]) / (piece[1] - piece[0]).max(EPS)
+    };
+    let mut cuts: Vec<f64> = p.iter().chain(q).flat_map(|x| [x[0], x[1]]).collect();
+    cuts.sort_by(f64::total_cmp);
+    cuts.dedup_by(|x, y| (*x - *y).abs() < EPS);
+    let mut out: Vec<[f64; 4]> = Vec::new();
+    let mut push = |a: f64, b: f64| {
+        let inside = (a + b) / 2.0;
+        let (za, zb) = (z(p, inside, a), z(p, inside, b));
+        let (wa, wb) = (z(q, inside, a), z(q, inside, b));
+        let first = if low { (za + zb) <= (wa + wb) } else { (za + zb) >= (wa + wb) };
+        let piece = if first { [a, b, za, zb] } else { [a, b, wa, wb] };
+        if piece.iter().any(|x| !x.is_finite()) {
+            return;
+        }
+        match out.last_mut() {
+            Some(last)
+                if (last[3] - piece[2]).abs() < EPS
+                    && ((last[3] - last[2]) / (last[1] - last[0]) - (piece[3] - piece[2]) / (b - a)).abs() < 1e-9 =>
+            {
+                [last[1], last[3]] = [b, piece[3]];
+            }
+            _ => out.push(piece),
+        }
+    };
+    for pair in cuts.windows(2) {
+        let &[a, b] = pair else { continue };
+        if b - a <= EPS {
+            continue;
+        }
+        let inside = (a + b) / 2.0;
+        let (da, db) = (z(p, inside, a) - z(q, inside, a), z(p, inside, b) - z(q, inside, b));
+        if da * db < 0.0 {
+            let c = a + (b - a) * da / (da - db);
+            push(a, c);
+            push(c, b);
+        } else {
+            push(a, b);
+        }
+    }
+    out
+}
+
 /// An opening's rough opening, in the wall's frame.
 struct Rough {
     guid: Guid,
@@ -447,31 +505,78 @@ struct Rough {
     top: f64,
 }
 
-/// Where one of this wall's ends is framed to, and whether it runs through an L corner there.
-fn end(m: &Model, id: Id, w: &Wall, k: usize, mid: f64, at_end: bool) -> (f64, bool) {
+/// Where one of a wall's ends is framed to.
+struct End {
+    /// Where its members end.
+    at: f64,
+    /// Whether it runs through an L corner there.
+    through: bool,
+    /// Running through an L corner: where the other wall's near structure face crosses it, the inside corner.
+    inside: Option<f64>,
+    /// Where its upper top plate ends: where it laps another's (`laps`), past `at` to the other's far structure face when it
+    /// butts, short of it at the other's near one when it runs through; else `at`.
+    lap: f64,
+}
+
+/// Whether framed walls `w` and `o` lap their upper top plates where they meet, as IRC R602.3.2 has a double top plate do: both
+/// framed with two top plates or more of one thickness, neither attached to a roof or floor, their tops at one height.
+fn laps(m: &Model, w: &Wall, o: &Wall) -> bool {
+    let plates = |x: &Wall| x.framing.as_ref().and_then(|n| m.types.framing.get(n)).filter(|t| t.top_plates >= 2).map(|t| t.thickness);
+    let same = matches!((plates(w), plates(o)), (Some(p), Some(q)) if (p - q).abs() < EPS);
+    same && w.attach_top.is_none() && o.attach_top.is_none() && (m.own_top(w) - m.own_top(o)).abs() < EPS
+}
+
+/// Where one of this wall's ends is framed to: at a square L corner of two walls with a structure layer each, the far or the
+/// near structure face of the other; where it butts into another's side, that one's near structure face; elsewhere where its
+/// own structure layer's shorter edge ends.
+fn end(m: &Model, id: Id, w: &Wall, k: usize, across: [f64; 2], at_end: bool) -> End {
     let axis = Axis::of(w);
     let u = axis.tangent(0.0);
     let along = |q: P2| (q - w.start).dot(u);
+    let mid = (across[0] + across[1]) / 2.0;
+    // Where the lines `offs` to the left of wall `o` cross this one's at `off`, along it.
+    let crossings = |o: &Wall, offs: &[f64; 2], off: f64| -> Vec<f64> {
+        let uo = (o.end - o.start).unit();
+        let p = axis.at(0.0, off);
+        offs.iter()
+            .filter_map(|o_off| {
+                let q = o.start + uo.perp() * *o_off;
+                geom::line_intersection(p, p + u, q, q + uo).map(along)
+            })
+            .collect()
+    };
+    // The near and far of two places along: the far one past the other wall, away from this wall's body.
+    let near_far = |x: f64, y: f64| if at_end { (x.min(y), x.max(y)) } else { (x.max(y), x.min(y)) };
     let (others, tee) = walls::joined(m, id, at_end);
-    if let ([other], false) = (others.as_slice(), tee)
+    if let [other] = others.as_slice()
         && let Some(o) = m.wall(*other).filter(|o| o.arc == 0.0)
         && let Some((_, band)) = structure(m, o)
     {
-        let uo = (o.end - o.start).unit();
-        if u.dot(uo).abs() <= 0.05 {
-            let p = axis.at(0.0, mid);
-            let faces: Vec<f64> = band
+        let square = u.dot((o.end - o.start).unit()).abs() <= 0.05;
+        let lap = square && laps(m, w, o);
+        if !tee && square {
+            if let [x, y] = crossings(o, &band, mid)[..] {
+                let (near, far) = near_far(x, y);
+                let through = m.guid(id) < m.guid(*other);
+                return if through {
+                    End { at: far, through, inside: Some(near), lap: if lap { near } else { far } }
+                } else {
+                    End { at: near, through, inside: None, lap: if lap { far } else { near } }
+                };
+            }
+        } else if tee {
+            // Its end on the other's near structure face, where both its own structure layer's edges reach it.
+            let edges: Vec<(f64, f64)> = across
                 .iter()
-                .filter_map(|off| {
-                    let q = o.start + uo.perp() * *off;
-                    geom::line_intersection(p, p + u, q, q + uo).map(along)
+                .filter_map(|off| match crossings(o, &band, *off)[..] {
+                    [x, y] => Some(near_far(x, y)),
+                    _ => None,
                 })
                 .collect();
-            if let [x, y] = faces[..] {
-                let through = m.guid(id) < m.guid(*other);
-                // The far face is the one past the corner, away from this wall's body.
-                let (far, near) = if at_end { (x.max(y), x.min(y)) } else { (x.min(y), x.max(y)) };
-                return (if through { far } else { near }, through);
+            if let [(n0, f0), (n1, f1)] = edges[..] {
+                let at = if at_end { n0.min(n1) } else { n0.max(n1) };
+                let far = if at_end { f0.min(f1) } else { f0.max(f1) };
+                return End { at, through: false, inside: None, lap: if lap { far } else { at } };
             }
         }
     }
@@ -480,12 +585,14 @@ fn end(m: &Model, id: Id, w: &Wall, k: usize, mid: f64, at_end: bool) -> (f64, b
     let ends = [k, k + 1].map(|i| {
         lines.get(i).and_then(|l| if at_end { l.last() } else { l.first() }).map_or(if at_end { axis.length() } else { 0.0 }, |q| along(*q))
     });
-    (if at_end { ends[0].min(ends[1]) } else { ends[0].max(ends[1]) }, false)
+    let at = if at_end { ends[0].min(ends[1]) } else { ends[0].max(ends[1]) };
+    End { at, through: false, inside: None, lap: at }
 }
 
 /// The walls ending on this one's side, each with where its structure layer (else its whole thickness) crosses this
-/// wall's: by their GUIDs, `[from, to]` along it.
-fn tees(m: &Model, id: Id, w: &Wall, mid: f64) -> Vec<(Guid, [f64; 2])> {
+/// wall's: by their GUIDs, `[from, to]` along it, and whether its upper top plate laps over this one's (square to it, and
+/// `laps`).
+fn tees(m: &Model, id: Id, w: &Wall, mid: f64) -> Vec<(Guid, [f64; 2], bool)> {
     let axis = Axis::of(w);
     let (u, len) = (axis.tangent(0.0), axis.length());
     let (ext, int) = walls::faces(m, w);
@@ -513,7 +620,8 @@ fn tees(m: &Model, id: Id, w: &Wall, mid: f64) -> Vec<(Guid, [f64; 2])> {
             })
             .collect();
         if let [x, y] = cross[..] {
-            out.push((m.guid(other), [x.min(y), x.max(y)]));
+            let lap = u.dot(uo).abs() <= 0.05 && structure(m, o).is_some() && laps(m, w, o);
+            out.push((m.guid(other), [x.min(y), x.max(y)], lap));
         }
     }
     out.sort_by(|a, b| a.1[0].total_cmp(&b.1[0]).then(a.0.cmp(&b.0)));
@@ -540,15 +648,22 @@ pub fn wall(m: &Model, id: Id) -> Result<Option<Framing>, String> {
         members: Vec::new(),
         warnings: Vec::new(),
     };
-    let ((a, through_start), (b, through_end)) = (end(m, id, w, k, mid, false), end(m, id, w, k, mid, true));
+    let (start, finish) = (end(m, id, w, k, across, false), end(m, id, w, k, across, true));
+    let (a, b) = (start.at, finish.at);
     if b - a <= EPS {
         return Ok(Some(out));
     }
     let th = t.thickness;
     let depth = across[1] - across[0];
     let section = [th, depth];
-    let base = Profile(walls::profile(m, w, false, mid, a, b));
-    let top = Profile(walls::profile(m, w, true, mid, a, b));
+    // The base and top over the structure layer: the higher base and the lower top of its two faces, so that no member
+    // rises out of the wall where a roof slopes across it. The top as far as an upper top plate laps past the ends.
+    let faces = |top: bool, s0: f64, s1: f64| {
+        let [p, q] = across.map(|off| walls::profile(m, w, top, off, s0, s1));
+        envelope(&p, &q, top)
+    };
+    let base = Profile(faces(false, a, b));
+    let top = Profile(faces(true, a.min(start.lap), b.max(finish.lap)));
     // A plate's plumb height on a slope, so that it is `th` thick square to it.
     let plumb = |k: f64| th * k.hypot(1.0);
     // Where the studs stand on the bottom plates and stop under the top ones.
@@ -622,17 +737,43 @@ pub fn wall(m: &Model, id: Id) -> Result<Option<Framing>, String> {
             }
         }
     }
+    // The upper one laps the walls it meets (`laps`): it runs past a butting wall's end and stops short of a wall's that runs
+    // through, and it is cut round a wall butting into this one's side, whose own upper plate runs over the lower one here.
+    let lapped: Vec<(Guid, [f64; 2])> = if t.top_plates >= 2 {
+        tees(m, id, w, mid).into_iter().filter(|(_, _, lap)| *lap).map(|(g, span, _)| (g, span)).collect()
+    } else {
+        Vec::new()
+    };
     for (i, q) in top.0.iter().enumerate() {
         let k = (q[3] - q[2]) / (q[1] - q[0]).max(EPS);
         for ply in 0..t.top_plates {
-            let drop = f64::from(ply + 1) * plumb(k);
-            let bottom = [q[2] - drop, q[3] - drop];
-            // A wall too low for its plates keeps those that clear the bottom ones.
-            if bottom[0] < floor(q[0]) - EPS || bottom[1] < floor(q[1]) - EPS {
-                continue;
+            let (from, to) = if ply == 0 { (start.lap, finish.lap) } else { (a, b) };
+            let (s0, s1) = (q[0].max(from), q[1].min(to));
+            let mut spans: Vec<(Option<Guid>, f64, f64)> = Vec::new();
+            let (mut at, mut after) = (s0, None);
+            for (g, [c0, c1]) in lapped.iter().filter(|(_, [c0, c1])| ply == 0 && *c0 < s1 - EPS && *c1 > s0 + EPS) {
+                if c0 - at > EPS {
+                    spans.push((after, at, *c0));
+                }
+                if *c1 > at {
+                    (at, after) = (*c1, Some(*g));
+                }
             }
-            let key = format!("top_plate/{ply}/{i}");
-            members.push(Member::new(key, Role::TopPlate, section, 1, [q[0], q[1]], across, [bottom, bottom.map(|z| z + plumb(k))]));
+            spans.push((after, at, s1));
+            let drop = f64::from(ply + 1) * plumb(k);
+            let under = |s: f64| q[2] + k * (s - q[0]) - drop;
+            for (after, p0, p1) in spans {
+                if p1 - p0 <= EPS {
+                    continue;
+                }
+                let bottom = [under(p0), under(p1)];
+                // A wall too low for its plates keeps those that clear the bottom ones.
+                if bottom[0] < floor(p0) - EPS || bottom[1] < floor(p1) - EPS {
+                    continue;
+                }
+                let key = after.map_or_else(|| format!("top_plate/{ply}/{i}"), |g| format!("top_plate/{ply}/{i}/{g}"));
+                members.push(Member::new(key, Role::TopPlate, section, 1, [p0, p1], across, [bottom, bottom.map(|z| z + plumb(k))]));
+            }
         }
     }
 
@@ -660,7 +801,13 @@ pub fn wall(m: &Model, id: Id) -> Result<Option<Framing>, String> {
         stud(members, &mut full, &mut taken, "stud/start".into(), a + th / 2.0);
     }
     if t.corner == Corner::ThreeStud {
-        for (through, c, key) in [(through_start, a + 1.5 * th, "corner/start"), (through_end, b - 1.5 * th, "corner/end")] {
+        // Its face on the inside corner, where the other wall's structure begins, for the lining to be nailed to; never
+        // nearer the end than beside the end stud.
+        let (c0, c1) = (
+            start.inside.map_or(a + 1.5 * th, |n| (n - th / 2.0).max(a + 1.5 * th)),
+            finish.inside.map_or(b - 1.5 * th, |n| (n + th / 2.0).min(b - 1.5 * th)),
+        );
+        for (through, c, key) in [(start.through, c0, "corner/start"), (finish.through, c1, "corner/end")] {
             if through && c >= a + th / 2.0 && c <= b - th / 2.0 && clear(&taken, c) {
                 stud(members, &mut full, &mut taken, key.into(), c);
             }
@@ -685,6 +832,8 @@ pub fn wall(m: &Model, id: Id) -> Result<Option<Framing>, String> {
             Some(format!("its kings and jacks would overlap those of {} {}", if o.door { "door" } else { "window" }, o.id))
         } else if r.top <= highest_floor(ends[0], ends[1]) + EPS {
             Some("it stands below the bottom plates".to_string())
+        } else if r.bottom > lowest_ceiling(ends[0], ends[1]) - EPS {
+            Some(format!("its rough opening is in the top plates (it starts {:.0} mm up)", r.bottom - own_base))
         } else if !r.door && sill_under < highest_floor(r.left, r.right) - EPS {
             Some(format!("its sill would be under the bottom plates (its rough opening starts {:.0} mm up)", r.bottom - own_base))
         } else {
@@ -700,18 +849,20 @@ pub fn wall(m: &Model, id: Id) -> Result<Option<Framing>, String> {
         let header = if wanted.height() <= room + EPS {
             Some(wanted.clone())
         } else if room >= th - EPS {
-            warnings.push(format!(
-                "{what} {}: only {room:.0} mm between its rough opening and the top plates, less than its {:.0} mm header; \
-                 the header is cut to {room:.0} mm: lower the opening or check the header's span",
-                r.id,
-                wanted.height()
-            ));
-            Some(if wanted.flat {
+            let cut = if wanted.flat {
                 let plies = ((room / wanted.depth + EPS).floor() as u32).max(1);
                 Header { depth: (room / f64::from(plies)).min(wanted.depth), plies, ..wanted.clone() }
             } else {
                 Header { depth: room, ..wanted.clone() }
-            })
+            };
+            warnings.push(format!(
+                "{what} {}: only {room:.0} mm between its rough opening and the top plates, less than its {:.0} mm header; \
+                 the header is cut to {:.0} mm: lower the opening or check the header's span",
+                r.id,
+                wanted.height(),
+                cut.height()
+            ));
+            Some(cut)
         } else {
             warnings.push(format!(
                 "{what} {}: its rough opening reaches the top plates (its head at {:.0} mm, their underside at {ceiling_over:.0} mm): \
@@ -769,18 +920,25 @@ pub fn wall(m: &Model, id: Id) -> Result<Option<Framing>, String> {
     // Where the grid can't stand a stud: an opening not framed, in its rough opening.
     let in_rough = |c: f64| roughs.iter().any(|r| c + th / 2.0 > r.left + EPS && c - th / 2.0 < r.right - EPS);
 
-    // Backing each side of a wall that butts into this one's side.
+    // Backing each side of a wall that butts into this one's side; the grid stands no stud between the two.
+    let mut backed: Vec<[f64; 2]> = Vec::new();
     if t.tee == Tee::Studs {
-        for (other, [p0, p1]) in tees(m, id, w, mid) {
+        for (other, [p0, p1], _) in tees(m, id, w, mid) {
+            let mut any = false;
             for (j, c) in [(0, p0 - th / 2.0), (1, p1 + th / 2.0)] {
                 let inside = c >= a + th / 2.0 - EPS && c <= b - th / 2.0 + EPS;
                 let in_span = framed.iter().any(|(_, s, _)| c + th / 2.0 > s[0] + EPS && c - th / 2.0 < s[1] - EPS);
                 if inside && !in_span && !in_rough(c) && clear(&taken, c) {
                     stud(members, &mut full, &mut taken, format!("tee/{other}/{j}"), c);
+                    any = true;
                 }
+            }
+            if any {
+                backed.push([p0 - th / 2.0, p1 + th / 2.0]);
             }
         }
     }
+    let between_backing = |c: f64| backed.iter().any(|[l, r]| c > l + EPS && c < r - EPS);
 
     // The grid: a stud at each station clear of the others, and inside a framed rough opening a cripple over its header
     // and, a window's, one under its sill.
@@ -810,7 +968,7 @@ pub fn wall(m: &Model, id: Id) -> Result<Option<Framing>, String> {
             }
             continue;
         }
-        if !in_rough(c) && clear(&taken, c) {
+        if !in_rough(c) && !between_backing(c) && clear(&taken, c) {
             stud(members, &mut full, &mut taken, format!("stud/{i}"), c);
         }
     }
@@ -822,7 +980,8 @@ pub fn wall(m: &Model, id: Id) -> Result<Option<Framing>, String> {
         for pair in full.windows(2) {
             let [(l, key), (r, _)] = pair else { continue };
             let (s0, s1) = (l + th / 2.0, r - th / 2.0);
-            if s1 - s0 <= EPS || roughs.iter().any(|o| s0 < o.right && s1 > o.left) {
+            // None in a bay narrower than a stud is thick: a sliver no one could nail.
+            if s1 - s0 < th - EPS || roughs.iter().any(|o| s0 < o.right && s1 > o.left) {
                 continue;
             }
             if z0 < highest_floor(s0, s1) - EPS || z1 > lowest_ceiling(s0, s1) + EPS {
