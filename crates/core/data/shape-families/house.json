@@ -68,23 +68,23 @@
     }
   },
   "links": [
-    {"from": "living", "to": "hall", "use": "parent", "types": ["open_full", "single"]},
+    {"from": "living", "to": "hall", "use": "parent", "types": ["open_full", "cased", "single", "double"]},
     {"from": "hall", "to": "hall", "use": "parent", "types": ["open_full"]},
-    {"from": "living", "to": "kitchen", "use": "parent", "types": ["open_full", "single"]},
-    {"from": "living", "to": "dining", "use": "parent", "types": ["open_full"]},
-    {"from": "kitchen", "to": "dining", "use": "parent", "types": ["open_full"]},
+    {"from": "living", "to": "kitchen", "use": "parent", "types": ["open_full", "cased", "single"]},
+    {"from": "living", "to": "dining", "use": "parent", "types": ["open_full", "cased"]},
+    {"from": "kitchen", "to": "dining", "use": "parent", "types": ["open_full", "cased"]},
     {"from": "hall", "to": "bedroom", "use": "parent", "types": ["single"]},
     {"from": "hall", "to": "bath", "use": "parent", "weight": 2, "types": ["single"]},
     {"from": "bedroom", "to": "bath", "use": "parent", "types": ["single"]},
-    {"from": "bedroom", "to": "closet", "use": "parent", "types": ["sliding", "bifold", "single"]},
-    {"from": "hall", "to": "laundry", "use": "parent", "types": ["sliding", "single", "bifold"]},
-    {"from": "hall", "to": "utility", "use": "parent", "types": ["sliding", "single"]},
-    {"from": "hall", "to": "library", "use": "parent", "types": ["single", "open_full"]},
-    {"from": "hall", "to": "garage", "use": "parent", "types": ["single"]},
-    {"from": "living", "to": "porch", "use": "parent", "types": ["sliding", "single"]},
-    {"from": "kitchen", "to": "porch", "use": "parent", "types": ["sliding", "single"]},
-    {"from": "living", "to": "deck", "use": "parent", "types": ["sliding"]},
-    {"from": "dining", "to": "deck", "use": "parent", "types": ["sliding"]},
-    {"from": "kitchen", "to": "dining", "use": "extra", "chance": 0.6, "types": ["open_full"]}
+    {"from": "bedroom", "to": "closet", "use": "parent", "types": ["sliding", "bifold", "single", "pocket", "double_sliding"]},
+    {"from": "hall", "to": "laundry", "use": "parent", "types": ["sliding", "single", "bifold", "pocket"]},
+    {"from": "hall", "to": "utility", "use": "parent", "types": ["sliding", "single", "pocket"]},
+    {"from": "hall", "to": "library", "use": "parent", "types": ["single", "double", "open_full", "cased"]},
+    {"from": "hall", "to": "garage", "use": "parent", "types": ["single", "double"]},
+    {"from": "living", "to": "porch", "use": "parent", "types": ["sliding", "single", "double_sliding"]},
+    {"from": "kitchen", "to": "porch", "use": "parent", "types": ["sliding", "single", "double_sliding"]},
+    {"from": "living", "to": "deck", "use": "parent", "types": ["sliding", "double_sliding"]},
+    {"from": "dining", "to": "deck", "use": "parent", "types": ["sliding", "double_sliding"]},
+    {"from": "kitchen", "to": "dining", "use": "extra", "chance": 0.6, "types": ["open_full", "cased"]}
   ]
 }

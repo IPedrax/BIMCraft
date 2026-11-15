@@ -2,6 +2,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use super::doors::cased_gap;
 use super::family::{Conn, Family, Use};
 use super::fit::{Fail, R, Rnd, TE, TI};
 use super::plan::{Graph, Parent, Room};
@@ -107,17 +108,30 @@ pub fn outside(rects: &[Rc], rect: Box4) -> Vec<Edge> {
     out
 }
 
-/// A room's area (m2) and its two clear sides (mm), on the wall faces, as BIMCraft's room tag will give them.
-pub fn measure(rects: &[Rc], links: &[(usize, usize, Conn)], i: usize) -> (f64, (f64, f64)) {
+/// A room's area (m2) and its two clear sides (mm), on the wall faces, as BIMCraft's room tag will give them. The sides come twice:
+/// between solid wall faces, and as the extracted boundary has them, reaching a cased gap's separation line.
+pub fn measure(rects: &[Rc], linked: &Linked, i: usize) -> (f64, [(f64, f64); 2]) {
+    let links = &linked.links;
+    let by = by_room(rects);
+    // The cased openings of the room: the gap's ends on the pair's longest wall, whose sides have no wall there.
+    let cased: Vec<(usize, Edge, (i64, i64))> = links
+        .iter()
+        .filter(|(a, b, t)| *t == Conn::Cased && (*a == i || *b == i))
+        .filter_map(|(a, b, _)| {
+            let e = wall(&by, *a, *b)?;
+            let (t1, t2) = linked.place.get(&(*a, *b)).copied().unwrap_or((0.0, 0.0));
+            Some((if *a == i { *b } else { *a }, e, cased_gap(e.lo, e.len(), t1, t2)?))
+        })
+        .collect();
     let open_to: BTreeSet<usize> = links
         .iter()
         .filter(|(a, b, t)| *t == Conn::OpenFull && (*a == i || *b == i))
         .map(|(a, b, _)| if *a == i { *b } else { *a })
         .collect();
-    let (mut area, mut dims) = (0.0, None::<(f64, f64)>);
+    let (mut area, mut dims) = (0.0, None::<[(f64, f64); 2]>);
     for rect in rects.iter().filter(|r| r.0 == i).map(boxed) {
         let free_pieces = outside(rects, rect);
-        let mut loss = [0.0; 4];
+        let (mut loss, mut solid, mut reach) = ([0.0; 4], [0.0; 4], [0.0; 4]);
         for (k, side) in sides(rect).iter().enumerate() {
             let free: i64 = free_pieces.iter().filter(|p| p.vertical == side.vertical && p.at == side.at).map(Edge::len).sum();
             let mut none = 0;
@@ -136,15 +150,37 @@ pub fn measure(rects: &[Rc], links: &[(usize, usize, Conn)], i: usize) -> (f64, 
                 }
             }
             let len = side.len() as f64;
+            // The sides a room is said to have are between wall faces: a cased gap does not widen them.
+            solid[k] = (free as f64 * TE as f64 / 2.0 + (side.len() - free - none) as f64 * TI as f64 / 2.0) / len;
+            for (other, e, (g0, g1)) in &cased {
+                if e.vertical == side.vertical && e.at == side.at {
+                    for r in rects.iter().filter(|r| r.0 == *other) {
+                        if shared(rect, boxed(r)) == Some(*e) {
+                            let (lo, hi) = ((*g0).max(side.lo.max(e.lo)), (*g1).min(side.hi.min(e.hi)));
+                            if hi > lo {
+                                none += hi - lo;
+                            }
+                        }
+                    }
+                }
+            }
             loss[k] = (free as f64 * TE as f64 / 2.0 + (side.len() - free - none) as f64 * TI as f64 / 2.0) / len;
+            // The extracted boundary's box reaches the side's furthest point: an open or cased stretch, else an interior face.
+            reach[k] = if none > 0 {
+                0.0
+            } else if side.len() > free {
+                TI as f64 / 2.0
+            } else {
+                TE as f64 / 2.0
+            };
         }
-        let (w, h) = (rect.2 as f64 - loss[2] - loss[3], rect.3 as f64 - loss[0] - loss[1]);
-        area += w * h / 1e6;
-        if dims.is_none_or(|d| w * h > d.0 * d.1) {
-            dims = Some((w, h));
+        area += (rect.2 as f64 - loss[2] - loss[3]) * (rect.3 as f64 - loss[0] - loss[1]) / 1e6;
+        let (w, h) = (rect.2 as f64 - solid[2] - solid[3], rect.3 as f64 - solid[0] - solid[1]);
+        if dims.is_none_or(|d| w * h > d[0].0 * d[0].1) {
+            dims = Some([(w, h), (rect.2 as f64 - reach[2] - reach[3], rect.3 as f64 - reach[0] - reach[1])]);
         }
     }
-    (area, dims.unwrap_or((0.0, 0.0)))
+    (area, dims.unwrap_or([(0.0, 0.0); 2]))
 }
 
 /// The closed loop round the rectangles, as the corner points. Fails if they make more than one loop or meet at a point.
@@ -213,6 +249,11 @@ pub struct Linked {
     pub closed: Vec<usize>,
     /// The entry room, and the stretch of outline the outside door goes on.
     pub entry: Option<(usize, Edge)>,
+    /// Where each link's door or opening stands along its wall, as fractions from 0 to 1 (a door's place, a cased gap's length and
+    /// place); drawn last, so the picks above them are as they were.
+    pub place: BTreeMap<(usize, usize), (f64, f64)>,
+    /// The same for the outside door.
+    pub entry_at: f64,
 }
 
 /// The links, the extra links where rooms happen to share a wall, and the outside door.
@@ -313,7 +354,9 @@ pub fn connect(fam: &Family, rooms: &[Room], g: &Graph, rects: &[Rc], n_main: us
             _ => return Err(Fail("no outside wall for the entry")),
         }
     }
-    Ok(Linked { links: links.into_iter().map(|((a, b), t)| (a, b, t)).collect(), closed, entry })
+    let place: BTreeMap<(usize, usize), (f64, f64)> = links.keys().map(|k| (*k, (rng.random(), rng.random()))).collect();
+    let entry_at = rng.random();
+    Ok(Linked { links: links.into_iter().map(|((a, b), t)| (a, b, t)).collect(), closed, entry, place, entry_at })
 }
 
 /// What a plan holds that the manifest reports.
@@ -341,12 +384,12 @@ pub fn verify(fam: &Family, rooms: &[Room], rects: &[Rc], linked: &Linked, corne
     let mut net = 0.0;
     for &i in &ids {
         let spec = &fam.types[rooms[i].ty];
-        let (area, (w, h)) = measure(rects, &linked.links, i);
+        let (area, sides) = measure(rects, linked, i);
         net += area;
-        if area < spec.area.0 * 1.003 || area > spec.area.1 * 0.997 || w.min(h) < spec.min_side as f64 {
+        if area < spec.area.0 * 1.003 || area > spec.area.1 * 0.997 || sides.iter().any(|(w, h)| w.min(*h) < spec.min_side as f64) {
             return Err(Fail("a room is out of range"));
         }
-        if spec.ratio.is_some_and(|r| w.max(h) / w.min(h).max(1.0) > r) {
+        if spec.ratio.is_some_and(|r| sides.iter().any(|(w, h)| w.max(*h) / w.min(*h).max(1.0) > r)) {
             return Err(Fail("a room is too long"));
         }
     }
