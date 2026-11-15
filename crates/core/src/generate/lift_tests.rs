@@ -14,7 +14,7 @@ use super::tests::{BRIEFS, archetype, built, count, doc, text};
 use crate::engine::Session;
 use crate::model::Element;
 
-fn lifted(name: &str, seed: u64, area: f64) -> (Built, Topology, Building) {
+fn lifted(name: &str, seed: u64, area: f64) -> (&'static Built, Topology, Building) {
     let b = built(archetype(name), seed, area);
     let topology = Topology::of(b.plan.as_ref().unwrap());
     let building = Building::lift(b.plan.as_ref().unwrap(), &topology);
@@ -37,9 +37,9 @@ fn lift_status(b: &Building, t: &Topology) -> BTreeMap<&'static str, Status> {
 fn the_two_graphs_say_which_is_2d_and_which_is_3d() {
     for (name, seed, area) in BRIEFS {
         let b = built(archetype(name), seed, area);
-        assert_eq!(doc(&b, "topology-graph.json")["graph_kind"], "2d_topology", "{name} {seed}");
-        assert_eq!(doc(&b, "building-ir.json")["graph_kind"], "3d_bim", "{name} {seed}");
-        assert_eq!(doc(&b, "program-graph.json").get("graph_kind"), None, "the program graph is neither");
+        assert_eq!(doc(b, "topology-graph.json")["graph_kind"], "2d_topology", "{name} {seed}");
+        assert_eq!(doc(b, "building-ir.json")["graph_kind"], "3d_bim", "{name} {seed}");
+        assert_eq!(doc(b, "program-graph.json").get("graph_kind"), None, "the program graph is neither");
     }
 }
 
@@ -47,7 +47,7 @@ fn the_two_graphs_say_which_is_2d_and_which_is_3d() {
 fn every_2d_space_is_lifted_onto_a_level() {
     for (name, seed, area) in BRIEFS {
         let b = built(archetype(name), seed, area);
-        let (top, ir) = (doc(&b, "topology-graph.json"), doc(&b, "building-ir.json"));
+        let (top, ir) = (doc(b, "topology-graph.json"), doc(b, "building-ir.json"));
         let label = format!("{name} {seed} {area}");
         let levels = ids(&ir, "levels");
         assert!(!levels.is_empty(), "{label}");
@@ -72,7 +72,7 @@ fn every_2d_space_is_lifted_onto_a_level() {
 fn every_3d_wall_names_the_2d_it_came_from() {
     for (name, seed, area) in BRIEFS {
         let b = built(archetype(name), seed, area);
-        let (top, ir) = (doc(&b, "topology-graph.json"), doc(&b, "building-ir.json"));
+        let (top, ir) = (doc(b, "topology-graph.json"), doc(b, "building-ir.json"));
         let label = format!("{name} {seed} {area}");
         let (nodes, levels, walls) = (ids(&top, "nodes"), ids(&ir, "levels"), ids(&ir, "walls"));
         assert_eq!(walls.len(), ir["walls"].as_array().unwrap().len(), "{label}: wall ids are unique");
@@ -121,7 +121,7 @@ fn wall_ids_come_from_where_a_wall_stands_and_not_from_the_seed() {
 fn every_opening_names_its_host_wall_and_where_it_came_from() {
     for (name, seed, area) in BRIEFS {
         let b = built(archetype(name), seed, area);
-        let (top, ir) = (doc(&b, "topology-graph.json"), doc(&b, "building-ir.json"));
+        let (top, ir) = (doc(b, "topology-graph.json"), doc(b, "building-ir.json"));
         let label = format!("{name} {seed} {area}");
         let (nodes, walls) = (ids(&top, "nodes"), ids(&ir, "walls"));
         let edges = ids(&top, "edges");
@@ -157,7 +157,7 @@ fn every_opening_names_its_host_wall_and_where_it_came_from() {
 fn the_slab_is_on_a_level_and_nothing_is_added_to_pad_the_graph() {
     for (name, seed, area) in BRIEFS {
         let b = built(archetype(name), seed, area);
-        let ir = doc(&b, "building-ir.json");
+        let ir = doc(b, "building-ir.json");
         let (levels, slabs) = (ids(&ir, "levels"), ir["slabs"].as_array().unwrap());
         assert_eq!(slabs.len(), 1, "{name} {seed}: the one floor the script makes");
         assert!(levels.contains(slabs[0]["level"].as_str().unwrap_or_default()));
@@ -230,10 +230,10 @@ fn a_failed_lift_rule_says_what_to_fix() {
 }
 
 /// A brief's building, its script as compiled from it, and the answers of a fresh project that ran it.
-fn ran(name: &str, seed: u64, area: f64) -> (Built, Building, Script, Vec<Value>, Session) {
+fn ran(name: &str, seed: u64, area: f64) -> (&'static Built, Building, Script, Vec<Value>, Session) {
     let (b, _, building) = lifted(name, seed, area);
     let script = script::compile(b.plan.as_ref().unwrap(), &building);
-    assert_eq!(script.text, text(&b, "script.bimcraft.txt"), "the file holds the script compiled from the building");
+    assert_eq!(script.text, text(b, "script.bimcraft.txt"), "the file holds the script compiled from the building");
     let mut s = Session::new();
     let replies = s.script(&script.text).unwrap_or_else(|e| panic!("{name} {seed} {area}: {e}"));
     (b, building, script, replies, s)
@@ -274,7 +274,7 @@ fn every_opening_is_hosted_on_the_wall_bimcraft_chose() {
             building.walls.len(),
             "{label}: a wall element for each wall of the building"
         );
-        let through = run_status(&b, &building, &script, &replies, &s);
+        let through = run_status(b, &building, &script, &replies, &s);
         assert_eq!(through["LIFT-005"], Status::Pass, "{label}");
         assert_eq!(through["LIFT-006"], Status::Pass, "{label}");
     }
@@ -317,7 +317,7 @@ fn the_script_makes_the_walls_of_the_plan_where_the_plan_put_them() {
 fn each_run_time_lift_rule_fails_on_a_building_that_breaks_it_and_only_that_one() {
     let (b, good, script, replies, s) = ran("office", 1, 900.0);
     let rules = ["LIFT-005", "LIFT-006"];
-    let now = run_status(&b, &good, &script, &replies, &s);
+    let now = run_status(b, &good, &script, &replies, &s);
     assert!(rules.iter().all(|r| now[r] == Status::Pass), "{now:?}");
 
     let with = |change: &dyn Fn(&mut Building)| {
@@ -342,7 +342,7 @@ fn each_run_time_lift_rule_fails_on_a_building_that_breaks_it_and_only_that_one(
         ("LIFT-006", with(&|x| drop(x.walls.pop()))),
     ];
     for (broken, building) in &cases {
-        let got = run_status(&b, building, &script, &replies, &s);
+        let got = run_status(b, building, &script, &replies, &s);
         for id in rules {
             let want = if id == *broken { Status::Fail } else { Status::Pass };
             assert_eq!(got[id], want, "{broken} broken, rule {id}: {got:?}");
@@ -356,7 +356,7 @@ fn symbol_spread() -> Vec<(String, Value, Value)> {
     for (name, area, seeds) in [("office", 900.0, [0, 10]), ("clinic", 650.0, [1, 2]), ("hospital", 1800.0, [0, 1])] {
         for seed in seeds {
             let b = built(archetype(name), seed, area);
-            out.push((format!("{name} {seed} {area}"), doc(&b, "building-ir.json"), doc(&b, "manifest.json")));
+            out.push((format!("{name} {seed} {area}"), doc(b, "building-ir.json"), doc(b, "manifest.json")));
         }
     }
     out
@@ -486,9 +486,9 @@ fn a_symbol_the_script_did_not_make_fails_the_symbol_rule() {
         with(&|x| x.openings[window].sill_mm += 100),
         with(&|x| x.openings[window].type_name = "Nowhere 1 x 1".into()),
     ];
-    assert_eq!(run_status(&b, &good, &script, &replies, &s)["LIFT-007"], Status::Pass);
+    assert_eq!(run_status(b, &good, &script, &replies, &s)["LIFT-007"], Status::Pass);
     for broken in &cases {
-        assert_eq!(run_status(&b, broken, &script, &replies, &s)["LIFT-007"], Status::Fail);
+        assert_eq!(run_status(b, broken, &script, &replies, &s)["LIFT-007"], Status::Fail);
     }
     // A symbol that no door has is refused before the script runs.
     let t = Topology::of(b.plan.as_ref().unwrap());

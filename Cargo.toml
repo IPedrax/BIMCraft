@@ -59,6 +59,14 @@ unreachable = "deny"
 dbg_macro = "warn"
 
 # The 3D view renders in software: build the core optimised in debug builds too, so it orbits smoothly.
+# A panic's backtrace needs file and line, and nothing here is stepped through in a debugger: line tables for our
+# crates and no debug info for the dependencies make less for the compiler to write and the linker to read.
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
+
 [profile.dev.package.bimcraft-core]
 opt-level = 2
 

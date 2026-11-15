@@ -658,15 +658,21 @@ fn hostile_parameters_to_the_structure_are_refused_without_a_panic_or_a_broken_m
         json!({"boundary": [[0, 0], [1, 0], [0, 1]], "structural": []}),
         json!({"boundary": [[0, 0], [1000, 0], [0, 1000]], "structural": true, "type": "Nothing"}),
     ];
+    // The structure is built once and each value is tried on a copy of it. A value that leaves the copy holding the
+    // base's own model changed nothing, and the base is checked here.
+    let mut base = Session::new();
+    the_structure(&mut base);
+    assert_eq!(base.model.check(), Ok(()), "the structure the sweep starts from is broken");
     for id in ["beam", "strip_footing", "structural_column", "footing", "type", "floor", "modify"] {
         for p in &hostile {
-            let mut s = Session::new();
-            the_structure(&mut s);
+            let mut s = base.clone();
             let refused = s.execute(id, p);
             if let Err(e) = &refused {
                 assert!(!e.contains("internal error"), "{id} {p}: {e}");
             }
-            assert_eq!(s.model.check(), Ok(()), "{id} {p} left a broken model");
+            if !std::sync::Arc::ptr_eq(&s.model, &base.model) {
+                assert_eq!(s.model.check(), Ok(()), "{id} {p} left a broken model");
+            }
         }
     }
     // A beam changed into something it can't be is refused, whatever the field.

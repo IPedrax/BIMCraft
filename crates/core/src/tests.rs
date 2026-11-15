@@ -2381,6 +2381,9 @@ fn hostile_params_never_panic_or_break_the_model() {
         wall,
     ];
     let hostile: Vec<Value> = hostile.into_iter().chain(detailing.into_iter().map(|(_, p)| p)).chain(slopes).chain(offsets).collect();
+    // The base itself, once: every copy below starts as this model.
+    assert_eq!(base.model.check(), Ok(()), "the sweep's base is broken");
+    draw_plans(&base.model);
     // Each command against each value, on a copy of the same session; the commands shared out between the cores.
     let cmds: Vec<_> = commands().iter().filter(|c| !matches!(c.id, "open" | "save")).collect();
     let threads = std::thread::available_parallelism().map_or(4, |n| n.get());
@@ -2403,6 +2406,11 @@ fn hostile_params_never_panic_or_break_the_model() {
                         let p = small.as_ref().unwrap_or(p);
                         let mut s = base.clone();
                         let made = s.execute(cmd.id, p).is_ok();
+                        // The session still holds the base's own model (nine times in ten: the value was refused, or the
+                        // command only reads): it was checked and drawn above, and checking it again took two thirds of the sweep.
+                        if std::sync::Arc::ptr_eq(&s.model, &base.model) {
+                            continue;
+                        }
                         assert_eq!(s.model.check(), Ok(()), "{} {p} left a broken model", cmd.id);
                         // What a command made is drawn too (a revision cloud round a circle 1,000 km across once listed
                         // 16 GB of scallops and aborted the plan, and nothing here drew it): the plans, sections and
