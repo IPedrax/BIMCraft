@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use serde_json::{Value, json};
 
 use super::family::{Conn, Family, HOUSE_FAMILY, shapes};
-use super::{Request, build, build_family};
+use super::{Interior, Request, build, build_family};
 use crate::engine::Session;
 use crate::topology;
 
@@ -30,7 +30,16 @@ fn count(g: &Value, into: &mut BTreeMap<String, usize>) {
 }
 
 fn house(seed: u64, rooms: i64) -> crate::generate::Built {
-    let req = Request { archetype: "house".into(), seed, rooms, tolerance: 0, shape: None, gridlines: false };
+    let req = Request {
+        archetype: "house".into(),
+        seed,
+        rooms,
+        tolerance: 0,
+        shape: None,
+        gridlines: false,
+        interior: Interior::Aligned,
+        bumps: false,
+    };
     build(&req, false).unwrap_or_else(|r| panic!("house {seed}/{rooms}: {r}"))
 }
 
@@ -43,8 +52,16 @@ fn a_family_naming_all_nine_types_draws_each_of_them() {
     }
     let fam = Family::parse(&v.to_string()).expect("a family may name every type");
     // Seed 11 at 17 rooms draws all nine types.
-    let req =
-        Request { archetype: String::new(), seed: 11, rooms: 17, tolerance: 0, shape: Some(ids[10 % ids.len()].clone()), gridlines: false };
+    let req = Request {
+        archetype: String::new(),
+        seed: 11,
+        rooms: 17,
+        tolerance: 0,
+        shape: Some(ids[10 % ids.len()].clone()),
+        gridlines: false,
+        interior: Interior::Aligned,
+        bumps: false,
+    };
     let built = build_family(&fam, &req, false).unwrap_or_else(|r| panic!("seed 11: {r}"));
     let mut seen = BTreeMap::new();
     count(&graph(&built.files), &mut seen);

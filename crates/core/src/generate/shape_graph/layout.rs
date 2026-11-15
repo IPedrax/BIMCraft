@@ -1,6 +1,8 @@
 //! Steps 3 to 7: the shape as a profile along a bar, the depths, the sharing out of groups, the lengths and the rectangles.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
+
+mod interior;
 
 use super::family::{Family, Shape};
 use super::fit::{Cl, Fail, Fitter, Group, LOSS_MAX, LOSS_MIN, Local, R, Range, Rnd, dn, rnd, share, up};
@@ -132,7 +134,7 @@ fn shape_ok(shape: &Shape, w: i64, s: i64, tops: &[(i64, i64)], bots: &[(i64, i6
 }
 
 /// The turns: mirror left to right, then quarter turns anticlockwise, then move the plan so its bounding box starts at 0, 0.
-pub fn turned(rects: &[Rc], mirror: bool, turns: usize) -> Vec<Rc> {
+fn turned_by(rects: &[Rc], mirror: bool, turns: usize) -> (Vec<Rc>, (i64, i64)) {
     let mut out: Vec<Rc> = rects
         .iter()
         .map(|&(room, mut x, mut y, mut w, mut h)| {
@@ -150,7 +152,32 @@ pub fn turned(rects: &[Rc], mirror: bool, turns: usize) -> Vec<Rc> {
         r.1 -= mx;
         r.2 -= my;
     }
-    out
+    (out, (mx, my))
+}
+
+/// Corner points turned the way `turned` turned the rectangles, then moved by what it moved.
+fn turned_points(points: &[(i64, i64)], mirror: bool, turns: usize, by: (i64, i64)) -> Vec<(i64, i64)> {
+    points
+        .iter()
+        .map(|&(mut x, mut y)| {
+            if mirror {
+                x = -x;
+            }
+            for _ in 0..turns {
+                (x, y) = (-y, x);
+            }
+            (x - by.0, y - by.1)
+        })
+        .collect()
+}
+
+/// A bump, as the manifest lists it: the room whose back wall moved, the side of the plan that wall is on, and how far it moved
+/// (positive outward).
+#[derive(Clone, Debug)]
+pub struct Bump {
+    pub room: usize,
+    pub side: &'static str,
+    pub offset: i64,
 }
 
 /// A laid-out plan: rectangles and links.
@@ -161,6 +188,38 @@ pub struct Laid {
     pub mirror: bool,
     pub quarter_turns: usize,
     pub verified: Verified,
+    /// The interior the plan has: jogged, or aligned.
+    pub jogged: bool,
+    pub bumps: Vec<Bump>,
+    /// The outline before the bumps, in the plan's frame.
+    pub base_outline: Vec<(i64, i64)>,
+}
+
+/// What a cell is, for the changes made after the layout.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Kind {
+    /// A cell of a row or a branch.
+    Band,
+    /// An end room across the end of the bar.
+    Cap,
+    /// A cell a jog or a bump has moved already.
+    Changed,
+}
+
+/// A cell as it was placed, so that it can be fitted again.
+#[derive(Clone, Debug)]
+struct Cell {
+    cl: Cl,
+    f: i64,
+    d: i64,
+    lat: (bool, bool),
+    cover: Option<Range>,
+    pref: usize,
+    ox: i64,
+    oy: i64,
+    orient: Orient,
+    kind: Kind,
+    rooms: BTreeSet<usize>,
 }
 
 struct Ctx<'a> {
@@ -168,6 +227,13 @@ struct Ctx<'a> {
     rooms: &'a [Room],
     g: &'a Graph,
     fx: &'a Fitter<'a>,
+}
+
+/// What the call asks of the interior: jogs, and bumps.
+#[derive(Clone, Copy, Debug)]
+pub struct Options {
+    pub jogged: bool,
+    pub bumps: bool,
 }
 
 /// The groups of a plan: an arena, and the pool still to be dealt out.
@@ -187,7 +253,7 @@ fn mid(fx: &Fitter, group: &Group, d: i64) -> R<f64> {
     Ok((iv.0 + iv.1) as f64 / 2.0)
 }
 
-pub fn layout(fam: &Family, rooms: &[Room], g: &Graph, fx: &Fitter, shape: &Shape, rng: &mut Rnd) -> R<Laid> {
+pub fn layout(fam: &Family, rooms: &[Room], g: &Graph, fx: &Fitter, shape: &Shape, opts: Options, rng: &mut Rnd) -> R<Laid> {
     let cx = Ctx { fam, rooms, g, fx };
     let (mut cap0, mut cap1, groups) = clusters(g);
     let mut pool = Pool { pool: (0..groups.len()).collect(), groups };
@@ -595,6 +661,7 @@ pub fn layout(fam: &Family, rooms: &[Room], g: &Graph, fx: &Fitter, shape: &Shap
             cover0,
             cover1,
             n_main,
+            opts,
         };
         if let Ok(laid) = built.run(rng) {
             return Ok(laid);
@@ -641,6 +708,14 @@ struct Build<'a> {
     cover0: Option<Range>,
     cover1: Option<Range>,
     n_main: usize,
+    opts: Options,
+}
+
+/// The rectangles laid so far, and the cells they came from.
+#[derive(Default)]
+struct Acc {
+    rects: Vec<Rc>,
+    cells: Vec<Cell>,
 }
 
 impl Build<'_> {
@@ -648,7 +723,7 @@ impl Build<'_> {
     fn cell(
         &self,
         rng: &mut Rnd,
-        rects: &mut Vec<Rc>,
+        acc: &mut Acc,
         cl: &Cl,
         f: i64,
         d: i64,
@@ -656,16 +731,30 @@ impl Build<'_> {
         cover: Option<Range>,
         at: (i64, i64),
         orient: Orient,
+        kind: Kind,
     ) -> R<()> {
         let fx = self.cx.fx;
         let pref = rng.below(3);
         let got = fx.fit(cl, f, d, lat, cover, pref).or_else(|| fx.fit(cl, f, d, lat, cover, 0)).ok_or(Fail("fit"))?;
-        rects.extend(place(&got, at.0, at.1, orient));
+        acc.rects.extend(place(&got, at.0, at.1, orient));
+        acc.cells.push(Cell {
+            cl: cl.clone(),
+            f,
+            d,
+            lat,
+            cover,
+            pref,
+            ox: at.0,
+            oy: at.1,
+            orient,
+            kind,
+            rooms: got.iter().map(|r| r.0).collect(),
+        });
         Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn cells(&self, rng: &mut Rnd, rects: &mut Vec<Rc>, groups: &[usize], length: i64, d: i64, ox: i64, oy: i64, orient: Orient) -> R<()> {
+    fn cells(&self, rng: &mut Rnd, acc: &mut Acc, groups: &[usize], length: i64, d: i64, ox: i64, oy: i64, orient: Orient) -> R<()> {
         let fx = self.cx.fx;
         let ranges: Option<Vec<Range>> = groups.iter().map(|g| fx.grange(&self.pool.groups[*g], d)).collect();
         let gl = share(length, &ranges.ok_or(Fail("share"))?).ok_or(Fail("share"))?;
@@ -676,7 +765,7 @@ impl Build<'_> {
             let lens = share(glen, &ranges.ok_or(Fail("share"))?).ok_or(Fail("share"))?;
             for ((cl, l, r), f) in members.iter().zip(lens) {
                 let at = if matches!(orient, Orient::A | Orient::B) { (ox + pos, oy) } else { (ox, oy + pos) };
-                self.cell(rng, rects, cl, f, d, (*l, *r), None, at, orient)?;
+                self.cell(rng, acc, cl, f, d, (*l, *r), None, at, orient, Kind::Band)?;
                 pos += f;
             }
         }
@@ -686,7 +775,7 @@ impl Build<'_> {
     fn run(&self, rng: &mut Rnd) -> R<Laid> {
         let cx = self.cx;
         let (s, c0, core) = (self.s, self.c0, self.core);
-        let mut rects: Vec<Rc> = Vec::new();
+        let mut acc = Acc::default();
         let mut branches: Vec<(bool, Local)> = Vec::new();
         for side in 0..2 {
             let mut x = c0;
@@ -694,7 +783,7 @@ impl Build<'_> {
                 match p.mode {
                     Mode::Cells => self.cells(
                         rng,
-                        &mut rects,
+                        &mut acc,
                         &p.groups,
                         self.ls[side][i],
                         self.depth[side][i],
@@ -704,8 +793,8 @@ impl Build<'_> {
                     )?,
                     Mode::Sub => {
                         let y0 = if side == 0 { s } else { -p.delta };
-                        self.cells(rng, &mut rects, &p.left, p.delta, p.p, x + p.p, y0, Orient::L)?;
-                        self.cells(rng, &mut rects, &p.right, p.delta, p.q, x + p.p + s, y0, Orient::R)?;
+                        self.cells(rng, &mut acc, &p.left, p.delta, p.p, x + p.p, y0, Orient::L)?;
+                        self.cells(rng, &mut acc, &p.right, p.delta, p.q, x + p.p + s, y0, Orient::R)?;
                         branches.push((p.own, (0, x + p.p, y0, s, p.delta)));
                     }
                     _ => {}
@@ -719,42 +808,60 @@ impl Build<'_> {
         {
             let Some(cl) = cl else { continue };
             let f = self.depth[1][i] + s + self.depth[0][i];
-            self.cell(rng, &mut rects, cl, f, d, (false, false), cover, (ox, -self.depth[1][i]), orient)?;
+            self.cell(rng, &mut acc, cl, f, d, (false, false), cover, (ox, -self.depth[1][i]), orient, Kind::Cap)?;
         }
         // The spine: `n_main` rooms end to end along the core, then one room for each branch.
         let spines = &cx.g.spines;
         let n_main = self.n_main;
         let cuts: Vec<i64> = (0..n_main).map(|i| c0 + rnd(core as f64 * i as f64 / n_main as f64)).chain([c0 + core]).collect();
         for i in 0..n_main {
-            rects.push((spines[i], cuts[i], 0, cuts[i + 1] - cuts[i], s));
+            acc.rects.push((spines[i], cuts[i], 0, cuts[i + 1] - cuts[i], s));
         }
         let mut own = 0;
         for (is_own, br) in &branches {
             if *is_own {
                 let room = *spines.get(n_main + own).ok_or(Fail("no spare spine room"))?;
-                rects.push((room, br.1, br.2, br.3, br.4));
+                acc.rects.push((room, br.1, br.2, br.3, br.4));
                 own += 1;
             } else {
                 let room = (0..n_main).filter(|i| 2 * cuts[*i] <= 2 * br.1 + s).max().ok_or(Fail("no spine room"))?;
-                rects.push((spines[room], br.1, br.2, br.3, br.4));
+                acc.rects.push((spines[room], br.1, br.2, br.3, br.4));
             }
         }
-        let mut lost: Vec<usize> = rects.iter().map(|r| r.0).collect();
+        let mut lost: Vec<usize> = acc.rects.iter().map(|r| r.0).collect();
         lost.sort_unstable();
         lost.dedup();
         if lost.len() != cx.rooms.len() {
             return Err(Fail("rooms lost"));
         }
+        // An aligned plan's spine room is a rectangle, or turns one corner into a branch: at most six corners.
+        if !self.opts.jogged {
+            for &room in spines {
+                let own: Vec<Rc> = acc.rects.iter().filter(|r| r.0 == room).copied().collect();
+                if own.len() > 1 && !outline(&own).is_ok_and(|o| o.len() <= 6) {
+                    return Err(Fail("spine room has more than six corners"));
+                }
+            }
+        }
         // Would this plan pass? Links are tried with a throwaway random source, so the real one is not used up.
         let mut trial = Rnd::new(0, 0);
-        let linked = connect(cx.fam, cx.rooms, cx.g, &rects, n_main, &mut trial)?;
-        verify(cx.fam, cx.rooms, &rects, &linked, Some(self.shape.corners))?;
+        let linked = connect(cx.fam, cx.rooms, cx.g, &acc.rects, n_main, &mut trial)?;
+        verify(cx.fam, cx.rooms, &acc.rects, &linked, Some(self.shape.corners))?;
+        // Step 9: the outline as it stands is the base; jogs and bumps change one cell each.
+        let base = outline(&acc.rects)?;
+        let step = interior::Step { cx, n_main, corners: self.shape.corners };
+        if self.opts.jogged {
+            interior::jog(&step, &mut acc, rng)?;
+        }
+        let bumps = if self.opts.bumps { interior::bump(&step, &mut acc, &base, rng)? } else { Vec::new() };
         let mirror = rng.random() < 0.5;
         let quarter_turns = rng.below(4);
-        let rects = turned(&rects, mirror, quarter_turns);
+        let (rects, by) = turned_by(&acc.rects, mirror, quarter_turns);
+        let base_outline = turned_points(&base, mirror, quarter_turns, by);
+        let bumps = bumps.into_iter().map(|b| b.turned(mirror, quarter_turns)).collect();
         let linked = connect(cx.fam, cx.rooms, cx.g, &rects, n_main, rng)?;
         let verified = verify(cx.fam, cx.rooms, &rects, &linked, None)?;
         outline(&rects)?;
-        Ok(Laid { rects, linked, mirror, quarter_turns, verified })
+        Ok(Laid { rects, linked, mirror, quarter_turns, verified, jogged: self.opts.jogged, bumps, base_outline })
     }
 }

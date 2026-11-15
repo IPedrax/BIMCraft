@@ -425,25 +425,32 @@ fn run_shaped(given: &Params, rooms: i64, gridlines: bool) -> Result<Value, Refu
     if !(1..=max).contains(&rooms) || !(0..=max).contains(&tol) {
         return Err(refuse("invalid_params", format!("`rooms` is from 1 to {max} and `rooms_tol` from 0 to {max}; got {rooms} and {tol}")));
     }
-    if given.interior.as_deref().is_some_and(|i| i != "aligned") {
-        return Err(refuse("invalid_params", "`interior` is `aligned`: jogged and mixed interiors come in a later slice"));
-    }
-    if given.bumps.as_deref().is_some_and(|b| b != "off") {
-        return Err(refuse("invalid_params", "`bumps` is `off`: bumps come in a later slice"));
-    }
+    let interior = match given.interior.as_deref() {
+        None => None,
+        Some(text) => Some(shape_graph::Interior::parse(text).ok_or_else(|| {
+            refuse(
+                "invalid_params",
+                format!("`interior` is `aligned`, `jogged` or `mixed`; got {:?}", text.chars().take(40).collect::<String>()),
+            )
+        })?),
+    };
+    let bumps = match given.bumps.as_deref() {
+        None => None,
+        Some("on") => Some(true),
+        Some("off") => Some(false),
+        Some(text) => {
+            return Err(refuse("invalid_params", format!("`bumps` is `on` or `off`; got {:?}", text.chars().take(40).collect::<String>())));
+        }
+    };
     let allow_unreviewed = match given.unreviewed.as_deref() {
         None => false,
         Some("allow") => true,
         Some(_) => return Err(refuse("invalid_params", "`unreviewed` is `allow`, or left out")),
     };
-    let mut request = shape_graph::Request {
-        archetype: given.archetype.clone().unwrap_or_default(),
-        seed: given.seed,
-        rooms,
-        tolerance: tol,
-        shape: given.shape.clone(),
-        gridlines,
-    };
+    let mut request =
+        shape_graph::Request::new(given.archetype.clone().unwrap_or_default(), given.seed, rooms, tol, given.shape.clone(), gridlines);
+    request.interior = interior.unwrap_or(request.interior);
+    request.bumps = bumps.unwrap_or(request.bumps);
     match (&given.archetype, &given.family_file) {
         (Some(name), _) => {
             let built = shape_graph::build(&request, allow_unreviewed)?;
