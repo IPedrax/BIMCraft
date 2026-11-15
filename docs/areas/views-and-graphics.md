@@ -79,6 +79,10 @@ template or Object Styles naming either key is part of what FORMAT 18 says an ol
 Walls > Framing (`framing`) is a framed wall's members ([wood framing](structure-and-mep.md#wood-framing)): shown, the 3D view
 and sections draw the members and not the structure layer they stand in, and a plan at medium or fine detail clears that layer's
 band and fills and outlines the members its cut plane crosses (coarse draws the wall as before); hidden, the layer comes back.
+Floors > Framing (`floorframing`) is a framed floor's joists, rims, trimmers, headers and blocking in the 3D view and sections, in
+place of its structure layer (hidden, the layer comes back whole); Floors > Framing Lines (`floorframingline`), off unless a view
+shows it, draws their outlines dashed in a plan, as hidden lines under the floor's top: the framing plan. It is a subcategory of
+its own because the joists drawn on every plan would hatch the floor, and one key can't be on in 3D and off in plans.
 The `sheet` command takes a named `size` (A3 by default), landscape: ISO A0–A4 and B1–B4, ARCH A–E and E1–E3, ANSI A–E and Super B
 (13 × 19 in). ISO, ARCH and ANSI accept a space or none (`ISO A4`, `ISOA4`, `ARCH E2`, `ARCHE2`); ISO also accepts the bare name
 (`A4`, `B1`). ANSI A also accepts `LETTER`, ANSI B `TABLOID` or `LEDGER`. Super B accepts `SUPER B`, `SUPERB` or `SUPER-B`. Names

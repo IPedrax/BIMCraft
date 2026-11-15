@@ -119,7 +119,7 @@ fn a_walls_framing_is_picked_in_properties_and_its_type_edited_from_there() {
     press(&mut h, "Duplicate…");
     type_into(&mut h, "New type", "Partition");
     press(&mut h, "Create");
-    type_into(&mut h, "Stud Spacing", "609.6");
+    type_into(&mut h, "Spacing", "609.6");
     type_into(&mut h, "Top Plates", "1");
     choose(&mut h, "Corner", "Two Studs");
     type_into(&mut h, "Stock Lengths", "2400, 3600");
@@ -309,5 +309,5 @@ fn frame_says_which_openings_it_couldnt_frame_as_the_type_says() {
     select(&mut h, &[last]);
     structural(&mut h, "Frame");
     let said = &h.state().status;
-    assert!(said.error && said.text.contains("1 openings to check:") && said.text.contains("top plates"), "{}", said.text);
+    assert!(said.error && said.text.contains("Warnings (1):") && said.text.contains("top plates"), "{}", said.text);
 }
