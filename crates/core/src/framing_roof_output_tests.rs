@@ -239,6 +239,33 @@ fn a_framed_roofs_ifc_opens_as_one_roof_and_no_stray_members() {
 }
 
 #[test]
+fn in_ifc2x3_a_framed_roof_keeps_its_body_and_its_members_stand_in_its_storey() {
+    // IFC2x3's IfcRoof may be decomposed only when it has no representation of its own (its ShapeRepresentation rule), so
+    // there its members aren't its parts: they stand in its storey, and the roof keeps its body. IFC4 makes them its parts.
+    let mut s = Session::new();
+    let (id, _) = cabin(&mut s, json!({}));
+    let members = run(&mut s, "framing", json!({"id": id}))["members"].as_array().map_or(0, Vec::len);
+    assert!(members > 20);
+    let old = crate::ifc::export_as(&s.model, Default::default(), crate::ifc::Schema::Ifc2x3);
+    let roof = of_class(&old, "IFCROOF");
+    assert_eq!(roof.len(), 1);
+    // Its placement and its body, then its tag.
+    let parts: Vec<&str> = roof[0].split(",#").collect();
+    let body =
+        parts.windows(2).any(|w| w[0].parse::<u64>().is_ok() && w[1].split_once(",'").is_some_and(|(n, _)| n.parse::<u64>().is_ok()));
+    assert!(body, "the roof keeps its body: {}", roof[0]);
+    let decomposed = |f: &str, r: &str| of_class(f, "IFCRELAGGREGATES").iter().any(|l| l.contains(&format!(",{r},(")));
+    assert!(!decomposed(&old, ref_of(roof[0])), "IFC2x3: the roof is decomposed and has a body");
+    let rafters: Vec<&str> = of_class(&old, "IFCMEMBER").into_iter().filter(|l| l.contains("'rafter'")).collect();
+    assert!(!rafters.is_empty());
+    let contained = of_class(&old, "IFCRELCONTAINEDINSPATIALSTRUCTURE");
+    let held = |m: &str| contained.iter().any(|l| l.contains(&format!("{},", ref_of(m))) || l.contains(&format!("{})", ref_of(m))));
+    assert!(rafters.iter().all(|m| held(m)), "IFC2x3: each rafter stands in a storey");
+    let new = crate::ifc::export(&s.model);
+    assert!(decomposed(&new, ref_of(of_class(&new, "IFCROOF")[0])), "IFC4: the members are the roof's parts");
+}
+
+#[test]
 fn in_ifc2x3_every_placement_a_framed_roof_writes_places_a_product() {
     // IFC2x3's IfcLocalPlacement places exactly one product (PlacesObject [1:1]): the members were placed in a placement of
     // the framing's frame that placed nothing itself.

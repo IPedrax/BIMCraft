@@ -2091,11 +2091,17 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
                 hosts.insert(id, (ent, at, m.elevation(r.level)));
                 // Framed, its members are its parts, each placed in its slope's frame in the roof's own placement (at the plan's
                 // origin and axes), none in a placement of its own that would place no product (IFC2x3 holds each to one); it
-                // keeps its own body, the whole roof.
+                // keeps its own body, the whole roof. IFC2x3's IfcRoof may be decomposed only when it has no body of its own,
+                // so there they stand in its storey instead.
                 if r.framing.is_some()
                     && let Ok(Some(framing)) = crate::framing::roof::roof(m, id)
                 {
-                    framed.push((id, w.members(m, id, &framing, at, m.elevation(r.level))));
+                    let members = w.members(m, id, &framing, at, m.elevation(r.level));
+                    if w.schema == Schema::Ifc2x3 {
+                        contained.entry(r.level).or_default().extend(members);
+                    } else {
+                        framed.push((id, members));
+                    }
                 }
                 // Gross follows the actual planes with authored openings filled; courtyards and joins remain.
                 // Net follows the same roof geometry used for export, less its openings and intersecting shafts.
