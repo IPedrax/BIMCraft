@@ -71,11 +71,6 @@ impl Conn {
         }
     }
 
-    /// The types this slice draws.
-    pub fn drawn(self) -> bool {
-        matches!(self, Conn::OpenFull | Conn::Single | Conn::Double | Conn::Sliding | Conn::Bifold)
-    }
-
     pub fn is_open(self) -> bool {
         matches!(self, Conn::OpenFull | Conn::Cased)
     }
@@ -86,8 +81,11 @@ impl Conn {
             Conn::Single => Some(("Single Door", "swing")),
             Conn::Double => Some(("Double Door", "double-swing")),
             Conn::Sliding => Some(("Sliding Door", "sliding")),
+            Conn::UnequalDouble => Some(("Unequal Double Door", "double-swing")),
+            Conn::DoubleSliding => Some(("Double Sliding Door", "double-sliding")),
+            Conn::Pocket => Some(("Pocket Door", "sliding")),
             Conn::Bifold => Some((super::super::house::FOLDING_FAMILY, "folding")),
-            _ => None,
+            Conn::OpenFull | Conn::Cased => None,
         }
     }
 }
@@ -395,9 +393,6 @@ impl Family {
             if l.weight.is_some_and(|w| !w.is_finite() || w <= 0.0) {
                 return Err(format!("link {i}: `weight` is above 0"));
             }
-            if let Some(c) = l.types.iter().find(|c| !c.drawn()) {
-                return Err(format!("link {i}: the connection type `{}` is not drawn by this version", c.id()));
-            }
             links.push(Lk {
                 from,
                 to,
@@ -407,8 +402,8 @@ impl Family {
                 types: l.types.clone(),
             });
         }
-        if let Some(c) = file.entry.iter().flat_map(|e| &e.types).find(|c| !c.drawn()) {
-            return Err(format!("`entry.types`: the connection type `{}` is not drawn by this version", c.id()));
+        if let Some(c) = file.entry.iter().flat_map(|e| &e.types).find(|c| c.door().is_none()) {
+            return Err(format!("`entry.types`: the connection type `{}` is not a door, and the way in is one", c.id()));
         }
         let fam = Family {
             name: file.family,

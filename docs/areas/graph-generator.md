@@ -276,7 +276,16 @@ disagree with the plan also end it. Swing doors take their side and jamb from `h
 
 Two things a script of this engine does that others don't: its `new` carries a `seed`, which makes the project's uid and every GUID the
 seed's, so a script saves the same file again; and its wall material has no solid cut pattern, because that lays paper over the wall lines
-and a plan's DXF then has no `A-WALL` entities. Slice 1 draws `open_full`, `single`, `double`, `sliding` and `bifold` only.
+and a plan's DXF then has no `A-WALL` entities.
+**Connection types** (Slice 4; `shape_graph/doors.rs`). All nine are drawn: `open_full` (a separation line the length of the shared edge),
+`cased` (the pair's longest shared wall is two walls with a gap of 900 to 2400 mm, at least 600 mm shorter than the wall and leaving at least
+300 mm of wall each side, and one `room_separator` across the gap; the pair's other shared edges stay solid; `links::measure` takes no wall
+loss along the gap), `single`, `double`, `unequal_double`, `sliding`, `double_sliding`, `pocket` and `bifold`. A door's centre is anywhere
+along its wall that leaves 150 mm of wall each side (`doors::door_centre`): a fraction per link is drawn at the end of `links::connect`,
+after every type pick, so the picks' random stream is unchanged, and stored in `Linked::place` (the entry door's in `entry_at`). The script
+defines the folding, Unequal Double (leaves two thirds and a third of the clear width, so its ARC radii differ by at least 200 mm), Double
+Sliding (two bi-parting leaves on one track) and Pocket (a leaf on the wall's centre line, the pocket marked at one jamb) door families
+(`doors::definition`); the others are BIMCraft's. A family file's `entry.types` must be door types.
 
 **Room tags that do not fit** (Slice 14; `shape_graph/tags.rs`). A room's tag (name, number, area: `render::room_tag_box`, 0.6 H a character
 wide and 4.5 H high, H the name's height, 260 mm at 1 : 100) is drawn in the room when it fits the room's cell shrunk by 150 mm on every

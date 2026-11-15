@@ -5,6 +5,9 @@
 
 #[cfg(test)]
 mod building_tests;
+#[cfg(test)]
+mod connection_tests;
+mod doors;
 mod emit;
 pub(crate) mod family;
 #[cfg(test)]

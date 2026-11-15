@@ -2,6 +2,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use super::doors::cased_gap;
 use super::family::{Conn, Family, Use};
 use super::fit::{Fail, R, Rnd, TE, TI};
 use super::plan::{Graph, Parent, Room};
@@ -108,7 +109,19 @@ pub fn outside(rects: &[Rc], rect: Box4) -> Vec<Edge> {
 }
 
 /// A room's area (m2) and its two clear sides (mm), on the wall faces, as BIMCraft's room tag will give them.
-pub fn measure(rects: &[Rc], links: &[(usize, usize, Conn)], i: usize) -> (f64, (f64, f64)) {
+pub fn measure(rects: &[Rc], linked: &Linked, i: usize) -> (f64, (f64, f64)) {
+    let links = &linked.links;
+    let by = by_room(rects);
+    // The cased openings of the room: the gap's ends on the pair's longest wall, whose sides have no wall there.
+    let cased: Vec<(usize, Edge, (i64, i64))> = links
+        .iter()
+        .filter(|(a, b, t)| *t == Conn::Cased && (*a == i || *b == i))
+        .filter_map(|(a, b, _)| {
+            let e = wall(&by, *a, *b)?;
+            let (t1, t2) = linked.place.get(&(*a, *b)).copied().unwrap_or((0.0, 0.0));
+            Some((if *a == i { *b } else { *a }, e, cased_gap(e.lo, e.len(), t1, t2)?))
+        })
+        .collect();
     let open_to: BTreeSet<usize> = links
         .iter()
         .filter(|(a, b, t)| *t == Conn::OpenFull && (*a == i || *b == i))
@@ -132,6 +145,18 @@ pub fn measure(rects: &[Rc], links: &[(usize, usize, Conn)], i: usize) -> (f64, 
                     let len = side.hi.min(e.hi) - side.lo.max(e.lo);
                     if len > 0 {
                         none += len;
+                    }
+                }
+            }
+            for (other, e, (g0, g1)) in &cased {
+                if e.vertical == side.vertical && e.at == side.at {
+                    for r in rects.iter().filter(|r| r.0 == *other) {
+                        if shared(rect, boxed(r)) == Some(*e) {
+                            let (lo, hi) = ((*g0).max(side.lo.max(e.lo)), (*g1).min(side.hi.min(e.hi)));
+                            if hi > lo {
+                                none += hi - lo;
+                            }
+                        }
                     }
                 }
             }
@@ -213,6 +238,11 @@ pub struct Linked {
     pub closed: Vec<usize>,
     /// The entry room, and the stretch of outline the outside door goes on.
     pub entry: Option<(usize, Edge)>,
+    /// Where each link's door or opening stands along its wall, as fractions from 0 to 1 (a door's place, a cased gap's length and
+    /// place); drawn last, so the picks above them are as they were.
+    pub place: BTreeMap<(usize, usize), (f64, f64)>,
+    /// The same for the outside door.
+    pub entry_at: f64,
 }
 
 /// The links, the extra links where rooms happen to share a wall, and the outside door.
@@ -313,7 +343,9 @@ pub fn connect(fam: &Family, rooms: &[Room], g: &Graph, rects: &[Rc], n_main: us
             _ => return Err(Fail("no outside wall for the entry")),
         }
     }
-    Ok(Linked { links: links.into_iter().map(|((a, b), t)| (a, b, t)).collect(), closed, entry })
+    let place: BTreeMap<(usize, usize), (f64, f64)> = links.keys().map(|k| (*k, (rng.random(), rng.random()))).collect();
+    let entry_at = rng.random();
+    Ok(Linked { links: links.into_iter().map(|((a, b), t)| (a, b, t)).collect(), closed, entry, place, entry_at })
 }
 
 /// What a plan holds that the manifest reports.
@@ -341,7 +373,7 @@ pub fn verify(fam: &Family, rooms: &[Room], rects: &[Rc], linked: &Linked, corne
     let mut net = 0.0;
     for &i in &ids {
         let spec = &fam.types[rooms[i].ty];
-        let (area, (w, h)) = measure(rects, &linked.links, i);
+        let (area, (w, h)) = measure(rects, linked, i);
         net += area;
         if area < spec.area.0 * 1.003 || area > spec.area.1 * 0.997 || w.min(h) < spec.min_side as f64 {
             return Err(Fail("a room is out of range"));

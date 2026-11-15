@@ -9,6 +9,7 @@ use serde_json::{Value, json};
 use super::super::graph::{BUILDING_KIND, SCHEMA_VERSION, TOPOLOGY_KIND};
 use super::super::house::swing;
 use super::super::report::{Check, Status};
+use super::doors::{cased_gap, definition, door_centre, door_for};
 use super::family::{Conn, Family};
 use super::layout::Laid;
 use super::links::{Box4, Rc, boxed, by_room, outline, outside, shared, wall};
@@ -52,18 +53,6 @@ pub struct Drawn {
     pub separators: Vec<Vec<[i64; 2]>>,
 }
 
-/// A door's family, type name, width and operation, by its connection type and how long a run of wall it has.
-fn door_for(conn: Conn, run: i64) -> Option<(&'static str, String, i64, &'static str)> {
-    let (family, op) = conn.door()?;
-    let widths: &[i64] = match conn {
-        Conn::Single => &[900, 800, 750],
-        Conn::Double => &[1800, 1600, 1500, 1200],
-        Conn::Sliding => &[1500, 1200, 900, 750],
-        _ => &[900, 800, 750],
-    };
-    widths.iter().copied().find(|w| run >= w + 300).map(|w| (family, format!("{w} x 2100"), w, op))
-}
-
 /// Walls between rooms (a door or a separation line where two are linked), outside walls, and the way in.
 pub fn draw(fam: &Family, rooms: &[Room], laid: &Laid) -> Result<Drawn, String> {
     let by = by_room(&laid.rects);
@@ -79,9 +68,26 @@ pub fn draw(fam: &Family, rooms: &[Room], laid: &Laid) -> Result<Drawn, String> 
                 d.separators.push(vec![e.point(e.lo), e.point(e.hi)]);
                 continue;
             }
-            d.walls.push(WallAt { exterior: false, a: e.point(e.lo), b: e.point(e.hi) });
+            let longest = wall(&by, i, j) == Some(e);
+            let key = (i.min(j), i.max(j));
+            let gap = if t == Some(Conn::Cased) && longest {
+                let (t1, t2) = laid.linked.place.get(&key).copied().unwrap_or((0.0, 0.0));
+                Some(cased_gap(e.lo, e.len(), t1, t2).ok_or_else(|| {
+                    format!("the wall of {} mm between `{}` and `{}` is too short for its opening", e.len(), rooms[i].id, rooms[j].id)
+                })?)
+            } else {
+                None
+            };
+            if let Some((g0, g1)) = gap {
+                d.walls.push(WallAt { exterior: false, a: e.point(e.lo), b: e.point(g0) });
+                d.walls.push(WallAt { exterior: false, a: e.point(g1), b: e.point(e.hi) });
+                d.separators.push(vec![e.point(g0), e.point(g1)]);
+            } else {
+                d.walls.push(WallAt { exterior: false, a: e.point(e.lo), b: e.point(e.hi) });
+            }
             if let Some(t) = t
-                && wall(&by, i, j) == Some(e)
+                && longest
+                && t.door().is_some()
             {
                 let (family, ty, width, op) = door_for(t, e.len()).ok_or_else(|| {
                     format!("the wall of {} mm between `{}` and `{}` is too short for its door", e.len(), rooms[i].id, rooms[j].id)
@@ -89,7 +95,7 @@ pub fn draw(fam: &Family, rooms: &[Room], laid: &Laid) -> Result<Drawn, String> 
                 d.doors.push(DoorAt {
                     rooms: (i.min(j), Some(i.max(j))),
                     conn: t,
-                    at: e.point((e.lo + e.hi) / 2),
+                    at: e.point(door_centre(e.lo, e.len(), width, laid.linked.place.get(&key).map_or(0.5, |p| p.0))),
                     family,
                     ty,
                     width,
@@ -113,7 +119,7 @@ pub fn draw(fam: &Family, rooms: &[Room], laid: &Laid) -> Result<Drawn, String> 
         d.doors.push(DoorAt {
             rooms: (room, None),
             conn,
-            at: e.point((e.lo + e.hi) / 2),
+            at: e.point(door_centre(e.lo, e.len(), width, laid.linked.entry_at)),
             family,
             ty,
             width,
@@ -237,10 +243,6 @@ pub struct Script {
     pub text: String,
 }
 
-fn folding_types(types: serde_json::Map<String, Value>) -> Value {
-    super::super::house::folding_family(types)
-}
-
 /// Where each room's `room` command puts its point: the middle of its biggest box.
 pub fn room_points(rooms: &[Room], laid: &Laid) -> Vec<[i64; 2]> {
     let by = by_room(&laid.rects);
@@ -275,11 +277,8 @@ pub fn compile(fam: &Family, rooms: &[Room], laid: &Laid, d: &Drawn, seed: u64, 
     }
     for (family, set) in &types {
         let set: serde_json::Map<String, Value> = set.iter().map(|(ty, w)| (ty.clone(), json!({"Width": w, "Height": 2100}))).collect();
-        if *family == super::super::house::FOLDING_FAMILY {
-            lines.push(("family", folding_types(set)));
-        } else {
-            lines.push(("family", json!({"name": family, "types": set})));
-        }
+        let line = definition(family, set.clone()).unwrap_or_else(|| json!({"name": family, "types": set}));
+        lines.push(("family", line));
     }
     if gridlines {
         // One line at each distinct x and y of the outline's corners; the exterior walls are the outline.
