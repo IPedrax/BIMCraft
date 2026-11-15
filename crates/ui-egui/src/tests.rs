@@ -96,8 +96,11 @@ fn annotation(h: &mut Harness<BimApp>, item: &str) {
     press(h, item);
 }
 
-/// A tool from the Architecture tab: a tool's contextual tab takes the ribbon, as in Revit.
+/// A tool from the Architecture tab: a tool's contextual tab takes the ribbon, as in Revit. With a contextual tab the tabs are
+/// wider than the window and scrolled to it, so the Architecture tab is scrolled back into view first, as a user would.
 fn tool(h: &mut Harness<BimApp>, label: &str) {
+    h.get_by_label("Architecture").scroll_to_me();
+    h.run();
     press(h, "Architecture");
     press(h, label);
 }
