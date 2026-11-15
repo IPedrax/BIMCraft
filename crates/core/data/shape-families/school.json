@@ -12,6 +12,7 @@
     "lobby": {
       "kind": "lobby", "name": "Lobby", "role": "public", "place": "entry_end",
       "count": [1, 1], "area_m2": [12.0, 100.0], "max_side_ratio": 3.5, "min_side_mm": 3000, "max_links": 3,
+      "window": true,
       "source": {
         "count": {"from": "model", "confidence": "high"},
         "area_m2": {"from": "model", "confidence": "low"},
@@ -34,6 +35,7 @@
     "classroom": {
       "kind": "classroom", "name": "Classroom", "role": "shared", "place": "off_spine", "weight": 4,
       "count": [4, 12], "area_m2": [35.0, 85.0], "max_side_ratio": 1.8, "min_side_mm": 5000, "max_links": 1,
+      "window": true,
       "source": {
         "count": {"from": "model", "confidence": "medium"},
         "area_m2": {"from": "model", "confidence": "medium"},
@@ -56,6 +58,7 @@
     "office": {
       "kind": "office", "name": "Office", "role": "private", "place": "off_spine",
       "count": [1, 3], "area_m2": [9.0, 30.0], "max_side_ratio": 3.0, "min_side_mm": 2400, "max_links": 1,
+      "window": true,
       "source": {
         "count": {"from": "model", "confidence": "medium"},
         "area_m2": {"from": "model", "confidence": "medium"},
@@ -67,6 +70,7 @@
     "staff_room": {
       "kind": "staff_room", "name": "Staff Room", "role": "private", "place": "off_spine",
       "count": [1, 2], "area_m2": [15.0, 50.0], "max_side_ratio": 2.5, "min_side_mm": 3000, "max_links": 1,
+      "window": true,
       "source": {
         "count": {"from": "model", "confidence": "medium"},
         "area_m2": {"from": "model", "confidence": "medium"},
@@ -78,6 +82,7 @@
     "library": {
       "kind": "library", "name": "Library", "role": "shared", "place": "spine_end",
       "count": [0, 1], "area_m2": [30.0, 160.0], "max_side_ratio": 3.0, "min_side_mm": 4500, "max_links": 1,
+      "window": true,
       "source": {
         "count": {"from": "model", "confidence": "medium"},
         "area_m2": {"from": "model", "confidence": "low"},
