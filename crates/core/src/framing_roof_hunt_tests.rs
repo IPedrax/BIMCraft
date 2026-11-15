@@ -263,15 +263,15 @@ pub(crate) fn check_with(s: &mut Session, id: Id, walls: &[Id], allow: Allow) ->
         let Some(&(under, dz)) = rf.bands.get(&i) else { panic!("{what}: slope {i} has no band") };
         if m.role == "ridge" {
             assert!(q.iter().all(|p| on_roof(&rf, *p)), "{what}: a ridge board off the roof; {}", ctx());
-            // A level box, on the layer's underside along the ridge, standing over its top at its faces by no more than half
-            // its thickness times the slope.
+            // A level box between the layer's underside and its top at its faces (to what the hundredth of a millimetre its
+            // corners are taken in by allows on a steep slope).
             for p in q {
                 // The band of the slope the corner is over.
                 let over = rf.faces.iter().find(|f| f.loops.first().is_some_and(|l| geom::contains(l, p)));
                 let (under, dz) = over.and_then(|f| rf.bands.get(&f.index)).copied().unwrap_or((under, dz));
-                let k = under.g.length();
+                let near = 0.02 + 0.01 * under.g.length();
                 let [b, t] = m.heights(p);
-                assert!(b >= under.at(p) - 0.02 && t <= under.at(p) + dz + th / 2.0 * k + 0.02, "{what}: off its layer at {p:?}");
+                assert!(b >= under.at(p) - near && t <= under.at(p) + dz + near, "{what}: off its layer at {p:?}");
             }
         } else {
             let outline = f.loops.first().cloned().unwrap_or_default();
@@ -358,7 +358,8 @@ pub(crate) fn check_with(s: &mut Session, id: Id, walls: &[Id], allow: Allow) ->
                 probes.iter().any(|p| geom::contains(h, *p) || h.iter().any(|q| q.dist(*p) < 3.0 * th + spacing))
                     && r.warned(&format!("{name} isn't trimmed"))
             });
-            let warned_line = r.warned("isn't framed") || r.warnings.iter().any(|w| w.contains("is left out"));
+            let warned_line =
+                r.warned("isn't framed") || r.warned("runs skewed to the") || r.warnings.iter().any(|w| w.contains("is left out"));
             assert!(on_member || on_support || off || warned_hole || warned_line, "{} ends in mid-air at {end}; {}", m.key, ctx());
         }
     }

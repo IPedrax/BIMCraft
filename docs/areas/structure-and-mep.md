@@ -412,8 +412,10 @@ The rules, in the floor's frame (`s` the way the joists run, `across` to its lef
   square leaves a wedge between them, with a warning giving its width. A rim that would overlap another (a floor shorter there
   than two rims) or doesn't fit on the floor (thinner there than a rim) is left out with a warning. An edge parallel to the
   joists has an edge joist flush with it instead (where the edge lies farthest in, an edge within 1 mm of parallel), running
-  between the rims; edges in line (a T's top) share one; one that would overlap another (a floor narrower there than two
-  joists) is left out with a warning, as is one where the floor is narrower than a joist. Every joist ends square where it
+  between the rims; so does one within a degree of the joists that takes no rim (`rim` off), with a warning of how far it runs
+  off where that is more than a millimetre; edges in line (a T's top) share one; one that would overlap another (a floor
+  narrower there than two joists) is left out with a warning, as is one where the floor is narrower than a joist, and a floor
+  that no joist fits on at all says so. Every joist ends square where it
   first meets a rim or a hole (where its nearer corner meets a skewed rim's inner face, so its far corner falls short of the
   rim; at an inward corner, where the rims' inner faces meet). With `rim` off the joists run to the edges themselves.
   A rim longer than the longest `stock` length is spliced over the joists that end on it (where their centre lines cross it,
@@ -531,19 +533,23 @@ In that frame each slope is framed by the floor's region framer (`framing::floor
   its most, `centre` its middle), each running from the eave, the footprint's edge, so an overhang is part of the rafter, up to
   whatever bounds the slope: a ridge board, a hip or a valley, the upright gable edge at the top of a shed. An edge of the
   slope along the rafters on the roof's edge (a rake) has an edge rafter flush with it, where the edge lies farthest in (the
-  cabin's are centred 19 in from each rake); an edge along a hip, a valley or a ridge has none.
+  cabin's are centred 19 in from each rake); so does one within a degree of them, with a warning of how far it runs off
+  where that is more than a millimetre (a floor's edge the same, where it has no rim); an edge along a hip, a valley or a
+  ridge has none. Slopes in one plane that share an edge (where the footprint has a point along a straight eave) are framed
+  as one slope, numbered as the first: no line lies between them, their rafters are one grid and their ridge one board.
 - With `rim`, an eave board (a sub-fascia, role `rim`) lies along each edge of the slope on the roof's edge square to the
   rafters, one thickness inside it, the rafters stopping at its inner face: the eaves, and a shed's high edge. A sloped slope
-  has none along an edge skewed to its rafters (they end at it square, with a warning to frame it by hand), and no slope has one
-  round a courtyard (its eaves inside the footprint; a warning says so). A level slope takes them along skewed edges too, as a
-  floor's rims. Without `rim` the rafters run to the edges.
+  has neither an eave board nor an edge rafter along an edge skewed to its rafters (a rake not square to the eave): they end
+  at it square, with a warning to frame it by hand, rims or none. A level slope takes them along skewed edges too, as a
+  floor's rims, and a flat roof's courtyard is framed round as an opening is (trimmers along its sides, headers across its
+  ends, keys `face/0/courtyard/<i>/…`), or warned of where it can't be. Without `rim` the rafters run to the edges.
 - With `ridge`, where two slopes meet along a level line at their tops, each falling away from it, a ridge board (role `ridge`)
   is one thickness thick, centred on the line and as long as it, less the holes through the roof and any ridge board made
-  before it (a piece shorter than it is thick left out, with a warning). It is a level box, as deep as the rafters' plumb depth
-  (the deeper's, where the slopes differ) from their underside on the line (the lower of the two's): so it never reaches under
-  the roof's underside, its top edges stand over the structure layer's top at its faces by half its thickness times the slope,
-  and the bottom of each rafter's plumb cut against it is that much below its own. The rafters of both slopes stop at its
-  faces. Without `ridge` the rafters run to the line, and a warning says the ridge isn't framed. A shed has no ridge.
+  before it (a piece shorter than it is thick left out, with a warning). It is a level box wholly in the structure layer: from
+  the rafters' underside on the line up to the lower of their tops at its faces, half its thickness down each slope. So it never
+  stands over the layer's top nor under the roof's underside (nor into the top plate of a gable wall under it), each rafter's
+  plumb cut against it is flush with its top, and the bottom of that cut is half the board's thickness times the slope below
+  the board's (11 mm at 30° for a 38 mm board). The rafters of both slopes stop at its faces. Without `ridge` the rafters run to the line, and a warning says the ridge isn't framed. A shed has no ridge.
 - No hip or valley rafter is made. The jack rafters end at a hip or a valley line, square where their nearer corner meets it,
   and each hip, valley, seam (two slopes in one plane) and each line where a slope ends inside the footprint (where a joined
   roof meets the roof it joins) gives one warning, naming its ends and slopes: nothing there bears the rafters, so put a beam
@@ -616,7 +622,7 @@ rafters on the walls' top plates.
 Not yet, for roofs: hip and valley rafters (warned, with a beam along the line as the way round); birdsmouths and seat cuts (a
 rafter is a box with plumb ends, resting on the top plate's edge); collar ties, ceiling joists and rafter ties; trusses;
 lookouts and outriggers under a rake's overhang, and ladder blocking over a partition along the rafters; blocking over bearing
-walls and at the eaves; eave boards along a sloped slope's skewed eaves and round courtyards (warned); a ridge beam that bears
+walls and at the eaves; eave boards and edge rafters along a sloped slope's skewed edges (warned); a ridge beam that bears
 the rafters (the ridge board bears nothing); roofs by extrusion and shaped roofs (refused); a curved wall as a support; a
 splice placed by hand; span checks against a species or a table; connectors (hurricane ties, hangers); and keys that last
 through an edit that renumbers the slopes.

@@ -298,7 +298,9 @@ fn a_gable_roof_meets_its_ridge_board_a_hipped_one_warns_of_each_hip_and_an_extr
     assert_eq!(ridge.len(), 1);
     close(ridge[0].length, 8000.0, "the ridge board end to end");
     assert_eq!(ridge[0].section[0], 38.0);
-    close(ridge[0].section[1], 235.0 / 30f64.to_radians().cos(), "as deep as the rafters' plumb cut");
+    // As deep as the rafters' plumb cut less half its thickness times the slope: its top flush with theirs at its faces, its
+    // bottom on their underside along the ridge, so it stays in the layer.
+    close(ridge[0].section[1], 235.0 / 30f64.to_radians().cos() - 19.0 * 30f64.to_radians().tan(), "in the rafters' plumb cut");
     close(ridge[0].z[0], 2400.0 + 2500.0 * 30f64.to_radians().tan(), "on their underside along the ridge");
     // Both slopes' rafters stop at its faces: every top end 19 from the ridge line.
     for m in r.role("rafter").into_iter().filter(|m| m.key.contains("/rafter/")) {

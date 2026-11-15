@@ -9267,7 +9267,7 @@ msgstr "拆除的階段"
 msgid "Phase Filter"
 msgstr "階段過濾器"
 
-#: crates/core/src/ifc.rs:2604
+#: crates/core/src/ifc.rs:2606
 msgid "Phase Filters"
 msgstr "階段過濾器列表"
 

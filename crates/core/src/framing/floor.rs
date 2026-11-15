@@ -15,8 +15,9 @@
 //!   where its inner side meets the outline; at an inward one the one that runs through runs on to the corner of their inner
 //!   faces and the other starts clear of it (a wedge left between them where the corner isn't square, with a warning). A rim
 //!   that would overlap another, or doesn't fit on the floor, is left out with a warning. An edge parallel to the joists has
-//!   an edge joist flush with it (where it lies farthest in), running between the rims; edges in line share one. Every joist
-//!   ends square where it first meets a rim or a hole: on a skewed edge its nearer corner touches the rim's inner face.
+//!   an edge joist flush with it (where it lies farthest in), running between the rims, as has one within a degree of them
+//!   that takes no rim (with a warning past a millimetre off); edges in line share one; a floor no joist fits says so. Every
+//!   joist ends square where it first meets a rim or a hole: on a skewed edge its nearer corner touches the rim's inner face.
 //! - Grid joists are centred at stations `spacing` apart, counted from the layout's origin across the outline: `start` its
 //!   least `across`, `end` its most, `centre` the middle. One that would overlap another joist (an edge joist, a trimmer, a
 //!   pair under a wall) is left out. Each runs in pieces where the outline, less what it doesn't frame round, lets it.
@@ -740,12 +741,21 @@ pub(super) fn region(g: &Region) -> Framed {
             && (g.skewed_rims || square(i))
             && pt(i).dist(pt(i + 1)) > EPS
     };
-    if t.rim && !g.skewed_rims {
-        for i in (0..n).filter(|i| on_edge[*i] && !parallel[*i] && !square(*i) && pt(*i).dist(pt(*i + 1)) > EPS) {
+    // An edge on the host's edge within a degree of the lines, unrimmed: an edge line along it, as along one that's parallel.
+    let along: Vec<bool> = (0..n)
+        .map(|i| {
+            let d = pt(i + 1) - pt(i);
+            parallel[i] || (on_edge[i] && !rimmed(i) && d.length() > EPS && d.1.abs() <= d.length() * PARALLEL.to_radians().sin())
+        })
+        .collect();
+    if !g.skewed_rims {
+        for i in (0..n).filter(|i| on_edge[*i] && !along[*i] && !square(*i) && pt(*i).dist(pt(*i + 1)) > EPS) {
             warnings.push(format!(
-                "{who}its edge {} runs skewed to the {}: no rim is put along it, and the {} end at it square; frame it by hand",
+                "{who}its edge {} runs skewed to the {}: no rim or edge {} is put along it, and the {} end at it square; frame it \
+                 by hand",
                 edge_no(i),
                 words.many,
+                words.one,
                 words.many
             ));
         }
@@ -930,10 +940,21 @@ pub(super) fn region(g: &Region) -> Framed {
     };
     let cover = |cuts: &[Vec<P2>], across: [f64; 2]| strip(&outer, cuts, across);
     let mut lines: Vec<Line> = Vec::new();
-    for i in (0..n).filter(|i| parallel.get(*i).copied().unwrap_or(false) && on_edge.get(*i).copied().unwrap_or(false)) {
+    for i in (0..n).filter(|i| along.get(*i).copied().unwrap_or(false) && on_edge.get(*i).copied().unwrap_or(false)) {
         let (a, b) = (pt(i), pt(i + 1));
         if a.dist(b) <= EPS {
             continue;
+        }
+        let drift = (b.1 - a.1).abs();
+        if drift > TOL {
+            warnings.push(format!(
+                "{who}its edge {} runs {:.2}° off the {}: the edge {} along it is flush with it where it lies farthest in, {drift:.0} \
+                 mm in from it at the other end; frame that wedge by hand if it matters",
+                edge_no(i),
+                (drift / a.dist(b)).asin().to_degrees(),
+                words.many,
+                words.one
+            ));
         }
         // Flush with the edge where it lies farthest in, so the whole line is on the region.
         let across = if b.0 > a.0 { [a.1.max(b.1), a.1.max(b.1) + th] } else { [a.1.min(b.1) - th, a.1.min(b.1)] };
@@ -1077,6 +1098,12 @@ pub(super) fn region(g: &Region) -> Framed {
         if !line.cover.is_empty() && !lines.iter().any(|o| o.clashes(&line)) {
             lines.push(line);
         }
+    }
+    if lines.is_empty() {
+        warnings.push(format!(
+            "{who}no {} fits on the {}: it's narrower than a {} is thick, or its rims and holes take it all; frame it by hand",
+            words.one, words.host, words.one
+        ));
     }
 
     // What bears them.

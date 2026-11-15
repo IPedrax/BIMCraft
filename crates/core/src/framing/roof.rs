@@ -13,16 +13,16 @@
 //! carries that frame ([`Member::frame`]) and its bottom and top follow the slope along `s`: its ends are plumb, and its cut
 //! length is along the slope. In that frame the floor's rules hold, with these:
 //! - Rafters run from the eave (the footprint's edge, so the overhang is part of them) to whatever bounds the slope: a ridge
-//!   board, a hip or a valley, an upright gable edge at the top of a shed. An edge of the slope along the rafters on the roof's
-//!   edge (a rake) has an edge rafter flush with it; one on a hip, a valley or a ridge has none.
+//!   board, a hip or a valley, an upright gable edge at the top of a shed. An edge of the slope along the rafters (or within a
+//!   degree of them) on the roof's edge (a rake) has an edge rafter flush with it; one on a hip, a valley or a ridge has none.
+//!   Slopes in one plane that share an edge (a point along a straight eave) are one slope ([`seams`]).
 //! - With `rim`, a rim (a sub-fascia) along each edge of the slope on the roof's edge square to the rafters (its eaves, and a
-//!   shed's high edge), the rafters stopping at its inner face; a rim isn't put along such an edge skewed to them, with a
-//!   warning, nor along a courtyard's eaves.
+//!   shed's high edge), the rafters stopping at its inner face. Along an edge skewed to them neither a rim nor an edge rafter
+//!   is put, with a warning, rims or none. A flat roof's courtyard is framed round as an opening is.
 //! - With `ridge`, where two slopes meet along a level line at their tops, a ridge board one thickness thick centred on the
-//!   line, a level box as deep as the rafters' plumb depth (the deeper's, where the slopes differ) from their underside on the
-//!   line (the lower of the two): so it never reaches under the roof's underside, and its top edges stand over the layer's
-//!   top at its faces by half its thickness times the slope, and the bottom of each rafter's plumb cut that much below it.
-//!   The rafters of both slopes stop at its faces. Without `ridge`, they run to the line.
+//!   line, a level box wholly in the layer: from the rafters' underside on the line (the higher of the two) to the lower of
+//!   their tops at its faces, so each rafter's plumb cut is flush with its top, and its bottom half the board's thickness
+//!   times the slope below the board's. The rafters of both slopes stop at its faces. Without `ridge`, they run to the line.
 //! - No hip or valley rafter is made: the jack rafters end at the line, square where their nearer corner meets it, and each
 //!   hip, valley or other line where slopes meet but a ridge (where a joined roof meets the one it joins) gives one warning.
 //! - A wall under the roof bears the rafters where its top, at either face of it, is within [`BEARING`] of their underside,
@@ -132,10 +132,11 @@ pub(crate) fn under_at(m: &Model, r: &Roof, p: P2, g: P2) -> Option<(Plane, f64)
         .next()
 }
 
-/// Roof `r`'s slopes as they are framed, those with no area (a gable's) left out.
+/// Roof `r`'s slopes as they are framed, those with no area (a gable's) left out, and those in one plane that share an edge
+/// (a seam, where its footprint has a point along a straight eave) made one, numbered as the first ([`seams`]).
 pub fn faces(m: &Model, r: &Roof) -> Result<Vec<Face>, String> {
-    let faces = m.roof_faces(r)?;
-    Ok(faces
+    let mut faces: Vec<(usize, Vec<Vec<P2>>, Plane)> = m
+        .roof_faces(r)?
         .into_iter()
         .enumerate()
         .filter_map(|(index, (loops, plane))| {
@@ -143,6 +144,16 @@ pub fn faces(m: &Model, r: &Roof) -> Result<Vec<Face>, String> {
             if outline.len() < 3 || geom::area(outline).abs() < 1.0 {
                 return None;
             }
+            let loops =
+                loops.into_iter().map(ccw).enumerate().map(|(i, l)| if i == 0 { l } else { l.into_iter().rev().collect() }).collect();
+            Some((index, loops, plane))
+        })
+        .collect();
+    seams(&mut faces);
+    Ok(faces
+        .into_iter()
+        .filter_map(|(index, loops, plane)| {
+            let outline = loops.first()?;
             let x = if plane.g.length() > 1e-9 {
                 plane.g.unit()
             } else {
@@ -157,11 +168,86 @@ pub fn faces(m: &Model, r: &Roof) -> Result<Vec<Face>, String> {
                 P2(t.cos(), t.sin())
             };
             let origin = outline.first().copied().unwrap_or_default();
-            let loops =
-                loops.into_iter().map(ccw).enumerate().map(|(i, l)| if i == 0 { l } else { l.into_iter().rev().collect() }).collect();
             Some(Face { index, loops, plane, origin, x })
         })
         .collect())
+}
+
+/// Sloped slopes (each one loop, counter-clockwise) in one plane that share an edge, merged into the first, which is then
+/// one slope framed as one: no line is between them. Then each corner a slope has in a straight line, where every slope that
+/// has that corner has it so (the ends of a seam, a footprint's point along a straight eave), taken out, so the slopes meet
+/// edge to edge at a ridge as they would without it.
+fn seams(faces: &mut Vec<(usize, Vec<Vec<P2>>, Plane)>) {
+    let sloped = |f: &(usize, Vec<Vec<P2>>, Plane)| f.1.len() == 1 && f.2.g.length() > 1e-9;
+    let boxed = |r: &[P2]| {
+        r.iter().fold([f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY], |[x0, y0, x1, y1], q| {
+            [x0.min(q.0), y0.min(q.1), x1.max(q.0), y1.max(q.1)]
+        })
+    };
+    let mut merged = false;
+    let mut a = 0;
+    while a < faces.len() {
+        let joined = faces.get(a).filter(|f| sloped(f)).and_then(|fa| {
+            let ra = fa.1.first()?;
+            let ba = boxed(ra);
+            faces.iter().enumerate().skip(a + 1).find_map(|(b, fb)| {
+                let rb = fb.1.first()?;
+                let bb = boxed(rb);
+                let near = ba[0] <= bb[2] + TOL && bb[0] <= ba[2] + TOL && ba[1] <= bb[3] + TOL && bb[1] <= ba[3] + TOL;
+                let probe = ra.first().copied().unwrap_or_default();
+                let flat = (fa.2.g - fb.2.g).length() < 1e-9 && (fa.2.at(probe) - fb.2.at(probe)).abs() < 0.01;
+                if !(near && sloped(fb) && flat) {
+                    return None;
+                }
+                let (na, nb) = (ra.len(), rb.len());
+                (0..na).find_map(|i| {
+                    let (p, q) = (ra[i], ra[(i + 1) % na]);
+                    let j = (0..nb).find(|j| rb[*j].dist(q) <= TOL && rb[(j + 1) % nb].dist(p) <= TOL)?;
+                    // Round the first from the edge's end to its start, then round the second from past its start to its end.
+                    let ring: Vec<P2> = (1..=na).map(|k| ra[(i + k) % na]).chain((2..nb).map(|k| rb[(j + k) % nb])).collect();
+                    Some((b, ring))
+                })
+            })
+        });
+        match joined {
+            Some((b, ring)) => {
+                if let Some(f) = faces.get_mut(a) {
+                    f.1 = vec![ring];
+                }
+                faces.remove(b);
+                merged = true;
+            }
+            None => a += 1,
+        }
+    }
+    if !merged {
+        return;
+    }
+    // Every corner, by slope: whether it lies in a straight line between its neighbours (or folds back on itself).
+    let straight = |r: &[P2], i: usize| {
+        let n = r.len();
+        let (p, v, q) = (r[(i + n - 1) % n], r[i], r[(i + 1) % n]);
+        p.dist(q) <= TOL || geom::dist_to_segment(v, p, q) <= 0.01
+    };
+    let corners: Vec<(P2, bool)> = faces
+        .iter()
+        .filter(|f| sloped(f))
+        .flat_map(|f| f.1.first().map(|r| (0..r.len()).map(|i| (r[i], straight(r, i))).collect::<Vec<_>>()).unwrap_or_default())
+        .collect();
+    for f in faces.iter_mut().filter(|f| sloped(f)) {
+        let Some(r) = f.1.first_mut() else { continue };
+        loop {
+            let n = r.len();
+            // A corner twice over (where a seam was more than one edge), or one in a straight line on every slope with it.
+            let gone = (0..n).find(|i| {
+                n > 3
+                    && (r[*i].dist(r[(i + 1) % n]) <= EPS
+                        || straight(r, *i) && corners.iter().filter(|(c, _)| c.dist(r[*i]) <= TOL).all(|(_, s)| *s))
+            });
+            let Some(i) = gone else { break };
+            r.remove(i);
+        }
+    }
 }
 
 /// What a framed roof must be, which `Model::check` asks of each: of a known framing type, by footprint and unshaped, of a type
@@ -246,10 +332,20 @@ pub fn roof(m: &Model, id: Id) -> Result<Option<Framing>, String> {
         span: Some(0.0),
     };
     let th = t.thickness;
-    // The footprint's edges, which a slope's edge on the roof's edge lies along.
+    // The footprint's edges, which a slope's edge on the roof's edge lies along: its whole length, over one edge of the
+    // footprint or several in line (where a point along a straight eave leaves none between two slopes made one).
     let footprint: Vec<(P2, P2)> = r.edges().collect();
-    let on_footprint =
-        |p: P2, q: P2| footprint.iter().any(|(a, b)| geom::dist_to_segment(p, *a, *b) <= TOL && geom::dist_to_segment(q, *a, *b) <= TOL);
+    let on_footprint = |p: P2, q: P2| {
+        let near = |x: P2| footprint.iter().any(|(a, b)| geom::dist_to_segment(x, *a, *b) <= TOL);
+        let d = q - p;
+        let len2 = d.dot(d);
+        let mut ts = vec![0.0, 1.0];
+        if len2 > 0.0 {
+            ts.extend(footprint.iter().map(|(a, _)| (*a - p).dot(d) / len2).filter(|t| *t > 0.0 && *t < 1.0));
+        }
+        ts.sort_by(f64::total_cmp);
+        near(p) && near(q) && ts.windows(2).all(|w| near(p + d * ((w[0] + w[1]) / 2.0)))
+    };
     // Each slope's structure layer: its underside's plane, and how deep it is plumb.
     let bands: Vec<(Plane, f64)> = faces
         .iter()
@@ -350,9 +446,12 @@ pub fn roof(m: &Model, id: Id) -> Result<Option<Framing>, String> {
             let (pa, qa) = (a.local(p), a.local(q));
             let s = (pa.0 + qa.0) / 2.0;
             let span = [pa.1.min(qa.1), pa.1.max(qa.1)];
-            // On the line, the lower of the two slopes' rafter undersides and the deeper's plumb depth over it.
-            let bottom = ba.at(mid).min(bb.at(mid));
-            let top = bottom + da.max(db);
+            // From the rafters' underside on the line (the higher of the two) up to the lower of their tops at its faces, half
+            // its thickness down each slope: wholly in the layer, under the roof's top and over its underside (and so over the
+            // top plate of a gable wall under it), each rafter's plumb cut flush with its top.
+            let (fa, fb) = (a.plan(P2(s - th / 2.0, (span[0] + span[1]) / 2.0)), a.plan(P2(s + th / 2.0, (span[0] + span[1]) / 2.0)));
+            let bottom = ba.at(mid).max(bb.at(mid));
+            let top = (ba.at(fa) + da).min(bb.at(fb) + db);
             if top - bottom <= EPS {
                 continue;
             }
@@ -437,26 +536,24 @@ pub fn roof(m: &Model, id: Id) -> Result<Option<Framing>, String> {
         let who = format!("slope {}: ", f.index);
         let sec = (1.0 + f.plane.g.dot(f.plane.g)).sqrt();
         let ring: Vec<P2> = f.loops.first().map(|l| l.iter().map(|q| f.local(*q)).collect()).unwrap_or_default();
-        // Its holes: the roof's openings, then the shafts through it, those that reach it.
+        // Its holes: its own (a flat roof's courtyards, framed round as openings are), the roof's openings, then the shafts
+        // through it, those that reach it.
         let rise = m.roof_rise(r, &f.plane);
         let outline = f.loops.first().cloned().unwrap_or_default();
         let shafts = m.less_shafts(&f.plane.lift(&outline), rise).1;
-        let rings = r.openings.iter().enumerate().map(|(i, o)| (format!("opening {i}"), format!("opening/{i}"), o.clone())).chain(
+        let courtyards = f.loops.iter().skip(1).enumerate().map(|(i, c)| (format!("courtyard {i}"), format!("courtyard/{i}"), c.clone()));
+        let openings = r.openings.iter().enumerate().map(|(i, o)| (format!("opening {i}"), format!("opening/{i}"), o.clone())).chain(
             shafts.iter().filter_map(|sid| match m.elements.get(*sid) {
                 Some(Element::Shaft(sh)) => Some((format!("shaft {sid}"), format!("opening/{}", m.guid(*sid)), sh.boundary.clone())),
                 _ => None,
             }),
         );
-        let holes: Vec<Hole> = rings
-            .filter(|(_, _, o)| meets(o, &outline))
+        let holes: Vec<Hole> = courtyards
+            .chain(openings.filter(|(_, _, o)| meets(o, &outline)))
             .map(|(name, key, o)| Hole::new(name, key, o.iter().map(|q| f.local(*q)).collect()))
             .collect();
-        // What else its rafters run round: its own holes (a courtyard's eaves), and the ridge boards.
-        let mut cuts: Vec<Vec<P2>> = f.loops.iter().skip(1).map(|l| l.iter().map(|q| f.local(*q)).collect()).collect();
-        if t.rim && f.loops.len() > 1 {
-            out.warnings.push(format!("{who}its rafters end at the eaves round a courtyard with no rim along them; frame it by hand"));
-        }
-        cuts.extend(ridges.iter().map(|rg| rg.iter().map(|q| f.local(*q)).collect()));
+        // What else its rafters run round: the ridge boards.
+        let cuts: Vec<Vec<P2>> = ridges.iter().map(|rg| rg.iter().map(|q| f.local(*q)).collect()).collect();
         // What bears its rafters.
         let (lo, hi) = outline.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), q| (lo.min(under.at(*q)), hi.max(under.at(*q))));
         let plan = outline.iter().fold([f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY], |[x0, y0, x1, y1], q| {
