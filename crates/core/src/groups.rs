@@ -254,10 +254,12 @@ pub struct Placement {
 impl Placement {
     pub const NONE: Placement = Placement { at: P2(0.0, 0.0), angle: 0.0, mirrored: false };
 
-    /// The group's frame to the project: mirrored, turned, then moved. (Not to the micron: a note's angle is worked out from
-    /// two points it places, a metre apart, and a micron of either would turn it by a hundred-thousandth of a degree.)
+    /// The group's frame to the project: mirrored, turned, then moved, to the picometre ([`nano`]). (Not to the micron: a
+    /// note's angle is worked out from two points it places, a metre apart, and a micron of either would turn it by a
+    /// hundred-thousandth of a degree.)
     pub fn forward(self) -> impl Fn(P2) -> P2 {
-        placing(self.at, self.angle, self.mirrored)
+        let f = placing(self.at, self.angle, self.mirrored);
+        move |p| nano(f(p))
     }
 
     /// The project to the group's frame.
@@ -266,9 +268,15 @@ impl Placement {
         move |q: P2| {
             let d = q - self.at;
             let (x, y) = (d.dot(u), d.dot(v));
-            P2(x, if self.mirrored { -y } else { y })
+            nano(P2(x, if self.mirrored { -y } else { y }))
         }
     }
+}
+
+/// `p` to the picometre (a millionth of a micron): what a turn leaves in the last digits goes, and a note's angle, worked
+/// out from points a metre apart, stays true to the billionth of a degree it is kept to.
+fn nano(p: P2) -> P2 {
+    P2((p.0 * 1e9).round() / 1e9, (p.1 * 1e9).round() / 1e9)
 }
 
 /// An instance of a group, as either kind holds it.

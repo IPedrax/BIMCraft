@@ -148,13 +148,13 @@ impl BimApp {
                 self.run("remove_from_group", json!({"ids": ids}));
             }
             let tip = msg!("Finish: the group's type becomes what it now is, and every group of it changes with it");
-            if crate::inked_button(ui, Icon::Check, msg!("Finish"), false, tip, Some(crate::style::pal().context)).clicked()
+            if crate::inked_button(ui, Icon::Check, msg!("Finish Edit Group"), false, tip, Some(crate::style::pal().context)).clicked()
                 && self.run("finish_group", json!({})).is_some()
             {
                 self.selection.clear();
             }
             let tip = msg!("Cancel: the group and everything else as it was when the edit began");
-            if crate::inked_button(ui, Icon::Close, msg!("Cancel"), false, tip, Some(crate::style::pal().error)).clicked()
+            if crate::inked_button(ui, Icon::Close, msg!("Cancel Edit Group"), false, tip, Some(crate::style::pal().error)).clicked()
                 && self.run("cancel_group", json!({})).is_some()
             {
                 self.selection.clear();
@@ -168,6 +168,7 @@ impl BimApp {
             return;
         }
         let kind = self.groupable();
+        // Create Group, and Place Model Group once there is a model group to place.
         panel(ui, msg!("Create"), |ui| {
             let tip = match kind {
                 Some(Kind::Model) => msg!("Create Group (GP): the selected model elements made one model group"),
@@ -178,6 +179,13 @@ impl BimApp {
             };
             if ui.add_enabled_ui(kind.is_some(), |ui| big_button(ui, Icon::CreateGroup, "Create Group", false, tip)).inner.clicked() {
                 self.create_group();
+            }
+            if !self.session.model.model_groups.is_empty() {
+                let tip = msg!("Place Model Group: the model group on the Options Bar where you click, on this level");
+                let active = self.tool == crate::Tool::ModelGroup;
+                if big_button(ui, Icon::ModelGroup, msg!("Model Group"), active, tip).clicked() {
+                    self.set_tool(crate::Tool::ModelGroup);
+                }
             }
         });
         let groups = self.groups_selected();

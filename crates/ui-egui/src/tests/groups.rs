@@ -142,8 +142,8 @@ fn exclude_and_restore_all_excluded_from_the_group_panel() {
     let group = ids(&h, "modelgroup");
     let walls = ids(&h, "wall");
     h.state_mut().selection = vec![walls[0]];
+    h.state_mut().tab = crate::Tab::Modify;
     h.run();
-    press(&mut h, "Modify");
     press(&mut h, "Exclude");
     assert_eq!(ids(&h, "wall").len(), 2, "the excluded wall goes");
     assert_eq!(ids(&h, "modelgroup"), group, "the group stays");
@@ -159,8 +159,8 @@ fn edit_group_finish_changes_every_group_of_the_type() {
     let groups = ids(&h, "modelgroup");
     assert_eq!(groups.len(), 2, "two of one type");
     h.state_mut().selection = vec![groups[0]];
+    h.state_mut().tab = crate::Tab::Modify;
     h.run();
-    press(&mut h, "Modify");
     press(&mut h, "Edit Group");
     assert!(h.state().session.editing_group().is_some());
     // In Edit Group a click on a member takes the member.
@@ -170,11 +170,19 @@ fn edit_group_finish_changes_every_group_of_the_type() {
     assert!(h.state().session.model.wall(wall[0]).is_some());
     let r = h.state_mut().run("move", serde_json::json!({"ids": wall, "by": [0, -500]}));
     assert!(r.is_some(), "{}", h.state().status.text);
-    press(&mut h, "Finish");
+    press(&mut h, "Finish Edit Group");
     assert!(h.state().session.editing_group().is_none());
     // The copy's wall moved too.
     let m = &h.state().session.model;
-    assert!(m.elements.values().any(|e| matches!(e, Element::Wall(w) if w.start == P2(10000.0, -500.0))), "the other group follows");
+    let walls: Vec<(P2, P2)> = m
+        .elements
+        .values()
+        .filter_map(|e| match e {
+            Element::Wall(w) => Some((w.start, w.end)),
+            _ => None,
+        })
+        .collect();
+    assert!(walls.iter().any(|(a, _)| *a == P2(10000.0, -500.0)), "the other group follows: {walls:?} {}", h.state().status.text);
 }
 
 #[test]
@@ -226,12 +234,45 @@ fn create_group_is_offered_for_a_selection_of_one_kind_only() {
 }
 
 #[test]
-fn place_model_group_puts_one_where_clicked_and_on_another_level_when_forgiving() {
+fn place_model_group_puts_one_where_clicked() {
     let mut h = app(CORNER);
-    press(&mut h, "Architecture");
+    h.state_mut().selection.clear();
+    h.state_mut().tab = crate::Tab::Modify;
+    h.run();
     press(&mut h, "Model Group");
     assert_eq!(h.state().tool, Tool::ModelGroup);
-    click(&mut h, P2(20000.0, 0.0));
+    click(&mut h, P2(6000.0, 1000.0));
     assert_eq!(ids(&h, "modelgroup").len(), 2);
     assert_eq!(ids(&h, "wall").len(), 6);
+}
+
+/// What groups look like, for a person to look at: `BIMCRAFT_GROUPS_DUMP=<folder>` writes a group selected with the Group panel,
+/// Edit Group's panel and the conflict dialog, light and dark.
+#[test]
+fn group_screenshots() {
+    let Ok(folder) = std::env::var("BIMCRAFT_GROUPS_DUMP") else { return };
+    std::fs::create_dir_all(&folder).unwrap_or_default();
+    for (dark, look) in [(false, "light"), (true, "dark")] {
+        let save = |h: &mut Harness<BimApp>, name: &str| {
+            if dark {
+                h.ctx.set_theme(egui::Theme::Dark);
+            }
+            h.run();
+            if let Ok(image) = h.render() {
+                let _ = image.save(std::path::Path::new(&folder).join(format!("groups-{name}-{look}.png")));
+            }
+        };
+        let mut h = app(&format!("{CORNER}\ncopy {{\"ids\": [\"$last\"], \"by\": [6000, 0]}}"));
+        let groups = ids(&h, "modelgroup");
+        h.state_mut().selection = vec![groups[0]];
+        h.state_mut().tab = crate::Tab::Modify;
+        save(&mut h, "selected");
+        h.state_mut().edit_group();
+        h.state_mut().selection = vec![ids(&h, "wall")[1]];
+        save(&mut h, "editing");
+        h.state_mut().run("cancel_group", json!({}));
+        let walls = ids(&h, "wall");
+        h.state_mut().run("move", json!({"ids": [walls[0]], "by": [0, 500]}));
+        save(&mut h, "conflict");
+    }
 }

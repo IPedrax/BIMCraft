@@ -1780,6 +1780,8 @@ impl BimApp {
                 self.status = Status::default();
                 Some(v)
             }
+            // A group conflict is asked about in its own dialog (`group_conflict_window`), not said again in the corner.
+            Err(e) if self.group_conflict.is_some() && bimcraft_core::groups::is_conflict(&e) => None,
             Err(e) => {
                 self.status = Status { text: e, error: true };
                 None
@@ -4551,16 +4553,6 @@ impl BimApp {
                     Tool::Dormer,
                 ),
             ],
-        );
-        self.tools(
-            ui,
-            msg!("Model"),
-            &[(
-                Icon::ModelGroup,
-                msg!("Model Group"),
-                msg!("Place Model Group: the model group on the Options Bar where you click, on this level"),
-                Tool::ModelGroup,
-            )],
         );
         // Datum, and the Work Plane's Set and Ref Plane beside its levels and grids, as Revit's Work Plane panel has them.
         let datum: Tools = &[

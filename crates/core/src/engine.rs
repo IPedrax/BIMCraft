@@ -210,7 +210,7 @@ pub struct Session {
     /// of its own. None: the command is refused ([`crate::groups::CONFLICT`]).
     pub(crate) group_fix: Option<crate::groups::commands::Fix>,
     /// The group in Edit Group, if one is: its members change freely until Finish or Cancel.
-    pub(crate) group_edit: Option<crate::groups::commands::GroupEdit>,
+    pub(crate) group_edit: Option<Box<crate::groups::commands::GroupEdit>>,
 }
 
 impl Default for Session {

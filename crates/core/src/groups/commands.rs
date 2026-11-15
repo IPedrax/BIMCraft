@@ -394,14 +394,14 @@ pub(crate) fn edit_group(s: &mut Session, p: &Value) -> R {
         return Err(bad(c, format!("group {} is in Edit Group: finish or cancel that first", s.model.shown(g))));
     }
     let group = s.model.guid(id);
-    s.group_edit = Some(GroupEdit {
+    s.group_edit = Some(Box::new(GroupEdit {
         group,
         before: Arc::clone(&s.model),
         undo_len: s.undo_len(),
         added: Vec::new(),
         removed: Vec::new(),
         deleted: Vec::new(),
-    });
+    }));
     Ok(json!({"editing": id, "members": super::members(&s.model, id)}))
 }
 
@@ -478,7 +478,7 @@ pub(crate) fn finish_group(s: &mut Session, p: &Value) -> R {
     let c = "finish_group";
     only(c, p, &[])?;
     let group = editing(c, s)?;
-    let Some(ed) = s.group_edit.clone() else { return Err(bad(c, "no group is in Edit Group")) };
+    let Some(ed) = s.group_edit.as_deref().cloned() else { return Err(bad(c, "no group is in Edit Group")) };
     let m = &s.model;
     let Some(inst) = m.elements.get(group).and_then(instance) else { return Err(bad(c, "the group in Edit Group is gone")) };
     let (kind, on, pl, name) = (inst.kind, inst.on, inst.placement, inst.type_name.to_string());
