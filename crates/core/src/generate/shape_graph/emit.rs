@@ -221,21 +221,22 @@ fn orient(fam: &Family, rooms: &[Room], laid: &Laid, d: &mut Drawn) -> Result<()
     Ok(())
 }
 
-/// The names and numbers of the rooms: the room type's name, with 1, 2, 3 when the plan has several of the type; and `101` upward.
+/// The names and numbers of the rooms: the room type's name, with 1, 2, 3 when the plan has several rooms of that name (room types
+/// may share a name); and `101` upward.
 pub fn names(fam: &Family, rooms: &[Room]) -> Vec<(String, String)> {
-    let mut seen: BTreeMap<usize, usize> = BTreeMap::new();
-    let total: BTreeMap<usize, usize> = rooms.iter().fold(BTreeMap::new(), |mut m, r| {
-        *m.entry(r.ty).or_default() += 1;
+    let mut seen: BTreeMap<&str, usize> = BTreeMap::new();
+    let total: BTreeMap<&str, usize> = rooms.iter().fold(BTreeMap::new(), |mut m, r| {
+        *m.entry(fam.types[r.ty].name.as_str()).or_default() += 1;
         m
     });
     rooms
         .iter()
         .enumerate()
         .map(|(i, r)| {
-            let k = seen.entry(r.ty).or_default();
+            let base = fam.types[r.ty].name.as_str();
+            let k = seen.entry(base).or_default();
             *k += 1;
-            let base = &fam.types[r.ty].name;
-            let name = if total[&r.ty] > 1 { format!("{base} {k}") } else { base.clone() };
+            let name = if total[base] > 1 { format!("{base} {k}") } else { base.to_string() };
             (name, format!("{}", 101 + i))
         })
         .collect()
