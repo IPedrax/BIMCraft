@@ -10,32 +10,19 @@ use serde_json::Value as JsonValue;
 
 use crate::graph_rules::Pack;
 
-pub const CLINIC_FAMILY: &str = include_str!("../../../data/shape-families/clinic.json");
-pub const HOSPITAL_FAMILY: &str = include_str!("../../../data/shape-families/hospital.json");
-pub const HOUSE_FAMILY: &str = include_str!("../../../data/shape-families/house.json");
-pub const OFFICE_PATTERN_FAMILY: &str = include_str!("../../../data/shape-families/office-pattern.json");
-pub const SCHOOL_FAMILY: &str = include_str!("../../../data/shape-families/school.json");
 pub const SHAPES: &str = include_str!("../../../data/shape-families/shapes.json");
-pub const STUDIO_OFFICE_FAMILY: &str = include_str!("../../../data/shape-families/studio-office.json");
+
+// `BUILTIN`: every family file of `data/shape-families` but `shapes.json`, sorted by name (`build.rs`).
+include!(concat!(env!("OUT_DIR"), "/shape_families.rs"));
 
 /// The built-in family files, by archetype.
 pub fn builtin(archetype: &str) -> Option<&'static str> {
-    [
-        ("clinic", CLINIC_FAMILY),
-        ("hospital", HOSPITAL_FAMILY),
-        ("house", HOUSE_FAMILY),
-        ("office-pattern", OFFICE_PATTERN_FAMILY),
-        ("school", SCHOOL_FAMILY),
-        ("studio-office", STUDIO_OFFICE_FAMILY),
-    ]
-    .iter()
-    .find(|(name, _)| *name == archetype)
-    .map(|(_, text)| *text)
+    BUILTIN.iter().find(|(name, _)| *name == archetype).map(|(_, text)| *text)
 }
 
 /// The names of the built-in families, for messages.
-pub fn builtin_names() -> &'static str {
-    "clinic, hospital, house, office-pattern, school, studio-office"
+pub fn builtin_names() -> String {
+    BUILTIN.iter().map(|(name, _)| *name).collect::<Vec<_>>().join(", ")
 }
 
 /// A connection type (the spec's table): what it needs of a shared wall and how the extractor reports it.

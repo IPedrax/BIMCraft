@@ -18,6 +18,8 @@ mod interior_tests;
 mod layout;
 mod links;
 mod plan;
+#[cfg(test)]
+pub(crate) mod register_tests;
 mod tags;
 #[cfg(test)]
 mod tests;

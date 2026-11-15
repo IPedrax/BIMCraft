@@ -416,3 +416,21 @@ fn a_batch_with_both_rooms_and_area_or_neither_is_invalid() {
     }
     assert_eq!(std::fs::read_dir(&root).expect("ls").count(), 0);
 }
+
+#[test]
+fn a_rooms_batch_is_accepted_for_every_family_file_and_refused_for_none() {
+    let d = dir("family-files");
+    let rights = put(&d, "rights.txt", RIGHTS);
+    let names = super::shape_graph::register_tests::family_file_names();
+    let batch = |archetype: &str, first_seed: usize| json!({"archetype": archetype, "first_seed": first_seed, "count": 1, "rooms": [12, 12], "rooms_tol": 2, "unreviewed": "allow"});
+    let all: Vec<Value> = names.iter().enumerate().map(|(i, n)| batch(n, 100 * (i + 1))).collect();
+    let brief = put(&d, "all.json", json!({"schema_version": 1, "batches": all}).to_string().as_bytes());
+    let root = d.join("root");
+    std::fs::create_dir_all(&root).expect("root");
+    let out = session().execute("deliver", &params(&d, &brief, "all", Some(&rights), &root));
+    assert!(out.is_ok(), "{out:?}");
+    let none = put(&d, "none.json", json!({"schema_version": 1, "batches": [batch("no-such-family", 1)]}).to_string().as_bytes());
+    let root2 = d.join("root2");
+    std::fs::create_dir_all(&root2).expect("root");
+    refused(&mut session(), &params(&d, &none, "none", Some(&rights), &root2), "invalid_brief");
+}
