@@ -250,12 +250,24 @@ block are later slices.
 
 ## Shape graph engine
 
-`generate --archetype house --seed N --rooms R [--rooms-tol T] [--shape ID] [--interior aligned] [--bumps off]` (spec: `specs/shape-graph-generator.md`,
+`generate --archetype house --seed N --rooms R [--rooms-tol T] [--shape ID] [--interior aligned|jogged|mixed] [--bumps on|off]` (spec: `specs/shape-graph-generator.md`,
 Slice 1) is a second engine beside the `--area` ones. `--rooms` selects it; it has no area input (`--rooms` with an area is refused as
 `invalid_params`, and so is any of its options without `--rooms`). The engine's code holds no room kind: what rooms a family has, their
 counts, areas, sides, links and entry are a family file (`crates/core/data/shape-families/<archetype>.json`, compiled in, read strictly by
 `shape_graph/family.rs` with the rooms' order kept, and refused as `invalid_family` when it widens the graph rule pack it names). The nine
 outlines are `shapes.json` (corners, the depth levels of each side's pieces, raise ranges, the proportion each is recognised by).
+
+**Jogs and bumps** (Slice 3; `shape_graph/layout/interior.rs`). `--interior` is `aligned`, `jogged` or `mixed` (the default: the seed
+chooses, and only a mixed call draws a number for it, so an aligned plan is what it was before the option); `--bumps` is `on` (the
+default) or `off`. `deliver` and `generate` take the defaults from one place (`Request::new`). The cells the layout places are kept
+(`Cell`), and after the trial `verify` the outline is the *base*. A jog sets a row cell's front back 300 to 1,200 mm, refitted shallower,
+and the spine room it faced takes the strip; a jog is accepted only if the number of pairs a check would count (neighbours that share
+300 mm of wall and face the same spine room from lines 300 to 1,200 mm apart, `jog_pairs`) rises, so the last count is the plan's. A bump
+moves a cell's back wall 300 to 1,200 mm out (the ground and 600 mm round it empty) or in; it is accepted only when the outline minus
+the base and the base minus the outline are exactly one rectangle per bump, each on one side (`bump_parts`), which rules out two inward
+bumps side by side and an inward bump at a corner. Both run on the trial's throwaway random source for the links and checks, and use
+the real one for their choices only when on. The manifest gains `interior` (resolved: `aligned` or `jogged`), `bumps` (`room` is the
+room's id, `side` N/E/S/W after the mirror and turns, `offset_mm` positive outward) and `base_outline` (corner points in the plan's frame).
 
 `--family-file FILE` (Slice 2; `family_file` in the command's params) reads the family from a file in place of `--archetype`: the two
 exclude each other (`invalid_params`, as is neither) and `family_file` needs `--rooms`. The file is read up to 1 MiB (never trusting its

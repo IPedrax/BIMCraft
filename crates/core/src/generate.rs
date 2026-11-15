@@ -428,7 +428,10 @@ fn run_shaped(given: &Params, rooms: i64, gridlines: bool) -> Result<Value, Refu
     let interior = match given.interior.as_deref() {
         None => None,
         Some(text) => Some(shape_graph::Interior::parse(text).ok_or_else(|| {
-            refuse("invalid_params", format!("`interior` is `aligned`, `jogged` or `mixed`; got {:?}", text.chars().take(40).collect::<String>()))
+            refuse(
+                "invalid_params",
+                format!("`interior` is `aligned`, `jogged` or `mixed`; got {:?}", text.chars().take(40).collect::<String>()),
+            )
         })?),
     };
     let bumps = match given.bumps.as_deref() {

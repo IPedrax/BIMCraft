@@ -10,7 +10,16 @@ use crate::engine::Session;
 use crate::graph_rules::Pack;
 
 fn request(seed: u64, rooms: i64, tol: i64, shape: Option<&str>) -> Request {
-    Request { archetype: "house".into(), seed, rooms, tolerance: tol, shape: shape.map(String::from), gridlines: false, interior: super::Interior::Aligned, bumps: false }
+    Request {
+        archetype: "house".into(),
+        seed,
+        rooms,
+        tolerance: tol,
+        shape: shape.map(String::from),
+        gridlines: false,
+        interior: super::Interior::Aligned,
+        bumps: false,
+    }
 }
 
 fn file(files: &[(&'static str, String)], name: &str) -> Value {

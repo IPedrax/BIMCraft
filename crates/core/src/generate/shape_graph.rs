@@ -117,10 +117,18 @@ fn attempt(fam: &Family, shape: &Shape, requested: &Request, k: u64) -> Result<(
     let count = from + rng.below((to - from + 1).max(1) as usize) as i64;
     let rooms = plan::program(fam, count, &mut rng)?;
     let g = plan::graph(fam, &rooms, &mut rng)?;
+    // A mixed interior is chosen by the seed alone, from a source of its own: every attempt of a seed has the same interior (a jogged
+    // plan takes more attempts, so a choice made in each would favour aligned plans), and the attempt's own numbers are untouched.
+    let jogged = match requested.interior {
+        Interior::Aligned => false,
+        Interior::Jogged => true,
+        Interior::Mixed => Rnd::new(requested.seed, u64::MAX - 1).random() < 0.5,
+    };
     let room_ty: Vec<usize> = rooms.iter().map(|r| r.ty).collect();
     let target: Vec<f64> = rooms.iter().map(|r| r.target).collect();
     let fx = Fitter::new(&fam.types, &room_ty, &target);
-    let laid = layout::layout(fam, &rooms, &g, &fx, shape, &mut rng)?;
+    let opts = layout::Options { jogged, bumps: requested.bumps };
+    let laid = layout::layout(fam, &rooms, &g, &fx, shape, opts, &mut rng)?;
     if laid.verified.net_m2 < FILL_MIN * laid.verified.gross_m2 {
         return Err(Fail("rooms fill too little of the outline"));
     }
@@ -281,6 +289,9 @@ fn finish(fam: &Family, req: &Request, shape: &str, rooms: &[plan::Room], laid: 
         "gridlines": req.gridlines,
         "mirror": laid.mirror,
         "quarter_turns": laid.quarter_turns,
+        "interior": if laid.jogged { "jogged" } else { "aligned" },
+        "bumps": laid.bumps.iter().map(|b| json!({"room": rooms[b.room].id, "side": b.side, "offset_mm": b.offset})).collect::<Vec<_>>(),
+        "base_outline": laid.base_outline.iter().map(|(x, y)| json!([x, y])).collect::<Vec<_>>(),
         "net_area_m2": round2(net),
         "gross_area_m2": gross,
         "hash_algorithm": "fnv1a64",

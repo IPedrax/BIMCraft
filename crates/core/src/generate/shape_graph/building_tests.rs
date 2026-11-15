@@ -5,7 +5,16 @@ use serde_json::{Value, json};
 use super::{Request, build, building_id};
 
 fn request(seed: u64) -> Request {
-    Request { archetype: "house".into(), seed, rooms: 9, tolerance: 1, shape: None, gridlines: false, interior: super::Interior::Aligned, bumps: false }
+    Request {
+        archetype: "house".into(),
+        seed,
+        rooms: 9,
+        tolerance: 1,
+        shape: None,
+        gridlines: false,
+        interior: super::Interior::Aligned,
+        bumps: false,
+    }
 }
 
 fn manifest(seed: u64) -> Value {

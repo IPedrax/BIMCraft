@@ -24,10 +24,13 @@ fn manifest(f: &BTreeMap<&'static str, String>) -> Value {
 
 /// The hashes of the five files that are not the manifest, for a plan.
 fn hashes(r: &Request) -> Vec<String> {
-    files(r).iter().filter(|(n, _)| **n != MANIFEST).map(|(_, t)| fnv1a64(t)).collect()
+    let built = build(r, false).unwrap_or_else(|e| panic!("{r:?}: {e}"));
+    built.files.iter().filter(|(n, _)| *n != MANIFEST).map(|(_, t)| fnv1a64(t)).collect()
 }
 
 type P = (f64, f64);
+/// A part of one outline outside another: its area, its bounding box and whether it is a rectangle.
+type Region = (f64, [f64; 4], bool);
 
 /// The one loop the 250 mm walls of a script make, as corner points (no point between two on one axis line).
 fn outline_of(script: &str) -> Vec<P> {
@@ -37,8 +40,12 @@ fn outline_of(script: &str) -> Vec<P> {
         if v["type"] != "Exterior - 250mm" {
             continue;
         }
-        let mut pts: Vec<[i64; 2]> =
-            v["points"].as_array().into_iter().flatten().map(|p| [p[0].as_f64().unwrap_or(0.0) as i64, p[1].as_f64().unwrap_or(0.0) as i64]).collect();
+        let mut pts: Vec<[i64; 2]> = v["points"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .map(|p| [p[0].as_f64().unwrap_or(0.0) as i64, p[1].as_f64().unwrap_or(0.0) as i64])
+            .collect();
         if v["closed"] == true && pts.len() > 2 {
             pts.push(pts[0]);
         }
@@ -140,17 +147,34 @@ fn regions(a: &[P], b: &[P]) -> Vec<(f64, [f64; 4], bool)> {
 }
 
 fn base_of(m: &Value) -> Vec<P> {
-    m["base_outline"].as_array().expect("base_outline").iter().map(|p| (p[0].as_f64().unwrap_or(0.0), p[1].as_f64().unwrap_or(0.0))).collect()
+    m["base_outline"]
+        .as_array()
+        .expect("base_outline")
+        .iter()
+        .map(|p| (p[0].as_f64().unwrap_or(0.0), p[1].as_f64().unwrap_or(0.0)))
+        .collect()
 }
 
 #[test]
 fn aligned_off_plans_are_unchanged() {
     // Recorded on the commit before jogs and bumps: the aligned path draws no extra random number.
     let cases = [
-        (req(3, 16, Some("court"), Interior::Aligned, false), ["c36b3c33d64dff7b", "05ea4bc8a6cea27e", "1187c8a0a9d8d525", "6e5fc0d9167f6cbe", "c03f9a83f0400961"]),
-        (req(5, 12, Some("t_shape"), Interior::Aligned, false), ["aa6796588871ca0b", "a46555c0b80c65fe", "1c480414afee010b", "82e1e538b623a22f", "c7f9a5ba99aff147"]),
-        (req(7, 8, None, Interior::Aligned, false), ["6afef852bced675f", "706e0145a7492e95", "b931c960257077ca", "f373253228428faf", "230af99a51e8c526"]),
-        (req(2, 5, Some("bar"), Interior::Aligned, false), ["df3ac3dd197662dc", "18bda057fbdaf7fa", "1545ba332882d5da", "a269548fe13cdc38", "874abb5809d413c0"]),
+        (
+            req(3, 16, Some("court"), Interior::Aligned, false),
+            ["c36b3c33d64dff7b", "05ea4bc8a6cea27e", "1187c8a0a9d8d525", "6e5fc0d9167f6cbe", "c03f9a83f0400961"],
+        ),
+        (
+            req(5, 12, Some("t_shape"), Interior::Aligned, false),
+            ["aa6796588871ca0b", "a46555c0b80c65fe", "1c480414afee010b", "82e1e538b623a22f", "c7f9a5ba99aff147"],
+        ),
+        (
+            req(7, 8, None, Interior::Aligned, false),
+            ["6afef852bced675f", "706e0145a7492e95", "b931c960257077ca", "f373253228428faf", "230af99a51e8c526"],
+        ),
+        (
+            req(2, 5, Some("bar"), Interior::Aligned, false),
+            ["df3ac3dd197662dc", "18bda057fbdaf7fa", "1545ba332882d5da", "a269548fe13cdc38", "874abb5809d413c0"],
+        ),
     ];
     for (r, want) in &cases {
         assert_eq!(&hashes(r), want, "{r:?}");
@@ -168,7 +192,9 @@ fn an_interior_or_bumps_value_out_of_range_is_refused_and_writes_nothing() {
         assert_eq!(err.code, "invalid_params", "{p}");
         assert!(!dir.exists(), "nothing is written");
     }
-    for extra in [json!({"interior": "jogged"}), json!({"interior": "mixed", "bumps": "on"}), json!({"interior": "aligned", "bumps": "off"})] {
+    for extra in
+        [json!({"interior": "jogged"}), json!({"interior": "mixed", "bumps": "on"}), json!({"interior": "aligned", "bumps": "off"})]
+    {
         let mut p = json!({"path": dir.display().to_string(), "archetype": "house", "seed": 1, "rooms": 12});
         p.as_object_mut().expect("object").extend(extra.as_object().expect("object").clone());
         crate::generate::run(&p).unwrap_or_else(|e| panic!("{p}: {e}"));
@@ -216,7 +242,7 @@ fn aligned_bumps_differ_from_the_base_by_exactly_the_listed_bumps() {
         assert!((1..=3).contains(&bumps.len()), "seed {seed}: {} bumps", bumps.len());
         let out = outline_of(&f["script.bimcraft.txt"]);
         let base = base_of(&m);
-        let mut parts: Vec<(i32, (f64, [f64; 4], bool))> = regions(&out, &base).into_iter().map(|r| (1, r)).collect();
+        let mut parts: Vec<(i32, Region)> = regions(&out, &base).into_iter().map(|r| (1, r)).collect();
         parts.extend(regions(&base, &out).into_iter().map(|r| (-1, r)));
         assert_eq!(parts.len(), bumps.len(), "seed {seed}");
         let mut want: Vec<(i32, i64)> = Vec::new();
@@ -237,7 +263,10 @@ fn aligned_bumps_differ_from_the_base_by_exactly_the_listed_bumps() {
         want.sort();
         got.sort();
         assert_eq!(got, want, "seed {seed}");
-        assert_eq!(base.len(), super::family::shapes().expect("shapes").iter().find(|s| s.id == m["shape"].as_str().unwrap_or("")).map_or(0, |s| s.corners));
+        assert_eq!(
+            base.len(),
+            super::family::shapes().expect("shapes").iter().find(|s| s.id == m["shape"].as_str().unwrap_or("")).map_or(0, |s| s.corners)
+        );
     }
     assert!(outward > 0 && inward > 0, "both an outward and an inward bump occur: {outward} out, {inward} in");
 }
