@@ -1377,8 +1377,8 @@ other_files(
          `tee` (studs | none), `blocking` (heights over the wall's base of rows of flat blocking, []) and `stock` (the lengths a \
          cut list picks from, shortest first); for a floor (its joists `spacing` apart, `thickness` thick and as deep as its \
          type's structure layer), `rim` (true: a rim joist along each edge the joists end on), `lap` (0: joist pieces butt on \
-         the centre line of a beam or wall they're cut over; more, each runs that far past it and every other piece lies a \
-         thickness over, side by side), `bridging` (0: none; else the longest a joist runs between rows of solid blocking, 300 \
+         the centre line of a beam or wall they're cut over; more, each runs that far past it, at most halfway to the next, \
+         and every other piece lies a thickness over, side by side), `bridging` (0: none; else the longest a joist runs between rows of solid blocking, 300 \
          or more), `trimmers` (2, 1 to 3: plies of trimmer each side of an opening and of header across each end) and \
          `under_partitions` (true: a pair of joists under each wall standing on the floor along its joists). Fields given \
          replace the type's; others are kept. \
@@ -2363,7 +2363,7 @@ other_files(
          fit that layer; a framed floor is flat (no slope, no edited shape) and of a floor type with a structure layer (its \
          joists as deep as it is thick: 184 mm for 2x8s); otherwise it's refused, saying why. What the rules can't frame is \
          framed more simply or left out, never without a warning: an opening with no room for its kings, jacks, header and \
-         sill; a floor's opening too near its edge or another's trimmers (its joists end at it), a wall over an opening, a \
+         sill; a floor's opening too near its edge, another opening or its trimmers (its joists end at it), a wall over one, a \
          joist piece too short, nothing bearing the joists. A floor's joists are cut over each beam or straight wall under it \
          whose top is within 10 mm of their underside. At a square corner of two framed walls the one of the lower GUID runs \
          through. `modify` {id, framing: name | null, framing_angle?} does the same for one. Replies with the walls and floors, \
