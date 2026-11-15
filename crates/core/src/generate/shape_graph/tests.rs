@@ -4,7 +4,8 @@ use std::collections::BTreeSet;
 
 use serde_json::{Value, json};
 
-use super::family::{Conn, Family, HOUSE_FAMILY, shapes};
+use super::family::{Conn, Family, shapes};
+use super::register_tests::house_family;
 use super::{ATTEMPTS, Request, build};
 use crate::engine::Session;
 use crate::graph_rules::Pack;
@@ -66,7 +67,7 @@ fn outline_corners(script: &str) -> usize {
 
 #[test]
 fn the_house_family_file_reads_in_order_and_stays_inside_its_pack() {
-    let fam = Family::parse(HOUSE_FAMILY).expect("the house family parses");
+    let fam = Family::parse(house_family()).expect("the house family parses");
     assert_eq!(fam.types.len(), 13);
     assert_eq!(fam.types[0].place, super::family::Place::EntryEnd, "the file's order is the engine's order");
     assert_eq!(fam.types[3].place, super::family::Place::Spine);
@@ -76,15 +77,15 @@ fn the_house_family_file_reads_in_order_and_stays_inside_its_pack() {
 
 #[test]
 fn a_family_that_widens_its_pack_or_breaks_its_schema_is_refused() {
-    let widen = HOUSE_FAMILY.replace("\"area_m2\": [7.0, 25.0]", "\"area_m2\": [7.0, 250.0]");
+    let widen = house_family().replace("\"area_m2\": [7.0, 25.0]", "\"area_m2\": [7.0, 250.0]");
     assert!(Family::parse(&widen).is_err_and(|e| e.contains("wider")), "a bedroom bigger than the pack's");
-    let alien = HOUSE_FAMILY.replace("\"count\": [1, 6]", "\"count\": [1, 60]");
+    let alien = house_family().replace("\"count\": [1, 6]", "\"count\": [1, 60]");
     assert!(Family::parse(&alien).is_err(), "more bedrooms than the pack allows");
-    let typo = HOUSE_FAMILY.replace("\"min_side_mm\": 3000", "\"min_side\": 3000");
+    let typo = house_family().replace("\"min_side_mm\": 3000", "\"min_side\": 3000");
     assert!(Family::parse(&typo).is_err(), "a misspelled key is an error");
-    let report = HOUSE_FAMILY.replace("\"building_type\": \"residential\"", "\"building_type\": \"dwelling\"");
+    let report = house_family().replace("\"building_type\": \"residential\"", "\"building_type\": \"dwelling\"");
     assert!(Family::parse(&report).is_err_and(|e| e.contains("building_type")));
-    let means = HOUSE_FAMILY.replace(
+    let means = house_family().replace(
         "{\"from\": \"hall\", \"to\": \"garage\", \"use\": \"parent\", \"types\": [\"single\", \"double\"]}",
         "{\"from\": \"hall\", \"to\": \"garage\", \"use\": \"parent\", \"types\": [\"bifold\"]}",
     );

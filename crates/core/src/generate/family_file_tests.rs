@@ -4,7 +4,8 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Value, json};
 
-use super::shape_graph::family::{Family, HOUSE_FAMILY};
+use super::shape_graph::family::Family;
+use super::shape_graph::register_tests::house_family;
 use super::*;
 use crate::engine::Session;
 use crate::graph_rules::Pack;
@@ -42,7 +43,7 @@ fn files(out: &Path) -> Vec<(String, String)> {
 
 #[test]
 fn a_house_by_file_is_the_house_by_name_byte_for_byte() {
-    let fam = put("house", "house.json", HOUSE_FAMILY);
+    let fam = put("house", "house.json", house_family());
     for (seed, rooms, tol, shape) in [(1u64, 9i64, 0i64, Some("court")), (2, 12, 0, None), (5, 14, 2, None), (7, 8, 0, Some("narrow_bar"))]
     {
         let (a, b) = (dir(&format!("house-a{seed}")), dir(&format!("house-b{seed}")));
@@ -103,8 +104,8 @@ fn a_family_file_that_is_wrong_is_refused_and_nothing_is_written() {
 
     // The house with a room type's area wider than its pack's.
     let pack = Pack::embedded("house").expect("pack");
-    let mut v: Value = serde_json::from_str(HOUSE_FAMILY).expect("json");
-    let fam = Family::parse(HOUSE_FAMILY).expect("family");
+    let mut v: Value = serde_json::from_str(house_family()).expect("json");
+    let fam = Family::parse(house_family()).expect("family");
     let mut widened = false;
     for t in &fam.types {
         if let Some((_, Some(hi))) = pack.kinds.get(&t.kind).map(|k| k.area_m2) {
@@ -119,13 +120,13 @@ fn a_family_file_that_is_wrong_is_refused_and_nothing_is_written() {
     assert!(widened);
     let wide = put("wide", "wide.json", &v.to_string());
     refused(json!({"path": dir("wide-out"), "family_file": wide, "seed": 1, "rooms": 9}), "invalid_family");
-    let same = put("same", "same.json", HOUSE_FAMILY);
+    let same = put("same", "same.json", house_family());
     assert!(run_json(json!({"path": dir("same-out"), "family_file": same, "seed": 1, "rooms": 9})).is_ok());
 }
 
 #[test]
 fn archetype_and_family_file_are_asked_for_once() {
-    let fam = put("once", "house.json", HOUSE_FAMILY);
+    let fam = put("once", "house.json", house_family());
     refused(json!({"path": dir("both"), "archetype": "house", "family_file": fam, "seed": 1, "rooms": 9}), "invalid_params");
     refused(json!({"path": dir("neither"), "seed": 1, "rooms": 9}), "invalid_params");
     refused(json!({"path": dir("norooms"), "family_file": fam, "seed": 1, "area_m2": 300.0}), "invalid_params");

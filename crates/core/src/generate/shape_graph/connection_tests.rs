@@ -4,7 +4,8 @@ use std::collections::BTreeMap;
 
 use serde_json::{Value, json};
 
-use super::family::{Conn, Family, HOUSE_FAMILY, shapes};
+use super::family::{Conn, Family, shapes};
+use super::register_tests::house_family;
 use super::{Interior, Request, build, build_family};
 use crate::engine::Session;
 use crate::topology;
@@ -72,9 +73,9 @@ fn a_family_naming_all_nine_types_draws_each_of_them() {
 
 #[test]
 fn the_entry_must_be_a_door_type() {
-    let bad = HOUSE_FAMILY.replace("\"doors\": [1, 1], \"types\": [\"single\"]", "\"doors\": [1, 1], \"types\": [\"cased\"]");
+    let bad = house_family().replace("\"doors\": [1, 1], \"types\": [\"single\"]", "\"doors\": [1, 1], \"types\": [\"cased\"]");
     assert!(Family::parse(&bad).is_err_and(|e| e.contains("entry.types")));
-    let ok = HOUSE_FAMILY.replace("\"doors\": [1, 1], \"types\": [\"single\"]", "\"doors\": [1, 1], \"types\": [\"double\"]");
+    let ok = house_family().replace("\"doors\": [1, 1], \"types\": [\"single\"]", "\"doors\": [1, 1], \"types\": [\"double\"]");
     assert!(Family::parse(&ok).is_ok());
 }
 

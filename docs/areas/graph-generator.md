@@ -257,6 +257,11 @@ counts, areas, sides, links and entry are a family file (`crates/core/data/shape
 `shape_graph/family.rs` with the rooms' order kept, and refused as `invalid_family` when it widens the graph rule pack it names). The nine
 outlines are `shapes.json` (corners, the depth levels of each side's pieces, raise ranges, the proportion each is recognised by).
 
+A built-in family is any `crates/core/data/shape-families/<name>.json` other than `shapes.json` (not the `fill/` directory's files). `crates/core/build.rs`
+compiles them in, sorted by name, into `family::BUILTIN`; `builtin`, `builtin_names`, `--archetype` with `--rooms`, and `deliver`'s rooms batches
+all follow that table, and no code names a family. Adding a family is adding the file, whose `family` is its file name; taking one away is deleting it
+(`shape_graph/register_tests.rs` keeps the code from naming one).
+
 **Jogs and bumps** (Slice 3; `shape_graph/layout/interior.rs`). `--interior` is `aligned`, `jogged` or `mixed` (the default: the seed
 chooses, and only a mixed call draws a number for it, so an aligned plan is what it was before the option); `--bumps` is `on` (the
 default) or `off`. `deliver` and `generate` take the defaults from one place (`Request::new`). The cells the layout places are kept
