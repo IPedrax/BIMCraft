@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
   "family": "hospital",
-  "pack_id": null,
+  "pack_id": "hospital",
   "building_type": "hospital",
   "review": {
     "status": "reviewed",
-    "note": "Reviewed and approved for corpus generation. pack_id remains null because the current hospital graph-rule pack has no kinds or connections table to validate against; this family file is the approved source for counts, areas, side limits and connections."
+    "note": "Reviewed and approved for corpus generation. The file names its pack: pack_id is hospital (BIMCraft/crates/core/data/graph-rules/hospital.json), whose seven rules judge every generated graph. That pack has no kinds or connections table, so this family file is the source for kinds, counts, areas, side limits and connections. The window and contents fields were added by Slice 9 of the shape graph generator and have not been reviewed by a person."
   },
   "sources": [
     "prototypes/hospital-1-measured-20261113/expected-topology.json",
@@ -41,6 +41,7 @@
       "max_side_ratio": 2.5,
       "min_side_mm": 3600,
       "max_links": 8,
+      "window": true,
       "source": {
         "count": {
           "from": "model",
@@ -119,6 +120,21 @@
       "max_side_ratio": 2.5,
       "min_side_mm": 3000,
       "max_links": 3,
+      "window": true,
+      "contents": [
+        {
+          "family": "Sofa",
+          "types": [
+            "2000 x 900",
+            "1600 x 900"
+          ],
+          "count": [
+            1,
+            3
+          ],
+          "against": "wall"
+        }
+      ],
       "source": {
         "count": {
           "from": "model",
@@ -159,6 +175,7 @@
       "max_side_ratio": 1.8,
       "min_side_mm": 2400,
       "max_links": 1,
+      "window": true,
       "source": {
         "count": {
           "from": "model",
@@ -199,6 +216,21 @@
       "max_side_ratio": 1.8,
       "min_side_mm": 2700,
       "max_links": 1,
+      "window": true,
+      "contents": [
+        {
+          "family": "Table",
+          "types": [
+            "1600 x 900",
+            "1200 x 800"
+          ],
+          "count": [
+            0,
+            1
+          ],
+          "against": "centre"
+        }
+      ],
       "source": {
         "count": {
           "from": "model",
@@ -239,6 +271,20 @@
       "max_side_ratio": 2.0,
       "min_side_mm": 2400,
       "max_links": 1,
+      "window": true,
+      "contents": [
+        {
+          "family": "Bed",
+          "types": [
+            "900 x 2000"
+          ],
+          "count": [
+            1,
+            1
+          ],
+          "against": "wall"
+        }
+      ],
       "source": {
         "count": {
           "from": "model",
@@ -357,6 +403,21 @@
       "max_side_ratio": 2.5,
       "min_side_mm": 2400,
       "max_links": 1,
+      "window": true,
+      "contents": [
+        {
+          "family": "Table",
+          "types": [
+            "1600 x 900",
+            "1200 x 800"
+          ],
+          "count": [
+            0,
+            1
+          ],
+          "against": "centre"
+        }
+      ],
       "source": {
         "count": {
           "from": "model",
@@ -553,6 +614,31 @@
       "max_side_ratio": 2.5,
       "min_side_mm": 1500,
       "max_links": 1,
+      "contents": [
+        {
+          "family": "WC",
+          "types": [
+            "400 x 650"
+          ],
+          "count": [
+            1,
+            1
+          ],
+          "against": "wall"
+        },
+        {
+          "family": "Washbasin",
+          "types": [
+            "500 x 400",
+            "600 x 450"
+          ],
+          "count": [
+            1,
+            1
+          ],
+          "against": "wall"
+        }
+      ],
       "source": {
         "count": {
           "from": "model",
