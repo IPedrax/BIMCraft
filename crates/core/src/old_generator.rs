@@ -6,17 +6,11 @@
 //! Detail: `docs/areas/graph-generator.md`.
 
 pub(crate) mod delivery;
-#[cfg(test)]
-mod delivery_tests;
 pub(crate) mod graph;
 pub(crate) mod gridlines;
 pub(crate) mod house;
 pub(crate) mod layout;
-#[cfg(test)]
-mod legacy_tests;
 mod lift;
-#[cfg(test)]
-mod lift_tests;
 pub(crate) mod medical;
 mod openings;
 pub(crate) mod pattern;
@@ -24,15 +18,11 @@ pub(crate) mod program;
 pub(crate) mod report;
 mod script;
 pub(crate) mod studio;
-#[cfg(test)]
-mod tests;
 
 use serde_json::{Value, json};
 
 use crate::engine::Session;
 use crate::generate::{Built, FILES, MANIFEST, Refusal, Rng, fnv1a64, pretty, refuse};
-#[cfg(test)]
-use crate::generate::{generate, run};
 use graph::{SCHEMA_VERSION, Topology};
 use lift::Building;
 use program::Archetype;

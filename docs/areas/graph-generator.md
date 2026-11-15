@@ -220,9 +220,7 @@ are Fixed Windows centred in side rooms at least 3200 mm wide (not restrooms) an
 does; the generated graph, and the extracted one with the generated kinds, must pass the office-pattern pack
 ([rule packs](rule-packs.md#the-office-pattern-pack)). The manifest adds `loaded` (single or double), `focus`, `chamfers`,
 `quarter_turns`, `mirror` and `shear` (0). The least area is 170 m2 (at 160 m2 six seeds of 40 are refused); below it the brief
-is refused as `unsatisfiable_area`, and a brief no draw fits as `unplaceable_graph`. The tests in `generate/pattern/tests.rs` hold
-a port of the done check's geometry rules (the open office at the far end and deep, nothing past it, the lobby at the other end)
-and run it on the plan read back from each of the 20 seeds of the done check.
+is refused as `unsatisfiable_area`, and a brief no draw fits as `unplaceable_graph`.
 
 ## Medical day: graph first
 

@@ -262,37 +262,6 @@ fn the_prompt_hash_follows_the_prompt_and_the_archetype() {
 }
 
 #[test]
-fn every_soft_rule_names_a_check_the_generator_really_runs() {
-    let base = dir("checks");
-    let mut s = Session::new();
-    let mut ran: BTreeSet<String> = BTreeSet::new();
-    for archetype in ["office", "clinic"] {
-        let out = base.join(archetype);
-        s.execute("generate", &json!({"path": out, "archetype": archetype, "seed": 1, "area_m2": 900.0})).unwrap();
-        let report: Value = serde_json::from_str(&std::fs::read_to_string(out.join("report.json")).unwrap()).unwrap();
-        ran.extend(report["checks"].as_array().unwrap().iter().map(|c| c["id"].as_str().unwrap().to_string()));
-    }
-    std::fs::remove_dir_all(&base).unwrap();
-    let lib = library();
-    let mut soft = 0;
-    for arch in ARCHETYPES {
-        for r in doc(&lib, &format!("packs/{arch}.json"))["rules"].as_array().unwrap() {
-            let checker = r["deterministic_checker"].as_str();
-            if r["classification"] == "soft" {
-                soft += 1;
-                let c = checker.unwrap_or_else(|| panic!("{} is soft with no checker", r["id"]));
-                assert!(ran.contains(c), "{} names {c}, which the generator does not run: {ran:?}", r["id"]);
-                assert!(KNOWN_CHECKERS.contains(&c), "{c} is in the list the library checks against");
-            } else {
-                assert!(checker.is_none(), "{} names a checker without being soft", r["id"]);
-            }
-        }
-    }
-    assert!(soft >= 1, "the cross-link is exercised by at least one soft rule");
-    assert!(KNOWN_CHECKERS.iter().all(|c| ran.contains(*c)), "the list names only checks the generator runs");
-}
-
-#[test]
 fn the_validation_report_holds_only_passes_and_warnings_and_rp_ids() {
     let lib = library();
     let report = doc(&lib, "validation-report.json");

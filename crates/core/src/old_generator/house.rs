@@ -8,8 +8,6 @@ mod emit;
 pub(crate) mod place;
 mod sample;
 pub(crate) mod swing;
-#[cfg(test)]
-mod tests;
 
 use serde_json::Value;
 

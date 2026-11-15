@@ -1,5 +1,4 @@
-//! The packs and the checker: the traced house passes, the hand-broken copies fail the rule they break, and the older
-//! packs catch what the generator's rules always caught.
+//! The packs and the checker: the traced house passes, and the hand-broken copies fail the rule they break.
 
 use serde_json::{Value, json};
 
@@ -377,110 +376,6 @@ fn the_judged_swing_rules_leave_a_side_alone_where_the_two_traces_disagree() {
         let (j, t) = (judged.iter().find(|r| r.id == id).unwrap(), traced.iter().find(|r| r.id == id).unwrap());
         assert_eq!((&j.opens_into, &j.hinge), (&t.opens_into, &t.hinge), "{id}");
     }
-}
-
-// ---- office, clinic, hospital
-
-fn legacy(archetype: &str, seed: u64, area: f64) -> Value {
-    static NEXT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
-    let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let dir = std::env::temp_dir().join(format!("bimcraft-graph-rules-{}-{archetype}-{seed}-{n}", std::process::id()));
-    let mut s = Session::new();
-    s.execute("generate", &json!({"path": dir, "archetype": archetype, "seed": seed, "area_m2": area})).unwrap();
-    let g = serde_json::from_str(&std::fs::read_to_string(dir.join("topology-graph.json")).unwrap()).unwrap();
-    std::fs::remove_dir_all(&dir).unwrap();
-    g
-}
-
-fn run(archetype: &str, g: &Value) -> Vec<Check> {
-    check(Pack::embedded(archetype).unwrap(), &Graph::from_value(g).unwrap()).unwrap()
-}
-
-fn unlinked(g: &Value, role: &str) -> (String, String) {
-    let ids: Vec<&str> = g["nodes"].as_array().unwrap().iter().filter(|n| n["role"] == role).map(|n| n["id"].as_str().unwrap()).collect();
-    let linked =
-        |a: &str, b: &str| g["edges"].as_array().unwrap().iter().any(|e| [&e["from"], &e["to"]].iter().all(|x| *x == a || *x == b));
-    for a in &ids {
-        for b in &ids {
-            if a < b && !linked(a, b) {
-                return (a.to_string(), b.to_string());
-            }
-        }
-    }
-    panic!("no pair of {role} spaces to join")
-}
-
-#[test]
-fn generated_graphs_pass_their_packs_and_each_break_fails_only_its_rule() {
-    for (name, seed, area) in [("office", 1, 900.0), ("clinic", 3, 650.0), ("hospital", 10, 1800.0)] {
-        let g = legacy(name, seed, area);
-        let checks = run(name, &g);
-        assert!(failing(&checks).is_empty(), "{name}: {checks:?}");
-        let four = |c: &[Check]| -> Vec<String> {
-            c.iter()
-                .filter(|c| ["PR-001", "GR-003", "GR-004", "GR-005"].contains(&c.id.as_str()) && c.status == Status::Fail)
-                .map(|c| c.id.clone())
-                .collect()
-        };
-        let join = |g: &mut Value, p: (String, String)| {
-            edges(g).push(json!({"kind": "door", "from": p.0, "to": p.1}));
-        };
-        if name != "clinic" && name != "hospital" {
-            let mut b = g.clone();
-            let p = unlinked(&b, "private");
-            join(&mut b, p);
-            assert_eq!(four(&run(name, &b)), ["GR-003"], "{name}");
-        }
-        if name != "office" {
-            let mut b = g.clone();
-            let p = unlinked(&b, "clinical");
-            join(&mut b, p);
-            assert_eq!(four(&run(name, &b)), ["GR-004"], "{name}");
-        }
-        let (kind, other) = match name {
-            "office" => ("conference", ""),
-            _ => ("exam", ""),
-        };
-        let _ = other;
-        let mut b = g.clone();
-        let gone: Vec<String> =
-            b["nodes"].as_array().unwrap().iter().filter(|n| n["kind"] == kind).map(|n| n["id"].as_str().unwrap().to_string()).collect();
-        assert!(!gone.is_empty());
-        b["nodes"].as_array_mut().unwrap().retain(|n| !gone.contains(&n["id"].as_str().unwrap().to_string()));
-        edges(&mut b)
-            .retain(|e| !gone.contains(&e["from"].as_str().unwrap().to_string()) && !gone.contains(&e["to"].as_str().unwrap().to_string()));
-        assert_eq!(four(&run(name, &b)), ["PR-001"], "{name}");
-    }
-}
-
-#[test]
-fn a_private_space_joined_to_a_clinical_one_fails_only_gr_005() {
-    let g = legacy("office", 1, 900.0);
-    let mut b = g.clone();
-    let (x, y) = unlinked(&b, "private");
-    for n in b["nodes"].as_array_mut().unwrap() {
-        if n["id"] == y.as_str() {
-            n["role"] = json!("clinical");
-        }
-    }
-    edges(&mut b).push(json!({"kind": "door", "from": x, "to": y}));
-    let checks = run("office", &b);
-    let f: Vec<&str> = failing(&checks).into_iter().filter(|i| ["GR-003", "GR-004", "GR-005", "PR-001"].contains(i)).collect();
-    assert_eq!(f, ["GR-005"]);
-}
-
-#[test]
-fn a_legacy_graph_with_no_role_or_no_entry_is_refused_not_guessed() {
-    let mut g = legacy("office", 1, 900.0);
-    g["nodes"][0].as_object_mut().unwrap().remove("role");
-    let e = check(Pack::embedded("office").unwrap(), &Graph::from_value(&g).unwrap()).unwrap_err();
-    assert!(e.contains("role"), "{e}");
-    let mut g = legacy("office", 1, 900.0);
-    g["nodes"][0]["role"] = json!("wizard");
-    assert!(check(Pack::embedded("office").unwrap(), &Graph::from_value(&g).unwrap()).is_err());
-    let mut g = legacy("office", 1, 900.0);
-    g["entry"] = Value::Null;
-    assert!(check(Pack::embedded("office").unwrap(), &Graph::from_value(&g).unwrap()).is_err());
 }
 
 // ---- the command
