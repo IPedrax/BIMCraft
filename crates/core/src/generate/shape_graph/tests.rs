@@ -76,7 +76,7 @@ fn a_family_that_widens_its_pack_or_breaks_its_schema_is_refused() {
     let report = HOUSE_FAMILY.replace("\"building_type\": \"residential\"", "\"building_type\": \"dwelling\"");
     assert!(Family::parse(&report).is_err_and(|e| e.contains("building_type")));
     let means = HOUSE_FAMILY.replace(
-        "{\"from\": \"hall\", \"to\": \"garage\", \"use\": \"parent\", \"types\": [\"single\", \"double\", \"unequal_double\"]}",
+        "{\"from\": \"hall\", \"to\": \"garage\", \"use\": \"parent\", \"types\": [\"single\", \"double\"]}",
         "{\"from\": \"hall\", \"to\": \"garage\", \"use\": \"parent\", \"types\": [\"bifold\"]}",
     );
     assert!(Family::parse(&means).is_err_and(|e| e.contains("pack")), "a means the pack doesn't list for the pair");

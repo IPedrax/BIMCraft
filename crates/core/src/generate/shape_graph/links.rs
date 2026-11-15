@@ -108,8 +108,9 @@ pub fn outside(rects: &[Rc], rect: Box4) -> Vec<Edge> {
     out
 }
 
-/// A room's area (m2) and its two clear sides (mm), on the wall faces, as BIMCraft's room tag will give them.
-pub fn measure(rects: &[Rc], linked: &Linked, i: usize) -> (f64, (f64, f64)) {
+/// A room's area (m2) and its two clear sides (mm), on the wall faces, as BIMCraft's room tag will give them. The sides come twice:
+/// between solid wall faces, and as the extracted boundary has them, reaching a cased gap's separation line.
+pub fn measure(rects: &[Rc], linked: &Linked, i: usize) -> (f64, [(f64, f64); 2]) {
     let links = &linked.links;
     let by = by_room(rects);
     // The cased openings of the room: the gap's ends on the pair's longest wall, whose sides have no wall there.
@@ -127,10 +128,10 @@ pub fn measure(rects: &[Rc], linked: &Linked, i: usize) -> (f64, (f64, f64)) {
         .filter(|(a, b, t)| *t == Conn::OpenFull && (*a == i || *b == i))
         .map(|(a, b, _)| if *a == i { *b } else { *a })
         .collect();
-    let (mut area, mut dims) = (0.0, None::<(f64, f64)>);
+    let (mut area, mut dims) = (0.0, None::<[(f64, f64); 2]>);
     for rect in rects.iter().filter(|r| r.0 == i).map(boxed) {
         let free_pieces = outside(rects, rect);
-        let (mut loss, mut solid) = ([0.0; 4], [0.0; 4]);
+        let (mut loss, mut solid, mut reach) = ([0.0; 4], [0.0; 4], [0.0; 4]);
         for (k, side) in sides(rect).iter().enumerate() {
             let free: i64 = free_pieces.iter().filter(|p| p.vertical == side.vertical && p.at == side.at).map(Edge::len).sum();
             let mut none = 0;
@@ -164,14 +165,22 @@ pub fn measure(rects: &[Rc], linked: &Linked, i: usize) -> (f64, (f64, f64)) {
                 }
             }
             loss[k] = (free as f64 * TE as f64 / 2.0 + (side.len() - free - none) as f64 * TI as f64 / 2.0) / len;
+            // The extracted boundary's box reaches the side's furthest point: an open or cased stretch, else an interior face.
+            reach[k] = if none > 0 {
+                0.0
+            } else if side.len() > free {
+                TI as f64 / 2.0
+            } else {
+                TE as f64 / 2.0
+            };
         }
         area += (rect.2 as f64 - loss[2] - loss[3]) * (rect.3 as f64 - loss[0] - loss[1]) / 1e6;
         let (w, h) = (rect.2 as f64 - solid[2] - solid[3], rect.3 as f64 - solid[0] - solid[1]);
-        if dims.is_none_or(|d| w * h > d.0 * d.1) {
-            dims = Some((w, h));
+        if dims.is_none_or(|d| w * h > d[0].0 * d[0].1) {
+            dims = Some([(w, h), (rect.2 as f64 - reach[2] - reach[3], rect.3 as f64 - reach[0] - reach[1])]);
         }
     }
-    (area, dims.unwrap_or((0.0, 0.0)))
+    (area, dims.unwrap_or([(0.0, 0.0); 2]))
 }
 
 /// The closed loop round the rectangles, as the corner points. Fails if they make more than one loop or meet at a point.
@@ -375,12 +384,12 @@ pub fn verify(fam: &Family, rooms: &[Room], rects: &[Rc], linked: &Linked, corne
     let mut net = 0.0;
     for &i in &ids {
         let spec = &fam.types[rooms[i].ty];
-        let (area, (w, h)) = measure(rects, linked, i);
+        let (area, sides) = measure(rects, linked, i);
         net += area;
-        if area < spec.area.0 * 1.003 || area > spec.area.1 * 0.997 || w.min(h) < spec.min_side as f64 {
+        if area < spec.area.0 * 1.003 || area > spec.area.1 * 0.997 || sides.iter().any(|(w, h)| w.min(*h) < spec.min_side as f64) {
             return Err(Fail("a room is out of range"));
         }
-        if spec.ratio.is_some_and(|r| w.max(h) / w.min(h).max(1.0) > r) {
+        if spec.ratio.is_some_and(|r| sides.iter().any(|(w, h)| w.max(*h) / w.min(*h).max(1.0) > r)) {
             return Err(Fail("a room is too long"));
         }
     }

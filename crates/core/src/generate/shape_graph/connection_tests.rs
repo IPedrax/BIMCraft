@@ -97,9 +97,10 @@ fn house_plans_draw_the_new_types_and_read_them_back() {
             }
         }
     }
-    for t in ["cased", "unequal_double", "double_sliding", "pocket"] {
+    for t in ["cased", "double_sliding", "pocket"] {
         assert!(seen.get(t).is_some_and(|n| *n > 0), "{t} never drawn in 20 houses: {seen:?}");
     }
+    assert!(!seen.contains_key("unequal_double"), "the house family does not use unequal_double: {seen:?}");
 }
 
 #[test]
