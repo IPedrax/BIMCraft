@@ -481,7 +481,7 @@ fn a_sloped_floor_a_shaped_one_and_one_with_no_structure_layer_are_refused_frami
     assert!(s.execute("frame", &json!({"id": id, "angle": 1e300})).is_err());
     assert!(s.execute("modify", &json!({"id": id, "framing_angle": 1e300})).is_err());
     let beam = s.model.elements.iter().find(|(_, e)| e.category() == "beam").map(|(id, _)| *id).unwrap();
-    assert!(s.execute("frame", &json!({"ids": [id, beam]})).unwrap_err().contains("isn't a wall or a floor"));
+    assert!(s.execute("frame", &json!({"ids": [id, beam]})).unwrap_err().contains("isn't a wall, a floor or a roof"));
 }
 
 #[test]

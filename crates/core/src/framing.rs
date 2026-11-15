@@ -2,7 +2,8 @@
 //! wall, its doors and windows, the walls it meets and its framing type whenever they are asked for, and never stored, as a
 //! railing's balusters are ([`crate::stairs::railing_parts`]). Moving a window, changing a height, attaching the top to a roof
 //! or changing the framing type changes the members with nothing to regenerate. A framed floor's joists, rims, trimmers,
-//! headers and blocking are worked out the same way ([`floor`]), in the same [`Member`]s and [`Framing`].
+//! headers and blocking are worked out the same way ([`floor`]), and a framed roof's rafters, ridge boards, rims, trimmers,
+//! headers and blocking slope by slope by the floor's rules ([`roof`]), all in the same [`Member`]s and [`Framing`].
 //!
 //! The members stand in the wall type's structure layer (the thickest, where it has several): their depth across the wall is
 //! that layer's thickness, so a 2x4 wall is one with an 89 mm structure layer. In the wall's own frame `s` runs along its
@@ -26,6 +27,7 @@ use crate::model::{Element, Function, Guid, Id, MAX_COORD, Model, TOL, Wall};
 use crate::walls::{self, Axis, Plane, Prism};
 
 pub mod floor;
+pub mod roof;
 
 /// The framing type `frame` makes when the project has none: 2x4 studs 16 inches apart.
 pub const DEFAULT_TYPE: &str = "2x4 @ 406";
@@ -127,10 +129,11 @@ pub struct FramingType {
     pub blocking: Vec<f64>,
     /// The stock lengths a cut list takes members from, shortest first.
     pub stock: Vec<f64>,
-    /// A floor's: a rim joist along each edge of it its joists end on.
+    /// A floor's: a rim joist along each edge of it its joists end on; a roof's, a rim (sub-fascia) along each eave its
+    /// rafters end on.
     pub rim: bool,
-    /// A floor's: how far each piece of a joist runs past the centre line of a support it is cut over, its pieces then side
-    /// by side, every other one a thickness over; 0, they butt on it.
+    /// A floor's or a roof's: how far each piece of a joist or a rafter runs past the centre line of a support it is cut
+    /// over, its pieces then side by side, every other one a thickness over; 0, they butt on it.
     pub lap: f64,
     /// A floor's: the longest a joist runs between rows of solid blocking, the rows dividing each span evenly; 0, none.
     pub bridging: f64,
@@ -138,6 +141,8 @@ pub struct FramingType {
     pub trimmers: u32,
     /// A floor's: a pair of joists under each wall standing on it along its joists.
     pub under_partitions: bool,
+    /// A roof's: a ridge board where two of its slopes meet at a ridge, the rafters stopping at its faces.
+    pub ridge: bool,
 }
 
 impl Default for FramingType {
@@ -167,6 +172,7 @@ impl Default for FramingType {
             bridging: 0.0,
             trimmers: 2,
             under_partitions: true,
+            ridge: true,
         }
     }
 }
@@ -187,6 +193,8 @@ pub enum Role {
     Joist,
     Rim,
     Trimmer,
+    Rafter,
+    Ridge,
 }
 
 impl Role {
@@ -204,6 +212,8 @@ impl Role {
             Role::Joist => "joist",
             Role::Rim => "rim",
             Role::Trimmer => "trimmer",
+            Role::Rafter => "rafter",
+            Role::Ridge => "ridge",
         }
     }
 
@@ -241,7 +251,8 @@ pub struct Member {
     pub bottom: [f64; 2],
     pub top: [f64; 2],
     /// Its own origin and `s` axis in plan, where it doesn't lie square to its host's frame (a rim along a floor's skewed
-    /// edge): its `s` and `across` are then measured in it, `across` to the left of its axis.
+    /// edge, every member of a roof, each in its slope's frame): its `s` and `across` are then measured in it, `across` to
+    /// the left of its axis.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub frame: Option<[P2; 2]>,
 }
@@ -304,18 +315,19 @@ pub struct Framing {
     pub layer: Guid,
     /// What they're made of: the framing type's material, else the layer's.
     pub material: String,
-    /// `s` 0 and `across` 0: a wall's, the start of its location line; a floor's, its outline's first corner.
+    /// `s` 0 and `across` 0: a wall's, the start of its location line; a floor's, its outline's first corner; a roof's, its
+    /// first slope's (each of its members is in its own slope's frame).
     pub origin: P2,
-    /// A wall's along it; a floor's the way its joists run.
+    /// A wall's along it; a floor's the way its joists run; a roof's up its first slope.
     pub x_axis: P2,
     /// The framing type's stock lengths.
     pub stock: Vec<f64>,
     pub members: Vec<Member>,
     /// What couldn't be framed as the type says: an opening left unframed, a header made shallower or left out.
     pub warnings: Vec<String>,
-    /// A floor's: the beams and walls that bear its joists. A wall's: none.
+    /// A floor's or a roof's: the beams and walls that bear its joists or rafters. A wall's: none.
     pub supports: Vec<Guid>,
-    /// A floor's: the longest clear span of a joist between what bears it, mm. A wall's: none.
+    /// A floor's or a roof's: the longest clear span of a joist or a rafter between what bears it, in plan, mm. A wall's: none.
     pub span: Option<f64>,
 }
 
@@ -415,12 +427,13 @@ pub(crate) fn material<'a>(m: &'a Model, w: &Wall) -> Option<&'a str> {
     m.types.framing.get(w.framing.as_ref()?)?.material.as_deref()
 }
 
-/// The material host `id`'s framing type names for its members (a wall's or a floor's), if it names one: else they're its
+/// The material host `id`'s framing type names for its members (a wall's, a floor's or a roof's), if it names one: else they're its
 /// structure layer's.
 pub(crate) fn material_of(m: &Model, id: Id) -> Option<&str> {
     match m.elements.get(id)? {
         Element::Wall(w) => material(m, w),
         Element::Floor(f) => floor::material(m, f),
+        Element::Roof(r) => roof::material(m, r),
         _ => None,
     }
 }
@@ -1285,33 +1298,36 @@ fn member_json(f: &Framing, m: &Member) -> Value {
     v
 }
 
-/// The walls and floors `ids` names: refused for anything else.
+/// The walls, floors and roofs `ids` names: refused for anything else.
 fn hosts_of(c: &str, m: &Model, p: &Value) -> Result<Vec<Id>, String> {
     let ids = crate::commands::ids_param(c, m, p)?;
-    if let Some((id, e)) =
-        ids.iter().filter_map(|id| Some((*id, m.elements.get(*id)?))).find(|(_, e)| !matches!(e, Element::Wall(_) | Element::Floor(_)))
+    if let Some((id, e)) = ids
+        .iter()
+        .filter_map(|id| Some((*id, m.elements.get(*id)?)))
+        .find(|(_, e)| !matches!(e, Element::Wall(_) | Element::Floor(_) | Element::Roof(_)))
     {
-        return Err(bad(c, format!("{} {id} isn't a wall or a floor: only walls and floors are framed", e.category())));
+        return Err(bad(c, format!("{} {id} isn't a wall, a floor or a roof: only walls, floors and roofs are framed", e.category())));
     }
     Ok(ids)
 }
 
-/// Host `id`'s framing: a wall's or a floor's; none for anything else or what isn't framed.
+/// Host `id`'s framing: a wall's, a floor's or a roof's; none for anything else or what isn't framed.
 pub fn of(m: &Model, id: Id) -> Result<Option<Framing>, String> {
     match m.elements.get(id) {
         Some(Element::Wall(_)) => wall(m, id),
         Some(Element::Floor(_)) => floor::floor(m, id),
+        Some(Element::Roof(_)) => roof::roof(m, id),
         _ => Ok(None),
     }
 }
 
-/// What a host is called in a message: `wall 100002`, `floor 100003`.
+/// What a host is called in a message: `wall 100002`, `floor 100003`, `roof 100004`.
 fn named(m: &Model, id: Id) -> String {
     format!("{} {id}", m.elements.get(id).map_or("element", Element::category))
 }
 
-/// `frame`: walls and floors given a framing type, the project's default one (made, if it has none) unless `type` names
-/// another; floors their joists' direction too, where `angle` is given.
+/// `frame`: walls, floors and roofs given a framing type, the project's default one (made, if it has none) unless `type`
+/// names another; floors their joists' direction too, where `angle` is given (a roof's rafters run up its slopes).
 pub(crate) fn frame(s: &mut Session, p: &Value) -> Result<Value, String> {
     let c = "frame";
     crate::commands::only(c, p, &["id", "ids", "type", "angle"])?;
@@ -1346,6 +1362,7 @@ pub(crate) fn frame(s: &mut Session, p: &Value) -> Result<Value, String> {
                     f.framing_angle = angle;
                 }
             }
+            Some(Element::Roof(r)) => r.framing = Some(name.clone()),
             _ => {}
         }
     }
@@ -1360,7 +1377,7 @@ pub(crate) fn frame(s: &mut Session, p: &Value) -> Result<Value, String> {
     Ok(json!({"ids": ids, "type": name, "members": total, "warnings": warnings}))
 }
 
-/// `unframe`: walls and floors framed no more.
+/// `unframe`: walls, floors and roofs framed no more.
 pub(crate) fn unframe(s: &mut Session, p: &Value) -> Result<Value, String> {
     let c = "unframe";
     crate::commands::only(c, p, &["id", "ids"])?;
@@ -1370,6 +1387,7 @@ pub(crate) fn unframe(s: &mut Session, p: &Value) -> Result<Value, String> {
         match m.elements.get_mut(*id) {
             Some(Element::Wall(w)) => w.framing = None,
             Some(Element::Floor(f)) => f.framing = None,
+            Some(Element::Roof(r)) => r.framing = None,
             _ => {}
         }
     }
@@ -1382,7 +1400,7 @@ pub(crate) fn query(s: &mut Session, p: &Value) -> Result<Value, String> {
     crate::commands::only(c, p, &["id"])?;
     let m = &s.model;
     let ids = hosts_of(c, m, p)?;
-    let [id] = ids[..] else { return Err(bad(c, "`id`, one wall or floor, is required")) };
+    let [id] = ids[..] else { return Err(bad(c, "`id`, one wall, floor or roof, is required")) };
     let who = named(m, id);
     let f = of(m, id).map_err(|e| bad(c, format!("{who}: {e}")))?.ok_or_else(|| bad(c, format!("{who} isn't framed: `frame` it")))?;
     let cuts: Vec<Value> = f
@@ -1399,7 +1417,22 @@ pub(crate) fn query(s: &mut Session, p: &Value) -> Result<Value, String> {
         let supports: Vec<Id> = f.supports.iter().filter_map(|g| m.elements.id(*g)).collect();
         out["supports"] = json!(supports);
         out["span"] = json!(mm(span));
-        out["angle"] = json!(mm(f.x_axis.1.atan2(f.x_axis.0).to_degrees()));
+    }
+    match m.elements.get(id) {
+        Some(Element::Floor(_)) => out["angle"] = json!(mm(f.x_axis.1.atan2(f.x_axis.0).to_degrees())),
+        // A roof's slopes, each with its frame (its members' `frame`) and how steep it is.
+        Some(Element::Roof(r)) => {
+            let faces = roof::faces(m, r).unwrap_or_default();
+            out["faces"] = json!(
+                faces
+                    .iter()
+                    .map(
+                        |f| json!({"index": f.index, "origin": [f.origin.0, f.origin.1], "x_axis": [f.x.0, f.x.1], "slope": mm(f.slope())})
+                    )
+                    .collect::<Vec<_>>()
+            );
+        }
+        _ => {}
     }
     Ok(out)
 }

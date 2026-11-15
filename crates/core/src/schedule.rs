@@ -600,8 +600,8 @@ const OWN: &[(&str, usize, &[Own])] = &[
         5,
         &[("Mass", Kind::Text, From::Key("mass")), LEVEL, AREA, ("Perimeter", Kind::Length, From::Metres("perimeter_m")), VOLUME, COUNT],
     ),
-    // A row for each member of each framed wall and floor (`sources`): grouped by Role, Section and Length with Count, the
-    // cut list.
+    // A row for each member of each framed wall, floor and roof (`sources`): grouped by Role, Section and Length with Count,
+    // the cut list.
     (
         "framingmember",
         10,
@@ -1193,7 +1193,7 @@ fn sources<'a>(m: &'a Model, sc: &Schedule, cat: &str) -> Vec<(Id, &'a Element, 
     out
 }
 
-/// A row for each member of each framed wall and floor, each its host's: what the member is, its section as sawn (`38 x 89`,
+/// A row for each member of each framed wall, floor and roof, each its host's: what the member is, its section as sawn (`38 x 89`,
 /// a header of two plies `2 x 38 x 184`, in mm whatever the project's units), its cut length to the millimetre and the stock
 /// length it is cut from (0 where it is longer than all of them).
 fn framing_members(m: &Model) -> Vec<(Id, &Element, Value)> {
@@ -1204,6 +1204,7 @@ fn framing_members(m: &Model) -> Vec<(Id, &Element, Value)> {
         let (type_name, level) = match e {
             Element::Wall(w) if w.framing.is_some() => (&w.type_name, w.level),
             Element::Floor(f) if f.framing.is_some() => (&f.type_name, f.level),
+            Element::Roof(r) if r.framing.is_some() => (&r.type_name, r.level),
             _ => continue,
         };
         let Ok(Some(f)) = crate::framing::of(m, id) else { continue };

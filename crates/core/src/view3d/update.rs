@@ -625,6 +625,47 @@ mod tests {
         }
     }
 
+    /// A framed roof's members are its triangles: a wall or a beam under it moved, its slope changed, an opening cut, the
+    /// framing type or the roof type edited (the library alone) bring them up to date, as the scene made whole has them.
+    #[test]
+    fn a_framed_roofs_members_follow_the_walls_and_beams_under_it_its_slope_its_openings_and_its_types() {
+        let mut s = Session::new();
+        s.script(
+            r#"type {"category": "roof", "name": "2x10", "layers": [{"function": "substrate", "material": "Timber", "thickness": 11}, {"function": "structure", "material": "Timber", "thickness": 235}]}
+               type {"category": "wall", "name": "2x4", "layers": [{"function": "structure", "material": "Timber", "thickness": 89}]}
+               type {"category": "beam", "name": "LVL", "width": 89, "depth": 302}
+               beam {"points": [[0, 1500], [8000, 1500]], "type": "LVL", "offset": 3266.03}
+               wall {"points": [[0, 500], [8000, 500]], "type": "2x4", "height": 1000}
+               roof {"boundary": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]], "gables": [1, 3], "slope": 30, "type": "2x10", "level": "Level 1", "offset": 2400, "overhang": 0}"#,
+        )
+        .unwrap();
+        let roof = of(&s, "roof")[0];
+        let (beam, wall) = (of(&s, "beam")[0], of(&s, "wall")[0]);
+        s.execute("modify", &json!({"id": wall, "attach_top": roof})).unwrap();
+        s.execute("frame", &json!({"ids": [roof, wall]})).unwrap();
+        let mut scene = Scene::new(&s.model);
+        let edits = [
+            ("move", json!({"ids": [beam], "by": [0, 900]})),
+            ("modify", json!({"id": beam, "offset": 2000})),
+            ("move", json!({"ids": [wall], "by": [0, 300]})),
+            ("modify", json!({"id": roof, "slope": 35})),
+            ("modify", json!({"id": roof, "openings": [[[1000, 1000], [2000, 1000], [2000, 2200], [1000, 2200]]]})),
+            ("type", json!({"category": "framing", "name": "2x4 @ 406", "spacing": 609.6, "bridging": 1500, "rim": true})),
+            ("type", json!({"category": "framing", "name": "2x4 @ 406", "lap": 300, "stock": [2440, 3050], "ridge": false})),
+            (
+                "type",
+                json!({"category": "roof", "name": "2x10", "layers": [{"function": "structure", "material": "Timber", "thickness": 184}]}),
+            ),
+            ("graphics", json!({"view": "{3D}", "hide": ["roofframing"]})),
+            ("graphics", json!({"view": "{3D}", "show": ["roofframing"]})),
+            ("delete", json!({"ids": [beam]})),
+            ("unframe", json!({"id": roof})),
+        ];
+        for (cmd, p) in &edits {
+            scene = held(&mut s, scene, cmd, p);
+        }
+    }
+
     #[test]
     fn random_edits_of_a_tower_bring_its_scene_up_to_date_as_made_whole() {
         let model = crate::sample::tower::tower_on(crate::sample::tower::Plate::SMALL, 1).unwrap();
