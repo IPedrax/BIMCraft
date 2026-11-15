@@ -278,7 +278,10 @@ would fail on one with a serde error, so 6 makes it say that the file is from a 
 in a file of 5 changes, so `Model::migrate` has no step for 5 to 6.
 
 The Options Bar's Offset puts a line, an arc or a polyline beside the points clicked; a rectangle, a polygon or a circle grows
-by it as a whole (`grown`, its corners joined), and a spline or an ellipse takes none (`Shape::offsets`). Modify's Offset takes
+by it as a whole (`grown`, its corners joined), an ellipse grows or shrinks by it, a partial ellipse is set beside the
+points clicked, and only a spline takes none (`Shape::takes_offset`). While a Draw tool
+draws, its next line is previewed where the Offset would put it; Pick Lines previews the line beside the one under the
+pointer, and Space flips the Offset to the other side, the preview and the line the last click makes following it. Modify's Offset takes
 ellipses and splines too, as a spline through points within `FIT_TOL` of the true offset (`curves::offset_fit`), refused where
 it would fold over itself. While a shape is drawn its numbers can be typed (`draw::numbers`, `reading`, `typed`): a rectangle's
 width and height (Tab between them, the canvas taking the Tab from egui's focus), a circle's or a polygon's radius, the third

@@ -126,6 +126,19 @@ fn radius_sides_and_offset_on_the_options_bar_shape_what_a_click_makes() {
 }
 
 #[test]
+fn space_flips_the_draw_offset_to_the_other_side() {
+    let mut h = detailing();
+    press(&mut h, "Line");
+    type_into(&mut h, "Offset:", "200");
+    click(&mut h, P2(1000.0, 1000.0));
+    key(&mut h, Key::Space);
+    click(&mut h, P2(2000.0, 1000.0));
+    key(&mut h, Key::Escape);
+    let l = curve(&h, *ids(&h, "line").last().unwrap_or(&0));
+    assert!(l.start().dist(P2(1000.0, 800.0)) < 1e-6, "Space puts the line on its right: {l:?}");
+}
+
+#[test]
 fn fillet_rounds_two_detail_lines_and_pick_lines_draws_along_a_wall() {
     let mut h = detailing();
     press(&mut h, "Line");
