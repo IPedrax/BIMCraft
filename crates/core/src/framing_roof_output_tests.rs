@@ -237,3 +237,54 @@ fn a_framed_roofs_ifc_opens_as_one_roof_and_no_stray_members() {
     // The two beams come back as beams; no member does.
     assert_eq!(count("beam"), 2, "skipped: {:?}", i.skipped);
 }
+
+#[test]
+fn in_ifc2x3_every_placement_a_framed_roof_writes_places_a_product() {
+    // IFC2x3's IfcLocalPlacement places exactly one product (PlacesObject [1:1]): the members were placed in a placement of
+    // the framing's frame that placed nothing itself.
+    let mut s = Session::new();
+    let (id, _) = cabin(&mut s, json!({"bridging": 2000}));
+    run(&mut s, "modify", json!({"id": id, "openings": [[[1000, 4000], [2000, 4000], [2000, 5200], [1000, 5200]]]}));
+    let gable = first(&run(
+        &mut s,
+        "roof",
+        json!({"boundary": [[20000, 0], [28000, 0], [28000, 5000], [20000, 5000]], "level": "Level 1", "offset": 2400, "slope": 30,
+               "gables": [1, 3], "type": "2x10 Roof"}),
+    ));
+    run(&mut s, "frame", json!({"id": gable, "type": "Cabin Roof"}));
+    for schema in [crate::ifc::Schema::Ifc2x3, crate::ifc::Schema::Ifc4] {
+        let f = crate::ifc::export_as(&s.model, Default::default(), schema);
+        let placements: Vec<&str> = of_class(&f, "IFCLOCALPLACEMENT").into_iter().map(ref_of).collect();
+        // What each placement places: the lines other than placements that name it.
+        let refers =
+            |line: &str, r: &str| line.match_indices(r).any(|(i, _)| !line[i + r.len()..].starts_with(|c: char| c.is_ascii_digit()));
+        let others: Vec<&str> = f.lines().filter(|l| l.contains('=') && !l.contains("=IFCLOCALPLACEMENT(")).collect();
+        for p in placements {
+            let n = others.iter().filter(|l| refers(l.split_once('=').map_or("", |(_, e)| e), p)).count();
+            assert_eq!(n, 1, "{schema:?}: placement {p} places {n} products");
+        }
+    }
+    // The members where they were: a rafter's placement at its slope's frame's origin, in plan, in the roof's (the gable's
+    // alone framed, so its keys are the only ones).
+    run(&mut s, "unframe", json!({"id": id}));
+    let f = crate::ifc::export(&s.model);
+    let r = run(&mut s, "framing", json!({"id": gable}));
+    let m = r["members"].as_array().and_then(|ms| ms.iter().find(|m| m["role"] == "rafter")).cloned().expect("a rafter");
+    let line =
+        of_class(&f, "IFCMEMBER").into_iter().find(|l| l.contains(&format!("'{}'", m["key"].as_str().unwrap_or("")))).expect("its member");
+    let place = line.split(",#").nth(1).and_then(|t| t.split(',').next()).expect("its placement");
+    let at = |r: &str| f.lines().find(|l| l.starts_with(&format!("#{r}="))).unwrap_or("").to_string();
+    let axes = at(at(place).split(",#").nth(1).unwrap_or("").trim_end_matches(");"));
+    let point = at(axes.split("(#").nth(1).and_then(|t| t.split(',').next()).unwrap_or(""));
+    let xyz: Vec<f64> = point
+        .split("((")
+        .nth(1)
+        .unwrap_or("")
+        .trim_end_matches("));")
+        .split(',')
+        .map(|v| v.trim_end_matches('.').parse().unwrap_or(f64::NAN))
+        .collect();
+    let o = &m["frame"]["origin"];
+    let want = [o[0].as_f64().unwrap_or(f64::NAN), o[1].as_f64().unwrap_or(f64::NAN)];
+    assert!((xyz[0] - want[0]).abs() < 0.01 && (xyz[1] - want[1]).abs() < 0.01, "{point} isn't at {want:?}");
+}

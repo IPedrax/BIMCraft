@@ -112,6 +112,8 @@ mod framing_floor_tests;
 #[cfg(test)]
 mod framing_output_tests;
 #[cfg(test)]
+mod framing_roof_hunt2_tests;
+#[cfg(test)]
 mod framing_roof_hunt_tests;
 #[cfg(test)]
 mod framing_roof_output_tests;

@@ -2089,7 +2089,9 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
                 let flat = r.extrusion.is_none() && r.slope == 0.0;
                 w.typed("IFCROOFTYPE", if flat { ".FLAT_ROOF." } else { ".NOTDEFINED." }, &r.type_name, ent);
                 hosts.insert(id, (ent, at, m.elevation(r.level)));
-                // Framed, its members are its parts, each placed in its slope's frame; it keeps its own body, the whole roof.
+                // Framed, its members are its parts, each placed in its slope's frame in the roof's own placement (at the plan's
+                // origin and axes), none in a placement of its own that would place no product (IFC2x3 holds each to one); it
+                // keeps its own body, the whole roof.
                 if r.framing.is_some()
                     && let Ok(Some(framing)) = crate::framing::roof::roof(m, id)
                 {
