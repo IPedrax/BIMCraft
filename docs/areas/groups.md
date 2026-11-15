@@ -72,5 +72,18 @@ the edit started.
 
 ## Files
 
-FORMAT 21. A detail group of a file from before had no members of its own (its type's were drawn in its place): `Model::migrate`
-places them, so each becomes an instance with real members. Repeating details still draw their type's members, as before.
+FORMAT 33 (past 20: 21 to 32 were the Family Editor's unreleased steps, still refused as newer, `model::UNRELEASED`). A
+detail group of a file of 20 or before had no members of its own (its type's were drawn in its place): once the file is read
+and its names are names again, `Model::place_old_groups` places them, so each becomes an instance with real members.
+Repeating details still draw their type's members, as before.
+
+## On the desktop
+
+The Modify tab's Create panel has Create Group (GP), offered for a selection all of one kind, and Model Group (Place Model
+Group, with the type and Forgiving on the Options Bar) once there is a model group. With a group selected, the Group panel
+has Edit Group, Ungroup (UG) and Restore All Excluded; with a member selected (Tab), Exclude. In Edit Group, a panel beside
+Select on every tab has Add, Remove, Finish Edit Group and Cancel Edit Group. The right-click menu offers the same. A selected
+group lights its members, with a dashed frame round them and a cross at its origin (`canvas::group_frames`); sections and the
+3D view pick a member's group too. A command the core refuses as a group conflict opens Group Changed (`groups::Conflict`):
+Ungroup, Create New Type or Cancel, which run it again through `resolve_group`. `BIMCRAFT_GROUPS_DUMP=<folder>` with the test
+`group_screenshots` writes pictures of these, light and dark.
