@@ -51,6 +51,9 @@ icon_names! {
     Plan,
     Move,
     Copy,
+    Paste,
+    Cut,
+    CopyClipboard,
     Rotate,
     MirrorPick,
     MirrorDraw,
@@ -414,6 +417,27 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             // Equal overlapping rectangles with hidden rear edges removed.
             g.closed(&[(8.0, 3.0), (20.0, 3.0), (20.0, 15.0), (8.0, 15.0)]);
             g.line(&[(8.0, 9.0), (4.0, 9.0), (4.0, 21.0), (16.0, 21.0), (16.0, 15.0)]);
+        }
+        Icon::Paste => {
+            // A clipboard: its board, its clip at the top, and a sheet laid on it.
+            g.closed(&[(4.0, 5.0), (17.0, 5.0), (17.0, 22.0), (4.0, 22.0)]);
+            g.closed(&[(8.0, 3.0), (13.0, 3.0), (13.0, 7.0), (8.0, 7.0)]);
+            g.closed(&[(11.0, 11.0), (21.0, 11.0), (21.0, 21.0), (11.0, 21.0)]);
+        }
+        Icon::Cut => {
+            // Scissors: two rings and the blades crossing above them.
+            g.circle((7.0, 18.0), 3.0);
+            g.circle((17.0, 18.0), 3.0);
+            g.line(&[(9.0, 15.5), (17.0, 3.0)]);
+            g.line(&[(15.0, 15.5), (7.0, 3.0)]);
+        }
+        Icon::CopyClipboard => {
+            // A clipboard with two sheets on it: what's copied, kept.
+            g.closed(&[(4.0, 5.0), (17.0, 5.0), (17.0, 22.0), (4.0, 22.0)]);
+            g.closed(&[(8.0, 3.0), (13.0, 3.0), (13.0, 7.0), (8.0, 7.0)]);
+            g.line(&[(7.0, 11.0), (14.0, 11.0)]);
+            g.line(&[(7.0, 14.0), (14.0, 14.0)]);
+            g.line(&[(7.0, 17.0), (12.0, 17.0)]);
         }
         Icon::Rotate => {
             // A circular arc with a tangential return arrow; no floating arrowhead.

@@ -63,4 +63,24 @@ project's library comes over as Insert from File brings it.
 
 ## Status
 
-Work in progress on `feat/copy-paste`; this file says what is done as it lands.
+Done:
+
+- The core: `copy_to_clipboard`, `cut_to_clipboard` and `paste` with all six modes; view-specific elements between views by
+  location (same orientation) or by the view's own terms (another); levels matched by height (or by name, in place), a top
+  this project has no level for kept as a height; doors and windows without their wall put into a wall there; ties to what
+  wasn't copied (attachments, a roof's join, a room's finishes) dropped, and what can't be without it (tags, dimensions,
+  railings, rebar, hosted components) left out, saying why; marks and room numbers made the next where taken. Tests:
+  `clipboard_tests.rs`, and the hostile sweep's payloads.
+- The window: Modify > Clipboard (Paste and its options, Cut to Clipboard, Copy to Clipboard); Ctrl+C, Ctrl+X and Ctrl+V,
+  which the window's system hands over as copy, cut and paste events, so Ctrl+V reads another window's copy from the system
+  clipboard (the ribbon's Paste asks for it with `RequestPaste`, and takes the window's own copy when nothing comes); Paste
+  from Clipboard following the cursor in plans (the clipboard's project drawn as a plan draws it, once a view), sections and
+  elevations and sheets (its box); Cut, Copy and Paste in the right-click menu; the panel yields its Cut and Copy to its list
+  before another panel folds; Aligned to Picked Level by a click on a level line in a section or an elevation; the Selected Levels and Selected
+  Views lists. Tests: `crates/ui-egui/src/tests/clipboard.rs`.
+
+Still to do:
+
+- Paste from Clipboard in a 3D view on its work plane (Ctrl+V there pastes to the same place for now).
+- Ctrl+V's preview in a section or an elevation drawn element by element rather than as a box.
+- A view-specific element pasted from a view onto a sheet keeps its size in millimetres rather than taking the view's scale.

@@ -404,6 +404,18 @@ impl BimApp {
             }
             return;
         }
+        // What a click would paste: the box round it, its middle at the cursor.
+        if self.tool == Tool::Paste
+            && let Some(frame) = bimcraft_core::clipboard::Frame::of(&model, id)
+            && let Some([lo, hi]) = self.paste_extent(&frame)
+            && let Some(cursor) = ui.input(|i| i.pointer.latest_pos()).filter(|c| rect.contains(*c))
+        {
+            let mid = (lo + hi) * 0.5;
+            let c = at((cursor.x - rect.min.x, cursor.y - rect.min.y));
+            let screen = |a: P2| rect.min + egui::vec2(view.px(a + c - mid).0, view.px(a + c - mid).1);
+            let r = egui::Rect::from_two_pos(screen(lo), screen(hi));
+            ui.painter_at(rect).rect_stroke(r, 0.0, egui::Stroke::new(1.0, crate::style::pal().accent), egui::StrokeKind::Middle);
+        }
         match (clicked, &self.tool) {
             (Some(q), Tool::Modify) => {
                 let found = pick(&self.cut, &d, q);
@@ -415,6 +427,11 @@ impl BimApp {
                 }
             }
             (Some(q), Tool::Text) => self.write_note(id, at(q)),
+            (Some(q), Tool::Paste) => self.paste_at(id, at(q)),
+            (Some(q), Tool::PickLevel) => match pick(&self.cut, &d, q) {
+                Some(l) if model.level(l).is_some() => self.paste_on_level(l),
+                _ => self.status = Status { text: crate::lang::t("click a level line").into(), error: true },
+            },
             (Some(q), Tool::Spot) => {
                 self.run("spot", json!({"at": [at(q).0, at(q).1], "view": id}));
             }

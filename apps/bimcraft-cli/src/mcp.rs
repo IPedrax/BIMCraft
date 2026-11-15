@@ -44,7 +44,7 @@ undo history, replace it or write over its file is refused.";
 
 /// Where the tools run: on a session of the server's own, or on a window's.
 enum Backend {
-    Own(Session),
+    Own(Box<Session>),
     Window(Window),
 }
 
@@ -166,7 +166,7 @@ impl Server {
         crate::dwg_writer(&mut session);
         let plugins = crate::load_plugins(&mut session);
         let seen = plugins.log().len();
-        Server { backend: Backend::Own(session), plugins: Some(plugins), seen }
+        Server { backend: Backend::Own(Box::new(session)), plugins: Some(plugins), seen }
     }
 
     /// A server whose tools work on the project `window` has open.

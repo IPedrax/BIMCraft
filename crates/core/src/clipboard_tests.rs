@@ -213,3 +213,21 @@ pub(crate) fn sweep_payloads(base: &mut Session) -> Vec<(&'static str, Value)> {
     out.push(("paste", json!({"clipboard": text, "mode": "levels", "levels": ["Level 1", "Level 2"]})));
     out
 }
+
+#[test]
+fn what_a_mode_cant_place_is_listed_with_the_reason() {
+    let mut s = Session::new();
+    let (walls, _) = house(&mut s);
+    let line = run(&mut s, "detail_line", json!({"view": 100000, "start": [1000, 1000], "end": [3000, 1000]}))["id"].as_u64().unwrap();
+    let mut both = walls.clone();
+    both.push(line);
+    run(&mut s, "copy_to_clipboard", json!({"ids": both, "view": 100000}));
+    // Onto a level: the walls go, the line (which is drawn in a view) is named as left out.
+    let pasted = run(&mut s, "paste", json!({"mode": "levels", "levels": ["Level 2"]}));
+    let why = pasted["left_out"].to_string();
+    assert!(why.contains("drawn in a view"), "{why}");
+    // Into a view: the line goes, the walls are named.
+    let pasted = run(&mut s, "paste", json!({"mode": "views", "views": [100001]}));
+    assert_eq!(ids(&pasted).len(), 1);
+    assert!(pasted["left_out"].to_string().contains("model element"), "{pasted}");
+}

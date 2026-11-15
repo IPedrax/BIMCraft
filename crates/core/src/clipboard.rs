@@ -42,7 +42,7 @@ pub enum Frame {
 
 impl Frame {
     /// The frame of view `key` of `m`: a level's plan, a plan view, a section, an elevation, a sheet or a 3D view.
-    pub fn of(m: &Model, key: impl crate::model::Key + Copy) -> Option<Frame> {
+    pub fn of(m: &Model, key: impl crate::model::Key) -> Option<Frame> {
         Some(match m.elements.get(key)? {
             Element::Level(l) => Frame::Plan { level: m.elements.guid(key)?, elevation: l.elevation },
             Element::PlanView(v) => Frame::Plan { level: v.level, elevation: m.elevation(v.level) },
@@ -683,7 +683,10 @@ fn paste_one(to: &mut Model, clip: &Clip, t: &Target, models: bool) -> Result<Pa
                 staged.push((id, e));
             }
             Ok(Sort::Annotation) => {
-                let Some((view, frame)) = &t.view else { continue };
+                let Some((view, frame)) = &t.view else {
+                    leave(id, e, "it is drawn in a view: paste it into one (`view`, or `mode` views)".into());
+                    continue;
+                };
                 if !fits(e, frame) {
                     leave(id, e, format!("can't be pasted into {}", frame.name()));
                     continue;
@@ -701,7 +704,8 @@ fn paste_one(to: &mut Model, clip: &Clip, t: &Target, models: bool) -> Result<Pa
                 into_view(&mut e, *view, frame);
                 staged.push((id, e));
             }
-            _ => {}
+            Ok(Sort::Model) => leave(id, e, "it is a model element: paste it onto levels, not into views".into()),
+            Err(_) => {}
         }
     }
     // What a pasted element points at that wasn't copied: a tie it drops, or what it can't be without.

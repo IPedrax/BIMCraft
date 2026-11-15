@@ -49,6 +49,10 @@ pub(crate) enum Action {
     Unpin,
     /// Edit Dimension References: the selected dimension's references picked again.
     EditDimensionReferences,
+    /// The selection to the clipboard, taken away or kept; and the clipboard pasted by hand (`clipboard.rs`).
+    Cut,
+    CopyToClipboard,
+    Paste,
 }
 
 impl Action {
@@ -79,6 +83,9 @@ impl Action {
             Action::Pin => msg!("Pin"),
             Action::Unpin => msg!("Unpin"),
             Action::EditDimensionReferences => msg!("Edit Dimension References"),
+            Action::Cut => msg!("Cut to Clipboard"),
+            Action::CopyToClipboard => msg!("Copy to Clipboard"),
+            Action::Paste => msg!("Paste"),
         }
     }
 
@@ -96,6 +103,9 @@ impl Action {
             Action::Delete => Some("Del"),
             Action::Pin => Some("PN"),
             Action::Unpin => Some("UP"),
+            Action::Cut => Some("Ctrl+X"),
+            Action::CopyToClipboard => Some("Ctrl+C"),
+            Action::Paste => Some("Ctrl+V"),
             _ => None,
         }
     }
@@ -214,6 +224,14 @@ impl BimApp {
                 groups.push(vec![Item::new(Action::EditDimensionReferences, true)]);
             }
         }
+        // The clipboard: the selection to it, and it pasted here (by hand, else to the same place).
+        if matches!(self.sheet, Sheet::Plan(_) | Sheet::Ceiling(_) | Sheet::Section(_) | Sheet::Paper(_) | Sheet::View3D) {
+            groups.push(vec![
+                Item::new(Action::Cut, some),
+                Item::new(Action::CopyToClipboard, some),
+                Item::new(Action::Paste, self.sketch.is_none()),
+            ]);
+        }
         let zoom = vec![Item::new(Action::ZoomToFit, true), Item::new(Action::ZoomIn, true), Item::new(Action::ZoomOut, true)];
         match self.sheet {
             Sheet::Plan(_) | Sheet::Ceiling(_) | Sheet::Section(_) | Sheet::Paper(_) => groups.push(zoom),
@@ -230,6 +248,9 @@ impl BimApp {
     pub(crate) fn act(&mut self, action: Action) {
         match action {
             Action::Cancel => self.escape(),
+            Action::Cut => self.clip_request = Some(crate::clipboard::Request::Cut),
+            Action::CopyToClipboard => self.clip_request = Some(crate::clipboard::Request::Copy),
+            Action::Paste => self.clip_request = Some(crate::clipboard::Request::Paste),
             Action::Finish => self.finish_open_shape(),
             Action::FinishPick => self.finish_pattern_lines(),
             Action::ZoomToFit => self.fit(),

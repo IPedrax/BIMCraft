@@ -867,6 +867,32 @@ fn ghost(p: &Painter, place: Place, d: &Drawing, selected: &[Id], f: &dyn Fn(Pos
     }
 }
 
+/// Most elements a paste's preview draws one by one; past them, its box.
+const PASTE_GHOSTS: usize = 400;
+
+/// What Paste from Clipboard would put down with its middle at `at`, in the plan of frame `to`: each element drawn as the
+/// clipboard's project draws it, moved there; or, for a large clipboard, the box round it.
+fn paste_ghost(p: &Painter, origin: Pos2, v: &View, ps: &crate::clipboard::Pasting, to: &bimcraft_core::clipboard::Frame, at: P2) {
+    let c = &ps.clip;
+    let Some([lo, hi]) = c.extent_in(to) else { return };
+    let delta = at - (lo + hi) * 0.5;
+    let screen = |d: P2| {
+        let (x, y) = v.along(d);
+        vec2(x as f32, y as f32)
+    };
+    if c.source.ids.len() > PASTE_GHOSTS {
+        let (a, b) = (pos(origin, v.px(lo + delta)), pos(origin, v.px(hi + delta)));
+        p.rect_stroke(Rect::from_two_pos(a, b), 0.0, Stroke::new(1.0, pal().accent), egui::StrokeKind::Middle);
+        return;
+    }
+    // Only what was copied: what the clipboard holds besides (the levels, a door's wall) isn't pasted.
+    let pasted: Vec<Id> = c.source.ids.iter().copied().filter(|id| c.shift_of(*id, to).is_some()).collect();
+    for (d, shift) in ps.drawings(*v, to).iter() {
+        let by = screen(delta + *shift);
+        ghost(p, Place::at(origin), d, &pasted, &|pt| pt + by);
+    }
+}
+
 /// A short reading drawn where a tool previews, on a soft background so it stays legible over
 /// what's drawn: `text` anchored at `at` as `align` says.
 pub(crate) fn tag(p: &Painter, at: Pos2, align: Align2, text: impl Into<String>) {
@@ -2489,6 +2515,10 @@ impl BimApp {
             }
             Tool::Text => self.write_note(key, round(v.mm(at))),
             Tool::DetailGroup => self.place_group(key, self.snap(m, level, v, at, &[], false).at),
+            Tool::Paste => self.paste_at(key, self.snap(m, level, v, at, &[], false).at),
+            Tool::PickLevel => {
+                self.status = Status { text: t("click a level line in a section or an elevation").into(), error: true };
+            }
             &Tool::RepeatingDetail(start) => {
                 let p = self.snap(m, level, v, at, start.as_slice(), mods.shift).at;
                 match start {
@@ -4302,6 +4332,13 @@ impl BimApp {
                 chain.as_slice()
             }
             Tool::SketchPick => &[],
+            // What a click would paste, its middle at the cursor.
+            Tool::Paste => {
+                if let (Some(ps), Some(frame)) = (&self.pasting, bimcraft_core::clipboard::Frame::of(m, key)) {
+                    paste_ghost(p, origin, v, ps, &frame, self.found(sc, q, &[], false));
+                }
+                return;
+            }
             // The group a click would place.
             Tool::DetailGroup => {
                 if let Some(e) = self.group_at(m, key, self.found(sc, q, &[], false)) {
