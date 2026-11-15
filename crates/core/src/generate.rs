@@ -125,6 +125,12 @@ struct Params {
     delivery: Option<String>,
     /// `on` or `off`: the plan's gridlines. `off` with `rooms`, what the archetype draws today with an area.
     gridlines: Option<String>,
+    /// Pin the wall lines of a plan by `rooms`: the exterior pen (8 to 14), its lightness (0 to 45), the interior pen (3 to 9) and
+    /// its lightness (0 to 65).
+    ext_pen: Option<i64>,
+    ext_light: Option<i64>,
+    int_pen: Option<i64>,
+    int_light: Option<i64>,
     /// `allow` lets a family file marked unreviewed run through the shape graph engine.
     unreviewed: Option<String>,
 }
@@ -371,6 +377,10 @@ fn run(p: &Value) -> Result<Value, Refusal> {
         ("shape", given.shape.is_some()),
         ("interior", given.interior.is_some()),
         ("bumps", given.bumps.is_some()),
+        ("ext_pen", given.ext_pen.is_some()),
+        ("ext_light", given.ext_light.is_some()),
+        ("int_pen", given.int_pen.is_some()),
+        ("int_light", given.int_light.is_some()),
     ]
     .iter()
     .find(|(_, set)| *set)
@@ -447,20 +457,27 @@ fn run_shaped(given: &Params, rooms: i64, gridlines: bool) -> Result<Value, Refu
         Some("allow") => true,
         Some(_) => return Err(refuse("invalid_params", "`unreviewed` is `allow`, or left out")),
     };
+    let pins = shape_graph::wall_lines::Pins {
+        ext_pen: given.ext_pen,
+        ext_light: given.ext_light,
+        int_pen: given.int_pen,
+        int_light: given.int_light,
+    };
+    pins.check().map_err(|e| refuse("invalid_params", e))?;
     let mut request =
         shape_graph::Request::new(given.archetype.clone().unwrap_or_default(), given.seed, rooms, tol, given.shape.clone(), gridlines);
     request.interior = interior.unwrap_or(request.interior);
     request.bumps = bumps.unwrap_or(request.bumps);
     match (&given.archetype, &given.family_file) {
         (Some(name), _) => {
-            let built = shape_graph::build(&request, allow_unreviewed)?;
+            let built = shape_graph::build_styled(&request, &pins, allow_unreviewed)?;
             written(&given.path, name, &built)
         }
         (None, Some(file)) => {
             // Read before anything is made; only the family's name, never the file's path, reaches the files.
             let fam = read_family_file(file)?;
             request.archetype = fam.name.clone();
-            let built = shape_graph::build_family(&fam, &request, allow_unreviewed)?;
+            let built = shape_graph::build_family_styled(&fam, &request, &pins, allow_unreviewed)?;
             written(&given.path, &fam.name, &built)
         }
         (None, None) => Err(refuse("invalid_params", "`generate` takes `archetype` or `family_file`")),

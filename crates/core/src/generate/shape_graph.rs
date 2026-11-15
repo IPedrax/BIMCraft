@@ -28,6 +28,9 @@ mod required_tests;
 mod tags;
 #[cfg(test)]
 mod tests;
+pub(crate) mod wall_lines;
+#[cfg(test)]
+mod wall_lines_tests;
 #[cfg(test)]
 mod window_tests;
 
@@ -146,8 +149,13 @@ fn attempt(fam: &Family, shape: &Shape, requested: &Request, k: u64) -> Result<(
 
 /// The files for a call, or why there are none. Touches no file.
 pub fn build(req: &Request, allow_unreviewed: bool) -> Result<Built, Refusal> {
+    build_styled(req, &wall_lines::Pins::default(), allow_unreviewed)
+}
+
+/// `build`, with some of the wall lines pinned.
+pub fn build_styled(req: &Request, pins: &wall_lines::Pins, allow_unreviewed: bool) -> Result<Built, Refusal> {
     let fam = builtin_family(&req.archetype)?;
-    build_family(&fam, req, allow_unreviewed)
+    build_family_styled(&fam, req, pins, allow_unreviewed)
 }
 
 /// A built-in family by name.
@@ -158,7 +166,15 @@ pub fn builtin_family(name: &str) -> Result<Family, Refusal> {
     Family::parse(text).map_err(|e| refuse("invalid_family", e))
 }
 
+#[cfg(test)]
 pub fn build_family(fam: &Family, req: &Request, allow_unreviewed: bool) -> Result<Built, Refusal> {
+    build_family_styled(fam, req, &wall_lines::Pins::default(), allow_unreviewed)
+}
+
+pub fn build_family_styled(fam: &Family, req: &Request, pins: &wall_lines::Pins, allow_unreviewed: bool) -> Result<Built, Refusal> {
+    pins.check().map_err(|e| refuse("invalid_params", e))?;
+    // From a source of its own: no attempt's numbers are touched, so the layout is the same whatever the style.
+    let lines = wall_lines::choose(req.seed, pins);
     if fam.unreviewed() && !allow_unreviewed {
         return Err(refuse(
             "unreviewed_family",
@@ -209,8 +225,8 @@ pub fn build_family(fam: &Family, req: &Request, allow_unreviewed: bool) -> Resu
                 continue;
             }
         };
-        match emit::verify(fam, &rooms, &laid, &shape.id, req.seed, req.gridlines) {
-            Ok(done) => return finish(fam, req, &shape.id, &rooms, &laid, done),
+        match emit::verify(fam, &rooms, &laid, &shape.id, req.seed, req.gridlines, &lines) {
+            Ok(done) => return finish(fam, req, &shape.id, &rooms, &laid, done, &lines),
             Err(emit::Trouble::Readback(e)) => {
                 last = e;
                 disagreements += 1;
@@ -235,7 +251,15 @@ pub fn build_family(fam: &Family, req: &Request, allow_unreviewed: bool) -> Resu
     ))
 }
 
-fn finish(fam: &Family, req: &Request, shape: &str, rooms: &[plan::Room], laid: &layout::Laid, done: emit::Done) -> Result<Built, Refusal> {
+fn finish(
+    fam: &Family,
+    req: &Request,
+    shape: &str,
+    rooms: &[plan::Room],
+    laid: &layout::Laid,
+    done: emit::Done,
+    lines: &wall_lines::WallLines,
+) -> Result<Built, Refusal> {
     let topology_text = pretty(&done.graph)?;
     let topology_hash = fnv1a64(&topology_text);
     let edges = done.graph["edges"].as_array().map_or(0, Vec::len);
@@ -289,6 +313,7 @@ fn finish(fam: &Family, req: &Request, shape: &str, rooms: &[plan::Room], laid: 
         "rooms": {"requested": req.rooms, "tolerance": req.tolerance, "actual": rooms.len()},
         "shape": shape,
         "gridlines": req.gridlines,
+        "wall_lines": lines.manifest_json(),
         "mirror": laid.mirror,
         "quarter_turns": laid.quarter_turns,
         "interior": if laid.jogged { "jogged" } else { "aligned" },

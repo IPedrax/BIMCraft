@@ -378,6 +378,24 @@ without them and `report.json` says so (`SG-004` warns); what does not fit a roo
 - **The house file's room types are in alphabetical order**, because a copy saved with sorted keys is the same family (the engine takes room types in
   file order); a test holds it.
 
+### Wall lines
+
+`shape_graph/wall_lines.rs`. Each plan by `--rooms` draws its exterior and interior walls with their own pen, lightness and fill: exterior
+pen 8 to 14 and lightness 0 to 45, interior pen 3 to 9 and lightness 0 to 65, the exterior pen never thinner. `--ext-pen`, `--ext-light`,
+`--int-pen` and `--int-light` (params `ext_pen` and so on, whole numbers) pin them; the seed chooses the rest from a stream of its own
+(`Rnd::new(seed, u64::MAX - 2)`), so the layout, the topology, `building` and every command before the last three are the same with or
+without a pin. The values are checked before anything is built (`Pins::check`, `invalid_params`). Lightness `L` is the grey `#vvvvvv`,
+`v = (255 L + 50) / 100`; `lineweight_mm` is `Pen::mm`; the fill is white or `#a8a8a8` (`render::POCHE`), chosen for each side.
+If an unpinned draw would make the two sides' DXF pairs (lineweight, colour) equal, the interior lightness moves.
+
+The script ends with two `filter` commands (`Exterior walls`, `Interior walls`: the wall `Type` equals the type's name) and one
+`graphics` with a `cut` override (`weight`, `color`, `fill`) for each, so `Model::check` and the read-back run on the script that ships.
+The manifest's `wall_lines` holds `pen`, `lineweight_mm`, `lightness`, `color` and `fill` for `exterior` and `interior`.
+
+Room tags, doors, windows and furniture draw black whatever the lightness. On a plan with them (seed 4, 8 rooms) they are 2,600 of the
+dark pixels of a faded plan, and the walls alone about 100, so "under a tenth as many as at lightness 0" holds for the walls and not for
+the whole PNG (`wall_lines_tests.rs` measures the walls).
+
 ## Delivery folder
 
 `bimcraft-cli deliver --brief BRIEF.json --delivery-id ID --rights (FILE | emailed) --out ROOT [--rerun N] [--jobs J]` (`generate/deliver.rs`)

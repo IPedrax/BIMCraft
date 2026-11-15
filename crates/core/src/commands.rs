@@ -79,7 +79,10 @@ pub static ALL: &[Command] = &[
          the seed, then placed in a shell (bar, l_shape, corner_notch, narrow, t_shape, side_nub or stepped, turned and mirrored by the \
          seed), and what the `topology` command reads from the built project is that graph. `rooms` (with `rooms_tol`, `shape`, \
          `interior`: `aligned`, `jogged` or `mixed` (default, the seed chooses), `bumps`: `on` (default, one to three rooms push out \
-         past the outline or pull in by 300 to 1200 mm) or `off`; the manifest lists `interior`, `bumps` and `base_outline`) \
+         past the outline or pull in by 300 to 1200 mm) or `off`; `ext_pen` 8 to 14, `ext_light` 0 to 45, `int_pen` 3 to 9 and \
+         `int_light` 0 to 65 pin the wall lines (pens, and lightness in percent grey; the seed chooses what is not pinned, the \
+         exterior pen is never thinner than the interior's; `invalid_params` otherwise); the manifest lists `interior`, `bumps`, \
+         `wall_lines` and `base_outline`) \
          plans by room count in the shape graph engine, and takes `family_file` (the path of a family JSON file, at most 1 MiB, \
          checked against the rule pack it names: `invalid_family` when it is wrong) in place of `archetype`; the two exclude each \
          other and `family_file` needs `rooms`. `delivery: on` (with `area_m2` or `area_sqft`, never `rooms`; `off` is the default) draws \

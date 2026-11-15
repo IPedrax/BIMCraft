@@ -26,7 +26,7 @@ const USAGE: &str = "USAGE:
   bimcraft-cli deliver --brief BRIEF.json --delivery-id ID --rights (FILE | emailed) --out ROOT [--rerun N] [--jobs J]
                                  write ROOT/<generator_version>/ID/ (manifest.csv, RIGHTS.txt, dwg/) for the brief's seeds, and
                                  ID-rerun/ for N seeds (50) spread through them, made again; J threads. Never overwrites
-  bimcraft-cli generate (--archetype clinic|hospital|house|office-pattern|school|studio-office | --family-file FILE) --seed N --rooms R [--rooms-tol T] [--shape ID] [--interior aligned|jogged|mixed] [--bumps on|off] [--gridlines on|off] [--unreviewed allow] --out DIR
+  bimcraft-cli generate (--archetype clinic|hospital|house|office-pattern|school|studio-office | --family-file FILE) --seed N --rooms R [--rooms-tol T] [--shape ID] [--interior aligned|jogged|mixed] [--bumps on|off] [--gridlines on|off] [--ext-pen 8..14] [--ext-light 0..45] [--int-pen 3..9] [--int-light 0..65] [--unreviewed allow] --out DIR
                                  the shape graph engine: R rooms (between R-T and R+T) laid out in one of nine outlines (bar, narrow_bar,
                                  l_shape, corner_notch, stepped, t_shape, side_nub, opposite_wings, court; --shape pins one) by the
                                  family file of the archetype (crates/core/data/shape-families), or the family file given with
@@ -195,10 +195,15 @@ fn generate_params(args: &[String]) -> Result<Value, String> {
     // The shape graph engine's options: `--rooms` selects it, and the core refuses the rest without it (as JSON).
     let (mut rooms, mut rooms_tol, mut shape, mut interior, mut bumps) = (None, None, None, None, None);
     let (mut family_file, mut delivery, mut gridlines, mut unreviewed) = (None, None, None, None);
+    let (mut ext_pen, mut ext_light, mut int_pen, mut int_light) = (None, None, None, None);
     let mut rest = args.iter();
     while let Some(arg) = rest.next() {
         let value = rest.next().ok_or_else(|| format!("{arg} needs a value\n\n{USAGE}"))?;
         let slot = match arg.as_str() {
+            "--ext-pen" => &mut ext_pen,
+            "--ext-light" => &mut ext_light,
+            "--int-pen" => &mut int_pen,
+            "--int-light" => &mut int_light,
             "--archetype" => &mut archetype,
             "--seed" => &mut seed,
             "--area" => &mut area,
@@ -245,7 +250,14 @@ fn generate_params(args: &[String]) -> Result<Value, String> {
     if let Some(area) = sqft {
         p["area_sqft"] = json!(area);
     }
-    for (key, flag, value) in [("rooms", "--rooms", rooms), ("rooms_tol", "--rooms-tol", rooms_tol)] {
+    for (key, flag, value) in [
+        ("rooms", "--rooms", rooms),
+        ("rooms_tol", "--rooms-tol", rooms_tol),
+        ("ext_pen", "--ext-pen", ext_pen),
+        ("ext_light", "--ext-light", ext_light),
+        ("int_pen", "--int-pen", int_pen),
+        ("int_light", "--int-light", int_light),
+    ] {
         if let Some(v) = value {
             p[key] = json!(v.parse::<i64>().map_err(|_| format!("{flag} is a whole number, got `{v}`"))?);
         }
