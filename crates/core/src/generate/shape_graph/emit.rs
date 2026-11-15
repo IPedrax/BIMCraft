@@ -7,8 +7,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde_json::{Value, json};
 
 use super::super::graph::{BUILDING_KIND, SCHEMA_VERSION, TOPOLOGY_KIND};
-use super::super::house::swing;
 use super::super::report::{Check, Status};
+use super::super::swing;
 use super::contents::{self, ComponentAt, RoomIn, WINDOW_FAMILY, WindowAt};
 use super::doors::{cased_gap, definition, door_centre, door_for};
 use super::family::{Conn, Family};
@@ -299,7 +299,7 @@ pub fn compile(
     if gridlines {
         // One line at each distinct x and y of the outline's corners; the exterior walls are the outline.
         let segments: Vec<([i64; 2], [i64; 2])> = d.walls.iter().filter(|w| w.exterior).map(|w| (w.a, w.b)).collect();
-        for grid in super::super::script::outline_grids(&super::super::script::segment_corners(&segments)) {
+        for grid in super::super::grid::outline_grids(&super::super::grid::segment_corners(&segments)) {
             lines.push(("grid", grid));
         }
     }

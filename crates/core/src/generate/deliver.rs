@@ -13,9 +13,10 @@ use serde_json::{Value, json};
 
 use super::program::Archetype;
 use super::shape_graph::{self, family};
-use super::{AreaRequest, MAX_AREA_M2, Refusal, refuse};
+use super::{Refusal, refuse};
 use crate::engine::Session;
 use crate::model::mix;
+use crate::old_generator::{AreaRequest, MAX_AREA_M2};
 
 const MAX_PATH: usize = 4096;
 /// The most a brief or a rights file may hold, bytes.
@@ -228,7 +229,7 @@ fn make_one(job: &Job, writer: &crate::cad::DwgWriter, dir: &Path) -> Result<Out
         // A plan by area: the generator's own, drawn to the delivery rules, as `generate --delivery on` makes it.
         Some(area) => match Archetype::parse(&job.archetype)
             .ok_or_else(|| Refusal { code: "unknown_archetype", message: job.archetype.clone() })
-            .and_then(|a| super::build_for_delivery(a, job.seed, AreaRequest::m2(area as f64)))
+            .and_then(|a| crate::old_generator::build_for_delivery(a, job.seed, AreaRequest::m2(area as f64)))
         {
             Ok(b) => b,
             Err(Refusal { code, message }) => return Ok(Outcome::Skipped { seed: job.seed, code, message }),

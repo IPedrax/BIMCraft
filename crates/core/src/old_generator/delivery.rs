@@ -10,7 +10,8 @@ use serde_json::{Value, json};
 use crate::engine::Session;
 
 use super::program::Archetype;
-use super::{Built, MANIFEST, Refusal, fnv1a64, pretty, refuse, shape_graph};
+use super::{Built, MANIFEST, Refusal, fnv1a64, pretty, refuse};
+use crate::generate::shape_graph;
 
 /// The most rooms a delivery plan numbers: `101` to `999`.
 const MAX_NUMBERED: usize = 899;

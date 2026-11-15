@@ -12,7 +12,7 @@ use super::super::report::{Check, Status};
 use super::super::script::{capital, grid_name, sheet_size};
 use super::super::{AreaRequest, Built, FILES, GENERATOR_VERSION, MANIFEST, Refusal, fnv1a64, pretty};
 use super::place::{Layout, Rect};
-use super::{HouseGraph, Kind, Means};
+use super::{FOLDING_FAMILY, HouseGraph, Kind, Means, folding_family};
 use crate::engine::Session;
 use crate::graph_rules::{self, Graph as RuleGraph, Pack};
 
@@ -68,45 +68,6 @@ pub(crate) fn longest(boundary: &[[i64; 2]], vertical: bool) -> Option<([i64; 2]
             };
             (a, b, side)
         })
-}
-
-/// The family of a folding door: a built-in has none, so it is defined here, with its jambs and its two leaves folded in plan.
-pub const FOLDING_FAMILY: &str = "Folding Door";
-
-pub(crate) fn folding_family(types: serde_json::Map<String, Value>) -> Value {
-    let jamb = |lo: &str, hi: &str| {
-        json!({
-            "plane": "xy",
-            "profile": [[lo, "-Wall Thickness / 2"], [hi, "-Wall Thickness / 2"], [hi, "Wall Thickness / 2"], [lo, "Wall Thickness / 2"]],
-            "from": "0", "to": "Height", "material": "Frame Material",
-        })
-    };
-    let leaf = "(Width - 2 * Frame Width) / 4";
-    json!({
-        "name": FOLDING_FAMILY,
-        "category": "door",
-        "operation": "folding",
-        "parameters": [
-            {"name": "Width", "kind": "length", "value": 900},
-            {"name": "Height", "kind": "length", "value": 2100},
-            {"name": "Frame Width", "kind": "length", "value": 20},
-            {"name": "Frame Material", "kind": "material", "value": "Timber"},
-        ],
-        "types": types,
-        "forms": [jamb("-Width / 2", "-Width / 2 + Frame Width"), jamb("Width / 2 - Frame Width", "Width / 2")],
-        "symbols": [
-            {"line": [
-                ["-Width / 2 + Frame Width", "Wall Thickness / 2"],
-                [format!("-Width / 2 + Frame Width + {leaf} * 0.84"), format!("Wall Thickness / 2 + {leaf} * 0.54")],
-                [format!("-Width / 2 + Frame Width + {leaf} * 1.68"), "Wall Thickness / 2"],
-            ]},
-            {"line": [
-                ["Width / 2 - Frame Width", "Wall Thickness / 2"],
-                [format!("Width / 2 - Frame Width - {leaf} * 0.84"), format!("Wall Thickness / 2 + {leaf} * 0.54")],
-                [format!("Width / 2 - Frame Width - {leaf} * 1.68"), "Wall Thickness / 2"],
-            ]},
-        ],
-    })
 }
 
 /// `tags`: door tags that are moved off the default, as the door's element id and the offset (see `swing::tag_moves`).

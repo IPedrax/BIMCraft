@@ -109,7 +109,7 @@ each rule's predicate, the pack owns its parameters (`check`).
   opens off the kitchen. HR-006 counts only; which kinds a closet joins is the connection table's, which allows closet and kitchen by a
   sliding door because the trace does (and the rule's `exceptions` say so).
 - **The older packs** hold `GR-001` to `GR-006` and `PR-001` (`origin: slice1_hard_rules`, `hard`, `approved_by` the spec's "Hard Rules For
-  Slice 1"): the generator's own report reads its role pairs and minimum groups from them now (`generate/report.rs`), and a test pins
+  Slice 1"): the generator's own report reads its role pairs and minimum groups from them now (`generate/report.rs`, `graph_checks`), and a test pins
   the reports of sixteen briefs to the bytes they had when the rules were hard-coded. Whether the spec counts as Slice 2's explicit
   human approval is the reviewer's call. Their checker needs a `kind` and a `role` on each node and an entry, and refuses a graph without.
 - **A pack that fails to load** makes `PACK-001` fail in a report; it never panics.

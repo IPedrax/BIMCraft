@@ -1,37 +1,26 @@
-//! The graph building generator: a brief (an archetype, a gross area and a seed) in, a run directory out. The program, the
-//! topology and the placed building are written as JSON, with the BIMCraft script they compile to and a report of the checks
-//! made. Everything is whole millimetres and integer seeds, so the same brief gives the same bytes on any machine, and a brief
-//! that can't be met writes nothing. Detail: `docs/areas/graph-generator.md`.
+//! The `generate` command: a brief in, a run directory out. A brief by `rooms` (a built-in family or a family file) goes to the
+//! shape graph engine (`shape_graph`); a brief by an area goes to the area-driven generator in `crate::old_generator`. The
+//! program, the topology and the placed building are written as JSON, with the BIMCraft script they compile to and a report
+//! of the checks made. Everything is whole millimetres and integer seeds, so the same brief gives the same bytes on any
+//! machine, and a brief that can't be met writes nothing. Detail: `docs/areas/graph-generator.md`.
+//!
+//! What both engines use is here: the files a run directory holds, `Built`, `Refusal`, `Rng`, the graph types, the
+//! archetypes, the checks, the gridlines and the door swings. Nothing here or in `shape_graph` reads the old generator, but
+//! for the area branch of the command, `deliver`'s area batches and `Built::plan`.
 
 pub(crate) mod deliver;
 #[cfg(test)]
 mod deliver_tests;
-pub(crate) mod delivery;
-#[cfg(test)]
-mod delivery_tests;
 #[cfg(test)]
 mod family_file_tests;
 pub(crate) mod graph;
-pub(crate) mod gridlines;
+pub(crate) mod grid;
 #[cfg(test)]
 mod gridlines_tests;
-pub(crate) mod house;
-mod layout;
-#[cfg(test)]
-mod legacy_tests;
-mod lift;
-#[cfg(test)]
-mod lift_tests;
-pub(crate) mod medical;
-mod openings;
-pub(crate) mod pattern;
 pub(crate) mod program;
 pub(crate) mod report;
-mod script;
 pub(crate) mod shape_graph;
-pub(crate) mod studio;
-#[cfg(test)]
-mod tests;
+pub(crate) mod swing;
 
 use std::fmt;
 use std::path::{Path, PathBuf};
@@ -41,26 +30,20 @@ use serde_json::{Value, json};
 
 use crate::engine::Session;
 use crate::model::mix;
-use graph::{SCHEMA_VERSION, Topology};
-use layout::Plan;
-use lift::Building;
+use crate::old_generator::layout::Plan;
 use program::Archetype;
 use report::{Check, Status};
 
-/// Changes when the same brief would give different files.
-pub const GENERATOR_VERSION: &str = "graph-generator/1";
-/// The largest gross area a brief may ask for, m2: past it the run directory is no longer a plan a person reads.
-pub const MAX_AREA_M2: f64 = 5000.0;
 const MAX_PATH: usize = 4096;
 /// The files of a run directory, but the manifest, which names them.
-const FILES: [(&str, &str); 5] = [
+pub(crate) const FILES: [(&str, &str); 5] = [
     ("program_graph", "program-graph.json"),
     ("topology_graph", "topology-graph.json"),
     ("building_ir", "building-ir.json"),
     ("script", "script.bimcraft.txt"),
     ("report", "report.json"),
 ];
-const MANIFEST: &str = "manifest.json";
+pub(crate) const MANIFEST: &str = "manifest.json";
 
 /// A small seeded generator (splitmix64 steps): the same seed and salt give the same numbers everywhere.
 pub struct Rng(u64);
@@ -101,7 +84,7 @@ impl fmt::Display for Refusal {
     }
 }
 
-fn refuse(code: &'static str, message: impl Into<String>) -> Refusal {
+pub(crate) fn refuse(code: &'static str, message: impl Into<String>) -> Refusal {
     Refusal { code, message: message.into() }
 }
 
@@ -135,23 +118,6 @@ struct Params {
     unreviewed: Option<String>,
 }
 
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct AreaRequest {
-    value: f64,
-    unit: &'static str,
-    m2: f64,
-}
-
-impl AreaRequest {
-    pub(crate) fn m2(value: f64) -> AreaRequest {
-        AreaRequest { value, unit: "m2", m2: value }
-    }
-
-    fn sqft(value: f64) -> AreaRequest {
-        AreaRequest { value, unit: "sqft", m2: value * 0.092_903_04 }
-    }
-}
-
 /// A run directory's files, in memory and checked, before any of them is written.
 pub struct Built {
     pub archetype: Archetype,
@@ -172,119 +138,13 @@ pub fn fnv1a64(text: &str) -> String {
     format!("{hash:016x}")
 }
 
-fn pretty(v: &Value) -> Result<String, Refusal> {
+pub(crate) fn pretty(v: &Value) -> Result<String, Refusal> {
     serde_json::to_string_pretty(v)
         .map(|mut t| {
             t.push('\n');
             t
         })
         .map_err(|e| refuse("generation_failed", format!("a document could not be written as JSON: {e}")))
-}
-
-/// The least area, in 10 m2 steps, that a brief of this archetype and seed is met at, when there is one.
-fn least_area(archetype: Archetype, seed: u64) -> Option<f64> {
-    if archetype == Archetype::House {
-        return Some(house::least_area());
-    }
-    if archetype == Archetype::StudioOffice {
-        return Some(studio::least_area());
-    }
-    if archetype == Archetype::OfficePattern {
-        return Some(pattern::least_area());
-    }
-    if archetype == Archetype::MedicalDay {
-        return Some(medical::least_area());
-    }
-    (1..=(MAX_AREA_M2 as u32 / 10)).map(|i| f64::from(i) * 10.0).find(|a| layout::plan(archetype, *a, seed).is_ok())
-}
-
-/// The files for a brief, or why there are none. Touches no file.
-pub fn build(archetype: Archetype, seed: u64, area_m2: f64) -> Result<Built, Refusal> {
-    build_with_area(archetype, seed, AreaRequest::m2(area_m2))
-}
-
-/// The files for a brief drawn to the delivery rules: the plan `build` makes, through [`delivery::apply`].
-pub(crate) fn build_for_delivery(archetype: Archetype, seed: u64, area: AreaRequest) -> Result<Built, Refusal> {
-    delivery::apply(build_with_area(archetype, seed, area)?)
-}
-
-fn build_with_area(archetype: Archetype, seed: u64, area: AreaRequest) -> Result<Built, Refusal> {
-    if !area.m2.is_finite() || area.m2 <= 0.0 || area.m2 > MAX_AREA_M2 {
-        return Err(refuse(
-            "invalid_area",
-            format!(
-                "`area_m2` is the gross area in square metres, above 0 and at most {MAX_AREA_M2}; got {} {} ({} m2)",
-                area.value, area.unit, area.m2
-            ),
-        ));
-    }
-    if archetype == Archetype::House {
-        return house::build(seed, area);
-    }
-    if archetype == Archetype::StudioOffice {
-        return studio::build(seed, area);
-    }
-    if archetype == Archetype::OfficePattern {
-        return pattern::build(seed, area);
-    }
-    if archetype == Archetype::MedicalDay {
-        return medical::build(seed, area);
-    }
-    let plan = layout::plan(archetype, area.m2, seed).map_err(|why| {
-        let least = least_area(archetype, seed)
-            .map_or_else(String::new, |a| format!(" The least this {} brief is met at is about {a} m2.", archetype.name()));
-        refuse(
-            "unsatisfiable_area",
-            format!("{:.1} m2 is too small for the {} program: it cannot fit ({why}).{least}", area.m2, archetype.name()),
-        )
-    })?;
-    let topology = Topology::of(&plan);
-    let building = Building::lift(&plan, &topology);
-    let mut checks = report::graph_checks(&topology, archetype);
-    checks.extend(report::lift_checks(&building, &topology));
-    let script = script::compile(&plan, &building);
-    let mut scratch = Session::new();
-    let replies =
-        scratch.script(&script.text).map_err(|e| refuse("generation_failed", format!("the generated script does not run: {e}")))?;
-    checks.extend(report::run_checks(&plan, &building, &script, &replies, &scratch.model));
-    let failed = report::failures(&checks);
-    if let Some(first) = failed.first() {
-        let more = if failed.len() > 1 { format!(" (and {} more)", failed.len() - 1) } else { String::new() };
-        return Err(refuse("rule_violation", format!("{} {}: {}{more}", first.id, first.name, first.detail)));
-    }
-
-    let topology_text = pretty(&topology.json(&plan))?;
-    let topology_hash = fnv1a64(&topology_text);
-    let texts = [
-        pretty(&graph::program_json(&plan))?,
-        topology_text,
-        pretty(&building.json(&topology_hash, topology.nodes.len(), topology.edges.len()))?,
-        script.text.clone(),
-        pretty(&report::json(&plan, &checks, &script, &replies))?,
-    ];
-    let named: Vec<Value> =
-        FILES.iter().zip(&texts).map(|((key, name), text)| json!({"key": key, "path": name, "hash": fnv1a64(text)})).collect();
-    let manifest = pretty(&json!({
-        "schema_version": SCHEMA_VERSION,
-        "generator_version": GENERATOR_VERSION,
-        "archetype": archetype.name(),
-        "seed": seed,
-        "layout_family": plan.layout_family.name(),
-        "layout_strategy": plan.layout_strategy.name(),
-        "boundary_shape": plan.boundary_shape.name(),
-        "opening_symbol_profile": plan.opening_symbol_profile.name(),
-        "opening_symbols": report::opening_symbols(&plan),
-        "requested_area": {"value": area.value, "unit": area.unit},
-        "requested_area_m2": area.m2,
-        "gross_area_m2": plan.gross_m2(),
-        "hash_algorithm": "fnv1a64",
-        "topology_hash": topology_hash,
-        "files": named,
-    }))?;
-    let mut files: Vec<(&'static str, String)> = FILES.iter().map(|(_, name)| *name).zip(texts).collect();
-    files.push((MANIFEST, manifest));
-    let (gross_m2, rooms) = (plan.gross_m2(), plan.cells.len() + 1);
-    Ok(Built { archetype, seed, plan: Some(plan), gross_m2, rooms, checks, files, topology_hash })
 }
 
 /// Writes the files to `dir`, made if need be; a file that can't be written takes the ones before it away again.
@@ -310,7 +170,7 @@ pub fn generate(_: &mut Session, p: &Value) -> Result<Value, String> {
     run(p).map_err(|r| r.to_string())
 }
 
-fn run(p: &Value) -> Result<Value, Refusal> {
+pub(crate) fn run(p: &Value) -> Result<Value, Refusal> {
     let given: Params = serde_json::from_value(p.clone()).map_err(|e| {
         refuse(
             "invalid_params",
@@ -387,21 +247,7 @@ fn run(p: &Value) -> Result<Value, Refusal> {
     {
         return Err(refuse("invalid_params", format!("`{}` belongs to the plan by `rooms`; give `rooms` too, or leave it out", option.0)));
     }
-    let area = match (given.area_m2, given.area_sqft) {
-        (Some(_), Some(_)) => return Err(refuse("invalid_params", "`area_m2` and `area_sqft` are mutually exclusive; give one")),
-        (Some(m2), None) => AreaRequest::m2(m2),
-        (None, Some(sqft)) => AreaRequest::sqft(sqft),
-        (None, None) => return Err(refuse("invalid_params", "`generate` needs one of `area_m2` or `area_sqft`")),
-    };
-    let mut built = build_with_area(archetype, given.seed, area)?;
-    // The gridlines are edited first, so the delivery pass runs on the script that ships. A value that is the archetype's
-    // default changes nothing, so the default files stay as they were.
-    if let Some(on) = gridlines.filter(|on| *on != archetype.draws_grid()) {
-        built = gridlines::apply(built, on)?;
-    }
-    if delivery {
-        built = delivery::apply(built)?;
-    }
+    let built = crate::old_generator::area_brief(archetype, given.seed, given.area_m2, given.area_sqft, gridlines, delivery)?;
     written(&given.path, archetype.name(), &built)
 }
 

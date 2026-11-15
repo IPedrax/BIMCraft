@@ -17,9 +17,9 @@ use serde_json::{Value, json};
 
 use crate::engine::Session;
 use crate::generate::graph::{Edge as TopologyEdge, Node as TopologyNode, Topology};
-use crate::generate::house::swing;
 use crate::generate::program::{Archetype, Role};
 use crate::generate::report;
+use crate::generate::swing;
 
 mod medical;
 #[cfg(test)]

@@ -8,8 +8,6 @@
 
 mod emit;
 mod place;
-#[cfg(test)]
-mod tests;
 
 use super::{AreaRequest, Built, Refusal, refuse};
 

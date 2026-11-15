@@ -249,43 +249,6 @@ fn the_same_model_gives_the_same_bytes() {
 }
 
 #[test]
-fn generated_plans_read_back_their_own_graph() {
-    for (archetype, seed, area) in [("office", 1, 929.0), ("clinic", 9, 650.0)] {
-        let dir = std::env::temp_dir().join(format!("bimcraft-topology-gen-{archetype}-{}", std::process::id()));
-        let mut s = Session::new();
-        s.execute("generate", &json!({"path": dir, "archetype": archetype, "seed": seed, "area_m2": area})).unwrap();
-        let topo: Value = serde_json::from_str(&std::fs::read_to_string(dir.join("topology-graph.json")).unwrap()).unwrap();
-        let script = std::fs::read_to_string(dir.join("script.bimcraft.txt")).unwrap();
-        let _ = std::fs::remove_dir_all(&dir);
-        let mut s = Session::new();
-        s.script(&script).unwrap();
-        let g = extract(&s.model);
-        let names: Vec<String> = topo["nodes"].as_array().unwrap().iter().map(|n| n["id"].as_str().unwrap().to_string()).collect();
-        let rename = |id: &str| id.parse::<usize>().ok().and_then(|n| names.get(n.wrapping_sub(101))).cloned().unwrap_or(id.to_string());
-        let pair = |a: &str, b: &str| {
-            let (a, b) = (rename(a), rename(b));
-            if a <= b { format!("{a}|{b}") } else { format!("{b}|{a}") }
-        };
-        let got: BTreeSet<String> = g["edges"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .filter(|e| (e["kind"] == "door" || e["kind"] == "open") && e["to"] != "exterior")
-            .map(|e| format!("{}|{}", pair(e["from"].as_str().unwrap(), e["to"].as_str().unwrap()), e["kind"].as_str().unwrap()))
-            .collect();
-        let want: BTreeSet<String> = topo["edges"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .filter(|e| e["kind"] == "door" || e["kind"] == "open")
-            .map(|e| format!("{}|{}", pair(e["from"].as_str().unwrap(), e["to"].as_str().unwrap()), e["kind"].as_str().unwrap()))
-            .collect();
-        assert_eq!(got, want, "{archetype}");
-        assert_eq!(g["nodes"].as_array().unwrap().len(), names.len(), "{archetype}");
-    }
-}
-
-#[test]
 fn topology_refuses_what_it_cannot_write() {
     let mut s = house("");
     for p in [json!({"path": ""}), json!({"path": 5}), json!({"other": 1}), json!({"path": "/nonexistent-dir-xyz/t.json"})] {

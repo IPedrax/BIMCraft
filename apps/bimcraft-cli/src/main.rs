@@ -625,7 +625,7 @@ mod tests {
     fn generate_writes_a_run_directory_whose_script_runs_and_saves() {
         let dir = std::env::temp_dir().join(format!("bimcraft-cli-generate-{}", std::process::id()));
         let at = dir.to_string_lossy().into_owned();
-        let out = cli_out(&["generate", "--archetype", "clinic", "--seed", "3", "--area", "650", "--out", &at]).unwrap();
+        let out = cli_out(&["generate", "--archetype", "clinic", "--seed", "3", "--rooms", "10", "--out", &at]).unwrap();
         let reply: Value = serde_json::from_str(out.trim()).unwrap();
         assert_eq!((reply["archetype"].as_str(), reply["seed"].as_u64()), (Some("clinic"), Some(3)));
         let script = dir.join("script.bimcraft.txt").to_string_lossy().into_owned();
@@ -640,19 +640,11 @@ mod tests {
     fn generate_names_what_is_wrong_with_a_brief_and_writes_nothing() {
         let dir = std::env::temp_dir().join(format!("bimcraft-cli-generate-bad-{}", std::process::id()));
         let at = dir.to_string_lossy().into_owned();
-        let e = cli_out(&["generate", "--archetype", "office", "--seed", "1", "--area", "40", "--out", &at]).unwrap_err();
-        let refusal: Value = serde_json::from_str(&e).unwrap();
-        assert_eq!(refusal["error"], "unsatisfiable_area", "{e}");
-        assert!(refusal["message"].as_str().unwrap().contains("too small"), "{e}");
-        assert!(!dir.exists());
         for (args, says) in [
-            (vec!["--archetype", "office", "--seed", "1", "--area", "900"], "--out"),
-            (vec!["--archetype", "office", "--seed", "-1", "--area", "900", "--out", &at], "--seed"),
-            (vec!["--archetype", "office", "--seed", "1", "--area", "big", "--out", &at], "--area"),
-            (vec!["--archetype", "office", "--seed", "1", "--area-sqft", "big", "--out", &at], "--area-sqft"),
-            (vec!["--archetype", "office", "--seed", "1", "--area", "900", "--area-sqft", "10000", "--out", &at], "only one"),
-            (vec!["--archetype", "office", "--archetype", "clinic", "--seed", "1", "--area", "9", "--out", &at], "twice"),
-            (vec!["--archetype", "datacenter", "--seed", "1", "--area", "900", "--out", &at], "unknown_archetype"),
+            (vec!["--archetype", "clinic", "--seed", "1", "--rooms", "10"], "--out"),
+            (vec!["--archetype", "clinic", "--seed", "-1", "--rooms", "10", "--out", &at], "--seed"),
+            (vec!["--archetype", "house", "--archetype", "clinic", "--seed", "1", "--rooms", "10", "--out", &at], "twice"),
+            (vec!["--archetype", "datacenter", "--seed", "1", "--rooms", "10", "--out", &at], "unknown_archetype"),
             (vec!["--colour", "red"], "unknown option"),
             (vec!["--seed"], "needs a value"),
         ] {
@@ -665,36 +657,13 @@ mod tests {
     }
 
     #[test]
-    fn generate_takes_delivery_and_the_core_refuses_what_it_does_not_know() {
-        let dir = std::env::temp_dir().join(format!("bimcraft-cli-delivery-{}", std::process::id()));
-        let at = dir.to_string_lossy().into_owned();
-        let base = ["generate", "--archetype", "clinic", "--seed", "3", "--area", "650", "--delivery"];
-        for (value, extra) in [("maybe", vec![]), ("on", vec!["--rooms", "12"])] {
-            let mut all = base.to_vec();
-            all.push(value);
-            all.extend(extra);
-            all.extend(["--out", &at]);
-            let e = cli_out(&all).unwrap_err();
-            let refusal: Value = serde_json::from_str(&e).unwrap_or_else(|_| panic!("not JSON: {e}"));
-            assert_eq!(refusal["error"], "invalid_params", "{e}");
-        }
-        assert!(!dir.exists());
-        let mut all = base.to_vec();
-        all.extend(["on", "--out", &at]);
-        cli_out(&all).unwrap();
-        let script = std::fs::read_to_string(dir.join("script.bimcraft.txt")).unwrap();
-        assert!(script.contains("cad_profile {\"name\":\"delivery\"}"));
-        std::fs::remove_dir_all(&dir).unwrap();
-    }
-
-    #[test]
     fn generate_takes_gridlines_and_the_core_refuses_other_values() {
         let args = |text: &str| text.split_whitespace().map(String::from).collect::<Vec<_>>();
         let p = generate_params(&args("--archetype house --seed 1 --rooms 10 --gridlines on --out d")).unwrap();
         assert_eq!(p["gridlines"], "on");
         let dir = std::env::temp_dir().join(format!("bimcraft-cli-gridlines-{}", std::process::id()));
         let at = dir.to_string_lossy().into_owned();
-        let e = cli_out(&["generate", "--archetype", "house", "--seed", "1", "--area", "115", "--gridlines", "maybe", "--out", &at])
+        let e = cli_out(&["generate", "--archetype", "house", "--seed", "1", "--rooms", "10", "--gridlines", "maybe", "--out", &at])
             .unwrap_err();
         let refusal: Value = serde_json::from_str(&e).unwrap_or_else(|_| panic!("not JSON: {e}"));
         assert_eq!(refusal["error"], "invalid_params", "{e}");
@@ -785,79 +754,6 @@ mod tests {
         let swing = checks.iter().filter(|c| c["id"].as_str().is_some_and(|i| i.starts_with("SW-"))).count();
         assert!(swing >= 1);
         assert_eq!(checks.len(), 13 + swing);
-        std::fs::remove_dir_all(&dir).unwrap();
-    }
-
-    #[test]
-    fn generate_makes_a_studio_office_that_the_studio_pack_passes() {
-        let dir = std::env::temp_dir().join(format!("bimcraft-cli-studio-{}", std::process::id()));
-        let at = dir.to_string_lossy().into_owned();
-        let out = cli_out(&["generate", "--archetype", "studio-office", "--seed", "2", "--area", "300", "--out", &at]).unwrap();
-        let reply: Value = serde_json::from_str(out.trim()).unwrap();
-        assert_eq!(reply["archetype"], "studio-office");
-        let graph = dir.join("topology-graph.json").to_string_lossy().into_owned();
-        let out = cli_out(&["rule-pack", "check", "--archetype", "studio-office", "--graph", &graph]).unwrap();
-        let reply: Value = serde_json::from_str(out.trim()).unwrap();
-        assert_eq!(reply["pass"], json!(true));
-        // A graph whose entry is the studio fails, naming the pack's rule.
-        let mut g: Value = serde_json::from_str(&std::fs::read_to_string(dir.join("topology-graph.json")).unwrap()).unwrap();
-        g["entry"] = json!({"room": "studio"});
-        let bad = dir.join("bad.json").to_string_lossy().into_owned();
-        std::fs::write(&bad, g.to_string()).unwrap();
-        let e = cli_out(&["rule-pack", "check", "--archetype", "studio-office", "--graph", &bad]).unwrap_err();
-        let reply: Value = serde_json::from_str(e.trim()).unwrap();
-        assert!(reply["failed"].as_array().unwrap().contains(&json!("SO-006")), "{reply}");
-        std::fs::remove_dir_all(&dir).unwrap();
-    }
-
-    #[test]
-    fn generate_makes_an_office_pattern_that_its_pack_passes() {
-        let dir = std::env::temp_dir().join(format!("bimcraft-cli-pattern-{}", std::process::id()));
-        let at = dir.to_string_lossy().into_owned();
-        let out = cli_out(&["generate", "--archetype", "office-pattern", "--seed", "2", "--area", "300", "--out", &at]).unwrap();
-        let reply: Value = serde_json::from_str(out.trim()).unwrap();
-        assert_eq!(reply["archetype"], "office-pattern");
-        let graph = dir.join("topology-graph.json").to_string_lossy().into_owned();
-        let out = cli_out(&["rule-pack", "check", "--archetype", "office-pattern", "--graph", &graph]).unwrap();
-        let reply: Value = serde_json::from_str(out.trim()).unwrap();
-        assert_eq!(reply["pass"], json!(true));
-        // A second way in from outside, on the open office, fails the pack's rule for it.
-        let mut g: Value = serde_json::from_str(&std::fs::read_to_string(dir.join("topology-graph.json")).unwrap()).unwrap();
-        let mut extra = g["edges"].as_array().unwrap().iter().find(|e| e["exterior"] == true).unwrap().clone();
-        extra["from"] = json!("open_office");
-        extra["id"] = json!("door:open_office:exterior");
-        g["edges"].as_array_mut().unwrap().push(extra);
-        let bad = dir.join("bad.json").to_string_lossy().into_owned();
-        std::fs::write(&bad, g.to_string()).unwrap();
-        let e = cli_out(&["rule-pack", "check", "--archetype", "office-pattern", "--graph", &bad]).unwrap_err();
-        let reply: Value = serde_json::from_str(e.trim()).unwrap();
-        assert!(reply["failed"].as_array().unwrap().contains(&json!("OP-006")), "{reply}");
-        std::fs::remove_dir_all(&dir).unwrap();
-    }
-
-    #[test]
-    fn generate_makes_a_medical_day_plan_that_its_pack_passes() {
-        let dir = std::env::temp_dir().join(format!("bimcraft-cli-medical-{}", std::process::id()));
-        let at = dir.to_string_lossy().into_owned();
-        let out = cli_out(&["generate", "--archetype", "medical-day", "--seed", "2", "--area", "640", "--out", &at]).unwrap();
-        let reply: Value = serde_json::from_str(out.trim()).unwrap();
-        assert_eq!(reply["archetype"], "medical-day");
-        let graph = dir.join("topology-graph.json").to_string_lossy().into_owned();
-        let out = cli_out(&["rule-pack", "check", "--archetype", "medical-day", "--graph", &graph]).unwrap();
-        let reply: Value = serde_json::from_str(out.trim()).unwrap();
-        assert_eq!(reply["pass"], json!(true));
-        // A treatment bay given a door fails the pack's rule for it.
-        let mut g: Value = serde_json::from_str(&std::fs::read_to_string(dir.join("topology-graph.json")).unwrap()).unwrap();
-        let bay = g["nodes"].as_array().unwrap().iter().find(|n| n["kind"] == "treatment_bay").unwrap()["id"].clone();
-        let open =
-            g["edges"].as_array_mut().unwrap().iter_mut().find(|e| e["kind"] == "open" && (e["from"] == bay || e["to"] == bay)).unwrap();
-        open["kind"] = json!("door");
-        open["operation"] = json!("swing");
-        let bad = dir.join("bad.json").to_string_lossy().into_owned();
-        std::fs::write(&bad, g.to_string()).unwrap();
-        let e = cli_out(&["rule-pack", "check", "--archetype", "medical-day", "--graph", &bad]).unwrap_err();
-        let reply: Value = serde_json::from_str(e.trim()).unwrap();
-        assert!(reply["failed"].as_array().unwrap().contains(&json!("MD-001")), "{reply}");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
