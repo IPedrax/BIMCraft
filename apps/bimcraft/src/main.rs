@@ -223,6 +223,13 @@ fn main() -> ExitCode {
         viewport = viewport.with_icon(icon);
     }
     let mut options = eframe::NativeOptions { viewport, centered: true, ..Default::default() };
+    // Windows' vsync held the window to a fraction of the screen's rate, so there the window presents without it and paces
+    // itself (`bimcraft_ui_egui::pacing`).
+    let pacing = bimcraft_ui_egui::pacing::system_policy();
+    options.wgpu_options.surface.present_mode = pacing.start;
+    if pacing.paced {
+        app.frames = Some(bimcraft_ui_egui::pacing::Pacer::default());
+    }
     let mut setup = eframe::egui_wgpu::WgpuSetupCreateNew::without_display_handle();
     if let Some(backends) = graphics.backends() {
         setup.instance_descriptor.backends = backends;
