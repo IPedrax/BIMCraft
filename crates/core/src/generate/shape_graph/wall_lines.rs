@@ -82,7 +82,8 @@ impl Side {
         Pen(self.pen as u8).mm()
     }
 
-    /// What a DXF writes for it: the lineweight nearest its width and the colour.
+    /// What a DXF writes for it: the lineweight nearest its width and the grey's channel (0..=255, not group 420's
+    /// `channel * 0x010101`). Only for telling two sides apart.
     pub fn dxf_pair(&self) -> (i64, i64) {
         let hundredths = (self.pen_mm() * 100.0).round() as i64;
         let lw = DXF_WEIGHTS.iter().copied().min_by_key(|w| (w - hundredths).abs()).unwrap_or(0);
