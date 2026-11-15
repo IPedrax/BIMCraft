@@ -3247,9 +3247,16 @@ fn wall_on_any_level(m: &Model, at: P2) -> Option<(Guid, f64)> {
 /// inside it, joined to none of the outer walls, with no room in them and in no other loop. A loop
 /// joined to the outer walls, or with a room in it, is rooms.
 pub fn floor_outline(m: &Model, level: impl Key) -> Option<(Vec<P2>, Vec<Vec<P2>>)> {
+    floor_outline_only(m, level, None)
+}
+
+/// [`floor_outline`] along the walls in `only` (none: every wall of the level), so Walls' Outline can follow just the
+/// walls picked in the view.
+pub fn floor_outline_only(m: &Model, level: impl Key, only: Option<&BTreeSet<Id>>) -> Option<(Vec<P2>, Vec<Vec<P2>>)> {
     let level = m.guid(level);
     // Each piece's outline, clockwise, the largest first.
-    let mut pieces: Vec<Vec<P2>> = geom::faces(&m.wall_lines(level), TOL).into_iter().filter(|f| geom::area(f) < -TOL * TOL).collect();
+    let mut pieces: Vec<Vec<P2>> =
+        geom::faces(&outline_lines(m, &level, only), TOL).into_iter().filter(|f| geom::area(f) < -TOL * TOL).collect();
     pieces.sort_by(|a, b| geom::area(a).total_cmp(&geom::area(b)));
     let (outer, inner) = pieces.split_first()?;
     // The loops standing free inside the outline: the other pieces, inside it. Whether loop `a`
@@ -3272,18 +3279,45 @@ pub fn floor_outline(m: &Model, level: impl Key) -> Option<(Vec<P2>, Vec<Vec<P2>
     Some((outer.iter().rev().copied().collect(), courtyards))
 }
 
+/// The centre lines of the walls of `level` in `only` (none: all of them), as segments, as [`floor_outline`] reads them.
+fn outline_lines(m: &Model, level: &Guid, only: Option<&BTreeSet<Id>>) -> Vec<(P2, P2)> {
+    let Some(only) = only else { return m.wall_lines(*level) };
+    let mut lines = Vec::new();
+    for id in m.bounding_walls(level, false) {
+        if only.contains(&id) {
+            lines.extend(geom::ring_edges(&walls::centre_line(m, id)));
+        }
+    }
+    lines
+}
+
 /// The outline `floor` gives a floor on `level` along a face of the walls around it, out `offset` mm from that face,
 /// and its courtyards: the face of each wall that the floor lies on. `Interior...` is the side the floor is on, and
 /// `Exterior...` the other, so a core outline is a slab to the core faces, inside the finish. A positive offset moves
 /// the line away from the wall, as the Options Bar's Offset does. A wall with no structural layer is an error when a
 /// core face is asked for, naming it; a centre outline with no offset is [`floor_outline`].
 pub fn floor_outline_faces(m: &Model, level: impl Key, face: WallFace, offset: f64) -> Result<(Vec<P2>, Vec<Vec<P2>>), String> {
+    floor_outline_faces_of(m, level, face, offset, None, false)
+}
+
+/// [`floor_outline_faces`] along the walls in `only` (none: every wall of the level), so Walls' Outline can follow just
+/// the walls picked in the view.
+pub fn floor_outline_faces_of(
+    m: &Model,
+    level: impl Key,
+    face: WallFace,
+    offset: f64,
+    only: Option<&BTreeSet<Id>>,
+    centre_outward: bool,
+) -> Result<(Vec<P2>, Vec<Vec<P2>>), String> {
     let level = m.guid(level);
     if face == WallFace::Centre && offset == 0.0 {
-        return floor_outline(m, level).ok_or_else(|| format!("no walls enclose an area on {}; give `boundary`", level_name(m, level)));
+        return floor_outline_only(m, level, only)
+            .ok_or_else(|| format!("no walls enclose an area on {}; give `boundary`", level_name(m, level)));
     }
     // The centre-line outline says which side of each wall the floor is on.
-    let mut pieces: Vec<Vec<P2>> = geom::faces(&m.wall_lines(level), TOL).into_iter().filter(|f| geom::area(f) < -TOL * TOL).collect();
+    let mut pieces: Vec<Vec<P2>> =
+        geom::faces(&outline_lines(m, &level, only), TOL).into_iter().filter(|f| geom::area(f) < -TOL * TOL).collect();
     pieces.sort_by(|a, b| geom::area(a).total_cmp(&geom::area(b)));
     let (outer, inner) = match pieces.split_first() {
         Some((outer, inner)) => (outer, inner),
@@ -3307,6 +3341,9 @@ pub fn floor_outline_faces(m: &Model, level: impl Key, face: WallFace, offset: f
     let mut lines: Vec<Vec<P2>> = Vec::new();
     let mut thickest: f64 = TOL;
     for id in m.bounding_walls(&level, false).collect::<Vec<_>>() {
+        if only.is_some_and(|only| !only.contains(&id)) {
+            continue;
+        }
         let Some(w) = m.wall(id) else { continue };
         let (ext, int) = walls::faces(m, w);
         let thickness = (ext - int).abs();
@@ -3327,11 +3364,12 @@ pub fn floor_outline_faces(m: &Model, level: impl Key, face: WallFace, offset: f
             WallFace::InteriorFinish | WallFace::InteriorCore => inside_left,
         };
         let core = face.is_core();
-        let resolved = match (side_left, core) {
-            (true, false) => WallFace::ExteriorFinish,
-            (false, false) => WallFace::InteriorFinish,
-            (true, true) => WallFace::ExteriorCore,
-            (false, true) => WallFace::InteriorCore,
+        let resolved = match (face == WallFace::Centre, side_left, core) {
+            (true, _, _) => WallFace::Centre,
+            (false, true, false) => WallFace::ExteriorFinish,
+            (false, false, false) => WallFace::InteriorFinish,
+            (false, true, true) => WallFace::ExteriorCore,
+            (false, false, true) => WallFace::InteriorCore,
         };
         if core && walls::core_faces(m, w).is_none() {
             return Err(format!(
@@ -3339,6 +3377,14 @@ pub fn floor_outline_faces(m: &Model, level: impl Key, face: WallFace, offset: f
                 w.type_name
             ));
         }
+        // A centre-line offset goes toward the floor, into the loop, on every wall whatever way it was drawn; Space
+        // turns that round to the outside.
+        let offset = if face == WallFace::Centre {
+            let inward = if inside_left { offset } else { -offset };
+            if centre_outward { -inward } else { inward }
+        } else {
+            offset
+        };
         if let Some(line) = walls::face_line(m, id, resolved, offset) {
             let pts = line.points();
             if pts.len() >= 2 {
@@ -3346,32 +3392,53 @@ pub fn floor_outline_faces(m: &Model, level: impl Key, face: WallFace, offset: f
             }
         }
     }
-    // Lines of walls of different thickness meet at a corner a little apart: a short segment joins each pair of ends
-    // that belong to the same corner.
-    let mut segs: Vec<(P2, P2)> = lines.iter().flat_map(|l| geom::ring_edges(l)).collect();
-    let ends: Vec<(usize, P2)> =
-        lines.iter().enumerate().flat_map(|(i, l)| l.first().copied().into_iter().chain(l.last().copied()).map(move |p| (i, p))).collect();
+    // Lines of walls of different thickness meet at a corner a little apart: each pair of ends that belong to the same
+    // corner is run on to the point where their lines cross, so a corner stays square and is not cut at 45°. Offset
+    // moves the ends too, so the gap a corner may leave grows with it by twice.
+    let reach = thickest + 2.0 * offset.abs() + TOL;
+    let ends: Vec<(usize, usize, P2)> = lines
+        .iter()
+        .enumerate()
+        .flat_map(|(i, l)| {
+            let last = l.len() - 1;
+            [(i, 0, l[0]), (i, last, l[last])]
+        })
+        .collect();
+    let mut joins: Vec<(P2, P2)> = Vec::new();
     let mut met = vec![false; ends.len()];
     for a in 0..ends.len() {
         if met[a] {
             continue;
         }
-        let (ai, ap) = ends[a];
+        let (ai, api, ap) = ends[a];
         let near = (a + 1..ends.len())
             .filter(|&b| !met[b] && ends[b].0 != ai)
             .filter_map(|b| {
-                let d = ap.dist(ends[b].1);
-                (d <= thickest + TOL).then_some((b, d))
+                let d = ap.dist(ends[b].2);
+                (d <= reach).then_some((b, d))
             })
             .min_by(|a, b| a.1.total_cmp(&b.1));
-        if let Some((b, _)) = near {
-            met[a] = true;
-            met[b] = true;
-            if ap.dist(ends[b].1) > TOL {
-                segs.push((ap, ends[b].1));
+        let Some((b, _)) = near else { continue };
+        let (bi, bpi, bp) = ends[b];
+        let way = |li: usize, pi: usize| {
+            let pts = &lines[li];
+            if pi == 0 { pts.get(1).map(|q| pts[pi] - *q) } else { pts.get(pi - 1).map(|q| pts[pi] - *q) }
+        };
+        let crossing = way(ai, api).zip(way(bi, bpi)).and_then(|(da, db)| geom::line_intersection(ap, ap + da, bp, bp + db));
+        match crossing.filter(|x| x.dist(ap) <= reach && x.dist(bp) <= reach) {
+            Some(x) => {
+                lines[ai][api] = x;
+                lines[bi][bpi] = x;
             }
+            // Walls running the same way, or a corner too far to miter: a short segment still closes it.
+            None if ap.dist(bp) > TOL => joins.push((ap, bp)),
+            None => {}
         }
+        met[a] = true;
+        met[b] = true;
     }
+    let mut segs: Vec<(P2, P2)> = lines.iter().flat_map(|l| geom::ring_edges(l)).collect();
+    segs.extend(joins);
     let mut faces: Vec<Vec<P2>> = geom::faces(&segs, TOL).into_iter().filter(|f| geom::area(f) < -TOL * TOL).collect();
     faces.sort_by(|a, b| geom::area(a).total_cmp(&geom::area(b)));
     let (outer, inner) = match faces.split_first() {
