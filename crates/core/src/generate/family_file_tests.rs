@@ -10,8 +10,8 @@ use super::*;
 use crate::engine::Session;
 use crate::graph_rules::Pack;
 
-const TOY: &str = include_str!("shape_graph/testdata/toy-family.json");
-const BAD_RANGE: &str = include_str!("shape_graph/testdata/toy-family-bad-range.json");
+const TOY: &str = include_str!("testdata/shape-graph/toy-family.json");
+const BAD_RANGE: &str = include_str!("testdata/shape-graph/toy-family-bad-range.json");
 
 fn dir(test: &str) -> PathBuf {
     std::env::temp_dir().join(format!("bimcraft-family-file-{}-{test}", std::process::id()))

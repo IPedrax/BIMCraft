@@ -5,7 +5,7 @@ use serde_json::Value;
 use super::family::{Family, shapes};
 use super::{Request, build_family};
 
-const TOY: &str = include_str!("testdata/toy-family.json");
+const TOY: &str = include_str!("../testdata/shape-graph/toy-family.json");
 
 fn toy_request(k: u64) -> Request {
     let ids: Vec<String> = shapes().expect("the catalogue reads").into_iter().map(|s| s.id).collect();

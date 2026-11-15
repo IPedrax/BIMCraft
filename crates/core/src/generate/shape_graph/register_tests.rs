@@ -95,29 +95,35 @@ fn registration_names_no_family_in_src() {
     }
 }
 
-fn rust_files(dir: &std::path::Path, out: &mut Vec<PathBuf>) {
+fn files_under(dir: &std::path::Path, out: &mut Vec<PathBuf>) {
     for e in std::fs::read_dir(dir).expect("a directory").flatten() {
         let p = e.path();
         if p.is_dir() {
-            rust_files(&p, out);
-        } else if p.extension().is_some_and(|x| x == "rs") {
+            files_under(&p, out);
+        } else {
             out.push(p);
         }
     }
 }
 
-/// The engine is generic: no room kind of the house, office-pattern or studio-office packs is quoted in its code.
+/// The engine is generic: no room kind of any pack is quoted in its code, its tests or its test data. A pack's kinds are its
+/// `kinds` table and, where it has none, the kinds its rules' groups name. One kind is also a field of the graph (its shape id).
 #[test]
 fn the_engine_quotes_no_room_kind() {
     let src = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("src").join("generate");
     let mut files = vec![src.join("shape_graph.rs")];
-    rust_files(&src.join("shape_graph"), &mut files);
+    files_under(&src.join("shape_graph"), &mut files);
     let mut kinds = BTreeSet::new();
-    for pack in ["house", "office-pattern", "studio-office"] {
+    let packs = crate::graph_rules::names();
+    for pack in packs.split(", ") {
         let pack = crate::graph_rules::Pack::embedded(pack).expect("an embedded pack");
         kinds.extend(pack.kinds.keys().cloned());
+        for group in pack.rules.iter().filter_map(|r| r.check.get("groups")?.as_array()).flatten() {
+            kinds.extend(group["kinds"].as_array().into_iter().flatten().filter_map(|k| k.as_str()).map(String::from));
+        }
     }
-    assert!(kinds.len() > 10, "{kinds:?}");
+    assert!(kinds.remove("shell"), "a kind of a pack, and the graph's field for the shape id");
+    assert!(kinds.len() > 40, "{kinds:?}");
     for f in files {
         let text = std::fs::read_to_string(&f).expect("a source file");
         for (i, line) in text.lines().enumerate() {

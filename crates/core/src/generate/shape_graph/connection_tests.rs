@@ -10,7 +10,7 @@ use super::{Interior, Request, build, build_family};
 use crate::engine::Session;
 use crate::topology;
 
-const TOY: &str = include_str!("testdata/toy-family.json");
+const TOY: &str = include_str!("../testdata/shape-graph/toy-family.json");
 const NINE: [&str; 9] = ["open_full", "cased", "single", "double", "unequal_double", "sliding", "double_sliding", "pocket", "bifold"];
 
 fn graph(files: &[(&'static str, String)]) -> Value {
