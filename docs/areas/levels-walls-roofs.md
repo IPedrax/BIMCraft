@@ -163,16 +163,33 @@ or with a room in it, is rooms, and both run over it.
 sketch) runs the outline along a face of each wall instead: `interior-...` is the side the floor is on and `exterior-...` the
 other, and `-finish` is the finish face while `-core` is the structural core's (`walls::core_faces`), which a wall type with
 no structural layer has not, and asks for a finish face instead. `-core` is what the desktop picks first, as Revit's Pick
-Walls does with Extend into wall (to core); the centre line is still `floor {}`'s default, so a project from before this
-change keeps its floor. Pick Walls and Walls' Outline take an Offset as well, and an `outline_offset`: a positive one moves
-the line away from the wall, through its thickness, and a negative one toward its inside. The line Pick Walls places in a
-sketch remembers its wall, face and offset only while that sketch is open: selecting it in Modify shows the wall, Extend
+Walls does with Extend into wall (to core); `centre` (with an offset too) is the wall's centre line, and no offset along it
+is still `floor_outline`'s joined outline, so a project from before this change keeps its floor. A centre-line Outline Offset
+goes toward the floor inside the loop by default, on every wall whatever way it was drawn; Space turns it to the outside, and
+again inside. Walls' Outline on the desktop
+opens the Options Bar instead of putting lines in at once: it chooses the line the outline follows (Wall Centre Line,
+Interior Face or Exterior Face), the wall component that face is (Finish or Core), an Outline Offset from it and DRAW, which
+puts the outline in the sketch as another one: DRAW adds a contour, it does not replace the ones already there, and one whose
+lines are exactly those of a contour already in the sketch is refused with a message instead of drawn twice. A corner of
+the contour follows the lines of its two walls on to where they cross (a square corner, never a 45° cut) whatever the
+offset. Walls' Outline takes the Modify arrow: a wall
+clicked is picked or unpicked, and a box drawn round walls picks them as a box does in Modify (left to right what it
+encloses, right to left what it crosses). DRAW follows just the picked walls; with none picked it follows every wall of the
+level. The panel stays open after DRAW, so the line or the walls can be changed and drawn again; Esc clears the walls
+picked, the Modify arrow keeps the mode on, and another tool, Finish or Cancel leaves it (choosing a Draw tool puts that
+tool on instead). Pick Walls and Walls' Outline take an Offset as well, and an
+`outline_offset`: a positive one moves the line away from the wall, through its thickness, and a negative one toward its
+inside. The line Pick Walls places in a
+sketch remembers its wall, face and offset only while that sketch is open: while Pick Walls is on, the line the click would
+place is previewed on the face under the pointer, and Space flips it to the other face of its wall. Selecting the line in
+Modify shows the wall, Extend
 into wall (to core) and Offset, and Flip (or a double click) puts it on the other side of the wall. A line changed by hand
 (a grip, a trim, a fillet, an offset or a split) stops following its wall. After Finish the floor is its outline's
 coordinates like any other: a wall moved later does not move the floor under it, unlike Revit's line kept tied to its wall.
 `Model::roof_faces` are its slopes, each the loops round it in plan (a slope can close round a courtyard whose far side is a
 gable) with the plane of its underside, trimmed where it `join`s another; `Model::roof_pieces` are those less their holes
-and its `openings`, convex where cut. A floor's top is at its level plus `offset`,
+and its `openings`, convex where cut. A floor sketch of nested loops makes a floor for each region `sketch::solve` finds: the
+outer one with its holes, and a region inside a hole (an island) as another floor. A floor's top is at its level plus `offset`,
 or with a slope arrow, there at the arrow's tail and rising `slope` degrees toward its head (`Model::floor_top`); it's its
 type's thickness across the slope, so plumb it's thicker. Its `openings` are holes inside it, apart, and `Model::floor_slabs`
 what's left, convex where cut. A floor's `shape` (IDEAS MOD-16, [design](../shape-editing.md)) folds its top into planes:
@@ -270,7 +287,9 @@ first and says what's wrong for whoever drew it (`sketch::friendly`: what to fix
 units, and the lines by id) with those lines in the error colour; solved, it runs the command. Draw has every shape of
 the Draw panel (`draw.rs`; lines, rectangles, polygons, circles, the arcs, Fillet Arc on two sketch lines, splines, ellipses,
 polylines, Pick Lines: see [views and graphics](views-and-graphics.md)) and Pick Walls (a line along each wall's location
-line, an arc along an arc wall); a sketch line is any curve, so a circle or an ellipse is a loop of its own. Modify picks
+line, an arc along an arc wall, or on the face the pointer is on and its core or finish, out by the Options Bar's
+Offset); a sketch line is any curve, so a circle or an ellipse is a loop of its own. Walls' Outline asks on the Options
+Bar where its outline runs and which walls it follows, and puts it in the sketch on DRAW. Modify picks
 sketch lines (a click, a window box from the left, a crossing box from the right), a picked line's handles (its corners, a
 spline's points, a circle's centre) are grips that take every one joined there with them, and Delete removes them; Ctrl+Z takes back a line; the plan's snaps take the
 sketch's own ends, middles, crossings and curves as well as visible view-specific detail (`snap::in_sketch`). Floor, Ceiling, Roof and Shaft each start a new one (Boundary

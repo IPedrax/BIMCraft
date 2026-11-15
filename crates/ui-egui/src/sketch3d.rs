@@ -8,14 +8,14 @@
 use bimcraft_i18n::msg;
 
 use bimcraft_core::geom::P2;
-use bimcraft_core::model::{Id, Model};
+use bimcraft_core::model::{Element, Id, Model};
 use bimcraft_core::snap::{self, Reach};
 use bimcraft_core::view3d::Camera;
 use bimcraft_core::walls;
 use egui::{PointerButton, Pos2, Rect, Response, Shape, Stroke, Ui, vec2};
 
 use crate::canvas::{PICK, SNAP, click_modifiers};
-use crate::sketch::{Drag, Of, Sketch};
+use crate::sketch::{Drag, Of, Sketch, picked_face};
 use crate::style::pal;
 use crate::{BimApp, Sheet, Status, Tool, draw};
 
@@ -181,10 +181,47 @@ impl BimApp {
         let picking = matches!(self.tool, Tool::Modify | Tool::Trim(_) | Tool::TrimTo { .. }) && sk.drag.is_none();
         let over = hover.filter(|_| picking).and_then(|at| plane.line_at(sk, at));
         // The snapped cursor is for a grip being dragged and for what a sketch tool shows.
-        let wanted = sk.drag.is_some() || matches!(self.tool, Tool::SketchLine(_));
+        let wanted = sk.drag.is_some() || matches!(self.tool, Tool::SketchLine(_) | Tool::SketchPick);
         let cursor =
             hover.filter(|_| wanted).and_then(|at| plane.at(at)).map(|raw| self.snap3(&m, &plane, raw, &self.sketch_from(), shift));
+        // The walls picked for Walls' Outline, under the sketch's lines: the contour must stay over a wall's face.
+        if self.outline_pending {
+            for id in &self.outline_walls {
+                let ring: Vec<Pos2> = walls::outline(&m, *id).into_iter().map(|q| plane.screen(q)).collect();
+                if ring.len() >= 2 {
+                    p.add(Shape::closed_line(ring, Stroke::new(2.5, pal().accent)));
+                }
+            }
+        }
         sk.paint(p, |q| plane.screen(q), over, cursor, &self.sketch_lit());
+        // Pick Lines: the picked line beside the one under the pointer, by the Options Bar's Offset.
+        if matches!(self.tool, Tool::SketchLine(_))
+            && self.shape() == draw::Shape::PickLines
+            && let (Some(id), Some(at)) = (under, hover)
+            && let Some(raw) = plane.at(at)
+            && let Some(c) = self.picked_curve_at(id, raw)
+        {
+            p.add(Shape::line(c.points().into_iter().map(|q| plane.screen(q)).collect(), Stroke::new(2.0, pal().accent)));
+        }
+        // Pick Walls' line on the face of the wall under the pointer, its offset and side as the Options Bar has them.
+        if matches!(self.tool, Tool::SketchPick)
+            && let (Some(id), Some(at)) = (under, hover)
+            && let Some(w) = m.wall(id)
+            && let Some(raw) = plane.at(at)
+            && let Some(offset) = (match self.pick_offset.trim() {
+                "" => Some(0.0),
+                text => m.units.parse(text),
+            })
+        {
+            let mut face = picked_face(&m, id, w, raw, &sk.picks, self.pick_core, self.pick_flip);
+            if face.is_core() && walls::core_faces(&m, w).is_none() {
+                face = face.with_core(false);
+            }
+            if let Some(line) = walls::face_line(&m, id, face, offset) {
+                p.add(Shape::line(line.points().into_iter().map(|q| plane.screen(q)).collect(), Stroke::new(2.0, pal().accent)));
+            }
+        }
+        // The walls picked for Walls' Outline are lit under the sketch's lines above.
         if let (Tool::SketchLine(chain), Some(c)) = (&self.tool, cursor) {
             let stroke = Stroke::new(2.0, pal().accent);
             for line in self.sketch3d_preview(c) {
@@ -202,9 +239,40 @@ impl BimApp {
     /// A selection box from `a` to `b` on screen while sketching: the lines it picks, wholly inside it from the left, touching
     /// it too from the right. Ctrl adds them, Shift takes them away.
     pub(crate) fn sketch3d_box(&mut self, plane: &Plane, a: Pos2, b: Pos2, mods: egui::Modifiers) {
-        let Some(sk) = &mut self.sketch else { return };
         let r = Rect::from_two_pos(a, b);
         let crossing = b.x < a.x;
+        if self.outline_pending && (mods.ctrl || mods.command) {
+            let model = &self.session.model;
+            let found: Vec<Id> = model
+                .elements
+                .iter()
+                .filter(|(_, e)| matches!(e, Element::Wall(_)))
+                .filter(|(id, _)| {
+                    let shown: Vec<Pos2> = walls::outline(model, **id).into_iter().map(|q| plane.screen(q)).collect();
+                    match crossing {
+                        false => !shown.is_empty() && shown.iter().all(|q| r.contains(*q)),
+                        true => shown.iter().any(|q| r.contains(*q)) || shown.windows(2).any(|w| crosses(r, w[0], w[1])),
+                    }
+                })
+                .map(|(&id, _)| id)
+                .collect();
+            if mods.shift {
+                for id in found {
+                    self.outline_walls.remove(&id);
+                }
+            } else if mods.command {
+                self.outline_walls.extend(found);
+            } else {
+                self.outline_walls = found.into_iter().collect();
+            }
+            self.sync_outline_selection();
+            return;
+        }
+        if self.outline_pending {
+            self.outline_walls.clear();
+            self.selection.clear();
+        }
+        let Some(sk) = &mut self.sketch else { return };
         let found: Vec<usize> = sk
             .lines
             .iter()
@@ -233,7 +301,13 @@ impl BimApp {
     pub(crate) fn sketch3d_preview(&self, cursor: P2) -> Vec<Vec<P2>> {
         let Tool::SketchLine(chain) = &self.tool else { return Vec::new() };
         match self.shape() {
-            draw::Shape::Line => chain.last().map(|last| vec![vec![*last, cursor]]).unwrap_or_default(),
+            draw::Shape::Line => chain
+                .last()
+                .map(|last| {
+                    let [a, b] = draw::offset_line(*last, cursor, self.draw_options().offset);
+                    vec![vec![a, b]]
+                })
+                .unwrap_or_default(),
             draw::Shape::Polyline if !chain.is_empty() => vec![chain.iter().copied().chain([cursor]).collect()],
             _ => self.shape_preview(cursor).iter().map(|c| c.points()).collect(),
         }
@@ -246,6 +320,23 @@ impl BimApp {
                 Status { text: crate::lang::t("The view is edge-on to the sketch's plane: turn it to pick on it.").into(), error: true };
             return;
         };
+        if self.outline_pending && (mods.ctrl || mods.command) {
+            match under {
+                Some(id) if m.wall(id).is_some() => {
+                    if !self.outline_walls.remove(&id) {
+                        self.outline_walls.insert(id);
+                    }
+                }
+                Some(_) => {}
+                None => self.outline_walls.clear(),
+            }
+            self.sync_outline_selection();
+            return;
+        }
+        if self.outline_pending {
+            self.outline_walls.clear();
+            self.selection.clear();
+        }
         let reach = plane.mm(f64::from(PICK));
         match &self.tool {
             // Picked where it shows, as foreshortened as the view draws it.

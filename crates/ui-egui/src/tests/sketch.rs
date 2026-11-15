@@ -368,6 +368,16 @@ fn pick_walls_puts_a_line_on_the_core_or_the_finish_face_under_the_cursor() {
 }
 
 #[test]
+fn space_flips_a_picked_wall_line_to_the_other_face() {
+    let mut h = app(&core_box());
+    press(&mut h, "Floor");
+    press(&mut h, "Pick Walls");
+    key(&mut h, Key::Space);
+    click(&mut h, P2(4000.0, 50.0));
+    assert!((line_y(&h, 0) + 50.0).abs() < 1e-6, "Space puts it on the other core face: {:?}", lines(&h));
+}
+
+#[test]
 fn pick_walls_offset_moves_the_line_away_from_the_wall() {
     let mut h = app(&core_box());
     press(&mut h, "Floor");
@@ -385,6 +395,7 @@ fn walls_outline_follows_the_face_options_and_finish_makes_the_floor() {
     let mut h = app(&core_box());
     press(&mut h, "Floor");
     press(&mut h, "Walls' Outline");
+    press(&mut h, "DRAW");
     let ls = lines(&h);
     assert_eq!(ls.len(), 4, "{ls:?}");
     assert!(ls.iter().all(|l| [l.start(), l.end()].iter().all(|p| p.0 == 50.0 || p.0 == 7950.0 || p.1 == 50.0 || p.1 == 5950.0)), "{ls:?}");
@@ -392,6 +403,35 @@ fn walls_outline_follows_the_face_options_and_finish_makes_the_floor() {
     assert!(h.state().sketch.is_none(), "{}", h.state().status.text);
     let f = ids(&h, "floor")[0];
     assert_eq!(field(&h, f, "area_m2"), json!(46.61));
+}
+
+#[test]
+fn draw_does_not_lay_a_second_copy_of_an_outline_already_in_the_sketch() {
+    let mut h = app(&core_box());
+    press(&mut h, "Floor");
+    press(&mut h, "Walls' Outline");
+    press(&mut h, "DRAW");
+    let drawn = lines(&h).len();
+    assert_eq!(drawn, 4, "{:?}", lines(&h));
+    assert!(h.query_by_label("DRAW").is_some(), "the panel stays until Walls' Outline is left");
+    press(&mut h, "Walls' Outline");
+    press(&mut h, "DRAW");
+    assert_eq!(lines(&h).len(), drawn, "the same outline is not drawn twice: {:?}", lines(&h));
+    assert!(h.state().status.text.contains("already"), "{}", h.state().status.text);
+}
+
+#[test]
+fn walls_outline_picks_walls_with_the_arrow_and_esc_clears_them() {
+    let mut h = app(&core_box());
+    press(&mut h, "Floor");
+    press(&mut h, "Walls' Outline");
+    click(&mut h, P2(4000.0, 0.0));
+    assert_eq!(h.state().outline_walls.len(), 1, "the south wall is picked");
+    assert_eq!(h.state().selection.len(), 1, "and lit as the selection");
+    key(&mut h, Key::Escape);
+    assert!(h.state().outline_walls.is_empty(), "Esc clears the picked walls");
+    assert!(h.state().selection.is_empty());
+    assert!(h.state().outline_pending, "Esc leaves Walls' Outline on");
 }
 
 #[test]
