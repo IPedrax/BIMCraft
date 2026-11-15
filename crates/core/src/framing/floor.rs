@@ -10,26 +10,30 @@
 //!
 //! The rules, in that frame:
 //! - A rim joist lies along each edge of the outline the joists end on (each not parallel to them), one thickness thick inside
-//!   it and the whole edge long; where two rims meet at a corner, the one of the lower edge index runs through and the other
-//!   stops where its nearer corner meets the first's inner face. An edge parallel to the joists has an edge joist flush with
-//!   it, running between the rims. Every joist ends square where its nearer corner meets a rim's inner face (on a skewed
-//!   edge, its far corner falls short of it).
+//!   it and the whole edge long, less the holes it crosses; where two rims meet at a corner, the one of the lower edge index
+//!   runs through and the other stops where its nearer corner meets the first's inner face; at a sharp corner each stops
+//!   where its inner side meets the outline; at an inward one the one that runs through runs on to the corner of their inner
+//!   faces and the other starts clear of it (a wedge left between them where the corner isn't square, with a warning). A rim
+//!   that would overlap another, or doesn't fit on the floor, is left out with a warning. An edge parallel to the joists has
+//!   an edge joist flush with it (where it lies farthest in), running between the rims; edges in line share one. Every joist
+//!   ends square where it first meets a rim or a hole: on a skewed edge its nearer corner touches the rim's inner face.
 //! - Grid joists are centred at stations `spacing` apart, counted from the layout's origin across the outline: `start` its
 //!   least `across`, `end` its most, `centre` the middle. One that would overlap another joist (an edge joist, a trimmer, a
 //!   pair under a wall) is left out. Each runs in pieces where the outline, less what it doesn't frame round, lets it.
 //! - A beam or a straight wall under the floor whose top lies within [`BEARING`] of the joists' underside bears them. Where
 //!   one crosses a joist away from its ends, the joist is in pieces that butt on its centre line, or (`lap`) each runs `lap`
-//!   past it and every other piece lies a thickness over, beside the one before; an edge joist, a trimmer and a pair under a
-//!   wall always butt.
+//!   past it (no more than halfway to the next support, with a warning) and every other piece lies a thickness over, beside
+//!   the one before; an edge joist, a trimmer and a pair under a wall always butt.
 //! - Each hole (an opening, a shaft through the floor) is framed by the box round it in the frame: `trimmers` plies of
 //!   trimmer along each side of it, running the joists' whole length, `trimmers` plies of header across each end between
 //!   them, and the joists it cuts are tails from what they start on to a header. A hole whose box doesn't fit inside the rims
-//!   and edge joists, or whose trimmers would run into another hole's, isn't trimmed: its joists end at it, with a warning.
+//!   and edge joists, runs into another hole, or whose trimmers would run into another hole's, isn't trimmed: its joists end
+//!   at it, with a warning.
 //! - A straight wall standing on the floor (its level's, its base at the floor's top) along the joists (within 1°) gets two
-//!   joists side by side under its centre line, the whole length of the floor (`under/<wall GUID>/0` and `/1`); one over an
-//!   edge joist stands on that, and one over an opening gets none, with a warning.
+//!   joists side by side under its centre line, the whole length of the floor (`under/<wall GUID>/0` and `/1`); one whose
+//!   centre line is over an edge joist stands on that, and one over an opening gets none, with a warning.
 //! - Rows of solid blocking (`bridging`) divide each span between what bears the joists evenly, none longer than it, a block
-//!   between each two neighbouring joists, none across a hole.
+//!   between each two neighbouring joists, none across a hole nor between joists less than a millimetre apart.
 //!
 //! Nothing is left out without a word: what can't be framed as the type says is in [`Framing::warnings`], naming what and
 //! why.
@@ -213,6 +217,93 @@ fn overlap(a: [f64; 2], b: [f64; 2]) -> bool {
     a[1].min(b[1]) - a[0].max(b[0]) > EPS
 }
 
+/// Where the strip `across` = `a0` to `a1` lies wholly inside `ring` and outside each of `cuts` (all in the floor's frame),
+/// as `[from, to]` along `s`: where both its sides do, less wherever an edge of any of them runs between its sides (a corner
+/// of a hole, or an inward corner of the outline, poking into it), so a member there touches what it ends on and never runs
+/// into it.
+fn strip(ring: &[P2], cuts: &[Vec<P2>], [a0, a1]: [f64; 2]) -> Vec<[f64; 2]> {
+    let (lo, hi) = if a1 - a0 > 2.0 * NUDGE { (a0 + NUDGE, a1 - NUDGE) } else { ((a0 + a1) / 2.0, (a0 + a1) / 2.0) };
+    let side = |a: f64| cuts.iter().fold(inside(ring, a), |iv, c| less(&iv, &inside(c, a)));
+    let blocked: Vec<[f64; 2]> = std::iter::once(ring)
+        .chain(cuts.iter().map(Vec::as_slice))
+        .flat_map(geom::ring_edges)
+        .filter_map(|(p, q)| between(p, q, lo, hi))
+        .collect();
+    less(&both(&side(lo), &side(hi)), &blocked)
+}
+
+/// The part of edge `p`→`q` strictly between `across` = `lo` and `hi`, as how far it reaches along `s`; none where it doesn't
+/// lie between them or reaches no distance along `s` there.
+fn between(p: P2, q: P2, lo: f64, hi: f64) -> Option<[f64; 2]> {
+    let d = q.1 - p.1;
+    let (t0, t1) = if d.abs() < 1e-12 {
+        if p.1 > lo && p.1 < hi { (0.0, 1.0) } else { return None }
+    } else {
+        let (ta, tb) = ((lo - p.1) / d, (hi - p.1) / d);
+        (ta.min(tb).max(0.0), ta.max(tb).min(1.0))
+    };
+    let (s0, s1) = (p.0 + (q.0 - p.0) * t0, p.0 + (q.0 - p.0) * t1);
+    (t1 > t0 && (s1 - s0).abs() > EPS).then_some([s0.min(s1), s0.max(s1)])
+}
+
+/// Whether convex rings `a` and `b` overlap by more than a hair: no side of either separates them.
+fn convex_overlap(a: &[P2], b: &[P2]) -> bool {
+    let normals = |r: &[P2]| geom::ring_edges(r).map(|(p, q)| (q - p).unit().perp()).collect::<Vec<P2>>();
+    let span = |r: &[P2], n: P2| r.iter().map(|p| p.dot(n)).fold([f64::INFINITY, f64::NEG_INFINITY], |[lo, hi], v| [lo.min(v), hi.max(v)]);
+    !normals(a).into_iter().chain(normals(b)).filter(|n| n.length() > 0.5).any(|n| !overlap(span(a, n), span(b, n)))
+}
+
+/// Whether convex ring `q` lies inside `ring`, shrunk a hair so a side along one of `ring`'s edges counts as inside.
+fn within(q: &[P2], ring: &[P2]) -> bool {
+    let c = q.iter().fold(P2(0.0, 0.0), |c, p| c + *p) * (1.0 / q.len().max(1) as f64);
+    let q: Vec<P2> = q.iter().map(|p| *p + (c - *p).unit() * 1e-3).collect();
+    q.iter().all(|p| geom::contains(ring, *p))
+        && !ring.iter().any(|p| geom::contains(&q, *p))
+        && !geom::ring_edges(&q).any(|(a, b)| geom::ring_edges(ring).any(|(c, d)| geom::crossing(a, b, c, d).is_some()))
+}
+
+/// Whether convex ring `q` and `ring` overlap: a corner of either inside the other, or their edges crossing.
+fn meets(q: &[P2], ring: &[P2]) -> bool {
+    q.iter().any(|p| geom::contains(ring, *p))
+        || ring.iter().any(|p| geom::contains(q, *p))
+        || geom::ring_edges(q).any(|(a, b)| geom::ring_edges(ring).any(|(c, d)| geom::crossing(a, b, c, d).is_some()))
+}
+
+/// A rim joist along edge `edge` of the outline (in the floor's frame), from `a` along `u`, `ends` along it, a thickness in
+/// from it to its left.
+struct Rim {
+    edge: usize,
+    a: P2,
+    u: P2,
+    len: f64,
+    ends: [f64; 2],
+}
+
+impl Rim {
+    /// Square to the joists: lying in their frame.
+    fn square(&self) -> bool {
+        self.u.0.abs() * self.len <= TOL
+    }
+
+    /// Its plan rectangle from `e0` to `e1` along it, `th` thick, in the floor's frame.
+    fn corners(&self, th: f64, [e0, e1]: [f64; 2]) -> Vec<P2> {
+        let v = self.u.perp();
+        vec![self.a + self.u * e0, self.a + self.u * e1, self.a + self.u * e1 + v * th, self.a + self.u * e0 + v * th]
+    }
+
+    /// The member's rectangle from `e0` to `e1`: [`Rim::corners`], or for one square to the joists the box round them in their
+    /// frame, as it is laid.
+    fn ring(&self, th: f64, ends: [f64; 2]) -> Vec<P2> {
+        let c = self.corners(th, ends);
+        if !self.square() {
+            return c;
+        }
+        let fold = |k: fn(&P2) -> f64| c.iter().map(k).fold([f64::INFINITY, f64::NEG_INFINITY], |[lo, hi], x| [lo.min(x), hi.max(x)]);
+        let ([s0, s1], [a0, a1]) = (fold(|p| p.0), fold(|p| p.1));
+        vec![P2(s0, a0), P2(s1, a0), P2(s1, a1), P2(s0, a1)]
+    }
+}
+
 /// What bears the joists: a beam or a wall under the floor, its centre line in the floor's frame.
 struct Support {
     guid: Guid,
@@ -342,7 +433,7 @@ pub fn floor(m: &Model, id: Id) -> Result<Option<Framing>, String> {
     let (amin, amax) = outer.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| (lo.min(p.1), hi.max(p.1)));
     let warnings = &mut out.warnings;
 
-    // Its edges: along the joists (an edge joist), or not (a rim), and the outline inside the rims, where joists end.
+    // Its edges: along the joists (an edge joist), or not (a rim); each rim's inner face.
     let parallel: Vec<bool> = (0..n).map(|i| (pt(i + 1).1 - pt(i).1).abs() <= TOL).collect();
     let rimmed = |i: usize| t.rim && !parallel.get(i % n).copied().unwrap_or(true) && pt(i).dist(pt(i + 1)) > EPS;
     let shifted = |i: usize| {
@@ -351,12 +442,6 @@ pub fn floor(m: &Model, id: Id) -> Result<Option<Framing>, String> {
         let shift = (b - a).unit().perp() * d;
         (a + shift, b + shift)
     };
-    let inner: Vec<P2> = (0..n)
-        .map(|i| {
-            let ((a, b), (c, e)) = (shifted(i + n - 1), shifted(i));
-            geom::line_intersection(a, b, c, e).unwrap_or(c)
-        })
-        .collect();
 
     // The holes: its openings, then the shafts through it, each trimmed where its box fits.
     let mut holes: Vec<Hole> = Vec::new();
@@ -373,38 +458,191 @@ pub fn floor(m: &Model, id: Id) -> Result<Option<Framing>, String> {
         let fold = |k: fn(&P2) -> f64| ring.iter().map(k).fold([f64::INFINITY, f64::NEG_INFINITY], |[lo, hi], v| [lo.min(v), hi.max(v)]);
         holes.push(Hole { name, key, s: fold(|p| p.0), a: fold(|p| p.1), ring, trimmed: false });
     }
+
+    // The rims, each along its edge, as long as its corners let it: where two meet at a corner the one of the lower edge
+    // index runs through and the other stops at its inner face; at a sharp corner each stops where its inner side meets the
+    // outline; at an inward one the one that runs through runs on to the other's inner face, and that one starts clear of it.
+    let convex = |p: P2, q: P2, r: P2| (q - p).cross(r - q) > EPS;
+    let mut rims: Vec<Rim> = (0..n)
+        .filter(|i| rimmed(*i))
+        .map(|i| {
+            let (a, b) = (pt(i), pt(i + 1));
+            let (len, u) = (a.dist(b), (b - a).unit());
+            let v = u.perp();
+            // Where its side `off` in from its edge crosses the line through `p` and `q`, along it.
+            let at = |off: f64, (p, q): (P2, P2)| geom::line_intersection(a + v * off, b + v * off, p, q).map(|x| (x - a).dot(u));
+            let meet = |j: usize| [0.0, th].map(|off| at(off, shifted(j)).unwrap_or(f64::NAN));
+            let mut ends = [0.0, len];
+            let (prev, next) = ((i + n - 1) % n, (i + 1) % n);
+            if convex(pt(prev), a, b) {
+                if i > 0 && rimmed(prev) {
+                    ends[0] = meet(prev).into_iter().filter(|x| x.is_finite()).fold(0.0, f64::max);
+                }
+                if let Some(x) = at(th, (pt(prev), a)).filter(|x| x.is_finite()) {
+                    ends[0] = ends[0].max(x);
+                }
+            }
+            if convex(a, b, pt(i + 2)) {
+                if next < i && rimmed(next) {
+                    ends[1] = meet(next).into_iter().filter(|x| x.is_finite()).fold(len, f64::min);
+                }
+                if let Some(x) = at(th, (b, pt(i + 2))).filter(|x| x.is_finite()) {
+                    ends[1] = ends[1].min(x);
+                }
+            }
+            Rim { edge: i, a, u, len, ends }
+        })
+        .collect();
+    for k in 0..n {
+        let (i, j) = ((k + n - 1) % n, k);
+        let (before, corner, after) = (pt(i), pt(k), pt(k + 1));
+        if (corner - before).cross(after - corner) >= -EPS {
+            continue;
+        }
+        let (Some(ri), Some(rj)) = (rims.iter().position(|r| r.edge == i), rims.iter().position(|r| r.edge == j)) else { continue };
+        let ((p, q), (c, d)) = (shifted(i), shifted(j));
+        let Some(inner) = geom::line_intersection(p, q, c, d) else { continue };
+        let (Some(was_i), Some(was_j)) = (rims.get(ri).map(|r| r.ends), rims.get(rj).map(|r| r.ends)) else { continue };
+        let (Some(rin), Some(rout)) = (rims.get(ri), rims.get(rj)) else { continue };
+        let (ui, uj) = (rin.u, rout.u);
+        let cos = ui.dot(uj);
+        // The one that runs through reaches the corner of their inner faces; the other is cut back clear of it, along its own way.
+        let mut ends = [was_i, was_j];
+        let through_in = i < j;
+        if through_in {
+            ends[0][1] = rin.len + (inner - corner).dot(ui).max(0.0);
+            if cos > 0.0 {
+                ends[1][0] = rin.corners(th, ends[0]).iter().map(|c| (*c - corner).dot(uj)).fold(ends[1][0], f64::max);
+            }
+        } else {
+            ends[1][0] = -(corner - inner).dot(uj).max(0.0);
+            if cos > 0.0 {
+                ends[0][1] = rout.corners(th, ends[1]).iter().map(|c| (*c - rin.a).dot(ui)).fold(ends[0][1], f64::min);
+            }
+        }
+        let (ri_ring, rj_ring) = (rin.corners(th, ends[0]), rout.corners(th, ends[1]));
+        let fits = !convex_overlap(&ri_ring, &rj_ring) && within(if through_in { &ri_ring } else { &rj_ring }, &outer);
+        let gap = if !fits {
+            th
+        } else if cos > 0.0 {
+            if through_in { ends[1][0] - was_j[0] } else { was_i[1] - ends[0][1] }
+        } else {
+            -cos * th
+        };
+        if fits {
+            for (k, e) in [(ri, ends[0]), (rj, ends[1])] {
+                if let Some(r) = rims.get_mut(k) {
+                    r.ends = e;
+                }
+            }
+        }
+        if gap > 1.0 {
+            warnings.push(format!(
+                "the rims along its edges {} and {} meet at an inward corner that isn't square: a wedge up to {gap:.0} mm wide \
+                 between them is left unfilled; frame it by hand",
+                edge_no(i),
+                edge_no(j)
+            ));
+        }
+    }
+    // Each rim, its pieces clear of the holes, each one that would overlap another rim left out.
+    let mut rim_members: Vec<Member> = Vec::new();
+    let (mut rim_rings, mut rim_corners): (Vec<Vec<P2>>, Vec<Vec<P2>>) = (Vec::new(), Vec::new());
+    for r in &rims {
+        let key = format!("rim/{}", edge_no(r.edge));
+        if r.ends[1] - r.ends[0] < th - EPS {
+            warnings.push(format!("the rim along its edge {} would be shorter than it is thick: it's left out", edge_no(r.edge)));
+            continue;
+        }
+        let whole = r.corners(th, r.ends);
+        if !within(&whole, &outer) {
+            warnings.push(format!(
+                "the rim along its edge {} doesn't fit on the floor: it's thinner there than a rim is thick; it's left out",
+                edge_no(r.edge)
+            ));
+            continue;
+        }
+        if let Some(o) = rim_corners.iter().position(|o| convex_overlap(o, &whole)) {
+            let what = rim_members.get(o).map_or_else(String::new, |m| m.key.clone());
+            warnings.push(format!(
+                "the rim along its edge {} would overlap {what}: it's left out; the floor is shorter there than two rims are thick",
+                edge_no(r.edge)
+            ));
+            continue;
+        }
+        let v = r.u.perp();
+        let own = |q: &P2| P2((*q - r.a).dot(r.u), (*q - r.a).dot(v));
+        let [e0, e1] = r.ends;
+        let base = vec![P2(e0, -1.0), P2(e1, -1.0), P2(e1, th + 1.0), P2(e0, th + 1.0)];
+        let cut: Vec<Vec<P2>> = holes.iter().map(|h| h.ring.iter().map(own).collect()).collect();
+        let pieces = strip(&base, &cut, [0.0, th]);
+        let one = pieces.len() == 1;
+        for (j, p) in pieces.into_iter().enumerate() {
+            let key = if one { key.clone() } else { format!("{key}/{j}") };
+            if p[1] - p[0] < th - EPS {
+                warnings.push(format!(
+                    "a piece of {key} {:.0} mm long, shorter than it is thick, is left out: move what cuts it there",
+                    p[1] - p[0]
+                ));
+                continue;
+            }
+            let ring = r.ring(th, p);
+            let member = if r.square() {
+                let fold =
+                    |k: fn(&P2) -> f64| ring.iter().map(k).fold([f64::INFINITY, f64::NEG_INFINITY], |[lo, hi], x| [lo.min(x), hi.max(x)]);
+                Member::lying(key, (Role::Rim, Grain::Across), section, 1, [fold(|p| p.0), fold(|p| p.1)], z)
+            } else {
+                let mut rim = Member::lying(key, (Role::Rim, Grain::Along), section, 1, [p, [0.0, th]], z);
+                rim.frame = Some([origin + x * r.a.0 + y * r.a.1, x * r.u.0 + y * r.u.1]);
+                rim
+            };
+            rim_members.push(member);
+            rim_rings.push(ring);
+            rim_corners.push(r.corners(th, p));
+        }
+    }
     let plies = f64::from(t.trimmers);
     let grow = plies * th;
 
     // The lines of joists, each with where it runs: edge joists first, then trimmers, pairs under walls and the grid; a line
     // that would overlap one before it is left out.
+    // What the joists run round: the rims, and each hole (its box grown by its trimmers and headers, where it is trimmed).
     let cuts = |holes: &[Hole], trims: Option<usize>| -> Vec<Vec<P2>> {
-        holes
+        rim_rings
             .iter()
-            .enumerate()
-            .filter(|(i, _)| Some(*i) != trims)
-            .map(|(_, h)| if h.trimmed { h.grown(grow) } else { h.ring.clone() })
+            .cloned()
+            .chain(
+                holes
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, _)| Some(*i) != trims)
+                    .map(|(_, h)| if h.trimmed { h.grown(grow) } else { h.ring.clone() }),
+            )
             .collect()
     };
-    let cover = |cuts: &[Vec<P2>], [a0, a1]: [f64; 2]| {
-        let side = |a: f64| cuts.iter().fold(inside(&inner, a), |iv, c| less(&iv, &inside(c, a)));
-        both(&side(a0 + NUDGE), &side(a1 - NUDGE))
-    };
+    let cover = |cuts: &[Vec<P2>], across: [f64; 2]| strip(&outer, cuts, across);
     let mut lines: Vec<Line> = Vec::new();
     for i in (0..n).filter(|i| parallel.get(*i).copied().unwrap_or(false)) {
         let (a, b) = (pt(i), pt(i + 1));
         if a.dist(b) <= EPS {
             continue;
         }
-        let e = (a.1 + b.1) / 2.0;
-        let across = if b.0 > a.0 { [e, e + th] } else { [e - th, e] };
+        // Flush with the edge where it lies farthest in, so the whole joist is on the floor.
+        let across = if b.0 > a.0 { [a.1.max(b.1), a.1.max(b.1) + th] } else { [a.1.min(b.1) - th, a.1.min(b.1)] };
         let along = [a.0.min(b.0), a.0.max(b.0)];
-        let line = Line {
+        let mut line = Line {
             key: format!("edge/{}", edge_no(i)),
             kind: Kind::Edge,
             across,
             cover: cover(&cuts(&holes, None), across).into_iter().filter(|c| overlap(*c, along)).collect(),
         };
+        // Along an edge in line with one before it: the same joist, where that one runs.
+        if let Some(o) = lines.iter().find(|o| o.kind == Kind::Edge && (o.across[0] - across[0]).abs() < EPS) {
+            line.cover.retain(|c| !o.cover.iter().any(|d| overlap(*c, *d)));
+            if line.cover.is_empty() {
+                continue;
+            }
+        }
         if let Some(o) = lines.iter().find(|o| o.clashes(&line)) {
             warnings.push(format!(
                 "the edge joist along its edge {} would overlap {}: it's left out; the floor is narrower there than two joists",
@@ -415,24 +653,33 @@ pub fn floor(m: &Model, id: Id) -> Result<Option<Framing>, String> {
         }
         if !line.cover.is_empty() {
             lines.push(line);
+        } else if along[1] - along[0] > th && cover(&[], across).iter().all(|c| !overlap(*c, along)) {
+            warnings.push(format!(
+                "the edge joist along its edge {} is left out: the floor is narrower there than a joist is thick",
+                edge_no(i)
+            ));
         }
     }
-    // A hole is trimmed where its box, grown by its trimmers, lies inside the rims and clear of the edge joists, and its
-    // trimmers clear of another's.
+    // A hole is trimmed where its box, grown by its trimmers, lies inside the outline, clear of the rims and the edge joists,
+    // and its trimmers clear of another's.
     for i in 0..holes.len() {
         let Some(h) = holes.get(i) else { continue };
         let band = [h.a[0] - grow, h.a[1] + grow];
         let reach = [h.s[0] - grow, h.s[1] + grow];
-        let within = |p: &P2| p.0 > reach[0] && p.0 < reach[1] && p.1 > band[0] && p.1 < band[1];
-        let inside_rims = h.grown(grow).iter().all(|p| geom::contains(&inner, *p)) && !inner.iter().any(within);
+        let boxed = h.grown(grow);
+        let inside_rims = within(&boxed, &outer) && !rim_corners.iter().any(|r| convex_overlap(r, &boxed));
         let why = if !inside_rims || lines.iter().any(|l| overlap(l.across, band) && l.cover.iter().any(|c| overlap(*c, reach))) {
             Some("it reaches the floor's edge, or comes nearer it than its trimmers and headers are thick".to_string())
         } else {
-            holes
-                .iter()
-                .take(i)
-                .find(|o| o.trimmed && overlap([o.a[0] - grow, o.a[1] + grow], band))
-                .map(|o| format!("its trimmers would run into {}'s, which run the joists' whole length beside it", o.name))
+            let into =
+                holes.iter().enumerate().find(|(j, o)| *j != i && meets(&boxed, &if o.trimmed { o.grown(grow) } else { o.ring.clone() }));
+            into.map(|(_, o)| format!("its box, grown by its trimmers and headers, runs into {}", o.name)).or_else(|| {
+                holes
+                    .iter()
+                    .take(i)
+                    .find(|o| o.trimmed && overlap([o.a[0] - grow, o.a[1] + grow], band))
+                    .map(|o| format!("its trimmers would run into {}'s, which run the joists' whole length beside it", o.name))
+            })
         };
         let Some(h) = holes.get_mut(i) else { continue };
         match why {
@@ -469,7 +716,7 @@ pub fn floor(m: &Model, id: Id) -> Result<Option<Framing>, String> {
     });
     let lookup = m.lookup();
     if t.under_partitions {
-        for wid in lookup.walls_near_at(&[(plan, top - 1.0, top + 1.0)], 0.0) {
+        for wid in lookup.walls_near_at(&[(plan, top - BEARING, top + BEARING)], 0.0) {
             let Some(w) = m.wall(wid).filter(|w| w.arc == 0.0 && w.level == f.level) else { continue };
             if (m.base_z(w) - top).abs() > BEARING {
                 continue;
@@ -498,7 +745,10 @@ pub fn floor(m: &Model, id: Id) -> Result<Option<Framing>, String> {
                 let band = if h.trimmed { [h.a[0] - grow, h.a[1] + grow] } else { h.a };
                 overlap(band, [mid - th, mid + th]) && overlap(h.s, reach)
             });
-            let edge = pair.iter().any(|l| lines.iter().any(|o| o.kind == Kind::Edge && o.clashes(l)));
+            // Over an edge joist where its centre line is.
+            let edge = pair.iter().any(|l| {
+                lines.iter().any(|o| o.kind == Kind::Edge && o.clashes(l) && mid >= o.across[0] - EPS && mid <= o.across[1] + EPS)
+            });
             let clash = pair.iter().find_map(|l| lines.iter().find(|o| o.clashes(l)));
             if let Some(h) = over {
                 warnings.push(format!(
@@ -566,7 +816,7 @@ pub fn floor(m: &Model, id: Id) -> Result<Option<Framing>, String> {
             }
         }
     }
-    for wid in lookup.walls_near_at(&[(plan, z0 - 1.0, z0 + 1.0)], 0.0) {
+    for wid in lookup.walls_near_at(&[(plan, z0 - BEARING, z0 + BEARING)], 0.0) {
         let Some(w) = m.wall(wid) else { continue };
         let axis = Axis::of(w);
         let c = walls::centre(m, w);
@@ -608,7 +858,8 @@ pub fn floor(m: &Model, id: Id) -> Result<Option<Framing>, String> {
     for (li, line) in lines.iter().enumerate() {
         let c = line.centre();
         let mut butt: Vec<[f64; 2]> = Vec::new();
-        let mut laps: Vec<Vec<[f64; 2]>> = Vec::new();
+        // Each run's pieces as lapped, with the run.
+        let mut laps: Vec<([f64; 2], Vec<[f64; 2]>)> = Vec::new();
         for iv in &line.cover {
             let mut at: Vec<f64> = supports
                 .iter()
@@ -642,53 +893,78 @@ pub fn floor(m: &Model, id: Id) -> Result<Option<Framing>, String> {
             }
             if line.kind == Kind::Grid && lap > 0.0 && !at.is_empty() {
                 let k = at.len();
-                laps.push(
+                // Over each support, the lap, or half the way to the next support where that is nearer, so the pieces in line
+                // with each other never meet.
+                let laps_at: Vec<f64> = (0..k)
+                    .map(|j| {
+                        let s = at.get(j).copied().unwrap_or(iv[0]);
+                        let before = if j == 0 { f64::INFINITY } else { (s - at.get(j - 1).copied().unwrap_or(iv[0])) / 2.0 };
+                        let after = at.get(j + 1).map_or(f64::INFINITY, |n| (n - s) / 2.0);
+                        lap.min(before).min(after)
+                    })
+                    .collect();
+                if let Some(short) = laps_at.iter().copied().filter(|l| *l < lap - EPS).reduce(f64::min) {
+                    warnings.push(format!(
+                        "{} laps only {short:.0} mm past a support, not {lap}: what bears it is less than twice that apart there",
+                        line.key
+                    ));
+                }
+                laps.push((
+                    *iv,
                     (0..=k)
                         .map(|j| {
-                            let from = if j == 0 { iv[0] } else { (at.get(j - 1).copied().unwrap_or(iv[0]) - lap).max(iv[0]) };
-                            let to = if j == k { iv[1] } else { (at.get(j).copied().unwrap_or(iv[1]) + lap).min(iv[1]) };
+                            let lap_at = |j: usize| laps_at.get(j).copied().unwrap_or(0.0);
+                            let from = if j == 0 { iv[0] } else { (at.get(j - 1).copied().unwrap_or(iv[0]) - lap_at(j - 1)).max(iv[0]) };
+                            let to = if j == k { iv[1] } else { (at.get(j).copied().unwrap_or(iv[1]) + lap_at(j)).min(iv[1]) };
                             [from, to]
                         })
                         .collect(),
-                );
+                ));
             } else {
-                laps.push(pieces.clone());
+                laps.push((*iv, pieces.clone()));
             }
             butt.extend(pieces);
         }
         // Every other piece of a lapped joist a thickness over, the way that clears every other member and stays on the floor.
-        let lapped = laps.iter().any(|ps| ps.len() > 1) && line.kind == Kind::Grid && lap > 0.0;
-        let clear = |shift: f64| {
-            laps.iter().flat_map(|ps| ps.iter().skip(1).step_by(2)).all(|p| {
-                let across = [line.across[0] + shift, line.across[1] + shift];
-                let fits = cover(&grid_cuts, across).iter().any(|c| c[0] <= p[0] + EPS && c[1] >= p[1] - EPS);
-                let free = !placed.iter().any(|(_, s, a)| overlap(*s, *p) && overlap(*a, across))
+        let lapped = laps.iter().any(|(_, ps)| ps.len() > 1) && line.kind == Kind::Grid && lap > 0.0;
+        // Its pieces with every other one `shift` over, if they all fit there clear of the rest: each that ends where its run
+        // does (on a rim, a header) ends where its own strip does, so on a skewed rim it still meets it.
+        let beside = |shift: f64| -> Option<Vec<([f64; 2], f64)>> {
+            let across = [line.across[0] + shift, line.across[1] + shift];
+            let room = cover(&grid_cuts, across);
+            let free = |p: [f64; 2]| {
+                !placed.iter().any(|(_, s, a)| overlap(*s, p) && overlap(*a, across))
                     && !lines
                         .iter()
                         .enumerate()
-                        .any(|(o, l)| o != li && overlap(l.across, across) && l.cover.iter().any(|c| overlap(*c, *p)));
-                fits && free
-            })
+                        .any(|(o, l)| o != li && overlap(l.across, across) && l.cover.iter().any(|c| overlap(*c, p)))
+            };
+            let mut out = Vec::new();
+            for (iv, ps) in &laps {
+                for (j, p) in ps.iter().enumerate() {
+                    if j % 2 == 0 {
+                        out.push((*p, 0.0));
+                        continue;
+                    }
+                    let mid = (p[0] + p[1]) / 2.0;
+                    let c = room.iter().find(|c| c[0] < mid && c[1] > mid)?;
+                    let q = [if (p[0] - iv[0]).abs() < EPS { c[0] } else { p[0] }, if (p[1] - iv[1]).abs() < EPS { c[1] } else { p[1] }];
+                    if !(c[0] <= q[0] + EPS && c[1] >= q[1] - EPS && free(q)) {
+                        return None;
+                    }
+                    out.push((q, shift));
+                }
+            }
+            Some(out)
         };
-        let shift = if !lapped {
-            Some(0.0)
-        } else if clear(th) {
-            Some(th)
-        } else if clear(-th) {
-            Some(-th)
-        } else {
+        let lapping = if lapped { beside(th).or_else(|| beside(-th)) } else { None };
+        if lapped && lapping.is_none() {
             warnings.push(format!(
                 "{} can't lap over what bears it: there's no room beside it for the next piece; its pieces butt on the support",
                 line.key
             ));
-            None
-        };
-        let pieces: Vec<([f64; 2], f64)> = match shift {
-            Some(sh) if lapped => {
-                laps.iter().flat_map(|ps| ps.iter().enumerate().map(move |(j, p)| (*p, if j % 2 == 1 { sh } else { 0.0 }))).collect()
-            }
-            _ => butt.iter().map(|p| (*p, 0.0)).collect(),
-        };
+        }
+        let pieces: Vec<([f64; 2], f64)> = lapping.unwrap_or_else(|| butt.iter().map(|p| (*p, 0.0)).collect());
         let role = if line.kind == Kind::Trimmer { Role::Trimmer } else { Role::Joist };
         for (j, (p, sh)) in pieces.into_iter().enumerate() {
             let across = [line.across[0] + sh, line.across[1] + sh];
@@ -706,49 +982,7 @@ pub fn floor(m: &Model, id: Id) -> Result<Option<Framing>, String> {
         spans.push(butt);
     }
 
-    // The rims, each along its edge in a frame of its own; one square to the joists in theirs.
-    for i in (0..n).filter(|i| rimmed(*i)) {
-        let (a, b) = (pt(i), pt(i + 1));
-        let len = a.dist(b);
-        let u = (b - a).unit();
-        let v = u.perp();
-        let face = |j: usize| {
-            let (p, q) = shifted(j);
-            (p, q)
-        };
-        // Where its two sides meet a neighbouring rim's inner face, along it.
-        let meet = |j: usize| {
-            let (p, q) = face(j);
-            [0.0, th].map(|off| geom::line_intersection(a + v * off, b + v * off, p, q).map_or(f64::NAN, |x| (x - a).dot(u)))
-        };
-        let convex = |p: P2, q: P2, r: P2| (q - p).cross(r - q) > EPS;
-        let mut ends = [0.0, len];
-        // Its start, where the edge before it is a rim of a lower index that runs through.
-        let prev = (i + n - 1) % n;
-        if i > 0 && rimmed(prev) && convex(pt(prev), a, b) {
-            ends[0] = meet(prev).into_iter().filter(|x| x.is_finite()).fold(0.0, f64::max);
-        }
-        let next = (i + 1) % n;
-        if next < i && rimmed(next) && convex(a, b, pt(i + 2)) {
-            ends[1] = meet(next).into_iter().filter(|x| x.is_finite()).fold(len, f64::min);
-        }
-        if ends[1] - ends[0] < th - EPS {
-            warnings.push(format!("the rim along its edge {} would be shorter than it is thick: it's left out", edge_no(i)));
-            continue;
-        }
-        let key = format!("rim/{}", edge_no(i));
-        if (b.0 - a.0).abs() <= TOL {
-            // Square to the joists: in their frame, long across.
-            let corners = [a + u * ends[0], a + u * ends[1], a + u * ends[1] + v * th, a + u * ends[0] + v * th];
-            let fold =
-                |k: fn(&P2) -> f64| corners.iter().map(k).fold([f64::INFINITY, f64::NEG_INFINITY], |[lo, hi], x| [lo.min(x), hi.max(x)]);
-            out.members.push(Member::lying(key, (Role::Rim, Grain::Across), section, 1, [fold(|p| p.0), fold(|p| p.1)], z));
-        } else {
-            let mut rim = Member::lying(key, (Role::Rim, Grain::Along), section, 1, [ends, [0.0, th]], z);
-            rim.frame = Some([origin + x * a.0 + y * a.1, x * u.0 + y * u.1]);
-            out.members.push(rim);
-        }
-    }
+    out.members.extend(rim_members);
 
     // Each trimmed hole's headers, between its trimmers at each end.
     for h in holes.iter().filter(|h| h.trimmed) {
@@ -777,6 +1011,7 @@ pub fn floor(m: &Model, id: Id) -> Result<Option<Framing>, String> {
         });
         let pieces_of = |li: usize, s: [f64; 2]| placed.iter().filter(move |(l, p, _)| *l == li && overlap(*p, s)).map(|(_, _, a)| *a);
         let mut blocks: Vec<Member> = Vec::new();
+        let mut touching = false;
         for pair in order.windows(2) {
             let &[l, r] = pair else { continue };
             let (Some(left), Some(right)) = (lines.get(l), lines.get(r)) else { continue };
@@ -805,10 +1040,13 @@ pub fn floor(m: &Model, id: Id) -> Result<Option<Framing>, String> {
                             if !ar.is_finite() || !al.is_finite() || ar - al <= EPS {
                                 continue;
                             }
-                            let mid = P2(sr, (al + ar) / 2.0);
-                            if !geom::contains(&inner, mid)
-                                || holes.iter().any(|h| geom::contains(&h.ring, mid) || (h.trimmed && geom::contains(&h.grown(grow), mid)))
-                            {
+                            // Joists all but touching: no block between them.
+                            if ar - al < 1.0 {
+                                touching = true;
+                                continue;
+                            }
+                            // Wholly on the floor, clear of the rims and the holes.
+                            if !cover(&grid_cuts, [al, ar]).iter().any(|c| c[0] <= s[0] + EPS && c[1] >= s[1] - EPS) {
                                 continue;
                             }
                             blocks.push(Member::lying(
@@ -826,6 +1064,9 @@ pub fn floor(m: &Model, id: Id) -> Result<Option<Framing>, String> {
             }
         }
         out.members.extend(blocks);
+        if touching {
+            out.warnings.push("joists less than a millimetre apart get no blocking between them: space them wider".into());
+        }
     }
 
     let bears_nothing = bearing.is_empty();

@@ -404,11 +404,17 @@ framed more simply or left out with a warning that names it and says why.
 The rules, in the floor's frame (`s` the way the joists run, `across` to its left, both from the outline's first corner, `z` up):
 
 - A rim joist lies along each edge the joists end on (each not parallel to them), one thickness thick inside it and the whole
-  edge long. Where two rims meet at a corner, the one of the lower edge index runs through and the other stops where its nearer
-  corner meets the first's inner face. An edge parallel to the joists has an edge joist flush with it instead, running between
-  the rims; one that would overlap another (a floor narrower there than two joists) is left out with a warning. Every joist ends
-  square where its nearer corner meets a rim's inner face, so on a skewed edge (its rim in a frame of its own, `frame` in the
-  reply) its far corner falls short of the rim. With `rim` off the joists run to the edges themselves.
+  edge long, less any hole it crosses (an opening or a shaft at the edge). Where two rims meet at a corner, the one of the lower
+  edge index runs through and the other stops where its nearer corner meets the first's inner face; at a sharp corner (under
+  90°) each stops where its inner side meets the outline, so none pokes past it; at an inward corner the one that runs through
+  runs on to where their inner faces meet and the other starts clear of it, which fills a square inward corner; one that isn't
+  square leaves a wedge between them, with a warning giving its width. A rim that would overlap another (a floor shorter there
+  than two rims) or doesn't fit on the floor (thinner there than a rim) is left out with a warning. An edge parallel to the
+  joists has an edge joist flush with it instead (where the edge lies farthest in, an edge within 1 mm of parallel), running
+  between the rims; edges in line (a T's top) share one; one that would overlap another (a floor narrower there than two
+  joists) is left out with a warning, as is one where the floor is narrower than a joist. Every joist ends square where it
+  first meets a rim or a hole (where its nearer corner meets a skewed rim's inner face, so its far corner falls short of the
+  rim; at an inward corner, where the rims' inner faces meet). With `rim` off the joists run to the edges themselves.
 - Grid joists are centred at stations `spacing` apart across the outline from the layout's origin: `start` the outline's least
   `across`, `end` its most, `centre` its middle. The lines are laid in order, edge joists, trimmers, pairs under walls, then the
   grid, and a grid joist that would overlap one laid before it is left out. Each line runs in pieces where the outline, less
@@ -416,32 +422,37 @@ The rules, in the floor's frame (`s` the way the joists run, `across` to its lef
 - A beam (not upright) or a straight wall under the floor whose top lies within 10 mm (`BEARING`) of the joists' underside
   where it crosses them bears them (a wall's top read along it by `walls::top_at`, so a sloped top bears where it reaches).
   Where one crosses a joist away from its ends (more than the support's half width, or a thickness, from each), the joist is in
-  pieces that butt on its centre line; with `lap`, each grid joist's pieces run `lap` past the centre line and every other piece
-  lies a thickness over (to its left, else its right, wherever it clears the other members and stays on the floor), beside the
-  one before; with room on neither side its pieces butt, with a warning. Edge joists, trimmers and pairs under walls always
-  butt. A curved wall under the floor at that height isn't taken to bear it, with a warning. A floor that nothing bears
+  pieces that butt on its centre line; with `lap`, each grid joist's pieces run `lap` past the centre line (no more than halfway
+  to the next support, so pieces in line never meet; shortened, with a warning) and every other piece lies a thickness over
+  (to its left, else its right, wherever it clears the other members and stays on the floor, its end at a rim or a header
+  where its own side of the joist meets it), beside the one before; with room on neither side its pieces butt, with a
+  warning. Edge joists, trimmers and pairs under walls always butt. A curved wall under the floor at that height isn't taken to bear it, with a warning. A floor that nothing bears
   warns that its joists span the whole floor, and how far. A piece shorter than it is thick is left out, with a warning.
 - Each hole (an opening, by its index, or a shaft through the floor, by its GUID, found as the floor's solid finds the shafts that
   cut it, `Model::less_shafts`, so framing and solid agree) is framed by the box round it in the joists' frame: `trimmers` plies of trimmer along each side,
   running the joists' whole length (as its line lets them, round other holes), `trimmers` plies of header across each end
   between the inner trimmers, and the joists it cuts become tails from what they start on to a header. A hole that isn't a
   rectangle square to the joists is framed by that box, with a warning giving its size. A hole whose box, grown by its trimmers
-  and headers, doesn't lie inside the rims and clear of the edge joists (one touching or near the floor's edge), or whose
-  trimmers would run into another's, isn't trimmed: its joists end at its own outline, with a warning naming it.
+  and headers, doesn't lie inside the outline, clear of the rims and the edge joists (one touching or near the floor's edge, or
+  across a notch in it), runs into another hole (or that one's grown box), or whose trimmers would run into another's, isn't
+  trimmed: its joists end at its own outline, with a warning naming it.
 - A straight wall standing on the floor (its level's, its base within 10 mm of the floor's top) and running along the joists
   (within 1°, its middle inside the outline) gets two joists side by side under its centre line, the floor's whole length
   (`under/<wall GUID>/0` and `/1`), and the grid joists they overlap are left out. A wall square to the joists needs nothing;
-  one over an edge joist stands on that; one over an opening, or whose pair would overlap a trimmer or another pair, gets none,
-  with a warning.
+  one whose centre line is over an edge joist stands on that; one over an opening, or whose pair would overlap an edge joist
+  (its centre line beside it), a trimmer or another pair, gets none, with a warning.
 - With `bridging`, rows of solid blocking are laid between each two neighbouring lines of joists, as thick as a joist and as
-  deep, dividing each span between what bears them evenly, no bay longer than `bridging`; none across a hole or its trimmed box.
+  deep, dividing each span between what bears them evenly, no bay longer than `bridging`; none across a hole or its trimmed box,
+  or past the outline or a rim; none between joists less than a millimetre apart (a type spaced a hair over its thickness),
+  with a warning.
 
 A floor's keys: grid joists `joist/<station>/<piece>` (the station counted from the layout's origin), edge joists
-`edge/<edge index>/<piece>`, rims `rim/<edge index>` (edges numbered as the outline has them), an opening's members
-`opening/<index or shaft GUID>/trimmer/<left or right>/<ply>/<piece>` and `opening/<…>/header/<start or end>/<ply>`, a pair
-under a wall `under/<wall GUID>/<0 or 1>/<piece>`, blocking `blocking/<key of the line on its right>/<row>`. Roles are `joist`,
-`rim` and `trimmer`, with `header` and `blocking` as a wall's; each member says its `grain`, the way its length runs (`along`
-for joists and trimmers, `across` for a rim square to them, headers and blocking).
+`edge/<edge index>/<piece>`, rims `rim/<edge index>` (edges numbered as the outline has them; `rim/<edge index>/<piece>` where a
+hole cuts one in pieces), an opening's members `opening/<index or shaft GUID>/trimmer/<left or right>/<ply>/<piece>` and
+`opening/<…>/header/<start or end>/<ply>`, a pair under a wall `under/<wall GUID>/<0 or 1>/<piece>`, blocking
+`blocking/<key of the line on its right>/<row>`. Roles are `joist`, `rim` and `trimmer`, with `header` and `blocking` as a
+wall's; each member says its `grain`, the way its length runs (`along` for joists and trimmers, `across` for a rim square to
+them, headers and blocking).
 
 `frame {ids | id, type?, angle?}` frames floors with walls, `angle` setting each floor's `framing_angle` where given; `unframe`
 takes it off; `modify {id, framing, framing_angle}` sets either for one floor; `framing {id}` reads a floor's members, cut list
@@ -473,8 +484,8 @@ Not yet, for floors: sloped and shaped floors (refused); blocking over supports 
 connectors; cantilevers past a support (the joists end at the outline, wherever the supports are); splitting a member longer
 than every stock length (a long rim is scheduled with 0 stock); blocking where a concave outline leaves a bay between lines
 that don't face each other along their whole length; a curved wall as a support; span checks against a species or a table;
-trimmers and headers sized by the opening; and rims meeting at a reflex (inward) corner of the outline, which each run to the corner, leaving a sliver of a wedge
-between them unfilled.
+trimmers and headers sized by the opening; at an inward corner of the outline that isn't square, the wedge between the two rims
+(warned of, with its width); and the tip of a sharp corner past where its rims stop.
 
 Not yet, for walls: roofs (rafters), which will reuse `Member`, the schedule, the graphics and IFC; framing elevations;
 picking or tagging a single member; sheathing; span checks; connectors; a plate's splices placed by hand; and at non-square corners and joins of three walls the framed length falls back to the
