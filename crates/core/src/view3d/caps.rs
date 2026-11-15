@@ -231,7 +231,7 @@ impl CapSource {
                     let ring: Vec<P2> = if geom::area(&ring) < 0.0 { ring.into_iter().rev().collect() } else { ring };
                     let layer: Option<&Layer> = p.layer.and_then(|k| layers_of(m, owner).get(k));
                     // A framing member's in the framing type's material, where it has one of its own.
-                    let framing = member.filter(|m| *m).and(layer).zip(m.wall(owner).and_then(|w| crate::framing::material(m, w)));
+                    let framing = member.filter(|m| *m).and(layer).zip(crate::framing::material_of(m, owner));
                     let own = framing.map(|(l, material)| Layer { material: material.to_string(), ..l.clone() });
                     let layer = own.as_ref().or(layer);
                     let u = if axis == 2 { p.along } else { P2(1.0, 0.0) };

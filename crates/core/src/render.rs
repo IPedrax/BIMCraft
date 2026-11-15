@@ -2312,6 +2312,8 @@ fn section_base_cancellable(
     // Each element's cut pieces, filled as one so where they meet (a roof's slopes at its ridge)
     // leaves no seam.
     let mut cuts: std::collections::BTreeMap<Id, Vec<Vec<P2>>> = std::collections::BTreeMap::new();
+    // A framed floor's members where the line cuts them: filled with the rest, patterned in their own material.
+    let mut joists: std::collections::BTreeMap<Id, Vec<Vec<P2>>> = std::collections::BTreeMap::new();
     let solids: Vec<&view3d::Solid> = work.shown(&look).collect();
     d.part(Part::Cut);
     // A bar lies inside the concrete it reinforces, so its cuts are dots over that poché, not pieces of it.
@@ -2342,9 +2344,14 @@ fn section_base_cancellable(
             return None;
         }
         let bar = matches!(m.elements.get(s.owner()), Some(Element::Rebar(_)));
+        let joist =
+            crate::family::visibility::framing(s.vis()) == Some(true) && matches!(m.elements.get(s.owner()), Some(Element::Floor(_)));
         // Cut from where the view begins, then back along the line from its start.
         for ring in s.cuts(v.start + u * first, u, last - first) {
             let ring: Vec<P2> = ring.into_iter().map(|q| P2(q.0 + first, q.1)).collect();
+            if joist {
+                joists.entry(s.owner()).or_default().push(ring.clone());
+            }
             if bar { dots.push((s.owner(), ring)) } else { cuts.entry(s.owner()).or_default().push(ring) }
         }
     }
@@ -2533,6 +2540,52 @@ fn section_base_cancellable(
     for (&owner, rings) in cuts.iter().filter(|_| !coarse) {
         if cancelled() {
             return None;
+        }
+        // A framed floor's: its members in their material, and its other pieces' layers where they lie.
+        if let Some(Element::Floor(f)) = m.elements.get(owner)
+            && f.framing.is_some()
+            && let Some((k, _)) = crate::framing::floor::framed(m, f)
+        {
+            let layers = m.type_layers("floor", &f.type_name);
+            let z = crate::framing::floor::heights(m, f);
+            let members = joists.get(&owner).map_or(&[][..], Vec::as_slice);
+            d.owner = Some(owner);
+            for r in rings {
+                let Some([a0, b0, _, _]) = quad(r) else { continue };
+                let joist = members.contains(r);
+                let (lo, hi) = r.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), q| (lo.min(q.1), hi.max(q.1)));
+                // A thin line along a member's top where layers lie over it, as between two layers.
+                if joist && z.first().is_some_and(|top| hi < top - 1e-6) {
+                    d.part(Part::Pattern);
+                    d.line(&[P2(a0.0, hi), P2(b0.0, hi)], Pen::PROJECTION, INK, false);
+                    d.part(Part::Cut);
+                }
+                for (j, layer) in layers.iter().enumerate() {
+                    let (Some(&top), Some(&bottom)) = (z.get(j), z.get(j + 1)) else { continue };
+                    let (z0, z1) = (bottom.max(lo), top.min(hi));
+                    if (joist && j != k) || z1 - z0 <= 1e-6 {
+                        continue;
+                    }
+                    let own;
+                    let layer = match crate::framing::floor::material(m, f).filter(|_| joist) {
+                        Some(material) => {
+                            own = Layer { material: material.to_string(), ..layer.clone() };
+                            &own
+                        }
+                        None => layer,
+                    };
+                    let (x0, x1) = (a0.0, b0.0);
+                    let room = (z1 - z0).min(x1 - x0) * d.view.scale;
+                    cut_layer(&mut d, m, layer, &[P2(x0, z0), P2(x1, z0), P2(x1, z1), P2(x0, z1)], P2(1.0, 0.0), room);
+                    // A thin line over each layer under the piece's top.
+                    if !joist && z1 < hi - 1e-6 {
+                        d.part(Part::Pattern);
+                        d.line(&[P2(x0, z1), P2(x1, z1)], Pen::PROJECTION, INK, false);
+                        d.part(Part::Cut);
+                    }
+                }
+            }
+            continue;
         }
         let layers = match m.elements.get(owner) {
             Some(Element::Floor(f)) => m.type_layers("floor", &f.type_name),
@@ -3238,7 +3291,10 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
     }
     let coloured = d.prims.len() > under;
     // Floors whose tops it sees, from the cut plane down to the view depth: their outlines and their
-    // openings', the holes shafts cut in them, and a sloped one's slope arrow.
+    // openings', the holes shafts cut in them, and a sloped one's slope arrow; a framed one's members under its top, in hidden
+    // line, where the plan shows Floors > Framing Lines.
+    let joist_lines =
+        !crate::graphics::graphics_of(m, key).map_or_else(Default::default, |g| g.resolved(m).into_owned()).hides("floorframingline");
     for (&id, e) in all().filter(|_| !up).filter(|(id, _)| shown(**id)) {
         let Element::Floor(f) = e else { continue };
         let top = m.floor_top(f);
@@ -3284,6 +3340,16 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
             }
         }
         holes(&mut d, m, &m.floor_slabs(f));
+        if joist_lines
+            && f.framing.is_some()
+            && let Ok(Some(framing)) = crate::framing::floor::floor(m, id)
+        {
+            d.sub(Some("floorframingline"));
+            for member in &framing.members {
+                d.dashed(&framing.ring(member), BY_CATEGORY, INK, true);
+            }
+            d.sub(None);
+        }
         if let Some([tail, head]) = f.arrow.filter(|_| f.slope != 0.0) {
             slope_arrow(&mut d, tail, head, f.slope);
         }

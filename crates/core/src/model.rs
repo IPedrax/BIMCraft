@@ -189,6 +189,8 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// (`types.framing`, library entries of kind `type:framing`); nothing in a file of 20 changes, but a build that reads up to
 /// 20 would leave a wall's `framing` and the project's framing types out of a file, unframing its walls without a word, not
 /// "saved by a newer BIMCraft". A file the Family Editor's unreleased builds stamped 21 opens as one of 21: it holds no framing.
+/// 21 also: a floor's `framing` and `framing_angle` (its joists worked out as a wall's studs are), and a framing type's `rim`,
+/// `lap`, `bridging`, `trimmers` and `under_partitions`; 21 isn't released, so it holds them with the walls'.
 pub const FORMAT: u32 = 21;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
@@ -683,6 +685,13 @@ pub struct Floor {
     /// or one slope.
     #[serde(default, skip_serializing_if = "Shape::is_empty")]
     pub shape: Shape,
+    /// Its framing type (`types.framing`), whose joists, rims, trimmers and blocking are worked out from it
+    /// ([`crate::framing::floor`]); none, it isn't framed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub framing: Option<String>,
+    /// The way its joists run, degrees from +x; none, square to its outline's longest edge (spanning the short way).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub framing_angle: Option<f64>,
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
@@ -5446,6 +5455,8 @@ impl Model {
             pattern_angle: 0.0,
             sketch: Vec::new(),
             shape: r.shape.clone(),
+            framing: None,
+            framing_angle: None,
             params: BTreeMap::new(),
         }
     }
@@ -8024,6 +8035,7 @@ impl Model {
                     None => {}
                 }
                 shape_ok(&who, f, Variable::of(self.type_layers("floor", &f.type_name)))?;
+                crate::framing::floor::check(self, f).map_err(|e| format!("{who}: {e}"))?;
             }
             Element::Ceiling(c) => {
                 known(&who, &c.type_name, &self.types.ceiling)?;

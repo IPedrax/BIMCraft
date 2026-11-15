@@ -1,7 +1,8 @@
 //! Wood framing: a framed wall's plates, studs, kings, jacks, headers, sills, cripples and blocking, worked out from the
 //! wall, its doors and windows, the walls it meets and its framing type whenever they are asked for, and never stored, as a
 //! railing's balusters are ([`crate::stairs::railing_parts`]). Moving a window, changing a height, attaching the top to a roof
-//! or changing the framing type changes the members with nothing to regenerate.
+//! or changing the framing type changes the members with nothing to regenerate. A framed floor's joists, rims, trimmers,
+//! headers and blocking are worked out the same way ([`floor`]), in the same [`Member`]s and [`Framing`].
 //!
 //! The members stand in the wall type's structure layer (the thickest, where it has several): their depth across the wall is
 //! that layer's thickness, so a 2x4 wall is one with an 89 mm structure layer. In the wall's own frame `s` runs along its
@@ -23,6 +24,8 @@ use crate::engine::Session;
 use crate::geom::{self, P2};
 use crate::model::{Element, Function, Guid, Id, MAX_COORD, Model, TOL, Wall};
 use crate::walls::{self, Axis, Plane, Prism};
+
+pub mod floor;
 
 /// The framing type `frame` makes when the project has none: 2x4 studs 16 inches apart.
 pub const DEFAULT_TYPE: &str = "2x4 @ 406";
@@ -124,6 +127,17 @@ pub struct FramingType {
     pub blocking: Vec<f64>,
     /// The stock lengths a cut list takes members from, shortest first.
     pub stock: Vec<f64>,
+    /// A floor's: a rim joist along each edge of it its joists end on.
+    pub rim: bool,
+    /// A floor's: how far each piece of a joist runs past the centre line of a support it is cut over, its pieces then side
+    /// by side, every other one a thickness over; 0, they butt on it.
+    pub lap: f64,
+    /// A floor's: the longest a joist runs between rows of solid blocking, the rows dividing each span evenly; 0, none.
+    pub bridging: f64,
+    /// A floor's: plies of trimmer each side of an opening and of header across each end of it.
+    pub trimmers: u32,
+    /// A floor's: a pair of joists under each wall standing on it along its joists.
+    pub under_partitions: bool,
 }
 
 impl Default for FramingType {
@@ -148,6 +162,11 @@ impl Default for FramingType {
             tee: Tee::Studs,
             blocking: Vec::new(),
             stock: vec![2440.0, 3050.0, 3660.0, 4270.0, 4880.0, 6100.0],
+            rim: true,
+            lap: 0.0,
+            bridging: 0.0,
+            trimmers: 2,
+            under_partitions: true,
         }
     }
 }
@@ -165,6 +184,9 @@ pub enum Role {
     Header,
     Sill,
     Blocking,
+    Joist,
+    Rim,
+    Trimmer,
 }
 
 impl Role {
@@ -179,6 +201,9 @@ impl Role {
             Role::Header => "header",
             Role::Sill => "sill",
             Role::Blocking => "blocking",
+            Role::Joist => "joist",
+            Role::Rim => "rim",
+            Role::Trimmer => "trimmer",
         }
     }
 
@@ -188,9 +213,19 @@ impl Role {
     }
 }
 
-/// One member, in its host's frame: from `s[0]` to `s[1]` along it and `across[0]` to `across[1]` across it, its plumb
-/// sides rising from a bottom at `bottom[0]` (at `s[0]`) and `bottom[1]` (at `s[1]`) to a top at `top[0]` and `top[1]`,
-/// each straight between (a bevelled stud's top, a sloped plate).
+/// Which way a member's cut length runs: up it (a stud), along its frame's `s` (a plate, a joist, later a rafter, sloped
+/// with its bottom and top), or across it (a floor's rim, a header between trimmers, blocking between joists).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Grain {
+    Up,
+    Along,
+    Across,
+}
+
+/// One member, in its host's frame (or its own, `frame`): from `s[0]` to `s[1]` along it and `across[0]` to `across[1]`
+/// across it, its plumb sides rising from a bottom at `bottom[0]` (at `s[0]`) and `bottom[1]` (at `s[1]`) to a top at
+/// `top[0]` and `top[1]`, each straight between (a bevelled stud's top, a sloped plate, later a rafter).
 #[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct Member {
     pub key: String,
@@ -198,12 +233,17 @@ pub struct Member {
     /// One ply's section as sawn: [38, 89] for a 2x4, [38, 184] for each ply of a 2-2x8 header.
     pub section: [f64; 2],
     pub plies: u32,
-    /// Its cut length: up an upright one's longest edge, along a lying one's.
+    pub grain: Grain,
+    /// Its cut length: up an upright one's longest edge, along a lying one's, across one lying across.
     pub length: f64,
     pub s: [f64; 2],
     pub across: [f64; 2],
     pub bottom: [f64; 2],
     pub top: [f64; 2],
+    /// Its own origin and `s` axis in plan, where it doesn't lie square to its host's frame (a rim along a floor's skewed
+    /// edge): its `s` and `across` are then measured in it, `across` to the left of its axis.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub frame: Option<[P2; 2]>,
 }
 
 impl Member {
@@ -226,16 +266,32 @@ impl Member {
         (to - from > EPS).then(|| [along(from), along(to)])
     }
 
-    /// From `z`: its bottom and its top.
+    /// A wall's: upright by its role, else lying along the wall. From `z`: its bottom and its top.
     fn new(key: String, role: Role, section: [f64; 2], plies: u32, s: [f64; 2], across: [f64; 2], z: [[f64; 2]; 2]) -> Self {
+        let grain = if role.upright() { Grain::Up } else { Grain::Along };
+        Member::lying(key, (role, grain), section, plies, [s, across], z)
+    }
+
+    /// One whose length runs `grain`, in its host's frame: from `place` (its `s` and its `across`) and `z` (its bottom and its
+    /// top).
+    pub(crate) fn lying(
+        key: String,
+        (role, grain): (Role, Grain),
+        section: [f64; 2],
+        plies: u32,
+        [s, across]: [[f64; 2]; 2],
+        z: [[f64; 2]; 2],
+    ) -> Self {
         let [bottom, top] = z;
-        let length = if role.upright() {
-            (top[0] - bottom[0]).max(top[1] - bottom[1])
-        } else {
-            let run = s[1] - s[0];
-            run.hypot(top[1] - top[0]).max(run.hypot(bottom[1] - bottom[0]))
+        let length = match grain {
+            Grain::Up => (top[0] - bottom[0]).max(top[1] - bottom[1]),
+            Grain::Along => {
+                let run = s[1] - s[0];
+                run.hypot(top[1] - top[0]).max(run.hypot(bottom[1] - bottom[0]))
+            }
+            Grain::Across => across[1] - across[0],
         };
-        Member { key, role, section, plies, length, s, across, bottom, top }
+        Member { key, role, section, plies, grain, length, s, across, bottom, top, frame: None }
     }
 }
 
@@ -248,14 +304,19 @@ pub struct Framing {
     pub layer: Guid,
     /// What they're made of: the framing type's material, else the layer's.
     pub material: String,
-    /// `s` 0 and `across` 0: the start of the wall's location line.
+    /// `s` 0 and `across` 0: a wall's, the start of its location line; a floor's, its outline's first corner.
     pub origin: P2,
+    /// A wall's along it; a floor's the way its joists run.
     pub x_axis: P2,
     /// The framing type's stock lengths.
     pub stock: Vec<f64>,
     pub members: Vec<Member>,
     /// What couldn't be framed as the type says: an opening left unframed, a header made shallower or left out.
     pub warnings: Vec<String>,
+    /// A floor's: the beams and walls that bear its joists. A wall's: none.
+    pub supports: Vec<Guid>,
+    /// A floor's: the longest clear span of a joist between what bears it, mm. A wall's: none.
+    pub span: Option<f64>,
 }
 
 /// A line of a cut list: `count` members alike.
@@ -281,17 +342,28 @@ impl Framing {
         self.origin + self.x_axis * s + self.depth_axis() * across
     }
 
+    /// Where member `m`'s `s` and `across` are measured from, and the way its `s` runs: its own frame, else its host's.
+    pub fn frame_of(&self, m: &Member) -> [P2; 2] {
+        m.frame.unwrap_or([self.origin, self.x_axis])
+    }
+
+    /// Member `m`'s plan rectangle, counter-clockwise.
+    pub fn ring(&self, m: &Member) -> Vec<P2> {
+        let [origin, x] = self.frame_of(m);
+        let at = |s: f64, a: f64| origin + x * s + x.perp() * a;
+        let ([s0, s1], [a0, a1]) = (m.s, m.across);
+        vec![at(s0, a0), at(s1, a0), at(s1, a1), at(s0, a1)]
+    }
+
     /// Member `m`'s solid: its plan rectangle, counter-clockwise, between its bottom and top planes.
     pub fn prism(&self, m: &Member) -> Prism {
+        let [origin, x] = self.frame_of(m);
         let plane = |z: [f64; 2]| {
             let k = (z[1] - z[0]) / (m.s[1] - m.s[0]).max(EPS);
-            let g = self.x_axis * k;
-            Plane { z: z[0] - k * m.s[0] - g.dot(self.origin), g }
+            let g = x * k;
+            Plane { z: z[0] - k * m.s[0] - g.dot(origin), g }
         };
-        let [s0, s1] = m.s;
-        let [a0, a1] = m.across;
-        let ring = vec![self.at(s0, a0), self.at(s1, a0), self.at(s1, a1), self.at(s0, a1)];
-        Prism { ring, bottom: plane(m.bottom), top: plane(m.top), curve: None }
+        Prism { ring: self.ring(m), bottom: plane(m.bottom), top: plane(m.top), curve: None }
     }
 
     /// The members alike by role, section, plies and length to the millimetre, each with the stock length it is cut from.
@@ -343,6 +415,16 @@ pub(crate) fn material<'a>(m: &'a Model, w: &Wall) -> Option<&'a str> {
     m.types.framing.get(w.framing.as_ref()?)?.material.as_deref()
 }
 
+/// The material host `id`'s framing type names for its members (a wall's or a floor's), if it names one: else they're its
+/// structure layer's.
+pub(crate) fn material_of(m: &Model, id: Id) -> Option<&str> {
+    match m.elements.get(id)? {
+        Element::Wall(w) => material(m, w),
+        Element::Floor(f) => floor::material(m, f),
+        _ => None,
+    }
+}
+
 /// A framing type's own rules, which `Model::check` asks of each.
 pub(crate) fn check_type(m: &Model, name: &str, t: &FramingType) -> Result<(), String> {
     let who = format!("framing type `{name}`");
@@ -391,6 +473,11 @@ pub(crate) fn check_type(m: &Model, name: &str, t: &FramingType) -> Result<(), S
     if t.stock.windows(2).any(|w| w[1] <= w[0]) {
         return Err(format!("{who}: its stock lengths go shortest first, each longer than the last"));
     }
+    within("lap (mm)", t.lap, 0.0, 2000.0)?;
+    if t.bridging != 0.0 {
+        within("bridging (mm; 0 for none)", t.bridging, 300.0, 100_000.0)?;
+    }
+    count("trimmers", t.trimmers, 1, 3)?;
     if let Some(mat) = &t.material
         && !m.materials.contains_key(mat)
     {
@@ -662,6 +749,8 @@ pub fn wall(m: &Model, id: Id) -> Result<Option<Framing>, String> {
         stock: t.stock.clone(),
         members: Vec::new(),
         warnings: Vec::new(),
+        supports: Vec::new(),
+        span: None,
     };
     let (start, finish) = (end(m, id, w, k, across, false), end(m, id, w, k, across, true));
     let (a, b) = (start.at, finish.at);
@@ -1185,27 +1274,48 @@ fn mm(x: f64) -> f64 {
 }
 
 fn member_json(f: &Framing, m: &Member) -> Value {
-    json!({
-        "key": m.key, "role": m.role, "section": m.section, "plies": m.plies, "length": mm(m.length),
+    let mut v = json!({
+        "key": m.key, "role": m.role, "section": m.section, "plies": m.plies, "grain": m.grain, "length": mm(m.length),
         "stock": stock(m.length, &f.stock), "s": m.s.map(mm), "across": m.across.map(mm),
         "z": [mm(m.bottom[0]), mm(m.bottom[1]), mm(m.top[0]), mm(m.top[1])],
-    })
+    });
+    if let Some([origin, x]) = m.frame {
+        v["frame"] = json!({"origin": [origin.0, origin.1], "x_axis": [x.0, x.1]});
+    }
+    v
 }
 
-/// The walls `ids` names: refused for anything else.
-fn walls_of(c: &str, m: &Model, p: &Value) -> Result<Vec<Id>, String> {
+/// The walls and floors `ids` names: refused for anything else.
+fn hosts_of(c: &str, m: &Model, p: &Value) -> Result<Vec<Id>, String> {
     let ids = crate::commands::ids_param(c, m, p)?;
-    if let Some((id, e)) = ids.iter().filter_map(|id| Some((*id, m.elements.get(*id)?))).find(|(_, e)| !matches!(e, Element::Wall(_))) {
-        return Err(bad(c, format!("{} {id} isn't a wall: only walls are framed", e.category())));
+    if let Some((id, e)) =
+        ids.iter().filter_map(|id| Some((*id, m.elements.get(*id)?))).find(|(_, e)| !matches!(e, Element::Wall(_) | Element::Floor(_)))
+    {
+        return Err(bad(c, format!("{} {id} isn't a wall or a floor: only walls and floors are framed", e.category())));
     }
     Ok(ids)
 }
 
-/// `frame`: walls given a framing type, the project's default one (made, if it has none) unless `type` names another.
+/// Host `id`'s framing: a wall's or a floor's; none for anything else or what isn't framed.
+pub fn of(m: &Model, id: Id) -> Result<Option<Framing>, String> {
+    match m.elements.get(id) {
+        Some(Element::Wall(_)) => wall(m, id),
+        Some(Element::Floor(_)) => floor::floor(m, id),
+        _ => Ok(None),
+    }
+}
+
+/// What a host is called in a message: `wall 100002`, `floor 100003`.
+fn named(m: &Model, id: Id) -> String {
+    format!("{} {id}", m.elements.get(id).map_or("element", Element::category))
+}
+
+/// `frame`: walls and floors given a framing type, the project's default one (made, if it has none) unless `type` names
+/// another; floors their joists' direction too, where `angle` is given.
 pub(crate) fn frame(s: &mut Session, p: &Value) -> Result<Value, String> {
     let c = "frame";
-    crate::commands::only(c, p, &["id", "ids", "type"])?;
-    let ids = walls_of(c, &s.model, p)?;
+    crate::commands::only(c, p, &["id", "ids", "type", "angle"])?;
+    let ids = hosts_of(c, &s.model, p)?;
     let given = crate::commands::string(c, p, "type")?;
     if let Some(n) = given.as_ref().filter(|n| !s.model.types.framing.contains_key(*n)) {
         let names: Vec<&str> = s.model.types.framing.keys().map(String::as_str).collect();
@@ -1214,35 +1324,53 @@ pub(crate) fn frame(s: &mut Session, p: &Value) -> Result<Value, String> {
             format!("there is no framing type `{n}` (there are: {}); make it with `type` {{category: framing, name}}", names.join(", ")),
         ));
     }
+    let angle = match p.get("angle") {
+        None | Some(Value::Null) => None,
+        Some(v) => Some(
+            v.as_f64()
+                .filter(|a| a.is_finite() && a.abs() <= 3600.0)
+                .ok_or_else(|| bad(c, "`angle` is the way a floor's joists run, degrees from +x (east), a number from -3600 to 3600"))?,
+        ),
+    };
     let m = s.model_mut();
     if given.is_none() && m.types.framing.is_empty() {
         m.types.framing.insert(DEFAULT_TYPE.into(), FramingType::default());
     }
     let name = given.or_else(|| m.default_type("framing").map(String::from)).unwrap_or_else(|| DEFAULT_TYPE.into());
     for id in &ids {
-        if let Some(Element::Wall(w)) = m.elements.get_mut(*id) {
-            w.framing = Some(name.clone());
+        match m.elements.get_mut(*id) {
+            Some(Element::Wall(w)) => w.framing = Some(name.clone()),
+            Some(Element::Floor(f)) => {
+                f.framing = Some(name.clone());
+                if angle.is_some() {
+                    f.framing_angle = angle;
+                }
+            }
+            _ => {}
         }
     }
     let (mut total, mut warnings) = (0, Vec::new());
     for id in &ids {
-        if let Some(f) = wall(m, *id).map_err(|e| bad(c, format!("wall {id}: {e}")))? {
+        let who = named(m, *id);
+        if let Some(f) = of(m, *id).map_err(|e| bad(c, format!("{who}: {e}")))? {
             total += f.members.len();
-            warnings.extend(f.warnings.into_iter().map(|w| format!("wall {id}: {w}")));
+            warnings.extend(f.warnings.into_iter().map(|w| format!("{who}: {w}")));
         }
     }
     Ok(json!({"ids": ids, "type": name, "members": total, "warnings": warnings}))
 }
 
-/// `unframe`: walls framed no more.
+/// `unframe`: walls and floors framed no more.
 pub(crate) fn unframe(s: &mut Session, p: &Value) -> Result<Value, String> {
     let c = "unframe";
     crate::commands::only(c, p, &["id", "ids"])?;
-    let ids = walls_of(c, &s.model, p)?;
+    let ids = hosts_of(c, &s.model, p)?;
     let m = s.model_mut();
     for id in &ids {
-        if let Some(Element::Wall(w)) = m.elements.get_mut(*id) {
-            w.framing = None;
+        match m.elements.get_mut(*id) {
+            Some(Element::Wall(w)) => w.framing = None,
+            Some(Element::Floor(f)) => f.framing = None,
+            _ => {}
         }
     }
     Ok(json!({"ids": ids}))
@@ -1253,18 +1381,25 @@ pub(crate) fn query(s: &mut Session, p: &Value) -> Result<Value, String> {
     let c = "framing";
     crate::commands::only(c, p, &["id"])?;
     let m = &s.model;
-    let ids = walls_of(c, m, p)?;
-    let [id] = ids[..] else { return Err(bad(c, "`id`, one wall, is required")) };
-    let f =
-        wall(m, id).map_err(|e| bad(c, format!("wall {id}: {e}")))?.ok_or_else(|| bad(c, format!("wall {id} isn't framed: `frame` it")))?;
+    let ids = hosts_of(c, m, p)?;
+    let [id] = ids[..] else { return Err(bad(c, "`id`, one wall or floor, is required")) };
+    let who = named(m, id);
+    let f = of(m, id).map_err(|e| bad(c, format!("{who}: {e}")))?.ok_or_else(|| bad(c, format!("{who} isn't framed: `frame` it")))?;
     let cuts: Vec<Value> = f
         .cut_list()
         .into_iter()
         .map(|r| json!({"role": r.role, "section": r.section, "plies": r.plies, "length": r.length, "stock": r.stock, "count": r.count}))
         .collect();
-    Ok(json!({
+    let mut out = json!({
         "units": "mm", "host": f.host, "id": id, "type": f.type_name, "layer": f.layer, "material": f.material,
         "origin": [f.origin.0, f.origin.1], "x_axis": [f.x_axis.0, f.x_axis.1], "depth_axis": [f.depth_axis().0, f.depth_axis().1],
         "members": f.members.iter().map(|m| member_json(&f, m)).collect::<Vec<_>>(), "cut_list": cuts, "warnings": f.warnings,
-    }))
+    });
+    if let Some(span) = f.span {
+        let supports: Vec<Id> = f.supports.iter().filter_map(|g| m.elements.id(*g)).collect();
+        out["supports"] = json!(supports);
+        out["span"] = json!(mm(span));
+        out["angle"] = json!(mm(f.x_axis.1.atan2(f.x_axis.0).to_degrees()));
+    }
+    Ok(out)
 }

@@ -95,3 +95,11 @@ type {"category":"wall","name":"2x4 Framed","layers":[{"function":"finish","mate
 type {"category":"window","name":"Framed 1200 x 1200","width":1200,"height":1200,"sill":832}
 window {"wall":"@framed.ids.0","offset":3000,"type":"Framed 1200 x 1200"}
 frame {"id":"@framed.ids.0"}
+
+# A framed floor over a beam, open through an opening: its joists, rims, trimmers and headers IfcBeams (JOIST) aggregated to the
+# slab, which keeps its body.
+type {"category":"floor","name":"2x8 Framed","layers":[{"function":"substrate","material":"Timber","thickness":18},{"function":"structure","material":"Timber","thickness":184}]}
+type {"category":"beam","name":"3-2x10","width":114,"depth":235}
+beam {"points":[[0,32000],[6000,32000]],"type":"3-2x10","offset":-202}
+@joisted = floor {"boundary":[[0,30000],[6000,30000],[6000,34000],[0,34000]],"type":"2x8 Framed","openings":[[[1500,30800],[2500,30800],[2500,31600],[1500,31600]]]}
+frame {"id":"@joisted","angle":90}
