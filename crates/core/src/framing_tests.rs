@@ -503,3 +503,251 @@ fn an_opening_that_cant_be_framed_is_never_left_without_a_warning() {
     let warnings = r["warnings"].as_array().cloned().unwrap_or_default();
     assert!(warnings.iter().any(|w| w.as_str().is_some_and(|t| t.contains("isn't framed"))), "{warnings:?}");
 }
+
+/// Every member of walls `ids` against every other, by their boxes in the world: none may overlap another by more than a
+/// hundredth of a mm in all three directions. For walls square to the axes with flat tops, where a box is the member.
+fn no_overlaps(s: &mut Session, ids: &[u64]) {
+    let all: Vec<(u64, String, [f64; 6])> =
+        ids.iter().flat_map(|id| boxes(&run(s, "framing", json!({"id": id}))).into_iter().map(move |(k, b)| (*id, k, b))).collect();
+    for (i, (wa, ka, x)) in all.iter().enumerate() {
+        for (wb, kb, y) in &all[i + 1..] {
+            let overlap = (0..3).all(|j| x[j + 3].min(y[j + 3]) - x[j].max(y[j]) > 1e-2);
+            assert!(!overlap, "{ka} of wall {wa} and {kb} of wall {wb} overlap: {x:?} {y:?}");
+        }
+    }
+}
+
+#[test]
+fn under_a_roof_sloping_across_the_wall_no_member_rises_above_the_walls_top_at_either_face() {
+    let mut s = Session::new();
+    run(&mut s, "level", json!({"elevation": 0, "name": "L1"}));
+    run(&mut s, "level", json!({"elevation": 2440, "name": "L2"}));
+    stud_wall_type(&mut s);
+    let r =
+        run(&mut s, "wall", json!({"points": [[0, 0], [6000, 0], [6000, 4000], [0, 4000]], "closed": true, "type": "2x4", "level": "L1"}));
+    let ids: Vec<u64> = r["ids"].as_array().unwrap().iter().filter_map(Value::as_u64).collect();
+    let roof = first(&run(&mut s, "roof", json!({"level": "L2", "slope": 30, "gable": true, "overhang": 300})));
+    run(&mut s, "modify", json!({"ids": ids, "attach_top": roof}));
+    run(&mut s, "frame", json!({"ids": ids}));
+    let mut worst = f64::NEG_INFINITY;
+    for &id in &ids {
+        let f = crate::framing::wall(&s.model, id).unwrap().unwrap();
+        let w = s.model.wall(id).unwrap();
+        for m in &f.members {
+            let top = |at: f64| m.top[0] + (m.top[1] - m.top[0]) * (at - m.s[0]) / (m.s[1] - m.s[0]);
+            for off in m.across {
+                for p in crate::walls::profile(&s.model, w, true, off, m.s[0], m.s[1]) {
+                    for (at, z) in [(p[0], p[2]), (p[1], p[3])] {
+                        worst = worst.max(top(at) - z);
+                        assert!(top(at) <= z + 1e-3, "wall {id}'s {} rises {:.1} mm over its top at across {off}", m.key, top(at) - z);
+                    }
+                }
+            }
+        }
+    }
+    assert!(worst > -1e-3, "the top plates reach the wall's top somewhere: {worst}");
+}
+
+#[test]
+fn a_window_whose_rough_opening_starts_in_the_top_plates_is_left_unframed_with_a_warning() {
+    let mut s = Session::new();
+    stud_wall_type(&mut s);
+    let w = first(&run(&mut s, "wall", json!({"points": [[0, 0], [4000, 0]], "type": "2x4", "height": 2440})));
+    let win = window_at(&mut s, w, 1200.0, 400.0, 2400.0, 2000.0);
+    let g = s.model.guid(win).to_string();
+    run(&mut s, "frame", json!({"id": w}));
+    let r = run(&mut s, "framing", json!({"id": w}));
+    let ms = r["members"].as_array().cloned().unwrap_or_default();
+    assert!(!ms.iter().any(|m| m["key"].as_str().is_some_and(|k| k.starts_with(&g))), "none of its members");
+    let warnings = r["warnings"].as_array().cloned().unwrap_or_default();
+    assert!(
+        warnings.iter().any(|w| w.as_str().is_some_and(|t| t.contains("isn't framed") && t.contains("in the top plates"))),
+        "{warnings:?}"
+    );
+    no_overlaps(&mut s, &[w]);
+}
+
+/// A 2x6 wall: 140 mm of timber between 13 mm of gypsum board each side.
+fn clad_2x6(s: &mut Session) {
+    let board = json!({"function": "finish", "material": "Gypsum board", "thickness": 13});
+    let timber = json!({"function": "structure", "material": "Timber", "thickness": 140});
+    run(s, "type", json!({"category": "wall", "name": "2x6", "layers": [board, timber, board]}));
+}
+
+#[test]
+fn a_wall_butting_into_a_clad_wall_is_framed_to_its_structure_not_its_finish() {
+    let mut s = Session::new();
+    clad_2x6(&mut s);
+    stud_wall_type(&mut s);
+    let r = run(
+        &mut s,
+        "wall",
+        json!({"points": [[0, 0], [0, 3000], [5000, 3000], [5000, 0]], "closed": true, "type": "2x6", "height": 2440,
+               "location": "exterior-finish"}),
+    );
+    let outer: Vec<u64> = r["ids"].as_array().unwrap().iter().filter_map(Value::as_u64).collect();
+    let p = first(&run(&mut s, "wall", json!({"points": [[2500, 3000], [2500, 0]], "type": "2x4", "height": 2440})));
+    run(&mut s, "type", json!({"category": "framing", "name": "c", "layout": "centre", "blocking": [1200]}));
+    run(&mut s, "frame", json!({"ids": outer, "type": "c"}));
+    run(&mut s, "frame", json!({"id": p, "type": "c"}));
+    // The host's structure is 13 to 153 mm in from its exterior face, on the location line: the partition's plates and end
+    // studs go from 153 to 2847 along it.
+    let ms = members(&mut s, p);
+    let plate = role(&ms, "bottom_plate")[0];
+    close(f(&plate["s"], 0), 153.0, "from the north wall's structure");
+    close(f(&plate["s"], 1), 2847.0, "to the south wall's");
+    close(f(&keyed(&ms, "stud/start")["s"], 0), 153.0, "the start stud against it");
+    close(f(&keyed(&ms, "stud/end")["s"], 1), 2847.0, "the end stud against it");
+    let mut ids = outer.clone();
+    ids.push(p);
+    no_overlaps(&mut s, &ids);
+}
+
+/// The members of walls `ids` whose boxes hold the point (x, y, z).
+fn at_point(s: &mut Session, ids: &[u64], q: [f64; 3]) -> Vec<(u64, String)> {
+    ids.iter()
+        .flat_map(|id| {
+            boxes(&run(s, "framing", json!({"id": id})))
+                .into_iter()
+                .filter(|(_, b)| (0..3).all(|i| b[i] < q[i] && q[i] < b[i + 3]))
+                .map(|(k, _)| (*id, k))
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+#[test]
+fn the_upper_top_plates_lap_at_corners_and_tees_with_no_two_members_overlapping() {
+    let mut s = Session::new();
+    stud_wall_type(&mut s);
+    let r =
+        run(&mut s, "wall", json!({"points": [[0, 0], [4000, 0], [4000, 3000], [0, 3000]], "closed": true, "type": "2x4", "height": 2440}));
+    let mut ids: Vec<u64> = r["ids"].as_array().unwrap().iter().filter_map(Value::as_u64).collect();
+    let p = first(&run(&mut s, "wall", json!({"points": [[2000, 0], [2000, 3000]], "type": "2x4", "height": 2440})));
+    ids.push(p);
+    run(&mut s, "frame", json!({"ids": ids}));
+    no_overlaps(&mut s, &ids);
+    let (upper, lower) = (2440.0 - 19.0, 2440.0 - 57.0);
+    // At each corner, in the square both structure layers share: one wall's upper plate and the other's lower one.
+    for [x, y] in [[0.0, 0.0], [4000.0, 0.0], [4000.0, 3000.0], [0.0, 3000.0]] {
+        let (u, l) = (at_point(&mut s, &ids, [x + 10.0, y + 10.0, upper]), at_point(&mut s, &ids, [x + 10.0, y + 10.0, lower]));
+        assert_eq!((u.len(), l.len()), (1, 1), "at ({x}, {y}): {u:?} {l:?}");
+        assert!(u[0].1.starts_with("top_plate/0/") && l[0].1.starts_with("top_plate/1/"), "{u:?} {l:?}");
+        assert_ne!(u[0].0, l[0].0, "at ({x}, {y}) the upper plate laps the other wall's lower one: {u:?} {l:?}");
+    }
+    // Where the partition meets each side, its upper plate runs over the side's lower one, the side's upper one cut round it.
+    for y in [10.0, 3000.0 - 10.0] {
+        let u = at_point(&mut s, &ids, [2000.0, y, upper]);
+        assert_eq!(u.len(), 1, "{u:?}");
+        assert_eq!(u[0].0, p, "the partition's upper plate over the wall it meets: {u:?}");
+        let l = at_point(&mut s, &ids, [2000.0, y, lower]);
+        assert!(l.len() == 1 && l[0].0 != p, "{l:?}");
+        // And either side of it, the side's own upper plate goes on.
+        for x in [2000.0 - 60.0, 2000.0 + 60.0] {
+            let u = at_point(&mut s, &ids, [x, y, upper]);
+            assert!(u.len() == 1 && u[0].0 != p, "{u:?}");
+        }
+    }
+    // The partition's other members stop at the side's structure face.
+    let ms = members(&mut s, p);
+    close(f(&role(&ms, "bottom_plate")[0]["s"], 0), 44.5, "bottom plate from the south wall's face");
+    close(f(&keyed(&ms, "top_plate/1/0")["s"], 0), 44.5, "the lower top plate too");
+    close(f(&keyed(&ms, "top_plate/0/0")["s"], 0), -44.5, "the upper one over the south wall");
+}
+
+#[test]
+fn a_three_stud_corners_extra_stud_backs_the_inside_corner_of_a_deeper_wall() {
+    let mut s = Session::new();
+    run(
+        &mut s,
+        "type",
+        json!({"category": "wall", "name": "2x6", "layers": [{"function": "structure", "material": "Timber", "thickness": 140}]}),
+    );
+    let r = run(&mut s, "wall", json!({"points": [[0, 0], [4000, 0], [4000, 3000]], "type": "2x6", "height": 2440}));
+    let ids: Vec<u64> = r["ids"].as_array().unwrap().iter().filter_map(Value::as_u64).collect();
+    run(&mut s, "frame", json!({"ids": ids}));
+    no_overlaps(&mut s, &ids);
+    // The inside corner of the two structure layers is at (3930, 70): the extra stud's face is on it.
+    let all: Vec<(String, [f64; 6])> = ids.iter().flat_map(|id| boxes(&run(&mut s, "framing", json!({"id": id})))).collect();
+    let corner: Vec<&[f64; 6]> = all.iter().filter(|(k, _)| k.starts_with("corner/")).map(|(_, b)| b).collect();
+    assert_eq!(corner.len(), 1, "{all:?}");
+    let b = corner[0];
+    let on = |lo: f64, hi: f64, v: f64| lo - 1e-2 <= v && v <= hi + 1e-2;
+    assert!(on(b[0], b[3], 3930.0) && on(b[1], b[4], 70.0), "the corner stud {b:?} backs (3930, 70)");
+    assert!((b[0] - 3930.0).abs() < 1e-2 || (b[4] - 70.0).abs() < 1e-2, "flush with the inside face: {b:?}");
+}
+
+#[test]
+fn no_grid_stud_stands_between_a_tees_backing_studs_and_no_blocking_is_shorter_than_a_stud_is_thick() {
+    let mut s = Session::new();
+    stud_wall_type(&mut s);
+    run(&mut s, "type", json!({"category": "framing", "name": "Blocked", "blocking": [1200]}));
+    let w = wall(&mut s, [0.0, 0.0], [4000.0, 0.0]);
+    // The partition centred on the grid's fifth station, 4 x 406.4 along.
+    let p = wall(&mut s, [1625.6, 0.0], [1625.6, 2000.0]);
+    run(&mut s, "frame", json!({"ids": [w, p], "type": "Blocked"}));
+    let ms = members(&mut s, w);
+    let pg = s.model.guid(p).to_string();
+    keyed(&ms, &format!("tee/{pg}/0"));
+    keyed(&ms, &format!("tee/{pg}/1"));
+    assert!(!ms.iter().any(|m| m["key"] == "stud/4"), "no grid stud between the backing studs");
+    for b in role(&ms, "blocking") {
+        assert!(b["length"].as_f64().unwrap_or_default() >= 38.0 - 1e-6, "a sliver of blocking: {b}");
+    }
+    no_overlaps(&mut s, &[w, p]);
+}
+
+#[test]
+fn a_members_stock_length_is_chosen_from_its_length_unrounded_in_the_reply_the_cut_list_and_the_schedule() {
+    let mut s = Session::new();
+    stud_wall_type(&mut s);
+    // Studs 2554.3 - 38 - 76 = 2440.3 long: more than 2440, so from 3050.
+    let w = first(&run(&mut s, "wall", json!({"points": [[0, 0], [1000, 0]], "type": "2x4", "height": 2554.3})));
+    run(&mut s, "frame", json!({"id": w}));
+    let r = run(&mut s, "framing", json!({"id": w}));
+    let stud = r["members"].as_array().unwrap().iter().find(|m| m["role"] == "stud").cloned().unwrap();
+    assert_eq!(stud["stock"], json!(3050.0), "{stud}");
+    let cut = r["cut_list"].as_array().unwrap().iter().find(|c| c["role"] == "stud").cloned().unwrap();
+    assert_eq!((cut["length"].as_f64(), cut["stock"].as_f64()), (Some(2440.0), Some(3050.0)), "{cut}");
+    let t = run(&mut s, "schedule", json!({"name": "FM", "category": "framingmembers", "fields": ["Role", "Length", "Stock Length"]}));
+    let rows = t["rows"].as_array().cloned().unwrap_or_default();
+    let studs: Vec<&Value> = rows.iter().filter(|r| r[0] == "stud").collect();
+    assert!(!studs.is_empty() && studs.iter().all(|r| r[2] == json!(3050.0)), "{rows:?}");
+}
+
+#[test]
+fn a_shortened_flat_header_is_reported_at_its_real_height_and_a_shortened_header_is_scheduled_to_the_mm() {
+    let mut s = Session::new();
+    let w = cabin(&mut s);
+    // Rough top 1098.5433 + 1200 + 13 = 2311.5433, 60.4567 under the top plates (2372): one flat 2x of 38 fits, not two.
+    run(
+        &mut s,
+        "type",
+        json!({"category": "framing", "name": "Flat", "spacing": 1220.0 / 3.0, "headers": [{"depth": 38, "plies": 2, "flat": true}]}),
+    );
+    let win = window_at(&mut s, w, 1200.0, 1200.0, 1098.5433, 1250.0);
+    run(&mut s, "frame", json!({"id": w, "type": "Flat"}));
+    let r = run(&mut s, "framing", json!({"id": w}));
+    let g = s.model.guid(win).to_string();
+    let ms = r["members"].as_array().cloned().unwrap_or_default();
+    let header = keyed(&ms, &format!("{g}/header"));
+    close(f(&header["z"], 2) - f(&header["z"], 0), 38.0, "one ply");
+    let warnings = r["warnings"].as_array().cloned().unwrap_or_default();
+    assert!(warnings.iter().any(|w| w.as_str().is_some_and(|t| t.contains("cut to 38 mm"))), "{warnings:?}");
+    // Two windows whose 2x8 headers are cut to 153.46 and 153.2: one row of the schedule, 2 x 38 x 153.
+    run(&mut s, "frame", json!({"id": w, "type": "Cabin"}));
+    run(&mut s, "delete", json!({"ids": [win]}));
+    window_at(&mut s, w, 1200.0, 1200.0, 1005.5433, 1250.0);
+    window_at(&mut s, w, 1200.0, 1200.0, 1005.8, 4500.0);
+    let t = run(
+        &mut s,
+        "schedule",
+        json!({"name": "Headers", "category": "framingmembers", "fields": ["Role", "Section", "Length", "Count"],
+               "sort": ["Role", "Section", "Length"], "grouped": true,
+               "filters": [{"field": "Role", "op": "equals", "value": "header"}]}),
+    );
+    let rows = t["rows"].as_array().cloned().unwrap_or_default();
+    assert_eq!(rows.len(), 1, "{rows:?}");
+    assert_eq!(rows[0][1], json!("2 x 38 x 153"), "{rows:?}");
+    assert_eq!(rows[0][3], json!(2.0), "{rows:?}");
+}

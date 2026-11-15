@@ -278,10 +278,13 @@ The rules, in the wall's own frame (`s` along its location line from its start, 
 
 - The framed length is the structure layer's along the wall. A free end is square. At a square L corner of two walls each with a
   structure layer, the wall of the lower GUID (the one whose compound core runs through, `walls/compound.rs`) runs to the
-  other's far structure face and the other stops at its near one, so their members neither overlap nor leave a gap. At any other
-  join (not square, three walls, a tee at the end) the layer's shorter edge ends it.
-- A stud stands flush with each end; `three_stud` adds one beside the end stud of the wall that runs through an L corner (the
-  butting wall's end stud is the third), and `two_stud` and `none` add none. Grid stations are stud centres `k` spacings from
+  other's far structure face and the other stops at its near one, so their members neither overlap nor leave a gap. A wall
+  ending on another's side (a tee) stops at that one's near structure face, not its finish (where its own structure layer's two
+  edges both reach it, should it meet at an angle), so a partition against a clad wall is nailed to its studs. At any other join
+  (not square, three walls) the layer's shorter edge ends it.
+- A stud stands flush with each end; `three_stud` adds one to the wall that runs through an L corner (the butting wall's end
+  stud is the third), its face on the inside corner, where the other wall's structure begins, so the lining has backing there
+  however deep that wall is (never nearer the end than beside the end stud); `two_stud` and `none` add none. Grid stations are stud centres `k` spacings from
   the framed length's start, end or middle; a grid stud is left out where it would stand in a rough opening or nearer than its
   thickness to another upright. An upright shorter than it is thick is left out.
 - Each door and window hosted in the wall has a rough opening as wide as it plus the allowance, centred on it, from a window's sill
@@ -292,13 +295,23 @@ The rules, in the wall's own frame (`s` along its location line from its start, 
   up to the sill. The bottom plates are cut across a door's rough opening. An opening whose kings would run past the framed
   length or into an end or corner stud, overlap an opening framed before it along the wall, or leave no room for its header
   under the top plates or its sill over the bottom ones, is left unframed, and still no stud stands in its rough opening.
-- Plates follow the wall's base and top (`walls::profile`): a top attached to a sloped roof makes sloped top plates, a piece for
-  each slope, each as thick square to its slope as `thickness`, with plumb ends; the studs are cut each to its own length with a
-  bevelled top. A top plate that would come down onto the bottom plates (a wall too low) is left out.
+- Plates follow the wall's base and top (`walls::profile`) along both faces of the structure layer, the higher base and the
+  lower top of the two, so under a roof sloping across the wall (an eave wall) nothing rises out of the wall at its low face: a
+  top attached to a roof sloping along it makes sloped top plates, a piece for each slope, each as thick square to its slope as
+  `thickness`, with plumb ends; the studs are cut each to its own length with a bevelled top. A top plate that would come down
+  onto the bottom plates (a wall too low) is left out.
+- The upper top plate laps where two framed walls meet, as IRC R602.3.2 has a double top plate do, when both have two top
+  plates or more of one thickness, neither is attached to a roof or floor and their tops are at one height (else they butt as
+  the other members do). At a square L corner the butting wall's upper plate runs on to the far structure face of the wall
+  running through, whose own upper plate stops at the near one, over the lower plate of the other. At a square tee the butting
+  wall's upper plate runs on over the side wall's structure to its far face, and the side wall's upper plate is cut round it
+  (the piece past it keyed `top_plate/0/<piece>/<wall GUID>`), so the two walls are tied over the lower plate and nothing
+  overlaps.
 - Where another wall ends on this one's side, `studs` puts a stud each side of its structure layer (else its whole thickness),
-  backing for its end stud, unless it would stand in an opening or against another upright.
+  backing for its end stud, unless it would stand in an opening or against another upright; no grid stud stands between the two.
 - Blocking is laid flat, as thick as a stud and as wide as the layer, centred at each height between neighbouring full-height
-  members (studs, kings, corner and tee studs), never across a rough opening nor through the plates.
+  members (studs, kings, corner and tee studs), never across a rough opening, through the plates or in a bay narrower than a
+  stud is thick.
 
 Each member has a `key` that lasts while what it belongs to does: grid studs by their station from the layout's origin
 (`stud/<station>`), end and corner studs `stud/start`, `stud/end`, `corner/start`, backing `tee/<wall GUID>/0`, an opening's
@@ -314,8 +327,9 @@ reads a framed wall's members and its cut list (role, section, plies, length to 
 An opening is never left unframed without a word: `framing` and `frame` return `warnings`, and Frame says them in the status bar.
 A header deeper than the room between the rough opening and the top plates is cut to that room (a flat one loses plies first); with
 less room than a member's thickness there is no header, and the jacks run up to the top plates. An opening whose kings would run
-past the wall's framed end, stand on a corner's or another opening's members, or whose sill would be under the bottom plates isn't
-framed, and the warning says which and why.
+past the wall's framed end, stand on a corner's or another opening's members, whose sill would be under the bottom plates or whose
+rough opening starts in the top plates (a clerestory over the wall's top) isn't framed, and the warning says which and why. A
+header cut to fit is said at the height it is cut to (a flat one's plies times its depth).
 
 A framed wall's members are solids of the wall in the framing's material (`view3d.rs`), so a pick takes the wall and a section
 cuts them as it cuts any solid; its structure layer is split off its body and drawn only where a view hides Walls > Framing
@@ -323,8 +337,10 @@ cuts them as it cuts any solid; its structure layer is split off its body and dr
 plan at medium or fine detail clears the structure layer's band and draws the members its cut plane crosses, filled in their
 material's cut pattern and outlined (`render::members_cut`); at coarse detail the wall draws as before. A schedule of
 `framingmembers` (Framing Members, `schedule::framing_members`) has a row for each member of each framed wall: Host, Host Type,
-Framing Type, Role, Section (`38 x 89`, a header of two plies `2 x 38 x 184`), Length (cut, to the mm), Stock Length (the
-shortest stock it is cut from; 0 where it is longer than every stock length, to be spliced), Level, Key and Count; grouped by
+Framing Type, Role, Section (`38 x 89`, a header of two plies `2 x 38 x 184`, to the mm as the cut list has it, so a header cut
+to fit groups with its like), Length (cut, to the mm), Stock Length (the shortest stock it is cut from, chosen by its length
+unrounded, as the reply and the cut list choose it, so a 2440.3 stud comes from 3050; 0 where it is longer than every stock
+length, to be spliced), Level, Key and Count; grouped by
 Role, Section and Length it is the cut list. IFC writes each member as an `IfcMember`, `STUD` for studs, kings, jacks and
 cripples, `PLATE` for plates and sills, `MEMBER` for headers and blocking, its role its Name and ObjectType and its key its Tag,
 its GlobalId made from the wall's GUID and its key (so it lasts while the member does), in the framing's material, and aggregated
