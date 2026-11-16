@@ -421,7 +421,7 @@ const OWN: &[(&str, usize, &[Own])] = &[
             LENGTH,
             COUNT,
             (msg!("Weight"), Kind::Number, From::Key("weight_kg")),
-            ("Host", Kind::Number, From::Ref("host")),
+            (msg!("Host"), Kind::Number, From::Ref("host")),
             ("Layer", Kind::Text, From::Key("layer")),
         ],
     ),
@@ -600,6 +600,27 @@ const OWN: &[(&str, usize, &[Own])] = &[
         5,
         &[("Mass", Kind::Text, From::Key("mass")), LEVEL, AREA, ("Perimeter", Kind::Length, From::Metres("perimeter_m")), VOLUME, COUNT],
     ),
+    // A row for each member of each framed wall and floor (`sources`): grouped by Role, Section and Length with Count, the
+    // cut list.
+    (
+        "framingmember",
+        10,
+        &[
+            (msg!("Host"), Kind::Number, From::Ref("host")),
+            (msg!("Host Type"), Kind::Text, From::Key("host_type")),
+            (msg!("Framing Type"), Kind::Text, From::Key("framing_type")),
+            (msg!("Role"), Kind::Text, From::Key("role")),
+            (msg!("Section"), Kind::Text, From::Key("section")),
+            LENGTH,
+            (msg!("Stock Length"), Kind::Length, From::Key("stock")),
+            LEVEL,
+            (msg!("Key"), Kind::Text, From::Key("key")),
+            COUNT,
+            PHASE_CREATED,
+            PHASE_DEMOLISHED,
+            DESIGN_OPTION,
+        ],
+    ),
     ("level", 2, &[("Elevation", Kind::Length, From::Key("elevation_shown")), NAME, COUNT]),
     ("sheet", 2, &[("Number", Kind::Text, From::Key("number")), NAME]),
 ];
@@ -633,7 +654,10 @@ pub fn all_categories() -> Vec<&'static str> {
 /// The categories a multi-category schedule lists where it names none: what's built, not rooms, levels, masses
 /// and sheets.
 pub fn built() -> Vec<&'static str> {
-    categories().into_iter().filter(|c| !matches!(*c, "room" | "level" | "mass" | "massfloor" | "propertyline" | "sheet")).collect()
+    categories()
+        .into_iter()
+        .filter(|c| !matches!(*c, "room" | "level" | "mass" | "massfloor" | "framingmember" | "propertyline" | "sheet"))
+        .collect()
 }
 
 /// The categories multi-category schedule `sc` lists, as elements name theirs.
@@ -761,9 +785,9 @@ pub fn check(m: &Model, sc: &Schedule) -> Result<(), String> {
     if let Some(c) = sc
         .categories
         .iter()
-        .find(|c| !categories().contains(&category(c).as_str()) || matches!(category(c).as_str(), "massfloor" | "sheet"))
+        .find(|c| !categories().contains(&category(c).as_str()) || matches!(category(c).as_str(), "massfloor" | "framingmember" | "sheet"))
     {
-        let there: Vec<&str> = categories().into_iter().filter(|c| !matches!(*c, "massfloor" | "sheet")).collect();
+        let there: Vec<&str> = categories().into_iter().filter(|c| !matches!(*c, "massfloor" | "framingmember" | "sheet")).collect();
         return Err(format!("`{c}` isn't a category a multi-category schedule lists; there are: {}", there.join(", ")));
     }
     if let Some((of, name)) = builtin(Some(&sc.name), None).filter(|(of, _)| *of != cat) {
@@ -1143,6 +1167,9 @@ fn sources<'a>(m: &'a Model, sc: &Schedule, cat: &str) -> Vec<(Id, &'a Element, 
             .map(|(id, e)| (*id, e, element_json_with(m, *id, &rooms)))
             .collect();
     }
+    if cat == "framingmember" {
+        return framing_members(m);
+    }
     if cat != "massfloor" {
         let rooms = Rooms::new(m);
         return m.elements.iter().filter(|(_, e)| e.category() == cat).map(|(id, e)| (*id, e, element_json_with(m, *id, &rooms))).collect();
@@ -1159,6 +1186,41 @@ fn sources<'a>(m: &'a Model, sc: &Schedule, cat: &str) -> Vec<(Id, &'a Element, 
                 serde_json::json!({
                     "id": id, "mass": ms.name, "level": level, "area_m2": crate::commands::m2(area),
                     "perimeter_m": (perimeter / 10.0).round() / 100.0, "volume_m3": (m.mass_volume(ms, z, z + up) / 1e7).round() / 100.0,
+                }),
+            ));
+        }
+    }
+    out
+}
+
+/// A row for each member of each framed wall and floor, each its host's: what the member is, its section as sawn (`38 x 89`,
+/// a header of two plies `2 x 38 x 184`, in mm whatever the project's units), its cut length to the millimetre and the stock
+/// length it is cut from (0 where it is longer than all of them).
+fn framing_members(m: &Model) -> Vec<(Id, &Element, Value)> {
+    // To the millimetre, as the cut list has them: a header cut to fit is 153.4567 deep.
+    let number = |x: f64| format!("{:.0}", x.round());
+    let mut out = Vec::new();
+    for (&id, e) in &m.elements {
+        let (type_name, level) = match e {
+            Element::Wall(w) if w.framing.is_some() => (&w.type_name, w.level),
+            Element::Floor(f) if f.framing.is_some() => (&f.type_name, f.level),
+            _ => continue,
+        };
+        let Ok(Some(f)) = crate::framing::of(m, id) else { continue };
+        for member in &f.members {
+            let [t, d] = member.section;
+            let section = match member.plies {
+                1 => format!("{} x {}", number(t), number(d)),
+                n => format!("{n} x {} x {}", number(t), number(d)),
+            };
+            let length = member.length.round();
+            out.push((
+                id,
+                e,
+                serde_json::json!({
+                    "id": id, "host": f.host, "host_type": type_name, "framing_type": f.type_name, "role": member.role.name(),
+                    "section": section, "length": length, "stock": crate::framing::stock(member.length, &f.stock), "level": level,
+                    "key": member.key,
                 }),
             ));
         }

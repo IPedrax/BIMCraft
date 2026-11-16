@@ -41,6 +41,8 @@ pub const ACTIONS: &[&str] = &[
     "Beam",
     "Isolated Footing",
     "Wall Footing",
+    "Frame",
+    "Remove Framing",
     "Grid",
     "Level",
     "Aligned Dimension",
@@ -379,6 +381,8 @@ impl BimApp {
             "Patch Panel" => self.set_tool(Tool::Fixture("patchpanel")),
             "Isolated Footing" => self.set_tool(Tool::Stand("footing")),
             "Wall Footing" => self.set_tool(Tool::Run("stripfooting", None)),
+            "Frame" => self.frame_selection(None),
+            "Remove Framing" => self.unframe_selection(),
             _ => return false,
         }
         true
