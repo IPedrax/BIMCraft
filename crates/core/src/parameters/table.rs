@@ -210,6 +210,7 @@ pub fn from_rows(rows: &[Vec<String>]) -> Read {
             group: clip(&cell(row, group_at)),
             read_only: said(&cell(row, user_at)).map(|y| !y),
             scope: scope_from(&cell(row, scope_at)),
+            vary_by_group: None,
             categories: cell(row, cats_at).split([';', '|', '\n']).map(clip).filter(|c| !c.is_empty()).collect(),
         });
     }
@@ -334,6 +335,7 @@ pub fn read_shared(text: &str, name: &str) -> Result<Read, String> {
                     read_only: said(at("USERMODIFIABLE")).map(|y| !y),
                     // A shared parameter file doesn't say: the import asks.
                     scope: None,
+                    vary_by_group: None,
                     categories: Vec::new(),
                 });
             }

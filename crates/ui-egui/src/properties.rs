@@ -278,6 +278,16 @@ fn rows(category: &str) -> &'static [Row] {
             ("Other", "angle", "Rotation (°)", Number),
             ("Other", "mirrored", msg!("Mirrored"), Flag),
             ("Other", "at", "Origin", Point),
+            ("Other", "excluded", msg!("Excluded Members"), Shown),
+        ],
+        "modelgroup" => &[
+            ("Constraints", "level", msg!("Reference Level"), Level),
+            ("Constraints", "flexible", msg!("Flexible"), Flag),
+            ("Identity Data", "type", "Group", Shown),
+            ("Other", "angle", "Rotation (°)", Number),
+            ("Other", "mirrored", msg!("Mirrored"), Flag),
+            ("Other", "at", "Origin", Point),
+            ("Other", "excluded", msg!("Excluded Members"), Shown),
         ],
         "repeatingdetail" => &[
             ("Identity Data", "type", "Group", Shown),
@@ -1471,7 +1481,11 @@ impl BimApp {
             _ => false,
         };
         let active_3d = self.active_3d();
-        self.type_selector(ui, &model, subject);
+        // A group's member, Tab-selected outside Edit Group of it, is its group type's: only its values of the parameters that
+        // vary by group instance change here, the rest greyed.
+        let group_scope = self.session.group_scope();
+        let held = bimcraft_core::groups::held(&model, &self.selection, group_scope.as_ref());
+        ui.add_enabled_ui(held.is_none(), |ui| self.type_selector(ui, &model, subject));
         self.held_by_others(ui);
         let (filter, ids, rows) = match subject {
             Subject::Element(id) => match model.elements.get(id) {
@@ -1530,26 +1544,40 @@ impl BimApp {
             });
         });
         ui.add_space(4.0);
-        if let Subject::Element(id) = subject {
-            self.connected_finishes(ui, &model, id);
+        if let Some(name) = held.and_then(|g| model.elements.get(g)).and_then(bimcraft_core::groups::instance).map(|i| i.type_name) {
+            ui.add(egui::Label::new(tf(
+                "A member of group {}: only the parameters that vary by group instance change here. The rest change in Edit Group.",
+                &[name],
+            )))
+            .on_hover_text(t(crate::parameters::GROUP_VALUES_TIP));
+            ui.add_space(4.0);
         }
-        self.layer_picture(ui, &model);
-        self.opening_picker(ui, &model);
-        self.floor_slope(ui, &model);
-        self.sketch_slope(ui);
-        if !ids.is_empty() {
-            self.parameters(ui, &model, &ids, rows);
+        ui.add_enabled_ui(held.is_none(), |ui| {
             if let Subject::Element(id) = subject {
-                self.stair_turns(ui, &model, id);
-                self.stair_flights(ui, &model, id);
-                self.ties(ui, &model, id);
+                self.connected_finishes(ui, &model, id);
             }
-            self.component_parameters(ui, &model, &ids);
-            self.panel_parameters(ui, &model, &ids);
-            self.circuit_parameters(ui, &model, &ids);
-            self.project_parameters(ui, &model, &ids);
-            self.sheet_title_block(ui, &model, &ids);
-            self.element_phasing(ui, &model, &ids);
+            self.layer_picture(ui, &model);
+            self.opening_picker(ui, &model);
+            self.floor_slope(ui, &model);
+            self.sketch_slope(ui);
+            if !ids.is_empty() {
+                self.parameters(ui, &model, &ids, rows);
+                if let Subject::Element(id) = subject {
+                    self.stair_turns(ui, &model, id);
+                    self.stair_flights(ui, &model, id);
+                    self.ties(ui, &model, id);
+                }
+                self.component_parameters(ui, &model, &ids);
+                self.panel_parameters(ui, &model, &ids);
+                self.circuit_parameters(ui, &model, &ids);
+            }
+        });
+        if !ids.is_empty() {
+            self.project_parameters(ui, &model, &ids, held.is_some());
+            ui.add_enabled_ui(held.is_none(), |ui| {
+                self.sheet_title_block(ui, &model, &ids);
+                self.element_phasing(ui, &model, &ids);
+            });
         }
         if subject == Subject::Schedule {
             self.schedule_parameters(ui);
@@ -2080,6 +2108,11 @@ impl BimApp {
                     };
                     let label = t(label);
                     let name = ui.label(label);
+                    // A row whose name doesn't say all it does: what it means, on hover.
+                    let name = match model.elements.get(id) {
+                        Some(Element::ModelGroup(_)) if key == "flexible" => name.on_hover_text(t(crate::groups::FLEXIBLE_TIP)),
+                        _ => name,
+                    };
                     match kind {
                         // A component's Work Plane, `Level : Level 1`: what it is on in the interface's words, its name as it is.
                         Shown if key == "work_plane" => {
@@ -2871,8 +2904,9 @@ impl BimApp {
 
     /// The selected elements' values of the project's parameters for their category, in a group of
     /// their own: a field for each, a checkbox for yes or no. An edit sets them all; emptied, a
-    /// field takes their values away.
-    fn project_parameters(&mut self, ui: &mut Ui, model: &Model, ids: &[Id]) {
+    /// field takes their values away. Of a group's members held to their type (`held`), only those
+    /// that vary by group instance are set here; the rest are shown, as their group type has them.
+    fn project_parameters(&mut self, ui: &mut Ui, model: &Model, ids: &[Id], held: bool) {
         let cats: BTreeSet<&str> = ids.iter().filter_map(|id| model.elements.get(id)).map(Element::category).collect();
         let (Some(&id), Some(&cat)) = (ids.first(), cats.first()) else { return };
         // Blank across a selection may be values that differ, not none.
@@ -2909,14 +2943,20 @@ impl BimApp {
             grid(ui, ("project-parameters", id, group), |ui| {
                 for &(name, p) in &params {
                     let val = value(name);
-                    let label = if p.description.is_empty() {
-                        ui.label(name.as_str())
-                    } else {
-                        ui.label(name.as_str()).on_hover_text(&p.description)
-                    };
+                    // Its group type's, for a held member: greyed, name and value.
+                    let theirs = held && !p.vary_by_group;
+                    let label = ui.add_enabled(!theirs, egui::Label::new(name.as_str()));
+                    let label = if p.description.is_empty() { label } else { label.on_hover_text(&p.description) };
                     if p.read_only {
                         // Shown, and changed only by a command.
                         ui.add_enabled(false, egui::Label::new(value_shown(p.kind, &val, units)));
+                        ui.end_row();
+                        continue;
+                    }
+                    if theirs {
+                        // Its group type's: changed in Edit Group.
+                        ui.add_enabled(false, egui::Label::new(value_shown(p.kind, &val, units)))
+                            .on_disabled_hover_text(t("Aligned per group type: change it in Edit Group."));
                         ui.end_row();
                         continue;
                     }

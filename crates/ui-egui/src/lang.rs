@@ -317,6 +317,9 @@ pub fn category(category: &str, several: bool) -> String {
         "multicategory" => (msg!("category", "Multi-Category"), msg!("category-plural", "Multi-Category")),
         "circuit" => (msg!("category", "Circuit"), msg!("category-plural", "Circuits")),
         "project" => (msg!("category", "Project Information"), msg!("category-plural", "Project Information")),
+        "modelgroup" => (msg!("category", "Model Group"), msg!("category-plural", "Model Groups")),
+        "detailgroup" => (msg!("category", "Detail Group"), msg!("category-plural", "Detail Groups")),
+        "repeatingdetail" => (msg!("category", "Repeating Detail"), msg!("category-plural", "Repeating Details")),
         other => return other.to_string(),
     };
     let (context, english) = if several { ("category-plural", many) } else { ("category", one) };
@@ -361,7 +364,7 @@ mod tests {
         );
         assert_eq!(tf("Save changes to {}?", &["house"]), "是否将更改保存到 house？");
         assert_eq!((category("wall", true), category("wall", false), category("spot", false)), ("墙".into(), "墙".into(), "高程点".into()));
-        assert_eq!(category("detailgroup", true), "detailgroup", "a category without a name is its key, as in the other languages");
+        assert_eq!(category("dimension3d", true), "dimension3d", "a category without a name is its key, as in the other languages");
         assert_eq!((Lang::Chinese.label(), Lang::Portuguese.label()), ("简体中文", "Português (Brasil)"));
         set(Lang::English);
         assert_eq!(

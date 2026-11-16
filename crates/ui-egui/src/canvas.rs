@@ -342,7 +342,7 @@ pub struct Canvas {
     grab: Option<P2>,
     drag: Option<Drag>,
     /// What's under the cursor, as `Drawing::pick_all` orders it, and how far Tab has gone.
-    under: Vec<Id>,
+    pub(crate) under: Vec<Id>,
     cycle: usize,
     /// A crop region's grip being dragged: the view, and which edge (see [`grips`]).
     crop_drag: Option<(Id, usize)>,
@@ -884,6 +884,79 @@ fn letter(rings: &[Vec<(f32, f32)>]) -> Triangles {
         k.insert(key, t.clone());
     });
     t
+}
+
+/// Edit Group's plan: everything washed with the paper's colour, so it reads greyed, and the primitives of `keep` drawn again
+/// over the wash as they are (`selected` and `hovered` lit as ever).
+#[allow(clippy::too_many_arguments)]
+fn grey_outside(p: &Painter, rect: Rect, at: Place, d: &Drawing, keep: &HashSet<Id>, selected: &[Id], hovered: Option<Id>, thin: bool) {
+    p.rect_filled(rect, 0.0, color(render::PAPER).gamma_multiply(GREYED));
+    let set: HashSet<Id> = selected.iter().copied().collect();
+    let clip = p.clip_rect();
+    let mut out = |shape| {
+        p.add(shape);
+    };
+    for ((prim, owner), part) in d.prims.iter().zip(&d.owners).zip(&d.parts) {
+        // A picture (a scan's) isn't drawn again: none is a group's.
+        if owner.is_some_and(|o| keep.contains(&o)) && !matches!(prim, Prim::Image { .. }) {
+            paint_prim(&mut out, clip, at, (prim, *owner, *part), &set, hovered, thin, &mut [].iter());
+        }
+    }
+}
+
+/// The primitives of `ids` drawn again in the hover colour: a hovered group's members, which the drawing doesn't own as the group.
+fn paint_hovered(p: &Painter, at: Place, d: &Drawing, ids: &HashSet<Id>, thin: bool) {
+    if ids.is_empty() {
+        return;
+    }
+    let clip = p.clip_rect();
+    let none = HashSet::new();
+    let mut out = |shape| {
+        p.add(shape);
+    };
+    for ((prim, owner), part) in d.prims.iter().zip(&d.owners).zip(&d.parts) {
+        if owner.is_some_and(|o| ids.contains(&o)) && !matches!(prim, Prim::Image { .. }) {
+            paint_prim(&mut out, clip, at, (prim, *owner, *part), &none, *owner, thin, &mut [].iter());
+        }
+    }
+}
+
+/// How much of the paper's colour Edit Group washes the rest of a plan with: enough to read as greyed, not gone.
+const GREYED: f32 = 0.72;
+
+/// A dashed frame round the members of each group among `lit` (the first `hovered` of them hovered, the rest selected), and a
+/// cross at its origin.
+fn group_frames(p: &Painter, m: &Model, d: &Shown, lit: &[Id], hovered: usize) {
+    for (i, id) in lit.iter().enumerate() {
+        let Some(inst) = m.elements.get(*id).and_then(bimcraft_core::groups::instance) else { continue };
+        let members: HashSet<Id> = bimcraft_core::groups::members(m, *id).into_iter().collect();
+        let mut lo = Pos2::new(f32::INFINITY, f32::INFINITY);
+        let mut hi = Pos2::new(f32::NEG_INFINITY, f32::NEG_INFINITY);
+        let mut take = |q: &(f32, f32)| {
+            let q = d.place.pos(*q);
+            (lo, hi) = (lo.min(q), hi.max(q));
+        };
+        for (prim, owner) in d.prims.iter().zip(&d.owners) {
+            if !owner.is_some_and(|o| members.contains(&o)) {
+                continue;
+            }
+            match prim {
+                Prim::Fill { rings, .. } => rings.iter().flatten().for_each(&mut take),
+                Prim::Line { pts, .. } => pts.iter().for_each(&mut take),
+                _ => {}
+            }
+        }
+        let colour = if i < hovered { canvas_pal().hover } else { canvas_pal().accent };
+        let stroke = Stroke::new(1.0, colour);
+        if lo.x.is_finite() && hi.x.is_finite() {
+            let r = Rect::from_min_max(lo, hi).expand(6.0);
+            let ring = [r.left_top(), r.right_top(), r.right_bottom(), r.left_bottom(), r.left_top()];
+            p.extend(Shape::dashed_line(&ring, stroke, 6.0, 4.0));
+        }
+        let o = d.place.pos(d.view.px(inst.placement.at));
+        p.line_segment([o - vec2(6.0, 0.0), o + vec2(6.0, 0.0)], Stroke::new(1.5, colour));
+        p.line_segment([o - vec2(0.0, 6.0), o + vec2(0.0, 6.0)], Stroke::new(1.5, colour));
+    }
 }
 
 /// The selected elements' outlines taken by `f` (on screen): where a move, a turn or a mirror
@@ -1927,7 +2000,15 @@ impl BimApp {
         // What's under the cursor; Tab steps through it. (Without the app's input hook, as in
         // tests, egui moved the keyboard to a widget on that Tab: give it back.)
         let sketching = self.sketch.is_some();
-        let under = if matches!(self.tool, Tool::Modify) && !sketching { picked } else { Vec::new() };
+        // A member of a group is picked as its group first; Tab steps on to the member (Revit's groups).
+        // In Edit Group only the group's own pick (and with Add, only what may join it).
+        let scope = self.session.group_scope();
+        let pick_mode = self.group_pick.filter(|_| scope.is_some());
+        let picks = |ids: &[Id], boxed: bool| crate::groups::picks(&model, ids, scope.as_ref(), pick_mode, boxed);
+        let under = match (&self.tool, local) {
+            (Tool::Modify, Some(q)) if !sketching => picks(&d.pick_all(q, PICK), false),
+            _ => Vec::new(),
+        };
         // A dimension under the cursor: Tab steps through its segments before its element.
         let dim_under = under.iter().copied().find(|id| {
             matches!(model.elements.get(*id), Some(Element::Dimension(d))
@@ -2076,7 +2157,7 @@ impl BimApp {
         let tool = self.tool.clone();
         let under_at = |q: (f32, f32)| match &tool {
             Tool::Modify if sketching => None,
-            Tool::Modify => d.pick(q, PICK),
+            Tool::Modify => picks(&d.pick_all(q, PICK), false).first().copied(),
             Tool::SketchPick => d.pick(q, PICK).filter(|id| model.wall(*id).is_some()),
             // A line to draw along, or to round.
             Tool::DetailLine(_) | Tool::Wall(_) | Tool::SketchLine(_) if shape == draw::Shape::PickLines => {
@@ -2214,7 +2295,10 @@ impl BimApp {
                         };
                     }
                 }
-                Drag::Box(from) => self.pick_up(d.in_box(from, q, q.0 < from.0), click_modifiers(ui)),
+                Drag::Box(from) => {
+                    let found = picks(&d.in_box(from, q, q.0 < from.0), true);
+                    self.pick_up(found, click_modifiers(ui))
+                }
             }
         }
         // A double click on a section's or an elevation's mark opens its view, as in Revit; on a note, writes in it.
@@ -2299,7 +2383,9 @@ impl BimApp {
         self.paint_background_grid(&p, rect, view);
         // The floor or roof being shaped is drawn as it is, not in the selection's colour: edit mode's marks are what's lit.
         let shaped = self.shaping();
-        let mut marked: Vec<Id> = self.selection.iter().copied().filter(|id| Some(*id) != shaped).collect();
+        // A group selected lights its members.
+        let mut marked: Vec<Id> =
+            bimcraft_core::groups::with_members(&model, &self.selection).into_iter().filter(|id| Some(*id) != shaped).collect();
         if let Tool::Trim(Some((first, _))) | Tool::TrimTo { boundary: Some(first), .. } = self.tool {
             marked.push(first);
         }
@@ -2317,6 +2403,16 @@ impl BimApp {
         });
         if !kept {
             paint(&p, place, &d, &marked, painted_hover, self.thin, &pictures);
+        }
+        // Edit Group: the rest of the plan greyed under a wash of the paper, the group's own (and what Add points at) over it.
+        if let Some(scope) = &scope {
+            let keep: HashSet<Id> = scope.members.iter().copied().chain(painted_hover).collect();
+            grey_outside(&p, rect, place, &d, &keep, &marked, painted_hover, self.thin);
+        }
+        // A group under the pointer (a click takes it, Tab steps into it) has no lines of its own: its members light instead.
+        if let Some(g) = painted_hover.filter(|g| model.elements.get(*g).and_then(bimcraft_core::groups::instance).is_some()) {
+            let members: HashSet<Id> = bimcraft_core::groups::members(&model, g).into_iter().filter(|id| !marked.contains(id)).collect();
+            paint_hovered(&p, place, &d, &members, self.thin);
         }
         // The guides' marks and the dwell ring are aids over the plan, not part of it: the retained plan is painted
         // after the preview pass, so they are drawn again here, on top.
@@ -2384,6 +2480,8 @@ impl BimApp {
                 }
             }
         }
+        // A group hovered or selected: a dashed frame round its members and a cross at its origin, as Revit draws one.
+        group_frames(&p, &model, &d, &lit, hover_lit);
         match (self.canvas.drag, local) {
             (Some(Drag::Move(from)), Some(q)) => {
                 let by = self.dragged(&model, &view, from, view.mm(q));
@@ -2622,6 +2720,10 @@ impl BimApp {
 
     /// Add `found` to the selection with Ctrl, take it away with Shift, else select just it.
     pub(crate) fn pick_up(&mut self, found: Vec<Id>, mods: Modifiers) {
+        // Edit Group's Add or Remove: what is picked joins the group or leaves it, and isn't selected.
+        if self.group_pick_up(&found) {
+            return;
+        }
         if mods.shift {
             self.selection.retain(|id| !found.contains(id));
         } else if mods.command {
@@ -3015,6 +3117,10 @@ impl BimApp {
             Tool::DetailGroup => {
                 let p = self.snap_point(m, level, v, at, &[], false);
                 self.place_group(key, p)
+            }
+            Tool::ModelGroup => {
+                let p = self.snap_point(m, level, v, at, &[], false);
+                self.place_model_group(level, p)
             }
             &Tool::RepeatingDetail(start) => {
                 let p = self.snap_point(m, level, v, at, start.as_slice(), mods.shift);
@@ -5020,7 +5126,13 @@ impl BimApp {
             Tool::SketchPick => &[],
             // The group a click would place.
             Tool::DetailGroup => {
-                if let Some(e) = self.group_at(m, key, self.found(sc, q, &[], false)) {
+                for e in self.group_at(m, key, self.found(sc, q, &[], false)) {
+                    sketched(&e);
+                }
+                return;
+            }
+            Tool::ModelGroup => {
+                for e in self.model_group_at(m, level, self.found(sc, q, &[], false)) {
                     sketched(&e);
                 }
                 return;

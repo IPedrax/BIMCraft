@@ -2306,7 +2306,7 @@ fn hostile_params_never_panic_or_break_the_model() {
         json!({"path": "/nonexistent/x.bimparams", "add": [{"name": 5}], "merge": [1], "remove": {}, "names": 5, "version": []}),
         json!({"from": [], "into": 5, "overwrite": "x"}),
         json!({"from": "a", "to": [1], "names": "x", "prefix": 5, "find": []}),
-        json!({"name": "P", "description": 5, "group": [], "read_only": 1, "scope": "x", "dictionary": "d", "kind": "plasma"}),
+        json!({"name": "P", "description": 5, "group": [], "read_only": 1, "vary_by_group": "yes", "scope": "x", "dictionary": "d", "kind": "plasma"}),
         json!({"name": "P", "scope": 5, "categories": ["room"]}),
         json!({"name": 5, "number": [], "client": "x\n", "address": "a".repeat(5000), "params": {"Nope": 1}, "issue_date": 1e300}),
         json!({"number": "1", "params": "x", "building": "\u{1}", "status": "a\rb", "organization": {}}),
@@ -2826,6 +2826,8 @@ fn hostile_params_never_panic_or_break_the_model() {
     targeted.extend(crate::work_plane_tests::sweep_payloads(&mut base));
     // A floor and a wall with a component on a face of each, and the payloads that place, move and host them.
     targeted.extend(crate::face_host_tests::sweep_payloads(&mut base));
+    // A model group of walls and a door, and the payloads that place, break, edit and mend groups.
+    targeted.extend(crate::groups::tests::sweep_payloads(&mut base));
     let line = |slope: Value| json!({"start": [0, 0], "end": [8000, 0], "slope": slope});
     let rest = [
         json!({"start": [8000, 0], "end": [8000, 6000]}),

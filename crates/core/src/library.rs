@@ -52,6 +52,7 @@ pub enum Kind {
     FillPattern,
     FilledRegionType,
     DetailGroup,
+    ModelGroup,
     TextType,
     /// A named set of parameters for `reinforce`, for one kind of host.
     ReinforcementPreset,
@@ -102,6 +103,7 @@ impl Kind {
             Kind::FillPattern => "fill pattern".into(),
             Kind::FilledRegionType => "filled region type".into(),
             Kind::DetailGroup => "detail group".into(),
+            Kind::ModelGroup => "model group".into(),
             Kind::TextType => "text type".into(),
             Kind::ReinforcementPreset => "reinforcement preset".into(),
             Kind::DimensionType => "dimension type".into(),
@@ -140,6 +142,7 @@ impl Kind {
             "fill-pattern" => Kind::FillPattern,
             "filled-region-type" => Kind::FilledRegionType,
             "detail-group" => Kind::DetailGroup,
+            "model-group" => Kind::ModelGroup,
             "text-type" => Kind::TextType,
             "reinforcement-preset" => Kind::ReinforcementPreset,
             "dimension-type" => Kind::DimensionType,
@@ -180,6 +183,7 @@ impl fmt::Display for Kind {
             Kind::FillPattern => f.write_str("fill-pattern"),
             Kind::FilledRegionType => f.write_str("filled-region-type"),
             Kind::DetailGroup => f.write_str("detail-group"),
+            Kind::ModelGroup => f.write_str("model-group"),
             Kind::TextType => f.write_str("text-type"),
             Kind::ReinforcementPreset => f.write_str("reinforcement-preset"),
             Kind::DimensionType => f.write_str("dimension-type"),
@@ -853,6 +857,7 @@ impl Model {
         add(Kind::FillPattern, &mut self.fill_patterns.keys());
         add(Kind::FilledRegionType, &mut self.region_types.keys());
         add(Kind::DetailGroup, &mut self.detail_groups.keys());
+        add(Kind::ModelGroup, &mut self.model_groups.keys());
         add(Kind::TextType, &mut self.text_types.keys());
         add(Kind::ReinforcementPreset, &mut self.reinforcement.keys());
         add(Kind::DimensionType, &mut self.dimension_types.keys());
@@ -987,6 +992,9 @@ impl Model {
         }
         for (n, g) in &self.detail_groups {
             add("member", "detail group", n, g.members.iter().map(|x| (x.id, x.guid)).collect());
+        }
+        for (n, g) in &self.model_groups {
+            add("member", "model group", n, g.members.iter().map(|x| (x.id, x.guid)).collect());
         }
         // An element's sketch lines, then a floor's or a roof's shape's points and split lines, the element named by its GUID,
         // which never changes.
@@ -1138,7 +1146,7 @@ impl Model {
                 f.resolve_dimension_refs(&parts);
             }
         }
-        for g in self.detail_groups.values_mut() {
+        for g in self.detail_groups.values_mut().chain(self.model_groups.values_mut()) {
             g.members.iter_mut().for_each(|x| give(&mut x.id, &mut x.guid));
         }
         for e in self.elements.values_mut() {
@@ -1357,7 +1365,7 @@ impl Model {
             f.nested.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
             f.nested_instances.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
         }
-        for g in self.detail_groups.values_mut() {
+        for g in self.detail_groups.values_mut().chain(self.model_groups.values_mut()) {
             g.members.iter_mut().for_each(|x| (x.id, x.guid) = (0, Guid::default()));
         }
         for e in self.elements.values_mut() {
@@ -1535,6 +1543,7 @@ impl crate::model::Element {
             }
             Element::DetailLine(l) => f(&Kind::LineStyle, &mut l.style),
             Element::DetailGroup(g) => f(&Kind::DetailGroup, &mut g.type_name),
+            Element::ModelGroup(g) => f(&Kind::ModelGroup, &mut g.type_name),
             Element::RepeatingDetail(r) => f(&Kind::DetailGroup, &mut r.type_name),
             Element::FilledRegion(r) => {
                 f(&Kind::FilledRegionType, &mut r.type_name);
@@ -1652,7 +1661,7 @@ impl Model {
         for p in self.line_styles.values_mut().filter_map(|s| s.pattern.as_mut()) {
             f(&Kind::LinePattern, p);
         }
-        for m in self.detail_groups.values_mut().flat_map(|g| g.members.iter_mut()) {
+        for m in self.detail_groups.values_mut().chain(self.model_groups.values_mut()).flat_map(|g| g.members.iter_mut()) {
             m.element.lib_refs_mut(f);
         }
         for x in self.materials.values_mut() {

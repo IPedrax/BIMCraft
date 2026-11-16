@@ -889,6 +889,8 @@ fn plan_filter<'a>(
             | Element::Spot(_)
             | Element::DetailGroup(_)
             | Element::RepeatingDetail(_) => m.annotation_in(e, key),
+            // A model group draws nothing of its own: its members are drawn as themselves.
+            Element::ModelGroup(_) => false,
             _ if e.column().is_some() => stands(m, *id, e, None).is_none_or(|(_, bottom, top)| reaches(bottom, top)),
             _ if e.run().is_some() => m.run_geom(e).is_none_or(|g| {
                 let (bottom, top) = g.z_span();
@@ -1359,8 +1361,7 @@ pub fn sketch(m: &Model, view: View, id: Id, e: &Element) -> Drawing {
         Element::Text(n) => note(&mut d, m, n),
         Element::DetailLine(l) => detail_line(&mut d, m, l),
         Element::FilledRegion(r) => filled_region(&mut d, m, r),
-        Element::DetailGroup(g) => detail_group(&mut d, m, g),
-        Element::RepeatingDetail(r) => r.groups().iter().for_each(|g| detail_group(&mut d, m, g)),
+        Element::RepeatingDetail(r) => detail_members(&mut d, m, &r.members(m)),
         Element::Spot(sp) if sp.slope => slope_mark(&mut d, sp.at, m.spot_slope(sp)),
         Element::Spot(sp) if sp.coordinate => spots::spot_coordinate(&mut d, m, sp),
         Element::Spot(sp) => spot_mark(&mut d, view.px(sp.at), m.spot_reads(sp), m.units),
@@ -2904,8 +2905,7 @@ fn section_finish_cancellable(m: &Model, id: Id, mut d: Drawing, cancelled: &(dy
         match e {
             Element::Text(n) if m.same(n.view, id) => note(&mut d, m, n),
             Element::DetailLine(l) if m.same(l.view, id) => detail_line(&mut d, m, l),
-            Element::DetailGroup(g) if m.same(g.view, id) => detail_group(&mut d, m, g),
-            Element::RepeatingDetail(r) if m.same(r.view, id) => r.groups().iter().for_each(|g| detail_group(&mut d, m, g)),
+            Element::RepeatingDetail(r) if m.same(r.view, id) => detail_members(&mut d, m, &r.members(m)),
             // A spot slope reads a plan's floor or roof; a section has none to show.
             Element::Spot(sp) if m.same(sp.view, id) && !sp.slope => {
                 let z = m.spot_value(sp).unwrap_or(sp.at.1);
@@ -3655,8 +3655,7 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
             Element::Circuit(c) if !up && m.level_of(e) == Some(level) => circuit_mark(&mut d, m, c),
             Element::Text(n) if m.annotation_in(e, key) && inside(n.at) => note(&mut d, m, n),
             Element::DetailLine(l) if m.annotation_in(e, key) => detail_line(&mut d, m, l),
-            Element::DetailGroup(g) if m.annotation_in(e, key) => detail_group(&mut d, m, g),
-            Element::RepeatingDetail(r) if m.annotation_in(e, key) => r.groups().iter().for_each(|g| detail_group(&mut d, m, g)),
+            Element::RepeatingDetail(r) if m.annotation_in(e, key) => detail_members(&mut d, m, &r.members(m)),
             Element::Spot(sp) if sp.slope && m.annotation_in(e, key) && inside(sp.at) => slope_mark(&mut d, sp.at, m.spot_slope(sp)),
             Element::Spot(sp) if sp.coordinate && m.annotation_in(e, key) && inside(sp.at) => spots::spot_coordinate(&mut d, m, sp),
             Element::Spot(sp) if m.annotation_in(e, key) && inside(sp.at) => spot_mark(&mut d, view.px(sp.at), m.spot_reads(sp), m.units),
@@ -5523,15 +5522,14 @@ fn keep(d: &mut Drawing, prim: Prim, owner: Option<Id>, part: Part, pen: Option<
     d.pens.push(pen);
 }
 
-/// A detail group's members where it puts them: its regions under its lines and notes.
-pub(crate) fn detail_group(d: &mut Drawing, m: &Model, g: &crate::groups::DetailGroup) {
-    let members = crate::groups::placed(m, g);
-    for e in &members {
+/// A repeating detail's members where it puts them: its regions under its lines and notes.
+pub(crate) fn detail_members(d: &mut Drawing, m: &Model, members: &[Element]) {
+    for e in members {
         if let Element::FilledRegion(r) = e {
             filled_region(d, m, r);
         }
     }
-    for e in &members {
+    for e in members {
         match e {
             Element::DetailLine(l) => detail_line(d, m, l),
             Element::Text(n) => note(d, m, n),

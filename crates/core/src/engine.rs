@@ -206,6 +206,11 @@ pub struct Session {
     /// outside a command copies it first, so a model still this one is one that passed, and the next command need only
     /// check what it changes ([`Model::check_changed`]).
     verified: Option<Arc<Model>>,
+    /// What a command does to a group it would change from inside, while `resolve_group` runs it: ungroup it, or make it a type
+    /// of its own. None: the command is refused ([`crate::groups::CONFLICT`]).
+    pub(crate) group_fix: Option<crate::groups::commands::Fix>,
+    /// The group in Edit Group, if one is: its members change freely until Finish or Cancel.
+    pub(crate) group_edit: Option<Box<crate::groups::commands::GroupEdit>>,
 }
 
 impl Default for Session {
@@ -278,6 +283,8 @@ impl Session {
             steps_made: 0,
             dry_run: false,
             verified: None,
+            group_fix: None,
+            group_edit: None,
         }
     }
 
@@ -294,6 +301,36 @@ impl Session {
         self.resets += 1;
         self.undo.clear();
         self.redo.clear();
+        self.group_edit = None;
+    }
+
+    /// The group instance in Edit Group, by GUID, if one is: front ends pick its members as themselves and show its panel.
+    pub fn editing_group(&self) -> Option<crate::ids::Guid> {
+        self.group_edit.as_ref().map(|e| e.group)
+    }
+
+    /// Leaves Edit Group with the project as it is: a Co-Work guest's copy, once the edit it follows has ended on the host.
+    pub fn end_group_edit(&mut self) {
+        self.group_edit = None;
+    }
+
+    /// What Edit Group lets a front end pick and change, if a group is in it ([`crate::groups::Scope`]).
+    pub fn group_scope(&self) -> Option<crate::groups::Scope> {
+        self.group_edit.as_ref().and_then(|ed| crate::groups::Scope::of(&self.model, ed))
+    }
+
+    /// Back to `model`, a model a command left that passed, with the undo steps after the first `undo_len` forgotten: Cancel
+    /// of Edit Group.
+    pub(crate) fn rewind(&mut self, model: Arc<Model>, undo_len: usize) {
+        self.undo.truncate(undo_len);
+        self.redo.clear();
+        self.verified = Some(Arc::clone(&model));
+        self.model = model;
+    }
+
+    /// How many undo steps there are.
+    pub(crate) fn undo_len(&self) -> usize {
+        self.undo.len()
     }
 
     /// [`Session::reset`] to a model already shared: one read on another session (a window's open on a thread of its own).
@@ -304,6 +341,7 @@ impl Session {
         self.resets += 1;
         self.undo.clear();
         self.redo.clear();
+        self.group_edit = None;
     }
 
     /// Takes `model` as the project, with no history of its own: a Co-Work guest's copy taking in the host's
@@ -561,6 +599,11 @@ impl Session {
                             "the floors and ceilings of rooms followed by what `{}` changed aren't as following every level makes them",
                             cmd.id
                         );
+                    }
+                    // A group moved is placed again from its type; one changed from inside is a conflict.
+                    // What it placed has parts and members of types to give ids.
+                    if crate::groups::keep(self, &before, first_new)? && !self.model.library_in_step() {
+                        self.model_mut().sync_library();
                     }
                 }
                 // What was made or changed must be as a sketch of it solves too (an outline that is simple), which a file

@@ -736,6 +736,12 @@ fn inside(poly: &[Pos2], p: Pos2) -> bool {
 /// The ViewCube, which turns a view's camera: where it stands, its faces, what a click on it asks for and how it is drawn. It
 /// needs only a camera and the view's rect, so any 3D view may show one.
 impl Orbit {
+    /// The tints the picture on screen was drawn with: what is lit, under the pointer and greyed.
+    #[cfg(test)]
+    pub(crate) fn tints_shown(&self) -> Vec<(Id, Rgb)> {
+        self.shown.as_ref().map(|s| s.2.clone()).unwrap_or_default()
+    }
+
     /// Where the ViewCube stands in view `rect`: its top right corner, 84 px across.
     pub(crate) fn cube_rect(rect: Rect) -> Rect {
         Rect::from_min_size(rect.right_top() + vec2(-98.0, 14.0), vec2(84.0, 84.0))
@@ -1591,7 +1597,9 @@ impl BimApp {
         let placing_on_face = matches!(self.tool, Tool::Component) && self.place_on_face && self.placing_on_work_plane();
         // Site's points the view shows, and which is selected: read before the view's state is borrowed.
         let shown_points = self.points_in_3d();
-        let lit_ids = self.selection.clone();
+        let lit_ids = self.lit_selection();
+        // In Edit Group only the group's own lights and picks, and the rest is greyed.
+        let (scope, pick_mode) = (self.session.group_scope(), self.group_pick());
         let o = &mut self.orbit;
         (o.rect, o.ppp) = (rect, ppp);
         // The camera changed elsewhere than by the hand in this view (dragged on a plan, a command, undo): the picture stands
@@ -1862,13 +1870,18 @@ impl BimApp {
             .filter(|id| !attaching || attach_target(&model, *id))
             .filter(|id| !trimming || model.wall(*id).is_some());
         // The floor or roof being shaped is drawn as it is, not in the selection's colour: edit mode's marks are what's lit.
-        let tints: Vec<(Id, Rgb)> = selection
+        // A group selected lights its members, and one under the pointer (as a click would take it) does too.
+        let hover_lit: Vec<Id> =
+            if modify { crate::groups::hover_lit(&model, hovered, scope.as_ref(), pick_mode) } else { hovered.into_iter().collect() };
+        let mut tints: Vec<(Id, Rgb)> = lit_ids
             .iter()
             .chain(trim_first.iter())
             .filter(|id| Some(**id) != shaped)
             .map(|id| (*id, rgb(canvas_pal().accent)))
-            .chain(hovered.filter(|id| !selection.contains(id)).map(|id| (id, rgb(canvas_pal().hover))))
+            .chain(hover_lit.iter().filter(|id| !lit_ids.contains(id)).map(|id| (*id, rgb(canvas_pal().hover))))
             .collect();
+        let lit_now: Vec<Id> = tints.iter().map(|(id, _)| *id).collect();
+        tints.extend(crate::groups::greyed(&model, scope.as_ref(), &lit_now).into_iter().map(|id| (id, crate::groups::grey())));
         // The work plane and its patch, drawn into the picture so what stands in front of them hides them: the plane while it's
         // being set, shown (Show) or a new outline is sketched on it; the patch in Modify, lit while the pointer is on it where
         // it is seen.
@@ -2267,7 +2280,11 @@ impl BimApp {
         });
         let target = click.filter(|_| drawing && !on_face).and_then(|at| aimed(&o.picker, at));
         match clicked {
-            Some(found) if modify => self.pick_up(found.into_iter().collect(), click_modifiers(ui)),
+            // A member of a group is picked as its group, as in a plan.
+            Some(found) if modify => {
+                let found = self.group_picks(&model, &found.into_iter().collect::<Vec<_>>(), true);
+                self.pick_up(found, click_modifiers(ui))
+            }
             Some(Some(id)) if demolish => self.demolish(id),
             Some(Some(id)) if paint || unpaint => self.paint_face(id, face, unpaint),
             // Nothing under the cursor: nothing to take down, or to paint.
@@ -2328,6 +2345,7 @@ impl BimApp {
             p.extend(crate::canvas::box_shapes(rect, local(from), local(now)));
         }
         if let Some(found) = boxed_ids {
+            let found = self.group_picks(&model, &found, true);
             self.pick_up(found, click_modifiers(ui));
         }
         if let Some(surface) = sketch_z {

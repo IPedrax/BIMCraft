@@ -230,6 +230,8 @@ pub enum Tool {
     Linework,
     /// Place Detail Group: the Options Bar's group type where clicked.
     DetailGroup,
+    /// Place Model Group: the Options Bar's model group type where clicked, on the view's level.
+    ModelGroup,
     /// Repeating Detail: the Options Bar's group along a line, its start once clicked.
     RepeatingDetail(Option<P2>),
     /// Lay the material in the Options Bar over the face clicked in the 3D view, as Revit's Paint does.
@@ -798,6 +800,15 @@ pub struct BimApp {
     linework_style: String,
     /// The detail group type Place Detail Group places.
     group_type: String,
+    /// The model group type Place Model Group places, and whether what it places is flexible.
+    model_group_type: String,
+    group_flexible: bool,
+    /// Create Group's question for a selection that can't make one group: what each kind would take of it.
+    group_split: Option<bimcraft_core::groups::Split>,
+    /// Edit Group's Add or Remove, picking.
+    group_pick: Option<groups::GroupPick>,
+    /// A command refused because it would change a group from inside, while the window asks what to do with it.
+    group_conflict: Option<groups::Conflict>,
     /// The Repeating Detail tool's spacing, as typed.
     repeat_spacing: String,
     /// The Detail Line tool's Chain: each click ends a line and starts the next; off, two clicks make one line.
@@ -1656,6 +1667,11 @@ impl BimApp {
             line_style: String::new(),
             linework_style: String::new(),
             group_type: String::new(),
+            model_group_type: String::new(),
+            group_flexible: false,
+            group_split: None,
+            group_pick: None,
+            group_conflict: None,
             repeat_spacing: "200".into(),
             line_chain: true,
             drawing: draw::Drawing::default(),
@@ -1850,6 +1866,8 @@ impl BimApp {
                 self.status = Status::default();
                 Some(v)
             }
+            // A group conflict is asked about in its own dialog (`group_conflict_window`), not said again in the corner.
+            Err(e) if self.group_conflict.is_some() && bimcraft_core::groups::is_conflict(&e) => None,
             Err(e) => {
                 self.status = Status { text: e, error: true };
                 None
@@ -1873,6 +1891,10 @@ impl BimApp {
             self.canvas.pins.borrow_mut().clear();
             self.canvas.start_edge = None;
             self.canvas.wall_face = None;
+        }
+        // A change that would break a group from inside: the window asks what to do (Ungroup, Create New Type, Cancel).
+        if let Err(e) = &result {
+            self.conflict_refused(id, params, e);
         }
         // The core renames and drops the option with its set.
         self.active_option = self.session.option.clone();
@@ -1946,6 +1968,7 @@ impl BimApp {
             Tool::Dimension(..) | Tool::Angular(_) | Tool::Round(..) => Some(msg!("Place Dimensions")),
             Tool::Text => Some(msg!("Place Text")),
             Tool::DetailGroup => Some(msg!("Place Detail Group")),
+            Tool::ModelGroup => Some(msg!("Place Model Group")),
             Tool::RepeatingDetail(_) => Some(msg!("Place Repeating Detail")),
             Tool::DetailLine(_) if self.drawing.insulation.is_some() => Some(msg!("Place Insulation")),
             Tool::DetailLine(_) if self.drawing.cloud.is_some() => Some(msg!("Place Revision Cloud")),
@@ -2286,6 +2309,7 @@ impl BimApp {
             self.view_control_bar(ui);
         }
         self.temp_frame(ui);
+        self.edit_group_frame(ui);
     }
 
     /// Properties (PP): shown, or hidden.
@@ -2829,6 +2853,7 @@ impl BimApp {
                 Some("split") => Tool::Split,
                 Some("linework") => Tool::Linework,
                 Some("detail_group") => Tool::DetailGroup,
+                Some("model_group") => Tool::ModelGroup,
                 Some("repeating_detail") => Tool::RepeatingDetail(None),
                 Some("create_group") => {
                     self.create_group();
@@ -2836,6 +2861,18 @@ impl BimApp {
                 }
                 Some("ungroup") => {
                     self.ungroup();
+                    return true;
+                }
+                Some("edit_group") => {
+                    self.edit_group();
+                    return true;
+                }
+                Some("exclude_member") => {
+                    self.exclude_selected();
+                    return true;
+                }
+                Some("restore_excluded") => {
+                    self.restore_excluded();
                     return true;
                 }
                 Some("dimension") => Tool::Dimension(DimMode::Aligned, Vec::new()),
@@ -3464,6 +3501,10 @@ impl BimApp {
         }
         // Edit Dimension References goes next: the dimension stays as it was.
         if self.dimension_refs_edit.take().is_some() {
+            return;
+        }
+        // Edit Group's Add or Remove picking stops, the edit going on.
+        if self.group_pick.take().is_some() {
             return;
         }
         // A dimension segment picked goes, leaving its dimension as it was.
@@ -4511,6 +4552,8 @@ impl BimApp {
                 }
             }
         });
+        // Edit Group's Add, Remove, Finish and Cancel, beside Select on every tab while a group is edited.
+        self.edit_group_panel(ui);
     }
 
     fn tools(&mut self, ui: &mut Ui, name: &str, tools: Tools) {
@@ -5254,6 +5297,8 @@ impl BimApp {
                 self.edit_type();
             }
         });
+        // Create Group, and with a group or a member selected, Revit's Group panel.
+        self.group_panels(ui);
         // A dimension selected: its references are picked again from the Modify tab, as from its right-click menu.
         let dimension = matches!(self.selection.as_slice(), [id]
             if matches!(self.session.model.elements.get(*id), Some(Element::Dimension(d)) if !d.alignment));
@@ -5716,6 +5761,7 @@ impl BimApp {
                 Tool::Wall(_) => self.wall_options(ui),
                 Tool::Linework => self.linework_options(ui),
                 Tool::DetailGroup => self.group_options(ui),
+                Tool::ModelGroup => self.model_group_options(ui),
                 Tool::RepeatingDetail(_) => {
                     self.group_options(ui);
                     let l = ui.label(t("Spacing:"));
@@ -6166,6 +6212,20 @@ impl BimApp {
         if let Some(hint) = self.sketch_prompt() {
             return hint;
         }
+        match self.group_pick() {
+            Some(groups::GroupPick::Add) if self.tool == Tool::Modify => {
+                return msg!("Add to Group: click a greyed element, or drag a box, to add it to the group. Esc or Add again stops.");
+            }
+            Some(groups::GroupPick::Remove) if self.tool == Tool::Modify => {
+                return msg!("Remove from Group: click a member, or drag a box, to take it out of the group. Esc or Remove again stops.");
+            }
+            _ if self.editing_group().is_some() && self.tool == Tool::Modify => {
+                return msg!(
+                    "Edit Group: only the group's members can be picked and changed; the rest is greyed. Finish Edit Group keeps it."
+                );
+            }
+            _ => {}
+        }
         if self.picking_pattern_lines() {
             return msg!("Select fill pattern lines then press Enter");
         }
@@ -6279,7 +6339,7 @@ impl BimApp {
             Tool::Offset => msg!("Point to a wall or a line: the offset goes to the cursor's side. Click to place it."),
             Tool::Demolish => msg!("Click an element to take it down in the view's phase; click it again to take it back."),
             Tool::Linework => msg!("Click an edge to draw it in the line style in the Options Bar; <By Category> puts it back."),
-            Tool::DetailGroup => msg!("Click where the group's origin goes."),
+            Tool::DetailGroup | Tool::ModelGroup => msg!("Click where the group's origin goes."),
             Tool::RepeatingDetail(None) => msg!("Click where the repeating detail starts."),
             Tool::RepeatingDetail(Some(_)) => msg!("Click where it ends: the group repeats along the line every spacing."),
             Tool::Paint => msg!("Click a face to paint it with the material in the Options Bar; the 3D view orbits as ever."),
@@ -6644,6 +6704,9 @@ impl BimApp {
     fn dialogs(&mut self, ctx: &Context) {
         self.type_properties(ctx);
         self.delete_rooms_window(ctx);
+        self.group_conflict_window(ctx);
+        self.group_split_window(ctx);
+        self.keep_to_group();
         self.family_type_properties(ctx);
         self.materials_window(ctx);
         self.favorites_window(ctx);

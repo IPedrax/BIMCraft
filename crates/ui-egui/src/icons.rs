@@ -202,6 +202,13 @@ icon_names! {
     Linework,
     DetailGroup,
     CreateGroup,
+    ModelGroup,
+    EditGroup,
+    Ungroup,
+    ExcludeMember,
+    RestoreExcluded,
+    AddToGroup,
+    RemoveFromGroup,
     RepeatingDetail,
     PickFaces,
     AddVertex,
@@ -487,6 +494,49 @@ pub fn outlines(icon: Icon, compact: bool) -> Vec<Outline> {
             } else {
                 g.line(&[(15.0, 16.0), (18.0, 16.0)]);
             }
+        }
+        Icon::ModelGroup | Icon::EditGroup | Icon::ExcludeMember | Icon::RestoreExcluded | Icon::AddToGroup | Icon::RemoveFromGroup => {
+            // A dashed frame round what is grouped, and at its corner what the tool does to it.
+            for (a, b) in [((3.0, 3.0), (21.0, 3.0)), ((21.0, 3.0), (21.0, 21.0)), ((21.0, 21.0), (3.0, 21.0)), ((3.0, 21.0), (3.0, 3.0))] {
+                let (dx, dy) = ((b.0 - a.0) / 7.0, (b.1 - a.1) / 7.0);
+                for k in [0.0, 2.0, 4.0, 6.0] {
+                    g.line(&[(a.0 + dx * k, a.1 + dy * k), (a.0 + dx * (k + 1.0), a.1 + dy * (k + 1.0))]);
+                }
+            }
+            // Two walls in plan, one beside the other: a model group's members.
+            g.closed(&[(6.0, 7.0), (12.0, 7.0), (12.0, 10.0), (6.0, 10.0)]);
+            g.closed(&[(6.0, 10.0), (9.0, 10.0), (9.0, 16.0), (6.0, 16.0)]);
+            match icon {
+                // A pencil over it.
+                Icon::EditGroup => {
+                    g.closed(&[(13.0, 20.0), (21.0, 12.0), (19.0, 10.0), (11.0, 18.0)]);
+                    g.line(&[(11.0, 18.0), (11.0, 20.0), (13.0, 20.0)]);
+                }
+                // A member struck out.
+                Icon::ExcludeMember => {
+                    g.closed(&[(14.0, 13.0), (19.0, 13.0), (19.0, 18.0), (14.0, 18.0)]);
+                    g.line(&[(13.0, 12.0), (20.0, 19.0)]);
+                }
+                // A turn back.
+                Icon::RestoreExcluded => {
+                    g.arc((16.5, 15.5), 3.5, -60.0, 210.0);
+                    g.line(&[(12.0, 12.5), (13.5, 15.0), (16.0, 13.5)]);
+                }
+                Icon::AddToGroup => {
+                    g.line(&[(16.5, 12.0), (16.5, 20.0)]);
+                    g.line(&[(12.5, 16.0), (20.5, 16.0)]);
+                }
+                Icon::RemoveFromGroup => g.line(&[(12.5, 16.0), (20.5, 16.0)]),
+                _ => {}
+            }
+        }
+        Icon::Ungroup => {
+            // The frame broken open: its two halves apart, their members going with them.
+            g.line(&[(9.0, 3.0), (3.0, 3.0), (3.0, 21.0), (9.0, 21.0)]);
+            g.line(&[(15.0, 3.0), (21.0, 3.0), (21.0, 21.0), (15.0, 21.0)]);
+            g.closed(&[(6.0, 9.0), (10.0, 9.0), (10.0, 15.0), (6.0, 15.0)]);
+            g.closed(&[(14.0, 9.0), (18.0, 9.0), (18.0, 15.0), (14.0, 15.0)]);
+            g.line(&[(12.0, 6.0), (12.0, 18.0)]);
         }
         Icon::PickFaces => {
             // A mass in plan, one of its faces picked: a wall standing on it, its two faces along the edge.

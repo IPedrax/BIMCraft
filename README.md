@@ -604,6 +604,10 @@ for a headless server that opens the file and then only reads it.
 | `repeating_detail` | | `type`, `start`, `end`, `spacing`, `mirrored?`, `view?`: a detail group repeated along a line, at most 2,000 times, and members times repeats within the 10,000 a view draws |
 | `ungroup` | UG | `id`: a detail group's members as lines, regions and notes of the view again |
 | `group_type` | | `name?`, `rename?`, `delete?`: a detail group type; without `name`, every one with its members and how many are placed |
+| `model_group` | MG | `type`, `at`, `angle?`, `mirrored?`, `level?` or `levels?`, `flexible?`: a model group placed on a level, or one on each of `levels` |
+| `edit_group` | GE | `id`: Edit Group, its members changed freely until `finish_group` or `cancel_group` (Revit's EG is the desktop's Earthing Electrode) |
+| `exclude_member` | EM | `ids`: members taken out of their groups here, which remember them (EX is Explode's) |
+| `restore_excluded` | RA | `id` or `ids`: every excluded member of the groups put back |
 | `linework` | LW | `view?`, `id`, `at`, `style?` or `invisible?` or `remove?`: the edge of an element a plan draws nearest `at` drawn in a line style in that view only (at most 2,000 edges a view); `remove` takes the nearest one off again |
 | `explode` | EX | `id`: a polyline taken apart into lines and arcs (Revit has no shortcut; PX is the desktop's Plumbing Fixture) |
 | `vertex` | | `id`, `at`, `delete?`: a vertex more (or fewer) in a polyline or a spline; a control point added keeps the curve |

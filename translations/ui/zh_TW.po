@@ -16966,6 +16966,257 @@ msgctxt "side"
 msgid "Top"
 msgstr "上"
 
+#: crates/ui-egui/src/groups.rs:148
+msgid "A detail group of the lines, regions, notes and dimensions selected in one view; the rest is left out"
+msgstr ""
+
+#: crates/ui-egui/src/groups.rs:135
+msgid "A group holds model elements, or one view's detail lines, regions, notes and dimensions: not both, and nothing that is in a group already or that no group holds (levels, grids, views, tags, links). Which do you want to group?"
+msgstr ""
+
+#: crates/ui-egui/src/properties.rs:1500
+msgid "A member of group {}: only the parameters that vary by group instance change here. The rest change in Edit Group."
+msgstr ""
+
+#: crates/ui-egui/src/groups.rs:143
+msgid "A model group of the walls, floors, doors, components and the like selected; the rest is left out"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:5890
+msgid "Add to Group: click a greyed element, or drag a box, to add it to the group. Esc or Add again stops."
+msgstr ""
+
+#: crates/ui-egui/src/groups.rs:323
+msgid "Add: click elements (greyed now) to add them to the group; click Add again to stop. They join at Finish"
+msgstr ""
+
+#: crates/ui-egui/src/groups.rs:248
+msgid "Adding: click greyed elements to add them"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:76
+msgid "Aligned per group type"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:81
+msgid "Aligned per group type: a grouped element's value is its group type's, the same in every group of it, and changes in Edit Group. Vary by group instance: each group's element holds its own, set in Properties with the element Tab-selected, without Edit Group."
+msgstr ""
+
+#: crates/ui-egui/src/properties.rs:2635
+msgid "Aligned per group type: change it in Edit Group."
+msgstr ""
+
+#: crates/ui-egui/src/groups.rs:348
+msgid "Cancel Edit Group"
+msgstr ""
+
+#: crates/ui-egui/src/groups.rs:347
+msgid "Cancel: the group and everything else as it was when the edit began"
+msgstr ""
+
+#: crates/ui-egui/src/groups.rs:542
+msgid "Changes to groups are made in Edit Group. This change would make a group unlike the others of its type."
+msgstr ""
+
+#: crates/ui-egui/src/groups.rs:369
+msgid "Create Group (GP): select model elements, or a view's detail lines, regions, notes and dimensions; of a mixed selection, it asks which kind to group"
+msgstr ""
+
+#: crates/ui-egui/src/draw.rs:687
+msgid "Create Group (GP): the selected detail lines, filled regions, notes and dimensions made one detail group"
+msgstr ""
+
+#: crates/ui-egui/src/groups.rs:367
+msgid "Create Group (GP): the selected lines, regions, notes and dimensions made one detail group"
+msgstr ""
+
+#: crates/ui-egui/src/groups.rs:366
+msgid "Create Group (GP): the selected model elements made one model group"
+msgstr ""
+
+#: crates/ui-egui/src/groups.rs:553
+msgid "Create New Type"
+msgstr ""
+
+#: crates/ui-egui/src/groups.rs:147
+msgid "Detail elements only ({})"
+msgstr ""
+
+#: crates/ui-egui/src/context.rs:78 crates/ui-egui/src/groups.rs:321
+#: crates/ui-egui/src/groups.rs:394
+msgid "Edit Group"
+msgstr ""
+
+#: crates/ui-egui/src/groups.rs:393
+msgid "Edit Group: change its members; Finish changes every group of its type"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:5897
+msgid "Edit Group: only the group's members can be picked and changed; the rest is greyed. Finish Edit Group keeps it."
+msgstr ""
+
+#: crates/ui-egui/src/groups.rs:246
+msgid "Editing detail group"
+msgstr ""
+
+#: crates/ui-egui/src/groups.rs:246
+msgid "Editing model group"
+msgstr ""
+
+#: crates/ui-egui/src/context.rs:79 crates/ui-egui/src/groups.rs:410
+msgid "Exclude"
+msgstr ""
+
+#: crates/ui-egui/src/groups.rs:409
+msgid "Exclude: the selected member out of this group only; Restore All Excluded brings it back"
+msgstr ""
+
+#: crates/ui-egui/src/properties.rs:281 crates/ui-egui/src/properties.rs:290
+msgid "Excluded Members"
+msgstr ""
+
+#: crates/ui-egui/src/groups.rs:341
+msgid "Finish Edit Group"
+msgstr ""
+
+#: crates/ui-egui/src/groups.rs:340
+msgid "Finish: the group's type becomes what it now is, and every group of it changes with it"
+msgstr ""
+
+#: crates/ui-egui/src/groups.rs:474 crates/ui-egui/src/properties.rs:285
+msgid "Flexible"
+msgstr ""
+
+#: crates/ui-egui/src/groups.rs:20
+msgid "Flexible: the group may stand where the storeys are of other heights. A member reaching up to a level (a wall to the level above) stretches or shrinks to reach it there; what it stands on, its place in plan and its offsets stay as the group's type has them. Off, the group stands only where the storeys are as high as its type's, and moving a level it reaches asks first."
+msgstr ""
+
+#: crates/ui-egui/src/groups.rs:539
+msgid "Group Changed"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:849 crates/ui-egui/src/parameters.rs:1722
+msgid "Group Values"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:889 crates/ui-egui/src/parameters.rs:1769
+msgid "Group values of {}"
+msgstr ""
+
+#: crates/ui-egui/src/groups.rs:552
+msgid "Make each changed group a group type of its own, as it now stands"
+msgstr ""
+
+#: crates/ui-egui/src/groups.rs:380 crates/ui-egui/src/groups.rs:471
+msgid "Model Group"
+msgstr ""
+
+#: crates/ui-egui/src/groups.rs:142
+msgid "Model elements only ({})"
+msgstr ""
+
+#: crates/ui-egui/src/groups.rs:250
+msgid "Only its members can be picked and changed; the rest is greyed"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:1885
+msgid "Place Model Group"
+msgstr ""
+
+#: crates/ui-egui/src/groups.rs:378
+msgid "Place Model Group: the model group on the Options Bar where you click, on this level"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:5893
+msgid "Remove from Group: click a member, or drag a box, to take it out of the group. Esc or Remove again stops."
+msgstr ""
+
+#: crates/ui-egui/src/groups.rs:329
+msgid "Remove: click members to take them out of the group, staying as they are; click Remove again to stop. Members selected leave at once"
+msgstr ""
+
+#: crates/ui-egui/src/groups.rs:249
+msgid "Removing: click members to take them out"
+msgstr ""
+
+#: crates/ui-egui/src/context.rs:80 crates/ui-egui/src/groups.rs:403
+msgid "Restore All Excluded"
+msgstr ""
+
+#: crates/ui-egui/src/groups.rs:402
+msgid "Restore All Excluded: every member excluded from the group back, as its type has it"
+msgstr ""
+
+#: crates/ui-egui/src/groups.rs:274
+msgid "Tab to a member of a group and select it to exclude it"
+msgstr ""
+
+#: crates/ui-egui/src/groups.rs:397
+msgid "Ungroup (UG): its members as plain elements, where they are"
+msgstr ""
+
+#: crates/ui-egui/src/groups.rs:549
+msgid "Ungroup the changed groups and keep the change"
+msgstr ""
+
+#: crates/ui-egui/src/parameters.rs:76
+msgid "Vary by group instance"
+msgstr ""
+
+#: crates/ui-egui/src/groups.rs:302
+msgid "select a group to edit"
+msgstr ""
+
+#: crates/ui-egui/src/groups.rs:191
+msgid "select a group to ungroup"
+msgstr ""
+
+#: crates/ui-egui/src/groups.rs:89
+msgid "select the elements to group first"
+msgstr ""
+
+#: crates/ui-egui/src/groups.rs:520
+msgid "there's no model group yet: select model elements and Create Group"
+msgstr ""
+
+#: crates/ui-egui/src/groups.rs:101
+msgid "what is selected is in a group already: ungroup it, or exclude it from its group, first"
+msgstr ""
+
+#: crates/ui-egui/src/groups.rs:159
+msgid "{} of the selection left out"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:321
+msgctxt "category"
+msgid "Detail Group"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:320
+msgctxt "category"
+msgid "Model Group"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:322
+msgctxt "category"
+msgid "Repeating Detail"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:321
+msgctxt "category-plural"
+msgid "Detail Groups"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:320
+msgctxt "category-plural"
+msgid "Model Groups"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:322
+msgctxt "category-plural"
+msgid "Repeating Details"
+msgstr ""
+
 #: crates/ui-egui/src/editor.rs:739
 #~ msgid "A blank value is the family's own, as the Parameters tab has it."
 #~ msgstr "留空的值表示使用族自身的值，如“參數”選項卡中所示。"

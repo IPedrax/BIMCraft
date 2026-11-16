@@ -91,6 +91,7 @@ fn found_otherwise(e: &Element) -> bool {
             | Element::Dimension(_)
             | Element::Spot(_)
             | Element::DetailGroup(_)
+            | Element::ModelGroup(_)
             | Element::RepeatingDetail(_)
             | Element::Column(_)
             | Element::StructuralColumn(_)
@@ -156,6 +157,8 @@ pub const RARE: &[&str] = &[
     "stair",
     // A storey's ceilings, which a stair's headroom is measured to.
     "ceiling",
+    "modelgroup",
+    "detailgroup",
 ];
 
 /// The categories of a drawing set: views, sheets and what places a view on a sheet. Their names and numbers are kept
