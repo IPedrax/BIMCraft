@@ -165,11 +165,11 @@ fn echo(line: &str) -> String {
 /// byte that isn't UTF-8 is read as the Latin-1 letter with its number (right for accents; the punctuation Windows-1252
 /// puts at 0x80 to 0x9F reads as control letters, which a name drops).
 pub fn read_file(path: &std::path::Path) -> Result<Read, String> {
-    let size = std::fs::metadata(path).map_err(|e| format!("{}: {e}", path.display()))?.len();
+    let size = crate::disk::len(path).map_err(|e| format!("{}: {e}", path.display()))?;
     if size > MAX_TEXT as u64 {
         return Err(format!("{} is too large ({size} bytes)", path.display()));
     }
-    let bytes = std::fs::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let bytes = crate::disk::read(path).map_err(|e| format!("{}: {e}", path.display()))?;
     let text = String::from_utf8(bytes).unwrap_or_else(|e| e.into_bytes().iter().map(|&b| char::from(b)).collect());
     read(&text)
 }

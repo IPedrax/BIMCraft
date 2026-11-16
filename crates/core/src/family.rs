@@ -3952,7 +3952,7 @@ mod tests {
         let worked = std::thread::Builder::new()
             .stack_size(256 * 1024)
             .spawn(move || {
-                let started = std::time::Instant::now();
+                let started = web_time::Instant::now();
                 let solid = json!({"plane": "xz", "profile": ring, "axis": [[0, 0], [0, 1]], "to": 360});
                 let void =
                     json!({"profile": [[-1000, -1000], [1000, -1000], [1000, 0], [-1000, 0]], "from": -10, "to": 1000, "void": true});

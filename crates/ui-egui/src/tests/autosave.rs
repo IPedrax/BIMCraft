@@ -1,6 +1,6 @@
 use super::*;
 use bimcraft_core::autosave::{backup_path, old_backup_path};
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 fn enable(h: &mut Harness<BimApp>, root: &std::path::Path) {
     let ctx = h.ctx.clone();

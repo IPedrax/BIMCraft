@@ -1,7 +1,7 @@
 //! A project is a `.bimc` and its backup a `.bimb`, a template a `.bimt` and a family a `.bimf`; the `.bimcraft` and
 //! `.autosave.bimcraft` of earlier versions are still read and still found, and opening one never rewrites it (discussion 310).
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use web_time::Duration;
 
 use serde_json::json;
 
@@ -17,14 +17,14 @@ fn dir() -> PathBuf {
 
 fn found(worker: &mut Worker, project: Option<PathBuf>) -> Vec<Backup> {
     worker.discover(project, 1).unwrap();
-    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    let deadline = web_time::Instant::now() + Duration::from_secs(10);
     loop {
         match worker.poll() {
             Some(Notice::Discovered { result, .. }) => return result.unwrap(),
             Some(other) => panic!("{other:?}"),
             None => {}
         }
-        assert!(std::time::Instant::now() < deadline, "worker did not reply");
+        assert!(web_time::Instant::now() < deadline, "worker did not reply");
         std::thread::sleep(Duration::from_millis(1));
     }
 }

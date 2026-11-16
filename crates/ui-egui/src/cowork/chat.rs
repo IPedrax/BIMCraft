@@ -7,7 +7,7 @@
 use std::collections::VecDeque;
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, channel};
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 use bimcraft_assistant::chat::{Pays, Remote};
 use bimcraft_assistant::{Attached, Line, Msg, Provider, Reply, Todo, complete, key_ok, model_ok, wire};

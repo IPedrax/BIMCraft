@@ -5,7 +5,7 @@
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use std::sync::mpsc::channel;
-use std::time::{Duration, Instant};
+use web_time::{Duration, Instant};
 
 use bimcraft_core::model::Model;
 use bimcraft_cowork::live::{Happened, Hosting, Joined, VERSION};

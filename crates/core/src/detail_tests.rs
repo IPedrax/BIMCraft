@@ -370,7 +370,7 @@ fn probe_the_cost_of_the_most_hatched_regions_a_view_may_place() {
             .collect();
         run(&mut s, "create_group", json!({"ids": regions, "name": "Hatched"}));
         let r = run(&mut s, "repeating_detail", json!({"type": "Hatched", "start": [0, 0], "end": [199_800, 0], "spacing": 100}));
-        let at = std::time::Instant::now();
+        let at = web_time::Instant::now();
         let d = crate::render::plan(&s.model, 100000, 1600, 1000);
         eprintln!("{} placed, {of} regions {side} mm across: {:?}, {} prims", r["count"], at.elapsed(), d.prims.len());
     }
@@ -388,7 +388,7 @@ fn probe_the_cost_of_placed_members_that_are_huge_circles() {
         let circle = id_of(&run(&mut s, "detail_line", json!({"centre": [0, 0], "radius": 5e8})));
         run(&mut s, "create_group", json!({"ids": [circle], "name": "Huge"}));
         let r = run(&mut s, "repeating_detail", json!({"type": "Huge", "start": [0, 0], "end": [count - 1, 0], "spacing": 1}));
-        let at = std::time::Instant::now();
+        let at = web_time::Instant::now();
         let d = crate::render::plan(&s.model, 100000, 1600, 1000);
         let drawn = at.elapsed();
         let _ = crate::render::png(&d);

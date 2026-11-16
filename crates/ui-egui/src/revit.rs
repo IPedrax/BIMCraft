@@ -13,7 +13,7 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, TryRecvError, channel};
-use std::time::Duration;
+use web_time::Duration;
 
 use bimcraft_core::import::Imported;
 use egui::{Align, Context, Id, Label, Layout, RichText, ScrollArea};

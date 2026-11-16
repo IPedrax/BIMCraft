@@ -1,2 +1,6 @@
 [alias]
 i18n = "run --quiet -p bimcraft-i18n --features tooling --"
+
+# The browser build (apps/bimcraft-web): getrandom takes its random numbers from the page only when told to.
+[target.wasm32-unknown-unknown]
+rustflags = ['--cfg', 'getrandom_backend="wasm_js"']

@@ -567,7 +567,7 @@ pub fn check_values(who: &str, values: &BTreeMap<String, String>) -> Result<(), 
 
 /// Today's date, as `language` writes dates: day, month and year, ISO's year, month and day in English and Swedish.
 pub fn today(language: Language) -> String {
-    let days = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs() / 86_400);
+    let days = web_time::SystemTime::now().duration_since(web_time::UNIX_EPOCH).map_or(0, |d| d.as_secs() / 86_400);
     let (y, m, d) = civil(i64::try_from(days).unwrap_or(0));
     date(language, y, m, d)
 }

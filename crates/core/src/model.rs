@@ -9465,8 +9465,7 @@ pub fn mix(mut z: u64) -> u64 {
 }
 
 fn fresh_uid() -> u64 {
-    let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos() as u64);
-    mix(nanos ^ u64::from(std::process::id()).rotate_left(32))
+    crate::ids::seed()
 }
 
 /// A project file's top object as [`Model::read_on_every_core`] reads it in one pass: each element's raw text by its key, and each

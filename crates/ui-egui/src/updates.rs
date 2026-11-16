@@ -8,7 +8,7 @@ use crate::popup::Modal;
 use bimcraft_i18n::msg;
 
 use std::sync::atomic::Ordering;
-use std::time::Duration;
+use web_time::Duration;
 
 use bimcraft_update::{Note, State};
 use egui::{Button, Color32, Context, Frame, Id, OpenUrl, ProgressBar, RichText, Stroke, Ui, ViewportCommand, vec2};

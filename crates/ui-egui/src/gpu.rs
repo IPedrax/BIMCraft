@@ -1176,7 +1176,7 @@ impl Gpu {
                 return Err(error);
             }
             if worker.busy() {
-                ctx.request_repaint_after(std::time::Duration::from_millis(16));
+                ctx.request_repaint_after(web_time::Duration::from_millis(16));
             }
         }
         Ok(false)
@@ -2114,7 +2114,7 @@ mod tests {
     #[test]
     fn a_software_card_is_one_test_s_until_its_thread_ends_and_a_real_one_is_shared() {
         use std::sync::mpsc::channel;
-        use std::time::Duration;
+        use web_time::Duration;
         let (held, holding) = channel();
         let (end, ending) = channel::<()>();
         let first = std::thread::spawn(move || {
@@ -2320,10 +2320,10 @@ mod tests {
         let ctx = egui::Context::default();
         assert!(!gpu.prepare_upload(&ctx, &first).unwrap());
         assert!(!gpu.prepare_upload(&ctx, &latest).unwrap());
-        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+        let deadline = web_time::Instant::now() + web_time::Duration::from_secs(10);
         while !gpu.prepare_upload(&ctx, &latest).unwrap() {
-            assert!(std::time::Instant::now() < deadline, "worker upload did not finish");
-            std::thread::sleep(std::time::Duration::from_millis(10));
+            assert!(web_time::Instant::now() < deadline, "worker upload did not finish");
+            std::thread::sleep(web_time::Duration::from_millis(10));
         }
         assert!(gpu.mesh.as_ref().is_some_and(|up| Arc::ptr_eq(&up.mesh, &latest)));
         gpu.draw(&latest, &cam, &[], PAPER).unwrap();
@@ -3366,7 +3366,7 @@ floor {}"#,
     #[test]
     #[ignore]
     fn gpu_speed() {
-        use std::time::Instant;
+        use web_time::Instant;
         let Some(mut gpu) = headless() else { return };
         let mut s = Session::new();
         s.execute("highrise", &serde_json::json!({})).unwrap();
