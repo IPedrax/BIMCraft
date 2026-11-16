@@ -1749,7 +1749,7 @@ msgstr "Vypočítaná hodnota…"
 msgid "Came in: {}"
 msgstr "Importováno: {}"
 
-#: crates/core/src/commands.rs:2567
+#: crates/core/src/commands.rs:2568
 #: crates/ui-egui/src/camera.rs:38
 #: crates/ui-egui/src/lib.rs:4778
 #: crates/ui-egui/src/properties.rs:301
@@ -2096,7 +2096,7 @@ msgstr "Kontrola: fck"
 msgid "Checking for updates…"
 msgstr "Kontrola aktualizací…"
 
-#: crates/core/src/commands.rs:4031
+#: crates/core/src/commands.rs:4032
 msgid "Checking the model"
 msgstr ""
 
@@ -3877,7 +3877,7 @@ msgstr "Zbourané"
 msgid "Demolition"
 msgstr "Demolice"
 
-#: crates/core/src/commands.rs:13244
+#: crates/core/src/commands.rs:13245
 msgid "Dependent"
 msgstr "Závislý"
 
@@ -4760,7 +4760,7 @@ msgstr "Elektrotechnická nastavení"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "Elektrotechnická nastavení: napětí, rozvodné soustavy a typy vodičů, na které se odkazují obvody a rozváděče; průřezy v mm²"
 
-#: crates/core/src/commands.rs:3005
+#: crates/core/src/commands.rs:3006
 msgid "Elements"
 msgstr "Prvky"
 
@@ -7598,7 +7598,7 @@ msgstr "Maximální úhel"
 msgid "Maximum Riser Height"
 msgstr "Maximální výška stupně"
 
-#: crates/core/src/commands.rs:2681
+#: crates/core/src/commands.rs:2682
 #: crates/ui-egui/src/editor/document.rs:686
 #: crates/ui-egui/src/editor/document.rs:687
 msgid "Measure"
@@ -10321,7 +10321,7 @@ msgid "Properties over the Project Browser, on the left, as at first"
 msgstr "Vlastnosti nad Prohlížečem projektu, vlevo, jako ve výchozím nastavení"
 
 #: crates/core/src/commands.rs:618
-#: crates/core/src/commands.rs:8789
+#: crates/core/src/commands.rs:8790
 msgid "Property Line"
 msgstr ""
 
@@ -10489,7 +10489,7 @@ msgstr ""
 msgid "Reading elements"
 msgstr ""
 
-#: crates/core/src/commands.rs:3988
+#: crates/core/src/commands.rs:3989
 msgid "Reading the file"
 msgstr ""
 
@@ -11386,7 +11386,7 @@ msgstr "Měřítko: velikost papíru odpovídající tomuto pohledu, 1 : n model
 msgid "Scan"
 msgstr "Sken"
 
-#: crates/core/src/commands.rs:2460
+#: crates/core/src/commands.rs:2461
 msgid "Schedule"
 msgstr "Výkaz"
 
@@ -14175,11 +14175,11 @@ msgstr ""
 msgid "Unlock alignment"
 msgstr "Odemknout zarovnání"
 
-#: crates/core/src/commands.rs:13415
+#: crates/core/src/commands.rs:13416
 msgid "Unnamed"
 msgstr "Nepojmenovaný"
 
-#: crates/core/src/commands.rs:4005
+#: crates/core/src/commands.rs:4006
 msgid "Unpacking the project"
 msgstr ""
 

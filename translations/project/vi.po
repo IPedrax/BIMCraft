@@ -40,7 +40,7 @@ msgstr "Gạch"
 msgid "Brick 225 x 75"
 msgstr "Gạch 225 x 75"
 
-#: crates/core/src/commands.rs:5486
+#: crates/core/src/commands.rs:5487
 msgid "Camera"
 msgstr "Camera"
 
@@ -132,7 +132,7 @@ msgstr "Ổ cắm dữ liệu"
 msgid "Demand Factor"
 msgstr ""
 
-#: crates/core/src/commands.rs:13244
+#: crates/core/src/commands.rs:13245
 msgid "Dependent"
 msgstr "Phụ thuộc"
 
@@ -217,9 +217,9 @@ msgstr "Điện chiếu sáng"
 msgid "Electrical Power"
 msgstr "Điện động lực"
 
-#: crates/core/src/commands.rs:12991
-#: crates/core/src/commands.rs:13006
-#: crates/core/src/commands.rs:17439
+#: crates/core/src/commands.rs:12992
+#: crates/core/src/commands.rs:13007
+#: crates/core/src/commands.rs:17440
 msgid "Elevation"
 msgstr "Mặt đứng"
 
@@ -366,7 +366,7 @@ msgstr "Chiều rộng chân"
 msgid "Length"
 msgstr "Chiều dài"
 
-#: crates/core/src/commands.rs:8062
+#: crates/core/src/commands.rs:8063
 #: crates/core/src/model.rs:3741
 msgid "Level"
 msgstr "Tầng"
@@ -407,7 +407,7 @@ msgstr "Ký hiệu"
 msgid "Masking"
 msgstr "Che"
 
-#: crates/core/src/commands.rs:10523
+#: crates/core/src/commands.rs:10524
 msgid "Mass"
 msgstr "Khối"
 
@@ -423,8 +423,8 @@ msgstr "Nét trung bình"
 msgid "Membrane"
 msgstr "Màng"
 
-#: crates/core/src/commands.rs:3633
-#: crates/core/src/commands.rs:16045
+#: crates/core/src/commands.rs:3634
+#: crates/core/src/commands.rs:16046
 #: crates/core/src/family.rs:3429
 #: crates/core/src/model.rs:5205
 msgid "Metal"
@@ -520,11 +520,11 @@ msgstr "Sứ"
 msgid "Profile"
 msgstr ""
 
-#: crates/core/src/commands.rs:3896
+#: crates/core/src/commands.rs:3897
 msgid "Project"
 msgstr "Dự án"
 
-#: crates/core/src/commands.rs:8789
+#: crates/core/src/commands.rs:8790
 msgid "Property Line"
 msgstr ""
 
@@ -560,7 +560,7 @@ msgstr ""
 msgid "Roof tiles"
 msgstr "Ngói"
 
-#: crates/core/src/commands.rs:10748
+#: crates/core/src/commands.rs:10749
 msgid "Room"
 msgstr "Phòng"
 
@@ -596,8 +596,8 @@ msgstr "Lớp vữa láng"
 msgid "Seat Height"
 msgstr "Chiều cao mặt ghế"
 
-#: crates/core/src/commands.rs:12926
-#: crates/core/src/commands.rs:17438
+#: crates/core/src/commands.rs:12927
+#: crates/core/src/commands.rs:17439
 #: crates/core/src/schedule.rs:613
 msgid "Section"
 msgstr "Mặt cắt"
@@ -772,7 +772,7 @@ msgstr "Chiều cao không giới hạn"
 msgid "Unclassified"
 msgstr ""
 
-#: crates/core/src/commands.rs:13415
+#: crates/core/src/commands.rs:13416
 msgid "Unnamed"
 msgstr "Chưa đặt tên"
 

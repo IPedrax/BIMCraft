@@ -1750,7 +1750,7 @@ msgstr "Giá trị tính toán…"
 msgid "Came in: {}"
 msgstr "Đã nhập vào: {}"
 
-#: crates/core/src/commands.rs:2567
+#: crates/core/src/commands.rs:2568
 #: crates/ui-egui/src/camera.rs:38
 #: crates/ui-egui/src/lib.rs:4778
 #: crates/ui-egui/src/properties.rs:301
@@ -2097,7 +2097,7 @@ msgstr "Kiểm tra: fck"
 msgid "Checking for updates…"
 msgstr "Đang kiểm tra cập nhật…"
 
-#: crates/core/src/commands.rs:4031
+#: crates/core/src/commands.rs:4032
 msgid "Checking the model"
 msgstr ""
 
@@ -3878,7 +3878,7 @@ msgstr "Đã phá dỡ"
 msgid "Demolition"
 msgstr "Phá dỡ"
 
-#: crates/core/src/commands.rs:13244
+#: crates/core/src/commands.rs:13245
 msgid "Dependent"
 msgstr "Phụ thuộc"
 
@@ -4761,7 +4761,7 @@ msgstr "Cài đặt điện"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "Cài đặt điện: các điện áp, hệ thống phân phối và loại dây mà mạch điện và tủ điện tham chiếu; tiết diện tính bằng mm²"
 
-#: crates/core/src/commands.rs:3005
+#: crates/core/src/commands.rs:3006
 msgid "Elements"
 msgstr "Cấu kiện"
 
@@ -7599,7 +7599,7 @@ msgstr "Góc tối đa"
 msgid "Maximum Riser Height"
 msgstr "Chiều cao bậc đứng tối đa"
 
-#: crates/core/src/commands.rs:2681
+#: crates/core/src/commands.rs:2682
 #: crates/ui-egui/src/editor/document.rs:686
 #: crates/ui-egui/src/editor/document.rs:687
 msgid "Measure"
@@ -10322,7 +10322,7 @@ msgid "Properties over the Project Browser, on the left, as at first"
 msgstr "Thuộc tính phía trên trình duyệt dự án, bên trái, như ban đầu"
 
 #: crates/core/src/commands.rs:618
-#: crates/core/src/commands.rs:8789
+#: crates/core/src/commands.rs:8790
 msgid "Property Line"
 msgstr ""
 
@@ -10490,7 +10490,7 @@ msgstr ""
 msgid "Reading elements"
 msgstr ""
 
-#: crates/core/src/commands.rs:3988
+#: crates/core/src/commands.rs:3989
 msgid "Reading the file"
 msgstr ""
 
@@ -11387,7 +11387,7 @@ msgstr "Tỷ lệ: tờ giấy mà khung nhìn này đại diện, 1 : n của m
 msgid "Scan"
 msgstr "Bản quét"
 
-#: crates/core/src/commands.rs:2460
+#: crates/core/src/commands.rs:2461
 msgid "Schedule"
 msgstr "Bảng thống kê"
 
@@ -14176,11 +14176,11 @@ msgstr ""
 msgid "Unlock alignment"
 msgstr ""
 
-#: crates/core/src/commands.rs:13415
+#: crates/core/src/commands.rs:13416
 msgid "Unnamed"
 msgstr "Chưa đặt tên"
 
-#: crates/core/src/commands.rs:4005
+#: crates/core/src/commands.rs:4006
 msgid "Unpacking the project"
 msgstr ""
 

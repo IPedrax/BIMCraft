@@ -1750,7 +1750,7 @@ msgstr "Berekende waarde…"
 msgid "Came in: {}"
 msgstr "Binnengekomen: {}"
 
-#: crates/core/src/commands.rs:2567
+#: crates/core/src/commands.rs:2568
 #: crates/ui-egui/src/camera.rs:38
 #: crates/ui-egui/src/lib.rs:4778
 #: crates/ui-egui/src/properties.rs:301
@@ -2097,7 +2097,7 @@ msgstr "Controle: fck"
 msgid "Checking for updates…"
 msgstr "Controleren op updates…"
 
-#: crates/core/src/commands.rs:4031
+#: crates/core/src/commands.rs:4032
 msgid "Checking the model"
 msgstr ""
 
@@ -3878,7 +3878,7 @@ msgstr "Gesloopt"
 msgid "Demolition"
 msgstr "Sloop"
 
-#: crates/core/src/commands.rs:13244
+#: crates/core/src/commands.rs:13245
 msgid "Dependent"
 msgstr "Afhankelijk"
 
@@ -4761,7 +4761,7 @@ msgstr "Elektrische instellingen"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "Elektrische instellingen: de spanningen, distributiesystemen en draadtypes waarnaar kringen en verdeelborden verwijzen; doorsneden in mm²"
 
-#: crates/core/src/commands.rs:3005
+#: crates/core/src/commands.rs:3006
 msgid "Elements"
 msgstr "Elementen"
 
@@ -7599,7 +7599,7 @@ msgstr "Maximale hoek"
 msgid "Maximum Riser Height"
 msgstr "Maximale hoogte optrede"
 
-#: crates/core/src/commands.rs:2681
+#: crates/core/src/commands.rs:2682
 #: crates/ui-egui/src/editor/document.rs:686
 #: crates/ui-egui/src/editor/document.rs:687
 msgid "Measure"
@@ -10322,7 +10322,7 @@ msgid "Properties over the Project Browser, on the left, as at first"
 msgstr "Eigenschappen boven de Projectbrowser, links, zoals in het begin"
 
 #: crates/core/src/commands.rs:618
-#: crates/core/src/commands.rs:8789
+#: crates/core/src/commands.rs:8790
 msgid "Property Line"
 msgstr ""
 
@@ -10490,7 +10490,7 @@ msgstr ""
 msgid "Reading elements"
 msgstr ""
 
-#: crates/core/src/commands.rs:3988
+#: crates/core/src/commands.rs:3989
 msgid "Reading the file"
 msgstr ""
 
@@ -11387,7 +11387,7 @@ msgstr "Schaal: het papier dat deze weergave voorstelt, 1 : n van het model: haa
 msgid "Scan"
 msgstr "Scan"
 
-#: crates/core/src/commands.rs:2460
+#: crates/core/src/commands.rs:2461
 msgid "Schedule"
 msgstr "Lijst"
 
@@ -14176,11 +14176,11 @@ msgstr ""
 msgid "Unlock alignment"
 msgstr "Uitlijning ontgrendelen"
 
-#: crates/core/src/commands.rs:13415
+#: crates/core/src/commands.rs:13416
 msgid "Unnamed"
 msgstr "Naamloos"
 
-#: crates/core/src/commands.rs:4005
+#: crates/core/src/commands.rs:4006
 msgid "Unpacking the project"
 msgstr ""
 
