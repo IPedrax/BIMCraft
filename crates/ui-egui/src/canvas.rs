@@ -3030,13 +3030,11 @@ impl BimApp {
             }
             Tool::ExportRegion(_) => self.export_region_at(v.mm(at)),
             Tool::SpecifyPoint => {
-                // Snapped as any point; its height by what it snapped to.
-                let f = self.snap(m, level, v, at, &[], false);
-                let p = self
-                    .alignments_for(m, level, v, &f, &[], GuideAt { at: v.mm(at), square: false })
-                    .first()
-                    .map_or(f.at, |a| a.snapped_point);
-                let z = bimcraft_core::coordinates::picked_z(m, level, p, f.source);
+                // Snapped as any point, through the preview's one landing; its height by what it snapped to.
+                let (f, found) = self.landed(m, level, v, at, &[], false);
+                let source = f.source;
+                let p = Self::on_guide(f, &found);
+                let z = bimcraft_core::coordinates::picked_z(m, level, p, source);
                 self.specify_at([p.0, p.1, z]);
             }
             &Tool::RotateNorth { centre, start, place } => {
