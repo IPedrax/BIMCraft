@@ -192,6 +192,11 @@ fn geometry(f: &Family, out: &mut Vec<String>) {
         Some(Val::Number(x)) => Some(*x),
         _ => None,
     };
+    // Pivots that fail their check may read each other round a cycle, which the solve would follow as deep as it may (issue
+    // 465: more stack than a thread has unoptimised); `Family::check` has said what's wrong with them, and nothing is solved.
+    if f.check_pivots().is_err() {
+        return;
+    }
     let mut faults: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
     for ty in f.types.keys() {
         // A type whose formulas don't work out has `Family::check`'s error to say so; its geometry is beyond telling.

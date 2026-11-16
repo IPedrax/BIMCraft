@@ -424,3 +424,67 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v5
+
+  # Tells the Discord server about a stable release: a short post with a ping for the Release Pings role in #releases, and the whole
+  # notes in #changelog. Like `apt` it is a job of this workflow and not a `release: published` one, because the release is made with
+  # the workflow's GITHUB_TOKEN. A webhook posts to one channel, so there are two: the secrets DISCORD_RELEASE_WEBHOOK and
+  # DISCORD_CHANGELOG_WEBHOOK, and the role's id is the variable DISCORD_RELEASE_ROLE_ID (an id is no secret). With no webhook a post
+  # is skipped, and a failure leaves the release as it is. Both posts need a version bump: the workspace version at this tag must differ
+  # from the one at the previous release, so a release made again for the same version posts nothing.
+  discord:
+    name: Discord
+    if: startsWith(github.ref, 'refs/tags/') && !contains(github.ref_name, '-')
+    needs: release
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Is it a version bump
+        id: bump
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prev="$(gh release list --exclude-drafts --exclude-pre-releases --limit 5 --json tagName --jq '.[].tagName' | grep -vxF "$GITHUB_REF_NAME" | head -n 1 || true)"
+          if [ -z "$prev" ]; then
+            echo "No earlier release: the first one is a bump."
+            echo "post=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          now="$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)"
+          before="$(gh api "repos/$GITHUB_REPOSITORY/contents/Cargo.toml?ref=$prev" --jq .content | base64 -d | grep -m1 '^version' | cut -d'"' -f2)"
+          echo "Version $before at $prev, $now at $GITHUB_REF_NAME."
+          if [ -n "$now" ] && [ "$now" != "$before" ]; then
+            echo "post=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Not a version bump: nothing to post."
+            echo "post=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Post the release notes
+        if: steps.bump.outputs.post == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
+          DISCORD_ROLE_ID: ${{ vars.DISCORD_RELEASE_ROLE_ID }}
+        run: |
+          if [ -z "$DISCORD_WEBHOOK" ]; then
+            echo "No DISCORD_RELEASE_WEBHOOK secret: nothing to post."
+            exit 0
+          fi
+          gh release view "$GITHUB_REF_NAME" --json name,url,body | python3 ci/discord_release.py "$DISCORD_WEBHOOK" "$DISCORD_ROLE_ID"
+
+      - name: Post the whole changelog
+        if: always() && steps.bump.outputs.post == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_CHANGELOG_WEBHOOK }}
+        run: |
+          if [ -z "$DISCORD_WEBHOOK" ]; then
+            echo "No DISCORD_CHANGELOG_WEBHOOK secret: nothing to post."
+            exit 0
+          fi
+          gh release view "$GITHUB_REF_NAME" --json name,url,body | python3 ci/discord_release.py --full "$DISCORD_WEBHOOK"
