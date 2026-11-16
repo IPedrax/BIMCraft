@@ -47,6 +47,8 @@ undo history, replace it or write over its file is refused. Of the user's PyAddi
 never save, delete or run one, nor change a button.";
 
 /// Where the tools run: on a session of the server's own, or on a window's.
+// One for the server's whole life: the session's size costs nothing to keep in place.
+#[allow(clippy::large_enum_variant)]
 enum Backend {
     Own(Session),
     Window(Window),
