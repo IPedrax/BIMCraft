@@ -2263,7 +2263,6 @@ impl BimApp {
             | Tool::Copy(_)
             | Tool::Section(_)
             | Tool::Camera(_)
-            | Tool::Paste
             | Tool::Run(..) => {
                 let chain: Vec<P2> = match &self.tool {
                     Tool::Wall(chain) => chain.clone(),
@@ -3085,11 +3084,6 @@ impl BimApp {
     /// The tool's next point: of a wall chain, a grid's ends, a move's or a copy's base point and
     /// destination.
     pub(crate) fn place(&mut self, level: Id, p: P2) {
-        // A paste following the cursor puts the clipboard here, and no other tool sees the click.
-        if self.tool == Tool::Paste {
-            self.paste_drop_here(p);
-            return;
-        }
         // A shape other than a line: its points, then the walls along what they make.
         if matches!(self.tool, Tool::Wall(_)) && self.shape() != draw::Shape::Line {
             if matches!(self.shape(), draw::Shape::PickLines | draw::Shape::PickFaces) {
@@ -4308,21 +4302,6 @@ impl BimApp {
                 chain.as_slice()
             }
             Tool::SketchPick => &[],
-            // A paste following the cursor: the clipboard where a click would put it.
-            Tool::Paste => {
-                if let (Some(drop), Some(clip)) = (&self.paste_drop, &self.session.clipboard) {
-                    let at = self.found(sc, q, &[], false);
-                    let shift = sc.screen(at) - sc.screen(drop.anchor);
-                    for &id in &clip.ids {
-                        if let Some(e) = clip.model.elements.get(id) {
-                            let d = render::sketch(&clip.model, *v, id, e);
-                            self::ghost(p, sc.place, &d, &[id], &|pt| pt + shift);
-                        }
-                    }
-                    label(cursor, t("Click to paste here").to_string());
-                }
-                return;
-            }
             // The group a click would place.
             Tool::DetailGroup => {
                 if let Some(e) = self.group_at(m, key, self.found(sc, q, &[], false)) {

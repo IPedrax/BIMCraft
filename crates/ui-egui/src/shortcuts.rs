@@ -352,9 +352,6 @@ const IMMEDIATE_COMMANDS: &[&str] = &[
     "create_group",
     "ungroup",
     "delete",
-    "clipboard_copy",
-    "clipboard_cut",
-    "clipboard_paste",
     "match_properties",
     "select_by_id",
     "ids_of",
@@ -2384,19 +2381,6 @@ impl BimApp {
             }
             "redo" => {
                 self.run("redo", json!({}));
-                true
-            }
-            // The project's clipboard, as Ctrl+C, Ctrl+X and Ctrl+V give it: what a chord bound to one of them does.
-            "clipboard_copy" => {
-                self.take_selection(false);
-                true
-            }
-            "clipboard_cut" => {
-                self.take_selection(true);
-                true
-            }
-            "clipboard_paste" => {
-                self.paste_clipboard();
                 true
             }
             "reinforce" => {

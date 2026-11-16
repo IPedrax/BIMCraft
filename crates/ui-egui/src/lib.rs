@@ -61,7 +61,6 @@ mod orbit;
 mod panelsched;
 mod paper;
 mod parameters;
-mod paste;
 mod phasing;
 mod plugins;
 mod popup;
@@ -175,8 +174,6 @@ pub enum Tool {
     Move(Option<P2>),
     /// Copy the selection: its base point, once clicked.
     Copy(Option<P2>),
-    /// Paste from the clipboard where a click lands: what was copied follows the cursor (`paste.rs`).
-    Paste,
     /// Rotate the selection about `centre`: the start of the angle, once clicked; with `place`, the
     /// next click moves the centre.
     Rotate {
@@ -880,10 +877,6 @@ pub struct BimApp {
     typed: String,
     /// When the one letter in `typed` was typed, by the window's clock.
     typed_at: f64,
-    /// Ctrl+V on a plan other than the one the copy was made on: the panel asking where the paste goes.
-    paste_ask: Option<paste::Ask>,
-    /// Ctrl+V answered "No": the clipboard follows the cursor, and a click pastes it there.
-    paste_drop: Option<paste::Drop>,
     pending: Option<Pending>,
     /// What Delete was asked to take while it asks whether rooms' floors and ceilings go with them.
     deleting_rooms: Option<Vec<Id>>,
@@ -1673,8 +1666,6 @@ impl BimApp {
             new_level: (String::new(), String::new()),
             typed: String::new(),
             typed_at: 0.0,
-            paste_ask: None,
-            paste_drop: None,
             pending: None,
             deleting_rooms: None,
             type_dialog: None,
@@ -1896,7 +1887,6 @@ impl BimApp {
             | Tool::PatternCorner(_)
             | Tool::SpecifyPoint
             | Tool::ExportRegion(_)
-            | Tool::Paste
             | Tool::Acquire => None,
             Tool::Wall(_) => Some(msg!("Place Wall")),
             Tool::Paint => Some("Paint"),
@@ -2183,7 +2173,6 @@ impl BimApp {
         self.view_windows(&ctx);
         self.drag_and_drop(&ctx);
         self.warning(&ctx);
-        self.paste_question(&ctx);
         self.dialogs(&ctx);
         self.find_window(&ctx);
         // What Edit Tools ticked or cleared, on the ribbon or in the Tools palette.
@@ -2332,8 +2321,7 @@ impl BimApp {
 
     /// Whether a dialog, Find or a menu has the keys: the window's shortcuts wait.
     pub(crate) fn keys_taken(&self, ctx: &Context) -> bool {
-        self.paste_ask.is_some()
-            || self.type_dialog.is_some()
+        self.type_dialog.is_some()
             || self.text_type_dialog.is_some()
             || self.dimension_type_dialog.is_some()
             || self.spot_type_dialog.is_some()
@@ -2427,20 +2415,6 @@ impl BimApp {
             }
         }
         consume_key_events(ctx, &handled);
-
-        // Ctrl+C and Ctrl+X: the project's clipboard. A text field or a note has taken the frame before this, so their clipboard
-        // stays the system's. Ctrl+V pastes on the release of its key, since the platform's Paste event comes again on every
-        // repeat of a held key, and only while the system's clipboard holds text.
-        for event in &events {
-            match event {
-                Event::Copy => self.take_selection(false),
-                Event::Cut => self.take_selection(true),
-                Event::Key { key: Key::V, pressed: false, modifiers, .. } if modifiers.command && !modifiers.shift && !modifiers.alt => {
-                    self.paste_clipboard();
-                }
-                _ => {}
-            }
-        }
 
         // Contextual keys of a tool: Esc, Enter, Tab, Backspace, Space and the arrows are reserved.
         let pressed = |m: Modifiers, k: Key| ctx.input_mut(|i| i.consume_key(m, k));
@@ -2856,11 +2830,6 @@ impl BimApp {
     fn set_tool(&mut self, mut tool: Tool) {
         self.adaptive_clicks.clear();
         self.note_arrow = None;
-        // A paste question, and the paste that follows the cursor, belong to the tool that asked: another tool lets them go.
-        self.paste_ask = None;
-        if tool != Tool::Paste {
-            self.paste_drop = None;
-        }
         // Trim/Extend to Corner with two lines or walls selected (or picked, sketching) joins them at once, keeping the
         // parts toward their middles; with any other selection it asks for the picks.
         if tool == Tool::Trim(None) && self.corner_selected() {
@@ -3197,12 +3166,6 @@ impl BimApp {
     /// Escape: dismiss the error, drop the chain being drawn, else leave the tool, else clear the
     /// selection.
     fn escape(&mut self) {
-        // A paste following the cursor is let go first: nothing is pasted, and the clipboard stays for the next Ctrl+V.
-        if self.paste_drop.take().is_some() {
-            self.set_tool(Tool::Modify);
-            self.status = Status::default();
-            return;
-        }
         // A note's leader point clicked goes first, the Text tool staying on.
         if self.note_arrow.take().is_some() {
             self.status = Status::default();
@@ -3419,9 +3382,6 @@ impl BimApp {
         }
         // The selection is the model's, not the view's: it stays, whatever view comes up.
         self.clear_typed();
-        // A paste waiting for a click, or asking where it goes, belongs to the view it was asked in.
-        self.paste_drop = None;
-        self.paste_ask = None;
         self.snap_once = None;
         // A ruler belongs to the view it was laid in.
         self.measured = None;
@@ -5787,7 +5747,6 @@ impl BimApp {
         }
         match &self.tool {
             Tool::Modify => msg!("Click to select, Tab for what's underneath, Ctrl adds, Shift takes away; drag to box or to move."),
-            Tool::Paste => msg!("Click where the copied elements go; Esc lets the paste go."),
             Tool::Wall(chain) if chain.is_empty() => msg!("Click to enter the wall's start point."),
             Tool::Wall(_) => msg!("Click to build the wall to the next point. Enter or Esc ends the chain, Shift keeps it square."),
             Tool::Attach if self.attach_base => msg!("Pick a roof or a floor: the bases of what's selected stand on it."),

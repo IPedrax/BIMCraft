@@ -329,14 +329,6 @@ fn shortcut(h: &mut Harness<BimApp>, letters: &str) {
     h.run();
 }
 
-/// Ctrl+V over the view: the press, then the release that pastes (the platform's Paste event comes again on every repeat).
-fn paste(h: &mut Harness<BimApp>) {
-    for pressed in [true, false] {
-        h.input_mut().events.push(Event::Key { key: Key::V, pressed, modifiers: Modifiers::COMMAND, repeat: false, physical_key: None });
-    }
-    h.run();
-}
-
 fn ids(h: &Harness<BimApp>, category: &str) -> Vec<Id> {
     h.state().session.model.elements.iter().filter(|(_, e)| e.category() == category).map(|(id, _)| *id).collect()
 }
@@ -945,44 +937,6 @@ fn a_plain_letter_that_begins_no_sequence_does_nothing() {
     // W alone begins Wall and waits; A completes it.
     shortcut(&mut h, "WA");
     assert!(matches!(h.state().tool, Tool::Wall(_)));
-}
-
-#[test]
-fn ctrl_c_ctrl_x_and_ctrl_v_copy_cut_and_paste_and_a_paste_on_another_level_asks_where_it_goes() {
-    let mut h = app(BOX);
-    let walls = ids(&h, "wall");
-    let wall = walls[0];
-    // Nothing selected: nothing to copy.
-    h.input_mut().events.push(Event::Copy);
-    h.run();
-    assert!(h.state().status.error, "nothing to copy");
-    // Copied and pasted on its own level, the wall stands where it was.
-    h.state_mut().selection = vec![wall];
-    h.run();
-    h.input_mut().events.push(Event::Copy);
-    h.run();
-    paste(&mut h);
-    assert_eq!(ids(&h, "wall").len(), walls.len() + 1, "the paste made a wall");
-    // Cut takes the selected wall out, and a paste on Level 2 asks first where the copy goes.
-    h.state_mut().selection = vec![wall];
-    h.run();
-    h.input_mut().events.push(Event::Cut);
-    h.run();
-    assert_eq!(ids(&h, "wall").len(), walls.len(), "the cut took it out");
-    topmost(&mut h, "Level 2");
-    paste(&mut h);
-    assert!(h.query_by_label("Yes").is_some(), "the panel asks where the paste goes");
-    press(&mut h, "Yes");
-    let m = &h.state().session.model;
-    let on_two = m
-        .elements
-        .values()
-        .filter_map(|e| match e {
-            Element::Wall(w) => Some(w),
-            _ => None,
-        })
-        .any(|w| m.level(w.level).is_some_and(|l| l.name == "Level 2"));
-    assert!(on_two, "the wall pasted on Level 2, where it was on X and Y");
 }
 
 #[test]
