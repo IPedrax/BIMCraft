@@ -221,7 +221,8 @@ impl BimApp {
         let (rect, response) = ui.allocate_exact_size(ui.available_size(), Sense::CLICK | Sense::DRAG);
         let model = self.view_model();
         let ground = color(render::PAPER);
-        let grid_background = self.background_grid().shown();
+        // Under a background grid or an underlay drawn behind, the picture's paper is clear.
+        let grid_background = self.background_grid().shown() || crate::underlay::Layer::behind(&model, id);
         if self.cut.mode.0 {
             self.cut.poll(ui.ctx(), &model, id, ground, grid_background);
             if !self.canvas.has_view(id) {
@@ -267,7 +268,8 @@ impl BimApp {
         let pixels = View { scale: view.scale * ppp, width: side(view.width), height: side(view.height), ..view };
         let ground = color(render::PAPER);
         // Framing/model changes rebuild visibility; interaction changes only paint.
-        let grid_background = self.background_grid().shown();
+        // Under a background grid or an underlay drawn behind, the picture's paper is clear.
+        let grid_background = self.background_grid().shown() || crate::underlay::Layer::behind(&model, id);
         // A new canvas colour, or the background grid shown or hidden, paints the same picture's paper again.
         if self.cut.ground != ground || self.cut.grid_background != grid_background {
             self.cut.upload(ui.ctx(), ground, grid_background);
@@ -343,11 +345,18 @@ impl BimApp {
         let p = ui.painter_at(rect);
         p.rect_filled(rect, 0.0, color(render::PAPER));
         self.paint_background_grid(&p, rect, view);
+        // The underlay, made once the section is: behind it here, or over it below.
+        let hold = self.cut.worker.as_ref().is_some_and(Latest::busy);
+        let under = self.underlay_now(ui.ctx(), &model, id, view, hold);
+        self.paint_underlay(ui.ctx(), &p, rect, view, under.as_ref(), false);
         if let Some(t) = self.cut.texture.as_ref().filter(|_| displaying) {
             let image_rect = Rect::from_min_size(place.origin, egui::vec2(source.width as f32, source.height as f32) * k);
             p.image(t.id(), image_rect, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
         }
         paint(&p, place, &d, &self.selection, hovered, self.thin, &[]);
+        self.paint_underlay(ui.ctx(), &p, rect, view, under.as_ref(), true);
+        // Underlay Settings' Move or Rotate is picking here: the view's own clicks wait.
+        let picking = self.underlay_pick(ui, &response, &p, rect, &view, id, None);
         crate::cowork::paint_plan(&p, &self.cowork, &self.cowork_seen, &model, ("section", id), rect, &view, (&d, place));
         // While a note is written here, the pointer is its editor's.
         if self.writing_in(id) {
@@ -375,7 +384,7 @@ impl BimApp {
         self.cut.image = held;
         p.extend(boxed);
         p.extend(datum);
-        let clicked = self.clicked_at(&response).map(|at| (at.x - rect.min.x, at.y - rect.min.y));
+        let clicked = self.clicked_at(&response).filter(|_| !picking).map(|at| (at.x - rect.min.x, at.y - rect.min.y));
         // Along the line and up, to the nearest 10 mm.
         let grid = self.background_grid();
         let snapping = self.grid_snapping;

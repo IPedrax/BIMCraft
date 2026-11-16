@@ -1524,6 +1524,9 @@ impl BimApp {
         }
         if view_shown {
             self.graphics_properties(ui);
+            if !matches!(subject, Subject::CeilingPlan) {
+                self.underlay_properties(ui);
+            }
             self.phasing_properties(ui);
         }
         ui.add_space(8.0);

@@ -909,3 +909,42 @@ the line the elevation looks at, the elevation turns round and its line comes ov
 reference as it was; moved whole across (the Move tool, or with other things), the line turns round where it stands. Changing
 the line (its grips, `crop`) pins the mark where it stood. `mark` is FORMAT 18's too, so a build that reads up to 17 never draws
 the mark back at the middle.
+
+## Underlays
+
+A plan, a section or an elevation may show another view under it (or over it), as Archicad's Trace & Reference does, and more
+freely than Revit's Underlay, which is a plan's level below or above only: any plan (a level's or a plan view), section or
+elevation but itself, drawn as its own view range, graphics (Visibility/Graphics, its template, detail level, scale) and crop
+draw it. It is the view's own, saved with it (`Level::underlay`, `PlanView::underlay`, `Section::underlay`: `underlay.rs`'s
+`Underlay`), and a duplicate of the view has it too; deleting the view an underlay shows takes it off the views that showed it. The
+`underlay` command sets it: `source` (null takes it off), `on`, `color`,
+`fills`, `hide_annotation` (on by default: dimensions, tags, notes, grids, levels, marks and other annotation categories,
+`graphics::ANNOTATION`, and all lettering), `front` (over the view, rather than behind), `offset`, `angle`, `move`, `rotate`
+about `about`, and `reset`.
+
+- **Fitted by the internal origin.** A plan's coordinates are the model's; a section's run along its line from its start, and up
+  from 0, so the internal origin falls at its projection on the line, at height 0 (`underlay::origin`). The underlay's points go
+  to `origin(target) + offset + R(angle) (p - origin(source))` (`underlay::place`); `source_view` turns that into the `View` the
+  source is drawn through, so a plan source is drawn by `render::draw` straight into the target's pixels, turned however it is.
+  A section draws only square to its axes: it is drawn over a square that still covers the view once turned, then its lines
+  are turned and its picture resampled (`turned`).
+- **One colour, never picked.** `restyle` draws every line in the underlay's colour and every fill and pattern in a light wash
+  of it (or leaves them out without `fills`), and owns none of it, so nothing in it is ever picked or highlighted. A section's
+  picture of what it sees past its line comes as a picture of its own (`Underlaid::picture`), its ink in the colour and its
+  paper clear. What lies outside the target's crop region is cut away (`cropped_to`).
+- **Snapped to.** `Underlaid::segments` are its lines in the target's coordinates; `snap::snap_with` adds the nearest of them
+  (at most 256) to a plan's snaps, so ends, middles and crossings with the plan's own lines snap; a section's Move and Rotate
+  snap to them with `snap::among`.
+- **On screen** (`crates/ui-egui/src/underlay.rs`). The view's own drawing comes first: the underlay is asked of a worker of its
+  own (`view_worker::Latest`, which keeps a section's `SectionWork` for the next job of the same model) only while the view's
+  worker is idle, so a pan or an edit never waits on it. Until a new one comes, the last one of the same view and source is
+  shown, moved with the view. Its lines are triangles kept on the card (`retained::Retained`, one of its own), so a frame that
+  changes nothing costs a draw call. Behind the view it is painted over the paper and the background grid and under the
+  drawing (a section's picture lets it through, its paper clear, as under a background grid); in front, over the drawing.
+  Properties' Underlay group has Show Underlay (on with nothing chosen yet, a plan's starts with the level below, else above),
+  the view it shows and Underlay Settings, which has the rest; Move (two points) and Rotate (a centre and two rays) pick in
+  the view while the dialog stands aside, Esc stops them, and Reset Position puts it back. The Project Browser's right-click
+  Show as Underlay puts a plan, section or elevation under the view on screen. A ceiling plan shows none.
+- **Not yet:** an underlay is not printed, exported or drawn on sheets; a source view's own underlay isn't drawn in it; a change
+  to another level still makes it again (a revision check on what the source shows would spare that).
+
