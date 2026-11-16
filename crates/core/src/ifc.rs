@@ -103,8 +103,6 @@ const CRS: u64 = 88;
 const CRS_DEFINES: u64 = 89;
 const STAIR_COVERS: u64 = 90;
 const STAIR_MEMBERS: u64 = 91;
-const STAIR_PSET: u64 = 92;
-const STAIR_PSET_DEFINES: u64 = 93;
 const FLIGHT_PSET: u64 = 94;
 const FLIGHT_PSET_DEFINES: u64 = 95;
 const STAIR_OWN: u64 = 96;
@@ -2127,7 +2125,8 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
                 if !st.type_name.is_empty() {
                     common.push(w.add(format!("IFCPROPERTYSINGLEVALUE('Reference',$,IFCIDENTIFIER({}),$)", s(&st.type_name))));
                 }
-                w.define(ent, "Pset_StairCommon", &common, (STAIR_PSET, STAIR_PSET_DEFINES), id);
+                // Written once with the rest of its `Pset_StairCommon` (its phase's `Status`), as every element's common set is.
+                w.common.entry(id).or_insert((ent, "Pset_StairCommon", Vec::new())).2.extend(common);
                 for (f, n, each, going, length, key) in flights {
                     let mut props = vec![
                         count(&mut w, "NumberOfRiser", n),

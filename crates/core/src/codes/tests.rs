@@ -1276,6 +1276,18 @@ fn a_stair_goes_out_to_ifc_as_its_type_builds_it_and_comes_back_a_stair() {
 }
 
 #[test]
+fn a_phased_stair_has_one_common_set_in_ifc_with_its_status_in_it() {
+    let mut s = Session::new();
+    run(&mut s, "phase", json!({"name": "Demolition", "before": "New Construction"}));
+    let id = run(&mut s, "stair", json!({"start": [0, 0], "angle": 0, "type": "Monolithic 150mm"}))["id"].as_u64().unwrap();
+    run(&mut s, "modify", json!({"id": id, "params": {"Phase Created": "New Construction"}}));
+    let file = crate::ifc::export(&s.model);
+    // IFC asks a property set's name to be one an object has once (IfcUniqueDefinitionNames).
+    assert_eq!(file.matches("'Pset_StairCommon'").count(), 1, "{file}");
+    assert!(file.contains("IFCPROPERTYENUMERATEDVALUE('Status'"));
+}
+
+#[test]
 fn an_ifc_stair_s_common_set_brings_what_isn_t_the_stair_itself_as_parameters() {
     let mut s = Session::new();
     run(&mut s, "stair", json!({"start": [0, 0], "angle": 0, "type": "Monolithic 150mm"}));
