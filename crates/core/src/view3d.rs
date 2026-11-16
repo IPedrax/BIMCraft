@@ -139,6 +139,10 @@ struct Tri {
     /// is in the library, 0 for none; in the high 8, how see-through the material is, percent.
     tex: u32,
     curve: Option<(Id, usize)>,
+    /// The flat face of its element's mesh it is a triangle of, as `facets` numbers one; none on a curved surface, which
+    /// `curve` names, and none where the mesh gave it no face. Two faces in one plane are two, so what a pick and a work plane
+    /// take is the face clicked, not every triangle lying level with it.
+    face: Option<u32>,
     /// Its form's Visibility Settings, packed with its component's x axis ([`crate::family::visibility::packed`]); 0 for
     /// anything drawn in every view.
     vis: u32,
@@ -192,8 +196,8 @@ impl Frame {
             at(a.0, c.1, z.1),
         ];
         for [i, j, k, l] in [[0, 1, 2, 3], [4, 5, 6, 7], [0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7]] {
-            out.push(Tri { p: [v[i], v[j], v[k]], owner, color, tex, curve: None, vis: 0 });
-            out.push(Tri { p: [v[i], v[k], v[l]], owner, color, tex, curve: None, vis: 0 });
+            out.push(Tri { p: [v[i], v[j], v[k]], owner, color, tex, curve: None, face: None, vis: 0 });
+            out.push(Tri { p: [v[i], v[k], v[l]], owner, color, tex, curve: None, face: None, vis: 0 });
         }
     }
 }
@@ -490,8 +494,24 @@ impl Solid {
                 let at = |q: P2, p: &Plane| [q.0, q.1, p.at(q)];
                 for [a, b, c] in geom::triangulate(ring) {
                     let pt = |i: usize| ring.get(i).copied().unwrap_or_default();
-                    out.push(Tri { p: [at(pt(a), top), at(pt(b), top), at(pt(c), top)], owner, color, tex, curve: None, vis: 0 });
-                    out.push(Tri { p: [at(pt(a), bottom), at(pt(c), bottom), at(pt(b), bottom)], owner, color, tex, curve: None, vis: 0 });
+                    out.push(Tri {
+                        p: [at(pt(a), top), at(pt(b), top), at(pt(c), top)],
+                        owner,
+                        color,
+                        tex,
+                        curve: None,
+                        face: None,
+                        vis: 0,
+                    });
+                    out.push(Tri {
+                        p: [at(pt(a), bottom), at(pt(c), bottom), at(pt(b), bottom)],
+                        owner,
+                        color,
+                        tex,
+                        curve: None,
+                        face: None,
+                        vis: 0,
+                    });
                 }
                 for (a, b) in geom::ring_edges(ring) {
                     let (a0, b0, a1, b1) = (at(a, bottom), at(b, bottom), at(a, top), at(b, top));
@@ -499,17 +519,29 @@ impl Solid {
                     let curve = curve
                         .filter(|(c, _)| (b - a).unit().cross((a - *c).unit()).abs() > 0.5)
                         .map(|(c, r)| (owner, usize::from(((a + b) * 0.5).dist(c) > r)));
-                    out.push(Tri { p: [a0, b0, b1], owner, color, tex, curve, vis: 0 });
-                    out.push(Tri { p: [a0, b1, a1], owner, color, tex, curve, vis: 0 });
+                    out.push(Tri { p: [a0, b0, b1], owner, color, tex, curve, face: None, vis: 0 });
+                    out.push(Tri { p: [a0, b1, a1], owner, color, tex, curve, face: None, vis: 0 });
                 }
             }
-            // Each surface keyed by its first triangle's place in `out`, which no other form's shares.
+            // Each surface, and each flat face, keyed by its first triangle's place in `out`, which no other form's shares.
             // ponytail: worked out again for each component of a family; keep it per form if many big meshes slow a scene.
             Solid::Mesh { owner, color, tex, tris, caps, round, vis, .. } => {
                 let first = out.len();
-                let surfaces = if *round { (0..tris.len()).map(|i| (i >= *caps).then_some(*caps)).collect() } else { facets(tris) };
-                for (p, s) in tris.iter().zip(surfaces) {
-                    out.push(Tri { p: *p, owner: *owner, color: *color, tex: *tex, curve: s.map(|s| (*owner, first + s)), vis: *vis });
+                let (surfaces, faces) = if *round {
+                    ((0..tris.len()).map(|i| (i >= *caps).then_some(*caps)).collect(), vec![None; tris.len()])
+                } else {
+                    facets(tris)
+                };
+                for ((p, s), f) in tris.iter().zip(surfaces).zip(faces) {
+                    out.push(Tri {
+                        p: *p,
+                        owner: *owner,
+                        color: *color,
+                        tex: *tex,
+                        curve: s.map(|s| (*owner, first + s)),
+                        face: f.map(|f| (first + f) as u32),
+                        vis: *vis,
+                    });
                 }
             }
         }
@@ -623,10 +655,11 @@ pub(crate) fn slice(tris: &[[P3; 3]], p: P2, u: P2, len: f64) -> Option<Vec<Vec<
 /// the facets a curve is cut into turn less, a crease like a seat's rim more.
 const SMOOTH: f64 = 20.0;
 
-/// The curved surfaces a mesh's triangles make: those that share an edge and turn less than
-/// [`SMOOTH`] degrees there are one. Each triangle's surface is its first triangle's index; none
-/// for a flat face (`planes` finds those by their plane) or a triangle alone.
-fn facets(tris: &[[P3; 3]]) -> Vec<Option<usize>> {
+/// The curved surfaces and the flat faces a mesh's triangles make: those that share an edge and turn less than
+/// [`SMOOTH`] degrees there are one. A surface with a bend in it is a curve, each triangle's as its first triangle's
+/// index; one with none is a face, numbered the same way, so two faces in one plane that do not touch are two. None for a
+/// triangle with no area, which has no plane to be one.
+fn facets(tris: &[[P3; 3]]) -> (Vec<Option<usize>>, Vec<Option<usize>>) {
     /// The first triangle of `i`'s surface, as `up` links them, shortening the way as it goes.
     fn first(up: &mut [usize], mut i: usize) -> usize {
         while let Some(&p) = up.get(i)
@@ -669,7 +702,15 @@ fn facets(tris: &[[P3; 3]]) -> Vec<Option<usize>> {
         }
     }
     let curved: HashSet<usize> = bent.into_iter().map(|i| first(&mut up, i)).collect();
-    (0..tris.len()).map(|i| Some(first(&mut up, i)).filter(|s| curved.contains(s))).collect()
+    let mut curves = Vec::with_capacity(tris.len());
+    let mut faces = Vec::with_capacity(tris.len());
+    for (i, n) in normals.iter().enumerate() {
+        let root = first(&mut up, i);
+        let (curve, face) = if curved.contains(&root) { (Some(root), None) } else { (None, (dot(*n, *n) > 0.5).then_some(root)) };
+        curves.push(curve);
+        faces.push(face);
+    }
+    (curves, faces)
 }
 
 /// The corner normals of each triangle of a curved surface, for it to shade smoothly across its
@@ -1346,12 +1387,12 @@ fn prism(out: &mut Vec<Tri>, owner: Id, (color, tex): (Rgb, u32), face: &[P3], r
     let up = |p: P3| [p[0], p[1], p[2] + rise];
     let pt = |i: usize| face.get(i).copied().unwrap_or_default();
     for [a, b, c] in geom::triangulate(&plan(face)) {
-        out.push(Tri { p: [up(pt(a)), up(pt(b)), up(pt(c))], owner, color, tex, curve: None, vis: 0 });
-        out.push(Tri { p: [pt(a), pt(c), pt(b)], owner, color, tex, curve: None, vis: 0 });
+        out.push(Tri { p: [up(pt(a)), up(pt(b)), up(pt(c))], owner, color, tex, curve: None, face: None, vis: 0 });
+        out.push(Tri { p: [pt(a), pt(c), pt(b)], owner, color, tex, curve: None, face: None, vis: 0 });
     }
     for (a, b) in face.iter().zip(face.iter().cycle().skip(1)) {
-        out.push(Tri { p: [*a, *b, up(*b)], owner, color, tex, curve: None, vis: 0 });
-        out.push(Tri { p: [*a, up(*b), up(*a)], owner, color, tex, curve: None, vis: 0 });
+        out.push(Tri { p: [*a, *b, up(*b)], owner, color, tex, curve: None, face: None, vis: 0 });
+        out.push(Tri { p: [*a, up(*b), up(*a)], owner, color, tex, curve: None, face: None, vis: 0 });
     }
 }
 
@@ -1370,6 +1411,8 @@ struct PlaneTable {
     /// distance and number.
     found: HashMap<[i64; 4], Vec<(P3, f64, usize)>>,
     curves: HashMap<(Id, usize), usize>,
+    /// The flat faces a mesh's triangles were grouped into, by the face [`Tri::face`] names.
+    faces: HashMap<(Id, u32), usize>,
     /// The next number to give.
     next: usize,
 }
@@ -1377,6 +1420,14 @@ struct PlaneTable {
 impl PlaneTable {
     /// The number of `t`'s plane: that of a plane found before within the tolerance, else a new one.
     fn assign(&mut self, t: &Tri) -> usize {
+        // A mesh's own face first: two faces in one plane are two.
+        if let Some(f) = t.face {
+            let next = &mut self.next;
+            return *self.faces.entry((t.owner, f)).or_insert_with(|| {
+                *next += 1;
+                *next - 1
+            });
+        }
         if let Some(c) = t.curve {
             let next = &mut self.next;
             return *self.curves.entry(c).or_insert_with(|| {
@@ -1421,14 +1472,19 @@ impl PlaneTable {
     }
 }
 
-/// Each element's curved surfaces numbered in the order its triangles meet them, so what names a curve depends on the element
-/// alone, never on where its triangles are in the scene: `tris` is one element's.
-fn local_curves(tris: &mut [Tri]) {
-    let mut seen: HashMap<usize, usize> = HashMap::new();
+/// Each element's curved surfaces and flat faces numbered in the order its triangles meet them, so what names one depends
+/// on the element alone, never on where its triangles are in the scene: `tris` is one element's.
+fn local_surfaces(tris: &mut [Tri]) {
+    let mut curves: HashMap<usize, usize> = HashMap::new();
+    let mut faces: HashMap<usize, usize> = HashMap::new();
     for t in tris {
         if let Some((owner, k)) = t.curve {
-            let n = seen.len();
-            t.curve = Some((owner, *seen.entry(k).or_insert(n)));
+            let n = curves.len();
+            t.curve = Some((owner, *curves.entry(k).or_insert(n)));
+        }
+        if let Some(k) = t.face {
+            let n = faces.len();
+            t.face = u32::try_from(*faces.entry(k as usize).or_insert(n)).ok();
         }
     }
 }
@@ -2012,7 +2068,7 @@ impl Scene {
         let spans = spans_of(&tris);
         for span in &spans {
             if let Some(own) = tris.get_mut(span.at.clone()) {
-                local_curves(own);
+                local_surfaces(own);
             }
         }
         // Each paintable element's rule for naming the faces of its triangles; paint gives those it's laid on their material.
@@ -4746,7 +4802,7 @@ mod tests {
 
     #[test]
     fn coplanar_triangles_share_a_plane_and_degenerate_ones_each_their_own() {
-        let tri = |p: [P3; 3]| Tri { p, owner: 1, color: EDGE, tex: 0, curve: None, vis: 0 };
+        let tri = |p: [P3; 3]| Tri { p, owner: 1, color: EDGE, tex: 0, curve: None, face: None, vis: 0 };
         // A face's triangles a micron off its plane, as a file rounds them, are one plane;
         // triangles with no area are each their own, and many of them stay quick.
         let mut tris: Vec<Tri> = (0..200)
@@ -4823,7 +4879,23 @@ mod tests {
         assert_eq!(normals.iter().flatten().count(), 50_000, "its sides, and not its caps");
         // Corners that aren't numbers, and triangles with no area, join nothing, and don't crash it.
         let odd = [[[f64::NAN; 3]; 3], [[f64::INFINITY; 3]; 3], [[1e300, 0.0, 0.0], [-1e300, 1e300, 0.0], [0.0; 3]], [[0.0; 3]; 3]];
-        assert_eq!(facets(&odd), vec![None; 4]);
+        let (curves, faces) = facets(&odd);
+        assert!(curves.iter().all(Option::is_none));
+        assert_eq!(faces, vec![None; 4]);
+    }
+
+    #[test]
+    fn a_face_cut_into_triangles_is_one_face_and_a_square_beside_it_its_own() {
+        // Two halves of one square, and a second square only in the same plane, five metres off.
+        let a = [[0.0, 0.0, 0.0], [1000.0, 0.0, 0.0], [1000.0, 1000.0, 0.0]];
+        let b = [[0.0, 0.0, 0.0], [1000.0, 1000.0, 0.0], [0.0, 1000.0, 0.0]];
+        let c = [[5000.0, 0.0, 0.0], [6000.0, 0.0, 0.0], [6000.0, 1000.0, 0.0]];
+        let d = [[5000.0, 0.0, 0.0], [6000.0, 1000.0, 0.0], [5000.0, 1000.0, 0.0]];
+        let (curves, faces) = facets(&[a, b, c, d]);
+        assert!(curves.iter().all(Option::is_none), "no bend, no curved surface");
+        assert_eq!(faces[0], faces[1], "the halves of one square are one face");
+        assert_eq!(faces[2], faces[3]);
+        assert_ne!(faces[0], faces[2], "a square beside it is a face of its own, though one plane: {faces:?}");
     }
 
     use crate::engine::Session;
@@ -4907,6 +4979,44 @@ mod tests {
         s
     }
 
+    /// A session whose one component is a form of two 1 m squares in the same plane, five metres apart.
+    fn pair() -> Session {
+        let square = |x: f64| {
+            let (a, b, c, d) = ([x, 0.0, 0.0], [x + 1000.0, 0.0, 0.0], [x + 1000.0, 1000.0, 0.0], [x, 1000.0, 0.0]);
+            vec![[a, b, c], [a, c, d]]
+        };
+        let mut s = Session::new();
+        let mesh = [square(0.0), square(5000.0)].concat();
+        let pair = serde_json::json!({"name": "Pair", "types": {"A": {}}, "forms": [{"mesh": mesh}]});
+        s.execute("family", &pair).unwrap();
+        s.execute("component", &serde_json::json!({"family": "Pair", "at": [0, 0]})).unwrap();
+        s
+    }
+
+    #[test]
+    fn two_coplanar_faces_of_one_mesh_are_picked_apart_and_a_curves_side_stays_whole() {
+        let s = pair();
+        let scene = Scene::new(&s.model);
+        let look = Look::of_3d(&s.model);
+        let cam = Camera { azimuth: -60.0, elevation: 30.0, scale: 0.1, target: [3000.0, 500.0, 0.0], width: 800, height: 600, lens: None };
+        let left = scene.face_at(&cam, at(&cam, [500.0, 500.0, 0.0]), &look).expect("the left square");
+        let right = scene.face_at(&cam, at(&cam, [5500.0, 500.0, 0.0]), &look).expect("the right square");
+        assert_eq!(left.tris.len(), 2, "only the square clicked: {left:?}");
+        assert_eq!(right.tris.len(), 2, "only the square clicked: {right:?}");
+        assert!(left.tris.iter().flatten().all(|p| p[0] < 2000.0), "{left:?}");
+        assert!(right.tris.iter().flatten().all(|p| p[0] > 3000.0), "{right:?}");
+        // A post's side is still one surface across its 24 facets, and its cap one face.
+        let s = post();
+        let scene = Scene::new(&s.model);
+        let look = Look::of_3d(&s.model);
+        let cam =
+            Camera { azimuth: AZIMUTH, elevation: ELEVATION, scale: 0.1, target: [0.0, 0.0, 500.0], width: 800, height: 600, lens: None };
+        let side = scene.face_at(&cam, at(&cam, [200.0, 0.0, 500.0]), &look).expect("the side");
+        assert_eq!(side.tris.len(), 48, "its 24 facets, each cut in two: {side:?}");
+        let cap = scene.face_at(&cam, at(&cam, [0.0, 0.0, 1000.0]), &look).expect("the top");
+        assert_eq!(cap.tris.len(), 24, "one face, however many triangles: {cap:?}");
+    }
+
     /// The most any channel moves between neighbours along `colors`.
     fn step(colors: &[Rgb]) -> u8 {
         colors.windows(2).map(|w| w[0].0.abs_diff(w[1].0).max(w[0].1.abs_diff(w[1].1)).max(w[0].2.abs_diff(w[1].2))).max().unwrap_or(0)
@@ -4942,7 +5052,7 @@ mod tests {
         assert!((2 * n..4 * n).all(|i| normal(i).iter().all(|v| v[2].abs() < 1e-9)));
         assert!((4 * n..5 * n).all(|i| normal(i)[0][2] > 0.4 && normal(i)[1][2] > 0.4 && normal(i)[2][2] > 1.0 - 1e-9));
         // Triangles with corners that aren't numbers, or no area, have none, and don't crash it.
-        let odd = |p: [P3; 3]| Tri { p, owner: 1, color: EDGE, tex: 0, curve: Some((1, 0)), vis: 0 };
+        let odd = |p: [P3; 3]| Tri { p, owner: 1, color: EDGE, tex: 0, curve: Some((1, 0)), face: None, vis: 0 };
         let odd = [
             odd([[f64::NAN; 3]; 3]),
             odd([[f64::INFINITY; 3]; 3]),

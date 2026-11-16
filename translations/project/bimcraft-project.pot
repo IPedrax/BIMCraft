@@ -281,7 +281,7 @@ msgid "Gate Valve"
 msgstr ""
 
 #: crates/core/src/family.rs:3429
-#: crates/core/src/view3d.rs:1322
+#: crates/core/src/view3d.rs:1363
 msgid "Glass"
 msgstr ""
 
