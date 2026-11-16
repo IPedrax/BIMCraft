@@ -358,6 +358,86 @@ fn ifc_says_each_code_as_a_classification_reference_of_its_system_related_to_the
     assert_eq!(w2.params().unwrap()["Uniclass Ss Title"], "Brick and block wall systems");
 }
 
+/// The entity numbers of the lines of `class` in `f`.
+fn of_class<'a>(f: &'a str, class: &str) -> Vec<&'a str> {
+    let at = format!("={class}(");
+    f.lines().filter(|l| l.contains(&at)).filter_map(|l| l.split('=').next()).collect()
+}
+
+/// The names of the properties the property sets related to `n` hold.
+fn properties_of<'a>(f: &'a str, n: &str) -> Vec<&'a str> {
+    let mut out = Vec::new();
+    for rel in f.lines().filter(|l| l.contains("=IFCRELDEFINESBYPROPERTIES(")) {
+        let Some((related, set)) = rel.split_once("$,$,$,(").and_then(|(_, r)| r.split_once("),")) else { continue };
+        if !related.split(',').any(|r| r == n) {
+            continue;
+        }
+        let set = line(f, set.trim_end_matches(");"));
+        let Some(props) = set.contains("=IFCPROPERTYSET(").then(|| set.rsplit_once(",(")).flatten() else { continue };
+        for p in props.1.trim_end_matches(';').trim_end_matches(')').split(',') {
+            out.extend(line(f, p).split('\'').nth(1));
+        }
+    }
+    out
+}
+
+#[test]
+fn a_classified_project_goes_out_and_comes_back_twice_as_the_same_references_and_never_as_properties() {
+    let (mut s, wall, door) = house();
+    uniclass(&mut s);
+    run(
+        &mut s,
+        "classify",
+        json!({"assign": [
+        {"target": wall.to_string(), "table": "Uniclass Ss", "code": "Ss_25_10_30_35"},
+        {"target": door.to_string(), "table": "Uniclass Ss", "code": "Ss_25_30_20"}]}),
+    );
+    let first = crate::ifc::export(&s.model);
+    // A code goes out as its reference, not a property too: a reader would find it twice.
+    let w = of_class(&first, "IFCWALL")[0];
+    assert!(!properties_of(&first, w).contains(&"Uniclass Ss Number"), "{:?}", properties_of(&first, w));
+    // Read back with no tables, and written again: the same codes, as references of Uniclass 2015.
+    let back = crate::import::ifc(first.as_bytes(), "t").unwrap();
+    let second = crate::ifc::export(&back.model);
+    let refs = |f: &str| {
+        let mut r: Vec<String> = of_class(f, "IFCCLASSIFICATIONREFERENCE")
+            .into_iter()
+            .map(|n| line(f, n).split(',').nth(1).unwrap_or_default().to_string())
+            .collect();
+        r.sort();
+        r
+    };
+    assert_eq!(refs(&second), ["'Ss_25_10_30_35'", "'Ss_25_30_20'"], "{second}");
+    assert_eq!(of_class(&second, "IFCRELASSOCIATESCLASSIFICATION").len(), 2);
+    let systems: Vec<&str> = second.lines().filter(|l| l.contains("=IFCCLASSIFICATION(")).collect();
+    assert_eq!(systems.len(), 1);
+    assert!(systems[0].contains("'2024-07',$,'Uniclass 2015'"), "{}", systems[0]);
+    let w = of_class(&second, "IFCWALL")[0];
+    assert!(!properties_of(&second, w).contains(&"Uniclass Ss Number"), "{:?}", properties_of(&second, w));
+    let again = crate::import::ifc(second.as_bytes(), "t").unwrap();
+    assert_eq!(again.model.parameters, back.model.parameters);
+}
+
+#[test]
+fn a_parameter_both_bound_to_a_table_and_of_a_classification_goes_out_once() {
+    // A system's parameter that also says it is of a classification (as one read from IFC does): its tables write each code,
+    // and the parameter's classification writes nothing more.
+    let (mut s, wall, door) = house();
+    uniclass(&mut s);
+    run(
+        &mut s,
+        "classify",
+        json!({"assign": [
+        {"target": wall.to_string(), "table": "Uniclass Ss", "code": "Ss_25_10_30_35"},
+        {"target": door.to_string(), "table": "Uniclass Ss", "code": "Ss_25_30_20"}]}),
+    );
+    run(&mut s, "parameter", json!({"name": "Uniclass Ss Number", "classification": {"system": "Uniclass 2015", "edition": "2024-07"}}));
+    let f = crate::ifc::export(&s.model);
+    assert_eq!(of_class(&f, "IFCCLASSIFICATIONREFERENCE").len(), 2, "{f}");
+    assert_eq!(of_class(&f, "IFCRELASSOCIATESCLASSIFICATION").len(), 2);
+    assert_eq!(f.lines().filter(|l| l.contains("=IFCCLASSIFICATION(")).count(), 1);
+}
+
 #[test]
 fn another_programs_classification_comes_in_as_its_systems_parameters_or_named_for_it() {
     assert_eq!(classification::imported_parameters("OmniClass", "23-17 11 00").0, "OmniClass 23 Number");

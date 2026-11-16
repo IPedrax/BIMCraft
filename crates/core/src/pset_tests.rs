@@ -252,3 +252,46 @@ fn the_parameter_command_says_where_its_values_go_in_ifc_and_refuses_what_ifc_ca
         assert_eq!(s.model.parameters, before, "{bad}");
     }
 }
+
+#[test]
+fn a_known_systems_references_come_back_as_its_tables_parameters_and_go_out_again_as_references() {
+    // Uniclass from another program, with no tables loaded here: its codes come in as the parameters Uniclass's tables would
+    // fill, and the next export writes them as the references they came in as, not as properties.
+    let s = house();
+    let file = crate::ifc::export(&s.model);
+    let (walls, doors) = (of_class(&file, "IFCWALL"), of_class(&file, "IFCDOOR"));
+    let file = with(
+        &file,
+        &format!(
+            "#900001=IFCCLASSIFICATION('NBS','2015',$,'Uniclass 2015',$,$,$);
+#900002=IFCCLASSIFICATIONREFERENCE($,'Ss_25_10_30_35','Brick and block wall systems',#900001,$,$);
+#900003=IFCRELASSOCIATESCLASSIFICATION('0aaaaaaaaaaaaaaaaaaaa1',$,$,$,({}),#900002);
+#900004=IFCCLASSIFICATIONREFERENCE($,'Ss_25_30',$,#900001,$,$);
+#900005=IFCCLASSIFICATIONREFERENCE($,'Ss_25_30_20','Door systems',#900004,$,$);
+#900006=IFCRELASSOCIATESCLASSIFICATION('0aaaaaaaaaaaaaaaaaaaa2',$,$,$,({}),#900005);
+",
+            walls.join(","),
+            doors.join(",")
+        ),
+    );
+    let i = ifc(file.as_bytes(), "x").unwrap();
+    let p = &i.model.parameters["Uniclass Ss Number"];
+    assert_eq!(p.classification, Some(Classification { system: "Uniclass 2015".into(), edition: Some("2015".into()) }));
+    assert_eq!(p.categories, ["door", "wall"]);
+    assert_eq!(values(&i.model, "wall").get("Uniclass Ss Number"), Some(&json!("Ss_25_10_30_35")));
+    assert_eq!(values(&i.model, "wall").get("Uniclass Ss Title"), Some(&json!("Brick and block wall systems")));
+    assert_eq!(values(&i.model, "door").get("Uniclass Ss Number"), Some(&json!("Ss_25_30_20")));
+
+    let again = crate::ifc::export(&i.model);
+    let systems = of_class(&again, "IFCCLASSIFICATION");
+    assert_eq!(systems.len(), 1, "{again}");
+    assert!(body(&again, &systems[0]).contains("'2015'") && body(&again, &systems[0]).contains("'Uniclass 2015'"));
+    assert_eq!(of_class(&again, "IFCCLASSIFICATIONREFERENCE").len(), 2);
+    assert_eq!(of_class(&again, "IFCRELASSOCIATESCLASSIFICATION").len(), 2);
+    let wall = of_class(&again, "IFCWALL").remove(0);
+    assert!(sets_of(&again, &wall).values().flatten().all(|n| n != "Uniclass Ss Number"), "{:?}", sets_of(&again, &wall));
+    let back = ifc(again.as_bytes(), "x").unwrap();
+    assert_eq!(back.model.parameters["Uniclass Ss Number"], i.model.parameters["Uniclass Ss Number"]);
+    assert_eq!(values(&back.model, "wall").get("Uniclass Ss Number"), Some(&json!("Ss_25_10_30_35")));
+    assert_eq!(values(&back.model, "door").get("Uniclass Ss Number"), Some(&json!("Ss_25_30_20")));
+}

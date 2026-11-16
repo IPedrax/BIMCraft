@@ -134,15 +134,21 @@ default.
     parameter's own classification are of (`Step::classification_by`)
   - an `IfcClassificationReference` for each code held (code, title, system)
   - an `IfcRelAssociatesClassification` from each code to the elements holding it, their own or their type's
+  - what a table wrote (the code's parameter and its title's, for each element) is neither a property too nor a second
+    reference of the parameter's own classification: the other parameters of a classification go out after it
 - IfcOpenShell validates the file and reads the references back (`ifcopenshell.util.classification.get_references`).
-- **Import** reads each element's references of a system this module knows (`known_system`), through references of
-  references, into the system's own parameters (`imported_parameters`): `Uniclass Pr Number` for `Pr_…`, `OmniClass 23
-  Number` for `23-…`. Any other system's codes come in as the IFC import has them: one text parameter named for the system,
-  which remembers it and its edition and goes back out as its references.
+- **Import** reads references as the IFC import does ([property sets and classification](ifc-import.md#property-sets-and-classification)),
+  in one loop: a type's codes on its occurrences, references of references up to the system. A system this module knows
+  (`known_system`) comes into its own parameters (`imported_parameters`): `Uniclass Pr Number` for `Pr_…`, `OmniClass 23
+  Number` for `23-…`, with the reference's name in its Title parameter; any other's into one text parameter named for the
+  system. Either remembers the system and its edition (`ProjectParameter::classification`), so with no tables loaded a project
+  read from IFC goes back out as the same references, and a project classified here survives going out and in twice.
 
 ## Left for later
 
 - A Job sheet (maintenance tasks and their frequencies) and the Floor and Facility sheets of COBie. Levels and the project
   aren't parameter categories yet.
 - Type objects in IFC: codes go on occurrences, as the project's type parameters do.
+- Loading a system's tables after its codes came in from IFC asks whether the parameters are the same (their GUIDs aren't the
+  system's), and a table classified by type (`Uniclass Ss`) makes the parameter a type one, wiping the instance values read.
 - Writing a COBie spreadsheet: the values are parameters, and a schedule exports them.

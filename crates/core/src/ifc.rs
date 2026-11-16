@@ -14,7 +14,7 @@ use bimcraft_i18n::ui_msg;
 pub mod classes;
 mod v2x3;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write;
 
 use crate::family::ConnectorKind;
@@ -193,10 +193,12 @@ fn shape_of(landings: &[crate::model::Landing], kind: &str) -> String {
 /// The codes elements and their types hold from the project's classification tables, as ISO 16739's classification resource
 /// has them: an `IfcClassification` for each system (its publisher, edition and name), an `IfcClassificationReference` for
 /// each code held (its code, title and system), and an `IfcRelAssociatesClassification` from each code to the elements
-/// that hold it, theirs or their type's.
-fn classify(w: &mut Step, m: &Model, products: &BTreeMap<Id, u64>) {
+/// that hold it, theirs or their type's. What it wrote, each product's parameters (the code's and its title's), which the
+/// export then writes neither as properties nor as references of the parameter's own classification.
+fn classify<'m>(w: &mut Step, m: &'m Model, products: &BTreeMap<Id, u64>) -> BTreeSet<(&'m str, u64)> {
     use crate::classification::{self as cls, Target};
     let mut codes: BTreeMap<(String, String), (u64, Vec<u64>)> = BTreeMap::new();
+    let mut written = BTreeSet::new();
     for b in &m.classification.bindings {
         let (Some(table), Some(q)) = (m.classification.tables.get(&b.table), m.parameters.get(&b.parameter)) else { continue };
         let def = cls::system(&table.system);
@@ -226,6 +228,10 @@ fn classify(w: &mut Step, m: &Model, products: &BTreeMap<Id, u64>) {
             if !entry.1.contains(&ent) {
                 entry.1.push(ent);
             }
+            written.insert((b.parameter.as_str(), ent));
+            if let Some(title) = &b.title {
+                written.insert((title.as_str(), ent));
+            }
         }
     }
     for ((name, code), (r, ents)) in codes {
@@ -236,6 +242,7 @@ fn classify(w: &mut Step, m: &Model, products: &BTreeMap<Id, u64>) {
             .fold(0xcbf2_9ce4_8422_2325_u64, |h, b| (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3));
         w.add(format!("IFCRELASSOCIATESCLASSIFICATION({},$,$,$,({}),#{r})", w.guid(CODES_CLASSIFIED, key), refs(&ents)));
     }
+    written
 }
 
 /// A STEP string literal: `'` doubled, `\` doubled, anything outside printable ASCII as `\X2\…\X0\`
@@ -2310,7 +2317,7 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
         w.add(format!("IFCMATERIALLAYERSET(({}),{},$)", refs(&ids), s(name)))
     };
     let mut sets: BTreeMap<&str, u64> = BTreeMap::new();
-    let used: std::collections::BTreeSet<&str> = placed.keys().filter_map(|id| m.wall(*id)).map(|wl| wl.type_name.as_str()).collect();
+    let used: BTreeSet<&str> = placed.keys().filter_map(|id| m.wall(*id)).map(|wl| wl.type_name.as_str()).collect();
     for (name, t) in m.types.wall.iter().filter(|(name, t)| !t.layers.is_empty() && used.contains(name.as_str())) {
         sets.insert(name, layer_set(&mut w, name, &t.layers));
     }
@@ -2435,7 +2442,9 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
         }
     }
     // Each element's values of the project's parameters: in the set its parameter names for its category, else a property set
-    // of its own, `Project Parameters`; lengths in the file's millimetres. A classification's codes go as references, below.
+    // of its own, `Project Parameters`; lengths in the file's millimetres. A classification's codes go as references: a table's
+    // first (`classify`), then those of a parameter's own classification that no table wrote.
+    let by_tables = classify(&mut w, m, &products);
     let mut classified: BTreeMap<(&str, &str), Vec<u64>> = BTreeMap::new();
     for (&id, &ent) in &products {
         let Some(e) = m.elements.get(id) else { continue };
@@ -2449,6 +2458,9 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
         for (name, v) in params.iter().chain(of_type) {
             // The project's parameters for its category: a component's family's values are its family's.
             let Some(p) = m.parameters.get(name).filter(|p| p.categories.iter().any(|c| c == e.category())) else { continue };
+            if by_tables.contains(&(name.as_str(), ent)) {
+                continue;
+            }
             if p.classification.is_some() {
                 if let Some(code) = v.as_str().filter(|c| !c.trim().is_empty()) {
                     classified.entry((name.as_str(), code)).or_default().push(ent);
@@ -2493,7 +2505,6 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
         let key = key_of(&format!("{name}\u{0}{code}"));
         w.add(format!("IFCRELASSOCIATESCLASSIFICATION({},$,$,$,({}),#{reference})", w.guid(CLASSIFIED, key), refs(ents)));
     }
-    classify(&mut w, m, &products);
     // A placed device's connector (the power one, else the first electrical one; a pipe's waits for IFC's ports): `Pset_ElectricalDeviceCommon`, with the poles, and for a power
     // connector the power factor and the voltage (IFC4's types: a ratio, and a bounded value with its set point), and `BIMCraft_Connector` with what IFC has no property for.
     for (&id, &ent) in &products {
