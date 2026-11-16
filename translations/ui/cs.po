@@ -336,7 +336,7 @@ msgstr "Pohled má vždy měřítko"
 msgid "A view template is named {} already: give the set another name"
 msgstr "Šablona pohledu s názvem {} již existuje: zvolte pro sadu jiný název"
 
-#: crates/ui-egui/src/curtain.rs:577
+#: crates/ui-egui/src/curtain.rs:580
 msgid "A wall stands here: select it, or delete it to have the panel back."
 msgstr ""
 
@@ -518,11 +518,11 @@ msgstr "Přidat filtr"
 msgid "Add Folder"
 msgstr ""
 
-#: crates/ui-egui/src/curtain.rs:722
+#: crates/ui-egui/src/curtain.rs:725
 msgid "Add Horizontal Grid"
 msgstr ""
 
-#: crates/ui-egui/src/curtain.rs:720
+#: crates/ui-egui/src/curtain.rs:723
 msgid "Add Horizontal Grid: in a section, an elevation or the 3D view, hover over the curtain wall to see where, click to place it with its mullions. A grid added stays when the pattern changes"
 msgstr ""
 
@@ -615,11 +615,11 @@ msgstr "Přidat vrchol"
 msgid "Add Vertex: click a polyline or a spline where a vertex goes; a spline keeps its shape"
 msgstr "Přidat vrchol: klikněte na křivku nebo spline v místě nového vrcholu; křivka spline si zachová svůj tvar"
 
-#: crates/ui-egui/src/curtain.rs:716
+#: crates/ui-egui/src/curtain.rs:719
 msgid "Add Vertical Grid"
 msgstr ""
 
-#: crates/ui-egui/src/curtain.rs:714
+#: crates/ui-egui/src/curtain.rs:717
 msgid "Add Vertical Grid: hover over the curtain wall to see where, click to place it with its mullions. A grid added stays when the pattern changes"
 msgstr ""
 
@@ -677,12 +677,12 @@ msgid "Add {}"
 msgstr ""
 
 #: crates/core/src/commands.rs:584
-#: crates/ui-egui/src/curtain.rs:729
+#: crates/ui-egui/src/curtain.rs:732
 #: crates/ui-egui/src/lib.rs:1891
 msgid "Add/Remove Segments"
 msgstr ""
 
-#: crates/ui-egui/src/curtain.rs:726
+#: crates/ui-egui/src/curtain.rs:729
 msgid "Add/Remove Segments: in a section, an elevation or the 3D view, click a stretch of a grid line to take it off and merge the panels either side, or click where one was to put it back"
 msgstr ""
 
@@ -1170,7 +1170,7 @@ msgstr ""
 msgid "As a guest, lend my AI key to those without one:"
 msgstr "Jako host půjčit můj klíč AI těm, kdo žádný nemají:"
 
-#: crates/ui-egui/src/curtain.rs:599
+#: crates/ui-egui/src/curtain.rs:602
 msgid "As in the Pattern"
 msgstr ""
 
@@ -1296,7 +1296,7 @@ msgstr ""
 msgid "Author"
 msgstr "Autor"
 
-#: crates/ui-egui/src/curtain.rs:827
+#: crates/ui-egui/src/curtain.rs:830
 #: crates/ui-egui/src/export/mod.rs:810
 #: crates/ui-egui/src/lib.rs:5702
 msgid "Auto"
@@ -1422,7 +1422,7 @@ msgstr ""
 msgid "Back"
 msgstr "Zpět"
 
-#: crates/ui-egui/src/curtain.rs:828
+#: crates/ui-egui/src/curtain.rs:831
 msgid "Back to Auto"
 msgstr ""
 
@@ -1620,7 +1620,7 @@ msgstr ""
 msgid "Border Top"
 msgstr ""
 
-#: crates/ui-egui/src/curtain.rs:917
+#: crates/ui-egui/src/curtain.rs:920
 msgid "Borders"
 msgstr ""
 
@@ -2296,7 +2296,7 @@ msgstr ""
 msgid "Click a painted face to take its paint off."
 msgstr "Kliknutím na pokrytou plochu odstraníte nátěr."
 
-#: crates/ui-egui/src/curtain.rs:945
+#: crates/ui-egui/src/curtain.rs:948
 msgid "Click a panel or a mullion to set its type; Shift adds to the selection."
 msgstr ""
 
@@ -3412,7 +3412,7 @@ msgstr "Nosná vrstva: vnitřní"
 
 #: crates/ui-egui/src/browser.rs:705
 #: crates/ui-egui/src/curtain.rs:382
-#: crates/ui-egui/src/curtain.rs:566
+#: crates/ui-egui/src/curtain.rs:569
 msgid "Corner Mullion"
 msgstr ""
 
@@ -3654,7 +3654,7 @@ msgid "Current view only"
 msgstr "Pouze aktuální pohled"
 
 #: crates/core/src/commands.rs:574
-#: crates/ui-egui/src/curtain.rs:712
+#: crates/ui-egui/src/curtain.rs:715
 msgid "Curtain Grid"
 msgstr ""
 
@@ -3670,7 +3670,7 @@ msgstr ""
 msgid "Curtain Parts"
 msgstr ""
 
-#: crates/ui-egui/src/curtain.rs:998
+#: crates/ui-egui/src/curtain.rs:1001
 #: crates/ui-egui/src/lib.rs:1477
 msgid "Curtain Wall"
 msgstr ""
@@ -4722,7 +4722,7 @@ msgstr "Upravit variantu: nové prvky se vytvářejí v této variantě a pohled
 msgid "Edit Parameter"
 msgstr "Upravit parametr"
 
-#: crates/ui-egui/src/curtain.rs:892
+#: crates/ui-egui/src/curtain.rs:895
 msgid "Edit Pattern"
 msgstr ""
 
@@ -5967,7 +5967,7 @@ msgstr "Modulová osa"
 msgid "Grid (GR): click its two ends"
 msgstr "Modulová osa (GR): klikněte na oba její konce"
 
-#: crates/ui-egui/src/curtain.rs:827
+#: crates/ui-egui/src/curtain.rs:830
 msgid "Grid Kind: {}"
 msgstr ""
 
@@ -6200,16 +6200,16 @@ msgstr "Hák"
 msgid "Horizontal"
 msgstr "Vodorovná"
 
-#: crates/ui-egui/src/curtain.rs:821
-#: crates/ui-egui/src/curtain.rs:907
+#: crates/ui-egui/src/curtain.rs:824
+#: crates/ui-egui/src/curtain.rs:910
 msgid "Horizontal Grid"
 msgstr ""
 
-#: crates/ui-egui/src/curtain.rs:565
+#: crates/ui-egui/src/curtain.rs:568
 msgid "Horizontal Mullion"
 msgstr ""
 
-#: crates/ui-egui/src/curtain.rs:924
+#: crates/ui-egui/src/curtain.rs:927
 msgid "Horizontal Mullions"
 msgstr ""
 
@@ -6248,7 +6248,7 @@ msgstr "Počet prutů, jejich tloušťku i rozteč určujete vy; prázdné pole 
 msgid "How many phases and wires each system has (the line conductors and the neutral), the voltages it supplies, and how it is earthed."
 msgstr "Kolik fází a vodičů každá soustava má (fázové vodiče a střední vodič), jaká napětí dodává a jak je uzemněna."
 
-#: crates/ui-egui/src/curtain.rs:1006
+#: crates/ui-egui/src/curtain.rs:1009
 msgid "I will fix it myself"
 msgstr ""
 
@@ -7497,7 +7497,7 @@ msgstr ""
 msgid "Make Host"
 msgstr "Udělat hostitelem"
 
-#: crates/ui-egui/src/curtain.rs:828
+#: crates/ui-egui/src/curtain.rs:831
 msgid "Make Manual"
 msgstr ""
 
@@ -7548,7 +7548,7 @@ msgstr "Spravovat"
 msgid "Manage Presets…"
 msgstr "Spravovat předvolby…"
 
-#: crates/ui-egui/src/curtain.rs:827
+#: crates/ui-egui/src/curtain.rs:830
 msgid "Manual"
 msgstr ""
 
@@ -8076,7 +8076,7 @@ msgstr "Upravit | Vybrání tažením"
 msgid "Modify | Void Swept Blend"
 msgstr "Upravit | Vybrání tažením s přechodem"
 
-#: crates/ui-egui/src/curtain.rs:940
+#: crates/ui-egui/src/curtain.rs:943
 msgid "Module {} x {}, thickness {}"
 msgstr ""
 
@@ -8524,7 +8524,7 @@ msgstr ""
 #: crates/ui-egui/src/adaptive_editor.rs:271
 #: crates/ui-egui/src/curtain.rs:281
 #: crates/ui-egui/src/curtain.rs:364
-#: crates/ui-egui/src/curtain.rs:582
+#: crates/ui-egui/src/curtain.rs:585
 #: crates/ui-egui/src/dimtypes.rs:122
 #: crates/ui-egui/src/editor/pivot.rs:283
 #: crates/ui-egui/src/editor.rs:1135
@@ -8762,7 +8762,7 @@ msgstr "Styly objektů…"
 msgid "Of"
 msgstr ""
 
-#: crates/ui-egui/src/curtain.rs:922
+#: crates/ui-egui/src/curtain.rs:925
 msgid "Of One Size, Runs Through"
 msgstr ""
 
@@ -9163,7 +9163,7 @@ msgstr "Palety"
 
 #: crates/core/src/panel_schedule.rs:351
 #: crates/ui-egui/src/curtain.rs:171
-#: crates/ui-egui/src/curtain.rs:563
+#: crates/ui-egui/src/curtain.rs:566
 #: crates/ui-egui/src/properties.rs:2613
 msgid "Panel"
 msgstr ""
@@ -10887,8 +10887,8 @@ msgstr ""
 msgid "Remove last"
 msgstr ""
 
-#: crates/ui-egui/src/curtain.rs:1005
-#: crates/ui-egui/src/curtain.rs:1023
+#: crates/ui-egui/src/curtain.rs:1008
+#: crates/ui-egui/src/curtain.rs:1026
 msgid "Remove last interior grid"
 msgstr ""
 
@@ -10989,7 +10989,7 @@ msgstr "Nahradit textem:"
 msgid "Replace imported by same name"
 msgstr "Nahradit importované se stejným názvem"
 
-#: crates/ui-egui/src/curtain.rs:600
+#: crates/ui-egui/src/curtain.rs:603
 msgid "Replace with Wall"
 msgstr ""
 
@@ -11096,7 +11096,7 @@ msgstr ""
 msgid "Restart and install"
 msgstr "Restartovat a nainstalovat"
 
-#: crates/ui-egui/src/curtain.rs:926
+#: crates/ui-egui/src/curtain.rs:929
 msgid "Restart pattern at levels crossing"
 msgstr ""
 
@@ -12297,7 +12297,7 @@ msgstr ""
 msgid "Slot {}"
 msgstr ""
 
-#: crates/ui-egui/src/curtain.rs:928
+#: crates/ui-egui/src/curtain.rs:931
 msgid "Smallest Panel"
 msgstr ""
 
@@ -14441,16 +14441,16 @@ msgstr "Verze {}"
 msgid "Vertical"
 msgstr "Svislá"
 
-#: crates/ui-egui/src/curtain.rs:821
-#: crates/ui-egui/src/curtain.rs:897
+#: crates/ui-egui/src/curtain.rs:824
+#: crates/ui-egui/src/curtain.rs:900
 msgid "Vertical Grid"
 msgstr ""
 
-#: crates/ui-egui/src/curtain.rs:564
+#: crates/ui-egui/src/curtain.rs:567
 msgid "Vertical Mullion"
 msgstr ""
 
-#: crates/ui-egui/src/curtain.rs:924
+#: crates/ui-egui/src/curtain.rs:927
 msgid "Vertical Mullions"
 msgstr ""
 
@@ -15272,7 +15272,7 @@ msgstr "pole, například Typ nebo Výška"
 msgid "a horizontal grid is placed in a section, an elevation or the 3D view"
 msgstr ""
 
-#: crates/ui-egui/src/curtain.rs:789
+#: crates/ui-egui/src/curtain.rs:792
 msgid "a horizontal grid moves in a section, an elevation or the 3D view"
 msgstr ""
 
@@ -15356,11 +15356,11 @@ msgstr "kružnice"
 msgid "click its line's end"
 msgstr "klikněte na konec její čáry"
 
-#: crates/ui-egui/src/curtain.rs:681
+#: crates/ui-egui/src/curtain.rs:684
 msgid "click on a grid line of the curtain wall"
 msgstr ""
 
-#: crates/ui-egui/src/curtain.rs:751
+#: crates/ui-egui/src/curtain.rs:754
 msgid "click on the curtain wall"
 msgstr ""
 
@@ -16169,7 +16169,7 @@ msgstr ""
 msgid "{} views and sheets, in one file"
 msgstr ""
 
-#: crates/ui-egui/src/curtain.rs:1001
+#: crates/ui-egui/src/curtain.rs:1004
 msgid "{} walls"
 msgstr ""
 
@@ -16293,7 +16293,7 @@ msgstr ""
 msgid "{}: `{}` isn't a number"
 msgstr "{}: `{}` není číslo"
 
-#: crates/ui-egui/src/curtain.rs:573
+#: crates/ui-egui/src/curtain.rs:576
 msgid "{}: column {}, row {}"
 msgstr ""
 
@@ -16318,7 +16318,7 @@ msgstr ""
 msgid "{}: {}"
 msgstr "{}: {}"
 
-#: crates/ui-egui/src/curtain.rs:571
+#: crates/ui-egui/src/curtain.rs:574
 msgid "{}: {} along the grid"
 msgstr ""
 

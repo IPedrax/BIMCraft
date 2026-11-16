@@ -405,7 +405,10 @@ pub(crate) const REACH: f64 = 60.0;
 /// The layout of the curtain wall last asked for, and the model it is of: a frame asks for the selected wall's many times, and
 /// the same model has the same.
 #[derive(Default)]
-pub(crate) struct Laid(Cell<Option<(Weak<Model>, Id, Arc<curtain::Layout>)>>);
+pub(crate) struct Laid(Cell<Option<KeptLayout>>);
+
+/// The model a layout is of, its wall and the layout.
+type KeptLayout = (Weak<Model>, Id, Arc<curtain::Layout>);
 
 impl Laid {
     /// Wall `id`'s layout in `m`, worked out again only for another model or another wall; a wall that isn't a curtain wall
