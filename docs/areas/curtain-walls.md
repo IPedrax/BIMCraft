@@ -10,7 +10,7 @@ Panels and mullions are system families: `Types::curtain_panel` (the Generic Pan
 thickness, material, offset) and `Types::mullion` (Rectangular Mullion, whose starter `50 x 150` stands 50 mm toward the exterior: width, depth, `offset_x`, `offset_y`, material, both offsets
 from its centre). `MullionProfile` holds the section, so a drawn profile can be another kind. They are library entries
 (`Kind::Type("curtainpanel")`, `Kind::Type("mullion")`), and a pattern's names of them are `CurtainLayout::names_mut`. `type` makes and
-edits them. A project of file format 16 gets the starter set when read.
+edits them. A project of a file format before 21 gets the starter set when read.
 
 ## The pattern
 
@@ -122,7 +122,7 @@ step (`curtain_part {parts: […]}`).
 
 The Corner Mullion family (`Types::corner_mullion`, `Kind::Type("cornermullion")`) holds a `MullionType` as the plain family does, plus a
 `rotation`, which only it may have: `50 x 150 45°` and `150 x 150` to start with. `CurtainLayout.corner` names the type a wall of that
-pattern takes; a project of file format 18 gets the starter types, and its patterns name none until told to. `type {curtain: {corner}}`
+pattern takes; a project of a file format before 21 gets the starter types, and its patterns name none until told to. `type {curtain: {corner}}`
 fills in the project's first when it isn't given, and null means none.
 
 `meeting` finds where one belongs: exactly two walls ending at the point, both curtain walls, straight, of heights that overlap, and at

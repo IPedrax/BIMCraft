@@ -1256,11 +1256,11 @@ msgstr "Gekoppeld niveau"
 msgid "At least {} characters"
 msgstr ""
 
-#: crates/core/src/model.rs:3249
+#: crates/core/src/model.rs:3244
 msgid "At wall centre line"
 msgstr "Op de hartlijn van de muur"
 
-#: crates/core/src/model.rs:3250
+#: crates/core/src/model.rs:3245
 msgid "At wall finish"
 msgstr "Op de afwerking van de muur"
 
@@ -1690,7 +1690,7 @@ msgstr "Randlijn: de lijnen van het profiel"
 msgid "Branch Panel"
 msgstr ""
 
-#: crates/core/src/model.rs:3597
+#: crates/core/src/model.rs:3592
 msgid "Brick"
 msgstr "Baksteen"
 
@@ -1698,7 +1698,7 @@ msgstr "Baksteen"
 msgid "Brick 225 x 75"
 msgstr "Baksteen 225 x 75"
 
-#: crates/core/src/model.rs:4168
+#: crates/core/src/model.rs:4163
 msgid "Bringing the project up to date"
 msgstr ""
 
@@ -2057,7 +2057,7 @@ msgstr ""
 msgid "Centre Lines"
 msgstr "Hartlijnen"
 
-#: crates/core/src/model.rs:3605
+#: crates/core/src/model.rs:3600
 msgid "Ceramic tile"
 msgstr "Keramische tegel"
 
@@ -3127,7 +3127,7 @@ msgstr "Conceptuele massa"
 msgid "Concrete"
 msgstr "Beton"
 
-#: crates/core/src/model.rs:3599
+#: crates/core/src/model.rs:3594
 msgid "Concrete block"
 msgstr "Betonblok"
 
@@ -3342,7 +3342,7 @@ msgstr "{} rijen gekopieerd, gescheiden door tabs."
 msgid "Copies"
 msgstr ""
 
-#: crates/core/src/model.rs:3613
+#: crates/core/src/model.rs:3608
 msgid "Copper"
 msgstr "Koper"
 
@@ -3399,15 +3399,15 @@ msgstr "Kopieer de ID, GUID en IFC-GlobalId"
 msgid "Copy: click the point to copy from."
 msgstr ""
 
-#: crates/core/src/model.rs:488
+#: crates/core/src/model.rs:483
 msgid "Core Centreline"
 msgstr "Hartlijn van de kern"
 
-#: crates/core/src/model.rs:491
+#: crates/core/src/model.rs:486
 msgid "Core Face: Exterior"
 msgstr "Kernvlak: buitenkant"
 
-#: crates/core/src/model.rs:492
+#: crates/core/src/model.rs:487
 msgid "Core Face: Interior"
 msgstr "Kernvlak: binnenkant"
 
@@ -4424,11 +4424,11 @@ msgstr "Gestippeld"
 msgid "Double Door"
 msgstr "Dubbele deur"
 
-#: crates/core/src/model.rs:2940
+#: crates/core/src/model.rs:2935
 msgid "Double Sliding"
 msgstr "Dubbel schuivend"
 
-#: crates/core/src/model.rs:2938
+#: crates/core/src/model.rs:2933
 msgid "Double Swing"
 msgstr "Dubbel draaiend"
 
@@ -4622,7 +4622,7 @@ msgstr "Aardingselektrode (EG): een staaf in de grond geslagen vanaf het niveau,
 msgid "Earthing Electrodes"
 msgstr "Aardingselektroden"
 
-#: crates/core/src/model.rs:2186
+#: crates/core/src/model.rs:2181
 #: crates/ui-egui/src/coordinates.rs:576
 #: crates/ui-egui/src/coordinates.rs:793
 msgid "East"
@@ -5518,11 +5518,11 @@ msgstr "Bewerkmodus voltooien: de lijnen, gesloten tot lussen, worden de vorm"
 msgid "Finish Edit Mode: the lines, closed into loops, become the outline and its holes"
 msgstr "Bewerkmodus voltooien: de lijnen, gesloten tot lussen, worden de omtrek en zijn gaten"
 
-#: crates/core/src/model.rs:489
+#: crates/core/src/model.rs:484
 msgid "Finish Face: Exterior"
 msgstr "Afwerking: buitenkant"
 
-#: crates/core/src/model.rs:490
+#: crates/core/src/model.rs:485
 msgid "Finish Face: Interior"
 msgstr "Afwerking: binnenkant"
 
@@ -5551,7 +5551,7 @@ msgstr ""
 msgid "Fit to page"
 msgstr ""
 
-#: crates/core/src/model.rs:2942
+#: crates/core/src/model.rs:2937
 msgid "Fixed"
 msgstr "Vast"
 
@@ -5703,7 +5703,7 @@ msgstr "Map voor nieuwe projecten"
 msgid "Folder {}"
 msgstr ""
 
-#: crates/core/src/model.rs:2941
+#: crates/core/src/model.rs:2936
 msgid "Folding"
 msgstr "Vouwend"
 
@@ -6027,7 +6027,7 @@ msgstr "Gasten mogen bewerken"
 msgid "Guests without an AI key may use mine"
 msgstr "Gasten zonder AI-sleutel mogen de mijne gebruiken"
 
-#: crates/core/src/model.rs:3604
+#: crates/core/src/model.rs:3599
 msgid "Gypsum board"
 msgstr "Gipsplaat"
 
@@ -7569,7 +7569,7 @@ msgstr ""
 msgid "Margin"
 msgstr ""
 
-#: crates/core/src/model.rs:1764
+#: crates/core/src/model.rs:1759
 msgid "Mark"
 msgstr "Merk"
 
@@ -8190,7 +8190,7 @@ msgstr "NBR 6492: doelwit in plattegrond (±0,00), gelijkzijdige driehoek in doo
 msgid "NOT ENCLOSED"
 msgstr "NIET OMSLOTEN"
 
-#: crates/core/src/model.rs:1765
+#: crates/core/src/model.rs:1760
 #: crates/ui-egui/src/adaptive_editor.rs:665
 #: crates/ui-egui/src/adaptive_editor.rs:804
 #: crates/ui-egui/src/cad.rs:89
@@ -8567,7 +8567,7 @@ msgstr ""
 msgid "Normalized Segment Length"
 msgstr ""
 
-#: crates/core/src/model.rs:2184
+#: crates/core/src/model.rs:2179
 #: crates/ui-egui/src/coordinates.rs:576
 #: crates/ui-egui/src/coordinates.rs:793
 msgid "North"
@@ -10610,7 +10610,7 @@ msgstr "Leesconventie"
 msgid "Read a title block drawn at full size (in mm on paper) in the model space of a DXF or DWG: its lines, solid hatches and texts; each {KEY} its texts name becomes a field"
 msgstr ""
 
-#: crates/core/src/model.rs:4136
+#: crates/core/src/model.rs:4131
 msgid "Reading elements"
 msgstr ""
 
@@ -10618,7 +10618,7 @@ msgstr ""
 msgid "Reading the file"
 msgstr ""
 
-#: crates/core/src/model.rs:4180
+#: crates/core/src/model.rs:4175
 msgid "Reading the project"
 msgstr ""
 
@@ -11196,7 +11196,7 @@ msgstr "Hoogte optrede"
 msgid "Risers"
 msgstr "Optreden"
 
-#: crates/core/src/model.rs:2944
+#: crates/core/src/model.rs:2939
 msgid "Roller"
 msgstr ""
 
@@ -11224,7 +11224,7 @@ msgstr "Dak op vlak (RB): een dak op de bovenvlakken van de geselecteerde massa'
 msgid "Roof by Footprint: click inside the walls to roof them, on the level above"
 msgstr "Dak door voetafdruk: klik binnen de muren om ze te voorzien van een dak, op het niveau erboven"
 
-#: crates/core/src/model.rs:3606
+#: crates/core/src/model.rs:3601
 msgid "Roof tiles"
 msgstr "Dakpannen"
 
@@ -11569,7 +11569,7 @@ msgstr "Lijsten/hoeveelheden (alle)"
 msgid "Scope"
 msgstr ""
 
-#: crates/core/src/model.rs:3602
+#: crates/core/src/model.rs:3597
 msgid "Screed"
 msgstr "Chape"
 
@@ -11639,7 +11639,7 @@ msgstr "Sectiekader: snij de 3D-weergave tot een kader, elk vlak verplaatst met 
 msgid "Section: {}"
 msgstr "Doorsnede: {}"
 
-#: crates/core/src/model.rs:2943
+#: crates/core/src/model.rs:2938
 msgid "Sectional"
 msgstr ""
 
@@ -12245,7 +12245,7 @@ msgstr "Deze versie overslaan"
 msgid "Sky"
 msgstr "Lucht"
 
-#: crates/core/src/model.rs:2939
+#: crates/core/src/model.rs:2934
 msgid "Sliding"
 msgstr "Schuivend"
 
@@ -12428,7 +12428,7 @@ msgstr ""
 msgid "Source code on GitHub"
 msgstr "Broncode op GitHub"
 
-#: crates/core/src/model.rs:2185
+#: crates/core/src/model.rs:2180
 msgid "South"
 msgstr "Zuid"
 
@@ -12806,7 +12806,7 @@ msgstr ""
 msgid "Swept Blend: a path of one line or arc, and a profile at each end, blended along it"
 msgstr "Sweep-overgang: een pad van één lijn of boog en een profiel aan elk uiteinde, langs het pad in elkaar overgaand"
 
-#: crates/core/src/model.rs:2937
+#: crates/core/src/model.rs:2932
 msgid "Swing"
 msgstr "Draaiend"
 
@@ -14079,7 +14079,7 @@ msgstr ""
 msgid "Two {} are called {}."
 msgstr "Twee {} heten {}."
 
-#: crates/core/src/model.rs:1766
+#: crates/core/src/model.rs:1761
 #: crates/ui-egui/src/adaptive_editor.rs:724
 #: crates/ui-egui/src/editor/dimensions.rs:1010
 #: crates/ui-egui/src/editor/nested.rs:273
@@ -14713,7 +14713,7 @@ msgstr "Muur"
 msgid "Wall (WA): each click builds a wall; Enter or Esc ends the chain"
 msgstr "Muur (WA): elke klik bouwt een muur; Enter of Esc beëindigt de keten"
 
-#: crates/core/src/model.rs:487
+#: crates/core/src/model.rs:482
 msgid "Wall Centreline"
 msgstr "Hartlijn van de muur"
 
@@ -14779,7 +14779,7 @@ msgstr "Gewicht"
 msgid "Weight per Metre"
 msgstr ""
 
-#: crates/core/src/model.rs:2187
+#: crates/core/src/model.rs:2182
 msgid "West"
 msgstr "West"
 

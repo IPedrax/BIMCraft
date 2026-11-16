@@ -185,17 +185,12 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// georeference and lose where the project stands; and it would read spot coordinates (a spot's `coordinate`, `type`, `origin`,
 /// `leader`, `shoulder` and `end`) and a level's `elevation_base` as spot elevations from the Project Base Point. A file of 19
 /// needs no step: its georeference is the active site, both points at the internal origin.
-/// 21 to 32 were the Family Editor's builds before 0.12, never released, and are refused ([`UNRELEASED`]).
-/// 33: a wall's type may be a curtain wall's (`curtain`, its pattern), with curtain panel, mullion and corner mullion types
+/// 21: a wall's type may be a curtain wall's (`curtain`, its pattern), with curtain panel, mullion and corner mullion types
 /// (`curtain_panel`, `mullion`, `corner_mullion`), and a wall may hold its curtain wall's edits (`curtain`: manual grids,
 /// segments, panels and mullions changed) or stand in place of one's panel (`panel_of`); a build that reads up to 20 would read
 /// a curtain wall as a solid wall and drop its edits, not say "saved by a newer BIMCraft". A file of 20 gets the starter
 /// panels, mullions and corner mullions.
-pub const FORMAT: u32 = 33;
-
-/// The formats the Family Editor's builds stamped on the way from 17 to 32 before 0.12 was released (which saves 20): no
-/// release wrote them, and none reads them as what they say.
-pub const UNRELEASED: std::ops::RangeInclusive<u64> = 21..=32;
+pub const FORMAT: u32 = 21;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -4103,7 +4098,7 @@ impl Model {
                 Err(_) => return Ok(None),
             },
         };
-        if !(4..=u64::from(FORMAT)).contains(&format) || UNRELEASED.contains(&format) {
+        if !(4..=u64::from(FORMAT)).contains(&format) {
             return Ok(None);
         }
         let Some(raw) = elements else { return Ok(None) };
@@ -4184,11 +4179,6 @@ impl Model {
         if format > u64::from(FORMAT) {
             return Err(format!(
                 "it was saved by a newer BIMCraft (file format {format}; this one reads up to {FORMAT}): update BIMCraft to open it"
-            ));
-        }
-        if UNRELEASED.contains(&format) {
-            return Err(format!(
-                "it was saved by an unreleased build of BIMCraft's Family Editor (file format {format}), which no release reads"
             ));
         }
         if format < 4 {
@@ -4450,9 +4440,9 @@ impl Model {
                 }
             }
         }
-        // 20 to 33: curtain walls, which 20 would read as solid walls. A file of 20 gets the starter panels, mullions and
+        // 20 to 21: curtain walls, which 20 would read as solid walls. A file of 20 gets the starter panels, mullions and
         // corner mullions.
-        if self.format < 33 {
+        if self.format < 21 {
             crate::curtain::starter_types(self);
             crate::curtain::corner_types(self);
         }
