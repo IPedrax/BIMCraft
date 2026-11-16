@@ -775,6 +775,7 @@ pub fn plan(ask: &Ask) -> Result<Plan, String> {
                 read_only: Some(false),
                 scope: Some(scope),
                 categories: cats.clone(),
+                vary_by_group: None,
             });
         }
         out.bindings.push(Binding { parameter: number, title: Some(title), table: sys.table_name(t), form: Form::Code });
@@ -793,6 +794,7 @@ pub fn plan(ask: &Ask) -> Result<Plan, String> {
             read_only: Some(false),
             scope: Some(scope),
             categories: cats,
+            vary_by_group: None,
         });
         if f.classified {
             match ask.cobie.get(f.sheet).or_else(|| ask.cobie.get(&f.sheet.to_lowercase())) {
