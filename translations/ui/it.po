@@ -16030,8 +16030,8 @@ msgid "{} of {} risers"
 msgstr "{} di {} alzate"
 
 #: crates/ui-egui/src/canvas.rs:1483
-#: crates/ui-egui/src/orbit.rs:2093
 #. what a point snapped to, then the category and id of its element: "Endpoint of Wall 100231".
+#: crates/ui-egui/src/orbit.rs:2093
 msgid "{} of {} {}"
 msgstr ""
 
