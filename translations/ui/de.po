@@ -1626,7 +1626,7 @@ msgstr "Ziegel"
 msgid "Brick 225 x 75"
 msgstr "Ziegel 225 x 75"
 
-#: crates/core/src/model.rs:4144
+#: crates/core/src/model.rs:4155
 msgid "Bringing the project up to date"
 msgstr ""
 
@@ -10378,7 +10378,7 @@ msgstr "Lesekonvention"
 msgid "Read a title block drawn at full size (in mm on paper) in the model space of a DXF or DWG: its lines, solid hatches and texts; each {KEY} its texts name becomes a field"
 msgstr ""
 
-#: crates/core/src/model.rs:4112
+#: crates/core/src/model.rs:4123
 msgid "Reading elements"
 msgstr ""
 
@@ -10386,7 +10386,7 @@ msgstr ""
 msgid "Reading the file"
 msgstr ""
 
-#: crates/core/src/model.rs:4156
+#: crates/core/src/model.rs:4167
 msgid "Reading the project"
 msgstr ""
 
