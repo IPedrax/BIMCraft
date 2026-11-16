@@ -604,12 +604,26 @@ impl BimApp {
         } else if reset {
             let params = json!({"wall": id, "parts": picks, "reset": true});
             self.run("curtain_part", params);
-        } else if replace && let Address::Cell { column, row } = at {
-            let made = self.run("curtain_panel_wall", json!({"wall": id, "column": column, "row": row}));
-            if let Some(wall) = made.and_then(|v| v["id"].as_u64()) {
-                self.selection = vec![wall];
-                self.curtain_part = None;
-            }
+        } else if replace {
+            self.replace_panel_with_wall();
+        }
+    }
+
+    /// Replace Panel with Wall (PW): a wall in place of the panel Tab picked, selected.
+    pub(crate) fn replace_panel_with_wall(&mut self) {
+        let Some((id, Address::Cell { column, row })) = self.curtain_part else { return };
+        let made = self.run("curtain_panel_wall", json!({"wall": id, "column": column, "row": row}));
+        if let Some(wall) = made.and_then(|v| v["id"].as_u64()) {
+            self.selection = vec![wall];
+            self.curtain_part = None;
+        }
+    }
+
+    /// The curtain wall alone selected: what Curtain Grid's (CG) and Add/Remove Segments' (AS) shortcuts work on.
+    pub(crate) fn curtain_alone(&self) -> Option<Id> {
+        match self.selection.as_slice() {
+            &[id] if is_curtain(&self.session.model, id) => Some(id),
+            _ => None,
         }
     }
 

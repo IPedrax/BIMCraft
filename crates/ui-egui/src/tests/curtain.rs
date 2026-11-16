@@ -269,6 +269,26 @@ fn tab_goes_from_a_selected_curtain_wall_to_the_parts_under_the_cursor_and_back(
 }
 
 #[test]
+fn cg_as_and_pw_are_curtain_grid_add_remove_segments_and_replace_panel_with_wall() {
+    use bimcraft_core::curtain::GridWay;
+    let mut h = app(TALL);
+    shortcut(&mut h, "CG");
+    assert_eq!(h.state().tool, crate::Tool::Modify, "with no curtain wall selected, nothing");
+    let id = select_tall(&mut h);
+    shortcut(&mut h, "CG");
+    assert_eq!(h.state().tool, crate::Tool::CurtainGrid { wall: id, way: GridWay::Vertical });
+    key(&mut h, Key::Escape);
+    shortcut(&mut h, "AS");
+    assert_eq!(h.state().tool, crate::Tool::CurtainSegment { wall: id });
+    key(&mut h, Key::Escape);
+    assert_eq!(h.state().selection, [id]);
+    tab_to(&mut h, 1000.0, 1);
+    shortcut(&mut h, "PW");
+    let made = walls(&h).into_iter().find(|x| x.1.panel_of.is_some()).map(|x| x.0).expect("a wall in the cell");
+    assert_eq!(h.state().selection, [made]);
+}
+
+#[test]
 fn properties_replaces_the_picked_panel_with_a_wall_that_takes_a_door() {
     let mut h = app(TALL);
     let id = tall_wall(&h);

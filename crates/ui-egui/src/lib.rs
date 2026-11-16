@@ -2848,6 +2848,23 @@ impl BimApp {
                     self.explode_polyline();
                     return true;
                 }
+                // A curtain wall's tools, on the one alone selected; Replace Panel with Wall, on the panel Tab picked.
+                Some("curtain_grid") => {
+                    if let Some(wall) = self.curtain_alone() {
+                        self.set_tool(Tool::CurtainGrid { wall, way: bimcraft_core::curtain::GridWay::Vertical });
+                    }
+                    return true;
+                }
+                Some("curtain_segment") => {
+                    if let Some(wall) = self.curtain_alone() {
+                        self.set_tool(Tool::CurtainSegment { wall });
+                    }
+                    return true;
+                }
+                Some("curtain_panel_wall") => {
+                    self.replace_panel_with_wall();
+                    return true;
+                }
                 // Revit's opens the Project Units dialog; BIMCraft's is the Manage tab's menu.
                 Some("units") => {
                     self.tab = Tab::Manage;

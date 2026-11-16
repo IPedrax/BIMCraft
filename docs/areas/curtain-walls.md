@@ -203,6 +203,8 @@ be seen. Under the cursor, what Tab would go to next is marked in the darker blu
   panel or a mullion, Shift to add to the selection, and pick its type, none or how it joins. Each piece is a widget named as tests
   and screen readers find it: `Panel B1`, `Vertical B1`, `Horizontal B1`.
 - **Project Browser:** Families > Curtain Panels > Generic Panel and Mullions > Rectangular Mullion; a type's right-click has Edit Type.
+- **Shortcuts:** CG and AS start Add Vertical Grid and Add/Remove Segments on the curtain wall alone selected, and PW puts a wall in
+  place of the panel Tab picked. They are the aliases of `curtain_grid`, `curtain_segment` and `curtain_panel_wall`.
 - **The message:** `BimApp::curtain_message` looks for walls newly malformed whenever the model changes, so it comes when a change is
   finished and never during a drag, once for a wall while it stays so, one message for many walls, and not for what a project opened
   with. Remove last interior grid sets `absorb_columns` or `absorb_rows`; I will fix it myself leaves the wall, and `inspect` keeps

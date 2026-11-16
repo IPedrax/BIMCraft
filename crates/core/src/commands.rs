@@ -572,7 +572,7 @@ other_files(
     edit(
         "curtain_grid",
         ui_msg!("Curtain Grid"),
-        &[],
+        &["CG"],
         "{wall, way: vertical|horizontal, at | line, at | line, reset: true} adds a grid line to one curtain wall, `at` mm along it \
          from its start or up from its base; with the mullion of the pattern's A1. Or moves `line`, a grid's column or row as \
          `curtain_parts` lists it, to `at`. A grid added or moved is `manual`, and stays when the pattern changes, which moves all the \
@@ -582,7 +582,7 @@ other_files(
     edit(
         "curtain_segment",
         ui_msg!("Add/Remove Segments"),
-        &[],
+        &["AS"],
         "{wall, parts: [{part: vertical|horizontal, column, row}, …] | part, column, row, restore?: true} takes segments of a curtain \
          wall's grid lines off, as Revit's Add/Remove Segments: a segment is the stretch of a line beside one cell, named as `curtain_parts` \
          names the mullion on it. The cells either side make one panel, of the first cell's type, and its mullion goes. A merge must be a \
@@ -600,7 +600,7 @@ other_files(
     edit(
         "curtain_panel_wall",
         ui_msg!("Replace Panel with Wall"),
-        &[],
+        &["PW"],
         "{wall, column, row, type?} a real wall of a plain type in place of a panel, which hosts doors and windows. It stays \
          fitted to its cell, joins nothing and bounds no room; delete it to have the panel back. If its cell goes from the \
          wall it goes too, with a `warning`, and the command is refused if it holds anything. Returns its `id`",
