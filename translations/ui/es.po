@@ -858,7 +858,7 @@ msgstr "Terminal aéreo (AT): un captor, donde hagas clic en la cubierta; Espaci
 msgid "Air Terminals"
 msgstr "Terminales aéreos"
 
-#: crates/core/src/commands.rs:2043
+#: crates/core/src/commands.rs:2044
 #: crates/ui-egui/src/editor/document.rs:633
 #: crates/ui-egui/src/editor/sketch.rs:1520
 #: crates/ui-egui/src/editor.rs:1109
@@ -2013,7 +2013,7 @@ msgstr "Valor calculado…"
 msgid "Came in: {}"
 msgstr "Importados: {}"
 
-#: crates/core/src/commands.rs:2823
+#: crates/core/src/commands.rs:2824
 #: crates/ui-egui/src/camera.rs:38
 #: crates/ui-egui/src/lib.rs:5099
 #: crates/ui-egui/src/properties.rs:302
@@ -2415,7 +2415,7 @@ msgstr "Verificación: fck"
 msgid "Checking for updates…"
 msgstr "Buscando actualizaciones…"
 
-#: crates/core/src/commands.rs:4336
+#: crates/core/src/commands.rs:4337
 msgid "Checking the model"
 msgstr ""
 
@@ -3426,7 +3426,7 @@ msgstr "Compacta"
 msgid "Comparison"
 msgstr "Comparación"
 
-#: crates/core/src/commands.rs:1973
+#: crates/core/src/commands.rs:1974
 #: crates/ui-egui/src/editor/document.rs:467
 msgid "Component"
 msgstr "Componente"
@@ -3705,7 +3705,7 @@ msgstr ""
 msgid "Copper"
 msgstr "Cobre"
 
-#: crates/core/src/commands.rs:2090
+#: crates/core/src/commands.rs:2091
 #: crates/ui-egui/src/coordinates.rs:1219
 #: crates/ui-egui/src/cowork.rs:600
 #: crates/ui-egui/src/editor/document.rs:658
@@ -4409,7 +4409,7 @@ msgstr "Demolido"
 msgid "Demolition"
 msgstr "Demolición"
 
-#: crates/core/src/commands.rs:13964
+#: crates/core/src/commands.rs:13965
 msgid "Dependent"
 msgstr "Dependiente"
 
@@ -4644,7 +4644,7 @@ msgstr "Texto de cota"
 msgid "Dimension Text Placement:"
 msgstr "Posición del texto de cota:"
 
-#: crates/core/src/commands.rs:2055
+#: crates/core/src/commands.rs:2056
 msgid "Dimension Value"
 msgstr "Valor de cota"
 
@@ -5364,7 +5364,7 @@ msgstr "Configuración eléctrica"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "Configuración eléctrica: las tensiones, los sistemas de distribución y los tipos de cable a los que se refieren los circuitos y los cuadros; secciones en mm²"
 
-#: crates/core/src/commands.rs:3261
+#: crates/core/src/commands.rs:3262
 msgid "Elements"
 msgstr "Elementos"
 
@@ -5929,7 +5929,7 @@ msgstr "Región rellena (FR): dibuje un área rellena con un patrón, en esta vi
 msgid "Filled region"
 msgstr "Región rellenada"
 
-#: crates/core/src/commands.rs:2159
+#: crates/core/src/commands.rs:2160
 msgid "Fillet Arc"
 msgstr "Arco de empalme"
 
@@ -8445,7 +8445,7 @@ msgstr "Pisos de masa (MF): un piso en cada nivel que cruzan las masas seleccion
 msgid "Massing"
 msgstr "Volumetría"
 
-#: crates/core/src/commands.rs:2019
+#: crates/core/src/commands.rs:2020
 msgid "Match Properties"
 msgstr "Igualar propiedades"
 
@@ -8522,7 +8522,7 @@ msgstr "Ángulo máximo"
 msgid "Maximum Riser Height"
 msgstr "Altura máxima de contrahuella"
 
-#: crates/core/src/commands.rs:2937
+#: crates/core/src/commands.rs:2938
 #: crates/ui-egui/src/editor/document.rs:686
 #: crates/ui-egui/src/editor/document.rs:687
 msgid "Measure"
@@ -8944,7 +8944,7 @@ msgstr ""
 msgid "Mounting Height"
 msgstr "Altura de montaje"
 
-#: crates/core/src/commands.rs:2070
+#: crates/core/src/commands.rs:2071
 #: crates/ui-egui/src/editor/document.rs:648
 msgid "Move"
 msgstr "Mover"
@@ -10703,7 +10703,7 @@ msgstr "Imágenes"
 msgid "Picture…"
 msgstr "Imagen…"
 
-#: crates/core/src/commands.rs:2027
+#: crates/core/src/commands.rs:2028
 #: crates/ui-egui/src/context.rs:89
 msgid "Pin"
 msgstr ""
@@ -11314,7 +11314,7 @@ msgstr "Punto Base del Proyecto {}"
 msgid "Project Browser"
 msgstr "Navegador de proyectos"
 
-#: crates/core/src/commands.rs:1776
+#: crates/core/src/commands.rs:1777
 #: crates/ui-egui/src/projectinfo.rs:111
 msgid "Project Information"
 msgstr "Información del proyecto"
@@ -11438,7 +11438,7 @@ msgid "Properties over the Project Browser, on the left, as at first"
 msgstr "Propiedades sobre el Navegador de proyectos, a la izquierda, como al principio"
 
 #: crates/core/src/commands.rs:665
-#: crates/core/src/commands.rs:9094
+#: crates/core/src/commands.rs:9095
 msgid "Property Line"
 msgstr ""
 
@@ -11626,7 +11626,7 @@ msgstr ""
 msgid "Reading elements"
 msgstr ""
 
-#: crates/core/src/commands.rs:4293
+#: crates/core/src/commands.rs:4294
 msgid "Reading the file"
 msgstr ""
 
@@ -12405,7 +12405,7 @@ msgstr ""
 msgid "RotZ (degrees)"
 msgstr ""
 
-#: crates/core/src/commands.rs:2097
+#: crates/core/src/commands.rs:2098
 #: crates/ui-egui/src/editor/document.rs:668
 msgid "Rotate"
 msgstr "Rotar"
@@ -12673,7 +12673,7 @@ msgstr "Escala: el papel que esta vista representa, 1 : n del modelo: su anotaci
 msgid "Scan"
 msgstr "Escaneo"
 
-#: crates/core/src/commands.rs:2725
+#: crates/core/src/commands.rs:2726
 msgid "Schedule"
 msgstr "Tabla"
 
@@ -13729,7 +13729,7 @@ msgstr "Spline por puntos: haga clic en los puntos por los que pasa; Intro termi
 msgid "Spline: click its control points; Enter finishes it"
 msgstr "Spline: haga clic en los puntos de control; Intro termina"
 
-#: crates/core/src/commands.rs:2139
+#: crates/core/src/commands.rs:2140
 msgid "Split"
 msgstr "Dividir"
 
@@ -15485,7 +15485,7 @@ msgstr "Recortar/Alargar elemento único"
 msgid "Trim/Extend Single Element: pick the line to trim or extend to, then the line to change, on the part to keep"
 msgstr "Recortar/Alargar elemento único: elija la línea límite y luego la línea que cambiar, en la parte que conservar"
 
-#: crates/core/src/commands.rs:2113
+#: crates/core/src/commands.rs:2114
 #: crates/ui-egui/src/editor/sketch.rs:1515
 #: crates/ui-egui/src/sketch.rs:741
 #: crates/ui-egui/src/sketch.rs:1022
@@ -15806,15 +15806,15 @@ msgstr "Desbloquear"
 msgid "Unlock alignment"
 msgstr "Desbloquear alineación"
 
-#: crates/core/src/commands.rs:14200
+#: crates/core/src/commands.rs:14201
 msgid "Unnamed"
 msgstr "Sin nombre"
 
-#: crates/core/src/commands.rs:4310
+#: crates/core/src/commands.rs:4311
 msgid "Unpacking the project"
 msgstr ""
 
-#: crates/core/src/commands.rs:2036
+#: crates/core/src/commands.rs:2037
 #: crates/ui-egui/src/context.rs:90
 msgid "Unpin"
 msgstr ""
@@ -16270,7 +16270,7 @@ msgstr "Zapata corrida"
 msgid "Wall Footing (FW): click its start and its end, or a chain of clicks, under a wall"
 msgstr "Zapata corrida (FW): haz clic en el inicio y el final, o en cadena, bajo un muro"
 
-#: crates/core/src/commands.rs:2081
+#: crates/core/src/commands.rs:2082
 msgid "Wall Length"
 msgstr ""
 

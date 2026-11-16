@@ -858,7 +858,7 @@ msgstr "Vangstaaf (AT): een opvangpunt, waar je op het dak klikt; met de spatieb
 msgid "Air Terminals"
 msgstr "Vangstaven"
 
-#: crates/core/src/commands.rs:2043
+#: crates/core/src/commands.rs:2044
 #: crates/ui-egui/src/editor/document.rs:633
 #: crates/ui-egui/src/editor/sketch.rs:1520
 #: crates/ui-egui/src/editor.rs:1109
@@ -2013,7 +2013,7 @@ msgstr "Berekende waarde…"
 msgid "Came in: {}"
 msgstr "Binnengekomen: {}"
 
-#: crates/core/src/commands.rs:2823
+#: crates/core/src/commands.rs:2824
 #: crates/ui-egui/src/camera.rs:38
 #: crates/ui-egui/src/lib.rs:5099
 #: crates/ui-egui/src/properties.rs:302
@@ -2415,7 +2415,7 @@ msgstr "Controle: fck"
 msgid "Checking for updates…"
 msgstr "Controleren op updates…"
 
-#: crates/core/src/commands.rs:4336
+#: crates/core/src/commands.rs:4337
 msgid "Checking the model"
 msgstr ""
 
@@ -3426,7 +3426,7 @@ msgstr "Compact"
 msgid "Comparison"
 msgstr "Vergelijking"
 
-#: crates/core/src/commands.rs:1973
+#: crates/core/src/commands.rs:1974
 #: crates/ui-egui/src/editor/document.rs:467
 msgid "Component"
 msgstr "Onderdeel"
@@ -3705,7 +3705,7 @@ msgstr ""
 msgid "Copper"
 msgstr "Koper"
 
-#: crates/core/src/commands.rs:2090
+#: crates/core/src/commands.rs:2091
 #: crates/ui-egui/src/coordinates.rs:1219
 #: crates/ui-egui/src/cowork.rs:600
 #: crates/ui-egui/src/editor/document.rs:658
@@ -4409,7 +4409,7 @@ msgstr "Gesloopt"
 msgid "Demolition"
 msgstr "Sloop"
 
-#: crates/core/src/commands.rs:13964
+#: crates/core/src/commands.rs:13965
 msgid "Dependent"
 msgstr "Afhankelijk"
 
@@ -4644,7 +4644,7 @@ msgstr "Maattekst"
 msgid "Dimension Text Placement:"
 msgstr "Plaatsing van de maattekst:"
 
-#: crates/core/src/commands.rs:2055
+#: crates/core/src/commands.rs:2056
 msgid "Dimension Value"
 msgstr "Maatwaarde"
 
@@ -5364,7 +5364,7 @@ msgstr "Elektrische instellingen"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "Elektrische instellingen: de spanningen, distributiesystemen en draadtypes waarnaar kringen en verdeelborden verwijzen; doorsneden in mm²"
 
-#: crates/core/src/commands.rs:3261
+#: crates/core/src/commands.rs:3262
 msgid "Elements"
 msgstr "Elementen"
 
@@ -5929,7 +5929,7 @@ msgstr "Gevuld gebied (FR): schets een gebied gevuld met een patroon, in deze we
 msgid "Filled region"
 msgstr "Gevuld gebied"
 
-#: crates/core/src/commands.rs:2159
+#: crates/core/src/commands.rs:2160
 msgid "Fillet Arc"
 msgstr "Afrondingsboog"
 
@@ -8445,7 +8445,7 @@ msgstr "Massavloeren (MF): een vloer op elk niveau dat de geselecteerde massa's 
 msgid "Massing"
 msgstr "Massastudie"
 
-#: crates/core/src/commands.rs:2019
+#: crates/core/src/commands.rs:2020
 msgid "Match Properties"
 msgstr "Eigenschappen overnemen"
 
@@ -8522,7 +8522,7 @@ msgstr "Maximale hoek"
 msgid "Maximum Riser Height"
 msgstr "Maximale hoogte optrede"
 
-#: crates/core/src/commands.rs:2937
+#: crates/core/src/commands.rs:2938
 #: crates/ui-egui/src/editor/document.rs:686
 #: crates/ui-egui/src/editor/document.rs:687
 msgid "Measure"
@@ -8944,7 +8944,7 @@ msgstr ""
 msgid "Mounting Height"
 msgstr "Montagehoogte"
 
-#: crates/core/src/commands.rs:2070
+#: crates/core/src/commands.rs:2071
 #: crates/ui-egui/src/editor/document.rs:648
 msgid "Move"
 msgstr "Verplaatsen"
@@ -10703,7 +10703,7 @@ msgstr "Afbeeldingen"
 msgid "Picture…"
 msgstr "Afbeelding…"
 
-#: crates/core/src/commands.rs:2027
+#: crates/core/src/commands.rs:2028
 #: crates/ui-egui/src/context.rs:89
 msgid "Pin"
 msgstr ""
@@ -11314,7 +11314,7 @@ msgstr ""
 msgid "Project Browser"
 msgstr "Projectbrowser"
 
-#: crates/core/src/commands.rs:1776
+#: crates/core/src/commands.rs:1777
 #: crates/ui-egui/src/projectinfo.rs:111
 msgid "Project Information"
 msgstr "Projectinformatie"
@@ -11438,7 +11438,7 @@ msgid "Properties over the Project Browser, on the left, as at first"
 msgstr "Eigenschappen boven de Projectbrowser, links, zoals in het begin"
 
 #: crates/core/src/commands.rs:665
-#: crates/core/src/commands.rs:9094
+#: crates/core/src/commands.rs:9095
 msgid "Property Line"
 msgstr ""
 
@@ -11626,7 +11626,7 @@ msgstr ""
 msgid "Reading elements"
 msgstr ""
 
-#: crates/core/src/commands.rs:4293
+#: crates/core/src/commands.rs:4294
 msgid "Reading the file"
 msgstr ""
 
@@ -12405,7 +12405,7 @@ msgstr ""
 msgid "RotZ (degrees)"
 msgstr ""
 
-#: crates/core/src/commands.rs:2097
+#: crates/core/src/commands.rs:2098
 #: crates/ui-egui/src/editor/document.rs:668
 msgid "Rotate"
 msgstr "Roteren"
@@ -12673,7 +12673,7 @@ msgstr "Schaal: het papier dat deze weergave voorstelt, 1 : n van het model: haa
 msgid "Scan"
 msgstr "Scan"
 
-#: crates/core/src/commands.rs:2725
+#: crates/core/src/commands.rs:2726
 msgid "Schedule"
 msgstr "Lijst"
 
@@ -13729,7 +13729,7 @@ msgstr "Spline door punten: klik op de punten waar ze doorheen loopt; Enter volt
 msgid "Spline: click its control points; Enter finishes it"
 msgstr "Spline: klik op de controlepunten; Enter voltooit ze"
 
-#: crates/core/src/commands.rs:2139
+#: crates/core/src/commands.rs:2140
 msgid "Split"
 msgstr "Splitsen"
 
@@ -15485,7 +15485,7 @@ msgstr "Eén element bijsnijden/verlengen"
 msgid "Trim/Extend Single Element: pick the line to trim or extend to, then the line to change, on the part to keep"
 msgstr "Eén element bijsnijden/verlengen: kies de lijn om tot daar bij te snijden of te verlengen, daarna de lijn die verandert, op het deel dat blijft"
 
-#: crates/core/src/commands.rs:2113
+#: crates/core/src/commands.rs:2114
 #: crates/ui-egui/src/editor/sketch.rs:1515
 #: crates/ui-egui/src/sketch.rs:741
 #: crates/ui-egui/src/sketch.rs:1022
@@ -15806,15 +15806,15 @@ msgstr ""
 msgid "Unlock alignment"
 msgstr "Uitlijning ontgrendelen"
 
-#: crates/core/src/commands.rs:14200
+#: crates/core/src/commands.rs:14201
 msgid "Unnamed"
 msgstr "Naamloos"
 
-#: crates/core/src/commands.rs:4310
+#: crates/core/src/commands.rs:4311
 msgid "Unpacking the project"
 msgstr ""
 
-#: crates/core/src/commands.rs:2036
+#: crates/core/src/commands.rs:2037
 #: crates/ui-egui/src/context.rs:90
 msgid "Unpin"
 msgstr ""
@@ -16270,7 +16270,7 @@ msgstr "Muurfundering"
 msgid "Wall Footing (FW): click its start and its end, or a chain of clicks, under a wall"
 msgstr "Strookfundering (FW): klik op het begin en het einde, of een reeks klikken, onder een muur"
 
-#: crates/core/src/commands.rs:2081
+#: crates/core/src/commands.rs:2082
 msgid "Wall Length"
 msgstr ""
 

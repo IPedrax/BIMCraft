@@ -1716,7 +1716,7 @@ other_files(
          answers the tables loaded and the parameters bound to them",
         crate::classification::systems,
     ),
-    edit(
+    edit_files(
         "classification_table",
         "Load Classification Table",
         &[],
@@ -1726,6 +1726,7 @@ other_files(
          several tables is cut to the one asked (`prefix`, by default the key when its codes begin with it). Again with a newer \
          edition replaces it: `dry_run` says what it adds, removes and retitles. {name, remove: true} takes it out",
         crate::classification::load_table,
+        Files::Read,
     ),
     edit(
         "classification_parameters",
