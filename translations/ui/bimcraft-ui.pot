@@ -189,7 +189,7 @@ msgstr ""
 msgid "A dictionary is a file of parameter definitions to share between projects: keep it on a shared drive or in a Git repository."
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:4385
+#: crates/ui-egui/src/canvas.rs:4393
 msgid "A dimension has two references at least."
 msgstr ""
 
@@ -1911,7 +1911,7 @@ msgstr ""
 msgid "Ceiling Luminaire"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:2270
+#: crates/ui-egui/src/canvas.rs:2273
 #: crates/ui-egui/src/properties.rs:1862
 msgid "Ceiling Plan"
 msgstr ""
@@ -1981,7 +1981,7 @@ msgstr ""
 msgid "Centre Lines"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:5630
+#: crates/ui-egui/src/canvas.rs:5638
 msgid "Centreline"
 msgstr ""
 
@@ -2285,7 +2285,7 @@ msgstr ""
 msgid "Click a stair or a ramp for a railing down each side, or the start of a path."
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:2659
+#: crates/ui-egui/src/canvas.rs:2662
 #: crates/ui-egui/src/lib.rs:6001
 msgid "Click a straight wall, a line or a slab's edge for the elevation to look at."
 msgstr ""
@@ -2791,7 +2791,7 @@ msgstr ""
 msgid "Click where the middle of a side goes. Esc cancels."
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:3426
+#: crates/ui-egui/src/canvas.rs:3432
 msgid "Click where the note goes: its top left corner."
 msgstr ""
 
@@ -4099,12 +4099,12 @@ msgstr ""
 msgid "Dimension lines, witness lines, terminators, text placement, and level marker symbols."
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:4151
+#: crates/ui-egui/src/canvas.rs:4159
 msgid "Dimension text"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:4160
-#: crates/ui-egui/src/canvas.rs:4222
+#: crates/ui-egui/src/canvas.rs:4168
+#: crates/ui-egui/src/canvas.rs:4230
 msgid "Dimension {}"
 msgstr ""
 
@@ -4741,7 +4741,7 @@ msgstr ""
 msgid "Elev"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:4867
+#: crates/ui-egui/src/canvas.rs:4875
 #: crates/ui-egui/src/coordinates.rs:576
 #: crates/ui-egui/src/coordinates.rs:793
 #: crates/ui-egui/src/coordinates.rs:1192
@@ -4875,7 +4875,7 @@ msgstr ""
 msgid "Entities"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:4316
+#: crates/ui-egui/src/canvas.rs:4324
 msgid "Equal"
 msgstr ""
 
@@ -5000,7 +5000,7 @@ msgstr ""
 msgid "Extents"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:5628
+#: crates/ui-egui/src/canvas.rs:5636
 msgid "Exterior Face"
 msgstr ""
 
@@ -6395,7 +6395,7 @@ msgstr ""
 msgid "Interface scale"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:5629
+#: crates/ui-egui/src/canvas.rs:5637
 msgid "Interior Face"
 msgstr ""
 
@@ -7216,7 +7216,7 @@ msgstr ""
 msgid "Lock"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:4493
+#: crates/ui-egui/src/canvas.rs:4501
 msgid "Lock alignment"
 msgstr ""
 
@@ -7224,11 +7224,11 @@ msgstr ""
 msgid "Lock locks a line picked with no Offset, in a plan or an elevation"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:4115
+#: crates/ui-egui/src/canvas.rs:4123
 msgid "Lock segment {}"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:4128
+#: crates/ui-egui/src/canvas.rs:4136
 msgid "Lock segment {} at its length, so what it measures to moves together"
 msgstr ""
 
@@ -7240,7 +7240,7 @@ msgstr ""
 msgid "Lock: the dimensions this parameter labels keep its value when planes are dragged"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:4472
+#: crates/ui-egui/src/canvas.rs:4480
 msgid "Locked segment {}"
 msgstr ""
 
@@ -7325,7 +7325,7 @@ msgstr ""
 msgid "Make Checked Type"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:4567
+#: crates/ui-egui/src/canvas.rs:4575
 msgid "Make Dimension Permanent"
 msgstr ""
 
@@ -9253,7 +9253,7 @@ msgstr ""
 msgid "Pick Faces"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:2682
+#: crates/ui-egui/src/canvas.rs:2685
 msgid "Pick Faces: click a face of a mass"
 msgstr ""
 
@@ -10170,8 +10170,8 @@ msgstr ""
 msgid "Project Name"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:4963
-#: crates/ui-egui/src/canvas.rs:4975
+#: crates/ui-egui/src/canvas.rs:4971
+#: crates/ui-egui/src/canvas.rs:4983
 #: crates/ui-egui/src/graphics.rs:589
 msgid "Project North"
 msgstr ""
@@ -11477,7 +11477,7 @@ msgstr ""
 msgid "Segment {} Text"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:4126
+#: crates/ui-egui/src/canvas.rs:4134
 msgid "Segment {} is locked at its length: what it measures to moves together. Click to unlock it"
 msgstr ""
 
@@ -12083,15 +12083,15 @@ msgstr ""
 msgid "Smooth lines (anti-aliasing)"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:5480
+#: crates/ui-egui/src/canvas.rs:5488
 msgid "Snap reference cleared"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:5479
+#: crates/ui-egui/src/canvas.rs:5487
 msgid "Snap reference marked"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:5481
+#: crates/ui-egui/src/canvas.rs:5489
 msgid "Snap reference moved"
 msgstr ""
 
@@ -12868,7 +12868,7 @@ msgstr ""
 msgid "Temporary Isolate Element"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:4045
+#: crates/ui-egui/src/canvas.rs:4053
 msgid "Temporary dimension {}"
 msgstr ""
 
@@ -13803,8 +13803,8 @@ msgstr ""
 msgid "Trip"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:4964
-#: crates/ui-egui/src/canvas.rs:4976
+#: crates/ui-egui/src/canvas.rs:4972
+#: crates/ui-egui/src/canvas.rs:4984
 #: crates/ui-egui/src/graphics.rs:590
 msgid "True North"
 msgstr ""
@@ -13829,7 +13829,7 @@ msgstr ""
 msgid "Turn Snap Override Off"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:4009
+#: crates/ui-egui/src/canvas.rs:4017
 msgid "Turn the wall about its {}: {}"
 msgstr ""
 
@@ -14072,7 +14072,7 @@ msgstr ""
 msgid "Unlock"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:4454
+#: crates/ui-egui/src/canvas.rs:4462
 msgid "Unlock alignment"
 msgstr ""
 
@@ -14930,15 +14930,15 @@ msgstr ""
 msgid "Zoom"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:2433
+#: crates/ui-egui/src/canvas.rs:2436
 msgid "Zoom In"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:2436
+#: crates/ui-egui/src/canvas.rs:2439
 msgid "Zoom Out"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:2430
+#: crates/ui-egui/src/canvas.rs:2433
 #: crates/ui-egui/src/editor/document.rs:1245
 #: crates/ui-egui/src/orbit.rs:2457
 msgid "Zoom to Fit"
@@ -14950,13 +14950,13 @@ msgstr ""
 
 #: crates/ui-egui/src/camera.rs:91
 #: crates/ui-egui/src/camera.rs:103
-#: crates/ui-egui/src/canvas.rs:3685
-#: crates/ui-egui/src/canvas.rs:4167
-#: crates/ui-egui/src/canvas.rs:4226
-#: crates/ui-egui/src/canvas.rs:4597
-#: crates/ui-egui/src/canvas.rs:4612
-#: crates/ui-egui/src/canvas.rs:4705
-#: crates/ui-egui/src/canvas.rs:4725
+#: crates/ui-egui/src/canvas.rs:3692
+#: crates/ui-egui/src/canvas.rs:4175
+#: crates/ui-egui/src/canvas.rs:4234
+#: crates/ui-egui/src/canvas.rs:4605
+#: crates/ui-egui/src/canvas.rs:4620
+#: crates/ui-egui/src/canvas.rs:4713
+#: crates/ui-egui/src/canvas.rs:4733
 #: crates/ui-egui/src/draw.rs:270
 #: crates/ui-egui/src/draw.rs:271
 #: crates/ui-egui/src/draw.rs:272
@@ -15002,8 +15002,8 @@ msgstr ""
 msgid "`{}` is not a spacing"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:3670
-#: crates/ui-egui/src/canvas.rs:4036
+#: crates/ui-egui/src/canvas.rs:3677
+#: crates/ui-egui/src/canvas.rs:4044
 msgid "`{}` is not an angle"
 msgstr ""
 
@@ -15087,7 +15087,7 @@ msgstr ""
 msgid "begins with"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:3155
+#: crates/ui-egui/src/canvas.rs:3153
 msgid "ceiling: `{}` is not a height"
 msgstr ""
 
@@ -15095,7 +15095,7 @@ msgstr ""
 msgid "circle"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:3226
+#: crates/ui-egui/src/canvas.rs:3224
 msgid "click its line's end"
 msgstr ""
 
@@ -15103,7 +15103,7 @@ msgstr ""
 msgid "click on the floor's top"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:3250
+#: crates/ui-egui/src/canvas.rs:3248
 msgid "click where its run ends"
 msgstr ""
 
@@ -15159,7 +15159,7 @@ msgstr ""
 msgid "does not equal"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:3119
+#: crates/ui-egui/src/canvas.rs:3117
 msgid "dormer: the width `{}`, the height `{}` and the slope `{}` must be numbers"
 msgstr ""
 
@@ -15259,7 +15259,7 @@ msgstr ""
 msgid "location"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:3414
+#: crates/ui-egui/src/canvas.rs:3417
 msgid "mass: {}"
 msgstr ""
 
@@ -15287,12 +15287,12 @@ msgstr ""
 msgid "not defined"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:2807
-#: crates/ui-egui/src/canvas.rs:3514
+#: crates/ui-egui/src/canvas.rs:2805
+#: crates/ui-egui/src/canvas.rs:3520
 msgid "offset: `{}` is not a distance"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:3510
+#: crates/ui-egui/src/canvas.rs:3516
 msgid "offset: it offsets straight walls"
 msgstr ""
 
@@ -15336,23 +15336,23 @@ msgstr ""
 msgid "publishing set"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:3268
+#: crates/ui-egui/src/canvas.rs:3266
 msgid "ramp: `{}` is not a slope"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:3269
+#: crates/ui-egui/src/canvas.rs:3267
 msgid "ramp: `{}` is not a width"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:3270
+#: crates/ui-egui/src/canvas.rs:3268
 msgid "ramp: {}"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:3227
+#: crates/ui-egui/src/canvas.rs:3225
 msgid "roof: `{}` is not a slope"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:3071
+#: crates/ui-egui/src/canvas.rs:3069
 msgid "roof: the slope `{}` and the overhang `{}` must be numbers"
 msgstr ""
 
@@ -15402,11 +15402,11 @@ msgstr ""
 msgid "select what to move, copy, rotate or mirror first"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:3179
+#: crates/ui-egui/src/canvas.rs:3177
 msgid "shaft: {}"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:3197
+#: crates/ui-egui/src/canvas.rs:3195
 msgid "slope arrow: `{}` is not a slope"
 msgstr ""
 
@@ -15426,7 +15426,7 @@ msgstr ""
 msgid "spline"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:3291
+#: crates/ui-egui/src/canvas.rs:3289
 msgid "stair: `{}` is not a width"
 msgstr ""
 
@@ -15470,7 +15470,7 @@ msgstr ""
 msgid "the next free name"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:4704
+#: crates/ui-egui/src/canvas.rs:4712
 msgid "the opening has to stay on its wall"
 msgstr ""
 
@@ -15541,7 +15541,7 @@ msgstr ""
 msgid "voltages"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:3726
+#: crates/ui-egui/src/canvas.rs:3734
 msgid "wall: {}"
 msgstr ""
 
@@ -15809,11 +15809,11 @@ msgstr ""
 msgid "{} of {} pages ({} × {})"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:4797
+#: crates/ui-egui/src/canvas.rs:4805
 msgid "{} of {} risers"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:5633
+#: crates/ui-egui/src/canvas.rs:5641
 #: crates/ui-egui/src/orbit.rs:2093
 msgid "{} of {} {}"
 msgstr ""
@@ -15887,7 +15887,7 @@ msgstr ""
 msgid "{} triangles, from a file"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:4799
+#: crates/ui-egui/src/canvas.rs:4807
 msgid "{} up"
 msgstr ""
 
