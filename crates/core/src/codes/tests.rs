@@ -724,6 +724,17 @@ fn stair_solve_proposes_no_stair_of_more_risers_than_a_stair_takes() {
 }
 
 #[test]
+fn a_turn_of_more_winders_than_a_stair_takes_is_refused_not_laid_out() {
+    // The command lays a stair out before the check refuses it: u32::MAX winders once asked that for 100 GB.
+    let mut s = Session::new();
+    let p = json!({"start": [0, 0], "path": [{"to": [3000, 0]}, {"to": [3000, 3000], "winders": u32::MAX}]});
+    let e = s.execute("stair", &p).unwrap_err();
+    assert!(e.contains("winders"), "{e}");
+    let p = json!({"start": [0, 0], "angle": 0, "landings": [{"at": 6, "turn": 90, "winders": u32::MAX, "balance": u32::MAX}]});
+    assert!(s.execute("stair", &p).is_err());
+}
+
+#[test]
 fn every_storey_of_a_multistorey_stair_holds_2_to_200_risers() {
     let mut s = Session::new();
     // Level 2 is 3000 up; a third 40 m over it, a storey of more than 200 risers however high each is allowed.

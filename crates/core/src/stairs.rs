@@ -201,6 +201,11 @@ fn corners(line: &[P2], from: f64, to: f64) -> Vec<P2> {
     out
 }
 
+/// Winders in a turn, and treads of each flight they are balanced over, at most: `Model::check` refuses more, and a command
+/// lays a stair out before the check, so a count past it is cut here rather than laid out (u32::MAX winders once asked for
+/// 100 GB).
+const MAX_WINDERS: u32 = 30;
+
 /// The treads of a turn whose winders are balanced: the turn takes `into` mm of the flight on each side, and its
 /// `count` winders and the treads of those stretches are redrawn as steps of equal depth along the walk line (the
 /// middle of the stair) and of equal depth along the inside string, each riser the line through its two points. So no
@@ -210,6 +215,7 @@ fn balanced(p: P2, side: P2, u: P2, w: f64, sweep: f64, count: u32, into: f64, p
     if into <= 0.0 || per_side == 0 || count == 0 || w <= 0.0 {
         return None;
     }
+    let (count, per_side) = (count.min(MAX_WINDERS), per_side.min(MAX_WINDERS));
     let back = sweep == 180.0;
     let at = |x: f64, y: f64| p + side * x + u * y;
     // In the turn's own frame: x toward the side it turns to, y on along the first run, the inside corner at the origin.
@@ -300,6 +306,7 @@ fn balanced(p: P2, side: P2, u: P2, w: f64, sweep: f64, count: u32, into: f64, p
 /// through `sweep` degrees (90 or 180), filling the landing's place: `w` deep along `u`, and `w` out from `p` away
 /// from `side` (and toward it too, when the stair turns back).
 fn wind(p: P2, side: P2, u: P2, w: f64, sweep: f64, count: u32) -> Vec<Vec<P2>> {
+    let count = count.min(MAX_WINDERS);
     let at = |x: f64, y: f64| p + side * x + u * y;
     // Where the ray at `deg` from the first run's end line meets the landing's edge.
     let back = sweep == 180.0;
