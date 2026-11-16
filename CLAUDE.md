@@ -98,6 +98,7 @@ One line per module: what it owns. Read its file and, for the areas it names, th
 - `memory.rs`: what reading a file may take of the machine's memory, a budget from what's free, checked as the reader goes;
   whether the machine swaps (`SwapWatch`). `progress.rs`: a long command's progress and Cancel. `bimc.rs`: a project's zip.
 - `site.rs`: property boundary bearings and validation ([property boundaries](docs/areas/property-boundaries.md)).
+  `site/surface.rs`: a survey's terrain ([site plan](docs/site-plan.md)).
 - `background_grid.rs`: view-owned canvas lattices, rotated drawing and grid snapping ([the desktop](docs/areas/desktop.md)).
 - `handles.rs`: the handles a selected wall or column has in a 3D view: where they stand, the command a drag makes, how it would stand meanwhile ([the desktop](docs/areas/desktop.md)).
 - `workplane.rs`: what the 3D view draws on: its work plane (a level, a reference plane, a surface or three points, at any angle) and the face under the cursor. `triad.rs`: the 3D view's axis triad, its picks and turns. `hosting.rs`: hosted components, reference planes ([families](docs/areas/families.md#where-the-code-lives)).

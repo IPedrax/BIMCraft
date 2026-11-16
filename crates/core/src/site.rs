@@ -2,6 +2,8 @@
 //! from the map's ([`bearing`]).
 use crate::geom::P2;
 
+pub mod surface;
+
 /// Survey bearing (north/south toward east/west), and azimuth clockwise from north, of the line from `a` to `b`.
 /// A survey measures from north on the map, not the project's +y: `rotation` is the georeference's
 /// ([`crate::model::Georeference::rotation`], degrees counterclockwise from the map's east to the project's x axis), and the
