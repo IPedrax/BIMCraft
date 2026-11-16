@@ -2019,6 +2019,7 @@ impl BimApp {
         if under != c.under {
             (c.under, c.cycle) = (under, 0);
         }
+        // Without the app's input hook, as in a test, this frame's events still hold the Tab, so round it up here too.
         let tab = ui.input(|i| i.key_pressed(Key::Tab)) && local.is_some();
         if tab {
             ui.ctx().memory_mut(|m| {
@@ -2111,9 +2112,10 @@ impl BimApp {
         } else if tabbed && !reference_tabbed && !segment_tabbed && !c.under.is_empty() {
             c.cycle = (c.cycle + 1) % c.under.len();
         }
-        // Tab over a wall, while a line or a wall is being drawn from a point, steps through the wall's three references —
-        // its exterior face, its centre line and its interior face — starting from the one the pick has now, so the first
-        // Tab always moves the point. A number already typed keeps Tab for the field it belongs to.
+        // Tab over a wall, while a line or a wall is being drawn, steps through the wall's three references — its exterior
+        // face, its centre line and its interior face — starting from the one the pick has now, so the first press always
+        // moves the point. A number already typed keeps Tab for the field it belongs to, and off every wall Tab steps
+        // from the length to the angle.
         let typing = !self.typed_length.trim().is_empty() || !self.drawing.other.trim().is_empty();
         let chain = matches!(
             self.tool,
@@ -5110,8 +5112,10 @@ impl BimApp {
         }
         let Some(&last) = chain.last() else { return Vec::new() };
         if names.is_empty() {
-            // The length and, once Tab has been pressed, the angle: the one being typed in brackets.
-            let angled = self.drawing.field == 1 || !self.drawing.other.is_empty();
+            // The length and the angle, both shown while a segment is drawn, so Tab's move is seen before a digit is
+            // typed: the field that takes the digits is the one in brackets, Length until Tab and the angle after it.
+            // `(Enter)` says that field holds a number to place.
+            let angled = self.line_angle_field() || self.drawing.field == 1 || !self.drawing.other.is_empty();
             let text = match (self.typed_length.is_empty(), angled) {
                 (true, false) => m.units.with_unit(last.dist(next)),
                 (false, false) => format!("{} (Enter)", self.typed_length.trim()),
@@ -5128,9 +5132,11 @@ impl BimApp {
                     } else {
                         format!("{}°", ang.trim())
                     };
+                    // `typed_length` is whichever field Tab left taking the digits.
+                    let enter = if self.typed_length.is_empty() { "" } else { " (Enter)" };
                     match self.drawing.field {
-                        1 => format!("{len}  [{ang}] (Enter)"),
-                        _ => format!("[{len}]  {ang} (Enter)"),
+                        1 => format!("{len}  [{ang}]{enter}"),
+                        _ => format!("[{len}]  {ang}{enter}"),
                     }
                 }
             };
