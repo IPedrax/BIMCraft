@@ -11,7 +11,7 @@ use bimcraft_core::alignment::{AlignmentAxis, AlignmentResult};
 use bimcraft_core::geom::{self, P2};
 use bimcraft_core::model::{
     Clearance, Column, Component, DEFAULT_HEIGHT, DimKind, Dimension, Element, Extrusion, Face, Floor, Id, Landing, Line, MAX_COORD, Mass,
-    Model, RISER, Ramp, Reference, Roof, Section, Spot, Stair, TOL, TREAD, Tag, Wall,
+    Model, Ramp, Reference, Roof, Section, Spot, Stair, TOL, Tag, Wall,
 };
 use bimcraft_core::render::{self, Drawing, Prim, Rgb, View};
 use bimcraft_core::snap::{self, Found, Kind, Reach, Snaps};

@@ -290,7 +290,7 @@ impl<'a> Scene<'a> {
             points: Vec::new(),
             lines: Vec::new(),
             walls: Vec::new(),
-                curves: Vec::new(),
+            curves: Vec::new(),
             chords: Vec::new(),
             cloud: Some((m, level, look)),
         };
@@ -763,14 +763,7 @@ pub fn among(
     o: &Snaps,
 ) -> Found {
     let window = reach.point.max(reach.line);
-    let mut scene = Scene {
-        points: Vec::new(),
-        lines: Vec::new(),
-        walls: Vec::new(),
-        curves: Vec::new(),
-        chords: Vec::new(),
-        cloud: None,
-    };
+    let mut scene = Scene { points: Vec::new(), lines: Vec::new(), walls: Vec::new(), curves: Vec::new(), chords: Vec::new(), cloud: None };
     scene.lines.extend(traces.iter().filter(|(a, b)| geom::dist_to_segment(p, *a, *b) <= window).map(|(a, b)| (*a, *b, None)));
     for (a, b) in segments.iter().filter(|(a, b)| geom::dist_to_segment(p, *a, *b) <= window) {
         scene.segment(*a, *b, None);
