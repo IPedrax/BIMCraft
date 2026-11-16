@@ -74,6 +74,7 @@ mod presets;
 mod projectinfo;
 mod properties;
 mod purge;
+mod pyaddins;
 pub mod recent;
 mod reinforce;
 mod renames;
@@ -364,6 +365,8 @@ enum Tab {
     Collaborate,
     View,
     Manage,
+    /// The user's Python scripts: the Player, and the buttons made of them.
+    PyAddins,
     Modify,
     Context,
     /// A tab a plugin declared, by its place in [`BimApp::plugin_tabs`].
@@ -387,6 +390,7 @@ fn tab_key(tab: Tab) -> u64 {
         Tab::Modify => 11,
         Tab::Context => 12,
         Tab::Collaborate => 13,
+        Tab::PyAddins => 14,
         Tab::Plugin(i) => 100 + i as u64,
     }
 }
@@ -426,7 +430,7 @@ type Buttons<'a> = &'a [(Icon, &'a str, &'a str, Option<Tool>, bool)];
 
 /// The desktop's own two-letter shortcuts, which [`BimApp::shortcut`] takes before the commands'
 /// aliases, and what Keyboard Shortcuts (KS) calls them.
-const SHORTCUTS: [(&str, &str); 62] = [
+const SHORTCUTS: [(&str, &str); 67] = [
     ("3D", "3D View"),
     ("MD", "Modify"),
     ("SB", "Floor: Structural"),
@@ -492,6 +496,12 @@ const SHORTCUTS: [(&str, &str); 62] = [
     ("CK", "Code Check"),
     ("TS", "Convert to Sketch"),
     ("SY", "Separate Storeys"),
+    // Revit has no PyAddins: letters free in both, Reload as Load Scripts and Stop as eXit Script.
+    ("PY", "Player"),
+    ("RS", "Run Script"),
+    ("LS", "Reload"),
+    ("NS", "New Script"),
+    ("XS", "Stop"),
 ];
 
 /// Every two-letter shortcut and what it does: the desktop's own, then the commands' aliases.
@@ -1083,6 +1093,8 @@ pub struct BimApp {
     cowork_ai: cowork::Ai,
     /// A host with guests in that was asked to close: asking whether to end the session (false), or told to (true).
     cowork_quit: Option<bool>,
+    /// The user's Python scripts: the folder, the Player's forms, the run going on.
+    pub(crate) pyaddins: pyaddins::PyAddins,
     /// The Revit file being read, on a thread of its own.
     revit_job: Option<revit::Job>,
     /// A big project being read on a thread of its own (`opening.rs`).
@@ -1510,7 +1522,7 @@ fn tab_button_with(ui: &mut Ui, label: &str, active: bool, contextual: bool, sen
 const FLOATING_CARD: f32 = 30.0;
 
 /// The ribbon's tabs, in order, with the icon the Tools palette's rail gives each (the contextual tab comes after them).
-const TABS: [(Tab, &str, Icon); 13] = [
+const TABS: [(Tab, &str, Icon); 14] = [
     (Tab::Architecture, msg!("Architecture"), Icon::Wall),
     (Tab::Structure, msg!("Structure"), Icon::Beam),
     (Tab::Plumbing, msg!("Plumbing"), Icon::Pipe),
@@ -1523,6 +1535,7 @@ const TABS: [(Tab, &str, Icon); 13] = [
     (Tab::Collaborate, msg!("Collaborate"), Icon::Cowork),
     (Tab::View, msg!("View"), Icon::View3D),
     (Tab::Manage, msg!("Manage"), Icon::Settings),
+    (Tab::PyAddins, "PyAddins", Icon::Script),
     (Tab::Modify, "Modify", Icon::Modify),
 ];
 
@@ -1850,6 +1863,7 @@ impl BimApp {
             cowork_seen: cowork::Seen::default(),
             cowork_ai: cowork::Ai::default(),
             cowork_quit: None,
+            pyaddins: pyaddins::PyAddins::default(),
             revit_job: None,
             opening: None,
             swapping: swap::Swapping::default(),
@@ -1886,6 +1900,7 @@ impl BimApp {
     pub(crate) fn pump(&mut self, ctx: &Context) {
         // What agents asked of the project comes before the tidying, which puts right what a command left stale.
         self.answer_agents(ctx);
+        self.poll_pyaddins(ctx);
         self.pump_cowork(ctx);
         // A project put in the session's place under the window (the control port turns an agent's New and Open away, but a
         // script or an embedder may do them, and joining a Co-Work session puts the host's there) starts it over, as File > New
@@ -2838,6 +2853,16 @@ impl BimApp {
             "TS" | "SY" => {
                 let command = if self.typed == "TS" { "stair_sketch" } else { "stair_storeys" };
                 self.run(command, json!({"id": self.selection.first()}));
+                return true;
+            }
+            "PY" | "RS" | "LS" | "NS" | "XS" => {
+                match self.typed.as_str() {
+                    "PY" => self.toggle_player(),
+                    "RS" => self.run_open_pyaddin(),
+                    "LS" => self.reload_pyaddins(),
+                    "NS" => self.pyaddins.new_script = Some(self.pyaddins.free_name()),
+                    _ => self.stop_pyaddin(),
+                }
                 return true;
             }
             "EU" | "UE" => {
@@ -4083,6 +4108,7 @@ impl BimApp {
         (fresh.recent, fresh.recent_path) = (std::mem::take(&mut self.recent), self.recent_path.take());
         fresh.autosave = std::mem::take(&mut self.autosave);
         fresh.card = std::mem::take(&mut self.card);
+        fresh.pyaddins = self.pyaddins.carried();
         fresh.home = self.home.put_away();
         // A new or opened project keeps the plugins and their tabs: they are the user's folder, not the project's, and the
         // session's external commands were already registered. Re-registering puts them back if the project replaced them.
@@ -4454,6 +4480,7 @@ impl BimApp {
             Tab::View => self.view_tab(ui),
             Tab::Collaborate => self.collaborate_tab(ui),
             Tab::Manage => self.manage_tab(ui),
+            Tab::PyAddins => self.pyaddins_tab(ui),
             Tab::Modify | Tab::Context => self.modify_tab(ui),
             Tab::Plugin(i) => self.plugin_tab(ui, i),
         }
@@ -6868,6 +6895,7 @@ impl BimApp {
         self.lend_window(ctx);
         self.quit_window(ctx);
         self.knock_window(ctx);
+        self.pyaddins_windows(ctx);
         if std::mem::take(&mut self.link_dialog) {
             self.link_model_dialog(ctx);
         }

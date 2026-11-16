@@ -96,8 +96,11 @@ fn annotation(h: &mut Harness<BimApp>, item: &str) {
     press(h, item);
 }
 
-/// A tool from the Architecture tab: a tool's contextual tab takes the ribbon, as in Revit.
+/// A tool from the Architecture tab: a tool's contextual tab takes the ribbon, as in Revit. With a contextual tab the tabs are
+/// wider than the window and scrolled to it, so the Architecture tab is scrolled back into view first, as a user would.
 fn tool(h: &mut Harness<BimApp>, label: &str) {
+    h.get_by_label("Architecture").scroll_to_me();
+    h.run();
     press(h, "Architecture");
     press(h, label);
 }
@@ -1062,6 +1065,9 @@ fn ks_lists_every_shortcut_and_every_one_it_lists_works() {
         "Curtain Grid",
         "Add/Remove Segments",
         "Replace Panel with Wall",
+        "Player",
+        "Run Script",
+        "New Script",
     ];
     for (_, name) in crate::shortcuts().into_iter().filter(|(_, name)| !awaiting.contains(name)) {
         for l in [Lang::Portuguese, Lang::Spanish] {
@@ -1119,7 +1125,8 @@ fn ma_gives_the_walls_selected_after_the_first_its_type_in_one_undo_step() {
 
 #[test]
 fn keys_for_tools_bimcraft_lacks_are_bound_to_nothing_rather_than_to_another_tool() {
-    for keys in ["SU", "LI", "SF", "BR", "BS", "RN", "CV", "TF", "DA", "FD"] {
+    // RL is Revit's Reload Latest and SX its Snap to Points, so PyAddins' Reload is LS and its Stop XS.
+    for keys in ["SU", "LI", "SF", "BR", "BS", "RN", "CV", "TF", "DA", "FD", "RL", "SX"] {
         let mut app = BimApp::new(Session::new());
         app.typed = keys.into();
         assert!(!app.shortcut(), "{keys}");
@@ -7405,6 +7412,7 @@ mod profile;
 mod projectinfo;
 mod publisher;
 mod purge;
+mod pyaddins;
 mod qol;
 mod reinforce;
 mod revit;

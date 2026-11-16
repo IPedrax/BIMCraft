@@ -1,12 +1,15 @@
 //! BIMCraft's MCP server: JSON-RPC 2.0 over stdio, one message per line (MCP's stdio transport).
 //! Its tools run the same commands as the CLI and scripts, on a headless session, or, with `--connect`, on the session of a window
 //! (`window.rs`): the project the user has open. With `--read-only` the agent may only read the project: the headless session is
-//! read-only (`Session::read_only`), and a window is asked to run each request read-only.
+//! read-only (`Session::read_only`), and a window is asked to run each request read-only. Either way, or when the window lets agents
+//! only read, the PyAddins tools only list and read (`pyaddins.rs`): a script's Python is beyond any session's read-only.
 
 use std::io::{BufRead, Write};
 
+use bimcraft_core::bridge::{self, Request};
 use bimcraft_core::engine::Session;
 use bimcraft_plugin::Plugins;
+use bimcraft_pyaddins::{Store, run};
 use serde_json::{Value, json};
 
 use crate::window::Window;
@@ -40,7 +43,8 @@ const READ_ONLY_HOW: &str = "this MCP server was started with --read-only: start
 /// What a read-only server's instructions add.
 const READ_ONLY_NOTE: &str = " The project is read-only for you: inspect it, query it, read and export its schedules, render it \
 and save it to a new file (.ifc, .pdf of its sheets, .png, a copy), but every command that would change it, step through its \
-undo history, replace it or write over its file is refused.";
+undo history, replace it or write over its file is refused. Of the user's PyAddins you may list and read the scripts and buttons, \
+never save, delete or run one, nor change a button.";
 
 /// Where the tools run: on a session of the server's own, or on a window's.
 enum Backend {
@@ -99,11 +103,36 @@ impl Backend {
     }
 }
 
+impl crate::pyaddins::Target for Backend {
+    fn as_one(&mut self, f: &mut dyn FnMut(&mut run::Ask) -> run::Outcome) -> run::Outcome {
+        match self {
+            Backend::Own(s) => {
+                let mark = s.mark();
+                // A read-only server never gets here (`pyaddins::call` refuses the run); its session would refuse the edits.
+                let out = f(&mut |r: &Request| bridge::run(s, r, bridge::Access::Edit));
+                s.squash(&mark, "PyAddin");
+                out
+            }
+            Backend::Window(w) => f(&mut |r: &Request| match r {
+                Request::Hello => w.ask(json!({"op": "hello"})),
+                Request::Context => w.ask(json!({"op": "context"})),
+                Request::Catalog => w.ask(json!({"op": "catalog"})),
+                Request::Execute { command, params, .. } => w.ask(json!({"op": "execute", "command": command, "params": params})),
+                Request::Script { text, atomic, dry_run, .. } => {
+                    w.ask(json!({"op": "script", "text": text, "atomic": atomic, "dry_run": dry_run}))
+                }
+            }),
+        }
+    }
+}
+
 pub struct Server {
     backend: Backend,
     /// The plugins of a headless server's own session, and how much of their log has been said.
     plugins: Option<Plugins>,
     seen: usize,
+    /// The user's PyAddins folder, which the window's Player shows.
+    pyaddins: Option<Store>,
 }
 
 impl Default for Server {
@@ -125,6 +154,14 @@ fn tool_error(e: &str) -> Value {
 }
 
 fn tools() -> Value {
+    let mut all = core_tools();
+    if let Some(a) = all.as_array_mut() {
+        a.extend(crate::pyaddins::tools());
+    }
+    all
+}
+
+fn core_tools() -> Value {
     json!([
         {"name": "desktop_context", "description": "Read the connected desktop's current selection (element IDs, GUIDs and categories) and active view (kind, name, ID and GUID). Empty selection is []; Home has no active view (null). Built-in views without model elements have null IDs/GUIDs. Read-only; requires mcp --connect and never changes selection or navigation.",
          "inputSchema": {"type": "object", "properties": {}, "additionalProperties": false}, "annotations": {"readOnlyHint": true}},
@@ -166,12 +203,12 @@ impl Server {
         crate::dwg_writer(&mut session);
         let plugins = crate::load_plugins(&mut session);
         let seen = plugins.log().len();
-        Server { backend: Backend::Own(session), plugins: Some(plugins), seen }
+        Server { backend: Backend::Own(session), plugins: Some(plugins), seen, pyaddins: Store::default_store() }
     }
 
     /// A server whose tools work on the project `window` has open.
     pub fn attached(window: Window) -> Self {
-        Server { backend: Backend::Window(window), plugins: None, seen: 0 }
+        Server { backend: Backend::Window(window), plugins: None, seen: 0, pyaddins: Store::default_store() }
     }
 
     /// Opens `path` as the server's own project (before it answers: `bimcraft-cli mcp FILE`), a Revit file as `open` imports one.
@@ -188,12 +225,19 @@ impl Server {
         }
     }
 
-    /// Whether the agent may only read: asked for here, or the window lets its agents only read.
-    fn reads_only(&self) -> bool {
+    /// What lets the agent edit, when it may only read: asked for here, or the window lets its agents only read (which the
+    /// window's own refusals say first too).
+    fn read_only_how(&self) -> Option<&'static str> {
         match &self.backend {
-            Backend::Own(s) => s.read_only.is_some(),
-            Backend::Window(w) => w.read_only || w.window_read_only,
+            Backend::Own(s) => s.read_only,
+            Backend::Window(w) if w.window_read_only => Some(bridge::LET_EDIT),
+            Backend::Window(w) => w.read_only.then_some(bridge::ASKED),
         }
+    }
+
+    /// Whether the agent may only read.
+    fn reads_only(&self) -> bool {
+        self.read_only_how().is_some()
     }
 
     /// Serve until `input` closes. Logs go to stderr: stdout carries only protocol messages.
@@ -292,7 +336,14 @@ impl Server {
                 return Err((INVALID_PARAMS, format!("`{name}` needs `{key}`")));
             }
         }
+        let read_only = self.read_only_how();
         let b = &mut self.backend;
+        if let Some(result) = crate::pyaddins::call(name, &args, self.pyaddins.as_ref(), b, read_only) {
+            return Ok(match result {
+                Ok(v) => text(&v),
+                Err(e) => tool_error(&e),
+            });
+        }
         let result = match name {
             "desktop_context" => {
                 if args.as_object().is_some_and(|o| !o.is_empty()) {
@@ -403,6 +454,73 @@ mod tests {
         let content = &r["result"]["content"][0];
         assert_ne!(r["result"]["isError"], json!(true), "{name} failed: {content}");
         if content["type"] == "text" { serde_json::from_str(content["text"].as_str().unwrap()).unwrap() } else { content.clone() }
+    }
+
+    /// A tool that fails: its text.
+    fn tool_err(s: &mut Server, name: &str, args: Value) -> String {
+        let r = call(s, 9, "tools/call", json!({"name": name, "arguments": args}));
+        assert_eq!(r["result"]["isError"], json!(true), "{name} should have failed: {r}");
+        r["result"]["content"][0]["text"].as_str().unwrap_or_default().to_string()
+    }
+
+    #[test]
+    fn an_agent_writes_a_pyaddin_makes_it_a_button_and_runs_it_as_one_undo_step() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut s = Server::new();
+        s.pyaddins = Some(Store::new(dir.path()));
+        let python = Store::new(dir.path()).python();
+        let code = r#""""Walls in a row."""
+__title__ = "Row of walls"
+from typing import Annotated
+import bimcraft as bc
+
+def main(count: Annotated[int, bc.Range(1, 20)], length: bc.Length = 4000):
+    """Walls, one above the other.
+
+    count: how many
+    """
+    for i in range(count):
+        bc.wall(points=[[0, i * 2000], [length, i * 2000]])
+    print("made", count)
+    return "%d walls" % count
+"#;
+        let saved = tool(&mut s, "pyaddin_save", json!({"name": "Row", "code": code}));
+        assert_eq!(saved["saved"], "Row");
+        let listed = tool(&mut s, "pyaddin_list", json!({}));
+        assert_eq!(listed["scripts"][0]["name"], "Row");
+        assert!(tool_err(&mut s, "pyaddin_save", json!({"name": "../x", "code": ""})).contains("can't name"));
+        if let Err(e) = python {
+            eprintln!("skipped the rest, no Python here: {e}");
+            return;
+        }
+        assert_eq!(saved["description"]["title"], "Row of walls");
+        assert_eq!(saved["description"]["inputs"][0], json!({"name": "count", "type": "int", "min": 1.0, "max": 20.0, "hint": "how many"}));
+        // A script Python can't read is saved, and the reply says why the Player can't show it.
+        let broken = tool(&mut s, "pyaddin_save", json!({"name": "Broken", "code": "def main(:\n"}));
+        assert!(broken["problem"].as_str().unwrap().contains("line 1"), "{broken}");
+        // A button keeps values the script takes.
+        assert!(tool_err(&mut s, "pyaddin_button", json!({"label": "Three", "script": "Row"})).contains("`count` needs a value"));
+        assert!(
+            tool_err(&mut s, "pyaddin_button", json!({"label": "Three", "script": "Row", "inputs": {"count": 99}})).contains("at most 20")
+        );
+        assert!(tool_err(&mut s, "pyaddin_button", json!({"label": "x", "script": "Gone"})).contains("save it first"));
+        tool(&mut s, "pyaddin_button", json!({"label": "Three", "script": "Row", "inputs": {"count": 3}, "panel": "Walls"}));
+        assert_eq!(tool(&mut s, "pyaddin_list", json!({}))["buttons"][0]["panel"], "Walls");
+        // Run: what it made, printed and returned, and one undo step takes it all back.
+        let out = tool(&mut s, "pyaddin_run", json!({"name": "Row", "inputs": {"count": 3, "length": 5000}}));
+        assert_eq!((out["ok"].clone(), out["message"].clone(), out["log"].clone()), (json!(true), json!("3 walls"), json!(["made 3"])));
+        let walls = || json!({"category": "wall"});
+        assert_eq!(tool(&mut s, "query_elements", walls())["elements"].as_array().map(Vec::len), Some(3));
+        tool(&mut s, "execute", json!({"command": "undo"}));
+        assert_eq!(tool(&mut s, "query_elements", walls())["elements"].as_array().map(Vec::len), Some(0));
+        assert!(tool_err(&mut s, "pyaddin_run", json!({"name": "Row"})).contains("`count` needs a value"));
+        assert!(tool_err(&mut s, "pyaddin_run", json!({"name": "Nope"})).contains("no script"));
+        let failed = tool(&mut s, "pyaddin_run", json!({"name": "Row", "inputs": {"count": 1, "length": 0}}));
+        assert_eq!(failed["ok"], json!(false));
+        assert!(failed["error"].as_str().unwrap().contains("CommandError"), "{failed}");
+        // Deleting the script takes its button.
+        tool(&mut s, "pyaddin_delete", json!({"name": "Row"}));
+        assert_eq!(tool(&mut s, "pyaddin_list", json!({}))["buttons"], json!([]));
     }
 
     #[test]
@@ -753,6 +871,60 @@ mod tests {
         let e = refused(&mut s, "script", json!({"text": "wall {\"points\": [[0, 0], [4000, 0]]}"}));
         assert!(e.contains("File > Settings > Agents"), "{e}");
         assert!(tool(&mut s, "schedule", json!({"category": "walls"}))["rows"].is_array());
+    }
+
+    #[test]
+    fn a_read_only_server_lists_and_reads_pyaddins_but_never_writes_or_runs_one() {
+        // A script runs as Python of its own, which no session's read-only reaches: it could write over the project's file.
+        // So an agent that may only read never saves, deletes or runs a script, nor changes the ribbon's buttons.
+        let code = "def main():\n    open('house.bimcraft', 'w').write('gone')\n";
+        let headless = || {
+            let mut s = Server::new();
+            s.read_only();
+            s
+        };
+        let connected = || {
+            let mut s = Server::attached(Window::connect_to(&crate::window::tests::stand_in(usize::MAX)).unwrap());
+            s.read_only();
+            s
+        };
+        let window_only_reads = || {
+            let entry = crate::window::tests::stand_in_with(usize::MAX, bimcraft_core::bridge::Access::Read);
+            Server::attached(Window::connect_to(&entry).unwrap())
+        };
+        for (how, make) in
+            [("--read-only", &headless as &dyn Fn() -> Server), ("--connect --read-only", &connected), ("the window's", &window_only_reads)]
+        {
+            let dir = tempfile::tempdir().unwrap();
+            let store = Store::new(dir.path());
+            store.save("Kept", "def main():\n    return 'hi'\n").unwrap();
+            store.set_button(bimcraft_pyaddins::Button::from_json(&json!({"label": "Hi", "script": "Kept"})).unwrap()).unwrap();
+            let before = (store.scripts().len(), store.buttons().len(), store.read("Kept").unwrap());
+            let mut s = make();
+            s.pyaddins = Some(Store::new(dir.path()));
+            assert_eq!(tool(&mut s, "pyaddin_list", json!({}))["scripts"][0]["name"], "Kept", "{how}");
+            assert!(tool(&mut s, "pyaddin_read", json!({"name": "Kept"}))["code"].as_str().unwrap().contains("hi"), "{how}");
+            for (name, args) in [
+                ("pyaddin_save", json!({"name": "Wipe", "code": code})),
+                ("pyaddin_save", json!({"name": "Kept", "code": code})),
+                ("pyaddin_delete", json!({"name": "Kept"})),
+                ("pyaddin_button", json!({"label": "Wipe", "script": "Kept"})),
+                ("pyaddin_button", json!({"label": "Hi", "remove": true})),
+                ("pyaddin_run", json!({"name": "Kept"})),
+            ] {
+                let e = tool_err(&mut s, name, args.clone());
+                assert!(e.contains("read-only"), "{how}: {name} {args}: {e}");
+            }
+            // Only listing and reading are let through: a `pyaddin_*` tool added later is refused too, whatever it does.
+            let ro = s.read_only_how();
+            let e = crate::pyaddins::call("pyaddin_frob", &json!({}), s.pyaddins.as_ref(), &mut s.backend, ro).unwrap().unwrap_err();
+            assert!(e.contains("`pyaddin_frob` would") && e.contains("read-only"), "{how}: {e}");
+            assert_eq!(
+                (store.scripts().len(), store.buttons().len(), store.read("Kept").unwrap()),
+                before,
+                "{how}: the folder is as it was"
+            );
+        }
     }
 
     #[test]

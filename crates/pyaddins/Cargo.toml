@@ -1,0 +1,17 @@
+[package]
+name = "bimcraft-pyaddins"
+description = "BIMCraft's PyAddins: Python scripts the user (or an agent) keeps, run in the user's own Python as a separate process"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+bimcraft-core = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

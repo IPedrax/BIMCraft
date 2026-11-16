@@ -17561,6 +17561,202 @@ msgctxt "category-plural"
 msgid "Mullions"
 msgstr ""
 
+#: crates/ui-egui/src/pyaddins.rs:750
+msgid "A button on the PyAddins tab that runs this script with the values in the form now"
+msgstr ""
+
+#: crates/ui-egui/src/pyaddins.rs:314
+msgid "A script is running: stop it first."
+msgstr ""
+
+#: crates/ui-egui/src/pyaddins.rs:735 crates/ui-egui/src/pyaddins.rs:736
+msgid "Advanced Settings"
+msgstr ""
+
+#: crates/ui-egui/src/pyaddins.rs:746
+msgid "Button label"
+msgstr ""
+
+#: crates/ui-egui/src/pyaddins.rs:849
+msgid "Claude Code and Codex write PyAddins for you with BIMCraft's skill: install it, then give the agent BIMCraft's tools."
+msgstr ""
+
+#: crates/ui-egui/src/pyaddins.rs:770
+msgid "Delete Script"
+msgstr ""
+
+#: crates/ui-egui/src/pyaddins.rs:801
+msgid "Done."
+msgstr ""
+
+#: crates/ui-egui/src/pyaddins.rs:171
+msgid "Dummy Script"
+msgstr ""
+
+#: crates/ui-egui/src/pyaddins.rs:838
+msgid "Editor"
+msgstr ""
+
+#: crates/ui-egui/src/pyaddins.rs:876
+msgid "Find Again"
+msgstr ""
+
+#: crates/ui-egui/src/pyaddins.rs:853
+msgid "Install Skill"
+msgstr ""
+
+#: crates/ui-egui/src/pyaddins.rs:751
+msgid "Make Button"
+msgstr ""
+
+#: crates/ui-egui/src/pyaddins.rs:501 crates/ui-egui/src/pyaddins.rs:901
+msgid "New Script"
+msgstr ""
+
+#: crates/ui-egui/src/pyaddins.rs:418
+msgid "New Script: a script to start from, in the Player"
+msgstr ""
+
+#: crates/ui-egui/src/pyaddins.rs:513
+msgid "No script matches."
+msgstr ""
+
+#: crates/ui-egui/src/pyaddins.rs:511
+msgid "No scripts yet: New Script starts one, and an agent can write them (pyaddin_save)."
+msgstr ""
+
+#: crates/ui-egui/src/pyaddins.rs:661
+msgid "Nothing selected"
+msgstr ""
+
+#: crates/ui-egui/src/pyaddins.rs:765
+msgid "Open the script in your editor"
+msgstr ""
+
+#: crates/ui-egui/src/pyaddins.rs:835
+msgid "Path to Python"
+msgstr ""
+
+#: crates/ui-egui/src/pyaddins.rs:405
+msgid "Player"
+msgstr ""
+
+#: crates/ui-egui/src/pyaddins.rs:404
+msgid "Player: your Python scripts, each with a form of what it asks for, to run on the model"
+msgstr ""
+
+#: crates/ui-egui/src/pyaddins.rs:823
+msgid "Python"
+msgstr ""
+
+#: crates/ui-egui/src/pyaddins.rs:413
+msgid "Python: the Python scripts run in; BIMCraft has none of its own (3.9 or newer)"
+msgstr ""
+
+#: crates/ui-egui/src/pyaddins.rs:853
+msgid "Reinstall Skill"
+msgstr ""
+
+#: crates/ui-egui/src/pyaddins.rs:409
+msgid "Reload: read the scripts and buttons again, and look for Python again"
+msgstr ""
+
+#: crates/ui-egui/src/pyaddins.rs:470
+msgid "Remove Button"
+msgstr ""
+
+#: crates/ui-egui/src/pyaddins.rs:435
+msgid "Restart: run the last script again, with the same values"
+msgstr ""
+
+#: crates/ui-egui/src/pyaddins.rs:434
+msgid "Restart: run {} again, with the same values"
+msgstr ""
+
+#: crates/ui-egui/src/pyaddins.rs:748
+msgid "Ribbon panel"
+msgstr ""
+
+#: crates/ui-egui/src/pyaddins.rs:332
+msgid "Running {}…"
+msgstr ""
+
+#: crates/ui-egui/src/pyaddins.rs:795
+msgid "Running…"
+msgstr ""
+
+#: crates/ui-egui/src/pyaddins.rs:455
+msgid "Runs {}"
+msgstr ""
+
+#: crates/ui-egui/src/dock.rs:59
+msgid "Script Automation"
+msgstr ""
+
+#: crates/ui-egui/src/pyaddins.rs:402
+msgid "Scripts"
+msgstr ""
+
+#: crates/ui-egui/src/pyaddins.rs:843
+msgid "Scripts are kept in {}"
+msgstr ""
+
+#: crates/ui-egui/src/pyaddins.rs:826
+msgid "Scripts run in your own Python, 3.9 or newer: BIMCraft has none of its own. Leave the path empty to use the one found."
+msgstr ""
+
+#: crates/ui-egui/src/pyaddins.rs:499
+msgid "Search scripts…"
+msgstr ""
+
+#: crates/ui-egui/src/pyaddins.rs:465
+msgid "Show in Player"
+msgstr ""
+
+#: crates/ui-egui/src/pyaddins.rs:428
+msgid "Stop the script running"
+msgstr ""
+
+#: crates/ui-egui/src/pyaddins.rs:863
+msgid "The skill is installed."
+msgstr ""
+
+#: crates/ui-egui/src/pyaddins.rs:868
+msgid "Then, in a terminal, with the window started as bimcraft --control 0:"
+msgstr ""
+
+#: crates/ui-egui/src/pyaddins.rs:920
+msgid "There is a script named {} already."
+msgstr ""
+
+#: crates/ui-egui/src/pyaddins.rs:491
+msgid "There is no PyAddins folder: BIMCraft found no home folder to keep scripts in."
+msgstr ""
+
+#: crates/ui-egui/src/pyaddins.rs:839
+msgid "the system's editor for Python, else for text"
+msgstr ""
+
+#: crates/ui-egui/src/pyaddins.rs:759
+msgid "{} is on the PyAddins tab."
+msgstr ""
+
+#: crates/ui-egui/src/pyaddins.rs:305
+msgid "{} ran."
+msgstr ""
+
+#: crates/ui-egui/src/pyaddins.rs:361
+msgid "{} scripts, {} buttons."
+msgstr ""
+
+#: crates/ui-egui/src/pyaddins.rs:661
+msgid "{} selected"
+msgstr ""
+
+#: crates/ui-egui/src/pyaddins.rs:307
+msgid "{} was stopped."
+msgstr ""
+
 #: crates/ui-egui/src/editor.rs:739
 #~ msgid "A blank value is the family's own, as the Parameters tab has it."
 #~ msgstr "Um valor em branco é o da própria família, como a aba Parâmetros o tem."
