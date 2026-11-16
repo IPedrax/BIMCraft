@@ -62,6 +62,7 @@ mod notes;
 mod objectstyles;
 mod opening;
 mod orbit;
+pub mod pacing;
 mod panelsched;
 mod paper;
 mod parameters;
@@ -551,6 +552,9 @@ pub struct BimApp {
     pub session: Session,
     /// A scenario being run on the window (`bimcraft --bench`): it drives the window and times its frames.
     pub bench: Option<bench::Bench>,
+    /// The window's own pacing of its frames where the system's vsync doesn't (Windows: `pacing.rs`). None where it doesn't
+    /// pace them (other systems, the tests).
+    pub frames: Option<pacing::Pacer>,
     /// The system's requests since the last frame, read once a frame. None where it sends none.
     pub os_events: Option<Box<dyn FnMut() -> Vec<OsEvent>>>,
     /// The window draws its own title bar (`titlebar.rs`): the desktop's `main` says so where the system lets it (Windows and
@@ -1690,6 +1694,7 @@ impl BimApp {
             options_rect: Rect::NOTHING,
             canvas: canvas::Canvas::default(),
             bench: None,
+            frames: None,
             orbit: orbit::Orbit::default(),
             active_3d: None,
             card: gpu::Card::default(),
@@ -6766,12 +6771,40 @@ impl BimApp {
     }
 }
 
+impl BimApp {
+    /// Where the window paces its own frames: the present mode for its card, set once, and the wait that keeps frames from
+    /// coming closer than the monitor's refresh. Only a frame's first pass waits: a sizing pass egui asks for comes at once.
+    fn pace_frame(&mut self, ctx: &Context, frame: &mut eframe::Frame) {
+        let Some(pacer) = self.frames.as_mut() else { return };
+        if ctx.current_pass_index() > 0 {
+            return;
+        }
+        if !pacer.configured {
+            if let Some(state) = frame.wgpu_render_state() {
+                let mut config = state.surface_config;
+                config.present_mode = pacing::present_for(state.adapter.get_info().backend, config.present_mode);
+                frame.set_wgpu_surface_config(config);
+            }
+            pacer.configured = true;
+        }
+        let now = std::time::Instant::now();
+        let every = pacer.every(now, || frame.winit_window()?.current_monitor()?.refresh_rate_millihertz());
+        let wait = pacer.wait(now, every);
+        if !wait.is_zero() {
+            std::thread::sleep(wait);
+        }
+    }
+}
+
 impl eframe::App for BimApp {
     /// Runs before each pass, and while the window is hidden too: agents and a Co-Work session's guests are answered when the
     /// window is minimised.
     fn logic(&mut self, ctx: &Context, frame: &mut eframe::Frame) {
+        self.pace_frame(ctx, frame);
         if let Some(mut bench) = self.bench.take() {
-            bench.step(self, ctx, frame.info().cpu_usage.unwrap_or(0.0));
+            // eframe counts the frame before's wait as its processor time.
+            let slept = self.frames.as_ref().map_or(0.0, |p| p.slept.0.as_secs_f32());
+            bench.step(self, ctx, (frame.info().cpu_usage.unwrap_or(0.0) - slept).max(0.0));
             self.bench = Some(bench);
         }
         self.pump(ctx);

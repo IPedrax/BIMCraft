@@ -280,6 +280,17 @@ survives. `graphics.json` keeps the backend's name (`{"backend": "DirectX 12", "
 reordering the ladder cannot change what a kept mark means; 0.8.0's marks (`"choice"`, a place on the old order) are read through that order. An error from `run_native` leaves the mark too, is logged, and on Windows shown in a message box (`startup::tell`: its words are
 entries in the interface's PO catalogs). `WGPU_BACKEND` set by the user switches all of it off. A new way for the start to fail goes through `startup::note`, not `eprintln!` alone.
 
+Frame pacing (`ui-egui/src/pacing.rs`). On Linux and macOS the system's vertical sync paces the window (wgpu's `AutoVsync`). On Windows it
+held the window to a fraction of the screen's rate: measured with `bimcraft --bench` on the highrise (Radeon RX 590, 59 Hz, 2026-11-15), a
+frame the window made in 2 to 4 ms came every 31 ms over Vulkan, every 33 to 47 ms over OpenGL and every 265 ms over DirectX 12, whatever the
+frame latency or the timer's resolution, and every 1.3 to 3.6 ms without vsync. So on Windows (`pacing::system_policy`) the window starts
+with `AutoNoVsync`, switches to Mailbox once its card is known to be DirectX 12 (`present_for`: it never tears; over Vulkan and OpenGL
+`AutoNoVsync` is Immediate, which may tear), and `BimApp::frames` sleeps at the start of each frame (`logic`, its first pass only: egui's
+sizing pass comes at once) so that frames come no closer than the monitor's refresh (`Pacer`, the rate asked of winit once a second,
+60 Hz where it doesn't say). eframe counts that wait in the frame's `cpu_usage`; the benchmark's `cpu_ms` leaves it out (`Pacer::slept`). Every step of the same benchmark then ran at 16.9 to 17.0 ms on every backend. `BIMCRAFT_VSYNC=1` keeps the
+driver's vsync, to compare. The tests have no pacer (`frames: None`). The core's own times on Windows matched Linux's (`docs/performance.md`), so
+a Windows-only slowness is to be looked for in presentation first: run the benchmark and compare the frames' interval with their `cpu_ms`.
+
 Tags. A `Tag` names an element at a `host` by a `label`: the name of one of the fields its category's schedule has (`schedule::field_text` reads it
 as the schedule shows it, in the project's units), or, with none, the category's usual one (`Tag::usual`: a door's or window's `Mark`, a room's `Name`, else
 the `Type`), `?` while that has no value. The host is anything `Model::anchor` finds a point for (a door or window's centre, the middle of a wall's or a run's
