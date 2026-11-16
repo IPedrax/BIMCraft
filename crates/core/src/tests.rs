@@ -3067,8 +3067,6 @@ fn hostile_params_never_panic_or_break_the_model() {
     let _ = base.execute("place", &json!({"sheet": "A101", "view": "Level 1"}));
     let exports = temp("sweep-exports");
     targeted.extend(crate::export_tests::sweep_payloads(&exports));
-    // A typed stair of two storeys, last so that no id moves, and the payloads aimed at it and at stairs along a path.
-    targeted.extend(crate::codes::tests::sweep_payloads(&mut base));
     let hostile: Vec<Value> = hostile.into_iter().chain(finishes).collect();
     // Each command against each value, on a copy of the same session; the commands shared out between the cores.
     let cmds: Vec<_> = commands().iter().filter(|c| !matches!(c.id, "open" | "save")).collect();
@@ -3104,6 +3102,9 @@ fn hostile_params_never_panic_or_break_the_model() {
             });
         }
     });
+    // A typed stair of two storeys, last so that no id moves, and the payloads aimed at it and at stairs along a path: made
+    // after the sweep of every command, which drawing it after each would slow by a sixth.
+    targeted.extend(crate::codes::tests::sweep_payloads(&mut base));
     for (cmd, p) in &targeted {
         let mut s = base.clone();
         let made = s.execute(cmd, p).is_ok();
