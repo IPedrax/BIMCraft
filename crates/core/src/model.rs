@@ -55,9 +55,6 @@ pub const DEFAULT_HEIGHT: f64 = 3000.0;
 pub const RISER: f64 = 180.0;
 pub const TREAD: f64 = 280.0;
 pub const STAIR_WIDTH: f64 = 1000.0;
-/// A ramp's steepest slope, percent (1 in 12), and its width, unless told otherwise.
-pub const RAMP_SLOPE: f64 = 100.0 / 12.0;
-pub const RAMP_WIDTH: f64 = 1200.0;
 /// How far a railing on a stair or a ramp runs in from its edge, mm.
 pub const RAILING_INSET: f64 = 50.0;
 /// Balusters one railing may have.

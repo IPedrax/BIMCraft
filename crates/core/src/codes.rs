@@ -28,6 +28,7 @@ use serde_json::{Map, Value};
 
 use crate::model::Model;
 
+pub mod checks;
 pub(crate) mod command;
 mod data;
 pub mod stairs;
@@ -175,6 +176,30 @@ pub fn sections() -> &'static [SectionDef] {
                 ui_msg!("Risers, treads, widths, landings, winders, nosings, handrails and guards of stairs."),
                 &["stair", "stair_check", "stair_solve", "code_check"],
                 check_as::<StairRules>,
+            ),
+            s(
+                Architectural,
+                "ramps",
+                ui_msg!("Ramps"),
+                ui_msg!("A new ramp's slope and width, the steepest slope by a run's rise, run rises, widths and landings."),
+                &["ramp", "code_check"],
+                check_as::<checks::RampRules>,
+            ),
+            s(
+                Architectural,
+                "doors",
+                ui_msg!("Doors and Openings"),
+                ui_msg!("The least clear width and height of doors, the widest leaf, and the doors not held to them."),
+                &["code_check"],
+                check_as::<checks::DoorRules>,
+            ),
+            s(
+                Architectural,
+                "rooms",
+                ui_msg!("Rooms and Habitability"),
+                ui_msg!("Least areas, sides and heights of rooms, by the kind their name says."),
+                &["code_check"],
+                check_as::<checks::RoomRules>,
             ),
             s(
                 Architectural,
@@ -672,6 +697,10 @@ pub fn complete(code: &mut BuildingCode) {
     let from = find(code.discipline, &code.based_on).or_else(|| find(code.discipline, &code.amends));
     let base = from.unwrap_or_else(|| default_of(code.discipline));
     for (key, v) in code.sections.iter_mut() {
+        // A section of reference is the file's as it is: only what a module reads must be whole.
+        if section_def(code.discipline, key).is_none_or(|d| d.read_by.is_empty()) {
+            continue;
+        }
         let (Some(have), Some(theirs)) =
             (v.as_object_mut(), base.section(key).or_else(|| library(code.discipline, key).and_then(|c| c.section(key))))
         else {
@@ -1224,11 +1253,16 @@ impl Model {
 pub fn findings(m: &Model, _id: crate::ids::Id, e: &crate::model::Element) -> Vec<Finding> {
     match e {
         crate::model::Element::Stair(st) => stair_findings(m, st),
+        crate::model::Element::Ramp(r) => checks::ramp_findings(m, r),
+        crate::model::Element::Door(o) => checks::door_findings(m, e, o),
+        crate::model::Element::Room(r) => checks::room_findings(m, r),
         _ => Vec::new(),
     }
 }
 
 #[cfg(test)]
 mod engine_tests;
+#[cfg(test)]
+mod rule_tests;
 #[cfg(test)]
 mod tests;

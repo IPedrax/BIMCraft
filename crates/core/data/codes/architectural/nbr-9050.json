@@ -37,6 +37,35 @@
    "handrail_min": 700,
    "handrail_max": 920,
    "guard_min": 1050
+  },
+  "ramps": {
+   "slope": 8.333333333333334,
+   "width": 1500.0,
+   "slope_max": 8.333333333333334,
+   "slope_by_rise": [
+    [
+     800.0,
+     8.333333333333334
+    ],
+    [
+     1000.0,
+     6.25
+    ],
+    [
+     1500.0,
+     5.0
+    ]
+   ],
+   "run_rise_max": 1500.0,
+   "width_min": 1200.0,
+   "landing_length_min": 1200.0
+  },
+  "doors": {
+   "clear_width_min": 800.0,
+   "clear_height_min": 2100.0,
+   "leaf_width_max": 0.0,
+   "frame_allowance": 0.0,
+   "exempt": []
   }
  },
  "sources": {
@@ -65,10 +94,24 @@
   "stairs.uniformity": "NBR 9050:2020 6.8.2, constant risers (0.5 mm tolerance)",
   "stairs.handrail_min": "NBR 9050:2020 6.9.3.2, the lower rail at 0.70 m",
   "stairs.handrail_max": "NBR 9050:2020 6.9.3.2, the upper rail at 0.92 m",
-  "stairs.guard_min": "NBR 9077:2001 4.8.1.2, 1.05 m as the general rule"
+  "stairs.guard_min": "NBR 9077:2001 4.8.1.2, 1.05 m as the general rule",
+  "ramps.slope_by_rise": "NBR 9050:2020 6.6.2.1, Tabela 4 (unchecked): up to 0.80 m of rise a segment at 8.33 %, 1.00 m at 6.25 %, 1.50 m at 5 %",
+  "ramps.slope_max": "NBR 9050:2020 6.6.2.1 (unchecked)",
+  "ramps.run_rise_max": "NBR 9050:2020 6.6.2.1, Tabela 4's last row (unchecked)",
+  "ramps.width_min": "NBR 9050:2020 6.6.2.5, 1.20 m the least admissible, 1.50 m recommended (unchecked)",
+  "ramps.width": "NBR 9050:2020 6.6.2.5, the width it recommends (unchecked)",
+  "ramps.landing_length_min": "NBR 9050:2020 6.6.5, landings 1.20 m long at least (unchecked)",
+  "ramps.slope": "A new ramp at the steepest slope allowed",
+  "doors.clear_width_min": "NBR 9050:2020 6.11.2.4, a clear opening of 0.80 m (unchecked)",
+  "doors.clear_height_min": "NBR 9050:2020 6.11.2.4, 2.10 m high (unchecked)",
+  "doors.leaf_width_max": "Not in the standard: no limit",
+  "doors.frame_allowance": "The project's: what a door type's width loses to its frame"
  },
  "kinds": {
   "stairs.headroom": "forgiving",
-  "stairs.flight_risers_max": "forgiving"
+  "stairs.flight_risers_max": "forgiving",
+  "doors.frame_allowance": "assumption",
+  "doors.leaf_width_max": "forgiving",
+  "ramps.slope": "practice"
  }
 }

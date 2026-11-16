@@ -26,9 +26,9 @@ use crate::model::{
     CEILING_HEIGHT, CadImport, Ceiling, CeilingType, Column, ColumnType, Component, DEFAULT_HEIGHT, DimKind, Dimension, Dimension3D,
     Element, End, Extrusion, Face, Facing, Floor, FloorType, Grid, Guid, HostRef, Hosted, Id, Key, Landing, Layer, Level, Line, Location,
     MAX_COORD, MAX_POINTS, MAX_SLOPE, MAX_TEXT, Mass, Model, Note, Opening, OpeningType, Orient, PARAMETER_CATEGORIES, ParameterKind,
-    Pattern, Perspective, PlanView, PointCloud, ProjectParameter, PropertyLine, RAMP_SLOPE, RAMP_WIDTH, Railing, RailingType, Ramp, Rebar,
-    Ref3, Reference, Roof, RoofType, Room, RoomArea, RoomSeparator, STAIR_WIDTH, Schedule, Scope, Section, SectionBox, Shaft, Sheet, Side,
-    Spot, Stair, TOL, Tag, Unbound, View3D, Viewport, Wall, WallType, heading, paper,
+    Pattern, Perspective, PlanView, PointCloud, ProjectParameter, PropertyLine, Railing, RailingType, Ramp, Rebar, Ref3, Reference, Roof,
+    RoofType, Room, RoomArea, RoomSeparator, STAIR_WIDTH, Schedule, Scope, Section, SectionBox, Shaft, Sheet, Side, Spot, Stair, TOL, Tag,
+    Unbound, View3D, Viewport, Wall, WallType, heading, paper,
 };
 use crate::paint;
 use crate::phasing;
@@ -3574,6 +3574,19 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
     }
     if m.is_pinned(id) {
         extra.insert("pinned".into(), json!(true));
+    }
+    // A ramp, a door or a room held to the project's building code: in short, and each finding (a stair's are below).
+    if matches!(e, Element::Ramp(_) | Element::Door(_) | Element::Room(_)) {
+        let outside = crate::codes::findings(m, id, e);
+        let said = match outside.len() {
+            0 => "Inside the rules".to_string(),
+            1 => "Outside 1 rule".to_string(),
+            n => format!("Outside {n} rules"),
+        };
+        extra.insert("code_check".into(), json!(said));
+        if !outside.is_empty() {
+            extra.insert("code_findings".into(), json!(outside));
+        }
     }
     // Its type's and its family's GUIDs, beside their names.
     e.clone().lib_refs_mut(&mut |kind, name| {
@@ -12577,6 +12590,8 @@ fn sides(c: &str, s: &mut Session, p: &Value, id: Id, level: Guid) -> Result<Vec
 fn ramp(s: &mut Session, p: &Value) -> R {
     let c = "ramp";
     let m = &s.model;
+    // What a new ramp starts with: the project's code's.
+    let new_ramp = m.rules::<crate::codes::checks::RampRules>();
     let start = point_req(c, p, "start")?;
     let angle = climb(c, p, start)?;
     let level = level_param(c, m, p, "level")?;
@@ -12588,8 +12603,8 @@ fn ramp(s: &mut Session, p: &Value) -> R {
         height,
         start,
         angle,
-        width: num(c, p, "width")?.unwrap_or(RAMP_WIDTH),
-        slope: num(c, p, "slope")?.unwrap_or(RAMP_SLOPE),
+        width: num(c, p, "width")?.unwrap_or(new_ramp.width),
+        slope: num(c, p, "slope")?.unwrap_or(new_ramp.slope),
         landings: landings_param(c, p)?,
     };
     let length: f64 = stairs::ramp(m, &r).runs.iter().map(|r| r.length).sum();

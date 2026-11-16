@@ -159,6 +159,7 @@ fn rows(category: &str) -> &'static [Row] {
             ("Other", "offset", "Offset", Length),
             ("Other", "flip_facing", msg!("Flip Facing"), Flag),
             ("Other", "flip_hand", msg!("Flip Hand"), Flag),
+            ("Other", "code_check", msg!("Building Code"), Shown),
         ],
         "window" => &[
             ("Constraints", "level", "Level", LevelName),
@@ -181,6 +182,7 @@ fn rows(category: &str) -> &'static [Row] {
             ("Identity Data", "name", "Name", Text),
             ("Other", "point", msg!("Location"), Point),
             ("Other", "frozen", msg!("Frozen"), Flag),
+            ("Other", "code_check", msg!("Building Code"), Shown),
         ],
         "floor" => &[
             ("Constraints", "level", "Level", Level),
@@ -381,6 +383,7 @@ fn rows(category: &str) -> &'static [Row] {
             ("Dimensions", "width", "Width", Length),
             ("Dimensions", "slope", msg!("Max Slope (%)"), Number),
             ("Dimensions", "length", "Length", LengthShown),
+            ("Dimensions", "code_check", msg!("Building Code"), Shown),
             ("Other", "start", "Start", Point),
         ],
         "railing" => &[
@@ -2097,7 +2100,7 @@ impl BimApp {
                             let said = if n == 1 { t("Outside 1 rule").to_string() } else { tf("Outside {} rules", &[&n.to_string()]) };
                             let r = ui
                                 .add(Button::new(RichText::new(said).color(crate::codes::OUTSIDE)).small())
-                                .on_hover_text(t("Click to see which rules, and what would bring the stair inside them"));
+                                .on_hover_text(t("Click to see which rules, and what would bring it inside them"));
                             if r.clicked() {
                                 findings = true;
                             }

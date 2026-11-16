@@ -6,7 +6,9 @@
  "region": "United States",
  "references": [
   "IBC 2021, section 1011 (stairways)",
-  "IBC 2021, sections 1014 (handrails) and 1015 (guards)"
+  "IBC 2021, sections 1014 (handrails) and 1015 (guards)",
+  "IBC 2021, sections 1010 (doors), 1012 (ramps) and 1208 (interior space dimensions)",
+  "2010 ADA Standards for Accessible Design; ICC A117.1"
  ],
  "note": "The general row; inside a dwelling the IBC and the IRC allow a riser of 7 3/4 in and a going of 10 in. The IBC has no step rule and counts no risers in a flight: `step_min`, `step_max`, `going_max` and `flight_risers_max` are forgiving numbers. Winders are allowed inside dwellings only. Inches, written in millimetres.",
  "sections": {
@@ -36,6 +38,132 @@
    "handrail_min": 863.6,
    "handrail_max": 965.2,
    "guard_min": 1066.8
+  },
+  "ramps": {
+   "slope": 8.333333333333334,
+   "width": 1219.2,
+   "slope_max": 8.333333333333334,
+   "slope_by_rise": [],
+   "run_rise_max": 762.0,
+   "width_min": 914.4,
+   "landing_length_min": 1524.0
+  },
+  "doors": {
+   "clear_width_min": 812.8,
+   "clear_height_min": 2032.0,
+   "leaf_width_max": 1219.1999999999998,
+   "frame_allowance": 0.0,
+   "exempt": [
+    "closet",
+    "shaft",
+    "access"
+   ]
+  },
+  "rooms": {
+   "kinds": [
+    {
+     "kind": "bathroom",
+     "names": [
+      "bath",
+      "toilet",
+      "wc",
+      "laundry",
+      "storage",
+      "closet"
+     ],
+     "area_min": 0.0,
+     "side_min": 0.0,
+     "height_min": 2133.6
+    },
+    {
+     "kind": "kitchen",
+     "names": [
+      "kitchen"
+     ],
+     "area_min": 0.0,
+     "side_min": 0.0,
+     "height_min": 2133.6
+    },
+    {
+     "kind": "corridor",
+     "names": [
+      "corridor",
+      "hall"
+     ],
+     "area_min": 0.0,
+     "side_min": 0.0,
+     "height_min": 2286.0
+    },
+    {
+     "kind": "habitable",
+     "names": [
+      "bedroom",
+      "living",
+      "dining",
+      "family",
+      "sleeping",
+      "study",
+      "den"
+     ],
+     "area_min": 6.5032128,
+     "side_min": 2133.6,
+     "height_min": 2286.0
+    }
+   ]
+  },
+  "egress": {
+   "corridor_width_min": 1117.6,
+   "corridor_width_min_small": 914.4,
+   "corridor_small_load": 50,
+   "capacity_stairs_per_occupant": 7.619999999999999,
+   "capacity_other_per_occupant": 5.08,
+   "dead_end_max": 6096.0,
+   "dead_end_max_sprinklered": 15240.0,
+   "exits_by_load": [
+    [
+     500,
+     2
+    ],
+    [
+     1000,
+     3
+    ],
+    [
+     null,
+     4
+    ]
+   ],
+   "travel_distance": [
+    {
+     "groups": "A, E, F-1, M, R, S-1",
+     "unsprinklered": 60960.0,
+     "sprinklered": 76200.0
+    },
+    {
+     "groups": "B",
+     "unsprinklered": 60960.0,
+     "sprinklered": 91440.0
+    },
+    {
+     "groups": "F-2, S-2, U",
+     "unsprinklered": 91440.0,
+     "sprinklered": 121920.0
+    }
+   ],
+   "egress_headroom_min": 2286.0
+  },
+  "accessibility": {
+   "turning_diameter": 1524.0,
+   "clear_floor_space": [
+    762.0,
+    1219.1999999999998
+   ],
+   "reach_high": 1219.1999999999998,
+   "reach_low": 381.0,
+   "door_pull_latch_clearance": 457.2,
+   "threshold_max": 12.7,
+   "route_width_min": 914.4,
+   "passing_space": 1524.0
   }
  },
  "sources": {
@@ -63,12 +191,31 @@
   "stairs.uniformity": "IBC 2021 1011.5.4, 3/8 in",
   "stairs.handrail_min": "IBC 2021 1014.2, 34 in",
   "stairs.handrail_max": "IBC 2021 1014.2, 38 in",
-  "stairs.guard_min": "IBC 2021 1015.3, 42 in"
+  "stairs.guard_min": "IBC 2021 1015.3, 42 in",
+  "ramps.slope_max": "IBC 2021 1012.2, 1 in 12 (unchecked)",
+  "ramps.run_rise_max": "IBC 2021 1012.4, 30 inches (unchecked)",
+  "ramps.width_min": "IBC 2021 1012.5.1, 36 inches clear between handrails (unchecked)",
+  "ramps.landing_length_min": "IBC 2021 1012.6.3, 60 inches (unchecked)",
+  "ramps.slope": "A new ramp at the steepest slope allowed",
+  "ramps.width": "A new ramp 4 feet wide: practice",
+  "doors.clear_width_min": "IBC 2021 1010.1.1, 32 inches clear (unchecked; for egress doors)",
+  "doors.clear_height_min": "IBC 2021 1010.1.1, 80 inches (unchecked)",
+  "doors.leaf_width_max": "IBC 2021 1010.1.1, 48 inches for a swinging leaf (unchecked)",
+  "doors.frame_allowance": "The project's: what a door type's width loses to its frame and stops",
+  "doors.exempt": "IBC 2021 1010.1.1's exceptions, by name: the project's to say",
+  "rooms": "IBC 2021 1208.1 (7 ft in any plan dimension), 1208.2 (7 ft 6 in ceilings; 7 ft for bathrooms, toilets, kitchens, storage and laundry), 1208.3 (70 square feet) (unchecked). Rooms are of a kind by their name.",
+  "egress": "IBC 2021 chapter 10 (unchecked): 1005.3 capacity, 1006.3 exits by load, 1017.2 travel distance, 1020.2 and 1020.5 corridors, 1003.2 headroom",
+  "accessibility": "2010 ADA Standards and ICC A117.1 (unchecked): 304 turning space, 305 clear floor space, 308 reach, 404 doors, 403 routes"
  },
  "kinds": {
   "stairs.going_max": "forgiving",
   "stairs.step_min": "forgiving",
   "stairs.step_max": "forgiving",
-  "stairs.flight_risers_max": "forgiving"
+  "stairs.flight_risers_max": "forgiving",
+  "ramps.width": "practice",
+  "doors.frame_allowance": "assumption",
+  "doors.exempt": "assumption",
+  "egress": "requirement",
+  "accessibility": "requirement"
  }
 }

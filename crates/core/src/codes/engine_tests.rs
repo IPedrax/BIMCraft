@@ -375,3 +375,95 @@ fn the_plumbing_commands_size_by_the_project_s_code_and_say_where_the_rain_is_fr
     assert_eq!(types["from"], json!({"layer": "library", "code": "cbpmesp-it22"}));
     assert!(types["source"].as_str().unwrap().contains("Tabela 2"));
 }
+
+/// The rules `code_check` finds element `id` outside of.
+fn outside(s: &mut Session, id: u64) -> Vec<String> {
+    let r = run(s, "code_check", json!({"ids": [id]}));
+    let list = r["elements"].get(0).map(|e| e["findings"].clone()).unwrap_or(json!([]));
+    list.as_array().into_iter().flatten().filter_map(|f| f["rule"].as_str().map(String::from)).collect()
+}
+
+#[test]
+fn ramps_doors_and_rooms_are_held_to_the_project_s_code() {
+    let mut s = Session::new();
+    // A new ramp starts as the code says: the generic one's, then NBR 9050's width.
+    let id = run(&mut s, "ramp", json!({"start": [0, 0], "angle": 0, "height": 600}))["id"].as_u64().unwrap();
+    let Some(crate::model::Element::Ramp(r)) = s.model.elements.get(id) else { panic!("a ramp") };
+    assert_eq!((r.slope, r.width), (100.0 / 12.0, 1200.0));
+    assert!(outside(&mut s, id).is_empty(), "the generic code asks nothing of it");
+    run(&mut s, "building_code", json!({"set": "nbr-9050"}));
+    let id = run(&mut s, "ramp", json!({"start": [0, 5000], "angle": 0, "height": 900}))["id"].as_u64().unwrap();
+    let Some(crate::model::Element::Ramp(r)) = s.model.elements.get(id) else { panic!("a ramp") };
+    assert_eq!(r.width, 1500.0);
+    // 900 mm up at 8.33 %: NBR 9050 allows 6.25 % for a run rising more than 0.80 m.
+    assert_eq!(outside(&mut s, id), ["slope_by_rise"]);
+    run(&mut s, "modify", json!({"id": id, "slope": 6.0}));
+    assert!(outside(&mut s, id).is_empty());
+    // The IBC: 30 inches up a run at most, 36 inches wide.
+    run(&mut s, "building_code", json!({"set": "ibc"}));
+    let id = run(&mut s, "ramp", json!({"start": [0, 10000], "angle": 0, "height": 1000, "width": 800}))["id"].as_u64().unwrap();
+    assert_eq!(outside(&mut s, id), ["width_min", "run_rise_max"]);
+
+    // Doors: the IBC's 32 inches clear, and a closet's door left alone.
+    run(&mut s, "wall", json!({"points": [[0, 20000], [8000, 20000], [8000, 26000], [0, 26000], [0, 20000]]}));
+    run(&mut s, "type", json!({"category": "door", "name": "Narrow 700", "width": 700, "height": 2000}));
+    run(&mut s, "type", json!({"category": "door", "name": "Closet 600", "width": 600, "height": 2000}));
+    let narrow = run(&mut s, "door", json!({"at": [2000, 20000], "type": "Narrow 700"}))["id"].as_u64().unwrap();
+    let closet = run(&mut s, "door", json!({"at": [5000, 20000], "type": "Closet 600"}))["id"].as_u64().unwrap();
+    assert_eq!(outside(&mut s, narrow), ["clear_width_min", "clear_height_min"]);
+    assert!(outside(&mut s, closet).is_empty(), "exempt by its name");
+    run(&mut s, "building_code", json!({"rules": {"doors": {"clear_height_min": 2000}}}));
+    assert_eq!(outside(&mut s, narrow), ["clear_width_min"], "the project's own height");
+
+    // Rooms: a bedroom 1.5 by 2 m is short of the IBC's 70 square feet and 7 feet across; a kitchen isn't held to them.
+    run(&mut s, "wall", json!({"points": [[0, 22000], [1500, 22000], [1500, 20000]]}));
+    let small = run(&mut s, "room", json!({"point": [700, 21000], "name": "Bedroom 2"}))["id"].as_u64().unwrap();
+    let big = run(&mut s, "room", json!({"point": [5000, 24000], "name": "Kitchen"}))["id"].as_u64().unwrap();
+    assert_eq!(outside(&mut s, small), ["area_min", "side_min"]);
+    assert!(outside(&mut s, big).is_empty());
+    let all = run(&mut s, "code_check", json!({}));
+    assert!(all["count"].as_u64().unwrap() >= 5, "{all}");
+    // The generic code has no kinds of room: nothing is reported.
+    run(&mut s, "building_code", json!({"set": "generic"}));
+    assert!(outside(&mut s, small).is_empty());
+}
+
+/// Every element's check costs what is near it, never what is in the building: a room or a door of a 20-storey tower is
+/// checked in about the time one of a 4-storey tower is.
+#[test]
+fn a_room_or_a_door_is_checked_in_the_same_time_however_tall_the_building() {
+    let mut each = Vec::new();
+    for storeys in [4, 20] {
+        let mut s = Session::new();
+        *s.model_mut() = crate::sample::highrise(storeys).unwrap();
+        run(&mut s, "building_code", json!({"set": "ibc"}));
+        let levels: Vec<u64> = s.model.levels().iter().map(|(id, _)| *id).collect();
+        let mut held = Vec::new();
+        for level in levels.iter().take(storeys as usize) {
+            held.push(run(&mut s, "room", json!({"point": [6000, 6000], "level": level, "name": "Bedroom"}))["id"].as_u64().unwrap());
+            // A door where the façade's windows leave room for one.
+            for x in [500, 1500, 2500, 3500, 4500, 5500] {
+                if let Ok(d) = s.execute("door", &json!({"at": [x, 0], "level": level})) {
+                    held.push(d["id"].as_u64().unwrap());
+                    break;
+                }
+            }
+        }
+        // Warm: what the model keeps (the lookup, the rooms) is made once, as it is in the window.
+        let m = (*s.model).clone();
+        let check = |id: u64| m.elements.get(id).map_or(0, |e| crate::codes::findings(&m, id, e).len());
+        held.iter().for_each(|id| {
+            check(*id);
+        });
+        let t = std::time::Instant::now();
+        let rounds = 5;
+        for _ in 0..rounds {
+            for id in held.iter().take(8) {
+                check(*id);
+            }
+        }
+        each.push(t.elapsed().as_secs_f64() / f64::from(rounds * 8));
+    }
+    // Generous, for a debug build on a busy machine: what matters is that it doesn't grow with the building.
+    assert!(each[1] < each[0] * 3.0 + 0.002, "4 storeys {:.3} ms, 20 storeys {:.3} ms an element", each[0] * 1e3, each[1] * 1e3);
+}

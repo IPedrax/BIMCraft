@@ -1,6 +1,7 @@
 //! Manage > Building Codes: the code stairs and railings are held to, and the rules the project changes of it.
 
 use super::*;
+use bimcraft_core::codes::Discipline;
 
 #[test]
 fn building_codes_choose_a_code_and_change_its_rules() {
@@ -11,10 +12,10 @@ fn building_codes_choose_a_code_and_change_its_rules() {
 
     // The IBC, with a width of the project's own.
     {
+        let m = h.state().session.model.clone();
         let d = h.state_mut().codes_dialog.as_mut().unwrap();
-        d.selected = "ibc".into();
-        d.rules = serde_json::to_value(bimcraft_core::codes::code("ibc").unwrap().stairs()).unwrap().as_object().unwrap().clone();
-        d.rules.insert("width_min".into(), serde_json::json!(914.4));
+        d.tab_mut(Discipline::Architectural).set(&m, "ibc");
+        d.stairs_mut().insert("width_min".into(), serde_json::json!(914.4));
     }
     h.run();
     press(&mut h, "OK");
@@ -26,7 +27,7 @@ fn building_codes_choose_a_code_and_change_its_rules() {
 
     // Rules that cannot be keep the dialog open.
     press(&mut h, "Building Codes");
-    h.state_mut().codes_dialog.as_mut().unwrap().rules.insert("riser_min".into(), serde_json::json!(500));
+    h.state_mut().codes_dialog.as_mut().unwrap().stairs_mut().insert("riser_min".into(), serde_json::json!(500));
     press(&mut h, "OK");
     assert!(h.state().codes_dialog.is_some());
     press(&mut h, "Cancel");
@@ -60,13 +61,13 @@ fn a_code_changed_is_custom_and_is_saved_under_a_name_and_deleted() {
     press(&mut h, "Manage");
     press(&mut h, "Building Codes");
     {
+        let m = h.state().session.model.clone();
         let d = h.state_mut().codes_dialog.as_mut().unwrap();
-        d.selected = "nbr-9050".into();
-        d.rules = serde_json::to_value(bimcraft_core::codes::code("nbr-9050").unwrap().stairs()).unwrap().as_object().unwrap().clone();
+        d.tab_mut(Discipline::Architectural).set(&m, "nbr-9050");
     }
     h.run();
     assert!(h.query_by_label("Custom").is_none(), "the code's own rules");
-    h.state_mut().codes_dialog.as_mut().unwrap().rules.insert("width_min".into(), json!(1100.0));
+    h.state_mut().codes_dialog.as_mut().unwrap().stairs_mut().insert("width_min".into(), json!(1100.0));
     h.run();
     assert!(h.query_by_label("Custom").is_some(), "a rule changed");
     h.state_mut().codes_dialog.as_mut().unwrap().name = "City Hall".into();
@@ -77,18 +78,18 @@ fn a_code_changed_is_custom_and_is_saved_under_a_name_and_deleted() {
         (m.building_code().code.as_str(), m.building_code().based_on.as_str(), m.stair_rules().width_min),
         ("City Hall", "nbr-9050", 1100.0)
     );
-    assert_eq!(h.state().codes_dialog.as_ref().unwrap().selected, "City Hall");
+    assert_eq!(h.state_mut().codes_dialog.as_mut().unwrap().tab_mut(Discipline::Architectural).code, "City Hall");
     assert!(h.query_by_label("Custom").is_none(), "saved, it is a code like the others");
     // A name BIMCraft has is refused inside the dialog.
-    h.state_mut().codes_dialog.as_mut().unwrap().rules.insert("width_min".into(), json!(1000.0));
+    h.state_mut().codes_dialog.as_mut().unwrap().stairs_mut().insert("width_min".into(), json!(1000.0));
     h.state_mut().codes_dialog.as_mut().unwrap().name = "ibc".into();
     h.run();
     press(&mut h, "Save Code");
     assert!(h.state().codes_dialog.as_ref().unwrap().error.contains("another name"));
-    press(&mut h, "Reset to the Code's Rules");
+    press(&mut h, "Reset Tab to the Code's Rules");
     press(&mut h, "Delete");
     let m = &h.state().session.model;
-    assert!(m.building_codes.is_empty());
+    assert!(m.codes.own.is_empty());
     assert_eq!((m.building_code().code.as_str(), m.stair_rules().width_min), ("nbr-9050", 1100.0), "its rules stay, as the project's own");
 }
 
@@ -233,7 +234,7 @@ fn the_building_codes_dialog_writes_lengths_in_the_project_s_units() {
     press(&mut h, "Building Codes");
     // A rule changed: the code's own number beside it, seven inches as the project writes a length, on the row of the
     // riser's least and most.
-    h.state_mut().codes_dialog.as_mut().unwrap().rules.insert("riser_max".into(), json!(200.0));
+    h.state_mut().codes_dialog.as_mut().unwrap().stairs_mut().insert("riser_max".into(), json!(200.0));
     h.run();
     let code = bimcraft_core::units::Units::Metres.with_unit(177.8);
     assert!(code.ends_with(" m"), "{code}");
@@ -361,4 +362,195 @@ fn the_stair_tool_climbs_to_a_level_chosen_and_stands_on_each_on_the_way() {
     // The stair of its first storey, 3000 up: 17 risers; the storey over it, 3600 up, has 20.
     let storeys = field(&h, st[0], "storeys");
     assert_eq!((storeys[0]["risers"].as_u64(), storeys[1]["risers"].as_u64()), (Some(17), Some(20)));
+}
+
+#[test]
+fn each_discipline_has_its_tab_its_sections_and_a_search() {
+    let mut h = app(BOX);
+    press(&mut h, "Manage");
+    press(&mut h, "Building Codes");
+    for tab in ["Overview", "Architectural", "Structural", "Electrical", "Mechanical", "Plumbing"] {
+        assert!(h.query_all_by_label(tab).count() >= 1, "{tab}");
+    }
+    // The architectural tab first, its sections listed.
+    assert!(h.query_all_by_label("Stairs and Railings").count() >= 1);
+    assert!(h.query_all_by_label("Ramps").count() >= 1);
+    // A search keeps the sections that have such a rule.
+    h.state_mut().codes_dialog.as_mut().unwrap().search = "headroom".into();
+    h.run();
+    assert!(h.query_all_by_label("Stairs and Railings").count() >= 1);
+    assert_eq!(h.query_all_by_label("Ramps").count(), 0, "no ramp rule is called that");
+    h.state_mut().codes_dialog.as_mut().unwrap().search.clear();
+    h.state_mut().codes_dialog.as_mut().unwrap().tab = 5;
+    h.run();
+    assert!(h.query_all_by_label("Fixtures").count() >= 1 && h.query_all_by_label("Storm Drainage").count() >= 1);
+    press(&mut h, "Cold Water");
+    assert!(h.query_all_by_label("Most Speed (m/s)").count() >= 1, "the section's rules, by name");
+
+    // A plumbing rule of the project's own, and an amendment: OK makes them the project's.
+    {
+        let m = h.state().session.model.clone();
+        let d = h.state_mut().codes_dialog.as_mut().unwrap();
+        let tab = d.tab_mut(Discipline::Plumbing);
+        tab.set(&m, "nbr");
+        tab.amendments.push("cbpmesp-it22".into());
+        tab.rules.get_mut("cold_water").unwrap().insert("max_speed".into(), json!(2.0));
+    }
+    h.run();
+    assert!(h.query_by_label("CBPMESP IT 22 (hydrants and hose reels, São Paulo)").is_some(), "the amendment's chip");
+    press(&mut h, "OK");
+    let m = &h.state().session.model;
+    assert_eq!(m.rules::<bimcraft_core::water::WaterRules>().max_speed, 2.0);
+    assert_eq!(m.codes.plumbing.amendments, ["cbpmesp-it22"]);
+    assert_eq!(m.building_code().code, "generic", "the other tabs as they were");
+}
+
+#[test]
+fn the_overview_picks_a_region_and_keeps_the_site_s_numbers() {
+    let mut h = app(BOX);
+    press(&mut h, "Manage");
+    press(&mut h, "Building Codes");
+    press(&mut h, "Overview");
+    assert!(h.query_by_label("Site and Climate").is_some());
+    press(&mut h, "Region Preset");
+    press(&mut h, "Brasil");
+    {
+        let d = h.state_mut().codes_dialog.as_mut().unwrap();
+        d.site.insert("rain_intensity".into(), json!(172.0));
+        d.site.insert("sources".into(), json!({"rain_intensity": "NBR 10844 Tabela 5"}));
+    }
+    h.run();
+    press(&mut h, "OK");
+    let m = &h.state().session.model;
+    assert_eq!(m.building_code().code, "nbr-9050");
+    assert_eq!(m.codes.base(Discipline::Plumbing).code, "nbr");
+    assert_eq!(m.codes.plumbing.amendments, ["cbpmesp-it22"]);
+    assert_eq!(m.codes.site.rain_intensity, Some(172.0));
+    assert_eq!(m.codes.site.sources["rain_intensity"], "NBR 10844 Tabela 5");
+}
+
+#[test]
+fn one_tab_goes_out_as_a_file_and_comes_into_another_project_alone() {
+    let dir = std::env::temp_dir().join(format!("bimcraft-ui-codes-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("plumbing.xml");
+    let mut h = app(BOX);
+    press(&mut h, "Manage");
+    press(&mut h, "Building Codes");
+    let tabs = {
+        let m = h.state().session.model.clone();
+        let d = h.state_mut().codes_dialog.as_mut().unwrap();
+        let tab = d.tab_mut(Discipline::Plumbing);
+        tab.set(&m, "nbr");
+        tab.rules.get_mut("drainage").unwrap().insert("main_min_dn".into(), json!(150.0));
+        vec![tab.clone()]
+    };
+    h.state_mut().export_code(&path, &tabs, Some(Discipline::Plumbing), "Our plumbing");
+    assert!(h.state().codes_dialog.as_ref().unwrap().error.is_empty(), "{}", h.state().codes_dialog.as_ref().unwrap().error);
+    assert!(h.state().session.model.codes.is_empty(), "exported from a copy: the project is as it was");
+
+    let mut other = app(BOX);
+    other.state_mut().run("building_code", json!({"set": "din"})).unwrap();
+    other.state_mut().import_code(&path, false);
+    other.run();
+    let d = other.state_mut().codes_dialog.as_mut().unwrap();
+    assert_eq!(d.tab, 5, "the Plumbing tab shows what came in");
+    assert_eq!(d.tab_mut(Discipline::Plumbing).code, "Our plumbing");
+    assert_eq!(d.tab_mut(Discipline::Architectural).code, "din", "the other tabs as they were");
+    press(&mut other, "OK");
+    let m = &other.state().session.model;
+    assert_eq!(m.rules::<bimcraft_core::drainage::DrainageRules>().main_min_dn, 150.0);
+    assert_eq!(m.building_code().code, "din");
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+#[test]
+fn a_table_is_edited_and_rows_are_pasted_from_a_spreadsheet() {
+    let rows = json!([[20.0, 1.5], [25.0, 1.7]]);
+    let text = crate::codes::as_tsv(&rows);
+    assert_eq!(text, "20.0\t1.5\n25.0\t1.7\n");
+    assert_eq!(crate::codes::from_tsv("20\t1.5\n25\t1.9\n32\t2.1", &rows), Some(json!([[20, 1.5], [25, 1.9], [32, 2.1]])));
+    let objects = json!([{"kind": "wc", "uhc": 6.0}]);
+    let text = crate::codes::as_tsv(&objects);
+    assert_eq!(text, "kind\tuhc\nwc\t6.0\n");
+    assert_eq!(
+        crate::codes::from_tsv("kind\tuhc\nwc\t6\nlav\t1", &objects),
+        Some(json!([{"kind": "wc", "uhc": 6}, {"kind": "lav", "uhc": 1}]))
+    );
+
+    let mut h = app(BOX);
+    press(&mut h, "Manage");
+    press(&mut h, "Building Codes");
+    h.state_mut().codes_dialog.as_mut().unwrap().tab = 5;
+    h.run();
+    press(&mut h, "Cold Water");
+    {
+        let d = h.state_mut().codes_dialog.as_mut().unwrap();
+        d.table = Some(("cold_water".into(), "pipes".into()));
+        d.pasted = "20\t1.5\n25\t1.7\n32\t2.1".into();
+    }
+    h.run();
+    // Below the rules, where the dialog scrolls: clicked as an assistive tool clicks it.
+    h.get_by_label("Take Pasted Rows").click_accesskit();
+    h.run();
+    let d = h.state_mut().codes_dialog.as_mut().unwrap();
+    assert_eq!(d.tab_mut(Discipline::Plumbing).rules["cold_water"]["pipes"], json!([[20, 1.5], [25, 1.7], [32, 2.1]]));
+    press(&mut h, "OK");
+    let m = &h.state().session.model;
+    assert_eq!(m.rules::<bimcraft_core::water::WaterRules>().pipes.len(), 3, "three pipes, as pasted");
+}
+
+#[test]
+fn a_door_outside_its_code_lists_the_rules_in_the_popup_too() {
+    let mut h = app(BOX);
+    h.state_mut().run("building_code", json!({"set": "ibc"}));
+    h.state_mut().run("wall", json!({"points": [[0, 0], [6000, 0]]}));
+    h.state_mut().run("type", json!({"category": "door", "name": "Narrow 700", "width": 700, "height": 2000}));
+    let id = h.state_mut().run("door", json!({"at": [2000, 0], "type": "Narrow 700"})).unwrap()["id"].as_u64().unwrap();
+    h.state_mut().selection = vec![id];
+    h.run();
+    h.get_by_label("Outside 2 rules").click_accesskit();
+    h.run();
+    assert!(h.query_by_label("Building Code Check").is_some());
+    assert_eq!(h.query_all_by_label("The rule:").count(), 2);
+    assert!(h.query_by_label("The door is too narrow to pass through. Use a wider door type.").is_some(), "advice for a door");
+}
+
+/// What Manage > Building Codes looks like, for a person to look at: `BIMCRAFT_CODES_DUMP=<folder>` writes the architectural
+/// tab with a rule changed and its card, the plumbing tab with a table open, and the Overview, light and dark.
+#[test]
+fn building_codes_screenshots() {
+    let Ok(folder) = std::env::var("BIMCRAFT_CODES_DUMP") else { return };
+    std::fs::create_dir_all(&folder).unwrap();
+    for (dark, look) in [(false, "light"), (true, "dark")] {
+        let save = |h: &mut Harness<BimApp>, name: &str| {
+            if dark {
+                h.ctx.set_theme(egui::Theme::Dark);
+            }
+            h.run_steps(8);
+            h.render().unwrap().save(std::path::Path::new(&folder).join(format!("codes-{name}-{look}.png"))).unwrap();
+        };
+        let mut h = app(BOX);
+        h.state_mut().run("building_code", json!({"set": "nbr-9050", "stairs": {"width_min": 1100}}));
+        press(&mut h, "Manage");
+        press(&mut h, "Building Codes");
+        h.set_size(egui::vec2(1400.0, 1000.0));
+        h.run_steps(8);
+        h.state_mut().codes_dialog.as_mut().unwrap().card = Some(("stairs".into(), "riser_min".into()));
+        save(&mut h, "architectural");
+        {
+            let m = h.state().session.model.clone();
+            let d = h.state_mut().codes_dialog.as_mut().unwrap();
+            d.tab = 5;
+            let tab = d.tab_mut(Discipline::Plumbing);
+            tab.set(&m, "nbr");
+            tab.amendments.push("cbpmesp-it22".into());
+            tab.section = "cold_water".into();
+            d.table = Some(("cold_water".into(), "equivalent_lengths".into()));
+            d.card = Some(("cold_water".into(), "max_speed".into()));
+        }
+        save(&mut h, "plumbing");
+        h.state_mut().codes_dialog.as_mut().unwrap().tab = 0;
+        save(&mut h, "overview");
+    }
 }

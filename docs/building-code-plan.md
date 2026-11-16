@@ -8,7 +8,57 @@ and `entrance-categories.json`). But many of the numbers are still Rust constant
 them under one Building Code with five tabs: **Architectural, Structural, Electrical, Mechanical, Plumbing**.
 
 It covers what is there today, what contributors have already proposed, the design, the interface, a catalogue of every
-parameter a code may hold, the work in order, and the decisions the maintainer needs to make. Nothing in it is built yet.
+parameter a code may hold, the work in order, and the decisions the maintainer needs to make.
+
+## Where it stands
+
+How it works now is in [docs/areas/building-codes.md](areas/building-codes.md).
+
+- **Step 0, done.** `main`, #483 (with #458), #484 and #474 are merged into the branch. Only the module map, the electrical
+  area paragraphs and the translations conflicted; both sides were kept.
+- **Step 1, done.** The engine is in `codes.rs` and `codes/`. It has:
+  - five disciplines, and codes as sections of rules;
+  - layers (base, amendments, the project's changes; an amendment may amend another);
+  - the library that answers for a section none of the layers has, and the cache per revision;
+  - `Model::codes`, which #386's files are still read into;
+  - the commands (`building_code` by discipline, `code_rules`, `site_climate`, `code_check`);
+  - XML format 2, one discipline or all five, with format 1 still read.
+- **Step 2, done.** Manage > Building Codes has:
+  - the Overview with region presets and Site and Climate;
+  - a tab for each discipline: its code, amendment chips, Import, Export, Save As, Delete and Reset Tab;
+  - the sections with search, and the rules grid with From and Source;
+  - the table editor with Copy and Paste, and the rule card.
+
+  The window is tested with egui_kittest, and looked at in light and dark (`BIMCRAFT_CODES_DUMP`).
+- **Step 3.**
+  - **Done:** stairs; ramps (a new ramp's slope and width); plumbing (fixtures, cold water, reservation, drainage and
+    vents, storm drainage with the rain from Site and Climate, hydrants as IT 22's amendment); and NBR 6118's concrete
+    limits.
+  - **Left to their authors:** the electrical modules (E1 to E9), which ffishman offered to move (discussion #487). The
+    rule's test names each module still to move.
+- **Step 4, done.** The rule is in `CLAUDE.md`, and `code_values_live_in_codes` and the data tests enforce it.
+- **Step 5.**
+  - **Done:** ramps (slope by rise, run rise, width, landings), doors (clear width and height, the widest leaf, the
+    exempt) and rooms (area, narrower side and height by the kind their name says). They are timed on the highrise.
+  - **Not yet:** the window and escape-opening checks, guards on their own, and electrical panels' working space.
+- **Step 6, partly.**
+  - **Done:** the Brasil data that was already there; the IBC's ramps, doors, rooms, egress and accessibility; NBR 9050's
+    ramps and doors; the Eurocodes' loads; ASHRAE 62.1's ventilation. All the new numbers are unchecked and say so.
+  - **Not yet:** the UK, Germany and the remaining reference sections.
+
+### From discussion #487
+
+ffishman's three points are in:
+
+1. **A project pins the editions it uses.** A code has an `edition`. When a project chooses a code, its edition is pinned
+   (`Choice::editions`). An older edition can stay in the library as `<code>@<edition>.json`, marked `superseded_by`, for
+   the projects pinned to it. Where the library no longer has it, the project is held to the current one and is told
+   (`editions_gone`, and a line in the dialog).
+2. **An amendment on an amendment.** A layer may amend the base or any amendment before it: base, issuer, member, project.
+3. **Sources apart from the rows.** A code lists its `documents` once, each with its title, edition, publisher, link and
+   the date it was read. A rule's source cites a document by id, with its item and page.
+
+No `FORMAT` bump was needed: an older BIMCraft leaves the `codes` field out and lists it, which only loses the codes.
 
 ## The new rule: no hardcoded values
 
