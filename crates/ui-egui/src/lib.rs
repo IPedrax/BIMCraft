@@ -1792,6 +1792,12 @@ impl BimApp {
         if let (Err(e), true) = (&result, matches!(id, "undo" | "redo")) {
             self.light_refused(e);
         }
+        // A mark names what stood when it was made: undo or redo can take that away or move it.
+        if matches!(id, "undo" | "redo") && result.is_ok() {
+            self.canvas.pins.borrow_mut().clear();
+            self.canvas.start_edge = None;
+            self.canvas.wall_face = None;
+        }
         // The core renames and drops the option with its set.
         self.active_option = self.session.option.clone();
         result

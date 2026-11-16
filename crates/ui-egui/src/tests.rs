@@ -4277,6 +4277,16 @@ fn hover(h: &mut Harness<BimApp>, p: P2) -> Option<bimcraft_core::snap::Found> {
     h.state().canvas.found.get()
 }
 
+/// Marks a reference exactly as `Q` does, without the pointer's snap: a test can name a face or a grid the numbers know.
+fn mark(h: &mut Harness<BimApp>, target: crate::guide_refs::PinTarget) {
+    let level = h.state().plan_key().expect("a plan");
+    let lines = {
+        let m = &h.state().session.model;
+        target.lines(m, level, m.guid(level))
+    };
+    h.state_mut().canvas.pins.borrow_mut().toggle(level, target, lines);
+}
+
 /// Degrees from `a` to `b`, counter-clockwise from east.
 fn degrees(a: P2, b: P2) -> f64 {
     (b.1 - a.1).atan2(b.0 - a.0).to_degrees()
@@ -4287,6 +4297,8 @@ fn a_wall_is_drawn_to_a_columns_edge_and_not_only_to_its_centre() {
     use bimcraft_core::snap::Kind;
     // A 400 x 400 column at 4000, 3000: its left edge is at 3800 (issue #88 asked for a wall flush with one).
     let mut h = app(&format!("{BOX}\ncolumn {{\"at\": [4000, 3000], \"type\": \"Rectangular 400 x 400\"}}"));
+    // The three hovers below rest long enough for the dwell to mark the column; the test is the wall's edge, not the pins.
+    h.state_mut().snaps.mark_on_hover = false;
     tool(&mut h, "Wall");
     let at = |h: &mut Harness<BimApp>, p: P2| hover(h, p).map(|f| (f.kind, f.at));
     assert_eq!(at(&mut h, P2(3790.0, 3020.0)), Some((Kind::Midpoint, P2(3800.0, 3000.0))), "the middle of its left edge");
@@ -5010,6 +5022,419 @@ fn a_guide_locks_the_point_in_both_guide_styles() {
     }
 }
 
+/// A guide is found from where the pointer is, not from the 10 mm point the snap rounded it to: at 2 px a millimetre the
+/// guide's tolerance is 4 mm while the rounding can be 7 mm, so a guide 3.6 mm off used to be missed and a point riding
+/// one used to be quantised to the grid.
+#[test]
+fn a_guide_at_two_px_a_mm_is_taken_from_the_pointer_not_the_ten_mm_point() {
+    use bimcraft_core::render::View;
+    use bimcraft_core::snap::Kind;
+    let h = app("grid {\"start\":[0,3],\"end\":[8000,3]}");
+    let level = h.state().plan_key().expect("a plan");
+    let v = View { angle: 0.0, scale: 2.0, cx: 4000.0, cy: 0.0, width: 800, height: 600 };
+    let raw = P2(4123.7, 6.6);
+    let m = &h.state().session.model;
+    let f = h.state().snap(m, level, &v, v.px(raw), &[], false);
+    assert_eq!(f.kind, Kind::Free, "3.6 mm off the grid, which is only a guide: {f:?}");
+    let p = h.state().snap_point(m, level, &v, v.px(raw), &[], false);
+    assert!(p.dist(P2(4123.7, 3.0)) < 0.01, "the guide takes the pointer's own place: {p:?}");
+}
+
+/// A crossing of two guides is exact, and may take a point off a wall's face; one guide alone leaves the face its own
+/// 10 mm point, because the face under the pointer is the more exact reference then.
+#[test]
+fn a_guide_crossing_beats_a_wall_face_and_one_guide_alone_does_not() {
+    use crate::guide_refs::PinTarget;
+    use bimcraft_core::model::{Face, Reference};
+    use bimcraft_core::render::View;
+    use bimcraft_core::snap::Kind;
+    let mut h = app("wall {\"points\":[[0,0],[8000,0]]}\ngrid {\"start\":[2234.7,0],\"end\":[2234.7,8000]}");
+    let level = h.state().plan_key().expect("a plan");
+    let (wall, ext, face) = {
+        let m = &h.state().session.model;
+        let wall = ids(&h, "wall")[0];
+        let (ext, _) = bimcraft_core::walls::faces(m, m.wall(wall).expect("the wall"));
+        (wall, ext, m.reference_line(&Reference::line(m.guid(wall), Face::Left)).expect("the face"))
+    };
+    let grid = ids(&h, "grid")[0];
+    mark(&mut h, PinTarget::Edge { a: face.0, b: face.1, id: Some(wall), face: Face::Left, near: None });
+    mark(&mut h, PinTarget::Edge { a: P2(2234.7, 0.0), b: P2(2234.7, 8000.0), id: Some(grid), face: Face::Centre, near: None });
+    let v = View { angle: 0.0, scale: 0.1, cx: 4000.0, cy: 0.0, width: 1280, height: 800 };
+    let m = &h.state().session.model;
+    let at = P2(2234.7, ext);
+    let f = h.state().snap(m, level, &v, v.px(at), &[], false);
+    assert_eq!(f.kind, Kind::Nearest, "the pointer is on the wall's face: {f:?}");
+    let p = h.state().snap_point(m, level, &v, v.px(at), &[], false);
+    assert!(p.dist(at) < 0.01, "the crossing is exact, not the face's 10 mm point: {p:?}");
+    let one = P2(2134.7, ext);
+    let p = h.state().snap_point(m, level, &v, v.px(one), &[], false);
+    assert!((p.0 - 2130.0).abs() < 0.01 && (p.1 - ext).abs() < 0.01, "one guide does not take the face's point: {p:?}");
+}
+
+/// A passive 15° step does not take a pick off the wall face under the pointer; Shift's step, which was asked for, does.
+#[test]
+fn a_passive_angle_step_does_not_take_a_pick_off_a_wall_face() {
+    use bimcraft_core::render::View;
+    use bimcraft_core::snap::Kind;
+    let h = app("wall {\"points\":[[0,0],[12000,0]]}");
+    let level = h.state().plan_key().expect("a plan");
+    let v = View { angle: 0.0, scale: 0.05, cx: 6000.0, cy: 0.0, width: 1280, height: 800 };
+    let from = P2(0.0, -40.0);
+    let at = P2(8000.0, -100.0);
+    let m = &h.state().session.model;
+    let f = h.state().snap(m, level, &v, v.px(at), &[from], false);
+    assert_eq!(f.kind, Kind::Nearest, "the face under the pointer: {f:?}");
+    let p = h.state().snap_point(m, level, &v, v.px(at), &[from], false);
+    assert!((p.1 + 100.0).abs() < 0.01, "the point stays on the face, not 60 mm above it: {p:?}");
+    let f = h.state().snap(m, level, &v, v.px(at), &[from], true);
+    assert_eq!(f.kind, Kind::Angle, "Shift asks for the angle, and keeps it: {f:?}");
+}
+
+/// A background grid point is not a crossing of two model lines: it is a free place a guide can still take.
+#[test]
+fn a_background_grid_point_lets_a_guide_through() {
+    use bimcraft_core::snap::Kind;
+    let mut h = app("grid {\"start\":[-5000,-1030],\"end\":[5000,-1030]}");
+    h.state_mut().grid_snapping = true;
+    h.state_mut().run("graphics", json!({"view": "Level 1", "background_grid": {"main": {"enabled": true}}}));
+    let level = h.state().plan_key().expect("a plan");
+    let v = h.state().canvas.current_view(level).expect("a view");
+    let m = &h.state().session.model;
+    let at = P2(-1000.0, -1000.0);
+    let f = h.state().snap(m, level, &v, v.px(at), &[], false);
+    assert_eq!(f.kind, Kind::Free, "the background grid is a free point: {f:?}");
+    let p = h.state().snap_point(m, level, &v, v.px(at), &[], false);
+    assert!((p.1 + 1030.0).abs() < 0.01, "the structural grid's line takes it: {p:?}");
+}
+
+/// Undo and redo take back or move the elements a mark was made on: the mark goes with them rather than becoming a ghost.
+#[test]
+fn undo_clears_the_marked_references() {
+    use crate::guide_refs::PinTarget;
+    use bimcraft_core::model::{Face, Reference};
+    let mut h = app("wall {\"points\":[[0,0],[8000,0]]}");
+    tool(&mut h, "Wall");
+    click(&mut h, P2(0.0, 3000.0));
+    click(&mut h, P2(5000.0, 3000.0));
+    key(&mut h, Key::Enter);
+    let level = h.state().plan_key().expect("a plan");
+    let wall = *ids(&h, "wall").last().expect("the wall just made");
+    let face = {
+        let m = &h.state().session.model;
+        m.reference_line(&Reference::line(m.guid(wall), Face::Left)).expect("its face")
+    };
+    mark(&mut h, PinTarget::Edge { a: face.0, b: face.1, id: Some(wall), face: Face::Left, near: None });
+    assert_eq!(h.state().canvas.pins.borrow().at(level).len(), 1);
+    h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    h.run();
+    h.run();
+    assert!(h.state().canvas.pins.borrow().at(level).is_empty(), "undo takes the mark with the wall");
+    assert_eq!(walls(&h).len(), 1, "the wall the mark named is gone");
+}
+
+/// The Split tool's crosshair and its cut are the same landing: a guide crossing, not the face's rounded point.
+#[test]
+fn split_takes_the_point_its_preview_shows() {
+    use crate::guide_refs::PinTarget;
+    use bimcraft_core::model::{Face, Reference};
+    let mut h = app("wall {\"points\":[[0,0],[8000,0]]}\ngrid {\"start\":[2234.7,0],\"end\":[2234.7,8000]}");
+    let (wall, face) = {
+        let m = &h.state().session.model;
+        let wall = ids(&h, "wall")[0];
+        (wall, m.reference_line(&Reference::line(m.guid(wall), Face::Centre)).expect("its centre line"))
+    };
+    let grid = ids(&h, "grid")[0];
+    mark(&mut h, PinTarget::Edge { a: face.0, b: face.1, id: Some(wall), face: Face::Centre, near: None });
+    mark(&mut h, PinTarget::Edge { a: P2(2234.7, 0.0), b: P2(2234.7, 8000.0), id: Some(grid), face: Face::Centre, near: None });
+    h.state_mut().set_tool(Tool::Split);
+    let at = P2(2234.7, 0.0);
+    let shown = hover(&mut h, at).expect("the hover's snap").at;
+    assert!(shown.dist(at) < 0.01, "the preview shows the crossing: {shown:?}");
+    click(&mut h, at);
+    let cut = walls(&h).iter().flat_map(|(a, b)| [a.0, b.0]).any(|x| (x - 2234.7).abs() < 0.01);
+    assert!(cut, "the split is where the preview said: {:?}", walls(&h));
+}
+
+/// The Spot Coordinate tool's preview and its first click are the same landing too.
+#[test]
+fn spot_coordinate_takes_the_point_its_preview_shows() {
+    use crate::guide_refs::PinTarget;
+    use bimcraft_core::model::{Face, Reference};
+    let mut h = app("wall {\"points\":[[0,0],[8000,0]]}\ngrid {\"start\":[2234.7,0],\"end\":[2234.7,8000]}");
+    let (wall, face) = {
+        let m = &h.state().session.model;
+        let wall = ids(&h, "wall")[0];
+        (wall, m.reference_line(&Reference::line(m.guid(wall), Face::Centre)).expect("its centre line"))
+    };
+    let grid = ids(&h, "grid")[0];
+    mark(&mut h, PinTarget::Edge { a: face.0, b: face.1, id: Some(wall), face: Face::Centre, near: None });
+    mark(&mut h, PinTarget::Edge { a: P2(2234.7, 0.0), b: P2(2234.7, 8000.0), id: Some(grid), face: Face::Centre, near: None });
+    h.state_mut().set_tool(Tool::SpotCoordinate(None));
+    let at = P2(2234.7, 0.0);
+    let shown = hover(&mut h, at).expect("the hover's snap").at;
+    assert!(shown.dist(at) < 0.01, "the preview shows the crossing: {shown:?}");
+    click(&mut h, at);
+    match h.state().tool {
+        Tool::SpotCoordinate(Some(p)) => assert!(p.dist(shown) < 0.01, "the click takes the previewed point: {p:?}, {shown:?}"),
+        ref other => panic!("the spot's first point: {other:?}"),
+    }
+}
+
+/// `Tab` steps a wall's three lines for a tool that takes a wall face, not only for a chain: Move's base is one.
+#[test]
+fn tab_cycles_a_walls_lines_while_a_move_waits_for_its_base() {
+    let mut h = app("wall {\"points\":[[0,0],[8000,0]]}");
+    click(&mut h, P2(4000.0, 0.0));
+    h.state_mut().set_tool(Tool::Move(None));
+    hover(&mut h, P2(2000.0, -100.0));
+    key(&mut h, Key::Tab);
+    assert!(h.state().canvas.wall_face.is_some(), "Tab steps the wall's lines under the pointer");
+}
+
+/// `Q` reads the tool's own chain, not five tools' chains: a beam's start point is a mark like a wall's.
+#[test]
+fn q_marks_the_beam_s_own_start_point() {
+    use bimcraft_core::snap::Kind;
+    let mut h = app(BOX);
+    // The click's own rest would fill the ring and mark the start; this test is `Q`'s mark.
+    h.state_mut().snaps.mark_on_hover = false;
+    h.state_mut().set_tool(Tool::Run("beam", None));
+    click(&mut h, P2(4000.0, 3000.0));
+    assert!(matches!(&h.state().tool, Tool::Run("beam", Some(p)) if p.dist(P2(4000.0, 3000.0)) < 0.01), "{:?}", h.state().tool);
+    hover(&mut h, P2(4004.0, 3004.0));
+    key(&mut h, Key::Q);
+    let level = h.state().plan_key().expect("a plan");
+    let pins = h.state().canvas.pins.borrow();
+    let [pin] = pins.at(level) else { panic!("one mark: {:?}", pins.at(level)) };
+    match pin.target {
+        crate::guide_refs::PinTarget::Point { at, kind, .. } => {
+            assert!(at.dist(P2(4000.0, 3000.0)) < 0.01 && kind == Kind::Endpoint, "{:?}", pin.target);
+        }
+        other => panic!("a point: {other:?}"),
+    }
+}
+
+/// The audit gallery: twelve scenes a person can look at, each one of the cases the guide and snap audit named. Set
+/// `BIMCRAFT_GUIDES_DUMP=<folder>` to have them written; nothing is committed, and without the variable the test does
+/// nothing. Run it alone or with `--test-threads=1`: the screenshot tests share the frame's ink and are not parallel-safe.
+#[test]
+fn guides_audit_screenshots() {
+    let Ok(folder) = std::env::var("BIMCRAFT_GUIDES_DUMP") else { return };
+    std::fs::create_dir_all(&folder).expect("the dump folder");
+    fn zoom(h: &mut Harness<BimApp>, cx: f64, cy: f64, scale: f64) {
+        let level = h.state().plan_key().expect("a plan");
+        h.state_mut().canvas.set_view(level, cx, cy, scale);
+        h.run();
+    }
+    fn shot(h: &mut Harness<BimApp>, folder: &str, name: &str) {
+        h.run();
+        h.render().expect("a rendered frame").save(std::path::Path::new(folder).join(name)).expect("the screenshot");
+    }
+    fn hover_at(h: &mut Harness<BimApp>, p: P2) {
+        let at = h.state().screen(p);
+        h.hover_at(at);
+        h.run();
+    }
+
+    // 1. A 25 px segment: the reading pill's minimum length, the corner arc and the badge in one small place.
+    {
+        let mut h = app("");
+        zoom(&mut h, 0.0, 0.0, 0.1);
+        tool(&mut h, "Wall");
+        click(&mut h, P2(0.0, 0.0));
+        hover_at(&mut h, P2(250.0, 0.0));
+        shot(&mut h, &folder, "01-short-25px.png");
+    }
+
+    // 2. A steep 75° segment: the pill is placed by the turn's outside, where a wide box can cross back.
+    {
+        let mut h = app("");
+        zoom(&mut h, 0.0, 0.0, 0.2);
+        tool(&mut h, "Wall");
+        click(&mut h, P2(0.0, 0.0));
+        let a = 75f64.to_radians();
+        hover_at(&mut h, P2(500.0 * a.cos(), 500.0 * a.sin()));
+        shot(&mut h, &folder, "02-steep-75.png");
+    }
+
+    // 3. A dense hatch under the badge and the reading pill: the opaque pill against hairlines over 20 px lines.
+    {
+        let mut script = String::new();
+        for i in 0..12 {
+            let y = f64::from(i) * 200.0;
+            script.push_str(&format!("detail_line {{\"start\":[0,{y}],\"end\":[4000,{y}]}}\n"));
+        }
+        script.push_str("grid {\"start\":[2000,0],\"end\":[2000,2400]}\n");
+        let mut h = app(&script);
+        zoom(&mut h, 2000.0, 1200.0, 0.1);
+        tool(&mut h, "Wall");
+        click(&mut h, P2(1000.0, 3000.0));
+        hover_at(&mut h, P2(2001.0, 1100.0));
+        shot(&mut h, &folder, "03-dense-hatch.png");
+    }
+
+    // 4. Tab's face pre-highlight at a fitted-plan zoom: a 1.5 px hover line against the wall's own ink.
+    {
+        let mut h = app("wall {\"points\":[[0,0],[8000,0]]}");
+        zoom(&mut h, 4000.0, 0.0, 0.096);
+        tool(&mut h, "Wall");
+        click(&mut h, P2(0.0, 2000.0));
+        hover_at(&mut h, P2(4000.0, -100.0));
+        key(&mut h, Key::Tab);
+        shot(&mut h, &folder, "04-tab-at-1-150.png");
+    }
+
+    // 5. The dwell ring half full, on a wall's face.
+    {
+        let mut h = app("wall {\"points\":[[0,0],[8000,0]]}");
+        zoom(&mut h, 4000.0, 0.0, 0.1);
+        tool(&mut h, "Wall");
+        click(&mut h, P2(0.0, 2000.0));
+        let q = P2(3000.0, -100.0);
+        let at = h.state().screen(q);
+        h.hover_at(at);
+        h.run_steps(3);
+        let level = h.state().session.model.levels()[0].0;
+        let view = h.state().plan_key().expect("a plan");
+        let v = h.state().canvas.current_view(level).expect("a view");
+        let found = h.state().canvas.found.get().expect("the hover's snap");
+        let target =
+            crate::guide_refs::target_at(&h.state().session.model, level, view, &v, v.px(q), &found, &h.state().canvas.under_cursor)
+                .expect("the face under the pointer");
+        let now = h.state().canvas.now.get();
+        h.state_mut().canvas.dwell.set(Some(crate::guide_refs::Dwell {
+            key: target.key(),
+            from: (at.x, at.y),
+            start: now - 0.30,
+            marked: false,
+        }));
+        h.run_steps(1);
+        shot(&mut h, &folder, "05-dwell-50.png");
+    }
+
+    // 6. One Collinear guide: the Slide glyph, the source dot and ring, and the fading tail.
+    {
+        let mut h = app("grid {\"start\":[2000,0],\"end\":[2000,5000]}");
+        zoom(&mut h, 1500.0, 1500.0, 0.2);
+        tool(&mut h, "Wall");
+        click(&mut h, P2(1000.0, 1000.0));
+        hover_at(&mut h, P2(2000.7, 2300.0));
+        shot(&mut h, &folder, "06-one-guide-tick.png");
+    }
+
+    // 7. Shift's 0° ray and a 45° marked detail line meeting: the badge says both, and the point is the crossing.
+    {
+        use crate::guide_refs::PinTarget;
+        use bimcraft_core::model::Face;
+        let mut h = app("detail_line {\"start\":[1000,0],\"end\":[4000,3000]}");
+        let line = h
+            .state()
+            .session
+            .model
+            .elements
+            .iter()
+            .find_map(|(id, e)| matches!(e, Element::DetailLine(_)).then_some(*id))
+            .expect("the detail line");
+        mark(&mut h, PinTarget::Edge { a: P2(1000.0, 0.0), b: P2(4000.0, 3000.0), id: Some(line), face: Face::Centre, near: None });
+        zoom(&mut h, 1000.0, 1000.0, 0.2);
+        tool(&mut h, "Wall");
+        click(&mut h, P2(0.0, 1000.0));
+        h.event(Event::ModifiersChanged(Modifiers::SHIFT));
+        let at = h.state().screen(P2(2000.0, 1003.0));
+        h.hover_at(at);
+        h.run();
+        // The frame that is seen must be a frame with Shift still held.
+        shot(&mut h, &folder, "07-shift-cross.png");
+        h.event(Event::ModifiersChanged(Modifiers::NONE));
+        h.run();
+    }
+
+    // 8. Three marked references and the status readout: two wall faces and a point, the cap and the pin shapes.
+    {
+        let mut h = app(concat!(
+            "wall {\"points\":[[0,0],[6000,0]]}\n",
+            "wall {\"points\":[[0,3000],[6000,3000]]}\n",
+            "wall {\"points\":[[0,6000],[3000,6000]]}"
+        ));
+        h.state_mut().snaps.mark_on_hover = false;
+        tool(&mut h, "Wall");
+        click(&mut h, P2(1000.0, 1500.0));
+        hover_at(&mut h, P2(3000.0, -100.0));
+        key(&mut h, Key::Q);
+        hover_at(&mut h, P2(3000.0, 3100.0));
+        key(&mut h, Key::Q);
+        hover_at(&mut h, P2(3000.0, 6000.0));
+        key(&mut h, Key::Q);
+        shot(&mut h, &folder, "08-three-pins.png");
+    }
+
+    // 9. The same crossing on the dark canvas: lavender, the badge's ground and its text.
+    {
+        let mut h = app(concat!(
+            "wall {\"points\": [[0, 0], [5000, 0]]}\n",
+            "wall {\"points\": [[0, 5000], [2500, 6000]]}\n",
+            "wall {\"points\": [[3000, 4500], [3000, 6000]]}\n",
+            "wall {\"points\": [[0, 3000], [1500, 3000]]}"
+        ));
+        h.state_mut().snaps.guides_from_whole_model = true;
+        h.ctx.set_theme(egui::ThemePreference::Dark);
+        h.run();
+        tool(&mut h, "Wall");
+        click(&mut h, P2(500.0, 1200.0));
+        hover_at(&mut h, P2(3006.0, 3006.0));
+        shot(&mut h, &folder, "09-dark-canvas.png");
+    }
+
+    // 10. A mark at the view's top: the badge flips and clamps, the reading pill keeps off it.
+    {
+        let mut h = app("wall {\"points\":[[8000,6900],[10000,6900]]}");
+        let level = h.state().plan_key().expect("a plan");
+        let half = {
+            let v = h.state().canvas.current_view(level).expect("a view");
+            f64::from(v.height) / 2.0
+        };
+        // The wall sits ten pixels under the view's top, whatever the plan area's own height is.
+        zoom(&mut h, 9000.0, 6900.0 - (half - 10.0) / 0.1, 0.1);
+        h.state_mut().snaps.mark_on_hover = false;
+        tool(&mut h, "Wall");
+        click(&mut h, P2(8000.0, 5000.0));
+        hover_at(&mut h, P2(9000.0, 6900.0));
+        key(&mut h, Key::Q);
+        hover_at(&mut h, P2(9000.0, 6900.0));
+        shot(&mut h, &folder, "10-pin-at-the-edge.png");
+    }
+
+    // 11. A guide at 2 px/mm: the guide must be taken from the pointer, not from the snap's 10 mm point. This is the
+    //     scene the fix is about, and the assertion is the audit's `11-guide-at-8x` case.
+    {
+        let mut h = app("grid {\"start\":[0,3],\"end\":[8000,3]}");
+        zoom(&mut h, 4123.7, 3.0, 2.0);
+        tool(&mut h, "Wall");
+        click(&mut h, P2(4123.7, -40.0));
+        hover_at(&mut h, P2(4123.7, 6.6));
+        let f = h.state().canvas.found.get().expect("the hover's snap");
+        assert!(f.at.dist(P2(4123.7, 3.0)) < 0.01, "the guide is taken at 2 px/mm: {f:?}");
+        shot(&mut h, &folder, "11-guide-at-8x.png");
+    }
+
+    // 12. A 40 m grid's relation: the strong segment starts at the grid's nearer end, twenty metres away, not at the
+    //     cursor. The screenshot is for judging whether it should taper instead; the assertion records the length.
+    {
+        let mut h = app("grid {\"start\":[20000,-20000],\"end\":[20000,20000]}");
+        zoom(&mut h, 20000.0, 0.0, 0.05);
+        tool(&mut h, "Wall");
+        click(&mut h, P2(19000.0, 2000.0));
+        hover_at(&mut h, P2(20000.7, 0.0));
+        let level = h.state().plan_key().expect("a plan");
+        let v = h.state().canvas.current_view(level).expect("a view");
+        let res = h.state().alignments(&h.state().session.model, level, &v, P2(20000.7, 0.0), &[P2(19000.0, 2000.0)]);
+        let length = res.first().map_or(0.0, |r| r.reference_point.dist(r.snapped_point));
+        eprintln!("12-grid-anchor: the strong relation runs {length} mm to its grid end");
+        assert!(length > 10_000.0, "the relation starts at the grid's end, not the cursor: {length} mm");
+        shot(&mut h, &folder, "12-grid-anchor.png");
+    }
+}
+
 /// What the guides look like in both styles, for a person to look at: `BIMCRAFT_GUIDES_DUMP=<folder>` writes a wall being
 /// drawn to the crossing of two guides, once with each.
 #[test]
@@ -5044,11 +5469,17 @@ fn guides_screenshots() {
 
 #[test]
 fn grids_drawn_near_alignment_guide_snap_to_other_grids_reference_points() {
+    use bimcraft_core::snap::Kind;
     let mut h = app("");
+    // The first grid's end is marked by hand: a rest would mark whichever end the hand last stood on, and the test is the
+    // guide that mark lends, not the dwell.
+    h.state_mut().snaps.mark_on_hover = false;
     // First grid from (0, 0) to (0, 5000)
     tool(&mut h, "Grid");
     click(&mut h, P2(0.0, 0.0));
     click(&mut h, P2(0.0, 5000.0));
+    let first = ids(&h, "grid")[0];
+    mark(&mut h, crate::guide_refs::PinTarget::Point { at: P2(0.0, 5000.0), kind: Kind::Endpoint, id: Some(first) });
 
     // Second grid starting at (3000, 0)
     tool(&mut h, "Grid");
@@ -5058,8 +5489,14 @@ fn grids_drawn_near_alignment_guide_snap_to_other_grids_reference_points() {
 
     let grid = ids(&h, "grid");
     assert_eq!(grid.len(), 2);
-    assert_eq!(field(&h, grid[1], "start"), json!([3000.0, 0.0]));
-    assert_eq!(field(&h, grid[1], "end"), json!([3000.0, 5000.0]));
+    let point = |key: &str| -> [f64; 2] {
+        let v = field(&h, grid[1], key);
+        [v[0].as_f64().expect("x"), v[1].as_f64().expect("y")]
+    };
+    // A guide keeps the pointer's own x, so 1/1000 mm of the view's arithmetic is allowed: the alignment is the point.
+    let (start, end) = (point("start"), point("end"));
+    assert!((start[0] - 3000.0).abs() < 0.01 && start[1].abs() < 0.01, "{start:?}");
+    assert!((end[0] - 3000.0).abs() < 0.01 && (end[1] - 5000.0).abs() < 0.01, "{end:?}");
 }
 
 #[test]
@@ -5377,6 +5814,9 @@ fn a_typed_length_too_long_is_refused_and_a_far_point_does_not_stall_the_guide()
     h.run();
     key(&mut h, Key::Enter);
     assert!(matches!(&h.state().tool, Tool::Wall(chain) if chain.len() == 2), "{:?}", h.state().tool);
+    // The wall runs along the guide now, and the wall's own line is the nearer reference: the subject here is the guide
+    // drawn back from a far start, so `Nearest` steps out of its way for the check.
+    h.state_mut().snaps.nearest = false;
     assert!(hover(&mut h, P2(3000.0, 1000.0)).is_some_and(|f| f.guide.is_some()), "its guide, drawn");
 }
 

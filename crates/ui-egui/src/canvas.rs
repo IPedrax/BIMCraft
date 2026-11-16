@@ -988,6 +988,14 @@ pub(crate) enum LockGlyph {
     Bullseye,
 }
 
+/// The pointer a guide is found from, and whether `Shift` is holding a step: the two things the snap's own rounded point
+/// cannot say. One value so `alignments_for` stays within clippy's argument count.
+#[derive(Clone, Copy)]
+struct GuideAt {
+    at: P2,
+    square: bool,
+}
+
 /// What the guides hold `kind` with, if they hold it: `None` leaves the point its own marker (an angle step's dot, a
 /// wall's square). The lock wins over an angle step, so a point both a step and two guides hold says which guides.
 pub(crate) fn lock_glyph(kind: Kind, lock: Lock, refined: bool) -> Option<LockGlyph> {
@@ -1392,6 +1400,31 @@ fn start_of(tool: &Tool) -> &[P2] {
     }
 }
 
+/// Every point a drawing tool has picked, for the snaps its next one takes from them: a chain's own points, or the one
+/// point a tool began at. `Q` reads the same list the click's own snap does, whatever tool is drawing.
+fn picked(tool: &Tool) -> Vec<P2> {
+    match tool {
+        Tool::Wall(p) | Tool::Railing(p) | Tool::Mass(p) | Tool::DetailLine(p) | Tool::SketchLine(p) | Tool::Stair(p) | Tool::Ramp(p) => {
+            p.clone()
+        }
+        Tool::ExtrusionRoof(p) => p.clone(),
+        Tool::Grid(p)
+        | Tool::ReferencePlane(p)
+        | Tool::RoomSeparator(p)
+        | Tool::Move(p)
+        | Tool::Copy(p)
+        | Tool::Section(p)
+        | Tool::SlopeArrow(p)
+        | Tool::AddSplitLine(p)
+        | Tool::Measure(p)
+        | Tool::Run(_, p) => p.iter().copied().collect(),
+        Tool::Mirror { start, .. } | Tool::PatternCorner(start) | Tool::Shaft(start) | Tool::RepeatingDetail(start) => {
+            start.iter().copied().collect()
+        }
+        _ => Vec::new(),
+    }
+}
+
 /// A selection box from pixel `from` to `q` of a view in `rect`: Revit draws a crossing box (right
 /// to left) dashed, a window box solid.
 pub(crate) fn box_shapes(rect: Rect, from: (f32, f32), q: (f32, f32)) -> Vec<Shape> {
@@ -1544,7 +1577,8 @@ impl BimApp {
             && self.grid_snapping
             && let Some(at) = self.background_grid().nearest(v.mm(at))
         {
-            return Found { at, kind: Kind::Intersection, guide: None, source: None, face: None };
+            // The lattice is a place for a free point, not a crossing of two model lines: a guide may still take it.
+            return Found { at, kind: Kind::Free, guide: None, source: None, face: None };
         }
         found
     }
@@ -1675,10 +1709,17 @@ impl BimApp {
         lock
     }
 
-    /// The alignment guides a pick that landed at `f` takes: a free point any, a point on an angle guide one that keeps it on that
-    /// guide (a wall drawn east whose end lines up with another wall's end).
-    fn alignments_for(&self, m: &Model, level: Id, v: &View, f: &Found, from: &[P2]) -> Vec<AlignmentResult> {
-        if !self.snaps_now().alignment_guides || !matches!(f.kind, Kind::Free | Kind::Angle) {
+    /// The alignment guides a pick that landed at `f` takes: a free point any, a point on an angle guide one that keeps it on
+    /// that guide (a wall drawn east whose end lines up with another wall's end). A crossing of two guides may take a point
+    /// off a wall's face or a line; one guide alone may not, the face under the pointer being the more exact reference then.
+    /// `pointer` is where the pointer is, not where the snap rounded it: a point on the 10 mm grid must not decide whether
+    /// a guide is near. While `pointer.square` holds a step (Shift), the angle's own point is the one to measure from.
+    fn alignments_for(&self, m: &Model, level: Id, v: &View, f: &Found, from: &[P2], pointer: GuideAt) -> Vec<AlignmentResult> {
+        if !self.snaps_now().alignment_guides {
+            return Vec::new();
+        }
+        let crossing_only = matches!(f.kind, Kind::Nearest);
+        if !matches!(f.kind, Kind::Free | Kind::Angle) && !crossing_only {
             return Vec::new();
         }
         let on_guide = |p: P2| {
@@ -1687,13 +1728,20 @@ impl BimApp {
                 (u.0 * d.1 - u.1 * d.0).abs() <= 0.5
             })
         };
-        self.alignments(m, level, v, f.at, from).into_iter().filter(|a| on_guide(a.snapped_point)).collect()
+        // A rounded free point is up to 7 mm from the pointer, which is more than a guide's reach when zoomed in; and a
+        // single guide's own point must be the pointer's, not the 10 mm one. Shift's line and an angle step are already
+        // the point that was asked for.
+        let at = if pointer.square || matches!(f.kind, Kind::Angle) { f.at } else { pointer.at };
+        let found: Vec<AlignmentResult> =
+            self.alignments(m, level, v, at, from).into_iter().filter(|a| on_guide(a.snapped_point)).collect();
+        if crossing_only && found.len() < 2 { Vec::new() } else { found }
     }
 
     /// Where a point picked at pixel `at` lands, including temporary alignment guides.
     pub(crate) fn snap_point(&self, m: &Model, level: Id, v: &View, at: (f32, f32), from: &[P2], square: bool) -> P2 {
         let f = self.snap(m, level, v, at, from, square);
-        self.alignments_for(m, level, v, &f, from).first().map_or(f.at, |a| a.snapped_point)
+        let cursor = v.mm(at);
+        self.alignments_for(m, level, v, &f, from, GuideAt { at: cursor, square }).first().map_or(f.at, |a| a.snapped_point)
     }
 
     /// What a pick at pixel `q` would land on, shown: its marker and what it is, and the guide it
@@ -1719,7 +1767,7 @@ impl BimApp {
     fn found(&self, sc: &Scene, q: (f32, f32), from: &[P2], square: bool) -> P2 {
         let mut f = self.snap(sc.m, sc.level, sc.v, q, from, square);
         let target = self.mark_target(sc, q, &f);
-        let alignments = self.alignments_for(sc.m, sc.level, sc.v, &f, from);
+        let alignments = self.alignments_for(sc.m, sc.level, sc.v, &f, from, GuideAt { at: sc.v.mm(q), square });
         if let Some(first) = alignments.first() {
             f.at = first.snapped_point;
         }
@@ -1968,7 +2016,18 @@ impl BimApp {
         // its exterior face, its centre line and its interior face — starting from the one the pick has now, so the first
         // Tab always moves the point. A number already typed keeps Tab for the field it belongs to.
         let typing = !self.typed_length.trim().is_empty() || !self.drawing.other.trim().is_empty();
-        let chain = matches!(self.tool, Tool::Wall(_) | Tool::DetailLine(_) | Tool::SketchLine(_) | Tool::Railing(_) | Tool::Mass(_));
+        let chain = matches!(
+            self.tool,
+            Tool::Wall(_)
+                | Tool::DetailLine(_)
+                | Tool::SketchLine(_)
+                | Tool::Railing(_)
+                | Tool::Mass(_)
+                | Tool::Move(_)
+                | Tool::Copy(_)
+                | Tool::Column
+                | Tool::Run(..)
+        );
         let mut wall_tabbed = false;
         if tabbed
             && !reference_tabbed
@@ -2732,7 +2791,10 @@ impl BimApp {
             Tool::SpecifyPoint => {
                 // Snapped as any point; its height by what it snapped to.
                 let f = self.snap(m, level, v, at, &[], false);
-                let p = self.alignments_for(m, level, v, &f, &[]).first().map_or(f.at, |a| a.snapped_point);
+                let p = self
+                    .alignments_for(m, level, v, &f, &[], GuideAt { at: v.mm(at), square: false })
+                    .first()
+                    .map_or(f.at, |a| a.snapped_point);
                 let z = bimcraft_core::coordinates::picked_z(m, level, p, f.source);
                 self.specify_at([p.0, p.1, z]);
             }
@@ -2793,7 +2855,8 @@ impl BimApp {
             Tool::Trim(_) | Tool::TrimTo { .. } => self.trim_click(hovered, v.mm(at)),
             Tool::Split => {
                 if let Some(id) = hovered {
-                    self.run("split", json!({"id": id, "at": point(self.snap(m, level, v, at, &[], false).at)}));
+                    let at = self.snap_point(m, level, v, at, &[], false);
+                    self.run("split", json!({"id": id, "at": point(at)}));
                 }
             }
             Tool::Offset => {
@@ -5153,7 +5216,8 @@ impl BimApp {
             // The spot coordinate as it would be: on the cursor, then from its point to the cursor.
             Tool::SpotCoordinate(first) => {
                 let from: Vec<P2> = first.iter().copied().collect();
-                let p = self.snap(m, level, v, q, &from, false).at;
+                // The same landing the click takes, with the marker: the guide's exact point, not the snap's rounded one.
+                let p = self.found(sc, q, &from, false);
                 let (at, end) = match *first {
                     None => (p, None),
                     Some(a) => (a, Some(p)),
@@ -5463,10 +5527,7 @@ impl BimApp {
         let Some(cursor) = self.canvas.cursor else { return };
         let m = Arc::clone(&self.session.model);
         let level = m.plan_level(key).unwrap_or(key);
-        let chain = match &self.tool {
-            Tool::Wall(c) | Tool::Railing(c) | Tool::Mass(c) | Tool::DetailLine(c) | Tool::SketchLine(c) => c.clone(),
-            _ => Vec::new(),
-        };
+        let chain = picked(&self.tool);
         let at = v.px(cursor);
         let f = self.snap(&m, level, &v, at, &chain, false);
         let mut under = self.canvas.under_cursor.clone();

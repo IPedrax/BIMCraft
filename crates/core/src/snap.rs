@@ -885,44 +885,15 @@ fn solve(scene: Scene, p: P2, reach: Reach, from: &[P2], square: bool, o: &Snaps
         }
     }
 
-    // A guide through the last point at the angle the cursor is nearest.
-    if (1.0..=180.0).contains(&o.angle)
-        && let Some(l) = last
-        && p.dist(l) > 2.0 * STEP
-    {
-        let d = p - l;
-        let tolerance = TOLERANCE.min(0.4 * o.angle);
-        let best = rays(from, o.angle)
-            .into_iter()
-            .map(|a| {
-                let u = P2(a.to_radians().cos(), a.to_radians().sin());
-                (a, u, u.dot(d), u.cross(d).abs())
-            })
-            .filter(|(_, _, along, perp)| *along > 0.0 && *perp <= reach.line && (perp / along).atan().to_degrees() <= tolerance)
-            .min_by(|x, y| x.3.total_cmp(&y.3));
-        if let Some((angle, u, along, _)) = best {
-            let guide = Some(Guide { from: l, angle, corner: corner_on(from, u) });
-            // Where it crosses a wall or a grid near the cursor.
-            let cross = near
-                .iter()
-                .filter_map(|&(a, b, of)| Some((ray_hit(l, u, a, b)?, of)))
-                .filter(|(q, _)| q.dist(p) <= reach.point)
-                .min_by(|x, y| by_distance(&x.0, &y.0));
-            // Else the grid point that lies on it, if one does, else as long as the nearest 10 mm.
-            let grid = round(p);
-            let on_grid = u.cross(grid - l).abs() <= 1e-3 && u.dot(grid - l) > 0.0;
-            return match cross {
-                Some((q, source)) if o.intersection => Found { at: micron(q), kind: Kind::Intersection, guide, source, face: None },
-                _ if on_grid => Found { at: grid, kind: Kind::Angle, guide, source: None, face: None },
-                _ => Found {
-                    at: micron(l + u * ((along / STEP).round().max(1.0) * STEP)),
-                    kind: Kind::Angle,
-                    guide,
-                    source: None,
-                    face: None,
-                },
-            };
-        }
+    let angle = angle_step(&near, p, reach, from, o);
+    // Shift's step is asked for, so it may take the pick from the geometry under the pointer; a passive 15° step may not.
+    if square && let Some(found) = angle {
+        return found;
+    }
+    // A passive step that crosses a wall or a line is an exact intersection, which outranks the face under it; its bare
+    // angle does not, and waits below the geometry.
+    if let Some(found) = angle.filter(|f| f.kind == Kind::Intersection) {
+        return found;
     }
 
     if nearest_lines && o.nearest {
@@ -964,6 +935,11 @@ fn solve(scene: Scene, p: P2, reach: Reach, from: &[P2], square: bool, o: &Snaps
             return Found { at: micron(c.at(t)), kind: Kind::Nearest, guide: None, source, face: None };
         }
     }
+    // A passive angle step comes after the geometry under the pointer: a wall's face or a line wins while the pointer is
+    // on it, and the step only takes a free point.
+    if let Some(found) = angle {
+        return found;
+    }
     // Rounded, but not off the line a square step keeps to.
     let mut at = round(p);
     match pinned {
@@ -972,6 +948,41 @@ fn solve(scene: Scene, p: P2, reach: Reach, from: &[P2], square: bool, o: &Snaps
         None => {}
     }
     Found { at, kind: Kind::Free, guide: None, source: None, face: None }
+}
+
+/// A guide through the last point at the angle the cursor is nearest, if `Snaps::angle` names steps and the cursor is
+/// within `TOLERANCE` of one: the point where that ray crosses a line near the cursor, else the nearest 10 mm along it.
+fn angle_step(near: &[(P2, P2, Option<Id>)], p: P2, reach: Reach, from: &[P2], o: &Snaps) -> Option<Found> {
+    let l = from.last().copied()?;
+    if !(1.0..=180.0).contains(&o.angle) || p.dist(l) <= 2.0 * STEP {
+        return None;
+    }
+    let d = p - l;
+    let tolerance = TOLERANCE.min(0.4 * o.angle);
+    let best = rays(from, o.angle)
+        .into_iter()
+        .map(|a| {
+            let u = P2(a.to_radians().cos(), a.to_radians().sin());
+            (a, u, u.dot(d), u.cross(d).abs())
+        })
+        .filter(|(_, _, along, perp)| *along > 0.0 && *perp <= reach.line && (perp / along).atan().to_degrees() <= tolerance)
+        .min_by(|x, y| x.3.total_cmp(&y.3));
+    let (angle, u, along, _) = best?;
+    let guide = Some(Guide { from: l, angle, corner: corner_on(from, u) });
+    // Where it crosses a wall or a grid near the cursor.
+    let cross = near
+        .iter()
+        .filter_map(|&(a, b, of)| Some((ray_hit(l, u, a, b)?, of)))
+        .filter(|(q, _)| q.dist(p) <= reach.point)
+        .min_by(|x, y| x.0.dist(p).total_cmp(&y.0.dist(p)));
+    // Else the grid point that lies on it, if one does, else as long as the nearest 10 mm.
+    let grid = round(p);
+    let on_grid = u.cross(grid - l).abs() <= 1e-3 && u.dot(grid - l) > 0.0;
+    Some(match cross {
+        Some((q, source)) if o.intersection => Found { at: micron(q), kind: Kind::Intersection, guide, source, face: None },
+        _ if on_grid => Found { at: grid, kind: Kind::Angle, guide, source: None, face: None },
+        _ => Found { at: micron(l + u * ((along / STEP).round().max(1.0) * STEP)), kind: Kind::Angle, guide, source: None, face: None },
+    })
 }
 
 /// Where a pick lands on a wall: its exterior face, its centre line or its interior face — `chosen` when `Tab` named one,
