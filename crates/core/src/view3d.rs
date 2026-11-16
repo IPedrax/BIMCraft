@@ -677,25 +677,32 @@ fn facets(tris: &[[P3; 3]]) -> (Vec<Option<usize>>, Vec<Option<usize>>) {
     let normals: Vec<P3> = tris.iter().map(|[a, b, c]| unit(cross(sub(*b, *a), sub(*c, *a)))).collect();
     let normal = |i: usize| normals.get(i).copied().unwrap_or_default();
     let mut up: Vec<usize> = (0..tris.len()).collect();
-    // The first triangle on each edge, which its corners name to a micron (as a file rounds them).
-    // ponytail: a corner on a rounding boundary may miss its twin, and a third triangle on an edge meets
-    // only the first; probe the neighbouring cells and pair them all if facet lines show.
+    // The first triangle on each side, whose corners a micron's grid names and [`welded`] joins to a twin in the cells
+    // around it.
+    // ponytail: a third triangle on a side meets only the first; pair them all if facet lines show.
     let mut edges: HashMap<([i64; 3], [i64; 3]), usize> = HashMap::new();
+    let mut canon: HashMap<[i64; 3], [i64; 3]> = HashMap::new();
     let mut bent = Vec::new();
     for (i, t) in tris.iter().enumerate() {
-        let corner = |k: usize| t.get(k % 3).map_or([0; 3], |p| p.map(|x| (x * 1e3).round() as i64));
+        let mut corner = |k: usize| {
+            let p = t.get(k % 3).copied().unwrap_or_default();
+            welded(&mut canon, p.map(|x| (x * 1e3).round() as i64), p)
+        };
+        let corners = [corner(0), corner(1), corner(2)];
         for k in 0..3 {
-            let (a, b) = (corner(k), corner(k + 1));
+            let (a, b) = (corners[k], corners[(k + 1) % 3]);
             let j = *edges.entry((a.min(b), a.max(b))).or_insert(i);
             // A triangle with no area has no normal, so it turns 90° from every other.
             let turn = dot(normal(i), normal(j));
-            if j != i && a != b && turn > limit {
+            // One plane, whichever way round each triangle is wound, is one face; turning little the same way is one
+            // surface. A fold (normals near opposite, so `turn` near -1) is neither.
+            let flat = turn.abs() >= 1.0 - 1e-9;
+            if j != i && a != b && (turn > limit || flat) {
                 let (ri, rj) = (first(&mut up, i), first(&mut up, j));
                 if let Some(slot) = up.get_mut(ri.max(rj)) {
                     *slot = ri.min(rj);
                 }
-                // Triangles in one plane (as `planes` takes it) are a flat face, not a curve.
-                if turn < 1.0 - 1e-9 {
+                if !flat {
                     bent.push(i);
                 }
             }
@@ -711,6 +718,36 @@ fn facets(tris: &[[P3; 3]]) -> (Vec<Option<usize>>, Vec<Option<usize>>) {
         faces.push(face);
     }
     (curves, faces)
+}
+
+/// The corner a rounded `q` stands for: itself, or the first corner already met within the weld, which a cell's edge may
+/// have put next door. `p` is `q` before it was rounded: a corner within a micron of another can land either side of a
+/// cell's edge, and the two are one point.
+fn welded(canon: &mut HashMap<[i64; 3], [i64; 3]>, q: [i64; 3], p: P3) -> [i64; 3] {
+    if let Some(c) = canon.get(&q) {
+        return *c;
+    }
+    for dx in -1..=1 {
+        for dy in -1..=1 {
+            for dz in -1..=1 {
+                if dx == 0 && dy == 0 && dz == 0 {
+                    continue;
+                }
+                // Saturated: a corner of 1e300 (or an infinity) rounds to the key's end, where `+` would overflow.
+                let next = [q[0].saturating_add(dx), q[1].saturating_add(dy), q[2].saturating_add(dz)];
+                if let Some(&c) = canon.get(&next) {
+                    // The weld, and the half micron the cell's own rounding may add.
+                    let at = c.map(|v| v as f64 * 1e-3);
+                    if sub(p, at).iter().all(|v| v.abs() <= 1.5e-3) {
+                        canon.insert(q, c);
+                        return c;
+                    }
+                }
+            }
+        }
+    }
+    canon.insert(q, q);
+    q
 }
 
 /// The corner normals of each triangle of a curved surface, for it to shade smoothly across its
@@ -1403,8 +1440,8 @@ fn planes(tris: &[Tri]) -> Vec<usize> {
     tris.iter().map(|t| table.assign(t)).collect()
 }
 
-/// The planes found so far, and the curved surfaces: what numbers a triangle's plane, kept with a scene so the triangles an
-/// edit makes are numbered among those it keeps.
+/// What numbers a triangle's surface: the flat face of its element's mesh it belongs to, else the curved surface it is a
+/// facet of, else its plane. Kept with a scene so the triangles an edit makes are numbered among those it keeps.
 #[derive(Clone, Default)]
 struct PlaneTable {
     /// Planes by their normal, in cells wider than the tolerance, and a millimetre's slab of distance: each plane's normal,
@@ -1418,7 +1455,8 @@ struct PlaneTable {
 }
 
 impl PlaneTable {
-    /// The number of `t`'s plane: that of a plane found before within the tolerance, else a new one.
+    /// The number of `t`'s surface: its face's, else its curve's, else that of a plane found before within the tolerance,
+    /// else a new one.
     fn assign(&mut self, t: &Tri) -> usize {
         // A mesh's own face first: two faces in one plane are two.
         if let Some(f) = t.face {
@@ -2707,7 +2745,8 @@ impl Scene {
     }
 
     /// The face of the model at pixel `at` through `cam`, of what `look` shows: where on it, which way it faces (toward the
-    /// camera), whose it is, and its triangles: those of the element lying in its plane. As a work plane is set on a surface.
+    /// camera), whose it is, and its triangles: the element's triangles in that face, which two faces in one plane are two
+    /// of. As a work plane is set on a surface.
     pub fn face_at(&self, cam: &Camera, at: (f64, f64), look: &Look) -> Option<Face> {
         let (z, i) = self.hit(cam, at, look)?;
         let t = self.tris.get(i)?;
@@ -2991,8 +3030,8 @@ impl Scene {
         }
     }
 
-    /// The edges of the model's surfaces: where two meet at an angle (not in one plane, nor one curve) and where one ends,
-    /// each as the triangle it is an edge of and its ends, in the order of their triangles.
+    /// The edges of the model's surfaces: where two meet at an angle (not one face, nor one curve, nor one plane) and where one
+    /// ends, each as the triangle it is an edge of and its ends, in the order of their triangles.
     fn edges(&self) -> &[(usize, [P3; 2])] {
         self.edges_cancellable(&|| false).unwrap_or_default()
     }
@@ -4896,6 +4935,29 @@ mod tests {
         assert_eq!(faces[0], faces[1], "the halves of one square are one face");
         assert_eq!(faces[2], faces[3]);
         assert_ne!(faces[0], faces[2], "a square beside it is a face of its own, though one plane: {faces:?}");
+    }
+
+    #[test]
+    fn a_faces_triangles_stay_one_face_however_they_are_wound_or_rounded() {
+        // The two halves of one square: wound the same way, and one of them wound the other way.
+        let up = [[0.0, 0.0, 0.0], [1000.0, 0.0, 0.0], [1000.0, 1000.0, 0.0]];
+        let over = [[0.0, 0.0, 0.0], [1000.0, 1000.0, 0.0], [0.0, 1000.0, 0.0]];
+        let flipped = [[0.0, 0.0, 0.0], [0.0, 1000.0, 0.0], [1000.0, 1000.0, 0.0]];
+        for half in [over, flipped] {
+            let (curves, faces) = facets(&[up, half]);
+            assert!(curves.iter().all(Option::is_none), "no bend, no curved surface");
+            assert_eq!(faces[0], faces[1], "{half:?} is the square's other half, not a face of its own");
+        }
+        // A corner a cell's edge falls between, within the weld: one face.
+        let a = [[0.0005, 0.0005, 0.0], [1000.0005, 0.0005, 0.0], [1000.0005, 1000.0005, 0.0]];
+        let b = [[0.0004, 0.0004, 0.0], [1000.0004, 0.0004, 0.0], [500.0, 1000.0004, 0.0]];
+        let (_, faces) = facets(&[a, b]);
+        assert_eq!(faces[0], faces[1], "within a micron the corner is one: {faces:?}");
+        // Five times the weld apart: two faces, as the wire pass draws the crack too.
+        let c = [[0.005, 0.005, 0.0], [1000.005, 0.005, 0.0], [1000.005, 1000.005, 0.0]];
+        let d = [[0.0, 0.0, 0.0], [1000.0, 0.0, 0.0], [500.0, 1000.0, 0.0]];
+        let (_, faces) = facets(&[c, d]);
+        assert_ne!(faces[0], faces[1], "a crack wider than the weld is two faces: {faces:?}");
     }
 
     use crate::engine::Session;
