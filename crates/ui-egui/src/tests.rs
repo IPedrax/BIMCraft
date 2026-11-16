@@ -2083,6 +2083,26 @@ fn in_3d_a_primary_drag_boxes_shift_and_the_middle_button_orbit_the_middle_butto
 }
 
 #[test]
+fn in_3d_alt_and_a_primary_drag_pan_and_with_shift_orbit_where_there_is_no_middle_button() {
+    let mut h = app(BOX);
+    press(&mut h, "Default 3D View");
+    let cam = |h: &Harness<BimApp>| h.state().orbit.camera.unwrap();
+    let (start, mid) = (cam(&h), h.state().orbit.rect.center());
+    // Alt (Option on a Mac) and the primary button are the middle button, which a Mac's trackpad and mouse lack: it pans.
+    h.event(Event::ModifiersChanged(Modifiers { alt: true, ..Modifiers::NONE }));
+    drag_screen(&mut h, mid, mid + vec2(0.0, 50.0), PointerButton::Primary);
+    let panned = cam(&h);
+    assert!(panned.target != start.target && panned.azimuth == start.azimuth, "{panned:?}");
+    // With Shift too it orbits, as Shift and the middle button do: 100 px to the right turns the model 40°.
+    h.event(Event::ModifiersChanged(Modifiers { alt: true, shift: true, ..Modifiers::NONE }));
+    drag_screen(&mut h, mid, mid + vec2(100.0, 0.0), PointerButton::Primary);
+    h.event(Event::ModifiersChanged(Modifiers::NONE));
+    h.run();
+    let turned = cam(&h);
+    assert!((turned.azimuth - (panned.azimuth - 40.0)).abs() < 0.5 && turned.elevation == panned.elevation, "{turned:?}");
+}
+
+#[test]
 fn in_3d_a_box_from_the_left_picks_what_lies_wholly_inside_and_from_the_right_what_it_touches() {
     let mut h = app(BOX);
     press(&mut h, "Default 3D View");
