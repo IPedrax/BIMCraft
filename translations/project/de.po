@@ -409,7 +409,7 @@ msgstr "Membran"
 #: crates/core/src/commands.rs:3686
 #: crates/core/src/commands.rs:16354
 #: crates/core/src/family.rs:3429
-#: crates/core/src/model.rs:5903
+#: crates/core/src/model.rs:5910
 msgid "Metal"
 msgstr "Metall"
 
