@@ -467,3 +467,25 @@ fn t26_the_leaf_with_always_vertical_off_swings_the_same() {
     };
     assert_eq!(points(&off), points(&on), "Always Vertical off on the leaf changes nothing at 45°");
 }
+
+/// Issue 465: two planes pivoting on each other's crossings, with a locked dimension to one, as the hostile sweep has them.
+/// The family is refused for its pivots, and its problems are found without solving it: the solve would follow the cycle
+/// 257 deep, about 2 MiB of stack unoptimised (the sweep's thread overflowed). Here a thread of 512 KiB is enough.
+#[test]
+fn a_family_whose_planes_pivot_on_each_other_is_refused_without_solving_it() {
+    let (a, b) = ("1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f8", "1b2c3d4e-5f60-4a71-8b92-a3b4c5d6e7f7");
+    let f: Family = serde_json::from_value(json!({
+        "types": {"A": {}},
+        "planes": [
+            {"guid": a, "start": [0, -1000, 0], "end": [0, 1000, 0], "up": [0, 0, 1],
+             "pivot": {"to": {"planes": [b, CENTER_FRONT_BACK]}, "angle": 90}},
+            {"guid": b, "start": [-1000, 5, 0], "end": [1000, 5, 0], "up": [0, 0, 1],
+             "pivot": {"to": {"planes": [a, CENTER_LEFT_RIGHT]}, "angle": 45}}
+        ],
+        "dimensions": [{"refs": [{"plane": a}, {"plane": CENTER_LEFT_RIGHT}], "at": [0, 0, 0], "locked": [{"segment": 0, "length": 500}]}]
+    }))
+    .unwrap();
+    assert!(f.check_pivots().is_err());
+    let (errors, _) = std::thread::Builder::new().stack_size(512 << 10).spawn(move || f.problems(&|_| true)).unwrap().join().unwrap();
+    assert!(!errors.is_empty(), "refused");
+}
