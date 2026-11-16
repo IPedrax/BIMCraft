@@ -8,7 +8,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::{Arc, Weak};
 
 use bimcraft_core::alignment::{AlignmentAxis, AlignmentResult};
-use bimcraft_core::geom::{self, P2};
+use bimcraft_core::geom::{self, P2, micron};
 use bimcraft_core::model::{
     Clearance, Column, Component, DEFAULT_HEIGHT, DimKind, Dimension, Element, Extrusion, Face, Floor, Id, Landing, Line, MAX_COORD, Mass,
     Model, Ramp, Reference, Roof, Section, Spot, Stair, TOL, Tag, Wall,
@@ -1436,11 +1436,6 @@ fn point(p: P2) -> Value {
     json!([p.0, p.1])
 }
 
-/// `p` to the micron: what a point meant to be exact is, without float noise.
-fn micron(p: P2) -> P2 {
-    P2((p.0 * 1e3).round() / 1e3, (p.1 * 1e3).round() / 1e3)
-}
-
 /// `d`'s direction, turned onto the nearest multiple of `inc` degrees when it's within 3° of one
 /// (less where they lie closer), as Revit's angle snaps do; `inc` outside 1 to 180 for none.
 fn snap_angle(d: P2, inc: f64) -> P2 {
@@ -1790,7 +1785,10 @@ impl BimApp {
         let at = if pointer.square || matches!(f.kind, Kind::Angle) { f.at } else { pointer.at };
         let found: Vec<AlignmentResult> =
             self.alignments(m, level, v, at, from).into_iter().filter(|a| on_guide(a.snapped_point)).collect();
-        if crossing_only && found.len() < 2 { Vec::new() } else { found }
+        let found = if crossing_only && found.len() < 2 { Vec::new() } else { found };
+        // The held guide is one that was drawn, not one the filter took away: the next frame's 12-px leave reads this.
+        self.canvas.last_align.set(found.first().map(|a| a.axis));
+        found
     }
 
     /// Where a point picked at pixel `at` lands, including temporary alignment guides.

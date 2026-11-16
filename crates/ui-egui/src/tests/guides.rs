@@ -372,6 +372,22 @@ fn q_marks_a_wall_face_before_the_first_point() {
     assert!(bimcraft_core::geom::dist_to_segment(face, a, b) < 0.01, "the face itself, not the centre line");
 }
 
+/// `Esc` ends the command, so the references it marked go with it.
+#[test]
+fn escape_clears_the_marked_references() {
+    let mut h = app("wall {\"points\": [[0, 0], [0, 5000]]}");
+    let view = h.state().plan_key().expect("a plan");
+    h.state_mut().snaps.mark_on_hover = false;
+    tool(&mut h, "Wall");
+    let at = h.state().screen(P2(6.0, 2500.0));
+    h.hover_at(at);
+    h.run();
+    key(&mut h, Key::Q);
+    assert_eq!(h.state().canvas.pins.borrow().at(view).len(), 1, "Q marked the face");
+    key(&mut h, Key::Escape);
+    assert!(h.state().canvas.pins.borrow().at(view).is_empty(), "Esc takes the mark with the command");
+}
+
 /// The 45°-rotated building's shaft: start square off the upper-right wall's face, mark the inner wall's face, and the
 /// two cross where the shaft's corner goes. No outer peak or far corner takes part.
 #[test]
@@ -544,6 +560,25 @@ fn a_grid_near_the_cursor_lends_a_guide_until_its_switch_is_off() {
     let m = &h.state().session.model;
     let v = h.state().canvas.current_view(level).expect("a view");
     assert!(h.state().alignments(m, level, &v, six_px, &chain).is_empty(), "the switch turns the grid off");
+}
+
+/// A 40 m grid's strong relation starts at the grid's nearer end, not at the cursor: the gallery records the length for a
+/// person judging the taper, and this pins the rule on every run.
+#[test]
+fn a_long_grids_relation_starts_at_the_grid_and_not_the_cursor() {
+    let mut h = app("grid {\"start\":[20000,-20000],\"end\":[20000,20000]}");
+    let level = h.state().plan_key().expect("a plan");
+    h.state_mut().canvas.set_view(level, 20000.0, 0.0, 0.05);
+    h.run();
+    tool(&mut h, "Wall");
+    click(&mut h, P2(19000.0, 2000.0));
+    let at = h.state().screen(P2(20000.7, 0.0));
+    h.hover_at(at);
+    h.run();
+    let v = h.state().canvas.current_view(level).expect("a view");
+    let res = h.state().alignments(&h.state().session.model, level, &v, P2(20000.7, 0.0), &[P2(19000.0, 2000.0)]);
+    let length = res.first().map_or(0.0, |r| r.reference_point.dist(r.snapped_point));
+    assert!(length > 10_000.0, "the relation starts at the grid's end, not the cursor: {length} mm");
 }
 
 /// A wall is three references, and the snap names the one its pointer is on — not a bare "Nearest of Wall" that could be
