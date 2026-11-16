@@ -1,0 +1,41 @@
+# Posts an existing release's notes to the Discord server by hand: for a release made before the `discord` job of release.yml existed,
+# or one that failed to post. The same script, secret and variable as that job. Run it with
+# `gh workflow run discord-release.yml -f tag=v0.12.0` (a tag that has a release, or the post fails).
+name: Discord release post
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: The tag of the release to post
+        required: true
+      ping:
+        description: Ping the Release Pings role as well
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  post:
+    name: Post
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Post the release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+          PING: ${{ inputs.ping }}
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_RELEASE_WEBHOOK }}
+          DISCORD_ROLE_ID: ${{ vars.DISCORD_RELEASE_ROLE_ID }}
+        run: |
+          if [ -z "$DISCORD_WEBHOOK" ]; then
+            echo "No DISCORD_RELEASE_WEBHOOK secret."
+            exit 1
+          fi
+          [ "$PING" = "true" ] || DISCORD_ROLE_ID=""
+          gh release view "$TAG" --json name,url,body | python3 ci/discord_release.py "$DISCORD_WEBHOOK" "$DISCORD_ROLE_ID"
