@@ -2897,6 +2897,7 @@ fn section_finish_cancellable(m: &Model, id: Id, mut d: Drawing, cancelled: &(dy
         d.owner = Some(nid);
         match e {
             Element::Text(n) if m.same(n.view, id) => note(&mut d, m, n),
+            Element::Dimension(dm) if dm.view.is_some_and(|v| m.same(v, id)) => dimension(&mut d, m, dm),
             Element::DetailLine(l) if m.same(l.view, id) => detail_line(&mut d, m, l),
             Element::DetailGroup(g) if m.same(g.view, id) => detail_group(&mut d, m, g),
             Element::RepeatingDetail(r) if m.same(r.view, id) => r.groups().iter().for_each(|g| detail_group(&mut d, m, g)),

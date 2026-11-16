@@ -48,6 +48,7 @@ pub mod dps;
 pub mod dr;
 pub mod drainage;
 pub mod draw;
+pub mod drawing_plane;
 #[cfg(test)]
 mod dry_run_tests;
 pub mod dxf;
@@ -237,6 +238,8 @@ mod titleblock_tests;
 pub mod triad;
 pub mod triangulation;
 pub mod units;
+#[cfg(test)]
+mod vertical_tools_tests;
 pub mod view3d;
 #[cfg(test)]
 mod wall_top_offset_tests;

@@ -185,7 +185,9 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// georeference and lose where the project stands; and it would read spot coordinates (a spot's `coordinate`, `type`, `origin`,
 /// `leader`, `shoulder` and `end`) and a level's `elevation_base` as spot elevations from the Project Base Point. A file of 19
 /// needs no step: its georeference is the active site, both points at the internal origin.
-pub const FORMAT: u32 = 20;
+// 21: dimensions may belong to a section/elevation and resolve references in its drawing plane.
+// Older readers would resolve those references in plan or discard the annotation.
+pub const FORMAT: u32 = 21;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -4415,6 +4417,8 @@ impl Model {
                 }
             }
         }
+        // 20 -> 21 needs no data transformation: existing dimensions already carry their plan
+        // anchor. Only newly created vertical dimensions use their view as the anchor.
         self.format = FORMAT;
     }
 
@@ -6446,7 +6450,7 @@ impl Model {
         if let Some(o) = d.orient {
             return Some(o.along());
         }
-        let geo: Vec<Line> = d.refs.iter().filter_map(|r| self.reference_geometry(r).ok()).collect();
+        let geo: Vec<Line> = d.refs.iter().filter_map(|r| crate::drawing_plane::reference(self, d.view, r).ok()).collect();
         if let Some((a, b)) = geo.iter().find(|(a, b)| a.dist(*b) > 1e-9) {
             return Some((*b - *a).unit().perp());
         }
@@ -6704,7 +6708,8 @@ impl Model {
 
     /// [`Model::crossings`], each with the reference it is of.
     pub fn stations(&self, d: &Dimension) -> (P2, Vec<(f64, Line, Reference)>) {
-        let lines: Vec<(Line, Reference)> = d.refs.iter().filter_map(|r| Some((self.reference_geometry(r).ok()?, *r))).collect();
+        let lines: Vec<(Line, Reference)> =
+            d.refs.iter().filter_map(|r| Some((crate::drawing_plane::reference(self, d.view, r).ok()?, *r))).collect();
         let Some(n) = self.measured_along(d) else { return (P2(0.0, 0.0), Vec::new()) };
         let n = if n.0 < -1e-9 || (n.0.abs() <= 1e-9 && n.1 < 0.0) { n * -1.0 } else { n };
         let mut v: Vec<(f64, Line, Reference)> = lines
@@ -8159,8 +8164,20 @@ impl Model {
                 }
             }
             Element::Dimension(d) => {
-                level_ok(d.level)?;
-                if let Some(v) = d.view {
+                let vertical = d.view.is_some_and(|v| self.section(v).is_some());
+                if vertical {
+                    if !matches!(d.kind, DimKind::Aligned | DimKind::Linear) || d.equal || !d.locked.is_empty() || d.alignment {
+                        return Err(format!(
+                            "{who}: section/elevation dimensions support aligned and linear measurement, without locks or equality constraints"
+                        ));
+                    }
+                    if d.view != Some(d.level) {
+                        return Err(format!("{who}: a section/elevation dimension's anchor must be its view"));
+                    }
+                } else {
+                    level_ok(d.level)?;
+                }
+                if let Some(v) = d.view.filter(|_| !vertical) {
                     self.plan_view_of(v, d.level).ok_or_else(|| format!("{who}: view {} isn't a plan view of its level", self.shown(v)))?;
                 }
                 point(&who, d.at)?;
@@ -8242,7 +8259,7 @@ impl Model {
                     if r.point.is_some() && d.kind == DimKind::Angular {
                         return Err(format!("{who}: it measures to an end of {what}; an angle is between two lines"));
                     }
-                    let line = self.reference_geometry(r).map_err(|e| format!("{who}: {e}"))?;
+                    let line = crate::drawing_plane::reference(self, d.view, r).map_err(|e| format!("{who}: {e}"))?;
                     if !seen.insert((r.id, r.face, r.point)) {
                         let at = match r.point {
                             Some(End::Start) => "start of its ",

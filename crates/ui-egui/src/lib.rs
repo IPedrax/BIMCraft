@@ -2380,6 +2380,10 @@ impl BimApp {
         }
         // Enter confirms Edit Dimension References; else it places a typed length, else builds the wall chain.
         let mut enter = pressed(Modifiers::NONE, Key::Enter);
+        if enter && let Sheet::Section(view) = self.sheet {
+            self.vertical_enter(view);
+            enter = false;
+        }
         if enter && self.dimension_refs_edit.is_some() {
             self.commit_dimension_refs();
             enter = false;
@@ -3501,6 +3505,7 @@ impl BimApp {
 
     /// Open a view in a tab, or bring its tab forward.
     fn open_sheet(&mut self, sheet: Sheet) {
+        let changed_vertical_plane = self.sheet != sheet && (matches!(self.sheet, Sheet::Section(_)) || matches!(sheet, Sheet::Section(_)));
         // A family document's view: its tab after the document's others (after the project's and the documents' before it),
         // and the document showing it. The project's tool, selection and views are left as they are.
         if let Sheet::Family(id, view) = sheet {
@@ -3533,6 +3538,12 @@ impl BimApp {
         }
         // The selection is the model's, not the view's: it stays, whatever view comes up.
         self.clear_typed();
+        if changed_vertical_plane
+            && matches!(self.tool, Tool::Dimension(..) | Tool::Move(_) | Tool::DetailLine(_) | Tool::Trim(_) | Tool::TrimTo { .. })
+        {
+            self.tool = Tool::Modify;
+            self.dimension_reference_hover = None;
+        }
         self.snap_once = None;
         // A ruler belongs to the view it was laid in.
         self.measured = None;
@@ -3540,6 +3551,7 @@ impl BimApp {
         // Elevation in sections, Demolish in sections and 3D); any other view takes clicks to select.
         let works = match sheet {
             Sheet::Plan(_) | Sheet::Ceiling(_) => true,
+            // Partial picks belong to one drawing plane. Always cancel them on a view switch.
             Sheet::Section(_) => matches!(self.tool, Tool::Text | Tool::Spot | Tool::Demolish),
             Sheet::View3D => matches!(self.tool, Tool::Demolish | Tool::Paint | Tool::Unpaint),
             Sheet::Paper(_) => self.tool == Tool::Text,
@@ -5866,6 +5878,15 @@ impl BimApp {
                 return msg!("Type the note in the Options Bar, then click where it goes.");
             }
             (Sheet::Section(_), Tool::Spot) => return msg!("Click a point to mark its height."),
+            (Sheet::Section(_), Tool::Dimension(..)) => {
+                return msg!("Pick levels, perpendicular grids or detail lines in this view, then click to place the dimension.");
+            }
+            (Sheet::Section(_), Tool::Move(_)) => {
+                return msg!(
+                    "Pick a base and destination in this view. Move supports its annotations, straight-wall openings and unhosted components."
+                );
+            }
+            (Sheet::Section(_), Tool::DetailLine(_) | Tool::Trim(_) | Tool::TrimTo { .. }) => {}
             // Demolish picks in these views as it does in a plan; Paint in the 3D view alone.
             (Sheet::View3D | Sheet::Section(_), Tool::Demolish) | (Sheet::View3D, Tool::Paint | Tool::Unpaint) => {}
             // Shape Editing works on the floor's top in the 3D view too.

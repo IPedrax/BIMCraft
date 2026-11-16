@@ -58,6 +58,8 @@ exact one; an edit or another level is made in the frame. Plan and numbers: [can
 
 ## Background view work
 
+`section/tools.rs` owns vertical drawing tools, using core `drawing_plane` references and commands. Never send along/up points as model XY. Only the displayed model generation may commit a pick; view switches cancel partial picks.
+
 Sections/elevations use `view_worker.rs` (bounded latest-request mailboxes) and `section_worker.rs` (snapshot-bound
 geometry, pictures and overlays). The UI installs each picture and its picking/display list together, and reprojects
 that completed generation during navigation. Never fall back to full geometry work on the UI thread when a job is late.

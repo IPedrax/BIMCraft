@@ -20,6 +20,8 @@ use crate::style::canvas_pal;
 use crate::view_worker::Latest;
 use crate::{BimApp, Status, Tool};
 
+mod tools;
+
 /// Geometry and visibility identity, independent of interaction paint.
 type Shot = (Arc<Model>, Id, View, View);
 
@@ -302,7 +304,7 @@ impl BimApp {
             d.pick((x, y), PICK / k)
                 .or_else(|| cut.image.as_ref().filter(|_| displaying)?.pick(f64::from(x) * source_ppp[0], f64::from(y) * source_ppp[1]))
         };
-        let hovered = local.filter(|_| matches!(self.tool, Tool::Modify | Tool::Demolish)).and_then(|q| pick(&self.cut, &d, q));
+        let hovered = local.and_then(|q| pick(&self.cut, &d, q));
         let tints: Vec<(Id, Rgb)> = self
             .selection
             .iter()
@@ -402,6 +404,14 @@ impl BimApp {
             if let Some(q) = clicked {
                 self.export_region_at(view.mm(q));
             }
+            return;
+        }
+        // Only edit through the model generation being displayed. A stale picture must never
+        // lend a reference to geometry from a newer snapshot.
+        let fresh = self.cut.shown.as_ref().is_some_and(|(m, v, ..)| *v == id && Arc::ptr_eq(m, &model));
+        if self.vertical_tools(ui, &p, rect, view, id, local, clicked.filter(|_| fresh), hovered) {
+            self.context_menu(&response);
+            self.nav_bar(ui, rect, id);
             return;
         }
         match (clicked, &self.tool) {

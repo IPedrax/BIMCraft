@@ -1,5 +1,15 @@
 # The desktop app: browser, docking, settings, picking, snapping, clicks, startup, tags
 
+## Drawing tools in sections and elevations
+
+Aligned/Linear Dimension picks levels, grids perpendicular to the view line, and that view's detail-line references or endpoints. Pick references, then click away to place; Space cycles placement modes. Dimension types and instance text use the existing Properties controls. These dimensions follow their references but do not drive geometry, lock it or impose equality yet. Wall/mesh silhouettes, oblique grids and datum display endpoints are not dimension references in this first slice.
+
+Detail Line draws in along/up coordinates with the existing Draw shapes (Pick Lines and Fillet are not yet available). Move uses a base and destination, Shift/Constrain and typed lengths. It moves annotations only within their owning view, straight-wall openings along the host and in height, and unhosted non-adaptive components in world coordinates. Unsupported categories or motion off an opening's host refuse the whole command. Trim/Extend Corner and Single/Multiple work on the view's detail lines through the same core operations as plan tools. Failed Trim retains its first pick. Escape and view switching cancel partial input.
+
+Commands: `dimension {view, refs, at:[along,height], ...}` and `move {view, ids, by:[along,up]}`; all other mutations retain existing commands. A vertical dimension's `level` anchor is its view GUID, also stored in `view`. Format 21 prevents older readers from resolving it as a plan dimension or dropping it. Format 20 needs no data conversion.
+
+Other model creation/modification tools still use their supported plan/3D workflows. Copy/Paste is separate work. This does not claim arbitrary model editing, full reference snapping, dimension constraints or complete Revit parity in vertical views.
+
 Moved from the root `CLAUDE.md`, word for word: the root keeps the rules and the map, and this file is read when the area is touched.
 
 The Project Browser (`browser.rs`) builds its tree as `Node`s and draws it through its tab (`browser::Tab`) and its search
