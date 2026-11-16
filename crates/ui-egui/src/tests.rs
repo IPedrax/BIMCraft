@@ -3702,6 +3702,7 @@ fn shape_editing_raises_points_draws_split_lines_and_resets_a_floor() {
     let mut h = app(BOX);
     tool(&mut h, "Floor");
     press(&mut h, "Walls' Outline");
+    choose(&mut h, "Location Line:", "Wall Centre Line");
     press(&mut h, "DRAW");
     press(&mut h, "Finish Edit Mode");
     let floor = ids(&h, "floor");
@@ -3736,6 +3737,7 @@ fn modify_sub_elements_selects_then_sets_a_points_height_or_an_edges_both_ends_a
     let mut h = app(BOX);
     tool(&mut h, "Floor");
     press(&mut h, "Walls' Outline");
+    choose(&mut h, "Location Line:", "Wall Centre Line");
     press(&mut h, "DRAW");
     press(&mut h, "Finish Edit Mode");
     let floor = ids(&h, "floor");
@@ -3782,6 +3784,7 @@ fn modify_sub_elements_drags_a_point_with_its_split_lines_and_labels_its_height(
     let mut h = app(BOX);
     tool(&mut h, "Floor");
     press(&mut h, "Walls' Outline");
+    choose(&mut h, "Location Line:", "Wall Centre Line");
     press(&mut h, "DRAW");
     press(&mut h, "Finish Edit Mode");
     let floor = ids(&h, "floor");

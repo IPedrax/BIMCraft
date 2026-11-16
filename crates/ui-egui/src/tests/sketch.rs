@@ -477,6 +477,8 @@ fn a_picked_boundary_line_shows_its_wall_face_and_flips_and_undoes() {
     h.key_press_modifiers(Modifiers::COMMAND, Key::Z);
     h.run();
     assert!((line_y(&h, 0) - 50.0).abs() < 1e-6, "{:?}", lines(&h));
+    // Undo clears the sketch's picked lines; pick it again for the palette.
+    click(&mut h, P2(4000.0, 50.0));
     // Flip, from the palette over the line, puts it on the other side.
     press(&mut h, "Flip");
     assert!((line_y(&h, 0) + 50.0).abs() < 1e-6, "{:?}", lines(&h));
