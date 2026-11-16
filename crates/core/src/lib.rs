@@ -60,6 +60,7 @@ pub mod electrical;
 mod electrical_tests;
 pub mod elevation;
 pub mod engine;
+pub mod entrance;
 pub mod export;
 #[cfg(test)]
 mod export_tests;
