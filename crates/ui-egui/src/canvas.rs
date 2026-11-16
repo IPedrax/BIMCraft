@@ -1754,19 +1754,22 @@ impl BimApp {
         {
             if self.outline_pending && (mods.ctrl || mods.command) {
                 if let Drag::Box(from) = drag {
-                    outline_boxed = true;
-                    let found = self.outline_walls_in_box(&model, &view, rect, from, q);
-                    let mods = click_modifiers(ui);
-                    if mods.shift {
-                        for id in found {
-                            self.outline_walls.remove(&id);
+                    // A press and release that never moved is a click, not a box: the click below picks the wall.
+                    if from != q {
+                        outline_boxed = true;
+                        let found = self.outline_walls_in_box(&model, &view, rect, from, q);
+                        let mods = click_modifiers(ui);
+                        if mods.shift {
+                            for id in found {
+                                self.outline_walls.remove(&id);
+                            }
+                        } else if mods.command {
+                            self.outline_walls.extend(found);
+                        } else {
+                            self.outline_walls = found.into_iter().collect();
                         }
-                    } else if mods.command {
-                        self.outline_walls.extend(found);
-                    } else {
-                        self.outline_walls = found.into_iter().collect();
+                        self.sync_outline_selection();
                     }
-                    self.sync_outline_selection();
                 }
             } else if self.finish_drag() {
                 match drag {
