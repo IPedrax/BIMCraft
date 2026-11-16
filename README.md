@@ -288,6 +288,10 @@ reads back typed as they were (text, a real, a length, a boolean), and come in f
 IfcOpenShell reads each element's `BIMCraft_Phasing` set and the project's list of phases; they come back from IFC as they went
 out, and from a set its API writes (labels and a list value), while a set another tool calls its own, `Phasing` say, is left unread.
 
+Roof footprint editing: select a roof, choose **Edit Boundary**, then select one boundary line to set **Defines Slope**
+and its pitch. The selected roof's Slope field and the boundary-line Slope field accept degrees, ratios (`6:12`, `6/12`)
+and positive percentages (`50%`); values display in degrees. [Workflow, limits and before/after pictures](docs/roof-slope-review.md).
+
 ## Quick start
 
 BIMCraft needs Rust 1.95 or later (egui 0.36 and sysinfo 0.40; krilla, which writes PDF, 1.92).
