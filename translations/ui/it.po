@@ -121,8 +121,8 @@ msgstr "<Da schizzo>"
 msgid "<Invisible lines>"
 msgstr "<Linee invisibili>"
 
-#: crates/ui-egui/src/underlay.rs:304
-#: crates/ui-egui/src/underlay.rs:362
+#: crates/ui-egui/src/underlay.rs:311
+#: crates/ui-egui/src/underlay.rs:369
 msgid "<Missing>"
 msgstr ""
 
@@ -139,8 +139,8 @@ msgstr ""
 #: crates/ui-egui/src/templates.rs:214
 #: crates/ui-egui/src/templates.rs:439
 #: crates/ui-egui/src/templates.rs:703
-#: crates/ui-egui/src/underlay.rs:306
-#: crates/ui-egui/src/underlay.rs:364
+#: crates/ui-egui/src/underlay.rs:313
+#: crates/ui-egui/src/underlay.rs:371
 msgid "<None>"
 msgstr "<Nessuno>"
 
@@ -988,7 +988,7 @@ msgstr "Quota angolare: scegli due linee che si incontrano, poi clicca dove va l
 msgid "Annotate"
 msgstr "Annota"
 
-#: crates/ui-egui/src/underlay.rs:413
+#: crates/ui-egui/src/underlay.rs:420
 msgid "Annotation"
 msgstr ""
 
@@ -1505,7 +1505,7 @@ msgstr "Trave (BM): clicca l'inizio e la fine; una serie di clic crea una trave 
 msgid "Bed"
 msgstr "Letto"
 
-#: crates/ui-egui/src/underlay.rs:421
+#: crates/ui-egui/src/underlay.rs:428
 msgid "Behind the view"
 msgstr ""
 
@@ -2858,7 +2858,7 @@ msgstr ""
 #: crates/ui-egui/src/script.rs:103
 #: crates/ui-egui/src/settings.rs:492
 #: crates/ui-egui/src/shortcuts.rs:578
-#: crates/ui-egui/src/underlay.rs:456
+#: crates/ui-egui/src/underlay.rs:463
 msgid "Close"
 msgstr "Chiudi"
 
@@ -2945,7 +2945,7 @@ msgstr ""
 #: crates/ui-egui/src/dimtypes.rs:140
 #: crates/ui-egui/src/notes.rs:508
 #: crates/ui-egui/src/properties.rs:2980
-#: crates/ui-egui/src/underlay.rs:382
+#: crates/ui-egui/src/underlay.rs:389
 msgid "Color"
 msgstr "Colore"
 
@@ -4347,7 +4347,7 @@ msgstr "Disegno 2D"
 #: crates/ui-egui/src/draw.rs:305
 #: crates/ui-egui/src/editor/document.rs:1840
 #: crates/ui-egui/src/editor/sketch.rs:1467
-#: crates/ui-egui/src/underlay.rs:419
+#: crates/ui-egui/src/underlay.rs:426
 msgid "Draw"
 msgstr "Disegna"
 
@@ -4654,7 +4654,7 @@ msgstr "Modifica sommità: disegna la sommità dell'unione, al suo secondo estre
 msgid "Edit Type"
 msgstr "Modifica tipo"
 
-#: crates/ui-egui/src/underlay.rs:312
+#: crates/ui-egui/src/underlay.rs:319
 msgid "Edit Underlay Settings"
 msgstr ""
 
@@ -4701,7 +4701,7 @@ msgstr ""
 #: crates/ui-egui/src/graphics.rs:655
 #: crates/ui-egui/src/properties.rs:2751
 #: crates/ui-egui/src/templates.rs:659
-#: crates/ui-egui/src/underlay.rs:311
+#: crates/ui-egui/src/underlay.rs:318
 msgid "Edit…"
 msgstr "Modifica…"
 
@@ -4758,7 +4758,7 @@ msgstr ""
 #: crates/ui-egui/src/coordinates.rs:1192
 #: crates/ui-egui/src/lib.rs:4796
 #: crates/ui-egui/src/lib.rs:5834
-#: crates/ui-egui/src/underlay.rs:371
+#: crates/ui-egui/src/underlay.rs:378
 msgid "Elevation"
 msgstr "Prospetto"
 
@@ -5287,7 +5287,7 @@ msgid "Fillet Arc: pick two lines, then click to size the arc (or set its Radius
 msgstr "Raccordo ad arco: scegli due linee, poi clicca per dimensionare l'arco (o imposta il Raggio); le linee vengono tagliate fino all'arco"
 
 #: crates/ui-egui/src/titleblocks.rs:353
-#: crates/ui-egui/src/underlay.rs:407
+#: crates/ui-egui/src/underlay.rs:414
 msgid "Fills"
 msgstr ""
 
@@ -5497,7 +5497,7 @@ msgid "Floor Offset"
 msgstr ""
 
 #: crates/ui-egui/src/properties.rs:1864
-#: crates/ui-egui/src/underlay.rs:370
+#: crates/ui-egui/src/underlay.rs:377
 msgid "Floor Plan"
 msgstr "Pianta"
 
@@ -6019,7 +6019,7 @@ msgstr ""
 msgid "Hide Unselected"
 msgstr ""
 
-#: crates/ui-egui/src/underlay.rs:415
+#: crates/ui-egui/src/underlay.rs:422
 msgid "Hide annotation"
 msgstr ""
 
@@ -6241,7 +6241,7 @@ msgstr "Interno"
 msgid "In This Project"
 msgstr ""
 
-#: crates/ui-egui/src/underlay.rs:424
+#: crates/ui-egui/src/underlay.rs:431
 msgid "In front of the view"
 msgstr ""
 
@@ -7916,7 +7916,7 @@ msgstr "Altezza di installazione"
 
 #: crates/core/src/commands.rs:1900
 #: crates/ui-egui/src/editor/document.rs:648
-#: crates/ui-egui/src/underlay.rs:431
+#: crates/ui-egui/src/underlay.rs:438
 msgid "Move"
 msgstr "Sposta"
 
@@ -7934,11 +7934,11 @@ msgstr ""
 msgid "Move Down"
 msgstr "Sposta giù"
 
-#: crates/ui-egui/src/underlay.rs:236
+#: crates/ui-egui/src/underlay.rs:243
 msgid "Move Underlay: click a point to move it from (Esc to stop)"
 msgstr ""
 
-#: crates/ui-egui/src/underlay.rs:237
+#: crates/ui-egui/src/underlay.rs:244
 msgid "Move Underlay: click where that point goes"
 msgstr ""
 
@@ -7958,7 +7958,7 @@ msgstr ""
 msgid "Move the shared coordinates with it"
 msgstr ""
 
-#: crates/ui-egui/src/underlay.rs:431
+#: crates/ui-egui/src/underlay.rs:438
 msgid "Move the underlay by two points picked in the view"
 msgstr ""
 
@@ -7966,7 +7966,7 @@ msgstr ""
 msgid "Move: click the point to move from."
 msgstr ""
 
-#: crates/ui-egui/src/underlay.rs:446
+#: crates/ui-egui/src/underlay.rs:453
 msgid "Moved {}, {}; turned {}°"
 msgstr ""
 
@@ -9978,7 +9978,7 @@ msgid "Portrait"
 msgstr ""
 
 #: crates/ui-egui/src/properties.rs:414
-#: crates/ui-egui/src/underlay.rs:429
+#: crates/ui-egui/src/underlay.rs:436
 msgid "Position"
 msgstr "Posizione"
 
@@ -10848,7 +10848,7 @@ msgstr "Ripristina disposizione delle palette"
 msgid "Reset Panels"
 msgstr ""
 
-#: crates/ui-egui/src/underlay.rs:437
+#: crates/ui-egui/src/underlay.rs:444
 msgid "Reset Position"
 msgstr ""
 
@@ -11095,7 +11095,7 @@ msgstr ""
 
 #: crates/core/src/commands.rs:1927
 #: crates/ui-egui/src/editor/document.rs:668
-#: crates/ui-egui/src/underlay.rs:434
+#: crates/ui-egui/src/underlay.rs:441
 msgid "Rotate"
 msgstr "Ruota"
 
@@ -11116,15 +11116,15 @@ msgstr ""
 msgid "Rotate Project North: click the start of the angle, or type an angle and press Enter. It turns the whole model."
 msgstr ""
 
-#: crates/ui-egui/src/underlay.rs:239
+#: crates/ui-egui/src/underlay.rs:246
 msgid "Rotate Underlay: click a point on the line to turn from"
 msgstr ""
 
-#: crates/ui-egui/src/underlay.rs:240
+#: crates/ui-egui/src/underlay.rs:247
 msgid "Rotate Underlay: click a point on the line to turn to"
 msgstr ""
 
-#: crates/ui-egui/src/underlay.rs:238
+#: crates/ui-egui/src/underlay.rs:245
 msgid "Rotate Underlay: click the centre of rotation (Esc to stop)"
 msgstr ""
 
@@ -11412,7 +11412,7 @@ msgid "Second End"
 msgstr "Secondo estremo"
 
 #: crates/ui-egui/src/lib.rs:4792
-#: crates/ui-egui/src/underlay.rs:372
+#: crates/ui-egui/src/underlay.rs:379
 msgid "Section"
 msgstr "Sezione"
 
@@ -11865,14 +11865,14 @@ msgstr ""
 msgid "Show Spares"
 msgstr ""
 
-#: crates/ui-egui/src/underlay.rs:294
-#: crates/ui-egui/src/underlay.rs:297
-#: crates/ui-egui/src/underlay.rs:352
-#: crates/ui-egui/src/underlay.rs:355
+#: crates/ui-egui/src/underlay.rs:301
+#: crates/ui-egui/src/underlay.rs:304
+#: crates/ui-egui/src/underlay.rs:359
+#: crates/ui-egui/src/underlay.rs:362
 msgid "Show Underlay"
 msgstr ""
 
-#: crates/ui-egui/src/underlay.rs:296
+#: crates/ui-egui/src/underlay.rs:303
 msgid "Show another view under this one"
 msgstr ""
 
@@ -11885,7 +11885,7 @@ msgstr ""
 msgid "Show background grids, change their settings, or toggle grid snapping"
 msgstr ""
 
-#: crates/ui-egui/src/underlay.rs:409
+#: crates/ui-egui/src/underlay.rs:416
 msgid "Show fills and patterns"
 msgstr ""
 
@@ -13845,7 +13845,7 @@ msgstr "Rifiuta"
 msgid "Turn Snap Override Off"
 msgstr "Disattiva l'aggancio forzato"
 
-#: crates/ui-egui/src/underlay.rs:434
+#: crates/ui-egui/src/underlay.rs:441
 msgid "Turn the underlay about a point picked in the view"
 msgstr ""
 
@@ -14013,19 +14013,19 @@ msgstr "Non collegato"
 msgid "Unconnected Height"
 msgstr "Altezza non collegata"
 
-#: crates/ui-egui/src/underlay.rs:283
+#: crates/ui-egui/src/underlay.rs:290
 msgid "Underlay"
 msgstr ""
 
-#: crates/ui-egui/src/underlay.rs:310
+#: crates/ui-egui/src/underlay.rs:317
 msgid "Underlay Settings"
 msgstr ""
 
-#: crates/ui-egui/src/underlay.rs:346
+#: crates/ui-egui/src/underlay.rs:353
 msgid "Underlay Settings: {}"
 msgstr ""
 
-#: crates/ui-egui/src/underlay.rs:302
+#: crates/ui-egui/src/underlay.rs:309
 msgid "Underlay View"
 msgstr ""
 
@@ -14265,7 +14265,7 @@ msgstr "Verticale"
 
 #: crates/ui-egui/src/editor/document.rs:357
 #: crates/ui-egui/src/lib.rs:1436
-#: crates/ui-egui/src/underlay.rs:360
+#: crates/ui-egui/src/underlay.rs:367
 msgid "View"
 msgstr "Vista"
 
