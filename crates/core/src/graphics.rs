@@ -1399,11 +1399,6 @@ impl Look {
         !self.part(kind).hidden
     }
 
-    /// Whether the view hides panels or mullions of a curtain wall.
-    pub(crate) fn hides_parts(&self) -> bool {
-        self.parts.iter().any(|o| o.hidden)
-    }
-
     /// `base`, or the colour `pick` finds in what the view says of a part (`kind`) or else of its element, lighter if either is
     /// in halftone. A part's row goes over its wall's.
     fn coloured(&self, kind: Option<crate::curtain::PartKind>, id: Id, base: Rgb, pick: impl Fn(&Override) -> Option<[u8; 3]>) -> Rgb {
