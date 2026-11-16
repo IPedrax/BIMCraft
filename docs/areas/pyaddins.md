@@ -82,6 +82,11 @@ its values against the script) and `pyaddin_run` (inputs, a selection, a timeout
 the log, what it selected or the error). On the server's own session the run is one undo step; on a window's, each command is
 one, as an agent's are.
 
+An agent that may only read (`mcp --read-only`, `mcp --connect --read-only`, or a window whose user lets agents only read) lists
+and reads scripts and buttons and nothing more: `pyaddin_save`, `pyaddin_delete`, `pyaddin_button` and `pyaddin_run` are
+refused before they touch the folder (`writes` in the CLI's `pyaddins.rs`). A run can't be let through and trusted to the
+session's read-only, since a script is Python of its own: it could write over the project's file, or any other.
+
 The skill (`skills/bimcraft-pyaddins/SKILL.md`) is built into the programs (`skill.rs`): `bimcraft-cli skill install [DIR]` and
 PyAddins > Python's Install Skill write it where Claude Code (`~/.claude/skills`) and Codex (`~/.agents/skills`, as OpenAI's
 skills documentation has it) read skills, and say the `claude mcp add` and `codex mcp add` lines that give each the MCP server;

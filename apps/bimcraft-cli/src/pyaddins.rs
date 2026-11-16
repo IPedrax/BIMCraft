@@ -4,6 +4,7 @@
 
 use std::time::Duration;
 
+use bimcraft_core::engine::READ_ONLY;
 use bimcraft_pyaddins::{Button, Description, Store, inputs, run};
 use serde_json::{Map, Value, json};
 
@@ -62,10 +63,32 @@ pub trait Target {
     fn as_one(&mut self, f: &mut dyn FnMut(&mut run::Ask) -> run::Outcome) -> run::Outcome;
 }
 
-/// A PyAddins tool, when `name` is one.
-pub fn call(name: &str, args: &Value, store: Option<&Store>, target: &mut dyn Target) -> Option<Result<Value, String>> {
+/// What a PyAddins tool would do that an agent which may only read never does: write the user's folder, or run a script,
+/// which is Python of its own that no read-only session reaches and that could write over the project's file or any other.
+fn writes(name: &str) -> Option<&'static str> {
+    match name {
+        "pyaddin_save" => Some("write a script into the user's PyAddins folder"),
+        "pyaddin_delete" => Some("delete a script from the user's PyAddins folder"),
+        "pyaddin_button" => Some("change the buttons of the user's PyAddins tab"),
+        "pyaddin_run" => Some("run a script, which is Python that may change the project and write any file"),
+        _ => None,
+    }
+}
+
+/// A PyAddins tool, when `name` is one. `read_only` is what lets the agent edit, when it may only read: then it lists and
+/// reads the scripts and buttons, and nothing more.
+pub fn call(
+    name: &str,
+    args: &Value,
+    store: Option<&Store>,
+    target: &mut dyn Target,
+    read_only: Option<&str>,
+) -> Option<Result<Value, String>> {
     if !name.starts_with("pyaddin_") {
         return None;
+    }
+    if let (Some(how), Some(what)) = (read_only, writes(name)) {
+        return Some(Err(format!("`{name}` would {what}, {READ_ONLY}: {how}")));
     }
     let Some(store) = store else {
         return Some(Err("there is no PyAddins folder: no home folder to keep it in (set BIMCRAFT_PYADDINS)".into()));
