@@ -1881,19 +1881,101 @@ pub fn known_system(name: &str) -> Option<&'static SystemDef> {
         .filter(|s| !s.tables.is_empty())
 }
 
+/// The table of the known system `sys` a code is of: the one its code begins with, or the system's only one.
+fn imported_table(sys: &'static SystemDef, code: &str) -> Option<&'static TableDef> {
+    let k = normal(code);
+    let by_key =
+        sys.tables.iter().filter(|t| !t.key.is_empty() && t.key.chars().all(char::is_alphanumeric)).find(|t| k.starts_with(&normal(t.key)));
+    by_key.or_else(|| (sys.tables.len() == 1).then(|| &sys.tables[0]))
+}
+
+/// Whose value an IFC file's code of the classification `name` is, as its table has it: a type's for Uniclass's Systems
+/// (`Ss`), an element's for a system or a table this module doesn't know.
+pub fn imported_scope(name: &str, code: &str) -> Scope {
+    known_system(name).and_then(|sys| imported_table(sys, code)).map_or(Scope::Instance, |t| t.scope)
+}
+
+/// The parameter `number` (and its `title`), read from IFC as each element's, made a type parameter, as its table
+/// classifies: each type takes the code most of its elements hold (the first of them, on a tie), with that element's title.
+/// What an element of another code or of no type held is left out, and what this gives back says so. A parameter none of
+/// whose elements has a type stays each element's.
+pub(crate) fn onto_types(m: &mut Model, number: &str, title: Option<&str>) -> Vec<String> {
+    let Some(cats) = m.parameters.get(number).map(|p| p.categories.clone()) else { return Vec::new() };
+    let title = title.filter(|t| m.parameters.contains_key(*t));
+    let held = |e: &Element| cats.iter().any(|c| c == e.category());
+    // Each type's elements' codes, with their titles, in the elements' order; how many of no type held one.
+    let mut by_type: BTreeMap<Guid, Vec<(Value, Option<Value>)>> = BTreeMap::new();
+    let mut typeless: BTreeMap<String, usize> = BTreeMap::new();
+    for e in m.elements.values().filter(|e| held(e)) {
+        let Some(code) = e.params().and_then(|v| v.get(number)) else { continue };
+        let named = title.and_then(|t| e.params().and_then(|v| v.get(t))).cloned();
+        match parameters::type_guid(m, e) {
+            Some(g) => by_type.entry(g).or_default().push((code.clone(), named)),
+            None => *typeless.entry(e.category().to_string()).or_default() += 1,
+        }
+    }
+    if by_type.is_empty() {
+        return Vec::new();
+    }
+    let mut others: BTreeMap<String, usize> = BTreeMap::new();
+    let mut codes = BTreeMap::new();
+    let mut titles = BTreeMap::new();
+    for (g, held) in &by_type {
+        let count = |c: &Value| held.iter().filter(|(x, _)| x == c).count();
+        let Some((code, named)) = held.iter().fold(None::<&(Value, Option<Value>)>, |best, x| match best {
+            Some(b) if count(&b.0) >= count(&x.0) => Some(b),
+            _ => Some(x),
+        }) else {
+            continue;
+        };
+        let odd = held.len() - count(code);
+        if odd > 0 {
+            let category = m.library.by_guid(*g).and_then(|(_, e)| parameters::category_of_type(m, &e.kind, &e.name));
+            *others.entry(category.unwrap_or_default()).or_default() += odd;
+        }
+        codes.insert(*g, code.clone());
+        if let Some(t) = named {
+            titles.insert(*g, t.clone());
+        }
+    }
+    let categories: Vec<String> = cats.iter().filter(|c| !TYPELESS.contains(&c.as_str())).cloned().collect();
+    let names: Vec<&str> = std::iter::once(number).chain(title).collect();
+    for e in m.elements.values_mut() {
+        if held(e)
+            && let Some(v) = e.params_mut()
+        {
+            for n in &names {
+                v.remove(*n);
+            }
+        }
+    }
+    for (n, values) in std::iter::once((number, codes)).chain(title.map(|t| (t, titles))) {
+        if let Some(q) = m.parameters.get_mut(n) {
+            q.scope = Scope::Type;
+            q.categories.retain(|c| categories.contains(c));
+            q.type_values = values;
+        }
+    }
+    let plural = |n: usize, c: &str| if n == 1 { format!("1 {c}") } else { format!("{n} {c}s") };
+    let mut notes: Vec<String> = others
+        .iter()
+        .map(|(c, n)| format!("{number}: {} held another code than most of their type, which the type holds now", plural(*n, c)))
+        .collect();
+    notes.extend(
+        typeless.iter().map(|(c, n)| {
+            format!("{number}: the codes of {}, which have no type here to hold them as {number} is a type's", plural(*n, c))
+        }),
+    );
+    notes
+}
+
 /// The parameters an IFC file's code of the classification `name` comes in as: a known system's own (the table its code
 /// begins with, `Uniclass Ss Number` and `Uniclass Ss Title`), so a project written and read back is itself; another's,
 /// `<name> Number` and `<name> Title`.
 pub fn imported_parameters(name: &str, code: &str) -> (String, String) {
     let n = name.trim();
     if let Some(sys) = known_system(n) {
-        let k = normal(code);
-        let by_key = sys
-            .tables
-            .iter()
-            .filter(|t| !t.key.is_empty() && t.key.chars().all(char::is_alphanumeric))
-            .find(|t| k.starts_with(&normal(t.key)));
-        if let Some(t) = by_key.or_else(|| (sys.tables.len() == 1).then(|| &sys.tables[0])) {
+        if let Some(t) = imported_table(sys, code) {
             return sys.parameters_of(t);
         }
         return (format!("{} Number", sys.short), format!("{} Title", sys.short));

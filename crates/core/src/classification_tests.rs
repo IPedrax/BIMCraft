@@ -351,11 +351,13 @@ fn ifc_says_each_code_as_a_classification_reference_of_its_system_related_to_the
     let related = rel.split("$,$,$,(").nth(1).unwrap().split(')').next().unwrap();
     assert!(related.split(',').any(|r| line(&f, r).contains(&wall_gid)), "{rel}");
 
-    // Read back, the code is in the system's own parameters again.
+    // Read back, the code is in the system's own parameters again, the wall's type's.
     let back = crate::import::ifc(f.as_bytes(), "t").unwrap();
-    let w2 = back.model.elements.iter().find(|(_, e)| matches!(e, Element::Wall(_))).map(|(_, e)| e).unwrap();
-    assert_eq!(w2.params().unwrap()["Uniclass Ss Number"], "Ss_25_10_30_35");
-    assert_eq!(w2.params().unwrap()["Uniclass Ss Title"], "Brick and block wall systems");
+    let (m, w2) = (&back.model, back.model.elements.values().find(|e| matches!(e, Element::Wall(_))).unwrap());
+    assert_eq!(m.parameters["Uniclass Ss Number"].scope, Scope::Type);
+    let read = |n: &str| parameters::value_of(m, w2, n, &m.parameters[n]).cloned();
+    assert_eq!(read("Uniclass Ss Number"), Some(json!("Ss_25_10_30_35")));
+    assert_eq!(read("Uniclass Ss Title"), Some(json!("Brick and block wall systems")));
 }
 
 /// The entity numbers of the lines of `class` in `f`.
@@ -415,7 +417,53 @@ fn a_classified_project_goes_out_and_comes_back_twice_as_the_same_references_and
     let w = of_class(&second, "IFCWALL")[0];
     assert!(!properties_of(&second, w).contains(&"Uniclass Ss Number"), "{:?}", properties_of(&second, w));
     let again = crate::import::ifc(second.as_bytes(), "t").unwrap();
-    assert_eq!(again.model.parameters, back.model.parameters);
+    assert_eq!(read_all(&again.model), read_all(&back.model));
+    assert!(read_all(&back.model).values().any(|v| v == "Ss_25_10_30_35"));
+}
+
+/// What each element reads of each project parameter (its own value or its type's), by the element's GUID: what a file
+/// says of it, whatever GUIDs its types were given.
+fn read_all(m: &crate::model::Model) -> std::collections::BTreeMap<(String, String), Value> {
+    let mut out = std::collections::BTreeMap::new();
+    for (id, e) in m.elements.iter() {
+        for (n, p) in &m.parameters {
+            if let (Some(v), Some(g)) = (parameters::value_of(m, e, n, p), m.elements.guid(*id)) {
+                out.insert((g.to_string(), n.clone()), v.clone());
+            }
+        }
+    }
+    out
+}
+
+#[test]
+fn a_systems_tables_loaded_on_a_project_read_from_ifc_take_its_parameters_and_keep_their_codes() {
+    // Uniclass codes read from IFC, then Uniclass's tables loaded: the parameters are the system's already (its GUIDs, a
+    // type's for Ss), so they are bound as they are, every code kept, and each goes out once.
+    let (mut s, wall, door) = house();
+    uniclass(&mut s);
+    run(
+        &mut s,
+        "classify",
+        json!({"assign": [
+        {"target": wall.to_string(), "table": "Uniclass Ss", "code": "Ss_25_10_30_35"},
+        {"target": door.to_string(), "table": "Uniclass Ss", "code": "Ss_25_30_20"}]}),
+    );
+    let path = file("classified.ifc", &crate::ifc::export(&s.model));
+    let mut t = Session::new();
+    run(&mut t, "open", json!({"path": path}));
+    let before = read_all(&t.model);
+    run(&mut t, "classification_table", json!({"path": file("ss.csv", SS), "system": "uniclass", "table": "Ss", "edition": "2024-07"}));
+    let plan = run(&mut t, "classification_parameters", json!({"system": "uniclass", "tables": ["Ss"], "dry_run": true}));
+    assert!(plan["parameters"].as_array().unwrap().iter().all(|r| r["status"] != "conflict"), "{plan}");
+    run(&mut t, "classification_parameters", json!({"system": "uniclass", "tables": ["Ss"]}));
+    assert_eq!(read_all(&t.model), before, "every code kept");
+    assert!(t.model.classification.binding("Uniclass Ss Number").is_some());
+    let f = crate::ifc::export(&t.model);
+    assert_eq!(of_class(&f, "IFCCLASSIFICATIONREFERENCE").len(), 2, "{f}");
+    assert_eq!(of_class(&f, "IFCRELASSOCIATESCLASSIFICATION").len(), 2);
+    assert_eq!(f.lines().filter(|l| l.contains("=IFCCLASSIFICATION(")).count(), 1);
+    let w = of_class(&f, "IFCWALL")[0];
+    assert!(!properties_of(&f, w).contains(&"Uniclass Ss Number"));
 }
 
 #[test]

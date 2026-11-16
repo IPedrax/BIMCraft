@@ -143,12 +143,16 @@ default.
   Number` for `23-…`, with the reference's name in its Title parameter; any other's into one text parameter named for the
   system. Either remembers the system and its edition (`ProjectParameter::classification`), so with no tables loaded a project
   read from IFC goes back out as the same references, and a project classified here survives going out and in twice.
+- A known system's parameters come in as the system makes them: with its GUIDs (`parameter_guid`), and of the scope their
+  table has (`imported_scope`). A table of types (`Uniclass Ss`) has its codes, read on the elements, moved onto their types
+  once the import has given the types their GUIDs (`onto_types`): each type takes the code most of its elements hold (the
+  first, on a tie) and that element's title. An element of another code, or of a category with no types (stairs, ramps),
+  is left out and said in what the import left out. Loading the system's tables afterwards finds the parameters by GUID and
+  binds them as they are, every code kept.
 
 ## Left for later
 
 - A Job sheet (maintenance tasks and their frequencies) and the Floor and Facility sheets of COBie. Levels and the project
   aren't parameter categories yet.
 - Type objects in IFC: codes go on occurrences, as the project's type parameters do.
-- Loading a system's tables after its codes came in from IFC asks whether the parameters are the same (their GUIDs aren't the
-  system's), and a table classified by type (`Uniclass Ss`) makes the parameter a type one, wiping the instance values read.
 - Writing a COBie spreadsheet: the values are parameters, and a schedule exports them.
