@@ -4091,6 +4091,21 @@ impl Camera {
         if k.is_finite() && k > 0.0 && target.iter().all(|x| x.is_finite()) { Camera { scale, target, ..self } } else { self }
     }
 
+    /// Flown, as the 3D view's fly mode moves it: turned `around` degrees and up `up` degrees about the eye (the target about
+    /// the target in a parallel view), as [`orbit`](Self::orbit) turns its axes, so the eye stands still and looks elsewhere;
+    /// then carried `step` mm: forward where it now looks, to the picture's right, and straight up. The eye and the target go
+    /// together, so it sees as far as before.
+    pub fn flown(self, step: P3, around: f64, up: f64) -> Camera {
+        let finite = |v: f64| if v.is_finite() { v } else { 0.0 };
+        let (around, up) = (finite(around), finite(up));
+        let turned = self.orbit_about(around, up, self.eye().unwrap_or(self.target));
+        let (back, right, _) = turned.axes();
+        let [ahead, aside, rise] = step.map(finite);
+        let moved = add(add(mul(back, -ahead), mul(right, aside)), [0.0, 0.0, rise]);
+        let target = add(turned.target, moved);
+        if target.iter().all(|x| x.is_finite() && x.abs() < 1e12) { Camera { target, ..turned } } else { turned }
+    }
+
     /// How far, mm, a drag on the picture from pixel `from` to pixel `to` moves model point `at` along the model's axis `axis`
     /// (0 for x, 1 for y, 2 for z): the drag's part along that axis as the picture shows it there. None where the axis points
     /// at the camera.
@@ -4673,6 +4688,27 @@ mod tests {
             // The furniture behind the facade, and the rooms' services, are left out.
             assert!(lean.tris.len() * 4 < whole.tris.len(), "{name}: {} of {} triangles", lean.tris.len(), whole.tris.len());
         }
+    }
+
+    #[test]
+    fn a_flown_camera_turns_about_its_eye_and_moves_where_it_looks() {
+        let near = |a: P3, b: P3| a.iter().zip(b).all(|(x, y)| (x - y).abs() < 1e-6);
+        let cam = Camera::at([0.0, -10_000.0, 1_600.0], [0.0, 0.0, 1_600.0], 35.0, 800, 600);
+        let eye = cam.eye().unwrap();
+        // Turned: the eye stays where it stands, and it looks to its right (east, from looking north).
+        let turned = cam.flown([0.0; 3], -90.0, 0.0);
+        assert!(near(turned.eye().unwrap(), eye), "{:?} moved from {eye:?}", turned.eye());
+        let looks = sub(turned.target, eye);
+        assert!(looks[0] > 9_000.0 && looks[1].abs() < 1e-6, "looks along {looks:?}");
+        // Looking up: the target rises above the eye.
+        assert!(cam.flown([0.0; 3], 0.0, -20.0).target[2] > 1_600.0 + 1_000.0);
+        // Forward 1 m, right 0.5 m and up 0.2 m: the eye and the target go together.
+        let moved = cam.flown([1_000.0, 500.0, 200.0], 0.0, 0.0);
+        assert!(near(moved.eye().unwrap(), [500.0, -9_000.0, 1_800.0]), "{:?}", moved.eye());
+        assert!(near(moved.target, [500.0, 1_000.0, 1_800.0]), "{:?}", moved.target);
+        assert!((moved.eye_distance().unwrap() - cam.eye_distance().unwrap()).abs() < 1e-6);
+        // What isn't a number moves nothing.
+        assert_eq!(cam.flown([f64::NAN, f64::INFINITY, 0.0], f64::NAN, 0.0), cam);
     }
 
     #[test]

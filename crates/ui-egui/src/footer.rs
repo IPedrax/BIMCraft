@@ -393,6 +393,7 @@ impl BimApp {
                                 }
                             });
                             self.work_plane_button(ui);
+                            self.fly_button(ui);
                             ui.separator();
                         }
                         _ => {}

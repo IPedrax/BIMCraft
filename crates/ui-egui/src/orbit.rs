@@ -432,6 +432,9 @@ pub struct Orbit {
     caps: Option<Capped>,
     cap_worker: Option<crate::view_worker::Latest<CapJob, CapDone>>,
     caps_requested: Option<(Arc<Model>, (P3, P3))>,
+    /// Fly mode, while the view flies (`fly.rs`); and whether the window holds the pointer for it.
+    pub(crate) fly: Option<crate::fly::Fly>,
+    pub(crate) fly_held: bool,
 }
 
 /// The next view's slot on the card.
@@ -496,6 +499,8 @@ impl Default for Orbit {
             caps: None,
             cap_worker: None,
             caps_requested: None,
+            fly: None,
+            fly_held: false,
         }
     }
 }
@@ -1521,6 +1526,12 @@ impl BimApp {
         let nav_corner = self.nav_corner(rect);
         let device = self.space_mouse.as_ref().and_then(crate::spacemouse::SpaceMouse::motion).filter(|_| !self.passive);
         let input = self.orbit.input(ui, rect, &response, nav_corner, device);
+        // Fly mode: the keys fly it, the mouse turns it and the wheel sets the speed (`fly.rs`); a dialog keeps the keys.
+        let flying = self.orbit.fly.is_some() && !self.passive;
+        let fly_keys = if flying && !self.keys_taken(ui.ctx()) { crate::fly::Keys::held(ui.ctx()) } else { crate::fly::Keys::default() };
+        let fly_look = if flying { crate::fly::look(ui.ctx()) } else { egui::Vec2::ZERO };
+        let fly_wheel = if flying { input.wheel } else { 0.0 };
+        let input = if flying { Input { wheel: 0.0, pinch: 1.0, ..input } } else { input };
         let Input { ppp, size: (w, h), hover, wheel, pinch, shift, latest, asked, .. } = input;
         let px = |p: Pos2| input.px(p);
         let model = self.view_model();
@@ -1640,6 +1651,9 @@ impl BimApp {
             p.rect_filled(Rect::from_min_size(at, galley.size()).expand2(vec2(8.0, 4.0)), 6.0, crate::style::pal().surface);
             p.galley(at, galley, crate::style::pal().muted);
         }
+        if let Some(fly) = o.fly.filter(|_| flying) {
+            crate::fly::banner(ui.ctx(), rect, &crate::fly::speed_text(model.units, fly.speed));
+        }
         // A prepared view has both; without them there's nothing to draw this frame.
         let (Some((_, scene)), Some(camera)) = (o.scene.as_ref(), o.camera) else { return };
         let scene = Arc::clone(scene);
@@ -1651,6 +1665,13 @@ impl BimApp {
         let surface = |picker: &Option<Picker>, cam: &Camera, at: Pos2| picker.as_ref()?.surface(fresh.then_some(scene), cam, px(at));
         // The wheel and a pinch zoom toward what's under the cursor; the 3D mouse moves the camera.
         cam = o.zoom(ui.ctx(), &input, cam, fresh.then_some(scene));
+        if let Some(fly) = o.fly.as_mut().filter(|_| flying) {
+            *fly = fly.wheeled(fly_wheel);
+            cam = crate::fly::step(cam, *fly, fly_keys, fly_look, input.frame);
+            if fly_keys.moving() {
+                ui.ctx().request_repaint();
+            }
+        }
         // A level selected alone has a grip at the middle of each edge of its plane: a drag from one
         // moves that edge over the plane, rather than turning the view.
         let level = match selection.as_slice() {
@@ -2406,8 +2427,10 @@ impl BimApp {
         }
         // A camera view remembers where the hand, the wheel and the 3D mouse left it: once they let it be, its eye and target are written
         // back, so leaving the view and returning comes back to the same place (and Properties shows them). A view drawn
-        // beside the active one (a floating window) writes nothing: the hand is working in the active view.
+        // beside the active one (a floating window) writes nothing: the hand is working in the active view. A flight is written
+        // once fly mode ends, as one step to undo.
         if settled
+            && self.orbit.fly.is_none()
             && !self.passive
             && matches!(three_d, Some((Some(_), _)))
             && let (Some(eye), Some(lens)) = (cam.eye(), lens)

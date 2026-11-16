@@ -37,6 +37,7 @@ mod fillpatterns;
 mod filter;
 mod find;
 mod finishes;
+mod fly;
 mod footer;
 mod gpu;
 mod printsets;
@@ -409,7 +410,7 @@ type Buttons<'a> = &'a [(Icon, &'a str, &'a str, Option<Tool>, bool)];
 
 /// The desktop's own two-letter shortcuts, which [`BimApp::shortcut`] takes before the commands'
 /// aliases, and what Keyboard Shortcuts (KS) calls them.
-const SHORTCUTS: [(&str, &str); 58] = [
+const SHORTCUTS: [(&str, &str); 59] = [
     ("3D", "3D View"),
     ("MD", "Modify"),
     ("SB", "Floor: Structural"),
@@ -468,6 +469,8 @@ const SHORTCUTS: [(&str, &str); 58] = [
     ("CW", msg!("Co-Work")),
     ("BX", "Section Box"),
     ("GD", "Graphic Display Options"),
+    // Revit's fly has none; the 3D view's fly mode.
+    ("FY", msg!("Fly Mode")),
     // Revit has none for its title blocks; no command or tool takes TB.
     ("TB", "Title Blocks"),
 ];
@@ -2002,6 +2005,7 @@ impl BimApp {
         self.poll_export(&ctx);
         self.poll_plugins(&ctx);
         self.poll_autosave(&ctx);
+        self.fly_frame(&ctx);
         self.keys(&ctx);
         self.family_keys(&ctx);
         self.os_requests(&ctx);
@@ -2646,6 +2650,10 @@ impl BimApp {
             }
             "GD" => {
                 self.open_display();
+                return true;
+            }
+            "FY" => {
+                self.toggle_fly();
                 return true;
             }
             "TB" => {
