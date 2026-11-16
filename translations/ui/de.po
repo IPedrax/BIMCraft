@@ -2195,7 +2195,7 @@ msgstr "Nachweis: fck"
 msgid "Checking for updates…"
 msgstr "Aktualisierungen werden gesucht…"
 
-#: crates/core/src/commands.rs:4101
+#: crates/core/src/commands.rs:4131
 msgid "Checking the model"
 msgstr ""
 
@@ -4074,7 +4074,7 @@ msgstr "Abgebrochen"
 msgid "Demolition"
 msgstr "Abbruch"
 
-#: crates/core/src/commands.rs:13383
+#: crates/core/src/commands.rs:13612
 msgid "Dependent"
 msgstr "Abhängig"
 
@@ -4966,7 +4966,7 @@ msgstr "Elektroeinstellungen"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "Elektroeinstellungen: die Spannungen, Verteilungssysteme und Leitungstypen, auf die sich Stromkreise und Verteiler beziehen; Querschnitte in mm²"
 
-#: crates/core/src/commands.rs:3047
+#: crates/core/src/commands.rs:3077
 msgid "Elements"
 msgstr "Elemente"
 
@@ -10746,7 +10746,7 @@ msgid "Properties over the Project Browser, on the left, as at first"
 msgstr "Eigenschaften über dem Projektbrowser, links, wie zu Beginn"
 
 #: crates/core/src/commands.rs:618
-#: crates/core/src/commands.rs:8859
+#: crates/core/src/commands.rs:9088
 msgid "Property Line"
 msgstr ""
 
@@ -10918,7 +10918,7 @@ msgstr ""
 msgid "Reading elements"
 msgstr ""
 
-#: crates/core/src/commands.rs:4058
+#: crates/core/src/commands.rs:4088
 msgid "Reading the file"
 msgstr ""
 
@@ -14838,11 +14838,11 @@ msgstr ""
 msgid "Unlock alignment"
 msgstr "Ausrichtung entsperren"
 
-#: crates/core/src/commands.rs:13619
+#: crates/core/src/commands.rs:13848
 msgid "Unnamed"
 msgstr "Unbenannt"
 
-#: crates/core/src/commands.rs:4075
+#: crates/core/src/commands.rs:4105
 msgid "Unpacking the project"
 msgstr ""
 
@@ -18133,23 +18133,18 @@ msgstr "Oben"
 #: crates/ui-egui/src/canvas.rs:2855
 #~ msgid "stair: `{}` is not a width"
 #~ msgstr "Treppe: `{}` ist keine Breite"
-
 #: crates/ui-egui/src/lib.rs:5853
-msgid "Click to select, drag a box to select several. Shift and the middle button orbit, the middle button pans, the wheel zooms."
-msgstr "Klicken zum Auswählen, Rahmen aufziehen für mehrere. Umschalt und mittlere Taste umkreisen das Modell, die mittlere Taste verschiebt, das Rad zoomt."
-
+#~ msgid "Click to select, drag a box to select several. Shift and the middle button orbit, the middle button pans, the wheel zooms."
+#~ msgstr "Klicken zum Auswählen, Rahmen aufziehen für mehrere. Umschalt und mittlere Taste umkreisen das Modell, die mittlere Taste verschiebt, das Rad zoomt."
 #: crates/ui-egui/src/lib.rs:5995
-msgid "Click where its run ends: past its last riser, one run to the level above; short of it, a landing. Esc cancels."
-msgstr "Klicken, wo ihr Lauf endet: hinter der letzten Steigung ein Lauf bis zum Geschoss darüber; davor ein Podest. Esc bricht ab."
-
+#~ msgid "Click where its run ends: past its last riser, one run to the level above; short of it, a landing. Esc cancels."
+#~ msgstr "Klicken, wo ihr Lauf endet: hinter der letzten Steigung ein Lauf bis zum Geschoss darüber; davor ein Podest. Esc bricht ab."
 #: crates/ui-egui/src/lib.rs:5993
-msgid "Click where the stair starts: the middle of its first riser."
-msgstr "Klicken, wo die Treppe beginnt: die Mitte ihrer ersten Steigung."
-
+#~ msgid "Click where the stair starts: the middle of its first riser."
+#~ msgstr "Klicken, wo die Treppe beginnt: die Mitte ihrer ersten Steigung."
 #: crates/ui-egui/src/lib.rs:4489
-msgid "Stair: click where it starts, then where its run ends; a landing turns it"
-msgstr "Treppe: Anfang und Ende des Laufs anklicken; ein Podest lenkt sie um"
-
+#~ msgid "Stair: click where it starts, then where its run ends; a landing turns it"
+#~ msgstr "Treppe: Anfang und Ende des Laufs anklicken; ein Podest lenkt sie um"
 #: crates/ui-egui/src/canvas.rs:2855
-msgid "stair: `{}` is not a width"
-msgstr "Treppe: `{}` ist keine Breite"
+#~ msgid "stair: `{}` is not a width"
+#~ msgstr "Treppe: `{}` ist keine Breite"

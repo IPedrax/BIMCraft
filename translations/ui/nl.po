@@ -2196,7 +2196,7 @@ msgstr "Controle: fck"
 msgid "Checking for updates…"
 msgstr "Controleren op updates…"
 
-#: crates/core/src/commands.rs:4101
+#: crates/core/src/commands.rs:4131
 msgid "Checking the model"
 msgstr ""
 
@@ -4075,7 +4075,7 @@ msgstr "Gesloopt"
 msgid "Demolition"
 msgstr "Sloop"
 
-#: crates/core/src/commands.rs:13383
+#: crates/core/src/commands.rs:13612
 msgid "Dependent"
 msgstr "Afhankelijk"
 
@@ -4967,7 +4967,7 @@ msgstr "Elektrische instellingen"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "Elektrische instellingen: de spanningen, distributiesystemen en draadtypes waarnaar kringen en verdeelborden verwijzen; doorsneden in mm²"
 
-#: crates/core/src/commands.rs:3047
+#: crates/core/src/commands.rs:3077
 msgid "Elements"
 msgstr "Elementen"
 
@@ -10747,7 +10747,7 @@ msgid "Properties over the Project Browser, on the left, as at first"
 msgstr "Eigenschappen boven de Projectbrowser, links, zoals in het begin"
 
 #: crates/core/src/commands.rs:618
-#: crates/core/src/commands.rs:8859
+#: crates/core/src/commands.rs:9088
 msgid "Property Line"
 msgstr ""
 
@@ -10919,7 +10919,7 @@ msgstr ""
 msgid "Reading elements"
 msgstr ""
 
-#: crates/core/src/commands.rs:4058
+#: crates/core/src/commands.rs:4088
 msgid "Reading the file"
 msgstr ""
 
@@ -14839,11 +14839,11 @@ msgstr ""
 msgid "Unlock alignment"
 msgstr "Uitlijning ontgrendelen"
 
-#: crates/core/src/commands.rs:13619
+#: crates/core/src/commands.rs:13848
 msgid "Unnamed"
 msgstr "Naamloos"
 
-#: crates/core/src/commands.rs:4075
+#: crates/core/src/commands.rs:4105
 msgid "Unpacking the project"
 msgstr ""
 
@@ -18134,23 +18134,18 @@ msgstr "Boven"
 #: crates/ui-egui/src/canvas.rs:2855
 #~ msgid "stair: `{}` is not a width"
 #~ msgstr "trap: `{}` is geen breedte"
-
 #: crates/ui-egui/src/lib.rs:5853
-msgid "Click to select, drag a box to select several. Shift and the middle button orbit, the middle button pans, the wheel zooms."
-msgstr "Klik om te selecteren, sleep een kader om er meerdere te selecteren. Shift en de middelste knop draaien, de middelste knop verschuift, het wiel zoomt."
-
+#~ msgid "Click to select, drag a box to select several. Shift and the middle button orbit, the middle button pans, the wheel zooms."
+#~ msgstr "Klik om te selecteren, sleep een kader om er meerdere te selecteren. Shift en de middelste knop draaien, de middelste knop verschuift, het wiel zoomt."
 #: crates/ui-egui/src/lib.rs:5995
-msgid "Click where its run ends: past its last riser, one run to the level above; short of it, a landing. Esc cancels."
-msgstr "Klik waar de loop eindigt: voorbij de laatste optrede één loop naar het niveau erboven; ervoor een bordes. Esc annuleert."
-
+#~ msgid "Click where its run ends: past its last riser, one run to the level above; short of it, a landing. Esc cancels."
+#~ msgstr "Klik waar de loop eindigt: voorbij de laatste optrede één loop naar het niveau erboven; ervoor een bordes. Esc annuleert."
 #: crates/ui-egui/src/lib.rs:5993
-msgid "Click where the stair starts: the middle of its first riser."
-msgstr "Klik waar de trap begint: het midden van de eerste optrede."
-
+#~ msgid "Click where the stair starts: the middle of its first riser."
+#~ msgstr "Klik waar de trap begint: het midden van de eerste optrede."
 #: crates/ui-egui/src/lib.rs:4489
-msgid "Stair: click where it starts, then where its run ends; a landing turns it"
-msgstr "Trap: klik waar ze begint en waar haar loop eindigt; een bordes laat ze draaien"
-
+#~ msgid "Stair: click where it starts, then where its run ends; a landing turns it"
+#~ msgstr "Trap: klik waar ze begint en waar haar loop eindigt; een bordes laat ze draaien"
 #: crates/ui-egui/src/canvas.rs:2855
-msgid "stair: `{}` is not a width"
-msgstr "trap: `{}` is geen breedte"
+#~ msgid "stair: `{}` is not a width"
+#~ msgstr "trap: `{}` is geen breedte"

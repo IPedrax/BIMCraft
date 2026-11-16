@@ -2195,7 +2195,7 @@ msgstr "Kontrola: fck"
 msgid "Checking for updates…"
 msgstr "Kontrola aktualizací…"
 
-#: crates/core/src/commands.rs:4101
+#: crates/core/src/commands.rs:4131
 msgid "Checking the model"
 msgstr ""
 
@@ -4074,7 +4074,7 @@ msgstr "Zbourané"
 msgid "Demolition"
 msgstr "Demolice"
 
-#: crates/core/src/commands.rs:13383
+#: crates/core/src/commands.rs:13612
 msgid "Dependent"
 msgstr "Závislý"
 
@@ -4966,7 +4966,7 @@ msgstr "Elektrotechnická nastavení"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "Elektrotechnická nastavení: napětí, rozvodné soustavy a typy vodičů, na které se odkazují obvody a rozváděče; průřezy v mm²"
 
-#: crates/core/src/commands.rs:3047
+#: crates/core/src/commands.rs:3077
 msgid "Elements"
 msgstr "Prvky"
 
@@ -10746,7 +10746,7 @@ msgid "Properties over the Project Browser, on the left, as at first"
 msgstr "Vlastnosti nad Prohlížečem projektu, vlevo, jako ve výchozím nastavení"
 
 #: crates/core/src/commands.rs:618
-#: crates/core/src/commands.rs:8859
+#: crates/core/src/commands.rs:9088
 msgid "Property Line"
 msgstr ""
 
@@ -10918,7 +10918,7 @@ msgstr ""
 msgid "Reading elements"
 msgstr ""
 
-#: crates/core/src/commands.rs:4058
+#: crates/core/src/commands.rs:4088
 msgid "Reading the file"
 msgstr ""
 
@@ -14838,11 +14838,11 @@ msgstr ""
 msgid "Unlock alignment"
 msgstr "Odemknout zarovnání"
 
-#: crates/core/src/commands.rs:13619
+#: crates/core/src/commands.rs:13848
 msgid "Unnamed"
 msgstr "Nepojmenovaný"
 
-#: crates/core/src/commands.rs:4075
+#: crates/core/src/commands.rs:4105
 msgid "Unpacking the project"
 msgstr ""
 
@@ -18160,23 +18160,18 @@ msgstr "Horní"
 #: crates/ui-egui/src/canvas.rs:2855
 #~ msgid "stair: `{}` is not a width"
 #~ msgstr "schodiště: `{}` není platná šířka"
-
 #: crates/ui-egui/src/lib.rs:5853
-msgid "Click to select, drag a box to select several. Shift and the middle button orbit, the middle button pans, the wheel zooms."
-msgstr "Kliknutím vyberete prvek, tažením oknem vyberete více prvků. Shift s prostředním tlačítkem otáčí pohled, prostřední tlačítko jej posouvá, kolečko přibližuje."
-
+#~ msgid "Click to select, drag a box to select several. Shift and the middle button orbit, the middle button pans, the wheel zooms."
+#~ msgstr "Kliknutím vyberete prvek, tažením oknem vyberete více prvků. Shift s prostředním tlačítkem otáčí pohled, prostřední tlačítko jej posouvá, kolečko přibližuje."
 #: crates/ui-egui/src/lib.rs:5995
-msgid "Click where its run ends: past its last riser, one run to the level above; short of it, a landing. Esc cancels."
-msgstr "Klikněte na místo ukončení ramene: za poslední podstupnicí vznikne jedno rameno do podlaží výše; před ní vznikne podesta. Klávesa Esc operaci zruší."
-
+#~ msgid "Click where its run ends: past its last riser, one run to the level above; short of it, a landing. Esc cancels."
+#~ msgstr "Klikněte na místo ukončení ramene: za poslední podstupnicí vznikne jedno rameno do podlaží výše; před ní vznikne podesta. Klávesa Esc operaci zruší."
 #: crates/ui-egui/src/lib.rs:5993
-msgid "Click where the stair starts: the middle of its first riser."
-msgstr "Klikněte do místa nástupu schodiště: střed první podstupnice."
-
+#~ msgid "Click where the stair starts: the middle of its first riser."
+#~ msgstr "Klikněte do místa nástupu schodiště: střed první podstupnice."
 #: crates/ui-egui/src/lib.rs:4489
-msgid "Stair: click where it starts, then where its run ends; a landing turns it"
-msgstr "Schodiště: klikněte na místo začátku a poté na konec ramene; podesta jej zalomí"
-
+#~ msgid "Stair: click where it starts, then where its run ends; a landing turns it"
+#~ msgstr "Schodiště: klikněte na místo začátku a poté na konec ramene; podesta jej zalomí"
 #: crates/ui-egui/src/canvas.rs:2855
-msgid "stair: `{}` is not a width"
-msgstr "schodiště: `{}` není platná šířka"
+#~ msgid "stair: `{}` is not a width"
+#~ msgstr "schodiště: `{}` není platná šířka"

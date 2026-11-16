@@ -1,4 +1,4 @@
-//! CPFL's GED 13 (v2.24, 18/09/2020) as printed, and its Example 3 worked by hand.
+//! CPFL's GED 13 (version 46.0, 19/03/2026) as printed, and its Example 3 worked by hand.
 
 use super::*;
 
@@ -60,7 +60,11 @@ fn the_tables_of_equipment_are_as_printed() {
     assert_eq!(motor(10.0, 3), Some((11.54, 8.89)));
     assert_eq!(motor(0.5, 1), Some((1.18, 0.79)));
     assert_eq!(motor(5.0, 1), Some((6.16, 5.11)));
-    assert_eq!(motor(20.0, 1), None, "Tabela 14 stops at 15 cv");
+    assert_eq!(motor(20.0, 1), None, "Tabela 13 stops at 15 cv");
+    // Tabela 14 goes on to 300 cv in version 46 (above 50 cv the supply is at medium voltage, its note 3).
+    assert_eq!(motor(100.0, 3), Some((97.05, 80.55)));
+    assert_eq!(motor(300.0, 3), Some((286.97, 232.44)));
+    assert_eq!(motor(350.0, 3), None);
     assert_eq!(motor(2.5, 3), None);
 }
 
@@ -84,11 +88,22 @@ fn the_category_follows_the_load_and_the_demand() {
     assert_eq!(b(30.0, 26.0), Some("C7"));
     assert_eq!(b(50.0, 66.0), Some("C10"));
     assert_eq!(b(70.0, 82.0), Some("C11"));
-    // The pieces of a category, as Tabela 1A prints them.
+    // Version 46 moved C9's limit from 46 to 52 kVA.
+    assert_eq!(b(50.0, 50.0), Some("C9"));
+    assert_eq!(b(50.0, 52.1), Some("C10"));
+    // The pieces of a category, as Tabelas 1A to 1C print them, aluminium included.
     let c3 = category(System::S127_220, 46.1, 33.0).unwrap();
-    assert_eq!((c3.breaker, c3.cable, c3.conduit, c3.earth), (100.0, 35.0, 40.0, 10.0));
+    assert_eq!((c3.breaker, c3.cable, c3.aluminium, c3.conduit, c3.earth), (100.0, 35.0, 35.0, 40.0, 10.0));
     let c11 = category(System::S220_380, 70.0, 80.0).unwrap();
-    assert_eq!((c11.breaker, c11.cable, c11.conduit, c11.earth), (125.0, 50.0, 50.0, 16.0));
+    assert_eq!((c11.breaker, c11.cable, c11.aluminium, c11.conduit, c11.earth), (125.0, 50.0, 50.0, 50.0, 16.0));
+    let a1 = category(System::S127_220, 5.0, 0.0).unwrap();
+    assert_eq!((a1.cable, a1.aluminium), (6.0, 10.0));
+    // Version 46: B1 and B3 in a 32 mm conduit, C7's earthing conductor 6 mm².
+    assert_eq!(category(System::S127_220, 15.0, 0.0).map(|k| k.conduit), Some(32.0));
+    assert_eq!(category(System::S220_380, 20.0, 0.0).map(|k| k.conduit), Some(32.0));
+    assert_eq!(category(System::S127_220, 20.0, 0.0).map(|k| k.conduit), Some(40.0));
+    let c7 = category(System::S220_380, 30.0, 20.0).unwrap();
+    assert_eq!((c7.breaker, c7.cable, c7.aluminium, c7.earth), (40.0, 10.0, 16.0, 6.0));
 }
 
 fn load(w: f64, count: u32) -> Load {
@@ -190,7 +205,8 @@ mod command {
         assert_eq!(r["demand_kva_rounded_up"], 33.0);
         assert_eq!(r["category"]["name"], "C3");
         assert_eq!(r["category"]["breaker_a"], 100.0);
-        assert!(r["source"].as_str().is_some_and(|x| x.contains("GED 13") && x.contains("2.24")), "{r}");
+        assert_eq!(r["category"]["aluminium_mm2"], 35.0);
+        assert!(r["source"].as_str().is_some_and(|x| x.contains("GED 13") && x.contains("46.0")), "{r}");
         assert_eq!(crate::engine::find("demand").map(|c| c.undoable), Some(false));
     }
 
@@ -254,43 +270,52 @@ mod command {
 
 #[test]
 fn enel_anexo_a_is_as_printed() {
-    let r = |n: &str| enel_row(Network::Aerial, n).map(|r| (r.available_kw, r.breaker, r.connection, r.entry, r.earth));
-    assert_eq!(r("A1"), Some((5.0, 40.0, (Some(1), 10.0, 10.0), (10.0, 10.0), 10.0)));
-    assert_eq!(r("B2"), Some((14.0, 63.0, (Some(2), 16.0, 10.0), (16.0, 10.0), 16.0)));
-    assert_eq!(r("C3"), Some((24.0, 63.0, (Some(3), 16.0, 16.0), (25.0, 25.0), 16.0)));
-    assert_eq!(r("C4"), Some((30.0, 80.0, (Some(3), 35.0, 54.6), (35.0, 25.0), 16.0)));
-    assert_eq!(r("C6"), Some((48.0, 125.0, (Some(3), 35.0, 54.6), (50.0, 25.0), 25.0)));
-    assert_eq!(r("C8"), Some((75.0, 200.0, (Some(3), 95.0, 54.6), (95.0, 50.0), 50.0)));
-    assert!(enel_row(Network::Aerial, "C9").is_none());
+    // GRI-0017 version 02: the ranges reach to what version 01 made available, and C8 (175 A) is new.
+    let r = |n: &str| enel_row(Network::Aerial, n).map(|r| (r.lo, r.hi, r.breaker, r.connection, r.entry, r.earth));
+    assert_eq!(r("A1"), Some((0.0, 5.0, 40.0, (Some(1), 10.0, 10.0), (10.0, 10.0), 10.0)));
+    assert_eq!(r("B1"), Some((0.0, 11.0, 50.0, (Some(2), 10.0, 10.0), (10.0, 10.0), 10.0)));
+    assert_eq!(r("B2"), Some((11.0, 14.0, 63.0, (Some(2), 16.0, 10.0), (16.0, 10.0), 16.0)));
+    assert_eq!(r("C1"), Some((10.0, 15.0, 40.0, (Some(3), 10.0, 10.0), (10.0, 10.0), 10.0)));
+    assert_eq!(r("C3"), Some((19.1, 24.0, 63.0, (Some(3), 16.0, 16.0), (25.0, 25.0), 16.0)));
+    assert_eq!(r("C4"), Some((24.0, 30.0, 80.0, (Some(3), 35.0, 54.6), (25.0, 25.0), 16.0)));
+    assert_eq!(r("C6"), Some((38.0, 48.0, 125.0, (Some(3), 35.0, 54.6), (50.0, 25.0), 25.0)));
+    assert_eq!(r("C8"), Some((57.1, 67.0, 175.0, (Some(3), 50.0, 54.6), (95.0, 50.0), 50.0)));
+    assert_eq!(r("C9"), Some((67.0, 75.0, 200.0, (Some(3), 95.0, 54.6), (95.0, 50.0), 50.0)));
+    assert!(enel_row(Network::Aerial, "C10").is_none());
 }
 
 #[test]
 fn enel_anexo_d_is_as_printed() {
-    let r = |n: &str| enel_row(Network::Underground, n).map(|r| (r.available_kw, r.breaker, r.connection, r.entry, r.earth));
+    // Version 02: C5 (175 A) is new and the 200 A row is C6.
+    let r = |n: &str| enel_row(Network::Underground, n).map(|r| (r.hi, r.breaker, r.connection, r.entry, r.earth));
     assert_eq!(r("A1"), Some((8.0, 63.0, (None, 16.0, 16.0), (16.0, 16.0), 16.0)));
     assert_eq!(r("B2"), Some((18.0, 80.0, (None, 25.0, 25.0), (25.0, 25.0), 16.0)));
     assert_eq!(r("C3"), Some((48.0, 125.0, (None, 50.0, 25.0), (50.0, 25.0), 25.0)));
-    assert_eq!(r("C4"), Some((57.0, 150.0, (None, 95.0, 25.0), (50.0, 25.0), 50.0)));
-    assert_eq!(r("C5"), Some((75.0, 200.0, (None, 150.0, 95.0), (150.0, 95.0), 95.0)));
-    assert!(enel_row(Network::Underground, "C6").is_none());
+    assert_eq!(r("C4"), Some((57.1, 150.0, (None, 95.0, 25.0), (50.0, 25.0), 50.0)));
+    assert_eq!(r("C5"), Some((67.0, 175.0, (None, 95.0, 25.0), (95.0, 25.0), 95.0)));
+    assert_eq!(r("C6"), Some((75.0, 200.0, (None, 150.0, 95.0), (150.0, 95.0), 95.0)));
+    assert!(enel_row(Network::Underground, "C7").is_none());
 }
 
 #[test]
 fn enel_picks_the_row_whose_range_holds_the_load() {
     let name = |n: Network, c: f64, ph: Option<u8>| enel_pick(n, c, ph).map(|p| p.rows.iter().map(|r| r.name).collect::<Vec<_>>());
-    assert_eq!(name(Network::Aerial, 3.0, None), Some(vec!["A1"]));
-    assert_eq!(name(Network::Aerial, 5.0, None), Some(vec!["A2"]));
-    // 10 < C <= 14 is B2 and C1: both, the first being the smaller supply.
+    // Every range that holds the load, the smaller supply first: version 02's ranges overlap.
+    assert_eq!(name(Network::Aerial, 3.0, None), Some(vec!["A1", "B1"]));
+    assert_eq!(name(Network::Aerial, 5.0, Some(1)), Some(vec!["A1"]));
+    assert_eq!(name(Network::Aerial, 6.0, Some(1)), Some(vec!["A2"]));
     assert_eq!(name(Network::Aerial, 12.0, None), Some(vec!["B2", "C1"]));
     assert_eq!(name(Network::Aerial, 12.0, Some(3)), Some(vec!["C1"]));
     assert_eq!(name(Network::Aerial, 12.0, Some(2)), Some(vec!["B2"]));
-    // In the gap between two ranges, the next one up.
-    assert_eq!(name(Network::Aerial, 20.5, None), Some(vec!["C4"]));
-    assert_eq!(name(Network::Aerial, 3.5, None), Some(vec!["A2"]));
-    assert_eq!(name(Network::Aerial, 63.0, None), Some(vec!["C8"]));
-    assert_eq!(name(Network::Aerial, 63.1, None), None);
-    assert_eq!(name(Network::Underground, 72.0, None), Some(vec!["C5"]));
-    assert_eq!(name(Network::Underground, 72.5, None), None);
+    assert_eq!(name(Network::Aerial, 20.5, None), Some(vec!["C3"]));
+    assert_eq!(name(Network::Aerial, 60.0, None), Some(vec!["C8"]));
+    assert_eq!(name(Network::Aerial, 75.0, None), Some(vec!["C9"]));
+    assert_eq!(name(Network::Aerial, 75.1, None), None);
+    // A single-phase load past A2 takes nothing single-phase.
+    assert_eq!(name(Network::Aerial, 9.0, Some(1)), None);
+    assert_eq!(name(Network::Underground, 72.0, None), Some(vec!["C6"]));
+    assert_eq!(name(Network::Underground, 62.0, None), Some(vec!["C5"]));
+    assert_eq!(name(Network::Underground, 75.5, None), None);
     assert_eq!(name(Network::Underground, 8.5, None), Some(vec!["A2"]));
     assert_eq!(name(Network::Underground, 0.0, None), Some(vec!["A1"]));
 }
@@ -306,15 +331,15 @@ mod enel {
     #[test]
     fn an_aerial_supply_is_framed_by_its_installed_load() {
         let mut s = Session::new();
-        let r = run(&mut s, json!({"utility": "ENEL", "network": "aerial", "installed_kw": 22, "phases": 3}));
+        let r = run(&mut s, json!({"utility": "ENEL", "network": "aerial", "installed_kw": 26, "phases": 3}));
         assert_eq!(r["utility"], "ENEL");
         assert_eq!(r["category"]["name"], "C4", "{r}");
         assert_eq!(r["category"]["breaker_a"], 80.0);
-        assert_eq!(r["category"]["entry_mm2"], json!({"phase": 35.0, "neutral": 25.0}));
-        assert_eq!(r["category"]["available_kw"], 30.0);
-        assert!(r["source"].as_str().is_some_and(|x| x.contains("1569") && x.contains("29/01/2024")), "{r}");
+        assert_eq!(r["category"]["entry_mm2"], json!({"phase": 25.0, "neutral": 25.0}));
+        assert_eq!(r["category"]["available_kw"], Value::Null, "version 02 prints no power made available");
+        assert!(r["source"].as_str().is_some_and(|x| x.contains("GRI-0017") && x.contains("06/03/2025")), "{r}");
         assert_eq!(r["demand_kva"], Value::Null, "the ET leaves the demand to the designer");
-        assert!(r["demand_note"].as_str().is_some_and(|x| x.contains("7.7.2")), "{r}");
+        assert!(r["demand_note"].as_str().is_some_and(|x| x.contains("note 11")), "{r}");
         assert_eq!(crate::engine::find("demand").map(|c| c.undoable), Some(false));
     }
 
@@ -345,9 +370,9 @@ mod enel {
     #[test]
     fn above_the_table_the_reply_says_where_it_ends() {
         let mut s = Session::new();
-        let r = run(&mut s, json!({"utility": "ENEL", "network": "aerial", "installed_kw": 70}));
+        let r = run(&mut s, json!({"utility": "ENEL", "network": "aerial_120_240", "installed_kw": 20}));
         assert_eq!(r["category"], Value::Null);
-        assert!(r["category_note"].as_str().is_some_and(|n| n.contains("63")), "{r}");
+        assert!(r["category_note"].as_str().is_some_and(|n| n.contains("12")), "{r}");
         let r = run(&mut s, json!({"utility": "ENEL", "network": "aerial", "installed_kw": 80}));
         assert!(r["category_note"].as_str().is_some_and(|n| n.contains("75") && n.contains("primary")), "{r}");
     }
@@ -390,9 +415,11 @@ fn enel_anexo_c_and_e_are_as_printed() {
     assert_eq!(enel_row(Network::Submersible, "C4").and_then(|r| r.junction_box), Some("type 3"));
     assert_eq!(enel_row(Network::Submersible, "C3").and_then(|r| r.junction_box), Some("type 2"));
     let name = |n: Network, c: f64| enel_pick(n, c, None).map(|p| p.rows.iter().map(|r| r.name).collect::<Vec<_>>());
-    assert_eq!(name(Network::Aerial120240, 5.0), Some(vec!["A2"]));
-    assert_eq!(name(Network::Aerial120240, 11.0), Some(vec!["B1"]));
-    assert_eq!(name(Network::Aerial120240, 11.5), None);
+    // Version 02's limits: A1 up to 5 kW, A2 to 6, B1 to 12.
+    assert_eq!(name(Network::Aerial120240, 5.0), Some(vec!["A1"]));
+    assert_eq!(name(Network::Aerial120240, 5.5), Some(vec!["A2"]));
+    assert_eq!(name(Network::Aerial120240, 12.0), Some(vec!["B1"]));
+    assert_eq!(name(Network::Aerial120240, 12.5), None);
     assert_eq!(name(Network::Submersible, 100.0), Some(vec!["C9"]));
     assert_eq!(name(Network::Submersible, 100.5), None);
     assert_eq!(name(Network::Submersible, 19.0), Some(vec!["B3", "C1"]));
@@ -407,6 +434,11 @@ fn enel_anexo_b_is_picked_by_the_current_of_the_demand() {
     assert_eq!(p(90.0, Some(3)), Some(vec![("B6/C6".into(), 100.0)]));
     assert_eq!(p(300.0, None).map(|r| r[0].1), Some(300.0));
     assert_eq!(p(300.1, None), None);
+    // Version 02: B4 and C4 connect by 16 mm² (16), and B9/C9 earth by 50 mm².
+    let first = |a: f64, ph: Option<u8>| delta_pick(a, ph).and_then(|r| r.first().copied());
+    assert_eq!(first(60.0, Some(3)).map(|r| r.connection), Some((Some(3), 16.0, 16.0)));
+    assert_eq!(first(60.0, Some(2)).map(|r| r.connection), Some((Some(2), 16.0, 16.0)));
+    assert_eq!(first(190.0, None).map(|r| r.earth), Some(50.0));
     let r = delta_pick(250.0, None).and_then(|r| r.first().copied());
     assert_eq!(
         r.map(|r| (r.breaker, r.connection, r.entry, r.earth, r.measurement)),

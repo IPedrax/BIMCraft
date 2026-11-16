@@ -2196,7 +2196,7 @@ msgstr "校核：fck"
 msgid "Checking for updates…"
 msgstr "正在检查更新…"
 
-#: crates/core/src/commands.rs:4101
+#: crates/core/src/commands.rs:4131
 msgid "Checking the model"
 msgstr ""
 
@@ -4075,7 +4075,7 @@ msgstr "已拆除"
 msgid "Demolition"
 msgstr "拆除"
 
-#: crates/core/src/commands.rs:13383
+#: crates/core/src/commands.rs:13612
 msgid "Dependent"
 msgstr "相关"
 
@@ -4967,7 +4967,7 @@ msgstr "电气设置"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "电气设置：电路和配电箱所引用的电压、配电系统和导线类型；截面积单位为 mm²"
 
-#: crates/core/src/commands.rs:3047
+#: crates/core/src/commands.rs:3077
 msgid "Elements"
 msgstr "图元"
 
@@ -10747,7 +10747,7 @@ msgid "Properties over the Project Browser, on the left, as at first"
 msgstr "“属性”在“项目浏览器”之上、位于左侧，与最初一样"
 
 #: crates/core/src/commands.rs:618
-#: crates/core/src/commands.rs:8859
+#: crates/core/src/commands.rs:9088
 msgid "Property Line"
 msgstr ""
 
@@ -10919,7 +10919,7 @@ msgstr ""
 msgid "Reading elements"
 msgstr ""
 
-#: crates/core/src/commands.rs:4058
+#: crates/core/src/commands.rs:4088
 msgid "Reading the file"
 msgstr ""
 
@@ -14839,11 +14839,11 @@ msgstr ""
 msgid "Unlock alignment"
 msgstr "解锁对齐"
 
-#: crates/core/src/commands.rs:13619
+#: crates/core/src/commands.rs:13848
 msgid "Unnamed"
 msgstr "未命名"
 
-#: crates/core/src/commands.rs:4075
+#: crates/core/src/commands.rs:4105
 msgid "Unpacking the project"
 msgstr ""
 
@@ -18221,23 +18221,18 @@ msgstr "上"
 #: crates/ui-egui/src/canvas.rs:2855
 #~ msgid "stair: `{}` is not a width"
 #~ msgstr "楼梯：`{}` 不是有效的宽度"
-
 #: crates/ui-egui/src/lib.rs:5853
-msgid "Click to select, drag a box to select several. Shift and the middle button orbit, the middle button pans, the wheel zooms."
-msgstr "单击选择，拖出方框选择多个。Shift 加中键环绕，中键平移，滚轮缩放。"
-
+#~ msgid "Click to select, drag a box to select several. Shift and the middle button orbit, the middle button pans, the wheel zooms."
+#~ msgstr "单击选择，拖出方框选择多个。Shift 加中键环绕，中键平移，滚轮缩放。"
 #: crates/ui-egui/src/lib.rs:5995
-msgid "Click where its run ends: past its last riser, one run to the level above; short of it, a landing. Esc cancels."
-msgstr "单击梯段的终点：越过最后一级踢面则为通往上一标高的单跑；未到则为平台。按 Esc 取消。"
-
+#~ msgid "Click where its run ends: past its last riser, one run to the level above; short of it, a landing. Esc cancels."
+#~ msgstr "单击梯段的终点：越过最后一级踢面则为通往上一标高的单跑；未到则为平台。按 Esc 取消。"
 #: crates/ui-egui/src/lib.rs:5993
-msgid "Click where the stair starts: the middle of its first riser."
-msgstr "单击楼梯的起点：即第一级踢面的中点。"
-
+#~ msgid "Click where the stair starts: the middle of its first riser."
+#~ msgstr "单击楼梯的起点：即第一级踢面的中点。"
 #: crates/ui-egui/src/lib.rs:4489
-msgid "Stair: click where it starts, then where its run ends; a landing turns it"
-msgstr "楼梯：单击起点，再单击梯段终点；平台使其转向"
-
+#~ msgid "Stair: click where it starts, then where its run ends; a landing turns it"
+#~ msgstr "楼梯：单击起点，再单击梯段终点；平台使其转向"
 #: crates/ui-egui/src/canvas.rs:2855
-msgid "stair: `{}` is not a width"
-msgstr "楼梯：`{}` 不是有效的宽度"
+#~ msgid "stair: `{}` is not a width"
+#~ msgstr "楼梯：`{}` 不是有效的宽度"
