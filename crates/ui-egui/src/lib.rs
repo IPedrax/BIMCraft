@@ -1949,9 +1949,7 @@ impl BimApp {
         }
         // A mark names what stood when it was made: undo or redo can take that away or move it.
         if matches!(id, "undo" | "redo") && result.is_ok() {
-            self.canvas.pins.borrow_mut().clear();
-            self.canvas.start_edge = None;
-            self.canvas.wall_face = None;
+            self.canvas.guides_reset();
         }
         // A change that would break a group from inside: the window asks what to do (Ungroup, Create New Type, Cancel).
         if let Err(e) = &result {
@@ -3591,9 +3589,7 @@ impl BimApp {
     /// selection.
     fn escape(&mut self) {
         // Esc drops the drawing's marked references with the points they were marked for.
-        self.canvas.pins.borrow_mut().clear();
-        self.canvas.start_edge = None;
-        self.canvas.wall_face = None;
+        self.canvas.guides_reset();
         // A note's leader point clicked goes first, the Text tool staying on.
         if self.note_arrow.take().is_some() {
             self.status = Status::default();

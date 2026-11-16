@@ -443,6 +443,16 @@ impl Default for Canvas {
 }
 
 impl Canvas {
+    /// The marks, the face `Tab` chose and the held guide belong to the command being drawn: clearing them together
+    /// keeps a stale hysteresis or dwell from surviving a finish, an undo or an Escape.
+    pub(crate) fn guides_reset(&mut self) {
+        self.pins.borrow_mut().clear();
+        self.start_edge = None;
+        self.wall_face = None;
+        self.last_align.set(None);
+        self.dwell.set(None);
+    }
+
     /// View `level` (a plan's key, a section or an elevation) as it was last shown: its zoom, its middle and its size.
     pub(crate) fn view(&self, level: Id) -> Option<View> {
         let c = self.cams.get(&level)?;
@@ -1991,11 +2001,8 @@ impl BimApp {
         self.canvas.now.set(ui.input(|i| i.time));
         let tool = std::mem::discriminant(&self.tool);
         if self.canvas.pin_tool != Some(tool) || self.canvas.pin_view != Some(key) {
-            self.canvas.pins.borrow_mut().clear();
-            self.canvas.start_edge = None;
-            self.canvas.wall_face = None;
-            self.canvas.last_align.set(None);
-            self.canvas.dwell.set(None);
+            self.canvas.guides_reset();
+            // A new tool or view may mark again under a pointer that did not move; a finish keeps the guard.
             self.canvas.dwell_quiet.set(None);
             self.canvas.pin_tool = Some(tool);
             self.canvas.pin_view = Some(key);
@@ -3782,9 +3789,7 @@ impl BimApp {
             }
             self.run("railing", p);
         }
-        self.canvas.start_edge = None;
-        self.canvas.wall_face = None;
-        self.canvas.pins.borrow_mut().clear();
+        self.canvas.guides_reset();
     }
 
     /// The Detail Line tool's next point. A line a click, as walls are: each click after the first makes a line from the
@@ -3843,9 +3848,7 @@ impl BimApp {
         } else if let Tool::DetailLine(path) = &mut self.tool {
             path.clear();
         }
-        self.canvas.pins.borrow_mut().clear();
-        self.canvas.wall_face = None;
-        self.canvas.start_edge = None;
+        self.canvas.guides_reset();
     }
 
     /// A detail line through the points clicked, round to the first again where `closed`, in the Options Bar's line
@@ -3877,9 +3880,7 @@ impl BimApp {
             }
             Err(e) => self.status = Status { text: tf("mass: {}", &[&e]), error: true },
         }
-        self.canvas.start_edge = None;
-        self.canvas.wall_face = None;
-        self.canvas.pins.borrow_mut().clear();
+        self.canvas.guides_reset();
     }
 
     /// The Text tool's click: a note saying what the Options Bar says, its top left at `at` in
@@ -4019,8 +4020,7 @@ impl BimApp {
                         // Back on its start, the chain closes; without Chain, every wall stands alone.
                         if !self.chain || first.dist(p) <= TOL {
                             chain.clear();
-                            self.canvas.start_edge = None;
-                            self.canvas.pins.borrow_mut().clear();
+                            self.canvas.guides_reset();
                         } else {
                             chain.push(p);
                         }
@@ -4167,9 +4167,7 @@ impl BimApp {
         if let Tool::Wall(chain) = &mut self.tool {
             chain.clear();
         }
-        self.canvas.start_edge = None;
-        self.canvas.pins.borrow_mut().clear();
-        self.canvas.wall_face = None;
+        self.canvas.guides_reset();
     }
 
     /// Walls along `points`, each turning `arc` degrees, as the Options Bar says: their type,
