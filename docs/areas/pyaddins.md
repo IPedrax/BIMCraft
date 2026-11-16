@@ -91,8 +91,10 @@ is Python of its own: it could write over the project's file, or any other.
 The skill (`skills/bimcraft-pyaddins/SKILL.md`) is built into the programs (`skill.rs`): `bimcraft-cli skill install [DIR]` and
 PyAddins > Python's Install Skill write it where Claude Code (`~/.claude/skills`) and Codex (`~/.agents/skills`, as OpenAI's
 skills documentation has it) read skills, and say the `claude mcp add` and `codex mcp add` lines that give each the MCP server;
-`bimcraft-cli skill` prints it. In this repository `.claude/skills` and `.agents/skills` link to it, so an agent working here
-has it.
+`bimcraft-cli skill` prints it. It writes the skill with a marker line after it, and replaces only a file that has both the
+skill's `name: bimcraft-pyaddins` and that line: any other file there (the user's own skill of that name, say) is left as it
+is, nothing is written for either agent, and the error names the file. The repository has no `.claude/skills` or
+`.agents/skills` of its own, so an agent working in a checkout loads the skill only when the user installs it.
 
 ## Decisions, and why
 

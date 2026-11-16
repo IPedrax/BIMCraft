@@ -1,7 +1,8 @@
 //! The agent skill for writing PyAddins (`skills/bimcraft-pyaddins/SKILL.md`), built into the programs so an installed BIMCraft
 //! has it: `bimcraft-cli skill install` and PyAddins > Python's Install Skill write it where Claude Code (`~/.claude/skills`)
-//! and Codex (`~/.agents/skills`) read skills, and say how to give each the MCP server.
+//! and Codex (`~/.agents/skills`) read skills, never over a file they didn't write, and say how to give each the MCP server.
 
+use std::io::Read;
 use std::path::{Path, PathBuf};
 
 /// The skill, as the repository has it.
@@ -18,23 +19,66 @@ pub fn home() -> Option<PathBuf> {
     std::env::var_os(var).filter(|h| !h.is_empty()).map(PathBuf::from)
 }
 
-/// Writes the skill for every agent under `home`: the files written, by agent.
+/// The line the installer writes after the skill: with the skill's `name`, it is how a later install knows the file is its
+/// own to replace.
+pub const MARKER: &str =
+    "<!-- Installed by BIMCraft (bimcraft-cli skill install, or PyAddins > Python): installing it again replaces this file. -->";
+
+/// The skill as the installer writes it: [`SKILL`], then the [`MARKER`].
+pub fn written() -> String {
+    format!("{SKILL}\n{MARKER}\n")
+}
+
+/// Whether `text` is a skill the installer wrote: its frontmatter names [`NAME`] and it has the [`MARKER`] line.
+fn ours(text: &str) -> bool {
+    let mut lines = text.lines().map(str::trim_end);
+    let name = format!("name: {NAME}");
+    lines.next() == Some("---") && lines.by_ref().take_while(|l| *l != "---").any(|l| l == name) && lines.any(|l| l == MARKER)
+}
+
+/// What is at `file`, up to a size no skill reaches.
+fn read(file: &Path) -> std::io::Result<String> {
+    let mut text = String::new();
+    std::fs::File::open(file)?.take(1 << 20).read_to_string(&mut text)?;
+    Ok(text)
+}
+
+/// Writes the skill for every agent under `home`: the files written, by agent. A file it didn't write is the user's, or
+/// another program's: it is never written over, and the error names it. Every place is looked at before any is written, so
+/// a refusal leaves them all as they were.
 pub fn install(home: &Path) -> Result<Vec<(&'static str, PathBuf)>, String> {
-    AGENTS
-        .iter()
-        .map(|(agent, dir)| {
-            let folder = home.join(dir).join(NAME);
-            std::fs::create_dir_all(&folder).map_err(|e| format!("{}: {e}", folder.display()))?;
-            let file = folder.join("SKILL.md");
-            std::fs::write(&file, SKILL).map_err(|e| format!("{}: {e}", file.display()))?;
-            Ok((*agent, file))
+    let files: Vec<(&'static str, PathBuf)> =
+        AGENTS.iter().map(|(agent, dir)| (*agent, home.join(dir).join(NAME).join("SKILL.md"))).collect();
+    for (_, file) in &files {
+        match read(file) {
+            Ok(text) if ours(&text) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Ok(_) => {
+                return Err(format!(
+                    "{} is not BIMCraft's skill, so it was left as it is: move it away to install BIMCraft's",
+                    file.display()
+                ));
+            }
+            Err(e) => return Err(format!("{}: {e}", file.display())),
+        }
+    }
+    let text = written();
+    files
+        .into_iter()
+        .map(|(agent, file)| {
+            if let Some(folder) = file.parent() {
+                std::fs::create_dir_all(folder).map_err(|e| format!("{}: {e}", folder.display()))?;
+            }
+            std::fs::write(&file, &text).map_err(|e| format!("{}: {e}", file.display()))?;
+            Ok((agent, file))
         })
         .collect()
 }
 
-/// Whether the skill is in place, as this version has it, for every agent under `home`.
+/// Whether the skill is in place, as this version writes it, for every agent under `home`.
 pub fn installed(home: &Path) -> bool {
-    AGENTS.iter().all(|(_, dir)| std::fs::read_to_string(home.join(dir).join(NAME).join("SKILL.md")).is_ok_and(|t| t == SKILL))
+    let text = written();
+    AGENTS.iter().all(|(_, dir)| read(&home.join(dir).join(NAME).join("SKILL.md")).is_ok_and(|t| t == text))
 }
 
 /// How each agent is given the MCP server, `cli` being the command line program: Claude Code's and Codex's commands.
@@ -63,9 +107,32 @@ mod tests {
         assert_eq!(written[0].1, home.path().join(".claude/skills/bimcraft-pyaddins/SKILL.md"));
         assert_eq!(written[1].1, home.path().join(".agents/skills/bimcraft-pyaddins/SKILL.md"));
         assert!(installed(home.path()));
-        // An old one is replaced.
-        std::fs::write(&written[1].1, "old").unwrap();
+        assert!(std::fs::read_to_string(&written[0].1).unwrap().ends_with(&format!("\n{MARKER}\n")), "it says it wrote it");
+        // An old one it wrote is replaced, one edited by hand on Windows too.
+        std::fs::write(&written[1].1, format!("---\r\nname: bimcraft-pyaddins\r\ndescription: old\r\n---\r\nold\r\n{MARKER}\r\n")).unwrap();
         assert!(!installed(home.path()));
+        install(home.path()).unwrap();
+        assert!(installed(home.path()));
+    }
+
+    #[test]
+    fn a_file_the_installer_did_not_write_is_never_written_over() {
+        let home = tempfile::tempdir().unwrap();
+        let written = install(home.path()).unwrap();
+        let old = format!("---\nname: bimcraft-pyaddins\ndescription: old\n---\nold\n{MARKER}\n");
+        // The user's own skill of that name, a file with no frontmatter, another skill with the marker pasted in.
+        let other = format!("---\nname: other\n---\n{MARKER}\n");
+        for theirs in ["---\nname: bimcraft-pyaddins\ndescription: mine\n---\nmine\n", "notes\n", other.as_str()] {
+            std::fs::write(&written[0].1, &old).unwrap();
+            std::fs::write(&written[1].1, theirs).unwrap();
+            let e = install(home.path()).unwrap_err();
+            assert!(e.starts_with(&format!("{} is not BIMCraft's skill", written[1].1.display())), "{e}");
+            assert_eq!(std::fs::read_to_string(&written[1].1).unwrap(), theirs, "theirs is as it was");
+            assert_eq!(std::fs::read_to_string(&written[0].1).unwrap(), old, "and nothing was written for the other agent");
+            assert!(!installed(home.path()));
+        }
+        // Moved away, it installs.
+        std::fs::remove_file(&written[1].1).unwrap();
         install(home.path()).unwrap();
         assert!(installed(home.path()));
     }
