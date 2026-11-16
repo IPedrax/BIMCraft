@@ -40,7 +40,7 @@ msgstr "Tijolo"
 msgid "Brick 225 x 75"
 msgstr "Tijolo 225 x 75"
 
-#: crates/core/src/commands.rs:5418
+#: crates/core/src/commands.rs:5419
 msgid "Camera"
 msgstr "Câmera"
 
@@ -140,7 +140,7 @@ msgstr "Ponto de dados"
 msgid "Demand Factor"
 msgstr "Fator de demanda"
 
-#: crates/core/src/commands.rs:13170
+#: crates/core/src/commands.rs:13171
 msgid "Dependent"
 msgstr "Dependente"
 
@@ -225,9 +225,9 @@ msgstr "Elétrica - Iluminação"
 msgid "Electrical Power"
 msgstr "Elétrica - Força"
 
-#: crates/core/src/commands.rs:12917
-#: crates/core/src/commands.rs:12932
-#: crates/core/src/commands.rs:17354
+#: crates/core/src/commands.rs:12918
+#: crates/core/src/commands.rs:12933
+#: crates/core/src/commands.rs:17355
 msgid "Elevation"
 msgstr "Elevação"
 
@@ -357,7 +357,7 @@ msgstr "Largura da perna"
 msgid "Length"
 msgstr "Comprimento"
 
-#: crates/core/src/commands.rs:7994
+#: crates/core/src/commands.rs:7995
 #: crates/core/src/model.rs:3716
 msgid "Level"
 msgstr "Nível"
@@ -398,7 +398,7 @@ msgstr "Marca"
 msgid "Masking"
 msgstr "Máscara"
 
-#: crates/core/src/commands.rs:10452
+#: crates/core/src/commands.rs:10453
 msgid "Mass"
 msgstr "Massa"
 
@@ -414,8 +414,8 @@ msgstr "Linhas médias"
 msgid "Membrane"
 msgstr "Manta impermeável"
 
-#: crates/core/src/commands.rs:3565
-#: crates/core/src/commands.rs:15960
+#: crates/core/src/commands.rs:3566
+#: crates/core/src/commands.rs:15961
 #: crates/core/src/family.rs:3429
 #: crates/core/src/model.rs:5177
 msgid "Metal"
@@ -515,11 +515,11 @@ msgstr "Porcelana"
 msgid "Profile"
 msgstr ""
 
-#: crates/core/src/commands.rs:3828
+#: crates/core/src/commands.rs:3829
 msgid "Project"
 msgstr "Projeto"
 
-#: crates/core/src/commands.rs:8721
+#: crates/core/src/commands.rs:8722
 msgid "Property Line"
 msgstr ""
 
@@ -551,7 +551,7 @@ msgstr ""
 msgid "Roof tiles"
 msgstr "Telhas"
 
-#: crates/core/src/commands.rs:10677
+#: crates/core/src/commands.rs:10678
 msgid "Room"
 msgstr "Ambiente"
 
@@ -587,8 +587,8 @@ msgstr "Contrapiso"
 msgid "Seat Height"
 msgstr "Altura do assento"
 
-#: crates/core/src/commands.rs:12852
-#: crates/core/src/commands.rs:17353
+#: crates/core/src/commands.rs:12853
+#: crates/core/src/commands.rs:17354
 msgid "Section"
 msgstr "Corte"
 
@@ -758,7 +758,7 @@ msgstr "Altura não delimitada"
 msgid "Unclassified"
 msgstr "Sem classificação"
 
-#: crates/core/src/commands.rs:13341
+#: crates/core/src/commands.rs:13342
 msgid "Unnamed"
 msgstr "Sem nome"
 

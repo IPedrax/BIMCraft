@@ -1586,6 +1586,10 @@ impl BimApp {
         // Site's points the view shows, and which is selected: read before the view's state is borrowed.
         let shown_points = self.points_in_3d();
         let lit_ids = self.selection.clone();
+        // Paste from Clipboard: the view's work plane it is put on, and the box of what's pasted, in plan.
+        let pasting = self.tool == Tool::Paste && sketch_z.is_none() && !picking;
+        let paste_plane = pasting.then(|| model.work_plane(active).resolve(&model).ok()).flatten();
+        let paste_box = paste_plane.and_then(|_| self.paste_extent(&bimcraft_core::clipboard::Frame::ThreeD));
         let o = &mut self.orbit;
         (o.rect, o.ppp) = (rect, ppp);
         // The camera changed elsewhere than by the hand in this view (dragged on a plan, a command, undo): the picture stands
@@ -1931,6 +1935,20 @@ impl BimApp {
                 crate::canvas::tag(&p, q + vec2(10.0, -10.0), egui::Align2::LEFT_BOTTOM, d.pick_label());
             }
         }
+        // The point of the work plane under the cursor, to the nearest 10 mm across: where a paste's middle goes.
+        let paste_point = |at: Pos2| {
+            let f = paste_plane?;
+            cam.on(px(at), f.origin, f.normal).map(|q| [(q[0] / 10.0).round() * 10.0, (q[1] / 10.0).round() * 10.0, q[2]])
+        };
+        if let Some(at) = hover.filter(|_| o.drag.is_none())
+            && let Some([lo, hi]) = paste_box
+            && let Some(q) = paste_point(at)
+        {
+            let c = P2(q[0], q[1]) - (lo + hi) * 0.5;
+            let corners = [lo, P2(hi.0, lo.1), hi, P2(lo.0, hi.1)].map(|k| on_screen(&cam, rect, ppp, [k.0 + c.0, k.1 + c.1, q[2]]));
+            p.add(egui::Shape::closed_line(corners.to_vec(), Stroke::new(1.5, pal().accent)));
+            p.circle_stroke(on_screen(&cam, rect, ppp, q), 4.0, Stroke::new(1.5, pal().accent));
+        }
         if let Some(at) = hover.filter(|_| dimming && o.drag.is_none()) {
             let accent = Stroke::new(1.5, pal().accent);
             let screen = |q: P3| on_screen(&cam, rect, ppp, q);
@@ -2251,6 +2269,7 @@ impl BimApp {
         // Where on the face a Trim click is: the side of the wall it keeps.
         let trim_at = click.filter(|_| trimming).and_then(|at| surface(&o.picker, &cam, at)).map(|s| s.at);
         let specify_click = click.filter(|_| specifying).and_then(dim_pick);
+        let paste_click = click.filter(|_| pasting).map(paste_point);
         // The face of what's clicked, as paint names the faces of an element.
         let face = click.and_then(|at| pick(&o.picker, at).map(|h| h.face).filter(|f| !f.is_empty()));
         // Place on Face: the face under the click, of what hosts components, by its role.
@@ -2277,7 +2296,7 @@ impl BimApp {
                 Some((q, plane, _)) => self.draw3d(q, plane),
                 None => self.status = Status { text: self.needs_face(), error: true },
             },
-            Some(_) if dimming || measuring || specifying => {}
+            Some(_) if dimming || measuring || specifying || pasting => {}
             Some(Some(id)) if attaching && attach_target(&model, id) => self.attach_to(id),
             Some(Some(id)) if trimming && model.wall(id).is_some() => {
                 let on = trim_at.map_or_else(|| model.wall(id).map_or(P2(0.0, 0.0), |w| (w.start + w.end) * 0.5), |q| P2(q[0], q[1]));
@@ -2293,6 +2312,13 @@ impl BimApp {
         }
         if let Some(r) = specify_click {
             self.specify_at(r.at);
+        }
+        match paste_click {
+            Some(Some(q)) => self.paste_at3(q),
+            Some(None) => {
+                self.status = Status { text: t("click on the work plane, where the view doesn't run along it").into(), error: true }
+            }
+            None => {}
         }
         if let Some(id) = point_hit {
             self.pick_up(vec![id], click_modifiers(ui));

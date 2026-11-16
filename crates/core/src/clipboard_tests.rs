@@ -231,3 +231,28 @@ fn what_a_mode_cant_place_is_listed_with_the_reason() {
     assert_eq!(ids(&pasted).len(), 1);
     assert!(pasted["left_out"].to_string().contains("model element"), "{pasted}");
 }
+
+#[test]
+fn a_paste_by_hand_in_a_3d_view_goes_onto_the_level_given_with_its_middle_at_the_point() {
+    let mut s = Session::new();
+    let (walls, _) = house(&mut s);
+    let cam = run(&mut s, "camera", json!({"eye": [-5000, -5000, 1700], "target": [4000, 3000, 1000]}))["id"].as_u64().unwrap_or_default();
+    run(&mut s, "copy_to_clipboard", json!({"ids": walls, "view": 100000}));
+    let pasted = run(&mut s, "paste", json!({"view": cam, "at": [20000, 3000], "level": "Level 2"}));
+    assert_eq!(ids(&pasted).len(), 5, "{pasted}");
+    let up = walls_on(&s, 100001);
+    assert_eq!(up.len(), 4, "onto Level 2");
+    assert!(up.iter().any(|w| w.start == crate::geom::P2(16000.0, 0.0)), "the middle at the point: {up:?}");
+    // Without one, on their own levels.
+    let pasted = run(&mut s, "paste", json!({"view": cam, "at": [-20000, 3000]}));
+    assert_eq!(ids(&pasted).len(), 5, "{pasted}");
+    assert_eq!(walls_on(&s, 100000).len(), 8);
+    // The default 3D view by its name, made by the paste where nothing has made it yet.
+    assert!(s.model.default_3d().is_none());
+    let pasted = run(&mut s, "paste", json!({"view": "{3D}", "at": [0, 20000], "level": "Level 1"}));
+    assert_eq!(ids(&pasted).len(), 5, "{pasted}");
+    assert!(s.model.default_3d().is_some(), "{{3D}} made");
+    // A plan's paste is on the plan's level: no `level` beside it.
+    let e = err(&mut s, "paste", json!({"view": 100000, "at": [0, 0], "level": "Level 2"}));
+    assert!(e.contains("3D"), "{e}");
+}

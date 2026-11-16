@@ -953,6 +953,8 @@ pub struct BimApp {
     pub(crate) paste_asked: Option<(clipboard::PasteMode, f64)>,
     /// Aligned to Selected Levels' or Selected Views' list, while it's open.
     pub(crate) paste_choose: Option<clipboard::Choose>,
+    /// Ctrl+V's question in a 3D view, while it's asked: the clipboard it would paste.
+    pub(crate) paste_where: Option<clipboard::Pasting>,
     active_option: Option<String>,
     new_schedule: Option<properties::NewSchedule>,
     /// The material the Paint tool lays; the first of the library's while it isn't one it has.
@@ -1703,6 +1705,7 @@ impl BimApp {
             paste_asked: None,
             clip_request: None,
             paste_choose: None,
+            paste_where: None,
             active_option: None,
             new_schedule: None,
             component: None,
@@ -5421,7 +5424,8 @@ impl BimApp {
             self.options_rect = if shown.inner { shown.response.rect } else { Rect::NOTHING };
             return;
         }
-        if self.context().is_none() && matches!(self.tool, Tool::Modify) && self.note_edit.is_none() {
+        // Nothing to set: Modify, and a paste being placed.
+        if self.context().is_none() && matches!(self.tool, Tool::Modify | Tool::Paste | Tool::PickLevel) && self.note_edit.is_none() {
             self.options_rect = Rect::NOTHING;
             return;
         }
@@ -5911,6 +5915,9 @@ impl BimApp {
                 );
             }
             (Sheet::View3D, Tool::AddPoint | Tool::AddSplitLine(_) | Tool::Attach | Tool::Trim(_) | Tool::TrimTo { .. }) => {}
+            (Sheet::View3D, Tool::Paste) => return msg!("Click on the work plane where the pasted elements go. Esc cancels."),
+            // A paste follows the cursor in these views as in a plan; a section's level lines are picked.
+            (Sheet::Section(_) | Sheet::Paper(_), Tool::Paste) | (Sheet::Section(_), Tool::PickLevel) => {}
             (Sheet::View3D | Sheet::Section(_) | Sheet::Paper(_), _) => {
                 return msg!("This tool works in plan views: open one from the Project Browser.");
             }

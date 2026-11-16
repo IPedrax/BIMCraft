@@ -348,8 +348,9 @@ pub fn read(text: &str) -> Result<Clip, String> {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Mode {
     /// Paste from Clipboard: into the view, moved `by` in its terms (a plan's x and y; a section's along and up, the height
-    /// taking model elements to the level nearest it).
-    Manual { by: P2 },
+    /// taking model elements to the level nearest it; a 3D view's x and y, onto `level` where given: the level of the point
+    /// picked on the work plane, else on their own levels).
+    Manual { by: P2, level: Option<Guid> },
     /// Aligned to Current View: view-specific elements where they were in theirs; model elements onto the plan's level.
     CurrentView,
     /// Aligned to Same Place: where they were, on their levels (by name in another project).
@@ -484,8 +485,14 @@ pub fn paste(to: &mut Model, clip: &Clip, mode: &Mode, view: Option<Id>) -> Resu
     let base = clip.base_elevation();
     let mut targets = Vec::new();
     match mode {
-        Mode::Manual { by } => {
+        Mode::Manual { by, level } => {
             let Some((v, frame)) = here.clone() else { return Err("a paste by hand needs the view it is made in: give `view`".into()) };
+            if level.is_some() && !matches!(frame, Frame::ThreeD) {
+                return Err(format!(
+                    "`level` goes with a paste by hand in a 3D view; in {} the view says where model elements go",
+                    frame.name()
+                ));
+            }
             let (model_by, dz) = match &frame {
                 Frame::Plan { elevation, .. } => (*by, Some(*elevation - base)),
                 Frame::Section { .. } => {
@@ -494,7 +501,10 @@ pub fn paste(to: &mut Model, clip: &Clip, mode: &Mode, view: Option<Id>) -> Resu
                     let dz = nearest_level(to, base + by.1).map(|l| to.elevation(l) - base);
                     (u * by.0, dz.or(Some(0.0)))
                 }
-                Frame::ThreeD => (*by, None),
+                Frame::ThreeD => match level {
+                    Some(l) => (*by, Some(to.level(*l).ok_or_else(|| format!("no level {l}"))?.elevation - base)),
+                    None => (*by, None),
+                },
                 Frame::Sheet => (P2(0.0, 0.0), None),
             };
             if !model.is_empty() && matches!(frame, Frame::Sheet) {

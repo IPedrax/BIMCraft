@@ -1929,11 +1929,12 @@ other_files(
          (Ctrl+V) of what `copy_to_clipboard` kept (or the text `clipboard` gives, from another BIMCraft), into `view` (the open \
          one: a level's plan, a plan view, a section, an elevation, a sheet or a 3D view). `mode`: `manual` (Paste from \
          Clipboard, the default with `at` or `by`): moved `by`, or with its middle `at`, in the view's terms (a plan's x and y; a \
-         section's along and up, the height taking model elements to the nearest level); `current_view`: view-specific \
+         section's along and up, the height taking model elements to the nearest level; a 3D view's x and y, with `level` the \
+         level model elements go onto, else their own); `current_view`: view-specific \
          elements where they were in theirs, model elements onto the plan's level; `same_place`: where they were, on their \
          levels (by name or height in another project); `levels`: model elements onto each of `levels`, at the same place and \
          height over the level; `views`: view-specific elements into each of `views`; `picked_level`: model elements onto \
-         `level`. Between views that look the same way (two plans, parallel sections) a view-specific element keeps its place \
+         `level`. `view` `{3D}` is the default 3D view, made if need be. Between views that look the same way (two plans, parallel sections) a view-specific element keeps its place \
          in the model; between others, its place in the view. A door or window copied without its wall goes into a wall there; \
          a tag, a dimension or a railing without what it names, measures or follows is left out. Returns {ids, left_out}",
         paste,
@@ -18032,12 +18033,18 @@ fn paste(s: &mut Session, p: &Value) -> R {
         None => return Err(bad(c, "the clipboard is empty")),
     };
     let clip = crate::clipboard::read(&text).map_err(|e| bad(c, e))?;
-    let m = &s.model;
+    // The default 3D view by its name: made when nothing has made it yet, as a camera or a section box makes it.
+    let default_3d = matches!(p.get("view"), Some(Value::String(n)) if n.eq_ignore_ascii_case("{3D}") || n.eq_ignore_ascii_case("3D"));
     let view = match p.get("view") {
+        _ if default_3d => Some(match s.model.default_3d() {
+            Some(v) => v,
+            None => s.model_mut().insert(Element::View3D(View3D::default_view())),
+        }),
         v if absent(v) => None,
-        Some(_) => Some(view_param(c, m, p, true)?),
+        Some(_) => Some(view_param(c, &s.model, p, true)?),
         None => None,
     };
+    let m = &s.model;
     let (at, by) = (point_opt(c, p, "at")?, point_opt(c, p, "by")?);
     let level_of = |v: &Value| -> Result<Guid, String> {
         let id = match v {
@@ -18078,7 +18085,12 @@ fn paste(s: &mut Session, p: &Value) -> R {
             if !(by.0.is_finite() && by.1.is_finite() && by.0.abs() <= MAX_COORD && by.1.abs() <= MAX_COORD) {
                 return Err(bad(c, "`at` or `by` is out of range"));
             }
-            Mode::Manual { by: micron(by) }
+            let level = match p.get("level") {
+                v if absent(v) => None,
+                Some(v) => Some(level_of(v)?),
+                None => None,
+            };
+            Mode::Manual { by: micron(by), level }
         }
         Some("current_view") => Mode::CurrentView,
         Some("same_place") => Mode::SamePlace,

@@ -51,7 +51,7 @@ pub struct Cut {
     texture: Option<TextureHandle>,
     shown: Option<Shot>,
     grid_background: bool,
-    tints: Vec<(Id, Rgb)>,
+    pub(crate) tints: Vec<(Id, Rgb)>,
     ground: Color32,
     #[cfg(test)]
     overlay: Option<render::SectionOverlay>,
@@ -302,7 +302,15 @@ impl BimApp {
             d.pick((x, y), PICK / k)
                 .or_else(|| cut.image.as_ref().filter(|_| displaying)?.pick(f64::from(x) * source_ppp[0], f64::from(y) * source_ppp[1]))
         };
-        let hovered = local.filter(|_| matches!(self.tool, Tool::Modify | Tool::Demolish)).and_then(|q| pick(&self.cut, &d, q));
+        // The level line under the cursor, though a wall or a floor lies nearer: what Aligned to Picked Level takes.
+        let pick_level =
+            |d: &render::Drawing, q: (f32, f32)| d.pick_all(unproject(q), PICK / k).into_iter().find(|l| model.level(*l).is_some());
+        // Under the cursor, lit: what a click would take (Aligned to Picked Level takes only a level line).
+        let hovered = local.and_then(|q| match self.tool {
+            Tool::Modify | Tool::Demolish => pick(&self.cut, &d, q),
+            Tool::PickLevel => pick_level(&d, q),
+            _ => None,
+        });
         let tints: Vec<(Id, Rgb)> = self
             .selection
             .iter()
@@ -428,9 +436,9 @@ impl BimApp {
             }
             (Some(q), Tool::Text) => self.write_note(id, at(q)),
             (Some(q), Tool::Paste) => self.paste_at(id, at(q)),
-            (Some(q), Tool::PickLevel) => match pick(&self.cut, &d, q) {
-                Some(l) if model.level(l).is_some() => self.paste_on_level(l),
-                _ => self.status = Status { text: crate::lang::t("click a level line").into(), error: true },
+            (Some(q), Tool::PickLevel) => match pick_level(&d, q) {
+                Some(l) => self.paste_on_level(l),
+                None => self.status = Status { text: crate::lang::t("click a level line").into(), error: true },
             },
             (Some(q), Tool::Spot) => {
                 self.run("spot", json!({"at": [at(q).0, at(q).1], "view": id}));

@@ -31,6 +31,8 @@ pub(crate) enum PasteMode {
     CurrentView,
     SamePlace,
     PickedLevel,
+    /// Ctrl+V in a 3D view: the window asks whether in the same place or by hand on the work plane.
+    Where3D,
 }
 
 impl PasteMode {
@@ -51,18 +53,31 @@ impl PasteMode {
             PasteMode::CurrentView => msg!("Aligned to Current View"),
             PasteMode::SamePlace => msg!("Aligned to Same Place"),
             PasteMode::PickedLevel => msg!("Aligned to Picked Level"),
+            PasteMode::Where3D => msg!("Paste"),
         }
     }
 
     fn tip(self) -> &'static str {
         match self {
-            PasteMode::Manual => msg!("Paste (Ctrl+V): the copied elements follow the cursor; click where they go"),
+            PasteMode::Manual | PasteMode::Where3D => {
+                msg!("Paste (Ctrl+V): the copied elements follow the cursor; click where they go")
+            }
             PasteMode::SelectedLevels => msg!("Model elements onto each level picked from a list, at the same place in plan"),
             PasteMode::SelectedViews => msg!("View-specific elements into each view picked from a list"),
             PasteMode::CurrentView => msg!("Into this view where they were in theirs; model elements onto this plan's level"),
             PasteMode::SamePlace => msg!("Where they were, on their levels"),
             PasteMode::PickedLevel => msg!("In a section or an elevation: click a level; model elements go onto it"),
         }
+    }
+}
+
+/// A row of a panel's small buttons; in its list (a folded panel's, or its name's), the buttons go one under another as rows
+/// do: a row side by side there would ask the list for room it grows to give, frame on frame.
+fn row(ui: &mut Ui, add: impl FnOnce(&mut Ui)) {
+    if crate::ribbon::listing() {
+        add(ui);
+    } else {
+        ui.horizontal(add);
     }
 }
 
@@ -151,16 +166,28 @@ impl BimApp {
         }
     }
 
+    /// The view on screen, as `paste` takes it: the 3D view by its name where nothing has made it yet.
+    fn paste_view(&self) -> Option<Value> {
+        match (self.clipboard_view(), self.sheet) {
+            (Some(v), _) => Some(json!(v)),
+            (None, Sheet::View3D) => Some(json!("{3D}")),
+            (None, _) => None,
+        }
+    }
+
     /// The frame of the view on screen.
     fn clipboard_frame(&self) -> Option<Frame> {
-        self.clipboard_view().and_then(|v| Frame::of(&self.session.model, v))
+        match self.sheet {
+            Sheet::View3D => Some(Frame::ThreeD),
+            _ => self.clipboard_view().and_then(|v| Frame::of(&self.session.model, v)),
+        }
     }
 
     /// Whether `mode` can paste into the view on screen.
     fn paste_fits(&self, mode: PasteMode) -> bool {
         let frame = self.clipboard_frame();
         match mode {
-            PasteMode::Manual => matches!(frame, Some(Frame::Plan { .. } | Frame::Section { .. } | Frame::Sheet)),
+            PasteMode::Manual | PasteMode::Where3D => frame.is_some(),
             PasteMode::CurrentView => frame.is_some(),
             PasteMode::PickedLevel => matches!(frame, Some(Frame::Section { .. })),
             PasteMode::SelectedLevels | PasteMode::SelectedViews | PasteMode::SamePlace => true,
@@ -174,7 +201,7 @@ impl BimApp {
         crate::ribbon::yielding(ui, msg!("Clipboard"), |ui| {
             let some = !self.selection.is_empty();
             ui.vertical(|ui| {
-                ui.horizontal(|ui| {
+                row(ui, |ui| {
                     let tip = msg!("Paste (Ctrl+V), and its Aligned options");
                     let r = crate::small_button(ui, crate::icons::Icon::Paste, msg!("Paste"), self.tool == Tool::Paste, tip);
                     crate::ribbon::choices(ui, &r, false, |ui| {
@@ -186,7 +213,7 @@ impl BimApp {
                         }
                     });
                 });
-                ui.horizontal(|ui| {
+                row(ui, |ui| {
                     let tip = msg!("Cut to Clipboard (Ctrl+X): the selection, taken away to paste elsewhere");
                     let r = ui
                         .add_enabled_ui(some, |ui| crate::small_button(ui, crate::icons::Icon::Cut, msg!("Cut to Clipboard"), false, tip));
@@ -246,9 +273,14 @@ impl BimApp {
         }
     }
 
-    /// What Ctrl+V does in the view on screen: by hand where the elements can follow the cursor, else where they were.
+    /// What Ctrl+V does in the view on screen: by hand where the elements can follow the cursor; in a 3D view, as asked (the
+    /// same place, or by hand on the work plane); else where they were.
     fn ctrl_v_mode(&self) -> PasteMode {
-        if self.paste_fits(PasteMode::Manual) { PasteMode::Manual } else { PasteMode::SamePlace }
+        match self.clipboard_frame() {
+            Some(Frame::ThreeD) => PasteMode::Where3D,
+            Some(_) => PasteMode::Manual,
+            None => PasteMode::SamePlace,
+        }
     }
 
     /// Copy (or with `cut`, cut) the selection to the clipboard: the system's, and the window's own.
@@ -313,9 +345,15 @@ impl BimApp {
             PasteMode::Manual if self.paste_fits(PasteMode::Manual) => {
                 self.pasting = Some(pasting);
                 self.set_tool(Tool::Paste);
-                self.status = Status { text: t("Click where the pasted elements go. Esc cancels.").into(), error: false };
+                let text = if self.sheet == Sheet::View3D {
+                    t("Click on the work plane where the pasted elements go. Esc cancels.")
+                } else {
+                    t("Click where the pasted elements go. Esc cancels.")
+                };
+                self.status = Status { text: text.into(), error: false };
             }
-            PasteMode::Manual | PasteMode::SamePlace => self.paste_with(&pasting, json!({"mode": "same_place"})),
+            PasteMode::Where3D if self.paste_fits(PasteMode::Manual) => self.paste_where = Some(pasting),
+            PasteMode::Manual | PasteMode::Where3D | PasteMode::SamePlace => self.paste_with(&pasting, json!({"mode": "same_place"})),
             PasteMode::CurrentView => self.paste_with(&pasting, json!({"mode": "current_view"})),
             PasteMode::PickedLevel => {
                 self.pasting = Some(pasting);
@@ -368,9 +406,9 @@ impl BimApp {
     fn paste_with(&mut self, pasting: &Pasting, mut p: Value) {
         p["clipboard"] = json!(&*pasting.text);
         if p.get("view").is_none()
-            && let Some(v) = self.clipboard_view()
+            && let Some(v) = self.paste_view()
         {
-            p["view"] = json!(v);
+            p["view"] = v;
         }
         let Some(reply) = self.run("paste", p) else { return };
         let ids: Vec<Id> = reply["ids"].as_array().map(|a| a.iter().filter_map(Value::as_u64).collect()).unwrap_or_default();
@@ -397,6 +435,57 @@ impl BimApp {
         self.set_tool(Tool::Modify);
     }
 
+    /// Paste from Clipboard's click in the 3D view, at `q` on its work plane: the middle of what's pasted there in plan, the
+    /// model elements on the level that point stands on (the highest at or below it).
+    pub(crate) fn paste_at3(&mut self, q: [f64; 3]) {
+        let (Some(pasting), Some(view)) = (self.pasting.clone(), self.paste_view()) else {
+            self.set_tool(Tool::Modify);
+            return;
+        };
+        let mut p = json!({"mode": "manual", "view": view, "at": [q[0], q[1]]});
+        if let Some(level) = self.session.model.camera_level(q[2]) {
+            p["level"] = json!(level);
+        }
+        self.paste_with(&pasting, p);
+        self.pasting = None;
+        self.set_tool(Tool::Modify);
+    }
+
+    /// Ctrl+V's question in a 3D view, while it's asked: the same place, or by hand on the work plane.
+    fn paste_where_window(&mut self, ctx: &Context) {
+        let Some(pasting) = self.paste_where.clone() else { return };
+        let (mut same, mut by_hand, mut cancel) = (false, false, false);
+        let r = Modal::new(egui::Id::new("paste-where"), t("Paste in 3D")).width(360.0).show(ctx, |ui| {
+            crate::popup::body(ui, |ui| {
+                ui.label(t(msg!("Where do the pasted elements go?")));
+                ui.add_space(6.0);
+                same = ui
+                    .button(t(msg!("Same Place")))
+                    .on_hover_text(t(msg!("Where they were, on their levels: Aligned to Same Place")))
+                    .clicked();
+                by_hand = ui
+                    .button(t(msg!("Position on Work Plane")))
+                    .on_hover_text(t(msg!("They follow the cursor over the view's work plane; click where they go")))
+                    .clicked();
+            });
+            crate::popup::footer(ui, |ui| {
+                ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
+                    cancel = ui.button(t("Cancel")).clicked();
+                });
+            });
+        });
+        if same || by_hand || cancel || r.should_close() {
+            self.paste_where = None;
+        }
+        if same {
+            self.paste_with(&pasting, json!({"mode": "same_place"}));
+        } else if by_hand {
+            self.pasting = Some(pasting);
+            self.set_tool(Tool::Paste);
+            self.status = Status { text: t("Click on the work plane where the pasted elements go. Esc cancels.").into(), error: false };
+        }
+    }
+
     /// Aligned to Picked Level's click on level `level`.
     pub(crate) fn paste_on_level(&mut self, level: Id) {
         let Some(pasting) = self.pasting.clone() else {
@@ -419,6 +508,7 @@ impl BimApp {
 
     /// Aligned to Selected Levels' and Selected Views' list, while one is open.
     pub(crate) fn paste_window(&mut self, ctx: &Context) {
+        self.paste_where_window(ctx);
         let Some(d) = self.paste_choose.as_mut() else { return };
         let (mut ok, mut cancel) = (false, false);
         let title = if d.views { t(PasteMode::SelectedViews.label()) } else { t(PasteMode::SelectedLevels.label()) };

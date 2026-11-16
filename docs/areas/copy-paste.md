@@ -9,7 +9,9 @@ ceiling plan, a section, an elevation, a 3D view; in this project, or in another
 - **Copy to Clipboard** keeps the selection, in any view. **Cut** keeps it and deletes it, in one undo step.
 - **Paste** (Ctrl+V, Paste from Clipboard) places it by hand: the elements follow the cursor, a click puts them down. In a plan,
   model elements land on the level of the view; in a section or an elevation, on the view's plane, the cursor's height taking
-  them up or down. The base point is the middle of what was copied.
+  them up or down. The base point is the middle of what was copied. In a 3D view, Ctrl+V asks: in the same place (Aligned to
+  Same Place), or by hand on the view's work plane: the copy's box follows the cursor over it, and a click puts the middle
+  there in plan, the model elements on the level that point stands on (the highest at or below it).
 - **Aligned to Selected Levels**: model elements, onto each level picked from a list, each at the same place in plan and the same
   height over its level as over the level it was on.
 - **Aligned to Selected Views**: view-specific elements (detail lines, filled regions, notes, dimensions, tags, detail groups,
@@ -52,7 +54,8 @@ project's library comes over as Insert from File brings it.
 - `copy_to_clipboard {ids, view?}` → `{clipboard, count}`: the text, also kept by the session for a `paste` without one.
 - `cut_to_clipboard {ids, view?}` → the same, and the elements deleted.
 - `paste {clipboard?, mode, view?, levels?, views?, at?, by?, level?}` → `{ids, left_out}`; `mode` is `manual` (with `by`, the
-  move in the target view's coordinates, or `at`, where the middle goes), `current_view`, `same_place`, `levels`, `views` or
+  move in the target view's coordinates, or `at`, where the middle goes; in a 3D view, with `level`, the level the model
+  elements go onto), `current_view`, `same_place`, `levels`, `views` or
   `picked_level`.
 
 ## Where the code lives
@@ -76,11 +79,13 @@ Done:
   clipboard (the ribbon's Paste asks for it with `RequestPaste`, and takes the window's own copy when nothing comes); Paste
   from Clipboard following the cursor in plans (the clipboard's project drawn as a plan draws it, once a view), sections and
   elevations and sheets (its box); Cut, Copy and Paste in the right-click menu; the panel yields its Cut and Copy to its list
-  before another panel folds; Aligned to Picked Level by a click on a level line in a section or an elevation; the Selected Levels and Selected
-  Views lists. Tests: `crates/ui-egui/src/tests/clipboard.rs`.
+  before another panel folds, and its list (the panel's name) holds them one under another; Aligned to Picked Level by a click
+  on a level line in a section or an elevation, the level under the cursor lit (a level line, though a wall lies nearer); the
+  Selected Levels and Selected Views lists; Ctrl+V in a 3D view asking Same Place or Position on Work Plane, and the paste by
+  hand there, its box over the work plane. Tests: `crates/ui-egui/src/tests/clipboard.rs`.
 
 Still to do:
 
-- Paste from Clipboard in a 3D view on its work plane (Ctrl+V there pastes to the same place for now).
+- A paste by hand in a 3D view on a work plane that isn't level puts the copy level, on the level under the point picked.
 - Ctrl+V's preview in a section or an elevation drawn element by element rather than as a box.
 - A view-specific element pasted from a view onto a sheet keeps its size in millimetres rather than taking the view's scale.
