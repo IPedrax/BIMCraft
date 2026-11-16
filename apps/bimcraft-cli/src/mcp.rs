@@ -915,6 +915,10 @@ def main(count: Annotated[int, bc.Range(1, 20)], length: bc.Length = 4000):
                 let e = tool_err(&mut s, name, args.clone());
                 assert!(e.contains("read-only"), "{how}: {name} {args}: {e}");
             }
+            // Only listing and reading are let through: a `pyaddin_*` tool added later is refused too, whatever it does.
+            let ro = s.read_only_how();
+            let e = crate::pyaddins::call("pyaddin_frob", &json!({}), s.pyaddins.as_ref(), &mut s.backend, ro).unwrap().unwrap_err();
+            assert!(e.contains("`pyaddin_frob` would") && e.contains("read-only"), "{how}: {e}");
             assert_eq!(
                 (store.scripts().len(), store.buttons().len(), store.read("Kept").unwrap()),
                 before,

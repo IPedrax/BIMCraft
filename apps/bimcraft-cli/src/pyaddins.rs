@@ -63,15 +63,19 @@ pub trait Target {
     fn as_one(&mut self, f: &mut dyn FnMut(&mut run::Ask) -> run::Outcome) -> run::Outcome;
 }
 
-/// What a PyAddins tool would do that an agent which may only read never does: write the user's folder, or run a script,
-/// which is Python of its own that no read-only session reaches and that could write over the project's file or any other.
-fn writes(name: &str) -> Option<&'static str> {
+/// The PyAddins tools an agent which may only read is answered: they list and read. Every other one, a tool added later
+/// too, is refused it, since it writes the user's folder or runs a script, which is Python of its own that no read-only
+/// session reaches and that could write over the project's file or any other.
+const READS: [&str; 2] = ["pyaddin_list", "pyaddin_read"];
+
+/// What a PyAddins tool that isn't one of [`READS`] would do, for its refusal.
+fn writes(name: &str) -> &'static str {
     match name {
-        "pyaddin_save" => Some("write a script into the user's PyAddins folder"),
-        "pyaddin_delete" => Some("delete a script from the user's PyAddins folder"),
-        "pyaddin_button" => Some("change the buttons of the user's PyAddins tab"),
-        "pyaddin_run" => Some("run a script, which is Python that may change the project and write any file"),
-        _ => None,
+        "pyaddin_save" => "write a script into the user's PyAddins folder",
+        "pyaddin_delete" => "delete a script from the user's PyAddins folder",
+        "pyaddin_button" => "change the buttons of the user's PyAddins tab",
+        "pyaddin_run" => "run a script, which is Python that may change the project and write any file",
+        _ => "change the user's PyAddins folder or run a script",
     }
 }
 
@@ -87,8 +91,10 @@ pub fn call(
     if !name.starts_with("pyaddin_") {
         return None;
     }
-    if let (Some(how), Some(what)) = (read_only, writes(name)) {
-        return Some(Err(format!("`{name}` would {what}, {READ_ONLY}: {how}")));
+    if let Some(how) = read_only
+        && !READS.contains(&name)
+    {
+        return Some(Err(format!("`{name}` would {}, {READ_ONLY}: {how}", writes(name))));
     }
     let Some(store) = store else {
         return Some(Err("there is no PyAddins folder: no home folder to keep it in (set BIMCRAFT_PYADDINS)".into()));
