@@ -151,21 +151,31 @@ fn the_cabin_floor_has_rims_north_and_south_and_19_lines_of_joists_each_in_two_p
     let r = framing(&mut s, id);
     let ms = members(&r);
     assert_eq!(r["warnings"], json!([]));
-    // The rims: along the south and north edges, the floor's whole width, a joist thick and deep, 19 in.
+    // The rims: along the south and north edges, the floor's whole width, a joist thick and deep, 19 in; 7320 long, more than
+    // the longest stock (6100), each spliced in two over the ninth grid joist, 3660 along, each piece from 3660.
     let rims = role(&ms, "rim");
-    assert_eq!(rims.len(), 2, "{rims:?}");
+    assert_eq!(rims.len(), 4, "{rims:?}");
     let mut ys: Vec<f64> = rims.iter().map(|m| (world(&r, m).0[1] + world(&r, m).0[3]) / 2.0).collect();
     ys.sort_by(f64::total_cmp);
     close(ys[0], FS + 19.0, "the south rim");
-    close(ys[1], FN - 19.0, "the north rim");
-    for rim in &rims {
-        close(len(rim), 7320.0, "a rim's length");
-        assert_eq!(rim["section"], json!([38.0, 184.0]));
-        let ([x0, _, x1, _], [z0, z1]) = world(&r, rim);
-        close(x0, FW, "a rim from the west edge");
-        close(x1, FE, "to the east edge");
-        close(z0, -202.0, "on the beams");
-        close(z1, -18.0, "under the subfloor");
+    close(ys[3], FN - 19.0, "the north rim");
+    for edge in [0, 2] {
+        let mut pieces: Vec<[f64; 2]> = (0..2)
+            .map(|n| {
+                let rim = keyed(&ms, &format!("rim/{edge}/{n}"));
+                close(len(rim), 3660.0, "a rim's piece");
+                assert_eq!((&rim["section"], &rim["stock"]), (&json!([38.0, 184.0]), &json!(3660.0)));
+                let ([x0, _, x1, _], [z0, z1]) = world(&r, rim);
+                close(z0, -202.0, "on the beams");
+                close(z1, -18.0, "under the subfloor");
+                [x0, x1]
+            })
+            .collect();
+        pieces.sort_by(|a, b| a[0].total_cmp(&b[0]));
+        for ([x0, x1], [from, to]) in pieces.into_iter().zip([[FW, FW + 3660.0], [FW + 3660.0, FE]]) {
+            close(x0, from, "a rim's piece from");
+            close(x1, to, "to");
+        }
     }
     // The joists: flush with the east and west edges, and 17 between, a third of 1220 apart.
     let xs = joist_lines(&r);
@@ -198,7 +208,7 @@ fn the_cabin_floor_has_rims_north_and_south_and_19_lines_of_joists_each_in_two_p
 }
 
 #[test]
-fn the_cut_list_and_the_schedule_list_38_joists_from_3050_stock_and_two_rims_longer_than_any() {
+fn the_cut_list_and_the_schedule_list_38_joists_from_3050_stock_and_two_rims_each_spliced_from_3660_stock() {
     let mut s = Session::new();
     let id = cabin(&mut s);
     let r = framing(&mut s, id);
@@ -209,7 +219,7 @@ fn the_cut_list_and_the_schedule_list_38_joists_from_3050_stock_and_two_rims_lon
         (Some(38), Some(3012.0), Some(3050.0), &json!([38.0, 184.0]))
     );
     let rims = cuts.iter().find(|c| c["role"] == "rim").unwrap();
-    assert_eq!((rims["count"].as_u64(), rims["length"].as_f64(), &rims["stock"]), (Some(2), Some(7320.0), &Value::Null));
+    assert_eq!((rims["count"].as_u64(), rims["length"].as_f64(), rims["stock"].as_f64()), (Some(4), Some(3660.0), Some(3660.0)));
     assert_eq!(cuts.len(), 2, "{cuts:?}");
     // The schedule: each member's host is the floor.
     let t = run(
@@ -223,9 +233,36 @@ fn the_cut_list_and_the_schedule_list_38_joists_from_3050_stock_and_two_rims_lon
         rows,
         [
             vec![json!(id as f64), json!("2x8 Floor"), json!("joist"), json!("38 x 184"), json!(3012.0), json!(3050.0), json!(38.0)],
-            vec![json!(id as f64), json!("2x8 Floor"), json!("rim"), json!("38 x 184"), json!(7320.0), json!(0.0), json!(2.0)],
+            vec![json!(id as f64), json!("2x8 Floor"), json!("rim"), json!("38 x 184"), json!(3660.0), json!(3660.0), json!(4.0)],
         ]
     );
+}
+
+#[test]
+fn a_joist_longer_than_any_stock_between_what_bears_it_is_warned_of_and_a_rim_that_cant_be_spliced_too() {
+    let mut s = Session::new();
+    run(
+        &mut s,
+        "type",
+        json!({"category": "floor", "name": "2x8 Floor", "layers": [{"function": "structure", "material": "Timber", "thickness": 184}]}),
+    );
+    // 2000 wide, its joists running 7000 north with nothing under them: each 6924 between the rims, more than 6100.
+    let id = first(&run(&mut s, "floor", json!({"boundary": [[0, 0], [2000, 0], [2000, 7000], [0, 7000]], "type": "2x8 Floor"})));
+    let r = run(&mut s, "frame", json!({"id": id, "angle": 90}));
+    let warnings: Vec<String> = r["warnings"].as_array().unwrap().iter().filter_map(|w| w.as_str().map(String::from)).collect();
+    for key in ["edge/1/0", "joist/1/0", "edge/3/0"] {
+        assert!(
+            warnings.iter().any(|w| w.contains(&format!("{key} is 6924 mm long")) && w.contains("longer than any stock")),
+            "{key}: {warnings:?}"
+        );
+    }
+    // Studs of stock 1000 and joists 1220 apart: no splice over a joist keeps the 2000 mm rims within it.
+    run(&mut s, "type", json!({"category": "framing", "name": "2x4 @ 406", "spacing": 1220, "stock": [1000]}));
+    let r = framing(&mut s, id);
+    let warnings: Vec<String> = r["warnings"].as_array().unwrap().iter().filter_map(|w| w.as_str().map(String::from)).collect();
+    for key in ["rim/0", "rim/2"] {
+        assert!(warnings.iter().any(|w| w.contains(&format!("{key} has a piece")) && w.contains("longer than any stock")), "{warnings:?}");
+    }
 }
 
 #[test]
@@ -495,7 +532,7 @@ fn a_framed_floor_comes_in_from_another_file_with_its_framing_type() {
     assert_eq!(to.model.library.guid(&kind, "Cabin Floor"), s.model.library.guid(&kind, "Cabin Floor"));
     // Without the beams, nothing bears it there.
     let r = framing(&mut to, here);
-    assert_eq!(members(&r).len(), 2 + 19);
+    assert_eq!(members(&r).len(), 4 + 19, "two rims each spliced in two, and 19 joists");
 }
 
 #[test]
