@@ -158,6 +158,30 @@ other_files(
         insert_from,
         Files::Read,
     ),
+    other(
+        "clipboard_copy",
+        "Copy to Clipboard",
+        "{ids: [id, …], level?} elements set aside for Paste (Ctrl+C), as they are now, on the plan `level` names: a paste on another \
+         level can bring them there. Nothing is written to the system's clipboard but the count. Returns {copied}",
+        clipboard_copy,
+    ),
+    edit(
+        "clipboard_cut",
+        "Cut to Clipboard",
+        &[],
+        "{ids: [id, …], level?, keep_finishes?} elements set aside for Paste (Ctrl+X) and taken out of the project, as `delete` \
+         takes them out: what Paste brings back is the elements as they were",
+        clipboard_cut,
+    ),
+    edit(
+        "clipboard_paste",
+        "Paste",
+        &[],
+        "{level?, by?: [dx, dy]} what Copy or Cut set aside, brought in as new elements with GUIDs of their own: `level` moves \
+         them onto that plan, each one's own level taken with the levels it stands on (a wall's top, a room's upper limit), and \
+         `by` moves them that far in plan. Returns {ids: [id, …], copies}",
+        clipboard_paste,
+    ),
     edit_files(
         "link",
         "Link Model",
@@ -4071,6 +4095,152 @@ fn insert_from(s: &mut Session, p: &Value) -> R {
     let made = crate::insert::insert_with(s.model_mut(), &other.model, &ids, &same).map_err(|e| bad(c, e))?;
     let there: BTreeMap<String, Id> = made.ids.iter().map(|(a, b)| (a.to_string(), *b)).collect();
     Ok(json!({"ids": there, "copies": made.copies, "library": made.library, "left_out": made.left_out, "parameters": made.parameters}))
+}
+
+/// The elements `ids` of the project as it stands, kept for [`clipboard_paste`]: the project is shared, so what changes after
+/// this leaves them as they were. `level` is the plan the copy was made in, for the paste to compare with its own.
+fn clipboard_copy(s: &mut Session, p: &Value) -> R {
+    let c = "clipboard_copy";
+    only(c, p, &["ids", "id", "level"])?;
+    let ids = ids_param(c, &s.model, p)?;
+    if ids.is_empty() {
+        return Err(bad(c, "`ids` is at least one element"));
+    }
+    let level = if absent(p.get("level")) { None } else { Some(level_param(c, &s.model, p, "level")?) };
+    s.clipboard = Some(Arc::new(crate::engine::Clipboard { model: Arc::clone(&s.model), ids, level }));
+    Ok(json!({"copied": s.clipboard.as_ref().map_or(0, |k| k.ids.len())}))
+}
+
+/// [`clipboard_copy`], and the elements taken out of the project as `delete` takes them out.
+fn clipboard_cut(s: &mut Session, p: &Value) -> R {
+    let c = "clipboard_cut";
+    only(c, p, &["ids", "id", "level", "keep_finishes"])?;
+    // The elements as they are now, then out of the project as `delete` takes them out.
+    let mut copy = p.clone();
+    if let Some(fields) = copy.as_object_mut() {
+        fields.remove("keep_finishes");
+    }
+    clipboard_copy(s, &copy).map_err(|e| e.replace("clipboard_copy", c))?;
+    let stored = s.clipboard.as_ref().map(|k| k.ids.clone()).unwrap_or_default();
+    let keep = p.get("keep_finishes").cloned().unwrap_or(Value::Null);
+    delete(s, &json!({"ids": stored, "keep_finishes": keep}))?;
+    Ok(json!({"cut": stored.len()}))
+}
+
+/// What Copy or Cut set aside, as new elements: their ids and GUIDs are new where the project has them, what they point at
+/// among themselves follows them, and `level` moves them onto another plan by the levels each stands on.
+fn clipboard_paste(s: &mut Session, p: &Value) -> R {
+    let c = "clipboard_paste";
+    only(c, p, &["level", "by"])?;
+    let Some(clip) = s.clipboard.clone() else {
+        return Err(bad(c, "nothing was copied: Ctrl+C copies what is selected, and Ctrl+X cuts it"));
+    };
+    if clip.ids.is_empty() {
+        return Err(bad(c, "nothing was copied: Ctrl+C copies what is selected, and Ctrl+X cuts it"));
+    }
+    let level = if absent(p.get("level")) { None } else { Some(level_param(c, &s.model, p, "level")?) };
+    let by = point_opt(c, p, "by")?.unwrap_or(P2(0.0, 0.0));
+    let made = crate::insert::insert_with(s.model_mut(), &clip.model, &clip.ids, &BTreeSet::new()).map_err(|e| bad(c, e))?;
+    let ids: Vec<Id> = made.ids.values().copied().collect();
+    if let Some(level) = level {
+        shift_levels(c, s, &ids, level)?;
+    }
+    if by.0 != 0.0 || by.1 != 0.0 {
+        relocate(c, s, &ids, &Motion { map: &|q| q + by, slide: Some(by), mirror: false }, None)?;
+    }
+    Ok(json!({"ids": ids, "copies": made.copies.len()}))
+}
+
+/// The elements `ids` moved onto `level`: each one's level, and every level it stands on (a wall's top, a room's upper limit),
+/// shifts by as many levels as its own moved, clamped to the project's lowest and highest.
+fn shift_levels(c: &str, s: &mut Session, ids: &[Id], level: Guid) -> Result<(), String> {
+    let m = &s.model;
+    let levels: Vec<(Guid, f64)> = m.levels().into_iter().map(|(id, l)| (m.guid(id), l.elevation)).collect();
+    let Some(target) = levels.iter().position(|(g, _)| *g == level) else {
+        return Err(bad(c, "`level` isn't one of the project's levels"));
+    };
+    let last = levels.len().saturating_sub(1) as isize;
+    let m = s.model_mut();
+    for &id in ids {
+        let Some(before) = m.elements.get(id).cloned() else { continue };
+        let Some(own) = before.refs().into_iter().find_map(|g| levels.iter().position(|(l, _)| *l == g)) else {
+            continue;
+        };
+        let delta = target as isize - own as isize;
+        if delta == 0 {
+            continue;
+        }
+        let mut e = before.clone();
+        e.refs_mut(&mut |g| {
+            if let Some(i) = levels.iter().position(|(l, _)| l == g) {
+                *g = levels[(i as isize + delta).clamp(0, last) as usize].0;
+            }
+        });
+        keep_top(&before, &mut e, &levels);
+        m.elements.insert(id, e);
+    }
+    Ok(())
+}
+
+/// A top that the shift brought down to its base keeps the element as tall as it was: what stood on a level has an unconnected
+/// height instead. A room's upper limit, which is measured from a level, keeps its height over its own.
+fn keep_top(before: &Element, e: &mut Element, levels: &[(Guid, f64)]) {
+    let at = |g: Guid| levels.iter().find(|(l, _)| *l == g).map(|(_, z)| *z);
+    // How tall it stood: its top's level (and offset) over its base's level (and offset).
+    let tall = |level: Guid, top_level: Option<Guid>, top_offset: f64, base_offset: f64| -> Option<f64> {
+        Some(at(top_level?)? + top_offset - at(level)? - base_offset)
+    };
+    match (before, e) {
+        (Element::Wall(old), Element::Wall(w)) if w.top_level == Some(w.level) => {
+            if let Some(h) = tall(old.level, old.top_level, old.top_offset, old.base_offset) {
+                w.height = h;
+                w.top_level = None;
+                w.top_offset = 0.0;
+            }
+        }
+        (Element::Shaft(old), Element::Shaft(sh)) if sh.top_level == Some(sh.level) => {
+            if let Some(h) = tall(old.level, old.top_level, 0.0, old.base_offset) {
+                sh.height = h;
+                sh.top_level = None;
+            }
+        }
+        (Element::Mass(old), Element::Mass(mass)) if mass.top_level == Some(mass.level) => {
+            if let Some(h) = tall(old.level, old.top_level, 0.0, old.base_offset) {
+                mass.height = h;
+                mass.top_level = None;
+            }
+        }
+        (Element::Column(old), Element::Column(col))
+        | (Element::StructuralColumn(old), Element::StructuralColumn(col))
+        | (Element::Footing(old), Element::Footing(col))
+            if col.top_level == Some(col.level) =>
+        {
+            if let Some(h) = tall(old.level, old.top_level, old.top_offset, old.base_offset) {
+                col.height = h;
+                col.top_level = None;
+                col.top_offset = 0.0;
+            }
+        }
+        (Element::Stair(old), Element::Stair(st)) if st.top_level == Some(st.level) => {
+            if let Some(h) = tall(old.level, old.top_level, 0.0, 0.0) {
+                st.height = h;
+                st.top_level = None;
+            }
+        }
+        (Element::Ramp(old), Element::Ramp(rm)) if rm.top_level == Some(rm.level) => {
+            if let Some(h) = tall(old.level, old.top_level, 0.0, 0.0) {
+                rm.height = h;
+                rm.top_level = None;
+            }
+        }
+        (Element::Room(old), Element::Room(room)) if room.top_level == Some(room.level) => {
+            if let Some(h) = tall(old.level, old.top_level, old.limit_offset, 0.0) {
+                room.limit_offset = h;
+                room.top_level = None;
+            }
+        }
+        _ => {}
+    }
 }
 
 /// The project a link's `path` names, read as `open` reads it: its own links are not followed.

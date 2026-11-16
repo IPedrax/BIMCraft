@@ -158,9 +158,22 @@ pub const READ_ONLY: &str = "which is read-only for agents";
 /// The commands that copy what stands: a copy is made in the session's phase and isn't taken down with its original.
 const COPIES: [&str; 3] = ["copy", "mirror", "rotate"];
 
+/// What Copy (Ctrl+C) and Cut (Ctrl+X) put aside, and Paste (Ctrl+V) brings back: the project as it stood, the elements in it,
+/// and the level the copy was made on. The project is shared, not copied: a later change makes its own (Arc), and what was
+/// taken stays as it was.
+#[derive(Clone)]
+pub struct Clipboard {
+    pub model: Arc<Model>,
+    pub ids: Vec<Id>,
+    /// The plan the copy was made in; none when it wasn't a plan.
+    pub level: Option<crate::model::Guid>,
+}
+
 #[cfg_attr(test, derive(Clone))]
 pub struct Session {
     pub model: Arc<Model>,
+    /// What Copy or Cut put aside, and Paste brings back; kept as the project changes, and across New and Open.
+    pub clipboard: Option<Arc<Clipboard>>,
     /// Where the model was opened from or last saved to.
     pub path: Option<PathBuf>,
     /// The phase, and the design option (`set: option`), what a command makes is made in; none: the
@@ -260,6 +273,7 @@ impl Session {
     pub fn new() -> Session {
         Session {
             model: Arc::new(Model::new("Project")),
+            clipboard: None,
             path: None,
             phase: None,
             option: None,
