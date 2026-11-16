@@ -24,14 +24,14 @@ fn broken(s: &mut Session, id: u64) -> Vec<String> {
 
 #[test]
 fn every_code_reads_names_its_sources_and_keeps_its_own_rules() {
-    let all = codes();
+    let all: Vec<&BuildingCode> = of(Discipline::Architectural).collect();
     let names: Vec<&str> = all.iter().map(|c| c.code.as_str()).collect();
     assert_eq!(names, ["generic", "nbr-9050", "nbr-9077", "ibc", "din", "jis"]);
     for c in all {
-        c.stairs.check().unwrap_or_else(|e| panic!("{}: {e}", c.code));
+        c.stairs().check().unwrap_or_else(|e| panic!("{}: {e}", c.code));
         assert!(!c.name.is_empty() && !c.note.is_empty(), "{}", c.code);
         assert!(c.code == GENERIC || !c.references.is_empty(), "{} names no source", c.code);
-        let r = &c.stairs;
+        let r = &c.stairs();
         // What a new stair starts with is inside the code it starts under.
         assert!((r.riser_min..=r.riser_max).contains(&r.riser), "{}", c.code);
         assert!((r.going_min..=r.going_max).contains(&r.going), "{}", c.code);
@@ -201,13 +201,36 @@ fn a_stair_stands_by_its_location_line_which_stays_when_it_widens() {
 #[test]
 fn a_file_with_rules_that_cannot_be_is_refused_and_an_unknown_code_is_generic() {
     let mut m = Model::new("x");
-    m.building_code = Some("mars".into());
+    m.codes.architectural.code = Some("mars".into());
     assert_eq!(m.building_code().code, GENERIC);
     m.check().unwrap();
-    let mut rules = code("ibc").unwrap().stairs.clone();
-    rules.headroom = f64::NAN;
-    m.stair_rules = Some(rules);
+    m.codes.architectural.changes.insert("stairs".into(), json!({"headroom": -1}).as_object().cloned().unwrap());
     assert!(m.check().unwrap_err().contains("headroom"));
+
+    // A file as #386 wrote it: its code, every stair rule and its own codes, taken in as the architectural choice.
+    let mut rules = code("nbr-9050").unwrap().stairs();
+    rules.width_min = 1100.0;
+    let mut v: Value = serde_json::from_str(&Model::new("old").to_json().unwrap()).unwrap();
+    v["building_code"] = json!("nbr");
+    v["stair_rules"] = serde_json::to_value(&rules).unwrap();
+    let mut own = serde_json::to_value(code("din").unwrap()).unwrap();
+    own["code"] = json!("Ours");
+    own["name"] = json!("Ours");
+    own["stairs"] = own["sections"]["stairs"].take();
+    own.as_object_mut().unwrap().remove("sections");
+    own.as_object_mut().unwrap().remove("default");
+    own["sources"] = json!({"riser_max": "ours"});
+    v["building_codes"] = json!([own]);
+    let (back, left_out) = Model::read(&v.to_string()).unwrap();
+    assert!(left_out.is_empty(), "{left_out:?}");
+    assert_eq!(back.building_code().code, "nbr-9050");
+    assert_eq!(back.stair_rules().width_min, 1100.0);
+    assert_eq!(back.codes.architectural.changes["stairs"].keys().collect::<Vec<_>>(), ["width_min"], "the rest is the code's");
+    let ours = back.code("Ours").unwrap();
+    assert_eq!(ours.source("stairs", "riser_max").as_deref(), Some("ours"));
+    assert_eq!(ours.stairs(), code("din").unwrap().stairs());
+    let again = back.to_json().unwrap();
+    assert!(!again.contains("stair_rules") && !again.contains("\"building_code\""), "written the new way only");
 }
 
 #[test]
@@ -286,7 +309,12 @@ fn a_project_saves_its_rules_as_a_code_of_its_own_and_hands_it_on_as_xml() {
     let path = dir.join("it11.xml").to_string_lossy().to_string();
     run(&mut s, "building_code_export", json!({"path": path}));
     let text = std::fs::read_to_string(&path).unwrap();
-    assert!(text.contains("<rule name=\"width_min\" value=\"1100.0\" source=\"São Paulo IT 11: the project's own number\"/>"), "{text}");
+    assert!(
+        text.contains(
+            "<rule name=\"width_min\" value=\"1100.0\" source=\"São Paulo IT 11: the project's own number\" kind=\"assumption\"/>"
+        ),
+        "{text}"
+    );
     assert!(text.contains("name=\"São Paulo IT 11\"") && text.contains("source=\"NBR 9050:2020 6.8.2\""), "the sources go with it: {text}");
     let mut other = Session::new();
     let r = run(&mut other, "building_code_import", json!({"path": path, "set": true}));
@@ -301,14 +329,14 @@ fn a_project_saves_its_rules_as_a_code_of_its_own_and_hands_it_on_as_xml() {
     assert_eq!(r["code"], "A & B");
     assert_eq!(r["left_out"], json!(["rule `colour`", "<extra>"]));
     let own = other.model.code("A & B").unwrap();
-    assert_eq!((own.stairs.riser_max, own.stairs.going), (170.0, 280.0));
+    assert_eq!((own.stairs().riser_max, own.stairs().going), (170.0, 280.0));
     assert_eq!(other.model.building_code().code, "São Paulo IT 11", "not set: the project stays as it was");
 
     // A code BIMCraft has, exported as it is, needs a name of the project's own to come back.
     run(&mut other, "building_code_export", json!({"path": hand, "code": "ibc"}));
     assert!(other.execute("building_code_import", &json!({"path": hand})).unwrap_err().contains("name"));
     run(&mut other, "building_code_import", json!({"path": hand, "name": "IBC, ours"}));
-    assert_eq!(other.model.code("IBC, ours").unwrap().stairs.riser_max, 177.8);
+    assert_eq!(other.model.code("IBC, ours").unwrap().stairs().riser_max, 177.8);
 
     // Taken away while the project is held to it: the rules stay, as its own, under the code it was based on.
     let r = run(&mut s, "building_code", json!({"delete": "São Paulo IT 11"}));
@@ -1159,7 +1187,7 @@ fn the_brazilian_standards_are_two_codes_each_number_with_its_item() {
         let c = code(name).unwrap();
         assert!(!c.checked.is_empty(), "{name} was checked against its text");
         for rule in ORDER {
-            assert!(c.sources.contains_key(rule), "{name}: `{rule}` names no source");
+            assert!(c.source("stairs", rule).is_some(), "{name}: `{rule}` names no source");
         }
     }
     assert_eq!(code("nbr").unwrap().code, "nbr-9050", "a project made with `nbr` keeps its rules");

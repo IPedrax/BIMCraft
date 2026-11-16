@@ -12,7 +12,7 @@ use crate::rebar::{DIAMETERS, GRADE, MAX_BARS};
 use crate::view3d::{P3, add, mul, sub, unit};
 use crate::walls::Plane;
 
-mod norm;
+pub mod norm;
 use norm::Norm;
 
 /// A bar to make: on `layer` of its host's, `diameter` mm thick, of steel `grade`, along `path` (mm, over the host's level).
@@ -385,28 +385,31 @@ pub struct Made {
     pub notes: Vec<String>,
 }
 
-/// The standard a `check` names, with what it is told: only NBR 6118.
-fn norm(a: &mut Args) -> Result<Option<Norm>, String> {
+/// The standard a `check` names, with what it is told: the project's structural code's Concrete section, which names it
+/// (`NBR 6118` in BIMCraft's library).
+fn norm(a: &mut Args, m: &Model) -> Result<Option<Norm>, String> {
+    let rules = m.rules::<norm::ConcreteRules>();
     let check = a.take::<String>("check")?;
     let class = a.take::<u8>("aggressiveness")?;
     let fck = a.take::<f64>("fck")?;
     let Some(name) = check else {
         return match (class, fck) {
             (None, None) => Ok(None),
-            _ => Err("reinforce: `aggressiveness` and `fck` go with `check`: give `check` \"NBR 6118\"".into()),
+            _ => Err(format!("reinforce: `aggressiveness` and `fck` go with `check`: give `check` {:?}", rules.standard)),
         };
     };
-    let key: String = name.chars().filter(char::is_ascii_alphanumeric).collect::<String>().to_ascii_lowercase();
-    if !key.starts_with("nbr6118") {
-        return Err(format!("reinforce: `check` {name:?} isn't one this knows: it is \"NBR 6118\""));
+    let key = |t: &str| t.chars().filter(char::is_ascii_alphanumeric).collect::<String>().to_ascii_lowercase();
+    if !key(&name).starts_with(&key(&rules.standard)) || rules.standard.is_empty() {
+        return Err(format!("reinforce: `check` {name:?} isn't the project's structural code's: it is {:?}", rules.standard));
     }
-    if class.is_some_and(|c| !(1..=4).contains(&c)) {
-        return Err("reinforce: `aggressiveness` is the class 1 to 4 (I to IV)".into());
+    let classes = rules.classes.len();
+    if class.is_some_and(|c| c == 0 || usize::from(c) > classes) {
+        return Err(format!("reinforce: `aggressiveness` is the class 1 to {classes} ({})", rules.classes.join(", ")));
     }
     if fck.is_some_and(|c| !(10.0..=100.0).contains(&c)) {
         return Err("reinforce: `fck` is the concrete's strength in MPa, 10 to 100".into());
     }
-    Ok(Some(Norm { class, fck }))
+    Ok(Some(Norm { class, fck, rules }))
 }
 
 pub fn bars(m: &Model, host: &Element, p: &Value) -> Result<Made, String> {
@@ -421,7 +424,7 @@ pub fn bars(m: &Model, host: &Element, p: &Value) -> Result<Made, String> {
         Some(x) => Some(length("clearance", x)?),
         None => None,
     };
-    let check = norm(&mut a)?;
+    let check = norm(&mut a, m)?;
     let cv = cover(a.take("cover")?, own)?;
     let x = Common { cover: cv, grade, grade_stirrup, clearance };
     let (bars, notes) = match host {

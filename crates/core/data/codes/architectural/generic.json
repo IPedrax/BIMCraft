@@ -1,0 +1,39 @@
+{
+ "code": "generic",
+ "discipline": "architectural",
+ "name": "No building code",
+ "default": true,
+ "note": "No code's numbers: wide ranges round common practice, so a stair is reported only when it is far from any stair one would build.",
+ "sections": {
+  "stairs": {
+   "riser": 180,
+   "going": 280,
+   "riser_min": 100,
+   "riser_max": 220,
+   "going_min": 210,
+   "going_max": 400,
+   "step_min": 550,
+   "step_max": 700,
+   "width_min": 800,
+   "headroom": 2000,
+   "flight_rise_max": 4000,
+   "flight_risers_max": 22,
+   "landing_rule": "width",
+   "landing_length": 1200,
+   "winders": true,
+   "walk_line": "centre",
+   "walk_line_offset": 300,
+   "winder_going_min": 210,
+   "winder_narrow_min": 100,
+   "nosing_max": 40,
+   "open_risers": true,
+   "uniformity": 10,
+   "handrail_min": 800,
+   "handrail_max": 1100,
+   "guard_min": 900
+  }
+ },
+ "kinds": {
+  "stairs": "forgiving"
+ }
+}

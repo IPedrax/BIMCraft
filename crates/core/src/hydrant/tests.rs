@@ -8,16 +8,17 @@ fn near(a: f64, b: f64, e: f64) -> bool {
 
 #[test]
 fn tabela_2_is_as_printed() {
-    let t = |k: &str| kind(k).map(|t| (t.1, t.2, t.5, t.6));
+    let lib = crate::codes::library_rules::<HydrantRules>();
+    let t = |k: &str| lib.kind(k).map(|t| (t.kind, t.nozzle_dn, t.jet_flow, t.nozzle_head));
     assert_eq!(t("1"), Some((1, 25.0, 100.0, 80.0)));
     assert_eq!(t("2"), Some((2, 40.0, 150.0, 30.0)));
     assert_eq!(t("3"), Some((3, 40.0, 200.0, 40.0)));
     assert_eq!(t("4-40"), Some((4, 40.0, 300.0, 65.0)));
     assert_eq!(t("4-65"), Some((4, 65.0, 300.0, 30.0)));
     assert_eq!(t("5"), Some((5, 65.0, 600.0, 60.0)));
-    assert_eq!(TYPE_KEYS.len(), TYPES.len());
-    assert!(TYPE_KEYS.iter().zip(TYPES).all(|(k, t)| *k == t.0));
-    assert!(kind("6").is_none());
+    let keys: Vec<&str> = lib.types.iter().map(|t| t.key.as_str()).collect();
+    assert_eq!(keys, ["1", "2", "3", "4-40", "4-65", "5"]);
+    assert!(lib.kind("6").is_none());
 }
 
 #[test]

@@ -108,7 +108,7 @@ fn choices(key: &str) -> &'static [(&'static str, &'static str)] {
 }
 
 fn rules_of(m: &Model, code: &str) -> Map<String, Value> {
-    let rules = &m.code(code).unwrap_or(codes::generic()).stairs;
+    let rules = &m.code(code).unwrap_or(codes::generic()).stairs();
     match serde_json::to_value(rules) {
         Ok(Value::Object(o)) => o,
         _ => Map::new(),
@@ -285,7 +285,7 @@ fn changed(now: &Value, code: &Value) -> bool {
 
 fn stairs_tab(ui: &mut Ui, m: &Model, d: &mut CodesDialog) {
     let own = rules_of(m, &d.selected);
-    let sources = m.code(&d.selected).map(|c| c.sources.clone()).unwrap_or_default();
+    let held = m.code(&d.selected).cloned().unwrap_or_default();
     let units = m.units;
     let mut group = "";
     Grid::new("building-code-stairs").striped(true).num_columns(3).min_col_width(150.0).show(ui, |ui| {
@@ -328,7 +328,7 @@ fn stairs_tab(ui: &mut Ui, m: &Model, d: &mut CodesDialog) {
                 .collect();
             if moved.is_empty() {
                 // Where the number comes from, so anyone can check it against its document.
-                let from: Vec<&str> = keys.iter().filter_map(|(k, _)| sources.get(*k).map(String::as_str)).collect();
+                let from: Vec<String> = keys.iter().filter_map(|(k, _)| held.source("stairs", k)).collect();
                 let mut from = from;
                 from.dedup();
                 if from.is_empty() {

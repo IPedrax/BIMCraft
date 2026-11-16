@@ -13,7 +13,7 @@ fn building_codes_choose_a_code_and_change_its_rules() {
     {
         let d = h.state_mut().codes_dialog.as_mut().unwrap();
         d.selected = "ibc".into();
-        d.rules = serde_json::to_value(&bimcraft_core::codes::code("ibc").unwrap().stairs).unwrap().as_object().unwrap().clone();
+        d.rules = serde_json::to_value(bimcraft_core::codes::code("ibc").unwrap().stairs()).unwrap().as_object().unwrap().clone();
         d.rules.insert("width_min".into(), serde_json::json!(914.4));
     }
     h.run();
@@ -62,7 +62,7 @@ fn a_code_changed_is_custom_and_is_saved_under_a_name_and_deleted() {
     {
         let d = h.state_mut().codes_dialog.as_mut().unwrap();
         d.selected = "nbr-9050".into();
-        d.rules = serde_json::to_value(&bimcraft_core::codes::code("nbr-9050").unwrap().stairs).unwrap().as_object().unwrap().clone();
+        d.rules = serde_json::to_value(bimcraft_core::codes::code("nbr-9050").unwrap().stairs()).unwrap().as_object().unwrap().clone();
     }
     h.run();
     assert!(h.query_by_label("Custom").is_none(), "the code's own rules");

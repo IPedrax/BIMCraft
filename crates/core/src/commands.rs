@@ -2396,40 +2396,82 @@ other_files(
         "building_code",
         "Building Codes",
         &[],
-        "{set?: generic|nbr|ibc|din|jis, keep_rules?: bool, stairs?: {…rules}, reset?: bool} the project's building code, which its stairs \
-         and railings are held to (apart from its technical standard, which is about drafting): `generic` (none, wide ranges), `nbr` \
-         (NBR 9050 and 9077), `ibc`, `din` (DIN 18065) or `jis` (Japan's Building Standards Law). `set` chooses one and brings its \
-         rules, unless `keep_rules` keeps the project's own. `stairs` changes rules of the project's own (a state's or a city's \
-         numbers), each by name, mm: `riser` and `going` a new stair starts with; `riser_min`, `riser_max`, `going_min`, `going_max`; \
-         `step_min`, `step_max` (two risers and a going); `width_min`; `headroom`; `flight_rise_max` and `flight_risers_max` (a \
-         landing is due at whichever comes first); `landing_rule` (`width`, `fixed` or `step`) and `landing_length`; `winders` \
-         (allowed or not), `walk_line` (`centre` or `narrow_side`), `walk_line_offset`, `winder_going_min`, `winder_narrow_min`; \
-         `nosing_max`; `open_risers`; `uniformity`; `handrail_min`, `handrail_max`; `guard_min`. `reset` takes the project's own \
-         rules away, back to its code's. `save`: \"name\" keeps the rules in force as a code of the project's own under that name \
-         (in place of one of that name), and holds the project to it; `set` takes such a name too, and `delete`: \"name\" takes \
-         one away (a project held to it keeps its rules). Nothing is refused for breaking a rule: `stair_check` reports it. The reply gives the \
-         `code`, its `name`, `references` and `note`, the rules in force (`stairs`), which of them the project `changed`, and `all` \
-         the codes. The codes' numbers were typed from memory of the documents named and are unchecked",
+        "{discipline?: architectural|structural|electrical|mechanical|plumbing, set?, amendments?: [code, …], keep_rules?: bool, \
+         rules?: {section: {rule: value, …}, …}, stairs?: {…}, reset?: true|section, save?: name, delete?: name} the project's \
+         building code for one discipline (architectural where none is named), apart from its technical standard, which is about \
+         drafting. A code is BIMCraft's (`data/codes/`) or one of the project's own; its rules are grouped in sections (`code_rules` \
+         lists them: stairs, ramps, rooms…; plumbing's fixtures, cold_water, drainage…). `set` chooses the base code and brings its \
+         rules, unless `keep_rules` keeps the project's changes; `amendments` lays codes over it in order (a fire brigade's \
+         instruction over a standard, a member's document over its group's), each amending the base or one before it. `rules` \
+         changes rules for the project (a state's or a city's numbers), each by its name in its section, whole: a table is given \
+         whole; `stairs` is `rules.stairs`. The architectural stairs' rules, mm: `riser` and `going` a new stair starts with; \
+         `riser_min`, `riser_max`, `going_min`, `going_max`; `step_min`, `step_max` (two risers and a going); `width_min`; \
+         `headroom`; `flight_rise_max` and `flight_risers_max`; `landing_rule` (`width`, `fixed` or `step`) and `landing_length`; \
+         `winders`, `walk_line` (`centre` or `narrow_side`), `walk_line_offset`, `winder_going_min`, `winder_narrow_min`; \
+         `nosing_min`, `nosing_max`; `open_risers`; `uniformity`; `handrail_min`, `handrail_max`; `guard_min`. `reset` takes the \
+         project's changes away, all or a section's. `save`: \"name\" keeps the rules in force as a code of the project's own and \
+         holds the project to it; `delete`: \"name\" takes one away (a project held to it keeps its rules). The editions of the \
+         codes chosen are pinned: a newer edition in the library changes nothing until the code is chosen again \
+         (`editions_gone` says where the library no longer has the edition pinned). Nothing is refused for breaking a rule: \
+         `code_check` reports it. The reply gives the base `code`, `name`, `edition`, `references`, `note`, `amendments`, the \
+         rules in force by section (`sections`), what the project changed (`changes`), `all` the codes it may choose, and for \
+         the architectural discipline `stairs` and `changed` (the stair rules changed). Unless a code says it was `checked`, its \
+         numbers are unchecked",
         building_code,
     )
     .menu("Manage > Building Codes"),
     other(
         "building_code_export",
         "Export Building Code",
-        "{path, code?, name?} writes a building code as an XML file, to hand to another project or office: the project's, with \
-         the rules it changed, or the one `code` names; `name` is what the file calls it (a code BIMCraft has needs another name \
-         to be read back). A <rule name value/> for each rule, mm",
+        "{path, discipline?, all?: bool, code?, name?} writes building codes as an XML file, to hand to another project or office: \
+         the discipline's rules in force (base, amendments and the project's changes, each rule with its source), or the one \
+         `code` names, or with `all` the five disciplines' in one file; `name` is what the file calls it (a code BIMCraft has \
+         needs another name to be read back). A <section> for each section, a <rule name value/> for each rule (mm), a table \
+         as <rule name json/>",
         building_code_export,
     ),
     edit(
         "building_code_import",
         "Import Building Code",
         &[],
-        "{path, name?, set?: bool} reads a building code from an XML file `building_code_export` wrote (or one written by hand: \
-         <building-code name=\"…\"><stairs><rule name=\"riser_max\" value=\"180\"/>…</stairs></building-code>) and keeps it as one of \
-         the project's own, under the file's name or `name`, in place of one of that name; a rule the file leaves out is the generic \
-         code's, and what it holds that this version doesn't know is listed as `left_out`. `set` holds the project to it",
+        "{path, name?, set?: bool} reads building codes from an XML file `building_code_export` wrote (one, or a file of all \
+         five; or #386's stairs-only file, or one written by hand: <building-code name=\"…\"><stairs><rule name=\"riser_max\" \
+         value=\"180\"/>…</stairs></building-code>) and keeps each as one of the project's own, under its name or, the first, \
+         `name`. A rule the file leaves out is the code's it is based on (else the discipline's default), and what it holds that \
+         this version doesn't know is listed as `left_out`. `set` holds the project to them: a base is chosen, an amendment laid \
+         over it",
         building_code_import,
+    ),
+    other(
+        "code_rules",
+        "Building Code Rules",
+        "{discipline?, section?} the rules in force for a discipline (architectural where none is named), by section: each \
+         `rule`, its `value`, where it comes `from` (the base, an amendment, the library where none of the project's codes has the \
+         section, or the project), its `source` (the document, item and page) and its `kind` (requirement, recommendation, \
+         practice, assumption, historical, forgiving). Each section says what `read_by` it (commands and checks) and whether it is \
+         a `reference` only, which nothing checks yet",
+        code_rules,
+    ),
+    edit(
+        "site_climate",
+        "Site and Climate",
+        &[],
+        "{rain_intensity?, rain_return_period?, thunderstorms?: AQ1|AQ2|AQ3, wind_speed?, ground_snow?, seismic_zone?, \
+         frost_depth?, climate_zone?, altitude?, cooling_design?, heating_design?, sources?: {key: text}} the numbers a code's \
+         maps give for the project's place, shared by every discipline: rainfall mm/h for its return period in years, basic wind \
+         speed m/s, ground snow kN/m², frost depth mm, altitude m, outdoor design temperatures °C; `sources` says, for each, the \
+         map or table it was read from. `null` takes one away. `storm_size` reads the rain and `dps_check` the thunderstorms \
+         when they aren't given",
+        site_climate,
+    ),
+    other(
+        "code_check",
+        "Check Building Codes",
+        "{ids?: [id, …]} where elements are outside the project's building codes: for each element (those in `ids`, else all) \
+         that is outside a rule, its `id`, `category` and `findings`, each the `rule` broken, the element's `value`, the rule's \
+         `limit` and a `message` saying what to change; `count` is how many in all. Stairs today. It reads and never changes \
+         an element: what is outside a rule is still built",
+        code_check,
     ),
     edit(
         "stair_sketch",
@@ -6648,9 +6690,12 @@ fn conduit_fill(_: &mut Session, p: &Value) -> R {
     }))
 }
 
-fn drain_size(_: &mut Session, p: &Value) -> R {
-    use crate::drainage::{self, Role};
+fn drain_size(s: &mut Session, p: &Value) -> R {
+    use crate::drainage::Role;
     let c = "drain_size";
+    // The project's rules: its plumbing code's Sanitary Drainage and Fixtures.
+    let rules = s.model.rules::<crate::drainage::DrainageRules>();
+    let library = s.model.rules::<crate::plumbing::Fixtures>();
     let o = p.as_object().ok_or_else(|| bad(c, "params must be an object"))?;
     const KEYS: &[&str] = &["units", "fixtures", "role", "slope", "floors", "min_dn"];
     if let Some(key) = o.keys().find(|k| !KEYS.contains(&k.as_str())) {
@@ -6664,8 +6709,10 @@ fn drain_size(_: &mut Session, p: &Value) -> R {
         Some(Value::Object(f)) => {
             let mut sum = 0.0;
             for (kind, n) in f {
-                let (u, dn) = drainage::fixture(kind)
-                    .ok_or_else(|| bad(c, format!("`fixtures`: no fixture `{kind}`, use {}", crate::plumbing::kinds().join(", "))))?;
+                let (u, dn) = library
+                    .fixture(kind)
+                    .map(|f| (f.uhc, f.drain_dn))
+                    .ok_or_else(|| bad(c, format!("`fixtures`: no fixture `{kind}`, use {}", library.kinds().join(", "))))?;
                 let n = n
                     .as_f64()
                     .filter(|n| n.is_finite() && *n >= 0.0 && *n <= 10_000.0 && n.fract() == 0.0)
@@ -6687,9 +6734,9 @@ fn drain_size(_: &mut Session, p: &Value) -> R {
     let role = Role::parse(choice(c, p, "role", &["branch", "main", "stack"], "branch")?).unwrap_or(Role::Branch);
     let slope = within(c, p, "slope", 0.01, 0.0, 1.0)?;
     let floors = within(c, p, "floors", 1.0, 1.0, 1000.0)?.round() as u32;
-    let dn = drainage::smallest(units, slope, role, floors, minimum)
+    let dn = rules.smallest(units, slope, role, floors, minimum)
         .ok_or_else(|| {
-        let most = drainage::DNS.iter().map(|dn| (*dn, drainage::capacity(*dn, slope, role, floors))).fold((0.0, 0.0), |a, b| if b.1 > a.1 { b } else { a });
+        let most = rules.dns.iter().map(|dn| (*dn, rules.capacity(*dn, slope, role, floors))).fold((0.0, 0.0), |a, b| if b.1 > a.1 { b } else { a });
         bad(
             c,
             format!(
@@ -6698,12 +6745,12 @@ fn drain_size(_: &mut Session, p: &Value) -> R {
             ),
         )
     })?;
-    Ok(json!({"units": units, "dn": dn, "capacity": drainage::capacity(dn, slope, role, floors), "minimum_dn": minimum}))
+    Ok(json!({"units": units, "dn": dn, "capacity": rules.capacity(dn, slope, role, floors), "minimum_dn": minimum}))
 }
 
-fn vent_size(_: &mut Session, p: &Value) -> R {
-    use crate::drainage;
+fn vent_size(s: &mut Session, p: &Value) -> R {
     let c = "vent_size";
+    let rules = s.model.rules::<crate::drainage::DrainageRules>();
     let o = p.as_object().ok_or_else(|| bad(c, "params must be an object"))?;
     const KEYS: &[&str] = &["units", "wc", "stack_dn", "length", "trap_dn"];
     if let Some(key) = o.keys().find(|k| !KEYS.contains(&k.as_str())) {
@@ -6713,10 +6760,11 @@ fn vent_size(_: &mut Session, p: &Value) -> R {
     if units <= 0.0 {
         return Err(bad(c, "`units` (UHC of what it vents) is required"));
     }
-    let dns = drainage::DNS;
+    let dns = &rules.dns;
     let mut out = serde_json::Map::new();
     let dn = if absent(p.get("stack_dn")) {
-        drainage::branch_vent(units, flag(c, p, "wc")?)
+        rules
+            .branch_vent(units, flag(c, p, "wc")?)
             .ok_or_else(|| bad(c, format!("{units} UHC is more than the table gives a branch vent (Tabela 8)")))?
     } else {
         let served = within(c, p, "stack_dn", 0.0, 0.0, 1000.0)?;
@@ -6727,15 +6775,19 @@ fn vent_size(_: &mut Session, p: &Value) -> R {
             return Err(bad(c, "`length` (mm, from the foot to the open end) is required with `stack_dn`"));
         }
         let length = within(c, p, "length", 0.0, 0.0, MAX_COORD)? / 1000.0;
-        let dn = drainage::vent_stack(served, units, length)
+        let dn = rules
+            .vent_stack(served, units, length)
             .ok_or_else(|| bad(c, "no vent of the table (Tabela 2) is long enough for that, or the units pass its last row"))?;
-        out.insert("longest_m".into(), json!(drainage::vent_stack_limit(served, units, dn)));
+        out.insert("longest_m".into(), json!(rules.vent_stack_limit(served, units, dn)));
         dn
     };
     out.insert("dn".into(), json!(dn));
     if !absent(p.get("trap_dn")) {
         let t = within(c, p, "trap_dn", 0.0, 0.0, 1000.0)?;
-        let mm = drainage::trap_distance(t).ok_or_else(|| bad(c, "`trap_dn` must be 40, 50, 75 or 100 (Tabela 1)"))?;
+        let mm = rules.trap_distance(t).ok_or_else(|| {
+            let dns: Vec<String> = rules.trap_to_vent.iter().map(|r| r[0].to_string()).collect();
+            bad(c, format!("`trap_dn` must be one of {} (the trap's table)", dns.join(", ")))
+        })?;
         out.insert("trap_to_vent_mm".into(), json!(mm));
     }
     Ok(Value::Object(out))
@@ -7904,9 +7956,13 @@ fn bath_volumes(_: &mut Session, p: &Value) -> R {
     }))
 }
 
-fn hydrant_size(_: &mut Session, p: &Value) -> R {
-    use crate::hydrant::{self, MATERIALS, MAX_NOZZLE_HEAD, MAX_SPEED, TYPE_KEYS};
+fn hydrant_size(s: &mut Session, p: &Value) -> R {
+    use crate::hydrant;
     let c = "hydrant_size";
+    // The project's rules: its plumbing code's Hydrants (CBPMESP IT 22 in BIMCraft's library).
+    let rules = s.model.rules::<hydrant::HydrantRules>();
+    let keys: Vec<&str> = rules.types.iter().map(|t| t.key.as_str()).collect();
+    let columns = rules.reserve.len().max(1) as f64;
     let o = p.as_object().ok_or_else(|| bad(c, "params must be an object"))?;
     const KEYS: &[&str] = &["region", "column", "area", "type", "hydrants", "inside", "nominal", "material", "length", "rise"];
     if let Some(key) = o.keys().find(|k| !KEYS.contains(&k.as_str())) {
@@ -7923,17 +7979,17 @@ fn hydrant_size(_: &mut Session, p: &Value) -> R {
     let mut system: Option<(u8, f64)> = None;
     if has_column || has_area {
         if !has_column {
-            return Err(bad(c, "`column` (1 to 5, of IT 22's Tabela 3) is required with `area`"));
+            return Err(bad(c, format!("`column` (1 to {columns}, of the code's reserve table) is required with `area`")));
         }
         if !has_area {
             return Err(bad(c, "`area` (m², built) is required with `column`"));
         }
-        let column = within(c, p, "column", 1.0, 1.0, 5.0)?;
+        let column = within(c, p, "column", 1.0, 1.0, columns)?;
         if column.fract() != 0.0 {
-            return Err(bad(c, "`column` must be a whole number from 1 to 5"));
+            return Err(bad(c, format!("`column` must be a whole number from 1 to {columns}")));
         }
         let area = within(c, p, "area", 0.0, f64::MIN_POSITIVE, 1.0e8)?;
-        system = hydrant::system_for(column as u8, area);
+        system = rules.system_for(column as u8, area);
     }
     let mut out = serde_json::Map::new();
     if let Some((t, rti)) = system {
@@ -7947,12 +8003,12 @@ fn hydrant_size(_: &mut Session, p: &Value) -> R {
             }
             Some((t, _)) if t != 4 => Some(t.to_string()),
             Some(_) => None,
-            None => return Err(bad(c, "`type` (1, 2, 3, 4-40, 4-65 or 5) or `column` and `area` is required")),
+            None => return Err(bad(c, format!("`type` ({}) or `column` and `area` is required", keys.join(", ")))),
         }
     } else {
-        let key = choice(c, p, "type", TYPE_KEYS, "")?;
-        if let (Some((t, _)), Some(row)) = (system, hydrant::kind(key))
-            && row.1 != t
+        let key = choice(c, p, "type", &keys, "")?;
+        if let (Some((t, _)), Some(row)) = (system, rules.kind(key))
+            && row.kind != t
         {
             return Err(bad(
                 c,
@@ -7966,14 +8022,14 @@ fn hydrant_size(_: &mut Session, p: &Value) -> R {
     if hydrants.fract() != 0.0 {
         return Err(bad(c, "`hydrants` must be a whole number from 1 to 1000"));
     }
-    let Some(t) = hydrant::kind(&key) else { return Err(bad(c, format!("no system type `{key}`"))) };
-    let flow = hydrant::design_flow(&key, hydrants as u32);
+    let Some(t) = rules.kind(&key) else { return Err(bad(c, format!("no system type `{key}`"))) };
+    let flow = rules.design_flow(&key, hydrants as u32);
     out.insert("type".into(), json!(key));
     out.insert("flow_lpm".into(), json!(flow));
-    out.insert("nozzle_head_mca".into(), json!(t.6));
-    out.insert("hose_dn_mm".into(), json!(t.3));
-    out.insert("hose_length_m".into(), json!(t.4));
-    let mut ok = t.6 <= MAX_NOZZLE_HEAD;
+    out.insert("nozzle_head_mca".into(), json!(t.nozzle_head));
+    out.insert("hose_dn_mm".into(), json!(t.hose_dn));
+    out.insert("hose_length_m".into(), json!(t.hose_length));
+    let mut ok = t.nozzle_head <= rules.max_nozzle_head;
     if absent(p.get("inside")) {
         if !absent(p.get("nominal")) {
             return Err(bad(c, "`nominal` needs the pipe's `inside` diameter (mm)"));
@@ -7981,40 +8037,48 @@ fn hydrant_size(_: &mut Session, p: &Value) -> R {
         return Ok(Value::Object(out));
     }
     let inside = within(c, p, "inside", 0.0, f64::MIN_POSITIVE, 5000.0)?;
-    let material = choice(c, p, "material", &MATERIALS.iter().map(|m| m.0).collect::<Vec<_>>(), "steel")?;
-    let cf = hydrant::hazen_c(material).unwrap_or(120.0);
+    let materials: Vec<&str> = rules.hazen_c.iter().map(|m| m.material.as_str()).collect();
+    let first = if materials.contains(&"steel") { "steel" } else { materials.first().copied().unwrap_or("") };
+    let material = choice(c, p, "material", &materials, first)?;
+    let cf = rules.hazen_c(material).ok_or_else(|| bad(c, format!("`material` is one of {}", materials.join(", "))))?;
     let length = within(c, p, "length", 0.0, 0.0, MAX_COORD)? / 1000.0;
     let rise = within(c, p, "rise", 0.0, -MAX_COORD, MAX_COORD)? / 1000.0;
     let (v, j) = (hydrant::speed(flow, inside), hydrant::hazen_j(flow, cf, inside));
     let loss = j * length;
-    let speed_ok = v <= MAX_SPEED + 1e-9;
+    let speed_ok = v <= rules.max_speed + 1e-9;
     ok = ok && speed_ok;
     out.insert("speed_ms".into(), json!(round(v, 100.0)));
     out.insert("speed_ok".into(), json!(speed_ok));
     out.insert("head_loss_m_per_m".into(), json!(round(j, 1.0e5)));
     out.insert("loss_mca".into(), json!(round(loss, 100.0)));
-    out.insert("need_mca".into(), json!(round(t.6 + loss + rise, 100.0)));
+    out.insert("need_mca".into(), json!(round(t.nozzle_head + loss + rise, 100.0)));
     out.insert(
         "need_covers".into(),
         json!("nozzle head + head loss of the straight pipe + rise: not the hose, the fittings or the pressure at the source"),
     );
     if !absent(p.get("nominal")) {
         let nominal = within(c, p, "nominal", 0.0, f64::MIN_POSITIVE, 5000.0)?;
-        let size_ok = nominal + 1e-9 >= hydrant::min_nominal(&key);
+        let size_ok = nominal + 1e-9 >= rules.min_nominal(&key);
         ok = ok && size_ok;
         out.insert("size_ok".into(), json!(size_ok));
     }
     out.insert("ok".into(), json!(ok));
     out.insert(
         "ok_covers".into(),
-        json!("nozzle head within 100 mca, speed within 5 m/s and the pipe's size only: it is not a verdict on the design"),
+        json!(format!(
+            "nozzle head within {} mca, speed within {} m/s and the pipe's size only: it is not a verdict on the design",
+            rules.max_nozzle_head, rules.max_speed
+        )),
     );
     Ok(Value::Object(out))
 }
 
-fn water_size(_: &mut Session, p: &Value) -> R {
-    use crate::water::{self, FITTINGS, MAX_SPEED, MIN_USE_KPA, Method};
+fn water_size(s: &mut Session, p: &Value) -> R {
+    use crate::water::{self, Method};
     let c = "water_size";
+    // The project's rules: its plumbing code's Cold Water and Fixtures.
+    let rules = s.model.rules::<water::WaterRules>();
+    let library = s.model.rules::<crate::plumbing::Fixtures>();
     let o = p.as_object().ok_or_else(|| bad(c, "params must be an object"))?;
     const KEYS: &[&str] = &["fixtures", "flow", "method", "dn", "length", "fittings", "pressure", "rise"];
     if let Some(key) = o.keys().find(|k| !KEYS.contains(&k.as_str())) {
@@ -8025,20 +8089,21 @@ fn water_size(_: &mut Session, p: &Value) -> R {
             .filter(|n| n.is_finite() && *n >= 0.0 && *n <= 10_000.0 && n.fract() == 0.0)
             .ok_or_else(|| bad(c, format!("`{key}`: `{kind}` must be a whole number from 0 to 10000, got {n}")))
     };
-    let method = Method::parse(choice(c, p, "method", &["weights", "sum"], "weights")?).unwrap_or(Method::Weights);
+    let said = choice(c, p, "method", &["weights", "sum"], "weights")?;
+    let method = Method::parse(if absent(p.get("method")) { rules.flow_method.as_str() } else { said }).unwrap_or(Method::Weights);
     let flow = match (absent(p.get("flow")), p.get("fixtures")) {
         (false, f) if !absent(f) => return Err(bad(c, "give `flow` or `fixtures`, not both")),
         (false, _) => within(c, p, "flow", 0.0, f64::MIN_POSITIVE, 1000.0)?,
         (true, Some(Value::Object(f))) => {
             let mut list: Vec<(&str, f64)> = Vec::new();
             for (kind, n) in f {
-                if water::fixture(kind).is_none() {
-                    return Err(bad(c, format!("`fixtures`: no fixture `{kind}`, use {}", crate::plumbing::kinds().join(", "))));
+                if library.fixture(kind).is_none() {
+                    return Err(bad(c, format!("`fixtures`: no fixture `{kind}`, use {}", library.kinds().join(", "))));
                 }
                 let n = whole("fixtures", kind, n)?;
                 list.push((kind.as_str(), n));
             }
-            water::design_flow(method, &list)
+            rules.design_flow(method, &list, &library)
         }
         (true, Some(v)) if !absent(Some(v)) => return Err(bad(c, format!("`fixtures` must be an object {{kind: count}}, got {v}"))),
         _ => 0.0,
@@ -8047,36 +8112,44 @@ fn water_size(_: &mut Session, p: &Value) -> R {
         return Err(bad(c, "`flow` (L/s) or `fixtures` is required"));
     }
     let dn = if absent(p.get("dn")) {
-        water::smallest_dn(flow).ok_or_else(|| bad(c, "no DN of PVC soldável (20 to 110) keeps the speed within 3 m/s at that flow"))?
+        rules.smallest_dn(flow).ok_or_else(|| {
+            let dns = rules.dns();
+            let (first, last) = (dns.first().copied().unwrap_or(0.0), dns.last().copied().unwrap_or(0.0));
+            bad(c, format!("no DN of the code's pipes ({first} to {last}) keeps the speed within {} m/s at that flow", rules.max_speed))
+        })?
     } else {
         let dn = within(c, p, "dn", 0.0, 0.0, 1000.0)?;
-        water::inside(dn).map(|_| dn).ok_or_else(|| bad(c, "`dn` must be one of 20, 25, 32, 40, 50, 60, 75, 85, 110 (PVC soldável)"))?
+        rules.inside(dn).map(|_| dn).ok_or_else(|| {
+            let dns: Vec<String> = rules.dns().iter().map(|d| d.to_string()).collect();
+            bad(c, format!("`dn` must be one of {} (the code's pipes)", dns.join(", ")))
+        })?
     };
-    let inside = water::inside(dn).ok_or_else(|| bad(c, "`dn` is not a PVC soldável size"))?;
+    let inside = rules.inside(dn).ok_or_else(|| bad(c, "`dn` is not one of the code's pipes"))?;
     let mut length = within(c, p, "length", 0.0, 0.0, MAX_COORD)? / 1000.0;
     match p.get("fittings") {
         v if absent(v) => {}
         Some(Value::Object(f)) => {
             for (kind, n) in f {
-                let le = water::equivalent_length(dn, kind)
-                    .ok_or_else(|| bad(c, format!("`fittings`: no fitting `{kind}`, use {}", FITTINGS.join(", "))))?;
+                let le = rules
+                    .equivalent_length(dn, kind)
+                    .ok_or_else(|| bad(c, format!("`fittings`: no fitting `{kind}`, use {}", rules.fittings.join(", "))))?;
                 length += le * whole("fittings", kind, n)?;
             }
         }
         Some(v) => return Err(bad(c, format!("`fittings` must be an object {{fitting: count}}, got {v}"))),
         None => {}
     }
-    let (speed, j) = water::head_loss(flow, inside, water::EPS_PVC);
+    let (speed, j) = water::head_loss(flow, inside, rules.roughness);
     let loss = j * length * water::KPA_PER_M;
     let round = |x: f64, k: f64| (x * k).round() / k + 0.0;
-    let mut ok = speed <= MAX_SPEED + 1e-9;
+    let mut ok = speed <= rules.max_speed + 1e-9;
     let end = if absent(p.get("pressure")) {
         None
     } else {
         let pressure = within(c, p, "pressure", 0.0, 0.0, 1.0e5)?;
         let rise = within(c, p, "rise", 0.0, -MAX_COORD, MAX_COORD)? / 1000.0;
         let end = pressure - loss - rise * water::KPA_PER_M;
-        ok = ok && end >= MIN_USE_KPA;
+        ok = ok && end >= rules.min_use_kpa;
         Some(end)
     };
     Ok(json!({
@@ -8093,7 +8166,7 @@ fn water_size(_: &mut Session, p: &Value) -> R {
     }))
 }
 
-fn reservoir_size(_: &mut Session, p: &Value) -> R {
+fn reservoir_size(s: &mut Session, p: &Value) -> R {
     use crate::reservoir::{self, Input, Kind, Status};
     let c = "reservoir_size";
     let o = p.as_object().ok_or_else(|| bad(c, "params must be an object"))?;
@@ -8158,7 +8231,7 @@ fn reservoir_size(_: &mut Session, p: &Value) -> R {
         smallest_l: optional("smallest_l", 1.0e9)?,
         peak_l: optional("peak_l", 1.0e9)?,
     };
-    let r = reservoir::size(&input);
+    let r = reservoir::size_by(&input, &s.model.rules::<reservoir::ReservoirRules>());
     let round = |x: f64, k: f64| (x * k).round() / k + 0.0;
     let pending: Vec<&str> = r.checks.iter().filter(|k| k.status == Status::Pending).map(|k| k.id).collect();
     Ok(json!({
@@ -8203,11 +8276,14 @@ fn reservoir_size(_: &mut Session, p: &Value) -> R {
     }))
 }
 
-fn storm_size(_: &mut Session, p: &Value) -> R {
-    use crate::storm::{self, DEFAULT_RAIN, MIN_SLOPE, N_PVC, Off, Outlet};
+fn storm_size(s: &mut Session, p: &Value) -> R {
+    use crate::storm::{self, Off, Outlet};
     let c = "storm_size";
+    // The project's rules: its plumbing code's Storm Drainage, and the rain of its Site and Climate.
+    let rules = s.model.rules::<storm::StormRules>();
+    let site_rain = s.model.codes.site.rain_intensity.filter(|r| *r > 0.0);
     let o = p.as_object().ok_or_else(|| bad(c, "params must be an object"))?;
-    const KEYS: &[&str] = &["kind", "area", "rainfall", "flow", "outlet", "gutter", "length", "slope", "inside"];
+    const KEYS: &[&str] = &["kind", "area", "rainfall", "flow", "outlet", "gutter", "length", "slope", "inside", "material"];
     if let Some(key) = o.keys().find(|k| !KEYS.contains(&k.as_str())) {
         return Err(bad(c, format!("unknown parameter `{key}`")));
     }
@@ -8215,8 +8291,10 @@ fn storm_size(_: &mut Session, p: &Value) -> R {
     if kind.is_empty() {
         return Err(bad(c, "`kind` (downpipe or horizontal) is required"));
     }
-    let mine: &[&str] = if kind == "downpipe" { &["outlet", "gutter", "length"] } else { &["slope", "inside"] };
-    if let Some(key) = ["outlet", "gutter", "length", "slope", "inside"].into_iter().find(|k| o.contains_key(*k) && !mine.contains(k)) {
+    let mine: &[&str] = if kind == "downpipe" { &["outlet", "gutter", "length"] } else { &["slope", "inside", "material"] };
+    if let Some(key) =
+        ["outlet", "gutter", "length", "slope", "inside", "material"].into_iter().find(|k| o.contains_key(*k) && !mine.contains(k))
+    {
         return Err(bad(c, format!("`{key}` does not apply to a {kind}")));
     }
     if !absent(p.get("flow"))
@@ -8225,62 +8303,79 @@ fn storm_size(_: &mut Session, p: &Value) -> R {
         return Err(bad(c, format!("`{key}` and `flow` are two ways to give the flow: give one")));
     }
     let outlet = Outlet::parse(choice(c, p, "outlet", &["edge", "funnel"], "edge")?).unwrap_or(Outlet::Edge);
+    // Where the rainfall comes from: given, the project's site, or the code's default for a small roof.
+    let mut rain_from = "given";
     let flow = if absent(p.get("flow")) {
         let area = within(c, p, "area", 0.0, 0.0, 1.0e7)?;
         if area <= 0.0 {
             return Err(bad(c, "`area` (m², the roof that drains) or `flow` (L/min) is required"));
         }
-        if area > storm::DEFAULT_RAIN_MAX_AREA && absent(p.get("rainfall")) {
+        let rain = if !absent(p.get("rainfall")) {
+            within(c, p, "rainfall", rules.default_rain, f64::MIN_POSITIVE, 1000.0)?
+        } else if let Some(r) = site_rain {
+            rain_from = "site";
+            r
+        } else if area > rules.default_rain_max_area {
             return Err(bad(
                 c,
                 format!(
-                    "`rainfall` (mm/h, from the standard's table for the place and return period) is required above {} m²: the default {DEFAULT_RAIN} mm/h is for smaller roofs",
-                    storm::DEFAULT_RAIN_MAX_AREA
+                    "`rainfall` (mm/h, from the standard's table for the place and return period) is required above {} m², or the project's Site and Climate (`site_climate`): the default {} mm/h is for smaller roofs",
+                    rules.default_rain_max_area, rules.default_rain
                 ),
             ));
-        }
-        storm::design_flow(within(c, p, "rainfall", DEFAULT_RAIN, f64::MIN_POSITIVE, 1000.0)?, area)
+        } else {
+            rain_from = "default";
+            rules.default_rain
+        };
+        storm::design_flow(rain, area)
     } else {
+        rain_from = "flow";
         within(c, p, "flow", 0.0, f64::MIN_POSITIVE, 1.0e9)?
     };
     let round = |x: f64, k: f64| (x * k).round() / k + 0.0;
     if kind == "downpipe" {
         if absent(p.get("gutter")) {
-            return Err(bad(c, "`gutter` (the water depth in the gutter, 50 to 100 mm) is required"));
+            let [lo, hi] = rules.depth_range;
+            return Err(bad(c, format!("`gutter` (the water depth in the gutter, {lo} to {hi} mm) is required")));
         }
         if absent(p.get("length")) {
             return Err(bad(c, "`length` (the downpipe's, mm) is required"));
         }
         let (gutter, length) = (within(c, p, "gutter", 0.0, 0.0, 10_000.0)?, within(c, p, "length", 0.0, 0.0, MAX_COORD)? / 1000.0);
-        let d = storm::downpipe_diameter(outlet, flow, gutter, length).map_err(|off| {
+        let d = storm::downpipe_by(&rules, outlet, flow, gutter, length).map_err(|off| {
+            let ([lo, hi], [_, most]) = (rules.depth_range, rules.diameter_axis);
             bad(
                 c,
                 match off {
-                    Off::Depth => "the water depth in the gutter must be 50 to 100 mm: the abacuses stop there",
-                    Off::Length => "a downpipe shorter than 0.3 m is off the abacuses",
-                    Off::Diameter => "more than 150 mm inside is off the abacuses of NBR 10844's Figure 3",
+                    Off::Depth => format!("the water depth in the gutter must be {lo} to {hi} mm: the abacuses stop there"),
+                    Off::Length => format!("a downpipe shorter than {} m is off the abacuses", rules.min_length),
+                    Off::Diameter => format!("more than {most} mm inside is off the code's downpipe abacuses"),
                 },
             )
         })?;
         return Ok(
-            json!({"flow_lpm": round(flow, 100.0), "inside_mm": round(d.diameter, 10.0), "by_depth_mm": round(d.by_depth, 10.0), "by_length_mm": round(d.by_length, 10.0)}),
+            json!({"flow_lpm": round(flow, 100.0), "inside_mm": round(d.diameter, 10.0), "by_depth_mm": round(d.by_depth, 10.0), "by_length_mm": round(d.by_length, 10.0), "rainfall_from": rain_from}),
         );
     }
     if absent(p.get("slope")) {
-        return Err(bad(c, "`slope` (a fraction, 0.005 at least) is required"));
+        return Err(bad(c, format!("`slope` (a fraction, {} at least) is required", rules.min_slope)));
     }
     let slope = within(c, p, "slope", 0.0, 0.0, 1.0)?;
-    if slope + 1e-9 < MIN_SLOPE {
-        return Err(bad(c, "`slope` must be 0.5 % (0.005) at least, NBR 10844"));
+    if slope + 1e-9 < rules.min_slope {
+        return Err(bad(c, format!("`slope` must be {} % ({}) at least, the code's least", rules.min_slope * 100.0, rules.min_slope)));
     }
-    let need = storm::horizontal_diameter(flow, slope, N_PVC);
+    let materials: Vec<&str> = rules.roughness.iter().map(|r| r.material.as_str()).collect();
+    let material = string(c, p, "material")?.unwrap_or_else(|| materials.first().map_or_else(String::new, |m| m.to_string()));
+    let n = rules.n(&material).ok_or_else(|| bad(c, format!("`material` is one of {}", materials.join(", "))))?;
+    let need = storm::horizontal_diameter(flow, slope, n);
     let inside = within(c, p, "inside", 0.0, 0.0, 10_000.0)?;
-    let carries = (inside > 0.0).then(|| storm::manning_flow(inside, slope, N_PVC));
+    let carries = (inside > 0.0).then(|| storm::manning_flow(inside, slope, n));
     Ok(json!({
         "flow_lpm": round(flow, 100.0),
         "inside_mm": round(need, 10.0),
         "carries_lpm": carries.map(|q| round(q, 10.0)),
         "ok": carries.map(|q| q + 1e-9 >= flow),
+        "rainfall_from": rain_from,
     }))
 }
 
@@ -19593,168 +19688,27 @@ fn standard(s: &mut Session, p: &Value) -> R {
 }
 
 fn building_code(s: &mut Session, p: &Value) -> R {
-    use crate::codes;
-    let c = "building_code";
-    only(c, p, &["set", "keep_rules", "stairs", "reset", "save", "delete"])?;
-    let names: Vec<String> = codes::codes().iter().chain(&s.model.building_codes).map(|k| k.code.clone()).collect();
-    let set = match p.get("set") {
-        v if absent(v) => None,
-        Some(Value::String(t)) if names.contains(t) => Some(t.clone()),
-        // The one entry the two Brazilian standards had before they were told apart: NBR 9050's now.
-        Some(Value::String(t)) if t == "nbr" => Some("nbr-9050".to_string()),
-        Some(v) => return Err(bad(c, format!("`set` is one of {}, not {v}", names.join(", ")))),
-        None => None,
-    };
-    let save = string(c, p, "save")?.map(|n| codes::own_name(&n).map_err(|e| bad(c, e))).transpose()?;
-    let delete = string(c, p, "delete")?;
-    if let Some(d) = &delete
-        && !s.model.building_codes.iter().any(|k| k.code == *d)
-    {
-        return Err(bad(c, format!("`delete` takes one of the project's own codes away, and `{d}` is none of them")));
-    }
-    let (keep, reset) = (flag(c, p, "keep_rules")?, flag(c, p, "reset")?);
-    let patch = match p.get("stairs") {
-        v if absent(v) => None,
-        Some(Value::Object(o)) => Some(o),
-        Some(_) => return Err(bad(c, "`stairs` is the rules to change, by name: {width_min: 1100, …}")),
-        None => None,
-    };
-    if reset && patch.is_some() {
-        return Err(bad(c, "`reset` takes the project's own rules away: give it without `stairs`"));
-    }
-    // The project's own rules after this: kept across a change of code only when asked, then changed by `stairs`.
-    let mut own = if reset || (set.is_some() && !keep) { None } else { s.model.stair_rules.clone() };
-    let code = set.clone().or_else(|| s.model.building_code.clone());
-    if let Some(patch) = patch {
-        let base = own.as_ref().unwrap_or(&code.as_deref().and_then(|k| s.model.code(k)).unwrap_or(codes::generic()).stairs);
-        let Ok(Value::Object(mut all)) = serde_json::to_value(base) else { return Err(bad(c, "the rules could not be read")) };
-        for (k, v) in patch {
-            if !codes::ORDER.contains(&k.as_str()) {
-                return Err(bad(c, format!("`{k}` is no stair rule; they are {}", codes::ORDER.join(", "))));
-            }
-            all.insert(k.clone(), v.clone());
-        }
-        let rules: codes::StairRules = serde_json::from_value(Value::Object(all)).map_err(|e| bad(c, format!("`stairs`: {e}")))?;
-        rules.check().map_err(|e| bad(c, e))?;
-        own = Some(rules);
-    }
-    let mut code = code;
-    let mut kept = s.model.building_codes.clone();
-    // The rules in force, saved as a code of the project's own, which it is then held to.
-    if let Some(name) = save {
-        let from = code.as_deref().and_then(|k| s.model.code(k)).unwrap_or(codes::generic());
-        let based_on = if from.based_on.is_empty() { from.code.clone() } else { from.based_on.clone() };
-        let stairs = own.take().unwrap_or_else(|| from.stairs.clone());
-        // A rule kept is still from where the code it came from says; one changed is the project's.
-        let mut sources = from.sources.clone();
-        for rule in stairs.changed(&from.stairs) {
-            sources.insert(rule, format!("{name}: the project's own number"));
-        }
-        let new = codes::BuildingCode {
-            code: name.clone(),
-            name: name.clone(),
-            region: from.region.clone(),
-            references: from.references.clone(),
-            note: format!("The project's own, based on {}.", codes::code(&based_on).map_or(based_on.as_str(), |k| k.name.as_str())),
-            based_on,
-            sources,
-            checked: String::new(),
-            stairs,
-        };
-        kept.retain(|k| k.code != name);
-        kept.push(new);
-        code = Some(name);
-    }
-    // One taken away: a project held to it keeps its rules, as its own, under the code it was based on.
-    if let Some(name) = delete
-        && let Some(i) = kept.iter().position(|k| k.code == name)
-    {
-        let gone = kept.remove(i);
-        if code.as_deref() == Some(name.as_str()) {
-            own = own.or(Some(gone.stairs));
-            code = codes::code(&gone.based_on).map(|k| k.code.clone());
-        }
-    }
-    // Rules that are the code's own are not the project's.
-    let its = code
-        .as_deref()
-        .and_then(|k| kept.iter().find(|o| o.code == k).or_else(|| codes::code(k)))
-        .unwrap_or(codes::generic())
-        .stairs
-        .clone();
-    if own.as_ref() == Some(&its) {
-        own = None;
-    }
-    if own != s.model.stair_rules || code != s.model.building_code || kept != s.model.building_codes {
-        let m = s.model_mut();
-        m.stair_rules = own;
-        m.building_code = code;
-        m.building_codes = kept;
-    }
-    let m = &s.model;
-    let code = m.building_code();
-    Ok(json!({
-        "code": code.code,
-        "name": code.name,
-        "region": code.region,
-        "references": code.references,
-        "note": code.note,
-        "stairs": m.stair_rules(),
-        "changed": m.stair_rules().changed(&code.stairs),
-        "custom": m.building_codes.iter().any(|k| k.code == code.code),
-        "based_on": code.based_on,
-        "all": codes::codes().iter().map(|k| (k, false)).chain(m.building_codes.iter().map(|k| (k, true))).map(|(k, own)| json!({
-            "code": k.code, "name": k.name, "region": k.region, "references": k.references, "note": k.note, "custom": own,
-        })).collect::<Vec<_>>(),
-    }))
+    crate::codes::command::building_code(s, p)
 }
 
-/// `building_code_export`: the code the project is held to, with the rules it changed, or one named, as an XML file.
 fn building_code_export(s: &mut Session, p: &Value) -> R {
-    use crate::codes;
-    let c = "building_code_export";
-    only(c, p, &["path", "code", "name"])?;
-    let path = string(c, p, "path")?.ok_or_else(|| bad(c, "`path` is the XML file to write"))?;
-    let m = &s.model;
-    let mut code = match string(c, p, "code")? {
-        Some(k) => m.code(&k).cloned().ok_or_else(|| bad(c, format!("no building code `{k}`")))?,
-        // The project's, as it is held to it: with the rules it changed.
-        None => codes::BuildingCode { stairs: m.stair_rules().clone(), ..m.building_code().clone() },
-    };
-    if let Some(name) = string(c, p, "name")? {
-        code.name = codes::own_name(&name).map_err(|e| bad(c, e))?;
-    }
-    if code.based_on.is_empty() {
-        code.based_on = code.code.clone();
-    }
-    std::fs::write(&path, code.to_xml()).map_err(|e| bad(c, format!("{path}: {e}")))?;
-    Ok(json!({"path": path, "name": code.name, "based_on": code.based_on}))
+    crate::codes::command::building_code_export(s, p)
 }
 
-/// `building_code_import`: a code read from an XML file, kept as one of the project's own.
 fn building_code_import(s: &mut Session, p: &Value) -> R {
-    use crate::codes;
-    let c = "building_code_import";
-    only(c, p, &["path", "name", "set"])?;
-    let path = string(c, p, "path")?.ok_or_else(|| bad(c, "`path` is the XML file to read"))?;
-    let set = flag(c, p, "set")?;
-    let size = std::fs::metadata(&path).map_err(|e| bad(c, format!("{path}: {e}")))?.len();
-    if size > codes::MAX_XML as u64 {
-        return Err(bad(c, format!("{path}: larger than a building code's file (1 MB)")));
-    }
-    let text = std::fs::read_to_string(&path).map_err(|e| bad(c, format!("{path}: {e}")))?;
-    // A file named after a code BIMCraft has (one exported as it was) comes in under another name.
-    let renamed = string(c, p, "name")?;
-    let (code, left_out) = codes::BuildingCode::from_xml(&text, renamed.as_deref()).map_err(|e| bad(c, format!("{path}: {e}")))?;
-    let name = code.code.clone();
-    let m = s.model_mut();
-    m.building_codes.retain(|k| k.code != name);
-    m.building_codes.push(code);
-    if set {
-        m.building_code = Some(name.clone());
-        m.stair_rules = None;
-    }
-    Ok(json!({"code": name, "left_out": left_out, "set": set}))
+    crate::codes::command::building_code_import(s, p)
+}
+
+fn code_rules(s: &mut Session, p: &Value) -> R {
+    crate::codes::command::code_rules(s, p)
+}
+
+fn site_climate(s: &mut Session, p: &Value) -> R {
+    crate::codes::command::site_climate(s, p)
+}
+
+fn code_check(s: &mut Session, p: &Value) -> R {
+    crate::codes::command::code_check(s, p)
 }
 
 /// `stair_sketch`: a stair made by its runs and turns becomes one drawn by hand, every riser a line of its own.

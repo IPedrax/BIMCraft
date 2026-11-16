@@ -16,59 +16,138 @@
 //! notes 1 and 2 (a system of one type lower where the occupation has, or has not, sprinklers) are not applied. What `need_mca` covers is
 //! the nozzle head, the straight pipe's loss and the rise: no hose or fitting loss, and it checks no pressure at the source.
 
-/// One system type of Tabela 2: (key, type, nozzle DN mm, hose DN mm, hose length m, one jet L/min, head mca).
-pub const TYPES: &[(&str, u8, f64, f64, f64, f64, f64)] = &[
-    ("1", 1, 25.0, 25.0, 30.0, 100.0, 80.0),
-    ("2", 2, 40.0, 40.0, 30.0, 150.0, 30.0),
-    ("3", 3, 40.0, 40.0, 30.0, 200.0, 40.0),
-    ("4-40", 4, 40.0, 40.0, 30.0, 300.0, 65.0),
-    ("4-65", 4, 65.0, 65.0, 30.0, 300.0, 30.0),
-    ("5", 5, 65.0, 65.0, 30.0, 600.0, 60.0),
-];
+use serde::{Deserialize, Serialize};
 
-/// The keys of `TYPES`.
-pub const TYPE_KEYS: &[&str] = &["1", "2", "3", "4-40", "4-65", "5"];
+/// One system type of Tabela 2: its key, type, nozzle and hose DN (mm), the hose's length (m), one jet's flow (L/min) and the
+/// head it needs at the nozzle (mca).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SystemType {
+    pub key: String,
+    #[serde(rename = "type")]
+    pub kind: u8,
+    pub nozzle_dn: f64,
+    pub hose_dn: f64,
+    pub hose_length: f64,
+    pub jet_flow: f64,
+    pub nozzle_head: f64,
+}
 
-/// Upper limits of Tabela 3's area bands (m²); the last band is above the last limit.
-pub const AREA_BANDS: &[f64] = &[2500.0, 5000.0, 10000.0, 20000.0, 50000.0];
+/// A pipe material's Hazen-Williams C.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HazenC {
+    pub material: String,
+    pub c: f64,
+}
 
-/// Tabela 3, one list per column (1 to 5), one (type, reserve in m³) per band, smallest area first.
-const RTI: [[(u8, f64); 6]; 5] = [
-    [(1, 5.0), (1, 8.0), (1, 12.0), (1, 18.0), (1, 25.0), (1, 35.0)],
-    [(2, 8.0), (2, 12.0), (2, 18.0), (2, 25.0), (2, 35.0), (2, 48.0)],
-    [(3, 12.0), (3, 18.0), (3, 25.0), (3, 35.0), (3, 48.0), (3, 70.0)],
-    [(4, 28.0), (4, 32.0), (4, 48.0), (4, 64.0), (4, 96.0), (4, 120.0)],
-    [(4, 32.0), (4, 48.0), (5, 64.0), (5, 96.0), (5, 120.0), (5, 180.0)],
-];
+/// The rules hydrants and hose reels are sized by: the Plumbing tab's Hydrants section (CBPMESP IT 22, an amendment in
+/// `data/codes/plumbing/cbpmesp-it22.json`).
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HydrantRules {
+    pub types: Vec<SystemType>,
+    /// Upper limits of the area bands (m²), inclusive; the last band is above the last limit.
+    pub area_bands: Vec<f64>,
+    /// The type and the fire reserve (m³) by occupation column (1, 2…), one [type, reserve] per band, smallest area first.
+    pub reserve: Vec<Vec<(u8, f64)>>,
+    pub hazen_c: Vec<HazenC>,
+    /// The fastest water may go (m/s), the most head at a nozzle (mca), and how many jets the design flow takes.
+    pub max_speed: f64,
+    pub max_nozzle_head: f64,
+    pub jets: u32,
+    /// The smallest pipe DN (mm), and the smaller one types up to `small_types_up_to` may have.
+    pub min_dn: f64,
+    pub min_dn_small: f64,
+    pub small_types_up_to: u8,
+}
 
-/// Tabela 1: Hazen-Williams' C by material, new pipes. `steel` is black steel in a dry system, C 100, the lowest of the steel
-/// rows, so a head loss is never underrated; `steel-wet` is galvanised steel, or black steel in a wet system, C 120.
-pub const MATERIALS: &[(&str, f64)] = &[("steel", 100.0), ("steel-wet", 120.0), ("copper", 150.0), ("pvc", 150.0), ("pex", 150.0)];
-
-/// The fastest water may go, m/s (item 4.8.12).
-pub const MAX_SPEED: f64 = 5.0;
-/// The most head allowed at a nozzle, mca (item 4.8.8).
-pub const MAX_NOZZLE_HEAD: f64 = 100.0;
-
-/// A system type (1 to 5) and the fire reserve (m³) of a column of Tabela 3 for a built area (m²), or `None` for a column or an
-/// area the table does not have.
-pub fn system_for(column: u8, area: f64) -> Option<(u8, f64)> {
-    let list = RTI.get(usize::from(column).checked_sub(1)?)?;
-    if area.is_nan() || area <= 0.0 {
-        return None;
+impl crate::codes::Section for HydrantRules {
+    const DISCIPLINE: crate::codes::Discipline = crate::codes::Discipline::Plumbing;
+    const KEY: &'static str = "hydrants";
+    fn check(&self) -> Result<(), String> {
+        let positive = |v: f64| v.is_finite() && v > 0.0 && v < 1.0e6;
+        if self.types.is_empty()
+            || self.types.len() > 50
+            || self.reserve.len() > 50
+            || self.hazen_c.len() > 50
+            || self.area_bands.len() > 50
+        {
+            return Err("hydrants: some types, and 50 rows of each table at most".into());
+        }
+        for t in &self.types {
+            if t.key.is_empty()
+                || t.key.chars().count() > 16
+                || ![t.nozzle_dn, t.hose_dn, t.hose_length, t.jet_flow, t.nozzle_head].into_iter().all(positive)
+            {
+                return Err(format!("hydrants: type `{}` has a key and positive sizes, flow and head", t.key));
+            }
+        }
+        if self.area_bands.windows(2).any(|w| w[0] >= w[1]) || !self.area_bands.iter().all(|v| positive(*v)) {
+            return Err("hydrants: `area_bands` are positive, from the smallest up".into());
+        }
+        if self.reserve.iter().any(|col| {
+            col.len() != self.area_bands.len() + 1
+                || col.iter().any(|(t, r)| !self.types.iter().any(|x| x.kind == *t) || !r.is_finite() || *r < 0.0)
+        }) {
+            return Err("hydrants: each column of `reserve` has a [type, m³] for each band and one above, of types there are".into());
+        }
+        if !self.hazen_c.iter().all(|h| positive(h.c))
+            || ![self.max_speed, self.max_nozzle_head, self.min_dn, self.min_dn_small].into_iter().all(positive)
+            || self.jets == 0
+            || self.jets > 100
+        {
+            return Err("hydrants: the factors C, the limits and the least DNs are positive, and 1 to 100 jets".into());
+        }
+        Ok(())
     }
-    let band = AREA_BANDS.iter().position(|u| area <= *u).unwrap_or(AREA_BANDS.len());
-    list.get(band).copied()
 }
 
-/// A row of Tabela 2 by key.
-pub fn kind(key: &str) -> Option<&'static (&'static str, u8, f64, f64, f64, f64, f64)> {
-    TYPES.iter().find(|t| t.0 == key)
+impl HydrantRules {
+    /// A system type (its type) and the fire reserve (m³) of an occupation column for a built area (m²), or `None` for a
+    /// column or an area the table does not have.
+    pub fn system_for(&self, column: u8, area: f64) -> Option<(u8, f64)> {
+        let list = self.reserve.get(usize::from(column).checked_sub(1)?)?;
+        if area.is_nan() || area <= 0.0 {
+            return None;
+        }
+        let band = self.area_bands.iter().position(|u| area <= *u).unwrap_or(self.area_bands.len());
+        list.get(band).copied()
+    }
+
+    /// A system type by key.
+    pub fn kind(&self, key: &str) -> Option<&SystemType> {
+        self.types.iter().find(|t| t.key == key)
+    }
+
+    /// Hazen-Williams' C for a material.
+    pub fn hazen_c(&self, material: &str) -> Option<f64> {
+        self.hazen_c.iter().find(|m| m.material == material).map(|m| m.c)
+    }
+
+    /// The design flow (L/min): the most unfavourable jets of the type, `jets` at most.
+    pub fn design_flow(&self, key: &str, hydrants: u32) -> f64 {
+        self.kind(key).map_or(0.0, |t| t.jet_flow * f64::from(hydrants.min(self.jets)))
+    }
+
+    /// The smallest nominal diameter (mm) a hydrant pipe of the type may have.
+    pub fn min_nominal(&self, key: &str) -> f64 {
+        if self.kind(key).is_some_and(|t| t.kind <= self.small_types_up_to) { self.min_dn_small } else { self.min_dn }
+    }
 }
 
-/// Hazen-Williams' C for a material.
+fn library() -> std::sync::Arc<HydrantRules> {
+    crate::codes::library_rules::<HydrantRules>()
+}
+
+/// A system type and the fire reserve, by the library's Tabela 3.
+pub fn system_for(column: u8, area: f64) -> Option<(u8, f64)> {
+    library().system_for(column, area)
+}
+
+/// Hazen-Williams' C for a material, by the library's table.
 pub fn hazen_c(material: &str) -> Option<f64> {
-    MATERIALS.iter().find(|m| m.0 == material).map(|m| m.1)
+    library().hazen_c(material)
 }
 
 /// `J` (m of water per m) for `q` L/min in an inner diameter `d` mm.
@@ -81,14 +160,14 @@ pub fn speed(q: f64, d: f64) -> f64 {
     (q / 60000.0) / (std::f64::consts::PI * (d / 1000.0).powi(2) / 4.0)
 }
 
-/// The design flow (L/min): the two most unfavourable jets of the type, so its flow times the hydrants, two at most.
+/// The design flow (L/min), by the library's rules.
 pub fn design_flow(key: &str, hydrants: u32) -> f64 {
-    kind(key).map_or(0.0, |t| t.5 * f64::from(hydrants.min(2)))
+    library().design_flow(key, hydrants)
 }
 
-/// The smallest nominal diameter (mm) a hydrant pipe may have: DN 50 for types 1 and 2, DN 65 for the others.
+/// The smallest nominal diameter (mm), by the library's rules.
 pub fn min_nominal(key: &str) -> f64 {
-    if kind(key).is_some_and(|t| t.1 <= 2) { 50.0 } else { 65.0 }
+    library().min_nominal(key)
 }
 
 #[cfg(test)]

@@ -423,6 +423,14 @@ msgstr "Accepter le principal"
 msgid "Accept Primary: the primary option's elements stay in the model; the others' elements and the set go"
 msgstr "Accepter le principal: les éléments de l'option principale restent dans le modèle; ceux des autres options et l'ensemble disparaissent"
 
+#: crates/core/src/codes.rs:190
+msgid "Accessibility"
+msgstr ""
+
+#: crates/core/src/codes.rs:191
+msgid "Accessible routes, turning spaces, reach ranges and accessible toilets."
+msgstr ""
+
 #: crates/ui-egui/src/coordinates.rs:815
 msgid "Acquire"
 msgstr ""
@@ -1135,6 +1143,10 @@ msgstr "Longueur d'arc:"
 msgid "Arc: the next stretch curves, carrying on smoothly from the one before it"
 msgstr ""
 
+#: crates/core/src/codes.rs:81
+msgid "Architectural"
+msgstr ""
+
 #: crates/ui-egui/src/lib.rs:1464
 msgid "Architecture"
 msgstr "Architecture"
@@ -1677,7 +1689,7 @@ msgstr "Ligne de limite: les lignes du profil"
 msgid "Branch Panel"
 msgstr ""
 
-#: crates/core/src/model.rs:4273
+#: crates/core/src/model.rs:4264
 msgid "Brick"
 msgstr "Brique"
 
@@ -1685,7 +1697,7 @@ msgstr "Brique"
 msgid "Brick 225 x 75"
 msgstr "Brique 225 x 75"
 
-#: crates/core/src/model.rs:4844
+#: crates/core/src/model.rs:4835
 msgid "Bringing the project up to date"
 msgstr ""
 
@@ -1824,7 +1836,7 @@ msgstr "Valeur calculée…"
 msgid "Came in: {}"
 msgstr "Importé: {}"
 
-#: crates/core/src/commands.rs:2609
+#: crates/core/src/commands.rs:2651
 #: crates/ui-egui/src/camera.rs:38
 #: crates/ui-egui/src/lib.rs:4856
 #: crates/ui-egui/src/properties.rs:292
@@ -2096,7 +2108,7 @@ msgstr ""
 msgid "Centre Stringer Width (Optional)"
 msgstr ""
 
-#: crates/core/src/model.rs:4281
+#: crates/core/src/model.rs:4272
 msgid "Ceramic tile"
 msgstr "Carrelage en céramique"
 
@@ -2196,7 +2208,7 @@ msgstr "Vérification : fck"
 msgid "Checking for updates…"
 msgstr "Recherche de mises à jour…"
 
-#: crates/core/src/commands.rs:4131
+#: crates/core/src/commands.rs:4173
 msgid "Checking the model"
 msgstr ""
 
@@ -3082,6 +3094,10 @@ msgstr ""
 msgid "Code:"
 msgstr "Code:"
 
+#: crates/core/src/codes.rs:278
+msgid "Cold Water"
+msgstr ""
+
 #: crates/ui-egui/src/lib.rs:1473
 msgid "Collaborate"
 msgstr ""
@@ -3182,11 +3198,12 @@ msgstr "Hauteur de calcul"
 msgid "Conceptual Mass"
 msgstr "Volume conceptuel"
 
+#: crates/core/src/codes.rs:222
 #: crates/core/src/family.rs:3202
 msgid "Concrete"
 msgstr "Béton"
 
-#: crates/core/src/model.rs:4275
+#: crates/core/src/model.rs:4266
 msgid "Concrete block"
 msgstr "Bloc de béton"
 
@@ -3427,7 +3444,7 @@ msgstr "{} lignes copiées, séparées par des tabulations."
 msgid "Copies"
 msgstr ""
 
-#: crates/core/src/model.rs:4289
+#: crates/core/src/model.rs:4280
 msgid "Copper"
 msgstr "Cuivre"
 
@@ -3591,6 +3608,10 @@ msgstr ""
 
 #: crates/ui-egui/src/properties.rs:579
 msgid "Cover Side Overhang"
+msgstr ""
+
+#: crates/core/src/codes.rs:223
+msgid "Covers by exposure class, steel ratios, bars, stirrups and skin bars the bar check holds reinforcement to."
 msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:354
@@ -3882,6 +3903,10 @@ msgstr "Prises de données"
 msgid "Datum"
 msgstr "Repère"
 
+#: crates/core/src/codes.rs:289
+msgid "Days of consumption kept, refill time, compartments and pumps."
+msgstr ""
+
 #: crates/ui-egui/src/dimtypes.rs:183
 #: crates/ui-egui/src/spots.rs:350
 msgid "Decimal Places"
@@ -4075,7 +4100,7 @@ msgstr "Démoli"
 msgid "Demolition"
 msgstr "Démolition"
 
-#: crates/core/src/commands.rs:13612
+#: crates/core/src/commands.rs:13707
 msgid "Dependent"
 msgstr "Dépendante"
 
@@ -4110,6 +4135,10 @@ msgstr ""
 #: crates/ui-egui/src/parameters.rs:874
 #: crates/ui-egui/src/parameters.rs:1736
 msgid "Description of {}"
+msgstr ""
+
+#: crates/core/src/codes.rs:262
+msgid "Design Conditions"
 msgstr ""
 
 #: crates/ui-egui/src/phasing.rs:509
@@ -4619,6 +4648,10 @@ msgstr "Dessin…"
 msgid "Duct"
 msgstr "Gaine"
 
+#: crates/core/src/codes.rs:254
+msgid "Ducts and Piping"
+msgstr ""
+
 #: crates/ui-egui/src/browser.rs:581
 #: crates/ui-egui/src/publisher.rs:617
 #: crates/ui-egui/src/titleblocks.rs:578
@@ -4666,6 +4699,10 @@ msgstr "EQ"
 
 #: crates/ui-egui/src/settings.rs:691
 msgid "Each face of the box shows what it cuts in its cut pattern. Off, the faces are left hollow and moving the box is faster"
+msgstr ""
+
+#: crates/core/src/codes.rs:271
+msgid "Each fixture's design flows, weight, fixture units and least drain."
 msgstr ""
 
 #: crates/ui-egui/src/templates.rs:777
@@ -4928,10 +4965,15 @@ msgstr "Modification"
 msgid "Edit…"
 msgstr "Modifier…"
 
+#: crates/core/src/codes.rs:182
+msgid "Egress"
+msgstr ""
+
 #: crates/core/src/fixtures.rs:239
 msgid "Elbow 90"
 msgstr "Coude 90"
 
+#: crates/core/src/codes.rs:83
 #: crates/core/src/family.rs:357
 #: crates/ui-egui/src/editor/connectors.rs:299
 #: crates/ui-egui/src/lib.rs:1467
@@ -4967,7 +5009,7 @@ msgstr "Paramètres électriques"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "Paramètres électriques: les tensions, systèmes de distribution et types de câbles auxquels renvoient les circuits et les tableaux; sections en mm²"
 
-#: crates/core/src/commands.rs:3077
+#: crates/core/src/commands.rs:3119
 msgid "Elements"
 msgstr "Éléments"
 
@@ -5113,6 +5155,10 @@ msgstr ""
 msgid "Entities"
 msgstr "Entités"
 
+#: crates/core/src/codes.rs:206
+msgid "Envelope and Energy"
+msgstr ""
+
 #: crates/ui-egui/src/canvas.rs:4078
 msgid "Equal"
 msgstr "Égal"
@@ -5124,6 +5170,10 @@ msgstr "Affichage de l'égalité"
 #: crates/ui-egui/src/dimtypes.rs:186
 msgid "Equality Text"
 msgstr "Texte d'égalité"
+
+#: crates/core/src/codes.rs:238
+msgid "Equipment Working Space"
+msgstr ""
 
 #: crates/ui-egui/src/lib.rs:6383
 #: crates/ui-egui/src/plugins.rs:410
@@ -5666,6 +5716,18 @@ msgstr ""
 msgid "Finishes"
 msgstr ""
 
+#: crates/core/src/codes.rs:198
+msgid "Fire Safety"
+msgstr ""
+
+#: crates/core/src/codes.rs:313
+msgid "Fire hydrant systems by type, the fire reserve, pipe roughness and the limits on speed and head."
+msgstr ""
+
+#: crates/core/src/codes.rs:199
+msgid "Fire resistance by element, compartments and separation."
+msgstr ""
+
 #: crates/ui-egui/src/editor/extrusion.rs:187
 #: crates/ui-egui/src/editor/sketch.rs:1610
 msgid "First End"
@@ -5690,6 +5752,10 @@ msgstr "Fenêtre fixe"
 #: crates/ui-egui/src/dimtypes.rs:133
 msgid "Fixed to Dimension Line"
 msgstr "Fixé à la ligne de cote"
+
+#: crates/core/src/codes.rs:270
+msgid "Fixtures"
+msgstr ""
 
 #: crates/ui-egui/src/properties.rs:1791
 msgid "Flat"
@@ -6165,7 +6231,7 @@ msgstr "Les invités peuvent modifier"
 msgid "Guests without an AI key may use mine"
 msgstr "Les invités sans clé d'IA peuvent utiliser la mienne"
 
-#: crates/core/src/model.rs:4280
+#: crates/core/src/model.rs:4271
 msgid "Gypsum board"
 msgstr "Plaque de plâtre"
 
@@ -6469,6 +6535,10 @@ msgstr ""
 msgid "How wide this flight or landing is; empty for as wide as the stair"
 msgstr ""
 
+#: crates/core/src/codes.rs:312
+msgid "Hydrants and Hose Reels"
+msgstr ""
+
 #: crates/ui-egui/src/coordinates.rs:620
 #: crates/ui-egui/src/inquiry.rs:165
 msgid "ID"
@@ -6652,6 +6722,10 @@ msgstr ""
 
 #: crates/ui-egui/src/spots.rs:340
 msgid "Indicator as Prefix / Suffix"
+msgstr ""
+
+#: crates/core/src/codes.rs:263
+msgid "Indoor temperatures and humidity for heating and cooling."
 msgstr ""
 
 #: crates/ui-egui/src/lib.rs:5140
@@ -7106,6 +7180,10 @@ msgstr "Matériau du vantail"
 msgid "Leaf Thickness"
 msgstr "Épaisseur du vantail"
 
+#: crates/core/src/codes.rs:320
+msgid "Least Fixtures by Use"
+msgstr ""
+
 #: crates/ui-egui/src/cowork.rs:688
 msgid "Leave"
 msgstr "Quitter"
@@ -7264,6 +7342,10 @@ msgstr "Appareil d'éclairage"
 #: crates/ui-egui/src/mep.rs:85
 msgid "Lighting Fixture (LF): a luminaire, where you click, hung from the slab; Space turns it"
 msgstr "Appareil d'éclairage (LF): un luminaire, à l'endroit du clic, suspendu à la dalle; Espace le fait pivoter"
+
+#: crates/core/src/codes.rs:230
+msgid "Lighting Levels"
+msgstr ""
 
 #: crates/ui-egui/src/lib.rs:1468
 msgid "Lightning Protection"
@@ -7552,6 +7634,10 @@ msgstr ""
 msgid "Loading 3D view onto the card…"
 msgstr ""
 
+#: crates/core/src/codes.rs:214
+msgid "Loads and Combinations"
+msgstr ""
+
 #: crates/core/src/places.rs:280
 msgid "Local grid"
 msgstr ""
@@ -7721,6 +7807,10 @@ msgstr "Espacement principal Y"
 #: crates/ui-egui/src/properties.rs:2726
 #: crates/ui-egui/src/properties.rs:2733
 msgid "Mains"
+msgstr ""
+
+#: crates/core/src/codes.rs:231
+msgid "Maintained illuminance by room or task, and emergency lighting."
 msgstr ""
 
 #: crates/ui-egui/src/editor/document.rs:730
@@ -7957,7 +8047,7 @@ msgstr "Angle maximal"
 msgid "Maximum Riser Height"
 msgstr "Hauteur maximale de contremarche"
 
-#: crates/core/src/commands.rs:2723
+#: crates/core/src/commands.rs:2765
 #: crates/ui-egui/src/editor/document.rs:686
 #: crates/ui-egui/src/editor/document.rs:687
 msgid "Measure"
@@ -7967,6 +8057,7 @@ msgstr "Mesurer"
 msgid "Measure (ME): click two points; their length and angle read beside the ruler between them. In the 3D view, any two points of the model, whatever the work plane"
 msgstr ""
 
+#: crates/core/src/codes.rs:84
 #: crates/core/src/family.rs:358
 #: crates/ui-egui/src/editor/connectors.rs:229
 msgid "Mechanical"
@@ -9058,6 +9149,10 @@ msgstr "Styles d'objet: la plume de chaque catégorie, en projection et en coupe
 msgid "Object Styles…"
 msgstr "Styles d'objet…"
 
+#: crates/core/src/codes.rs:183
+msgid "Occupant load factors, exit widths, travel distances and corridors."
+msgstr ""
+
 #: crates/ui-egui/src/export/mod.rs:552
 msgid "Of"
 msgstr ""
@@ -9355,6 +9450,10 @@ msgstr ""
 msgid "Out"
 msgstr "Vers l'extérieur"
 
+#: crates/core/src/codes.rs:247
+msgid "Outdoor air by use, per person and per area, default occupancies and exhaust rates."
+msgstr ""
+
 #: crates/core/src/fixtures.rs:357
 msgid "Outlet"
 msgstr "Prise"
@@ -9564,6 +9663,10 @@ msgstr "Ellipse partielle"
 #: crates/ui-egui/src/draw.rs:166
 msgid "Partial Ellipse: click the ends of its axis, then how far it bulges"
 msgstr "Ellipse partielle: cliquer les extrémités de son axe, puis jusqu'où elle bombe"
+
+#: crates/core/src/codes.rs:215
+msgid "Partial factors, imposed loads by use and unit weights."
+msgstr ""
 
 #: crates/ui-egui/src/assistant.rs:145
 #: crates/ui-egui/src/assistant.rs:206
@@ -10357,6 +10460,7 @@ msgstr ""
 msgid "Plugins: the WASM extensions in your plugin folder, what became of each, their log, and switching them on and off"
 msgstr ""
 
+#: crates/core/src/codes.rs:85
 #: crates/core/src/family.rs:359
 #: crates/ui-egui/src/lib.rs:1466
 msgid "Plumbing"
@@ -10747,7 +10851,7 @@ msgid "Properties over the Project Browser, on the left, as at first"
 msgstr "Propriétés au-dessus du Navigateur de projet, à gauche, comme au départ"
 
 #: crates/core/src/commands.rs:618
-#: crates/core/src/commands.rs:9088
+#: crates/core/src/commands.rs:9183
 msgid "Property Line"
 msgstr ""
 
@@ -10882,6 +10986,10 @@ msgstr "Garde-corps: cliquer sur un escalier ou une rampe pour en placer un de c
 msgid "Railings"
 msgstr "Garde-corps"
 
+#: crates/core/src/codes.rs:305
+msgid "Rain, slopes, roughness, the least downpipe and the downpipe abacuses."
+msgstr ""
+
 #: crates/core/src/commands.rs:1022
 msgid "Ramp"
 msgstr "Rampe"
@@ -10915,15 +11023,15 @@ msgstr ""
 msgid "Read a title block drawn at full size (in mm on paper) in the model space of a DXF or DWG: its lines, solid hatches and texts; each {KEY} its texts name becomes a field"
 msgstr ""
 
-#: crates/core/src/model.rs:4812
+#: crates/core/src/model.rs:4803
 msgid "Reading elements"
 msgstr ""
 
-#: crates/core/src/commands.rs:4088
+#: crates/core/src/commands.rs:4130
 msgid "Reading the file"
 msgstr ""
 
-#: crates/core/src/model.rs:4856
+#: crates/core/src/model.rs:4847
 msgid "Reading the project"
 msgstr ""
 
@@ -11301,6 +11409,10 @@ msgstr ""
 msgid "Reporting Parameter"
 msgstr "Paramètre de rapport"
 
+#: crates/core/src/codes.rs:288
+msgid "Reservation"
+msgstr ""
+
 #: crates/ui-egui/src/codes.rs:350
 #: crates/ui-egui/src/coordinates.rs:1359
 #: crates/ui-egui/src/graphics.rs:1383
@@ -11508,6 +11620,10 @@ msgstr ""
 msgid "Risers"
 msgstr "Contremarches"
 
+#: crates/core/src/codes.rs:175
+msgid "Risers, treads, widths, landings, winders, nosings, handrails and guards of stairs."
+msgstr ""
+
 #: crates/core/src/model.rs:3598
 msgid "Roller"
 msgstr ""
@@ -11536,7 +11652,7 @@ msgstr "Toit par face (RB): un toit sur les faces supérieures des volumes séle
 msgid "Roof by Footprint: click inside the walls to roof them, on the level above"
 msgstr "Toit par tracé: cliquer à l'intérieur des murs pour les couvrir, au niveau au-dessus"
 
-#: crates/core/src/model.rs:4282
+#: crates/core/src/model.rs:4273
 msgid "Roof tiles"
 msgstr "Tuiles"
 
@@ -11735,6 +11851,10 @@ msgstr "Projet d'exemple"
 msgid "Sand"
 msgstr "Sable"
 
+#: crates/core/src/codes.rs:296
+msgid "Sanitary Drainage and Vents"
+msgstr ""
+
 #: crates/ui-egui/src/lib.rs:4013
 #: crates/ui-egui/src/publisher.rs:475
 #: crates/ui-egui/src/shortcuts.rs:537
@@ -11849,7 +11969,7 @@ msgstr "Échelle: le papier que cette vue représente, 1 : n du modèle: ses ann
 msgid "Scan"
 msgstr "Numérisation"
 
-#: crates/core/src/commands.rs:2511
+#: crates/core/src/commands.rs:2553
 msgid "Schedule"
 msgstr "Nomenclature"
 
@@ -11889,7 +12009,7 @@ msgstr "Nomenclatures/Quantités (toutes)"
 msgid "Scope"
 msgstr ""
 
-#: crates/core/src/model.rs:4278
+#: crates/core/src/model.rs:4269
 msgid "Screed"
 msgstr "Chape"
 
@@ -12901,6 +13021,10 @@ msgstr "Escalier: cliquer à son début, puis dans quel sens il monte"
 msgid "Stair: click where the stair starts, then where each flight or landing ends"
 msgstr ""
 
+#: crates/core/src/codes.rs:174
+msgid "Stairs and Railings"
+msgstr ""
+
 #: crates/ui-egui/src/graphics.rs:650
 msgid "Stairs on Their Own Level"
 msgstr ""
@@ -13036,6 +13160,10 @@ msgstr "Étriers"
 msgid "Stop"
 msgstr ""
 
+#: crates/core/src/codes.rs:304
+msgid "Storm Drainage"
+msgstr ""
+
 #: crates/ui-egui/src/linestyles/creator.rs:89
 msgid "Straight"
 msgstr "Droit"
@@ -13062,6 +13190,7 @@ msgstr ""
 msgid "Stringers and Supports"
 msgstr ""
 
+#: crates/core/src/codes.rs:82
 #: crates/core/src/family.rs:360
 #: crates/core/src/schedule.rs:308
 msgid "Structural"
@@ -13705,6 +13834,10 @@ msgstr ""
 msgid "The centre of a curved wall, a column or a component"
 msgstr "Le centre d'un mur courbe, d'une colonne ou d'un composant"
 
+#: crates/core/src/codes.rs:239
+msgid "The clear space in front of panels and switchboards."
+msgstr ""
+
 #: crates/ui-egui/src/control.rs:403
 msgid "The control port, through which an agent works on this project (bimcraft-cli mcp --connect): whether it is open, how many agents are connected, and whether they may only read. Click for File > Settings > Agents"
 msgstr "Le port de contrôle, par lequel un agent travaille sur ce projet (bimcraft-cli mcp --connect): s'il est ouvert, combien d'agents sont connectés et s'ils peuvent seulement lire. Cliquer pour ouvrir Fichier > Paramètres > Agents"
@@ -13770,6 +13903,14 @@ msgstr "Les fichiers de ce message ne sont pas d'un type que l'assistant accepte
 msgid "The first guest hosts the session; the others move there"
 msgstr "Le premier invité héberge la session; les autres s'y rendent"
 
+#: crates/core/src/codes.rs:297
+msgid "The fixture units branches, stacks and building drains carry by size and slope, vents and trap distances."
+msgstr ""
+
+#: crates/core/src/codes.rs:280
+msgid "The flow method, the most speed, the least pressure at a point of use, the pipes and fittings' equivalent lengths."
+msgstr ""
+
 #: crates/ui-egui/src/properties.rs:3777
 msgid "The foot of the perpendicular from the last point to a wall or grid"
 msgstr "Le pied de la perpendiculaire du dernier point à un mur ou un quadrillage"
@@ -13820,6 +13961,10 @@ msgstr "Le milieu d'un mur, le long de son arc"
 
 #: crates/ui-egui/src/lib.rs:5786
 msgid "The most a riser may be: the stair takes as many risers as it needs to stay under it. Leave it empty to follow the rules."
+msgstr ""
+
+#: crates/core/src/codes.rs:255
+msgid "The most air and water velocities and friction losses."
 msgstr ""
 
 #: crates/ui-egui/src/fillpatterns.rs:231
@@ -14134,6 +14279,10 @@ msgstr "Il n'y a pas de sol ni de toit ici où le placer."
 #: crates/ui-egui/src/properties.rs:893
 msgid "Thermal"
 msgstr "Thermique"
+
+#: crates/core/src/codes.rs:207
+msgid "Thermal transmittance of walls, roofs, floors and windows by climate zone."
+msgstr ""
 
 #: crates/ui-egui/src/parameters.rs:1018
 msgid "These go on every component, the nearest category there is here: {}"
@@ -14839,11 +14988,11 @@ msgstr ""
 msgid "Unlock alignment"
 msgstr "Déverrouiller l'alignement"
 
-#: crates/core/src/commands.rs:13848
+#: crates/core/src/commands.rs:13943
 msgid "Unnamed"
 msgstr "Sans nom"
 
-#: crates/core/src/commands.rs:4105
+#: crates/core/src/commands.rs:4147
 msgid "Unpacking the project"
 msgstr ""
 
@@ -14982,6 +15131,10 @@ msgstr "Variable"
 #: crates/ui-egui/src/export/mod.rs:153
 #: crates/ui-egui/src/export/mod.rs:843
 msgid "Vector"
+msgstr ""
+
+#: crates/core/src/codes.rs:246
+msgid "Ventilation"
 msgstr ""
 
 #: crates/ui-egui/src/export/mod.rs:923
@@ -15324,6 +15477,10 @@ msgstr "Armoire"
 #: crates/core/src/family.rs:3370
 msgid "Washbasin"
 msgstr "Lavabo"
+
+#: crates/core/src/codes.rs:321
+msgid "Water closets, lavatories and other fixtures a building needs for its occupants."
+msgstr ""
 
 #: crates/ui-egui/src/linestyles/creator.rs:89
 msgid "Wave"
@@ -15889,6 +16046,10 @@ msgstr ""
 msgid "arc"
 msgstr "arc"
 
+#: crates/core/src/codes.rs:118
+msgid "assumption"
+msgstr ""
+
 #: crates/ui-egui/src/editor/connectors.rs:151
 msgid "at"
 msgstr ""
@@ -16033,6 +16194,10 @@ msgstr "fck (MPa)"
 msgid "fitted spline"
 msgstr "spline ajustée"
 
+#: crates/core/src/codes.rs:120
+msgid "forgiving"
+msgstr ""
+
 #: crates/ui-egui/src/display.rs:43
 msgid "graphic display options are for the 3D view: open it from the Project Browser"
 msgstr "les options d'affichage graphique concernent la vue 3D: l'ouvrir depuis le navigateur de projet"
@@ -16044,6 +16209,10 @@ msgstr "a une valeur"
 #: crates/ui-egui/src/properties.rs:3976
 msgid "has no value"
 msgstr "n'a pas de valeur"
+
+#: crates/core/src/codes.rs:119
+msgid "historical"
+msgstr ""
 
 #: crates/ui-egui/src/properties.rs:3965
 msgid "is greater than"
@@ -16156,6 +16325,10 @@ msgstr "polyligne"
 msgid "port"
 msgstr "port"
 
+#: crates/core/src/codes.rs:117
+msgid "practice"
+msgstr ""
+
 #: crates/core/src/library.rs:116
 msgid "print set"
 msgstr ""
@@ -16175,6 +16348,14 @@ msgstr "rampe: `{}` n'est pas une largeur"
 #: crates/ui-egui/src/canvas.rs:2890
 msgid "ramp: {}"
 msgstr "rampe: {}"
+
+#: crates/core/src/codes.rs:116
+msgid "recommendation"
+msgstr ""
+
+#: crates/core/src/codes.rs:115
+msgid "requirement"
+msgstr ""
 
 #: crates/ui-egui/src/canvas.rs:2847
 msgid "roof: `{}` is not a slope"

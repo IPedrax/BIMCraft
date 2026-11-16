@@ -1,0 +1,43 @@
+{
+ "presets": [
+  {
+   "name": "Generic",
+   "note": "No country's codes: wide ranges round common practice, and the library's numbers where a tool needs them.",
+   "choices": {
+    "architectural": {"code": "generic"},
+    "structural": {"code": "generic"},
+    "electrical": {"code": "generic"},
+    "mechanical": {"code": "generic"},
+    "plumbing": {"code": "generic"}
+   }
+  },
+  {
+   "name": "Brasil",
+   "note": "ABNT's standards. NBR 9050 for stairs on an accessible route; pick NBR 9077 for an emergency exit, and add the state fire brigade's instruction as it rules over it.",
+   "choices": {
+    "architectural": {"code": "nbr-9050"}
+   }
+  },
+  {
+   "name": "USA (IBC)",
+   "note": "The International Building Code and the ICC family. Each state adopts an edition, often with amendments of its own.",
+   "choices": {
+    "architectural": {"code": "ibc"}
+   }
+  },
+  {
+   "name": "Deutschland (DIN)",
+   "note": "DIN 18065 for stairs; each Land's building regulation (LBO) rules over it.",
+   "choices": {
+    "architectural": {"code": "din"}
+   }
+  },
+  {
+   "name": "Japan",
+   "note": "The Building Standards Law's enforcement order.",
+   "choices": {
+    "architectural": {"code": "jis"}
+   }
+  }
+ ]
+}
