@@ -249,6 +249,16 @@ pub(crate) fn joined_perpendicular_in(m: &Model, id: Id, at_end: bool, index: Op
         .min()
 }
 
+/// The other walls joined to wall `id` at its start (or `at_end`, its end), each once, and whether it ends there on the
+/// side of one of them (a tee).
+pub(crate) fn joined(m: &Model, id: Id, at_end: bool) -> (Vec<Id>, bool) {
+    let (arms, through) = arms(m, id, at_end, None, &|_| true);
+    let mut others: Vec<Id> = arms.iter().map(|a| a.id).filter(|o| *o != id).collect();
+    others.sort_unstable();
+    others.dedup();
+    (others, through)
+}
+
 /// A wall where it leaves a node: the way it goes, and where its faces' lines and its centre line
 /// are there (each running that way): the face on the counter-clockwise side of that way, the one
 /// on the clockwise side, and which wall's end it is (`id`, `at_end`). A run's arm at its end is one too ([`crate::runs`]),
@@ -723,9 +733,43 @@ pub fn base_at(m: &Model, w: &Wall, s: f64) -> f64 {
     bounds(m, w).0.at(Axis::of(w).at(s, centre(m, w)))
 }
 
+/// A wall's top over plan point `q`: what it's attached to there, else its own top.
+pub(crate) fn top_over(m: &Model, w: &Wall, q: P2) -> f64 {
+    bounds(m, w).1.at(q)
+}
+
 /// A wall's top over the point `s` mm along its centre line.
 pub fn top_at(m: &Model, w: &Wall, s: f64) -> f64 {
     bounds(m, w).1.at(Axis::of(w).at(s, centre(m, w)))
+}
+
+/// Along the line `off` mm to the left of straight wall `w`'s location line, from `s0` to `s1`: its base (with `top`, its
+/// top) as straight pieces `[from, to, height at from, height at to]`, in order, a new one wherever it changes plane.
+pub(crate) fn profile(m: &Model, w: &Wall, top: bool, off: f64, s0: f64, s1: f64) -> Vec<[f64; 4]> {
+    let (base, up) = bounds(m, w);
+    let bound = if top { up } else { base };
+    let axis = Axis::of(w);
+    let (p, q) = (axis.at(s0, off), axis.at(s1, off));
+    let mut cuts = vec![s0, s1];
+    for (ring, _) in &bound.regions {
+        cuts.extend(geom::ring_edges(ring).filter_map(|(a, b)| geom::crossing(p, q, a, b)).map(|t| s0 + t * (s1 - s0)));
+    }
+    cuts.sort_by(f64::total_cmp);
+    cuts.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
+    let mut out: Vec<[f64; 4]> = Vec::new();
+    for pair in cuts.windows(2) {
+        let &[a, b] = pair else { continue };
+        let plane = bound.over(axis.at((a + b) / 2.0, off)).unwrap_or(Plane::flat(bound.own));
+        let (za, zb) = (plane.at(axis.at(a, off)), plane.at(axis.at(b, off)));
+        // One piece on with the last where it goes on in the same line.
+        match out.last_mut() {
+            Some(last) if (last[3] - za).abs() < 1e-6 && ((last[3] - last[2]) / (last[1] - last[0]) - (zb - za) / (b - a)).abs() < 1e-9 => {
+                [last[1], last[3]] = [b, zb];
+            }
+            _ => out.push([a, b, za, zb]),
+        }
+    }
+    out
 }
 
 /// A wall's lowest base and highest top along its faces and its centre line, where what it's

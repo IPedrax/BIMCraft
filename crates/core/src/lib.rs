@@ -102,6 +102,25 @@ mod fixtures;
 mod font;
 #[cfg(test)]
 mod formula_visibility_tests;
+pub mod framing;
+#[cfg(test)]
+mod framing_floor_hunt_tests;
+#[cfg(test)]
+mod framing_floor_output_tests;
+#[cfg(test)]
+mod framing_floor_tests;
+#[cfg(test)]
+mod framing_output_tests;
+#[cfg(test)]
+mod framing_roof_hunt2_tests;
+#[cfg(test)]
+mod framing_roof_hunt_tests;
+#[cfg(test)]
+mod framing_roof_output_tests;
+#[cfg(test)]
+mod framing_roof_tests;
+#[cfg(test)]
+mod framing_tests;
 pub mod geom;
 #[cfg(test)]
 mod georef_tests;

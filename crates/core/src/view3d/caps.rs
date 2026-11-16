@@ -218,7 +218,8 @@ impl CapSource {
                 for (i, ring) in self.face(axis, at).iter() {
                     let Some(p) = self.pieces.get(*i) else { continue };
                     let owner = p.solid.owner();
-                    if !plain && !look.shows(owner) {
+                    let member = crate::family::visibility::framing(p.solid.vis());
+                    if (!plain && !look.shows(owner)) || (member.is_some() && !look.forms_show(p.solid.vis(), true)) {
                         continue;
                     }
                     let ring = [(P2(1.0, 0.0), lo[a]), (P2(-1.0, 0.0), -hi[a]), (P2(0.0, 1.0), lo[b]), (P2(0.0, -1.0), -hi[b])]
@@ -229,6 +230,10 @@ impl CapSource {
                     }
                     let ring: Vec<P2> = if geom::area(&ring) < 0.0 { ring.into_iter().rev().collect() } else { ring };
                     let layer: Option<&Layer> = p.layer.and_then(|k| layers_of(m, owner).get(k));
+                    // A framing member's in the framing type's material, where it has one of its own.
+                    let framing = member.filter(|m| *m).and(layer).zip(crate::framing::material_of(m, owner));
+                    let own = framing.map(|(l, material)| Layer { material: material.to_string(), ..l.clone() });
+                    let layer = own.as_ref().or(layer);
                     let u = if axis == 2 { p.along } else { P2(1.0, 0.0) };
                     let (base, strokes) = crate::render::cap_fill(m, look, (owner, layer), &ring, u, (n, detail));
                     let color = base.unwrap_or_else(|| if plain { p.solid_color() } else { look.cut_fill(owner, p.solid_color()) });

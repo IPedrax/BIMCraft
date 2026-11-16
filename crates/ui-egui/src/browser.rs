@@ -63,9 +63,10 @@ impl Tab {
     }
 }
 
-/// The categories of the system's families the browser lists, besides the runs': what Edit Type edits and the Type Selector picks.
-const SYSTEM_FAMILIES: [&str; 10] =
-    ["wall", "floor", "roof", "ceiling", "door", "window", "column", "railing", "structuralcolumn", "footing"];
+/// The categories of the system's families the browser lists, besides the runs': what Edit Type edits and the Type Selector picks;
+/// and framing types, which a click opens in Type Properties (Frame is no tool to pick a type for).
+const SYSTEM_FAMILIES: [&str; 11] =
+    ["wall", "floor", "roof", "ceiling", "door", "window", "column", "railing", "structuralcolumn", "footing", "framing"];
 
 /// A view or sheet picked in the browser: Ctrl adds or takes one, Shift a run of them, as in any list of the system's.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -103,6 +104,8 @@ enum Act {
     Do(&'static str, serde_json::Value),
     /// A system family's type: the Type Selector's now, for what is placed next.
     Pick(&'static str, String),
+    /// A type's Type Properties.
+    EditType(&'static str, String),
     /// A link: it is the selection, for Properties.
     Select(Id),
     /// A Ctrl-click (toggles it) or a Shift-click (picks the run to it from the last picked; with Ctrl, adds the run).
@@ -412,6 +415,9 @@ impl BimApp {
             Some(Act::Pick(category, name)) => {
                 self.types.insert(category, name);
             }
+            Some(Act::EditType(category, name)) => {
+                self.type_dialog = Some(crate::properties::TypeDialog::new(&self.session.model, category, name, Vec::new()));
+            }
             Some(Act::Select(id)) => self.selection = vec![id],
             _ => {}
         }
@@ -690,8 +696,9 @@ impl BimApp {
                 .iter()
                 .map(|ty| {
                     let on = self.types.get(category).is_some_and(|t| t == ty);
-                    Node::leaf(ty, Act::Pick(category, ty.to_string()), on)
-                        .with_menu(delete(serde_json::json!({"category": category, "type": ty})))
+                    let act =
+                        if *category == "framing" { Act::EditType(category, ty.to_string()) } else { Act::Pick(category, ty.to_string()) };
+                    Node::leaf(ty, act, on).with_menu(delete(serde_json::json!({"category": category, "type": ty})))
                 })
                 .collect();
             (!names.is_empty()).then(|| Node::group(&crate::lang::category(category, true), false, leaves))
