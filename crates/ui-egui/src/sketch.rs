@@ -1034,8 +1034,9 @@ impl BimApp {
     /// touching too), or a line where it began if it hardly moved. True when one ended this frame: that's no click.
     pub(crate) fn sketch_drag(&mut self, ui: &Ui, response: &Response, rect: Rect, view: &View, level: Id) -> bool {
         // Walls' Outline with Ctrl draws a box over walls (`canvas.rs`); without it the sketch's lines are boxed as usual.
-        let ctrl = ui.input(|i| i.modifiers.ctrl || i.modifiers.command);
-        if (self.outline_pending && ctrl) || self.tool != Tool::Modify || self.sketch.is_none() {
+        // The click's own modifiers count too, as they do there.
+        let ctrl = crate::canvas::click_modifiers(ui);
+        if (self.outline_pending && (ctrl.ctrl || ctrl.command)) || self.tool != Tool::Modify || self.sketch.is_none() {
             return false;
         }
         let local = |p: Pos2| (p.x - rect.min.x, p.y - rect.min.y);

@@ -1502,7 +1502,8 @@ impl BimApp {
         let Some((view, local)) = self.canvas.navigate(ui, &response, rect, key, fit) else { return };
         // Where the pointer is, for the others in a Co-Work session.
         self.cowork_seen.pointer = local.map(|q| (key, view.mm(q)));
-        let mods = ui.input(|i| i.modifiers);
+        // Clicks carry their modifiers even when no key event came with them, as a test's or a synthesized event's do.
+        let mods = click_modifiers(ui);
         let shape = self.shape();
         let pipeline = self.card.canvas();
         let look = crate::retained::Look::now(ui.ctx(), &ui.painter_at(rect), rect.min, self.writing(), self.thin);
