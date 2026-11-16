@@ -2142,7 +2142,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
                 &mut m.types.wall,
                 &base,
                 |k| (k.thickness - t).abs() < 0.05 && k.layers == layers,
-                WallType { thickness: t, layers: layers.clone() },
+                WallType { thickness: t, layers: layers.clone(), curtain: None },
             );
             let location = located(id).filter(|_| !turned);
             let on = |x: P2| micron(if location.is_some() { x } else { c + (x - c).unit() * ((r0 + r1) / 2.0) });
@@ -2200,7 +2200,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
             &mut m.types.wall,
             &base,
             |k| (k.thickness - t).abs() < 0.05 && k.layers == layers,
-            WallType { thickness: t, layers: layers.clone() },
+            WallType { thickness: t, layers: layers.clone(), curtain: None },
         );
         raw.push(RawWall {
             ifc: id,
@@ -2237,6 +2237,8 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
             attach_base: None,
             room_bounding: true,
             join: true,
+            curtain: None,
+            panel_of: None,
         };
         let id = m.insert(Element::Wall(wall));
         from.insert(id, who(w.ifc));

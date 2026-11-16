@@ -17218,6 +17218,350 @@ msgctxt "category-plural"
 msgid "Repeating Details"
 msgstr ""
 
+#: crates/ui-egui/src/curtain.rs:580
+msgid "A wall stands here: select it, or delete it to have the panel back."
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:339
+msgid "Add Column"
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:725
+msgid "Add Horizontal Grid"
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:723
+msgid "Add Horizontal Grid: in a section, an elevation or the 3D view, hover over the curtain wall to see where, click to place it with its mullions. A grid added stays when the pattern changes"
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:339
+msgid "Add Row"
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:719
+msgid "Add Vertical Grid"
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:717
+msgid "Add Vertical Grid: hover over the curtain wall to see where, click to place it with its mullions. A grid added stays when the pattern changes"
+msgstr ""
+
+#: crates/core/src/commands.rs:584 crates/ui-egui/src/curtain.rs:732
+#: crates/ui-egui/src/lib.rs:1891
+msgid "Add/Remove Segments"
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:729
+msgid "Add/Remove Segments: in a section, an elevation or the 3D view, click a stretch of a grid line to take it off and merge the panels either side, or click where one was to put it back"
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:602
+msgid "As in the Pattern"
+msgstr ""
+
+#: crates/ui-egui/src/properties.rs:2900
+msgid "Auto Rotation"
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:831
+msgid "Back to Auto"
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:370
+msgid "Border Bottom"
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:368
+msgid "Border Left"
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:369
+msgid "Border Right"
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:371
+msgid "Border Top"
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:920
+msgid "Borders"
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:311
+msgid "Butt"
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:356
+msgid "Centre Line"
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:948
+msgid "Click a panel or a mullion to set its type; Shift adds to the selection."
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:6028
+msgid "Click a stretch of a grid line in a section, an elevation or the 3D view to take it off or put it back. Esc ends."
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:6025
+msgid "Click on the curtain wall in a section, an elevation or the 3D view to place a horizontal grid. Esc ends."
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:6022
+msgid "Click on the curtain wall to place a vertical grid. Esc ends."
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:325
+msgid "Column Fit"
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:325
+msgid "Column Justification"
+msgstr ""
+
+#: crates/ui-egui/src/browser.rs:705 crates/ui-egui/src/curtain.rs:382
+#: crates/ui-egui/src/curtain.rs:569
+msgid "Corner Mullion"
+msgstr ""
+
+#: crates/core/src/commands.rs:574 crates/ui-egui/src/curtain.rs:715
+msgid "Curtain Grid"
+msgstr ""
+
+#: crates/core/src/graphics.rs:142
+msgid "Curtain Panels"
+msgstr ""
+
+#: crates/core/src/commands.rs:564
+msgid "Curtain Part"
+msgstr ""
+
+#: crates/core/src/commands.rs:595
+msgid "Curtain Parts"
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:1001 crates/ui-egui/src/lib.rs:1477
+msgid "Curtain Wall"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:4568
+msgid "Curtain Wall: a wall divided by its type's pattern into panels and mullions"
+msgstr ""
+
+#: crates/core/src/curtain.rs:721
+msgid "Due to the defined wall length the last grid segment draws a malformed panel"
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:895
+msgid "Edit Pattern"
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:347
+msgid "Fit Evenly"
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:347
+msgid "Fixed Grid"
+msgstr ""
+
+#: crates/ui-egui/src/browser.rs:705
+msgid "Generic Panel"
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:830
+msgid "Grid Kind: {}"
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:824 crates/ui-egui/src/curtain.rs:910
+msgid "Horizontal Grid"
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:568
+msgid "Horizontal Mullion"
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:927
+msgid "Horizontal Mullions"
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:1009
+msgid "I will fix it myself"
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:347
+msgid "Last Grid Flexible"
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:831
+msgid "Make Manual"
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:830
+msgid "Manual"
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:311
+msgid "Mitre"
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:943
+msgid "Module {} x {}, thickness {}"
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:301
+msgid "Mullion Type"
+msgstr ""
+
+#: crates/core/src/graphics.rs:143
+msgid "Mullions"
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:925
+msgid "Of One Size, Runs Through"
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:285
+msgid "Panel Type"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:1890
+msgid "Place Curtain Grid"
+msgstr ""
+
+#: crates/ui-egui/src/browser.rs:705
+msgid "Rectangular Mullion"
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:339
+msgid "Remove Column"
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:339
+msgid "Remove Row"
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:1008 crates/ui-egui/src/curtain.rs:1026
+msgid "Remove last interior grid"
+msgstr ""
+
+#: crates/core/src/commands.rs:602
+msgid "Replace Panel with Wall"
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:603
+msgid "Replace with Wall"
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:929
+msgid "Restart pattern at levels crossing"
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:327
+msgid "Row"
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:327
+msgid "Row Fit"
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:327
+msgid "Row Justification"
+msgstr ""
+
+#: crates/ui-egui/src/context.rs:84
+msgid "Select Along Grid"
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:203
+msgid "Select members in the preview panel to edit them."
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:931
+msgid "Smallest Panel"
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:824 crates/ui-egui/src/curtain.rs:900
+msgid "Vertical Grid"
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:567
+msgid "Vertical Mullion"
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:927
+msgid "Vertical Mullions"
+msgstr ""
+
+#: crates/ui-egui/src/properties.rs:558 crates/ui-egui/src/properties.rs:564
+msgid "X Offset"
+msgstr ""
+
+#: crates/ui-egui/src/properties.rs:559 crates/ui-egui/src/properties.rs:565
+msgid "Y Offset"
+msgstr ""
+
+#: crates/ui-egui/src/canvas.rs:2266
+msgid "a horizontal grid is placed in a section, an elevation or the 3D view"
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:792
+msgid "a horizontal grid moves in a section, an elevation or the 3D view"
+msgstr ""
+
+#: crates/ui-egui/src/canvas.rs:2260
+msgid "a segment is picked in a section, an elevation or the 3D view"
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:684
+msgid "click on a grid line of the curtain wall"
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:754
+msgid "click on the curtain wall"
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:1004
+msgid "{} walls"
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:576
+msgid "{}: column {}, row {}"
+msgstr ""
+
+#: crates/ui-egui/src/curtain.rs:574
+msgid "{}: {} along the grid"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:297
+msgctxt "category"
+msgid "Corner Mullion"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:295
+msgctxt "category"
+msgid "Curtain Panel"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:296
+msgctxt "category"
+msgid "Mullion"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:297
+msgctxt "category-plural"
+msgid "Corner Mullions"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:295
+msgctxt "category-plural"
+msgid "Curtain Panels"
+msgstr ""
+
+#: crates/ui-egui/src/lang.rs:296
+msgctxt "category-plural"
+msgid "Mullions"
+msgstr ""
+
 #: crates/ui-egui/src/editor.rs:739
 #~ msgid "A blank value is the family's own, as the Parameters tab has it."
 #~ msgstr "Een lege waarde is die van de familie zelf, zoals het tabblad Parameters ze toont."

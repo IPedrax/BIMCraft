@@ -54,6 +54,8 @@ pub(crate) enum Action {
     Unpin,
     /// Edit Dimension References: the selected dimension's references picked again.
     EditDimensionReferences,
+    /// Of a curtain wall's mullion picked: every mullion along its grid.
+    SelectAlongGrid,
 }
 
 impl Action {
@@ -87,6 +89,7 @@ impl Action {
             Action::Pin => msg!("Pin"),
             Action::Unpin => msg!("Unpin"),
             Action::EditDimensionReferences => msg!("Edit Dimension References"),
+            Action::SelectAlongGrid => msg!("Select Along Grid"),
         }
     }
 
@@ -165,6 +168,9 @@ impl BimApp {
             // A camera picked in a plan: open its 3D view, or delete it.
             let camera =
                 matches!(self.selection.as_slice(), [id] if matches!(m.elements.get(id), Some(bimcraft_core::model::Element::View3D(_))));
+            if self.curtain_mullion_picked() {
+                groups.push(vec![Item::new(Action::SelectAlongGrid, true)]);
+            }
             if camera {
                 groups.push(vec![Item::new(Action::OpenView, true), Item::new(Action::Delete, true)]);
             } else {
@@ -278,6 +284,7 @@ impl BimApp {
             Action::RestoreExcluded => self.restore_excluded(),
             Action::Delete => self.delete(),
             Action::WorkPlane => self.open_work_plane(),
+            Action::SelectAlongGrid => self.select_along_grid(),
             Action::ReloadCad => {
                 for cad in self.linked_cads() {
                     self.run("reload_cad", serde_json::json!({"cad": cad}));

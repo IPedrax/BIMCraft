@@ -39,6 +39,11 @@ mod cowork_tests;
 pub mod crosscheck;
 pub mod crs;
 mod csg;
+pub mod curtain;
+#[cfg(test)]
+mod curtain_grid_tests;
+#[cfg(test)]
+mod curtain_tests;
 pub mod curves;
 pub mod demand;
 pub mod derived;

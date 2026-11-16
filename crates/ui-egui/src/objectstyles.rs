@@ -5,10 +5,10 @@ use crate::popup::Modal;
 
 use std::collections::BTreeMap;
 
-use bimcraft_core::graphics::MODEL;
+use bimcraft_core::graphics::{CURTAIN_PARTS, MODEL};
 use bimcraft_core::model::Model;
 use bimcraft_core::pen::{MAX_PEN, Pen};
-use bimcraft_core::styles::{ObjectStyle, default_of};
+use bimcraft_core::styles::ObjectStyle;
 use egui::{Align, ComboBox, Context, Grid, Id as UiId, Layout, RichText, ScrollArea, Ui, WidgetInfo, WidgetType};
 use serde_json::{Value, json};
 
@@ -24,8 +24,8 @@ pub(crate) struct ObjectStylesDialog {
 impl ObjectStylesDialog {
     /// Open on the project's object styles.
     pub(crate) fn new(m: &Model) -> ObjectStylesDialog {
-        // Every model category, and the subcategories that have rows of their own (Doors > Opening).
-        let keys = MODEL.iter().copied().chain(bimcraft_core::styles::model_subs());
+        // Every model category, the subcategories that have rows of their own (Doors > Opening), and a curtain wall's parts.
+        let keys = MODEL.iter().copied().chain(bimcraft_core::styles::model_subs()).chain(CURTAIN_PARTS);
         ObjectStylesDialog { draft: keys.map(|c| (c, m.object_style(c))).collect() }
     }
 }
@@ -81,8 +81,8 @@ impl BimApp {
                 ui.horizontal(|ui| {
                     if ui.button(t("Reset")).on_hover_text(t("Back to the pens a project starts with")).clicked() {
                         for (c, s) in &mut d.draft {
-                            // A subcategory starts as its category does.
-                            *s = default_of(bimcraft_core::graphics::sub(c).map_or(c, |sub| sub.parent));
+                            // As a project starts: a subcategory as its category does, a curtain wall's part with its own.
+                            *s = bimcraft_core::styles::inherited(&BTreeMap::new(), c);
                         }
                     }
                     ui.with_layout(Layout::right_to_left(Align::Min), |ui| {

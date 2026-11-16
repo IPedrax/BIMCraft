@@ -142,9 +142,11 @@ fn object_styles_has_a_row_for_each_family_category_and_component_sets_them_all(
     let mut s = Session::new();
     let r = s.execute("object_styles", &json!({})).unwrap();
     let rows: Vec<&str> = r["categories"].as_array().unwrap().iter().map(|c| c["category"].as_str().unwrap()).collect();
-    // Every model category, then the subcategories with rows of their own (Doors > Opening, Windows > Opening).
+    // Every model category, then the subcategories with rows of their own (Doors > Opening, Windows > Opening), then a
+    // curtain wall's parts.
     let subs: Vec<&str> = crate::styles::model_subs().collect();
-    assert_eq!(rows, MODEL.iter().copied().chain(subs.iter().copied()).collect::<Vec<_>>());
+    let all: Vec<&str> = MODEL.iter().copied().chain(subs.iter().copied()).chain(crate::graphics::CURTAIN_PARTS).collect();
+    assert_eq!(rows, all);
     assert_eq!(subs, ["dooropening", "windowopening"]);
     assert!(COMPONENTS.iter().all(|c| rows.contains(c)) && !rows.contains(&COMPONENT));
     let start = ObjectStyle { projection: Pen::PROJECTION, cut: Pen::CUT };

@@ -202,6 +202,11 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// reads up to 20 would leave the members out as a field it doesn't know and draw each detail group's type over its own
 /// elements, twice over, and leave model groups out, not say "saved by a newer BIMCraft"; a file of 20 gets its detail
 /// groups' members made after it is read (`Model::place_old_groups`).
+/// And a wall's type may be a curtain wall's (`curtain`, its pattern), with curtain panel, mullion and corner mullion types
+/// (`curtain_panel`, `mullion`, `corner_mullion`), and a wall may hold its curtain wall's edits (`curtain`: manual grids,
+/// segments, panels and mullions changed) or stand in place of one's panel (`panel_of`); a build that reads up to 20 would read
+/// a curtain wall as a solid wall and drop its edits, not say "saved by a newer BIMCraft". A file of 20 gets the starter
+/// panels, mullions and corner mullions.
 pub const FORMAT: u32 = 21;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
@@ -384,6 +389,12 @@ pub struct Wall {
     /// its ends stretch with what they meet; an unjoined wall's ends stay square and follow no one.
     #[serde(default = "yes", skip_serializing_if = "is_yes")]
     pub join: bool,
+    /// A curtain wall's edits, apart from its type.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub curtain: Option<crate::curtain::CurtainEdits>,
+    /// The curtain wall and cell it stands in place of a panel in: kept fitted to that, it joins nothing and bounds no room.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub panel_of: Option<crate::curtain::PanelOf>,
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
@@ -2521,6 +2532,7 @@ macro_rules! visit_refs {
                 if let Some(g) = & $($m)? w.top_level { f(g) }
                 if let Some(g) = & $($m)? w.attach_top { f(g) }
                 if let Some(g) = & $($m)? w.attach_base { f(g) }
+                if let Some(p) = & $($m)? w.panel_of { f(& $($m)? p.host) }
             }
             Element::Floor(Floor { level, .. }) | Element::Ceiling(Ceiling { level, .. }) => f(level),
             Element::Room(Room { level, top_level, floor, ceiling, .. }) => {
@@ -2944,6 +2956,9 @@ pub struct WallType {
     pub thickness: f64,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub layers: Vec<Layer>,
+    /// A curtain wall's pattern: its panels and mullions make it up, and its `thickness` is theirs, worked out.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub curtain: Option<crate::curtain::CurtainLayout>,
 }
 
 /// A floor type: how thick its floors are and, a compound one, its layers from the top down.
@@ -3730,6 +3745,15 @@ pub struct Types {
     /// The types of the runs, by category, then name: `runs["beam"]["Beam 200 x 500"]`.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub runs: BTreeMap<String, BTreeMap<String, RunType>>,
+    /// The types of the Generic Panel system family, what fills a curtain wall's cells.
+    #[serde(default)]
+    pub curtain_panel: BTreeMap<String, crate::curtain::CurtainPanelType>,
+    /// The types of the mullion system families, what runs along a curtain wall's grid lines.
+    #[serde(default)]
+    pub mullion: BTreeMap<String, crate::curtain::MullionType>,
+    /// The types of the Corner Mullion system family, what stands where two curtain walls meet.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub corner_mullion: BTreeMap<String, crate::curtain::MullionType>,
 }
 
 /// What a project parameter holds: text, a number, a length (mm), or yes or no.
@@ -4338,7 +4362,7 @@ impl Model {
         }
         m.families = crate::family::library(language).into();
         for (n, t) in [("Generic - 200mm", 200.0), ("Interior - 100mm", 100.0)] {
-            m.types.wall.insert(n.into(), WallType { thickness: t, layers: Vec::new() });
+            m.types.wall.insert(n.into(), WallType { thickness: t, layers: Vec::new(), curtain: None });
         }
         // An exterior wall's layers, outside in: brick, insulation, a block core, plaster.
         let layer = |function, material: &str, thickness| Layer {
@@ -4353,7 +4377,7 @@ impl Model {
             layer(Function::Structure, "Concrete block", 140.0),
             layer(Function::Finish, "Plaster", 10.0),
         ];
-        m.types.wall.insert("Exterior - 300mm".into(), WallType { thickness: 300.0, layers });
+        m.types.wall.insert("Exterior - 300mm".into(), WallType { thickness: 300.0, layers, curtain: None });
         m.types.floor.insert("Generic - 200mm".into(), FloorType { thickness: 200.0, layers: Vec::new() });
         for (n, w) in [("Single 900 x 2100", 900.0), ("Single 800 x 2100", 800.0)] {
             m.types.door.insert(n.into(), OpeningType { width: w, height: 2100.0, sill: 0.0, operation: None });
@@ -4462,6 +4486,7 @@ impl Model {
         m.types.railing.insert("Railing - 1000mm".into(), RailingType { height: 1000.0, spacing: 120.0 });
         m.types.room.insert(ROOM_TYPE.into(), RoomType::default());
         m.types.stair = stair_types();
+        crate::curtain::starter_types(&mut m);
         let level = language.word("Level");
         m.insert(Element::Level(Level::new(format!("{level} 1"), 0.0)));
         m.insert(Element::Level(Level::new(format!("{level} 2"), 3000.0)));
@@ -5210,6 +5235,12 @@ impl Model {
         // 20 to 21: a detail group's members are elements of its own. Its type names what its members are made of by name,
         // so they are made once the names are names again, after this (`Model::place_old_groups`, in `after_read`). Model
         // groups need nothing: a file of 20 has none.
+        // 20 to 21: curtain walls, which 20 would read as solid walls. A file of 20 gets the starter panels, mullions and
+        // corner mullions.
+        if self.format < 21 {
+            crate::curtain::starter_types(self);
+            crate::curtain::corner_types(self);
+        }
         self.format = FORMAT;
     }
 
@@ -5838,6 +5869,9 @@ impl Model {
             "railing" => names(&self.types.railing),
             "room" => names(&self.types.room),
             "stair" => names(&self.types.stair),
+            "curtainpanel" => names(&self.types.curtain_panel),
+            "mullion" => names(&self.types.mullion),
+            "cornermullion" => names(&self.types.corner_mullion),
             run if RUN_CATEGORIES.contains(&run) => self.types.runs.get(run).map(names).unwrap_or_default(),
             _ => Vec::new(),
         }
@@ -5861,6 +5895,9 @@ impl Model {
             "railing" => "Railing - 1000mm",
             "room" => ROOM_TYPE,
             "stair" => "Monolithic 150mm",
+            "curtainpanel" => crate::curtain::GLAZED,
+            "mullion" => crate::curtain::RECTANGULAR_MULLION,
+            "cornermullion" => crate::curtain::RECTANGULAR_CORNER,
             "structuralcolumn" => "Concrete 300 x 300",
             "footing" => "Footing 1200 x 1200",
             "beam" => "Beam 200 x 500",
@@ -5876,7 +5913,9 @@ impl Model {
             _ => "Fixed 1200 x 1500",
         };
         let names = self.type_names(category);
-        names.iter().find(|n| **n == preferred).or(names.first()).copied()
+        // A wall that names no type is a plain one, whatever curtain wall sorts first.
+        let plain = |n: &&&str| !self.types.wall.get(**n).is_some_and(|t| t.curtain.is_some());
+        names.iter().find(|n| **n == preferred).or(names.iter().find(plain)).or(names.first()).copied()
     }
 
     /// The family and type a new door or window gets in an interface that places families: the project's single door or fixed window
@@ -8097,6 +8136,7 @@ impl Model {
             )
         }));
         out.extend(crate::electrical::circuit_warnings(self));
+        out.extend(crate::curtain::malformed_walls(self).into_iter().map(|id| format!("curtain wall {id}: {}", crate::curtain::MALFORMED)));
         out
     }
 
@@ -8458,6 +8498,7 @@ impl Model {
         }
         graphics::check_project(self)?;
         phasing::check_project(self)?;
+        crate::curtain::check(self)?;
         for (cat, n, thickness, layers) in self.layered_types() {
             let who = format!("{cat} type `{n}`");
             size(&format!("{who} thickness"), thickness)?;
@@ -8711,6 +8752,11 @@ impl Model {
                 }
             }
         }
+        // The walls in the cells of the curtain walls their cell walls are in: one to a cell.
+        let curtains: BTreeSet<Guid> = affected.iter().filter_map(|id| self.wall(*id)?.panel_of.map(|p| p.host)).collect();
+        for host in &curtains {
+            affected.extend(lookup.referrers(host).filter(|id| self.wall(*id).is_some_and(|w| w.panel_of.is_some())));
+        }
         // A view, a sheet or a viewport: the drawing set's names, numbers and places are kept apart, so all of it is
         // checked, with the levels whose names the views' keep apart from theirs.
         let drawing_set = |e: &Element| crate::derived::DRAWING_SET.contains(&e.category());
@@ -8759,8 +8805,10 @@ impl Model {
             shapes,
             project_info,
             grouped,
+            panel_cells,
         } = t;
         let who = format!("{} {id}", e.category());
+        crate::curtain::check_element(self, id, e, panel_cells)?;
         let level_ok = |l: Guid| self.level(l).map(|_| ()).ok_or(format!("{who}: level {} doesn't exist", self.shown(l)));
         // A view annotation is drawn in: a plan, a section or an elevation, or with `sheets`, a sheet.
         let view_ok = |v: Guid, sheets: bool| match self.elements.get(v) {
@@ -10194,6 +10242,8 @@ struct Tally<'a> {
     project_info: Option<Id>,
     /// Each group member: its group.
     grouped: BTreeMap<Guid, Id>,
+    /// The curtain wall cells a wall stands in so far.
+    panel_cells: BTreeSet<(Guid, i64, i64)>,
 }
 
 #[cfg(test)]
@@ -10229,6 +10279,9 @@ impl<'a> Tally<'a> {
             let total = self.members_placed.entry(view).or_default();
             *total = total.saturating_add(n);
             (*total <= crate::groups::MAX_PLACED).then_some(())?;
+        }
+        for cell in other.panel_cells {
+            self.panel_cells.insert(cell).then_some(())?;
         }
         if let Some(id) = other.project_info {
             self.project_info.replace(id).is_none().then_some(())?;
@@ -10745,6 +10798,8 @@ mod tests {
             attach_base: None,
             room_bounding: true,
             join: true,
+            curtain: None,
+            panel_of: None,
         })
     }
 
