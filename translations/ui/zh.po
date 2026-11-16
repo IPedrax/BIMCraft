@@ -2204,7 +2204,7 @@ msgstr "校核：fck"
 msgid "Checking for updates…"
 msgstr "正在检查更新…"
 
-#: crates/core/src/commands.rs:4113
+#: crates/core/src/commands.rs:4112
 msgid "Checking the model"
 msgstr ""
 
@@ -4087,7 +4087,7 @@ msgstr "已拆除"
 msgid "Demolition"
 msgstr "拆除"
 
-#: crates/core/src/commands.rs:13395
+#: crates/core/src/commands.rs:13393
 msgid "Dependent"
 msgstr "相关"
 
@@ -4979,7 +4979,7 @@ msgstr "电气设置"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "电气设置：电路和配电箱所引用的电压、配电系统和导线类型；截面积单位为 mm²"
 
-#: crates/core/src/commands.rs:3059
+#: crates/core/src/commands.rs:3058
 msgid "Elements"
 msgstr "图元"
 
@@ -10797,7 +10797,7 @@ msgid "Properties over the Project Browser, on the left, as at first"
 msgstr "“属性”在“项目浏览器”之上、位于左侧，与最初一样"
 
 #: crates/core/src/commands.rs:618
-#: crates/core/src/commands.rs:8871
+#: crates/core/src/commands.rs:8869
 msgid "Property Line"
 msgstr ""
 
@@ -10969,7 +10969,7 @@ msgstr ""
 msgid "Reading elements"
 msgstr ""
 
-#: crates/core/src/commands.rs:4070
+#: crates/core/src/commands.rs:4069
 msgid "Reading the file"
 msgstr ""
 
@@ -14913,11 +14913,11 @@ msgstr ""
 msgid "Unlock alignment"
 msgstr "解锁对齐"
 
-#: crates/core/src/commands.rs:13631
+#: crates/core/src/commands.rs:13629
 msgid "Unnamed"
 msgstr "未命名"
 
-#: crates/core/src/commands.rs:4087
+#: crates/core/src/commands.rs:4086
 msgid "Unpacking the project"
 msgstr ""
 

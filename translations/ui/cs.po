@@ -2203,7 +2203,7 @@ msgstr "Kontrola: fck"
 msgid "Checking for updates…"
 msgstr "Kontrola aktualizací…"
 
-#: crates/core/src/commands.rs:4113
+#: crates/core/src/commands.rs:4112
 msgid "Checking the model"
 msgstr ""
 
@@ -4086,7 +4086,7 @@ msgstr "Zbourané"
 msgid "Demolition"
 msgstr "Demolice"
 
-#: crates/core/src/commands.rs:13395
+#: crates/core/src/commands.rs:13393
 msgid "Dependent"
 msgstr "Závislý"
 
@@ -4978,7 +4978,7 @@ msgstr "Elektrotechnická nastavení"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "Elektrotechnická nastavení: napětí, rozvodné soustavy a typy vodičů, na které se odkazují obvody a rozváděče; průřezy v mm²"
 
-#: crates/core/src/commands.rs:3059
+#: crates/core/src/commands.rs:3058
 msgid "Elements"
 msgstr "Prvky"
 
@@ -10796,7 +10796,7 @@ msgid "Properties over the Project Browser, on the left, as at first"
 msgstr "Vlastnosti nad Prohlížečem projektu, vlevo, jako ve výchozím nastavení"
 
 #: crates/core/src/commands.rs:618
-#: crates/core/src/commands.rs:8871
+#: crates/core/src/commands.rs:8869
 msgid "Property Line"
 msgstr ""
 
@@ -10968,7 +10968,7 @@ msgstr ""
 msgid "Reading elements"
 msgstr ""
 
-#: crates/core/src/commands.rs:4070
+#: crates/core/src/commands.rs:4069
 msgid "Reading the file"
 msgstr ""
 
@@ -14912,11 +14912,11 @@ msgstr ""
 msgid "Unlock alignment"
 msgstr "Odemknout zarovnání"
 
-#: crates/core/src/commands.rs:13631
+#: crates/core/src/commands.rs:13629
 msgid "Unnamed"
 msgstr "Nepojmenovaný"
 
-#: crates/core/src/commands.rs:4087
+#: crates/core/src/commands.rs:4086
 msgid "Unpacking the project"
 msgstr ""
 
