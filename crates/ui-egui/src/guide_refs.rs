@@ -414,7 +414,7 @@ pub(crate) fn context(m: &Model, v: &View, d: Drawing<'_>, pins: &Pins, grids: b
 
 /// The points a marked reference lends the alignment service: its own point, and the kind it is ranked by there — an
 /// endpoint ahead of a middle, a centre among the middles, a crossing last. A pin is used whatever the snap switches say:
-/// `from_context` hands its points over as they are, and only the chain's are gated.
+/// `from_context` indexes its points itself, and only the chain's are gated.
 pub(crate) fn reference(target: PinTarget) -> Option<(P2, ReferenceType)> {
     match target {
         PinTarget::Point { at, kind, .. } => Some((

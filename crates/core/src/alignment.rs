@@ -242,7 +242,11 @@ impl AlignmentGuideService {
             ReferenceType::Face => config.faces,
             ReferenceType::Intersection => config.intersections,
         });
+        Self::indexed(references, config)
+    }
 
+    /// Indexes the references the caller has already decided on: the switch filter is the caller's business.
+    fn indexed(references: Vec<ReferencePoint>, config: AlignmentConfig) -> Self {
         let mut by_x: Vec<usize> = (0..references.len()).collect();
         by_x.sort_by(|&a, &b| references[a].point.0.total_cmp(&references[b].point.0));
 
@@ -253,7 +257,8 @@ impl AlignmentGuideService {
     }
 
     /// The guides the drawing's own context gives, without walking the model: the chain's points and lines, grids near
-    /// the cursor, and the references the user marked. A wall across the plan casts nothing.
+    /// the cursor, and the references the user marked. A wall across the plan casts nothing. A mark is explicit, so it is
+    /// indexed whatever the snap switches say; only the chain's own points are gated by them.
     pub fn from_context(ctx: &GuideContext, config: AlignmentConfig) -> Self {
         let mut references = ctx.points.clone();
         if config.endpoints {
@@ -261,7 +266,7 @@ impl AlignmentGuideService {
                 references.push(ReferencePoint { point: p, kind: ReferenceType::Endpoint, wall_id: None });
             }
         }
-        let mut service = Self::new(references, config);
+        let mut service = Self::indexed(references, config);
         service.sources = ctx.lines.iter().copied().filter(|s| s.a.dist(s.b) > TOL).collect();
         service.lines = service.sources.iter().map(|s| (s.a, s.b)).collect();
         service
@@ -1104,6 +1109,27 @@ mod why_tests {
         s.script(r#"wall {"points": [[0, 0], [9000, 9000]]}"#).unwrap();
         let service = AlignmentGuideService::from_context(&GuideContext::default(), AlignmentConfig::default());
         let found = service.find_alignments(P2(2000.0, 8000.0), Some(P2(0.0, 0.0)), 80.0);
+        assert!(found.is_empty(), "{found:?}");
+    }
+
+    /// A mark is the user's explicit choice, so it outranks the Snap switches; the chain's own points are the drawing's
+    /// and stay gated by them.
+    #[test]
+    fn a_marked_point_outranks_the_snap_switches_and_the_chain_does_not() {
+        let pinned = P2(4000.0, 4000.0);
+        let chain = P2(1000.0, 1000.0);
+        let ctx = GuideContext {
+            chain: vec![chain],
+            points: vec![ReferencePoint { point: pinned, kind: ReferenceType::Midpoint, wall_id: None }],
+            ..Default::default()
+        };
+        let config = AlignmentConfig { endpoints: false, midpoints: false, ..Default::default() };
+        let service = AlignmentGuideService::from_context(&ctx, config);
+        // Six millimetres off the pin's north line: the pin still lends it.
+        let found = service.find_alignments(P2(4500.0, pinned.1 + 6.0), None, 80.0);
+        assert!(found.iter().any(|a| (a.snapped_point.1 - pinned.1).abs() < 0.01), "{found:?}");
+        // The chain's point is gated by `endpoints`, so it lends nothing.
+        let found = service.find_alignments(P2(chain.0 + 6.0, 2500.0), None, 80.0);
         assert!(found.is_empty(), "{found:?}");
     }
 
