@@ -3,6 +3,7 @@
   "family": "school",
   "pack_id": null,
   "building_type": "educational (school)",
+  "deliver": {"rooms": [12, 28], "rooms_tol": 0},
   "review": {
     "status": "reviewed",
     "note": "Reviewed and approved for corpus generation. There is no school rule pack, so pack_id stays null and this file is the source for counts, areas, side limits and connections. Proposed by claude-fable-5-2 (fill/school-claude-fable-5-2.json). One storey, so no stair."

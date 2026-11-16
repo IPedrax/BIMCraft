@@ -3,6 +3,7 @@
   "family": "hospital",
   "pack_id": "hospital",
   "building_type": "hospital",
+  "deliver": {"rooms": [18, 28], "rooms_tol": 0},
   "review": {
     "status": "reviewed",
     "note": "Reviewed and approved for corpus generation. The file names its pack: pack_id is hospital (BIMCraft/crates/core/data/graph-rules/hospital.json), whose seven rules judge every generated graph. That pack has no kinds or connections table, so this family file is the source for kinds, counts, areas, side limits and connections. The window and contents fields were added by Slice 9 of the shape graph generator and have not been reviewed by a person."

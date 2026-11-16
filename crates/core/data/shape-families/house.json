@@ -3,6 +3,7 @@
   "family": "house",
   "pack_id": "house",
   "building_type": "residential",
+  "deliver": {"rooms": [8, 12], "rooms_tol": 0},
   "review": {
     "status": "reviewed",
     "note": "Narrows crates/core/data/graph-rules/house.json. One storey, so no stair. The reference layout (reference_layout.py) was measured on this file."

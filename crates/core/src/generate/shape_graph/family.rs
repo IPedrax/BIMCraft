@@ -252,6 +252,10 @@ struct FamilyFile {
     family: String,
     pack_id: Option<String>,
     building_type: String,
+    #[serde(default)]
+    weight: Option<f64>,
+    #[serde(default)]
+    deliver: Option<DeliverDefaults>,
     review: Review,
     /// The traces and scripts the file was written from: a person reads them before signing a delivery's rights statement.
     #[serde(default)]
@@ -259,6 +263,13 @@ struct FamilyFile {
     entry: Option<EntryFile>,
     rooms: Ordered,
     links: Vec<LinkFile>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DeliverDefaults {
+    pub rooms: [i64; 2],
+    pub rooms_tol: i64,
 }
 
 /// A room type, indexed.
@@ -306,6 +317,8 @@ pub struct Family {
     pub name: String,
     pub pack_id: Option<String>,
     pub building_type: String,
+    pub weight: f64,
+    pub deliver: Option<DeliverDefaults>,
     pub review: Review,
     /// The traces and scripts the file was written from, as the file lists them (a delivery's summary names them).
     pub sources: Vec<String>,
@@ -387,6 +400,14 @@ impl Family {
                 "`building_type` {:?} is not one the receiver accepts",
                 file.building_type.chars().take(40).collect::<String>()
             ));
+        }
+        if file.weight.is_some_and(|w| !w.is_finite() || w <= 0.0) {
+            return Err("`weight` is above 0".into());
+        }
+        if let Some(d) = &file.deliver
+            && (d.rooms[0] < 1 || d.rooms[0] > d.rooms[1] || d.rooms[1] > 200 || !(0..=200).contains(&d.rooms_tol))
+        {
+            return Err("`deliver.rooms` is two whole numbers from 1 to 200, fewest first, and `deliver.rooms_tol` is from 0 to 200".into());
         }
         if !matches!(file.review.status.as_str(), "reviewed" | "unreviewed") {
             return Err("`review.status` is `reviewed` or `unreviewed`".into());
@@ -492,10 +513,23 @@ impl Family {
         if let Some(c) = file.entry.iter().flat_map(|e| &e.types).find(|c| c.door().is_none()) {
             return Err(format!("`entry.types`: the connection type `{}` is not a door, and the way in is one", c.id()));
         }
+        if let Some(d) = &file.deliver {
+            let lo: i64 = types.iter().map(|t| t.count.0).sum();
+            let hi: i64 = types.iter().map(|t| t.count.1).sum();
+            if d.rooms[0] - d.rooms_tol < lo || d.rooms[1] + d.rooms_tol > hi {
+                return Err(format!(
+                    "`deliver.rooms` with tolerance asks for {} to {} rooms, but the family makes {lo} to {hi}",
+                    d.rooms[0] - d.rooms_tol,
+                    d.rooms[1] + d.rooms_tol
+                ));
+            }
+        }
         Ok(Family {
             name: file.family,
             pack_id: file.pack_id,
             building_type: file.building_type,
+            weight: file.weight.unwrap_or(1.0),
+            deliver: file.deliver,
             review: file.review,
             sources: file.sources.unwrap_or_default(),
             entry,

@@ -3,6 +3,7 @@
   "family": "studio-office",
   "pack_id": "studio-office",
   "building_type": "office (studio)",
+  "deliver": {"rooms": [7, 16], "rooms_tol": 0},
   "review": {
     "status": "reviewed",
     "note": "Written for the studio-office pack (SO-001 to SO-012), inside its kinds, areas and connections, and fitted to the traced studio. The reception is joined to the passage by a required link, so the studio's cell runs the whole core from the reception to the end wall. Ranges narrow the exploratory pack and add side-ratio limits."

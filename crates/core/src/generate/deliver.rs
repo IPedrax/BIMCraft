@@ -13,7 +13,7 @@ use serde_json::{Value, json};
 
 use super::program::Archetype;
 use super::shape_graph::{self, family};
-use super::{Refusal, refuse};
+use super::{Refusal, ShapedOptions, refuse};
 use crate::engine::Session;
 use crate::model::mix;
 use crate::old_generator::{AreaRequest, MAX_AREA_M2};
@@ -30,7 +30,15 @@ const DEFAULT_RERUN: i64 = 50;
 const SALT: u64 = 0x5EED_0F0A_C0DE_1234;
 /// The area of an `area` batch's seed has a salt of its own, so a brief's rooms and areas never move together.
 const AREA_SALT: u64 = 0x5EED_A4EA_0F0A_77B1;
+const V2_BUILDING_TYPE_SALT: u64 = 0x325F_424C_4454_5950;
+const V2_FAMILY_SALT: u64 = 0x325F_4641_4D49_4C59;
+const V2_SHAPE_SALT: u64 = 0x325F_5348_4150_4521;
+const V2_ROOMS_SALT: u64 = 0x325F_524F_4F4D_5321;
+const V2_INTERIOR_SALT: u64 = 0x325F_494E_5445_5221;
+const V2_BUMPS_SALT: u64 = 0x325F_4255_4D50_5321;
+const V2_GRIDLINES_SALT: u64 = 0x325F_4752_4944_5321;
 const HEADER: &str = "seed,file,sha256,generator_version,units,wall_layers,door_layers,window_layers,building,floor,drawing";
+const HEADER_V2: &str = "seed,file,sha256,generator_version,units,wall_layers,door_layers,window_layers,building,floor,drawing,building_type,archetype,shape,rooms,interior,bumps,gridlines";
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -46,14 +54,15 @@ struct Params {
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Brief {
+struct BriefV1 {
+    #[allow(dead_code)]
     schema_version: i64,
-    batches: Vec<Batch>,
+    batches: Vec<BatchV1>,
 }
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-struct Batch {
+struct BatchV1 {
     archetype: String,
     first_seed: u64,
     count: u64,
@@ -63,15 +72,50 @@ struct Batch {
     unreviewed: Option<String>,
 }
 
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BriefV2 {
+    #[allow(dead_code)]
+    schema_version: i64,
+    batches: Vec<BatchV2>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BatchV2 {
+    first_seed: u64,
+    count: u64,
+    building_types: Option<Vec<String>>,
+    interior: Option<String>,
+    bumps: Option<String>,
+    gridlines: Option<String>,
+}
+
 #[derive(Clone)]
-struct Job {
-    archetype: String,
-    seed: u64,
-    rooms: i64,
+pub(super) struct Job {
+    pub(super) archetype: String,
+    pub(super) seed: u64,
+    pub(super) rooms: i64,
     /// The gross area, whole m2, of a seed of an `area` batch; `rooms` is then unused.
-    area: Option<i64>,
-    tol: i64,
-    unreviewed: bool,
+    pub(super) area: Option<i64>,
+    pub(super) tol: i64,
+    pub(super) unreviewed: bool,
+    pub(super) schema_version: i64,
+    pub(super) building_type: Option<String>,
+    pub(super) shape: Option<String>,
+    pub(super) interior: Option<shape_graph::Interior>,
+    pub(super) bumps: bool,
+    pub(super) gridlines: bool,
+}
+
+struct RowMeta {
+    building_type: String,
+    archetype: String,
+    shape: String,
+    rooms: usize,
+    interior: String,
+    bumps: String,
+    gridlines: String,
 }
 
 struct Row {
@@ -80,6 +124,7 @@ struct Row {
     sha256: String,
     building: String,
     bytes: u64,
+    meta: Option<RowMeta>,
 }
 
 enum Outcome {
@@ -91,6 +136,11 @@ enum Outcome {
 pub(super) fn rooms_for(seed: u64, lo: i64, hi: i64) -> i64 {
     let span = (hi - lo + 1).max(1) as u64;
     lo + (mix(seed ^ SALT) % span) as i64
+}
+
+fn range_for(seed: u64, salt: u64, lo: i64, hi: i64) -> i64 {
+    let span = (hi - lo + 1).max(1) as u64;
+    lo + (mix(seed ^ salt) % span) as i64
 }
 
 /// The gross area, whole square metres, a seed is asked for: between `lo` and `hi`, by the seed alone. Past deliveries depend on
@@ -120,6 +170,77 @@ fn read_capped(path: &str) -> std::io::Result<Vec<u8>> {
     Ok(bytes)
 }
 
+/// One reviewed built-in family that can participate in a v2 delivery.
+#[derive(Clone)]
+struct ReviewedFamily {
+    name: String,
+    building_type: String,
+    weight: f64,
+    rooms: (i64, i64),
+    tol: i64,
+}
+
+/// The plain building type SD records. v1 still writes whatever the family file says.
+fn plain_building_type(text: &str) -> Option<String> {
+    let head = text.split_once(" (").map_or(text, |(head, _)| head);
+    if head.is_empty() || !head.chars().all(|c| c.is_ascii_lowercase() || c == '-') { None } else { Some(head.to_string()) }
+}
+
+fn family_defaults(fam: &family::Family) -> (i64, i64, i64) {
+    if let Some(d) = &fam.deliver {
+        (d.rooms[0], d.rooms[1], d.rooms_tol)
+    } else {
+        let (lo, hi) = fam.count_limits();
+        (lo, hi, 0)
+    }
+}
+
+fn reviewed_families() -> Result<BTreeMap<String, Vec<ReviewedFamily>>, Refusal> {
+    let mut groups: BTreeMap<String, Vec<ReviewedFamily>> = BTreeMap::new();
+    for (name, text) in family::BUILTIN {
+        let fam = family::Family::parse(text).map_err(|e| bad(format!("the built-in family `{name}`: {e}")))?;
+        if fam.review.status != "reviewed" {
+            continue;
+        }
+        let Some(building_type) = plain_building_type(&fam.building_type) else { continue };
+        let (lo, hi, tol) = family_defaults(&fam);
+        groups.entry(building_type.clone()).or_default().push(ReviewedFamily {
+            name: (*name).to_string(),
+            building_type,
+            weight: fam.weight,
+            rooms: (lo, hi),
+            tol,
+        });
+    }
+    for fams in groups.values_mut() {
+        fams.sort_by(|a, b| a.name.cmp(&b.name));
+    }
+    Ok(groups)
+}
+
+fn pick_index(seed: u64, salt: u64, n: usize) -> usize {
+    if n == 0 { 0 } else { (mix(seed ^ salt) % n as u64) as usize }
+}
+
+fn pick_weighted(seed: u64, salt: u64, fams: &[ReviewedFamily]) -> usize {
+    let total: f64 = fams.iter().map(|f| f.weight).sum();
+    if total <= 0.0 {
+        return 0;
+    }
+    let mut target = (mix(seed ^ salt) as f64 / u64::MAX as f64) * total;
+    for (i, fam) in fams.iter().enumerate() {
+        if target < fam.weight {
+            return i;
+        }
+        target -= fam.weight;
+    }
+    fams.len().saturating_sub(1)
+}
+
+fn seed_bool(seed: u64, salt: u64) -> bool {
+    mix(seed ^ salt) & 1 == 1
+}
+
 /// The brief's seeds as jobs, in seed order, or what is wrong with it.
 fn read_brief(path: &str) -> Result<Vec<Job>, Refusal> {
     if path.trim().is_empty() || path.len() > MAX_PATH || path.contains('\0') {
@@ -129,10 +250,49 @@ fn read_brief(path: &str) -> Result<Vec<Job>, Refusal> {
     if bytes.len() as u64 > MAX_FILE {
         return Err(bad(format!("a brief is at most {MAX_FILE} bytes")));
     }
-    let brief: Brief = serde_json::from_slice(&bytes).map_err(|e| bad(format!("the brief: {e}")))?;
-    if brief.schema_version != 1 {
-        return Err(bad(format!("`schema_version` is 1, not {}", brief.schema_version)));
+    let value: Value = serde_json::from_slice(&bytes).map_err(|e| bad(format!("the brief: {e}")))?;
+    match value.get("schema_version").and_then(Value::as_i64) {
+        Some(1) => read_brief_v1(value),
+        Some(2) => read_brief_v2(value),
+        Some(v) => Err(bad(format!("`schema_version` is 1 or 2, not {v}"))),
+        None => Err(bad("the brief: missing field `schema_version`")),
     }
+}
+
+#[cfg(test)]
+pub(super) fn read_brief_for_tests(path: &str) -> Result<Vec<Job>, Refusal> {
+    read_brief(path)
+}
+
+fn validate_ranges(
+    ranges: &mut Vec<(u64, u64)>,
+    total: &mut u64,
+    first_seed: u64,
+    count: u64,
+    at: impl Fn(&str) -> Refusal,
+) -> Result<(), Refusal> {
+    if count < 1 {
+        return Err(at("`count` is at least 1"));
+    }
+    let end = first_seed.checked_add(count).ok_or_else(|| at("`first_seed` + `count` is past the largest seed"))?;
+    *total = total.saturating_add(count);
+    if *total > MAX_SEEDS {
+        return Err(bad(format!("a delivery is at most {MAX_SEEDS} seeds")));
+    }
+    ranges.push((first_seed, end));
+    Ok(())
+}
+
+fn check_overlaps(ranges: &mut [(u64, u64)]) -> Result<(), Refusal> {
+    ranges.sort_unstable();
+    if let Some(w) = ranges.windows(2).find(|w| w[1].0 < w[0].1) {
+        return Err(bad(format!("two batches share seeds: one ends at {} and the next starts at {}", w[0].1 - 1, w[1].0)));
+    }
+    Ok(())
+}
+
+fn read_brief_v1(value: Value) -> Result<Vec<Job>, Refusal> {
+    let brief: BriefV1 = serde_json::from_value(value).map_err(|e| bad(format!("the brief: {e}")))?;
     if brief.batches.is_empty() || brief.batches.len() > MAX_BATCHES {
         return Err(bad(format!("`batches` holds 1 to {MAX_BATCHES} batches")));
     }
@@ -179,20 +339,9 @@ fn read_brief(path: &str) -> Result<Vec<Job>, Refusal> {
         if b.unreviewed.as_deref().is_some_and(|u| u != "allow") {
             return Err(at("`unreviewed` is `allow`, or left out"));
         }
-        if b.count < 1 {
-            return Err(at("`count` is at least 1"));
-        }
-        let end = b.first_seed.checked_add(b.count).ok_or_else(|| at("`first_seed` + `count` is past the largest seed"))?;
-        total = total.saturating_add(b.count);
-        if total > MAX_SEEDS {
-            return Err(bad(format!("a delivery is at most {MAX_SEEDS} seeds")));
-        }
-        ranges.push((b.first_seed, end));
+        validate_ranges(&mut ranges, &mut total, b.first_seed, b.count, at)?;
     }
-    ranges.sort_unstable();
-    if let Some(w) = ranges.windows(2).find(|w| w[1].0 < w[0].1) {
-        return Err(bad(format!("two batches share seeds: one ends at {} and the next starts at {}", w[0].1 - 1, w[1].0)));
-    }
+    check_overlaps(&mut ranges)?;
     let mut jobs = Vec::with_capacity(total as usize);
     for b in &brief.batches {
         let [lo, hi] = b.rooms.unwrap_or([1, 1]);
@@ -205,6 +354,92 @@ fn read_brief(path: &str) -> Result<Vec<Job>, Refusal> {
                 area: b.area.map(|_| area_for(seed, alo.ceil() as i64, ahi.floor() as i64)),
                 tol: b.rooms_tol.unwrap_or(0),
                 unreviewed: b.unreviewed.is_some(),
+                schema_version: 1,
+                building_type: None,
+                shape: None,
+                interior: None,
+                bumps: true,
+                gridlines: false,
+            });
+        }
+    }
+    jobs.sort_by_key(|j| j.seed);
+    Ok(jobs)
+}
+
+fn read_brief_v2(value: Value) -> Result<Vec<Job>, Refusal> {
+    let brief: BriefV2 = serde_json::from_value(value).map_err(|e| bad(format!("the brief: {e}")))?;
+    if brief.batches.is_empty() || brief.batches.len() > MAX_BATCHES {
+        return Err(bad(format!("`batches` holds 1 to {MAX_BATCHES} batches")));
+    }
+    let groups = reviewed_families()?;
+    let all_types: Vec<String> = groups.keys().cloned().collect();
+    let shapes = family::shapes().map_err(|e| bad(format!("the embedded shape catalogue: {e}")))?;
+    let shape_ids: Vec<String> = shapes.iter().map(|s| s.id.clone()).collect();
+    let mut ranges: Vec<(u64, u64)> = Vec::new();
+    let mut total = 0u64;
+    let mut batch_types: Vec<Vec<String>> = Vec::new();
+    let mut batch_options: Vec<ShapedOptions> = Vec::new();
+    for (i, b) in brief.batches.iter().enumerate() {
+        let at = |what: &str| bad(format!("batch {i}: {what}"));
+        validate_ranges(&mut ranges, &mut total, b.first_seed, b.count, at)?;
+        let types = match &b.building_types {
+            None => all_types.clone(),
+            Some(list) => {
+                if list.is_empty() {
+                    return Err(at("`building_types` is non-empty"));
+                }
+                let mut seen = BTreeSet::new();
+                for bt in list {
+                    if !seen.insert(bt) {
+                        return Err(at("`building_types` has no duplicates"));
+                    }
+                    if !groups.contains_key(bt) {
+                        return Err(at(&format!("`building_types` names a type no reviewed family covers: {bt:?}")));
+                    }
+                }
+                list.clone()
+            }
+        };
+        let opts = ShapedOptions::parse(b.interior.as_deref(), b.bumps.as_deref(), b.gridlines.as_deref()).map_err(|e| at(&e))?;
+        if matches!(opts.interior, Some(shape_graph::Interior::Mixed)) {
+            return Err(at("`interior` is `aligned` or `jogged`; got \"mixed\""));
+        }
+        batch_types.push(types);
+        batch_options.push(opts);
+    }
+    check_overlaps(&mut ranges)?;
+    let mut jobs = Vec::with_capacity(total as usize);
+    for (b, (types, opts)) in brief.batches.iter().zip(batch_types.iter().zip(batch_options.iter())) {
+        for seed in b.first_seed..b.first_seed + b.count {
+            let bt = types[pick_index(seed, V2_BUILDING_TYPE_SALT, types.len())].clone();
+            let Some(fams) = groups.get(&bt) else {
+                return Err(bad(format!("`building_types` names a type no reviewed family covers: {bt:?}")));
+            };
+            let fam = &fams[pick_weighted(seed, V2_FAMILY_SALT, fams)];
+            let (lo, hi) = fam.rooms;
+            let rooms = range_for(seed, V2_ROOMS_SALT, lo, hi);
+            let shape = shape_ids[pick_index(seed, V2_SHAPE_SALT, shape_ids.len())].clone();
+            let interior = opts.interior.unwrap_or(if seed_bool(seed, V2_INTERIOR_SALT) {
+                shape_graph::Interior::Jogged
+            } else {
+                shape_graph::Interior::Aligned
+            });
+            let bumps = opts.bumps.unwrap_or(seed_bool(seed, V2_BUMPS_SALT));
+            let gridlines = opts.gridlines.unwrap_or(seed_bool(seed, V2_GRIDLINES_SALT));
+            jobs.push(Job {
+                archetype: fam.name.clone(),
+                seed,
+                rooms,
+                area: None,
+                tol: fam.tol,
+                unreviewed: false,
+                schema_version: 2,
+                building_type: Some(fam.building_type.clone()),
+                shape: Some(shape),
+                interior: Some(interior),
+                bumps,
+                gridlines,
             });
         }
     }
@@ -223,6 +458,18 @@ fn valid_version(v: &str) -> bool {
     v.contains('+') && valid_id(&v.replace('+', "-"))
 }
 
+fn interior_name(i: shape_graph::Interior) -> &'static str {
+    match i {
+        shape_graph::Interior::Aligned => "aligned",
+        shape_graph::Interior::Jogged => "jogged",
+        shape_graph::Interior::Mixed => "mixed",
+    }
+}
+
+fn on_off(v: bool) -> &'static str {
+    if v { "on" } else { "off" }
+}
+
 /// One seed: built in memory, run in a scratch session as `run --script` runs it, given the `generator_version` drawing property,
 /// saved as DWG at `dwg`, read back for its hash.
 fn make_one(job: &Job, writer: &crate::cad::DwgWriter, gv: &str, dir: &Path) -> Result<Outcome, String> {
@@ -236,7 +483,10 @@ fn make_one(job: &Job, writer: &crate::cad::DwgWriter, gv: &str, dir: &Path) -> 
             Err(Refusal { code, message }) => return Ok(Outcome::Skipped { seed: job.seed, code, message }),
         },
         None => {
-            let request = shape_graph::Request::new(job.archetype.clone(), job.seed, job.rooms, job.tol, None, false);
+            let mut request =
+                shape_graph::Request::new(job.archetype.clone(), job.seed, job.rooms, job.tol, job.shape.clone(), job.gridlines);
+            request.interior = job.interior.unwrap_or(request.interior);
+            request.bumps = job.bumps;
             match shape_graph::build(&request, job.unreviewed) {
                 Ok(b) => b,
                 Err(Refusal { code, message }) => return Ok(Outcome::Skipped { seed: job.seed, code, message }),
@@ -247,12 +497,46 @@ fn make_one(job: &Job, writer: &crate::cad::DwgWriter, gv: &str, dir: &Path) -> 
     let script = text("script.bimcraft.txt").ok_or("generation_failed: the plan has no script")?;
     let manifest: Value = serde_json::from_str(text("manifest.json").unwrap_or("null")).unwrap_or(Value::Null);
     let building = manifest["building"].as_str().ok_or("generation_failed: the plan's manifest names no building")?.to_string();
+    let meta = if job.schema_version == 2 {
+        Some(RowMeta {
+            building_type: job.building_type.clone().ok_or("generation_failed: v2 job has no building_type")?,
+            archetype: job.archetype.clone(),
+            shape: manifest["shape"].as_str().ok_or("generation_failed: the plan's manifest names no shape")?.to_string(),
+            rooms: manifest["rooms"]["actual"].as_u64().ok_or("generation_failed: the plan's manifest names no room count")? as usize,
+            interior: manifest["interior"]
+                .as_str()
+                .unwrap_or(interior_name(job.interior.unwrap_or(shape_graph::Interior::Aligned)))
+                .to_string(),
+            bumps: on_off(job.bumps).to_string(),
+            gridlines: on_off(job.gridlines).to_string(),
+        })
+    } else {
+        None
+    };
     let name = format!("{}_s{}.dwg", job.archetype, job.seed);
     let at = dir.join("dwg").join(&name);
     crate::ids::keeping_reproducible(|| -> Result<(), String> {
         let mut scratch = Session::new();
         scratch.dwg_writer = Some(writer.clone());
         scratch.script(script).map_err(|e| format!("generation_failed: the plan's script does not run: {e}"))?;
+        if let Some(meta) = &meta {
+            let rooms = meta.rooms.to_string();
+            let props = [
+                ("building_type", meta.building_type.as_str()),
+                ("archetype", meta.archetype.as_str()),
+                ("shape", meta.shape.as_str()),
+                ("rooms", rooms.as_str()),
+                ("interior", meta.interior.as_str()),
+                ("bumps", meta.bumps.as_str()),
+                ("gridlines", meta.gridlines.as_str()),
+                ("brief_schema", "2"),
+            ];
+            for (name, value) in props {
+                scratch
+                    .execute("drawing_property", &json!({"name": name, "value": value}))
+                    .map_err(|e| format!("generation_failed: {e}"))?;
+            }
+        }
         scratch
             .execute("drawing_property", &json!({"name": "generator_version", "value": gv}))
             .map_err(|e| format!("generation_failed: {e}"))?;
@@ -266,6 +550,7 @@ fn make_one(job: &Job, writer: &crate::cad::DwgWriter, gv: &str, dir: &Path) -> 
         sha256: crate::sha256::hex(&bytes),
         building,
         bytes: bytes.len() as u64,
+        meta,
     }))
 }
 
@@ -316,11 +601,24 @@ fn csv_row(r: &Row, gv: &str) -> String {
     format!("{},{},{},{gv},mm,A-WALL,A-DOOR,A-GLAZ,{},1,", r.seed, r.file, r.sha256, r.building)
 }
 
+fn csv_row_v2(r: &Row, gv: &str) -> String {
+    let base = csv_row(r, gv);
+    match &r.meta {
+        Some(m) => format!("{base},{},{},{},{},{},{},{}", m.building_type, m.archetype, m.shape, m.rooms, m.interior, m.bumps, m.gridlines),
+        None => base,
+    }
+}
+
 fn manifest(rows: &[&Row], gv: &str) -> String {
-    let mut text = String::from(HEADER);
+    let v2 = rows.iter().any(|r| r.meta.is_some());
+    let mut text = String::from(if v2 { HEADER_V2 } else { HEADER });
     text.push('\n');
     for r in rows {
-        text.push_str(&csv_row(r, gv));
+        if v2 {
+            text.push_str(&csv_row_v2(r, gv));
+        } else {
+            text.push_str(&csv_row(r, gv));
+        }
         text.push('\n');
     }
     text
@@ -501,8 +799,9 @@ fn write_delivery(
         }
     }
     for r in &rerun_rows {
-        let first = rows.iter().find(|d| d.seed == r.seed).map(|d| csv_row(d, gv));
-        if first.as_deref() != Some(csv_row(r, gv).as_str()) {
+        let row_text = |row: &Row| if row.meta.is_some() { csv_row_v2(row, gv) } else { csv_row(row, gv) };
+        let first = rows.iter().find(|d| d.seed == r.seed).map(|d| row_text(d));
+        if first.as_deref() != Some(row_text(r).as_str()) {
             return Err(refuse("nondeterministic", format!("seed {} made a different file the second time", r.seed)));
         }
     }

@@ -3,6 +3,7 @@
   "family": "clinic",
   "pack_id": "clinic",
   "building_type": "clinic",
+  "deliver": {"rooms": [10, 14], "rooms_tol": 0},
   "review": {
     "status": "reviewed",
     "note": "Reviewed and approved for corpus generation, as written from the proposal under fill/. Since then the file names its pack: pack_id is clinic, so every generated graph is judged by that pack's rules (GR-001 to GR-006 and PR-001). The pack has no kinds or connections table, so this file is still the only source for kinds, roles, counts, areas, side limits and connections. The window and contents fields were added by Slice 10 of specs/shape-graph-generator.md and have not been reviewed by a person."

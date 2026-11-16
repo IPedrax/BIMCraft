@@ -102,7 +102,12 @@ pub static ALL: &[Command] = &[
         "{brief, delivery_id, rights, path, rerun?, jobs?} write a delivery folder under the root `path`: \
          `<generator_version>/<delivery_id>/` (manifest.csv, RIGHTS.txt, dwg/<archetype>_s<seed>.dwg for each seed) and \
          `<delivery_id>-rerun/` (the same for `rerun` seeds, 50 by default, spread through the delivery and made again; 0 makes no \
-         rerun folder and a null rerun_folder). Every DWG holds the build's version as the `generator_version` drawing property. `brief` is \
+         rerun folder and a null rerun_folder). Every DWG holds the build's version as the `generator_version` drawing property. v1 \
+         briefs are frozen for reproducibility. v2 briefs use only reviewed built-in shape-graph families: a batch gives `first_seed`, \
+         `count`, optional `building_types`, optional `interior: aligned|jogged`, optional `bumps: on|off` and optional \
+         `gridlines: on|off`; the seed chooses the building type, family, shape and room count, and any unpinned option. v2 DWGs also \
+         stamp `building_type`, `archetype`, `shape`, `rooms`, `interior`, `bumps`, `gridlines` and `brief_schema`, and v2 manifests \
+         add those columns. `brief` is \
          the path of a JSON file `{schema_version: 1, batches: [{archetype: house, first_seed, count, rooms: [lo, hi], rooms_tol?, \
          unreviewed?: allow}]}`; each seed's room count is chosen between `lo` and `hi` by the seed, and the plan is what `generate` \
          then `run` make for it. A batch may give `area: [lo, hi]` instead of `rooms` (square metres, any of the seven archetypes, \

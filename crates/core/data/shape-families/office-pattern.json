@@ -3,6 +3,7 @@
   "family": "office-pattern",
   "pack_id": "office-pattern",
   "building_type": "office",
+  "deliver": {"rooms": [12, 24], "rooms_tol": 0},
   "review": {
     "status": "reviewed",
     "note": "Converted from crates/core/data/graph-rules/office-pattern.json for the shape-graph engine. Ranges narrow the exploratory rule pack and add side-ratio limits."

@@ -446,18 +446,35 @@ and prints one JSON summary (`folder`, `rerun_folder`, `generator_version`, `fil
   with `invalid_params`. Commit before the release build you deliver from, or the version says `.dirty`. `BIMCRAFT_GENERATOR_VERSION`
   set for the build replaces the whole version (`BIMCRAFT_GENERATOR_VERSION_FROM` is then `env`, else `git`); it still needs a `+`.
   Every DWG is saved with the version as its `generator_version` drawing property (DWGPROPS > Custom).
-- **A seed** is built in memory (`shape_graph::build`), its script run in a fresh `Session`, given the property and saved as DWG, so its bytes are what `generate` then `run` write with that `drawing_property` line added.
-  A batch's `rooms: [lo, hi]` gives each seed `lo + mix(seed ^ SALT) % (hi - lo + 1)` rooms: the seed alone, pinned by a test, because past deliveries
-  depend on it. A seed `build` refuses is in `skipped` with the refusal's code and has no row and no file. When every seed is skipped there is no summary: the call is refused as `empty_delivery`, nothing is written, and the message says how many seeds were skipped with each code and gives the first one's own message (a batch of rooms no family can meet reads `all 2 seeds of the brief were skipped (2 with `unsatisfiable_rooms`)`). A batch by `area` makes the seed's plan with `build_for_delivery`; `sources` lists only the families of batches by `rooms`.
+- **v1 briefs are frozen.** `{schema_version: 1, batches: [{archetype, first_seed, count, rooms: [lo, hi], rooms_tol?, unreviewed?}]}` keeps the original
+  shape-graph path byte-for-byte, including `rooms_for` and manifest columns. A v1 batch may still give `area: [lo, hi]` instead of `rooms`; that uses the
+  area generator for reproducibility only.
+- **v2 briefs are seed-driven shape-graph batches.** `{schema_version: 2, batches: [{first_seed, count, building_types?, interior?, bumps?, gridlines?}]}`
+  uses reviewed built-in families only. `building_types` is omitted for every covered type or is a non-empty unique list of plain types (`office`,
+  `residential`, `clinic`, `hospital`, `educational`). For each seed, separate salts choose the building type, weighted family, shape, room count,
+  interior (`aligned` or `jogged`), bumps and gridlines; pinning `interior`, `bumps` or `gridlines` changes only that option. Unknown v2 keys, including
+  `archetype`, `shape`, `rooms`, `rooms_tol`, `area` and `unreviewed`, are `invalid_brief`.
+- **A seed** is built in memory (`shape_graph::build`), its script run in a fresh `Session`, given the properties and saved as DWG, so its bytes are what
+  `generate` then `run` write with drawing properties added. v2 DWGs stamp string custom properties `generator_version`, `building_type`, `archetype`,
+  `shape`, `rooms`, `interior`, `bumps`, `gridlines` and `brief_schema = 2`; v1 DWGs stamp only `generator_version`. A seed `build` refuses is in
+  `skipped` with the refusal's code and has no row and no file. When every seed is skipped there is no summary: the call is refused as `empty_delivery`,
+  nothing is written, and the message says how many seeds were skipped with each code and gives the first one's own message.
 - **`building`** is `<family>-` and 12 hex digits of the SHA-256 of the script's `type`, `family`, `wall`, `door` (without `mark`), `room_separator` and
   `room` lines, each kind sorted: the same layout is the same building however the script numbered its doors, and `generate`'s `manifest.json` carries it.
 - **Threads.** `--jobs` plain threads pull seeds from an atomic counter (the reproducible-GUID state is thread-local, so no rayon here); results go by position
   and the manifest is written when every seed is done, so the tree does not depend on J. DWGs stream to their files.
 - **The rerun** repeats `k = min(N, rows)` seeds, index `i` being row `floor((2i+1)·rows/2k)`, made again from the brief; a different byte is `nondeterministic`.
   `rerun: 0` (for a caller that checks determinism itself) makes no `ID-rerun/` at all, and `rerun_folder` is null.
+- **Manifest.** v1 keeps the historical columns. v2 appends `building_type`, `archetype`, `shape`, `rooms`, `interior`, `bumps` and `gridlines`, mirroring
+  the properties stamped into each DWG.
 - **Refusals** (`invalid_brief`, `missing_rights`, `delivery_exists`, `invalid_params`) are all checked before anything is created, and a failure later removes
   what the run made. The command can run for minutes, also through MCP.
-- Not done by `deliver`: writing `RIGHTS.txt`, uploading, telling the receiver the counts.
+- Not done by `deliver`: uploading or telling the receiver the counts.
+
+### Delivery changelog
+
+- 2026-11-15: v1 delivery briefs are frozen for reproducibility. v2 adds seed-driven reviewed-family batches, v2 DWG custom properties and v2 manifest
+  columns for large synthetic DWG deliveries.
 
 ## Not yet
 

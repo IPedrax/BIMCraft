@@ -202,17 +202,8 @@ pub(crate) fn run(p: &Value) -> Result<Value, Refusal> {
             ));
         }
     };
-    let gridlines = match given.gridlines.as_deref() {
-        None => None,
-        Some("on") => Some(true),
-        Some("off") => Some(false),
-        Some(other) => {
-            return Err(refuse(
-                "invalid_params",
-                format!("`gridlines` is `on` or `off`; got {:?}", other.chars().take(40).collect::<String>()),
-            ));
-        }
-    };
+    let shaped = ShapedOptions::parse(given.interior.as_deref(), given.bumps.as_deref(), given.gridlines.as_deref())
+        .map_err(|e| refuse("invalid_params", e))?;
     if given.delivery.is_some() && given.rooms.is_some() {
         return Err(refuse(
             "invalid_params",
@@ -221,7 +212,7 @@ pub(crate) fn run(p: &Value) -> Result<Value, Refusal> {
     }
     // A plan by rooms names a built-in family file. That name need not be an area archetype: a school is not.
     if let Some(rooms) = given.rooms {
-        return run_shaped(&given, rooms, gridlines.unwrap_or(false));
+        return run_shaped(&given, rooms, &shaped);
     }
     let archetype = match &given.archetype {
         Some(name) => Archetype::parse(name).ok_or_else(|| {
@@ -247,8 +238,39 @@ pub(crate) fn run(p: &Value) -> Result<Value, Refusal> {
     {
         return Err(refuse("invalid_params", format!("`{}` belongs to the plan by `rooms`; give `rooms` too, or leave it out", option.0)));
     }
-    let built = crate::old_generator::area_brief(archetype, given.seed, given.area_m2, given.area_sqft, gridlines, delivery)?;
+    let built = crate::old_generator::area_brief(archetype, given.seed, given.area_m2, given.area_sqft, shaped.gridlines, delivery)?;
     written(&given.path, archetype.name(), &built)
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct ShapedOptions {
+    pub interior: Option<shape_graph::Interior>,
+    pub bumps: Option<bool>,
+    pub gridlines: Option<bool>,
+}
+
+impl ShapedOptions {
+    pub(crate) fn parse(interior: Option<&str>, bumps: Option<&str>, gridlines: Option<&str>) -> Result<ShapedOptions, String> {
+        let interior = match interior {
+            None => None,
+            Some(text) => Some(shape_graph::Interior::parse(text).ok_or_else(|| {
+                format!("`interior` is `aligned`, `jogged` or `mixed`; got {:?}", text.chars().take(40).collect::<String>())
+            })?),
+        };
+        let bumps = match bumps {
+            None => None,
+            Some("on") => Some(true),
+            Some("off") => Some(false),
+            Some(text) => return Err(format!("`bumps` is `on` or `off`; got {:?}", text.chars().take(40).collect::<String>())),
+        };
+        let gridlines = match gridlines {
+            None => None,
+            Some("on") => Some(true),
+            Some("off") => Some(false),
+            Some(text) => return Err(format!("`gridlines` is `on` or `off`; got {:?}", text.chars().take(40).collect::<String>())),
+        };
+        Ok(ShapedOptions { interior, bumps, gridlines })
+    }
 }
 
 /// Writes a built plan's files and says what was written.
@@ -269,7 +291,7 @@ fn written(path: &str, archetype: &str, built: &Built) -> Result<Value, Refusal>
 }
 
 /// A plan by `rooms`: the shape graph engine. Everything but the options is checked before anything is made or written.
-fn run_shaped(given: &Params, rooms: i64, gridlines: bool) -> Result<Value, Refusal> {
+fn run_shaped(given: &Params, rooms: i64, shaped: &ShapedOptions) -> Result<Value, Refusal> {
     if given.area_m2.is_some() || given.area_sqft.is_some() {
         return Err(refuse(
             "invalid_params",
@@ -281,23 +303,6 @@ fn run_shaped(given: &Params, rooms: i64, gridlines: bool) -> Result<Value, Refu
     if !(1..=max).contains(&rooms) || !(0..=max).contains(&tol) {
         return Err(refuse("invalid_params", format!("`rooms` is from 1 to {max} and `rooms_tol` from 0 to {max}; got {rooms} and {tol}")));
     }
-    let interior = match given.interior.as_deref() {
-        None => None,
-        Some(text) => Some(shape_graph::Interior::parse(text).ok_or_else(|| {
-            refuse(
-                "invalid_params",
-                format!("`interior` is `aligned`, `jogged` or `mixed`; got {:?}", text.chars().take(40).collect::<String>()),
-            )
-        })?),
-    };
-    let bumps = match given.bumps.as_deref() {
-        None => None,
-        Some("on") => Some(true),
-        Some("off") => Some(false),
-        Some(text) => {
-            return Err(refuse("invalid_params", format!("`bumps` is `on` or `off`; got {:?}", text.chars().take(40).collect::<String>())));
-        }
-    };
     let allow_unreviewed = match given.unreviewed.as_deref() {
         None => false,
         Some("allow") => true,
@@ -310,10 +315,16 @@ fn run_shaped(given: &Params, rooms: i64, gridlines: bool) -> Result<Value, Refu
         int_light: given.int_light,
     };
     pins.check().map_err(|e| refuse("invalid_params", e))?;
-    let mut request =
-        shape_graph::Request::new(given.archetype.clone().unwrap_or_default(), given.seed, rooms, tol, given.shape.clone(), gridlines);
-    request.interior = interior.unwrap_or(request.interior);
-    request.bumps = bumps.unwrap_or(request.bumps);
+    let mut request = shape_graph::Request::new(
+        given.archetype.clone().unwrap_or_default(),
+        given.seed,
+        rooms,
+        tol,
+        given.shape.clone(),
+        shaped.gridlines.unwrap_or(false),
+    );
+    request.interior = shaped.interior.unwrap_or(request.interior);
+    request.bumps = shaped.bumps.unwrap_or(request.bumps);
     match (&given.archetype, &given.family_file) {
         (Some(name), _) => {
             let built = shape_graph::build_styled(&request, &pins, allow_unreviewed)?;

@@ -1,12 +1,13 @@
 //! `deliver` through `Session::execute`, with a fake DWG writer (the DXF text as the file's bytes).
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use serde_json::{Value, json};
 
-use super::deliver::{rerun_indices, rooms_for};
+use super::deliver::{read_brief_for_tests, rerun_indices, rooms_for};
+use super::shape_graph;
 use crate::engine::Session;
 
 const GV: &str = "bimcraft-0.0.0+abc1234";
@@ -29,6 +30,21 @@ fn put(d: &Path, name: &str, bytes: &[u8]) -> String {
     let p = d.join(name);
     std::fs::write(&p, bytes).expect("write");
     p.display().to_string()
+}
+
+fn props(dwg: &str) -> BTreeMap<String, String> {
+    let lines: Vec<&str> = dwg.lines().collect();
+    let mut out = BTreeMap::new();
+    for w in lines.windows(8) {
+        if w[0] == "  9" && w[1] == "$CUSTOMPROPERTYTAG" && w[2] == "  1" && w[4] == "  9" && w[5] == "$CUSTOMPROPERTY" && w[6] == "  1" {
+            out.insert(w[3].to_string(), w[7].to_string());
+        }
+    }
+    out
+}
+
+fn v2_brief(d: &Path, name: &str, text: &str) -> String {
+    put(d, name, text.as_bytes())
 }
 
 const RIGHTS: &[u8] = "line one\r\nnon-ascii \u{2014} here, no final newline".as_bytes();
@@ -141,6 +157,21 @@ fn rerun_0_makes_no_rerun_folder_and_no_rerun_dwg() {
 }
 
 #[test]
+fn v1_rooms_delivery_sha_is_golden() {
+    let d = dir("v1-golden");
+    let root = d.join("root");
+    std::fs::create_dir_all(&root).expect("root");
+    let brief = brief3(&d);
+    let mut p = params(&d, &brief, "gold", Some("emailed"), &root);
+    p["rerun"] = json!(0);
+    session().execute("deliver", &p).expect("deliver");
+    let csv = std::fs::read_to_string(root.join(GV).join("gold").join("manifest.csv")).expect("csv");
+    let first = csv.lines().nth(1).expect("row").split(',').collect::<Vec<_>>();
+    assert_eq!(first[1], "dwg/house_s1.dwg");
+    assert_eq!(first[2], "c785e6e0cccc4dd93d198179c2d1802f93bc485f87fa86724861f2af87f4f0ee");
+}
+
+#[test]
 fn the_manifest_names_each_file_by_its_hash_in_seed_order() {
     let d = dir("manifest");
     let root = d.join("root");
@@ -200,6 +231,210 @@ fn the_tree_does_not_depend_on_the_jobs() {
     }
     assert!(!trees[0].is_empty());
     assert_eq!(trees[0], trees[1]);
+}
+
+#[test]
+fn v2_stamps_properties_and_manifest_columns_for_every_delivered_dwg() {
+    let d = dir("v2-props");
+    let root = d.join("root");
+    std::fs::create_dir_all(&root).expect("root");
+    let brief = v2_brief(
+        &d,
+        "v2.json",
+        r#"{"schema_version": 2, "batches": [{"first_seed": 1, "count": 8, "building_types": ["office", "hospital"], "gridlines": "on"}]}"#,
+    );
+    let mut p = params(&d, &brief, "v2", Some("emailed"), &root);
+    p["rerun"] = json!(0);
+    let reply = session().execute("deliver", &p).expect("deliver");
+    assert_eq!(reply["rerun_folder"], Value::Null);
+    let folder = root.join(GV).join("v2");
+    assert!(!root.join(GV).join("v2-rerun").exists());
+    let csv = std::fs::read_to_string(folder.join("manifest.csv")).expect("csv");
+    let lines: Vec<&str> = csv.lines().collect();
+    assert_eq!(
+        lines[0],
+        "seed,file,sha256,generator_version,units,wall_layers,door_layers,window_layers,building,floor,drawing,building_type,archetype,shape,rooms,interior,bumps,gridlines"
+    );
+    assert!(lines.len() > 1, "{reply}");
+    for line in &lines[1..] {
+        let c: Vec<&str> = line.split(',').collect();
+        assert_eq!(c.len(), 18, "{line}");
+        let p = props(&std::fs::read_to_string(folder.join(c[1])).expect("dwg text"));
+        assert_eq!(p["generator_version"], GV);
+        assert_eq!(p["brief_schema"], "2");
+        assert_eq!(p["building_type"], c[11]);
+        assert_eq!(p["archetype"], c[12]);
+        assert_eq!(p["shape"], c[13]);
+        assert_eq!(p["rooms"], c[14]);
+        assert_eq!(p["interior"], c[15]);
+        assert_eq!(p["bumps"], c[16]);
+        assert_eq!(p["gridlines"], "on");
+        assert_eq!(c[17], "on");
+        assert!(matches!(p["building_type"].as_str(), "office" | "hospital"));
+    }
+}
+
+#[test]
+fn v2_seed_draws_cover_options_and_pins_do_not_move_other_draws() {
+    let d = dir("v2-seed-control");
+    let all = v2_brief(&d, "all.json", r#"{"schema_version": 2, "batches": [{"first_seed": 1, "count": 1000}]}"#);
+    let jobs = read_brief_for_tests(&all).expect("brief");
+    assert_eq!(jobs.len(), 1000);
+    let types: BTreeSet<_> = jobs.iter().filter_map(|j| j.building_type.as_deref()).collect();
+    assert_eq!(types, BTreeSet::from(["clinic", "educational", "hospital", "office", "residential"]));
+    let families: BTreeSet<_> = jobs.iter().map(|j| j.archetype.as_str()).collect();
+    assert_eq!(families, BTreeSet::from(["clinic", "hospital", "house", "medical-day", "office-pattern", "school", "studio-office"]));
+    let shapes: BTreeSet<String> = jobs.iter().filter_map(|j| j.shape.clone()).collect();
+    let expected_shapes: BTreeSet<String> = shape_graph::family::shapes().expect("shapes").into_iter().map(|s| s.id).collect();
+    assert_eq!(shapes, expected_shapes);
+    assert!(jobs.iter().any(|j| j.interior == Some(shape_graph::Interior::Aligned)));
+    assert!(jobs.iter().any(|j| j.interior == Some(shape_graph::Interior::Jogged)));
+    assert!(jobs.iter().any(|j| j.bumps) && jobs.iter().any(|j| !j.bumps));
+    assert!(jobs.iter().any(|j| j.gridlines) && jobs.iter().any(|j| !j.gridlines));
+
+    let pinned = v2_brief(
+        &d,
+        "pinned.json",
+        r#"{"schema_version": 2, "batches": [{"first_seed": 1, "count": 1000, "interior": "jogged", "bumps": "off", "gridlines": "on"}]}"#,
+    );
+    let pinned = read_brief_for_tests(&pinned).expect("pinned");
+    for (a, p) in jobs.iter().zip(&pinned) {
+        assert_eq!(p.interior, Some(shape_graph::Interior::Jogged));
+        assert!(!p.bumps);
+        assert!(p.gridlines);
+        assert_eq!(
+            (a.seed, &a.building_type, &a.archetype, &a.shape, a.rooms),
+            (p.seed, &p.building_type, &p.archetype, &p.shape, p.rooms)
+        );
+    }
+}
+
+#[test]
+fn v2_matches_generate_for_values_read_back_from_the_dwg() {
+    let d = dir("v2-matches-generate");
+    let root = d.join("root");
+    std::fs::create_dir_all(&root).expect("root");
+    let brief = v2_brief(
+        &d,
+        "brief.json",
+        r#"{"schema_version": 2, "batches": [{"first_seed": 11, "count": 3, "building_types": ["office"], "gridlines": "off"}]}"#,
+    );
+    let jobs = read_brief_for_tests(&brief).expect("jobs");
+    let mut p = params(&d, &brief, "match", Some("emailed"), &root);
+    p["rerun"] = json!(0);
+    session().execute("deliver", &p).expect("deliver");
+    let folder = root.join(GV).join("match");
+    let csv = std::fs::read_to_string(folder.join("manifest.csv")).expect("csv");
+    for line in csv.lines().skip(1) {
+        let c: Vec<&str> = line.split(',').collect();
+        let seed: u64 = c[0].parse().unwrap();
+        let prop = props(&std::fs::read_to_string(folder.join(c[1])).expect("dwg text"));
+        let job = jobs.iter().find(|j| j.seed == seed).expect("job");
+        let out = d.join(format!("generate-{seed}"));
+        let generated = session()
+            .execute(
+                "generate",
+                &json!({
+                    "path": out.display().to_string(),
+                    "archetype": prop["archetype"],
+                    "seed": seed,
+                    "rooms": prop["rooms"].parse::<i64>().unwrap(),
+                    "rooms_tol": job.tol,
+                    "shape": prop["shape"],
+                    "interior": prop["interior"],
+                    "bumps": prop["bumps"],
+                    "gridlines": prop["gridlines"]
+                }),
+            )
+            .expect("generate");
+        let manifest: Value = serde_json::from_str(&std::fs::read_to_string(out.join("manifest.json")).expect("manifest")).expect("json");
+        let mut request = shape_graph::Request::new(
+            prop["archetype"].clone(),
+            seed,
+            prop["rooms"].parse::<i64>().unwrap(),
+            job.tol,
+            Some(prop["shape"].clone()),
+            prop["gridlines"] == "on",
+        );
+        request.interior = shape_graph::Interior::parse(&prop["interior"]).unwrap();
+        request.bumps = prop["bumps"] == "on";
+        let built = shape_graph::build(&request, false).expect("shape graph build");
+        assert_eq!(manifest["building"], c[8]);
+        assert_eq!(manifest["topology_hash"], generated["topology_hash"]);
+        assert_eq!(built.topology_hash, generated["topology_hash"]);
+        assert_eq!(manifest["shape"], prop["shape"]);
+        assert_eq!(manifest["rooms"]["actual"].to_string(), prop["rooms"]);
+        assert_eq!(manifest["interior"], prop["interior"]);
+    }
+}
+
+#[test]
+fn v2_refuses_forbidden_keys_bad_options_and_overlapping_seeds() {
+    let d = dir("v2-refusals");
+    let root = d.join("root");
+    std::fs::create_dir_all(&root).expect("root");
+    let mut s = session();
+    for (i, text) in [
+        r#"{"schema_version": 2, "batches": [{"first_seed": 1, "count": 1, "archetype": "house"}]}"#,
+        r#"{"schema_version": 2, "batches": [{"first_seed": 1, "count": 1, "rooms": [8, 12]}]}"#,
+        r#"{"schema_version": 2, "batches": [{"first_seed": 1, "count": 1, "rooms_tol": 2}]}"#,
+        r#"{"schema_version": 2, "batches": [{"first_seed": 1, "count": 1, "area": [100, 200]}]}"#,
+        r#"{"schema_version": 2, "batches": [{"first_seed": 1, "count": 1, "unreviewed": "allow"}]}"#,
+        r#"{"schema_version": 2, "batches": [{"first_seed": 1, "count": 1, "shape": "bar"}]}"#,
+        r#"{"schema_version": 2, "batches": [{"first_seed": 1, "count": 1, "building_types": []}]}"#,
+        r#"{"schema_version": 2, "batches": [{"first_seed": 1, "count": 1, "building_types": ["office", "office"]}]}"#,
+        r#"{"schema_version": 2, "batches": [{"first_seed": 1, "count": 1, "building_types": ["airport"]}]}"#,
+        r#"{"schema_version": 2, "batches": [{"first_seed": 1, "count": 1, "interior": "mixed"}]}"#,
+        r#"{"schema_version": 2, "batches": [{"first_seed": 1, "count": 1, "bumps": "maybe"}]}"#,
+        r#"{"schema_version": 2, "batches": [{"first_seed": 1, "count": 3}, {"first_seed": 3, "count": 2}]}"#,
+    ]
+    .iter()
+    .enumerate()
+    {
+        let brief = v2_brief(&d, &format!("bad-{i}.json"), text);
+        refused(&mut s, &params(&d, &brief, "bad", Some("emailed"), &root), "invalid_brief");
+    }
+    assert_eq!(std::fs::read_dir(&root).expect("ls").count(), 0);
+}
+
+#[test]
+fn shared_option_errors_match_generate_word_for_word() {
+    let d = dir("shared-options");
+    let root = d.join("root");
+    std::fs::create_dir_all(&root).expect("root");
+    let generate = session()
+        .execute(
+            "generate",
+            &json!({"path": d.join("g").display().to_string(), "archetype": "house", "seed": 1, "rooms": 8, "bumps": "maybe"}),
+        )
+        .expect_err("generate refuses");
+    let brief = v2_brief(&d, "bad.json", r#"{"schema_version": 2, "batches": [{"first_seed": 1, "count": 1, "bumps": "maybe"}]}"#);
+    let deliver = session().execute("deliver", &params(&d, &brief, "d", Some("emailed"), &root)).expect_err("deliver refuses");
+    assert_eq!(generate.strip_prefix("invalid_params: "), deliver.strip_prefix("invalid_brief: batch 0: "));
+}
+
+#[test]
+fn v2_jobs_do_not_change_the_bytes() {
+    let d = dir("v2-jobs");
+    let brief = v2_brief(&d, "brief.json", r#"{"schema_version": 2, "batches": [{"first_seed": 21, "count": 6, "gridlines": "off"}]}"#);
+    let mut trees = Vec::new();
+    for jobs in [1, 8] {
+        let root = d.join(format!("root{jobs}"));
+        std::fs::create_dir_all(&root).expect("root");
+        let mut p = params(&d, &brief, "j", Some("emailed"), &root);
+        p["rerun"] = json!(0);
+        p["jobs"] = json!(jobs);
+        session().execute("deliver", &p).expect("deliver");
+        trees.push(tree(&root).into_iter().filter(|(_, v)| !v.0).map(|(k, v)| (k, v.3)).collect::<BTreeMap<_, _>>());
+    }
+    assert_eq!(trees[0], trees[1]);
+}
+
+#[test]
+fn v2_hundred_thousand_seed_brief_validates_without_building() {
+    let d = dir("v2-scale-validate");
+    let brief = v2_brief(&d, "brief.json", r#"{"schema_version": 2, "batches": [{"first_seed": 1, "count": 100000}]}"#);
+    assert_eq!(read_brief_for_tests(&brief).expect("brief").len(), 100_000);
 }
 
 #[test]
