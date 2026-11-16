@@ -1835,8 +1835,9 @@ impl BimApp {
         let on_label = |at: &Pos2| self.shape_label_rects.iter().any(|r| r.contains(*at));
         if let Some(at) = self.clicked_at(&response).filter(|at| !dragged && !writing && !on_label(at)) {
             let q = (at.x - rect.min.x, at.y - rect.min.y);
-            // What lay under the press, which the hand may have left by the time the button came up.
-            let found = if Some(q) == local { hovered } else { under_at(q) };
+            // What lay under the press, which the hand may have left by the time the button came up. Walls' Outline's
+            // Ctrl click always looks again: its hover was taken without Ctrl, when a wall was not what it sought.
+            let found = if Some(q) == local && !outline_walls { hovered } else { under_at(q) };
             if self.outline_pending && (mods.ctrl || mods.command) {
                 if !outline_boxed {
                     match found.filter(|id| model.wall(*id).is_some()) {
