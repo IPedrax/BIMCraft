@@ -5007,6 +5007,14 @@ fn esc_drops_a_typed_number_before_the_chain() {
     assert!(matches!(&h.state().tool, Tool::Wall(pts) if pts.len() == 1), "the point is still there: {:?}", h.state().tool);
     key(&mut h, Key::Escape);
     assert!(matches!(&h.state().tool, Tool::Wall(pts) if pts.is_empty()), "the second Esc drops the chain");
+    // A field opened with no digits in it is nothing to drop: one Esc takes the chain, not two.
+    tool(&mut h, "Wall");
+    click(&mut h, P2(0.0, 0.0));
+    hover(&mut h, P2(5000.0, 5000.0));
+    key(&mut h, Key::Tab);
+    assert_eq!(h.state().drawing.field, 1, "the angle takes the digits, and none is typed");
+    key(&mut h, Key::Escape);
+    assert!(matches!(&h.state().tool, Tool::Wall(pts) if pts.is_empty()), "one Esc, nothing to drop: {:?}", h.state().tool);
 }
 
 /// One edge pin per wall: marking another of its faces moves the pin rather than spending a second of the three, and the

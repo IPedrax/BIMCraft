@@ -3591,11 +3591,10 @@ impl BimApp {
     /// Escape: dismiss the error, drop the chain being drawn, else leave the tool, else clear the
     /// selection.
     fn escape(&mut self) {
-        // A number being typed goes first, and the field back to Length: the point it is for is still wanted.
-        if !self.typed_length.is_empty() || !self.drawing.other.is_empty() || self.drawing.field == 1 {
-            self.typed_length.clear();
-            self.drawing.other.clear();
-            self.drawing.field = 0;
+        // A number being typed goes first, and the field back to Length: the point it is for is still wanted. A field
+        // opened with no digits in it is nothing to drop, so the first Esc takes the chain as it always did.
+        if !self.typed_length.is_empty() || !self.drawing.other.is_empty() {
+            self.clear_typed();
             return;
         }
         // Esc drops the drawing's marked references with the points they were marked for.
