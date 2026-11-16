@@ -9,8 +9,8 @@ use bimcraft_i18n::ui_msg;
 use crate::curves::Curve;
 use crate::geom::{self, P2};
 use crate::graphics::Look;
-use crate::model::{Ceiling, Element, Floor, Id, Model, TOL};
-use crate::walls::Axis;
+use crate::model::{Ceiling, Element, Face, Floor, Id, Model, TOL};
+use crate::walls::{self, Axis};
 
 /// How far off a guide, degrees, a direction may be and still snap to it (less where guides lie
 /// closer together than that).
@@ -35,6 +35,7 @@ pub enum Kind {
     Endpoint,
     Midpoint,
     Intersection,
+    /// A centre: an arc's, a column's or a component's, and the middle of a door or a window.
     Centre,
     Perpendicular,
     /// A circle's or an ellipse's (or an arc's) point due east, north, west or south of its centre, along its axes.
@@ -371,6 +372,40 @@ impl<'a> Scene<'a> {
                 Element::Grid(g) if near(&[g.start, g.end]) => {
                     s.points.extend([(g.start, Kind::Endpoint, of), (g.end, Kind::Endpoint, of)]);
                     s.lines.push((g.start, g.end, of));
+                }
+                // A door or a window lends the plan the two jamb lines a dimension measures to it by, each across the
+                // wall, so their ends are points on the wall's two faces, and the middle of the opening is a point of its
+                // own. Only where the plan draws the opening: its wall spans the cut plane, and so does its hole.
+                Element::Door(o) | Element::Window(o) => {
+                    let Some(w) = m.wall(o.host) else { continue };
+                    let axis = Axis::of(w);
+                    // Its wall's own extent first: the hole's type and the wall's heights are dearer than a far door is.
+                    let reach = match (axis.centre(), axis.radius()) {
+                        (Some(c), Some(r)) => [c + P2(-r, -r), c + P2(r, r)],
+                        _ => [axis.start, axis.end],
+                    };
+                    if !near(&reach) {
+                        continue;
+                    }
+                    let Some(h) = walls::hole(m, w, e, o) else { continue };
+                    if !(h.bottom <= cut && cut < h.top) || !m.cut_by(w, view) {
+                        continue;
+                    }
+                    if !near(&[axis.at(h.s0, 0.0), axis.at(h.s1, 0.0)]) {
+                        continue;
+                    }
+                    for (r, (a, b)) in m.reference_lines(id) {
+                        match r.face {
+                            Face::Start | Face::End => {
+                                s.points.extend([(a, Kind::Endpoint, of), (b, Kind::Endpoint, of)]);
+                                s.lines.push((a, b, of));
+                            }
+                            // The middle of the opening, which a tag's anchor may share: a centre ranks below an anchor
+                            // where the two lie as near, so a tag hovering its host keeps its own point.
+                            Face::Centre => s.points.push(((a + b) * 0.5, Kind::Centre, of)),
+                            _ => {}
+                        }
+                    }
                 }
                 Element::Column(c) | Element::StructuralColumn(c) | Element::Footing(c) if c.level == level => {
                     // Only the columns near the cursor are worked out: the box its type can fill, turned any way. One whose type is
@@ -1206,6 +1241,69 @@ mod tests {
         // Not there once it's off.
         let f = at(&m, P2(2130.0, 680.0), &[P2(1000.0, 4000.0)], &Snaps { perpendicular: false, ..Snaps::default() });
         assert_ne!(f.kind, Kind::Perpendicular);
+    }
+
+    /// A door or a window lends the plan the two jambs the model measures to it by, across its wall, and the middle of
+    /// the opening: their ends are points of the plan, and the opening itself is never `Free`.
+    #[test]
+    fn a_door_lends_its_jambs_and_its_centre_to_a_plan() {
+        let m = model(
+            r#"wall {"points": [[0, 1000], [6000, 1000]]}
+               door {"wall": 100002, "offset": 2000}"#,
+        );
+        let (door, o) = m
+            .elements
+            .iter()
+            .find_map(|(&id, e)| match e {
+                Element::Door(o) => Some((id, o.clone())),
+                _ => None,
+            })
+            .expect("the door");
+        let w = m.wall(o.host).expect("its wall");
+        let (axis, (ext, int)) = (Axis::of(w), crate::walls::faces(&m, w));
+        let half = m.opening_type(&Element::Door(o.clone())).expect("its type").width / 2.0;
+        let sn = Snaps::default();
+        // The left jamb, at both of the wall's faces: an end of the opening, not the wall's own line.
+        for (across, face) in [(int, "interior"), (ext, "exterior")] {
+            let jamb = axis.at(o.offset - half, across);
+            let f = at(&m, jamb + P2(20.0, 10.0), &[], &sn);
+            assert_eq!((f.kind, f.source), (Kind::Endpoint, Some(door)), "the left jamb's {face} end: {f:?}");
+            assert!(f.at.dist(jamb) < 0.01, "{:?}", f.at);
+        }
+        // The middle of the opening, half way across the wall: a centre of its own, where a tag's anchor may stand too, so
+        // it ranks below an anchor and a tag hovering its host keeps its own point.
+        let middle = axis.at(o.offset, (ext + int) / 2.0);
+        let f = at(&m, middle + P2(10.0, 10.0), &[], &sn);
+        assert_eq!((f.kind, f.source), (Kind::Centre, Some(door)), "{f:?}");
+        assert!(f.at.dist(middle) < 0.01, "{:?}", f.at);
+        // A door in a wall this plan doesn't cut is not in it at all.
+        let m = model(
+            r#"wall {"points": [[0, 1000], [6000, 1000]]}
+               wall {"points": [[0, 9000], [6000, 9000]], "level": "Level 2"}
+               door {"wall": 100003, "offset": 2000}"#,
+        );
+        assert!(m.levels().len() > 1, "the script made a second level");
+        let f = at(&m, P2(2000.0, 9000.0), &[], &sn);
+        assert_eq!((f.kind, f.source), (Kind::Free, None), "a Level 2 door lends nothing on Level 1: {f:?}");
+        // A window whose sill stands over the cut plane is drawn in projection, if at all: no jambs to snap to either.
+        let m = model(
+            r#"wall {"points": [[0, 1000], [6000, 1000]]}
+               window {"wall": 100002, "offset": 3000, "sill": 2000}"#,
+        );
+        let (window, o) = m
+            .elements
+            .iter()
+            .find_map(|(&id, e)| match e {
+                Element::Window(o) => Some((id, o.clone())),
+                _ => None,
+            })
+            .expect("the window");
+        let w = m.wall(o.host).expect("its wall");
+        let (axis, (ext, _)) = (Axis::of(w), crate::walls::faces(&m, w));
+        let half = m.opening_type(&Element::Window(o.clone())).expect("its type").width / 2.0;
+        let jamb = axis.at(o.offset - half, ext);
+        let f = at(&m, jamb + P2(20.0, 10.0), &[], &sn);
+        assert_ne!(f.source, Some(window), "a window over the cut plane lends no jamb: {f:?}");
     }
 
     #[test]
