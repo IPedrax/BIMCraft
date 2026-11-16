@@ -237,6 +237,14 @@ impl Placement {
     /// A piece of the family's (mirrored already, if it is) where the component stands. Upright, its outline is placed and
     /// its bottom and top are its own over the origin's height; tilted, its outline is what its triangles cover seen from
     /// above (their hull) and its bottom and top theirs.
+    /// [`Placement::piece`] as the 3D view draws it: its triangles placed, its bottom and top theirs, and no outline in plan
+    /// (none, and no holes), which a tilted piece would find as the hull of every triangle, for nothing.
+    pub fn solid(&self, pc: &Piece) -> Piece {
+        let tris: Vec<[P3; 3]> = pc.tris.iter().map(|t| t.map(|p| self.place(p))).collect();
+        let (bottom, top) = tris.iter().flatten().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| (lo.min(p[2]), hi.max(p[2])));
+        Piece { tris, outline: Vec::new(), holes: Vec::new(), bottom, top, ..pc.clone() }
+    }
+
     pub fn piece(&self, pc: &Piece) -> Piece {
         let tris: Vec<[P3; 3]> = pc.tris.iter().map(|t| t.map(|p| self.place(p))).collect();
         if self.upright {

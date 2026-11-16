@@ -312,6 +312,12 @@ impl<'a> Components<'a> {
         outlines
     }
 
+    /// Its pieces where it is placed, as the 3D view draws them ([`crate::hosting::Placement::solid`]): no outline in plan.
+    pub(crate) fn solids(&mut self, c: &Component) -> Vec<Piece> {
+        let placed = self.model.component_placement(c);
+        self.local(c).iter().map(|pc| placed.solid(pc)).collect()
+    }
+
     pub(crate) fn pieces(&mut self, c: &Component) -> Vec<Piece> {
         let placed = self.model.component_placement(c);
         self.local(c).iter().map(|pc| placed.piece(pc)).collect()
@@ -503,6 +509,40 @@ mod tests {
                 let heights = placed.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(lo, hi), p| (lo.min(p.bottom), hi.max(p.top)));
                 assert_eq!(cache.heights(c), heights);
                 assert_eq!(cache.outlines(c), placed.iter().flat_map(|p| p.outline.clone()).collect::<Vec<_>>());
+            }
+        }
+    }
+
+    #[test]
+    fn a_components_solids_for_the_3d_view_are_its_placed_pieces_without_their_outline() {
+        let mut s = Session::new();
+        s.execute(
+            "family",
+            &json!({"name": "Probe", "types": {"A": {}},
+            "forms": [{"profile": [[0,0],[800,0],[800,400],[0,400]], "to": 300}, {"circle": {"centre": [400, 200], "radius": 90}, "from": 300, "to": 900}]}),
+        )
+        .unwrap();
+        for k in 0..4 {
+            s.execute("component", &json!({"family": "Probe", "at": [k * 2000, 500], "angle": 30 * k, "mirrored": k == 3})).unwrap();
+        }
+        let mut model = (*s.model).clone();
+        let ids: Vec<_> =
+            model.elements.iter().filter(|(_, e)| matches!(e, crate::model::Element::Component(_))).map(|(id, _)| *id).collect();
+        // Two lying, two upright.
+        for (id, tilt) in ids.iter().zip([[[1.0, 0.0, 0.0], [0.0, -1.0, 0.0]], [[0.0, 0.0, 1.0], [1.0, 0.0, 0.0]]]) {
+            if let Some(crate::model::Element::Component(c)) = model.elements.get_mut(*id) {
+                c.tilt = Some(tilt);
+            }
+        }
+        model.check().unwrap();
+        let mut cache = Components::new(&model);
+        for id in &ids {
+            let Some(crate::model::Element::Component(c)) = model.elements.get(*id) else { panic!("component") };
+            let placed = model.component_pieces(c);
+            let solids = cache.solids(c);
+            assert_eq!(solids.len(), placed.len());
+            for (a, b) in solids.iter().zip(&placed) {
+                assert_eq!((&a.tris, &a.caps, a.round, &a.vis, &a.material), (&b.tris, &b.caps, b.round, &b.vis, &b.material));
             }
         }
     }
