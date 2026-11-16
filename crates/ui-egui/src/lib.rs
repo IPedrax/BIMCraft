@@ -5850,7 +5850,7 @@ impl BimApp {
         match (self.sheet, &self.tool) {
             (Sheet::View3D, Tool::Modify) => {
                 return msg!(
-                    "Click to select, drag a box to select several. Shift and the middle button orbit, the middle button pans, the wheel zooms."
+                    "Click to select, drag a box to select several. Shift and the middle button orbit, the middle button pans, the wheel zooms. Alt (Option on a Mac) and the left button stand in for the middle one."
                 );
             }
             (Sheet::Paper(_), Tool::Modify) => {

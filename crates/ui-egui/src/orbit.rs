@@ -243,12 +243,13 @@ pub(crate) struct Input {
     pub(crate) rect: Rect,
     pub(crate) ppp: f32,
     pub(crate) size: (u32, u32),
-    /// The pointer over the view (none off it, or over the triad), the wheel's and a pinch's zoom, Shift held, and where the
-    /// pointer was last, on the view or off it.
+    /// The pointer over the view (none off it, or over the triad), the wheel's and a pinch's zoom, Shift and Alt (Option on a
+    /// Mac) held, and where the pointer was last, on the view or off it.
     pub(crate) hover: Option<Pos2>,
     pub(crate) wheel: f32,
     pub(crate) pinch: f32,
     pub(crate) shift: bool,
+    pub(crate) alt: bool,
     pub(crate) latest: Option<Pos2>,
     /// What a click on the triad asked for.
     pub(crate) asked: Option<Ask>,
@@ -276,13 +277,15 @@ impl Input {
         device: Option<crate::spacemouse::Motion>,
     ) -> Input {
         let side = |v: f32| ((v * ppp).round().max(1.0) as u32).min(MAX_SIDE);
-        let (hover, wheel, pinch, shift, latest, focused, frame) = ui.input(|i| {
+        let (hover, wheel, pinch, (shift, alt), latest, focused, frame) = ui.input(|i| {
             let hover = i.pointer.hover_pos().filter(|_| response.hovered());
-            (hover, i.smooth_scroll_delta.y, i.zoom_delta(), i.modifiers.shift, i.pointer.latest_pos(), i.focused, f64::from(i.stable_dt))
+            let held = (i.modifiers.shift, i.modifiers.alt);
+            (hover, i.smooth_scroll_delta.y, i.zoom_delta(), held, i.pointer.latest_pos(), i.focused, f64::from(i.stable_dt))
         });
         let motion = device.filter(|_| focused);
         let wheel = if motion.is_some() { 0.0 } else { wheel };
-        Input { rect, ppp, size: (side(rect.width()), side(rect.height())), hover, wheel, pinch, shift, latest, asked, motion, frame }
+        let size = (side(rect.width()), side(rect.height()));
+        Input { rect, ppp, size, hover, wheel, pinch, shift, alt, latest, asked, motion, frame }
     }
 
     /// Screen point `p` as a pixel of the picture.
@@ -1167,7 +1170,8 @@ impl Orbit {
     /// The hand's drag, from `cam` (zoomed already): Shift and the middle button orbit, 0.4° a point, round the point under the
     /// pointer where the drag began (found in `scene` as [`zoom`](Self::zoom) finds it; the target, where nothing is); the
     /// middle button alone pans. The primary button drags a selection box with `boxes`, and orbits only where
-    /// [`hand_orbits`](Self::hand_orbits): the project's 3D view never moves the camera with it.
+    /// [`hand_orbits`](Self::hand_orbits): the project's 3D view never moves the camera with it. Alt (Option on a Mac) and the
+    /// primary button are the middle button, for a trackpad or a mouse that has none.
     /// A drag that a view's tool `held` this frame (a grip's) is the tool's. A drag that turns out a `quick` click puts the camera
     /// back. Then a click on the triad's end turns the camera to look from that side. The camera is the view's from here on.
     #[allow(clippy::too_many_arguments)]
@@ -1186,10 +1190,12 @@ impl Orbit {
             && !held
             && let Some(origin) = ui.input(|i| i.pointer.press_origin())
         {
-            let primary = response.dragged_by(PointerButton::Primary);
+            let (primary, middle) = (response.dragged_by(PointerButton::Primary), response.dragged_by(PointerButton::Middle));
+            // A Mac's trackpad and mouse have no middle button (#459): Alt and the primary one stand in for it.
+            let (primary, middle) = (primary && !input.alt, middle || (primary && input.alt));
             if primary && boxes {
                 self.select = Some(origin);
-            } else if (primary && self.hand_orbits) || response.dragged_by(PointerButton::Middle) {
+            } else if (primary && self.hand_orbits) || middle {
                 let orbit = (primary && self.hand_orbits) || input.shift;
                 let pivot = orbit.then(|| self.picker.as_ref()?.surface(scene, &cam, input.px(origin))).flatten().map(|s| s.at);
                 self.drag = Some((orbit, origin, pivot));
