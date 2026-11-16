@@ -644,6 +644,9 @@ pattern geometry (including font outlines) and can follow a curve. The creator s
 Cancel, so OK/Apply remains one undoable Line Styles transaction. See [views and graphics](views-and-graphics.md) for the
 seven segment kinds, paper units, text fitting and centerline semantics.
 
+The following interaction details describe plan dimensions; [vertical drawing tools](#drawing-tools-in-sections-and-elevations)
+have the supported references and restrictions listed above.
+
 Annotate > Dimension has Aligned (DI) and Linear, and Angular, Radial, Diameter, Arc Length, Spot Elevation and Spot Slope small beside
 them (`BimApp::dimension_panel`); Spot Slope (`Tool::SpotSlope`) runs `spot_slope` where a floor or a roof is clicked in a plan. Aligned and Linear are one tool, `Tool::Dimension(mode, refs)`: a click near an endpoint picks it before the line
 it ends (`canvas::dimension_pick`), marked with a square; a click on a reference already picked takes it out, Backspace the last, and Esc starts the chain over; after two, a click away places the dimension the Options Bar's Place says (Auto,

@@ -1,0 +1,7 @@
+# Synthetic before/after fixture; works on both the baseline and the feature branch.
+# Default levels: 100000 at 0 mm; 100001 at 3000 mm.
+wall {"points":[[1000,2000],[7000,10000]],"height":3000}
+window {"wall":100002,"offset":3000,"sill":900}
+elevation {"name":"Rotated comparison","start":[1800,1400],"end":[7800,9400]}
+detail_line {"view":"Rotated comparison","start":[1000,400],"end":[4000,400]}
+detail_line {"view":"Rotated comparison","start":[4000,200],"end":[4000,2400]}

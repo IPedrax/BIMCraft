@@ -1,0 +1,148 @@
+diff --git a/Detail-Lines-and-Line-Styles.md b/Detail-Lines-and-Line-Styles.md
+index 882a09a..3153149 100644
+--- a/Detail-Lines-and-Line-Styles.md
++++ b/Detail-Lines-and-Line-Styles.md
+@@ -15,6 +15,10 @@ of the building. A **line style** sets a line's pen, colour and pattern.
+ Spline, Ellipse, Polyline, or **Pick Lines**. Choose a **line style** in the Options Bar. Snaps pick up model edges and other
+ lines. Edit with the [[Lines and Curves]] and [[Modify Tools]].
+ 
++In a section or elevation, drawn shapes use that view's along/up coordinates. **Pick Lines and Fillet are unavailable**
++there. Move and Trim/Extend work on the view's own detail lines; a projected model edge is not a detail line. Escape and
++switching views cancel unfinished input. Snapping uses supported visible references and the view grid, without plan guides.
++
+ ## Line styles
+ 
+ <img src="images/icons/thin-lines.png" width="32" height="32" alt="Line styles icon">
+@@ -66,6 +70,8 @@ all** (invisible). Click again with Remove to restore it. A view holds at most 2
+ 
+ `view` is a name or id: a level's plan (default lowest; plan mm), a section or elevation, or a sheet.
+ 
++For a section/elevation, curve coordinates are `[along, height]` in mm, measured along its line from its start and upward.
++
+ ```text
+ line_style {"name": "Red dashed", "pen": 4, "color": "#cc0000", "pattern": "Dash"}
+ @l = detail_line {"start": [0, 8000], "end": [8000, 8000], "style": "Red dashed"}
+diff --git a/Dimensions.md b/Dimensions.md
+index fe60381..b68aca4 100644
+--- a/Dimensions.md
++++ b/Dimensions.md
+@@ -1,9 +1,9 @@
+ # Dimensions
+ 
+-Dimensions measure the model and **follow it**: move a wall and its dimension changes. They can also be **locked** or kept
+-**equal**, and then they hold the model in place.
++Dimensions measure the model and **follow it**: move a wall and its dimension changes. Plan dimensions can also be **locked**
++or kept **equal**, and then they hold the model in place. Section/elevation dimensions measure only.
+ 
+-**On this page:** [Aligned and Linear](#aligned-and-linear) · [Angular, Radial, Diameter, Arc Length](#angular-radial-diameter-arc-length) ·
++**On this page:** [Aligned and Linear](#aligned-and-linear) · [Sections and elevations](#sections-and-elevations) · [Angular, Radial, Diameter, Arc Length](#angular-radial-diameter-arc-length) ·
+ [Locks and EQ](#locks-and-eq) · [Dimension text](#dimension-text) · [Dimension types](#dimension-types) · [3D dimensions](#3d-dimensions) · [For agents](#for-agents)
+ 
+ ---
+@@ -21,6 +21,15 @@ Dimensions measure the model and **follow it**: move a wall and its dimension ch
+ **Linear:** pick endpoints, then click where it goes. It's horizontal or vertical as the cursor lies. The Options Bar's **Place**
+ (Auto, Aligned, Horizontal, Vertical; **Space** steps them) lays either tool's dimension.
+ 
++## Sections and elevations
++
++In a section or elevation, Aligned/Linear Dimension picks **levels**, **grids perpendicular to the view line**, and the
++view's own **detail lines or endpoints**. Pick the references, then click away to place. Space cycles placement modes.
++The dimension updates when its references change. Locks, EQ, driving values, wall silhouettes and oblique grids are
++not supported in these views. Angular and round dimensions retain their supported plan workflow.
++
++See [[Sections and Elevations]] for the other vertical-view tools.
++
+ ## Angular, Radial, Diameter, Arc Length
+ 
+ | Tool | Do |
+@@ -70,9 +79,14 @@ holds it.
+ 
+ ### `dimension` (DI)
+ 
+-`{refs: [ref, …], at: [x, y], level?, kind?: aligned|linear|angular|radial|diameter|arc_length, orient?: horizontal|vertical}`.
++`{refs: [ref, …], at: [x, y], level?, view?, kind?: aligned|linear|angular|radial|diameter|arc_length, orient?: horizontal|vertical}`.
+ With `id` it **edits** that dimension: `refs`, `at`, `kind`, `orient`, `type`, text and `equality` change when given.
+ 
++With a section/elevation `view`, `at` is `[along, height]` in mm. Supply explicit `{id, face?, point?}` references;
++coordinate inference is unavailable. Supported kinds are aligned/linear; a level or perpendicular grid uses its centre
++line without a `point`, and a detail curve must belong to the same view. `dimension_constraint` and `dimension_value`
++refuse these dimensions. Saved vertical dimensions require format 21.
++
+ A **ref** is `{id, face?}`:
+ 
+ | Of | `face` values |
+diff --git a/Modify-Tools.md b/Modify-Tools.md
+index b552d6f..89b6482 100644
+--- a/Modify-Tools.md
++++ b/Modify-Tools.md
+@@ -14,6 +14,11 @@ and doors and windows go with their walls.
+ neighbours **stretch** so they stay joined, and rooms follow. **Constrain** keeps a move square; **Multiple** keeps copying.
+ Copying a wall copies its doors and windows.
+ 
++In a section/elevation, **Move** supports annotations belonging to that view, doors/windows in straight walls and free
++non-adaptive components. Pick a base and destination, or point in a direction and type a length. Shift/Constrain restricts
++the move along or up the view. Openings remain in their host; a move off it, a pinned element or an unsupported selection
++refuses the whole command. A displacement line previews the move; there is no model ghost preview. Copy is separate.
++
+ ## Rotate and Mirror
+ 
+ - **Rotate (RO):** turns the selection about its middle. Click the angle's start, then its end, or type an angle in the Options
+@@ -38,6 +43,9 @@ Doors and windows slide along their wall. **Lock** keeps them aligned afterwards
+ | **Split Element** | SL | Click a wall where to cut it. Its doors and windows go with their parts. |
+ | **Offset** | OF | Point at a wall or line; a copy goes to the cursor's side at the Options Bar's distance. |
+ 
++In sections/elevations, Trim/Extend Corner and Single/Multiple act on **detail lines belonging to that view**, using the
++same retained-side picks. Model outlines are not trim targets. A failed Trim keeps its first pick; Escape cancels it.
++
+ ## Match Properties
+ 
+ **Match Properties (MA):** click the element to copy **from**, then the elements to give its **type** to. Only elements of the
+@@ -69,7 +77,7 @@ dimensions lose what's deleted. Deleting a room asks whether to delete its own f
+ 
+ | Command | Params |
+ |---|---|
+-| `move` (MV) | `{ids, by: [dx, dy], end?: start\|end}`. `end` moves only that end of one wall or run. |
++| `move` (MV) | `{ids, by: [dx, dy], view?, end?: start\|end}`. Without `view`, `end` moves only that end of one wall or run. With a section/elevation `view`, `by` is `[along, up]` in mm; `end` is refused. |
+ | `copy` (CO) | `{ids, by}`. Returns the copies' ids. |
+ | `rotate` (RO) | `{ids, about: [x,y], angle (degrees ccw), copy?}` |
+ | `mirror` (MM, DM) | `{ids, axis: [[x,y],[x,y]], copy?}` |
+diff --git a/Sections-and-Elevations.md b/Sections-and-Elevations.md
+index 544e3f9..ad2eaf2 100644
+--- a/Sections-and-Elevations.md
++++ b/Sections-and-Elevations.md
+@@ -32,7 +32,22 @@ South, East and West. You can also place one square to a wall or an edge: it loo
+ - **Crop:** a section's crop grips move its sides, and its line with them. Uncropped, it shows all there is along its line.
+ - Click to **select** what they cut or see. Levels draw where they see their extent.
+ - **Scale, detail level, visibility** work as in plans ([[View Settings]], [[Visibility and Graphics]]).
+-- **Notes, spot elevations and dimensions** can be added in them; points run along the line from its start, and up.
++- **Notes and spot elevations** can be added in them; points run along the line from its start, and up.
++
++### Drawing and editing in a vertical view
++
++- **Aligned or Linear Dimension:** pick levels, grids perpendicular to the view line, or detail references belonging to
++  this view, then click away to place the dimension. Detail-line endpoints can be picked too. These dimensions follow
++  their references; they do not support locks, EQ or typing a dimension value to move the model.
++- **Detail Line:** choose a drawn shape and place its points in the view. Pick Lines and Fillet are not available here.
++- **Move:** select this view's annotations, a door/window in a straight wall, or a free non-adaptive component. Pick a base
++  and destination, or point in a direction and type a length. Shift/Constrain keeps the move along or up the view. A door
++  or window stays in its host; a move off the host is refused. Unsupported selections refuse the whole move.
++- **Trim/Extend:** use the view's own detail lines. Model edges cannot be trimmed from their projected outline.
++- **Escape** and switching views cancel unfinished picks. Ordinary **Undo/Redo** applies to completed edits.
++
++Other model creation/modification tools keep their supported plan/3D workflows. Wall silhouettes and oblique grids are
++not dimension references here. See [[Dimensions]], [[Detail Lines and Line Styles]] and [[Modify Tools]].
+ 
+ ### In pictures
+ 
+@@ -60,5 +75,11 @@ crop {"view": "Section A", "region": [[0,0],[12000,4000]]}
+   any element with a straight edge) and `at`, it looks square at the nearest edge from `at`'s side.
+ - `crop {view, region}`: for a section, its bottom left and top right (along its line from its start, and up).
+ - `render {"view": "Section A", "path": "s.png"}` or a name like `South`.
++- `dimension {view, refs, at: [along, height], kind?: aligned|linear, orient?: horizontal|vertical}`: explicit references
++  to levels, perpendicular grids or the view's detail lines/endpoints. Returns the dimension's id and measured values.
++- `move {view, ids, by: [along, up]}`: whole supported elements, without `end`; returns `moved`. Coordinates are mm.
++- `detail_line {view, ...curve}` and `corner` / `trim_extend` use the view's along/up coordinates for its detail curves.
++
++Vertical dimensions require file format 21; older readers refuse these saved files. Format-20 files need no data conversion.
+ 
+ Related: [[Floor Plans]], [[Sheets]].

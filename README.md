@@ -220,6 +220,12 @@ transparent), in hidden line and in wireframe too, and point clouds. Sections an
 
 ## What works today
 
+Sections and elevations support aligned/linear dimensions between levels, perpendicular grids and their own detail
+references, detail drawing and Trim/Extend, and Move for own-view annotations, straight-wall openings and free
+non-adaptive components. Other model edits and driving dimension constraints remain unavailable in these views.
+See [vertical drawing tools](docs/areas/desktop.md#drawing-tools-in-sections-and-elevations) and the
+[synthetic before/after example](docs/vertical-tools-evidence.md).
+
 BIMCraft is in early, fast development. Honest status:
 
 | Area | Works today |
