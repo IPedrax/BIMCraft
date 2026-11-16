@@ -3419,6 +3419,9 @@ impl BimApp {
         }
         // The selection is the model's, not the view's: it stays, whatever view comes up.
         self.clear_typed();
+        // A paste waiting for a click, or asking where it goes, belongs to the view it was asked in.
+        self.paste_drop = None;
+        self.paste_ask = None;
         self.snap_once = None;
         // A ruler belongs to the view it was laid in.
         self.measured = None;
