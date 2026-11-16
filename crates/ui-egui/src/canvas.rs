@@ -1684,12 +1684,10 @@ impl BimApp {
         let tol = f64::from(snaps.alignment_tolerance) / v.scale;
         let config = AlignmentConfig {
             enabled: true,
-            tolerance: tol,
             endpoints: snaps.endpoint,
             midpoints: snaps.midpoint,
             faces: true,
             intersections: snaps.intersection,
-            angles: false,
         };
         let start = from.last().copied();
         let key = self.plan_key().unwrap_or(level);
