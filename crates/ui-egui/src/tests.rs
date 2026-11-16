@@ -6287,6 +6287,7 @@ mod file_extensions;
 mod fills;
 mod filter;
 mod fonts;
+mod framing;
 mod gpu;
 mod graphics;
 mod groups;

@@ -2472,7 +2472,18 @@ fn section_base_cancellable(
                 })
                 .collect()
         };
-        for (layer, spans) in layers.iter().zip(intervals) {
+        // A framed wall's members are cut in the framing type's material, where it names one.
+        let framed = w.framing.as_ref().filter(|_| !look.unframed()).and_then(|_| crate::framing::structure(m, w)).map(|(k, _)| k);
+        let timber = framed.and(crate::framing::material(m, w));
+        for (k, (layer, spans)) in layers.iter().zip(intervals).enumerate() {
+            let own;
+            let layer = match timber.filter(|_| framed == Some(k)) {
+                Some(material) => {
+                    own = Layer { material: material.to_string(), ..layer.clone() };
+                    &own
+                }
+                None => layer,
+            };
             for (s0, s1) in spans {
                 let (s0, s1) = (s0.min(s1).max(first), s0.max(s1).min(last));
                 for r in cuts.get(&wall).into_iter().flatten() {
@@ -3389,10 +3400,11 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
             d.fill(&pieces, POCHE);
         }
     }
-    for (id, runs) in cut_edges(&outlines, 1.0 / d.view.scale) {
-        d.owner = Some(id);
+    let edges = cut_edges(&outlines, 1.0 / d.view.scale);
+    for (id, runs) in &edges {
+        d.owner = Some(*id);
         for run in runs {
-            ink_cut(&mut d, &run);
+            ink_cut(&mut d, run);
         }
     }
     for (id, _) in &outlines {
@@ -3418,9 +3430,21 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
         d.owner = Some(id);
         let geometry = walls::layer_geometry(m, id, index);
         let along = (w.end - w.start).unit();
+        // A framed wall's structure layer is its members: those the cut plane passes through, and nothing between them.
+        let framing = w.framing.as_ref().filter(|_| !look.unframed()).and_then(|_| crate::framing::wall(m, id).ok().flatten());
+        let framed = framing.as_ref().and_then(|_| crate::framing::structure(m, w)).map(|(k, _)| k);
         for (k, layer) in layers.iter().enumerate() {
             let ring = geometry.band(k);
             let room = layer.thickness * d.view.scale;
+            if let (Some(f), true) = (&framing, framed == Some(k)) {
+                members_cut(&mut d, m, f, (layer, outside_columns(vec![ring], &columns)), range.cut, &columns);
+                if let Some((_, runs)) = edges.iter().find(|(e, _)| *e == id) {
+                    for run in runs {
+                        ink_cut(&mut d, run);
+                    }
+                }
+                continue;
+            }
             for piece in outside_columns(vec![ring], &columns) {
                 cut_layer(&mut d, m, layer, &piece, along, room);
             }
@@ -3837,6 +3861,38 @@ fn boxes_meet(a: &[P2], b: &[P2]) -> bool {
     };
     let ((alo, ahi), (blo, bhi)) = (bounds(a), bounds(b));
     alo.0 <= bhi.0 && blo.0 <= ahi.0 && alo.1 <= bhi.1 && blo.1 <= ahi.1
+}
+
+/// Framing `f`'s structure layer in plan, where it lies in `band` (`layer`'s, outside the columns): cleared, and each member
+/// the cut plane at `cut` passes through filled, in its material's cut pattern where it holds one, and outlined.
+fn members_cut(
+    d: &mut Drawing,
+    m: &Model,
+    f: &crate::framing::Framing,
+    (layer, band): (&Layer, Vec<Vec<P2>>),
+    cut: f64,
+    columns: &[&[P2]],
+) {
+    d.fill(&band, PAPER);
+    let layer = Layer { material: f.material.clone(), ..layer.clone() };
+    d.sub(Some("framing"));
+    for member in &f.members {
+        let Some([s0, s1]) = member.cut_at(cut) else { continue };
+        let [a0, a1] = member.across;
+        let ring = vec![f.at(s0, a0), f.at(s1, a0), f.at(s1, a1), f.at(s0, a1)];
+        let room = (s1 - s0).min(a1 - a0) * d.view.scale;
+        for piece in outside_columns(vec![ring], columns) {
+            if pattern_style(d, true).is_some() {
+                d.fill(std::slice::from_ref(&piece), PAPER);
+                override_patterns(d, m, std::slice::from_ref(&piece), true, (P2(0.0, 0.0), 0.0));
+            } else {
+                d.fill(std::slice::from_ref(&piece), POCHE);
+            }
+            cut_layer(d, m, &layer, &piece, f.x_axis, room);
+            d.line(&piece, Pen::PROJECTION, INK, true);
+        }
+    }
+    d.sub(None);
 }
 
 /// `rings` less the outlines of the columns the plan cuts (convex, a rectangle or a round one's polygon): what of a wall's layer

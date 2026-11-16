@@ -2755,6 +2755,8 @@ fn hostile_params_never_panic_or_break_the_model() {
     targeted.extend(crate::work_plane_tests::sweep_payloads(&mut base));
     // A floor and a wall with a component on a face of each, and the payloads that place, move and host them.
     targeted.extend(crate::face_host_tests::sweep_payloads(&mut base));
+    // A framed wall with a window and a partition butting into it, and the payloads that frame, query and retype them.
+    targeted.extend(crate::framing_tests::sweep_payloads(&mut base));
     let line = |slope: Value| json!({"start": [0, 0], "end": [8000, 0], "slope": slope});
     let rest = [
         json!({"start": [8000, 0], "end": [8000, 6000]}),
@@ -6519,21 +6521,21 @@ fn a_file_from_before_guids_opens_with_guids_and_six_digit_ids() {
 }
 
 #[test]
-fn a_file_of_the_family_editors_unreleased_formats_21_to_32_is_refused_as_newer() {
+fn a_file_of_the_family_editors_unreleased_formats_22_to_32_is_refused_as_newer() {
     // The Family Editor took the format from 17 to 32 a step at a time before it was released, and none of that was. 0.12's
-    // format is 20, which every change since 0.11 shares, so a file of those builds stamped 20 opens as one of 0.12's, and 21
-    // to 32 are refused as any newer file is.
+    // format is 20, which every change since 0.11 shares, so a file of those builds stamped 20 opens as one of 0.12's; 21 is
+    // framing's now (a file of theirs stamped 21 holds none, and opens), and 22 to 32 are refused as any newer file is.
     use crate::model::{FORMAT, Model};
-    assert_eq!(FORMAT, 20);
+    assert_eq!(FORMAT, 21);
     let mut s = Session::new();
     house(&mut s);
     let v = serde_json::to_value(&*s.model).unwrap();
-    for old in 21..=32 {
+    for old in 22..=32 {
         let mut was = v.clone();
         was["format"] = json!(old);
         let e = Model::read(&was.to_string()).unwrap_err();
         assert!(
-            e.contains("saved by a newer BIMCraft") && e.contains(&format!("file format {old}")) && e.contains("reads up to 20"),
+            e.contains("saved by a newer BIMCraft") && e.contains(&format!("file format {old}")) && e.contains("reads up to 21"),
             "{old}: {e}"
         );
     }

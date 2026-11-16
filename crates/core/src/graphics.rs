@@ -132,6 +132,8 @@ pub const SUBCATEGORIES: &[Sub] = &[
     // of the project's own type's swing.
     Sub { key: "dooropening", parent: "door", name: ui_msg!("Opening"), off: false },
     Sub { key: "windowopening", parent: "window", name: ui_msg!("Opening"), off: false },
+    // A framed wall's studs, plates and headers (`crate::framing`): hidden, its structure layer is drawn as an unframed wall's.
+    Sub { key: "framing", parent: "wall", name: ui_msg!("Framing"), off: false },
     // The three origins, as Revit's Site has them: hidden unless a view shows them.
     Sub { key: "internalorigin", parent: "site", name: ui_msg!("Internal Origin"), off: true },
     Sub { key: "projectbasepoint", parent: "site", name: ui_msg!("Project Base Point"), off: true },
@@ -1076,6 +1078,8 @@ pub struct Look {
     display: crate::view3d::DisplayOptions,
     /// How it looks at a family's forms and at what detail, which their Visibility Settings read (F8).
     forms: crate::family::visibility::FormView,
+    /// Walls > Framing hidden: a framed wall's structure layer is drawn in place of its members.
+    unframed: bool,
 }
 
 /// `c` halfway to the paper.
@@ -1130,7 +1134,15 @@ impl Look {
     /// Whether it draws a triangle or a solid whose Visibility Settings are packed as `vis`
     /// ([`crate::family::visibility::packed`]): in projection, or (`cut`) as a section's poché.
     pub fn forms_show(&self, vis: u32, cut: bool) -> bool {
-        vis == 0 || self.forms.shows(vis, cut)
+        match crate::family::visibility::framing(vis) {
+            Some(member) => member != self.unframed,
+            None => vis == 0 || self.forms.shows(vis, cut),
+        }
+    }
+
+    /// Whether it draws a framed wall's structure layer in place of its members: Walls > Framing hidden.
+    pub fn unframed(&self) -> bool {
+        self.unframed
     }
 
     /// How a 3D view draws its edges and shadows: its Graphic Display Options.
@@ -1160,7 +1172,7 @@ impl Look {
     pub fn with(m: &Model, own: &Graphics) -> Look {
         let g = own.resolved(m);
         let forms = crate::family::visibility::FormView { detail: g.detail, ..Default::default() };
-        let mut look = Look { style: g.style, layers: own.layers.clone(), forms, ..Look::default() };
+        let mut look = Look { style: g.style, layers: own.layers.clone(), forms, unframed: g.hides("framing"), ..Look::default() };
         // Nothing to look for: no graphics of its own, and nothing in the project phased or in an option.
         let linked = m.elements.keys().next_back().is_some_and(|id| crate::link::is_linked(*id));
         if own.draws_as_is() && !linked && !crate::phasing::any(m) && m.rare("mass").is_empty() {
