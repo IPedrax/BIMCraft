@@ -692,7 +692,7 @@ msgstr "Agenti: připojeno {}"
 msgid "Agents: {} connected, read-only"
 msgstr "Agenti: připojeno {}, jen pro čtení"
 
-#: crates/ui-egui/src/reinforce.rs:514
+#: crates/ui-egui/src/reinforce.rs:532
 msgid "Aggressiveness class"
 msgstr "Třída agresivity"
 
@@ -1555,7 +1555,7 @@ msgstr "Tloušťka čáry ohraničení"
 
 #: crates/ui-egui/src/export/mod.rs:979
 #: crates/ui-egui/src/properties.rs:443
-#: crates/ui-egui/src/reinforce.rs:182
+#: crates/ui-egui/src/reinforce.rs:186
 #: crates/ui-egui/src/templates.rs:744
 msgid "Bottom"
 msgstr "Dolní"
@@ -1777,7 +1777,7 @@ msgstr "Kamera: klikněte na místo, kde stojí její oko, a potom na to, na co 
 #: crates/ui-egui/src/publisher.rs:920
 #: crates/ui-egui/src/publisher.rs:967
 #: crates/ui-egui/src/purge.rs:77
-#: crates/ui-egui/src/reinforce.rs:536
+#: crates/ui-egui/src/reinforce.rs:558
 #: crates/ui-egui/src/shortcuts.rs:412
 #: crates/ui-egui/src/shortcuts.rs:540
 #: crates/ui-egui/src/standards.rs:334
@@ -1995,7 +1995,7 @@ msgstr "Židle"
 msgid "Changes to a type affect every filled region of that type."
 msgstr "Změny typu ovlivní každou vyplněnou oblast daného typu."
 
-#: crates/ui-egui/src/reinforce.rs:501
+#: crates/ui-egui/src/reinforce.rs:514
 msgid "Check"
 msgstr "Kontrola"
 
@@ -2060,13 +2060,21 @@ msgstr ""
 msgid "Check {}"
 msgstr ""
 
-#: crates/ui-egui/src/reinforce.rs:514
+#: crates/ui-egui/src/reinforce.rs:532
 msgid "Check: Aggressiveness class"
 msgstr "Kontrola: třída agresivity"
 
-#: crates/ui-egui/src/reinforce.rs:515
+#: crates/ui-egui/src/reinforce.rs:530
+msgid "Check: Exposure class"
+msgstr ""
+
+#: crates/ui-egui/src/reinforce.rs:534
 msgid "Check: fck"
 msgstr "Kontrola: fck"
+
+#: crates/ui-egui/src/reinforce.rs:536
+msgid "Check: fyk"
+msgstr ""
 
 #: crates/ui-egui/src/start.rs:512
 msgid "Checking for updates…"
@@ -2144,7 +2152,7 @@ msgstr "Vymazat nedávné soubory"
 msgid "Clear the Search"
 msgstr "Vymazat hledání"
 
-#: crates/ui-egui/src/reinforce.rs:497
+#: crates/ui-egui/src/reinforce.rs:510
 msgid "Clearance"
 msgstr "Světlá vzdálenost"
 
@@ -3387,10 +3395,10 @@ msgstr ""
 msgid "Counts up by itself each time the file is saved, so a project can tell it is behind."
 msgstr ""
 
-#: crates/ui-egui/src/reinforce.rs:182
-#: crates/ui-egui/src/reinforce.rs:339
-#: crates/ui-egui/src/reinforce.rs:341
-#: crates/ui-egui/src/reinforce.rs:477
+#: crates/ui-egui/src/reinforce.rs:186
+#: crates/ui-egui/src/reinforce.rs:343
+#: crates/ui-egui/src/reinforce.rs:345
+#: crates/ui-egui/src/reinforce.rs:490
 msgid "Cover"
 msgstr "Krytí"
 
@@ -3761,7 +3769,7 @@ msgstr "Odstranit variantu"
 msgid "Delete Parameter"
 msgstr "Odstranit parametr"
 
-#: crates/ui-egui/src/reinforce.rs:469
+#: crates/ui-egui/src/reinforce.rs:482
 msgid "Delete Preset"
 msgstr "Odstranit předvolbu"
 
@@ -4982,6 +4990,10 @@ msgstr ""
 msgid "Export…"
 msgstr ""
 
+#: crates/ui-egui/src/reinforce.rs:530
+msgid "Exposure class"
+msgstr ""
+
 #: crates/ui-egui/src/export/mod.rs:598
 #: crates/ui-egui/src/properties.rs:392
 msgid "Extents"
@@ -5754,7 +5766,7 @@ msgstr "Přejít na pohled"
 msgid "Governing Body:"
 msgstr "Normalizační orgán:"
 
-#: crates/ui-egui/src/reinforce.rs:495
+#: crates/ui-egui/src/reinforce.rs:508
 msgid "Grade"
 msgstr "Třída oceli"
 
@@ -6061,7 +6073,7 @@ msgstr "Hostovat tento projekt"
 msgid "How it shows what is, in the view's phase:"
 msgstr "Způsob zobrazení prvků ve fázi pohledu:"
 
-#: crates/ui-egui/src/reinforce.rs:453
+#: crates/ui-egui/src/reinforce.rs:466
 msgid "How many bars, how thick and how far apart is yours to say; a field left empty is not used. A spacing is the most between bars."
 msgstr "Počet prutů, jejich tloušťku i rozteč určujete vy; prázdné pole se nepoužije. Rozteč je největší vzdálenost mezi pruty."
 
@@ -8320,8 +8332,8 @@ msgstr ""
 #: crates/ui-egui/src/properties.rs:2653
 #: crates/ui-egui/src/properties.rs:3020
 #: crates/ui-egui/src/properties.rs:3022
-#: crates/ui-egui/src/reinforce.rs:504
-#: crates/ui-egui/src/reinforce.rs:506
+#: crates/ui-egui/src/reinforce.rs:517
+#: crates/ui-egui/src/reinforce.rs:519
 #: crates/ui-egui/src/spots.rs:86
 #: crates/ui-egui/src/spots.rs:284
 #: crates/ui-egui/src/spots.rs:331
@@ -8429,7 +8441,7 @@ msgstr "Zaznamenáno"
 msgid "Notes"
 msgstr ""
 
-#: crates/ui-egui/src/reinforce.rs:520
+#: crates/ui-egui/src/reinforce.rs:542
 msgid "Notes of the check, the bars are made:"
 msgstr "Poznámky z kontroly; pruty jsou vytvořeny:"
 
@@ -8516,7 +8528,7 @@ msgstr "Počet pólů"
 #: crates/ui-egui/src/properties.rs:3880
 #: crates/ui-egui/src/publisher.rs:921
 #: crates/ui-egui/src/publisher.rs:968
-#: crates/ui-egui/src/reinforce.rs:537
+#: crates/ui-egui/src/reinforce.rs:559
 #: crates/ui-egui/src/standards.rs:335
 #: crates/ui-egui/src/templates.rs:758
 #: crates/ui-egui/src/titleblocks.rs:654
@@ -9977,11 +9989,11 @@ msgstr "Zachovat"
 msgid "Preset name:"
 msgstr "Název předvolby:"
 
-#: crates/ui-egui/src/reinforce.rs:456
+#: crates/ui-egui/src/reinforce.rs:469
 msgid "Preset:"
 msgstr "Předvolba:"
 
-#: crates/ui-egui/src/reinforce.rs:466
+#: crates/ui-egui/src/reinforce.rs:479
 msgid "Preset: Name"
 msgstr "Předvolba: Název"
 
@@ -10552,12 +10564,12 @@ msgstr "Vyztužit"
 msgid "Reinforce (RF): bars by rules for the selected beam, column, footing or floor"
 msgstr "Vyztužit (RF): pruty podle pravidel pro vybraný průvlak, sloup, patku nebo podlahu"
 
-#: crates/ui-egui/src/reinforce.rs:447
-#: crates/ui-egui/src/reinforce.rs:448
+#: crates/ui-egui/src/reinforce.rs:460
+#: crates/ui-egui/src/reinforce.rs:461
 msgid "Reinforce {} {}"
 msgstr "Vyztužení: {} {}"
 
-#: crates/ui-egui/src/reinforce.rs:585
+#: crates/ui-egui/src/reinforce.rs:607
 msgid "Reinforced: {} bars, {} kg of steel."
 msgstr "Vyztuženo: {} prutů, {} kg oceli."
 
@@ -10600,7 +10612,7 @@ msgstr ""
 msgid "Remove"
 msgstr "Odebrat"
 
-#: crates/ui-egui/src/reinforce.rs:533
+#: crates/ui-egui/src/reinforce.rs:555
 msgid "Remove Bars"
 msgstr "Odebrat pruty"
 
@@ -10661,7 +10673,7 @@ msgstr ""
 msgid "Remove the text"
 msgstr ""
 
-#: crates/ui-egui/src/reinforce.rs:605
+#: crates/ui-egui/src/reinforce.rs:627
 msgid "Removed {} bars."
 msgstr "Odebráno prutů: {}."
 
@@ -11182,7 +11194,7 @@ msgid "Save Pattern"
 msgstr "Uložit vzor"
 
 #: crates/ui-egui/src/presets.rs:216
-#: crates/ui-egui/src/reinforce.rs:467
+#: crates/ui-egui/src/reinforce.rs:480
 msgid "Save Preset"
 msgstr "Uložit předvolbu"
 
@@ -11198,7 +11210,7 @@ msgstr ""
 msgid "Save as"
 msgstr "Uložit jako"
 
-#: crates/ui-egui/src/reinforce.rs:465
+#: crates/ui-egui/src/reinforce.rs:478
 msgid "Save as:"
 msgstr "Uložit jako:"
 
@@ -11442,7 +11454,7 @@ msgstr "Vybrat"
 msgid "Select All Instances"
 msgstr "Vybrat všechny instance"
 
-#: crates/ui-egui/src/reinforce.rs:407
+#: crates/ui-egui/src/reinforce.rs:420
 msgid "Select a beam, a column, a footing or a floor to reinforce first."
 msgstr "Nejprve vyberte průvlak, sloup, patku nebo podlahu, které chcete vyztužit."
 
@@ -11467,7 +11479,7 @@ msgstr "Vybrat podle ID"
 msgid "Select by ID: select elements by their IDs, GUIDs or IFC GlobalIds, as many as you paste, and show them"
 msgstr "Vybrat podle ID: vybrat prvky podle jejich ID, GUID nebo IFC GlobalId (i více vložených najednou) a zobrazit je"
 
-#: crates/ui-egui/src/reinforce.rs:412
+#: crates/ui-egui/src/reinforce.rs:425
 msgid "Select elements of one kind: all beams, all columns, all footings or all floors."
 msgstr "Vyberte prvky jednoho druhu: pouze průvlaky, pouze sloupy, pouze patky nebo pouze podlahy."
 
@@ -11857,7 +11869,7 @@ msgid "Side"
 msgstr "Strana"
 
 #: crates/ui-egui/src/editor/sketch.rs:1337
-#: crates/ui-egui/src/reinforce.rs:182
+#: crates/ui-egui/src/reinforce.rs:186
 msgid "Sides"
 msgstr "Strany"
 
@@ -12275,7 +12287,7 @@ msgstr "Schodiště: klikněte na místo začátku a poté na konec ramene; pode
 msgid "Stair: click where it starts, then which way it climbs"
 msgstr "Schodiště: klikněte na místo začátku a poté na směr stoupání"
 
-#: crates/ui-egui/src/reinforce.rs:502
+#: crates/ui-egui/src/reinforce.rs:515
 msgid "Standard"
 msgstr "Norma"
 
@@ -12339,20 +12351,20 @@ msgstr "Začíná pod horním okrajem"
 msgid "Status"
 msgstr ""
 
-#: crates/ui-egui/src/reinforce.rs:494
+#: crates/ui-egui/src/reinforce.rs:507
 msgid "Steel"
 msgstr "Ocel"
 
-#: crates/ui-egui/src/reinforce.rs:362
-#: crates/ui-egui/src/reinforce.rs:497
+#: crates/ui-egui/src/reinforce.rs:366
+#: crates/ui-egui/src/reinforce.rs:510
 msgid "Steel: Clearance"
 msgstr "Ocel: světlá vzdálenost"
 
-#: crates/ui-egui/src/reinforce.rs:495
+#: crates/ui-egui/src/reinforce.rs:508
 msgid "Steel: Grade"
 msgstr "Ocel: třída"
 
-#: crates/ui-egui/src/reinforce.rs:496
+#: crates/ui-egui/src/reinforce.rs:509
 msgid "Steel: Stirrup grade"
 msgstr "Ocel: třída třmínků"
 
@@ -12361,7 +12373,7 @@ msgstr "Ocel: třída třmínků"
 msgid "Step in"
 msgstr "Odsazení"
 
-#: crates/ui-egui/src/reinforce.rs:496
+#: crates/ui-egui/src/reinforce.rs:509
 msgid "Stirrup grade"
 msgstr "Třída třmínků"
 
@@ -12692,7 +12704,7 @@ msgstr "Popsat všechny dveře a okna v tomto pohledu, které nemají popisku"
 msgid "Tagged Element"
 msgstr "Opatřený prvek popiskou"
 
-#: crates/ui-egui/src/reinforce.rs:533
+#: crates/ui-egui/src/reinforce.rs:555
 msgid "Take away the bars this command made for the element: bars drawn by hand stay"
 msgstr "Odebere pruty, které tento příkaz pro prvek vytvořil: ručně nakreslené pruty zůstanou"
 
@@ -13577,7 +13589,7 @@ msgstr "Nástroje"
 
 #: crates/ui-egui/src/export/mod.rs:973
 #: crates/ui-egui/src/lib.rs:5617
-#: crates/ui-egui/src/reinforce.rs:182
+#: crates/ui-egui/src/reinforce.rs:186
 #: crates/ui-egui/src/templates.rs:744
 msgid "Top"
 msgstr "Horní"
@@ -13823,7 +13835,7 @@ msgstr "Vlastnosti typu"
 msgid "Type Selector"
 msgstr "Výběr typu"
 
-#: crates/ui-egui/src/reinforce.rs:554
+#: crates/ui-egui/src/reinforce.rs:576
 msgid "Type a name for the preset first."
 msgstr "Nejprve zadejte název předvolby."
 
@@ -14951,11 +14963,11 @@ msgstr "rodina musí mít typ"
 msgid "a field, such as Type or Height"
 msgstr "pole, například Typ nebo Výška"
 
-#: crates/ui-egui/src/reinforce.rs:278
+#: crates/ui-egui/src/reinforce.rs:282
 msgid "a length"
 msgstr "délka"
 
-#: crates/ui-egui/src/reinforce.rs:277
+#: crates/ui-egui/src/reinforce.rs:281
 msgid "a number"
 msgstr "číslo"
 
@@ -14967,11 +14979,11 @@ msgstr "parametr musí mít název"
 msgid "a point is three lengths, `x, y, z`"
 msgstr "bod tvoří tři délky, `x, y, z`"
 
-#: crates/ui-egui/src/reinforce.rs:277
+#: crates/ui-egui/src/reinforce.rs:281
 msgid "a size in mm"
 msgstr "rozměr v mm"
 
-#: crates/ui-egui/src/reinforce.rs:270
+#: crates/ui-egui/src/reinforce.rs:274
 msgid "a whole number"
 msgstr "celé číslo"
 
@@ -15135,13 +15147,17 @@ msgstr "směřuje na {}, {}° od vodorovné roviny"
 msgid "family"
 msgstr "rodina"
 
-#: crates/ui-egui/src/reinforce.rs:515
+#: crates/ui-egui/src/reinforce.rs:534
 msgid "fck (MPa)"
 msgstr "fck (MPa)"
 
 #: crates/core/src/curves.rs:135
 msgid "fitted spline"
 msgstr "proložená křivka spline"
+
+#: crates/ui-egui/src/reinforce.rs:536
+msgid "fyk (MPa)"
+msgstr ""
 
 #: crates/ui-egui/src/display.rs:43
 msgid "graphic display options are for the 3D view: open it from the Project Browser"
@@ -15673,7 +15689,7 @@ msgstr ""
 msgid "{} is no address to listen on"
 msgstr "{} není adresa k naslouchání"
 
-#: crates/ui-egui/src/reinforce.rs:268
+#: crates/ui-egui/src/reinforce.rs:272
 msgid "{} is not {}: `{}`"
 msgstr "{} není {}: `{}`"
 
@@ -15860,7 +15876,7 @@ msgstr "Okno uživatele {} nemá pro asistenta síť"
 msgid "{}, up to date"
 msgstr ""
 
-#: crates/ui-egui/src/reinforce.rs:478
+#: crates/ui-egui/src/reinforce.rs:491
 msgid "{}:"
 msgstr "{}:"
 

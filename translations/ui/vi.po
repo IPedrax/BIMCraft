@@ -693,7 +693,7 @@ msgstr "Tác nhân: {} đã kết nối"
 msgid "Agents: {} connected, read-only"
 msgstr "Tác nhân: {} đã kết nối, chỉ đọc"
 
-#: crates/ui-egui/src/reinforce.rs:514
+#: crates/ui-egui/src/reinforce.rs:532
 msgid "Aggressiveness class"
 msgstr "Cấp độ xâm thực"
 
@@ -1556,7 +1556,7 @@ msgstr "Độ dày nét viền"
 
 #: crates/ui-egui/src/export/mod.rs:979
 #: crates/ui-egui/src/properties.rs:443
-#: crates/ui-egui/src/reinforce.rs:182
+#: crates/ui-egui/src/reinforce.rs:186
 #: crates/ui-egui/src/templates.rs:744
 msgid "Bottom"
 msgstr "Dưới cùng"
@@ -1778,7 +1778,7 @@ msgstr "Camera: nhấp chỗ đặt mắt nhìn, rồi chỗ nó nhìn tới: m�
 #: crates/ui-egui/src/publisher.rs:920
 #: crates/ui-egui/src/publisher.rs:967
 #: crates/ui-egui/src/purge.rs:77
-#: crates/ui-egui/src/reinforce.rs:536
+#: crates/ui-egui/src/reinforce.rs:558
 #: crates/ui-egui/src/shortcuts.rs:412
 #: crates/ui-egui/src/shortcuts.rs:540
 #: crates/ui-egui/src/standards.rs:334
@@ -1996,7 +1996,7 @@ msgstr "Ghế"
 msgid "Changes to a type affect every filled region of that type."
 msgstr "Thay đổi một kiểu sẽ ảnh hưởng đến mọi vùng tô thuộc kiểu đó."
 
-#: crates/ui-egui/src/reinforce.rs:501
+#: crates/ui-egui/src/reinforce.rs:514
 msgid "Check"
 msgstr "Kiểm tra"
 
@@ -2061,13 +2061,21 @@ msgstr ""
 msgid "Check {}"
 msgstr ""
 
-#: crates/ui-egui/src/reinforce.rs:514
+#: crates/ui-egui/src/reinforce.rs:532
 msgid "Check: Aggressiveness class"
 msgstr "Kiểm tra: cấp độ xâm thực"
 
-#: crates/ui-egui/src/reinforce.rs:515
+#: crates/ui-egui/src/reinforce.rs:530
+msgid "Check: Exposure class"
+msgstr ""
+
+#: crates/ui-egui/src/reinforce.rs:534
 msgid "Check: fck"
 msgstr "Kiểm tra: fck"
+
+#: crates/ui-egui/src/reinforce.rs:536
+msgid "Check: fyk"
+msgstr ""
 
 #: crates/ui-egui/src/start.rs:512
 msgid "Checking for updates…"
@@ -2145,7 +2153,7 @@ msgstr "Xóa tệp gần đây"
 msgid "Clear the Search"
 msgstr "Xóa tìm kiếm"
 
-#: crates/ui-egui/src/reinforce.rs:497
+#: crates/ui-egui/src/reinforce.rs:510
 msgid "Clearance"
 msgstr "Khoảng hở"
 
@@ -3388,10 +3396,10 @@ msgstr ""
 msgid "Counts up by itself each time the file is saved, so a project can tell it is behind."
 msgstr ""
 
-#: crates/ui-egui/src/reinforce.rs:182
-#: crates/ui-egui/src/reinforce.rs:339
-#: crates/ui-egui/src/reinforce.rs:341
-#: crates/ui-egui/src/reinforce.rs:477
+#: crates/ui-egui/src/reinforce.rs:186
+#: crates/ui-egui/src/reinforce.rs:343
+#: crates/ui-egui/src/reinforce.rs:345
+#: crates/ui-egui/src/reinforce.rs:490
 msgid "Cover"
 msgstr "Lớp bảo vệ"
 
@@ -3762,7 +3770,7 @@ msgstr "Xóa phương án"
 msgid "Delete Parameter"
 msgstr "Xóa tham số"
 
-#: crates/ui-egui/src/reinforce.rs:469
+#: crates/ui-egui/src/reinforce.rs:482
 msgid "Delete Preset"
 msgstr "Xóa thiết lập sẵn"
 
@@ -4983,6 +4991,10 @@ msgstr ""
 msgid "Export…"
 msgstr ""
 
+#: crates/ui-egui/src/reinforce.rs:530
+msgid "Exposure class"
+msgstr ""
+
 #: crates/ui-egui/src/export/mod.rs:598
 #: crates/ui-egui/src/properties.rs:392
 msgid "Extents"
@@ -5755,7 +5767,7 @@ msgstr "Đi tới khung nhìn"
 msgid "Governing Body:"
 msgstr "Cơ quan ban hành:"
 
-#: crates/ui-egui/src/reinforce.rs:495
+#: crates/ui-egui/src/reinforce.rs:508
 msgid "Grade"
 msgstr "Mác"
 
@@ -6062,7 +6074,7 @@ msgstr "Chủ trì dự án này"
 msgid "How it shows what is, in the view's phase:"
 msgstr "Cách nó thể hiện hiện trạng, trong giai đoạn của khung nhìn:"
 
-#: crates/ui-egui/src/reinforce.rs:453
+#: crates/ui-egui/src/reinforce.rs:466
 msgid "How many bars, how thick and how far apart is yours to say; a field left empty is not used. A spacing is the most between bars."
 msgstr "Số thanh, đường kính và khoảng cách là do bạn quyết định; trường để trống sẽ không được dùng. Khoảng cách là khoảng lớn nhất giữa các thanh."
 
@@ -8321,8 +8333,8 @@ msgstr ""
 #: crates/ui-egui/src/properties.rs:2653
 #: crates/ui-egui/src/properties.rs:3020
 #: crates/ui-egui/src/properties.rs:3022
-#: crates/ui-egui/src/reinforce.rs:504
-#: crates/ui-egui/src/reinforce.rs:506
+#: crates/ui-egui/src/reinforce.rs:517
+#: crates/ui-egui/src/reinforce.rs:519
 #: crates/ui-egui/src/spots.rs:86
 #: crates/ui-egui/src/spots.rs:284
 #: crates/ui-egui/src/spots.rs:331
@@ -8430,7 +8442,7 @@ msgstr "Đã ghi nhận"
 msgid "Notes"
 msgstr ""
 
-#: crates/ui-egui/src/reinforce.rs:520
+#: crates/ui-egui/src/reinforce.rs:542
 msgid "Notes of the check, the bars are made:"
 msgstr "Ghi chú kiểm tra, các thanh thép đã được tạo:"
 
@@ -8517,7 +8529,7 @@ msgstr "Số cực"
 #: crates/ui-egui/src/properties.rs:3880
 #: crates/ui-egui/src/publisher.rs:921
 #: crates/ui-egui/src/publisher.rs:968
-#: crates/ui-egui/src/reinforce.rs:537
+#: crates/ui-egui/src/reinforce.rs:559
 #: crates/ui-egui/src/standards.rs:335
 #: crates/ui-egui/src/templates.rs:758
 #: crates/ui-egui/src/titleblocks.rs:654
@@ -9978,11 +9990,11 @@ msgstr "Giữ nguyên"
 msgid "Preset name:"
 msgstr "Tên thiết lập sẵn:"
 
-#: crates/ui-egui/src/reinforce.rs:456
+#: crates/ui-egui/src/reinforce.rs:469
 msgid "Preset:"
 msgstr "Thiết lập sẵn:"
 
-#: crates/ui-egui/src/reinforce.rs:466
+#: crates/ui-egui/src/reinforce.rs:479
 msgid "Preset: Name"
 msgstr "Thiết lập sẵn: tên"
 
@@ -10553,12 +10565,12 @@ msgstr "Đặt thép"
 msgid "Reinforce (RF): bars by rules for the selected beam, column, footing or floor"
 msgstr "Đặt thép (RF): bố trí thanh thép theo quy tắc cho dầm, cột, móng hoặc sàn đã chọn"
 
-#: crates/ui-egui/src/reinforce.rs:447
-#: crates/ui-egui/src/reinforce.rs:448
+#: crates/ui-egui/src/reinforce.rs:460
+#: crates/ui-egui/src/reinforce.rs:461
 msgid "Reinforce {} {}"
 msgstr "Đặt thép {} {}"
 
-#: crates/ui-egui/src/reinforce.rs:585
+#: crates/ui-egui/src/reinforce.rs:607
 msgid "Reinforced: {} bars, {} kg of steel."
 msgstr "Đã đặt thép: {} thanh, {} kg thép."
 
@@ -10601,7 +10613,7 @@ msgstr ""
 msgid "Remove"
 msgstr "Gỡ bỏ"
 
-#: crates/ui-egui/src/reinforce.rs:533
+#: crates/ui-egui/src/reinforce.rs:555
 msgid "Remove Bars"
 msgstr "Gỡ bỏ thanh thép"
 
@@ -10662,7 +10674,7 @@ msgstr ""
 msgid "Remove the text"
 msgstr ""
 
-#: crates/ui-egui/src/reinforce.rs:605
+#: crates/ui-egui/src/reinforce.rs:627
 msgid "Removed {} bars."
 msgstr "Đã gỡ bỏ {} thanh thép."
 
@@ -11183,7 +11195,7 @@ msgid "Save Pattern"
 msgstr "Lưu mẫu"
 
 #: crates/ui-egui/src/presets.rs:216
-#: crates/ui-egui/src/reinforce.rs:467
+#: crates/ui-egui/src/reinforce.rs:480
 msgid "Save Preset"
 msgstr "Lưu thiết lập sẵn"
 
@@ -11199,7 +11211,7 @@ msgstr ""
 msgid "Save as"
 msgstr "Lưu thành"
 
-#: crates/ui-egui/src/reinforce.rs:465
+#: crates/ui-egui/src/reinforce.rs:478
 msgid "Save as:"
 msgstr "Lưu thành:"
 
@@ -11443,7 +11455,7 @@ msgstr "Chọn"
 msgid "Select All Instances"
 msgstr "Chọn mọi đối tượng cùng kiểu"
 
-#: crates/ui-egui/src/reinforce.rs:407
+#: crates/ui-egui/src/reinforce.rs:420
 msgid "Select a beam, a column, a footing or a floor to reinforce first."
 msgstr "Hãy chọn một dầm, cột, móng hoặc sàn để đặt thép trước."
 
@@ -11468,7 +11480,7 @@ msgstr "Chọn theo ID"
 msgid "Select by ID: select elements by their IDs, GUIDs or IFC GlobalIds, as many as you paste, and show them"
 msgstr "Chọn theo ID: chọn cấu kiện theo ID, GUID hoặc IFC GlobalId, bao nhiêu tùy bạn dán vào, và hiển thị chúng"
 
-#: crates/ui-egui/src/reinforce.rs:412
+#: crates/ui-egui/src/reinforce.rs:425
 msgid "Select elements of one kind: all beams, all columns, all footings or all floors."
 msgstr "Hãy chọn các cấu kiện cùng một loại: tất cả dầm, tất cả cột, tất cả móng hoặc tất cả sàn."
 
@@ -11858,7 +11870,7 @@ msgid "Side"
 msgstr "Mặt bên"
 
 #: crates/ui-egui/src/editor/sketch.rs:1337
-#: crates/ui-egui/src/reinforce.rs:182
+#: crates/ui-egui/src/reinforce.rs:186
 msgid "Sides"
 msgstr "Mặt bên"
 
@@ -12276,7 +12288,7 @@ msgstr "Cầu thang: nhấp chỗ bắt đầu, rồi chỗ vế thang kết th�
 msgid "Stair: click where it starts, then which way it climbs"
 msgstr "Cầu thang: nhấp chỗ bắt đầu, rồi hướng nó đi lên"
 
-#: crates/ui-egui/src/reinforce.rs:502
+#: crates/ui-egui/src/reinforce.rs:515
 msgid "Standard"
 msgstr "Tiêu chuẩn"
 
@@ -12340,20 +12352,20 @@ msgstr "Bắt đầu dưới đỉnh"
 msgid "Status"
 msgstr ""
 
-#: crates/ui-egui/src/reinforce.rs:494
+#: crates/ui-egui/src/reinforce.rs:507
 msgid "Steel"
 msgstr "Thép"
 
-#: crates/ui-egui/src/reinforce.rs:362
-#: crates/ui-egui/src/reinforce.rs:497
+#: crates/ui-egui/src/reinforce.rs:366
+#: crates/ui-egui/src/reinforce.rs:510
 msgid "Steel: Clearance"
 msgstr "Thép: khoảng hở"
 
-#: crates/ui-egui/src/reinforce.rs:495
+#: crates/ui-egui/src/reinforce.rs:508
 msgid "Steel: Grade"
 msgstr "Thép: mác"
 
-#: crates/ui-egui/src/reinforce.rs:496
+#: crates/ui-egui/src/reinforce.rs:509
 msgid "Steel: Stirrup grade"
 msgstr "Thép: mác thép đai"
 
@@ -12362,7 +12374,7 @@ msgstr "Thép: mác thép đai"
 msgid "Step in"
 msgstr "Thụt vào"
 
-#: crates/ui-egui/src/reinforce.rs:496
+#: crates/ui-egui/src/reinforce.rs:509
 msgid "Stirrup grade"
 msgstr "Mác thép đai"
 
@@ -12693,7 +12705,7 @@ msgstr "Gắn nhãn cho mọi cửa đi và cửa sổ chưa có nhãn trong khu
 msgid "Tagged Element"
 msgstr "Cấu kiện được gắn nhãn"
 
-#: crates/ui-egui/src/reinforce.rs:533
+#: crates/ui-egui/src/reinforce.rs:555
 msgid "Take away the bars this command made for the element: bars drawn by hand stay"
 msgstr "Gỡ bỏ các thanh thép mà lệnh này đã tạo cho cấu kiện: thanh thép vẽ tay vẫn giữ nguyên"
 
@@ -13578,7 +13590,7 @@ msgstr "Công cụ"
 
 #: crates/ui-egui/src/export/mod.rs:973
 #: crates/ui-egui/src/lib.rs:5617
-#: crates/ui-egui/src/reinforce.rs:182
+#: crates/ui-egui/src/reinforce.rs:186
 #: crates/ui-egui/src/templates.rs:744
 msgid "Top"
 msgstr "Đỉnh"
@@ -13824,7 +13836,7 @@ msgstr "Thuộc tính kiểu"
 msgid "Type Selector"
 msgstr "Bộ chọn kiểu"
 
-#: crates/ui-egui/src/reinforce.rs:554
+#: crates/ui-egui/src/reinforce.rs:576
 msgid "Type a name for the preset first."
 msgstr "Hãy nhập tên cho thiết lập sẵn trước."
 
@@ -14952,11 +14964,11 @@ msgstr "họ cần có một kiểu"
 msgid "a field, such as Type or Height"
 msgstr "một trường, chẳng hạn Kiểu hoặc Chiều cao"
 
-#: crates/ui-egui/src/reinforce.rs:278
+#: crates/ui-egui/src/reinforce.rs:282
 msgid "a length"
 msgstr "chiều dài"
 
-#: crates/ui-egui/src/reinforce.rs:277
+#: crates/ui-egui/src/reinforce.rs:281
 msgid "a number"
 msgstr "số"
 
@@ -14968,11 +14980,11 @@ msgstr "tham số cần một tên"
 msgid "a point is three lengths, `x, y, z`"
 msgstr "một điểm gồm ba chiều dài, `x, y, z`"
 
-#: crates/ui-egui/src/reinforce.rs:277
+#: crates/ui-egui/src/reinforce.rs:281
 msgid "a size in mm"
 msgstr "kích cỡ tính bằng mm"
 
-#: crates/ui-egui/src/reinforce.rs:270
+#: crates/ui-egui/src/reinforce.rs:274
 msgid "a whole number"
 msgstr "số nguyên"
 
@@ -15136,13 +15148,17 @@ msgstr "hướng {}, nghiêng {}° so với phương ngang"
 msgid "family"
 msgstr "họ"
 
-#: crates/ui-egui/src/reinforce.rs:515
+#: crates/ui-egui/src/reinforce.rs:534
 msgid "fck (MPa)"
 msgstr "fck (MPa)"
 
 #: crates/core/src/curves.rs:135
 msgid "fitted spline"
 msgstr "spline khớp điểm"
+
+#: crates/ui-egui/src/reinforce.rs:536
+msgid "fyk (MPa)"
+msgstr ""
 
 #: crates/ui-egui/src/display.rs:43
 msgid "graphic display options are for the 3D view: open it from the Project Browser"
@@ -15674,7 +15690,7 @@ msgstr ""
 msgid "{} is no address to listen on"
 msgstr "{} không phải địa chỉ để lắng nghe"
 
-#: crates/ui-egui/src/reinforce.rs:268
+#: crates/ui-egui/src/reinforce.rs:272
 msgid "{} is not {}: `{}`"
 msgstr "{} không phải là {}: `{}`"
 
@@ -15861,7 +15877,7 @@ msgstr "Cửa sổ của {} không có mạng cho trợ lý"
 msgid "{}, up to date"
 msgstr ""
 
-#: crates/ui-egui/src/reinforce.rs:478
+#: crates/ui-egui/src/reinforce.rs:491
 msgid "{}:"
 msgstr "{}:"
 

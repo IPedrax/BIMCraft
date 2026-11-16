@@ -180,8 +180,17 @@ centres at most min(2 sides, 400), 0.4 to 8 % of steel, stirrups of 5 mm or a qu
 bars of at most an eighth of the thickness at most min(2 h, 200) apart). A note never refuses: an engineer may know better, and the bars are made.
 It reads only the bars made, so a limit that needs shear, the load or the aggregate is not in it. The numbers are typed from handbooks and course material
 that print them, not from the standard's text, which is paid for, and the item numbers are the 2014 edition's at the level of the chapter's item: check
-one against a copy before relying on it. The desktop's Check row (Standard, Aggressiveness class, fck) shows the notes inside the dialog, which stays
-open, with the bars made, so a field can change and OK remake them.
+one against a copy before relying on it. The desktop's Check row (Standard, then that standard's own fields: Aggressiveness class and fck, or Exposure class, fck and fyk) shows the notes inside the
+dialog, which stays open, with the bars made, so a field can change and OK remake them.
+
+A second standard (`reinforce/en1992.rs`). `check` `"EN 1992-1-1"`, with `exposure` (X0, XC1 to XC4, XD1 to XD3, XS1 to XS3), `fck` and `fyk` (MPa), makes the same kind of `notes`,
+each starting `EN 1992-1-1` and a clause: cover (Table 4.4N at structural class S4 plus 10 mm for deviation, S3 for a floor, 40 mm least on a footing); for a beam the 4 % most,
+the least steel 0.26 fctm / fyk of b d (not under 0.13 %), stirrups at most 0.75 d apart and at least 0.08 sqrt(fck) / fyk of b s; for a column bars of 8 mm or more, 4 bars,
+0.2 to 4 % of steel, stirrups of 6 mm or a quarter of the bars' at most min(20 smallest bars, the side, 400) apart; for a floor bars at most min(3 h, 400) apart. The two
+standards share the dispatch (`Check` in `reinforce.rs`) and the helpers of `norm.rs`, and each refuses the other's parameter. The numbers are the recommended values from public
+guides, which a National Annex may change; the column's least steel that needs the load, the bond cover and the skin steel are not in it, and Table 4.4N's XD3 and XS3 column is
+kept at the XD2 and XS2 values until a public text confirms the step up, so a note about it errs low. A third standard that has tables (cover by class, steel ratios) would be
+the time to lift them into `data/` as `load-points.json` does.
 
 The Reinforce dialog (`crates/ui-egui/src/reinforce.rs`, Structure > Reinforcement, RF; tests in `tests/reinforce.rs`). It opens on the one beam, column,
 structural column, footing or floor selected (anything else says what to select), with the form of its kind (`BEAM`, `COLUMN`, `FOOTING`, `FLOOR`: tables of
