@@ -189,7 +189,7 @@ msgstr "Vật liệu, lớp cách điện và nhiệt độ làm việc của d�
 msgid "A dictionary is a file of parameter definitions to share between projects: keep it on a shared drive or in a Git repository."
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:4058
+#: crates/ui-egui/src/canvas.rs:4061
 msgid "A dimension has two references at least."
 msgstr ""
 
@@ -1911,7 +1911,7 @@ msgstr ""
 msgid "Ceiling Luminaire"
 msgstr "Đèn trần"
 
-#: crates/ui-egui/src/canvas.rs:1930
+#: crates/ui-egui/src/canvas.rs:1933
 #: crates/ui-egui/src/properties.rs:1917
 msgid "Ceiling Plan"
 msgstr "Mặt bằng trần"
@@ -2277,7 +2277,7 @@ msgstr "Nhấp vào mặt dốc của mái tại chỗ đặt tường trước 
 msgid "Click a stair or a ramp for a railing down each side, or the start of a path."
 msgstr "Nhấp một cầu thang hoặc đường dốc để tạo lan can xuống mỗi bên, hoặc điểm đầu của một đường dẫn."
 
-#: crates/ui-egui/src/canvas.rs:2348
+#: crates/ui-egui/src/canvas.rs:2351
 #: crates/ui-egui/src/lib.rs:6077
 msgid "Click a straight wall, a line or a slab's edge for the elevation to look at."
 msgstr ""
@@ -2783,7 +2783,7 @@ msgstr "Nhấp chỗ đường định vị sẽ chạy qua"
 msgid "Click where the middle of a side goes. Esc cancels."
 msgstr "Nhấp chỗ đặt điểm giữa một cạnh. Esc để hủy."
 
-#: crates/ui-egui/src/canvas.rs:3105
+#: crates/ui-egui/src/canvas.rs:3108
 msgid "Click where the note goes: its top left corner."
 msgstr ""
 
@@ -4106,12 +4106,12 @@ msgstr ""
 msgid "Dimension lines, witness lines, terminators, text placement, and level marker symbols."
 msgstr "Đường kích thước, đường gióng, ký hiệu đầu mút, vị trí chữ và ký hiệu cao độ tầng."
 
-#: crates/ui-egui/src/canvas.rs:3824
+#: crates/ui-egui/src/canvas.rs:3827
 msgid "Dimension text"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:3833
-#: crates/ui-egui/src/canvas.rs:3895
+#: crates/ui-egui/src/canvas.rs:3836
+#: crates/ui-egui/src/canvas.rs:3898
 msgid "Dimension {}"
 msgstr ""
 
@@ -4748,7 +4748,7 @@ msgstr "Cấu kiện"
 msgid "Elev"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:4539
+#: crates/ui-egui/src/canvas.rs:4542
 #: crates/ui-egui/src/coordinates.rs:576
 #: crates/ui-egui/src/coordinates.rs:793
 #: crates/ui-egui/src/coordinates.rs:1192
@@ -4882,7 +4882,7 @@ msgstr ""
 msgid "Entities"
 msgstr "Thực thể"
 
-#: crates/ui-egui/src/canvas.rs:3989
+#: crates/ui-egui/src/canvas.rs:3992
 msgid "Equal"
 msgstr "Bằng nhau"
 
@@ -7216,7 +7216,7 @@ msgstr ""
 msgid "Lock"
 msgstr "Khóa"
 
-#: crates/ui-egui/src/canvas.rs:4166
+#: crates/ui-egui/src/canvas.rs:4169
 msgid "Lock alignment"
 msgstr ""
 
@@ -7224,11 +7224,11 @@ msgstr ""
 msgid "Lock locks a line picked with no Offset, in a plan or an elevation"
 msgstr "Khóa chỉ khóa một đường được chọn khi không có Độ lệch, trong mặt bằng hoặc mặt đứng"
 
-#: crates/ui-egui/src/canvas.rs:3788
+#: crates/ui-egui/src/canvas.rs:3791
 msgid "Lock segment {}"
 msgstr "Khóa đoạn {}"
 
-#: crates/ui-egui/src/canvas.rs:3801
+#: crates/ui-egui/src/canvas.rs:3804
 msgid "Lock segment {} at its length, so what it measures to moves together"
 msgstr ""
 
@@ -7240,7 +7240,7 @@ msgstr "Khóa: mỗi đường được chọn sẽ được khóa vào đối t
 msgid "Lock: the dimensions this parameter labels keep its value when planes are dragged"
 msgstr "Khóa: các kích thước được gắn nhãn bằng tham số này giữ nguyên giá trị khi kéo các mặt phẳng"
 
-#: crates/ui-egui/src/canvas.rs:4145
+#: crates/ui-egui/src/canvas.rs:4148
 msgid "Locked segment {}"
 msgstr ""
 
@@ -7325,7 +7325,7 @@ msgstr ""
 msgid "Make Checked Type"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:4240
+#: crates/ui-egui/src/canvas.rs:4243
 msgid "Make Dimension Permanent"
 msgstr ""
 
@@ -9252,7 +9252,7 @@ msgstr "Chọn lại"
 msgid "Pick Faces"
 msgstr "Chọn mặt"
 
-#: crates/ui-egui/src/canvas.rs:2371
+#: crates/ui-egui/src/canvas.rs:2374
 msgid "Pick Faces: click a face of a mass"
 msgstr "Chọn mặt: nhấp một mặt của khối"
 
@@ -10177,8 +10177,8 @@ msgstr ""
 msgid "Project Name"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:4635
-#: crates/ui-egui/src/canvas.rs:4647
+#: crates/ui-egui/src/canvas.rs:4638
+#: crates/ui-egui/src/canvas.rs:4650
 #: crates/ui-egui/src/graphics.rs:589
 msgid "Project North"
 msgstr ""
@@ -11472,7 +11472,7 @@ msgstr "Khoảng cách đoạn {}"
 msgid "Segment {} Text"
 msgstr "Văn bản đoạn {}"
 
-#: crates/ui-egui/src/canvas.rs:3799
+#: crates/ui-egui/src/canvas.rs:3802
 msgid "Segment {} is locked at its length: what it measures to moves together. Click to unlock it"
 msgstr ""
 
@@ -12851,7 +12851,7 @@ msgstr "Cô lập danh mục tạm thời"
 msgid "Temporary Isolate Element"
 msgstr "Cô lập cấu kiện tạm thời"
 
-#: crates/ui-egui/src/canvas.rs:3718
+#: crates/ui-egui/src/canvas.rs:3721
 msgid "Temporary dimension {}"
 msgstr "Kích thước tạm thời {}"
 
@@ -13795,8 +13795,8 @@ msgstr "Cắt/Kéo dài thành góc (TR): chọn hai tường hoặc hai đườ
 msgid "Trip"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:4636
-#: crates/ui-egui/src/canvas.rs:4648
+#: crates/ui-egui/src/canvas.rs:4639
+#: crates/ui-egui/src/canvas.rs:4651
 #: crates/ui-egui/src/graphics.rs:590
 msgid "True North"
 msgstr ""
@@ -13821,7 +13821,7 @@ msgstr "Từ chối"
 msgid "Turn Snap Override Off"
 msgstr "Tắt ghi đè bắt điểm"
 
-#: crates/ui-egui/src/canvas.rs:3682
+#: crates/ui-egui/src/canvas.rs:3685
 msgid "Turn the wall about its {}: {}"
 msgstr "Xoay tường quanh {} của nó: {}"
 
@@ -14064,7 +14064,7 @@ msgstr "Định dạng đơn vị"
 msgid "Unlock"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:4127
+#: crates/ui-egui/src/canvas.rs:4130
 msgid "Unlock alignment"
 msgstr ""
 
@@ -14943,15 +14943,15 @@ msgstr ""
 msgid "Zoom"
 msgstr "Thu phóng"
 
-#: crates/ui-egui/src/canvas.rs:2094
+#: crates/ui-egui/src/canvas.rs:2097
 msgid "Zoom In"
 msgstr "Phóng to"
 
-#: crates/ui-egui/src/canvas.rs:2097
+#: crates/ui-egui/src/canvas.rs:2100
 msgid "Zoom Out"
 msgstr "Thu nhỏ"
 
-#: crates/ui-egui/src/canvas.rs:2091
+#: crates/ui-egui/src/canvas.rs:2094
 #: crates/ui-egui/src/editor/document.rs:1245
 #: crates/ui-egui/src/orbit.rs:2457
 msgid "Zoom to Fit"
@@ -14963,13 +14963,13 @@ msgstr "`{}` không phải là chiều cao"
 
 #: crates/ui-egui/src/camera.rs:91
 #: crates/ui-egui/src/camera.rs:103
-#: crates/ui-egui/src/canvas.rs:3356
-#: crates/ui-egui/src/canvas.rs:3840
-#: crates/ui-egui/src/canvas.rs:3899
-#: crates/ui-egui/src/canvas.rs:4270
-#: crates/ui-egui/src/canvas.rs:4285
-#: crates/ui-egui/src/canvas.rs:4378
-#: crates/ui-egui/src/canvas.rs:4398
+#: crates/ui-egui/src/canvas.rs:3359
+#: crates/ui-egui/src/canvas.rs:3843
+#: crates/ui-egui/src/canvas.rs:3902
+#: crates/ui-egui/src/canvas.rs:4273
+#: crates/ui-egui/src/canvas.rs:4288
+#: crates/ui-egui/src/canvas.rs:4381
+#: crates/ui-egui/src/canvas.rs:4401
 #: crates/ui-egui/src/draw.rs:278
 #: crates/ui-egui/src/draw.rs:279
 #: crates/ui-egui/src/draw.rs:280
@@ -15015,8 +15015,8 @@ msgstr "`{}` không phải là kích cỡ, góc hoặc độ lệch"
 msgid "`{}` is not a spacing"
 msgstr "`{}` không phải là khoảng cách"
 
-#: crates/ui-egui/src/canvas.rs:3341
-#: crates/ui-egui/src/canvas.rs:3709
+#: crates/ui-egui/src/canvas.rs:3344
+#: crates/ui-egui/src/canvas.rs:3712
 msgid "`{}` is not an angle"
 msgstr "`{}` không phải là góc"
 
@@ -15104,7 +15104,7 @@ msgstr ""
 msgid "begins with"
 msgstr "bắt đầu bằng"
 
-#: crates/ui-egui/src/canvas.rs:2835
+#: crates/ui-egui/src/canvas.rs:2838
 msgid "ceiling: `{}` is not a height"
 msgstr "trần: `{}` không phải là chiều cao"
 
@@ -15112,7 +15112,7 @@ msgstr "trần: `{}` không phải là chiều cao"
 msgid "circle"
 msgstr "đường tròn"
 
-#: crates/ui-egui/src/canvas.rs:2906
+#: crates/ui-egui/src/canvas.rs:2909
 msgid "click its line's end"
 msgstr "nhấp điểm cuối của đường"
 
@@ -15120,7 +15120,7 @@ msgstr "nhấp điểm cuối của đường"
 msgid "click on the floor's top"
 msgstr "nhấp trên mặt trên của sàn"
 
-#: crates/ui-egui/src/canvas.rs:2930
+#: crates/ui-egui/src/canvas.rs:2933
 msgid "click where its run ends"
 msgstr "nhấp chỗ vế kết thúc"
 
@@ -15176,7 +15176,7 @@ msgstr "không kết thúc bằng"
 msgid "does not equal"
 msgstr "không bằng"
 
-#: crates/ui-egui/src/canvas.rs:2799
+#: crates/ui-egui/src/canvas.rs:2802
 msgid "dormer: the width `{}`, the height `{}` and the slope `{}` must be numbers"
 msgstr "cửa mái: chiều rộng `{}`, chiều cao `{}` và độ dốc `{}` phải là số"
 
@@ -15284,7 +15284,7 @@ msgstr "đường thẳng"
 msgid "location"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:3093
+#: crates/ui-egui/src/canvas.rs:3096
 msgid "mass: {}"
 msgstr "khối: {}"
 
@@ -15312,12 +15312,12 @@ msgstr "tây bắc"
 msgid "not defined"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:2491
-#: crates/ui-egui/src/canvas.rs:3193
+#: crates/ui-egui/src/canvas.rs:2494
+#: crates/ui-egui/src/canvas.rs:3196
 msgid "offset: `{}` is not a distance"
 msgstr "song song: `{}` không phải là khoảng cách"
 
-#: crates/ui-egui/src/canvas.rs:3189
+#: crates/ui-egui/src/canvas.rs:3192
 msgid "offset: it offsets straight walls"
 msgstr "song song: chỉ áp dụng cho tường thẳng"
 
@@ -15361,23 +15361,23 @@ msgstr ""
 msgid "publishing set"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:2948
+#: crates/ui-egui/src/canvas.rs:2951
 msgid "ramp: `{}` is not a slope"
 msgstr "đường dốc: `{}` không phải là độ dốc"
 
-#: crates/ui-egui/src/canvas.rs:2949
+#: crates/ui-egui/src/canvas.rs:2952
 msgid "ramp: `{}` is not a width"
 msgstr "đường dốc: `{}` không phải là chiều rộng"
 
-#: crates/ui-egui/src/canvas.rs:2950
+#: crates/ui-egui/src/canvas.rs:2953
 msgid "ramp: {}"
 msgstr "đường dốc: {}"
 
-#: crates/ui-egui/src/canvas.rs:2907
+#: crates/ui-egui/src/canvas.rs:2910
 msgid "roof: `{}` is not a slope"
 msgstr "mái: `{}` không phải là độ dốc"
 
-#: crates/ui-egui/src/canvas.rs:2751
+#: crates/ui-egui/src/canvas.rs:2754
 msgid "roof: the slope `{}` and the overhang `{}` must be numbers"
 msgstr "mái: độ dốc `{}` và phần đua ra `{}` phải là số"
 
@@ -15427,11 +15427,11 @@ msgstr "hãy chọn đối tượng cần ẩn hoặc cô lập trước"
 msgid "select what to move, copy, rotate or mirror first"
 msgstr "hãy chọn đối tượng cần di chuyển, sao chép, xoay hoặc lấy đối xứng trước"
 
-#: crates/ui-egui/src/canvas.rs:2859
+#: crates/ui-egui/src/canvas.rs:2862
 msgid "shaft: {}"
 msgstr "lỗ thông tầng: {}"
 
-#: crates/ui-egui/src/canvas.rs:2877
+#: crates/ui-egui/src/canvas.rs:2880
 msgid "slope arrow: `{}` is not a slope"
 msgstr "mũi tên dốc: `{}` không phải là độ dốc"
 
@@ -15451,7 +15451,7 @@ msgstr "tây nam"
 msgid "spline"
 msgstr "spline"
 
-#: crates/ui-egui/src/canvas.rs:2971
+#: crates/ui-egui/src/canvas.rs:2974
 msgid "stair: `{}` is not a width"
 msgstr "cầu thang: `{}` không phải là chiều rộng"
 
@@ -15495,7 +15495,7 @@ msgstr "mô hình không có tầng nào"
 msgid "the next free name"
 msgstr "tên chưa dùng tiếp theo"
 
-#: crates/ui-egui/src/canvas.rs:4377
+#: crates/ui-egui/src/canvas.rs:4380
 msgid "the opening has to stay on its wall"
 msgstr "lỗ mở phải nằm trên tường của nó"
 
@@ -15566,7 +15566,7 @@ msgstr "điện áp"
 msgid "voltages"
 msgstr "điện áp"
 
-#: crates/ui-egui/src/canvas.rs:3395
+#: crates/ui-egui/src/canvas.rs:3398
 msgid "wall: {}"
 msgstr "tường: {}"
 
@@ -15834,7 +15834,7 @@ msgstr "{} tháng trước"
 msgid "{} of {} pages ({} × {})"
 msgstr ""
 
-#: crates/ui-egui/src/canvas.rs:4469
+#: crates/ui-egui/src/canvas.rs:4472
 msgid "{} of {} risers"
 msgstr "{} trên {} bậc đứng"
 
@@ -15913,7 +15913,7 @@ msgstr "{} đã dừng trợ lý"
 msgid "{} triangles, from a file"
 msgstr "{} tam giác, từ một tệp"
 
-#: crates/ui-egui/src/canvas.rs:4471
+#: crates/ui-egui/src/canvas.rs:4474
 msgid "{} up"
 msgstr "lên {}"
 
