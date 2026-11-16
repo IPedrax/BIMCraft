@@ -7,7 +7,7 @@
 
 use std::collections::BTreeMap;
 
-use bimcraft_core::alignment::{GuideSource, ReferenceType};
+use bimcraft_core::alignment::{GuideContext, GuideSource, ReferencePoint, ReferenceType};
 use bimcraft_core::geom::{self, P2};
 use bimcraft_core::model::{self, Element, Face, Guid, Id, Model, Reference};
 use bimcraft_core::render::View;
@@ -378,6 +378,40 @@ pub(crate) fn grids_near(m: &Model, v: &View, cursor: P2, reach: f32) -> Vec<Gui
         .collect()
 }
 
+/// Everything a plan's own drawing lends the guides: its chain, the wall the chain started on, the references marked
+/// for this view, and the grids near the cursor. `from_context` turns this into guides; nothing else may add to it, so
+/// a second view gets the same policy by calling this rather than by copying it.
+pub(crate) fn context(
+    m: &Model,
+    v: &View,
+    key: Id,
+    cursor: P2,
+    from: &[P2],
+    start_edge: Option<GuideSource>,
+    pins: &Pins,
+    grids: bool,
+) -> GuideContext {
+    let mut ctx = GuideContext { chain: from.to_vec(), ..GuideContext::default() };
+    if let Some(edge) = start_edge {
+        ctx.lines.push(edge);
+    }
+    if let [.., a, b] = from {
+        ctx.lines.push(GuideSource { a: *a, b: *b, id: None });
+    }
+    for pin in pins.at(key) {
+        ctx.lines.extend(pin.lines.iter().copied());
+        if let PinTarget::Point { id, .. } = pin.target
+            && let Some((point, kind)) = reference(pin.target)
+        {
+            ctx.points.push(ReferencePoint { point, kind, wall_id: id });
+        }
+    }
+    if grids {
+        ctx.lines.extend(grids_near(m, v, cursor, 20.0));
+    }
+    ctx
+}
+
 /// The points a marked reference lends the alignment service: its own point, and the kind it is ranked by there — an
 /// endpoint ahead of a middle, a centre among the middles, a crossing last. A pin is used whatever the snap switches say:
 /// `from_context` hands its points over as they are, and only the chain's are gated.
@@ -392,5 +426,51 @@ pub(crate) fn reference(target: PinTarget) -> Option<(P2, ReferenceType)> {
             },
         )),
         PinTarget::Edge { .. } => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The drawing's own context without a window: its chain's last segment, the grids within the reach and none
+    /// beyond it, the switch that turns them off, the edge a chain started on, and the lines and point of a mark.
+    #[test]
+    fn a_plans_context_is_its_chain_the_grids_near_the_cursor_and_its_marks() {
+        use bimcraft_core::engine::Session;
+        let mut s = Session::new();
+        s.execute("grid", &serde_json::json!({"start": [0, 0], "end": [0, 5000]})).expect("a grid");
+        let m = &s.model;
+        let grid = m.elements.iter().find_map(|(id, e)| matches!(e, Element::Grid(_)).then_some(*id)).expect("the grid");
+        // Any view key will do: the context only asks the pins of it.
+        let view = grid;
+        // 20 points of reach is 200 mm at this scale; the grid's line is x = 0, so 60 mm is in reach and 4 m is not.
+        let v = View { scale: 0.1, cx: 0.0, cy: 0.0, width: 800, height: 600, angle: 0.0 };
+        let near = P2(60.0, 2500.0);
+        let chain = [P2(0.0, 0.0), P2(0.0, 1000.0)];
+        let pins = Pins::default();
+
+        let ctx = context(m, &v, view, near, &chain, None, &pins, true);
+        assert_eq!(ctx.chain, chain.to_vec());
+        assert!(ctx.lines.iter().any(|l| l.id == Some(grid)), "the grid 60 mm away lends its line: {:?}", ctx.lines);
+        assert!(ctx.lines.iter().any(|l| l.id.is_none() && l.a == chain[0] && l.b == chain[1]), "the chain's own line");
+
+        let ctx = context(m, &v, view, P2(4000.0, 2500.0), &chain, None, &pins, true);
+        assert!(!ctx.lines.iter().any(|l| l.id == Some(grid)), "4 m away lends nothing: {:?}", ctx.lines);
+
+        let ctx = context(m, &v, view, near, &chain, None, &pins, false);
+        assert!(!ctx.lines.iter().any(|l| l.id == Some(grid)), "the switch turns the grid off");
+
+        // The wall a chain started on, and a mark's own lines and point.
+        let edge = GuideSource { a: P2(-100.0, 0.0), b: P2(-100.0, 3000.0), id: Some(grid) };
+        let mut pins = Pins::default();
+        let mark = GuideSource { a: P2(2000.0, 0.0), b: P2(2000.0, 5000.0), id: None };
+        pins.toggle(view, PinTarget::Point { at: P2(2000.0, 2000.0), kind: Kind::Endpoint, id: Some(grid) }, vec![mark]);
+        let ctx = context(m, &v, view, near, &chain, Some(edge), &pins, false);
+        assert!(ctx.lines.contains(&edge), "the edge the chain started on: {:?}", ctx.lines);
+        assert!(ctx.lines.contains(&mark), "the mark's line: {:?}", ctx.lines);
+        assert_eq!(ctx.points.len(), 1, "{:?}", ctx.points);
+        assert_eq!(ctx.points[0].point, P2(2000.0, 2000.0));
+        assert_eq!(ctx.points[0].kind, ReferenceType::Endpoint);
     }
 }

@@ -1594,7 +1594,7 @@ impl BimApp {
         cursor: P2,
         from: &[P2],
     ) -> Vec<bimcraft_core::alignment::AlignmentResult> {
-        use bimcraft_core::alignment::{AlignmentConfig, AlignmentGuideService, GuideContext, ReferencePoint};
+        use bimcraft_core::alignment::{AlignmentConfig, AlignmentGuideService};
         let snaps = self.snaps_now();
         if !snaps.alignment_guides {
             return Vec::new();
@@ -1617,24 +1617,18 @@ impl BimApp {
             service.find_alignments(cursor, start, tol * 1.5).into_iter().filter(|a| a.axis == held).collect()
         };
         if !snaps.guides_from_whole_model {
-            let mut ctx = GuideContext { chain: from.to_vec(), ..GuideContext::default() };
-            if let Some(edge) = self.canvas.start_edge {
-                ctx.lines.push(edge);
-            }
-            if let [.., a, b] = from {
-                ctx.lines.push(bimcraft_core::alignment::GuideSource { a: *a, b: *b, id: None });
-            }
-            for pin in self.canvas.pins.borrow().at(key) {
-                ctx.lines.extend(pin.lines.iter().copied());
-                if let crate::guide_refs::PinTarget::Point { id, .. } = pin.target
-                    && let Some((point, kind)) = crate::guide_refs::reference(pin.target)
-                {
-                    ctx.points.push(ReferencePoint { point, kind, wall_id: id });
-                }
-            }
-            if snaps.guides_from_grids {
-                ctx.lines.extend(crate::guide_refs::grids_near(m, v, cursor, 20.0));
-            }
+            let pins = self.canvas.pins.borrow();
+            let ctx = crate::guide_refs::context(
+                m,
+                v,
+                key,
+                cursor,
+                from,
+                self.canvas.start_edge,
+                &pins,
+                snaps.guides_from_grids,
+            );
+            drop(pins);
             let service = AlignmentGuideService::from_context(&ctx, config);
             let mut found = service.find_alignments(cursor, start, tol);
             if found.is_empty() {
