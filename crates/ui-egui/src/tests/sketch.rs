@@ -361,12 +361,16 @@ fn a_picked_line_of_a_roofs_sketch_shows_its_slope_in_properties_and_sets_it_in_
         assert_eq!(slope(&h), "20", "rev {rev}");
         assert_eq!(field(&h, roof, "slopes").as_array().map(Vec::len), Some(4), "nothing is the roof's until Finish");
         assert_eq!(field(&h, roof, "slopes"), json!([0.0, 45.0, 0.0, 45.0]), "rev {rev}");
-        for typed in ["6:12", "6/12", "1/2", " 6 : 12 "] {
+        for typed in ["6:12", "6/12", "1/2", " 6 : 12 ", "50%", " 50 % "] {
             type_into(&mut h, "Slope", typed);
             key(&mut h, Key::Enter);
+            assert!(!h.state().status.error, "{typed}: rev {rev}: {}", h.state().status.text);
             assert_eq!(slope(&h), "26.57", "{typed}: rev {rev}");
         }
-        for typed in ["6:0", "6/0", "0:12", "0/12", "-6:12", "6/-12", "6:12:1", "1/2/3", "NaN:12", "6:inf", "60:1"] {
+        for typed in [
+            "6:0", "6/0", "0:12", "0/12", "-6:12", "6/-12", "6:12:1", "1/2/3", "NaN:12", "6:inf", "60:1", "0%", "-50%", "NaN%", "inf%",
+            "400%", "50%%", "%", "6:12%", "1e-324%",
+        ] {
             type_into(&mut h, "Slope", typed);
             key(&mut h, Key::Enter);
             assert!(h.state().status.error, "{typed}: rev {rev}");
@@ -414,21 +418,29 @@ fn a_picked_line_of_a_roofs_sketch_shows_its_slope_in_properties_and_sets_it_in_
 }
 
 #[test]
-fn roof_pitch_in_the_3d_inspector_accepts_ratios_and_keeps_edge_overrides() {
+fn roof_pitch_in_the_3d_inspector_accepts_ratios_and_percentages_and_keeps_edge_overrides() {
     let mut h = bimcraft(SLOPED);
     let roof = ids(&h, "roof")[0];
     press(&mut h, "Default 3D View");
     h.state_mut().selection = vec![roof];
     h.run();
     let overrides = field(&h, roof, "slopes");
-    for (typed, expected) in
-        [("6:12", 26.56505117707799), ("6/12", 26.56505117707799), ("6:0", 26.56505117707799), ("22.5", 22.5), ("0", 0.0)]
-    {
+    for (typed, expected) in [
+        ("6:12", 26.56505117707799),
+        ("6/12", 26.56505117707799),
+        ("50%", 26.56505117707799),
+        ("6:0", 26.56505117707799),
+        ("100%", 45.0),
+        ("12.5%", 7.125016348901798),
+        ("400%", 7.125016348901798),
+        ("22.5", 22.5),
+        ("0", 0.0),
+    ] {
         type_into(&mut h, "Slope (°)", typed);
         key(&mut h, Key::Enter);
         assert!((field(&h, roof, "slope").as_f64().unwrap() - expected).abs() < 1e-12, "{typed}");
         assert_eq!(field(&h, roof, "slopes"), overrides);
-        if typed == "6:0" {
+        if matches!(typed, "6:0" | "400%") {
             assert!(h.state().status.error);
         }
     }
@@ -453,7 +465,7 @@ fn roof_sketch_defines_slope_can_be_cancelled_then_finished_as_a_shed() {
                 assert!(h.query_by_role_and_label(Role::TextInput, "Slope").is_none());
             }
             click(&mut h, P2(4000.0, 0.0));
-            type_into(&mut h, "Slope", "6/12");
+            type_into(&mut h, "Slope", if rev { "50%" } else { "6/12" });
             key(&mut h, Key::Enter);
             if !cancel && let Ok(folder) = std::env::var("BIMCRAFT_ROOF_DUMP") {
                 std::fs::create_dir_all(&folder).unwrap();

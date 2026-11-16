@@ -160,8 +160,10 @@ A roof sketch line also takes `defines_slope`: false makes its edges upright, tr
 Properties checkbox changes this draft until Finish; the shared `roof` / `edit_boundary` commands resolve it into
 the existing `gables` list and clear automatic `gable` when explicit choices are supplied. Reading the boundary returns
 the effective choice, including automatic gables. These line properties are command/draft data only, not new saved fields.
-The selected roof's Slope field and its sketch-line Slope field accept degrees or positive rise:run / rise/run
-(`6:12`, `6/12`, `1/2`), storing and displaying degrees. Blank (or bare zero) inherits only on an edge; bare zero on
+The selected roof's Slope field and its sketch-line Slope field accept degrees, positive rise:run / rise/run
+(`6:12`, `6/12`, `1/2`), or positive percentages (`50%`, `12.5%`), storing and displaying degrees.
+Percentage means 100 × rise/run: `50%` equals `6:12`, and `100%` equals 45°. The existing 75° limit still applies.
+Blank (or bare zero) inherits only on an edge; bare zero on
 the roof makes it flat. A pitched roof still needs at least one slope-defining edge: Finish refuses an all-upright
 draft without changing the model. Project-wide slope formats and extrusion-profile editing are separate features.
 Over the walls (`floor_outline`, which `roof_footprint` grows by the overhang), a loop of them standing free inside the outer

@@ -621,9 +621,12 @@ pub(crate) fn number(s: &str) -> Option<f64> {
 }
 
 /// Roof instances and footprint edges store degrees. Zero is an edge's inherit sentinel, so
-/// ratios must stay positive even at floating-point limits. Plain zero still means flat/inherit.
+/// ratios and percentages must stay positive even at floating-point limits. Plain zero still means flat/inherit.
 fn roof_pitch(input: &str) -> Option<f64> {
-    let degrees = if let Some((rise, run)) = input.split_once([':', '/']) {
+    let degrees = if let Some(percent) = input.trim().strip_suffix('%') {
+        let percent = number(percent).filter(|n| *n > 0.0)?;
+        Some(percent.atan2(100.0).to_degrees()).filter(|n| *n > 0.0)?
+    } else if let Some((rise, run)) = input.split_once([':', '/']) {
         let rise = number(rise).filter(|n| *n > 0.0)?;
         let run = number(run).filter(|n| *n > 0.0)?;
         Some(rise.atan2(run).to_degrees()).filter(|n| *n > 0.0)?
@@ -696,7 +699,7 @@ fn parse(kind: Kind, s: &str, units: Units) -> Result<Value, String> {
     let length = |typed: &str| units.parse(typed).ok_or_else(|| tf("`{}` is not a length", &[typed.trim()]));
     match kind {
         Number => number(s).map(|x| json!(x)).ok_or_else(|| tf("`{}` is not a number", &[s])),
-        RoofPitch => roof_pitch(s).map(|x| json!(x)).ok_or_else(|| t("Degrees or pitch (6:12 or 6/12)").to_string()),
+        RoofPitch => roof_pitch(s).map(|x| json!(x)).ok_or_else(|| t("Degrees or pitch (6:12, 6/12 or 50%)").to_string()),
         Length | LengthIf | Height => length(s).map(|x| json!(x)),
         Limit(_) if s.trim().is_empty() => Ok(Value::Null),
         Limit(_) => length(s).map(|x| json!(x)),
@@ -1791,7 +1794,7 @@ impl BimApp {
         let mut typed = None;
         grid(ui, ("sketch-slope", i), |ui| {
             let name = ui.label(t("Slope"));
-            typed = self.field(ui, 1 + i as Id, "sketch-slope", current, name.id, t("Degrees or pitch (6:12 or 6/12)"));
+            typed = self.field(ui, 1 + i as Id, "sketch-slope", current, name.id, t("Degrees or pitch (6:12, 6/12 or 50%)"));
             ui.end_row();
         });
         let Some(typed) = typed else { return };
@@ -1804,7 +1807,7 @@ impl BimApp {
             }
             None => {
                 self.status = Status {
-                    text: tf("Degrees from 0 to {}, or positive pitch (6:12 or 6/12). Blank inherits.", &[&max.to_string()]),
+                    text: tf("Degrees from 0 to {}, or positive pitch (6:12, 6/12 or 50%). Blank inherits.", &[&max.to_string()]),
                     error: true,
                 };
             }
