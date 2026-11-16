@@ -4881,7 +4881,7 @@ fn tab_cycles_a_walls_three_lines_until_a_number_is_typed() {
     key(&mut h, Key::Tab);
     hover(&mut h, over);
     assert_eq!(h.state().canvas.found.get().and_then(|f| f.face), Some(Face::Right));
-    // A number typed keeps Tab: the field swaps, and the wall's line stays where it was.
+    // A number typed keeps either key: the field swaps, and the wall's line stays where it was.
     h.event(Event::Text("3000".into()));
     h.run();
     assert_eq!(h.state().typed_length, "3000", "the number is being typed");
@@ -4892,6 +4892,78 @@ fn tab_cycles_a_walls_three_lines_until_a_number_is_typed() {
         ("", "3000"),
         "the number moved to the angle field, as Tab does"
     );
+}
+
+/// `Tab` over a wall steps its three lines and the pick follows; a digit still types the length. Off every wall, `Tab`
+/// steps the length to the angle — and the reading brackets the field that takes the digits, so the move is seen.
+#[test]
+fn tab_over_a_wall_steps_its_faces_and_away_from_it_the_numbers() {
+    use bimcraft_core::model::Face;
+    let mut h = app(r#"wall {"points": [[0,0],[6000,0]]}"#);
+    let (id, ext) = {
+        let m = &h.state().session.model;
+        let id = ids(&h, "wall")[0];
+        (id, bimcraft_core::walls::faces(m, m.wall(id).expect("the wall")).0)
+    };
+    tool(&mut h, "Wall");
+    click(&mut h, P2(0.0, 1000.0));
+    assert_eq!(hover(&mut h, P2(2000.0, ext - 10.0)).and_then(|f| f.face), Some(Face::Left), "the wall is under the pointer");
+    key(&mut h, Key::Tab);
+    assert!(h.state().canvas.wall_face.is_some_and(|(w, _)| w == id), "the wall's face, not the field");
+    assert_eq!(h.state().drawing.field, 0, "the length still takes the digits");
+    // The face key never blocks typing: a number is still the length.
+    h.event(Event::Text("350".into()));
+    h.run();
+    assert_eq!(h.state().typed_length, "350");
+    // `Esc` takes the number first, leaving the point it was for.
+    key(&mut h, Key::Escape);
+    assert_eq!((h.state().typed_length.as_str(), h.state().drawing.field), ("", 0), "the number went and the field came back to Length");
+    assert!(matches!(&h.state().tool, Tool::Wall(pts) if pts.len() == 1), "the point is still there");
+    // Off every wall, Tab steps to the angle, and the reading says which field it is.
+    assert_eq!(hover(&mut h, P2(2000.0, 1000.0)).and_then(|f| f.face), None, "no wall under the pointer");
+    key(&mut h, Key::Tab);
+    assert_eq!(h.state().drawing.field, 1, "the angle takes the digits now");
+    let chain = h.state().points().cloned().unwrap_or_default();
+    let m = h.state().session.model.clone();
+    let texts = h.state().shape_texts(&m, &chain, P2(2000.0, 2000.0));
+    let text = texts.first().map(|(_, t)| t.as_str()).unwrap_or_default();
+    assert!(text.contains("[") && text.contains("°"), "one field is bracketed, the angle being the other: {text}");
+}
+
+/// Before Point 1 there is no number to type, so `Tab` has the faces to itself.
+#[test]
+fn tab_cycles_a_walls_faces_before_the_first_point() {
+    let mut h = app(r#"wall {"points": [[0,0],[6000,0]]}"#);
+    let id = ids(&h, "wall")[0];
+    tool(&mut h, "Wall");
+    hover(&mut h, P2(2000.0, 0.0));
+    key(&mut h, Key::Tab);
+    assert!(h.state().canvas.wall_face.is_some_and(|(w, _)| w == id), "Tab chose a face before Point 1");
+}
+
+/// `Esc` drops a typed number and the field back to Length before it drops the point it was for.
+#[test]
+fn esc_drops_a_typed_number_before_the_chain() {
+    let mut h = app("");
+    tool(&mut h, "Wall");
+    click(&mut h, P2(0.0, 0.0));
+    h.event(Event::Text("900".into()));
+    h.run();
+    key(&mut h, Key::Tab);
+    assert_eq!(
+        (h.state().typed_length.as_str(), h.state().drawing.other.as_str(), h.state().drawing.field),
+        ("", "900", 1),
+        "the number is the angle's"
+    );
+    key(&mut h, Key::Escape);
+    assert_eq!(
+        (h.state().typed_length.as_str(), h.state().drawing.other.as_str(), h.state().drawing.field),
+        ("", "", 0),
+        "the number went and the field came back to Length"
+    );
+    assert!(matches!(&h.state().tool, Tool::Wall(pts) if pts.len() == 1), "the point is still there: {:?}", h.state().tool);
+    key(&mut h, Key::Escape);
+    assert!(matches!(&h.state().tool, Tool::Wall(pts) if pts.is_empty()), "the second Esc drops the chain");
 }
 
 /// One edge pin per wall: marking another of its faces moves the pin rather than spending a second of the three, and the

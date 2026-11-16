@@ -811,7 +811,8 @@ pub struct BimApp {
     snap_once: Option<Once>,
     /// The Measure tool's last ruler: where it starts and ends.
     measured: Option<(P2, P2)>,
-    /// Tab pressed over the plan, taken from egui's focus keys: cycle what's under the cursor.
+    /// Tab pressed over the plan, taken from egui's focus keys: cycle what's under the cursor, or step the numbers a
+    /// shape is typed by.
     tab_cycle: bool,
     /// What a window handed over that `pace` kept back for the frames after the one it came in.
     held: Vec<Event>,
@@ -3332,6 +3333,13 @@ impl BimApp {
     /// Escape: dismiss the error, drop the chain being drawn, else leave the tool, else clear the
     /// selection.
     fn escape(&mut self) {
+        // A number being typed goes first, and the field back to Length: the point it is for is still wanted.
+        if !self.typed_length.is_empty() || !self.drawing.other.is_empty() || self.drawing.field == 1 {
+            self.typed_length.clear();
+            self.drawing.other.clear();
+            self.drawing.field = 0;
+            return;
+        }
         // Esc drops the drawing's marked references with the points they were marked for.
         self.canvas.pins.borrow_mut().clear();
         self.canvas.start_edge = None;
