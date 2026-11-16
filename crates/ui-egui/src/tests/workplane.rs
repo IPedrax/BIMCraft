@@ -170,7 +170,7 @@ fn in_a_plan_the_floor_tool_sketches_at_once_and_walls_outline_puts_the_walls_ou
     assert!(matches!(h.state().sketch.as_ref().map(|s| s.of), Some(crate::sketch::Of::Floor(_))), "straight into sketch mode");
     assert!(h.query_by_label("Modify | Create Floor Boundary").is_some());
     press(&mut h, "Walls' Outline");
-    choose(&mut h, "Location Line:", "Wall Centre Line");
+    super::choose(&mut h, "Location Line:", "Wall Centre Line");
     press(&mut h, "DRAW");
     assert_eq!(h.state().sketch.as_ref().map(|s| s.lines.len()), Some(4), "the box's four sides, to edit before Finish");
     press(&mut h, "Finish Edit Mode");
