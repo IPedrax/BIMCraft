@@ -205,7 +205,7 @@ mod command {
     #[test]
     fn another_utility_is_refused_and_named() {
         let mut s = Session::new();
-        for u in ["Light", "COPEL", "xx"] {
+        for u in ["Light", "EDP", "xx"] {
             let e = s.execute("demand", &json!({"utility": u, "area": 40})).unwrap_err();
             assert!(e.contains("CPFL") && e.contains("ENEL") && e.contains("CELESC") && e.contains(u), "{e}");
         }

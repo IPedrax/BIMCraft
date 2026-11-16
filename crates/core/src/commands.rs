@@ -2786,8 +2786,15 @@ other_files(
          resistance_weld|xray, kw, count?}], hydromassage?: [{w, count?}]} the demand D (kVA) of an installation and the category of \
          service it asks of the `utility`, by that utility's own standard, since NBR 5410 gives no demand factors. `utility` is \
          required: CPFL (GED 13 version 2.24, 18/09/2020: CPFL Paulista, Piratininga, Santa Cruz and RGE) or ENEL (ET 1569 version 01, \
-         29/01/2024) or CELESC (N-321.0001, revision of December 2025); any other is refused until its tables are added. \
-         CELESC, too, leaves the demand to the designer: `{utility: CELESC, network?: 220/380|220/440, installed_kw, phases?: \
+         29/01/2024) or CELESC (N-321.0001, revision of December 2025), or one whose categories are data (data/entrance-categories.json): \
+         FECOERGS (the RIC BT REGD 035.01.06 of Rio Grande do Sul's cooperatives; a member such as COPREL or CERTEL by its own name, \
+         with its own changes), HIDROPAN (RIC 2014), ENERGISA (NDU 001 version 7.0; a company such as EMT by its own name), \
+         EQUATORIAL (NT.00001 revision 09) or COPEL (NTC 901100); any other is refused until its tables are added. A utility of the data takes \
+         `{utility, system?, entrance?: individual|metering_centre, installed_kw?, demand_kva?, phases?: 1|2|3}`: `system` and \
+         `entrance` name its table (the first of the file by default), and the category is the first row whose installed load and \
+         demand hold the unit, with its breaker (two values where either will do), measurement and the other `columns` as printed, \
+         each explained; `candidates` names every row that holds it, and a row that goes by what was not given is named in \
+         `category_note`; `changed_by` cites a member's own document. CELESC, too, leaves the demand to the designer: `{utility: CELESC, network?: 220/380|220/440, installed_kw, phases?: \
          1|2|3, demand_kva?}` gives the category of Tabela 01 by the installed load (A single-phase 220 V, M single-phase \
          220/440 V, B two-phase, C three-phase), its breaker, phases and wires, the connection and entry branches and the \
          earthing conductor; `phases` picks the supply an appliance asks for whatever the load. ENEL does not work out a \
@@ -6739,6 +6746,94 @@ fn demand_celesc(p: &Value, utility: &str, source: &str) -> R {
     }))
 }
 
+/// `demand` for a utility whose categories are data (`data/entrance-categories.json`, `entrance.rs`): its table for the supply system
+/// and the use frames the unit by the installed load and the designer's demand, as the table prints them, with a member's own changes.
+fn demand_table(p: &Value, name: &str, u: &crate::entrance::Utility, member: Option<&crate::entrance::Member>) -> R {
+    use crate::entrance::{self as e, Unit};
+    let c = "demand";
+    const KEYS: &[&str] = &["utility", "system", "entrance", "installed_kw", "demand_kva", "phases"];
+    if let Some(k) = p.as_object().and_then(|o| o.keys().find(|k| !KEYS.contains(&k.as_str()))) {
+        return Err(bad(c, format!("`{k}` isn't one of {}'s parameters: {}", u.id, KEYS.join(", "))));
+    }
+    let uses = u.uses();
+    let use_ = choice(c, p, "entrance", &uses, uses.first().copied().unwrap_or("individual"))?;
+    let systems = u.systems(use_);
+    let system = choice(c, p, "system", &systems, systems.first().copied().unwrap_or(""))?;
+    let Some(table) = u.table(system, use_) else {
+        return Err(bad(c, format!("{} has no table for {system} {use_}", u.id)));
+    };
+    let phases = match p.get("phases").filter(|v| !v.is_null()) {
+        None => None,
+        Some(v) => match v.as_u64() {
+            Some(n @ 1..=3) => Some(n as u8),
+            _ => return Err(bad(c, format!("`phases` is 1, 2 or 3, got {v}"))),
+        },
+    };
+    let number = |key: &str| -> Result<Option<f64>, String> {
+        match p.get(key) {
+            v if absent(v) => Ok(None),
+            _ => within(c, p, key, 0.0, 0.0, 1.0e6).map(Some),
+        }
+    };
+    let unit = Unit { installed_kw: number("installed_kw")?, demand_kva: number("demand_kva")?, phases };
+    if unit.installed_kw.is_none() && unit.demand_kva.is_none() {
+        return Err(bad(c, "`installed_kw` (the installed load in kW) or `demand_kva` (the designer's demand) is required"));
+    }
+    let pick = e::pick(table, member, unit);
+    let range = |r: Option<e::Range>| r.map(|r| json!({"over": r.over, "up_to": r.up_to}));
+    let category = pick.category.as_ref().map(|r| {
+        json!({
+            "name": r.name,
+            "phases": r.phases,
+            "installed_kw": range(r.installed_kw),
+            "demand_kva": range(r.demand_kva),
+            "breaker_a": r.breaker_a,
+            "measurement": r.measurement,
+            "columns": r.columns,
+        })
+    });
+    let note = if pick.category.is_some() {
+        Value::Null
+    } else if !pick.needs.is_empty() {
+        let names: Vec<&str> = pick.needs.iter().map(|(n, _)| n.as_str()).collect();
+        let what: Vec<&str> = pick.needs.iter().map(|(_, w)| *w).fold(Vec::new(), |mut a, w| {
+            if !a.contains(&w) {
+                a.push(w);
+            }
+            a
+        });
+        json!(format!("{} go by {}: give it to pick one", names.join(", "), what.join(" and ")))
+    } else {
+        json!(format!("no category of {} {system} holds the unit as given; past the table it is the utility's to decide", u.standard))
+    };
+    let explained: serde_json::Map<String, Value> = match &category {
+        Some(_) => {
+            pick.category.iter().flat_map(|r| r.columns.keys()).filter_map(|k| u.columns.get(k).map(|v| (k.clone(), json!(v)))).collect()
+        }
+        None => serde_json::Map::new(),
+    };
+    Ok(json!({
+        "utility": name.to_uppercase(),
+        "group": member.map(|_| u.id.as_str()),
+        "source": u.source,
+        "table": table.source,
+        "rule": u.rule,
+        "system": system,
+        "entrance": use_,
+        "installed_kw": unit.installed_kw,
+        "demand_kva": unit.demand_kva,
+        "phases": phases,
+        "category": category,
+        "candidates": pick.candidates,
+        "category_note": note,
+        "changed_by": pick.changed_by,
+        "columns": explained,
+        "notes": u.notes,
+        "demand_note": "the standard leaves the demand to the designer by its own method; it is carried as given",
+        "not_covered": u.not_covered,
+    }))
+}
+
 fn demand(_: &mut Session, p: &Value) -> R {
     use crate::demand::{self as d, Air, Load, Motor, OtherUse, SPECIAL_KINDS, Special, SpecialKind, System, USES};
     let c = "demand";
@@ -6770,15 +6865,20 @@ fn demand(_: &mut Session, p: &Value) -> R {
             "demand_current_a",
             "phases",
             "demand_kva",
+            "entrance",
         ],
     )?;
     let utility = string(c, p, "utility")?.ok_or_else(|| bad(c, format!("`utility` is required: {}", d::UTILITIES.join(", "))))?;
+    if let Some((u, member)) = crate::entrance::find(&utility) {
+        return demand_table(p, &utility, u, member);
+    }
     let Some(source) = d::source(&utility) else {
         return Err(bad(
             c,
             format!(
-                "there are no tables for `{utility}` yet, only {}: they are the utility's own, and are added from its standard",
-                d::UTILITIES.join(", ")
+                "there are no tables for `{utility}` yet, only {} and, as data, {}: they are the utility's own, and are added from its standard",
+                d::UTILITIES.join(", "),
+                crate::entrance::names().join(", ")
             ),
         ));
     };
@@ -6789,7 +6889,9 @@ fn demand(_: &mut Session, p: &Value) -> R {
     if utility == "CELESC" {
         return demand_celesc(p, &utility, source);
     }
-    if let Some(k) = ["network", "installed_kw", "demand_current_a", "phases", "demand_kva"].iter().find(|k| p.get(**k).is_some()) {
+    if let Some(k) =
+        ["network", "installed_kw", "demand_current_a", "phases", "demand_kva", "entrance"].iter().find(|k| p.get(**k).is_some())
+    {
         return Err(bad(
             c,
             format!(
