@@ -53,6 +53,10 @@ pub struct Definition {
     /// Each element's or each type's, where the file says: where it doesn't, a project keeps what it has, and a new one is an instance's.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub scope: Option<Scope>,
+    /// Whether a grouped element's value is its own in each group (Revit's Values can vary by group instance), where the file
+    /// says: where it doesn't, a project keeps what it has, and a new one is aligned per group type.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vary_by_group: Option<bool>,
     /// The categories it is usually for, as the file names them; a project may take others.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub categories: Vec<String>,
@@ -568,6 +572,13 @@ pub fn plan(m: &Model, rows: &[Definition], choices: &Choices) -> Vec<Planned> {
                         one.notes.push(format!("its {word}"));
                     }
                 }
+                match row.vary_by_group {
+                    Some(true) if !p.vary_by_group => one.notes.push("its values vary by group instance".into()),
+                    Some(false) if p.vary_by_group => {
+                        one.notes.push("aligned per group type: each group's elements take their type's values".into())
+                    }
+                    _ => {}
+                }
                 one.scope = said.unwrap_or(p.scope);
                 if one.scope != p.scope {
                     one.notes.push(match one.scope {
@@ -791,6 +802,7 @@ fn apply(s: &mut Session, rows: &[Planned], dictionary: Option<&table::Source>, 
                         group: family::Under::read(&clip(&d.group)),
                         read_only: d.read_only.unwrap_or(false),
                         scope: r.scope,
+                        vary_by_group: d.vary_by_group.unwrap_or(false),
                         dictionary: dict_name.clone(),
                         ..ProjectParameter::default()
                     },
@@ -810,6 +822,9 @@ fn apply(s: &mut Session, rows: &[Planned], dictionary: Option<&table::Source>, 
                 let mut edit = json!({"name": old, "kind": d.kind, "categories": r.categories, "scope": r.scope});
                 if r.here != old {
                     edit["rename"] = json!(r.here);
+                }
+                if let Some(v) = d.vary_by_group {
+                    edit["vary_by_group"] = json!(v);
                 }
                 parameter(s, &edit).map_err(|e| bad(c, e))?;
                 let m = s.model_mut();
@@ -870,6 +885,7 @@ pub fn definition(m: &Model, name: &str) -> Option<Definition> {
         group: p.group.as_ref().map(|u| u.label().to_string()).unwrap_or_default(),
         read_only: Some(p.read_only),
         scope: Some(p.scope),
+        vary_by_group: Some(p.vary_by_group),
         categories: p.categories.clone(),
     })
 }

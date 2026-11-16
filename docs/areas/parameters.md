@@ -47,7 +47,11 @@ uses and records where each dictionary was and at which version (`Model::diction
 file changes nothing until it's imported: Dictionaries > Check shows what it would change, as a dry run. The `dictionary` command
 edits a file; the project isn't touched. `revision` counts up with each real change to the file and `changed` dates it; a project keeps the
 revision it took (`DictionaryRef::revision`), which is how it can say it's behind. `version` is only a label of the team's own: nothing
-compares it, and what would change is always worked out from the definitions. A definition holds a default `scope`. A file of a newer `format` is refused.
+compares it, and what would change is always worked out from the definitions. A definition holds a default `scope`, and
+`vary_by_group`, its Group Values: where a file doesn't say, a parameter here keeps its own and a new one is aligned per group
+type; an import that aligns one is a `modify` whose note says each group's elements take their type's values. The open
+dictionary's table picks it in its Group Values column, greyed for a type parameter. An older BIMCraft passes it over, so the
+file's `format` stays 1. A file of a newer `format` is refused.
 
 A project keeps the dictionaries it has loaded (`dictionary_mount`, `Model::dictionaries`), any number, in its own file: they are there when the
 window opens again and when the project does. Loading takes nothing in. A moved file is the same dictionary by its GUID and takes the new path, a
@@ -144,8 +148,8 @@ Text in a table's narrow column goes through `wrapped`, which knows its height f
 
 - A value for each type in the tools that have no Type Properties yet; the Families tab's Modify (existing parameters are changed in the Family
   Editor) and Discipline, which has no meaning here yet.
-- Group Values in a dictionary's or a table's definitions: a parameter that comes in from one is aligned per group type until
-  the window or `parameter {vary_by_group}` says otherwise. `parameter_merge` doesn't reach group types' members yet, so a
+- Group Values in a table's columns (`.xlsx`, `.csv`, Revit's shared parameter files): a parameter that comes in from one
+  keeps its own, or is aligned per group type when it's new. `parameter_merge` doesn't reach group types' members yet, so a
   merge that changes grouped elements' values is refused as a group conflict.
 - Renaming a project parameter a family is tied to.
 - Nested family parameters: they wait for family nesting ([ROADMAP](../../ROADMAP.md)).

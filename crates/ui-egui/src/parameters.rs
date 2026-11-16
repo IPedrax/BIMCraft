@@ -1710,7 +1710,7 @@ impl BimApp {
             }
         });
         ScrollArea::both().id_salt("dictionary-rows").max_height(280.0).auto_shrink([false, false]).show(ui, |ui| {
-            Grid::new("dictionary-table").striped(true).num_columns(8).spacing([8.0, 4.0]).show(ui, |ui| {
+            Grid::new("dictionary-table").striped(true).num_columns(9).spacing([8.0, 4.0]).show(ui, |ui| {
                 let mut every = !open.rows.is_empty() && open.rows.iter().all(|r| r.checked);
                 if tick(ui, &mut every, t("Check All Definitions")) {
                     open.rows.iter_mut().for_each(|r| r.checked = every);
@@ -1719,6 +1719,7 @@ impl BimApp {
                     msg!("Name"),
                     msg!("Type of Parameter"),
                     msg!("Instance/Type"),
+                    msg!("Group Values"),
                     msg!("Group Under"),
                     msg!("Description"),
                     msg!("Editable"),
@@ -1761,6 +1762,14 @@ fn dictionary_row(ui: &mut Ui, i: usize, r: &mut DictionaryRow) {
     let mut scope = q.scope.unwrap_or_default();
     if scope_combo(ui, ("dictionary-scope", i), &mut scope, &tf("Instance or Type of {}", &[&label])) {
         q.scope = Some(scope);
+    }
+    // A file that doesn't say is shown as aligned; picked either way, it says.
+    let mut vary = q.vary_by_group.unwrap_or(false);
+    ui.add_enabled_ui(scope == Scope::Instance, |ui| {
+        group_values_combo(ui, ("dictionary-group-values", i), &mut vary, &tf("Group values of {}", &[&label]));
+    });
+    if vary != q.vary_by_group.unwrap_or(false) {
+        q.vary_by_group = Some(vary);
     }
     field(ui, &mut q.group, 90.0, &tf("Group of {}", &[&label]));
     field(ui, &mut q.description, 130.0, &tf("Description of {}", &[&label]));

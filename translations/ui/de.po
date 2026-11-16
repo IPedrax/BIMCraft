@@ -1894,8 +1894,8 @@ msgstr "Einbauschränke"
 
 #: crates/ui-egui/src/graphics.rs:467
 #: crates/ui-egui/src/parameters.rs:697
-#: crates/ui-egui/src/parameters.rs:1725
-#: crates/ui-egui/src/parameters.rs:1823
+#: crates/ui-egui/src/parameters.rs:1726
+#: crates/ui-egui/src/parameters.rs:1832
 msgid "Categories"
 msgstr "Kategorien"
 
@@ -1911,7 +1911,7 @@ msgstr "Nicht überschriebene Kategorien werden so gezeichnet, wie Objektstile s
 msgid "Categories of Checked"
 msgstr ""
 
-#: crates/ui-egui/src/parameters.rs:1773
+#: crates/ui-egui/src/parameters.rs:1782
 msgid "Categories of {}"
 msgstr ""
 
@@ -2056,7 +2056,7 @@ msgstr "Nachweis"
 
 #: crates/ui-egui/src/filter.rs:104
 #: crates/ui-egui/src/parameters.rs:840
-#: crates/ui-egui/src/parameters.rs:1820
+#: crates/ui-egui/src/parameters.rs:1829
 #: crates/ui-egui/src/printsets.rs:207
 msgid "Check All"
 msgstr "Alle aktivieren"
@@ -2098,7 +2098,7 @@ msgstr "Nach Aktualisierungen suchen"
 msgid "Check for updates at startup"
 msgstr "Beim Start nach Aktualisierungen suchen"
 
-#: crates/ui-egui/src/parameters.rs:1849
+#: crates/ui-egui/src/parameters.rs:1858
 msgid "Check parameters to give them categories."
 msgstr ""
 
@@ -2110,8 +2110,8 @@ msgstr ""
 #: crates/ui-egui/src/parameters.rs:1353
 #: crates/ui-egui/src/parameters.rs:1435
 #: crates/ui-egui/src/parameters.rs:1549
-#: crates/ui-egui/src/parameters.rs:1749
-#: crates/ui-egui/src/parameters.rs:1829
+#: crates/ui-egui/src/parameters.rs:1750
+#: crates/ui-egui/src/parameters.rs:1838
 msgid "Check {}"
 msgstr ""
 
@@ -3320,7 +3320,7 @@ msgstr ""
 msgid "Copy All"
 msgstr "Alle kopieren"
 
-#: crates/ui-egui/src/parameters.rs:1856
+#: crates/ui-egui/src/parameters.rs:1865
 msgid "Copy Categories From"
 msgstr ""
 
@@ -3951,12 +3951,12 @@ msgstr "Absteigend"
 #: crates/core/src/panel_schedule.rs:267
 #: crates/core/src/panel_schedule.rs:276
 #: crates/ui-egui/src/parameters.rs:851
-#: crates/ui-egui/src/parameters.rs:1723
+#: crates/ui-egui/src/parameters.rs:1724
 msgid "Description"
 msgstr ""
 
 #: crates/ui-egui/src/parameters.rs:904
-#: crates/ui-egui/src/parameters.rs:1766
+#: crates/ui-egui/src/parameters.rs:1775
 msgid "Description of {}"
 msgstr ""
 
@@ -4756,7 +4756,7 @@ msgid "Edit {}"
 msgstr "{} bearbeiten"
 
 #: crates/ui-egui/src/parameters.rs:852
-#: crates/ui-egui/src/parameters.rs:1724
+#: crates/ui-egui/src/parameters.rs:1725
 msgid "Editable"
 msgstr ""
 
@@ -5383,7 +5383,7 @@ msgstr ""
 #: crates/ui-egui/src/filter.rs:68
 #: crates/ui-egui/src/graphics.rs:455
 #: crates/ui-egui/src/lib.rs:4403
-#: crates/ui-egui/src/parameters.rs:1844
+#: crates/ui-egui/src/parameters.rs:1853
 msgid "Filter"
 msgstr "Filter"
 
@@ -5402,7 +5402,7 @@ msgid "Filter by:"
 msgstr "Filtern nach:"
 
 #: crates/ui-egui/src/graphics.rs:444
-#: crates/ui-egui/src/parameters.rs:1843
+#: crates/ui-egui/src/parameters.rs:1852
 msgid "Filter:"
 msgstr "Filter:"
 
@@ -5969,17 +5969,18 @@ msgstr ""
 
 #: crates/ui-egui/src/parameters.rs:850
 #: crates/ui-egui/src/parameters.rs:1340
-#: crates/ui-egui/src/parameters.rs:1722
+#: crates/ui-egui/src/parameters.rs:1723
 msgid "Group Under"
 msgstr ""
 
 #: crates/ui-egui/src/parameters.rs:849
+#: crates/ui-egui/src/parameters.rs:1722
 msgid "Group Values"
 msgstr ""
 
 #: crates/ui-egui/src/parameters.rs:892
 #: crates/ui-egui/src/parameters.rs:1377
-#: crates/ui-egui/src/parameters.rs:1765
+#: crates/ui-egui/src/parameters.rs:1774
 msgid "Group of {}"
 msgstr ""
 
@@ -5988,6 +5989,7 @@ msgid "Group parameter under:"
 msgstr "Parameter gruppieren unter:"
 
 #: crates/ui-egui/src/parameters.rs:889
+#: crates/ui-egui/src/parameters.rs:1769
 msgid "Group values of {}"
 msgstr ""
 
@@ -6133,7 +6135,7 @@ msgstr "Element ausblenden (HH)"
 msgid "Hide Unchecked"
 msgstr ""
 
-#: crates/ui-egui/src/parameters.rs:1845
+#: crates/ui-egui/src/parameters.rs:1854
 msgid "Hide Unselected"
 msgstr ""
 
@@ -6464,7 +6466,7 @@ msgstr ""
 #: crates/ui-egui/src/parameters.rs:886
 #: crates/ui-egui/src/parameters.rs:1108
 #: crates/ui-egui/src/parameters.rs:1379
-#: crates/ui-egui/src/parameters.rs:1762
+#: crates/ui-egui/src/parameters.rs:1763
 msgid "Instance or Type of {}"
 msgstr ""
 
@@ -8152,7 +8154,7 @@ msgstr "NICHT UMSCHLOSSEN"
 #: crates/ui-egui/src/parameters.rs:845
 #: crates/ui-egui/src/parameters.rs:1429
 #: crates/ui-egui/src/parameters.rs:1719
-#: crates/ui-egui/src/parameters.rs:1823
+#: crates/ui-egui/src/parameters.rs:1832
 #: crates/ui-egui/src/printsets.rs:123
 #: crates/ui-egui/src/printsets.rs:290
 #: crates/ui-egui/src/properties.rs:2519
@@ -8173,7 +8175,7 @@ msgstr ""
 
 #: crates/ui-egui/src/parameters.rs:875
 #: crates/ui-egui/src/parameters.rs:1359
-#: crates/ui-egui/src/parameters.rs:1750
+#: crates/ui-egui/src/parameters.rs:1751
 msgid "Name of {}"
 msgstr ""
 
@@ -10234,7 +10236,7 @@ msgstr "Profil 2: das Profil am Ende des Pfads skizzieren, rechtwinklig dazu"
 #: crates/ui-egui/src/parameters.rs:876
 #: crates/ui-egui/src/parameters.rs:1219
 #: crates/ui-egui/src/parameters.rs:1362
-#: crates/ui-egui/src/parameters.rs:1831
+#: crates/ui-egui/src/parameters.rs:1840
 #: crates/ui-egui/src/titleblocks.rs:150
 #: crates/ui-egui/src/titleblocks.rs:154
 #: crates/ui-egui/src/titleblocks.rs:492
@@ -11830,7 +11832,7 @@ msgstr "Datei für gemeinsam genutzte Parameter:"
 
 #: crates/ui-egui/src/parameters.rs:876
 #: crates/ui-egui/src/parameters.rs:1363
-#: crates/ui-egui/src/parameters.rs:1831
+#: crates/ui-egui/src/parameters.rs:1840
 msgid "Shared: {}"
 msgstr ""
 
@@ -12328,7 +12330,7 @@ msgstr "Sortieren/Gruppieren"
 
 #: crates/ui-egui/src/parameters.rs:846
 #: crates/ui-egui/src/parameters.rs:1338
-#: crates/ui-egui/src/parameters.rs:1823
+#: crates/ui-egui/src/parameters.rs:1832
 msgid "Source"
 msgstr ""
 
@@ -14033,7 +14035,7 @@ msgstr "Typname:"
 #: crates/ui-egui/src/parameters.rs:1339
 #: crates/ui-egui/src/parameters.rs:1429
 #: crates/ui-egui/src/parameters.rs:1720
-#: crates/ui-egui/src/parameters.rs:1823
+#: crates/ui-egui/src/parameters.rs:1832
 msgid "Type of Parameter"
 msgstr "Parametertyp"
 
@@ -14044,7 +14046,7 @@ msgstr "Parametertyp:"
 
 #: crates/ui-egui/src/parameters.rs:884
 #: crates/ui-egui/src/parameters.rs:1374
-#: crates/ui-egui/src/parameters.rs:1759
+#: crates/ui-egui/src/parameters.rs:1760
 msgid "Type of {}"
 msgstr ""
 
@@ -15837,7 +15839,7 @@ msgid "{} doesn't lend their AI key"
 msgstr "{} verleiht den AI-Schlüssel nicht"
 
 #: crates/ui-egui/src/parameters.rs:906
-#: crates/ui-egui/src/parameters.rs:1769
+#: crates/ui-egui/src/parameters.rs:1778
 msgid "{} editable"
 msgstr ""
 
