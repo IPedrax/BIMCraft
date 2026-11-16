@@ -4231,7 +4231,9 @@ impl BimApp {
             });
         });
         ui.scope_builder(UiBuilder::new().max_rect(rows), |ui| {
-            ScrollArea::both().id_salt("tool-column").auto_shrink([false, false]).show(ui, |ui| {
+            // Edit Profile can be reached near the bottom of this column. Its draft opens with the editing tools visible.
+            let scroll = if self.editing_roof_profile() { "roof-profile-tools" } else { "tool-column" };
+            ScrollArea::both().id_salt(scroll).auto_shrink([false, false]).show(ui, |ui| {
                 ui.set_max_width(rows.width() - 12.0);
                 let edit = if self.editing_tools { msg!("Done") } else { msg!("Edit Tools") };
                 let tip = msg!("Tick the tools this palette shows; Find still has the others");

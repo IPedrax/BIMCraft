@@ -363,6 +363,13 @@ bimcraft-cli commands                                 # every command and its pa
 
 ## The desktop app
 
+**Editing an extrusion roof:** select the roof and choose **Edit Profile** in the contextual tools. The 3D view faces its
+upright reference plane. Pick a line and drag its end grips, or enter **Start/End Along** and **Start/End Height** in
+Properties, using the project's length units. Joined ends move together. **Finish Edit Mode** applies the open profile as
+one undoable change; **Cancel Edit Mode** discards the draft. **Extrusion Start/End** remain instance properties outside
+the sketch. The existing extrusion model supports straight open profiles that progress along the reference line;
+curves, vertical segments and closed profiles are not supported. See [roof details](docs/areas/levels-walls-roofs.md#editing-an-extrusion-roof).
+
 `bimcraft [FILE] [--sample]` opens a `.bimc` project (or a `.bimt` or earlier `.bimcraft` one), a `.bimf` family, imports an `.ifc` file, or starts on the sample house. The layout
 is Revit's, so it should feel familiar: the Quick Access Toolbar; the ribbon's File, Architecture, Annotate, View and Modify
 tabs, with a green contextual tab (Modify | Place Wall, Modify | Walls) for the tool or the selection; the Options Bar;

@@ -138,6 +138,33 @@ With no requested level, or with the host's own level requested, placement keeps
 raised wall base offsets. A supplied level is validated even with an explicit `wall`. Existing host-fit checks and rollback
 still refuse a sill below the host base or at/above its top. This is a placement conversion, with no native format change;
 moving a level later does not rehost an existing opening.
+## Editing an extrusion roof
+
+Select one native roof by extrusion and use **Edit Profile**. The desktop opens 3D facing the roof's upright reference
+plane: local X is distance along `extrusion.line`, local Y is height above its reference level plus offset. The profile
+describes the roof's underside; thickness and layers still come from its type. Extrusion Start and End remain independent
+instance properties, sweeping perpendicular to that plane. The footprint's Slope field is hidden on extrusion instances:
+their pitch comes from the profile's segment rise/run.
+
+The draft reuses sketch lines, selection, joined endpoint grips, Delete and local Undo. Line/Polyline draw straight
+segments; Split, Trim/Extend, Offset and Vertex use the existing sketch operations. A selected line also exposes its start
+and end Along/Height coordinates in project length units. The shared `snap::among` resolves draft geometry and angle
+constraints in those local coordinates, without treating world-plan geometry as profile geometry. Model-edge picking,
+curved profiles and general sketch Move/Copy/Mirror are not added. Existing 3D Align reports its limitation.
+
+`sketch::extrusion_profile` orders straight segments drawn in either direction into one open chain. It refuses gaps,
+branches, overlaps, closed/curved shapes and vertical segments. Finish sends only `extrusion.profile` to existing `modify`;
+`Model::check` remains the authority on bounds and extrusion validity, and a refusal leaves both model and history intact.
+Successful Finish is one model Undo step and reselects the roof; Cancel drops the draft and reselects it. No new file
+format, roof geometry engine, CLI command or MCP mutation path is introduced. Save/reopen, hosts, layers and exports
+continue to read the same roof data.
+
+Tests: `sketch::tests::extrusion_profile_*` covers ordering, invalid topology, shared modify, identity, attached-wall
+heights and reopen/history; `tests/sketch3d.rs` covers contextual activation, Finish/Cancel and real grip/numeric editing
+of a rotated/offset roof in both desktop profiles. `BIMCRAFT_EXTRUSION_DUMP` requests optional graphics captures.
+
+## Footprint geometry and hosting
+
 A roof by footprint is the straight skeleton of its outline and its `courtyards` (`skeleton::faces`: the outline
 counter-clockwise, the courtyards clockwise, the roof to the left of every edge): each edge moves in at speed 1, a gable's at
 0, and its slope rises from it, reaching the roof's base `overhang` in from its eaves; a courtyard's edges number on after

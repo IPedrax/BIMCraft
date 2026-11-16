@@ -116,6 +116,8 @@ fn relevant(e: &Value, key: &str) -> bool {
         (Some(_), "revision") => !e["cloud"].is_null(),
         // A wall's Top Offset is from its top constraint: an unconnected wall stands `height` tall and has none.
         (_, "top_offset") => !e["top_level"].is_null(),
+        // An extrusion roof takes its pitch from its profile, not the footprint's slope.
+        (_, "slope") => e["extrusion"].is_null(),
         _ => true,
     }
 }
@@ -1400,6 +1402,11 @@ impl BimApp {
     }
 
     pub(crate) fn properties(&mut self, ui: &mut Ui) {
+        if self.editing_roof_profile() {
+            ui.heading(t("Roof Profile"));
+            self.roof_profile_coordinates(ui);
+            return;
+        }
         // A new selection starts the filter over.
         if self.palette_filter.as_ref().is_some_and(|(_, picked_for)| *picked_for != self.selection) {
             self.palette_filter = None;
@@ -1749,9 +1756,52 @@ impl BimApp {
         }
     }
 
-    /// A roof's sketch (a new roof's footprint or Edit Boundary's) with one line picked: its Slope, the angle in degrees the roof's
-    /// edges along it rise at, blank for the roof's own, which is what a line has until it is given one. It is set on the line, and
-    /// Finish Edit Mode sends it with the lines for the core to give the edges along the line theirs (`slopes`).
+    /// Profile endpoints in their own plane: numeric changes move joined ends just as the grips do.
+    fn roof_profile_coordinates(&mut self, ui: &mut Ui) {
+        use bimcraft_core::geom::P2;
+        if !self.editing_roof_profile() {
+            return;
+        }
+        ui.label(t("Along the reference line; height above the roof base."));
+        let Some(sk) = &self.sketch else { return };
+        let picked: Vec<_> = sk.picked.iter().copied().collect();
+        let &[i] = picked.as_slice() else {
+            ui.label(t("Select a profile line to edit its end coordinates."));
+            return;
+        };
+        let Some(line) = sk.lines.get(i) else { return };
+        let ends = [line.start(), line.end()];
+        let units = self.session.model.units;
+        let mut change = None;
+        grid(ui, ("roof-profile", i), |ui| {
+            for (end, along, label, key) in [
+                (0, true, msg!("Start Along"), "profile-start-along"),
+                (0, false, msg!("Start Height"), "profile-start-height"),
+                (1, true, msg!("End Along"), "profile-end-along"),
+                (1, false, msg!("End Height"), "profile-end-height"),
+            ] {
+                let name = ui.label(t(label));
+                let p = ends[end];
+                if let Some(typed) = self.field(ui, 1 + i as Id, key, units.length(if along { p.0 } else { p.1 }), name.id, "") {
+                    change = Some((p, along, typed));
+                }
+                ui.end_row();
+            }
+        });
+        if let Some((from, along, typed)) = change {
+            match units.parse(&typed) {
+                Some(value) => {
+                    if let Some(sk) = &mut self.sketch {
+                        sk.move_end(from, if along { P2(value, from.1) } else { P2(from.0, value) });
+                    }
+                    self.status = Status::default();
+                }
+                None => self.status = Status { text: t("Enter a length in the project's units.").into(), error: true },
+            }
+        }
+    }
+
+    /// A footprint sketch's selected line sets the slope sent to `edit_boundary` on Finish.
     fn sketch_slope(&mut self, ui: &mut Ui) {
         let Some(sk) = &self.sketch else { return };
         let roof = match sk.of {
