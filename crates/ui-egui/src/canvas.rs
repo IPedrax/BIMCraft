@@ -2023,12 +2023,8 @@ impl BimApp {
             && !ui.ctx().egui_wants_keyboard_input()
             && chain
             && self.typed_fields() == 0
-            && let Some(id) = self
-                .canvas
-                .under_cursor
-                .iter()
-                .copied()
-                .find(|id| model.wall(*id).is_some_and(|w| w.arc == 0.0 && model.cut_by(w, model.guid(level))))
+            && let Some(id) =
+                self.canvas.under_cursor.iter().copied().find(|id| model.wall(*id).is_some_and(|w| model.straight_at(w, level)))
         {
             let now = match self.canvas.wall_face {
                 Some((held, face)) if held == id => face,
