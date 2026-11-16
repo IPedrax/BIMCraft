@@ -6522,9 +6522,9 @@ fn a_file_from_before_guids_opens_with_guids_and_six_digit_ids() {
 fn a_file_of_the_family_editors_unreleased_formats_21_to_32_is_refused_as_newer() {
     // The Family Editor took the format from 17 to 32 a step at a time before it was released, and none of that was. 0.12's
     // format is 20, which every change since 0.11 shares, so a file of those builds stamped 20 opens as one of 0.12's, and 21
-    // to 32 are refused as any newer file is.
+    // to 32 are refused as any newer file is, even now that a component's tilt took the format on to 33 past them.
     use crate::model::{FORMAT, Model};
-    assert_eq!(FORMAT, 20);
+    assert_eq!(FORMAT, 33);
     let mut s = Session::new();
     house(&mut s);
     let v = serde_json::to_value(&*s.model).unwrap();
@@ -6533,7 +6533,7 @@ fn a_file_of_the_family_editors_unreleased_formats_21_to_32_is_refused_as_newer(
         was["format"] = json!(old);
         let e = Model::read(&was.to_string()).unwrap_err();
         assert!(
-            e.contains("saved by a newer BIMCraft") && e.contains(&format!("file format {old}")) && e.contains("reads up to 20"),
+            e.contains("saved by a newer BIMCraft") && e.contains(&format!("file format {old}")) && e.contains("reads up to 33, not 21–32"),
             "{old}: {e}"
         );
     }
@@ -6555,7 +6555,8 @@ fn a_project_is_saved_in_the_current_format_and_one_of_format_4_up_opens_as_it_i
     let full = serde_json::to_value(&*s.model).unwrap();
     for v in [&empty, &full] {
         assert_eq!(v["format"], FORMAT, "a project is saved as the current format");
-        for old in 4..FORMAT {
+        // (Bar the Family Editor's unreleased 21 to 32, refused.)
+        for old in (4..FORMAT).filter(|f| !crate::model::UNRELEASED.contains(f)) {
             let mut was = v.clone();
             was["format"] = json!(old);
             let (m, left_out) = Model::read(&was.to_string()).unwrap();

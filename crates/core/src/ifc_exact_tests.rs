@@ -380,3 +380,29 @@ fn copies_a_few_hundredths_apart_are_one_type_that_keeps_the_first_ones_exact_si
     assert!((to - from - 50.02).abs() < 1e-9, "{from} {to}");
     assert_eq!(copies(m, "Bolt").len(), 2);
 }
+
+#[test]
+fn a_file_with_a_tilted_bolt_is_of_a_format_0_12_refuses_as_newer_rather_than_standing_it_up() {
+    use crate::model::{FORMAT, UNRELEASED};
+    let mut g = G::new();
+    let r = rod(&mut g, 8.0, 50.0);
+    let map = shape(&mut g, &[r]);
+    bolt(&mut g, "Bolt", map, [2000.0, 0.0, 500.0], EAST, [0.0, 0.0, -1.0]);
+    let i = g.import();
+    let text = i.model.to_json().unwrap();
+    let v: serde_json::Value = serde_json::from_str(&text).unwrap();
+    // 0.12 reads up to 20 and would leave `tilt` out without a word, standing the bolt up: a file that can hold one is newer
+    // than that, and past the Family Editor's unreleased 21 to 32, which a file of theirs may be stamped.
+    assert_eq!(v["format"], FORMAT);
+    assert!(FORMAT > 20 && FORMAT > *UNRELEASED.end(), "{FORMAT}");
+    for old in UNRELEASED {
+        let mut was = v.clone();
+        was["format"] = serde_json::json!(old);
+        let e = Model::read(&was.to_string()).unwrap_err();
+        assert!(e.contains("saved by a newer BIMCraft") && e.contains(&format!("file format {old}")), "{old}: {e}");
+    }
+    // A file of 0.12's still opens.
+    let mut was = v.clone();
+    was["format"] = serde_json::json!(20);
+    assert!(Model::read(&was.to_string()).is_ok());
+}

@@ -185,9 +185,15 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// georeference and lose where the project stands; and it would read spot coordinates (a spot's `coordinate`, `type`, `origin`,
 /// `leader`, `shoulder` and `end`) and a level's `elevation_base` as spot elevations from the Project Base Point. A file of 19
 /// needs no step: its georeference is the active site, both points at the internal origin.
-/// And a component may lie tilted on no plane (`tilt`, its family's x and z in the model), as an imported bolt through a brace does;
-/// a build that reads up to 19 would answer one with a serde error, not "saved by a newer BIMCraft".
-pub const FORMAT: u32 = 20;
+/// 33 (past 20: 21 to 32 were the Family Editor's unreleased steps, [`UNRELEASED`]): a component may lie tilted on no plane
+/// (`tilt`, its family's x and z in the model), as an imported bolt through a brace does; a build that reads up to 20 would
+/// leave it out without a word and stand the component up, so it is refused there as "saved by a newer BIMCraft". A file of 20
+/// needs no step: its components all stand upright or on their plane.
+pub const FORMAT: u32 = 33;
+
+/// The formats the Family Editor took a step at a time before it was released, none of which was: a file stamped one of them
+/// is refused as one from a newer BIMCraft, as before 33.
+pub const UNRELEASED: std::ops::RangeInclusive<u32> = 21..=32;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -4090,7 +4096,7 @@ impl Model {
                 Err(_) => return Ok(None),
             },
         };
-        if !(4..=u64::from(FORMAT)).contains(&format) {
+        if !(4..=u64::from(FORMAT)).contains(&format) || u32::try_from(format).is_ok_and(|f| UNRELEASED.contains(&f)) {
             return Ok(None);
         }
         let Some(raw) = elements else { return Ok(None) };
@@ -4168,9 +4174,11 @@ impl Model {
         }
         let mut v: Value = crate::memory::json(text, budget)?;
         let format = v.get("format").map_or(Some(0), Value::as_u64).ok_or("`format` must be a whole number")?;
-        if format > u64::from(FORMAT) {
+        if format > u64::from(FORMAT) || u32::try_from(format).is_ok_and(|f| UNRELEASED.contains(&f)) {
             return Err(format!(
-                "it was saved by a newer BIMCraft (file format {format}; this one reads up to {FORMAT}): update BIMCraft to open it"
+                "it was saved by a newer BIMCraft (file format {format}; this one reads up to {FORMAT}, not {}–{}): update BIMCraft to open it",
+                UNRELEASED.start(),
+                UNRELEASED.end()
             ));
         }
         if format < 4 {
@@ -4401,7 +4409,7 @@ impl Model {
         }
         // A column's `top_offset`, `attach_top` and `attach_base` (FORMAT 20 too) need nothing of a file of 19, which holds none: its
         // columns keep the top they had, at their top level or their height.
-        // A component's `tilt` (FORMAT 20 too) needs nothing of a file of 19, whose components all stand upright or on their plane.
+        // A component's `tilt` (FORMAT 33) needs nothing of a file of 20, whose components all stand upright or on their plane.
         // The project parameters' kinds and settings and `.bimparams` dictionaries (FORMAT 20, with the rooms) need nothing of
         // a file of 19, which holds none of them. The project's information does: a title value under one of its keys
         // (CLIENT, PROJECT_NUMBER, …) moves onto it, and a title block's field of such a key, which every title block has
