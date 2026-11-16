@@ -575,8 +575,11 @@ no sequence is dropped, and one that begins one waits for the next (`SEQUENCE_WA
 only when Keyboard Shortcuts assigned it (`action_for_chord`), at once and with no wait. Digits and a unit still make a typed length while a tool takes one,
 and a letter typed after them is the length's too, so a length never becomes a sequence.
 Bindings are read from `Event::Key`'s `physical_key`, never from `Event::Text`, so `Ctrl+D` and `Ctrl+В` are the same key and the two letters work on a
-Russian layout; modifiers match exactly (`matches_exact`), so `Ctrl+Shift+D` never runs `Ctrl+D`. Ctrl+C, Ctrl+X and Ctrl+V stay the clipboard's
-everywhere, on a view too, because egui-winit turns them into Copy, Cut and Paste events rather than key events. The family document's keys come the same way,
+Russian layout; modifiers match exactly (`matches_exact`), so `Ctrl+Shift+D` never runs `Ctrl+D`. Ctrl+C, Ctrl+X and Ctrl+V are the project's clipboard on a
+view (`paste.rs`): Copy and Cut take the selection as it is then, Paste brings it back as new elements, and a copy made on another level asks first whether it
+goes where it was on X and Y or follows the cursor to a click. A text field, the note editor and the palette fields keep the system's clipboard, since `keys`
+hands them the frame first; egui-winit turns the three into Copy, Cut and Paste events rather than key events, and a Paste event comes only while the system's
+clipboard holds text, so the release of a V with Ctrl is the fallback that always comes. The family document's keys come the same way,
 through `sequence_letters` (never while a text field has the keys), its two-letter actions are looked up in the same registry (`family_shortcut`), and its
 Ctrl chords (Save, Save As, Find, Undo, Redo) are the registry's too (`family_shortcut_action`). The registry's actions have stable ids
 (`cmd.move`, `ui.file.save_as`, `legacy.…`) and are saved in `settings.json` as `Settings::shortcuts` (`version`, `profile`, `bindings`), a full effective

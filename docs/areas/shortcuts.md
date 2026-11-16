@@ -31,7 +31,7 @@ Modifiers are matched **exactly**: `Ctrl+D` and `Ctrl+Shift+D` are different bin
 
 Sequences are typed plainly, without Ctrl (Cmd on a Mac): `W` and `A` for Wall, a letter at a time. A key held with Ctrl, Alt or Cmd is never part of a sequence: it runs only the chord Keyboard Shortcuts assigned it, and does nothing when none was assigned. Digits and a unit still make a typed length while a tool takes one, and a letter typed after them belongs to the length.
 
-Ctrl+C, Ctrl+X and Ctrl+V stay the system's clipboard: a text field, the note editor and the view all copy, cut and paste with them, and they never type a sequence. The letters `C`, `X` and `V` are typed plainly instead (`CO` Copy, `MV` Move, `TX` Text).
+Ctrl+C, Ctrl+X and Ctrl+V are the project's clipboard over a view: Copy and Cut take the selection as it is, and Paste brings it back as new elements. A copy made on one level and pasted on another asks first whether it goes where it was on X and Y, or follows the cursor to where you click. In a text field, the note editor and the palette fields they stay the system's clipboard, and they never type a sequence. The letters `C`, `X` and `V` are typed plainly instead (`CO` Copy, `MV` Move, `TX` Text).
 
 A plain letter that begins no sequence does nothing on the view. A letter that begins one waits for the next for two seconds; if the second makes no binding, the first is dropped and the second waits in its place.
 
