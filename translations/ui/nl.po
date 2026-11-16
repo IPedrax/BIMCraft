@@ -2073,7 +2073,7 @@ msgstr "Controle: fck"
 msgid "Checking for updates…"
 msgstr "Controleren op updates…"
 
-#: crates/core/src/commands.rs:3949
+#: crates/core/src/commands.rs:3952
 msgid "Checking the model"
 msgstr ""
 
@@ -3850,7 +3850,7 @@ msgstr "Gesloopt"
 msgid "Demolition"
 msgstr "Sloop"
 
-#: crates/core/src/commands.rs:13260
+#: crates/core/src/commands.rs:13264
 msgid "Dependent"
 msgstr "Afhankelijk"
 
@@ -4721,7 +4721,7 @@ msgstr "Elektrische instellingen"
 msgid "Electrical Settings: the voltages, distribution systems and wire types circuits and panels refer to; sections in mm²"
 msgstr "Elektrische instellingen: de spanningen, distributiesystemen en draadtypes waarnaar kringen en verdeelborden verwijzen; doorsneden in mm²"
 
-#: crates/core/src/commands.rs:2924
+#: crates/core/src/commands.rs:2927
 msgid "Elements"
 msgstr "Elementen"
 
@@ -10215,7 +10215,7 @@ msgid "Properties over the Project Browser, on the left, as at first"
 msgstr "Eigenschappen boven de Projectbrowser, links, zoals in het begin"
 
 #: crates/core/src/commands.rs:618
-#: crates/core/src/commands.rs:8811
+#: crates/core/src/commands.rs:8815
 msgid "Property Line"
 msgstr ""
 
@@ -10383,7 +10383,7 @@ msgstr ""
 msgid "Reading elements"
 msgstr ""
 
-#: crates/core/src/commands.rs:3906
+#: crates/core/src/commands.rs:3909
 msgid "Reading the file"
 msgstr ""
 
@@ -14002,11 +14002,11 @@ msgstr ""
 msgid "Unlock alignment"
 msgstr "Uitlijning ontgrendelen"
 
-#: crates/core/src/commands.rs:13431
+#: crates/core/src/commands.rs:13435
 msgid "Unnamed"
 msgstr "Naamloos"
 
-#: crates/core/src/commands.rs:3923
+#: crates/core/src/commands.rs:3926
 msgid "Unpacking the project"
 msgstr ""
 

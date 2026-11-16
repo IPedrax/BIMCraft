@@ -26,7 +26,16 @@ fn near(a: f64, b: f64, tol: f64) -> bool {
 #[test]
 fn the_file_reads_and_has_each_method() {
     let names: Vec<&str> = methods().iter().map(|m| m.standard.as_str()).collect();
-    for n in ["CELESC N-321.0003", "CEMIG ND-5.2", "FECOERGS REGD 035.01.06", "HIDROPAN RIC BT 2014", "ITC-BT-10"] {
+    for n in [
+        "CELESC N-321.0003",
+        "CEMIG ND-5.2",
+        "FECOERGS REGD 035.01.06",
+        "HIDROPAN RIC BT 2014",
+        "ITC-BT-10",
+        "RTIEBT 803.2.4.3",
+        "NF C 14-100 (SéQuélec GP 16)",
+        "NEC 220.84",
+    ] {
         assert!(names.contains(&n), "{n} missing from {names:?}");
     }
     assert_eq!(method("celesc").map(|m| m.standard.as_str()), Some("CELESC N-321.0003"), "a utility, in any case");
@@ -197,14 +206,28 @@ fn every_table_is_in_order_once_its_errata_are_taken() {
             let row = m.diversity.steps.iter().find(|s| s.0 == e.at);
             assert_eq!(row.map(|s| s.1), Some(e.printed), "{n}: the erratum at {} does not match the printed row", e.at);
         }
-        for (what, t) in [("area", m.dwelling.by_area.clone()), ("diversity", corrected(&m.diversity.steps, &m.diversity.errata))] {
+        // A coefficient for each dwelling falls as their number grows (and F(n) = n·C(n) may fall where a band begins); every other
+        // table grows with its key.
+        let falls = m.diversity.kind == DiversityKind::PerDwelling;
+        for (what, t, falls) in
+            [("area", m.dwelling.by_area.clone(), false), ("diversity", corrected(&m.diversity.steps, &m.diversity.errata), falls)]
+        {
             for w in t.windows(2) {
                 assert!(w[0].0 < w[1].0, "{n} {what}: keys out of order at {}", w[1].0);
-                assert!(w[0].1 <= w[1].1, "{n} {what}: {} gives less than {}", w[1].0, w[0].0);
+                if falls {
+                    assert!(w[1].1 <= w[0].1, "{n} {what}: {} gives more than {}", w[1].0, w[0].0);
+                } else {
+                    assert!(w[0].1 <= w[1].1, "{n} {what}: {} gives less than {}", w[1].0, w[0].0);
+                }
             }
             assert!(t.iter().all(|s| s.0.is_finite() && s.1.is_finite() && s.1 > 0.0), "{n} {what}");
         }
-        assert!(m.diversity.steps.iter().all(|s| s.1 <= s.0), "{n}: F above the number of dwellings");
+        if falls {
+            assert!(m.diversity.steps.iter().all(|s| s.1 <= 1.0), "{n}: a coefficient above 1");
+            assert!(m.diversity.beyond.is_none(), "{n}: a coefficient's last row holds past it, with no step");
+        } else {
+            assert!(m.diversity.steps.iter().all(|s| s.1 <= s.0), "{n}: F above the number of dwellings");
+        }
         if let Some(e) = &m.entrance {
             for w in e.rows.windows(2) {
                 assert_eq!(w[0].up_to, w[1].over, "{n}: the entrance table has a gap or an overlap at {}", w[0].up_to);
@@ -249,6 +272,35 @@ fn celesc_s_area_table_is_its_own_curve_to_the_cent() {
 }
 
 #[test]
+fn portugal_france_and_the_nec_weight_the_sum_of_the_dwellings_by_a_coefficient() {
+    // RTIEBT Quadro 803A: 20 dwellings of 2 to 6 rooms at 6.90 kVA and 0.43; the drop from 4 at 1.00 to 5 at 0.75.
+    let pt = method_of("RTIEBT 803.2.4.3");
+    let o = compute(pt, &Input { dwellings: vec![graded(20, "2-6 rooms")], ..Input::default() }).unwrap();
+    assert!(near(o.demand, 20.0 * 6.9 * 0.43, 1e-9), "{o:?}");
+    assert_eq!(o.coefficient, Some(0.43));
+    let four = compute(pt, &Input { dwellings: vec![graded(4, "2-6 rooms")], ..Input::default() }).unwrap();
+    let five = compute(pt, &Input { dwellings: vec![graded(5, "2-6 rooms")], ..Input::default() }).unwrap();
+    assert!(near(four.demand, 27.6, 1e-9) && near(five.demand, 25.875, 1e-9));
+    // A declared power under the grade's least is raised to it; mixed sizes weigh as their sum.
+    let o = compute(pt, &Input { dwellings: vec![declared(10, 13.8), graded(5, "1 room"), declared(1, 2.0)], ..Input::default() }).unwrap();
+    assert_eq!(o.raised, 1);
+    assert!(near(o.demand, (10.0 * 13.8 + 5.0 * 3.45 + 3.45) * 0.48, 1e-9), "{o:?}");
+    // GP 16: 20 dwellings of 3 to 5 rooms at 9 kVA and 0.49; past 50 the last row holds.
+    let fr = method_of("NF C 14-100 (SéQuélec GP 16)");
+    let o = compute(fr, &Input { dwellings: vec![graded(20, "3-5 rooms")], ..Input::default() }).unwrap();
+    assert!(near(o.demand, 20.0 * 9.0 * 0.49, 1e-9), "{o:?}");
+    let o = compute(fr, &Input { dwellings: vec![graded(120, "1-2 rooms")], ..Input::default() }).unwrap();
+    assert!(near(o.demand, 120.0 * 6.0 * 0.38, 1e-9), "{o:?}");
+    // NEC Table 220.84: 30 units of 20 kVA at 33 %, 100 units at 23 %, and none under 3.
+    let nec = method_of("NEC 220.84");
+    let o = compute(nec, &Input { dwellings: vec![declared(30, 20.0)], common_demand: 25.0, ..Input::default() }).unwrap();
+    assert!(near(o.demand, 30.0 * 20.0 * 0.33 + 25.0, 1e-9), "{o:?}");
+    let o = compute(nec, &Input { dwellings: vec![declared(100, 20.0)], ..Input::default() }).unwrap();
+    assert!(near(o.demand, 100.0 * 20.0 * 0.23, 1e-9), "{o:?}");
+    assert!(compute(nec, &Input { dwellings: vec![declared(2, 20.0)], ..Input::default() }).is_err());
+}
+
+#[test]
 fn a_method_is_data_and_another_country_s_reads_the_same() {
     let m: Method = serde_json::from_str(
         r#"{"standard": "Example", "country": "XX", "source": "a test", "unit": "kVA", "min_dwellings": 1, "mean_of": "area",
@@ -260,6 +312,24 @@ fn a_method_is_data_and_another_country_s_reads_the_same() {
     let o = compute(&m, &Input { dwellings: vec![alike(5, 60.0)], ..Input::default() }).unwrap();
     assert!(near(o.demand, (1.8 + 3.0 * 0.6) * 3.0, 1e-9), "{o:?}");
     assert!(serde_json::from_str::<Method>(r#"{"standard": "x", "colour": 1}"#).is_err(), "unknown keys are refused");
+}
+
+#[test]
+fn a_coefficient_for_each_dwelling_multiplies_their_number_and_its_last_row_holds_past_it() {
+    let m: Method = serde_json::from_str(
+        r#"{"standard": "Example", "country": "XX", "source": "a test", "unit": "kVA", "min_dwellings": 1, "mean_of": "demand",
+            "dwelling": {"source": "t", "least": 1.0},
+            "diversity": {"source": "t", "kind": "per_dwelling", "steps": [[4, 1], [9, 0.75], [14, 0.56]]},
+            "factor": 1.0, "factor_source": "t", "factor_on_common": false, "not_covered": ["nothing"]}"#,
+    )
+    .unwrap();
+    let total = |n: u32| compute(&m, &Input { dwellings: vec![declared(n, 6.9)], ..Input::default() }).unwrap();
+    assert!(near(total(4).demand, 4.0 * 6.9, 1e-9));
+    // The method's own drop where a band begins: five dwellings at 0.75 ask less than four at 1.
+    assert!(near(total(5).demand, 5.0 * 0.75 * 6.9, 1e-9) && total(5).demand < total(4).demand);
+    assert_eq!(total(5).coefficient, Some(0.75));
+    assert!(near(total(100).demand, 100.0 * 0.56 * 6.9, 1e-9), "the last row holds past it");
+    assert_eq!(method_of("ITC-BT-10").coefficient(30, false), None, "an equivalent count has no coefficient");
 }
 
 mod command {
@@ -305,6 +375,9 @@ mod command {
         );
         assert_eq!((r["unit"].as_str(), r["demand"].as_f64()), (Some("kW"), Some(123.85)));
         assert_eq!(r["entrance"], Value::Null);
+        assert_eq!(r["coefficient"], Value::Null, "an equivalent count has no coefficient");
+        let r = run(&mut s, json!({"standard": "RTIEBT 803.2.4.3", "dwellings": [{"count": 20, "grade": "2-6 rooms"}]}));
+        assert_eq!((r["coefficient"].as_f64(), r["diversity"].as_f64(), r["demand"].as_f64()), (Some(0.43), Some(8.6), Some(59.34)));
     }
 
     #[test]

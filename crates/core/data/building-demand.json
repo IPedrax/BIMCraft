@@ -1,5 +1,5 @@
 {
- "about": "A building's demand by a utility's or a country's own method, one entry for each, read by `building_demand` (building_demand.rs). A building of `n` dwellings asks D = factor·F(n)·d + (factor if `factor_on_common`, else 1)·common + special + commercial + premises, where d is one dwelling's demand: by its floor area (`mean_of: area`, the mean area weighted by the number of each, looked up in `by_area`, each row [up to m², demand], an area between two rows taking the next row up, and `above` the curve coefficient·A^exponent past the last row) or as declared (`mean_of: demand`, the mean of the dwellings' demands, a `grade` naming one, none under `least`). F(n), the `diversity`, is an equivalent number of dwellings, each row [up to n, F], `beyond` what each dwelling past the last row adds. `common` turns the common areas' installed load of a class (kW) into demand by bands of demand factors and a power factor; `premises` the loads other than dwellings by floor area. `entrance` is the supply a demand asks: each row over `over` up to `up_to`, the breaker and the columns as the table prints them. Tables keep the values as printed; `errata` corrects a row the same table in other standards prints otherwise, and `as_printed` uses the printed one. Every table names its source; a test fails on one that does not, on a table out of order and on an erratum that does not match the row. The numbers are the standards', the words are ours. A utility or a country is added as a new entry, never as code.",
+ "about": "A building's demand by a utility's or a country's own method, one entry for each, read by `building_demand` (building_demand.rs). A building of `n` dwellings asks D = factor·F(n)·d + (factor if `factor_on_common`, else 1)·common + special + commercial + premises, where d is one dwelling's demand: by its floor area (`mean_of: area`, the mean area weighted by the number of each, looked up in `by_area`, each row [up to m², demand], an area between two rows taking the next row up, and `above` the curve coefficient·A^exponent past the last row) or as declared (`mean_of: demand`, the mean of the dwellings' demands, a `grade` naming one, none under `least`). F(n), the `diversity`, is an equivalent number of dwellings, each row [up to n, F], `beyond` what each dwelling past the last row adds; or, with `kind: per_dwelling`, a coefficient for each dwelling, each row [up to n, C], F(n) = n·C(n) and the last row holding past it (such a total may fall where a band begins, as the method does). `common` turns the common areas' installed load of a class (kW) into demand by bands of demand factors and a power factor; `premises` the loads other than dwellings by floor area. `entrance` is the supply a demand asks: each row over `over` up to `up_to`, the breaker and the columns as the table prints them. Tables keep the values as printed; `errata` corrects a row the same table in other standards prints otherwise, and `as_printed` uses the printed one. Every table names its source; a test fails on one that does not, on a table out of order and on an erratum that does not match the row. The numbers are the standards', the words are ours. A utility or a country is added as a new entry, never as code.",
  "methods": [
   {
    "standard": "CELESC N-321.0003",
@@ -2600,6 +2600,155 @@
     "a building on the night tariff, whose coefficient is the number of dwellings (item 3.1)",
     "electric vehicle charging (item 5.2 and ITC-BT-52)",
     "industrial buildings (item 4.2)"
+   ]
+  },
+  {
+   "standard": "RTIEBT 803.2.4.3",
+   "utilities": ["E-REDES"],
+   "country": "PT",
+   "source": "Portugal's Regras Técnicas das Instalações Eléctricas de Baixa Tensão (RTIEBT, Portaria 949-A/2006, Diário da República 1.ª série no. 175, 1st supplement, 11/09/2006), section 803.2.4.3: the power of the collective installations and entries of a building is the sum of the installations' powers times a simultaneity factor by their number downstream. E-REDES's connection manual (9th edition, 2018, Quadro 2.3) takes the same factors.",
+   "unit": "kVA",
+   "min_dwellings": 2,
+   "mean_of": "demand",
+   "dwelling": {
+    "source": "RTIEBT 801.5.2.2 and 803.2.4.3.1 a) (p. 6682-(163) and (185)): a dwelling's least power by its number of rooms, single-phase at 230 V",
+    "grades": [
+     {"name": "1 room", "demand": 3.45, "source": "RTIEBT 801.5.2.2: one room, 3.45 kVA (15 A at 230 V)"},
+     {"name": "2-6 rooms", "demand": 6.9, "source": "RTIEBT 801.5.2.2: two to six rooms, 6.90 kVA (30 A)"},
+     {"name": "7+ rooms", "demand": 10.35, "source": "RTIEBT 801.5.2.2: more than six rooms, 10.35 kVA (45 A)"}
+    ],
+    "least": 3.45
+   },
+   "diversity": {
+    "source": "RTIEBT Quadro 803A (p. 6682-(185)), called by 803.2.4.3.2 a) and 803.4.6.6: the simultaneity factor for dwellings and their annexes by the number of installations downstream, 1.00 for 2 to 4 and 0.34 from 50",
+    "kind": "per_dwelling",
+    "steps": [
+     [4, 1.0],
+     [9, 0.75],
+     [14, 0.56],
+     [19, 0.48],
+     [24, 0.43],
+     [29, 0.4],
+     [34, 0.38],
+     [39, 0.37],
+     [49, 0.36],
+     [50, 0.34]
+    ]
+   },
+   "factor": 1.0,
+   "factor_source": "RTIEBT 803.2.4.3 applies no growth factor",
+   "factor_on_common": false,
+   "notes": [
+    "A dwelling's power is the one its project gives, never under its grade (803.2.4.3.1 a)); a dwelling three-phase only for three-phase equipment takes 10.35 kVA at least.",
+    "Annexes take 3.45 kVA (803.2.4.3.1 b)) and count as installations downstream: give them as a group with their `demand`, so that they are weighted with the dwellings.",
+    "Installations other than dwellings (shops, the common services) take the designer's factor, 1 without one (803.2.4.3.2 b)): give them in `commercial` or `common_demand`."
+   ],
+   "not_covered": [
+    "the conductors, protections and voltage drops of the risers and entries (803.4)",
+    "the connection to the network: E-REDES's DIT-C14-100 (portinhola, branch cables and fuses)",
+    "electric vehicle charging (Portaria 128/2026/1: 3 680 VA a point, its number by the parking spaces)"
+   ]
+  },
+  {
+   "standard": "NF C 14-100 (SéQuélec GP 16)",
+   "utilities": [],
+   "country": "FR",
+   "source": "France's NF C 14-100 (the supply from the network to the connection breaker), as SéQuélec's guide GP 16 (December 2017, the dossier of a collective connection that Enedis and the local distributors ask) works it: a building's power is the sum of its users' sizing powers times a weighting coefficient by the number of users downstream.",
+   "unit": "kVA",
+   "min_dwellings": 1,
+   "mean_of": "demand",
+   "dwelling": {
+    "source": "GP 16, p. 6, the least sizing powers of a dwelling without electric heating, by its main rooms or its floor area",
+    "grades": [
+     {"name": "student", "demand": 3.0, "source": "GP 16, p. 6: a student's dwelling up to 20 m², 3 kVA"},
+     {"name": "1-2 rooms", "demand": 6.0, "source": "GP 16, p. 6: 1 or 2 main rooms or up to 35 m², 6 kVA"},
+     {"name": "3-5 rooms", "demand": 9.0, "source": "GP 16, p. 6: 3 to 5 main rooms or 35 to 100 m², 9 kVA"},
+     {"name": "6+ rooms", "demand": 12.0, "source": "GP 16, p. 6: 6 main rooms or more, or over 100 m², 12 kVA"}
+    ],
+    "least": 3.0
+   },
+   "diversity": {
+    "source": "GP 16, p. 6: the weighting coefficient by the number of users downstream, 1 up to 4 and 0.38 from 50",
+    "kind": "per_dwelling",
+    "steps": [
+     [4, 1.0],
+     [9, 0.78],
+     [14, 0.63],
+     [19, 0.53],
+     [24, 0.49],
+     [29, 0.46],
+     [34, 0.44],
+     [39, 0.42],
+     [49, 0.41],
+     [50, 0.38]
+    ]
+   },
+   "factor": 1.0,
+   "factor_source": "GP 16 applies no growth factor",
+   "factor_on_common": false,
+   "notes": [
+    "The coefficient counts the users downstream; a user other than a dwelling at a limited power (a caretaker's flat, a shop) may be given as a group with its `demand`, so that it is weighted with the dwellings.",
+    "A declared `demand` above a grade's is taken as declared: the grades are the least, not the power asked."
+   ],
+   "not_covered": [
+    "dwellings with electric heating, which GP 16 (p. 7) sizes by its own expressions of the heating power installed",
+    "installations at a watched power (over 36 kVA), which GP 16 adds at the power they need",
+    "the conductors and the voltage drops of the riser and the branches (GP 16, pp. 5 and 8)"
+   ]
+  },
+  {
+   "standard": "NEC 220.84",
+   "utilities": [],
+   "country": "US",
+   "source": "NFPA 70, National Electrical Code, 2014 edition, 220.84 and Table 220.84 (the optional calculation for three or more multifamily dwelling units): the connected load of all the units, each worked out as 220.84(C) says, times a demand factor by their number; the house loads apart, by Part III. The 2026 edition moves Article 220's load calculations to Article 120 (120.84).",
+   "unit": "kVA",
+   "min_dwellings": 3,
+   "mean_of": "demand",
+   "dwelling": {
+    "source": "NEC 220.84(C): each unit's connected load (general lighting and receptacles by floor area, small-appliance and laundry circuits, appliances, cooking, heating or air conditioning), worked out by the designer and given here as its `demand`",
+    "least": 0.0
+   },
+   "diversity": {
+    "source": "NEC Table 220.84 (2014): the demand factor by the number of dwelling units, 45 % for 3 to 5 down to 23 % for 62 and over",
+    "kind": "per_dwelling",
+    "steps": [
+     [5, 0.45],
+     [7, 0.44],
+     [10, 0.43],
+     [11, 0.42],
+     [13, 0.41],
+     [15, 0.4],
+     [17, 0.39],
+     [20, 0.38],
+     [21, 0.37],
+     [23, 0.36],
+     [25, 0.35],
+     [27, 0.34],
+     [30, 0.33],
+     [31, 0.32],
+     [33, 0.31],
+     [36, 0.3],
+     [38, 0.29],
+     [42, 0.28],
+     [45, 0.27],
+     [50, 0.26],
+     [55, 0.25],
+     [61, 0.24],
+     [62, 0.23]
+    ]
+   },
+   "factor": 1.0,
+   "factor_source": "NEC 220.84 applies no growth factor",
+   "factor_on_common": false,
+   "notes": [
+    "Only where no unit is fed by more than one feeder, each unit has electric cooking and each has electric space heating, air conditioning or both (220.84(A)).",
+    "The house loads (corridor lighting, lifts, pumps) go in `common_demand`, worked out by Part III with its own demand factors (220.84(B)).",
+    "The 2026 edition changed what a unit's load counts (general lighting 2 VA/ft², a charger at its nameplate), not this table's bands as far as checked; give the unit's `demand` by the edition the jurisdiction adopted."
+   ],
+   "not_covered": [
+    "each unit's load itself (220.84(C), or 120.84 in the 2026 edition), which comes in as its `demand`",
+    "two dwelling units (220.85) and the exception for units without electric cooking (220.84(A)(2))",
+    "the neutral (220.61) and the service conductors and equipment the load asks"
    ]
   }
  ]

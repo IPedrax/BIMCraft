@@ -2817,11 +2817,14 @@ other_files(
         "Building Demand",
         "{utility | standard, dwellings: [{count, area | demand | grade}], common?: {class: kW}, common_demand?, special?, commercial?, \
          premises?: {use: m²}, as_printed?} the demand of a building of dwellings, for its supply, by the method of a `utility` or a \
-         `standard` (data/building-demand.json: CELESC N-321.0003, CEMIG ND-5.2, FECOERGS REGD 035.01.06, HIDROPAN RIC BT 2014, and \
-         Spain's ITC-BT-10; any other is refused until its entry is added). D = factor · F(n) · d + common + special + commercial + \
+         `standard` (data/building-demand.json: CELESC N-321.0003, CEMIG ND-5.2, FECOERGS REGD 035.01.06, HIDROPAN RIC BT 2014, \
+         Spain's ITC-BT-10, Portugal's RTIEBT 803.2.4.3, France's NF C 14-100 (SéQuélec GP 16) and the US NEC 220.84; any other is \
+         refused until its entry is added). D = factor · F(n) · d + common + special + commercial + \
          premises: d is one dwelling's demand, by the `area` (m²) of each group (the mean area weighted by `count`, looked up in the \
          method's table, an area between two rows taking the next one up) or, where the method takes it, each group's `demand` or a \
-         `grade` naming one (ITC-BT-10: basic, elevated); F(n) the method's diversity factor, an equivalent number of dwellings; factor \
+         `grade` naming one (ITC-BT-10: basic, elevated; RTIEBT: 1 room, 2-6 rooms, 7+ rooms; GP 16: student, 1-2 rooms, 3-5 rooms, \
+         6+ rooms); F(n) the method's diversity factor, an equivalent number of dwellings, or n times a `coefficient` for each \
+         dwelling where the method prints one (RTIEBT, GP 16, NEC 220.84, which so weigh the sum of the dwellings' demands); factor \
          its constant (1.2 for Celesc, Fecoergs and Hidropan, 1.4 for Cemig), on the common areas too where the method says (Celesc). \
          `common` is the common areas' installed load in kW by class (Celesc: lighting, outlets), turned into demand by the method's \
          bands; `common_demand` the common areas' demand worked out apart (lifts, pumps), `special` loads that count whole (an electric \
@@ -6847,6 +6850,7 @@ fn building_demand(_: &mut Session, p: &Value) -> R {
         "per_dwelling": r3(o.per_dwelling),
         "raised_to_least": o.raised,
         "diversity": r3(o.diversity),
+        "coefficient": o.coefficient,
         "factor": m.factor,
         "terms": {
             "dwellings": r3(o.terms.dwellings),

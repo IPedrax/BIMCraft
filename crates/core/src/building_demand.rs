@@ -11,7 +11,10 @@
 //! - `d` is one dwelling's demand: by its floor area, from a table and past its end a curve `c·A^e` (the Brazilian utilities, after
 //!   CODI's RTD-027), the mean area of dwellings of different sizes weighted by their number; or as declared, the mean of the
 //!   dwellings' own demands, none under a least (Spain's ITC-BT-10).
-//! - `F(n)` is an equivalent number of dwellings, a table by `n` and, past it, a step for each dwelling more.
+//! - `F(n)` is an equivalent number of dwellings, a table by `n` and, past it, a step for each dwelling more; or, where a method
+//!   prints a coefficient for each dwelling by bands of their number (Portugal, France, the US NEC), `n` times that coefficient, so
+//!   that `F(n) · d` is the coefficient times the sum of the dwellings' demands. Such a total falls where a band begins (four
+//!   dwellings at 1.00 ask more than five at 0.75): that is the method, not a misprint.
 //! - `factor` is a method's own constant (a growth of 1.2, Cemig's 1.4), on the common areas too where the method says so.
 //! - `common` is the common areas' demand: an installed load of a class (lighting, outlets) by bands of demand factors and a power
 //!   factor, where the method gives them, and what the designer worked out (lifts, pumps).
@@ -86,12 +89,25 @@ pub struct Dwelling {
     pub least: Option<f64>,
 }
 
+/// What a diversity table's values are.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DiversityKind {
+    /// An equivalent number of dwellings, F(n) itself (CODI's RTD-027, Spain's Tabla 1).
+    #[default]
+    EquivalentCount,
+    /// A coefficient for each dwelling, at most 1: F(n) = n · C(n), and the last row holds for every number past it.
+    PerDwelling,
+}
+
 /// The equivalent number of dwellings by their number.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Diversity {
     pub source: String,
-    /// [up to n, F]: a number takes the first row that reaches it.
+    #[serde(default)]
+    pub kind: DiversityKind,
+    /// [up to n, F] (or [up to n, C] for `per_dwelling`): a number takes the first row that reaches it.
     pub steps: Vec<(f64, f64)>,
     /// What each dwelling past the last row adds; the table ends there without it.
     #[serde(default)]
@@ -214,24 +230,38 @@ impl Method {
         }
     }
 
-    /// The equivalent number of dwellings for `n`, and the erratum it took, if any; `None` under the method's least number.
+    /// The equivalent number of dwellings for `n`, and the erratum it took, if any; `None` under the method's least number or past
+    /// the end of its table.
     pub fn diversity(&self, n: u32, as_printed: bool) -> Option<(f64, Option<&Erratum>)> {
         if n < self.min_dwellings {
             return None;
         }
         let n = f64::from(n);
         let d = &self.diversity;
-        match reach(&d.steps, n) {
-            Some((at, printed)) => {
-                let fix = d.errata.iter().find(|e| e.at == at).filter(|_| !as_printed);
-                Some((fix.map_or(printed, |e| e.value), fix))
-            }
-            None => {
+        let fixed = |at: f64, printed: f64| {
+            let fix = d.errata.iter().find(|e| e.at == at).filter(|_| !as_printed);
+            (fix.map_or(printed, |e| e.value), fix)
+        };
+        match (d.kind, reach(&d.steps, n)) {
+            (DiversityKind::EquivalentCount, Some((at, printed))) => Some(fixed(at, printed)),
+            (DiversityKind::EquivalentCount, None) => {
                 let (at, last) = d.steps.last().copied()?;
-                let fix = d.errata.iter().find(|e| e.at == at).filter(|_| !as_printed);
-                d.beyond.map(|b| (fix.map_or(last, |e| e.value) + (n - at) * b, None))
+                let (value, _) = fixed(at, last);
+                d.beyond.map(|b| (value + (n - at) * b, None))
+            }
+            (DiversityKind::PerDwelling, row) => {
+                let (at, printed) = row.or_else(|| d.steps.last().copied())?;
+                let (c, fix) = fixed(at, printed);
+                Some((n * c, fix))
             }
         }
+    }
+
+    /// The coefficient for each dwelling that `diversity` multiplied by `n`, for a method that prints one.
+    pub fn coefficient(&self, n: u32, as_printed: bool) -> Option<f64> {
+        (self.diversity.kind == DiversityKind::PerDwelling && n > 0)
+            .then(|| self.diversity(n, as_printed).map(|(f, _)| f / f64::from(n)))
+            .flatten()
     }
 
     /// The common areas' demand of an installed load `kw` of a class, in the method's unit.
@@ -298,6 +328,8 @@ pub struct Output<'a> {
     /// One dwelling's demand, the mean's.
     pub per_dwelling: f64,
     pub diversity: f64,
+    /// The coefficient for each dwelling, for a method that prints one.
+    pub coefficient: Option<f64>,
     pub terms: Terms,
     pub demand: f64,
     pub errata: Vec<&'a Erratum>,
@@ -381,6 +413,7 @@ pub fn compute<'a>(m: &'a Method, i: &Input) -> Result<Output<'a>, String> {
         mean_area,
         per_dwelling: per,
         diversity: f,
+        coefficient: m.coefficient(n, i.as_printed),
         terms,
         demand,
         errata: erratum.into_iter().collect(),
