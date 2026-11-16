@@ -28,7 +28,7 @@ use serde_json::{Value, json};
 
 use crate::icons::{self, Icon};
 use crate::lang::{self, t, tf};
-use crate::style::pal;
+use crate::style::{GuideStyle, pal};
 use crate::typeprops::{self, Head, Naming};
 use crate::{BimApp, Sheet, Status, Tool};
 
@@ -3809,6 +3809,23 @@ impl BimApp {
                     ui.label(t("Snap tolerance"));
                     ui.add(egui::Slider::new(&mut s.alignment_tolerance, 2.0..=32.0).suffix(" px"));
                 });
+                ui.horizontal(|ui| {
+                    let label = ui.label(t("Guide style"));
+                    ComboBox::from_id_salt("guide-style").selected_text(t(self.guide_style.name())).width(110.0).show_ui(ui, |ui| {
+                        for style in GuideStyle::ALL {
+                            ui.selectable_value(&mut self.guide_style, style, t(style.name()));
+                        }
+                    })
+                    .response
+                    .labelled_by(label.id)
+                    .on_hover_text(t("Refined draws solid plum guides and a pill badge; Classic the dashed magenta and its squares"));
+                });
+                ui.checkbox(&mut s.guides_from_grids, t("Guides from grids"))
+                    .on_hover_text(t("A structural grid near the cursor lends its own line and direction; off, grids cast nothing"));
+                ui.checkbox(&mut s.mark_on_hover, t("Mark on hover (0.45 s)"))
+                    .on_hover_text(t("Resting the pointer on a point or an edge marks it as a snap reference; Q does it at once"));
+                ui.checkbox(&mut s.guides_from_whole_model, t("Guides from the whole model"))
+                    .on_hover_text(t("Find guides from every wall and corner in the model, not only the drawing's own context and marked references"));
                 }
                 ui.separator();
                 ui.checkbox(&mut self.grid_snapping, t("Grid snapping"))

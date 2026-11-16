@@ -47,6 +47,7 @@ mod stairtype;
 pub use gpu::limits_for;
 mod graphics;
 mod groups;
+mod guide_refs;
 pub mod icons;
 mod inquiry;
 pub mod lang;
@@ -598,6 +599,8 @@ pub struct BimApp {
     background_grid_dialog: Option<background_grid::GridDialog>,
     /// Global grid snapping preference, independent of view graphics and templates.
     grid_snapping: bool,
+    /// How guides and the live drawing's aids are drawn (Manage > Snaps): the refined look, or the classic one to compare it with.
+    guide_style: style::GuideStyle,
     /// Whether Save and Save As write the project zipped (File > Settings > Files, the File menu): off, plain JSON.
     pub(crate) compressed_save: bool,
     /// Whether the 3D view's section box shows what it cuts filled (Settings > Performance): off, its faces are left hollow,
@@ -1543,6 +1546,7 @@ impl BimApp {
             scan_contrast: footer::HIGH_CONTRAST,
             background_grid_dialog: None,
             grid_snapping: false,
+            guide_style: style::GuideStyle::default(),
             compressed_save: false,
             cut_fills_3d: true,
             show_origin: true,
@@ -1858,6 +1862,12 @@ impl BimApp {
         };
         if let (Err(e), true) = (&result, matches!(id, "undo" | "redo")) {
             self.light_refused(e);
+        }
+        // A mark names what stood when it was made: undo or redo can take that away or move it.
+        if matches!(id, "undo" | "redo") && result.is_ok() {
+            self.canvas.pins.borrow_mut().clear();
+            self.canvas.start_edge = None;
+            self.canvas.wall_face = None;
         }
         // The core renames and drops the option with its set.
         self.active_option = self.session.option.clone();
@@ -2524,6 +2534,11 @@ impl BimApp {
         // F8 is the one function key for the guides. F11 is free: the system may use it for full screen.
         if pressed(Modifiers::NONE, Key::F8) {
             self.toggle_alignment_guides();
+        }
+        // Q marks the point or edge under the pointer as a temporary snap reference, before the first point too.
+        if pressed(Modifiers::NONE, Key::Q) && matches!(self.sheet, Sheet::Plan(_) | Sheet::Ceiling(_)) {
+            self.pin_under_cursor();
+            ctx.request_repaint();
         }
         let typed: String = ctx.input(|i| {
             i.events
@@ -3427,6 +3442,10 @@ impl BimApp {
     /// Escape: dismiss the error, drop the chain being drawn, else leave the tool, else clear the
     /// selection.
     fn escape(&mut self) {
+        // Esc drops the drawing's marked references with the points they were marked for.
+        self.canvas.pins.borrow_mut().clear();
+        self.canvas.start_edge = None;
+        self.canvas.wall_face = None;
         // A note's leader point clicked goes first, the Text tool staying on.
         if self.note_arrow.take().is_some() {
             self.status = Status::default();
@@ -3909,6 +3928,7 @@ impl BimApp {
         fresh.font_finder = self.font_finder;
         fresh.scan_contrast = self.scan_contrast;
         fresh.grid_snapping = self.grid_snapping;
+        fresh.guide_style = self.guide_style;
         fresh.compressed_save = self.compressed_save;
         fresh.cut_fills_3d = self.cut_fills_3d;
         (fresh.show_origin, fresh.show_view_name) = (self.show_origin, self.show_view_name);
