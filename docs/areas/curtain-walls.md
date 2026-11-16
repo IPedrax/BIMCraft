@@ -52,7 +52,8 @@ its own triangles. The scene still makes and keeps every part's triangles for th
 memory and draw work, not the scene's.
 
 An unedited part has no id of its own, only its `Address`: an agreed exception to the id rule, since a tower's façades would use up
-the six-digit ids and every change of length would rewrite them.
+the six-digit ids and every change of length would rewrite them. Its IFC GlobalId is a hash of the wall's GUID and its address
+(`ifc::part_global`), so it lasts while both do.
 
 ## Fit
 

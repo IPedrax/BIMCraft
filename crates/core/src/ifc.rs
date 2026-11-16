@@ -230,7 +230,7 @@ const DIGITS: &[u8; 64] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnop
 /// the same shape share one `IfcProductDefinitionShape`, so identical parts are written once. A part's GlobalId is made from
 /// the wall's GUID and its address on the pattern, so it stays through every export while the wall does. Returns the wall.
 fn curtain_wall(w: &mut Step, m: &Model, id: Id, wl: &crate::model::Wall, storey: u64) -> u64 {
-    use crate::curtain::{self, Address, PartKind};
+    use crate::curtain::{self, PartKind};
     let u = Axis::of(wl).tangent(0.0);
     let at = w.place(Some(storey), (wl.start.0, wl.start.1, wl.base_offset), Some(u));
     let ent =
@@ -241,6 +241,7 @@ fn curtain_wall(w: &mut Step, m: &Model, id: Id, wl: &crate::model::Wall, storey
     let mut shapes: Vec<Option<u64>> = vec![None; l.shapes.len()];
     let mut parts = Vec::with_capacity(l.parts.len());
     let mut by_material: BTreeMap<String, Vec<u64>> = BTreeMap::new();
+    let guid_of_wall = w.own.get(&id).map_or(u128::from(id), |g| g.as_u128());
     for p in &l.parts {
         let Some(shape) = l.shapes.get(p.shape as usize) else { continue };
         let material = shape.material_in(m).unwrap_or_default().to_string();
@@ -268,16 +269,7 @@ fn curtain_wall(w: &mut Step, m: &Model, id: Id, wl: &crate::model::Wall, storey
         let [along, up, across] = p.centre;
         let turned = (p.turn != 0.0).then(|| P2(p.turn.cos(), p.turn.sin()));
         let place = w.place(Some(at), (along, plane + across, up), turned);
-        // The address's three parts in one number: which kind of place, and its column and row.
-        let (kind, column, row) = match p.address {
-            Address::Cell { column, row } => (0u64, column, row),
-            Address::Vertical { column, row } => (1, column, row),
-            Address::Horizontal { column, row } => (2, column, row),
-            Address::Corner { column, row } => (3, column, row),
-            Address::VerticalGrid { column, row } | Address::HorizontalGrid { column, row } => (4, column, row),
-        };
-        let key = (kind << 60) ^ ((column as u32 as u64) << 30) ^ (row as u32 as u64);
-        let global = s(&guid(w.uid, CURTAIN_PART, w.part(id, key as usize)));
+        let global = s(&part_global(w.uid, guid_of_wall, p.address));
         let name = s(&shape.type_name);
         let part = match shape.kind {
             PartKind::Panel => {
@@ -308,6 +300,22 @@ fn curtain_wall(w: &mut Step, m: &Model, id: Id, wl: &crate::model::Wall, storey
         w.add(format!("IFCRELAGGREGATES({},$,$,$,#{ent},({}))", w.guid(PARTS, id), refs(&parts)));
     }
     ent
+}
+
+/// A curtain wall part's GlobalId, from a hash of the wall's GUID and the part's address (its kind, column and row), so it
+/// lasts while both do. Each is hashed whole: two addresses share one only by a 64-bit hash's chance, never as numbers packed
+/// into one's bits did.
+fn part_global(uid: u64, wall: u128, address: crate::curtain::Address) -> String {
+    use crate::curtain::Address;
+    let (kind, column, row) = match address {
+        Address::Cell { column, row } => (0, column, row),
+        Address::Vertical { column, row } => (1, column, row),
+        Address::Horizontal { column, row } => (2, column, row),
+        Address::Corner { column, row } => (3, column, row),
+        Address::VerticalGrid { column, row } => (4, column, row),
+        Address::HorizontalGrid { column, row } => (5, column, row),
+    };
+    guid(uid, CURTAIN_PART, key_of(&format!("{wall:032x}/{kind}/{column}/{row}")))
 }
 
 /// A 22-character IFC GlobalId, the same for the same model, role and element on every export.
@@ -2674,6 +2682,22 @@ mod tests {
     #[test]
     fn reals_always_carry_a_decimal_point() {
         assert_eq!([real(1500.0), real(0.00001), real(-0.0), real(-200.5), real(f64::NAN)], ["1500.", "0.00001", "0.", "-200.5", "0."]);
+    }
+
+    #[test]
+    fn curtain_parts_at_two_addresses_never_share_a_global_id() {
+        use crate::curtain::Address::{Cell, HorizontalGrid, Vertical, VerticalGrid};
+        let wall: u128 = 0x1234_5678_9abc_def0_0fed_cba9_8765_4321;
+        let g = |a| part_global(7, wall, a);
+        // Packed into one number, a column ran into the row's bits: these two shared a GlobalId.
+        assert_ne!(g(Cell { column: 0, row: 1 << 30 }), g(Cell { column: 1, row: 0 }));
+        // And a row past 32 bits lost its top ones.
+        assert_ne!(g(Cell { column: 0, row: 1 << 32 }), g(Cell { column: 0, row: 0 }));
+        assert_ne!(g(Cell { column: 2, row: 3 }), g(Vertical { column: 2, row: 3 }));
+        assert_ne!(g(VerticalGrid { column: 2, row: 0 }), g(HorizontalGrid { column: 2, row: 0 }));
+        // The same place on the same wall keeps its GlobalId; another wall's is another.
+        assert_eq!(g(Cell { column: 2, row: 3 }), g(Cell { column: 2, row: 3 }));
+        assert_ne!(g(Cell { column: 2, row: 3 }), part_global(7, wall + 1, Cell { column: 2, row: 3 }));
     }
 
     #[test]
