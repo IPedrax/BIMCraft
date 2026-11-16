@@ -1,8 +1,9 @@
 //! Curtain walls in the desktop: Edit Pattern, the window where a type's grid is made by adding segments and picking the panel
 //! and the mullion of each; and the message when a finished change leaves a wall's last segment too small for a panel.
 
+use std::cell::Cell;
 use std::collections::BTreeSet;
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 
 use bimcraft_core::curtain::{
     self, Address, Continuous, CurtainEdits, CurtainLayout, Direction, Fit, GridWay, Join, Justify, MullionPick, Way,
@@ -401,9 +402,23 @@ fn paint_edge(p: &egui::Painter, line: Rect, width: Option<f32>, selected: bool,
 /// How near a line, mm at least, the cursor must be for Tab to offer its mullion.
 pub(crate) const REACH: f64 = 60.0;
 
-/// Whether a place is on the wall: what stays picked while it is.
-pub(crate) fn part_is_there(m: &Model, w: &bimcraft_core::model::Wall, at: Address) -> bool {
-    curtain::pattern(m, w).is_some() && curtain::layout(m, w).has(at)
+/// The layout of the curtain wall last asked for, and the model it is of: a frame asks for the selected wall's many times, and
+/// the same model has the same.
+#[derive(Default)]
+pub(crate) struct Laid(Cell<Option<(Weak<Model>, Id, Arc<curtain::Layout>)>>);
+
+impl Laid {
+    /// Wall `id`'s layout in `m`, worked out again only for another model or another wall; a wall that isn't a curtain wall
+    /// has none.
+    pub(crate) fn of(&self, m: &Arc<Model>, id: Id) -> Arc<curtain::Layout> {
+        let kept = self.0.take().filter(|(was, of, _)| *of == id && was.ptr_eq(&Arc::downgrade(m)));
+        let l = match kept {
+            Some((_, _, l)) => l,
+            None => Arc::new(m.wall(id).map(|w| curtain::layout(m, w)).unwrap_or_default()),
+        };
+        self.0.set(Some((Arc::downgrade(m), id, Arc::clone(&l))));
+        l
+    }
 }
 
 /// Which curtain wall Tab goes into the parts of: the one alone in `selection` if it's in `under`, else, when `free` lets it, the
@@ -417,14 +432,14 @@ pub(crate) fn tab_wall(m: &Model, selection: &[Id], under: &[Id], hovered: Optio
     }
 }
 
-/// The curtain wall `id`, and what's at the plan's cut plane under `at`.
-pub(crate) fn parts_under(m: &Model, view: Id, id: Id, at: P2, scale: f64) -> Option<(Id, Vec<Address>)> {
+/// The curtain wall `id`, and what's at the plan's cut plane under `at`. `l` is its layout.
+pub(crate) fn parts_under(m: &Model, l: &curtain::Layout, view: Id, id: Id, at: P2, scale: f64) -> Option<(Id, Vec<Address>)> {
     let w = m.wall(id).filter(|w| curtain::pattern(m, w).is_some())?;
     let axis = walls::Axis::of(w);
     let (along, _) = axis.project(at);
     let up = m.plan_range(view).cut - m.own_base(w);
     let reach = REACH.max(f64::from(crate::canvas::PICK) / scale.max(f64::MIN_POSITIVE));
-    Some((id, shown_parts(m, view, curtain::layout(m, w).at(along, up, reach))))
+    Some((id, shown_parts(m, view, l.at(along, up, reach))))
 }
 
 /// Of the parts in `list`, those view `view` draws: Tab goes only through what can be seen.
@@ -436,13 +451,21 @@ pub(crate) fn shown_parts(m: &Model, view: Id, mut list: Vec<Address>) -> Vec<Ad
 }
 
 /// Under the cursor in a section or an elevation, or a 3D view's camera: the selected curtain wall `id`'s parts on the ray
-/// `from` to `to`, as view `view` draws them. `mm_per_pixel`: how much of the wall a pixel of the view covers there, so a grid line
-/// and a thin mullion can be reached however far out the view is.
-pub(crate) fn parts_on_ray(m: &Model, view: Id, id: Id, from: [f64; 3], to: [f64; 3], mm_per_pixel: f64) -> Option<Vec<Address>> {
+/// `from` to `to`, as view `view` draws them, `l` its layout. `mm_per_pixel`: how much of the wall a pixel of the view covers there,
+/// so a grid line and a thin mullion can be reached however far out the view is.
+pub(crate) fn parts_on_ray(
+    m: &Model,
+    l: &curtain::Layout,
+    view: Id,
+    id: Id,
+    from: [f64; 3],
+    to: [f64; 3],
+    mm_per_pixel: f64,
+) -> Option<Vec<Address>> {
     let w = m.wall(id).filter(|w| curtain::pattern(m, w).is_some())?;
     let (along, up) = curtain::on_plane(m, w, from, to)?;
     let reach = REACH.max(f64::from(crate::canvas::PICK) * mm_per_pixel);
-    Some(shown_parts(m, view, curtain::layout(m, w).at(along, up, reach)))
+    Some(shown_parts(m, view, l.at(along, up, reach)))
 }
 
 /// The curtain wall alone selected, if Tab can go through its parts now.
@@ -527,10 +550,10 @@ pub(crate) fn next_part(now: Option<(Id, Address)>, id: Id, list: &[Address]) ->
 
 impl BimApp {
     /// The part Tab went to: what it is, another type or none, what its pattern says, or a wall in its place.
-    pub(crate) fn curtain_part_panel(&mut self, ui: &mut Ui, model: &Model) {
+    pub(crate) fn curtain_part_panel(&mut self, ui: &mut Ui, model: &Arc<Model>) {
         let Some((id, at)) = self.curtain_part else { return };
         let Some(w) = model.wall(id) else { return };
-        let l = curtain::layout(model, w);
+        let l = self.curtain_laid.of(model, id);
         if at.is_grid() {
             self.curtain_grid_properties(ui, &l, at);
             ui.separator();

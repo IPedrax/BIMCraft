@@ -53,7 +53,7 @@ fn corner_of(l: &Layout, column: i64) -> Option<&curtain::Part> {
 
 /// The corners of a part, from above, on the plan.
 fn ring(s: &Session, id: u64, at: Address) -> [P2; 4] {
-    curtain::plan_ring(&s.model, wall_of(s, id), at).unwrap()
+    curtain::plan_ring(&layout_of(s, id), &s.model, wall_of(s, id), at).unwrap()
 }
 
 // ---------- corner mullions ----------
@@ -602,8 +602,8 @@ fn what_is_at_a_point_lists_the_mullion_the_grid_and_the_cell() {
     // A wall's own edge is no grid to move.
     assert!(l.at(10.0, 500.0, 60.0).iter().all(|a| !matches!(a, Address::VerticalGrid { .. })));
     // Grids mark on a plan and on the face of the wall.
-    assert!(curtain::plan_ring(&s.model, wall_of(&s, id), Address::VerticalGrid { column, row: 0 }).is_some());
-    let face = curtain::face_ring(&s.model, wall_of(&s, id), Address::HorizontalGrid { column: 0, row: l.rows[1].index }).unwrap();
+    assert!(curtain::plan_ring(&l, &s.model, wall_of(&s, id), Address::VerticalGrid { column, row: 0 }).is_some());
+    let face = curtain::face_ring(&l, &s.model, wall_of(&s, id), Address::HorizontalGrid { column: 0, row: l.rows[1].index }).unwrap();
     assert!((face[1][0] - face[0][0]).abs() > 3000.0, "a horizontal grid runs the wall's length");
     assert_eq!(l.grid_at(Address::VerticalGrid { column, row: 0 }), Some(2000.0));
 }
@@ -680,7 +680,7 @@ fn rings_of(s: &Session, id: u64, row_of: usize) -> Vec<([P2; 4], Address)> {
             Address::Cell { row: r, .. } | Address::Vertical { row: r, .. } | Address::Horizontal { row: r, .. } => r == row,
             _ => false,
         })
-        .filter_map(|p| Some((curtain::plan_ring(&s.model, wall_of(s, id), p.address)?, p.address)))
+        .filter_map(|p| Some((curtain::plan_ring(&l, &s.model, wall_of(s, id), p.address)?, p.address)))
         .collect()
 }
 
@@ -1225,9 +1225,9 @@ fn a_section_shows_no_line_across_a_continuous_mullion_where_two_runs_meet() {
 fn a_grid_line_picked_shows_only_the_stretches_still_on_it() {
     let (mut s, id) = three_by_three();
     let grid = Address::VerticalGrid { column: 1, row: 0 };
-    assert_eq!(curtain::face_rings(&s.model, wall_of(&s, id), grid).len(), 1, "the whole line, in one");
+    assert_eq!(curtain::face_rings(&layout_of(&s, id), &s.model, wall_of(&s, id), grid).len(), 1, "the whole line, in one");
     run(&mut s, "curtain_segment", json!({"wall": id, "parts": [v(1, 1)]}));
-    let rings = curtain::face_rings(&s.model, wall_of(&s, id), grid);
+    let rings = curtain::face_rings(&layout_of(&s, id), &s.model, wall_of(&s, id), grid);
     assert_eq!(rings.len(), 2, "either side of the merged panel");
     assert_eq!((rings[0][0][2], rings[0][2][2]), (0.0, 1000.0));
     assert_eq!((rings[1][0][2], rings[1][2][2]), (2000.0, 3000.0));

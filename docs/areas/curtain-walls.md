@@ -207,6 +207,9 @@ be seen. Under the cursor, what Tab would go to next is marked in the darker blu
   finished and never during a drag, once for a wall while it stays so, one message for many walls, and not for what a project opened
   with. Remove last interior grid sets `absorb_columns` or `absorb_rows`; I will fix it myself leaves the wall, and `inspect` keeps
   warning. Agents get the same words in the `wall` reply's `warning` and in `Model::warnings`.
+- **The layout a frame uses:** `curtain::Laid` keeps the last wall's layout while the model is the same `Arc`, so the part under the
+  cursor, the marks of the parts picked and Properties don't work it out again each frame; `plan_ring`, `face_rings` and the pickers
+  take it. Add/Remove Segments' aim still works it out each frame while that tool is on.
 
 ## Schedules and pens
 

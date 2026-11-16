@@ -768,6 +768,8 @@ pub struct BimApp {
     curtain_aim: Option<(Id, bimcraft_core::curtain::Address)>,
     /// The stretch of a grid line Add/Remove Segments would take off or put back.
     curtain_segment_hover: Option<(Id, bimcraft_core::curtain::Address)>,
+    /// The layout of the curtain wall a frame works with, kept while the model is the same.
+    curtain_laid: curtain::Laid,
     /// The model the malformed curtain walls were last looked for in, those it had, and those being asked about.
     curtain_seen: Option<Arc<Model>>,
     curtain_known: std::collections::BTreeSet<Id>,
@@ -1609,6 +1611,7 @@ impl BimApp {
             curtain_hover: None,
             curtain_aim: None,
             curtain_segment_hover: None,
+            curtain_laid: Default::default(),
             curtain_seen: None,
             curtain_known: Default::default(),
             curtain_asking: Default::default(),
@@ -2283,8 +2286,7 @@ impl BimApp {
         // What's selected is the model's elements, and Site's points (by their library ids).
         self.selection.retain(|id| m.elements.contains_key(id) || bimcraft_core::coordinates::Point::of(m, *id).is_some());
         let selected = self.selection.as_slice();
-        self.curtain_part =
-            self.curtain_part.filter(|(id, at)| selected == [*id] && m.wall(*id).is_some_and(|w| curtain::part_is_there(m, w, *at)));
+        self.curtain_part = self.curtain_part.filter(|(id, at)| selected == [*id] && self.curtain_laid.of(m, *id).has(*at));
         if self.curtain_part.is_none() {
             self.curtain_more.clear();
         }

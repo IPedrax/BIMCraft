@@ -2052,9 +2052,9 @@ pub fn on_plane(m: &Model, w: &Wall, a: [f64; 3], b: [f64; 3]) -> Option<(f64, f
     Some(((P2(at(0), at(1)) - o).dot(u), at(2) - m.own_base(w)))
 }
 
-/// What marks a place on a plan: its part's or its extent's corners, from above.
-pub fn plan_ring(m: &Model, w: &Wall, at: Address) -> Option<[P2; 4]> {
-    let l = layout(m, w);
+/// What marks a place on a plan: its part's or its extent's corners, from above. `l` is the wall's [`layout`], which a
+/// front end keeps from frame to frame.
+pub fn plan_ring(l: &Layout, m: &Model, w: &Wall, at: Address) -> Option<[P2; 4]> {
     let [u0, u1, ..] = l.extent(at)?;
     let part = l.parts.iter().find(|p| p.address == at);
     let shape = part.and_then(|p| l.shapes.get(p.shape as usize));
@@ -2140,11 +2140,10 @@ pub fn grid_place(m: &Model, w: &Wall, way: GridWay, along: f64, up: f64) -> Opt
 
 /// What marks a place in 3D, as [`face_ring`], but for a grid line: a ring for each stretch of it still there, a segment taken off
 /// leaving a gap.
-pub fn face_rings(m: &Model, w: &Wall, at: Address) -> Vec<[[f64; 3]; 4]> {
+pub fn face_rings(l: &Layout, m: &Model, w: &Wall, at: Address) -> Vec<[[f64; 3]; 4]> {
     if !at.is_grid() {
-        return face_ring(m, w, at).into_iter().collect();
+        return face_ring(l, m, w, at).into_iter().collect();
     }
-    let l = layout(m, w);
     let Some([u0, u1, v0, v1]) = l.extent(at) else { return Vec::new() };
     let (axis, plane, base) = (Axis::of(w), grid_plane(m, w), m.own_base(w));
     let c = |along: f64, up: f64| {
@@ -2176,9 +2175,9 @@ pub fn face_rings(m: &Model, w: &Wall, at: Address) -> Vec<[[f64; 3]; 4]> {
         .collect()
 }
 
-/// What marks a place in 3D: its extent's corners on the wall's grid plane.
-pub fn face_ring(m: &Model, w: &Wall, at: Address) -> Option<[[f64; 3]; 4]> {
-    let [u0, u1, v0, v1] = layout(m, w).extent(at)?;
+/// What marks a place in 3D: its extent's corners on the wall's grid plane. `l` is the wall's [`layout`].
+pub fn face_ring(l: &Layout, m: &Model, w: &Wall, at: Address) -> Option<[[f64; 3]; 4]> {
+    let [u0, u1, v0, v1] = l.extent(at)?;
     let (axis, plane, base) = (Axis::of(w), grid_plane(m, w), m.own_base(w));
     let c = |along: f64, up: f64| {
         let q = axis.at(along, plane);

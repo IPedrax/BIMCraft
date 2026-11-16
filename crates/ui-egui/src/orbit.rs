@@ -1864,7 +1864,7 @@ impl BimApp {
             && let Some((along, up)) = bimcraft_core::curtain::on_plane(&model, w, cam.point_at(px(at), 0.0), cam.point_at(px(at), 1000.0))
         {
             let reach = crate::curtain::REACH.max(f64::from(crate::canvas::PICK) * wall_mm_per_pixel(&cam, &model, w, along, up));
-            let list = bimcraft_core::curtain::layout(&model, w).at(along, up, reach);
+            let list = self.curtain_laid.of(&model, id).at(along, up, reach);
             let list = match model.default_3d() {
                 Some(view) => crate::curtain::shown_parts(&model, view, list),
                 None => list,
@@ -2063,7 +2063,7 @@ impl BimApp {
             let w = model.wall(id)?;
             let (along, up) = bimcraft_core::curtain::on_plane(&model, w, cam.point_at(px(at), 0.0), cam.point_at(px(at), 1000.0))?;
             let reach = crate::curtain::REACH.max(f64::from(crate::canvas::PICK) * wall_mm_per_pixel(&cam, &model, w, along, up));
-            let list = bimcraft_core::curtain::layout(&model, w).at(along, up, reach);
+            let list = self.curtain_laid.of(&model, id).at(along, up, reach);
             Some((
                 id,
                 match model.default_3d() {
@@ -2074,13 +2074,15 @@ impl BimApp {
         });
         self.curtain_aim = under_cursor.and_then(|(id, list)| crate::curtain::next_part(self.curtain_part, id, &list));
         if let Some((id, part)) = self.curtain_aim {
-            for ring in model.wall(id).map_or_else(Vec::new, |w| bimcraft_core::curtain::face_rings(&model, w, part)) {
+            let l = self.curtain_laid.of(&model, id);
+            for ring in model.wall(id).map_or_else(Vec::new, |w| bimcraft_core::curtain::face_rings(&l, &model, w, part)) {
                 crate::curtain::mark_part(&p, ring.iter().map(|q| screen(*q)).collect(), false);
             }
         }
         if let Some((id, first)) = self.curtain_part {
+            let l = self.curtain_laid.of(&model, id);
             for part in std::iter::once(first).chain(self.curtain_more.iter().copied().filter(|a| *a != first)) {
-                for ring in model.wall(id).map_or_else(Vec::new, |w| bimcraft_core::curtain::face_rings(&model, w, part)) {
+                for ring in model.wall(id).map_or_else(Vec::new, |w| bimcraft_core::curtain::face_rings(&l, &model, w, part)) {
                     crate::curtain::mark_part(&p, ring.iter().map(|q| screen(*q)).collect(), true);
                 }
             }

@@ -216,6 +216,23 @@ fn tall_wall(h: &Harness<BimApp>) -> Id {
     walls(h).iter().find(|w| w.1.type_name == "Tall").map(|w| w.0).unwrap()
 }
 
+#[test]
+fn a_curtain_walls_layout_is_worked_out_once_for_each_model() {
+    let mut h = app(TALL);
+    let id = tall_wall(&h);
+    let laid = crate::curtain::Laid::default();
+    let m = h.state().session.model.clone();
+    let first = laid.of(&m, id);
+    assert!(std::sync::Arc::ptr_eq(&first, &laid.of(&m, id)), "the same model: kept");
+    assert_eq!(*first, bimcraft_core::curtain::layout(&m, m.wall(id).unwrap()));
+    h.state_mut().run("curtain_grid", serde_json::json!({"wall": id, "way": "vertical", "at": 1500}));
+    let m = h.state().session.model.clone();
+    let now = laid.of(&m, id);
+    assert_eq!(*now, bimcraft_core::curtain::layout(&m, m.wall(id).unwrap()), "a new model: worked out again");
+    assert_ne!(*now, *first);
+    assert_eq!(*laid.of(&m, 0), bimcraft_core::curtain::Layout::default(), "no such wall, no layout");
+}
+
 /// The wall selected, the cursor on it at `along`, and Tab pressed `times` times.
 fn tab_to(h: &mut Harness<BimApp>, along: f64, times: usize) {
     let id = tall_wall(h);
@@ -682,9 +699,10 @@ fn tab_reaches_a_grid_line_in_a_section_far_zoomed_out() {
     let m = h.state().session.model.clone();
     let w = m.wall(id).unwrap();
     // 40 px a metre: a mullion is two pixels, and six pixels off the line is 150 mm.
-    let list = crate::curtain::parts_on_ray(&m, view, id, ray(w, 2000.0 + 140.0).0, ray(w, 2000.0 + 140.0).1, 25.0).unwrap();
+    let l = bimcraft_core::curtain::layout(&m, w);
+    let list = crate::curtain::parts_on_ray(&m, &l, view, id, ray(w, 2000.0 + 140.0).0, ray(w, 2000.0 + 140.0).1, 25.0).unwrap();
     assert!(list.iter().any(|a| matches!(a, VerticalGrid { .. })), "{list:?}");
-    let near = crate::curtain::parts_on_ray(&m, view, id, ray(w, 2000.0 + 140.0).0, ray(w, 2000.0 + 140.0).1, 1.0).unwrap();
+    let near = crate::curtain::parts_on_ray(&m, &l, view, id, ray(w, 2000.0 + 140.0).0, ray(w, 2000.0 + 140.0).1, 1.0).unwrap();
     assert!(!near.iter().any(|a| matches!(a, VerticalGrid { .. })), "close in it's only 60 mm: {near:?}");
 }
 

@@ -1601,7 +1601,7 @@ impl BimApp {
         let on_cursor = c.under.get(c.cycle % c.under.len().max(1)).copied();
         let parts = local.filter(|_| tabbed && !reference_tabbed && !segment_tabbed).and_then(|q| {
             let id = crate::curtain::tab_wall(&model, &self.selection, &c.under, on_cursor, free)?;
-            crate::curtain::parts_under(&model, key, id, view.mm(q), view.scale)
+            crate::curtain::parts_under(&model, &self.curtain_laid.of(&model, id), key, id, view.mm(q), view.scale)
         });
         if let Some((id, list)) = parts {
             self.curtain_part = crate::curtain::next_part(self.curtain_part, id, &list);
@@ -1873,10 +1873,11 @@ impl BimApp {
         }
         let under_cursor = crate::curtain::wall_to_tab(&model, &self.selection, &self.tool)
             .zip(self.canvas.cursor)
-            .and_then(|(id, q)| crate::curtain::parts_under(&model, key, id, q, view.scale));
+            .and_then(|(id, q)| crate::curtain::parts_under(&model, &self.curtain_laid.of(&model, id), key, id, q, view.scale));
         self.curtain_part_aim(under_cursor);
         let plan_mark = |p: &egui::Painter, id: Id, at, picked: bool| {
-            if let Some(ring) = model.wall(id).and_then(|w| bimcraft_core::curtain::plan_ring(&model, w, at)) {
+            let l = self.curtain_laid.of(&model, id);
+            if let Some(ring) = model.wall(id).and_then(|w| bimcraft_core::curtain::plan_ring(&l, &model, w, at)) {
                 crate::curtain::mark_part(p, ring.iter().map(|q| pos(rect.min, view.px(*q))).collect(), picked);
             }
         };

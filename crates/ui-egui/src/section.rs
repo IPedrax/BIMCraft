@@ -317,8 +317,9 @@ impl BimApp {
             && crate::curtain::tab_wall(&model, &self.selection, &[wall], Some(wall), self.tool == Tool::Modify) == Some(wall)
             && let Some((cam, _)) = render::section_camera(&model, id, view)
             && let at = (f64::from(q.0), f64::from(q.1))
+            && let laid = self.curtain_laid.of(&model, wall)
             && let Some(list) =
-                crate::curtain::parts_on_ray(&model, id, wall, cam.point_at(at, 0.0), cam.point_at(at, 1000.0), 1.0 / view.scale)
+                crate::curtain::parts_on_ray(&model, &laid, id, wall, cam.point_at(at, 0.0), cam.point_at(at, 1000.0), 1.0 / view.scale)
         {
             self.curtain_part = crate::curtain::next_part(self.curtain_part, wall, &list);
             self.curtain_more.clear();
@@ -387,13 +388,22 @@ impl BimApp {
             }
             let aim = crate::curtain::wall_to_tab(&model, &self.selection, &self.tool).zip(local).and_then(|(wall, q)| {
                 let at = (f64::from(q.0), f64::from(q.1));
-                let list =
-                    crate::curtain::parts_on_ray(&model, id, wall, cam.point_at(at, 0.0), cam.point_at(at, 1000.0), 1.0 / view.scale)?;
+                let laid = self.curtain_laid.of(&model, wall);
+                let list = crate::curtain::parts_on_ray(
+                    &model,
+                    &laid,
+                    id,
+                    wall,
+                    cam.point_at(at, 0.0),
+                    cam.point_at(at, 1000.0),
+                    1.0 / view.scale,
+                )?;
                 Some((wall, list))
             });
             self.curtain_part_aim(aim);
             let face_mark = |p: &egui::Painter, wall: Id, part, picked: bool| {
-                for ring in model.wall(wall).map_or_else(Vec::new, |w| bimcraft_core::curtain::face_rings(&model, w, part)) {
+                let l = self.curtain_laid.of(&model, wall);
+                for ring in model.wall(wall).map_or_else(Vec::new, |w| bimcraft_core::curtain::face_rings(&l, &model, w, part)) {
                     crate::curtain::mark_part(p, ring.iter().map(|c| screen(*c)).collect(), picked);
                 }
             };
