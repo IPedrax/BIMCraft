@@ -969,7 +969,7 @@ msgstr "Ancrage"
 msgid "And:"
 msgstr "Et:"
 
-#: crates/core/src/snap.rs:72
+#: crates/core/src/snap.rs:71
 #: crates/ui-egui/src/adaptive_editor.rs:531
 #: crates/ui-egui/src/coordinates.rs:625
 #: crates/ui-egui/src/editor/nested.rs:297
@@ -1019,7 +1019,7 @@ msgstr "Cote angulaire: choisir deux lignes qui se rejoignent, puis cliquer à l
 msgid "Annotate"
 msgstr "Annoter"
 
-#: crates/core/src/snap.rs:71
+#: crates/core/src/snap.rs:70
 msgid "Annotation Anchor"
 msgstr ""
 
@@ -4987,7 +4987,7 @@ msgstr "Longueur de la zone d'extrémité"
 msgid "End zone spacing"
 msgstr "Espacement de la zone d'extrémité"
 
-#: crates/core/src/snap.rs:62
+#: crates/core/src/snap.rs:61
 msgid "Endpoint"
 msgstr "Extrémité"
 
@@ -6568,7 +6568,7 @@ msgstr ""
 msgid "Internal origin"
 msgstr ""
 
-#: crates/core/src/snap.rs:64
+#: crates/core/src/snap.rs:63
 msgid "Intersection"
 msgstr "Intersection"
 
@@ -7756,7 +7756,7 @@ msgstr "Mètres"
 msgid "Middle of the text"
 msgstr "Milieu du texte"
 
-#: crates/core/src/snap.rs:63
+#: crates/core/src/snap.rs:62
 msgid "Midpoint"
 msgstr "Milieu"
 
@@ -8255,7 +8255,7 @@ msgstr ""
 msgid "Navigator"
 msgstr "Navigateur"
 
-#: crates/core/src/snap.rs:69
+#: crates/core/src/snap.rs:68
 msgid "Nearest"
 msgstr "Plus proche"
 
@@ -9348,7 +9348,7 @@ msgstr "Performances"
 msgid "Perimeter"
 msgstr "Périmètre"
 
-#: crates/core/src/snap.rs:66
+#: crates/core/src/snap.rs:65
 msgid "Perpendicular"
 msgstr "Perpendiculaire"
 
@@ -10513,7 +10513,7 @@ msgstr "{} non utilisés purgés."
 msgid "Put a view on this sheet: one not on a sheet yet"
 msgstr "Placer sur cette feuille une vue qui n'est pas encore sur une feuille"
 
-#: crates/core/src/snap.rs:67
+#: crates/core/src/snap.rs:66
 msgid "Quadrant"
 msgstr "Quadrant"
 
@@ -12995,7 +12995,7 @@ msgstr "Retire ce que rien dans le projet n'utilise. Chaque catégorie garde un 
 msgid "Takes up a shaped top's falls: one layer at most"
 msgstr "Absorbe les pentes d'un dessus modelé: une couche au plus"
 
-#: crates/core/src/snap.rs:68
+#: crates/core/src/snap.rs:67
 msgid "Tangent"
 msgstr "Tangente"
 

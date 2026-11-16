@@ -1661,10 +1661,10 @@ impl BimApp {
         if !level.is_some_and(|(id, ..)| o.grip.is_some_and(|(g, _)| g == id)) {
             o.grip = None;
         }
-        // Where the held grip's edge is now: over the level's plane, under the pointer, tidied of float noise.
+        // Where the held grip's edge is now: over the level's plane, under the pointer, to 10 mm.
         let regripped = match (level, o.grip, latest) {
             (Some((_, z, extent)), Some((_, k)), Some(now)) => cam.on_plane(px(now), z).map(|p| {
-                let round = |v: f64| (v * 100.0).round() / 100.0;
+                let round = |v: f64| (v / 10.0).round() * 10.0;
                 geom::move_edge(extent, k, P2(round(p[0]), round(p[1])))
             }),
             _ => None,

@@ -969,7 +969,7 @@ msgstr ""
 msgid "And:"
 msgstr ""
 
-#: crates/core/src/snap.rs:72
+#: crates/core/src/snap.rs:71
 #: crates/ui-egui/src/adaptive_editor.rs:531
 #: crates/ui-egui/src/coordinates.rs:625
 #: crates/ui-egui/src/editor/nested.rs:297
@@ -1019,7 +1019,7 @@ msgstr ""
 msgid "Annotate"
 msgstr ""
 
-#: crates/core/src/snap.rs:71
+#: crates/core/src/snap.rs:70
 msgid "Annotation Anchor"
 msgstr ""
 
@@ -4987,7 +4987,7 @@ msgstr ""
 msgid "End zone spacing"
 msgstr ""
 
-#: crates/core/src/snap.rs:62
+#: crates/core/src/snap.rs:61
 msgid "Endpoint"
 msgstr ""
 
@@ -6568,7 +6568,7 @@ msgstr ""
 msgid "Internal origin"
 msgstr ""
 
-#: crates/core/src/snap.rs:64
+#: crates/core/src/snap.rs:63
 msgid "Intersection"
 msgstr ""
 
@@ -7756,7 +7756,7 @@ msgstr ""
 msgid "Middle of the text"
 msgstr ""
 
-#: crates/core/src/snap.rs:63
+#: crates/core/src/snap.rs:62
 msgid "Midpoint"
 msgstr ""
 
@@ -8255,7 +8255,7 @@ msgstr ""
 msgid "Navigator"
 msgstr ""
 
-#: crates/core/src/snap.rs:69
+#: crates/core/src/snap.rs:68
 msgid "Nearest"
 msgstr ""
 
@@ -9348,7 +9348,7 @@ msgstr ""
 msgid "Perimeter"
 msgstr ""
 
-#: crates/core/src/snap.rs:66
+#: crates/core/src/snap.rs:65
 msgid "Perpendicular"
 msgstr ""
 
@@ -10513,7 +10513,7 @@ msgstr ""
 msgid "Put a view on this sheet: one not on a sheet yet"
 msgstr ""
 
-#: crates/core/src/snap.rs:67
+#: crates/core/src/snap.rs:66
 msgid "Quadrant"
 msgstr ""
 
@@ -12995,7 +12995,7 @@ msgstr ""
 msgid "Takes up a shaped top's falls: one layer at most"
 msgstr ""
 
-#: crates/core/src/snap.rs:68
+#: crates/core/src/snap.rs:67
 msgid "Tangent"
 msgstr ""
 

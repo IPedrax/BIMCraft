@@ -622,19 +622,6 @@ fn a_horizontal_grid_picked_in_a_section_moves_with_the_move_tool() {
 }
 
 #[test]
-fn with_nothing_to_snap_to_a_click_lands_where_it_is_with_no_10_mm_grid() {
-    let mut h = app("");
-    h.state_mut().grid_snapping = false;
-    h.state_mut().set_tool(crate::Tool::Wall(Vec::new()));
-    h.run();
-    click(&mut h, P2(1003.0, 2007.0));
-    click(&mut h, P2(5003.0, 2007.0));
-    let w = walls(&h).into_iter().next().map(|x| x.1).expect("a wall");
-    assert!(w.start.dist(P2(1003.0, 2007.0)) < 0.5, "{:?}", w.start);
-    assert!(w.end.dist(P2(5003.0, 2007.0)) < 0.5, "{:?}", w.end);
-}
-
-#[test]
 fn a_curtain_grid_lands_where_it_is_clicked_with_no_10_mm_grid() {
     let mut h = app(TALL);
     let id = select_tall(&mut h);

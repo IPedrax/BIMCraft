@@ -1138,9 +1138,9 @@ fn mirrored(a: Pos2, b: Pos2) -> impl Fn(Pos2) -> Pos2 {
     }
 }
 
-/// `p` tidied of a pixel's float noise, to 0.01 mm: too little to see, and no grid. A grid is the view's background grid.
+/// `p` to the nearest 10 mm.
 fn round(p: P2) -> P2 {
-    P2((p.0 * 100.0).round() / 100.0, (p.1 * 100.0).round() / 100.0)
+    P2((p.0 / 10.0).round() * 10.0, (p.1 / 10.0).round() * 10.0)
 }
 
 fn point(p: P2) -> Value {

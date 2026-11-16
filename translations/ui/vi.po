@@ -969,7 +969,7 @@ msgstr "Neo"
 msgid "And:"
 msgstr "Và:"
 
-#: crates/core/src/snap.rs:72
+#: crates/core/src/snap.rs:71
 #: crates/ui-egui/src/adaptive_editor.rs:531
 #: crates/ui-egui/src/coordinates.rs:625
 #: crates/ui-egui/src/editor/nested.rs:297
@@ -1019,7 +1019,7 @@ msgstr "Kích thước góc: chọn hai đường gặp nhau, rồi nhấp vào 
 msgid "Annotate"
 msgstr "Chú giải"
 
-#: crates/core/src/snap.rs:71
+#: crates/core/src/snap.rs:70
 msgid "Annotation Anchor"
 msgstr ""
 
@@ -4987,7 +4987,7 @@ msgstr "Chiều dài vùng đầu mút"
 msgid "End zone spacing"
 msgstr "Khoảng cách ở vùng đầu mút"
 
-#: crates/core/src/snap.rs:62
+#: crates/core/src/snap.rs:61
 msgid "Endpoint"
 msgstr "Điểm đầu mút"
 
@@ -6568,7 +6568,7 @@ msgstr ""
 msgid "Internal origin"
 msgstr ""
 
-#: crates/core/src/snap.rs:64
+#: crates/core/src/snap.rs:63
 msgid "Intersection"
 msgstr "Giao điểm"
 
@@ -7756,7 +7756,7 @@ msgstr "Mét"
 msgid "Middle of the text"
 msgstr "Giữa văn bản"
 
-#: crates/core/src/snap.rs:63
+#: crates/core/src/snap.rs:62
 msgid "Midpoint"
 msgstr "Điểm giữa"
 
@@ -8255,7 +8255,7 @@ msgstr ""
 msgid "Navigator"
 msgstr "Bộ điều hướng"
 
-#: crates/core/src/snap.rs:69
+#: crates/core/src/snap.rs:68
 msgid "Nearest"
 msgstr "Gần nhất"
 
@@ -9348,7 +9348,7 @@ msgstr "Hiệu năng"
 msgid "Perimeter"
 msgstr "Chu vi"
 
-#: crates/core/src/snap.rs:66
+#: crates/core/src/snap.rs:65
 msgid "Perpendicular"
 msgstr "Vuông góc"
 
@@ -10513,7 +10513,7 @@ msgstr "Đã dọn {} mục không dùng."
 msgid "Put a view on this sheet: one not on a sheet yet"
 msgstr "Đặt một khung nhìn lên bản vẽ này: một khung nhìn chưa nằm trên bản vẽ nào"
 
-#: crates/core/src/snap.rs:67
+#: crates/core/src/snap.rs:66
 msgid "Quadrant"
 msgstr "Góc phần tư"
 
@@ -12995,7 +12995,7 @@ msgstr "Loại bỏ những gì không được dùng trong dự án. Mỗi danh
 msgid "Takes up a shaped top's falls: one layer at most"
 msgstr "Bù cho độ dốc của mặt trên đã tạo hình: tối đa một lớp"
 
-#: crates/core/src/snap.rs:68
+#: crates/core/src/snap.rs:67
 msgid "Tangent"
 msgstr "Tiếp tuyến"
 

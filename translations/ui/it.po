@@ -969,7 +969,7 @@ msgstr "Ancoraggio"
 msgid "And:"
 msgstr "E:"
 
-#: crates/core/src/snap.rs:72
+#: crates/core/src/snap.rs:71
 #: crates/ui-egui/src/adaptive_editor.rs:531
 #: crates/ui-egui/src/coordinates.rs:625
 #: crates/ui-egui/src/editor/nested.rs:297
@@ -1019,7 +1019,7 @@ msgstr "Quota angolare: scegli due linee che si incontrano, poi clicca dove va l
 msgid "Annotate"
 msgstr "Annota"
 
-#: crates/core/src/snap.rs:71
+#: crates/core/src/snap.rs:70
 msgid "Annotation Anchor"
 msgstr ""
 
@@ -4987,7 +4987,7 @@ msgstr "Lunghezza zona di estremità"
 msgid "End zone spacing"
 msgstr "Passo zona di estremità"
 
-#: crates/core/src/snap.rs:62
+#: crates/core/src/snap.rs:61
 msgid "Endpoint"
 msgstr "Punto finale"
 
@@ -6568,7 +6568,7 @@ msgstr ""
 msgid "Internal origin"
 msgstr ""
 
-#: crates/core/src/snap.rs:64
+#: crates/core/src/snap.rs:63
 msgid "Intersection"
 msgstr "Intersezione"
 
@@ -7756,7 +7756,7 @@ msgstr "Metri"
 msgid "Middle of the text"
 msgstr ""
 
-#: crates/core/src/snap.rs:63
+#: crates/core/src/snap.rs:62
 msgid "Midpoint"
 msgstr "Punto medio"
 
@@ -8255,7 +8255,7 @@ msgstr ""
 msgid "Navigator"
 msgstr ""
 
-#: crates/core/src/snap.rs:69
+#: crates/core/src/snap.rs:68
 msgid "Nearest"
 msgstr "Più vicino"
 
@@ -9348,7 +9348,7 @@ msgstr "Prestazioni"
 msgid "Perimeter"
 msgstr "Perimetro"
 
-#: crates/core/src/snap.rs:66
+#: crates/core/src/snap.rs:65
 msgid "Perpendicular"
 msgstr "Perpendicolare"
 
@@ -10513,7 +10513,7 @@ msgstr "Eliminati {} inutilizzati."
 msgid "Put a view on this sheet: one not on a sheet yet"
 msgstr "Inserisci una vista in questo layout: una non ancora su un layout"
 
-#: crates/core/src/snap.rs:67
+#: crates/core/src/snap.rs:66
 msgid "Quadrant"
 msgstr "Quadrante"
 
@@ -12995,7 +12995,7 @@ msgstr "Elimina ciò che nessun elemento del progetto usa. Ogni categoria conser
 msgid "Takes up a shaped top's falls: one layer at most"
 msgstr ""
 
-#: crates/core/src/snap.rs:68
+#: crates/core/src/snap.rs:67
 msgid "Tangent"
 msgstr "Tangente"
 

@@ -460,7 +460,7 @@ impl BimApp {
         p.extend(boxed);
         p.extend(datum);
         let clicked = self.clicked_at(&response).map(|at| (at.x - rect.min.x, at.y - rect.min.y));
-        // Along the line and up, tidied of a pixel's float noise.
+        // Along the line and up, to the nearest 10 mm.
         let grid = self.background_grid();
         let snapping = self.grid_snapping;
         let at = |q: (f32, f32)| {
@@ -468,7 +468,7 @@ impl BimApp {
             if snapping && let Some(at) = grid.nearest(p) {
                 return at;
             }
-            P2((p.0 * 100.0).round() / 100.0, (p.1 * 100.0).round() / 100.0)
+            P2((p.0 / 10.0).round() * 10.0, (p.1 / 10.0).round() * 10.0)
         };
         // A double click on a note writes in it.
         if response.double_clicked()

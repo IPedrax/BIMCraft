@@ -969,7 +969,7 @@ msgstr "Anker"
 msgid "And:"
 msgstr "En:"
 
-#: crates/core/src/snap.rs:72
+#: crates/core/src/snap.rs:71
 #: crates/ui-egui/src/adaptive_editor.rs:531
 #: crates/ui-egui/src/coordinates.rs:625
 #: crates/ui-egui/src/editor/nested.rs:297
@@ -1019,7 +1019,7 @@ msgstr "Hoekmaatlijn: kies twee lijnen die samenkomen en klik waar de boog komt"
 msgid "Annotate"
 msgstr "Annoteren"
 
-#: crates/core/src/snap.rs:71
+#: crates/core/src/snap.rs:70
 msgid "Annotation Anchor"
 msgstr ""
 
@@ -4987,7 +4987,7 @@ msgstr "Lengte eindzone"
 msgid "End zone spacing"
 msgstr "Afstand in de eindzone"
 
-#: crates/core/src/snap.rs:62
+#: crates/core/src/snap.rs:61
 msgid "Endpoint"
 msgstr "Eindpunt"
 
@@ -6568,7 +6568,7 @@ msgstr ""
 msgid "Internal origin"
 msgstr ""
 
-#: crates/core/src/snap.rs:64
+#: crates/core/src/snap.rs:63
 msgid "Intersection"
 msgstr "Doorsnede"
 
@@ -7756,7 +7756,7 @@ msgstr "Meter"
 msgid "Middle of the text"
 msgstr "Midden van de tekst"
 
-#: crates/core/src/snap.rs:63
+#: crates/core/src/snap.rs:62
 msgid "Midpoint"
 msgstr "Middelpunt"
 
@@ -8255,7 +8255,7 @@ msgstr ""
 msgid "Navigator"
 msgstr "Navigator"
 
-#: crates/core/src/snap.rs:69
+#: crates/core/src/snap.rs:68
 msgid "Nearest"
 msgstr "Dichtstbijzijnde"
 
@@ -9348,7 +9348,7 @@ msgstr "Prestaties"
 msgid "Perimeter"
 msgstr "Omtrek"
 
-#: crates/core/src/snap.rs:66
+#: crates/core/src/snap.rs:65
 msgid "Perpendicular"
 msgstr "Loodrecht"
 
@@ -10513,7 +10513,7 @@ msgstr "{} ongebruikte verwijderd."
 msgid "Put a view on this sheet: one not on a sheet yet"
 msgstr "Zet een weergave op dit blad: een die nog op geen blad staat"
 
-#: crates/core/src/snap.rs:67
+#: crates/core/src/snap.rs:66
 msgid "Quadrant"
 msgstr "Kwadrant"
 
@@ -12995,7 +12995,7 @@ msgstr "Haalt weg wat niets in het project gebruikt. Elke categorie behoudt een 
 msgid "Takes up a shaped top's falls: one layer at most"
 msgstr "Neemt het afschot van een gevormde bovenkant op: hoogstens één laag"
 
-#: crates/core/src/snap.rs:68
+#: crates/core/src/snap.rs:67
 msgid "Tangent"
 msgstr "Raaklijn"
 

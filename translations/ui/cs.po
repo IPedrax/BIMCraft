@@ -968,7 +968,7 @@ msgstr "Kotvení"
 msgid "And:"
 msgstr "A:"
 
-#: crates/core/src/snap.rs:72
+#: crates/core/src/snap.rs:71
 #: crates/ui-egui/src/adaptive_editor.rs:531
 #: crates/ui-egui/src/coordinates.rs:625
 #: crates/ui-egui/src/editor/nested.rs:297
@@ -1018,7 +1018,7 @@ msgstr "Úhlová kóta: vyberte dvě protínající se čáry a potom klikněte 
 msgid "Annotate"
 msgstr "Poznámka"
 
-#: crates/core/src/snap.rs:71
+#: crates/core/src/snap.rs:70
 msgid "Annotation Anchor"
 msgstr ""
 
@@ -4986,7 +4986,7 @@ msgstr "Délka koncové zóny"
 msgid "End zone spacing"
 msgstr "Rozteč v koncové zóně"
 
-#: crates/core/src/snap.rs:62
+#: crates/core/src/snap.rs:61
 msgid "Endpoint"
 msgstr "Koncový bod"
 
@@ -6567,7 +6567,7 @@ msgstr ""
 msgid "Internal origin"
 msgstr ""
 
-#: crates/core/src/snap.rs:64
+#: crates/core/src/snap.rs:63
 msgid "Intersection"
 msgstr "Průsečík"
 
@@ -7755,7 +7755,7 @@ msgstr "Metry"
 msgid "Middle of the text"
 msgstr "Střed textu"
 
-#: crates/core/src/snap.rs:63
+#: crates/core/src/snap.rs:62
 msgid "Midpoint"
 msgstr "Polovina"
 
@@ -8254,7 +8254,7 @@ msgstr ""
 msgid "Navigator"
 msgstr "Navigátor"
 
-#: crates/core/src/snap.rs:69
+#: crates/core/src/snap.rs:68
 msgid "Nearest"
 msgstr "Nejbližší"
 
@@ -9347,7 +9347,7 @@ msgstr "Výkon"
 msgid "Perimeter"
 msgstr "Obvod"
 
-#: crates/core/src/snap.rs:66
+#: crates/core/src/snap.rs:65
 msgid "Perpendicular"
 msgstr "Kolmý"
 
@@ -10512,7 +10512,7 @@ msgstr "Vyčištěno {} nepoužitých položek."
 msgid "Put a view on this sheet: one not on a sheet yet"
 msgstr "Umístit pohled na tento výkres: pohled, který dosud není na žádném výkresu"
 
-#: crates/core/src/snap.rs:67
+#: crates/core/src/snap.rs:66
 msgid "Quadrant"
 msgstr "Kvadrant"
 
@@ -12994,7 +12994,7 @@ msgstr "Odstraní položky, které se v projektu nepoužívají. V každé kateg
 msgid "Takes up a shaped top's falls: one layer at most"
 msgstr "Přebírá spády tvarovaného horního líce: nejvýše jedna vrstva"
 
-#: crates/core/src/snap.rs:68
+#: crates/core/src/snap.rs:67
 msgid "Tangent"
 msgstr "Tečna"
 

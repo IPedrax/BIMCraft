@@ -969,7 +969,7 @@ msgstr "Ancoragem"
 msgid "And:"
 msgstr "E:"
 
-#: crates/core/src/snap.rs:72
+#: crates/core/src/snap.rs:71
 #: crates/ui-egui/src/adaptive_editor.rs:531
 #: crates/ui-egui/src/coordinates.rs:625
 #: crates/ui-egui/src/editor/nested.rs:297
@@ -1019,7 +1019,7 @@ msgstr "Cota angular: selecione duas linhas que se encontram e clique onde vai o
 msgid "Annotate"
 msgstr "Anotar"
 
-#: crates/core/src/snap.rs:71
+#: crates/core/src/snap.rs:70
 msgid "Annotation Anchor"
 msgstr ""
 
@@ -4987,7 +4987,7 @@ msgstr "Comprimento nas pontas"
 msgid "End zone spacing"
 msgstr "Espaçamento nas pontas"
 
-#: crates/core/src/snap.rs:62
+#: crates/core/src/snap.rs:61
 msgid "Endpoint"
 msgstr "Extremidade"
 
@@ -6568,7 +6568,7 @@ msgstr "As coordenadas internas são as do próprio arquivo, onde está a geomet
 msgid "Internal origin"
 msgstr ""
 
-#: crates/core/src/snap.rs:64
+#: crates/core/src/snap.rs:63
 msgid "Intersection"
 msgstr "Interseção"
 
@@ -7756,7 +7756,7 @@ msgstr "Metros"
 msgid "Middle of the text"
 msgstr "Meio do texto"
 
-#: crates/core/src/snap.rs:63
+#: crates/core/src/snap.rs:62
 msgid "Midpoint"
 msgstr "Ponto médio"
 
@@ -8255,7 +8255,7 @@ msgstr "Sistema nacional"
 msgid "Navigator"
 msgstr "Navegador"
 
-#: crates/core/src/snap.rs:69
+#: crates/core/src/snap.rs:68
 msgid "Nearest"
 msgstr "Mais próximo"
 
@@ -9348,7 +9348,7 @@ msgstr "Desempenho"
 msgid "Perimeter"
 msgstr "Perímetro"
 
-#: crates/core/src/snap.rs:66
+#: crates/core/src/snap.rs:65
 msgid "Perpendicular"
 msgstr "Perpendicular"
 
@@ -10513,7 +10513,7 @@ msgstr "{} não usados foram limpos."
 msgid "Put a view on this sheet: one not on a sheet yet"
 msgstr "Colocar nesta folha uma vista que ainda não está em nenhuma"
 
-#: crates/core/src/snap.rs:67
+#: crates/core/src/snap.rs:66
 msgid "Quadrant"
 msgstr "Quadrante"
 
@@ -12995,7 +12995,7 @@ msgstr "Tira o que nada no projeto usa. Cada categoria mantém um tipo; Desfazer
 msgid "Takes up a shaped top's falls: one layer at most"
 msgstr "Assume as quedas de um topo modelado: no máximo uma camada"
 
-#: crates/core/src/snap.rs:68
+#: crates/core/src/snap.rs:67
 msgid "Tangent"
 msgstr "Tangente"
 

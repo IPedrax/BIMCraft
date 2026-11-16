@@ -968,7 +968,7 @@ msgstr "Verankerung"
 msgid "And:"
 msgstr "Und:"
 
-#: crates/core/src/snap.rs:72
+#: crates/core/src/snap.rs:71
 #: crates/ui-egui/src/adaptive_editor.rs:531
 #: crates/ui-egui/src/coordinates.rs:625
 #: crates/ui-egui/src/editor/nested.rs:297
@@ -1018,7 +1018,7 @@ msgstr "Winkelbemaßung: zwei sich treffende Linien wählen, dann die Stelle des
 msgid "Annotate"
 msgstr "Beschriften"
 
-#: crates/core/src/snap.rs:71
+#: crates/core/src/snap.rs:70
 msgid "Annotation Anchor"
 msgstr ""
 
@@ -4986,7 +4986,7 @@ msgstr "Länge Endbereich"
 msgid "End zone spacing"
 msgstr "Abstand Endbereich"
 
-#: crates/core/src/snap.rs:62
+#: crates/core/src/snap.rs:61
 msgid "Endpoint"
 msgstr "Endpunkt"
 
@@ -6567,7 +6567,7 @@ msgstr ""
 msgid "Internal origin"
 msgstr ""
 
-#: crates/core/src/snap.rs:64
+#: crates/core/src/snap.rs:63
 msgid "Intersection"
 msgstr "Schnittpunkt"
 
@@ -7755,7 +7755,7 @@ msgstr "Meter"
 msgid "Middle of the text"
 msgstr "Textmitte"
 
-#: crates/core/src/snap.rs:63
+#: crates/core/src/snap.rs:62
 msgid "Midpoint"
 msgstr "Mittelpunkt"
 
@@ -8254,7 +8254,7 @@ msgstr ""
 msgid "Navigator"
 msgstr "Navigator"
 
-#: crates/core/src/snap.rs:69
+#: crates/core/src/snap.rs:68
 msgid "Nearest"
 msgstr "Nächster"
 
@@ -9347,7 +9347,7 @@ msgstr "Leistung"
 msgid "Perimeter"
 msgstr "Umfang"
 
-#: crates/core/src/snap.rs:66
+#: crates/core/src/snap.rs:65
 msgid "Perpendicular"
 msgstr "Senkrecht"
 
@@ -10512,7 +10512,7 @@ msgstr "{} nicht verwendete gelöscht."
 msgid "Put a view on this sheet: one not on a sheet yet"
 msgstr "Eine Ansicht auf diesen Plan legen: eine, die noch auf keinem Plan liegt"
 
-#: crates/core/src/snap.rs:67
+#: crates/core/src/snap.rs:66
 msgid "Quadrant"
 msgstr "Quadrant"
 
@@ -12994,7 +12994,7 @@ msgstr "Entfernt, was im Projekt nicht verwendet wird. Jede Kategorie behält ei
 msgid "Takes up a shaped top's falls: one layer at most"
 msgstr "Nimmt das Gefälle einer geformten Oberseite auf: höchstens eine Schicht"
 
-#: crates/core/src/snap.rs:68
+#: crates/core/src/snap.rs:67
 msgid "Tangent"
 msgstr "Tangente"
 

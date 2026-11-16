@@ -969,7 +969,7 @@ msgstr "錨固"
 msgid "And:"
 msgstr "並且："
 
-#: crates/core/src/snap.rs:72
+#: crates/core/src/snap.rs:71
 #: crates/ui-egui/src/adaptive_editor.rs:531
 #: crates/ui-egui/src/coordinates.rs:625
 #: crates/ui-egui/src/editor/nested.rs:297
@@ -1019,7 +1019,7 @@ msgstr "角度尺寸標註：選取相交的兩條線，然後單擊圓弧的位
 msgid "Annotate"
 msgstr "註釋"
 
-#: crates/core/src/snap.rs:71
+#: crates/core/src/snap.rs:70
 msgid "Annotation Anchor"
 msgstr ""
 
@@ -4987,7 +4987,7 @@ msgstr "端部區長度"
 msgid "End zone spacing"
 msgstr "端部區間距"
 
-#: crates/core/src/snap.rs:62
+#: crates/core/src/snap.rs:61
 msgid "Endpoint"
 msgstr "端點"
 
@@ -6568,7 +6568,7 @@ msgstr ""
 msgid "Internal origin"
 msgstr ""
 
-#: crates/core/src/snap.rs:64
+#: crates/core/src/snap.rs:63
 msgid "Intersection"
 msgstr "交點"
 
@@ -7756,7 +7756,7 @@ msgstr "米"
 msgid "Middle of the text"
 msgstr "文字中心"
 
-#: crates/core/src/snap.rs:63
+#: crates/core/src/snap.rs:62
 msgid "Midpoint"
 msgstr "中點"
 
@@ -8255,7 +8255,7 @@ msgstr ""
 msgid "Navigator"
 msgstr "導覽器"
 
-#: crates/core/src/snap.rs:69
+#: crates/core/src/snap.rs:68
 msgid "Nearest"
 msgstr "最近點"
 
@@ -9348,7 +9348,7 @@ msgstr "性能"
 msgid "Perimeter"
 msgstr "周長"
 
-#: crates/core/src/snap.rs:66
+#: crates/core/src/snap.rs:65
 msgid "Perpendicular"
 msgstr "垂足"
 
@@ -10513,7 +10513,7 @@ msgstr "已清除 {} 項未使用內容。"
 msgid "Put a view on this sheet: one not on a sheet yet"
 msgstr "將一個視圖放到此圖紙上：尚未上圖紙的視圖"
 
-#: crates/core/src/snap.rs:67
+#: crates/core/src/snap.rs:66
 msgid "Quadrant"
 msgstr "象限點"
 
@@ -12995,7 +12995,7 @@ msgstr "刪除項目中未被使用的內容。每個類別保留一個類型；
 msgid "Takes up a shaped top's falls: one layer at most"
 msgstr "吸收形狀編輯後頂面的坡降：最多一層"
 
-#: crates/core/src/snap.rs:68
+#: crates/core/src/snap.rs:67
 msgid "Tangent"
 msgstr "切點"
 
