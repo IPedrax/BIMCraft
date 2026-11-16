@@ -241,7 +241,7 @@ pub(crate) fn target_at(
     for id in under {
         match m.elements.get(id) {
             // A wall's three references, exactly as the model gives them to dimensions: its faces and its centre line.
-            Some(Element::Wall(w)) if w.arc == 0.0 && m.cut_by(w, m.guid(level)) => {
+            Some(Element::Wall(w)) if m.straight_at(w, level) => {
                 for (r, (a, b)) in m.reference_lines(*id) {
                     if matches!(r.face, Face::Centre | Face::Left | Face::Right) {
                         consider(a, b, Some(*id), r.face);
@@ -290,14 +290,13 @@ fn wall_line(m: &Model, id: Id, face: Face, cursor_at: P2, near: f64) -> Option<
 /// own angles, which world X and Y cannot. The wall `skip` meets there too and is left out (an edge already lends
 /// itself).
 pub(crate) fn connected(m: &Model, level: Id, view: Guid, point: P2, skip: Option<Id>) -> Vec<GuideSource> {
-    let level_guid = m.guid(level);
     let mut out: Vec<GuideSource> = Vec::new();
     for (id, e) in m.elements.iter() {
         if Some(*id) == skip {
             continue;
         }
         let dir = match e {
-            Element::Wall(w) if w.arc == 0.0 && m.cut_by(w, level_guid) => {
+            Element::Wall(w) if m.straight_at(w, level) => {
                 let (axis, (ext, int)) = (Axis::of(w), walls::faces(m, w));
                 let len = axis.length();
                 let slack = 4.0 * m.thickness(w) + 10.0;
@@ -340,11 +339,10 @@ fn on_segment_line(p: P2, a: P2, b: P2, slack: f64) -> bool {
 
 /// The wall face or centre line nearest `p`, within `reach` mm: the edge a chain started on. A straight wall only.
 pub(crate) fn wall_edge_at(m: &Model, level: Id, p: P2, reach: f64) -> Option<GuideSource> {
-    let level_guid = m.guid(level);
     let mut best: Option<(f64, GuideSource)> = None;
     for (id, e) in m.elements.iter() {
         let Element::Wall(w) = e else { continue };
-        if w.arc != 0.0 || !m.cut_by(w, level_guid) {
+        if !m.straight_at(w, level) {
             continue;
         }
         for (r, (a, b)) in m.reference_lines(*id) {

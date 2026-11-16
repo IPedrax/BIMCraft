@@ -4833,6 +4833,12 @@ impl Model {
         self.spans(w, self.plan_range(level).cut)
     }
 
+    /// Whether wall `w` is one a plan of `level` takes as a reference: straight, and cut by the plan. A curved wall is
+    /// marked by its centre line alone, so the guides read it the other way (`walls::faces`).
+    pub fn straight_at(&self, w: &Wall, level: impl Key) -> bool {
+        w.arc == 0.0 && self.cut_by(w, level)
+    }
+
     /// Whether a plan of `level` cuts column `e` (a structural one, a footing), as the plan draws it cut: it spans the
     /// plan's cut plane, whatever level it stands on.
     pub fn column_cut_by(&self, e: &Element, level: impl Key) -> bool {

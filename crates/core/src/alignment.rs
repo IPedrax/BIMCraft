@@ -7,7 +7,7 @@
 
 use bimcraft_i18n::ui_msg;
 
-use crate::geom::{self, P2};
+use crate::geom::{self, P2, micron};
 use crate::model::{Element, Id, Model, TOL};
 use crate::walls::{self, Axis};
 
@@ -143,10 +143,6 @@ impl Default for AlignmentConfig {
             angles: false,
         }
     }
-}
-
-fn micron(p: P2) -> P2 {
-    P2((p.0 * 1e3).round() / 1e3, (p.1 * 1e3).round() / 1e3)
 }
 
 fn dedup_references(refs: &mut Vec<ReferencePoint>) {
@@ -728,12 +724,6 @@ impl AlignmentGuideService {
     pub fn config(&self) -> &AlignmentConfig {
         &self.config
     }
-}
-
-/// Standalone convenience function to find alignments against references.
-pub fn find_alignments(cursor: P2, start_point: Option<P2>, references: &[ReferencePoint], tolerance: f64) -> Vec<AlignmentResult> {
-    let service = AlignmentGuideService::new(references.to_vec(), AlignmentConfig { tolerance, ..Default::default() });
-    service.find_alignments(cursor, start_point, tolerance)
 }
 
 #[cfg(test)]

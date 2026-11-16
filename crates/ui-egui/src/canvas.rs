@@ -1661,14 +1661,6 @@ impl BimApp {
         found
     }
 
-    /// Finds alignment guides (smart snapping) to reference points of existing walls when drawing a wall.
-    #[inline]
-    #[allow(dead_code)]
-    pub(crate) fn wall_alignments(&self, m: &Model, level: Id, v: &View, cursor: P2, start: Option<P2>) -> Vec<AlignmentResult> {
-        let from: Vec<P2> = start.into_iter().collect();
-        self.alignments(m, level, v, cursor, &from)
-    }
-
     /// Whether guides and the live drawing's aids are drawn in the refined look (Manage > Snaps).
     pub(crate) fn refined_guides(&self) -> bool {
         self.guide_style == GuideStyle::Refined
@@ -1739,9 +1731,21 @@ impl BimApp {
 
     /// Where a point picked at pixel `at` lands, including temporary alignment guides.
     pub(crate) fn snap_point(&self, m: &Model, level: Id, v: &View, at: (f32, f32), from: &[P2], square: bool) -> P2 {
-        let f = self.snap(m, level, v, at, from, square);
-        let cursor = v.mm(at);
-        self.alignments_for(m, level, v, &f, from, GuideAt { at: cursor, square }).first().map_or(f.at, |a| a.snapped_point)
+        let (f, alignments) = self.landed(m, level, v, at, from, square);
+        Self::on_guide(f, &alignments)
+    }
+
+    /// The snap at `q`, and the guides it follows: the one landing the preview and the commit both read, so a guide
+    /// cannot be drawn and then ignored.
+    fn landed(&self, m: &Model, level: Id, v: &View, q: (f32, f32), from: &[P2], square: bool) -> (Found, Vec<AlignmentResult>) {
+        let f = self.snap(m, level, v, q, from, square);
+        let alignments = self.alignments_for(m, level, v, &f, from, GuideAt { at: v.mm(q), square });
+        (f, alignments)
+    }
+
+    /// A point on the first guide `f` follows, else the snap's own.
+    fn on_guide(f: Found, alignments: &[AlignmentResult]) -> P2 {
+        alignments.first().map_or(f.at, |a| a.snapped_point)
     }
 
     /// What a pick at pixel `q` would land on, shown: its marker and what it is, and the guide it
@@ -1765,12 +1769,9 @@ impl BimApp {
     }
 
     fn found(&self, sc: &Scene, q: (f32, f32), from: &[P2], square: bool) -> P2 {
-        let mut f = self.snap(sc.m, sc.level, sc.v, q, from, square);
+        let (mut f, alignments) = self.landed(sc.m, sc.level, sc.v, q, from, square);
         let target = self.mark_target(sc, q, &f);
-        let alignments = self.alignments_for(sc.m, sc.level, sc.v, &f, from, GuideAt { at: sc.v.mm(q), square });
-        if let Some(first) = alignments.first() {
-            f.at = first.snapped_point;
-        }
+        f.at = Self::on_guide(f, &alignments);
         let lock = self.show_alignments(sc, &alignments, from.last().copied());
         self.show_target_line(sc, &f);
         self.show_snap(sc, &f, lock);

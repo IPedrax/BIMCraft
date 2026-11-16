@@ -7,7 +7,7 @@
 use bimcraft_i18n::ui_msg;
 
 use crate::curves::Curve;
-use crate::geom::{self, P2};
+use crate::geom::{self, P2, micron};
 use crate::graphics::Look;
 use crate::model::{Ceiling, Element, Face, Floor, Id, Model, TOL};
 use crate::walls::{self, Axis};
@@ -220,11 +220,6 @@ fn bearing(d: P2) -> f64 {
 
 fn round(p: P2) -> P2 {
     P2((p.0 / STEP).round() * STEP, (p.1 / STEP).round() * STEP)
-}
-
-/// `p` to the micron: what a point meant to be exact is, without float noise.
-fn micron(p: P2) -> P2 {
-    P2((p.0 * 1e3).round() / 1e3, (p.1 * 1e3).round() / 1e3)
 }
 
 /// What the plan of a level has to snap to.
