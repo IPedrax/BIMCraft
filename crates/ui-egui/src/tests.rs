@@ -4805,6 +4805,17 @@ fn a_grid_near_the_cursor_lends_a_guide_until_its_switch_is_off() {
         let far = P2(4000.0, 2000.0);
         assert!(h.state().alignments(m, level, &v, far, &chain).is_empty(), "nothing lines up 4 m away");
     }
+    // The same once a view has made the lookup: the guide comes off its grid list, not a walk of every element.
+    h.state().session.model.lookup();
+    {
+        let m = &h.state().session.model;
+        let v = h.state().canvas.current_view(level).expect("a view");
+        let found = h.state().alignments(m, level, &v, six_px, &chain);
+        assert!(
+            found.iter().any(|a| a.snapped_point.0.abs() < 1e-6 && matches!(a.axis, AlignmentAxis::Collinear { .. })),
+            "the indexed grid list at 6 px: {found:?}"
+        );
+    }
     h.state_mut().snaps.guides_from_grids = false;
     let m = &h.state().session.model;
     let v = h.state().canvas.current_view(level).expect("a view");

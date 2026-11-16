@@ -364,11 +364,16 @@ pub(crate) fn wall_edge_at(m: &Model, level: Id, p: P2, reach: f64) -> Option<Gu
 /// 300 mm in the model), so a zoomed-out plan does not turn every grid into a guide.
 pub(crate) fn grids_near(m: &Model, v: &View, cursor: P2, reach: f32) -> Vec<GuideSource> {
     let reach = (f64::from(reach) / v.scale).min(300.0);
-    m.elements
-        .iter()
-        .filter_map(|(id, e)| match e {
-            Element::Grid(g) if g.start.dist(g.end) > model::TOL => {
-                (geom::dist_to_segment(cursor, g.start, g.end) <= reach).then_some(GuideSource { a: g.start, b: g.end, id: Some(*id) })
+    // A live draw tool asks this every frame, so the lookup's grid list once a view has made it, and a walk of every
+    // element only until then: a million elements is a model this is drawn on, not one it should search per frame.
+    let ids: Vec<Id> = match m.derived.made(&m.elements) {
+        Some(look) => look.grids().collect(),
+        None => m.elements.iter().filter(|(_, e)| matches!(e, Element::Grid(_))).map(|(id, _)| *id).collect(),
+    };
+    ids.into_iter()
+        .filter_map(|id| match m.elements.get(id) {
+            Some(Element::Grid(g)) if g.start.dist(g.end) > model::TOL => {
+                (geom::dist_to_segment(cursor, g.start, g.end) <= reach).then_some(GuideSource { a: g.start, b: g.end, id: Some(id) })
             }
             _ => None,
         })
