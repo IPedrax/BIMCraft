@@ -2,8 +2,8 @@
 //! Windows it doesn't: measured with `bimcraft --bench` on a Radeon RX 590 at 59 Hz (2026-11-15), a frame that took the window
 //! 2 to 4 ms came every 31 ms over Vulkan with vsync, every 33 to 47 ms over OpenGL and every 265 ms over DirectX 12, whatever the
 //! frame latency or the timer's resolution; without vsync the same frames came every 1.3 to 3.6 ms. So on Windows the window
-//! presents without the driver's vsync (DirectX 12's Mailbox, which never tears; Immediate elsewhere, Mailbox or Fifo where that
-//! is missing) and paces itself to the monitor's refresh rate, so a view that keeps asking for frames never runs faster than the
+//! presents without the driver's vsync (DirectX 12's Mailbox, which never tears; Immediate elsewhere, which may tear, Mailbox or
+//! Fifo where that is missing) and paces itself to the monitor's refresh rate, so a view that keeps asking for frames never runs faster than the
 //! screen shows them. `BIMCRAFT_VSYNC=1` keeps the driver's vsync, as before.
 
 use std::time::{Duration, Instant};
@@ -63,6 +63,8 @@ pub struct Pacer {
     every: Option<(Duration, Instant)>,
     /// The present mode is set once the card is known.
     pub(crate) configured: bool,
+    /// What the frame before waited, and this one: eframe counts a frame's wait in its `cpu_usage`, which the benchmark leaves out.
+    pub(crate) slept: (Duration, Duration),
 }
 
 impl Pacer {
@@ -70,6 +72,7 @@ impl Pacer {
     pub fn wait(&mut self, now: Instant, every: Duration) -> Duration {
         let wait = self.last.map_or(Duration::ZERO, |last| every.saturating_sub(now.saturating_duration_since(last)));
         self.last = Some(now + wait);
+        self.slept = (self.slept.1, wait);
         wait
     }
 
@@ -120,8 +123,10 @@ mod tests {
         // Asked 3 ms later: waits the rest, and the next frame counts from when this one began after its wait.
         assert_eq!(p.wait(t0 + Duration::from_millis(3), every), Duration::from_millis(13));
         assert_eq!(p.wait(t0 + Duration::from_millis(20), every), Duration::from_millis(12));
+        assert_eq!(p.slept, (Duration::from_millis(13), Duration::from_millis(12)), "the frame before's wait, and this one's");
         // After a pause longer than a frame, at once.
         assert_eq!(p.wait(t0 + Duration::from_secs(5), every), Duration::ZERO);
+        assert_eq!(p.slept, (Duration::from_millis(12), Duration::ZERO));
     }
 
     #[test]

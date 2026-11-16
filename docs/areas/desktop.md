@@ -247,9 +247,10 @@ Frame pacing (`ui-egui/src/pacing.rs`). On Linux and macOS the system's vertical
 held the window to a fraction of the screen's rate: measured with `bimcraft --bench` on the highrise (Radeon RX 590, 59 Hz, 2026-11-15), a
 frame the window made in 2 to 4 ms came every 31 ms over Vulkan, every 33 to 47 ms over OpenGL and every 265 ms over DirectX 12, whatever the
 frame latency or the timer's resolution, and every 1.3 to 3.6 ms without vsync. So on Windows (`pacing::system_policy`) the window starts
-with `AutoNoVsync`, switches to Mailbox once its card is known to be DirectX 12 (`present_for`: it never tears), and `BimApp::frames` sleeps
-at the start of each frame (`logic`) so that frames come no closer than the monitor's refresh (`Pacer`, the rate asked of winit once a second,
-60 Hz where it doesn't say). Every step of the same benchmark then ran at 16.9 to 17.0 ms on every backend. `BIMCRAFT_VSYNC=1` keeps the
+with `AutoNoVsync`, switches to Mailbox once its card is known to be DirectX 12 (`present_for`: it never tears; over Vulkan and OpenGL
+`AutoNoVsync` is Immediate, which may tear), and `BimApp::frames` sleeps at the start of each frame (`logic`, its first pass only: egui's
+sizing pass comes at once) so that frames come no closer than the monitor's refresh (`Pacer`, the rate asked of winit once a second,
+60 Hz where it doesn't say). eframe counts that wait in the frame's `cpu_usage`; the benchmark's `cpu_ms` leaves it out (`Pacer::slept`). Every step of the same benchmark then ran at 16.9 to 17.0 ms on every backend. `BIMCRAFT_VSYNC=1` keeps the
 driver's vsync, to compare. The tests have no pacer (`frames: None`). The core's own times on Windows matched Linux's (`docs/performance.md`), so
 a Windows-only slowness is to be looked for in presentation first: run the benchmark and compare the frames' interval with their `cpu_ms`.
 

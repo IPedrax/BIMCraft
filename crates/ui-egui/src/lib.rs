@@ -6430,9 +6430,12 @@ impl BimApp {
 
 impl BimApp {
     /// Where the window paces its own frames: the present mode for its card, set once, and the wait that keeps frames from
-    /// coming closer than the monitor's refresh.
-    fn pace_frame(&mut self, frame: &mut eframe::Frame) {
+    /// coming closer than the monitor's refresh. Only a frame's first pass waits: a sizing pass egui asks for comes at once.
+    fn pace_frame(&mut self, ctx: &Context, frame: &mut eframe::Frame) {
         let Some(pacer) = self.frames.as_mut() else { return };
+        if ctx.current_pass_index() > 0 {
+            return;
+        }
         if !pacer.configured {
             if let Some(state) = frame.wgpu_render_state() {
                 let mut config = state.surface_config;
@@ -6454,9 +6457,11 @@ impl eframe::App for BimApp {
     /// Runs before each pass, and while the window is hidden too: agents and a Co-Work session's guests are answered when the
     /// window is minimised.
     fn logic(&mut self, ctx: &Context, frame: &mut eframe::Frame) {
-        self.pace_frame(frame);
+        self.pace_frame(ctx, frame);
         if let Some(mut bench) = self.bench.take() {
-            bench.step(self, ctx, frame.info().cpu_usage.unwrap_or(0.0));
+            // eframe counts the frame before's wait as its processor time.
+            let slept = self.frames.as_ref().map_or(0.0, |p| p.slept.0.as_secs_f32());
+            bench.step(self, ctx, (frame.info().cpu_usage.unwrap_or(0.0) - slept).max(0.0));
             self.bench = Some(bench);
         }
         self.pump(ctx);
