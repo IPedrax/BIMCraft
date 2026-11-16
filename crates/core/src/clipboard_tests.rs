@@ -11,9 +11,9 @@ fn run(s: &mut Session, c: &str, p: Value) -> Value {
     s.execute(c, &p).unwrap_or_else(|e| panic!("{c} {p}: {e}"))
 }
 
-/// The id of the one element `v` made.
+/// The id of the one element `v` made: `ids`, as a wall's, or `id`, as a door's.
 fn one(v: &Value) -> Id {
-    v["ids"][0].as_u64().unwrap_or_else(|| panic!("no id in {v}"))
+    v["id"].as_u64().or_else(|| v["ids"][0].as_u64()).unwrap_or_else(|| panic!("no id in {v}"))
 }
 
 #[test]
