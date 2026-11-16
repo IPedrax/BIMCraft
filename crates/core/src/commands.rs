@@ -10705,6 +10705,7 @@ fn curtain_part(s: &mut Session, p: &Value) -> R {
     };
     let host = m.wall(id).ok_or_else(|| bad(c, format!("no wall {id}")))?;
     let laid = crate::curtain::layout(m, host);
+    let has = laid.finder();
     for at in &places {
         if let Some(n) = &given {
             let (known, family) = match at {
@@ -10716,19 +10717,24 @@ fn curtain_part(s: &mut Session, p: &Value) -> R {
                 return Err(bad(c, format!("`{n}` isn't a {family} type")));
             }
         }
-        if !reset && !laid.has(*at) {
+        if !reset && !has(*at) {
             return Err(bad(c, format!("no such part on wall {id} at {at:?}; `curtain_parts` lists them")));
         }
     }
     let model = s.model_mut();
     let Some(Element::Wall(w)) = model.elements.get_mut(id) else { return Err(bad(c, format!("no wall {id}"))) };
     let mut edits = w.curtain.take().unwrap_or_default();
-    for at in &places {
-        if reset {
-            edits.parts.retain(|e| e.at != *at);
-        } else if let Some(e) = edits.parts.iter_mut().find(|e| e.at == *at) {
+    // The places by address, so each costs a lookup, not a pass over the wall's edits.
+    let wanted: std::collections::HashSet<Address> = places.iter().copied().collect();
+    if reset {
+        edits.parts.retain(|e| !wanted.contains(&e.at));
+    } else {
+        let mut edited = std::collections::HashSet::new();
+        for e in edits.parts.iter_mut().filter(|e| wanted.contains(&e.at)) {
             e.type_name = given.clone();
-        } else {
+            edited.insert(e.at);
+        }
+        for at in places.iter().filter(|at| edited.insert(**at)) {
             edits.parts.push(crate::curtain::PartEdit { at: *at, type_name: given.clone(), ..Default::default() });
         }
     }
@@ -10897,6 +10903,7 @@ fn curtain_parts(s: &mut Session, p: &Value) -> R {
             Some(v)
         })
         .collect();
+    let has = laid.finder();
     let edits: Vec<Value> = w
         .curtain
         .iter()
@@ -10906,7 +10913,7 @@ fn curtain_parts(s: &mut Session, p: &Value) -> R {
             v["id"] = json!(e.id);
             v["guid"] = json!(e.guid);
             v["type"] = json!(e.type_name);
-            v["on_wall"] = json!(laid.has(e.at));
+            v["on_wall"] = json!(has(e.at));
             Some(v)
         })
         .collect();

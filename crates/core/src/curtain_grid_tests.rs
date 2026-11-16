@@ -533,6 +533,59 @@ fn several_parts_take_a_type_in_one_step() {
 }
 
 #[test]
+fn a_long_list_of_places_edits_each_once_and_reset_takes_them_all_back() {
+    let mut s = Session::new();
+    facade(&mut s, json!({}));
+    let id = one_wall(&mut s, 4000.0);
+    let first = layout_of(&s, id);
+    let cells: Vec<Address> =
+        first.columns.iter().flat_map(|c| first.rows.iter().map(move |r| Address::Cell { column: c.index, row: r.index })).collect();
+    // Each place twice: still one edit each.
+    let twice: Vec<Value> = cells.iter().chain(&cells).map(|a| serde_json::to_value(a).unwrap()).collect();
+    let edits = |s: &Session| wall_of(s, id).curtain.as_ref().map_or(0, |e| e.parts.len());
+    run(&mut s, "curtain_part", json!({"wall": id, "parts": twice, "type": curtain::SPANDREL}));
+    assert_eq!(edits(&s), cells.len());
+    let l = layout_of(&s, id);
+    assert!(cells.iter().all(|a| part(&l, *a).is_some_and(|p| l.shapes[p.shape as usize].type_name == curtain::SPANDREL)));
+    // Again, each with its edit now: changed where it is, none added.
+    run(&mut s, "curtain_part", json!({"wall": id, "parts": twice, "type": null}));
+    assert_eq!(edits(&s), cells.len());
+    let l = layout_of(&s, id);
+    assert!(cells.iter().all(|a| part(&l, *a).is_none()), "no panel at all");
+    run(&mut s, "curtain_part", json!({"wall": id, "parts": twice, "reset": true}));
+    assert_eq!(edits(&s), 0);
+    assert_eq!(layout_of(&s, id), first);
+}
+
+#[test]
+fn the_finder_says_what_has_says_of_every_place() {
+    let mut s = Session::new();
+    facade(&mut s, json!({}));
+    let id = one_wall(&mut s, 4000.0);
+    run(&mut s, "curtain_grid", json!({"wall": id, "way": "vertical", "at": 1500}));
+    run(&mut s, "curtain_grid", json!({"wall": id, "way": "horizontal", "at": 1500}));
+    let l = layout_of(&s, id);
+    let has = l.finder();
+    // Every index the wall has either way, one past each, and some it hasn't.
+    let mut indices: Vec<i64> = l.columns.iter().chain(&l.rows).flat_map(|x| [x.index, x.index + 1]).collect();
+    indices.extend([-1, 2, 5, i64::MAX]);
+    for &column in &indices {
+        for &row in &indices {
+            for at in [
+                Address::Cell { column, row },
+                Address::Vertical { column, row },
+                Address::Horizontal { column, row },
+                Address::Corner { column, row },
+                Address::VerticalGrid { column, row },
+                Address::HorizontalGrid { column, row },
+            ] {
+                assert_eq!(has(at), l.has(at), "{at:?}");
+            }
+        }
+    }
+}
+
+#[test]
 fn what_is_at_a_point_lists_the_mullion_the_grid_and_the_cell() {
     let mut s = Session::new();
     facade(&mut s, json!({}));

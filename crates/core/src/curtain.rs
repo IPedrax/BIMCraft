@@ -2403,6 +2403,24 @@ impl Layout {
             Address::VerticalGrid { .. } | Address::HorizontalGrid { .. } => self.grid_at(at).is_some(),
         }
     }
+
+    /// [`Layout::has`] for many places: the columns and rows are looked up by index, gathered once, not searched for each. One
+    /// place alone is cheaper with `has`.
+    pub fn finder(&self) -> impl Fn(Address) -> bool + '_ {
+        // Each index and the last span that has it: a cell's or an edge's, and past the first span, a grid line's.
+        let spans = |spans: &[Span]| spans.iter().enumerate().map(|(k, s)| (s.index, k)).collect::<HashMap<i64, usize>>();
+        let past = |spans: &[Span]| (!spans.is_empty()).then(|| past_line(spans));
+        let (columns, rows) = (spans(&self.columns), spans(&self.rows));
+        let (past_columns, past_rows) = (past(&self.columns), past(&self.rows));
+        move |at| match at {
+            Address::Cell { column, row } => columns.contains_key(&column) && rows.contains_key(&row),
+            Address::Vertical { column, row } => (columns.contains_key(&column) || past_columns == Some(column)) && rows.contains_key(&row),
+            Address::Horizontal { column, row } => columns.contains_key(&column) && (rows.contains_key(&row) || past_rows == Some(row)),
+            Address::Corner { column, .. } => usize::try_from(column).ok().and_then(|c| self.corners.get(c)).copied().unwrap_or(false),
+            Address::VerticalGrid { column, .. } => columns.get(&column).is_some_and(|k| *k > 0),
+            Address::HorizontalGrid { row, .. } => rows.get(&row).is_some_and(|k| *k > 0),
+        }
+    }
 }
 
 impl CurtainLayout {

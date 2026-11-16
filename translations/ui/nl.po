@@ -3987,7 +3987,7 @@ msgstr "Gesloopt"
 msgid "Demolition"
 msgstr "Sloop"
 
-#: crates/core/src/commands.rs:13525
+#: crates/core/src/commands.rs:13532
 msgid "Dependent"
 msgstr "Afhankelijk"
 
@@ -14290,7 +14290,7 @@ msgstr ""
 msgid "Unlock alignment"
 msgstr "Uitlijning ontgrendelen"
 
-#: crates/core/src/commands.rs:13696
+#: crates/core/src/commands.rs:13703
 msgid "Unnamed"
 msgstr "Naamloos"
 
