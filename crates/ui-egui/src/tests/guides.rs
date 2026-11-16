@@ -217,7 +217,7 @@ fn a_guide_draws_a_ray_a_relation_and_its_source() {
     };
     let to = |p: P2| pos2(p.0 as f32, 3000.0 - p.1 as f32);
     let along = |d: P2| vec2(d.0 as f32, -d.1 as f32);
-    let shapes = crate::canvas::alignment_shapes(&[guide], to, along, 100.0, 1.0, true);
+    let shapes = crate::canvas::alignment_shapes(&[guide], to, along, crate::canvas::GuideLook::plain(1.0, 100.0, true));
     let segments: Vec<[Pos2; 2]> = shapes
         .iter()
         .filter_map(|s| match s {
@@ -239,7 +239,7 @@ fn a_guide_draws_a_ray_a_relation_and_its_source() {
     assert!(circles.iter().any(|c| (c.radius - 2.5).abs() < 0.01 && c.center.distance(source) < 0.01), "the dot");
     assert!(circles.iter().any(|c| (c.radius - 4.5).abs() < 0.01 && c.center.distance(source) < 0.01), "and its ring");
 
-    let classic = crate::canvas::alignment_shapes(&[guide], to, along, 1000.0, 1.0, false);
+    let classic = crate::canvas::alignment_shapes(&[guide], to, along, crate::canvas::GuideLook::plain(1.0, 1000.0, false));
     assert!(classic.iter().all(|s| !matches!(s, Shape::Circle(_))), "no dot in the classic guide");
     assert!(
         classic
