@@ -171,6 +171,9 @@ the desktop wires it in slice 3.
   (`paint_plan`).
 - **Run Script for a guest** goes to the host (`script`, `cowork::script_for_guest`): its dry run there first, then the script as
   one undo step, the guest's. The window's scripts go through `BimApp::exec_script`, which the funnel test counts.
+- **Edit Group** is the session's, so a guest's Edit Group commands, and `resolve_group`, go to the host as edits do, though
+  they are no undo step of their own (`cowork::ON_HOST`, with undo and redo); the guest's copy follows the edit it started, to
+  show it ([groups](groups.md#edit-group)).
 - **A guest's imports.** Import CAD, Import Mesh, Point Cloud, Insert from File and Import Fill Patterns of a file on a guest's
   machine send the file (at most `MAX_IMPORT`, 32 MB) with the command (`import`); the host writes it into a temporary folder of
   its own, runs the command on it as the guest's step and removes the folder (`cowork::import_for_guest`). Only the file's own

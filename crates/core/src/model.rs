@@ -72,8 +72,8 @@ pub const CEILING_CUT: f64 = 2300.0;
 pub const CEILING_HEIGHT: f64 = 2600.0;
 /// The steepest slope a floor or a roof may have, degrees.
 pub const MAX_SLOPE: f64 = 75.0;
-/// The version of the project file this build writes, and the newest it reads. 33 (after 20; 21 to 32 were the Family
-/// Editor's unreleased steps, [`UNRELEASED`]): model groups (`model_groups`, library entries of kind `model-group`, and the
+/// The version of the project file this build writes, and the newest it reads. 21 (the release after 0.12's, which every
+/// change since 0.12 shares): model groups (`model_groups`, library entries of kind `model-group`, and the
 /// `modelgroup` category) and detail groups whose members are elements of their own (a group's `members`, each a slot of its
 /// type's member and the element that is it); a build that reads up to 20 would leave the members out as a field it doesn't
 /// know and draw each detail group's type over its own elements, twice over, and leave model groups out, not say "saved by a
@@ -190,10 +190,7 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// georeference and lose where the project stands; and it would read spot coordinates (a spot's `coordinate`, `type`, `origin`,
 /// `leader`, `shoulder` and `end`) and a level's `elevation_base` as spot elevations from the Project Base Point. A file of 19
 /// needs no step: its georeference is the active site, both points at the internal origin.
-pub const FORMAT: u32 = 33;
-/// The formats the Family Editor took a step at a time before it was released, none of which was: a file stamped one of them
-/// is refused as one from a newer BIMCraft, as before 33.
-pub const UNRELEASED: std::ops::RangeInclusive<u32> = 21..=32;
+pub const FORMAT: u32 = 21;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -4107,7 +4104,7 @@ impl Model {
                 Err(_) => return Ok(None),
             },
         };
-        if !(4..=u64::from(FORMAT)).contains(&format) || u32::try_from(format).is_ok_and(|f| UNRELEASED.contains(&f)) {
+        if !(4..=u64::from(FORMAT)).contains(&format) {
             return Ok(None);
         }
         let Some(raw) = elements else { return Ok(None) };
@@ -4173,7 +4170,7 @@ impl Model {
         }
         let Ok(mut rest) = Model::read_rest(&mut v, left_out, budget) else { return Ok(None) };
         rest.0.elements = elements;
-        Model::after_read(rest).map(Some)
+        Model::after_read(rest, budget).map(Some)
     }
 
     /// [`Model::read_within`] the way it always was: the whole file as JSON values, every element looked into.
@@ -4185,11 +4182,9 @@ impl Model {
         }
         let mut v: Value = crate::memory::json(text, budget)?;
         let format = v.get("format").map_or(Some(0), Value::as_u64).ok_or("`format` must be a whole number")?;
-        if format > u64::from(FORMAT) || u32::try_from(format).is_ok_and(|f| UNRELEASED.contains(&f)) {
+        if format > u64::from(FORMAT) {
             return Err(format!(
-                "it was saved by a newer BIMCraft (file format {format}; this one reads up to {FORMAT}, not {}–{}): update BIMCraft to open it",
-                UNRELEASED.start(),
-                UNRELEASED.end()
+                "it was saved by a newer BIMCraft (file format {format}; this one reads up to {FORMAT}): update BIMCraft to open it"
             ));
         }
         if format < 4 {
@@ -4217,7 +4212,7 @@ impl Model {
             o.insert("elements".into(), elements);
         }
         let read = Model::read_rest(&mut v, left_out, budget)?;
-        Model::after_read(read)
+        Model::after_read(read, budget)
     }
 
     /// A model of what file `v` holds but its elements, kept as they are (the whole read's, or none, the elements being read on
@@ -4261,25 +4256,45 @@ impl Model {
         Ok((m, left_out))
     }
 
-    /// Each detail group with no members (of a file from before FORMAT 21) given its members, made from its type.
-    fn place_old_groups(&mut self) {
+    /// Each detail group with no members (of a file from before FORMAT 21) given its members, made from its type. A file whose
+    /// groups and repeating details would place more than [`crate::groups::MAX_PLACED`] members in one view is refused, as 0.12
+    /// refused it, before any is made; `budget` stops one that would make too many in all.
+    fn place_old_groups(&mut self, budget: &crate::memory::Budget) -> Result<(), String> {
         let placed: Vec<Id> =
             self.elements.iter().filter(|(_, e)| matches!(e, Element::DetailGroup(g) if g.members.is_empty())).map(|(id, _)| *id).collect();
+        if placed.is_empty() {
+            return Ok(());
+        }
+        // Counted first, as 0.12 drew them: a few bytes of a group would otherwise make its type's members whatever the view holds.
+        let mut tally = BTreeMap::new();
+        let size = |name: &str| self.detail_groups.get(name).map_or(0, |t| t.members.len());
+        for (id, e) in self.elements.iter() {
+            let (view, n) = match e {
+                Element::DetailGroup(g) if g.members.is_empty() => (g.view, size(&g.type_name)),
+                Element::DetailGroup(g) => (g.view, g.members.len()),
+                Element::RepeatingDetail(r) => (r.view, size(&r.type_name).saturating_mul(r.count())),
+                _ => continue,
+            };
+            placing(&format!("{} {id}", e.category()), &mut tally, view, n)?;
+        }
+        // Its type's members have their GUIDs, which its places in it are kept by: `names_from_file` gave them.
         for id in placed {
+            budget.check()?;
             // One whose type is gone is said by the check.
             let _ = crate::groups::regenerate(self, id);
         }
+        Ok(())
     }
 
     /// A model just read brought up to this version, with what can't stand in it left out.
-    fn after_read((mut m, mut left_out): (Model, Vec<String>)) -> Result<(Model, Vec<String>), String> {
+    fn after_read((mut m, mut left_out): (Model, Vec<String>), budget: &crate::memory::Budget) -> Result<(Model, Vec<String>), String> {
         let was = m.format;
         m.migrate();
         m.names_from_file();
         // A detail group of a file of 20 had no members of its own, its type's being drawn in its place (FORMAT 21, with model
         // groups): its members are made, elements of its view where it drew them, once its type is named.
         if was <= 20 {
-            m.place_old_groups();
+            m.place_old_groups(budget)?;
         }
         // A family's dimension measuring to something it hasn't is left out, as what this version can't read is: a file is
         // read kindly, and a command that would leave one is refused.
@@ -4468,6 +4483,9 @@ impl Model {
                 }
             }
         }
+        // 20 to 21: a detail group's members are elements of its own. Its type names what its members are made of by name,
+        // so they are made once the names are names again, after this (`Model::place_old_groups`, in `after_read`). Model
+        // groups need nothing: a file of 20 has none.
         self.format = FORMAT;
     }
 
@@ -8365,6 +8383,7 @@ impl Model {
                 point(&who, g.at)?;
                 coord(&format!("{who} angle"), g.angle)?;
                 crate::groups::check_instance(self, id, &who, e, grouped)?;
+                placing(&who, members_placed, g.view, g.members.len())?;
             }
             Element::ModelGroup(g) => {
                 level_ok(g.level)?;

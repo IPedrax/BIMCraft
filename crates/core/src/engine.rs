@@ -309,6 +309,11 @@ impl Session {
         self.group_edit.as_ref().map(|e| e.group)
     }
 
+    /// Leaves Edit Group with the project as it is: a Co-Work guest's copy, once the edit it follows has ended on the host.
+    pub fn end_group_edit(&mut self) {
+        self.group_edit = None;
+    }
+
     /// What Edit Group lets a front end pick and change, if a group is in it ([`crate::groups::Scope`]).
     pub fn group_scope(&self) -> Option<crate::groups::Scope> {
         self.group_edit.as_ref().and_then(|ed| crate::groups::Scope::of(&self.model, ed))

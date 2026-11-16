@@ -588,6 +588,49 @@ fn a_file_of_20_with_a_detail_group_gets_its_members() {
 }
 
 #[test]
+fn a_file_of_20_whose_groups_would_place_more_than_a_view_draws_is_refused_before_any_is_made() {
+    // 0.12 drew a detail group's type where it stood, at most `MAX_PLACED` members in a view, and refused a file of more. Now
+    // each member is made when the file is read, so a few bytes of a group could make millions of elements: the file is
+    // counted first, as 0.12 counted it.
+    let file = |groups: u64| {
+        let mut s = Session::new();
+        let a = id_of(&run(&mut s, "detail_line", json!({"points": [[0, 0], [0, 1000]]})));
+        let g = id_of(&run(&mut s, "create_group", json!({"ids": [a], "name": "Old"})));
+        let mut v: Value = serde_json::from_str(&s.model.to_json().unwrap()).unwrap();
+        v["format"] = json!(20);
+        // A type of 100 lines with no GUIDs of their own, as a hand-made file may hold them: each still gets a place of its own.
+        let mut line = v["detail_groups"]["Old"]["members"][0].clone();
+        let o = line.as_object_mut().unwrap();
+        o.remove("id");
+        o.remove("guid");
+        v["detail_groups"]["Old"]["members"] = Value::Array(vec![line; 100]);
+        let es = v["elements"].as_object_mut().unwrap();
+        es.remove(&a.to_string());
+        // The group as a file of 20 held it, with no members, `groups` times in Level 1's plan.
+        let mut group = es.remove(&g.to_string()).unwrap();
+        let o = group.as_object_mut().unwrap();
+        o.remove("members");
+        o.remove("guid");
+        for k in 0..groups {
+            es.insert((g + k).to_string(), group.clone());
+        }
+        v["next_id"] = json!(g + groups);
+        v.to_string()
+    };
+    let e = crate::model::Model::read(&file(101)).unwrap_err();
+    assert!(e.contains("group members") && e.contains(&crate::groups::MAX_PLACED.to_string()), "{e}");
+    // As many as the view drew are made.
+    let (m, left_out) = crate::model::Model::read(&file(100)).unwrap_or_else(|e| panic!("{e}"));
+    assert!(left_out.is_empty(), "{left_out:?}");
+    assert_eq!(m.check(), Ok(()));
+    let groups = crate::groups::instances(&m);
+    assert_eq!(groups.len(), 100);
+    for g in [groups[0], groups[99]] {
+        assert_eq!(crate::groups::members(&m, g).len(), 100, "each line of the type has a place of its own");
+    }
+}
+
+#[test]
 fn group_types_rename_and_delete_by_kind() {
     let (mut s, gid, _) = grouped();
     run(&mut s, "group_type", json!({"name": "Model Group 1", "rename": "Corner"}));

@@ -156,6 +156,41 @@ fn exclude_and_restore_all_excluded_from_the_group_panel() {
 }
 
 #[test]
+fn exclude_restore_edit_group_and_place_model_group_have_their_shortcuts() {
+    let mut h = app(CORNER);
+    let group = ids(&h, "modelgroup");
+    let walls = ids(&h, "wall");
+    // EM excludes the member selected; RA puts back what the group selected has excluded.
+    h.state_mut().selection = vec![walls[0]];
+    h.run();
+    shortcut(&mut h, "EM");
+    assert_eq!(ids(&h, "wall").len(), 2, "{}", h.state().status.text);
+    h.state_mut().selection = group.clone();
+    h.run();
+    shortcut(&mut h, "RA");
+    assert_eq!(ids(&h, "wall").len(), 3, "{}", h.state().status.text);
+    // GE edits the group selected (EG is the Earthing Electrode's), and MG picks Place Model Group.
+    h.state_mut().selection = group.clone();
+    h.run();
+    shortcut(&mut h, "GE");
+    assert!(h.state().session.editing_group().is_some(), "{}", h.state().status.text);
+    assert!(h.state_mut().run("cancel_group", json!({})).is_some());
+    shortcut(&mut h, "MG");
+    assert_eq!(h.state().tool, Tool::ModelGroup);
+}
+
+#[test]
+fn create_group_is_in_bimcrafts_tools_palette_too() {
+    let mut h = bimcraft(BOX);
+    let walls = ids(&h, "wall");
+    h.state_mut().selection = walls.clone();
+    h.run();
+    press(&mut h, "Create Group");
+    assert_eq!(ids(&h, "modelgroup").len(), 1, "{}", h.state().status.text);
+    assert_eq!(ids(&h, "wall"), walls, "its walls stay");
+}
+
+#[test]
 fn edit_group_finish_changes_every_group_of_the_type() {
     let mut h = app(&format!("{CORNER}\ncopy {{\"ids\": [\"$last\"], \"by\": [10000, 0]}}"));
     let groups = ids(&h, "modelgroup");

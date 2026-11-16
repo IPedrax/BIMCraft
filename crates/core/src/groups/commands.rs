@@ -602,7 +602,9 @@ pub(crate) fn resolve_group(s: &mut Session, p: &Value) -> R {
         None => return Err(bad(c, "`fix`, ungroup or new_type, is required")),
     };
     let command = string(c, p, "command")?.ok_or_else(|| bad(c, "`command`, the command to run, is required"))?;
-    if matches!(command.as_str(), "resolve_group" | "undo" | "redo" | "script") {
+    // Nor what would replace the project: a Co-Work guest's runs on the host's (`cowork::ON_HOST`).
+    let id = crate::engine::find(&command).map_or(command.as_str(), |found| found.id);
+    if matches!(id, "resolve_group" | "undo" | "redo" | "script") || crate::engine::REPLACES.contains(&id) {
         return Err(bad(c, format!("`{command}` isn't run through it")));
     }
     let params = p.get("params").cloned().unwrap_or_else(|| json!({}));

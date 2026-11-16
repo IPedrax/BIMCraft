@@ -76,12 +76,10 @@ fn what_a_view_places_is_counted_over_all_its_groups_and_repeats_and_not_over_ot
     let max = crate::groups::MAX_PLACED;
     let mut s = with_group(100);
     run(&mut s, "repeating_detail", repeat(max / 100, 10.0));
-    // The view is full: one more repeat of 100 members in it is over, and in the other level's plan it isn't. (A detail group
-    // placed makes elements of its own, which the view draws as it draws any.)
-    let one = |view: u64| json!({"type": "G", "start": [0, 0], "end": [0, 0], "spacing": 10, "view": view});
-    let e = err(&mut s, "repeating_detail", one(100000));
+    // The view is full: one more group of 100 members in it is over, and in the other level's plan it isn't.
+    let e = err(&mut s, "detail_group", json!({"type": "G", "at": [0, 0], "view": 100000}));
     assert!(e.contains("members"), "{e}");
-    run(&mut s, "repeating_detail", one(100001));
+    run(&mut s, "detail_group", json!({"type": "G", "at": [0, 0], "view": 100001}));
     // A repeat made fewer, then more again by `modify`: the rule holds for edits too.
     let mut s = with_group(100);
     let id = id_of(&run(&mut s, "repeating_detail", repeat(10, 100.0)));

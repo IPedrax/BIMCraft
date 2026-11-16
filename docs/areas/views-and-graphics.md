@@ -258,9 +258,9 @@ element's (`lib_refs_mut`), so renames reach them; `Model::check` holds each to 
 a click on one picks its group (`groups::group_picks`), Tab the member. `ungroup` (UG) leaves its members as plain elements;
 `group_type` renames a type (its groups follow) or deletes it while nothing is of it. A `RepeatingDetail` places a group's type
 along a line every `spacing` from its start, each turned along it (at most `MAX_REPEATS`), as Revit's Repeating Detail
-Component does with a detail component; those are drawn, never elements. A view draws every member of every repeat in it each
-time, so `Model::check` caps what one view's repeating details place: each its members once for each repeat, and `MAX_PLACED`
-(10,000) is the most in a view (measured with the probe `probe_the_cost_of_the_most_hatched_regions_a_view_may_place`,
+Component does with a detail component; those are drawn, never elements. A view draws every member of every group and repeat in
+it each time, so `Model::check` caps what one view's detail groups and repeating details place: a group its type's members, a
+repeating detail its members once for each repeat, and `MAX_PLACED` (10,000) is the most in a view (measured with the probe `probe_the_cost_of_the_most_hatched_regions_a_view_may_place`,
 10,000 hatched regions take about 0.1 s to draw at 3 m across and 0.5 s at 30 m across, 2.8 million primitives, on a machine that
 is not busy, in a dev build (the core is built at opt-level 2 there) and in release alike, and up to 0.29 s and 1.10 s in the dev
 build on a busy one; the 200,000 it once allowed took 6 s and 30 million primitives). A placed member that is a huge circle costs

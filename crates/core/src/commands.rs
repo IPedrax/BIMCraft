@@ -2170,7 +2170,7 @@ other_files(
     edit(
         "model_group",
         "Place Model Group",
-        &[],
+        &["MG"],
         "{type, at: [x,y], angle?, mirrored?, level? | levels?: [level, …], flexible?} a model group of type `type` placed \
          with its origin at `at`, turned and mirrored as `detail_group`, on `level` (the lowest by default), or one on each of \
          `levels`, as Revit's Paste Aligned to Selected Levels. A member naming a level above the group's own names the level as \
@@ -2207,7 +2207,8 @@ other_files(
     edit(
         "exclude_member",
         "Exclude",
-        &[],
+        // EX is Explode Polyline's.
+        &["EM"],
         "{ids} members of groups taken out of their groups here, as Revit's Exclude: each element goes (a wall with its doors \
          and windows), and its group remembers it, never a change to its type; `restore_excluded` puts it back. Returns {excluded}",
         crate::groups::commands::exclude_member,
@@ -2215,19 +2216,24 @@ other_files(
     edit(
         "restore_excluded",
         "Restore All Excluded",
-        &[],
+        &["RA"],
         "{id | ids} every excluded member of groups `ids` put back as their type has it. Returns {restored, ids}",
         crate::groups::commands::restore_excluded,
     ),
-    other(
-        "edit_group",
-        "Edit Group",
-        "{id} starts editing group `id`, as Revit's Edit Group: its members change freely (one changed outside it is a conflict), \
-         and what is made meanwhile of its kind (in its view, for a detail group) joins it; `add_to_group` and \
-         `remove_from_group` add elements and take members out, `finish_group` makes its type what it now is and places every \
-         other group of it again, `cancel_group` puts the project back as it was. Returns {editing, members}",
-        crate::groups::commands::edit_group,
-    ),
+    Command {
+        id: "edit_group",
+        label: "Edit Group",
+        // Revit's EG is the Earthing Electrode's on the desktop.
+        aliases: &["GE"],
+        params: "{id} starts editing group `id`, as Revit's Edit Group: its members change freely (one changed outside it is a \
+                 conflict), and what is made meanwhile of its kind (in its view, for a detail group) joins it; `add_to_group` and \
+                 `remove_from_group` add elements and take members out, `finish_group` makes its type what it now is and places \
+                 every other group of it again, `cancel_group` puts the project back as it was. Returns {editing, members}",
+        run: crate::groups::commands::edit_group,
+        undoable: false,
+        menu: None,
+        files: Files::None,
+    },
     other(
         "add_to_group",
         "Add to Group",

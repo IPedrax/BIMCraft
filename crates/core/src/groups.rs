@@ -1107,8 +1107,10 @@ pub fn conflicts(m: &Model, id: Id) -> Vec<String> {
     let elements = elements_of(&inst);
     let f = frame_of(m, &inst, &elements);
     let vary = varying(m);
+    // Each member's first slot, found at once: a type of thousands is looked through once, not once for each member.
+    let slots: BTreeMap<Guid, &Slot> = inst.members.iter().rev().map(|s| (s.member, s)).collect();
     for x in &t.members {
-        let Some(slot) = inst.members.iter().find(|s| s.member == x.guid) else { continue };
+        let Some(slot) = slots.get(&x.guid) else { continue };
         if slot.excluded {
             continue;
         }
@@ -1183,13 +1185,15 @@ pub fn regenerate(m: &mut Model, id: Id) -> Result<Vec<Guid>, String> {
     let wanted: BTreeSet<Guid> = t.members.iter().map(|x| x.guid).collect();
     let gone: Vec<Guid> = slots.iter().filter(|s| !wanted.contains(&s.member) && !s.element.is_nil()).map(|s| s.element).collect();
     slots.retain(|s| wanted.contains(&s.member));
+    let mut had: BTreeSet<Guid> = slots.iter().map(|s| s.member).collect();
     for x in &t.members {
-        if !slots.iter().any(|s| s.member == x.guid) {
+        if had.insert(x.guid) {
             slots.push(Slot { member: x.guid, element: Guid::default(), excluded: false });
         }
     }
-    // In the type's order.
-    slots.sort_by_key(|s| t.members.iter().position(|x| x.guid == s.member));
+    // In the type's order (each member's first place in it).
+    let order: BTreeMap<Guid, usize> = t.members.iter().enumerate().rev().map(|(k, x)| (x.guid, k)).collect();
+    slots.sort_by_key(|s| order.get(&s.member).copied());
     for s in &mut slots {
         if !s.excluded && (s.element.is_nil() || m.elements.id(s.element).is_none()) {
             s.element = Guid::new();
@@ -1351,8 +1355,9 @@ pub(crate) fn check_instance(m: &Model, id: Id, who: &str, e: &Element, grouped:
         ));
     }
     let mut seen = BTreeSet::new();
+    let theirs: BTreeSet<Guid> = t.members.iter().map(|x| x.guid).collect();
     for s in inst.members {
-        if !t.members.iter().any(|x| x.guid == s.member) {
+        if !theirs.contains(&s.member) {
             return Err(format!("{who}: member {} isn't one of its type `{}`'s", s.member, inst.type_name));
         }
         if !seen.insert(s.member) {

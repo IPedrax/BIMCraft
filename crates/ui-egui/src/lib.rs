@@ -2752,6 +2752,18 @@ impl BimApp {
                     self.ungroup();
                     return true;
                 }
+                Some("edit_group") => {
+                    self.edit_group();
+                    return true;
+                }
+                Some("exclude_member") => {
+                    self.exclude_selected();
+                    return true;
+                }
+                Some("restore_excluded") => {
+                    self.restore_excluded();
+                    return true;
+                }
                 Some("dimension") => Tool::Dimension(DimMode::Aligned, Vec::new()),
                 Some("text") => Tool::Text,
                 Some("detail_line") => {

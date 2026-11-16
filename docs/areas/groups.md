@@ -76,21 +76,29 @@ the edit started. A member removed may be added back before Finish. `Session::gr
 pick meanwhile: the group's members, less those removed, with those added or drawn; `group_picks` and `as_picked` given it pick only
 those, and `Scope::addable` is what Add may take (of the group's kind, in its view for a detail group, in no other group).
 
+Edit Group is the session's, not the model's. In a Co-Work session that is the host's: a guest's `edit_group`, `add_to_group`,
+`remove_from_group`, `cancel_group` and `resolve_group` go there as edits do (`cowork::ON_HOST`), so the guest's changes to the
+members run inside the edit and Finish finds it, and the guest's copy follows the edit it started (`live::follow_group_edit`) to
+show it. What the host's session adds to the edit by itself (what is drawn meanwhile) the copy picks only after Finish. One group
+is edited at a time for everyone in the session, and Cancel takes back what everyone did meanwhile (`Session::rewind`).
+
 ## Files
 
-FORMAT 33 (past 20: 21 to 32 were the Family Editor's unreleased steps, still refused as newer, `model::UNRELEASED`). A
-detail group of a file of 20 or before had no members of its own (its type's were drawn in its place): once the file is read
-and its names are names again, `Model::place_old_groups` places them, so each becomes an instance with real members.
+FORMAT 21, the release after 0.12's. A detail group of a file of 20 or before had no members of its own (its type's were drawn
+in its place): once the file is read and its names are names again, `Model::place_old_groups` places them, so each becomes an
+instance with real members. It counts them first, as a view drew them, and refuses a file whose groups and repeating details
+would place more than `groups::MAX_PLACED` members in one view, as 0.12 did, before it makes any; the read's memory budget
+stops one that would place too many across all its views.
 Repeating details still draw their type's members, as before.
 
 ## On the desktop
 
 The Modify tab's Create panel has Create Group (GP), always there: a selection that can't make one group asks which kind to
 make of it (`groups::group_split_window`: Model elements only, Detail elements only, each with how many it takes, or Cancel), and
-runs `create_group {only}`. Model Group (Place Model Group, with the type and Flexible on the Options Bar) is there once there is
+runs `create_group {only}`. Model Group (Place Model Group, MG, with the type and Flexible on the Options Bar) is there once there is
 a model group. Flexible's hover note (`groups::FLEXIBLE_TIP`, on the Options Bar and on the Properties row) says what it does. With a
-group selected, the Group panel has Edit Group, Ungroup (UG) and Restore All Excluded; with a member selected (Tab), Exclude, and
-Properties sets only its parameters that vary by group instance, the rest greyed (`groups::held`).
+group selected, the Group panel has Edit Group (GE), Ungroup (UG) and Restore All Excluded (RA); with a member selected (Tab),
+Exclude (EM), and Properties sets only its parameters that vary by group instance, the rest greyed (`groups::held`).
 
 In Edit Group the window says so: a frame in the edit's colour round every view and a banner at its top naming the group and what
 may be changed (`edit_group_frame`), and the prompt line. Only the group's own picks, in plans, sections and the 3D view

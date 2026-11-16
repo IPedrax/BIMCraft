@@ -323,8 +323,8 @@ fn a_georeference_needs_no_coordinate_reference_system() {
 
 #[test]
 fn coordinates_share_0_12s_format_20_and_a_file_of_19_needs_no_step() {
-    // Groups took the format on to 33 since; coordinates still need no step.
-    assert_eq!(crate::model::FORMAT, 33);
+    // Groups took the format on to 21, the next release's, since; coordinates still need no step.
+    assert_eq!(crate::model::FORMAT, 21);
     let mut s = Session::new();
     run(&mut s, "georeference", json!({"crs": "EPSG:31983", "eastings": 1000.0}));
     let mut v: Value = serde_json::from_str(&s.model.to_json().unwrap()).unwrap();
