@@ -179,7 +179,25 @@ pub(crate) fn tab(ui: &mut Ui, key: Id, room: f32, add: impl FnOnce(&mut Ui)) {
     // first tool): what is still over then scrolls, and no frame more changes it.
     let asked = FITS.with(|f| f.borrow().clone());
     let exhausted = asked == fits(&seen, whole.max(1.0) * 4.0 + room, room - SLACK);
-    let missed = (missed + over).min(whole);
+    // Still over: on to the next way of fitting the panels in one frame, never less than `over` more. Asking only `over` more
+    // each frame laid the same panels out again while a panel's last tools were narrower than its average, a frame for each
+    // (a hundred frames in the smallest window); every way between them is the same, so skipping them changes nothing.
+    let step = if over > 0.0 && !exhausted {
+        let now = fits(&seen, whole + missed, room - SLACK);
+        let changes = |e: f32| fits(&seen, whole + missed + e, room - SLACK) != now;
+        let (mut lo, mut hi) = (0.0, over);
+        while hi < whole && !changes(hi) {
+            (lo, hi) = (hi, hi * 2.0);
+        }
+        for _ in 0..12 {
+            let mid = (lo + hi) / 2.0;
+            if changes(mid) { hi = mid } else { lo = mid }
+        }
+        hi.max(over)
+    } else {
+        over
+    };
+    let missed = (missed + step).min(whole);
     if over > 0.0 && missed < whole && !exhausted {
         ui.ctx().request_repaint();
     }
