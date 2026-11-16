@@ -626,6 +626,44 @@ pub(crate) fn as_copy(e: &mut Element) {
     }
 }
 
+/// Instance `to`, just made a copy of `from`: its members placed now rather than by `groups::keep`, each taking its original's
+/// values of the parameters that vary by group instance, as a copy of one of Revit's groups does. Nothing to do when none
+/// varies.
+pub(crate) fn copy_own(m: &mut Model, from: Guid, to: Guid) -> Result<(), String> {
+    let vary = super::varying(m);
+    let (Some(a), Some(b)) = (m.elements.id(from), m.elements.id(to)) else { return Ok(()) };
+    if vary.is_empty() {
+        return Ok(());
+    }
+    super::regenerate(m, b)?;
+    let slots = |id: Id| -> BTreeMap<Guid, Guid> {
+        m.elements
+            .get(id)
+            .and_then(instance)
+            .map(|i| i.members.iter().filter(|s| !s.excluded).map(|s| (s.member, s.element)).collect())
+            .unwrap_or_default()
+    };
+    let (theirs, ours) = (slots(a), slots(b));
+    // Each copy's member, and its original's values (none where it had none).
+    type Values = Vec<(String, Option<Value>)>;
+    let mut set: Vec<(Guid, Values)> = Vec::new();
+    for (member, was) in theirs {
+        let (Some(&now), Some(e)) = (ours.get(&member), m.elements.id(was).and_then(|i| m.elements.get(i))) else { continue };
+        let values = vary.iter().map(|n| (n.clone(), e.params().and_then(|p| p.get(n)).cloned())).collect();
+        set.push((now, values));
+    }
+    for (g, values) in set {
+        let Some(params) = m.elements.id(g).and_then(|i| m.elements.get_mut(i)).and_then(Element::params_mut) else { continue };
+        for (n, v) in values {
+            match v {
+                Some(v) => params.insert(n, v),
+                None => params.remove(&n),
+            };
+        }
+    }
+    Ok(())
+}
+
 /// The instance `inst`'s origin, for what shows and snaps to it.
 pub fn origin(inst: &Instance) -> P2 {
     inst.placement.at

@@ -3102,6 +3102,10 @@ pub struct ProjectParameter {
     /// Each element's, or its type's.
     #[serde(default, skip_serializing_if = "Scope::is_instance")]
     pub scope: Scope,
+    /// Revit's Values can vary by group instance: a grouped element's value is its own in each group, set without Edit Group
+    /// and never a change to the group. Off (Values are aligned per group type), it is its group type's, changed in Edit Group.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub vary_by_group: bool,
     /// A type parameter's values, by the GUID of the type (a library entry), so a type renamed keeps its value.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub type_values: BTreeMap<Guid, serde_json::Value>,

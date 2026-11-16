@@ -32,7 +32,7 @@ msgstr "Vasca da bagno"
 msgid "Bed"
 msgstr "Letto"
 
-#: crates/core/src/model.rs:3598
+#: crates/core/src/model.rs:3602
 msgid "Brick"
 msgstr "Mattone"
 
@@ -40,7 +40,7 @@ msgstr "Mattone"
 msgid "Brick 225 x 75"
 msgstr "Mattone 225 x 75"
 
-#: crates/core/src/commands.rs:5482
+#: crates/core/src/commands.rs:5485
 msgid "Camera"
 msgstr ""
 
@@ -68,7 +68,7 @@ msgstr "Asse"
 msgid "Centre Lines"
 msgstr "Linee d'asse"
 
-#: crates/core/src/model.rs:3606
+#: crates/core/src/model.rs:3610
 msgid "Ceramic tile"
 msgstr "Piastrella ceramica"
 
@@ -86,7 +86,7 @@ msgstr ""
 msgid "Concrete"
 msgstr "Calcestruzzo"
 
-#: crates/core/src/model.rs:3600
+#: crates/core/src/model.rs:3604
 msgid "Concrete block"
 msgstr "Blocco in calcestruzzo"
 
@@ -95,11 +95,11 @@ msgstr "Blocco in calcestruzzo"
 msgid "Connected Load (VA)"
 msgstr ""
 
-#: crates/core/src/model.rs:3614
+#: crates/core/src/model.rs:3618
 msgid "Copper"
 msgstr "Rame"
 
-#: crates/core/src/commands.rs:1901
+#: crates/core/src/commands.rs:1904
 msgid "Copy"
 msgstr "Copia"
 
@@ -132,7 +132,7 @@ msgstr "Presa dati"
 msgid "Demand Factor"
 msgstr ""
 
-#: crates/core/src/commands.rs:13234
+#: crates/core/src/commands.rs:13237
 msgid "Dependent"
 msgstr "Dipendente"
 
@@ -217,9 +217,9 @@ msgstr ""
 msgid "Electrical Power"
 msgstr ""
 
-#: crates/core/src/commands.rs:12981
-#: crates/core/src/commands.rs:12996
-#: crates/core/src/commands.rs:17428
+#: crates/core/src/commands.rs:12984
+#: crates/core/src/commands.rs:12999
+#: crates/core/src/commands.rs:17451
 msgid "Elevation"
 msgstr "Prospetto"
 
@@ -289,7 +289,7 @@ msgstr "Vetro"
 msgid "Gross Floor Area"
 msgstr "Superficie lorda"
 
-#: crates/core/src/model.rs:3605
+#: crates/core/src/model.rs:3609
 msgid "Gypsum board"
 msgstr "Cartongesso"
 
@@ -349,8 +349,8 @@ msgstr "Larghezza gamba"
 msgid "Length"
 msgstr "Lunghezza"
 
-#: crates/core/src/commands.rs:8058
-#: crates/core/src/model.rs:3746
+#: crates/core/src/commands.rs:8061
+#: crates/core/src/model.rs:3750
 msgid "Level"
 msgstr "Piano"
 
@@ -390,7 +390,7 @@ msgstr "ID"
 msgid "Masking"
 msgstr "Mascheramento"
 
-#: crates/core/src/commands.rs:10516
+#: crates/core/src/commands.rs:10519
 msgid "Mass"
 msgstr "Volume"
 
@@ -406,10 +406,10 @@ msgstr "Linee medie"
 msgid "Membrane"
 msgstr "Membrana"
 
-#: crates/core/src/commands.rs:3625
-#: crates/core/src/commands.rs:16024
+#: crates/core/src/commands.rs:3628
+#: crates/core/src/commands.rs:16047
 #: crates/core/src/family.rs:3429
-#: crates/core/src/model.rs:5226
+#: crates/core/src/model.rs:5230
 msgid "Metal"
 msgstr "Metallo"
 
@@ -503,11 +503,11 @@ msgstr "Porcellana"
 msgid "Profile"
 msgstr ""
 
-#: crates/core/src/commands.rs:3892
+#: crates/core/src/commands.rs:3895
 msgid "Project"
 msgstr "Progetto"
 
-#: crates/core/src/commands.rs:8785
+#: crates/core/src/commands.rs:8788
 msgid "Property Line"
 msgstr ""
 
@@ -535,11 +535,11 @@ msgstr "Alzate"
 msgid "Roller"
 msgstr ""
 
-#: crates/core/src/model.rs:3607
+#: crates/core/src/model.rs:3611
 msgid "Roof tiles"
 msgstr "Tegole"
 
-#: crates/core/src/commands.rs:10741
+#: crates/core/src/commands.rs:10744
 msgid "Room"
 msgstr "Zona"
 
@@ -567,7 +567,7 @@ msgstr "SCALA COME INDICATO"
 msgid "Sand"
 msgstr "Sabbia"
 
-#: crates/core/src/model.rs:3603
+#: crates/core/src/model.rs:3607
 msgid "Screed"
 msgstr "Massetto"
 
@@ -575,8 +575,8 @@ msgstr "Massetto"
 msgid "Seat Height"
 msgstr "Altezza seduta"
 
-#: crates/core/src/commands.rs:12916
-#: crates/core/src/commands.rs:17427
+#: crates/core/src/commands.rs:12919
+#: crates/core/src/commands.rs:17450
 msgid "Section"
 msgstr "Sezione"
 
@@ -746,7 +746,7 @@ msgstr ""
 msgid "Unclassified"
 msgstr ""
 
-#: crates/core/src/commands.rs:13405
+#: crates/core/src/commands.rs:13408
 msgid "Unnamed"
 msgstr "Senza nome"
 

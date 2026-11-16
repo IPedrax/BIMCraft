@@ -72,6 +72,27 @@ fn scope_combo(ui: &mut Ui, salt: impl egui::AsIdSalt, now: &mut Scope, label: &
     *now != was
 }
 
+fn group_values_name(vary: bool) -> &'static str {
+    if vary { msg!("Vary by group instance") } else { msg!("Aligned per group type") }
+}
+
+/// What Revit's Values are aligned per group type and Values can vary by group instance mean, for the drop-down's hover.
+pub(crate) const GROUP_VALUES_TIP: &str = msg!(
+    "Aligned per group type: a grouped element's value is its group type's, the same in every group of it, and changes in Edit Group. \
+     Vary by group instance: each group's element holds its own, set in Properties with the element Tab-selected, without Edit Group."
+);
+
+/// A drop-down of Aligned per group type and Vary by group instance, read by assistive tools as `label`.
+fn group_values_combo(ui: &mut Ui, salt: impl egui::AsIdSalt, vary: &mut bool, label: &str) {
+    let combo = ComboBox::from_id_salt(salt).selected_text(t(group_values_name(*vary))).width(150.0).show_ui(ui, |ui| {
+        for v in [false, true] {
+            ui.selectable_value(vary, v, t(group_values_name(v)));
+        }
+    });
+    combo.response.widget_info(|| WidgetInfo::labeled(WidgetType::ComboBox, true, label));
+    combo.response.on_hover_text(t(GROUP_VALUES_TIP));
+}
+
 /// Text `width` wide, breaking onto new lines rather than widening its table and the window.
 fn wrapped(ui: &mut Ui, text: impl Into<String>, width: f32) {
     let text: String = text.into();
@@ -140,6 +161,7 @@ struct Row {
     description: String,
     read_only: bool,
     scope: Scope,
+    vary_by_group: bool,
     dictionary: Option<String>,
     usage: Usage,
 }
@@ -157,6 +179,7 @@ impl Row {
             description: p.description.clone(),
             read_only: p.read_only,
             scope: p.scope,
+            vary_by_group: p.vary_by_group,
             dictionary: p.dictionary.clone(),
             usage: parameters::usage(m, name),
         }
@@ -182,6 +205,7 @@ impl Row {
             "description": self.description,
             "read_only": self.read_only,
             "scope": self.scope,
+            "vary_by_group": self.vary_by_group,
         });
         if self.original.as_ref().is_some_and(|o| *o != self.name) {
             op["rename"] = json!(self.name.trim());
@@ -757,6 +781,7 @@ impl BimApp {
                     description: String::new(),
                     read_only: false,
                     scope: Scope::Instance,
+                    vary_by_group: false,
                     dictionary: None,
                     usage: Usage::default(),
                 });
@@ -809,7 +834,7 @@ impl BimApp {
         let groups: BTreeSet<String> = d.rows.iter().map(|r| r.group.clone()).filter(|g| !g.is_empty()).collect();
         let mut pick_group: Option<(usize, String)> = None;
         ScrollArea::both().max_height(380.0).auto_shrink([false, false]).show(ui, |ui| {
-            Grid::new("parameter-table").striped(true).num_columns(10).spacing([8.0, 4.0]).show(ui, |ui| {
+            Grid::new("parameter-table").striped(true).num_columns(11).spacing([8.0, 4.0]).show(ui, |ui| {
                 let all = !d.rows.is_empty() && d.rows.iter().all(|r| r.checked);
                 let mut every = all;
                 if tick(ui, &mut every, t("Check All")) {
@@ -821,6 +846,7 @@ impl BimApp {
                     msg!("Source"),
                     msg!("Type of Parameter"),
                     msg!("Instance/Type"),
+                    msg!("Group Values"),
                     msg!("Group Under"),
                     msg!("Description"),
                     msg!("Editable"),
@@ -858,6 +884,10 @@ impl BimApp {
                     let kind_label = tf("Type of {}", &[&label]);
                     kinds.response.widget_info(|| WidgetInfo::labeled(WidgetType::ComboBox, true, kind_label.clone()));
                     scope_combo(ui, ("parameter-scope", i), &mut r.scope, &tf("Instance or Type of {}", &[&label]));
+                    // A type's value is its type's, grouped or not.
+                    ui.add_enabled_ui(r.scope == Scope::Instance, |ui| {
+                        group_values_combo(ui, ("parameter-group-values", i), &mut r.vary_by_group, &tf("Group values of {}", &[&label]));
+                    });
                     ui.horizontal(|ui| {
                         field(ui, &mut r.group, 100.0, &tf("Group of {}", &[&label]));
                         if !groups.is_empty() {

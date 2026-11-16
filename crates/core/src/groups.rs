@@ -462,6 +462,15 @@ pub fn group_of(m: &Model, id: Id) -> Option<Id> {
     m.lookup().referrers(&g).find(|r| m.elements.get(*r).and_then(instance).is_some_and(|i| i.members.iter().any(|s| s.element == g)))
 }
 
+/// The group holding a member among `ids` to its type: one not in Edit Group (`editing`, its scope). Of such members a front end
+/// changes only their values of the parameters that vary by group instance ([`varying`]); the rest change in Edit Group.
+pub fn held(m: &Model, ids: &[Id], editing: Option<&Scope>) -> Option<Id> {
+    if !any(m) {
+        return None;
+    }
+    ids.iter().filter(|id| editing.is_none_or(|s| !s.editable(**id))).find_map(|id| group_of(m, *id))
+}
+
 /// The elements of instance `id` of `m`, those it has here (none excluded).
 pub fn members(m: &Model, id: Id) -> Vec<Id> {
     m.elements
@@ -643,7 +652,7 @@ pub fn storeys_off(m: &Model, t: &GroupType, levels: &[Guid], all: bool) -> Vec<
 const TOL: f64 = 0.01;
 
 /// The fields a member holds of its own in each instance, never a change to the group: a door's or a window's mark, a room's
-/// number.
+/// number. Its values of the parameters that vary by group instance are its own too ([`varying`]).
 pub const OWN: &[&str] = &["mark", "number"];
 
 /// What tokens and members of a placed instance stand for: the elements and levels (or view) they are here.
@@ -978,13 +987,64 @@ pub fn type_keeping(
     Ok((GroupType { members, levels: storeys }, levels, slots))
 }
 
-/// The members of element `e` whose numbers are its own in each instance ([`OWN`]), from `was`.
-fn keep_own(e: &mut Element, was: &Element) {
-    match (e, was) {
+/// The members of element `e` whose values are its own in each instance, from `was`: its numbers ([`OWN`]) and its values of
+/// the parameters `vary` names, those that vary by group instance ([`varying`]), had or not.
+fn keep_own(vary: &BTreeSet<String>, e: &mut Element, was: &Element) {
+    match (&mut *e, was) {
         (Element::Door(o) | Element::Window(o), Element::Door(w) | Element::Window(w)) => o.mark.clone_from(&w.mark),
         (Element::Room(r), Element::Room(w)) => r.number.clone_from(&w.number),
         _ => {}
     }
+    let had = was.params();
+    if let Some(params) = e.params_mut().filter(|_| !vary.is_empty()) {
+        for n in vary {
+            match had.and_then(|p| p.get(n)) {
+                Some(v) => params.insert(n.clone(), v.clone()),
+                None => params.remove(n),
+            };
+        }
+    }
+}
+
+/// The names of `m`'s parameters whose values vary by group instance (Revit's Values can vary by group instance): a member's
+/// value of one is its own in each instance, never a change to its group. The rest are aligned per group type.
+pub fn varying(m: &Model) -> BTreeSet<String> {
+    m.parameters.iter().filter(|(_, p)| p.vary_by_group).map(|(n, _)| n.clone()).collect()
+}
+
+/// Every group type's members, of both kinds, as elements to change: what changes every element's values of a parameter
+/// (renamed, taken away) changes these too, so groups stay as their types have them.
+pub fn member_elements_mut(m: &mut Model) -> impl Iterator<Item = &mut Element> {
+    m.model_groups.values_mut().chain(m.detail_groups.values_mut()).flat_map(|t| t.members.iter_mut().map(|x| &mut x.element))
+}
+
+/// Parameter `name` aligned per group type: each instance's members take their type's value of it, or have none where it has
+/// none. How many values that changed.
+pub fn align(m: &mut Model, name: &str) -> usize {
+    let mut set: Vec<(Id, Option<serde_json::Value>)> = Vec::new();
+    for id in instances(m) {
+        let Some(inst) = m.elements.get(id).and_then(instance) else { continue };
+        let Some(t) = types(m, inst.kind).get(inst.type_name) else { continue };
+        for x in &t.members {
+            let Some(e) = inst.members.iter().find(|s| s.member == x.guid && !s.excluded).and_then(|s| m.elements.id(s.element)) else {
+                continue;
+            };
+            let want = x.element.params().and_then(|p| p.get(name)).cloned();
+            let have = m.elements.get(e).and_then(Element::params).and_then(|p| p.get(name)).cloned();
+            if want != have && m.elements.get(e).and_then(Element::params).is_some() {
+                set.push((e, want));
+            }
+        }
+    }
+    for (id, v) in &set {
+        if let Some(params) = m.elements.get_mut(*id).and_then(Element::params_mut) {
+            match v {
+                Some(v) => params.insert(name.to_string(), v.clone()),
+                None => params.remove(name),
+            };
+        }
+    }
+    set.len()
 }
 
 /// Element `e`, as it is to be held to its member: as JSON with its parts' ids and GUIDs and its own fields ([`OWN`]) left out.
@@ -1046,6 +1106,7 @@ pub fn conflicts(m: &Model, id: Id) -> Vec<String> {
     let mut out = Vec::new();
     let elements = elements_of(&inst);
     let f = frame_of(m, &inst, &elements);
+    let vary = varying(m);
     for x in &t.members {
         let Some(slot) = inst.members.iter().find(|s| s.member == x.guid) else { continue };
         if slot.excluded {
@@ -1056,7 +1117,7 @@ pub fn conflicts(m: &Model, id: Id) -> Vec<String> {
             continue;
         };
         let Ok(mut want) = place(m, t, x, &f) else { continue };
-        keep_own(&mut want, have);
+        keep_own(&vary, &mut want, have);
         if !same(have, &want) {
             let id = m.elements.id(slot.element).unwrap_or_default();
             out.push(format!("its {} {id} changed", have.category()));
@@ -1141,12 +1202,13 @@ pub fn regenerate(m: &mut Model, id: Id) -> Result<Vec<Guid>, String> {
     let placed_inst = Instance { levels: &levels, members: &slots, ..inst };
     let f = frame_of(m, &placed_inst, &elements);
     let mut made: Vec<(Guid, Element, bool)> = Vec::new();
+    let vary = varying(m);
     for x in &t.members {
         let Some(&g) = elements.get(&x.guid) else { continue };
         let mut e = place(m, &t, x, &f).map_err(|e| format!("{who}: {e}"))?;
         let had = m.elements.get(g);
         if let Some(was) = had {
-            keep_own(&mut e, was);
+            keep_own(&vary, &mut e, was);
             keep_parts(&mut e, was);
         }
         made.push((g, e, had.is_some()));

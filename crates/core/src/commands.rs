@@ -1464,8 +1464,8 @@ other_files(
         &[],
         "{name, kind?: text|number|integer|length|area|volume|angle|yesno, categories?: [wall|floor|ceiling|roof|door|window|room|\
          column|component|stair|ramp|railing|mass, …], sets?: {category: property set name|null}, classification?: {system, \
-         edition?}|null, rename?, delete?: true, description?, group?, read_only?: bool, scope?: instance|type, dictionary?: null} \
-         a project parameter, as Revit's Manage > Project Parameters makes one: a value of its kind each element of its \
+         edition?}|null, rename?, delete?: true, description?, group?, read_only?: bool, scope?: instance|type, dictionary?: null, \
+         vary_by_group?: bool} a project parameter, as Revit's Manage > Project Parameters makes one: a value of its kind each element of its \
          categories may have of its own, set with `modify {id, params: {name: value}}`, or, `scope` type, each of their types, \
          set with `type_parameter`. Rooms, stairs, ramps and masses have no types. Made a type parameter, its elements' values \
          are wiped (answers `wiped`); made an instance parameter, each type's value is copied to its elements (`copied`). \
@@ -1475,6 +1475,9 @@ other_files(
          they came in; none: `Project Parameters`); `classification` makes a text parameter a classification system's codes, \
          which IFC holds as classification references. `group` (one of Revit's, or a name of the project's own) and \
          `read_only` are how Properties shows it. `dictionary` null makes one from a dictionary a project parameter again. \
+         `vary_by_group` true is Revit's Values can vary by group instance: a grouped element's value is its own in each group, \
+         set with `modify` without Edit Group; false (the default, Values are aligned per group type) makes it the group type's, \
+         changed in Edit Group, and turned back to false each group's members take their type's value (answers `aligned`). \
          `parameter_list` lists them",
         parameter,
     )
@@ -13888,6 +13891,7 @@ pub(crate) fn parameter(s: &mut Session, p: &Value) -> R {
             "read_only",
             "scope",
             "dictionary",
+            "vary_by_group",
         ],
     )?;
     let name = string(c, p, "name")?.map(|n| n.trim().to_string()).filter(|n| !n.is_empty()).ok_or_else(|| bad(c, "`name` is required"))?;
@@ -13896,8 +13900,10 @@ pub(crate) fn parameter(s: &mut Session, p: &Value) -> R {
     // schedules' column of it, and filtering and sorting by it. A component's value of its family's
     // parameter of that name is its family's, and stays.
     let clear = |m: &mut Model, name: &str, gone: &[String]| {
-        let Model { families, elements, .. } = m;
-        for e in elements.values_mut() {
+        let Model { families, elements, model_groups, detail_groups, .. } = m;
+        // Group types' members too, so a group stays as its type has it.
+        let held = model_groups.values_mut().chain(detail_groups.values_mut()).flat_map(|t| t.members.iter_mut().map(|x| &mut x.element));
+        for e in elements.values_mut().chain(held) {
             if let Element::Schedule(sc) = e {
                 if gone.contains(&sc.category()) {
                     sc.fields.retain(|f| f.name != name || f.formula.is_some());
@@ -13990,6 +13996,14 @@ pub(crate) fn parameter(s: &mut Session, p: &Value) -> R {
         crate::parameters::keep_type_values_of_categories(m, &mut param);
     }
     let mut reply = json!({});
+    if let Some(v) = p.get("vary_by_group").filter(|v| !v.is_null()) {
+        let vary = v.as_bool().ok_or_else(|| bad(c, format!("`vary_by_group` is true or false, not {v}")))?;
+        // Aligned again: each group's members take their type's value.
+        if param.vary_by_group && !vary {
+            reply["aligned"] = json!(crate::groups::align(m, &name));
+        }
+        param.vary_by_group = vary;
+    }
     if let Some(v) = p.get("scope").filter(|v| !v.is_null()) {
         let scope: Scope = serde_json::from_value(v.clone()).map_err(|_| bad(c, format!("`scope` is instance or type, not {v}")))?;
         if scope != param.scope {
@@ -14065,6 +14079,15 @@ pub(crate) fn parameter(s: &mut Session, p: &Value) -> R {
                 }
                 let cat = e.category();
                 if param.categories.iter().any(|k| k == cat)
+                    && let Some(params) = e.params_mut()
+                    && let Some(v) = params.remove(&name)
+                {
+                    params.insert(to.clone(), v);
+                }
+            }
+            // And group types' members, so a group stays as its type has it.
+            for e in crate::groups::member_elements_mut(m) {
+                if param.categories.iter().any(|k| k == e.category())
                     && let Some(params) = e.params_mut()
                     && let Some(v) = params.remove(&name)
                 {
@@ -17503,6 +17526,15 @@ fn duplicate(c: &str, s: &mut Session, ids: &[Id], mo: &Motion) -> R {
             place_tag(m, id, head);
         }
         made.push(id);
+    }
+    // A group's copy takes its original's values of the parameters that vary by group instance.
+    let groups: Vec<(Guid, Guid)> = hosts
+        .iter()
+        .filter(|(_, to)| m.elements.id(**to).and_then(|i| m.elements.get(i)).and_then(crate::groups::instance).is_some())
+        .map(|(a, b)| (*a, *b))
+        .collect();
+    for (from, to) in groups {
+        crate::groups::commands::copy_own(m, from, to).map_err(|e| bad(c, e))?;
     }
     Ok(json!({"ids": made}))
 }

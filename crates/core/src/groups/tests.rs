@@ -797,3 +797,72 @@ fn a_room_with_its_own_floor_groups_and_copies_with_it() {
         assert_eq!(crate::groups::conflicts(&s.model, i), Vec::<String>::new());
     }
 }
+
+fn param(s: &Session, id: Id, name: &str) -> Option<Value> {
+    s.model.elements.get(id).and_then(Element::params).and_then(|p| p.get(name)).cloned()
+}
+
+#[test]
+fn a_parameter_that_varies_by_group_instance_is_each_groups_own_and_one_aligned_per_type_is_the_types() {
+    let (mut s, gid, ids) = grouped();
+    run(&mut s, "copy", json!({"ids": [gid], "by": [10000, 0]}));
+    let other = instances(&s).into_iter().find(|g| *g != gid).unwrap_or(0);
+    let theirs = crate::groups::members(&s.model, other);
+    // Aligned per group type, as Revit's are unless said otherwise: a member's value set alone is a change from inside.
+    let r = run(&mut s, "parameter", json!({"name": "Fire Rating", "kind": "text", "categories": ["wall"]}));
+    assert_eq!(r["parameter"].get("vary_by_group"), None, "aligned is the default: {r}");
+    let e = err(&mut s, "modify", json!({"ids": [ids[0]], "params": {"Fire Rating": "EI 60"}}));
+    assert!(is_conflict(&e), "{e}");
+    // Varying by group instance: each group's member holds its own, and no group is changed from inside.
+    let r = run(&mut s, "parameter", json!({"name": "Comments", "kind": "text", "categories": ["wall"], "vary_by_group": true}));
+    assert_eq!(r["parameter"]["vary_by_group"], true);
+    run(&mut s, "modify", json!({"ids": [ids[0]], "params": {"Comments": "kept"}}));
+    run(&mut s, "modify", json!({"ids": [theirs[0]], "params": {"Comments": "theirs"}}));
+    assert_eq!(param(&s, ids[0], "Comments"), Some(json!("kept")));
+    assert_eq!(param(&s, theirs[0], "Comments"), Some(json!("theirs")));
+    for g in instances(&s) {
+        assert_eq!(crate::groups::conflicts(&s.model, g), Vec::<String>::new(), "group {g}");
+    }
+    // A front end's Properties changes only those of a member held to its type: one not in Edit Group.
+    assert_eq!(crate::groups::held(&s.model, &[ids[0]], None), Some(gid));
+    assert_eq!(crate::groups::held(&s.model, &[gid], None), None, "the group itself is no member");
+    // Placed again from the type (Edit Group finished on the other one), a member keeps its own value.
+    run(&mut s, "edit_group", json!({"id": other}));
+    let scope = s.group_scope();
+    assert_eq!(crate::groups::held(&s.model, &[theirs[1]], scope.as_ref()), None, "in Edit Group its members are free");
+    assert_eq!(crate::groups::held(&s.model, &[ids[1]], scope.as_ref()), Some(gid));
+    run(&mut s, "modify", json!({"ids": [theirs[1]], "params": {"Fire Rating": "EI 90"}}));
+    run(&mut s, "finish_group", json!({}));
+    assert_eq!(param(&s, ids[0], "Comments"), Some(json!("kept")), "its own, after the type changed");
+    assert_eq!(param(&s, ids[1], "Fire Rating"), Some(json!("EI 90")), "an aligned value set in Edit Group is every group's");
+    assert_eq!(param(&s, theirs[0], "Comments"), Some(json!("theirs")));
+    // A copy takes the value its original has.
+    run(&mut s, "copy", json!({"ids": [gid], "by": [0, 10000]}));
+    let third = instances(&s).into_iter().find(|g| *g != gid && *g != other).unwrap_or(0);
+    assert_eq!(param(&s, crate::groups::members(&s.model, third)[0], "Comments"), Some(json!("kept")));
+    // Renamed, both kinds of value follow, the type's too, and no group breaks.
+    run(&mut s, "parameter", json!({"name": "Comments", "rename": "Notes"}));
+    run(&mut s, "parameter", json!({"name": "Fire Rating", "rename": "Rating"}));
+    assert_eq!(param(&s, ids[0], "Notes"), Some(json!("kept")));
+    assert_eq!(param(&s, theirs[1], "Rating"), Some(json!("EI 90")));
+    for g in instances(&s) {
+        assert_eq!(crate::groups::conflicts(&s.model, g), Vec::<String>::new(), "group {g} after the renames");
+    }
+    // Aligned again: every group's members take their type's value, and the reply counts what changed.
+    let r = run(&mut s, "parameter", json!({"name": "Notes", "vary_by_group": false}));
+    assert_eq!(r["aligned"], 2, "{r}");
+    let t = &s.model.model_groups.values().next().unwrap_or_else(|| panic!("no type")).members[0].element;
+    let want = t.params().and_then(|p| p.get("Notes")).cloned();
+    for g in instances(&s) {
+        assert_eq!(param(&s, crate::groups::members(&s.model, g)[0], "Notes"), want, "group {g}");
+        assert_eq!(crate::groups::conflicts(&s.model, g), Vec::<String>::new(), "group {g} aligned");
+    }
+    // Deleted, its values go from the types as well as the elements.
+    run(&mut s, "parameter", json!({"name": "Rating", "delete": true}));
+    assert!(s.model.model_groups.values().flat_map(|t| &t.members).all(|x| x.element.params().is_none_or(|p| !p.contains_key("Rating"))));
+    for g in instances(&s) {
+        assert_eq!(crate::groups::conflicts(&s.model, g), Vec::<String>::new(), "group {g} after the delete");
+    }
+    // Only true or false.
+    assert!(err(&mut s, "parameter", json!({"name": "Notes", "vary_by_group": "yes"})).contains("vary_by_group"));
+}

@@ -26,6 +26,18 @@ decision, 2026-11-03). The window says which before Apply, and undo brings them 
 (`type_value_rows`, for the types with such a dialog); Properties shows only instance parameters. A type duplicated in that dialog keeps
 its values (`copy_to`).
 
+## In groups
+
+As Revit's Values are aligned per group type and Values can vary by group instance: `vary_by_group` on an instance parameter
+(`ProjectParameter::vary_by_group`, off unless said) makes a grouped element's value its own in each group. `groups::keep_own`
+keeps it when a group is placed again from its type and `groups::conflicts` doesn't see it, so `modify` sets it on a member
+without Edit Group; a copy of a group takes its original's (`groups::commands::copy_own`). Aligned, a member's value is its group
+type's: set alone it is a change from inside (a conflict), and it changes in Edit Group, every group of the type with it. Turned
+back to aligned, each group's members take their type's value (`groups::align`, the reply's `aligned`). A rename, a delete, a
+category taken off and a change of scope reach the types' members too (`groups::member_elements_mut`), so no group breaks. The
+window's Group Values column sets it (greyed for a type parameter); in Properties, a member Tab-selected outside Edit Group of its
+group (`groups::held`) sets only those that vary, the rest greyed under a note that says so.
+
 ## Dictionaries
 
 A dictionary is a plain JSON file (`.bimparams`: `format`, `guid`, `name`, `version`, `revision`, `changed`, `parameters`) of definitions. BIMCraft
@@ -132,6 +144,9 @@ Text in a table's narrow column goes through `wrapped`, which knows its height f
 
 - A value for each type in the tools that have no Type Properties yet; the Families tab's Modify (existing parameters are changed in the Family
   Editor) and Discipline, which has no meaning here yet.
+- Group Values in a dictionary's or a table's definitions: a parameter that comes in from one is aligned per group type until
+  the window or `parameter {vary_by_group}` says otherwise. `parameter_merge` doesn't reach group types' members yet, so a
+  merge that changes grouped elements' values is refused as a group conflict.
 - Renaming a project parameter a family is tied to.
 - Nested family parameters: they wait for family nesting ([ROADMAP](../../ROADMAP.md)).
 - Dragging categories between parameters: Copy Categories From does that job.

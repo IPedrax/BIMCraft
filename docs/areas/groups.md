@@ -33,7 +33,9 @@ An instance (`ModelGroup`, `DetailGroup`) is its type's name, its origin `at`, i
 and its `members`: for each member of the type, the element that is it in this instance (`Slot`), or that it is excluded.
 `groups::place` makes an instance's member from the type's: tokens to the instance's elements and levels, then moved, turned and
 mirrored as `commands::transform` takes elements, a door's place along its wall and its hand flipped by a mirror as Mirror does.
-Marks and room numbers are each instance's own (`groups::OWN`): placed anew, and never a change to the group.
+Marks and room numbers are each instance's own (`groups::OWN`): placed anew, and never a change to the group. So are a member's
+values of the project parameters that vary by group instance (`vary_by_group`, `groups::varying`; [parameters](parameters.md#in-groups)):
+set without Edit Group, kept when the group is placed again, taken by its copies. The rest are aligned per group type.
 
 ## A group changes as a whole
 
@@ -87,7 +89,8 @@ The Modify tab's Create panel has Create Group (GP), always there: a selection t
 make of it (`groups::group_split_window`: Model elements only, Detail elements only, each with how many it takes, or Cancel), and
 runs `create_group {only}`. Model Group (Place Model Group, with the type and Flexible on the Options Bar) is there once there is
 a model group. Flexible's hover note (`groups::FLEXIBLE_TIP`, on the Options Bar and on the Properties row) says what it does. With a
-group selected, the Group panel has Edit Group, Ungroup (UG) and Restore All Excluded; with a member selected (Tab), Exclude.
+group selected, the Group panel has Edit Group, Ungroup (UG) and Restore All Excluded; with a member selected (Tab), Exclude, and
+Properties sets only its parameters that vary by group instance, the rest greyed (`groups::held`).
 
 In Edit Group the window says so: a frame in the edit's colour round every view and a banner at its top naming the group and what
 may be changed (`edit_group_frame`), and the prompt line. Only the group's own picks, in plans, sections and the 3D view

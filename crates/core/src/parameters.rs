@@ -191,6 +191,15 @@ pub(crate) fn switch_scope(m: &mut Model, name: &str, p: &mut ProjectParameter, 
                 n += 1;
             }
         }
+        // Group types' members too, so a group stays as its type has it.
+        for e in crate::groups::member_elements_mut(m) {
+            if p.categories.iter().any(|c| c == e.category())
+                && !theirs(e)
+                && let Some(params) = e.params_mut()
+            {
+                params.remove(name);
+            }
+        }
         return ("wiped", n);
     }
     let held = std::mem::take(&mut p.type_values);
@@ -204,6 +213,19 @@ pub(crate) fn switch_scope(m: &mut Model, name: &str, p: &mut ProjectParameter, 
         if let (Some(v), Some(params)) = (held.get(&g), m.elements.get_mut(id).and_then(Element::params_mut)) {
             params.insert(name.to_string(), v.clone());
             n += 1;
+        }
+    }
+    // Group types' members take their types' values too, so a group stays as its type has it.
+    let held_by: Vec<Option<Guid>> = {
+        let groups = m.model_groups.values().chain(m.detail_groups.values()).flat_map(|t| &t.members);
+        groups.map(|x| type_guid(m, &x.element)).collect()
+    };
+    for (e, g) in crate::groups::member_elements_mut(m).zip(held_by) {
+        if p.categories.iter().any(|c| c == e.category())
+            && !theirs(e)
+            && let (Some(v), Some(params)) = (g.and_then(|g| held.get(&g)), e.params_mut())
+        {
+            params.insert(name.to_string(), v.clone());
         }
     }
     ("copied", n)

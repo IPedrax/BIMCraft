@@ -1,6 +1,8 @@
 //! Detail groups, repeating details and the annotation parameters in Properties: what UG undoes in one step, what a spacing
 //! that isn't one makes, which rows a detail line shows, and the fill patterns in the materials window.
 
+use egui_kittest::kittest::NodeT;
+
 use super::*;
 
 fn grouped(h: &mut Harness<BimApp>, at: P2) {
@@ -419,6 +421,29 @@ fn group_screenshots() {
         h.state_mut().selection = vec![groups[0]];
         h.state_mut().tab = crate::Tab::Modify;
         save(&mut h, "selected");
+        // A member Tab-selected: only what varies by group instance is set in Properties.
+        h.state_mut().run("parameter", json!({"name": "Fire Rating", "kind": "text", "categories": ["wall"]}));
+        h.state_mut().run("parameter", json!({"name": "Comments", "kind": "text", "categories": ["wall"], "vary_by_group": true}));
+        h.state_mut().selection = vec![ids(&h, "wall")[1]];
+        let headings = ["Constraints", "Construction", "Structural", "Dimensions", "Identity Data", "Graphics", "Phasing", "Other"];
+        h.state_mut().collapsed.extend(headings);
+        if let Some(close) = h.query_by_label("Close Project Browser") {
+            close.click();
+        }
+        save(&mut h, "member");
+        super::press(&mut h, "Manage");
+        h.state_mut().collapsed.clear();
+        h.state_mut().selection.clear();
+        h.run();
+        super::press(&mut h, "Project Parameters");
+        save(&mut h, "parameters");
+        let closes: Vec<_> = h.query_all_by_label("Close").collect();
+        if let Some(close) = closes.last() {
+            close.click();
+        }
+        h.state_mut().tab = crate::Tab::Modify;
+        h.state_mut().collapsed.clear();
+        h.state_mut().selection = vec![groups[0]];
         h.state_mut().edit_group();
         h.state_mut().selection = vec![ids(&h, "wall")[1]];
         save(&mut h, "editing");
@@ -442,4 +467,51 @@ fn group_screenshots() {
         h.state_mut().run("move", json!({"ids": [walls[0]], "by": [0, 500]}));
         save(&mut h, "conflict");
     }
+}
+
+#[test]
+fn a_tab_selected_member_sets_only_what_varies_by_group_instance_in_properties() {
+    let mut h = app(&format!(
+        "{CORNER}\nparameter {{\"name\": \"Fire Rating\", \"kind\": \"text\", \"categories\": [\"wall\"]}}\nparameter {{\"name\": \"Comments\", \"kind\": \"text\", \"categories\": [\"wall\"]}}"
+    ));
+    let group = ids(&h, "modelgroup")[0];
+    let walls = ids(&h, "wall");
+    // Project Parameters says, for each, whether a grouped element's value is its own or its group type's.
+    super::press(&mut h, "Manage");
+    super::press(&mut h, "Project Parameters");
+    h.get_by_role_and_label(Role::ComboBox, "Group values of Comments").click();
+    h.run();
+    let options: Vec<_> = h.query_all_by_label("Vary by group instance").collect();
+    options.last().unwrap_or_else(|| panic!("no option")).click();
+    h.run();
+    let presses: Vec<_> = h.query_all_by_label("Apply").collect();
+    presses.last().unwrap_or_else(|| panic!("no Apply")).click();
+    h.run();
+    assert!(h.state().session.model.parameters["Comments"].vary_by_group);
+    assert!(!h.state().session.model.parameters["Fire Rating"].vary_by_group, "aligned per group type unless said");
+    let closes: Vec<_> = h.query_all_by_label("Close").collect();
+    closes.last().unwrap_or_else(|| panic!("no Close")).click();
+    h.run();
+    // Tab-selected, a member's Properties set what varies by group instance; the rest is its type's, greyed.
+    h.state_mut().selection = vec![walls[1]];
+    h.run();
+    let name = h.state().session.model.model_groups.keys().next().cloned().unwrap_or_default();
+    let note =
+        format!("A member of group {name}: only the parameters that vary by group instance change here. The rest change in Edit Group.");
+    assert!(h.query_by_label(&note).is_some(), "says why the rest is greyed");
+    assert!(!h.get_by_role_and_label(Role::TextInput, "Comments").accesskit_node().is_disabled());
+    assert!(h.query_by_role_and_label(Role::TextInput, "Fire Rating").is_none(), "its type's, shown and not set here");
+    assert!(h.get_by_role_and_label(Role::TextInput, "Top Offset").accesskit_node().is_disabled(), "its own fields are its type's too");
+    type_into(&mut h, "Comments", "east corner");
+    key(&mut h, Key::Enter);
+    assert_eq!(field(&h, walls[1], "params"), json!({"Comments": "east corner"}));
+    assert!(h.state().group_conflict.is_none(), "no change to the group");
+    assert_eq!(ids(&h, "modelgroup"), [group]);
+    // In Edit Group, its members are free.
+    h.state_mut().run("edit_group", json!({"id": group}));
+    h.state_mut().selection = vec![walls[1]];
+    h.run();
+    assert!(h.query_by_label(&note).is_none());
+    assert!(!h.get_by_role_and_label(Role::TextInput, "Fire Rating").accesskit_node().is_disabled());
+    assert!(!h.get_by_role_and_label(Role::TextInput, "Top Offset").accesskit_node().is_disabled());
 }
