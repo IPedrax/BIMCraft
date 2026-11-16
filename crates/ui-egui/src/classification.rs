@@ -650,7 +650,7 @@ impl BimApp {
         });
         let unready = self.assistant.unready();
         let agreed = self.assistant.classify_agreed.contains(self.assistant.provider.key());
-        if d.run.is_none() && d.review.is_empty() {
+        if !d.busy() && d.review.is_empty() {
             ui.horizontal(|ui| {
                 ui.label(t("Classify"));
                 ui.radio_value(&mut d.rows, Rows::Unclassified, t("what has no code"));
