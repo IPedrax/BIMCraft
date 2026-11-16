@@ -8,7 +8,11 @@ use bimcraft_pyaddins::{Button, Store};
 
 /// The app on `script`'s model, with a PyAddins folder of its own.
 fn with_folder(script: &str) -> (Harness<'static, BimApp>, tempfile::TempDir, Store) {
-    let mut h = app(script);
+    folder(app(script))
+}
+
+/// `h` with a PyAddins folder of its own.
+fn folder(mut h: Harness<'static, BimApp>) -> (Harness<'static, BimApp>, tempfile::TempDir, Store) {
     let dir = tempfile::tempdir().unwrap();
     let store = Store::new(dir.path());
     h.state_mut().use_pyaddins(store.clone());
@@ -197,6 +201,51 @@ fn stop_ends_a_script_that_would_run_forever() {
     start(&mut h, "Stop");
     until_done(&mut h);
     assert!(h.state().status.text.contains("stopped") || h.state().status.error, "{}", h.state().status.text);
+    // Its shortcut, XS, stops it too: frames are stepped, as the window repaints while it runs.
+    start(&mut h, "Spin");
+    h.run_steps(3);
+    assert!(h.state().pyaddins.running.is_some());
+    h.key_combination_modifiers(Modifiers::COMMAND, &[Key::X, Key::S]);
+    h.step();
+    h.step();
+    until_done(&mut h);
+    assert!(h.state().status.text.contains("stopped") || h.state().status.error, "{}", h.state().status.text);
+}
+
+#[test]
+fn the_pyaddins_tools_and_their_shortcuts_are_in_both_profiles() {
+    for rev in [false, true] {
+        let (mut h, _dir, store) = folder(if rev { app(BOX) } else { bimcraft(BOX) });
+        // The tab: the ribbon's in Rev, the Tools palette's rail in BIMCraft.
+        press(&mut h, "PyAddins");
+        assert_eq!(h.state().tab, Tab::PyAddins, "rev {rev}");
+        for tool in ["Player", "Python", "New Script", "Restart"] {
+            assert!(h.query_by_label(tool).is_some(), "{tool} (rev {rev})");
+        }
+        press(&mut h, "Player");
+        assert!(h.state().docking.shown(Palette::Scripts), "rev {rev}");
+        shortcut(&mut h, "PY");
+        assert!(!h.state().docking.shown(Palette::Scripts), "PY puts the Player away (rev {rev})");
+        shortcut(&mut h, "PY");
+        assert!(h.state().docking.shown(Palette::Scripts), "and shows it again (rev {rev})");
+        // LS reads the folder again at once.
+        store.save("Row", ROW).unwrap();
+        shortcut(&mut h, "LS");
+        assert!(h.state().pyaddins.scripts.iter().any(|s| s == "Row"), "rev {rev}");
+        assert_eq!(h.state().status.text, "2 scripts, 0 buttons.", "rev {rev}");
+        // NS: New Script's name, the first free one.
+        shortcut(&mut h, "NS");
+        assert_eq!(h.state().pyaddins.new_script.as_deref(), Some("Dummy Script"), "rev {rev}");
+        press(&mut h, "Cancel");
+        assert!(h.state().pyaddins.new_script.is_none(), "rev {rev}");
+        // RS runs the script open in the Player, here in a Python that isn't there, which it says.
+        store.set_python(Some("/no/such/python")).unwrap();
+        h.state_mut().pyaddins.open = Some("Row".into());
+        shortcut(&mut h, "RS");
+        let status = h.state().status.clone();
+        assert!(status.error && status.text.contains("/no/such/python"), "RS (rev {rev}): {}", status.text);
+        assert!(h.state().pyaddins.running.is_none(), "rev {rev}");
+    }
 }
 
 #[test]

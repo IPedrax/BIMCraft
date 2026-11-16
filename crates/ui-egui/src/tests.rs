@@ -1053,7 +1053,7 @@ fn ks_lists_every_shortcut_and_every_one_it_lists_works() {
     }
     use crate::lang::Lang;
     // Names the catalogs don't have yet: KS shows them in English until a translator gives them, as any missing translation.
-    let awaiting = ["Graphic Display Options", "Pin", "Unpin", "Co-Work"];
+    let awaiting = ["Graphic Display Options", "Pin", "Unpin", "Co-Work", "Player", "Run Script", "New Script"];
     for (_, name) in crate::shortcuts().into_iter().filter(|(_, name)| !awaiting.contains(name)) {
         for l in [Lang::Portuguese, Lang::Spanish] {
             assert!(crate::lang::translated_in(l, name).is_some(), "{name} in {l:?}");
@@ -1110,7 +1110,8 @@ fn ma_gives_the_walls_selected_after_the_first_its_type_in_one_undo_step() {
 
 #[test]
 fn keys_for_tools_bimcraft_lacks_are_bound_to_nothing_rather_than_to_another_tool() {
-    for keys in ["SU", "LI", "SF", "BR", "BS", "RN", "CV", "TF", "DA", "FD"] {
+    // RL is Revit's Reload Latest and SX its Snap to Points, so PyAddins' Reload is LS and its Stop XS.
+    for keys in ["SU", "LI", "SF", "BR", "BS", "RN", "CV", "TF", "DA", "FD", "RL", "SX"] {
         let mut app = BimApp::new(Session::new());
         app.typed = keys.into();
         assert!(!app.shortcut(), "{keys}");

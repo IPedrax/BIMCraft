@@ -57,9 +57,10 @@ wrong kind, one out of its range, or one `main` doesn't take is an error that na
 
 ## The desktop
 
-The **PyAddins** tab (after Manage): Player (the Script Automation palette), Reload (the folder, and Python, again), Python (the
-path, what was found, the editor scripts open in, where the scripts are, and the skill for agents), New Script (the Dummy
-Script: a dummy of every kind of field, to copy from, under the first free name); Stop, and Restart (the last script again,
+The **PyAddins** tab (after Manage; in BIMCraft's profile, on the Tools palette's rail): Player (PY: the Script Automation
+palette), Reload (LS: the folder, and Python, again), Python (the path, what was found, the editor scripts open in, where the
+scripts are, and the skill for agents), New Script (NS: the Dummy Script, a dummy of every kind of field, to copy from, under
+the first free name); Stop (XS), and Restart (the last script again,
 with the same values, its selection as the selection is now); then a panel for each ribbon panel the buttons name (PyAddins when they name none), a button
 each. A button runs its script with the values it keeps (the rest their defaults); a click on one that is running stops it;
 right-click: Show in Player, Remove Button.
@@ -67,8 +68,9 @@ right-click: Show in Player, Remove Button.
 The **Script Automation** palette docks on the right the first time it opens (it starts closed, and a settings file from before
 it keeps it closed): a search, and a row for each script, its ▶ running it with its form's values (■ stops it). A row opens to
 its description, its form, Advanced Settings (Make Button: a ribbon button of the form's values, in the panel named; Edit;
-Delete Script; where the file is), Run Script, and the last run's log and result. The status bar says how
-a run ended.
+Delete Script; where the file is), Run Script (RS runs the open one; with none open it shows the palette), and the last
+run's log and result. The status bar says how a run ended. Revit has no PyAddins, so the letters are free ones: Revit's RL
+(Reload Latest) and SX (Snap to Points) stay unbound.
 
 **Edit** (`editor.rs`) opens the script to edit it, never to run it: the editor set in PyAddins > Python, else on Windows the
 Edit verb, on macOS `open -t`, and on Linux the `.py` handler when it is an editor, else the plain-text one, through `gio

@@ -127,6 +127,8 @@ pub struct PyAddins {
     pub(crate) python_dialog: Option<PythonDialog>,
     /// New Script: the name being typed.
     pub(crate) new_script: Option<String>,
+    /// Run Script's shortcut (RS) asked to run the open script: a run needs the window's context, which the dialogs have.
+    pub(crate) run_open: bool,
 }
 
 impl PyAddins {
@@ -343,6 +345,40 @@ impl BimApp {
         }
     }
 
+    /// Player (PY): the Script Automation palette, shown or put away.
+    pub(crate) fn toggle_player(&mut self) {
+        let shown = self.docking.shown(Palette::Scripts);
+        self.show_palette(Palette::Scripts, !shown);
+        self.pyaddins.reload();
+    }
+
+    /// Reload (LS): the scripts and buttons read again, and Python looked for again.
+    pub(crate) fn reload_pyaddins(&mut self) {
+        self.pyaddins.python = None;
+        self.pyaddins.described.clear();
+        self.pyaddins.reload();
+        let counts = [self.pyaddins.scripts.len().to_string(), self.pyaddins.buttons.len().to_string()];
+        self.status = Status { text: tf("{} scripts, {} buttons.", &[&counts[0], &counts[1]]), error: false };
+    }
+
+    /// Run Script (RS): the script open in the Player, with its form's values; with none open, the Player, to open one.
+    pub(crate) fn run_open_pyaddin(&mut self) {
+        if self.pyaddins.open.is_some() {
+            self.pyaddins.run_open = true;
+        } else {
+            self.show_palette(Palette::Scripts, true);
+            self.pyaddins.reload();
+        }
+    }
+
+    /// Runs `name` with its form's values, or says what in the form is wrong.
+    fn run_form(&mut self, ctx: &Context, name: &str) {
+        match self.form_values(name) {
+            Ok(given) => self.run_pyaddin(ctx, name, &given),
+            Err(e) => self.status = Status { text: e, error: true },
+        }
+    }
+
     /// Stops the script running, if one is, and runs the last one again with the same values.
     pub(crate) fn restart_pyaddin(&mut self, ctx: &Context) {
         let Some(last) = self.pyaddins.last.clone() else { return };
@@ -367,22 +403,12 @@ impl BimApp {
             let shown = self.docking.shown(Palette::Scripts);
             let tip = msg!("Player: your Python scripts, each with a form of what it asks for, to run on the model");
             if big_button(ui, Icon::Player, "Player", shown, tip).clicked() {
-                self.show_palette(Palette::Scripts, !shown);
-                self.pyaddins.reload();
+                self.toggle_player();
             }
             stacked(ui, |ui| {
                 let tip = msg!("Reload: read the scripts and buttons again, and look for Python again");
                 if stacked_button(ui, Icon::Reload, "Reload", false, tip).clicked() {
-                    self.pyaddins.python = None;
-                    self.pyaddins.described.clear();
-                    self.pyaddins.reload();
-                    self.status = Status {
-                        text: tf(
-                            "{} scripts, {} buttons.",
-                            &[&self.pyaddins.scripts.len().to_string(), &self.pyaddins.buttons.len().to_string()],
-                        ),
-                        error: false,
-                    };
+                    self.reload_pyaddins();
                 }
                 let tip = msg!("Python: the Python scripts run in; BIMCraft has none of its own (3.9 or newer)");
                 if stacked_button(ui, Icon::Settings, "Python", self.pyaddins.python_dialog.is_some(), tip).clicked() {
@@ -696,10 +722,7 @@ impl BimApp {
             if running {
                 self.stop_pyaddin();
             } else {
-                match self.form_values(name) {
-                    Ok(given) => self.run_pyaddin(ctx, name, &given),
-                    Err(e) => self.status = Status { text: e, error: true },
-                }
+                self.run_form(ctx, name);
             }
         }
         self.run_log(ui, name);
@@ -787,6 +810,11 @@ impl BimApp {
 
     /// PyAddins > Python and New Script.
     pub(crate) fn pyaddins_windows(&mut self, ctx: &Context) {
+        if std::mem::take(&mut self.pyaddins.run_open)
+            && let Some(name) = self.pyaddins.open.clone()
+        {
+            self.run_form(ctx, &name);
+        }
         if let Some(mut d) = self.pyaddins.python_dialog.take() {
             let (mut close, mut save, mut find, mut install) = (false, false, false, false);
             let found = self.pyaddins.python();

@@ -413,7 +413,7 @@ type Buttons<'a> = &'a [(Icon, &'a str, &'a str, Option<Tool>, bool)];
 
 /// The desktop's own two-letter shortcuts, which [`BimApp::shortcut`] takes before the commands'
 /// aliases, and what Keyboard Shortcuts (KS) calls them.
-const SHORTCUTS: [(&str, &str); 58] = [
+const SHORTCUTS: [(&str, &str); 63] = [
     ("3D", "3D View"),
     ("MD", "Modify"),
     ("SB", "Floor: Structural"),
@@ -474,6 +474,12 @@ const SHORTCUTS: [(&str, &str); 58] = [
     ("GD", "Graphic Display Options"),
     // Revit has none for its title blocks; no command or tool takes TB.
     ("TB", "Title Blocks"),
+    // Revit has no PyAddins: letters free in both, Reload as Load Scripts and Stop as eXit Script.
+    ("PY", "Player"),
+    ("RS", "Run Script"),
+    ("LS", "Reload"),
+    ("NS", "New Script"),
+    ("XS", "Stop"),
 ];
 
 /// Every two-letter shortcut and what it does: the desktop's own, then the commands' aliases.
@@ -2659,6 +2665,16 @@ impl BimApp {
             }
             "TB" => {
                 self.open_title_blocks(None);
+                return true;
+            }
+            "PY" | "RS" | "LS" | "NS" | "XS" => {
+                match self.typed.as_str() {
+                    "PY" => self.toggle_player(),
+                    "RS" => self.run_open_pyaddin(),
+                    "LS" => self.reload_pyaddins(),
+                    "NS" => self.pyaddins.new_script = Some(self.pyaddins.free_name()),
+                    _ => self.stop_pyaddin(),
+                }
                 return true;
             }
             "EU" | "UE" => {
