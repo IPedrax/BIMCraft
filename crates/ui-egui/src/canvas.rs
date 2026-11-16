@@ -1617,9 +1617,8 @@ impl BimApp {
             service.find_alignments(cursor, start, tol * 1.5).into_iter().filter(|a| a.axis == held).collect()
         };
         if !snaps.guides_from_whole_model {
-            let pins = self.canvas.pins.borrow();
-            let ctx = crate::guide_refs::context(m, v, key, cursor, from, self.canvas.start_edge, &pins, snaps.guides_from_grids);
-            drop(pins);
+            let drawing = crate::guide_refs::Drawing { key, cursor, from, start_edge: self.canvas.start_edge };
+            let ctx = crate::guide_refs::context(m, v, drawing, &self.canvas.pins.borrow(), snaps.guides_from_grids);
             let service = AlignmentGuideService::from_context(&ctx, config);
             let mut found = service.find_alignments(cursor, start, tol);
             if found.is_empty() {

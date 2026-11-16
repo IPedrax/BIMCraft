@@ -378,27 +378,27 @@ pub(crate) fn grids_near(m: &Model, v: &View, cursor: P2, reach: f32) -> Vec<Gui
         .collect()
 }
 
+/// The drawing the pointer is in, as the guides see it: the view its marks belong to, where the pointer is, the points
+/// placed so far, and the wall the chain started on.
+pub(crate) struct Drawing<'a> {
+    pub key: Id,
+    pub cursor: P2,
+    pub from: &'a [P2],
+    pub start_edge: Option<GuideSource>,
+}
+
 /// Everything a plan's own drawing lends the guides: its chain, the wall the chain started on, the references marked
 /// for this view, and the grids near the cursor. `from_context` turns this into guides; nothing else may add to it, so
 /// a second view gets the same policy by calling this rather than by copying it.
-pub(crate) fn context(
-    m: &Model,
-    v: &View,
-    key: Id,
-    cursor: P2,
-    from: &[P2],
-    start_edge: Option<GuideSource>,
-    pins: &Pins,
-    grids: bool,
-) -> GuideContext {
-    let mut ctx = GuideContext { chain: from.to_vec(), ..GuideContext::default() };
-    if let Some(edge) = start_edge {
+pub(crate) fn context(m: &Model, v: &View, d: Drawing<'_>, pins: &Pins, grids: bool) -> GuideContext {
+    let mut ctx = GuideContext { chain: d.from.to_vec(), ..GuideContext::default() };
+    if let Some(edge) = d.start_edge {
         ctx.lines.push(edge);
     }
-    if let [.., a, b] = from {
+    if let [.., a, b] = d.from {
         ctx.lines.push(GuideSource { a: *a, b: *b, id: None });
     }
-    for pin in pins.at(key) {
+    for pin in pins.at(d.key) {
         ctx.lines.extend(pin.lines.iter().copied());
         if let PinTarget::Point { id, .. } = pin.target
             && let Some((point, kind)) = reference(pin.target)
@@ -407,7 +407,7 @@ pub(crate) fn context(
         }
     }
     if grids {
-        ctx.lines.extend(grids_near(m, v, cursor, 20.0));
+        ctx.lines.extend(grids_near(m, v, d.cursor, 20.0));
     }
     ctx
 }
@@ -449,16 +449,17 @@ mod tests {
         let near = P2(60.0, 2500.0);
         let chain = [P2(0.0, 0.0), P2(0.0, 1000.0)];
         let pins = Pins::default();
+        let drawing = |cursor| Drawing { key: view, cursor, from: &chain, start_edge: None };
 
-        let ctx = context(m, &v, view, near, &chain, None, &pins, true);
+        let ctx = context(m, &v, drawing(near), &pins, true);
         assert_eq!(ctx.chain, chain.to_vec());
         assert!(ctx.lines.iter().any(|l| l.id == Some(grid)), "the grid 60 mm away lends its line: {:?}", ctx.lines);
         assert!(ctx.lines.iter().any(|l| l.id.is_none() && l.a == chain[0] && l.b == chain[1]), "the chain's own line");
 
-        let ctx = context(m, &v, view, P2(4000.0, 2500.0), &chain, None, &pins, true);
+        let ctx = context(m, &v, drawing(P2(4000.0, 2500.0)), &pins, true);
         assert!(!ctx.lines.iter().any(|l| l.id == Some(grid)), "4 m away lends nothing: {:?}", ctx.lines);
 
-        let ctx = context(m, &v, view, near, &chain, None, &pins, false);
+        let ctx = context(m, &v, drawing(near), &pins, false);
         assert!(!ctx.lines.iter().any(|l| l.id == Some(grid)), "the switch turns the grid off");
 
         // The wall a chain started on, and a mark's own lines and point.
@@ -466,7 +467,7 @@ mod tests {
         let mut pins = Pins::default();
         let mark = GuideSource { a: P2(2000.0, 0.0), b: P2(2000.0, 5000.0), id: None };
         pins.toggle(view, PinTarget::Point { at: P2(2000.0, 2000.0), kind: Kind::Endpoint, id: Some(grid) }, vec![mark]);
-        let ctx = context(m, &v, view, near, &chain, Some(edge), &pins, false);
+        let ctx = context(m, &v, Drawing { start_edge: Some(edge), ..drawing(near) }, &pins, false);
         assert!(ctx.lines.contains(&edge), "the edge the chain started on: {:?}", ctx.lines);
         assert!(ctx.lines.contains(&mark), "the mark's line: {:?}", ctx.lines);
         assert_eq!(ctx.points.len(), 1, "{:?}", ctx.points);

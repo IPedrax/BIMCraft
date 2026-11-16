@@ -4834,7 +4834,8 @@ impl Model {
     }
 
     /// Whether wall `w` is one a plan of `level` takes as a reference: straight, and cut by the plan. A curved wall is
-    /// marked by its centre line alone, so the guides read it the other way (`walls::faces`).
+    /// not one: its faces are arcs, which no reference line is (`reference_line` refuses them), so the snap takes its
+    /// centre line alone (`snap`'s `wall_face_snap`).
     pub fn straight_at(&self, w: &Wall, level: impl Key) -> bool {
         w.arc == 0.0 && self.cut_by(w, level)
     }
@@ -6529,7 +6530,7 @@ impl Model {
             .with_guids()
             .filter_map(|(_, id, e)| match e {
                 Element::Grid(g) => Some((Reference::line(id, Face::Centre), (g.start, g.end))),
-                Element::Wall(w) if w.arc == 0.0 && self.cut_by(w, level) => {
+                Element::Wall(w) if self.straight_at(w, level) => {
                     let (axis, (ext, int)) = (walls::Axis::of(w), walls::faces(self, w));
                     let mid = (ext + int) / 2.0;
                     Some((Reference::line(id, Face::Centre), (axis.at(0.0, mid), axis.at(axis.length(), mid))))
@@ -6559,7 +6560,7 @@ impl Model {
             .elements
             .with_guids()
             .filter_map(|(_, id, e)| match e {
-                Element::Wall(w) if id != o.host && w.arc == 0.0 && self.cut_by(w, host.level) => Some(w),
+                Element::Wall(w) if id != o.host && self.straight_at(w, host.level) => Some(w),
                 _ => None,
             })
             .flat_map(|w| {

@@ -4821,6 +4821,7 @@ fn a_grid_near_the_cursor_lends_a_guide_until_its_switch_is_off() {
     h.state().session.model.lookup();
     {
         let m = &h.state().session.model;
+        assert!(m.derived.made(&m.elements).is_some(), "the lookup is made, so the grid list is the one read");
         let v = h.state().canvas.current_view(level).expect("a view");
         let found = h.state().alignments(m, level, &v, six_px, &chain);
         assert!(
