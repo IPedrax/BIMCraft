@@ -342,6 +342,13 @@ wall {"points": [[0, 0], [8000, 0], [8000, 6000], [0, 6000]], "closed": true, "t
         .to_string()
 }
 
+/// The same walls round an L, six of them, their location lines at their centres.
+fn core_l() -> String {
+    r#"type {"category": "wall", "name": "C60", "layers": [{"function": "finish", "thickness": 50}, {"function": "structure", "thickness": 100}, {"function": "finish", "thickness": 50}]}
+wall {"points": [[0, 0], [8000, 0], [8000, 3000], [4000, 3000], [4000, 6000], [0, 6000]], "closed": true, "type": "C60"}"#
+        .to_string()
+}
+
 /// Where the sketch's one line lies across the y axis, by its middle.
 fn line_y(h: &Harness<BimApp>, i: usize) -> f64 {
     lines(h).get(i).map_or(f64::NAN, |l| l.middle().1)
@@ -445,6 +452,29 @@ fn picked_walls_with_offset_close_their_corners() {
     }
     let ls = lines(&h);
     assert_eq!(ls.len(), 4, "{ls:?}");
+    for l in &ls {
+        for q in [l.start(), l.end()] {
+            assert!(
+                ls.iter().any(|other| other != l && (other.start().dist(q) < 1e-6 || other.end().dist(q) < 1e-6)),
+                "every end meets another line: {ls:?}"
+            );
+        }
+    }
+    press(&mut h, "Finish Edit Mode");
+    assert_eq!(ids(&h, "floor").len(), 1, "{}", h.state().status.text);
+}
+
+#[test]
+fn picked_walls_of_an_l_with_offset_close_every_corner() {
+    let mut h = app(&core_l());
+    press(&mut h, "Floor");
+    press(&mut h, "Pick Walls");
+    type_into(&mut h, "Offset:", "25");
+    for p in [P2(4000.0, 0.0), P2(8000.0, 1500.0), P2(6000.0, 3000.0), P2(4000.0, 4500.0), P2(2000.0, 6000.0), P2(0.0, 3000.0)] {
+        click(&mut h, p);
+    }
+    let ls = lines(&h);
+    assert_eq!(ls.len(), 6, "{ls:?}");
     for l in &ls {
         for q in [l.start(), l.end()] {
             assert!(
