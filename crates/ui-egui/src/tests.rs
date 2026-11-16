@@ -5107,7 +5107,8 @@ fn a_guide_crossing_beats_a_wall_face_and_one_guide_alone_does_not() {
     let m = &h.state().session.model;
     let at = P2(2234.7, ext);
     let f = h.state().snap(m, level, &v, v.px(at), &[], false);
-    assert_eq!(f.kind, Kind::Nearest, "the pointer is on the wall's face: {f:?}");
+    // The grid crosses the wall's face, which the plan's outline of the wall gives as a line (#386): a crossing of the two.
+    assert_eq!(f.kind, Kind::Intersection, "the grid crosses the wall's face here: {f:?}");
     let p = h.state().snap_point(m, level, &v, v.px(at), &[], false);
     assert!(p.dist(at) < 0.01, "the crossing is exact, not the face's 10 mm point: {p:?}");
     let one = P2(2134.7, ext);
