@@ -85,13 +85,16 @@ fn the_cabins_wall_has_studs_from_its_start_every_third_of_1220_and_end_studs_fl
         close(f(&st["z"], 2), 2448.0 - 76.0, "under two top plates");
         close(st["length"].as_f64().unwrap_or_default(), 2334.0, "cut length");
     }
+    // 7320 long, more than the longest stock (6100): each plate in two pieces, end to end, each from stock.
     let (bottom, top) = (role(&ms, "bottom_plate"), role(&ms, "top_plate"));
-    assert_eq!((bottom.len(), top.len()), (1, 2));
+    assert_eq!((bottom.len(), top.len()), (2, 4));
     for p in bottom.iter().chain(&top) {
         assert_eq!(p["section"], json!([38.0, 89.0]));
-        close(p["length"].as_f64().unwrap_or_default(), 7320.0, "plate");
-        assert_eq!(p["stock"], Value::Null, "longer than any stock length: spliced");
+        assert!(p["length"].as_f64().unwrap_or_default() <= 6100.0, "{p}");
+        assert!(p["stock"].as_f64().is_some(), "{p}");
     }
+    let total: f64 = bottom.iter().map(|p| p["length"].as_f64().unwrap_or_default()).sum();
+    close(total, 7320.0, "the bottom plate's pieces");
     let r = run(&mut s, "framing", json!({"id": w}));
     let studs_cut = r["cut_list"].as_array().unwrap().iter().find(|c| c["role"] == "stud").cloned().unwrap();
     assert_eq!(
@@ -169,7 +172,100 @@ fn a_door_cuts_the_bottom_plate_and_has_no_sill_and_no_lower_cripples() {
     close(f(&keyed(&ms, &format!("{g}/header"))["z"], 0), 2141.0, "header on the jacks");
     assert!(!ms.iter().any(|m| m["role"] == "sill"));
     assert!(!ms.iter().any(|m| m["key"].as_str().is_some_and(|k| k.contains("cripple/bottom"))));
-    assert!(ms.iter().any(|m| m["key"].as_str().is_some_and(|k| k.starts_with(&format!("{g}/cripple/top/")))));
+}
+
+/// Whether a member keyed as `prefix` says is among `ms`.
+fn any_keyed(ms: &[Value], prefix: &str) -> bool {
+    ms.iter().any(|m| m["key"].as_str().is_some_and(|k| k.starts_with(prefix)))
+}
+
+#[test]
+fn a_gap_too_short_for_a_cripple_over_a_header_or_under_a_sill_is_filled_with_flat_blocking() {
+    let mut s = Session::new();
+    let w = cabin(&mut s);
+    // A 900 x 2100 door: its header's top at 2141 + 184 = 2325, 47 under the top plates (2372); a cripple 47 long splits.
+    let d = first(&run(&mut s, "door", json!({"wall": w, "offset": 3000})));
+    // A window 150 up: its sill from 112, 74 over the bottom plate; its header's top at 150 + 900 + 13 + 184 = 1247.
+    let win = window_at(&mut s, w, 600.0, 900.0, 150.0, 5500.0);
+    let (dg, wg) = (s.model.guid(d).to_string(), s.model.guid(win).to_string());
+    let ms = members(&mut s, w);
+    assert!(!any_keyed(&ms, &format!("{dg}/cripple/")), "no cripple over the door's header");
+    let fill = keyed(&ms, &format!("{dg}/blocking/top/0"));
+    assert_eq!((&fill["role"], &fill["section"], fill["plies"].as_u64()), (&json!("blocking"), &json!([38.0, 89.0]), Some(1)));
+    assert_eq!(fill["z"], json!([2325.0, 2325.0, 2363.0, 2363.0]), "one flat on the header, all that fits");
+    assert_eq!(fill["s"], json!([2525.0 - 38.0, 3475.0 + 38.0]), "as long as the header");
+    close(f(&fill["across"], 1) - f(&fill["across"], 0), 89.0, "as wide as the layer");
+    assert!(!any_keyed(&ms, &format!("{dg}/blocking/top/1")));
+    // Under the window's sill: one flat on the bottom plate, between the jacks; over its header the cripples stay.
+    assert!(!any_keyed(&ms, &format!("{wg}/cripple/bottom/")), "no cripple under the window's sill");
+    let under = keyed(&ms, &format!("{wg}/blocking/bottom/0"));
+    assert_eq!(under["z"], json!([38.0, 38.0, 76.0, 76.0]));
+    assert_eq!(under["s"], json!([5500.0 - 312.5, 5500.0 + 312.5]));
+    assert!(!any_keyed(&ms, &format!("{wg}/blocking/bottom/1")));
+    for k in [13, 14] {
+        let c = keyed(&ms, &format!("{wg}/cripple/top/{k}"));
+        assert_eq!((f(&c["z"], 0), f(&c["z"], 2)), (1247.0, 2372.0), "{c}");
+    }
+    // A cripple three times as long as it is thick (114) is one: the cabin's window's of 143 stay.
+    let win = window(&mut s, w, 1200.0, 1250.0);
+    let g = s.model.guid(win).to_string();
+    let ms = members(&mut s, w);
+    assert_eq!((2..=4).filter(|k| ms.iter().any(|m| m["key"] == format!("{g}/cripple/top/{k}"))).count(), 3);
+}
+
+#[test]
+fn under_a_sloped_top_a_header_gets_flats_only_where_its_whole_gap_is_short_and_no_cripple_is_shorter_than_114() {
+    let mut s = Session::new();
+    let w = cabin(&mut s);
+    // The 5 % shed over the cabin's wall, rising east: the top plates' underside climbs 5 mm in each 100.
+    let slope = 0.05f64.atan().to_degrees();
+    let roof = first(&run(
+        &mut s,
+        "roof",
+        json!({"boundary": [[-500, -1000], [8000, -1000], [8000, 1000], [-500, 1000]], "level": "Level 1", "offset": 2400,
+               "slope": slope, "gables": [0, 1, 2]}),
+    ));
+    run(&mut s, "modify", json!({"id": w, "attach_top": roof}));
+    let doors: Vec<(String, f64)> = [1000.0, 2200.0, 5500.0]
+        .into_iter()
+        .map(|at| {
+            let d = first(&run(&mut s, "door", json!({"wall": w, "offset": at})));
+            (s.model.guid(d).to_string(), at)
+        })
+        .collect();
+    let ms = members(&mut s, w);
+    // The lower top plates' underside along the wall.
+    let under = |at: f64| {
+        let p = role(&ms, "top_plate")
+            .into_iter()
+            .filter(|p| p["key"].as_str().is_some_and(|k| k.starts_with("top_plate/1/")))
+            .find(|p| f(&p["s"], 0) <= at && at <= f(&p["s"], 1))
+            .cloned()
+            .unwrap_or_else(|| panic!("no lower top plate at {at}"));
+        f(&p["z"], 0) + (f(&p["z"], 1) - f(&p["z"], 0)) * (at - f(&p["s"], 0)) / (f(&p["s"], 1) - f(&p["s"], 0))
+    };
+    for (g, at) in &doors {
+        // Each header from 475 before its door's centre to 475 after it, its top at 2325.
+        let (s0, s1) = (at - 513.0, at + 513.0);
+        let (low, high) = (under(s0) - 2325.0, under(s1) - 2325.0);
+        let cripples: Vec<&Value> =
+            ms.iter().filter(|m| m["key"].as_str().is_some_and(|k| k.starts_with(&format!("{g}/cripple/")))).collect();
+        let flats = ms.iter().filter(|m| m["key"].as_str().is_some_and(|k| k.starts_with(&format!("{g}/blocking/top/")))).count();
+        if high < 114.0 {
+            assert!(cripples.is_empty(), "door at {at}: the whole gap ({low:.0} to {high:.0}) short: {cripples:?}");
+            assert_eq!(flats, (low / 38.0).floor() as usize, "door at {at}: as many flats as fit under its low end ({low:.0})");
+        } else {
+            assert_eq!(flats, 0, "door at {at}: cripples, not flats ({low:.0} to {high:.0})");
+            assert!(!cripples.is_empty(), "door at {at}");
+            for c in &cripples {
+                assert!(c["length"].as_f64().unwrap_or_default() >= 114.0 - 1e-6, "door at {at}: a cripple too short: {c}");
+            }
+        }
+    }
+    // Which doors are which: the first's gap all short, the second's crossing 114 (a short cripple left out), the third's long.
+    let gap = |at: f64| (under(at - 513.0) - 2325.0, under(at + 513.0) - 2325.0);
+    let ((l0, h0), (l1, h1), (l2, _)) = (gap(1000.0), gap(2200.0), gap(5500.0));
+    assert!(l0 > 38.0 && h0 < 114.0 && l1 < 114.0 && h1 > 114.0 && l2 > 114.0, "{l0} {h0} {l1} {h1} {l2}");
 }
 
 #[test]
@@ -197,7 +293,7 @@ fn a_wall_under_a_roof_sloping_5_percent_along_it_has_bevelled_studs_and_sloped_
         close(st["length"].as_f64().unwrap_or_default(), f(&st["z"], 3) - f(&st["z"], 1), "cut to its long edge");
     }
     let tops = role(&ms, "top_plate");
-    assert_eq!(tops.len(), 2);
+    assert_eq!(tops.len(), 4, "two plates, each spliced in two");
     for p in tops {
         let run_ = f(&p["s"], 1) - f(&p["s"], 0);
         close((f(&p["z"], 3) - f(&p["z"], 2)) / run_, 0.05, "the plate slopes with the roof");
@@ -502,6 +598,64 @@ fn an_opening_that_cant_be_framed_is_never_left_without_a_warning() {
     let r = run(&mut s, "framing", json!({"id": w}));
     let warnings = r["warnings"].as_array().cloned().unwrap_or_default();
     assert!(warnings.iter().any(|w| w.as_str().is_some_and(|t| t.contains("isn't framed"))), "{warnings:?}");
+}
+
+/// Where pieces of one plate (each `[from, to]` along the wall) meet end to end: its splices.
+fn splices(pieces: &[&Value]) -> Vec<f64> {
+    let mut spans: Vec<[f64; 2]> = pieces.iter().map(|p| [f(&p["s"], 0), f(&p["s"], 1)]).collect();
+    spans.sort_by(|a, b| a[0].total_cmp(&b[0]));
+    spans.windows(2).filter(|w| (w[0][1] - w[1][0]).abs() < 1e-6).map(|w| w[0][1]).collect()
+}
+
+#[test]
+fn plates_longer_than_the_longest_stock_are_spliced_over_full_studs_the_top_plates_splices_610_apart() {
+    let mut s = Session::new();
+    stud_wall_type(&mut s);
+    // The user's cabin: a wall 6101 long and 2440 high framed by the default type (6100 its longest stock), a window in it.
+    let w = first(&run(&mut s, "wall", json!({"points": [[0, 0], [6101, 0]], "type": "2x4", "height": 2440})));
+    run(&mut s, "frame", json!({"id": w}));
+    let win = window(&mut s, w, 1200.0, 3000.0);
+    let r = run(&mut s, "framing", json!({"id": w}));
+    assert_eq!(r["warnings"], json!([]), "{r}");
+    let ms = r["members"].as_array().cloned().unwrap_or_default();
+    for p in role(&ms, "bottom_plate").into_iter().chain(role(&ms, "top_plate")) {
+        assert!(p["length"].as_f64().unwrap_or_default() <= 6100.0 && p["stock"].as_f64().is_some(), "{p}");
+    }
+    for c in r["cut_list"].as_array().unwrap() {
+        assert!(c["stock"].as_f64().is_some(), "{c}");
+    }
+    // Each splice over a full-height stud (none over the window, between its kings), the two top plates' 610 or more apart.
+    let posts: Vec<f64> = ms.iter().filter(|m| m["role"] == "stud" || m["role"] == "king").map(centre).collect();
+    let g = s.model.guid(win).to_string();
+    let kings = [centre(keyed(&ms, &format!("{g}/king/left/0"))), centre(keyed(&ms, &format!("{g}/king/right/0")))];
+    let ply = |prefix: &str| -> Vec<f64> {
+        splices(&ms.iter().filter(|m| m["key"].as_str().is_some_and(|k| k.starts_with(prefix))).collect::<Vec<_>>())
+    };
+    let (bottom, upper, lower) = (ply("bottom_plate/"), ply("top_plate/0/"), ply("top_plate/1/"));
+    assert_eq!((bottom.len(), upper.len(), lower.len()), (1, 1, 1), "{bottom:?} {upper:?} {lower:?}");
+    for at in bottom.iter().chain(&upper).chain(&lower) {
+        assert!(posts.iter().any(|c| (c - at).abs() < 1e-6), "a splice at {at}, over no stud: {posts:?}");
+        assert!(*at <= kings[0] + 1e-6 || *at >= kings[1] - 1e-6, "a splice at {at} over the window");
+    }
+    assert!((upper[0] - lower[0]).abs() >= 610.0 - 1e-6, "{upper:?} {lower:?}");
+}
+
+#[test]
+fn a_plate_that_cant_be_spliced_within_the_stock_over_a_stud_is_warned_of() {
+    let mut s = Session::new();
+    stud_wall_type(&mut s);
+    // Studs 1220 apart, stock of 1000: no piece between two studs comes from it.
+    run(&mut s, "type", json!({"category": "framing", "name": "Short", "spacing": 1220, "stock": [1000]}));
+    let w = first(&run(&mut s, "wall", json!({"points": [[0, 0], [3000, 0]], "type": "2x4", "height": 2440})));
+    run(&mut s, "frame", json!({"id": w, "type": "Short"}));
+    let r = run(&mut s, "framing", json!({"id": w}));
+    let warnings = r["warnings"].as_array().cloned().unwrap_or_default();
+    for plate in ["bottom_plate/0/start/0", "top_plate/0/0", "top_plate/1/0"] {
+        assert!(
+            warnings.iter().any(|w| w.as_str().is_some_and(|t| t.contains(plate) && t.contains("longer than any stock"))),
+            "{plate}: {warnings:?}"
+        );
+    }
 }
 
 /// Every member of walls `ids` against every other, by their boxes in the world: none may overlap another by more than a

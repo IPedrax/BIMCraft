@@ -292,7 +292,15 @@ The rules, in the wall's own frame (`s` along its location line from its start, 
   outside them full height, a header on the jacks from the outer face of one to the other's (its plies side by side, centred in
   the layer; a `flat` one as wide as the layer, its plies stacked), a window's sill plates under it between the jacks, and
   cripples at the grid stations inside it, over the header up to the top plates and, under a window, from the bottom plates
-  up to the sill. The bottom plates are cut across a door's rough opening. An opening whose kings would run past the framed
+  up to the sill. No cripple is shorter than three times its thickness (114 mm for a 2x, 4 1/2 in): one shorter splits as
+  it is toe-nailed at both ends. Where the whole gap over a header, or under a sill, is shorter than that, it has no cripples:
+  as many flats as fit (blocking, `thickness` thick and as wide as the layer, keyed `<GUID>/blocking/top/<i>` and
+  `<GUID>/blocking/bottom/<i>`) lie stacked on the header, as long as it, or on the bottom plates between the jacks, what is
+  left (less than a thickness) shimmed on site; none where not even one fits. The cabin's 900 x 2100 door in a 2440 wall
+  has its header's top 39 mm under the top plates: one flat, not 39 mm cripples. Under a sloped top (a wall attached to a
+  roof) the gap is flat-filled only where it is short all along, the flats as many as fit at its lowest; else the cripples
+  stand where they are long enough and a short one at the low end is left out. The bottom plates are cut across a door's
+  rough opening. An opening whose kings would run past the framed
   length or into an end or corner stud, overlap an opening framed before it along the wall, or leave no room for its header
   under the top plates or its sill over the bottom ones, is left unframed, and still no stud stands in its rough opening.
 - Plates follow the wall's base and top (`walls::profile`) along both faces of the structure layer, the higher base and the
@@ -300,6 +308,14 @@ The rules, in the wall's own frame (`s` along its location line from its start, 
   top attached to a roof sloping along it makes sloped top plates, a piece for each slope, each as thick square to its slope as
   `thickness`, with plumb ends; the studs are cut each to its own length with a bevelled top. A top plate that would come down
   onto the bottom plates (a wall too low) is left out.
+- A plate longer than the longest `stock` length is spliced, butt-jointed, over full-height studs (studs, kings, corner and
+  tee studs, so never over an opening), into the fewest pieces that length holds and, of those splits, the one whose longest
+  piece is shortest, ties going to the splices nearest the wall's start (`framing::spliced`, which a roof's rafters use too).
+  The lower top plate is spliced first, and each top plate's splices stand at least 610 mm (24 in, `TOP_SPLICES`) from the
+  others', as IRC R602.3.2 has a double top plate's end joints offset. Each piece is keyed by the plate's key and its place,
+  `/0` first (`top_plate/1/0/0`, `top_plate/1/0/1`). The cabin's 6101 mm wall has each plate in two pieces, every one from
+  6100 stock. Where no splice over a stud keeps every piece within the stock (studs farther apart than the longest stock), the
+  split whose longest piece is shortest is made and each piece longer than every stock length is warned of.
 - The upper top plate laps where two framed walls meet, as IRC R602.3.2 has a double top plate do, when both have two top
   plates or more of one thickness, neither is attached to a roof or floor and their tops are at one height (else they butt as
   the other members do). At a square L corner the butting wall's upper plate runs on to the far structure face of the wall
@@ -315,7 +331,8 @@ The rules, in the wall's own frame (`s` along its location line from its start, 
 
 Each member has a `key` that lasts while what it belongs to does: grid studs by their station from the layout's origin
 (`stud/<station>`), end and corner studs `stud/start`, `stud/end`, `corner/start`, backing `tee/<wall GUID>/0`, an opening's
-members by its GUID (`<GUID>/king/left/0`, `<GUID>/header`, `<GUID>/cripple/top/<station>`), plates by ply and piece, blocking by
+members by its GUID (`<GUID>/king/left/0`, `<GUID>/header`, `<GUID>/cripple/top/<station>`), plates by ply and piece (and a
+spliced one's pieces by their place), blocking by
 row and the stud it starts at; moving a window keeps the far studs' keys. Its `section` is one ply as sawn (38 x 89; each ply of a
 header 38 x 184), its `length` the cut length (up an upright's longest edge, along a lying one's slope).
 
@@ -340,7 +357,7 @@ material's cut pattern and outlined (`render::members_cut`); at coarse detail th
 Framing Type, Role, Section (`38 x 89`, a header of two plies `2 x 38 x 184`, to the mm as the cut list has it, so a header cut
 to fit groups with its like), Length (cut, to the mm), Stock Length (the shortest stock it is cut from, chosen by its length
 unrounded, as the reply and the cut list choose it, so a 2440.3 stud comes from 3050; 0 where it is longer than every stock
-length, to be spliced), Level, Key and Count; grouped by
+length, which is warned of), Level, Key and Count; grouped by
 Role, Section and Length it is the cut list. IFC writes each member as an `IfcMember`, `STUD` for studs, kings, jacks and
 cripples, `PLATE` for plates and sills, `MEMBER` for headers and blocking, its role its Name and ObjectType and its key its Tag,
 its GlobalId made from the wall's GUID and its key (so it lasts while the member does), in the framing's material, and aggregated
@@ -357,8 +374,7 @@ Duplicate and Rename work as for any type; the headers are shown and set with `t
 under Families, a click opens one's Type Properties and its right-click menu deletes one nothing uses.
 
 Not yet: floors (joists) and roofs (rafters), which will reuse `Member`, the schedule, the graphics and IFC; framing elevations;
-picking or tagging a single member; sheathing; span checks; connectors; plates split at a stock length (a plate longer than every
-stock length is scheduled with 0); and at non-square corners and joins of three walls the framed length falls back to the
+picking or tagging a single member; sheathing; span checks; connectors; a plate's splices placed by hand; and at non-square corners and joins of three walls the framed length falls back to the
 layer's shorter edge, which may leave a gap or an overlap between two framed walls' members.
 
 ### Timber wall framing

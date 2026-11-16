@@ -275,9 +275,13 @@ fn a_schedule_of_framing_members_grouped_by_role_section_and_length_is_the_cut_l
     assert_eq!(cols, ["Role", "Section", "Length", "Stock Length", "Count"]);
     let row = |role: &str| rows.iter().find(|r| r[0] == role).unwrap_or_else(|| panic!("no {role}: {rows:?}")).clone();
     assert_eq!(row("stud")[1..], [json!("38 x 89"), json!(2334.0), json!(2440.0), json!(19.0)]);
-    assert_eq!(row("top_plate")[2..], [json!(7320.0), json!(0.0), json!(2.0)], "spliced: no stock length");
-    assert_eq!(row("bottom_plate")[4], json!(1.0));
-    assert_eq!(rows.len(), 3);
+    // 7320 long, each plate spliced in two, each piece from stock.
+    for (plate, pieces) in [("top_plate", 4.0), ("bottom_plate", 2.0)] {
+        let these: Vec<&Vec<Value>> = rows.iter().filter(|r| r[0] == plate).collect();
+        assert!(these.iter().all(|r| r[3].as_f64().is_some_and(|st| st > 0.0)), "{these:?}");
+        assert_eq!(these.iter().filter_map(|r| r[4].as_f64()).sum::<f64>(), pieces, "{these:?}");
+    }
+    assert!(rows.iter().all(|r| r[0] == "stud" || r[0] == "top_plate" || r[0] == "bottom_plate"), "{rows:?}");
     // Each row lists its members' wall, which picks it.
     let elements = r["elements"].as_array().unwrap();
     assert!(elements.iter().all(|ids| ids.as_array().unwrap().iter().all(|id| id.as_u64() == Some(w))), "{elements:?}");

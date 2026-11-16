@@ -2378,7 +2378,9 @@ other_files(
          to does: grid studs `stud/<station>` (counted from the layout's origin), end studs `stud/start` and `stud/end`, \
          `corner/start`, `tee/<wall GUID>/0`, an opening's `<GUID>/king/left/0`, `<GUID>/header`, `<GUID>/cripple/top/<station>`, \
          plates `bottom_plate/<ply>/<start or the door GUID it follows>/<piece>` and `top_plate/<ply>/<piece>` (ply 0 the \
-         lowest bottom plate, the highest top plate), `blocking/<row>/<key of the stud it starts at>`",
+         lowest bottom plate, the highest top plate; one spliced at a stock length adds `/<n>`, its pieces from 0), \
+         `blocking/<row>/<key of the stud it starts at>`, an opening's flats where a cripple would be too short \
+         `<GUID>/blocking/top/<i>` and `<GUID>/blocking/bottom/<i>`",
         crate::framing::query,
     ),
     other(

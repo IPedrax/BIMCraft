@@ -28,6 +28,12 @@ use crate::walls::{self, Axis, Plane, Prism};
 pub const DEFAULT_TYPE: &str = "2x4 @ 406";
 /// The most grid stations a framed wall may have: one longer than this many `spacing`s is refused.
 pub const MAX_STATIONS: f64 = 1024.0;
+/// How far apart, mm, the splices of two top plates are at least, as IRC R602.3.2 has a double top plate's end joints offset
+/// (24 in).
+pub const TOP_SPLICES: f64 = 610.0;
+/// The shortest cripple, in thicknesses (114 mm for a 2x, 4 1/2 in): one shorter splits as it is toe-nailed at both ends, so a
+/// gap over a header or under a sill shorter than this all along is filled with flat blocking instead.
+const CRIPPLE: f64 = 3.0;
 const EPS: f64 = 1e-6;
 
 /// Where a wall's grid of studs is measured from: its framed length's start, its end or its middle.
@@ -505,6 +511,15 @@ struct Rough {
     top: f64,
 }
 
+/// An opening framed: its rough opening, the span of its kings, its header, and whether the gaps over the header and under
+/// its sill are filled flat, with no cripples.
+struct FramedOpening<'a> {
+    rough: &'a Rough,
+    span: [f64; 2],
+    header: Option<Header>,
+    flat: [bool; 2],
+}
+
 /// Where one of a wall's ends is framed to.
 struct End {
     /// Where its members end.
@@ -677,6 +692,10 @@ pub fn wall(m: &Model, id: Id) -> Result<Option<Framing>, String> {
     };
     let highest_floor = |s0: f64, s1: f64| base.stations(s0, s1).map(floor).fold(f64::NEG_INFINITY, f64::max);
     let lowest_ceiling = |s0: f64, s1: f64| top.stations(s0, s1).map(ceiling).fold(f64::INFINITY, f64::min);
+    let lowest_floor = |s0: f64, s1: f64| base.stations(s0, s1).map(floor).fold(f64::INFINITY, f64::min);
+    let highest_ceiling = |s0: f64, s1: f64| top.stations(s0, s1).map(ceiling).fold(f64::NEG_INFINITY, f64::max);
+    // The shortest a cripple is (`CRIPPLE`).
+    let short = CRIPPLE * th;
     let own_base = m.own_base(w);
     let members = &mut out.members;
     let warnings = &mut out.warnings;
@@ -712,6 +731,8 @@ pub fn wall(m: &Model, id: Id) -> Result<Option<Framing>, String> {
 
     // The plates: the bottom ones cut across each door, each piece named by what it starts after; the top ones in a piece
     // for each slope of the top.
+    // Each with its ply, spliced where longer than the longest stock once the studs they may be spliced over stand.
+    let mut plates: Vec<(u32, Member)> = Vec::new();
     let mut pieces: Vec<(String, f64, f64)> = Vec::new();
     let (mut from, mut after) = (a, "start".to_string());
     for r in roughs.iter().filter(|r| r.door && r.right > a && r.left < b) {
@@ -733,7 +754,8 @@ pub fn wall(m: &Model, id: Id) -> Result<Option<Framing>, String> {
             for ply in 0..t.bottom_plates {
                 let bottom = [s0, s1].map(|s| q[2] + k * (s - q[0]) + f64::from(ply) * plumb(k));
                 let key = format!("bottom_plate/{ply}/{after}/{j}");
-                members.push(Member::new(key, Role::BottomPlate, section, 1, [s0, s1], across, [bottom, bottom.map(|z| z + plumb(k))]));
+                plates
+                    .push((ply, Member::new(key, Role::BottomPlate, section, 1, [s0, s1], across, [bottom, bottom.map(|z| z + plumb(k))])));
             }
         }
     }
@@ -772,7 +794,7 @@ pub fn wall(m: &Model, id: Id) -> Result<Option<Framing>, String> {
                     continue;
                 }
                 let key = after.map_or_else(|| format!("top_plate/{ply}/{i}"), |g| format!("top_plate/{ply}/{i}/{g}"));
-                members.push(Member::new(key, Role::TopPlate, section, 1, [p0, p1], across, [bottom, bottom.map(|z| z + plumb(k))]));
+                plates.push((ply, Member::new(key, Role::TopPlate, section, 1, [p0, p1], across, [bottom, bottom.map(|z| z + plumb(k))])));
             }
         }
     }
@@ -816,7 +838,7 @@ pub fn wall(m: &Model, id: Id) -> Result<Option<Framing>, String> {
 
     // Each opening that fits, the first along the wall first: kings, jacks, a header on the jacks and a window's sill.
     let (kings, jacks) = (f64::from(t.kings), f64::from(t.jacks));
-    let mut framed: Vec<(&Rough, [f64; 2], Option<Header>)> = Vec::new();
+    let mut framed: Vec<FramedOpening> = Vec::new();
     for r in &roughs {
         let what = if r.door { "door" } else { "window" };
         let span = [r.left - (jacks + kings) * th, r.right + (jacks + kings) * th];
@@ -828,8 +850,8 @@ pub fn wall(m: &Model, id: Id) -> Result<Option<Framing>, String> {
             Some("its kings and jacks would run past the framed end of the wall".to_string())
         } else if !taken.iter().all(|v| v + th / 2.0 <= span[0] + EPS || v - th / 2.0 >= span[1] - EPS) {
             Some("its kings and jacks would stand on a corner's or the wall's end studs".to_string())
-        } else if let Some((o, _, _)) = framed.iter().find(|(_, o, _)| o[1] > span[0] + EPS && o[0] < span[1] - EPS) {
-            Some(format!("its kings and jacks would overlap those of {} {}", if o.door { "door" } else { "window" }, o.id))
+        } else if let Some(o) = framed.iter().find(|o| o.span[1] > span[0] + EPS && o.span[0] < span[1] - EPS) {
+            Some(format!("its kings and jacks would overlap those of {} {}", if o.rough.door { "door" } else { "window" }, o.rough.id))
         } else if r.top <= highest_floor(ends[0], ends[1]) + EPS {
             Some("it stands below the bottom plates".to_string())
         } else if r.bottom > lowest_ceiling(ends[0], ends[1]) - EPS {
@@ -897,6 +919,26 @@ pub fn wall(m: &Model, id: Id) -> Result<Option<Framing>, String> {
             let (z0, z1) = (r_top, r_top + header.height());
             members.push(Member::new(format!("{g}/header"), Role::Header, h_section, header.plies, ends, h_across, [[z0; 2], [z1; 2]]));
         }
+        // A gap too short for a cripple all along, over the header or under a window's sill: as many flats as fit, stacked on the
+        // header or on the bottom plates, as long as it or the sill. Where it is long enough anywhere (under a sloped top), the
+        // cripples stand where they are long enough.
+        let flats = |members: &mut Vec<Member>, at: &str, s: [f64; 2], z0: f64, room: f64| {
+            for i in 0..((room / th + EPS).floor().max(0.0) as u32) {
+                let z = z0 + f64::from(i) * th;
+                members.push(Member::new(format!("{g}/blocking/{at}/{i}"), Role::Blocking, section, 1, s, across, [[z; 2], [z + th; 2]]));
+            }
+        };
+        let over = header.as_ref().map(|h| r_top + h.height());
+        let top_flat = over.is_some_and(|over| highest_ceiling(ends[0], ends[1]) - over < short - EPS);
+        if let Some(over) = over.filter(|_| top_flat) {
+            flats(members, "top", ends, over, lowest_ceiling(ends[0], ends[1]) - over);
+        }
+        let under = r.bottom - f64::from(t.sill_plates) * th;
+        let bottom_flat = !r.door && under - lowest_floor(r.left, r.right) < short - EPS;
+        if bottom_flat {
+            let on = highest_floor(r.left, r.right);
+            flats(members, "bottom", [r.left, r.right], on, under - on);
+        }
         if !r.door {
             for i in 0..t.sill_plates {
                 let z = r.bottom - f64::from(i) * th;
@@ -915,7 +957,7 @@ pub fn wall(m: &Model, id: Id) -> Result<Option<Framing>, String> {
             let d = (f64::from(i) + 0.5) * th;
             [r.left - d, r.right + d]
         }));
-        framed.push((r, span, header));
+        framed.push(FramedOpening { rough: r, span, header, flat: [top_flat, bottom_flat] });
     }
     // Where the grid can't stand a stud: an opening not framed, in its rough opening.
     let in_rough = |c: f64| roughs.iter().any(|r| c + th / 2.0 > r.left + EPS && c - th / 2.0 < r.right - EPS);
@@ -927,7 +969,7 @@ pub fn wall(m: &Model, id: Id) -> Result<Option<Framing>, String> {
             let mut any = false;
             for (j, c) in [(0, p0 - th / 2.0), (1, p1 + th / 2.0)] {
                 let inside = c >= a + th / 2.0 - EPS && c <= b - th / 2.0 + EPS;
-                let in_span = framed.iter().any(|(_, s, _)| c + th / 2.0 > s[0] + EPS && c - th / 2.0 < s[1] - EPS);
+                let in_span = framed.iter().any(|o| c + th / 2.0 > o.span[0] + EPS && c - th / 2.0 < o.span[1] - EPS);
                 if inside && !in_span && !in_rough(c) && clear(&taken, c) {
                     stud(members, &mut full, &mut taken, format!("tee/{other}/{j}"), c);
                     any = true;
@@ -941,7 +983,7 @@ pub fn wall(m: &Model, id: Id) -> Result<Option<Framing>, String> {
     let between_backing = |c: f64| backed.iter().any(|[l, r]| c > l + EPS && c < r - EPS);
 
     // The grid: a stud at each station clear of the others, and inside a framed rough opening a cripple over its header
-    // and, a window's, one under its sill.
+    // and, a window's, one under its sill, where it is no shorter than `short` and the gap isn't filled flat.
     let length = b - a;
     let n = (length / t.spacing + EPS).floor() as i64;
     let stations: Box<dyn Iterator<Item = (i64, f64)>> = match t.layout {
@@ -955,15 +997,24 @@ pub fn wall(m: &Model, id: Id) -> Result<Option<Framing>, String> {
     let mut grid: Vec<(i64, f64)> = stations.filter(|(_, c)| *c >= a + th / 2.0 - EPS && *c <= b - th / 2.0 + EPS).collect();
     grid.sort_by(|x, y| x.1.total_cmp(&y.1));
     for (i, c) in grid {
-        if let Some((r, _, header)) = framed.iter().find(|(_, s, _)| c > s[0] - th / 2.0 && c < s[1] + th / 2.0) {
+        if let Some(FramedOpening { rough: r, header, flat: [top_flat, bottom_flat], .. }) =
+            framed.iter().find(|o| c > o.span[0] - th / 2.0 && c < o.span[1] + th / 2.0)
+        {
+            let long = |lo: &dyn Fn(f64) -> f64, hi: &dyn Fn(f64) -> f64| {
+                [c - th / 2.0, c + th / 2.0].iter().all(|s| hi(*s) - lo(*s) >= short - EPS)
+            };
             if c >= r.left + th / 2.0 - EPS && c <= r.right - th / 2.0 + EPS {
-                if let Some(header) = header {
+                if let Some(header) = header.as_ref().filter(|_| !top_flat) {
                     let over = r.top + header.height();
-                    upright(members, format!("{}/cripple/top/{i}", r.guid), Role::Cripple, c, &|_| over, &ceiling);
+                    if long(&|_| over, &ceiling) {
+                        upright(members, format!("{}/cripple/top/{i}", r.guid), Role::Cripple, c, &|_| over, &ceiling);
+                    }
                 }
-                if !r.door {
+                if !r.door && !bottom_flat {
                     let under = r.bottom - f64::from(t.sill_plates) * th;
-                    upright(members, format!("{}/cripple/bottom/{i}", r.guid), Role::Cripple, c, &floor, &|_| under);
+                    if long(&floor, &|_| under) {
+                        upright(members, format!("{}/cripple/bottom/{i}", r.guid), Role::Cripple, c, &floor, &|_| under);
+                    }
                 }
             }
             continue;
@@ -990,7 +1041,142 @@ pub fn wall(m: &Model, id: Id) -> Result<Option<Framing>, String> {
             members.push(Member::new(format!("blocking/{row}/{key}"), Role::Blocking, section, 1, [s0, s1], across, [[z0; 2], [z1; 2]]));
         }
     }
+
+    // A plate longer than the longest stock length, spliced over full-height studs (so never over an opening), into the
+    // fewest pieces that length holds ([`spliced`]); the two top plates' splices `TOP_SPLICES` apart, the lower one's
+    // spliced first. Each piece keyed by the plate's key and its place, from 0. Where none holds it, a warning.
+    let posts: Vec<f64> = full.iter().map(|(c, _)| *c).collect();
+    let mut order: Vec<usize> = (0..plates.len()).collect();
+    order.sort_by_key(|i| plates.get(*i).map(|(ply, p)| (p.role == Role::TopPlate, std::cmp::Reverse(*ply))));
+    let mut cut: Vec<Vec<f64>> = vec![Vec::new(); plates.len()];
+    let mut joints: Vec<(u32, f64)> = Vec::new();
+    for i in order {
+        let (Some((ply, p)), Some(&longest)) = (plates.get(i), t.stock.last()) else { continue };
+        let run = p.s[1] - p.s[0];
+        if p.length <= longest + EPS || run <= EPS {
+            continue;
+        }
+        let topped = p.role == Role::TopPlate;
+        let apart = |c: f64| !topped || joints.iter().all(|(q, j)| q == ply || (c - j).abs() >= TOP_SPLICES - EPS);
+        let over: Vec<f64> = posts.iter().copied().filter(|c| *c > p.s[0] + th - EPS && *c < p.s[1] - th + EPS && apart(*c)).collect();
+        let at = spliced(&over, p.s, longest, p.length / run, 0.0, |len| {
+            warnings.push(format!(
+                "{} has a piece {len:.0} mm long: no splice over a full-height stud{} keeps every piece within the longest stock \
+                 length, {longest:.0} mm, so it is longer than any stock; add stock, or a stud where it can be spliced",
+                p.key,
+                if topped { format!(" {TOP_SPLICES:.0} mm from the other top plates' splices") } else { String::new() }
+            ));
+        });
+        if topped {
+            joints.extend(at.iter().map(|c| (*ply, *c)));
+        }
+        if let Some(c) = cut.get_mut(i) {
+            *c = at;
+        }
+    }
+    let mut spliced_plates: Vec<Member> = Vec::new();
+    for ((_, p), at) in plates.into_iter().zip(cut) {
+        if at.is_empty() {
+            spliced_plates.push(p);
+            continue;
+        }
+        let ends: Vec<f64> = std::iter::once(p.s[0]).chain(at).chain(std::iter::once(p.s[1])).collect();
+        let z = |e: [f64; 2], x: f64| e[0] + (e[1] - e[0]) * (x - p.s[0]) / (p.s[1] - p.s[0]);
+        for (n, w) in ends.windows(2).enumerate() {
+            let s = [w.first().copied().unwrap_or(p.s[0]), w.last().copied().unwrap_or(p.s[1])];
+            let place = [s.map(|x| z(p.bottom, x)), s.map(|x| z(p.top, x))];
+            spliced_plates.push(Member::new(format!("{}/{n}", p.key), p.role, p.section, p.plies, s, p.across, place));
+        }
+    }
+    members.splice(0..0, spliced_plates);
     Ok(Some(out))
+}
+
+/// Where a run `iv` along `s` is spliced over supports `over` (along it, in order, each clear of its ends), a piece's length
+/// taken along its slope (`sec` times its plan length) with its laps (each piece running `reach` past the support it ends
+/// over, the next starting `reach` before it): nowhere where it is no longer than `longest`; else into the fewest pieces no
+/// longer than that, and of those splits the one whose longest piece is shortest, ties going to the one whose splices lie
+/// nearest its start, the first splice first. Where no split keeps every piece within `longest`, the split whose longest
+/// piece is shortest, in the fewest pieces, ties alike, and `too_long` is told the length along its slope of each piece longer
+/// than `longest`. A dynamic programme over the supports, O(n²).
+pub(crate) fn spliced(over: &[f64], iv: [f64; 2], longest: f64, sec: f64, reach: f64, mut too_long: impl FnMut(f64)) -> Vec<f64> {
+    // The places a piece runs between: the run's start (0), each support, the run's end (`last`).
+    let last = over.len() + 1;
+    let place = |k: usize| if k == 0 { iv[0] } else { over.get(k - 1).copied().unwrap_or(iv[1]) };
+    // A piece from place `a` to place `b`, along its slope, its laps within the run.
+    let piece = |a: usize, b: usize| {
+        let from = if a == 0 { iv[0] } else { (place(a) - reach).max(iv[0]) };
+        let to = if b == last { iv[1] } else { (place(b) + reach).min(iv[1]) };
+        (to - from) * sec
+    };
+    // From each place to the end: the shortest the longest piece can be, in as many pieces as it takes.
+    let mut least = vec![f64::INFINITY; last + 1];
+    if let Some(l) = least.get_mut(last) {
+        *l = 0.0;
+    }
+    for a in (0..last).rev() {
+        let most = (a + 1..=last).map(|b| piece(a, b).max(least.get(b).copied().unwrap_or(f64::INFINITY))).fold(f64::INFINITY, f64::min);
+        if let Some(l) = least.get_mut(a) {
+            *l = most;
+        }
+    }
+    let first = least.first().copied().unwrap_or(f64::INFINITY);
+    let cap = if first <= longest + EPS { longest } else { first };
+    // From each place to the end with no piece longer than `cap`: the fewest pieces, and of those the shortest longest one.
+    let mut best: Vec<Option<(usize, f64)>> = vec![None; last + 1];
+    if let Some(b) = best.get_mut(last) {
+        *b = Some((0, 0.0));
+    }
+    for a in (0..last).rev() {
+        let mut here: Option<(usize, f64)> = None;
+        for b in a + 1..=last {
+            let len = piece(a, b);
+            if len > cap + EPS {
+                break;
+            }
+            let Some(Some((count, most))) = best.get(b).copied() else { continue };
+            let it = (count + 1, most.max(len));
+            if here.is_none_or(|(c, m)| it.0 < c || (it.0 == c && it.1 < m - EPS)) {
+                here = Some(it);
+            }
+        }
+        if let Some(h) = best.get_mut(a) {
+            *h = here;
+        }
+    }
+    let Some(Some((count, most))) = best.first().copied() else {
+        too_long(piece(0, last));
+        return Vec::new();
+    };
+    // The fewest pieces from each place to the end, none longer than `most`; then from the start, each piece to the nearest
+    // place from which the rest still takes no more pieces than are left.
+    let mut fewest: Vec<Option<usize>> = vec![None; last + 1];
+    if let Some(f) = fewest.get_mut(last) {
+        *f = Some(0);
+    }
+    for a in (0..last).rev() {
+        let n =
+            (a + 1..=last).take_while(|b| piece(a, *b) <= most + EPS).filter_map(|b| fewest.get(b).copied().flatten()).min().map(|n| n + 1);
+        if let Some(f) = fewest.get_mut(a) {
+            *f = n;
+        }
+    }
+    let mut chosen: Vec<f64> = Vec::new();
+    let (mut a, mut left) = (0, count);
+    while a != last && left > 0 {
+        let next =
+            (a + 1..=last).take_while(|b| piece(a, *b) <= most + EPS).find(|b| fewest.get(*b).copied().flatten().is_some_and(|n| n < left));
+        let Some(b) = next else { break };
+        let len = piece(a, b);
+        if len > longest + EPS {
+            too_long(len);
+        }
+        if b != last {
+            chosen.push(place(b));
+        }
+        (a, left) = (b, left - 1);
+    }
+    chosen
 }
 
 /// To the hundredth of a millimetre.
