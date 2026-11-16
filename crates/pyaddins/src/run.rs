@@ -56,6 +56,8 @@ pub struct Run {
     /// Whether it has said `done` or `failed`, or was stopped.
     over: bool,
     ends: u8,
+    /// Whether the process was waited for: after that its id may be another's, so its group is never killed.
+    waited: bool,
 }
 
 impl Run {
@@ -74,6 +76,9 @@ impl Run {
         if let Some(dir) = path.parent() {
             c.current_dir(dir);
         }
+        // A process group of its own, which Stop kills whole: what the script started goes with it.
+        #[cfg(unix)]
+        std::os::unix::process::CommandExt::process_group(&mut c, 0);
         c.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
         let mut child = c.spawn().map_err(|e| format!("Python could not start: {e}"))?;
         let (Some(stdin), Some(stdout), Some(stderr)) = (child.stdin.take(), child.stdout.take(), child.stderr.take()) else {
@@ -157,7 +162,7 @@ impl Run {
             .map_err(|e| e.to_string())?;
         let first = json!({"inputs": inputs, "selection": selection}).to_string();
         let _ = replies.send(first);
-        Ok(Run { child, replies, lines, started: Instant::now(), over: false, ends: 0 })
+        Ok(Run { child, replies, lines, started: Instant::now(), over: false, ends: 0, waited: false })
     }
 
     /// Whether it is over, and all it said has been read.
@@ -165,10 +170,15 @@ impl Run {
         self.over && self.ends >= 2
     }
 
-    /// Kills it.
+    /// Kills it, and on Unix what it started (its process group), which would otherwise hold its streams open.
     pub fn stop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        if !self.waited {
+            // Before the wait: until then its id, the group's, can be no one else's.
+            kill_group(&self.child);
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+            self.waited = true;
+        }
         self.over = true;
     }
 
@@ -197,6 +207,7 @@ impl Run {
                     self.ends += 1;
                     if self.ends >= 2 && !self.over {
                         self.over = true;
+                        self.waited = true;
                         let status = self.child.wait().ok().and_then(|s| s.code());
                         let how = status.map_or_else(|| "it was stopped".to_string(), |c| format!("its exit code {c}"));
                         events.push(Event::Failed(format!("Python ended before the script did ({how})")));
@@ -235,12 +246,33 @@ impl Run {
 
 impl Drop for Run {
     fn drop(&mut self) {
-        if !self.over || self.child.try_wait().ok().flatten().is_none() {
+        // Cut short (a project opened, the window closed), it is stopped as Stop does.
+        if !self.finished() {
+            self.stop();
+            return;
+        }
+        if self.child.try_wait().ok().flatten().is_none() {
             let _ = self.child.kill();
         }
         let _ = self.child.wait();
     }
 }
+
+/// Kills the process group `child` leads (`process_group(0)` in [`Run::start`]). std signals no group and the crate has no
+/// `unsafe`, so it is the system's `kill`, as POSIX has it on every Unix.
+#[cfg(unix)]
+fn kill_group(child: &Child) {
+    let _ = std::process::Command::new("kill")
+        .args(["-s", "KILL", "--", &format!("-{}", child.id())])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status();
+}
+
+// shortcut: Windows kills Python alone, not what it started; a job object would take those too, when asked for.
+#[cfg(not(unix))]
+fn kill_group(_: &Child) {}
 
 fn cap(text: String) -> String {
     if text.chars().count() <= MAX_PRINT { text } else { text.chars().take(MAX_PRINT).chain("…".chars()).collect() }
@@ -525,6 +557,34 @@ def main(length: bc.Length = 4000, n: int = 2):
             r.poll(&mut |q| bridge::run(&mut s, q, bridge::Access::Edit), 10, Duration::from_millis(50));
         }
         assert!(r.finished());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn stop_kills_what_the_script_started_too() {
+        let Some(py) = python() else { return };
+        let dir = tempfile::tempdir().unwrap();
+        let store = Store::new(dir.path());
+        // A child of its own, which holds the run's streams open: left running, the run would never be over.
+        let code = "import subprocess, sys, time\nsubprocess.Popen([sys.executable, '-c', 'import time; time.sleep(300)'])\n\
+                    print('started')\ntime.sleep(300)\n";
+        let path = store.save("parent", code).unwrap();
+        let mut r = Run::start(&py, &store.client().unwrap(), &path, &Map::new(), &[], None).unwrap();
+        let mut s = Session::new();
+        let mut ask = |q: &Request| bridge::run(&mut s, q, bridge::Access::Edit);
+        let start = Instant::now();
+        let mut started = false;
+        while !started && start.elapsed() < Duration::from_secs(20) {
+            started =
+                r.poll(&mut ask, 10, Duration::from_millis(50)).iter().any(|e| matches!(e, Event::Print { text, .. } if text == "started"));
+        }
+        assert!(started, "the script started its child");
+        r.stop();
+        let start = Instant::now();
+        while !r.finished() && start.elapsed() < Duration::from_secs(10) {
+            r.poll(&mut ask, 10, Duration::from_millis(50));
+        }
+        assert!(r.finished(), "the child went with it, and the streams closed");
     }
 
     #[test]

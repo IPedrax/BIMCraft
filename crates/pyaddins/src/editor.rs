@@ -100,16 +100,26 @@ pub fn desktop_file(app: &str) -> Option<PathBuf> {
 fn launch(mut c: Command) -> Result<(), String> {
     c.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::piped());
     let mut child = c.spawn().map_err(|e| format!("could not start: {e}"))?;
+    // Its standard error read to the end on a thread, the first of it kept for why it failed: an editor it hands the file to
+    // may write there as long as it runs, and a pipe left unread, or closed, would stop it or kill it.
+    let (tx, first) = std::sync::mpsc::channel();
+    if let Some(mut err) = child.stderr.take() {
+        std::thread::spawn(move || {
+            use std::io::Read;
+            let mut why = Vec::new();
+            let _ = (&mut err).take(2000).read_to_end(&mut why);
+            let _ = tx.send(why);
+            let _ = std::io::copy(&mut err, &mut std::io::sink());
+        });
+    }
     let start = Instant::now();
     while start.elapsed() < SETTLE {
         match child.try_wait() {
             Ok(Some(status)) if status.success() => return Ok(()),
             Ok(Some(status)) => {
-                let mut why = String::new();
-                if let Some(mut err) = child.stderr.take() {
-                    use std::io::Read;
-                    let _ = (&mut err).take(2000).read_to_string(&mut why);
-                }
+                // What it wrote before it ended, unless something it started keeps the pipe open past a moment.
+                let why = first.recv_timeout(Duration::from_millis(500)).unwrap_or_default();
+                let why = String::from_utf8_lossy(&why);
                 let why = why.trim();
                 return Err(if why.is_empty() { format!("failed ({status})") } else { format!("failed: {why}") });
             }

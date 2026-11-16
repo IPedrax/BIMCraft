@@ -29,7 +29,9 @@ crate's tests in another interpreter, the oldest supported, say.
 
 ## A run
 
-`bimcraft.py run SCRIPT` in a process of its own (`run.rs`), so nothing it does takes the window down, and Stop kills it. It
+`bimcraft.py run SCRIPT` in a process of its own (`run.rs`), so nothing it does takes the window down, and Stop kills it. On
+Unix it leads a process group of its own, and Stop kills the group (through the system's `kill`, since std signals no group),
+so what the script started, which would hold its streams open, goes with it; on Windows Stop kills Python alone. It
 speaks JSON a line at a time on its own standard input and output: the app sends `{"inputs", "selection"}` first; the script
 sends `execute` and `script` requests (each answered `{"ok"}` or `{"error"}`), `print` (what it prints: `sys.stdout` and
 `sys.stderr` are replaced, `input()` reads nothing) and at its end `done` (what `main` returned, what to select) or `failed`
@@ -127,4 +129,5 @@ is, nothing is written for either agent, and the error names the file. The repos
 ## Not yet
 
 Hooks (on open, on save), warnings a script adds to the model's, panels a script describes, input types for a picked point or
-a picked element in the window, and a `.pyi` stub of every command for an editor's completion.
+a picked element in the window, a `.pyi` stub of every command for an editor's completion, and finding Python and reading a
+script's form off the window's thread (each asks Python, a moment as a rule, but up to 15 s and 20 s when it hangs).
