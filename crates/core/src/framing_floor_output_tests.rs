@@ -49,7 +49,7 @@ fn in_3d_a_framed_floors_joists_are_its_own_in_their_material_and_hidden_framing
     };
     let solids = drawn(&s);
     let red = solids.iter().filter(|x| x.color() == Rgb(200, 30, 30)).count();
-    assert_eq!(red, 2 + 38, "the rims and the joists, the floor's, in the framing's material");
+    assert_eq!(red, 4 + 38, "the rims (each spliced in two) and the joists, the floor's, in the framing's material");
     let timber = s.model.materials["Timber"].color;
     assert_eq!(
         solids.iter().filter(|x| x.color() == Rgb(timber[0], timber[1], timber[2])).count(),
@@ -68,7 +68,7 @@ fn in_3d_a_framed_floors_joists_are_its_own_in_their_material_and_hidden_framing
     assert_eq!(whole.len(), 2, "the floor's two layers, as an unframed floor's");
     // Walls > Framing is another subcategory: hiding it leaves the floor's joists.
     run(&mut s, "graphics", json!({"view": "{3D}", "show": ["floorframing"], "hide": ["framing"]}));
-    assert_eq!(drawn(&s).iter().filter(|x| x.color() == Rgb(200, 30, 30)).count(), 40);
+    assert_eq!(drawn(&s).iter().filter(|x| x.color() == Rgb(200, 30, 30)).count(), 42);
 }
 
 #[test]

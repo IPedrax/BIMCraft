@@ -38,7 +38,7 @@
 //! Nothing is left out without a word: what can't be framed as the type says is in [`Framing::warnings`], naming what and
 //! why.
 
-use super::{EPS, Framing, Grain, Layout, MAX_STATIONS, Member, Role};
+use super::{EPS, Framing, Grain, Layout, MAX_STATIONS, Member, Role, spliced};
 use crate::derived::Group;
 use crate::geom::{self, P2};
 use crate::model::{Element, Floor, Function, Guid, Id, Model, TOL};
@@ -346,6 +346,57 @@ impl Support {
     }
 }
 
+/// Rim `rim` (along an edge from `a` across, running `u` across for each unit along it) spliced where it is longer than
+/// `longest` over the lines centred at `centres` across, none nearer its ends than `th`: in the frame its length runs in, along
+/// `across` for one square to the joists, else along its own `s`.
+fn spliced_rim(
+    rim: Member,
+    (a, u): (f64, f64),
+    centres: &[f64],
+    (th, longest): (f64, Option<f64>),
+    warnings: &mut Vec<String>,
+) -> Vec<Member> {
+    let Some(longest) = longest.filter(|l| rim.length > l + EPS) else { return vec![rim] };
+    let square = rim.grain == Grain::Across;
+    let iv = if square { rim.across } else { rim.s };
+    let mut over: Vec<f64> = centres
+        .iter()
+        .filter_map(|c| if square { Some(*c) } else { (u.abs() > EPS).then(|| (c - a) / u) })
+        .filter(|x| *x > iv[0] + th - EPS && *x < iv[1] - th + EPS)
+        .collect();
+    over.sort_by(f64::total_cmp);
+    over.dedup_by(|x, y| (*x - *y).abs() < EPS);
+    let at = spliced(&over, iv, longest, rim.length / (iv[1] - iv[0]).max(EPS), 0.0, |len| {
+        warnings.push(format!(
+            "{} has a piece {len:.0} mm long: no splice over a joist keeps every piece within the longest stock length, \
+             {longest:.0} mm, so it is longer than any stock; add stock",
+            rim.key
+        ));
+    });
+    if at.is_empty() {
+        return vec![rim];
+    }
+    let ends: Vec<f64> = std::iter::once(iv[0]).chain(at).chain(std::iter::once(iv[1])).collect();
+    ends.windows(2)
+        .enumerate()
+        .map(|(n, w)| {
+            let part = [w.first().copied().unwrap_or(iv[0]), w.last().copied().unwrap_or(iv[1])];
+            let (s, across) = if square { (rim.s, part) } else { (part, rim.across) };
+            // Level along it (a rim along `s` lies on a level floor), so its heights are the rim's.
+            let mut piece = Member::lying(
+                format!("{}/{n}", rim.key),
+                (rim.role, rim.grain),
+                rim.section,
+                rim.plies,
+                [s, across],
+                [rim.bottom, rim.top],
+            );
+            piece.frame = rim.frame;
+            piece
+        })
+        .collect()
+}
+
 /// A hole the floor's members frame round: an opening or a shaft, in the frame.
 struct Hole {
     /// What a warning calls it: `opening 0`, `shaft 100123`.
@@ -547,6 +598,8 @@ pub fn floor(m: &Model, id: Id) -> Result<Option<Framing>, String> {
     }
     // Each rim, its pieces clear of the holes, each one that would overlap another rim left out.
     let mut rim_members: Vec<Member> = Vec::new();
+    // Each rim member's edge's start and way, `across` (where a line `across` = c crosses it: `(c - a) / u` along it).
+    let mut rim_axes: Vec<(f64, f64)> = Vec::new();
     let (mut rim_rings, mut rim_corners): (Vec<Vec<P2>>, Vec<Vec<P2>>) = (Vec::new(), Vec::new());
     for r in &rims {
         let key = format!("rim/{}", edge_no(r.edge));
@@ -597,6 +650,7 @@ pub fn floor(m: &Model, id: Id) -> Result<Option<Framing>, String> {
                 rim
             };
             rim_members.push(member);
+            rim_axes.push((r.a.1, r.u.1));
             rim_rings.push(ring);
             rim_corners.push(r.corners(th, p));
         }
@@ -976,13 +1030,27 @@ pub fn floor(m: &Model, id: Id) -> Result<Option<Framing>, String> {
                 ));
                 continue;
             }
+            if let Some(&most) = t.stock.last().filter(|most| p[1] - p[0] > **most + EPS) {
+                warnings.push(format!(
+                    "{}/{j} is {:.0} mm long between what bears it, longer than the longest stock length, {most:.0} mm, so it is \
+                     longer than any stock; add stock or a support under it",
+                    line.key,
+                    p[1] - p[0]
+                ));
+            }
             placed.push((li, p, across));
             out.members.push(Member::lying(format!("{}/{j}", line.key), (role, Grain::Along), section, 1, [p, across], z));
         }
         spans.push(butt);
     }
 
-    out.members.extend(rim_members);
+    // Each rim longer than the longest stock length, spliced over the joists that end on it (a joint backed by a joist's end),
+    // into the fewest pieces that length holds ([`spliced`]), each keyed by the rim's key and its place, from 0; where no
+    // splice over a joist keeps every piece within it, a warning.
+    let centres: Vec<f64> = lines.iter().map(Line::centre).collect();
+    for (rim, (a, u)) in rim_members.into_iter().zip(rim_axes) {
+        out.members.extend(spliced_rim(rim, (a, u), &centres, (th, t.stock.last().copied()), warnings));
+    }
 
     // Each trimmed hole's headers, between its trimmers at each end.
     for h in holes.iter().filter(|h| h.trimmed) {

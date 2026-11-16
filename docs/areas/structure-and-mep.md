@@ -415,6 +415,11 @@ The rules, in the floor's frame (`s` the way the joists run, `across` to its lef
   joists) is left out with a warning, as is one where the floor is narrower than a joist. Every joist ends square where it
   first meets a rim or a hole (where its nearer corner meets a skewed rim's inner face, so its far corner falls short of the
   rim; at an inward corner, where the rims' inner faces meet). With `rim` off the joists run to the edges themselves.
+  A rim longer than the longest `stock` length is spliced over the joists that end on it (where their centre lines cross it,
+  so each joint is backed by a joist's end, none nearer its ends than a thickness), into the fewest pieces that length holds
+  and, of those splits, the one whose longest piece is shortest (`framing::spliced`, as a wall's plates are), each piece
+  keyed by the rim's key and its place, `/0` first. The cabin's rims, 7320 long, are each two pieces of 3660 butting over the
+  ninth grid joist. Where no splice over a joist keeps every piece within the stock, each piece longer is warned of.
 - Grid joists are centred at stations `spacing` apart across the outline from the layout's origin: `start` the outline's least
   `across`, `end` its most, `centre` its middle. The lines are laid in order, edge joists, trimmers, pairs under walls, then the
   grid, and a grid joist that would overlap one laid before it is left out. Each line runs in pieces where the outline, less
@@ -427,7 +432,9 @@ The rules, in the floor's frame (`s` the way the joists run, `across` to its lef
   (to its left, else its right, wherever it clears the other members and stays on the floor, its end at a rim or a header
   where its own side of the joist meets it), beside the one before; with room on neither side its pieces butt, with a
   warning. Edge joists, trimmers and pairs under walls always butt. A curved wall under the floor at that height isn't taken to bear it, with a warning. A floor that nothing bears
-  warns that its joists span the whole floor, and how far. A piece shorter than it is thick is left out, with a warning.
+  warns that its joists span the whole floor, and how far. A piece shorter than it is thick is left out, with a warning. A
+  piece longer than the longest `stock` length (between what bears it, where a joist could only be spliced) is warned of,
+  with its length: add stock or a support under it.
 - Each hole (an opening, by its index, or a shaft through the floor, by its GUID, found as the floor's solid finds the shafts that
   cut it, `Model::less_shafts`, so framing and solid agree) is framed by the box round it in the joists' frame: `trimmers` plies of trimmer along each side,
   running the joists' whole length (as its line lets them, round other holes), `trimmers` plies of header across each end
@@ -448,7 +455,7 @@ The rules, in the floor's frame (`s` the way the joists run, `across` to its lef
 
 A floor's keys: grid joists `joist/<station>/<piece>` (the station counted from the layout's origin), edge joists
 `edge/<edge index>/<piece>`, rims `rim/<edge index>` (edges numbered as the outline has them; `rim/<edge index>/<piece>` where a
-hole cuts one in pieces), an opening's members `opening/<index or shaft GUID>/trimmer/<left or right>/<ply>/<piece>` and
+hole cuts one in pieces, and a spliced one's pieces `/<n>` after that), an opening's members `opening/<index or shaft GUID>/trimmer/<left or right>/<ply>/<piece>` and
 `opening/<…>/header/<start or end>/<ply>`, a pair under a wall `under/<wall GUID>/<0 or 1>/<piece>`, blocking
 `blocking/<key of the line on its right>/<row>`. Roles are `joist`, `rim` and `trimmer`, with `header` and `blocking` as a
 wall's; each member says its `grain`, the way its length runs (`along` for joists and trimmers, `across` for a rim square to
@@ -467,8 +474,8 @@ draws no member by default: Floors > Framing Lines (`floorframingline`, off unle
 dashed, as hidden lines under the floor's top, the framing plan a framer builds the floor from. It is off by default because on
 an ordinary plan the joists 406 apart hatch the whole floor; a second subcategory is needed because one key can't be shown in
 3D and sections and hidden in plans. The Framing Members schedule lists a floor's members with the floor as Host, its type as
-Host Type and its level as Level; the cabin's cut list is 38 joists 38 x 184 x 3012 from 3050 stock and 2 rims 7320 long (0
-stock: longer than every length, to be spliced). IFC writes each joist, rim, trimmer and header as an `IfcBeam` of predefined
+Host Type and its level as Level; the cabin's cut list is 38 joists 38 x 184 x 3012 from 3050 stock and 4 rim pieces 3660
+long from 3660 stock (each rim spliced in two). IFC writes each joist, rim, trimmer and header as an `IfcBeam` of predefined
 type `JOIST` and each block as an `IfcMember` `MEMBER`, aggregated to the slab (which keeps its whole body) in no storey of its
 own, with GlobalIds from the floor's GUID and the key; IFC2x3 writes the beams without a predefined type; an IFC import of the
 file brings the floor back unframed, its beams, being the slab's parts, left out. `ci/ifc-coverage.txt` has a framed floor.
@@ -481,8 +488,8 @@ walls and floors share), Walls, Wall Openings, Wall Joins, Floors (Lap at Suppor
 Rim Joists, Joists Under Partitions), Materials and Finishes, and Other (Stock Lengths).
 
 Not yet, for floors: sloped and shaped floors (refused); blocking over supports and at the rims; joist hangers and other
-connectors; cantilevers past a support (the joists end at the outline, wherever the supports are); splitting a member longer
-than every stock length (a long rim is scheduled with 0 stock); blocking where a concave outline leaves a bay between lines
+connectors; cantilevers past a support (the joists end at the outline, wherever the supports are); splicing a joist between
+supports (one longer than every stock length is warned of); blocking where a concave outline leaves a bay between lines
 that don't face each other along their whole length; a curved wall as a support; span checks against a species or a table;
 trimmers and headers sized by the opening; at an inward corner of the outline that isn't square, the wedge between the two rims
 (warned of, with its width); and the tip of a sharp corner past where its rims stop.
