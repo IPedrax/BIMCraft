@@ -133,6 +133,26 @@ pub fn own_property(set: &str, name: &str) -> bool {
     let common = set.starts_with("Pset_") && set.ends_with("Common");
     (common && matches!(name, "LoadBearing" | "Status"))
         || (set == DEVICE_SET && matches!(name, "NumberOfPoles" | "PowerFactor" | "RatedVoltage"))
+        || stair_property(set, name)
+}
+
+/// Whether property `name` of set `set` is one the export works out of a stair itself, in its common set and its flights':
+/// what the stair is (its risers, its going, its headroom), never a parameter of it, so an import leaves it out.
+pub fn stair_property(set: &str, name: &str) -> bool {
+    matches!(set, "Pset_StairCommon" | "Pset_StairFlightCommon")
+        && matches!(
+            name,
+            "NumberOfRiser"
+                | "NumberOfTreads"
+                | "RiserHeight"
+                | "TreadLength"
+                | "NosingLength"
+                | "WalkingLineOffset"
+                | "RequiredHeadroom"
+                | "Headroom"
+                | "WaistThickness"
+                | "IsExternal"
+        )
 }
 
 /// A number for `text`, the same each time: what keys a GlobalId made for a name.
@@ -2650,7 +2670,9 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
                 continue;
             }
             let set = p.sets.get(e.category()).map_or(PARAMETERS, String::as_str);
-            if own_property(set, name) {
+            // A typed stair's `Reference` is its type's, written with it.
+            let typed = matches!(e, Element::Stair(st) if !st.type_name.is_empty());
+            if own_property(set, name) || (typed && set == "Pset_StairCommon" && name == "Reference") {
                 continue;
             }
             let value = match (p.kind, v, v.as_f64()) {

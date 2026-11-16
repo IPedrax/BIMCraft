@@ -156,6 +156,33 @@ fn a_selected_stair_s_grips_drag_its_width_its_turn_and_its_foot() {
 }
 
 #[test]
+fn building_codes_and_the_stair_tools_have_their_shortcuts_in_both_profiles() {
+    for rev in [false, true] {
+        let mut h = if rev { app(BOX) } else { bimcraft(BOX) };
+        shortcut(&mut h, "BC");
+        assert!(h.state().codes_dialog.is_some(), "BC opens Building Codes (rev {rev})");
+        h.state_mut().codes_dialog = None;
+        h.state_mut().run("building_code", json!({"set": "nbr"}));
+        let p = json!({"start": [1000, 1000], "angle": 90, "riser": 200, "tread": 240, "width": 1200, "top_level": "Level 2",
+            "top_offset": -3000, "multistorey": true});
+        let id = h.state_mut().run("stair", p).unwrap()["id"].as_u64().unwrap();
+        h.state_mut().selection = vec![id];
+        h.run();
+        shortcut(&mut h, "CK");
+        assert_eq!(h.state().code_findings, Some(id), "CK: its code check (rev {rev})");
+        h.state_mut().code_findings = None;
+        shortcut(&mut h, "SY");
+        assert_eq!(ids(&h, "stair").len(), 2, "SY: a stair for each storey (rev {rev})");
+        shortcut(&mut h, "TS");
+        assert!(field(&h, id, "sketch").as_array().is_some_and(|s| !s.is_empty()), "TS: a sketch of its risers (rev {rev})");
+        // Nothing selected, the core says why not.
+        h.state_mut().selection.clear();
+        shortcut(&mut h, "TS");
+        assert!(h.state().status.error, "rev {rev}");
+    }
+}
+
+#[test]
 fn the_code_check_window_offers_stairs_that_fit_and_applies_one() {
     let mut h = app(BOX);
     h.state_mut().run("building_code", json!({"set": "nbr"}));

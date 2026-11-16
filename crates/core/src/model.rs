@@ -62,6 +62,8 @@ pub const RAMP_WIDTH: f64 = 1200.0;
 pub const RAILING_INSET: f64 = 50.0;
 /// Balusters one railing may have.
 pub const MAX_BALUSTERS: f64 = 10_000.0;
+/// Risers a stair (each storey of a multistorey one) may have.
+pub const MAX_RISERS: u32 = 200;
 /// Names, marks and numbers longer than this are refused.
 pub const MAX_TEXT: usize = 256;
 /// Points one command or floor outline may carry.
@@ -185,7 +187,17 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// georeference and lose where the project stands; and it would read spot coordinates (a spot's `coordinate`, `type`, `origin`,
 /// `leader`, `shoulder` and `end`) and a level's `elevation_base` as spot elevations from the Project Base Point. A file of 19
 /// needs no step: its georeference is the active site, both points at the internal origin.
-pub const FORMAT: u32 = 20;
+/// 21 (the next release's, which every change since 0.12 shares): stairs have types (`types.stair`), a building code holds
+/// them to rules (the project's `building_code`, `stair_rules` and `building_codes`), and a stair is drawn along a `path`, as
+/// a `spiral` or by hand (`sketch`, `unsketched`), by a location `line` and `offset`, from a `base_offset` to a `top_offset`,
+/// `multistorey`, with its landings' edges moved (`edges`) and its landings turned 5 to 135 degrees, of a `length` and a
+/// `width` of their own, or made of `winders` and `balance`d. A dimension may measure to a stair's edge (`{"edge": n}`), and a
+/// view's graphics, a view template and the object styles may name a stair's subcategories (`stairrun` to `stairheadroom`)
+/// and say how stairs show in a plan (`stairs`). A build that reads up to 20 would refuse the edge ("unknown variant"), the
+/// subcategories ("isn't a category views draw") and the turned landing, and leave the rest out as fields it doesn't know,
+/// drawing such a stair straight, solid, shifted or a storey high, not say "saved by a newer BIMCraft". A file of 20 needs
+/// no step but the stair types a project starts with, which [`Model::migrate`] gives a file without any.
+pub const FORMAT: u32 = 21;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -4987,7 +4999,9 @@ impl Model {
             }
         }
         self.next_id = self.next_id.max(FIRST_ID);
-        // A file from before stair types has none: it gets the ones a project starts with. Its stairs stay solid.
+        // 20 to 21: a file from before stair types has none: it gets the ones a project starts with. Its stairs stay solid. The
+        // rest of 21 (stairs along a path, spirals, sketches, multistorey, offsets, landing edges and turns, dimensions to a
+        // stair's edge, its subcategories and plan display, the building code) needs nothing of a file of 20, which holds none.
         if self.types.stair.is_empty() {
             self.types.stair = stair_types();
         }
@@ -8007,6 +8021,73 @@ impl Model {
         out
     }
 
+    /// A stair type's rules: its sizes and its rules' ranges, the patterns and materials it names, and a construction that
+    /// can be built. [`Model::check`] holds every type to them; an import tries a type it reads before it takes it.
+    pub fn check_stair_type(&self, n: &str, t: &StairType) -> Result<(), String> {
+        let parts = [
+            ("waist", t.waist),
+            ("tread_thickness", t.tread_thickness),
+            ("riser_thickness", t.riser_thickness),
+            ("nosing", t.nosing),
+            ("stringer_width", t.stringer_width),
+            ("stringer_depth", t.stringer_depth),
+            ("carriage_width", t.carriage_width),
+            ("carriage_depth", t.carriage_depth),
+            ("post", t.post),
+            ("tread_cover", t.tread_cover),
+            ("riser_cover", t.riser_cover),
+            ("cover_nosing", t.cover_nosing),
+            ("cover_side", t.cover_side),
+        ];
+        for (what, v) in parts {
+            if !(0.0..=5000.0).contains(&v) {
+                return Err(format!("stair type `{n}`: `{what}` is 0 to 5000 mm, not {v}"));
+            }
+        }
+        for (what, v) in t.rules.each() {
+            if v.is_some_and(|v| !(0.0..=100_000.0).contains(&v)) {
+                return Err(format!("stair type `{n}`: its rule `{what}` is 0 to 100000, or off"));
+            }
+        }
+        let r = &t.rules;
+        let pairs = [
+            ("riser", r.riser_min, r.riser_max),
+            ("going", r.going_min, r.going_max),
+            ("step", r.step_min, r.step_max),
+            ("ratio", r.ratio_min, r.ratio_max),
+            ("sum", r.sum_min, r.sum_max),
+            ("pitch", r.pitch_min, r.pitch_max),
+        ];
+        for (what, low, high) in pairs {
+            if let (Some(low), Some(high)) = (low, high)
+                && low > high
+            {
+                return Err(format!("stair type `{n}`: its rule `{what}_min`, {low}, is over `{what}_max`, {high}"));
+            }
+        }
+        for (what, name) in [("line_visible", &t.line_visible), ("line_hidden", &t.line_hidden), ("fill", &t.fill)] {
+            if name.chars().count() > MAX_TEXT {
+                return Err(format!("stair type `{n}`: `{what}` names a pattern in {MAX_TEXT} characters at most"));
+            }
+        }
+        for (what, name) in [("material", &t.material), ("cover_material", &t.cover_material)] {
+            if !name.is_empty() && !self.materials.contains_key(name) {
+                return Err(format!("stair type `{n}`: `{what}` `{name}` isn't in the library; add it with `material`"));
+            }
+        }
+        if t.profile == StepProfile::Slanted && (!t.monolithic() || t.nosing <= 0.0) {
+            return Err(format!(
+                "stair type `{n}`: only a monolithic stair can have slanted risers, and they lean back by the `nosing`, so give it a nosing too"
+            ));
+        }
+        if t.construction.is_none() && t.waist == 0.0 && t.tread_thickness == 0.0 {
+            return Err(format!(
+                "stair type `{n}` has neither a `waist` (a slab under its steps) nor a `tread_thickness` (treads standing free)"
+            ));
+        }
+        Ok(())
+    }
+
     /// Everything that must hold between commands: references resolve, geometry is finite and
     /// not degenerate, doors and windows fit their walls and don't overlap.
     pub fn check(&self) -> Result<(), String> {
@@ -8350,67 +8431,7 @@ impl Model {
             }
         }
         for (n, t) in &self.types.stair {
-            let parts = [
-                ("waist", t.waist),
-                ("tread_thickness", t.tread_thickness),
-                ("riser_thickness", t.riser_thickness),
-                ("nosing", t.nosing),
-                ("stringer_width", t.stringer_width),
-                ("stringer_depth", t.stringer_depth),
-                ("carriage_width", t.carriage_width),
-                ("carriage_depth", t.carriage_depth),
-                ("post", t.post),
-                ("tread_cover", t.tread_cover),
-                ("riser_cover", t.riser_cover),
-                ("cover_nosing", t.cover_nosing),
-                ("cover_side", t.cover_side),
-            ];
-            for (what, v) in parts {
-                if !(0.0..=5000.0).contains(&v) {
-                    return Err(format!("stair type `{n}`: `{what}` is 0 to 5000 mm, not {v}"));
-                }
-            }
-            for (what, v) in t.rules.each() {
-                if v.is_some_and(|v| !(0.0..=100_000.0).contains(&v)) {
-                    return Err(format!("stair type `{n}`: its rule `{what}` is 0 to 100000, or off"));
-                }
-            }
-            let r = &t.rules;
-            let pairs = [
-                ("riser", r.riser_min, r.riser_max),
-                ("going", r.going_min, r.going_max),
-                ("step", r.step_min, r.step_max),
-                ("ratio", r.ratio_min, r.ratio_max),
-                ("sum", r.sum_min, r.sum_max),
-                ("pitch", r.pitch_min, r.pitch_max),
-            ];
-            for (what, low, high) in pairs {
-                if let (Some(low), Some(high)) = (low, high)
-                    && low > high
-                {
-                    return Err(format!("stair type `{n}`: its rule `{what}_min`, {low}, is over `{what}_max`, {high}"));
-                }
-            }
-            for (what, name) in [("line_visible", &t.line_visible), ("line_hidden", &t.line_hidden), ("fill", &t.fill)] {
-                if name.chars().count() > MAX_TEXT {
-                    return Err(format!("stair type `{n}`: `{what}` names a pattern in {MAX_TEXT} characters at most"));
-                }
-            }
-            for (what, name) in [("material", &t.material), ("cover_material", &t.cover_material)] {
-                if !name.is_empty() && !self.materials.contains_key(name) {
-                    return Err(format!("stair type `{n}`: `{what}` `{name}` isn't in the library; add it with `material`"));
-                }
-            }
-            if t.profile == StepProfile::Slanted && (!t.monolithic() || t.nosing <= 0.0) {
-                return Err(format!(
-                    "stair type `{n}`: only a monolithic stair can have slanted risers, and they lean back by the `nosing`, so give it a nosing too"
-                ));
-            }
-            if t.construction.is_none() && t.waist == 0.0 && t.tread_thickness == 0.0 {
-                return Err(format!(
-                    "stair type `{n}` has neither a `waist` (a slab under its steps) nor a `tread_thickness` (treads standing free)"
-                ));
-            }
+            self.check_stair_type(n, t)?;
         }
         for (n, t) in &self.types.railing {
             size(&format!("railing type `{n}` height"), t.height)?;
@@ -9629,10 +9650,19 @@ impl Model {
                 if top <= bottom + TOL {
                     return Err(format!("{who}: its top ({top} mm) is under its foot ({bottom} mm); check its offsets"));
                 }
-                let (n, _, _) = self.flight(st);
-                if !(2..=200).contains(&n) {
-                    return Err(format!("{who}: {n} risers; a stair takes 2 to 200, so check its height and its riser ({} mm)", st.riser));
+                // Every storey: a multistorey stair's upper ones have the risers their own heights ask, and plan and 3D lay
+                // them all out.
+                for (i, (_, _, rise)) in self.storeys(st).into_iter().enumerate() {
+                    let (n, _, _) = self.flight_of(st, rise);
+                    if !(2..=MAX_RISERS).contains(&n) {
+                        let storey = if i == 0 { String::new() } else { format!(" in its storey {}", i + 1) };
+                        return Err(format!(
+                            "{who}: {n} risers{storey}; a stair takes 2 to {MAX_RISERS}, so check its height and its riser ({} mm)",
+                            st.riser
+                        ));
+                    }
                 }
+                let (n, _, _) = self.flight(st);
                 landings(&who, &st.landings, Some(f64::from(n)))?;
             }
             Element::Ramp(r) => {

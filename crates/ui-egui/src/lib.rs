@@ -412,7 +412,7 @@ type Buttons<'a> = &'a [(Icon, &'a str, &'a str, Option<Tool>, bool)];
 
 /// The desktop's own two-letter shortcuts, which [`BimApp::shortcut`] takes before the commands'
 /// aliases, and what Keyboard Shortcuts (KS) calls them.
-const SHORTCUTS: [(&str, &str); 58] = [
+const SHORTCUTS: [(&str, &str); 62] = [
     ("3D", "3D View"),
     ("MD", "Modify"),
     ("SB", "Floor: Structural"),
@@ -473,6 +473,11 @@ const SHORTCUTS: [(&str, &str); 58] = [
     ("GD", "Graphic Display Options"),
     // Revit has none for its title blocks; no command or tool takes TB.
     ("TB", "Title Blocks"),
+    // Revit has no building codes, and none of these for its stairs; letters it doesn't use.
+    ("BC", "Building Codes"),
+    ("CK", "Code Check"),
+    ("TS", "Convert to Sketch"),
+    ("SY", "Separate Storeys"),
 ];
 
 /// Every two-letter shortcut and what it does: the desktop's own, then the commands' aliases.
@@ -2722,6 +2727,22 @@ impl BimApp {
                 self.open_title_blocks(None);
                 return true;
             }
+            "BC" => {
+                self.codes_dialog = Some(codes::CodesDialog::new(&self.session.model));
+                return true;
+            }
+            // The stair selected: its code check, or it made a sketch or a stair for each storey (the core says why not).
+            "CK" => {
+                if let [id] = self.selected_stairs().as_slice() {
+                    self.code_check(*id);
+                }
+                return true;
+            }
+            "TS" | "SY" => {
+                let command = if self.typed == "TS" { "stair_sketch" } else { "stair_storeys" };
+                self.run(command, json!({"id": self.selection.first()}));
+                return true;
+            }
             "EU" | "UE" => {
                 if self.hidden_selection().0.is_empty() {
                     self.open_graphics(graphics::ELEMENTS_TAB);
@@ -3315,6 +3336,17 @@ impl BimApp {
     fn selected_stairs(&self) -> Vec<Id> {
         let m = &self.session.model;
         self.selection.iter().copied().filter(|id| matches!(m.elements.get(*id), Some(Element::Stair(_)))).collect()
+    }
+
+    /// Code Check (CK) of stair `id`: the rules it breaks in a window, or that it meets them all.
+    fn code_check(&mut self, id: Id) {
+        let m = &self.session.model;
+        let outside = matches!(m.elements.get(id), Some(Element::Stair(st)) if !bimcraft_core::codes::stair_findings(m, st).is_empty());
+        if outside {
+            self.code_findings = Some(id);
+        } else {
+            self.status = Status { text: t("This stair meets every rule of the project's building code.").to_string(), error: false };
+        }
     }
 
     /// The middle of what's selected: where Rotate turns it about until told otherwise.
@@ -5480,15 +5512,7 @@ impl BimApp {
                 if let [id] = stairs.as_slice()
                     && big_button(ui, Icon::StairCheck, "Code Check", self.code_findings.is_some(), tip).clicked()
                 {
-                    let m = &self.session.model;
-                    let outside =
-                        matches!(m.elements.get(*id), Some(Element::Stair(st)) if !bimcraft_core::codes::stair_findings(m, st).is_empty());
-                    if outside {
-                        self.code_findings = Some(*id);
-                    } else {
-                        self.status =
-                            Status { text: t("This stair meets every rule of the project's building code.").to_string(), error: false };
-                    }
+                    self.code_check(*id);
                 }
             });
         }

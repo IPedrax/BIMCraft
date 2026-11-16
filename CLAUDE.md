@@ -2,7 +2,7 @@
 
 BIMCraft is a clean-room, pure-Rust BIM application following the Revit workflow, modeled on
 [storytold/cadcraft](https://github.com/storytold/cadcraft) (the AutoCAD one). Milestone 1, the headless engine with the CLI
-and MCP server, and milestone 2, the egui desktop app, are done. What works, what's missing: [README.md](README.md).
+and MCP server, and milestone 2, the egui desktop app, are done. What works and what's missing: [README.md](README.md).
 
 ## Rules
 
@@ -155,4 +155,4 @@ Plugins: [notes](crates/plugin/CLAUDE.md), [sdk](crates/plugin-sdk/CLAUDE.md), [
 
 ## Keep the agent docs layered
 
-This file stays under 3,000 words (the `agent_docs` test in `crates/core` fails past that). The detail of a feature goes in `docs/areas/<area>.md`, or in the nearest crate's `CLAUDE.md` when it concerns the whole crate, and the map names it. A new feature adds its paragraph there, never here; a new module adds a line to the map; an area's write-up moves with the code it describes. Move text, never delete what is still true.
+This file holds the rules, the checks, the conventions and the map, and stays under 3,000 words (the `agent_docs` test in `crates/core` fails past that). The detail of a feature goes in `docs/areas/<area>.md`, or in the nearest crate's `CLAUDE.md` when it concerns the whole crate, and the map names it. A new feature adds its paragraph there, never here; a new module adds a line to the map; an area's write-up moves with the code it describes. Move text, never delete what is still true.

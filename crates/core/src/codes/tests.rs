@@ -712,6 +712,29 @@ fn a_multistorey_stair_stands_on_each_level_with_the_risers_its_storey_asks() {
 }
 
 #[test]
+fn stair_solve_proposes_no_stair_of_more_risers_than_a_stair_takes() {
+    let mut s = Session::new();
+    let id = run(&mut s, "stair", json!({"start": [0, 0], "angle": 0, "type": "Monolithic 150mm"}))["id"].as_u64().unwrap();
+    // Its type's risers 10 mm at most: a storey of 3000 would take 300 of them.
+    run(&mut s, "type", json!({"category": "stair", "name": "Monolithic 150mm", "rules": {"riser_min": 5, "riser_max": 10}}));
+    // Only its risers may change, so every proposal is a count of them.
+    let r = run(&mut s, "stair_solve", json!({"id": id, "lock": ["tread", "width", "landings"]}));
+    let most = r["proposals"].as_array().unwrap().iter().filter_map(|p| p["risers"].as_u64()).max();
+    assert!(most.is_none_or(|n| n <= 200), "{r}");
+}
+
+#[test]
+fn every_storey_of_a_multistorey_stair_holds_2_to_200_risers() {
+    let mut s = Session::new();
+    // Level 2 is 3000 up; a third 40 m over it, a storey of more than 200 risers however high each is allowed.
+    let l3 = run(&mut s, "level", json!({"name": "Level 3", "elevation": 43000}))["id"].as_u64().unwrap();
+    let e = s.execute("stair", &json!({"start": [0, 0], "angle": 0, "top_level": l3, "multistorey": true})).unwrap_err();
+    assert!(e.contains("in its storey 2") && e.contains("2 to 200"), "{e}");
+    // Up to Level 2 alone, its one storey is a stair.
+    run(&mut s, "stair", json!({"start": [0, 0], "angle": 0, "top_level": "Level 2", "multistorey": true}));
+}
+
+#[test]
 fn a_floor_over_a_stair_is_reported_and_cut_open_where_the_headroom_is_short() {
     let mut s = Session::new();
     // A floor 300 thick on Level 2, over all of a stair that climbs to it: 3000 up in 17 risers.
@@ -1175,6 +1198,20 @@ fn the_brazilian_standards_are_two_codes_each_number_with_its_item() {
 }
 
 #[test]
+fn side_stringers_wider_than_the_stair_stay_inside_its_width() {
+    use crate::stairs::{PartKind, parts_tagged};
+    let mut s = Session::new();
+    // Climbing east from the origin, 1000 wide: its sides at y = -500 and 500.
+    let id = run(&mut s, "stair", json!({"start": [0, 0], "angle": 0, "width": 1000, "type": "Stringers - Closed Risers"}))["id"]
+        .as_u64()
+        .unwrap();
+    run(&mut s, "type", json!({"category": "stair", "name": "Stringers - Closed Risers", "stringer_width": 2000}));
+    let parts = parts_tagged(&s.model, &stair_of(&s, id)).unwrap();
+    let ys: Vec<f64> = parts.iter().filter(|(k, ..)| *k == PartKind::Supports).flat_map(|(_, ring, ..)| ring.iter().map(|q| q.1)).collect();
+    assert!(!ys.is_empty() && ys.iter().all(|y| y.abs() <= 500.0 + 1e-6), "{ys:?}");
+}
+
+#[test]
 fn a_stair_type_is_built_as_its_construction_says_with_stringers_round_its_landings() {
     use crate::stairs::{PartKind, parts_tagged};
     let mut s = Session::new();
@@ -1236,6 +1273,74 @@ fn a_stair_goes_out_to_ifc_as_its_type_builds_it_and_comes_back_a_stair() {
     assert_eq!(made.len(), 1);
     assert_eq!((made[0].path.clone(), made[0].type_name.clone()), (was.path, was.type_name), "the same stair, of the same type");
     let _ = std::fs::remove_dir_all(dir);
+}
+
+#[test]
+fn an_ifc_stair_s_common_set_brings_what_isn_t_the_stair_itself_as_parameters() {
+    let mut s = Session::new();
+    run(&mut s, "stair", json!({"start": [0, 0], "angle": 0, "type": "Monolithic 150mm"}));
+    let file = crate::ifc::export(&s.model);
+    // Another program's fire rating, beside what BIMCraft writes of the stair.
+    let set = "'Pset_StairCommon',$,(";
+    assert!(file.contains(set));
+    let file = file.replacen(set, &format!("{set}#999999,"), 1);
+    let end = file.rfind("ENDSEC;").unwrap();
+    let file = format!("{}#999999=IFCPROPERTYSINGLEVALUE('FireRating',$,IFCLABEL('REI 60'),$);\n{}", &file[..end], &file[end..]);
+    let dir = std::env::temp_dir().join(format!("bimcraft-stair-pset-ifc-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("stair.ifc");
+    std::fs::write(&path, &file).unwrap();
+    let mut back = Session::new();
+    run(&mut back, "open", json!({"path": path.to_string_lossy()}));
+    let _ = std::fs::remove_dir_all(dir);
+    let params: Vec<_> = back
+        .model
+        .elements
+        .values()
+        .filter_map(|e| match e {
+            crate::model::Element::Stair(st) => Some(st.params.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(params.len(), 1);
+    assert_eq!(params[0].get("FireRating"), Some(&json!("REI 60")), "{:?}", params[0]);
+    // What the stair is, and its type's name, are the stair's own: no parameters of it.
+    for derived in ["NumberOfRiser", "RiserHeight", "TreadLength", "WaistThickness", "IsExternal", "Reference"] {
+        assert!(!params[0].contains_key(derived), "{derived}");
+    }
+}
+
+#[test]
+fn a_stair_type_in_an_ifc_that_breaks_a_rule_stays_out_and_its_stair_comes_in_of_none() {
+    let mut s = Session::new();
+    run(&mut s, "type", json!({"category": "stair", "name": "Ours", "waist": 150}));
+    run(&mut s, "stair", json!({"start": [0, 0], "angle": 0, "type": "Ours"}));
+    let file = crate::ifc::export(&s.model);
+    // The type as a hand or another program left it: a waist no stair has.
+    let marker = "'Its stair type as BIMCraft holds it, as JSON',IFCTEXT('";
+    let at = file.find(marker).unwrap() + marker.len();
+    let end = at + file[at..].find("')").unwrap();
+    let file = format!("{}{}{}", &file[..at], r#"{"waist":1e300}"#, &file[end..]);
+    let dir = std::env::temp_dir().join(format!("bimcraft-stair-type-ifc-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("stair.ifc");
+    std::fs::write(&path, &file).unwrap();
+    let mut back = Session::new();
+    let r = run(&mut back, "open", json!({"path": path.to_string_lossy()}));
+    let _ = std::fs::remove_dir_all(dir);
+    let made: Vec<crate::model::Stair> = back
+        .model
+        .elements
+        .values()
+        .filter_map(|e| match e {
+            crate::model::Element::Stair(st) => Some(st.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(made.len(), 1, "the stair came in");
+    assert!(made[0].type_name.is_empty() && !back.model.types.stair.contains_key("Ours"), "of no type");
+    let skipped = r["skipped"].to_string();
+    assert!(skipped.contains("stair type `Ours`") && skipped.contains("waist"), "{skipped}");
 }
 
 #[test]
@@ -1513,4 +1618,73 @@ fn a_stair_in_a_tower_measures_its_headroom_to_what_is_over_it_and_only_that() {
     }
     let each = t.elapsed() / 10;
     assert!(each < std::time::Duration::from_millis(200), "{each:?} for each code check");
+}
+
+/// For the hostile sweep (`tests::hostile_params_never_panic_or_break_the_model`): a typed stair of two storeys with a
+/// landing, made in `base`; and payloads for the commands that solve, cut, sketch, separate, flip, move and change it,
+/// and stairs drawn along paths they can't have.
+pub(crate) fn sweep_payloads(base: &mut Session) -> Vec<(&'static str, Value)> {
+    // Up to Level 2 and 3000 over it, so it stands again on Level 2.
+    let p = json!({"start": [1000, 1000], "angle": 90, "width": 1000, "type": "Stringers - Closed Risers", "top_level": "Level 2",
+        "top_offset": -3000, "multistorey": true, "landings": [{"at": 8, "turn": 180}]});
+    let st = base.execute("stair", &p).ok().and_then(|r| r["id"].as_u64()).unwrap_or(0);
+    let made = matches!(base.model.elements.get(st), Some(crate::model::Element::Stair(s)) if base.model.storeys(s).len() == 2);
+    assert!(made, "the sweep's base has a stair of two storeys");
+    let seg = |to: Value| json!({"to": to});
+    let paths = [
+        json!([seg(json!([1e300, 0]))]),
+        json!([{"to": [3000, 0], "arc": 1e300}]),
+        json!([{"to": [3000, 0], "arc": 339.9}, {"to": [3000.000001, 0], "landing": true}]),
+        json!([seg(json!([0, 0]))]),
+        json!([{"to": [3000, 0], "landing": true}]),
+        json!([{"to": [3000, 0], "winders": 30}, {"to": [3000, 3000], "winders": u32::MAX, "width": -1}]),
+        json!([{"to": [3000, 0], "width": 1e-300}, {"to": [3000, 3000], "arc": -340, "width": 1e300}]),
+        json!([{"to": [3000, 0]}, {"to": [3000, 3000], "landing": true, "winders": 3}, {"to": [0, 3000], "arc": 5e-324}]),
+        json!((1..=201).map(|i| seg(json!([i * 10, 0]))).collect::<Vec<_>>()),
+        json!((1..=200).map(|i| seg(json!([(i % 2) * 1000, i]))).collect::<Vec<_>>()),
+        json!("x"),
+        json!([5, null, {"to": "x"}]),
+    ];
+    let mut out: Vec<(&'static str, Value)> = Vec::new();
+    for path in paths {
+        out.push(("stair", json!({"start": [0, 0], "path": path.clone()})));
+        out.push(("stair", json!({"start": [0, 0], "path": path.clone(), "spiral": {"radius": 900}, "landings": [{"at": 4, "turn": 90}]})));
+        out.push(("modify", json!({"id": st, "path": path})));
+    }
+    out.extend([
+        ("stair_solve", json!({"id": st})),
+        ("stair_solve", json!({"id": st, "apply": 1})),
+        ("stair_solve", json!({"id": st, "lock": ["risers", "tread", "width", "landings"], "apply": 1e300})),
+        ("stair_solve", json!({"id": st, "lock": [], "apply": u32::MAX})),
+        ("stair_opening", json!({"id": st})),
+        ("stair_opening", json!({"id": st, "headroom": 1e300})),
+        ("stair_opening", json!({"id": st, "headroom": 1e-300, "margin": 2000})),
+        ("stair_opening", json!({"id": st, "margin": -1})),
+        ("stair_sketch", json!({"id": st})),
+        ("stair_sketch", json!({"id": st, "back": true})),
+        ("stair_sketch", json!({"id": st, "back": "x"})),
+        ("stair_storeys", json!({"id": st})),
+        ("stair_storeys", json!({"id": st, "ids": [st]})),
+        ("stair_check", json!({"ids": [st, st]})),
+        ("flip", json!({"ids": [st]})),
+        ("flip", json!({"ids": [st, st, 100002]})),
+        ("modify", json!({"id": st, "top_offset": -2e5})),
+        ("modify", json!({"id": st, "top_offset": -1e300, "multistorey": false})),
+        ("modify", json!({"id": st, "base_offset": 1e9, "riser": 1e-9})),
+        ("modify", json!({"id": st, "edges": [{"landing": 0, "normal": 90, "by": 1e300}, {"landing": 1e9, "normal": 720, "by": 5}]})),
+        ("modify", json!({"id": st, "spiral": {"radius": 1e-300, "sweep": 1e300}})),
+        ("modify", json!({"id": st, "sketch": [{"riser": [[0, 0], [1e300, 0]]}, {"riser": [[0, 1], [0, 1]]}]})),
+        ("modify", json!({"id": st, "line": "left", "offset": 1e300, "width": 1e-300})),
+        ("modify", json!({"id": st, "type": "nope"})),
+        ("move", json!({"ids": [st], "by": [9.99e8, 0]})),
+        ("rotate", json!({"ids": [st], "about": [0, 0], "angle": 1e300})),
+        ("mirror", json!({"ids": [st], "axis": [[0, 0], [1, 1]], "copy": true})),
+        ("copy", json!({"ids": [st], "by": [1000, 0]})),
+        ("delete", json!({"ids": [st]})),
+        // Stringers wider than the stair, and a type taken away from under it.
+        ("type", json!({"category": "stair", "name": "Stringers - Closed Risers", "stringer_width": 5000, "stringer_depth": 5000})),
+        ("type", json!({"category": "stair", "name": "Stringers - Closed Risers", "landing_stringers": true, "tread_cover": 5000})),
+        ("purge", json!({})),
+    ]);
+    out
 }

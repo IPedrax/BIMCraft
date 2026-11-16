@@ -46,6 +46,41 @@ fn schema_paths(value: &Value, prefix: &str, out: &mut Vec<String>) {
     }
 }
 
+/// The keys a params doc written in prose lists at the top of its leading `{…}`: `{path, code?, name?} writes…` gives
+/// `path`, `code` and `name`; `{start: [x,y], end?: …} | …` gives `start` and `end`. None for a doc that starts otherwise.
+fn signature_keys(doc: &str) -> Vec<String> {
+    let (mut keys, mut piece, mut depth) = (Vec::new(), String::new(), 0i32);
+    for c in doc.trim_start().chars() {
+        depth += match c {
+            '{' | '[' | '(' => 1,
+            '}' | ']' | ')' => -1,
+            _ => 0,
+        };
+        // A piece ends at a `,` or a `|` of the top level, and the last at the brace that closes it.
+        if depth <= 0 || (depth == 1 && matches!(c, ',' | '|')) {
+            let key: String = piece.trim_start_matches(['{', ' ']).chars().take_while(|c| c.is_alphanumeric() || *c == '_').collect();
+            if !key.is_empty() {
+                keys.push(key);
+            }
+            piece.clear();
+            if depth <= 0 {
+                break;
+            }
+            continue;
+        }
+        piece.push(c);
+    }
+    keys
+}
+
+#[test]
+fn a_prose_params_doc_lists_its_top_level_keys() {
+    assert_eq!(signature_keys("{path, code?, name?} writes a code"), ["path", "code", "name"]);
+    assert_eq!(signature_keys("{start: [x,y], end?: [x,y] | angle?, path?} a stair"), ["start", "end", "angle", "path"]);
+    assert_eq!(signature_keys("{id | ids: [id,…], …fields} change fields"), ["id", "ids"]);
+    assert!(signature_keys("set the view").is_empty());
+}
+
 /// A plugin only reaches the disk with the `files` permission, and what says a command reaches it is its own mark.
 /// So a command that takes a file's path cannot be left unmarked: a new command with a `path` (or a texture's
 /// picture, or a `save` file) fails here until it says [`crate::engine::Files::Read`] or `Write`, or
@@ -55,21 +90,23 @@ fn a_command_that_takes_a_path_is_marked_as_touching_files() {
     let mut unmarked = Vec::new();
     let mut conditional = Vec::new();
     for command in commands() {
-        let schema: Value = match serde_json::from_str(command.params) {
-            Ok(schema) => schema,
-            // A documented example with its own words (`{name?, language?: en|pt|…}`) isn't a JSON schema: there
-            // is no property to find, so nothing to miss.
-            Err(_) => continue,
+        let (paths, schema) = match serde_json::from_str::<Value>(command.params) {
+            Ok(schema) => {
+                let mut paths = Vec::new();
+                schema_paths(&schema, "", &mut paths);
+                (paths, true)
+            }
+            // A documented example with its own words (`{path, code?, name?} writes…`): the keys its leading `{…}` lists.
+            Err(_) => (signature_keys(command.params), false),
         };
-        let mut paths = Vec::new();
-        schema_paths(&schema, "", &mut paths);
         let kinds = ["path", "save", "texture.path"];
-        let takes = kinds.iter().find(|kind| paths.iter().any(|p| p == *kind));
+        // A stair's `path` is the line it is drawn along, not a file.
+        let takes = kinds.iter().find(|kind| paths.iter().any(|p| p == *kind)).filter(|_| command.id != "stair");
         let Some(kind) = takes else {
             // A command with no file parameter that is marked as a file one is a lie too: it would need the
-            // permission for nothing.
+            // permission for nothing. (One in prose may reach its file by another key: `reload`'s link, `publish`'s folder.)
             assert!(
-                command.files == crate::engine::Files::Conditional || command.files == crate::engine::Files::None,
+                !schema || command.files == crate::engine::Files::Conditional || command.files == crate::engine::Files::None,
                 "`{}` is marked {:?} but takes no path",
                 command.id,
                 command.files
@@ -3030,6 +3067,8 @@ fn hostile_params_never_panic_or_break_the_model() {
     let _ = base.execute("place", &json!({"sheet": "A101", "view": "Level 1"}));
     let exports = temp("sweep-exports");
     targeted.extend(crate::export_tests::sweep_payloads(&exports));
+    // A typed stair of two storeys, last so that no id moves, and the payloads aimed at it and at stairs along a path.
+    targeted.extend(crate::codes::tests::sweep_payloads(&mut base));
     let hostile: Vec<Value> = hostile.into_iter().chain(finishes).collect();
     // Each command against each value, on a copy of the same session; the commands shared out between the cores.
     let cmds: Vec<_> = commands().iter().filter(|c| !matches!(c.id, "open" | "save")).collect();
@@ -6553,21 +6592,23 @@ fn a_file_from_before_guids_opens_with_guids_and_six_digit_ids() {
 }
 
 #[test]
-fn a_file_of_the_family_editors_unreleased_formats_21_to_32_is_refused_as_newer() {
+fn a_file_of_the_family_editors_unreleased_formats_past_this_one_up_to_32_is_refused_as_newer() {
     // The Family Editor took the format from 17 to 32 a step at a time before it was released, and none of that was. 0.12's
-    // format is 20, which every change since 0.11 shares, so a file of those builds stamped 20 opens as one of 0.12's, and 21
-    // to 32 are refused as any newer file is.
+    // format is 20, which every change since 0.11 shares, so a file of those builds stamped 20 opens as one of 0.12's; 21 is
+    // the next release's, and what is past it, up to 32, is refused as any newer file is.
     use crate::model::{FORMAT, Model};
-    assert_eq!(FORMAT, 20);
+    assert_eq!(FORMAT, 21);
     let mut s = Session::new();
     house(&mut s);
     let v = serde_json::to_value(&*s.model).unwrap();
-    for old in 21..=32 {
+    for old in FORMAT + 1..=32 {
         let mut was = v.clone();
         was["format"] = json!(old);
         let e = Model::read(&was.to_string()).unwrap_err();
         assert!(
-            e.contains("saved by a newer BIMCraft") && e.contains(&format!("file format {old}")) && e.contains("reads up to 20"),
+            e.contains("saved by a newer BIMCraft")
+                && e.contains(&format!("file format {old}"))
+                && e.contains(&format!("reads up to {FORMAT}")),
             "{old}: {e}"
         );
     }

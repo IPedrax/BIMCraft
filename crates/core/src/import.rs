@@ -3456,7 +3456,14 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
                             name.clear();
                         }
                     }
-                    m.types.stair.insert(stair.type_name.clone(), t);
+                    // A type that breaks a rule stays out, and its stair comes in of none: the check would refuse the whole
+                    // file over it, with no element to leave out.
+                    match m.check_stair_type(&stair.type_name, &t) {
+                        Ok(()) => {
+                            m.types.stair.insert(stair.type_name.clone(), t);
+                        }
+                        Err(why) => skipped.push(format!("{}: {why}; the stair came in of no type", who(id))),
+                    }
                 }
                 if !stair.type_name.is_empty() && !m.types.stair.contains_key(&stair.type_name) {
                     stair.type_name.clear();
@@ -4219,8 +4226,7 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
         // What BIMCraft writes in sets of its own, other than the parameters, it reads into fields.
         let called = text(set.args.get(2)).unwrap_or("");
         let ours = called == crate::ifc::PARAMETERS;
-        // A stair's and its flights' common sets say what the stair is (its risers, its going), which it is made from.
-        if !ours && (!crate::ifc::foreign_set(called) || called.starts_with("Pset_Stair")) {
+        if !ours && !crate::ifc::foreign_set(called) {
             continue;
         }
         let how = How {
@@ -4230,6 +4236,13 @@ pub(crate) fn from_step(file: File, name: &str, seed: u64, budget: &Budget) -> R
         };
         for prop in refs(set.args.get(4)).into_iter().filter_map(e).filter(|x| x.name == "IFCPROPERTYSINGLEVALUE") {
             let Some(raw) = text(prop.args.first()) else { continue };
+            // What a stair is (its risers, its going), which it is made from, and the type of one BIMCraft wrote, which its own
+            // set brings: no parameters of it. The rest of a stair's common sets (a fire rating, another program's type) is.
+            if crate::ifc::stair_property(called, raw)
+                || (called == "Pset_StairCommon" && raw == "Reference" && on.iter().any(|p| stair_own.contains_key(p)))
+            {
+                continue;
+            }
             // `LoadBearing` is what makes a column or a floor structural, read above.
             let name = if ours { Some(raw.to_string()).filter(|n| crate::family::nameable(n)) } else { parameter_name(raw) };
             let Some(name) = name.filter(|n| ours || n != "LoadBearing") else { continue };

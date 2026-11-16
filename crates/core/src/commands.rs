@@ -1296,7 +1296,7 @@ other_files(
          to clear it)",
         new_sheet,
     ),
-    edit(
+    edit_files(
         "title_block",
         "Title Blocks",
         &[],
@@ -1315,6 +1315,8 @@ other_files(
          become its box; each key its texts name becomes a sheet field, or keeps the field it was. A new one starts as the \
          built-in title box drawn as one (`like` another), and what's given goes over it",
         title_block,
+        // The DXF or DWG `path` names, when it names one.
+        Files::Conditional,
     ),
     edit(
         "title_values",
@@ -1481,7 +1483,7 @@ other_files(
         Files::Conditional,
     )
     .menu("Manage > Favorites"),
-    edit(
+    edit_files(
         "shared_parameters",
         "Shared Parameters",
         &[],
@@ -1508,6 +1510,7 @@ other_files(
          holds as another GUID, is refused naming its line. A file that isn't one is refused naming its line, and is never \
          written over; files are capped at 4 MiB and 100,000 lines. Only `load` changes the project, one undo step",
         shared_parameters,
+        Files::Write,
     )
     .menu("Manage > Shared Parameters"),
     edit(
@@ -1558,7 +1561,7 @@ other_files(
          and changes nothing",
         crate::parameters::batch,
     ),
-    edit(
+    edit_files(
         "parameter_import",
         "Import Parameters",
         &[],
@@ -1573,15 +1576,17 @@ other_files(
          as a shared parameter file's. A file adds categories unless `replace_categories`. A conflict stops the import unless \
          `skip_conflicts`. No element's values come from the file",
         crate::parameters::import,
+        Files::Read,
     ),
-    other(
+    other_files(
         "parameter_export",
         "Export Parameters",
         "{path, names?: [..], definitions?: [..], name?, version?} the project's parameters, those named, or the `definitions` given, to a .xlsx or .csv table or a .bimparams \
          dictionary (with its `name` and `version`). Definitions only, not values. Revit's shared parameter .txt is read, not written",
         crate::parameters::export,
+        Files::Write,
     ),
-    other(
+    other_files(
         "dictionary",
         "Parameter Dictionary",
         "{path, name?, version?, add?: [{name, kind?, description?, group?, categories?, guid?, read_only?, scope?: instance|type}], \
@@ -1591,8 +1596,9 @@ other_files(
          `parameter_import` reads. A change counts up its `revision` and dates it `changed`. `version` is a label of the team's own. \
          Answers what the file now holds",
         crate::parameters::dictionary,
+        Files::Write,
     ),
-    edit(
+    edit_files(
         "dictionary_mount",
         "Load Parameter Dictionary",
         &[],
@@ -1600,6 +1606,8 @@ other_files(
          project; several can be. Nothing comes into the project until `parameter_import`. A dictionary moved is found by its GUID, and \
          takes its new path; another dictionary of a name already loaded is refused. `remove` is refused while a parameter comes from it",
         crate::parameters::dictionary_mount,
+        // The dictionary's file, read when `path` names it; `remove` reads none.
+        Files::Conditional,
     ),
     edit(
         "parameter_merge",
@@ -2396,32 +2404,35 @@ other_files(
         "building_code",
         "Building Codes",
         &[],
-        "{set?: generic|nbr|ibc|din|jis, keep_rules?: bool, stairs?: {…rules}, reset?: bool} the project's building code, which its stairs \
-         and railings are held to (apart from its technical standard, which is about drafting): `generic` (none, wide ranges), `nbr` \
-         (NBR 9050 and 9077), `ibc`, `din` (DIN 18065) or `jis` (Japan's Building Standards Law). `set` chooses one and brings its \
+        "{set?: generic|nbr-9050|nbr-9077|ibc|din|jis, keep_rules?: bool, stairs?: {…rules}, reset?: bool} the project's building code, \
+         which its stairs and railings are held to (apart from its technical standard, which is about drafting): `generic` (none, wide \
+         ranges), `nbr-9050` (NBR 9050, an accessible route; `nbr` names it too), `nbr-9077` (NBR 9077, an emergency exit), `ibc`, \
+         `din` (DIN 18065) or `jis` (Japan's Building Standards Law). `set` chooses one and brings its \
          rules, unless `keep_rules` keeps the project's own. `stairs` changes rules of the project's own (a state's or a city's \
          numbers), each by name, mm: `riser` and `going` a new stair starts with; `riser_min`, `riser_max`, `going_min`, `going_max`; \
          `step_min`, `step_max` (two risers and a going); `width_min`; `headroom`; `flight_rise_max` and `flight_risers_max` (a \
          landing is due at whichever comes first); `landing_rule` (`width`, `fixed` or `step`) and `landing_length`; `winders` \
          (allowed or not), `walk_line` (`centre` or `narrow_side`), `walk_line_offset`, `winder_going_min`, `winder_narrow_min`; \
-         `nosing_max`; `open_risers`; `uniformity`; `handrail_min`, `handrail_max`; `guard_min`. `reset` takes the project's own \
+         `nosing_min`, `nosing_max`; `open_risers`; `uniformity`; `handrail_min`, `handrail_max`; `guard_min`. `reset` takes the project's own \
          rules away, back to its code's. `save`: \"name\" keeps the rules in force as a code of the project's own under that name \
          (in place of one of that name), and holds the project to it; `set` takes such a name too, and `delete`: \"name\" takes \
          one away (a project held to it keeps its rules). Nothing is refused for breaking a rule: `stair_check` reports it. The reply gives the \
          `code`, its `name`, `references` and `note`, the rules in force (`stairs`), which of them the project `changed`, and `all` \
-         the codes. The codes' numbers were typed from memory of the documents named and are unchecked",
+         the codes. The NBR codes' numbers were checked against their texts by a contributor; the IBC's, DIN's and Japan's were \
+         typed from memory of the documents named and are unchecked, as each rule's source says",
         building_code,
     )
     .menu("Manage > Building Codes"),
-    other(
+    other_files(
         "building_code_export",
         "Export Building Code",
         "{path, code?, name?} writes a building code as an XML file, to hand to another project or office: the project's, with \
          the rules it changed, or the one `code` names; `name` is what the file calls it (a code BIMCraft has needs another name \
          to be read back). A <rule name value/> for each rule, mm",
         building_code_export,
+        Files::Write,
     ),
-    edit(
+    edit_files(
         "building_code_import",
         "Import Building Code",
         &[],
@@ -2430,6 +2441,7 @@ other_files(
          the project's own, under the file's name or `name`, in place of one of that name; a rule the file leaves out is the generic \
          code's, and what it holds that this version doesn't know is listed as `left_out`. `set` holds the project to it",
         building_code_import,
+        Files::Read,
     ),
     edit(
         "stair_sketch",

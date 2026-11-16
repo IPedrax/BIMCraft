@@ -3,10 +3,11 @@
 //! (`Model::stair_rules`: a state's or a city's own numbers), and nothing is ever refused for breaking one: a stair
 //! outside its rules is built and reported ([`stair_findings`], the `stair_check` command).
 //!
-//! The numbers are data, not code: `data/building-codes.json` holds an entry for each code, naming its sources. They
-//! were typed from memory of those documents and are unchecked, as the file says; where a code gives no number the
-//! entry holds a forgiving one. The area, and the rule that every check is fast and spatial (it runs under the cursor and
-//! after every edit): `docs/areas/building-codes.md`. The plan this is the first piece of: `docs/stair-tool-plan.md`.
+//! The numbers are data, not code: `data/building-codes.json` holds an entry for each code, naming its sources. The NBR
+//! entries were checked against their texts; the rest were typed from memory and are unchecked, as each rule's source says;
+//! where a code gives no number the entry holds a forgiving one. The area, and the rule that every check is fast and
+//! spatial (it runs under the cursor and after every edit): `docs/areas/building-codes.md`. The plan this is the first piece
+//! of: `docs/stair-tool-plan.md`.
 
 use std::sync::OnceLock;
 
@@ -1006,8 +1007,9 @@ pub fn solve(m: &Model, st: &Stair, locks: Locks) -> Vec<Proposal> {
         vec![n0]
     } else {
         let lo = (rise / rules.riser_max - 1e-9).ceil().max(2.0) as u32;
-        let hi = if rules.riser_min > 0.0 { (rise / rules.riser_min + 1e-9).floor().max(2.0) as u32 } else { lo + 40 };
-        let hi = hi.clamp(lo, lo + 40);
+        let hi = if rules.riser_min > 0.0 { (rise / rules.riser_min + 1e-9).floor().max(2.0) as u32 } else { lo.saturating_add(40) };
+        // A stair takes 2 to 200 risers: a proposal of more could never be made.
+        let hi = hi.clamp(lo, lo.saturating_add(40)).min(crate::model::MAX_RISERS);
         let mut all: Vec<u32> = (lo..=hi).collect();
         if !all.contains(&n0) {
             all.push(n0);
@@ -1144,4 +1146,4 @@ pub fn solve(m: &Model, st: &Stair, locks: Locks) -> Vec<Proposal> {
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

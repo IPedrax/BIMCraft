@@ -2022,9 +2022,10 @@ pub fn parts_tagged(m: &Model, st: &Stair) -> Option<Vec<Tagged>> {
                 ));
                 tag(&out, &mut tags, PartKind::Risers);
             }
-            // A stringer down each side: its top 50 over the nosings' line, its underside its depth below that.
+            // A stringer down each side: its top 50 over the nosings' line, its underside its depth below that; never wider
+            // than half the run, so the two never cross.
             if let (Some((sw, sd)), true) = (t.side_stringers(), run.length > 0.0) {
-                let top = run.z.0 + each + 50.0;
+                let (sw, top) = (sw.min(half), run.z.0 + each + 50.0);
                 for (c, d) in [(-half, -half + sw), (half - sw, half)] {
                     under(&mut out, 0.0, run.length, c, d, top - sd, floor, sloping(top));
                 }
