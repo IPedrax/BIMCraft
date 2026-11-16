@@ -5111,9 +5111,10 @@ fn a_guide_crossing_beats_a_wall_face_and_one_guide_alone_does_not() {
     assert_eq!(f.kind, Kind::Intersection, "the grid crosses the wall's face here: {f:?}");
     let p = h.state().snap_point(m, level, &v, v.px(at), &[], false);
     assert!(p.dist(at) < 0.01, "the crossing is exact, not the face's 10 mm point: {p:?}");
-    let one = P2(2134.7, ext);
+    // Out of reach of the grid's crossing with the face, which is a snap of its own (#386's outline).
+    let one = P2(1734.7, ext);
     let p = h.state().snap_point(m, level, &v, v.px(one), &[], false);
-    assert!((p.0 - 2130.0).abs() < 0.01 && (p.1 - ext).abs() < 0.01, "one guide does not take the face's point: {p:?}");
+    assert!((p.0 - 1730.0).abs() < 0.01 && (p.1 - ext).abs() < 0.01, "one guide does not take the face's point: {p:?}");
 }
 
 /// A passive 15° step does not take a pick off the wall face under the pointer; Shift's step, which was asked for, does.

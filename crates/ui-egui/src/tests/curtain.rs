@@ -736,6 +736,8 @@ fn ray(w: &bimcraft_core::model::Wall, along: f64) -> ([f64; 3], [f64; 3]) {
 fn add_remove_segments_clicked_in_a_section_merges_the_panels_and_a_second_click_splits_them() {
     let script = format!("{TALL}\nsection {{\"start\": [-1000, -3000], \"end\": [9000, -3000]}}");
     let mut h = app(&script);
+    // Wide enough for the Modify tab to show the curtain wall's tools with the group panels beside them.
+    h.set_size(egui::vec2(1800.0, 900.0));
     let id = select_tall(&mut h);
     press(&mut h, "Add/Remove Segments");
     assert_eq!(h.state().tool, crate::Tool::CurtainSegment { wall: id });
