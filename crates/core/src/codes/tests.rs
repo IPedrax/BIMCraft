@@ -1711,3 +1711,102 @@ pub(crate) fn sweep_payloads(base: &mut Session) -> Vec<(&'static str, Value)> {
     ]);
     out
 }
+
+#[test]
+fn every_code_names_only_methods_the_data_has_and_of_its_own_country() {
+    for c in codes() {
+        if let Some(u) = &c.electrical.demand {
+            assert!(crate::demand::UTILITIES.contains(&u.as_str()), "{}: no tables for {u}", c.code);
+        }
+        if let Some(name) = &c.electrical.building_demand {
+            let m = crate::building_demand::method(name).unwrap_or_else(|| panic!("{}: no method {name}", c.code));
+            assert_eq!(m.country, c.country, "{}: {name} is another country's", c.code);
+        }
+        assert!(c.code == GENERIC || c.country.len() == 2, "{}: a country, ISO 3166", c.code);
+    }
+    // Brazil's utilities differ by state, and its methods are each a utility's: the NBR codes leave both to the project.
+    assert!(code("nbr-9050").unwrap().electrical.is_empty() && code("nbr-9077").unwrap().electrical.is_empty());
+    assert_eq!(code("ibc").unwrap().electrical.building_demand.as_deref(), Some("NEC 220.84"));
+}
+
+#[test]
+fn demand_and_building_demand_take_the_methods_the_project_s_code_names() {
+    let mut s = Session::new();
+    let units = json!([{"count": 30, "demand": 20}]);
+    // No method anywhere: each command says where to pick one.
+    for (id, p) in [("demand", json!({"area": 40})), ("building_demand", json!({"dwellings": units}))] {
+        let e = s.execute(id, &p).unwrap_err();
+        assert!(e.contains("Manage > Building Codes"), "{id}: {e}");
+    }
+    // The IBC names the NEC's: given none, the command takes it, and a method given still wins.
+    let r = run(&mut s, "building_code", json!({"set": "ibc"}));
+    assert_eq!(r["electrical"], json!({"building_demand": "NEC 220.84"}));
+    let by_code = run(&mut s, "building_demand", json!({"dwellings": units}));
+    assert_eq!(by_code, run(&mut s, "building_demand", json!({"standard": "NEC 220.84", "dwellings": units})));
+    let given = run(&mut s, "building_demand", json!({"utility": "CELESC", "dwellings": [{"count": 30, "area": 80}]}));
+    assert_eq!(given["standard"], "CELESC N-321.0003");
+    assert!(s.execute("demand", &json!({"area": 40})).is_err(), "the IBC names no utility");
+
+    // The project names its own: a utility, and a method by a utility that follows it.
+    let r = run(&mut s, "building_code", json!({"electrical": {"demand": "CPFL", "building_demand": "celesc"}}));
+    assert_eq!(
+        (r["code"].as_str(), r["electrical"].clone()),
+        (Some("ibc"), json!({"demand": "CPFL", "building_demand": "CELESC N-321.0003"}))
+    );
+    let p = json!({"area": 40, "lighting_points": 4});
+    let r = run(&mut s, "demand", p.clone());
+    assert_eq!(r["utility"], "CPFL");
+    assert_eq!(r, run(&mut s, "demand", json!({"utility": "CPFL", "area": 40, "lighting_points": 4})));
+    assert_eq!(run(&mut s, "building_demand", json!({"dwellings": [{"count": 30, "area": 80}]}))["standard"], "CELESC N-321.0003");
+
+    // A file keeps the choice.
+    let (back, left_out) = Model::read(&s.model.to_json().unwrap()).unwrap();
+    assert!(left_out.is_empty(), "{left_out:?}");
+    assert_eq!(back.electrical_methods().demand.as_deref(), Some("CPFL"));
+    assert_eq!(back.electrical_methods(), s.model.electrical_methods());
+
+    // Saved as a code of its own: the methods and the country go with it, into a file and out as XML.
+    run(&mut s, "building_code", json!({"save": "Ours"}));
+    assert_eq!(s.model.electrical_methods, None, "the code's own now");
+    let ours = s.model.building_code();
+    assert_eq!((ours.country.as_str(), ours.electrical.demand.as_deref()), ("US", Some("CPFL")));
+    let (back, _) = Model::read(&s.model.to_json().unwrap()).unwrap();
+    assert_eq!(back.electrical_methods(), s.model.electrical_methods());
+    let dir = std::env::temp_dir().join(format!("bimcraft-codes-electrical-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join("ours.xml").to_string_lossy().to_string();
+    run(&mut s, "building_code_export", json!({"path": path}));
+    let text = std::fs::read_to_string(&path).unwrap();
+    assert!(
+        text.contains("<electrical demand=\"CPFL\" building-demand=\"CELESC N-321.0003\"/>") && text.contains("country=\"US\""),
+        "{text}"
+    );
+    let mut other = Session::new();
+    run(&mut other, "building_code_import", json!({"path": path, "set": true}));
+    assert_eq!(other.model.electrical_methods(), s.model.electrical_methods());
+    assert_eq!(run(&mut other, "demand", p)["utility"], "CPFL");
+    std::fs::remove_dir_all(&dir).ok();
+
+    // Null leaves one to the command again; `reset` takes the project's own away, back to the code's.
+    run(&mut s, "building_code", json!({"set": "ibc"}));
+    let r = run(&mut s, "building_code", json!({"electrical": {"building_demand": null}}));
+    assert_eq!(r["electrical"], json!({}));
+    assert!(s.execute("building_demand", &json!({"dwellings": units})).is_err());
+    let r = run(&mut s, "building_code", json!({"reset": true}));
+    assert_eq!(r["electrical"], json!({"building_demand": "NEC 220.84"}));
+    assert_eq!(s.model.electrical_methods, None);
+
+    // What can't be named is refused, and the project stays as it was.
+    for p in [
+        json!({"electrical": {"demand": "COPEL"}}),
+        json!({"electrical": {"demand": ""}}),
+        json!({"electrical": {"building_demand": "DIN 18015-1"}}),
+        json!({"electrical": {"building_demand": 5}}),
+        json!({"electrical": {"lighting": "CPFL"}}),
+        json!({"electrical": "CPFL"}),
+        json!({"electrical": {"demand": "CPFL"}, "reset": true}),
+    ] {
+        assert!(s.execute("building_code", &p).is_err(), "{p}");
+    }
+    assert_eq!((&s.model.electrical_methods, s.model.building_code.as_deref()), (&None, Some("ibc")));
+}

@@ -43,6 +43,18 @@ fn the_file_reads_and_has_each_method() {
 }
 
 #[test]
+fn every_method_of_the_file_reads_on_its_own() {
+    // `methods()` reads the file with `unwrap_or_default`, so a broken one would give no methods, silently: each must read.
+    let raw: serde_json::Value = serde_json::from_str(include_str!("../../data/building-demand.json")).unwrap();
+    let entries = raw["methods"].as_array().unwrap();
+    assert!(!entries.is_empty());
+    for e in entries {
+        serde_json::from_value::<Method>(e.clone()).unwrap_or_else(|err| panic!("{}: {err}", e["standard"]));
+    }
+    assert_eq!(methods().len(), entries.len(), "and the file reads whole");
+}
+
+#[test]
 fn celesc_s_own_example_takes_the_weighted_mean_area_up_to_the_next_row() {
     // N-321.0003 item 5.6.2, note 2: 20 apartments of 100 m² and 16 of 80 m² are 36 apartments of 91.1 m², taken as 92 m².
     let m = method_of("CELESC N-321.0003");

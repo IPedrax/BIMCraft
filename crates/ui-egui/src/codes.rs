@@ -1,6 +1,8 @@
 //! Manage > Building Codes: the code the project's stairs and railings are held to (apart from its technical standard,
 //! which is about drafting), and the rules themselves, the code's until the project changes one. A rule changed is
-//! marked, with the code's own number beside it; nothing is ever refused for breaking one.
+//! marked, with the code's own number beside it; nothing is ever refused for breaking one. The Electrical Demand tab names the methods
+//! the project's electrical demand is worked out by (`demand`'s utility, `building_demand`'s method), each the code's until the
+//! project picks another.
 
 use bimcraft_core::codes::{self, GENERIC, ORDER};
 use bimcraft_core::model::Model;
@@ -14,7 +16,7 @@ use crate::lang::{t, tf};
 use crate::popup::{self, Modal};
 use crate::style::pal;
 
-const TABS: [&str; 2] = ["Overview", "Stairs & Railings"];
+const TABS: [&str; 3] = ["Overview", "Stairs & Railings", "Electrical Demand"];
 
 /// The colour of what is outside a rule, or changed from the code's.
 pub(crate) const OUTSIDE: Color32 = Color32::from_rgb(0xC8, 0x7A, 0x00);
@@ -119,6 +121,8 @@ fn rules_of(m: &Model, code: &str) -> Map<String, Value> {
 pub(crate) struct CodesDialog {
     pub(crate) selected: String,
     pub(crate) rules: Map<String, Value>,
+    /// The electrical methods as they would be applied.
+    pub(crate) electrical: codes::Electrical,
     pub(crate) tab: usize,
     /// The name the rules would be saved under, as a code of the project's own.
     pub(crate) name: String,
@@ -132,8 +136,19 @@ impl CodesDialog {
             Ok(Value::Object(o)) => o,
             _ => Map::new(),
         };
-        CodesDialog { selected: m.building_code().code.clone(), rules, tab: 1, name: String::new(), error: String::new() }
+        let (selected, electrical) = (m.building_code().code.clone(), m.electrical_methods().clone());
+        CodesDialog { selected, rules, electrical, tab: 1, name: String::new(), error: String::new() }
     }
+
+    /// Its electrical methods as `building_code` takes them: one left to the project is null, so the code's goes too.
+    fn electrical_json(&self) -> Value {
+        json!({"demand": self.electrical.demand, "building_demand": self.electrical.building_demand})
+    }
+}
+
+/// The electrical methods code `code` names.
+fn methods_of(m: &Model, code: &str) -> codes::Electrical {
+    m.code(code).unwrap_or(codes::generic()).electrical.clone()
 }
 
 /// A length as the project writes its lengths; in millimetres, to the hundredth, since a code's inch is 25.4.
@@ -223,10 +238,11 @@ fn overview_tab(ui: &mut Ui, code: &codes::BuildingCode) {
 /// Whether the rules in the dialog are no longer its code's: a code of the user's own making, until saved.
 fn custom(m: &Model, d: &CodesDialog) -> bool {
     let own = rules_of(m, &d.selected);
-    ORDER.iter().any(|k| match (d.rules.get(*k), own.get(*k)) {
-        (Some(a), Some(b)) => a != b && (a.as_f64().is_none() || a.as_f64() != b.as_f64()),
-        (a, b) => a != b,
-    })
+    d.electrical != methods_of(m, &d.selected)
+        || ORDER.iter().any(|k| match (d.rules.get(*k), own.get(*k)) {
+            (Some(a), Some(b)) => a != b && (a.as_f64().is_none() || a.as_f64() != b.as_f64()),
+            (a, b) => a != b,
+        })
 }
 
 /// The rules shown as one row with a least and a most side by side, as Revit's Maximum Riser Height gets a second box:
@@ -359,6 +375,80 @@ fn stairs_tab(ui: &mut Ui, m: &Model, d: &mut CodesDialog) {
     });
 }
 
+/// A method picked among `names`, or none, which leaves it to the project: each command then names its own.
+fn method_field(ui: &mut Ui, salt: &str, label: &str, now: &mut Option<String>, names: &[&str]) {
+    let none = t("Left to the project");
+    let shown = now.clone().unwrap_or_else(|| none.to_string());
+    let c = ComboBox::from_id_salt(("building-code-method", salt)).selected_text(shown).width(280.0).show_ui(ui, |ui| {
+        ui.selectable_value(now, None, none);
+        for n in names {
+            ui.selectable_value(now, Some((*n).to_string()), *n);
+        }
+    });
+    c.response.widget_info(|| WidgetInfo::labeled(WidgetType::ComboBox, true, label));
+}
+
+/// The methods the project's electrical demand is worked out by, and what each cites. The tables' numbers are the method's
+/// own: they are read here, not edited.
+fn electrical_tab(ui: &mut Ui, m: &Model, d: &mut CodesDialog) {
+    use bimcraft_core::{building_demand as bd, demand};
+    ui.label(
+        RichText::new(t(
+            "The methods the project's electrical demand is worked out by. A command given a method of its own uses that one instead.",
+        ))
+        .color(pal().muted),
+    );
+    ui.add_space(6.0);
+    // Building demand: the methods of the code's country, where the data has any (and the one picked, wherever it is from).
+    let country = m.code(&d.selected).map_or("", |c| c.country.as_str());
+    let ours = bd::methods().iter().any(|x| x.country == country);
+    let offered: Vec<&str> = (bd::methods().iter())
+        .filter(|x| !ours || x.country == country || d.electrical.building_demand.as_deref() == Some(x.standard.as_str()))
+        .map(|x| x.standard.as_str())
+        .collect();
+    let code = methods_of(m, &d.selected);
+    Grid::new("building-code-electrical").num_columns(3).min_col_width(150.0).show(ui, |ui| {
+        let rows = [
+            ("demand", t("Demand (one installation)"), &mut d.electrical.demand, demand::UTILITIES.to_vec(), &code.demand),
+            ("building_demand", t("Building Demand (dwellings)"), &mut d.electrical.building_demand, offered, &code.building_demand),
+        ];
+        for (salt, label, now, names, its) in rows {
+            ui.label(label);
+            method_field(ui, salt, label, now, &names);
+            if now != its {
+                let was = its.clone().unwrap_or_else(|| t("Left to the project").to_string());
+                ui.label(RichText::new(tf("Changed: the code says {}", &[&was])).color(OUTSIDE));
+            } else {
+                ui.label("");
+            }
+            ui.end_row();
+        }
+    });
+    // What each method picked cites, as its data has it, so anyone can check it against its document.
+    let mut cited: Vec<(String, Vec<String>)> = Vec::new();
+    if let Some(u) = &d.electrical.demand {
+        cited.push((u.clone(), demand::source(u).map(String::from).into_iter().collect()));
+    }
+    if let Some(x) = d.electrical.building_demand.as_deref().and_then(bd::method) {
+        let mut from = vec![x.source.clone(), x.dwelling.source.clone(), x.diversity.source.clone(), x.factor_source.clone()];
+        from.extend(x.entrance.iter().map(|e| e.source.clone()));
+        from.dedup();
+        cited.push((x.standard.clone(), from));
+    }
+    for (name, from) in cited {
+        ui.add_space(6.0);
+        ui.label(RichText::new(name).strong());
+        for f in from {
+            ui.horizontal(|ui| {
+                ui.label("•");
+                ui.add(egui::Label::new(RichText::new(f).color(pal().muted).small()).wrap());
+            });
+        }
+    }
+    ui.add_space(6.0);
+    ui.label(RichText::new(t("The tables' numbers are the method's own, and aren't edited here.")).color(pal().muted).small());
+}
+
 impl BimApp {
     /// The window a stair's sign in Properties opens: the rules it is outside of. It closes when the stair is inside them
     /// all, or gone.
@@ -467,6 +557,7 @@ impl BimApp {
             Ok(v) => {
                 d.selected = v["code"].as_str().unwrap_or(GENERIC).to_string();
                 d.rules = rules_of(m, &d.selected);
+                d.electrical = methods_of(m, &d.selected);
                 let left: Vec<&str> = v["left_out"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
                 d.error = if left.is_empty() {
                     String::new()
@@ -481,7 +572,7 @@ impl BimApp {
 
     /// The rules the dialog shows, written as an XML file at `path`: worked out on a copy of the project, so that what is
     /// not applied yet is exported as shown and the project stays as it is.
-    pub(crate) fn export_code(&mut self, path: &std::path::Path, code: &str, rules: &Map<String, Value>, name: &str) {
+    pub(crate) fn export_code(&mut self, path: &std::path::Path, code: &str, rules: &Map<String, Value>, electrical: &Value, name: &str) {
         let mut scratch = bimcraft_core::engine::Session::new();
         *scratch.model_mut() = (*self.session.model).clone();
         let mut p = json!({"path": path.to_string_lossy()});
@@ -489,7 +580,7 @@ impl BimApp {
             p["name"] = json!(name);
         }
         let reply = scratch
-            .execute("building_code", &json!({"set": code, "stairs": rules}))
+            .execute("building_code", &json!({"set": code, "stairs": rules, "electrical": electrical}))
             .and_then(|_| scratch.execute("building_code_export", &p));
         if let Some(d) = self.codes_dialog.as_mut() {
             d.error = reply.err().unwrap_or_default();
@@ -524,6 +615,7 @@ impl BimApp {
                             if ui.selectable_label(!changed && d.selected == c.code, name(c)).clicked() {
                                 d.selected = c.code.clone();
                                 d.rules = rules_of(m, &d.selected);
+                                d.electrical = methods_of(m, &d.selected);
                             }
                         }
                     });
@@ -565,6 +657,7 @@ impl BimApp {
                 ui.separator();
                 ScrollArea::vertical().max_height(320.0).show(ui, |ui| match d.tab {
                     0 => overview_tab(ui, m.code(&d.selected).unwrap_or(codes::generic())),
+                    2 => electrical_tab(ui, m, &mut d),
                     _ => stairs_tab(ui, m, &mut d),
                 });
             });
@@ -572,6 +665,7 @@ impl BimApp {
                 ui.horizontal(|ui| {
                     if ui.button(t("Reset to the Code's Rules")).clicked() {
                         d.rules = rules_of(m, &d.selected);
+                        d.electrical = methods_of(m, &d.selected);
                     }
                     ui.with_layout(Layout::right_to_left(Align::Min), |ui| {
                         apply = ui.button(t("Apply")).clicked();
@@ -590,10 +684,11 @@ impl BimApp {
         };
         let mut done = true;
         if save {
-            let p = json!({"set": d.selected, "stairs": d.rules, "save": d.name.trim()});
+            let p = json!({"set": d.selected, "stairs": d.rules, "electrical": d.electrical_json(), "save": d.name.trim()});
             if let Some(v) = tried(self, &mut d, "building_code", p) {
                 d.selected = v["code"].as_str().unwrap_or(GENERIC).to_string();
                 d.rules = rules_of(&self.session.model, &d.selected);
+                d.electrical = methods_of(&self.session.model, &d.selected);
                 d.name.clear();
             }
         } else if delete {
@@ -601,9 +696,10 @@ impl BimApp {
             if let Some(v) = tried(self, &mut d, "building_code", p) {
                 d.selected = v["code"].as_str().unwrap_or(GENERIC).to_string();
                 d.rules = v["stairs"].as_object().cloned().unwrap_or_default();
+                d.electrical = serde_json::from_value(v["electrical"].clone()).unwrap_or_default();
             }
         } else if ok || apply {
-            let p = json!({"set": d.selected, "stairs": d.rules});
+            let p = json!({"set": d.selected, "stairs": d.rules, "electrical": d.electrical_json()});
             done = tried(self, &mut d, "building_code", p).is_some();
         }
         if import {
@@ -612,10 +708,10 @@ impl BimApp {
         }
         if export {
             // What the dialog shows, under the name typed, else its code's: from a copy of the project, which stays as it is.
-            let (code, rules, name) = (d.selected.clone(), d.rules.clone(), d.name.trim().to_string());
+            let (code, rules, electrical, name) = (d.selected.clone(), d.rules.clone(), d.electrical_json(), d.name.trim().to_string());
             let file = format!("{}.xml", if name.is_empty() { code.as_str() } else { name.as_str() }.replace(['/', '\\'], "-"));
             let dialog = rfd::AsyncFileDialog::new().add_filter(t("Building codes"), &["xml"]).set_file_name(file);
-            self.ask_file(ctx, dialog, true, move |app, path| app.export_code(&path, &code, &rules, &name));
+            self.ask_file(ctx, dialog, true, move |app, path| app.export_code(&path, &code, &rules, &electrical, &name));
         }
         if !((ok && done) || cancel || r.should_close()) {
             self.codes_dialog = Some(d);

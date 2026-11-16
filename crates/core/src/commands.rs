@@ -2404,22 +2404,26 @@ other_files(
         "building_code",
         "Building Codes",
         &[],
-        "{set?: generic|nbr-9050|nbr-9077|ibc|din|jis, keep_rules?: bool, stairs?: {…rules}, reset?: bool} the project's building code, \
-         which its stairs and railings are held to (apart from its technical standard, which is about drafting): `generic` (none, wide \
-         ranges), `nbr-9050` (NBR 9050, an accessible route; `nbr` names it too), `nbr-9077` (NBR 9077, an emergency exit), `ibc`, \
-         `din` (DIN 18065) or `jis` (Japan's Building Standards Law). `set` chooses one and brings its \
+        "{set?: generic|nbr-9050|nbr-9077|ibc|din|jis, keep_rules?: bool, stairs?: {…rules}, electrical?: {demand?, building_demand?}, \
+         reset?: bool} the project's building code, which its stairs and railings are held to (apart from its technical standard, \
+         which is about drafting): `generic` (none, wide ranges), `nbr-9050` (NBR 9050, an accessible route; `nbr` names it \
+         too), `nbr-9077` (NBR 9077, an emergency exit), `ibc`, `din` (DIN 18065) or `jis` (Japan's Building Standards Law). `set` chooses one and brings its \
          rules, unless `keep_rules` keeps the project's own. `stairs` changes rules of the project's own (a state's or a city's \
          numbers), each by name, mm: `riser` and `going` a new stair starts with; `riser_min`, `riser_max`, `going_min`, `going_max`; \
          `step_min`, `step_max` (two risers and a going); `width_min`; `headroom`; `flight_rise_max` and `flight_risers_max` (a \
          landing is due at whichever comes first); `landing_rule` (`width`, `fixed` or `step`) and `landing_length`; `winders` \
          (allowed or not), `walk_line` (`centre` or `narrow_side`), `walk_line_offset`, `winder_going_min`, `winder_narrow_min`; \
-         `nosing_min`, `nosing_max`; `open_risers`; `uniformity`; `handrail_min`, `handrail_max`; `guard_min`. `reset` takes the project's own \
-         rules away, back to its code's. `save`: \"name\" keeps the rules in force as a code of the project's own under that name \
+         `nosing_min`, `nosing_max`; `open_risers`; `uniformity`; `handrail_min`, `handrail_max`; `guard_min`. `electrical` names the \
+         methods the project's electrical demand is worked out by, which `demand` and `building_demand` take when not given one: \
+         `demand` a utility (CPFL, ENEL or CELESC) and `building_demand` a method of data/building-demand.json (its standard, or a \
+         utility that follows it), each null to leave it to the command; the IBC names NEC 220.84, the others none (a country's \
+         utilities differ by region). `reset` takes the project's own rules and methods away, back to its code's; `set` too, \
+         unless `keep_rules`. `save`: \"name\" keeps the rules in force as a code of the project's own under that name \
          (in place of one of that name), and holds the project to it; `set` takes such a name too, and `delete`: \"name\" takes \
          one away (a project held to it keeps its rules). Nothing is refused for breaking a rule: `stair_check` reports it. The reply gives the \
-         `code`, its `name`, `references` and `note`, the rules in force (`stairs`), which of them the project `changed`, and `all` \
-         the codes. The NBR codes' numbers were checked against their texts by a contributor; the IBC's, DIN's and Japan's were \
-         typed from memory of the documents named and are unchecked, as each rule's source says",
+         `code`, its `name`, `references` and `note`, the rules in force (`stairs`), which of them the project `changed`, the methods \
+         in force (`electrical`), and `all` the codes. The NBR codes' numbers were checked against their texts by a contributor; \
+         the IBC's, DIN's and Japan's were typed from memory of the documents named and are unchecked, as each rule's source says",
         building_code,
     )
     .menu("Manage > Building Codes"),
@@ -2936,12 +2940,13 @@ other_files(
     other(
         "demand",
         "Demand and Service Category",
-        "{utility: CPFL|ENEL|CELESC, building?: residential|other, system?: 127/220|220/380, area?, outlets?, lighting_points?, \
+        "{utility?: CPFL|ENEL|CELESC, building?: residential|other, system?: 127/220|220/380, area?, outlets?, lighting_points?, \
          lighting_outlets?: {use, kw, pf?}, heaters?, boilers?, appliances?, stoves?: [{w, count?}], air_conditioners?: [{btu | va and w, \
          count?}], air_use?: residential|commercial, motors?: [{cv, phases: 1|3 | kva and kw, count?}], special?: [{kind: arc_weld|\
          resistance_weld|xray, kw, count?}], hydromassage?: [{w, count?}]} the demand D (kVA) of an installation and the category of \
          service it asks of the `utility`, by that utility's own standard, since NBR 5410 gives no demand factors. `utility` is \
-         required: CPFL (GED 13 version 46.0, 19/03/2026: CPFL Paulista, Piratininga, Santa Cruz and RGE) or ENEL (GRI-0017 version 02, \
+         the project's building code's when not given (`building_code {electrical: {demand}}`), and required when it names none: \
+         CPFL (GED 13 version 46.0, 19/03/2026: CPFL Paulista, Piratininga, Santa Cruz and RGE) or ENEL (GRI-0017 version 02, \
          06/03/2025) or CELESC (N-321.0001, revision of December 2025); any other is refused until its tables are added. \
          CELESC, too, leaves the demand to the designer: `{utility: CELESC, network?: 220/380|220/440, installed_kw, phases?: \
          1|2|3, demand_kva?}` gives the category of Tabela 01 by the installed load (A single-phase 220 V, M single-phase \
@@ -2970,13 +2975,14 @@ other_files(
     other(
         "building_demand",
         "Building Demand",
-        "{utility | standard, dwellings: [{count, area | demand | grade}], common?: {class: kW}, common_demand?, special?, commercial?, \
+        "{utility? | standard?, dwellings: [{count, area | demand | grade}], common?: {class: kW}, common_demand?, special?, commercial?, \
          premises?: {use: m²}, as_printed?} the demand of a building of dwellings, for its supply, by the method of a `utility` or a \
          `standard` (data/building-demand.json: CELESC N-321.0003, CEMIG ND-5.2, FECOERGS REGD 035.01.06, HIDROPAN RIC BT 2014, \
          Spain's ITC-BT-10, Portugal's RTIEBT 803.2.4.3, France's NF C 14-100 (SéQuélec GP 16) and the US NEC 220.84; any other is \
-         refused until its entry is added). D = factor · F(n) · d + common + special + commercial + \
-         premises: d is one dwelling's demand, by the `area` (m²) of each group (the mean area weighted by `count`, looked up in the \
-         method's table, an area between two rows taking the next one up) or, where the method takes it, each group's `demand` or a \
+         refused until its entry is added). Given neither, it is the method the project's building code names \
+         (`building_code {electrical: {building_demand}}`), and refused when it names none. D = factor · F(n) · d + common + special + \
+         commercial + premises: d is one dwelling's demand, by the `area` (m²) of each group (the mean area weighted by `count`, \
+         looked up in the method's table, an area between two rows taking the next one up) or, where the method takes it, each group's `demand` or a \
          `grade` naming one (ITC-BT-10: basic, elevated; RTIEBT: 1 room, 2-6 rooms, 7+ rooms; GP 16: student, 1-2 rooms, 3-5 rooms, \
          6+ rooms); F(n) the method's diversity factor, an equivalent number of dwellings, or n times a `coefficient` for each \
          dwelling where the method prints one (RTIEBT, GP 16, NEC 220.84, which so weigh the sum of the dwellings' demands); factor \
@@ -6946,7 +6952,7 @@ fn demand_celesc(p: &Value, utility: &str, source: &str) -> R {
     }))
 }
 
-fn building_demand(_: &mut Session, p: &Value) -> R {
+fn building_demand(s: &mut Session, p: &Value) -> R {
     use crate::building_demand::{self as bd, Group, Input};
     let c = "building_demand";
     if !p.is_object() {
@@ -6965,7 +6971,23 @@ fn building_demand(_: &mut Session, p: &Value) -> R {
             .iter()
             .find(|m| m.utilities.iter().any(|x| x.eq_ignore_ascii_case(&u)))
             .ok_or_else(|| bad(c, format!("no method for the utility `{u}` yet: {}; or a `standard`: {}", utilities(), names())))?,
-        (None, None) => return Err(bad(c, format!("give the `utility` ({}) or the `standard` ({})", utilities(), names()))),
+        // Neither: the method the project's building code names.
+        (None, None) => match &s.model.electrical_methods().building_demand {
+            Some(n) => bd::method(n).ok_or_else(|| {
+                bad(c, format!("the project's building code names `{n}`, which data/building-demand.json doesn't have: {}", names()))
+            })?,
+            None => {
+                return Err(bad(
+                    c,
+                    format!(
+                        "give the `utility` ({}) or the `standard` ({}), or pick a method for the project in Manage > Building Codes \
+                         (`building_code {{electrical: {{building_demand}}}}`)",
+                        utilities(),
+                        names()
+                    ),
+                ));
+            }
+        },
     };
     let list = match p.get("dwellings") {
         Some(Value::Array(a)) if !a.is_empty() && a.len() <= 1000 => a,
@@ -7051,7 +7073,7 @@ fn building_demand(_: &mut Session, p: &Value) -> R {
     }))
 }
 
-fn demand(_: &mut Session, p: &Value) -> R {
+fn demand(s: &mut Session, p: &Value) -> R {
     use crate::demand::{self as d, Air, Load, Motor, OtherUse, SPECIAL_KINDS, Special, SpecialKind, System, USES};
     let c = "demand";
     if !p.is_object() {
@@ -7084,7 +7106,17 @@ fn demand(_: &mut Session, p: &Value) -> R {
             "demand_kva",
         ],
     )?;
-    let utility = string(c, p, "utility")?.ok_or_else(|| bad(c, format!("`utility` is required: {}", d::UTILITIES.join(", "))))?;
+    // Not given: the utility the project's building code names.
+    let utility = string(c, p, "utility")?.or_else(|| s.model.electrical_methods().demand.clone()).ok_or_else(|| {
+        bad(
+            c,
+            format!(
+                "`utility` is required: {}; or pick one for the project in Manage > Building Codes \
+                 (`building_code {{electrical: {{demand}}}}`)",
+                d::UTILITIES.join(", ")
+            ),
+        )
+    })?;
     let Some(source) = d::source(&utility) else {
         return Err(bad(
             c,
@@ -19505,7 +19537,7 @@ fn standard(s: &mut Session, p: &Value) -> R {
 fn building_code(s: &mut Session, p: &Value) -> R {
     use crate::codes;
     let c = "building_code";
-    only(c, p, &["set", "keep_rules", "stairs", "reset", "save", "delete"])?;
+    only(c, p, &["set", "keep_rules", "stairs", "electrical", "reset", "save", "delete"])?;
     let names: Vec<String> = codes::codes().iter().chain(&s.model.building_codes).map(|k| k.code.clone()).collect();
     let set = match p.get("set") {
         v if absent(v) => None,
@@ -19529,12 +19561,52 @@ fn building_code(s: &mut Session, p: &Value) -> R {
         Some(_) => return Err(bad(c, "`stairs` is the rules to change, by name: {width_min: 1100, …}")),
         None => None,
     };
-    if reset && patch.is_some() {
-        return Err(bad(c, "`reset` takes the project's own rules away: give it without `stairs`"));
+    let named = match p.get("electrical") {
+        v if absent(v) => None,
+        Some(Value::Object(o)) => Some(o),
+        Some(_) => {
+            return Err(bad(c, "`electrical` is the methods to name, by command: {demand: \"CPFL\", building_demand: \"NEC 220.84\"}"));
+        }
+        None => None,
+    };
+    if reset && (patch.is_some() || named.is_some()) {
+        return Err(bad(c, "`reset` takes the project's own rules away: give it without `stairs` or `electrical`"));
     }
     // The project's own rules after this: kept across a change of code only when asked, then changed by `stairs`.
     let mut own = if reset || (set.is_some() && !keep) { None } else { s.model.stair_rules.clone() };
+    let mut own_methods = if reset || (set.is_some() && !keep) { None } else { s.model.electrical_methods.clone() };
     let code = set.clone().or_else(|| s.model.building_code.clone());
+    if let Some(named) = named {
+        let base = code.as_deref().and_then(|k| s.model.code(k)).unwrap_or(codes::generic());
+        let mut methods = own_methods.clone().unwrap_or_else(|| base.electrical.clone());
+        for (k, v) in named {
+            let name = match v {
+                Value::Null => None,
+                Value::String(t) => Some(t.trim()),
+                _ => return Err(bad(c, format!("`electrical.{k}` is a method's name, or null to leave it to the command"))),
+            };
+            match k.as_str() {
+                "demand" => {
+                    let known = crate::demand::UTILITIES;
+                    methods.demand = match name {
+                        Some(u) if !known.contains(&u) => {
+                            return Err(bad(c, format!("`demand` is a utility `demand` has tables for: {}", known.join(", "))));
+                        }
+                        u => u.map(String::from),
+                    };
+                }
+                "building_demand" => {
+                    let all = || crate::building_demand::methods().iter().map(|m| m.standard.as_str()).collect::<Vec<_>>().join(", ");
+                    methods.building_demand = match name.map(|n| (n, crate::building_demand::method(n))) {
+                        Some((n, None)) => return Err(bad(c, format!("no method `{n}` in data/building-demand.json: {}", all()))),
+                        found => found.and_then(|(_, m)| m).map(|m| m.standard.clone()),
+                    };
+                }
+                _ => return Err(bad(c, format!("`electrical.{k}` names no command's method; they are demand and building_demand"))),
+            }
+        }
+        own_methods = Some(methods);
+    }
     if let Some(patch) = patch {
         let base = own.as_ref().unwrap_or(&code.as_deref().and_then(|k| s.model.code(k)).unwrap_or(codes::generic()).stairs);
         let Ok(Value::Object(mut all)) = serde_json::to_value(base) else { return Err(bad(c, "the rules could not be read")) };
@@ -19555,6 +19627,7 @@ fn building_code(s: &mut Session, p: &Value) -> R {
         let from = code.as_deref().and_then(|k| s.model.code(k)).unwrap_or(codes::generic());
         let based_on = if from.based_on.is_empty() { from.code.clone() } else { from.based_on.clone() };
         let stairs = own.take().unwrap_or_else(|| from.stairs.clone());
+        let electrical = own_methods.take().unwrap_or_else(|| from.electrical.clone());
         // A rule kept is still from where the code it came from says; one changed is the project's.
         let mut sources = from.sources.clone();
         for rule in stairs.changed(&from.stairs) {
@@ -19569,7 +19642,9 @@ fn building_code(s: &mut Session, p: &Value) -> R {
             based_on,
             sources,
             checked: String::new(),
+            country: from.country.clone(),
             stairs,
+            electrical,
         };
         kept.retain(|k| k.code != name);
         kept.push(new);
@@ -19582,22 +19657,26 @@ fn building_code(s: &mut Session, p: &Value) -> R {
         let gone = kept.remove(i);
         if code.as_deref() == Some(name.as_str()) {
             own = own.or(Some(gone.stairs));
+            own_methods = own_methods.or(Some(gone.electrical));
             code = codes::code(&gone.based_on).map(|k| k.code.clone());
         }
     }
-    // Rules that are the code's own are not the project's.
-    let its = code
-        .as_deref()
-        .and_then(|k| kept.iter().find(|o| o.code == k).or_else(|| codes::code(k)))
-        .unwrap_or(codes::generic())
-        .stairs
-        .clone();
-    if own.as_ref() == Some(&its) {
+    // Rules and methods that are the code's own are not the project's.
+    let its = code.as_deref().and_then(|k| kept.iter().find(|o| o.code == k).or_else(|| codes::code(k))).unwrap_or(codes::generic());
+    if own.as_ref() == Some(&its.stairs) {
         own = None;
     }
-    if own != s.model.stair_rules || code != s.model.building_code || kept != s.model.building_codes {
+    if own_methods.as_ref() == Some(&its.electrical) {
+        own_methods = None;
+    }
+    if own != s.model.stair_rules
+        || own_methods != s.model.electrical_methods
+        || code != s.model.building_code
+        || kept != s.model.building_codes
+    {
         let m = s.model_mut();
         m.stair_rules = own;
+        m.electrical_methods = own_methods;
         m.building_code = code;
         m.building_codes = kept;
     }
@@ -19611,6 +19690,7 @@ fn building_code(s: &mut Session, p: &Value) -> R {
         "note": code.note,
         "stairs": m.stair_rules(),
         "changed": m.stair_rules().changed(&code.stairs),
+        "electrical": m.electrical_methods(),
         "custom": m.building_codes.iter().any(|k| k.code == code.code),
         "based_on": code.based_on,
         "all": codes::codes().iter().map(|k| (k, false)).chain(m.building_codes.iter().map(|k| (k, true))).map(|(k, own)| json!({
@@ -19629,7 +19709,9 @@ fn building_code_export(s: &mut Session, p: &Value) -> R {
     let mut code = match string(c, p, "code")? {
         Some(k) => m.code(&k).cloned().ok_or_else(|| bad(c, format!("no building code `{k}`")))?,
         // The project's, as it is held to it: with the rules it changed.
-        None => codes::BuildingCode { stairs: m.stair_rules().clone(), ..m.building_code().clone() },
+        None => {
+            codes::BuildingCode { stairs: m.stair_rules().clone(), electrical: m.electrical_methods().clone(), ..m.building_code().clone() }
+        }
     };
     if let Some(name) = string(c, p, "name")? {
         code.name = codes::own_name(&name).map_err(|e| bad(c, e))?;
@@ -19663,6 +19745,7 @@ fn building_code_import(s: &mut Session, p: &Value) -> R {
     if set {
         m.building_code = Some(name.clone());
         m.stair_rules = None;
+        m.electrical_methods = None;
     }
     Ok(json!({"code": name, "left_out": left_out, "set": set}))
 }

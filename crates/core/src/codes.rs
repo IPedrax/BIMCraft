@@ -1,7 +1,9 @@
 //! Building codes: the rules a project's stairs and railings are held to, apart from its technical standard, which is
 //! about drafting. A project names a code (`Model::building_code`) and starts with its rules; it may change any of them
 //! (`Model::stair_rules`: a state's or a city's own numbers), and nothing is ever refused for breaking one: a stair
-//! outside its rules is built and reported ([`stair_findings`], the `stair_check` command).
+//! outside its rules is built and reported ([`stair_findings`], the `stair_check` command). A code names the methods its
+//! electrical demand is worked out by too ([`Electrical`]), which `demand` and `building_demand` take when not given one, and
+//! a project may name its own (`Model::electrical_methods`).
 //!
 //! The numbers are data, not code: `data/building-codes.json` holds an entry for each code, naming its sources. The NBR
 //! entries were checked against their texts; the rest were typed from memory and are unchecked, as each rule's source says;
@@ -243,7 +245,44 @@ pub struct BuildingCode {
     /// Who checked its numbers against the documents' text, and where that is written; empty while unchecked.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub checked: String,
+    /// The country of its `region`, ISO 3166 (`BR`, `US`…): the electrical methods the desktop offers it are that country's.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub country: String,
     pub stairs: StairRules,
+    /// The methods its electrical demand is worked out by.
+    #[serde(default, skip_serializing_if = "Electrical::is_empty")]
+    pub electrical: Electrical,
+}
+
+/// The methods a code names for the electrical commands, each by what that command takes: the utility whose standard `demand`
+/// reads (`CPFL`, `ENEL`, `CELESC`) and the method of `data/building-demand.json` `building_demand` reads (its `standard`). Either
+/// may be left to the project, as a country's utilities differ by region. The numbers and their sources are the method's own.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Electrical {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub demand: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub building_demand: Option<String>,
+}
+
+impl Electrical {
+    pub fn is_empty(&self) -> bool {
+        self.demand.is_none() && self.building_demand.is_none()
+    }
+
+    /// Names of a size, on one line. Whether a command knows one is the command's to say, when it runs.
+    pub fn check(&self) -> Result<(), String> {
+        match self
+            .demand
+            .iter()
+            .chain(&self.building_demand)
+            .find(|n| n.is_empty() || n.chars().count() > 200 || n.chars().any(char::is_control))
+        {
+            Some(n) => Err(format!("an electrical method is named by 1 to 200 characters on one line, not `{n}`")),
+            None => Ok(()),
+        }
+    }
 }
 
 /// The most building codes a project keeps of its own, the longest name of one, and the largest file one is read from.
@@ -278,6 +317,7 @@ impl BuildingCode {
             || self.references.len() > 50
             || self.references.iter().any(|r| long(r))
             || long(&self.checked)
+            || long(&self.country)
             || self.sources.len() > ORDER.len()
             || self.sources.iter().any(|(k, v)| !ORDER.contains(&k.as_str()) || long(v))
         {
@@ -286,7 +326,7 @@ impl BuildingCode {
                 self.code
             ));
         }
-        self.stairs.check().map_err(|e| format!("the building code `{}`: {e}", self.code))
+        self.stairs.check().and_then(|()| self.electrical.check()).map_err(|e| format!("the building code `{}`: {e}", self.code))
     }
 
     /// As a file to hand to another project: XML, a `rule` for each of its rules.
@@ -294,9 +334,10 @@ impl BuildingCode {
         let esc = |t: &str| t.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;");
         let mut out = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
         out.push_str(&format!(
-            "<building-code format=\"1\" name=\"{}\" region=\"{}\" based-on=\"{}\">\n",
+            "<building-code format=\"1\" name=\"{}\" region=\"{}\" country=\"{}\" based-on=\"{}\">\n",
             esc(&self.name),
             esc(&self.region),
+            esc(&self.country),
             esc(&self.based_on)
         ));
         if !self.note.is_empty() {
@@ -322,7 +363,14 @@ impl BuildingCode {
                 }
             }
         }
-        out.push_str("  </stairs>\n</building-code>\n");
+        out.push_str("  </stairs>\n");
+        // The methods it names, each by what its command takes; one left to the project is left out.
+        if !self.electrical.is_empty() {
+            let named = |key: &str, v: &Option<String>| v.as_ref().map_or(String::new(), |n| format!(" {key}=\"{}\"", esc(n)));
+            let (d, b) = (named("demand", &self.electrical.demand), named("building-demand", &self.electrical.building_demand));
+            out.push_str(&format!("  <electrical{d}{b}/>\n"));
+        }
+        out.push_str("</building-code>\n");
         out
     }
 
@@ -346,7 +394,9 @@ impl BuildingCode {
             based_on: String::new(),
             sources: Default::default(),
             checked: String::new(),
+            country: String::new(),
             stairs: generic().stairs.clone(),
+            electrical: Electrical::default(),
         };
         let (mut left_out, mut root, mut rest) = (Vec::new(), false, text);
         while let Some(open) = rest.find('<') {
@@ -390,12 +440,17 @@ impl BuildingCode {
                     root = true;
                     code.name = attr("name").unwrap_or_default();
                     code.region = attr("region").unwrap_or_default();
+                    code.country = attr("country").unwrap_or_default();
                     code.based_on = attr("based-on").unwrap_or_default();
                 }
                 "note" => code.note = text(),
                 "checked" => code.checked = text(),
                 "reference" if code.references.len() < 50 => code.references.push(text()),
                 "stairs" => {}
+                "electrical" => {
+                    let named = |key: &str| attr(key).map(|n| n.trim().to_string()).filter(|n| !n.is_empty());
+                    code.electrical = Electrical { demand: named("demand"), building_demand: named("building-demand") };
+                }
                 "rule" => {
                     let (key, value) = (attr("name").unwrap_or_default(), attr("value").unwrap_or_default());
                     if !ORDER.contains(&key.as_str()) {
@@ -452,6 +507,8 @@ fn fallback() -> BuildingCode {
         based_on: String::new(),
         sources: Default::default(),
         checked: String::new(),
+        country: String::new(),
+        electrical: Electrical::default(),
         stairs: StairRules {
             riser: 180.0,
             going: 280.0,

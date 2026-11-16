@@ -1,5 +1,5 @@
 {
- "about": "Building codes, one entry each, read by `building_code` and `stair_check` (codes.rs). A project names one and starts with its rules, which it may change (a state's or a city's own rules); nothing built is ever refused for breaking one, only reported. A country's code is added as a new entry, never as code. Unless an entry says it was `checked`, its numbers were typed from memory of the documents named, not from their text, and each code tells occupancies apart where an entry holds one row (the general one); check a number against a copy before relying on it. Where a code gives no number, the entry holds a forgiving one that asks nothing in practice, and `note` says which. Millimetres. `stairs`: `riser` and `going` are what a new stair starts with; `riser_min`..`riser_max` and `going_min`..`going_max` their ranges; `step_min`..`step_max` the range of 2 risers + 1 going; `width_min` the least clear width; `headroom` the least height over the walk line; a landing is due when a flight would rise more than `flight_rise_max` or hold more than `flight_risers_max` risers, whichever comes first; `landing_rule` says how long a landing must be: `width` the stair's width, `landing_length` being enough; `fixed` `landing_length`; `step` a going and one step (2 risers + 1 going), and `landing_length` at least. `winders` whether winding treads are allowed; `walk_line` where their going is measured: `centre` along the middle, `narrow_side` at `walk_line_offset` from the narrow side; `winder_going_min` the least going there and `winder_narrow_min` the least at the narrow end. `nosing_max` the most a tread overhangs; `open_risers` whether risers may be open; `uniformity` the most two risers or goings of a flight may differ; `handrail_min`..`handrail_max` a handrail's height over the nosings; `guard_min` a guard's least height. `nosing_min` the least a nosing stands out. `sources` gives, rule by rule, the document, its edition and its item a number is from, or says it is a forgiving number no document gives; `checked` says who checked the entry against the documents' text.",
+ "about": "Building codes, one entry each, read by `building_code` and `stair_check` (codes.rs). A project names one and starts with its rules, which it may change (a state's or a city's own rules); nothing built is ever refused for breaking one, only reported. A country's code is added as a new entry, never as code. Unless an entry says it was `checked`, its numbers were typed from memory of the documents named, not from their text, and each code tells occupancies apart where an entry holds one row (the general one); check a number against a copy before relying on it. Where a code gives no number, the entry holds a forgiving one that asks nothing in practice, and `note` says which. Millimetres. `stairs`: `riser` and `going` are what a new stair starts with; `riser_min`..`riser_max` and `going_min`..`going_max` their ranges; `step_min`..`step_max` the range of 2 risers + 1 going; `width_min` the least clear width; `headroom` the least height over the walk line; a landing is due when a flight would rise more than `flight_rise_max` or hold more than `flight_risers_max` risers, whichever comes first; `landing_rule` says how long a landing must be: `width` the stair's width, `landing_length` being enough; `fixed` `landing_length`; `step` a going and one step (2 risers + 1 going), and `landing_length` at least. `winders` whether winding treads are allowed; `walk_line` where their going is measured: `centre` along the middle, `narrow_side` at `walk_line_offset` from the narrow side; `winder_going_min` the least going there and `winder_narrow_min` the least at the narrow end. `nosing_max` the most a tread overhangs; `open_risers` whether risers may be open; `uniformity` the most two risers or goings of a flight may differ; `handrail_min`..`handrail_max` a handrail's height over the nosings; `guard_min` a guard's least height. `nosing_min` the least a nosing stands out. `sources` gives, rule by rule, the document, its edition and its item a number is from, or says it is a forgiving number no document gives; `checked` says who checked the entry against the documents' text. `country` is the region's, ISO 3166, and picks the electrical methods the desktop offers. `electrical` names the methods the project's electrical demand is worked out by, each by what its command takes: `demand` a utility of demand.rs, `building_demand` a method of building-demand.json (its `standard`); one left out is the project's to pick, as a country's utilities differ by region. Their numbers and sources are the method's own.",
  "codes": [
   {
    "code": "generic",
@@ -39,6 +39,7 @@
    "code": "nbr-9050",
    "name": "ABNT NBR 9050 (accessible route)",
    "region": "Brasil",
+   "country": "BR",
    "references": [
     "ABNT NBR 9050:2020 (acessibilidade), 6.8 escadas, 6.9 corrimãos"
    ],
@@ -105,6 +106,7 @@
    "code": "nbr-9077",
    "name": "ABNT NBR 9077 (emergency exit)",
    "region": "Brasil",
+   "country": "BR",
    "references": [
     "ABNT NBR 9077:2001 (saídas de emergência em edifícios), 4.4 dimensionamento, 4.7 escadas, 4.8 guarda-corpos"
    ],
@@ -171,6 +173,10 @@
    "code": "ibc",
    "name": "International Building Code",
    "region": "United States",
+   "country": "US",
+   "electrical": {
+    "building_demand": "NEC 220.84"
+   },
    "references": [
     "IBC 2021, section 1011 (stairways)",
     "IBC 2021, sections 1014 (handrails) and 1015 (guards)"
@@ -235,6 +241,7 @@
    "code": "din",
    "name": "DIN 18065",
    "region": "Deutschland",
+   "country": "DE",
    "references": [
     "DIN 18065:2020-08, Gebäudetreppen (buildings in general)"
    ],
@@ -285,6 +292,7 @@
    "code": "jis",
    "name": "Building Standards Law of Japan",
    "region": "Japan",
+   "country": "JP",
    "references": [
     "Building Standards Law Enforcement Order, articles 23 to 25 (stairs, landings, handrails)"
    ],
