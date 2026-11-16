@@ -10,7 +10,7 @@ use crate::curves::Curve;
 use crate::geom::{self, P2};
 use crate::graphics::Look;
 use crate::model::{Ceiling, Element, Face, Floor, Id, Model, TOL};
-use crate::walls::{self, Axis};
+use crate::walls::Axis;
 
 /// How far off a guide, degrees, a direction may be and still snap to it (less where guides lie
 /// closer together than that).
@@ -350,12 +350,7 @@ impl<'a> Scene<'a> {
                 }
                 Element::Wall(w) => {
                     let a = Axis::of(w);
-                    // An arc may bulge past its ends: take the box round its circle.
-                    let reach = match (a.centre(), a.radius()) {
-                        (Some(c), Some(r)) => [c + P2(-r, -r), c + P2(r, r)],
-                        _ => [a.start, a.end],
-                    };
-                    if !near(&reach) || !m.cut_by(w, view) {
+                    if !near(&a.extent()) || !m.cut_by(w, view) {
                         continue;
                     }
                     s.points.extend([
@@ -380,15 +375,12 @@ impl<'a> Scene<'a> {
                     let Some(w) = m.wall(o.host) else { continue };
                     let axis = Axis::of(w);
                     // Its wall's own extent first: the hole's type and the wall's heights are dearer than a far door is.
-                    let reach = match (axis.centre(), axis.radius()) {
-                        (Some(c), Some(r)) => [c + P2(-r, -r), c + P2(r, r)],
-                        _ => [axis.start, axis.end],
-                    };
-                    if !near(&reach) {
+                    if !near(&axis.extent()) {
                         continue;
                     }
-                    let Some(h) = walls::hole(m, w, e, o) else { continue };
-                    if !(h.bottom <= cut && cut < h.top) || !m.cut_by(w, view) {
+                    // The one answer for "the cut plane passes through this opening", which a plan's ink asks too.
+                    let Some(h) = m.opening_hole(e, cut) else { continue };
+                    if !m.cut_by(w, view) {
                         continue;
                     }
                     if !near(&[axis.at(h.s0, 0.0), axis.at(h.s1, 0.0)]) {
@@ -689,6 +681,9 @@ fn rank(k: Kind) -> u8 {
         Kind::Intersection => 1,
         Kind::Midpoint => 2,
         Kind::Anchor => 3,
+        // A centre — a column's, an arc's, the middle of a door or a window — lets an annotation's own anchor keep the
+        // place they share: a tag on a door snaps to the tag's anchor, not to the opening's middle.
+        Kind::Centre => 4,
         _ => 4,
     }
 }

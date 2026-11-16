@@ -3612,7 +3612,7 @@ msgstr ""
 msgid "Cylinder"
 msgstr ""
 
-#: crates/core/src/render.rs:4640
+#: crates/core/src/render.rs:4637
 msgid "DN"
 msgstr ""
 
@@ -13892,7 +13892,7 @@ msgstr ""
 msgid "Type:"
 msgstr ""
 
-#: crates/core/src/render.rs:4640
+#: crates/core/src/render.rs:4637
 msgid "UP"
 msgstr ""
 

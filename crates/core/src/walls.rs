@@ -49,6 +49,15 @@ impl Axis {
         self.arc.map(|a| a.1)
     }
 
+    /// The box round it that holds its body: an arc may bulge past its ends, so the box round its circle, else its ends.
+    /// What a cheap "is anything near the cursor" asks before a wall's heights or an opening's type are worked out.
+    pub fn extent(&self) -> [P2; 2] {
+        match (self.centre(), self.radius()) {
+            (Some(c), Some(r)) => [c + P2(-r, -r), c + P2(r, r)],
+            _ => [self.start, self.end],
+        }
+    }
+
     /// An arc's centre, radius, the angle its start lies at from the centre and how far it sweeps (radians,
     /// counter-clockwise positive); none when it's straight.
     pub fn arc(&self) -> Option<(P2, f64, f64, f64)> {
