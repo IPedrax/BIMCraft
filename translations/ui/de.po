@@ -17754,6 +17754,297 @@ msgstr ""
 msgid "{} was stopped."
 msgstr ""
 
+#: crates/ui-egui/src/classification.rs:366
+msgid "1. Load the tables you hold, from their .csv or .xlsx. BIMCraft ships none."
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:435
+msgid "2. Make its parameters in the project."
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:451
+msgid "3. Classify: by hand, or with your AI agent."
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:320
+msgid "AI Agent"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:756
+msgid "Accept from confidence"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:690
+msgid "Agree and Ask the Agent"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:690
+msgid "Ask the Agent"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:682
+msgid "Asking the agent sends what it classifies to {}, on your API key: each type's category, family, type name, materials, levels, hosts and sizes, and the tables' candidate codes. Nothing is sent until you ask, and nothing is written until you apply what you tick."
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:731
+msgid "Batch {} of {} · handing it over…"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:729
+msgid "Batch {} of {} · waiting for the answer… {} s"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:320
+msgid "By Hand"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:406
+msgid "COBie's Category fields take another system's codes: pick the tables, loaded under that system."
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:980
+msgid "Cancelled."
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:312 crates/ui-egui/src/lib.rs:5054
+msgid "Classification Manager"
+msgstr ""
+
+#: crates/ui-egui/src/lib.rs:5052
+msgid "Classification Manager (CI): a classification system's tables and parameters, codes picked by hand for the selection, or proposed by the AI assistant"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:348
+msgid "Classification system"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:655
+msgid "Classify"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:789
+msgid "Confidence"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:695
+msgid "Copy Brief"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:237
+msgid "Each element"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:238
+msgid "Each type"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:358
+msgid "Edition"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:523
+msgid "Everything this table is for has a code."
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:696
+msgid "For an agent with no command line (a chat window): copy the instructions and the brief, then paste its answer below"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:602
+msgid "Give the selection this code"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:437
+msgid "Load Parameters"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:393
+msgid "Load Table…"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:501
+#: crates/ui-egui/src/classification.rs:640
+msgid "Load a system's table and its parameters first, on the System tab."
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:515
+msgid "Next Unclassified"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:884
+msgid "Nothing is selected."
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:895
+msgid "Nothing to classify: everything asked for has a code."
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:786
+msgid "Now"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:703
+msgid "Or paste an answer:"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:787
+msgid "Proposed"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:705
+msgid "Read Answer"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:776
+msgid "Select All"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:797
+msgid "Select its elements"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:516
+msgid "Select the elements of the next type (or element) with no code"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:538
+msgid "Select what to classify: its category's codes come up here."
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:410
+msgid "Space Category from"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:395
+msgid "Tables"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:715
+msgid "That holds no JSON answer."
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:988
+msgid "The agent gave no answer."
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:758
+msgid "Tick by Confidence"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:776
+msgid "Tick every proposal that has a code"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:410
+msgid "Type Category from"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:784
+msgid "Type or element"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:557
+msgid "Whole table"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:368
+msgid "Whose code"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:790
+msgid "Why"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:552
+msgid "and {} more"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:661
+msgid "by"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:556
+msgid "code or title"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:657
+msgid "everything"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:548
+msgid "no code"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:414
+#: crates/ui-egui/src/classification.rs:416
+msgid "none"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:391
+msgid "not loaded"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:658
+msgid "the selection"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:656
+msgid "what has no code"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:818
+#: crates/ui-egui/src/classification.rs:985
+msgid "{} answers left out"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:261
+msgid "{} codes loaded into {}."
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:843
+msgid "{} codes written; Undo takes them back."
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:388
+msgid "{} codes, {}"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:631
+msgid "{} given {}."
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:529
+msgid "{} of {} classified"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:448
+msgid "{} of {} in the project"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:289
+msgid "{} parameters are in the project."
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:755
+msgid "{} proposals"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:862
+msgid "{} rows copied: paste them into your agent, and its answer here."
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:262
+msgid "{} rows left out."
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:547
+msgid "{} {} ({} elements): {}"
+msgstr ""
+
+#: crates/ui-egui/src/classification.rs:431
+msgid "{}: {} fields, {}"
+msgstr ""
+
 #: crates/ui-egui/src/editor.rs:739
 #~ msgid "A blank value is the family's own, as the Parameters tab has it."
 #~ msgstr "Ein leerer Wert ist der der Familie, wie ihn die Registerkarte Parameter führt."

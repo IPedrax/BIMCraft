@@ -19,6 +19,7 @@ mod browser;
 mod cad;
 mod camera;
 mod canvas;
+mod classification;
 mod clouds;
 mod codes;
 mod context;
@@ -430,7 +431,7 @@ type Buttons<'a> = &'a [(Icon, &'a str, &'a str, Option<Tool>, bool)];
 
 /// The desktop's own two-letter shortcuts, which [`BimApp::shortcut`] takes before the commands'
 /// aliases, and what Keyboard Shortcuts (KS) calls them.
-const SHORTCUTS: [(&str, &str); 67] = [
+const SHORTCUTS: [(&str, &str); 68] = [
     ("3D", "3D View"),
     ("MD", "Modify"),
     ("SB", "Floor: Structural"),
@@ -502,6 +503,8 @@ const SHORTCUTS: [(&str, &str); 67] = [
     ("LS", "Reload"),
     ("NS", "New Script"),
     ("XS", "Stop"),
+    // Revit has no Classification Manager; CI is free there and here.
+    ("CI", "Classification Manager"),
 ];
 
 /// Every two-letter shortcut and what it does: the desktop's own, then the commands' aliases.
@@ -583,6 +586,8 @@ pub struct BimApp {
     /// Linux), unless `system_title_bar`, the user's ask for the system's (Settings > User Interface, kept in `settings.json`).
     pub own_title_bar: bool,
     pub system_title_bar: bool,
+    /// Manage > Classification Manager, while it's open.
+    classification: Option<classification::ClassificationManager>,
     /// The active view, which takes the tools: a tab of `views`, or one of `floating`.
     pub sheet: Sheet,
     pub tool: Tool,
@@ -1573,6 +1578,7 @@ impl BimApp {
             os_events: None,
             own_title_bar: false,
             system_title_bar: false,
+            classification: None,
             sheet: first,
             tool: Tool::Modify,
             selection: Vec::new(),
@@ -2863,6 +2869,10 @@ impl BimApp {
                     "NS" => self.pyaddins.new_script = Some(self.pyaddins.free_name()),
                     _ => self.stop_pyaddin(),
                 }
+                return true;
+            }
+            "CI" => {
+                self.open_classification();
                 return true;
             }
             "EU" | "UE" => {
@@ -5355,6 +5365,13 @@ impl BimApp {
                     }
                 }
             });
+            // New and seldom wanted: the first of Settings' tools handed over when the window is narrow.
+            let tip = msg!(
+                "Classification Manager (CI): a classification system's tables and parameters, codes picked by hand for the selection, or proposed by the AI assistant"
+            );
+            if big_button(ui, Icon::Classify, "Classification Manager", self.classification.is_some(), tip).clicked() {
+                self.open_classification();
+            }
         });
         // Revit's Project Location: where the project stands, and what stands with it by shared coordinates.
         // Yielding: Location goes into the panel's list before any other panel gives way, so the tab is no wider than it was.
@@ -6864,6 +6881,7 @@ impl BimApp {
         self.family_closed_from_home();
         self.snaps_window(ctx);
         self.parameters_window(ctx);
+        self.classification_window(ctx);
         self.new_schedule_window(ctx);
         self.schedule_window(ctx);
         self.graphics_window(ctx);

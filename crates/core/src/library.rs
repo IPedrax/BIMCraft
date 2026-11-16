@@ -77,6 +77,8 @@ pub enum Kind {
     PrintSet,
     /// A publishing set: print sets in folders, each written as a format.
     PublishSet,
+    /// A classification table loaded into the project.
+    Classification,
 }
 
 impl Kind {
@@ -117,6 +119,7 @@ impl Kind {
             Kind::CoordinatePoint => "coordinate point".into(),
             Kind::PrintSet => ui_msg!("print set").into(),
             Kind::PublishSet => ui_msg!("publishing set").into(),
+            Kind::Classification => "classification table".into(),
         }
     }
 
@@ -129,6 +132,7 @@ impl Kind {
             "family" => Kind::Family,
             "parameter" => Kind::Parameter,
             "dictionary" => Kind::Dictionary,
+            "classification" => Kind::Classification,
             "view-filter" => Kind::ViewFilter,
             "view-template" => Kind::ViewTemplate,
             "phase" => Kind::Phase,
@@ -197,6 +201,7 @@ impl fmt::Display for Kind {
             Kind::CoordinatePoint => f.write_str("coordinate-point"),
             Kind::PrintSet => f.write_str("print-set"),
             Kind::PublishSet => f.write_str("publish-set"),
+            Kind::Classification => f.write_str("classification"),
         }
     }
 }
@@ -848,6 +853,7 @@ impl Model {
         add(Kind::Family, &mut self.families.keys());
         add(Kind::Parameter, &mut self.parameters.keys());
         add(Kind::Dictionary, &mut self.dictionaries.keys());
+        add(Kind::Classification, &mut self.classification.tables.keys());
         add(Kind::ViewFilter, &mut self.view_filters.keys());
         add(Kind::ViewTemplate, &mut self.view_templates.keys());
         add(Kind::Phase, &mut self.phases.iter());
@@ -1628,6 +1634,7 @@ impl Model {
         for d in self.parameters.values_mut().filter_map(|p| p.dictionary.as_mut()) {
             f(&Kind::Dictionary, d);
         }
+        self.classification.lib_refs_mut(f);
         let t = &mut *self.types;
         let layers = t
             .wall

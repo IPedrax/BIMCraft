@@ -14,7 +14,7 @@ use bimcraft_i18n::ui_msg;
 pub mod classes;
 mod v2x3;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write;
 
 use crate::family::ConnectorKind;
@@ -110,6 +110,8 @@ const STAIR_OWN_DEFINES: u64 = 97;
 const STAIR_MATERIALS: u64 = 98;
 const CURTAIN_PART: u64 = 99;
 const CURTAIN_MATERIALS: u64 = 100;
+/// The project's classification tables' codes (`classify`).
+const CODES_CLASSIFIED: u64 = 101;
 
 /// Site footprint metadata in curve order: Names, Guids and Levels (native GUIDs).
 pub const PROPERTY_LINES: &str = "BIMCraft_PropertyLines";
@@ -277,6 +279,61 @@ fn shape_of(landings: &[crate::model::Landing], kind: &str) -> String {
         _ => return ".NOTDEFINED.".into(),
     };
     format!(".{shape}_{kind}.")
+}
+
+/// The codes elements and their types hold from the project's classification tables, as ISO 16739's classification resource
+/// has them: an `IfcClassification` for each system (its publisher, edition and name), an `IfcClassificationReference` for
+/// each code held (its code, title and system), and an `IfcRelAssociatesClassification` from each code to the elements
+/// that hold it, theirs or their type's. What it wrote, each product's parameters (the code's and its title's), which the
+/// export then writes neither as properties nor as references of the parameter's own classification.
+fn classify<'m>(w: &mut Step, m: &'m Model, products: &BTreeMap<Id, u64>) -> BTreeSet<(&'m str, u64)> {
+    use crate::classification::{self as cls, Target};
+    let mut codes: BTreeMap<(String, String), (u64, Vec<u64>)> = BTreeMap::new();
+    let mut written = BTreeSet::new();
+    for b in &m.classification.bindings {
+        let (Some(table), Some(q)) = (m.classification.tables.get(&b.table), m.parameters.get(&b.parameter)) else { continue };
+        let def = cls::system(&table.system);
+        // One classification a system: Uniclass's Ss and Pr are both Uniclass 2015.
+        let name = def.map_or_else(|| b.table.clone(), |d| d.name.to_string());
+        for (&id, &ent) in products {
+            let Some(e) = m.elements.get(id) else { continue };
+            if !q.categories.iter().any(|c| c == e.category()) {
+                continue;
+            }
+            let Some(item) = cls::current(m, b, &Target::Element(id)).and_then(|c| table.find(c)) else { continue };
+            // One for each system, shared with a family's OmniClass and a parameter's own classification; one edition for
+            // it, or none when its tables disagree: NBR 15965's parts came out years apart.
+            let mut editions = m
+                .classification
+                .tables
+                .values()
+                .filter(|t| if def.is_some() { t.system == table.system } else { std::ptr::eq(*t, table) })
+                .map(|t| t.edition.as_str());
+            let first = editions.next().unwrap_or_default();
+            let edition = (!first.is_empty() && editions.all(|e| e == first)).then_some(first);
+            let system = w.classification_by(&name, def.map(|d| d.publisher), edition);
+            let entry = codes.entry((name.clone(), item.code.clone())).or_insert_with(|| {
+                let r = w.add(format!("IFCCLASSIFICATIONREFERENCE($,{},{},#{system},$,$)", s(&item.code), s(&item.title)));
+                (r, Vec::new())
+            });
+            if !entry.1.contains(&ent) {
+                entry.1.push(ent);
+            }
+            written.insert((b.parameter.as_str(), ent));
+            if let Some(title) = &b.title {
+                written.insert((title.as_str(), ent));
+            }
+        }
+    }
+    for ((name, code), (r, ents)) in codes {
+        let key = name
+            .bytes()
+            .chain([0])
+            .chain(code.bytes())
+            .fold(0xcbf2_9ce4_8422_2325_u64, |h, b| (h ^ u64::from(b)).wrapping_mul(0x0100_0000_01b3));
+        w.add(format!("IFCRELASSOCIATESCLASSIFICATION({},$,$,$,({}),#{r})", w.guid(CODES_CLASSIFIED, key), refs(&ents)));
+    }
+    written
 }
 
 /// A STEP string literal: `'` doubled, `\` doubled, anything outside printable ASCII as `\X2\…\X0\`
@@ -833,11 +890,17 @@ impl Step {
 
     /// The `IfcClassification` named `system`, one for each name whichever writer asks first; `edition` is the first asker's.
     fn classification(&mut self, system: &str, edition: Option<&str>) -> u64 {
+        self.classification_by(system, None, edition)
+    }
+
+    /// [`Step::classification`], with its publisher (`Source`) where the first asker knows it.
+    fn classification_by(&mut self, system: &str, source: Option<&str>, edition: Option<&str>) -> u64 {
         if let Some(&written) = self.systems.get(system) {
             return written;
         }
+        let source = source.map_or_else(|| "$".to_string(), s);
         let edition = edition.map_or_else(|| "$".to_string(), s);
-        let written = self.add(format!("IFCCLASSIFICATION($,{edition},$,{},$,$,$)", s(system)));
+        let written = self.add(format!("IFCCLASSIFICATION({source},{edition},$,{},$,$,$)", s(system)));
         self.systems.insert(system.to_string(), written);
         written
     }
@@ -2623,7 +2686,7 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
         w.add(format!("IFCMATERIALLAYERSET(({}),{},$)", refs(&ids), s(name)))
     };
     let mut sets: BTreeMap<&str, u64> = BTreeMap::new();
-    let used: std::collections::BTreeSet<&str> = placed.keys().filter_map(|id| m.wall(*id)).map(|wl| wl.type_name.as_str()).collect();
+    let used: BTreeSet<&str> = placed.keys().filter_map(|id| m.wall(*id)).map(|wl| wl.type_name.as_str()).collect();
     for (name, t) in m.types.wall.iter().filter(|(name, t)| !t.layers.is_empty() && used.contains(name.as_str())) {
         sets.insert(name, layer_set(&mut w, name, &t.layers));
     }
@@ -2748,7 +2811,9 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
         }
     }
     // Each element's values of the project's parameters: in the set its parameter names for its category, else a property set
-    // of its own, `Project Parameters`; lengths in the file's millimetres. A classification's codes go as references, below.
+    // of its own, `Project Parameters`; lengths in the file's millimetres. A classification's codes go as references: a table's
+    // first (`classify`), then those of a parameter's own classification that no table wrote.
+    let by_tables = classify(&mut w, m, &products);
     let mut classified: BTreeMap<(&str, &str), Vec<u64>> = BTreeMap::new();
     for (&id, &ent) in &products {
         let Some(e) = m.elements.get(id) else { continue };
@@ -2762,6 +2827,9 @@ pub(crate) fn export_with(m: &Model, reference_rooms: bool, at: Origin, schema: 
         for (name, v) in params.iter().chain(of_type) {
             // The project's parameters for its category: a component's family's values are its family's.
             let Some(p) = m.parameters.get(name).filter(|p| p.categories.iter().any(|c| c == e.category())) else { continue };
+            if by_tables.contains(&(name.as_str(), ent)) {
+                continue;
+            }
             if p.classification.is_some() {
                 if let Some(code) = v.as_str().filter(|c| !c.trim().is_empty()) {
                     classified.entry((name.as_str(), code)).or_default().push(ent);

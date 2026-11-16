@@ -207,6 +207,9 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// segments, panels and mullions changed) or stand in place of one's panel (`panel_of`); a build that reads up to 20 would read
 /// a curtain wall as a solid wall and drop its edits, not say "saved by a newer BIMCraft". A file of 20 gets the starter
 /// panels, mullions and corner mullions.
+/// And a project holds classification tables and what their parameters take codes from (`classification`, library entries
+/// of kind `classification`); a build that reads up to 20 would answer one with a serde error ("isn't a kind of library
+/// entry"), not "saved by a newer BIMCraft". A file of 20 needs no step for them: it holds no tables.
 pub const FORMAT: u32 = 21;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
@@ -4096,6 +4099,9 @@ pub struct Model {
     /// What the files imported call categories, each to one of ours or, none, left out: asked once.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub parameter_map: BTreeMap<String, Option<String>>,
+    /// The classification tables it holds and the parameters they fill ([`crate::classification`]).
+    #[serde(default, skip_serializing_if = "crate::classification::Classification::is_empty")]
+    pub classification: crate::classification::Classification,
     /// Its view filters, by name: categories and rules that pick elements out for views to hide
     /// or draw another way.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
@@ -4296,6 +4302,7 @@ impl Model {
             families: BTreeMap::new().into(),
             parameters: BTreeMap::new(),
             dictionaries: BTreeMap::new(),
+            classification: Default::default(),
             parameter_map: BTreeMap::new(),
             view_filters: BTreeMap::new(),
             view_templates: graphics::starter_templates(language),
@@ -5241,6 +5248,7 @@ impl Model {
             crate::curtain::starter_types(self);
             crate::curtain::corner_types(self);
         }
+        // 20 to 21: classification tables and their bindings. A file of 20 holds none, so nothing to do.
         self.format = FORMAT;
     }
 
@@ -8213,6 +8221,7 @@ impl Model {
         if let Some(g) = self.pinned.iter().find(|g| self.elements.id(**g).is_none()) {
             return Err(format!("`pinned` names an element that is gone ({g})"));
         }
+        self.classification.check()?;
         if let Some(lw) = &self.line_weights {
             lw.check()?;
         }
@@ -10143,6 +10152,7 @@ impl Model {
             pinned,
             demand_factors,
             coordinates,
+            classification,
             elements: _,
             library,
             loaded,
@@ -10196,6 +10206,7 @@ impl Model {
             && *pinned == o.pinned
             && *demand_factors == o.demand_factors
             && *coordinates == o.coordinates
+            && *classification == o.classification
             && *library == o.library
             && loaded.len() == o.loaded.len()
             && loaded.iter().zip(&o.loaded).all(|((a, x), (b, y))| a == b && Arc::ptr_eq(x, y))
