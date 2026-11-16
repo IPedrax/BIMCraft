@@ -37,6 +37,8 @@ enum Kind {
     Text,
     /// A number with no unit: an angle, a scale, a size on paper.
     Number,
+    /// Degrees, or positive rise:run / rise/run, stored as degrees.
+    RoofPitch,
     /// A length or an elevation, in the project's units.
     Length,
     /// `[x, y]`, lengths in the project's units, typed as `x, y`.
@@ -103,7 +105,7 @@ type Row = (&'static str, &'static str, &'static str, Kind);
 fn field_of(e: &Value, key: &str, kind: Kind) -> Value {
     match key.split('.').try_fold(e, |v, k| v.get(k)) {
         Some(v) => v.clone(),
-        None if matches!(kind, Length | Number) => json!(0.0),
+        None if matches!(kind, Length | Number | RoofPitch) => json!(0.0),
         None => Value::Null,
     }
 }
@@ -382,7 +384,7 @@ fn rows(category: &str) -> &'static [Row] {
             ("Constraints", "offset", "Base Offset", Length),
             ("Constraints", "extrusion.from", msg!("Extrusion Start"), LengthIf),
             ("Constraints", "extrusion.to", msg!("Extrusion End"), LengthIf),
-            ("Dimensions", "slope", "Slope (°)", Number),
+            ("Dimensions", "slope", "Slope (°)", RoofPitch),
             ("Dimensions", "ridge", msg!("Max Ridge Height"), LengthShown),
             ("Dimensions", "area_m2", "Area", AreaShown),
             ("Other", "gable", msg!("Gable Ends"), Flag),
@@ -618,6 +620,19 @@ pub(crate) fn number(s: &str) -> Option<f64> {
     s.trim().parse::<f64>().ok().filter(|x| x.is_finite())
 }
 
+/// Roof instances and footprint edges store degrees. Zero is an edge's inherit sentinel, so
+/// ratios must stay positive even at floating-point limits. Plain zero still means flat/inherit.
+fn roof_pitch(input: &str) -> Option<f64> {
+    let degrees = if let Some((rise, run)) = input.split_once([':', '/']) {
+        let rise = number(rise).filter(|n| *n > 0.0)?;
+        let run = number(run).filter(|n| *n > 0.0)?;
+        Some(rise.atan2(run).to_degrees()).filter(|n| *n > 0.0)?
+    } else {
+        number(input)?
+    };
+    (0.0..=bimcraft_core::model::MAX_SLOPE).contains(&degrees).then_some(degrees)
+}
+
 /// A value of `kind` as the palette shows it, lengths and areas in `units`.
 /// An area parameter's value, m² in the model, in the project's units.
 fn area_shown(v: &Value, units: Units) -> String {
@@ -681,6 +696,7 @@ fn parse(kind: Kind, s: &str, units: Units) -> Result<Value, String> {
     let length = |typed: &str| units.parse(typed).ok_or_else(|| tf("`{}` is not a length", &[typed.trim()]));
     match kind {
         Number => number(s).map(|x| json!(x)).ok_or_else(|| tf("`{}` is not a number", &[s])),
+        RoofPitch => roof_pitch(s).map(|x| json!(x)).ok_or_else(|| t("Degrees or pitch (6:12 or 6/12)").to_string()),
         Length | LengthIf | Height => length(s).map(|x| json!(x)),
         Limit(_) if s.trim().is_empty() => Ok(Value::Null),
         Limit(_) => length(s).map(|x| json!(x)),
@@ -1763,15 +1779,24 @@ impl BimApp {
         let (true, &[i]) = (roof, picked.as_slice()) else { return };
         let Some(line) = sk.lines.get(i) else { return };
         let current = line.slope.filter(|s| *s > 0.0).map_or_else(String::new, |s| text(&json!(s)));
+        let mut defines = line.defines_slope.unwrap_or(true);
+        if ui.checkbox(&mut defines, t("Defines Slope")).changed()
+            && let Some(line) = self.sketch.as_mut().and_then(|sk| sk.lines.get_mut(i))
+        {
+            line.defines_slope = Some(defines);
+        }
+        if !defines {
+            return;
+        }
         let mut typed = None;
         grid(ui, ("sketch-slope", i), |ui| {
             let name = ui.label(t("Slope"));
-            typed = self.field(ui, 1 + i as Id, "sketch-slope", current, name.id, t("Roof's slope"));
+            typed = self.field(ui, 1 + i as Id, "sketch-slope", current, name.id, t("Degrees or pitch (6:12 or 6/12)"));
             ui.end_row();
         });
         let Some(typed) = typed else { return };
         let max = bimcraft_core::model::MAX_SLOPE;
-        match Some(typed.trim()).filter(|s| !s.is_empty()).map_or(Some(0.0), |s| number(s).filter(|x| (0.0..=max).contains(x))) {
+        match if typed.trim().is_empty() { Some(0.0) } else { roof_pitch(&typed) } {
             Some(slope) => {
                 if let Some(l) = self.sketch.as_mut().and_then(|sk| sk.lines.get_mut(i)) {
                     l.slope = Some(slope);
@@ -1779,7 +1804,7 @@ impl BimApp {
             }
             None => {
                 self.status = Status {
-                    text: tf("Slope: a number of degrees from 0 to {}, or blank for the roof's", &[&max.to_string()]),
+                    text: tf("Degrees from 0 to {}, or positive pitch (6:12 or 6/12). Blank inherits.", &[&max.to_string()]),
                     error: true,
                 };
             }
@@ -2166,7 +2191,7 @@ impl BimApp {
                                 select = Some(other);
                             }
                         }
-                        Text | Number | Length | LengthIf | Point | PaperPoint | Outline | Height | Limit(_) => {
+                        Text | Number | RoofPitch | Length | LengthIf | Point | PaperPoint | Outline | Height | Limit(_) => {
                             // Blank across a selection may be values that differ, not nothing.
                             let hint = match kind {
                                 Limit(hint) if ids.len() == 1 => t(hint),

@@ -48,6 +48,85 @@ fn tan(degrees: f64) -> f64 {
 }
 
 #[test]
+fn roof_sketch_defines_slope_makes_a_shed_and_edits_in_one_history_step() {
+    let mut s = Session::new();
+    let id = run(&mut s, "roof", json!({"boundary": [[0,0],[3048,0],[3048,1219.2],[0,1219.2]], "slope": 20}))["id"].as_u64().unwrap();
+    let wall = run(&mut s, "wall", json!({"points": [[1524,100],[1524,1119.2]], "attach_top": id}))["ids"][0].as_u64().unwrap();
+    let before = s.model.clone();
+    let mut lines = run(&mut s, "edit_boundary", json!({"id": id}))["sketch"].clone();
+    for (i, line) in lines.as_array_mut().unwrap().iter_mut().enumerate() {
+        line["defines_slope"] = json!(i == 0);
+        line["slope"] = json!(26.56505117707799);
+    }
+    let steps = s.history().len();
+    run(&mut s, "edit_boundary", json!({"id": id, "sketch": lines}));
+    assert_eq!(s.history().len(), steps + 1);
+    assert_eq!(roof_of(&s, id).gables, vec![1, 2, 3]);
+    let faces = s.model.roof_faces(roof_of(&s, id)).unwrap();
+    assert_eq!(faces.len(), 1);
+    let plane = faces[0].1;
+    assert!(near(plane.at(P2(1524.0, 1219.2)) - plane.at(P2(1524.0, 0.0)), 609.6), "24 inches rise over 48 inches run, south edge low");
+    assert!(near(top(&s, wall, 1524.0, 609.6), plane.at(P2(1524.0, 609.6))), "attached wall follows changed underside");
+    let after = s.model.clone();
+    run(&mut s, "undo", json!({}));
+    assert_eq!(*s.model, *before);
+    run(&mut s, "redo", json!({}));
+    assert_eq!(*s.model, *after);
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("shed.bimcraft");
+    run(&mut s, "save", json!({"path": path}));
+    let mut reopened = Session::new();
+    run(&mut reopened, "open", json!({"path": path}));
+    assert_eq!(reopened.model.roof_faces(roof_of(&reopened, id)).unwrap(), faces);
+    assert!(near(top(&reopened, wall, 1524.0, 609.6), plane.at(P2(1524.0, 609.6))));
+    let read = run(&mut reopened, "edit_boundary", json!({"id": id}));
+    for (i, line) in read["sketch"].as_array().unwrap().iter().enumerate() {
+        assert_eq!(line["defines_slope"], json!(i == 0));
+    }
+    assert!(roof_of(&reopened, id).sketch.iter().all(|l| l.slope.is_none()));
+    // Reactivate a former gable through the same command, retaining its independent pitch.
+    let mut lines = read["sketch"].clone();
+    lines[2]["defines_slope"] = json!(true);
+    lines[2]["slope"] = json!(45);
+    run(&mut reopened, "edit_boundary", json!({"id": id, "sketch": lines}));
+    assert_eq!(roof_of(&reopened, id).gables, vec![1, 3]);
+    let slopes = pitches(&reopened, id);
+    assert_eq!(slopes.len(), 2);
+    assert!(near(slopes[0], 0.5) && near(slopes[1], 1.0));
+}
+
+#[test]
+fn roof_sketch_defines_slope_creates_a_shed_and_normalizes_automatic_gables() {
+    let mut s = Session::new();
+    let lines = json!([
+        {"start": [0,0], "end": [8000,0], "defines_slope": true, "slope": 30},
+        {"start": [8000,0], "end": [8000,6000], "defines_slope": false},
+        {"start": [8000,6000], "end": [0,6000], "defines_slope": false},
+        {"start": [0,6000], "end": [0,0], "defines_slope": false}
+    ]);
+    let id = run(&mut s, "roof", json!({"sketch": lines, "overhang": 100}))["id"].as_u64().unwrap();
+    assert_eq!(roof_of(&s, id).gables, vec![1, 2, 3]);
+    assert_eq!(s.model.roof_faces(roof_of(&s, id)).unwrap().len(), 1);
+    assert_eq!(roof_of(&s, id).boundary[0], P2(-100.0, -100.0));
+    let id = run(&mut s, "roof", json!({"boundary": rect(), "gable": true}))["id"].as_u64().unwrap();
+    let mut lines = run(&mut s, "edit_boundary", json!({"id": id}))["sketch"].clone();
+    assert_eq!(lines[1]["defines_slope"], json!(false));
+    run(&mut s, "edit_boundary", json!({"id": id, "sketch": lines}));
+    assert!(roof_of(&s, id).gable, "an unchanged choice preserves automatic gables");
+    lines[1]["defines_slope"] = json!(true);
+    run(&mut s, "edit_boundary", json!({"id": id, "sketch": lines}));
+    assert!(!roof_of(&s, id).gable);
+    assert_eq!(roof_of(&s, id).gables, vec![3]);
+    let mut lines = run(&mut s, "edit_boundary", json!({"id": id}))["sketch"].clone();
+    for l in lines.as_array_mut().unwrap() {
+        l["defines_slope"] = json!(false);
+    }
+    let steps = s.history().len();
+    assert!(fails(&mut s, "edit_boundary", json!({"id": id, "sketch": lines})).contains("none of its edges slopes"));
+    assert_eq!(s.history().len(), steps, "invalid draft consumes no history");
+}
+
+#[test]
 fn a_rectangle_with_two_edges_at_30_degrees_and_two_at_45_has_faces_at_those_pitches() {
     let mut s = Session::new();
     // South and north at 30°, east and west at 45°.

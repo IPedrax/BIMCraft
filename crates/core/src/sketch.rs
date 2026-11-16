@@ -37,6 +37,8 @@ pub struct SketchLine {
     /// and a window carry it; the roof keeps it as `slopes`, and no sketch it keeps holds one (`check`). None: not said, so an
     /// edit leaves its edges the slope they had.
     pub slope: Option<f64>,
+    /// Command/draft only: false makes the edges along this line upright. Stored on the roof as `gables`.
+    pub defines_slope: Option<bool>,
 }
 
 crate::curve_struct! {
@@ -52,20 +54,37 @@ crate::curve_struct! {
         invisible: bool,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         slope: Option<f64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        defines_slope: Option<bool>,
     }
 }
 
 impl TryFrom<RawSketchLine> for SketchLine {
     type Error = String;
     fn try_from(r: RawSketchLine) -> Result<SketchLine, String> {
-        Ok(SketchLine { id: r.id, guid: r.guid, curve: r.fields().curve()?, style: r.style, invisible: r.invisible, slope: r.slope })
+        Ok(SketchLine {
+            id: r.id,
+            guid: r.guid,
+            curve: r.fields().curve()?,
+            style: r.style,
+            invisible: r.invisible,
+            slope: r.slope,
+            defines_slope: r.defines_slope,
+        })
     }
 }
 
 impl From<SketchLine> for RawSketchLine {
     fn from(l: SketchLine) -> RawSketchLine {
-        let mut r =
-            RawSketchLine { id: l.id, guid: l.guid, style: l.style, invisible: l.invisible, slope: l.slope, ..RawSketchLine::default() };
+        let mut r = RawSketchLine {
+            id: l.id,
+            guid: l.guid,
+            style: l.style,
+            invisible: l.invisible,
+            slope: l.slope,
+            defines_slope: l.defines_slope,
+            ..RawSketchLine::default()
+        };
         r.set(&l.curve);
         r
     }
@@ -79,7 +98,7 @@ impl From<Line> for SketchLine {
 
 impl From<Curve> for SketchLine {
     fn from(curve: Curve) -> SketchLine {
-        SketchLine { id: 0, guid: Guid::default(), curve, style: None, invisible: false, slope: None }
+        SketchLine { id: 0, guid: Guid::default(), curve, style: None, invisible: false, slope: None, defines_slope: None }
     }
 }
 
@@ -576,6 +595,9 @@ pub fn check(who: &str, lines: &[SketchLine]) -> Result<(), String> {
     }
     if let Some(i) = lines.iter().position(|l| l.slope.is_some()) {
         return Err(format!("{who}: sketch line {i} has a `slope`, which a roof keeps as its `slopes`, never in its sketch"));
+    }
+    if let Some(i) = lines.iter().position(|l| l.defines_slope.is_some()) {
+        return Err(format!("{who}: sketch line {i} has `defines_slope`, which a roof keeps as its `gables`, never in its sketch"));
     }
     let pieces: usize = lines.iter().map(|l| l.curve.drawn_len().saturating_sub(1)).sum();
     if pieces > MAX_PIECES {

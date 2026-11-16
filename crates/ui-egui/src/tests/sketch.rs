@@ -361,6 +361,23 @@ fn a_picked_line_of_a_roofs_sketch_shows_its_slope_in_properties_and_sets_it_in_
         assert_eq!(slope(&h), "20", "rev {rev}");
         assert_eq!(field(&h, roof, "slopes").as_array().map(Vec::len), Some(4), "nothing is the roof's until Finish");
         assert_eq!(field(&h, roof, "slopes"), json!([0.0, 45.0, 0.0, 45.0]), "rev {rev}");
+        for typed in ["6:12", "6/12", "1/2", " 6 : 12 "] {
+            type_into(&mut h, "Slope", typed);
+            key(&mut h, Key::Enter);
+            assert_eq!(slope(&h), "26.57", "{typed}: rev {rev}");
+        }
+        for typed in ["6:0", "6/0", "0:12", "0/12", "-6:12", "6/-12", "6:12:1", "1/2/3", "NaN:12", "6:inf", "60:1"] {
+            type_into(&mut h, "Slope", typed);
+            key(&mut h, Key::Enter);
+            assert!(h.state().status.error, "{typed}: rev {rev}");
+            assert_eq!(slope(&h), "26.57", "{typed}: rev {rev}");
+        }
+        pick(&mut h, Role::CheckBox, "Defines Slope");
+        assert!(h.query_by_role_and_label(Role::TextInput, "Slope").is_none());
+        pick(&mut h, Role::CheckBox, "Defines Slope");
+        assert_eq!(slope(&h), "26.57", "disabling an edge preserves its pitch");
+        type_into(&mut h, "Slope", "20");
+        key(&mut h, Key::Enter);
         // Blank is the roof's again, and a number out of range is refused, saying so, the line keeping the slope it had.
         type_into(&mut h, "Slope", "90");
         key(&mut h, Key::Enter);
@@ -393,5 +410,80 @@ fn a_picked_line_of_a_roofs_sketch_shows_its_slope_in_properties_and_sets_it_in_
         key(&mut f, Key::Escape);
         click(&mut f, P2(4000.0, 6000.0));
         assert!(f.query_by_role_and_label(Role::TextInput, "Slope").is_none(), "rev {rev}");
+    }
+}
+
+#[test]
+fn roof_pitch_in_the_3d_inspector_accepts_ratios_and_keeps_edge_overrides() {
+    let mut h = bimcraft(SLOPED);
+    let roof = ids(&h, "roof")[0];
+    press(&mut h, "Default 3D View");
+    h.state_mut().selection = vec![roof];
+    h.run();
+    let overrides = field(&h, roof, "slopes");
+    for (typed, expected) in
+        [("6:12", 26.56505117707799), ("6/12", 26.56505117707799), ("6:0", 26.56505117707799), ("22.5", 22.5), ("0", 0.0)]
+    {
+        type_into(&mut h, "Slope (°)", typed);
+        key(&mut h, Key::Enter);
+        assert!((field(&h, roof, "slope").as_f64().unwrap() - expected).abs() < 1e-12, "{typed}");
+        assert_eq!(field(&h, roof, "slopes"), overrides);
+        if typed == "6:0" {
+            assert!(h.state().status.error);
+        }
+    }
+}
+
+#[test]
+fn roof_sketch_defines_slope_can_be_cancelled_then_finished_as_a_shed() {
+    for rev in [false, true] {
+        let script = format!("{BOX}\n{SLOPED}");
+        let mut h = if rev { app(&script) } else { bimcraft(&script) };
+        let roof = ids(&h, "roof")[0];
+        let original = h.state().session.model.clone();
+        let steps = h.state().session.history().len();
+        for cancel in [true, false] {
+            h.state_mut().selection = vec![roof];
+            h.state_mut().edit_boundary();
+            h.run();
+            key(&mut h, Key::Escape);
+            for at in [P2(8000.0, 3000.0), P2(4000.0, 6000.0), P2(0.0, 3000.0)] {
+                click(&mut h, at);
+                pick(&mut h, Role::CheckBox, "Defines Slope");
+                assert!(h.query_by_role_and_label(Role::TextInput, "Slope").is_none());
+            }
+            click(&mut h, P2(4000.0, 0.0));
+            type_into(&mut h, "Slope", "6/12");
+            key(&mut h, Key::Enter);
+            if !cancel && let Ok(folder) = std::env::var("BIMCRAFT_ROOF_DUMP") {
+                std::fs::create_dir_all(&folder).unwrap();
+                for (look, dark, light_canvas) in [("light", false, false), ("dark", true, false), ("dark-light-canvas", true, true)] {
+                    h.ctx.set_theme(if dark { egui::ThemePreference::Dark } else { egui::ThemePreference::Light });
+                    h.state_mut().light_canvas = light_canvas;
+                    h.run();
+                    h.render()
+                        .unwrap()
+                        .save(std::path::Path::new(&folder).join(format!("roof-{}-{look}.png", if rev { "rev" } else { "bimcraft" })))
+                        .unwrap();
+                }
+            }
+            assert_eq!(*h.state().session.model, *original, "draft changes only until Finish");
+            press(&mut h, if cancel { "Cancel Edit Mode" } else { "Finish Edit Mode" });
+            if cancel {
+                assert_eq!(*h.state().session.model, *original);
+                assert_eq!(h.state().session.history().len(), steps);
+            }
+        }
+        assert_eq!(field(&h, roof, "gables"), json!([1, 2, 3]));
+        assert_eq!(h.state().session.history().len(), steps + 1);
+        let Some(Element::Roof(r)) = h.state().session.model.elements.get(roof) else { panic!("roof") };
+        let faces = h.state().session.model.roof_faces(r).unwrap();
+        assert_eq!(faces.len(), 1);
+        let plane = faces[0].1;
+        assert!((plane.at(P2(4000.0, 1219.2)) - plane.at(P2(4000.0, 0.0)) - 609.6).abs() < 1e-6);
+        h.state_mut().session.execute("undo", &json!({})).unwrap();
+        assert_eq!(*h.state().session.model, *original);
+        h.state_mut().session.execute("redo", &json!({})).unwrap();
+        assert_eq!(field(&h, roof, "gables"), json!([1, 2, 3]));
     }
 }

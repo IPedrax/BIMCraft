@@ -156,6 +156,14 @@ roof's sketch picked, sets it): the roof keeps it as the `slopes` of the edges a
 `sketch`, which `sketch::check` refuses to hold one. `edit_boundary` keeps the slope of an edge that stays or that a new
 line cuts in two (an edge lying along an old one), the lines' own `slope` (0 sets the roof's) winning over it, and without
 `slope` on the lines it keeps what the edges had; `edit_boundary` without a sketch gives the lines with the slope their edges share.
+A roof sketch line also takes `defines_slope`: false makes its edges upright, true slopes them. The selected line's
+Properties checkbox changes this draft until Finish; the shared `roof` / `edit_boundary` commands resolve it into
+the existing `gables` list and clear automatic `gable` when explicit choices are supplied. Reading the boundary returns
+the effective choice, including automatic gables. These line properties are command/draft data only, not new saved fields.
+The selected roof's Slope field and its sketch-line Slope field accept degrees or positive rise:run / rise/run
+(`6:12`, `6/12`, `1/2`), storing and displaying degrees. Blank (or bare zero) inherits only on an edge; bare zero on
+the roof makes it flat. A pitched roof still needs at least one slope-defining edge: Finish refuses an all-upright
+draft without changing the model. Project-wide slope formats and extrusion-profile editing are separate features.
 Over the walls (`floor_outline`, which `roof_footprint` grows by the overhang), a loop of them standing free inside the outer
 ones, joined to none of them and with no room in it, is a courtyard, open through the floor and the roof; one joined to them,
 or with a room in it, is rooms, and both run over it.
