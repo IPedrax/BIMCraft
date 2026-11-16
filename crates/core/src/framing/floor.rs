@@ -39,7 +39,7 @@
 //! Nothing is left out without a word: what can't be framed as the type says is in [`Framing::warnings`], naming what and
 //! why.
 
-use super::{EPS, Framing, Grain, Layout, MAX_STATIONS, Member, Role};
+use super::{EPS, Framing, Grain, Layout, MAX_STATIONS, Member, Role, spliced};
 use crate::derived::Group;
 use crate::geom::{self, P2};
 use crate::model::{Element, Floor, Function, Guid, Id, Model, TOL};
@@ -349,10 +349,11 @@ impl Support {
     }
 }
 
-/// Rim `rim` (along an edge from `a` across, running `u` across for each unit along it) spliced where it is longer than
-/// `longest` over the lines centred at `centres` across, none nearer its ends than `th`: in the frame its length runs in, along
-/// `across` for one square to the lines, else along its own `s`. A warning starts with `who` and calls a line `one`.
-fn spliced_rim(
+/// Board `rim` (a rim along an edge from `a` across, running `u` across for each unit along it; a roof's ridge board) spliced
+/// where it is longer than `longest` over the lines centred at `centres` across, none nearer its ends than `th`: in the frame
+/// its length runs in, along `across` for one lying across, else along its own `s`. A warning starts with `who` and calls a
+/// line `one`.
+pub(super) fn spliced_rim(
     rim: Member,
     (a, u): (f64, f64),
     centres: &[f64],
@@ -386,7 +387,8 @@ fn spliced_rim(
         .map(|(n, w)| {
             let part = [w.first().copied().unwrap_or(iv[0]), w.last().copied().unwrap_or(iv[1])];
             let (s, across) = if square { (rim.s, part) } else { (part, rim.across) };
-            // Level along it (a rim along `s` lies on a level floor), so its heights are the rim's.
+            // Level along its length (a rim along `s` lies on a level region, one across or a ridge board level along it),
+            // so its heights are the board's.
             let mut piece = Member::lying(
                 format!("{}/{n}", rim.key),
                 (rim.role, rim.grain),
@@ -1377,91 +1379,4 @@ pub(super) fn region(g: &Region) -> Framed {
     out.longest = longest;
     out.lines = lines.len();
     out
-}
-
-/// Where a line run `iv` along `s` is spliced over supports `over` (along it, in order, each clear of its ends), a piece's
-/// length taken along its slope (`sec` times its plan length) with its laps (each piece running `reach` past the support it
-/// ends over, the next starting `reach` before it): nowhere where it is no longer than `longest`; else into the fewest
-/// pieces no longer than that, and of those splits the one whose longest piece is shortest, ties going to the one whose
-/// splices lie nearest its low end (the eave), the first splice first. Where no split keeps every piece within `longest`,
-/// the split whose longest piece is shortest, in the fewest pieces, ties alike, and `too_long` is told the length along its
-/// slope of each piece longer than `longest`.
-pub(crate) fn spliced(over: &[f64], iv: [f64; 2], longest: f64, sec: f64, reach: f64, mut too_long: impl FnMut(f64)) -> Vec<f64> {
-    // The places a piece runs between: the run's start (0), each support, the run's end (`last`).
-    let last = over.len() + 1;
-    let place = |k: usize| if k == 0 { iv[0] } else { over.get(k - 1).copied().unwrap_or(iv[1]) };
-    // A piece from place `a` to place `b`, along its slope, its laps within the run.
-    let piece = |a: usize, b: usize| {
-        let from = if a == 0 { iv[0] } else { (place(a) - reach).max(iv[0]) };
-        let to = if b == last { iv[1] } else { (place(b) + reach).min(iv[1]) };
-        (to - from) * sec
-    };
-    // From each place to the end: the shortest the longest piece can be, in as many pieces as it takes.
-    let mut least = vec![f64::INFINITY; last + 1];
-    if let Some(l) = least.get_mut(last) {
-        *l = 0.0;
-    }
-    for a in (0..last).rev() {
-        let most = (a + 1..=last).map(|b| piece(a, b).max(least.get(b).copied().unwrap_or(f64::INFINITY))).fold(f64::INFINITY, f64::min);
-        if let Some(l) = least.get_mut(a) {
-            *l = most;
-        }
-    }
-    let first = least.first().copied().unwrap_or(f64::INFINITY);
-    let cap = if first <= longest + EPS { longest } else { first };
-    // From each place to the end with no piece longer than `cap`: the fewest pieces, and of those the shortest longest one.
-    let mut best: Vec<Option<(usize, f64)>> = vec![None; last + 1];
-    if let Some(b) = best.get_mut(last) {
-        *b = Some((0, 0.0));
-    }
-    for a in (0..last).rev() {
-        let mut here: Option<(usize, f64)> = None;
-        for b in a + 1..=last {
-            let len = piece(a, b);
-            if len > cap + EPS {
-                break;
-            }
-            let Some(Some((count, most))) = best.get(b).copied() else { continue };
-            let it = (count + 1, most.max(len));
-            if here.is_none_or(|(c, m)| it.0 < c || (it.0 == c && it.1 < m - EPS)) {
-                here = Some(it);
-            }
-        }
-        if let Some(h) = best.get_mut(a) {
-            *h = here;
-        }
-    }
-    let Some(Some((count, most))) = best.first().copied() else {
-        too_long(piece(0, last));
-        return Vec::new();
-    };
-    // The fewest pieces from each place to the end, none longer than `most`; then from the start, each piece to the nearest
-    // place from which the rest still takes no more pieces than are left.
-    let mut fewest: Vec<Option<usize>> = vec![None; last + 1];
-    if let Some(f) = fewest.get_mut(last) {
-        *f = Some(0);
-    }
-    for a in (0..last).rev() {
-        let n =
-            (a + 1..=last).take_while(|b| piece(a, *b) <= most + EPS).filter_map(|b| fewest.get(b).copied().flatten()).min().map(|n| n + 1);
-        if let Some(f) = fewest.get_mut(a) {
-            *f = n;
-        }
-    }
-    let mut chosen: Vec<f64> = Vec::new();
-    let (mut a, mut left) = (0, count);
-    while a != last && left > 0 {
-        let next =
-            (a + 1..=last).take_while(|b| piece(a, *b) <= most + EPS).find(|b| fewest.get(*b).copied().flatten().is_some_and(|n| n < left));
-        let Some(b) = next else { break };
-        let len = piece(a, b);
-        if len > longest + EPS {
-            too_long(len);
-        }
-        if b != last {
-            chosen.push(place(b));
-        }
-        (a, left) = (b, left - 1);
-    }
-    chosen
 }

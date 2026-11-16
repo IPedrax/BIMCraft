@@ -293,12 +293,11 @@ pub(crate) fn check_with(s: &mut Session, id: Id, walls: &[Id], allow: Allow) ->
         for (name, h) in &rf.holes {
             assert!(!quad_meets(&q, h), "{what} is in {name}; {}", ctx());
         }
-        // A rafter's piece from stock, or warned of; a ridge board or a rim longer than all of it is spliced on site, as the
-        // cut list says (no stock).
+        // A rafter's, a ridge board's or a rim's piece from stock, or warned of (and no stock in the cut list).
         if rf.t.stock.is_empty() {
             assert!(m.stock.is_none(), "{what}: a stock, of none");
         } else if m.length > longest_stock + 0.01 {
-            let line = m.role == "rafter" || m.role == "trimmer";
+            let line = ["rafter", "trimmer", "rim", "ridge"].contains(&m.role.as_str());
             assert!(!line || r.warned("longer than any stock"), "{what}: {} long, more than the stock; {}", m.length, ctx());
             assert!(m.stock.is_none(), "{what}: a stock for {}", m.length);
         } else {
@@ -564,7 +563,10 @@ fn shed_gable_hip_and_l_roofs_hold_at_every_orientation_slope_and_winding() {
                         }
                         "gable" => {
                             assert_eq!(hips, 0, "{:?}", r.warnings);
-                            assert_eq!(r.role("ridge").len(), 1, "one ridge board: {:?}", r.warnings);
+                            // One board, spliced where it is longer than the stock (`face/<i>/ridge/<edge>/<n>`).
+                            let boards: std::collections::BTreeSet<String> =
+                                r.role("ridge").iter().map(|m| m.key.split('/').take(4).collect::<Vec<_>>().join("/")).collect();
+                            assert_eq!(boards.len(), 1, "one ridge board: {:?}", r.warnings);
                         }
                         "hip" => assert_eq!(hips, 4, "one warning a hip: {:?}", r.warnings),
                         _ => assert!(hips >= 5, "the L's hips and its valley: {:?}", r.warnings),

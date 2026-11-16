@@ -2419,7 +2419,7 @@ other_files(
          `opening/<…>/header/<start or end>/<ply>`, a pair under a wall `under/<wall GUID>/<0 or 1>/<piece>`, blocking \
          `blocking/<key of the line on its right, at less across>/<row>`; a roof's are a floor's under `face/<slope>/` (`rafter` \
          for `joist`: `face/0/rafter/<station>/<piece>`, `face/0/edge/<edge>/<piece>`, `face/0/rim/<edge>`), a ridge board \
-         `face/<lower slope>/ridge/<edge>`; slopes are numbered as the roof's faces are, so an edit to its footprint that \
+         `face/<lower slope>/ridge/<edge>` (a rim or a ridge board spliced at a stock length adds `/<n>`); slopes are numbered as the roof's faces are, so an edit to its footprint that \
          changes how they meet may number them anew",
         crate::framing::query,
     ),

@@ -114,7 +114,8 @@ fn a_ridge_board_lies_in_the_structure_layer_at_any_slope_and_where_the_slopes_d
     // thickness times the slope over the structure layer's top, through the sheathing and out of the roof from 45° up, and
     // where the slopes differ the deeper one's depth stood over the shallower slope by far more.
     for (slope, slopes) in [(30.0f64, json!([])), (45.0, json!([])), (60.0, json!([])), (75.0, json!([])), (30.0, json!([45, 0, 20, 0]))] {
-        let mut s = session(json!({}));
+        // Stock long enough that the 8000 board is one piece.
+        let mut s = session(json!({"stock": [9800]}));
         let id = roof(&mut s, json!({"boundary": rect(0.0, 0.0, 8000.0, 5000.0), "slope": slope, "slopes": slopes, "gables": [1, 3]}));
         // Gable walls under its rakes, up to the ridge: the board over their top plates.
         let ws = walls_under(&mut s, id, &[[[500.0, 300.0], [500.0, 4700.0]], [[7500.0, 300.0], [7500.0, 4700.0]]]);
@@ -253,8 +254,12 @@ fn a_point_along_a_straight_eave_leaves_no_seam_one_ridge_board_and_an_even_grid
             let ridges = r.role("ridge");
             match expect_ridge {
                 Some(len) => {
-                    assert_eq!(ridges.len(), 1, "{ctx}");
-                    assert!((ridges[0].length - len).abs() < 0.02, "{ctx}: {}", ridges[0].length);
+                    // One board, spliced where it is longer than the stock (`face/<i>/ridge/<edge>/<n>`).
+                    let boards: std::collections::BTreeSet<String> =
+                        ridges.iter().map(|m| m.key.split('/').take(4).collect::<Vec<_>>().join("/")).collect();
+                    assert_eq!(boards.len(), 1, "{ctx}");
+                    let whole: f64 = ridges.iter().map(|m| m.length).sum();
+                    assert!((whole - len).abs() < 0.02, "{ctx}: {whole}");
                 }
                 None => assert!(ridges.is_empty(), "{ctx}"),
             }

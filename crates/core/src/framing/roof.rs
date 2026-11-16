@@ -23,6 +23,8 @@
 //!   line, a level box wholly in the layer: from the rafters' underside on the line (the higher of the two) to the lower of
 //!   their tops at its faces, so each rafter's plumb cut is flush with its top, and its bottom half the board's thickness
 //!   times the slope below the board's. The rafters of both slopes stop at its faces. Without `ridge`, they run to the line.
+//!   An eave board or a ridge board longer than the longest `stock` length is spliced over the rafters that end on it, as a
+//!   floor's rim is over its joists ([`super::floor::spliced_rim`]).
 //! - No hip or valley rafter is made: the jack rafters end at the line, square where their nearer corner meets it, and each
 //!   hip, valley or other line where slopes meet but a ridge (where a joined roof meets the one it joins) gives one warning.
 //! - A wall under the roof bears the rafters where its top, at either face of it, is within [`BEARING`] of their underside,
@@ -39,11 +41,11 @@
 //!
 //! Keys are each slope's: `face/<i>/rafter/<station>/<piece>`, `face/<i>/edge/<edge>/<piece>`, `face/<i>/rim/<edge>`,
 //! `face/<i>/opening/<index or shaft GUID>/…`, `face/<i>/blocking/…`, a ridge board `face/<i>/ridge/<edge>` (of the lower
-//! numbered of its two slopes, its edge counted round that slope's loops). An edge is counted round its slope's outline as
+//! numbered of its two slopes, its edge counted round that slope's loops); a spliced rim's or ridge board's pieces add `/<n>`. An edge is counted round its slope's outline as
 //! `roof_faces` gives it, so an edit to the footprint that changes how the slopes meet (a point added, a gable) may number
 //! the slopes and their edges anew; stations are counted from the slope's least `across` and stay while it does.
 
-use super::floor::{BEARING, Hole, MAX_BLOCKS, Region, Splice, Support, Top, Words, ccw, gather, meets, region, strip};
+use super::floor::{BEARING, Hole, MAX_BLOCKS, Region, Splice, Support, Top, Words, ccw, gather, meets, region, spliced_rim, strip};
 use super::{EPS, Framing, Grain, MAX_STATIONS, Member, Role};
 use crate::geom::{self, P2};
 use crate::model::{Element, Function, Id, Model, Roof, TOL};
@@ -628,6 +630,32 @@ pub fn roof(m: &Model, id: Id) -> Result<Option<Framing>, String> {
         }
         out.span = Some(out.span.unwrap_or(0.0).max(framed.longest));
         bearing.extend(framed.bearing);
+    }
+    // Each ridge board longer than the longest stock length, spliced over the rafters that end on it, as a rim is: where
+    // their top ends' centres lie along it, in its slope's frame.
+    let rafters: Vec<P2> = out
+        .members
+        .iter()
+        .filter(|m| m.role == Role::Rafter)
+        .flat_map(|m| {
+            let [o, x] = out.frame_of(m);
+            let c = (m.across[0] + m.across[1]) / 2.0;
+            m.s.map(|s| o + x * s + x.perp() * c)
+        })
+        .collect();
+    let members = std::mem::take(&mut out.members);
+    for board in members {
+        if board.role != Role::Ridge {
+            out.members.push(board);
+            continue;
+        }
+        let [o, x] = out.frame_of(&board);
+        let near = |p: &P2| {
+            let s = (*p - o).dot(x);
+            s >= board.s[0] - th - EPS && s <= board.s[1] + th + EPS
+        };
+        let centres: Vec<f64> = rafters.iter().filter(|p| near(p)).map(|p| (*p - o).dot(x.perp())).collect();
+        out.members.extend(spliced_rim(board, (0.0, 0.0), &centres, (th, t.stock.last().copied()), ("", "rafter"), &mut out.warnings));
     }
     bearing.sort();
     bearing.dedup();
