@@ -66,6 +66,8 @@ pub struct State {
     pub(crate) input: String,
     /// The providers the user has agreed to send the project's contents to, this session.
     agreed: BTreeSet<&'static str>,
+    /// The providers the Classification Manager has been agreed to send its briefs to, this session.
+    pub(crate) classify_agreed: BTreeSet<&'static str>,
     /// The environment variable `name` holds, if any: a test gives its own, so the machine's keys are never used.
     pub env: fn(&str) -> Option<String>,
     /// Tokens the providers have counted for this installation, by the project they were spent on (its file's path, none for a project
@@ -96,6 +98,7 @@ impl Default for State {
             problem: None,
             input: String::new(),
             agreed: BTreeSet::new(),
+            classify_agreed: BTreeSet::new(),
             env: |name| std::env::var(name).ok(),
             usage: BTreeMap::new(),
             usage_filter: None,
@@ -120,6 +123,22 @@ impl State {
     /// The key a send uses: the environment's, else the typed one.
     pub(crate) fn key(&self) -> String {
         self.env_key().unwrap_or_else(|| self.key.0.trim().to_string())
+    }
+
+    /// Why a request can't go out on this window's own key now, as the palette says it: no network, no usable model id, a locked
+    /// key or none. The Classification Manager asks with it; a key lent in a Co-Work session is never used there.
+    pub(crate) fn unready(&self) -> Option<String> {
+        if self.chat.is_none() {
+            Some(t("The assistant needs the network, which this window was started without.").to_string())
+        } else if !model_ok(self.model.trim()) {
+            Some(t("Give a model id: letters, digits, dots and dashes only.").to_string())
+        } else if key_ok(&self.key()) {
+            None
+        } else if self.locked() {
+            Some(t(LOCKED).to_string())
+        } else {
+            Some(t("No API key yet. Add one in the Assistant settings.").to_string())
+        }
     }
 
     /// The window's project was replaced (File > New, Open, Recover): the conversation was about the old one, and a reply on its way

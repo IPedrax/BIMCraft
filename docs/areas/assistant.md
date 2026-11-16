@@ -144,6 +144,13 @@ with AI and ask for a wall; for a quick look at the wire without the window, giv
 `Msg::User` in a scratch program. What a real provider does that a recorded reply cannot show (a model id that no longer exists, a
 schema one provider refuses) shows only that way, so when a provider changes, check it live.
 
+## The Classification Manager
+
+Manage > Classification Manager's AI step asks the model of these settings too, on the same key, through the same `complete` and
+network, and says before its first request of the session what it sends and to which provider. It runs no tool (a model that calls
+one is told the task has none), and its tokens count with the chat's, by project. The whole of it is in
+[classification](classification.md#the-ai-step).
+
 ## In a Co-Work session
 
 The chat is the host's and everyone's: a guest's palette shows it and sends to it, each message runs as its sender's, and whoever

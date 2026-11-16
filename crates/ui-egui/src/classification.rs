@@ -1,16 +1,16 @@
 //! Manage > Classification Manager: a classification system picked, its tables loaded from the user's files and its
-//! parameters made, then codes given by hand to what's selected, or proposed by the user's AI agent and reviewed before
+//! parameters made, then codes given by hand to what's selected, or proposed by the AI assistant's model and reviewed before
 //! they're written. It stays open beside the views, so the selection can change under it. The logic is the core's
-//! (`bimcraft_core::classification`); the agent is run by `bimcraft_agent`, on a thread of its own.
-//!
-//! Also Settings > Agents: which agent, how it's called, and a test that it's there.
+//! (`bimcraft_core::classification`); the model is asked through `bimcraft_assistant`, with the provider, model and key of the
+//! Assistant settings, on a thread of its own.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-use bimcraft_agent::{self as agent, Preset};
-use bimcraft_core::classification::{self as cls, BriefAsk, Proposal, SystemDef, Table};
+use bimcraft_assistant::net::Net;
+use bimcraft_assistant::{Chat, Done, MAX_HISTORY, Msg, Provider, Usage, complete};
+use bimcraft_core::classification::{self as cls, Brief, BriefAsk, Proposal, SystemDef, Table};
 use bimcraft_core::ids::Id;
 use bimcraft_core::model::{Model, Scope};
 use bimcraft_i18n::msg;
@@ -24,8 +24,12 @@ use crate::BimApp;
 use crate::lang::{t, tf};
 use crate::style::pal;
 
-/// What Settings > Agents's Test found: filled by its thread.
-pub(crate) type AgentTest = Arc<Mutex<Option<Result<String, String>>>>;
+/// How many rows of the brief one request asks about: an answer of a few thousand tokens, well inside a reply's length.
+const BATCH: usize = 25;
+
+/// What a batch is asked with, before the brief: the assistant's model has its tools, and this task needs none.
+const LEAD: &str = "This is a task from BIMCraft's Classification Manager, not a chat: use no tool, everything you need is below. \
+Answer with the JSON object only.";
 
 /// How long a code given by hand blinks.
 const FLASH: f64 = 0.8;
@@ -79,6 +83,8 @@ struct Progress {
     finished: bool,
     /// When the batch being waited for was handed over.
     since: Option<std::time::Instant>,
+    /// Tokens the provider counted, not yet added to the project's.
+    usage: Usage,
 }
 
 /// An agent at work.
@@ -163,6 +169,11 @@ impl ClassificationManager {
             flash: None,
             depths: BTreeMap::new(),
         }
+    }
+
+    /// Whether the model is being asked.
+    pub(crate) fn busy(&self) -> bool {
+        self.run.is_some()
     }
 
     fn system_def(&self) -> Option<&'static SystemDef> {
@@ -283,6 +294,13 @@ impl BimApp {
             if d.table.is_empty() {
                 d.table = bound_tables(&self.session.model).into_iter().next().unwrap_or_default();
             }
+        }
+    }
+
+    /// Manage > Classification Manager (CI), opened; one already open stays as it is.
+    pub(crate) fn open_classification(&mut self) {
+        if self.classification.is_none() {
+            self.classification = Some(ClassificationManager::new(&self.session.model));
         }
     }
 
@@ -622,25 +640,16 @@ impl BimApp {
             ui.label(t("Load a system's table and its parameters first, on the System tab."));
             return;
         }
+        // The assistant's provider and model, and where they're set: the AI chat's settings, its key included.
         ui.horizontal(|ui| {
-            let program = self.agent.program();
-            let who = if self.agent.model.trim().is_empty() { program } else { format!("{program} · {}", self.agent.model.trim()) };
-            ui.label(tf("Agent: {} ({})", &[self.agent.preset.label(), &who]));
-            if ui.button(t("Agent Settings…")).clicked() {
-                self.settings_page = Some(crate::settings::Page::Agents);
+            let a = &self.assistant;
+            ui.label(RichText::new(format!("{} · {}", a.provider.name(), a.model.trim())).color(pal().muted));
+            if ui.button(t("Assistant settings")).clicked() {
+                self.settings_page = Some(crate::settings::Page::Assistant);
             }
         });
-        if !self.agent.consented {
-            ui.add_space(4.0);
-            ui.label(
-                RichText::new(t(
-                    "The agent you set is run on this computer and sends what it's given to its provider: each type's category, family, type name, materials, levels and hosts, and the tables' codes. BIMCraft itself sends nothing.",
-                ))
-                .color(pal().muted),
-            );
-            ui.checkbox(&mut self.agent.consented, t("I understand; let the agent see this project's types"));
-            return;
-        }
+        let unready = self.assistant.unready();
+        let agreed = self.assistant.classify_agreed.contains(self.assistant.provider.key());
         if d.run.is_none() && d.review.is_empty() {
             ui.horizontal(|ui| {
                 ui.label(t("Classify"));
@@ -664,8 +673,22 @@ impl BimApp {
                     }
                 }
             });
+            if let Some(why) = &unready {
+                ui.label(RichText::new(why).color(pal().muted));
+            } else if !agreed {
+                // Said before the first request of the session to this provider, as the AI chat says it before its first message.
+                ui.label(
+                    RichText::new(tf(
+                        "Asking the agent sends what it classifies to {}, on your API key: each type's category, family, type name, materials, levels, hosts and sizes, and the tables' candidate codes. Nothing is sent until you ask, and nothing is written until you apply what you tick.",
+                        &[self.assistant.provider.name()],
+                    ))
+                    .color(pal().muted),
+                );
+            }
             ui.horizontal(|ui| {
-                if ui.add(Button::new(t("Ask the Agent"))).clicked() {
+                // With no key (or no network) the button isn't there: the line above says why, and Assistant settings is the way.
+                let label = if agreed { t("Ask the Agent") } else { t("Agree and Ask the Agent") };
+                if unready.is_none() && ui.add(Button::new(label)).clicked() {
                     self.agent_start(ui.ctx(), d);
                 }
                 if ui
@@ -842,14 +865,20 @@ impl BimApp {
         }
     }
 
-    /// The brief made, cut into batches, and handed to the agent on a thread of its own.
+    /// The brief made, cut into batches, and asked of the assistant's model on a thread of its own, on the user's key.
     fn agent_start(&mut self, ctx: &Context, d: &mut ClassificationManager) {
+        if let Some(why) = self.assistant.unready() {
+            d.message = Some((why, true));
+            return;
+        }
+        let Some(net) = self.assistant.chat.as_ref().map(Chat::net) else { return };
+        let (provider, model_id, key) = (self.assistant.provider, self.assistant.model.trim().to_string(), self.assistant.key());
         let model = Arc::clone(&self.session.model);
         let ask = BriefAsk {
             tables: if d.tables_on.is_empty() { Vec::new() } else { d.tables_on.iter().cloned().collect() },
             rows: Some(if d.rows == Rows::All { "all" } else { "unclassified" }.into()),
             elements: if d.rows == Rows::Selection { self.selection.iter().map(|i| i.to_string()).collect() } else { Vec::new() },
-            candidates: Some(if self.agent.preset.reads_files() { 80 } else { 30 }),
+            candidates: Some(30),
         };
         if d.rows == Rows::Selection && self.selection.is_empty() {
             d.message = Some((t("Nothing is selected.").to_string(), true));
@@ -878,45 +907,31 @@ impl BimApp {
                 (r.key.clone(), RowInfo { label, category: r.category.clone(), ids: r.ids.clone() })
             })
             .collect();
-        let settings = self.agent.clone();
-        let reads = settings.preset.reads_files();
-        let jobs: Vec<agent::Job> = brief
-            .chunks(settings.batch())
-            .iter()
-            .map(|b| {
-                let h = cls::handover(&model, b, reads);
-                agent::Job { instructions: h.instructions, schema: cls::answer_schema(), files: h.files, inline: h.inline }
-            })
-            .collect();
-        let progress = Arc::new(Mutex::new(Progress { total: jobs.len(), ..Progress::default() }));
+        let prompts: Vec<String> = brief.chunks(BATCH).iter().map(|b| prompt(&model, b)).collect();
+        let progress = Arc::new(Mutex::new(Progress { total: prompts.len(), ..Progress::default() }));
         let cancel = Arc::new(AtomicBool::new(false));
         let (p2, c2, ctx2) = (Arc::clone(&progress), Arc::clone(&cancel), ctx.clone());
-        let base = std::env::temp_dir().join(format!("bimcraft-classify-{}-{}", std::process::id(), model.uid));
-        std::thread::spawn(move || {
+        let spawned = std::thread::Builder::new().name("classify".into()).spawn(move || {
             let note = |f: &dyn Fn(&mut Progress)| {
                 if let Ok(mut p) = p2.lock() {
                     f(&mut p);
                 }
                 ctx2.request_repaint();
             };
-            for (n, job) in jobs.iter().enumerate() {
+            for (n, text) in prompts.iter().enumerate() {
                 if c2.load(Ordering::Relaxed) {
                     break;
                 }
-                let dir = base.join(format!("batch-{n:03}"));
-                let result = agent::prepare(&settings, job, &dir).and_then(|call| {
-                    let shown = call.shown();
-                    note(&|p| {
-                        p.log.push(shown.clone());
-                        p.since = Some(std::time::Instant::now());
-                    });
-                    agent::run(&call, &c2)
-                });
+                let at = std::time::Instant::now();
+                note(&|p| p.since = Some(at));
+                let mut used = Usage::default();
+                let result = ask_model(provider, net.as_ref(), &model_id, &key, text, &mut used);
+                note(&|p| p.usage.add(used));
                 match result {
-                    Ok(out) => match cls::json_in(&out.answer) {
+                    Ok(answer) => match cls::json_in(&answer) {
                         Some(v) => note(&|p| {
                             p.answers.push(v.clone());
-                            p.log.push(format!("batch {} answered in {} s", n + 1, out.took.as_secs()));
+                            p.log.push(format!("batch {} answered in {} s", n + 1, at.elapsed().as_secs()));
                         }),
                         None => note(&|p| p.log.push(format!("batch {}: the answer held no JSON", n + 1))),
                     },
@@ -927,21 +942,33 @@ impl BimApp {
                 }
                 note(&|p| p.done = n + 1);
             }
-            let _ = std::fs::remove_dir_all(&base);
             note(&|p| p.finished = true);
         });
+        if let Err(e) = spawned {
+            d.message = Some((format!("could not start the request: {e}"), true));
+            return;
+        }
+        self.assistant.classify_agreed.insert(provider.key());
         d.message = None;
+        d.refused.clear();
         d.run = Some(Run { progress, cancel, rows });
     }
 
-    /// Once a frame: an agent that's done has its answers read against the project for review.
+    /// Once a frame: the tokens counted go to the project's, as the AI chat's do, and a run that's done or cancelled has the
+    /// answers it got read against the project for review. A request still out when Cancel was pressed is given up on: its
+    /// answer goes nowhere.
     fn agent_tick(&mut self, d: &mut ClassificationManager) {
         let Some(run) = &d.run else { return };
-        let (finished, answers, error) = match run.progress.lock() {
-            Ok(p) => (p.finished, p.answers.clone(), p.error.clone()),
-            Err(_) => (true, Vec::new(), Some("the agent's thread failed".into())),
+        let cancelled = run.cancel.load(Ordering::Relaxed);
+        let (finished, answers, error, used) = match run.progress.lock() {
+            Ok(mut p) => (p.finished, p.answers.clone(), p.error.clone(), std::mem::take(&mut p.usage)),
+            Err(_) => (true, Vec::new(), Some("the agent's thread failed".into()), Usage::default()),
         };
-        if !finished {
+        if used != Usage::default() {
+            let project = self.session.path.as_ref().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+            self.assistant.add_usage(project, used);
+        }
+        if !finished && !cancelled {
             return;
         }
         let rows = run.rows.clone();
@@ -949,8 +976,14 @@ impl BimApp {
         for a in &answers {
             self.classification_take_answer(d, a, &rows);
         }
-        if let Some(e) = error {
+        if cancelled {
+            d.message = Some((t("Cancelled.").to_string(), false));
+        } else if let Some(e) = error {
             d.message = Some((e, true));
+        } else if d.review.is_empty() && !d.refused.is_empty() {
+            // Nothing to review: what was wrong with the answers is said here, or the window would show nothing.
+            let n = tf("{} answers left out", &[&d.refused.len().to_string()]);
+            d.message = Some((format!("{n}: {}", d.refused.iter().take(3).cloned().collect::<Vec<_>>().join("; ")), true));
         } else if answers.is_empty() {
             d.message = Some((t("The agent gave no answer.").to_string(), true));
         }
@@ -984,89 +1017,32 @@ impl BimApp {
         d.tab = Tab::Agent;
         self.classification = Some(d);
     }
+}
 
-    /// Settings > Agents, below the control port: the AI agent the Classification Manager asks.
-    pub(crate) fn agent_page(&mut self, ui: &mut Ui) {
-        ui.add_space(6.0);
-        ui.label(RichText::new(t("AI agent for classification")).strong());
-        ui.label(
-            RichText::new(t(
-                "BIMCraft runs the command line of an agent you have installed and signed in to. It opens no connection itself: the agent sends what it's given to its own provider.",
-            ))
-            .color(pal().muted),
-        );
-        ui.add_space(4.0);
-        let a = &mut self.agent;
-        Grid::new("agent-settings").num_columns(2).spacing(vec2(10.0, 6.0)).show(ui, |ui| {
-            ui.label(t("Agent"));
-            ComboBox::from_id_salt("agent-preset").selected_text(a.preset.label()).show_ui(ui, |ui| {
-                for p in Preset::ALL {
-                    ui.selectable_value(&mut a.preset, p, p.label());
-                }
-            });
-            ui.end_row();
-            ui.label(if a.preset == Preset::Custom { t("Command line") } else { t("Command") });
-            let hint = if a.preset == Preset::Custom { "my-agent {prompt_file} {answer_file}" } else { a.preset.program() };
-            ui.add_sized([300.0, 20.0], TextEdit::singleline(&mut a.command).hint_text(hint));
-            ui.end_row();
-            ui.label(t("Model"));
-            let hint = match a.preset {
-                Preset::Ollama => "qwen2.5:14b",
-                Preset::Claude => "sonnet",
-                _ => "",
-            };
-            ui.add_sized([300.0, 20.0], TextEdit::singleline(&mut a.model).hint_text(hint));
-            ui.end_row();
-            ui.label(t("More arguments"));
-            ui.add_sized([300.0, 20.0], TextEdit::singleline(&mut a.args));
-            ui.end_row();
-            ui.label(t("Wait up to"));
-            ui.add(egui::DragValue::new(&mut a.timeout).range(10..=agent::MAX_TIMEOUT).suffix(" s"));
-            ui.end_row();
-            ui.label(t("Rows a call"));
-            let mut batch = if a.batch == 0 { a.preset.batch() } else { a.batch };
-            if ui.add(egui::DragValue::new(&mut batch).range(1..=5000)).changed() {
-                a.batch = batch;
-            }
-            ui.end_row();
-        });
-        if self.agent.preset == Preset::Custom {
-            ui.label(
-                RichText::new(t(
-                    "{prompt_file} is the instructions, {schema_file} the answer's JSON Schema, {answer_file} where to write the answer (or print it), {dir} the task's folder and {model} the model. The prompt also comes on standard input.",
-                ))
-                .color(pal().muted)
-                .small(),
-            );
-        }
-        ui.add_space(6.0);
-        ui.horizontal(|ui| {
-            if ui.button(t("Test")).on_hover_text(t("Run the agent's --version to see it's there")).clicked() {
-                let slot = Arc::new(Mutex::new(None));
-                let (s2, settings, ctx) = (Arc::clone(&slot), self.agent.clone(), ui.ctx().clone());
-                std::thread::spawn(move || {
-                    let r = agent::version(&settings);
-                    if let Ok(mut s) = s2.lock() {
-                        *s = Some(r);
-                    }
-                    ctx.request_repaint();
-                });
-                self.agent_test = Some(slot);
-            }
-            let found = self.agent_test.as_ref().and_then(|s| s.lock().ok().and_then(|g| g.clone()));
-            match (&self.agent_test, found) {
-                (None, _) => {}
-                (Some(_), None) => {
-                    ui.spinner();
-                }
-                (Some(_), Some(Ok(v))) => {
-                    ui.label(RichText::new(v).color(pal().muted));
-                }
-                (Some(_), Some(Err(e))) => {
-                    ui.label(RichText::new(e).color(pal().error));
-                }
-            }
-        });
-        ui.checkbox(&mut self.agent.consented, t("Let the agent see the project's types when I ask it to classify"));
+/// What one batch is asked: the brief's instructions, the answer's JSON Schema and the brief itself, as Copy Brief puts them.
+fn prompt(m: &Model, b: &Brief) -> String {
+    let h = cls::handover(m, b, false);
+    format!("{LEAD}\n\n{}\nThe answer's JSON Schema:\n{}\n\n## Brief\n\n{}\n", h.instructions, cls::answer_schema(), h.inline)
+}
+
+/// One batch asked of the assistant's model through the assistant's own client and network (`complete`): the prompt as the
+/// user's message, and the model's words back, its tokens added to `used`. Its tools go with every request the assistant makes;
+/// a model that calls one anyway is told this task has none, twice at most. What goes out is held to the chat's cap.
+fn ask_model(provider: Provider, net: &dyn Net, model: &str, key: &str, prompt: &str, used: &mut Usage) -> Result<String, String> {
+    if prompt.len() > MAX_HISTORY {
+        return Err(format!("a batch is larger than the {} KB the assistant sends at once: classify fewer tables", MAX_HISTORY / 1000));
     }
+    let mut history = vec![Msg::user(prompt)];
+    for _ in 0..3 {
+        let reply = complete(provider, net, model, key, &history)?;
+        used.add(reply.usage);
+        if reply.calls.is_empty() {
+            return Ok(reply.text);
+        }
+        let no = "This task has no tools: answer with the JSON object only.";
+        let done = reply.calls.iter().map(|c| Done { id: c.id.clone(), name: c.name.clone(), text: no.into(), error: true }).collect();
+        history.push(Msg::Assistant(reply));
+        history.push(Msg::Results(done));
+    }
+    Err(format!("{} kept calling its tools instead of answering", provider.name()))
 }

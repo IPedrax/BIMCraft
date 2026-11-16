@@ -410,7 +410,7 @@ type Buttons<'a> = &'a [(Icon, &'a str, &'a str, Option<Tool>, bool)];
 
 /// The desktop's own two-letter shortcuts, which [`BimApp::shortcut`] takes before the commands'
 /// aliases, and what Keyboard Shortcuts (KS) calls them.
-const SHORTCUTS: [(&str, &str); 58] = [
+const SHORTCUTS: [(&str, &str); 59] = [
     ("3D", "3D View"),
     ("MD", "Modify"),
     ("SB", "Floor: Structural"),
@@ -471,6 +471,8 @@ const SHORTCUTS: [(&str, &str); 58] = [
     ("GD", "Graphic Display Options"),
     // Revit has none for its title blocks; no command or tool takes TB.
     ("TB", "Title Blocks"),
+    // Revit has no Classification Manager; CI is free there and here.
+    ("CI", "Classification Manager"),
 ];
 
 /// Every two-letter shortcut and what it does: the desktop's own, then the commands' aliases.
@@ -549,10 +551,6 @@ pub struct BimApp {
     /// Linux), unless `system_title_bar`, the user's ask for the system's (Settings > User Interface, kept in `settings.json`).
     pub own_title_bar: bool,
     pub system_title_bar: bool,
-    /// The AI agent the Classification Manager hands its briefs to: kept in `settings.json` (Settings > AI Agent).
-    pub agent: bimcraft_agent::Settings,
-    /// What Settings > AI Agent's Test found, once its thread is done.
-    agent_test: Option<classification::AgentTest>,
     /// Manage > Classification Manager, while it's open.
     classification: Option<classification::ClassificationManager>,
     /// The active view, which takes the tools: a tab of `views`, or one of `floating`.
@@ -1465,8 +1463,6 @@ impl BimApp {
             os_events: None,
             own_title_bar: false,
             system_title_bar: false,
-            agent: bimcraft_agent::Settings::default(),
-            agent_test: None,
             classification: None,
             sheet: first,
             tool: Tool::Modify,
@@ -2662,6 +2658,10 @@ impl BimApp {
                 self.open_title_blocks(None);
                 return true;
             }
+            "CI" => {
+                self.open_classification();
+                return true;
+            }
             "EU" | "UE" => {
                 if self.hidden_selection().0.is_empty() {
                     self.open_graphics(graphics::ELEMENTS_TAB);
@@ -3803,7 +3803,6 @@ impl BimApp {
         fresh.status = std::mem::take(&mut self.status);
         fresh.os_events = self.os_events.take();
         (fresh.own_title_bar, fresh.system_title_bar) = (self.own_title_bar, self.system_title_bar);
-        fresh.agent = std::mem::take(&mut self.agent);
         (fresh.thin, fresh.lang, fresh.snaps, fresh.ribbon_min) = (self.thin, self.lang, self.snaps, self.ribbon_min);
         (fresh.compact, fresh.profile, fresh.scale) = (self.compact, self.profile, self.scale);
         (fresh.tools_hidden, fresh.presets) = (std::mem::take(&mut self.tools_hidden), std::mem::take(&mut self.presets));
@@ -5050,10 +5049,10 @@ impl BimApp {
             });
             // New and seldom wanted: the first of Settings' tools handed over when the window is narrow.
             let tip = msg!(
-                "Classification Manager: a classification system's tables and parameters, codes picked by hand for the selection, or proposed by your AI agent"
+                "Classification Manager (CI): a classification system's tables and parameters, codes picked by hand for the selection, or proposed by the AI assistant"
             );
             if big_button(ui, Icon::Classify, "Classification Manager", self.classification.is_some(), tip).clicked() {
-                self.classification = Some(classification::ClassificationManager::new(&self.session.model));
+                self.open_classification();
             }
         });
         // Revit's Project Location: where the project stands, and what stands with it by shared coordinates.

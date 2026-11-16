@@ -494,16 +494,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "bimcraft-agent"
-version = "0.12.0"
-dependencies = [
- "rustix 1.1.5",
- "serde",
- "serde_json",
- "tempfile",
-]
-
-[[package]]
 name = "bimcraft-assistant"
 version = "0.12.0"
 dependencies = [
@@ -518,7 +508,6 @@ dependencies = [
 name = "bimcraft-cli"
 version = "0.12.0"
 dependencies = [
- "bimcraft-agent",
  "bimcraft-core",
  "bimcraft-dwg",
  "bimcraft-plugin",
@@ -614,7 +603,6 @@ dependencies = [
 name = "bimcraft-ui-egui"
 version = "0.12.0"
 dependencies = [
- "bimcraft-agent",
  "bimcraft-assistant",
  "bimcraft-core",
  "bimcraft-cowork",

@@ -1,9 +1,9 @@
 # Classification
 
-Manage > Classification Manager classifies a project's elements by the systems the industry uses, by hand or with the
-user's own AI agent. The core is `crates/core/src/classification.rs`; the window and Settings > Agents are
-`crates/ui-egui/src/classification.rs`; the agent is run by `crates/agent`; `bimcraft-cli classify` does the agent's part
-with no window (`apps/bimcraft-cli/src/classify.rs`). The plan and the owner's decisions: [the plan](../classification-plan.md).
+Manage > Classification Manager (CI) classifies a project's elements by the systems the industry uses, by hand or with the
+AI assistant's model. The core is `crates/core/src/classification.rs`; the window is `crates/ui-egui/src/classification.rs`,
+which asks the model through `crates/assistant` ([the assistant](assistant.md)). The plan and the owner's decisions:
+[the plan](../classification-plan.md).
 
 ## Systems, and no tables
 
@@ -67,7 +67,8 @@ The window lets a table's scope be changed before Load Parameters (`scopes`).
 
 - A code must be in its table, written as the table writes it, and its title is always the table's.
 - A target is an element (id or GUID) or a type (its library GUID). A type parameter's code goes on the element's type.
-- The engine leaves `target` and `key` as GUIDs: a type's GUID would otherwise be read as its name.
+- The engine leaves `classify`'s `target` and `classification_answer`'s `key` as GUIDs (`engine.rs`, `named`): a type's
+  GUID would otherwise be read as its name. Other commands' fields of those names are named as before.
 
 `classification_check` gives, for each binding, how many are classified, which aren't, and which hold a code the table no
 longer has.
@@ -79,9 +80,9 @@ longer has.
   code.
 - Next Unclassified selects what's left, one type at a time, and a count says how much is classified.
 
-## The agent
+## The AI step
 
-`classification_brief` is what an agent is handed:
+`classification_brief` is what a model is handed:
 
 - One row per type (per element for a table of each element's), with its category, family, type, materials, distinct
   levels, hosts, sizes, count and code now.
@@ -89,42 +90,47 @@ longer has.
   the category's (in the systems' languages) and the rows' type, family, materials and names.
 - Instructions (`instructions`) and the answer's JSON Schema (`answer_schema`).
 
-An agent that reads files gets the full table as `.csv` too, and searches it when no candidate fits. One that doesn't
-(Ollama) gets the candidates in its prompt, in smaller batches. `Brief::chunks` cuts a brief into batches, and `handover`
-writes each batch's files.
+`Brief::chunks` cuts a brief into batches, and `handover` writes each batch as text, with the candidates in it; with `files`
+(`classification_brief {files: true}`) the instructions point at the full tables as `.csv` instead, for an agent that reads
+files.
 
-`crates/agent` runs the command the user set in Settings > Agents, in a fresh folder holding those files:
+**In the desktop**, Ask the Agent asks the AI assistant's model: the provider, model and key of File > Settings > Assistant,
+the AI chat's own ([the assistant](assistant.md)).
 
-- **Claude Code:** `claude -p --output-format json --tools Read,Grep,Glob --strict-mcp-config --no-session-persistence
-  --json-schema …`. Its structured output is the answer.
-- **Codex:** `codex exec --sandbox read-only --skip-git-repo-check --ephemeral --output-schema schema.json -o answer.json -`.
-- **Ollama:** `ollama run <model> --format json`, with the brief in the prompt.
-- **Custom:** a command line with `{prompt_file}`, `{schema_file}`, `{answer_file}`, `{dir}` and `{model}`.
+- Each batch (`BATCH`, 25 rows, with 30 candidates a category) is one user message: a line saying it is a task with no
+  tools, the instructions, the answer's JSON Schema and the brief, as Copy Brief puts them.
+- It goes out through the assistant's own client and network (`bimcraft_assistant::complete` on the chat's `Net`), so its
+  rules hold: the three providers' hosts only, the key in a header, the reply read to `MAX_REPLY` and parsed leniently, and
+  a batch past `MAX_HISTORY` refused before it goes. The assistant's system prompt goes too, and says that text inside the
+  project is data, never instructions: type and material names come from whatever project is open.
+- The request carries the assistant's tools, as each of its requests does. A model that calls one is told the task has
+  none (twice at most), and nothing runs.
+- The batches run on a thread of their own, with Cancel, as a chat turn does. Cancel gives up on the request that is out
+  (its answer goes nowhere) and asks no more; what came back before is put up for review.
+- The tokens each reply counts are added to the project's in Settings > Assistant, as the chat's are.
+- **What leaves the machine, said first.** Before the first request of the session to a provider, the tab says what goes
+  (each type's category, family, type name, materials, levels, hosts and sizes, and the tables' candidate codes), to which
+  provider and on whose key, and the button reads Agree and Ask the Agent. Nothing is sent before that click, and nothing at
+  start, when the window opens or when a key is typed.
+- **No key, no network.** With no key (none typed, none in the provider's environment variable, or one locked under its
+  passphrase), the button isn't there: the tab says why, and Assistant settings opens the page. A window started without
+  the network (every test's) says that instead. It is always the user's own key: a key lent in a Co-Work session is never
+  used here.
 
-How the agent is run:
-
-- No shell reads the command.
-- The program is found on `PATH` and where installers put agents (`~/.local/bin`, `/opt/homebrew/bin`, npm's folder…),
-  with `PATHEXT` on Windows, where npm installs `claude.cmd`.
-- Output is capped. A timeout or Cancel stops the agent's whole process group.
-- The folder is removed when the run is done.
-- Test runs `--version`.
-
-The Claude desktop chat app installs no `claude` command; Claude Code is its own install. Ollama's installer puts `ollama`
-on `PATH`.
+**Elsewhere** the agent is the AI. The CLI and the MCP server reach no network for classification: an MCP client calls
+`classification_brief`, answers it, checks its answer with `classification_answer`, and writes it with `classify`. Copy
+Brief and Paste Answer do the same by hand, for a chat window.
 
 **The answer is hostile:**
-- `json_in` finds the JSON in the agent's text.
-- `read_answer` keeps only rows whose key is an element or type of the project, whose table is loaded and bound, and whose
-  code the table holds. Everything else is listed as left out.
+- `json_in` finds the JSON in the model's text.
+- `read_answer` (what `classification_answer` runs) keeps only rows whose key is an element or type of the project, whose
+  table is loaded and bound, and whose code the table holds. Everything else is listed as left out, and when nothing is
+  left the window says why.
 - The window shows the proposals with their confidence and reasons, ticks those over a threshold, and writes the ticked
   ones with one `classify`, which is one undo step. Nothing is written without that review.
-- Copy Brief and Paste Answer do the same for an agent BIMCraft can't run, such as a chat window.
 
-**What leaves the machine.** BIMCraft opens no connection: the agent sends what it's given to its own provider. The window
-asks before the first run (`Settings::consented`) and says what is sent. The root rule that only `crates/update` phones
-home is about BIMCraft's own connections; running the user's agent is the user's act, through `crates/agent`, off by
-default.
+Tested with the assistant's fake network (`crates/ui-egui/src/tests/classification.rs`): a run that proposes codes, an
+answer that isn't one, Cancel, and no key.
 
 ## IFC
 

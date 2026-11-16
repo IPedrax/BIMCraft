@@ -435,7 +435,7 @@ impl Session {
     /// [`Session::execute`] of a command found, as any session runs it.
     fn perform(&mut self, cmd: &'static Command, params: &Value) -> Result<Value, String> {
         // A library entry's GUID, wherever a command takes a name, is that name.
-        let named = named(&self.model, params);
+        let named = named(&self.model, cmd.id, params);
         let params = named.as_ref().unwrap_or(params);
         let before = Arc::clone(&self.model);
         let verified = self.verified.as_ref().is_some_and(|v| Arc::ptr_eq(v, &before));
@@ -614,7 +614,7 @@ impl Session {
     /// [`Session::execute`] of a command a plugin registered. The plugin's closure runs the function in its
     /// sandbox and wraps it in its own transaction; here the model is only guarded, as for any command.
     fn execute_external(&mut self, cmd: ExternalCommand, name: &str, params: &Value) -> Result<Value, String> {
-        let named = named(&self.model, params);
+        let named = named(&self.model, name, params);
         let params = named.as_ref().unwrap_or(params);
         let before = Arc::clone(&self.model);
         let verified = self.verified.clone();
@@ -1298,9 +1298,10 @@ fn same_file(a: &Path, b: &Path) -> bool {
     }
 }
 
-/// `params` with every string that is a library entry's GUID put as the entry's name; none when there's no such string.
-fn named(m: &Model, params: &Value) -> Option<Value> {
-    fn walk(m: &Model, v: &mut Value, changed: &mut bool) {
+/// `params` of command `id` with every string that is a library entry's GUID put as the entry's name; none when there's no such
+/// string.
+fn named(m: &Model, id: &str, params: &Value) -> Option<Value> {
+    fn walk(m: &Model, v: &mut Value, kept: &[&str], changed: &mut bool) {
         match v {
             Value::String(s) => {
                 if let Some((_, e)) = crate::ids::Guid::parse(s).filter(|g| g.pending().is_none()).and_then(|g| m.library.by_guid(g)) {
@@ -1309,19 +1310,20 @@ fn named(m: &Model, params: &Value) -> Option<Value> {
                     *changed = true;
                 }
             }
-            Value::Array(a) => a.iter_mut().for_each(|x| walk(m, x, changed)),
-            // A `guid` field says which thing it is, as a definition for a dictionary does, and `definition` which one a family's parameter is tied to: they stay GUIDs.
-            // So do a classification's `target` and an agent's `key`, which may be a type's.
-            Value::Object(o) => o
-                .iter_mut()
-                .filter(|(k, _)| !matches!(k.as_str(), "guid" | "definition" | "target" | "key"))
-                .for_each(|(_, x)| walk(m, x, changed)),
+            Value::Array(a) => a.iter_mut().for_each(|x| walk(m, x, kept, changed)),
+            Value::Object(o) => o.iter_mut().filter(|(k, _)| !kept.contains(&k.as_str())).for_each(|(_, x)| walk(m, x, kept, changed)),
             _ => {}
         }
     }
+    // A `guid` field says which thing it is, as a definition for a dictionary does, and `definition` which one a family's parameter is tied to: they stay GUIDs.
+    // So do `classify`'s `target` and an answer's `key`, which may be a type's; other commands' fields of those names are named as before.
+    let kept: &[&str] = match id {
+        "classify" | "classification_answer" => &["guid", "definition", "target", "key"],
+        _ => &["guid", "definition"],
+    };
     let mut v = params.clone();
     let mut changed = false;
-    walk(m, &mut v, &mut changed);
+    walk(m, &mut v, kept, &mut changed);
     changed.then_some(v)
 }
 
@@ -1347,4 +1349,21 @@ fn sync_oracle(m: &Model, before: &Model) -> Option<(Model, Model)> {
     let mut whole = m.clone();
     whole.sync_library_with(&mut counter());
     Some((incremental, whole))
+}
+
+#[cfg(test)]
+mod named_tests {
+    use super::*;
+
+    #[test]
+    fn a_target_or_key_stays_a_guid_for_classifications_commands_alone() {
+        let s = Session::new();
+        let name = "Exterior - 300mm";
+        let g = s.model.library.guid(&crate::library::Kind::Type("wall".into()), name).unwrap().to_string();
+        let p = json!({"assign": [{"target": g}], "key": g, "type": g});
+        assert_eq!(named(&s.model, "classify", &p), Some(json!({"assign": [{"target": g}], "key": g, "type": name})));
+        assert_eq!(named(&s.model, "classification_answer", &p), Some(json!({"assign": [{"target": g}], "key": g, "type": name})));
+        // Any other command's fields of those names take a GUID as the entry's name, as they did before classification.
+        assert_eq!(named(&s.model, "title_block", &p), Some(json!({"assign": [{"target": name}], "key": name, "type": name})));
+    }
 }

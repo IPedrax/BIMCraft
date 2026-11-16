@@ -3,8 +3,8 @@
 Branch `feat/classification-manager`, on top of `feat/parameter-manager` (PR #250). Worktree `../BIMCraft-classify`.
 
 The goal: pick a classification system, load its parameters and its tables into the project, then classify the elements
-either by hand (a window that follows the selection, as Revit's Interoperability Tools do) or with an AI agent the user
-already has (Claude Code, Codex, Ollama, any CLI), whose answers come back for review before anything is written.
+either by hand (a window that follows the selection, as Revit's Interoperability Tools do) or with the AI assistant's model
+(the AI chat's provider and the user's own key), whose answers come back for review before anything is written.
 
 ## The workflow, as the user sees it
 
@@ -18,9 +18,9 @@ already has (Claude Code, Codex, Ollama, any CLI), whose answers come back for r
    - **By hand.** A modeless window follows the selection. It groups the selection by category and type and shows the
      table filtered to that category's likely sections, with a search box and Show All. A click assigns the code.
      Next Unclassified walks through what's left, and a bar says how much is done (for example 312 of 340 types).
-   - **With AI.** Classify with Agent… builds the brief, runs the agent set in Settings > Agent, and opens a review
-     table with what it proposes: the code, a confidence and one line of reason. The user ticks rows and clicks Apply.
-     It's one command and one undo step.
+   - **With AI.** Ask the Agent builds the brief, asks the AI assistant's model (File > Settings > Assistant: its
+     provider, model and key), and opens a review table with what it proposes: the code, a confidence and one line of
+     reason. The user ticks rows and clicks Apply. It's one command and one undo step.
 
 ## Stages
 
@@ -63,30 +63,24 @@ Every stage is commands first, with tests (CLAUDE.md: everything is a command, t
   - its distinct levels, and its hosts' categories and types
   - size hints (thickness, width, height), the IFC class and any existing code
 - With each category it lists its **candidate codes**, the table cut down by the category hints, so a model without
-  tools (Ollama) gets only what it needs. The full table also goes out as a file for agents that can read files.
+  files (the assistant's) gets only what it needs. The full table also goes out as a file for agents that can read files.
 - **By type is the default.** Classifications such as Uniclass Ss and Pr and OmniClass 23 belong to types, and a
   project has around 100× fewer types than elements, which makes the run cheaper and faster. Levels and hosts still go
   in as a summary for each type.
 - Because it's a command, an agent on the MCP server (or `mcp --connect`) can do the whole thing with no window:
   `classification_brief`, its own reasoning, then `classify {dry_run: true}`, then `classify`.
 
-### 6. Running the agent (ui, `agent.rs`; settings in `settings.rs`)
-- **Settings > Agent:** a preset (Claude Code, Codex, Ollama, Custom), the command (default `claude`), the model
-  (optional), extra arguments, a timeout, and **Test**, which runs `--version` and says what it found.
-- **The handover** is a fresh temporary folder holding `instructions.md`, `brief.json`, `table.csv` and `schema.json`
-  (the answer's JSON Schema). The program runs there, in a thread, with a progress bar and Cancel (which kills the
-  child), and its output is capped. Large projects go in batches of about 100 rows per call.
-- **The presets** (flags checked against the CLIs installed here on 2026-11-07):
-
-  | Preset | Command | Notes |
-  |---|---|---|
-  | Claude Code | `claude -p --output-format json --json-schema <schema> --tools Read` (prompt on stdin, in the folder) | Read-only tools. `result` holds the JSON. |
-  | Codex | `codex exec --sandbox read-only --skip-git-repo-check --output-schema schema.json -o answer.json -` | Answer read from `answer.json`. |
-  | Ollama | `ollama run <model> --format json` (prompt on stdin) | No tools: the candidates go inline, and batches are smaller. |
-  | Custom | a template with `{prompt_file}`, `{schema_file}`, `{out_file}`, `{dir}`, `{model}` | For gemini, llm, aider, … |
-
-- On Windows, npm installs `claude.cmd` and `codex.cmd`, and `Command::new("claude")` doesn't find them, so the command
-  is resolved through `PATHEXT` first.
+### 6. Asking the model (ui, `classification.rs`, through `crates/assistant`)
+- The owner's decision of 2026-11-11 (below): the AI step is the built-in assistant's, not a crate of its own that runs
+  Claude Code, Codex or Ollama. The window asks the provider, model and key of File > Settings > Assistant, through the
+  assistant's own client and network (`bimcraft_assistant::complete`), under its rules: the three hosts, the key in a header,
+  a reply read to its cap, and a request only when the user asks, said first.
+- **The handover** is a user message for each batch of 25 rows: a line saying it is a task with no tools, the instructions,
+  the answer's JSON Schema and the brief with its candidates, as Copy Brief puts them. It runs on a thread, with a progress
+  bar and Cancel.
+- The CLI and the MCP server send nothing: an agent on MCP is the AI itself, and reads `classification_brief`, answers it,
+  checks the answer with `classification_answer` and writes it with `classify`. Copy Brief and Paste Answer do the same by
+  hand for a chat window.
 
 ### 7. Reading the answer back and reviewing it
 - The answer is `{rows: [{key, code, confidence, reason}]}`. It's hostile input: unknown keys, codes missing from the
@@ -115,5 +109,10 @@ Every stage is commands first, with tests (CLAUDE.md: everything is a command, t
 3. Each classification table's scope was decided table by table, with its reason kept beside it (`TableDef::why`): what a
    thing is (product, system, element function, work result) is the type's; a space's is each room's.
 
-Still open: the network rule's sentence in CLAUDE.md for running the agent command (proposed in the PR), and whether
-proposals above a confidence threshold may be applied without review (the window ticks them, the user still applies).
+## Owner's decision (2026-11-11, confirmed 2026-11-16)
+
+4. **The AI step goes through the built-in assistant** (`crates/assistant`), not a new crate that spawns the user's agent.
+   The CLI's `classify --agent` went with that crate: the CLI may not reach the network, and an MCP client is its own AI.
+
+Still open: whether proposals above a confidence threshold may be applied without review (the window ticks them, the user
+still applies).

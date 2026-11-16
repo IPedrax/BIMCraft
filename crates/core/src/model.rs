@@ -185,7 +185,10 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// georeference and lose where the project stands; and it would read spot coordinates (a spot's `coordinate`, `type`, `origin`,
 /// `leader`, `shoulder` and `end`) and a level's `elevation_base` as spot elevations from the Project Base Point. A file of 19
 /// needs no step: its georeference is the active site, both points at the internal origin.
-pub const FORMAT: u32 = 20;
+/// 21: a project holds classification tables and what their parameters take codes from (`classification`, library entries of
+/// kind `classification`); a build that reads up to 20 would answer one with a serde error ("isn't a kind of library entry"),
+/// not "saved by a newer BIMCraft". A file of 20 needs no step: it holds no tables.
+pub const FORMAT: u32 = 21;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
 
@@ -4419,6 +4422,7 @@ impl Model {
                 }
             }
         }
+        // 20 to 21: classification tables and their bindings. A file of 20 holds none, so nothing to do.
         self.format = FORMAT;
     }
 

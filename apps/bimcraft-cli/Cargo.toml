@@ -22,7 +22,6 @@ cap = { workspace = true }
 sysinfo = { workspace = true }
 bimcraft-core = { workspace = true }
 bimcraft-plugin = { workspace = true }
-bimcraft-agent = { workspace = true }
 bimcraft-rvt = { workspace = true, optional = true }
 bimcraft-dwg = { workspace = true, optional = true }
 serde_json = { workspace = true }

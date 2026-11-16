@@ -142,8 +142,6 @@ pub struct Settings {
     pub assistant_usage: BTreeMap<String, Usage>,
     /// Co-Work: the name the others see, where a host listens, whether it is visible on the network, whether guests may edit.
     pub cowork: crate::cowork::Prefs,
-    /// The AI agent the Classification Manager hands its briefs to (Settings > Agent).
-    pub agent: bimcraft_agent::Settings,
 }
 
 impl Settings {
@@ -194,7 +192,6 @@ impl Settings {
             // The key, only when the user asked for it to be kept, and then only sealed.
             "assistant": self.assistant_json(),
             "cowork": self.cowork.to_json(),
-            "agent": serde_json::to_value(&self.agent).unwrap_or_default(),
         })
     }
 
@@ -252,10 +249,6 @@ impl Settings {
             },
             assistant_usage: usage_from(&v["assistant"]["usage"], base.assistant_usage),
             cowork: crate::cowork::Prefs::from_json(&v["cowork"], base.cowork),
-            agent: serde_json::from_value::<bimcraft_agent::Settings>(v["agent"].clone())
-                .ok()
-                .filter(|a| [&a.command, &a.model, &a.args].iter().all(|t| t.len() <= bimcraft_agent::MAX_COMMAND))
-                .unwrap_or(base.agent),
         }
     }
 }
@@ -399,7 +392,6 @@ impl BimApp {
             },
             None => a.remember = false,
         }
-        self.agent = kept.agent.clone();
         self.settings_kept = Some(kept);
         self.settings_path = Some(path);
     }
@@ -445,7 +437,6 @@ impl BimApp {
             assistant_sealed: self.assistant.sealed.clone(),
             assistant_usage: self.assistant.usage.clone(),
             cowork: self.cowork_prefs.clone(),
-            agent: self.agent.clone(),
         }
     }
 
@@ -835,9 +826,6 @@ impl BimApp {
         if !self.agents.edit {
             muted(ui, t("Agents may only read this project."));
         }
-        ui.add_space(10.0);
-        ui.separator();
-        self.agent_page(ui);
     }
 }
 
