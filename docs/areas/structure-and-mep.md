@@ -542,14 +542,18 @@ In that frame each slope is framed by the floor's region framer (`framing::floor
   has neither an eave board nor an edge rafter along an edge skewed to its rafters (a rake not square to the eave): they end
   at it square, with a warning to frame it by hand, rims or none. A level slope takes them along skewed edges too, as a
   floor's rims, and a flat roof's courtyard is framed round as an opening is (trimmers along its sides, headers across its
-  ends, keys `face/0/courtyard/<i>/…`), or warned of where it can't be. Without `rim` the rafters run to the edges.
+  ends, keys `face/0/courtyard/<i>/…`), or warned of where it can't be. Without `rim` the rafters run to the edges. An eave
+  board longer than the longest `stock` length is spliced over the rafters that end on it, as a floor's rim is over its joists:
+  the cabin's, 8540 along the low eave and the high edge, are each two pieces within 6100.
 - With `ridge`, where two slopes meet along a level line at their tops, each falling away from it, a ridge board (role `ridge`)
   is one thickness thick, centred on the line and as long as it, less the holes through the roof and any ridge board made
   before it (a piece shorter than it is thick left out, with a warning). It is a level box wholly in the structure layer: from
   the rafters' underside on the line up to the lower of their tops at its faces, half its thickness down each slope. So it never
   stands over the layer's top nor under the roof's underside (nor into the top plate of a gable wall under it), each rafter's
   plumb cut against it is flush with its top, and the bottom of that cut is half the board's thickness times the slope below
-  the board's (11 mm at 30° for a 38 mm board). The rafters of both slopes stop at its faces. Without `ridge` the rafters run to the line, and a warning says the ridge isn't framed. A shed has no ridge.
+  the board's (11 mm at 30° for a 38 mm board). The rafters of both slopes stop at its faces. A ridge board longer than the
+  longest `stock` length is spliced over the rafters that end on it, as an eave board is (an 8000 ridge in two pieces), each
+  piece keyed by its key and its place, `/0` first; where no splice over a rafter keeps every piece within it, a warning. Without `ridge` the rafters run to the line, and a warning says the ridge isn't framed. A shed has no ridge.
 - No hip or valley rafter is made. The jack rafters end at a hip or a valley line, square where their nearer corner meets it,
   and each hip, valley, seam (two slopes in one plane) and each line where a slope ends inside the footprint (where a joined
   roof meets the roof it joins) gives one warning, naming its ends and slopes: nothing there bears the rafters, so put a beam
@@ -562,7 +566,7 @@ In that frame each slope is framed by the floor's region framer (`framing::floor
 - A line of rafters the longest `stock` length holds is one piece, eave to top, continuous over every support (unlike a
   floor's joists, which break over each). A longer one is spliced over its supports (those clear of its ends) into **the fewest
   pieces the longest stock length holds and, of those splits, the one whose longest piece is shortest**; where two splits are
-  as good, the one whose splices lie nearest the eave, the first splice first (`framing::floor::spliced`, a dynamic programme
+  as good, the one whose splices lie nearest the eave, the first splice first (`framing::spliced`, a dynamic programme
   over the line's supports, O(n²)). A piece's length is along the slope and counts its laps. The pieces butt on a support's
   centre line (`lap` 0) or each runs `lap` past it (no more than halfway to the next support, with a warning), every other piece
   a thickness over beside the one before (to its left, else its right, wherever it clears the other members), as a floor's
@@ -582,7 +586,7 @@ In that frame each slope is framed by the floor's region framer (`framing::floor
   evenly, as a floor's.
 
 A roof's keys are a floor's under `face/<slope>/`: `face/<i>/rafter/<station>/<piece>`, edge rafters `face/<i>/edge/<edge>/<piece>`,
-eave boards `face/<i>/rim/<edge>`, an opening's `face/<i>/opening/<index or shaft GUID>/trimmer/…` and `…/header/…`, blocking
+eave boards `face/<i>/rim/<edge>` (spliced: `…/<n>`), an opening's `face/<i>/opening/<index or shaft GUID>/trimmer/…` and `…/header/…`, blocking
 `face/<i>/blocking/…`, and a ridge board `face/<i>/ridge/<edge>` (`…/<edge>/<piece>` when holes cut it), of the lower numbered
 of its two slopes, its edge counted round that slope's loops. Slopes are numbered as `roof_faces` gives them and edges counted
 round each slope's outline, so an edit to the footprint that changes how the slopes meet (a corner added, an edge made a gable)

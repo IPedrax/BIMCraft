@@ -218,7 +218,7 @@ fn where_no_split_keeps_every_piece_within_the_stock_the_cabins_lines_split_wher
 fn a_line_is_split_into_the_fewest_pieces_the_stock_holds_its_longest_as_short_as_can_be_ties_nearest_the_eave() {
     let split = |over: &[f64], iv: [f64; 2], longest: f64, reach: f64| {
         let mut long = Vec::new();
-        let at = crate::framing::floor::spliced(over, iv, longest, 1.0, reach, |l| long.push(l.round()));
+        let at = crate::framing::spliced(over, iv, longest, 1.0, reach, |l| long.push(l.round()));
         (at, long)
     };
     // Held whole: no split, whatever bears it.
@@ -294,9 +294,19 @@ fn a_gable_roof_meets_its_ridge_board_a_hipped_one_warns_of_each_hip_and_an_extr
     let reply = run(&mut s, "frame", json!({"id": gable, "type": "Cabin Roof"}));
     assert_eq!(reply["warnings"], json!([]), "{reply}");
     let r = check(&mut s, gable, &walls);
+    // 8000 long, more than the longest stock (6100): spliced in two over a rafter, each piece from stock.
     let ridge = r.role("ridge");
-    assert_eq!(ridge.len(), 1);
-    close(ridge[0].length, 8000.0, "the ridge board end to end");
+    assert_eq!(ridge.len(), 2, "{:?}", ridge.iter().map(|m| &m.key).collect::<Vec<_>>());
+    close(ridge.iter().map(|m| m.length).sum(), 8000.0, "the ridge board end to end");
+    let rafters: Vec<f64> = r.role("rafter").iter().map(|m| m.middle().0).collect();
+    let mut xs: Vec<[f64; 2]> = ridge.iter().map(|m| [m.at(m.s[0], m.across[0]).0, m.at(m.s[0], m.across[1]).0]).collect();
+    xs.iter_mut().for_each(|x| x.sort_by(f64::total_cmp));
+    xs.sort_by(|a, b| a[0].total_cmp(&b[0]));
+    close(xs[0][1], xs[1][0], "the pieces butt");
+    assert!(rafters.iter().any(|x| (x - xs[0][1]).abs() < 0.02), "the splice at {} over a rafter: {rafters:?}", xs[0][1]);
+    for m in &ridge {
+        assert!(m.length <= 6100.0 && m.stock.is_some_and(|st| st >= m.length), "{} from stock: {:?}", m.key, m.stock);
+    }
     assert_eq!(ridge[0].section[0], 38.0);
     // As deep as the rafters' plumb cut less half its thickness times the slope: its top flush with theirs at its faces, its
     // bottom on their underside along the ridge, so it stays in the layer.
@@ -327,6 +337,25 @@ fn a_gable_roof_meets_its_ridge_board_a_hipped_one_warns_of_each_hip_and_an_extr
     ));
     let e = s.execute("frame", &json!({"id": x, "type": "Cabin Roof"})).unwrap_err();
     assert!(e.contains("only a roof by footprint is framed"), "{e}");
+}
+
+#[test]
+fn the_cabins_eave_boards_longer_than_the_stock_are_spliced_over_rafters_each_piece_from_stock() {
+    let mut s = Session::new();
+    let (roof, walls) = cabin(&mut s, json!({"rim": true}));
+    let r = check(&mut s, roof, &walls);
+    assert!(!r.warned("longer than any stock"), "{:?}", r.warnings);
+    // The low eave's board and the high edge's, each 8540 along the roof's width: each in two pieces butting over a rafter.
+    let rims = r.role("rim");
+    assert_eq!(rims.len(), 4, "{:?}", rims.iter().map(|m| &m.key).collect::<Vec<_>>());
+    close(rims.iter().map(|m| m.length).sum(), 2.0 * (X1 - X0), "the two boards end to end");
+    let rafters: Vec<f64> = r.role("rafter").iter().map(|m| m.middle().0).collect();
+    for m in &rims {
+        assert!(m.length <= 6100.0 && m.stock.is_some_and(|st| st >= m.length), "{} from stock: {:?}", m.key, m.stock);
+        let [a, b] = [m.at(m.s[0], m.across[0]).0, m.at(m.s[0], m.across[1]).0];
+        let inner = if (a.min(b) - X0).abs() < 0.02 { a.max(b) } else { a.min(b) };
+        assert!(rafters.iter().any(|x| (x - inner).abs() < 0.02), "{} spliced at {inner}, over no rafter", m.key);
+    }
 }
 
 #[test]
