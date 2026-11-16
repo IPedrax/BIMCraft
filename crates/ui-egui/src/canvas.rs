@@ -1907,8 +1907,9 @@ impl BimApp {
 
     /// The reference under the pointer this frame: a snapped point, else the nearest wall face or centre line, detail
     /// line or grid within 8 px.
-    fn mark_target(&self, sc: &Scene, q: (f32, f32), f: &Found) -> Option<crate::guide_refs::PinTarget> {
-        let key = self.plan_key().unwrap_or(sc.level);
+    /// What the pointer may mark: the snap's element or the plan's picking, and the reference nearest the pointer.
+    /// The ring and `Q` both read this, so a section plugs its own space in here rather than copying either.
+    fn pin_target(&self, m: &Model, level: Id, key: Id, v: &View, at: (f32, f32), f: &Found) -> Option<crate::guide_refs::PinTarget> {
         let mut under = self.canvas.under_cursor.clone();
         // The snap knows the wall even on a frame the retained plan's picking comes back empty.
         if let Some(id) = f.source
@@ -1916,7 +1917,12 @@ impl BimApp {
         {
             under.push(id);
         }
-        crate::guide_refs::target_at(sc.m, sc.level, key, sc.v, q, f, &under)
+        crate::guide_refs::target_at(m, level, key, v, at, f, &under)
+    }
+
+    fn mark_target(&self, sc: &Scene, q: (f32, f32), f: &Found) -> Option<crate::guide_refs::PinTarget> {
+        let key = self.plan_key().unwrap_or(sc.level);
+        self.pin_target(sc.m, sc.level, key, sc.v, q, f)
     }
 
     /// Fills the ring on the reference under the pointer, and marks it when the ring closes. It is the target's key and
@@ -5997,13 +6003,7 @@ impl BimApp {
         let chain = picked(&self.tool);
         let at = v.px(cursor);
         let f = self.snap(&m, level, &v, at, &chain, false);
-        let mut under = self.canvas.under_cursor.clone();
-        if let Some(id) = f.source
-            && !under.contains(&id)
-        {
-            under.push(id);
-        }
-        let Some(target) = crate::guide_refs::target_at(&m, level, key, &v, at, &f, &under) else { return };
+        let Some(target) = self.pin_target(&m, level, key, &v, at, &f) else { return };
         let lines = target.lines(&m, level, m.guid(key));
         let marked = self.canvas.pins.borrow_mut().toggle(key, target, lines);
         // The hover that pressed Q has had its mark: the ring must not fill and take it back while the hand rests, nor
