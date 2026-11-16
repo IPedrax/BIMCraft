@@ -306,14 +306,17 @@ impl BimApp {
                 toggle = Some(on);
             }
             ui.end_row();
-            ui.label(t("Underlay View"));
-            let name = match &u {
-                Some(u) if core::missing(&model, view) => t("<Missing>").to_string(),
-                Some(u) => model.view_name(u.view).unwrap_or_default().to_string(),
-                None => t("<None>").to_string(),
-            };
-            ui.label(name);
-            ui.end_row();
+            // Which view it shows, once it has one.
+            if let Some(u) = &u {
+                ui.label(t("Underlay View"));
+                let name = if core::missing(&model, view) {
+                    t("<Missing>").to_string()
+                } else {
+                    model.view_name(u.view).unwrap_or_default().to_string()
+                };
+                ui.label(name);
+                ui.end_row();
+            }
             ui.label(t("Underlay Settings"));
             let r = crate::properties::wide_button(ui, t("Edit…"));
             r.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, t("Edit Underlay Settings")));

@@ -120,8 +120,8 @@ msgstr "<Nach Skizze>"
 msgid "<Invisible lines>"
 msgstr "<Unsichtbare Linien>"
 
-#: crates/ui-egui/src/underlay.rs:311
-#: crates/ui-egui/src/underlay.rs:369
+#: crates/ui-egui/src/underlay.rs:313
+#: crates/ui-egui/src/underlay.rs:372
 msgid "<Missing>"
 msgstr ""
 
@@ -138,8 +138,7 @@ msgstr ""
 #: crates/ui-egui/src/templates.rs:214
 #: crates/ui-egui/src/templates.rs:439
 #: crates/ui-egui/src/templates.rs:703
-#: crates/ui-egui/src/underlay.rs:313
-#: crates/ui-egui/src/underlay.rs:371
+#: crates/ui-egui/src/underlay.rs:374
 msgid "<None>"
 msgstr "<Keine>"
 
@@ -987,7 +986,7 @@ msgstr "Winkelbemaßung: zwei sich treffende Linien wählen, dann die Stelle des
 msgid "Annotate"
 msgstr "Beschriften"
 
-#: crates/ui-egui/src/underlay.rs:420
+#: crates/ui-egui/src/underlay.rs:423
 msgid "Annotation"
 msgstr ""
 
@@ -1504,7 +1503,7 @@ msgstr "Träger (BM): Anfang und Ende anklicken; eine Klickkette erzeugt je Schr
 msgid "Bed"
 msgstr "Bett"
 
-#: crates/ui-egui/src/underlay.rs:428
+#: crates/ui-egui/src/underlay.rs:431
 msgid "Behind the view"
 msgstr ""
 
@@ -2857,7 +2856,7 @@ msgstr ""
 #: crates/ui-egui/src/script.rs:103
 #: crates/ui-egui/src/settings.rs:492
 #: crates/ui-egui/src/shortcuts.rs:578
-#: crates/ui-egui/src/underlay.rs:463
+#: crates/ui-egui/src/underlay.rs:466
 msgid "Close"
 msgstr "Schließen"
 
@@ -2944,7 +2943,7 @@ msgstr ""
 #: crates/ui-egui/src/dimtypes.rs:140
 #: crates/ui-egui/src/notes.rs:508
 #: crates/ui-egui/src/properties.rs:2980
-#: crates/ui-egui/src/underlay.rs:389
+#: crates/ui-egui/src/underlay.rs:392
 msgid "Color"
 msgstr "Farbe"
 
@@ -4346,7 +4345,7 @@ msgstr "Zeichnen"
 #: crates/ui-egui/src/draw.rs:305
 #: crates/ui-egui/src/editor/document.rs:1840
 #: crates/ui-egui/src/editor/sketch.rs:1467
-#: crates/ui-egui/src/underlay.rs:426
+#: crates/ui-egui/src/underlay.rs:429
 msgid "Draw"
 msgstr "Zeichnen"
 
@@ -4653,7 +4652,7 @@ msgstr "Oberseite bearbeiten: die Oberseite der Verschmelzung an ihrem zweiten E
 msgid "Edit Type"
 msgstr "Typ bearbeiten"
 
-#: crates/ui-egui/src/underlay.rs:319
+#: crates/ui-egui/src/underlay.rs:322
 msgid "Edit Underlay Settings"
 msgstr ""
 
@@ -4700,7 +4699,7 @@ msgstr "Bearbeitung"
 #: crates/ui-egui/src/graphics.rs:655
 #: crates/ui-egui/src/properties.rs:2751
 #: crates/ui-egui/src/templates.rs:659
-#: crates/ui-egui/src/underlay.rs:318
+#: crates/ui-egui/src/underlay.rs:321
 msgid "Edit…"
 msgstr "Bearbeiten…"
 
@@ -4757,7 +4756,7 @@ msgstr ""
 #: crates/ui-egui/src/coordinates.rs:1192
 #: crates/ui-egui/src/lib.rs:4796
 #: crates/ui-egui/src/lib.rs:5834
-#: crates/ui-egui/src/underlay.rs:378
+#: crates/ui-egui/src/underlay.rs:381
 msgid "Elevation"
 msgstr "Ansicht"
 
@@ -5286,7 +5285,7 @@ msgid "Fillet Arc: pick two lines, then click to size the arc (or set its Radius
 msgstr "Bogen abrunden: zwei Linien wählen, dann klicken, um den Bogen zu bemessen (oder seinen Radius setzen); die Linien werden darauf zurückgeschnitten"
 
 #: crates/ui-egui/src/titleblocks.rs:353
-#: crates/ui-egui/src/underlay.rs:414
+#: crates/ui-egui/src/underlay.rs:417
 msgid "Fills"
 msgstr ""
 
@@ -5496,7 +5495,7 @@ msgid "Floor Offset"
 msgstr ""
 
 #: crates/ui-egui/src/properties.rs:1864
-#: crates/ui-egui/src/underlay.rs:377
+#: crates/ui-egui/src/underlay.rs:380
 msgid "Floor Plan"
 msgstr "Grundriss"
 
@@ -6018,7 +6017,7 @@ msgstr ""
 msgid "Hide Unselected"
 msgstr ""
 
-#: crates/ui-egui/src/underlay.rs:422
+#: crates/ui-egui/src/underlay.rs:425
 msgid "Hide annotation"
 msgstr ""
 
@@ -6240,7 +6239,7 @@ msgstr "Innen"
 msgid "In This Project"
 msgstr ""
 
-#: crates/ui-egui/src/underlay.rs:431
+#: crates/ui-egui/src/underlay.rs:434
 msgid "In front of the view"
 msgstr ""
 
@@ -7915,7 +7914,7 @@ msgstr "Montagehöhe"
 
 #: crates/core/src/commands.rs:1900
 #: crates/ui-egui/src/editor/document.rs:648
-#: crates/ui-egui/src/underlay.rs:438
+#: crates/ui-egui/src/underlay.rs:441
 msgid "Move"
 msgstr "Verschieben"
 
@@ -7957,7 +7956,7 @@ msgstr ""
 msgid "Move the shared coordinates with it"
 msgstr ""
 
-#: crates/ui-egui/src/underlay.rs:438
+#: crates/ui-egui/src/underlay.rs:441
 msgid "Move the underlay by two points picked in the view"
 msgstr ""
 
@@ -7965,7 +7964,7 @@ msgstr ""
 msgid "Move: click the point to move from."
 msgstr ""
 
-#: crates/ui-egui/src/underlay.rs:453
+#: crates/ui-egui/src/underlay.rs:456
 msgid "Moved {}, {}; turned {}°"
 msgstr ""
 
@@ -9977,7 +9976,7 @@ msgid "Portrait"
 msgstr ""
 
 #: crates/ui-egui/src/properties.rs:414
-#: crates/ui-egui/src/underlay.rs:436
+#: crates/ui-egui/src/underlay.rs:439
 msgid "Position"
 msgstr "Position"
 
@@ -10847,7 +10846,7 @@ msgstr "Palettenlayout zurücksetzen"
 msgid "Reset Panels"
 msgstr "Panels zurücksetzen"
 
-#: crates/ui-egui/src/underlay.rs:444
+#: crates/ui-egui/src/underlay.rs:447
 msgid "Reset Position"
 msgstr ""
 
@@ -11094,7 +11093,7 @@ msgstr ""
 
 #: crates/core/src/commands.rs:1927
 #: crates/ui-egui/src/editor/document.rs:668
-#: crates/ui-egui/src/underlay.rs:441
+#: crates/ui-egui/src/underlay.rs:444
 msgid "Rotate"
 msgstr "Drehen"
 
@@ -11411,7 +11410,7 @@ msgid "Second End"
 msgstr "Zweites Ende"
 
 #: crates/ui-egui/src/lib.rs:4792
-#: crates/ui-egui/src/underlay.rs:379
+#: crates/ui-egui/src/underlay.rs:382
 msgid "Section"
 msgstr "Schnitt"
 
@@ -11866,8 +11865,8 @@ msgstr ""
 
 #: crates/ui-egui/src/underlay.rs:301
 #: crates/ui-egui/src/underlay.rs:304
-#: crates/ui-egui/src/underlay.rs:359
 #: crates/ui-egui/src/underlay.rs:362
+#: crates/ui-egui/src/underlay.rs:365
 msgid "Show Underlay"
 msgstr ""
 
@@ -11884,7 +11883,7 @@ msgstr ""
 msgid "Show background grids, change their settings, or toggle grid snapping"
 msgstr "Hintergrundraster anzeigen, ihre Einstellungen ändern oder den Rasterfang umschalten"
 
-#: crates/ui-egui/src/underlay.rs:416
+#: crates/ui-egui/src/underlay.rs:419
 msgid "Show fills and patterns"
 msgstr ""
 
@@ -13844,7 +13843,7 @@ msgstr "Abweisen"
 msgid "Turn Snap Override Off"
 msgstr "Fang-Überschreibung ausschalten"
 
-#: crates/ui-egui/src/underlay.rs:441
+#: crates/ui-egui/src/underlay.rs:444
 msgid "Turn the underlay about a point picked in the view"
 msgstr ""
 
@@ -14016,15 +14015,15 @@ msgstr "Nicht verbundene Höhe"
 msgid "Underlay"
 msgstr ""
 
-#: crates/ui-egui/src/underlay.rs:317
+#: crates/ui-egui/src/underlay.rs:320
 msgid "Underlay Settings"
 msgstr ""
 
-#: crates/ui-egui/src/underlay.rs:353
+#: crates/ui-egui/src/underlay.rs:356
 msgid "Underlay Settings: {}"
 msgstr ""
 
-#: crates/ui-egui/src/underlay.rs:309
+#: crates/ui-egui/src/underlay.rs:311
 msgid "Underlay View"
 msgstr ""
 
@@ -14264,7 +14263,7 @@ msgstr "Vertikal"
 
 #: crates/ui-egui/src/editor/document.rs:357
 #: crates/ui-egui/src/lib.rs:1436
-#: crates/ui-egui/src/underlay.rs:367
+#: crates/ui-egui/src/underlay.rs:370
 msgid "View"
 msgstr "Ansicht"
 
