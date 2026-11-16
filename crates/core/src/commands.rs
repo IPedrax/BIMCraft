@@ -26,9 +26,9 @@ use crate::model::{
     CEILING_HEIGHT, CadImport, Ceiling, CeilingType, Column, ColumnType, Component, DEFAULT_HEIGHT, DimKind, Dimension, Dimension3D,
     Element, End, Extrusion, Face, Facing, Floor, FloorType, Grid, Guid, HostRef, Hosted, Id, Key, Landing, Layer, Level, Line, Location,
     MAX_COORD, MAX_POINTS, MAX_SLOPE, MAX_TEXT, Mass, Model, Note, Opening, OpeningType, Orient, PARAMETER_CATEGORIES, ParameterKind,
-    Pattern, Perspective, PlanView, PointCloud, ProjectParameter, PropertyLine, RAMP_SLOPE, RAMP_WIDTH, RISER, Railing, RailingType, Ramp,
-    Rebar, Ref3, Reference, Roof, RoofType, Room, RoomArea, RoomSeparator, STAIR_WIDTH, Schedule, Scope, Section, SectionBox, Shaft, Sheet,
-    Side, Spot, Stair, TOL, TREAD, Tag, Unbound, View3D, Viewport, Wall, WallType, heading, paper,
+    Pattern, Perspective, PlanView, PointCloud, ProjectParameter, PropertyLine, RAMP_SLOPE, RAMP_WIDTH, Railing, RailingType, Ramp, Rebar,
+    Ref3, Reference, Roof, RoofType, Room, RoomArea, RoomSeparator, STAIR_WIDTH, Schedule, Scope, Section, SectionBox, Shaft, Sheet, Side,
+    Spot, Stair, TOL, Tag, Unbound, View3D, Viewport, Wall, WallType, heading, paper,
 };
 use crate::paint;
 use crate::phasing;
@@ -966,11 +966,53 @@ other_files(
         "stair",
         ui_msg!("Stair"),
         &[],
-        "{start: [x,y], end?: [x,y] | angle?, level?, top_level?, height?, width?, riser?, tread?, landings?: [{at, turn?}, …], \
-         railings?} a stair from the middle of its first riser at `start`, climbing toward `end` (or `angle` degrees) up to the next level: \
-         as many risers as keep each at most `riser` mm (180), treads `tread` deep (280), `width` wide (1000). One straight \
-         run, as long as that makes it; or with landings (each as deep as the stair is wide) after `at` risers, the next run \
-         going on as `turn` says: 0 straight on, 90 or -90 turned left or right, 180 or -180 back beside it, to its left or right. \
+        "{start: [x,y], end?: [x,y] | angle?, level?, top_level?, height?, width?, riser?, tread?, landings?: [{at, turn?, winders?, balance?, length?, width?}, …], \
+         line?, offset?, path?, spiral?, sketch?, type?, multistorey?, base_offset?, top_offset?, lock_going?, railings?} a stair from the middle of its first riser at `start`, climbing toward `end` (or `angle` degrees) up to the next level: \
+         as many risers as keep each at most `riser` mm, treads `tread` deep (the project's building code's, 180 and 280 with \
+         none: `building_code`), `width` wide (1000). One straight \
+         run, as long as that makes it (`landings`: \"auto\" gives it the landings its code says are due, straight on); or with landings (each as deep as the stair is wide) after `at` risers, the next run \
+         going on as `turn` says: 0 straight on, 90 or -90 turned left or right (or any angle from 5 to 135, the runs sharing the \
+         turn's inside corner), 180 or -180 back beside it, to its left or right. \
+         A turn with `winders` (1 to 30) has no landing: that many treads fanned round its inside corner, each a riser above the \
+         last; a code that does not allow them still builds them, and `stair_check` says so. With `balance` (treads), the winders run that \
+         many treads into the flight on each side, and those treads and the winders are redrawn as steps equal along the walk line \
+         and along the inside string, so none comes to a point. \
+         A landing is `length` deep along the run that climbs onto it (0 or none: as deep as the stair is wide), and the run \
+         after it is `width` wide (0 or none: as wide as the run before), after a landing straight on, square or back. \
+         `line` says which line of the stair `start` is on, \"left\", \"centre\" (as it is with none) or \"right\" looking up it, \
+         and `offset` moves the stair that far to the left of the line: the line stays when the width changes. \
+         With `spiral`: {radius, sweep?}, the stair winds about a centre `radius` from its middle line, to the left of its first \
+         riser looking up (to the right when negative): every tread a winder, as deep on the middle line as `tread`, or turning \
+         `sweep` degrees in all; a spiral has no landings. \
+         `type` names its stair type (`type` with category stair: `waist` for a slab under its steps, a monolithic stair; \
+         else `tread_thickness`, `riser_thickness`, `nosing`, and `stringer_width` by `stringer_depth` for stringers down its \
+         sides; `profile` \"square\" or \"slanted\", a monolithic stair's riser leaning back from the tread's front edge by \
+         `nosing`; `start_tread` and `end_tread` true to begin with a tread level with the floor before the first riser, and \
+         to end with one level with the floor above after the last (else, as it starts, with a riser); `carriage_width` by `carriage_depth` for a stringer down the middle under the treads; `post`, the diameter of a \
+         spiral's post at its centre; `material` for its structure; `tread_cover`, `riser_cover`, `cover_nosing` and `cover_side` for finishes laid \
+         over it, of `cover_material`, a riser measured finish to finish; `numbers` true to number its treads in plan; `line_visible` and `line_hidden` the line styles its plan draws what shows and what is hidden in, Medium Lines and Hidden Lines when not given; `fill` a fill pattern for what shows; `construction` \"monolithic\", \"stringers\", \"carriage\" or \"treads\", what carries the treads \
+         (none: read from the sizes it has); `landing_stringers` true to run a stringed stair's stringers round its landings too; \
+         `finish_profile` \"square\", \"rounded\", \"chamfered\" or \"bullnose\", the front edge of the tread finish; `arrow` \
+         \"open\", \"filled\", \"hollow\", \"tick\" or \"none\", the head of the walk line in plan; `walk_start` \"none\", \"dot\" or \
+         \"circle\", the mark at its foot; `cut_mark` \"zigzag\", \"double\", \"straight\" or \"wave\", the break mark; `walk_rounded` true to round the \
+         walk line's corners at a landing); with none it is solid down to its level. \
+         With `path`: [{to: [x,y], landing?, arc?, winders?, width?}, …] the stair is drawn along a line from `start`, segment after \
+         segment: each on `to` a point, a flight of steps or with `landing` a landing as long as the segment, straight or with \
+         `arc` an arc turning through that many degrees (left, or with a minus right), and with `width` as wide as that, not \
+         as the stair. A flight has a tread every `tread` of its \
+         length; the last flight has the risers left over, however long it is drawn, and what is drawn past the top is left \
+         out. Where two flights meet at a corner, the corner is a landing, or with `winders` on the second, winders. A stair \
+         with a `path` has no `landings`: its location line (`line`, `offset`) is the path. \
+         `edges`: [{landing, normal, by}, …] moves edges of its landings that no step stands on (the free end of a          landing, its outer side): of the `landing`th landing from the foot (0 first), the edge facing `normal` degrees round          from the way the stair starts, `by` mm outward (negative, inward).          With `sketch`: [{riser: [[x,y],[x,y]], outline?: [[x,y],…]}, …] the stair is drawn by hand and needs no `start`: each \
+         riser a line from its left end to its right, from the first up, as many risers as are drawn; the tread after a riser \
+         is the ground between it and the next, or its `outline` (a landing round a corner). `stair_check` measures what is drawn. \
+         `base_offset` stands its foot that far below its level, `top_offset` its top that far below its `top_level` (a stair \
+         stopping short of it, as one drawn and finished before its top; negative, above). \
+         `lock_going` (true as it starts): drawn along a `path`, every tread `tread` deep; false, each flight's treads stretch or \
+         shrink inside the rules so it ends where it was drawn. \
+         `multistorey`: with a `top_level` several levels up, it is the stair of its first storey and stands again on each \
+         level on the way, each storey with the risers its own height asks and the landings after the same share of them; \
+         `stair_check` says how far the storeys' risers differ. \
          With `railings`, a railing down each side too",
         stair,
     )
@@ -1254,7 +1296,7 @@ other_files(
          to clear it)",
         new_sheet,
     ),
-    edit(
+    edit_files(
         "title_block",
         "Title Blocks",
         &[],
@@ -1273,6 +1315,8 @@ other_files(
          become its box; each key its texts name becomes a sheet field, or keeps the field it was. A new one starts as the \
          built-in title box drawn as one (`like` another), and what's given goes over it",
         title_block,
+        // The DXF or DWG `path` names, when it names one.
+        Files::Conditional,
     ),
     edit(
         "title_values",
@@ -1347,6 +1391,26 @@ other_files(
         view_detail,
     ),
     edit(
+        "stair_storeys",
+        "Separate Storeys",
+        &[],
+        "{id} makes multistorey stair `id` a stair for each storey it climbs, each on its own level up to the next, so any one \
+         of them can be changed apart from the others. The first stays stair `id`; the answer lists the others. The stairs are \
+         as they were, storey by storey",
+        stair_storeys,
+    ),
+    edit(
+        "stair_display",
+        "Stair Display",
+        &[],
+        "{view, below?, same?, above?, by_type?: true} how stairs show in a plan view, in place of what each stair's type says: \
+         `below`, `same` and `above` for the level under a stair, its own level and the level it climbs to, each \
+         break_visible_hidden, no_break_visible, below_visible, above_visible, no_break_hidden, above_hidden, below_hidden, \
+         break_all_visible, break_hidden_visible or not_shown; one not given stays as the view has it (as the usual type has it, the \
+         first time). `by_type`: true goes back to each type's own. Without any it only says what the view has",
+        stair_display,
+    ),
+    edit(
         "visual_style",
         "Visual Style",
         &[],
@@ -1419,7 +1483,7 @@ other_files(
         Files::Conditional,
     )
     .menu("Manage > Favorites"),
-    edit(
+    edit_files(
         "shared_parameters",
         "Shared Parameters",
         &[],
@@ -1446,6 +1510,7 @@ other_files(
          holds as another GUID, is refused naming its line. A file that isn't one is refused naming its line, and is never \
          written over; files are capped at 4 MiB and 100,000 lines. Only `load` changes the project, one undo step",
         shared_parameters,
+        Files::Write,
     )
     .menu("Manage > Shared Parameters"),
     edit(
@@ -1496,7 +1561,7 @@ other_files(
          and changes nothing",
         crate::parameters::batch,
     ),
-    edit(
+    edit_files(
         "parameter_import",
         "Import Parameters",
         &[],
@@ -1511,15 +1576,17 @@ other_files(
          as a shared parameter file's. A file adds categories unless `replace_categories`. A conflict stops the import unless \
          `skip_conflicts`. No element's values come from the file",
         crate::parameters::import,
+        Files::Read,
     ),
-    other(
+    other_files(
         "parameter_export",
         "Export Parameters",
         "{path, names?: [..], definitions?: [..], name?, version?} the project's parameters, those named, or the `definitions` given, to a .xlsx or .csv table or a .bimparams \
          dictionary (with its `name` and `version`). Definitions only, not values. Revit's shared parameter .txt is read, not written",
         crate::parameters::export,
+        Files::Write,
     ),
-    other(
+    other_files(
         "dictionary",
         "Parameter Dictionary",
         "{path, name?, version?, add?: [{name, kind?, description?, group?, categories?, guid?, read_only?, scope?: instance|type}], \
@@ -1529,8 +1596,9 @@ other_files(
          `parameter_import` reads. A change counts up its `revision` and dates it `changed`. `version` is a label of the team's own. \
          Answers what the file now holds",
         crate::parameters::dictionary,
+        Files::Write,
     ),
-    edit(
+    edit_files(
         "dictionary_mount",
         "Load Parameter Dictionary",
         &[],
@@ -1538,6 +1606,8 @@ other_files(
          project; several can be. Nothing comes into the project until `parameter_import`. A dictionary moved is found by its GUID, and \
          takes its new path; another dictionary of a name already loaded is refused. `remove` is refused while a parameter comes from it",
         crate::parameters::dictionary_mount,
+        // The dictionary's file, read when `path` names it; `remove` reads none.
+        Files::Conditional,
     ),
     edit(
         "parameter_merge",
@@ -1808,8 +1878,9 @@ other_files(
         "flip",
         "Flip",
         &[],
-        "{ids: [wall,…]} turns walls round about their location lines, as Revit's flip arrows do: their exterior sides go to the \
-         other side, their doors and windows stay where they are",
+        "{ids: [wall | stair,…]} turns walls round about their location lines, as Revit's flip arrows do: their exterior sides go to the \
+         other side, their doors and windows stay where they are. A stair climbs the other way: from where its top was, down the \
+         same runs, landings and winders, to where its foot was",
         flip,
     ),
     edit(
@@ -2329,6 +2400,91 @@ other_files(
         standard,
     )
     .menu("Manage > Technical Standards"),
+    edit(
+        "building_code",
+        "Building Codes",
+        &[],
+        "{set?: generic|nbr-9050|nbr-9077|ibc|din|jis, keep_rules?: bool, stairs?: {…rules}, reset?: bool} the project's building code, \
+         which its stairs and railings are held to (apart from its technical standard, which is about drafting): `generic` (none, wide \
+         ranges), `nbr-9050` (NBR 9050, an accessible route; `nbr` names it too), `nbr-9077` (NBR 9077, an emergency exit), `ibc`, \
+         `din` (DIN 18065) or `jis` (Japan's Building Standards Law). `set` chooses one and brings its \
+         rules, unless `keep_rules` keeps the project's own. `stairs` changes rules of the project's own (a state's or a city's \
+         numbers), each by name, mm: `riser` and `going` a new stair starts with; `riser_min`, `riser_max`, `going_min`, `going_max`; \
+         `step_min`, `step_max` (two risers and a going); `width_min`; `headroom`; `flight_rise_max` and `flight_risers_max` (a \
+         landing is due at whichever comes first); `landing_rule` (`width`, `fixed` or `step`) and `landing_length`; `winders` \
+         (allowed or not), `walk_line` (`centre` or `narrow_side`), `walk_line_offset`, `winder_going_min`, `winder_narrow_min`; \
+         `nosing_min`, `nosing_max`; `open_risers`; `uniformity`; `handrail_min`, `handrail_max`; `guard_min`. `reset` takes the project's own \
+         rules away, back to its code's. `save`: \"name\" keeps the rules in force as a code of the project's own under that name \
+         (in place of one of that name), and holds the project to it; `set` takes such a name too, and `delete`: \"name\" takes \
+         one away (a project held to it keeps its rules). Nothing is refused for breaking a rule: `stair_check` reports it. The reply gives the \
+         `code`, its `name`, `references` and `note`, the rules in force (`stairs`), which of them the project `changed`, and `all` \
+         the codes. The NBR codes' numbers were checked against their texts by a contributor; the IBC's, DIN's and Japan's were \
+         typed from memory of the documents named and are unchecked, as each rule's source says",
+        building_code,
+    )
+    .menu("Manage > Building Codes"),
+    other_files(
+        "building_code_export",
+        "Export Building Code",
+        "{path, code?, name?} writes a building code as an XML file, to hand to another project or office: the project's, with \
+         the rules it changed, or the one `code` names; `name` is what the file calls it (a code BIMCraft has needs another name \
+         to be read back). A <rule name value/> for each rule, mm",
+        building_code_export,
+        Files::Write,
+    ),
+    edit_files(
+        "building_code_import",
+        "Import Building Code",
+        &[],
+        "{path, name?, set?: bool} reads a building code from an XML file `building_code_export` wrote (or one written by hand: \
+         <building-code name=\"…\"><stairs><rule name=\"riser_max\" value=\"180\"/>…</stairs></building-code>) and keeps it as one of \
+         the project's own, under the file's name or `name`, in place of one of that name; a rule the file leaves out is the generic \
+         code's, and what it holds that this version doesn't know is listed as `left_out`. `set` holds the project to it",
+        building_code_import,
+        Files::Read,
+    ),
+    edit(
+        "stair_sketch",
+        "Convert Stair to Sketch",
+        &[],
+        "{id} makes stair `id`, made by its runs, landings and winders, a stair drawn by hand: a `sketch` of its risers, each a \
+         line where it is, the landings and winders the outlines of the treads after them. It looks as it did; from then on any \
+         riser is moved by its ends (`modify` with `sketch`), and it has no `landings`. A spiral converts too, each tread its \
+         wedge. One round an arc, or with a landing at its foot, isn't converted yet. With `back`: true, a stair converted \
+         this way is made the stair it was again (what was done to its sketch since is lost)",
+        stair_sketch,
+    ),
+    edit(
+        "stair_opening",
+        "Stair Opening",
+        &[],
+        "{id, headroom?} cuts the floors over stair `id` open where they leave less than the headroom over its steps (the \
+         building code's, or `headroom` mm): a shaft through each such floor alone, round the steps short of it. The reply \
+         names the `floors` and the `shafts` made; none when the stair has its headroom. The shafts are elements of their own: \
+         they stay where they are when the stair changes, to be deleted and made again. `margin` (mm, 0 to 2000) makes each opening \
+         reach that far past the steps all round",
+        stair_opening,
+    ),
+    edit(
+        "stair_solve",
+        "Solve Stair",
+        &[],
+        "{id, lock?: [risers | tread | width | landings, …], apply?: n} the stairs nearest stair `id` that are inside the project's \
+         building code, the one that changes least first: each a count of `risers` and their height `riser`, a `tread`, a `width` \
+         and `landings`, with its `changes` said and the `findings` it would still have (none for one that fits; when none fits, \
+         the nearest three). `lock` names what stays as it is. A stair already inside the rules answers `inside`: true and no \
+         proposals. `apply`: n makes the stair the nth proposal",
+        stair_solve,
+    ),
+    other(
+        "stair_check",
+        "Check Stairs",
+        "{ids?: [id, …]} where stairs are outside the project's building code (`building_code`): for each stair (those in `ids`, \
+         else all) its `risers`, `riser` and `going` (mm), `step` (two risers and a going) and `findings`, each the `rule` broken, \
+         the stair's `value`, the rule's `limit` and a `message` saying what to change; `count` is how many findings there are in \
+         all. It reads and never changes a stair: one outside the rules is still built",
+        stair_check,
+    ),
     other(
         "timber_framing",
         "Timber Wall Framing",
@@ -3534,11 +3690,40 @@ pub fn element_json_with(m: &Model, id: Id, rooms: &crate::rooms::Rooms) -> Valu
         }
         Element::Stair(st) => {
             let (n, each, length) = m.flight(st);
-            let (bottom, top) = m.span(st.level, 0.0, st.top_level, st.height);
+            let (bottom, top) = m.stair_span(st);
             extra.insert("height".into(), json!(top - bottom));
             extra.insert("risers".into(), json!(n));
             extra.insert("riser_height".into(), json!(hundredth(each)));
             extra.insert("length".into(), json!(length));
+            // Where it is outside the project's building code, in words: a sign for whoever reads its properties.
+            // Whether it stands on each level on its way (always said, so a front end can switch it); and its storeys.
+            extra.insert("multistorey".into(), json!(st.multistorey));
+            // Its location line and how far it stands from it, said when they are the usual ones too.
+            extra.insert("line".into(), json!(st.line));
+            extra.insert("offset".into(), json!(st.offset));
+            extra.insert("base_offset".into(), json!(st.base_offset));
+            extra.insert("top_offset".into(), json!(st.top_offset));
+            extra.insert("lock_going".into(), json!(st.lock_going));
+            if st.multistorey {
+                let storeys: Vec<Value> = (m.storeys(st).into_iter())
+                    .map(|(level, base, rise)| {
+                        let (n, each, _) = m.flight_of(st, rise);
+                        json!({"level": level, "elevation": base, "risers": n, "riser_height": hundredth(each)})
+                    })
+                    .collect();
+                extra.insert("storeys".into(), json!(storeys));
+            }
+            // In short, and each finding of its own: a front end lists them.
+            let outside = crate::codes::stair_findings(m, st);
+            let said = match outside.len() {
+                0 => "Inside the rules".to_string(),
+                1 => "Outside 1 rule".to_string(),
+                n => format!("Outside {n} rules"),
+            };
+            extra.insert("code_check".into(), json!(said));
+            if !outside.is_empty() {
+                extra.insert("code_findings".into(), json!(outside));
+            }
             runs(&mut extra, &stairs::stair(m, st));
         }
         Element::Ramp(r) => {
@@ -10121,15 +10306,29 @@ fn flip(s: &mut Session, p: &Value) -> R {
     let c = "flip";
     let m = &s.model;
     let ids = ids_param(c, m, p)?;
-    if let Some(id) = ids.iter().find(|id| m.wall(**id).is_none()) {
-        return Err(bad(c, format!("{} {id} isn't a wall", m.elements.get(id).map_or("element", Element::category))));
+    let stair = |id: &Id| matches!(m.elements.get(id), Some(Element::Stair(_)));
+    if let Some(id) = ids.iter().find(|id| m.wall(**id).is_none() && !stair(id)) {
+        return Err(bad(c, format!("{} {id} isn't a wall or a stair", m.elements.get(id).map_or("element", Element::category))));
     }
     // A flipped wall's doors and windows turn round with it: a pinned one stops it.
     let guids: BTreeSet<Guid> = ids.iter().map(|id| m.guid(*id)).collect();
     let mut blocked = ids.clone();
     blocked.extend(hosted_openings(m, &guids));
     refuse_pinned(c, m, &blocked, "flip")?;
+    // A stair climbs the other way: from where its top was, down the same runs, to where its foot was.
+    let flipped: BTreeMap<Id, Stair> = ids
+        .iter()
+        .filter_map(|id| match m.elements.get(id) {
+            Some(Element::Stair(st)) => Some((*id, stairs::flipped(m, st)?)),
+            _ => None,
+        })
+        .collect();
     let m = s.model_mut();
+    for (id, st) in flipped {
+        if let Some(Element::Stair(old)) = m.elements.get_mut(id) {
+            *old = st;
+        }
+    }
     let lengths: BTreeMap<Guid, f64> = ids.iter().filter_map(|id| Some((m.guid(*id), Axis::of(m.wall(*id)?).length()))).collect();
     for (id, e) in m.elements.iter_mut() {
         match e {
@@ -10759,6 +10958,7 @@ fn nearest_reference(m: &Model, level: Guid, p: P2, keep: impl Fn(Line) -> bool,
         Some(Element::Door(o) | Element::Window(o)) => cut(m.wall(o.host)),
         Some(e @ (Element::Column(_) | Element::StructuralColumn(_))) => m.column_cut_by(e, level),
         Some(Element::Grid(_)) => true,
+        Some(Element::Stair(st)) => st.level == level || st.top_level == Some(level),
         _ => false,
     })
     .filter_map(|id| m.reference_at(id, p, &keep))
@@ -11958,12 +12158,40 @@ fn landings_param(c: &str, p: &Value) -> Result<Vec<Landing>, String> {
 fn stair(s: &mut Session, p: &Value) -> R {
     let c = "stair";
     let m = &s.model;
-    let start = point_req(c, p, "start")?;
-    let angle = climb(c, p, start)?;
+    // Drawn by hand, it starts where its first riser is and goes toward its second.
+    let sketch: Vec<crate::model::SketchStep> = match p.get("sketch") {
+        v if absent(v) => Vec::new(),
+        Some(v @ Value::Array(a)) if a.len() <= 1000 => serde_json::from_value(v.clone())
+            .map_err(|e| bad(c, format!("`sketch` is [{{riser: [[x,y],[x,y]], outline?: [[x,y],…]}}, …]: {e}")))?,
+        _ => return Err(bad(c, "`sketch` is a list of at most 1000 steps [{riser: [[x,y],[x,y]], outline?}, …]")),
+    };
+    let (start, angle) = match sketch.as_slice() {
+        [a, b, ..] => {
+            let way = b.mid() - a.mid();
+            (micron(a.mid()), degrees(way.1.atan2(way.0).to_degrees()))
+        }
+        _ => {
+            let start = point_req(c, p, "start")?;
+            (start, climb(c, p, start)?)
+        }
+    };
+    // Drawn along a path, it climbs the way its first segment goes.
+    let path: Vec<crate::model::PathSeg> = match p.get("path") {
+        v if absent(v) => Vec::new(),
+        Some(v @ Value::Array(a)) if a.len() <= 200 => serde_json::from_value(v.clone())
+            .map_err(|e| bad(c, format!("`path` is [{{to: [x,y], landing?, arc?, winders?, width?}}, …]: {e}")))?,
+        _ => return Err(bad(c, "`path` is a list of at most 200 segments [{to: [x,y], landing?, arc?, winders?}, …]")),
+    };
+    let angle = match path.first() {
+        Some(first) if first.to.dist(start) > 1e-6 => degrees((first.to - start).1.atan2((first.to - start).0).to_degrees()),
+        _ => angle,
+    };
     let level = level_param(c, m, p, "level")?;
     let (top_level, height) = top_param(c, m, p, level)?;
     let dim = |key: &str, default: f64| num(c, p, key).map(|v| v.unwrap_or(default));
-    let st = Stair {
+    let auto = p.get("landings").and_then(Value::as_str) == Some("auto");
+    let mut st = Stair {
+        type_name: string(c, p, "type")?.unwrap_or_default(),
         params: Default::default(),
         level,
         top_level,
@@ -11971,10 +12199,42 @@ fn stair(s: &mut Session, p: &Value) -> R {
         start,
         angle,
         width: dim("width", STAIR_WIDTH)?,
-        riser: dim("riser", RISER)?,
-        tread: dim("tread", TREAD)?,
-        landings: landings_param(c, p)?,
+        riser: dim("riser", m.stair_rules().riser)?,
+        tread: dim("tread", m.stair_rules().going)?,
+        landings: if auto { Vec::new() } else { landings_param(c, p)? },
+        base_offset: dim("base_offset", 0.0)?,
+        top_offset: dim("top_offset", 0.0)?,
+        lock_going: match p.get("lock_going") {
+            v if absent(v) => true,
+            _ => flag(c, p, "lock_going")?,
+        },
+        unsketched: None,
+        line: match p.get("line") {
+            v if absent(v) => Default::default(),
+            Some(v) => serde_json::from_value(v.clone())
+                .map_err(|_| bad(c, "`line` is \"left\", \"centre\" or \"right\": the line `start` is on"))?,
+            None => Default::default(),
+        },
+        offset: dim("offset", 0.0)?,
+        multistorey: flag(c, p, "multistorey")?,
+        edges: match p.get("edges") {
+            v if absent(v) => Vec::new(),
+            Some(v) => serde_json::from_value(v.clone()).map_err(|e| bad(c, format!("`edges` is [{{landing, normal, by}}, …]: {e}")))?,
+            None => Vec::new(),
+        },
+        path,
+        sketch,
+        spiral: match p.get("spiral") {
+            v if absent(v) => None,
+            Some(v) => Some(serde_json::from_value(v.clone()).map_err(|e| bad(c, format!("`spiral` is {{radius, sweep?}}: {e}")))?),
+            None => None,
+        },
     };
+    if auto {
+        let (n, each, _) = m.flight(&st);
+        let length = m.stair_rules().landing_length_for(st.width, each, st.tread);
+        st.landings = m.stair_rules().landings(n, each).into_iter().map(|l| Landing { length, ..l }).collect();
+    }
     let (n, _, length) = m.flight(&st);
     let level = st.level;
     let id = s.model_mut().insert(Element::Stair(st));
@@ -13275,6 +13535,71 @@ fn view_detail(s: &mut Session, p: &Value) -> R {
     let m = &s.model;
     let now = graphics::graphics_of(m, view).map(|g| g.resolved(m).detail).unwrap_or_default();
     Ok(json!({"view": view, "name": m.view_name(view), "detail": now}))
+}
+
+fn stair_storeys(s: &mut Session, p: &Value) -> R {
+    let c = "stair_storeys";
+    only(c, p, &["id"])?;
+    let m = &s.model;
+    let id = id_opt(c, p, "id")?.and_then(|g| m.elements.id(g)).ok_or_else(|| bad(c, "`id`, a stair, is required"))?;
+    let Some(Element::Stair(st)) = m.elements.get(id) else { return Err(bad(c, format!("{id} is not a stair"))) };
+    let storeys = m.storeys(st);
+    if !st.multistorey || storeys.len() < 2 {
+        return Err(bad(c, format!("stair {id} climbs one storey: there is nothing to separate")));
+    }
+    let levels: Vec<Guid> = storeys.iter().map(|(g, ..)| *g).collect();
+    let mut each: Vec<Stair> = Vec::new();
+    for (i, (level, _, _)) in storeys.iter().enumerate() {
+        let top = levels.get(i + 1).copied().or(st.top_level);
+        let last = i + 1 == storeys.len();
+        each.push(Stair {
+            level: *level,
+            top_level: top,
+            multistorey: false,
+            base_offset: if i == 0 { st.base_offset } else { 0.0 },
+            top_offset: if last { st.top_offset } else { 0.0 },
+            ..st.clone()
+        });
+    }
+    let mut made = Vec::new();
+    let mut it = each.into_iter();
+    if let (Some(first), Some(Element::Stair(old))) = (it.next(), s.model_mut().elements.get_mut(id)) {
+        *old = first;
+    }
+    for st in it {
+        made.push(s.model_mut().insert(Element::Stair(st)));
+    }
+    Ok(json!({"id": id, "made": made}))
+}
+
+fn stair_display(s: &mut Session, p: &Value) -> R {
+    let c = "stair_display";
+    let view = scaled_view(c, &s.model, p)?;
+    let by_type = match p.get("by_type") {
+        v if absent(v) => false,
+        _ => flag(c, p, "by_type")?,
+    };
+    let given: Vec<(&str, &Value)> =
+        ["below", "same", "above"].into_iter().filter_map(|k| p.get(k).filter(|v| !v.is_null()).map(|v| (k, v))).collect();
+    if by_type || !given.is_empty() {
+        own_to_set(c, &s.model, view, Group::Categories, "stair display")?;
+    }
+    if by_type {
+        change_graphics(s, view, |g| g.stairs = None);
+    } else if !given.is_empty() {
+        let was = graphics::graphics_of(&s.model, view).and_then(|g| g.stairs).unwrap_or_default();
+        let mut all = serde_json::to_value(was).map_err(|e| bad(c, e))?;
+        for (k, v) in given {
+            all[k] = v.clone();
+        }
+        let now: crate::model::PlanShows = serde_json::from_value(all).map_err(|_| {
+            bad(c, "`below`, `same` and `above` are each break_visible_hidden, no_break_visible, below_visible, above_visible, no_break_hidden, above_hidden, below_hidden, break_all_visible, break_hidden_visible or not_shown")
+        })?;
+        change_graphics(s, view, |g| g.stairs = Some(now));
+    }
+    let m = &s.model;
+    let now = graphics::graphics_of(m, view).and_then(|g| g.resolved(m).stairs);
+    Ok(json!({"view": view, "name": m.view_name(view), "stairs": now.map_or(json!("by type"), |w| json!(w))}))
 }
 
 /// What to call element `id` in a message: a view's or a sheet's name, else its category and id.
@@ -15730,8 +16055,9 @@ fn edit_type(s: &mut Session, p: &Value) -> R {
     let cat = category(&string(c, p, "category")?.ok_or_else(|| bad(c, "`category` is required: wall, floor, ceiling, door or window"))?);
     let name = string(c, p, "name")?.filter(|n| !n.trim().is_empty()).ok_or_else(|| bad(c, "`name` is required"))?;
     let (thickness, width, height, sill) = (num(c, p, "thickness")?, num(c, p, "width")?, num(c, p, "height")?, num(c, p, "sill")?);
+    // A stair type's `profile` is its risers' (straight or slanted), not a steel section.
     if !matches!(cat.as_str(), "structuralcolumn" | "beam")
-        && ["profile", "shape", "web", "flange", "radius"].iter().any(|key| !absent(p.get(key)))
+        && ["profile", "shape", "web", "flange", "radius"].iter().any(|key| !absent(p.get(key)) && !(cat == "stair" && *key == "profile"))
     {
         return Err(bad(c, "a steel section is for a structural column's or a beam's type"));
     }
@@ -15817,6 +16143,109 @@ fn edit_type(s: &mut Session, p: &Value) -> R {
             let (thickness, layers) = layered(c, p, m.types.roof.get(&name).map(|t| (t.thickness, t.layers.as_slice())), thickness, &need)?;
             let t = RoofType { thickness, layers };
             m.types.roof.insert(name.clone(), t.clone());
+            json!(t)
+        }
+        "stair" => {
+            let old = m.types.stair.get(&name).cloned().unwrap_or_default();
+            let part = |key: &str, was: f64| num(c, p, key).map(|v| v.unwrap_or(was));
+            let t = crate::model::StairType {
+                waist: part("waist", old.waist)?,
+                tread_thickness: part("tread_thickness", old.tread_thickness)?,
+                riser_thickness: part("riser_thickness", old.riser_thickness)?,
+                nosing: part("nosing", old.nosing)?,
+                stringer_width: part("stringer_width", old.stringer_width)?,
+                stringer_depth: part("stringer_depth", old.stringer_depth)?,
+                // Its rules and how it shows in plan: what is given is merged into what it has, null taking a rule off.
+                rules: match p.get("rules") {
+                    v if absent(v) => old.rules,
+                    Some(v) if v.is_object() => {
+                        let mut all = serde_json::to_value(old.rules).map_err(|e| bad(c, e))?;
+                        merge(&mut all, v);
+                        serde_json::from_value(all).map_err(|e| bad(c, format!("`rules` is {{riser_min, riser_max, going_min, going_max, step_min, step_max, ratio_min, ratio_max, sum_min, sum_max, pitch_min, pitch_max, landing_min, walk_offset_min}}, each a number or null: {e}")))?
+                    }
+                    _ => return Err(bad(c, "`rules` is the rules to set, by name: {riser_max: 180, pitch_max: null, …}")),
+                },
+                plan: match p.get("plan") {
+                    v if absent(v) => old.plan,
+                    Some(v) if v.is_object() => {
+                        let mut all = serde_json::to_value(old.plan).map_err(|e| bad(c, e))?;
+                        merge(&mut all, v);
+                        serde_json::from_value(all).map_err(|e| bad(c, format!("`plan` is {{below, same, above}}, each break_visible_hidden, no_break_visible, below_visible, above_visible, no_break_hidden, above_hidden, below_hidden, break_all_visible, break_hidden_visible or not_shown: {e}")))?
+                    }
+                    _ => return Err(bad(c, "`plan` is how it shows on each plan: {below, same, above}")),
+                },
+                numbers: match p.get("numbers") {
+                    v if absent(v) => old.numbers,
+                    _ => flag(c, p, "numbers")?,
+                },
+                line_visible: string(c, p, "line_visible")?.unwrap_or(old.line_visible),
+                line_hidden: string(c, p, "line_hidden")?.unwrap_or(old.line_hidden),
+                fill: string(c, p, "fill")?.unwrap_or(old.fill),
+                profile: match p.get("profile") {
+                    v if absent(v) => old.profile,
+                    Some(v) => serde_json::from_value(v.clone())
+                        .map_err(|_| bad(c, "`profile` is \"square\" or \"slanted\" (the riser leaning back by the `nosing`)"))?,
+                    None => old.profile,
+                },
+                start_tread: match p.get("start_tread") {
+                    v if absent(v) => old.start_tread,
+                    _ => flag(c, p, "start_tread")?,
+                },
+                end_tread: match p.get("end_tread") {
+                    v if absent(v) => old.end_tread,
+                    _ => flag(c, p, "end_tread")?,
+                },
+                carriage_width: part("carriage_width", old.carriage_width)?,
+                carriage_depth: part("carriage_depth", old.carriage_depth)?,
+                post: part("post", old.post)?,
+                material: string(c, p, "material")?.unwrap_or(old.material),
+                tread_cover: part("tread_cover", old.tread_cover)?,
+                riser_cover: part("riser_cover", old.riser_cover)?,
+                cover_nosing: part("cover_nosing", old.cover_nosing)?,
+                cover_side: part("cover_side", old.cover_side)?,
+                cover_material: string(c, p, "cover_material")?.unwrap_or(old.cover_material),
+                construction: match p.get("construction") {
+                    v if absent(v) => old.construction,
+                    Some(v) => Some(serde_json::from_value(v.clone()).map_err(|_| {
+                        bad(c, "`construction` is \"monolithic\", \"stringers\", \"carriage\" (one stringer down the middle) or \"treads\" (treads fixed in a wall)")
+                    })?),
+                    None => old.construction,
+                },
+                landing_stringers: match p.get("landing_stringers") {
+                    v if absent(v) => old.landing_stringers,
+                    _ => flag(c, p, "landing_stringers")?,
+                },
+                finish_profile: match p.get("finish_profile") {
+                    v if absent(v) => old.finish_profile,
+                    Some(v) => serde_json::from_value(v.clone())
+                        .map_err(|_| bad(c, "`finish_profile` is \"square\", \"rounded\", \"chamfered\" or \"bullnose\""))?,
+                    None => old.finish_profile,
+                },
+                arrow: match p.get("arrow") {
+                    v if absent(v) => old.arrow,
+                    Some(v) => serde_json::from_value(v.clone())
+                        .map_err(|_| bad(c, "`arrow` is \"open\", \"filled\", \"hollow\", \"tick\" or \"none\""))?,
+                    None => old.arrow,
+                },
+                walk_start: match p.get("walk_start") {
+                    v if absent(v) => old.walk_start,
+                    Some(v) => {
+                        serde_json::from_value(v.clone()).map_err(|_| bad(c, "`walk_start` is \"none\", \"dot\" or \"circle\""))?
+                    }
+                    None => old.walk_start,
+                },
+                walk_rounded: match p.get("walk_rounded") {
+                    v if absent(v) => old.walk_rounded,
+                    _ => flag(c, p, "walk_rounded")?,
+                },
+                cut_mark: match p.get("cut_mark") {
+                    v if absent(v) => old.cut_mark,
+                    Some(v) => serde_json::from_value(v.clone())
+                        .map_err(|_| bad(c, "`cut_mark` is \"zigzag\", \"double\", \"straight\" or \"wave\""))?,
+                    None => old.cut_mark,
+                },
+            };
+            m.types.stair.insert(name.clone(), t.clone());
             json!(t)
         }
         "railing" => {
@@ -16516,7 +16945,35 @@ pub(crate) fn transform(c: &str, m: &Model, mut e: Element, id: Id, mo: &Motion,
             cp.mirrored ^= mo.mirror;
         }
         // A mirror image turns the other way at its landings.
-        Element::Stair(Stair { start, angle, landings, .. }) | Element::Ramp(Ramp { start, angle, landings, .. }) => {
+        Element::Stair(st) => {
+            (st.start, st.angle) = turned(f, st.start, st.angle);
+            // One drawn along a path goes with it, point by point; a mirror image's arcs and corners turn the other way.
+            for seg in &mut st.path {
+                seg.to = f(seg.to);
+                if mo.mirror {
+                    seg.arc = -seg.arc + 0.0;
+                }
+            }
+            // One drawn by hand goes with it, riser by riser.
+            for step in &mut st.sketch {
+                step.riser = [f(step.riser[0]), f(step.riser[1])];
+                step.outline = step.outline.iter().map(|q| f(*q)).collect();
+                if mo.mirror {
+                    step.riser.swap(0, 1);
+                }
+            }
+            // And stands to the other side of its line.
+            if mo.mirror {
+                st.landings.iter_mut().for_each(|l| l.turn = -l.turn + 0.0);
+                st.offset = -st.offset + 0.0;
+                st.line = match st.line {
+                    crate::model::StairLine::Left => crate::model::StairLine::Right,
+                    crate::model::StairLine::Right => crate::model::StairLine::Left,
+                    line => line,
+                };
+            }
+        }
+        Element::Ramp(Ramp { start, angle, landings, .. }) => {
             (*start, *angle) = turned(f, *start, *angle);
             if mo.mirror {
                 landings.iter_mut().for_each(|l| l.turn = -l.turn + 0.0);
@@ -17522,6 +17979,7 @@ fn reference_way(r: &Reference) -> String {
         Face::Right => "right face",
         Face::Start => "start",
         Face::End => "end",
+        Face::Edge(_) => "stair edge",
     };
     match r.point {
         Some(End::Start) => format!("{face}'s start"),
@@ -18915,6 +19373,343 @@ fn standard(s: &mut Session, p: &Value) -> R {
             "references": s.reference_standards(),
         })).collect::<Vec<_>>()
     }))
+}
+
+fn building_code(s: &mut Session, p: &Value) -> R {
+    use crate::codes;
+    let c = "building_code";
+    only(c, p, &["set", "keep_rules", "stairs", "reset", "save", "delete"])?;
+    let names: Vec<String> = codes::codes().iter().chain(&s.model.building_codes).map(|k| k.code.clone()).collect();
+    let set = match p.get("set") {
+        v if absent(v) => None,
+        Some(Value::String(t)) if names.contains(t) => Some(t.clone()),
+        // The one entry the two Brazilian standards had before they were told apart: NBR 9050's now.
+        Some(Value::String(t)) if t == "nbr" => Some("nbr-9050".to_string()),
+        Some(v) => return Err(bad(c, format!("`set` is one of {}, not {v}", names.join(", ")))),
+        None => None,
+    };
+    let save = string(c, p, "save")?.map(|n| codes::own_name(&n).map_err(|e| bad(c, e))).transpose()?;
+    let delete = string(c, p, "delete")?;
+    if let Some(d) = &delete
+        && !s.model.building_codes.iter().any(|k| k.code == *d)
+    {
+        return Err(bad(c, format!("`delete` takes one of the project's own codes away, and `{d}` is none of them")));
+    }
+    let (keep, reset) = (flag(c, p, "keep_rules")?, flag(c, p, "reset")?);
+    let patch = match p.get("stairs") {
+        v if absent(v) => None,
+        Some(Value::Object(o)) => Some(o),
+        Some(_) => return Err(bad(c, "`stairs` is the rules to change, by name: {width_min: 1100, …}")),
+        None => None,
+    };
+    if reset && patch.is_some() {
+        return Err(bad(c, "`reset` takes the project's own rules away: give it without `stairs`"));
+    }
+    // The project's own rules after this: kept across a change of code only when asked, then changed by `stairs`.
+    let mut own = if reset || (set.is_some() && !keep) { None } else { s.model.stair_rules.clone() };
+    let code = set.clone().or_else(|| s.model.building_code.clone());
+    if let Some(patch) = patch {
+        let base = own.as_ref().unwrap_or(&code.as_deref().and_then(|k| s.model.code(k)).unwrap_or(codes::generic()).stairs);
+        let Ok(Value::Object(mut all)) = serde_json::to_value(base) else { return Err(bad(c, "the rules could not be read")) };
+        for (k, v) in patch {
+            if !codes::ORDER.contains(&k.as_str()) {
+                return Err(bad(c, format!("`{k}` is no stair rule; they are {}", codes::ORDER.join(", "))));
+            }
+            all.insert(k.clone(), v.clone());
+        }
+        let rules: codes::StairRules = serde_json::from_value(Value::Object(all)).map_err(|e| bad(c, format!("`stairs`: {e}")))?;
+        rules.check().map_err(|e| bad(c, e))?;
+        own = Some(rules);
+    }
+    let mut code = code;
+    let mut kept = s.model.building_codes.clone();
+    // The rules in force, saved as a code of the project's own, which it is then held to.
+    if let Some(name) = save {
+        let from = code.as_deref().and_then(|k| s.model.code(k)).unwrap_or(codes::generic());
+        let based_on = if from.based_on.is_empty() { from.code.clone() } else { from.based_on.clone() };
+        let stairs = own.take().unwrap_or_else(|| from.stairs.clone());
+        // A rule kept is still from where the code it came from says; one changed is the project's.
+        let mut sources = from.sources.clone();
+        for rule in stairs.changed(&from.stairs) {
+            sources.insert(rule, format!("{name}: the project's own number"));
+        }
+        let new = codes::BuildingCode {
+            code: name.clone(),
+            name: name.clone(),
+            region: from.region.clone(),
+            references: from.references.clone(),
+            note: format!("The project's own, based on {}.", codes::code(&based_on).map_or(based_on.as_str(), |k| k.name.as_str())),
+            based_on,
+            sources,
+            checked: String::new(),
+            stairs,
+        };
+        kept.retain(|k| k.code != name);
+        kept.push(new);
+        code = Some(name);
+    }
+    // One taken away: a project held to it keeps its rules, as its own, under the code it was based on.
+    if let Some(name) = delete
+        && let Some(i) = kept.iter().position(|k| k.code == name)
+    {
+        let gone = kept.remove(i);
+        if code.as_deref() == Some(name.as_str()) {
+            own = own.or(Some(gone.stairs));
+            code = codes::code(&gone.based_on).map(|k| k.code.clone());
+        }
+    }
+    // Rules that are the code's own are not the project's.
+    let its = code
+        .as_deref()
+        .and_then(|k| kept.iter().find(|o| o.code == k).or_else(|| codes::code(k)))
+        .unwrap_or(codes::generic())
+        .stairs
+        .clone();
+    if own.as_ref() == Some(&its) {
+        own = None;
+    }
+    if own != s.model.stair_rules || code != s.model.building_code || kept != s.model.building_codes {
+        let m = s.model_mut();
+        m.stair_rules = own;
+        m.building_code = code;
+        m.building_codes = kept;
+    }
+    let m = &s.model;
+    let code = m.building_code();
+    Ok(json!({
+        "code": code.code,
+        "name": code.name,
+        "region": code.region,
+        "references": code.references,
+        "note": code.note,
+        "stairs": m.stair_rules(),
+        "changed": m.stair_rules().changed(&code.stairs),
+        "custom": m.building_codes.iter().any(|k| k.code == code.code),
+        "based_on": code.based_on,
+        "all": codes::codes().iter().map(|k| (k, false)).chain(m.building_codes.iter().map(|k| (k, true))).map(|(k, own)| json!({
+            "code": k.code, "name": k.name, "region": k.region, "references": k.references, "note": k.note, "custom": own,
+        })).collect::<Vec<_>>(),
+    }))
+}
+
+/// `building_code_export`: the code the project is held to, with the rules it changed, or one named, as an XML file.
+fn building_code_export(s: &mut Session, p: &Value) -> R {
+    use crate::codes;
+    let c = "building_code_export";
+    only(c, p, &["path", "code", "name"])?;
+    let path = string(c, p, "path")?.ok_or_else(|| bad(c, "`path` is the XML file to write"))?;
+    let m = &s.model;
+    let mut code = match string(c, p, "code")? {
+        Some(k) => m.code(&k).cloned().ok_or_else(|| bad(c, format!("no building code `{k}`")))?,
+        // The project's, as it is held to it: with the rules it changed.
+        None => codes::BuildingCode { stairs: m.stair_rules().clone(), ..m.building_code().clone() },
+    };
+    if let Some(name) = string(c, p, "name")? {
+        code.name = codes::own_name(&name).map_err(|e| bad(c, e))?;
+    }
+    if code.based_on.is_empty() {
+        code.based_on = code.code.clone();
+    }
+    std::fs::write(&path, code.to_xml()).map_err(|e| bad(c, format!("{path}: {e}")))?;
+    Ok(json!({"path": path, "name": code.name, "based_on": code.based_on}))
+}
+
+/// `building_code_import`: a code read from an XML file, kept as one of the project's own.
+fn building_code_import(s: &mut Session, p: &Value) -> R {
+    use crate::codes;
+    let c = "building_code_import";
+    only(c, p, &["path", "name", "set"])?;
+    let path = string(c, p, "path")?.ok_or_else(|| bad(c, "`path` is the XML file to read"))?;
+    let set = flag(c, p, "set")?;
+    let size = std::fs::metadata(&path).map_err(|e| bad(c, format!("{path}: {e}")))?.len();
+    if size > codes::MAX_XML as u64 {
+        return Err(bad(c, format!("{path}: larger than a building code's file (1 MB)")));
+    }
+    let text = std::fs::read_to_string(&path).map_err(|e| bad(c, format!("{path}: {e}")))?;
+    // A file named after a code BIMCraft has (one exported as it was) comes in under another name.
+    let renamed = string(c, p, "name")?;
+    let (code, left_out) = codes::BuildingCode::from_xml(&text, renamed.as_deref()).map_err(|e| bad(c, format!("{path}: {e}")))?;
+    let name = code.code.clone();
+    let m = s.model_mut();
+    m.building_codes.retain(|k| k.code != name);
+    m.building_codes.push(code);
+    if set {
+        m.building_code = Some(name.clone());
+        m.stair_rules = None;
+    }
+    Ok(json!({"code": name, "left_out": left_out, "set": set}))
+}
+
+/// `stair_sketch`: a stair made by its runs and turns becomes one drawn by hand, every riser a line of its own.
+fn stair_sketch(s: &mut Session, p: &Value) -> R {
+    let c = "stair_sketch";
+    only(c, p, &["id", "back"])?;
+    let m = &s.model;
+    let id = id_opt(c, p, "id")?.and_then(|g| m.elements.id(g)).ok_or_else(|| bad(c, "`id`, a stair, is required"))?;
+    let Some(Element::Stair(st)) = m.elements.get(id) else { return Err(bad(c, format!("{id} is not a stair"))) };
+    // Back: the stair it was before it was converted.
+    if flag(c, p, "back")? {
+        let Some(was) = st.unsketched.clone() else {
+            return Err(bad(c, format!("stair {id} wasn't converted from a stair laid out, so there is nothing to go back to")));
+        };
+        let mut made = st.clone();
+        made.sketch.clear();
+        made.unsketched = None;
+        let crate::model::Unsketched { start, angle, landings, path, spiral, line, offset } = *was;
+        (made.start, made.angle, made.landings, made.path, made.spiral, made.line, made.offset) =
+            (start, angle, landings, path, spiral, line, offset);
+        if let Some(Element::Stair(old)) = s.model_mut().elements.get_mut(id) {
+            *old = made;
+        }
+        return Ok(json!({"id": id, "back": true}));
+    }
+    if !st.sketch.is_empty() {
+        return Err(bad(c, format!("stair {id} is drawn by hand already")));
+    }
+    let Some(steps) = stairs::as_sketch(m, st) else {
+        return Err(bad(
+            c,
+            format!("stair {id} can't be made a sketch yet: one round an arc, or with a landing at its foot, isn't converted"),
+        ));
+    };
+    let mut made = st.clone();
+    made.unsketched = Some(Box::new(crate::model::Unsketched {
+        start: st.start,
+        angle: st.angle,
+        landings: st.landings.clone(),
+        path: st.path.clone(),
+        spiral: st.spiral,
+        line: st.line,
+        offset: st.offset,
+    }));
+    made.spiral = None;
+    made.sketch = steps
+        .into_iter()
+        .map(|s| crate::model::SketchStep { riser: s.riser.map(micron), outline: s.outline.into_iter().map(micron).collect() })
+        .collect();
+    made.landings.clear();
+    made.path.clear();
+    (made.line, made.offset) = (Default::default(), 0.0);
+    if let [a, b, ..] = made.sketch.as_slice() {
+        let way = b.mid() - a.mid();
+        (made.start, made.angle) = (micron(a.mid()), degrees(way.1.atan2(way.0).to_degrees()));
+    }
+    let risers = made.sketch.len();
+    if let Some(Element::Stair(old)) = s.model_mut().elements.get_mut(id) {
+        *old = made;
+    }
+    Ok(json!({"id": id, "risers": risers}))
+}
+
+/// `stair_opening`: the floors over a stair cut open where they leave less than the headroom.
+fn stair_opening(s: &mut Session, p: &Value) -> R {
+    let c = "stair_opening";
+    only(c, p, &["id", "headroom", "margin"])?;
+    let m = &s.model;
+    let id = id_opt(c, p, "id")?.and_then(|g| m.elements.id(g)).ok_or_else(|| bad(c, "`id`, a stair, is required"))?;
+    let Some(Element::Stair(st)) = m.elements.get(id) else { return Err(bad(c, format!("{id} is not a stair"))) };
+    // How far the opening reaches past the steps under it, all round.
+    let margin = match num(c, p, "margin")? {
+        Some(x) if (0.0..=2000.0).contains(&x) => x,
+        Some(x) => return Err(bad(c, format!("`margin` is 0 to 2000 mm, not {x}"))),
+        None => 0.0,
+    };
+    let least = match num(c, p, "headroom")? {
+        Some(h) if (0.0..=10_000.0).contains(&h) => h,
+        Some(h) => return Err(bad(c, format!("`headroom` is 0 to 10000 mm, not {h}"))),
+        None => m.stair_rules().headroom,
+    };
+    let mut made: Vec<Shaft> = Vec::new();
+    let mut floors = Vec::new();
+    for (floor, _, rings) in stairs::headroom(m, st, least) {
+        let Some(Element::Floor(f)) = m.elements.get(floor) else { continue };
+        let thickness = m.types.floor.get(&f.type_name).map_or(0.0, |t| t.thickness);
+        floors.push(floor);
+        // Through the floor alone: from just under it to just over it.
+        made.extend(stairs::united(&rings).into_iter().map(|mut boundary| {
+            if geom::area(&boundary) < 0.0 {
+                boundary.reverse();
+            }
+            if margin > 0.0 {
+                boundary = geom::grow(&boundary, margin);
+            }
+            let boundary = boundary.into_iter().map(micron).collect();
+            Shaft {
+                level: f.level,
+                boundary,
+                top_level: None,
+                height: thickness + 2.0,
+                base_offset: f.offset - thickness - 1.0,
+                sketch: Vec::new(),
+            }
+        }));
+    }
+    let m = s.model_mut();
+    let shafts: Vec<Id> = made.into_iter().map(|sh| m.insert(Element::Shaft(sh))).collect();
+    Ok(json!({"id": id, "headroom": least, "floors": floors, "shafts": shafts}))
+}
+
+/// `stair_solve`: the stairs nearest one that fit the project's building code, and with `apply`, one of them made.
+fn stair_solve(s: &mut Session, p: &Value) -> R {
+    use crate::codes;
+    let c = "stair_solve";
+    only(c, p, &["id", "lock", "apply"])?;
+    let m = &s.model;
+    let id = id_opt(c, p, "id")?.and_then(|g| m.elements.id(g)).ok_or_else(|| bad(c, "`id`, a stair, is required"))?;
+    let Some(Element::Stair(st)) = m.elements.get(id) else { return Err(bad(c, format!("{id} is not a stair"))) };
+    let mut locks = codes::Locks::default();
+    let named: Option<Vec<String>> = shaped(c, p, "lock", "[risers | tread | width | landings, …]")?;
+    for l in named.into_iter().flatten() {
+        match l.as_str() {
+            "risers" => locks.risers = true,
+            "tread" => locks.tread = true,
+            "width" => locks.width = true,
+            "landings" => locks.landings = true,
+            other => return Err(bad(c, format!("`lock` names risers, tread, width or landings, not `{other}`"))),
+        }
+    }
+    let proposals = codes::solve(m, st, locks);
+    let Some(which) = num(c, p, "apply")? else {
+        let inside = proposals.first().is_some_and(|p| p.changes.is_empty());
+        return Ok(
+            json!({"id": id, "code": m.building_code().code, "inside": inside, "proposals": if inside { Vec::new() } else { proposals }}),
+        );
+    };
+    let chosen =
+        (which.fract() == 0.0 && which >= 1.0).then(|| proposals.get(which as usize - 1)).flatten().filter(|p| !p.changes.is_empty());
+    let Some(chosen) = chosen else {
+        return Err(bad(c, format!("`apply` is the number of a proposal, 1 to {}, as `stair_solve` lists them", proposals.len())));
+    };
+    let made = chosen.applied(st);
+    let reply = json!({"id": id, "applied": chosen});
+    if let Some(Element::Stair(old)) = s.model_mut().elements.get_mut(id) {
+        *old = made;
+    }
+    Ok(reply)
+}
+
+fn stair_check(s: &mut Session, p: &Value) -> R {
+    let c = "stair_check";
+    only(c, p, &["ids"])?;
+    let m = &s.model;
+    let ids: Vec<Id> = if absent(p.get("ids")) {
+        m.elements.iter().filter(|(_, e)| matches!(e, Element::Stair(_))).map(|(id, _)| *id).collect()
+    } else {
+        ids_param(c, m, p)?
+    };
+    let mut count = 0;
+    let mut stairs = Vec::new();
+    for id in ids {
+        let Some(Element::Stair(st)) = m.elements.get(id) else { return Err(bad(c, format!("{id} is not a stair"))) };
+        let (n, riser, _) = m.flight(st);
+        let findings = crate::codes::stair_findings(m, st);
+        count += findings.len();
+        stairs.push(json!({
+            "id": id, "risers": n, "riser": hundredth(riser), "going": st.tread, "step": hundredth(2.0 * riser + st.tread),
+            "findings": findings,
+        }));
+    }
+    Ok(json!({"code": m.building_code().code, "stairs": stairs, "count": count}))
 }
 
 fn units(s: &mut Session, p: &Value) -> R {

@@ -44,6 +44,8 @@ pub const EDGE: Rgb = Rgb(48, 48, 48);
 const DATUM: Rgb = Rgb(60, 100, 150);
 const WALL: Rgb = Rgb(236, 236, 232);
 const SLAB: Rgb = Rgb(214, 214, 210);
+/// A stair's headroom, the room clear over it, seen through.
+const HEADROOM: Rgb = Rgb(110, 165, 230);
 const DOOR: Rgb = Rgb(198, 168, 128);
 const GLASS: Rgb = Rgb(166, 200, 228);
 const ROOF: Rgb = Rgb(176, 118, 96);
@@ -142,6 +144,9 @@ struct Tri {
     /// Its form's Visibility Settings, packed with its component's x axis ([`crate::family::visibility::packed`]); 0 for
     /// anything drawn in every view.
     vis: u32,
+    /// What part of its element it is, where the element has parts a view shows apart (a stair's: [`StairPart::tag`]);
+    /// 0, the whole.
+    part: u8,
 }
 
 /// The bits of a skin that hold the texture.
@@ -192,8 +197,8 @@ impl Frame {
             at(a.0, c.1, z.1),
         ];
         for [i, j, k, l] in [[0, 1, 2, 3], [4, 5, 6, 7], [0, 1, 5, 4], [1, 2, 6, 5], [2, 3, 7, 6], [3, 0, 4, 7]] {
-            out.push(Tri { p: [v[i], v[j], v[k]], owner, color, tex, curve: None, vis: 0 });
-            out.push(Tri { p: [v[i], v[k], v[l]], owner, color, tex, curve: None, vis: 0 });
+            out.push(Tri { p: [v[i], v[j], v[k]], owner, color, tex, curve: None, vis: 0, part: 0 });
+            out.push(Tri { p: [v[i], v[k], v[l]], owner, color, tex, curve: None, vis: 0, part: 0 });
         }
     }
 }
@@ -208,7 +213,7 @@ impl Frame {
 pub(crate) enum Solid {
     Box { owner: Id, color: Rgb, tex: u32, frame: Frame, a: (f64, f64), c: (f64, f64), z: (f64, f64) },
     Slab { owner: Id, color: Rgb, tex: u32, face: Vec<P3>, rise: f64 },
-    Prism { owner: Id, color: Rgb, tex: u32, ring: Vec<P2>, bottom: Plane, top: Plane, curve: Option<(P2, f64)> },
+    Prism { owner: Id, color: Rgb, tex: u32, ring: Vec<P2>, bottom: Plane, top: Plane, curve: Option<(P2, f64)>, part: u8 },
     Mesh { owner: Id, color: Rgb, tex: u32, tris: Vec<[P3; 3]>, caps: usize, round: bool, cut: bool, vis: u32 },
 }
 
@@ -317,6 +322,14 @@ impl Solid {
         let mut made = Vec::new();
         self.tris(&mut made);
         made.into_iter().map(|t| t.p).collect()
+    }
+
+    /// What part of its element it is (a stair's, by its tag); 0, the whole.
+    pub(crate) fn part(&self) -> u8 {
+        match self {
+            Solid::Prism { part, .. } => *part,
+            _ => 0,
+        }
     }
 
     #[cfg(test)]
@@ -477,8 +490,8 @@ impl Solid {
         match self {
             Solid::Box { owner, color, tex, frame, a, c, z } => frame.cuboid(out, *owner, (*color, *tex), *a, *c, *z),
             Solid::Slab { owner, color, tex, face, rise } => prism(out, *owner, (*color, *tex), face, *rise),
-            Solid::Prism { owner, color, tex, ring, bottom, top, curve } => {
-                let (owner, color, tex) = (*owner, *color, *tex);
+            Solid::Prism { owner, color, tex, ring, bottom, top, curve, part } => {
+                let (owner, color, tex, part) = (*owner, *color, *tex, *part);
                 // Counter-clockwise, so every face is turned out: a wall's ring runs the other way round.
                 let turned: Vec<P2>;
                 let ring = if geom::area(ring) < 0.0 {
@@ -488,19 +501,37 @@ impl Solid {
                     ring
                 };
                 let at = |q: P2, p: &Plane| [q.0, q.1, p.at(q)];
+                // A piece of a stair's smooth underside (a negative radius): its underside one surface with its
+                // neighbours', and the sides it shares with them (bits of the centre's x) left out.
+                let (under, inside) = match curve {
+                    Some((c, r)) if *r < 0.0 => (Some((owner, usize::MAX)), c.0.max(0.0) as u32),
+                    _ => (None, 0),
+                };
                 for [a, b, c] in geom::triangulate(ring) {
                     let pt = |i: usize| ring.get(i).copied().unwrap_or_default();
-                    out.push(Tri { p: [at(pt(a), top), at(pt(b), top), at(pt(c), top)], owner, color, tex, curve: None, vis: 0 });
-                    out.push(Tri { p: [at(pt(a), bottom), at(pt(c), bottom), at(pt(b), bottom)], owner, color, tex, curve: None, vis: 0 });
+                    out.push(Tri { p: [at(pt(a), top), at(pt(b), top), at(pt(c), top)], owner, color, tex, curve: None, vis: 0, part });
+                    out.push(Tri {
+                        p: [at(pt(a), bottom), at(pt(c), bottom), at(pt(b), bottom)],
+                        owner,
+                        color,
+                        tex,
+                        curve: under,
+                        vis: 0,
+                        part,
+                    });
                 }
-                for (a, b) in geom::ring_edges(ring) {
+                let curve = curve.filter(|(_, r)| *r >= 0.0);
+                for (i, (a, b)) in geom::ring_edges(ring).enumerate() {
+                    if i < 32 && inside & (1 << i) != 0 {
+                        continue;
+                    }
                     let (a0, b0, a1, b1) = (at(a, bottom), at(b, bottom), at(a, top), at(b, top));
                     // Along a curved wall's face (not across it, where it's cut), which face.
                     let curve = curve
                         .filter(|(c, _)| (b - a).unit().cross((a - *c).unit()).abs() > 0.5)
                         .map(|(c, r)| (owner, usize::from(((a + b) * 0.5).dist(c) > r)));
-                    out.push(Tri { p: [a0, b0, b1], owner, color, tex, curve, vis: 0 });
-                    out.push(Tri { p: [a0, b1, a1], owner, color, tex, curve, vis: 0 });
+                    out.push(Tri { p: [a0, b0, b1], owner, color, tex, curve, vis: 0, part });
+                    out.push(Tri { p: [a0, b1, a1], owner, color, tex, curve, vis: 0, part });
                 }
             }
             // Each surface keyed by its first triangle's place in `out`, which no other form's shares.
@@ -509,7 +540,15 @@ impl Solid {
                 let first = out.len();
                 let surfaces = if *round { (0..tris.len()).map(|i| (i >= *caps).then_some(*caps)).collect() } else { facets(tris) };
                 for (p, s) in tris.iter().zip(surfaces) {
-                    out.push(Tri { p: *p, owner: *owner, color: *color, tex: *tex, curve: s.map(|s| (*owner, first + s)), vis: *vis });
+                    out.push(Tri {
+                        p: *p,
+                        owner: *owner,
+                        color: *color,
+                        tex: *tex,
+                        curve: s.map(|s| (*owner, first + s)),
+                        vis: *vis,
+                        part: 0,
+                    });
                 }
             }
         }
@@ -977,8 +1016,16 @@ pub(crate) fn lazy_points(m: &Model, id: Id, e: &Element, components: &mut crate
 /// reach as triangles less them, a mesh a section cuts in its own shape. Should cutting fail (too many faces), every opening
 /// cuts its rectangle.
 fn wall_solids(m: &Model, id: Id, index: Option<&walls::Index>) -> Vec<Solid> {
-    let prism =
-        |p: walls::Prism| Solid::Prism { owner: id, color: WALL, tex: 0, ring: p.ring, bottom: p.bottom, top: p.top, curve: p.curve };
+    let prism = |p: walls::Prism| Solid::Prism {
+        owner: id,
+        color: WALL,
+        tex: 0,
+        ring: p.ring,
+        bottom: p.bottom,
+        top: p.top,
+        curve: p.curve,
+        part: 0,
+    };
     let voids = walls::host_voids_in(m, id, index);
     let prisms = walls::prisms_in(m, id, true, index).into_iter().map(prism).collect();
     if voids.is_empty() {
@@ -1023,7 +1070,7 @@ fn slab_solids(m: &Model, id: Id, e: &Element) -> Vec<Solid> {
             for (ring, bottom, top) in m.floor_prisms(f) {
                 let rise = ring.iter().map(|q| top.at(*q) - bottom.at(*q)).fold(0.0, f64::max);
                 for piece in m.less_shafts(&bottom.lift(&ring), rise).0 {
-                    out.push(Solid::Prism { owner: id, color: SLAB, tex: 0, ring: piece, bottom, top, curve: None });
+                    out.push(Solid::Prism { owner: id, color: SLAB, tex: 0, ring: piece, bottom, top, curve: None, part: 0 });
                 }
             }
         }
@@ -1042,7 +1089,7 @@ fn slab_solids(m: &Model, id: Id, e: &Element) -> Vec<Solid> {
             for (ring, bottom, top) in m.roof_prisms(r) {
                 let rise = ring.iter().map(|q| top.at(*q) - bottom.at(*q)).fold(0.0, f64::max);
                 for piece in m.less_shafts(&bottom.lift(&ring), rise).0 {
-                    out.push(Solid::Prism { owner: id, color: ROOF, tex: 0, ring: piece, bottom, top, curve: None });
+                    out.push(Solid::Prism { owner: id, color: ROOF, tex: 0, ring: piece, bottom, top, curve: None, part: 0 });
                 }
             }
         }
@@ -1083,7 +1130,7 @@ pub(crate) fn reaching_voids(m: &Model, id: Id) -> Vec<(Id, Vec<Vec<[P3; 3]>>)> 
     let solids = match m.elements.get(id) {
         Some(Element::Wall(_)) => walls::prisms(m, id, true)
             .into_iter()
-            .map(|p| Solid::Prism { owner: id, color: WALL, tex: 0, ring: p.ring, bottom: p.bottom, top: p.top, curve: p.curve })
+            .map(|p| Solid::Prism { owner: id, color: WALL, tex: 0, ring: p.ring, bottom: p.bottom, top: p.top, curve: p.curve, part: 0 })
             .collect(),
         Some(e) => slab_solids(m, id, e),
         None => Vec::new(),
@@ -1180,6 +1227,7 @@ fn solids_in_with(
                     bottom: p.bottom,
                     top: p.top,
                     curve: None,
+                    part: 0,
                 }));
             }
             // A rectangular run is a prism of its outline — mitred where it joins, as the plan fills it — which a
@@ -1198,7 +1246,7 @@ fn solids_in_with(
                         for piece in swept {
                             out.push(match piece {
                                 crate::runs::Swept::Prism(ring, bottom, top) => {
-                                    Solid::Prism { owner: id, color, tex, ring, bottom, top, curve: None }
+                                    Solid::Prism { owner: id, color, tex, ring, bottom, top, curve: None, part: 0 }
                                 }
                                 crate::runs::Swept::Mesh(tris, caps) => {
                                     Solid::Mesh { owner: id, color, tex, tris, caps, round: false, cut: true, vis: 0 }
@@ -1217,7 +1265,7 @@ fn solids_in_with(
                     } else {
                         let (_, bottom, top) = g.prism();
                         let ring = crate::runs::outline_in(m, id, index);
-                        out.push(Solid::Prism { owner: id, color, tex, ring, bottom, top, curve: None });
+                        out.push(Solid::Prism { owner: id, color, tex, ring, bottom, top, curve: None, part: 0 });
                     }
                 }
             }
@@ -1255,14 +1303,65 @@ fn solids_in_with(
             }
             // Each tread a block from the floor up to it, each landing a slab up to its top; the last
             // riser of a run climbs onto a landing, or the floor above.
+            // A stair of a type, built as the type says.
+            // Its structure in its material, the finishes over it in theirs.
+            Element::Stair(st) if m.types.stair.contains_key(&st.type_name) => {
+                let t = m.types.stair.get(&st.type_name);
+                let paint = |name: &str| (m.materials.get(name).map_or(SLAB, |x| Rgb(x.color[0], x.color[1], x.color[2])), skin(m, name));
+                let structure = t.map_or(String::new(), |t| t.material.clone());
+                let finish =
+                    t.map_or(String::new(), |t| if t.cover_material.is_empty() { t.material.clone() } else { t.cover_material.clone() });
+                let finishes = stairs::covers(m, st).into_iter().map(|(r, b, t)| (stairs::PartKind::Finishes, r, b, t)).collect();
+                for (name, solids) in [(structure, stairs::parts_tagged(m, st).unwrap_or_default()), (finish, finishes)] {
+                    let solids: Vec<(stairs::PartKind, Vec<P2>, Plane, Plane)> = solids;
+                    let (color, tex) = paint(&name);
+                    // A triangle under a sloping plane is a piece of a curved flight's underside: the pieces' undersides
+                    // are one smooth surface, and the sides two of them share are inside the stair, left out.
+                    let piece = |ring: &[P2], bottom: &Plane| ring.len() == 3 && bottom.g.length() > 1e-9;
+                    let key = |a: P2, b: P2| {
+                        let k = |q: P2| ((q.0 * 100.0).round() as i64, (q.1 * 100.0).round() as i64);
+                        if k(a) < k(b) { (k(a), k(b)) } else { (k(b), k(a)) }
+                    };
+                    type Edge = ((i64, i64), (i64, i64));
+                    let mut shared: HashMap<Edge, u32> = HashMap::new();
+                    for (_, ring, _, _) in solids.iter().filter(|(_, r, b, _)| piece(r, b)) {
+                        for (a, b) in geom::ring_edges(ring) {
+                            *shared.entry(key(a, b)).or_default() += 1;
+                        }
+                    }
+                    out.extend(solids.into_iter().map(|(kind, ring, bottom, top)| {
+                        let curve = piece(&ring, &bottom).then(|| {
+                            let inside = geom::ring_edges(&ring)
+                                .enumerate()
+                                .filter(|(_, (a, b))| shared.get(&key(*a, *b)).is_some_and(|n| *n > 1))
+                                .fold(0u32, |m, (i, _)| m | (1 << i));
+                            (P2(f64::from(inside), 0.0), -1.0)
+                        });
+                        Solid::Prism { owner: id, color, tex, ring, bottom, top, curve, part: kind.tag() }
+                    }));
+                }
+                // Its headroom, the room clear over its treads and landings: hidden unless a view shows it.
+                let headroom = stairs::clearance(m, st);
+                out.extend(headroom.into_iter().map(|(ring, bottom, top)| Solid::Prism {
+                    owner: id,
+                    color: HEADROOM,
+                    tex: 60 << 24,
+                    ring,
+                    bottom,
+                    top,
+                    curve: None,
+                    part: stairs::PartKind::Headroom.tag(),
+                }));
+            }
             Element::Stair(st) => {
-                let (_, each, _) = m.flight(st);
-                let (base, l) = (m.elevation(st.level), stairs::stair(m, st));
+                let (base, l) = (m.stair_span(st).0, stairs::stair(m, st));
                 for run in &l.runs {
+                    // Each riser of this run: a storey of its own height has its own.
+                    let each = if run.risers > 0 { (run.z.1 - run.z.0) / f64::from(run.risers) } else { 0.0 };
                     let frame = Frame { o: run.start, u: run.u, n: run.u.perp() };
                     for k in 1..run.risers {
                         let k = f64::from(k);
-                        let (a, c) = (((k - 1.0) * st.tread, k * st.tread), (-st.width / 2.0, st.width / 2.0));
+                        let (a, c) = (((k - 1.0) * run.going(), k * run.going()), (-run.width / 2.0, run.width / 2.0));
                         out.push(Solid::Box { owner: id, color: SLAB, tex: 0, frame, a, c, z: (base, run.z.0 + k * each) });
                     }
                 }
@@ -1278,10 +1377,11 @@ fn solids_in_with(
                         owner: id,
                         color: SLAB,
                         tex: 0,
-                        ring: run.ring(r.width),
+                        ring: run.ring(),
                         bottom: Plane::flat(base),
                         top,
                         curve: None,
+                        part: 0,
                     });
                 }
                 out.extend(l.pads.iter().map(|p| slab(id, SLAB, &p.ring, (base, p.z))));
@@ -1294,6 +1394,7 @@ fn solids_in_with(
                 bottom,
                 top,
                 curve: None,
+                part: 0,
             })),
             // Of a family: each form in its material's colour, cut where a section's line passes through it. Else a door's leaf or a window's glass: a 50 mm panel in the middle of the wall, square to it.
             Element::Door(o) | Element::Window(o) => {
@@ -1346,12 +1447,12 @@ fn prism(out: &mut Vec<Tri>, owner: Id, (color, tex): (Rgb, u32), face: &[P3], r
     let up = |p: P3| [p[0], p[1], p[2] + rise];
     let pt = |i: usize| face.get(i).copied().unwrap_or_default();
     for [a, b, c] in geom::triangulate(&plan(face)) {
-        out.push(Tri { p: [up(pt(a)), up(pt(b)), up(pt(c))], owner, color, tex, curve: None, vis: 0 });
-        out.push(Tri { p: [pt(a), pt(c), pt(b)], owner, color, tex, curve: None, vis: 0 });
+        out.push(Tri { p: [up(pt(a)), up(pt(b)), up(pt(c))], owner, color, tex, curve: None, vis: 0, part: 0 });
+        out.push(Tri { p: [pt(a), pt(c), pt(b)], owner, color, tex, curve: None, vis: 0, part: 0 });
     }
     for (a, b) in face.iter().zip(face.iter().cycle().skip(1)) {
-        out.push(Tri { p: [*a, *b, up(*b)], owner, color, tex, curve: None, vis: 0 });
-        out.push(Tri { p: [*a, up(*b), up(*a)], owner, color, tex, curve: None, vis: 0 });
+        out.push(Tri { p: [*a, *b, up(*b)], owner, color, tex, curve: None, vis: 0, part: 0 });
+        out.push(Tri { p: [*a, up(*b), up(*a)], owner, color, tex, curve: None, vis: 0, part: 0 });
     }
 }
 
@@ -1488,7 +1589,7 @@ pub(crate) fn layered_with(m: &Model, s: Solid) -> Vec<(Solid, Option<usize>)> {
         }
         // A shaped floor's or roof's over a level underside: from the top down, the layers above its variable one following
         // its top, those below it level over its underside, and the variable one between.
-        Solid::Prism { owner, color, tex, ring, bottom, top, curve: None } if let Some(v) = m.variable_under(owner) => {
+        Solid::Prism { owner, color, tex, ring, bottom, top, curve: None, part } if let Some(v) = m.variable_under(owner) => {
             let depth = top.z - bottom.z;
             let b = crate::model::Variable::bounds(Some(v), layers, depth);
             // Where layer `k` starts, from the top down: over the variable layer, under the top; under it, over the bottom.
@@ -1509,6 +1610,7 @@ pub(crate) fn layered_with(m: &Model, s: Solid) -> Vec<(Solid, Option<usize>)> {
                         bottom: at(k + 1),
                         top: at(k),
                         curve: None,
+                        part,
                     };
                     (prism, Some(k))
                 })
@@ -1528,8 +1630,17 @@ pub(crate) fn layered_with(m: &Model, s: Solid) -> Vec<(Solid, Option<usize>)> {
                     continue;
                 }
                 let mut slab = Vec::new();
-                Solid::Prism { owner, color, tex, ring, bottom: Plane::flat(lo[2] - 1.0), top: Plane::flat(hi[2] + 1.0), curve: None }
-                    .tris(&mut slab);
+                Solid::Prism {
+                    owner,
+                    color,
+                    tex,
+                    ring,
+                    bottom: Plane::flat(lo[2] - 1.0),
+                    top: Plane::flat(hi[2] + 1.0),
+                    curve: None,
+                    part: 0,
+                }
+                .tris(&mut slab);
                 let slab: Vec<[P3; 3]> = slab.into_iter().map(|t| t.p).collect();
                 let inside = crate::csg::subtract(&tris, &slab, &mut meter).and_then(|outside| {
                     if outside.is_empty() { Ok(tris.clone()) } else { crate::csg::subtract(&tris, &outside, &mut meter) }
@@ -1579,8 +1690,10 @@ pub(crate) fn layered_with(m: &Model, s: Solid) -> Vec<(Solid, Option<usize>)> {
         }
         // Across the wall from its exterior face in, each layer between two of its boundaries; the
         // outermost and innermost reach whatever lies past them.
-        Solid::Prism { owner, color, tex, ring, bottom, top, curve } => {
-            let Some(w) = m.wall(owner) else { return vec![(Solid::Prism { owner, color, tex, ring, bottom, top, curve }, None)] };
+        Solid::Prism { owner, color, tex, ring, bottom, top, curve, part: tag } => {
+            let Some(w) = m.wall(owner) else {
+                return vec![(Solid::Prism { owner, color, tex, ring, bottom, top, curve, part: tag }, None)];
+            };
             let (axis, b) = (Axis::of(w), walls::boundaries(m, w));
             let off = |q: P2| axis.project(q).1;
             let n = layers.len();
@@ -1605,6 +1718,7 @@ pub(crate) fn layered_with(m: &Model, s: Solid) -> Vec<(Solid, Option<usize>)> {
                             bottom,
                             top,
                             curve,
+                            part: tag,
                         };
                         (prism, Some(k))
                     })
@@ -2488,14 +2602,14 @@ impl Scene {
     /// How many triangles `look` shows: the number [`facets`](Self::facets) yields.
     pub(crate) fn shown(&self, look: &Look) -> usize {
         let plain = look.is_plain();
-        self.tris.iter().filter(|t| (plain || look.shows(t.owner)) && look.forms_show(t.vis, false)).count()
+        self.tris.iter().filter(|t| (plain || look.shows_part(t.owner, t.part)) && look.forms_show(t.vis, false)).count()
     }
 
     /// The triangles `look` shows, in the scene's order and as a picture shades them, for a file to hold: what the card's mesh
     /// is made of, less the textures and the edges.
     pub(crate) fn facets<'a>(&'a self, look: &'a Look) -> impl Iterator<Item = Facet> + 'a {
         let plain = look.is_plain();
-        self.tris.iter().enumerate().filter(move |(_, t)| (plain || look.shows(t.owner)) && look.forms_show(t.vis, false)).map(
+        self.tris.iter().enumerate().filter(move |(_, t)| (plain || look.shows_part(t.owner, t.part)) && look.forms_show(t.vis, false)).map(
             move |(i, t)| {
                 let face = unit(cross(sub(t.p[1], t.p[0]), sub(t.p[2], t.p[0])));
                 let curve = self.smooth.get(i).and_then(Option::as_deref);
@@ -2523,7 +2637,7 @@ impl Scene {
 
     fn fitting_points<'a>(&'a self, look: &'a Look) -> impl Iterator<Item = P3> + 'a {
         let built = self.tris.iter().any(|t| look.shows(t.owner));
-        let solids = self.tris.iter().filter(|t| look.shows(t.owner) && look.forms_show(t.vis, false)).flat_map(|t| t.p);
+        let solids = self.tris.iter().filter(|t| look.shows_part(t.owner, t.part) && look.forms_show(t.vis, false)).flat_map(|t| t.p);
         let levels = self.levels.iter().filter(|(id, ..)| look.shows(*id)).flat_map(|(.., c)| *c);
         let scans = self.scans.iter().filter(move |s| !built && look.shows(s.owner)).flat_map(|s| s.corners);
         solids.chain(levels).chain(scans)
@@ -2586,7 +2700,11 @@ impl Scene {
         };
         // Each element: whether all of it is inside, and whether any of it is.
         let mut seen: BTreeMap<Id, (bool, bool)> = BTreeMap::new();
-        for t in self.tris.iter().filter(|t| look.shows(t.owner) && look.forms_show(t.vis, false) && !crate::link::is_linked(t.owner)) {
+        for t in self
+            .tris
+            .iter()
+            .filter(|t| look.shows_part(t.owner, t.part) && look.forms_show(t.vis, false) && !crate::link::is_linked(t.owner))
+        {
             let on = t.p.map(|p| {
                 let (x, y, _) = cam.project(p);
                 P2(x, y)
@@ -2628,7 +2746,7 @@ impl Scene {
             .tris
             .iter()
             .enumerate()
-            .filter(|(_, t)| look.shows(t.owner) && look.forms_show(t.vis, false) && !crate::link::is_linked(t.owner))
+            .filter(|(_, t)| look.shows_part(t.owner, t.part) && look.forms_show(t.vis, false) && !crate::link::is_linked(t.owner))
         {
             let [a, b, c] = t.p.map(|p| cam.project(p));
             let area = (b.0 - a.0) * (c.1 - a.1) - (b.1 - a.1) * (c.0 - a.0);
@@ -2669,7 +2787,7 @@ impl Scene {
         let mut near: Vec<(f64, P3)> = self
             .tris
             .iter()
-            .filter(|t| look.shows(t.owner) && look.forms_show(t.vis, false) && !crate::link::is_linked(t.owner))
+            .filter(|t| look.shows_part(t.owner, t.part) && look.forms_show(t.vis, false) && !crate::link::is_linked(t.owner))
             .flat_map(|t| t.p)
             .filter_map(|p| {
                 let (x, y, _) = cam.project(p);
@@ -2694,7 +2812,9 @@ impl Scene {
             .edges()
             .iter()
             .filter(|(i, _)| {
-                self.tris.get(*i).is_some_and(|t| look.forms_show(t.vis, false) && look.shows(t.owner) && !crate::link::is_linked(t.owner))
+                self.tris
+                    .get(*i)
+                    .is_some_and(|t| look.forms_show(t.vis, false) && look.shows_part(t.owner, t.part) && !crate::link::is_linked(t.owner))
             })
             .filter_map(|&(_, [a, b])| {
                 let [a, b] = cam.in_front(a, b)?;
@@ -3017,7 +3137,7 @@ impl Scene {
                 let Some(owner) = self
                     .tris
                     .get(i)
-                    .filter(|t| look.forms_show(t.vis, false))
+                    .filter(|t| look.forms_show(t.vis, false) && look.shows_part(t.owner, t.part))
                     .map(|t| t.owner)
                     .filter(|o| look.shows(*o) && tints.contains_key(o) == tinted)
                 else {
@@ -3152,7 +3272,8 @@ impl Scene {
         // nearest of them at each pixel, where nothing opaque is nearer. (Not in a section's hidden line.)
         let see_through = |t: &Tri| !flat && t.alpha(look) > 0;
         let shown = |t: &Tri| {
-            ((plain || look.shows(t.owner)) && look.forms_show(t.vis, false)) && !(clip.is_some() && self.masses.contains(&t.owner))
+            ((plain || look.shows_part(t.owner, t.part)) && look.forms_show(t.vis, false))
+                && !(clip.is_some() && self.masses.contains(&t.owner))
         };
         let mut depth = vec![f32::NEG_INFINITY; w * h];
         let mut hit = vec![u32::MAX; w * h];
@@ -4746,7 +4867,7 @@ mod tests {
 
     #[test]
     fn coplanar_triangles_share_a_plane_and_degenerate_ones_each_their_own() {
-        let tri = |p: [P3; 3]| Tri { p, owner: 1, color: EDGE, tex: 0, curve: None, vis: 0 };
+        let tri = |p: [P3; 3]| Tri { p, owner: 1, color: EDGE, tex: 0, curve: None, vis: 0, part: 0 };
         // A face's triangles a micron off its plane, as a file rounds them, are one plane;
         // triangles with no area are each their own, and many of them stay quick.
         let mut tris: Vec<Tri> = (0..200)
@@ -4942,7 +5063,7 @@ mod tests {
         assert!((2 * n..4 * n).all(|i| normal(i).iter().all(|v| v[2].abs() < 1e-9)));
         assert!((4 * n..5 * n).all(|i| normal(i)[0][2] > 0.4 && normal(i)[1][2] > 0.4 && normal(i)[2][2] > 1.0 - 1e-9));
         // Triangles with corners that aren't numbers, or no area, have none, and don't crash it.
-        let odd = |p: [P3; 3]| Tri { p, owner: 1, color: EDGE, tex: 0, curve: Some((1, 0)), vis: 0 };
+        let odd = |p: [P3; 3]| Tri { p, owner: 1, color: EDGE, tex: 0, curve: Some((1, 0)), vis: 0, part: 0 };
         let odd = [
             odd([[f64::NAN; 3]; 3]),
             odd([[f64::INFINITY; 3]; 3]),
