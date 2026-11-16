@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BIMCraft Viewer</title>
+<!-- The web viewer: a viewable (bimcraft-cli `save` to .glb with `viewer: true`) drawn with three.js. Open with ?file=<url of a
+     .glb>, which it follows as the file changes (follow.js), or drop a .glb on the page. The tools are modules in js/: navigation (nav.js), Walk (walk.js), the
+     ViewCube (cube.js), the section box (section.js), measure (measure.js), the cursors (cursors.js), the model browser and
+     search (browser.js), readable properties (props.js), edges and shadows (look.js), and the plans, sections and sheets a
+     file carries (views.js). -->
+<style>
+:root{--bg:#e9edf2;--panel:#ffffff;--fg:#17202b;--muted:#5a6573;--line:#d3d9e1;--accent:#1c5ca3;--accent-fg:#fff;--hover:#eef2f7;
+  --bar:rgba(255,255,255,.94);--shadow:0 6px 24px rgba(15,25,40,.18)}
+@media (prefers-color-scheme:dark){:root{--bg:#121820;--panel:#18202a;--fg:#e3e8ee;--muted:#9aa6b4;--line:#2c3744;--accent:#5d9be0;
+  --accent-fg:#0b1118;--hover:#222c38;--bar:rgba(24,32,42,.94);--shadow:0 6px 24px rgba(0,0,0,.5);color-scheme:dark}}
+html,body{height:100%;margin:0}
+[hidden]{display:none!important}
+body{display:flex;flex-direction:column;background:var(--bg);color:var(--fg);font:13px/1.4 "IBM Plex Sans",system-ui,sans-serif;overflow:hidden}
+#view{position:relative;flex:1;min-height:0;overflow:hidden;touch-action:none}
+#gl{display:block;width:100%;height:100%;outline:none}
+button{font:inherit;color:inherit}
+/* The status dot (follow.js): green when the file is as shown, amber while it is fetched again, red when it could not be. As clear as
+   the ViewCube at rest, with its words only on hover. A click fetches the model again (`offerRefresh`). */
+#live{position:absolute;right:6px;bottom:6px;z-index:7;width:26px;height:26px;padding:0;border:0;background:none;opacity:.62;transition:opacity .15s;cursor:default}
+#live[data-again]{cursor:pointer} #live:hover,#live:focus-visible{opacity:1} #live:focus-visible{outline:2px solid var(--accent);outline-offset:-2px;border-radius:50%}
+#live::before{content:"";position:absolute;left:8px;top:8px;width:10px;height:10px;border-radius:50%;background:#2e9d5b;box-shadow:0 0 0 1.5px rgba(255,255,255,.75)}
+#live[data-state="wait"]::before{background:#d29b1f} #live[data-state="off"]::before{background:#c8463d}
+#live:hover::after,#live:focus-visible::after{content:attr(data-tip);position:absolute;right:26px;top:50%;transform:translateY(-50%);padding:3px 8px;border-radius:6px;
+  background:var(--bar);color:var(--fg);border:1px solid var(--line);box-shadow:var(--shadow);font-size:12px;white-space:nowrap}
+#live[data-again]:hover::after,#live[data-again]:focus-visible::after{content:attr(data-tip) " · " attr(data-again)}
+/* The tool bar: one row at the bottom of the model, as viewers have it. */
+#bar{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);display:flex;gap:2px;padding:4px;background:var(--bar);border:1px solid var(--line);
+  border-radius:10px;box-shadow:var(--shadow);z-index:6;max-width:calc(100% - 24px);overflow-x:auto}
+#bar .sep,.sub .sep{width:1px;background:var(--line);margin:4px 3px;flex:none}
+.tb{display:flex;flex-direction:column;align-items:center;gap:1px;min-width:46px;padding:4px 5px 3px;border:0;border-radius:7px;background:none;cursor:pointer;flex:none}
+.tb svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
+.tb span{font-size:10.5px;color:var(--muted);white-space:nowrap}
+.tb:hover{background:var(--hover)} .tb[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg)} .tb[aria-pressed="true"] span{color:var(--accent-fg)}
+.tb:disabled{opacity:.35;cursor:default;background:none}
+/* Floating panels over the model. */
+.panel{position:absolute;top:10px;height:380px;max-height:calc(100% - 96px);box-sizing:border-box;z-index:5;width:310px;max-width:calc(100% - 20px);display:flex;flex-direction:column;
+  background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow)}
+.panel.front{z-index:6}
+#browser{left:10px;height:420px} #views{left:10px;width:250px;height:340px} #props{right:10px;width:330px;height:400px}
+/* A panel's name line: the element, the open view or the model, and what drags it. */
+.panel>h2{margin:0;padding:8px 6px 6px 12px;font-size:13px;font-weight:600;display:flex;align-items:center;gap:6px;cursor:move;user-select:none;touch-action:none;flex:none}
+.panel>h2 span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.panel>h2 .x{border:0;background:none;cursor:pointer;font-size:16px;line-height:1;padding:2px 6px;border-radius:4px;color:var(--muted);flex:none}
+.panel>h2 .x:hover{background:var(--hover)}
+.panel .body{overflow:auto;padding:0 6px 10px;flex:1;min-height:0}
+.edge{position:absolute;touch-action:none}
+.edge.n,.edge.s{left:10px;right:10px;height:8px;cursor:ns-resize} .edge.n{top:-4px} .edge.s{bottom:-4px}
+.edge.e,.edge.w{top:10px;bottom:10px;width:8px;cursor:ew-resize} .edge.e{right:-4px} .edge.w{left:-4px}
+.edge.ne,.edge.nw,.edge.sw{width:14px;height:14px} .edge.ne{top:-4px;right:-4px;cursor:nesw-resize} .edge.nw{top:-4px;left:-4px;cursor:nwse-resize}
+.edge.sw{bottom:-4px;left:-4px;cursor:nesw-resize} .edge.se{bottom:-4px;right:-4px;width:18px;height:18px;cursor:nwse-resize}
+.grip{position:absolute;right:3px;bottom:3px;width:9px;height:9px;pointer-events:none;stroke:var(--muted);stroke-width:1.2;fill:none;opacity:.7}
+/* A group that folds, sliding and fading; shut, it can't take the keyboard's focus. */
+.fold{display:flex;align-items:center;gap:6px;width:100%;border:0;background:none;padding:6px;margin-top:2px;border-radius:4px;cursor:pointer;font-size:12px;font-weight:600;text-align:left}
+.fold:hover{background:var(--hover)}
+.fold svg{width:9px;height:9px;fill:var(--muted);flex:none;transition:transform .16s ease}
+.fold[aria-expanded="false"] svg{transform:rotate(-90deg)}
+.rows{display:grid;grid-template-rows:1fr;transition:grid-template-rows .16s ease,opacity .16s ease}
+.rows.shut{grid-template-rows:0fr;opacity:0;visibility:hidden;transition:grid-template-rows .16s ease,opacity .16s ease,visibility 0s linear .16s}
+.rows>.in{min-height:0;overflow:hidden}
+@media (prefers-reduced-motion:reduce){.fold svg,.rows,.rows.shut{transition:none}}
+#search{margin:8px 10px 2px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:inherit;font:inherit}
+.row{display:flex;align-items:center;gap:4px;padding:1px 2px;border-radius:4px;min-width:0}
+.row:hover{background:var(--hover)} .row.on{background:var(--accent);color:var(--accent-fg)} .row.on .n{color:var(--accent-fg)}
+.row .tw{width:16px;flex:none;border:0;background:none;cursor:pointer;padding:0;color:var(--muted);font-size:10px}
+.row .eye{width:20px;height:20px;flex:none;border:0;background:none;cursor:pointer;padding:0;opacity:.8;line-height:0}
+.row .eye svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:1.6}
+.row .eye.off{opacity:.3}
+.row .lb{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:0;background:none;text-align:left;cursor:pointer;padding:2px 0}
+.row .n{color:var(--muted);font-size:11px;flex:none}
+.row .only{visibility:hidden;border:1px solid var(--line);border-radius:4px;background:var(--panel);cursor:pointer;font-size:10.5px;padding:0 5px;flex:none}
+.row:hover .only{visibility:visible}
+.kids{margin-left:14px}
+.hint{color:var(--muted);padding:6px 2px}
+.kv{display:grid;grid-template-columns:42% 1fr;gap:8px;padding:3px 6px 3px 21px;border-radius:4px}
+.kv:hover{background:var(--hover)}
+.kv>*{min-width:0;overflow-wrap:anywhere;font-variant-numeric:tabular-nums} .kv>:first-child{color:var(--muted)}
+#props a{color:var(--accent);cursor:pointer;text-decoration:underline}
+/* Views: the list, and a 2D view over the 3D one, its selection orange and what is hidden gone. */
+.vrow{display:block;width:100%;text-align:left;border:0;background:none;padding:4px 6px 4px 21px;border-radius:4px;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.vrow:hover{background:var(--hover)} .vrow.on{background:var(--accent);color:var(--accent-fg)} .vrow.first{padding-left:6px}
+#paper{position:absolute;inset:0;z-index:2;background:var(--bg);touch-action:none;cursor:grab}
+#paper svg{display:block;width:100%;height:100%;box-shadow:none}
+#paper g.hover path[fill="none"]{stroke:#ff9a3c} #paper g.sel path[fill="none"]{stroke:#ff7a00}
+#paper g.sel path:not([fill="none"]){fill:#ffc48a} #paper g.off{display:none}
+#papertitle{position:absolute;left:10px;top:10px;z-index:4;background:var(--bar);border:1px solid var(--line);border-radius:6px;padding:4px 10px;
+  box-shadow:var(--shadow);font-weight:600;max-width:calc(100% - 20px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+body.views-open #papertitle,body.browser-open #papertitle{left:330px}
+body.in-2d #cube{display:none}
+/* A tool's own bar, over the tool bar: Measure's and Section's. */
+.sub{position:absolute;left:50%;bottom:78px;transform:translateX(-50%);z-index:6;display:flex;gap:2px;padding:4px;background:var(--bar);
+  border:1px solid var(--line);border-radius:10px;box-shadow:var(--shadow);max-width:calc(100% - 24px);overflow-x:auto}
+#measset{position:absolute;left:50%;bottom:142px;transform:translateX(-50%);z-index:7;display:grid;grid-template-columns:auto auto;gap:8px 12px;
+  align-items:center;padding:10px 12px;background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow)}
+#measset select{font:inherit;padding:3px 6px;border:1px solid var(--line);border-radius:5px;background:var(--bg);color:inherit}
+/* Measure: lines and points in an SVG over the picture; labels a white pill with black words, the picked one black with a white
+   ring; a leg's tag is its own colour's words, no box; a face's sizes as small pills, its area dark. */
+#measvg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:2;overflow:visible;fill:none}
+.label.mlabel,.label.msize,.label.marea{border:0;border-radius:12px;font:600 12.5px/1.2 system-ui,-apple-system,sans-serif;padding:3px 9px;
+  box-shadow:0 1px 3px rgba(0,0,0,.35)}
+.label.mlabel{pointer-events:auto;cursor:grab;background:#fff;color:#111;touch-action:none}
+.label.mlabel:hover{box-shadow:0 0 0 2px rgba(17,17,17,.25),0 1px 3px rgba(0,0,0,.35)}
+.label.mlabel.on{background:#111;color:#fff;box-shadow:0 0 0 2px #fff,0 1px 4px rgba(0,0,0,.45)}
+.label.mlabel.held{cursor:grabbing}
+.label.mtag{background:#fff;border:0;border-radius:8px;padding:2px 7px;font:700 12px/1.2 system-ui,-apple-system,sans-serif;
+  box-shadow:0 1px 3px rgba(0,0,0,.35)}
+.mtag.x{color:#ec1010} .mtag.y{color:#088a08} .mtag.z{color:#2c2cf1}
+.label.msize{background:#fff;color:#111;font-size:11.5px;padding:2px 7px}
+.label.marea{background:#18202a;color:#fff}
+/* Popovers: the look. */
+.pop{position:absolute;bottom:78px;left:50%;transform:translateX(-50%);z-index:7;background:var(--panel);border:1px solid var(--line);border-radius:8px;
+  box-shadow:var(--shadow);padding:6px;display:flex;gap:4px;flex-wrap:wrap;justify-content:center;width:max-content;max-width:calc(100% - 20px)}
+.pop button{border:1px solid var(--line);border-radius:6px;background:var(--panel);padding:5px 10px;cursor:pointer}
+.pop button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+/* The right-click menu. */
+#ctx,#ctxsub{position:absolute;z-index:8;min-width:160px;background:var(--panel);border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow);padding:4px;display:flex;flex-direction:column}
+#ctx button,#ctxsub button{border:0;background:none;text-align:left;padding:5px 10px;border-radius:5px;cursor:pointer}
+#ctx button:hover:not(:disabled),#ctxsub button:hover:not(:disabled){background:var(--hover)} #ctx button:disabled,#ctxsub button:disabled{opacity:.4;cursor:default}
+#ctx hr,#ctxsub hr{border:0;border-top:1px solid var(--line);margin:3px 2px}
+#ctx button.more{display:flex;justify-content:space-between;gap:16px} #ctx button.more::after{content:"\203A"}
+#ctxsub{min-width:130px} #ctxsub button{padding-left:24px;position:relative}
+#ctxsub button[aria-checked="true"]::before{content:"\2713";position:absolute;left:8px}
+/* How clear See Through is: a thin bar at the side, faint until the pointer is on it, gone while the view moves. */
+#thrubar{position:absolute;right:4px;top:calc(50% - 50px);z-index:4;width:26px;height:100px;display:flex;flex-direction:column;align-items:center;gap:4px;opacity:.3;transition:opacity .15s}
+#thrubar:hover,#thrubar:focus-within{opacity:1} #thrubar.moving{opacity:0;pointer-events:none}
+#thrubar output{font-size:10px;white-space:nowrap;font-variant-numeric:tabular-nums;visibility:hidden} #thrubar:hover output,#thrubar:focus-within output{visibility:visible}
+#thrubar input{flex:1;width:10px;min-height:0;margin:0;padding:0;writing-mode:vertical-lr;direction:rtl;-webkit-appearance:none;appearance:none;background:none;cursor:pointer}
+#thrubar input::-webkit-slider-runnable-track{width:2px;background:var(--accent);border-radius:1px}
+#thrubar input::-moz-range-track{width:2px;background:var(--accent);border-radius:1px}
+#thrubar input::-webkit-slider-thumb{-webkit-appearance:none;width:10px;height:10px;margin-left:-4px;border-radius:50%;background:var(--accent)}
+#thrubar input::-moz-range-thumb{width:10px;height:10px;border:0;border-radius:50%;background:var(--accent)}
+body.props-open #thrubar{right:360px} body.in-2d #thrubar{display:none}
+.row.top>.lb{font-weight:600}
+/* ViewCube, the walk's read-out and mini plan, measure labels. */
+#cube{position:absolute;top:8px;right:8px;width:124px;height:124px;z-index:4;cursor:grab;touch-action:none;border-radius:8px}
+#cube:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+body.props-open #cube{right:360px}
+#walkinfo{position:absolute;left:10px;bottom:76px;z-index:4;background:var(--bar);border:1px solid var(--line);border-radius:8px;padding:5px;box-shadow:var(--shadow);line-height:0}
+#minimap{width:200px;height:200px;border-radius:5px;background:var(--bg);cursor:crosshair;touch-action:none}
+#maphide{position:absolute;top:9px;right:9px;width:24px;height:24px;border:0;border-radius:5px;background:var(--bar);color:var(--fg);cursor:pointer;font-size:16px;line-height:1}
+#maphide:hover{background:var(--hover)}
+#mapshow{position:absolute;left:10px;bottom:76px;z-index:4;border:1px solid var(--line);border-radius:8px;background:var(--bar);box-shadow:var(--shadow);padding:6px;cursor:pointer;line-height:0}
+#mapshow svg{width:22px;height:22px;stroke:currentColor;fill:none;stroke-width:1.6;stroke-linejoin:round}
+body.browser-open #walkinfo,body.browser-open #mapshow{left:330px}
+.label{position:absolute;z-index:3;transform:translate(-50%,-50%);background:var(--panel);border:1px solid var(--accent);color:var(--fg);border-radius:4px;
+  padding:1px 6px;font:12px ui-monospace,Menlo,monospace;pointer-events:none;white-space:nowrap}
+/* The quiet ✕ that undoes Isolate or Hide, just over the tool bar where the pointer already is: faint at rest, it widens to say
+   what it does under the pointer, and sits higher while a bar of the tool bar's (Measure's, Visibility's) is open. */
+#quiet{position:absolute;left:50%;bottom:72px;transform:translateX(-50%);z-index:5;display:flex;align-items:center;justify-content:center;
+  height:28px;min-width:28px;padding:0;border:0;border-radius:14px;background:rgba(20,27,36,.86);color:#fff;font:inherit;font-size:12.5px;
+  cursor:pointer;opacity:.35;transition:opacity .2s,padding .22s ease,bottom .2s ease}
+#quiet .qx{width:10px;height:10px;flex:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;fill:none;display:block}
+#quiet .ql{max-width:0;overflow:hidden;white-space:nowrap;line-height:28px;transition:max-width .22s ease,margin .22s ease}
+#quiet:hover,#quiet:focus-visible{opacity:1;padding:0 12px 0 10px;outline:none}
+#quiet:hover .ql,#quiet:focus-visible .ql{max-width:220px;margin-left:7px}
+body:has(.sub:not([hidden])) #quiet,body:has(.pop:not([hidden])) #quiet{bottom:132px}
+body:has(#measset:not([hidden])) #quiet{bottom:230px}
+#quiet.in{animation:quiet-in .26s ease-out}
+@keyframes quiet-in{from{opacity:0;transform:translate(-50%,10px)}}
+@media (prefers-reduced-motion:reduce){#quiet,#quiet .ql{transition:none}#quiet.in{animation:none}}
+#tip{position:absolute;left:50%;top:10px;transform:translateX(-50%);z-index:4;background:var(--bar);border:1px solid var(--line);border-radius:6px;padding:4px 10px;
+  box-shadow:var(--shadow);max-width:calc(100% - 320px);text-align:center}
+/* The start: open a model from this computer, or drop one on the page; then how far the download is. */
+#drop{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;padding:16px}
+body.empty #bar,body.empty #cube{display:none}
+#card{display:flex;flex-direction:column;align-items:center;gap:12px;width:min(420px,100%);padding:32px 24px;text-align:center;background:var(--panel);
+  border:2px dashed var(--line);border-radius:14px;box-shadow:var(--shadow)}
+#card svg{width:52px;height:52px;stroke:var(--accent);fill:none;stroke-width:1.4;stroke-linejoin:round}
+#card h1{margin:0;font-size:19px;font-weight:600} #card p{margin:0;color:var(--muted)}
+#drop.over #card{border-color:var(--accent);background:var(--hover)}
+#pick{border:0;border-radius:8px;background:var(--accent);color:var(--accent-fg);padding:9px 22px;font-weight:600;cursor:pointer}
+/* The loader: a ring with how far the model has come, and no words (js/ring.js). */
+#ring{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:2}
+#ring[hidden]{display:none}
+#ring svg{width:64px;height:64px;overflow:visible}
+#ring circle{fill:none;stroke-width:3.5}
+#ring .track{stroke:var(--line)}
+#ring .arc{stroke:var(--accent);stroke-linecap:round;transform:rotate(-90deg);transform-origin:50% 50%;transition:stroke-dashoffset .15s linear}
+#ring.spin svg{animation:ringspin 1s linear infinite}
+@keyframes ringspin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){#ring.spin svg{animation-duration:3s}}
+#ring .pct{position:absolute;font:600 15px/1 system-ui,sans-serif;font-variant-numeric:tabular-nums;color:var(--fg)}
+@media (max-width:700px){body.views-open #papertitle,body.browser-open #papertitle{left:10px}
+  #browser,#props,#views{top:auto;bottom:76px;left:10px;right:10px;width:auto;height:45%;max-height:none}
+  .panel>h2{cursor:default} .edge,.grip{display:none}
+  body.props-open #cube{right:8px} body.props-open #thrubar{right:6px}
+  #live{bottom:50px}
+  body.browser-open #walkinfo,body.browser-open #mapshow{left:10px} #minimap{width:130px;height:130px}
+  #bar{left:8px;right:8px;transform:none;max-width:none;gap:0} #bar .sep{margin:4px 1px} .tb{min-width:0;flex:1 1 0;padding:5px 0} .tb span{display:none} #tip{max-width:calc(100% - 140px)}}
+</style>
+<script type="importmap">{"imports":{
+  "three":"./vendor/three/build/three.module.js",
+  "three/addons/":"./vendor/three/examples/jsm/",
+  "three-mesh-bvh":"./vendor/three-mesh-bvh/build/index.module.js"}}</script>
+</head>
+<body class="empty">
+<div id="view">
+  <canvas id="gl" tabindex="0"></canvas>
+  <div id="drop"><div id="card">
+    <svg viewBox="0 0 24 24"><path d="M12 2.5l8.5 4.8v9.4L12 21.5l-8.5-4.8V7.3z"/><path d="M3.5 7.3L12 12l8.5-4.7M12 12v9.5"/></svg>
+    <h1 id="droptitle">Open a model</h1>
+    <p id="droptext">Choose a BIMCraft model (.glb) on this computer, or drag it onto this page.</p>
+    <button id="pick" type="button">Choose a model</button><input id="file" type="file" accept=".glb,model/gltf-binary" hidden>
+    </div></div>
+  <!-- A model named by the address: the ring, not the card. -->
+  <script>if (/[?&]file=/.test(location.search)) document.getElementById('drop').hidden = true;</script>
+  <div id="ring" role="progressbar" aria-label="Loading" hidden><svg viewBox="0 0 64 64"><circle class="track" cx="32" cy="32" r="26"/><circle class="arc" cx="32" cy="32" r="26"/></svg><span class="pct"></span></div>
+  <canvas id="cube" tabindex="0" role="application" aria-label="View cube. Arrow keys turn the view, with Shift 90 degrees, with Ctrl 5 degrees; Home goes home." title="Click a face, edge or corner; drag to turn"></canvas>
+  <button id="live" type="button" hidden></button>
+  <div id="paper" hidden></div>
+  <div id="papertitle" hidden></div>
+  <button id="quiet" type="button" hidden><svg class="qx" viewBox="0 0 10 10" aria-hidden="true"><path d="M1 1l8 8M9 1L1 9"/></svg><span class="ql"></span></button>
+  <div id="tip" hidden></div>
+  <div id="ctx" hidden></div>
+  <div id="ctxsub" role="menu" hidden></div>
+  <section id="browser" class="panel" aria-label="Model" hidden><h2><span>Model</span><button class="x" type="button" title="Close">×</button></h2>
+    <input id="search" type="search" placeholder="Search name, mark, type, id…" autocomplete="off">
+    <div class="body" id="tree"></div></section>
+  <section id="props" class="panel" aria-label="Properties" hidden><h2><span id="propsname">Nothing selected</span><button class="x" type="button" title="Close">×</button></h2>
+    <div class="body" id="propsbody"><div class="hint">Click an element.</div></div></section>
+  <section id="views" class="panel" aria-label="Views" hidden><h2><span id="viewname">Views</span><button class="x" type="button" title="Close">×</button></h2>
+    <div class="body" id="viewlist"><div class="hint">Open a model.</div></div></section>
+  <div id="measbar" class="sub" hidden>
+    <button class="tb" type="button" data-m="distance" title="Distance between two points"><svg viewBox="0 0 24 24"><path d="M3 12h18M3 8v8M21 8v8M7 12l-2-2M7 12l-2 2M17 12l2-2M17 12l2 2"/></svg><span>Distance</span></button>
+    <button class="tb" type="button" data-m="angle" title="Angle at a corner, from three points"><svg viewBox="0 0 24 24"><path d="M4 20h16M4 20L15 5"/><path d="M10 20a6 6 0 0 0-2.4-4.8"/></svg><span>Angle</span></button>
+    <span class="sep"></span>
+    <button class="tb" type="button" data-m="delete" title="Delete the picked measurement (Delete)"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg><span>Delete</span></button>
+    <button class="tb" type="button" data-m="clear" title="Delete all measurements"><svg viewBox="0 0 24 24"><path d="M5 5l14 14M19 5L5 19"/></svg><span>Clear</span></button>
+    <button class="tb" type="button" data-m="settings" title="Unit and precision"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/></svg><span>Settings</span></button></div>
+  <div id="measset" hidden><label for="m-unit">Unit</label><select id="m-unit"></select><label for="m-prec">Precision</label><select id="m-prec"></select><label for="m-ends">Ends</label><select id="m-ends"></select></div>
+  <div id="secpop" class="sub" hidden>
+    <button class="tb" type="button" data-sec="x" title="Cut across, east to west"><svg viewBox="0 0 24 24"><path d="M8 3v18l8-3V6z"/><path d="M3 12h3M18 12h3"/></svg><span>X plane</span></button>
+    <button class="tb" type="button" data-sec="y" title="Cut across, north to south"><svg viewBox="0 0 24 24"><path d="M3 8h18l-3 8H6z"/><path d="M12 3v3M12 18v3"/></svg><span>Y plane</span></button>
+    <button class="tb" type="button" data-sec="z" title="Cut level, through the middle"><svg viewBox="0 0 24 24"><path d="M4 10l8-4 8 4-8 4z"/><path d="M12 14v6M12 2v2"/></svg><span>Z plane</span></button>
+    <button class="tb" type="button" data-sec="plan" title="Cut level, 1.2 m over the main floor, as a plan is"><svg viewBox="0 0 24 24"><path d="M4 12l8-4 8 4-8 4z"/><path d="M4 12v5l8 4 8-4v-5"/></svg><span>Plan cut</span></button>
+    <button class="tb" type="button" data-sec="box" title="A box of six cuts"><svg viewBox="0 0 24 24"><path d="M4 8l8-4 8 4v8l-8 4-8-4z"/><path d="M4 8l8 4 8-4M12 12v8"/></svg><span>Box</span></button>
+    <button class="tb" type="button" data-sec="sel" title="A box round the selected element"><svg viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" stroke-dasharray="3 2"/><rect x="9" y="9" width="6" height="6"/></svg><span>Selection</span></button>
+    <span class="sep"></span>
+    <button class="tb" type="button" data-sec="flip" title="Keep the other side"><svg viewBox="0 0 24 24"><path d="M7 4v16M7 4L4 7M7 4l3 3M17 20V4M17 20l-3-3M17 20l3-3"/></svg><span>Flip</span></button>
+    <button class="tb" type="button" data-sec="off" title="No section"><svg viewBox="0 0 24 24"><path d="M5 5l14 14M19 5L5 19"/></svg><span>Clear</span></button></div>
+  <div id="thrubar" title="How clear" hidden><output id="thru-out" for="thru-level">70 %</output><input id="thru-level" type="range" min="5" max="95" step="5" value="70" aria-label="How clear"></div>
+  <div id="lookpop" class="pop" hidden>
+    <button type="button" data-look="edges">Edges</button><button type="button" data-look="shadows">Shadows</button></div>
+  <div id="walkinfo" hidden><canvas id="minimap" width="400" height="400"></canvas>
+    <button id="maphide" type="button" title="Hide the map (N)">×</button></div>
+  <button id="mapshow" type="button" title="Show the map (N)" hidden><svg viewBox="0 0 24 24"><path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/></svg></button>
+  <div id="vispop" class="sub" hidden>
+    <button class="tb" type="button" id="b-hide" title="Hide the selection" disabled><svg viewBox="0 0 24 24"><path d="M3 12s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6z"/><path d="M4 4l16 16"/></svg><span>Hide</span></button>
+    <button class="tb" type="button" id="b-isolate" title="Show only the selection" disabled><svg viewBox="0 0 24 24"><rect x="8" y="8" width="8" height="8"/><path d="M3 3h4M3 3v4M21 3h-4M21 3v4M3 21h4M3 21v-4M21 21h-4M21 21v-4"/></svg><span>Isolate</span></button>
+  </div>
+  <nav id="bar">
+    <button class="tb" type="button" id="b-fit" title="Fit all (F)"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/><rect x="8" y="8" width="8" height="8"/></svg><span>Fit</span></button>
+    <button class="tb" type="button" id="b-pan" title="Pan: drag to slide the view"><svg viewBox="0 0 24 24"><path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/></svg><span>Pan</span></button>
+    <button class="tb" type="button" id="b-walk" title="Walk through at eye height"><svg viewBox="0 0 24 24"><circle cx="13" cy="4.5" r="1.8"/><path d="M10 21l2-6 3 3v3M12 15l-1-5 3-2 2 3 3 1M11 10l-3 2-1 3"/></svg><span>Walk</span></button>
+    <span class="sep"></span>
+    <button class="tb" type="button" id="b-section" title="Section: planes or a box"><svg viewBox="0 0 24 24"><path d="M4 8l8-4 8 4-8 4z"/><path d="M4 8v8l8 4 8-4V8"/><path d="M2 14h20" stroke-dasharray="2 2"/></svg><span>Section</span></button>
+    <button class="tb" type="button" id="b-measure" title="Measure between two points"><svg viewBox="0 0 24 24"><path d="M3 17 17 3l4 4L7 21z"/><path d="M7 13l2 2M10 10l2 2M13 7l2 2"/></svg><span>Measure</span></button>
+    <span class="sep"></span>
+    <button class="tb" type="button" id="b-vis" title="Hide and Isolate" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="M3 12s3.5-6 9-6 9 6 9 6-3.5 6-9 6-9-6-9-6z"/><circle cx="12" cy="12" r="2.5"/></svg><span>Visibility</span></button>
+    <span class="sep"></span>
+    <button class="tb" type="button" id="b-views" title="Views: plans, sections and sheets" disabled><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="1"/><path d="M3 9h7v9M10 13h11M14 4v9"/></svg><span>Views</span></button>
+    <button class="tb" type="button" id="b-browser" title="Model browser and search"><svg viewBox="0 0 24 24"><path d="M4 5h4M4 12h4M4 19h4M11 5h9M11 12h9M11 19h9"/></svg><span>Model</span></button>
+    <button class="tb" type="button" id="b-look" title="Look: edges and shadows"><svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg><span>Look</span></button>
+    <button class="tb" type="button" id="b-full" title="Full screen"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5"/></svg><span>Full</span></button>
+  </nav>
+</div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

@@ -187,14 +187,16 @@ other_files(
     other_files(
         "save",
         "Save",
-        "{path?, ifc_origin?, compress?} .bimc saves the project (Save As with a path), as does .bimt (a template): compact JSON, \
+        "{path?, viewer?, ifc_origin?, compress?} .bimc saves the project (Save As with a path), as does .bimt (a template): compact JSON, \
          or with `compress: true` the same JSON in a zip of one entry, `project.json`, deflated on every core (several times \
          smaller, slower to save and open; a .json path is always plain; `open` reads either); .ifc exports IFC4, its \
          coordinates' origin at `ifc_origin`: internal (the default), base (the Project Base Point), survey (the Survey Point) or \
          shared (the map's coordinates themselves), with the active location's IfcMapConversion and IfcProjectedCRS, true north, \
          and the site's latitude and longitude where the project has a CRS; .glb exports the default 3D view's scene as \
          glTF 2.0 (metres, y up, a node for each element named by its id, GUID and category in `extras`; returns `elements` and \
-         `triangles`); .svg or .png exports the lowest level's plan; .pdf prints every sheet, a page each",
+         `triangles`), or with `viewer: true` the viewable the web viewer (`web/viewer`) opens: each shape stored once and \
+         quantized, each element's properties and the levels in `extras` (returns `elements`, `triangles` and `shapes`); .svg or .png \
+         exports the lowest level's plan; .pdf prints every sheet, a page each",
         save,
         Files::Write,
     ),
@@ -4184,10 +4186,20 @@ fn save(s: &mut Session, p: &Value) -> R {
         None => s.path.clone().ok_or_else(|| bad(c, "`path` is required: this project hasn't been saved yet"))?,
     };
     let format = ext(&path);
+    let viewer = flag(c, p, "viewer")?;
+    if viewer && format != "glb" {
+        return Err(bad(c, format!("`viewer` makes a .glb for the web viewer, not a .{format}: save to a path ending in .glb")));
+    }
     let options = crate::export::Options { ifc_origin: ifc_origin(c, p)?, ..Default::default() };
     if format == "ifc" {
         save_through(s, c, "ifc4", &[None], &options, &path)?;
         return Ok(json!({"path": path, "format": "IFC4"}));
+    }
+    if format == "glb" && viewer {
+        let out = crate::viewable::export(&crate::link::seen(&s.model)).map_err(|e| bad(c, e))?;
+        std::fs::write(&path, &out.bytes).map_err(|e| bad(c, format!("{}: {e}", path.display())))?;
+        return Ok(json!({"path": path, "format": "glTF 2.0, for the web viewer", "elements": out.elements, "triangles": out.triangles,
+            "shapes": out.shapes}));
     }
     if format == "glb" {
         let out = crate::gltf::export(&crate::link::seen(&s.model)).map_err(|e| bad(c, e))?;
