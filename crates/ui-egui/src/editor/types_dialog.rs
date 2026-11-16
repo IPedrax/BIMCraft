@@ -8,7 +8,7 @@
 //! parameter that labels none or that a formula works out. Lookup tables and type catalogs are not here.
 use super::*;
 use crate::properties::group_header;
-use bimcraft_core::family::{Group, Val};
+use bimcraft_core::family::{Group, Under, Val};
 use bimcraft_core::ids::Guid;
 use bimcraft_core::shared_parameters::SharedFile;
 use std::collections::BTreeSet;
@@ -28,7 +28,7 @@ const LOCK_NONE: &str = msg!("Only a parameter that labels a dimension, and that
 #[derive(Default)]
 pub(crate) struct TypesDialog {
     search: String,
-    collapsed: BTreeSet<Group>,
+    collapsed: BTreeSet<Under>,
     /// The parameter selected, by name: what Edit, Delete, Move Up and Move Down act on.
     selected: Option<String>,
     naming: Option<Naming>,
@@ -55,7 +55,9 @@ struct Editing {
     name: String,
     kind: Holds,
     instance: bool,
-    group: Group,
+    group: Under,
+    /// A heading of the family's own, as typed: it is the group while it isn't blank.
+    own: String,
     reporting: bool,
     of: Option<Category>,
     /// A shared parameter's GUID: one picked from the shared parameters file, or the one it had.
@@ -69,12 +71,17 @@ struct Editing {
 }
 
 /// The heading a parameter as typed is listed under.
-fn group_of(p: &ParamText) -> Group {
-    Parameter { kind: p.kind, group: p.original.group, ..Parameter::default() }.group()
+fn group_of(p: &ParamText) -> Under {
+    Parameter { kind: p.kind, group: p.original.group.clone(), ..Parameter::default() }.group()
+}
+
+/// The headings the draft's parameters are listed under, as the palette lists them: Revit's groups, then the family's own.
+fn headings(params: &[ParamText]) -> Vec<Under> {
+    Under::listed(params.iter().map(group_of))
 }
 
 /// The heading a parameter of `kind` is listed under when it says none.
-fn kind_group(kind: Holds) -> Group {
+fn kind_group(kind: Holds) -> Under {
     Parameter { kind, ..Parameter::default() }.group()
 }
 
@@ -173,7 +180,7 @@ impl FamilyEditor {
 
     /// Sort Ascending or Descending: each group's parameters by name, each group keeping the places it had.
     fn sort_groups(&mut self, ascending: bool) {
-        for g in Group::ALL {
+        for g in headings(&self.params) {
             let places: Vec<usize> = (0..self.params.len()).filter(|i| group_of(&self.params[*i]) == g).collect();
             let mut rows: Vec<ParamText> = places.iter().map(|i| self.params[*i].clone()).collect();
             rows.sort_by_key(|p| p.name.trim().to_lowercase());
@@ -259,7 +266,7 @@ fn table(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
     let search = ed.types_dialog.search.clone();
     let mut select = None;
     let mut shown = false;
-    for g in Group::ALL {
+    for g in headings(&ed.params) {
         let rows: Vec<usize> =
             (0..ed.params.len()).filter(|i| group_of(&ed.params[*i]) == g && found(&search, &ed.params[*i].name)).collect();
         if rows.is_empty() {
@@ -268,7 +275,7 @@ fn table(ed: &mut FamilyEditor, ui: &mut Ui, materials: &[String]) {
         shown = true;
         let open = !ed.types_dialog.collapsed.contains(&g);
         if group_header(ui, t(g.label()), open) && !ed.types_dialog.collapsed.remove(&g) {
-            ed.types_dialog.collapsed.insert(g);
+            ed.types_dialog.collapsed.insert(g.clone());
         }
         if !open {
             continue;
@@ -399,7 +406,8 @@ fn buttons(ed: &mut FamilyEditor, ui: &mut Ui, base: &Arc<Model>) {
                 name: String::new(),
                 kind: Holds::Length,
                 instance: false,
-                group: Group::Dimensions,
+                group: Under::Group(Group::Dimensions),
+                own: String::new(),
                 reporting: false,
                 of: None,
                 shared: None,
@@ -419,6 +427,7 @@ fn buttons(ed: &mut FamilyEditor, ui: &mut Ui, base: &Arc<Model>) {
                 kind: p.kind,
                 instance: p.instance,
                 group: group_of(p),
+                own: String::new(),
                 reporting: p.original.reporting,
                 of: p.original.of,
                 shared: p.original.shared,
@@ -603,12 +612,22 @@ fn editing(ctx: &Context, ed: &mut FamilyEditor) {
                     ui.end_row();
                 }
                 let l = ui.label(t("Group parameter under:"));
+                // Revit's groups, then the headings of the family's own.
+                let own: Vec<Under> = headings(&ed.params).into_iter().filter(|g| matches!(g, Under::Own(_))).collect();
                 let c = ComboBox::from_id_salt("family-parameter-group").selected_text(t(e.group.label())).width(180.0).show_ui(ui, |ui| {
-                    for g in Group::ALL {
-                        ui.selectable_value(&mut e.group, g, t(g.label()));
+                    for g in Group::ALL.into_iter().map(Under::Group).chain(own) {
+                        let label = t(g.label()).to_string();
+                        ui.selectable_value(&mut e.group, g, label);
                     }
                 });
                 c.response.labelled_by(l.id);
+                ui.end_row();
+                let l = ui.label(t("Or a heading of its own:"));
+                let r = ui.add(egui::TextEdit::singleline(&mut e.own).desired_width(180.0));
+                r.labelled_by(l.id);
+                if let Some(u) = Under::read(&e.own) {
+                    e.group = u;
+                }
                 ui.end_row();
             });
             if let Some(why) = &e.error {
@@ -649,7 +668,7 @@ fn commit(ed: &mut FamilyEditor, e: &Editing) -> Result<(), String> {
     if e.was.as_deref() != Some(name.as_str()) && ed.param_at(&name).is_some() {
         return Err(tf("The family has a parameter named {} already.", &[&name]));
     }
-    let group = Some(e.group).filter(|g| *g != kind_group(e.kind));
+    let group = Some(e.group.clone()).filter(|g| *g != kind_group(e.kind));
     let shared = e.shared.filter(|_| e.is_shared);
     let at = match &e.was {
         None => {

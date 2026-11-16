@@ -507,6 +507,31 @@ view's eye and target, which the 3D view writes back each time the hand lets it 
 
 `a_section_box_moved_keeps_the_mesh_and_picks_through_the_new_box_and_an_edit_makes_a_new_one`, `only_a_change_of_the_section_box_is_said_to_leave_the_scene_as_it_was`, `a_mesh_picks_through_any_box_it_is_asked_as_a_mesh_made_for_that_box_does` and `a_view_being_made_keeps_the_last_picture_quietly_then_faded_with_its_bar_and_goes_on_from_there` hold it. A section box's grip also takes the hover colour under the pointer, and nothing behind it is tinted then (`section_box::grip_colours`).
 
+## Streaming a model bigger than memory (2026-11-14)
+
+Found in the window (`bimcraft --bench`): the 3D view of the annotated 100-storey tower passed 35 GB of the machine's 46 three
+minutes into `Scene::new` and was on its way out of memory, which the system answers by killing the app. `Scene` keeps every
+triangle of every copy in full for the processor, picking and sections: about 93 million at 100 storeys, and with them their
+planes, normals and faces, then the card's mesh.
+
+What a game does with a world bigger than memory is hold what is near and let the rest go. A 3D view of a model whose scene is
+estimated past a quarter of the memory that's free (at most 8 GB) (`view3d::stream`, at `BYTES_PER_TRIANGLE`, 600 bytes a triangle all told)
+holds:
+
+- **the building's fabric, always**: walls, floors, roofs, ceilings, columns, stairs, doors and windows, everything but the
+  detail: a twentieth of the tower's triangles, so the whole building is there to orbit;
+- **the detail of the storeys round where it looks**: components, runs and bars, the storey the camera's target is on first,
+  then the next above and below in turn, as many as fit.
+
+Each element is made against the whole model (`Scene::new_among_cancellable`, `solids_among_cancellable`), so what is held is
+exactly what the whole scene would have (`stream_tests.rs` holds the two to the same boxes). When the camera's target leaves
+the storeys held, the view asks its worker for the part round where it looks now and keeps the last picture until it comes,
+as an edit does. The view says in its corner from which storey to which the detail is shown and how many elements are left
+out. A model that fits is held whole, exactly as before; with no meter (the tests, the CLI) nothing is streamed.
+
+Next: a streamed scene is made afresh on an edit, not brought up to date (`Scene::update_cancellable` assumes the whole model);
+the copies of components could be held as placements on the processor's side too, which would let far more of a model fit.
+
 ## What isn't decided yet
 
 - **How far a card gets.** Piece 1's measurement decides how much of piece 5 is on the processor's side, and whether piece 6 needs coarser

@@ -1,6 +1,7 @@
 //! Finding hosts on the LAN: a guest asks "who hosts?" in one small UDP datagram, and each host that is visible answers with
 //! its name, its project's, its version, the port guests connect to and its code's tag. Nothing secret goes either way, and
-//! what comes back is read strictly: a datagram that isn't an answer is passed over.
+//! what comes back is read strictly: a datagram that isn't an answer is passed over, and the name and project it carries are
+//! made safe for the Join row, because anything on the network may answer.
 
 use std::net::{SocketAddr, UdpSocket};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -52,17 +53,18 @@ pub(crate) fn answer(socket: &UdpSocket, here: &[u8], stop: &AtomicBool) {
     }
 }
 
-/// An answer read, as a host at the address it came from.
+/// An answer read, as a host at the address it came from: its name and project made safe, since anyone may send one, while
+/// its tag, port and version are read strictly, so a datagram that isn't an answer is passed over.
 fn found(bytes: &[u8], from: SocketAddr) -> Option<Found> {
     let v = read(bytes, "here")?;
-    let text = |key: &str, max: usize| v[key].as_str().filter(|s| s.chars().count() <= max && !s.chars().any(char::is_control));
-    let tag = text("tag", 8).filter(|t| t.len() == 8 && t.bytes().all(|b| b.is_ascii_hexdigit()))?;
+    let strict = |key: &str, max: usize| v[key].as_str().filter(|s| s.chars().count() <= max && !s.chars().any(char::is_control));
+    let tag = strict("tag", 8).filter(|t| t.len() == 8 && t.bytes().all(|b| b.is_ascii_hexdigit()))?;
     let port = v["port"].as_u64().and_then(|p| u16::try_from(p).ok()).filter(|p| *p > 0)?;
     Some(Found {
         addr: SocketAddr::new(from.ip(), port),
-        name: text("name", crate::MAX_NAME)?.to_string(),
-        project: text("project", 200)?.to_string(),
-        version: text("version", 32)?.to_string(),
+        name: crate::host::clean(v["name"].as_str(), crate::MAX_NAME, "the host"),
+        project: crate::host::clean(v["project"].as_str(), 200, "a project"),
+        version: strict("version", 32)?.to_string(),
         tag: tag.to_string(),
     })
 }

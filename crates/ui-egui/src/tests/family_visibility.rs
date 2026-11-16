@@ -132,7 +132,7 @@ fn project() -> Harness<'static, BimApp> {
 fn door_prims(h: &Harness<BimApp>) -> usize {
     let m = &h.state().session.model;
     let id = m.elements.iter().find(|(_, e)| matches!(e, Element::Door(_))).map(|(id, _)| *id).unwrap();
-    let view = bimcraft_core::render::View { scale: 0.5, cx: 3000.0, cy: 300.0, width: 800, height: 800 };
+    let view = bimcraft_core::render::View { angle: 0.0, scale: 0.5, cx: 3000.0, cy: 300.0, width: 800, height: 800 };
     let d = bimcraft_core::render::draw(m, 100000, view);
     d.owners.iter().filter(|o| **o == Some(id)).count()
 }

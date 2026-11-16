@@ -30,6 +30,15 @@ impl RevisionSnapshot {
         column.binary_search_by_key(&id, |(id, _)| *id).ok().and_then(|i| column.get(i)).map(|(_, revision)| *revision)
     }
 
+    /// Each of `ids`, in order and each once, given a fresh revision: what touching each in turn makes of an empty snapshot.
+    pub(super) fn of_sorted(ids: impl Iterator<Item = Id>) -> RevisionSnapshot {
+        let mut chunks: BTreeMap<Id, Vec<(Id, Revision)>> = BTreeMap::new();
+        for id in ids {
+            chunks.entry(chunk_of(id)).or_default().push((id, Revision::fresh()));
+        }
+        RevisionSnapshot { chunks: chunks.into_iter().map(|(k, c)| (k, Arc::new(c))).collect() }
+    }
+
     pub(super) fn touch(&mut self, id: Id, revision: Revision) {
         let column = Arc::make_mut(self.chunks.entry(chunk_of(id)).or_default());
         match column.binary_search_by_key(&id, |(id, _)| *id) {

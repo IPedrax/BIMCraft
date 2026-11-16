@@ -25,11 +25,12 @@ fn u32_at(data: &[u8], at: usize) -> Option<u32> {
     Some(u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
 }
 
-/// Whether the ids at `id_at` of the `count` records of `size` bytes rise strictly all the way.
+/// Whether the ids at `id_at` of the `count` records of `size` bytes rise strictly all the way. The first may be 0 (the Snowdon
+/// Towers structural sample's is); every one after it is then above 0.
 fn rises(data: &[u8], count: usize, size: usize, id_at: usize) -> bool {
     let mut previous: Option<u32> = None;
     (0..count).all(|k| match u32_at(data, ORIGIN + k * size + id_at) {
-        Some(id) if id > 0 && id < u32::MAX && previous.is_none_or(|p| id > p) => {
+        Some(id) if id < u32::MAX && previous.is_none_or(|p| id > p) => {
             previous = Some(id);
             true
         }

@@ -7,6 +7,19 @@ fn save_pdf(session: &mut Session, path: &std::path::Path) -> Result<Vec<u8>, St
     std::fs::read(path).map_err(|e| e.to_string())
 }
 
+/// Whether the PDF's one page is `want` points wide and high (`"1368.000 936.000"`), whatever spacing and digits the writer
+/// gives its MediaBox.
+fn media_box_is(text: &str, want: &str) -> bool {
+    let got: Vec<f64> = text
+        .split("/MediaBox")
+        .nth(1)
+        .and_then(|r| r.split(']').next())
+        .map(|b| b.trim_start_matches([' ', '[']).split_whitespace().filter_map(|x| x.parse().ok()).collect())
+        .unwrap_or_default();
+    let want: Vec<f64> = [0.0, 0.0].into_iter().chain(want.split_whitespace().filter_map(|x| x.parse().ok())).collect();
+    got.len() == 4 && want.len() == 4 && got.iter().zip(&want).all(|(a, b)| (a - b).abs() < 0.01)
+}
+
 #[test]
 fn custom_paper_keeps_its_order_and_exact_media_box_after_reopening() {
     let dir = tempfile::tempdir().unwrap();
@@ -25,7 +38,7 @@ fn custom_paper_keeps_its_order_and_exact_media_box_after_reopening() {
         let bytes = save_pdf(&mut session, &dir.path().join("custom.pdf")).unwrap();
         let text = String::from_utf8_lossy(&bytes);
         assert_eq!(text.matches("/MediaBox").count(), 1);
-        assert!(text.contains(&format!("/MediaBox [0 0 {points}]")), "{size}");
+        assert!(media_box_is(&text, points), "{size}");
         let file = dir.path().join("custom.bimcraft");
         session.execute("save", &json!({"path": file})).unwrap();
         let mut reopened = Session::new();
@@ -78,7 +91,7 @@ fn invalid_custom_paper_refuses_creation_and_edits_without_changing_the_model() 
     session.execute("modify", &json!({"id": id, "size": "500×300"})).unwrap();
     let dir = tempfile::tempdir().unwrap();
     let pdf = save_pdf(&mut session, &dir.path().join("edited.pdf")).unwrap();
-    assert!(String::from_utf8_lossy(&pdf).contains("/MediaBox [0 0 1417.323 850.394]"));
+    assert!(media_box_is(&String::from_utf8_lossy(&pdf), "1417.323 850.394"));
 }
 
 #[test]

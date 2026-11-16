@@ -1,6 +1,7 @@
 # Project parameters and schedules
 
 Moved from the root `CLAUDE.md`, word for word: the root keeps the rules and the map, and this file is read when the area is touched.
+Managing parameters as a set (dictionaries, import and export, batch changes): [parameters](parameters.md).
 
 (A distribution board's panel schedule is not one of these: it is a view of its own, `panel_schedule.rs`, in [structure and MEP](structure-and-mep.md).)
 
@@ -11,8 +12,7 @@ parameter's name, nor any category's own field's (`schedule::own_field`). A sche
 parameters, or calculated: a formula over the row's others, read as the family formula engine reads (lengths in mm, areas in
 m²), a field with no value leaving it with none (an unset yes or no is no). Filters compare numbers as the schedule shows
 them, so two that show the same are equal. The seven schedules every project has (`schedule::VIEWS`) aren't elements
-until changed or placed (`schedule::standard`), and a schedule named as one of them, in any language or case, is that one; renaming a parameter renames it in schedules, but a formula naming it holds
-the rename back. The last of them is the sheet list (`of: "sheet"`), the project's sheets by their numbers, a category
+until changed or placed (`schedule::standard`), and a schedule named as one of them, in any language or case, is that one; renaming a parameter renames it in schedules and in the formulas naming it. The last of them is the sheet list (`of: "sheet"`), the project's sheets by their numbers, a category
 no view draws.
 A component's Room Number and Room Name (as Revit's Room: Number and Room: Name) are the room it is in, found where it is
 read and never stored (`Rooms::component`, the one rule `elements`, schedules, `load_points` and IFC share): the room on its

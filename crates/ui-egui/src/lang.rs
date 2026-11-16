@@ -281,6 +281,7 @@ pub fn category(category: &str, several: bool) -> String {
         "voiceoutlet" => (msg!("category", "Voice Outlet"), msg!("category-plural", "Voice Outlets")),
         "patchpanel" => (msg!("category", "Patch Panel"), msg!("category-plural", "Patch Panels")),
         "rack" => (msg!("category", "Rack"), msg!("category-plural", "Racks")),
+        "site" => (msg!("category", "Site"), msg!("category-plural", "Site")),
         "stair" => (msg!("category", "Stair"), msg!("category-plural", "Stairs")),
         "roof" => (msg!("category", "Roof"), msg!("category-plural", "Roofs")),
         "ceiling" => (msg!("category", "Ceiling"), msg!("category-plural", "Ceilings")),
@@ -307,6 +308,7 @@ pub fn category(category: &str, several: bool) -> String {
         "text" => (msg!("category", "Text Note"), msg!("category-plural", "Text Notes")),
         "line" => (msg!("category", "Detail Line"), msg!("category-plural", "Lines")),
         "spot" => (msg!("category", "Spot Elevation"), msg!("category-plural", "Spot Elevations")),
+        "spotcoordinate" => (msg!("category", "Spot Coordinate"), msg!("category-plural", "Spot Coordinates")),
         "schedule" => (msg!("category", "Schedule"), msg!("category-plural", "Schedules")),
         "view3d" => (msg!("category", "3D View"), msg!("category-plural", "3D Views")),
         "link" => (msg!("category", "Linked Model"), msg!("category-plural", "Linked Models")),
@@ -314,6 +316,7 @@ pub fn category(category: &str, several: bool) -> String {
         "cadimport" => (msg!("category", "CAD Import"), msg!("category-plural", "CAD Imports")),
         "multicategory" => (msg!("category", "Multi-Category"), msg!("category-plural", "Multi-Category")),
         "circuit" => (msg!("category", "Circuit"), msg!("category-plural", "Circuits")),
+        "project" => (msg!("category", "Project Information"), msg!("category-plural", "Project Information")),
         other => return other.to_string(),
     };
     let (context, english) = if several { ("category-plural", many) } else { ("category", one) };

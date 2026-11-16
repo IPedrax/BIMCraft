@@ -15,13 +15,13 @@ use crate::{BimApp, Sheet, Status};
 impl BimApp {
     /// The project's panel schedules: their ids and names, by name.
     pub(crate) fn panel_schedules(&self) -> Vec<(Id, &str)> {
-        let mut out: Vec<(Id, &str)> = self
-            .session
-            .model
-            .elements
-            .iter()
-            .filter_map(|(id, e)| match e {
-                Element::PanelSchedule(ps) => Some((*id, ps.name.as_str())),
+        // A rare kind, kept by the lookup: the browser asks every frame.
+        let m = &self.session.model;
+        let mut out: Vec<(Id, &str)> = m
+            .lookup()
+            .rare("panelschedule")
+            .filter_map(|id| match m.elements.get(id) {
+                Some(Element::PanelSchedule(ps)) => Some((id, ps.name.as_str())),
                 _ => None,
             })
             .collect();

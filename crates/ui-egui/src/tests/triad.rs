@@ -283,7 +283,7 @@ fn a_drag_that_begins_on_the_triad_does_not_orbit_the_view() {
         assert_eq!(camera(&h), before, "rev {rev}: the triad took the drag");
         // A drag elsewhere still orbits.
         let start = h.state().orbit.rect.center();
-        drag_screen(&mut h, start, start + vec2(60.0, 0.0), PointerButton::Primary);
+        orbit_screen(&mut h, start, start + vec2(60.0, 0.0));
         assert_ne!(camera(&h).azimuth, before.azimuth, "rev {rev}: the view still orbits");
     }
 }

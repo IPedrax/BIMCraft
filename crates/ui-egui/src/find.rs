@@ -38,7 +38,7 @@ pub(crate) fn matches(label: &str, query: &str) -> bool {
 
 /// The Find button on BIMCraft's title bar: a search icon, its name, and Ctrl K.
 pub(crate) fn button(ui: &mut egui::Ui) -> egui::Response {
-    let (rect, r) = ui.allocate_exact_size(vec2(116.0, 24.0), Sense::click());
+    let (rect, r) = ui.allocate_exact_size(vec2(96.0, 24.0), Sense::click());
     let name = t("Find");
     r.widget_info(|| WidgetInfo::labeled(WidgetType::Button, true, name));
     let p = ui.painter();
@@ -50,8 +50,12 @@ pub(crate) fn button(ui: &mut egui::Ui) -> egui::Response {
     let icon = egui::Rect::from_center_size(rect.left_center() + vec2(14.0, 0.0), vec2(15.0, 15.0));
     crate::icons::paint(p, crate::icons::Icon::Search, icon, ink);
     let font = egui::FontId::proportional(12.5);
-    p.text(rect.left_center() + vec2(28.0, 0.0), Align2::LEFT_CENTER, name, font.clone(), ink);
-    p.text(rect.right_center() - vec2(8.0, 0.0), Align2::RIGHT_CENTER, "Ctrl K", font, pal().app_bar_muted);
+    let said = p.text(rect.left_center() + vec2(28.0, 0.0), Align2::LEFT_CENTER, name, font.clone(), ink);
+    // Its shortcut where a language's word leaves it room.
+    let hint = p.layout_no_wrap("Ctrl K".to_string(), font, pal().app_bar_muted);
+    if said.right() + 4.0 + hint.size().x <= rect.right() - 6.0 {
+        p.galley(egui::pos2(rect.right() - 6.0 - hint.size().x, rect.center().y - hint.size().y / 2.0), hint, pal().app_bar_muted);
+    }
     r.on_hover_text(t("Find a tool, a view or a setting (Ctrl+K)"))
 }
 

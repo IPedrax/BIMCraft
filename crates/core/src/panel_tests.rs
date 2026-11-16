@@ -253,7 +253,7 @@ fn ifc_path(tag: &str) -> std::path::PathBuf {
 fn written(s: &mut Session, tag: &str) -> String {
     let path = ifc_path(tag);
     run(s, "save", json!({"path": path}));
-    let text = std::fs::read_to_string(&path).unwrap();
+    let text = crate::bimc::read_to_string(&path).unwrap();
     let _ = std::fs::remove_file(&path);
     text
 }

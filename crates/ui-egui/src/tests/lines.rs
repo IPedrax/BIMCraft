@@ -356,7 +356,7 @@ fn pattern_text_counters_remain_open_on_the_canvas_and_on_paper_when_selected_or
         assert!(holes.len() >= 5, "O, B and 8 each have counters to test");
         for paper in [false, true] {
             for accent in 0..3 {
-                let mut d = Drawing::new(View { scale: 1.0, cx: 0.0, cy: 0.0, width: 760, height: 320 });
+                let mut d = Drawing::new(View { angle: 0.0, scale: 1.0, cx: 0.0, cy: 0.0, width: 760, height: 320 });
                 d.prims = prims.clone();
                 d.owners = vec![Some(100042); prims.len()];
                 d.parts = vec![Part::LinePattern; prims.len()];

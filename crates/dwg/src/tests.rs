@@ -159,3 +159,50 @@ fn real_drawings_where_a_folder_of_them_is_named() {
         eprintln!("{} ({} kB) in {:?}: {said}", path.display(), std::fs::metadata(&path).map_or(0, |m| m.len() >> 10), start.elapsed());
     }
 }
+
+/// The core's DXF of a plan of the walls of a box, a door in them, as an export writes it.
+fn plan_dxf() -> Vec<u8> {
+    use bimcraft_core::export::{Ctx, Format, Options, Takes, prepare};
+    let mut s = bimcraft_core::engine::Session::new();
+    s.script(
+        r#"wall {"points": [[0,0],[8000,0],[8000,6000],[0,6000]], "closed": true}
+           door {"at": [2000, 0]}"#,
+    )
+    .unwrap();
+    let m = bimcraft_core::link::seen(&s.model);
+    let p = prepare(&s.model, &m, m.view_named("Level 1"), Takes::Drawing).unwrap();
+    bimcraft_core::export::formats::Dxf.write(&[p], &Options::default(), &Ctx::quiet()).unwrap().remove(0).bytes
+}
+
+#[test]
+fn a_plan_exported_as_dwg_reads_back_with_its_layers_where_it_was() {
+    let dxf = plan_dxf();
+    let dwg = to_dwg(&dxf, Limits::DEFAULT).unwrap();
+    assert!(dwg.starts_with(b"AC1018"), "AutoCAD 2004: {:?}", String::from_utf8_lossy(&dwg[..6]));
+    // Read back as any DWG is, then by the core as any DXF.
+    let back = to_dxf(&dwg, Limits::DEFAULT).unwrap();
+    assert!(back.notes.is_empty(), "{:?}", back.notes);
+    let read = dxf::read(&back.dxf).unwrap();
+    let before = dxf::read(&dxf).unwrap();
+    assert_eq!(read.unit, "mm");
+    for layer in ["wall", "door"] {
+        let n = |d: &dxf::Dxf| d.entities.iter().filter(|e| e.layer == layer).count();
+        assert!(n(&read) > 0 && n(&read) == n(&before), "{layer}: {} of {}", n(&read), n(&before));
+    }
+    // Where it was: the walls' outer faces just outside 0 and 8000.
+    let [lo, hi] = dxf::union(read.entities.iter().filter(|e| e.layer == "wall").map(|e| e.shape.bounds())).unwrap();
+    assert!(lo.0 < 0.0 && lo.0 > -400.0 && hi.0 > 8000.0 && hi.0 < 8400.0, "{lo:?} {hi:?}");
+    assert!(read.entities.iter().any(|e| matches!(e.shape, Shape::Fill { solid: true, .. })), "the cut walls' fill");
+    // The variables dictionary AutoCAD writes, in the DWG's named objects.
+    let text = String::from_utf8_lossy(&back.dxf);
+    assert!(text.contains("AcDbVariableDictionary") && text.contains("CANNOSCALE"), "the variables dictionary");
+}
+
+#[test]
+fn what_isnt_a_drawing_or_is_too_large_isnt_written() {
+    assert!(to_dwg(b"not a dxf at all", Limits::DEFAULT).is_err());
+    let small = Limits { dwg_bytes: 64, dxf_bytes: 64 };
+    assert!(to_dwg(&plan_dxf(), small).unwrap_err().contains("more than"));
+    let roomy = Limits { dwg_bytes: 64, dxf_bytes: 64 << 20 };
+    assert!(to_dwg(&plan_dxf(), roomy).unwrap_err().contains("more than"));
+}

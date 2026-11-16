@@ -4,8 +4,7 @@ description = "BIMCraft's desktop front end in egui: a thin shell over the core'
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-# egui 0.36 needs Rust 1.95; the core and the CLI still build with 1.90.
-rust-version = "1.95"
+rust-version.workspace = true
 
 [lints]
 workspace = true
@@ -18,11 +17,13 @@ bimcraft-update = { workspace = true }
 bimcraft-assistant = { workspace = true }
 bimcraft-cowork = { workspace = true }
 serde_json = { workspace = true }
+serde = { workspace = true }
+quick-xml = { version = "0.41", features = ["serialize"] }
 egui = { workspace = true }
 eframe = { workspace = true }
 pollster = "1"
 rayon = { workspace = true }
-bytemuck = "1"
+bytemuck = { version = "1", features = ["derive"] }
 rfd = { workspace = true }
 sys-locale = { workspace = true }
 

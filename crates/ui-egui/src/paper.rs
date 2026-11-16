@@ -34,7 +34,7 @@ impl BimApp {
         // The whole paper, 24 points clear of the edges.
         let fit = |w: u32, h: u32| {
             let room = |px: u32, mm: f64| (f64::from(px) - 48.0).max(1.0) / mm;
-            View { scale: room(w, size.0).min(room(h, size.1)), cx: size.0 / 2.0, cy: size.1 / 2.0, width: w, height: h }
+            View { angle: 0.0, scale: room(w, size.0).min(room(h, size.1)), cx: size.0 / 2.0, cy: size.1 / 2.0, width: w, height: h }
         };
         let Some((view, local)) = self.canvas.navigate(ui, &response, rect, id, fit) else { return };
         // Where the pointer is on the paper, for the others in a Co-Work session.
@@ -146,6 +146,16 @@ impl BimApp {
             }) {
                 Some(view) => self.open_3d(Some(view)),
                 None => self.open_sheet(open),
+            }
+            return;
+        }
+        if let Tool::ExportRegion(first) = self.tool {
+            if let Some(cursor) = ui.input(|i| i.pointer.latest_pos()).filter(|c| rect.contains(*c)) {
+                let screen = |a: P2| rect.min + vec2(view.px(a).0, view.px(a).1);
+                crate::export::region_band(&p, first.map(screen), cursor);
+            }
+            if let Some(q) = self.clicked_at(&response) {
+                self.export_region_at(view.mm((q.x - rect.min.x, q.y - rect.min.y)));
             }
             return;
         }

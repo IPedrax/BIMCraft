@@ -304,7 +304,7 @@ fn the_settings_are_saved_with_the_project_and_come_back() {
     let path = std::env::temp_dir().join(format!("bimcraft-electrical-{}.bimcraft", std::process::id()));
     run(&mut s, "save", json!({"path": path.to_str().unwrap()}));
     // A file holds them by GUID, and a system names its voltages by theirs.
-    let file: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    let file: Value = serde_json::from_str(&crate::bimc::read_to_string(&path).unwrap()).unwrap();
     let g = guid(&s, Kind::Voltage, "690 V").unwrap().to_string();
     assert_eq!(file["distribution_systems"]["Mina"]["l_l"], json!(g), "{}", file["distribution_systems"]["Mina"]);
     let mut t = Session::new();

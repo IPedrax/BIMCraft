@@ -322,19 +322,17 @@ fn arms(m: &Model, id: Id, at_end: bool, g: &Geom, index: Option<&walls::Index>)
     let (lo, hi) = g.z_span();
     // The runs near the node: through the tile index when there is one, else every run, kept only those whose
     // bodies reach within half a width of the node.
-    let near: Vec<(Id, &Element)> = match index {
-        Some(index) => index.runs_near(node, lo, hi).into_iter().filter_map(|oid| Some((oid, m.elements.get(oid)?))).collect(),
-        None => m
-            .elements
-            .iter()
-            .filter(|(oid, oe)| **oid != id && oe.run().is_some())
-            .filter_map(|(oid, oe)| {
-                let og = m.run_geom(oe)?;
-                let (a, b) = (P2(og.a[0], og.a[1]), P2(og.b[0], og.b[1]));
-                (geom::dist_to_segment(node, a, b) <= og.width / 2.0 + TOL).then_some((*oid, oe))
-            })
-            .collect(),
+    // Without one, the model's own, kept with it: scanning every element for each end made a plan of a tower's runs
+    // O(n²), minutes on the interface's thread.
+    let kept;
+    let index = match index {
+        Some(index) => index,
+        None => {
+            kept = m.wall_index();
+            &*kept
+        }
     };
+    let near: Vec<(Id, &Element)> = index.runs_near(node, lo, hi).into_iter().filter_map(|oid| Some((oid, m.elements.get(oid)?))).collect();
     for &(other, o) in &near {
         if other == id {
             continue;

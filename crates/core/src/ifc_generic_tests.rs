@@ -191,7 +191,7 @@ fn what_has_no_element_comes_in_as_a_generic_component_of_its_class_and_goes_bac
     // Saved, each is its class again, of its predefined type, typed by a type object of its class's.
     let out = temp("out.ifc");
     run(&mut s, "save", json!({"path": out}));
-    let step = std::fs::read_to_string(&out).unwrap();
+    let step = crate::bimc::read_to_string(&out).unwrap();
     let all = entities(&step);
     let of = |class: &str| all.iter().filter(|(_, (c, _))| c == class).map(|(id, (_, a))| (*id, a.clone())).collect::<Vec<_>>();
     let typed_by = |id: u64| {
@@ -264,7 +264,7 @@ fn a_part_of_what_came_in_stays_its_and_an_assembly_with_a_body_of_its_own_comes
     // Its assembly place comes ahead of its predefined type, as IFC4 has it.
     let out = temp("parts-out.ifc");
     run(&mut s, "save", json!({"path": out}));
-    let step = std::fs::read_to_string(&out).unwrap();
+    let step = crate::bimc::read_to_string(&out).unwrap();
     let _ = std::fs::remove_file(&out);
     assert!(step.lines().any(|l| l.contains("=IFCELEMENTASSEMBLY(") && l.ends_with(",$,.TRUSS.);")), "{step}");
     assert!(step.lines().any(|l| l.contains("=IFCELEMENTASSEMBLYTYPE(") && l.ends_with(",.TRUSS.);")), "{step}");
@@ -291,7 +291,7 @@ fn a_class_ifc4_lacks_or_a_type_it_doesnt_take_goes_out_as_a_proxy_or_not_define
     run(&mut s, "component", json!({"family": "Sheet", "type": "S", "at": [1000, 0]}));
     let out = temp("fallback.ifc");
     run(&mut s, "save", json!({"path": out}));
-    let step = std::fs::read_to_string(&out).unwrap();
+    let step = crate::bimc::read_to_string(&out).unwrap();
     let _ = std::fs::remove_file(&out);
     // The kerb is a proxy that says what it was; the plate a plate of no type IFC4 has.
     assert!(

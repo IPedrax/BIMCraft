@@ -96,8 +96,15 @@ pub fn delta(before: &Model, after: &Model) -> Result<Delta, String> {
 pub fn apply(copy: &Model, delta: &Delta) -> Result<Model, String> {
     let (next_id, put, gone) = match delta {
         Delta::Whole { model, links } => {
+            // Held to the memory this machine has free, as a file is (`memory.rs`); the wire held what came to it already.
             let read = |text: &str| {
-                let (m, left_out) = Model::read(text)?;
+                let budget = crate::memory::Budget::start(text.len() as u64, crate::memory::PROJECT)
+                    .map_err(|e| format!("the host's project: {e}"))?
+                    .unwrap_or_else(crate::memory::Budget::none);
+                let (m, left_out) = Model::read_within(text, &budget).map_err(|e| match budget.check() {
+                    Ok(()) => e,
+                    Err(_) => format!("the host's project: {e}"),
+                })?;
                 match left_out.is_empty() {
                     true => Ok(m),
                     false => Err(format!("the host's model holds what this version doesn't know: {}", left_out.join(", "))),

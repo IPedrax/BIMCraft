@@ -133,3 +133,59 @@ fn a_bimf_file_the_system_opens_is_a_family_document_and_leaves_an_unsaved_proje
     h.state_mut().open_family_file(&old);
     assert_eq!(h.state().active_family().map(|ed| ed.title().to_string()).as_deref(), Some("Stool"));
 }
+
+#[test]
+fn a_project_is_saved_plain_unless_compressed_save_is_on_and_opens_either_way_and_the_choice_is_kept() {
+    let dir = tempfile::tempdir().unwrap();
+    let settings = dir.path().join("settings.json");
+    std::fs::write(&settings, "{}").unwrap();
+    let mut h = app(BOX);
+    h.state_mut().use_settings(settings.clone());
+    assert!(!h.state().compressed_save, "off at first");
+    let plain = dir.path().join("plain.bimc");
+    assert!(h.state_mut().save_to(&plain));
+    assert!(!files_zipped(&plain), "plain JSON by default");
+    // Settings > Files (and the File menu) turn it on: Save and Save As zip the project from then on.
+    h.state_mut().compressed_save = true;
+    h.run();
+    let zipped = dir.path().join("zipped.bimc");
+    assert!(h.state_mut().save_to(&zipped));
+    assert!(files_zipped(&zipped));
+    // An export takes no such choice.
+    let ifc = dir.path().join("box.ifc");
+    assert!(h.state_mut().save_to(&ifc));
+    assert!(std::fs::read_to_string(&ifc).unwrap().starts_with("ISO-10303-21"));
+    // Both open, in a window whose setting is either.
+    for (path, on) in [(&plain, true), (&zipped, false)] {
+        let mut again = app("");
+        again.state_mut().compressed_save = on;
+        assert!(again.state_mut().open_path(path), "{}", again.state().status.text);
+        assert_eq!(walls(&again).len(), 4, "{}", path.display());
+    }
+    // Kept in the user's settings, for the next start.
+    let kept: Value = serde_json::from_str(&std::fs::read_to_string(&settings).unwrap()).unwrap();
+    assert_eq!(kept["compressed_save"], json!(true));
+    let mut next = app("");
+    next.state_mut().use_settings(settings);
+    assert!(next.state().compressed_save);
+}
+
+fn files_zipped(path: &Path) -> bool {
+    bimcraft_core::bimc::is_zip(&std::fs::read(path).unwrap())
+}
+
+/// Settings > Files with Compressed save, for a person to look at: `BIMCRAFT_SETTINGS_DUMP=<folder>` writes it light and dark.
+#[test]
+fn compressed_save_screenshots() {
+    let Ok(folder) = std::env::var("BIMCRAFT_SETTINGS_DUMP") else { return };
+    std::fs::create_dir_all(&folder).unwrap();
+    for (dark, look) in [(false, "light"), (true, "dark")] {
+        let mut h = app(BOX);
+        if dark {
+            h.ctx.set_theme(egui::Theme::Dark);
+        }
+        h.state_mut().settings_page = Some(crate::settings::Page::Files);
+        h.run();
+        h.render().unwrap().save(Path::new(&folder).join(format!("settings-files-{look}.png"))).unwrap();
+    }
+}

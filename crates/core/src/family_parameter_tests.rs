@@ -6,7 +6,7 @@
 use serde_json::{Value, json};
 
 use crate::engine::Session;
-use crate::family::Group;
+use crate::family::{Group, Under};
 use crate::library::Kind as LibKind;
 
 fn run(s: &mut Session, id: &str, p: Value) -> Value {
@@ -166,12 +166,15 @@ fn a_parameter_is_grouped_by_its_kind_unless_told_and_keeps_its_group_in_files()
     run(&mut s, "family", json!({"parameter": {"name": "Finish", "kind": "material"}, "name": "Cabinet"}));
     run(&mut s, "family", json!({"name": "Cabinet", "parameter": {"name": "Maker", "kind": "text", "group": "identity-data"}}));
     let group = |s: &Session, n: &str| s.model.families["Cabinet"].parameters.iter().find(|p| p.name == n).map(|p| p.group());
-    assert_eq!(group(&s, "Width"), Some(Group::Dimensions));
-    assert_eq!(group(&s, "Finish"), Some(Group::MaterialsAndFinishes));
-    assert_eq!(group(&s, "Maker"), Some(Group::IdentityData));
+    assert_eq!(group(&s, "Width"), Some(Under::Group(Group::Dimensions)));
+    assert_eq!(group(&s, "Finish"), Some(Under::Group(Group::MaterialsAndFinishes)));
+    assert_eq!(group(&s, "Maker"), Some(Under::Group(Group::IdentityData)));
     run(&mut s, "family", json!({"name": "Cabinet", "parameter": {"name": "Width", "group": "constraints"}}));
-    assert_eq!(group(&s, "Width"), Some(Group::Constraints));
-    let e = err(&mut s, "family", json!({"name": "Cabinet", "parameter": {"name": "Width", "group": "nowhere"}}));
+    assert_eq!(group(&s, "Width"), Some(Under::Group(Group::Constraints)));
+    // A heading of its own, as typed; one that isn't one line is refused.
+    run(&mut s, "family", json!({"name": "Cabinet", "parameter": {"name": "Width", "group": "nowhere"}}));
+    assert_eq!(group(&s, "Width"), Some(Under::Own("nowhere".into())));
+    let e = err(&mut s, "family", json!({"name": "Cabinet", "parameter": {"name": "Width", "group": "two\nlines"}}));
     assert!(e.contains("group"), "{e}");
     // In a project file, and in a family file another project loads.
     let (back, left_out) = crate::model::Model::read(&s.model.to_json().unwrap_or_default()).unwrap_or_else(|e| panic!("{e}"));
@@ -375,6 +378,28 @@ fn a_file_of_the_format_before_reads_every_parameter_as_a_family_one() {
     assert_eq!(m.format, crate::model::FORMAT);
     let f = &m.families["Cabinet"];
     assert!(f.parameters.iter().all(|p| p.shared.is_none() && !p.reporting && p.group.is_none()));
-    assert_eq!(f.parameters.iter().find(|p| p.name == "Height").map(|p| p.group()), Some(Group::Dimensions));
+    assert_eq!(f.parameters.iter().find(|p| p.name == "Height").map(|p| p.group()), Some(Under::Group(Group::Dimensions)));
     const { assert!(crate::model::FORMAT >= 18) };
+}
+
+#[test]
+fn a_group_is_one_of_revits_by_its_name_or_heading_or_a_heading_of_its_own() {
+    assert_eq!(Under::read("identity-data"), Some(Under::Group(Group::IdentityData)));
+    assert_eq!(Under::read(" Identity Data "), Some(Under::Group(Group::IdentityData)));
+    assert_eq!(Under::read("Fire"), Some(Under::Own("Fire".into())));
+    assert_eq!(Under::read("  "), None);
+    // Written as a group always was, so a file of 19 reads as it did, and a heading of its own as its words.
+    assert_eq!(serde_json::to_value(Under::Group(Group::IdentityData)).unwrap(), json!("identity-data"));
+    assert_eq!(serde_json::from_value::<Under>(json!("Fire")).unwrap(), Under::Own("Fire".into()));
+    assert!(serde_json::from_value::<Under>(json!("")).is_err());
+    // Revit's groups in their order, then the own headings by name, each once.
+    let listed = Under::listed([
+        Under::Own("b".into()),
+        Under::Group(Group::Other),
+        Under::Own("A".into()),
+        Under::Group(Group::Constraints),
+        Under::Own("b".into()),
+    ]);
+    assert_eq!(listed, [Under::Group(Group::Constraints), Under::Group(Group::Other), Under::Own("A".into()), Under::Own("b".into())]);
+    assert!(Under::Own("two\nlines".into()).check("p").is_err());
 }

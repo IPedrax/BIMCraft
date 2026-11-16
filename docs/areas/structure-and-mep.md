@@ -282,7 +282,8 @@ have sharp corners. This is geometric section support, not a steel connection, f
 code-compliance model.
 
 Schedules expose `Profile`, `Section Area` (cm²), `Weight per Metre` (kg/m) and `Weight` (kg). Mass assumes steel density
-7850 kg/m³ for every profiled member; it does not infer density from an assigned material. Areas and quantities use analytical
+7850 kg/m³ for a profiled column and for a beam of steel or of no material; a beam of another material (a concrete T from IFC)
+shows its section area and no weight, since the library's materials carry no density. Areas and quantities use analytical
 plate/fillet/ring areas. IFC writes the corresponding I/U/L/rectangle-hollow/circle-hollow profile shared by the body and the
 existing type material profile set. Existing cardinal points and quantity conventions remain: length, cross-section area,
 lateral surface area (including hollow interiors), gross volume, without inventing net deductions or adding end faces.

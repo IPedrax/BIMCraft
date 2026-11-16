@@ -540,7 +540,7 @@ fn snaps_take_the_corners_of_a_runs_joined_outline() {
 fn ifc(s: &mut Session) -> String {
     let path = std::env::temp_dir().join(format!("bimcraft-run-join-{}-{}.ifc", std::process::id(), s.model.uid));
     s.execute("save", &json!({"path": path})).unwrap();
-    let text = std::fs::read_to_string(&path).unwrap();
+    let text = crate::bimc::read_to_string(&path).unwrap();
     let _ = std::fs::remove_file(path);
     text
 }

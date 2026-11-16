@@ -21,7 +21,7 @@ wall {"points":[[0,0],[8000,0]],"level":"Level 1","height":7200}"#;
         let id = s.execute("window", &json!({"at":[4000,0],"level":"Upper","sill":900})).unwrap()["id"].as_u64().unwrap();
         assert_eq!(sill_z(&s, id), 4300.0, "requested level + sill, not host base + sill");
         let upper = s.model.levels().into_iter().find(|(_, l)| l.name == "Upper").unwrap().0;
-        let view = View { scale: 0.1, cx: 4000.0, cy: 0.0, width: 1000, height: 400 };
+        let view = View { angle: 0.0, scale: 0.1, cx: 4000.0, cy: 0.0, width: 1000, height: 400 };
         let drawing = render::draw(&s.model, upper, view);
         assert!(
             drawing.pick_all(view.px(bimcraft_core::geom::P2(4000.0, 0.0)), 5.0).contains(&id),

@@ -83,7 +83,7 @@ fn version_and_values_uses_incoming_values() {
 #[test]
 fn omitted_policy_keeps_legacy_merge_and_file_cannot_choose_policy() {
     let (mut s, _dir, file) = setup();
-    let mut data: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    let mut data: Value = serde_json::from_str(&bimcraft_core::bimc::read_to_string(&file).unwrap()).unwrap();
     data["overwrite"] = json!("no");
     std::fs::write(&file, data.to_string()).unwrap();
     run(&mut s, json!({"path":file}));
@@ -123,7 +123,7 @@ fn reload_keeps_explicit_instance_values_and_rolls_back_incompatible_changes() {
         run(&mut s, json!({"path":file, "overwrite":policy}));
         assert_eq!(s.model.elements.get(id).unwrap(), &instance);
         let before = s.model.to_json().unwrap();
-        let mut data: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+        let mut data: Value = serde_json::from_str(&bimcraft_core::bimc::read_to_string(&file).unwrap()).unwrap();
         data["parameters"][1]["instance"] = json!(false);
         std::fs::write(&file, data.to_string()).unwrap();
         for dry in [true, false] {
@@ -144,7 +144,7 @@ fn incoming_formulas_win_and_removed_parameters_do_not_survive_in_types() {
         {"name":"Removed","kind":"number","value":7}
     ], "types":{"A":{"Removed":9}}}),
     );
-    let mut data: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    let mut data: Value = serde_json::from_str(&bimcraft_core::bimc::read_to_string(&file).unwrap()).unwrap();
     data["parameters"][0]["formula"] = json!("Height * 2");
     data["types"]["A"] = json!({});
     data["types"]["New type"] = json!({});
@@ -162,7 +162,7 @@ fn incoming_formulas_win_and_removed_parameters_do_not_survive_in_types() {
 fn new_types_keep_incoming_defaults_while_existing_types_keep_project_defaults() {
     let (mut s, _dir, file) = setup();
     run(&mut s, json!({"name":"Reload", "types":{"A":{"Width":null}}}));
-    let mut data: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    let mut data: Value = serde_json::from_str(&bimcraft_core::bimc::read_to_string(&file).unwrap()).unwrap();
     data["types"]["New type"] = json!({});
     std::fs::write(&file, data.to_string()).unwrap();
     run(&mut s, json!({"path":file,"overwrite":"version"}));
@@ -179,7 +179,7 @@ fn renamed_family_loads_as_new_and_renamed_type_is_added_without_moving_instance
     let instance = s.model.elements.get(id).unwrap().clone();
     let original = s.model.families["Reload"].clone();
     run(&mut s, json!({"name":"Reload","save":file}));
-    let mut data: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    let mut data: Value = serde_json::from_str(&bimcraft_core::bimc::read_to_string(&file).unwrap()).unwrap();
     data["name"] = json!("Renamed family");
     std::fs::write(&file, data.to_string()).unwrap();
     run(&mut s, json!({"path":file,"overwrite":"no"}));
@@ -321,7 +321,7 @@ fn reload_preserves_reference_planes_lines_and_form_hosts() {
     let before = s.model.families["Hosted reload"].clone();
     let old_pieces = before.pieces(&before.values("A", &Default::default()).unwrap()).unwrap();
     run(&mut s, json!({"name":"Hosted reload","save":file}));
-    let mut source: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    let mut source: Value = serde_json::from_str(&bimcraft_core::bimc::read_to_string(&file).unwrap()).unwrap();
     source["forms"][0]["to"] = json!(40);
     std::fs::write(&file, source.to_string()).unwrap();
     run(&mut s, json!({"path":file,"overwrite":"version"}));
@@ -391,7 +391,7 @@ fn loading_and_reloading_a_file_keeps_nondefault_family_options() {
     run(&mut s, json!({"path":file}));
     assert_eq!(s.model.families["Incoming options"].options_json(), f.options_json());
     run(&mut s, json!({"name":"Incoming options","save":file}));
-    let mut value: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    let mut value: Value = serde_json::from_str(&bimcraft_core::bimc::read_to_string(&file).unwrap()).unwrap();
     assert!(value.get("options").is_none());
     assert_eq!(value["omniclass"]["title"], "Incoming");
     value["room_calculation_point"] = json!([11, 22, 33]);
@@ -409,7 +409,7 @@ fn loading_and_reloading_a_file_keeps_nondefault_family_options() {
 fn saved(s: &mut Session, name: &str, dir: &tempfile::TempDir, change: impl FnOnce(&mut Value)) -> std::path::PathBuf {
     let file = dir.path().join(format!("{name}.json"));
     run(s, json!({"name":name,"save":file}));
-    let mut value: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    let mut value: Value = serde_json::from_str(&bimcraft_core::bimc::read_to_string(&file).unwrap()).unwrap();
     change(&mut value);
     std::fs::write(&file, value.to_string()).unwrap();
     file
@@ -538,7 +538,7 @@ fn reload_refuses_formulas_naming_what_the_incoming_family_lacks() {
     for policy in [None, Some("version"), Some("version_and_values")] {
         for (at, formula) in [("parameter", "Width * 2"), ("form", "Depth + 10")] {
             let (mut s, _dir, file) = setup();
-            let mut data: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+            let mut data: Value = serde_json::from_str(&bimcraft_core::bimc::read_to_string(&file).unwrap()).unwrap();
             if at == "parameter" {
                 // The project family has Width; the incoming one drops it while a formula still says it.
                 data["parameters"][0] = json!({"name":"Length","kind":"length","value":200});
@@ -572,7 +572,7 @@ fn reload_refuses_formulas_naming_what_the_incoming_family_lacks() {
 #[test]
 fn a_definition_loads_as_its_file_would_under_every_policy() {
     let (mut s, _dir, file) = setup();
-    let definition: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+    let definition: Value = serde_json::from_str(&bimcraft_core::bimc::read_to_string(&file).unwrap()).unwrap();
     let before = s.model.to_json().unwrap();
     let reply = run(&mut s, json!({"definition":definition,"overwrite":"no"}));
     assert_eq!(reply["overwritten"], false);

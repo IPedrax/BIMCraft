@@ -233,7 +233,7 @@ use crate::geom::P2;
 use crate::render::{self, Drawing, POCHE, Prim, View};
 
 fn view() -> View {
-    View { scale: 0.1, cx: 3000.0, cy: 0.0, width: 1000, height: 800 }
+    View { angle: 0.0, scale: 0.1, cx: 3000.0, cy: 0.0, width: 1000, height: 800 }
 }
 
 fn made(s: &mut Session, id: &str, p: Value) -> u64 {
@@ -336,7 +336,7 @@ fn a_section_cuts_a_beam_across_its_section() {
     let mut s = Session::new();
     let beam = made(&mut s, "beam", json!({"points": [[0, 0], [6000, 0]], "offset": 2800}));
     let section = made(&mut s, "section", json!({"start": [3000, -2000], "end": [3000, 2000]}));
-    let d = render::section(&s.model, section, View { scale: 0.1, cx: 2000.0, cy: 1500.0, width: 1000, height: 800 });
+    let d = render::section(&s.model, section, View { angle: 0.0, scale: 0.1, cx: 2000.0, cy: 1500.0, width: 1000, height: 800 });
     let (lo, hi) = extent(&d, beam);
     // 200 wide, across the line at 2000 along it; 500 deep, its top at 2800.
     assert_eq!((lo, hi), (P2(1900.0, 2300.0), P2(2100.0, 2800.0)));
@@ -419,7 +419,7 @@ fn every_category_of_the_structure_has_a_schedule_and_hides_by_category() {
 fn ifc(s: &mut Session) -> String {
     let path = std::env::temp_dir().join(format!("bimcraft-test-{}-{}.ifc", std::process::id(), s.model.uid));
     run(s, "save", json!({"path": path}));
-    let text = std::fs::read_to_string(&path).unwrap();
+    let text = crate::bimc::read_to_string(&path).unwrap();
     let _ = std::fs::remove_file(path);
     text
 }

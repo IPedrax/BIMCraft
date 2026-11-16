@@ -441,7 +441,7 @@ pub fn bars(m: &Model, host: &Element, p: &Value) -> Result<Made, String> {
         }
         Element::Column(col) | Element::StructuralColumn(col) => {
             let t = m.column_type(host).ok_or("reinforce: the column has no type")?;
-            let (bottom, top) = m.span(col.level, col.base_offset, col.top_level, col.height);
+            let (bottom, top) = m.column_span(host);
             let u = heading(col.angle);
             let f = Frame {
                 o: [col.at.0, col.at.1, bottom - m.elevation(col.level)],
@@ -455,7 +455,7 @@ pub fn bars(m: &Model, host: &Element, p: &Value) -> Result<Made, String> {
         }
         Element::Footing(col) => {
             let t = m.column_type(host).ok_or("reinforce: the footing has no type")?;
-            let (bottom, top) = m.span(col.level, col.base_offset, col.top_level, col.height);
+            let (bottom, top) = m.column_span(host);
             let u = heading(col.angle);
             let f = Frame {
                 o: [col.at.0, col.at.1, bottom - m.elevation(col.level)],

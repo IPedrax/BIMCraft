@@ -32,7 +32,7 @@ fn strays(part: &Curve, whole: &Curve) -> f64 {
 /// The pixels the lines of `id` pass through in a plan of the lowest level.
 fn drawn(m: &Model, id: Id) -> Vec<(f32, f32)> {
     let level = m.levels().first().map(|(l, _)| *l).unwrap_or_default();
-    let d: Drawing = crate::render::draw(m, level, View { scale: 0.1, cx: 0.0, cy: 0.0, width: 800, height: 800 });
+    let d: Drawing = crate::render::draw(m, level, View { angle: 0.0, scale: 0.1, cx: 0.0, cy: 0.0, width: 800, height: 800 });
     (d.prims.iter().zip(&d.owners))
         .filter(|(_, o)| **o == Some(id))
         .flat_map(|(p, _)| match p {
@@ -556,7 +556,7 @@ fn a_centre_mark_crosses_the_centre_of_an_arc_or_a_circle_when_asked() {
     let arc = line(&mut s, json!({"start": [-1000, 0], "end": [1000, 0], "through": [0, 1000], "centre_mark": true}));
     let plain = line(&mut s, json!({"centre": [3000, 0], "radius": 500}));
     let at_centre = |m: &Model, id: Id| {
-        let view = View { scale: 0.1, cx: 0.0, cy: 0.0, width: 800, height: 800 };
+        let view = View { angle: 0.0, scale: 0.1, cx: 0.0, cy: 0.0, width: 800, height: 800 };
         let c = view.px(P2(0.0, 0.0));
         drawn(m, id).iter().any(|p| (p.0 - c.0).abs() < 20.0 && (p.1 - c.1).abs() < 20.0)
     };
@@ -618,7 +618,7 @@ fn a_filled_regions_boundary_lines_each_take_a_line_style_or_none() {
     let id = r["id"].as_u64().unwrap_or_default();
     // Its lines' pens: one Wide, two Thin, and none for the invisible one.
     let level = s.model.levels().first().map(|(l, _)| *l).unwrap_or_default();
-    let d = crate::render::draw(&s.model, level, View { scale: 0.1, cx: 1000.0, cy: 1000.0, width: 800, height: 800 });
+    let d = crate::render::draw(&s.model, level, View { angle: 0.0, scale: 0.1, cx: 1000.0, cy: 1000.0, width: 800, height: 800 });
     let pens: Vec<u8> = (d.prims.iter().zip(&d.owners).zip(&d.pens))
         .filter(|((p, o), _)| **o == Some(id) && matches!(p, Prim::Line { .. }))
         .filter_map(|(_, pen)| pen.map(|p| p.0))
@@ -629,7 +629,7 @@ fn a_filled_regions_boundary_lines_each_take_a_line_style_or_none() {
     // A rename follows into the line that names it, and a file holds it by GUID.
     run(&mut s, "line_style", json!({"name": "Wide Lines", "rename": "Heavy"}));
     let file = s.model.to_json().unwrap_or_default();
-    assert!(!file.contains("\"style\": \"Heavy\""), "by GUID");
+    assert!(!file.contains("\"style\":\"Heavy\""), "by GUID");
     let (back, _) = Model::read(&file).unwrap_or_else(|e| panic!("{e}"));
     let Some(Element::FilledRegion(fr)) = back.elements.get(id) else { panic!("region") };
     assert_eq!((fr.sketch[0].style.as_deref(), fr.sketch[1].invisible), (Some("Heavy"), true));
@@ -669,7 +669,7 @@ fn linework_draws_one_edge_of_a_wall_in_a_style_of_the_views_own_or_hides_it() {
     let mut s = Session::new();
     let w = run(&mut s, "wall", json!({"points": [[0, 0], [4000, 0]]}))["ids"][0].as_u64().unwrap_or_default();
     let level = s.model.levels().first().map(|(l, _)| *l).unwrap_or_default();
-    let view = View { scale: 0.1, cx: 2000.0, cy: 0.0, width: 800, height: 400 };
+    let view = View { angle: 0.0, scale: 0.1, cx: 2000.0, cy: 0.0, width: 800, height: 400 };
     // The wall's lines through the middle of its length, at each height on screen, with their pens.
     let crossing = |m: &Model| {
         let d = crate::render::draw(m, level, view);
@@ -728,7 +728,7 @@ fn a_detail_group_draws_its_members_wherever_it_is_placed_and_turned_and_comes_a
     let g = r["id"].as_u64().unwrap_or_default();
     assert_eq!((lines(&s), field(&s, g, "type"), field(&s, g, "at")), (0, json!("Angle"), json!([500.0, 250.0])));
     let near = |pts: &[(f32, f32)], at: (f32, f32)| pts.iter().any(|p| (p.0 - at.0).abs() < 1.5 && (p.1 - at.1).abs() < 1.5);
-    let view = View { scale: 0.1, cx: 0.0, cy: 0.0, width: 800, height: 800 };
+    let view = View { angle: 0.0, scale: 0.1, cx: 0.0, cy: 0.0, width: 800, height: 800 };
     assert!(near(&drawn(&s.model, g), view.px(P2(1000.0, 0.0))), "drawn where its lines were");
     // Another, turned a quarter, picks as itself.
     let g2 = run(&mut s, "detail_group", json!({"type": "Angle", "at": [2000, 0], "angle": 90}))["id"].as_u64().unwrap_or_default();
@@ -771,7 +771,7 @@ fn a_repeating_detail_places_a_group_along_its_line_every_spacing() {
     let r = run(&mut s, "repeating_detail", json!({"type": "Tick", "start": [0, 0], "end": [1000, 0], "spacing": 250}));
     assert_eq!(r["count"], json!(5));
     let id = r["id"].as_u64().unwrap_or_default();
-    let view = View { scale: 0.1, cx: 0.0, cy: 0.0, width: 800, height: 800 };
+    let view = View { angle: 0.0, scale: 0.1, cx: 0.0, cy: 0.0, width: 800, height: 800 };
     let pts = drawn(&s.model, id);
     for x in [0.0, 250.0, 500.0, 750.0, 1000.0] {
         let (a, b) = (view.px(P2(x, -50.0)), view.px(P2(x, 50.0)));

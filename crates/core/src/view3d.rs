@@ -288,8 +288,10 @@ impl PreparedSolids {
     }
 }
 
+mod caps;
 mod fragments;
 mod update;
+pub use caps::{CapSource, CapTri, Caps};
 pub use fragments::{FragmentStats, SectionCache};
 pub(crate) type PreparedMade = (Vec<Prepared>, Vec<(Id, Vec<P3>)>, Vec<Option<[P3; 2]>>);
 
@@ -741,12 +743,21 @@ pub(crate) fn solids(m: &Model) -> Vec<Solid> {
 }
 
 fn solids_cancellable(m: &Model, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<Vec<Solid>> {
+    solids_among_cancellable(m, None, cancelled)
+}
+
+/// [`solids_cancellable`] of the elements `among` names (none: all), each made against the whole model, so each is what it
+/// is in the whole scene.
+fn solids_among_cancellable(m: &Model, among: Option<&BTreeSet<Id>>, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<Vec<Solid>> {
     if cancelled() {
         return None;
     }
     // What is on each host's faces is found through it: made once, not by every job.
     m.lookup();
-    let elements: Vec<_> = m.elements.iter().map(|(&id, e)| (id, e)).collect();
+    let elements: Vec<_> = match among {
+        None => m.elements.iter().map(|(&id, e)| (id, e)).collect(),
+        Some(ids) => ids.iter().filter_map(|&id| Some((id, m.elements.get(id)?))).collect(),
+    };
     let index = walls::Index::new(m);
     if cancelled() {
         return None;
@@ -1149,13 +1160,27 @@ fn solids_in_with(
         match e {
             Element::Wall(_) => out.extend(wall_solids(m, id, index)),
             Element::Floor(_) | Element::Ceiling(_) | Element::Roof(_) => out.extend(host_slab_solids(m, id, e)),
-            Element::Column(col) => {
-                out.push(slab(id, WALL, &m.column_outline(e), m.span(col.level, col.base_offset, col.top_level, col.height)))
-            }
-            // A steel section's: its outline up its height, or a tube's pieces round its hole.
-            Element::StructuralColumn(col) | Element::Footing(col) => {
-                let span = m.span(col.level, col.base_offset, col.top_level, col.height);
-                out.extend(m.column_pieces(e).iter().map(|ring| slab(id, STRUCTURE, ring, span)));
+            Element::Column(_) | Element::StructuralColumn(_) | Element::Footing(_) => {
+                let color = if matches!(e, Element::Column(_)) { WALL } else { STRUCTURE };
+                // Attached, its top follows what's over it, however that slopes: prisms, as a wall's.
+                let parts = walls::column_prisms(m, e);
+                if parts.is_empty() {
+                    let span = m.column_span(e);
+                    // A steel section's: its outline up its height, or a tube's pieces round its hole.
+                    match e {
+                        Element::Column(_) => out.push(slab(id, color, &m.column_outline(e), span)),
+                        _ => out.extend(m.column_pieces(e).iter().map(|ring| slab(id, color, ring, span))),
+                    }
+                }
+                out.extend(parts.into_iter().map(|p| Solid::Prism {
+                    owner: id,
+                    color,
+                    tex: 0,
+                    ring: p.ring,
+                    bottom: p.bottom,
+                    top: p.top,
+                    curve: None,
+                }));
             }
             // A rectangular run is a prism of its outline — mitred where it joins, as the plan fills it — which a
             // section cuts; a round one a tube, its ends cut by the same planes, shown beyond its line; a steel
@@ -1428,6 +1453,11 @@ pub(crate) fn shaded(m: &Model) -> Vec<Solid> {
 }
 
 fn layered(m: &Model, s: Solid) -> Vec<Solid> {
+    layered_with(m, s).into_iter().map(|(s, _)| s).collect()
+}
+
+/// [`layered`], each piece with the place of its layer among its type's, none where it has no layers.
+pub(crate) fn layered_with(m: &Model, s: Solid) -> Vec<(Solid, Option<usize>)> {
     let layers = match m.elements.get(s.owner()) {
         Some(Element::Wall(w)) => m.type_layers("wall", &w.type_name),
         Some(Element::Floor(f)) => m.type_layers("floor", &f.type_name),
@@ -1437,19 +1467,20 @@ fn layered(m: &Model, s: Solid) -> Vec<Solid> {
     };
     let total: f64 = layers.iter().map(|l| l.thickness).sum();
     if total <= 0.0 {
-        return vec![s];
+        return vec![(s, None)];
     }
     let colour = |l: &Layer, or: Rgb| m.materials.get(&l.material).map_or(or, |x| Rgb(x.color[0], x.color[1], x.color[2]));
     match s {
         Solid::Slab { owner, color, tex, face, rise } => {
             let mut out = Vec::new();
             let mut above = 0.0;
-            for l in layers {
+            for (k, l) in layers.iter().enumerate() {
                 let r = rise * l.thickness / total;
                 if r > 1e-9 {
                     let lift = rise - above - r;
                     let face = face.iter().map(|p| [p[0], p[1], p[2] + lift]).collect();
-                    out.push(Solid::Slab { owner, color: colour(l, color), tex: over(skin(m, &l.material), tex), face, rise: r });
+                    let slab = Solid::Slab { owner, color: colour(l, color), tex: over(skin(m, &l.material), tex), face, rise: r };
+                    out.push((slab, Some(k)));
                 }
                 above += r;
             }
@@ -1469,14 +1500,17 @@ fn layered(m: &Model, s: Solid) -> Vec<Solid> {
                 .iter()
                 .enumerate()
                 .filter(|(_, l)| l.thickness > 1e-9 || l.variable)
-                .map(|(k, l)| Solid::Prism {
-                    owner,
-                    color: colour(l, color),
-                    tex: over(skin(m, &l.material), tex),
-                    ring: ring.clone(),
-                    bottom: at(k + 1),
-                    top: at(k),
-                    curve: None,
+                .map(|(k, l)| {
+                    let prism = Solid::Prism {
+                        owner,
+                        color: colour(l, color),
+                        tex: over(skin(m, &l.material), tex),
+                        ring: ring.clone(),
+                        bottom: at(k + 1),
+                        top: at(k),
+                        curve: None,
+                    };
+                    (prism, Some(k))
                 })
                 .collect()
         }
@@ -1501,11 +1535,11 @@ fn layered(m: &Model, s: Solid) -> Vec<Solid> {
                     if outside.is_empty() { Ok(tris.clone()) } else { crate::csg::subtract(&tris, &outside, &mut meter) }
                 });
                 let Ok(inside) = inside else {
-                    return vec![Solid::Mesh { owner, color, tex, tris, caps, round, cut, vis }];
+                    return vec![(Solid::Mesh { owner, color, tex, tris, caps, round, cut, vis }, None)];
                 };
                 if !inside.is_empty() {
                     let (color, tex) = (colour(l, color), over(skin(m, &l.material), tex));
-                    out.push(Solid::Mesh { owner, color, tex, tris: inside, caps: 0, round: false, cut, vis });
+                    out.push((Solid::Mesh { owner, color, tex, tris: inside, caps: 0, round: false, cut, vis }, Some(k)));
                 }
             }
             out
@@ -1518,7 +1552,7 @@ fn layered(m: &Model, s: Solid) -> Vec<Solid> {
             let (lo, hi) = tri_box(&tris);
             let mut meter = crate::csg::Meter::default();
             let mut out = Vec::new();
-            for layer in slab_solids(m, owner, e).into_iter().flat_map(|whole| layered(m, whole)) {
+            for (layer, place) in slab_solids(m, owner, e).into_iter().flat_map(|whole| layered_with(m, whole)) {
                 let mut made = Vec::new();
                 layer.tris(&mut made);
                 let Some(first) = made.first() else { continue };
@@ -1532,10 +1566,13 @@ fn layered(m: &Model, s: Solid) -> Vec<Solid> {
                     if outside.is_empty() { Ok(tris.clone()) } else { crate::csg::subtract(&tris, &outside, &mut meter) }
                 });
                 let Ok(inside) = inside else {
-                    return vec![Solid::Mesh { owner, color, tex, tris, caps, round, cut, vis }];
+                    return vec![(Solid::Mesh { owner, color, tex, tris, caps, round, cut, vis }, None)];
                 };
                 if !inside.is_empty() {
-                    out.push(Solid::Mesh { owner, color: layer_color, tex: layer_tex, tris: inside, caps: 0, round: false, cut, vis });
+                    out.push((
+                        Solid::Mesh { owner, color: layer_color, tex: layer_tex, tris: inside, caps: 0, round: false, cut, vis },
+                        place,
+                    ));
                 }
             }
             out
@@ -1543,7 +1580,7 @@ fn layered(m: &Model, s: Solid) -> Vec<Solid> {
         // Across the wall from its exterior face in, each layer between two of its boundaries; the
         // outermost and innermost reach whatever lies past them.
         Solid::Prism { owner, color, tex, ring, bottom, top, curve } => {
-            let Some(w) = m.wall(owner) else { return vec![Solid::Prism { owner, color, tex, ring, bottom, top, curve }] };
+            let Some(w) = m.wall(owner) else { return vec![(Solid::Prism { owner, color, tex, ring, bottom, top, curve }, None)] };
             let (axis, b) = (Axis::of(w), walls::boundaries(m, w));
             let off = |q: P2| axis.project(q).1;
             let n = layers.len();
@@ -1559,19 +1596,22 @@ fn layered(m: &Model, s: Solid) -> Vec<Solid> {
                     if let Some(lo) = b.get(k + 1).filter(|_| k + 1 < n) {
                         part = geom::clip(&part, |q| off(q) - lo);
                     }
-                    (part.len() >= 3 && geom::area(&part).abs() > 1e-6).then(|| Solid::Prism {
-                        owner,
-                        color: colour(l, color),
-                        tex: over(skin(m, &l.material), tex),
-                        ring: part,
-                        bottom,
-                        top,
-                        curve,
+                    (part.len() >= 3 && geom::area(&part).abs() > 1e-6).then(|| {
+                        let prism = Solid::Prism {
+                            owner,
+                            color: colour(l, color),
+                            tex: over(skin(m, &l.material), tex),
+                            ring: part,
+                            bottom,
+                            top,
+                            curve,
+                        };
+                        (prism, Some(k))
                     })
                 })
                 .collect()
         }
-        other => vec![other],
+        other => vec![(other, None)],
     }
 }
 
@@ -1594,6 +1634,111 @@ fn painted(m: &Model, tris: &mut [Tri], faces: &[&'static str]) {
 
 /// The model as triangles, each with its plane, and its corner normals where it's a curve's: what
 /// every picture of it is drawn from.
+/// What a 3D view of a model holds when the whole of it doesn't fit the memory it may take: every element of the building's
+/// fabric (walls, floors, roofs, ceilings, columns, stairs, openings: about a twentieth of a tower's triangles), and the detail
+/// (components, runs, bars: the rest) of the storeys nearest where the view looks, as many as fit. As a game streams the world
+/// round the player, the view asks for another set as it moves to other storeys ([`Streamed::covers`]).
+#[derive(Clone, Debug, PartialEq)]
+pub struct Streamed {
+    /// The elements to build the scene of.
+    pub among: Arc<BTreeSet<Id>>,
+    /// The heights whose detail is in it, mm, and its first and last storeys' names.
+    pub band: (f64, f64),
+    pub levels: (String, String),
+    /// How many elements of detail are left out.
+    pub left_out: usize,
+}
+
+impl Streamed {
+    /// Whether a view looking at height `z` is still among the storeys it holds the detail of.
+    pub fn covers(&self, z: f64) -> bool {
+        self.band.0 <= z && z <= self.band.1
+    }
+}
+
+/// About how much memory a triangle of the 3D view takes, all told: the scene's own (its points, plane, normals and face), the
+/// card's vertices, the picking hierarchy and the copies on the way to the card. 580 bytes measured on the annotated 10-storey
+/// tower (9.3 million triangles, 5.4 GB at the peak).
+pub const BYTES_PER_TRIANGLE: u64 = 600;
+
+/// About how many triangles an element of each kind makes: a component (a family's copy) 114 and a run 96 on the tower, a
+/// wall 161, the rest a dozen.
+fn triangles_of(e: &Element) -> u64 {
+    match e {
+        Element::Component(_) => 120,
+        Element::Wall(_) => 160,
+        e if e.run().is_some() => 100,
+        Element::Rebar(_) => 100,
+        _ => 12,
+    }
+}
+
+/// Whether `e` is detail, which a streamed view holds only for the storeys near where it looks.
+fn detail(e: &Element) -> bool {
+    matches!(e, Element::Component(_) | Element::Rebar(_)) || e.run().is_some()
+}
+
+/// What a 3D view of `m` should hold to stay within `budget` bytes, looking at height `focus` (mm): none when the whole model
+/// fits, which is then what it holds, exactly as before.
+pub fn stream(m: &Model, budget: u64, focus: f64) -> Option<Streamed> {
+    let estimate = |ids: &mut dyn Iterator<Item = &Element>| ids.map(triangles_of).sum::<u64>().saturating_mul(BYTES_PER_TRIANGLE);
+    if estimate(&mut m.elements.values()) <= budget {
+        return None;
+    }
+    let levels = m.levels();
+    let mut among = BTreeSet::new();
+    let mut fabric = 0u64;
+    // The detail by storey: each element's height its level's.
+    let mut by_storey: BTreeMap<usize, Vec<(Id, u64)>> = BTreeMap::new();
+    let storey = |z: f64| levels.iter().rposition(|(_, l)| l.elevation <= z + TOL).unwrap_or(0);
+    for (&id, e) in &m.elements {
+        if detail(e) {
+            let z = m.level_of(e).map_or(0.0, |l| m.elevation(l));
+            by_storey.entry(storey(z)).or_default().push((id, triangles_of(e)));
+        } else {
+            fabric += triangles_of(e);
+            among.insert(id);
+        }
+    }
+    let mut left = budget.saturating_sub(fabric.saturating_mul(BYTES_PER_TRIANGLE));
+    // Outward from the storey looked at, a storey at a time, below and above in turn, while they fit.
+    let at = storey(focus);
+    let (mut lo, mut hi) = (at, at);
+    let take = |k: usize, among: &mut BTreeSet<Id>, left: &mut u64| -> bool {
+        let ids = by_storey.get(&k).map(Vec::as_slice).unwrap_or_default();
+        let cost = ids.iter().map(|(_, t)| t).sum::<u64>().saturating_mul(BYTES_PER_TRIANGLE);
+        if cost > *left {
+            return false;
+        }
+        *left -= cost;
+        among.extend(ids.iter().map(|(id, _)| *id));
+        true
+    };
+    let n = levels.len().max(1);
+    let mut held = take(at, &mut among, &mut left);
+    while held {
+        let (down, up) = (lo > 0, hi + 1 < n);
+        if !down && !up {
+            break;
+        }
+        held = false;
+        if up && take(hi + 1, &mut among, &mut left) {
+            hi += 1;
+            held = true;
+        }
+        if down && take(lo - 1, &mut among, &mut left) {
+            lo -= 1;
+            held = true;
+        }
+    }
+    let name = |k: usize| levels.get(k).map_or_else(String::new, |(_, l)| l.name.clone());
+    let z = |k: usize| levels.get(k).map_or(0.0, |(_, l)| l.elevation);
+    let band = (if lo == 0 { f64::NEG_INFINITY } else { z(lo) }, if hi + 1 >= n { f64::INFINITY } else { z(hi + 1) });
+    let detail_count: usize = by_storey.values().map(Vec::len).sum();
+    let held_detail = among.len().saturating_sub(m.elements.len() - detail_count);
+    Some(Streamed { among: Arc::new(among), band, levels: (name(lo), name(hi)), left_out: detail_count - held_detail })
+}
+
 pub struct Scene {
     tris: Vec<Tri>,
     planes: Vec<usize>,
@@ -1798,6 +1943,16 @@ const HEAD_PAD: f32 = 3.0;
 impl Scene {
     /// The box each of `ids` takes in the scene, from its triangles: another person's selection, outlined in a Co-Work session's
     /// 3D view. An element the scene doesn't draw has none.
+    /// The box round every triangle of the scene: what the 3D view draws its work plane over, without making the model's solids
+    /// again ([`Model::model_box`]). None for a scene of nothing.
+    pub fn bounds(&self) -> Option<(P3, P3)> {
+        let mut spans = self.spans.iter().map(|s| s.bounds);
+        let first = spans.next()?;
+        Some(spans.fold((first[0], first[1]), |(lo, hi), [a, b]| {
+            (std::array::from_fn(|i| lo[i].min(a[i])), std::array::from_fn(|i| hi[i].max(b[i])))
+        }))
+    }
+
     pub fn boxes(&self, ids: &HashSet<Id>) -> BTreeMap<Id, (P3, P3)> {
         let mut out: BTreeMap<Id, (P3, P3)> = BTreeMap::new();
         if ids.is_empty() {
@@ -1835,11 +1990,17 @@ impl Scene {
 
     /// Build a view snapshot, releasing superseded work between its expensive stages.
     pub fn new_cancellable(m: &Model, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<Scene> {
+        Scene::new_among_cancellable(m, None, cancelled)
+    }
+
+    /// The scene of the elements `among` names (none: every one), each as the whole scene has it: what a 3D view of a model too
+    /// big for the memory there is holds ([`stream`]).
+    pub fn new_among_cancellable(m: &Model, among: Option<&BTreeSet<Id>>, cancelled: &(dyn Fn() -> bool + Sync)) -> Option<Scene> {
         if cancelled() {
             return None;
         }
         let mut tris = Vec::new();
-        for solid in solids_cancellable(m, cancelled)?.into_iter().flat_map(|s| layered(m, s)) {
+        for solid in solids_among_cancellable(m, among, cancelled)?.into_iter().flat_map(|s| layered(m, s)) {
             if cancelled() {
                 return None;
             }
@@ -2435,6 +2596,26 @@ impl Scene {
             }
             let e = seen.entry(t.owner).or_insert((true, false));
             *e = (e.0 && on.iter().all(|q| inside(*q)), e.1 || (crossing && touches(&on)) || on.iter().any(|q| inside(*q)));
+        }
+        // The levels, which are lines and a head over the picture rather than surfaces: by what of them is drawn, as Revit
+        // boxes them, the far edges of each plane and its head.
+        let shown = |id: Id| look.shows(id).then_some((Rgb(0, 0, 0), false));
+        for marks in level_marks(&self.levels, cam, &shown) {
+            let head = marks.head.iter().copied();
+            let ends = marks.lines.iter().filter(|(_, w)| *w == 2).flat_map(|([a, b], _)| [*a, *b]);
+            let on: Vec<P2> = head
+                .chain(ends)
+                .map(|p| {
+                    let (x, y, _) = cam.project(p);
+                    P2(x, y)
+                })
+                .collect();
+            if on.is_empty() || on.iter().any(|q| !(q.0.is_finite() && q.1.is_finite())) {
+                continue;
+            }
+            let all = on.iter().all(|q| inside(*q));
+            let any = on.iter().any(|q| inside(*q)) || (crossing && on.chunks(2).any(|s| s.len() == 2 && touches(&[s[0], s[1], s[1]])));
+            seen.insert(marks.id, (all, any));
         }
         seen.into_iter().filter(|(_, (all, any))| if crossing { *any } else { *all }).map(|(id, _)| id).collect()
     }

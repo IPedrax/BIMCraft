@@ -1333,7 +1333,7 @@ mod tests {
         let path = std::env::temp_dir().join(format!("bimcraft-reserved-{}.bimcraft", std::process::id()));
         run(&mut s, "save", json!({"path": path.to_str().unwrap()}));
         // What the version before phases let a project do.
-        let mut file: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        let mut file: Value = serde_json::from_str(&crate::bimc::read_to_string(&path).unwrap()).unwrap();
         file["parameters"] = json!({"Design Option": {"kind": "text", "categories": ["wall"]}});
         file["elements"][walls[0].to_string()]["params"] = json!({"Design Option": "Brick facade"});
         std::fs::write(&path, file.to_string()).unwrap();

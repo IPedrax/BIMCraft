@@ -253,7 +253,7 @@ fn a_drawing_is_saved_with_the_project_and_opens_as_it_was_and_insert_brings_it(
     let before = (one(&mut s), s.model.cads.clone());
     let project = dir("save").join("project.bimcraft");
     run(&mut s, "save", json!({"path": project}));
-    let text = std::fs::read_to_string(&project).unwrap();
+    let text = crate::bimc::read_to_string(&project).unwrap();
     let saved: Value = serde_json::from_str(&text).unwrap();
     assert_eq!(saved["format"], json!(crate::model::FORMAT));
     assert!(saved["cads"]["plan"]["dxf"].is_string() && saved["cads"]["plan"]["source"] == "plan.dxf", "{}", saved["cads"]);

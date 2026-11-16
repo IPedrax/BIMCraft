@@ -192,7 +192,11 @@ pub(crate) fn primitive(m: &Model, id: Id) -> Bounds {
         if t.width <= 0.0 || (!t.round && t.depth <= 0.0) {
             return Bounds::Unknown;
         }
-        let (lo, hi) = m.span(c.level, c.base_offset, c.top_level, c.height);
+        // Attached, it depends on what it's attached to, which the key doesn't hold.
+        if c.attach_top.is_some() || c.attach_base.is_some() {
+            return Bounds::Unknown;
+        }
+        let (lo, hi) = m.column_span(e);
         // Match the slab's sums, including cancellation and overflow in its rise.
         let top = lo + (hi - lo);
         return padded(m.column_outline(e).into_iter().flat_map(|p| [[p.0, p.1, lo], [p.0, p.1, top]]));
@@ -298,6 +302,9 @@ mod tests {
                             top_level: None,
                             height: 3200.0,
                             base_offset: -300.0,
+                            top_offset: 0.0,
+                            attach_top: None,
+                            attach_base: None,
                             params: Default::default(),
                             room_bounding: true,
                         }),

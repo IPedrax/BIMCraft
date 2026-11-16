@@ -19,7 +19,7 @@ fn id_of(v: Value) -> Id {
 
 /// A plan of Level 1 round the opening at (3000, 0): 0.5 px a mm, 3 m square.
 fn view() -> View {
-    View { scale: 0.5, cx: 3000.0, cy: 0.0, width: 1500, height: 1500 }
+    View { angle: 0.0, scale: 0.5, cx: 3000.0, cy: 0.0, width: 1500, height: 1500 }
 }
 
 fn picture(s: &Session) -> tiny_skia::Pixmap {
@@ -302,7 +302,7 @@ fn a_project_that_restyles_a_subcategory_is_saved_as_a_newer_format_and_read_bac
     run(&mut s, "graphics", json!({"view": "Level 1", "hide": ["dooropening"]}));
     let path = std::env::temp_dir().join(format!("bimcraft-opening-sub-{}.bimcraft", std::process::id()));
     run(&mut s, "save", json!({"path": path}));
-    let text = std::fs::read_to_string(&path).unwrap();
+    let text = crate::bimc::read_to_string(&path).unwrap();
     let _ = std::fs::remove_file(&path);
     let v: Value = serde_json::from_str(&text).unwrap();
     assert_eq!(v["format"], json!(crate::model::FORMAT));

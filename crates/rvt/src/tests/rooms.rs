@@ -123,12 +123,14 @@ fn the_rooms_of_the_architectural_sample_have_rvt_rss_numbers_and_names() {
         let i = crate::import_path(&path, "x").unwrap();
         let mut got: Vec<(String, String)> = rooms(&i).iter().map(|r| (r.number.clone(), r.name.clone())).collect();
         got.sort();
-        // Ten of the fourteen rooms are enclosed by walls that come in; the rest are open to room separation lines. The nine that a
-        // second reader (rvt-rs) writes as IfcSpace are among them; the tenth, 206, is closed by curtain walls, which come in as
-        // the plane of their boxes.
+        // Eleven of the fourteen rooms are enclosed by walls that come in; the rest are open to room separation lines. The nine
+        // that a second reader (rvt-rs) writes as IfcSpace are among them; 206 is closed by curtain walls, which come in as the
+        // plane of their boxes, and 104, the laundry under 102 and 103, by its own walls since a raised wall stopped bounding the
+        // rooms below it (#317).
         let want: Vec<(&str, &str)> = vec![
             ("102", "Mech."),
             ("103", "Bath"),
+            ("104", "Laundry"),
             ("201", "Entry Hall"),
             ("202", "Bedroom"),
             ("203", "Bath"),
@@ -139,7 +141,7 @@ fn the_rooms_of_the_architectural_sample_have_rvt_rss_numbers_and_names() {
             ("208", "Linen"),
         ];
         assert_eq!(got.iter().map(|(a, b)| (a.as_str(), b.as_str())).collect::<Vec<_>>(), want, "{}: {:?}", path.display(), i.skipped);
-        assert!(i.skipped.iter().any(|s| s.contains("4 rooms left out") && s.contains("do not enclose")), "{:?}", i.skipped);
+        assert!(i.skipped.iter().any(|s| s.contains("3 rooms left out") && s.contains("do not enclose")), "{:?}", i.skipped);
     }
 }
 

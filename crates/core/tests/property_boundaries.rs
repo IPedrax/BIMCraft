@@ -59,7 +59,7 @@ mod tests {
     fn property_and_centered_room_labels_remain_readable_at_different_scales_and_name_widths() {
         for (scale, name) in [(0.015, "Plot"), (0.03, "Synthetic boundary"), (0.05, "Long synthetic property boundary gyp 123")] {
             let (mut s, room, level) = centered_room();
-            let view = render::View { cx: 9000.0, cy: 5000.0, scale, width: 1600, height: 1000 };
+            let view = render::View { angle: 0.0, cx: 9000.0, cy: 5000.0, scale, width: 1600, height: 1000 };
             let original_room = text_ink(&render::draw(&s.model, level, view), room);
             let plot = centered_plot(&mut s, name);
             let native = s.model.to_json().unwrap();
@@ -121,7 +121,7 @@ mod tests {
         let mut s = Session::new();
         let plot = centered_plot(&mut s, "Synthetic boundary");
         let level = s.model.levels()[0].0;
-        let view = render::View { cx: 9000.0, cy: 5000.0, scale: 0.03, width: 1200, height: 800 };
+        let view = render::View { angle: 0.0, cx: 9000.0, cy: 5000.0, scale: 0.03, width: 1200, height: 800 };
         let alone = text_ink(&render::draw(&s.model, level, view), plot);
         run(&mut s, "wall", json!({"points":[[0,0],[18000,0],[18000,10000],[0,10000]],"closed":true}));
         run(&mut s, "room_separator", json!({"points":[[0,6000],[18000,6000]]}));
@@ -161,7 +161,7 @@ mod tests {
         let schedule = run(&mut s, "schedule", json!({"category":"property lines"}));
         assert_eq!(schedule["rows"][0], json!(["Synthetic Plot", "Level 1", 24.0, 20000.0]));
         let level = s.model.level_of(s.model.elements.get(id).unwrap()).unwrap();
-        let view = render::View { cx: 3000.0, cy: 2000.0, scale: 0.05, width: 400, height: 300 };
+        let view = render::View { angle: 0.0, cx: 3000.0, cy: 2000.0, scale: 0.05, width: 400, height: 300 };
         let drawing = render::draw(&s.model, level, view);
         let svg = render::svg(&drawing);
         assert!(svg.contains("<path") || svg.contains("<polyline"), "{svg}");
@@ -260,7 +260,7 @@ mod tests {
         let id = made["id"].as_u64().unwrap();
         let guid = s.model.guid(id);
         let level = s.model.level_of(s.model.elements.get(id).unwrap()).unwrap();
-        let view = render::View { cx: 5000.0, cy: 2000.0, scale: 0.03, width: 600, height: 300 };
+        let view = render::View { angle: 0.0, cx: 5000.0, cy: 2000.0, scale: 0.03, width: 600, height: 300 };
         let before = render::png(&render::draw(&s.model, level, view)).unwrap();
         s.model.lookup();
         run(&mut s, "move", json!({"id":guid,"by":[8000,0]}));

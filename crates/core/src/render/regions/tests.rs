@@ -137,7 +137,7 @@ fn a_region_on_a_sheet_draws_over_its_viewports_and_keeps_none_of_their_ink() {
 /// off the face (into the wall when it's positive), more regions after it.
 fn along_a_face(off: f64, then: &[(f64, f64)]) -> (usize, usize) {
     let (mut s, face) = face_session();
-    let view = View { scale: 0.1, cx: 2500.0, cy: face, width: 700, height: 300 };
+    let view = View { angle: 0.0, scale: 0.1, cx: 2500.0, cy: face, width: 700, height: 300 };
     let band = |s: &Session| {
         let d = render::draw(&s.model, 100000, view);
         let pm = pixels(&render::png(&d).unwrap());
@@ -188,7 +188,7 @@ fn what_a_region_lets_through_of_an_outline_is_one_line_with_its_corners() {
     let mut s = Session::new();
     run(&mut s, "wall", json!({"points": [[0, 0], [4000, 0], [4000, 3000], [0, 3000]], "closed": true}));
     run(&mut s, "filled_region_type", json!({"name": "Blue", "foreground": SOLID_FILL, "foreground_color": [0, 0, 255]}));
-    let view = View { scale: 0.1, cx: 2000.0, cy: 1500.0, width: 600, height: 400 };
+    let view = View { angle: 0.0, scale: 0.1, cx: 2000.0, cy: 1500.0, width: 600, height: 400 };
     let before = render::draw(&s.model, 100000, view).prims.len();
     run(&mut s, "filled_region", json!({"type": "Blue", "line_style": null, "sketch": square(-1000.0, -1000.0, 2500.0)}));
     let d = render::draw(&s.model, 100000, view);
@@ -222,7 +222,7 @@ fn a_dashed_line_a_region_takes_part_of_keeps_its_dashes_where_they_were() {
     // 10 px on and 5 off from the line's start; a region from x = 103 on takes the rest of it.
     let line =
         Prim::Line { pts: vec![(0.0, 50.0), (400.0, 50.0)], width: 1.0, color: Rgb(0, 0, 0), dash: Some(vec![10.0, 5.0]), closed: false };
-    let view = View { scale: 1.0, cx: 200.0, cy: 0.0, width: 400, height: 100 };
+    let view = View { angle: 0.0, scale: 1.0, cx: 200.0, cy: 0.0, width: 400, height: 100 };
     let ring = vec![vec![P2(103.0, -100.0), P2(500.0, -100.0), P2(500.0, 100.0), P2(103.0, 100.0)]];
     let masks: Vec<Mask> = Vec::new();
     let pieces = Area::new(&ring, &masks).unwrap().clip(&line, view, 1.0);
@@ -412,7 +412,7 @@ fn masked(n: usize) -> Session {
 #[test]
 fn overlapping_concave_masks_cost_a_draw_milliseconds_not_seconds() {
     let s = masked(400);
-    let view = View { scale: 0.1, cx: 0.0, cy: 0.0, width: 700, height: 700 };
+    let view = View { angle: 0.0, scale: 0.1, cx: 0.0, cy: 0.0, width: 700, height: 700 };
     let (d, steps) = counted(|| render::draw(&s.model, 100000, view));
     eprintln!("400 corners: {steps} steps, {} prims", d.prims.len());
     assert!(steps <= 8_000, "{steps} steps");
@@ -423,7 +423,7 @@ fn overlapping_concave_masks_cost_a_draw_milliseconds_not_seconds() {
 fn probe_the_cost_of_overlapping_concave_masks() {
     for n in [50, 100, 200, 400] {
         let s = masked(n);
-        let view = View { scale: 0.1, cx: 0.0, cy: 0.0, width: 700, height: 700 };
+        let view = View { angle: 0.0, scale: 0.1, cx: 0.0, cy: 0.0, width: 700, height: 700 };
         let (_, took) = timed(|| render::draw(&s.model, 100000, view));
         eprintln!("{n} corners: {took:?}");
     }
@@ -447,7 +447,7 @@ fn strip(holes: usize, masks: usize) -> Session {
 
 /// What drawing `s`'s first plan costs in steps ([`super::spend`] only), the whole strip in view.
 fn drawn(s: &Session) -> usize {
-    let view = View { scale: 0.007, cx: 50000.0, cy: 0.0, width: 700, height: 700 };
+    let view = View { angle: 0.0, scale: 0.007, cx: 50000.0, cy: 0.0, width: 700, height: 700 };
     let before = super::SPENT.with(std::cell::Cell::get);
     let d = render::draw(&s.model, 100000, view);
     eprintln!("{} prims", d.prims.len());
@@ -475,7 +475,7 @@ fn holed(n: usize, of: &str) -> Session {
 #[test]
 fn a_hatched_region_with_a_big_hole_is_not_cut_into_convex_pieces() {
     let s = holed(400, "Diagonal Up");
-    let view = View { scale: 0.1, cx: 0.0, cy: 0.0, width: 700, height: 700 };
+    let view = View { angle: 0.0, scale: 0.1, cx: 0.0, cy: 0.0, width: 700, height: 700 };
     let (d, steps) = counted(|| render::draw(&s.model, 100000, view));
     eprintln!("hatch, 400 corners: {steps} steps, {} prims", d.prims.len());
     assert!(d.prims.len() > 100, "its hatch is drawn");
@@ -485,7 +485,7 @@ fn a_hatched_region_with_a_big_hole_is_not_cut_into_convex_pieces() {
 #[test]
 fn a_solid_region_with_a_big_hole_is_cut_into_pieces_quickly() {
     let s = holed(400, "Solid Black");
-    let view = View { scale: 0.1, cx: 0.0, cy: 0.0, width: 700, height: 700 };
+    let view = View { angle: 0.0, scale: 0.1, cx: 0.0, cy: 0.0, width: 700, height: 700 };
     let (_, steps) = counted(|| render::draw(&s.model, 100000, view));
     eprintln!("solid, 400 corners: {steps} steps");
     assert!(steps <= 150_000, "{steps} steps");
@@ -495,7 +495,7 @@ fn a_solid_region_with_a_big_hole_is_cut_into_pieces_quickly() {
 #[ignore = "a probe: cargo test -p bimcraft-core --lib probe -- --ignored --nocapture"]
 fn probe_the_cost_of_a_big_hole() {
     for n in [100, 200, 400, 800] {
-        let view = View { scale: 0.1, cx: 0.0, cy: 0.0, width: 700, height: 700 };
+        let view = View { angle: 0.0, scale: 0.1, cx: 0.0, cy: 0.0, width: 700, height: 700 };
         for of in ["Diagonal Up", "Solid Black", "Masking"] {
             let s = holed(n, of);
             let (_, took) = timed(|| render::draw(&s.model, 100000, view));
@@ -530,7 +530,7 @@ fn probe_pictures() {
     for (name, off) in [("on", 0.0), ("outside", -2.0), ("inside", 2.0)] {
         let (mut s, face) = face_session();
         face_regions(&mut s, face, off, &[(2000.0, 4000.0)]);
-        let view = View { scale: 0.25, cx: 2500.0, cy: face, width: 700, height: 200 };
+        let view = View { angle: 0.0, scale: 0.25, cx: 2500.0, cy: face, width: 700, height: 200 };
         save(&format!("face_{name}"), render::png(&render::draw(&s.model, 100000, view)).unwrap());
     }
 }

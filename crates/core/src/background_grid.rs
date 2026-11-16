@@ -176,7 +176,7 @@ mod tests {
         g.spacing = [1000.0, 2000.0];
         g.divisions = [4, 5];
         assert_eq!(g.nearest(P2(370.0, -610.0)), Some(P2(250.0, -800.0)));
-        let v = View { scale: 0.1, cx: 0.0, cy: 0.0, width: 800, height: 600 };
+        let v = View { angle: 0.0, scale: 0.1, cx: 0.0, cy: 0.0, width: 800, height: 600 };
         let lines = g.lines(v);
         assert!(!lines.is_empty());
         assert!(lines.iter().any(|l| l.points[0].0 == 0.0 && l.points[1].0 == 0.0));

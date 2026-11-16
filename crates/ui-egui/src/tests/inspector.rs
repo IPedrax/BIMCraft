@@ -45,19 +45,40 @@ fn which_way_a_door_opens_is_picked_from_four_pictures_in_both_profiles() {
 }
 
 #[test]
-fn a_rooms_colour_on_plans_is_picked_from_swatches_in_both_profiles() {
+fn a_room_types_colour_floor_and_ceiling_are_set_in_its_type_properties_in_both_profiles() {
     for rev in [false, true] {
         let script = format!("{BOX}\nroom {{\"point\": [4000, 3000]}}");
         let mut h = if rev { app(&script) } else { bimcraft(&script) };
         let room = ids(&h, "room")[0];
         h.state_mut().selection = vec![room];
         h.run();
+        // The colour is the type's: the palette has no swatches of a room's own.
+        assert!(h.query_by_role_and_label(Role::RadioButton, "Sage").is_none(), "rev {rev}");
+        press(&mut h, "Edit Type");
         h.get_by_role_and_label(Role::RadioButton, "Sage").click();
         h.run();
-        assert_eq!(field(&h, room, "colour"), json!([214, 229, 210]), "rev {rev}");
-        h.get_by_role_and_label(Role::RadioButton, "No fill").click();
+        // The floor and the ceiling its rooms have, as its lists pick them.
+        let rows = h.state_mut().type_dialog.as_mut().and_then(|d| d.room.as_mut()).unwrap();
+        (rows.floor, rows.ceiling) = ("Generic - 200mm".into(), "Generic - 20mm".into());
         h.run();
-        assert!(field(&h, room, "colour").is_null(), "rev {rev}");
+        press(&mut h, "OK");
+        let m = &h.state().session.model;
+        let t = &m.types.room["Standard"];
+        assert_eq!(
+            (t.colour, t.floor.as_deref(), t.ceiling.as_deref()),
+            (Some([214, 229, 210]), Some("Generic - 200mm"), Some("Generic - 20mm"))
+        );
+        assert_eq!((ids(&h, "floor").len(), ids(&h, "ceiling").len()), (1, 1), "rev {rev}: the room's own");
+        // Without a fill and a floor again.
+        press(&mut h, "Edit Type");
+        let rows = h.state_mut().type_dialog.as_mut().and_then(|d| d.room.as_mut()).unwrap();
+        assert!(rows.fill && rows.floor == "Generic - 200mm");
+        (rows.fill, rows.floor) = (false, String::new());
+        h.run();
+        press(&mut h, "OK");
+        let t = &h.state().session.model.types.room["Standard"];
+        assert_eq!((t.colour, t.floor.as_deref()), (None, None), "rev {rev}");
+        assert_eq!((ids(&h, "floor").len(), ids(&h, "ceiling").len()), (0, 1), "rev {rev}");
     }
 }
 

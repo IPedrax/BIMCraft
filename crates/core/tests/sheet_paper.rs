@@ -7,6 +7,19 @@ fn save_pdf(session: &mut Session, path: &std::path::Path) -> Result<Vec<u8>, St
     std::fs::read(path).map_err(|e| e.to_string())
 }
 
+/// Whether the PDF's one page is `want` points wide and high (`"1368.000 936.000"`), whatever spacing and digits the writer
+/// gives its MediaBox.
+fn media_box_is(text: &str, want: &str) -> bool {
+    let got: Vec<f64> = text
+        .split("/MediaBox")
+        .nth(1)
+        .and_then(|r| r.split(']').next())
+        .map(|b| b.trim_start_matches([' ', '[']).split_whitespace().filter_map(|x| x.parse().ok()).collect())
+        .unwrap_or_default();
+    let want: Vec<f64> = [0.0, 0.0].into_iter().chain(want.split_whitespace().filter_map(|x| x.parse().ok())).collect();
+    got.len() == 4 && want.len() == 4 && got.iter().zip(&want).all(|(a, b)| (a - b).abs() < 0.01)
+}
+
 #[test]
 fn named_paper_prints_exact_media_boxes_and_survives_reopening() {
     // Points (1/72 inch), independently tabulated from the paper dimensions; PDF writes three decimals.
@@ -42,9 +55,8 @@ fn named_paper_prints_exact_media_boxes_and_survives_reopening() {
             session.execute("sheet", &json!({"size": name})).unwrap();
             let bytes = save_pdf(&mut session, &dir.path().join("paper.pdf")).unwrap();
             let text = String::from_utf8_lossy(&bytes);
-            let expected = format!("/MediaBox [0 0 {media_box}]");
             assert_eq!(text.matches("/MediaBox").count(), 1, "{name}");
-            assert!(text.contains(&expected), "{name}: expected {expected}");
+            assert!(media_box_is(&text, media_box), "{name}: expected {media_box}");
             let file = dir.path().join("paper.bimcraft");
             session.execute("save", &json!({"path": file})).unwrap();
             let mut reopened = Session::new();

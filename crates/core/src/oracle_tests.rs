@@ -235,8 +235,7 @@ pub(crate) fn edit_more(s: &mut Session, dice: &mut Dice) -> (String, Value) {
             ("modify".into(), json!({"ids": [wall], "top_level": level(s, dice), "top_offset": dice.mm(1500)}))
         }
         6 => {
-            let room = pick(s, dice, &["room"]);
-            ("modify".into(), json!({"ids": [room], "colour": [dice.below(256), dice.below(256), dice.below(256)]}))
+            ("type".into(), json!({"category": "room", "name": "Standard", "colour": [dice.below(256), dice.below(256), dice.below(256)]}))
         }
         7 => ("add_point".into(), json!({"id": pick(s, dice, &["floor", "roof"]), "at": at(dice), "offset": dice.mm(80)})),
         8 => {

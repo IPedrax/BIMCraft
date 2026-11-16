@@ -124,7 +124,7 @@ fn the_reference_runs_from_the_rooms_point_to_its_boundary_and_a_click_on_it_pic
     box_of_walls(&mut s);
     let r = id(&run(&mut s, "room", json!({"point": [1000, 2000]})));
     run(&mut s, "graphics", json!({"view": 100000, "show": ["roomreference"]}));
-    let view = View { scale: 0.1, cx: 3000.0, cy: 2000.0, width: 800, height: 600 };
+    let view = View { angle: 0.0, scale: 0.1, cx: 3000.0, cy: 2000.0, width: 800, height: 600 };
     let pick = |s: &Session, p: P2| draw(&s.model, 100000, view).pick(view.px(p), 2.0);
     // Up and right from the point at 45°: on the cross well away from the point and the label.
     assert_eq!(pick(&s, P2(2500.0, 3500.0)), Some(r), "on the cross");

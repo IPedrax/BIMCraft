@@ -169,7 +169,7 @@ impl BimApp {
 /// numbers, with room on each axis, so `section_box` takes it.
 fn plan_box(m: &Model, key: Id, view: Option<View>) -> Option<([f64; 3], [f64; 3])> {
     let v = view?;
-    let (a, b) = (v.mm((0.0, 0.0)), v.mm((v.width as f32, v.height as f32)));
+    let [a, b] = v.shown();
     let r = m.plan_range(key);
     let top = if r.top.is_finite() { r.top } else { m.model_box().map_or(r.cut, |(_, hi)| hi[2]) };
     let sides = [(a.0.min(b.0), a.0.max(b.0)), (a.1.min(b.1), a.1.max(b.1)), (r.bottom, top)];
@@ -235,8 +235,12 @@ pub(crate) fn draw(
             p.rect_stroke(r, 1.0, stroke, StrokeKind::Middle);
             continue;
         }
-        let (u, n) = (d.normalized(), d.normalized().rot90());
-        let arrow = vec![at + u * 12.0, at - u * 2.0 + n * 6.0, at - u * 2.0 - n * 6.0];
-        p.add(Shape::convex_polygon(arrow, fill, stroke));
+        arrow(p, at, d.normalized(), fill, stroke);
     }
+}
+
+/// An arrow at `at` pointing `u`, a unit on screen: a section box's face's, a wall's top's.
+pub(crate) fn arrow(p: &Painter, at: Pos2, u: Vec2, fill: egui::Color32, stroke: Stroke) {
+    let n = u.rot90();
+    p.add(Shape::convex_polygon(vec![at + u * 12.0, at - u * 2.0 + n * 6.0, at - u * 2.0 - n * 6.0], fill, stroke));
 }

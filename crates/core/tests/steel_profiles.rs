@@ -51,7 +51,7 @@ mod tests {
         let section = s.execute("section", &json!({"start":[2000,-500],"end":[2000,500]})).unwrap()["id"].as_u64().unwrap();
         let mut cache = SectionCache::default();
         let first = cache.work(&s.model);
-        let view = render::View { scale: 2.0, cx: 500.0, cy: 2900.0, width: 600, height: 600 };
+        let view = render::View { angle: 0.0, scale: 2.0, cx: 500.0, cy: 2900.0, width: 600, height: 600 };
         let before = render::section_picture_and_over_with(&s.model, &first, section, view, view, &[]).1;
         let elements = s.model.elements.clone();
         s.execute("type", &json!({"category":"beam","name":"Tube","thickness":20})).unwrap();
@@ -123,7 +123,7 @@ mod picking {
         s.execute("type", &json!({"category":"structuralcolumn","name":"Tube","shape":"RHS","width":200,"depth":100,"thickness":10}))
             .unwrap();
         let id = s.execute("structural_column", &json!({"at":[0,0],"type":"Tube","height":3000})).unwrap()["id"].as_u64().unwrap();
-        let d = render::draw(&s.model, 100000, render::View { scale: 3.0, cx: 0.0, cy: 0.0, width: 900, height: 600 });
+        let d = render::draw(&s.model, 100000, render::View { angle: 0.0, scale: 3.0, cx: 0.0, cy: 0.0, width: 900, height: 600 });
         assert_eq!(d.pick(d.view.px(P2(0.0, 0.0)), 1.0), None, "the hole is empty");
         assert_eq!(d.pick(d.view.px(P2(95.0, 0.0)), 1.0), Some(id), "the tube wall is pickable");
     }

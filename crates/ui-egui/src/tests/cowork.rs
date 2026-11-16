@@ -71,6 +71,7 @@ fn quick() -> Timing {
         silence: Duration::from_secs(3),
         handshake: Duration::from_secs(3),
         lockout: Duration::from_millis(500),
+        frame: bimcraft_cowork::MAX_FRAME,
     }
 }
 

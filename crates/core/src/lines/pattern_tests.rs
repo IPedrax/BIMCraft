@@ -60,7 +60,7 @@ fn graphic_segments_render_as_pixels_and_keep_their_paper_size() {
         Segment::Zigzag { length: 8.0, frequency: 2.0, amplitude: 1.0 },
         Segment::Text { length: 16.0, size: 3.0, text: "Gas 42".into() },
     ]);
-    let mut d = Drawing::new(View { scale: 1.0, cx: 0.0, cy: 0.0, width: 620, height: 200 });
+    let mut d = Drawing::new(View { angle: 0.0, scale: 1.0, cx: 0.0, cy: 0.0, width: 620, height: 200 });
     d.prims = pattern.draw(&[(10.0, 100.0), (610.0, 100.0)], 10.0, 4.0, Rgb(0, 0, 0));
     let png = render::png(&d).unwrap();
     let image = tiny_skia::Pixmap::decode_png(&png).unwrap();
@@ -127,7 +127,7 @@ fn pattern_dots_and_lettering_take_line_overrides_and_exports_keep_outlines() {
     s.execute("line_style", &json!({"name":"Gas", "pen":3,"pattern":"Gas"})).unwrap();
     let id = s.execute("detail_line", &json!({"start":[0,0],"end":[4000,0],"style":"Gas"})).unwrap()["id"].as_u64().unwrap();
     s.execute("graphics", &json!({"view":100000,"elements":{id.to_string():{"projection":{"color":[200,0,0],"weight":12}}}})).unwrap();
-    let d = render::draw(&s.model, 100000, render::View { scale: 0.2, cx: 2000.0, cy: 0.0, width: 1000, height: 300 });
+    let d = render::draw(&s.model, 100000, render::View { angle: 0.0, scale: 0.2, cx: 2000.0, cy: 0.0, width: 1000, height: 300 });
     let mut dot = None;
     let mut stroke = None;
     for ((prim, owner), pen) in d.prims.iter().zip(&d.owners).zip(&d.pens) {

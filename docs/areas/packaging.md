@@ -14,6 +14,17 @@ Moved from the root `CLAUDE.md`, word for word: the root keeps the rules and the
   `BIMCraft.Project` ProgId's extensions in `bimcraft.wxs`, the `io.github.ipedrax.bimcraft.project` type's in `Info.plist.in`) and a
   family is `application/x-bimcraft-family` (`*.bimf`, `BIMCraft.Family`, `io.github.ipedrax.bimcraft.family`). An old extension stays
   registered while files of it are about; the desktop file, the AppStream `<provides>` and the Flatpak install the same MIME XML.
+- The APT repository is `https://bimcraft.ipedrax.com` (GitHub Pages with a custom domain: a CNAME `bimcraft` to `ipedrax.github.io` at Cloudflare,
+  DNS only, not proxied, and `ipedrax.com` verified for the account, whose TXT record must stay). `release.yml`'s last two jobs build it for
+  a stable tag once the release exists: `apt` takes the `.deb` files of the newest three stable releases with `gh release download`, signs with
+  the key in the secret `APT_SIGNING_KEY` of the environment `apt` (tags `v*` only), and runs `packaging/linux/apt-repo.sh`
+  (`apt-ftparchive`, rebuilt whole each time: no database, and the pool is what fills the site's 1 GB, hence three releases), then
+  `packaging/linux/apt-repo-check.sh` installs from the result as a client does; `apt-deploy` publishes it (environment `github-pages`: `main`
+  and tags `v*`). A pre-release tag is skipped, and `apt-repo.sh` refuses a `~` version. The key is ed25519, with no passphrase (CI holds
+  it) and no expiry (a user's copy of the keyring doesn't update itself), fingerprint `6A9E 51B6 0E71 A9FC EA58 9203 3675 9B33 3678 A8CB`;
+  its backup and revocation certificate are kept offline. If it leaks, revoke it, make another and have users fetch the new keyring again.
+  Users add `bimcraft.sources` and the keyring from the site's root (`index.html` has the lines). A failed `apt` job leaves the release as it
+  is; a rerun uses the workflow file of the tag's commit, so a fix to these jobs takes effect with the next tag.
 - A release needs the repository secret `BIMCRAFT_KEY_SECRET` (`gh secret set BIMCRAFT_KEY_SECRET`, a long random value): the assistant's saved
   key is scrambled under it, built in when BIMCraft is compiled. `release.yml` hands it to every job that compiles and sets
   `BIMCRAFT_REQUIRE_KEY_SECRET`, so a release whose secret is missing or empty fails its tests ([the assistant](assistant.md)). Change it and

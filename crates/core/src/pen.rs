@@ -272,7 +272,7 @@ mod tests {
         .unwrap();
         let (wall, dim) = (100002, 100005);
         let widest = |s: &Session, id| {
-            let view = View { scale: 0.1, cx: 4000.0, cy: 0.0, width: 1000, height: 800 };
+            let view = View { angle: 0.0, scale: 0.1, cx: 4000.0, cy: 0.0, width: 1000, height: 800 };
             let d = crate::render::draw(&s.model, 100000, view);
             (d.prims.iter().zip(&d.owners))
                 .filter_map(|(p, o)| match p {

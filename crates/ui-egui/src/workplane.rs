@@ -157,7 +157,8 @@ impl BimApp {
     /// None without a camera or a plane.
     pub(crate) fn work_plane_ring(&self, cam: Option<Camera>, rect: Rect, ppp: f32) -> Option<[Pos2; 4]> {
         let cam = cam?;
-        let (plane, corner, side) = patch_square(&self.session.model, &cam, ppp)?;
+        let extent = self.orbit.extent();
+        let (plane, corner, side) = patch_square(&self.session.model, &cam, ppp, extent)?;
         let (across, up) = plane.axes();
         let at = |a: f64, b: f64| {
             let p: P3 = std::array::from_fn(|k| corner[k] + (across[k] * a + up[k] * b) * side);
@@ -605,12 +606,14 @@ pub(crate) fn on_patch(ring: &[Pos2; 4], at: Pos2) -> bool {
 /// Model `m`'s 3D view's work plane's patch, a square of the plane `PATCH` points wide through `cam` (`ppp` pixels a point):
 /// on a level one by the model's south-west corner, half its width clear of it; on another, about the point it was set
 /// through. The plane, and the patch's corner from which it runs `side` mm along the plane's axes. None without a plane.
-fn patch_square(m: &bimcraft_core::model::Model, cam: &Camera, ppp: f32) -> Option<(Frame, P3, f64)> {
+/// The work plane's patch: its plane, its corner and its side. `extent` is the box round what the 3D view shows, its scene's
+/// ([`crate::orbit::Orbit::extent`]): working it out from the model made every solid of it again, every frame.
+fn patch_square(m: &bimcraft_core::model::Model, cam: &Camera, ppp: f32, extent: Option<(P3, P3)>) -> Option<(Frame, P3, f64)> {
     let plane = m.work_plane(m.default_3d()).resolve(m).ok()?;
     let side = PATCH * f64::from(ppp) / cam.scale.max(1e-12);
     let (across, up) = plane.axes();
     let (start, from) = if workplane::is_level(&plane) {
-        let corner = m.model_box().map_or([0.0; 3], |(lo, _)| lo);
+        let corner = extent.map_or([0.0; 3], |(lo, _)| lo);
         (plane.nearest(corner), -1.5)
     } else {
         (plane.origin, -0.5)
@@ -622,6 +625,7 @@ fn patch_square(m: &bimcraft_core::model::Model, cam: &Camera, ppp: f32) -> Opti
 /// What model `m`'s 3D view through `cam` (`ppp` pixels a point) draws of its work plane into its picture: the plane tinted
 /// with its grid (with `plane`: while it's being set or sketched on, or Show is on), on `on` when a new outline is sketched
 /// on another, and its patch (with `square`: in Modify), lit while the pointer is on it (`lit`).
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn marks(
     m: &bimcraft_core::model::Model,
     cam: &Camera,
@@ -630,10 +634,11 @@ pub(crate) fn marks(
     on: Option<Frame>,
     square: bool,
     lit: bool,
+    extent: Option<(P3, P3)>,
 ) -> Vec<PlaneMark> {
     let mut marks = Vec::new();
     if plane
-        && let Some(extent) = m.model_box()
+        && let Some(extent) = extent
         && let Ok(frame) = m.work_plane(m.default_3d()).resolve(m)
     {
         let frame = on.unwrap_or(frame);
@@ -643,7 +648,7 @@ pub(crate) fn marks(
             marks.push(plane_mark(p, step));
         }
     }
-    if square && let Some((frame, corner, side)) = patch_square(m, cam, ppp) {
+    if square && let Some((frame, corner, side)) = patch_square(m, cam, ppp, extent) {
         marks.push(PlaneMark {
             origin: corner,
             axes: frame.axes(),

@@ -109,7 +109,7 @@ fn a_walls_ifc_solid_is_as_tall_as_its_offset_top_and_the_offset_is_saved_only_w
     let plain = wall(&mut s, 2000.0, None);
     let path = std::env::temp_dir().join(format!("bimcraft-top-offset-{}.ifc", std::process::id()));
     run(&mut s, "save", json!({"path": path}));
-    let ifc = std::fs::read_to_string(&path).unwrap();
+    let ifc = crate::bimc::read_to_string(&path).unwrap();
     let _ = std::fs::remove_file(&path);
     let solids: Vec<&str> = ifc.lines().filter(|l| l.contains("IFCEXTRUDEDAREASOLID(")).collect();
     assert_eq!(solids.iter().filter(|l| l.ends_with(",3300.);")).count(), 1, "{solids:?}");
