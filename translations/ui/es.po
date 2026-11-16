@@ -18227,3 +18227,23 @@ msgstr "Superior"
 #: crates/ui-egui/src/canvas.rs:2855
 #~ msgid "stair: `{}` is not a width"
 #~ msgstr "escalera: `{}` no es un ancho"
+
+#: crates/ui-egui/src/lib.rs:5853
+msgid "Click to select, drag a box to select several. Shift and the middle button orbit, the middle button pans, the wheel zooms."
+msgstr "Haga clic para seleccionar, arrastre un cuadro para seleccionar varios. Mayús y el botón central orbitan, el botón central desplaza, la rueda hace zoom."
+
+#: crates/ui-egui/src/lib.rs:5995
+msgid "Click where its run ends: past its last riser, one run to the level above; short of it, a landing. Esc cancels."
+msgstr "Haz clic donde termina el tramo: más allá de su última contrahuella, un tramo hasta el nivel superior; antes, un descanso. Esc cancela."
+
+#: crates/ui-egui/src/lib.rs:5993
+msgid "Click where the stair starts: the middle of its first riser."
+msgstr "Haz clic donde empieza la escalera: el centro de su primera contrahuella."
+
+#: crates/ui-egui/src/lib.rs:4489
+msgid "Stair: click where it starts, then where its run ends; a landing turns it"
+msgstr "Escalera: haz clic donde empieza y luego donde termina su tramo; un descanso la hace girar"
+
+#: crates/ui-egui/src/canvas.rs:2855
+msgid "stair: `{}` is not a width"
+msgstr "escalera: `{}` no es un ancho"

@@ -18134,3 +18134,23 @@ msgstr "Dessus"
 #: crates/ui-egui/src/canvas.rs:2855
 #~ msgid "stair: `{}` is not a width"
 #~ msgstr "escalier: `{}` n'est pas une largeur"
+
+#: crates/ui-egui/src/lib.rs:5853
+msgid "Click to select, drag a box to select several. Shift and the middle button orbit, the middle button pans, the wheel zooms."
+msgstr "Cliquer pour sélectionner, faire glisser un cadre pour en sélectionner plusieurs. Maj et le bouton du milieu font orbiter, le bouton du milieu fait un panoramique, la molette zoome."
+
+#: crates/ui-egui/src/lib.rs:5995
+msgid "Click where its run ends: past its last riser, one run to the level above; short of it, a landing. Esc cancels."
+msgstr "Cliquer à l'endroit où sa volée se termine: au-delà de sa dernière contremarche, une volée jusqu'au niveau supérieur; en deçà, un palier. Échap annule."
+
+#: crates/ui-egui/src/lib.rs:5993
+msgid "Click where the stair starts: the middle of its first riser."
+msgstr "Cliquer à l'endroit où l'escalier commence: le milieu de sa première contremarche."
+
+#: crates/ui-egui/src/lib.rs:4489
+msgid "Stair: click where it starts, then where its run ends; a landing turns it"
+msgstr "Escalier: cliquer à son début, puis à la fin de sa volée; un palier le fait tourner"
+
+#: crates/ui-egui/src/canvas.rs:2855
+msgid "stair: `{}` is not a width"
+msgstr "escalier: `{}` n'est pas une largeur"

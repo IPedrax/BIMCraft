@@ -837,4 +837,3 @@ msgstr "Łazienka z WC"
 #: crates/core/src/loads.rs:79
 msgid "wc"
 msgstr "WC"
-

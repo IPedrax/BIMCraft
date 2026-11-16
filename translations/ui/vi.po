@@ -18041,3 +18041,23 @@ msgstr ""
 #: crates/ui-egui/src/canvas.rs:2855
 #~ msgid "stair: `{}` is not a width"
 #~ msgstr "cầu thang: `{}` không phải là chiều rộng"
+
+#: crates/ui-egui/src/lib.rs:5853
+msgid "Click to select, drag a box to select several. Shift and the middle button orbit, the middle button pans, the wheel zooms."
+msgstr "Nhấp để chọn, kéo một khung để chọn nhiều. Shift và nút giữa để xoay quanh, nút giữa để kéo, con lăn để thu phóng."
+
+#: crates/ui-egui/src/lib.rs:5995
+msgid "Click where its run ends: past its last riser, one run to the level above; short of it, a landing. Esc cancels."
+msgstr "Nhấp chỗ vế thang kết thúc: vượt qua bậc đứng cuối cùng là một vế lên tới tầng phía trên; chưa tới là một chiếu nghỉ. Esc để hủy."
+
+#: crates/ui-egui/src/lib.rs:5993
+msgid "Click where the stair starts: the middle of its first riser."
+msgstr "Nhấp chỗ cầu thang bắt đầu: điểm giữa bậc đứng đầu tiên."
+
+#: crates/ui-egui/src/lib.rs:4489
+msgid "Stair: click where it starts, then where its run ends; a landing turns it"
+msgstr "Cầu thang: nhấp chỗ bắt đầu, rồi chỗ vế thang kết thúc; một chiếu nghỉ sẽ đổi hướng nó"
+
+#: crates/ui-egui/src/canvas.rs:2855
+msgid "stair: `{}` is not a width"
+msgstr "cầu thang: `{}` không phải là chiều rộng"
