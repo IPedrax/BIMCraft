@@ -216,7 +216,8 @@ fn markdown_report_renders_headings_lists_and_tables() {
     let mut h = app(SAMPLE);
     let source = "# Report\n\n## Levels\n\n- Ground\n- First\n\n| Category | Count |\n|---|---:|\n| Walls | 12 |\n";
     open_report(&mut h, "Report", source, ReportFormat::Markdown);
-    assert!(h.query_by_label("Report").is_some());
+    // The dialog's title and the H1 both read `Report`.
+    assert!(h.query_all_by_label("Report").count() >= 2);
     assert!(h.query_by_label("Levels").is_some());
     assert!(h.query_by_label("Ground").is_some());
     assert!(h.query_by_label("Category").is_some(), "the table's header is a cell, not a line of its source");
