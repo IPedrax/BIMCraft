@@ -1,0 +1,8 @@
+# Read by the macOS job's `cargo test` only (`--config ci/fast-build.toml`, in ci.yml). The workspace's own crates are built without
+# debug info: bimcraft-core is optimised even in a debug build, and on that runner (3 cores, 7 GB) its debug info made the compile
+# the longest part of the job. The dependencies keep the profile main's build cache was made with, so the cache stays valid.
+[profile.dev]
+debug = 0
+
+[profile.dev.package."*"]
+debug = true

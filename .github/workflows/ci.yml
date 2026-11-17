@@ -35,8 +35,9 @@ jobs:
           # The oldest Ubuntu runner, as the release workflow's Linux job.
           - { name: Linux, runner: ubuntu-22.04, timeout: 90 }
           - { name: Windows, runner: windows-latest, timeout: 100 }
-          # macOS's tests took 75 to 86 minutes on main before the stairs, groups, curtain walls and classification came in.
-          - { name: macOS, runner: macos-15, timeout: 120 }
+          # macOS's tests took 64 to 86 minutes on main: 35 of them compiling (Linux 13), 25 running the tests (as Linux). Its crates
+          # are built without debug info and the timings are kept (below), so the next slow run shows what is left to cut.
+          - { name: macOS, runner: macos-15, timeout: 120, test_flags: '--config ci/fast-build.toml --timings' }
     steps:
       - uses: actions/checkout@v4
 
@@ -77,7 +78,19 @@ jobs:
           cargo build --manifest-path crates/plugin/tests/sample-plugin/Cargo.toml --target wasm32-unknown-unknown --release
 
       - name: Test
-        run: cargo test --workspace
+        run: cargo test --workspace ${{ matrix.test_flags }}
+
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'macOS' && always()
+        with:
+          name: macos-timings
+          path: target/cargo-timings/cargo-timing.html
+          if-no-files-found: ignore
+
+      # Whether the runner's 7 GB ran out while the crates compiled: swap in use at the end says it did.
+      - name: macOS memory
+        if: runner.os == 'macOS' && always()
+        run: sysctl hw.memsize vm.swapusage && vm_stat
 
   # What CLAUDE.md asks after touching ifc.rs: IfcOpenShell validates what BIMCraft writes, with the EXPRESS rules, and builds every
   # product's shape. The sample house, and ci/ifc-coverage.txt for what the sample doesn't reach (structure, runs, masses, phases).
