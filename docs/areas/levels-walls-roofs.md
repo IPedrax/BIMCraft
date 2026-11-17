@@ -44,7 +44,13 @@ every height. Its solid is `walls/slant.rs`: pieces lofted between its outlines 
 upright wall's prisms are (an arc's chords, its openings' jambs) and up it at its openings and its joins' heights; each corner's
 bottom and top follow what its base and top are attached to at the point it has leant to, so a curved slanted wall attached top
 and bottom is a cone between a floor and a roof. The 3D view and sections draw those meshes (a section in poché, its layers not drawn yet), a plan cuts the wall where it
-has leant to at its cut plane, and IFC writes them as face sets. A door or a window stands where the wall has leant to at its sill and
+has leant to at its cut plane and sees its foot below in projection (and the top of one that stops under the plane), but where the
+cut covers it, and IFC writes them as face sets. A join a slanted wall takes part in is worked out one way at every height, so it
+keeps its shape as it rises: its corner is where the walls' centre lines cross there, the same point for every wall at the node, a
+face's crossing allowed twice the thickest wall's thickness from it; a corner farther off than half the shortest wall (walls nearly in
+line leaning apart) is no corner, and each ends square at its own end there. A wall ending on a slanted one is found ending on it at
+their feet, and stops at its face, as far as that wall reaches, at every height. `wall_shape_tests` sweeps corners from 30° to 165°
+and T-junctions at many leans. A door or a window stands where the wall has leant to at its sill and
 leans with it (`Model::opening_frame`, `opening_lean`); its hole is cut with upright jambs and a level sill and head.
 
 A straight, upright, unattached wall can have its shape in elevation edited (Revit's Edit Profile): `profile` holds loops of
@@ -53,15 +59,15 @@ A straight, upright, unattached wall can have its shape in elevation edited (Rev
 at its ends and its doors' sills are measured as before, and not crossing itself. `walls/profile.rs` cuts the wall at each corner of
 the profile; between two cuts each stretch it covers is a prism from one edge's plane to another's, less its openings
 (`profile::stack`), so 3D, sections and IFC take it as they take any wall, and a plan cuts it only where the profile reaches the cut
-plane (`walls::plan_cut`). Its top for its openings and its height are the profile's (`walls::top_at`, `heights`). On the desktop,
-a wall's Properties has a Profile row: Edit Profile, and Reset Profile once it has one, for one such wall selected (a row rather than a
-ribbon button, as the Modify | Walls tab has no room left at narrow widths without folding Modify's tools). In a section or an elevation whose line runs along the
-wall, or in the 3D view, it is sketch mode on the wall's face (`sketch::Of::Profile`): the outline and holes are sketch lines in the
-wall's `[along, up]` frame on an upright `sketch3d::Face`, which a section's camera shows as the 3D view's does, so the Draw panel's
-tools, Modify's grips, Delete and Finish Edit Mode work as for a floor's boundary; points snap to the lines' ends and to 10 mm.
-Finish solves the lines into one outline with holes and sets the profile (the wall's own rectangle sets none), one undo step. In a
-plan, which can't show the shape, Edit Profile opens a dialog of the wall to scale from its exterior (`crates/ui-egui/src/profile.rs`):
-drag a point, click an edge for a new one, type a point's place, add or remove a hole. Reset Profile takes the shape off.
+plane (`walls::plan_cut`). Its top for its openings and its height are the profile's (`walls::top_at`, `heights`). On the desktop it is Revit's
+Edit Profile: Modify | Walls has a Mode panel (Edit Profile, and Reset Profile once the wall has one) for one such wall selected, and
+the Modify panel is kept whole while the others make room, as Revit's is. In a view that looks at the wall (a section or an elevation
+whose line runs along it, or the 3D view) Edit Profile is sketch mode on the wall's face (`sketch::Of::Profile`): its outline and holes
+are sketch lines in the wall's `[along, up]` frame on an upright `sketch3d::Face`, which a section's camera shows as the 3D view's
+does, so they can be deleted and the outline sketched again with the Draw panel, Modify's grips and Delete, as a floor's boundary is;
+points snap to the lines' ends and to 10 mm. Finish Edit Mode solves the lines into one outline with holes and sets the profile (the
+wall's own rectangle sets none), one undo step. A plan can't show the shape: there Go To View lists the sections and elevations along
+the wall and the 3D view, and Open View opens the one picked in sketch mode (`crates/ui-egui/src/profile.rs`).
 
 At a square corner of two compound walls, one core runs through and the other stops on it (`walls/compound.rs`). It takes
 two walls and nothing else joined there, ending at the same point square to each other, straight, on their centre lines,

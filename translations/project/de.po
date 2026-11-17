@@ -55,7 +55,7 @@ msgstr ""
 msgid "Ceiling Luminaire"
 msgstr "Deckenleuchte"
 
-#: crates/core/src/render.rs:3859
+#: crates/core/src/render.rs:3890
 msgid "Ceiling Plan"
 msgstr "Deckenspiegel"
 
@@ -110,8 +110,8 @@ msgstr "Anzahl"
 msgid "Crosshatch"
 msgstr "Schraffur"
 
-#: crates/core/src/render.rs:4912
-#: crates/core/src/render.rs:5257
+#: crates/core/src/render.rs:4943
+#: crates/core/src/render.rs:5288
 msgid "DN"
 msgstr "AB"
 
@@ -418,7 +418,7 @@ msgstr "Metall"
 msgid "Mounting Height"
 msgstr "Montagehöhe"
 
-#: crates/core/src/render.rs:3668
+#: crates/core/src/render.rs:3699
 msgid "NOT ENCLOSED"
 msgstr "NICHT UMSCHLOSSEN"
 
@@ -512,7 +512,7 @@ msgstr "Projekt"
 msgid "Property Line"
 msgstr ""
 
-#: crates/core/src/render.rs:3668
+#: crates/core/src/render.rs:3699
 msgid "REDUNDANT"
 msgstr "REDUNDANT"
 
@@ -735,8 +735,8 @@ msgstr ""
 msgid "Type"
 msgstr "Typ"
 
-#: crates/core/src/render.rs:4912
-#: crates/core/src/render.rs:5257
+#: crates/core/src/render.rs:4943
+#: crates/core/src/render.rs:5288
 msgid "UP"
 msgstr "AUF"
 

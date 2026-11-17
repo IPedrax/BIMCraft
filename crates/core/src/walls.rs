@@ -295,6 +295,8 @@ pub(crate) struct Arm {
     pub(crate) thick: f64,
     /// How far a slanted wall's faces have moved across at the height asked: its corners move as far.
     pub(crate) lean: f64,
+    /// Whether it is a slanted wall's: a join it takes part in is worked out the same way at every height.
+    pub(crate) leans: bool,
     /// A curtain wall ending where a plain wall does: it doesn't mitre, the plain wall ends square against it.
     pub(crate) butts: bool,
 }
@@ -318,6 +320,7 @@ pub(crate) fn arm_at(m: &Model, id: Id, w: &Wall, at_end: bool, mine: bool, z: O
         centre: axis.at(s, (ext + int) / 2.0),
         thick: ext - int,
         lean: z.map_or(0.0, |z| lean(m, w, z)),
+        leans: w.slant != 0.0,
         butts: false,
     }
 }
@@ -370,13 +373,20 @@ fn arms(m: &Model, id: Id, at_end: bool, index: Option<&Index>, keep: &impl Fn(&
             }
         } else {
             // A wall it ends on: the node within its thickness, between its ends.
+            // Whether it ends on the other is asked at their feet, so a slanted one leaning away from the node keeps the join all the
+            // way up; its faces are where they have leant to.
             let ax = Axis::of(o);
             let (s, across) = ax.project(node);
+            let (foot_ext, foot_int) = faces(m, o);
             let (ext, int) = faces_at(m, o, z);
-            if s > TOL && s < ax.length() - TOL && (int - TOL..=ext + TOL).contains(&across) && ax.distance(node, across) <= TOL && joins(o)
+            if s > TOL
+                && s < ax.length() - TOL
+                && (foot_int - TOL..=foot_ext + TOL).contains(&across)
+                && ax.distance(node, across) <= TOL
+                && joins(o)
             {
                 let (t, (e, i), c) = (ax.tangent(s), (ax.at(s, ext), ax.at(s, int)), ax.at(s, (ext + int) / 2.0));
-                let lean = z.map_or(0.0, |z| lean(m, o, z));
+                let (lean, leans) = (z.map_or(0.0, |z| lean(m, o, z)), o.slant != 0.0);
                 arms.push(Arm {
                     id: other,
                     at_end: false,
@@ -387,6 +397,7 @@ fn arms(m: &Model, id: Id, at_end: bool, index: Option<&Index>, keep: &impl Fn(&
                     centre: c,
                     thick: ext - int,
                     lean,
+                    leans,
                     butts: false,
                 });
                 arms.push(Arm {
@@ -399,6 +410,7 @@ fn arms(m: &Model, id: Id, at_end: bool, index: Option<&Index>, keep: &impl Fn(&
                     centre: c,
                     thick: ext - int,
                     lean,
+                    leans,
                     butts: false,
                 });
                 through = true;
@@ -468,28 +480,49 @@ fn end_geometry(m: &Model, id: Id, at_end: bool, index: Option<&Index>, keep: &i
         return end;
     }
     let node = if at_end { w.end } else { w.start };
-    // Leaning walls' corners move with them, as far again as the most leant.
-    let limit = arms.iter().map(|a| a.thick).fold(0.0, f64::max) + 2.0 * arms.iter().map(|a| a.lean.abs()).fold(0.0, f64::max);
-    // Where a face of this wall crosses a neighbour's facing face, near enough to the node either way; else its own
-    // end. A crossing far along the wall is no corner at all: two walls meeting at a shallow angle cross metres in.
-    let meet = |face: P2, other: P2, other_way: P2| {
-        geom::line_intersection(face, face + me.way, other, other + other_way)
-            .filter(|c| (-limit..=limit).contains(&(*c - node).dot(me.way)))
-            .unwrap_or(face)
-    };
-    let (cw, ccw) = (meet(me.cw, prev.ccw, prev.way), meet(me.ccw, next.cw, next.way));
-    // Where a wall leans, the walls' centre lines cross elsewhere at this height than at their foot: the corner goes there.
-    let hub = if arms.iter().any(|a| a.lean != 0.0) {
-        let crossings: Vec<P2> = [prev, next]
-            .iter()
-            .filter(|o| o.id != me.id)
-            .filter_map(|o| geom::line_intersection(me.centre, me.centre + me.way, o.centre, o.centre + o.way))
-            .filter(|c| (-limit..=limit).contains(&(*c - node).dot(me.way)))
+    let limit = arms.iter().map(|a| a.thick).fold(0.0, f64::max);
+    // Where a wall leans, the walls' centre lines cross elsewhere at this height than at their foot: the corner is there, and
+    // how near it a crossing of faces must be is measured from there, so a corner is the same shape at every height. It is the
+    // same point for every wall at the node: where each two neighbours' centre lines cross, taken together. Walls leaning apart
+    // may cross far off, which is no corner: then each ends at its own end, square, at that height.
+    // Half the shortest wall there: a corner farther off than that is a spike, not a corner.
+    let half = arms.iter().filter_map(|a| m.wall(a.id)).map(|o| Axis::of(o).length() / 2.0).fold(f64::INFINITY, f64::min);
+    // A join of slanted walls is worked out one way at every height, its foot too, so it keeps its shape as it rises: from where
+    // the centre lines cross, a face's crossing allowed twice as far, as the corner moves among walls leaning unlike.
+    let leaning = arms.iter().any(|a| a.leans);
+    let hub = if leaning {
+        let reach = half.max(limit);
+        let pairs = if n > 2 { n } else { 1 };
+        let crossings: Vec<P2> = (0..pairs)
+            .filter_map(|k| {
+                let (a, b) = (&arms[k], &arms[(k + 1) % n]);
+                (a.id != b.id || a.at_end != b.at_end)
+                    .then(|| geom::line_intersection(a.centre, a.centre + a.way, b.centre, b.centre + b.way))
+                    .flatten()
+            })
+            .filter(|c| c.dist(node) <= reach)
             .collect();
-        if crossings.is_empty() { node } else { crossings.iter().fold(P2(0.0, 0.0), |a, c| a + *c) * (1.0 / crossings.len() as f64) }
+        if crossings.is_empty() { me.centre } else { crossings.iter().fold(P2(0.0, 0.0), |a, c| a + *c) * (1.0 / crossings.len() as f64) }
     } else {
         node
     };
+    // Against a wall it ends on, its face is the stop however sharp the angle, as far as the wall reaches; between ends, a
+    // crossing must be near the corner.
+    let limit = if through {
+        (5.0 * limit).max(half)
+    } else if leaning {
+        2.0 * limit
+    } else {
+        limit
+    };
+    // Where a face of this wall crosses a neighbour's facing face, near enough to the corner either way; else its own
+    // end. A crossing far along the wall is no corner at all: two walls meeting at a shallow angle cross metres in.
+    let meet = |face: P2, other: P2, other_way: P2| {
+        geom::line_intersection(face, face + me.way, other, other + other_way)
+            .filter(|c| (-limit..=limit).contains(&(*c - hub).dot(me.way)))
+            .unwrap_or(face)
+    };
+    let (cw, ccw) = (meet(me.cw, prev.ccw, prev.way), meet(me.ccw, next.cw, next.way));
     WallEnd::plain(if through { vec![cw, ccw] } else { vec![cw, hub, ccw] })
 }
 

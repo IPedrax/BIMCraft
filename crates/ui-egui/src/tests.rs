@@ -6294,6 +6294,9 @@ fn reveal_hidden_elements_shows_what_the_view_hides_for_good_and_apply_makes_a_h
 #[test]
 fn unhide_element_and_unhide_category_bring_back_what_the_selection_hides_while_revealing() {
     let mut h = app(BOX);
+    // Room for the View panel's tools beside a wall's Mode panel: at 1280 the ribbon lists the last of them.
+    h.set_size(egui::vec2(1600.0, 800.0));
+    h.run();
     let walls = ids(&h, "wall");
     // A wall hidden for good can't be picked, and offers nothing to unhide.
     click(&mut h, P2(4000.0, 0.0));

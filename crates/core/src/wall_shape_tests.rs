@@ -162,3 +162,146 @@ fn walls_joined_at_a_corner_of_unlike_heights_meet_in_plans_above_the_lower_squa
     let (lo, _) = plan_span_y(&d, tall, (P2(0.0, 0.0), 0.1));
     assert!((lo + 100.0).abs() < 15.0, "{lo}");
 }
+
+#[test]
+fn a_plan_sees_a_slanted_walls_foot_below_its_cut_in_projection() {
+    // Leaning 20° north, 3000 high: cut at 1200 mm, 437 mm north of its foot; its foot's faces at y = ±106 are seen from above.
+    let s = session(r#"wall {"points": [[0, 0], [6000, 0]], "height": 3000, "slant": 20}"#);
+    let id = walls(&s)[0];
+    let d = plan(&s, P2(3000.0, 0.0));
+    let model_y = |y: f32| 0.0 - (f64::from(y) - 700.0) / 0.1;
+    let half = 100.0 / 20f64.to_radians().cos();
+    let foot: Vec<f64> = d
+        .prims
+        .iter()
+        .zip(&d.owners)
+        .filter(|(p, o)| **o == Some(id) && matches!(p, Prim::Line { .. }))
+        .flat_map(|(p, _)| p.points())
+        .map(|(_, y)| model_y(y))
+        .filter(|y| (y + half).abs() < 15.0)
+        .collect();
+    assert!(!foot.is_empty(), "the foot's outer face, in projection");
+}
+
+/// How much of `a` `b` covers, mm².
+fn overlap(a: &[P2], b: &[P2]) -> f64 {
+    let outside: f64 = crate::walls::minus(&[a.to_vec()], b).iter().map(|r| crate::geom::area(r).abs()).sum();
+    crate::geom::area(a).abs() - outside
+}
+
+/// Whether ring `r` crosses itself.
+fn crosses_itself(r: &[P2]) -> bool {
+    let e: Vec<(P2, P2)> = crate::geom::ring_edges(r).collect();
+    let n = e.len();
+    (0..n).any(|i| ((i + 2)..n).any(|j| !(i == 0 && j == n - 1) && crate::geom::crossing(e[i].0, e[i].1, e[j].0, e[j].1).is_some()))
+}
+
+/// Whether two rings touch: a corner of one on an edge of the other.
+fn touch(a: &[P2], b: &[P2]) -> bool {
+    a.iter().any(|p| crate::geom::ring_edges(b).any(|(x, y)| crate::geom::dist_to_segment(*p, x, y) < 1e-3))
+}
+
+/// Wall `id`'s outline at the heights a join is looked at, and its pieces in 3D.
+fn joined(s: &Session, a: Id, b: Id, what: &str, touching: bool) {
+    let rings = |id: Id| [1.0, 1000.0, 2000.0, 2999.0].map(|z| crate::walls::outline_at(&s.model, id, z));
+    let (ra, rb) = (rings(a), rings(b));
+    for (k, (oa, ob)) in ra.iter().zip(&rb).enumerate() {
+        for (o, which) in [(oa, "a"), (ob, "b")] {
+            assert!(!crosses_itself(o), "{what}, height {k}, wall {which} crosses itself: {o:?}");
+            assert!(crate::geom::area(o).abs() > 1e5, "{what}, height {k}, wall {which} is all but gone: {o:?}");
+        }
+        let both = overlap(oa, ob);
+        assert!(both < 1.0, "{what}, height {k}: they overlap by {both} mm²\\n{oa:?}\\n{ob:?}");
+        if touching {
+            assert!(touch(oa, ob) || touch(ob, oa), "{what}, height {k}: a gap between them\\n{oa:?}\\n{ob:?}");
+        }
+    }
+    // The same shape all the way up: its corners only move.
+    for r in [&ra, &rb] {
+        assert!(r.iter().all(|o| o.len() == r[0].len()), "{what}: its outline changes shape as it rises: {r:?}");
+    }
+    // In 3D each is whole: one piece each, a slanted one lofted, an upright one a prism.
+    for id in [a, b] {
+        let slanted = s.model.wall(id).is_some_and(|w| w.slant != 0.0);
+        if slanted {
+            let pieces = crate::walls::slant::pieces(&s.model, id, true, None);
+            assert_eq!(pieces.len(), 1, "{what}: wall {id} in 3D is {} pieces", pieces.len());
+        }
+    }
+}
+
+#[test]
+fn a_slanted_wall_meets_walls_at_any_angle_in_a_corner_that_closes_at_every_height() {
+    for degrees in [60.0, 75.0, 90.0, 105.0, 120.0, 135.0, 150.0, 165.0] {
+        for (sa, sb) in [(15.0, 0.0), (0.0, 15.0), (15.0, 15.0), (-15.0, 15.0), (15.0, -15.0), (-15.0, -15.0), (20.0, 10.0)] {
+            let r = f64::to_radians(degrees);
+            let s = session(&format!(
+                r#"wall {{"points": [[8000, 0], [0, 0]], "height": 3000, "slant": {sa}}}
+                   wall {{"points": [[0, 0], [{}, {}]], "height": 3000, "slant": {sb}}}"#,
+                8000.0 * r.cos(),
+                8000.0 * r.sin()
+            ));
+            // Nearly in line and leaning opposite ways, they part as they rise: no overlap and no spike, but no contact either.
+            let apart = degrees >= 150.0 && sa * sb < 0.0;
+            joined(&s, 100002, 100003, &format!("an L of {degrees}°, leaning {sa}° and {sb}°"), !apart);
+        }
+    }
+}
+
+#[test]
+fn sharp_corners_of_slanted_walls_keep_their_shape_up_the_wall() {
+    // Under 60° the faces outside the corner cross too far back: the ends square off, as upright walls' do, at every height.
+    for degrees in [30.0, 45.0] {
+        for (sa, sb) in [(15.0, 0.0), (15.0, 15.0), (-15.0, 15.0)] {
+            let r = f64::to_radians(degrees);
+            let s = session(&format!(
+                r#"wall {{"points": [[4000, 0], [0, 0]], "height": 3000, "slant": {sa}}}
+                   wall {{"points": [[0, 0], [{}, {}]], "height": 3000, "slant": {sb}}}"#,
+                4000.0 * r.cos(),
+                4000.0 * r.sin()
+            ));
+            let rings = |id: Id| [1.0, 1500.0, 2999.0].map(|z| crate::walls::outline_at(&s.model, id, z));
+            for id in [100002, 100003] {
+                let r = rings(id);
+                assert!(r.iter().all(|o| o.len() == r[0].len() && !crosses_itself(o)), "{degrees}°, {sa}°/{sb}°: {r:?}");
+                if s.model.wall(id).is_some_and(|w| w.slant != 0.0) {
+                    assert_eq!(crate::walls::slant::pieces(&s.model, id, true, None).len(), 1, "{degrees}°, {sa}°/{sb}°: wall {id}");
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn a_wall_ending_on_a_slanted_one_stops_at_its_face_at_every_height_whatever_the_angle() {
+    for degrees in [45.0, 60.0, 90.0, 120.0, 135.0] {
+        for (sa, sb) in [(15.0, 0.0), (-15.0, 0.0), (15.0, 15.0), (15.0, -10.0), (0.0, 15.0)] {
+            let r = f64::to_radians(degrees);
+            let s = session(&format!(
+                r#"wall {{"points": [[-8000, 0], [8000, 0]], "height": 3000, "slant": {sa}}}
+                   wall {{"points": [[0, 0], [{}, {}]], "height": 3000, "slant": {sb}}}"#,
+                8000.0 * r.cos(),
+                8000.0 * r.sin()
+            ));
+            joined(&s, 100002, 100003, &format!("a T at {degrees}°, the through wall leaning {sa}°, the other {sb}°"), true);
+        }
+    }
+}
+
+#[test]
+fn three_walls_one_slanted_share_their_node_at_every_height() {
+    let s = session(
+        r#"wall {"points": [[0, 0], [3000, 0]], "height": 3000, "slant": 15}
+           wall {"points": [[0, 0], [-1500, 2598.0762]], "height": 3000}
+           wall {"points": [[0, 0], [-1500, -2598.0762]], "height": 3000, "slant": -10}"#,
+    );
+    for z in [1.0, 1500.0, 2999.0] {
+        let o: Vec<Vec<P2>> = [100002, 100003, 100004].map(|id| crate::walls::outline_at(&s.model, id, z)).to_vec();
+        for (i, a) in o.iter().enumerate() {
+            assert!(!crosses_itself(a), "{z}: {a:?}");
+            for b in o.iter().skip(i + 1) {
+                assert!(overlap(a, b) < 1.0, "{z}: overlap {}\\n{a:?}\\n{b:?}", overlap(a, b));
+            }
+        }
+    }
+}

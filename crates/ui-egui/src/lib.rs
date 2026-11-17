@@ -820,8 +820,8 @@ pub struct BimApp {
     /// The spot coordinate whose leader's end is being dragged.
     spot_grip: Option<Id>,
     curtain_editor: Option<curtain::CurtainEditor>,
-    /// Edit Profile on a wall, while it's open.
-    profile_editor: Option<profile::ProfileEditor>,
+    /// Go To View, while Edit Profile begun in a plan asks for a view that looks at the wall.
+    go_to_view: Option<profile::GoToView>,
     /// The one part of the selected curtain wall Tab has gone to: what Properties and Delete then act on.
     curtain_part: Option<(Id, bimcraft_core::curtain::Address)>,
     /// With a mullion's whole grid picked, the other places on it.
@@ -1716,7 +1716,7 @@ impl BimApp {
             spot_type_dialog: None,
             spot_grip: None,
             curtain_editor: None,
-            profile_editor: None,
+            go_to_view: None,
             curtain_part: None,
             curtain_more: Vec::new(),
             curtain_hover: None,
@@ -2473,7 +2473,7 @@ impl BimApp {
             || self.dimension_type_dialog.is_some()
             || self.spot_type_dialog.is_some()
             || self.curtain_editor.is_some()
-            || self.profile_editor.is_some()
+            || self.go_to_view.is_some()
             || !self.curtain_asking.is_empty()
             || self.dimension_text_dialog.is_some()
             || self.materials_dialog.is_some()
@@ -5764,6 +5764,26 @@ impl BimApp {
                 }
             });
         }
+        // One straight, upright wall: Revit's Mode panel of Modify | Walls, its shape in elevation sketched again.
+        if let [id] = self.selected_walls().as_slice()
+            && self.tool == Tool::Modify
+            && profile::profile_editable(&self.session.model, *id)
+        {
+            let id = *id;
+            panel(ui, msg!("Mode"), |ui| {
+                let tip =
+                    msg!("Edit Profile: sketch the wall's outline, and any holes, on its face in an elevation, a section or the 3D view");
+                let on = self.go_to_view.is_some() || matches!(self.sketch.as_ref().map(|sk| sk.of), Some(sketch::Of::Profile(_)));
+                if big_button(ui, Icon::EditProfile, msg!("Edit Profile"), on, tip).clicked() {
+                    self.edit_profile(id);
+                }
+                let shaped = self.session.model.wall(id).is_some_and(|w| !w.profile.is_empty());
+                let tip = msg!("Reset Profile: the wall's rectangle back, from its base to its top");
+                if shaped && big_button(ui, Icon::ResetProfile, msg!("Reset Profile"), false, tip).clicked() {
+                    self.run("modify", json!({"id": id, "profile": []}));
+                }
+            });
+        }
         // Work plane-based components selected: Revit's Work Plane panel, Edit Work Plane (T12).
         let hosted = self.work_plane_components();
         if !hosted.is_empty() && self.tool == Tool::Modify {
@@ -5803,7 +5823,9 @@ impl BimApp {
                 self.shape_tools(ui, floor);
             });
         }
-        panel(ui, "Modify", |ui| {
+        // The tools every selection takes (Move, Copy, Rotate…): kept whole while the other panels make room, as Revit's Modify
+        // panel is, whatever a contextual tab adds before it.
+        ribbon::kept(ui, "Modify", |ui| {
             ui.vertical(|ui| {
                 ui.spacing_mut().item_spacing.y = 2.0;
                 for row in rows {
@@ -6905,7 +6927,7 @@ impl BimApp {
         self.dimension_type_window(ctx);
         self.spot_type_window(ctx);
         self.curtain_editor_window(ctx);
-        self.profile_editor_window(ctx);
+        self.go_to_view_window(ctx);
         self.curtain_message(ctx);
         self.dimension_text_window(ctx);
         self.standards_window(ctx);

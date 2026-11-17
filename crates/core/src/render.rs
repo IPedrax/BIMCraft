@@ -3469,6 +3469,37 @@ fn draw_plan_among(m: &Model, key: Guid, view: View, up: bool, k: f32, n: f64, t
             }
         }
     }
+    // A slanted wall leans across the plan: below the cut plane the plan sees its foot, and the top of one that stops under the
+    // plane, in projection, but where what is cut covers them.
+    for (&id, e) in all().filter(|_| !up).filter(|(id, _)| shown(**id)) {
+        let Element::Wall(w) = e else { continue };
+        if w.slant == 0.0 || crate::curtain::pattern(m, w).is_some() {
+            continue;
+        }
+        let (lo, hi) = (m.base_z(w), m.top_z(w));
+        if !(range.depth - TOL < hi && lo <= range.cut) {
+            continue;
+        }
+        let cut = if m.spans(w, range.cut) { walls::plan_cut(m, id, index, range.cut) } else { Vec::new() };
+        let covers: Vec<Vec<P2>> = cut.iter().flat_map(|r| walls::convex_pieces(r)).collect();
+        let covers: Vec<&[P2]> = covers.iter().map(Vec::as_slice).collect();
+        // Its foot, unless seen below whole already (`seen_below` outlines it); its top when it stops under the plane.
+        let mut seen = Vec::new();
+        if m.spans(w, range.cut) {
+            seen.push(walls::outline_at_in(m, id, index, lo + 1e-3));
+        }
+        if hi <= range.cut {
+            seen.push(walls::outline_at_in(m, id, index, hi - 1e-3));
+        }
+        d.owner = Some(id);
+        for ring in seen {
+            let mut closed = ring.clone();
+            closed.extend(ring.first().copied());
+            for part in lines_outside_columns(&closed, &covers) {
+                d.line(&part, BY_CATEGORY, INK, false);
+            }
+        }
+    }
     // A run's centre line, faint and dashed, where it is seen but not cut: Revit's mark of a beam, and where to pick it.
     for (&id, e) in all().filter(|_| !up).filter(|(id, _)| shown(**id)) {
         let Some(g) = m.run_geom(e).filter(|g| !g.vertical()) else { continue };

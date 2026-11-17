@@ -56,7 +56,7 @@ msgstr ""
 msgid "Ceiling Luminaire"
 msgstr "Luminária de teto"
 
-#: crates/core/src/render.rs:3859
+#: crates/core/src/render.rs:3890
 msgid "Ceiling Plan"
 msgstr "Planta de forro"
 
@@ -111,8 +111,8 @@ msgstr "Contagem"
 msgid "Crosshatch"
 msgstr "Hachura cruzada"
 
-#: crates/core/src/render.rs:4912
-#: crates/core/src/render.rs:5257
+#: crates/core/src/render.rs:4943
+#: crates/core/src/render.rs:5288
 msgid "DN"
 msgstr "DESCE"
 
@@ -419,7 +419,7 @@ msgstr "Metal"
 msgid "Mounting Height"
 msgstr "Altura de instalação"
 
-#: crates/core/src/render.rs:3668
+#: crates/core/src/render.rs:3699
 msgid "NOT ENCLOSED"
 msgstr "NÃO DELIMITADO"
 
@@ -513,7 +513,7 @@ msgstr "Projeto"
 msgid "Property Line"
 msgstr ""
 
-#: crates/core/src/render.rs:3668
+#: crates/core/src/render.rs:3699
 msgid "REDUNDANT"
 msgstr "REDUNDANTE"
 
@@ -736,8 +736,8 @@ msgstr "Disjuntor"
 msgid "Type"
 msgstr "Tipo"
 
-#: crates/core/src/render.rs:4912
-#: crates/core/src/render.rs:5257
+#: crates/core/src/render.rs:4943
+#: crates/core/src/render.rs:5288
 msgid "UP"
 msgstr "SOBE"
 

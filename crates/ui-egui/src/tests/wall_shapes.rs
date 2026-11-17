@@ -1,13 +1,7 @@
-//! Walls of other shapes in the desktop: a slanted wall's Angle From Vertical in Properties, and Edit Profile.
+//! Walls of other shapes in the desktop: a slanted wall's Angle From Vertical in Properties, and Edit Profile as Revit's: sketch
+//! mode on the wall's face in a view that looks at it, Go To View from a plan, Reset Profile.
 
 use super::*;
-
-/// A button of the Properties palette, scrolled into sight first: a wall's Profile row is low in it.
-fn press_row(h: &mut Harness<BimApp>, label: &str) {
-    h.get_by_label(label).scroll_to_me();
-    h.run();
-    press(h, label);
-}
 
 fn wall(h: &Harness<BimApp>) -> (Id, bimcraft_core::model::Wall) {
     let m = &h.state().session.model;
@@ -31,61 +25,6 @@ fn a_walls_angle_from_vertical_slants_it_from_properties() {
     key(&mut h, Key::Enter);
     assert!(h.state().status.error, "{}", h.state().status.text);
     assert_eq!(wall(&h).1.slant, 12.0);
-}
-
-#[test]
-fn edit_profile_shapes_a_selected_wall_in_one_step_and_reset_profile_takes_it_back() {
-    let mut h = app(r#"wall {"points": [[0, 0], [6000, 0]], "height": 3000}"#);
-    let (id, _) = wall(&h);
-    h.state_mut().selection = vec![id];
-    h.run();
-    press_row(&mut h, "Edit Profile");
-    let editor = h.state().profile_editor.clone().unwrap_or_else(|| panic!("Edit Profile is open"));
-    assert_eq!(editor.loops, [crate::profile::rectangle(6000.0, 3000.0)], "it starts as the wall's rectangle");
-    // A point on the top edge, raised to a gable's peak: picked, then typed.
-    press(&mut h, "Point 1 3");
-    press(&mut h, "Add Point");
-    type_into(&mut h, "Along the Wall", "3000");
-    type_into(&mut h, "Up from Base", "4500");
-    let undo = h.state().session.history().len();
-    press(&mut h, "OK");
-    assert!(h.state().profile_editor.is_none(), "{}", h.state().status.text);
-    let (_, w) = wall(&h);
-    assert_eq!(w.profile, [vec![P2(0.0, 0.0), P2(6000.0, 0.0), P2(6000.0, 3000.0), P2(3000.0, 4500.0), P2(0.0, 3000.0)]]);
-    assert_eq!(h.state().session.history().len(), undo + 1, "one undo step");
-    // The wall stands up to its peak now.
-    assert_eq!(h.state().session.model.top_z(&w), 4500.0);
-    h.state_mut().selection = vec![id];
-    h.run();
-    press_row(&mut h, "Reset Profile");
-    assert!(wall(&h).1.profile.is_empty(), "{}", h.state().status.text);
-}
-
-#[test]
-fn edit_profile_says_why_a_shape_off_the_walls_ends_is_refused_and_stays_open() {
-    let mut h = app(r#"wall {"points": [[0, 0], [6000, 0]], "height": 3000}"#);
-    let (id, _) = wall(&h);
-    h.state_mut().selection = vec![id];
-    h.run();
-    press_row(&mut h, "Edit Profile");
-    // Its end corner past the wall's end.
-    press(&mut h, "Point 1 2");
-    type_into(&mut h, "Along the Wall", "7000");
-    press(&mut h, "OK");
-    let open = h.state().profile_editor.clone().unwrap_or_else(|| panic!("it stays open"));
-    assert!(open.error.as_deref().is_some_and(|e| e.contains("ends")), "{:?}", open.error);
-    assert!(wall(&h).1.profile.is_empty());
-}
-
-#[test]
-fn edit_profile_is_offered_only_for_a_straight_upright_wall() {
-    let mut h = app(r#"wall {"points": [[0, 0], [6000, 0]], "height": 3000, "slant": 10}"#);
-    let (id, _) = wall(&h);
-    h.state_mut().selection = vec![id];
-    h.run();
-    // Its Properties row's button is there, but greyed: a click does nothing.
-    press_row(&mut h, "Edit Profile");
-    assert!(h.state().sketch.is_none() && h.state().profile_editor.is_none());
 }
 
 /// Where a point of wall `id`'s face, `[along, up]`, shows in section `view` as last drawn.
@@ -121,12 +60,13 @@ fn edit_profile_in_a_section_sketches_on_the_walls_face_and_a_hole_drawn_there_i
     h.run();
     h.state_mut().selection = vec![id];
     h.run();
-    press_row(&mut h, "Edit Profile");
+    press(&mut h, "Modify | Walls");
+    press(&mut h, "Edit Profile");
     let sk = h.state().sketch.clone().unwrap_or_else(|| panic!("sketching: {}", h.state().status.text));
     assert_eq!(sk.of, crate::sketch::Of::Profile(id));
     assert_eq!(sk.plan, Sheet::Section(view), "on the section it began in");
     assert_eq!(sk.lines.len(), 4, "the wall's rectangle");
-    assert!(h.state().profile_editor.is_none(), "no dialog: it's sketched where it is");
+    assert!(h.state().go_to_view.is_none(), "no Go To View: it's sketched where it is");
     // The Line tool, on the wall's face: a 1 m square hole, its points clicked in the section.
     h.run();
     for q in [P2(1000.0, 1000.0), P2(2000.0, 1000.0), P2(2000.0, 2000.0), P2(1000.0, 2000.0), P2(1000.0, 1000.0)] {
@@ -155,7 +95,8 @@ fn edit_profile_in_the_3d_view_sketches_on_the_walls_face() {
     h.run();
     h.state_mut().selection = vec![id];
     h.run();
-    press_row(&mut h, "Edit Profile");
+    press(&mut h, "Modify | Walls");
+    press(&mut h, "Edit Profile");
     let sk = h.state().sketch.clone().unwrap_or_else(|| panic!("sketching: {}", h.state().status.text));
     assert_eq!((sk.of, sk.plan), (crate::sketch::Of::Profile(id), Sheet::View3D));
     assert_eq!(h.state().sketch_surface().map(|f| f.world(P2(1000.0, 500.0))), Some([1000.0, 0.0, 500.0]));
@@ -163,4 +104,90 @@ fn edit_profile_in_the_3d_view_sketches_on_the_walls_face() {
     press(&mut h, "Finish Edit Mode");
     assert!(h.state().sketch.is_none(), "{}", h.state().status.text);
     assert!(wall(&h).1.profile.is_empty());
+}
+
+const ALONG: &str = r#"wall {"points": [[0, 0], [6000, 0]], "height": 3000}
+section {"start": [-1000, -3000], "end": [7000, -3000]}"#;
+
+fn section_of(h: &Harness<BimApp>) -> Id {
+    let m = &h.state().session.model;
+    m.elements.iter().find_map(|(k, e)| matches!(e, Element::Section(_)).then_some(*k)).unwrap_or_else(|| panic!("no section"))
+}
+
+#[test]
+fn edit_profile_in_a_plan_asks_which_view_to_go_to_and_sketches_there() {
+    let mut h = app(ALONG);
+    let (id, _) = wall(&h);
+    let view = section_of(&h);
+    h.state_mut().selection = vec![id];
+    h.run();
+    press(&mut h, "Modify | Walls");
+    press(&mut h, "Edit Profile");
+    let go = h.state().go_to_view.clone().unwrap_or_else(|| panic!("Go To View asks: {}", h.state().status.text));
+    let sheets: Vec<Sheet> = go.views.iter().map(|(s, _)| *s).collect();
+    assert_eq!(sheets, [Sheet::Section(view), Sheet::View3D], "the section along the wall, and the 3D view");
+    assert!(h.state().sketch.is_none(), "nothing sketched in the plan");
+    press(&mut h, "Open View");
+    assert_eq!(h.state().sheet, Sheet::Section(view));
+    let sk = h.state().sketch.clone().unwrap_or_else(|| panic!("sketching: {}", h.state().status.text));
+    assert_eq!((sk.of, sk.plan, sk.lines.len()), (crate::sketch::Of::Profile(id), Sheet::Section(view), 4));
+}
+
+#[test]
+fn the_outline_is_sketched_again_from_nothing_and_finish_gives_the_wall_that_shape() {
+    let mut h = app(ALONG);
+    let (id, _) = wall(&h);
+    let view = section_of(&h);
+    h.state_mut().open_sheet(Sheet::Section(view));
+    h.run();
+    h.state_mut().selection = vec![id];
+    h.run();
+    press(&mut h, "Modify | Walls");
+    press(&mut h, "Edit Profile");
+    // Every line picked and deleted: nothing left of the rectangle.
+    h.state_mut().tool = Tool::Modify;
+    if let Some(sk) = h.state_mut().sketch.as_mut() {
+        sk.picked = (0..sk.lines.len()).collect();
+    }
+    h.run();
+    key(&mut h, Key::Delete);
+    assert_eq!(h.state().sketch.as_ref().map(|sk| sk.lines.len()), Some(0), "{}", h.state().status.text);
+    // A gable drawn on the wall's face with Line, back to where it began.
+    press(&mut h, "Line");
+    h.run();
+    let gable = [P2(0.0, 0.0), P2(6000.0, 0.0), P2(6000.0, 2500.0), P2(3000.0, 4000.0), P2(0.0, 2500.0), P2(0.0, 0.0)];
+    for q in gable {
+        let at = on_face(&h, view, id, q);
+        click_at(&mut h, at);
+    }
+    key(&mut h, Key::Escape);
+    assert_eq!(h.state().sketch.as_ref().map(|sk| sk.lines.len()), Some(5), "{}", h.state().status.text);
+    press(&mut h, "Finish Edit Mode");
+    assert!(h.state().sketch.is_none(), "{}", h.state().status.text);
+    let (_, w) = wall(&h);
+    assert_eq!(w.profile.len(), 1, "{:?}", w.profile);
+    for q in &gable[..5] {
+        assert!(w.profile[0].iter().any(|p| p.dist(*q) < 1e-6), "{q:?} in {:?}", w.profile);
+    }
+    assert_eq!(h.state().session.model.top_z(&w), 4000.0);
+    // Reset Profile, on the ribbon beside it: the rectangle back.
+    h.state_mut().selection = vec![id];
+    h.run();
+    press(&mut h, "Modify | Walls");
+    // A narrow ribbon lists the Mode panel's second tool.
+    if h.query_by_label("Reset Profile").is_none() {
+        press(&mut h, "Mode ▾");
+    }
+    press(&mut h, "Reset Profile");
+    assert!(wall(&h).1.profile.is_empty(), "{}", h.state().status.text);
+}
+
+#[test]
+fn edit_profile_is_offered_only_for_a_straight_upright_wall() {
+    let mut h = app(r#"wall {"points": [[0, 0], [6000, 0]], "height": 3000, "slant": 10}"#);
+    let (id, _) = wall(&h);
+    h.state_mut().selection = vec![id];
+    h.run();
+    press(&mut h, "Modify | Walls");
+    assert!(h.query_by_label("Edit Profile").is_none());
 }
