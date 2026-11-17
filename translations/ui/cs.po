@@ -1398,11 +1398,11 @@ msgstr "Přidružené podlaží"
 msgid "At least {} characters"
 msgstr ""
 
-#: crates/core/src/model.rs:4019
+#: crates/core/src/model.rs:4020
 msgid "At wall centre line"
 msgstr "V ose stěny"
 
-#: crates/core/src/model.rs:4020
+#: crates/core/src/model.rs:4021
 msgid "At wall finish"
 msgstr "Na povrchové úpravě stěny"
 
@@ -1849,7 +1849,7 @@ msgstr "Čára hranice: čáry profilu"
 msgid "Branch Panel"
 msgstr ""
 
-#: crates/core/src/model.rs:4413
+#: crates/core/src/model.rs:4414
 msgid "Brick"
 msgstr "Cihla"
 
@@ -1857,7 +1857,7 @@ msgstr "Cihla"
 msgid "Brick 225 x 75"
 msgstr "Cihla 225 x 75"
 
-#: crates/core/src/model.rs:4988
+#: crates/core/src/model.rs:4989
 msgid "Bringing the project up to date"
 msgstr ""
 
@@ -2314,7 +2314,7 @@ msgstr ""
 msgid "Centreline"
 msgstr ""
 
-#: crates/core/src/model.rs:4421
+#: crates/core/src/model.rs:4422
 msgid "Ceramic tile"
 msgstr "Keramická dlažba"
 
@@ -3468,7 +3468,7 @@ msgstr "Koncepční objem"
 msgid "Concrete"
 msgstr "Beton"
 
-#: crates/core/src/model.rs:4415
+#: crates/core/src/model.rs:4416
 msgid "Concrete block"
 msgstr "Betonová tvárnice"
 
@@ -3713,7 +3713,7 @@ msgstr "Zkopírováno {} řádků oddělených tabulátory."
 msgid "Copies"
 msgstr ""
 
-#: crates/core/src/model.rs:4429
+#: crates/core/src/model.rs:4430
 msgid "Copper"
 msgstr "Měď"
 
@@ -4879,11 +4879,11 @@ msgstr "Tečkovaná"
 msgid "Double Door"
 msgstr "Dvoukřídlé dveře"
 
-#: crates/core/src/model.rs:3699
+#: crates/core/src/model.rs:3700
 msgid "Double Sliding"
 msgstr "Dvoukřídlé posuvné"
 
-#: crates/core/src/model.rs:3697
+#: crates/core/src/model.rs:3698
 msgid "Double Swing"
 msgstr "Dvoukřídlé otočné"
 
@@ -5102,7 +5102,7 @@ msgstr "Zemnič (EG): zemnicí tyč zaražená pod úroveň v místě kliknutí;
 msgid "Earthing Electrodes"
 msgstr "Zemniče"
 
-#: crates/core/src/model.rs:2428
+#: crates/core/src/model.rs:2429
 #: crates/ui-egui/src/coordinates.rs:576
 #: crates/ui-egui/src/coordinates.rs:793
 msgid "East"
@@ -6139,7 +6139,7 @@ msgstr ""
 msgid "Fit to page"
 msgstr ""
 
-#: crates/core/src/model.rs:3701
+#: crates/core/src/model.rs:3702
 msgid "Fixed"
 msgstr "Pevné"
 
@@ -6317,7 +6317,7 @@ msgstr "Složka pro nové projekty"
 msgid "Folder {}"
 msgstr ""
 
-#: crates/core/src/model.rs:3700
+#: crates/core/src/model.rs:3701
 msgid "Folding"
 msgstr "Skládací"
 
@@ -6683,7 +6683,7 @@ msgstr ""
 msgid "Guides from the whole model"
 msgstr ""
 
-#: crates/core/src/model.rs:4420
+#: crates/core/src/model.rs:4421
 msgid "Gypsum board"
 msgstr "Sádrokarton"
 
@@ -9491,7 +9491,7 @@ msgstr ""
 msgid "Normalized Segment Length"
 msgstr ""
 
-#: crates/core/src/model.rs:2426
+#: crates/core/src/model.rs:2427
 #: crates/ui-egui/src/coordinates.rs:576
 #: crates/ui-egui/src/coordinates.rs:793
 msgid "North"
@@ -11647,7 +11647,7 @@ msgstr ""
 msgid "Read a title block drawn at full size (in mm on paper) in the model space of a DXF or DWG: its lines, solid hatches and texts; each {KEY} its texts name becomes a field"
 msgstr ""
 
-#: crates/core/src/model.rs:4956
+#: crates/core/src/model.rs:4957
 msgid "Reading elements"
 msgstr ""
 
@@ -11655,7 +11655,7 @@ msgstr ""
 msgid "Reading the file"
 msgstr ""
 
-#: crates/core/src/model.rs:5000
+#: crates/core/src/model.rs:5001
 msgid "Reading the project"
 msgstr ""
 
@@ -12329,7 +12329,7 @@ msgstr ""
 msgid "Risers"
 msgstr "Počet stupňů"
 
-#: crates/core/src/model.rs:3703
+#: crates/core/src/model.rs:3704
 msgid "Roller"
 msgstr ""
 
@@ -12357,7 +12357,7 @@ msgstr "Střecha podle plochy (RB): střecha na horních plochách vybraných ob
 msgid "Roof by Footprint: click inside the walls to roof them, on the level above"
 msgstr "Střecha půdorysem: klikněte uvnitř stěn pro jejich zastřešení v podlaží nad nimi"
 
-#: crates/core/src/model.rs:4422
+#: crates/core/src/model.rs:4423
 msgid "Roof tiles"
 msgstr "Střešní tašky"
 
@@ -12738,7 +12738,7 @@ msgstr "Výkazy/množství (vše)"
 msgid "Scope"
 msgstr ""
 
-#: crates/core/src/model.rs:4418
+#: crates/core/src/model.rs:4419
 msgid "Screed"
 msgstr "Potěr"
 
@@ -12829,7 +12829,7 @@ msgstr "Ořezový kvádr: ořízne 3D pohled na kvádr, jehož stěny lze posouv
 msgid "Section: {}"
 msgstr "Řez: {}"
 
-#: crates/core/src/model.rs:3702
+#: crates/core/src/model.rs:3703
 msgid "Sectional"
 msgstr ""
 
@@ -13472,7 +13472,7 @@ msgstr "Obloha"
 msgid "Slab Thickness"
 msgstr ""
 
-#: crates/core/src/model.rs:3698
+#: crates/core/src/model.rs:3699
 msgid "Sliding"
 msgstr "Posuvné"
 
@@ -13671,7 +13671,7 @@ msgstr ""
 msgid "Source code on GitHub"
 msgstr "Zdrojový kód na GitHubu"
 
-#: crates/core/src/model.rs:2427
+#: crates/core/src/model.rs:2428
 msgid "South"
 msgstr "Jih"
 
@@ -14134,7 +14134,7 @@ msgstr ""
 msgid "Swept Blend: a path of one line or arc, and a profile at each end, blended along it"
 msgstr "Tažení s přechodem: cesta z jedné čáry nebo oblouku a profil na každém konci, s přechodem podél ní"
 
-#: crates/core/src/model.rs:3696
+#: crates/core/src/model.rs:3697
 msgid "Swing"
 msgstr "Otočné"
 
@@ -16362,7 +16362,7 @@ msgstr "Hmotnost"
 msgid "Weight per Metre"
 msgstr ""
 
-#: crates/core/src/model.rs:2429
+#: crates/core/src/model.rs:2430
 msgid "West"
 msgstr "Západ"
 
