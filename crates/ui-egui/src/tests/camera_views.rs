@@ -52,3 +52,17 @@ fn hiding_in_the_default_3d_view_leaves_a_camera_view_as_it_was() {
     let picked = click_south_wall(&mut h);
     assert!(!picked.is_empty(), "the camera view sees the walls the default 3D view hides");
 }
+
+#[test]
+fn the_section_box_toggle_cuts_the_camera_view_on_screen_and_leaves_the_default_one_alone() {
+    let mut h = app(BOX);
+    let view = walk(&mut h);
+    let default = h.state().session.model.default_3d().unwrap();
+    let cut = |h: &Harness<BimApp>, id: Id| matches!(h.state().session.model.elements.get(id), Some(Element::View3D(v)) if v.section_box.is_some_and(|b| b.on));
+    h.state_mut().open_3d(Some(view));
+    h.run();
+    shortcut(&mut h, "BX");
+    assert!(cut(&h, view) && !cut(&h, default), "BX cuts the view that is shown");
+    shortcut(&mut h, "BX");
+    assert!(!cut(&h, view), "and turns its box off again");
+}

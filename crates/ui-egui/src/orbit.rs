@@ -1924,7 +1924,8 @@ impl BimApp {
         {
             let reach = crate::curtain::REACH.max(f64::from(crate::canvas::PICK) * wall_mm_per_pixel(&cam, &model, w, along, up));
             let list = self.curtain_laid.of(&model, id).at(along, up, reach);
-            let list = match model.default_3d() {
+            // As the 3D view on screen draws them, a camera view's own graphics included.
+            let list = match active {
                 Some(view) => crate::curtain::shown_parts(&model, view, list),
                 None => list,
             };
@@ -2129,7 +2130,7 @@ impl BimApp {
             let list = self.curtain_laid.of(&model, id).at(along, up, reach);
             Some((
                 id,
-                match model.default_3d() {
+                match active {
                     Some(view) => crate::curtain::shown_parts(&model, view, list),
                     None => list,
                 },
