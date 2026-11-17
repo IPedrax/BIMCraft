@@ -6612,7 +6612,16 @@ fn the_units_shortcut_gets_to_the_choices_in_the_smallest_window_too() {
     let mut h = app(BOX);
     h.set_size(vec2(crate::window::MIN_SIZE[0], crate::window::MIN_SIZE[1]));
     h.run();
-    shortcut(&mut h, "UN");
+    // The Manage tab takes about a hundred frames to fit its Settings panel in the smallest window (measured on CI, 2026-11-16),
+    // past the harness's 32: frames until the ribbon has settled, then the list.
+    let keys: Vec<Key> = "UN".chars().filter_map(|c| Key::from_name(&c.to_string())).collect();
+    h.key_combination_modifiers(Modifiers::COMMAND, &keys);
+    for _ in 0..400 {
+        h.step();
+        if !h.ctx.has_requested_repaint() {
+            break;
+        }
+    }
     assert!(egui::Popup::is_any_open(&h.ctx), "the panel's list is open");
     let row = h.get_by_label("Project Units").rect().center();
     click_at(&mut h, row);
