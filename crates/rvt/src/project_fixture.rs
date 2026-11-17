@@ -3,7 +3,9 @@
 //! Autodesk's files are never committed; the bytes here follow the layouts in `inventory.rs`, which real files were checked
 //! against.
 
-use crate::fixture::{self, Basic, Class};
+use std::collections::{BTreeMap, VecDeque};
+
+use crate::fixture::{self, Basic, Class, Ty, TypedClass};
 
 /// The tags the fixture's schema gives its classes (12 is the first tag a schema has).
 pub const OUTLINE: u16 = 12;
@@ -167,6 +169,8 @@ pub struct Project {
     pub nodes: Vec<(u32, [f64; 6], [f64; 6])>,
     /// Ids the element table declares beyond the ones above.
     pub extra_ids: Vec<u32>,
+    /// Graphics written after everything else ([`graphics_block`]).
+    pub graphics: Vec<u8>,
     /// How many gzip members the partition's bytes are cut into (a record can run across two).
     pub members: usize,
     /// The name the file records for its last save (`Username`).
@@ -190,6 +194,7 @@ impl Project {
             nodes: Vec::new(),
             room_names: Vec::new(),
             extra_ids: Vec::new(),
+            graphics: Vec::new(),
             members: 1,
             saved_by: String::new(),
             name_style: NameStyle::default(),
@@ -267,6 +272,7 @@ impl Project {
             blocks.extend_from_slice(&name_block(l, self.wide()));
         }
         out.extend_from_slice(&blocks);
+        out.extend_from_slice(&self.graphics);
         out
     }
 
@@ -305,6 +311,15 @@ impl Project {
     }
 
     pub fn schema_bytes() -> Vec<u8> {
+        let mut out = Self::element_classes();
+        // The closing separator goes, and the graphics classes follow with theirs.
+        out.truncate(out.len() - 2);
+        out.extend_from_slice(&graphics_classes());
+        out.extend_from_slice(&0u16.to_le_bytes());
+        out
+    }
+
+    fn element_classes() -> Vec<u8> {
         fixture::schema(&[
             Class { name: "Outline", fields: &["m_min"], base: None },
             Class { name: "ElementParents", fields: &["m_ids"], base: None },
@@ -753,4 +768,301 @@ fn room_object(id: u32, number: &str, name: &str, wide: bool) -> Vec<u8> {
     f.extend_from_slice(&text(name));
     f.extend_from_slice(&[0x72; 20]);
     f
+}
+
+/// The graphics classes the fixture's schema has after the ones above, in order (their tags from 26), named and laid out as
+/// Revit's own schema has them, but for fields the reader skips.
+pub const GRAPHICS: [&str; 23] = [
+    "Identifier",
+    "ElementId",
+    "GInfo",
+    "GNode",
+    "GGroup",
+    "GRep",
+    "GElement",
+    "GBRep",
+    "Geometry",
+    "GFace",
+    "Face",
+    "EdgePnt",
+    "GEdge",
+    "Edge",
+    "GEdgeLoop",
+    "EdgeLoop",
+    "Surface",
+    "Plane",
+    "CylSurf",
+    "Trf",
+    "InstInfoBase",
+    "InstanceInfo",
+    "GInstance",
+];
+
+/// The tag of a graphics class of the fixture's schema.
+pub fn tag(name: &str) -> u16 {
+    26 + GRAPHICS.iter().position(|n| *n == name).unwrap_or(GRAPHICS.len()) as u16
+}
+
+fn graphics_classes() -> Vec<u8> {
+    let t = |n: &str| Some(tag(n));
+    let three = Ty::fixed(7, 3);
+    let two = Ty::fixed(7, 2);
+    let corners = Ty { kind: 0x0d, modifier: 0x10, count: Some(2), inner: Some(&three), class: None };
+    let rows = Ty { kind: 0x0d, modifier: 0x10, count: Some(3), inner: Some(&three), class: None };
+    let uv = Ty { kind: 0x0d, modifier: 0x10, count: Some(2), inner: Some(&two), class: None };
+    let pair_weak = Ty { kind: 0x0e, modifier: 0x13, count: Some(2), inner: None, class: None };
+    let ends = Ty { kind: 0x0e, modifier: 0x10, count: Some(2), inner: None, class: t("EdgePnt") };
+    let owned = Ty::object(1, None);
+    let weak = Ty::object(3, None);
+    let list = Ty::object(0x51, None);
+    let by = |n: &str| Ty::object(0, t(n));
+    let class = |name, base: Option<&str>, fields| TypedClass { name, base: base.map(tag), fields };
+    fixture::typed_classes(&[
+        class("Identifier", None, &[("m_id64", Ty::plain(11))]),
+        class("ElementId", None, &[("m_id", by("Identifier"))]),
+        class(
+            "GInfo",
+            None,
+            &[("m_categoryId", by("ElementId")), ("m_tag", Ty::plain(4)), ("m_controlCommand", Ty::plain(4)), ("m_flags", Ty::plain(5))],
+        ),
+        class("GNode", None, &[("m_GInfo", by("GInfo"))]),
+        class("GGroup", Some("GNode"), &[("m_subNodes", list)]),
+        class(
+            "GRep",
+            Some("GGroup"),
+            &[
+                ("m_bBox", corners),
+                ("m_tightbBox", corners),
+                ("m_elementId", Ty::plain(11)),
+                ("m_gElemType", Ty::plain(4)),
+                ("m_flags", Ty::plain(5)),
+            ],
+        ),
+        class("GElement", Some("GRep"), &[]),
+        class("GBRep", Some("GNode"), &[("m_pFaces", list)]),
+        class("Geometry", Some("GBRep"), &[("m_flags", Ty::plain(4)), ("m_pEdges", list)]),
+        class("GFace", Some("GNode"), &[("m_pFirstLoop", owned)]),
+        class("Face", Some("GFace"), &[("m_pSurf", owned)]),
+        class("EdgePnt", None, &[("uv", uv)]),
+        class(
+            "GEdge",
+            Some("GNode"),
+            &[
+                ("m_pFace", pair_weak),
+                ("m_next", pair_weak),
+                ("m_interiorEdgePnts", Ty::object(0x50, t("EdgePnt"))),
+                ("m_firstAndLastEdgePnts", ends),
+            ],
+        ),
+        class("Edge", Some("GEdge"), &[]),
+        class("GEdgeLoop", Some("GNode"), &[("m_nextLoop", owned), ("m_pFace", weak), ("m_next", weak)]),
+        class("EdgeLoop", Some("GEdgeLoop"), &[]),
+        class("Surface", None, &[("m_orientFlag", Ty::plain(1))]),
+        class("Plane", Some("Surface"), &[("m_origin", three), ("m_xVec", three), ("m_yVec", three)]),
+        class(
+            "CylSurf",
+            Some("Surface"),
+            &[("m_center", three), ("m_xVec", three), ("m_yVec", three), ("m_zVec", three), ("m_radius", Ty::plain(7))],
+        ),
+        class("Trf", None, &[("m_3x3", rows), ("m_or", three)]),
+        class("InstInfoBase", None, &[("m_Trf", by("Trf")), ("m_symbolId", by("ElementId")), ("m_GRepId", Ty::plain(4))]),
+        class("InstanceInfo", Some("InstInfoBase"), &[]),
+        class("GInstance", Some("GNode"), &[("m_instanceInfo", owned)]),
+    ])
+}
+
+/// A value of a graphics object, as the fixture writes it.
+#[derive(Clone, Debug)]
+pub enum V {
+    Byte(u8),
+    U32(u32),
+    U64(u64),
+    F64(f64),
+    /// Side by side: a fixed array, or an object by value.
+    Seq(Vec<V>),
+    /// A `u32` count and the values.
+    Counted(Vec<V>),
+    /// An owned object, written in its turn: its index and class.
+    Own(u32, &'static str),
+    Null,
+    /// An owned object written inline: its class and fields.
+    Inline(&'static str, Vec<V>),
+    Weak(u32),
+}
+
+/// Three numbers.
+pub fn p3(p: [f64; 3]) -> V {
+    V::Seq(p.iter().map(|v| V::F64(*v)).collect())
+}
+
+/// An `ElementId` by value.
+pub fn element_id(id: u64) -> V {
+    V::Seq(vec![V::Seq(vec![V::U64(id)])])
+}
+
+/// A `GInfo` by value with `tag` as its `m_tag`.
+pub fn ginfo(tag: u32) -> V {
+    V::Seq(vec![element_id(u64::MAX), V::U32(tag), V::U32(0), V::U32(0)])
+}
+
+/// The objects of a tree, by index: their class and their fields' values, bases' first.
+pub type Objects = BTreeMap<u32, (&'static str, Vec<V>)>;
+
+/// A tree's bytes, from its root object (index 2) on, breadth first: each object's owned objects in turn, and its inline ones
+/// right after the last object it owns (after itself where it owns none).
+pub fn tree_bytes(objects: &Objects) -> Vec<u8> {
+    fn put(v: &V, out: &mut Vec<u8>, kids: &mut Vec<u32>, inline: &mut Vec<(&'static str, Vec<V>)>) {
+        match v {
+            V::Byte(b) => out.push(*b),
+            V::U32(x) => out.extend_from_slice(&x.to_le_bytes()),
+            V::U64(x) => out.extend_from_slice(&x.to_le_bytes()),
+            V::F64(x) => out.extend_from_slice(&x.to_le_bytes()),
+            V::Seq(vs) => vs.iter().for_each(|v| put(v, out, kids, inline)),
+            V::Counted(vs) => {
+                out.extend_from_slice(&(vs.len() as u32).to_le_bytes());
+                vs.iter().for_each(|v| put(v, out, kids, inline));
+            }
+            V::Own(i, class) => {
+                out.extend_from_slice(&i.to_le_bytes());
+                out.extend_from_slice(&tag(class).to_le_bytes());
+                kids.push(*i);
+            }
+            V::Null => out.extend_from_slice(&0u32.to_le_bytes()),
+            V::Inline(class, fields) => {
+                out.extend_from_slice(&u32::MAX.to_le_bytes());
+                out.extend_from_slice(&tag(class).to_le_bytes());
+                inline.push((class, fields.clone()));
+            }
+            V::Weak(i) => out.extend_from_slice(&i.to_le_bytes()),
+        }
+    }
+    let mut out = Vec::new();
+    let mut queue = VecDeque::from([2u32]);
+    let mut pending: BTreeMap<u32, Vec<(&'static str, Vec<V>)>> = BTreeMap::new();
+    while let Some(i) = queue.pop_front() {
+        let Some((_, fields)) = objects.get(&i) else { continue };
+        let (mut kids, mut inline) = (Vec::new(), Vec::new());
+        fields.iter().for_each(|v| put(v, &mut out, &mut kids, &mut inline));
+        if !inline.is_empty() {
+            pending.entry(kids.last().copied().unwrap_or(i)).or_default().extend(inline);
+        }
+        for (_, fields) in pending.remove(&i).unwrap_or_default() {
+            let mut nested = Vec::new();
+            fields.iter().for_each(|v| put(v, &mut out, &mut kids, &mut nested));
+        }
+        queue.extend(kids);
+    }
+    out
+}
+
+/// A tree as a partition holds it: the id of the element it is the graphics of, two `u32`, the tag of `GElement` and the tree.
+pub fn graphics_block(id: u32, tree: &[u8]) -> Vec<u8> {
+    let mut out = u64::from(id).to_le_bytes().to_vec();
+    out.extend_from_slice(&[0; 8]);
+    out.extend_from_slice(&tag("GElement").to_le_bytes());
+    out.extend_from_slice(tree);
+    out
+}
+
+/// The root of a tree: a `GElement` of element `id` holding `nodes`, with the box round all it draws and the box round its solids.
+pub fn root(id: u32, nodes: Vec<V>, whole: [f64; 6], tight: [f64; 6]) -> (&'static str, Vec<V>) {
+    let corners = |b: [f64; 6]| V::Seq(vec![p3([b[0], b[1], b[2]]), p3([b[3], b[4], b[5]])]);
+    ("GElement", vec![ginfo(id), V::Counted(nodes), corners(whole), corners(tight), V::U64(id.into()), V::U32(3), V::U32(0)])
+}
+
+/// An edge of a box: its two ends, and the faces it bounds with its place in each one's loop.
+type Shared = ([f64; 3], [f64; 3], Vec<(usize, usize)>);
+
+/// The tree of a box `size` feet across, its corner at the origin: one solid of six planar faces and twelve edges, its faces'
+/// loops and planes; the box given round all it draws is `whole` (none: the box itself).
+pub fn box_tree(id: u32, size: [f64; 3], whole: Option<[f64; 6]>) -> Objects {
+    let [a, b, c] = size;
+    // Each face: its plane (origin, x, y) and its four corners counter-clockwise seen from outside.
+    let faces: [([f64; 3], [f64; 3], [f64; 3]); 6] = [
+        ([0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [1.0, 0.0, 0.0]),
+        ([0.0, 0.0, c], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]),
+        ([0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]),
+        ([0.0, b, 0.0], [0.0, 0.0, 1.0], [1.0, 0.0, 0.0]),
+        ([0.0, 0.0, 0.0], [0.0, 0.0, 1.0], [0.0, 1.0, 0.0]),
+        ([a, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]),
+    ];
+    let corners_of = |(o, x, y): ([f64; 3], [f64; 3], [f64; 3])| -> Vec<[f64; 3]> {
+        let len = |v: [f64; 3]| v[0] * a + v[1] * b + v[2] * c;
+        let (lx, ly) = (len(x), len(y));
+        [[0.0, 0.0], [lx, 0.0], [lx, ly], [0.0, ly]]
+            .iter()
+            .map(|[u, v]| [o[0] + u * x[0] + v * y[0], o[1] + u * x[1] + v * y[1], o[2] + u * x[2] + v * y[2]])
+            .collect()
+    };
+    let uv = |(o, x, y): ([f64; 3], [f64; 3], [f64; 3]), p: [f64; 3]| {
+        let d = [p[0] - o[0], p[1] - o[1], p[2] - o[2]];
+        [d[0] * x[0] + d[1] * x[1] + d[2] * x[2], d[0] * y[0] + d[1] * y[1] + d[2] * y[2]]
+    };
+    let key = |p: [f64; 3]| p.map(|v| (v * 1e6).round() as i64);
+    // The edges: each pair of corners two faces share, with the faces and each face's place in its loop.
+    let mut edges: Vec<Shared> = Vec::new();
+    for (f, face) in faces.iter().enumerate() {
+        let cs = corners_of(*face);
+        for k in 0..4 {
+            let (p, q) = (cs[k], cs[(k + 1) % 4]);
+            match edges.iter_mut().find(|(a, b, _)| key(*a) == key(q) && key(*b) == key(p)) {
+                Some(e) => e.2.push((f, k)),
+                None => edges.push((p, q, vec![(f, k)])),
+            }
+        }
+    }
+    let (geometry, face0, edge0) = (3u32, 4u32, 10u32);
+    let loop0 = edge0 + edges.len() as u32;
+    let edge_of = |f: usize, k: usize| edges.iter().position(|(_, _, on)| on.contains(&(f, k))).map_or(0, |e| edge0 + e as u32);
+    let mut objects = Objects::new();
+    let tight = [0.0, 0.0, 0.0, a, b, c];
+    objects.insert(2, root(id, vec![V::Own(geometry, "Geometry")], whole.unwrap_or(tight), tight));
+    let face_list = (0..6).map(|f| V::Own(face0 + f, "Face")).collect();
+    let edge_list = (0..edges.len()).map(|e| V::Own(edge0 + e as u32, "Edge")).collect();
+    objects.insert(geometry, ("Geometry", vec![ginfo(0), V::Counted(face_list), V::U32(0), V::Counted(edge_list)]));
+    for (f, (o, x, y)) in faces.iter().enumerate() {
+        let plane = V::Inline("Plane", vec![V::Byte(0), p3(*o), p3(*x), p3(*y)]);
+        objects.insert(face0 + f as u32, ("Face", vec![ginfo(0), V::Own(loop0 + f as u32, "EdgeLoop"), plane]));
+        let lp = loop0 + f as u32;
+        objects.insert(lp, ("EdgeLoop", vec![ginfo(0), V::Null, V::Weak(face0 + f as u32), V::Weak(edge_of(f, 0))]));
+    }
+    for (e, (p, q, on)) in edges.iter().enumerate() {
+        let side = |s: usize| on.get(s).copied().unwrap_or(on[0]);
+        let next = |s: usize| {
+            let (f, k) = side(s);
+            if k == 3 { loop0 + f as u32 } else { edge_of(f, k + 1) }
+        };
+        // A point: its `uv` on each of the edge's faces.
+        let point = |r: [f64; 3]| {
+            let on = |s: usize| {
+                let [u, v] = uv(faces[side(s).0], r);
+                V::Seq(vec![V::F64(u), V::F64(v)])
+            };
+            V::Seq(vec![V::Seq(vec![on(0), on(1)])])
+        };
+        objects.insert(
+            edge0 + e as u32,
+            (
+                "Edge",
+                vec![
+                    ginfo(0),
+                    V::Seq(vec![V::Weak(face0 + side(0).0 as u32), V::Weak(face0 + side(1).0 as u32)]),
+                    V::Seq(vec![V::Weak(next(0)), V::Weak(next(1))]),
+                    V::Counted(Vec::new()),
+                    V::Seq(vec![point(*p), point(*q)]),
+                ],
+            ),
+        );
+    }
+    objects
+}
+
+/// The tree of an instance `id` that draws `symbol` by the transform with these axes (the columns of its matrix) and origin, feet.
+pub fn instance_tree(id: u32, symbol: u32, axes: [[f64; 3]; 3], origin: [f64; 3], whole: [f64; 6]) -> Objects {
+    let rows = V::Seq((0..3).map(|r| p3([axes[0][r], axes[1][r], axes[2][r]])).collect());
+    let info = V::Inline("InstanceInfo", vec![V::Seq(vec![rows, p3(origin)]), element_id(symbol.into()), V::U32(0)]);
+    let mut objects = Objects::new();
+    objects.insert(2, root(id, vec![V::Own(3, "GInstance")], whole, whole));
+    objects.insert(3, ("GInstance", vec![ginfo(0), info]));
+    objects
 }
