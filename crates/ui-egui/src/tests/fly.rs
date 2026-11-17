@@ -191,3 +191,77 @@ fn the_wheel_sets_how_fast_it_flies_and_zooms_nothing() {
     assert_eq!(h.state().orbit.camera.unwrap().scale, cam.scale, "the wheel doesn't zoom while it flies");
     assert!(shown.ends_with("m/s"), "{shown}");
 }
+
+#[test]
+fn a_dialog_opening_lands_it() {
+    let mut h = app(BOX);
+    press(&mut h, "Default 3D View");
+    shortcut(&mut h, "FY");
+    assert!(flying(&h));
+    // A dialog takes the keys; the mouse must not go on turning the view behind it, the pointer hidden.
+    h.state_mut().show_shortcuts = true;
+    h.run();
+    assert!(!flying(&h));
+}
+
+#[test]
+fn alt_or_ctrl_with_a_letter_flies_nowhere() {
+    let mut h = app(BOX);
+    press(&mut h, "Default 3D View");
+    shortcut(&mut h, "FY");
+    h.run();
+    let eye = h.state().orbit.camera.unwrap().eye().unwrap();
+    h.event(Event::ModifiersChanged(Modifiers::ALT));
+    hold(&mut h, Key::W, true);
+    frames(&mut h, 5);
+    hold(&mut h, Key::W, false);
+    h.event(Event::ModifiersChanged(Modifiers::NONE));
+    h.run();
+    assert!(flying(&h));
+    assert!(near(h.state().orbit.camera.unwrap().eye().unwrap(), eye, 1e-6), "Alt+W flew");
+}
+
+#[test]
+fn a_click_while_it_flies_reaches_nothing() {
+    use eframe::App as _;
+    let mut h = app(BOX);
+    press(&mut h, "Default 3D View");
+    shortcut(&mut h, "FY");
+    let click = Event::PointerButton {
+        pos: h.state().orbit.rect.center(),
+        button: PointerButton::Primary,
+        pressed: true,
+        modifiers: Modifiers::NONE,
+    };
+    let ctx = h.ctx.clone();
+    let mut raw = egui::RawInput { events: vec![click.clone()], ..Default::default() };
+    h.state_mut().raw_input_hook(&ctx, &mut raw);
+    assert!(raw.events.is_empty(), "the hidden pointer's click was dropped");
+    key(&mut h, Key::Escape);
+    let mut raw = egui::RawInput { events: vec![click], ..Default::default() };
+    h.state_mut().raw_input_hook(&ctx, &mut raw);
+    assert_eq!(raw.events.len(), 1, "landed, a click is a click");
+}
+
+#[test]
+fn a_camera_view_keeps_where_it_flew_when_it_is_left() {
+    let mut h = app(BOX);
+    let plan = h.state().sheet;
+    let r = h.state_mut().run("camera", json!({"eye": [-3000.0, 3000.0, 1600.0], "target": [4000.0, 3000.0, 1600.0], "lens": 35.0}));
+    let id = r.and_then(|r| r["id"].as_u64()).unwrap();
+    h.state_mut().open_3d(Some(id));
+    h.run();
+    let undo = h.state().session.history().len();
+    shortcut(&mut h, "FY");
+    hold(&mut h, Key::W, true);
+    frames(&mut h, 5);
+    hold(&mut h, Key::W, false);
+    h.run();
+    // Leaving the 3D view lands it; the view isn't drawn again, so the flight is written as it lands.
+    h.state_mut().open_sheet(plan);
+    h.run();
+    assert!(!flying(&h));
+    let eye: Vec<f64> = field(&h, id, "camera")["eye"].as_array().unwrap().iter().filter_map(|v| v.as_f64()).collect();
+    assert!(eye[0] > -3000.0 + 50.0, "{eye:?}");
+    assert_eq!(h.state().session.history().len(), undo + 1, "the flight is one step to undo");
+}

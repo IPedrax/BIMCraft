@@ -7066,6 +7066,11 @@ impl eframe::App for BimApp {
             bench.input(raw);
         }
         self.pace(&mut raw.events);
+        // Flying, the pointer is hidden (and on X11, which can't lock it, still roams the window): a click would act on
+        // whatever it happens to be over.
+        if self.orbit.fly.is_some() {
+            raw.events.retain(|e| !matches!(e, Event::PointerButton { .. }));
+        }
         // The family document's views take Tab themselves (F10c), the project's canvas being out of sight. Tab steps the
         // reading's fields; Shift+Tab steps the lines of the wall under the pointer, which a chain in hand would
         // otherwise never reach, `Tab` being the fields' from its first point on. Where no chain is drawn, it is Tab.

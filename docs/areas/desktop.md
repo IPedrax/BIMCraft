@@ -263,9 +263,11 @@ back where it looks, A and D to the side, Q up and E down, the mouse turning it 
 setting the speed (it starts at what crosses the model in about eight seconds) and Shift flying four times as fast. A parallel view is
 turned to perspective as it begins (`perspective`), since only a perspective view has an eye. While it flies the window holds the
 pointer, hidden (locked where the system can, else confined to the window; the mouse's own motion, egui's `pointer.motion`, turns the
-view), and a banner over the view says so. Esc, FY or the wing again end it, and so do leaving the 3D view, opening a family or the
-window losing focus (`BimApp::fly_frame`). A camera view writes where it flew to back to its camera once, when fly mode ends, so a
-flight is one step to undo. It is the 3D view's only: elsewhere FY says so.
+view), and a banner over the view says so. Clicks are dropped while it flies (`raw_input_hook`): X11 can't lock the pointer, and the
+hidden one would click whatever it roamed over. The letters fly only with no Ctrl, Cmd or Alt held, so Ctrl+S saves and Alt+drag still
+turns the view. Esc, FY or the wing again end it, and so do leaving the 3D view, opening a family, a dialog that takes the keys
+(`keys_taken`) or the window losing focus (`BimApp::fly_frame`). A camera view writes where it flew to back to its camera once, as fly
+mode ends however it ends, so a flight is one step to undo. It is the 3D view's only: elsewhere FY says so.
 
 A wall or column selected alone in Modify has handles in the 3D view (core `handles.rs`, drawn by `orbit::draw_handle`): a wall's two
 ends at its base on its location line, which is drawn dashed along its base (`handles::location_line`), a column's place, and an arrow on the top and under the base of each, as a section box's faces have. A drag previews the element

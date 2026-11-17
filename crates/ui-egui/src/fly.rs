@@ -8,6 +8,7 @@
 //! and the mouse's own motion turns the view. The camera is the core's (`Camera::flown`); a camera view writes where it was
 //! left back to its camera once fly mode ends, not at every pause, so a flight is one step to undo.
 
+use bimcraft_core::model::{Element, ViewCamera};
 use bimcraft_core::view3d::{Camera, P3};
 use bimcraft_i18n::msg;
 use egui::{Align2, Context, Frame, Key, Margin, Rect, RichText, Vec2, ViewportCommand, pos2, vec2};
@@ -69,12 +70,17 @@ pub(crate) struct Keys {
 }
 
 impl Keys {
-    /// The keys held now, none while a text field has the keyboard.
+    /// The keys held now, none while a text field has the keyboard or Ctrl, Cmd or Alt is down (Ctrl+S saves, it doesn't
+    /// fly back; Alt+drag turns the view).
     pub(crate) fn held(ctx: &Context) -> Keys {
         if ctx.egui_wants_keyboard_input() {
             return Keys::default();
         }
         ctx.input(|i| {
+            let m = i.modifiers;
+            if m.ctrl || m.command || m.mac_cmd || m.alt {
+                return Keys::default();
+            }
             let axis = |plus: Key, minus: Key| f64::from(i8::from(i.key_down(plus)) - i8::from(i.key_down(minus)));
             Keys { ahead: axis(Key::W, Key::S), aside: axis(Key::D, Key::A), rise: axis(Key::Q, Key::E), boost: i.modifiers.shift }
         })
@@ -132,7 +138,8 @@ pub(crate) fn banner(ctx: &Context, rect: Rect, speed: &str) {
 impl BimApp {
     /// Fly Mode (FY, the wing): flies the 3D view, or stops. Elsewhere than the 3D view, says it is the 3D view's.
     pub(crate) fn toggle_fly(&mut self) {
-        if self.orbit.fly.take().is_some() {
+        if self.orbit.fly.is_some() {
+            self.land();
             self.status = Status { text: t("Fly mode off").into(), error: false };
             return;
         }
@@ -157,14 +164,15 @@ impl BimApp {
         self.status = Status { text: t("Fly mode on").into(), error: false };
     }
 
-    /// Each frame, before the keys: Esc ends fly mode, as leaving the 3D view or the window does; and the window holds the
-    /// pointer, hidden, while it flies, and lets it go after.
+    /// Each frame, before the keys: Esc ends fly mode, as leaving the 3D view or the window does, or a dialog opening (it
+    /// takes the keys, and the mouse would go on turning the view behind it); and the window holds the pointer, hidden, while
+    /// it flies, and lets it go after.
     pub(crate) fn fly_frame(&mut self, ctx: &Context) {
         if self.orbit.fly.is_some() {
             let focused = ctx.input(|i| i.focused);
             let escape = !ctx.egui_wants_keyboard_input() && ctx.input_mut(|i| i.consume_key(egui::Modifiers::NONE, Key::Escape));
-            if escape || self.sheet != Sheet::View3D || !focused || self.active_family().is_some() {
-                self.orbit.fly = None;
+            if escape || self.sheet != Sheet::View3D || !focused || self.active_family().is_some() || self.keys_taken(ctx) {
+                self.land();
                 self.status = Status { text: t("Fly mode off").into(), error: false };
             }
         }
@@ -172,7 +180,8 @@ impl BimApp {
         if hold != self.orbit.fly_held {
             self.orbit.fly_held = hold;
             if hold {
-                // Kept in the window where the system can't lock it in place (Windows, X11): a lock replaces the confinement.
+                // Kept in the window where the system can't lock it in place (X11, where the hidden pointer still roams the
+                // window, so `raw_input_hook` drops clicks while it flies): a lock replaces the confinement.
                 ctx.send_viewport_cmd(ViewportCommand::CursorGrab(egui::CursorGrab::Confined));
                 ctx.send_viewport_cmd(ViewportCommand::CursorGrab(egui::CursorGrab::Locked));
                 ctx.send_viewport_cmd(ViewportCommand::CursorVisible(false));
@@ -180,6 +189,24 @@ impl BimApp {
                 ctx.send_viewport_cmd(ViewportCommand::CursorGrab(egui::CursorGrab::None));
                 ctx.send_viewport_cmd(ViewportCommand::CursorVisible(true));
             }
+        }
+    }
+
+    /// Fly mode ends. A camera view keeps where it flew to, written now as one step to undo: the 3D view's own write-back
+    /// runs only while it is drawn, and fly mode also ends by leaving it.
+    fn land(&mut self) {
+        self.orbit.fly = None;
+        let Some(id) = self.active_3d().filter(|_| !self.passive) else { return };
+        let (stored, lens) = match self.session.model.elements.get(id) {
+            Some(Element::View3D(v)) => (v.camera, v.lens()),
+            _ => return,
+        };
+        let (Some(stored), Some(lens), Some(cam)) = (stored, lens, self.orbit.camera) else { return };
+        let Some(eye) = cam.eye() else { return };
+        let near = |a: [f64; 3], b: [f64; 3]| a.iter().zip(b).all(|(x, y)| (x - y).abs() < 0.01);
+        let same = near(stored.eye, eye) && near(stored.target, cam.target);
+        if !same && self.run("camera", json!({"view": id, "eye": eye, "target": cam.target, "lens": lens})).is_some() {
+            self.orbit.built = Some((id, ViewCamera { eye, target: cam.target }, Some(lens)));
         }
     }
 
